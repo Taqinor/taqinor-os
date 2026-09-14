@@ -1,12 +1,13 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    AppointmentViewSet, ClientViewSet, ConcurrentPerteViewSet, LeadViewSet,
+    AppareilEquipeViewSet, AppointmentViewSet, ClientViewSet,
+    ConcurrentPerteViewSet, LeadViewSet,
     assignable_users, equipes_statistiques, rapport_attribution,
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
     MessageTemplateViewSet, ObjectifCommercialViewSet, PlanActiviteViewSet,
     PointContactViewSet, RelanceEtapeViewSet, SavedViewViewSet,
-    SiteProfileViewSet,
+    SiteProfileViewSet, VisiteExterneViewSet,
     EquipeCommercialeViewSet, WebsiteLeadPayloadViewSet,
 )
 from .webhooks import website_lead_webhook, meta_lead_ads_webhook
@@ -99,6 +100,12 @@ router.register(r'defis', DefiViewSet, basename='crm-defi')
 # `/api/django/visites/visites/`, servies sous l'ancien préfixe le temps de la
 # fenêtre de déploiement. À retirer au prochain groupe.
 router.register(r'visites', VisiteTerrainViewSet, basename='crm-visite')
+# QJ-EQUIPE-2 — écran de revue T-TRACE (lecture seule) + registre des
+# appareils équipe (exclusion permanente et rétroactive du traçage).
+router.register(r'visites-externes', VisiteExterneViewSet,
+                basename='crm-visite-externe')
+router.register(r'appareils-equipe', AppareilEquipeViewSet,
+                basename='crm-appareil-equipe')
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)

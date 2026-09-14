@@ -14,16 +14,18 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
-    Apporteur, Appointment, Client, ConcurrentPerte, DealEnregistre, Defi,
+    AppareilEquipe, Apporteur, Appointment, Client, ConcurrentPerte,
+    DealEnregistre, Defi,
     EquipeCommerciale,
     ForecastEntry, ForecastSnapshot, Lead, LeadPlaybookProgress, LeadTag,
     MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape,
     PlaybookTache, PointContact, RelanceEtape, RevueCompte, SalleVente,
-    SalleVenteItem, SavedView, SiteProfile, WebsiteLeadPayload,
+    SalleVenteItem, SavedView, SiteProfile, VisiteExterne, WebsiteLeadPayload,
 )
 from .serializers import (
-    AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
+    AppareilEquipeSerializer, AppointmentSerializer, ClientSerializer,
+    ConcurrentPerteSerializer,
     LeadSerializer, LeadActivitySerializer,
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
@@ -37,6 +39,7 @@ from .serializers import (
     LeadPlaybookProgressSerializer, SavedViewSerializer,
     SalleVenteSerializer, SalleVenteItemSerializer,
     ApporteurSerializer, DealEnregistreSerializer, DefiSerializer,
+    VisiteExterneSerializer,
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity
@@ -3978,3 +3981,151 @@ class DefiViewSet(CompanyScopedModelViewSet):
         from .selectors import classement_defi
         defi = self.get_object()
         return export_defi_classement_xlsx(defi, classement_defi(defi))
+
+
+# ── QJ-EQUIPE-2 (14/09/2026) — écran de revue T-TRACE + registre équipe ──────
+
+class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
+    """T-TRACE — écran de revue des visites externes (lecture seule).
+
+    Routes :
+      GET /crm/visites-externes/                (filtre ?appareil_id=&?lead=&?point=)
+      GET /crm/visites-externes/{id}/
+      GET /crm/visites-externes/appareils/       (agrégat par appareil)
+
+    Toujours scopé société (``TenantMixin``, via le queryset filtré ici) : un
+    commercial ne voit que le traçage de SA société."""
+    # Attribut de classe requis par drf-spectacular pour typer `{id}` (le
+    # runtime passe TOUJOURS par get_queryset, qui rescope par société).
+    queryset = VisiteExterne.objects.all()
+    serializer_class = VisiteExterneSerializer
+    permission_classes = [IsAnyRole]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'duree_s']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        qs = VisiteExterne.objects.select_related(
+            'company', 'lead').filter(company=self.request.user.company)
+        params = self.request.query_params
+        appareil_id = params.get('appareil_id')
+        if appareil_id:
+            qs = qs.filter(appareil_id=appareil_id)
+        lead_id = params.get('lead')
+        if lead_id:
+            qs = qs.filter(lead_id=lead_id)
+        point = params.get('point')
+        if point:
+            qs = qs.filter(point=point)
+        return qs
+
+    # Permission EXPLICITE sur l'@action (pattern d'or crm du cliquet
+    # core.action_permission_scan : chaque @action porte sa garde).
+    @action(detail=False, methods=['get'], permission_classes=[IsAnyRole])
+    def appareils(self, request):
+        """Agrégat PAR APPAREIL : nb visites, durée totale, première/dernière
+        visite, leads touchés, propositions ouvertes, statut équipe.
+
+        Borné aux 200 appareils les plus RÉCEMMENT actifs (écran de revue, pas
+        un export) — ``?appareil_id=`` cible un appareil précis sans cette
+        limite."""
+        from django.db.models import Count, Max, Min, Q, Sum
+
+        from .visites import appareils_equipe_ids
+
+        base = VisiteExterne.objects.filter(
+            company=request.user.company).exclude(appareil_id='')
+        appareil_id = request.query_params.get('appareil_id')
+        if appareil_id:
+            base = base.filter(appareil_id=appareil_id)
+
+        agreges = (
+            base.values('appareil_id')
+            .annotate(
+                visites=Count('id'),
+                duree_totale_s=Sum('duree_s'),
+                premiere=Min('created_at'),
+                derniere=Max('created_at'),
+                propositions=Count(
+                    'id', filter=Q(point=VisiteExterne.Point.PROPOSITION)),
+            )
+            .order_by('-derniere')[:200]
+        )
+        equipe_ids = appareils_equipe_ids(request.user.company)
+
+        resultats = []
+        for ligne in agreges:
+            aid = ligne['appareil_id']
+            # Dédoublonné en PYTHON, jamais par `.distinct()` — même piège
+            # `Meta.ordering` que `visites.historique_appareil`.
+            leads = list(
+                base.filter(appareil_id=aid)
+                .exclude(lead__isnull=True)
+                .order_by('lead_id')
+                .values_list('lead_id', 'lead__nom')
+                .distinct())
+            vus, leads_touches = set(), []
+            for lead_id, lead_nom in leads:
+                if lead_id not in vus:
+                    vus.add(lead_id)
+                    leads_touches.append({'id': lead_id, 'nom': lead_nom or ''})
+            resultats.append({
+                'appareil_id': aid,
+                'visites': ligne['visites'],
+                'duree_totale_s': ligne['duree_totale_s'] or 0,
+                'premiere': ligne['premiere'],
+                'derniere': ligne['derniere'],
+                'leads': leads_touches,
+                'propositions': ligne['propositions'],
+                'equipe': aid in equipe_ids,
+            })
+        return Response(resultats)
+
+
+class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
+                            mixins.DestroyModelMixin, viewsets.GenericViewSet):
+    """QJ-EQUIPE-2 — registre des appareils de l'équipe (exclusion permanente
+    et rétroactive du traçage T-TRACE). Pas de retrieve/update : on liste, on
+    ajoute, on retire — jamais de modification en place d'un enregistrement.
+
+    Lecture ouverte à tout rôle authentifié de la société ; écriture réservée
+    responsable/admin (marquer/démarquer un appareil équipe est une décision
+    de gouvernance anti-fraude)."""
+    # Attribut de classe requis par drf-spectacular pour typer `{id}` (le
+    # runtime passe TOUJOURS par get_queryset, qui rescope par société).
+    queryset = AppareilEquipe.objects.all()
+    serializer_class = AppareilEquipeSerializer
+
+    def get_queryset(self):
+        return AppareilEquipe.objects.filter(
+            company=self.request.user.company).select_related('cree_par')
+
+    def get_permissions(self):
+        if self.action == 'list':
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def create(self, request, *args, **kwargs):
+        """Idempotent-friendly : (re)marquer un appareil déjà enregistré met à
+        jour son libellé au lieu de lever une erreur d'unicité — un commercial
+        qui reclique « ajouter » avec un libellé différent ne doit pas voir un
+        400."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        appareil_id = serializer.validated_data.get('appareil_id', '')
+        existant = self.get_queryset().filter(appareil_id=appareil_id).first()
+        if existant is not None:
+            libelle = serializer.validated_data.get('libelle')
+            if libelle:
+                existant.libelle = libelle
+                existant.save(update_fields=['libelle', 'updated_at'])
+            return Response(
+                self.get_serializer(existant).data, status=status.HTTP_200_OK)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, cree_par=self.request.user)

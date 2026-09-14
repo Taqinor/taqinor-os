@@ -176,6 +176,43 @@ def appareil_de_requete(request) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# QJ-EQUIPE-2 — registre SERVEUR des appareils de l'équipe
+# ═══════════════════════════════════════════════════════════════════════════
+
+def est_appareil_equipe(company, appareil_id) -> bool:
+    """Vrai si ``appareil_id`` est enregistré comme appareil ÉQUIPE de cette
+    société — best-effort, ``False`` sur toute entrée vide ou toute erreur
+    (mieux vaut manquer une exclusion que casser un point public)."""
+    try:
+        if company is None:
+            return False
+        appareil_id = _texte(appareil_id, MAX_APPAREIL)
+        if not appareil_id:
+            return False
+        from .models import AppareilEquipe
+        return AppareilEquipe.objects.filter(
+            company=company, appareil_id=appareil_id).exists()
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('T-TRACE: est_appareil_equipe échoué : %s', exc)
+        return False
+
+
+def appareils_equipe_ids(company) -> set:
+    """Ensemble des ``appareil_id`` marqués équipe pour cette société —
+    best-effort, ensemble vide sur toute erreur."""
+    try:
+        if company is None:
+            return set()
+        from .models import AppareilEquipe
+        return set(
+            AppareilEquipe.objects.filter(company=company)
+            .values_list('appareil_id', flat=True))
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('T-TRACE: appareils_equipe_ids échoué : %s', exc)
+        return set()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Service unique d'écriture
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -209,6 +246,10 @@ def enregistrer_visite_externe(company, *, point, appareil_id='', lead=None,
         from .models import VisiteExterne
 
         appareil_id = _texte(appareil_id, MAX_APPAREIL)
+        # QJ-EQUIPE-2 — un appareil ÉQUIPE ne produit AUCUNE trace : ni ligne
+        # ni battement, pour toujours.
+        if appareil_id and est_appareil_equipe(company, appareil_id):
+            return None
         contexte = _texte(contexte, MAX_CONTEXTE)
         langue = _texte(langue, MAX_LANGUE)
         ip = _texte(ip, MAX_IP) or ip_de_requete(request)
@@ -307,6 +348,11 @@ def historique_appareil(company, appareil_id):
             return None
         appareil_id = _texte(appareil_id, MAX_APPAREIL)
         if not appareil_id:
+            return None
+        # QJ-EQUIPE-2 — un appareil ÉQUIPE n'a pas d'« historique » anti-fraude
+        # à raconter (même s'il porte des traces anciennes, conservées mais
+        # ignorées à la lecture).
+        if est_appareil_equipe(company, appareil_id):
             return None
         from django.db.models import Count, Max, Min, Sum
 
@@ -480,6 +526,10 @@ def alerter_appareil_partage(lead) -> None:
         company = getattr(lead, 'company', None)
         if not appareil_id or company is None or lead.pk is None:
             return
+        # QJ-EQUIPE-2 — l'appareil du fondateur/de l'équipe qui redemande un
+        # devis n'est jamais un « partage suspect ».
+        if est_appareil_equipe(company, appareil_id):
+            return
         from .models import Lead
 
         freres = (
@@ -587,9 +637,15 @@ def detecter_concurrent(company, *, appareil_id='', ip='') -> None:
         base = VisiteExterne.objects.filter(
             company=company, point__in=POINTS_DOCUMENT,
             created_at__gte=depuis).exclude(lead__isnull=True)
+        # QJ-EQUIPE-2 — RÉTROACTIF : une trace d'un appareil marqué équipe
+        # (même écrite AVANT le marquage, « keep them stored ») ne rapproche
+        # plus rien — ni la branche appareil, ni la branche IP.
+        equipe_ids = appareils_equipe_ids(company)
+        if equipe_ids:
+            base = base.exclude(appareil_id__in=equipe_ids)
 
         signal, cle, leads = '', '', []
-        if appareil_id:
+        if appareil_id and not est_appareil_equipe(company, appareil_id):
             leads = sorted(set(
                 base.filter(appareil_id=appareil_id)
                 .values_list('lead_id', flat=True)))
@@ -626,6 +682,9 @@ def detecter_concurrent(company, *, appareil_id='', ip='') -> None:
             nuance = ('Signal FORT (identifiant d’appareil). Un concurrent en '
                       'reconnaissance se comporte exactement ainsi — à '
                       'vérifier avant d’envoyer un nouveau chiffrage.')
+            # QJ-EQUIPE-2 — pointe directement vers l'écran de revue qui permet
+            # de marquer l'appareil équipe si c'est un faux positif.
+            lien = f'/crm/visiteurs?appareil={appareil_id}'
         else:
             titre = '🔴 Une même adresse IP consulte plusieurs prospects'
             constat = (
@@ -637,6 +696,7 @@ def detecter_concurrent(company, *, appareil_id='', ip='') -> None:
                       'Au moins un navigateur identifié a été vu à cette '
                       'adresse, mais c\'est à traiter comme une piste à '
                       'vérifier, jamais comme une preuve.')
+            lien = f'/crm/leads?lead={leads[0]}'
 
         destinataires = _destinataires_des_leads(company, leads)
         if not destinataires:
@@ -651,7 +711,7 @@ def detecter_concurrent(company, *, appareil_id='', ip='') -> None:
         notify_many(
             destinataires, 'visiteur_concurrent_suspecte', titre,
             body='\n'.join([constat, nuance]),
-            link=f'/crm/leads?lead={leads[0]}',
+            link=lien,
             company=company,
         )
     except Exception as exc:  # noqa: BLE001 — best-effort
@@ -687,6 +747,10 @@ def rattacher_visites_au_lead(lead) -> int:
         appareil_id = _texte(getattr(lead, 'appareil_id', ''), MAX_APPAREIL)
         company = getattr(lead, 'company', None)
         if not appareil_id or company is None or lead.pk is None:
+            return 0
+        # QJ-EQUIPE-2 — un appareil équipe ne rattache rien : ses passages ne
+        # comptent jamais comme la visite d'un prospect.
+        if est_appareil_equipe(company, appareil_id):
             return 0
         from .models import VisiteExterne
 

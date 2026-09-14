@@ -42,9 +42,11 @@ from .models import Canal, Client, Lead, LeadActivity, PointContact, RelanceEtap
 from .visites import (  # noqa: F401 — réexport public délibéré
     alerter_appareil_partage,
     appareil_de_requete,
+    appareils_equipe_ids,
     avec_direction,
     detecter_concurrent,
     enregistrer_visite_externe,
+    est_appareil_equipe,
     historique_appareil,
     ip_de_requete,
     rattacher_visites_au_lead,
