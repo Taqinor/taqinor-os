@@ -366,9 +366,23 @@ def _stamp_view_si_public(link, via_interne, request=None):
     court-circuite AVANT toute écriture). ``request`` est FACULTATIF (les
     appelants qui ne le passent pas gardent le comportement d'avant, sans
     trace de visite) et sert uniquement à lire l'IP / le navigateur CÔTÉ
-    SERVEUR — jamais un corps de requête."""
+    SERVEUR — jamais un corps de requête.
+
+    QJ-EQUIPE-2 (14/09/2026) — le cookie ``tq_equipe`` ne couvre qu'UN
+    navigateur à la fois (absent du navigateur intégré WhatsApp, de la
+    navigation privée…) ; un appareil marqué côté ERP (``crm.AppareilEquipe``)
+    est exclu PARTOUT, pour toujours, quel que soit le cookie posé. Best-effort
+    : une erreur de lecture du registre retombe simplement sur le comportement
+    normal (cookie + robot), jamais sur un 500."""
     if via_interne or _appareil_equipe(request) or _est_robot_apercu(request):
         return False
+    try:
+        from apps.crm.services import appareil_de_requete, est_appareil_equipe
+        appareil_id = appareil_de_requete(request)
+        if appareil_id and est_appareil_equipe(link.company, appareil_id):
+            return False
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        pass
     resultat = _stamp_view(link)
     _tracer_ouverture_publique(link, request)
     return resultat
