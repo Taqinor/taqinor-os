@@ -16,6 +16,13 @@ FRONTIÈRE M3 : toute lecture de ``crm``/``ventes`` passe par LEURS selectors,
 en import PARESSEUX (fonction-local) — jamais par un import de leurs modèles.
 """
 
+# Ré-export M3 (revue Fable 15/09) — le VOCABULAIRE de qualification (module
+# pur, zéro modèle) fait partie de la surface de LECTURE de l'app : les
+# autres apps (crm) le consomment d'ICI, jamais du module interne.
+from .qualification import (  # noqa: F401
+    conseil, devis_a_reprendre, jours_avant_rappel, phrase, rappel_explicite,
+)
+
 
 def _visite_url_photo(attachment_id):
     """URL du proxy Django qui sert une pièce jointe (jamais MinIO direct)."""

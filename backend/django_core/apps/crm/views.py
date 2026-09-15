@@ -2951,6 +2951,18 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             return Response(
                 {'outcome': 'Issue inconnue.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # VISITE-CADENCE (revue Fable 15/09) — « Visite acceptée » n'a de sens
+        # que sur le suivi de PROPOSITION : la visite se place APRÈS l'envoi
+        # du devis (doctrine fondateur), jamais en prise de contact/réveil.
+        # L'écran est déjà gaté ; ceci ferme l'API brute.
+        from .services import OUTCOME_VISITE_ACCEPTEE
+        if (outcome == OUTCOME_VISITE_ACCEPTEE
+                and etape.cadence != 'apres_devis'):
+            return Response(
+                {'erreurs': {'outcome': '« Visite acceptée » ne vaut que sur '
+                                        'une touche du suivi de proposition '
+                                        '(après envoi du devis).'}},
+                status=status.HTTP_400_BAD_REQUEST)
         # CKP2 — l'ISSUE est OBLIGATOIRE pour clore un APPEL « fait » : c'est
         # elle, et elle seule, qui programme la suite du protocole (cadence
         # réactive) et qui arrête la cadence quand le client a répondu. Un

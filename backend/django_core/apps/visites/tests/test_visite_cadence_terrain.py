@@ -350,6 +350,38 @@ class TerminerPublieLeRetourTests(VisiteCadenceBase):
         self.assertIn('qualification', recus[0])
         self.assertIsNone(recus[0]['qualification'])
 
+    def test_terminer_est_idempotent_jamais_une_seconde_emission(self):
+        # Revue Fable (15/09) — un double clic ou un retry réseau re-POSTait
+        # terminer/ : deuxième note chatter, deuxième salve de notifications,
+        # débrief ré-avancé. Désormais : une visite DÉJÀ terminée renvoie
+        # l'agrégat tel quel, sans rien ré-émettre ni ré-horodater.
+        visite_id = self._visite_complete()
+        premiere = self.api.post(
+            f'/api/django/visites/visites/{visite_id}/terminer/', {},
+            format='json')
+        self.assertEqual(premiere.status_code, 200, premiere.data)
+        date_realisee = VisiteTerrain.objects.get(pk=visite_id).date_realisee
+
+        recus = []
+        from core.events import visite_terminee
+
+        def espion(sender, **kwargs):
+            recus.append(kwargs)
+
+        visite_terminee.connect(espion, dispatch_uid='vcad-espion-idem')
+        try:
+            seconde = self.api.post(
+                f'/api/django/visites/visites/{visite_id}/terminer/', {},
+                format='json')
+        finally:
+            visite_terminee.disconnect(dispatch_uid='vcad-espion-idem')
+
+        self.assertEqual(seconde.status_code, 200, seconde.data)
+        self.assertEqual(recus, [])
+        visite = VisiteTerrain.objects.get(pk=visite_id)
+        self.assertEqual(visite.statut, VisiteTerrain.Statut.TERMINEE)
+        self.assertEqual(visite.date_realisee, date_realisee)
+
     def test_terminer_emporte_la_qualification_quand_elle_existe(self):
         visite_id = self._visite_complete()
         reponse = self.api.post(

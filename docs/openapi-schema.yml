@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10758, operations: 19056, components: 5730}
+counts: {paths: 10768, operations: 19066, components: 5733}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2855,6 +2855,7 @@ operations:
 - get /api/django/crm/leads/{id}/jalons-devis/ -> django_crm_leads_jalons_devis_retrieve
 - post /api/django/crm/leads/{id}/log-interaction/ -> django_crm_leads_log_interaction_create
 - post /api/django/crm/leads/{id}/merge/ -> django_crm_leads_merge_create
+- get /api/django/crm/leads/{id}/message-visite/ -> django_crm_leads_message_visite_retrieve
 - post /api/django/crm/leads/{id}/noter/ -> django_crm_leads_noter_create
 - get /api/django/crm/leads/{id}/points-contact/ -> django_crm_leads_points_contact_retrieve
 - post /api/django/crm/leads/{id}/questionnaire-lien/ -> django_crm_leads_questionnaire_lien_create
@@ -2862,6 +2863,8 @@ operations:
 - post /api/django/crm/leads/{id}/relance/initialiser/ -> django_crm_leads_relance_initialiser_create
 - post /api/django/crm/leads/{id}/restaurer/ -> django_crm_leads_restaurer_create
 - get /api/django/crm/leads/{id}/salle-vente-analytics/ -> django_crm_leads_salle_vente_analytics_retrieve
+- get /api/django/crm/leads/{id}/visites/ -> django_crm_leads_visites_retrieve
+- post /api/django/crm/leads/{id}/visites/planifier/ -> django_crm_leads_visites_planifier_create
 - post /api/django/crm/leads/{id}/whatsapp-devis/ -> django_crm_leads_whatsapp_devis_create
 - get /api/django/crm/leads/{lead_id}/photo-toit/ -> django_crm_leads_photo_toit_retrieve
 - get /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_retrieve
@@ -3014,6 +3017,7 @@ operations:
 - get /api/django/crm/visites/{id}/photo-toit/ -> django_crm_visites_photo_toit_retrieve
 - post /api/django/crm/visites/{id}/photos/ -> django_crm_visites_photos_create
 - delete /api/django/crm/visites/{id}/photos/{media_id}/ -> django_crm_visites_photos_destroy
+- post /api/django/crm/visites/{id}/qualification/ -> django_crm_visites_qualification_create
 - post /api/django/crm/visites/{id}/renvoyer/ -> django_crm_visites_renvoyer_create
 - post /api/django/crm/visites/{id}/terminer/ -> django_crm_visites_terminer_create
 - post /api/django/crm/visites/{id}/valider/ -> django_crm_visites_valider_create
@@ -9534,6 +9538,7 @@ operations:
 - get /api/django/visites/visites/{id}/photo-toit/ -> django_visites_visites_photo_toit_retrieve
 - post /api/django/visites/visites/{id}/photos/ -> django_visites_visites_photos_create
 - delete /api/django/visites/visites/{id}/photos/{media_id}/ -> django_visites_visites_photos_destroy
+- post /api/django/visites/visites/{id}/qualification/ -> django_visites_visites_qualification_create
 - post /api/django/visites/visites/{id}/renvoyer/ -> django_visites_visites_renvoyer_create
 - post /api/django/visites/visites/{id}/terminer/ -> django_visites_visites_terminer_create
 - post /api/django/visites/visites/{id}/valider/ -> django_visites_visites_valider_create
@@ -12430,6 +12435,7 @@ operations:
 - get /api/v1/crm/leads/{id}/jalons-devis/ -> v1_crm_leads_jalons_devis_retrieve
 - post /api/v1/crm/leads/{id}/log-interaction/ -> v1_crm_leads_log_interaction_create
 - post /api/v1/crm/leads/{id}/merge/ -> v1_crm_leads_merge_create
+- get /api/v1/crm/leads/{id}/message-visite/ -> v1_crm_leads_message_visite_retrieve
 - post /api/v1/crm/leads/{id}/noter/ -> v1_crm_leads_noter_create
 - get /api/v1/crm/leads/{id}/points-contact/ -> v1_crm_leads_points_contact_retrieve
 - post /api/v1/crm/leads/{id}/questionnaire-lien/ -> v1_crm_leads_questionnaire_lien_create
@@ -12437,6 +12443,8 @@ operations:
 - post /api/v1/crm/leads/{id}/relance/initialiser/ -> v1_crm_leads_relance_initialiser_create
 - post /api/v1/crm/leads/{id}/restaurer/ -> v1_crm_leads_restaurer_create
 - get /api/v1/crm/leads/{id}/salle-vente-analytics/ -> v1_crm_leads_salle_vente_analytics_retrieve
+- get /api/v1/crm/leads/{id}/visites/ -> v1_crm_leads_visites_retrieve
+- post /api/v1/crm/leads/{id}/visites/planifier/ -> v1_crm_leads_visites_planifier_create
 - post /api/v1/crm/leads/{id}/whatsapp-devis/ -> v1_crm_leads_whatsapp_devis_create
 - get /api/v1/crm/leads/{lead_id}/photo-toit/ -> v1_crm_leads_photo_toit_retrieve
 - get /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_retrieve
@@ -12589,6 +12597,7 @@ operations:
 - get /api/v1/crm/visites/{id}/photo-toit/ -> v1_crm_visites_photo_toit_retrieve
 - post /api/v1/crm/visites/{id}/photos/ -> v1_crm_visites_photos_create
 - delete /api/v1/crm/visites/{id}/photos/{media_id}/ -> v1_crm_visites_photos_destroy
+- post /api/v1/crm/visites/{id}/qualification/ -> v1_crm_visites_qualification_create
 - post /api/v1/crm/visites/{id}/renvoyer/ -> v1_crm_visites_renvoyer_create
 - post /api/v1/crm/visites/{id}/terminer/ -> v1_crm_visites_terminer_create
 - post /api/v1/crm/visites/{id}/valider/ -> v1_crm_visites_valider_create
@@ -19060,6 +19069,7 @@ operations:
 - get /api/v1/visites/visites/{id}/photo-toit/ -> v1_visites_visites_photo_toit_retrieve
 - post /api/v1/visites/visites/{id}/photos/ -> v1_visites_visites_photos_create
 - delete /api/v1/visites/visites/{id}/photos/{media_id}/ -> v1_visites_visites_photos_destroy
+- post /api/v1/visites/visites/{id}/qualification/ -> v1_visites_visites_qualification_create
 - post /api/v1/visites/visites/{id}/renvoyer/ -> v1_visites_visites_renvoyer_create
 - post /api/v1/visites/visites/{id}/terminer/ -> v1_visites_visites_terminer_create
 - post /api/v1/visites/visites/{id}/valider/ -> v1_visites_visites_valider_create
@@ -19890,6 +19900,9 @@ components:
 - CrmKpiAdherence
 - CrmKpiCadences
 - CrmKpiPremierContact
+- CrmLeadMessageVisite
+- CrmLeadVisitePlanifiee
+- CrmLeadVisites
 - CrmMesStatsRelance
 - CumulAnnuel
 - CustomFieldDef

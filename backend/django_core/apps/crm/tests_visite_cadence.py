@@ -835,6 +835,26 @@ class MessageVisiteTests(VisiteCadenceBase):
         # Le reste du message tient debout.
         self.assertIn('technicien', rendu['corps_fr'])
 
+    def test_la_touche_de_confirmation_rend_la_date_via_message_pour_etape(self):
+        # Revue Fable (15/09) — le chemin d'usage RÉEL de la touche
+        # « Confirmer la visite (veille) » est ToucheMessageDialog →
+        # GET relance-etapes/<id>/message/ → message_pour_etape : son contexte
+        # doit porter {date_visite}, sinon la phrase avec la date est omise et
+        # le message ne confirme rien.
+        self.lead.visite_prevue_le = datetime.date(2026, 9, 22)
+        self.lead.save(update_fields=['visite_prevue_le'])
+        etape = RelanceEtape.objects.create(
+            company=self.company, lead=self.lead, cadence='apres_devis',
+            ordre=services.VISITE_ORDRE_CONFIRMATION,
+            canal=RelanceEtape.Canal.WHATSAPP,
+            libelle=services.VISITE_CONFIRMATION_LIBELLE,
+            template_cle='visite_confirmation',
+            due_date=datetime.date(2026, 9, 21))
+        rendu = services.message_pour_etape(etape, user=self.acteur)
+        self.assertIn('mardi 22 septembre', rendu['message'])
+        self.assertNotIn('{date_visite}', rendu['message'])
+        self.assertNotIn('date_visite', rendu['placeholders_manquants'])
+
     def test_le_conseiller_est_le_responsable_du_lead(self):
         rendu = services.message_visite_pour_lead(
             self.lead, 'visite_proposition', user=self.acteur)

@@ -83,8 +83,10 @@ describe('VisiteQualificationForm — VISITE-QUALIF', () => {
   })
 
   it('erreur SERVEUR (400 par champ) affichée sous le champ fautif exact, jamais un message générique', async () => {
+    // Forme RÉELLE du serveur (contrat qualification/ + VisiteMesuresForm) :
+    // l'enveloppe {erreurs: {champ: [messages]}} — jamais l'objet nu.
     qualifierVisite.mockRejectedValue({
-      response: { data: { frein: 'Choix de frein invalide.' } },
+      response: { status: 400, data: { erreurs: { frein: ['Choix de frein invalide.'] } } },
     })
     const user = userEvent.setup()
     render(<VisiteQualificationForm visiteId={7} qualification={null} onSaved={() => {}} />)

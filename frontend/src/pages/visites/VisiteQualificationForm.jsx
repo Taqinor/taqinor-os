@@ -140,9 +140,18 @@ export default function VisiteQualificationForm({ visiteId, qualification, lectu
       onSaved?.(res.data)
       toast.success('Qualification enregistrée.')
     } catch (err) {
-      const data = err?.response?.data
-      if (data && typeof data === 'object') setErreurs(data)
-      else toast.error('Enregistrement de la qualification impossible.')
+      // Revue Fable (15/09) — le serveur ENVELOPPE toujours ses erreurs de
+      // champ : {erreurs: {champ: [message]}} (même forme que mesures/ —
+      // voir VisiteMesuresForm). Lire l'objet nu rendait tout 400 muet.
+      const enveloppe = err?.response?.data?.erreurs
+      if (enveloppe && typeof enveloppe === 'object') {
+        setErreurs(Object.fromEntries(Object.entries(enveloppe).map(
+          ([champ, messages]) => [champ,
+            Array.isArray(messages) ? messages[0] : String(messages)],
+        )))
+      } else {
+        toast.error('Enregistrement de la qualification impossible.')
+      }
     } finally {
       setSaving(false)
     }
@@ -171,6 +180,7 @@ export default function VisiteQualificationForm({ visiteId, qualification, lectu
                 <Input
                   id="visite-qualif-devis-details"
                   value={form.devis_details}
+                  maxLength={300}
                   aria-invalid={erreurs.devis_details ? 'true' : undefined}
                   onChange={(e) => setChamp('devis_details', e.target.value)}
                 />
@@ -186,6 +196,7 @@ export default function VisiteQualificationForm({ visiteId, qualification, lectu
           <Textarea
             id="visite-qualif-conseil"
             value={form.conseil_closing}
+            maxLength={500}
             placeholder="Ce qui l’a fait vibrer, ce qu’il faut éviter…"
             onChange={(e) => setChamp('conseil_closing', e.target.value)}
           />

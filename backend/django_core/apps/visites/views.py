@@ -355,6 +355,12 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         refus = self._refus_si_gelee(visite)
         if refus is not None:
             return refus
+        # IDEMPOTENT (revue Fable 15/09) : une visite DÉJÀ terminée renvoie
+        # l'agrégat tel quel, sans rien ré-émettre — un double clic ou un
+        # retry réseau dupliquait la note chatter, les notifications
+        # (responsable + valideurs) et ré-avançait le débrief.
+        if visite.statut == VisiteTerrain.Statut.TERMINEE:
+            return self._agregat(visite)
         manquants = selectors.visite_terrain_manquants(visite)
         if manquants:
             return Response({

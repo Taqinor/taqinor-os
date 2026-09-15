@@ -1855,6 +1855,12 @@ def message_pour_etape(etape, *, request=None, user=None):
         'reference': '',
         'lien': '',
         'date_validite': '',
+        # VISITE-CADENCE (revue Fable 15/09) — la touche « Confirmer la visite
+        # (veille) » porte template_cle='visite_confirmation' et se rend par
+        # ICI (ToucheMessageDialog → message/) : sans cette clé, la phrase
+        # avec la date était TOUJOURS omise et le message ne confirmait rien.
+        'date_visite': _date_visite_francais(
+            getattr(lead, 'visite_prevue_le', None)),
     }
     if etape.devis_id:
         try:
@@ -7620,7 +7626,7 @@ def _lignes_qualification(qualification):
     if not qualification:
         return []
     try:
-        from apps.visites.qualification import conseil, phrase
+        from apps.visites.selectors import conseil, phrase
 
         return [ligne for ligne in (phrase(qualification),
                                     conseil(qualification)) if ligne]
@@ -7683,7 +7689,7 @@ def _plan_du_debrief(qualification):
     if not qualification:
         return VISITE_DEBRIEF_LIBELLE, 1, False
     try:
-        from apps.visites.qualification import (
+        from apps.visites.selectors import (
             devis_a_reprendre, jours_avant_rappel, rappel_explicite,
         )
 
