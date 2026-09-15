@@ -166,7 +166,11 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
       kind: 'visite', id: `v${v.id}`, data: v,
       ts: v.date_prevue ? new Date(v.date_prevue).getTime()
         : (v.date_realisee ? new Date(v.date_realisee).getTime() : null),
-      passee: visitePassee(v),
+      // Un RETOUR TERRAIN disponible est l'info la plus actionnable de la
+      // frise (c'est lui que le closing lit avant de rappeler) : il reste
+      // VISIBLE même une fois la visite terminée/validée — seul le repli
+      // d'une visite sans retour suit l'historique.
+      passee: visitePassee(v) && !v.retour_disponible,
     })),
   ].sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity))
 

@@ -84,7 +84,7 @@ describe('VISCAD1 CadenceFrise — visites mêlées à la frise', () => {
       data: {
         visites: [{
           id: 92, statut: 'validee', statut_libelle: 'Validée',
-          date_prevue: '2026-09-01', commercial_nom: 'Meryem',
+          date_prevue: '2026-09-01', commercial_nom: 'Commercial Terrain',
           notes: 'Toiture terrasse, aucune ombre.', retour_disponible: true,
         }],
       },
@@ -132,12 +132,16 @@ describe('VISCAD1 CadenceFrise — visites mêlées à la frise', () => {
     crmApi.getLeadVisites = original
   })
 
-  it('une visite terminée/validée se replie avec l\'historique (« touches passées »)', async () => {
+  it('une visite terminée/validée SANS retour disponible se replie avec l\'historique', async () => {
+    // Avec un retour terrain disponible, la visite reste VISIBLE même
+    // terminée/validée (c'est l'info que le closing lit avant de rappeler —
+    // testé plus haut) ; seul le cas SANS retour suit le repli de
+    // l'historique.
     crmApi.getLeadVisites.mockResolvedValue({
       data: {
         visites: [{
-          id: 94, statut: 'terminee', statut_libelle: 'Terminée',
-          date_prevue: '2026-09-01', commercial_nom: '', notes: '', retour_disponible: true,
+          id: 94, statut: 'validee', statut_libelle: 'Validée',
+          date_prevue: '2026-09-01', commercial_nom: '', notes: '', retour_disponible: false,
         }],
       },
     })
