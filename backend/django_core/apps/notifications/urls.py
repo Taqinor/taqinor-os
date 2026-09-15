@@ -2,9 +2,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    AnnonceViewSet, HolidayViewSet, NotificationPreferenceViewSet,
-    NotificationRoutingRuleViewSet, NotificationViewSet, WhatsAppTemplateViewSet,
-    WorkingHoursConfigViewSet,
+    AnnonceViewSet, HolidayViewSet, MessageAccueilViewSet,
+    NotificationPreferenceViewSet, NotificationRoutingRuleViewSet,
+    NotificationViewSet, WhatsAppTemplateViewSet, WorkingHoursConfigViewSet,
     attention_summary,
     calendar_check, push_subscribe, push_unsubscribe, vapid_public_key,
 )
@@ -26,6 +26,9 @@ router.register(
     r'whatsapp-templates', WhatsAppTemplateViewSet, basename='notification-whatsapp-template')
 # XKB5 — Annonces internes ciblées et programmées.
 router.register(r'annonces', AnnonceViewSet, basename='notification-annonce')
+# MSGACC1 — Messages d'accueil (PAS des notifications, cf. models.py).
+router.register(
+    r'messages-accueil', MessageAccueilViewSet, basename='notification-message-accueil')
 
 urlpatterns = [
     path('', include(router.urls)),

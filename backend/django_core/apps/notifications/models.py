@@ -1267,3 +1267,59 @@ class SnoozedItem(TenantModel):
 
     def __str__(self):
         return f'snooze {self.source}:{self.object_id} → {self.user_id}'
+
+
+# =============================================================================
+# MSGACC1 — Message d'accueil : posé par un responsable/admin pour UN employé
+# précis, affiché EN PLEIN ÉCRAN à sa PREMIÈRE ouverture de l'ERP à partir
+# d'une heure choisie.
+# =============================================================================
+
+class MessageAccueil(models.Model):
+    """MSGACC1 — message d'accueil (bonjour/consigne) ciblant un destinataire.
+
+    CE N'EST PAS UNE NOTIFICATION (règle fondateur) : aucun ``EventType``,
+    aucune ligne dans le centre de notifications, aucun push. Uniquement la
+    modale d'accueil, câblée côté frontend sur ``a-lire``.
+
+    Visibilité : le destinataire le voit à sa PREMIÈRE ouverture de l'ERP à
+    partir de ``visible_a_partir_de`` (choisi 8h00, ouvre à 8h40 → il le voit ;
+    ouvert à 7h50 → rien). Tant que ``lu_le`` est vide, la modale se
+    représente à chaque ouverture.
+
+    MULTI-TENANT : ``company`` posée côté serveur (jamais depuis le corps).
+    ``destinataire`` CASCADE (le message n'a plus de sens sans son
+    destinataire) ; ``auteur`` SET_NULL (perdre la trace de qui a écrit ne
+    doit jamais empêcher la suppression d'un compte — le frontend affiche
+    « Direction » à défaut d'auteur)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
+        related_name='messages_accueil')
+    destinataire = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition (utilisateur)
+        related_name='messages_accueil_recus', verbose_name='Destinataire')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='messages_accueil_envoyes',
+        verbose_name='Auteur')
+    visible_a_partir_de = models.DateTimeField(
+        db_index=True, verbose_name='Visible à partir de')
+    corps = models.TextField(verbose_name='Corps')
+    lu_le = models.DateTimeField(null=True, blank=True, verbose_name='Lu le')
+    cree_le = models.DateTimeField(auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Message d'accueil"
+        verbose_name_plural = "Messages d'accueil"
+        ordering = ['visible_a_partir_de', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'destinataire', 'lu_le'],
+                name='notif_msgacc_dest_lu_idx'),
+            models.Index(
+                fields=['company', 'auteur'], name='notif_msgacc_auteur_idx'),
+        ]
+
+    def __str__(self):
+        return f'MessageAccueil → {self.destinataire_id} ({self.visible_a_partir_de})'
