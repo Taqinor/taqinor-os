@@ -285,6 +285,12 @@ class FiletJointTests(_Base):
         à CONTACTED et une prochaine étape existe."""
         self.lead.stage = stages.COLD
         self.lead.save(update_fields=['stage'])
+        # CADX — dans le vrai flux, le passage au FROID annule contact et
+        # après-devis AVANT que le réveil ne soit posé ; sans quoi l'init
+        # réveil est refusé (une seule cadence active par lead).
+        from apps.crm.services import arreter_cadence
+        arreter_cadence(self.lead, user=self.acteur,
+                        motif='lead passé en froid')
         reveils = _materialiser_tout(
             self.lead, self.acteur, depart=LUNDI, cadence='reveil')
         self.assertGreater(len(reveils), 1)

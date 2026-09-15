@@ -40,7 +40,8 @@ class CadxBase(TestCase):
             username='cadx-resp', password='x', company=self.company,
             role_legacy='responsable')
         self.lead = Lead.objects.create(
-            company=self.company, nom='Client CADX', owner=self.user)
+            company=self.company, nom='Client CADX', owner=self.user,
+            telephone='+212661000000')
 
 
 class GardeCadenceUniqueTests(CadxBase):

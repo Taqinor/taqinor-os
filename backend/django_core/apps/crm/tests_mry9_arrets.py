@@ -42,6 +42,40 @@ def _company(slug):
     return company
 
 
+def _poser_plan_direct(lead, cadence, depart):
+    """Pose les touches d'une cadence en DIRECT (mêmes échéances que l'ancien
+    ``initialiser_plan_relance`` pré-CADX : échues + première à venir ;
+    partition entière pour ``reveil``).
+
+    CADX (15/09/2026) interdit désormais le DOUBLE-INIT (une seule cadence
+    active par lead) — mais ces tests pincent ``arreter_cadence`` sur un lead
+    MULTI-cadences, un état que les DONNÉES héritées peuvent porter : on le
+    fabrique donc sans passer par la porte gardée."""
+    from django.utils import timezone as _tz
+
+    from apps.crm import horaires as _h
+    from apps.crm.services import (
+        _normaliser_depart, calculer_echeances_cadence)
+
+    ancre = _normaliser_depart(depart)
+    maintenant = _tz.now()
+    reactive = cadence != 'reveil'
+    etapes = []
+    for gabarit, echeance in calculer_echeances_cadence(
+            lead, cadence, ancre):
+        etapes.append(RelanceEtape.objects.create(
+            company=lead.company, lead=lead, cadence=cadence,
+            ordre=gabarit.ordre, canal=gabarit.canal,
+            libelle=gabarit.libelle,
+            template_cle=getattr(gabarit, 'template_cle', '') or '',
+            due_at=echeance,
+            due_date=echeance.astimezone(_h.CASABLANCA).date(),
+            cadence_depart=ancre))
+        if reactive and echeance >= maintenant:
+            break
+    return etapes
+
+
 class _Base(TestCase):
     slug = 'mry9'
 
@@ -54,8 +88,9 @@ class _Base(TestCase):
             company=self.company, nom='Prospect', owner=self.acteur)
         self.contact = initialiser_plan_relance(
             self.lead, self.acteur, depart=LUNDI, cadence='contact')
-        self.apres = initialiser_plan_relance(
-            self.lead, self.acteur, depart=LUNDI, cadence='apres_devis')
+        # CADX — un second init REMPLACERAIT le contact : l'état parallèle du
+        # test se pose en direct (voir _poser_plan_direct).
+        self.apres = _poser_plan_direct(self.lead, 'apres_devis', LUNDI)
 
     def _ouvertes(self, cadence=None):
         qs = self.lead.relance_etapes.filter(
@@ -154,8 +189,9 @@ class DeclencheurEtapeTests(_Base):
     def test_cold_ne_touche_pas_les_reveils(self):
         """COLD est un PARKING : arrêter les réveils J30/J60 condamnerait le
         lead à ne plus jamais être réveillé (MRY11)."""
-        reveils = initialiser_plan_relance(
-            self.lead, self.acteur, depart=LUNDI, cadence='reveil')
+        # CADX — l'init réveil serait refusé sous contact/après-devis actifs
+        # (dans le vrai flux, ils sont annulés AVANT) : pose directe.
+        reveils = _poser_plan_direct(self.lead, 'reveil', LUNDI)
         avancer_stage_lead_vers(self.lead, self.acteur, stages.COLD)
         self.assertEqual(self._ouvertes('reveil'), len(reveils))
 
