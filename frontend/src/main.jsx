@@ -7,6 +7,12 @@ import router from './router'
 import PwaPrompts from './features/pwa/PwaPrompts'
 // VX156 — moment d'accueil de marque, one-shot à la première connexion.
 import WelcomeMoment from './components/WelcomeMoment'
+// MSGACC1 — message d'accueil (bonjour/consigne) posé par un responsable/
+// admin pour un employé précis, visible dès son heure d'affichage choisie.
+// PAS une notification (aucun canal) : montée ici, comme WelcomeMoment, pour
+// UN SEUL fetch par chargement (jamais dans Layout, remonté à chaque
+// navigation de module).
+import MessageAccueilModal from './components/MessageAccueilModal'
 import { ThemeProvider } from './design/ThemeProvider'
 import { initTheme } from './design/theme'
 // Providers UX globaux (lane BEHAVIORS). Toaster + ConfirmProvider +
@@ -64,6 +70,10 @@ createRoot(document.getElementById('root')).render(
             </ConfirmProvider>
             <Toaster />
             <PwaPrompts />
+            {/* MSGACC1 — affiché EN PREMIER (avant le moment d'accueil de
+                marque) : c'est un message opérationnel posé par un
+                responsable, pas un accueil générique. */}
+            <MessageAccueilModal />
             <WelcomeMoment />
           </ThemeProvider>
         </RtlDirectionProvider>
