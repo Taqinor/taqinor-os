@@ -988,11 +988,12 @@ describe('CONSOLIDATION — la hiérarchie des surfaces de prix se lit', () => {
     expect(CODE).toContain('l’une de ces versions');
   });
 
-  // PREVIEW DENSITE (2026-09-15) — le fondateur a tranche : les gammes et les
-  // versions sont le SECONDAIRE, elles restent donc repliees MEME quand aucune
-  // section de tailles ne les precede (sans tailles, la page ouvrait trois
-  // totaux d'un coup). L'intention du verrou est inchangee — « repliees, rien
-  // n'est supprime » — seule l'ouverture automatique disparait.
+  // PREVIEW DENSITE (2026-09-15) — PROPOSITION EN ATTENTE DE LA DECISION DU
+  // FONDATEUR (rien n'est tranche) : les gammes et les versions sont le
+  // SECONDAIRE, elles resteraient donc repliees MEME quand aucune section de
+  // tailles ne les precede (sans tailles, la page ouvrait trois totaux d'un
+  // coup). L'intention du verrou est inchangee — « repliees, rien n'est
+  // supprime » — seule l'ouverture automatique disparait.
   it('gammes ET versions sont repliées — TOUJOURS, plus seulement quand une taille les précède', () => {
     for (const fold of ['<details class="gammes-fold">',
       '<details class="versions-fold">']) {
