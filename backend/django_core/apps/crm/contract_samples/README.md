@@ -19,6 +19,9 @@ ce dossier s'écarte du cas nominal.
 | `relance_etape_message.json` | le message rendu d'une touche et son lien wa.me (MRY25) |
 | `kpi_premier_contact.json` | le KPI « rappelé en moins de 5 minutes ouvrées » (MRY25) |
 | `kpi_cadences.json` | les sept chiffres du bilan de cadence (MRY25) |
+| `lead_visites.json` | l'onglet « Visites » de la fiche lead (VISITE-CADENCE) |
+| `lead_visite_planifier.json` | la POSE d'un rendez-vous de visite depuis la fiche |
+| `lead_message_visite.json` | les deux textes « proposer / confirmer la visite » |
 
 ## Écart 1 — un échantillon peut ne PAS décrire une réponse
 

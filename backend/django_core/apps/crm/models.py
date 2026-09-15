@@ -1209,6 +1209,12 @@ class LeadActivity(models.Model):
         ('rappel',  'À rappeler'),
         ('refuse',  'Refus'),
         ('interesse', 'Intéressé'),
+        # VISITE-CADENCE (fondateur 15/09/2026) — une issue de succès d'un
+        # genre nouveau : le client n'a ni signé ni refusé, il a accepté de
+        # RECEVOIR le technicien. Elle n'arrête pas la cadence (la proposition
+        # reste à relancer si la visite tombe à l'eau) mais elle remplace le
+        # geste générique suivant par le seul qui compte : caler la date.
+        ('visite_acceptee', 'Visite acceptée'),
     ]
     outcome = models.CharField(
         max_length=20, blank=True, default='',

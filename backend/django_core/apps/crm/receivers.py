@@ -17,13 +17,16 @@ from django.dispatch import receiver
 from core.events import (
     ao_depose, ao_gagne, appointment_effectue, deal_commission_due,
     devis_accepted, devis_refused, devis_sent, layout_finalise,
-    lead_created, lead_stage_changed, ticket_resolu, visite_validee,
+    lead_created, lead_stage_changed, ticket_resolu, visite_planifiee,
+    visite_terminee, visite_validee,
 )
 
 from . import stages
 from .models import Appointment, Lead, LeadActivity
 from .services import (
     _CONTACT_KINDS,
+    appliquer_retour_visite,
+    appliquer_visite_planifiee,
     ecrire_retour_lead_visite,
     journaliser_visite,
     arreter_cadence,
@@ -805,3 +808,91 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
         logger.warning(
             'VTA5 : retour lead du feu vert de visite échoué pour le lead '
             '#%s', lead_id, exc_info=True)
+
+
+# ── VISITE-CADENCE — LE SUIVI COMMERCIAL RÉAGIT À LA VISITE ──────────────────
+#
+# Ordre fondateur du 15/09/2026 : la visite technique se place APRÈS l'envoi du
+# devis, comme outil de closing. Jusqu'ici le suivi l'IGNORAIT : on pouvait
+# caler un rendez-vous chez un client et continuer à lui envoyer « le PDF
+# s'ouvre bien ? », puis laisser le technicien repartir sans que personne ne
+# rappelle. Ces deux récepteurs ferment les deux trous.
+#
+# Même montage que ``visite_validee`` au-dessus : ``apps.visites`` ÉMET, le CRM
+# DÉCIDE, le lead voyage en ``lead_id`` (entier). Les récepteurs restent MINCES
+# — toute la règle métier vit dans ``services.py`` (testable sans bus) — et
+# best-effort : l'action du terrain est DÉJÀ actée quand on arrive ici.
+#
+# Aucun des deux ne touche ``STAGES.py`` : le statut d'une visite est un layer
+# DOCUMENT interne, jamais une étape de funnel.
+
+@receiver(visite_planifiee, dispatch_uid="crm_suivi_on_visite_planifiee")
+def _suivi_on_visite_planifiee(sender, visite, lead_id, user, date_prevue,
+                               commercial_nom='', **kwargs):
+    """Un rendez-vous est posé (ou déplacé) : la cadence s'y recale."""
+    try:
+        lead = Lead.objects.filter(pk=lead_id).first()
+        if lead is None:
+            return
+        appliquer_visite_planifiee(
+            lead, user, date_prevue, commercial_nom=commercial_nom)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'VISITE-CADENCE : recalage du suivi échoué à la planification '
+            'du lead #%s', lead_id, exc_info=True)
+
+
+@receiver(visite_terminee, dispatch_uid="crm_suivi_on_visite_terminee")
+def _suivi_on_visite_terminee(sender, visite, lead_id, user, retour,
+                              **kwargs):
+    """Le technicien est reparti : son retour redescend, et on rappelle.
+
+    Le retour TEXTE LIBRE entre dans l'historique du lead (il est souvent la
+    seule trace de ce que le client a dit sur place), ``visite_effectuee`` est
+    posé, le débrief est ramené à demain, et le RESPONSABLE du lead reçoit la
+    notification « rappeler sous 24-48 h ».
+
+    La notification part du CRM et de lui seul : c'est lui qui connaît le
+    ``owner`` d'un lead — ``apps.visites`` n'a aucun moyen (ni aucun droit) de
+    le savoir."""
+    try:
+        lead = Lead.objects.filter(pk=lead_id).first()
+        if lead is None:
+            return
+        auteur = ''
+        if user is not None:
+            auteur = (user.get_full_name() or user.username or '')
+        appliquer_retour_visite(lead, user, retour, auteur=auteur)
+        _notifier_responsable_retour_visite(lead, user)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'VISITE-CADENCE : retour terrain non traité pour le lead #%s',
+            lead_id, exc_info=True)
+
+
+def _notifier_responsable_retour_visite(lead, acteur):
+    """Prévient le RESPONSABLE du lead qu'il doit rappeler sous 24-48 h.
+
+    Personne d'autre : ni la direction (ce n'est pas une alerte), ni le
+    commercial terrain (il vient de faire la visite). Lead sans responsable, ou
+    responsable = l'acteur ⇒ rien à envoyer, pas une notification à soi-même.
+    Best-effort — une cloche en échec ne défait pas une visite terminée."""
+    destinataire = getattr(lead, 'owner', None)
+    if destinataire is None:
+        return None
+    if acteur is not None and getattr(acteur, 'id', None) == destinataire.id:
+        return None
+    try:
+        from apps.notifications.services import notify
+
+        return notify(
+            destinataire, 'visite_retour_terrain',
+            f'Retour de visite — {lead}',
+            body=('La visite technique est terminée. Rappeler le client sous '
+                  '24-48 h pour conclure.'),
+            link=f'/crm/leads/{lead.pk}', company=lead.company)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'VISITE-CADENCE : notification de retour de visite non envoyée '
+            '(lead #%s)', getattr(lead, 'pk', '?'), exc_info=True)
+        return None

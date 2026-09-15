@@ -113,7 +113,12 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # MÊME champ, déclaration identique avant/après (vérifié contre
     # e1226355 : `paye_le = models.DateField(null=True, blank=True,
     # verbose_name='Payée le')`). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2532",  # CommissionPartenaire.paye_le
+    # Remappé 2532->2538 (lane VISITE-CADENCE 15/09 : +6 lignes insérées AVANT
+    # CommissionPartenaire dans crm/models.py — l'issue « visite acceptée »
+    # ajoutée à LeadActivity.OUTCOMES). MÊME champ, déclaration identique
+    # avant/après (vérifié contre HEAD : `paye_le = models.DateField(
+    # null=True, blank=True, verbose_name='Payée le')`). Bug-class #34.
+    "backend/django_core/apps/crm/models.py:2538",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.

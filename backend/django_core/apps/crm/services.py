@@ -1010,6 +1010,21 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
 #: geste suivant du protocole.
 _OUTCOMES_ARRET_CADENCE = frozenset({'joint', 'interesse', 'refuse'})
 
+#: VISITE-CADENCE (fondateur 15/09/2026) — « le client accepte la visite ».
+#: C'est une issue de SUCCÈS d'un genre nouveau : le client n'a ni signé ni
+#: refusé, il a dit oui à un RENDEZ-VOUS. La cadence ne s'arrête donc PAS
+#: (la proposition reste à relancer si la visite tombe à l'eau), mais poser
+#: le geste générique suivant du protocole serait absurde : la seule chose à
+#: faire est de CALER la visite. Le filet ci-dessous s'en charge.
+OUTCOME_VISITE_ACCEPTEE = 'visite_acceptee'
+
+#: CKP2 × VISITE-CADENCE — les issues qui ne font naître AUCUNE touche
+#: générique suivante. Les trois premières parce que la cadence s'arrête
+#: (récepteur MRY9) ; « visite acceptée » parce que la suite n'est pas un
+#: barreau du protocole mais un rendez-vous à caler.
+_OUTCOMES_SANS_MATERIALISATION = (
+    _OUTCOMES_ARRET_CADENCE | {OUTCOME_VISITE_ACCEPTEE})
+
 
 def materialiser_touche_suivante(etape_close, user=None):
     """CKP2 — Fait naître LA touche suivante du gabarit, à partir d'une touche
@@ -1064,7 +1079,13 @@ def materialiser_touche_suivante(etape_close, user=None):
     # « barreau 2 » du gabarit `generique` remplissait la file d'une touche
     # sans objet ET — parce qu'une prochaine touche existait alors — empêchait
     # le filet de démarrer le vrai suivi de proposition (cas AR du 07/09).
-    if (etape_close.libelle or '').strip() in _LIBELLES_FILET:
+    # VISITE-CADENCE — les trois étapes du RENDEZ-VOUS portent la cadence
+    # `apres_devis` (elles suivent bien la proposition) sans être des barreaux
+    # du gabarit : leur `ordre` est hors plage exprès, mais on le dit ICI aussi
+    # plutôt que de compter sur ce hasard — « confirmer la veille » n'a jamais
+    # à faire naître « le PDF s'ouvre bien ? ».
+    if (etape_close.libelle or '').strip() in (_LIBELLES_FILET
+                                               | _LIBELLES_VISITE):
         return None
 
     cadence = etape_close.cadence
@@ -1228,15 +1249,32 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     #   * « joint »/« intéressé »/« refus » → RIEN : le récepteur MRY9 vient
     #     d'ANNULER les touches restantes et le filet
     #     `assurer_prochaine_etape_apres_succes` pose la vraie suite.
+    #   * « visite acceptée » → RIEN NON PLUS : le client a dit oui à un
+    #     RENDEZ-VOUS, la seule suite utile est de le CALER. Le filet juste
+    #     en dessous pose cette étape-là, jamais le barreau suivant du
+    #     protocole (qui relancerait un client déjà conquis).
     suivante = None
     if (statut == RelanceEtape.Statut.SAUTEE
-            or (outcome or '') not in _OUTCOMES_ARRET_CADENCE):
+            or (outcome or '') not in _OUTCOMES_SANS_MATERIALISATION):
         try:
             suivante = materialiser_touche_suivante(etape, user)
         except Exception:  # noqa: BLE001 — jamais bloquant pour le geste
             logger.warning(
                 'CKP2: touche suivante non matérialisée (étape #%s)',
                 getattr(etape, 'pk', '?'), exc_info=True)
+    # VISITE-CADENCE — « le client accepte la visite » : on pose LA seule
+    # suite qui a du sens, planifier le passage du technicien. Sauf si un
+    # rendez-vous est DÉJÀ calé (le client avait déjà sa date) — sinon cocher
+    # deux fois l'issue empilerait deux rappels pour la même visite.
+    if (statut == RelanceEtape.Statut.FAIT
+            and (outcome or '') == OUTCOME_VISITE_ACCEPTEE):
+        try:
+            poser_filet_visite_a_planifier(
+                lead, user, devis_id=etape.devis_id)
+        except Exception:  # noqa: BLE001 — jamais bloquant pour le geste
+            logger.warning(
+                'VISITE-CADENCE: filet « planifier la visite » non posé '
+                '(étape #%s)', getattr(etape, 'pk', '?'), exc_info=True)
     prochaine = _prochaine_touche_a_faire(lead)
     lead.relance_date = prochaine.due_date if prochaine else None
     lead.save(update_fields=['relance_date'])
@@ -1285,7 +1323,11 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
 #: Clôturer l'étiquetterait « Injoignable » et lui enverrait des réveils
 #: J30/J60 « vous étiez injoignable » ; le filet « décider la suite » (posé
 #: par le récepteur MRY9) assure déjà la suite du dossier.
-_OUTCOMES_SANS_CLOTURE = frozenset({'joint', 'interesse', 'rappel', 'refuse'})
+#: VISITE-CADENCE — « visite acceptée » aussi, évidemment : envoyer au parking
+#: Froid, étiqueté « Injoignable », un client qui vient d'accepter de recevoir
+#: le technicien chez lui serait l'erreur la plus grossière du moteur.
+_OUTCOMES_SANS_CLOTURE = frozenset({'joint', 'interesse', 'rappel', 'refuse',
+                                    OUTCOME_VISITE_ACCEPTEE})
 
 
 #: MRY11 — ce que devient un lead dont la cadence s'est épuisée sans réponse.
@@ -1390,6 +1432,43 @@ _LIBELLES_FILET = frozenset({
     FILET_JOINT_LIBELLE, _FILET_JOINT_LIBELLE_ANCIEN,
     FILET_APPEL_LIBELLE, FILET_REFUS_LIBELLE,
 })
+
+# ── VISITE-CADENCE — LES TROIS GESTES DU RENDEZ-VOUS ────────────────────────
+#
+# Doctrine fondateur (15/09/2026) : la visite technique n'est pas un préalable
+# à l'étude, c'est un OUTIL DE CLOSING posé APRÈS l'envoi du devis, pendant que
+# le client est chaud. Le suivi doit donc RÉAGIR à elle — et jusqu'ici il
+# l'ignorait complètement : une visite pouvait être calée, faite, validée, sans
+# qu'une seule touche de relance bouge.
+#
+# Trois libellés, trois moments, et rien de plus :
+#   1. le client a dit oui au principe → CALER la date ;
+#   2. la date est posée → la CONFIRMER la veille (le premier motif
+#      d'échec d'une visite terrain est un client absent) ;
+#   3. le technicien est reparti → RAPPELER dans les 24-48 h, quand tout est
+#      encore frais. C'est le geste que la visite existe pour provoquer.
+VISITE_FILET_LIBELLE = 'Planifier la visite technique convenue'
+VISITE_CONFIRMATION_LIBELLE = 'Confirmer la visite (veille)'
+VISITE_DEBRIEF_LIBELLE = 'Débrief visite — rappeler le client'
+
+_LIBELLES_VISITE = frozenset({
+    VISITE_FILET_LIBELLE, VISITE_CONFIRMATION_LIBELLE, VISITE_DEBRIEF_LIBELLE,
+})
+
+#: Ces trois étapes portent la cadence ``apres_devis`` (elles suivent bien la
+#: proposition, et l'écran les affiche dans la même frise) mais ne sont PAS des
+#: barreaux du gabarit : leur ``ordre`` est délibérément HORS de la plage du
+#: gabarit (1-10) pour qu'aucune matérialisation réactive ne puisse les
+#: confondre avec un barreau, et pour qu'elles se rangent après lui à
+#: échéance égale.
+VISITE_ORDRE_CONFIRMATION = 90
+VISITE_ORDRE_DEBRIEF = 91
+VISITE_ORDRE_FILET = 92
+
+#: La cadence dans laquelle vivent les trois gestes ci-dessus. NOMMÉE une fois
+#: : le jour où le fondateur voudra une cadence « visite » distincte, il y a UN
+#: endroit à changer.
+VISITE_CADENCE = 'apres_devis'
 
 #: Délai (jours) du filet : DEMAIN, recalé sur le prochain créneau d'appel de
 #: la société (fenêtres MRY4). Si Meryem donne une date de rappel en marquant
@@ -1497,6 +1576,12 @@ _TEMPLATES_VOCAUX = frozenset({'vocal_j3'})
 _PLACEHOLDERS_RENDUS = (
     'civilite', 'nom', 'prenom', 'ville', 'reference', 'lien',
     'lien_rdv', 'date_validite', 'conseiller',
+    # VISITE-CADENCE (15/09/2026) — la date du RENDEZ-VOUS de visite technique
+    # posée sur la fiche (``Lead.visite_prevue_le``), rendue « mardi 16
+    # septembre ». Fiche sans date ⇒ valeur vide ⇒ la phrase entière est OMISE
+    # comme n'importe quel autre placeholder non résolu : on ne confirme jamais
+    # un rendez-vous dont on ignore le jour.
+    'date_visite',
     # 08/09/2026 — la PREUVE de la touche `j4_preuve` (mois, ville et lien de
     # la page publique d'une `parametres.Realisation` réelle).
     'mois_preuve', 'ville_preuve', 'lien_preuve', 'puissance_preuve')
@@ -1513,6 +1598,33 @@ _PLACEHOLDERS_PREUVE = ('{mois_preuve}', '{ville_preuve}', '{lien_preuve}',
 _MOIS_FR = (
     'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
     'août', 'septembre', 'octobre', 'novembre', 'décembre')
+
+
+#: Jours de la semaine en français (lundi = 0, comme ``date.weekday()``).
+#: Codés ici, comme ``_MOIS_FR`` juste au-dessus : le rendu d'un message client
+#: ne doit dépendre d'aucune locale installée sur le serveur.
+_JOURS_FR = ('lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi',
+             'dimanche')
+
+
+def _date_visite_francais(valeur):
+    """« mardi 16 septembre » à partir d'une date, ou '' si elle est inconnue.
+
+    VISITE-CADENCE — la forme PARLÉE plutôt que « 16/09/2026 » : c'est un
+    rendez-vous qu'on confirme à quelqu'un, pas une échéance administrative, et
+    « mardi » est précisément l'information qui évite l'absence du client.
+    L'ANNÉE est tue à dessein : on confirme la veille, elle n'apporte rien et
+    alourdit la phrase.
+
+    Une date absente rend une chaîne VIDE, ce qui fait OMETTRE la phrase
+    (MRY13) — on n'écrit jamais un jour approximatif."""
+    if valeur is None:
+        return ''
+    try:
+        return (f'{_JOURS_FR[valeur.weekday()]} {valeur.day} '
+                f'{_MOIS_FR[valeur.month - 1]}')
+    except (AttributeError, IndexError, TypeError):
+        return ''
 
 
 def _mois_francais(valeur):
@@ -1617,6 +1729,85 @@ def _nom_affiche_conseiller(lead, user):
             or getattr(conseiller, 'username', '') or '')
 
 
+def _civilite_et_prenom(lead, langue):
+    """``(civilite, prenom)`` de la salutation d'un message client.
+
+    Civilité (décision fondateur 07/09/2026) : on s'adresse à une personne
+    qu'on ne connaît pas encore avec « M. » / « السي » devant le prénom —
+    l'usage marocain respectueux — jamais le prénom nu. Une civilité connue
+    sur le lead (champ futur) prime ; « Mme » se rend « لالة » en darija.
+
+    Sans prénom (formulaire Meta au nom seul, société), le NOM prend sa place
+    dans la salutation plutôt que de faire SAUTER toute la phrase d'accueil.
+
+    Extrait de ``message_pour_etape`` (VISITE-CADENCE) pour que le rendu d'un
+    message de VISITE — qui n'a pas de touche derrière lui — s'adresse au
+    client exactement de la même façon : deux copies de cette règle auraient
+    fini par se vouvoyer différemment.
+    """
+    civilite = (getattr(lead, 'civilite', '') or '').strip()
+    if langue == 'darija':
+        civilite = {'': 'السي', 'M.': 'السي', 'Mme': 'لالة'}.get(
+            civilite, civilite)
+    else:
+        civilite = civilite or 'M.'
+    prenom = (lead.prenom or '').strip() or (lead.nom or '').strip()
+    return civilite, prenom
+
+
+#: VISITE-CADENCE — les clés de gabarit que le rendu « message de visite »
+#: accepte. Liste FERMÉE : un `?cle=` inconnu est un 400 qui NOMME le champ,
+#: jamais un message vide servi en 200 (l'écran croirait avoir un texte).
+CLES_MESSAGE_VISITE = ('visite_proposition', 'visite_confirmation')
+
+
+def message_visite_pour_lead(lead, cle, *, user=None):
+    """VISITE-CADENCE — le message de visite d'un LEAD, rendu côté serveur.
+
+    ``{'corps_fr': str, 'corps_darija': str}`` — les DEUX langues d'un coup :
+    l'écran propose le copier-coller dans celle que le client parle, sans
+    second aller-retour.
+
+    MÊME machinerie que les messages de cadence (``message_pour_etape``) :
+    mêmes placeholders autorisés, même ``{conseiller}`` = le RESPONSABLE du
+    lead (jamais un prénom codé en dur), et surtout même règle MRY13 — une
+    phrase dont le placeholder n'a pas de valeur RÉELLE est OMISE. Un lead
+    sans ``visite_prevue_le`` ne reçoit donc pas « la visite prévue  chez
+    vous » : la phrase disparaît, et le reste du message tient debout.
+
+    Le serveur REND, il n'ENVOIE pas (décision D5) — aucun appel sortant.
+
+    Renvoie ``None`` si ``cle`` n'est pas une clé de visite connue : c'est
+    l'appelant (la vue) qui en fait un 400 nommant le champ.
+    """
+    from apps.parametres.models_messages import MessageTemplate
+    from apps.ventes.utils.whatsapp import render_message_template
+
+    if cle not in CLES_MESSAGE_VISITE:
+        return None
+
+    date_visite = _date_visite_francais(
+        getattr(lead, 'visite_prevue_le', None))
+    rendu = {}
+    for champ, langue in (('corps_fr', 'fr'), ('corps_darija', 'darija')):
+        civilite, prenom = _civilite_et_prenom(lead, langue)
+        contexte = {
+            'civilite': civilite,
+            'nom': (lead.nom or '').strip(),
+            'prenom': prenom,
+            'ville': (lead.ville or '').strip(),
+            'conseiller': _nom_affiche_conseiller(lead, user),
+            'date_visite': date_visite,
+        }
+        corps = MessageTemplate.get_corps(lead.company, cle, langue) or ''
+        manquants = [c for c in _PLACEHOLDERS_RENDUS
+                     if '{' + c + '}' in corps
+                     and not str(contexte.get(c, '')).strip()]
+        rendu[champ] = render_message_template(
+            _omettre_phrases_incompletes(corps, manquants), contexte)
+    return rendu
+
+
 def message_pour_etape(etape, *, request=None, user=None):
     """MRY13 — Le message d'UNE touche, rendu côté serveur.
 
@@ -1640,19 +1831,7 @@ def message_pour_etape(etape, *, request=None, user=None):
     corps = MessageTemplate.get_corps(
         lead.company, etape.template_cle, langue) if etape.template_cle else ''
 
-    # Civilité (décision fondateur 07/09/2026) : on s'adresse à une personne
-    # qu'on ne connaît pas encore avec « M. » / « السي » devant le prénom —
-    # l'usage marocain respectueux — jamais le prénom nu. Une civilité connue
-    # sur le lead (champ futur) prime ; « Mme » se rend « لالة » en darija.
-    civilite = (getattr(lead, 'civilite', '') or '').strip()
-    if langue == 'darija':
-        civilite = {'': 'السي', 'M.': 'السي', 'Mme': 'لالة'}.get(
-            civilite, civilite)
-    else:
-        civilite = civilite or 'M.'
-    # Sans prénom (formulaire Meta au nom seul, société), le nom prend sa place
-    # dans la salutation plutôt que de faire SAUTER toute la phrase d'accueil.
-    prenom = (lead.prenom or '').strip() or (lead.nom or '').strip()
+    civilite, prenom = _civilite_et_prenom(lead, langue)
     contexte = {
         'civilite': civilite,
         'nom': (lead.nom or '').strip(),
@@ -7078,6 +7257,281 @@ def _placer_anciens_leads_sans_cache(company, user, *, apply=False,
     rapport['erreurs'] = erreurs
     rapport['restants'] = max(0, len(decisions) - applique - erreurs)
     return rapport
+
+
+# ── VISITE-CADENCE — LE SUIVI COMMERCIAL RÉAGIT À LA VISITE ──────────────────
+#
+# Ordre fondateur du 15/09/2026. La visite technique se place APRÈS l'envoi du
+# devis, comme outil de closing. Trois conséquences, et elles vivent ICI (pas
+# dans les récepteurs, qui restent minces et se contentent d'appeler) :
+#
+#   * quand un RENDEZ-VOUS est pris, les messages génériques de relance
+#     s'arrêtent — continuer à demander « le PDF s'ouvre bien ? » à quelqu'un
+#     qui reçoit le technicien jeudi est le genre de faute qui décrédibilise
+#     tout le suivi — et deux gestes utiles les remplacent ;
+#   * quand le technicien repart, le RESPONSABLE doit rappeler sous 24-48 h,
+#     tant que la visite est fraîche ;
+#   * le TEXTE LIBRE du terrain entre dans l'historique du lead : c'est
+#     souvent la seule trace de ce que le client a dit sur place.
+#
+# Aucune de ces fonctions ne touche ``Lead.stage`` : le statut d'une visite est
+# un layer DOCUMENT, jamais une étape de funnel (``STAGES.py`` intact).
+
+
+def _lead_relancable(lead):
+    """Vrai si l'on a le droit de poser une relance sur ce lead.
+
+    Les trois refus de ``initialiser_plan_relance``, relus ICI parce que les
+    étapes de visite ne passent pas par lui : un lead perdu, archivé ou « ne
+    plus contacter » ne reçoit AUCUNE touche — même pour une visite qui aurait
+    été calée avant la décision."""
+    return not (getattr(lead, 'ne_plus_contacter', False)
+                or getattr(lead, 'perdu', False)
+                or getattr(lead, 'is_archived', False))
+
+
+def _visite_a_venir(lead):
+    """Vrai si une visite technique est DÉJÀ calée à une date non passée.
+
+    Lecture cross-app par le SÉLECTEUR de l'app visites (frontière M3 : `crm`
+    n'importe jamais ``apps.visites.models``). Best-effort — module absent ou
+    en erreur ⇒ « on ne sait pas » ⇒ on répond NON, et le filet se pose : un
+    rappel en trop vaut mieux qu'une visite jamais calée."""
+    try:
+        from apps.visites.selectors import visites_pour_lead
+
+        aujourdhui = aujourd_hui_local().isoformat()
+        return any(ligne['date_prevue'] and ligne['date_prevue'] >= aujourdhui
+                   for ligne in visites_pour_lead(lead))
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning(
+            'VISITE-CADENCE: visites du lead #%s illisibles',
+            getattr(lead, 'pk', '?'), exc_info=True)
+        return False
+
+
+def _etape_visite_ouverte(lead, libelle):
+    """L'étape de visite ``libelle`` encore À FAIRE sur ce lead, ou ``None``."""
+    return (lead.relance_etapes
+            .filter(libelle=libelle, statut=RelanceEtape.Statut.A_FAIRE)
+            .order_by('due_date', 'pk')
+            .first())
+
+
+def _poser_etape_visite(lead, *, libelle, canal, ordre, quand, devis_id=None,
+                        template_cle=''):
+    """Crée UNE étape de visite à la date LOCALE ``quand`` (un ``date``).
+
+    Recalée sur la fenêtre d'appel/message de la société (MRY8), comme toute
+    autre touche : confirmer une visite à 6 h du matin ne rendrait service à
+    personne. IDEMPOTENTE par libellé : une étape du même libellé déjà
+    ouverte est DÉPLACÉE, jamais dupliquée — une re-planification ne doit pas
+    laisser deux « Confirmer la visite » dans la file."""
+    from . import horaires
+
+    vise = datetime.datetime.combine(
+        quand, datetime.time(9, 0), tzinfo=horaires.CASABLANCA)
+    echeance = horaires.prochain_creneau_appel(vise, lead.company, canal=canal)
+    etape = _etape_visite_ouverte(lead, libelle)
+    if etape is not None:
+        etape.due_at = echeance
+        etape.due_date = echeance.astimezone(horaires.CASABLANCA).date()
+        etape.save(update_fields=['due_at', 'due_date'])
+        return etape
+    return RelanceEtape.objects.create(
+        company=lead.company, lead=lead, cadence=VISITE_CADENCE, ordre=ordre,
+        canal=canal, libelle=libelle, template_cle=template_cle,
+        due_at=echeance,
+        due_date=echeance.astimezone(horaires.CASABLANCA).date(),
+        devis_id=devis_id,
+        note='Posée automatiquement : visite technique planifiée.')
+
+
+def _recaler_file(lead, user):
+    """Remet ``Lead.relance_date`` (et le rappel Calendrier) sur la prochaine
+    touche ouverte — le geste de fin de toutes les écritures de relance."""
+    prochaine = _prochaine_touche_a_faire(lead)
+    lead.relance_date = prochaine.due_date if prochaine else None
+    lead.save(update_fields=['relance_date'])
+    sync_relance_activity(lead, user)
+
+
+def poser_filet_visite_a_planifier(lead, user, *, devis_id=None):
+    """Le client a dit OUI au principe de la visite : reste à caler la date.
+
+    Une étape d'APPEL due AUJOURD'HUI — pas demain : un accord de principe se
+    transforme en rendez-vous dans la foulée, sinon il refroidit. No-op si un
+    rendez-vous est déjà calé (le client avait déjà sa date) ou si le lead
+    n'est plus relançable. Renvoie l'étape posée, ou ``None``."""
+    if not _lead_relancable(lead) or _visite_a_venir(lead):
+        return None
+    etape = _poser_etape_visite(
+        lead, libelle=VISITE_FILET_LIBELLE, canal=RelanceEtape.Canal.APPEL,
+        ordre=VISITE_ORDRE_FILET, quand=aujourd_hui_local(),
+        devis_id=devis_id)
+    _recaler_file(lead, user)
+    return etape
+
+
+def _devis_id_de_la_cadence(lead):
+    """L'id du devis suivi par la cadence après-devis, s'il est SANS DOUTE.
+
+    Deux devis relancés en parallèle (cas rare mais réel) ⇒ ``None`` : mieux
+    vaut deux étapes de visite sans devis attaché qu'un rendez-vous rattaché
+    au mauvais dossier."""
+    ids = set(
+        lead.relance_etapes
+        .filter(cadence=VISITE_CADENCE)
+        .exclude(devis__isnull=True)
+        .values_list('devis_id', flat=True))
+    return ids.pop() if len(ids) == 1 else None
+
+
+def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
+    """Un RENDEZ-VOUS de visite est posé (ou déplacé) : le suivi s'y recale.
+
+    Dans l'ordre, et jamais autrement :
+
+    1. la fiche porte la date (``Lead.visite_prevue_le``) — c'est elle que lit
+       le message de confirmation ``{date_visite}`` ;
+    2. UNE note de chatter, toujours — même sur un dossier qu'on ne relance
+       plus : savoir qu'une visite a été calée reste une information ;
+    3. sur un lead ACTIF seulement : la cadence après-devis en cours est
+       ARRÊTÉE (motif nommé) et remplacée par les DEUX gestes du rendez-vous —
+       confirmer la veille, débriefer le lendemain. Le filet « planifier la
+       visite convenue », s'il traînait, est annulé : c'est fait.
+
+    RE-PLANIFICATION : les deux étapes encore ouvertes sont DÉPLACÉES, jamais
+    dupliquées (``_poser_etape_visite`` est idempotente par libellé) — « on
+    décale à jeudi » ne doit pas laisser la confirmation de mardi dans la file.
+
+    ``STAGES.py`` n'est pas touché. Renvoie les étapes posées/déplacées."""
+    champs = []
+    if lead.visite_prevue_le != date_prevue:
+        lead.visite_prevue_le = date_prevue
+        champs.append('visite_prevue_le')
+    if champs:
+        lead.save(update_fields=champs)
+
+    quand = date_prevue.strftime('%d/%m/%Y')
+    corps = f'Visite technique planifiée le {quand}'
+    corps += (f' — assignée à {commercial_nom}.' if commercial_nom
+              else ' — pas encore assignée.')
+    # Note SYSTÈME (``user=None``) : PLANIFIER n'est pas AVOIR contacté le
+    # lead — même motif que ``arreter_cadence`` / ``initialiser_plan_relance``
+    # (garde QJ7, qui traiterait sinon cette note comme un premier contact).
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE, body=corps)
+
+    if not _lead_relancable(lead):
+        return []
+
+    devis_id = _devis_id_de_la_cadence(lead)
+    if lead.relance_etapes.filter(
+            cadence=VISITE_CADENCE,
+            statut=RelanceEtape.Statut.A_FAIRE).exclude(
+                libelle__in=_LIBELLES_VISITE).exists():
+        arreter_cadence(lead, user=user, motif='visite technique planifiée',
+                        cadences=[VISITE_CADENCE])
+    # Le filet « planifier la visite convenue » a rempli son office : on
+    # l'ANNULE (statut moteur CKP1, jamais « sautée par un humain »).
+    lead.relance_etapes.filter(
+        libelle=VISITE_FILET_LIBELLE,
+        statut=RelanceEtape.Statut.A_FAIRE).update(
+            statut=RelanceEtape.Statut.ANNULEE, note='visite planifiée',
+            traite_par=None, traite_le=timezone.now())
+
+    veille = date_prevue - datetime.timedelta(days=1)
+    if veille < aujourd_hui_local():
+        # Visite calée pour aujourd'hui ou demain-matin-même : la veille est
+        # déjà passée. On confirme AUJOURD'HUI — jamais une étape rétrodatée,
+        # qui naîtrait « en retard » dans la file sans que personne n'ait
+        # manqué quoi que ce soit.
+        veille = aujourd_hui_local()
+    etapes = [
+        _poser_etape_visite(
+            lead, libelle=VISITE_CONFIRMATION_LIBELLE,
+            canal=RelanceEtape.Canal.WHATSAPP,
+            ordre=VISITE_ORDRE_CONFIRMATION, quand=veille, devis_id=devis_id,
+            template_cle='visite_confirmation'),
+        _poser_etape_visite(
+            lead, libelle=VISITE_DEBRIEF_LIBELLE,
+            canal=RelanceEtape.Canal.APPEL, ordre=VISITE_ORDRE_DEBRIEF,
+            quand=date_prevue + datetime.timedelta(days=1),
+            devis_id=devis_id),
+    ]
+    _recaler_file(lead, user)
+    return etapes
+
+
+#: Longueur maximale de la note de retour terrain posée au chatter. Un
+#: technicien consciencieux peut écrire beaucoup ; l'historique d'un lead doit
+#: rester lisible. Le texte intégral reste sur la visite, jamais perdu.
+RETOUR_VISITE_MAX = 1500
+
+
+def composer_note_retour_visite(retour, auteur=''):
+    """La note de chatter du RETOUR TERRAIN, tronquée à ``RETOUR_VISITE_MAX``.
+
+    Le texte libre du technicien EST l'information : « le tableau est saturé »,
+    « accès par le garage » — rien de tout cela n'entre dans un récap de
+    mesures, et c'est pourtant ce que le commercial doit lire avant de
+    rappeler. Un retour muet le DIT (« sans commentaire ») plutôt que de poser
+    une note vide qui ferait croire à un oubli d'affichage."""
+    entete = 'Visite technique terminée'
+    entete += f' par {auteur}.' if auteur else '.'
+    notes = (retour or {}).get('notes') or ''
+    lignes = []
+    if notes.strip():
+        lignes.append(f'{entete} Retour terrain : « {notes.strip()} »')
+    else:
+        lignes.append(f'{entete} Aucun commentaire écrit sur place.')
+    for photo in (retour or {}).get('commentaires_photos') or []:
+        commentaire = (photo.get('commentaire') or '').strip()
+        if not commentaire:
+            continue
+        lignes.append(f'— {photo.get("slot") or ""} : {commentaire}')
+    corps = '\n'.join(lignes)
+    if len(corps) > RETOUR_VISITE_MAX:
+        corps = corps[:RETOUR_VISITE_MAX - 1].rstrip() + '…'
+    return corps
+
+
+def appliquer_retour_visite(lead, user, retour, auteur=''):
+    """Le technicien est reparti : son retour redescend, et on rappelle.
+
+    1. UNE note de chatter portant le TEXTE LIBRE du terrain (notes + un
+       commentaire de photo par ligne, tronqué) ;
+    2. ``Lead.visite_effectuee`` est posé — via ``ecrire_retour_lead_visite``,
+       donc avec ses garanties : idempotent, et une note écrite à la main dans
+       ``visite_notes`` n'est JAMAIS écrasée ;
+    3. le DÉBRIEF est ramené à DEMAIN. Il existait déjà (posé à la
+       planification) ? On l'avance seulement s'il était plus loin — jamais
+       repoussé. Il n'existe pas (visite faite sans avoir été planifiée dans
+       l'ERP) ? On le pose, à condition que le lead soit encore relançable.
+
+    ``STAGES.py`` n'est pas touché. Renvoie l'étape de débrief, ou ``None``."""
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=composer_note_retour_visite(retour, auteur=auteur))
+    ecrire_retour_lead_visite(lead, '')
+
+    if not _lead_relancable(lead):
+        return None
+    demain = aujourd_hui_local() + datetime.timedelta(days=1)
+    existante = _etape_visite_ouverte(lead, VISITE_DEBRIEF_LIBELLE)
+    if existante is not None and existante.due_date <= demain:
+        # Déjà dû aujourd'hui ou demain : on n'y touche pas. Le repousser
+        # serait exactement le contraire du geste demandé (rappeler VITE).
+        return existante
+    etape = _poser_etape_visite(
+        lead, libelle=VISITE_DEBRIEF_LIBELLE, canal=RelanceEtape.Canal.APPEL,
+        ordre=VISITE_ORDRE_DEBRIEF, quand=demain,
+        devis_id=_devis_id_de_la_cadence(lead))
+    _recaler_file(lead, user)
+    return etape
 
 
 # ── VT1 — CHATTER AUTOMATIQUE DE LA VISITE TECHNIQUE TERRAIN ─────────────────

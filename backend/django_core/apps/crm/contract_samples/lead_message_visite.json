@@ -1,0 +1,13 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/message-visite/",
+  "pourquoi": "VISITE-CADENCE : les deux textes valides par le fondateur pour PROPOSER la visite (apres l'envoi du devis) puis la CONFIRMER la veille. `?cle=visite_proposition|visite_confirmation` — une cle inconnue est un 400 qui NOMME le champ, jamais un message vide servi en 200. Les DEUX langues sortent d'un coup : l'ecran copie-colle dans celle que le client parle, sans second aller-retour. MEME machinerie que les messages de cadence (MRY13) : {conseiller} = le RESPONSABLE du lead (aucun prenom code en dur) et une phrase dont le placeholder n'a pas de valeur REELLE est OMISE — un lead sans `visite_prevue_le` ne recoit donc pas « la visite prevue  chez vous », la phrase disparait. LECTURE PURE : le serveur REND, il n'ENVOIE pas (decision D5).",
+  "exemple": {
+    "corps_fr": "Bonjour, on confirme la visite technique prévue mardi 16 septembre chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. En cas d'empêchement, répondez-moi ici et on recale le passage. — Nadia",
+    "corps_darija": "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة mardi 16 septembre عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — Nadia"
+  },
+  "exemple_erreur_cle": {
+    "cle": [
+      "Message de visite inconnu « apres_visite ». Clés connues : visite_proposition, visite_confirmation."
+    ]
+  }
+}

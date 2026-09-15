@@ -1,0 +1,28 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/visites/",
+  "pourquoi": "VISITE-CADENCE (fondateur 15/09/2026) : la visite technique est une ETAPE DU SUIVI COMMERCIAL, placee APRES l'envoi du devis. L'onglet « Visites » de la fiche lead lit CETTE forme, servie par apps.visites.selectors.visites_pour_lead (frontiere M3 : le CRM n'importe jamais les modeles de l'app visites). Ordre : de la plus recente a la plus ancienne. `retour_disponible` dit s'il y a du TEXTE LIBRE a lire (notes du technicien ou commentaire de photo), jamais « il existe une visite » : une pastille qui ouvrirait sur du vide serait un mensonge d'interface.",
+  "exemple": {
+    "visites": [
+      {
+        "id": 12,
+        "statut": "terminee",
+        "statut_libelle": "Terminée",
+        "date_prevue": "2026-09-17",
+        "date_realisee": "2026-09-17T15:40:00+01:00",
+        "commercial_nom": "Youssef Alami",
+        "notes": "Tableau électrique saturé, prévoir un départ dédié.",
+        "retour_disponible": true
+      },
+      {
+        "id": 9,
+        "statut": "brouillon",
+        "statut_libelle": "Brouillon",
+        "date_prevue": "2026-09-24",
+        "date_realisee": null,
+        "commercial_nom": "",
+        "notes": "",
+        "retour_disponible": false
+      }
+    ]
+  }
+}

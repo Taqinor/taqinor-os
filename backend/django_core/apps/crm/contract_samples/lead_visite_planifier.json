@@ -1,0 +1,26 @@
+{
+  "endpoint": "POST /api/django/crm/leads/<id>/visites/planifier/",
+  "pourquoi": "VISITE-CADENCE : POSER le rendez-vous depuis la fiche lead (la visite se propose apres l'envoi du devis, comme outil de closing). Corps : {date_prevue: 'AAAA-MM-JJ', commercial?: <id utilisateur>, notes?: <texte>}. Reponse 201 portant la MEME ligne que l'onglet « Visites » — l'ecran n'a donc aucune forme a reconstituer apres l'appel. Les effets de bord (cadence apres-devis suspendue, deux gestes du rendez-vous poses, chatter, notification a l'assigne) naissent de l'evenement `visite_planifiee`, jamais de la reponse.",
+  "exemple": {
+    "visite": {
+      "id": 13,
+      "statut": "brouillon",
+      "statut_libelle": "Brouillon",
+      "date_prevue": "2026-09-24",
+      "date_realisee": null,
+      "commercial_nom": "Youssef Alami",
+      "notes": "Portail bleu, sonner chez le gardien.",
+      "retour_disponible": false
+    }
+  },
+  "exemple_erreur_date_passee": {
+    "date_prevue": [
+      "La visite ne peut pas être planifiée dans le passé : choisir aujourd'hui ou une date à venir."
+    ]
+  },
+  "exemple_erreur_commercial": {
+    "commercial": [
+      "Utilisateur inconnu dans votre société."
+    ]
+  }
+}
