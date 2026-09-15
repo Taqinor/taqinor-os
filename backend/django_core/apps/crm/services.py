@@ -1995,7 +1995,8 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
         return []
 
 
-def reporter_prochaine_touche(lead, user, quand, *, etape=None):
+def reporter_prochaine_touche(lead, user, quand, *, etape=None,
+                              journaliser=True):
     """MRY10 — « Rappelez-moi jeudi » : décale une touche ET sa suite.
 
     Décaler la SEULE touche du jour serait faux : les suivantes se
@@ -2004,11 +2005,27 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None):
     cadence glissent donc du MÊME delta — jamais réordonnées, jamais
     recalculées depuis zéro.
 
+    CKP2 × VISITE-CADENCE (15/09/2026) — L'ANCRE GLISSE AUSSI. Depuis la
+    cadence RÉACTIVE, les touches qui restent à venir n'existent pas encore :
+    elles NAÎTRONT de l'issue saisie sur la touche courante, datées depuis
+    ``cadence_depart`` (``materialiser_touche_suivante``). Décaler les seules
+    lignes MATÉRIALISÉES laissait donc l'ancre au jour 0 : la touche suivante
+    naissait à sa date d'origine — dans le passé, immédiatement en retard, et
+    tout le report était annulé au premier geste. On applique le MÊME delta à
+    ``cadence_depart`` des touches encore ouvertes : le lead garde sa POSITION
+    exacte dans le protocole, l'ensemble du reste du plan glisse avec lui.
+
     ``quand`` est un datetime (ou une date) ; il est recalé sur la fenêtre de
     la société pour le CANAL de la touche déplacée (07/09/2026 : « rappelez-moi
     jeudi 8 h » vaut 08:30 pour un message, 09:00 pour un appel). ``etape``
     cible une touche précise ; sinon c'est la prochaine À FAIRE. Renvoie la
     touche déplacée, ou ``None`` s'il n'y en a aucune.
+
+    ``journaliser=False`` supprime la SEULE note « Rappel demandé le … » :
+    l'appelant en écrit une qui dit la vraie raison. C'est le cas de la
+    suspension pour visite technique — écrire « rappel demandé » là où le
+    client n'a rien demandé serait un mensonge dans l'historique, et deux
+    notes pour un seul geste rendraient le chatter illisible.
     """
     from . import horaires
 
@@ -2039,14 +2056,33 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None):
             suivante.due_date = decalee.astimezone(
                 horaires.CASABLANCA).date()
             suivante.save(update_fields=['due_at', 'due_date'])
+        # CKP2 — l'ANCRE des touches encore ouvertes glisse du même delta,
+        # sans quoi le prochain barreau naîtrait à sa date d'origine (voir la
+        # docstring). EN UNE REQUÊTE, avec ``F()`` : c'est un incrément pur
+        # (jamais un lire-décider-écrire), donc rien à verrouiller. Sur une
+        # ligne d'avant CKP2 (`cadence_depart` NULL) il n'y a rien à décaler :
+        # la matérialisation réactive retombe alors sur son repli — la plus
+        # ancienne échéance de la cadence, qui vient d'être décalée.
+        from django.db.models import F
 
-    quand_local = nouveau.astimezone(horaires.CASABLANCA)
-    LeadActivity.objects.create(
-        company=lead.company, lead=lead, user=user,
-        kind=LeadActivity.Kind.NOTE,
-        body=('Rappel demandé le '
-              f'{quand_local:%d/%m/%Y à %H:%M} — touche « '
-              f'{(cible.libelle or cible.get_canal_display())} » reportée.'))
+        lead.relance_etapes.filter(
+            cadence=cible.cadence, statut=RelanceEtape.Statut.A_FAIRE,
+            cadence_depart__isnull=False,
+        ).update(cadence_depart=F('cadence_depart') + delta)
+        if cible.cadence_depart is not None:
+            # L'objet rendu doit porter la MÊME ancre que sa ligne : c'est lui
+            # que l'appelant passera à `materialiser_touche_suivante`.
+            cible.refresh_from_db(fields=['cadence_depart'])
+
+    if journaliser:
+        quand_local = nouveau.astimezone(horaires.CASABLANCA)
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=('Rappel demandé le '
+                  f'{quand_local:%d/%m/%Y à %H:%M} — touche « '
+                  f'{(cible.libelle or cible.get_canal_display())} »'
+                  ' reportée.'))
 
     prochaine = _prochaine_touche_a_faire(lead)
     lead.relance_date = prochaine.due_date if prochaine else None
@@ -7265,10 +7301,23 @@ def _placer_anciens_leads_sans_cache(company, user, *, apply=False,
 # devis, comme outil de closing. Trois conséquences, et elles vivent ICI (pas
 # dans les récepteurs, qui restent minces et se contentent d'appeler) :
 #
-#   * quand un RENDEZ-VOUS est pris, les messages génériques de relance
-#     s'arrêtent — continuer à demander « le PDF s'ouvre bien ? » à quelqu'un
-#     qui reçoit le technicien jeudi est le genre de faute qui décrédibilise
-#     tout le suivi — et deux gestes utiles les remplacent ;
+#   * quand un RENDEZ-VOUS est pris, les messages génériques de relance se
+#     TAISENT jusqu'après la visite — continuer à demander « le PDF s'ouvre
+#     bien ? » à quelqu'un qui reçoit le technicien jeudi est le genre de
+#     faute qui décrédibilise tout le suivi — et deux gestes utiles les
+#     remplacent en attendant ;
+#
+#     AMENDEMENT FONDATEUR (15/09/2026) — ils se TAISENT, ils ne MEURENT PAS.
+#     La première écriture de ce lot ANNULAIT la cadence après-devis : le lead
+#     perdait sa place dans le protocole, et une visite qui n'aboutit pas
+#     laissait un dossier sans suivi (ou, pire, exigeait un REDÉMARRAGE de
+#     cadence — un client reprenant le plan au barreau 1 après avoir déjà reçu
+#     neuf messages). On DÉCALE désormais : la touche pendante, tout ce qui la
+#     suit, ET l'ancre de la cadence glissent jusqu'après le débrief. Le lead
+#     garde sa POSITION EXACTE (même ordre, même libellé, même reste de plan) ;
+#     si la visite ne donne rien, le suivi reprend tout seul là où il en était.
+#     Aucun `initialiser_plan_relance` n'est appelé sur un lead qui a déjà des
+#     étapes après-devis : il n'y a JAMAIS de restart.
 #   * quand le technicien repart, le RESPONSABLE doit rappeler sous 24-48 h,
 #     tant que la visite est fraîche ;
 #   * le TEXTE LIBRE du terrain entre dans l'historique du lead : c'est
@@ -7308,6 +7357,67 @@ def _visite_a_venir(lead):
             'VISITE-CADENCE: visites du lead #%s illisibles',
             getattr(lead, 'pk', '?'), exc_info=True)
         return False
+
+
+#: Combien de jours après la visite le plan de relance REPREND. Deux : le
+#: débrief est à J+1, la relance générique ne doit pas tomber le même jour que
+#: l'appel de débrief (deux sollicitations le même jour pour un client qu'on
+#: vient de voir chez lui). Ce n'est pas un délai « commercial » inventé, c'est
+#: la place du débrief plus un jour.
+VISITE_REPRISE_JOURS = 2
+
+
+def _touche_pendante_du_plan(lead):
+    """La touche du PLAN après-devis encore à faire — hors gestes de visite.
+
+    C'est elle que la visite fait taire : les trois étapes de visite portent la
+    même cadence (l'écran les montre dans la même frise) mais ne sont pas des
+    barreaux du protocole, et décaler le débrief au motif qu'une visite est
+    planifiée n'aurait aucun sens."""
+    from django.db.models import F
+
+    return (lead.relance_etapes
+            .filter(cadence=VISITE_CADENCE,
+                    statut=RelanceEtape.Statut.A_FAIRE)
+            .exclude(libelle__in=_LIBELLES_VISITE)
+            .order_by(F('due_at').asc(nulls_last=True), 'due_date', 'ordre')
+            .first())
+
+
+def suspendre_plan_jusqu_apres_visite(lead, user, date_prevue):
+    """AMENDEMENT FONDATEUR (15/09/2026) — le plan se TAIT, il ne meurt pas.
+
+    La touche pendante du protocole est REPORTÉE à ``date_prevue +
+    VISITE_REPRISE_JOURS``, et avec elle — par la mécanique EXISTANTE de
+    ``reporter_prochaine_touche``, jamais une seconde — toutes les touches
+    suivantes de la cadence ET l'ancre ``cadence_depart``, du même delta. Le
+    lead reste donc EXACTEMENT à sa place : même barreau, même libellé, même
+    reste de plan, simplement plus tard. Si la visite n'aboutit pas, le suivi
+    reprend de lui-même — aucun redémarrage de cadence n'existe nulle part.
+
+    Deux no-op délibérés :
+
+    * aucune touche pendante (le plan n'a pas démarré, ou il est épuisé) ⇒
+      rien à décaler, et surtout rien à CRÉER : ce serait un restart ;
+    * la touche pendante tombe DÉJÀ après la reprise ⇒ on ne la tire jamais
+      EN AVANT. Une visite planifiée ne doit pas accélérer une relance.
+
+    Renvoie la touche déplacée, ou ``None``."""
+    cible = _touche_pendante_du_plan(lead)
+    if cible is None:
+        return None
+    reprise = date_prevue + datetime.timedelta(days=VISITE_REPRISE_JOURS)
+    if cible.due_date is not None and cible.due_date >= reprise:
+        return None
+    from . import horaires
+
+    quand = datetime.datetime.combine(
+        reprise, datetime.time(9, 0), tzinfo=horaires.CASABLANCA)
+    # ``journaliser=False`` : l'appelant écrit UNE note qui dit la vraie
+    # raison (« Relances décalées après la visite »), et « Rappel demandé »
+    # serait faux — le client n'a rien demandé.
+    return reporter_prochaine_touche(
+        lead, user, quand, etape=cible, journaliser=False)
 
 
 def _etape_visite_ouverte(lead, libelle):
@@ -7394,18 +7504,25 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
 
     1. la fiche porte la date (``Lead.visite_prevue_le``) — c'est elle que lit
        le message de confirmation ``{date_visite}`` ;
-    2. UNE note de chatter, toujours — même sur un dossier qu'on ne relance
-       plus : savoir qu'une visite a été calée reste une information ;
-    3. sur un lead ACTIF seulement : la cadence après-devis en cours est
-       ARRÊTÉE (motif nommé) et remplacée par les DEUX gestes du rendez-vous —
-       confirmer la veille, débriefer le lendemain. Le filet « planifier la
-       visite convenue », s'il traînait, est annulé : c'est fait.
+    2. sur un lead ACTIF : le plan après-devis en cours est SUSPENDU PAR
+       DÉCALAGE (``suspendre_plan_jusqu_apres_visite``) — jamais annulé. Le
+       lead garde sa position exacte dans le protocole et, si la visite
+       n'aboutit pas, le suivi reprend tout seul là où il en était ;
+    3. UNE note de chatter, toujours — même sur un dossier qu'on ne relance
+       plus : savoir qu'une visite a été calée reste une information. Elle dit
+       le décalage quand il a eu lieu, et se tait sinon (annoncer des relances
+       décalées alors qu'aucune n'était pendante serait faux) ;
+    4. les DEUX gestes du rendez-vous — confirmer la veille, débriefer le
+       lendemain. Le filet « planifier la visite convenue », s'il traînait, est
+       ANNULÉ : lui seul, et parce qu'il a rempli son office.
 
     RE-PLANIFICATION : les deux étapes encore ouvertes sont DÉPLACÉES, jamais
     dupliquées (``_poser_etape_visite`` est idempotente par libellé) — « on
-    décale à jeudi » ne doit pas laisser la confirmation de mardi dans la file.
+    décale à jeudi » ne doit pas laisser la confirmation de mardi dans la file
+    — et le plan glisse d'un delta ADDITIONNEL depuis la nouvelle date.
 
-    ``STAGES.py`` n'est pas touché. Renvoie les étapes posées/déplacées."""
+    ``STAGES.py`` n'est pas touché, et AUCUNE étape du plan n'est annulée.
+    Renvoie les étapes posées/déplacées."""
     champs = []
     if lead.visite_prevue_le != date_prevue:
         lead.visite_prevue_le = date_prevue
@@ -7413,10 +7530,17 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
     if champs:
         lead.save(update_fields=champs)
 
+    relancable = _lead_relancable(lead)
+    # Le décalage AVANT la note : c'est lui qui décide de la dernière phrase.
+    decalee = (suspendre_plan_jusqu_apres_visite(lead, user, date_prevue)
+               if relancable else None)
+
     quand = date_prevue.strftime('%d/%m/%Y')
     corps = f'Visite technique planifiée le {quand}'
     corps += (f' — assignée à {commercial_nom}.' if commercial_nom
               else ' — pas encore assignée.')
+    if decalee is not None:
+        corps += ' Relances décalées après la visite.'
     # Note SYSTÈME (``user=None``) : PLANIFIER n'est pas AVOIR contacté le
     # lead — même motif que ``arreter_cadence`` / ``initialiser_plan_relance``
     # (garde QJ7, qui traiterait sinon cette note comme un premier contact).
@@ -7424,18 +7548,13 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE, body=corps)
 
-    if not _lead_relancable(lead):
+    if not relancable:
         return []
 
     devis_id = _devis_id_de_la_cadence(lead)
-    if lead.relance_etapes.filter(
-            cadence=VISITE_CADENCE,
-            statut=RelanceEtape.Statut.A_FAIRE).exclude(
-                libelle__in=_LIBELLES_VISITE).exists():
-        arreter_cadence(lead, user=user, motif='visite technique planifiée',
-                        cadences=[VISITE_CADENCE])
     # Le filet « planifier la visite convenue » a rempli son office : on
-    # l'ANNULE (statut moteur CKP1, jamais « sautée par un humain »).
+    # l'ANNULE (statut moteur CKP1, jamais « sautée par un humain »). C'est la
+    # SEULE étape que cette fonction annule — le plan, lui, est décalé.
     lead.relance_etapes.filter(
         libelle=VISITE_FILET_LIBELLE,
         statut=RelanceEtape.Statut.A_FAIRE).update(
@@ -7449,6 +7568,11 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
         # qui naîtrait « en retard » dans la file sans que personne n'ait
         # manqué quoi que ce soit.
         veille = aujourd_hui_local()
+    # RE-PLANIFICATION — les deux étapes ci-dessous ont pu être emportées par
+    # le décalage du plan (elles portent la même cadence et un ``ordre``
+    # supérieur, donc ``reporter_prochaine_touche`` les glisse aussi). C'est
+    # sans conséquence : elles sont RÉ-ANCRÉES ici même sur la nouvelle date de
+    # visite, qui est leur seule vérité.
     etapes = [
         _poser_etape_visite(
             lead, libelle=VISITE_CONFIRMATION_LIBELLE,

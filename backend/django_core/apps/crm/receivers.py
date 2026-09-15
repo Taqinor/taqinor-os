@@ -829,7 +829,12 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
 @receiver(visite_planifiee, dispatch_uid="crm_suivi_on_visite_planifiee")
 def _suivi_on_visite_planifiee(sender, visite, lead_id, user, date_prevue,
                                commercial_nom='', **kwargs):
-    """Un rendez-vous est posé (ou déplacé) : la cadence s'y recale."""
+    """Un rendez-vous est posé (ou déplacé) : la cadence s'y recale.
+
+    AMENDEMENT FONDATEUR (15/09/2026) — « recale » veut dire DÉCALE, pas
+    annule : le plan après-devis glisse jusqu'après le débrief et le lead garde
+    sa position exacte dans le protocole. Aucune cadence n'est jamais
+    redémarrée."""
     try:
         lead = Lead.objects.filter(pk=lead_id).first()
         if lead is None:

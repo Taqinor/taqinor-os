@@ -8,11 +8,16 @@ personne ne rappelle.
 
 Ce qui est prouvé ici :
 
-* **planification** — la cadence après-devis en cours est ARRÊTÉE avec son
-  motif, la fiche porte la date, une note de chatter la dit, et DEUX gestes la
-  remplacent (confirmer la veille, débriefer le lendemain). Une veille déjà
-  passée tombe AUJOURD'HUI, jamais en retard. Une RE-planification DÉPLACE les
-  deux étapes au lieu de les dupliquer ;
+* **planification** — le plan après-devis est SUSPENDU PAR DÉCALAGE (amendement
+  fondateur du 15/09/2026) : la touche pendante, tout ce qui la suit ET l'ancre
+  de la cadence glissent jusqu'après le débrief. RIEN n'est annulé, rien n'est
+  redémarré, le lead garde SA POSITION EXACTE dans le protocole. La fiche porte
+  la date, une note de chatter le dit, et DEUX gestes s'intercalent (confirmer
+  la veille, débriefer le lendemain). Une veille déjà passée tombe
+  AUJOURD'HUI, jamais en retard. Une RE-planification DÉPLACE les deux étapes
+  au lieu de les dupliquer, et glisse le plan d'un delta ADDITIONNEL ;
+* **déploiement** — poser les nouveaux récepteurs ne touche AUCUN lead déjà en
+  cadence tant qu'aucun événement de visite n'arrive ;
 * **lead qu'on ne relance plus** (perdu / ne plus contacter) — chatter SEUL,
   pas une touche ;
 * **retour terrain** — le TEXTE LIBRE du technicien entre dans l'historique,
@@ -95,20 +100,71 @@ class VisiteCadenceBase(TestCase):
             qs = qs.filter(libelle=libelle)
         return qs
 
-    def _touche_generique_ouverte(self):
+    def _touche_generique_ouverte(self, ordre=1, jour=None):
         """Une touche du GABARIT après-devis, ouverte — ce que la visite
-        doit faire taire."""
+        doit faire TAIRE (décaler), jamais tuer."""
+        jour = jour or AUJOURDHUI
+        due_at = datetime.datetime.combine(
+            jour, datetime.time(9, 0), tzinfo=horaires.CASABLANCA)
         return RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='apres_devis',
-            ordre=1, canal=RelanceEtape.Canal.WHATSAPP,
+            ordre=ordre, canal=RelanceEtape.Canal.WHATSAPP,
             libelle="Le PDF s'ouvre bien ?", template_cle='j1_pdf',
-            due_date=AUJOURDHUI, due_at=MAINTENANT)
+            due_date=jour, due_at=due_at, cadence_depart=MAINTENANT)
 
 
 class VisitePlanifieeTests(VisiteCadenceBase):
 
-    def test_arrete_la_cadence_et_pose_les_deux_gestes(self):
+    def test_decale_le_plan_sans_jamais_lannuler(self):
+        """AMENDEMENT FONDATEUR — le plan se tait, il ne meurt pas."""
         generique = self._touche_generique_ouverte()
+        ancre_avant = generique.cadence_depart
+        with frozen(MAINTENANT):
+            services.appliquer_visite_planifiee(
+                self.lead, self.acteur, VISITE_LE,
+                commercial_nom='Youssef Alami')
+
+        generique.refresh_from_db()
+        # Toujours À FAIRE, même ordre, même libellé : la position est intacte.
+        self.assertEqual(generique.statut, RelanceEtape.Statut.A_FAIRE)
+        self.assertEqual(generique.ordre, 1)
+        self.assertEqual(generique.libelle, "Le PDF s'ouvre bien ?")
+        # …simplement APRÈS le débrief.
+        self.assertGreaterEqual(
+            generique.due_date,
+            VISITE_LE + datetime.timedelta(
+                days=services.VISITE_REPRISE_JOURS))
+        # CKP2 — l'ANCRE a glissé du même delta : la touche suivante du
+        # protocole naîtra APRÈS la visite, pas à sa date d'origine.
+        self.assertGreater(generique.cadence_depart, ancre_avant)
+        # Aucune touche du plan n'a été annulée.
+        self.assertEqual(self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.ANNULEE).count(), 0)
+
+    def test_ne_tire_jamais_une_touche_deja_posterieure_en_avant(self):
+        loin = self._touche_generique_ouverte(
+            jour=VISITE_LE + datetime.timedelta(days=30))
+        avant = loin.due_date
+        with frozen(MAINTENANT):
+            services.appliquer_visite_planifiee(
+                self.lead, self.acteur, VISITE_LE)
+        loin.refresh_from_db()
+        self.assertEqual(loin.due_date, avant)
+
+    def test_sans_touche_pendante_rien_nest_cree_dans_le_plan(self):
+        """Aucun restart : une visite ne DÉMARRE jamais une cadence."""
+        with frozen(MAINTENANT):
+            services.appliquer_visite_planifiee(
+                self.lead, self.acteur, VISITE_LE)
+        libelles = set(self._touches().values_list('libelle', flat=True))
+        self.assertEqual(libelles, {services.VISITE_CONFIRMATION_LIBELLE,
+                                    services.VISITE_DEBRIEF_LIBELLE})
+        note = self.lead.activites.filter(
+            body__startswith='Visite technique planifiée').get()
+        self.assertNotIn('Relances décalées', note.body)
+
+    def test_pose_les_deux_gestes_du_rendez_vous(self):
+        self._touche_generique_ouverte()
         with frozen(MAINTENANT):
             services.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE,
@@ -116,12 +172,6 @@ class VisitePlanifieeTests(VisiteCadenceBase):
 
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.visite_prevue_le, VISITE_LE)
-
-        generique.refresh_from_db()
-        self.assertEqual(generique.statut, RelanceEtape.Statut.ANNULEE)
-        self.assertEqual(generique.note, 'visite technique planifiée')
-        # CKP1 — geste du MOTEUR : aucun humain n'est estampillé dessus.
-        self.assertIsNone(generique.traite_par)
 
         confirmation = self._touches(
             services.VISITE_CONFIRMATION_LIBELLE).get()
@@ -153,6 +203,41 @@ class VisitePlanifieeTests(VisiteCadenceBase):
         self.assertIsNone(note.user)
         self.assertEqual(note.kind, LeadActivity.Kind.NOTE)
 
+    def test_la_note_annonce_le_decalage_quand_il_a_eu_lieu(self):
+        self._touche_generique_ouverte()
+        with frozen(MAINTENANT):
+            services.appliquer_visite_planifiee(
+                self.lead, self.acteur, VISITE_LE,
+                commercial_nom='Youssef Alami')
+        note = self.lead.activites.filter(
+            body__startswith='Visite technique planifiée').get()
+        self.assertIn('Relances décalées après la visite.', note.body)
+        # UNE seule note pour un seul geste : pas de « Rappel demandé »
+        # (le client n'a rien demandé) en plus.
+        self.assertFalse(self.lead.activites.filter(
+            body__startswith='Rappel demandé').exists())
+
+    def test_la_touche_suivante_du_protocole_nait_apres_la_visite(self):
+        """CKP2 — la preuve que l'ANCRE a glissé, pas seulement les lignes."""
+        from apps.parametres.models_relance import CadenceRelanceEtape
+
+        gabarits = CadenceRelanceEtape.cadence_pour(self.company,
+                                                    'apres_devis')
+        premier = gabarits[0]
+        touche = self._touche_generique_ouverte(ordre=premier.ordre)
+        with frozen(MAINTENANT):
+            services.appliquer_visite_planifiee(
+                self.lead, self.acteur, VISITE_LE)
+            touche.refresh_from_db()
+            services.marquer_etape_relance(
+                touche, self.acteur, RelanceEtape.Statut.FAIT)
+
+        suivante = self.lead.relance_etapes.filter(
+            cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE,
+            ordre=gabarits[1].ordre).get()
+        self.assertGreater(suivante.due_date,
+                           VISITE_LE + datetime.timedelta(days=1))
+
     def test_sans_assigne_la_note_le_dit_au_lieu_dun_blanc(self):
         with frozen(MAINTENANT):
             services.appliquer_visite_planifiee(
@@ -179,6 +264,7 @@ class VisitePlanifieeTests(VisiteCadenceBase):
         self.assertGreaterEqual(confirmation.due_date, AUJOURDHUI)
 
     def test_replanifier_deplace_sans_dupliquer(self):
+        generique = self._touche_generique_ouverte()
         with frozen(MAINTENANT):
             services.appliquer_visite_planifiee(
                 self.lead, self.acteur, VISITE_LE)
@@ -202,6 +288,14 @@ class VisitePlanifieeTests(VisiteCadenceBase):
                                'whatsapp'))
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.visite_prevue_le, nouveau)
+        # Delta ADDITIONNEL : le plan glisse depuis la NOUVELLE date, et il
+        # n'est toujours pas annulé.
+        generique.refresh_from_db()
+        self.assertEqual(generique.statut, RelanceEtape.Statut.A_FAIRE)
+        self.assertGreaterEqual(
+            generique.due_date,
+            nouveau + datetime.timedelta(
+                days=services.VISITE_REPRISE_JOURS))
 
     def test_annule_le_filet_planifier_la_visite(self):
         with frozen(MAINTENANT):
@@ -433,8 +527,14 @@ class RecepteurPlanificationTests(VisiteCadenceBase):
                 commercial_nom='Youssef Alami')
 
         generique.refresh_from_db()
-        self.assertEqual(generique.statut, RelanceEtape.Statut.ANNULEE)
-        self.assertEqual(self._touches().count(), 2)
+        # DÉCALÉE, jamais annulée (amendement fondateur 15/09/2026).
+        self.assertEqual(generique.statut, RelanceEtape.Statut.A_FAIRE)
+        self.assertGreaterEqual(
+            generique.due_date,
+            VISITE_LE + datetime.timedelta(
+                days=services.VISITE_REPRISE_JOURS))
+        # Le plan pendant + les deux gestes du rendez-vous.
+        self.assertEqual(self._touches().count(), 3)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.visite_prevue_le, VISITE_LE)
 
@@ -567,6 +667,65 @@ class MessageVisiteTests(VisiteCadenceBase):
                 self.assertTrue(texte, cle)
                 for interdit in ('Meryem', 'Reda', 'مريم', 'رضا'):
                     self.assertNotIn(interdit, texte)
+
+
+class DeploiementSansEffetTests(VisiteCadenceBase):
+    """GARANTIE DE DÉPLOIEMENT (amendement fondateur 15/09/2026).
+
+    Poser ce lot en production ne doit RIEN faire bouger chez les leads déjà en
+    cadence : les nouveaux récepteurs ne se déclenchent que sur un événement de
+    VISITE, la migration ajoutée n'est qu'un ``AlterField(choices)``, et les
+    gabarits comme les textes de message sont purement ADDITIFS."""
+
+    def _instantane(self):
+        return list(
+            self.lead.relance_etapes.order_by('pk').values(
+                'pk', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
+                'libelle', 'template_cle', 'statut', 'note',
+                'cadence_depart'))
+
+    def test_un_lead_en_cadence_ne_bouge_pas_sans_evenement_visite(self):
+        with frozen(MAINTENANT):
+            self._touche_generique_ouverte(ordre=1)
+            self._touche_generique_ouverte(
+                ordre=2, jour=AUJOURDHUI + datetime.timedelta(days=3))
+            avant = self._instantane()
+            # La vie ordinaire du lead continue : on l'édite, on l'annote.
+            self.lead.ville = 'Casablanca'
+            self.lead.save(update_fields=['ville'])
+            LeadActivity.objects.create(
+                company=self.company, lead=self.lead, user=self.acteur,
+                kind=LeadActivity.Kind.NOTE, body='Note ordinaire')
+        self.assertEqual(self._instantane(), avant)
+
+    def test_le_gabarit_apres_devis_reste_intact(self):
+        from apps.parametres.models_relance import CADENCE_APRES_DEVIS_DEFAUT
+
+        self.assertEqual(
+            [(g['ordre'], g['delai_jours'], g['template_cle'])
+             for g in CADENCE_APRES_DEVIS_DEFAUT],
+            [(1, 1, 'j1_pdf'), (2, 2, ''), (3, 3, 'dimanche_famille'),
+             (4, 4, 'j4_preuve'), (5, 6, 'j6_garanties'), (6, 7, ''),
+             (7, 9, 'j9_validite'), (8, 11, ''), (9, 13, 'j13_dernier'),
+             (10, 14, 'j14_pause')])
+
+    def test_les_textes_historiques_sont_byte_identiques(self):
+        """Les deux clés de visite sont ADDITIVES : rien d'existant ne change.
+
+        (``tests_mry12_messages_relance`` re-dérive le fichier source et
+        compare TOUT ; cette garde-ci vise seulement la non-régression du lot.)
+        """
+        from apps.parametres.models_messages import (
+            CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS,
+        )
+
+        self.assertEqual(
+            MESSAGE_TEMPLATE_DEFAULTS['j14_pause'],
+            'Je mets votre dossier en pause. Votre proposition reste dans '
+            'notre système ; un message suffit pour la réactiver.')
+        # Les nouvelles clés sont AJOUTÉES en fin de liste, dans cet ordre.
+        self.assertEqual(CLES_RELANCE[-2:],
+                         ['visite_proposition', 'visite_confirmation'])
 
 
 class DateVisiteFrancaisTests(TestCase):
