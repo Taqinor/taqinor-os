@@ -10,6 +10,7 @@ import {
 import { PageHeader } from '../../ui/PageHeader'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import MicDicteeButton from '../../components/MicDicteeButton'
+import { formatDateTime } from '../../lib/format'
 
 /* MSGACC1 — Écran d'envoi des messages d'accueil (Paramètres, réservé
    Responsable/Admin — reflète IsAdminOrResponsableTier côté serveur).
@@ -35,12 +36,8 @@ function nouveauFormulaire() {
 }
 
 function dateHeureFr(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleString('fr-FR', {
-    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
+  // VX75 — tout formatage passe par lib/format (jamais toLocaleString ici).
+  return iso ? formatDateTime(iso) : '—'
 }
 
 export default function MessagesAccueilPage() {

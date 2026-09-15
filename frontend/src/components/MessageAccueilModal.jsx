@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { formatDateTime } from '../lib/format'
 import { useSelector } from 'react-redux'
 import notificationsApi from '../api/notificationsApi'
 import router from '../router'
@@ -62,13 +63,8 @@ function renderCorps(corps, onNaviguer) {
 }
 
 function formatDateHeure(iso) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleString('fr-FR', {
-    day: '2-digit', month: 'long', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
+  // VX75 — tout formatage passe par lib/format (jamais toLocaleString ici).
+  return iso ? formatDateTime(iso, { long: true }) : ''
 }
 
 export default function MessageAccueilModal() {

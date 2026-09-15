@@ -21,7 +21,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='MessageAccueil',
             fields=[
-                ('id', models.AutoField(
+                ('id', models.BigAutoField(
                     auto_created=True, primary_key=True, serialize=False,
                     verbose_name='ID')),
                 ('visible_a_partir_de', models.DateTimeField(
@@ -38,8 +38,9 @@ class Migration(migrations.Migration):
                     to=settings.AUTH_USER_MODEL, verbose_name='Auteur')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='notifications_messageaccueil_set',
-                    to='authentication.company')),
+                    related_name='%(app_label)s_%(class)s_set',
+                    to='authentication.company',
+                    verbose_name='Société')),
                 ('destinataire', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name='messages_accueil_recus',
