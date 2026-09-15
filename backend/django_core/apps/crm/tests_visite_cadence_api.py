@@ -165,9 +165,13 @@ class PlanifierVisiteApiTests(VisiteApiBase):
         self.assertEqual(reponse.data['visite']['commercial_nom'], '')
 
     def test_une_date_illisible_nomme_son_champ(self):
-        reponse = self.api.post(
-            self._url(self.URL), {'date_prevue': '17 septembre'},
-            format='json')
+        # Sous frozen comme TOUTES les requêtes de la classe : le jeton du
+        # setUp est émis à MAINTENANT — hors gel, il n'est « pas encore
+        # valide » à l'heure réelle de la CI.
+        with frozen(MAINTENANT):
+            reponse = self.api.post(
+                self._url(self.URL), {'date_prevue': '17 septembre'},
+                format='json')
         self.assertEqual(reponse.status_code, 400, reponse.data)
         self.assertIn('date_prevue', reponse.data)
         self.assertEqual(VisiteTerrain.objects.count(), 0)
