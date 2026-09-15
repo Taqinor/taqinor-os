@@ -1538,8 +1538,16 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Lead marqué « ne plus contacter ».'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import initialiser_plan_relance
-        etapes = initialiser_plan_relance(lead, request.user, cadence=cadence)
+        from .services import CadenceActiveConflit, initialiser_plan_relance
+        try:
+            etapes = initialiser_plan_relance(
+                lead, request.user, cadence=cadence)
+        except CadenceActiveConflit as exc:
+            # CADX (fondateur 15/09/2026) — jamais deux cadences en
+            # parallèle : le refus NOMME le champ et dit le geste à faire
+            # (« Arrêter la cadence » d'abord).
+            return Response({'erreurs': {'cadence': [str(exc)]}},
+                            status=status.HTTP_400_BAD_REQUEST)
         return Response(
             RelanceEtapeSerializer(
                 etapes, many=True, context={'request': request}).data,
@@ -2970,10 +2978,17 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # sans trace de ce qui s'était dit. Les autres canaux
         # (WhatsApp/e-mail/visite) gardent l'issue FACULTATIVE : envoyer un
         # message n'a pas d'issue tant que personne n'a répondu.
+        # EXCEPTION filets « generique » (fondateur 15/09/2026, capture à
+        # l'appui) : « Fait — passer à la suite » sur un filet part SANS
+        # issue PAR CONSTRUCTION — c'est CE clic qui vaut « devis parti »
+        # (QJ-FUNNEL) ou clôt l'étape posée par le moteur, et le panneau ne
+        # propose volontairement pas Joint/Non joint. Exiger ici une issue
+        # que l'écran n'offre pas était un mur sans porte.
         # L'erreur NOMME le champ fautif (règle fondateur 08/09/2026) —
         # jamais un « non enregistré » générique.
         if (statut == RelanceEtape.Statut.FAIT
                 and etape.canal == RelanceEtape.Canal.APPEL
+                and etape.cadence != 'generique'
                 and not outcome):
             return Response(
                 {'erreurs': {'outcome': "Issue de l'appel obligatoire : "

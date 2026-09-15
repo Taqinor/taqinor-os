@@ -825,6 +825,23 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
     return echeances
 
 
+# ── CADX (fondateur 15/09/2026) — UNE SEULE cadence active par lead ──────────
+#
+# « Make sure no lead have two cadences in parallel, this should never
+# happen. » Le point d'entrée UNIQUE de création (`initialiser_plan_relance`)
+# arbitre par PRIORITÉ : démarrer une cadence plus prioritaire REMPLACE
+# l'active (annulée moteur, motif tracé) ; une cadence de priorité inférieure
+# ou égale est REFUSÉE — l'humain passe par « Arrêter la cadence » d'abord
+# (recette du 08/09), et un job système (le placement « contact » du 11/09
+# par-dessus un après-devis actif — lead #348) est neutralisé net.
+_PRIORITE_CADENCE = {'reveil': 0, 'generique': 1, 'contact': 2,
+                     'apres_devis': 3}
+
+
+class CadenceActiveConflit(Exception):
+    """CADX — une cadence au moins aussi prioritaire est déjà active."""
+
+
 def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                              devis=None):
     """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
@@ -901,6 +918,25 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     existantes = list(deja.order_by('ordre', 'due_date'))
     if existantes:
         return existantes
+
+    # CADX — jamais deux cadences en parallèle (voir le bandeau plus haut).
+    actives = list(
+        lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
+        .exclude(cadence=cadence)
+        .values_list('cadence', flat=True).distinct())
+    if actives:
+        prio = _PRIORITE_CADENCE.get(cadence, 1)
+        bloquantes = sorted(
+            c for c in actives if _PRIORITE_CADENCE.get(c, 1) >= prio)
+        if bloquantes:
+            raise CadenceActiveConflit(
+                'Une seule cadence à la fois : la cadence '
+                f'« {bloquantes[0]} » est déjà active sur ce lead — '
+                'arrêtez-la d’abord (« Arrêter la cadence »).')
+        arreter_cadence(
+            lead, user=user,
+            motif=f'remplacée par la cadence « {cadence} »',
+            cadences=actives)
 
     gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
     if not gabarits:
@@ -2008,6 +2044,10 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
             return []          # gardes muettes (import, déjà contacté…)
         return initialiser_plan_relance(
             lead, user, cadence='contact', depart=timezone.now())
+    except CadenceActiveConflit as exc:
+        # CADX — le refus est ÉCRIT (chatter) : Meryem voit pourquoi le lead
+        # n'a pas reçu de nouvelle prise de contact.
+        return _refus_cadence(lead, user, str(exc))
     except Exception:  # noqa: BLE001 — jamais vers l'appelant
         logger.warning(
             'demarrer_cadence_contact: échec sur le lead #%s (%s)',
@@ -7010,9 +7050,12 @@ def _placer_cadence_positionnee(entree, *, user, maintenant):
     relance_avant = lead.relance_date
     activites_avant = set(lead.activites.values_list('pk', flat=True))
 
-    etapes = initialiser_plan_relance(
-        lead, user, cadence=entree['cadence'], depart=entree['depart'],
-        devis=entree['devis'])
+    try:
+        etapes = initialiser_plan_relance(
+            lead, user, cadence=entree['cadence'], depart=entree['depart'],
+            devis=entree['devis'])
+    except CadenceActiveConflit as exc:
+        raise PlacementImpossible(str(exc))
     if not etapes:
         raise PlacementImpossible(
             f'aucune touche créée (cadence {entree["cadence"]})')
@@ -7063,8 +7106,11 @@ def _placer_dormant(entree, *, user):
     tag = _PLACEMENT_TAGS.get(entree['code'])
     if tag:
         poser_tag_lead(lead, user, tag)
-    etapes = initialiser_plan_relance(
-        lead, user, cadence='reveil', depart=entree['depart'])
+    try:
+        etapes = initialiser_plan_relance(
+            lead, user, cadence='reveil', depart=entree['depart'])
+    except CadenceActiveConflit as exc:
+        raise PlacementImpossible(str(exc))
     if not etapes:
         raise PlacementImpossible('aucune touche de réveil créée')
     if entree['code'] == 'dormant_devis':

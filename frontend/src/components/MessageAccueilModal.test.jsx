@@ -161,4 +161,21 @@ describe('MSGACC1 — MessageAccueilModal', () => {
     )
     expect(messagesAccueilALire).toHaveBeenCalledTimes(1)
   })
+
+  it('HOTFIX — un corps très long garde « Compris » atteignable (corps défilant, jamais hors écran)', async () => {
+    messagesAccueilALire.mockResolvedValue({
+      data: { messages: [{ id: 9, auteur_nom: null, visible_a_partir_de: '2026-09-15T06:00:00Z', corps: 'Ligne\n'.repeat(400) }] },
+    })
+    renderWith(true)
+    await screen.findByTestId('message-accueil')
+    // Le CORPS défile (et lui seul) : c'est ce qui garantit que le pied de
+    // carte — donc « Compris » — reste visible quelle que soit la longueur.
+    const corps = screen.getByTestId('message-accueil-corps')
+    expect(corps.className).toContain('overflow-y-auto')
+    // La carte est bornée en hauteur (85vh) : sans cette borne, le corps ne
+    // défile jamais et pousse le pied hors écran (l'incident du 15/09).
+    const carte = corps.parentElement
+    expect(carte.className).toContain('max-h-[85vh]')
+    expect(screen.getByRole('button', { name: 'Compris' })).toBeInTheDocument()
+  })
 })
