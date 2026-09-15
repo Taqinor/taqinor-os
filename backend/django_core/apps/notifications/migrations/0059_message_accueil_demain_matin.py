@@ -92,6 +92,11 @@ CORPS = (
     "Tout est dans la fiche lead, section « Suivi commercial », en haut — "
     "plus besoin de descendre dans la page.\n"
     "\n"
+    "7. Le guide complet de ces étapes (avec les phrases exactes à dire) est "
+    "un PDF rangé dans le module Documents : Documents (GED) → cabinet "
+    "« Documentation » → dossier « Guides » → « Guide — La visite technique "
+    "dans le suivi commercial ». Ouvre le module ici : /ged\n"
+    "\n"
     "PS : ce message t'arrive par la nouvelle fenêtre d'accueil de l'ERP — "
     "ferme-le avec « Compris ». Bonne journée !"
 )
