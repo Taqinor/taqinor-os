@@ -7,6 +7,10 @@
 //
 // VT6 ajoute le formulaire de mesures par catégorie (VisiteMesuresForm).
 // VT7 ajoute le panneau client+devis (VisiteClientDevisPanel).
+// VISITE-QUALIF ajoute la qualification client à un tap juste avant
+// « Terminer la visite » (VisiteQualificationForm) : son propre POST, jamais
+// fusionné dans terminer/ — un simple rappel non bloquant si elle n'a pas
+// encore été enregistrée.
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
@@ -25,6 +29,7 @@ import {
 import VisiteMesuresForm from './VisiteMesuresForm'
 import VisiteClientDevisPanel from './VisiteClientDevisPanel'
 import VisiteHistoriquePanel from './VisiteHistoriquePanel'
+import VisiteQualificationForm from './VisiteQualificationForm'
 
 // Une tuile photo — état/motif/guide TOUJOURS tels que renvoyés par le
 // serveur, jamais reformulés ici (RÈGLE fondateur : erreurs/motifs = texte
@@ -155,6 +160,12 @@ export default function VisiteWizardPage() {
   useEffect(() => { recharger() }, [recharger])
 
   const terminer = async () => {
+    // VISITE-QUALIF — la qualification est son PROPRE POST (jamais fusionné
+    // dans terminer/) : un oubli ne bloque jamais la fin de visite, on se
+    // contente d'un rappel non bloquant si rien n'a encore été enregistré.
+    if (!visite.qualification) {
+      toast.message('Qualification non enregistrée — enregistrer ?')
+    }
     setTerminant(true)
     try {
       const res = await visitesApi.terminerVisite(id)
@@ -242,6 +253,16 @@ export default function VisiteWizardPage() {
           </ul>
         </div>
       )}
+
+      {/* VISITE-QUALIF — qualification rapide du client, juste avant de
+          terminer. Rendue dans les DEUX modes : formulaire à chips en édition,
+          résumé lecture seule si la visite n'est plus modifiable (validée). */}
+      <VisiteQualificationForm
+        visiteId={id}
+        qualification={visite.qualification}
+        lectureSeule={lectureSeule}
+        onSaved={recharger}
+      />
 
       {!lectureSeule && (
         <div className="fixed inset-x-0 bottom-0 border-t border-border bg-background p-3">
