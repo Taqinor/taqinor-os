@@ -52,8 +52,12 @@ describe('VISCAD3 PlanifierVisiteModal', () => {
       data: { visite: { id: 55, statut: 'brouillon', statut_libelle: 'Planifiée' } },
     })
     const { onOpenChange, onPlanifie } = monter()
-    fireEvent.change(screen.getByLabelText('Date prévue'), { target: { value: '2026-09-20' } })
+    // Attend le chargement des commerciaux AVANT de saisir — le formulaire se
+    // réinitialise à l'ouverture (`queueMicrotask`, voir le composant) : saisir
+    // puis attendre effacerait la date au moment même où ce `await` la laisse
+    // s'exécuter.
     await waitFor(() => expect(screen.getByRole('option', { name: 'meryem' })).toBeInTheDocument())
+    fireEvent.change(screen.getByLabelText('Date prévue'), { target: { value: '2026-09-20' } })
     fireEvent.change(screen.getByLabelText('Commercial assigné'), { target: { value: '7' } })
     fireEvent.change(screen.getByLabelText('Note (optionnelle)'), { target: { value: 'Toit difficile d’accès' } })
     fireEvent.click(screen.getByRole('button', { name: 'Planifier la visite' }))
