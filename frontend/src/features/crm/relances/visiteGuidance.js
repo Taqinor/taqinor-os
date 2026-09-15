@@ -79,6 +79,13 @@ export const SIGNAUX_ACHAT = [
 export const REGLE_OBJECTION =
   'Toute objection technique se ferme par la visite, jamais par un débat au téléphone.'
 
+// Règle fondateur (15/09/2026) : le rendez-vous ne vaut que si le DÉCIDEUR
+// est là — une visite faite devant le gardien ou la bonne ne fait jamais
+// avancer un dossier.
+export const REGLE_VRAI_CLIENT =
+  'La visite se fait avec le client lui-même — jamais le gardien ni la bonne. '
+  + 'Confirmez sa présence au créneau choisi.'
+
 // Statut RÉEL des visites du module `apps/visites` (VISCAD1, distinct des
 // statuts RelanceEtape) — tons de badge SEULEMENT, le LIBELLÉ affiché reste
 // TOUJOURS `statut_libelle` (rendu serveur, jamais réinventé ici).

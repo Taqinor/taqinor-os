@@ -89,7 +89,7 @@ export default function PlanifierVisiteModal({ leadId, open, onOpenChange, onPla
     if (notes.trim()) payload.notes = notes.trim()
     try {
       const res = await crmApi.planifierVisiteLead(leadId, payload)
-      toastSuccess("Visite planifiée — la cadence se met en veille jusqu'à la visite")
+      toastSuccess('Visite planifiée — relances décalées après la visite')
       onPlanifie?.(res?.data?.visite)
       onOpenChange(false)
     } catch (err) {
@@ -122,8 +122,10 @@ export default function PlanifierVisiteModal({ leadId, open, onOpenChange, onPla
         <DialogHeader>
           <DialogTitle>Planifier la visite technique</DialogTitle>
           <DialogDescription>
-            Crée une visite dans le module Visites — la cadence de relance se
-            met en veille jusqu&apos;à son retour.
+            Crée une visite dans le module Visites — les relances en attente
+            sont décalées après la visite (jamais annulées, jamais
+            redémarrées). La visite se fait avec le client lui-même — jamais
+            le gardien ni la bonne : confirmez sa présence au créneau choisi.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={soumettre} noValidate className="flex flex-col gap-3">

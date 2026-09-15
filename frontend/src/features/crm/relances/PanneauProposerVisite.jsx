@@ -9,6 +9,7 @@ import { MapPin, ChevronDown, ChevronRight, MessageCircle } from 'lucide-react'
 import { Button, Badge } from '../../../ui'
 import {
   phaseVisite, PHASE_GUIDANCE, SIGNAUX_ACHAT, REGLE_OBJECTION,
+  REGLE_VRAI_CLIENT,
 } from './visiteGuidance'
 import MessageVisiteDialog from './MessageVisiteDialog'
 
@@ -56,6 +57,7 @@ export default function PanneauProposerVisite({ etape, onPlanifier }) {
             </ul>
           </div>
           <p className="font-medium text-foreground">{REGLE_OBJECTION}</p>
+          <p className="font-medium text-foreground">{REGLE_VRAI_CLIENT}</p>
           <div className="flex flex-wrap justify-end gap-1.5">
             <Button
               type="button" size="sm" variant="outline"

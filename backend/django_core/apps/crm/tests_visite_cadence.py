@@ -561,6 +561,34 @@ class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
                                AUJOURDHUI + datetime.timedelta(days=3),
                                'appel'))
 
+    def test_cette_semaine_repousse_un_debrief_deja_pose_a_demain(self):
+        # Le choix EXPLICITE du terrain gagne dans LES DEUX SENS : le débrief
+        # posé à la planification (demain) est REPOUSSÉ à J+3 quand le client
+        # a demandé « cette semaine » — rappeler avant serait la pression
+        # qu'il vient de refuser. (Sans qualification, l'invariant « jamais
+        # repoussé » reste testé par test_ne_repousse_jamais_un_debrief_deja_du.)
+        with frozen(MAINTENANT):
+            services.appliquer_visite_planifiee(
+                self.lead, self.acteur, AUJOURDHUI)
+            pose = self._debrief(services.VISITE_DEBRIEF_LIBELLE).get()
+            self.assertEqual(
+                pose.due_date,
+                _echeance_attendue(self.company,
+                                   AUJOURDHUI + datetime.timedelta(days=1),
+                                   'appel'))
+            services.appliquer_retour_visite(
+                self.lead, self.acteur, self.RETOUR,
+                qualification=dict(QUALIFICATION, rappel='cette_semaine'))
+        self.assertEqual(
+            self._debrief(services.VISITE_DEBRIEF_LIBELLE).count(), 1)
+        etape = self._debrief(services.VISITE_DEBRIEF_LIBELLE).get()
+        self.assertEqual(etape.pk, pose.pk)
+        self.assertEqual(
+            etape.due_date,
+            _echeance_attendue(self.company,
+                               AUJOURDHUI + datetime.timedelta(days=3),
+                               'appel'))
+
     def test_un_devis_a_reprendre_change_le_libelle(self):
         with frozen(MAINTENANT):
             services.appliquer_retour_visite(

@@ -65,7 +65,7 @@ describe('VISCAD3 PlanifierVisiteModal', () => {
       date_prevue: '2026-09-20', commercial: 7, notes: 'Toit difficile d’accès',
     }))
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(
-      "Visite planifiée — la cadence se met en veille jusqu'à la visite"))
+      'Visite planifiée — relances décalées après la visite'))
     await waitFor(() => expect(onPlanifie).toHaveBeenCalledWith(
       { id: 55, statut: 'brouillon', statut_libelle: 'Planifiée' }))
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))

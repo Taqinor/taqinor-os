@@ -194,7 +194,11 @@ describe('VisiteWizardPage — VISITE-QUALIF', () => {
     expect(screen.getByRole('button', { name: 'Tiède' })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('« Terminer » sans qualification enregistrée déclenche le rappel NON BLOQUANT et termine quand même', async () => {
+  it('« Terminer » sans qualification : le 1er clic NE termine PAS, le 2e (assumé) termine', async () => {
+    // Le retour vers l'historique du lead part au moment de terminer/ — une
+    // qualification enregistrée après coup n'y serait plus. Le 1er clic
+    // s'arrête donc et propose de l'enregistrer ; le bouton devient
+    // « Terminer sans qualification » et seul CE clic assumé termine.
     getVisite.mockResolvedValue({
       data: { ...VISITE_INCOMPLETE, completude: { complet: true, manquants: [] } },
     })
@@ -205,7 +209,11 @@ describe('VisiteWizardPage — VISITE-QUALIF', () => {
     withProviders()
     const bouton = await screen.findByRole('button', { name: /terminer la visite/i })
     await user.click(bouton)
-    expect(toastMessage).toHaveBeenCalledWith('Qualification non enregistrée — enregistrer ?')
+    expect(toastMessage).toHaveBeenCalled()
+    expect(terminerVisite).not.toHaveBeenCalled()
+    const assume = await screen.findByRole(
+      'button', { name: /terminer sans qualification/i })
+    await user.click(assume)
     expect(terminerVisite).toHaveBeenCalledWith('7')
     // Laisse le POST terminer/ (mocké résolu) se résoudre avant la fin du test
     // — sinon la mise à jour d'état arrive après le démontage (act warning).

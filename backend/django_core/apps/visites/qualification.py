@@ -222,3 +222,15 @@ def jours_avant_rappel(qualification, defaut=1):
         return defaut
     return {'demain_matin': 1, 'demain_soir': 1,
             'cette_semaine': 3}.get(qualification.get('rappel'), defaut)
+
+
+def rappel_explicite(qualification):
+    """Vrai si le terrain a explicitement choisi le moment du rappel.
+
+    C'est ce choix — convenu DEVANT le client — qui autorise le CRM à
+    déplacer un débrief déjà posé dans LES DEUX SENS, y compris le repousser
+    (« cette semaine » = ne pas presser). Sans lui, un débrief n'est jamais
+    repoussé."""
+    if not isinstance(qualification, dict):
+        return False
+    return qualification.get('rappel') in CHOIX['rappel']

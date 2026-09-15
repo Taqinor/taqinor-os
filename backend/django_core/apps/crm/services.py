@@ -7674,22 +7674,27 @@ def _plan_du_debrief(qualification):
       chose à faire n'est plus de rappeler pour conclure, c'est de PRÉPARER le
       devis corrigé, et le libellé de l'étape le dit.
 
+    Le troisième élément du tuple dit si le MOMENT est un choix EXPLICITE du
+    terrain : lui seul autorise à déplacer un débrief déjà posé dans les deux
+    sens (voir ``appliquer_retour_visite``).
+
     Lecture du vocabulaire par le module de l'app qui le possède (frontière
     M3). Best-effort : une qualification illisible retombe sur le défaut."""
     if not qualification:
-        return VISITE_DEBRIEF_LIBELLE, 1
+        return VISITE_DEBRIEF_LIBELLE, 1, False
     try:
         from apps.visites.qualification import (
-            devis_a_reprendre, jours_avant_rappel,
+            devis_a_reprendre, jours_avant_rappel, rappel_explicite,
         )
 
         libelle = (VISITE_DEVIS_LIBELLE if devis_a_reprendre(qualification)
                    else VISITE_DEBRIEF_LIBELLE)
-        return libelle, jours_avant_rappel(qualification, defaut=1)
+        return (libelle, jours_avant_rappel(qualification, defaut=1),
+                rappel_explicite(qualification))
     except Exception:  # noqa: BLE001 — jamais bloquant
         logger.warning('VISITE-CADENCE: plan de débrief non déduit',
                        exc_info=True)
-        return VISITE_DEBRIEF_LIBELLE, 1
+        return VISITE_DEBRIEF_LIBELLE, 1, False
 
 
 def _debrief_ouvert(lead):
@@ -7735,7 +7740,7 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
 
     if not _lead_relancable(lead):
         return None
-    libelle, jours = _plan_du_debrief(qualification)
+    libelle, jours, rappel_choisi = _plan_du_debrief(qualification)
     vise = aujourd_hui_local() + datetime.timedelta(days=jours)
     existante = _debrief_ouvert(lead)
     if existante is not None and existante.libelle != libelle:
@@ -7743,9 +7748,14 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
         # vient d'être précisée par le terrain.
         existante.libelle = libelle
         existante.save(update_fields=['libelle'])
-    if existante is not None and existante.due_date <= vise:
-        # Déjà dû plus tôt que ce que le terrain a demandé : on n'y touche
-        # pas. Le repousser serait exactement le contraire du geste attendu.
+    if (existante is not None and existante.due_date <= vise
+            and not rappel_choisi):
+        # Sans choix EXPLICITE du terrain, un débrief déjà dû plus tôt n'est
+        # jamais repoussé. Quand le terrain a convenu d'un moment DEVANT le
+        # client (« cette semaine » = ne pas le presser), c'est SON choix qui
+        # gagne — dans les deux sens : l'écran du wizard promet « le rappel
+        # de closing se calera dessus », et rappeler avant le moment convenu
+        # serait exactement la pression que le client a refusée.
         return existante
     etape = _poser_etape_visite(
         lead, libelle=libelle, canal=RelanceEtape.Canal.APPEL,
