@@ -57,12 +57,22 @@ def _lead(company, owner, is_archived=False, nom='Lead'):
 
 class DemainSeptHeuresCasablancaTests(TestCase):
     def test_calcule_demain_7h_heure_marocaine(self):
-        reference = datetime(2026, 9, 15, 23, 0, tzinfo=ZoneInfo('UTC'))
+        # 20:00 UTC = 21:00 à Casablanca (UTC+1) — on est encore le 15 LOCAL.
+        reference = datetime(2026, 9, 15, 20, 0, tzinfo=ZoneInfo('UTC'))
         resultat = MIGRATION._demain_7h_casablanca(reference)
         local = resultat.astimezone(ZoneInfo('Africa/Casablanca'))
         self.assertEqual(local.date().isoformat(), '2026-09-16')
         self.assertEqual(local.hour, 7)
         self.assertEqual(local.minute, 0)
+
+    def test_apres_minuit_local_demain_est_bien_le_jour_local_suivant(self):
+        # 23:00 UTC le 15 = 00:00 à Casablanca le 16 : « demain » vaut le 17.
+        # C'est le calendrier LOCAL qui décide, jamais le jour UTC.
+        reference = datetime(2026, 9, 15, 23, 0, tzinfo=ZoneInfo('UTC'))
+        resultat = MIGRATION._demain_7h_casablanca(reference)
+        local = resultat.astimezone(ZoneInfo('Africa/Casablanca'))
+        self.assertEqual(local.date().isoformat(), '2026-09-17')
+        self.assertEqual(local.hour, 7)
 
 
 class AudienceRelanceCrmTests(TestCase):

@@ -123,6 +123,15 @@ class ListeVisitesTests(VisiteApiBase):
 class PlanifierVisiteApiTests(VisiteApiBase):
     URL = 'visites/planifier/'
 
+    def setUp(self):
+        super().setUp()
+        # Les POST de cette classe se jouent SOUS ``frozen(MAINTENANT)`` : un
+        # jeton émis au vrai « maintenant » de la machine est déjà expiré (ou
+        # pas encore valide) sous l'horloge gelée → 401 « Token invalide ou
+        # expiré ». On émet donc le jeton À LA MÊME horloge que les requêtes.
+        with frozen(MAINTENANT):
+            self.api = auth(self.commerciale)
+
     def test_cree_et_rend_la_ligne_du_contrat(self):
         with frozen(MAINTENANT):
             reponse = self.api.post(
