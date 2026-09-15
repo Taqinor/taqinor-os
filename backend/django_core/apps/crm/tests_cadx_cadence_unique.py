@@ -171,3 +171,108 @@ class FiletGeneriqueSansIssueTests(CadxBase):
             format='json')
         self.assertEqual(reponse.status_code, 400, reponse.data)
         self.assertIn('outcome', reponse.data.get('erreurs', {}))
+
+
+class TreadmillTests(CadxBase):
+    """TREADMILL-1538 (fondateur 15/09, « stuck at this step over and over ») :
+    l'idempotence de plan porte sur les touches OUVERTES seulement, le cas AR
+    sans devis ERP démarre le suivi de proposition, la matérialisation se
+    borne à la génération (ancre), et la ceinture interdit de re-poser à
+    l'identique la touche qu'on vient de clore."""
+
+    def _devis(self, statut='brouillon', date_envoi=None):
+        from decimal import Decimal
+
+        from apps.ventes.models import Devis
+        from apps.crm.models import Client
+        client = Client.objects.create(
+            company=self.company, nom='Client CADX',
+            email='cadx@example.com')
+        return Devis.objects.create(
+            company=self.company, reference='DEV-CADX-0001', client=client,
+            lead=self.lead, statut=statut, taux_tva=Decimal('20.00'),
+            date_envoi=date_envoi)
+
+    def _filet_envoi(self):
+        return RelanceEtape.objects.create(
+            company=self.lead.company, lead=self.lead, cadence='generique',
+            ordre=1, canal=RelanceEtape.Canal.APPEL,
+            libelle=services.FILET_JOINT_LIBELLE,
+            due_at=timezone.now(), due_date=timezone.now().date())
+
+    def test_relancer_apres_arret_cree_un_nouveau_plan(self):
+        # La recette du 08/09 (« Arrêter la cadence » puis « Relancer »)
+        # butait sur l'idempotence-historique : réparée.
+        services.initialiser_plan_relance(
+            self.lead, self.user, cadence='contact', depart=timezone.now())
+        services.arreter_cadence(self.lead, user=self.user, motif='test')
+        self.assertEqual(self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).count(), 0)
+        relance = services.initialiser_plan_relance(
+            self.lead, self.user, cadence='contact', depart=timezone.now())
+        self.assertTrue(any(
+            e.statut == RelanceEtape.Statut.A_FAIRE for e in relance))
+
+    def test_scenario_1538_fait_sur_filet_demarre_puis_redemarre(self):
+        # Rejeu du lead TEST-16 : AR (devis brouillon) → plan démarré ;
+        # « client a répondu » → plan arrêté ; ENVOI RÉEL du devis → le plan
+        # REDÉMARRE (l'historique clos ne le bloque plus) — et plus jamais un
+        # filet identique re-posé.
+        devis = self._devis(statut='brouillon')
+        filet = self._filet_envoi()
+        services.marquer_etape_relance(
+            filet, self.user, RelanceEtape.Statut.FAIT)
+        ouvertes = self.lead.relance_etapes.filter(
+            cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertEqual(ouvertes.count(), 1)
+        self.assertFalse(self.lead.relance_etapes.filter(
+            cadence='generique', libelle=services.FILET_JOINT_LIBELLE,
+            statut=RelanceEtape.Statut.A_FAIRE).exists())
+        # Le client répond → le moteur annule le plan (équivalent MRY9).
+        services.arreter_cadence(self.lead, user=self.user, motif='joint',
+                                 cadences=['apres_devis', 'generique'])
+        # ENVOI réel du devis (ce que fait le récepteur devis_sent) :
+        relance = services.initialiser_plan_relance(
+            self.lead, self.user, cadence='apres_devis',
+            depart=timezone.now(), devis=devis)
+        self.assertTrue(any(
+            e.statut == RelanceEtape.Statut.A_FAIRE for e in relance),
+            'l’historique clos ne doit jamais bloquer le redémarrage')
+
+    def test_ar_sans_devis_demarre_le_plan_sans_objet_devis(self):
+        filet = self._filet_envoi()
+        services.marquer_etape_relance(
+            filet, self.user, RelanceEtape.Statut.FAIT)
+        ouvertes = self.lead.relance_etapes.filter(
+            cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertEqual(ouvertes.count(), 1)
+        self.assertIsNone(ouvertes.get().devis_id)
+        self.assertFalse(self.lead.relance_etapes.filter(
+            cadence='generique', libelle=services.FILET_JOINT_LIBELLE,
+            statut=RelanceEtape.Statut.A_FAIRE).exists())
+
+    def test_ceinture_jamais_le_meme_libelle_repose(self):
+        etape = services.assurer_prochaine_etape_apres_succes(
+            self.lead, self.user, avec_plan_devis=False,
+            libelle_touche_close=services.FILET_JOINT_LIBELLE)
+        self.assertIsNotNone(etape)
+        self.assertEqual(etape.libelle, services.FILET_REFUS_LIBELLE)
+
+    def test_un_plan_redemarre_fait_naitre_ses_propres_barreaux(self):
+        # Génération (ancre) : les ordres consommés par l'ANCIEN plan clos ne
+        # doivent pas étouffer la naissance des barreaux du nouveau.
+        services.initialiser_plan_relance(
+            self.lead, self.user, cadence='contact', depart=timezone.now())
+        services.arreter_cadence(self.lead, user=self.user, motif='test')
+        relance = services.initialiser_plan_relance(
+            self.lead, self.user, cadence='contact', depart=timezone.now())
+        premiere = next(e for e in relance
+                        if e.statut == RelanceEtape.Statut.A_FAIRE)
+        services.marquer_etape_relance(
+            premiere, self.user, RelanceEtape.Statut.FAIT,
+            outcome='non_joint')
+        suivantes = self.lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE,
+            cadence_depart=premiere.cadence_depart)
+        self.assertTrue(suivantes.exists(),
+                        'le barreau suivant du plan redémarré doit naître')

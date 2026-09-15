@@ -915,9 +915,19 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     deja = lead.relance_etapes.filter(cadence=cadence)
     if cadence == 'apres_devis' and devis is not None:
         deja = deja.filter(devis=devis)
-    existantes = list(deja.order_by('ordre', 'due_date'))
-    if existantes:
-        return existantes
+    # TREADMILL-1538 (fondateur 15/09/2026) — l'idempotence porte sur le plan
+    # OUVERT, jamais sur l'HISTORIQUE : des touches toutes closes (faites/
+    # sautées/annulées) ne bloquent plus un (re)démarrage. C'est ce blocage
+    # qui enfermait le lead TEST-16 : plan après-devis démarré en avance par
+    # « préparer et envoyer », arrêté par « le client a répondu », puis
+    # l'ENVOI RÉEL du devis restait muet (« déjà créé » → rien d'ouvert) et
+    # le filet se re-posait à l'infini. Répare AUSSI « Arrêter la cadence »
+    # puis « Relancer » (recette du 08/09), qui butait sur le même mur.
+    ouvertes_deja = list(
+        deja.filter(statut=RelanceEtape.Statut.A_FAIRE)
+        .order_by('ordre', 'due_date'))
+    if ouvertes_deja:
+        return ouvertes_deja
 
     # CADX — jamais deux cadences en parallèle (voir le bandeau plus haut).
     actives = list(
@@ -1154,6 +1164,11 @@ def materialiser_touche_suivante(etape_close, user=None):
     deja = lead.relance_etapes.filter(cadence=cadence)
     if etape_close.devis_id is not None:
         deja = deja.filter(devis_id=etape_close.devis_id)
+    if etape_close.cadence_depart is not None:
+        # TREADMILL-1538 — un plan REDÉMARRÉ (nouvelle ancre) vit sa vie :
+        # les ordres consommés par une génération PRÉCÉDENTE (closes) ne
+        # doivent pas étouffer la naissance de ses propres barreaux.
+        deja = deja.filter(cadence_depart=etape_close.cadence_depart)
     ordres_pris = set(deja.values_list('ordre', flat=True))
 
     for suivant in range(rang + 1, len(echeances)):
@@ -1348,7 +1363,8 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
         # générique — le suivi de proposition, lui, démarre à l'ENVOI.
         # (Détection hissée en tête de fonction — `touche_envoi_devis`.)
         assurer_prochaine_etape_apres_succes(
-            lead, user, brouillon_compris=touche_envoi_devis)
+            lead, user, brouillon_compris=touche_envoi_devis,
+            libelle_touche_close=(etape.libelle or ''))
     return etape
 
 
@@ -1531,7 +1547,8 @@ def assurer_prochaine_etape_apres_succes(lead, user,
                                          libelle=FILET_JOINT_LIBELLE,
                                          avec_plan_devis=True,
                                          brouillon_compris=False,
-                                         canal_touche=None):
+                                         canal_touche=None,
+                                         libelle_touche_close=''):
     """QJ-INVARIANT (fondateur 07/09/2026) — un lead ACTIF ne reste JAMAIS
     sans prochaine étape : sa liste de relances ne se termine que par le
     parking Froid ou la signature.
@@ -1589,6 +1606,20 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         if ouvertes:
             return ouvertes[0]
         # Plan déjà consommé pour CE devis → l'étape générique ci-dessous.
+    elif brouillon_compris:
+        # TREADMILL-1538 — cas AR intégral : « un devis parti hors ERP compte
+        # aussi ». Aucun devis dans l'ERP, mais l'humain vient de cocher
+        # « préparer et envoyer le devis » : le suivi de proposition démarre
+        # SANS objet devis (les gabarits vivent très bien sans lui — MRY13
+        # omet toute phrase sans valeur réelle), plutôt que de re-poser le
+        # même filet à l'infini.
+        etapes = initialiser_plan_relance(
+            lead, user, cadence='apres_devis', depart=timezone.now(),
+            devis=None)
+        ouvertes = [e for e in etapes
+                    if e.statut == RelanceEtape.Statut.A_FAIRE]
+        if ouvertes:
+            return ouvertes[0]
     if canal_touche in _KINDS_MESSAGE:
         # RELANCE-SUITE — message répondu : on l'appelle, dès le prochain
         # créneau d'appel (maintenant si la fenêtre est ouverte).
@@ -1596,6 +1627,11 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         vise = timezone.now()
     else:
         vise = timezone.now() + datetime.timedelta(days=FILET_JOINT_DELAI_JOURS)
+    if libelle_touche_close and libelle == libelle_touche_close:
+        # CEINTURE anti-tapis-roulant (TREADMILL-1538) : ne JAMAIS re-poser à
+        # l'identique la touche qu'on vient de clore — « Fait » doit toujours
+        # faire avancer. L'étape de DÉCISION prend le relais.
+        libelle = FILET_REFUS_LIBELLE
     quand = horaires.prochain_creneau_appel(vise, lead.company, canal='appel')
     etape = RelanceEtape.objects.create(
         company=lead.company, lead=lead, cadence='generique', ordre=1,
