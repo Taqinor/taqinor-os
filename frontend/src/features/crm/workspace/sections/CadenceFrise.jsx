@@ -145,12 +145,6 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
     return <p className="text-xs text-muted-foreground">Aucune cadence sur ce lead pour l'instant.</p>
   }
 
-  // La PROCHAINE touche à faire — la première À FAIRE dans l'ordre serveur
-  // (cadence puis ordre) — est mise en avant (gras) dans la frise ET rendue
-  // actionnable (MRY32), comme toute touche à faire déjà en retard. Calculée
-  // UNIQUEMENT sur les touches (jamais une visite — ce n'est pas une relance).
-  const prochaineId = etapes.find((e) => e.statut === 'a_faire')?.id ?? null
-
   // VISCAD1 — « la visite devient une étape du suivi commercial » : mêle les
   // touches et les visites dans UNE frise chronologique. Chaque visite se
   // positionne à sa date prévue (ou réalisée, à défaut) ; le tri est STABLE
@@ -173,6 +167,20 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
       passee: visitePassee(v) && !v.retour_disponible,
     })),
   ].sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity))
+
+  // La PROCHAINE touche à faire = la plus PROCHE DANS LE TEMPS — la MÊME
+  // règle que le cockpit « Relances du jour » (CADX 15/09/2026 : la fiche et
+  // le cockpit ne doivent JAMAIS désigner deux gestes différents ; l'ancien
+  // « première à faire dans l'ordre serveur » triait par nom de cadence —
+  // « apres_devis » passait devant un appel « contact » dû aujourd'hui).
+  // Calculée sur les touches seulement (jamais une visite).
+  // (Une touche EN RETARD est déjà actionnable par son propre statut —
+  // MRY32 — : la « prochaine » désigne donc la plus proche À VENIR, pour ne
+  // jamais retirer ses actions à la suite du protocole.)
+  const prochaineId = items.find(
+    (it) => it.kind === 'etape' && it.data.statut === 'a_faire'
+      && !it.data.overdue,
+  )?.data.id ?? null
 
   // QJ-LISIBILITÉ (fondateur 07/09/2026, « all the list is still hashed ») —
   // les entrées PASSÉES (touches faites/sautées, visites terminées/validées)

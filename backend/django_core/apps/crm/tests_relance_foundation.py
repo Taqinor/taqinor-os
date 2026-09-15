@@ -399,8 +399,14 @@ class TestRelanceEtapeAPI(TestCase):
         """CKP2 — l'issue programme le geste suivant : la clore sans elle
         laissait le dossier sans suite. L'erreur NOMME le champ (règle
         fondateur 08/09/2026), jamais un « non enregistré » générique."""
-        etape = self.etapes[0]
-        self.assertEqual(etape.canal, RelanceEtape.Canal.APPEL)
+        # CADX 15/09 : les filets « generique » sont EXEMPTÉS de l'issue
+        # obligatoire (« Fait — passer à la suite » part sans issue par
+        # construction) — la garde se pince donc sur un appel du PROTOCOLE.
+        etape = RelanceEtape.objects.create(
+            company=self.company, lead=self.lead, cadence='contact',
+            ordre=2, canal=RelanceEtape.Canal.APPEL,
+            libelle='Appel de suivi', due_date=self.etapes[0].due_date,
+            due_at=self.etapes[0].due_at)
         resp = self.api_resp.post(
             f'/api/django/crm/relance-etapes/{etape.id}/fait/',
             {'note': 'Ça a sonné'}, format='json')

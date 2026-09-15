@@ -125,4 +125,29 @@ describe('MRY32 — actions directement depuis la frise', () => {
       .toHaveBeenCalledWith(501, { outcome: 'non_joint' }))
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
   })
+
+  it('CADX — deux cadences : la touche actionnable est la plus PROCHE dans le temps, comme le cockpit', async () => {
+    // Scénario Med Den (15/09) : le serveur renvoie l'après-devis (demain)
+    // AVANT le contact (aujourd'hui) — l'ancien « première dans l'ordre
+    // serveur » rendait actionnable la touche de demain pendant que le
+    // cockpit affichait celle d'aujourd'hui. La règle est désormais LA MÊME
+    // des deux côtés : la plus proche échéance.
+    const demain = { ...ETAPES[0], id: 9101, cadence: 'apres_devis', ordre: 7, statut: 'a_faire', libelle: 'Validité de la proposition', due_date: '2099-01-02', due_at: '2099-01-02T07:30:00Z', overdue: false }
+    const aujourdhui = { ...ETAPES[0], id: 9102, cadence: 'contact', ordre: 3, statut: 'a_faire', libelle: 'Appel 2 (répondeur)', due_date: '2099-01-01', due_at: '2099-01-01T08:00:00Z', overdue: false }
+    crmApi.getRelanceEtapesLead.mockResolvedValue({ data: { count: 2, results: [demain, aujourdhui] } })
+    render(<CadenceFrise leadId={348} />)
+    await screen.findByText('Appel 2 (répondeur)')
+    const lis = screen.getAllByTestId('cadence-frise-etape')
+    // Ordre d'affichage : chronologique (le contact d'aujourd'hui d'abord).
+    expect(lis[0]).toHaveTextContent('Appel 2 (répondeur)')
+    // Actionnable : la ligne compacte (boutons Fait/Sauter…) est rendue pour
+    // LA touche la plus proche — et une seule.
+    const boutonsFait = screen.getAllByRole('button', { name: 'Fait' })
+    expect(boutonsFait).toHaveLength(1)
+    // La ligne d'action compacte porte le badge de SA cadence : c'est bien
+    // la touche « contact » d'aujourd'hui qui est actionnable, jamais
+    // l'après-devis de demain.
+    expect(boutonsFait[0].closest('li')).toHaveTextContent('Contact')
+    expect(boutonsFait[0].closest('li')).not.toHaveTextContent('Après devis')
+  })
 })

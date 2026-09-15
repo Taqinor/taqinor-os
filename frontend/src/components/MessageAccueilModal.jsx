@@ -111,7 +111,12 @@ export default function MessageAccueilModal() {
       aria-labelledby="message-accueil-title"
       data-testid="message-accueil"
     >
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-ui-lg">
+      {/* HOTFIX 15/09 (fondateur : « je ne peux pas la fermer ») — un corps
+          plus haut que l'écran poussait « Compris » HORS viewport, sans
+          aucun défilement : carte bornée à 85vh, en-tête et pied FIXES,
+          seul le CORPS défile. Le bouton reste atteignable quel que soit
+          le message, sur téléphone comme sur grand écran. */}
+      <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-border bg-card p-6 shadow-ui-lg">
         <h2
           id="message-accueil-title"
           className="font-display text-lg font-bold tracking-tight text-foreground"
@@ -123,10 +128,15 @@ export default function MessageAccueilModal() {
           {' · '}
           {formatDateHeure(courant.visible_a_partir_de)}
         </p>
-        <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-foreground">
-          {renderCorps(courant.corps, allerVersChemin)}
-        </p>
-        <div className="mt-6 flex justify-end">
+        <div
+          className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1"
+          data-testid="message-accueil-corps"
+        >
+          <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">
+            {renderCorps(courant.corps, allerVersChemin)}
+          </p>
+        </div>
+        <div className="mt-4 flex shrink-0 justify-end border-t border-border pt-4">
           <button
             type="button"
             onClick={compris}
