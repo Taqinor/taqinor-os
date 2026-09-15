@@ -988,11 +988,17 @@ describe('CONSOLIDATION — la hiérarchie des surfaces de prix se lit', () => {
     expect(CODE).toContain('l’une de ces versions');
   });
 
-  it('gammes ET versions sont repliées, et s’ouvrent seules quand aucune taille ne les précède', () => {
-    for (const fold of ['<details class="gammes-fold" open={!tailles}>',
-      '<details class="versions-fold" open={!tailles}>']) {
+  // PREVIEW DENSITE (2026-09-15) — le fondateur a tranche : les gammes et les
+  // versions sont le SECONDAIRE, elles restent donc repliees MEME quand aucune
+  // section de tailles ne les precede (sans tailles, la page ouvrait trois
+  // totaux d'un coup). L'intention du verrou est inchangee — « repliees, rien
+  // n'est supprime » — seule l'ouverture automatique disparait.
+  it('gammes ET versions sont repliées — TOUJOURS, plus seulement quand une taille les précède', () => {
+    for (const fold of ['<details class="gammes-fold">',
+      '<details class="versions-fold">']) {
       expect(CODE, fold).toContain(fold);
     }
+    expect(CODE).not.toContain('open={!tailles}');
   });
 
   it('SAFARI iOS — les <summary> qui se veulent sans puce le sont VRAIMENT', () => {

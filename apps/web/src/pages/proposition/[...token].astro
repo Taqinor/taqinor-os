@@ -3811,8 +3811,19 @@ const signConfig = ok
             {/* ── CALQUE BATTERIE : REMPLACE la courbe nue sur le MÊME graphique
                    journée — jamais un second dessin. Même moteur horaire, mêmes
                    ids (#battery-sim*), même config sérialisée qu'avant. ────── */}
+            {/* PREVIEW DENSITE (2026-09-15) — REPLI, PAS SUPPRESSION : le
+                     simulateur reste le MEME bloc, avec ses ids et sa config
+                     serialisee ; il se replie derriere la question du client.
+                     Le <details> PORTE `data-prod-layer="battery"` : le calque
+                     continue donc d’etre masque/affiche par le bouton
+                     « Avec batterie » exactement comme avant (setLayer). */}
             {showBatterySim && batteryInitial && (
-              <div data-prod-layer="battery" id="battery-sim" data-battery-sim-config={batterySimConfig} hidden={!prodLayers.battery}>
+              <details class="prop-fold" data-prod-layer="battery" hidden={!prodLayers.battery}>
+                <summary class="prop-fold-summary cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden" data-i18n
+                  data-fr="Et si j’ajoute une batterie ? Simulez"
+                  data-en="What if I add a battery? Simulate it"
+                  data-ar="وماذا لو أضفت بطارية؟ جرّب المحاكاة">Et si j’ajoute une batterie ? Simulez</summary>
+              <div id="battery-sim" data-battery-sim-config={batterySimConfig}>
               <p class="v2-body text-sm text-lune-soft" data-i18n
                 data-fr="Déplacez le curseur : voyez ce qu’une ou plusieurs batteries changeraient — plus de solaire gardé chez vous, moins de réseau le soir, et des heures d’autonomie en cas de coupure."
                 data-en="Move the slider: see what one or more batteries would change — more solar kept at home, less grid in the evening, and hours of backup during an outage."
@@ -4064,6 +4075,7 @@ const signConfig = ok
                 Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Le prix batterie affiché est celui de votre devis ; toute autre configuration est chiffrée sur étude.
               </p>
               </div>
+              </details>
             )}
 
             {/* ── CJ1 · PUCES DE SAISON — Hiver / Mi-saison / Été. Elles ne
@@ -4151,6 +4163,11 @@ const signConfig = ok
                    RENDUES ICI par le serveur ; le script ne fait que basculer
                    `hidden`. Il ne calcule AUCUNE économie (test épinglé). */}
             {ecoPeriodes && (
+              <details class="prop-fold mt-4">
+                <summary class="prop-fold-summary cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden" data-i18n
+                  data-fr="Ma production change-t-elle en été ou pendant le Ramadan ? Ce que ça vaut, par jour, par mois, par an"
+                  data-en="Does my production change in summer or during Ramadan? What it is worth, per day, per month, per year"
+                  data-ar="هل يتغير إنتاجي في الصيف أو خلال رمضان؟ قيمة ذلك يومياً وشهرياً وسنوياً">Ma production change-t-elle en été ou pendant le Ramadan ? Ce que ça vaut, par jour, par mois, par an</summary>
               <div data-eco-periodes class="mt-4 grid gap-3 sm:grid-cols-2">
                 {ecoVariantes.map((variante) => (
                   <div class="cine-card rounded-xl p-4" data-eco-carte={variante}>
@@ -4225,6 +4242,7 @@ const signConfig = ok
                     data-ar="تقدير: أرسلوا فواتيركم الاثني عشر لحساب شهرًا بشهر.">Estimation : transmettez vos douze factures pour un calcul mois par mois.</p>
                 )}
               </div>
+              </details>
             )}
 
           </div>
@@ -4449,6 +4467,21 @@ const signConfig = ok
             </div>
           )}
 
+          {/* PREVIEW DENSITE (2026-09-15) — REPLI, PAS SUPPRESSION : la carte
+                 phare des economies (−X %, avant → apres, anneau de couverture)
+                 reste VISIBLE au-dessus ; tout le detail de METHODE se replie
+                 ici dans un <details> natif ferme par defaut, sous la question
+                 que le client se pose. Le repli vit DANS
+                 <section id="financing-headline"> : aucun id, aucune ancre,
+                 aucun data-track-section ne bouge — l’IntersectionObserver
+                 mesure toujours la meme section. */}
+          {(showFalaiseBlock
+            || (curveMode === 'residentiel' && (clientOccupancyChoice || occScenarios || joursTypes))) && (
+            <details class="prop-fold mt-4">
+              <summary class="prop-fold-summary cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden" data-i18n
+                data-fr="Comment ces économies sont-elles calculées ?"
+                data-en="How are these savings calculated?"
+                data-ar="كيف تُحتسب هذه التوفيرات؟">Comment ces économies sont-elles calculées ?</summary>
           {/* ── L-PROP CJ2b-bis (lot 4, 24/08) — falaise tarifaire / régime
                  batterie / décomposition de l'estimation de consommation.
                  CHAQUE sous-bloc est indépendant : une clé absente masque
@@ -4734,6 +4767,8 @@ const signConfig = ok
               </div>
             </div>
           )}
+            </details>
+          )}
 
           {/* PV80 — cette grille répétait les DEUX chiffres désormais posés sous
                  le graphique du chapitre « Votre production » (économie/an et
@@ -4781,6 +4816,14 @@ const signConfig = ok
                ci-dessous) ; le SVG lui-même est marqué aria-hidden ici (le
                nom accessible du bouton vient du libellé « Agrandir »), la
                visionneuse porte le vrai contenu accessible. -->
+          {/* PREVIEW DENSITE (2026-09-15) — la SECTION, son ancre #sld, son
+                 data-track-section et son <h2> restent VISIBLES ; seule la
+                 carte-teaser et ses deux boutons se replient. */}
+          <details class="prop-fold mt-5">
+            <summary class="prop-fold-summary cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden" data-i18n
+              data-fr="Voir le schéma électrique de l’installation"
+              data-en="See the installation’s electrical diagram"
+              data-ar="عرض المخطط الكهربائي للتركيب">Voir le schéma électrique de l’installation</summary>
           <button
             type="button"
             id="sld-teaser"
@@ -4822,6 +4865,7 @@ const signConfig = ok
               Télécharger le schéma (SVG)
             </button>
           </div>
+          </details>
         </section>
 
         <!-- WJ129 — visionneuse plein écran (pan/pinch/molette/double-tap,
@@ -5412,7 +5456,7 @@ const signConfig = ok
                  <details> s'ouvre TOUT SEUL quand aucune section de tailles ne
                  le précède : sans elle, il n'y a pas de hiérarchie à établir et
                  le bloc reste ouvert comme aujourd'hui. */}
-          <details class="gammes-fold" open={!tailles}>
+          <details class="gammes-fold">
             {/* `list-none` SEUL ne suffit pas : iOS Safari continue de dessiner
                 son triangle via ::-webkit-details-marker, et ce <details>-ci est
                 OUVERT par défaut sur le chemin sans tailles — le chevron parasite
@@ -5539,7 +5583,7 @@ const signConfig = ok
                    versions + gammes = le secondaire, replié.
                  Contenu INTACT à l'intérieur ; le <details> s'ouvre tout seul
                  quand aucune section de tailles ne le précède. */}
-          <details class="versions-fold" open={!tailles}>
+          <details class="versions-fold">
             <summary class="cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden">
               <span class="tech-label rule-brass text-brass-300" data-i18n data-fr="Autres versions de ce devis" data-en="Other versions of this quote" data-ar="نسخ أخرى من هذا العرض">Autres versions de ce devis</span>
               <span class="ms-2 text-xs text-lune-faint" data-i18n
@@ -9618,6 +9662,36 @@ const signConfig = ok
 </style>
 
 <style>
+  /* PREVIEW DENSITE (2026-09-15) — accordeons natifs de la longue traine
+     analytique. Zero JS : <details>/<summary> du navigateur. Le <summary>
+     est ecrit comme la QUESTION du client, traduit FR/EN/AR. */
+  .prop-fold-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 0.875rem;
+    background: rgb(255 255 255 / 0.04);
+    padding: 0.75rem 1rem;
+    font-size: 0.9375rem;
+    line-height: 1.35;
+    color: var(--color-brass-300, #f3cc66);
+  }
+  .prop-fold-summary::after {
+    content: "+";
+    flex: none;
+    font-size: 1.125rem;
+    line-height: 1;
+    opacity: 0.75;
+  }
+  .prop-fold[open] > .prop-fold-summary::after {
+    content: "−";
+  }
+  .prop-fold-summary:focus-visible {
+    outline: 2px solid var(--color-brass-300, #f3cc66);
+    outline-offset: 2px;
+  }
   /* P2 — réserve le ratio du graphe (viewBox 360×150 = 2.4:1) AVANT le rendu du
      SVG inline pour garantir zéro CLS. Le SVG enfant occupe 100 % de la largeur,
      hauteur auto ; aucune transition (mouvement réduit respecté par construction). */
