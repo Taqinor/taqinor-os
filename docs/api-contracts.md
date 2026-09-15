@@ -1243,11 +1243,11 @@
 - frontend/src/api/ventesApi.js :: whatsappPreviewDevis -> /api/django/ventes/devis/<>/whatsapp-preview
     detail:texte, devis_statut:inconnu, gamme:inconnu, message:inconnu, phone:inconnu, preview:booleen, url:inconnu, wa_url:inconnu
 - frontend/src/api/visitesApi.js :: createVisite -> /api/django/visites/visites
-    arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:objet, raison_lecture_seule:inconnu, statut:inconnu
+    arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:objet, qualification:inconnu, raison_lecture_seule:inconnu, statut:inconnu
 - frontend/src/api/visitesApi.js :: getMaJournee -> /api/django/visites/ma-journee
     date:texte, en_retard_count:nombre, visites:liste
 - frontend/src/api/visitesApi.js :: getVisite -> /api/django/visites/visites/<>
-    arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:objet, raison_lecture_seule:inconnu, statut:inconnu
+    arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:objet, qualification:inconnu, raison_lecture_seule:inconnu, statut:inconnu
 - frontend/src/api/visitesApi.js :: rechercherLeads -> /api/django/visites/leads-recherche
     results:inconnu
 - frontend/src/features/adminops/adminopsApi.js :: appliquerPackage -> /api/django/adminops/config-packages/appliquer

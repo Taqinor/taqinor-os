@@ -33,7 +33,7 @@ from testkit.time import frozen
 from apps.crm.models import Lead
 from apps.notifications.models import EventType, Notification
 from apps.roles.models import Role
-from apps.visites import selectors, services
+from apps.visites import qualification, selectors, services
 from apps.visites.models import VisiteMedia, VisiteTerrain
 from authentication.models import Company
 
@@ -345,6 +345,44 @@ class TerminerPublieLeRetourTests(VisiteCadenceBase):
         commentaires = [ligne['commentaire']
                         for ligne in retour['commentaires_photos']]
         self.assertEqual(commentaires, ['Disjoncteur au plafond'])
+        # Sans qualification saisie, la clé voyage à ``None`` — jamais un
+        # dict de défauts qui ferait croire à une qualification faite.
+        self.assertIn('qualification', recus[0])
+        self.assertIsNone(recus[0]['qualification'])
+
+    def test_terminer_emporte_la_qualification_quand_elle_existe(self):
+        visite_id = self._visite_complete()
+        reponse = self.api.post(
+            f'/api/django/visites/visites/{visite_id}/qualification/',
+            dict(QUALIFICATION_VALIDE, rappel='cette_semaine'),
+            format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+
+        recus = []
+        from core.events import visite_terminee
+
+        def espion(sender, **kwargs):
+            recus.append(kwargs)
+
+        visite_terminee.connect(espion, dispatch_uid='vcad-espion-qualif')
+        try:
+            reponse = self.api.post(
+                f'/api/django/visites/visites/{visite_id}/terminer/', {},
+                format='json')
+        finally:
+            visite_terminee.disconnect(dispatch_uid='vcad-espion-qualif')
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(recus[0]['qualification']['rappel'],
+                         'cette_semaine')
+
+    def test_terminer_nest_pas_bloque_par_labsence_de_qualification(self):
+        visite_id = self._visite_complete()
+        reponse = self.api.post(
+            f'/api/django/visites/visites/{visite_id}/terminer/', {},
+            format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['statut'], 'terminee')
 
     def test_terminer_previent_ceux_qui_peuvent_valider(self):
         visite_id = self._visite_complete()
@@ -373,6 +411,171 @@ class TerminerPublieLeRetourTests(VisiteCadenceBase):
         self.assertFalse(Notification.objects.filter(
             recipient=sans_droit,
             event_type=EventType.VISITE_TERRAIN_A_VALIDER).exists())
+
+
+QUALIFICATION_VALIDE = {
+    'temperature': 'chaud',
+    'devis': 'convient',
+    'decideur': 'seul',
+    'frein': 'aucun',
+    'declencheur': 'economies',
+    'rappel': 'demain_matin',
+}
+
+
+class QualificationVocabulaireTests(TestCase):
+    """Le vocabulaire FERMÉ, isolé — aucune base n'est nécessaire."""
+
+    def test_accepte_une_saisie_complete(self):
+        propre, erreurs = qualification.valider(dict(QUALIFICATION_VALIDE))
+        self.assertEqual(erreurs, {})
+        self.assertEqual(propre['temperature'], 'chaud')
+        # Les champs libres absents sortent VIDES, jamais ``None``.
+        self.assertEqual(propre['devis_details'], '')
+        self.assertEqual(propre['conseil_closing'], '')
+
+    def test_refuse_une_valeur_inconnue_en_nommant_le_champ(self):
+        saisie = dict(QUALIFICATION_VALIDE, temperature='bouillant')
+        propre, erreurs = qualification.valider(saisie)
+        self.assertIsNone(propre)
+        self.assertEqual(list(erreurs), ['temperature'])
+        self.assertIn('bouillant', erreurs['temperature'][0])
+
+    def test_refuse_un_champ_obligatoire_manquant(self):
+        saisie = dict(QUALIFICATION_VALIDE)
+        del saisie['decideur']
+        propre, erreurs = qualification.valider(saisie)
+        self.assertIsNone(propre)
+        self.assertIn('decideur', erreurs)
+
+    def test_refuse_un_champ_inconnu_plutot_que_de_lignorer(self):
+        saisie = dict(QUALIFICATION_VALIDE, budget='50000')
+        propre, erreurs = qualification.valider(saisie)
+        self.assertIsNone(propre)
+        self.assertIn('budget', erreurs)
+
+    def test_exige_le_detail_quand_le_devis_est_a_reprendre(self):
+        for valeur in ('a_modifier', 'nouveau'):
+            saisie = dict(QUALIFICATION_VALIDE, devis=valeur)
+            propre, erreurs = qualification.valider(saisie)
+            self.assertIsNone(propre, valeur)
+            self.assertIn('devis_details', erreurs)
+
+    def test_accepte_le_detail_quand_il_est_fourni(self):
+        saisie = dict(QUALIFICATION_VALIDE, devis='a_modifier',
+                      devis_details='Ajouter une batterie 5 kWh.')
+        propre, erreurs = qualification.valider(saisie)
+        self.assertEqual(erreurs, {})
+        self.assertEqual(propre['devis_details'],
+                         'Ajouter une batterie 5 kWh.')
+
+    def test_borne_les_champs_libres(self):
+        saisie = dict(QUALIFICATION_VALIDE,
+                      conseil_closing='x' * (qualification.MAX_CONSEIL + 1))
+        propre, erreurs = qualification.valider(saisie)
+        self.assertIsNone(propre)
+        self.assertIn('conseil_closing', erreurs)
+
+    def test_refuse_autre_chose_quun_objet(self):
+        propre, erreurs = qualification.valider('chaud')
+        self.assertIsNone(propre)
+        self.assertIn('qualification', erreurs)
+
+    def test_la_phrase_suit_lordre_du_vocabulaire(self):
+        phrase = qualification.phrase(dict(QUALIFICATION_VALIDE))
+        self.assertEqual(
+            phrase,
+            'Qualification : Client chaud — prêt à signer · Le devis convient '
+            '· Décide seul · Frein : aucun · L\'a accroché : les économies · '
+            'Rappeler demain matin.')
+
+    def test_la_phrase_insere_le_detail_du_devis(self):
+        phrase = qualification.phrase(dict(
+            QUALIFICATION_VALIDE, devis='a_modifier',
+            devis_details='Ajouter une batterie'))
+        self.assertIn('Devis à modifier : Ajouter une batterie', phrase)
+
+    def test_une_qualification_absente_ne_rend_aucune_phrase(self):
+        self.assertEqual(qualification.phrase(None), '')
+        self.assertEqual(qualification.phrase({}), '')
+        self.assertEqual(qualification.conseil(None), '')
+
+    def test_le_moment_de_rappel_dicte_le_delai(self):
+        self.assertEqual(qualification.jours_avant_rappel(
+            dict(QUALIFICATION_VALIDE, rappel='demain_matin')), 1)
+        self.assertEqual(qualification.jours_avant_rappel(
+            dict(QUALIFICATION_VALIDE, rappel='demain_soir')), 1)
+        self.assertEqual(qualification.jours_avant_rappel(
+            dict(QUALIFICATION_VALIDE, rappel='cette_semaine')), 3)
+        self.assertEqual(qualification.jours_avant_rappel(None), 1)
+
+    def test_devis_a_reprendre(self):
+        self.assertFalse(qualification.devis_a_reprendre(
+            dict(QUALIFICATION_VALIDE)))
+        self.assertTrue(qualification.devis_a_reprendre(
+            dict(QUALIFICATION_VALIDE, devis='nouveau')))
+
+
+class QualificationApiTests(VisiteCadenceBase):
+    """L'action ``POST <pk>/qualification/`` — réservée à l'ASSIGNÉ."""
+
+    def setUp(self):
+        super().setUp()
+        self.visite = VisiteTerrain.objects.create(
+            company=self.company, lead=self.lead,
+            commercial=self.commercial, date_prevue=AUJOURDHUI)
+        self.url = (f'/api/django/visites/visites/{self.visite.pk}'
+                    '/qualification/')
+
+    def test_enregistre_et_rend_lagregat(self):
+        reponse = self.api.post(self.url, dict(QUALIFICATION_VALIDE),
+                                format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['qualification']['temperature'],
+                         'chaud')
+        self.visite.refresh_from_db()
+        self.assertEqual(self.visite.qualification['declencheur'],
+                         'economies')
+
+    def test_lagregat_porte_null_tant_que_rien_nest_saisi(self):
+        reponse = self.api.get(
+            f'/api/django/visites/visites/{self.visite.pk}/')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertIn('qualification', reponse.data)
+        self.assertIsNone(reponse.data['qualification'])
+
+    def test_refus_par_champ(self):
+        reponse = self.api.post(
+            self.url, dict(QUALIFICATION_VALIDE, frein='cher'),
+            format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('frein', reponse.data['erreurs'])
+        self.visite.refresh_from_db()
+        self.assertIsNone(self.visite.qualification)
+
+    def test_reservee_a_lassigne(self):
+        reponse = auth(self.bureau).post(
+            self.url, dict(QUALIFICATION_VALIDE), format='json')
+        self.assertEqual(reponse.status_code, 403, reponse.data)
+        self.visite.refresh_from_db()
+        self.assertIsNone(self.visite.qualification)
+
+    def test_refusee_sur_une_visite_validee(self):
+        self.visite.statut = VisiteTerrain.Statut.VALIDEE
+        self.visite.save(update_fields=['statut'])
+        reponse = self.api.post(self.url, dict(QUALIFICATION_VALIDE),
+                                format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('statut', reponse.data['erreurs'])
+
+    def test_isolation_societe(self):
+        etrangere = VisiteTerrain.objects.create(
+            company=self.autre, lead=self.lead_autre,
+            commercial=self.etranger)
+        reponse = self.api.post(
+            f'/api/django/visites/visites/{etrangere.pk}/qualification/',
+            dict(QUALIFICATION_VALIDE), format='json')
+        self.assertEqual(reponse.status_code, 404)
 
 
 class EvenementsEtEventTypesTests(TestCase):

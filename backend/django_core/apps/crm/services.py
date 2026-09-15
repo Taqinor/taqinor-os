@@ -1451,8 +1451,22 @@ VISITE_FILET_LIBELLE = 'Planifier la visite technique convenue'
 VISITE_CONFIRMATION_LIBELLE = 'Confirmer la visite (veille)'
 VISITE_DEBRIEF_LIBELLE = 'Débrief visite — rappeler le client'
 
+#: AMENDEMENT FONDATEUR n°2 (15/09/2026) — quand le terrain rapporte que le
+#: devis est « à modifier » ou « à refaire », le débrief change de NATURE : la
+#: prochaine chose à faire n'est plus de rappeler pour conclure, c'est de
+#: PRÉPARER le devis corrigé. L'étape porte donc un autre libellé — et c'est
+#: l'envoi du nouveau devis qui déclenchera sa propre cadence, par la mécanique
+#: existante ; rien n'est câblé ici pour ça.
+VISITE_DEVIS_LIBELLE = 'Préparer le devis modifié — rappeler le client'
+
+#: Les deux libellés que peut porter l'étape de débrief. Elle est UNE, quel que
+#: soit son nom : la retrouver par ces deux-là (et jamais par un seul) est ce
+#: qui empêche une re-qualification de laisser deux débriefs dans la file.
+_LIBELLES_DEBRIEF = (VISITE_DEBRIEF_LIBELLE, VISITE_DEVIS_LIBELLE)
+
 _LIBELLES_VISITE = frozenset({
     VISITE_FILET_LIBELLE, VISITE_CONFIRMATION_LIBELLE, VISITE_DEBRIEF_LIBELLE,
+    VISITE_DEVIS_LIBELLE,
 })
 
 #: Ces trois étapes portent la cadence ``apres_devis`` (elles suivent bien la
@@ -7595,8 +7609,34 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
 RETOUR_VISITE_MAX = 1500
 
 
-def composer_note_retour_visite(retour, auteur=''):
+def _lignes_qualification(qualification):
+    """Les lignes « Qualification : … » / « Conseil : … », ou une liste vide.
+
+    Le vocabulaire et les libellés vivent dans ``apps.visites.qualification``
+    (frontière M3 : on lit le module de l'app qui POSSÈDE ce vocabulaire, on ne
+    redéclare pas une table de libellés qui dériverait au premier
+    reformulage du fondateur). Best-effort : une qualification illisible ne
+    fait jamais perdre le retour terrain qui la suit."""
+    if not qualification:
+        return []
+    try:
+        from apps.visites.qualification import conseil, phrase
+
+        return [ligne for ligne in (phrase(qualification),
+                                    conseil(qualification)) if ligne]
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning('VISITE-CADENCE: qualification illisible',
+                       exc_info=True)
+        return []
+
+
+def composer_note_retour_visite(retour, auteur='', qualification=None):
     """La note de chatter du RETOUR TERRAIN, tronquée à ``RETOUR_VISITE_MAX``.
+
+    La QUALIFICATION vient EN TÊTE (amendement fondateur n°2 du 15/09/2026) :
+    c'est la ligne qu'un responsable lit en diagonale avant de rappeler —
+    « Client chaud · Le devis convient · Décide seul · … ». Le conseil de
+    closing la suit, puis le retour libre.
 
     Le texte libre du technicien EST l'information : « le tableau est saturé »,
     « accès par le garage » — rien de tout cela n'entre dans un récap de
@@ -7606,7 +7646,7 @@ def composer_note_retour_visite(retour, auteur=''):
     entete = 'Visite technique terminée'
     entete += f' par {auteur}.' if auteur else '.'
     notes = (retour or {}).get('notes') or ''
-    lignes = []
+    lignes = _lignes_qualification(qualification)
     if notes.strip():
         lignes.append(f'{entete} Retour terrain : « {notes.strip()} »')
     else:
@@ -7622,37 +7662,94 @@ def composer_note_retour_visite(retour, auteur=''):
     return corps
 
 
-def appliquer_retour_visite(lead, user, retour, auteur=''):
+def _plan_du_debrief(qualification):
+    """``(libellé, jours)`` du débrief, dictés par la qualification du terrain.
+
+    Sans qualification, le comportement historique : « rappeler le client »,
+    DEMAIN. Avec elle, c'est le terrain qui décide — il a vu le client :
+
+    * le MOMENT vient de ``rappel`` (demain matin/soir ⇒ demain ; cette
+      semaine ⇒ trois jours : le client a dit qu'il ne fallait pas le presser) ;
+    * la NATURE vient de ``devis`` : à modifier ou à refaire ⇒ la prochaine
+      chose à faire n'est plus de rappeler pour conclure, c'est de PRÉPARER le
+      devis corrigé, et le libellé de l'étape le dit.
+
+    Lecture du vocabulaire par le module de l'app qui le possède (frontière
+    M3). Best-effort : une qualification illisible retombe sur le défaut."""
+    if not qualification:
+        return VISITE_DEBRIEF_LIBELLE, 1
+    try:
+        from apps.visites.qualification import (
+            devis_a_reprendre, jours_avant_rappel,
+        )
+
+        libelle = (VISITE_DEVIS_LIBELLE if devis_a_reprendre(qualification)
+                   else VISITE_DEBRIEF_LIBELLE)
+        return libelle, jours_avant_rappel(qualification, defaut=1)
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning('VISITE-CADENCE: plan de débrief non déduit',
+                       exc_info=True)
+        return VISITE_DEBRIEF_LIBELLE, 1
+
+
+def _debrief_ouvert(lead):
+    """L'étape de débrief encore à faire, quel que soit son LIBELLÉ.
+
+    Elle est UNE : la chercher sous ses deux noms est ce qui empêche une
+    re-qualification (« finalement le devis est à modifier ») de laisser deux
+    débriefs ouverts dans la file."""
+    for libelle in _LIBELLES_DEBRIEF:
+        etape = _etape_visite_ouverte(lead, libelle)
+        if etape is not None:
+            return etape
+    return None
+
+
+def appliquer_retour_visite(lead, user, retour, auteur='',
+                            qualification=None):
     """Le technicien est reparti : son retour redescend, et on rappelle.
 
-    1. UNE note de chatter portant le TEXTE LIBRE du terrain (notes + un
-       commentaire de photo par ligne, tronqué) ;
+    1. UNE note de chatter portant, dans cet ordre, la QUALIFICATION du client
+       (une ligne lisible en diagonale), le conseil de closing s'il y en a un,
+       puis le TEXTE LIBRE du terrain (notes + un commentaire de photo par
+       ligne, le tout tronqué) ;
     2. ``Lead.visite_effectuee`` est posé — via ``ecrire_retour_lead_visite``,
        donc avec ses garanties : idempotent, et une note écrite à la main dans
        ``visite_notes`` n'est JAMAIS écrasée ;
-    3. le DÉBRIEF est ramené à DEMAIN. Il existait déjà (posé à la
-       planification) ? On l'avance seulement s'il était plus loin — jamais
-       repoussé. Il n'existe pas (visite faite sans avoir été planifiée dans
-       l'ERP) ? On le pose, à condition que le lead soit encore relançable.
+    3. le DÉBRIEF est calé sur ce que le terrain a rapporté
+       (``_plan_du_debrief``) : DEMAIN par défaut, dans trois jours si le
+       client a demandé « cette semaine », et son libellé devient « préparer le
+       devis modifié » quand le devis doit être repris. Il existait déjà (posé
+       à la planification) ? Il est RENOMMÉ si besoin et AVANCÉ seulement s'il
+       était plus loin — jamais repoussé, jamais dupliqué. Il n'existe pas
+       (visite faite sans avoir été planifiée dans l'ERP) ? On le pose, à
+       condition que le lead soit encore relançable.
 
     ``STAGES.py`` n'est pas touché. Renvoie l'étape de débrief, ou ``None``."""
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
-        body=composer_note_retour_visite(retour, auteur=auteur))
+        body=composer_note_retour_visite(retour, auteur=auteur,
+                                         qualification=qualification))
     ecrire_retour_lead_visite(lead, '')
 
     if not _lead_relancable(lead):
         return None
-    demain = aujourd_hui_local() + datetime.timedelta(days=1)
-    existante = _etape_visite_ouverte(lead, VISITE_DEBRIEF_LIBELLE)
-    if existante is not None and existante.due_date <= demain:
-        # Déjà dû aujourd'hui ou demain : on n'y touche pas. Le repousser
-        # serait exactement le contraire du geste demandé (rappeler VITE).
+    libelle, jours = _plan_du_debrief(qualification)
+    vise = aujourd_hui_local() + datetime.timedelta(days=jours)
+    existante = _debrief_ouvert(lead)
+    if existante is not None and existante.libelle != libelle:
+        # RENOMMER plutôt que recréer : c'est la MÊME étape, dont la nature
+        # vient d'être précisée par le terrain.
+        existante.libelle = libelle
+        existante.save(update_fields=['libelle'])
+    if existante is not None and existante.due_date <= vise:
+        # Déjà dû plus tôt que ce que le terrain a demandé : on n'y touche
+        # pas. Le repousser serait exactement le contraire du geste attendu.
         return existante
     etape = _poser_etape_visite(
-        lead, libelle=VISITE_DEBRIEF_LIBELLE, canal=RelanceEtape.Canal.APPEL,
-        ordre=VISITE_ORDRE_DEBRIEF, quand=demain,
+        lead, libelle=libelle, canal=RelanceEtape.Canal.APPEL,
+        ordre=VISITE_ORDRE_DEBRIEF, quand=vise,
         devis_id=_devis_id_de_la_cadence(lead))
     _recaler_file(lead, user)
     return etape

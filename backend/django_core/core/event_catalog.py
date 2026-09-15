@@ -75,8 +75,9 @@ CATALOG = {
         ['visite', 'lead_id', 'user', 'date_prevue', 'commercial_nom']),
     'visite_terminee': _e(
         'Le technicien a terminé la visite sur place : son retour terrain '
-        '(texte libre + commentaires de photos) redescend sur le lead.',
-        ['visite', 'lead_id', 'user', 'retour']),
+        '(texte libre + commentaires de photos) et sa QUALIFICATION du client '
+        '(vocabulaire fermé) redescendent sur le lead.',
+        ['visite', 'lead_id', 'user', 'retour', 'qualification']),
     'devis_refused': _e(
         'Un devis passe à « refusé ».',
         ['devis', 'user', 'motif_refus', 'marquer_lead_perdu']),

@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/visites/visites/<int:pk>/",
-  "pourquoi": "Groupe VTA (fondateur 2026-09-12) : l'agregat UNIQUE de l'app autonome VISITES (sortie du CRM). Meme forme que le contrat VT d'origine, servie desormais par apps/visites (source de verite : apps/visites/selectors.py::contexte_visite_terrain). PACT10 ETENDU (lecon #96) : les ACTIONS MUTANTES renvoient TOUTES cet agregat complet — POST <pk>/photos/, DELETE <pk>/photos/<media_id>/, PATCH <pk>/mesures/ (400 {\"erreurs\": {champ: message}}), POST <pk>/terminer/ (400 {\"manquants\": [...], \"message\"} tant qu'incomplet), POST <pk>/valider/, POST <pk>/renvoyer/ {photos, mesures, motif}, POST <pk>/assembler-photos/, PATCH <pk>/calage/, et les actions de progression POST <pk>/demarrer-route/ et POST <pk>/arriver/ (horodatage SERVEUR, idempotentes, reservees a l'assigne). Portee DURE : sans visites_valider, toutes les routes ne servent que commercial=self. en_route_le/arrivee_le : null tant que non horodates. Le panneau client+devis reste sans prix_achat (garde testee).",
+  "pourquoi": "Groupe VTA (fondateur 2026-09-12) : l'agregat UNIQUE de l'app autonome VISITES (sortie du CRM). Meme forme que le contrat VT d'origine, servie desormais par apps/visites (source de verite : apps/visites/selectors.py::contexte_visite_terrain). PACT10 ETENDU (lecon #96) : les ACTIONS MUTANTES renvoient TOUTES cet agregat complet — POST <pk>/photos/, DELETE <pk>/photos/<media_id>/, PATCH <pk>/mesures/ (400 {\"erreurs\": {champ: message}}), POST <pk>/terminer/ (400 {\"manquants\": [...], \"message\"} tant qu'incomplet), POST <pk>/valider/, POST <pk>/renvoyer/ {photos, mesures, motif}, POST <pk>/assembler-photos/, PATCH <pk>/calage/, et les actions de progression POST <pk>/demarrer-route/ et POST <pk>/arriver/ (horodatage SERVEUR, idempotentes, reservees a l'assigne). Portee DURE : sans visites_valider, toutes les routes ne servent que commercial=self. en_route_le/arrivee_le : null tant que non horodates. VISITE-CADENCE (fondateur 15/09/2026) : POST <pk>/qualification/ rejoint les actions mutantes — la QUALIFICATION de fin de visite {temperature, devis, devis_details, decideur, frein, declencheur, rappel, conseil_closing}, vocabulaire FERME (apps/visites/qualification.py), reservee a l'ASSIGNE comme les jalons de progression, refusee en 400 {\"erreurs\": {champ: [message]}} sur toute valeur inconnue ou champ obligatoire manquant. La cle `qualification` de l'agregat vaut null tant que rien n'a ete saisi — jamais un objet de valeurs par defaut. terminer n'est PAS bloque par son absence. Le panneau client+devis reste sans prix_achat (garde testee).",
   "exemple": {
     "id": 7,
     "lead": 118,
@@ -206,6 +206,16 @@
       }
     ],
     "en_route_le": null,
-    "arrivee_le": null
+    "arrivee_le": null,
+    "qualification": {
+      "temperature": "chaud",
+      "devis": "a_modifier",
+      "devis_details": "Ajouter une batterie 5 kWh.",
+      "decideur": "conjoint_famille",
+      "frein": "prix",
+      "declencheur": "coupures",
+      "rappel": "demain_matin",
+      "conseil_closing": "Insister sur l'autonomie pendant les coupures."
+    }
   }
 }

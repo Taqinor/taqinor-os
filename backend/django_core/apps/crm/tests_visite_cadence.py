@@ -458,10 +458,159 @@ class RetourVisiteTests(VisiteCadenceBase):
         self.assertEqual(self.lead.stage, avant)
 
 
+#: AMENDEMENT FONDATEUR n°2 — la qualification de fin de visite, telle que le
+#: wizard terrain la produit.
+QUALIFICATION = {
+    'temperature': 'chaud',
+    'devis': 'convient',
+    'decideur': 'seul',
+    'frein': 'aucun',
+    'declencheur': 'economies',
+    'rappel': 'demain_matin',
+    'devis_details': '',
+    'conseil_closing': '',
+}
+
+
+class QualificationDansLeChatterTests(VisiteCadenceBase):
+    """AMENDEMENT n°2 — ce que le responsable lit AVANT de rappeler."""
+
+    RETOUR = {'notes': 'Accès par le garage.', 'commentaires_photos': [
+        {'slot': 'Tableau ouvert', 'commentaire': 'Disjoncteur au plafond'}],
+        'nb_photos': 1}
+
+    def _note(self):
+        return self.lead.activites.filter(
+            body__contains='Qualification :').get()
+
+    def test_la_qualification_ouvre_la_note(self):
+        with frozen(MAINTENANT):
+            services.appliquer_retour_visite(
+                self.lead, self.acteur, self.RETOUR, auteur='Youssef Alami',
+                qualification=dict(QUALIFICATION))
+        corps = self._note().body
+        self.assertTrue(corps.startswith(
+            'Qualification : Client chaud — prêt à signer · Le devis convient '
+            '· Décide seul · Frein : aucun · L\'a accroché : les économies · '
+            'Rappeler demain matin.'), corps)
+        # …puis le retour terrain, inchangé.
+        self.assertIn('Visite technique terminée par Youssef Alami.', corps)
+        self.assertIn('Accès par le garage.', corps)
+        self.assertIn('— Tableau ouvert : Disjoncteur au plafond', corps)
+
+    def test_le_conseil_de_closing_suit_la_qualification(self):
+        with frozen(MAINTENANT):
+            services.appliquer_retour_visite(
+                self.lead, self.acteur, self.RETOUR,
+                qualification=dict(
+                    QUALIFICATION,
+                    conseil_closing="Insister sur l'autonomie."))
+        lignes = self._note().body.split('\n')
+        self.assertTrue(lignes[0].startswith('Qualification :'))
+        self.assertEqual(lignes[1], "Conseil : Insister sur l'autonomie.")
+
+    def test_le_detail_du_devis_entre_dans_la_phrase(self):
+        with frozen(MAINTENANT):
+            services.appliquer_retour_visite(
+                self.lead, self.acteur, self.RETOUR,
+                qualification=dict(QUALIFICATION, devis='a_modifier',
+                                   devis_details='Ajouter une batterie'))
+        self.assertIn('Devis à modifier : Ajouter une batterie',
+                      self._note().body)
+
+    def test_sans_qualification_la_note_reste_celle_du_retour(self):
+        with frozen(MAINTENANT):
+            services.appliquer_retour_visite(
+                self.lead, self.acteur, self.RETOUR)
+        self.assertFalse(self.lead.activites.filter(
+            body__contains='Qualification :').exists())
+        self.assertTrue(self.lead.activites.filter(
+            body__startswith='Visite technique terminée').exists())
+
+
+class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
+    """AMENDEMENT n°2 — c'est le terrain qui décide de la suite."""
+
+    RETOUR = {'notes': '', 'commentaires_photos': [], 'nb_photos': 0}
+
+    def _debrief(self, libelle):
+        return self.lead.relance_etapes.filter(
+            libelle=libelle, statut=RelanceEtape.Statut.A_FAIRE)
+
+    def test_demain_matin_cale_le_debrief_a_demain(self):
+        with frozen(MAINTENANT):
+            services.appliquer_retour_visite(
+                self.lead, self.acteur, self.RETOUR,
+                qualification=dict(QUALIFICATION, rappel='demain_matin'))
+        etape = self._debrief(services.VISITE_DEBRIEF_LIBELLE).get()
+        self.assertEqual(
+            etape.due_date,
+            _echeance_attendue(self.company,
+                               AUJOURDHUI + datetime.timedelta(days=1),
+                               'appel'))
+
+    def test_cette_semaine_cale_le_debrief_a_trois_jours(self):
+        with frozen(MAINTENANT):
+            services.appliquer_retour_visite(
+                self.lead, self.acteur, self.RETOUR,
+                qualification=dict(QUALIFICATION, rappel='cette_semaine'))
+        etape = self._debrief(services.VISITE_DEBRIEF_LIBELLE).get()
+        self.assertEqual(
+            etape.due_date,
+            _echeance_attendue(self.company,
+                               AUJOURDHUI + datetime.timedelta(days=3),
+                               'appel'))
+
+    def test_un_devis_a_reprendre_change_le_libelle(self):
+        with frozen(MAINTENANT):
+            services.appliquer_retour_visite(
+                self.lead, self.acteur, self.RETOUR,
+                qualification=dict(QUALIFICATION, devis='a_modifier',
+                                   devis_details='Ajouter une batterie'))
+        self.assertEqual(
+            self._debrief(services.VISITE_DEVIS_LIBELLE).count(), 1)
+        self.assertEqual(
+            self._debrief(services.VISITE_DEBRIEF_LIBELLE).count(), 0)
+
+    def test_un_nouveau_devis_change_aussi_le_libelle(self):
+        with frozen(MAINTENANT):
+            services.appliquer_retour_visite(
+                self.lead, self.acteur, self.RETOUR,
+                qualification=dict(QUALIFICATION, devis='nouveau',
+                                   devis_details='Refaire en triphasé'))
+        self.assertEqual(
+            self._debrief(services.VISITE_DEVIS_LIBELLE).count(), 1)
+
+    def test_le_debrief_deja_pose_est_RENOMME_jamais_duplique(self):
+        with frozen(MAINTENANT):
+            services.appliquer_visite_planifiee(
+                self.lead, self.acteur,
+                AUJOURDHUI + datetime.timedelta(days=10))
+            pose = self._debrief(services.VISITE_DEBRIEF_LIBELLE).get()
+            services.appliquer_retour_visite(
+                self.lead, self.acteur, self.RETOUR,
+                qualification=dict(QUALIFICATION, devis='a_modifier',
+                                   devis_details='Ajouter une batterie'))
+        self.assertEqual(
+            self._debrief(services.VISITE_DEVIS_LIBELLE).count(), 1)
+        self.assertEqual(
+            self._debrief(services.VISITE_DEBRIEF_LIBELLE).count(), 0)
+        renomme = self._debrief(services.VISITE_DEVIS_LIBELLE).get()
+        self.assertEqual(renomme.pk, pose.pk)
+
+    def test_une_qualification_illisible_retombe_sur_le_defaut(self):
+        with frozen(MAINTENANT):
+            services.appliquer_retour_visite(
+                self.lead, self.acteur, self.RETOUR,
+                qualification={'temperature': 'inconnue'})
+        self.assertEqual(
+            self._debrief(services.VISITE_DEBRIEF_LIBELLE).count(), 1)
+
+
 class RecepteurRetourVisiteTests(VisiteCadenceBase):
     """Le récepteur complet : chatter + fiche + débrief + notification."""
 
-    def _emettre(self, lead=None, user=None):
+    def _emettre(self, lead=None, user=None, qualification=None):
         from core.events import visite_terminee
 
         lead = lead or self.lead
@@ -472,8 +621,21 @@ class RecepteurRetourVisiteTests(VisiteCadenceBase):
             sender=VisiteTerrain, visite=visite, lead_id=lead.id,
             user=self.acteur if user is None else user,
             retour={'notes': 'Accès par le garage.',
-                    'commentaires_photos': [], 'nb_photos': 0})
+                    'commentaires_photos': [], 'nb_photos': 0},
+            qualification=qualification)
         return visite
+
+    def test_la_qualification_traverse_le_bus_jusquau_chatter(self):
+        with frozen(MAINTENANT):
+            self._emettre(qualification=dict(
+                QUALIFICATION, devis='a_modifier',
+                devis_details='Ajouter une batterie'))
+        note = self.lead.activites.filter(
+            body__contains='Qualification :').get()
+        self.assertIn('Devis à modifier : Ajouter une batterie', note.body)
+        self.assertEqual(self.lead.relance_etapes.filter(
+            libelle=services.VISITE_DEVIS_LIBELLE,
+            statut=RelanceEtape.Statut.A_FAIRE).count(), 1)
 
     def test_notifie_le_responsable_du_lead(self):
         with frozen(MAINTENANT):

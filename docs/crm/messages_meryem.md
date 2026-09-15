@@ -134,8 +134,12 @@ FR : Pour verrouiller votre proposition, on peut passer chez vous pour la vérif
 DARIJA : باش نثبتو ليكم العرض، نقدرو نجيو عندكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه ديال السطح، من الهيكل ومن الطابلو ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — [المستشار]
 
 ### visite_confirmation — la veille de la visite, WhatsApp
-FR : Bonjour, on confirme la visite technique prévue [date de la visite] chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
-DARIJA : السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة [تاريخ الزيارة] عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — [المستشار]
+FR : Bonjour, on confirme la visite technique prévue [date de la visite] chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
+DARIJA : السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة [تاريخ الزيارة] عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — [المستشار]
+
+Ordre fondateur du 15/09/2026 : la visite ne se fait qu'avec le VRAI client présent — jamais le gardien ni la bonne. La
+phrase « Votre présence est importante » le demande sans être blessante, en donnant la RAISON (répondre à ses questions
+sur place), qui est aussi la vraie valeur du passage.
 
 Les deux variantes darija ci-dessus sont À FAIRE RELIRE par un locuteur natif : elles suivent le FR validé phrase par
 phrase (aucune promesse ajoutée, aucun chiffre) mais n'ont pas reçu la revue native du 04/09/2026.

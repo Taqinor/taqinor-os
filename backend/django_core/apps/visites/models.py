@@ -111,6 +111,24 @@ class VisiteTerrain(TenantModel):
         null=True, blank=True, verbose_name='Départ vers le site')
     arrivee_le = models.DateTimeField(
         null=True, blank=True, verbose_name='Arrivée sur le site')
+    # ── VISITE-CADENCE — LA QUALIFICATION DE FIN DE VISITE ──────────────────
+    #
+    # Ordre fondateur du 15/09/2026 : le commercial terrain QUALIFIE le client
+    # avant de repartir, et cette lecture remonte dans l'historique du lead.
+    # C'est le seul moment où quelqu'un a vu le client chez lui : « il est
+    # chaud », « il décide avec sa femme », « il compare deux devis » ne
+    # s'écrivent nulle part ailleurs, et c'est précisément ce que le
+    # responsable doit savoir avant de rappeler.
+    #
+    # JSON à VOCABULAIRE FERMÉ (whitelist serveur dans
+    # ``visites.qualification`` : chaque valeur inconnue est refusée en
+    # nommant son champ). Un JSONField plutôt que huit colonnes : c'est une
+    # FICHE de lecture commerciale qui évoluera avec le discours du fondateur,
+    # pas un référentiel sur lequel on requête. NULL tant que le terrain n'a
+    # rien saisi — jamais un dict de valeurs par défaut qui ferait croire à
+    # une qualification faite.
+    qualification = models.JSONField(
+        null=True, blank=True, verbose_name='Qualification de fin de visite')
 
     class Meta:
         # Table PHYSIQUE historique — le move ne déplace AUCUNE donnée.

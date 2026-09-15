@@ -125,8 +125,12 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # fiche — jamais un crochet vide envoyé au client.
     'visite_proposition':
         "Pour verrouiller votre proposition, on peut passer chez vous pour la vérification technique gratuite : le technicien confirme l'orientation du toit, la charpente et le tableau électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
+    # Ordre fondateur du 15/09/2026 : la visite ne se fait qu'avec le VRAI
+    # client présent — jamais le gardien ni la bonne. La phrase le demande sans
+    # le dire de façon blessante : elle donne la RAISON (« répondre à toutes
+    # vos questions »), qui est aussi la vraie valeur du passage.
     'visite_confirmation':
-        "Bonjour, on confirme la visite technique prévue {date_visite} chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+        "Bonjour, on confirme la visite technique prévue {date_visite} chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
 })
 
 # Variantes darija (écriture arabe, revue native le 04/09/2026). Une clé
@@ -168,7 +172,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'visite_proposition':
         "باش نثبتو ليكم العرض، نقدرو نجيو عندكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه ديال السطح، من الهيكل ومن الطابلو ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — {conseiller}",
     'visite_confirmation':
-        "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — {conseiller}",
+        "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — {conseiller}",
 }
 
 # Placeholders AUTORISÉS dans un message de relance (MRY12). Aucun chiffre

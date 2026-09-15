@@ -229,6 +229,10 @@ def contexte_visite_terrain(visite):
         # à partir de CE fait, il ne le devine pas.
         'en_route_le': _visite_horodatage(visite.en_route_le),
         'arrivee_le': _visite_horodatage(visite.arrivee_le),
+        # VISITE-CADENCE — la qualification de fin de visite, telle qu'elle a
+        # été saisie. ``None`` tant que le terrain n'a rien rempli : l'écran
+        # affiche alors le wizard vierge, il ne devine pas des valeurs.
+        'qualification': visite.qualification,
     }
 
 

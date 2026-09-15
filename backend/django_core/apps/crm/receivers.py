@@ -849,13 +849,18 @@ def _suivi_on_visite_planifiee(sender, visite, lead_id, user, date_prevue,
 
 @receiver(visite_terminee, dispatch_uid="crm_suivi_on_visite_terminee")
 def _suivi_on_visite_terminee(sender, visite, lead_id, user, retour,
-                              **kwargs):
+                              qualification=None, **kwargs):
     """Le technicien est reparti : son retour redescend, et on rappelle.
+
+    Sa QUALIFICATION du client ouvre la note (amendement fondateur n°2) et
+    décide de la suite : le débrief se cale sur le moment de rappel qu'il a
+    convenu sur place, et devient « préparer le devis modifié » quand le devis
+    doit être repris.
 
     Le retour TEXTE LIBRE entre dans l'historique du lead (il est souvent la
     seule trace de ce que le client a dit sur place), ``visite_effectuee`` est
-    posé, le débrief est ramené à demain, et le RESPONSABLE du lead reçoit la
-    notification « rappeler sous 24-48 h ».
+    posé, et le RESPONSABLE du lead reçoit la notification « rappeler sous
+    24-48 h ».
 
     La notification part du CRM et de lui seul : c'est lui qui connaît le
     ``owner`` d'un lead — ``apps.visites`` n'a aucun moyen (ni aucun droit) de
@@ -867,7 +872,8 @@ def _suivi_on_visite_terminee(sender, visite, lead_id, user, retour,
         auteur = ''
         if user is not None:
             auteur = (user.get_full_name() or user.username or '')
-        appliquer_retour_visite(lead, user, retour, auteur=auteur)
+        appliquer_retour_visite(lead, user, retour, auteur=auteur,
+                                qualification=qualification)
         _notifier_responsable_retour_visite(lead, user)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(

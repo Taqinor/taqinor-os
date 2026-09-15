@@ -568,9 +568,15 @@ visite_planifiee = django.dispatch.Signal()
 # c'est le TEXTE LIBRE du terrain, celui que ``visite_validee`` ne transporte
 # justement pas (son récap ne porte que des mesures). Sans lui, les remarques
 # du technicien mouraient dans l'app terrain.
-# Abonné dans ce repo : ``crm`` — note de chatter portant les commentaires,
-# ``Lead.visite_effectuee``, recalage du débrief et notification au RESPONSABLE
-# du lead (« rappeler sous 24-48 h »).
+# …et ``qualification`` : la LECTURE COMMERCIALE du terrain, à vocabulaire
+# FERMÉ (``apps.visites.qualification``) — température, sort du devis,
+# décideur, frein, déclencheur, moment du rappel, conseil de closing. ``None``
+# tant que rien n'a été saisi (jamais un dict de défauts, qui ferait croire à
+# une qualification faite). Elle voyage À CÔTÉ du retour parce qu'elle n'est
+# pas du texte : le CRM la rend en une phrase et cale le débrief dessus.
+# Abonné dans ce repo : ``crm`` — note de chatter portant la qualification puis
+# les commentaires, ``Lead.visite_effectuee``, recalage du débrief et
+# notification au RESPONSABLE du lead (« rappeler sous 24-48 h »).
 visite_terminee = django.dispatch.Signal()
 
 # Émis au refus d'un devis (FG44).

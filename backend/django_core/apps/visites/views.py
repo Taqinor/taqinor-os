@@ -320,6 +320,33 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         _marquer_en_cours(visite)
         return self._agregat(visite)
 
+    # ── VISITE-CADENCE — la QUALIFICATION de fin de visite ───────────────────
+    #
+    # Ordre fondateur du 15/09/2026 : avant de repartir, le commercial terrain
+    # dit ce qu'il a compris du client. C'est la seule lecture que quelqu'un
+    # ait faite CHEZ LUI, et c'est elle qui décide de la suite commerciale (le
+    # débrief se cale sur le moment de rappel choisi ici, et devient « préparer
+    # le devis modifié » si le devis doit être repris).
+    #
+    # Réservée à l'ASSIGNÉ, comme les jalons de progression : un valideur voit
+    # la journée de son équipe, il ne qualifie pas un client qu'il n'a pas vu.
+    # Gelée par VT3 comme toute autre écriture.
+
+    @action(detail=True, methods=['post'], url_path='qualification')
+    def qualification(self, request, pk=None):
+        """Enregistre la qualification de fin de visite (vocabulaire fermé)."""
+        visite = self.get_object()
+        refus = self._refus_si_gelee(visite) or self._refus_si_pas_l_assigne(
+            visite)
+        if refus is not None:
+            return refus
+        visite, erreurs = services.enregistrer_qualification(
+            visite, request.data)
+        if erreurs:
+            return Response({'erreurs': erreurs},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return self._agregat(visite)
+
     # ── Transition « terminer » (gate de complétude SERVEUR) ─────────────────
 
     @action(detail=True, methods=['post'], url_path='terminer')

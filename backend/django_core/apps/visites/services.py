@@ -157,6 +157,11 @@ def emettre_visite_terminee(visite, user):
     n'atteignaient donc jamais l'historique du lead. Elles voyagent ici, dans
     ``retour``, composées par le selector de cette app — source unique.
 
+    ``qualification`` voyage À CÔTÉ du retour, pas dedans : ce n'est pas du
+    texte de terrain mais une LECTURE COMMERCIALE à vocabulaire fermé, que le
+    CRM rend en une phrase. ``None`` quand le terrain n'a rien saisi — jamais
+    un dict de défauts qui ferait croire à une qualification faite.
+
     Best-effort : la visite est DÉJÀ terminée ; un abonné en échec ne doit
     jamais faire échouer le geste du terrain.
     """
@@ -168,10 +173,35 @@ def emettre_visite_terminee(visite, user):
     try:
         visite_terminee.send(
             sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
-            user=user, retour=selectors.retour_visite(visite))
+            user=user, retour=selectors.retour_visite(visite),
+            qualification=visite.qualification)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         return None
     return visite
+
+
+def enregistrer_qualification(visite, valeurs):
+    """VISITE-CADENCE — POSE la qualification de fin de visite.
+
+    Renvoie ``(visite, erreurs)`` — même forme que ``enregistrer_mesures`` :
+    ``erreurs`` est le dict ``{champ: [message FR]}`` servi tel quel en 400, et
+    chaque message NOMME son champ. Le vocabulaire et la validation vivent dans
+    ``visites.qualification`` (source unique) : cette fonction ne fait
+    qu'ÉCRIRE le résultat.
+
+    Last-write-wins, comme la saisie de mesures : la qualification POSE des
+    valeurs, jamais un incrément — rejouer deux fois la même saisie donne
+    exactement le même état.
+    """
+    from . import qualification as vocabulaire
+
+    propre, erreurs = vocabulaire.valider(valeurs)
+    if erreurs:
+        return None, erreurs
+    visite.qualification = propre
+    visite.save(update_fields=['qualification'])
+    marquer_en_cours(visite)
+    return visite, {}
 
 
 def planifier_visite(lead, user, date_prevue, commercial=None, notes=''):

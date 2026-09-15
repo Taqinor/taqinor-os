@@ -740,7 +740,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/parametres/models_company.py::CompanyProfile.company` | backend/django_core/apps/parametres/models_company.py:19 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_documents.py::DocumentTemplates.company` | backend/django_core/apps/parametres/models_documents.py:48 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_email.py::EmailTemplate.company` | backend/django_core/apps/parametres/models_email.py:197 | authentication.Company | CASCADE |
-| `backend/django_core/apps/parametres/models_messages.py::MessageTemplate.company` | backend/django_core/apps/parametres/models_messages.py:289 | authentication.Company | CASCADE |
+| `backend/django_core/apps/parametres/models_messages.py::MessageTemplate.company` | backend/django_core/apps/parametres/models_messages.py:293 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_payment_terms.py::ConditionPaiement.company` | backend/django_core/apps/parametres/models_payment_terms.py:26 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_pos.py::ParametresPos.company` | backend/django_core/apps/parametres/models_pos.py:30 | authentication.Company | CASCADE |
 | `backend/django_core/apps/parametres/models_pos.py::BoutiquePos.company` | backend/django_core/apps/parametres/models_pos.py:82 | authentication.Company | CASCADE |
