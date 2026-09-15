@@ -133,7 +133,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/credit/views.py:399` | get_or_create | ReglageCredit.objects | company |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/services.py:200` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py:6119` | get_or_create | MessageTemplate.objects | company, nom |
+| `backend/django_core/apps/crm/services.py:6125` | get_or_create | MessageTemplate.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:2452` | get_or_create | LeadTag.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:2466` | get_or_create | MotifPerte.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:2478` | get_or_create | MotifPerte.objects | company, nom |
@@ -240,9 +240,9 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/notifications/services.py:1022` | get_or_create | AnnonceRelance.objects | annonce, utilisateur |
 | `backend/django_core/apps/notifications/services.py:1071` | get_or_create | ApprovalReminderState.objects | content_type, object_id |
 | `backend/django_core/apps/notifications/services.py:1237` | update_or_create | SnoozedItem.objects | object_id, source, user |
-| `backend/django_core/apps/notifications/views.py:137` | get_or_create | NotificationPreference.objects | event_type, user |
-| `backend/django_core/apps/notifications/views.py:221` | get_or_create | WorkingHoursConfig.objects | company |
-| `backend/django_core/apps/notifications/views.py:436` | update_or_create | PushSubscription.objects | endpoint |
+| `backend/django_core/apps/notifications/views.py:141` | get_or_create | NotificationPreference.objects | event_type, user |
+| `backend/django_core/apps/notifications/views.py:225` | get_or_create | WorkingHoursConfig.objects | company |
+| `backend/django_core/apps/notifications/views.py:533` | update_or_create | PushSubscription.objects | endpoint |
 | `backend/django_core/apps/outillage/views.py:32` | get_or_create | KitOutillage.objects | company, nom |
 | `backend/django_core/apps/paie/services.py:138` | get_or_create | ParametrePaie.objects | company, date_effet, pays |
 | `backend/django_core/apps/paie/services.py:147` | get_or_create | BaremeIR.objects | company, date_effet, pays |

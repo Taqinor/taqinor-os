@@ -14,6 +14,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
+from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsAnyRole,
 )
@@ -378,7 +379,7 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(annonce_compliance_report(annonce))
 
 
-class MessageAccueilViewSet(TenantMixin, viewsets.ModelViewSet):
+class MessageAccueilViewSet(CompanyScopedModelViewSet):
     """MSGACC1 — message d'accueil posé par un responsable/admin pour UN
     employé, affiché en plein écran à sa PREMIÈRE ouverture de l'ERP à partir
     de ``visible_a_partir_de``. CE N'EST PAS UNE NOTIFICATION (voir la
@@ -402,9 +403,14 @@ class MessageAccueilViewSet(TenantMixin, viewsets.ModelViewSet):
     ANY_ROLE_ACTIONS = ['list', 'retrieve', 'a_lire', 'lu']
 
     def get_permissions(self):
+        # Patron d'or (check_action_permission_override) : branchements
+        # explicites par action, puis TOUJOURS le repli ``super()`` — jamais
+        # une liste par défaut qui rendrait morte une permission déclarée.
         if self.action in self.ANY_ROLE_ACTIONS:
             return [IsAnyRole()]
-        return [IsAdminOrResponsableTier()]
+        if self.action in ('create', 'destroy'):
+            return [IsAdminOrResponsableTier()]
+        return super().get_permissions()
 
     def _est_admin_ou_responsable(self, request):
         return IsAdminOrResponsableTier().has_permission(request, self)
@@ -431,8 +437,7 @@ class MessageAccueilViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(
             company=self.request.user.company, auteur=self.request.user)
 
-    @action(detail=False, methods=['get'], url_path='a-lire',
-            permission_classes=[IsAnyRole])
+    @action(detail=False, methods=['get'], url_path='a-lire')
     def a_lire(self, request):
         messages = [
             {
@@ -445,8 +450,7 @@ class MessageAccueilViewSet(TenantMixin, viewsets.ModelViewSet):
         ]
         return Response({'messages': messages})
 
-    @action(detail=True, methods=['post'], url_path='lu',
-            permission_classes=[IsAnyRole])
+    @action(detail=True, methods=['post'], url_path='lu')
     def lu(self, request, pk=None):
         message = self.get_object()
         if message.lu_le is None:

@@ -29,8 +29,8 @@ class Migration(migrations.Migration):
                 ('corps', models.TextField(verbose_name='Corps')),
                 ('lu_le', models.DateTimeField(
                     blank=True, null=True, verbose_name='Lu le')),
-                ('cree_le', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('auteur', models.ForeignKey(
                     blank=True, null=True,
                     on_delete=django.db.models.deletion.SET_NULL,
@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
                     to=settings.AUTH_USER_MODEL, verbose_name='Auteur')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='messages_accueil',
+                    related_name='notifications_messageaccueil_set',
                     to='authentication.company')),
                 ('destinataire', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,

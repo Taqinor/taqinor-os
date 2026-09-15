@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10768, operations: 19066, components: 5733}
+counts: {paths: 10776, operations: 19078, components: 5736}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -6250,6 +6250,12 @@ operations:
 - get /api/django/notifications/holidays/{id}/ -> django_notifications_holidays_retrieve
 - patch /api/django/notifications/holidays/{id}/ -> django_notifications_holidays_partial_update
 - put /api/django/notifications/holidays/{id}/ -> django_notifications_holidays_update
+- get /api/django/notifications/messages-accueil/ -> django_notifications_messages_accueil_list
+- post /api/django/notifications/messages-accueil/ -> django_notifications_messages_accueil_create
+- get /api/django/notifications/messages-accueil/a-lire/ -> django_notifications_messages_accueil_a_lire_retrieve
+- delete /api/django/notifications/messages-accueil/{id}/ -> django_notifications_messages_accueil_destroy
+- get /api/django/notifications/messages-accueil/{id}/ -> django_notifications_messages_accueil_retrieve
+- post /api/django/notifications/messages-accueil/{id}/lu/ -> django_notifications_messages_accueil_lu_create
 - get /api/django/notifications/notifications/ -> django_notifications_notifications_list
 - post /api/django/notifications/notifications/read-all/ -> django_notifications_notifications_read_all_create
 - get /api/django/notifications/notifications/unread-count/ -> django_notifications_notifications_unread_count_retrieve
@@ -15830,6 +15836,12 @@ operations:
 - get /api/v1/notifications/holidays/{id}/ -> v1_notifications_holidays_retrieve
 - patch /api/v1/notifications/holidays/{id}/ -> v1_notifications_holidays_partial_update
 - put /api/v1/notifications/holidays/{id}/ -> v1_notifications_holidays_update
+- get /api/v1/notifications/messages-accueil/ -> v1_notifications_messages_accueil_list
+- post /api/v1/notifications/messages-accueil/ -> v1_notifications_messages_accueil_create
+- get /api/v1/notifications/messages-accueil/a-lire/ -> v1_notifications_messages_accueil_a_lire_retrieve
+- delete /api/v1/notifications/messages-accueil/{id}/ -> v1_notifications_messages_accueil_destroy
+- get /api/v1/notifications/messages-accueil/{id}/ -> v1_notifications_messages_accueil_retrieve
+- post /api/v1/notifications/messages-accueil/{id}/lu/ -> v1_notifications_messages_accueil_lu_create
 - get /api/v1/notifications/notifications/ -> v1_notifications_notifications_list
 - post /api/v1/notifications/notifications/read-all/ -> v1_notifications_notifications_read_all_create
 - get /api/v1/notifications/notifications/unread-count/ -> v1_notifications_notifications_unread_count_retrieve
@@ -20995,6 +21007,8 @@ components:
 - MesSoumissionsPortailLigne
 - MesSoumissionsPortailLigneRequest
 - Message
+- MessageAccueil
+- MessageAccueilRequest
 - MessageAttachment
 - MessageAttachmentKindEnum
 - MessageKindEnum
@@ -21883,6 +21897,7 @@ components:
 - PaginatedMatiereClasseList
 - PaginatedMatiereList
 - PaginatedMenuCantineList
+- PaginatedMessageAccueilList
 - PaginatedMessageList
 - PaginatedMessageReminderList
 - PaginatedMessageTemplateList

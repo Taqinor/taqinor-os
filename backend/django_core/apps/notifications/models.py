@@ -1275,7 +1275,7 @@ class SnoozedItem(TenantModel):
 # d'une heure choisie.
 # =============================================================================
 
-class MessageAccueil(models.Model):
+class MessageAccueil(TenantModel):
     """MSGACC1 — message d'accueil (bonjour/consigne) ciblant un destinataire.
 
     CE N'EST PAS UNE NOTIFICATION (règle fondateur) : aucun ``EventType``,
@@ -1293,9 +1293,8 @@ class MessageAccueil(models.Model):
     doit jamais empêcher la suppression d'un compte — le frontend affiche
     « Direction » à défaut d'auteur)."""
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
-        related_name='messages_accueil')
+    # ``company`` + ``created_at``/``updated_at`` hérités de TenantModel
+    # (SCA4 — jamais la paire multi-société re-hand-rollée).
     destinataire = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition (utilisateur)
         related_name='messages_accueil_recus', verbose_name='Destinataire')
@@ -1307,7 +1306,6 @@ class MessageAccueil(models.Model):
         db_index=True, verbose_name='Visible à partir de')
     corps = models.TextField(verbose_name='Corps')
     lu_le = models.DateTimeField(null=True, blank=True, verbose_name='Lu le')
-    cree_le = models.DateTimeField(auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = "Message d'accueil"

@@ -179,10 +179,10 @@ class MessageAccueilSerializer(serializers.ModelSerializer):
         model = MessageAccueil
         fields = [
             'id', 'destinataire', 'destinataire_nom', 'auteur', 'auteur_nom',
-            'visible_a_partir_de', 'corps', 'lu_le', 'cree_le',
+            'visible_a_partir_de', 'corps', 'lu_le', 'created_at',
         ]
         read_only_fields = [
-            'id', 'auteur', 'auteur_nom', 'destinataire_nom', 'lu_le', 'cree_le',
+            'id', 'auteur', 'auteur_nom', 'destinataire_nom', 'lu_le', 'created_at',
         ]
 
     def validate_destinataire(self, value):

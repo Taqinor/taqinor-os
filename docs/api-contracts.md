@@ -754,6 +754,8 @@
     public_key:inconnu
 - frontend/src/api/notificationsApi.js :: markAllRead -> /api/django/notifications/notifications/read-all
     ids:inconnu, updated:inconnu
+- frontend/src/api/notificationsApi.js :: messagesAccueilALire -> /api/django/notifications/messages-accueil/a-lire
+    messages:inconnu
 - frontend/src/api/notificationsApi.js :: pushSubscribe -> /api/django/notifications/push/subscribe
     detail:texte, id:inconnu
 - frontend/src/api/notificationsApi.js :: pushUnsubscribe -> /api/django/notifications/push/unsubscribe
@@ -3140,6 +3142,8 @@
     cible_type ∈ {departement, role, tous}
 - frontend/src/api/notificationsApi.js :: createHoliday -> /api/django/notifications/holidays  [HolidaySerializer]
     champs: created_at, date, id, nom, recurrent_annuel
+- frontend/src/api/notificationsApi.js :: createMessageAccueil -> /api/django/notifications/messages-accueil  [MessageAccueilSerializer]
+    champs: auteur, auteur_nom, corps, created_at, destinataire, destinataire_nom, id, lu_le, visible_a_partir_de
 - frontend/src/api/notificationsApi.js :: createWhatsAppTemplate -> /api/django/notifications/whatsapp-templates  [WhatsAppTemplateSerializer]
     champs: active, body_fr, categorie, categorie_label, created_at, groupe, id, language, motif_rejet, name, statut_approbation, statut_approbation_label, updated_at
     categorie ∈ {marketing, utility}
@@ -3149,6 +3153,8 @@
     cible_type ∈ {departement, role, tous}
 - frontend/src/api/notificationsApi.js :: deleteHoliday -> /api/django/notifications/holidays/<>  [HolidaySerializer]
     champs: created_at, date, id, nom, recurrent_annuel
+- frontend/src/api/notificationsApi.js :: deleteMessageAccueil -> /api/django/notifications/messages-accueil/<>  [MessageAccueilSerializer]
+    champs: auteur, auteur_nom, corps, created_at, destinataire, destinataire_nom, id, lu_le, visible_a_partir_de
 - frontend/src/api/notificationsApi.js :: deleteRoutingRule -> /api/django/notifications/routing-rules/<>  [NotificationRoutingRuleSerializer]
     champs: created_at, enabled, event_label, event_type, id, target_role, target_role_label, target_user
     event_type ∈ {annonce_published, annonce_read_reminder, api_webhook_desactive, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chantier_materiel_confirme, chat_mention, chat_message, client_contact_request, compte_a_reactiver, consentement_retire_traite, contrat_signe, crm_bilan_hebdo, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, export_reversibilite_pret, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, intervention_annulee, intervention_assignee, intervention_replanifiee, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, lead_non_contacte, lead_rattrape, maintenance_due, maintenance_window_announced, monitoring_rapport, nps_promoteur, paie_echeance_rappel, paie_rib_divergence, paie_run_pret, post_social_rappel, premier_contact_depasse, product_announcement, projet_retard, projet_statut_change, relance_due, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_ecart_prevision_important, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, tranche_a_facturer, transport_etape_retard, usage_quota_seuil_franchi, uxviews_favoris_obsoletes, uxviews_vue_equipe_modifiee, veille_ao_alarme_silence, veille_ao_nouveaux_avis, visite_retour_terrain, visite_terrain_a_refaire, visite_terrain_a_valider, visite_terrain_assignee, visite_terrain_validee, visiteur_appareil_partage, visiteur_concurrent_suspecte, warranty_expiring}
@@ -3161,6 +3167,8 @@
     cible_type ∈ {departement, role, tous}
 - frontend/src/api/notificationsApi.js :: getHolidays -> /api/django/notifications/holidays  [HolidaySerializer]
     champs: created_at, date, id, nom, recurrent_annuel
+- frontend/src/api/notificationsApi.js :: getMessagesAccueil -> /api/django/notifications/messages-accueil  [MessageAccueilSerializer]
+    champs: auteur, auteur_nom, corps, created_at, destinataire, destinataire_nom, id, lu_le, visible_a_partir_de
 - frontend/src/api/notificationsApi.js :: getRoutingRules -> /api/django/notifications/routing-rules  [NotificationRoutingRuleSerializer]
     champs: created_at, enabled, event_label, event_type, id, target_role, target_role_label, target_user
     event_type ∈ {annonce_published, annonce_read_reminder, api_webhook_desactive, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chantier_materiel_confirme, chat_mention, chat_message, client_contact_request, compte_a_reactiver, consentement_retire_traite, contrat_signe, crm_bilan_hebdo, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, export_reversibilite_pret, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, intervention_annulee, intervention_assignee, intervention_replanifiee, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, lead_non_contacte, lead_rattrape, maintenance_due, maintenance_window_announced, monitoring_rapport, nps_promoteur, paie_echeance_rappel, paie_rib_divergence, paie_run_pret, post_social_rappel, premier_contact_depasse, product_announcement, projet_retard, projet_statut_change, relance_due, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_ecart_prevision_important, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, tranche_a_facturer, transport_etape_retard, usage_quota_seuil_franchi, uxviews_favoris_obsoletes, uxviews_vue_equipe_modifiee, veille_ao_alarme_silence, veille_ao_nouveaux_avis, visite_retour_terrain, visite_terrain_a_refaire, visite_terrain_a_valider, visite_terrain_assignee, visite_terrain_validee, visiteur_appareil_partage, visiteur_concurrent_suspecte, warranty_expiring}
