@@ -2265,9 +2265,9 @@ const signConfig = ok
            récapitulatifs concurrents seraient une redondance, pas une aide. -->
       {ok && !tailles && (heroTtc !== null || ecoHero || paybackHero || heroKwc || prodKwh) && (
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" data-recap-mono>
-          <p class="tech-label rule-brass text-brass-300" data-i18n
+          <h2 class="tech-label rule-brass text-brass-300" data-i18n
             data-fr="Votre installation, en un coup d'œil" data-en="Your system at a glance" data-ar="منشأتكم في لمحة">
-            Votre installation, en un coup d'œil</p>
+            Votre installation, en un coup d'œil</h2>
           <div class="cine-card cine-in mt-4 rounded-2xl p-6 shadow-premium sm:p-7"
             style="border-color: rgb(232 181 74 / 0.35)">
             <p class="text-sm text-lune-soft" data-i18n
@@ -2361,10 +2361,10 @@ const signConfig = ok
           data-tailles-token={token}
           data-track-section="tailles"
         >
-          <p class="tech-label rule-brass text-brass-300" data-i18n
+          <h2 class="tech-label rule-brass text-brass-300" data-i18n
             data-fr="Explorer d’autres tailles" data-en="Explore other sizes" data-ar="استكشاف أحجام أخرى">
             Explorer d’autres tailles
-          </p>
+          </h2>
           <p class="mt-3 text-sm text-lune-soft" data-i18n
             data-fr="Votre devis est la taille « Recommandé ». Les deux autres sont là pour comparer : rien de ce que vous touchez ici ne change votre devis ni votre signature."
             data-en="Your quote is the “Recommended” size. The other two are here to compare: nothing you touch here changes your quote or your signature."
@@ -3037,7 +3037,7 @@ const signConfig = ok
            tableau structuré juste en dessous. -->
       {(puissance || nbPanneaux || equipmentGroups.length > 0) && (
         <section id="installation" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre installation" data-en="Your installation" data-ar="تركيبكم">Votre installation</p>
+          <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre installation" data-en="Your installation" data-ar="تركيبكم">Votre installation</h2>
           {/* PV81 — les 3 specs occupaient trois CARTES pleine largeur sur mobile
               (~330 px) pour trois valeurs de quelques caractères. Elles tiennent
               en UNE ligne au-dessus du tableau : c'est une légende, pas un
@@ -3280,7 +3280,7 @@ const signConfig = ok
           ════════════════════════════════════════════════════════════════════ */}
       {isAgricole && agri && (
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-agricole">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre pompage solaire" data-en="Your solar pumping" data-ar="ضخّكم الشمسي">Votre pompage solaire</p>
+          <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre pompage solaire" data-en="Your solar pumping" data-ar="ضخّكم الشمسي">Votre pompage solaire</h2>
           <div class="mt-5 grid gap-4 sm:grid-cols-3">
             {(agri.pompe_cv || agri.pompe_kw) ? (
               <div class="cine-card rounded-xl p-5">
@@ -3387,10 +3387,10 @@ const signConfig = ok
           ════════════════════════════════════════════════════════════════════ */}
       {isAutoconso && auto && (
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-autoconso">
-          <p class="tech-label rule-brass text-brass-300" data-i18n
+          <h2 class="tech-label rule-brass text-brass-300" data-i18n
             data-fr={isCommercial ? 'Votre autoconsommation' : 'Votre autoconsommation industrielle'}
             data-en={isCommercial ? 'Your self-consumption' : 'Your industrial self-consumption'}
-            data-ar={isCommercial ? 'استهلاككم الذاتي' : 'استهلاككم الذاتي الصناعي'}>{isCommercial ? 'Votre autoconsommation' : 'Votre autoconsommation industrielle'}</p>
+            data-ar={isCommercial ? 'استهلاككم الذاتي' : 'استهلاككم الذاتي الصناعي'}>{isCommercial ? 'Votre autoconsommation' : 'Votre autoconsommation industrielle'}</h2>
           <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {auto.taux_autoconso !== null ? (
               <div class="cine-card rounded-xl p-5">
@@ -3538,7 +3538,7 @@ const signConfig = ok
           ════════════════════════════════════════════════════════════════════ */}
       {isCommercial && comArchetype && (
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-commercial-cat">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre secteur" data-en="Your sector" data-ar="قطاعكم">Votre secteur</p>
+          <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre secteur" data-en="Your sector" data-ar="قطاعكم">Votre secteur</h2>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
             <p class="text-2xl" aria-hidden="true">{comArchetype.icon}</p>
             <p class="fig mt-2 text-xl text-lune" data-i18n
@@ -3563,8 +3563,8 @@ const signConfig = ok
            rendu) et dans le script client (au clic). -->
       {showProduction && (
         <section id="production" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-production-config={productionConfig} data-track-section="graphs">
-          <p class="tech-label rule-brass text-brass-300" data-i18n
-            data-fr="Votre production" data-en="Your production" data-ar="إنتاجكم">Votre production</p>
+          <h2 class="tech-label rule-brass text-brass-300" data-i18n
+            data-fr="Votre production" data-en="Your production" data-ar="إنتاجكم">Votre production</h2>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
             {/* Sélecteur d'échelle — masqué quand une seule vue est rendue.
                 Fondateur 2026-08-15 : la JOURNÉE d'abord (onglet ET défaut —
@@ -4380,8 +4380,8 @@ const signConfig = ok
       {!isAgricole && headline && (headline.cumulative || headline.annual || paybackHero || prodKwh || synthese || showCouvertureDonut) && (
         <section id="financing-headline" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16" data-track-section="economies">
           <span id="economies" aria-hidden="true"></span>
-          <p class="tech-label rule-brass mb-5 text-brass-300" data-i18n
-            data-fr="Vos économies" data-en="Your savings" data-ar="توفيراتكم">Vos économies</p>
+          <h2 class="tech-label rule-brass mb-5 text-brass-300" data-i18n
+            data-fr="Vos économies" data-en="Your savings" data-ar="توفيراتكم">Vos économies</h2>
           {/* Accroche « coût de ne rien faire » : le cumul phare. */}
           {headline.cumulative ? (
             <div class="cine-card cine-in rounded-2xl p-6 shadow-premium sm:p-8" style="border-color: rgb(232 181 74 / 0.35)" data-detail-cumul-card>
@@ -5000,7 +5000,7 @@ const signConfig = ok
            6. INTERDITS ICI : avis/étoiles (<StarRating/> démonté), invitation à
               visiter un chantier, assurance, nombre d'installations. */}
       <section id="confiance" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-en="Why trust us" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</p>
+        <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-en="Why trust us" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</h2>
         {/* ── PV81 · LES GARANTIES RACONTENT UNE SEULE HISTOIRE ────────────────
             Trois cartes disaient trois nombres qui ne parlaient pas de la même
             chose : un « 20 à 25 ans » SANS libellé (durée de vie, lu comme une
@@ -5222,7 +5222,7 @@ const signConfig = ok
            complète (objectionFaq) reste dans la lib ; on n’en rend plus que le
            haut du panier — un accordéon de 5 items lit comme un mode d’emploi. -->
       <section id="faq" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-en="Your questions, our answers" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</p>
+        <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-en="Your questions, our answers" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</h2>
         <div class="mt-5 space-y-3">
           {faq.slice(0, 3).map((item) => (
             <details class="cine-card rounded-xl p-5">
@@ -5240,12 +5240,12 @@ const signConfig = ok
            → demande de modification, sans rien intercaler. L'ancre historique
            id="options" est CONSERVÉE (liens internes de la page). -->
       <section id="options" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-track-section="options">
-        <p class="tech-label rule-brass text-brass-300" data-i18n
+        <h2 class="tech-label rule-brass text-brass-300" data-i18n
           data-fr={twoOptions ? 'Vos deux options' : 'Votre prix'}
           data-en={twoOptions ? 'Your two options' : 'Your price'}
           data-ar={twoOptions ? 'خياراكم' : 'ثمنكم'}>
           {twoOptions ? 'Vos deux options' : 'Votre prix'}
-        </p>
+        </h2>
         {/* CONSOLIDATION — quand la section « Explorer d'autres tailles » la
             précède, cette section dit clairement CE QU'ELLE EST : le détail de
             l'offre OFFICIELLE, scénario batterie par scénario batterie. Sans
@@ -5902,7 +5902,7 @@ const signConfig = ok
               </a>
             </div>
             <div class="mt-5 border-t border-white/10 pt-5">
-              <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-en="What happens next?" data-ar="ماذا بعد؟">Et après ?</p>
+              <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-en="What happens next?" data-ar="ماذا بعد؟">Et après ?</h2>
               <ol class="mt-4 grid gap-3 sm:grid-cols-2">
                 {steps.map((s, i) => (
                   <li class="rounded-xl border border-white/10 bg-nuit-800/40 p-4">
@@ -5923,10 +5923,10 @@ const signConfig = ok
                  de son devis) : zéro changement backend, même convention que
                  /parrainage.astro. -->
             <div class="mt-5 border-t border-white/10 pt-5">
-              <p class="tech-label rule-brass text-brass-300" data-i18n
+              <h2 class="tech-label rule-brass text-brass-300" data-i18n
                 data-fr="Partager avec un proche" data-en="Share with someone close to you" data-ar="شاركوا مع أحد المقربين">
                 Partager avec un proche
-              </p>
+              </h2>
               <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
                 data-fr="Un proche envisage aussi le solaire ? Partagez votre lien de parrainage — Taqinor vous en dit merci quand son projet se concrétise."
                 data-en="Know someone else considering solar? Share your referral link — Taqinor says thank you once their project goes through."
@@ -6441,7 +6441,7 @@ const signConfig = ok
            WJ78 — ancre ciblée par le lien « Voir « Et après ? » » du bloc de
            succès (au-dessus, plus haut sur la page). -->
       <section id="etapes-suivantes" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-en="What happens next?" data-ar="ماذا بعد؟">Et après ?</p>
+        <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-en="What happens next?" data-ar="ماذا بعد؟">Et après ?</h2>
         <ol class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {steps.map((s, i) => (
             <li class="cine-card rounded-xl p-5">
