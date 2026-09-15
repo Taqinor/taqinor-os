@@ -6078,3 +6078,72 @@ def surveiller_reutilisation_suspecte(adresse_ip, company):
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
         pass
     return True
+
+
+# ── VISITE-CADENCE — GUIDE INTERNE SEEDÉ DANS LA GED (fondateur 15/09/2026) ──
+#
+# « Rajoute un document qui explique comment ces étapes marchent, et mets-le
+# dans notre module doc. » Le guide PDF (rendu depuis la fixture HTML voisine,
+# contenu vérifié affirmation par affirmation contre le code du lot) est
+# déposé dans la GED de chaque société réelle : cabinet « Documentation »,
+# dossier « Guides ». Idempotent par source (deposit_document) — re-seeder ne
+# crée jamais un doublon.
+
+GUIDE_VISITE_SOURCE_TYPE = 'ged.guide_interne'
+GUIDE_VISITE_SOURCE_ID = 'visite-suivi-commercial'
+GUIDE_VISITE_NOM = 'Guide — La visite technique dans le suivi commercial'
+GUIDE_VISITE_CABINET = 'Documentation'
+GUIDE_VISITE_DOSSIER = 'Guides'
+
+
+def _guide_visite_pdf():
+    """Les octets du PDF committé en fixture (source HTML voisine)."""
+    import pathlib
+
+    chemin = (pathlib.Path(__file__).resolve().parent / 'fixtures'
+              / 'guide_visite_suivi_commercial.pdf')
+    return chemin.read_bytes()
+
+
+def seed_guide_visite(companies=None):
+    """Dépose le guide « visite dans le suivi commercial » pour chaque société.
+
+    ``companies`` : itérable de ``Company`` ; par défaut toutes les sociétés
+    NON-démo (un tenant de démonstration n'a pas besoin du guide interne).
+
+    BEST-EFFORT PAR SOCIÉTÉ : une erreur (stockage objet indisponible, base
+    incomplète…) est journalisée et n'arrête ni les autres sociétés ni
+    l'appelant — la migration de déploiement ne doit JAMAIS faire échouer un
+    ``migrate`` pour un document de confort ; ``manage.py seed_guide_visite``
+    rattrape. Renvoie ``(crees, existants, echecs)``.
+    """
+    from authentication.models import Company
+
+    if companies is None:
+        companies = Company.objects.filter(est_demo=False)
+    pdf = _guide_visite_pdf()
+    crees, existants, echecs = 0, 0, 0
+    for company in companies:
+        try:
+            _, created = deposit_document(
+                company=company, nom=GUIDE_VISITE_NOM,
+                source_type=GUIDE_VISITE_SOURCE_TYPE,
+                source_id=GUIDE_VISITE_SOURCE_ID,
+                contenu_bytes=pdf, mime='application/pdf',
+                filename='guide-visite-suivi-commercial.pdf',
+                description=('Guide interne : quand et comment proposer la '
+                             'visite technique dans le suivi après-devis, la '
+                             'planifier, et exploiter le retour terrain pour '
+                             "l'appel de closing."),
+                cabinet_nom=GUIDE_VISITE_CABINET,
+                folder_nom=GUIDE_VISITE_DOSSIER)
+            if created:
+                crees += 1
+            else:
+                existants += 1
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            echecs += 1
+            logger.warning(
+                'seed_guide_visite : dépôt du guide échoué pour la société '
+                '#%s', getattr(company, 'pk', '?'), exc_info=True)
+    return crees, existants, echecs
