@@ -405,6 +405,24 @@ const heroHasRealPrice = ok ? hasRealPrice(data!, reco ?? 'sans_batterie') : fal
 // (Storydoc : 31 % rebondissent en 10 s). Même chiffre/garde-fou que le CTA
 // collant ci-dessus — jamais recalculé, jamais affiché à 0 MAD.
 const heroTtc = ok && heroHasRealPrice ? optionTtc(data!, reco ?? 'sans_batterie') : null;
+// PREVIEW DENSITE (2026-09-15) - « A PARTIR DE » DESIGNE LE PRIX PLANCHER.
+// Le CTA collant ecrivait « A partir de <TTC de l'option RECOMMANDEE> » des
+// que deux options existaient : quand la recommandation est l'option AVEC
+// batterie (le cas par defaut du moteur), « a partir de » annoncait le prix le
+// PLUS HAUT alors qu'une option moins chere figure sur la meme page - une
+// incoherence de prix, le premier signal d'alarme d'un client marocain. On
+// prend donc le MINIMUM des TTC REELS servis (jamais un chiffre recalcule :
+// optionTtc lit le payload), et quand un seul prix reel existe la mention
+// « a partir de » disparait - le montant est alors exact, pas un plancher.
+const stickyPrixReels: readonly number[] = ok
+  ? (['sans_batterie', 'avec_batterie'] as const)
+      .filter((o) => hasRealPrice(data!, o))
+      .map((o) => optionTtc(data!, o))
+  : [];
+const stickyPlusieursPrix = new Set(stickyPrixReels).size > 1;
+const stickyTtc = stickyPlusieursPrix
+  ? Math.min(...stickyPrixReels)
+  : (ok && heroHasRealPrice ? optionTtc(data!, reco ?? 'sans_batterie') : null);
 // WJ114 — note personnelle du vendeur (lecture défensive, backend pas encore
 // livré aujourd'hui) : n'affiche RIEN tant que l'ERP ne fournit pas ce bloc.
 const seller = ok ? sellerNote(data!) : null;
@@ -2116,6 +2134,24 @@ const signConfig = ok
                 Contacter mon conseiller
               </a>
             )}
+            {/* PREVIEW DENSITE (2026-09-15) - le PDF est ce qui se transfere,
+                s'imprime et se montre a la famille. Avant, le SEUL point de
+                telechargement accessible avant signature vivait APRES le
+                formulaire, ~12 ecrans plus bas. Ce lien secondaire reutilise
+                EXACTEMENT le href de #pdf-download (meme endpoint, meme
+                variante par defaut) : aucun nouveau chemin PDF (regle #4). */}
+            <p class="mt-3">
+              <a
+                id="prop-fold-pdf"
+                href={showPdfVariants ? `${pdfUrl}?variante=${pdfVariantDefault}` : pdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-sm text-brass-300 underline underline-offset-4"
+                data-i18n data-fr="Télécharger le devis (PDF)" data-en="Download the quote (PDF)" data-ar="تحميل العرض (PDF)"
+              >
+                Télécharger le devis (PDF)
+              </a>
+            </p>
           </div>
 
           <!-- WJ114 — note personnelle du vendeur : dégrade à RIEN si absente. -->
@@ -6601,8 +6637,8 @@ const signConfig = ok
           <div class="min-w-0">
             {heroHasRealPrice ? (
               <p class="truncate text-sm text-lune-soft">
-                <span data-i18n data-fr={twoOptions ? 'À partir de ' : ''} data-en={twoOptions ? 'From ' : ''} data-ar={twoOptions ? 'ابتداءً من ' : ''}>{twoOptions ? 'À partir de ' : ''}</span>
-                <span class="lum fig text-lg" dir="ltr">{formatMAD(optionTtc(data!, reco ?? 'sans_batterie'))}</span>
+                <span data-i18n data-fr={stickyPlusieursPrix ? 'À partir de ' : ''} data-en={stickyPlusieursPrix ? 'From ' : ''} data-ar={stickyPlusieursPrix ? 'ابتداءً من ' : ''}>{stickyPlusieursPrix ? 'À partir de ' : ''}</span>
+                <span class="lum fig text-lg" dir="ltr">{formatMAD(stickyTtc ?? 0)}</span>
                 <span class="text-lune-faint" data-i18n data-fr=" TTC" data-en=" incl. tax" data-ar=" شامل الضريبة"> TTC</span>
               </p>
             ) : (
