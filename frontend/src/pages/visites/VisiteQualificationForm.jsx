@@ -17,6 +17,7 @@ import { Button, Card, Input, Label, Textarea } from '../../ui'
 import { toast } from '../../ui/confirm'
 import { cn } from '../../lib/cn'
 import { QUALIFICATION_SCHEMA, QUALIFICATION_DEFAULTS, labelQualification } from './visiteHelpers'
+import MicDicteeButton from '../../components/MicDicteeButton'
 
 const toForm = (qualification) => ({
   temperature: qualification?.temperature ?? QUALIFICATION_DEFAULTS.temperature,
@@ -183,12 +184,20 @@ export default function VisiteQualificationForm({ visiteId, qualification, lectu
         ))}
         <div>
           <Label htmlFor="visite-qualif-conseil">Conseil pour l’appel de closing</Label>
-          <Textarea
-            id="visite-qualif-conseil"
-            value={form.conseil_closing}
-            placeholder="Ce qui l’a fait vibrer, ce qu’il faut éviter…"
-            onChange={(e) => setChamp('conseil_closing', e.target.value)}
-          />
+          <div className="flex items-start gap-2">
+            <Textarea
+              id="visite-qualif-conseil"
+              value={form.conseil_closing}
+              placeholder="Ce qui l’a fait vibrer, ce qu’il faut éviter…"
+              onChange={(e) => setChamp('conseil_closing', e.target.value)}
+              className="flex-1"
+            />
+            <MicDicteeButton
+              onTexte={(texte) => setChamp(
+                'conseil_closing', form.conseil_closing ? `${form.conseil_closing} ${texte}` : texte,
+              )}
+            />
+          </div>
         </div>
         <Button type="submit" size="sm" disabled={saving}>Enregistrer la qualification</Button>
       </form>

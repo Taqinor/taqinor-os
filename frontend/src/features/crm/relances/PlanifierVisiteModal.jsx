@@ -26,6 +26,7 @@ import {
 } from '../../../ui'
 import crmApi from '../../../api/crmApi'
 import { toastSuccess } from '../../../lib/toast'
+import MicDicteeButton from '../../../components/MicDicteeButton'
 
 const FIELD_LABELS = {
   date_prevue: 'Date prévue',
@@ -152,11 +153,17 @@ export default function PlanifierVisiteModal({ leadId, open, onOpenChange, onPla
             </select>
           </FormField>
           <FormField label="Note (optionnelle)" htmlFor="pv-notes" error={erreurs.notes?.[0]}>
-            <Textarea
-              id="pv-notes" rows={2} value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Contexte pour le technicien…"
-            />
+            <div className="flex items-start gap-2">
+              <Textarea
+                id="pv-notes" rows={2} value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Contexte pour le technicien…"
+                className="flex-1"
+              />
+              <MicDicteeButton
+                onTexte={(texte) => setNotes((n) => (n ? `${n} ${texte}` : texte))}
+              />
+            </div>
           </FormField>
           {erreurGenerale && (
             <p role="alert" className="text-sm text-destructive">{erreurGenerale}</p>
