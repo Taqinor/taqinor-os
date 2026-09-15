@@ -6,6 +6,7 @@
 // `apps/crm/contract_samples/visite_terrain.json` (PACT10).
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 beforeAll(() => {
@@ -77,15 +78,17 @@ const VISITE_INCOMPLETE = {
   ],
 }
 
-const { getVisite, terminerVisite } = vi.hoisted(() => ({
+const { getVisite, terminerVisite, qualifierVisite } = vi.hoisted(() => ({
   getVisite: vi.fn(),
   terminerVisite: vi.fn(),
+  qualifierVisite: vi.fn(),
 }))
 
 vi.mock('../../api/visitesApi', () => ({
   default: {
     getVisite: (...a) => getVisite(...a),
     terminerVisite: (...a) => terminerVisite(...a),
+    qualifierVisite: (...a) => qualifierVisite(...a),
     uploadVisitePhoto: vi.fn(),
     deleteVisitePhoto: vi.fn(),
     patchVisiteMesures: vi.fn(),
@@ -94,6 +97,20 @@ vi.mock('../../api/visitesApi', () => ({
     getVisites: vi.fn(async () => ({ data: [] })),
   },
 }))
+
+// VISITE-QUALIF — `toast.message` (le rappel non bloquant de fin de visite)
+// est espionné ; `success`/`error` sont neutralisés aussi (aucun <Toaster/>
+// monté ici — pas besoin des vrais appels sonner pour ces cas).
+const { toastMessage, toastSuccess, toastError } = vi.hoisted(() => ({
+  toastMessage: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn(),
+}))
+vi.mock('../../ui/confirm', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    toast: { ...actual.toast, message: toastMessage, success: toastSuccess, error: toastError },
+  }
+})
 
 import VisiteWizardPage from './VisiteWizardPage'
 
@@ -163,5 +180,75 @@ describe('VisiteWizardPage — VT10', () => {
     expect(panneau).toHaveTextContent('Client Démo')
     const wa = screen.getByRole('link', { name: /whatsapp/i })
     expect(wa).toHaveAttribute('href', 'https://wa.me/212600000000')
+  })
+})
+
+// VISITE-QUALIF — bloc « Qualification client », placé juste avant l'action
+// Terminer : défauts pré-sélectionnés, rappel non bloquant si jamais
+// enregistrée, aucun rappel une fois enregistrée, résumé lecture seule.
+describe('VisiteWizardPage — VISITE-QUALIF', () => {
+  it('affiche le bloc Qualification client avec ses défauts pré-sélectionnés', async () => {
+    withProviders()
+    const bloc = await screen.findByTestId('visite-qualification')
+    expect(bloc).toHaveTextContent('Qualification client')
+    expect(screen.getByRole('button', { name: 'Tiède' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('« Terminer » sans qualification enregistrée déclenche le rappel NON BLOQUANT et termine quand même', async () => {
+    getVisite.mockResolvedValue({
+      data: { ...VISITE_INCOMPLETE, completude: { complet: true, manquants: [] } },
+    })
+    terminerVisite.mockResolvedValue({
+      data: { ...VISITE_INCOMPLETE, statut: 'terminee', completude: { complet: true, manquants: [] } },
+    })
+    const user = userEvent.setup()
+    withProviders()
+    const bouton = await screen.findByRole('button', { name: /terminer la visite/i })
+    await user.click(bouton)
+    expect(toastMessage).toHaveBeenCalledWith('Qualification non enregistrée — enregistrer ?')
+    expect(terminerVisite).toHaveBeenCalledWith('7')
+    // Laisse le POST terminer/ (mocké résolu) se résoudre avant la fin du test
+    // — sinon la mise à jour d'état arrive après le démontage (act warning).
+    await vi.waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+  })
+
+  it('« Terminer » avec une qualification déjà enregistrée ne déclenche AUCUN rappel', async () => {
+    getVisite.mockResolvedValue({
+      data: {
+        ...VISITE_INCOMPLETE,
+        completude: { complet: true, manquants: [] },
+        qualification: {
+          temperature: 'chaud', devis: 'convient', devis_details: '', decideur: 'seul',
+          frein: 'aucun', declencheur: 'economies', rappel: 'demain_matin', conseil_closing: '',
+        },
+      },
+    })
+    terminerVisite.mockResolvedValue({ data: { ...VISITE_INCOMPLETE, statut: 'terminee' } })
+    const user = userEvent.setup()
+    withProviders()
+    const bouton = await screen.findByRole('button', { name: /terminer la visite/i })
+    await user.click(bouton)
+    expect(toastMessage).not.toHaveBeenCalled()
+    expect(terminerVisite).toHaveBeenCalledWith('7')
+    await vi.waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+  })
+
+  it('visite non modifiable (validée) : résumé lecture seule, jamais les chips interactives', async () => {
+    getVisite.mockResolvedValue({
+      data: {
+        ...VISITE_INCOMPLETE,
+        modifiable: false,
+        raison_lecture_seule: 'Visite déjà validée.',
+        completude: { complet: true, manquants: [] },
+        qualification: {
+          temperature: 'froid', devis: 'nouveau', devis_details: 'Toit trop petit', decideur: 'seul',
+          frein: 'timing', declencheur: 'ecologie', rappel: 'cette_semaine', conseil_closing: '',
+        },
+      },
+    })
+    withProviders()
+    const bloc = await screen.findByTestId('visite-qualification')
+    expect(bloc).toHaveTextContent('Froid')
+    expect(screen.queryByRole('button', { name: /enregistrer la qualification/i })).not.toBeInTheDocument()
   })
 })
