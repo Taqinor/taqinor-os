@@ -339,14 +339,27 @@ class FiletJointTests(_Base):
         self.assertEqual(devis.date_validite, attendue)
         self.assertGreater(attendue, premiere_apres.due_date)
 
-    def test_etape_generique_traitee_sans_devis_en_repose_une(self):
-        """QJ-INVARIANT : sans devis, cocher le filet en repose un — la
-        liste de relances ne se termine que par Froid ou Signé."""
+    def test_etape_generique_traitee_sans_devis_demarre_le_suivi(self):
+        """QJ-INVARIANT × TREADMILL-1538 (fondateur 15/09/2026) : cocher le
+        filet « préparer et envoyer le devis » vaut « devis parti » — MÊME
+        sans devis dans l'ERP (« un devis parti hors ERP compte aussi »).
+        Avant : le moteur re-posait le MÊME filet à l'infini (le tapis
+        roulant du lead TEST-16). Désormais : le suivi de proposition
+        démarre (sans objet devis), et l'invariant « jamais zéro prochaine
+        étape » est tenu par LUI — plus jamais par une re-pose à
+        l'identique."""
         self._fait(self.etapes[2], outcome='joint')
         filet = self._filets().get()
         marquer_etape_relance(
             filet, self.acteur, RelanceEtape.Statut.FAIT)
-        self.assertEqual(self._filets().count(), 1)
+        # Plus AUCUN filet identique re-posé…
+        self.assertEqual(self._filets().filter(
+            statut=RelanceEtape.Statut.A_FAIRE).count(), 0)
+        # …c'est le plan après-devis (sans objet devis) qui prend la suite.
+        ouvertes = self.lead.relance_etapes.filter(
+            cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertEqual(ouvertes.count(), 1)
+        self.assertIsNone(ouvertes.get().devis_id)
 
     def test_un_lead_signe_ne_recoit_pas_de_filet(self):
         self.lead.stage = stages.SIGNED
