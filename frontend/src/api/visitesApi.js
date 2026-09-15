@@ -57,6 +57,13 @@ const visitesApi = {
   patchVisiteMesures: (id, categorie, valeurs) =>
     api.patch(`/visites/visites/${id}/mesures/`, { categorie, valeurs }),
 
+  // VISITE-QUALIF — qualification client à un tap, juste avant de terminer.
+  // `payload` : {temperature, devis, devis_details, decideur, frein,
+  // declencheur, rappel, conseil_closing} (clés/valeurs EXACTES du contrat).
+  // 400 possible : `{champ: message}` par champ fautif, affiché SOUS le champ
+  // — jamais un message générique (règle fondateur erreurs).
+  qualifierVisite: (id, payload) => api.post(`/visites/visites/${id}/qualification/`, payload),
+
   // 400 possible : `{manquants:[...], message}` — l'écran affiche la liste du
   // serveur, jamais une re-dérivation locale.
   terminerVisite: (id) => api.post(`/visites/visites/${id}/terminer/`),

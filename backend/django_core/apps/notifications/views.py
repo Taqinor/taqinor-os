@@ -14,17 +14,21 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAdminRole, IsAnyRole
+from core.viewsets import CompanyScopedModelViewSet
+from authentication.permissions import (
+    IsAdminOrResponsableTier, IsAdminRole, IsAnyRole,
+)
 
 from .models import (
-    Annonce, EventType, Holiday, Notification, NotificationPreference,
-    NotificationRoutingRule, PushSubscription, WhatsAppTemplate,
-    WorkingHoursConfig,
+    Annonce, EventType, Holiday, MessageAccueil, Notification,
+    NotificationPreference, NotificationRoutingRule, PushSubscription,
+    WhatsAppTemplate, WorkingHoursConfig,
 )
 from .serializers import (
-    AnnonceSerializer, HolidaySerializer, NotificationPreferenceSerializer,
-    NotificationRoutingRuleSerializer, NotificationSerializer,
-    WhatsAppTemplateSerializer, WorkingHoursConfigSerializer,
+    AnnonceSerializer, HolidaySerializer, MessageAccueilSerializer,
+    NotificationPreferenceSerializer, NotificationRoutingRuleSerializer,
+    NotificationSerializer, WhatsAppTemplateSerializer,
+    WorkingHoursConfigSerializer,
 )
 from .services import (
     acknowledge_annonce, annonce_compliance_report, merged_preferences,
@@ -373,6 +377,99 @@ class AnnonceViewSet(TenantMixin, viewsets.ModelViewSet):
         """Rapport de conformité : qui a confirmé, quand, qui manque (admin)."""
         annonce = self.get_object()
         return Response(annonce_compliance_report(annonce))
+
+
+class MessageAccueilViewSet(CompanyScopedModelViewSet):
+    """MSGACC1 — message d'accueil posé par un responsable/admin pour UN
+    employé, affiché en plein écran à sa PREMIÈRE ouverture de l'ERP à partir
+    de ``visible_a_partir_de``. CE N'EST PAS UNE NOTIFICATION (voir la
+    docstring du modèle) : aucun canal, aucun EventType.
+
+    - ``a-lire`` (tout rôle) : mes messages dus et non lus (destinataire =
+      moi), le plus ancien d'abord — c'est le SEUL endpoint que consomme la
+      modale d'accueil.
+    - ``lu`` (tout rôle, réservé au DESTINATAIRE) : idempotent.
+    - Création : réservée au palier Responsable/Admin
+      (``IsAdminOrResponsableTier``) ; ``company``/``auteur`` posés côté
+      serveur.
+    - ``list`` (écran de gestion) : mes messages envoyés, ou ceux de toute la
+      société pour un Responsable/Admin.
+    - Suppression : auteur ou Responsable/Admin, UNIQUEMENT si non lu.
+    Aucune mise à jour (PUT/PATCH) : un message d'accueil s'envoie ou se
+    supprime, il ne se corrige pas après coup."""
+    queryset = MessageAccueil.objects.all()
+    serializer_class = MessageAccueilSerializer
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+    ANY_ROLE_ACTIONS = ['list', 'retrieve', 'a_lire', 'lu']
+
+    def get_permissions(self):
+        # Patron d'or (check_action_permission_override) : branchements
+        # explicites par action, puis TOUJOURS le repli ``super()`` — jamais
+        # une liste par défaut qui rendrait morte une permission déclarée.
+        if self.action in self.ANY_ROLE_ACTIONS:
+            return [IsAnyRole()]
+        if self.action in ('create', 'destroy'):
+            return [IsAdminOrResponsableTier()]
+        return super().get_permissions()
+
+    def _est_admin_ou_responsable(self, request):
+        return IsAdminOrResponsableTier().has_permission(request, self)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'a_lire':
+            now = timezone.now()
+            return qs.filter(
+                destinataire=self.request.user,
+                visible_a_partir_de__lte=now,
+                lu_le__isnull=True,
+            )
+        if self.action == 'lu':
+            # Réservé au destinataire : jamais l'auteur ni un admin ne
+            # peuvent poser `lu_le` à la place de l'intéressé.
+            return qs.filter(destinataire=self.request.user)
+        if self._est_admin_ou_responsable(self.request):
+            # Écran de gestion — un Responsable/Admin voit toute la société.
+            return qs
+        return qs.filter(auteur=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='a-lire')
+    def a_lire(self, request):
+        messages = [
+            {
+                'id': m.id,
+                'auteur_nom': m.auteur.username if m.auteur_id else None,
+                'visible_a_partir_de': m.visible_a_partir_de,
+                'corps': m.corps,
+            }
+            for m in self.get_queryset().order_by('visible_a_partir_de', 'id')
+        ]
+        return Response({'messages': messages})
+
+    @action(detail=True, methods=['post'], url_path='lu')
+    def lu(self, request, pk=None):
+        message = self.get_object()
+        if message.lu_le is None:
+            message.lu_le = timezone.now()
+            message.save(update_fields=['lu_le'])
+        return Response(self.get_serializer(message).data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        est_admin = self._est_admin_ou_responsable(request)
+        if instance.auteur_id != request.user.id and not est_admin:
+            return Response(
+                {'detail': "Réservé à l'auteur ou à un responsable/admin."},
+                status=status.HTTP_403_FORBIDDEN)
+        if instance.lu_le is not None:
+            return Response(
+                {'detail': 'Ce message a déjà été lu — suppression impossible.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

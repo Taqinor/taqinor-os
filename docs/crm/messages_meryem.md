@@ -3,9 +3,10 @@
 Source de vérité des gabarits `parametres.MessageTemplate` que MRY12 seed dans `MESSAGE_TEMPLATE_DEFAULTS`
 (`corps_fr` = colonne FR ; `corps_darija` = colonne darija, écriture arabe, revue native le 04/09/2026).
 Règles : aucun chiffre qui ne vienne du devis ou du lead ; placeholders autorisés `{civilite} {nom} {prenom} {ville}
-{reference} {lien} {lien_rdv} {date_validite} {conseiller} {mois_preuve} {ville_preuve} {lien_preuve} {puissance_preuve}` ; le crochet
+{reference} {lien} {lien_rdv} {date_validite} {conseiller} {mois_preuve} {ville_preuve} {lien_preuve} {puissance_preuve}
+{date_visite}` ; le crochet
 `[…]` des textes ci-dessous devient le placeholder correspondant au seed (`M. [Prénom]` → `{prenom}`, `[date]` →
-`{date_validite}`, `[référence]` → `{reference}`, `[lien preuve]` → `{lien_preuve}` (AVANT la règle générale), `[puissance preuve]` → `{puissance_preuve}`,
+`{date_validite}`, `[date de la visite]`/`[تاريخ الزيارة]` → `{date_visite}`, `[référence]` → `{reference}`, `[lien preuve]` → `{lien_preuve}` (AVANT la règle générale), `[puissance preuve]` → `{puissance_preuve}`,
 `[lien …]` → `{lien}` (dont `[lien de votre proposition]`, J6 — relevé fondateur 08/09/2026 : la touche « garanties » partait sans aucun lien), `[mois]` → `{mois_preuve}`, `[ville]` → `{ville_preuve}`, `[Conseiller]` → `{conseiller}`,
 `[المستشار]` → `{conseiller}`) ; ce qui n'a pas de placeholder (montant, raison réelle, jour/heure de rappel) reste à
 saisir par Meryem au moment de l'envoi — jamais un défaut. Une phrase dont le placeholder est vide est OMISE au rendu
@@ -121,6 +122,29 @@ FR : Bonjour M. [Prénom], j'espère que l'installation vous donne satisfaction.
 ### parrainage
 FR : Si quelqu'un autour de vous, un voisin, un frère, un collègue, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; il aura la même étude gratuite, et on convient ensemble d'une récompense pour vous.
 
+## La visite technique, étape du suivi (ordre fondateur 15/09/2026)
+
+La visite technique n'est pas un préalable à l'étude : elle se place APRÈS l'envoi du devis, comme outil de closing,
+pendant que le client est chaud. Deux textes seulement — la PROPOSER, puis la CONFIRMER la veille. Le retour du
+terrain, lui, n'est pas un message client : il redescend dans l'historique du lead et déclenche le rappel du
+responsable sous 24-48 h.
+
+### visite_proposition — après l'envoi du devis, WhatsApp
+FR : Pour verrouiller votre proposition, on peut passer chez vous pour la vérification technique gratuite : le technicien confirme l'orientation du toit, la charpente et le tableau électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
+DARIJA : باش نثبتو ليكم العرض، نقدرو نجيو عندكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه ديال السطح، من الهيكل ومن الطابلو ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — [المستشار]
+
+### visite_confirmation — la veille de la visite, WhatsApp
+FR : Bonjour, on confirme la visite technique prévue [date de la visite] chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
+DARIJA : السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة [تاريخ الزيارة] عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — [المستشار]
+
+Ordre fondateur du 15/09/2026 : la visite ne se fait qu'avec le VRAI client présent — jamais le gardien ni la bonne. La
+phrase « Votre présence est importante » le demande sans être blessante, en donnant la RAISON (répondre à ses questions
+sur place), qui est aussi la vraie valeur du passage.
+
+Les deux variantes darija ci-dessus sont À FAIRE RELIRE par un locuteur natif : elles suivent le FR validé phrase par
+phrase (aucune promesse ajoutée, aucun chiffre) mais n'ont pas reçu la revue native du 04/09/2026.
+
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.
+(`visite_proposition` et `visite_confirmation`, eux, ont reçu leur texte validé le 15/09/2026 — section ci-dessus.)
 Les versions darija absentes ci-dessus (après devis, réveils A1/A3/B, après signature) retombent sur le FR (`get_corps`).

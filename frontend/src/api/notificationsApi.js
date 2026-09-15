@@ -66,6 +66,20 @@ const notificationsApi = {
     api.post(`/notifications/whatsapp-templates/${id}/decision/`, {
       statut_approbation, motif_rejet,
     }),
+
+  // ── MSGACC1 — Messages d'accueil (PAS des notifications, cf. backend). ──
+  // Modale d'accueil : mes messages dus et non lus.
+  messagesAccueilALire: () => api.get('/notifications/messages-accueil/a-lire/'),
+  marquerMessageAccueilLu: (id) =>
+    api.post(`/notifications/messages-accueil/${id}/lu/`),
+  // Écran d'envoi (Paramètres) : mes envois (ou toute la société si
+  // Responsable/Admin), créer, supprimer (refusé côté serveur si déjà lu).
+  getMessagesAccueil: (params) =>
+    api.get('/notifications/messages-accueil/', { params }),
+  createMessageAccueil: (data) =>
+    api.post('/notifications/messages-accueil/', data),
+  deleteMessageAccueil: (id) =>
+    api.delete(`/notifications/messages-accueil/${id}/`),
 }
 
 export default notificationsApi

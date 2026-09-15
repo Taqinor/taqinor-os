@@ -1027,7 +1027,16 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # (Responsable :509, Commercial resp :641, Commercial :682,
             # Viewer :807) portent déjà crm_voir.
             return [HasPermissionOrLegacy('crm_voir')()]
-        elif self.action in ('historique', 'jalons_devis'):
+        elif self.action in ('historique', 'jalons_devis',
+                             # VISITE-CADENCE — les deux LECTURES de la visite
+                             # depuis la fiche lead. Listées ICI parce que
+                             # get_permissions() PRIME sur le
+                             # permission_classes de l'@action : posée
+                             # seulement là-bas, la garde `crm_voir` serait
+                             # MORTE et les deux actions retomberaient sur le
+                             # `return [IsAdminRole()]` final — 403 pour la
+                             # Commerciale, qui est justement celle qui lit.
+                             'visites', 'message_visite'):
             # CRX19/CRX37 — l'historique COMPLET d'un lead (et ses jalons
             # devis, qui sont le même historique vu côté ventes) exige
             # ``crm_voir``. get_permissions() PRIME sur le permission_classes
@@ -1037,7 +1046,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # `return [IsAdminRole()]` final (403 pour la Commerciale).
             return [HasPermissionOrLegacy('crm_voir')()]
         elif self.action in (
-                'merge', 'convertir_client', 'epingler', 'desepingler'):
+                'merge', 'convertir_client', 'epingler', 'desepingler',
+                # VISITE-CADENCE — POSER un rendez-vous de visite est une
+                # ÉCRITURE commerciale ordinaire (`crm_modifier`), pas un
+                # geste d'administration : sans cette ligne l'action
+                # retomberait sur IsAdminRole et la Commerciale — qui est
+                # justement celle qui cale la visite après l'envoi du devis —
+                # serait refusée.
+                'planifier_visite'):
             # VX199 — fusion / conversion de lead : permission ERP FINE
             # (crm_modifier), pas le grossier IsResponsableOrAdmin. get_permissions
             # PRIME sur le permission_classes de l'@action, donc la garde fine
@@ -2049,6 +2065,114 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'results': serializer.data,
         })
 
+    # ── VISITE-CADENCE — LA VISITE TECHNIQUE, VUE DEPUIS LA FICHE LEAD ───────
+    #
+    # Ordre fondateur du 15/09/2026 : la visite est une ÉTAPE DU SUIVI
+    # COMMERCIAL, proposée APRÈS l'envoi du devis. Elle doit donc se lire et se
+    # PLANIFIER depuis la fiche du lead, pas seulement depuis l'app terrain.
+    #
+    # Ces trois routes appartiennent au CRM et portent SA portée de visibilité
+    # (``crm_voir`` / ``crm_modifier``) — délibérément PAS la portée dure « mes
+    # visites » de l'app terrain (VTA6), qui reste intacte sur SES routes : la
+    # recopier ici cacherait à un responsable CRM les visites de son propre
+    # dossier. La lecture des visites passe par le SÉLECTEUR de ``apps.visites``
+    # (frontière M3) : ce module n'importe jamais ses modèles.
+
+    @extend_schema(responses=inline_serializer('CrmLeadVisites', {
+        'visites': serializers.ListField(child=serializers.DictField()),
+    }))
+    @action(detail=True, methods=['get'], url_path='visites',
+            permission_classes=[HasPermissionOrLegacy('crm_voir')])
+    def visites(self, request, pk=None):
+        """Les visites techniques du lead, de la plus récente à la plus ancienne."""
+        from apps.visites.selectors import visites_pour_lead
+
+        return Response({'visites': visites_pour_lead(self.get_object())})
+
+    @extend_schema(responses=inline_serializer('CrmLeadVisitePlanifiee', {
+        'visite': serializers.DictField(),
+    }))
+    @action(detail=True, methods=['post'], url_path='visites/planifier',
+            permission_classes=[HasPermissionOrLegacy('crm_modifier')])
+    def planifier_visite(self, request, pk=None):
+        """POSE un rendez-vous de visite technique sur ce lead.
+
+        Corps : ``{date_prevue: 'AAAA-MM-JJ', commercial?: <id>, notes?}``.
+        Chaque refus NOMME son champ (règle fondateur 08/09/2026) : jamais un
+        « non enregistré » générique.
+
+        L'écriture elle-même vit dans ``apps.visites.services.planifier_visite``
+        — la visite appartient à cette app, le CRM ne fait que la lui demander.
+        Les effets de bord (cadence recalée, chatter, notification à l'assigné)
+        naissent de l'événement ``visite_planifiee``, pas d'ici.
+        """
+        from django.utils.dateparse import parse_date
+
+        from apps.visites.selectors import ligne_visite_pour_lead
+        from apps.visites.services import planifier_visite
+
+        lead = self.get_object()
+        brut = (request.data.get('date_prevue') or '').strip()
+        date_prevue = parse_date(brut) if brut else None
+        if brut and date_prevue is None:
+            return Response(
+                {'date_prevue': ['Date illisible (format AAAA-MM-JJ '
+                                 'attendu).']},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        commercial = None
+        brut_commercial = request.data.get('commercial')
+        if brut_commercial not in (None, '', 0):
+            from django.contrib.auth import get_user_model
+            # Borné à la SOCIÉTÉ de l'appelant : un id d'un autre locataire est
+            # indiscernable d'un id inconnu (on ne confirme pas son existence).
+            commercial = (get_user_model().objects
+                          .filter(pk=brut_commercial,
+                                  company=request.user.company)
+                          .first())
+            if commercial is None:
+                return Response(
+                    {'commercial': ['Utilisateur inconnu dans votre '
+                                    'société.']},
+                    status=status.HTTP_400_BAD_REQUEST)
+
+        visite, erreurs = planifier_visite(
+            lead, request.user, date_prevue, commercial=commercial,
+            notes=(request.data.get('notes') or ''))
+        if erreurs:
+            return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'visite': ligne_visite_pour_lead(visite)},
+                        status=status.HTTP_201_CREATED)
+
+    @extend_schema(responses=inline_serializer('CrmLeadMessageVisite', {
+        'corps_fr': serializers.CharField(),
+        'corps_darija': serializers.CharField(),
+    }))
+    @action(detail=True, methods=['get'], url_path='message-visite',
+            permission_classes=[HasPermissionOrLegacy('crm_voir')])
+    def message_visite(self, request, pk=None):
+        """Le message de visite à copier-coller, rendu côté serveur.
+
+        ``?cle=visite_proposition|visite_confirmation``. MÊME machinerie que
+        les messages de cadence : ``{conseiller}`` est le RESPONSABLE du lead
+        (jamais un prénom codé en dur), et une phrase dont le placeholder n'a
+        pas de valeur réelle est OMISE — un lead sans date de visite ne reçoit
+        donc pas « la visite prévue  chez vous ».
+
+        LECTURE PURE : le serveur REND, il n'ENVOIE pas (décision D5).
+        """
+        from .services import CLES_MESSAGE_VISITE, message_visite_pour_lead
+
+        cle = (request.query_params.get('cle') or '').strip()
+        rendu = message_visite_pour_lead(
+            self.get_object(), cle, user=request.user)
+        if rendu is None:
+            return Response(
+                {'cle': ['Message de visite inconnu « ' + cle + ' ». Clés '
+                         'connues : ' + ', '.join(CLES_MESSAGE_VISITE) + '.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(rendu)
+
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin],
             parser_classes=[MultiPartParser, FormParser, JSONParser])
@@ -2826,6 +2950,18 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 k for k, _ in _LeadActivity.OUTCOMES}:
             return Response(
                 {'outcome': 'Issue inconnue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # VISITE-CADENCE (revue Fable 15/09) — « Visite acceptée » n'a de sens
+        # que sur le suivi de PROPOSITION : la visite se place APRÈS l'envoi
+        # du devis (doctrine fondateur), jamais en prise de contact/réveil.
+        # L'écran est déjà gaté ; ceci ferme l'API brute.
+        from .services import OUTCOME_VISITE_ACCEPTEE
+        if (outcome == OUTCOME_VISITE_ACCEPTEE
+                and etape.cadence != 'apres_devis'):
+            return Response(
+                {'erreurs': {'outcome': '« Visite acceptée » ne vaut que sur '
+                                        'une touche du suivi de proposition '
+                                        '(après envoi du devis).'}},
                 status=status.HTTP_400_BAD_REQUEST)
         # CKP2 — l'ISSUE est OBLIGATOIRE pour clore un APPEL « fait » : c'est
         # elle, et elle seule, qui programme la suite du protocole (cadence

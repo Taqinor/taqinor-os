@@ -135,3 +135,104 @@ export function heureServeur(iso) {
   if (Number.isNaN(d.getTime())) return ''
   return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
+
+// VISITE-QUALIF — schéma des 6 questions à un tap de la « Qualification
+// client » (fin de visite terrain). Chaque question porte un DÉFAUT
+// (`defaut`) TOUJOURS pré-sélectionné à l'écran (rapide, mains gantées) — les
+// clés/valeurs sont EXACTEMENT celles du contrat serveur
+// `POST .../qualification/` (jamais de valeur inventée ici). `devis_details`
+// (texte, requis seulement si `devis` ≠ 'convient') et `conseil_closing`
+// (texte libre optionnel) ne sont pas des questions à choix — elles sont
+// gérées à part par le formulaire.
+export const QUALIFICATION_SCHEMA = [
+  {
+    key: 'temperature',
+    question: 'Le client est…',
+    defaut: 'tiede',
+    options: [
+      { value: 'chaud', label: 'Chaud — prêt à signer' },
+      { value: 'tiede', label: 'Tiède' },
+      { value: 'froid', label: 'Froid' },
+    ],
+  },
+  {
+    key: 'devis',
+    question: 'Le devis ?',
+    defaut: 'convient',
+    options: [
+      { value: 'convient', label: 'Le devis convient' },
+      { value: 'a_modifier', label: 'À modifier' },
+      { value: 'nouveau', label: 'Veut un nouveau devis' },
+    ],
+  },
+  {
+    key: 'decideur',
+    question: 'Qui décide ?',
+    defaut: 'seul',
+    options: [
+      { value: 'seul', label: 'Seul' },
+      { value: 'conjoint_famille', label: 'Avec conjoint / famille' },
+      { value: 'associe_direction', label: 'Avec associé / direction' },
+    ],
+  },
+  {
+    key: 'frein',
+    question: 'Frein principal',
+    defaut: 'aucun',
+    options: [
+      { value: 'aucun', label: 'Aucun' },
+      { value: 'prix', label: 'Prix' },
+      { value: 'compare', label: 'Compare d’autres devis' },
+      { value: 'timing', label: 'Timing' },
+      { value: 'technique', label: 'Technique' },
+      { value: 'confiance', label: 'Confiance' },
+    ],
+  },
+  {
+    key: 'declencheur',
+    question: 'Ce qui l’a le plus accroché',
+    defaut: 'economies',
+    options: [
+      { value: 'economies', label: 'Les économies' },
+      { value: 'coupures', label: 'Les coupures / autonomie' },
+      { value: 'ecologie', label: 'L’écologie' },
+      { value: 'technologie', label: 'La technologie' },
+    ],
+  },
+  {
+    key: 'rappel',
+    question: 'Quand rappeler ?',
+    defaut: 'demain_matin',
+    aide: 'Le rappel de closing se calera dessus.',
+    options: [
+      { value: 'demain_matin', label: 'Demain matin' },
+      { value: 'demain_soir', label: 'Demain soir' },
+      { value: 'cette_semaine', label: 'Cette semaine' },
+    ],
+  },
+]
+
+// Valeurs par défaut {champ: valeur} dérivées du schéma ci-dessus — jamais
+// dupliquées à la main ailleurs.
+export const QUALIFICATION_DEFAULTS = Object.fromEntries(
+  QUALIFICATION_SCHEMA.map((q) => [q.key, q.defaut]),
+)
+
+// Libellé FR d'une valeur de qualification — jamais la valeur brute affichée
+// si un libellé existe ; repli sur la valeur brute pour ne rien avaler si le
+// serveur renvoie un jour une valeur hors schéma.
+export function labelQualification(champ, valeur) {
+  const q = QUALIFICATION_SCHEMA.find((s) => s.key === champ)
+  const opt = q?.options.find((o) => o.value === valeur)
+  return opt?.label ?? valeur ?? '—'
+}
+
+// Ligne compacte lecture seule (revue bureau d'études) : les 6 libellés
+// choisis, séparés par « · ». Chaîne vide si aucune qualification enregistrée
+// — l'écran décide alors seul du texte de repli, jamais recalculé ici.
+export function ligneQualification(qualification) {
+  if (!qualification) return ''
+  return QUALIFICATION_SCHEMA
+    .map((q) => labelQualification(q.key, qualification[q.key]))
+    .join(' · ')
+}

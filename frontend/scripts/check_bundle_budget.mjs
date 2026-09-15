@@ -192,7 +192,11 @@ const PER_CHUNK_BUDGET_KB = 350
 // 2026-09-12 — 3640 -> 3700. Batch 3 du drain NT (~185 tâches) intégré :
 // mesuré 3687.4 Ko en CI (run 34705188854). Recalé au réel + marge ~13 Ko
 // (classe #85) ; les budgets par chunk et vendors restent les garde-fous.
-const TOTAL_BUDGET_KB = 3700
+// 15/09/2026 (visite↔suivi commercial + message d'accueil) : +10 Ko de
+// fonctionnalité réelle (panneau coaching, planification, qualification,
+// modale d'accueil lazy, micro) — dépassement mesuré de 0,8 Ko, budget monté
+// d'un cran, jamais « élargi pour respirer ».
+const TOTAL_BUDGET_KB = 3710
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

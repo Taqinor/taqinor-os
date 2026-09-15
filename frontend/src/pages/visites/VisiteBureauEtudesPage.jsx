@@ -16,7 +16,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../../ui'
 import { toast } from '../../ui/confirm'
-import { MESURES_SCHEMA, trierCategories, STATUT_VISITE_LABEL } from './visiteHelpers'
+import { MESURES_SCHEMA, trierCategories, STATUT_VISITE_LABEL, ligneQualification } from './visiteHelpers'
 
 function MesuresRecap({ mesures, checklist }) {
   const categories = trierCategories(checklist)
@@ -206,6 +206,15 @@ function DetailVisite({ visite, onRetour, onChanged }) {
 
       <Card className="p-3"><PhotosParCategorie checklist={visite.checklist} /></Card>
       <Card className="p-3"><MesuresRecap mesures={visite.mesures} checklist={visite.checklist} /></Card>
+      {/* VISITE-QUALIF — ligne compacte lecture seule (une seule ligne des
+          libellés choisis), utile 24-48h au commercial closer sans rouvrir le
+          wizard terrain. */}
+      <Card className="p-3" data-testid="visite-qualification-resume">
+        <p className="text-sm font-medium">Qualification client</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {visite.qualification ? ligneQualification(visite.qualification) : 'Qualification non renseignée.'}
+        </p>
+      </Card>
 
       {visite.statut === 'terminee' && (
         <div className="flex flex-wrap gap-2">

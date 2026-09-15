@@ -57,4 +57,34 @@ describe('VisiteBureauEtudesPage — VT10', () => {
     const boutonEnvoyer = await screen.findByRole('button', { name: /^renvoyer$/i })
     expect(boutonEnvoyer).toBeDisabled()
   })
+
+  // VISITE-QUALIF — ligne compacte lecture seule, utile au commercial closer
+  // sans rouvrir le wizard terrain.
+  it('sans qualification enregistrée : texte de repli, jamais un cadre vide', async () => {
+    const user = userEvent.setup()
+    render(<MemoryRouter><VisiteBureauEtudesPage /></MemoryRouter>)
+    await user.click(await screen.findByText('Lead A'))
+    const bloc = await screen.findByTestId('visite-qualification-resume')
+    expect(bloc).toHaveTextContent('Qualification non renseignée.')
+  })
+
+  it('avec une qualification enregistrée : ligne compacte des libellés choisis', async () => {
+    getVisite.mockResolvedValue({
+      data: {
+        id: 1, lead: 10, statut: 'terminee',
+        checklist: [{ categorie: 'toiture', libelle: 'Toiture', slots: [{ code: 's1', libelle: 'Vue', requis: true, etat: 'ok', photos: [] }] }],
+        mesures: { toiture: { longueur_m: 12, largeur_m: 8, pente_deg: 15, orientation: 'sud' } },
+        client_panel: { lead_nom: 'Lead A' },
+        qualification: {
+          temperature: 'chaud', devis: 'convient', decideur: 'seul',
+          frein: 'prix', declencheur: 'economies', rappel: 'demain_matin',
+        },
+      },
+    })
+    const user = userEvent.setup()
+    render(<MemoryRouter><VisiteBureauEtudesPage /></MemoryRouter>)
+    await user.click(await screen.findByText('Lead A'))
+    const bloc = await screen.findByTestId('visite-qualification-resume')
+    expect(bloc).toHaveTextContent('Chaud — prêt à signer · Le devis convient · Seul · Prix · Les économies · Demain matin')
+  })
 })

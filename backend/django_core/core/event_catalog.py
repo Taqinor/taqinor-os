@@ -69,6 +69,15 @@ CATALOG = {
         'Une visite technique terrain reçoit le feu vert du bureau '
         'd\'études — aucun statut de funnel ne bouge.',
         ['visite', 'lead_id', 'user', 'recap']),
+    'visite_planifiee': _e(
+        'La date prévue d\'une visite technique est posée ou changée — le '
+        'suivi commercial s\'y recale (aucun statut de funnel ne bouge).',
+        ['visite', 'lead_id', 'user', 'date_prevue', 'commercial_nom']),
+    'visite_terminee': _e(
+        'Le technicien a terminé la visite sur place : son retour terrain '
+        '(texte libre + commentaires de photos) et sa QUALIFICATION du client '
+        '(vocabulaire fermé) redescendent sur le lead.',
+        ['visite', 'lead_id', 'user', 'retour', 'qualification']),
     'devis_refused': _e(
         'Un devis passe à « refusé ».',
         ['devis', 'user', 'motif_refus', 'marquer_lead_perdu']),

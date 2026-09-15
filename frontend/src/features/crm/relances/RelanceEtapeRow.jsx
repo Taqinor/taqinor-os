@@ -8,6 +8,8 @@ import {
 import ScoreBadge from '../ScoreBadge'
 import { PRIORITE_LABELS } from '../stages'
 import { toastInfo } from '../../../lib/toast'
+import PanneauProposerVisite from './PanneauProposerVisite'
+import PlanifierVisiteModal from './PlanifierVisiteModal'
 
 /* ============================================================================
    MRY31 — `RelanceEtapeRow` EXTRAIT de `pages/crm/RelancesDuJourWidget.jsx`
@@ -91,6 +93,13 @@ const QUESTIONS = {
     reponses: [
       { outcome: 'interesse', label: 'Intéressé',
         suite: 'Le suivi de proposition continue (une étape de suite est posée si c’était la dernière touche).' },
+      // VISCAD6 (fondateur 15/09/2026) — « la visite devient une étape du
+      // suivi commercial » : issue SERVEUR existante (LeadActivity.OUTCOMES,
+      // jamais une nouvelle valeur inventée ici), choisie quand le client dit
+      // oui à la visite pendant le suivi de proposition — ouvre la modale de
+      // planification juste après confirmation (confirmerFait ci-dessous).
+      { outcome: 'visite_acceptee', label: 'Visite acceptée',
+        suite: 'La cadence se met en veille jusqu’au retour de la visite — planifiez-la juste après.' },
       { outcome: 'non_joint', label: 'Sans réponse',
         suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
       { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
@@ -230,6 +239,11 @@ function StatutBadge({ etape }) {
 export default function RelanceEtapeRow({
   etape, onFait, onSauter, onReporter, onOuvrirMessage, busyId, navigate,
   compact = false, readOnly = false, showStatut = false,
+  // VISCAD6 — appelé après qu'une visite a été planifiée depuis CETTE ligne
+  // (panneau de coaching OU issue « Visite acceptée ») pour laisser le
+  // parent rafraîchir (même callback que Fait/Sauter/Reporter, ex.
+  // `CadenceFrise.onChanged`) — optionnel, une ligne readOnly n'en a pas besoin.
+  onVisiteChanged,
 }) {
   // '' | 'sauter' | 'fait' | 'reporter' — un seul panneau ouvert à la fois.
   const [panel, setPanel] = useState('')
@@ -244,6 +258,9 @@ export default function RelanceEtapeRow({
   // s'affiche SOUS le contrôle concerné, jamais un toast générique qui
   // masquerait le champ fautif (règle « le champ fautif, message exact »).
   const [erreurOutcome, setErreurOutcome] = useState('')
+  // VISCAD6 — modale de planification de la visite, PARTAGÉE par le panneau
+  // de coaching (ci-dessous) et l'issue « Visite acceptée » du Fait.
+  const [planifierOuvert, setPlanifierOuvert] = useState(false)
   const busy = busyId === etape.id
 
   const fermer = () => {
@@ -273,6 +290,11 @@ export default function RelanceEtapeRow({
       if (rappelHeure) payload.rappel_heure = rappelHeure
     }
     setErreurOutcome('')
+    // VISCAD6 — l'outcome choisi est lu AVANT l'appel (le state se ferme/se
+    // réinitialise dès le succès dans les parents qui retirent la ligne) :
+    // ouvrir la modale de planification dépend de CETTE réponse, jamais
+    // d'un state relu après coup.
+    const outcomeChoisi = reponseChoisie.outcome
     // CKP4 — `onFait` renvoie désormais une promesse (widget/frise/suivi) :
     // succès → message de confirmation lu de LA RÉPONSE serveur uniquement
     // (jamais calculé ici) ; 400 outcome → affiché SOUS le contrôle, la ligne
@@ -280,6 +302,10 @@ export default function RelanceEtapeRow({
     Promise.resolve(onFait(etape.id, payload)).then((data) => {
       const message = messageProchaineTouche(data?.prochaine_touche)
       if (message) toastInfo(message)
+      // VISCAD6 — « Visite acceptée » confirmée : ouvre tout de suite la
+      // modale de planification (le commercial vient de dire oui au client,
+      // jamais un second aller-retour pour la planifier).
+      if (outcomeChoisi === 'visite_acceptee') setPlanifierOuvert(true)
     }).catch((err) => {
       const champ = err?.response?.status === 400
         ? err?.response?.data?.erreurs?.outcome : null
@@ -335,6 +361,14 @@ export default function RelanceEtapeRow({
       </div>
       {showStatut && etape.note && (
         <p className="mt-1 text-xs text-muted-foreground">{etape.note}</p>
+      )}
+      {/* VISCAD — le panneau de coaching se gate lui-même sur cadence ===
+          'apres_devis' ; ici on ne gate que sur `readOnly` (une ligne qui se
+          LIT seulement — jours futurs du widget, historique du suivi — n'a
+          pas d'action à proposer). Rendu dans les DEUX modes (compact ET
+          cockpit), jamais seulement compact. */}
+      {!readOnly && (
+        <PanneauProposerVisite etape={etape} onPlanifier={() => setPlanifierOuvert(true)} />
       )}
       {!readOnly && panel === '' && (
         <div className="mt-2 flex flex-wrap justify-end gap-1.5">
@@ -466,6 +500,17 @@ export default function RelanceEtapeRow({
           </div>
         </div>
       )}
+      {/* VISCAD6 — PARTAGÉE par le CTA du panneau de coaching ci-dessus ET
+          l'issue « Visite acceptée » de `confirmerFait` — une seule modale,
+          un seul appel serveur. `etape.lead` porte l'id du lead (contrat
+          `relance_etape_v2.json`) : jamais un second prop à faire remonter
+          par les trois appelants de `RelanceEtapeRow`. */}
+      <PlanifierVisiteModal
+        leadId={etape.lead}
+        open={planifierOuvert}
+        onOpenChange={setPlanifierOuvert}
+        onPlanifie={() => onVisiteChanged?.()}
+      />
     </li>
   )
 }

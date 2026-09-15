@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from .models import (
-    Annonce, AnnonceLecture, EventType, Holiday, Notification,
+    Annonce, AnnonceLecture, EventType, Holiday, MessageAccueil, Notification,
     NotificationPreference, NotificationRoutingRule, WhatsAppTemplate,
     WorkingHoursConfig,
 )
@@ -162,6 +162,44 @@ class AnnonceSerializer(serializers.ModelSerializer):
 
     def get_lus_count(self, obj):
         return obj.lectures.count()
+
+
+class MessageAccueilSerializer(serializers.ModelSerializer):
+    """MSGACC1 — message d'accueil (PAS une notification, cf. models.py).
+
+    ``company``/``auteur`` posés côté serveur (perform_create) — jamais
+    acceptés du corps. ``destinataire`` validé par champ : actif ET de la
+    MÊME société que l'auteur (règle fondateur multi-tenant)."""
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True, default='')
+    destinataire_nom = serializers.CharField(
+        source='destinataire.username', read_only=True, default='')
+
+    class Meta:
+        model = MessageAccueil
+        fields = [
+            'id', 'destinataire', 'destinataire_nom', 'auteur', 'auteur_nom',
+            'visible_a_partir_de', 'corps', 'lu_le', 'created_at',
+        ]
+        read_only_fields = [
+            'id', 'auteur', 'auteur_nom', 'destinataire_nom', 'lu_le', 'created_at',
+        ]
+
+    def validate_destinataire(self, value):
+        if not value.is_active:
+            raise serializers.ValidationError(
+                "Ce destinataire n'est pas actif.")
+        request = self.context.get('request')
+        company_id = getattr(getattr(request, 'user', None), 'company_id', None)
+        if company_id is not None and value.company_id != company_id:
+            raise serializers.ValidationError(
+                "Ce destinataire n'appartient pas à votre société.")
+        return value
+
+    def validate_corps(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError('Le corps du message est requis.')
+        return value
 
 
 class AnnonceLectureSerializer(serializers.ModelSerializer):

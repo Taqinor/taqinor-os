@@ -17,11 +17,14 @@ from core import action_permission_scan
 # Une valeur ne doit JAMAIS être dépassée ; YRBAC3 la fait décroître app par
 # app. Une app absente d'ici doit avoir 0 @action sans garde.
 UNGUARDED_ACTION_BASELINE = {
-    # VTA (12/09/2026) — les 11 @action du VisiteTerrainViewSet deplace de crm :
+    # VTA (12/09/2026) — les @action du VisiteTerrainViewSet deplace de crm :
     # toutes gardees par la paire read_permission/write_permission du viewset
     # (dict PERMISSIONS_ECRITURE par action), pas par un permission_classes
     # par action — meme regime que dans crm avant le move.
-    'visites': 11,
+    # VISITE-CADENCE (15/09/2026) : +1 — `qualification` suit EXACTEMENT le
+    # regime de `mesures` (PERMISSIONS_ECRITURE + _refus_si_pas_l_assigne +
+    # refus si visite validee), pas de garde par action a coller en plus.
+    'visites': 12,
     # NTSEC19 — AccessReviewCampaignViewSet/SodRuleViewSet : @action attester/
     # violations/seed_standard, gardées au niveau CLASSE par IsAdminRole
     # (Directeur only) + company-scopées. Le scanner ne crédite que les gardes

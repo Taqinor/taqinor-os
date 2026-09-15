@@ -110,6 +110,14 @@ const VISITE_COMPLETE = {
     { categorie: 'toiture', libelle: 'Toiture', slots: [slot('toiture_vue_generale', 'Vue générale du toit', 'ok')] },
     { categorie: 'tableau', libelle: 'Tableau électrique', slots: [slot('tableau_ouvert', 'Tableau ouvert (disjoncteurs visibles)', 'ok')] },
   ],
+  // VISITE-QUALIF — le parcours NOMINAL termine une visite QUALIFIÉE (le
+  // garde-fou « Terminer sans qualification » a son propre test dans
+  // VisiteWizardPage.test.jsx) ; sans elle, le 1er clic ne termine plus.
+  qualification: {
+    temperature: 'chaud', devis: 'convient', devis_details: '',
+    decideur: 'seul', frein: 'aucun', declencheur: 'economies',
+    rappel: 'demain_matin', conseil_closing: '',
+  },
   completude: { complet: true, manquants: [] },
 }
 

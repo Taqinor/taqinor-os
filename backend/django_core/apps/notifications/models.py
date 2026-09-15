@@ -412,6 +412,22 @@ class EventType(models.TextChoices):
     # dans les préférences de notification.
     VISITE_TERRAIN_ASSIGNEE = (
         'visite_terrain_assignee', 'Visite technique assignée')
+    # VISITE-CADENCE (fondateur 15/09/2026) — les deux messages qui manquaient
+    # APRÈS la visite. Doctrine : la visite technique est un outil de closing
+    # posé après l'envoi du devis ; le silence qui suivait le départ du
+    # technicien était donc le pire moment possible pour ne prévenir personne.
+    #
+    # (a) au RESPONSABLE DU LEAD (jamais au commercial terrain, qui vient de
+    #     la faire) : « le technicien est reparti, rappelez sous 24-48 h ».
+    #     C'est le geste commercial que la visite existe pour provoquer.
+    VISITE_RETOUR_TERRAIN = (
+        'visite_retour_terrain', 'Retour de visite technique')
+    # (b) à ceux qui peuvent VALIDER (bureau d'études) : « une visite terminée
+    #     attend ton feu vert ». Clé DISTINCTE de (a) : les deux publics et les
+    #     deux suites n'ont rien à voir, et les fondre rendrait impossible de
+    #     couper l'une sans l'autre dans les préférences.
+    VISITE_TERRAIN_A_VALIDER = (
+        'visite_terrain_a_valider', 'Visite technique à valider')
 
 
 class Channel(models.TextChoices):
@@ -1251,3 +1267,57 @@ class SnoozedItem(TenantModel):
 
     def __str__(self):
         return f'snooze {self.source}:{self.object_id} → {self.user_id}'
+
+
+# =============================================================================
+# MSGACC1 — Message d'accueil : posé par un responsable/admin pour UN employé
+# précis, affiché EN PLEIN ÉCRAN à sa PREMIÈRE ouverture de l'ERP à partir
+# d'une heure choisie.
+# =============================================================================
+
+class MessageAccueil(TenantModel):
+    """MSGACC1 — message d'accueil (bonjour/consigne) ciblant un destinataire.
+
+    CE N'EST PAS UNE NOTIFICATION (règle fondateur) : aucun ``EventType``,
+    aucune ligne dans le centre de notifications, aucun push. Uniquement la
+    modale d'accueil, câblée côté frontend sur ``a-lire``.
+
+    Visibilité : le destinataire le voit à sa PREMIÈRE ouverture de l'ERP à
+    partir de ``visible_a_partir_de`` (choisi 8h00, ouvre à 8h40 → il le voit ;
+    ouvert à 7h50 → rien). Tant que ``lu_le`` est vide, la modale se
+    représente à chaque ouverture.
+
+    MULTI-TENANT : ``company`` posée côté serveur (jamais depuis le corps).
+    ``destinataire`` CASCADE (le message n'a plus de sens sans son
+    destinataire) ; ``auteur`` SET_NULL (perdre la trace de qui a écrit ne
+    doit jamais empêcher la suppression d'un compte — le frontend affiche
+    « Direction » à défaut d'auteur)."""
+
+    # ``company`` + ``created_at``/``updated_at`` hérités de TenantModel
+    # (SCA4 — jamais la paire multi-société re-hand-rollée).
+    destinataire = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition (utilisateur)
+        related_name='messages_accueil_recus', verbose_name='Destinataire')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='messages_accueil_envoyes',
+        verbose_name='Auteur')
+    visible_a_partir_de = models.DateTimeField(
+        db_index=True, verbose_name='Visible à partir de')
+    corps = models.TextField(verbose_name='Corps')
+    lu_le = models.DateTimeField(null=True, blank=True, verbose_name='Lu le')
+
+    class Meta:
+        verbose_name = "Message d'accueil"
+        verbose_name_plural = "Messages d'accueil"
+        ordering = ['visible_a_partir_de', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'destinataire', 'lu_le'],
+                name='notif_msgacc_dest_lu_idx'),
+            models.Index(
+                fields=['company', 'auteur'], name='notif_msgacc_auteur_idx'),
+        ]
+
+    def __str__(self):
+        return f'MessageAccueil → {self.destinataire_id} ({self.visible_a_partir_de})'

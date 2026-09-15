@@ -116,6 +116,21 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Bonjour M. {prenom}, j'espère que l'installation vous donne satisfaction. Si vous avez deux minutes, un avis sur Google nous aide énormément, c'est ce que regardent les futurs clients : {lien}. Merci beaucoup !",
     'parrainage':
         "Si quelqu'un autour de vous, un voisin, un frère, un collègue, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; il aura la même étude gratuite, et on convient ensemble d'une récompense pour vous.",
+    # VISITE-CADENCE (textes validés par le fondateur, 15/09/2026) — LA VISITE
+    # TECHNIQUE COMME OUTIL DE CLOSING. Doctrine : elle se PROPOSE après
+    # l'envoi du devis, quand le client est chaud, et elle se CONFIRME la
+    # veille. Zéro chiffre, zéro promesse, aucun prénom codé en dur
+    # ({conseiller} = le responsable du lead). La phrase portant
+    # {date_visite} est OMISE (MRY13) quand aucune date n'est posée sur la
+    # fiche — jamais un crochet vide envoyé au client.
+    'visite_proposition':
+        "Pour verrouiller votre proposition, on peut passer chez vous pour la vérification technique gratuite : le technicien confirme l'orientation du toit, la charpente et le tableau électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
+    # Ordre fondateur du 15/09/2026 : la visite ne se fait qu'avec le VRAI
+    # client présent — jamais le gardien ni la bonne. La phrase le demande sans
+    # le dire de façon blessante : elle donne la RAISON (« répondre à toutes
+    # vos questions »), qui est aussi la vraie valeur du passage.
+    'visite_confirmation':
+        "Bonjour, on confirme la visite technique prévue {date_visite} chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
 })
 
 # Variantes darija (écriture arabe, revue native le 04/09/2026). Une clé
@@ -150,6 +165,14 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. المؤسس ديال الشركة اللي كيراجع كل دراسة بغا يعيط ليكم نهار الحد على 6 ديال العشية باش يجاوب على الأسئلة ديالكم ف خمس دقايق. واش مناسب ليكم، ولا كتفضلو وقت آخر؟",
     'offre_reda':
         "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. بعد الهضرة ديالكم مع المؤسس: [السبب الحقيقي]، نقص ليكم [المبلغ بالدرهم] من العرض رقم {reference}، يعني [المجموع الجديد TTC]. هاد العرض صالح حتى الثلاثاء على 6 ديال العشية، ومن بعد كيرجع الثمن العادي. إلا كان عندكم شي سؤال أنا هنا.",
+    # VISITE-CADENCE — darija à faire relire par un locuteur natif (fondateur) :
+    # ces deux textes suivent le FR validé phrase par phrase (aucune promesse
+    # ajoutée, aucun chiffre) mais n'ont PAS encore reçu la relecture native du
+    # 04/09/2026 dont bénéficient les clés au-dessus.
+    'visite_proposition':
+        "باش نثبتو ليكم العرض، نقدرو نجيو عندكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه ديال السطح، من الهيكل ومن الطابلو ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — {conseiller}",
+    'visite_confirmation':
+        "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — {conseiller}",
 }
 
 # Placeholders AUTORISÉS dans un message de relance (MRY12). Aucun chiffre
@@ -163,7 +186,13 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
 # commerciaux : ce sont les coordonnées d'un chantier existant que le client
 # peut aller voir. Sans réalisation, ils restent vides et la phrase est OMISE
 # (MRY13) — jamais un crochet à remplir à la main, jamais une preuve inventée.
-PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}"]
+# VISITE-CADENCE (15/09/2026) — `{date_visite}` est la date de la visite
+# technique POSÉE sur la fiche (`Lead.visite_prevue_le`), rendue en français
+# (« mardi 16 septembre »). Ce n'est pas un chiffre commercial : c'est un
+# rendez-vous que le client a lui-même accepté. Sans date sur la fiche, la
+# valeur reste VIDE et `_omettre_phrases_incompletes` retire la phrase entière
+# (MRY13) — jamais un crochet, jamais une date approximative.
+PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}"]
 
 #: Les clés du moteur de relances (MRY12), dans l'ordre du fichier source.
 CLES_RELANCE = [
@@ -192,6 +221,10 @@ CLES_RELANCE = [
     'reveil_b',
     'avis_google',
     'parrainage',
+    # VISITE-CADENCE — la visite technique proposée après le devis, puis
+    # confirmée la veille.
+    'visite_proposition',
+    'visite_confirmation',
 ]
 
 
@@ -216,9 +249,12 @@ class MessageTemplate(models.Model):
         LIVRAISON_LIVREE = 'livraison_livree', 'Livraison livrée'
         # XFSM6 — rappel client J-1 (RDV planifié demain, non confirmé).
         RAPPEL_RDV = 'rappel_rdv', 'Rappel de RDV (J-1)'
-        # MRY12 — les 25 clés du moteur de relances (textes validés dans
+        # MRY12 — les clés du moteur de relances (textes validés dans
         # `docs/crm/messages_meryem.md`). PAS `visite_veille`/`visite_matin`/
         # `apres_visite` : aucun texte validé n'existe, on n'en invente pas.
+        # VISITE-CADENCE (15/09/2026) — les deux clés de la visite, elles, ont
+        # reçu leur texte validé du fondateur : elles sont donc seedées (voir
+        # tout en bas de cette énumération).
         IDENTITE = 'identite', "Relance — identité (J0)"
         APPEL_OUVERTURE = 'appel_ouverture', "Relance — script d'appel d'ouverture (J0)"
         REPONDEUR = 'repondeur', "Relance — message sur répondeur"
@@ -244,6 +280,15 @@ class MessageTemplate(models.Model):
         REVEIL_B = 'reveil_b', "Réveil — saison des factures"
         AVIS_GOOGLE = 'avis_google', "Après signature — avis Google"
         PARRAINAGE = 'parrainage', "Après signature — parrainage"
+        # VISITE-CADENCE — la visite technique est une ÉTAPE DU SUIVI, placée
+        # APRÈS l'envoi du devis : on la PROPOSE pour verrouiller la
+        # proposition, puis on la CONFIRME la veille.
+        VISITE_PROPOSITION = (
+            'visite_proposition',
+            "Après devis — proposer la visite technique")
+        VISITE_CONFIRMATION = (
+            'visite_confirmation',
+            "Visite — confirmation la veille")
 
     company = models.ForeignKey(
         'authentication.Company',

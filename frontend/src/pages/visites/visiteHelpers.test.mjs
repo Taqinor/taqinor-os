@@ -7,7 +7,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   trierCategories, progressionPhotos, manquantsMesures, manquantsPhotos,
-  whatsappUrl, mapsUrl,
+  whatsappUrl, mapsUrl, labelQualification, ligneQualification, QUALIFICATION_DEFAULTS,
 } from './visiteHelpers.js'
 
 const CHECKLIST = [
@@ -92,4 +92,42 @@ test('mapsUrl — construit un lien Maps depuis lat/lng', () => {
 
 test('mapsUrl — renvoie null sans coordonnées', () => {
   assert.equal(mapsUrl(null, null), null)
+})
+
+test('QUALIFICATION_DEFAULTS — un défaut par question, exactement les clés du contrat', () => {
+  assert.deepEqual(QUALIFICATION_DEFAULTS, {
+    temperature: 'tiede', devis: 'convient', decideur: 'seul', frein: 'aucun',
+    declencheur: 'economies', rappel: 'demain_matin',
+  })
+})
+
+test('labelQualification — mappe une valeur connue vers son libellé FR', () => {
+  assert.equal(labelQualification('temperature', 'chaud'), 'Chaud — prêt à signer')
+  assert.equal(labelQualification('frein', 'compare'), 'Compare d’autres devis')
+})
+
+test('labelQualification — repli sur la valeur brute si hors schéma (jamais avalée)', () => {
+  assert.equal(labelQualification('temperature', 'exotique'), 'exotique')
+  assert.equal(labelQualification('champ_inconnu', 'x'), 'x')
+})
+
+test('labelQualification — repli sur « — » sans valeur du tout', () => {
+  assert.equal(labelQualification('temperature', null), '—')
+  assert.equal(labelQualification('temperature', undefined), '—')
+})
+
+test('ligneQualification — une ligne compacte « · »-séparée des 6 libellés choisis', () => {
+  const qualification = {
+    temperature: 'chaud', devis: 'convient', decideur: 'seul',
+    frein: 'aucun', declencheur: 'economies', rappel: 'demain_matin',
+  }
+  assert.equal(
+    ligneQualification(qualification),
+    'Chaud — prêt à signer · Le devis convient · Seul · Aucun · Les économies · Demain matin',
+  )
+})
+
+test('ligneQualification — chaîne vide sans qualification enregistrée (jamais un texte inventé)', () => {
+  assert.equal(ligneQualification(null), '')
+  assert.equal(ligneQualification(undefined), '')
 })

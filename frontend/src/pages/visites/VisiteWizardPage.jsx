@@ -7,6 +7,13 @@
 //
 // VT6 ajoute le formulaire de mesures par catégorie (VisiteMesuresForm).
 // VT7 ajoute le panneau client+devis (VisiteClientDevisPanel).
+// VISITE-QUALIF ajoute la qualification client à un tap juste avant
+// « Terminer la visite » (VisiteQualificationForm) : son propre POST, jamais
+// fusionné dans terminer/. Le compte-rendu vers l'historique du lead part AU
+// MOMENT de « Terminer » — une qualification enregistrée après coup n'y
+// serait plus : le premier clic sans qualification NE termine donc PAS (il
+// propose d'abord de l'enregistrer), et « Terminer sans qualification »
+// reste possible d'un second clic assumé.
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
@@ -25,6 +32,7 @@ import {
 import VisiteMesuresForm from './VisiteMesuresForm'
 import VisiteClientDevisPanel from './VisiteClientDevisPanel'
 import VisiteHistoriquePanel from './VisiteHistoriquePanel'
+import VisiteQualificationForm from './VisiteQualificationForm'
 
 // Une tuile photo — état/motif/guide TOUJOURS tels que renvoyés par le
 // serveur, jamais reformulés ici (RÈGLE fondateur : erreurs/motifs = texte
@@ -140,6 +148,9 @@ export default function VisiteWizardPage() {
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(null)
   const [terminant, setTerminant] = useState(false)
+  // VISITE-QUALIF — armé par un premier clic « Terminer » sans qualification
+  // enregistrée : le clic suivant termine SANS elle, en toute connaissance.
+  const [sansQualifAssume, setSansQualifAssume] = useState(false)
   const [categorieActive, setCategorieActive] = useState(null)
 
   const recharger = useCallback(() => {
@@ -155,6 +166,16 @@ export default function VisiteWizardPage() {
   useEffect(() => { recharger() }, [recharger])
 
   const terminer = async () => {
+    // VISITE-QUALIF — la qualification est son PROPRE POST (jamais fusionné
+    // dans terminer/), mais le retour vers l'historique du lead part ICI :
+    // premier clic sans elle → on arrête et on propose de l'enregistrer ;
+    // le bouton devient « Terminer sans qualification » pour le clic assumé.
+    if (!visite.qualification && !sansQualifAssume) {
+      setSansQualifAssume(true)
+      toast.message('Qualification non enregistrée — enregistrez-la '
+        + 'ci-dessus, ou confirmez « Terminer sans qualification ».')
+      return
+    }
     setTerminant(true)
     try {
       const res = await visitesApi.terminerVisite(id)
@@ -243,6 +264,16 @@ export default function VisiteWizardPage() {
         </div>
       )}
 
+      {/* VISITE-QUALIF — qualification rapide du client, juste avant de
+          terminer. Rendue dans les DEUX modes : formulaire à chips en édition,
+          résumé lecture seule si la visite n'est plus modifiable (validée). */}
+      <VisiteQualificationForm
+        visiteId={id}
+        qualification={visite.qualification}
+        lectureSeule={lectureSeule}
+        onSaved={() => { setSansQualifAssume(false); recharger() }}
+      />
+
       {!lectureSeule && (
         <div className="fixed inset-x-0 bottom-0 border-t border-border bg-background p-3">
           <Button
@@ -250,7 +281,13 @@ export default function VisiteWizardPage() {
             disabled={!visite.completude?.complet || terminant}
             onClick={terminer}
           >
-            {visite.completude?.complet ? 'Terminer la visite' : 'Il manque des éléments'}
+            {(() => {
+              if (!visite.completude?.complet) return 'Il manque des éléments'
+              if (!visite.qualification && sansQualifAssume) {
+                return 'Terminer sans qualification'
+              }
+              return 'Terminer la visite'
+            })()}
           </Button>
         </div>
       )}

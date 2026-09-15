@@ -4,13 +4,16 @@
 // au-dessus) : charge lui-même via `crmApi`, jamais un second appel réseau
 // pour les champs déjà posés sur le lead (`prochaine_touche_at` etc., MRY16).
 import { Fragment, useEffect, useState } from 'react'
-import { Check, SkipForward, Clock3, Ban } from 'lucide-react'
+import {
+  Check, SkipForward, Clock3, Ban, MapPin,
+} from 'lucide-react'
 import crmApi from '../../../../api/crmApi'
-import { Spinner } from '../../../../ui'
+import { Spinner, Badge } from '../../../../ui'
 import { formatDate } from '../../../../lib/format'
 import { toastError } from '../../../../lib/toast'
 import RelanceEtapeRow from '../../relances/RelanceEtapeRow'
 import ToucheMessageDialog from '../../relances/ToucheMessageDialog'
+import { STATUT_VISITE_TONE, visitePassee } from '../../relances/visiteGuidance'
 
 const CADENCE_LABELS = {
   contact: 'Contact',
@@ -70,6 +73,12 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
   const [erreur, setErreur] = useState(false)
   const [montrerPassees, setMontrerPassees] = useState(false)
   const [etapes, setEtapes] = useState([])
+  // VISCAD1 — les visites techniques du lead, mêlées à la frise (la visite
+  // devient une étape VISIBLE du suivi commercial). État INDÉPENDANT de
+  // celui des touches ci-dessus : un échec ici ne doit JAMAIS casser la
+  // frise existante (voir le `.catch` silencieux plus bas) — la frise
+  // continue de se lire comme avant si les visites sont indisponibles.
+  const [visites, setVisites] = useState([])
   // MRY32 — état des actions rendues en mode compact ci-dessous (mêmes noms
   // que `RelancesDuJourWidget.jsx`/`RelancesSuiviPage.jsx`).
   const [busyId, setBusyId] = useState(null)
@@ -83,6 +92,25 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
       .then((r) => { if (active) setEtapes(r.data?.results ?? []) })
       .catch(() => { if (active) setErreur(true) })
       .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [leadId, reloadToken])
+
+  useEffect(() => {
+    if (!leadId) return undefined
+    let active = true
+    // VISCAD1 — appel INDÉPENDANT du fetch des touches ci-dessus : ni
+    // bloquant pour le rendu principal, ni fatal pour la frise. Garde
+    // défensive `typeof … === 'function'` : de nombreux tests existants
+    // (CadenceFrise.mry15, SectionPipeline.relance, LeadWorkspace…) mockent
+    // `crmApi` avec un sous-ensemble de méthodes qui ne connaît pas encore
+    // `getLeadVisites` — la frise doit continuer de fonctionner À L'IDENTIQUE
+    // pour eux (repli silencieux, comme un échec réseau).
+    const requete = typeof crmApi.getLeadVisites === 'function'
+      ? crmApi.getLeadVisites(leadId)
+      : Promise.reject(new Error('getLeadVisites indisponible'))
+    requete
+      .then((r) => { if (active) setVisites(r.data?.visites ?? []) })
+      .catch(() => { if (active) setVisites([]) })
     return () => { active = false }
   }, [leadId, reloadToken])
 
@@ -119,15 +147,39 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
 
   // La PROCHAINE touche à faire — la première À FAIRE dans l'ordre serveur
   // (cadence puis ordre) — est mise en avant (gras) dans la frise ET rendue
-  // actionnable (MRY32), comme toute touche à faire déjà en retard.
+  // actionnable (MRY32), comme toute touche à faire déjà en retard. Calculée
+  // UNIQUEMENT sur les touches (jamais une visite — ce n'est pas une relance).
   const prochaineId = etapes.find((e) => e.statut === 'a_faire')?.id ?? null
 
+  // VISCAD1 — « la visite devient une étape du suivi commercial » : mêle les
+  // touches et les visites dans UNE frise chronologique. Chaque visite se
+  // positionne à sa date prévue (ou réalisée, à défaut) ; le tri est STABLE
+  // (ES2019+) — deux entrées à date égale gardent leur ordre d'origine
+  // (touches d'abord, cadence/ordre serveur intacts).
+  const items = [
+    ...etapes.map((e) => ({
+      kind: 'etape', id: `e${e.id}`, data: e,
+      ts: e.due_at ? new Date(e.due_at).getTime() : (e.due_date ? new Date(e.due_date).getTime() : null),
+      passee: e.statut !== 'a_faire',
+    })),
+    ...visites.map((v) => ({
+      kind: 'visite', id: `v${v.id}`, data: v,
+      ts: v.date_prevue ? new Date(v.date_prevue).getTime()
+        : (v.date_realisee ? new Date(v.date_realisee).getTime() : null),
+      // Un RETOUR TERRAIN disponible est l'info la plus actionnable de la
+      // frise (c'est lui que le closing lit avant de rappeler) : il reste
+      // VISIBLE même une fois la visite terminée/validée — seul le repli
+      // d'une visite sans retour suit l'historique.
+      passee: visitePassee(v) && !v.retour_disponible,
+    })),
+  ].sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity))
+
   // QJ-LISIBILITÉ (fondateur 07/09/2026, « all the list is still hashed ») —
-  // les touches PASSÉES (faites/sautées) sont repliées par défaut : la frise
-  // montre ce qui RESTE à faire, l'historique s'ouvre à la demande.
-  const passees = etapes.filter((e) => e.statut !== 'a_faire')
-  const visibles = montrerPassees
-    ? etapes : etapes.filter((e) => e.statut === 'a_faire')
+  // les entrées PASSÉES (touches faites/sautées, visites terminées/validées)
+  // sont repliées par défaut : la frise montre ce qui RESTE à faire/venir,
+  // l'historique s'ouvre à la demande.
+  const passees = items.filter((it) => it.passee)
+  const visibles = montrerPassees ? items : items.filter((it) => !it.passee)
 
   return (
     <>
@@ -143,7 +195,40 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
         </button>
       )}
       <ol className="flex flex-col gap-1" data-testid="cadence-frise" aria-label="Frise de cadence">
-        {visibles.map((etape) => {
+        {visibles.map((item) => {
+          // VISCAD1 — une visite technique : étape DISTINCTE de la frise
+          // (icône différente, jamais d'actions Fait/Sauter/Reporter — ce
+          // n'est pas une touche de relance), statut au libellé SERVEUR
+          // (`statut_libelle`, jamais réinventé) + « retour terrain
+          // disponible » quand le serveur le signale.
+          if (item.kind === 'visite') {
+            const visite = item.data
+            return (
+              <li
+                key={item.id}
+                data-testid="cadence-frise-visite"
+                data-statut={visite.statut}
+                className="flex flex-wrap items-center gap-1 text-xs text-foreground"
+              >
+                <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
+                <span>
+                  Visite technique{visite.date_prevue ? ` — ${formatDate(visite.date_prevue)}` : ''}
+                </span>
+                <Badge tone={STATUT_VISITE_TONE[visite.statut] ?? 'neutral'}>
+                  {visite.statut_libelle ?? visite.statut}
+                </Badge>
+                {visite.commercial_nom && (
+                  <span className="text-muted-foreground">· {visite.commercial_nom}</span>
+                )}
+                {visite.retour_disponible && (
+                  <span className="text-muted-foreground">
+                    — Retour terrain disponible{visite.notes ? ` : ${visite.notes}` : ''}
+                  </span>
+                )}
+              </li>
+            )
+          }
+          const etape = item.data
           const Icon = STATUT_ICON[etape.statut] ?? Clock3
           const estProchaine = etape.id === prochaineId
           const heureAt = heureDueAt(etape.due_at)
@@ -152,7 +237,7 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
           // logique ne rend alors qu'UNE seule ligne d'action, jamais deux).
           const actionnable = etape.statut === 'a_faire' && (estProchaine || etape.overdue)
           return (
-            <Fragment key={etape.id}>
+            <Fragment key={item.id}>
               <li
                 data-testid="cadence-frise-etape"
                 data-statut={etape.statut}
@@ -195,6 +280,7 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
                   onSauter={(id, note) => traiter(id, 'sauter', note)}
                   onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
                   onOuvrirMessage={setMessageEtape}
+                  onVisiteChanged={onChanged}
                 />
               )}
             </Fragment>

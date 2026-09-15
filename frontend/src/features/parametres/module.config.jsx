@@ -7,7 +7,7 @@ import {
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
   Ship, Route, Layers, Repeat, Trash2,
-  Leaf, DatabaseBackup, HardDriveDownload, Gauge, Cable,
+  Leaf, DatabaseBackup, HardDriveDownload, Gauge, Cable, Sun,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -200,6 +200,10 @@ const CorbeillePage = lazy(() => import('../../pages/parametres/CorbeillePage'))
 // complet, singleton société) : moitié frontend manquante, Directeur/Admin
 // uniquement (reflète `IsAdminOrResponsableTier` côté serveur en écriture).
 const UxParametresPage = lazy(() => import('../../pages/parametres/UxParametresPage'))
+// MSGACC1 — Messages d'accueil : bonjour/consigne posé pour un employé
+// précis, plein écran dès l'heure choisie (PAS une notification). Réservé
+// Responsable/Admin (reflète `IsAdminOrResponsableTier` côté serveur).
+const MessagesAccueilPage = lazy(() => import('./MessagesAccueilPage'))
 
 const config = {
   key: 'parametres',
@@ -269,6 +273,8 @@ const config = {
       { to: '/parametres/etat-dependances', label: 'État des dépendances', icon: <Cable size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTOBS16 — nav ET route ensemble (motif PACT150).
       { to: '/parametres/sla', label: 'SLA', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // MSGACC1 — nav ET route ensemble (motif PACT150).
+      { to: '/parametres/messages-accueil', label: 'Messages d’accueil', icon: <Sun size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   routes: [
@@ -301,6 +307,8 @@ const config = {
     { path: '/parametres/limites-usage', component: LimitesUsagePage, roles: ['responsable', 'admin'] },
     { path: '/parametres/etat-dependances', component: EtatDependancesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/sla', component: SlaReportPage, roles: ['responsable', 'admin'] },
+    // MSGACC1 — nav ET route ensemble (motif PACT150).
+    { path: '/parametres/messages-accueil', component: MessagesAccueilPage, roles: ['responsable', 'admin'] },
     // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint
     // depuis /parametres/objets-personnalises (un lien « Enregistrements » par
     // objet) — la lecture d'un enregistrement reste ouverte aux rôles autorisés

@@ -394,6 +394,24 @@ const crmApi = {
   // changement de contrat. `getLeadPhotoToit` ci-dessus RESTE : la texture
   // calée est une lecture du LEAD, le builder 3D la peint sans rien connaître
   // du module visite.
+
+  // VISCAD (fondateur 15/09/2026) — « la visite technique devient une étape
+  // du suivi commercial » : trois routes LEAD-SCOPÉES, jointes au contexte du
+  // lead (statut_libelle, commercial_nom, retour_disponible…) — DISTINCTES de
+  // `visitesApi.getVisites({lead})` (VTA13 ci-dessus, la liste brute de l'app
+  // visites pour l'onglet Visite du rail) : ce sont deux VUES du même module,
+  // jamais une réécriture — planifier ici crée la VRAIE visite (apps/visites).
+  // Consommées par CadenceFrise (frise mêlée touches+visites),
+  // SectionVisite (liste réelle + CTA planifier) et le panneau de coaching
+  // « Proposer la visite » (features/crm/relances/PanneauProposerVisite.jsx).
+  getLeadVisites: (leadId) => api.get(`/crm/leads/${leadId}/visites/`),
+  planifierVisiteLead: (leadId, payload) =>
+    api.post(`/crm/leads/${leadId}/visites/planifier/`, payload),
+  // Message WhatsApp prêt (proposition/confirmation de visite) — MÊME patron
+  // que `getRelanceEtapeMessage` (aperçu avant ouverture, jamais un envoi) ;
+  // `cle`: 'visite_proposition' | 'visite_confirmation'.
+  getMessageVisite: (leadId, cle) =>
+    api.get(`/crm/leads/${leadId}/message-visite/`, { params: { cle } }),
 }
 
 export default crmApi
