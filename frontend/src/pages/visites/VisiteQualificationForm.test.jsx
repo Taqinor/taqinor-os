@@ -50,8 +50,10 @@ describe('VisiteQualificationForm — VISITE-QUALIF', () => {
     render(<VisiteQualificationForm visiteId={7} qualification={null} onSaved={onSaved} />)
     await user.click(screen.getByRole('button', { name: /enregistrer la qualification/i }))
     expect(qualifierVisite).toHaveBeenCalledWith(7, PAYLOAD_DEFAUT)
-    expect(await screen.findByRole('button', { name: /enregistrer la qualification/i })).not.toBeDisabled()
-    expect(onSaved).toHaveBeenCalledWith({ id: 7, qualification: PAYLOAD_DEFAUT })
+    // `onSaved` n'arrive qu'APRÈS résolution de la promesse mockée — on
+    // attend l'appel plutôt que de vérifier un état DOM déjà présent
+    // (un bouton désactivé reste « trouvable », `findByRole` ne suffit pas).
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalledWith({ id: 7, qualification: PAYLOAD_DEFAUT }))
   })
 
   it('choisir « À modifier » exige « Quoi changer ? » — garde CLIENT sous le champ, aucun appel réseau', async () => {
@@ -67,7 +69,8 @@ describe('VisiteQualificationForm — VISITE-QUALIF', () => {
   it('« Quoi changer ? » rempli passe dans le payload devis_details, poste bien', async () => {
     qualifierVisite.mockResolvedValue({ data: { id: 7 } })
     const user = userEvent.setup()
-    render(<VisiteQualificationForm visiteId={7} qualification={null} onSaved={() => {}} />)
+    const onSaved = vi.fn()
+    render(<VisiteQualificationForm visiteId={7} qualification={null} onSaved={onSaved} />)
     await user.click(screen.getByRole('button', { name: /modifier/i }))
     await user.type(screen.getByLabelText(/quoi changer/i), 'Ajouter une batterie')
     await user.click(screen.getByRole('button', { name: /enregistrer la qualification/i }))
@@ -76,6 +79,7 @@ describe('VisiteQualificationForm — VISITE-QUALIF', () => {
       devis: 'a_modifier',
       devis_details: 'Ajouter une batterie',
     })
+    await vi.waitFor(() => expect(onSaved).toHaveBeenCalled())
   })
 
   it('erreur SERVEUR (400 par champ) affichée sous le champ fautif exact, jamais un message générique', async () => {
