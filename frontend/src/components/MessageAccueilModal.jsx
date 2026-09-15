@@ -81,7 +81,6 @@ export default function MessageAccueilModal() {
     fetchedRef.current = true
     notificationsApi.messagesAccueilALire()
       .then((res) => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount, une seule fois (fetchedRef)
         setMessages(res.data?.messages || [])
       })
       .catch(() => { /* silencieux — jamais bloquer l'ouverture de l'ERP */ })

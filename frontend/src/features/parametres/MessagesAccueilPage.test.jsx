@@ -31,6 +31,23 @@ vi.mock('../../ui/confirm', () => ({
 import api from '../../api/axios'
 import notificationsApi from '../../api/notificationsApi'
 import MessagesAccueilPage from './MessagesAccueilPage'
+import { MemoryRouter } from 'react-router-dom'
+import { ThemeProvider } from '../../design/ThemeProvider'
+import { ConfirmProvider } from '../../providers/ConfirmProvider'
+
+// DataTable consomme useTheme/useDensity (et la page IconButton/confirm) :
+// meme wrapper complet que UsersManagement.test.jsx.
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <ThemeProvider>
+        <ConfirmProvider>
+          <MessagesAccueilPage />
+        </ConfirmProvider>
+      </ThemeProvider>
+    </MemoryRouter>,
+  )
+}
 
 const USERS = [
   { id: 1, username: 'reda', is_active: true },
@@ -47,21 +64,21 @@ beforeEach(() => {
 
 describe('MSGACC1 — MessagesAccueilPage', () => {
   it('ne propose que les utilisateurs ACTIFS dans le sélecteur destinataire', async () => {
-    render(<MessagesAccueilPage />)
+    renderPage()
     await userEvent.click(screen.getByRole('combobox'))
     expect(await screen.findByRole('option', { name: 'reda' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'inactif' })).not.toBeInTheDocument()
   })
 
   it('envoie le payload exact (destinataire number, corps, date+heure ISO)', async () => {
-    render(<MessagesAccueilPage />)
+    renderPage()
 
     await userEvent.click(screen.getByRole('combobox'))
     await userEvent.click(await screen.findByRole('option', { name: 'reda' }))
 
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-09-16' } })
-    fireEvent.change(screen.getByLabelText('Heure'), { target: { value: '08:00' } })
-    await userEvent.type(screen.getByLabelText('Message'), 'Bonjour l’équipe')
+    fireEvent.change(screen.getByLabelText(/^Date/), { target: { value: '2026-09-16' } })
+    fireEvent.change(screen.getByLabelText(/^Heure/), { target: { value: '08:00' } })
+    await userEvent.type(screen.getByLabelText(/^Message/), 'Bonjour l’équipe')
 
     await userEvent.click(screen.getByRole('button', { name: 'Envoyer le message' }))
 
@@ -78,13 +95,13 @@ describe('MSGACC1 — MessagesAccueilPage', () => {
     notificationsApi.createMessageAccueil.mockRejectedValueOnce({
       response: { status: 400, data: { corps: ['Le corps du message est requis.'] } },
     })
-    render(<MessagesAccueilPage />)
+    renderPage()
 
     await userEvent.click(screen.getByRole('combobox'))
     await userEvent.click(await screen.findByRole('option', { name: 'reda' }))
     // Le bouton d'envoi est désactivé sans corps ; on force la soumission via
     // le formulaire pour exercer le chemin d'erreur serveur.
-    await userEvent.type(screen.getByLabelText('Message'), ' ')
+    await userEvent.type(screen.getByLabelText(/^Message/), ' ')
     await userEvent.click(screen.getByRole('button', { name: 'Envoyer le message' }))
 
     // Sous le champ — id déterministe posé par FormField (`${id}-error`) ;
@@ -104,7 +121,7 @@ describe('MSGACC1 — MessagesAccueilPage', () => {
         ],
       },
     })
-    render(<MessagesAccueilPage />)
+    renderPage()
 
     const grid = await screen.findByRole('grid', { name: 'Messages d’accueil envoyés' })
     const rowReda = within(grid).getByText('reda').closest('tr')
