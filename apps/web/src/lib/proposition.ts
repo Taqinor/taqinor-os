@@ -1868,6 +1868,23 @@ export function localizedStamp(d: Date, lang: PropLang): string {
   }
 }
 
+/**
+ * PREVIEW DENSITE (2026-09-15) - libelle d'ATTENTE, AVANT toute signature. La
+ * page affichait « signature horodatee le <maintenant> » des l'hydratation,
+ * c'est-a-dire un horodatage de signature pour un document NON SIGNE : le
+ * genre de detail qu'un lecteur mefiant retient. Le vrai horodatage
+ * (signStampLabel ci-dessous) n'apparait qu'une fois la signature aboutie.
+ */
+export function signStampPendingLabel(reference: string, lang: PropLang): string {
+  if (lang === 'ar') {
+    return `المرجع ${reference} · سيظهر توقيت توقيعكم هنا عند التأكيد.`;
+  }
+  if (lang === 'en') {
+    return `Ref. ${reference} · your signature's timestamp will appear here once you confirm.`;
+  }
+  return `Réf. ${reference} · l’horodatage de votre signature s’affichera ici à la validation.`;
+}
+
 /** WJ42 — Libellé « Réf. … · signature horodatée le … » dans les 3 langues. */
 export function signStampLabel(reference: string, d: Date, lang: PropLang): string {
   const stamp = localizedStamp(d, lang);
@@ -3367,9 +3384,9 @@ export function nextSteps(): NextStep[] {
       title: 'Signature',
       titleAr: 'التوقيع',
       titleEn: 'Signature',
-      body: 'Vous signez en ligne ci-dessous. Votre conseiller Taqinor confirme la réception dans la journée.',
-      bodyAr: 'توقعون إلكترونياً أدناه، ويؤكد مستشاركم الاستلام خلال اليوم نفسه.',
-      bodyEn: 'You sign online below. Your Taqinor advisor confirms receipt the same day.',
+      body: 'Vous signez en ligne ci-dessus. Votre conseiller Taqinor confirme la réception dans la journée.',
+      bodyAr: 'توقعون إلكترونياً أعلاه، ويؤكد مستشاركم الاستلام خلال اليوم نفسه.',
+      bodyEn: 'You sign online above. Your Taqinor advisor confirms receipt the same day.',
     },
     {
       id: 'visite',

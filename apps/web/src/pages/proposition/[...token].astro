@@ -5076,12 +5076,20 @@ const signConfig = ok
               data-ar={anneesAr(INSTALL_WARRANTY_YEARS)}>{INSTALL_WARRANTY_YEARS} ans</span>
             <span class="text-lune" data-i18n data-fr="de pose Taqinor" data-en="of Taqinor installation work" data-ar="على تركيب تاقينور">de pose Taqinor</span>
           </p>
-          <p class="mt-2 text-xs text-lune-faint" data-i18n
-            data-fr="Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans."
-            data-en="Two distinct warranties: one covers the panel itself, the other the power it still delivers over the years."
-            data-ar="ضمانان مختلفان: أحدهما يغطي اللوح نفسه، والآخر القدرة التي يظل ينتجها عبر السنين.">
-            Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans.
-          </p>
+          {/* PREVIEW DENSITE (2026-09-15) - cette phrase EXPLIQUE les deux
+              chiffres de garantie panneau juste au-dessus, eux-memes gates par
+              `equipPresence.panneaux`. Non gatee, elle promettait « deux
+              garanties » sans qu'aucun chiffre ne soit affiche (un devis sans
+              ligne panneau : un pompage). Elle suit desormais exactement la
+              condition de ce qu'elle decrit. */}
+          {equipPresence.panneaux && (
+            <p class="mt-2 text-xs text-lune-faint" data-i18n
+              data-fr="Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans."
+              data-en="Two distinct warranties: one covers the panel itself, the other the power it still delivers over the years."
+              data-ar="ضمانان مختلفان: أحدهما يغطي اللوح نفسه، والآخر القدرة التي يظل ينتجها عبر السنين.">
+              Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans.
+            </p>
+          )}
           {/* (fondateur 2026-08-17) réassurance : ce que vaut une garantie
               fabricant si l'installateur venait à changer. Fait vérifiable — la
               garantie porte sur le MATÉRIEL, pas sur le poseur. */}
@@ -6703,6 +6711,7 @@ const signConfig = ok
     validateSign,
     buildAcceptBodyRich,
     signStampLabel,
+    signStampPendingLabel,
     localizedStamp,
     isOtpRequiredDetail,
     isOtpIncorrectDetail,
@@ -7555,10 +7564,17 @@ const signConfig = ok
     // désormais une busy-label REGISTRÉE (même discipline que
     // `renderSubmitLabel`) : elle régénère tout le texte, dans la langue
     // courante, à CHAQUE bascule — jamais un remplacement ponctuel figé.
-    const signedAtLocal = new Date();
+    // PREVIEW DENSITE (2026-09-15) - l'horodatage ne peut pas exister AVANT la
+    // signature. `signedAtLocal` reste donc null tant que la signature n'a pas
+    // abouti, et le recapitulatif affiche le libelle d'ATTENTE. La discipline
+    // WJ42 est inchangee : renderStamp reste une busy-label ENREGISTREE, donc
+    // les deux libelles suivent la bascule de langue.
+    let signedAtLocal: Date | null = null;
     function renderStamp(lang: PropLang): void {
       if (!stampEl) return;
-      stampEl.textContent = signStampLabel(cfg.reference, signedAtLocal, lang as SignPropLang);
+      stampEl.textContent = signedAtLocal
+        ? signStampLabel(cfg.reference, signedAtLocal, lang as SignPropLang)
+        : signStampPendingLabel(cfg.reference, lang as SignPropLang);
     }
     propI18nBusyLabels.push(renderStamp);
     renderStamp(currentLang);
@@ -7599,6 +7615,8 @@ const signConfig = ok
       if (successName) successName.textContent = name || '';
       if (when) {
         signedWhen = when;
+        signedAtLocal = when;
+        renderStamp(currentLang);
         renderSuccessTime(currentLang);
       }
       // Écho de la signature manuscrite si dessinée, sinon le sceau textuel
