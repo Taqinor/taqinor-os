@@ -4359,11 +4359,16 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
 
         reponse = Response(self.get_serializer(appareil).data,
                            status=status.HTTP_200_OK)
+        # `secure` : même règle que les cookies JWT d'`authentication.views`
+        # (`not settings.DEBUG`) — derrière Caddy→nginx, `X-Forwarded-Proto`
+        # porte le schéma interne (http), donc `request.is_secure()` seul
+        # laisserait tomber le drapeau en production.
+        from django.conf import settings
         commun = {
             'max_age': _COOKIES_EQUIPE_MAX_AGE,
             'domain': domaine_cookies_equipe(request),
             'path': '/',
-            'secure': request.is_secure(),
+            'secure': request.is_secure() or not settings.DEBUG,
             'samesite': 'Lax',
         }
         # `tq_equipe` n'a jamais besoin d'être lu par du JavaScript : httpOnly.
