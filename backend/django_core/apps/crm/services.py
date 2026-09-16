@@ -40,16 +40,21 @@ from .models import Canal, Client, Lead, LeadActivity, PointContact, RelanceEtap
 # mais il est RÉEXPORTÉ ici : `services` reste la porte d'entrée unique des
 # écritures CRM (les accroches n'importent jamais `visites` directement).
 from .visites import (  # noqa: F401 — réexport public délibéré
+    COOKIE_APPAREIL,
+    COOKIE_EQUIPE,
     alerter_appareil_partage,
     appareil_de_requete,
     appareils_equipe_ids,
     avec_direction,
     detecter_concurrent,
+    domaine_cookies_equipe,
+    enregistrer_appareil_equipe,
     enregistrer_visite_externe,
     est_appareil_equipe,
     historique_appareil,
     ip_de_requete,
     rattacher_visites_au_lead,
+    requete_marquee_equipe,
     resume_historique_fr,
     tracer_et_correler,
     user_agent_de_requete,
