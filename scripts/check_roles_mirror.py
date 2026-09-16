@@ -6,9 +6,13 @@ LE DEFAUT QU'ELLE ATTRAPE (audit L3 du 16/09/2026, STKCAT2)
 Le meme vocabulaire de roles (`panneau`, `onduleur_hybride`, `structure`...)
 est recopie A LA MAIN dans QUATRE fichiers, deux cotes de la pile :
 
-  1. backend/django_core/apps/ventes/models.py        ROLES_AUTO_COMPOSITION
-     (le tuple qui AUTORISE un role dans ParametresGammes.marques /
-      .ordre_lignes — un role absent est refuse en 400)
+  1. backend/django_core/core/product_roles.py        ROLES_DEVIS
+     (depuis STKCAT21, LA source du tuple ; `apps/ventes/models.py`
+      l'ALIASE sous son nom historique ROLES_AUTO_COMPOSITION — le tuple qui
+      AUTORISE un role dans ParametresGammes.marques / .ordre_lignes, un role
+      absent est refuse en 400 — et `stock.Produit.role_devis` en tire ses
+      `choices`. Cette garde lit la source ET verifie l'alias, sans quoi
+      renommer l'un des deux la rendrait verte et vide)
   2. backend/django_core/apps/ventes/domain/catalogue.py   LIBELLES_ROLES
      (le libelle FR que le commercial lit dans « marque epinglee introuvable »)
   3. backend/django_core/apps/ventes/offres_tailles.py     _FAMILLES
@@ -53,6 +57,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DJANGO_ROOT = ROOT / "backend" / "django_core"
 
+PRODUCT_ROLES_PY = DJANGO_ROOT / "core" / "product_roles.py"
 MODELS_PY = DJANGO_ROOT / "apps" / "ventes" / "models.py"
 CATALOGUE_PY = DJANGO_ROOT / "apps" / "ventes" / "domain" / "catalogue.py"
 OFFRES_PY = DJANGO_ROOT / "apps" / "ventes" / "offres_tailles.py"
@@ -103,14 +108,48 @@ def _texte(noeud: ast.expr, quoi: str) -> str:
     raise Divergence(f"{quoi} n'est pas une chaine litterale")
 
 
-def lire_roles_auto_composition() -> list[str]:
-    """Les cles de `ROLES_AUTO_COMPOSITION` (tuple/liste de chaines)."""
-    chemin = MODELS_PY
-    valeur = _affectation(_module(chemin), "ROLES_AUTO_COMPOSITION", chemin)
+def lire_roles_devis() -> list[str]:
+    """Les cles de `core.product_roles.ROLES_DEVIS` — LA source du tuple."""
+    chemin = PRODUCT_ROLES_PY
+    valeur = _affectation(_module(chemin), "ROLES_DEVIS", chemin)
     if not isinstance(valeur, (ast.Tuple, ast.List)):
         raise Divergence(
-            "ROLES_AUTO_COMPOSITION n'est pas un tuple/liste litteral "
+            "ROLES_DEVIS n'est pas un tuple/liste litteral "
             f"dans {_relatif(chemin)}")
+    return [_texte(element, "un element de ROLES_DEVIS")
+            for element in valeur.elts]
+
+
+def lire_roles_auto_composition() -> list[str]:
+    """Les cles de `ROLES_AUTO_COMPOSITION` (apps/ventes/models.py).
+
+    STKCAT21 — deux formes acceptees, et RIEN d'autre :
+
+      * `ROLES_AUTO_COMPOSITION = ROLES_DEVIS` — l'ALIAS attendu aujourd'hui.
+        La valeur lue est alors celle de `core/product_roles.py`, donc l'egalite
+        est structurelle et non plus a tenir a la main ;
+      * un tuple/liste LITTERAL — la forme d'avant STKCAT21, toujours comparee
+        role par role (si quelqu'un re-copiait le tuple ici, la garde
+        continuerait de le confronter aux trois autres miroirs au lieu de
+        devenir aveugle).
+
+    Toute autre forme (un import renomme, une concatenation, une comprehension)
+    est refusee EXPLICITEMENT : une garde qui ne sait plus lire sa source doit
+    ECHOUER, jamais passer en silence.
+    """
+    chemin = MODELS_PY
+    valeur = _affectation(_module(chemin), "ROLES_AUTO_COMPOSITION", chemin)
+    if isinstance(valeur, ast.Name):
+        if valeur.id != "ROLES_DEVIS":
+            raise Divergence(
+                "ROLES_AUTO_COMPOSITION aliase `%s` dans %s — la seule source "
+                "attendue est `ROLES_DEVIS` (core/product_roles.py)."
+                % (valeur.id, _relatif(chemin)))
+        return lire_roles_devis()
+    if not isinstance(valeur, (ast.Tuple, ast.List)):
+        raise Divergence(
+            "ROLES_AUTO_COMPOSITION n'est ni l'alias `ROLES_DEVIS` ni un "
+            f"tuple/liste litteral dans {_relatif(chemin)}")
     return [_texte(element, "un element de ROLES_AUTO_COMPOSITION")
             for element in valeur.elts]
 
@@ -203,14 +242,18 @@ def constats() -> list[str]:
     """La liste (vide = OK) des divergences, en francais."""
     problemes: list[str] = []
 
-    roles = lire_roles_auto_composition()
+    # STKCAT21 — la SOURCE est `core.product_roles.ROLES_DEVIS` ; le tuple lu
+    # cote ventes est son alias (ou, forme legacy, une copie litterale encore
+    # comparee role par role).
+    roles = lire_roles_devis()
+    alias = lire_roles_auto_composition()
     libelles = lire_libelles_roles()
     familles = lire_familles()
     categories = lire_product_categories()
     cles_js = [cle for cle, _ in categories]
 
     sources = {
-        "ROLES_AUTO_COMPOSITION (apps/ventes/models.py)": list(roles),
+        "ROLES_AUTO_COMPOSITION (apps/ventes/models.py)": list(alias),
         "LIBELLES_ROLES (apps/ventes/domain/catalogue.py)": list(libelles),
         "_FAMILLES (apps/ventes/offres_tailles.py)": list(familles),
         "PRODUCT_CATEGORIES (frontend/src/features/ventes/solar.js)": cles_js,
@@ -275,9 +318,10 @@ def main(argv=None) -> int:
               "restent des ALIAS conserves — ne les retirez pas.")
         return 1
 
-    nombre = len(lire_roles_auto_composition())
-    print(f"OK : {nombre} roles de composition, identiques dans les quatre "
-          "miroirs (backend models / libelles / familles / solar.js).")
+    nombre = len(lire_roles_devis())
+    print(f"OK : {nombre} roles de composition (source core/product_roles.py "
+          "ROLES_DEVIS), identiques dans les quatre miroirs (backend models / "
+          "libelles / familles / solar.js).")
     return 0
 
 

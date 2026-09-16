@@ -3,6 +3,11 @@ from django.conf import settings
 from django.utils.functional import cached_property
 
 from core.models import TenantModel
+# STKCAT21 — LE vocabulaire de rôles de devis, déclaré une seule fois dans la
+# couche de FONDATION (``core``), parce que ``apps.stock`` doit lire le même
+# tuple sans pouvoir importer ``apps.ventes``. Voir ``ROLES_AUTO_COMPOSITION``
+# plus bas : le nom historique reste, la copie a disparu.
+from core.product_roles import ROLES_DEVIS
 
 # M1 — cross-app FKs use Django's lazy "app.Model" string form so this module
 # imports no sibling app's models at load time (breaks the crm⇄ventes /
@@ -3188,8 +3193,7 @@ class LigneLivraisonBC(models.Model):
 #
 # Miroir EXACT de ``frontend/src/features/ventes/solar.js::PRODUCT_CATEGORIES``
 # (clés uniquement) : le rôle de composition automatique auquel une marque
-# préférée peut être épinglée. Synchronisation MANUELLE — aucun import
-# cross-stack possible ; un rôle hors de ce tuple est rejeté par
+# préférée peut être épinglée. Un rôle hors de ce tuple est rejeté par
 # ``ParametresGammes.clean()``/``ParametresGammesSerializer``.
 #
 # STKCAT2 (16/09/2026) — vocabulaire ADDITIF : ``onduleur_offgrid`` (la
@@ -3199,19 +3203,17 @@ class LigneLivraisonBC(models.Model):
 # anciens rôles ``structure_acier``/``structure_alu`` sont CONSERVÉS POUR
 # TOUJOURS comme ALIAS : un réglage ``ParametresGammes`` enregistré hier
 # reste accepté tel quel, sans aucune migration du JSON.
-ROLES_AUTO_COMPOSITION = (
-    'onduleur_reseau', 'onduleur_hybride', 'onduleur_offgrid', 'panneau',
-    'batterie',
-    # ``structure`` d'abord (rôle générique), puis ses deux alias dépréciés —
-    # rang EXPLICITE et voisin, jamais le rang « inconnu = dernier » de
-    # ``ordonner_par_role``.
-    'structure',
-    'structure_acier',  # déprécié (alias conservé) — voir STKCAT2
-    'structure_alu',    # déprécié (alias conservé) — voir STKCAT2
-    'socle', 'cable_dc', 'cable_terre',
-    'smart_meter', 'wifi_dongle', 'accessoires', 'tableau', 'installation',
-    'transport', 'suivi',
-)
+#
+# STKCAT21 (16/09/2026) — LE TUPLE A DÉMÉNAGÉ DANS ``core.product_roles``, il
+# n'a pas été copié. ``stock.Produit.role_devis`` doit porter LE MÊME
+# vocabulaire en ``choices``, et ``apps.stock`` n'a pas le droit d'importer
+# ``apps.ventes`` (frontière inter-app, verrouillée par ``.importlinter``) :
+# une recopie aurait fait un CINQUIÈME miroir à tenir à la main, c'est-à-dire
+# le défaut que ``scripts/check_roles_mirror.py`` existe pour attraper. Le nom
+# ``ROLES_AUTO_COMPOSITION`` reste le point de lecture de toute l'app ventes
+# (aucun appelant ne change) ; les VALEURS et leur ORDRE sont inchangés au
+# caractère près.
+ROLES_AUTO_COMPOSITION = ROLES_DEVIS
 
 
 def _erreurs_marques(marques):
