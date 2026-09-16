@@ -1,17 +1,20 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
-import { NAP } from '../lib/nap';
+import { NAP, LEGAL_IDENTITY } from '../lib/nap';
 
 // Informations légales — dossier entreprise 2026. Pas d'adresse postale
 // publiée (décision propriétaire : mode zone de service uniquement).
+// PREVIEW v2 (2026-09-16) — ces valeurs vivent désormais dans lib/nap.ts
+// (LEGAL_IDENTITY), partagées avec la page de proposition : une seule source,
+// aucune variante possible. Le tableau et son ordre sont inchangés.
 const rows = [
-  { label: 'Raison sociale', value: 'TAQINOR Solutions SARLAU' },
-  { label: 'Forme juridique', value: 'Société à responsabilité limitée à associé unique' },
-  { label: 'Registre de commerce', value: 'RC 691213 — Tribunal de Commerce de Casablanca' },
-  { label: 'ICE', value: '003799642000067' },
-  { label: 'Capital social', value: '100 000,00 MAD' },
-  { label: 'Gérant', value: 'M. Reda Kasri' },
+  { label: 'Raison sociale', value: LEGAL_IDENTITY.raisonSociale },
+  { label: 'Forme juridique', value: LEGAL_IDENTITY.formeJuridique },
+  { label: 'Registre de commerce', value: LEGAL_IDENTITY.rc },
+  { label: 'ICE', value: LEGAL_IDENTITY.ice },
+  { label: 'Capital social', value: LEGAL_IDENTITY.capital },
+  { label: 'Gérant', value: LEGAL_IDENTITY.gerant },
   { label: 'Contact', value: `${NAP.email} · ${NAP.phoneDisplayIntl}` },
   { label: 'Hébergement', value: 'Cloudflare, Inc. — réseau mondial (cloudflare.com)' },
 ];
