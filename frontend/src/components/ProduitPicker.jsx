@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react'
 import { cn } from '../lib/cn'
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
+  typeOfProduit, familleAttendue,
 } from '../features/stock/catalogue'
 import { classifyProduct } from '../features/ventes/solar'
 import { useCanCreateProduit } from '../hooks/useHasPermission'
@@ -20,10 +21,22 @@ import ProduitQuickCreateModal from './ProduitQuickCreateModal'
    pp-* d'index.css ne sont plus utilisées). Props/API préservés 1:1 :
    { produits, value, onChange, invalid }.
 
-   QP1 — `typeFilter` (optionnel) restreint la liste au type de produit attendu
-   par le slot de la ligne (ex. 'onduleur_hybride'), via classifyProduct (même
+   QP1 — `typeFilter` (optionnel) signale le type de produit attendu par le
+   slot de la ligne (ex. 'onduleur_hybride'), via classifyProduct (même
    classification que le moteur PDF, builder.py). Une ligne sans type inférable
    passe `typeFilter` à null/undefined et garde la liste complète.
+
+   STKCAT12 — UNION jamais substitution : un `typeFilter` ne FILTRE plus rien,
+   il ne fait que trier le catalogue en deux sections — « Recommandé pour
+   cette ligne » (mot-clé `classifyProduct` OU famille typée `typeOfProduit`
+   via `familleAttendue`) puis, dès qu'une recherche est tapée, « Tout le
+   catalogue (m) » pour le reste des résultats. Sans recherche, seule la
+   section Recommandé s'affiche (comportement historique) — un indice en tête
+   de liste rappelle qu'on peut chercher dans tout le catalogue. Un produit
+   hors mot-clé mais catégorisé (ex. « Pergola » rangée en catégorie typée
+   structure) n'est donc plus jamais invisible : il est promu Recommandé, ou
+   sinon reste atteignable via la recherche — jamais perdu. Curseur clavier
+   continu sur UN seul tableau `selectables` couvrant les deux sections.
 
    QG6 — « + Nouveau produit » : visible uniquement pour Directeur + Commercial
    responsable (hook QG5, backend QG4 est la garde qui compte). `onProduitCreated`
@@ -51,29 +64,66 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
     () => produits.find((p) => String(p.id) === String(value)) ?? null,
     [produits, value])
 
+  // STKCAT12 — le nombre total de produits sélectionnables du catalogue,
+  // INDÉPENDANT du typeFilter/de la recherche : c'est ce chiffre qu'annonce
+  // l'indice « Tapez pour chercher dans N produits » (jamais un sous-compte
+  // trompeur du seul type attendu).
+  const totalSelectable = useMemo(
+    () => produits.filter((p) => !p.is_archived && !sansPrix(p)).length,
+    [produits])
+
+  const famille = typeFilter ? familleAttendue(typeFilter) : null
+  const isRecommande = (p) => !!typeFilter && (
+    classifyProduct(p.nom) === typeFilter
+    || (famille !== null && typeOfProduit(p) === famille)
+  )
+
   // Lignes à plat (en-têtes + articles) dans l'ordre délibéré de la taxonomie
   const { rows, selectables } = useMemo(() => {
-    let actifs = produits.filter((p) => !p.is_archived)
-    if (typeFilter) {
-      actifs = actifs.filter((p) => classifyProduct(p.nom) === typeFilter)
-    }
+    const actifs = produits.filter((p) => !p.is_archived)
     const matches = searchCatalogue(actifs, query)
     const rows = []
     const selectables = []
-    for (const cat of groupCatalogue(matches)) {
-      rows.push({ kind: 'cat', label: cat.nom, key: `c-${cat.nom}` })
-      for (const b of cat.brands) {
-        rows.push({ kind: 'brand', label: b.marque, key: `b-${cat.nom}-${b.marque}` })
-        for (const p of b.items) {
-          const dispo = !sansPrix(p)
-          rows.push({ kind: 'item', p, dispo, key: `p-${p.id}`,
-                      index: dispo ? selectables.length : -1 })
-          if (dispo) selectables.push(p)
+
+    // Empile une grille CATÉGORIE → MARQUE → article pour `items` ; `sectionKey`
+    // évite toute collision de clé React entre les deux sections (un même
+    // article/catégorie peut apparaître groupé sous les deux en-têtes).
+    const appendGroup = (items, sectionKey) => {
+      for (const cat of groupCatalogue(items)) {
+        rows.push({ kind: 'cat', label: cat.nom, key: `${sectionKey}-c-${cat.nom}` })
+        for (const b of cat.brands) {
+          rows.push({ kind: 'brand', label: b.marque, key: `${sectionKey}-b-${cat.nom}-${b.marque}` })
+          for (const p of b.items) {
+            const dispo = !sansPrix(p)
+            rows.push({ kind: 'item', p, dispo, key: `${sectionKey}-p-${p.id}`,
+                        index: dispo ? selectables.length : -1 })
+            if (dispo) selectables.push(p)
+          }
         }
       }
     }
+
+    if (!typeFilter) {
+      appendGroup(matches, 'all')
+    } else {
+      const recommandes = matches.filter(isRecommande)
+      const reste = matches.filter((p) => !isRecommande(p))
+      // Sans recherche tapée, seule la section Recommandé s'affiche (comme
+      // avant STKCAT12) — l'indice au-dessus rappelle que taper cherche dans
+      // TOUT le catalogue ; « reste » redevient visible dès la 1ʳᵉ frappe,
+      // jamais un filtre permanent (UNION jamais substitution).
+      if (recommandes.length) {
+        rows.push({ kind: 'section', label: 'Recommandé pour cette ligne', key: 'sec-reco' })
+        appendGroup(recommandes, 'reco')
+      }
+      if (query.trim() && reste.length) {
+        rows.push({ kind: 'section', label: `Tout le catalogue (${reste.length})`, key: 'sec-reste' })
+        appendGroup(reste, 'reste')
+      }
+    }
     return { rows, selectables }
-  }, [produits, query, typeFilter])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [produits, query, typeFilter, famille])
 
   useEffect(() => {
     if (open) requestAnimationFrame(() => inputRef.current?.focus())
@@ -174,6 +224,14 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
             )}
           </div>
           <div className="max-h-72 overflow-y-auto p-1" ref={listRef} role="listbox" id={listId}>
+            {/* STKCAT12 — indice honnête : sans recherche, seule la section
+                Recommandé s'affiche ; ce rappel dit qu'il y a plus à chercher,
+                jamais un compte qui prétend que le catalogue s'arrête là. */}
+            {!query && (
+              <div className="px-2 pb-1.5 pt-1 text-xs text-muted-foreground">
+                Tapez pour chercher dans {totalSelectable} produits
+              </div>
+            )}
             {value && (
               <button
                 type="button"
@@ -184,6 +242,14 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
               </button>
             )}
             {rows.map((r) => {
+              if (r.kind === 'section') {
+                return (
+                  <div key={r.key}
+                       className="mt-1 border-t border-border px-2 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wider text-primary first:mt-0 first:border-t-0">
+                    {r.label}
+                  </div>
+                )
+              }
               if (r.kind === 'cat') {
                 return (
                   <div key={r.key} className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -220,6 +286,15 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
                   )}
                 >
                   <span className="flex-1 truncate">{p.nom}</span>
+                  {/* STKCAT12 — puce du type de catégorie (categorie_type_display,
+                      quand le backend l'a renseigné) EN PLUS de la spec clé
+                      existante (keySpec) : deux informations différentes, ni
+                      l'une ne remplace l'autre. */}
+                  {p.categorie_type_display && (
+                    <span className="shrink-0 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      {p.categorie_type_display}
+                    </span>
+                  )}
                   {spec && <span className="shrink-0 text-xs text-muted-foreground">{spec}</span>}
                   <span className={cn('shrink-0 text-xs tabular-nums', dispo ? 'font-medium text-foreground' : 'italic text-muted-foreground')}>
                     {dispo ? `${formatMAD(prixTtc(p), { withSymbol: false })} DH` : 'prix à renseigner'}
@@ -227,7 +302,9 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
                 </button>
               )
             })}
-            {rows.length === 0 && (
+            {/* STKCAT12 — jamais « Aucun produit pour «  » » : cette phrase ne
+                s'affiche que quand une recherche a réellement été tapée. */}
+            {rows.length === 0 && query.trim() && (
               <div className="px-2 py-6 text-center text-sm text-muted-foreground">
                 Aucun produit pour «&nbsp;{query}&nbsp;»
               </div>

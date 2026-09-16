@@ -125,3 +125,74 @@ describe('ProduitPicker — QG6 quick-create (rôle-gated)', () => {
     expect(screen.getByTitle('Nouveau produit')).toBeInTheDocument()
   })
 })
+
+// STKCAT12 — UNION jamais substitution : un produit hors mot-clé mais dont la
+// CATÉGORIE est typée (ex. « Pergola » rangée en catégorie structure) doit
+// être visible et sélectionnable dans la section « Recommandé pour cette
+// ligne » — c'était le bug (« Pergola introuvable ») : avant STKCAT12, un
+// typeFilter FILTRAIT `actifs` par seul mot-clé et la rendait invisible pour
+// toujours, même en cherchant.
+const PRODUITS_STKCAT12 = [
+  ...PRODUITS,
+  {
+    id: 5, nom: 'Pergola', prix_vente: '500', tva: 20, is_archived: false,
+    categorie_type: 'structure',
+    categorie: { nom: 'Structures & fixation', type_equipement: 'structure' },
+  },
+  {
+    id: 6, nom: 'Socles', prix_vente: 300, tva: 20, is_archived: false,
+    categorie: { nom: 'Structures & fixation' },
+  },
+]
+
+describe('ProduitPicker — STKCAT12 sections Recommandé / Tout le catalogue', () => {
+  it('« Pergola » (catégorie typée structure, pas de mot-clé) est visible et sélectionnable dans Recommandé pour typeFilter="structure"', () => {
+    renderPicker({ produits: PRODUITS_STKCAT12, value: '', onChange: () => {}, typeFilter: 'structure' })
+    openPicker()
+    expect(screen.getByText('Recommandé pour cette ligne')).toBeInTheDocument()
+    const btn = screen.getByText('Pergola').closest('button')
+    expect(btn).not.toBeNull()
+    expect(btn).not.toBeDisabled()
+  })
+
+  it('« Pergola » reste dans Recommandé pour typeFilter="structure_acier" (même famille)', () => {
+    renderPicker({ produits: PRODUITS_STKCAT12, value: '', onChange: () => {}, typeFilter: 'structure_acier' })
+    openPicker()
+    const btn = screen.getByText('Pergola').closest('button')
+    expect(btn).not.toBeDisabled()
+  })
+
+  it('une ligne « socle » liste « Socles » dans Recommandé ; le reste (ex. panneaux) reste atteignable via la recherche, jamais perdu', () => {
+    renderPicker({ produits: PRODUITS_STKCAT12, value: '', onChange: () => {}, typeFilter: 'socle' })
+    openPicker()
+    // Sans recherche : seule la section Recommandé (comportement historique).
+    expect(screen.getByText('Socles')).toBeInTheDocument()
+    expect(screen.queryByText('Panneau Solaire 550W')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Tout le catalogue/)).not.toBeInTheDocument()
+    // Indice honnête : annonce le total du catalogue, pas le seul sous-compte.
+    expect(screen.getByText(/Tapez pour chercher dans \d+ produits/)).toBeInTheDocument()
+    // Dès la recherche : le panneau (hors prédicat socle) redevient visible,
+    // groupé sous « Tout le catalogue » — jamais une substitution permanente.
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'panneau' } })
+    expect(screen.getByText(/Tout le catalogue/)).toBeInTheDocument()
+    expect(screen.getByText('Panneau Solaire 550W')).toBeInTheDocument()
+  })
+
+  it('requête vide n\'affiche jamais « Aucun produit pour «  » » — même quand Recommandé est vide (0 ligne)', () => {
+    // typeFilter sans aucune correspondance mot-clé NI famille dans PRODUITS :
+    // Recommandé est vide et, requête vide, « Tout le catalogue » ne s'affiche
+    // pas non plus → 0 ligne. L'état vide doit rester honnête (juste l'indice
+    // de recherche), jamais « Aucun produit pour «  » » (pas de recherche tapée).
+    renderPicker({ produits: PRODUITS, value: '', onChange: () => {}, typeFilter: 'batterie_gel_inconnue' })
+    openPicker()
+    expect(screen.queryByText(/Aucun produit pour/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Tapez pour chercher dans \d+ produits/)).toBeInTheDocument()
+  })
+
+  it('une recherche sans résultat affiche « Aucun produit pour « <query> » »', () => {
+    renderPicker({ produits: PRODUITS, value: '', onChange: () => {} })
+    openPicker()
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'zzz-inexistant' } })
+    expect(screen.getByText(/Aucun produit pour/)).toBeInTheDocument()
+  })
+})
