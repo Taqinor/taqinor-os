@@ -84,15 +84,23 @@ def _seed_structure_catalogue(company, *, avec_produits=False):
     n'existe aucune source de prix EUR, et un prix converti ou estimé serait
     un chiffre inventé (règle checked-facts, non négociable).
     """
-    from apps.stock.management.commands.seed_catalogue import TAXONOMIE
+    # STKCAT3 — MÊME table nom→type que le seeder (une seule source) : un
+    # tenant neuf naît avec ses catégories TYPÉES, jamais à NULL.
+    from apps.stock.management.commands.seed_catalogue import (
+        TAXONOMIE, appliquer_type_equipement, type_equipement_pour,
+    )
     from apps.stock.models import Categorie
 
     creees = []
     for nom, ordre in TAXONOMIE:
-        _cat, cree = Categorie.objects.get_or_create(
+        cat, cree = Categorie.objects.get_or_create(
             company=company, nom=nom,
             defaults={'description': 'Catalogue solaire (gabarit SOL10)',
-                      'ordre': ordre})
+                      'ordre': ordre,
+                      'type_equipement': type_equipement_pour(nom)})
+        # Comble une catégorie préexistante restée NON typée (jamais un
+        # écrasement d'un type posé à la main).
+        appliquer_type_equipement(cat)
         if cree:
             creees.append(nom)
 

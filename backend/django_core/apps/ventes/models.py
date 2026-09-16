@@ -3191,9 +3191,24 @@ class LigneLivraisonBC(models.Model):
 # préférée peut être épinglée. Synchronisation MANUELLE — aucun import
 # cross-stack possible ; un rôle hors de ce tuple est rejeté par
 # ``ParametresGammes.clean()``/``ParametresGammesSerializer``.
+#
+# STKCAT2 (16/09/2026) — vocabulaire ADDITIF : ``onduleur_offgrid`` (la
+# troisième famille d'onduleur, déjà semée par ``seed_catalogue`` et déjà
+# présente côté écran) et ``structure`` (le rôle GÉNÉRIQUE de structure, émis
+# pour un produit dont le nom ne dit ni « acier » ni « alu »). Les DEUX
+# anciens rôles ``structure_acier``/``structure_alu`` sont CONSERVÉS POUR
+# TOUJOURS comme ALIAS : un réglage ``ParametresGammes`` enregistré hier
+# reste accepté tel quel, sans aucune migration du JSON.
 ROLES_AUTO_COMPOSITION = (
-    'onduleur_reseau', 'onduleur_hybride', 'panneau', 'batterie',
-    'structure_acier', 'structure_alu', 'socle', 'cable_dc', 'cable_terre',
+    'onduleur_reseau', 'onduleur_hybride', 'onduleur_offgrid', 'panneau',
+    'batterie',
+    # ``structure`` d'abord (rôle générique), puis ses deux alias dépréciés —
+    # rang EXPLICITE et voisin, jamais le rang « inconnu = dernier » de
+    # ``ordonner_par_role``.
+    'structure',
+    'structure_acier',  # déprécié (alias conservé) — voir STKCAT2
+    'structure_alu',    # déprécié (alias conservé) — voir STKCAT2
+    'socle', 'cable_dc', 'cable_terre',
     'smart_meter', 'wifi_dongle', 'accessoires', 'tableau', 'installation',
     'transport', 'suivi',
 )

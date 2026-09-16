@@ -1624,6 +1624,10 @@ export const PRODUCT_CATEGORIES = [
   ['onduleur_offgrid', 'Onduleurs hors réseau'],
   ['panneau', 'Panneaux'],
   ['batterie', 'Batterie'],
+  // STKCAT2 — rôle GÉNÉRIQUE de structure (émis pour un produit dont le nom
+  // ne dit ni « acier » ni « alu »), puis ses deux alias DÉPRÉCIÉS, conservés
+  // pour toujours : un réglage de marque enregistré hier reste lisible.
+  ['structure', 'Structures'],
   ['structure_acier', 'Structures acier'],
   ['structure_alu', 'Structures aluminium'],
   ['socle', 'Socles'],
@@ -1657,8 +1661,17 @@ export function groupProduitsByCategory(produits) {
 }
 
 // Libellé FR d'un rôle ROLES_AUTO_COMPOSITION (mirroir des clés PRODUCT_CATEGORIES).
+// STKCAT2 — le repli ne montre JAMAIS la clé BRUTE au commercial : avant que
+// le rôle générique `structure` n'entre dans PRODUCT_CATEGORIES,
+// `roleLabel('structure')` affichait « structure » en toutes lettres dans le
+// message « marque épinglée introuvable au stock ». Un rôle hors miroir est
+// désormais humanisé en français (underscores → espaces, capitale initiale).
 export function roleLabel(role) {
-  return (PRODUCT_CATEGORIES.find(([key]) => key === role) ?? [null, role])[1]
+  const trouve = PRODUCT_CATEGORIES.find(([key]) => key === role)
+  if (trouve) return trouve[1]
+  const brut = String(role ?? '').replace(/_/g, ' ').trim()
+  if (!brut) return 'Équipement'
+  return brut.charAt(0).toUpperCase() + brut.slice(1)
 }
 
 // ── PVORD (fondateur 19/08/2026) — ordre PAR DÉFAUT des lignes de devis ──────

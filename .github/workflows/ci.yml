@@ -1474,6 +1474,19 @@ jobs:
         run: python scripts/check_choices_declares.py
       - name: Test the declared-choices checker itself (PACT159)
         run: python -m unittest scripts.tests.test_check_choices_declares -v
+      # VOCABULAIRE DE RÔLES DE COMPOSITION (STKCAT2, audit L3 du 16/09/2026).
+      # Le même vocabulaire (`panneau`, `onduleur_hybride`, `structure`…) est
+      # recopié À LA MAIN dans QUATRE listes — ROLES_AUTO_COMPOSITION
+      # (ventes/models.py, le tuple qui AUTORISE un rôle), LIBELLES_ROLES
+      # (ventes/domain/catalogue.py), _FAMILLES (ventes/offres_tailles.py) et
+      # PRODUCT_CATEGORIES (frontend solar.js) — et les quatre PROMETTENT en
+      # prose d'être « le miroir exact » l'une de l'autre sans que rien ne le
+      # vérifie. Défaut mesuré : `onduleur_offgrid` ne vivait QUE côté écran,
+      # donc épingler une marque sur l'onduleur hors réseau partait en 400
+      # « rôle inconnu ». Analyse statique pure (ast + texte), stdlib seule,
+      # sans base ni node — comme les autres check_*.py de ce job (~1 s).
+      - name: Check miroirs du vocabulaire de rôles (STKCAT2)
+        run: python scripts/check_roles_mirror.py
       # ÉCRANS ATTEIGNABLES (incident du 03/08/2026, troisième défaut du même
       # jour) : le module « Appels d'offres » a été livré et déclaré TERMINÉ —
       # 194 tâches cochées, CI verte, déployé — alors que 68 écrans existaient
