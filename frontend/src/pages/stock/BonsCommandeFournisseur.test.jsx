@@ -23,6 +23,9 @@ vi.mock('../../api/stockApi', () => ({
   default: {
     bcfPdf: vi.fn(),
     createProduit: vi.fn(),
+    // STKCAT13 — ProduitQuickCreateModal charge désormais les catégories à
+    // l'ouverture (select optionnel) ; résolution vide par défaut, silencieuse.
+    getCategories: vi.fn(() => Promise.resolve({ data: { results: [] } })),
     whatsappBcf: vi.fn(),
     envoyerEmailBcf: vi.fn(),
     annulerBcf: vi.fn(),

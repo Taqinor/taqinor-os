@@ -31,7 +31,7 @@ import api from '../../api/axios'
 import { formatNumber, formatMAD } from '../../lib/format'
 import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/bulk'
 import {
-  groupCatalogue, searchCatalogue, sansPrix,
+  groupCatalogue, searchCatalogue, sansPrix, severiteStock, SEV_OK,
 } from '../../features/stock/catalogue'
 import { validateTransfert, totalVentile, quantiteEmplacement, produitDansEmplacement } from '../../features/stock/emplacements'
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
@@ -131,6 +131,13 @@ function InventaireModal({ produits, onClose, onDone }) {
             « Ajustement » audité). Laissez vide pour ne pas toucher un produit.
           </DialogDescription>
         </DialogHeader>
+
+        {/* STKCAT14 — périmètre explicite : ce comptage porte sur le catalogue
+            actif affiché derrière (rail/recherche/filtres), jamais
+            silencieusement « tout le catalogue ». */}
+        <p className="text-xs text-muted-foreground">
+          Périmètre : {allRows.length} produit{allRows.length !== 1 ? 's' : ''} du catalogue actuellement affiché.
+        </p>
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium" htmlFor="inv-motif">Motif (optionnel)</label>
@@ -701,7 +708,10 @@ export default function StockList() {
   const [filterMarque, setFilterMarque]   = useState('')     // '' = toutes les marques
   const [filterEmplacement, setFilterEmplacement] = useState('') // '' = tous les emplacements
   const [emplacementsList, setEmplacementsList]   = useState([])
-  const [activeCat, setActiveCat]     = useState('')   // '' = tout le catalogue
+  // STKCAT14 — liste d'ids de catégorie ([] = tout le catalogue, [id] = une
+  // catégorie, [null] = facette « Sans catégorie »). Remplace l'ancien
+  // `activeCat` (nom, jamais appliqué au filtre depuis la régression 851e1e3c).
+  const [activeCatIds, setActiveCatIds] = useState([])
   const [showArchived, setShowArchived]   = useState(false)
   // WIR21 — vues sauvegardées côté serveur (remplace le localStorage FG11 :
   // vues EQUIPE désormais visibles par l'équipe, cf. ViewsManagerPopover).
@@ -712,14 +722,30 @@ export default function StockList() {
     if (!trimmed) return
     createStockView({
       nom: trimmed,
-      configuration: { search, activeCat, filterMarque, filterEmplacement, filterLow, filterNoPrice, filterNoSku },
+      configuration: { search, activeCatIds, filterMarque, filterEmplacement, filterLow, filterNoPrice, filterNoSku },
       visibilite: 'PERSONNELLE',
     }).catch(() => toastError('Enregistrement de la vue impossible.'))
   }
+  // STKCAT14 — une vue enregistrée AVANT ce changement porte l'ancien champ
+  // `activeCat` (nom de catégorie, string) : migré en id à la lecture via le
+  // référentiel `categories` (toujours chargé, contrairement à `allGroups` qui
+  // ne connaît que les catégories ayant au moins un produit actif). Un nom
+  // inconnu (catégorie renommée/supprimée depuis) est IGNORÉ — on ne force
+  // jamais un filtre cassé, le rail garde sa sélection courante.
   const applyStockView = (configuration) => {
     const s = configuration || {}
     if (s.search !== undefined) setSearch(s.search)
-    if (s.activeCat !== undefined) setActiveCat(s.activeCat)
+    if (s.activeCatIds !== undefined) {
+      setActiveCatIds(Array.isArray(s.activeCatIds) ? s.activeCatIds : [])
+    } else if (s.activeCat !== undefined) {
+      if (!s.activeCat) {
+        setActiveCatIds([])
+      } else {
+        const found = categories.find((c) => c.nom === s.activeCat)
+        if (found) setActiveCatIds([found.id])
+        // nom inconnu : ignoré, le filtre courant n'est pas touché.
+      }
+    }
     if (s.filterMarque !== undefined) setFilterMarque(s.filterMarque)
     if (s.filterEmplacement !== undefined) setFilterEmplacement(s.filterEmplacement)
     if (s.filterLow !== undefined) setFilterLow(s.filterLow)
@@ -879,7 +905,7 @@ export default function StockList() {
       setScanOpen(false); setScanCode('')
       if (target.route === '/stock') {
         // Reste sur le catalogue : on filtre sur le produit résolu.
-        setSearch(target.search); setActiveCat(''); setFilterLow(false)
+        setSearch(target.search); setActiveCatIds([]); setFilterLow(false)
         toastSuccess(`Produit trouvé : ${data.label}`)
       } else {
         toastSuccess(`Système trouvé : ${data.label}`)
@@ -918,18 +944,29 @@ export default function StockList() {
   }, [showArchived, dispatch])
 
   // Catalogue hiérarchisé : la recherche traverse TOUT (nom, SKU, marque,
-  // catégorie, spec) ; sans recherche, le rail filtre par catégorie.
+  // catégorie, spec) ; sans recherche, le rail filtre par catégorie (ID —
+  // STKCAT14 : `activeCatIds`, jamais appliqué depuis la régression 851e1e3c).
   const actifs = useMemo(() => produits.filter(p => !p.is_archived), [produits])
   const searching = search.trim().length > 0
   const filtered = useMemo(() => {
-    let list = filterLow ? actifs.filter(p => p.is_low_stock) : actifs
+    // STKCAT17 — « Stock bas » couvre TOUTE sévérité anormale (rupture
+    // COMPRISE), via la même règle que la grille (`severiteStock`) : le
+    // drapeau serveur `is_low_stock` est calculé sur `seuil_alerte > 0`, donc
+    // un produit à {stock:0, seuil:0} (rupture) n'était jamais compté.
+    let list = filterLow ? actifs.filter(p => severiteStock(p) !== SEV_OK) : actifs
     if (filterNoPrice) list = list.filter(p => sansPrix(p))
     if (filterNoSku) list = list.filter(p => !(p.sku ?? '').trim())
     if (filterMarque) list = list.filter(p => ((p.marque || '').trim() || 'Génériques') === filterMarque)
     if (filterEmplacement) list = list.filter(p => produitDansEmplacement(p, filterEmplacement))
+    // Court-circuit : le rail de catégories ne s'applique JAMAIS pendant une
+    // recherche — la recherche traverse tout le catalogue, quelle que soit la
+    // catégorie active dans le rail.
+    if (!searching && activeCatIds.length > 0) {
+      list = list.filter(p => activeCatIds.includes(p.categorie?.id ?? null))
+    }
     list = searchCatalogue(list, search)
     return list
-  }, [actifs, search, filterLow, filterNoPrice, filterNoSku, filterMarque, filterEmplacement])
+  }, [actifs, search, searching, filterLow, filterNoPrice, filterNoSku, filterMarque, filterEmplacement, activeCatIds])
 
   // Compteurs des filtres rail (sur le catalogue actif complet).
   const noPriceCount = useMemo(() => actifs.filter(p => sansPrix(p)).length, [actifs])
@@ -950,9 +987,10 @@ export default function StockList() {
     const set = new Set(actifs.map(p => (p.marque || '').trim() || 'Génériques'))
     return [...set].sort((a, b) => a.localeCompare(b))
   }, [actifs])
-  // Export Excel de la liste filtrée courante (T9) — défini après `filtered`.
-  const exportFiltered = async () => {
-    const ids = filtered.map(p => p.id)
+  // Export Excel (T9), serveur xlsx (`stockApi.exportProduitsXlsx`). STKCAT26 —
+  // délégué au moteur DataTable de CatalogueTable (`onExport`, ci-dessous) :
+  // le bouton d'export dupliqué de l'en-tête a disparu (desktop + menu mobile).
+  const exportProduitsIds = async (ids) => {
     if (!ids.length) return
     const pending = downloadBlobInGesture()
     try {
@@ -960,11 +998,15 @@ export default function StockList() {
       pending.deliver(new Blob([res.data]), 'produits.xlsx')
     } catch { /* ignore */ }
   }
-  // Rail de catégories (catalogue actif complet) — pilote le filtre `activeCat`.
+  const exportCatalogueTable = (rows) => exportProduitsIds((rows ?? []).map(p => p.id))
+  // Rail de catégories (catalogue actif complet) — pilote le filtre `activeCatIds`.
   const allGroups = useMemo(() => groupCatalogue(actifs), [actifs])
 
+  // STKCAT17 — même règle que le filtre ci-dessus (severiteStock !== OK,
+  // rupture comprise à seuil 0) : le badge « Stock bas » du header comptait
+  // moins que ce que la grille affiche réellement en rupture/sous seuil.
   const lowCount = useMemo(
-    () => produits.filter(p => p.is_low_stock && !p.is_archived).length,
+    () => produits.filter(p => !p.is_archived && severiteStock(p) !== SEV_OK).length,
     [produits]
   )
 
@@ -1190,9 +1232,8 @@ export default function StockList() {
                     title="Scanner un code QR / code-barres et ouvrir la fiche">
               <ScanLine /> Scanner
             </Button>
-            <Button variant="outline" size="sm" onClick={exportFiltered}>
-              <Download /> Exporter Excel
-            </Button>
+            {/* STKCAT26 — bouton retiré : redondant avec l'export désormais natif
+                de CatalogueTable (même endpoint xlsx serveur, `onExport` ci-dessous). */}
             {canWrite && (
               <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
                 <Upload /> Importer
@@ -1240,9 +1281,8 @@ export default function StockList() {
                 <DropdownMenuItem onSelect={() => setScanOpen(v => !v)}>
                   <ScanLine /> Scanner
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={exportFiltered}>
-                  <Download /> Exporter Excel
-                </DropdownMenuItem>
+                {/* STKCAT26 — item retiré : redondant avec l'export natif de
+                    CatalogueTable (même endpoint xlsx serveur). */}
                 {canWrite && (
                   <DropdownMenuItem onSelect={() => setShowImport(true)}>
                     <Upload /> Importer
@@ -1430,67 +1470,73 @@ export default function StockList() {
           )}
 
           <button type="button"
-                  className={`mt-1 flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${!activeCat && !searching ? 'bg-primary/10 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
-                  onClick={() => { setActiveCat(''); setSearch('') }}>
+                  className={`mt-1 flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${activeCatIds.length === 0 && !searching ? 'bg-primary/10 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
+                  onClick={() => { setActiveCatIds([]); setSearch('') }}>
             <span>Tout le catalogue</span>
             <Badge>{actifs.length}</Badge>
           </button>
-          {allGroups.map(c => (
-            <button key={c.nom} type="button"
-                    className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${activeCat === c.nom && !searching ? 'bg-primary/10 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
-                    onClick={() => { setActiveCat(c.nom); setSearch('') }}>
-              <span className="truncate">{c.nom}</span>
-              <Badge>{c.count}</Badge>
-            </button>
-          ))}
+          {allGroups.map(c => {
+            // STKCAT14 — le rail filtre par ID (jamais par nom) : l'id se lit
+            // sur les items du groupe ; un groupe sans catégorie réelle
+            // (`categorie` absente sur ses produits) devient la facette
+            // « Sans catégorie » (id null).
+            const catId = c.items[0]?.categorie?.id ?? null
+            const label = catId === null ? 'Sans catégorie' : c.nom
+            const active = activeCatIds.length === 1 && activeCatIds[0] === catId && !searching
+            return (
+              <button key={catId === null ? '__sans_categorie__' : catId} type="button"
+                      className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${active ? 'bg-primary/10 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
+                      onClick={() => { setActiveCatIds([catId]); setSearch('') }}>
+                <span className="truncate">{label}</span>
+                <Badge>{c.count}</Badge>
+              </button>
+            )
+          })}
 
-          {/* Filtres transverses : qualité de catalogue (prix/SKU manquants) + marque. */}
+          {/* Filtres transverses : qualité de catalogue (prix/SKU manquants) + marque.
+              STKCAT14 — TOUJOURS rendus (jamais masqués : une facette absente
+              du DOM se confond avec un bug) ; désactivés + `title` explicatif
+              quand leur compteur est à zéro. */}
           <div className="mt-3 flex flex-col gap-1 border-t border-border pt-3">
             <span className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Filtres</span>
-            {noPriceCount > 0 && (
-              <button type="button"
-                      className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${filterNoPrice ? 'bg-warning/15 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
-                      onClick={() => setFilterNoPrice(v => !v)}>
-                <span>Sans prix (à renseigner)</span>
-                <Badge tone="warning">{noPriceCount}</Badge>
-              </button>
-            )}
-            {noSkuCount > 0 && (
-              <button type="button"
-                      className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${filterNoSku ? 'bg-warning/15 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
-                      onClick={() => setFilterNoSku(v => !v)}>
-                <span>Sans SKU</span>
-                <Badge tone="warning">{noSkuCount}</Badge>
-              </button>
-            )}
-            {marquesPresentes.length > 1 && (
-              <div className="px-1 pt-1">
-                <Select value={filterMarque || '__all'}
-                        onValueChange={v => setFilterMarque(v === '__all' ? '' : v)}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Toutes les marques" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all">Toutes les marques</SelectItem>
-                    {marquesPresentes.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <button type="button" disabled={noPriceCount === 0}
+                    title={noPriceCount === 0 ? 'Aucun produit sans prix.' : undefined}
+                    className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${filterNoPrice ? 'bg-warning/15 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
+                    onClick={() => setFilterNoPrice(v => !v)}>
+              <span>Sans prix (à renseigner)</span>
+              <Badge tone="warning">{noPriceCount}</Badge>
+            </button>
+            <button type="button" disabled={noSkuCount === 0}
+                    title={noSkuCount === 0 ? 'Aucun produit sans SKU.' : undefined}
+                    className={`flex items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${filterNoSku ? 'bg-warning/15 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}
+                    onClick={() => setFilterNoSku(v => !v)}>
+              <span>Sans SKU</span>
+              <Badge tone="warning">{noSkuCount}</Badge>
+            </button>
+            <div className="px-1 pt-1" title={marquesPresentes.length === 0 ? 'Aucune marque dans le catalogue actif.' : undefined}>
+              <Select value={filterMarque || '__all'} disabled={marquesPresentes.length === 0}
+                      onValueChange={v => setFilterMarque(v === '__all' ? '' : v)}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Toutes les marques" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all">Toutes les marques</SelectItem>
+                  {marquesPresentes.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             {/* N15 — filtre par emplacement : ne montre que le stock détenu dans
                 l'emplacement choisi (ex. Camionnette). */}
-            {emplacementsList.length > 1 && (
-              <div className="px-1 pt-1">
-                <Select value={filterEmplacement || '__all'}
-                        onValueChange={v => setFilterEmplacement(v === '__all' ? '' : v)}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Tous les emplacements" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all">Tous les emplacements</SelectItem>
-                    {emplacementsList.map(e => (
-                      <SelectItem key={e.id} value={String(e.id)}>{e.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="px-1 pt-1" title={emplacementsList.length === 0 ? 'Aucun emplacement configuré.' : undefined}>
+              <Select value={filterEmplacement || '__all'} disabled={emplacementsList.length === 0}
+                      onValueChange={v => setFilterEmplacement(v === '__all' ? '' : v)}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Tous les emplacements" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all">Tous les emplacements</SelectItem>
+                  {emplacementsList.map(e => (
+                    <SelectItem key={e.id} value={String(e.id)}>{e.nom}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </aside>
 
@@ -1526,6 +1572,7 @@ export default function StockList() {
               selected={visibleSelected}
               onToggleSelect={canWrite ? onToggleSelect : null}
               fichesParProduit={fichesTechniques}
+              onExport={exportCatalogueTable}
             />
           )}
           {filtered.length === 0 && !loading && (
@@ -1552,7 +1599,7 @@ export default function StockList() {
                 action={(
                   <Button size="sm" variant="outline" onClick={() => {
                     setSearch(''); setFilterLow(false); setFilterNoPrice(false)
-                    setFilterNoSku(false); setFilterMarque(''); setFilterEmplacement(''); setActiveCat('')
+                    setFilterNoSku(false); setFilterMarque(''); setFilterEmplacement(''); setActiveCatIds([])
                   }}>Effacer les filtres</Button>
                 )}
               />

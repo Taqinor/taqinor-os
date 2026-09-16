@@ -115,6 +115,69 @@ class CompositionLignes(list):
     kwc_reel_avec = 0.0
 
 
+#: STKCAT7 — la valeur de ``stock.Categorie.TypeEquipement.STRUCTURE``.
+#: Répétée ici en chaîne nue (comme ``ROLES_AUTO_COMPOSITION`` répète les clés
+#: de ``solar.js``) : ce module est PUR — il n'importe aucun modèle, et surtout
+#: pas ceux d'``apps.stock``, qui se lisent par ``apps.stock.selectors``.
+TYPE_EQUIPEMENT_STRUCTURE = 'structure'
+
+
+def _entier_ou_none(valeur):
+    """``int(valeur)`` ou ``None`` — jamais une levée sur une saisie sale."""
+    if valeur in (None, ''):
+        return None
+    try:
+        return int(valeur)
+    except (TypeError, ValueError):
+        return None
+
+
+def _type_equipement(produit):
+    """Le TYPE D'ÉQUIPEMENT déclaré par la CATÉGORIE d'un produit, ou ``None``.
+
+    STKCAT7 — LECTURE SANS REQUÊTE : la catégorie est préchargée par
+    ``catalogue_de_la_societe`` (``select_related('categorie')``), et un produit
+    SANS catégorie n'en déclenche aucune (on regarde ``categorie_id`` d'abord).
+    C'est ce qui permet à la composition de rester une fonction PURE : aucune
+    requête par candidat, quel que soit le nombre de produits au catalogue.
+    """
+    if getattr(produit, 'categorie_id', None) is None:
+        return None
+    return getattr(getattr(produit, 'categorie', None),
+                   'type_equipement', None) or None
+
+
+def role_structure_du_produit(produit, voulu='acier'):
+    """STKCAT1/STKCAT7 — LE RÔLE émis pour la ligne structure RETENUE.
+
+    RÈGLE D'ÉMISSION DU CONTRAT (``contract_samples/devis_composition.json``) :
+    le rôle suit le NOM DU PRODUIT RETENU, jamais le toggle demandé.
+
+      · le nom porte encore « acier » ⇒ ``structure_acier`` ;
+      · le nom porte encore « alu » / « aluminium » ⇒ ``structure_alu`` ;
+      · le nom ne porte NI l'un NI l'autre (une pergola, un bac lesté…) ⇒ le
+        rôle GÉNÉRIQUE ``structure`` (STKCAT2 l'a inscrit dans les quatre
+        miroirs de vocabulaire, juste AVANT ses deux alias dépréciés).
+
+    ``voulu`` (``'acier'`` / ``'alu'``) départage un nom qui porterait LES DEUX
+    mots-clés, et c'est aussi le rôle rendu quand AUCUN produit n'a été retenu
+    (``produit`` vaut ``None``) : la ligne n'est alors pas écrite du tout
+    (``ajouter`` saute un produit absent), mais le rôle reste celui d'hier —
+    comportement historique strictement inchangé.
+    """
+    prefere = 'alu' if str(voulu or '').startswith('alu') else 'acier'
+    autre = 'acier' if prefere == 'alu' else 'alu'
+    role = {'alu': 'structure_alu', 'acier': 'structure_acier'}
+    nom = _sans_accents(getattr(produit, 'nom', '') or '')
+    if not nom:
+        return role[prefere]
+    if prefere in nom:
+        return role[prefere]
+    if autre in nom:
+        return role[autre]
+    return 'structure'
+
+
 def ordonner_par_role(taguees, ordre_lignes):
     """PVORD — trie des couples ``(rôle, objet)`` selon une séquence de rôles.
 
@@ -319,6 +382,7 @@ def quantites_derivees_du_compte(nb_panneaux) -> dict:
 
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
+                              structure_produit_id=None,
                               taux_tva=Decimal('20'), avertissements=None,
                               deux_options=False, marques=None,
                               ordre_lignes=None, mppt_paires=1, phase=None,
@@ -426,6 +490,20 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     un composant substitué en silence (règle fondateur des chiffres vérifiés).
     ``False`` (LE DÉFAUT) ⇒ composition byte-identique à l'historique.
 
+    ``structure_produit_id`` (STKCAT1/STKCAT7, fondateur 16/09/2026) — LE
+    PRODUIT DE STRUCTURE CHOISI, par son id ``stock.Produit``. Il est
+    PRIORITAIRE sur ``structure_type`` (désormais un ALIAS DÉPRÉCIÉ) dès qu'il
+    est fourni ; les deux ne se combinent JAMAIS. Le produit est résolu DANS
+    la liste ``produits`` déjà scopée société (donc un id d'une autre société
+    ne résout rien) et APRÈS la garde de prix ; ni le filtre par mot-clé
+    acier/alu ni la marque épinglée du rôle ne s'y appliquent — un choix
+    explicite ne se re-choisit pas. Le RÔLE ÉMIS suit alors le NOM du produit
+    retenu (``structure_acier`` / ``structure_alu`` s'il porte encore le
+    mot-clé, le rôle générique ``structure`` sinon — cf.
+    :func:`role_structure_du_produit` et le contrat
+    ``contract_samples/devis_composition.json``). ``None`` (LE DÉFAUT) ⇒
+    composition byte-identique à l'historique.
+
     ``avertissements`` (optionnel) est LE CANAL de cette fonction : une liste
     que l'appelant fournit et que la composition enrichit sur place quand elle
     a dû composer AUTREMENT que demandé — aujourd'hui le seul cas est un vivier
@@ -455,11 +533,40 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
 
     # Catalogue indexé par catégorie. Le filtre de prix passe ICI, une fois
     # pour toutes : aucune branche ne peut ensuite coter un produit non tarifé.
+    #
+    # STKCAT7 — DEUX rails mènent au vivier ``structure`` :
+    #   · le NOM (``classer_produit``), le rail historique ;
+    #   · la CATÉGORIE TYPÉE (``Categorie.type_equipement == 'structure'``,
+    #     rail ouvert par STKCAT2), pour les produits qu'AUCUN mot-clé ne
+    #     trahit — une « Pergola acier 4×3 » EST une structure, mais son nom
+    #     ne contient pas « structure » (cause racine de « Pergola
+    #     introuvable », audit L3 stock ↔ CRM ↔ devis du 16/09/2026).
+    #
+    # Les structures NOMMÉES sont tenues à part (``structures_nommees``), et
+    # c'est ce vivier-là — celui d'hier — que le toggle acier/alu voit. Une
+    # composition SANS ``structure_produit_id`` est donc byte-identique à
+    # celle d'hier, et une pergola ne se choisit QUE par son id explicite,
+    # jamais par un mot-clé de son nom.
+    cible_structure = _entier_ou_none(structure_produit_id)
+    structure_par_id = None
     par_type = {}
+    structures_nommees = []
     for produit in produits:
         if not _has_price(produit):
             continue
+        # La résolution PAR ID se fait dans la liste ``produits`` DÉJÀ scopée
+        # société par l'appelant, et APRÈS la garde de prix : un id qui
+        # désignerait un produit non tarifé — ou celui d'une autre société —
+        # ne résout RIEN (et la composition retombe alors sur le toggle).
+        if (cible_structure is not None
+                and getattr(produit, 'pk', None) == cible_structure):
+            structure_par_id = produit
         categorie = classer_produit(getattr(produit, 'nom', ''))
+        if categorie == 'structure':
+            structures_nommees.append(produit)
+        elif (categorie is None
+                and _type_equipement(produit) == TYPE_EQUIPEMENT_STRUCTURE):
+            categorie = 'structure'
         if categorie:
             par_type.setdefault(categorie, []).append(produit)
 
@@ -916,17 +1023,31 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         else:
             bat10, nb10 = produit_retenu, n_retenu
 
-    # ── Structure : le type demandé (acier par défaut), une par panneau ──
-    # PVMRQ — DEUX rôles distincts (``structure_acier`` / ``structure_alu``,
-    # comme ``ROLES_AUTO_COMPOSITION``) : chacun a sa marque épinglée, appliquée
+    # ── Structure : l'ID EXPLICITE d'abord, sinon le type demandé ─────────
+    # STKCAT1/STKCAT7 — ``structure_produit_id`` est PRIORITAIRE sur
+    # ``structure_type`` (l'ALIAS DÉPRÉCIÉ) dès qu'il est fourni : les deux ne
+    # se combinent JAMAIS. Un id désigne le produit LUI-MÊME, donc ni le
+    # filtre par mot-clé acier/alu ni la marque épinglée du rôle ne
+    # s'appliquent — le commercial a déjà choisi, on ne re-choisit pas à sa
+    # place (et un vivier vidé par une épingle ne peut donc pas lui reprendre
+    # son produit).
+    # PVMRQ — SANS id, le comportement est celui d'hier au caractère près :
+    # DEUX rôles distincts (``structure_acier`` / ``structure_alu``, comme
+    # ``ROLES_AUTO_COMPOSITION``), chacun avec sa marque épinglée appliquée
     # sur le sous-vivier déjà filtré par mot-clé (même patron que l'écran).
+    # Une par panneau, comme avant.
     voulu = ('alu' if _sans_accents(structure_type).startswith('alu')
              else 'acier')
-    role_structure = 'structure_alu' if voulu == 'alu' else 'structure_acier'
-    structure = next(iter(par_marque(
-        [p for p in par_type.get('structure') or []
-         if voulu in _sans_accents(getattr(p, 'nom', ''))],
-        role_structure)), None)
+    if structure_par_id is not None:
+        structure = structure_par_id
+    else:
+        structure = next(iter(par_marque(
+            [p for p in structures_nommees
+             if voulu in _sans_accents(getattr(p, 'nom', ''))],
+            'structure_alu' if voulu == 'alu' else 'structure_acier')), None)
+    # RÈGLE D'ÉMISSION DU RÔLE (contrat ``devis_composition.json``) : le rôle
+    # suit le NOM DU PRODUIT RETENU, jamais le toggle demandé.
+    role_structure = role_structure_du_produit(structure, voulu)
 
     # ── Câbles Nexans 6 mm² AU MÈTRE (C4/PVCBL, fondateur 18-19/08) ─────────
     # VERROU DE CONDITIONNEMENT : le métrage est en MÈTRES, donc un produit
@@ -1197,6 +1318,7 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
                                  kwc_avec=None, nb_panneaux_avec=0,
                                  batterie_cible_kwh=None,
                                  structure_type='acier',
+                                 structure_produit_id=None,
                                  taux_tva=Decimal('20'), avertissements=None,
                                  marques=None, ordre_lignes=None,
                                  mppt_paires=1, phase=None):
@@ -1242,6 +1364,10 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
 
     commun = dict(
         panel_watt=panel_watt, structure_type=structure_type,
+        # STKCAT7 — LES DEUX kits fusionnés portent LA MÊME structure : sans
+        # ce passage, l'option « avec batterie » serait chiffrée en acier
+        # pendant que l'option « sans » porterait la pergola choisie.
+        structure_produit_id=structure_produit_id,
         taux_tva=taux_tva, avertissements=avertissements, marques=marques,
         ordre_lignes=ordre_lignes, mppt_paires=mppt_paires, phase=phase)
 
@@ -1361,9 +1487,50 @@ def _classe_kit_de_ligne(ligne):
     ensuite) mais rendue par le classifieur PARTAGÉ ``classer_produit`` — celui
     de la composition et du moteur PDF. Une classe inventée ici ferait diverger
     « ce qu'on croit avoir » de « ce que le PDF montre ».
+
+    STKCAT8 — DERNIER RECOURS, et le MÊME que celui de la composition
+    (STKCAT7) : quand NI la désignation NI le nom du produit ne disent rien,
+    la CATÉGORIE TYPÉE tranche. Sans lui, un devis qui vend une PERGOLA
+    s'entendrait dire que sa structure « manque au catalogue » et se verrait
+    ajouter une SECONDE ligne de structure, en acier — la réparation de kit
+    casserait exactement le devis qu'elle prétend compléter. L'ordre est
+    inchangé : le nom garde la main, la catégorie ne parle qu'en dernier.
     """
     return (classer_produit(ligne.designation or '')
-            or classer_produit(getattr(ligne.produit, 'nom', '') or ''))
+            or classer_produit(getattr(ligne.produit, 'nom', '') or '')
+            or ('structure'
+                if _type_equipement(getattr(ligne, 'produit', None))
+                == TYPE_EQUIPEMENT_STRUCTURE else None))
+
+
+def structure_produit_id_du_devis(devis):
+    """STKCAT8 — L'ID DU PRODUIT DE STRUCTURE que ce devis VEND, ou ``None``.
+
+    LECTURE, JAMAIS UNE RECOMPOSITION — exactement le principe de
+    ``module_batterie_du_devis`` (BATHOMO, « the battery-related features in
+    the quote web page should ALWAYS use the quote items ») appliqué à la
+    structure : les cartes de taille, les balayages et la réparation de kit
+    doivent servir la structure des LIGNES RÉELLES, pas celle qu'un toggle par
+    défaut re-choisirait. C'est ce qui empêche un devis ALUMINIUM de recevoir
+    une carte Éco/Max chiffrée en ACIER.
+
+    La ligne est reconnue par :func:`_classe_kit_de_ligne` — donc par le
+    classifieur PARTAGÉ d'abord, la catégorie typée en dernier recours. La
+    PREMIÈRE ligne structure rencontrée fait foi (un devis n'en vend qu'une).
+    Ne lève jamais : un devis non sauvegardé, détaché ou sans ligne rend
+    ``None``, et l'appelant retombe alors sur son comportement d'hier.
+    """
+    try:
+        lignes = _lignes_produit(devis)
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+        return None
+    for ligne in lignes:
+        produit = getattr(ligne, 'produit', None)
+        if produit is None:
+            continue
+        if _classe_kit_de_ligne(ligne) == 'structure':
+            return getattr(produit, 'pk', None)
+    return None
 
 
 def _est_au_prix_catalogue(ligne):
@@ -1498,6 +1665,13 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     # définition, jamais une seconde lecture d'``etude_params['gamme']``.
     from apps.ventes.domain.gammes import gamme_nom
     gamme_devis = gamme_nom(devis)
+    # STKCAT8 — ET IL HÉRITE AUSSI DE LA STRUCTURE DU DEVIS. Sans elle,
+    # l'intention partait sur le défaut ``structure_type='acier'`` : un devis
+    # aluminium (ou à pergola) dont une SEULE option manquait sa ligne
+    # structure se la voyait compléter EN ACIER, c'est-à-dire avec un matériau
+    # que ce devis ne vend pas. ``None`` (aucune ligne structure encore
+    # vendue) ⇒ comportement d'hier, strictement inchangé.
+    structure_devis = structure_produit_id_du_devis(devis)
 
     # Les lignes ajoutées se rangent APRÈS l'existant — sections et notes
     # COMPRISES : l'ordre d'affichage du commercial n'est jamais réécrit, et
@@ -1541,15 +1715,26 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
             # QJR221 — la GAMME du devis (PVMRQ) : sans elle, la carte des
             # marques était celle par défaut de la société.
             gamme_nom_devis=gamme_devis,
+            # STKCAT8 — la structure RÉELLEMENT vendue par ce devis.
+            structure_produit_id=structure_devis,
             # PVOND — ce chemin SAIT avertir : un vivier batterie vide remonte
             # à l'écran plutôt que de disparaître dans un kit silencieusement
             # amputé.
             avertissements=avertissements,
             variante=vue['variante'],
         ))
+        roles_attendu = list(getattr(attendu, 'roles', ()) or ())
         par_classe = {}
-        for spec in attendu:
+        for index, spec in enumerate(attendu):
             classe = classer_produit(spec.designation)
+            # STKCAT8 — un produit que le NOM ne classe pas (une pergola) est
+            # quand même une structure : c'est le RÔLE ÉMIS par la composition
+            # qui le dit. Sans ce repli, la structure composée serait invisible
+            # ici et le kit se plaindrait d'une structure « absente du
+            # catalogue » alors qu'elle vient d'être choisie.
+            if classe is None and index < len(roles_attendu):
+                if str(roles_attendu[index]).startswith('structure'):
+                    classe = 'structure'
             if classe and classe not in par_classe:
                 par_classe[classe] = spec
 
@@ -1586,12 +1771,19 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
                     avertissements.append(AVERTISSEMENTS_KIT_ABSENT[classe])
                 continue
             ordre += 1
+            # STKCAT23 (bis) — le rôle ÉMIS voyage avec la ligne : la classe
+            # complétée EST le rôle, sauf « structure » où le nom du produit
+            # tranche (acier/alu → alias, sinon générique), même règle que
+            # role_structure_du_produit.
+            role_emis = (role_structure_du_produit(spec.produit)
+                         if classe == 'structure' else classe)
             creer_ligne(
                 devis, produit=spec.produit,
                 designation=spec.designation,
                 quantite=Decimal(str(spec.quantite)),
                 prix_unitaire=Decimal(spec.prix_unitaire),
                 remise=Decimal('0'), ordre=ordre,
+                role_devis=role_emis,
                 # QJR81 — l'option que cette ligne SERT. Vide (le cas de tout
                 # devis non varianté) ⇒ ligne COMMUNE, comme avant.
                 variante=getattr(spec, 'variante', '') or '')

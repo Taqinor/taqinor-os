@@ -79,9 +79,20 @@ class TestClassificationParity(SimpleTestCase):
     #   3. solar.js classifyProduct (auto-fill écran) — vérifié en lisant la
     #      fonction source et ses mots-clés (pas d'exécution JS).
     # Classe canonique -> (prédicat builder, catégorie seed, type solar.js)
+    # STKCAT22 (16/09/2026) — LES DEUX CAS QUI ONT RENDU CE TEST ROUGE, ET
+    # POURQUOI ILS COMPTENT. « Module PV 550 W » et « JA Solar 550 Wc » sont
+    # deux façons dont les vendeurs nomment RÉELLEMENT un panneau. Le moteur PDF
+    # les classait panneau depuis le 19/08 ; ``classify_categorie`` les faisait
+    # tomber dans le fourre-tout « Protection & accessoires » et ``is_panneau``
+    # leur appliquait 20 % de TVA — sur un panneau photovoltaïque, qui est à
+    # 10 % depuis la réforme. Trois lecteurs, trois réponses sur la même
+    # désignation. Depuis STKCAT22 les trois lisent LA MÊME table partagée
+    # (``core.product_roles.est_panneau``).
     _FIXTURES = [
         ('Panneau Canadien Solar 710W', 'panneau'),
         ('Panneaux Jinko 550W', 'panneau'),
+        ('Module PV 550 W', 'panneau'),
+        ('JA Solar 550 Wc', 'panneau'),
         ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride'),
         ('Onduleur réseau Huawei 10kW Triphasé', 'onduleur_reseau'),
         ('Onduleur injection SUN2000 5kW', 'onduleur_reseau'),
@@ -211,3 +222,81 @@ class TestToleranceOrthographeDyness(SimpleTestCase):
                 graphie, src,
                 f"solar.js a perdu la graphie {graphie} — il doit rester "
                 "aligné avec le vivier backend d'apps/ventes.")
+
+
+class TestStkcat22TablePanneauPartagee(SimpleTestCase):
+    """STKCAT22 — UNE table de reconnaissance panneau, et le FISCAL intact.
+
+    Le défaut réparé : « Module PV 550 W » était un panneau pour le moteur PDF,
+    un « Protection & accessoires » pour la catégorie catalogue, et un produit à
+    20 % pour la TVA. Trois lecteurs, trois réponses sur la MÊME désignation.
+    Les trois lisent désormais ``core.product_roles.est_panneau``.
+
+    CE QUE CE TEST PROTÈGE SURTOUT : l'élargissement n'a PAS touché au prédicat
+    FISCAL du seeder. Une prestation qui porte le mot « panneau » dans son nom
+    (« Nettoyage panneaux », « Pose panneaux ») ou un équipement d'une autre
+    famille (« Panneau électrique ») reste à 20 % — la règle AUD201, qui existe
+    parce que l'inverse fait facturer un taux de TVA faux.
+    """
+
+    #: Les prestations/équipements qui PORTENT le mot « panneau » sans en être.
+    _PAS_DES_PANNEAUX = (
+        'Nettoyage panneaux',
+        'Pose panneaux',
+        'Panneau électrique',
+        'Tableau De Protection AC/DC',
+    )
+
+    def test_la_table_partagee_est_bien_la_source_du_moteur(self):
+        from apps.ventes import solar_design
+        from core.product_roles import PANNEAU_MARQUES, PANNEAU_MODULE_QUALIFIERS
+        self.assertIs(solar_design._PANEL_BRANDS, PANNEAU_MARQUES)
+        self.assertIs(solar_design._PANEL_MODULE_QUALIFIERS,
+                      PANNEAU_MODULE_QUALIFIERS)
+
+    def test_le_seeder_reconnait_ce_que_le_moteur_reconnait(self):
+        from apps.stock.management.commands import seed_catalogue as seed
+        for nom in ('Module PV 550 W', 'JA Solar 550 Wc',
+                    'Panneau Canadien Solar 710W', 'Panneaux Jinko 550W'):
+            with self.subTest(nom=nom):
+                self.assertTrue(builder._is_panel(nom, ''))
+                self.assertTrue(seed.is_panneau(nom))
+                self.assertEqual(seed.classify_categorie(nom),
+                                 'Panneaux photovoltaïques')
+
+    def test_le_predicat_fiscal_garde_ses_exclusions(self):
+        """AUD201 — TVA 20 % sur ce qui n'est pas un panneau PV. INTACT."""
+        from decimal import Decimal
+
+        from apps.stock.management.commands import seed_catalogue as seed
+        for nom in self._PAS_DES_PANNEAUX:
+            with self.subTest(nom=nom):
+                self.assertFalse(
+                    seed.is_panneau(nom),
+                    '« %s » n\'est pas un panneau photovoltaïque : il doit '
+                    'rester à 20 %% (AUD201).' % nom)
+                self.assertEqual(seed.taux_tva_for(nom), Decimal('20.00'))
+        self.assertFalse(seed.is_panneau(None))
+
+    def test_la_categorie_recoit_les_memes_exclusions(self):
+        """Une PRESTATION ne remonte plus dans la catégorie « Panneaux »."""
+        from apps.stock.management.commands import seed_catalogue as seed
+        for nom in self._PAS_DES_PANNEAUX:
+            with self.subTest(nom=nom):
+                self.assertNotEqual(seed.classify_categorie(nom),
+                                    'Panneaux photovoltaïques')
+
+    def test_une_autre_famille_ne_vole_pas_la_branche_panneau(self):
+        """Une marque de panneau sur un onduleur/une batterie ne trompe rien.
+
+        La reconnaissance « marque + wattage » est testée EN PREMIER dans
+        ``classify_categorie`` : sans l'exclusion « autre famille », un
+        « Onduleur Trina 5000W » y tomberait.
+        """
+        from apps.stock.management.commands import seed_catalogue as seed
+        self.assertEqual(seed.classify_categorie('Onduleur Trina 5000W'),
+                         'Onduleurs réseau')
+        self.assertEqual(seed.classify_categorie('Batterie Jinko 5kWh 550W'),
+                         'Batteries')
+        self.assertFalse(seed.is_panneau('Onduleur Trina 5000W'))
+        self.assertFalse(builder._is_panel('Onduleur Trina 5000W', ''))

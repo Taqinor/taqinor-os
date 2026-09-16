@@ -8,7 +8,7 @@ import {
   ClipboardList, Package,
 } from 'lucide-react'
 import {
-  parseWatt, parseKw, parseKwh, parsePhaseIsTri, tauxTvaOf, ttcFromHt,
+  parseWatt, parseKw, parseKwh, parsePhaseIsTri, tauxTvaOf, ttcFromHt, _norm,
 } from '../ventes/solar.js'
 
 export const MARQUE_GENERIQUE = 'Génériques'
@@ -32,7 +32,31 @@ const ICONES_CATEGORIE = [
   [/service|prestation/i, ClipboardList],
 ]
 
+// STKCAT16 — icône par TYPE d'équipement (`typeOfProduit`, cf. plus bas :
+// champ plat `categorie_type` ou `categorie.type_equipement`, l'enum stable
+// stock.Categorie.TypeEquipement côté serveur) — fiable même si la catégorie
+// est renommée/traduite, contrairement aux regex par NOM ci-dessus. Pas
+// d'icône « compteur » dédiée dans le jeu lucide déjà importé pour ce module :
+// Zap (déjà l'icône Onduleur) est la plus proche sémantiquement — un compteur
+// mesure de l'électricité, ce n'est pas une protection mécanique (ShieldCheck
+// reste réservé aux disjoncteurs/parafoudres de la catégorie Protection).
+const ICONE_PAR_TYPE = {
+  panneau: Sun,
+  onduleur: Zap,
+  batterie: BatteryCharging,
+  structure: Wrench,
+  protection: ShieldCheck,
+  cable: Cable,
+  pompe: Droplets,
+  variateur: Cpu,
+  compteur: Zap,
+  accessoire: ShieldCheck,
+  service: ClipboardList,
+}
+
 export function categorieIcone(produit) {
+  const type = typeOfProduit(produit)
+  if (type && ICONE_PAR_TYPE[type]) return ICONE_PAR_TYPE[type]
   const nom = produit?.categorie?.nom ?? ''
   for (const [motif, Icone] of ICONES_CATEGORIE) {
     if (motif.test(nom)) return Icone
@@ -40,8 +64,47 @@ export function categorieIcone(produit) {
   return Package
 }
 
-// Spec CLÉ par catégorie — celle qui compte pour choisir l'article.
+// STKCAT16 — même formule que l'ancien aiguillage par NOM ci-dessous, mais
+// pilotée par `typeOfProduit`. Structure/protection/service/compteur/
+// accessoire n'ont explicitement AUCUNE spec clé inventée (comme les
+// catégories homonymes par nom ne le faisaient déjà pas).
+function _keySpecParType(type, p) {
+  const nom = p.nom ?? ''
+  if (type === 'panneau') {
+    const w = parseWatt(nom)
+    return w ? `${w} Wc` : null
+  }
+  if (type === 'onduleur' || type === 'variateur') {
+    const kw = parseFloat(p.pompe_kw) || parseKw(nom)
+    const phase = p.tension_v
+      ? `${p.tension_v} V`
+      : (parsePhaseIsTri(nom) ? 'Triphasé' : (/monophas/i.test(nom) ? 'Monophasé' : null))
+    if (kw && phase) return `${kw} kW · ${phase}`
+    return kw ? `${kw} kW` : phase
+  }
+  if (type === 'batterie') {
+    const kwh = parseKwh(nom)
+    return kwh ? `${kwh} kWh` : null
+  }
+  if (type === 'pompe') {
+    const cv = parseFloat(p.pompe_cv)
+    const hmt = parseFloat(p.hmt_m)
+    const parts = []
+    if (cv) parts.push(`${cv} CV`)
+    if (hmt) parts.push(`HMT max ${hmt} m`)
+    if (p.courbe_pompe) parts.push('courbe constructeur')
+    return parts.join(' · ') || null
+  }
+  if (type === 'cable') return /m[eè]tre/i.test(nom) ? 'au mètre' : null
+  return null
+}
+
+// Spec CLÉ par catégorie — celle qui compte pour choisir l'article. Lit
+// d'abord `typeOfProduit(p)` (STKCAT16) ; retombe sur les égalités de nom
+// historiques quand le type est absent (catégorie pas encore migrée).
 export function keySpec(p) {
+  const type = typeOfProduit(p)
+  if (type) return _keySpecParType(type, p)
   const cat = p.categorie?.nom ?? ''
   const nom = p.nom ?? ''
   if (cat.startsWith('Panneaux')) {
@@ -75,6 +138,21 @@ export function keySpec(p) {
 
 export const prixTtc = (p) => ttcFromHt(p.prix_vente, tauxTvaOf(p))
 export const sansPrix = (p) => !(parseFloat(p.prix_vente) > 0)
+
+// Type d'un produit : le champ plat `categorie_type` avec repli sur la
+// catégorie imbriquée pour rester robuste si l'API n'a pas encore le champ.
+export const typeOfProduit = (p) => p?.categorie_type ?? p?.categorie?.type_equipement ?? null
+
+// Famille attendue pour un rôle dans la composition d'une installation.
+// Mappe les rôles aux familles de produits : 'structure' pour les structures,
+// 'panneau' pour les panneaux, 'batterie' pour les batteries, null pour tout le reste.
+export const familleAttendue = (role) => {
+  if (!role) return null
+  if (['structure', 'structure_acier', 'structure_alu'].includes(role)) return 'structure'
+  if (role === 'panneau') return 'panneau'
+  if (role === 'batterie') return 'batterie'
+  return null
+}
 
 /* ── APX19 — Sévérité du niveau de stock ───────────────────────────────────
    Avant, RUPTURE (0 en stock, on ne peut plus vendre) et SOUS SEUIL (il en
@@ -164,14 +242,28 @@ export function groupCatalogue(produits) {
   return out
 }
 
-// Recherche transverse (nom, SKU, marque, catégorie, spec)
+// Recherche transverse (nom, SKU, marque, catégorie, spec, description) —
+// STKCAT15 : insensible aux accents/casse des DEUX côtés (requête ET botte de
+// foin produit, via `_norm` partagée avec solar.js) et à jetons ET — chaque
+// mot de la requête doit être un sous-mot d'AU MOINS un des champs du produit
+// pour que celui-ci soit retenu (« hybride deye » == « deye hybride »), donc
+// un jeton numérique nu (« 550 ») trouve aussi bien un nom qu'une spec
+// (keySpec) qui le contient. Union stricte des anciens champs (nom, sku,
+// marque, catégorie, spec) + description en prime — jamais un champ retiré.
+const _prepTexte = (s) => _norm(s).replace(/['’ʼ`]/g, ' ').replace(/\s+/g, ' ').trim()
+
+function _botteDeFoin(p) {
+  return _prepTexte([
+    p.nom, p.sku, p.marque, p.categorie?.nom, keySpec(p), p.description,
+  ].filter(Boolean).join(' '))
+}
+
 export function searchCatalogue(produits, query) {
-  const q = (query || '').trim().toLowerCase()
+  const q = _prepTexte(query)
   if (!q) return produits
-  return produits.filter(p =>
-    (p.nom || '').toLowerCase().includes(q)
-    || (p.sku || '').toLowerCase().includes(q)
-    || (p.marque || '').toLowerCase().includes(q)
-    || (p.categorie?.nom || '').toLowerCase().includes(q)
-    || (keySpec(p) || '').toLowerCase().includes(q))
+  const jetons = q.split(' ').filter(Boolean)
+  return produits.filter((p) => {
+    const foin = _botteDeFoin(p)
+    return jetons.every((j) => foin.includes(j))
+  })
 }

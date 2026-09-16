@@ -392,6 +392,14 @@ const stockApi = {
   // dérivées des fiches techniques réelles. INTERNE, lecture seule.
   getCompatibilites: (produitId) =>
     api.get(`/stock/produits/${produitId}/compatibilites/`),
+  // STKCAT25 — « Utilisé dans » : les devis / leads / chantiers récents qui
+  // consomment ce produit, en UN appel agrégé. Chaque liste est produite par
+  // l'app propriétaire via son selectors.py et rejoue SA portée de visibilité
+  // (un devis masqué dans /ventes reste masqué ici). INTERNE, lecture seule,
+  // aucun prix d'achat. Contrat partagé (PACT10) :
+  // backend/django_core/apps/stock/contract_samples/produit_utilise_dans.json
+  getProduitUtiliseDans: (produitId) =>
+    api.get(`/stock/produits/${produitId}/utilise-dans/`),
   // ZSTK7 — « Vue groupée / pivot » : quantités entrées/sorties/nettes
   // agrégées par produit/type/mois/emplacement.
   mouvementsAgregation: (params) =>

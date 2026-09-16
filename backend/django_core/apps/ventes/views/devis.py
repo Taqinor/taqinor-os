@@ -509,6 +509,23 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': 'taux_tva / remise_globale invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # STKCAT8 — le chemin 3D était MUET sur la structure : il ne
+        # transmettait NI l'id du produit choisi NI le type, donc tout devis né
+        # du calepinage était composé en ACIER par défaut, quoi qu'ait choisi le
+        # commercial. Valeur non numérique ⇒ ignorée (repli sur le type), jamais
+        # un 500 ; l'id est résolu dans le catalogue DÉJÀ scopé société, côté
+        # composition (un id d'une autre société n'y désigne rien).
+        _brut_structure_id = request.data.get('structure_produit_id')
+        try:
+            structure_produit_id = (
+                int(_brut_structure_id)
+                if _brut_structure_id not in (None, '') else None)
+        except (TypeError, ValueError):
+            structure_produit_id = None
+        # STKCAT9 bis — absent = None : la création 3D retombe alors sur la
+        # structure du LEAD (produit épinglé, puis préférence), comme /auto/.
+        structure_type = request.data.get('structure_type') or None
+
         # QJ17 — pre-flight composition check: validate catalogue before building.
         composition_errors = validate_composition_for_layout(layout, company)
         if composition_errors:
@@ -557,6 +574,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             layout=layout, user=request.user, company=company,
             lead=lead_obj, client=client_obj,
             taux_tva=taux_tva, remise_globale=remise,
+            structure_produit_id=structure_produit_id,
+            structure_type=(str(structure_type) if structure_type else None),
             phase=normaliser_phase(getattr(lead_obj, 'raccordement', None)))
 
         # QJ17 — persist the layout hash on the newly-created devis so future
@@ -1046,8 +1065,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         fait qu'il n'existe plus « deux sortes de devis ».
 
         Corps : ``{kwc | nb_panneaux}`` + ``panel_watt?`` / ``scenario?`` /
-        ``structure_type?`` / ``taux_tva?`` / ``mppt_paires?`` /
-        ``dimensionnement_avec?``. La société est TOUJOURS celle du user (le
+        ``structure_produit_id?`` / ``structure_type?`` / ``taux_tva?`` /
+        ``mppt_paires?`` / ``dimensionnement_avec?``. STKCAT1 —
+        ``structure_produit_id`` (id ``stock.Produit``) est PRIORITAIRE sur
+        ``structure_type``, devenu un ALIAS DÉPRÉCIÉ ; le produit est résolu
+        dans le catalogue DÉJÀ scopé société, donc l'id d'une autre société ne
+        désigne rien. La société est TOUJOURS celle du user (le
         catalogue d'une autre société ne fuite jamais) ; les marques épinglées
         et l'ordre des lignes sont lus SERVEUR-SIDE dans les réglages Gammes,
         jamais acceptés du corps.
@@ -1121,6 +1144,17 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 status=status.HTTP_400_BAD_REQUEST)
 
         structure = request.data.get('structure_type') or 'acier'
+        # STKCAT1/STKCAT7 — l'id du produit de structure CHOISI. Une valeur non
+        # numérique est IGNORÉE (repli sur le toggle), jamais un 500 ; le
+        # scoping société est celui du CATALOGUE, posé côté composition (un id
+        # d'une autre société n'y résout simplement rien).
+        _brut_structure_id = request.data.get('structure_produit_id')
+        try:
+            structure_produit_id = (
+                int(_brut_structure_id)
+                if _brut_structure_id not in (None, '') else None)
+        except (TypeError, ValueError):
+            structure_produit_id = None
         # QJR-OFFGRID — drapeau ADDITIF et optionnel : le site est ISOLÉ
         # (onduleur autonome + batterie, option unique). Absent ⇒ dry-run
         # strictement inchangé. Cet endpoint n'a AUCUN lead en portée (il est
@@ -1138,6 +1172,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 panel_watt=float(panel_watt),
                 scenario=request.data.get('scenario'),
                 structure_type=str(structure),
+                structure_produit_id=structure_produit_id,
                 taux_tva=taux_tva,
                 mppt_paires=int(mppt_paires),
                 dimensionnement_avec=dimensionnement_avec,

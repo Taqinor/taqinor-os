@@ -69,6 +69,12 @@ import {
   // panneaux réseau l'importent chacun pour leur aide « distributeur ».
   ScrollProgress,
 } from '../../ui'
+// STKCAT10 — le sélecteur de structures PILOTÉ PAR LE CATALOGUE (décision
+// fondateur 16/09/2026) qui remplace le bouton acier/aluminium ; il rend
+// lui-même ce bouton en REPLI quand la société n'a aucune catégorie typée
+// « structure ». Partagé tel quel avec la fiche lead (SectionSite).
+import StructureSelector from '../../features/stock/StructureSelector'
+import { structuresEligibles } from '../../features/stock/structures'
 import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import { useDirtyGuard } from '../../ui/useDirtyGuard'
@@ -398,6 +404,12 @@ export default function DevisGenerator({
   const [clients, setClients] = useState([])
   const [leads, setLeads] = useState([])
   const [produits, setProduits] = useState([])
+  // STKCAT10 — LES STRUCTURES RÉELLEMENT SÉLECTIONNABLES de la société (non
+  // archivées, chiffrées, de catégorie typée « structure »). Une seule et même
+  // liste sert le sélecteur à l'écran ET la validation de l'id épinglé sur le
+  // lead (`LEAD_APPLIQUE`) : le reducer ne peut donc pas poser une structure
+  // que l'écran ne propose pas.
+  const structuresCatalogue = useMemo(() => structuresEligibles(produits), [produits])
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
   // Avertissements NON bloquants (n'empêchent jamais l'enregistrement) —
@@ -636,6 +648,8 @@ export default function DevisGenerator({
   const {
     nbPanneaux, kwcCible, panelW, scenario, modeInstallation, sizingInfo,
     structure: structureType,
+    // STKCAT10 — l'id du PRODUIT de structure choisi au catalogue ('' = aucun).
+    structureProduitId,
     tension: tensionRaccordement,
     pompeAlim,
     motifMoteur: sizingServeurMessage,
@@ -830,7 +844,7 @@ export default function DevisGenerator({
   const draftSnapshot = useMemo(() => ({
     leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
     fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
-    nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
+    nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
     categorieCommerciale, commercialAnswers, injectionEnabled,
     tensionRaccordement, repartitionMt,
@@ -843,7 +857,7 @@ export default function DevisGenerator({
   }), [
     leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
     fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
-    nbPanneaux, panelW, structureType, dayUsage, lines, tauxTva, discountPct,
+    nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
     categorieCommerciale, commercialAnswers, injectionEnabled,
     tensionRaccordement, repartitionMt,
@@ -912,6 +926,12 @@ export default function DevisGenerator({
     if (d.panelW != null) dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: d.panelW })
     if (d.nbPanneaux != null) dispatchSizing({ type: 'REOUVERTURE', devis: { panneaux: d.nbPanneaux } })
     if (d.structureType != null) dispatchSizing({ type: 'SAISI', champ: 'structure', valeur: d.structureType })
+    // STKCAT10 — le PRODUIT de structure se restaure comme le reste du
+    // brouillon : sans ça, reprendre un brouillon reperdait la pergola
+    // choisie et recomposait en acier, en silence.
+    if (d.structureProduitId != null) {
+      dispatchSizing({ type: 'SAISI', champ: 'structureProduit', valeur: d.structureProduitId })
+    }
     if (d.dayUsage != null) setDayUsage(d.dayUsage)
     if (Array.isArray(d.lines)) { setLines(withKeys(d.lines)); linesInitialized.current = true }
     if (d.tauxTva != null) setTauxTva(d.tauxTva)
@@ -1555,7 +1575,11 @@ export default function DevisGenerator({
     const distributeurBalayage = distributeur
     // PVMRQ — la marque épinglée entre dans la clé de cache : un changement de
     // réglage (ou de gamme du devis) doit rejouer le balayage des paliers.
+    // STKCAT10 — le PRODUIT de structure entre dans la clé au même titre que
+    // le bouton acier/alu : changer de structure change le prix de chaque
+    // palier, donc le palier retenu.
     const key = [hiver, eteEff, besoinKwc, dayUsagePct, panelW, structureType,
+      structureProduitId ?? '',
       discountPct, produits.length, JSON.stringify(marquesActives),
       distributeurBalayage, consoAnnuelleReelle ?? ''].join('|')
     if (sizingCacheRef.current.key === key) return sizingCacheRef.current.result
@@ -1576,7 +1600,7 @@ export default function DevisGenerator({
       : consoAnnuelleDepuisFactures(factures, distributeurBalayage)
     const opt = optimalKwcByPayback({
       produits, factures, dayUsagePct,
-      panelW, structureType, discountPct,
+      panelW, structureType, structureProduitId, discountPct,
       kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       besoinKwc, marques: marquesActives,
       consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage,
@@ -1599,8 +1623,8 @@ export default function DevisGenerator({
     if (opt.nbPanneaux > 0) result = { besoinKwc, ...opt }
     sizingCacheRef.current = { key, result }
     return result
-  }, [modeInstallation, panelW, structureType, discountPct, produits, quoteLogic,
-    marquesActives, distributeur, consoAnnuelleReelle])
+  }, [modeInstallation, panelW, structureType, structureProduitId, discountPct,
+    produits, quoteLogic, marquesActives, distributeur, consoAnnuelleReelle])
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
@@ -1703,7 +1727,17 @@ export default function DevisGenerator({
       : 0
     const sizingLocal = (hiver > 0 && fromTaille <= 0 && modeCible !== 'residentiel')
       ? computeAutoSizing(hiver, ete) : null
-    dispatchSizing({ type: 'LEAD_APPLIQUE', lead, sizingLocal })
+    // STKCAT10 — la liste des structures RÉELLEMENT sélectionnables voyage
+    // avec l'action : le reducer valide contre ELLE l'id épinglé sur le lead
+    // (`lead.structure_produit`, STKCAT9) et n'applique jamais un produit
+    // archivé, dépricé, détypé ou d'une autre société. Un module pur ne va
+    // chercher aucun catalogue lui-même — c'est l'appelant qui l'apporte.
+    dispatchSizing({
+      type: 'LEAD_APPLIQUE',
+      lead,
+      sizingLocal,
+      structuresEligibles: structuresCatalogue.map((p) => p.id),
+    })
     // OFFGRID — défaut dérivé du raccordement du lead : « aucun » (site
     // isolé) bascule le devis en hors réseau tant que le vendeur n'a pas
     // choisi lui-même (même garde « touché » que pompeAlim/structure/tension
@@ -2474,6 +2508,9 @@ export default function DevisGenerator({
       kwp,
       panelW: parseFloat(panelW) || 710,
       structureType,
+      // STKCAT10 — le produit choisi au catalogue prime sur le bouton
+      // acier/alu et fait émettre UNE ligne structure à son nom.
+      structureProduitId,
       // PVMRQ — marques préférées (Paramètres → Gammes & marques, gamme
       // active de ce devis) : une marque épinglée gagne toujours, jamais de
       // repli silencieux sur une autre marque (voir marquesManquantes ci-dessous).
@@ -2513,6 +2550,7 @@ export default function DevisGenerator({
           kwp: kwpAvec,
           panelW: parseFloat(panelW) || 710,
           structureType,
+          structureProduitId,
           marques: marquesActives,
           ordreLignes: gammesConfig?.ordre_lignes,
         })
@@ -2702,6 +2740,8 @@ export default function DevisGenerator({
       const generated = autoFillPompage(produits, {
         cv: pompeCv, alim: pompeAlim, typePompe: pompeType,
         distance: pompeDistance, structureType,
+        // STKCAT10 — même souveraineté du produit choisi en pompage.
+        structureProduitId,
         hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
       })
       if (!generated.length) {
@@ -2743,7 +2783,14 @@ export default function DevisGenerator({
         const body = {
           kwc: kwp,
           panel_watt: parseFloat(panelW) || 710,
+          // STKCAT1/STKCAT7 — `structure_type` reste envoyé comme ALIAS
+          // DÉPRÉCIÉ (compatibilité descendante ET repli quand aucun produit
+          // n'est choisi) ; `structure_produit_id`, quand il est là, est
+          // PRIORITAIRE côté serveur et les deux ne se combinent jamais.
           structure_type: structureType,
+          ...(structureProduitId
+            ? { structure_produit_id: Number(structureProduitId) }
+            : {}),
         }
         // BARÈME TRANSPORT (fondateur 07/09/2026) — la ville du lead reprice
         // la ligne Transport côté serveur (barème Nouaceur) ; sans ville
@@ -4038,17 +4085,31 @@ export default function DevisGenerator({
                 <Label>Puissance PV (kWp) — calculée</Label>
                 <div className="gen-kwp">{kwp > 0 ? formatNumber(kwp, { decimals: 2 }) + ' kWp' : '—'}</div>
               </div>
-              <div className="grid gap-1.5">
-                <Label>Type de Structure</Label>
-                <Segmented
-                  options={[
-                    { value: 'acier', label: 'Acier galvanisé' },
-                    { value: 'aluminium', label: 'Aluminium' },
-                  ]}
-                  value={structureType}
-                  onChange={(v) => dispatchSizing({ type: 'SAISI', champ: 'structure', valeur: v })}
-                />
-              </div>
+              {/* STKCAT10 (décision fondateur 16/09/2026) — le bouton
+                  acier/aluminium est remplacé par un sélecteur ouvert sur
+                  TOUTES les structures typées du catalogue (pergola, carport,
+                  bac lesté…). Le bouton d'hier reste le REPLI quand la société
+                  n'en a aucune : le sélecteur ne peut jamais naître vide. */}
+              <StructureSelector
+                id="gen-structure-produit"
+                label="Type de Structure"
+                produits={produits}
+                value={structureProduitId}
+                onChange={(v) => dispatchSizing({ type: 'SAISI', champ: 'structureProduit', valeur: v })}
+                fallback={(
+                  <div className="grid gap-1.5">
+                    <Label>Type de Structure</Label>
+                    <Segmented
+                      options={[
+                        { value: 'acier', label: 'Acier galvanisé' },
+                        { value: 'aluminium', label: 'Aluminium' },
+                      ]}
+                      value={structureType}
+                      onChange={(v) => dispatchSizing({ type: 'SAISI', champ: 'structure', valeur: v })}
+                    />
+                  </div>
+                )}
+              />
             </div>
             {/* Règle fondateur du 18/08 — justifie la taille retenue par le
                 dimensionnement facture → paliers : palier de 5 kWc, besoin lu

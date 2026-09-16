@@ -461,6 +461,11 @@ def cible_depuis_lignes(devis, variante='sans'):
 CHAMPS_LIGNE = (
     'produit', 'produit_id', 'designation', 'quantite', 'prix_unitaire',
     'remise', 'taux_tva', 'type_ligne', 'ordre', 'variante',
+    # STKCAT23 — le RÔLE de la ligne. Un appelant peut le poser explicitement ;
+    # sinon ``creer_ligne`` le RÉSOUT (voir ``_role_a_la_creation``). Il figure
+    # dans le jeu complet comme tout le reste : un chemin de COPIE
+    # (``cloner_lignes``) doit le reprendre tel quel, sans le re-deviner.
+    'role_devis',
     'groupe_index', 'groupe_label', 'optionnelle',
     'quantite_manuelle', 'prix_manuel',
     # NTCPQ18 — rattachement à un LOT (site/bâtiment). Aucun chemin de
@@ -505,7 +510,42 @@ def creer_ligne(devis, **champs):
             raise ValueError(
                 'Une ligne se rattache à son %s par « %s » OU par « %s », '
                 'jamais par les deux.' % (objet, objet, cle))
+    if 'role_devis' not in champs:
+        champs['role_devis'] = _role_a_la_creation(champs)
     return LigneDevis.objects.create(devis=devis, **champs)
+
+
+def _role_a_la_creation(champs):
+    """STKCAT23 — le RÔLE à figer sur une ligne qu'on crée, ou ``None``.
+
+    DEUX RANGS, ET PAS TROIS. Le rôle DÉCLARÉ du produit passe devant (c'est
+    une donnée, posée par le fondateur sur la fiche) ; sinon les MOTS-CLÉS de
+    la désignation, via le classifieur historique — le REPLI PERMANENT.
+
+    LE RANG « CATÉGORIE » EST DÉLIBÉRÉMENT ABSENT ICI, et c'est une décision de
+    COÛT, pas un oubli : lire ``produit.categorie.type_equipement`` coûterait
+    UNE REQUÊTE PAR LIGNE à chaque enregistrement de devis (le vivier de
+    composition ne précharge que ``fiche_technique``), et un rôle qui
+    dépendrait de la présence d'un cache ne serait même pas déterministe. Le
+    rail catégorie sert là où la requête est déjà payée : le sérialiseur
+    produit (``role_devis_effectif``, STKCAT21). Une ligne dont le produit ne
+    tient son rôle que de sa catégorie retombe donc ici sur les mots-clés —
+    c'est-à-dire sur le comportement d'hier, jamais moins bien.
+
+    NE LÈVE JAMAIS : une ligne doit naître même si la classification échoue.
+    Un rôle absent vaut NULL, et NULL veut dire « les mots-clés décideront à la
+    lecture », le comportement historique exact.
+    """
+    from core.product_roles import role_declare
+
+    produit = champs.get('produit')
+    declare = role_declare(getattr(produit, 'role_devis', None))
+    if declare:
+        return declare
+    # ``designation`` peut manquer (une section/note n'en porte pas toujours) :
+    # le classifieur rend alors None, et la ligne naît sans rôle.
+    from .catalogue import classer_produit
+    return role_declare(classer_produit(champs.get('designation') or ''))
 
 
 # ── QJR116 — UN SEUL CLONEUR DE LIGNES POUR LES TROIS CHEMINS DE COPIE ──────
@@ -789,6 +829,10 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
         raise ValueError(MSG_REMPLACEMENT_VIDE)
     _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
     _VALID_VARIANTES = {c.value for c in LigneDevis.Variante}
+    # STKCAT23 (bis) — vocabulaire des rôles : un rôle hors liste n'est
+    # jamais écrit tel quel, creer_ligne le résout lui-même.
+    from core.product_roles import ROLES_DEVIS
+    _VALID_ROLES = set(ROLES_DEVIS)
     devis.lignes.all().delete()
     for idx, li in enumerate(lignes_in):
         if not isinstance(li, dict):
@@ -843,6 +887,9 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
         variante = str(li.get('variante') or '')
         if variante not in _VALID_VARIANTES:
             variante = ''
+        role_emis = str(li.get('role_devis') or '')
+        extra_role = ({'role_devis': role_emis}
+                      if role_emis in _VALID_ROLES else {})
         creer_ligne(
             devis, produit=produit,
             designation=(li.get('designation') or produit.nom)[:255],
@@ -850,6 +897,7 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
             taux_tva=Decimal(str(taux)) if taux is not None else None,
             optionnelle=bool(li.get('optionnelle', False)),
             type_ligne='produit', ordre=ordre, variante=variante,
+            **extra_role,
             # QJR59 / D12 — les marqueurs de saisie MANUELLE font l'aller
             # retour. Sans eux ici, ce chemin (le SEUL chemin d'écriture de
             # l'écran, création comme édition) les remettrait à False à

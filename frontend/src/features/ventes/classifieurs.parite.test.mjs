@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url'
 
 import {
   isPanel, isBattery, isHybridInverter, isReseauInverter, isAnyInverter,
-  parseKwh, batteryKwhFromLines,
+  parseKwh, batteryKwhFromLines, classifyProduct,
 } from './solar.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -126,3 +126,25 @@ test('QJR91 écran — capacité TOTALE de la fixture : aucune ligne n\'invente 
   assert.ok(Math.abs(total - attendu) < 1e-9,
     `capacité totale attendue ${attendu} kWh (somme des kWh RÉELLEMENT lisibles), obtenu ${total}`)
 })
+
+// ── STKCAT19 — colonne `role` (classifyProduct) ──────────────────────────────
+// Comportement MOT-CLÉ COURANT, REPLI DERRIÈRE LE RÔLE DÉCLARÉ (voir
+// `notes.role_stkcat19` de la fixture) : STKCAT21 fera du rôle produit DÉCLARÉ
+// la source prioritaire, ce classifieur par mot-clé n'en restera qu'un repli
+// pour les produits sans rôle déclaré. `role` n'est porté QUE par les cas
+// structure/accessoire ajoutés par STKCAT19 (pas par les neuf cas résidentiels
+// ci-dessus, hors périmètre de cette colonne) — on ne teste donc que ceux-là.
+const CAS_AVEC_ROLE = CAS.filter((c) => 'role' in c)
+
+test('QJR91/STKCAT19 — la colonne role est présente sur les cas structure/accessoire', () => {
+  assert.ok(CAS_AVEC_ROLE.length > 0,
+    'aucun cas ne porte la colonne role (STKCAT19) — classification_lignes.json a régressé')
+})
+
+for (const cas of CAS_AVEC_ROLE) {
+  const d = cas.designation
+  test(`STKCAT19 écran — role (classifyProduct) « ${d} »`, () => {
+    assert.equal(classifyProduct(d), cas.role,
+      `classifyProduct(« ${d} ») attendu ${JSON.stringify(cas.role)} (contrat QJR2/STKCAT19)`)
+  })
+}

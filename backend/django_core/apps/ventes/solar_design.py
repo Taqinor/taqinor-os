@@ -33,6 +33,20 @@ from __future__ import annotations
 import math
 import re
 
+# STKCAT22 — LA table de reconnaissance « panneau » (mot à frontière de mot,
+# « module » + qualifiant PV, marque + wattage) vit dans la couche de FONDATION
+# ``core`` : elle est lue AUSSI par ``apps.stock`` (seeder : catégorie ET
+# prédicat fiscal de TVA), qui n'a pas le droit d'importer ``apps.ventes``.
+# Import de tête SÛR : ``core.product_roles`` est du Python pur — ni Django, ni
+# modèle, ni réglage — donc il ne peut pas créer de cycle de chargement, ce que
+# l'en-tête de ce module exige.
+from core.product_roles import (
+    PANNEAU_MARQUES,
+    PANNEAU_MODULE_QUALIFIERS,
+    WATT_RE as _CORE_WATT_RE,
+    est_panneau,
+)
+
 # ── Paramètres électriques par défaut (module silicium cristallin) ────────────
 # Valeurs marché conservatrices pour un panneau PV mono/poly courant. Tout est
 # surchargeable par l'appelant via le dict ``module``.
@@ -82,7 +96,11 @@ DEFAULT_HOT_TEMP_C = 70.0    # température cellule maxi (été, module chaud)
 # Ratio DC/AC maximal toléré pour considérer un onduleur « assez gros ».
 MAX_DC_AC = 1.35
 
-_WATT_RE = re.compile(r"(\d{3,4})\s*(?:wc|w)\b", re.IGNORECASE)
+# STKCAT22 — UNE SEULE expression pour « un wattage lisible » : celle de
+# ``core.product_roles``. C'était la MÊME regex écrite deux fois (ici pour LIRE
+# la puissance, là-bas pour RECONNAÎTRE un panneau à sa marque + son wattage) —
+# deux copies qui n'avaient aucune raison de pouvoir diverger.
+_WATT_RE = _CORE_WATT_RE
 _KW_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:kw|kva)\b", re.IGNORECASE)
 _KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
 
@@ -122,21 +140,33 @@ def parse_kw(text: str):
 # La moitié ÉCRAN (`frontend/src/features/ventes/solar.js`) s'y branche par le
 # contrat QJR2 : c'est QJR92, pas cette tâche.
 
-#: Qualifiants qui font d'un « module » un module PHOTOVOLTAÏQUE. Sans eux,
-#: « module » seul désignerait aussi un module de batterie ou de coffret.
-_PANEL_MODULE_QUALIFIERS = ("pv", "photovolta", "solaire", "solar")
+#: STKCAT22 — ALIAS de la table PARTAGÉE (``core.product_roles``). Les deux
+#: tuples étaient déclarés ici et re-devinés ailleurs ; ils ne le sont plus.
+#: Les noms locaux restent : ``quote_engine/builder.py`` les ré-exporte.
+_PANEL_MODULE_QUALIFIERS = PANNEAU_MODULE_QUALIFIERS
+_PANEL_BRANDS = PANNEAU_MARQUES
 
-#: Marques de panneaux. Elles ne suffisent JAMAIS seules — Canadian Solar,
-#: Huawei et consorts vendent aussi des onduleurs : il faut un wattage lisible
-#: à côté. On préfère l'omission au faux positif.
-_PANEL_BRANDS = (
-    "canadian solar", "canadien solar", "jinko", "longi", "trina",
-    "ja solar", "risen", "sunpower", "qcells", "q cells", "astronergy",
-    "znshine",
-)
+
+def _autre_famille_que_panneau(blob: str) -> bool:
+    """Le texte (DÉJÀ minusculé) désigne-t-il une AUTRE famille ?
+
+    Un onduleur, une batterie, un Smart Meter ou une clé Wi-Fi n'est JAMAIS un
+    panneau, quelle que soit la marque de panneau écrite dessus.
+    """
+    return bool(is_inverter(blob) or is_battery(blob)
+                or is_smart_meter(blob) or is_wifi_dongle(blob))
 
 
 def is_panel(designation: str, produit_nom: str = "") -> bool:
+    """STKCAT22 — reconnaissance panneau : LA TABLE PARTAGÉE, pas une copie.
+
+    Le corps de la reconnaissance (mot « panneau » à frontière de mot, puis
+    « module » + qualifiant PV, puis marque + wattage) vit dans
+    ``core.product_roles.est_panneau`` et est lu à l'identique par le seeder
+    ``apps.stock`` (catégorie ET prédicat fiscal). Ce qui reste ici est ce qui
+    appartient VRAIMENT au moteur de devis : le TEXTE classé (désignation + nom
+    du produit, convention QJR301) et l'exclusion « autre famille ».
+    """
     # QJR424 — SEULE définition du texte de classement (QJR301,
     # ``apps.ventes.utils.options.texte_classement``). Import LOCAL : ce
     # module reste PUR au chargement (voir l'en-tête) — `utils.options`
@@ -146,19 +176,7 @@ def is_panel(designation: str, produit_nom: str = "") -> bool:
     # n'existent encore.
     from apps.ventes.utils.options import texte_classement
     blob = texte_classement(designation, produit_nom).lower()
-    if "panneau" in blob or "panneaux" in blob:
-        return True
-    # Exclusions d'abord : un onduleur/une batterie/un accessoire n'est jamais
-    # un panneau, quelle que soit la marque écrite dessus.
-    if (is_inverter(blob) or is_battery(blob)
-            or is_smart_meter(blob) or is_wifi_dongle(blob)):
-        return False
-    if "module" in blob and any(q in blob for q in _PANEL_MODULE_QUALIFIERS):
-        return True
-    # Marque de panneau ET puissance lisible : sans watt, une marque seule
-    # reste ambiguë — on préfère l'omission à un faux positif.
-    return bool(any(b in blob for b in _PANEL_BRANDS)
-                and _WATT_RE.search(blob))
+    return est_panneau(blob, exclut=_autre_famille_que_panneau)
 
 
 def is_battery(designation: str) -> bool:

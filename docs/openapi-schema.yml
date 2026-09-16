@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10778, operations: 19080, components: 5737}
+counts: {paths: 10780, operations: 19082, components: 5738}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -8926,6 +8926,7 @@ operations:
 - get /api/django/stock/produits/{id}/prix-fournisseurs/ -> django_stock_produits_prix_fournisseurs_retrieve
 - post /api/django/stock/produits/{id}/rebuter/ -> django_stock_produits_rebuter_create
 - patch /api/django/stock/produits/{id}/unarchive/ -> django_stock_produits_unarchive_partial_update
+- get /api/django/stock/produits/{id}/utilise-dans/ -> django_stock_produits_utilise_dans_retrieve
 - get /api/django/stock/profils-saisonniers/ -> django_stock_profils_saisonniers_list
 - post /api/django/stock/profils-saisonniers/ -> django_stock_profils_saisonniers_create
 - delete /api/django/stock/profils-saisonniers/{id}/ -> django_stock_profils_saisonniers_destroy
@@ -18467,6 +18468,7 @@ operations:
 - get /api/v1/stock/produits/{id}/prix-fournisseurs/ -> v1_stock_produits_prix_fournisseurs_retrieve
 - post /api/v1/stock/produits/{id}/rebuter/ -> v1_stock_produits_rebuter_create
 - patch /api/v1/stock/produits/{id}/unarchive/ -> v1_stock_produits_unarchive_partial_update
+- get /api/v1/stock/produits/{id}/utilise-dans/ -> v1_stock_produits_utilise_dans_retrieve
 - get /api/v1/stock/profils-saisonniers/ -> v1_stock_profils_saisonniers_list
 - post /api/v1/stock/profils-saisonniers/ -> v1_stock_profils_saisonniers_create
 - delete /api/v1/stock/profils-saisonniers/{id}/ -> v1_stock_profils_saisonniers_destroy
@@ -24133,6 +24135,7 @@ components:
 - Role65aEnum
 - RoleAchatEnum
 - RoleCibleEnum
+- RoleDevisEnum
 - RoleLegacyEnum
 - RolePerimetreEnum
 - RoleRequest

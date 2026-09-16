@@ -35,6 +35,7 @@ import unicodedata
 # ``solar_design`` est du stdlib pur : cet import ne tire ni Django, ni
 # modèle, ni I/O, et ne peut donc pas boucler.
 from apps.ventes import solar_design as _sd
+from core.product_roles import est_panneau as _est_panneau
 
 
 def marque_preferee(company, gamme_nom, role):
@@ -107,10 +108,15 @@ def marque_preferee(company, gamme_nom, role):
 LIBELLES_ROLES = {
     'onduleur_reseau': 'Onduleur Injection',
     'onduleur_hybride': 'Onduleur Hybride',
+    # STKCAT2 — troisième famille d'onduleur (site isolé).
+    'onduleur_offgrid': 'Onduleurs hors réseau',
     'panneau': 'Panneaux',
     'batterie': 'Batterie',
-    'structure_acier': 'Structures acier',
-    'structure_alu': 'Structures aluminium',
+    # STKCAT2 — rôle GÉNÉRIQUE, puis ses deux alias DÉPRÉCIÉS (conservés
+    # pour toujours : un réglage enregistré hier garde son libellé).
+    'structure': 'Structures',
+    'structure_acier': 'Structures acier',      # déprécié (alias)
+    'structure_alu': 'Structures aluminium',    # déprécié (alias)
     'socle': 'Socles',
     'cable_dc': 'Câble solaire DC',
     'cable_terre': 'Câble de terre AC',
@@ -737,6 +743,11 @@ def _est_triphase(nom):
     return bool(_TRI_RE.search(nom or ''))
 
 
+def _exclut_panneau(d):
+    """STKCAT22 — familles qui ne sont JAMAIS un panneau (miroir de solar.js isPanel)."""
+    return any(k in d for k in ('onduleur', 'batterie', 'smart meter', 'wifi', 'dongle'))
+
+
 def classer_produit(nom):
     """Catégorie catalogue d'un produit — port de ``classifyProduct``.
 
@@ -760,7 +771,12 @@ def classer_produit(nom):
         return 'onduleur_offgrid'
     if 'onduleur' in n and ('reseau' in n or 'injection' in n):
         return 'onduleur_reseau'
-    if 'panneau' in n:
+    # STKCAT22 (paire indissociable avec solar.js::classifyProduct) — la
+    # reconnaissance ELARGIE de core.product_roles.est_panneau (mot « panneau(x) »,
+    # « module » + qualifiant PV, marque + wattage) remplace le seul mot
+    # « panneau » ; memes exclusions que l'ecran (isPanel) : onduleur, batterie,
+    # smart meter, wifi, dongle ne sont jamais des panneaux.
+    if _est_panneau(nom or '', exclut=_exclut_panneau):
         return 'panneau'
     if 'batterie' in n:
         return 'batterie'
@@ -809,6 +825,14 @@ def catalogue_de_la_societe(company):
     # PVOND — la fiche technique est préchargée : le garde batterie data-driven
     # y lit la tension nominale, et la composition ne doit pas payer une
     # requête par batterie candidate.
+    # STKCAT7 — la CATÉGORIE l'est aussi, pour la MÊME raison : la composition
+    # lit désormais ``categorie.type_equipement`` sur chaque candidat (le rail
+    # « catégorie typée » qui fait entrer une pergola au vivier structure). Sans
+    # ce préchargement, la fonction PURE de composition déclencherait une
+    # requête PAR PRODUIT du catalogue. C'est LA source unique de la liste
+    # composée : tous les appelants (dry-run, création, balayages de tailles,
+    # réparation de kit) passent par ici.
     return list(Produit.objects.filter(
         Q(company=company) | Q(company__isnull=True),
-        is_archived=False).select_related('fiche_technique').order_by('id'))
+        is_archived=False).select_related(
+            'fiche_technique', 'categorie').order_by('id'))
