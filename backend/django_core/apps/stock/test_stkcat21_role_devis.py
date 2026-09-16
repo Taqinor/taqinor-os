@@ -246,6 +246,7 @@ class TestStkcat21Serialiseur(TestCase):
 
         class _Request:
             user = _User()
+            GET = {}  # `_target_locale` lit `request.GET` sans query_params (YHARD4)
 
         produit = self._produit(role_devis='structure')
         data = ProduitSerializer(produit, context={'request': _Request()}).data

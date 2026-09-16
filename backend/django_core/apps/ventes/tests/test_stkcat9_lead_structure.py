@@ -37,6 +37,9 @@ CATALOGUE = (
     ('Panneau Canadien Solar 710W', '1450'),
     ('Onduleur réseau Huawei 5kW Monophasé', '14000'),
     ('Onduleur hybride Deye 5kW Monophasé', '17000'),
+    # CI (1ʳᵉ exécution) : /auto/ compose « les deux » et refuse en 422 sans
+    # batterie tarifée — le catalogue minimal en porte donc une.
+    ('Batterie Dyness 5 kWh', '17000'),
     ('Structures acier', '500'),
     ('Structures aluminium', '850'),
     ('Socles', '80'),
@@ -71,7 +74,7 @@ class STKCAT9Base(TestCase):
     def lead(self, **extra):
         return Lead.objects.create(
             company=self.company, nom='Structure', prenom='Lead',
-            email='stkcat9@example.com',
+            email='stkcat9@example.com', ville=extra.pop('ville', 'Casablanca'),
             taille_souhaitee_kwc=Decimal('5'), **extra)
 
     def devis_auto(self, lead):
