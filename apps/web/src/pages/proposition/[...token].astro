@@ -1232,10 +1232,21 @@ const acompteMontantInitial = acompteMontantsFmt[optionInitiale] ?? null;
 // Loi 31-08 art. 2 : le droit de rétractation de 7 jours (art. 36) protège le
 // CONSOMMATEUR — « besoins non professionnels, usage personnel ou familial ».
 // Un devis industriel, commercial ou agricole d'exploitation n'y ouvre pas
-// droit : l'afficher là serait un engagement gratuit et faux. Mode inconnu ⇒
-// on se tait (jamais une promesse par défaut).
-const modeInstallation = (data?.mode_installation || '').toString().trim().toLowerCase();
-const clientConsommateur = modeInstallation === 'residentiel';
+// droit : l'afficher là serait un engagement gratuit et faux.
+//
+// PREVIEW-V3-FIX (16/09/2026, audit C2) — GATÉ SUR `installMode`, PAS SUR LE
+// CHAMP BRUT. `Devis.mode_installation` est `blank/null` SANS défaut : le
+// builder sert `''`. La page (héros, KPI, libellés — `resolveInstallMode`) ET
+// le noyau de l'échéancier (`echeancier.py` : `devis.mode_installation or
+// 'residentiel'`) traitent tous deux `''` comme RÉSIDENTIEL. Comparer la
+// chaîne brute à 'residentiel' faisait donc disparaître la ligne de
+// rétractation d'un devis résidentiel sans mode — acompte résidentiel 30 %
+// affiché, droit art. 29-4 tu : l'information manquante fait basculer le
+// délai de 7 à 30 jours (art. 36) et expose à l'amende de l'art. 177. Le
+// « mode inconnu ⇒ on se tait » choisissait le mauvais côté du risque :
+// montrer la rétractation à un pro est un cadeau, la cacher à un
+// consommateur est une infraction.
+const clientConsommateur = installMode === 'residentiel';
 
 // ── WJ9 — Argent dans le temps : cumul 25 ans + payback + cadrage mensuel ────
 // Tous ces nombres SONT ceux du moteur : `annual` = backend `eco_s_ann`/`eco_a_ann`,
