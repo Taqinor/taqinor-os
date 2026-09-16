@@ -3112,3 +3112,82 @@ def classer_produit_nom(nom):
     """
     from .domain.catalogue import classer_produit
     return classer_produit(nom)
+
+
+def devis_utilisant_produit(user, produit_id, limit=20):
+    """STKCAT25 — les devis RÉCENTS qui chiffrent ce produit, vus PAR ``user``.
+
+    Frontière cross-app : ``apps.stock`` (onglet « Utilisé dans » de la fiche
+    produit) lit les devis PAR ICI — jamais un import de ``apps.ventes.models``
+    depuis une autre app.
+
+    LA VISIBILITÉ EST CELLE DE LA LISTE ``/ventes/devis``, REJOUÉE À
+    L'IDENTIQUE — jamais une copie allégée. Le chemin suit pas à pas
+    ``DevisViewSet.get_queryset`` (``apps/ventes/views/devis.py``) et RÉUTILISE
+    ses helpers, sans en réécrire un seul :
+
+      1. ``_company_qs``                — société (superuser sans société :
+         tout ; compte sans société : rien) ;
+      2. portail NTPRT10                — un compte externe ne voit QUE les
+         devis de SON client, BROUILLON exclu (AUD143) ; une portée autre que
+         « client », ou sans rattachement, ne voit RIEN (jamais tout) ;
+      3. ``scope_queryset(created_by)`` — portée interne (Feature F).
+
+    Sans ce rejeu, un commercial dont la portée masque un devis dans /ventes le
+    verrait réapparaître par la fiche produit du Stock : la même donnée par une
+    autre porte.
+
+    Renvoie une liste de dicts ``{id, reference, client_nom, statut, date,
+    total_ttc}``, du plus récent au plus ancien, bornée à ``limit``.
+    ``total_ttc`` est un prix de VENTE en TEXTE décimal (jamais un flottant) ;
+    ``date`` est la date de création en ISO. AUCUN prix d'achat, AUCUNE marge
+    n'entre dans cette charge utile. Forme contractuelle :
+    ``apps/stock/contract_samples/produit_utilise_dans.json``.
+    """
+    from apps.roles.permissions import is_portal_user, portal_scope_id
+    from core.scoping import scope_queryset
+
+    from .models import Devis
+    # Le helper de scoping société de la vue : l'importer (fonction-local, même
+    # app) est ce qui garantit qu'il n'existe pas DEUX règles société.
+    from .views.devis import _company_qs
+
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return []
+    if not produit_id:
+        return []
+    try:
+        limite = int(limit)
+    except (TypeError, ValueError):
+        limite = 0
+    if limite <= 0:
+        return []
+
+    qs = _company_qs(Devis.objects.all(), user)
+    if is_portal_user(user):
+        scope = portal_scope_id(user)
+        if getattr(user, 'portee', None) != 'portail_client' or scope is None:
+            return []
+        qs = qs.filter(client_id=scope).exclude(statut=Devis.Statut.BROUILLON)
+    else:
+        qs = scope_queryset(qs, user, ['created_by'])
+
+    qs = (qs.filter(lignes__produit_id=produit_id)
+            .select_related('client')
+            .prefetch_related('lignes')
+            .distinct()
+            .order_by('-date_creation', '-id'))
+
+    lignes = []
+    for devis in qs[:limite]:
+        client = devis.client
+        lignes.append({
+            'id': devis.id,
+            'reference': devis.reference or '',
+            'client_nom': (getattr(client, 'nom', '') or '') if client else '',
+            'statut': devis.statut or '',
+            'date': (devis.date_creation.date().isoformat()
+                     if devis.date_creation else ''),
+            'total_ttc': str(devis.total_ttc),
+        })
+    return lignes

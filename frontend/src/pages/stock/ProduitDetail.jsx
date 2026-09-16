@@ -28,6 +28,11 @@ import { BadgeCompletudeFiche } from './CatalogueTable.jsx'
 // PVFCH — libellés et mise en forme des champs de fiche : logique PURE
 // partagée avec ProduitForm (mêmes intitulés d'un écran à l'autre).
 import { groupeFicheAffichage } from './pvondFicheTechnique.js'
+// STKCAT25 — onglet « Utilisé dans » : les libellés d'étape/statut viennent de
+// LEUR source canonique, jamais d'une seconde liste écrite ici (règle #2 de
+// CLAUDE.md pour les étapes du pipeline ; liste fermée des chantiers N14).
+import { STAGE_LABELS } from '../../features/crm/stages.js'
+import { STATUS_LABELS as CHANTIER_STATUT_LABELS } from '../../features/installations/statuses.js'
 
 // ZPUR10 / ZSTK3 — Fiche produit (au-delà du catalogue) : quantité « en
 // commande » (BCF brouillon/envoyé, jamais annulé/reçu) + rapport
@@ -577,6 +582,137 @@ function OngletCompatibilites({ produit }) {
   )
 }
 
+/* ── STKCAT25 — Onglet « Utilisé dans » : devis / leads / chantiers ─────────
+   OÙ ce produit sert-il ? Les trois listes viennent d'UN appel agrégé
+   (`/stock/produits/<id>/utilise-dans/`) dont chaque moitié est produite par
+   l'app propriétaire via son `selectors.py` et rejoue SA portée : un devis que
+   /ventes masque à ce rôle n'apparaît pas ici non plus.
+
+   Le panneau est monté PARESSEUSEMENT : Radix démonte l'onglet inactif, donc
+   l'appel ne part qu'à l'ouverture de l'onglet (même patron que
+   « Prévisionnel » et « Compatibilités »).
+
+   Les liens pointent des paramètres RÉELLEMENT LUS par leur page (WIR176) :
+     * `/ventes/devis?devis=<id>`  — DevisList.jsx lit `searchParams.get('devis')`
+       (QX12, deep-link qui ouvre/surligne le devis) ;
+     * `/crm/leads/<id>`           — route `/crm/leads/:id` (LeadDetailPage,
+       `useParams()`), jamais un `?lead=` inventé ;
+     * `/chantiers?id=<id>`        — InstallationsPage.jsx lit
+       `searchParams.get('id')` (VX79).
+   Aucun prix d'achat, aucune marge ne transite par cet onglet.            */
+
+// Libellés des statuts de DEVIS. Vocabulaire fermé du domaine ventes, repli
+// sur la valeur brute pour tout statut futur (jamais un tiret muet).
+const DEVIS_STATUT_LABELS = {
+  brouillon: 'Brouillon',
+  envoye: 'Envoyé',
+  accepte: 'Accepté',
+  refuse: 'Refusé',
+  expire: 'Expiré',
+}
+
+function SectionUtiliseDans({ titre, vide, lignes, testid, children }) {
+  return (
+    <div className="rounded-lg border border-border" data-testid={testid}>
+      <p className="border-b border-border px-3 py-2 text-xs uppercase tracking-wide text-muted-foreground">
+        {titre}
+      </p>
+      {lignes.length === 0 ? (
+        <p className="px-3 py-2 text-sm text-muted-foreground">{vide}</p>
+      ) : (
+        <ul className="px-3 py-1">{children}</ul>
+      )}
+    </div>
+  )
+}
+
+function LigneUtiliseDans({ to, principal, secondaire, statut, date }) {
+  return (
+    <li className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:items-baseline sm:gap-3">
+      <Link to={to} className="text-sm font-medium text-foreground underline-offset-2 hover:text-primary hover:underline">
+        {principal}
+      </Link>
+      {secondaire && <span className="text-sm text-muted-foreground">{secondaire}</span>}
+      <span className="text-xs text-muted-foreground sm:ml-auto">
+        {statut} · {fmtDateFR(date)}
+      </span>
+    </li>
+  )
+}
+
+function OngletUtiliseDans({ produitId }) {
+  const [data, setData] = useState(undefined)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    stockApi.getProduitUtiliseDans(produitId)
+      .then((r) => { if (active) setData(r.data ?? null) })
+      .catch(() => { if (active) setError(true) })
+    return () => { active = false }
+  }, [produitId])
+
+  if (error) return <p className="py-3 text-sm text-muted-foreground">Utilisations indisponibles.</p>
+  if (data === undefined) return <Chargement />
+  if (!data) return <p className="py-3 text-sm text-muted-foreground">Utilisations indisponibles.</p>
+
+  const devis = data.devis ?? []
+  const leads = data.leads ?? []
+  const chantiers = data.chantiers ?? []
+  const limite = data.limite ?? 0
+
+  return (
+    <div className="flex flex-col gap-3" data-testid="pdet-utilise-dans">
+      <SectionUtiliseDans
+        titre="Devis" testid="pdet-utilise-dans-devis" lignes={devis}
+        vide="Aucun devis ne chiffre ce produit."
+      >
+        {devis.map((d) => (
+          <LigneUtiliseDans
+            key={d.id} to={`/ventes/devis?devis=${d.id}`}
+            principal={d.reference} secondaire={d.client_nom}
+            statut={DEVIS_STATUT_LABELS[d.statut] ?? d.statut} date={d.date}
+          />
+        ))}
+      </SectionUtiliseDans>
+
+      <SectionUtiliseDans
+        titre="Leads" testid="pdet-utilise-dans-leads" lignes={leads}
+        vide="Aucun lead ne dépend de ce produit."
+      >
+        {leads.map((l) => (
+          <LigneUtiliseDans
+            key={l.id} to={`/crm/leads/${l.id}`}
+            principal={l.nom} secondaire={l.ville}
+            statut={STAGE_LABELS[l.stage] ?? l.stage} date={l.date}
+          />
+        ))}
+      </SectionUtiliseDans>
+
+      <SectionUtiliseDans
+        titre="Chantiers" testid="pdet-utilise-dans-chantiers" lignes={chantiers}
+        vide="Aucun chantier n'a réservé ce produit."
+      >
+        {chantiers.map((c) => (
+          <LigneUtiliseDans
+            key={c.id} to={`/chantiers?id=${c.id}`}
+            principal={c.reference} secondaire={c.client_nom}
+            statut={CHANTIER_STATUT_LABELS[c.statut] ?? c.statut} date={c.date}
+          />
+        ))}
+      </SectionUtiliseDans>
+
+      {limite > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Au plus {limite} lignes par liste, des plus récentes aux plus anciennes.
+          Un devis, un lead ou un chantier hors de votre périmètre de visibilité
+          n&apos;apparaît pas ici — exactement comme dans son propre module.
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ── WIR221/XSTK10 — mise au rebut (motif obligatoire) ───────────────────────
 // Casse/obsolescence/péremption/vol/défaut/erreur/autre : crée un mouvement
 // de SORTIE et décrémente le stock, jamais un simple ajustement silencieux.
@@ -718,17 +854,20 @@ export function ProduitDetail({ produit, onClose, onEdit, onRebut }) {
         <EnTetePhoto produit={produit} />
 
         {/* VX159/VX250 — RelationCounters : réutilise `produit.bcf_sources_en_commande`
-            déjà chargé (prop, ZÉRO appel réseau nouveau). Pas de filtre par
-            produit sur BonsCommandeFournisseur.jsx (hors périmètre de cette
-            tâche) : lien vers la liste NUE, jamais un pré-filtre qui MENT.
-            `prix_achat` ne transite jamais par ce composant (label/count
-            purement quantitatifs). */}
+            déjà chargé (prop, ZÉRO appel réseau nouveau).
+            STKCAT25 — le compteur PERD son `to` : il menait à la liste NUE des
+            bons de commande fournisseur, sans filtre par produit (aucun n'existe
+            sur BonsCommandeFournisseur.jsx). Un lien qui abandonne le lecteur
+            sur une liste entière n'est pas un lien, c'est une fausse piste —
+            même arbitrage que le compteur « chantiers » de ClientDetailPanel,
+            qui reste un nombre STATIQUE faute de pré-filtre réel. Le détail des
+            BCF sources est de toute façon juste en dessous, dans l'onglet « En
+            commande ». `prix_achat` ne transite jamais par ce composant. */}
         <RelationCounters
           className="mb-3"
           counters={[{
             label: 'bons de commande en cours',
             count: produit.bcf_sources_en_commande?.length ?? 0,
-            to: '/stock/bons-commande-fournisseur',
           }]}
         />
 
@@ -742,6 +881,8 @@ export function ProduitDetail({ produit, onClose, onEdit, onRebut }) {
             <TabsTrigger value="compat">Compatibilités</TabsTrigger>
             {/* PACT128 — 5ᵉ onglet : groupes d'options de configuration. */}
             <TabsTrigger value="options">Options</TabsTrigger>
+            {/* STKCAT25 — 6ᵉ onglet : où ce produit est-il utilisé ? */}
+            <TabsTrigger value="utilise-dans">Utilisé dans</TabsTrigger>
           </TabsList>
           <TabsContent value="en-commande">
             <OngletEnCommande produit={produit} />
@@ -757,6 +898,11 @@ export function ProduitDetail({ produit, onClose, onEdit, onRebut }) {
           </TabsContent>
           <TabsContent value="options">
             <ProduitOptionsTab produitId={produit.id} />
+          </TabsContent>
+          {/* STKCAT25 — monté seulement à l'ouverture (Radix démonte l'onglet
+              inactif) : aucun appel réseau tant que l'onglet n'est pas lu. */}
+          <TabsContent value="utilise-dans">
+            <OngletUtiliseDans produitId={produit.id} />
           </TabsContent>
         </Tabs>
 

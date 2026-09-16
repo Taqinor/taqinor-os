@@ -1146,6 +1146,8 @@
     emplacement:inconnu, produits:inconnu
 - frontend/src/api/stockApi.js :: getOnboardingFournisseur -> /api/django/stock/fournisseurs/<>/onboarding
     dossier:inconnu, obligatoire:inconnu, progression:inconnu
+- frontend/src/api/stockApi.js :: getProduitUtiliseDans -> /api/django/stock/produits/<>/utilise-dans
+    chantiers:inconnu, devis:inconnu, leads:inconnu, limite:inconnu
 - frontend/src/api/stockApi.js :: inventaire -> /api/django/stock/produits/inventaire
     ajustes:nombre, detail:texte, inchanges:nombre, mouvements:liste
 - frontend/src/api/stockApi.js :: performanceFournisseur -> /api/django/stock/fournisseurs/<>/performance
