@@ -3045,14 +3045,45 @@ def _date_validite_publique(devis):
         return None
 
 
+#: PREVIEW-V3-FIX (audit C6) — LES BACKENDS D'E-MAIL QUI N'ENVOIENT NULLE PART.
+#: ``console`` (le DÉFAUT du projet, settings/base.py : « SANS clé […] l'envoi
+#: est un NO-OP ») imprime dans les logs ; ``dummy`` jette. Dans les deux cas
+#: ``send_mail`` ne lève pas, ``email_service._send`` journalise « envoyé », et
+#: la page promettait un accusé de réception que le client n'a jamais reçu.
+#: ``locmem`` n'y figure PAS volontairement : ce n'est pas un réglage de
+#: production, c'est celui que le lanceur de tests Django impose (il capture
+#: dans ``mail.outbox``) — l'exclure rendrait tout test aveugle à la
+#: distinction que cette fonction existe pour faire.
+EMAIL_BACKENDS_SANS_ENVOI = (
+    'django.core.mail.backends.console.EmailBackend',
+    'django.core.mail.backends.dummy.EmailBackend',
+)
+
+
 def _confirmation_email_publique(devis):
     """PREVIEW-V3 — ce client recevra-t-il VRAIMENT un e-mail à l'acceptation ?
 
-    ``domain.cycle_vie._send_acceptance_emails`` n'envoie que ``if dest:``,
-    où ``dest = devis.client.email``. La page ne promet donc la confirmation
-    que quand l'adresse existe (loi 31-08 art. 32 : la confirmation écrite
-    plafonne la rétractation à 7 jours — la promettre à vide serait faux)."""
+    DEUX conditions, pas une :
+
+    * ``domain.cycle_vie._send_acceptance_emails`` n'envoie que ``if dest:``,
+      où ``dest = devis.client.email`` — il faut donc une adresse ;
+    * PREVIEW-V3-FIX (audit C6) — et il faut un backend d'e-mail qui ENVOIE.
+      ``EMAIL_BACKEND`` vaut *console* par défaut dans ce projet : sans
+      ``EMAIL_BACKEND=anymail…`` + clé Brevo/SendGrid dans le ``.env`` de
+      production, rien ne part, ``send_mail`` ne lève pas et le service
+      journalise « envoyé » quand même. La page promettait alors « Une
+      confirmation vous est envoyée par e-mail » dans le vide — exactement ce
+      que cette clé devait empêcher.
+
+    Loi 31-08 art. 32 : c'est la confirmation ÉCRITE qui plafonne la
+    rétractation à 7 jours. La promettre sans qu'elle parte ne raccourcit
+    aucun délai — cela ajoute seulement une phrase fausse sur un document
+    contractuel."""
     try:
+        from django.conf import settings
+        backend = str(getattr(settings, 'EMAIL_BACKEND', '') or '').strip()
+        if backend in EMAIL_BACKENDS_SANS_ENVOI:
+            return False
         client = getattr(devis, 'client', None)
         return bool((getattr(client, 'email', '') or '').strip())
     except Exception:  # noqa: BLE001 — best-effort

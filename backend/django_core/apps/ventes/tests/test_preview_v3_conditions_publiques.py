@@ -284,3 +284,28 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         self.client_obj.email = ''
         self.client_obj.save(update_fields=['email'])
         self.assertIs(self._payload()['confirmation_email'], False)
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.console.EmailBackend')
+    def test_confirmation_email_faux_quand_rien_ne_part(self):
+        """PREVIEW-V3-FIX (audit C6) — LE BACKEND CONSOLE NE POSTE RIEN.
+
+        C'est le DÉFAUT du projet : sans `EMAIL_BACKEND=anymail…` + clé dans
+        le `.env` de production, `send_mail` ne lève pas et le service
+        journalise « envoyé » quand même. La page promettait alors un accusé
+        de réception dans le vide — la promesse même que cette clé devait
+        empêcher. L'adresse client existe pourtant ici : c'est bien le
+        backend, et lui seul, qui décide."""
+        self.assertTrue(self.client_obj.email)
+        self.assertIs(self._payload()['confirmation_email'], False)
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.dummy.EmailBackend')
+    def test_confirmation_email_faux_sur_le_backend_dummy(self):
+        """Même raisonnement : `dummy` jette les messages."""
+        self.assertIs(self._payload()['confirmation_email'], False)
+
+    @override_settings(EMAIL_BACKEND='anymail.backends.sendinblue.EmailBackend')
+    def test_confirmation_email_vrai_sur_un_backend_qui_envoie(self):
+        """Backend d'envoi réel + adresse client ⇒ la promesse est tenable."""
+        self.assertIs(self._payload()['confirmation_email'], True)
