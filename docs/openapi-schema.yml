@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10776, operations: 19078, components: 5736}
+counts: {paths: 10780, operations: 19082, components: 5738}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2736,6 +2736,7 @@ operations:
 - put /api/django/credit/segments-client/{id}/ -> django_credit_segments_client_update
 - get /api/django/crm/appareils-equipe/ -> django_crm_appareils_equipe_list
 - post /api/django/crm/appareils-equipe/ -> django_crm_appareils_equipe_create
+- post /api/django/crm/appareils-equipe/ce-navigateur/ -> django_crm_appareils_equipe_ce_navigateur_create
 - delete /api/django/crm/appareils-equipe/{id}/ -> django_crm_appareils_equipe_destroy
 - get /api/django/crm/appointments/ -> django_crm_appointments_list
 - post /api/django/crm/appointments/ -> django_crm_appointments_create
@@ -8925,6 +8926,7 @@ operations:
 - get /api/django/stock/produits/{id}/prix-fournisseurs/ -> django_stock_produits_prix_fournisseurs_retrieve
 - post /api/django/stock/produits/{id}/rebuter/ -> django_stock_produits_rebuter_create
 - patch /api/django/stock/produits/{id}/unarchive/ -> django_stock_produits_unarchive_partial_update
+- get /api/django/stock/produits/{id}/utilise-dans/ -> django_stock_produits_utilise_dans_retrieve
 - get /api/django/stock/profils-saisonniers/ -> django_stock_profils_saisonniers_list
 - post /api/django/stock/profils-saisonniers/ -> django_stock_profils_saisonniers_create
 - delete /api/django/stock/profils-saisonniers/{id}/ -> django_stock_profils_saisonniers_destroy
@@ -12322,6 +12324,7 @@ operations:
 - put /api/v1/credit/segments-client/{id}/ -> v1_credit_segments_client_update
 - get /api/v1/crm/appareils-equipe/ -> v1_crm_appareils_equipe_list
 - post /api/v1/crm/appareils-equipe/ -> v1_crm_appareils_equipe_create
+- post /api/v1/crm/appareils-equipe/ce-navigateur/ -> v1_crm_appareils_equipe_ce_navigateur_create
 - delete /api/v1/crm/appareils-equipe/{id}/ -> v1_crm_appareils_equipe_destroy
 - get /api/v1/crm/appointments/ -> v1_crm_appointments_list
 - post /api/v1/crm/appointments/ -> v1_crm_appointments_create
@@ -18465,6 +18468,7 @@ operations:
 - get /api/v1/stock/produits/{id}/prix-fournisseurs/ -> v1_stock_produits_prix_fournisseurs_retrieve
 - post /api/v1/stock/produits/{id}/rebuter/ -> v1_stock_produits_rebuter_create
 - patch /api/v1/stock/produits/{id}/unarchive/ -> v1_stock_produits_unarchive_partial_update
+- get /api/v1/stock/produits/{id}/utilise-dans/ -> v1_stock_produits_utilise_dans_retrieve
 - get /api/v1/stock/profils-saisonniers/ -> v1_stock_profils_saisonniers_list
 - post /api/v1/stock/profils-saisonniers/ -> v1_stock_profils_saisonniers_create
 - delete /api/v1/stock/profils-saisonniers/{id}/ -> v1_stock_profils_saisonniers_destroy
@@ -19257,6 +19261,7 @@ components:
 - ApiUsagePlanCodeEnum
 - ApiUsagePlanRequest
 - AppareilEquipe
+- AppareilEquipeCeNavigateurRequestRequest
 - AppareilEquipeRequest
 - Appel
 - AppelCommande
@@ -24130,6 +24135,7 @@ components:
 - Role65aEnum
 - RoleAchatEnum
 - RoleCibleEnum
+- RoleDevisEnum
 - RoleLegacyEnum
 - RolePerimetreEnum
 - RoleRequest

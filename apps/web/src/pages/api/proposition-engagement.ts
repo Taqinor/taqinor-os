@@ -26,6 +26,7 @@ import * as cf from 'cloudflare:workers';
 import { engagementEndpoint } from '../../lib/proposition';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { isPlausibleUuid, lireCookie } from '../../lib/visite';
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -78,9 +79,16 @@ export const POST: APIRoute = async ({ request }) => {
   // (cookie tq_equipe, posé par /equipe ou un Aperçu interne) est relayé avec
   // le marqueur : le backend n'enregistre alors ni engagement ni note chatter
   // « a commencé à lire en détail » — Reda/Meryem relisant le vrai lien ne
-  // sont pas une lecture client.
-  const equipeAppareil = /(?:^|;\s*)tq_equipe=1(?:;|$)/.test(
-    request.headers.get('cookie') ?? '');
+  // sont pas une lecture client. `lireCookie` (T3) remplace l'ancienne regex
+  // ad hoc — même parseur que `tq_appareil` juste en dessous, cohérence.
+  const cookieHeader = request.headers.get('cookie') ?? '';
+  const equipeAppareil = lireCookie(cookieHeader, 'tq_equipe') === '1';
+  // QJ-EQUIPE cookie partagé (T3) — même en-tête `X-Appareil-Id` que le SSR
+  // de `/proposition/<token>` (T2) : le cookie `tq_appareil` (posé par le
+  // navigateur ou directement par l'ERP sur le domaine partagé taqinor.ma)
+  // voyage vers le backend, filtré anti-garbage par `isPlausibleUuid`.
+  const appareilCookieBrut = lireCookie(cookieHeader, 'tq_appareil');
+  const appareilCookie = isPlausibleUuid(appareilCookieBrut) ? appareilCookieBrut : undefined;
 
   try {
     const res = await fetch(url, {
@@ -89,6 +97,7 @@ export const POST: APIRoute = async ({ request }) => {
         'content-type': 'application/json',
         accept: 'application/json',
         ...(equipeAppareil ? { 'X-Equipe-Appareil': '1' } : {}),
+        ...(appareilCookie ? { 'X-Appareil-Id': appareilCookie } : {}),
       },
       body: JSON.stringify(upstreamBody),
       // Le beacon ne doit jamais faire traîner la navigation : l'appel

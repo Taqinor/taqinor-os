@@ -344,15 +344,47 @@ describe('ProduitForm — section « Fiche technique » (PVOND)', () => {
     expect(screen.getByLabelText('Tension nominale (V)')).toBeInTheDocument()
   })
 
-  it('type POMPE : lecture seule, aucun champ éditable de fiche technique', async () => {
+  // STKCAT20 — la section pompage (CV/kW/tension/HMT/débit + courbe) est
+  // désormais ÉDITABLE ici (champs plats du modèle Produit, plus besoin de
+  // l'admin Django) ; elle ne porte toujours AUCUN champ de la fiche
+  // technique onduleur (ceux-là restent réservés à onduleur/panneau/batterie).
+  it('type POMPE : caractéristiques de pompage éditables, aucun champ de fiche technique onduleur', async () => {
     renderEdit({
       nom: 'Pompe immergée OSP 30/8', specs_solaire: undefined,
       pompe_cv: '10', hmt_m: '91', pompe_kw: '7.5', tension_v: 380,
+      courbe_pompe: { debits_m3h: [0, 12], hmt_m: [91, 85] },
     })
     await screen.findByText(/Éditer/)
     expect(await screen.findByText('Fiche technique')).toBeInTheDocument()
-    expect(screen.getByText('91')).toBeInTheDocument()   // HMT max, lu tel quel
+    expect(screen.getByLabelText('HMT max (m)')).toHaveValue(91)
     expect(screen.queryByLabelText('Puissance AC (kW)')).not.toBeInTheDocument()
+
+    // Modifier la HMT + un point de courbe, enregistrer : le payload
+    // principal (jamais une FicheTechnique) porte les deux.
+    fireEvent.change(screen.getByLabelText('HMT max (m)'), { target: { value: '95' } })
+    fireEvent.change(screen.getByLabelText('Débit point 1'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
+
+    await waitFor(() => expect(updateProduitApi).toHaveBeenCalled())
+    const [, payload] = updateProduitApi.mock.calls[0]
+    expect(payload.hmt_m).toBe('95')
+    expect(payload.courbe_pompe).toEqual({ debits_m3h: [1, 12], hmt_m: [91, 85] })
+    expect(createFicheTechnique).not.toHaveBeenCalled()
+    expect(updateFicheTechnique).not.toHaveBeenCalled()
+  })
+
+  it('type POMPE (création) : ajouter/retirer un point de courbe reste possible avant tout enregistrement', async () => {
+    renderCreate()
+    await screen.findByText('Nouveau produit')
+    fireEvent.change(screen.getByPlaceholderText('Nom du produit'), { target: { value: 'Pompe surface XYZ' } })
+    expect(await screen.findByLabelText('HMT max (m)')).toBeInTheDocument()
+    // Deux lignes vides par défaut.
+    expect(screen.getByLabelText('Débit point 1')).toBeInTheDocument()
+    expect(screen.getByLabelText('Débit point 2')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter un point' }))
+    expect(screen.getByLabelText('Débit point 3')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retirer le point 3' }))
+    expect(screen.queryByLabelText('Débit point 3')).not.toBeInTheDocument()
   })
 
   it('création : la section apparaît en tapant le nom, avant même d\'enregistrer', async () => {

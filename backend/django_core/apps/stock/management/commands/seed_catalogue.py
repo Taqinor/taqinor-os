@@ -23,11 +23,17 @@ Run:
   docker compose exec django_core python manage.py seed_catalogue
   (options --company-slug, default: taqinor-demo ; --reappliquer-fiches)
 """
-import re
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+
+# STKCAT22 — LA table de reconnaissance « panneau », partagée avec le moteur de
+# devis (``apps.ventes.solar_design.is_panel``). Elle vit dans ``core`` parce
+# que ``apps.stock`` ne peut pas importer ``apps.ventes`` (frontière inter-app)
+# — c'est exactement pourquoi les deux moitiés avaient divergé : « Module PV
+# 550 W » était un panneau pour le PDF et pas pour la catégorie ni pour la TVA.
+from core.product_roles import PANNEAU_RE, est_panneau
 
 
 # (nom, sku, categorie, sell_ttc, buy_ttc, quantite, seuil)
@@ -119,7 +125,11 @@ def ht(ttc):
 # batteries, structures, câbles, pompes, variateurs et toutes prestations).
 # Le TTC reste l'ancre : le HT stocké d'un panneau est dérivé à 10 %
 # (1 400 TTC → 1 272,73 HT) pour que le prix TTC affiché ne bouge JAMAIS.
-_PANNEAU_RE = re.compile(r'\bpanneau(x)?\b')
+#
+# STKCAT22 — la frontière de mot ``\bpanneau(x)?\b`` est devenue
+# ``core.product_roles.PANNEAU_RE`` (premier test de ``est_panneau``) : elle
+# n'est plus écrite ici. L'alias reste pour les lecteurs de ce module.
+_PANNEAU_RE = PANNEAU_RE
 
 # AUD201 (R2-31 doctrine, correctif 3) — même garde-fou "autre famille" que
 # ``OFFGRID_AUTRE_FAMILLE_KEYWORDS`` plus bas : une frontière de mot SEULE
@@ -134,17 +144,50 @@ PANNEAU_AUTRE_FAMILLE_KEYWORDS = (
 )
 
 
-def is_panneau(nom):
-    """Panneau photovoltaïque (TVA 10 %) : le mot "panneau(x)" à FRONTIÈRE DE
-    MOT (jamais une sous-chaîne — "Tableau De Protection AC/DC" ne contient
-    pas "panneau" mais ce garde-fou existait déjà pour ``is_offgrid``, même
-    principe ici) ET aucun mot-clé d'une autre famille de produit/prestation
-    (sinon "Panneau électrique"/"Nettoyage panneaux" basculerait à tort en
-    TVA 10 %)."""
+# STKCAT22 (16/09/2026) — L'EXCLUSION « AUTRE FAMILLE » DU SEEDER, UNE FOIS.
+# Les deux prédicats panneau de ce fichier — le FISCAL (``is_panneau``, qui
+# pilote ``taux_tva_for``) et celui de la CATÉGORIE (``classify_categorie``) —
+# l'appliquent désormais tous les deux, et AVANT toute reconnaissance : une
+# désignation qui NOMME une autre famille n'est jamais un panneau.
+#
+# Elle CONSERVE ``PANNEAU_AUTRE_FAMILLE_KEYWORDS`` mot pour mot (AUD201 :
+# « Panneau électrique », « Nettoyage panneaux », « Pose panneaux » restent à
+# 20 %) et lui ajoute les familles que ce fichier sait déjà distinguer plus
+# bas. Cet ajout est la CEINTURE de l'élargissement STKCAT22 : la table
+# partagée reconnaît désormais « marque de panneau + wattage », et sans ces
+# mots un hypothétique « Onduleur Trina 5000W » serait happé par la branche
+# panneau, qui est testée EN PREMIER. Une exclusion ne peut que RESTREINDRE la
+# reconnaissance — jamais élargir la TVA 10 % à quoi que ce soit.
+_AUTRE_FAMILLE_PANNEAU = PANNEAU_AUTRE_FAMILLE_KEYWORDS + (
+    'onduleur', 'batterie', 'pompe', 'variateur', 'afficheur', 'coffret',
+    'socle', 'cable', 'câble', 'smart meter', 'wifi', 'dongle',
+)
+
+
+def _autre_famille_que_panneau(nom):
+    """La désignation NOMME-t-elle une autre famille que le panneau PV ?"""
     d = (nom or '').lower()
-    if not _PANNEAU_RE.search(d):
+    return any(k in d for k in _AUTRE_FAMILLE_PANNEAU)
+
+
+def is_panneau(nom):
+    """Panneau photovoltaïque (TVA 10 %) — PRÉDICAT FISCAL.
+
+    STKCAT22 — la RECONNAISSANCE vient désormais de la table PARTAGÉE
+    ``core.product_roles.est_panneau`` (le mot « panneau(x) » à FRONTIÈRE DE
+    MOT — ``_PANNEAU_RE`` a déménagé là-bas tel quel —, puis « module » +
+    qualifiant PV, puis marque + wattage). C'est ce qui répare le défaut
+    mesuré : « Module PV 550 W » était un panneau pour le moteur PDF et PAS
+    pour la TVA, donc 20 % sur un panneau qui est à 10 % depuis la réforme.
+
+    CE QUI NE BOUGE PAS D'UN MOT, c'est l'EXCLUSION, ET ELLE PASSE D'ABORD :
+    « Panneau électrique », « Nettoyage panneaux » et « Pose panneaux »
+    désignent une AUTRE famille et restent à 20 %, quel que soit le mot
+    « panneau » dans leur nom (AUD201).
+    """
+    if _autre_famille_que_panneau(nom):
         return False
-    return not any(k in d for k in PANNEAU_AUTRE_FAMILLE_KEYWORDS)
+    return est_panneau(nom)
 
 
 #: QJR-OFFGRID ROUND 2 (incident fondateur 01/09/2026) — les VRAIS produits du
@@ -211,12 +254,86 @@ TAXONOMIE = [
 ]
 
 
+# ── STKCAT3 — CATÉGORIE → TYPE D'ÉQUIPEMENT (stock.Categorie.TypeEquipement)
+# LA SEULE table nom→type du dépôt. Les QUATRE chemins qui créent des
+# catégories la lisent — ce seeder, sa passe taxonomie, le gabarit tenant
+# SOL10 (authentication/tenant_templates.py) et seed_demo — au lieu de poser
+# chacun des catégories NON typées, ce qui laissait `type_equipement` NULL
+# PARTOUT et rendait le rail « catégorie » inutilisable pour filtrer.
+#
+# ARBITRAGES, écrits une fois pour toutes :
+#   · « Protection & accessoires » → protection. C'est la catégorie
+#     fourre-tout de ``classify_categorie`` (tout l'inconnu y tombe) ; sa
+#     moitié lourde est de la protection (disjoncteurs, parafoudres,
+#     coffrets), et `accessoire` aurait fait passer un parafoudre pour un
+#     consommable.
+#   · les TROIS catégories d'onduleurs (réseau, hybrides, hors réseau) →
+#     onduleur. Le TYPE dit la fonction de l'équipement, pas sa topologie :
+#     la distinction réseau/hybride/hors-réseau est DÉJÀ portée par le RÔLE de
+#     composition (`onduleur_reseau`/`onduleur_hybride`/`onduleur_offgrid`).
+#   · « Services & prestations » → service (valeur ajoutée par STKCAT2) : une
+#     prestation n'est pas un équipement, et sans type honnête la catégorie
+#     restait NULL, indistinguable d'une catégorie simplement non typée.
+#   · « Structures & fixation » → structure ; « Panneaux photovoltaïques » →
+#     panneau ; « Batteries » → batterie ; « Câbles » → cable ; « Pompes » →
+#     pompe ; « Variateurs » → variateur.
+TYPES_PAR_CATEGORIE = {
+    'Panneaux photovoltaïques': 'panneau',
+    'Onduleurs réseau': 'onduleur',
+    'Onduleurs hybrides': 'onduleur',
+    'Onduleurs hors réseau': 'onduleur',
+    'Batteries': 'batterie',
+    'Structures & fixation': 'structure',
+    'Protection & accessoires': 'protection',
+    'Câbles': 'cable',
+    'Pompes': 'pompe',
+    'Variateurs': 'variateur',
+    'Services & prestations': 'service',
+    # Les trois catégories du jeu de DÉMONSTRATION (``seed_demo``), qui
+    # portent leurs propres libellés : MÊME table, un seul endroit à tenir.
+    'Panneaux solaires': 'panneau',
+    'Onduleurs': 'onduleur',
+    'Accessoires': 'accessoire',
+}
+
+
+def type_equipement_pour(nom_categorie):
+    """Le ``type_equipement`` d'une catégorie par son nom EXACT, sinon None.
+
+    None = catégorie LIBRE (créée ou renommée par une société) : elle reste
+    NON typée, exactement comme avant — jamais un type deviné par
+    ressemblance, jamais un type imposé à un libellé qu'on ne connaît pas."""
+    return TYPES_PAR_CATEGORIE.get(nom_categorie)
+
+
+def appliquer_type_equipement(categorie):
+    """Pose le ``type_equipement`` d'une catégorie SEULEMENT s'il est vide.
+
+    Aucune écriture si la catégorie porte déjà un type (un arbitrage posé à la
+    main dans l'écran Catégories n'est JAMAIS écrasé) ni si son nom est libre.
+    Renvoie True quand une écriture a eu lieu — donc False au second passage :
+    le seeder reste idempotent, un re-run ne produit aucun diff."""
+    if categorie.type_equipement:
+        return False
+    attendu = type_equipement_pour(categorie.nom)
+    if not attendu:
+        return False
+    categorie.type_equipement = attendu
+    categorie.save(update_fields=['type_equipement'])
+    return True
+
+
 def classify_categorie(nom):
     """Catégorie cible d'un produit, par mots-clés du nom (insensible accents
     usuels). Tout produit a EXACTEMENT une catégorie ; l'inconnu tombe dans
     « Protection & accessoires »."""
     n = (nom or '').lower().replace('â', 'a').replace('é', 'e').replace('è', 'e')
-    if 'panneau' in n:
+    # STKCAT22 — MÊME table de reconnaissance que le moteur de devis et que le
+    # prédicat fiscal, MÊME exclusion d'abord. Avant ce correctif cette branche
+    # testait le seul mot « panneau » : « Module PV 550 W » — un panneau pour le
+    # PDF — tombait dans le fourre-tout « Protection & accessoires », et une
+    # prestation « Nettoyage panneaux » remontait, elle, en catégorie PANNEAUX.
+    if not _autre_famille_que_panneau(nom) and est_panneau(nom):
         return 'Panneaux photovoltaïques'
     if 'onduleur' in n and 'hybride' in n:
         return 'Onduleurs hybrides'
@@ -1566,11 +1683,17 @@ class Command(BaseCommand):
 
         def get_categorie(nom):
             if nom not in categories:
-                categories[nom], _ = Categorie.objects.get_or_create(
+                # STKCAT3 — le TYPE est posé À LA SOURCE, à la création ; une
+                # catégorie qui existait déjà SANS type est comblée (jamais
+                # écrasée si elle en porte un).
+                categorie, _ = Categorie.objects.get_or_create(
                     company=company, nom=nom,
                     defaults={'description': 'Catalogue simulateur',
-                              'ordre': _ordres.get(nom, 100)},
+                              'ordre': _ordres.get(nom, 100),
+                              'type_equipement': type_equipement_pour(nom)},
                 )
+                appliquer_type_equipement(categorie)
+                categories[nom] = categorie
             return categories[nom]
 
         for nom, sku, cat, sell_ttc, buy_ttc, qte, seuil in CATALOGUE:
@@ -1895,16 +2018,23 @@ class Command(BaseCommand):
         # déjà à 10 % n'est jamais retouché. Seuls tva / prix HT dérivés
         # bougent — le TTC affiché et chiffré ne change JAMAIS.
         # ── Taxonomie CATÉGORIE → MARQUE (re-catégorisation autorisée) ──
-        # Crée les 10 catégories ordonnées et range CHAQUE produit dans
-        # exactement une. Rien n'est supprimé ; prix/specs/marques intacts.
+        # Crée les 11 catégories ordonnées (STKCAT3 : le commentaire disait
+        # « 10 », périmé depuis l'ajout d'« Onduleurs hors réseau ») et range
+        # CHAQUE produit dans exactement une. Rien n'est supprimé ;
+        # prix/specs/marques intacts.
         taxo = {}
         for nom_cat, ordre in TAXONOMIE:
             cat, created_cat = Categorie.objects.get_or_create(
                 company=company, nom=nom_cat,
-                defaults={'description': 'Taxonomie catalogue', 'ordre': ordre})
+                defaults={'description': 'Taxonomie catalogue', 'ordre': ordre,
+                          # STKCAT3 — typée dès la création.
+                          'type_equipement': type_equipement_pour(nom_cat)})
             if cat.ordre != ordre:
                 cat.ordre = ordre
                 cat.save(update_fields=['ordre'])
+            # STKCAT3 — comble une catégorie préexistante restée NON typée ;
+            # un type posé à la main par le fondateur n'est jamais écrasé.
+            appliquer_type_equipement(cat)
             taxo[nom_cat] = cat
         # AUD201 (R2-31, correctif 1) — les trois boucles ci-dessous ne
         # mutent QUE les SKU réellement semés par ce fichier (``SKUS_SEMES``).

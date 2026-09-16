@@ -203,6 +203,11 @@ import { dasharrayDonut } from '../../lib/tailleDetail';
 import { economiesPeriodes } from '../../lib/economiesPeriodes';
 import { ficheSlugPourLigne } from '../../lib/ficheMatcher';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+// QJ-EQUIPE (cookie partagé ERP↔site, T2) — `isPlausibleUuid` filtre le cookie
+// `tq_appareil` avant de le transmettre en en-tête SSR ; `domaineCookiePartage`
+// + `SITE_HOST` posent `tq_equipe` sur le domaine partagé (`taqinor.ma`), lisible
+// aussi par l'ERP (`api.taqinor.ma`) — voir `lib/visite.ts` pour le contrat complet.
+import { domaineCookiePartage, isPlausibleUuid, SITE_HOST } from '../../lib/visite';
 // W342 — « installation la plus proche » : haversine sur un point GPS réel
 // (premier sommet du premier pan de toiture, quand roof_layout est exposé) ou,
 // à défaut, correspondance texte sur le nom de ville dans l'adresse client.
@@ -307,6 +312,15 @@ const visitorIp = clientIpFromRequest(Astro.request);
 // cookie taqinor.ma directement. Déclaré ICI (portée frontmatter entière) :
 // relu aussi par le bloc Aperçu interne plus bas.
 const equipeAppareil = Astro.cookies.get('tq_equipe')?.value === '1';
+// QJ-EQUIPE cookie partagé (T2) — `tq_appareil` (posé par le navigateur via
+// `lib/visite.ts appareilId()`, OU directement par l'ERP sur son domaine
+// partagé `taqinor.ma`) voyage en en-tête sur le fetch SSR sous
+// `X-Appareil-Id`, exactement comme `equipeAppareil` ci-dessus — le backend
+// lit déjà cet en-tête (`apps/crm/visites.py::appareil_de_requete`) mais ne
+// voyait jamais le cookie du navigateur sur un rendu serveur. Filtré par
+// `isPlausibleUuid` : jamais un en-tête garbage relayé en amont.
+const appareilCookieBrut = Astro.cookies.get('tq_appareil')?.value;
+const appareilCookie = isPlausibleUuid(appareilCookieBrut) ? appareilCookieBrut : undefined;
 const rl = rateLimit(`proposition-view:${visitorIp}`, { limit: 60, windowMs: 60_000 });
 if (!rl.allowed) {
   httpStatus = 429;
@@ -339,6 +353,7 @@ if (!rl.allowed) {
           : {}),
         ...(visitorUa ? { 'user-agent': visitorUa } : {}),
         ...(equipeAppareil ? { 'X-Equipe-Appareil': '1' } : {}),
+        ...(appareilCookie ? { 'X-Appareil-Id': appareilCookie } : {}),
       },
       signal: controller.signal,
     });
@@ -403,10 +418,14 @@ const apercuInterne = ok && data?.apercu_interne === true;
 // QJ-EQUIPE — ouvrir un Aperçu interne marque l'appareil « équipe » pour
 // 2 ans (ceinture en plus de la page /equipe) : les lectures suivantes de
 // CE navigateur, même sur le vrai lien client, ne comptent plus jamais.
+// `domain` (T2) — même cookie que celui posé par l'ERP (api.taqinor.ma),
+// lisible par les deux : sur `taqinor.ma`/`*.taqinor.ma` il porte
+// `Domain=taqinor.ma` ; ailleurs (localhost, aperçu *.workers.dev) il reste
+// host-only (`domaineCookiePartage` renvoie `undefined`).
 if (apercuInterne && !equipeAppareil) {
   Astro.cookies.set('tq_equipe', '1', {
     maxAge: 730 * 24 * 3600, path: '/', secure: true, httpOnly: true,
-    sameSite: 'lax',
+    sameSite: 'lax', domain: domaineCookiePartage(Astro.url.hostname, SITE_HOST),
   });
 }
 const q = data?.quote;

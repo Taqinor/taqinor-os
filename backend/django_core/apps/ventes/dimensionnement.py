@@ -954,7 +954,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
                     charges_fixes_mad, ville=None, lat=None,
                     lon=None, occupation=None, equipements=None, phase=None,
                     taux_tva=Decimal('20'), gamme_nom_devis=None,
-                    structure_type='acier', min_panneaux=None,
+                    structure_type='acier', structure_produit_id=None,
+                    min_panneaux=None,
                     max_panneaux=None, source_conso=None,
                     cible_falaise_kwh_mois=None, jour_reference=None):
     """Le TABLEAU complet : une ligne par taille candidate, DEUX dimensions.
@@ -1034,6 +1035,7 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
     sonde = composition_residentielle(
         catalogue, kwc=_AUTO_PANEL_WATT / 1000.0, panel_watt=_AUTO_PANEL_WATT,
         nb_panneaux=1, avec_batterie=False, structure_type=structure_type,
+        structure_produit_id=structure_produit_id,
         taux_tva=taux_tva, avertissements=sonde_avert, deux_options=False,
         marques=marques, ordre_lignes=ordre, phase=phase)
     panel_watt = _num(getattr(sonde, 'panel_watt_reel', 0))
@@ -1058,7 +1060,13 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
             return composition_residentielle(
                 catalogue, kwc=kwc, panel_watt=panel_watt,
                 nb_panneaux=panneaux, avec_batterie=avec_batterie,
-                structure_type=structure_type, taux_tva=taux_tva,
+                structure_type=structure_type,
+                # STKCAT8 — le balayage chiffre CHAQUE taille avec la structure
+                # réellement retenue, jamais l'acier par défaut : sinon les
+                # tailles du tableau et le devis annoncent deux prix pour le
+                # même kit. ``None`` ⇒ comportement d'hier.
+                structure_produit_id=structure_produit_id,
+                taux_tva=taux_tva,
                 avertissements=journal, deux_options=False, marques=marques,
                 ordre_lignes=ordre, phase=phase, batterie_cible_kwh=cible_kwh)
         except Exception:  # noqa: BLE001 — une taille impossible ne stoppe rien

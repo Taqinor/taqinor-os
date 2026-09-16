@@ -663,6 +663,11 @@ def _echelle_paliers_batterie(devis):
     # (devis sans ligne batterie — le cas du tableau de dimensionnement
     # AVANT toute vente) ⇒ le choix ÉCONOMIQUE normal décide, inchangé.
     module_devis = module_batterie_du_devis(devis)
+    # STKCAT8 (échelle par devis) — la structure RÉELLEMENT vendue par ce devis
+    # (pergola, aluminium…) traverse chaque palier ; sans produit identifiable,
+    # le repli 'acier' d'hier reste inchangé.
+    from apps.ventes.domain.composition import structure_produit_id_du_devis
+    structure_id_devis = structure_produit_id_du_devis(devis)
 
     def composer(panneaux, kwc, cible, journal):
         """Une composition catalogue AVEC batterie, ou ``None`` — jamais une
@@ -671,7 +676,8 @@ def _echelle_paliers_batterie(devis):
             return composition_residentielle(
                 catalogue, kwc=kwc, panel_watt=panel_watt,
                 nb_panneaux=panneaux, avec_batterie=True,
-                structure_type='acier', taux_tva=taux_tva,
+                structure_type='acier', structure_produit_id=structure_id_devis,
+                taux_tva=taux_tva,
                 avertissements=journal, deux_options=False, marques=marques,
                 ordre_lignes=ordre, batterie_cible_kwh=cible,
                 batterie_module_kwh=module_devis)

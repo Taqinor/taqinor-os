@@ -472,3 +472,62 @@ class LaFonctionPureResteApplelableSansReglage(_Base):
             kwc=5, panel_watt=710)
         self.assertIsInstance(lignes, list)
         self.assertTrue(all(hasattr(li, 'designation') for li in lignes))
+
+
+class STKCAT7LeVivierTypeNeDivergePasSansId(_Base):
+    """STKCAT7 — le rail « catégorie typée » n'est PAS une seconde sorte de
+    devis.
+
+    Un produit typé ``structure`` par sa CATÉGORIE (une pergola : son nom ne
+    contient pas « structure ») entre bien au vivier, mais le toggle acier/alu
+    ne le voit JAMAIS. Sur LE kit semé de ce module — celui du test de
+    non-divergence — ajouter une pergola au catalogue ne doit donc rien changer
+    du tout : mêmes lignes, mêmes rôles, mêmes quantités, mêmes prix.
+    """
+
+    slug = 'stkcat7-vivier-type'
+
+    def _empreinte_pure(self, **extra):
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=5, panel_watt=710, deux_options=True, **extra)
+        return [(role, li.designation, li.quantite, li.prix_unitaire)
+                for role, li in zip(lignes.roles, lignes)]
+
+    def _semer_pergola(self):
+        from apps.stock.models import Categorie
+        categorie = Categorie.objects.create(
+            company=self.company, nom='STKCAT7 Structures spéciales',
+            ordre=15, type_equipement=Categorie.TypeEquipement.STRUCTURE)
+        return Produit.objects.create(
+            company=self.company, nom='Pergola acier 4x3',
+            sku='PERGOLA-%s' % self.company.pk, categorie=categorie,
+            prix_vente=Decimal('18000'), prix_achat=Decimal('1'),
+            quantite_stock=5)
+
+    def test_le_kit_seme_est_byte_identique_apres_l_ajout_d_une_pergola(self):
+        avant = self._empreinte_pure()
+        self._semer_pergola()
+        self.assertEqual(self._empreinte_pure(), avant)
+
+    def test_le_dry_run_reste_byte_identique(self):
+        avant = self.api.post(
+            COMPO_URL, {'kwc': 5, 'panel_watt': 710}, format='json')
+        self.assertEqual(avant.status_code, 200, avant.data)
+        self._semer_pergola()
+        apres = self.api.post(
+            COMPO_URL, {'kwc': 5, 'panel_watt': 710}, format='json')
+        self.assertEqual(apres.status_code, 200, apres.data)
+        self.assertEqual(self._empreinte_dry_run(apres.data),
+                         self._empreinte_dry_run(avant.data))
+
+    def test_avec_l_id_la_pergola_remplace_la_structure_acier(self):
+        """Et le rôle émis suit le NOM du produit RETENU (règle du contrat) :
+        « Pergola acier » porte encore « acier », donc ``structure_acier``."""
+        pergola = self._semer_pergola()
+        empreinte = self._empreinte_pure(structure_produit_id=pergola.id)
+        structures = [(role, designation)
+                      for role, designation, _q, _p in empreinte
+                      if role.startswith('structure')]
+        self.assertEqual(structures,
+                         [('structure_acier', 'Pergola acier 4x3')])

@@ -3,6 +3,11 @@ from django.conf import settings
 from django.utils.functional import cached_property
 
 from core.models import TenantModel
+# STKCAT21 — LE vocabulaire de rôles de devis, déclaré une seule fois dans la
+# couche de FONDATION (``core``), parce que ``apps.stock`` doit lire le même
+# tuple sans pouvoir importer ``apps.ventes``. Voir ``ROLES_AUTO_COMPOSITION``
+# plus bas : le nom historique reste, la copie a disparu.
+from core.product_roles import ROLES_DEVIS
 
 # M1 — cross-app FKs use Django's lazy "app.Model" string form so this module
 # imports no sibling app's models at load time (breaks the crm⇄ventes /
@@ -667,6 +672,40 @@ class LigneDevis(models.Model):
         help_text="Le prix unitaire de cette ligne a été TAPÉ par le "
                   "commercial : aucun rafraîchissement tarifaire ne l'écrase "
                   "(décision fondateur D12).")
+
+    # ── STKCAT23 — LE RÔLE DE LA LIGNE, ÉCRIT À SA CRÉATION ────────────────
+    # Le rôle d'une ligne (« panneau », « batterie », « structure »…) était
+    # RE-DEVINÉ par mots-clés à CHAQUE lecture — une fois par le répartiteur
+    # d'options du PDF, une fois par la table d'icônes, une fois par les paniers
+    # du noyau monnaie. Trois devinettes sur une désignation qu'un commercial
+    # peut éditer à la main après coup : « Structure pergola » renommée
+    # « Pergola alu » et la ligne changeait de panier sans que rien ne le dise.
+    #
+    # Le rôle est donc FIGÉ à la création, depuis la résolution à trois rangs
+    # (``core.product_roles.role_effectif`` : rôle déclaré du produit, puis
+    # famille de sa catégorie, puis mots-clés). Les lectures d'aval le prennent
+    # EN PREMIER et gardent leurs tables de mots-clés en REPLI PERMANENT.
+    #
+    # NULL = ligne historique (aucun backfill) ET lignes créées hors de
+    # ``apps.ventes`` (``apps.cpq.services`` écrit ses lignes en direct, par
+    # conception) : les deux retombent sur les mots-clés, comportement
+    # strictement inchangé — exactement le contrat de ``variante`` ci-dessus.
+    #
+    # UNE CONTRADICTION ENTRE LE RÔLE ET LA DÉSIGNATION EST UN AVERTISSEMENT,
+    # JAMAIS UN ÉCRASEMENT : la ligne reste où son rôle la met et la
+    # contradiction est journalisée. Retirer une ligne d'un panier la ferait
+    # disparaître du document — l'invariant du moteur est qu'aucune ligne,
+    # aucun dirham ne s'évapore entre le devis et son PDF.
+    # ``ROLES_DEVIS`` et pas ``ROLES_AUTO_COMPOSITION`` : le second est son
+    # ALIAS, déclaré bien plus bas dans ce fichier (il n'existe pas encore à ce
+    # point du chargement). Même tuple, mêmes valeurs — voir STKCAT21.
+    role_devis = models.CharField(
+        max_length=32, choices=[(role, role) for role in ROLES_DEVIS],
+        null=True, blank=True,
+        verbose_name='Rôle de la ligne',
+        help_text="Rôle de composition FIGÉ à la création de la ligne. Vide = "
+                  "rôle non résolu : les mots-clés de la désignation décident, "
+                  "comme avant.")
 
     # ── NTCPQ18 — Rattachement à un LOT (site/bâtiment) — additif, optionnel ──
     # NULL = ligne « hors lot » (comportement historique strictement inchangé :
@@ -3188,15 +3227,27 @@ class LigneLivraisonBC(models.Model):
 #
 # Miroir EXACT de ``frontend/src/features/ventes/solar.js::PRODUCT_CATEGORIES``
 # (clés uniquement) : le rôle de composition automatique auquel une marque
-# préférée peut être épinglée. Synchronisation MANUELLE — aucun import
-# cross-stack possible ; un rôle hors de ce tuple est rejeté par
+# préférée peut être épinglée. Un rôle hors de ce tuple est rejeté par
 # ``ParametresGammes.clean()``/``ParametresGammesSerializer``.
-ROLES_AUTO_COMPOSITION = (
-    'onduleur_reseau', 'onduleur_hybride', 'panneau', 'batterie',
-    'structure_acier', 'structure_alu', 'socle', 'cable_dc', 'cable_terre',
-    'smart_meter', 'wifi_dongle', 'accessoires', 'tableau', 'installation',
-    'transport', 'suivi',
-)
+#
+# STKCAT2 (16/09/2026) — vocabulaire ADDITIF : ``onduleur_offgrid`` (la
+# troisième famille d'onduleur, déjà semée par ``seed_catalogue`` et déjà
+# présente côté écran) et ``structure`` (le rôle GÉNÉRIQUE de structure, émis
+# pour un produit dont le nom ne dit ni « acier » ni « alu »). Les DEUX
+# anciens rôles ``structure_acier``/``structure_alu`` sont CONSERVÉS POUR
+# TOUJOURS comme ALIAS : un réglage ``ParametresGammes`` enregistré hier
+# reste accepté tel quel, sans aucune migration du JSON.
+#
+# STKCAT21 (16/09/2026) — LE TUPLE A DÉMÉNAGÉ DANS ``core.product_roles``, il
+# n'a pas été copié. ``stock.Produit.role_devis`` doit porter LE MÊME
+# vocabulaire en ``choices``, et ``apps.stock`` n'a pas le droit d'importer
+# ``apps.ventes`` (frontière inter-app, verrouillée par ``.importlinter``) :
+# une recopie aurait fait un CINQUIÈME miroir à tenir à la main, c'est-à-dire
+# le défaut que ``scripts/check_roles_mirror.py`` existe pour attraper. Le nom
+# ``ROLES_AUTO_COMPOSITION`` reste le point de lecture de toute l'app ventes
+# (aucun appelant ne change) ; les VALEURS et leur ORDRE sont inchangés au
+# caractère près.
+ROLES_AUTO_COMPOSITION = ROLES_DEVIS
 
 
 def _erreurs_marques(marques):

@@ -320,29 +320,45 @@ def _est_robot_apercu(request):
     return _ip_datacentre_robot(request)
 
 
-#: QJ-EQUIPE (fondateur 09/09/2026 — « marque mon tel et celui de Meryem
-#: comme téléphone équipe ») — un appareil de L'ÉQUIPE ne doit JAMAIS compter
-#: comme une lecture client, même en ouvrant le VRAI lien public (le piège
-#: permanent : Reda/Meryem vérifient un lien depuis leur téléphone →
-#: compteur + notification). Le marquage est un cookie `tq_equipe` posé sur
-#: taqinor.ma (page `/equipe`, ou toute ouverture d'un Aperçu interne) ; le
-#: SSR apps/web le traduit en en-tête `X-Equipe-Appareil: 1` sur ses fetchs
-#: (page ET beacon d'engagement). Forger l'en-tête/cookie ne permet que de
-#: s'auto-exclure du comptage — inoffensif, comme la garde robots.
-_COOKIE_EQUIPE = 'tq_equipe'
+def _lecture_equipe(link, request):
+    """QJ-EQUIPE / QJ-EQUIPE-2 / QJEQUIPE3 — vrai si CETTE requête vient d'un
+    appareil de L'ÉQUIPE, donc ne compte jamais comme une lecture client.
 
+    Le piège permanent (fondateur 09/09/2026, « marque mon tel et celui de
+    Meryem comme téléphone équipe ») : Reda/Meryem vérifient un lien depuis
+    leur téléphone → compteur + note chatter + notification « devis ouvert ».
 
-def _appareil_equipe(request):
-    """QJ-EQUIPE — vrai si la requête vient d'un appareil marqué « équipe »
-    (en-tête posé par le SSR d'après le cookie taqinor.ma, ou cookie posé
-    directement sur ce domaine api). Jamais d'exception."""
+    UNE seule question, posée au CRM — la réponse vaut pour le gate d'ouverture
+    ET pour le beacon d'engagement (QJEQUIPE3 16/09/2026 : ces deux endroits
+    vérifiaient des choses différentes, le beacon ignorait le registre serveur
+    et écrivait donc `ShareLink.engagement` pour un appareil marqué équipe).
+    ``apps.crm.services.requete_marquee_equipe`` regarde, dans l'ordre :
+
+      · l'en-tête ``X-Equipe-Appareil: 1``, posé par le SSR apps/web quand il
+        voit le cookie ``tq_equipe`` ;
+      · le cookie ``tq_equipe`` lui-même, quand la requête arrive directement
+        sur ce domaine api (lien PDF ouvert à la main) ;
+      · le registre SERVEUR ``crm.AppareilEquipe``, interrogé sur
+        l'``appareil_id`` de la requête — lequel arrive par l'en-tête
+        ``X-Appareil-Id`` (relayé par le SSR depuis le cookie ``tq_appareil``)
+        ou par ce cookie directement. C'est le seul des trois signaux qui
+        survit à un changement de navigateur, au navigateur intégré WhatsApp
+        et à la navigation privée.
+
+    Les deux cookies sont posés par l'ERP sur le domaine enregistrable du site
+    (voir ``crm.services.domaine_cookies_equipe``) : le site et l'API les
+    voient tous les deux. Forger l'en-tête/le cookie ne permet que de
+    s'auto-exclure du comptage — inoffensif, comme la garde robots.
+
+    Best-effort : import paresseux (contrat import-linter — `ventes` ne connaît
+    de `crm` que ses `services`/`selectors`) et jamais d'exception propagée."""
     if request is None:
         return False
-    meta = getattr(request, 'META', None) or {}
-    if meta.get('HTTP_X_EQUIPE_APPAREIL') == '1':
-        return True
-    cookies = getattr(request, 'COOKIES', None) or {}
-    return cookies.get(_COOKIE_EQUIPE) == '1'
+    try:
+        from apps.crm.services import requete_marquee_equipe
+        return requete_marquee_equipe(getattr(link, 'company', None), request)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return False
 
 
 def _stamp_view_si_public(link, via_interne, request=None):
@@ -373,16 +389,18 @@ def _stamp_view_si_public(link, via_interne, request=None):
     navigation privée…) ; un appareil marqué côté ERP (``crm.AppareilEquipe``)
     est exclu PARTOUT, pour toujours, quel que soit le cookie posé. Best-effort
     : une erreur de lecture du registre retombe simplement sur le comportement
-    normal (cookie + robot), jamais sur un 500."""
-    if via_interne or _appareil_equipe(request) or _est_robot_apercu(request):
+    normal (cookie + robot), jamais sur un 500.
+
+    QJEQUIPE3 (16/09/2026) — cookie, en-tête ET registre sont désormais UNE
+    seule question (``_lecture_equipe``), et l'``appareil_id`` du registre
+    arrive enfin par un canal que le site remplit vraiment : l'en-tête
+    ``X-Appareil-Id`` posé par le SSR d'après le cookie ``tq_appareil``, ou ce
+    cookie directement sur un accès api. Avant, il n'était cherché que dans le
+    corps/la query string — introuvables sur un GET SSR : le registre
+    n'excluait donc RIEN à l'ouverture d'une proposition."""
+    if via_interne or _lecture_equipe(link, request) \
+            or _est_robot_apercu(request):
         return False
-    try:
-        from apps.crm.services import appareil_de_requete, est_appareil_equipe
-        appareil_id = appareil_de_requete(request)
-        if appareil_id and est_appareil_equipe(link.company, appareil_id):
-            return False
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
     resultat = _stamp_view(link)
     _tracer_ouverture_publique(link, request)
     return resultat
@@ -4185,7 +4203,13 @@ def proposal_engagement(request, token):
     # le rejet d'un beacon invalide ci-dessous.
     # QJ-EQUIPE (09/09/2026) — même silence pour un appareil marqué équipe :
     # Reda/Meryem relisant le VRAI lien ne sont pas une lecture client.
-    if link.via_interne or _appareil_equipe(request):
+    # QJEQUIPE3 (16/09/2026) — ce test ne regardait QUE le cookie/l'en-tête : un
+    # appareil marqué dans le registre serveur (`crm.AppareilEquipe`) mais sans
+    # cookie `tq_equipe` écrivait quand même `ShareLink.engagement` et ses notes
+    # « a commencé à lire en détail ». Même question que le gate d'ouverture,
+    # même réponse — registre compris (identifiant lu de l'en-tête
+    # `X-Appareil-Id` ou du cookie `tq_appareil`, posés par le site et l'ERP).
+    if link.via_interne or _lecture_equipe(link, request):
         return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
 
     section = str(request.data.get('section') or '').strip().lower()

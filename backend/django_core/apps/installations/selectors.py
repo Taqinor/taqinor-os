@@ -3051,3 +3051,70 @@ def produits_recemment_demandes(company, user_id, *, limite=5):
         if len(resultat) >= limite:
             break
     return resultat
+
+
+def chantiers_utilisant_produit(company, produit_id, limit=20, *, user=None):
+    """STKCAT25 — les chantiers RÉCENTS qui consomment ce produit.
+
+    Frontière cross-app : ``apps.stock`` (onglet « Utilisé dans » de la fiche
+    produit) lit les chantiers PAR ICI — jamais un import de
+    ``apps.installations.models`` depuis une autre app.
+
+    LE LIEN EST RÉEL, PAS INVENTÉ. ``StockReservation`` (N14,
+    ``models_chantier.py``) est la SEULE table qui relie un chantier à un SKU
+    du catalogue : une ligne par (chantier, produit), semée à la création du
+    chantier depuis la nomenclature GELÉE du devis
+    (``services.seed_reservations``). On ne scanne PAS le JSON
+    ``Installation.bom`` : c'est la même information, mais non requêtable sans
+    parcourir toute la table — et la réservation est ce que le stock engage
+    VRAIMENT. Conséquence assumée et documentée : un chantier dont une ligne de
+    BOM pointait un produit invalide au moment du semis (donc sans réservation)
+    n'apparaît pas ici.
+
+    Les réservations LIBÉRÉES ou CONSOMMÉES comptent : la question posée est
+    « ce produit a-t-il servi sur ce chantier ? », pas « l'engagement
+    est-il encore ouvert ? » (ça, c'est l'onglet « Prévisionnel »).
+
+    ``user`` (optionnel, mot-clé) rejoue la portée de
+    ``InstallationViewSet.get_queryset`` —
+    ``scope_queryset(..., ['technicien_responsable', 'created_by'])``. Sans
+    ``user``, la lecture reste bornée à la SOCIÉTÉ (jamais globale).
+
+    Renvoie une liste de dicts ``{id, reference, client_nom, statut, date}``,
+    du plus récent au plus ancien, bornée à ``limit``. Aucun montant, aucun
+    prix d'achat. Forme contractuelle :
+    ``apps/stock/contract_samples/produit_utilise_dans.json``.
+    """
+    from core.scoping import scope_queryset
+
+    from .models import Installation
+
+    if company is None or not produit_id:
+        return []
+    try:
+        limite = int(limit)
+    except (TypeError, ValueError):
+        limite = 0
+    if limite <= 0:
+        return []
+
+    qs = Installation.objects.filter(
+        company=company, reservations__produit_id=produit_id)
+    if user is not None:
+        qs = scope_queryset(
+            qs, user, ['technicien_responsable', 'created_by'])
+    qs = (qs.select_related('client').distinct()
+            .order_by('-date_creation', '-id'))
+
+    lignes = []
+    for chantier in qs[:limite]:
+        client = chantier.client
+        lignes.append({
+            'id': chantier.id,
+            'reference': chantier.reference or '',
+            'client_nom': (getattr(client, 'nom', '') or '') if client else '',
+            'statut': chantier.statut or '',
+            'date': (chantier.date_creation.date().isoformat()
+                     if chantier.date_creation else ''),
+        })
+    return lignes

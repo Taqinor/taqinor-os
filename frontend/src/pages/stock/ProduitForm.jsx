@@ -30,6 +30,9 @@ import CustomFieldsInput from '../../components/CustomFieldsInput'
 // PVOND (fondateur 18/08) — la classification produit reste UNE seule
 // source : la même que le générateur de devis, jamais réimplémentée ici.
 import { classifyProduct, isPompe } from '../../features/ventes/solar.js'
+// STKCAT20 — la même source que le sélecteur de structures (STKCAT11) : la
+// famille RÉELLE d'un produit vient de sa catégorie TYPÉE, jamais du seul nom.
+import { typeOfProduit } from '../../features/stock/catalogue.js'
 import {
   // PVOND-H (fondateur 19/08/2026) — la plage de tension batterie s'édite
   // désormais sur le CHAMP DÉDIÉ de FicheTechnique (ond_bat_aucune/
@@ -52,6 +55,27 @@ import {
 // La photo est INTERNE : elle n'entre dans aucun PDF ni sortie client.
 const PHOTO_ACCEPT = 'image/*'
 const PHOTO_MAX_SIZE = 10 * 1024 * 1024
+
+// STKCAT5 — types d'équipement pour la création inline de catégorie et pour
+// afficher le type à côté du nom dans le sélecteur. `__none` = sentinelle
+// d'écran (« Non typée »), jamais envoyée telle quelle.
+// source-choix: stock.Categorie.type_equipement +__none
+const TYPES_EQUIPEMENT = [
+  { value: '__none', label: '— Non typée —' },
+  { value: 'panneau', label: 'Panneau' },
+  { value: 'onduleur', label: 'Onduleur' },
+  { value: 'batterie', label: 'Batterie' },
+  { value: 'structure', label: 'Structure' },
+  { value: 'cable', label: 'Câble' },
+  { value: 'protection', label: 'Protection' },
+  { value: 'pompe', label: 'Pompe' },
+  { value: 'variateur', label: 'Variateur' },
+  { value: 'compteur', label: 'Compteur' },
+  { value: 'accessoire', label: 'Accessoire' },
+  { value: 'service', label: 'Service' },
+]
+const TYPE_LABEL_PAR_VALEUR = Object.fromEntries(
+  TYPES_EQUIPEMENT.filter((t) => t.value !== '__none').map((t) => [t.value, t.label]))
 
 // VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
 // défaut OFF (comportement historique inchangé). Un salon = 10 leads/produits
@@ -345,6 +369,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const tvaSuggested = !isEdit && !tvaTouched
 
   const [newCatName, setNewCatName] = useState('')
+  // STKCAT5 — type + ordre en un geste ; défauts (« Non typée », 100) gardent
+  // le chemin rapide « juste un nom » utilisable exactement comme avant.
+  const [newCatType, setNewCatType] = useState('__none')
+  const [newCatOrdre, setNewCatOrdre] = useState(100)
   const [showNewCat, setShowNewCat] = useState(false)
   const [catSaving, setCatSaving] = useState(false)
   const [catError, setCatError] = useState(null)
@@ -383,9 +411,40 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     fournisseur_id: produit?.fournisseur?.id ? String(produit.fournisseur.id) : '',
     garantie_mois:            produit?.garantie_mois != null ? String(produit.garantie_mois) : '',
     garantie_production_mois: produit?.garantie_production_mois != null ? String(produit.garantie_production_mois) : '',
+    // STKCAT20 — spécifications pompage : champs PLATS du modèle Produit
+    // (pas de FicheTechnique), donc dans `fields`/le payload principal comme
+    // les autres, éditables dès la création comme le reste de l'écran.
+    pompe_cv:   produit?.pompe_cv   != null ? String(produit.pompe_cv)   : '',
+    hmt_m:      produit?.hmt_m      != null ? String(produit.hmt_m)      : '',
+    debit_m3j:  produit?.debit_m3j  != null ? String(produit.debit_m3j)  : '',
+    pompe_kw:   produit?.pompe_kw   != null ? String(produit.pompe_kw)   : '',
+    tension_v:  produit?.tension_v  != null ? String(produit.tension_v) : '',
   }
   const [initialFieldsSnapshot] = useState(initialFields)
   const [fields, setFields] = useState(initialFields)
+
+  // STKCAT20 — courbe constructeur : saisie assistée en table débit/HMT,
+  // convertie en `{debits_m3h: [...], hmt_m: [...]}` au submit (jamais
+  // renvoyée telle quelle : le garde serveur — miroir de l'admin — refuse de
+  // toute façon la vider silencieusement). Deux lignes vides par défaut pour
+  // que la forme (≥ 2 points) attendue par `debitAtHmt` soit visible d'emblée ;
+  // ajout/suppression libres, jamais de nombre imposé/arrondi à la saisie.
+  const courbeInitiale = () => {
+    const c = produit?.courbe_pompe
+    if (c && Array.isArray(c.debits_m3h) && c.debits_m3h.length
+        && Array.isArray(c.hmt_m) && c.hmt_m.length === c.debits_m3h.length) {
+      return c.debits_m3h.map((d, i) => ({
+        debit: d != null ? String(d) : '',
+        hmt:   c.hmt_m[i] != null ? String(c.hmt_m[i]) : '',
+      }))
+    }
+    return [{ debit: '', hmt: '' }, { debit: '', hmt: '' }]
+  }
+  const [courbeRows, setCourbeRows] = useState(courbeInitiale)
+  const setCourbeRow = (i, cle, valeur) => setCourbeRows(
+    rows => rows.map((r, idx) => (idx === i ? { ...r, [cle]: valeur } : r)))
+  const ajouterCourbeRow = () => setCourbeRows(rows => [...rows, { debit: '', hmt: '' }])
+  const retirerCourbeRow = (i) => setCourbeRows(rows => rows.filter((_, idx) => idx !== i))
 
   // WIR67 — champs personnalisés du module « produit » (le backend valide/
   // persiste `custom_data` du Produit, même motif que Lead/Client).
@@ -475,7 +534,14 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const estOnduleur = estOnduleurHybride || estOnduleurReseau
   const estPanneauFiche = ficheType === 'panneau'
   const estBatterieFiche = ficheType === 'batterie'
-  const estPompeFiche = isPompe(fields.nom)
+  // STKCAT20 (@after STKCAT11) — la catégorie TAPÉE dans le formulaire décide
+  // en premier (`typeOfProduit`, même contrat que le sélecteur de structures
+  // du devis) ; `isPompe(fields.nom)` reste un REPLI pour le catalogue pas
+  // encore typé, jamais la SEULE porte d'entrée (une catégorie « Pompes »
+  // explicitement choisie doit déclencher la section même si le nom tapé ne
+  // contient pas « pompe »).
+  const categorieChoisie = categories.find(c => String(c.id) === String(fields.categorie_id))
+  const estPompeFiche = typeOfProduit({ categorie: categorieChoisie }) === 'pompe' || isPompe(fields.nom)
   const afficherFicheTechnique = estOnduleur || estPanneauFiche || estBatterieFiche || estPompeFiche
 
   // Plage de tension batterie : éditable ici UNIQUEMENT pour un onduleur
@@ -529,9 +595,15 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     setCatSaving(true)
     setCatError(null)
     try {
-      const result = await dispatch(createCategorie({ nom })).unwrap()
+      const result = await dispatch(createCategorie({
+        nom,
+        type_equipement: newCatType === '__none' ? null : newCatType,
+        ordre: Number(newCatOrdre) || 100,
+      })).unwrap()
       setField('categorie_id', String(result.id))
       setNewCatName('')
+      setNewCatType('__none')
+      setNewCatOrdre(100)
       setShowNewCat(false)
     } catch (err) {
       setCatError(err?.nom?.[0] ?? err?.detail ?? 'Erreur lors de la création.')
@@ -620,6 +692,19 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     if (!validate()) return
     setSaving(true)
     try {
+      // STKCAT20 — courbe constructeur : seules les lignes COMPLÈTES et
+      // numériques comptent (une ligne à moitié remplie est ignorée plutôt que
+      // de faire échouer tout l'enregistrement) ; en dessous de 2 points
+      // valides on envoie `null` — le garde serveur (miroir de l'admin)
+      // refusera lui-même la transition si une courbe RÉELLE existait déjà.
+      const courbePointsValides = courbeRows
+        .map(r => ({ debit: parseFloat(r.debit), hmt: parseFloat(r.hmt) }))
+        .filter(r => Number.isFinite(r.debit) && Number.isFinite(r.hmt))
+      const courbePompePayload = courbePointsValides.length >= 2 ? {
+            debits_m3h: courbePointsValides.map(r => r.debit),
+            hmt_m:      courbePointsValides.map(r => r.hmt),
+          }
+        : null
       const payload = {
         nom:            fields.nom.trim(),
         sku:            fields.sku.trim() || null,
@@ -642,6 +727,17 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         fournisseur_id: fields.fournisseur_id ? parseInt(fields.fournisseur_id) : null,
         garantie_mois:            fields.garantie_mois            !== '' ? parseInt(fields.garantie_mois)            : null,
         garantie_production_mois: fields.garantie_production_mois !== '' ? parseInt(fields.garantie_production_mois) : null,
+        // STKCAT20 — spécifications pompage (champs plats du modèle, jamais
+        // vidés pour un produit qui n'est pas une pompe : `fields` reste
+        // initialisé depuis les valeurs serveur existantes même quand la
+        // section n'est pas affichée, donc rien n'est perdu pour un
+        // variateur qui porte déjà `pompe_kw`/`tension_v`).
+        pompe_cv:  fields.pompe_cv  !== '' ? fields.pompe_cv : null,
+        hmt_m:     fields.hmt_m     !== '' ? fields.hmt_m    : null,
+        debit_m3j: fields.debit_m3j !== '' ? fields.debit_m3j : null,
+        pompe_kw:  fields.pompe_kw  !== '' ? fields.pompe_kw : null,
+        tension_v: fields.tension_v !== '' ? parseInt(fields.tension_v) : null,
+        courbe_pompe: courbePompePayload,
         // WIR67 — champs personnalisés du module « produit ».
         custom_data: customData,
       }
@@ -781,18 +877,33 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
             {/* Catégorie (avec création inline) */}
             <FormField label="Catégorie" htmlFor="pf-cat" error={catError}>
               {showNewCat ? (
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   <Input
                     ref={newCatRef}
+                    className="min-w-[9rem] flex-1"
                     value={newCatName}
                     onChange={e => setNewCatName(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCreateCategorie() } }}
                     placeholder="Nom de la catégorie"
                   />
+                  {/* STKCAT5 — type + ordre en un geste ; défauts (« Non
+                      typée », 100) gardent le chemin rapide « juste un nom ». */}
+                  <Select value={newCatType} onValueChange={setNewCatType}>
+                    <SelectTrigger className="w-40" aria-label="Type d'équipement"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {TYPES_EQUIPEMENT.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Input type="number" step="any" inputMode="numeric" className="w-16"
+                         aria-label="Ordre" value={newCatOrdre}
+                         onChange={e => setNewCatOrdre(e.target.value)} />
                   <Button type="button" loading={catSaving} disabled={!newCatName.trim()}
                           onClick={handleCreateCategorie}>Créer</Button>
                   <Button type="button" variant="outline" size="icon" aria-label="Annuler"
-                          onClick={() => { setShowNewCat(false); setNewCatName(''); setCatError(null) }}>
+                          onClick={() => {
+                            setShowNewCat(false); setNewCatName('')
+                            setNewCatType('__none'); setNewCatOrdre(100); setCatError(null)
+                          }}>
                     <X />
                   </Button>
                 </div>
@@ -804,7 +915,15 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                       <SelectTrigger id="pf-cat"><SelectValue placeholder="— Aucune catégorie —" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none">— Aucune catégorie —</SelectItem>
-                        {categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
+                        {categories.map(c => (
+                          <SelectItem key={c.id} value={String(c.id)}>
+                            {/* STKCAT5 — le type s'affiche à côté du nom
+                                (« Structures & fixation — Structure »). */}
+                            {c.type_equipement && TYPE_LABEL_PAR_VALEUR[c.type_equipement]
+                              ? `${c.nom} — ${TYPE_LABEL_PAR_VALEUR[c.type_equipement]}`
+                              : c.nom}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1310,42 +1429,81 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                 </>
               )}
 
+              {/* STKCAT20 — la section « Pompage » est désormais ÉDITABLE ici :
+                  ces 5 champs + la courbe sont des colonnes PLATES du modèle
+                  Produit (pas une FicheTechnique séparée), donc dans le MÊME
+                  payload que le reste du formulaire, dès la création. Plus de
+                  passage obligé par l'admin Django. */}
               {estPompeFiche && (
-                <div className="sm:col-span-2 flex flex-col gap-2">
-                  {isEdit ? (
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-border p-3 text-sm sm:grid-cols-3">
-                      {[
-                        ['Puissance (CV)', produit?.pompe_cv],
-                        ['HMT max (m)', produit?.hmt_m],
-                        ['Débit indicatif (m³/j)', produit?.debit_m3j],
-                        ['Puissance (kW)', produit?.pompe_kw],
-                        ['Tension (V)', produit?.tension_v],
-                      ].map(([label, valeur]) => (
-                        <div key={label}>
-                          <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-                          <p className={valeur != null && valeur !== '' ? 'text-foreground' : 'italic text-muted-foreground'}>
-                            {valeur != null && valeur !== '' ? String(valeur) : 'Non renseigné'}
-                          </p>
+                <div className="sm:col-span-2 flex flex-col gap-4">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+                    <FormField label="Puissance (CV)" htmlFor="pf-pompe-cv" error={errors.pompe_cv}>
+                      <Input id="pf-pompe-cv" type="number" step="any" inputMode="decimal"
+                             invalid={!!errors.pompe_cv} value={fields.pompe_cv}
+                             onChange={e => setField('pompe_cv', e.target.value)} />
+                    </FormField>
+                    <FormField label="Puissance (kW)" htmlFor="pf-pompe-kw" error={errors.pompe_kw}
+                               hint="Pompe ou variateur.">
+                      <Input id="pf-pompe-kw" type="number" step="any" inputMode="decimal"
+                             invalid={!!errors.pompe_kw} value={fields.pompe_kw}
+                             onChange={e => setField('pompe_kw', e.target.value)} />
+                    </FormField>
+                    <FormField label="Tension (V)" htmlFor="pf-pompe-tension" error={errors.tension_v}>
+                      <Input id="pf-pompe-tension" type="number" step="any" inputMode="decimal"
+                             invalid={!!errors.tension_v} value={fields.tension_v}
+                             onChange={e => setField('tension_v', e.target.value)} />
+                    </FormField>
+                    <FormField label="HMT max (m)" htmlFor="pf-pompe-hmt" error={errors.hmt_m}>
+                      <Input id="pf-pompe-hmt" type="number" step="any" inputMode="decimal"
+                             invalid={!!errors.hmt_m} value={fields.hmt_m}
+                             onChange={e => setField('hmt_m', e.target.value)} />
+                    </FormField>
+                    <FormField label="Débit indicatif (m³/j)" htmlFor="pf-pompe-debitj" error={errors.debit_m3j}>
+                      <Input id="pf-pompe-debitj" type="number" step="any" inputMode="decimal"
+                             invalid={!!errors.debit_m3j} value={fields.debit_m3j}
+                             onChange={e => setField('debit_m3j', e.target.value)} />
+                    </FormField>
+                  </div>
+
+                  {/* Courbe constructeur : saisie assistée en table débit/HMT
+                      — jamais un JSON brut à taper. Les valeurs restent des
+                      chaînes tant que la ligne est en cours de frappe (jamais
+                      arrondies/rejetées) ; converties en nombres au submit. */}
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                      Courbe constructeur (débit m³/h → HMT m)
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {courbeRows.map((row, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <Input type="number" step="any" inputMode="decimal"
+                                 placeholder="Débit (m³/h)" aria-label={`Débit point ${i + 1}`}
+                                 value={row.debit}
+                                 onChange={e => { clearField('courbe_pompe'); setCourbeRow(i, 'debit', e.target.value) }} />
+                          <Input type="number" step="any" inputMode="decimal"
+                                 placeholder="HMT (m)" aria-label={`HMT point ${i + 1}`}
+                                 value={row.hmt}
+                                 onChange={e => { clearField('courbe_pompe'); setCourbeRow(i, 'hmt', e.target.value) }} />
+                          <Button type="button" variant="ghost" size="icon"
+                                  aria-label={`Retirer le point ${i + 1}`}
+                                  onClick={() => { clearField('courbe_pompe'); retirerCourbeRow(i) }}>
+                            <X className="h-4 w-4" />
+                          </Button>
                         </div>
                       ))}
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Courbe constructeur</p>
-                        <p className={produit?.courbe_pompe ? 'text-foreground' : 'italic text-muted-foreground'}>
-                          {produit?.courbe_pompe?.debits_m3h?.length
-                            ? `${produit.courbe_pompe.debits_m3h.length} points`
-                            : 'Aucune'}
-                        </p>
-                      </div>
                     </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Courbe constructeur et caractéristiques de pompage — disponibles après
-                      la création du produit (saisie via le catalogue).
-                    </p>
-                  )}
+                    <Button type="button" variant="outline" size="sm" className="mt-2"
+                            onClick={() => { clearField('courbe_pompe'); ajouterCourbeRow() }}>
+                      <Plus className="h-4 w-4 mr-1" /> Ajouter un point
+                    </Button>
+                    {errors.courbe_pompe && (
+                      <p className="mt-1 text-xs text-destructive">{errors.courbe_pompe}</p>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Lecture seule — ces valeurs viennent du catalogue (seed) et alimentent le
-                    dimensionnement du mode Agricole.
+                    Alimente le dimensionnement du mode Agricole (sélection de pompe par
+                    débit/HMT). Au moins 2 points valides pour qu'une courbe soit prise en
+                    compte ; une courbe déjà enregistrée ne peut pas être vidée.
                   </p>
                 </div>
               )}

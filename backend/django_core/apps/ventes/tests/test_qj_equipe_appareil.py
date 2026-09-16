@@ -89,3 +89,35 @@ class TestAppareilEquipe(TestCase):
         self.assertEqual(resp.status_code, 204)
         self.link.refresh_from_db()
         self.assertIsNone(self.link.engagement)
+
+    def test_beacon_engagement_silencieux_pour_un_appareil_du_registre(self):
+        """QJEQUIPE3 — le beacon ne regardait QUE le cookie/l'en-tête
+        `tq_equipe` : un appareil marqué dans le registre SERVEUR
+        (`crm.AppareilEquipe`) mais sans ce cookie écrivait quand même
+        `ShareLink.engagement` et ses notes « a commencé à lire en détail ».
+        L'identifiant arrive ici par l'en-tête `X-Appareil-Id` — ce que le
+        Worker SSR transmet réellement, d'après le cookie `tq_appareil`."""
+        from apps.crm.models import AppareilEquipe
+
+        appareil = 'ffffffff-eeee-4ddd-8ccc-bbbbbbbbbbbb'
+        AppareilEquipe.objects.create(
+            company=self.company, appareil_id=appareil,
+            libelle='Téléphone équipe')
+        resp = APIClient().post(
+            f'/api/django/public/proposal/{self.link.token}/engagement/',
+            {'section': 'hero', 'seconds': 30}, format='json',
+            HTTP_X_APPAREIL_ID=appareil)
+        self.assertEqual(resp.status_code, 204)
+        self.link.refresh_from_db()
+        self.assertIsNone(self.link.engagement)
+
+    def test_beacon_engagement_compte_pour_un_appareil_inconnu(self):
+        """TÉMOIN — un vrai client garde exactement le comportement d'avant."""
+        resp = APIClient().post(
+            f'/api/django/public/proposal/{self.link.token}/engagement/',
+            {'section': 'hero', 'seconds': 30}, format='json',
+            HTTP_X_APPAREIL_ID='00000000-1111-4222-8333-444444444444')
+        self.assertEqual(resp.status_code, 204)
+        self.link.refresh_from_db()
+        self.assertEqual(
+            (self.link.engagement or {}).get('hero', {}).get('seconds'), 30)

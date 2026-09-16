@@ -4,10 +4,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   groupCatalogue, searchCatalogue, keySpec, sansPrix, MARQUE_GENERIQUE,
+  typeOfProduit, familleAttendue, categorieIcone,
 } from './catalogue.js'
 import {
   classifyProduct, isPanel, isBattery, isReseauInverter, isHybridInverter,
 } from '../ventes/solar.js'
+import { Sun, Zap, Cpu, Droplets, ClipboardList } from 'lucide-react'
 
 const CAT = {
   panneaux: { nom: 'Panneaux photovoltaïques', ordre: 10 },
@@ -50,6 +52,34 @@ test('recherche transverse : trouve par nom, marque, catégorie et spec', () => 
   assert.equal(searchCatalogue(FIXTURE, '710')[0].id, 1)            // nom
   assert.ok(searchCatalogue(FIXTURE, '7.5 kW').some(p => p.id === 5)) // spec
   assert.equal(searchCatalogue(FIXTURE, '').length, FIXTURE.length)
+})
+
+// STKCAT15 — accents, jetons ET (ordre indifférent), jeton numérique nu sur
+// une spec. Catalogue étendu LOCAL (jamais le FIXTURE partagé, pour ne pas
+// perturber le comptage de catégories du test « groupement » ci-dessus).
+test('STKCAT15 — recherche insensible aux accents, jetons ET, jeton numérique sur spec', () => {
+  const CATALOGUE_ETENDU = [
+    ...FIXTURE,
+    {
+      id: 9, nom: 'Câble solaire 6mm² — rouge (au mètre)', marque: 'Nexans',
+      prix_vente: '15.00', tva: '20.00', categorie: { nom: 'Câbles', ordre: 70 },
+    },
+    {
+      id: 10, nom: 'Module PV 550 W', marque: 'Jinko',
+      prix_vente: '900.00', tva: '10.00', categorie: CAT.panneaux,
+    },
+  ]
+  // accent-insensible : « cable » (sans accent) trouve « Câble … »
+  assert.ok(searchCatalogue(CATALOGUE_ETENDU, 'cable').some(p => p.id === 9))
+  // jetons ET, ordre indifférent : « hybride deye » == « deye hybride »
+  assert.ok(searchCatalogue(CATALOGUE_ETENDU, 'hybride deye').some(p => p.id === 4))
+  assert.ok(searchCatalogue(CATALOGUE_ETENDU, 'deye hybride').some(p => p.id === 4))
+  // jeton numérique nu trouve une spec (nom contient 550)
+  assert.ok(searchCatalogue(CATALOGUE_ETENDU, '550').some(p => p.id === 10))
+  // superset : tout ce que l'ancienne recherche trouvait, la nouvelle le
+  // trouve toujours (jamais un champ caché par rapport à avant).
+  assert.equal(searchCatalogue(CATALOGUE_ETENDU, 'veichi').length, 1)
+  assert.equal(searchCatalogue(CATALOGUE_ETENDU, 'panneaux photo').length, 3) // +Module PV 550W
 })
 
 test('spec clé par catégorie : Wc, kW+tension, CV/HMT/courbe', () => {
@@ -112,4 +142,83 @@ test('762 — exclusivité : un onduleur réseau n\'est ni hybride ni batterie',
   assert.equal(isHybridInverter(reseau), false)
   assert.equal(isBattery(reseau), false)
   assert.equal(isPanel(reseau), false)
+})
+
+test('typeOfProduit : type d\'un produit via categorie_type ou categorie.type_equipement', () => {
+  // Avec categorie_type plat
+  const withFlat = { categorie_type: 'onduleur_reseau', categorie: { type_equipement: 'onduleur' } }
+  assert.equal(typeOfProduit(withFlat), 'onduleur_reseau')
+
+  // Repli sur categorie.type_equipement
+  const withNested = { categorie: { type_equipement: 'panneau' } }
+  assert.equal(typeOfProduit(withNested), 'panneau')
+
+  // Aucun type
+  const noType = { categorie: {} }
+  assert.equal(typeOfProduit(noType), null)
+
+  // Produit null/undefined
+  assert.equal(typeOfProduit(null), null)
+  assert.equal(typeOfProduit(undefined), null)
+})
+
+test('familleAttendue : mappe les rôles aux familles de produits', () => {
+  // Structure — trois rôles
+  assert.equal(familleAttendue('structure'), 'structure')
+  assert.equal(familleAttendue('structure_acier'), 'structure')
+  assert.equal(familleAttendue('structure_alu'), 'structure')
+
+  // Panneau
+  assert.equal(familleAttendue('panneau'), 'panneau')
+
+  // Batterie
+  assert.equal(familleAttendue('batterie'), 'batterie')
+
+  // Onduleurs — tous retournent null
+  assert.equal(familleAttendue('onduleur_reseau'), null)
+  assert.equal(familleAttendue('onduleur_hybride'), null)
+  assert.equal(familleAttendue('onduleur_offgrid'), null)
+
+  // Câbles — tous retournent null
+  assert.equal(familleAttendue('cable_dc'), null)
+  assert.equal(familleAttendue('cable_terre'), null)
+
+  // Rôle inconnu
+  assert.equal(familleAttendue('role_inconnu'), null)
+
+  // null/undefined
+  assert.equal(familleAttendue(null), null)
+  assert.equal(familleAttendue(undefined), null)
+})
+
+// STKCAT16 — icônes et keySpec pilotées par typeOfProduit, repli par nom.
+test('STKCAT16 — rendu byte-identique sur le catalogue semé (aucun type renseigné)', () => {
+  // FIXTURE ne porte ni categorie_type ni categorie.type_equipement : le
+  // repli par NOM doit produire EXACTEMENT les mêmes icônes/spécs qu'avant
+  // STKCAT16 (valeurs capturées sur l'implémentation pré-changement).
+  assert.equal(categorieIcone(FIXTURE[0]), Sun)           // Panneaux photovoltaïques
+  assert.equal(categorieIcone(FIXTURE[2]), Zap)           // Onduleurs réseau
+  assert.equal(categorieIcone(FIXTURE[3]), Zap)           // Onduleurs hybrides
+  assert.equal(categorieIcone(FIXTURE[4]), Cpu)           // Variateurs
+  assert.equal(categorieIcone(FIXTURE[5]), Droplets)      // Pompes
+  assert.equal(categorieIcone(FIXTURE[6]), ClipboardList) // Services & prestations
+
+  assert.equal(keySpec(FIXTURE[0]), '710 Wc')
+  assert.equal(keySpec(FIXTURE[4]), '7.5 kW · 380 V')
+  assert.ok(keySpec(FIXTURE[5]).includes('10 CV'))
+  assert.ok(keySpec(FIXTURE[5]).includes('courbe constructeur'))
+  assert.equal(keySpec(FIXTURE[6]), null)
+})
+
+test('STKCAT16 — une catégorie « PV Modules » typée panneau obtient Sun + spec Wc', () => {
+  // "PV Modules" ne matche PAS /panneau/i par NOM : seul le type fait passer.
+  const p = { nom: 'Module PV 550 W', categorie: { nom: 'PV Modules', ordre: 5, type_equipement: 'panneau' } }
+  assert.equal(categorieIcone(p), Sun)
+  assert.equal(keySpec(p), '550 Wc')
+})
+
+test('STKCAT16 — structure/protection/service : keySpec renvoie explicitement null', () => {
+  assert.equal(keySpec({ nom: 'Rail alu 3m', categorie_type: 'structure' }), null)
+  assert.equal(keySpec({ nom: 'Disjoncteur différentiel 32A', categorie_type: 'protection' }), null)
+  assert.equal(keySpec({ nom: 'Installation', categorie_type: 'service' }), null)
 })

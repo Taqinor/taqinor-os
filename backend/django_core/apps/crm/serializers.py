@@ -5,6 +5,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
+from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import (
     model_is_company_scoped,
     request_company_id,
@@ -454,14 +455,35 @@ class _PuissanceKwField(serializers.DecimalField):
         return super().to_internal_value(brut)
 
 
-class LeadSerializer(_CompanyScopedRelationsMixin,
+class LeadSerializer(SameCompanyFKSerializerMixin,
+                     _CompanyScopedRelationsMixin,
                      serializers.ModelSerializer):
     # CRX13 — ``deleted_by`` (auto-construit depuis ``__all__``) désignait
     # n'importe quel utilisateur, toutes sociétés confondues. CRX15 l'a depuis
     # verrouillé en LECTURE SEULE (cf. ``Meta.read_only_fields``) : la
     # promotion est alors un no-op, conservée comme filet si le champ
     # redevenait un jour inscriptible.
-    scoped_relations = ('deleted_by',)
+    # STKCAT9 — ``structure_produit`` est une relation SORTANTE INSCRIPTIBLE
+    # vers ``stock.Produit`` : sans re-scope, un PATCH pouvait épingler sur un
+    # lead le produit d'une AUTRE société. Promue ici, elle refuse cet id avec
+    # le message « objet inexistant » standard de DRF — indiscernable d'un id
+    # qui n'existe pas, donc aucun oracle d'existence inter-tenant.
+    # PÉRIMÈTRE ASSUMÉ ET ÉCRIT : le re-scope filtre sur
+    # ``company_id=<société de la requête>``, donc les fiches GLOBALES du
+    # catalogue (``company`` NULL, semées par ``seed_catalogue``) ne sont pas
+    # sélectionnables PAR CE CHAMP. La composition, elle, continue de les
+    # accepter (son catalogue est ``company`` OU global) : une société qui veut
+    # épingler une structure globale sur ses leads la duplique dans son propre
+    # catalogue. C'est le prix de la garde d'isolation, et il est connu.
+    scoped_relations = ('deleted_by', 'structure_produit')
+
+    # STKCAT9 — LA MÊME GARDE, DÉCLARÉE : ``same_company_fields`` est le patron
+    # que la garde CI ``scripts/check_fk_scoping.py`` sait reconnaître sur une
+    # FK cross-app écrivable (AUD601). Ceinture ET bretelles avec le re-scope
+    # ci-dessus : le champ refuse déjà l'id d'une autre société à la
+    # résolution, et si ce re-scope venait à sauter, ``to_internal_value``
+    # refuserait encore — avec un message français explicite.
+    same_company_fields = ('structure_produit',)
 
     # Relevé fondateur 08/09/2026 — les puissances d'équipement acceptent une
     # saisie en watts (ramenée en kW) au lieu de bloquer l'autosauvegarde.
@@ -494,6 +516,12 @@ class LeadSerializer(_CompanyScopedRelationsMixin,
     # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
     updated_by_nom = serializers.CharField(
         source='updated_by.username', read_only=True, default=None)
+    # STKCAT9 — le NOM de la structure épinglée, en lecture seule : l'écran CRM
+    # affiche « Pergola acier 4x3 » sans avoir à re-demander le produit au
+    # catalogue. ``default=None`` : un lead sans structure rend ``null``, jamais
+    # une erreur d'attribut (même patron qu'``updated_by_nom`` ci-dessus).
+    structure_produit_nom = serializers.CharField(
+        source='structure_produit.nom', read_only=True, default=None)
     # VX243(a) — confiance au niveau du DOSSIER : « archivé par X le … ». Les
     # champs archived_by/archived_at sont posés côté serveur (jamais rendus
     # avant) — on expose ici le NOM de l'archiviste en lecture seule pour que
@@ -1837,7 +1865,8 @@ class AppareilEquipeSerializer(serializers.ModelSerializer):
     """QJ-EQUIPE-2 — un appareil ÉQUIPE, exclu du traçage anti-fraude.
 
     La société et ``cree_par`` sont posés côté serveur (jamais lus du corps de
-    requête, multi-tenant) ; voir ``AppareilEquipeViewSet.perform_create``.
+    requête, multi-tenant) ; voir ``crm.services.enregistrer_appareil_equipe``,
+    l'unique chemin d'écriture du registre (``create`` et ``ce_navigateur``).
     """
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     cree_par = serializers.PrimaryKeyRelatedField(read_only=True)

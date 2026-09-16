@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import stockApi from '../api/stockApi'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Button, Input, Label,
+  Button, Input, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../ui'
+
+const CATEGORIE_AUCUNE = '__aucune'
 
 /* QG6 — « + Nouveau produit » quick-create partagé (devis + BCF).
    Minimal : nom + prix de vente HT (+ prix d'achat optionnel, INTERNE — jamais
@@ -12,16 +14,49 @@ import {
    l'appelant sélectionne le nouveau produit sur sa ligne. Le bouton qui ouvre
    cette modale est déjà gardé par le hook QG5 (Directeur + Commercial
    responsable) côté appelant — cette modale ne fait qu'exécuter la création,
-   le serveur (QG4 HasPermissionAndRole) reste la seule garde qui compte. */
-export default function ProduitQuickCreateModal({ open, onClose, onCreated }) {
+   le serveur (QG4 HasPermissionAndRole) reste la seule garde qui compte.
+
+   STKCAT13 — Catégorie TOUJOURS visible, JAMAIS requise (fiche minimale
+   toujours créable sans catégorie ; « ranger plus tard » reste un choix
+   honnête). `categories` (optionnel) permet à l'appelant (ProduitPicker, qui
+   les a déjà chargées pour calculer `defaultCategorieId`) d'éviter un second
+   appel réseau ; sans cette prop la modale charge la liste elle-même à
+   l'ouverture (silencieux si l'appel échoue — liste vide, jamais un blocage
+   de la création). `defaultCategorieId` pré-sélectionne la catégorie SEULEMENT
+   quand l'appelant l'a résolue sans ambiguïté (ex. ProduitPicker : la famille
+   de la ligne désigne EXACTEMENT une catégorie typée de la société). */
+export default function ProduitQuickCreateModal({
+  open, onClose, onCreated, categories, defaultCategorieId,
+}) {
   const [nom, setNom] = useState('')
   const [prixVente, setPrixVente] = useState('')
   const [prixAchat, setPrixAchat] = useState('')
+  // STKCAT13 — `null` = l'utilisateur n'a pas encore touché le select : on
+  // suit alors `defaultCategorieId` (déduit par l'appelant, peut changer
+  // d'une ouverture à l'autre puisque la modale reste montée entre deux
+  // lignes). Dérivé au RENDU (jamais un effet + setState en cascade) — un
+  // choix explicite (même « Aucune », override = '') prime toujours dessus.
+  const [categorieOverride, setCategorieOverride] = useState(null)
+  const categorieId = categorieOverride ?? (defaultCategorieId ? String(defaultCategorieId) : '')
+  const [categoriesFetched, setCategoriesFetched] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
+  // Chargement paresseux, UNIQUEMENT si l'appelant n'a pas déjà la liste —
+  // échec silencieux (liste vide) : jamais une création bloquée par ça.
+  useEffect(() => {
+    if (!open || categories) return
+    let cancelled = false
+    stockApi.getCategories({ page_size: 200 })
+      .then((r) => { if (!cancelled) setCategoriesFetched(r.data?.results ?? r.data ?? []) })
+      .catch(() => { if (!cancelled) setCategoriesFetched([]) })
+    return () => { cancelled = true }
+  }, [open, categories])
+
+  const categoriesOptions = categories ?? categoriesFetched
+
   const reset = () => {
-    setNom(''); setPrixVente(''); setPrixAchat(''); setError(null)
+    setNom(''); setPrixVente(''); setPrixAchat(''); setCategorieOverride(null); setError(null)
   }
 
   const handleClose = () => { reset(); onClose?.() }
@@ -37,6 +72,7 @@ export default function ProduitQuickCreateModal({ open, onClose, onCreated }) {
         prix_vente: prixVente !== '' ? prixVente : '0',
         prix_achat: prixAchat !== '' ? prixAchat : '0',
       }
+      if (categorieId) payload.categorie_id = Number(categorieId)
       const res = await stockApi.createProduit(payload)
       onCreated?.(res.data)
       reset()
@@ -59,8 +95,8 @@ export default function ProduitQuickCreateModal({ open, onClose, onCreated }) {
         <DialogHeader>
           <DialogTitle>Nouveau produit</DialogTitle>
           <DialogDescription>
-            Création rapide — vous pourrez compléter la fiche complète (catégorie,
-            marque, garantie…) plus tard depuis Stock.
+            Création rapide — vous pourrez compléter la fiche complète
+            (marque, garantie…) plus tard depuis Stock.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} noValidate className="grid gap-4">
@@ -70,6 +106,23 @@ export default function ProduitQuickCreateModal({ open, onClose, onCreated }) {
                    invalid={error && !nom.trim() ? true : undefined}
                    onChange={(e) => setNom(e.target.value)}
                    placeholder="ex : Onduleur Huawei SUN2000 10KTL" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="pqc-categorie">Catégorie</Label>
+            <Select
+              value={categorieId || CATEGORIE_AUCUNE}
+              onValueChange={(v) => setCategorieOverride(v === CATEGORIE_AUCUNE ? '' : v)}
+            >
+              <SelectTrigger id="pqc-categorie">
+                <SelectValue placeholder="Aucune (à ranger plus tard)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={CATEGORIE_AUCUNE}>Aucune (à ranger plus tard)</SelectItem>
+                {categoriesOptions.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-1.5">

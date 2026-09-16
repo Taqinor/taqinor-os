@@ -1,5 +1,11 @@
+import operator  # noqa: F401
+from functools import reduce  # noqa: F401
+
 from django.db import transaction  # noqa: F401
-from django.db.models import ProtectedError, Count, Min, Max, Prefetch  # noqa: F401
+from django.db.models import (  # noqa: F401
+    ProtectedError, Count, Min, Max, Prefetch, Q, Func, TextField, Value,
+)
+from django.db.models.functions import Lower  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import viewsets, filters, serializers, status  # noqa: F401
@@ -40,6 +46,12 @@ from authentication.permissions import (  # noqa: F401
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+# STKCAT25 — nombre MAXIMUM de lignes par liste de l'onglet « Utilisé dans »
+# (devis / leads / chantiers). Rendu DANS la réponse (clé ``limite``) pour que
+# l'écran puisse dire « les 20 plus récents » sans le deviner, et pour qu'un
+# produit très utilisé ne rende jamais une page sans fin.
+UTILISE_DANS_LIMITE = 20
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
@@ -102,6 +114,82 @@ class _MarketplaceFormatContentNegotiation(DefaultContentNegotiation):
         return renderers[0], renderers[0].media_type
 
 
+def _sans_accents(expression):
+    """STKCAT27 — `public.f_unaccent(<expression>)`.
+
+    L'enveloppe IMMUTABLE posée par la migration 0148. La MÊME expression est
+    appliquée des DEUX côtés de la comparaison (colonne et terme saisi), et
+    elle est écrite EXACTEMENT comme l'expression indexée — `f_unaccent(lower(
+    <colonne>))` — pour que l'index GIN trigramme soit utilisable.
+    """
+    return Func(expression, function='public.f_unaccent',
+                output_field=TextField())
+
+
+class RechercheProduitSansAccents(filters.SearchFilter):
+    """STKCAT27 — `?search=` insensible aux accents, SI la base le permet.
+
+    « cable » trouve « Câble solaire 6mm² ». La sémantique de DRF est
+    conservée telle quelle : les termes sont découpés par
+    ``SearchFilter.get_search_terms`` (guillemets compris), chaque terme est
+    cherché en OU sur tous les ``search_fields``, et les termes sont combinés
+    en ET — « deye hybride » continue d'exiger les deux mots.
+
+    DÉGRADATION GRACIEUSE, C'EST LE CŒUR DE LA TÂCHE : dès que les extensions
+    (ou l'enveloppe) manquent — rôle de base sans droit `CREATE EXTENSION`,
+    SQLite dans un test —, on rend la main à ``SearchFilter`` et le
+    comportement redevient celui d'aujourd'hui, à l'octet près. Idem pour les
+    deux cas particuliers que DRF gère et qu'on ne réimplémente PAS : un
+    ``search_fields`` préfixé (`^`, `=`, `@`, `$`) et le dédoublonnage des
+    jointures plusieurs-à-plusieurs.
+
+    La sonde n'est faite QUE s'il y a un terme de recherche : une liste
+    produits sans `?search=` n'exécute pas une requête de plus, donc le budget
+    de `docs/query-budgets.yml` est intact.
+    """
+
+    def filter_queryset(self, request, queryset, view):
+        champs = self.get_search_fields(view, request)
+        termes = self.get_search_terms(request)
+        if not champs or not termes:
+            return queryset
+        if any(str(champ)[:1] in self.lookup_prefixes for champ in champs):
+            return super().filter_queryset(request, queryset, view)
+        if self.must_call_distinct(queryset, champs):
+            return super().filter_queryset(request, queryset, view)
+
+        from ..selectors import recherche_sans_accents_disponible
+        if not recherche_sans_accents_disponible():
+            return super().filter_queryset(request, queryset, view)
+
+        # `alias()` et non `annotate()` : l'expression sert UNIQUEMENT à
+        # filtrer, elle ne doit ni entrer dans le SELECT ni, surtout, dans le
+        # GROUP BY du chemin `?show_archived=true` (qui agrège des Count).
+        alias_par_champ = {
+            str(champ): '_stkcat27_ua_%d' % rang
+            for rang, champ in enumerate(champs)
+        }
+        qs = queryset.alias(**{
+            alias: _sans_accents(Lower(champ))
+            for champ, alias in alias_par_champ.items()
+        })
+        # Terme comparé via `__contains` (et non `icontains`) : les deux côtés
+        # sont DÉJÀ passés par `lower()`, une seconde mise en casse par DRF
+        # ferait diverger l'expression de celle de l'index. Les jokers `%` et
+        # `_` tapés par l'utilisateur restent échappés par Django lui-même
+        # (`pattern_esc` du backend PostgreSQL s'applique aux membres droits
+        # qui sont des expressions), donc la parité avec `icontains` tient.
+        conditions = [
+            reduce(operator.or_, [
+                Q(**{'%s__contains' % alias:
+                     _sans_accents(Value(terme.lower()))})
+                for alias in alias_par_champ.values()
+            ])
+            for terme in termes
+        ]
+        return qs.filter(reduce(operator.and_, conditions))
+
+
 class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                      CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
@@ -124,7 +212,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         ),
     ).all()
     serializer_class = ProduitSerializer
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    # STKCAT27 — `RechercheProduitSansAccents` EST un `SearchFilter` : mêmes
+    # `search_fields`, même découpage des termes, même schéma OpenAPI. Il ne
+    # change la requête que si la base porte `unaccent` + `pg_trgm` +
+    # l'enveloppe `public.f_unaccent` ; sinon il délègue au parent.
+    filter_backends = [RechercheProduitSansAccents, filters.OrderingFilter]
     search_fields = ['nom', 'sku', 'description', 'categorie__nom']
     ordering_fields = [
         'nom', 'quantite_stock', 'prix_vente', 'date_creation'
@@ -145,6 +237,14 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 # est OBLIGATOIRE — `get_permissions` prime sur le
                 # `permission_classes` de l'@action, sinon repli IsAdminRole.
                 'compatibilites',
+                # STKCAT25 — `utilise-dans` est LECTURE SEULE et ne rend AUCUN
+                # prix d'achat ni marge (des références de devis/leads/
+                # chantiers déjà visibles dans leur propre module, chacun avec
+                # SA portée rejouée). Même garde `IsAnyRole` que
+                # `compatibilites` — ce cas explicite est OBLIGATOIRE :
+                # `get_permissions` prime sur le `permission_classes` de
+                # l'@action, sinon repli IsAdminRole.
+                'utilise_dans',
                 # NTDST10 — `atp` est LECTURE SEULE (aucun prix, aucun coût).
                 'atp',
                 # NTRET17 — étiquette PRIX de rayon : impression, LECTURE
@@ -213,6 +313,25 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # ── STKCAT6 — filtre MANUEL par CATÉGORIE (`?categorie=<id[,id]>`) ──
+        # Posé JUSTE APRÈS le scoping société de ``super()`` (donc avant les
+        # trois sorties ci-dessous) : il vaut pour la liste normale comme pour
+        # la vue archivée. Le filtrage est MANUEL, comme partout dans cette app
+        # (patron de ``qualite_reception.get_queryset``) — un
+        # ``filterset_fields`` serait un NO-OP SILENCIEUX ici, aucun
+        # ``DjangoFilterBackend`` n'étant monté sur ce viewset.
+        # Liste séparée par des virgules acceptée (patron de l'action
+        # ``etiquettes``), et une valeur NON NUMÉRIQUE est simplement IGNORÉE :
+        # ``categorie_id=<texte>`` lèverait un ``ValueError`` → 500 sur un
+        # paramètre d'URL mal tapé, ce qu'un filtre de confort ne doit jamais
+        # faire.
+        categories = self.request.query_params.getlist('categorie')
+        if len(categories) == 1 and ',' in categories[0]:
+            categories = categories[0].split(',')
+        categories = [c for c in (str(x).strip() for x in categories)
+                      if c.isdigit()]
+        if categories:
+            qs = qs.filter(categorie_id__in=categories)
         if self.request.query_params.get('show_archived') == 'true':
             return qs.annotate(
                 nb_mouvements=Count('mouvements'),
@@ -997,6 +1116,49 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         produit = self.get_object()
         return Response(
             compatibilites_du_produit(produit, request.user.company))
+
+    @action(detail=True, methods=['get'], url_path='utilise-dans',
+            permission_classes=[IsAnyRole])
+    def utilise_dans(self, request, pk=None):
+        """STKCAT25 — OÙ ce produit est-il utilisé ? Devis / leads / chantiers.
+
+        La fiche produit savait dire ce qui est en commande et ce que le
+        produit vaut, jamais ce qu'il PORTE : quels devis le chiffrent, quels
+        leads en dépendent, quels chantiers l'ont réservé. Un seul appel
+        agrégé, LECTURE SEULE.
+
+        CHAQUE LISTE EST PRODUITE PAR L'APP PROPRIÉTAIRE, via son
+        ``selectors.py`` — jamais un import de ses modèles depuis le Stock :
+        ``ventes.selectors.devis_utilisant_produit`` (qui REJOUE la visibilité
+        COMPLÈTE de la liste /ventes/devis : portail NTPRT10 puis
+        ``scope_queryset(created_by)``, cf. ``apps/ventes/views/devis.py``),
+        ``crm.selectors.leads_utilisant_produit`` (portée ``owner`` de
+        LeadViewSet) et ``installations.selectors.chantiers_utilisant_produit``
+        (portée ``technicien_responsable``/``created_by``, lien réel
+        ``StockReservation``). Un commercial ne voit donc JAMAIS par le Stock
+        un document que son propre module lui masque.
+
+        Company-scopé par ``get_object`` (le produit d'une autre société est un
+        404). Aucun prix d'ACHAT, aucune marge : seuls des totaux TTC de VENTE,
+        déjà visibles côté Ventes. Forme contractuelle :
+        ``contract_samples/produit_utilise_dans.json``.
+        """
+        from apps.crm.selectors import leads_utilisant_produit
+        from apps.installations.selectors import chantiers_utilisant_produit
+        from apps.ventes.selectors import devis_utilisant_produit
+        produit = self.get_object()
+        company = request.user.company
+        return Response({
+            'devis': devis_utilisant_produit(
+                request.user, produit.id, limit=UTILISE_DANS_LIMITE),
+            'leads': leads_utilisant_produit(
+                company, produit.id, limit=UTILISE_DANS_LIMITE,
+                user=request.user),
+            'chantiers': chantiers_utilisant_produit(
+                company, produit.id, limit=UTILISE_DANS_LIMITE,
+                user=request.user),
+            'limite': UTILISE_DANS_LIMITE,
+        })
 
     @action(detail=False, methods=['get'], url_path='tracer',
             permission_classes=[IsAnyRole])

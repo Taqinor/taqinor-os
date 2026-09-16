@@ -26,10 +26,18 @@
  *
  * HARD PRIVACY CONTRACT (même discipline que `lib/funnelBeacon.ts`) : aucune
  * PII — `appareil_id` est un UUID v4 généré côté navigateur, stocké en
- * localStorage SAME-ORIGIN (jamais un cookie tiers), jamais dérivé d'une
- * donnée de contact. `page` est un chemin (jamais une query string ni un
- * fragment), `duree_s` un entier cumulé borné, `fin` un booléen (dernier
- * envoi avant fermeture/navigation).
+ * localStorage + cookie FIRST-PARTY partagé avec l'ERP (api.taqinor.ma),
+ * jamais un cookie tiers, jamais dérivé d'une donnée de contact. Le cookie
+ * (`Domain=taqinor.ma`, voir `domaineCookiePartage` ci-dessous) existe en
+ * plus du localStorage pour DEUX raisons : (1) le rendu SERVEUR de
+ * `/proposition/<token>` ne voit jamais le localStorage du navigateur — seul
+ * un cookie voyage sur la requête SSR ; (2) l'ERP (`api.taqinor.ma`) pose
+ * lui-même ce cookie pour marquer un appareil « équipe » (QJ-EQUIPE) —
+ * partager le domaine permet au site public de RECONNAÎTRE automatiquement
+ * les appareils de l'équipe sans action manuelle (voir `equipe.astro`).
+ * `page` est un chemin (jamais une query string ni un fragment), `duree_s`
+ * un entier cumulé borné, `fin` un booléen (dernier envoi avant
+ * fermeture/navigation).
  *
  * CONSENTEMENT (WB29/WB30/WB31, `components/ConsentBanner.astro`) — cette
  * balise est de la MÊME famille « mesure anonyme d'audience » déjà gouvernée
@@ -49,6 +57,120 @@ export const VISITE_PROXY_PATH = '/api/visite';
 const APPAREIL_ID_KEY = 'tq_appareil';
 const HEARTBEAT_MS = 20_000;
 const MAX_DUREE_S = 24 * 3600; // garde-fou anti-garbage : jamais plus d'un jour cumulé.
+
+/**
+ * Hôte canonique du site — miroir de `site: 'https://taqinor.ma'` dans
+ * `astro.config.mjs` (racine `apps/web/`). Ce fichier de config n'est PAS
+ * importé ici : c'est l'entrée de build Astro elle-même (side-effecting,
+ * imports lourds `astro/config`/adaptateur Cloudflare), jamais un module
+ * pensé pour être réutilisé ailleurs — aucune autre constante `SITE_URL` ni
+ * `lib/site*.ts` n'existe dans ce dépôt (vérifié). `SITE_HOST` est donc
+ * l'UNIQUE source de vérité pour le domaine de cookie partagé ci-dessous —
+ * à garder synchronisé avec `astro.config.mjs` si le domaine change un jour.
+ */
+export const SITE_HOST = 'taqinor.ma';
+
+/**
+ * Domaine de cookie à poser pour qu'il soit visible depuis `SITE_HOST` ET
+ * ses sous-domaines (dont `api.taqinor.ma`, l'ERP) — PUR, jamais pour un
+ * hôte étranger (`localhost`, aperçu `*.workers.dev`…) où `Domain=taqinor.ma`
+ * serait de toute façon refusé par le navigateur (RFC 6265 : le domaine d'un
+ * cookie doit être un suffixe de l'hôte de la réponse qui le pose). renvoie
+ * `undefined` dans ce cas — repli sur un cookie host-only, jamais un throw.
+ */
+export function domaineCookiePartage(hostname: string, siteHost: string = SITE_HOST): string | undefined {
+  if (!hostname || !siteHost) return undefined;
+  if (hostname === siteHost || hostname.endsWith(`.${siteHost}`)) return siteHost;
+  return undefined;
+}
+
+const APPAREIL_COOKIE_MAX_AGE_S = 2 * 365 * 24 * 3600; // 2 ans (63072000) — même durée que tq_equipe.
+
+/**
+ * Extrait une valeur de cookie depuis une chaîne "name1=value1; name2=value2"
+ * — format COMMUN à `document.cookie` (navigateur) et à l'en-tête HTTP
+ * `Cookie:` reçu par un handler serveur (`request.headers.get('cookie')`) :
+ * réutilisée par `pages/api/proposition-engagement.ts` (T3) pour lire le
+ * même cookie côté proxy same-origin, plutôt que dupliquer un parseur ad hoc.
+ * PUR, ne throw jamais ; `undefined` si absent/malformé.
+ */
+export function lireCookie(cookieHeader: string | null | undefined, name: string): string | undefined {
+  if (!cookieHeader) return undefined;
+  for (const part of cookieHeader.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    const key = part.slice(0, eq).trim();
+    if (key !== name) continue;
+    const raw = part.slice(eq + 1).trim();
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  }
+  return undefined;
+}
+
+/** Attributs d'un cookie posé par `SimpleCookieStore.set` — voir `appareilId`. */
+export interface SimpleCookieSetAttrs {
+  path: string;
+  maxAgeSeconds: number;
+  sameSite: 'Lax';
+  secure: boolean;
+  /** `undefined` → cookie host-only (repli `domaineCookiePartage`). */
+  domain?: string;
+}
+
+/** Sous-ensemble minimal d'un magasin de cookies dont dépend `appareilId` — permet l'injection en test. */
+export interface SimpleCookieStore {
+  get(name: string): string | undefined;
+  set(name: string, value: string, attrs: SimpleCookieSetAttrs): void;
+}
+
+/** Sérialise `document.cookie = …` — PUR, testable sans DOM (voir `SimpleCookieStore` par défaut ci-dessous). */
+export function serialiserCookie(name: string, value: string, attrs: SimpleCookieSetAttrs): string {
+  const parts = [
+    `${name}=${encodeURIComponent(value)}`,
+    `Path=${attrs.path}`,
+    `Max-Age=${attrs.maxAgeSeconds}`,
+    `SameSite=${attrs.sameSite}`,
+  ];
+  if (attrs.secure) parts.push('Secure');
+  if (attrs.domain) parts.push(`Domain=${attrs.domain}`);
+  return parts.join('; ');
+}
+
+/** Implémentation par défaut de `SimpleCookieStore` sur `document.cookie` — `undefined` hors DOM (SSR/tests sans jsdom). */
+function safeDocumentCookieStore(): SimpleCookieStore | undefined {
+  if (typeof document === 'undefined') return undefined;
+  return {
+    get(name) {
+      try {
+        return lireCookie(document.cookie, name);
+      } catch {
+        return undefined;
+      }
+    },
+    set(name, value, attrs) {
+      try {
+        document.cookie = serialiserCookie(name, value, attrs);
+      } catch {
+        // Best-effort strict : jamais bloquant (ex. document.cookie inaccessible).
+      }
+    },
+  };
+}
+
+function cookieAttrsPartages(): SimpleCookieSetAttrs {
+  const hostname = typeof window !== 'undefined' && window.location ? window.location.hostname : '';
+  return {
+    path: '/',
+    maxAgeSeconds: APPAREIL_COOKIE_MAX_AGE_S,
+    sameSite: 'Lax',
+    secure: true,
+    domain: domaineCookiePartage(hostname),
+  };
+}
 
 export const VISITE_LANGUES = ['fr', 'en', 'ar'] as const;
 export type VisiteLangue = (typeof VISITE_LANGUES)[number];
@@ -85,23 +207,74 @@ function safeLocalStorage(): SimpleStorage | undefined {
 }
 
 /**
- * Identifiant d'appareil ANONYME, stable par navigateur (localStorage
- * SAME-ORIGIN, jamais un cookie tiers, jamais dérivé d'une donnée de
- * contact) : généré une seule fois puis relu. `''` si le stockage est
- * indisponible (mode privé strict, contexte hors DOM…) — jamais bloquant,
- * jamais un throw.
+ * Identifiant d'appareil ANONYME, stable par navigateur (localStorage +
+ * cookie first-party partagé avec l'ERP, jamais un cookie tiers, jamais
+ * dérivé d'une donnée de contact) : généré une seule fois puis relu.
+ * `''` si le stockage local est indisponible (mode privé strict, contexte
+ * hors DOM…) — jamais bloquant, jamais un throw. Le cookie n'est qu'un MIROIR
+ * partagé avec le SSR/l'ERP ; sans localStorage utilisable, rien n'est
+ * considéré stable et la fonction abandonne (même contrat qu'avant l'ajout
+ * du cookie — voir le docstring du module pour le POURQUOI du cookie).
+ *
+ * Ordre : (1) cookie `tq_appareil` plausible → source de vérité, miroir en
+ * localStorage si absent/différent ; (2) sinon localStorage plausible → pose
+ * le cookie ; (3) sinon génère un nouvel uuid → pose les deux. Si
+ * l'écriture en localStorage échoue à une étape où elle est nécessaire, la
+ * fonction redescend `''` (storage cassé = rien de stable à corréler),
+ * même si le cookie a par ailleurs pu être écrit avec succès.
  */
-export function appareilId(storage: SimpleStorage | undefined = safeLocalStorage()): string {
+export function appareilId(
+  storage: SimpleStorage | undefined = safeLocalStorage(),
+  cookies: SimpleCookieStore | undefined = safeDocumentCookieStore(),
+): string {
   if (!storage) return '';
+
+  let existing: string | null;
   try {
-    const existing = storage.getItem(APPAREIL_ID_KEY);
-    if (isPlausibleUuid(existing)) return existing as string;
-    const fresh = genererUuidV4();
-    storage.setItem(APPAREIL_ID_KEY, fresh);
-    return fresh;
+    existing = storage.getItem(APPAREIL_ID_KEY);
   } catch {
     return '';
   }
+
+  let fromCookie: string | undefined;
+  try {
+    fromCookie = cookies?.get(APPAREIL_ID_KEY);
+  } catch {
+    fromCookie = undefined;
+  }
+
+  if (isPlausibleUuid(fromCookie)) {
+    if (fromCookie !== existing) {
+      try {
+        storage.setItem(APPAREIL_ID_KEY, fromCookie);
+      } catch {
+        return ''; // Storage cassé en écriture : rien de fiable à retourner.
+      }
+    }
+    return fromCookie;
+  }
+
+  if (isPlausibleUuid(existing)) {
+    try {
+      cookies?.set(APPAREIL_ID_KEY, existing, cookieAttrsPartages());
+    } catch {
+      // Best-effort strict : le cookie est un miroir, jamais bloquant.
+    }
+    return existing;
+  }
+
+  const fresh = genererUuidV4();
+  try {
+    storage.setItem(APPAREIL_ID_KEY, fresh);
+  } catch {
+    return ''; // Storage cassé en écriture : rien de fiable à retourner.
+  }
+  try {
+    cookies?.set(APPAREIL_ID_KEY, fresh, cookieAttrsPartages());
+  } catch {
+    // Best-effort strict : le cookie est un miroir, jamais bloquant.
+  }
+  return fresh;
 }
 
 // Correctif F3#7 — même doctrine que `suffixe_jeton` côté backend
@@ -264,14 +437,17 @@ export function demarrerBalise(page: string, opts: DemarrerBaliseOptions = {}): 
   const fetchFn = opts.fetchFn ?? (typeof fetch !== 'undefined' ? fetch : undefined);
   if (!fetchFn) return;
 
-  const id = appareilId(opts.storage);
-  if (!id) return; // Stockage indisponible : rien à corréler, on n'envoie rien.
-
   const langue = opts.langue ?? 'fr';
   const acc = creerAccumulateurTempsVisible();
   let sentFinal = false;
   let started = false;
   let intervalId: ReturnType<typeof setInterval> | undefined;
+  // M2 (correctif adversarial, cookie posé sans consentement) — calculé
+  // SEULEMENT dans demarrer() ci-dessous, jamais ici : depuis T1,
+  // appareilId() écrit un cookie 2 ans (en plus du localStorage), et le
+  // contrat CONSENTEMENT de ce module (voir docstring plus haut) interdit
+  // toute écriture avant que le consentement soit accordé.
+  let id = '';
 
   function envoyer(fin: boolean): void {
     const dureeS = acc.totalMs() / 1000;
@@ -316,6 +492,12 @@ export function demarrerBalise(page: string, opts: DemarrerBaliseOptions = {}): 
 
   function demarrer(): void {
     if (started) return; // idempotent — un second appel (ex. tq:consent-change tardif) ne redémarre pas deux battements.
+    // M2 — appareilId() (cookie 2 ans + localStorage, T1) n'est calculé QU'ICI,
+    // dans le seul chemin qui démarre réellement la balise : ce point n'est
+    // atteint qu'APRÈS le gate consentement ci-dessous (granted d'entrée, ou
+    // tq:consent-change → granted). Jamais avant, jamais si denied/absent.
+    id = appareilId(opts.storage);
+    if (!id) return; // Stockage indisponible : rien à corréler, on n'envoie rien.
     started = true;
     if (document.visibilityState === 'visible') acc.resume();
     demarrerBattement();

@@ -357,7 +357,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0'),
                             deux_options=False, journal=None, phase=None,
                             dimensionnement_avec=None,
-                            mppt_paires=1, structure_type='acier'):
+                            mppt_paires=1, structure_type=None,
+                            structure_produit_id=None):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
 
     ``mppt_paires`` / ``structure_type`` (QJR80) — les DEUX paramètres de
@@ -440,6 +441,12 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
       options pouvait naître avec un seul onduleur composable, et ne servir
       qu'une des deux options qu'il promet au client.
     """
+    # STKCAT8/STKCAT9 (bis) — le chemin 3D suit la MÊME règle que /auto/ :
+    # le choix imposé par l'appelant d'abord, sinon la structure épinglée
+    # sur le lead, sinon sa préférence acier/aluminium, sinon acier (le
+    # défaut historique — un appelant qui passe 'acier' compose comme hier).
+    structure_produit_id, structure_type = _structure_demandee(
+        lead, structure_produit_id, structure_type)
     from apps.ventes.models import Devis
 
     if client is None:
@@ -526,6 +533,9 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         taux_tva=taux_tva,
         remise_globale=remise_globale,
         structure_type=structure_type,
+        # STKCAT7 — le produit de structure CHOISI traverse la création comme
+        # il traverse le dry-run : les deux remplissent la MÊME intention.
+        structure_produit_id=structure_produit_id,
         mppt_paires=mppt_paires,
         phase=phase,
     ))
@@ -566,6 +576,7 @@ SCENARIOS_DEMANDABLES = ('sans', 'avec', 'les_deux')
 def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                                panel_watt=_AUTO_PANEL_WATT, scenario=None,
                                structure_type='acier',
+                               structure_produit_id=None,
                                taux_tva=Decimal('20'), mppt_paires=1,
                                gamme_nom_devis=None, phase=None,
                                dimensionnement_avec=None,
@@ -658,6 +669,9 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                   else (COMPOSITION_AVEC if avec_batterie
                         else COMPOSITION_SANS)),
         structure_type=structure_type,
+        # STKCAT7 — cf. ``build_devis_from_layout`` : MÊME intention des deux
+        # côtés, donc MÊME structure à l'aperçu et au devis.
+        structure_produit_id=structure_produit_id,
         taux_tva=taux_tva,
         mppt_paires=mppt_paires,
         # PVCOMPAT — le DRY-RUN doit voir la MÊME contrainte de raccordement
@@ -717,10 +731,46 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     }
 
 
+def _structure_demandee(lead, produit_id=None, type_demande=None):
+    """STKCAT9 — ``(id de produit, type)`` de structure POUR CE DEVIS-LÀ.
+
+    L'ordre est celui des trois réglages ponctuels de ``build_devis_auto`` :
+
+      1. CE QUE L'APPELANT IMPOSE — un choix fait à l'écran pour ce devis-là
+         reste souverain et ne réécrit jamais la fiche du lead ;
+      2. LE PRODUIT ÉPINGLÉ SUR LE LEAD (``structure_produit``) — la pergola,
+         le carport, le bac lesté : tout ce qu'``structure_pref`` ne sait pas
+         dire ;
+      3. LA PRÉFÉRENCE ``structure_pref`` du lead, mappée par MOT-CLÉ sur le
+         vocabulaire de la composition (« aluminium » → ``'alu'``, « acier » →
+         ``'acier'``) ;
+      4. à défaut, ``(None, 'acier')`` — le défaut historique, donc un lead
+         qui ne dit rien produit EXACTEMENT le devis d'hier.
+
+    LECTURE PAR ``getattr`` SUR L'INSTANCE DÉJÀ CHARGÉE : ``apps.ventes``
+    n'importe jamais les modèles d'``apps.crm`` (règle de modularité du
+    dépôt), et lire ``structure_produit_id`` plutôt que ``structure_produit``
+    évite de charger le produit pour n'en prendre que la clé. Un ``lead``
+    absent (``None``) rend le défaut, sans lever.
+    """
+    if produit_id:
+        return produit_id, (type_demande or 'acier')
+    if type_demande:
+        return None, type_demande
+    produit_lead = getattr(lead, 'structure_produit_id', None)
+    if produit_lead:
+        return produit_lead, 'acier'
+    pref = str(getattr(lead, 'structure_pref', '') or '').strip().lower()
+    if pref.startswith('alu'):
+        return None, 'alu'
+    return None, 'acier'
+
+
 def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
                      remise_globale=Decimal('0'), target_kwc=None,
                      scenario=None, etude_extra=None, plafond_toit=None,
-                     journal_auto=None, origine=None):
+                     journal_auto=None, origine=None,
+                     structure_produit_id=None, structure_type=None):
     """Crée un devis RÉSIDENTIEL automatiquement dimensionné depuis la fiche lead.
 
     Dimensionne le champ PV par le MOTEUR HORAIRE (ordre fondateur du
@@ -755,6 +805,12 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
       factures mensuelles réelles du contrat PACT10, par exemple). Elles
       complètent ce que la construction a déjà écrit, sans jamais écraser le
       scénario arrêté ci-dessus.
+    * ``structure_produit_id`` / ``structure_type`` (STKCAT8/STKCAT9) — la
+      STRUCTURE du kit. Absents (LE DÉFAUT), c'est LE LEAD qui décide : son
+      ``structure_produit`` épinglé d'abord, sa préférence acier/aluminium
+      ensuite, l'acier historique à défaut (cf. :func:`_structure_demandee`).
+      Fournis, ils passent devant le lead sans jamais réécrire sa fiche —
+      comme les trois réglages ci-dessus.
 
     AUTO-PIPELINE (26/08/2026) — deux paramètres de plus, tous deux OPTIONNELS
     et sans effet quand ils sont absents (l'endpoint ``/devis/auto/`` est donc
@@ -991,12 +1047,26 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     if refus_composition:
         raise AutoDevisError(refus_composition[0], field='composition')
 
+    # STKCAT9 — LA STRUCTURE VIENT DU LEAD quand l'appelant n'en impose
+    # aucune : un lead aluminium (ou porteur d'une pergola) ne reçoit plus un
+    # devis acier. Résolue UNE fois, servie aux DEUX points de composition.
+    structure_produit_id, structure_type = _structure_demandee(
+        lead, structure_produit_id, structure_type)
+
     apercu = composer_devis_residentiel(
         company=company, nb_panneaux=panneaux,
         panel_watt=watt_dimensionnement,
         scenario=choix_batterie or 'les_deux', taux_tva=taux_tva,
         phase=phase_client,
         hors_reseau=hors_reseau,
+        # STKCAT8 — LA STRUCTURE DESCEND SUR LES DEUX POINTS DE COMPOSITION.
+        # Ce chemin en avait DEUX (ce dry-run, qui contrôle les marques, et
+        # l'``IntentionDevis`` finale qui écrit les lignes) et n'en informait
+        # AUCUN : le devis automatique composait toujours de l'acier. Les
+        # transmettre tous les deux est ce qui interdit à l'aperçu et au devis
+        # de diverger.
+        structure_produit_id=structure_produit_id,
+        structure_type=structure_type,
         # L-2OPT — le DRY-RUN voit EXACTEMENT la composition qui sera créée,
         # fusion comprise : sans cela il contrôlerait les marques d'un kit qui
         # n'est pas celui du devis.
@@ -1067,6 +1137,11 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         remise_globale=remise_globale,
         phase=phase_client,
         hors_reseau=hors_reseau,
+        # STKCAT8 — le SECOND point de composition de ce chemin (cf. le
+        # dry-run ci-dessus) : la MÊME structure, sinon l'aperçu contrôlé et
+        # le devis écrit ne seraient plus le même kit.
+        structure_produit_id=structure_produit_id,
+        structure_type=structure_type,
     ))
     devis = resultat['devis']
     # U3 — ce que la composition ET l'écrivain de lignes ont REFUSÉ de faire

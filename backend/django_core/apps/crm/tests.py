@@ -1020,3 +1020,95 @@ class TestLeadPatchEcritureBornee(TestCase):
             self.lead.date_modification, avant,
             "date_modification (auto_now) ne bouge plus : le champ manque "
             "dans update_fields.")
+
+
+class TestLeadStructureProduitSTKCAT9(TestCase):
+    """STKCAT9 — ``Lead.structure_produit`` : exposition et garde d'isolation.
+
+    ``structure_pref`` (acier / aluminium) ne peut PAS désigner une pergola ;
+    ce champ le peut. Ce qui compte ici :
+
+      * le champ est exposé en écriture, et son NOM en lecture seule
+        (``structure_produit_nom``), pour que la fiche CRM l'affiche sans
+        re-demander le catalogue ;
+      * le produit d'une AUTRE société est REFUSÉ (le re-scope société de
+        ``_CompanyScopedRelationsMixin``), avec le message « objet
+        inexistant » standard de DRF — aucun oracle d'existence inter-tenant ;
+      * ``structure_pref`` reste intact et indépendant.
+    """
+
+    def setUp(self):
+        self.company = make_company(slug='stkcat9-crm', nom='STKCAT9 CRM')
+        self.autre = make_company(slug='stkcat9-crm-autre',
+                                  nom='STKCAT9 CRM Autre')
+        self.user = User.objects.create_user(
+            username='stkcat9_crm_user', password='x',
+            role_legacy='responsable', company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+        from apps.stock.models import Categorie, Produit
+        categorie = Categorie.objects.create(
+            company=self.company, nom='STKCAT9 Structures', ordre=15,
+            type_equipement=Categorie.TypeEquipement.STRUCTURE)
+        self.pergola = Produit.objects.create(
+            company=self.company, nom='Pergola acier 4x3',
+            categorie=categorie, prix_vente='18000', quantite_stock=5)
+        categorie_autre = Categorie.objects.create(
+            company=self.autre, nom='STKCAT9 Structures voisines', ordre=15,
+            type_equipement=Categorie.TypeEquipement.STRUCTURE)
+        self.pergola_voisine = Produit.objects.create(
+            company=self.autre, nom='Pergola voisine',
+            categorie=categorie_autre, prix_vente='17000', quantite_stock=5)
+
+    def _lead(self):
+        return Lead.objects.create(company=self.company, nom='Structure')
+
+    def test_le_champ_est_ecrivable_et_son_nom_expose(self):
+        lead = self._lead()
+        r = self.api.patch(f'/api/django/crm/leads/{lead.id}/',
+                           {'structure_produit': self.pergola.id},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['structure_produit'], self.pergola.id)
+        self.assertEqual(r.data['structure_produit_nom'], 'Pergola acier 4x3')
+        lead.refresh_from_db()
+        self.assertEqual(lead.structure_produit_id, self.pergola.id)
+
+    def test_un_lead_sans_structure_rend_null(self):
+        lead = self._lead()
+        r = self.api.get(f'/api/django/crm/leads/{lead.id}/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIsNone(r.data['structure_produit'])
+        self.assertIsNone(r.data['structure_produit_nom'])
+
+    def test_le_produit_d_une_autre_societe_est_refuse(self):
+        lead = self._lead()
+        r = self.api.patch(f'/api/django/crm/leads/{lead.id}/',
+                           {'structure_produit': self.pergola_voisine.id},
+                           format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('structure_produit', r.data)
+        lead.refresh_from_db()
+        self.assertIsNone(lead.structure_produit_id)
+
+    def test_structure_pref_reste_intact_et_independant(self):
+        lead = self._lead()
+        r = self.api.patch(f'/api/django/crm/leads/{lead.id}/',
+                           {'structure_pref': 'aluminium'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['structure_pref'], 'aluminium')
+        lead.refresh_from_db()
+        self.assertEqual(lead.structure_pref, 'aluminium')
+        self.assertIsNone(lead.structure_produit_id)
+
+    def test_le_champ_est_nullable_et_effacable(self):
+        lead = self._lead()
+        lead.structure_produit = self.pergola
+        lead.save(update_fields=['structure_produit'])
+        r = self.api.patch(f'/api/django/crm/leads/{lead.id}/',
+                           {'structure_produit': None}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        lead.refresh_from_db()
+        self.assertIsNone(lead.structure_produit_id)

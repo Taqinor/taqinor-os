@@ -1,0 +1,57 @@
+{
+  "endpoint": "GET /api/django/stock/produits/<int:pk>/utilise-dans/",
+  "forme_serveur": "complete",
+  "pourquoi": "STKCAT25 — la fiche produit du stock sait dire ce qu'elle a en commande et ce qu'elle vaut, mais pas OÙ CE PRODUIT EST UTILISÉ : quels devis le chiffrent, quels leads en dépendent, quels chantiers l'ont réservé. L'onglet « Utilisé dans » de ProduitDetail répond en UN SEUL appel agrégé. PACT10 : ce fichier part SEUL, avant les deux moitiés — la moitié serveur est une action détail du viewset Produit (stock) qui n'AGRÈGE que des sélecteurs des apps propriétaires (apps/ventes/selectors.py::devis_utilisant_produit, apps/crm/selectors.py::leads_utilisant_produit, apps/installations/selectors.py::chantiers_utilisant_produit) — jamais un import de leurs modèles ; la moitié écran importe CE fichier comme charge utile de test (PACT13), jamais un mock écrit à la main. `forme_serveur: complete` est DÉLIBÉRÉ (QJR228) : sans cette déclaration, un chemin portant un paramètre (`<int:pk>`) n'est apparié à aucune route et l'exemple ne serait comparé à RIEN — le contrat serait décoratif. LES TROIS LISTES SONT TOUJOURS PRÉSENTES (une liste vide vaut [], jamais une clé absente) et `limite` dit combien de lignes AU PLUS chaque liste peut porter. VISIBILITÉ : `devis` rejoue la règle COMPLÈTE de la liste /ventes/devis (portail NTPRT10 puis scope_queryset(created_by), apps/ventes/views/devis.py) — un commercial ne voit JAMAIS par le Stock un devis que /ventes lui masque ; `leads` et `chantiers` rejouent de même la portée de LeadViewSet (owner) et d'InstallationViewSet (technicien_responsable/created_by). `chantiers` passe par le SEUL lien réel produit↔chantier qui existe, la réservation de stock N14 (installations.StockReservation, semée depuis la nomenclature gelée du devis) — aucun lien inventé. `total_ttc` est un prix de VENTE en TEXTE décimal (jamais un flottant) ; `prix_achat` et toute marge n'entrent JAMAIS dans cette charge utile.",
+  "exemple": {
+    "devis": [
+      {
+        "id": 412,
+        "reference": "DEV-2026-0412",
+        "client_nom": "Hôtel Atlas Rissani",
+        "statut": "envoye",
+        "date": "2026-09-14",
+        "total_ttc": "612400.00"
+      },
+      {
+        "id": 398,
+        "reference": "DEV-2026-0398",
+        "client_nom": "Ferme Doukkala",
+        "statut": "accepte",
+        "date": "2026-08-27",
+        "total_ttc": "245900.00"
+      }
+    ],
+    "leads": [
+      {
+        "id": 1204,
+        "nom": "Youssef Alaoui",
+        "ville": "Casablanca",
+        "stage": "QUOTE_SENT",
+        "date": "2026-09-11"
+      },
+      {
+        "id": 1187,
+        "nom": "Coopérative Tazarine",
+        "ville": "Errachidia",
+        "stage": "SIGNED",
+        "date": "2026-08-30"
+      }
+    ],
+    "chantiers": [
+      {
+        "id": 77,
+        "reference": "CH-2026-0077",
+        "client_nom": "Ferme Doukkala",
+        "statut": "en_cours",
+        "date": "2026-09-02"
+      }
+    ],
+    "limite": 20
+  },
+  "exemple_vide": {
+    "devis": [],
+    "leads": [],
+    "chantiers": [],
+    "limite": 20
+  }
+}

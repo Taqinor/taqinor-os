@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Minus, Trash2 } from 'lucide-react'
 import posApi from '../../api/posApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, Input, Label, Badge, EmptyState,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -108,10 +109,10 @@ export default function RetraitsScreen() {
     setCart([])
     setCreationOpen(true)
     if (produits.length === 0) {
-      posApi.getProduits().then((r) => {
-        const data = r?.data?.results ?? r?.data ?? []
-        setProduits(Array.isArray(data) ? data : [])
-      }).catch(() => setProduits([]))
+      fetchAllPages((page) => posApi.getProduits({ page }).then((r) => r.data))
+        .then((data) => {
+          setProduits(Array.isArray(data) ? data : [])
+        }).catch(() => setProduits([]))
     }
   }
 

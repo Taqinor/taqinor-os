@@ -79,6 +79,12 @@ export const ETAT_INITIAL = Object.freeze({
   scenario: SCENARIO_LES_DEUX,
   modeInstallation: 'residentiel',
   structure: 'acier',
+  // STKCAT10 — LE PRODUIT DE STRUCTURE choisi au catalogue (id `stock.Produit`,
+  // '' = aucun). Il COHABITE avec `structure` (acier/alu), devenu l'alias
+  // déprécié : un id posé est souverain, sinon le bouton d'hier décide. Les
+  // deux partagent le MÊME drapeau `touche.structure` — c'est un seul choix
+  // pour le vendeur, pas deux (les SIX drapeaux restent six).
+  structureProduitId: '',
   tension: 'bt',
   pompeAlim: 'tri',
   // Les six drapeaux, COMME ÉTAT.
@@ -195,6 +201,14 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
           return { ...avecTouche(base, 'scenario'), scenario: valeur }
         case 'structure':
           return { ...avecTouche(base, 'structure'), structure: valeur }
+        // STKCAT10 — le sélecteur catalogue. MÊME drapeau que le bouton
+        // acier/alu ci-dessus : le vendeur a choisi SA structure, quelle que
+        // soit la commande par laquelle il l'a dite.
+        case 'structureProduit':
+          return {
+            ...avecTouche(base, 'structure'),
+            structureProduitId: valeur == null ? '' : String(valeur),
+          }
         case 'tension':
           return { ...avecTouche(base, 'tension'), tension: valeur }
         case 'pompeAlim':
@@ -232,6 +246,24 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
       if (!s.touche.structure
           && (lead.structure_pref === 'acier' || lead.structure_pref === 'aluminium')) {
         s = { ...s, structure: lead.structure_pref }
+      }
+      // 4 bis. STKCAT10 — LE PRODUIT DE STRUCTURE épinglé sur le lead
+      // (`structure_produit`, STKCAT9) : une pergola, un carport, un bac
+      // lesté — tout ce que la préférence acier/alu ne sait pas dire.
+      // VALIDÉ CONTRE LE CATALOGUE PORTÉ PAR L'ACTION (`action.structuresEligibles`,
+      // la liste des ids réellement sélectionnables à l'écran) : un id
+      // archivé, dépricé, détypé ou d'une autre société n'est JAMAIS appliqué
+      // — le reducer ne va chercher aucun chiffre lui-même (règle du module),
+      // c'est l'appelant qui lui apporte la liste. Sans liste (appelant qui ne
+      // la passe pas encore), rien n'est appliqué : le repli acier/alu
+      // ci-dessus reste seul aux commandes, comportement d'hier inchangé.
+      if (!s.touche.structure) {
+        const idLead = lead.structure_produit
+        const eligibles = action.structuresEligibles
+        if (idLead != null && idLead !== '' && Array.isArray(eligibles)
+            && eligibles.some((id) => String(id) === String(idLead))) {
+          s = { ...s, structureProduitId: String(idLead) }
+        }
       }
       // 5. Tension déjà posée par le tunnel (QXMT).
       if (!s.touche.tension) {
