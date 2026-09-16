@@ -539,6 +539,16 @@ class _Contexte:
             facteur_remise_du_devis, module_batterie_du_devis,
             plafond_toit_du_devis)
         self.module_batterie_kwh = module_batterie_du_devis(devis)
+        #: STKCAT8 — LA STRUCTURE RÉELLEMENT VENDUE par ce devis, lue sur ses
+        #: LIGNES (même principe que ``module_batterie_kwh`` juste au-dessus).
+        #: Sans elle, les cartes Éco et Max étaient chiffrées en ACIER par
+        #: défaut alors que le devis vend de l'aluminium (ou une pergola) :
+        #: trois cartes, deux matériaux, un client qui lit deux prix pour la
+        #: même installation. ``None`` (aucune ligne structure) ⇒ comportement
+        #: d'hier.
+        from apps.ventes.domain.composition import (
+            structure_produit_id_du_devis)
+        self.structure_produit_id = structure_produit_id_du_devis(devis)
         self.facteur_remise = facteur_remise_du_devis(devis)
         #: Ce que le commercial a DESSINÉ (``layout.result.panels``) — la cible
         #: de resynchronisation, PAS la contenance du toit.
@@ -607,6 +617,12 @@ class _Contexte:
             return composition_residentielle(
                 self.catalogue, kwc=kwc, panel_watt=self.panel_watt,
                 nb_panneaux=nb_panneaux, avec_batterie=avec_batterie,
+                # STKCAT8 — la structure DU DEVIS, jamais l'acier par défaut.
+                # ``getattr`` : les fixtures de test qui simulent un contexte
+                # (``SimpleNamespace``) ne portent pas l'attribut, et un
+                # contexte sans structure doit composer comme hier.
+                structure_produit_id=getattr(
+                    self, 'structure_produit_id', None),
                 structure_type='acier', taux_tva=_TVA_REPLI,
                 avertissements=[], deux_options=False, marques=self.marques,
                 ordre_lignes=self.ordre,

@@ -509,6 +509,21 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': 'taux_tva / remise_globale invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # STKCAT8 — le chemin 3D était MUET sur la structure : il ne
+        # transmettait NI l'id du produit choisi NI le type, donc tout devis né
+        # du calepinage était composé en ACIER par défaut, quoi qu'ait choisi le
+        # commercial. Valeur non numérique ⇒ ignorée (repli sur le type), jamais
+        # un 500 ; l'id est résolu dans le catalogue DÉJÀ scopé société, côté
+        # composition (un id d'une autre société n'y désigne rien).
+        _brut_structure_id = request.data.get('structure_produit_id')
+        try:
+            structure_produit_id = (
+                int(_brut_structure_id)
+                if _brut_structure_id not in (None, '') else None)
+        except (TypeError, ValueError):
+            structure_produit_id = None
+        structure_type = request.data.get('structure_type') or 'acier'
+
         # QJ17 — pre-flight composition check: validate catalogue before building.
         composition_errors = validate_composition_for_layout(layout, company)
         if composition_errors:
@@ -557,6 +572,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             layout=layout, user=request.user, company=company,
             lead=lead_obj, client=client_obj,
             taux_tva=taux_tva, remise_globale=remise,
+            structure_produit_id=structure_produit_id,
+            structure_type=str(structure_type),
             phase=normaliser_phase(getattr(lead_obj, 'raccordement', None)))
 
         # QJ17 — persist the layout hash on the newly-created devis so future

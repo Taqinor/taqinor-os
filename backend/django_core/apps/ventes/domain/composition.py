@@ -1487,9 +1487,50 @@ def _classe_kit_de_ligne(ligne):
     ensuite) mais rendue par le classifieur PARTAGÉ ``classer_produit`` — celui
     de la composition et du moteur PDF. Une classe inventée ici ferait diverger
     « ce qu'on croit avoir » de « ce que le PDF montre ».
+
+    STKCAT8 — DERNIER RECOURS, et le MÊME que celui de la composition
+    (STKCAT7) : quand NI la désignation NI le nom du produit ne disent rien,
+    la CATÉGORIE TYPÉE tranche. Sans lui, un devis qui vend une PERGOLA
+    s'entendrait dire que sa structure « manque au catalogue » et se verrait
+    ajouter une SECONDE ligne de structure, en acier — la réparation de kit
+    casserait exactement le devis qu'elle prétend compléter. L'ordre est
+    inchangé : le nom garde la main, la catégorie ne parle qu'en dernier.
     """
     return (classer_produit(ligne.designation or '')
-            or classer_produit(getattr(ligne.produit, 'nom', '') or ''))
+            or classer_produit(getattr(ligne.produit, 'nom', '') or '')
+            or ('structure'
+                if _type_equipement(getattr(ligne, 'produit', None))
+                == TYPE_EQUIPEMENT_STRUCTURE else None))
+
+
+def structure_produit_id_du_devis(devis):
+    """STKCAT8 — L'ID DU PRODUIT DE STRUCTURE que ce devis VEND, ou ``None``.
+
+    LECTURE, JAMAIS UNE RECOMPOSITION — exactement le principe de
+    ``module_batterie_du_devis`` (BATHOMO, « the battery-related features in
+    the quote web page should ALWAYS use the quote items ») appliqué à la
+    structure : les cartes de taille, les balayages et la réparation de kit
+    doivent servir la structure des LIGNES RÉELLES, pas celle qu'un toggle par
+    défaut re-choisirait. C'est ce qui empêche un devis ALUMINIUM de recevoir
+    une carte Éco/Max chiffrée en ACIER.
+
+    La ligne est reconnue par :func:`_classe_kit_de_ligne` — donc par le
+    classifieur PARTAGÉ d'abord, la catégorie typée en dernier recours. La
+    PREMIÈRE ligne structure rencontrée fait foi (un devis n'en vend qu'une).
+    Ne lève jamais : un devis non sauvegardé, détaché ou sans ligne rend
+    ``None``, et l'appelant retombe alors sur son comportement d'hier.
+    """
+    try:
+        lignes = _lignes_produit(devis)
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+        return None
+    for ligne in lignes:
+        produit = getattr(ligne, 'produit', None)
+        if produit is None:
+            continue
+        if _classe_kit_de_ligne(ligne) == 'structure':
+            return getattr(produit, 'pk', None)
+    return None
 
 
 def _est_au_prix_catalogue(ligne):
@@ -1624,6 +1665,13 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     # définition, jamais une seconde lecture d'``etude_params['gamme']``.
     from apps.ventes.domain.gammes import gamme_nom
     gamme_devis = gamme_nom(devis)
+    # STKCAT8 — ET IL HÉRITE AUSSI DE LA STRUCTURE DU DEVIS. Sans elle,
+    # l'intention partait sur le défaut ``structure_type='acier'`` : un devis
+    # aluminium (ou à pergola) dont une SEULE option manquait sa ligne
+    # structure se la voyait compléter EN ACIER, c'est-à-dire avec un matériau
+    # que ce devis ne vend pas. ``None`` (aucune ligne structure encore
+    # vendue) ⇒ comportement d'hier, strictement inchangé.
+    structure_devis = structure_produit_id_du_devis(devis)
 
     # Les lignes ajoutées se rangent APRÈS l'existant — sections et notes
     # COMPRISES : l'ordre d'affichage du commercial n'est jamais réécrit, et
@@ -1667,15 +1715,26 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
             # QJR221 — la GAMME du devis (PVMRQ) : sans elle, la carte des
             # marques était celle par défaut de la société.
             gamme_nom_devis=gamme_devis,
+            # STKCAT8 — la structure RÉELLEMENT vendue par ce devis.
+            structure_produit_id=structure_devis,
             # PVOND — ce chemin SAIT avertir : un vivier batterie vide remonte
             # à l'écran plutôt que de disparaître dans un kit silencieusement
             # amputé.
             avertissements=avertissements,
             variante=vue['variante'],
         ))
+        roles_attendu = list(getattr(attendu, 'roles', ()) or ())
         par_classe = {}
-        for spec in attendu:
+        for index, spec in enumerate(attendu):
             classe = classer_produit(spec.designation)
+            # STKCAT8 — un produit que le NOM ne classe pas (une pergola) est
+            # quand même une structure : c'est le RÔLE ÉMIS par la composition
+            # qui le dit. Sans ce repli, la structure composée serait invisible
+            # ici et le kit se plaindrait d'une structure « absente du
+            # catalogue » alors qu'elle vient d'être choisie.
+            if classe is None and index < len(roles_attendu):
+                if str(roles_attendu[index]).startswith('structure'):
+                    classe = 'structure'
             if classe and classe not in par_classe:
                 par_classe[classe] = spec
 

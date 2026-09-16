@@ -728,7 +728,8 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
 def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
                      remise_globale=Decimal('0'), target_kwc=None,
                      scenario=None, etude_extra=None, plafond_toit=None,
-                     journal_auto=None, origine=None):
+                     journal_auto=None, origine=None,
+                     structure_produit_id=None, structure_type='acier'):
     """Crée un devis RÉSIDENTIEL automatiquement dimensionné depuis la fiche lead.
 
     Dimensionne le champ PV par le MOTEUR HORAIRE (ordre fondateur du
@@ -1005,6 +1006,14 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         scenario=choix_batterie or 'les_deux', taux_tva=taux_tva,
         phase=phase_client,
         hors_reseau=hors_reseau,
+        # STKCAT8 — LA STRUCTURE DESCEND SUR LES DEUX POINTS DE COMPOSITION.
+        # Ce chemin en avait DEUX (ce dry-run, qui contrôle les marques, et
+        # l'``IntentionDevis`` finale qui écrit les lignes) et n'en informait
+        # AUCUN : le devis automatique composait toujours de l'acier. Les
+        # transmettre tous les deux est ce qui interdit à l'aperçu et au devis
+        # de diverger.
+        structure_produit_id=structure_produit_id,
+        structure_type=structure_type,
         # L-2OPT — le DRY-RUN voit EXACTEMENT la composition qui sera créée,
         # fusion comprise : sans cela il contrôlerait les marques d'un kit qui
         # n'est pas celui du devis.
@@ -1075,6 +1084,11 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
         remise_globale=remise_globale,
         phase=phase_client,
         hors_reseau=hors_reseau,
+        # STKCAT8 — le SECOND point de composition de ce chemin (cf. le
+        # dry-run ci-dessus) : la MÊME structure, sinon l'aperçu contrôlé et
+        # le devis écrit ne seraient plus le même kit.
+        structure_produit_id=structure_produit_id,
+        structure_type=structure_type,
     ))
     devis = resultat['devis']
     # U3 — ce que la composition ET l'écrivain de lignes ont REFUSÉ de faire
