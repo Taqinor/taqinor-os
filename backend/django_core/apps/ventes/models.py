@@ -673,6 +673,40 @@ class LigneDevis(models.Model):
                   "commercial : aucun rafraîchissement tarifaire ne l'écrase "
                   "(décision fondateur D12).")
 
+    # ── STKCAT23 — LE RÔLE DE LA LIGNE, ÉCRIT À SA CRÉATION ────────────────
+    # Le rôle d'une ligne (« panneau », « batterie », « structure »…) était
+    # RE-DEVINÉ par mots-clés à CHAQUE lecture — une fois par le répartiteur
+    # d'options du PDF, une fois par la table d'icônes, une fois par les paniers
+    # du noyau monnaie. Trois devinettes sur une désignation qu'un commercial
+    # peut éditer à la main après coup : « Structure pergola » renommée
+    # « Pergola alu » et la ligne changeait de panier sans que rien ne le dise.
+    #
+    # Le rôle est donc FIGÉ à la création, depuis la résolution à trois rangs
+    # (``core.product_roles.role_effectif`` : rôle déclaré du produit, puis
+    # famille de sa catégorie, puis mots-clés). Les lectures d'aval le prennent
+    # EN PREMIER et gardent leurs tables de mots-clés en REPLI PERMANENT.
+    #
+    # NULL = ligne historique (aucun backfill) ET lignes créées hors de
+    # ``apps.ventes`` (``apps.cpq.services`` écrit ses lignes en direct, par
+    # conception) : les deux retombent sur les mots-clés, comportement
+    # strictement inchangé — exactement le contrat de ``variante`` ci-dessus.
+    #
+    # UNE CONTRADICTION ENTRE LE RÔLE ET LA DÉSIGNATION EST UN AVERTISSEMENT,
+    # JAMAIS UN ÉCRASEMENT : la ligne reste où son rôle la met et la
+    # contradiction est journalisée. Retirer une ligne d'un panier la ferait
+    # disparaître du document — l'invariant du moteur est qu'aucune ligne,
+    # aucun dirham ne s'évapore entre le devis et son PDF.
+    # ``ROLES_DEVIS`` et pas ``ROLES_AUTO_COMPOSITION`` : le second est son
+    # ALIAS, déclaré bien plus bas dans ce fichier (il n'existe pas encore à ce
+    # point du chargement). Même tuple, mêmes valeurs — voir STKCAT21.
+    role_devis = models.CharField(
+        max_length=32, choices=[(role, role) for role in ROLES_DEVIS],
+        null=True, blank=True,
+        verbose_name='Rôle de la ligne',
+        help_text="Rôle de composition FIGÉ à la création de la ligne. Vide = "
+                  "rôle non résolu : les mots-clés de la désignation décident, "
+                  "comme avant.")
+
     # ── NTCPQ18 — Rattachement à un LOT (site/bâtiment) — additif, optionnel ──
     # NULL = ligne « hors lot » (comportement historique strictement inchangé :
     # un devis sans lot ne connaît aucun sous-total de lot).

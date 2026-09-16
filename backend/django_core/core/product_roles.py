@@ -277,3 +277,52 @@ def est_panneau(nom, exclut=None):
     if 'module' in d and any(q in d for q in PANNEAU_MODULE_QUALIFIERS):
         return True
     return bool(any(m in d for m in PANNEAU_MARQUES) and WATT_RE.search(d))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# STKCAT23 — LE RÔLE DIT À QUELLE OPTION UNE LIGNE APPARTIENT
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Un devis résidentiel « Les deux » propose DEUX kits : « sans batterie » et
+# « avec batterie ». L'appartenance d'une ligne à l'un ou à l'autre était
+# décidée par MOTS-CLÉS sur sa désignation
+# (``apps.ventes.utils.options.blob_va_dans_sans`` / ``...avec``) — une
+# désignation qu'un commercial peut éditer à la main après coup.
+#
+# Les deux tuples ci-dessous sont la MÊME règle exprimée sur le RÔLE, à
+# l'identique : « sans batterie » exclut la batterie, l'onduleur hybride et
+# l'onduleur AUTONOME (une option sans batterie sur un site isolé n'existe
+# pas) ; « avec batterie » exclut l'onduleur RÉSEAU. Les panneaux, la
+# structure et la pose restent dans les DEUX paniers — invariant du moteur.
+#
+# Les fonctions rendent ``None`` — « le rôle n'en dit rien » — quand la ligne
+# n'en porte pas ou porte une valeur hors vocabulaire. L'appelant retombe alors
+# sur ses mots-clés, ce qui rend toute ligne historique (rôle NULL) byte-
+# identique à hier.
+
+#: Rôles JAMAIS servis par l'option « sans batterie ».
+ROLES_EXCLUS_DU_PANIER_SANS = ('batterie', 'onduleur_hybride',
+                               'onduleur_offgrid')
+
+#: Rôles JAMAIS servis par l'option « avec batterie ».
+ROLES_EXCLUS_DU_PANIER_AVEC = ('onduleur_reseau',)
+
+
+def role_va_dans_sans(role):
+    """La ligne de rôle ``role`` entre-t-elle dans le panier « sans » ?
+
+    ``None`` = le rôle n'en dit rien (absent ou hors vocabulaire) : l'appelant
+    garde ses mots-clés, qui restent le REPLI PERMANENT.
+    """
+    role = role_declare(role)
+    if role is None:
+        return None
+    return role not in ROLES_EXCLUS_DU_PANIER_SANS
+
+
+def role_va_dans_avec(role):
+    """Miroir de :func:`role_va_dans_sans` pour le panier « avec »."""
+    role = role_declare(role)
+    if role is None:
+        return None
+    return role not in ROLES_EXCLUS_DU_PANIER_AVEC

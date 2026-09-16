@@ -951,10 +951,46 @@ def b64(src):
 def svg_uri(svg_str):
     return "data:image/svg+xml;base64," + base64.b64encode(svg_str.encode()).decode()
 
-def icon_img(des, _mar=""):
-    d = des.lower()
-    key = None
-    if   "panneaux"     in d: key = "panneaux"
+# STKCAT23 — LE RÔLE STOCKÉ D'UNE LIGNE → SA VIGNETTE. La table de mots-clés
+# ci-dessous est au PLURIEL (« panneaux », « structures », « socles ») parce
+# qu'elle lit une désignation de catalogue ; le vocabulaire de rôles, lui, est
+# au SINGULIER (« panneau », « structure », « socle »). C'est exactement le
+# genre d'écart qui faisait retomber une ligne « Panneau Jinko 710W » sur
+# l'icône générique. Les trois familles d'onduleur et les deux alias dépréciés
+# de structure partagent leur vignette : le PDF montre un équipement, pas une
+# topologie. Les deux rôles de CÂBLE sont volontairement ABSENTS — il n'existe
+# pas de vignette câble, ils doivent retomber sur le repli comme aujourd'hui.
+_ICONE_PAR_ROLE = {
+    "panneau":          "panneaux",
+    "batterie":         "batterie",
+    "smart_meter":      "smart meter",
+    "wifi_dongle":      "wifi",
+    "onduleur_reseau":  "onduleur",
+    "onduleur_hybride": "onduleur",
+    "onduleur_offgrid": "onduleur",
+    "structure":        "structures",
+    "structure_acier":  "structures",
+    "structure_alu":    "structures",
+    "socle":            "socles",
+    "accessoires":      "accessoires",
+    "tableau":          "tableau",
+    "installation":     "installation",
+    "transport":        "transport",
+    "suivi":            "suivi",
+}
+
+
+def icon_img(des, _mar="", role=None):
+    """La vignette d'une ligne : son RÔLE STOCKÉ d'abord, ses mots-clés ensuite.
+
+    ``role`` est le ``LigneDevis.role_devis`` transporté par l'item (STKCAT23).
+    Absent ou inconnu — toute ligne d'hier — la table de mots-clés décide, mot
+    pour mot comme avant : c'est un REPLI PERMANENT, pas une transition.
+    """
+    d = (des or "").lower()
+    key = _ICONE_PAR_ROLE.get(role or "")
+    if   key: pass
+    elif "panneaux"     in d: key = "panneaux"
     elif "batterie"     in d: key = "batterie"
     elif "smart meter"  in d: key = "smart meter"
     elif "wifi" in d or "dongle" in d: key = "wifi"
@@ -1562,7 +1598,9 @@ def equip_rows(items, totaux, hi_bat=False):
         # que le devis ne portait pas. La ligne s'affiche telle qu'elle est
         # factur\u00e9e ; la puissance vit dans la vignette \u00ab Puissance install\u00e9e \u00bb,
         # qui, elle, sait s'omettre.
-        ico = icon_img(des, mar); bdg = badge(mar)
+        # STKCAT23 — la vignette lit le RÔLE STOCKÉ de la ligne d'abord ; sans
+        # rôle (toute ligne d'hier), les mots-clés de la désignation décident.
+        ico = icon_img(des, mar, it.get("role_devis")); bdg = badge(mar)
         # M6 \u2014 la garantie vient de la FICHE PRODUIT, ou n'est pas affich\u00e9e.
         gar = (it.get("garantie") or "").strip() or _gar_de_la_fiche(it) or "\u2014"
         # Texte de garantie complet \u2014 il S'ENROULE dans la colonne, jamais
