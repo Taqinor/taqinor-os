@@ -357,7 +357,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0'),
                             deux_options=False, journal=None, phase=None,
                             dimensionnement_avec=None,
-                            mppt_paires=1, structure_type='acier'):
+                            mppt_paires=1, structure_type='acier',
+                            structure_produit_id=None):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
 
     ``mppt_paires`` / ``structure_type`` (QJR80) — les DEUX paramètres de
@@ -526,6 +527,9 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         taux_tva=taux_tva,
         remise_globale=remise_globale,
         structure_type=structure_type,
+        # STKCAT7 — le produit de structure CHOISI traverse la création comme
+        # il traverse le dry-run : les deux remplissent la MÊME intention.
+        structure_produit_id=structure_produit_id,
         mppt_paires=mppt_paires,
         phase=phase,
     ))
@@ -566,6 +570,7 @@ SCENARIOS_DEMANDABLES = ('sans', 'avec', 'les_deux')
 def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                                panel_watt=_AUTO_PANEL_WATT, scenario=None,
                                structure_type='acier',
+                               structure_produit_id=None,
                                taux_tva=Decimal('20'), mppt_paires=1,
                                gamme_nom_devis=None, phase=None,
                                dimensionnement_avec=None,
@@ -658,6 +663,9 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                   else (COMPOSITION_AVEC if avec_batterie
                         else COMPOSITION_SANS)),
         structure_type=structure_type,
+        # STKCAT7 — cf. ``build_devis_from_layout`` : MÊME intention des deux
+        # côtés, donc MÊME structure à l'aperçu et au devis.
+        structure_produit_id=structure_produit_id,
         taux_tva=taux_tva,
         mppt_paires=mppt_paires,
         # PVCOMPAT — le DRY-RUN doit voir la MÊME contrainte de raccordement

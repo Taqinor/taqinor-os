@@ -1046,8 +1046,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         fait qu'il n'existe plus « deux sortes de devis ».
 
         Corps : ``{kwc | nb_panneaux}`` + ``panel_watt?`` / ``scenario?`` /
-        ``structure_type?`` / ``taux_tva?`` / ``mppt_paires?`` /
-        ``dimensionnement_avec?``. La société est TOUJOURS celle du user (le
+        ``structure_produit_id?`` / ``structure_type?`` / ``taux_tva?`` /
+        ``mppt_paires?`` / ``dimensionnement_avec?``. STKCAT1 —
+        ``structure_produit_id`` (id ``stock.Produit``) est PRIORITAIRE sur
+        ``structure_type``, devenu un ALIAS DÉPRÉCIÉ ; le produit est résolu
+        dans le catalogue DÉJÀ scopé société, donc l'id d'une autre société ne
+        désigne rien. La société est TOUJOURS celle du user (le
         catalogue d'une autre société ne fuite jamais) ; les marques épinglées
         et l'ordre des lignes sont lus SERVEUR-SIDE dans les réglages Gammes,
         jamais acceptés du corps.
@@ -1121,6 +1125,17 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 status=status.HTTP_400_BAD_REQUEST)
 
         structure = request.data.get('structure_type') or 'acier'
+        # STKCAT1/STKCAT7 — l'id du produit de structure CHOISI. Une valeur non
+        # numérique est IGNORÉE (repli sur le toggle), jamais un 500 ; le
+        # scoping société est celui du CATALOGUE, posé côté composition (un id
+        # d'une autre société n'y résout simplement rien).
+        _brut_structure_id = request.data.get('structure_produit_id')
+        try:
+            structure_produit_id = (
+                int(_brut_structure_id)
+                if _brut_structure_id not in (None, '') else None)
+        except (TypeError, ValueError):
+            structure_produit_id = None
         # QJR-OFFGRID — drapeau ADDITIF et optionnel : le site est ISOLÉ
         # (onduleur autonome + batterie, option unique). Absent ⇒ dry-run
         # strictement inchangé. Cet endpoint n'a AUCUN lead en portée (il est
@@ -1138,6 +1153,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 panel_watt=float(panel_watt),
                 scenario=request.data.get('scenario'),
                 structure_type=str(structure),
+                structure_produit_id=structure_produit_id,
                 taux_tva=taux_tva,
                 mppt_paires=int(mppt_paires),
                 dimensionnement_avec=dimensionnement_avec,

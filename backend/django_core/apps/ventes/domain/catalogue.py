@@ -814,6 +814,14 @@ def catalogue_de_la_societe(company):
     # PVOND — la fiche technique est préchargée : le garde batterie data-driven
     # y lit la tension nominale, et la composition ne doit pas payer une
     # requête par batterie candidate.
+    # STKCAT7 — la CATÉGORIE l'est aussi, pour la MÊME raison : la composition
+    # lit désormais ``categorie.type_equipement`` sur chaque candidat (le rail
+    # « catégorie typée » qui fait entrer une pergola au vivier structure). Sans
+    # ce préchargement, la fonction PURE de composition déclencherait une
+    # requête PAR PRODUIT du catalogue. C'est LA source unique de la liste
+    # composée : tous les appelants (dry-run, création, balayages de tailles,
+    # réparation de kit) passent par ici.
     return list(Produit.objects.filter(
         Q(company=company) | Q(company__isnull=True),
-        is_archived=False).select_related('fiche_technique').order_by('id'))
+        is_archived=False).select_related(
+            'fiche_technique', 'categorie').order_by('id'))
