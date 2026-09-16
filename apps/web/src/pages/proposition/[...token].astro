@@ -1858,6 +1858,25 @@ const signConfig = ok
       apercuInterne,
     })
   : null;
+
+/* ── PREVIEW v2 « MAROC D'ABORD » (fondateur Reda, 2026-09-16) ────────────────
+   « I don't have any rule, I just want to be the best and for Morocco. »
+   La checklist anti-arnaque marocaine (prix TTC, marques/modèles, garanties,
+   délai, qui/adresse/SAV, références) doit être servie AVANT la longue traîne
+   analytique. Ces booléens sont les MÊMES expressions que les gardes des
+   chapitres correspondants — jamais une seconde condition qui pourrait
+   diverger : une puce d'ancre ne doit jamais pointer vers une section absente
+   du DOM. Aucun chiffre n'est calculé ici. */
+const showInstallationChapitre = !!(puissance || nbPanneaux || equipmentGroups.length > 0);
+const showEconomiesChapitre =
+  !isAgricole && !!headline && !!(headline.cumulative || headline.annual || paybackHero || prodKwh || synthese || showCouvertureDonut);
+const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
+  ...(showInstallationChapitre ? [{ href: '#installation', fr: 'Matériel', en: 'Equipment', ar: 'المعدات' }] : []),
+  ...(showEconomiesChapitre ? [{ href: '#economies', fr: 'Économies', en: 'Savings', ar: 'التوفير' }] : []),
+  { href: '#options', fr: 'Options', en: 'Options', ar: 'الخيارات' },
+  { href: '#confiance', fr: 'Taqinor', en: 'Taqinor', ar: 'تاقينور' },
+  { href: '#signer', fr: 'Signer', en: 'Sign', ar: 'التوقيع' },
+];
 ---
 
 <Layout
@@ -2107,10 +2126,70 @@ const signConfig = ok
             ) : null}
           </div>
 
+          {/* ── PREVIEW v2 · LA DÉCISION EST COMPLÈTE À L'ÉCRAN 1 ─────────────
+              Aurora/OpenSolar ouvrent sur 3-4 chiffres ; la divulgation
+              californienne exige le prix total sur la couverture. Les deux
+              cartes ci-dessus disent ce que ça COÛTE et ce que ça RAPPORTE ;
+              cette ligne dit ce que c'est — taille, production, couverture,
+              retour. Chaque valeur est une variable DÉJÀ calculée pour les
+              chapitres plus bas (`heroKwc`, `heroNbPanneaux`, `prodKwh`,
+              `couverture`, `paybackHero`) : rien n'est recalculé, rien ne peut
+              diverger, et chaque item est OMIS quand sa valeur n'est pas
+              réelle. C'est le récapitulatif mono-option de la version
+              précédente, remonté DANS le pli au lieu d'occuper un écran
+              entier juste en dessous. */}
+          {(heroKwc || prodKwh || (showCouvertureDonut && couverture) || (paybackHero && !ecoHero)) && (
+            <ul id="prop-fold-specs" class="cine-in cine-in-3 mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-lune-soft">
+              {heroKwc ? (
+                <li class="fig" dir="ltr">
+                  {formatNumber(heroKwc, 2)} kWc{heroNbPanneaux ? <> · {formatNumber(heroNbPanneaux)} <span class="text-lune-faint" data-i18n data-fr="panneaux" data-en="panels" data-ar="ألواح">panneaux</span></> : null}
+                </li>
+              ) : null}
+              {prodKwh ? (
+                <li class="fig" dir="ltr">
+                  {formatNumber(prodKwh)} <span class="text-lune-faint" data-i18n data-fr="kWh / an" data-en="kWh / year" data-ar="ك.و.س / سنة">kWh / an</span>
+                </li>
+              ) : null}
+              {showCouvertureDonut && couverture ? (
+                <li class="fig" dir="ltr">
+                  {formatPercent(couverture.pct, 0)} <span class="text-lune-faint" data-i18n data-fr="de vos besoins" data-en="of your needs" data-ar="من احتياجاتكم">de vos besoins</span>
+                </li>
+              ) : null}
+              {paybackHero && !ecoHero ? (
+                <li class="text-lune-faint" data-i18n
+                  data-fr={`Rentabilisé en ${paybackHero}`} data-en={`Paid back in ${paybackHero}`} data-ar={`يُسترد خلال ${paybackHero}`}>
+                  Rentabilisé en {paybackHero}
+                </li>
+              ) : null}
+            </ul>
+          )}
+
+          {/* WJ15 — la fenêtre de validité répond à « le prix tient-il ? » : sa
+              place est CONTRE le prix, pas dix lignes plus bas avec la
+              référence. Date backend réelle uniquement, jamais un
+              compte-à-rebours. */}
+          {validity.fromBackend && validity.label && !validity.expired && (
+            <p class="cine-in cine-in-3 mt-3 text-sm text-brass-300" data-i18n
+              data-fr={`Devis valable jusqu’au ${validity.label}`}
+              data-en={`Quote valid until ${validity.label}`}
+              data-ar={`العرض صالح حتى ${validity.label}`}>
+              Devis valable jusqu’au {validity.label}
+            </p>
+          )}
+
           <!-- WJ114 — UN CTA principal au-dessus du pli (même destination que le
                CTA collant : #signer si un prix réel existe, sinon le conseiller
                WhatsApp — jamais un devis à 0 MAD). -->
+          {/* ── PREVIEW v2 · DEUX SORTIES, PAS UNE ───────────────────────────
+              Un unique « Signer en ligne » sous le prix se lit, au Maroc, comme
+              la « vente flash » que les checklists anti-arnaque apprennent à
+              fuir : le client qui n'est pas prêt n'a nulle part où aller et
+              ferme la page. Le second bouton (MÊME taille, même rang) est la
+              sortie honnête — la conversation WhatsApp, qui est de toute façon
+              le vrai canal de décision ici. `waLinkDiscuss` existe déjà (bloc
+              contact plus bas) : aucun nouveau lien, aucun nouveau numéro. */}
           <div class="cine-in cine-in-3 mt-5">
+            <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             {heroHasRealPrice ? (
               <a
                 id="prop-fold-cta"
@@ -2134,6 +2213,22 @@ const signConfig = ok
                 Contacter mon conseiller
               </a>
             )}
+            {heroHasRealPrice ? (
+              <a
+                id="prop-fold-cta-wa"
+                href={waLinkDiscuss}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn-pill inline-flex w-full items-center justify-center gap-2 border-white/25 text-lune sm:w-auto"
+                data-contact-channel="whatsapp"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 18.1h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.37c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.83 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.23 8.23Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.51.11-.11.25-.29.37-.43.13-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43l-.48-.01c-.17 0-.43.06-.66.31-.23.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.57.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.14-1.18-.06-.1-.22-.16-.47-.28Z"/>
+                </svg>
+                <span data-i18n data-fr="Discuter sur WhatsApp" data-en="Chat on WhatsApp" data-ar="الدردشة على واتساب">Discuter sur WhatsApp</span>
+              </a>
+            ) : null}
+            </div>
             {/* PREVIEW DENSITE (2026-09-15) - le PDF est ce qui se transfere,
                 s'imprime et se montre a la famille. Avant, le SEUL point de
                 telechargement accessible avant signature vivait APRES le
@@ -2152,6 +2247,20 @@ const signConfig = ok
                 Télécharger le devis (PDF)
               </a>
             </p>
+            {/* ── PREVIEW v2 · SOMMAIRE CLIQUABLE ──────────────────────────────
+                Cette page est d'abord un aide-mémoire APRÈS l'appel, et une
+                preuve à transférer : le second lecteur arrive froid et cherche
+                UNE chose (le matériel, le prix, qui vous êtes). Cinq ancres
+                HTML pures — aucun JS, aucun état, aucune nouvelle section :
+                chaque puce ne s'affiche que si son chapitre existe (voir
+                `heroChips`). */}
+            <nav class="mt-4 flex flex-wrap gap-2" aria-label="Sommaire de la proposition">
+              {heroChips.map((c) => (
+                <a href={c.href}
+                  class="rounded-full border border-white/20 px-3 py-1.5 text-xs text-lune-soft transition-colors hover:border-brass-400/60 hover:text-white"
+                  data-i18n data-fr={c.fr} data-en={c.en} data-ar={c.ar}>{c.fr}</a>
+              ))}
+            </nav>
           </div>
 
           <!-- WJ114 — note personnelle du vendeur : dégrade à RIEN si absente. -->
@@ -2233,95 +2342,18 @@ const signConfig = ok
         </div>
       </section>
 
-      <!-- ── RÉCAPITULATIF « RECOMMANDÉ » — MONO-OPTION (fondateur, 29/08/2026) ─
-           « when only ONE option is sent, the info-dense card must NOT
-           disappear — start the page with the Recommandé card as an opening
-           summary ».
-
-           LE PROBLÈME. Quand le vendeur n'envoie qu'UNE taille, le contrat
-           `offres_tailles` est ABSENT (le seuil « deux tailles minimum » : une
-           section « Explorer d'autres tailles » qui n'en montre qu'une
-           n'explore rien) — et avec lui disparaissait la carte la plus DENSE
-           de la page, celle qui dit tout d'un coup d'œil. Le client d'une
-           mono-option lisait donc une page MOINS informative que celui d'une
-           multi-option, alors qu'il reçoit exactement la même offre.
-
-           CE QUE CE BLOC EST, ET N'EST PAS. C'est un RÉSUMÉ D'OUVERTURE, pas
-           un sélecteur : aucune bascule, aucun `aria-current`, aucun CTA « je
-           choisis celle-ci », aucun `data-taille-*` (l'îlot des tailles ne le
-           voit pas et ne peut pas le piloter). La page entière EN DESSOUS est
-           son détail — c'est pour cela qu'il ouvre au lieu de conclure.
-
-           ZÉRO DÉRIVATION NOUVELLE (garde PRÉSERVATION). Chaque valeur est une
-           variable DÉJÀ calculée pour le héros et les chapitres de cette page
-           (`heroTtc`, `ecoHero`, `paybackHero`, `heroKwc`, `heroNbPanneaux`,
-           `prodKwh`, `couverture`, la banque du simulateur) : rien n'est
-           recalculé, donc rien ne peut diverger d'un chiffre affiché plus bas.
-           Chaque item est OMIS quand sa valeur n'est pas réelle — jamais un
-           zéro de remplissage. Tout absent ⇒ le bloc n'existe pas.
-
-           Il ne s'affiche QUE sans `offres_tailles` : dès qu'il y a deux
-           tailles, les cartes de la section suivante jouent ce rôle et deux
-           récapitulatifs concurrents seraient une redondance, pas une aide. -->
-      {ok && !tailles && (heroTtc !== null || ecoHero || paybackHero || heroKwc || prodKwh) && (
-        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" data-recap-mono>
-          <h2 class="tech-label rule-brass text-brass-300" data-i18n
-            data-fr="Votre installation, en un coup d'œil" data-en="Your system at a glance" data-ar="منشأتكم في لمحة">
-            Votre installation, en un coup d'œil</h2>
-          <div class="cine-card cine-in mt-4 rounded-2xl p-6 shadow-premium sm:p-7"
-            style="border-color: rgb(232 181 74 / 0.35)">
-            <p class="text-sm text-lune-soft" data-i18n
-              data-fr="La configuration recommandée pour vous — tout le détail suit sur cette page."
-              data-en="The configuration we recommend for you — every detail follows on this page."
-              data-ar="التكوين الموصى به لكم — كل التفاصيل تتبع في هذه الصفحة.">
-              La configuration recommandée pour vous — tout le détail suit sur cette page.</p>
-            <dl class="mt-5 grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3">
-              {heroTtc !== null ? (
-                <div>
-                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Total TTC" data-en="Total (incl. tax)" data-ar="المجموع شامل الضريبة">Total TTC</dt>
-                  <dd class="fig lum mt-1 text-2xl" dir="ltr">{formatMAD(heroTtc)}</dd>
-                </div>
-              ) : null}
-              {ecoHero ? (
-                <div>
-                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Économie / an" data-en="Savings / year" data-ar="التوفير / سنة">Économie / an</dt>
-                  <dd class="fig mt-1 text-2xl text-lune" dir="ltr">{formatMAD(ecoHero)}</dd>
-                </div>
-              ) : null}
-              {paybackHero ? (
-                <div>
-                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</dt>
-                  <dd class="fig mt-1 text-2xl text-lune" dir="ltr">{paybackHero}</dd>
-                </div>
-              ) : null}
-              {heroKwc ? (
-                <div>
-                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Puissance" data-en="Power" data-ar="القدرة">Puissance</dt>
-                  <dd class="fig mt-1 text-xl text-lune-soft" dir="ltr">{formatNumber(heroKwc, 2)} kWc{heroNbPanneaux ? <span class="text-lune-faint"> · {formatNumber(heroNbPanneaux)} <span data-i18n data-fr="panneaux" data-en="panels" data-ar="ألواح">panneaux</span></span> : null}</dd>
-                </div>
-              ) : null}
-              {prodKwh ? (
-                <div>
-                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Production / an" data-en="Production / year" data-ar="الإنتاج / سنة">Production / an</dt>
-                  <dd class="fig mt-1 text-xl text-lune-soft" dir="ltr">{formatNumber(prodKwh)} kWh</dd>
-                </div>
-              ) : null}
-              {showCouvertureDonut && couverture ? (
-                <div>
-                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Couverture" data-en="Coverage" data-ar="التغطية">Couverture</dt>
-                  <dd class="fig mt-1 text-xl text-lune-soft" dir="ltr">{formatPercent(couverture.pct, 0)}</dd>
-                </div>
-              ) : null}
-              {showBatterySim && batterySimInitialN && batteryUnitCapacityLabel ? (
-                <div>
-                  <dt class="tech-label text-lune-faint" data-i18n data-fr="Batterie" data-en="Battery" data-ar="بطارية">Batterie</dt>
-                  <dd class="fig mt-1 text-xl text-lune-soft" dir="ltr">{formatNumber(batterySimInitialN)} × {batteryUnitCapacityLabel} kWh</dd>
-                </div>
-              ) : null}
-            </dl>
-          </div>
-        </section>
-      )}
+      {/* ── PREVIEW v2 · LE RÉCAPITULATIF MONO-OPTION REMONTE DANS LE PLI ──
+          (fondateur Reda, 2026-09-16 — « just be the best and for Morocco ».)
+          La section `data-recap-mono` (fondateur 29/08) republiait, sur un
+          écran entier juste sous le héros, six chiffres que le héros venait de
+          donner : Total TTC et Économie/an à l'identique, plus puissance,
+          production, couverture et batterie. Sa RAISON D'ÊTRE — « le client
+          mono-option ne doit pas lire une page moins informative » — est
+          SERVIE, et mieux : ces mêmes valeurs sont désormais DANS le pli
+          (`#prop-fold-figures` + `#prop-fold-specs` ci-dessus, mêmes variables,
+          aucun recalcul), et la batterie est nommée ligne par ligne dans « Ce
+          que vous recevez ». Ce qui disparaît est la répétition, pas
+          l'information. */}
 
       <!-- ── TAILLES · « EXPLORER D'AUTRES TAILLES » (fondateur, 26/08/2026) ──
            APERÇU D'ABORD (fondateur, 26/08/2026) : cette section vient
