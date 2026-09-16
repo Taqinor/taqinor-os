@@ -19,14 +19,14 @@ Ce qui devient ROUGE
    PACT10 : le backend sert `foo`, la page en attend `bar`).
 2. Une clé déclarée qui CHANGE DE NATURE en silence (un objet devenu texte,
    une liste devenue objet) — le consommateur casse sans que rien ne l'ait dit.
-3. Une des 44 clés de BASE qui DISPARAÎT de la réponse.
+3. Une des 46 clés de BASE qui DISPARAÎT de la réponse.
 4. Une clé ADDITIVE servie à `null` (le contrat, bloc `additif_vs_null` : une
    clé de base sans rien à montrer vaut `null` et RESTE ; une clé additive sans
    rien à montrer est ABSENTE — jamais `"bankable": null`).
 
 Ce qui reste VERT, volontairement
 ---------------------------------
-* Une clé ADDITIVE absente : les ~17 clés additives dépendent de ce que le
+* Une clé ADDITIVE absente : les ~20 clés additives dépendent de ce que le
   devis porte et des cases du dialogue d'envoi. Exiger leur présence ferait
   dépendre le test du hasard de la fixture, pas du contrat.
 * Une clé de base à `null` : c'est la forme déclarée du « rien à montrer ».
@@ -72,8 +72,8 @@ EXEMPLES = ('exemple', 'exemple_standard', 'exemple_sections_masquees')
 #: Compté sur le code serveur au moment du contrat (QJR3, 29/08/2026) ET
 #: écrit dans `notes.structure_de_la_reponse`. Si ces deux nombres bougent,
 #: le contrat ET cette constante changent ensemble — jamais l'un sans l'autre.
-NB_CLES_BASE = 44
-NB_CLES_ADDITIVES = 17
+NB_CLES_BASE = 46
+NB_CLES_ADDITIVES = 20
 
 #: Les clés que l'échantillon déclare pour les réponses d'ERREUR, jamais pour
 #: la charge utile 200 (contrat, bloc `notes.cle_detail`). QJR228 (31/08/2026)
@@ -267,7 +267,7 @@ def sample_layout():
 # ═══════════════════════════════════════════════════════════════════════════
 
 class TestContratLisible(TestCase):
-    def test_le_contrat_declare_44_cles_de_base_et_17_additives(self):
+    def test_le_contrat_declare_46_cles_de_base_et_20_additives(self):
         base, additives, _natures = charger_contrat()
         self.assertEqual(
             len(base), NB_CLES_BASE,

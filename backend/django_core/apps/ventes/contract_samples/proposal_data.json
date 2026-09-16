@@ -3,15 +3,16 @@
   "forme_serveur": "complete",
   "pourquoi": "QJR3 (M0, audit L3 du 29/08/2026) — `apps/ventes/public_views.py::proposal_data` (~lignes 2343-2906) est un dict ASSEMBLÉ À LA MAIN, sans sérialiseur et sans forme déclarée (un commentaire à ~2961-2967 reconnaît que le générateur DRF ne sait pas l'introspecter). CE CONTRAT NE LE CONVERTIT PAS en sérialiseur DRF — chantier séparé, bien plus gros — il POSE la carte clé → nature de ce qu'il renvoie RÉELLEMENT aujourd'hui, dérivée d'une lecture du code (pas d'une exécution), pour que le test de forme QJR7 (M1, PAS dans ce commit) puisse vérifier le serveur contre cette carte au lieu que chaque consommateur (la page publique `apps/web`, les tests) invente sa propre hypothèse — l'incident PACT10 du 03/08/2026, rejoué. M0 reste docs-only : aucun test, aucun code de production dans ce commit.",
   "notes": {
-    "structure_de_la_reponse": "44 clés TOUJOURS présentes (littéral `payload = {...}`, public_views.py:2531-2710, plus `niveau_masque` posée juste avant le retour à la ligne 2897) + 17 clés ADDITIVES conditionnées par section/donnée disponible (posées une à une par `if X is not None: payload['clef'] = X`, lignes 2716-2892 — jamais un `null` explicite : la clé est ABSENTE tout court quand rien n'est calculable ou que la case du dialogue d'envoi correspondante est décochée). Les deux niveaux de partage (`standard`/`confiance`, champ `niveau`) servent le MÊME jeu de clés — la dégradation `standard` simplifie le CONTENU de `quote`/`sld_svg`/`conception_electrique` (agrégation en un kit, calibres retirés) et le documente dans `niveau_masque`, elle ne retire AUCUNE clé de la carte ci-dessous. Seules les cases du dialogue d'envoi (`ShareLink.sections`) retirent des clés — additivement, indépendamment du niveau.",
-    "cles_additives_15_a_17": "Les ~15-17 clés additives (le nombre exact dépend de la façon dont on compte `dimensionnement_options`/`production_par_option`, toujours posées ENSEMBLE par le même bloc `if`) : `bankable`, `courbes_journalieres`, `economies_mensuelles`, `tranche_tarifaire`, `batterie_regime`, `balayage_stockage`, `profils_comparatifs`, `economies_periodes`, `estimation_conso`, `jours_types`, `dimensionnement_options`, `production_par_option`, `paliers_batterie`, `couverture_batterie`, `offres_tailles`, `calepinage_options`, `parametres_site`.",
+    "structure_de_la_reponse": "46 clés TOUJOURS présentes (littéral `payload = {...}`, public_views.py:2531-2710, plus `niveau_masque` posée juste avant le retour à la ligne 2897) + 20 clés ADDITIVES conditionnées par section/donnée disponible (posées une à une par `if X is not None: payload['clef'] = X`, lignes 2716-2892 — jamais un `null` explicite : la clé est ABSENTE tout court quand rien n'est calculable ou que la case du dialogue d'envoi correspondante est décochée). Les deux niveaux de partage (`standard`/`confiance`, champ `niveau`) servent le MÊME jeu de clés — la dégradation `standard` simplifie le CONTENU de `quote`/`sld_svg`/`conception_electrique` (agrégation en un kit, calibres retirés) et le documente dans `niveau_masque`, elle ne retire AUCUNE clé de la carte ci-dessous. Seules les cases du dialogue d'envoi (`ShareLink.sections`) retirent des clés — additivement, indépendamment du niveau.",
+    "cles_additives_15_a_17": "Les ~18-20 clés additives (le nombre exact dépend de la façon dont on compte `dimensionnement_options`/`production_par_option`, toujours posées ENSEMBLE par le même bloc `if`) : `bankable`, `courbes_journalieres`, `economies_mensuelles`, `tranche_tarifaire`, `batterie_regime`, `balayage_stockage`, `profils_comparatifs`, `economies_periodes`, `estimation_conso`, `jours_types`, `dimensionnement_options`, `production_par_option`, `paliers_batterie`, `couverture_batterie`, `offres_tailles`, `calepinage_options`, `parametres_site`, `acompte`, `date_validite`, `conditions`.",
     "portee_de_quote": "`quote` republie PRESQUE tout le dict interne du moteur (`build_quote_data`, moins les clés confidentielles/internes retirées par `_sans_cles_internes`/`_strip_confidential_deep`/`_sans_internes_bancables` — jamais de `prix_achat`/`marge`, règle #4). Sa forme INTERNE (des dizaines de clés : `sans_items`/`avec_items`, la chaîne HT→TVA→TTC, les séries de cashflow…) est HORS PÉRIMÈTRE de ce contrat — c'est l'objet interne du moteur, documenté par d'autres contrats existants (`apps/ventes/contract_samples/devis_composition.json` pour la forme d'une ligne, `devis_totaux.json` pour la chaîne argent) : ce fichier-ci documente la carte du dict `proposal_data` qui EMBALLE `quote`, pas `quote` lui-même.",
     "cles_avec_contrat_dedie": "Six des clés additives ont DÉJÀ leur propre contrat PACT10, plus détaillé que ce qui est repris ci-dessous (repris ici en version COMPACTE, illustrative de la NATURE seulement — le contrat dédié fait foi sur la forme complète) : `variantes_servables.json`, `profils_comparatifs.json`, `offres_tailles.json`, `calepinage_options.json`, `paliers_batterie.json`, `couverture_batterie.json`. `conception_electrique.json` documente de même la clé de BASE `conception_electrique`.",
-    "additif_vs_null": "Distinction importante que `exemple`/`exemple_standard`/`exemple_sections_masquees` illustrent ensemble : une clé de BASE (les 44) qui n'a rien à montrer vaut `null` (elle reste dans la réponse — ex. `roof_image_url: null`) ; une clé ADDITIVE (les ~17) qui n'a rien à montrer est ABSENTE de la réponse (elle n'apparaît PAS du tout — jamais `\"bankable\": null`). Un consommateur qui teste `'bankable' in reponse` pour savoir si le bloc bancable existe, et `reponse.roof_image_url === null` pour savoir si la photo manque, lit donc le contrat correctement.",
+    "additif_vs_null": "Distinction importante que `exemple`/`exemple_standard`/`exemple_sections_masquees` illustrent ensemble : une clé de BASE (les 46) qui n'a rien à montrer vaut `null` (elle reste dans la réponse — ex. `roof_image_url: null`) ; une clé ADDITIVE (les ~20) qui n'a rien à montrer est ABSENTE de la réponse (elle n'apparaît PAS du tout — jamais `\"bankable\": null`). Un consommateur qui teste `'bankable' in reponse` pour savoir si le bloc bancable existe, et `reponse.roof_image_url === null` pour savoir si la photo manque, lit donc le contrat correctement.",
     "argent": "Règle #4 partout : aucune clé de cette carte, à aucun niveau d'imbrication, ne porte `prix_achat` ni une marge — uniquement des montants CLIENT (TTC, ou HT explicitement nommé).",
     "futur_test_de_forme": "QJR7 (M1) écrit le test qui exerce CETTE carte contre le code serveur réel — il n'est délibérément pas construit ici (M0 reste contrats seuls, aucun test).",
     "forme_serveur_qjr228": "`\"forme_serveur\": \"complete\"` (en tête de ce document) est ce qui SORT cet échantillon du chemin « doute → vert » de `scripts/check_api_shapes.py`. Avant QJR228, la garde n'appariait un exemple qu'aux routes réellement appelées par `frontend/src/api/*.js` ; cette route-ci n'est servie qu'au site public (`apps/web`, TypeScript), donc elle n'avait AUCUNE forme connue et l'échantillon était simplement sauté — la principale charge utile client de la page proposition n'était confrontée à rien, contrairement à ce qu'affirmait la docstring QJR110. La déclaration fait lire la vue `public_views.py::proposal_data` en AST (à travers l'enveloppe `_noindex(Response(payload))`) et comparer DANS LES DEUX SENS : un renommage de clé côté serveur rougit. Les SEPT autres échantillons qui partagent cet `endpoint` (`offres_tailles.json`, `couverture_batterie.json`, `dimensionnement_options.json`, `calepinage_options.json`, `paliers_batterie.json`, `profils_comparatifs.json`, `variantes_servables.json`) ne documentent QU'UNE clé additive chacun : ils ne déclarent rien et gardent le comportement d'avant (ils peuvent l'écrire `\"forme_serveur\": \"partielle\"`).",
-    "cle_detail": "`detail` figure dans `exemple` (à `null`) parce que la forme lue côté serveur est l'UNION de tout ce que la vue peut renvoyer, réponses d'erreur comprises : jeton expiré/invalide et proposition indisponible répondent `{\"detail\": \"…\"}` en 404, OTP de lecture non vérifié en 403. Même convention que `apps/ventes/contract_samples/etude_horaire.json`, dont `detail` n'apparaît que sur le 400. Cela ne contredit pas `structure_de_la_reponse` : sur une réponse 200, les 44 clés de base sont là et `detail` n'y est pas."
+    "cle_detail": "`detail` figure dans `exemple` (à `null`) parce que la forme lue côté serveur est l'UNION de tout ce que la vue peut renvoyer, réponses d'erreur comprises : jeton expiré/invalide et proposition indisponible répondent `{\"detail\": \"…\"}` en 404, OTP de lecture non vérifié en 403. Même convention que `apps/ventes/contract_samples/etude_horaire.json`, dont `detail` n'apparaît que sur le 400. Cela ne contredit pas `structure_de_la_reponse` : sur une réponse 200, les 46 clés de base sont là et `detail` n'y est pas.",
+    "preview_v3_conditions_avant_signature": "PREVIEW-V3 (16/09/2026) — cinq clés ajoutées pour que le client sache AVANT de signer ce qu'il ne découvrait qu'après (ou seulement dans le PDF). ADDITIVES (absentes si incalculables, jamais `null`) : `acompte` = la PREMIÈRE tranche réelle de l'échéancier (`apps.ventes.utils.echeancier.next_tranche` — LE même helper `_acompte_publique` qu'utilise désormais le payload de succès post-signature, donc deux chiffres ne peuvent plus diverger ; jamais `deposit.compute_deposit()`), `date_validite` = l'échéance réelle en ISO (`apps.ventes.utils.expiry.date_expiration`, jusqu'ici calculée mais jamais exposée — DOC art. 65-4 §2), `conditions` = les puces « Conditions générales du devis » du PDF en texte, substituées depuis LE même littéral (`quote_engine.generate_devis_premium.DEFAULT_DOC_TEXTS['cgv_bullets']`) puis dé-échappées. DE BASE (toujours présentes, donc 46 et non 44) : `paiement_moyens` = constante `[\"virement\", \"cheque\"]` — jamais « espèces » (art. 193 CGI : au-delà de 20 000 MAD l'amende de 6 % est pour LE VENDEUR) et JAMAIS le RIB avant signature ; `confirmation_email` = bool disant si `domain.cycle_vie._send_acceptance_emails` écrira vraiment à CE client (`if dest:` sur `devis.client.email`) — la page ne promet l'accusé de réception que quand il partira (loi 31-08 art. 32)."
   },
   "exemple": {
     "niveau": "confiance",
@@ -209,6 +210,20 @@
     "parametres_site": {
       "orientation": "Sud", "inclinaison_deg": 30, "source_irradiation": "PVGIS"
     },
+    "acompte": {
+      "pourcentage": "30.00", "ttc": "3240.00", "libelle": "Acompte"
+    },
+    "date_validite": "2026-10-15",
+    "conditions": [
+      "Validité de l’offre : jusqu’au 15/10/2026",
+      "Acompte à la commande : 30%",
+      "60% à la réception du matériel",
+      "10% après la mise en marche",
+      "TVA 20 % appliquée sur l'ensemble des équipements et travaux.",
+      "Tarifs de référence : barème ONEE/SRM"
+    ],
+    "paiement_moyens": ["virement", "cheque"],
+    "confirmation_email": true,
     "detail": null
   },
   "exemple_standard": {
@@ -279,7 +294,9 @@
       "avec": [1100, 1050, 1200, 1250, 1320, 1400, 1480, 1450, 1300, 1200, 1120, 1080],
       "total_sans": 11430, "total_avec": 14950, "devise": "MAD", "modele": "horaire", "estimation": false,
       "note": "Estimation basée sur votre profil de consommation et la production estimée de votre installation, répartie sur les douze mois selon un profil saisonnier type."
-    }
+    },
+    "paiement_moyens": ["virement", "cheque"],
+    "confirmation_email": true
   },
   "exemple_sections_masquees": {
     "niveau": "confiance",
@@ -325,6 +342,8 @@
     "resync_apres_envoi": null,
     "options_proposees": null,
     "lignes_structure": null,
-    "niveau_masque": []
+    "niveau_masque": [],
+    "paiement_moyens": ["virement", "cheque"],
+    "confirmation_email": false
   }
 }

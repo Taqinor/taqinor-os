@@ -2837,6 +2837,123 @@ def _economies_mensuelles_calcul(devis, data, niveau=ShareLink.NIVEAU_CONFIANCE)
     }
 
 
+#: PREVIEW-V3 (16/09/2026) — moyens de règlement PROPOSABLES au client avant
+#: signature. Constante, jamais dérivée d'une saisie : l'art. 193 du CGI
+#: interdit d'encaisser plus de 20 000 MAD en espèces (amende de 6 % à la
+#: charge DU VENDEUR), donc « espèces » n'apparaît nulle part côté client.
+#: Le RIB reste POST-signature (`_deposit_success_payload`) : rien à virer
+#: tant que la commande n'est pas ferme.
+PAIEMENT_MOYENS_PUBLICS = ('virement', 'cheque')
+
+
+def _acompte_publique(devis, lignes=None):
+    """PREVIEW-V3 — la PREMIÈRE tranche de l'échéancier, telle qu'elle sera
+    facturée, ou ``None`` si elle n'est pas calculable.
+
+    SOURCE UNIQUE : ``apps.ventes.utils.echeancier.next_tranche`` — exactement
+    la fonction qui alimentait déjà l'écran de succès POST-signature
+    (``_deposit_success_payload``, QX33be) et la facturation. Jamais
+    ``deposit.compute_deposit()`` (30 % forfaitaires, échafaudage PSP) : la
+    page client ne montre QUE le chiffre que le devis facturera vraiment.
+
+    Best-effort : toute exception rend ``None`` (clé ABSENTE côté payload,
+    jamais ``null`` — règle `additif_vs_null` du contrat).
+    """
+    from decimal import Decimal
+    try:
+        from .utils.echeancier import next_tranche
+        tr = next_tranche(devis, lignes=lignes)
+        if tr is None:
+            return None
+        return {
+            'pourcentage': str(Decimal(str(tr.get('pourcentage')))),
+            'ttc': str(Decimal(str(tr['ttc']))),
+            'libelle': str(tr.get('label') or ''),
+        }
+    except Exception:  # noqa: BLE001 — best-effort
+        return None
+
+
+def _conditions_publiques(data):
+    """PREVIEW-V3 — les puces « Conditions générales du devis » du PDF, en texte.
+
+    SOURCE UNIQUE : ``DEFAULT_DOC_TEXTS['cgv_bullets']`` du moteur vendoré —
+    LE littéral que le PDF imprime (``_cgv_bullets_html``). On ne le recopie
+    pas : on l'importe et on substitue les MÊMES marqueurs avec les MÊMES
+    valeurs que le rendu (``payment_terms`` / ``tva_note`` / ``valid_until``
+    du dict ``build_quote_data``), puis on dé-échappe les entités HTML pour
+    du JSON. Une puce vide (échéance inconnue) est omise, comme dans le PDF.
+
+    Le sens de l'import est celui du repo : l'app lit le moteur, JAMAIS
+    l'inverse (le moteur vendoré n'importe rien de ``apps`` et tourne aussi
+    en ``__main__``). On ne lit AUCUN global de rendu (``PAY_A``/``TVA_NOTE``
+    sont réécrits par chaque rendu sous verrou) — seulement le littéral.
+    """
+    import html as _html
+    try:
+        from .quote_engine.generate_devis_premium import DEFAULT_DOC_TEXTS
+        # Surcharge par société : MÊME source que le rendu, qui lit
+        # ``data['doc_texts']`` par-dessus les défauts (jamais un global).
+        _surcharges = (data or {}).get('doc_texts') or {}
+        gabarits = (
+            (_surcharges.get('cgv_bullets')
+             if isinstance(_surcharges, dict) else None)
+            or DEFAULT_DOC_TEXTS.get('cgv_bullets') or [])
+        terms = (data or {}).get('payment_terms') or {}
+        acompte = int(terms.get('acompte', 30))
+        materiel = int(terms.get('materiel', 60))
+        solde = int(terms.get('solde', 10))
+        tva_note = (data or {}).get('tva_note') or ''
+        valid_until = ((data or {}).get('valid_until') or '').strip()
+        validite_offre = (
+            f"Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au "
+            f"{valid_until}" if valid_until else '')
+        out = []
+        for brut in gabarits:
+            try:
+                txt = str(brut).format(
+                    acompte=acompte, materiel=materiel, solde=solde,
+                    tva_note=tva_note, validite_offre=validite_offre)
+            except (KeyError, IndexError, ValueError):
+                txt = str(brut)
+            txt = _html.unescape(txt).strip()
+            if txt:
+                out.append(txt)
+        return out or None
+    except Exception:  # noqa: BLE001 — best-effort
+        return None
+
+
+def _date_validite_publique(devis):
+    """PREVIEW-V3 — échéance RÉELLE du devis en ISO, ou ``None``.
+
+    ``apps.ventes.utils.expiry.date_expiration`` est déjà LA règle (date posée
+    sur le devis, sinon création + ``CompanyProfile.quote_validity_days``) :
+    elle décidait jusqu'ici du statut « expiré » sans jamais sortir la date.
+    DOC art. 65-4 §2 : sans date affichée, l'offre engage tant que le lien vit.
+    """
+    try:
+        from .utils.expiry import date_expiration
+        exp = date_expiration(devis)
+        return exp.isoformat() if exp else None
+    except Exception:  # noqa: BLE001 — best-effort
+        return None
+
+
+def _confirmation_email_publique(devis):
+    """PREVIEW-V3 — ce client recevra-t-il VRAIMENT un e-mail à l'acceptation ?
+
+    ``domain.cycle_vie._send_acceptance_emails`` n'envoie que ``if dest:``,
+    où ``dest = devis.client.email``. La page ne promet donc la confirmation
+    que quand l'adresse existe (loi 31-08 art. 32 : la confirmation écrite
+    plafonne la rétractation à 7 jours — la promettre à vide serait faux)."""
+    try:
+        client = getattr(devis, 'client', None)
+        return bool((getattr(client, 'email', '') or '').strip())
+    except Exception:  # noqa: BLE001 — best-effort
+        return False
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -3404,6 +3521,23 @@ def proposal_data(request, token):
             _conception_publique)
         if _parametres_site is not None:
             payload['parametres_site'] = _parametres_site
+        # PREVIEW-V3 (16/09/2026) — CE QUE LE CLIENT DOIT SAVOIR AVANT DE
+        # SIGNER, et qui n'existait jusqu'ici que dans le PDF ou après la
+        # signature : le montant de l'acompte, la date de validité, les
+        # conditions générales, les moyens de règlement, et s'il recevra
+        # vraiment une confirmation. Trois clés ADDITIVES (absentes quand
+        # incalculables, jamais `null`) + deux clés de base constantes.
+        _acompte = _acompte_publique(devis)
+        if _acompte is not None:
+            payload['acompte'] = _acompte
+        _date_validite = _date_validite_publique(devis)
+        if _date_validite is not None:
+            payload['date_validite'] = _date_validite
+        _conditions = _conditions_publiques(data)
+        if _conditions is not None:
+            payload['conditions'] = _conditions
+        payload['paiement_moyens'] = list(PAIEMENT_MOYENS_PUBLICS)
+        payload['confirmation_email'] = _confirmation_email_publique(devis)
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
         # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est
@@ -4271,13 +4405,15 @@ def _deposit_success_payload(devis, token):
         'card_payment_url': None,
     }
     try:
-        from .utils.echeancier import next_tranche
         from .deposit import deposit_protection_message
-        tr = next_tranche(devis)
+        # PREVIEW-V3 — MÊME helper que la page AVANT signature
+        # (`_acompte_publique`) : les deux côtés du parcours ne peuvent plus
+        # diverger d'un centime ni d'un pourcent.
+        tr = _acompte_publique(devis)
         if tr is not None:
-            acompte = Decimal(str(tr['ttc']))
-            payload['acompte_ttc'] = str(acompte)
-            payload['pourcentage'] = str(tr.get('pourcentage'))
+            acompte = Decimal(tr['ttc'])
+            payload['acompte_ttc'] = tr['ttc']
+            payload['pourcentage'] = tr['pourcentage']
             payload['message'] = deposit_protection_message(
                 acompte, reference=devis.reference)
     except Exception:  # noqa: BLE001 — best-effort
