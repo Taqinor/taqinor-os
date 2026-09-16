@@ -172,20 +172,17 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         self.assertEqual(avant['ttc'], apres['acompte_ttc'])
         self.assertEqual(avant['pourcentage'], apres['pourcentage'])
 
-    def test_acompte_jamais_servi_a_null_sur_un_devis_sans_ligne(self):
-        """Règle `additif_vs_null` du contrat : une clé additive sans rien à
-        montrer est ABSENTE — jamais `"acompte": null`. Un devis sans ligne
-        n'annonce donc aucun chiffre trompeur."""
+    def test_acompte_absent_sur_un_devis_sans_ligne(self):
+        """PREVIEW-V3-FIX (audit C7) — LA CLÉ EST ABSENTE, PAS À 0,00.
+
+        Règle `additif_vs_null` du contrat : une clé additive sans rien à
+        montrer est ABSENTE — jamais `"acompte": null`, et pas davantage
+        `{"ttc": "0.00"}`, qui est un chiffre là où il n'y en a aucun. Le test
+        d'avant acceptait les DEUX issues : il ne prouvait donc pas l'absence
+        que le contrat promet."""
         vide = self._devis('PV3002', avec_lignes=False)
         data = self._payload(ShareLink.for_devis(vide))
-        self.assertIsNotNone(
-            data.get('acompte', {}),
-            "une clé additive ne vaut JAMAIS `null` : elle est absente")
-        if 'acompte' in data:
-            self.assertEqual(Decimal(data['acompte']['ttc']),
-                             Decimal('0.00'),
-                             'un devis sans ligne ne peut pas porter '
-                             "d'acompte non nul")
+        self.assertNotIn('acompte', data)
 
     # ── date de validité ────────────────────────────────────────────────
     def test_date_validite_est_la_date_reelle_en_iso(self):

@@ -2888,6 +2888,13 @@ def _acompte_publique(devis, lignes=None):
         tr = next_tranche(devis, lignes=lignes)
         if tr is None:
             return None
+        # PREVIEW-V3-FIX (audit C7) — UN ACOMPTE DE 0,00 N'EST PAS UN ACOMPTE.
+        # Un devis sans ligne (ou à total nul) servait `{"ttc": "0.00"}` :
+        # le contrat annonce l'ABSENCE de la clé quand il n'y a rien à
+        # montrer (règle `additif_vs_null`), et le test d'alors acceptait les
+        # deux issues — il ne prouvait donc pas ce que le contrat promet.
+        if Decimal(str(tr['ttc'])) <= 0:
+            return None
         effective = option_effective(devis) or ''
         if deux_options_declarees(devis):
             cles = (SANS_BATTERIE, AVEC_BATTERIE)
