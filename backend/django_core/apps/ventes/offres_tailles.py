@@ -97,9 +97,15 @@ _FAMILLES = {
     'panneau': 'panneau',
     'onduleur_reseau': 'onduleur',
     'onduleur_hybride': 'onduleur',
+    # STKCAT2 — troisième famille d'onduleur : MÊME famille « onduleur »,
+    # sinon un devis site isolé n'aurait cité aucun onduleur dans la
+    # comparaison de tailles.
+    'onduleur_offgrid': 'onduleur',
     'batterie': 'batterie',
-    'structure_acier': 'structure',
-    'structure_alu': 'structure',
+    # STKCAT2 — rôle générique + ses deux alias dépréciés, même famille.
+    'structure': 'structure',
+    'structure_acier': 'structure',   # déprécié (alias)
+    'structure_alu': 'structure',     # déprécié (alias)
     'socle': 'structure',
     'cable_dc': 'cablage',
     'cable_terre': 'cablage',

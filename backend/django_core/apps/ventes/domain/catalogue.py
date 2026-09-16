@@ -107,10 +107,15 @@ def marque_preferee(company, gamme_nom, role):
 LIBELLES_ROLES = {
     'onduleur_reseau': 'Onduleur Injection',
     'onduleur_hybride': 'Onduleur Hybride',
+    # STKCAT2 — troisième famille d'onduleur (site isolé).
+    'onduleur_offgrid': 'Onduleurs hors réseau',
     'panneau': 'Panneaux',
     'batterie': 'Batterie',
-    'structure_acier': 'Structures acier',
-    'structure_alu': 'Structures aluminium',
+    # STKCAT2 — rôle GÉNÉRIQUE, puis ses deux alias DÉPRÉCIÉS (conservés
+    # pour toujours : un réglage enregistré hier garde son libellé).
+    'structure': 'Structures',
+    'structure_acier': 'Structures acier',      # déprécié (alias)
+    'structure_alu': 'Structures aluminium',    # déprécié (alias)
     'socle': 'Socles',
     'cable_dc': 'Câble solaire DC',
     'cable_terre': 'Câble de terre AC',

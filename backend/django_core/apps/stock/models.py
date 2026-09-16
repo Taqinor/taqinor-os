@@ -24,6 +24,12 @@ class Categorie(models.Model):
         VARIATEUR = 'variateur', 'Variateur'
         COMPTEUR = 'compteur', 'Compteur'
         ACCESSOIRE = 'accessoire', 'Accessoire'
+        # STKCAT2 (16/09/2026) — une catégorie « Services & prestations »
+        # (installation, transport, suivi) n'est PAS un équipement : sans
+        # cette valeur elle n'avait aucun type honnête à porter et restait
+        # NULL, indistinguable d'une catégorie simplement non typée. AJOUTÉE
+        # EN FIN DE LISTE : aucune valeur existante ne bouge.
+        SERVICE = 'service', 'Service'
 
     # NTWMS3 — stratégie de prélèvement par défaut des produits de cette
     # catégorie. AUCUNE = comportement historique STRICTEMENT inchangé (le

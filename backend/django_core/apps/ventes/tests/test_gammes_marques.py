@@ -592,3 +592,141 @@ class ParametresGammesLecturePourTousTests(TestCase):
         from rest_framework.test import APIClient
         resp = APIClient().get('/api/django/ventes/parametres-gammes/')
         self.assertIn(resp.status_code, (401, 403))
+
+
+# ── 10. STKCAT2 (16/09/2026) — vocabulaire de rôles ADDITIF ───────────────
+#
+# Le même vocabulaire vit dans QUATRE listes recopiées à la main (les trois
+# Python ci-dessous + `solar.js::PRODUCT_CATEGORIES`, que
+# `scripts/check_roles_mirror.py` compare en CI). Défaut mesuré avant STKCAT2 :
+# `onduleur_offgrid` n'existait QUE côté écran — l'écran « Gammes & marques »
+# proposait d'épingler une marque sur l'onduleur hors réseau et le serveur
+# refusait le PATCH en 400 « rôle inconnu ». Ces tests verrouillent les deux
+# moitiés du contrat : le neuf est ACCEPTÉ, l'ancien n'est JAMAIS cassé.
+
+class Stkcat2VocabulaireRolesTests(ParametresGammesBase):
+    def _responsable(self, username):
+        from django.contrib.auth import get_user_model
+        return get_user_model().objects.create_user(
+            username=username, password='x', company=self.company,
+            role_legacy='responsable')
+
+    def _api(self, username):
+        from rest_framework.test import APIClient
+        api = APIClient()
+        api.force_authenticate(self._responsable(username))
+        return api
+
+    # ── Le NEUF est accepté ──────────────────────────────────────────────
+    def test_patch_marque_sur_onduleur_offgrid_renvoie_200(self):
+        api = self._api('stkcat2-offgrid')
+        resp = api.patch(
+            '/api/django/ventes/parametres-gammes/',
+            {'marques': {'Essentielle': {'onduleur_offgrid': 'Deye'}}},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            resp.json()['marques']['Essentielle']['onduleur_offgrid'], 'Deye')
+        relu = services.get_parametres_gammes(self.company)
+        self.assertEqual(
+            relu.marques['Essentielle']['onduleur_offgrid'], 'Deye')
+
+    def test_patch_marque_sur_structure_generique_renvoie_200(self):
+        api = self._api('stkcat2-structure')
+        resp = api.patch(
+            '/api/django/ventes/parametres-gammes/',
+            {'marques': {'Premium': {'structure': 'K2 Systems'}}},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            resp.json()['marques']['Premium']['structure'], 'K2 Systems')
+
+    def test_ordre_lignes_accepte_les_deux_roles_neufs(self):
+        params = ParametresGammes(
+            company=self.company,
+            ordre_lignes=['panneau', 'onduleur_offgrid', 'structure'])
+        params.full_clean()  # ne doit PAS lever
+
+    # ── L'ANCIEN n'est jamais cassé (alias conservés POUR TOUJOURS) ───────
+    def test_reglage_historique_structure_acier_reste_accepte(self):
+        """Un réglage enregistré AVANT STKCAT2 (les deux alias matière) reste
+        valide tel quel : aucune migration du JSON `marques`."""
+        params = ParametresGammes(
+            company=self.company,
+            marques={'Essentielle': {'structure_acier': 'Renusol'},
+                     'Premium': {'structure_alu': 'K2 Systems'}})
+        params.full_clean()  # ne doit PAS lever
+        params.save()
+        relu = services.get_parametres_gammes(self.company)
+        self.assertEqual(
+            relu.marques['Essentielle']['structure_acier'], 'Renusol')
+        self.assertEqual(
+            relu.marques['Premium']['structure_alu'], 'K2 Systems')
+
+    def test_serializer_accepte_encore_structure_acier(self):
+        params = ParametresGammes.objects.create(company=self.company)
+        serializer = ParametresGammesSerializer(
+            params,
+            data={'marques': {'Essentielle': {'structure_acier': 'Renusol'}}},
+            partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    def test_structure_acier_garde_son_rang_dans_ordre_lignes(self):
+        """Le rôle alias garde EXACTEMENT le rang qu'il avait : classé à sa
+        position dans `ordre_lignes`, jamais relégué à la fin."""
+        from apps.ventes.domain.composition import ordonner_par_role
+        ordre = ['panneau', 'structure_acier', 'batterie']
+        params = ParametresGammes(company=self.company, ordre_lignes=ordre)
+        params.full_clean()  # l'alias reste un rôle VALIDE
+        taguees = [('batterie', 'B'), ('structure_acier', 'S'),
+                   ('panneau', 'P')]
+        self.assertEqual(
+            [objet for _, objet in ordonner_par_role(taguees, ordre)],
+            ['P', 'S', 'B'])
+
+    def test_structure_generique_a_un_rang_explicite_voisin_des_alias(self):
+        """`structure` n'est PAS un rôle inconnu : il porte un rang explicite,
+        collé à ses deux alias — sans quoi `ordonner_par_role` le classerait
+        dernier, loin des structures acier/alu."""
+        from apps.ventes.domain.composition import ordonner_par_role
+        from apps.ventes.models import ROLES_AUTO_COMPOSITION
+        rangs = {role: i for i, role in enumerate(ROLES_AUTO_COMPOSITION)}
+        self.assertIn('structure', rangs)
+        self.assertEqual(rangs['structure_acier'], rangs['structure'] + 1)
+        self.assertEqual(rangs['structure_alu'], rangs['structure'] + 2)
+        # Le rôle générique classé au milieu des alias est ordonnable comme
+        # eux (aucun rôle ne tombe dans le « rang inconnu = dernier »).
+        ordre = ['structure', 'structure_acier', 'structure_alu']
+        taguees = [('structure_alu', 'AL'), ('structure', 'GEN'),
+                   ('structure_acier', 'AC')]
+        self.assertEqual(
+            [objet for _, objet in ordonner_par_role(taguees, ordre)],
+            ['GEN', 'AC', 'AL'])
+
+    # ── Les miroirs Python portent EXACTEMENT les mêmes rôles ────────────
+    def test_les_trois_miroirs_python_portent_les_memes_roles(self):
+        """`solar.js::PRODUCT_CATEGORIES` (le quatrième) est comparé en CI par
+        `scripts/check_roles_mirror.py` — il n'est pas importable ici."""
+        from apps.ventes.domain.catalogue import LIBELLES_ROLES
+        from apps.ventes.models import ROLES_AUTO_COMPOSITION
+        from apps.ventes.offres_tailles import _FAMILLES
+        self.assertEqual(set(ROLES_AUTO_COMPOSITION), set(LIBELLES_ROLES))
+        self.assertEqual(set(ROLES_AUTO_COMPOSITION), set(_FAMILLES))
+        for role in ('onduleur_offgrid', 'structure'):
+            self.assertIn(role, ROLES_AUTO_COMPOSITION)
+            self.assertIn(role, LIBELLES_ROLES)
+            self.assertIn(role, _FAMILLES)
+
+    def test_libelle_fr_jamais_la_cle_brute(self):
+        from apps.ventes.domain.catalogue import _libelle_role
+        self.assertEqual(_libelle_role('structure'), 'Structures')
+        self.assertEqual(
+            _libelle_role('onduleur_offgrid'), 'Onduleurs hors réseau')
+
+    def test_familles_des_roles_neufs(self):
+        """L'onduleur hors réseau est un ONDULEUR et la structure générique une
+        STRUCTURE : sans cela, une taille composée avec eux n'aurait cité
+        aucun onduleur / aucune structure sur la page de comparaison."""
+        from apps.ventes.offres_tailles import _FAMILLES
+        self.assertEqual(_FAMILLES['onduleur_offgrid'], 'onduleur')
+        self.assertEqual(_FAMILLES['structure'], 'structure')

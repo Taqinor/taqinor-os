@@ -35,6 +35,9 @@ const TYPES_EQUIPEMENT = [
   { value: 'variateur', label: 'Variateur' },
   { value: 'compteur', label: 'Compteur' },
   { value: 'accessoire', label: 'Accessoire' },
+  // STKCAT2 — « Services & prestations » n'est pas un équipement : sans cette
+  // valeur, la catégorie restait NULL (indistinguable d'une non typée).
+  { value: 'service', label: 'Service' },
 ]
 
 // Extrait un message FR lisible d'une erreur DRF (jamais de JSON brut).
