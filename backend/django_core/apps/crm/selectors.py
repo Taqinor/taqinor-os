@@ -4495,3 +4495,65 @@ def lead_ids_par_identifiant(company, identifiant):
         ids.update(
             qs.filter(phone_normalise=phone).values_list('id', flat=True))
     return sorted(ids)
+
+
+def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
+    """STKCAT25 — les leads RÉCENTS qui dépendent de ce produit.
+
+    Frontière cross-app : ``apps.stock`` (onglet « Utilisé dans » de la fiche
+    produit) lit les leads PAR ICI — jamais un import de ``apps.crm.models``
+    depuis une autre app.
+
+    CE QU'« UTILISER » VEUT DIRE ICI, ET RIEN D'AUTRE : un lead utilise un
+    produit À TRAVERS SES DEVIS. La jointure passe par le lien devis→lead
+    (``ventes.Devis.lead``, ``related_name='devis'``) en pure relation ORM
+    string-FK — ``apps.ventes.models`` n'est jamais importé.
+
+    ``Lead.structure_produit`` (STKCAT9) N'EXISTE PAS dans ce dépôt au moment
+    d'écrire ces lignes : vérifié par ``grep structure_produit
+    apps/crm/models.py`` (aucune occurrence). Le jour où ce champ atterrit, la
+    seule chose à faire est d'élargir le filtre ci-dessous
+    (``| Q(structure_produit_id=produit_id)``) — on ne devine pas un champ
+    absent, et on ne construit pas un repli qui ferait semblant.
+
+    ``user`` (optionnel, mot-clé) rejoue la portée de
+    ``LeadViewSet.get_queryset`` — ``scope_queryset(..., ['owner'])`` : un rôle
+    restreint ne voit pas par le Stock un lead que /crm/leads lui masque. Sans
+    ``user``, la lecture reste bornée à la SOCIÉTÉ (jamais globale).
+
+    Renvoie une liste de dicts ``{id, nom, ville, stage, date}``, du plus
+    récent au plus ancien, bornée à ``limit``. ``stage`` est la clé canonique
+    de ``STAGES.py`` telle que stockée (l'écran en rend le libellé français).
+    Forme contractuelle : ``apps/stock/contract_samples/produit_utilise_dans.json``.
+    """
+    from core.scoping import scope_queryset
+
+    from .models import Lead
+
+    if company is None or not produit_id:
+        return []
+    try:
+        limite = int(limit)
+    except (TypeError, ValueError):
+        limite = 0
+    if limite <= 0:
+        return []
+
+    qs = Lead.objects.filter(
+        company=company, devis__lignes__produit_id=produit_id)
+    if user is not None:
+        qs = scope_queryset(qs, user, ['owner'])
+    qs = qs.distinct().order_by('-date_creation', '-id')
+
+    lignes = []
+    for lead in qs[:limite]:
+        nom = f"{lead.nom or ''} {lead.prenom or ''}".strip()
+        lignes.append({
+            'id': lead.id,
+            'nom': nom,
+            'ville': lead.ville or '',
+            'stage': lead.stage or '',
+            'date': (lead.date_creation.date().isoformat()
+                     if lead.date_creation else ''),
+        })
+    return lignes

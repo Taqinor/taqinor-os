@@ -41,6 +41,12 @@ from authentication.permissions import (  # noqa: F401
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
+# STKCAT25 — nombre MAXIMUM de lignes par liste de l'onglet « Utilisé dans »
+# (devis / leads / chantiers). Rendu DANS la réponse (clé ``limite``) pour que
+# l'écran puisse dire « les 20 plus récents » sans le deviner, et pour qu'un
+# produit très utilisé ne rende jamais une page sans fin.
+UTILISE_DANS_LIMITE = 20
+
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
@@ -145,6 +151,14 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 # est OBLIGATOIRE — `get_permissions` prime sur le
                 # `permission_classes` de l'@action, sinon repli IsAdminRole.
                 'compatibilites',
+                # STKCAT25 — `utilise-dans` est LECTURE SEULE et ne rend AUCUN
+                # prix d'achat ni marge (des références de devis/leads/
+                # chantiers déjà visibles dans leur propre module, chacun avec
+                # SA portée rejouée). Même garde `IsAnyRole` que
+                # `compatibilites` — ce cas explicite est OBLIGATOIRE :
+                # `get_permissions` prime sur le `permission_classes` de
+                # l'@action, sinon repli IsAdminRole.
+                'utilise_dans',
                 # NTDST10 — `atp` est LECTURE SEULE (aucun prix, aucun coût).
                 'atp',
                 # NTRET17 — étiquette PRIX de rayon : impression, LECTURE
@@ -1016,6 +1030,49 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         produit = self.get_object()
         return Response(
             compatibilites_du_produit(produit, request.user.company))
+
+    @action(detail=True, methods=['get'], url_path='utilise-dans',
+            permission_classes=[IsAnyRole])
+    def utilise_dans(self, request, pk=None):
+        """STKCAT25 — OÙ ce produit est-il utilisé ? Devis / leads / chantiers.
+
+        La fiche produit savait dire ce qui est en commande et ce que le
+        produit vaut, jamais ce qu'il PORTE : quels devis le chiffrent, quels
+        leads en dépendent, quels chantiers l'ont réservé. Un seul appel
+        agrégé, LECTURE SEULE.
+
+        CHAQUE LISTE EST PRODUITE PAR L'APP PROPRIÉTAIRE, via son
+        ``selectors.py`` — jamais un import de ses modèles depuis le Stock :
+        ``ventes.selectors.devis_utilisant_produit`` (qui REJOUE la visibilité
+        COMPLÈTE de la liste /ventes/devis : portail NTPRT10 puis
+        ``scope_queryset(created_by)``, cf. ``apps/ventes/views/devis.py``),
+        ``crm.selectors.leads_utilisant_produit`` (portée ``owner`` de
+        LeadViewSet) et ``installations.selectors.chantiers_utilisant_produit``
+        (portée ``technicien_responsable``/``created_by``, lien réel
+        ``StockReservation``). Un commercial ne voit donc JAMAIS par le Stock
+        un document que son propre module lui masque.
+
+        Company-scopé par ``get_object`` (le produit d'une autre société est un
+        404). Aucun prix d'ACHAT, aucune marge : seuls des totaux TTC de VENTE,
+        déjà visibles côté Ventes. Forme contractuelle :
+        ``contract_samples/produit_utilise_dans.json``.
+        """
+        from apps.crm.selectors import leads_utilisant_produit
+        from apps.installations.selectors import chantiers_utilisant_produit
+        from apps.ventes.selectors import devis_utilisant_produit
+        produit = self.get_object()
+        company = request.user.company
+        return Response({
+            'devis': devis_utilisant_produit(
+                request.user, produit.id, limit=UTILISE_DANS_LIMITE),
+            'leads': leads_utilisant_produit(
+                company, produit.id, limit=UTILISE_DANS_LIMITE,
+                user=request.user),
+            'chantiers': chantiers_utilisant_produit(
+                company, produit.id, limit=UTILISE_DANS_LIMITE,
+                user=request.user),
+            'limite': UTILISE_DANS_LIMITE,
+        })
 
     @action(detail=False, methods=['get'], url_path='tracer',
             permission_classes=[IsAnyRole])

@@ -19,6 +19,8 @@ vi.mock('../../api/stockApi', () => ({
     getFichesTechniques: vi.fn(),
     // WIR221/XSTK10 — mise au rebut.
     rebuterProduit: vi.fn(),
+    // STKCAT25 — onglet « Utilisé dans » (devis / leads / chantiers).
+    getProduitUtiliseDans: vi.fn(),
   },
 }))
 
@@ -26,6 +28,13 @@ import stockApi from '../../api/stockApi'
 import { ProduitDetail, RebutModal } from './ProduitDetail.jsx'
 // APX21 — la lecture de la courbe vit avec les règles de catalogue.
 import { pointsCourbePompe } from '../../features/stock/catalogue'
+/* STKCAT25 / PACT10 / PACT13 — la charge utile de l'onglet « Utilisé dans »
+   n'est PAS écrite ici : elle est LUE dans l'exemple committé que le backend
+   affirme (apps/stock/contract_samples/produit_utilise_dans.json, vérifié par
+   apps/stock/test_produit_utilise_dans.py et par scripts/check_api_shapes.py).
+   Un mock écrit à la main serait une DEUXIÈME source de vérité — la cause
+   racine exacte de l'écran mort du 03/08/2026. */
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 const store = configureStore({
   reducer: { auth: (s = { role: 'Directeur', role_nom: 'Directeur', permissions: [] }) => s },
@@ -457,5 +466,88 @@ describe('WIR221 — RebutModal (composant réutilisable)', () => {
       quantite: 1, motif: 'vol', emplacement: 5, reference_chantier: 'CH-2026-01',
     }))
     await waitFor(() => expect(onDone).toHaveBeenCalledWith({ mouvement_id: 9, valeur_perdue: '50.00' }))
+  })
+})
+
+/* ============================================================================
+   STKCAT25 — onglet « Utilisé dans » : devis / leads / chantiers.
+   La charge utile est l'exemple COMMITTÉ (jamais retapé ici) ; les liens
+   pointent des paramètres réellement lus par leur page (WIR176).
+   ========================================================================== */
+describe('STKCAT25 — onglet « Utilisé dans »', () => {
+  const CONTRAT = exempleContrat('stock', 'produit_utilise_dans')
+
+  const ouvrir = async () => {
+    render(<ProduitDetail produit={produit} onClose={() => {}} />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Utilisé dans' }))
+  }
+
+  it('n\'appelle le serveur qu\'à l\'ouverture de l\'onglet (montage paresseux)', async () => {
+    stockApi.getProduitUtiliseDans.mockResolvedValue(
+      reponseContrat('stock', 'produit_utilise_dans'))
+    render(<ProduitDetail produit={produit} onClose={() => {}} />, { wrapper })
+    expect(stockApi.getProduitUtiliseDans).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('tab', { name: 'Utilisé dans' }))
+    await waitFor(() => expect(stockApi.getProduitUtiliseDans).toHaveBeenCalledWith(produit.id))
+  })
+
+  it('liste les devis, leads et chantiers de l\'exemple committé', async () => {
+    stockApi.getProduitUtiliseDans.mockResolvedValue(
+      reponseContrat('stock', 'produit_utilise_dans'))
+    await ouvrir()
+
+    const premierDevis = CONTRAT.devis[0]
+    const premierLead = CONTRAT.leads[0]
+    const premierChantier = CONTRAT.chantiers[0]
+
+    expect(await screen.findByText(premierDevis.reference)).toBeInTheDocument()
+    expect(screen.getByText(premierLead.nom)).toBeInTheDocument()
+    expect(screen.getByText(premierChantier.reference)).toBeInTheDocument()
+    // Les libellés viennent de LEUR source canonique, pas d'une clé brute.
+    expect(screen.getByText(/Devis envoyé/)).toBeInTheDocument()
+    expect(screen.getByText(/En cours/)).toBeInTheDocument()
+  })
+
+  it('chaque ligne pointe le paramètre que sa page lit vraiment', async () => {
+    stockApi.getProduitUtiliseDans.mockResolvedValue(
+      reponseContrat('stock', 'produit_utilise_dans'))
+    await ouvrir()
+
+    const devis = CONTRAT.devis[0]
+    const lead = CONTRAT.leads[0]
+    const chantier = CONTRAT.chantiers[0]
+
+    // DevisList.jsx lit ?devis=<pk> (QX12) — jamais un ?id= inventé.
+    expect((await screen.findByRole('link', { name: devis.reference }))
+      .getAttribute('href')).toBe(`/ventes/devis?devis=${devis.id}`)
+    // Route réelle /crm/leads/:id (LeadDetailPage, useParams).
+    expect(screen.getByRole('link', { name: lead.nom }).getAttribute('href'))
+      .toBe(`/crm/leads/${lead.id}`)
+    // InstallationsPage.jsx lit ?id=<pk> (VX79).
+    expect(screen.getByRole('link', { name: chantier.reference }).getAttribute('href'))
+      .toBe(`/chantiers?id=${chantier.id}`)
+  })
+
+  it('produit inutilisé : trois messages honnêtes, jamais une liste muette', async () => {
+    stockApi.getProduitUtiliseDans.mockResolvedValue(
+      reponseContrat('stock', 'produit_utilise_dans', 'exemple_vide'))
+    await ouvrir()
+    expect(await screen.findByText(/Aucun devis ne chiffre ce produit/)).toBeInTheDocument()
+    expect(screen.getByText(/Aucun lead ne dépend de ce produit/)).toBeInTheDocument()
+    expect(screen.getByText(/Aucun chantier n'a réservé ce produit/)).toBeInTheDocument()
+  })
+
+  it('serveur en erreur : message, jamais un onglet blanc', async () => {
+    stockApi.getProduitUtiliseDans.mockRejectedValue(new Error('boom'))
+    await ouvrir()
+    expect(await screen.findByText('Utilisations indisponibles.')).toBeInTheDocument()
+  })
+
+  it('le compteur « bons de commande » n\'est plus un lien mort', () => {
+    stockApi.produitPrevisionnel.mockResolvedValue({ data: null })
+    render(<ProduitDetail produit={produit} onClose={() => {}} />, { wrapper })
+    const compteur = screen.getByText('1 bons de commande en cours')
+    expect(compteur).toBeInTheDocument()
+    expect(compteur.closest('a')).toBeNull()
   })
 })
