@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10776, operations: 19078, components: 5736}
+counts: {paths: 10778, operations: 19080, components: 5737}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2736,6 +2736,7 @@ operations:
 - put /api/django/credit/segments-client/{id}/ -> django_credit_segments_client_update
 - get /api/django/crm/appareils-equipe/ -> django_crm_appareils_equipe_list
 - post /api/django/crm/appareils-equipe/ -> django_crm_appareils_equipe_create
+- post /api/django/crm/appareils-equipe/ce-navigateur/ -> django_crm_appareils_equipe_ce_navigateur_create
 - delete /api/django/crm/appareils-equipe/{id}/ -> django_crm_appareils_equipe_destroy
 - get /api/django/crm/appointments/ -> django_crm_appointments_list
 - post /api/django/crm/appointments/ -> django_crm_appointments_create
@@ -12322,6 +12323,7 @@ operations:
 - put /api/v1/credit/segments-client/{id}/ -> v1_credit_segments_client_update
 - get /api/v1/crm/appareils-equipe/ -> v1_crm_appareils_equipe_list
 - post /api/v1/crm/appareils-equipe/ -> v1_crm_appareils_equipe_create
+- post /api/v1/crm/appareils-equipe/ce-navigateur/ -> v1_crm_appareils_equipe_ce_navigateur_create
 - delete /api/v1/crm/appareils-equipe/{id}/ -> v1_crm_appareils_equipe_destroy
 - get /api/v1/crm/appointments/ -> v1_crm_appointments_list
 - post /api/v1/crm/appointments/ -> v1_crm_appointments_create
@@ -19257,6 +19259,7 @@ components:
 - ApiUsagePlanCodeEnum
 - ApiUsagePlanRequest
 - AppareilEquipe
+- AppareilEquipeCeNavigateurRequestRequest
 - AppareilEquipeRequest
 - Appel
 - AppelCommande

@@ -60,6 +60,22 @@ MAX_DUREE_S = 12 * 3600
 #: Fenêtre de corrélation « concurrent » (ordre fondateur : 30 jours).
 FENETRE_CORRELATION_JOURS = 30
 
+# ── QJEQUIPE3 — les DEUX cookies partagés site ↔ ERP ────────────────────────
+#
+# Posés sur le domaine enregistrable du site (``settings.PUBLIC_SITE_URL``, ex.
+# ``taqinor.ma``) pour être lisibles à la fois par le site public (le Worker SSR
+# les relaie en en-têtes sur ses fetchs) ET par les liens directs servis par
+# l'ERP (``api.taqinor.ma``) :
+#
+#   · ``tq_equipe``   — « ce navigateur est un navigateur de l'équipe » ('1') ;
+#   · ``tq_appareil`` — l'``appareil_id`` (uuid v4) de CET appareil, le même
+#     identifiant que le site pose dans son ``localStorage``. C'est lui qui
+#     permet au registre SERVEUR ``crm.AppareilEquipe`` de reconnaître
+#     l'appareil même quand le cookie ``tq_equipe`` manque (autre navigateur,
+#     navigateur intégré WhatsApp, navigation privée).
+COOKIE_EQUIPE = 'tq_equipe'
+COOKIE_APPAREIL = 'tq_appareil'
+
 #: Points de contact qui portent un DOCUMENT nominatif d'un prospect précis —
 #: les seuls qui alimentent la corrélation concurrent. Une simple visite du
 #: site (``visite_site``) est anonyme et ne désigne aucun lead : deux
@@ -145,14 +161,22 @@ def user_agent_de_requete(request) -> str:
 def appareil_de_requete(request) -> str:
     """``appareil_id`` porté par une requête publique (clé ADDITIVE).
 
-    Trois emplacements, dans l'ordre — un POST le met dans son corps, un GET
+    QUATRE emplacements, dans l'ordre — un POST le met dans son corps, un GET
     de page ne peut pas :
       1. le corps (``request.data``) — beacon, questionnaire, engagement ;
       2. la query string (``?appareil_id=…``) — ouverture d'un document ;
-      3. l'en-tête ``X-Appareil-Id`` — quand le site préfère ne rien mettre
-         dans l'URL.
+      3. l'en-tête ``X-Appareil-Id`` — un GET SSR du site porte CET en-tête,
+         posé par le Worker d'après le cookie ``tq_appareil`` (l'identifiant
+         vit dans le ``localStorage`` du navigateur, que le serveur ne voit
+         jamais : sans ce relais, une ouverture de proposition n'a AUCUNE des
+         trois premières sources et le registre n'exclut rien) ;
+      4. QJEQUIPE3 — le cookie ``tq_appareil`` lui-même, quand la requête
+         arrive DIRECTEMENT sur l'ERP (``api.taqinor.ma``) sans passer par le
+         SSR : lien PDF ouvert à la main, document servi par l'API. Le cookie
+         est posé sur le domaine enregistrable du site, donc visible des deux
+         côtés.
 
-    Absent des trois = comportement historique inchangé : ce module ne réclame
+    Absent des quatre = comportement historique inchangé : ce module ne réclame
     jamais la clé, il l'utilise quand elle est là."""
     if request is None:
         return ''
@@ -169,8 +193,11 @@ def appareil_de_requete(request) -> str:
             trouve = _texte(params.get('appareil_id'), MAX_APPAREIL)
             if trouve:
                 return trouve
-        return _texte(
-            request.headers.get('X-Appareil-Id'), MAX_APPAREIL)
+        trouve = _texte(request.headers.get('X-Appareil-Id'), MAX_APPAREIL)
+        if trouve:
+            return trouve
+        cookies = getattr(request, 'COOKIES', None) or {}
+        return _texte(cookies.get(COOKIE_APPAREIL), MAX_APPAREIL)
     except Exception:  # noqa: BLE001 — défensif
         return ''
 
@@ -210,6 +237,120 @@ def appareils_equipe_ids(company) -> set:
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning('T-TRACE: appareils_equipe_ids échoué : %s', exc)
         return set()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# QJEQUIPE3 — LA question unique : « cette requête vient-elle de l'équipe ? »
+# ═══════════════════════════════════════════════════════════════════════════
+
+def requete_marquee_equipe(company, request) -> bool:
+    """Vrai si CETTE requête vient d'un appareil/navigateur de l'ÉQUIPE.
+
+    QJEQUIPE3 (16/09/2026) — LE point de vérité unique, appelé par le parcours
+    public de ``ventes`` (gate d'ouverture ET beacon d'engagement). Avant, les
+    deux endroits vérifiaient des choses DIFFÉRENTES : le beacon ne regardait
+    que le cookie/en-tête, le gate regardait en plus le registre — un appareil
+    marqué côté ERP écrivait donc quand même ``ShareLink.engagement`` et ses
+    notes « a commencé à lire en détail ». Une seule fonction, trois signaux,
+    du plus explicite au plus durable :
+
+      1. en-tête ``X-Equipe-Appareil: 1`` — posé par le SSR du site quand il
+         voit le cookie ``tq_equipe`` ;
+      2. cookie ``tq_equipe`` — requête arrivée DIRECTEMENT sur l'ERP ;
+      3. registre SERVEUR ``crm.AppareilEquipe`` sur l'``appareil_id`` de la
+         requête (:func:`appareil_de_requete` : en-tête ``X-Appareil-Id``
+         relayé par le SSR, ou cookie ``tq_appareil``) — le seul des trois qui
+         survit à un changement de navigateur ou à une navigation privée.
+
+    Best-effort absolu : jamais d'exception, ``False`` sur ``request`` absent
+    (mieux vaut compter une lecture de trop que casser un point public)."""
+    if request is None:
+        return False
+    try:
+        meta = getattr(request, 'META', None) or {}
+        if meta.get('HTTP_X_EQUIPE_APPAREIL') == '1':
+            return True
+        cookies = getattr(request, 'COOKIES', None) or {}
+        if cookies.get(COOKIE_EQUIPE) == '1':
+            return True
+        return est_appareil_equipe(company, appareil_de_requete(request))
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('T-TRACE: requete_marquee_equipe échoué : %s', exc)
+        return False
+
+
+def enregistrer_appareil_equipe(company, appareil_id, *, libelle='',
+                                user=None):
+    """Marque un appareil comme appareil ÉQUIPE — IDEMPOTENT.
+
+    Renvoie ``(appareil, cree)`` — même sémantique de couple que
+    ``get_or_create`` sans en être un : la contrainte d'unicité
+    ``(company, appareil_id)`` existe bien, mais le cliquet
+    ``scripts/check_get_or_create.py`` exige la régénération d'un audit à
+    chaque nouveau site d'appel, ce que ce correctif n'a pas à déclencher.
+
+    Un appareil déjà enregistré n'est JAMAIS dupliqué et ne perd JAMAIS son
+    libellé : celui-ci n'est remplacé que si un libellé NON VIDE est fourni
+    (le libellé automatique de « reconnaître ce navigateur » ne doit pas
+    écraser le « Téléphone Reda » saisi à la main dans l'écran Visiteurs).
+
+    ``(None, False)`` sur entrée vide ; les erreurs de base ne sont PAS
+    avalées (c'est une écriture d'API authentifiée, pas un point public : un
+    échec doit remonter en 500 plutôt que mentir avec un 200)."""
+    if company is None:
+        return None, False
+    appareil_id = _texte(appareil_id, MAX_APPAREIL)
+    if not appareil_id:
+        return None, False
+    libelle = _texte(libelle, 200)
+    from .models import AppareilEquipe
+
+    existant = AppareilEquipe.objects.filter(
+        company=company, appareil_id=appareil_id).first()
+    if existant is not None:
+        if libelle and existant.libelle != libelle:
+            existant.libelle = libelle
+            existant.save(update_fields=['libelle', 'updated_at'])
+        return existant, False
+    return AppareilEquipe.objects.create(
+        company=company, appareil_id=appareil_id, libelle=libelle,
+        cree_par=user if getattr(user, 'pk', None) else None), True
+
+
+def domaine_cookies_equipe(request):
+    """Domaine à poser sur ``tq_equipe``/``tq_appareil``, ou ``None``.
+
+    Les deux cookies doivent être lisibles par le SITE (``taqinor.ma``, où le
+    Worker SSR les relaie en en-têtes) ET par l'ERP (``api.taqinor.ma``, qui
+    sert les liens PDF directs) : ils sont donc posés sur le domaine
+    enregistrable du site, lu de ``settings.PUBLIC_SITE_URL`` — jamais dérivé
+    de la requête (SCA29 : aucune marque en dur, et l'hôte entrant n'est pas
+    une source de vérité).
+
+    ``None`` = cookie HOST-ONLY : c'est le cas quand la requête n'arrive pas
+    sur ce domaine ni sur un de ses sous-domaines (poste de développement,
+    ``testserver``, tenant white-label servi ailleurs). Un navigateur REFUSE
+    de toute façon un ``Domain=`` étranger à l'hôte servi — sans cette garde,
+    le ``Set-Cookie`` serait purement et simplement jeté.
+
+    Jamais d'exception : au pire ``None``."""
+    try:
+        from urllib.parse import urlparse
+
+        from django.conf import settings
+
+        base = getattr(settings, 'PUBLIC_SITE_URL', '') or getattr(
+            settings, 'SITE_URL', '') or ''
+        domaine = (urlparse(base).hostname or '').strip().lower()
+        if not domaine:
+            return None
+        hote = (request.get_host() or '').split(':')[0].strip().lower()
+        if hote == domaine or hote.endswith('.' + domaine):
+            return domaine
+        return None
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('T-TRACE: domaine_cookies_equipe échoué : %s', exc)
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════════════════

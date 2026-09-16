@@ -40,16 +40,21 @@ from .models import Canal, Client, Lead, LeadActivity, PointContact, RelanceEtap
 # mais il est RÉEXPORTÉ ici : `services` reste la porte d'entrée unique des
 # écritures CRM (les accroches n'importent jamais `visites` directement).
 from .visites import (  # noqa: F401 — réexport public délibéré
+    COOKIE_APPAREIL,
+    COOKIE_EQUIPE,
     alerter_appareil_partage,
     appareil_de_requete,
     appareils_equipe_ids,
     avec_direction,
     detecter_concurrent,
+    domaine_cookies_equipe,
+    enregistrer_appareil_equipe,
     enregistrer_visite_externe,
     est_appareil_equipe,
     historique_appareil,
     ip_de_requete,
     rattacher_visites_au_lead,
+    requete_marquee_equipe,
     resume_historique_fr,
     tracer_et_correler,
     user_agent_de_requete,
@@ -4472,6 +4477,14 @@ def notify_devis_opened(devis_reference: str, lead, *, ip='',
     fournis, le corps dit d'OÙ vient l'ouverture et si l'appareil était DÉJÀ
     connu — le premier indice qu'un « client » qui ouvre est en fait un
     visiteur déjà vu ailleurs. La DIRECTION est toujours destinataire.
+
+    QJEQUIPE3 (16/09/2026) — le lien pointe l'écran VISITEURS filtré sur ce
+    lead (``/crm/visiteurs?lead=<pk>``), c'est-à-dire l'historique de ses
+    accès : quand/depuis quoi/combien de temps il a lu, et le bouton pour
+    marquer l'appareil « équipe » si l'ouverture vient en fait de nous. La
+    liste des leads ne montrait rien de tout cela — et comme la cloche
+    regroupe les notifications par ``link`` (VX208), « devis ouvert » s'y
+    fondait dans « nouveau lead », qui porte le même lien.
     """
     try:
         company = getattr(lead, 'company', None)
@@ -4508,7 +4521,7 @@ def notify_devis_opened(devis_reference: str, lead, *, ip='',
             (f'Devis {devis_reference} rouvert par le client' if reprise
              else f'Devis {devis_reference} ouvert par le client'),
             body='\n'.join(body_parts),
-            link=f'/crm/leads?lead={lead.pk}',
+            link=f'/crm/visiteurs?lead={lead.pk}',
             company=lead.company,
         )
     except Exception as exc:  # noqa: BLE001 — best-effort

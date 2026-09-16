@@ -1,4 +1,6 @@
 import logging
+import re
+import uuid
 from contextlib import contextmanager
 
 from drf_spectacular.utils import extend_schema, inline_serializer
@@ -43,7 +45,10 @@ from .serializers import (
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity
-from .services import default_responsable_for
+from .services import (
+    COOKIE_APPAREIL, COOKIE_EQUIPE, default_responsable_for,
+    domaine_cookies_equipe, enregistrer_appareil_equipe,
+)
 from .devis_auto import champs_manquants, message_manquants
 from authentication.permissions import (
     IsAnyRole,
@@ -4233,6 +4238,23 @@ class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(resultats)
 
 
+#: QJEQUIPE3 — forme d'un uuid v4, l'``appareil_id`` que le site pose dans le
+#: ``localStorage`` du navigateur. Insensible à la casse. Une valeur hors forme
+#: n'est PAS une erreur 400 : ce navigateur n'a peut-être jamais visité le
+#: site public, on lui en attribue simplement un neuf.
+_UUID_APPAREIL_RE = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    re.IGNORECASE)
+
+#: Durée de vie des deux cookies d'équipe : 2 ans. Marquer « ce navigateur est
+#: à l'équipe » est une décision durable, pas une session.
+_COOKIES_EQUIPE_MAX_AGE = 730 * 24 * 3600
+
+#: Longueur retenue du navigateur annoncé dans le libellé automatique — assez
+#: pour reconnaître l'appareil dans la liste, jamais un user-agent entier.
+_MAX_NAVIGATEUR = 80
+
+
 class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
                             mixins.DestroyModelMixin, viewsets.GenericViewSet):
     """QJ-EQUIPE-2 — registre des appareils de l'équipe (exclusion permanente
@@ -4241,7 +4263,8 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
 
     Lecture ouverte à tout rôle authentifié de la société ; écriture réservée
     responsable/admin (marquer/démarquer un appareil équipe est une décision
-    de gouvernance anti-fraude)."""
+    de gouvernance anti-fraude). EXCEPTION QJEQUIPE3 : ``ce-navigateur``, où
+    l'utilisateur ne marque QUE son propre navigateur — voir son docstring."""
     # Attribut de classe requis par drf-spectacular pour typer `{id}` (le
     # runtime passe TOUJOURS par get_queryset, qui rescope par société).
     queryset = AppareilEquipe.objects.all()
@@ -4252,7 +4275,12 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
             company=self.request.user.company).select_related('cree_par')
 
     def get_permissions(self):
-        if self.action == 'list':
+        # AUD421 — TOUTE action qui déclare une `permission_classes` inline doit
+        # être NOMMÉE ici : DRF appelle `get_permissions()` pour chaque requête,
+        # y compris une @action, et un repli non délégué rendrait la déclaration
+        # inline purement décorative (ici : plus restrictive, donc l'action
+        # deviendrait inaccessible au commercial qu'elle vise).
+        if self.action in ('list', 'ce_navigateur'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -4260,23 +4288,88 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
         """Idempotent-friendly : (re)marquer un appareil déjà enregistré met à
         jour son libellé au lieu de lever une erreur d'unicité — un commercial
         qui reclique « ajouter » avec un libellé différent ne doit pas voir un
-        400."""
+        400. L'idempotence vit dans `crm.services.enregistrer_appareil_equipe`
+        (QJEQUIPE3), partagée avec `ce_navigateur` : un seul chemin d'écriture
+        du registre, donc un seul comportement à garantir."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        appareil_id = serializer.validated_data.get('appareil_id', '')
-        existant = self.get_queryset().filter(appareil_id=appareil_id).first()
-        if existant is not None:
-            libelle = serializer.validated_data.get('libelle')
-            if libelle:
-                existant.libelle = libelle
-                existant.save(update_fields=['libelle', 'updated_at'])
-            return Response(
-                self.get_serializer(existant).data, status=status.HTTP_200_OK)
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response(
-            serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        appareil, cree = enregistrer_appareil_equipe(
+            request.user.company,
+            serializer.validated_data.get('appareil_id', ''),
+            libelle=serializer.validated_data.get('libelle') or '',
+            user=request.user)
+        donnees = self.get_serializer(appareil).data
+        if not cree:
+            return Response(donnees, status=status.HTTP_200_OK)
+        return Response(donnees, status=status.HTTP_201_CREATED,
+                        headers=self.get_success_headers(donnees))
 
-    def perform_create(self, serializer):
-        serializer.save(
-            company=self.request.user.company, cree_par=self.request.user)
+    @extend_schema(
+        request=inline_serializer('AppareilEquipeCeNavigateurRequest', {
+            'appareil_id': serializers.CharField(required=False,
+                                                 allow_blank=True),
+            'navigateur': serializers.CharField(required=False,
+                                                allow_blank=True),
+        }),
+        responses={200: AppareilEquipeSerializer},
+    )
+    @action(detail=False, methods=['post'], url_path='ce-navigateur',
+            permission_classes=[IsAnyRole])
+    def ce_navigateur(self, request):
+        """QJEQUIPE3 — « reconnaître CE navigateur » en un clic, depuis l'ERP.
+
+        Le piège que ça ferme : le registre serveur ne sert à rien tant que
+        personne n'y inscrit son appareil, et l'``appareil_id`` — posé par le
+        SITE dans son ``localStorage`` — n'est pas lisible depuis l'ERP. Cet
+        endpoint fait les deux en un seul appel : il retient l'identifiant
+        (celui envoyé par l'écran, sinon celui du cookie ``tq_appareil``,
+        sinon un neuf), l'inscrit au registre de la société, et REPOSE les deux
+        cookies partagés sur le domaine du site — de sorte que la prochaine
+        ouverture d'une proposition, qu'elle passe par le SSR (en-tête
+        ``X-Appareil-Id``) ou directement par l'API (cookie), soit reconnue.
+
+        OUVERT À TOUT RÔLE, délibérément : un commercial doit pouvoir dire
+        « ce téléphone est le mien » sans passer par un responsable. Il ne
+        marque que SON navigateur — jamais un appareil arbitraire d'un
+        prospect : celui-là reste réservé à `create` (responsable/admin).
+
+        Le libellé automatique n'est posé qu'à la CRÉATION et porte le nom de
+        l'utilisateur connecté (jamais un prénom en dur) : un libellé déjà
+        saisi à la main dans l'écran Visiteurs n'est jamais écrasé."""
+        appareil_id = str(request.data.get('appareil_id') or '').strip()
+        if not _UUID_APPAREIL_RE.match(appareil_id):
+            appareil_id = str(
+                request.COOKIES.get(COOKIE_APPAREIL) or '').strip()
+        if not _UUID_APPAREIL_RE.match(appareil_id):
+            appareil_id = str(uuid.uuid4())
+
+        navigateur = str(
+            request.data.get('navigateur') or '').strip()[:_MAX_NAVIGATEUR]
+        deja_connu = self.get_queryset().filter(
+            appareil_id=appareil_id).exists()
+        libelle = ''
+        if not deja_connu:
+            qui = (request.user.get_full_name() or '').strip() \
+                or request.user.username
+            libelle = f"{qui} — {navigateur or 'navigateur'}"
+
+        appareil, _cree = enregistrer_appareil_equipe(
+            request.user.company, appareil_id, libelle=libelle,
+            user=request.user)
+
+        reponse = Response(self.get_serializer(appareil).data,
+                           status=status.HTTP_200_OK)
+        commun = {
+            'max_age': _COOKIES_EQUIPE_MAX_AGE,
+            'domain': domaine_cookies_equipe(request),
+            'path': '/',
+            'secure': request.is_secure(),
+            'samesite': 'Lax',
+        }
+        # `tq_equipe` n'a jamais besoin d'être lu par du JavaScript : httpOnly.
+        reponse.set_cookie(COOKIE_EQUIPE, '1', httponly=True, **commun)
+        # `tq_appareil` SI : le site le lit pour aligner son `localStorage` et
+        # le relayer en en-tête `X-Appareil-Id` sur ses fetchs SSR.
+        reponse.set_cookie(COOKIE_APPAREIL, appareil.appareil_id,
+                           httponly=False, **commun)
+        return reponse
