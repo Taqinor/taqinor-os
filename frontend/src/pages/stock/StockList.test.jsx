@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -144,6 +144,9 @@ beforeEach(() => {
   stockApi.getMarques.mockResolvedValue({ data: [] })
   stockApi.getEmplacements.mockResolvedValue({ data: [] })
   stockApi.getFichesTechniques.mockResolvedValue({ data: [] })
+  stockApi.exportProduitsXlsx.mockResolvedValue({ data: new Blob(['x']) })
+  URL.createObjectURL = vi.fn(() => 'blob:mock-url')
+  URL.revokeObjectURL = vi.fn()
   if (!window.matchMedia) {
     window.matchMedia = vi.fn().mockImplementation((q) => ({
       matches: false, media: q, onchange: null,
@@ -242,5 +245,38 @@ describe('StockList — vue enregistrée : aller-retour + migration héritée (S
     // reste active — jamais un repli silencieux sur « tout le catalogue ».
     expect(screen.queryAllByText('Onduleur Deye 5 kW').length).toBeGreaterThan(0)
     expect(screen.queryAllByText('Panneau 550 Wc').length).toBe(0)
+  })
+})
+
+/* ============================================================================
+   STKCAT26 — Catalogue sur le moteur DataTable : export unique (le bouton
+   d'export dupliqué de l'en-tête a disparu, `onExport` de CatalogueTable
+   délègue au même endpoint xlsx serveur) + bascule groupement par catégorie.
+   viewBuilder et la recherche moteur (`searchable`) ne sont PAS câblés — cf.
+   CatalogueTable.jsx (raison documentée en commentaire) : incompatibles sans
+   refonte plus large avec, respectivement, le format de vue de STKCAT14 et le
+   court-circuit recherche/rail déjà testé plus haut. Le mode kanban n'existe
+   pas dans le moteur (aucune trace de « kanban » dans DataTable.jsx).
+   ========================================================================== */
+describe('StockList — export unique sur le moteur DataTable (STKCAT26)', () => {
+  it('le bouton d\'export dupliqué de l\'en-tête a disparu', () => {
+    renderPage()
+    expect(screen.queryByText('Exporter Excel')).toBeNull()
+  })
+
+  it('l\'export de CatalogueTable délègue au xlsx serveur avec les produits affichés', async () => {
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /Onduleurs/ }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exporter' }))
+
+    await waitFor(() => expect(stockApi.exportProduitsXlsx).toHaveBeenCalledWith([onduleur.id]))
+  })
+
+  it('la bascule « Grouper par catégorie » change son propre libellé', () => {
+    renderPage()
+    const toggle = screen.getByRole('button', { name: /Grouper par catégorie/ })
+    fireEvent.click(toggle)
+    expect(screen.getByRole('button', { name: /Catégories groupées/ })).toBeInTheDocument()
   })
 })

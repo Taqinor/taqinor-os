@@ -987,9 +987,10 @@ export default function StockList() {
     const set = new Set(actifs.map(p => (p.marque || '').trim() || 'Génériques'))
     return [...set].sort((a, b) => a.localeCompare(b))
   }, [actifs])
-  // Export Excel de la liste filtrée courante (T9) — défini après `filtered`.
-  const exportFiltered = async () => {
-    const ids = filtered.map(p => p.id)
+  // Export Excel (T9), serveur xlsx (`stockApi.exportProduitsXlsx`). STKCAT26 —
+  // délégué au moteur DataTable de CatalogueTable (`onExport`, ci-dessous) :
+  // le bouton d'export dupliqué de l'en-tête a disparu (desktop + menu mobile).
+  const exportProduitsIds = async (ids) => {
     if (!ids.length) return
     const pending = downloadBlobInGesture()
     try {
@@ -997,6 +998,7 @@ export default function StockList() {
       pending.deliver(new Blob([res.data]), 'produits.xlsx')
     } catch { /* ignore */ }
   }
+  const exportCatalogueTable = (rows) => exportProduitsIds((rows ?? []).map(p => p.id))
   // Rail de catégories (catalogue actif complet) — pilote le filtre `activeCatIds`.
   const allGroups = useMemo(() => groupCatalogue(actifs), [actifs])
 
@@ -1230,9 +1232,8 @@ export default function StockList() {
                     title="Scanner un code QR / code-barres et ouvrir la fiche">
               <ScanLine /> Scanner
             </Button>
-            <Button variant="outline" size="sm" onClick={exportFiltered}>
-              <Download /> Exporter Excel
-            </Button>
+            {/* STKCAT26 — bouton retiré : redondant avec l'export désormais natif
+                de CatalogueTable (même endpoint xlsx serveur, `onExport` ci-dessous). */}
             {canWrite && (
               <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
                 <Upload /> Importer
@@ -1280,9 +1281,8 @@ export default function StockList() {
                 <DropdownMenuItem onSelect={() => setScanOpen(v => !v)}>
                   <ScanLine /> Scanner
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={exportFiltered}>
-                  <Download /> Exporter Excel
-                </DropdownMenuItem>
+                {/* STKCAT26 — item retiré : redondant avec l'export natif de
+                    CatalogueTable (même endpoint xlsx serveur). */}
                 {canWrite && (
                   <DropdownMenuItem onSelect={() => setShowImport(true)}>
                     <Upload /> Importer
@@ -1572,6 +1572,7 @@ export default function StockList() {
               selected={visibleSelected}
               onToggleSelect={canWrite ? onToggleSelect : null}
               fichesParProduit={fichesTechniques}
+              onExport={exportCatalogueTable}
             />
           )}
           {filtered.length === 0 && !loading && (

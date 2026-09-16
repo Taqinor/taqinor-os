@@ -1,10 +1,10 @@
-import { createElement, useMemo } from 'react'
+import { createElement, useMemo, useState } from 'react'
 import {
   AlertTriangle, History, Pencil, Trash2, PackageSearch, PackagePlus,
-  TrendingDown, PackageX,
+  TrendingDown, PackageX, Layers,
 } from 'lucide-react'
 import {
-  Badge, Checkbox, DataTable, EditableCell, Progress,
+  Badge, Button, Checkbox, DataTable, EditableCell, Progress,
 } from '../../ui'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import {
@@ -148,12 +148,21 @@ export function CatalogueTable({
   // liste (jamais un appel par ligne) ; absente/vide → toutes les lignes
   // affichent « Fiche absente ».
   fichesParProduit,
+  // STKCAT26 — export délégué par l'écran (StockList) au serveur (xlsx) ;
+  // sans lui, repli CSV client du moteur (comportement historique inchangé).
+  onExport,
 }) {
   // L153 — n'affiche les squelettes que si l'attente se prolonge (anti-clignotement).
   const { showSkeleton } = useDelayedLoading(loading && (produits?.length ?? 0) === 0)
   const editable = canWrite && typeof onInlineSave === 'function'
 
   const selectable = canWrite && typeof onToggleSelect === 'function' && selected instanceof Set
+
+  // STKCAT26 — bascule « Grouper par catégorie » (moteur DataTable, `groupBy`).
+  // OFF par défaut : rendu strictement identique à avant tant qu'elle n'est
+  // pas activée (le rail de StockList filtre déjà sur UNE catégorie ; grouper
+  // aide surtout en vue « Tout le catalogue »).
+  const [grouped, setGrouped] = useState(false)
 
   const columns = useMemo(() => [
     // Colonne de selection (multi-selection pilotee par StockList → BulkProductBar).
@@ -441,26 +450,43 @@ export function CatalogueTable({
   // vraie disposition). useDelayedLoading n'arme le squelette que si l'attente
   // se prolonge — on ne fait clignoter aucun écran sur une attente brève.
   return (
-    <DataTable
-      data={produits ?? []}
-      columns={columns}
-      getRowId={(p) => p.id}
-      loading={showSkeleton}
-      searchable={false}
-      rowActions={rowActions}
-      virtualize={(produits?.length ?? 0) > 100}
-      pageSize={50}
-      pageSizeOptions={[25, 50, 100, 200]}
-      summary={summary}
-      summaryLabel="Valeur vente du catalogue affiché"
-      emptyTitle={(produits?.length ?? 0) === 0 ? 'Aucun produit' : 'Aucun résultat'}
-      emptyDescription="Aucun produit ne correspond au catalogue affiché."
-      // VX40 — pictogramme solaire illustré réservé au vrai catalogue vide
-      // (jamais au cas « filtres sans résultat », routine et non « rare »).
-      emptyIllustrated={(produits?.length ?? 0) === 0}
-      aria-label="Catalogue produits en stock"
-      className="min-w-0"
-    />
+    <div className="flex flex-col gap-2">
+      {/* STKCAT26 — bascule groupement (moteur DataTable `groupBy`), à côté
+          de l'export propre au moteur (celui de l'en-tête StockList a disparu,
+          devenu redondant — même export xlsx serveur des deux côtés). */}
+      <div className="flex justify-end">
+        <Button type="button" variant={grouped ? 'secondary' : 'outline'} size="sm"
+                onClick={() => setGrouped(v => !v)}
+                title="Regrouper les lignes par catégorie">
+          <Layers /> {grouped ? 'Catégories groupées' : 'Grouper par catégorie'}
+        </Button>
+      </div>
+      <DataTable
+        data={produits ?? []}
+        columns={columns}
+        getRowId={(p) => p.id}
+        loading={showSkeleton}
+        searchable={false}
+        rowActions={rowActions}
+        virtualize={(produits?.length ?? 0) > 100}
+        pageSize={50}
+        pageSizeOptions={[25, 50, 100, 200]}
+        summary={summary}
+        summaryLabel="Valeur vente du catalogue affiché"
+        // STKCAT26 — groupement par catégorie (opt-in, cf. `grouped` ci-dessus)
+        // et export délégué au serveur xlsx (fourni par StockList) ; sans
+        // `onExport`, repli CSV client du moteur (inchangé).
+        groupBy={grouped ? 'categorie' : undefined}
+        onExport={onExport}
+        emptyTitle={(produits?.length ?? 0) === 0 ? 'Aucun produit' : 'Aucun résultat'}
+        emptyDescription="Aucun produit ne correspond au catalogue affiché."
+        // VX40 — pictogramme solaire illustré réservé au vrai catalogue vide
+        // (jamais au cas « filtres sans résultat », routine et non « rare »).
+        emptyIllustrated={(produits?.length ?? 0) === 0}
+        aria-label="Catalogue produits en stock"
+        className="min-w-0"
+      />
+    </div>
   )
 }
 
