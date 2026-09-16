@@ -24,13 +24,14 @@ vi.mock('../../hooks/useHasPermission', () => ({
 
 const {
   getAppareilsVisites, getVisitesExternes, getAppareilsEquipe,
-  createAppareilEquipe, deleteAppareilEquipe,
+  createAppareilEquipe, deleteAppareilEquipe, getLead,
 } = vi.hoisted(() => ({
   getAppareilsVisites: vi.fn(),
   getVisitesExternes: vi.fn(),
   getAppareilsEquipe: vi.fn(),
   createAppareilEquipe: vi.fn(() => Promise.resolve({ data: { id: 9 } })),
   deleteAppareilEquipe: vi.fn(() => Promise.resolve({ data: {} })),
+  getLead: vi.fn(),
 }))
 
 vi.mock('../../api/crmApi', () => ({
@@ -40,6 +41,7 @@ vi.mock('../../api/crmApi', () => ({
     getAppareilsEquipe: (...args) => getAppareilsEquipe(...args),
     createAppareilEquipe: (...args) => createAppareilEquipe(...args),
     deleteAppareilEquipe: (...args) => deleteAppareilEquipe(...args),
+    getLead: (...args) => getLead(...args),
   },
 }))
 
@@ -56,6 +58,35 @@ const APPAREIL_EQUIPE = {
   premiere: '2026-08-01T10:00:00Z', derniere: '2026-09-12T14:00:00Z',
   propositions: 10, equipe: true,
   leads: [{ id: 3, nom: 'Karim T.' }],
+}
+
+// VIS-LEAD — mode `?lead=<id>` : forme RÉELLE de `GET /crm/leads/<id>/`
+// (`nom`, `prenom`, `devis[]`) et de `devis[].lecture` (forme exacte de
+// `apps.ventes.selectors.share_link_lecture_map` — jamais un champ inventé).
+const LEAD_DEVIS = [
+  {
+    id: 41, reference: 'DV-2026-041', statut: 'envoye', total_ttc: '125000.00',
+    date_creation: '2026-09-01T09:00:00Z', option_acceptee: null, chantier: null,
+    share_link: null,
+    lecture: {
+      nombre_vues: 3,
+      premiere_consultation: '2026-09-02T10:00:00Z',
+      derniere_consultation: '2026-09-10T14:00:00Z',
+    },
+  },
+  {
+    id: 42, reference: 'DV-2026-042', statut: 'brouillon', total_ttc: '50000.00',
+    date_creation: '2026-08-20T09:00:00Z', option_acceptee: null, chantier: null,
+    share_link: null, lecture: null,
+  },
+]
+const LEAD_DETAIL = { id: 7, nom: 'Alami', prenom: 'Ahmed', devis: LEAD_DEVIS }
+const VISITE_LEAD_1 = {
+  id: 501, point: 'proposition', point_display: 'Proposition', contexte: 'devis #41',
+  ip: '41.1.2.3',
+  user_agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+  appareil_id: 'ffff0000aaaa', duree_s: 125, terminee: true, lead: 7, lead_nom: 'Ahmed Alami',
+  created_at: '2026-09-10T14:00:00Z',
 }
 
 beforeEach(() => {
@@ -152,5 +183,59 @@ describe('VisiteursPage (VIS1)', () => {
     mount(['/crm/visiteurs?appareil=ab12cd34ef56'])
     await waitFor(() => expect(getAppareilsVisites).toHaveBeenCalledWith({ appareil_id: 'ab12cd34ef56' }))
     expect(screen.getByText(/Filtré sur l’appareil/)).toBeInTheDocument()
+  })
+})
+
+/* VIS-LEAD (14-16/09/2026) — la notification `devis_opened` pointe désormais
+   `/crm/visiteurs?lead=<id>` : cet écran doit montrer l'historique des accès
+   de CE lead (lectures des devis + visites brutes), pas la liste agrégée par
+   appareil. */
+describe('VisiteursPage — mode lead (?lead=), historique des accès (VIS-LEAD)', () => {
+  beforeEach(() => {
+    getLead.mockResolvedValue({ data: LEAD_DETAIL })
+    getVisitesExternes.mockResolvedValue({ data: { results: [VISITE_LEAD_1] } })
+  })
+
+  it('charge la fiche et les visites du lead, et affiche son historique', async () => {
+    mount(['/crm/visiteurs?lead=7'])
+
+    await waitFor(() => expect(getLead).toHaveBeenCalledWith('7'))
+    await waitFor(() => expect(getVisitesExternes).toHaveBeenCalledWith({ lead: '7' }))
+
+    expect(await screen.findByText(/Historique des accès — Alami Ahmed/)).toBeInTheDocument()
+    // Ligne d'accès : point_display, IP, durée humanisée (125 s -> 2 min).
+    expect(screen.getByText(/Proposition/)).toBeInTheDocument()
+    expect(screen.getByText('41.1.2.3')).toBeInTheDocument()
+    expect(screen.getByText('2 min')).toBeInTheDocument()
+    // L'appareil de cette visite est déjà marqué équipe (APPAREIL_EQUIPE) :
+    // le badge doit apparaître sur sa ligne d'accès.
+    expect(screen.getByText('Équipe')).toBeInTheDocument()
+  })
+
+  it('affiche « Jamais partagé » pour un devis sans lien, et le compteur réel pour un devis lu', async () => {
+    mount(['/crm/visiteurs?lead=7'])
+    await screen.findByText(/Historique des accès/)
+
+    expect(screen.getByText(/Jamais partagé/)).toBeInTheDocument()
+    expect(screen.getByText(/Ouvert 3 fois/)).toBeInTheDocument()
+  })
+
+  it('affiche le message vide quand le lead n’a aucun accès enregistré', async () => {
+    getVisitesExternes.mockResolvedValue({ data: { results: [] } })
+    mount(['/crm/visiteurs?lead=7'])
+    await screen.findByText(/Historique des accès/)
+
+    expect(await screen.findByText('Aucun accès enregistré pour ce lead.')).toBeInTheDocument()
+  })
+
+  it('« Tous les appareils » retire le filtre lead et revient à la vue agrégée', async () => {
+    const user = userEvent.setup()
+    mount(['/crm/visiteurs?lead=7'])
+    await screen.findByText(/Historique des accès/)
+
+    await user.click(screen.getByRole('button', { name: 'Tous les appareils' }))
+
+    await waitFor(() => expect(getAppareilsVisites).toHaveBeenCalled())
+    expect(screen.queryByText(/Historique des accès/)).not.toBeInTheDocument()
   })
 })

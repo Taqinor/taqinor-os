@@ -3585,7 +3585,8 @@ class AppareilEquipe(TenantModel):
     ORDRE FONDATEUR (14/09/2026) : les appareils du fondateur (et de l'équipe)
     déclenchaient les alertes T-TRACE anti-fraude — le seul mécanisme
     d'exclusion existant était le cookie CLIENT ``tq_equipe`` vérifié par
-    ``apps/ventes/public_views.py::_appareil_equipe`` : fragile, posé par
+    ``apps/ventes/public_views.py::_lecture_equipe`` (via
+    ``crm.services.requete_marquee_equipe``) : fragile, posé par
     NAVIGATEUR, absent du navigateur intégré WhatsApp et de la navigation
     privée. Ce registre est le complément SERVEUR : un ``appareil_id`` marqué
     ici est exclu du comptage/des alertes anti-fraude PARTOUT, pour TOUJOURS,

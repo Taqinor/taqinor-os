@@ -43,6 +43,8 @@ import { ThemeToggle } from '../../design/ThemeToggle'
 import { useTheme } from '../../design/theme-context'
 import { useT } from '../../i18n'
 import { getCurrentTenantTheme, subscribeTenantTheme } from '../../design/tenantTheme'
+// QJ-EQUIPE-3 — voir le useEffect plus bas pour le contexte.
+import { enregistrerNavigateurEquipe } from '../../lib/appareilEquipe'
 // VX46 — « Mes préférences » : panneau ouvert depuis le menu utilisateur.
 import PreferencesPanel from '../../pages/preferences/PreferencesPanel'
 import { initPreferences } from '../../pages/preferences/prefs'
@@ -70,6 +72,17 @@ export default function Header({ onMenu }) {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const user = useSelector((state) => state.auth.user)
+  // QJ-EQUIPE-3 (14-16/09/2026) — Reda/Meryem ouvraient le vrai lien client
+  // depuis leur téléphone pour vérifier un devis, ce qui déclenchait la
+  // notification « devis ouvert » comme si c'était le prospect. Désormais
+  // tout navigateur connecté à l'ERP s'enregistre lui-même comme appareil
+  // équipe côté serveur (registre scopé société + cookie d'identifiant partagé),
+  // sans geste manuel — au plus une fois par 24 h, en best-effort.
+  useEffect(() => {
+    if (user?.id) enregistrerNavigateurEquipe(user)
+  },
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- volontaire : ne se redéclenche QUE si l'id utilisateur change (jamais sur un changement d'identité de l'objet `user` qui laisse le même id) — même convention que VisiteursPage.jsx.
+  [user?.id])
   const t = useT()
   // VX181 — le ThemeToggle segmenté disparaît sous md (voir plus bas) ; ces 3
   // options du menu utilisateur restent le SEUL accès au thème sur mobile.
