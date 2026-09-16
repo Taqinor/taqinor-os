@@ -40,6 +40,61 @@ const TYPES_EQUIPEMENT = [
   { value: 'service', label: 'Service' },
 ]
 
+// STKCAT5 — assistant « Typer mes catégories ». Table nom exact → type,
+// MIROIR de `seed_catalogue.TYPES_PAR_CATEGORIE` (backend, STKCAT3) : les
+// mêmes noms exacts de la taxonomie seedée suggèrent le même type. Une
+// SUGGESTION seulement — rien n'est jamais écrit sans un clic « Accepter ».
+const TYPE_PAR_NOM_EXACT = {
+  'Panneaux photovoltaïques': 'panneau',
+  'Onduleurs réseau': 'onduleur',
+  'Onduleurs hybrides': 'onduleur',
+  'Onduleurs hors réseau': 'onduleur',
+  'Batteries': 'batterie',
+  'Structures & fixation': 'structure',
+  'Protection & accessoires': 'protection',
+  'Câbles': 'cable',
+  'Pompes': 'pompe',
+  'Variateurs': 'variateur',
+  'Services & prestations': 'service',
+  // Les trois catégories du jeu de démonstration (`seed_demo`), mêmes noms
+  // que côté backend.
+  'Panneaux solaires': 'panneau',
+  'Onduleurs': 'onduleur',
+  'Accessoires': 'accessoire',
+}
+
+// Repli mots-clés pour une catégorie libre (renommée ou créée par une
+// société, absente de la taxonomie seedée ci-dessus). Un mot-clé sans
+// ambiguïté suffit ; tout le reste retombe sur « aucune suggestion » —
+// jamais un type deviné par ressemblance approximative.
+const MOTCLES_PAR_TYPE = [
+  [/panneau|module/i, 'panneau'],
+  [/onduleur/i, 'onduleur'],
+  [/batterie/i, 'batterie'],
+  [/structure|fixation|pergola|carport/i, 'structure'],
+  [/c[âa]ble/i, 'cable'],
+  [/pompe/i, 'pompe'],
+  [/variateur/i, 'variateur'],
+  [/protection|disjoncteur|parafoudre|coffret/i, 'protection'],
+  [/service|prestation|installation|pose/i, 'service'],
+  [/compteur|smart meter/i, 'compteur'],
+  [/accessoire/i, 'accessoire'],
+]
+
+function suggestionTypePourNom(nom) {
+  const n = (nom ?? '').trim()
+  if (!n) return null
+  if (TYPE_PAR_NOM_EXACT[n]) return TYPE_PAR_NOM_EXACT[n]
+  for (const [motif, type] of MOTCLES_PAR_TYPE) {
+    if (motif.test(n)) return type
+  }
+  return null
+}
+
+function labelDuType(type) {
+  return TYPES_EQUIPEMENT.find((t) => t.value === type)?.label ?? null
+}
+
 // Extrait un message FR lisible d'une erreur DRF (jamais de JSON brut).
 function frErr(err, fallback = 'Une erreur est survenue.') {
   const data = err?.response?.data
@@ -72,8 +127,28 @@ export default function CategoriesStock() {
   // Brouillons d'édition catégorie : { [id]: { nom, ordre, type_equipement } }
   const [drafts, setDrafts] = useState({})
   const [newCat, setNewCat] = useState('')
+  const [newCatType, setNewCatType] = useState('__none')
+  const [newCatOrdre, setNewCatOrdre] = useState(100)
   const [newMarque, setNewMarque] = useState('')
   const [savingId, setSavingId] = useState(null)
+  // STKCAT5 — assistant « Typer mes catégories ».
+  const [acceptingId, setAcceptingId] = useState(null)
+  const [acceptingAll, setAcceptingAll] = useState(false)
+
+  // STKCAT5 — compteur de produits par catégorie : dérivé du `produits` déjà
+  // chargé ailleurs dans le slice stock (aucun nouvel appel réseau ici — si
+  // la liste produit n'a pas encore été visitée, le compteur affiche 0).
+  const produits = useSelector((s) => s.stock.produits ?? [])
+  const nbProduitsParCategorie = useMemo(() => {
+    const m = {}
+    for (const p of produits) {
+      if (p.is_archived) continue
+      const id = p.categorie?.id
+      if (id == null) continue
+      m[id] = (m[id] ?? 0) + 1
+    }
+    return m
+  }, [produits])
 
   const loadCategories = () =>
     stockApi.getCategories({ ordering: 'ordre' })
@@ -132,10 +207,52 @@ export default function CategoriesStock() {
     if (!nom) return
     setError(null); setInfo(null)
     try {
-      await stockApi.createCategorie({ nom })
+      await stockApi.createCategorie({
+        nom,
+        type_equipement: newCatType === '__none' ? null : newCatType,
+        ordre: Number(newCatOrdre) || 100,
+      })
       setNewCat('')
+      setNewCatType('__none')
+      setNewCatOrdre(100)
       await loadCategories()
     } catch (err) { setError(frErr(err, "L'ajout de la catégorie a échoué.")) }
+  }
+
+  // STKCAT5 — assistant « Typer mes catégories » : PATCH le type suggéré
+  // (jamais autre chose) sur une catégorie non typée, une par une, sans
+  // jamais écrire une suggestion qui n'a pas été explicitement acceptée.
+  const acceptSuggestion = async (c, type) => {
+    setError(null); setInfo(null)
+    setAcceptingId(c.id)
+    try {
+      await stockApi.patchCategorie(c.id, { type_equipement: type })
+      await loadCategories()
+    } catch (err) {
+      setError(frErr(err, "L'application de la suggestion a échoué."))
+    } finally { setAcceptingId(null) }
+  }
+
+  const acceptAllSuggestions = async (rows) => {
+    setError(null); setInfo(null)
+    setAcceptingAll(true)
+    let done = 0
+    try {
+      // Une par une, délibéré (PATCH séquentiel, jamais en rafale parallèle).
+      for (const { categorie, type } of rows) {
+        await stockApi.patchCategorie(categorie.id, { type_equipement: type })
+        done += 1
+      }
+      setInfo(`${done} catégorie(s) typée(s).`)
+    } catch (err) {
+      // Un PATCH en échec n'annule pas les précédents : `loadCategories()`
+      // (ci-dessous, hors du try) reflète toujours ce qui a réellement été
+      // écrit avant l'échec.
+      setError(frErr(err, "L'application des suggestions a échoué."))
+    } finally {
+      await loadCategories()
+      setAcceptingAll(false)
+    }
   }
 
   const delCategorie = async (c) => {
@@ -182,6 +299,16 @@ export default function CategoriesStock() {
     () => [...categories].sort((a, b) => (a.ordre ?? 999) - (b.ordre ?? 999) || (a.nom ?? '').localeCompare(b.nom ?? '')),
     [categories])
 
+  // STKCAT5 — catégories non typées + leur suggestion dérivée du nom.
+  const suggestionsNonTypees = useMemo(
+    () => sortedCategories
+      .filter((c) => !c.type_equipement)
+      .map((c) => ({ categorie: c, type: suggestionTypePourNom(c.nom) })),
+    [sortedCategories])
+  const suggestionsAvecType = useMemo(
+    () => suggestionsNonTypees.filter((r) => r.type),
+    [suggestionsNonTypees])
+
   return (
     <div className="ui-root flex flex-col gap-5 px-4 py-5 sm:px-5">
       <PageHeader
@@ -207,6 +334,46 @@ export default function CategoriesStock() {
       {/* ── Catégories ── */}
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold">Catégories produit</h2>
+
+        {/* STKCAT5 — assistant « Typer mes catégories » : une suggestion
+            dérivée du nom pour chaque catégorie non typée, rien n'est écrit
+            sans un clic « Accepter » (individuel ou groupé). */}
+        {suggestionsNonTypees.length > 0 && (
+          <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="font-semibold">
+                Typer mes catégories — {suggestionsNonTypees.length} catégorie(s) non typée(s)
+              </p>
+              {canWrite && suggestionsAvecType.length > 0 && (
+                <Button type="button" size="sm" loading={acceptingAll}
+                        disabled={acceptingAll || acceptingId != null}
+                        onClick={() => acceptAllSuggestions(suggestionsAvecType)}>
+                  Accepter tout ({suggestionsAvecType.length})
+                </Button>
+              )}
+            </div>
+            <ul className="flex flex-col gap-1.5">
+              {suggestionsNonTypees.map(({ categorie: c, type }) => (
+                <li key={c.id} className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    <strong>{c.nom}</strong>
+                    {' — '}
+                    {type ? `suggestion : ${labelDuType(type)}` : 'aucune suggestion'}
+                  </span>
+                  {canWrite && type && (
+                    <Button type="button" variant="outline" size="sm"
+                            loading={acceptingId === c.id}
+                            disabled={acceptingAll || (acceptingId != null && acceptingId !== c.id)}
+                            onClick={() => acceptSuggestion(c, type)}>
+                      Accepter
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[40rem] text-sm">
             <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
@@ -214,15 +381,16 @@ export default function CategoriesStock() {
                 <th className="px-3 py-2 text-left font-semibold">Nom</th>
                 <th className="px-3 py-2 text-left font-semibold" style={{ width: 110 }}>Ordre</th>
                 <th className="px-3 py-2 text-left font-semibold" style={{ width: 200 }}>Type d&apos;équipement</th>
+                <th className="px-3 py-2 text-left font-semibold" style={{ width: 90 }}>Produits</th>
                 <th className="w-28 px-3 py-2" />
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={4} className="px-3 py-4 text-muted-foreground">Chargement…</td></tr>
+                <tr><td colSpan={5} className="px-3 py-4 text-muted-foreground">Chargement…</td></tr>
               )}
               {!loading && sortedCategories.length === 0 && (
-                <tr><td colSpan={4} className="px-3 py-4 text-muted-foreground">Aucune catégorie.</td></tr>
+                <tr><td colSpan={5} className="px-3 py-4 text-muted-foreground">Aucune catégorie.</td></tr>
               )}
               {sortedCategories.map((c) => {
                 const d = draftFor(c)
@@ -247,6 +415,9 @@ export default function CategoriesStock() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                      {nbProduitsParCategorie[c.id] ?? 0}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1">
@@ -273,10 +444,23 @@ export default function CategoriesStock() {
           </table>
         </div>
         {canWrite && (
-          <div className="flex max-w-md gap-2">
-            <Input className="flex-1" placeholder="Nouvelle catégorie" value={newCat}
+          <div className="flex flex-wrap items-center gap-2">
+            <Input className="h-9 w-56" placeholder="Nouvelle catégorie" value={newCat}
                    onChange={(e) => setNewCat(e.target.value)}
                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCategorie() } }} />
+            {/* Type + ordre en un geste (STKCAT5) — la valeur par défaut
+                (« Non typée », 100) garde le chemin rapide « juste un nom »
+                utilisable exactement comme avant. */}
+            <Select value={newCatType} onValueChange={setNewCatType}>
+              <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TYPES_EQUIPEMENT.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input type="number" step="any" inputMode="numeric" className="h-9 w-20"
+                   value={newCatOrdre} onChange={(e) => setNewCatOrdre(e.target.value)} />
             <Button type="button" onClick={addCategorie}><Plus className="size-4" aria-hidden="true" /> Ajouter</Button>
           </div>
         )}

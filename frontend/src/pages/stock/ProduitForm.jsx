@@ -56,6 +56,27 @@ import {
 const PHOTO_ACCEPT = 'image/*'
 const PHOTO_MAX_SIZE = 10 * 1024 * 1024
 
+// STKCAT5 — types d'équipement pour la création inline de catégorie et pour
+// afficher le type à côté du nom dans le sélecteur. `__none` = sentinelle
+// d'écran (« Non typée »), jamais envoyée telle quelle.
+// source-choix: stock.Categorie.type_equipement +__none
+const TYPES_EQUIPEMENT = [
+  { value: '__none', label: '— Non typée —' },
+  { value: 'panneau', label: 'Panneau' },
+  { value: 'onduleur', label: 'Onduleur' },
+  { value: 'batterie', label: 'Batterie' },
+  { value: 'structure', label: 'Structure' },
+  { value: 'cable', label: 'Câble' },
+  { value: 'protection', label: 'Protection' },
+  { value: 'pompe', label: 'Pompe' },
+  { value: 'variateur', label: 'Variateur' },
+  { value: 'compteur', label: 'Compteur' },
+  { value: 'accessoire', label: 'Accessoire' },
+  { value: 'service', label: 'Service' },
+]
+const TYPE_LABEL_PAR_VALEUR = Object.fromEntries(
+  TYPES_EQUIPEMENT.filter((t) => t.value !== '__none').map((t) => [t.value, t.label]))
+
 // VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
 // défaut OFF (comportement historique inchangé). Un salon = 10 leads/produits
 // créés d'affilée ; sans ce toggle chaque création coûte un cycle
@@ -348,6 +369,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const tvaSuggested = !isEdit && !tvaTouched
 
   const [newCatName, setNewCatName] = useState('')
+  // STKCAT5 — type + ordre en un geste ; défauts (« Non typée », 100) gardent
+  // le chemin rapide « juste un nom » utilisable exactement comme avant.
+  const [newCatType, setNewCatType] = useState('__none')
+  const [newCatOrdre, setNewCatOrdre] = useState(100)
   const [showNewCat, setShowNewCat] = useState(false)
   const [catSaving, setCatSaving] = useState(false)
   const [catError, setCatError] = useState(null)
@@ -570,9 +595,15 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     setCatSaving(true)
     setCatError(null)
     try {
-      const result = await dispatch(createCategorie({ nom })).unwrap()
+      const result = await dispatch(createCategorie({
+        nom,
+        type_equipement: newCatType === '__none' ? null : newCatType,
+        ordre: Number(newCatOrdre) || 100,
+      })).unwrap()
       setField('categorie_id', String(result.id))
       setNewCatName('')
+      setNewCatType('__none')
+      setNewCatOrdre(100)
       setShowNewCat(false)
     } catch (err) {
       setCatError(err?.nom?.[0] ?? err?.detail ?? 'Erreur lors de la création.')
@@ -847,18 +878,33 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
             {/* Catégorie (avec création inline) */}
             <FormField label="Catégorie" htmlFor="pf-cat" error={catError}>
               {showNewCat ? (
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   <Input
                     ref={newCatRef}
+                    className="min-w-[9rem] flex-1"
                     value={newCatName}
                     onChange={e => setNewCatName(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCreateCategorie() } }}
                     placeholder="Nom de la catégorie"
                   />
+                  {/* STKCAT5 — type + ordre en un geste ; défauts (« Non
+                      typée », 100) gardent le chemin rapide « juste un nom ». */}
+                  <Select value={newCatType} onValueChange={setNewCatType}>
+                    <SelectTrigger className="w-40" aria-label="Type d'équipement"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {TYPES_EQUIPEMENT.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Input type="number" step="any" inputMode="numeric" className="w-16"
+                         aria-label="Ordre" value={newCatOrdre}
+                         onChange={e => setNewCatOrdre(e.target.value)} />
                   <Button type="button" loading={catSaving} disabled={!newCatName.trim()}
                           onClick={handleCreateCategorie}>Créer</Button>
                   <Button type="button" variant="outline" size="icon" aria-label="Annuler"
-                          onClick={() => { setShowNewCat(false); setNewCatName(''); setCatError(null) }}>
+                          onClick={() => {
+                            setShowNewCat(false); setNewCatName('')
+                            setNewCatType('__none'); setNewCatOrdre(100); setCatError(null)
+                          }}>
                     <X />
                   </Button>
                 </div>
@@ -870,7 +916,15 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                       <SelectTrigger id="pf-cat"><SelectValue placeholder="— Aucune catégorie —" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none">— Aucune catégorie —</SelectItem>
-                        {categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
+                        {categories.map(c => (
+                          <SelectItem key={c.id} value={String(c.id)}>
+                            {/* STKCAT5 — le type s'affiche à côté du nom
+                                (« Structures & fixation — Structure »). */}
+                            {c.type_equipement && TYPE_LABEL_PAR_VALEUR[c.type_equipement]
+                              ? `${c.nom} — ${TYPE_LABEL_PAR_VALEUR[c.type_equipement]}`
+                              : c.nom}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
