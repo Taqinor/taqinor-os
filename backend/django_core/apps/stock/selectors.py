@@ -2895,6 +2895,69 @@ def produits_par_type_equipement(company, type_equipement, avec_prix=True):
     return list(qs.order_by('categorie__ordre', 'nom'))
 
 
+# ── STKCAT27 ── la recherche SANS ACCENTS est-elle disponible sur cette base ?
+#
+# Sonde process-wide, mise en cache : `apps.stock.views.produit` s'en sert pour
+# choisir entre la recherche insensible aux accents (index GIN trigramme sur
+# `public.f_unaccent(lower(nom))`, posé par la migration 0148) et le repli
+# `SearchFilter` de DRF, identique à l'octet près au comportement historique.
+#
+# La migration 0148 ne peut PAS échouer : si le rôle de la base n'a pas le
+# droit de faire `CREATE EXTENSION`, elle se contente d'écrire des NOTICE et ne
+# crée rien. C'est donc ICI, à l'exécution, qu'on constate ce qui existe
+# vraiment — jamais en supposant que la migration a réussi.
+_CACHE_RECHERCHE_SANS_ACCENTS = None
+
+# On exige les TROIS objets à la fois. Vérifier les seules extensions ne
+# suffirait pas : si la création de l'enveloppe avait échoué (droit de créer
+# une fonction refusé) alors que les extensions existent, la requête ORM
+# référencerait une fonction inexistante -> 500 sur une recherche catalogue.
+_SQL_SONDE_SANS_ACCENTS = (
+    "SELECT to_regprocedure('public.f_unaccent(text)') IS NOT NULL"
+    " AND EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'unaccent')"
+    " AND EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')"
+)
+
+
+def reinitialiser_cache_recherche_sans_accents():
+    """Vide la sonde mise en cache (tests ; et rattrapage après un
+    `CREATE EXTENSION` fait à la main sans redémarrer les workers)."""
+    global _CACHE_RECHERCHE_SANS_ACCENTS
+    _CACHE_RECHERCHE_SANS_ACCENTS = None
+
+
+def recherche_sans_accents_disponible():
+    """`True` si `public.f_unaccent`, `unaccent` et `pg_trgm` sont TOUS là.
+
+    Sondé UNE FOIS par processus (la réponse ne change pas sans un DDL
+    manuel + redémarrage). Le coût est donc d'UNE requête catalogue sur la
+    toute première recherche du processus, et de zéro ensuite — et l'appelant
+    ne sonde que lorsqu'il y a réellement un terme de recherche, pour que le
+    budget de requêtes de la liste produits (`docs/query-budgets.yml`) reste
+    inchangé.
+
+    Toute anomalie (backend non PostgreSQL — SQLite dans certains tests —,
+    connexion refusée, catalogue illisible) est traitée comme « indisponible » :
+    la recherche retombe alors sur `SearchFilter`, jamais sur une erreur.
+    """
+    global _CACHE_RECHERCHE_SANS_ACCENTS
+    if _CACHE_RECHERCHE_SANS_ACCENTS is not None:
+        return _CACHE_RECHERCHE_SANS_ACCENTS
+
+    from django.db import connection
+
+    disponible = False
+    if connection.vendor == 'postgresql':
+        try:
+            with connection.cursor() as curseur:
+                curseur.execute(_SQL_SONDE_SANS_ACCENTS)
+                disponible = bool(curseur.fetchone()[0])
+        except Exception:  # noqa: BLE001 — jamais bloquant pour une recherche
+            disponible = False
+    _CACHE_RECHERCHE_SANS_ACCENTS = disponible
+    return disponible
+
+
 # -- Groupe NTWMS -- couche ENTREPOT (casiers, strategies de picking, tarifs) --
 # Definis dans `selectors_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.selectors import ...`.

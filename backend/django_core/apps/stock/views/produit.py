@@ -1,5 +1,11 @@
+import operator  # noqa: F401
+from functools import reduce  # noqa: F401
+
 from django.db import transaction  # noqa: F401
-from django.db.models import ProtectedError, Count, Min, Max, Prefetch  # noqa: F401
+from django.db.models import (  # noqa: F401
+    ProtectedError, Count, Min, Max, Prefetch, Q, Func, TextField, Value,
+)
+from django.db.models.functions import Lower  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import viewsets, filters, serializers, status  # noqa: F401
@@ -108,6 +114,82 @@ class _MarketplaceFormatContentNegotiation(DefaultContentNegotiation):
         return renderers[0], renderers[0].media_type
 
 
+def _sans_accents(expression):
+    """STKCAT27 — `public.f_unaccent(<expression>)`.
+
+    L'enveloppe IMMUTABLE posée par la migration 0148. La MÊME expression est
+    appliquée des DEUX côtés de la comparaison (colonne et terme saisi), et
+    elle est écrite EXACTEMENT comme l'expression indexée — `f_unaccent(lower(
+    <colonne>))` — pour que l'index GIN trigramme soit utilisable.
+    """
+    return Func(expression, function='public.f_unaccent',
+                output_field=TextField())
+
+
+class RechercheProduitSansAccents(filters.SearchFilter):
+    """STKCAT27 — `?search=` insensible aux accents, SI la base le permet.
+
+    « cable » trouve « Câble solaire 6mm² ». La sémantique de DRF est
+    conservée telle quelle : les termes sont découpés par
+    ``SearchFilter.get_search_terms`` (guillemets compris), chaque terme est
+    cherché en OU sur tous les ``search_fields``, et les termes sont combinés
+    en ET — « deye hybride » continue d'exiger les deux mots.
+
+    DÉGRADATION GRACIEUSE, C'EST LE CŒUR DE LA TÂCHE : dès que les extensions
+    (ou l'enveloppe) manquent — rôle de base sans droit `CREATE EXTENSION`,
+    SQLite dans un test —, on rend la main à ``SearchFilter`` et le
+    comportement redevient celui d'aujourd'hui, à l'octet près. Idem pour les
+    deux cas particuliers que DRF gère et qu'on ne réimplémente PAS : un
+    ``search_fields`` préfixé (`^`, `=`, `@`, `$`) et le dédoublonnage des
+    jointures plusieurs-à-plusieurs.
+
+    La sonde n'est faite QUE s'il y a un terme de recherche : une liste
+    produits sans `?search=` n'exécute pas une requête de plus, donc le budget
+    de `docs/query-budgets.yml` est intact.
+    """
+
+    def filter_queryset(self, request, queryset, view):
+        champs = self.get_search_fields(view, request)
+        termes = self.get_search_terms(request)
+        if not champs or not termes:
+            return queryset
+        if any(str(champ)[:1] in self.lookup_prefixes for champ in champs):
+            return super().filter_queryset(request, queryset, view)
+        if self.must_call_distinct(queryset, champs):
+            return super().filter_queryset(request, queryset, view)
+
+        from ..selectors import recherche_sans_accents_disponible
+        if not recherche_sans_accents_disponible():
+            return super().filter_queryset(request, queryset, view)
+
+        # `alias()` et non `annotate()` : l'expression sert UNIQUEMENT à
+        # filtrer, elle ne doit ni entrer dans le SELECT ni, surtout, dans le
+        # GROUP BY du chemin `?show_archived=true` (qui agrège des Count).
+        alias_par_champ = {
+            str(champ): '_stkcat27_ua_%d' % rang
+            for rang, champ in enumerate(champs)
+        }
+        qs = queryset.alias(**{
+            alias: _sans_accents(Lower(champ))
+            for champ, alias in alias_par_champ.items()
+        })
+        # Terme comparé via `__contains` (et non `icontains`) : les deux côtés
+        # sont DÉJÀ passés par `lower()`, une seconde mise en casse par DRF
+        # ferait diverger l'expression de celle de l'index. Les jokers `%` et
+        # `_` tapés par l'utilisateur restent échappés par Django lui-même
+        # (`pattern_esc` du backend PostgreSQL s'applique aux membres droits
+        # qui sont des expressions), donc la parité avec `icontains` tient.
+        conditions = [
+            reduce(operator.or_, [
+                Q(**{'%s__contains' % alias:
+                     _sans_accents(Value(terme.lower()))})
+                for alias in alias_par_champ.values()
+            ])
+            for terme in termes
+        ]
+        return qs.filter(reduce(operator.and_, conditions))
+
+
 class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                      CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
@@ -130,7 +212,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         ),
     ).all()
     serializer_class = ProduitSerializer
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    # STKCAT27 — `RechercheProduitSansAccents` EST un `SearchFilter` : mêmes
+    # `search_fields`, même découpage des termes, même schéma OpenAPI. Il ne
+    # change la requête que si la base porte `unaccent` + `pg_trgm` +
+    # l'enveloppe `public.f_unaccent` ; sinon il délègue au parent.
+    filter_backends = [RechercheProduitSansAccents, filters.OrderingFilter]
     search_fields = ['nom', 'sku', 'description', 'categorie__nom']
     ordering_fields = [
         'nom', 'quantite_stock', 'prix_vente', 'date_creation'
