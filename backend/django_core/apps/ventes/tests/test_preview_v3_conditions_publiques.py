@@ -58,16 +58,34 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
             prix_vente=Decimal('1000'), quantite_stock=100)
 
     def _devis(self, suffixe, avec_lignes=True, client=None):
+        """Devis mono-option servable par ``/proposal`` : panneaux + UN
+        onduleur réseau. CI 16/09/2026 (run 35142227480) — sans onduleur, le
+        builder refuse le document à options (« aucune option ne contient
+        d'onduleur — règle de sécurité ») et la vue répond 404 : le garde-fou
+        avait raison, la fixture non. ``avec_lignes=False`` garde les MÊMES
+        lignes à prix nul (total 0) : le devis reste servable et l'acompte
+        doit être ABSENT (audit C7), ce que le test « sans ligne » prouve.
+        """
+        from apps.stock.models import Produit
         devis = Devis.objects.create(
             company=self.company, reference=f'DEV-{MONTH}-{suffixe}',
             client=self.client_obj if client is None else client,
             statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20'),
             remise_globale=Decimal('10'), created_by=self.seller)
-        if avec_lignes:
-            LigneDevis.objects.create(
-                devis=devis, produit=self._produit(), designation='Panneau',
-                quantite=Decimal('10'), prix_unitaire=Decimal('1000'),
-                remise=Decimal('0'))
+        onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau PV3',
+            sku=f'PV3-OND-{suffixe}', prix_vente=Decimal('11700'),
+            quantite_stock=100)
+        pu_panneau = Decimal('1000') if avec_lignes else Decimal('0')
+        pu_onduleur = Decimal('11700') if avec_lignes else Decimal('0')
+        LigneDevis.objects.create(
+            devis=devis, produit=self._produit(), designation='Panneau',
+            quantite=Decimal('10'), prix_unitaire=pu_panneau,
+            remise=Decimal('0'))
+        LigneDevis.objects.create(
+            devis=devis, produit=onduleur, designation='Onduleur réseau',
+            quantite=Decimal('1'), prix_unitaire=pu_onduleur,
+            remise=Decimal('0'))
         return devis
 
     def _devis_deux_options(self, suffixe):
@@ -110,10 +128,10 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
 
     # ── acompte ─────────────────────────────────────────────────────────
     def test_acompte_porte_le_montant_reel_de_la_premiere_tranche(self):
-        """10 000 HT − 10 % = 9 000 ; TTC 10 800 ; acompte 30 % = 3 240."""
+        """21 700 HT − 10 % = 19 530 ; TTC 23 436 ; acompte 30 % = 7 030,80."""
         data = self._payload()
         self.assertIn('acompte', data)
-        self.assertEqual(data['acompte']['ttc'], '3240.00')
+        self.assertEqual(data['acompte']['ttc'], '7030.80')
         self.assertEqual(Decimal(data['acompte']['pourcentage']),
                          Decimal('30'))
         # PREVIEW-V3-FIX (C9) — `libelle` n'est plus servi : il ne l'était
@@ -126,9 +144,13 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         même montant que `ttc` (aucune option ne filtre les lignes)."""
         data = self._payload()
         montants = data['acompte']['montants']
-        self.assertEqual(list(montants.values()), ['3240.00'])
+        self.assertEqual(list(montants.values()), ['7030.80'])
         self.assertEqual(len(montants), 1)
-        self.assertEqual(data['acompte']['option'], '')
+        # Mono-option : l'ERP peut ne distinguer aucune option ('') ou la
+        # nommer « sans_batterie » (un onduleur réseau sans batterie) — dans
+        # les deux cas l'unique montant est celui de `ttc`.
+        self.assertIn(data['acompte']['option'], ('', 'sans_batterie'))
+        self.assertEqual(list(montants.values())[0], data['acompte']['ttc'])
 
     def test_acompte_porte_les_deux_montants_sur_un_devis_a_deux_options(self):
         """LE DÉFAUT C1, ÉPINGLÉ. Avant : un seul montant (celui de l'option
