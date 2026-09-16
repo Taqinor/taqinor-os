@@ -385,6 +385,13 @@ const crmApi = {
   // caché côté écran, la garde réelle reste serveur.
   getAppareilsEquipe: () => api.get('/crm/appareils-equipe/'),
   createAppareilEquipe: (data) => api.post('/crm/appareils-equipe/', data),
+  // QJ-EQUIPE-3 — reconnaissance AUTOMATIQUE : tout navigateur connecté à
+  // l'ERP est un appareil équipe (plus besoin du marquage manuel ci-dessus
+  // pour l'usage courant — il reste le filet pour un appareil externe, ex.
+  // le téléphone perso d'un commercial). `data` : { appareil_id, navigateur }
+  // — la réponse pose ELLE-MÊME les cookies partagés `tq_equipe`/
+  // `tq_appareil` (Domain=taqinor.ma) ; rien à faire côté client.
+  enregistrerNavigateurEquipe: (data) => api.post('/crm/appareils-equipe/ce-navigateur/', data),
   deleteAppareilEquipe: (id) => api.delete(`/crm/appareils-equipe/${id}/`),
 
   // VTA13 — les 13 fonctions de la VISITE TECHNIQUE ont quitté ce client : la
