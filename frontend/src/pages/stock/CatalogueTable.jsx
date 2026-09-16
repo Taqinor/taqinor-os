@@ -219,8 +219,22 @@ export function CatalogueTable({
       id: 'categorie',
       header: 'Catégorie',
       minWidth: 130,
-      searchable: false,
+      // STKCAT17 — colonne désormais cherchable (le moteur DataTable, pas la
+      // recherche transverse déjà servie par StockList en amont).
+      searchable: true,
       accessor: (p) => p.categorie?.nom ?? '—',
+      // STKCAT17 — `categorie_type_display` (déjà sérialisé sur chaque produit
+      // par le backend) sous le nom de catégorie : le TYPE (ex. « Onduleur »)
+      // que le chantier/le dimensionnement lisent, jusqu'ici invisible ici.
+      cell: (value, p) => (
+        <div className="min-w-0">
+          <div className="truncate">{value}</div>
+          {p.categorie_type_display && (
+            <Badge tone="neutral">{p.categorie_type_display}</Badge>
+          )}
+        </div>
+      ),
+      exportValue: (p) => p.categorie?.nom ?? '—',
     },
     {
       id: 'spec',
@@ -250,17 +264,22 @@ export function CatalogueTable({
       width: 150,
       searchable: false,
       accessor: (p) => p.prix_vente,
+      // STKCAT17 — le badge « prix à renseigner » vivait UNIQUEMENT dans la
+      // branche lecture seule : un éditeur (celui qui peut justement corriger
+      // le prix) ne le voyait jamais, juste une cellule éditable à « 0.00 HT ».
+      // Le format de la colonne porte désormais la même règle des DEUX côtés.
       cell: (value, p) => {
-        if (sansPrix(p) && !editable) return <Badge tone="warning">prix à renseigner</Badge>
-        const display = `${formatMAD(value, { withSymbol: false })} HT`
-        if (!editable) return <span className="tabular-nums">{display}</span>
+        const fmt = (v, r) => (sansPrix(r)
+          ? <Badge tone="warning">prix à renseigner</Badge>
+          : `${formatMAD(v, { withSymbol: false })} HT`)
+        if (!editable) return <span className="tabular-nums">{fmt(value, p)}</span>
         return (
           <EditableCell
             value={value}
             row={p}
             align="right"
             inputType="number"
-            format={(v) => `${formatMAD(v, { withSymbol: false })} HT`}
+            format={fmt}
             validate={validatePositif}
             onSave={(v, r) => onInlineSave(r, 'prix_vente', v)}
           />

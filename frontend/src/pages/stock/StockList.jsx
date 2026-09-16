@@ -31,7 +31,7 @@ import api from '../../api/axios'
 import { formatNumber, formatMAD } from '../../lib/format'
 import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/bulk'
 import {
-  groupCatalogue, searchCatalogue, sansPrix,
+  groupCatalogue, searchCatalogue, sansPrix, severiteStock, SEV_OK,
 } from '../../features/stock/catalogue'
 import { validateTransfert, totalVentile, quantiteEmplacement, produitDansEmplacement } from '../../features/stock/emplacements'
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
@@ -949,7 +949,11 @@ export default function StockList() {
   const actifs = useMemo(() => produits.filter(p => !p.is_archived), [produits])
   const searching = search.trim().length > 0
   const filtered = useMemo(() => {
-    let list = filterLow ? actifs.filter(p => p.is_low_stock) : actifs
+    // STKCAT17 — « Stock bas » couvre TOUTE sévérité anormale (rupture
+    // COMPRISE), via la même règle que la grille (`severiteStock`) : le
+    // drapeau serveur `is_low_stock` est calculé sur `seuil_alerte > 0`, donc
+    // un produit à {stock:0, seuil:0} (rupture) n'était jamais compté.
+    let list = filterLow ? actifs.filter(p => severiteStock(p) !== SEV_OK) : actifs
     if (filterNoPrice) list = list.filter(p => sansPrix(p))
     if (filterNoSku) list = list.filter(p => !(p.sku ?? '').trim())
     if (filterMarque) list = list.filter(p => ((p.marque || '').trim() || 'Génériques') === filterMarque)
@@ -996,8 +1000,11 @@ export default function StockList() {
   // Rail de catégories (catalogue actif complet) — pilote le filtre `activeCatIds`.
   const allGroups = useMemo(() => groupCatalogue(actifs), [actifs])
 
+  // STKCAT17 — même règle que le filtre ci-dessus (severiteStock !== OK,
+  // rupture comprise à seuil 0) : le badge « Stock bas » du header comptait
+  // moins que ce que la grille affiche réellement en rupture/sous seuil.
   const lowCount = useMemo(
-    () => produits.filter(p => p.is_low_stock && !p.is_archived).length,
+    () => produits.filter(p => !p.is_archived && severiteStock(p) !== SEV_OK).length,
     [produits]
   )
 
