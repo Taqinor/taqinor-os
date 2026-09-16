@@ -6352,14 +6352,22 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 moyen de corriger, sous peine de nullité. La carte encadrée de
                 v3 disait la même chose sur quatre paragraphes — ici, deux
                 lignes, chaque morceau affiché SEULEMENT s'il existe. */}
-            <div class="mt-3 text-sm leading-snug text-lune-soft" data-sign-recap>
+            <div class="mt-2 text-sm leading-snug text-lune-soft" data-sign-recap>
               <p>
                 <span data-i18n data-fr="Vous signez :" data-en="You are signing:" data-ar="أنتم توقّعون:">Vous signez :</span>{' '}
                 {twoOptions && (
-                  <><span class="text-lune" data-sign-recap-option>{optionLabel(preselect)}</span>{' · '}</>
+                  /* `optionInitiale` (= `preselect` quand il existe) : le nom
+                     de l'option DOIT venir de la même source que le TTC affiché
+                     juste à côté, sinon les deux pourraient se contredire sur un
+                     devis sans pré-sélection servie. */
+                  <><span class="text-lune" data-sign-recap-option>{optionLabel(optionInitiale)}</span>{' · '}</>
                 )}
                 {heroHasRealPrice ? (
-                  <><span class="font-bold text-lune" dir="ltr" data-sign-recap-ttc>{formatMAD(optionTtc(data!, optionInitiale))}</span>{' '}<span data-i18n data-fr="TTC · TVA incluse" data-en="incl. VAT" data-ar="بجميع الرسوم · الضريبة مُدرَجة">TTC · TVA incluse</span></>
+                  /* « TTC » suffit ici — « toutes taxes comprises » le dit. La
+                     mention « TVA incluse » reste contre le prix du héros et
+                     sur chaque carte d’option ; la répéter coûtait une ligne
+                     entière à la carte que le fondateur demande de raccourcir. */
+                  <><span class="font-bold text-lune" dir="ltr" data-sign-recap-ttc>{formatMAD(optionTtc(data!, optionInitiale))}</span>{' '}<span data-i18n data-fr="TTC" data-en="incl. VAT" data-ar="بجميع الرسوم">TTC</span></>
                 ) : (
                   <span data-i18n
                     data-fr="prix communiqué par votre conseiller"
@@ -6369,23 +6377,26 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </p>
               <p class="mt-1">
                 {acompte ? (
-                  /* B2 (CGI art. 193) — virement / chèque barré non endossable,
-                     jamais « espèces » : l'amende de 6 % frappe LE VENDEUR. Le
-                     qualificatif « non endossable » est GARDÉ (il désigne
-                     l'instrument que le droit protège), la consigne de coupe
-                     visait la longueur, pas la précision juridique.
+                  /* B2 (CGI art. 193) — virement ou chèque barré, JAMAIS
+                     « espèces » : c'est le refus des espèces que le droit
+                     sanctionne (amende de 6 % à la charge DU VENDEUR), et il
+                     est intact. PREVIEW-V3C — « non endossable » quitte cette
+                     ligne (elle en coûtait une entière sur un écran de 390 px) ;
+                     le qualificatif reste dans les conditions générales du
+                     repli, qui sont le texte CONTRACTUEL, celui que le PDF
+                     imprime. Aucun moyen de paiement n'est ajouté ni retiré.
                      PREVIEW-V3-FIX (audit C1) — le montant est celui de la
                      PREMIÈRE tranche de l'échéancier réel, CALCULÉ PAR LE
                      BACKEND POUR CHAQUE OPTION (`acompte.montants`) : le script
                      écrit celui de la case cochée, et masque le montant quand le
                      serveur n'en sert pas pour cette option (le pourcentage,
                      lui, reste vrai). */
-                  <><span data-i18n data-fr={`Acompte ${acompte.pct} %`} data-en={`${acompte.pct}% deposit`} data-ar={`تسبيق ${acompte.pct}%`}>Acompte {acompte.pct} %</span><span data-sign-acompte-montant hidden={!acompteMontantInitial}> : <span dir="ltr" data-sign-acompte-valeur>{acompteMontantInitial ?? ''} TTC</span></span><span data-i18n data-fr=" à l’acceptation (virement ou chèque barré non endossable)" data-en=" on acceptance (bank transfer or crossed non-endorsable cheque)" data-ar=" عند القبول (تحويل بنكي أو شيك مسطر غير قابل للتظهير)"> à l’acceptation (virement ou chèque barré non endossable)</span></>
+                  <><span data-i18n data-fr={`Acompte ${acompte.pct} %`} data-en={`${acompte.pct}% deposit`} data-ar={`تسبيق ${acompte.pct}%`}>Acompte {acompte.pct} %</span><span data-sign-acompte-montant hidden={!acompteMontantInitial}> : <span dir="ltr" data-sign-acompte-valeur>{acompteMontantInitial ?? ''}</span></span><span data-i18n data-fr=" à l’acceptation (virement ou chèque barré)" data-en=" on acceptance (bank transfer or crossed cheque)" data-ar=" عند القبول (تحويل بنكي أو شيك مسطر)"> à l’acceptation (virement ou chèque barré)</span></>
                 ) : (
                   <span data-i18n
-                    data-fr="Acompte à l’acceptation (virement ou chèque barré non endossable) — montant confirmé par votre conseiller"
-                    data-en="Deposit on acceptance (bank transfer or crossed non-endorsable cheque) — amount confirmed by your advisor"
-                    data-ar="تسبيق عند القبول (تحويل بنكي أو شيك مسطر غير قابل للتظهير) — يؤكد لكم مستشاركم مبلغه">Acompte à l’acceptation (virement ou chèque barré non endossable) — montant confirmé par votre conseiller</span>
+                    data-fr="Acompte à l’acceptation (virement ou chèque barré) — montant confirmé par votre conseiller"
+                    data-en="Deposit on acceptance (bank transfer or crossed cheque) — amount confirmed by your advisor"
+                    data-ar="تسبيق عند القبول (تحويل بنكي أو شيك مسطر) — يؤكد لكم مستشاركم مبلغه">Acompte à l’acceptation (virement ou chèque barré) — montant confirmé par votre conseiller</span>
                 )}
                 {validity.label && (
                   /* B3 (loi 31-08 art. 29-6 + DOC art. 65-4 §2) — sans date
@@ -6407,13 +6418,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 « avec / sans batterie » ci-dessous est INTERNE à cette gamme :
                 les deux choix ne se mélangent jamais. */}
             {gammes && (
-              <p class="mt-2 text-xs text-lune-faint" data-gamme-signature>
+              <p class="mt-2 text-xs leading-snug text-lune-faint" data-gamme-signature>
                 <span data-i18n data-fr="Vous signez la gamme" data-en="You are signing the range" data-ar="أنتم توقّعون النطاق">Vous signez la gamme</span>
                 <span class="text-lune-soft"> {gammes.courante.nom}</span>
                 <a class="ms-2 text-brass-300 underline" href={gammes.soeur.proposition_path} data-gamme-basculer data-i18n
-                  data-fr="Choisir l’autre gamme"
-                  data-en="Choose the other range"
-                  data-ar="اختيار النطاق الآخر">Choisir l’autre gamme</a>
+                  data-fr="l’autre gamme"
+                  data-en="the other range"
+                  data-ar="النطاق الآخر">l’autre gamme</a>
               </p>
             )}
 
@@ -6425,11 +6436,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  dépendent) : seule la présentation change. La légende reste
                  dans le DOM pour les lecteurs d'écran (`sr-only`) — un groupe
                  de radios sans légende n'est pas accessible. */
-              <fieldset class="mt-3">
+              <fieldset class="mt-2">
                 <legend class="sr-only" data-i18n data-fr="Votre choix" data-en="Your choice" data-ar="اختياركم">Votre choix</legend>
                 <div class="grid grid-cols-2 gap-2">
                   {options.map((opt) => (
-                    <label class="sign-option flex cursor-pointer flex-col justify-center rounded-xl border border-white/12 px-3 py-2 text-sm leading-snug has-[:checked]:border-brass-400 has-[:checked]:bg-brass-400/10">
+                    <label class="sign-option flex cursor-pointer flex-col justify-center rounded-xl border border-white/12 px-3 py-1.5 text-sm leading-snug has-[:checked]:border-brass-400 has-[:checked]:bg-brass-400/10">
                       <input
                         type="radio"
                         id={`sign-option-${opt}`}
@@ -6453,8 +6464,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </fieldset>
             )}
 
-            <div class="mt-3">
-              <label for="sign-nom" class="tech-label text-lune-faint" data-i18n data-fr="Votre nom complet" data-en="Your full name" data-ar="اسمكم الكامل">Votre nom complet</label>
+            <div class="mt-2">
+              {/* PREVIEW-V3C · L'ÉTIQUETTE PORTE DÉJÀ CE QUE LA LIGNE D'AIDE
+                  disait en dessous : deux rangées pour un seul champ, c'est une
+                  rangée de trop sur un écran de 390 px. La mention légale
+                  (43-20) reste mot pour mot, elle change seulement de place. */}
+              <label for="sign-nom" class="block text-xs leading-snug text-lune-faint" data-i18n
+                data-fr="Votre nom complet — votre nom tapé vaut signature électronique (loi 43-20)."
+                data-en="Your full name — your typed name constitutes an electronic signature (law 43-20)."
+                data-ar="اسمكم الكامل — اسمكم المكتوب يقوم مقام التوقيع الإلكتروني (القانون 43.20).">Votre nom complet — votre nom tapé vaut signature électronique (loi 43-20).</label>
               {/* PREVIEW-V3 — pré-rempli depuis le devis (`client_name`, déjà
                   affiché plus haut dans « Bonjour {nom} ») et RESTE éditable :
                   un client dont le devis porte une graphie approximative doit
@@ -6467,7 +6485,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 autocomplete="name"
                 required
                 value={clientName && clientName !== 'Client' ? clientName : undefined}
-                class="mt-1.5 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2.5 text-lune placeholder:text-lune-faint"
+                class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint"
                 placeholder="Prénom Nom"
               />
               {/* PREVIEW-V3 · LA SIGNATURE TAPÉE EST LA SIGNATURE (loi 43-20
@@ -6476,13 +6494,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   à la souris n'a de toute façon aucune valeur probante propre
                   — c'est le journal serveur qui prouve). Jobber, Housecall Pro
                   et DocuSign offrent TOUS le tracé sans jamais l'imposer : il
-                  reste donc disponible, d'un lien. */}
-              <p class="mt-1.5 text-xs leading-snug text-lune-faint" data-i18n
-                data-fr="Votre nom tapé vaut signature électronique (loi 43-20)."
-                data-en="Your typed name constitutes an electronic signature (law 43-20)."
-                data-ar="اسمكم المكتوب يقوم مقام التوقيع الإلكتروني (القانون 43.20).">
-                Votre nom tapé vaut signature électronique (loi 43-20).
-              </p>
+                  reste donc disponible, d'un lien (ci-dessous). La mention
+                  43-20 vit maintenant dans l'étiquette du champ. */}
             </div>
 
             <!-- WJ11/WJ101 · SIGNATURE MANUSCRITE (canvas natif, tactile + souris)
@@ -6503,9 +6516,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 `<details>` OUVERT reprend toute la largeur (règle CSS
                 `.sign-optional-row details[open]`), sinon le canvas serait
                 écrasé dans une colonne flex. */}
-            <div class="sign-optional-row mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+            <div class="sign-optional-row mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-0 text-xs">
             <details class="fold-native">
-              <summary class="cursor-pointer font-semibold text-brass-300 underline-offset-2 hover:underline" data-i18n
+              <summary class="cursor-pointer text-brass-300 underline-offset-2 hover:underline" data-i18n
                 data-fr="Dessiner ma signature"
                 data-en="Draw my signature"
                 data-ar="رسم توقيعي">Dessiner ma signature</summary>
@@ -6554,16 +6567,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </div>
             </details>
 
-            <span class="text-lune-faint" aria-hidden="true">·</span>
             <!-- ── WJ87 · SIGNER AU NOM DU FOYER (optionnel) — champ FACULTATIF,
                  additif dans le payload d'acceptation. Baymard range « pour le
                  compte d'une société » dans les champs à masquer par défaut :
                  il reste donc derrière un lien. -->
             <details class="fold-native">
-              <summary class="cursor-pointer font-semibold text-brass-300 underline-offset-2 hover:underline" data-i18n
-                data-fr="Je signe au nom de quelqu’un d’autre"
-                data-en="I am signing on behalf of someone else"
-                data-ar="أوقّع نيابة عن شخص آخر">Je signe au nom de quelqu’un d’autre</summary>
+              <summary class="cursor-pointer text-brass-300 underline-offset-2 hover:underline" data-i18n
+                data-fr="Signer pour quelqu’un d’autre"
+                data-en="Sign for someone else"
+                data-ar="التوقيع نيابة عن شخص آخر">Signer pour quelqu’un d’autre</summary>
             <div class="mt-3 text-sm">
               <label for="sign-on-behalf-of" class="tech-label text-lune-faint" data-i18n
                 data-fr="Je signe au nom de (optionnel)"
@@ -6616,7 +6628,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  comme le reste de la phrase — un <a> À L'INTÉRIEUR d'un
                  data-i18n n'aurait survécu qu'en français (prepareI18n rend
                  EN/AR en textContent). */}
-            <label class="mt-3 flex cursor-pointer items-start gap-3 text-sm leading-snug">
+            <label class="mt-2 flex cursor-pointer items-start gap-3 text-sm leading-snug">
               <input id="sign-accord" name="accord" type="checkbox" required class="mt-0.5 h-4 w-4 flex-none accent-[var(--color-brass-400)]" />
               <span class="text-lune-soft"><span data-i18n data-fr="J’accepte cette proposition et les " data-en="I accept this proposal and the " data-ar="أوافق على هذا العرض وعلى ">J’accepte cette proposition et les </span><a href="#sign-cgv" data-sign-cgv-link class="text-brass-300 underline underline-offset-2" data-i18n data-fr="conditions générales de vente" data-en="general terms of sale" data-ar="الشروط العامة للبيع">conditions générales de vente</a><span data-i18n data-fr=", et je la signe électroniquement." data-en=", and I sign it electronically." data-ar="، وأُوقّعه إلكترونياً.">, et je la signe électroniquement.</span></span>
             </label>
@@ -6716,7 +6728,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  : `confirmation_email`). Aucun numéro CNDP : la déclaration
                  est « en cours » (/politique-de-confidentialite), en publier
                  un serait inventer. */}
-            <p class="mt-2 text-xs leading-snug text-lune-faint">
+            <p class="mt-1 text-xs leading-snug text-lune-faint">
               <span data-i18n
                 data-fr="Nom, date, heure et contenu exact de la proposition sont enregistrés comme preuve de votre accord."
                 data-en="Your name, the date and time and the exact content of the proposal are recorded as proof of your agreement."
@@ -8406,7 +8418,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         if (acompteMontant) {
           const montant = opt ? montantsAcompte[opt] : undefined;
           if (montant) {
-            if (acompteValeur) acompteValeur.textContent = `${montant} TTC`;
+            // PREVIEW-V3C — le montant seul : la ligne du dessus porte déjà
+            // « TTC », et le suffixe faisait déborder le récap d'une ligne.
+            if (acompteValeur) acompteValeur.textContent = montant;
             acompteMontant.hidden = false;
           } else {
             acompteMontant.hidden = true;
