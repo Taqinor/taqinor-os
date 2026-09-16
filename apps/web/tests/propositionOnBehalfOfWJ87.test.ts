@@ -63,10 +63,14 @@ describe('WJ87 — [token].astro : champ optionnel dans le formulaire + payload'
     expect(PROPOSITION).toContain('name="on_behalf_of"');
     const idx = PROPOSITION.indexOf('id="sign-on-behalf-of"');
     const accordIdx = PROPOSITION.indexOf('id="sign-accord"');
-    const consentIdx = PROPOSITION.indexOf('id="sign-consent"');
     expect(idx).toBeGreaterThan(0);
     expect(idx).toBeLessThan(accordIdx);
-    expect(accordIdx).toBeLessThan(consentIdx);
+    // RECALIBRÉ — décision fondateur du 16/09/2026 : les DEUX cases de
+    // consentement ont fusionné en une seule (`sign-accord` conservé,
+    // `sign-consent` supprimé) — elles alimentaient déjà le MÊME booléen
+    // `consent_esign` côté backend. L'ordre qui compte reste le même : le
+    // champ facultatif précède la case qui engage.
+    expect(PROPOSITION).not.toContain('id="sign-consent"');
   });
 
   it('le champ n’est PAS `required` (facultatif)', () => {

@@ -2647,6 +2647,23 @@ export function otpRequestEndpoint(apiBase: string, token: string): string {
   return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/otp/`;
 }
 
+/**
+ * PREVIEW-V3 — les DEUX endpoints de l'OTP de LECTURE (`ShareLink.otp_lecture`).
+ * Distincts de `otpRequestEndpoint` ci-dessus, qui sert l'OTP de SIGNATURE :
+ * celui-ci déverrouille le LIEN côté serveur pour une heure, l'autre voyage
+ * dans le corps d'acceptation. Les confondre enverrait un code qui ne
+ * déverrouille rien. Même mount `ventes/` que l'OTP de signature (l'alias
+ * headless d'`apps/ventes/urls.py`, posé pour cette page).
+ */
+export function otpLectureEndpoint(
+  apiBase: string,
+  token: string,
+  action: 'demander' | 'verifier',
+): string {
+  const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
+  return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/otp-lecture/${action}/`;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // WJ25 — VISIONNEUSE 3D EN LECTURE SEULE du toit du client sur la proposition.
 //

@@ -132,6 +132,12 @@ import {
   paliersBatterie,
   palierBatterieRetenu,
   type PalierBatterie,
+  // PREVIEW-V3 (16/09/2026) — ce que le client doit savoir AVANT de signer :
+  // l'acompte réel, les conditions générales que le PDF imprime, et la
+  // promesse d'accusé de réception SEULEMENT quand elle sera tenue.
+  resolveAcompte,
+  resolveConditions,
+  promptConfirmationEmail,
 } from '../../lib/proposition';
 import {
   renderYearCurve,
@@ -1166,6 +1172,24 @@ const productionConfig = showProduction ? JSON.stringify(productionAvailability)
 // ── WJ15 — Fenêtre de validité honnête (date backend réelle, jamais inventée) ─
 const validity = ok ? resolveValidity(data!) : { label: null, fromBackend: false, expired: false };
 
+// ── PREVIEW-V3 (16/09/2026) — LE BLOC DE SIGNATURE DIT ENFIN CE QU'IL ENGAGE.
+//
+// Trois faits que le client ne pouvait connaître qu'en ouvrant le PDF, ou
+// pire, qu'APRÈS avoir signé : combien il verse à l'acceptation, jusqu'à quand
+// le prix tient, et à quelles conditions. Tous viennent du backend
+// (`acompte`/`date_validite`/`conditions`, PREVIEW-V3) et tous DISPARAISSENT
+// proprement quand le backend ne les sert pas — la phrase reste, sans chiffre.
+const acompte = ok ? resolveAcompte(data!) : null;
+const conditions = ok ? resolveConditions(data!) : [];
+const confirmationEmail = ok ? promptConfirmationEmail(data!) : false;
+// Loi 31-08 art. 2 : le droit de rétractation de 7 jours (art. 36) protège le
+// CONSOMMATEUR — « besoins non professionnels, usage personnel ou familial ».
+// Un devis industriel, commercial ou agricole d'exploitation n'y ouvre pas
+// droit : l'afficher là serait un engagement gratuit et faux. Mode inconnu ⇒
+// on se tait (jamais une promesse par défaut).
+const modeInstallation = (data?.mode_installation || '').toString().trim().toLowerCase();
+const clientConsommateur = modeInstallation === 'residentiel';
+
 // ── WJ9 — Argent dans le temps : cumul 25 ans + payback + cadrage mensuel ────
 // Tous ces nombres SONT ceux du moteur : `annual` = backend `eco_s_ann`/`eco_a_ann`,
 // `payback` = backend `roi_s`/`roi_a`, `cumulative` = taux backend `eco_a_cumul`
@@ -1860,6 +1884,11 @@ const signConfig = ok
       // ce flag pour couper les beacons de vue/engagement et désactiver la
       // signature/le contact.
       apercuInterne,
+      // PREVIEW-V3 — l'option SUR LAQUELLE le backend a calculé l'acompte
+      // (`option_totaux` pré-acceptation = le total AFFICHÉ, donc l'option
+      // recommandée). Le récap masque le montant sur l'autre option plutôt
+      // que d'en dériver un second qui ne figure dans aucun document.
+      acompteOption: reco ?? preselect ?? null,
     })
   : null;
 
@@ -6083,28 +6112,71 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             )}
             <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Signer en ligne" data-en="Sign online" data-ar="التوقيع إلكترونياً">Signer en ligne</p>
             <h2 class="display mt-3 text-2xl text-lune" data-i18n data-fr="Bon pour accord" data-en="Approved" data-ar="موافقة نهائية">Bon pour accord</h2>
-            <p class="v2-body mt-2" data-i18n
-              data-fr="Validez votre proposition en quelques secondes. Vous recevrez ensuite la confirmation de votre conseiller."
-              data-en="Approve your proposal in a few seconds. You'll then receive confirmation from your advisor."
-              data-ar="أكّدوا عرضكم في ثوانٍ معدودة. ستصلكم بعدها رسالة تأكيد من مستشاركم.">
-              Validez votre proposition en quelques secondes. Vous recevrez ensuite la confirmation
-              de votre conseiller.
-            </p>
 
-            <!-- WJ58 — promesse de délai honnête near la CTA de signature
-                 (WG9 résolu, 2026-07-03 : « sous 1 h, 7j/7 »). Icône hors du
-                 nœud data-i18n (voir note plus haut sur le tri-node). -->
-            <p class="mt-2 flex items-center gap-1.5 text-sm text-lune-faint">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="flex-none text-ok-600">
-                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-              </svg>
-              <span data-i18n
-                data-fr="Réponse WhatsApp sous 1 h, 7j/7"
-                data-en="WhatsApp reply within 1 h, 7 days a week"
-                data-ar="رد واتساب خلال ساعة واحدة، 7 أيام على 7">
-                Réponse WhatsApp sous 1 h, 7j/7
-              </span>
-            </p>
+            {/* ── PREVIEW-V3 (16/09/2026) · LE RÉCAPITULATIF, AU-DESSUS DU BOUTON.
+                 DOC art. 65-5 : le détail de la commande et son total doivent
+                 être récapitulés, avec un moyen de corriger, AVANT la
+                 confirmation — c'est une condition de VALIDITÉ du contrat, pas
+                 un confort. Trois faits que le client devait sinon aller
+                 chercher dans le PDF (ou découvrir après avoir signé) : ce
+                 qu'il signe, jusqu'à quand le prix tient, et ce qu'il verse.
+                 L'intro de 14 mots et la TROISIÈME répétition du délai
+                 WhatsApp (déjà dans le héros et dans le bloc contact) sortent
+                 d'ici : elles occupaient la place de ces trois faits. */}
+            <div class="mt-4 rounded-xl border border-brass-400/30 bg-brass-400/5 p-4" data-sign-recap>
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Vous signez" data-en="You are signing" data-ar="أنتم توقّعون">Vous signez</p>
+              {heroHasRealPrice ? (
+                <p class="mt-1 flex flex-wrap items-baseline gap-x-2">
+                  <span class="display text-2xl text-lune" dir="ltr" data-sign-recap-ttc>{formatMAD(optionTtc(data!, preselect ?? reco ?? 'sans_batterie'))}</span>
+                  <span class="text-sm text-lune-soft" data-i18n data-fr="TTC · TVA incluse" data-en="incl. VAT" data-ar="بجميع الرسوم · الضريبة مُدرَجة">TTC · TVA incluse</span>
+                </p>
+              ) : (
+                <p class="mt-1 text-sm text-lune-soft" data-i18n
+                  data-fr="Prix communiqué par votre conseiller"
+                  data-en="Price provided by your advisor"
+                  data-ar="السعر يُبلَّغ من طرف مستشاركم">Prix communiqué par votre conseiller</p>
+              )}
+              {validity.label && (
+                /* B3 (loi 31-08 art. 29-6 + DOC art. 65-4 §2) — sans date
+                   affichée, l'offre engage Taqinor tant que le lien vit. La
+                   date vient du devis (backend `date_validite`), jamais d'une
+                   « norme 30 jours » qui n'existe pas en droit. */
+                <p class="mt-2 text-sm text-lune-soft" data-i18n
+                  data-fr={`Cette proposition et son prix sont valables jusqu’au ${validity.label} inclus.`}
+                  data-en={`This proposal and its price are valid up to and including ${validity.label}.`}
+                  data-ar={`هذا العرض وثمنه صالحان إلى غاية ${validity.label} ضمناً.`}>
+                  Cette proposition et son prix sont valables jusqu’au {validity.label} inclus.
+                </p>
+              )}
+              {acompte ? (
+                /* B2 (CGI art. 193) — virement / chèque barré non endossable,
+                   jamais « espèces » : l'amende de 6 % frappe LE VENDEUR. Le
+                   montant est celui de la PREMIÈRE tranche de l'échéancier
+                   réel, calculée par le backend sur le total affiché — donc
+                   sur l'option recommandée. Sur l'autre option, le
+                   pourcentage seul reste vrai : le script ci-dessous masque
+                   alors le montant plutôt que d'en dériver un second. */
+                <p class="mt-2 text-sm text-lune-soft">
+                  <span data-i18n
+                    data-fr={`Acompte de ${acompte.pct} % à l’acceptation`}
+                    data-en={`${acompte.pct}% deposit on acceptance`}
+                    data-ar={`تسبيق بنسبة ${acompte.pct}% عند القبول`}>Acompte de {acompte.pct} % à l’acceptation</span>
+                  <span data-sign-acompte-montant> — <span dir="ltr">{formatMAD(acompte.ttcNumber)} TTC</span></span>
+                  <span data-i18n
+                    data-fr=", par virement bancaire ou chèque barré non endossable."
+                    data-en=", by bank transfer or crossed non-endorsable cheque."
+                    data-ar="، عبر تحويل بنكي أو شيك مسطر غير قابل للتظهير.">, par virement bancaire ou chèque barré non endossable.</span>
+                </p>
+              ) : (
+                <p class="mt-2 text-sm text-lune-soft" data-i18n
+                  data-fr="Un acompte est demandé à l’acceptation, par virement bancaire ou chèque barré non endossable — votre conseiller vous en confirme le montant."
+                  data-en="A deposit is due on acceptance, by bank transfer or crossed non-endorsable cheque — your advisor confirms the amount."
+                  data-ar="يُطلب تسبيق عند القبول، عبر تحويل بنكي أو شيك مسطر غير قابل للتظهير — يؤكد لكم مستشاركم مبلغه.">
+                  Un acompte est demandé à l’acceptation, par virement bancaire ou chèque barré non
+                  endossable — votre conseiller vous en confirme le montant.
+                </p>
+              )}
+            </div>
 
             {/* GAMMES — la gamme signée est NOMMÉE au moment de la signature, et
                 l'autre reste accessible d'un clic tant que rien n'est signé.
@@ -6155,15 +6227,33 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
 
             <div class="mt-6">
               <label for="sign-nom" class="tech-label text-lune-faint" data-i18n data-fr="Votre nom complet" data-en="Your full name" data-ar="اسمكم الكامل">Votre nom complet</label>
+              {/* PREVIEW-V3 — pré-rempli depuis le devis (`client_name`, déjà
+                  affiché plus haut dans « Bonjour {nom} ») et RESTE éditable :
+                  un client dont le devis porte une graphie approximative doit
+                  pouvoir la corriger avant de signer. Valeur de repli « Client »
+                  exclue — on ne pré-remplit jamais un nom qui n'en est pas un. */}
               <input
                 id="sign-nom"
                 name="nom"
                 type="text"
                 autocomplete="name"
                 required
+                value={clientName && clientName !== 'Client' ? clientName : undefined}
                 class="mt-2 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-3 text-lune placeholder:text-lune-faint"
                 placeholder="Prénom Nom"
               />
+              {/* PREVIEW-V3 · LA SIGNATURE TAPÉE EST LA SIGNATURE (loi 43-20
+                  art. 2 et 7 : la signature électronique SIMPLE est
+                  recevable ; aucun texte n'exige un tracé, et un trait dessiné
+                  à la souris n'a de toute façon aucune valeur probante propre
+                  — c'est le journal serveur qui prouve). Le pad existant reste
+                  disponible d'un clic pour qui y tient. */}
+              <p class="mt-2 text-xs text-lune-faint" data-i18n
+                data-fr="Votre nom tapé ci-dessus vaut signature électronique (loi 43-20)."
+                data-en="Your name typed above constitutes an electronic signature (law 43-20)."
+                data-ar="اسمكم المكتوب أعلاه يقوم مقام التوقيع الإلكتروني (القانون 43.20).">
+                Votre nom tapé ci-dessus vaut signature électronique (loi 43-20).
+              </p>
             </div>
 
             <!-- WJ11/WJ101 · SIGNATURE MANUSCRITE (canvas natif, tactile + souris)
@@ -6175,7 +6265,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  flux légal fonctionne déjà uniquement par nom + cases à
                  cocher (voir plus bas), donc « ignorer » ne bloque jamais la
                  signature électronique. ── -->
-            <div class="mt-6">
+            <details class="mt-4 fold-native">
+              <summary class="cursor-pointer text-sm font-semibold text-brass-300 underline-offset-2 hover:underline" data-i18n
+                data-fr="Dessiner ma signature (facultatif)"
+                data-en="Draw my signature (optional)"
+                data-ar="رسم توقيعي (اختياري)">Dessiner ma signature (facultatif)</summary>
+              <div class="mt-4">
               <div class="flex items-baseline justify-between gap-3">
                 <label for="sign-pad" class="tech-label text-lune-faint" data-i18n data-fr="Votre signature" data-en="Your signature" data-ar="توقيعكم">Votre signature</label>
                 <button
@@ -6201,9 +6296,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </div>
               <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <p class="text-xs text-lune-faint" data-i18n
-                  data-fr="Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05)."
-                  data-en="Draw your signature above (optional but recommended). Your name and your agreement below constitute an electronic signature (law 53-05)."
-                  data-ar="ارسموا توقيعكم أعلاه (اختياري لكن مستحسن). اسمكم وموافقتكم أدناه بمثابة توقيع إلكتروني (القانون 53-05).">Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05).</p>
+                  data-fr="Facultatif : votre nom tapé et votre accord ci-dessous suffisent (loi 43-20)."
+                  data-en="Optional: your typed name and your agreement below are enough (law 43-20)."
+                  data-ar="اختياري: اسمكم المكتوب وموافقتكم أدناه يكفيان (القانون 43.20).">Facultatif : votre nom tapé et votre accord ci-dessous suffisent (loi 43-20).</p>
                 <!-- WJ101 — affordance clavier explicite : un visiteur au
                      clavier n'a pas à deviner qu'il peut passer cette étape
                      (le canvas ne peut pas se "remplir" au clavier). Cliquer
@@ -6217,7 +6312,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   data-i18n data-fr="Signature non nécessaire — passer au nom" data-en="Signature not needed — skip to name" data-ar="لا حاجة للتوقيع — الانتقال إلى الاسم"
                 >Signature non nécessaire — passer au nom</button>
               </div>
-            </div>
+              </div>
+            </details>
 
             <!-- ── WJ87 · SIGNER AU NOM DU FOYER (optionnel) ─────────────────────
                  Le MRE qui signe pour ses parents, ou tout couple qui décide à
@@ -6226,7 +6322,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  d'acceptation (le backend qui l'ignore continue de fonctionner
                  exactement comme avant) — formulation volontairement générique
                  (le libellé légal précis WG16 est encore en attente). -->
-            <div class="mt-5">
+            <details class="mt-4 fold-native">
+              <summary class="cursor-pointer text-sm font-semibold text-brass-300 underline-offset-2 hover:underline" data-i18n
+                data-fr="Je signe au nom de quelqu’un d’autre"
+                data-en="I am signing on behalf of someone else"
+                data-ar="أوقّع نيابة عن شخص آخر">Je signe au nom de quelqu’un d’autre</summary>
+            <div class="mt-4">
               <label for="sign-on-behalf-of" class="tech-label text-lune-faint" data-i18n
                 data-fr="Je signe au nom de (optionnel)"
                 data-en="I am signing on behalf of (optional)"
@@ -6253,34 +6354,49 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 votre nom ci-dessus reste le signataire enregistré.
               </p>
             </div>
+            </details>
 
+            {/* ── PREVIEW-V3 · UNE SEULE CASE, CELLE QUE LA LOI EXIGE ──────────
+                 AVANT : deux cases (`sign-accord` + `sign-consent`, 41 mots
+                 cumulés) qui alimentaient le MÊME et unique booléen
+                 `consent_esign` côté backend — la seconde était une porte UI
+                 redondante, pas une garantie juridique de plus.
+                 MAINTENANT : la case unique de la loi 31-08 art. 30 — les
+                 conditions doivent être « expressément acceptées par le
+                 consommateur, AVANT la confirmation de l'acceptation de
+                 l'offre », et une seule case y suffit tant qu'elle précède le
+                 bouton. Ce que la 2ᵉ case racontait (nom, horodatage, contenu
+                 enregistrés) n'est PAS un consentement dû : la loi 09-08
+                 art. 4-b n'en exige aucun pour exécuter un contrat, seule
+                 l'INFORMATION de l'art. 5 l'est — elle passe donc en texte
+                 statique sous le bouton. L'id `sign-accord` est conservé. */}
             <label class="mt-5 flex cursor-pointer items-start gap-3 text-sm">
               <input id="sign-accord" name="accord" type="checkbox" required class="mt-1 h-4 w-4 accent-[var(--color-brass-400)]" />
               <span class="text-lune-soft" data-i18n
-                data-fr="Je certifie « Bon pour accord » et j’accepte cette proposition aux conditions indiquées ci-dessus."
-                data-en="I certify \"Approved\" and I accept this proposal under the conditions indicated above."
-                data-ar="أشهد بـ«الموافقة النهائية» وأقبل هذا العرض وفق الشروط المذكورة أعلاه.">
-                Je certifie « <strong class="text-lune">Bon pour accord</strong> » et j’accepte cette proposition
-                aux conditions indiquées ci-dessus.
+                data-fr={`J’ai lu et j’accepte la présente proposition et les conditions générales de vente de ${brand}, et je la signe électroniquement.`}
+                data-en={`I have read and accept this proposal and ${brand}'s general terms of sale, and I sign it electronically.`}
+                data-ar={`لقد قرأتُ هذا العرض والشروط العامة للبيع الخاصة بـ ${brand} وأوافق عليهما، وأُوقّعه إلكترونياً.`}>
+                J’ai lu et j’accepte la présente proposition et les <strong class="text-lune">conditions générales de vente</strong> de {brand},
+                et je la signe électroniquement.
               </span>
             </label>
 
-            <label class="mt-3 flex cursor-pointer items-start gap-3 text-sm">
-              <input id="sign-consent" name="consent" type="checkbox" required class="mt-1 h-4 w-4 accent-[var(--color-brass-400)]" />
-              <!-- W318 — précise que l'image de la signature dessinée ci-dessus
-                   (quand elle est tracée) est elle aussi enregistrée avec le
-                   nom, la date et l'heure — cohérent avec ce que le code
-                   envoie réellement (signature_data_url, cf. plus bas dans ce
-                   fichier) et avec la politique de confidentialité (W318). -->
-              <span class="text-lune-soft" data-i18n
-                data-fr="J’accepte de signer électroniquement cette proposition. Mon nom, l’image de ma signature dessinée ci-dessus (si tracée), et la date et l’heure de signature sont enregistrés avec mon accord."
-                data-en="I agree to electronically sign this proposal. My name, the image of my signature drawn above (if drawn), and the date and time of signature are recorded with my consent."
-                data-ar="أوافق على التوقيع إلكترونياً على هذا العرض. يتم تسجيل اسمي وصورة توقيعي المرسوم أعلاه (إن رُسم) وتاريخ ووقت التوقيع مع موافقتي.">
-                J’accepte de <strong class="text-lune">signer électroniquement</strong> cette proposition.
-                Mon nom, l’image de ma signature dessinée ci-dessus (si tracée), et la date et l’heure de
-                signature sont enregistrés avec mon accord.
-              </span>
-            </label>
+            {conditions.length > 0 && (
+              /* Les conditions sont ICI, sous la case qui les accepte : aucune
+                 page CGV n'est publiée, et fabriquer un lien vers une page
+                 inexistante serait pire que rien. Ces lignes SONT celles que
+                 le PDF imprime (mêmes gabarits moteur, servis par le backend
+                 sous `conditions`) — jamais une seconde rédaction. */
+              <details class="mt-2 fold-native">
+                <summary class="cursor-pointer text-xs text-brass-300 underline-offset-2 hover:underline" data-i18n
+                  data-fr="Lire les conditions générales de vente"
+                  data-en="Read the general terms of sale"
+                  data-ar="قراءة الشروط العامة للبيع">Lire les conditions générales de vente</summary>
+                <ul class="mt-3 space-y-1.5 text-xs text-lune-soft">
+                  {conditions.map((c) => (<li>· {c}</li>))}
+                </ul>
+              </details>
+            )}
 
             <!-- Récapitulatif horodaté (réf + date/heure côté client) — le texte
                  initial (data-i18n) est le rendu AVANT JS ; dès l'hydratation,
@@ -6333,9 +6449,51 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
               disabled={offerState === 'expired' || apercuInterne}
             >
-              <span id="sign-submit-label" data-i18n data-fr="Signer en ligne" data-en="Sign online" data-ar="التوقيع إلكترونياً">Signer en ligne</span>
+              <span id="sign-submit-label" data-i18n data-fr="Accepter et signer" data-en="Accept and sign" data-ar="القبول والتوقيع">Accepter et signer</span>
               <span id="sign-spinner" class="spinner" hidden aria-hidden="true"></span>
             </button>
+
+            {/* ── PREVIEW-V3 · L'INFORMATION DUE, EN TEXTE — PAS EN CASE ───────
+                 Loi 09-08 art. 5 : informer est obligatoire ; art. 4-b :
+                 aucun consentement séparé n'est requis pour traiter les
+                 données nécessaires à l'exécution d'un contrat. On ne
+                 mentionne QUE ce que le code enregistre vraiment, et l'e-mail
+                 de confirmation seulement quand il partira (le backend le dit
+                 : `confirmation_email`). Aucun numéro CNDP : la déclaration
+                 est « en cours » (/politique-de-confidentialite), en publier
+                 un serait inventer. */}
+            <p class="mt-3 text-xs text-lune-faint" data-i18n
+              data-fr="En validant, votre nom, la date et l’heure et le contenu exact de cette proposition sont enregistrés comme preuve de votre accord."
+              data-en="On confirming, your name, the date and time and the exact content of this proposal are recorded as proof of your agreement."
+              data-ar="عند التأكيد، يتم تسجيل اسمكم وتاريخ وساعة التوقيع ومحتوى هذا العرض بالضبط كدليل على موافقتكم.">
+              En validant, votre nom, la date et l’heure et le contenu exact de cette proposition
+              sont enregistrés comme preuve de votre accord.
+            </p>
+            {confirmationEmail && (
+              <p class="mt-1 text-xs text-lune-faint" data-i18n
+                data-fr="Une confirmation vous est envoyée par e-mail."
+                data-en="A confirmation is sent to you by email."
+                data-ar="يصلكم تأكيد عبر البريد الإلكتروني.">
+                Une confirmation vous est envoyée par e-mail.
+              </p>
+            )}
+            {clientConsommateur && (
+              /* B1 — loi 31-08 art. 36 (7 jours, sans justification ni
+                 pénalité), art. 203 (délais francs), art. 37 (remboursement
+                 sous 15 jours). Affiché UNIQUEMENT en résidentiel : l'art. 2
+                 réserve ce droit au consommateur (« besoins non
+                 professionnels, usage personnel ou familial ») — sur un devis
+                 industriel, commercial ou agricole d'exploitation, ce serait
+                 un engagement gratuit et juridiquement faux. */
+              <p class="mt-1 text-xs text-lune-faint" data-i18n
+                data-fr="Vous disposez de 7 jours francs pour vous rétracter après votre acceptation, sans avoir à vous justifier ni à payer de pénalité. Un acompte déjà versé vous est remboursé au plus tard 15 jours après."
+                data-en="You have 7 clear days to withdraw after your acceptance, without having to justify yourself or pay a penalty. Any deposit already paid is refunded to you within 15 days."
+                data-ar="لكم أجل سبعة (7) أيام كاملة للتراجع بعد قبولكم، دون الحاجة إلى تبرير ودون أداء أي غرامة. ويُرد إليكم أي تسبيق سبق أداؤه في أجل أقصاه 15 يوماً.">
+                Vous disposez de 7 jours francs pour vous rétracter après votre acceptation, sans
+                avoir à vous justifier ni à payer de pénalité. Un acompte déjà versé vous est
+                remboursé au plus tard 15 jours après.
+              </p>
+            )}
           </form>
         </div>
 
@@ -6363,11 +6521,20 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           {seller?.name && (
             <p class="mt-1 text-sm text-lune">{seller.name}</p>
           )}
+          {/* PREVIEW-V3 (16/09/2026) — DOC art. 65-5. La phrase d'avant faisait
+              dépendre la force du devis de la RÉCEPTION DE L'ACOMPTE : elle
+              était juridiquement fausse dans le sens le plus coûteux pour le
+              client, en suggérant qu'il n'est engagé — et que Taqinor ne l'est
+              pas — tant qu'il n'a pas payé. Le DOC dit l'inverse : « le
+              destinataire est irrévocablement lié à l'offre dès sa réception ».
+              Le contrat naît de l'acceptation ; l'acompte ne fait que
+              déclencher les travaux. */}
           <p class="mt-2 text-xs text-lune-faint" data-i18n
-            data-fr="Le devis fait foi dès réception de l’acompte."
-            data-en="The quote is binding upon receipt of the deposit."
-            data-ar="يصبح العرض ملزماً بمجرد استلام الدفعة الأولى.">
-            Le devis fait foi dès réception de l’acompte.
+            data-fr="Votre commande est ferme dès votre acceptation. Les travaux démarrent à réception de l’acompte."
+            data-en="Your order is firm as soon as you accept. Work starts once the deposit is received."
+            data-ar="يصبح طلبكم نهائياً بمجرد قبولكم. وتنطلق الأشغال فور استلام التسبيق.">
+            Votre commande est ferme dès votre acceptation. Les travaux démarrent à réception de
+            l’acompte.
           </p>
         </div>
 
@@ -6954,8 +7121,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     signStampLabel,
     signStampPendingLabel,
     localizedStamp,
-    isOtpRequiredDetail,
-    isOtpIncorrectDetail,
+    mapAcceptResponseToUiState,
     type OptionKey,
     type SignFormState,
     type PropLang as SignPropLang,
@@ -7007,6 +7173,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
      *  coupe toute balise/beacon de vue-engagement et désactive la signature/le
      *  contact (déjà rendus masqués/désactivés côté serveur ci-dessus). */
     apercuInterne?: boolean;
+    /** PREVIEW-V3 — l'option pour laquelle `acompte.ttc` a été calculé côté
+     *  serveur ; sur toute autre option, seul le pourcentage est affiché. */
+    acompteOption?: OptionKey | null;
   }
 
   // ── WJ17/WJ43 · bascule de langue FR/EN/عربي — MÊME mécanisme dual-node que
@@ -7667,7 +7836,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     // écrase le libellé APRÈS le premier rendu) : on le pilote via un petit
     // état + le registre partagé, pour rester correct FR/EN/AR à chaque bascule.
     let submitBusy = false;
-    const SUBMIT_LABEL = { fr: 'Signer en ligne', en: 'Sign online', ar: 'التوقيع إلكترونياً' } as const;
+    const SUBMIT_LABEL = { fr: 'Accepter et signer', en: 'Accept and sign', ar: 'القبول والتوقيع' } as const;
     const SUBMIT_LABEL_BUSY = { fr: 'Signature…', en: 'Signing…', ar: 'جارٍ التوقيع…' } as const;
     function renderSubmitLabel(lang: PropLang): void {
       if (!submitLabel) return;
@@ -7767,6 +7936,21 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       en: 'Could not send the code right now. Please try again.',
       ar: 'تعذر إرسال الرمز حالياً. يرجى إعادة المحاولة.',
     };
+    // PREVIEW-V3 — l'OTP de LECTURE (réglage par lien, ACTIF en production)
+    // n'avait aucun écran : son 403 `otp_required` s'affichait en clair. Deux
+    // mécanismes, un seul bloc de saisie ⇒ un mode explicite décide où part
+    // la demande de code et si un code doit être VÉRIFIÉ avant de resoumettre.
+    let otpMode: 'esign' | 'lecture' = 'esign';
+    const OTP_LECTURE_PROMPT: Record<PropLang, string> = {
+      fr: 'Ce lien est protégé par un code. Saisissez le code reçu ci-dessus, puis validez de nouveau.',
+      en: 'This link is protected by a code. Enter the code you received above, then confirm again.',
+      ar: 'هذا الرابط محمي برمز. أدخلوا الرمز الذي توصّلتم به أعلاه، ثم أكّدوا من جديد.',
+    };
+    const OTP_LECTURE_BAD_CODE: Record<PropLang, string> = {
+      fr: 'Code incorrect ou expiré. Redemandez un code et réessayez.',
+      en: 'Incorrect or expired code. Request a new code and try again.',
+      ar: 'الرمز غير صحيح أو منتهي الصلاحية. اطلبوا رمزاً جديداً وأعيدوا المحاولة.',
+    };
     function revealOtpBlock(): void {
       if (otpBlock) otpBlock.hidden = false;
       otpCodeInput?.focus();
@@ -7778,7 +7962,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         const res = await fetch('/api/proposition-otp', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ token: cfg.token }),
+          body: JSON.stringify({ token: cfg.token, mode: otpMode }),
         });
         const data = (await res.json().catch(() => ({}))) as { ok?: boolean };
         if (otpStatusEl) {
@@ -7887,14 +8071,50 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       return (checked?.value as OptionKey) ?? null;
     }
 
+    // ── PREVIEW-V3 · LE RÉCAP SUIT LE CHOIX, SANS JAMAIS DÉRIVER UN CHIFFRE ──
+    // Le total affiché au-dessus du bouton doit être celui de l'option cochée
+    // (DOC art. 65-5 : récapitulatif exact + moyen de corriger). Les deux TTC
+    // sont ceux que le backend a déjà servis sur les radios — on les LIT, on
+    // ne les recalcule pas.
+    // Le MONTANT de l'acompte, lui, n'existe que pour UNE option : le backend
+    // le calcule sur le total affiché (option recommandée). Sur l'autre, seul
+    // le POURCENTAGE reste vrai — on masque donc le montant plutôt que d'en
+    // dériver un second, qui ne figurerait dans aucun document.
+    {
+      const recapTtc = document.querySelector<HTMLElement>('[data-sign-recap-ttc]');
+      const acompteMontant = document.querySelector<HTMLElement>('[data-sign-acompte-montant]');
+      const prixParOption = new Map<string, string>();
+      form?.querySelectorAll<HTMLInputElement>('input[name="option"]').forEach((radio) => {
+        const prix = radio.closest('label')?.querySelector<HTMLElement>('[dir="ltr"]')?.textContent;
+        if (prix) prixParOption.set(radio.value, prix.replace(/\s*TTC\s*$/, '').trim());
+      });
+      function syncRecap(): void {
+        const opt = selectedOption();
+        if (recapTtc && opt) {
+          const prix = prixParOption.get(opt);
+          if (prix) recapTtc.textContent = prix;
+        }
+        if (acompteMontant) {
+          acompteMontant.hidden = !!(cfg.twoOptions && opt && opt !== cfg.acompteOption);
+        }
+      }
+      form?.querySelectorAll<HTMLInputElement>('input[name="option"]').forEach((radio) => {
+        radio.addEventListener('change', syncRecap);
+      });
+      syncRecap();
+    }
+
     let submitting = false;
     form?.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (submitting) return;
       clearError();
 
+      // PREVIEW-V3 — UNE case (`sign-accord`) au lieu de deux : `sign-consent`
+      // alimentait le MÊME booléen `consent_esign` côté backend (voir le
+      // corps envoyé plus bas, toujours `consent_esign: true`) — la supprimer
+      // ne retire donc RIEN de ce qui part au serveur, seulement une porte UI.
       const accord = (document.getElementById('sign-accord') as HTMLInputElement | null)?.checked;
-      const consent = (document.getElementById('sign-consent') as HTMLInputElement | null)?.checked;
       const nom = (document.getElementById('sign-nom') as HTMLInputElement | null)?.value ?? '';
       // WJ87 — facultatif : « je signe au nom de… » (MRE signant pour ses
       // parents, foyer, etc.). Le signataire enregistré reste `nom` ci-dessus.
@@ -7907,11 +8127,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         return;
       }
       if (!accord) {
-        showError('Veuillez cocher « Bon pour accord » pour valider.');
-        return;
-      }
-      if (!consent) {
-        showError('Veuillez accepter de signer électroniquement pour continuer.');
+        showError('Veuillez accepter la proposition et les conditions générales pour signer.');
         return;
       }
 
@@ -7948,6 +8164,23 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         // révélé (backend/toggle OFF ignore le champ vide, comportement
         // inchangé). Une fois révélé, le client peut le remplir et resoumettre.
         const otpCode = otpCodeInput?.value.trim() ?? '';
+        // PREVIEW-V3 — l'OTP de LECTURE se VÉRIFIE à son propre endpoint (il
+        // déverrouille le LIEN côté serveur, pour une heure) ; il ne voyage
+        // PAS dans le corps d'acceptation, contrairement à l'OTP de
+        // signature. Code refusé ⇒ on s'arrête ici avec un message lisible,
+        // sans tenter une acceptation qu'on sait vouée au même 403.
+        if (otpMode === 'lecture' && otpCode) {
+          const verif = await fetch('/api/proposition-otp', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ token: cfg.token, mode: 'lecture', code: otpCode }),
+          });
+          const verifData = (await verif.json().catch(() => ({}))) as { ok?: boolean };
+          if (!verif.ok || !verifData.ok) {
+            showError(OTP_LECTURE_BAD_CODE[currentLang]);
+            return;
+          }
+        }
         // Corps RÉTRO-COMPATIBLE : base (token/nom/option) + champs optionnels
         // (signature, consentement, horodatage, otp_code) que le backend peut ignorer.
         const richBody = buildAcceptBodyRich(state, cfg.twoOptions, {
@@ -7987,18 +8220,36 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         // reconnus (isOtpRequiredDetail) — jamais aujourd'hui (toggle OFF par
         // défaut). Révèle le bloc de saisie au lieu d'un message d'erreur
         // générique, et lance automatiquement l'envoi du code la première fois.
-        if (isOtpRequiredDetail(data.detail)) {
+        // PREVIEW-V3 — LE SECOND OTP, celui qui laissait « otp_required » en
+        // toutes lettres sous les yeux du client. `ShareLink.otp_lecture` est
+        // un réglage PAR LIEN, actif aujourd'hui en production : quand le
+        // commercial le pose, /accept/ répond 403 {detail:'otp_required'} —
+        // un littéral machine qu'AUCUN code d'ici ne reconnaissait, et qui
+        // s'affichait tel quel. `mapAcceptResponseToUiState` (pur, testé)
+        // tranche désormais entre les deux mécanismes ; les deux partagent le
+        // même bloc de saisie, mais pas le même endpoint d'envoi du code.
+        const uiState = mapAcceptResponseToUiState(res.status, data.detail);
+        if (uiState.kind === 'otp-lecture') {
           const firstReveal = otpBlock?.hidden !== false;
+          otpMode = 'lecture';
+          revealOtpBlock();
+          showError(OTP_LECTURE_PROMPT[currentLang]);
+          if (firstReveal) otpRequestBtn?.click();
+          return;
+        }
+        if (uiState.kind === 'otp-esign') {
+          const firstReveal = otpBlock?.hidden !== false;
+          otpMode = 'esign';
           revealOtpBlock();
           showError(
-            isOtpIncorrectDetail(data.detail)
+            uiState.incorrect
               ? (data.detail ?? '')
               : 'Un code de confirmation vous a été envoyé — saisissez-le ci-dessus pour finaliser votre signature.',
           );
           if (firstReveal) otpRequestBtn?.click();
           return;
         }
-        showError(data.detail || 'Une erreur est survenue. Veuillez réessayer.');
+        showError(uiState.kind === 'error' ? uiState.message : 'Une erreur est survenue. Veuillez réessayer.');
       } catch (err) {
         // WJ45 — si le navigateur se sait hors-ligne au moment de l'échec, on
         // l'affirme explicitement (bandeau + message dédié, dans la langue

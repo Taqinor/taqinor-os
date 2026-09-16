@@ -58,8 +58,16 @@ describe('Audit item 66 — panneau de contre-signature Taqinor', () => {
     expect(panel).toContain('Pour ${brand} — signature et cachet');
   });
 
-  it('mirroire la ligne d\'engagement du PDF (trust.py : « Le devis fait foi dès réception de l\'acompte »)', () => {
-    expect(panel).toContain('Le devis fait foi dès réception de l’acompte.');
+  // RECALIBRÉ — décision fondateur du 16/09/2026 + DOC art. 65-5 : le contrat
+  // naît de l'ACCEPTATION (« le destinataire est irrévocablement lié à l'offre
+  // dès sa réception »), pas du paiement — l'ancienne phrase épinglée ici
+  // (« Le devis fait foi dès réception de l'acompte ») disait donc au client
+  // l'inverse du droit, à son désavantage. Ce test verrouille la phrase juste,
+  // et interdit explicitement le retour de l'ancienne.
+  it('dit la commande ferme dès l’acceptation (DOC art. 65-5), pas dès l’acompte', () => {
+    expect(panel).toContain('Votre commande est ferme dès votre acceptation.');
+    expect(panel).toContain('Les travaux démarrent à réception de l’acompte.');
+    expect(panel).not.toContain('Le devis fait foi');
   });
 
   it('les TROIS langues sont posées via data-i18n (data-fr/data-en/data-ar), jamais un texte figé seul', () => {
