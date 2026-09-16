@@ -1007,7 +1007,11 @@ export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio,
 }
 
 // ── Classification des lignes/produits (mêmes mots-clés que le moteur PDF) ───
-const _norm = (s) =>
+// STKCAT15 — exportée telle quelle (aucun nouveau module) : la recherche
+// transverse du catalogue (stock/catalogue.js) la réutilise pour normaliser
+// accents/casse des deux côtés (requête ET botte de foin produit), au lieu
+// de dupliquer une seconde normalisation qui pourrait diverger.
+export const _norm = (s) =>
   (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 
 export const isBattery = (d) => _norm(d).includes('batterie')
