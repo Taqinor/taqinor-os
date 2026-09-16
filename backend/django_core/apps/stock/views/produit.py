@@ -213,6 +213,25 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # ── STKCAT6 — filtre MANUEL par CATÉGORIE (`?categorie=<id[,id]>`) ──
+        # Posé JUSTE APRÈS le scoping société de ``super()`` (donc avant les
+        # trois sorties ci-dessous) : il vaut pour la liste normale comme pour
+        # la vue archivée. Le filtrage est MANUEL, comme partout dans cette app
+        # (patron de ``qualite_reception.get_queryset``) — un
+        # ``filterset_fields`` serait un NO-OP SILENCIEUX ici, aucun
+        # ``DjangoFilterBackend`` n'étant monté sur ce viewset.
+        # Liste séparée par des virgules acceptée (patron de l'action
+        # ``etiquettes``), et une valeur NON NUMÉRIQUE est simplement IGNORÉE :
+        # ``categorie_id=<texte>`` lèverait un ``ValueError`` → 500 sur un
+        # paramètre d'URL mal tapé, ce qu'un filtre de confort ne doit jamais
+        # faire.
+        categories = self.request.query_params.getlist('categorie')
+        if len(categories) == 1 and ',' in categories[0]:
+            categories = categories[0].split(',')
+        categories = [c for c in (str(x).strip() for x in categories)
+                      if c.isdigit()]
+        if categories:
+            qs = qs.filter(categorie_id__in=categories)
         if self.request.query_params.get('show_archived') == 'true':
             return qs.annotate(
                 nb_mouvements=Count('mouvements'),
