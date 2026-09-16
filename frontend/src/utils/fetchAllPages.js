@@ -55,6 +55,11 @@ export async function fetchAllPages(
 
   if (totalPages <= 1) return results
 
+  // Warn if we're stopping at maxPages while count is higher
+  if (totalPages === maxPages && first.count > maxPages * pageSize) {
+    console.warn(`fetchAllPages stopped at maxPages (${maxPages}) but count (${first.count}) is higher; dataset is incomplete`)
+  }
+
   // Total connu via `count` : toutes les pages restantes partent en lots
   // parallèles bornés à `concurrency`, jamais en escalier séquentiel.
   for (let start = 2; start <= totalPages; start += concurrency) {

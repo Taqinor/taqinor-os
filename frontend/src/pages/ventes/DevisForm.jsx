@@ -15,6 +15,7 @@ import ventesApi from '../../api/ventesApi'
 import cpqApi from '../../api/cpqApi'
 import { resilientMutation } from '../../lib/resilientMutation'
 import { useStaleGuard } from '../../hooks/useStaleGuard'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, IconButton, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -308,7 +309,8 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
 
   useEffect(() => {
     crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
-    stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => {})
+    fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
+      .then(setProduits).catch(() => {})
   }, [])
 
   // VX90 — après ajout d'une ligne, focaliser son sélecteur produit + la faire
