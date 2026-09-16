@@ -10,6 +10,7 @@ import { classifyProduct } from '../features/ventes/solar'
 import { useCanCreateProduit } from '../hooks/useHasPermission'
 import { useActiveDescendant } from '../hooks/useActiveDescendant'
 import { formatMAD } from '../lib/format'
+import stockApi from '../api/stockApi'
 import ProduitQuickCreateModal from './ProduitQuickCreateModal'
 
 /* G23 — Picker produit groupé CATÉGORIE → MARQUE → ARTICLE, search-first.
@@ -53,6 +54,11 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const [quickCreateOpen, setQuickCreateOpen] = useState(false)
+  // STKCAT13 — chargée paresseusement (jamais à l'ouverture du picker, qui
+  // ligne-à-ligne serait bien trop de requêtes) SEULEMENT quand « Nouveau »
+  // est cliqué ; sert à la fois à calculer `defaultCategorieId` ci-dessous et
+  // à éviter à la modale de recharger la même liste (prop `categories`).
+  const [categoriesForCreate, setCategoriesForCreate] = useState(null)
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const canCreateProduit = useCanCreateProduit()
@@ -77,6 +83,27 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
     classifyProduct(p.nom) === typeFilter
     || (famille !== null && typeOfProduit(p) === famille)
   )
+
+  // STKCAT13 — chargement paresseux des catégories, uniquement à l'ouverture
+  // de la création rapide (jamais côté rendu normal du picker). Échec
+  // silencieux (liste vide) : « + Nouveau » reste utilisable sans catégorie.
+  useEffect(() => {
+    if (!quickCreateOpen || categoriesForCreate !== null) return
+    let cancelled = false
+    stockApi.getCategories({ page_size: 200 })
+      .then((r) => { if (!cancelled) setCategoriesForCreate(r.data?.results ?? r.data ?? []) })
+      .catch(() => { if (!cancelled) setCategoriesForCreate([]) })
+    return () => { cancelled = true }
+  }, [quickCreateOpen, categoriesForCreate])
+
+  // `defaultCategorieId` seulement quand la famille de la ligne désigne SANS
+  // AMBIGÜITÉ une catégorie typée de la société (exactement une — 0 ou 2+
+  // correspondances laissent l'utilisateur choisir lui-même).
+  const defaultCategorieId = useMemo(() => {
+    if (!famille || !categoriesForCreate) return undefined
+    const typees = categoriesForCreate.filter((c) => c.type_equipement === famille)
+    return typees.length === 1 ? typees[0].id : undefined
+  }, [famille, categoriesForCreate])
 
   // Lignes à plat (en-têtes + articles) dans l'ordre délibéré de la taxonomie
   const { rows, selectables } = useMemo(() => {
@@ -316,6 +343,8 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
         <ProduitQuickCreateModal
           open={quickCreateOpen}
           onClose={() => setQuickCreateOpen(false)}
+          categories={categoriesForCreate ?? undefined}
+          defaultCategorieId={defaultCategorieId}
           onCreated={(p) => {
             setQuickCreateOpen(false)
             onProduitCreated?.(p)

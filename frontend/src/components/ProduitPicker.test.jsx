@@ -86,9 +86,40 @@ describe('ProduitPicker typeFilter (QP1)', () => {
 
 // QG6 — « + Nouveau produit » n'apparaît que pour Directeur/Commercial
 // responsable (hook QG5) ; sélection auto sur la ligne après création.
+// STKCAT13 — `getCategories` par défaut résout une liste VIDE (silencieux) :
+// un test qui ne s'intéresse pas à la catégorie n'a rien à configurer pour
+// que « Nouveau » reste utilisable (les tests STKCAT13 ci-dessous surchargent
+// cette résolution pour leurs propres assertions).
 vi.mock('../api/stockApi', () => ({
-  default: { createProduit: vi.fn() },
+  default: {
+    createProduit: vi.fn(),
+    getCategories: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+  },
 }))
+
+// STKCAT13 — jsdom n'ouvre pas de façon fiable le Radix Select (portail +
+// pointer events) : pattern déjà établi du dépôt (paie/PaieDeclarations.test.jsx,
+// monitoring/ClientPortalPage.test.jsx, sav/TicketWorksheetPanel.test.jsx) — on
+// remplace ses primitives par un <select> natif ; le reste de `../ui` (Dialog,
+// Button, Input, Label…) reste RÉEL, donc le test continue de valider la vraie
+// modale.
+vi.mock('../ui', async (importActual) => {
+  const actual = await importActual()
+  const Passthrough = ({ children }) => <>{children}</>
+  return {
+    ...actual,
+    Select: ({ value, onValueChange, children }) => (
+      <select role="combobox" aria-label="Catégorie" value={value}
+        onChange={(e) => onValueChange(e.target.value)}>
+        {children}
+      </select>
+    ),
+    SelectTrigger: Passthrough,
+    SelectValue: () => null,
+    SelectContent: Passthrough,
+    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
+  }
+})
 
 describe('ProduitPicker — QG6 quick-create (rôle-gated)', () => {
   it("n'affiche pas « Nouveau » pour un rôle non autorisé (Magasinier)", () => {
@@ -194,5 +225,114 @@ describe('ProduitPicker — STKCAT12 sections Recommandé / Tout le catalogue', 
     openPicker()
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'zzz-inexistant' } })
     expect(screen.getByText(/Aucun produit pour/)).toBeInTheDocument()
+  })
+})
+
+// STKCAT13 — Création rapide : select Catégorie optionnel + `defaultCategorieId`.
+// Directeur/Commercial responsable seulement (même garde QG6) ; la catégorie
+// n'est JAMAIS requise, et n'est pré-sélectionnée que quand la famille de la
+// ligne désigne SANS AMBIGÜITÉ (exactement une) catégorie typée de la société.
+async function ouvrirNouveau(authState) {
+  renderPicker(
+    { produits: PRODUITS, value: '', onChange: () => {} },
+    authState ?? { role_nom: 'Directeur', permissions: ['stock_creer'] },
+  )
+  openPicker()
+  fireEvent.click(screen.getByTitle('Nouveau produit'))
+  // Le select Catégorie est toujours affiché (jamais requis) — attendre qu'il
+  // ait fini son chargement paresseux avant d'interagir avec le formulaire.
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Catégorie' })).toBeInTheDocument())
+}
+
+describe('ProduitPicker — STKCAT13 création rapide : catégorie optionnelle', () => {
+  it('payload SANS choix de catégorie : pas de clé categorie_id (jamais requise)', async () => {
+    stockApi.getCategories.mockResolvedValue({ data: { results: [] } })
+    stockApi.createProduit.mockResolvedValueOnce({
+      data: { id: 101, nom: 'Sans Catégorie', prix_vente: 100, is_archived: false },
+    })
+    await ouvrirNouveau()
+    fireEvent.change(screen.getByLabelText(/Nom du produit/), { target: { value: 'Sans Catégorie' } })
+    fireEvent.click(screen.getByRole('button', { name: /Créer et sélectionner/ }))
+    await waitFor(() => expect(stockApi.createProduit).toHaveBeenCalled())
+    const payload = stockApi.createProduit.mock.calls.at(-1)[0]
+    expect(payload).not.toHaveProperty('categorie_id')
+  })
+
+  it('payload AVEC catégorie choisie manuellement : categorie_id porte l\'id choisi', async () => {
+    stockApi.getCategories.mockResolvedValue({
+      data: {
+        results: [
+          { id: 7, nom: 'Structures & fixation', type_equipement: 'structure' },
+          { id: 8, nom: 'Onduleurs', type_equipement: null },
+        ],
+      },
+    })
+    stockApi.createProduit.mockResolvedValueOnce({
+      data: { id: 102, nom: 'Avec Catégorie', prix_vente: 100, is_archived: false },
+    })
+    await ouvrirNouveau()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Catégorie' }), { target: { value: '8' } })
+    fireEvent.change(screen.getByLabelText(/Nom du produit/), { target: { value: 'Avec Catégorie' } })
+    fireEvent.click(screen.getByRole('button', { name: /Créer et sélectionner/ }))
+    await waitFor(() => expect(stockApi.createProduit).toHaveBeenCalled())
+    const payload = stockApi.createProduit.mock.calls.at(-1)[0]
+    expect(payload.categorie_id).toBe(8)
+  })
+
+  it('defaultCategorieId pré-sélectionne SEULEMENT quand la famille désigne EXACTEMENT une catégorie typée', async () => {
+    // typeFilter="structure" → famille="structure" ; UNE SEULE catégorie
+    // société porte type_equipement="structure" → pré-sélection automatique,
+    // sans que le test touche le select.
+    stockApi.getCategories.mockResolvedValue({
+      data: {
+        results: [
+          { id: 7, nom: 'Structures & fixation', type_equipement: 'structure' },
+          { id: 8, nom: 'Onduleurs', type_equipement: 'onduleur' },
+        ],
+      },
+    })
+    stockApi.createProduit.mockResolvedValueOnce({
+      data: { id: 103, nom: 'Pergola Auto', prix_vente: 100, is_archived: false },
+    })
+    renderPicker(
+      { produits: PRODUITS, value: '', onChange: () => {}, typeFilter: 'structure' },
+      { role_nom: 'Directeur', permissions: ['stock_creer'] },
+    )
+    openPicker()
+    fireEvent.click(screen.getByTitle('Nouveau produit'))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Catégorie' })).toHaveValue('7'))
+    fireEvent.change(screen.getByLabelText(/Nom du produit/), { target: { value: 'Pergola Auto' } })
+    fireEvent.click(screen.getByRole('button', { name: /Créer et sélectionner/ }))
+    await waitFor(() => expect(stockApi.createProduit).toHaveBeenCalled())
+    const payload = stockApi.createProduit.mock.calls.at(-1)[0]
+    expect(payload.categorie_id).toBe(7)
+  })
+
+  it('defaultCategorieId reste ABSENT quand 2 catégories partagent la même famille (ambigu → l\'utilisateur choisit)', async () => {
+    // Deux catégories "structure" (ex. société avec Structures acier ET alu
+    // toutes deux typées "structure") : aucune n'est promue par défaut.
+    stockApi.getCategories.mockResolvedValue({
+      data: {
+        results: [
+          { id: 7, nom: 'Structures acier', type_equipement: 'structure' },
+          { id: 9, nom: 'Structures alu', type_equipement: 'structure' },
+        ],
+      },
+    })
+    stockApi.createProduit.mockResolvedValueOnce({
+      data: { id: 104, nom: 'Ambigu', prix_vente: 100, is_archived: false },
+    })
+    renderPicker(
+      { produits: PRODUITS, value: '', onChange: () => {}, typeFilter: 'structure' },
+      { role_nom: 'Directeur', permissions: ['stock_creer'] },
+    )
+    openPicker()
+    fireEvent.click(screen.getByTitle('Nouveau produit'))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Catégorie' })).toBeInTheDocument())
+    fireEvent.change(screen.getByLabelText(/Nom du produit/), { target: { value: 'Ambigu' } })
+    fireEvent.click(screen.getByRole('button', { name: /Créer et sélectionner/ }))
+    await waitFor(() => expect(stockApi.createProduit).toHaveBeenCalled())
+    const payload = stockApi.createProduit.mock.calls.at(-1)[0]
+    expect(payload).not.toHaveProperty('categorie_id')
   })
 })
