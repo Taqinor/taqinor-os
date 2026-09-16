@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { updateInstallation } from '../../features/installations/store/installationsSlice'
 import { fetchProduits } from '../../features/stock/store/stockSlice'
+import { typeOfProduit } from '../../features/stock/catalogue'
 import installationsApi from '../../api/installationsApi'
 import savApi from '../../api/savApi'
 import crmApi from '../../api/crmApi'
@@ -834,11 +835,10 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // panneaux, etc. « Tous » revient à la liste BOM complète.
   // Type d'un produit : le champ plat `categorie_type` (L578) avec repli sur la
   // catégorie imbriquée pour rester robuste si l'API n'a pas encore le champ.
-  const typeOf = (p) => p?.categorie_type ?? p?.categorie?.type_equipement ?? null
   const equipTypes = (() => {
     const seen = new Map()
     for (const p of bomProduits) {
-      const t = typeOf(p)
+      const t = typeOfProduit(p)
       if (t && !seen.has(t)) {
         seen.set(t, p.categorie_type_display ?? t)
       }
@@ -846,7 +846,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     return [...seen.entries()].map(([value, label]) => ({ value, label }))
   })()
   const equipProduits = equipSlot
-    ? bomProduits.filter((p) => typeOf(p) === equipSlot)
+    ? bomProduits.filter((p) => typeOfProduit(p) === equipSlot)
     : bomProduits
 
   // N8 — réconciliation : pour chaque ligne BOM, nb de séries capturées.
@@ -1477,7 +1477,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                             // Vide le produit choisi s'il ne correspond plus au slot.
                             if (next && equip.produit) {
                               const sel = produits.find((p) => String(p.id) === String(equip.produit))
-                              if (typeOf(sel) !== next) setEquip(s => ({ ...s, produit: '' }))
+                              if (typeOfProduit(sel) !== next) setEquip(s => ({ ...s, produit: '' }))
                             }
                           }}>
                     <SelectTrigger id="eq-slot"><SelectValue /></SelectTrigger>
