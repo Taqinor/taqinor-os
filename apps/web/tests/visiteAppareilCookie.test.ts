@@ -8,9 +8,18 @@
 // style que `tests/lead.test.ts`/`tests/visite.test.ts` — jsdom pour
 // window/document, mais un cookie store INJECTÉ (jamais le vrai
 // `document.cookie`) pour rester isolé des autres fichiers de test.
-import { describe, expect, it, vi } from 'vitest';
+//
+// M2 (passe adversariale, correctif) — `demarrerBalise` ne calcule
+// `appareilId()` (cookie 2 ans + localStorage, T1) que DANS `demarrer()`,
+// donc jamais avant le gate consentement `tq_consent` : le dernier describe
+// ci-dessous vérifie ce point précis sur le vrai `document.cookie` (jsdom,
+// espionné via le descripteur d'accesseur) — `demarrerBalise` n'expose pas
+// de cookie store injectable (seul `storage` l'est), donc on espionne la
+// vraie écriture plutôt que d'en injecter une fausse.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   appareilId,
+  demarrerBalise,
   domaineCookiePartage,
   isPlausibleUuid,
   lireCookie,
@@ -289,5 +298,119 @@ describe('appareilId — stockage indisponible', () => {
     const id = appareilId(storage, throwingCookies);
     expect(isPlausibleUuid(id)).toBe(true);
     expect(storage.data.get('tq_appareil')).toBe(id);
+  });
+});
+
+// ── demarrerBalise — le cookie/localStorage tq_appareil ne s'écrivent qu'APRÈS
+// consentement (M2) ─────────────────────────────────────────────────────────
+//
+// `demarrerBalise` n'expose pas de `cookies` injectable (seul `storage` l'est,
+// voir `DemarrerBaliseOptions`) : pour vérifier qu'AUCUNE écriture cookie ne
+// part avant consentement, on espionne le vrai accesseur `document.cookie`
+// (jsdom) — ce qui détecte une TENTATIVE d'écriture même si jsdom refusait par
+// ailleurs de persister un cookie Secure sous une origine http:// de test.
+
+describe("demarrerBalise — consentement gate le cookie ET le localStorage (M2)", () => {
+  let addedListeners: Array<[EventTarget, string, EventListenerOrEventListenerObject]>;
+  let cookieWrites: string[];
+  let originalCookieDescriptor: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    // Jamais de résidu d'un test précédent du fichier (document partagé par jsdom).
+    document.cookie = 'tq_appareil=; Max-Age=0; path=/';
+    localStorage.removeItem('tq_appareil');
+    localStorage.removeItem('tq_consent');
+
+    cookieWrites = [];
+    originalCookieDescriptor =
+      Object.getOwnPropertyDescriptor(Document.prototype, 'cookie') ??
+      Object.getOwnPropertyDescriptor(document, 'cookie');
+    if (!originalCookieDescriptor?.get || !originalCookieDescriptor.set) {
+      throw new Error("document.cookie n'expose pas d'accesseur get/set — jsdom inattendu, à investiguer.");
+    }
+    const { get, set } = originalCookieDescriptor;
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      get() {
+        return get.call(document);
+      },
+      set(value: string) {
+        cookieWrites.push(value);
+        set.call(document, value);
+      },
+    });
+
+    addedListeners = [];
+    const origWindowAdd = window.addEventListener.bind(window);
+    const origDocAdd = document.addEventListener.bind(document);
+    vi.spyOn(window, 'addEventListener').mockImplementation((type, listener, opts) => {
+      addedListeners.push([window, type, listener as EventListenerOrEventListenerObject]);
+      origWindowAdd(type, listener as EventListener, opts);
+    });
+    vi.spyOn(document, 'addEventListener').mockImplementation((type, listener, opts) => {
+      addedListeners.push([document, type, listener as EventListenerOrEventListenerObject]);
+      origDocAdd(type, listener as EventListener, opts);
+    });
+  });
+
+  afterEach(() => {
+    for (const [target, type, listener] of addedListeners) {
+      target.removeEventListener(type, listener as EventListener);
+    }
+    document.cookie = 'tq_appareil=; Max-Age=0; path=/';
+    if (originalCookieDescriptor) {
+      Object.defineProperty(document, 'cookie', originalCookieDescriptor);
+    }
+    vi.useRealTimers();
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  // Réutilise le `makeStorage()` module-level déjà défini plus haut (même
+  // fixture qu'`appareilId` — pas de doublon).
+
+  it("consentement ABSENT : aucune écriture cookie ni localStorage tq_appareil", () => {
+    const storage = makeStorage();
+    const setItemSpy = vi.spyOn(storage, 'setItem');
+    demarrerBalise('/index', { storage, fetchFn: vi.fn().mockResolvedValue(new Response(null)) });
+    vi.advanceTimersByTime(60_000);
+
+    expect(setItemSpy).not.toHaveBeenCalled();
+    expect(cookieWrites.some((w) => w.startsWith('tq_appareil='))).toBe(false);
+  });
+
+  it("consentement DENIED : aucune écriture cookie ni localStorage tq_appareil", () => {
+    localStorage.setItem('tq_consent', 'denied');
+    const storage = makeStorage();
+    const setItemSpy = vi.spyOn(storage, 'setItem');
+    demarrerBalise('/index', { storage, fetchFn: vi.fn().mockResolvedValue(new Response(null)) });
+    vi.advanceTimersByTime(60_000);
+
+    expect(setItemSpy).not.toHaveBeenCalled();
+    expect(cookieWrites.some((w) => w.startsWith('tq_appareil='))).toBe(false);
+  });
+
+  it("consentement GRANTED d'entrée : écrit le localStorage ET tente l'écriture du cookie", () => {
+    localStorage.setItem('tq_consent', 'granted');
+    const storage = makeStorage();
+    demarrerBalise('/index', { storage, fetchFn: vi.fn().mockResolvedValue(new Response(null)) });
+
+    expect(storage.data.has('tq_appareil')).toBe(true);
+    expect(cookieWrites.some((w) => w.startsWith('tq_appareil='))).toBe(true);
+  });
+
+  it("consentement accordé APRÈS coup (tq:consent-change) : rien avant, tout après", () => {
+    const storage = makeStorage();
+    const setItemSpy = vi.spyOn(storage, 'setItem');
+    demarrerBalise('/index', { storage, fetchFn: vi.fn().mockResolvedValue(new Response(null)) });
+    vi.advanceTimersByTime(30_000);
+    expect(setItemSpy).not.toHaveBeenCalled();
+    expect(cookieWrites.some((w) => w.startsWith('tq_appareil='))).toBe(false);
+
+    window.dispatchEvent(new CustomEvent('tq:consent-change', { detail: { value: 'granted' } }));
+
+    expect(setItemSpy).toHaveBeenCalled();
+    expect(cookieWrites.some((w) => w.startsWith('tq_appareil='))).toBe(true);
   });
 });

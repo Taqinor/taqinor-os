@@ -437,14 +437,17 @@ export function demarrerBalise(page: string, opts: DemarrerBaliseOptions = {}): 
   const fetchFn = opts.fetchFn ?? (typeof fetch !== 'undefined' ? fetch : undefined);
   if (!fetchFn) return;
 
-  const id = appareilId(opts.storage);
-  if (!id) return; // Stockage indisponible : rien à corréler, on n'envoie rien.
-
   const langue = opts.langue ?? 'fr';
   const acc = creerAccumulateurTempsVisible();
   let sentFinal = false;
   let started = false;
   let intervalId: ReturnType<typeof setInterval> | undefined;
+  // M2 (correctif adversarial, cookie posé sans consentement) — calculé
+  // SEULEMENT dans demarrer() ci-dessous, jamais ici : depuis T1,
+  // appareilId() écrit un cookie 2 ans (en plus du localStorage), et le
+  // contrat CONSENTEMENT de ce module (voir docstring plus haut) interdit
+  // toute écriture avant que le consentement soit accordé.
+  let id = '';
 
   function envoyer(fin: boolean): void {
     const dureeS = acc.totalMs() / 1000;
@@ -489,6 +492,12 @@ export function demarrerBalise(page: string, opts: DemarrerBaliseOptions = {}): 
 
   function demarrer(): void {
     if (started) return; // idempotent — un second appel (ex. tq:consent-change tardif) ne redémarre pas deux battements.
+    // M2 — appareilId() (cookie 2 ans + localStorage, T1) n'est calculé QU'ICI,
+    // dans le seul chemin qui démarre réellement la balise : ce point n'est
+    // atteint qu'APRÈS le gate consentement ci-dessous (granted d'entrée, ou
+    // tq:consent-change → granted). Jamais avant, jamais si denied/absent.
+    id = appareilId(opts.storage);
+    if (!id) return; // Stockage indisponible : rien à corréler, on n'envoie rien.
     started = true;
     if (document.visibilityState === 'visible') acc.resume();
     demarrerBattement();
