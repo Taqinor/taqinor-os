@@ -1923,3 +1923,65 @@ test('QXMT — MT : l\'injection 82-21 reste calculable (barème ANRE distinct)'
   assert.ok(mt.injection_kwh_an >= 0)
   assert.ok(mt.injection_dh_an >= 0)
 })
+
+// STKCAT24 — `groupProduitsByCategory` bucket sur le rôle EFFECTIF résolu
+// côté serveur (`role_devis_effectif`, STKCAT21) quand il est présent, mots-
+// clés du nom en repli. Pin explicite : la fixture SEEDED existante (aucun
+// produit n'y porte `role_devis_effectif`) doit grouper à l'IDENTIQUE
+// d'avant STKCAT24 — même sélecteur, même compte par étiquette que le test
+// « sélecteur produits : groupé selon les catégories du catalogue simulateur »
+// ci-dessus (jamais retouché).
+test('STKCAT24 — sans role_devis_effectif (fixture ancienne) : groupage byte-identique à avant', () => {
+  const groups = groupProduitsByCategory(SEEDED)
+  const by = (label) => groups.find(g => g.label === label)
+  assert.equal(by('Onduleur Injection').items.length, 10)
+  assert.equal(by('Onduleur Hybride').items.length, 5)
+  assert.equal(by('Panneaux').items.length, 2)
+  assert.equal(by('Batterie').items.length, 4)
+  assert.equal(by('Structures acier').items.length, 1)
+  assert.equal(by('Structures aluminium').items.length, 1)
+  // Un `role_devis_effectif` explicitement NULL (et pas seulement absent) doit
+  // suivre exactement le même repli que le champ absent.
+  const avecNull = SEEDED.map(p => ({ ...p, role_devis_effectif: null }))
+  const groupsNull = groupProduitsByCategory(avecNull)
+  assert.deepEqual(
+    groupsNull.map(g => [g.label, g.items.length]),
+    groups.map(g => [g.label, g.items.length]))
+})
+
+test('STKCAT24 — role_devis_effectif="panneau" sans mot-clé dans le nom : bucketé Panneaux', () => {
+  const sansMotCle = { id: 9001, nom: 'Module ABC-550', prix_vente: '750',
+    role_devis_effectif: 'panneau' }
+  const groups = groupProduitsByCategory([...SEEDED, sansMotCle])
+  const panneaux = groups.find(g => g.label === 'Panneaux')
+  assert.ok(panneaux.items.some(p => p.id === 9001),
+    'le produit sans mot-clé mais au rôle effectif "panneau" doit rejoindre le groupe Panneaux')
+})
+
+test('STKCAT24 — structure : rôle effectif générique + mot-clé matière du nom (acier/alu/aucun)', () => {
+  const acier = { id: 9010, nom: 'Charpente acier galvanisée', prix_vente: '400',
+    role_devis_effectif: 'structure' }
+  const alu = { id: 9011, nom: 'Support aluminium sur mesure', prix_vente: '450',
+    role_devis_effectif: 'structure' }
+  const generique = { id: 9012, nom: 'Pergola', prix_vente: '500',
+    role_devis_effectif: 'structure' }
+  const groups = groupProduitsByCategory([acier, alu, generique])
+  const by = (label) => groups.find(g => g.label === label)
+  assert.equal(by('Structures acier')?.items?.[0]?.id, 9010)
+  assert.equal(by('Structures aluminium')?.items?.[0]?.id, 9011)
+  // Aucun mot-clé matière dans le nom → seau générique 'structure', rendu
+  // sous l'étiquette 'Structures' (clé ajoutée par STKCAT2 à PRODUCT_CATEGORIES).
+  assert.equal(by('Structures')?.items?.[0]?.id, 9012)
+})
+
+test('STKCAT24 — structure_acier/alu DÉCLARÉ explicitement : bucketé tel quel, jamais re-décidé par le nom', () => {
+  // Le nom ne dit ni « acier » ni « alu » — seul le rôle DÉCLARÉ tranche.
+  const declareAcier = { id: 9020, nom: 'Charpente sur mesure', prix_vente: '400',
+    role_devis_effectif: 'structure_acier' }
+  const declareAlu = { id: 9021, nom: 'Support sur mesure', prix_vente: '450',
+    role_devis_effectif: 'structure_alu' }
+  const groups = groupProduitsByCategory([declareAcier, declareAlu])
+  const by = (label) => groups.find(g => g.label === label)
+  assert.equal(by('Structures acier')?.items?.[0]?.id, 9020)
+  assert.equal(by('Structures aluminium')?.items?.[0]?.id, 9021)
+})

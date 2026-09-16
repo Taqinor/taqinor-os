@@ -1646,13 +1646,30 @@ export const PRODUCT_CATEGORIES = [
   ['suivi', 'Suivi journalier, maintenance chaque 12 mois pendant 2 ans'],
 ]
 
+// STKCAT24 — bucket sur le rôle EFFECTIF résolu côté serveur
+// (`role_devis_effectif`, STKCAT21 : déclaré → catégorie → mots-clés du nom)
+// quand il est présent ; repli sur `classifyProduct(nom)` sinon — un produit
+// sans ce champ (fixture ancienne, écran pas encore rechargé) garde un
+// comportement BYTE-IDENTIQUE à avant STKCAT24.
 export function groupProduitsByCategory(produits) {
   const buckets = new Map(PRODUCT_CATEGORIES.map(([key]) => [key, []]))
   const autres = []
   for (const p of produits) {
-    let type = classifyProduct(p.nom)
+    const effectif = p.role_devis_effectif
+    let type = effectif ?? classifyProduct(p.nom)
     if (type === 'structure') {
-      type = _norm(p.nom).includes('alu') ? 'structure_alu' : 'structure_acier'
+      if (effectif) {
+        // Rôle EFFECTIF générique : la matière (acier/alu) ne se lit QUE dans
+        // le nom, jamais un défaut « acier » silencieux — sans l'un ni
+        // l'autre mot-clé, la ligne reste dans le seau générique `structure`
+        // (label PRODUCT_CATEGORIES ci-dessus : « Structures »).
+        if (_norm(p.nom).includes('acier')) type = 'structure_acier'
+        else if (_norm(p.nom).includes('alu')) type = 'structure_alu'
+      } else {
+        // Repli mots-clés historique (rôle effectif absent/null) — byte-
+        // identique à avant STKCAT24 : défaut ACIER sans mot-clé « alu ».
+        type = _norm(p.nom).includes('alu') ? 'structure_alu' : 'structure_acier'
+      }
     }
     if (type && buckets.has(type)) buckets.get(type).push(p)
     else autres.push(p)
@@ -1781,10 +1798,13 @@ function _filtrerParMarque(pool, role, marques, manquantes, vusRoles) {
 }
 
 // ── Indexation par type des produits du stock ─────────────────────────────────
+// STKCAT24 — même repli que `groupProduitsByCategory` : `role_devis_effectif`
+// (STKCAT21) d'abord, mots-clés du nom ENSUITE, seulement quand le champ est
+// absent/null — un produit sans ce champ indexe exactement comme avant.
 function indexProduits(produits) {
   const byType = {}
   for (const p of produits) {
-    const type = classifyProduct(p.nom)
+    const type = p.role_devis_effectif ?? classifyProduct(p.nom)
     if (!type) continue
     if (!byType[type]) byType[type] = []
     byType[type].push(p)

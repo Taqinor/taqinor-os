@@ -336,3 +336,66 @@ describe('ProduitPicker — STKCAT13 création rapide : catégorie optionnelle',
     expect(payload).not.toHaveProperty('categorie_id')
   })
 })
+
+// STKCAT24 — Recommandé lit AUSSI le rôle EFFECTIF résolu côté serveur
+// (`role_devis_effectif`, STKCAT21), en UNION avec les deux termes historiques
+// (mot-clé du nom, famille de catégorie) : un produit dont le NOM ne dit rien
+// (aucun mot-clé) mais dont le rôle est résolu (déclaré sur la fiche, ou
+// catégorie sans ambiguïté) doit être Recommandé.
+const PRODUITS_STKCAT24 = [
+  ...PRODUITS,
+  {
+    // Aucun mot-clé « panneau » dans le nom — seul `role_devis_effectif` le
+    // désigne. Avant STKCAT24, ce produit n'aurait jamais été Recommandé.
+    id: 7, nom: 'Module ABC-550', prix_vente: 900, tva: 10, is_archived: false,
+    role_devis_effectif: 'panneau', role_devis_source: 'declare',
+  },
+  {
+    // Rôle EFFECTIF générique `structure` (résolu par la catégorie ou le nom,
+    // jamais par une déclaration acier/alu) — doit rester Recommandé sur une
+    // ligne `structure_acier` OU `structure_alu` (même famille).
+    id: 8, nom: 'Pergola sans mot-clé matière', prix_vente: 400, tva: 20, is_archived: false,
+    role_devis_effectif: 'structure', role_devis_source: 'categorie',
+  },
+  {
+    // Vice-versa : rôle EFFECTIF spécifique déclaré (`structure_acier`) — doit
+    // rester Recommandé sur une ligne `structure` générique.
+    id: 9, nom: 'Charpente sur mesure', prix_vente: 600, tva: 20, is_archived: false,
+    role_devis_effectif: 'structure_acier', role_devis_source: 'declare',
+  },
+]
+
+describe('ProduitPicker — STKCAT24 Recommandé via le rôle effectif', () => {
+  it('un produit sans mot-clé mais avec role_devis_effectif="panneau" est Recommandé pour typeFilter="panneau"', () => {
+    renderPicker({ produits: PRODUITS_STKCAT24, value: '', onChange: () => {}, typeFilter: 'panneau' })
+    openPicker()
+    expect(screen.getByText('Recommandé pour cette ligne')).toBeInTheDocument()
+    const btn = screen.getByText('Module ABC-550').closest('button')
+    expect(btn).not.toBeNull()
+    expect(btn).not.toBeDisabled()
+  })
+
+  it('role_devis_effectif="structure" (générique) reste Recommandé sur typeFilter="structure_acier" (même famille)', () => {
+    renderPicker({ produits: PRODUITS_STKCAT24, value: '', onChange: () => {}, typeFilter: 'structure_acier' })
+    openPicker()
+    const btn = screen.getByText('Pergola sans mot-clé matière').closest('button')
+    expect(btn).not.toBeNull()
+    expect(btn).not.toBeDisabled()
+  })
+
+  it('vice-versa : role_devis_effectif="structure_acier" (déclaré) reste Recommandé sur typeFilter="structure" (générique)', () => {
+    renderPicker({ produits: PRODUITS_STKCAT24, value: '', onChange: () => {}, typeFilter: 'structure' })
+    openPicker()
+    const btn = screen.getByText('Charpente sur mesure').closest('button')
+    expect(btn).not.toBeNull()
+    expect(btn).not.toBeDisabled()
+  })
+
+  it('sans role_devis_effectif (champ absent) : comportement inchangé — un produit hors mot-clé/famille reste hors Recommandé', () => {
+    renderPicker({ produits: PRODUITS_STKCAT24, value: '', onChange: () => {}, typeFilter: 'batterie' })
+    openPicker()
+    expect(screen.queryByText('Module ABC-550')).not.toBeInTheDocument()
+    expect(screen.queryByText('Pergola sans mot-clé matière')).not.toBeInTheDocument()
+    expect(screen.queryByText('Charpente sur mesure')).not.toBeInTheDocument()
+  })
+})

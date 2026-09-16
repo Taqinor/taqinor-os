@@ -9,9 +9,12 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import DevisLineRow from './DevisLineRow'
 
 const produitPickerRenderSpy = vi.fn()
+// STKCAT24 — le spy capture aussi `typeFilter` (en plus de `value`, préservé
+// pour les tests VX188 existants) pour vérifier lequel de `l.role_devis` /
+// `classifyProduct(l.designation)` le composant transmet au picker.
 vi.mock('../../components/ProduitPicker', () => ({
   default: (props) => {
-    produitPickerRenderSpy(props.value)
+    produitPickerRenderSpy(props.value, props.typeFilter)
     return <div data-testid="produit-picker-mock">{props.value ?? 'aucun'}</div>
   },
 }))
@@ -118,5 +121,45 @@ describe('DevisLineRow (VX188) — mémoïsation', () => {
     )
     screen.getByRole('button', { name: 'Supprimer la ligne' }).click()
     expect(onRemove).toHaveBeenCalledWith('l1')
+  })
+})
+
+// STKCAT24 — le picker reçoit le rôle STOCKÉ de la ligne (`l.role_devis`,
+// posé à la création par STKCAT23) et ne retombe sur `classifyProduct` que
+// s'il est vide (ligne libre, ou créée avant STKCAT23).
+describe('DevisLineRow (STKCAT24) — typeFilter du picker : rôle stocké prioritaire', () => {
+  it('l.role_devis présent (désignation sans mot-clé) : passé TEL QUEL au picker', () => {
+    produitPickerRenderSpy.mockClear()
+    render(
+      <table><tbody>{wrap(
+        <DevisLineRow {...baseProps({
+          line: { ...baseLine, designation: 'Charpente sur mesure', role_devis: 'structure' },
+        })} />,
+      )}</tbody></table>,
+    )
+    expect(produitPickerRenderSpy).toHaveBeenCalledWith('10', 'structure')
+  })
+
+  it('l.role_devis vide/absent : repli sur classifyProduct(l.designation) — comportement historique', () => {
+    produitPickerRenderSpy.mockClear()
+    render(
+      <table><tbody>{wrap(
+        <DevisLineRow {...baseProps()} />,
+      )}</tbody></table>,
+    )
+    // baseLine.designation = 'Panneau solaire 450W', aucun role_devis stocké
+    expect(produitPickerRenderSpy).toHaveBeenCalledWith('10', 'panneau')
+  })
+
+  it('l.role_devis présent MAIS différent du mot-clé de la désignation : le rôle stocké gagne', () => {
+    produitPickerRenderSpy.mockClear()
+    render(
+      <table><tbody>{wrap(
+        <DevisLineRow {...baseProps({
+          line: { ...baseLine, designation: 'Onduleur Hybride Deye 6kW', role_devis: 'onduleur_reseau' },
+        })} />,
+      )}</tbody></table>,
+    )
+    expect(produitPickerRenderSpy).toHaveBeenCalledWith('10', 'onduleur_reseau')
   })
 })
