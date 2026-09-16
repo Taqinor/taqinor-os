@@ -5729,11 +5729,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               professionnelle : aucune ne concerne un devis. */}
           {/* PREVIEW-V3-FIX (audit C4) — « Capital » restait en français dans la
               carte arabe (seule chaîne de ce bloc sans triplet). RC et ICE sont
-              des sigles marocains : ils ne se traduisent pas. */}
+              des sigles marocains : ils ne se traduisent pas. Le montant arabe
+              est enfermé dans un ISOLAT bidi (U+2066 … U+2069) : sans lui, le
+              libellé arabe et le nombre forment un seul passage droite-à-gauche
+              dans ce paragraphe `dir="ltr"` et le rendu donnait
+              « 000,00 100 رأس المال MAD » — constaté au rendu, pas supposé. */}
           <p class="fig mt-1 text-xs text-lune-faint" dir="ltr" data-i18n
             data-fr={`${LEGAL_IDENTITY.rcCourt} · ICE ${LEGAL_IDENTITY.ice} · Capital ${LEGAL_IDENTITY.capital}`}
             data-en={`${LEGAL_IDENTITY.rcCourt} · ICE ${LEGAL_IDENTITY.ice} · Share capital ${LEGAL_IDENTITY.capital}`}
-            data-ar={`${LEGAL_IDENTITY.rcCourt} · ICE ${LEGAL_IDENTITY.ice} · رأس المال ${LEGAL_IDENTITY.capital}`}>{LEGAL_IDENTITY.rcCourt} · ICE {LEGAL_IDENTITY.ice} · Capital {LEGAL_IDENTITY.capital}</p>
+            data-ar={`${LEGAL_IDENTITY.rcCourt} · ICE ${LEGAL_IDENTITY.ice} · رأس المال ⁦${LEGAL_IDENTITY.capital}⁩`}>{LEGAL_IDENTITY.rcCourt} · ICE {LEGAL_IDENTITY.ice} · Capital {LEGAL_IDENTITY.capital}</p>
           <p class="mt-2 text-xs text-lune-faint">
             <a href="/mentions-legales" target="_blank" rel="noopener" class="underline underline-offset-4 hover:text-lune-soft" data-i18n
               data-fr="Mentions légales complètes" data-en="Full legal notice" data-ar="المعلومات القانونية الكاملة">
@@ -7318,6 +7322,85 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     type SeasonId,
     type ServedProduction,
   } from '../../lib/dayProfiles';
+
+  // ── PREVIEW-V3-FIX (16/09/2026, audit C5) · L'ÉCRAN DE CODE DE LECTURE ────
+  // Îlot autonome : il ne s'exécute QUE sur l'écran `#otp-lecture` (donc
+  // jamais sur la proposition chargée, où il n'a rien à faire) — la garde
+  // `if (!section) return;` est la porte, pas le rendu conditionnel.
+  // IL VIT DANS CE <script>-CI, ET PAS DANS LE SIEN : cette route doit rester
+  // à EXACTEMENT TROIS blocs <script> (garde `perceivedPerfWJ34`) — un
+  // quatrième SANS import ES y perdait son chunk client au build (le
+  // manifeste SSR le référençait, le fichier n'était jamais écrit). Placé
+  // juste après les imports : ses écouteurs sont attachés avant tout ce que
+  // la suite de ce module pourrait faire échouer sur un écran sans devis.
+  (function otpLecture(): void {
+    const section = document.getElementById('otp-lecture');
+    if (!section) return;
+    const token = section.getAttribute('data-token') || '';
+    const form = document.getElementById('otp-lecture-form') as HTMLFormElement | null;
+    const demander = document.getElementById('otp-lecture-demander') as HTMLButtonElement | null;
+    const valider = document.getElementById('otp-lecture-valider') as HTMLButtonElement | null;
+    const champ = document.getElementById('otp-lecture-code') as HTMLInputElement | null;
+    const message = document.getElementById('otp-lecture-message');
+
+    function dire(texte: string): void {
+      if (message) message.textContent = texte;
+    }
+
+    // UN SEUL chemin réseau : le proxy same-origin, qui relaie `demander`
+    // (sans code) ou `verifier` (avec code). Le navigateur du client
+    // n'appelle jamais le backend en cross-origin.
+    async function appeler(code: string): Promise<{ ok: boolean; detail: string }> {
+      try {
+        const res = await fetch('/api/proposition-otp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(code ? { token, mode: 'lecture', code } : { token, mode: 'lecture' }),
+        });
+        const body = (await res.json().catch(() => ({}))) as { ok?: boolean; detail?: string };
+        return {
+          ok: res.ok && body.ok !== false,
+          detail: typeof body.detail === 'string' ? body.detail : '',
+        };
+      } catch {
+        return { ok: false, detail: 'Service momentanément indisponible. Veuillez réessayer.' };
+      }
+    }
+
+    demander?.addEventListener('click', async () => {
+      demander.disabled = true;
+      dire('Envoi du code…');
+      const r = await appeler('');
+      demander.disabled = false;
+      dire(r.ok
+        ? 'Code envoyé. Saisissez-le ci-dessous — il est valable 10 minutes.'
+        : (r.detail || 'Le code n’a pas pu être envoyé. Réessayez dans un instant.'));
+      champ?.focus();
+    });
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = (champ?.value || '').trim();
+      if (!code) {
+        dire('Saisissez le code reçu.');
+        champ?.focus();
+        return;
+      }
+      if (valider) valider.disabled = true;
+      dire('Vérification…');
+      const r = await appeler(code);
+      if (r.ok) {
+        // Le serveur a déverrouillé la LECTURE de ce lien (une heure) : la
+        // même URL rend désormais la proposition. Rien à transporter.
+        dire('Code vérifié — ouverture de votre proposition…');
+        window.location.reload();
+        return;
+      }
+      if (valider) valider.disabled = false;
+      dire(r.detail || 'Code incorrect. Vérifiez le code reçu et réessayez.');
+      champ?.select();
+    });
+  })();
 
   interface SignConfig {
     token: string;
@@ -10364,82 +10447,6 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         translate = clampTranslate(translate, viewportSize(), contentSize, scale);
         apply();
       }
-    });
-  })();
-</script>
-
-<script>
-  // ── PREVIEW-V3-FIX (16/09/2026, audit C5) · L'ÉCRAN DE CODE DE LECTURE ────
-  // Îlot autonome : il ne s'exécute QUE sur l'écran `#otp-lecture` (donc
-  // jamais sur la proposition chargée, où il n'a rien à faire). Astro
-  // regroupe tous les <script> de la page dans le même bundle — la garde
-  // `if (!section) return;` est donc la porte, pas le rendu conditionnel.
-  (function otpLecture(): void {
-    const section = document.getElementById('otp-lecture');
-    if (!section) return;
-    const token = section.getAttribute('data-token') || '';
-    const form = document.getElementById('otp-lecture-form') as HTMLFormElement | null;
-    const demander = document.getElementById('otp-lecture-demander') as HTMLButtonElement | null;
-    const valider = document.getElementById('otp-lecture-valider') as HTMLButtonElement | null;
-    const champ = document.getElementById('otp-lecture-code') as HTMLInputElement | null;
-    const message = document.getElementById('otp-lecture-message');
-
-    function dire(texte: string): void {
-      if (message) message.textContent = texte;
-    }
-
-    // UN SEUL chemin réseau : le proxy same-origin, qui relaie `demander`
-    // (sans code) ou `verifier` (avec code). Le navigateur du client
-    // n'appelle jamais le backend en cross-origin.
-    async function appeler(code: string): Promise<{ ok: boolean; detail: string }> {
-      try {
-        const res = await fetch('/api/proposition-otp', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(code ? { token, mode: 'lecture', code } : { token, mode: 'lecture' }),
-        });
-        const body = (await res.json().catch(() => ({}))) as { ok?: boolean; detail?: string };
-        return {
-          ok: res.ok && body.ok !== false,
-          detail: typeof body.detail === 'string' ? body.detail : '',
-        };
-      } catch {
-        return { ok: false, detail: 'Service momentanément indisponible. Veuillez réessayer.' };
-      }
-    }
-
-    demander?.addEventListener('click', async () => {
-      demander.disabled = true;
-      dire('Envoi du code…');
-      const r = await appeler('');
-      demander.disabled = false;
-      dire(r.ok
-        ? 'Code envoyé. Saisissez-le ci-dessous — il est valable 10 minutes.'
-        : (r.detail || 'Le code n’a pas pu être envoyé. Réessayez dans un instant.'));
-      champ?.focus();
-    });
-
-    form?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const code = (champ?.value || '').trim();
-      if (!code) {
-        dire('Saisissez le code reçu.');
-        champ?.focus();
-        return;
-      }
-      if (valider) valider.disabled = true;
-      dire('Vérification…');
-      const r = await appeler(code);
-      if (r.ok) {
-        // Le serveur a déverrouillé la LECTURE de ce lien (une heure) : la
-        // même URL rend désormais la proposition. Rien à transporter.
-        dire('Code vérifié — ouverture de votre proposition…');
-        window.location.reload();
-        return;
-      }
-      if (valider) valider.disabled = false;
-      dire(r.detail || 'Code incorrect. Vérifiez le code reçu et réessayez.');
-      champ?.select();
     });
   })();
 </script>

@@ -81,6 +81,9 @@ describe('audit C4 — le mois suit la langue', () => {
 
   it('« Capital » porte ses trois langues (RC/ICE sont des sigles)', () => {
     expect(PROPOSITION).toContain('Share capital ${LEGAL_IDENTITY.capital}');
-    expect(PROPOSITION).toContain('رأس المال ${LEGAL_IDENTITY.capital}');
+    // Le montant arabe est enfermé dans un isolat bidi (U+2066 … U+2069) :
+    // sans lui, « رأس المال 100 000,00 MAD » se rendait « 000,00 100 رأس
+    // المال MAD » dans ce paragraphe `dir="ltr"` (constaté au rendu).
+    expect(PROPOSITION).toContain('رأس المال \u2066${LEGAL_IDENTITY.capital}\u2069');
   });
 });
