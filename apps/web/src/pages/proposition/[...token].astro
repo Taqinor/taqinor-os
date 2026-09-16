@@ -1942,12 +1942,8 @@ const signConfig = ok
       // ce flag pour couper les beacons de vue/engagement et désactiver la
       // signature/le contact.
       apercuInterne,
-      // PREVIEW-V3-FIX (audit C1) — L'ACOMPTE DE CHAQUE OPTION, DÉJÀ FORMATÉ.
-      // Le backend calcule un montant par option servable (même échéancier,
-      // même arrondi) ; la page les a formatés au rendu. Le script choisit
-      // celui de la case cochée — il ne devine plus l'option et ne dérive
-      // aucun chiffre. Option sans montant servi ⇒ clé absente ⇒ le montant
-      // est masqué (le pourcentage, lui, reste vrai).
+      // PREVIEW-V3-FIX (audit C1) — l'acompte de CHAQUE option, déjà formaté
+      // au rendu (voir `acompteMontantsFmt` dans le frontmatter).
       acompteMontants: acompteMontantsFmt,
     })
   : null;
@@ -2276,10 +2272,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               référence. Date backend réelle uniquement, jamais un
               compte-à-rebours. */}
           {validity.fromBackend && validity.label && !validity.expired && (
+            /* PREVIEW-V3-FIX (audit C4) — le MOIS suit la langue : `label`
+               (français) était injecté tel quel dans `data-en`/`data-ar`. */
             <p class="cine-in cine-in-3 mt-3 text-sm text-brass-300" data-i18n
               data-fr={`Devis valable jusqu’au ${validity.label}`}
-              data-en={`Quote valid until ${validity.label}`}
-              data-ar={`العرض صالح حتى ${validity.label}`}>
+              data-en={`Quote valid until ${validity.labelEn ?? validity.label}`}
+              data-ar={`العرض صالح حتى ${validity.labelAr ?? validity.label}`}>
               Devis valable jusqu’au {validity.label}
             </p>
           )}
@@ -2404,13 +2402,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 <dd class="fig text-lg text-lune" dir="ltr">{proposalDate}</dd>
               </div>
             )}
-            {/* WJ15 — Fenêtre de validité honnête : date backend réelle, sinon mention libellée. Jamais un compte-à-rebours. */}
-            {validity.fromBackend && validity.label && !validity.expired && (
-              <div>
-                <dt class="text-lune-faint" data-i18n data-fr="Devis valable jusqu’au" data-en="Quote valid until" data-ar="العرض صالح حتى">Devis valable jusqu’au</dt>
-                <dd class="fig text-lg text-brass-300" dir="ltr">{validity.label}</dd>
-              </div>
-            )}
+            {/* WJ15 — Fenêtre de validité honnête : date backend réelle, sinon mention libellée. Jamais un compte-à-rebours.
+                PREVIEW-V3-FIX (audit C4) — LA DATE DE VALIDITÉ NE S'AFFICHE PLUS
+                DEUX FOIS DANS LE MÊME HÉROS. Elle vivait ici ET dix lignes plus
+                haut, contre le prix ; WJ15 avait justement décidé que sa place
+                était CONTRE LE PRIX (c'est là qu'on se demande « le prix
+                tient-il ? »). Seule la mention d'OFFRE ÉCHUE reste ici : elle
+                répond à un autre état, et la ligne du prix disparaît alors. */}
             {validity.fromBackend && validity.expired && (
               <div>
                 <dt class="text-lune-faint" data-i18n data-fr="Validité" data-en="Validity" data-ar="الصلاحية">Validité</dt>
@@ -5665,7 +5663,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               que tout le monde oublie, et elle vit déjà dans LEGAL_IDENTITY
               (même constante que /mentions-legales). Ni CNSS ni taxe
               professionnelle : aucune ne concerne un devis. */}
-          <p class="fig mt-1 text-xs text-lune-faint" dir="ltr">{LEGAL_IDENTITY.rcCourt} · ICE {LEGAL_IDENTITY.ice} · Capital {LEGAL_IDENTITY.capital}</p>
+          {/* PREVIEW-V3-FIX (audit C4) — « Capital » restait en français dans la
+              carte arabe (seule chaîne de ce bloc sans triplet). RC et ICE sont
+              des sigles marocains : ils ne se traduisent pas. */}
+          <p class="fig mt-1 text-xs text-lune-faint" dir="ltr" data-i18n
+            data-fr={`${LEGAL_IDENTITY.rcCourt} · ICE ${LEGAL_IDENTITY.ice} · Capital ${LEGAL_IDENTITY.capital}`}
+            data-en={`${LEGAL_IDENTITY.rcCourt} · ICE ${LEGAL_IDENTITY.ice} · Share capital ${LEGAL_IDENTITY.capital}`}
+            data-ar={`${LEGAL_IDENTITY.rcCourt} · ICE ${LEGAL_IDENTITY.ice} · رأس المال ${LEGAL_IDENTITY.capital}`}>{LEGAL_IDENTITY.rcCourt} · ICE {LEGAL_IDENTITY.ice} · Capital {LEGAL_IDENTITY.capital}</p>
           <p class="mt-2 text-xs text-lune-faint">
             <a href="/mentions-legales" target="_blank" rel="noopener" class="underline underline-offset-4 hover:text-lune-soft" data-i18n
               data-fr="Mentions légales complètes" data-en="Full legal notice" data-ar="المعلومات القانونية الكاملة">
@@ -6243,8 +6247,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                    « norme 30 jours » qui n'existe pas en droit. */
                 <p class="mt-2 text-sm text-lune-soft" data-i18n
                   data-fr={`Cette proposition et son prix sont valables jusqu’au ${validity.label} inclus.`}
-                  data-en={`This proposal and its price are valid up to and including ${validity.label}.`}
-                  data-ar={`هذا العرض وثمنه صالحان إلى غاية ${validity.label} ضمناً.`}>
+                  data-en={`This proposal and its price are valid up to and including ${validity.labelEn ?? validity.label}.`}
+                  data-ar={`هذا العرض وثمنه صالحان إلى غاية ${validity.labelAr ?? validity.label} ضمناً.`}>
                   Cette proposition et son prix sont valables jusqu’au {validity.label} inclus.
                 </p>
               )}
@@ -6478,7 +6482,16 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  page CGV n'est publiée, et fabriquer un lien vers une page
                  inexistante serait pire que rien. Ces lignes SONT celles que
                  le PDF imprime (mêmes gabarits moteur, servis par le backend
-                 sous `conditions`) — jamais une seconde rédaction. */
+                 sous `conditions`) — jamais une seconde rédaction.
+                 PREVIEW-V3-FIX (audit C4/M7) — LE TITRE DU REPLI EST TRADUIT,
+                 LES PUCES RESTENT EN FRANÇAIS, et c'est délibéré : ce sont les
+                 conditions « expressément acceptées » (loi 31-08 art. 30), le
+                 texte que le PDF imprime. Le moteur ne sert que la version
+                 française et AUCUNE traduction de ces six phrases n'existe
+                 dans ce dépôt : les traduire ici serait rédiger du texte
+                 contractuel côté client. Le jour où le moteur servira
+                 `cgv_bullets` en EN/AR, cette liste les prendra telles
+                 quelles — c'est un chantier backend, pas une ligne de page. */
               <details class="mt-2 fold-native">
                 <summary class="cursor-pointer text-xs text-brass-300 underline-offset-2 hover:underline" data-i18n
                   data-fr="Lire les conditions générales de vente"
@@ -7151,7 +7164,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             )}
             {validity.fromBackend && validity.label && !validity.expired && (
               <p class="truncate text-xs text-lune-faint">
-                <span data-i18n data-fr="Valable jusqu’au" data-en="Valid until" data-ar="صالح حتى">Valable jusqu’au</span> <span dir="ltr">{validity.label}</span>
+                <span data-i18n data-fr="Valable jusqu’au" data-en="Valid until" data-ar="صالح حتى">Valable jusqu’au</span> <span data-i18n data-fr={validity.label} data-en={validity.labelEn ?? validity.label} data-ar={validity.labelAr ?? validity.label}>{validity.label}</span>
               </p>
             )}
           </div>

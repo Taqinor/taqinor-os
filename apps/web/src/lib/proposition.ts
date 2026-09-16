@@ -1801,6 +1801,16 @@ export const GREEN_LOAN_MONTHS = 84;
 export interface ValidityWindow {
   /** Date d'échéance affichable (libellé FR « JJ mois AAAA »), ou null. */
   label: string | null;
+  /**
+   * PREVIEW-V3-FIX (16/09/2026, audit C4) — LE MÊME JOUR, DANS LA LANGUE DU
+   * LECTEUR. `label` (français) était injecté tel quel dans `data-en`/`data-ar` :
+   * un client anglophone lisait « valid up to and including 15 octobre 2026 »
+   * et un arabophone « إلى غاية 15 octobre 2026 » — que le bidi réordonnait en
+   * « octobre 15 2026 », sur la première phrase légale (art. 29-6) qu'il lit.
+   */
+  labelEn: string | null;
+  /** Idem, mois marocains en arabe (يناير … دجنبر) — RTL naturel, sans markup. */
+  labelAr: string | null;
   /** Vrai quand la date vient RÉELLEMENT du backend (sinon repli libellé). */
   fromBackend: boolean;
   /** Vrai si l'échéance est déjà passée (offre expirée). */
@@ -1810,6 +1820,26 @@ export interface ValidityWindow {
 const MONTHS_FR = [
   'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
   'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+];
+
+/**
+ * PREVIEW-V3-FIX (audit C4) — LES MOIS DES DEUX AUTRES LANGUES DE LA PAGE.
+ *
+ * Tables explicites plutôt qu'`Intl.DateTimeFormat` : le rendu de cette page
+ * est SERVEUR (workerd) et un jeu de locales incomplet y dégraderait en
+ * silence (mois anglais, chiffres hindi-arabes, calendrier hégirien) — sur une
+ * phrase légale, un repli silencieux est pire qu'une table. Les noms arabes
+ * sont le jeu MAROCAIN (celui du Bulletin officiel et de la locale `ar-MA`),
+ * pas le jeu levantin : « غشت » et non « أغسطس », « دجنبر » et non « ديسمبر ».
+ */
+const MONTHS_EN = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+const MONTHS_AR = [
+  'يناير', 'فبراير', 'مارس', 'أبريل', 'ماي', 'يونيو',
+  'يوليوز', 'غشت', 'شتنبر', 'أكتوبر', 'نونبر', 'دجنبر',
 ];
 
 /**
@@ -1841,6 +1871,21 @@ export function formatFrenchDate(dt: Date): string {
 }
 
 /**
+ * PREVIEW-V3-FIX (audit C4) — la MÊME date, dans la langue demandée.
+ * EN : « 15 July 2026 » (jour d'abord, comme la page FR/AR — un seul gabarit,
+ * jamais deux ordres de lecture selon la langue). AR : « 15 يوليوز 2026 »,
+ * dont l'algorithme bidi rend l'ordre correct sans aucun markup (c'est le mot
+ * FRANÇAIS au milieu qui cassait la phrase arabe, pas les chiffres).
+ */
+export function formatDateLang(dt: Date, lang: PropLang): string {
+  const jour = dt.getUTCDate();
+  const an = dt.getUTCFullYear();
+  if (lang === 'en') return `${jour} ${MONTHS_EN[dt.getUTCMonth()]} ${an}`;
+  if (lang === 'ar') return `${jour} ${MONTHS_AR[dt.getUTCMonth()]} ${an}`;
+  return formatFrenchDate(dt);
+}
+
+/**
  * WJ15 — Résout la fenêtre de validité du devis SANS jamais inventer une date.
  *  - Si le backend fournit `date_validite` (racine ou `quote`), on l'affiche
  *    telle quelle (`fromBackend: true`), en signalant si elle est déjà passée.
@@ -1854,9 +1899,17 @@ export function resolveValidity(
 ): ValidityWindow {
   const raw = p.date_validite ?? p.quote?.date_validite ?? null;
   const dt = parseBackendDate(raw);
-  if (!dt) return { label: null, fromBackend: false, expired: false };
+  if (!dt) {
+    return { label: null, labelEn: null, labelAr: null, fromBackend: false, expired: false };
+  }
   const expired = dt.getTime() < now.getTime();
-  return { label: formatFrenchDate(dt), fromBackend: true, expired };
+  return {
+    label: formatFrenchDate(dt),
+    labelEn: formatDateLang(dt, 'en'),
+    labelAr: formatDateLang(dt, 'ar'),
+    fromBackend: true,
+    expired,
+  };
 }
 
 /**
