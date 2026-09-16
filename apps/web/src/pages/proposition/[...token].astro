@@ -645,25 +645,6 @@ const chartSvgEn = ok && chartSeries.mode !== 'none'
 const chartSvgAr = ok && chartSeries.mode !== 'none'
   ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, undefined, 'ar')
   : '';
-// ── PREVIEW-V3 (16/09/2026) · LA VIGNETTE PRODUCTION / CONSOMMATION ──────────
-// Le graphe complet est parti dans le repli « Comment ces économies sont-elles
-// calculées ? » en v2 — et la page a perdu du même coup la SEULE image qui
-// répond à la question que tout acheteur solaire se pose : « est-ce que ça
-// couvre ce que je consomme ? ». Elle revient ici en vignette de ~130 px, sans
-// étiquettes de mois ni annotation, avec deux pastilles HTML à côté. MÊMES
-// séries backend, MÊME fonction pure : la vignette et le graphe complet ne
-// peuvent pas diverger d'un kWh, et aucun chiffre nouveau n'entre sur la page.
-const COMPACT_CHART_BOX = { width: 320, height: 130, padLeft: 6, padRight: 6, padTop: 8, padBottom: 10 };
-const COMPACT_CHART_OPTS = { labels: false, annotate: false };
-const chartCompactFr = ok && chartSeries.mode !== 'none'
-  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, COMPACT_CHART_BOX, 'fr', COMPACT_CHART_OPTS)
-  : '';
-const chartCompactEn = ok && chartSeries.mode !== 'none'
-  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, COMPACT_CHART_BOX, 'en', COMPACT_CHART_OPTS)
-  : '';
-const chartCompactAr = ok && chartSeries.mode !== 'none'
-  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, COMPACT_CHART_BOX, 'ar', COMPACT_CHART_OPTS)
-  : '';
 const showChart = ok && hasProductionSeries(data!) && chartSvgFr.length > 0;
 const chartHasConso = chartSeries.mode === 'comparison';
 // CJ2b (21/08/2026) — l'argent MENSUEL réel, comparé au même graphe : voir
@@ -770,6 +751,42 @@ if (ok) {
     }
   }
 }
+// ── PREVIEW-V3C (16/09/2026) · LA VIGNETTE, C'EST LA JOURNÉE ────────────────
+// Ordre fondateur (Reda, 16/09) : « quand j'ai dit qu'on devrait ajouter la
+// production vs la consommation, je parlais du chiffre JOURNALIER, pas de
+// l'annuel ». La vignette de la carte « Vos économies » portait les 12 barres
+// MENSUELLES ; elle porte désormais la MÊME courbe journalière que la vue
+// « Sur une journée » du chapitre Production — même fonction pure, mêmes
+// nombres servis, seulement sans repère d'axe ni soleil (options additives,
+// défaut byte-identique). Le graphe mensuel reste INTACT dans le repli : la
+// vignette n'est pas un second dessin, c'est le même, en petit.
+const COMPACT_CURVE_BOX = { width: 320, height: 128, padLeft: 6, padRight: 6, padTop: 6, padBottom: 18 };
+const COMPACT_CURVE_OPTS = { annotate: false, sun: false };
+const curveCompactByLang: Record<CurveLang, DailyCurve> = {
+  fr: EMPTY_DAILY_CURVE, en: EMPTY_DAILY_CURVE, ar: EMPTY_DAILY_CURVE,
+};
+if (ok) {
+  const servedCompact = servedScaleFor(curveSeasonDefault);
+  for (const lang of ['fr', 'en', 'ar'] as const) {
+    curveCompactByLang[lang] = renderYearCurve(
+      prodKwh,
+      COMPACT_CURVE_BOX,
+      lang,
+      {
+        mode: curveMode, variant: 'normal', occupancy: curveOccupancyDefault, ramadan: curveRamadan,
+        servedShape: curveServedShape,
+      },
+      servedCompact,
+      COMPACT_CURVE_OPTS,
+    );
+  }
+}
+// HONNÊTETÉ — la vignette n'a PAS de repère d'axe, donc elle ne peut pas dire
+// « profil — année type » comme le fait le grand dessin quand il n'a que la
+// forme. Sans échelle réelle (aucune forme PVGIS servie ET aucune production
+// annuelle backend), une courbe nue passerait pour une mesure : dans ce cas la
+// vignette NE S'AFFICHE PAS DU TOUT. Jamais une fausse courbe.
+const showCurveVignette = ok && curveCompactByLang.fr.svg.length > 0 && curveCompactByLang.fr.hasRealScale;
 const dailyCurveFr = dailyCurvesByVariant.fr.normal ?? EMPTY_DAILY_CURVE;
 const dailyCurveEn = dailyCurvesByVariant.en.normal ?? EMPTY_DAILY_CURVE;
 const dailyCurveAr = dailyCurvesByVariant.ar.normal ?? EMPTY_DAILY_CURVE;
@@ -3486,28 +3503,31 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </div>
           )}
 
-          {showChart && (
-            /* PREVIEW-V3 · LA VIGNETTE, AU-DESSUS DU REPLI. Deux pastilles en
+          {showCurveVignette && (
+            /* PREVIEW-V3C · LA VIGNETTE, AU-DESSUS DU REPLI — LA JOURNÉE.
+               Ordre fondateur 16/09 : le chiffre que le client veut voir
+               comparé à sa consommation est le JOURNALIER, pas l'annuel.
+               C'est donc la courbe « Sur une journée » (cloche de production +
+               trait pointillé de consommation, lever/midi/coucher) qui vient
+               ici, en ~128 px, sans repère d'axe ni soleil. Deux pastilles en
                HTML plutôt qu'une légende dans le SVG : elles se traduisent
                avec le reste de la page (FR/EN/AR), le SVG n'a pas à porter de
-               texte. Le graphe COMPLET (étiquettes de mois, pic, total annuel,
-               bascule journée/année) reste intact dans le repli juste dessous
-               — ceci en est la vignette, pas un second dessin. */
+               texte. Le graphe COMPLET (les deux vues, les variantes, le
+               repère qui se lit au tap) reste intact dans le repli juste
+               dessous — ceci en est la vignette, pas un second dessin. */
             <div class="mt-4 rounded-xl border border-white/10 bg-nuit-800/40 p-4">
-              <div class="chart-svg" data-chart-lang="fr" set:html={chartCompactFr}></div>
-              <div class="chart-svg" data-chart-lang="en" hidden set:html={chartCompactEn}></div>
-              <div class="chart-svg" data-chart-lang="ar" hidden set:html={chartCompactAr}></div>
+              <div class="curve-vignette" data-chart-lang="fr" set:html={curveCompactByLang.fr.svg}></div>
+              <div class="curve-vignette" data-chart-lang="en" hidden set:html={curveCompactByLang.en.svg}></div>
+              <div class="curve-vignette" data-chart-lang="ar" hidden set:html={curveCompactByLang.ar.svg}></div>
               <p class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-lune-faint">
                 <span class="inline-flex items-center gap-1.5">
                   <span class="inline-block h-2 w-2 flex-none rounded-full" style="background: var(--color-brass-400, #e8b54a)" aria-hidden="true"></span>
                   <span data-i18n data-fr="Production solaire" data-en="Solar production" data-ar="الإنتاج الشمسي">Production solaire</span>
                 </span>
-                {chartHasConso && (
-                  <span class="inline-flex items-center gap-1.5">
-                    <span class="inline-block h-2 w-2 flex-none rounded-full" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
-                    <span data-i18n data-fr="Votre consommation" data-en="Your consumption" data-ar="استهلاككم">Votre consommation</span>
-                  </span>
-                )}
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="inline-block h-2 w-2 flex-none rounded-full" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
+                  <span data-i18n data-fr="Votre consommation" data-en="Your consumption" data-ar="استهلاككم">Votre consommation</span>
+                </span>
               </p>
             </div>
           )}
@@ -10513,6 +10533,20 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
   .chart-svg :global([data-chart-bar]:focus-visible) {
     outline: 2px solid var(--color-brass-300, #f3cc66);
     outline-offset: 1px;
+  }
+
+  /* PREVIEW-V3C — vignette journalière de la carte « Vos économies » : son
+     propre ratio (viewBox 320×128) → zéro CLS, et une classe DISTINCTE de
+     .chart-svg / .daily-curve-wrap pour qu'aucune animation de tracé ni aucun
+     tap-to-reveal ne s'y accroche (la vignette n'a ni repère ni barres). */
+  .curve-vignette {
+    width: 100%;
+    aspect-ratio: 320 / 128;
+  }
+  .curve-vignette :global(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   /* WJ16 — courbe journalière : ratio réservé AVANT rendu (viewBox 360×170)

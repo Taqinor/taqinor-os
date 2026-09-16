@@ -632,6 +632,19 @@ export interface ServedCurveScale {
 }
 
 /**
+ * PREVIEW-V3C (16/09/2026) — ce que la VIGNETTE retire au dessin complet.
+ * Deux drapeaux, tous deux `true` par défaut (omettre l'objet = rendu d'hier,
+ * octet pour octet). Rien d'autre ne change : mêmes séries, même axe, mêmes
+ * deux courbes — seule la décoration part.
+ */
+export interface DailyCurveRenderOptions {
+  /** Dessiner le repère d'axe `data-curve-scale` (pic / production / conso). Défaut : `true`. */
+  annotate?: boolean;
+  /** Dessiner le soleil décoratif `.curve-sun`. Défaut : `true`. */
+  sun?: boolean;
+}
+
+/**
  * WJ16 — Construit le SVG de la courbe journalière production-vs-consommation.
  * `annualProdKwh` (backend `prod_kwh`) cale l'amplitude réelle ; absent/nul →
  * mode « année type » (forme normalisée, libellée). Aucune transition n'est
@@ -660,6 +673,18 @@ export function renderYearCurve(
   lang: CurveLang = 'fr',
   consumptionOptions: ConsumptionShapeOptions = {},
   served: ServedCurveScale | null = null,
+  /**
+   * PREVIEW-V3C (16/09/2026) — rendu COMPACT, purement ADDITIF. Les deux
+   * options valent `true` par défaut : un appel sans ce paramètre rend un SVG
+   * OCTET POUR OCTET identique à celui d'hier (un test l'exige). Mises à
+   * `false`, elles retirent le repère d'axe (le groupe `data-curve-scale`,
+   * qui est aussi la source du tap-to-reveal) et le soleil décoratif — de quoi
+   * poser une vignette de ~128 px dans la carte « Vos économies », avec deux
+   * pastilles HTML à côté, SANS jamais changer les séries : ce sont les MÊMES
+   * nombres servis que la vue « Sur une journée » du chapitre Production, donc
+   * les deux ne peuvent pas raconter deux journées différentes.
+   */
+  render: DailyCurveRenderOptions = {},
 ): DailyCurve {
   const annual = typeof annualProdKwh === 'number' && Number.isFinite(annualProdKwh) && annualProdKwh > 0
     ? annualProdKwh : null;
@@ -765,7 +790,13 @@ export function renderYearCurve(
   // Repère d'axe Y. Le PIC est TOUJOURS libellé en kW (c'est une puissance) —
   // sur le chemin servi comme sur le repli annuel.
   let scaleLabel = '';
-  if (hasRealScale) {
+  if (render.annotate === false) {
+    // PREVIEW-V3C — vignette : AUCUN repère d'axe. C'est aussi pourquoi la page
+    // ne pose la vignette QUE sur une courbe à échelle réelle : sans repère, un
+    // « profil — année type » nu passerait pour une mesure. Voir le gate
+    // `showCurveVignette` dans [...token].astro.
+    scaleLabel = '';
+  } else if (hasRealScale) {
     let peakFmt: string;
     let avgFmt: string;
     if (hasServedShape) {
@@ -821,7 +852,9 @@ export function renderYearCurve(
   // Soleil décoratif (animé en CSS via la classe .curve-sun, statique sinon).
   const sunX = box.padLeft + plotW * ((13 - HOUR_START) / HOURS);
   const sunY = box.padTop + plotH * 0.18;
-  const sun = `<circle class="curve-sun" cx="${sunX.toFixed(2)}" cy="${sunY.toFixed(2)}" r="6" fill="var(--color-brass-300, #f3cc66)" fill-opacity="0.9"/>`;
+  const sun = render.sun === false
+    ? ''
+    : `<circle class="curve-sun" cx="${sunX.toFixed(2)}" cy="${sunY.toFixed(2)}" r="6" fill="var(--color-brass-300, #f3cc66)" fill-opacity="0.9"/>`;
 
   // Longueur de tracé pour l'animation de dessin (dasharray en CSS).
   const descByLang: Record<CurveLang, string> = {
