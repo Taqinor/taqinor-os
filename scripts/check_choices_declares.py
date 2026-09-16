@@ -581,6 +581,9 @@ REFUS = {
     # les deux fichiers de test CITENT la notion pour la rendre vérifiable
     # (motif TEST), et overrides.js s'adosse à un CONTRAT JSON (PACT10), pas
     # à un champ choices= — son propre test d'exhaustivité fait la preuve.
+    "frontend/src/pages/stock/CategoriesStock.jsx": [
+        # STKCAT5 : table de SUGGESTIONS = dict d'une commande de gestion, pas un champ choices=
+        ("TYPES_PAR_CATEGORIE", "SANS_SOURCE")],
     "frontend/src/features/ventes/classifieurs.parite.test.mjs": [
         ("miroir de solar.js", "TEST")],
     "frontend/src/features/ventes/quote/overrides.js": [
@@ -631,6 +634,8 @@ REFUS = {
     "frontend/src/features/ventes/module.config.jsx": [
         ("/sav/action-requise", "COMPORTEMENT")],
     "frontend/src/features/ventes/solar.js": [
+        # STKCAT10 : regle d'emission du role structure portee de composition.py (comportement)
+        ("miroir de `composition.py`", "COMPORTEMENT"),
         # PVOND (2026-08-18) — le commentaire decrit l'avertissement « vivier
         # batterie vide », un comportement, pas une liste de valeurs.
         ("livrer un kit silencieusement sans stockage", "COMPORTEMENT"),
@@ -731,6 +736,8 @@ REFUS = {
     # des listes de valeurs ; le miroir réel est verrouillé par les tests
     # pvondFicheTechnique côté frontend et test_pvond côté backend.
     "frontend/src/pages/stock/ProduitForm.jsx": [
+        # STKCAT20 : garde anti-effacement de la courbe de pompe portee de l'admin (comportement)
+        ("miroir de l'admin", "COMPORTEMENT"),
         ("bannière « Onduleur(s) non chiffrable(s) »", "COMPORTEMENT")],
     "frontend/src/pages/stock/pvondFicheTechnique.test.mjs": [
         ("plage_batterie_onduleur", "TEST"),
