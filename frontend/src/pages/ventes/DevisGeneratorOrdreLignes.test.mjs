@@ -113,7 +113,12 @@ test('autoQuote.js : createAutoQuote accepte ordreLignes et le transmet à autoF
   assert.match(AQ, /targetKwc,\s*marques,\s*ordreLignes\s*\}\)\s*\{/)
   const idx = AQ.indexOf('rows = autoFillLines(produits, {')
   assert.ok(idx > -1, 'appel autoFillLines introuvable dans autoQuote.js')
-  const bloc = AQ.slice(idx, idx + 400)
+  // STKCAT10 — fenêtre élargie 400 → 700 : l'appel a gagné une option
+  // (`structureProduitId`) et sa justification, et une fenêtre épinglée au
+  // caractère près se périme à chaque ligne ajoutée EN AMONT des deux clés
+  // cherchées (elles, inchangées). C'est la fenêtre qui s'adapte, jamais la
+  // garde qui se desserre : les deux `assert.match` sont identiques.
+  const bloc = AQ.slice(idx, idx + 700)
   assert.match(bloc, /marques,/)
   assert.match(bloc, /ordreLignes,/)
 })

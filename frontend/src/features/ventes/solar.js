@@ -1721,9 +1721,11 @@ export function deriveRoleOrderFromLines(lines) {
   for (const l of (lines ?? [])) {
     let role = classifyProduct(l.designation)
     if (!role) continue
-    if (role === 'structure') {
-      role = _norm(l.designation).includes('alu') ? 'structure_alu' : 'structure_acier'
-    }
+    // STKCAT10 — MÊME règle d'émission que la composition (écran ET serveur) :
+    // un libellé qui ne dit ni « acier » ni « alu » (une pergola) donne le rôle
+    // GÉNÉRIQUE `structure`, jamais `structure_acier` par défaut — sinon
+    // l'ordre enregistré ne retrouverait jamais la ligne réellement composée.
+    if (role === 'structure') role = structureRoleForName(l.designation)
     if (seen.has(role)) continue
     seen.add(role)
     order.push(role)
@@ -1844,6 +1846,42 @@ export function defaultProductLines(produits, ordreLignes) {
   return orderLinesByRolePreference(tagged, ordreLignes)
 }
 
+/* STKCAT10 — LE RÔLE ÉMIS POUR LA LIGNE STRUCTURE, MIROIR EXACT DU SERVEUR
+   (`apps/ventes/domain/composition.py::role_structure_du_produit`, règle
+   d'émission écrite au contrat `contract_samples/devis_composition.json`) :
+   le rôle suit le NOM DU PRODUIT RETENU, jamais le bouton demandé.
+     · le nom porte encore « acier »          ⇒ `structure_acier` ;
+     · le nom porte encore « alu »/« aluminium » ⇒ `structure_alu` ;
+     · ni l'un ni l'autre (pergola, carport, bac lesté…) ⇒ le rôle GÉNÉRIQUE
+       `structure` (déjà inscrit dans PRODUCT_CATEGORIES par STKCAT2).
+   `voulu` départage un nom qui porterait LES DEUX mots-clés, et c'est aussi
+   le rôle rendu quand aucun nom n'est lisible — comportement d'hier, au
+   caractère près. */
+export function structureRoleForName(nom, voulu = 'acier') {
+  const prefere = _norm(voulu).startsWith('alu') ? 'alu' : 'acier'
+  const autre = prefere === 'alu' ? 'acier' : 'alu'
+  const role = { alu: 'structure_alu', acier: 'structure_acier' }
+  const n = _norm(nom)
+  if (!n) return role[prefere]
+  if (n.includes(prefere)) return role[prefere]
+  if (n.includes(autre)) return role[autre]
+  return 'structure'
+}
+
+/* STKCAT10 — LE PRODUIT DE STRUCTURE EXPLICITEMENT CHOISI, résolu comme le
+   serveur le résout : dans le catalogue COMPLET déjà scopé société (pas dans
+   le vivier « structures nommées », sinon une pergola resterait invisible) et
+   APRÈS la garde de prix — un id qui désignerait un produit non tarifé, ou
+   celui d'une autre société, ne résout RIEN et la composition retombe sur le
+   bouton acier/alu. Ni le filtre par mot-clé ni la marque épinglée du rôle ne
+   s'y appliquent : un choix explicite ne se re-choisit pas. */
+export function structureChoisie(produits, structureProduitId) {
+  if (structureProduitId == null || structureProduitId === '') return null
+  const cible = String(structureProduitId)
+  return (produits ?? []).find(
+    (p) => String(p?.id) === cible && _hasPrix(p)) ?? null
+}
+
 // ── Auto-remplissage (port exact de auto_fill_from_power + autofill_router) ───
 // Retourne la table complète dans l'ordre canonique du simulateur (ou l'ordre
 // PVORD `ordreLignes` s'il est fourni — voir `orderLinesByRolePreference`),
@@ -1857,7 +1895,13 @@ export function defaultProductLines(produits, ordreLignes) {
 // câblage, accessoires, sélection batterie) en substituant seulement la
 // famille d'onduleur retenue — `offgrid` absent/faux reste BYTE-IDENTIQUE au
 // comportement historique (aucune branche ci-dessous ne s'active).
-export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques, ordreLignes, mpptPaires, offgrid }) {
+// STKCAT10 — `structureProduitId` (optionnel) est LE PRODUIT DE STRUCTURE
+// choisi à l'écran dans le catalogue : il est PRIORITAIRE sur `structureType`
+// (devenu l'alias déprécié), les deux ne se combinent JAMAIS, et il fait
+// émettre UNE SEULE ligne structure au lieu de la paire acier/alu figée.
+// Absent ⇒ comportement BYTE-IDENTIQUE à l'historique (paire acier + alu,
+// l'une à `nbPanneaux`, l'autre à 0) — épinglé par test.
+export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux: nbOverride, marques, ordreLignes, mpptPaires, offgrid, structureProduitId }) {
   if (!kwp || kwp <= 0) return []
   const byType = indexProduits(produits)
   // PVMRQ — marques préférées par rôle (gamme active) : sans réglage, `marques`
@@ -2088,10 +2132,19 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   // PRODUCT_CATEGORIES) : chacun a sa propre marque épinglée, appliquée sur le
   // sous-vivier déjà filtré par mot-clé acier/alu (même patron que les câbles
   // ci-dessous).
-  const structures = byType.structure ?? []
-  const structuresAcier = parMarque(
+  // STKCAT10 — L'ID EXPLICITE D'ABORD (miroir de `composition.py` : « un
+  // choix explicite ne se re-choisit pas »), le bouton acier/alu ensuite.
+  // Avec un id, NI le filtre par mot-clé NI la marque épinglée du rôle ne
+  // s'appliquent — le serveur n'appelle `par_marque` que dans SA branche
+  // `else`, donc il ne consigne aucune « marque introuvable » pour la
+  // structure quand le commercial a déjà choisi son produit. On ne l'appelle
+  // donc pas non plus ici : sinon une marque épinglée sans candidat acier
+  // ferait REFUSER un devis à pergola, pour un rôle qu'il n'utilise pas.
+  const structureExplicite = structureChoisie(produits, structureProduitId)
+  const structures = structureExplicite ? [] : (byType.structure ?? [])
+  const structuresAcier = structureExplicite ? [] : parMarque(
     structures.filter(p => _norm(p.nom).includes('acier')), 'structure_acier')
-  const structuresAlu = parMarque(
+  const structuresAlu = structureExplicite ? [] : parMarque(
     structures.filter(p => _norm(p.nom).includes('alu')), 'structure_alu')
   const structChosen = (structureType === 'aluminium' ? structuresAlu : structuresAcier)[0] ?? null
   const structOther = (structureType === 'aluminium' ? structuresAcier : structuresAlu)[0] ?? null
@@ -2157,6 +2210,13 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
   const aluRow = structureType === 'aluminium'
     ? row(structChosen, 'Structures aluminium', nbPanneaux)
     : row(structOther, 'Structures aluminium', 0)
+  // STKCAT10 — UNE SEULE ligne quand le produit est choisi (son libellé est
+  // le NOM du produit, son rôle suit ce nom comme côté serveur) ; sinon la
+  // paire acier/alu d'hier, inchangée au caractère près.
+  const lignesStructure = structureExplicite
+    ? [[structureRoleForName(structureExplicite.nom, structureType),
+        row(structureExplicite, structureExplicite.nom, nbPanneaux)]]
+    : [['structure_acier', acierRow], ['structure_alu', aluRow]]
 
   // PVORD — chaque ligne est TAGUÉE de son rôle avant l'assemblage final :
   // `orderLinesByRolePreference` réordonne selon `ordreLignes`
@@ -2178,8 +2238,7 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
     ['panneau', row(panel?.p ?? null, 'Panneaux', nbPanneaux)],
     ['batterie', row(bat5?.p ?? null, 'Batterie', nb5)],
     ['batterie', row(bat10?.p ?? null, 'Batterie', nb10)],
-    ['structure_acier', acierRow],
-    ['structure_alu', aluRow],
+    ...lignesStructure,
     ['socle', row(first('socle'), 'Socles', nbPanneaux * 2)],
     // Câbles Nexans 6 mm² au mètre (règle fondateur 18/08). On ne retient qu'un
     // câble RÉELLEMENT chiffré : un produit sans prix n'entre jamais dans une
@@ -2300,6 +2359,11 @@ export function autoFillLines(produits, { kwp, panelW, structureType, nbPanneaux
 export const HORIZON_MARGINAL_PV = 10 // fondateur 25/08 — ans, seuil FIXE (plus une tolérance relative)
 export function optimalKwcByPayback({
   produits, factures, dayUsagePct, panelW = 710, structureType,
+  // STKCAT10 — le produit de structure choisi (ou celui épinglé sur le lead)
+  // traverse le balayage TEL QUEL : chaque palier est chiffré avec LA MÊME
+  // structure que l'auto-remplissage final, sinon le payback comparé ne
+  // décrirait pas le devis réellement composé. Absent ⇒ inchangé.
+  structureProduitId,
   discountPct, kwhPrice, efficiency, productible, consoAnnuelleKwh, utility,
   besoinKwc, maxKwc, avecBatterie = false, step = KWC_STEP,
   // PVMRQ — marques préférées par rôle (gamme active), transmises TELLES
@@ -2332,7 +2396,9 @@ export function optimalKwcByPayback({
   const marquesManquantes = []
   const vuMarqueManquante = new Set()
   for (let k = pas; k <= plafond + 1e-9; k += pas) {
-    const lignes = autoFillLines(produits, { kwp: k, panelW, structureType, marques })
+    const lignes = autoFillLines(produits, {
+      kwp: k, panelW, structureType, structureProduitId, marques,
+    })
     if (!lignes || !lignes.length) continue
     const manquantesPalier = lignes.marquesManquantes ?? []
     for (const m of manquantesPalier) {
@@ -2937,8 +3003,10 @@ const _isCableMetre = (n) => n.includes('cable') && n.includes('metre')
 // Équipement pompage : pompe + variateur assorti (+ afficheur) + champ PV
 // + structures/socles + câble à la distance — PAS de batterie ni d'onduleur
 // réseau/hybride. Jamais de produit « prix à renseigner » sur un devis.
+// STKCAT10 — `structureProduitId` (optionnel) : le produit de structure choisi
+// au catalogue prime sur le bouton acier/alu. Absent ⇒ inchangé.
 export function autoFillPompage(produits, { cv, alim, typePompe, distance, structureType,
-                                            hmt, debit, heures }) {
+                                            hmt, debit, heures, structureProduitId }) {
   const sel = pompageSelection(produits, { cv, alim, typePompe, hmt, debit, heures })
   const cvNum = sel.cv
   if (cvNum <= 0) return []
@@ -3024,7 +3092,10 @@ export function autoFillPompage(produits, { cv, alim, typePompe, distance, struc
 
   const structures = (byType.structure ?? []).filter(_hasPrix)
   const wanted = structureType === 'aluminium' ? 'alu' : 'acier'
-  const struct = structures.find(p => _norm(p.nom).includes(wanted)) ?? structures[0] ?? null
+  // STKCAT10 — l'id explicite d'abord (résolu sur le catalogue COMPLET, donc
+  // une pergola y est atteignable), le mot-clé du bouton ensuite.
+  const struct = structureChoisie(produits, structureProduitId)
+    ?? structures.find(p => _norm(p.nom).includes(wanted)) ?? structures[0] ?? null
 
   const cable = produits.find(p => _isCableMetre(_norm(p.nom)) && _hasPrix(p)) ?? null
   const distM = parseFloat(distance) || 0

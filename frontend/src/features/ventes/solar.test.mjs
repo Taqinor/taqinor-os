@@ -25,6 +25,9 @@ import {
   PRODUCTIBLE_NET_FACTOR, TARIFF_ESCALATION,
   isBattery, isHybridInverter, isAnyInverter, inverterCostFromLines,
   batteryKwhFromLines, INVERTER_REPLACE_YEAR, BATTERY_ROUNDTRIP,
+  // STKCAT10 — sélecteur de structures piloté par le catalogue.
+  // (`autoFillPompage` est déjà importé plus bas, avec le bloc pompage.)
+  structureRoleForName, structureChoisie,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -1922,4 +1925,153 @@ test('QXMT — MT : l\'injection 82-21 reste calculable (barème ANRE distinct)'
   assert.equal(mt.injection_82_21, true)
   assert.ok(mt.injection_kwh_an >= 0)
   assert.ok(mt.injection_dh_an >= 0)
+})
+
+/* ── STKCAT10 — LE SÉLECTEUR DE STRUCTURES PILOTÉ PAR LE CATALOGUE ──────────
+   Décision fondateur 16/09/2026 : le bouton acier/aluminium est remplacé par
+   un choix de PRODUIT. Les trois garanties épinglées ici :
+     1. SANS produit choisi, la composition est BYTE-IDENTIQUE à l'historique
+        (la paire acier + alu, l'une à nbPanneaux, l'autre à 0) ;
+     2. AVEC un produit choisi, UNE SEULE ligne structure, au nom du produit ;
+     3. le RÔLE émis suit le NOM du produit, exactement comme le serveur
+        (`composition.py::role_structure_du_produit`) — donc une pergola porte
+        le rôle GÉNÉRIQUE `structure`, jamais `structure_acier` par défaut. */
+
+// Une PERGOLA : catégorie TYPÉE `structure`, mais dont le NOM ne contient ni
+// « structure », ni « acier », ni « alu » — invisible pour le classifieur par
+// mots-clés, atteignable UNIQUEMENT par son id (c'est tout le chantier).
+const PERGOLA = {
+  ...P('Pergola bioclimatique 4x3', 12000),
+  categorie_type: 'structure',
+  categorie: { nom: 'Pergolas', ordre: 5, type_equipement: 'structure' },
+}
+const SEEDED_PERGOLA = [...SEEDED, PERGOLA]
+const KWP14 = 14 * 710 / 1000
+
+test('STKCAT10 — structureRoleForName : MIROIR EXACT de role_structure_du_produit (serveur)', () => {
+  assert.equal(structureRoleForName('Structures acier'), 'structure_acier')
+  assert.equal(structureRoleForName('Structures aluminium'), 'structure_alu')
+  // Ni l'un ni l'autre ⇒ rôle GÉNÉRIQUE (STKCAT2), jamais acier par défaut.
+  assert.equal(structureRoleForName('Pergola bioclimatique 4x3'), 'structure')
+  assert.equal(structureRoleForName('Bac lesté béton'), 'structure')
+  // `voulu` départage un nom qui porte LES DEUX mots-clés…
+  assert.equal(structureRoleForName('Structure acier et aluminium', 'aluminium'), 'structure_alu')
+  assert.equal(structureRoleForName('Structure acier et aluminium', 'acier'), 'structure_acier')
+  // …et c'est aussi le rôle rendu quand aucun nom n'est lisible.
+  assert.equal(structureRoleForName('', 'aluminium'), 'structure_alu')
+  assert.equal(structureRoleForName(null), 'structure_acier')
+})
+
+test('STKCAT10 — structureChoisie : id résolu sur le catalogue COMPLET, après la garde de prix', () => {
+  assert.equal(structureChoisie(SEEDED_PERGOLA, PERGOLA.id).nom, 'Pergola bioclimatique 4x3')
+  // Chaîne ou entier, même résolution (l'écran envoie des chaînes).
+  assert.equal(structureChoisie(SEEDED_PERGOLA, String(PERGOLA.id)).id, PERGOLA.id)
+  // Id inconnu / vide ⇒ rien (on retombe sur le bouton acier/alu).
+  assert.equal(structureChoisie(SEEDED_PERGOLA, 99999), null)
+  assert.equal(structureChoisie(SEEDED_PERGOLA, ''), null)
+  assert.equal(structureChoisie(SEEDED_PERGOLA, null), null)
+  // Produit NON TARIFÉ ⇒ rien : une composition ne cote jamais un prix absent
+  // (même garde que le serveur, qui résout l'id APRÈS `_has_price`).
+  const sansPrix = {
+    id: 7777, nom: 'Carport (prix à renseigner)', prix_vente: '0',
+    categorie_type: 'structure',
+  }
+  assert.equal(structureChoisie([...SEEDED_PERGOLA, sansPrix], 7777), null)
+})
+
+test('STKCAT10 — SANS produit choisi : composition BYTE-IDENTIQUE à l historique', () => {
+  const base = { kwp: KWP14, panelW: 710, structureType: 'acier' }
+  const avant = autoFillLines(SEEDED_PERGOLA, base)
+  // Les trois façons de « ne pas choisir » donnent le MÊME tableau, au
+  // caractère près, que l'appel historique sans le paramètre.
+  for (const vide of [undefined, null, '']) {
+    assert.deepEqual(
+      autoFillLines(SEEDED_PERGOLA, { ...base, structureProduitId: vide }), avant,
+      `structureProduitId=${JSON.stringify(vide)} doit être un no-op`)
+  }
+  // …et un id qui ne résout RIEN (autre société / produit sans prix) aussi.
+  assert.deepEqual(autoFillLines(SEEDED_PERGOLA, { ...base, structureProduitId: 99999 }), avant)
+  // La paire d'hier est bien là : acier à 14, aluminium à 0.
+  const acier = avant.find(r => r.designation.includes('acier'))
+  const alu = avant.find(r => r.designation.includes('aluminium'))
+  assert.equal(acier.quantite, 14)
+  assert.equal(alu.quantite, 0)
+})
+
+test('STKCAT10 — AVEC une pergola choisie : UNE ligne, à son nom, rôle générique structure', () => {
+  const rows = autoFillLines(SEEDED_PERGOLA, {
+    kwp: KWP14, panelW: 710, structureType: 'acier',
+    structureProduitId: PERGOLA.id,
+  })
+  const structures = rows.filter(r => String(r.produit) === String(PERGOLA.id))
+  assert.equal(structures.length, 1, 'une seule ligne structure, jamais la paire')
+  assert.equal(structures[0].designation, 'Pergola bioclimatique 4x3')
+  assert.equal(structures[0].quantite, 14)
+  assert.equal(structures[0].prix_unit_ttc, 12000)
+  // La paire figée a DISPARU : plus aucune ligne « Structures acier/aluminium ».
+  assert.equal(rows.filter(r => /Structures (acier|aluminium)/.test(r.designation)).length, 0)
+  // LE RÔLE ÉMIS, prouvé par l'ordre : `ordreLignes: ['structure']` ne peut
+  // remonter cette ligne en tête que si elle porte bien le rôle GÉNÉRIQUE.
+  const ordonne = autoFillLines(SEEDED_PERGOLA, {
+    kwp: KWP14, panelW: 710, structureType: 'acier',
+    structureProduitId: PERGOLA.id, ordreLignes: ['structure'],
+  })
+  assert.equal(ordonne[0].designation, 'Pergola bioclimatique 4x3')
+  // …et le rôle acier ne la classe PAS (ce serait l'ancien défaut implicite).
+  const ordonneAcier = autoFillLines(SEEDED_PERGOLA, {
+    kwp: KWP14, panelW: 710, structureType: 'acier',
+    structureProduitId: PERGOLA.id, ordreLignes: ['structure_acier'],
+  })
+  assert.notEqual(ordonneAcier[0].designation, 'Pergola bioclimatique 4x3')
+})
+
+test('STKCAT10 — un produit choisi qui porte encore « aluminium » garde le rôle structure_alu', () => {
+  const alu = SEEDED.find(p => p.nom === 'Structures aluminium')
+  const rows = autoFillLines(SEEDED_PERGOLA, {
+    kwp: KWP14, panelW: 710,
+    // Le bouton dit « acier » : le PRODUIT choisi l'emporte intégralement,
+    // les deux ne se combinent jamais (même règle que le serveur).
+    structureType: 'acier', structureProduitId: alu.id,
+    ordreLignes: ['structure_alu'],
+  })
+  assert.equal(rows[0].designation, 'Structures aluminium')
+  assert.equal(rows[0].quantite, 14)
+  assert.equal(rows.filter(r => /Structures acier/.test(r.designation)).length, 0)
+})
+
+test('STKCAT10 — pompage : la structure choisie prime sur le mot-clé acier/alu', () => {
+  const opts = {
+    cv: '3', alim: 'tri', typePompe: 'immergee', distance: '20',
+    structureType: 'acier', hmt: '', debit: '', heures: '7',
+  }
+  const avant = autoFillPompage(SEEDED_PERGOLA, opts)
+  assert.deepEqual(autoFillPompage(SEEDED_PERGOLA, { ...opts, structureProduitId: '' }), avant)
+  const apres = autoFillPompage(SEEDED_PERGOLA, { ...opts, structureProduitId: PERGOLA.id })
+  const structAvant = avant.find(r => r.designation.includes('Structures'))
+  const structApres = apres.find(r => String(r.produit) === String(PERGOLA.id))
+  assert.equal(structAvant.designation, 'Structures acier')
+  assert.ok(structApres, 'la pergola choisie doit être la ligne structure')
+  assert.equal(structApres.designation, 'Pergola bioclimatique 4x3')
+  assert.equal(structApres.quantite, structAvant.quantite)
+})
+
+test('STKCAT10 — un produit choisi ne déclenche AUCUNE « marque introuvable » de structure', () => {
+  // Une marque épinglée sans AUCUN candidat au stock : SANS choix explicite,
+  // c'est un vrai motif de refus (le devis partirait sans structure).
+  const marques = { structure_acier: 'MarqueInexistante', structure_alu: 'MarqueInexistante' }
+  const base = { kwp: KWP14, panelW: 710, structureType: 'acier', marques }
+  const sans = autoFillLines(SEEDED_PERGOLA, base)
+  const rolesSans = (sans.marquesManquantes ?? []).map((m) => m.role)
+  assert.ok(rolesSans.includes('structure_acier'), 'sans choix, la marque manquante est consignée')
+
+  // AVEC un produit choisi, le rôle n'est même pas consulté — miroir EXACT du
+  // serveur, qui n'appelle `par_marque` que dans sa branche `else`. Sans cette
+  // symétrie, une épingle orpheline ferait REFUSER un devis à pergola pour un
+  // rôle qu'il n'utilise pas.
+  const avec = autoFillLines(SEEDED_PERGOLA, { ...base, structureProduitId: PERGOLA.id })
+  const rolesAvec = (avec.marquesManquantes ?? []).map((m) => m.role)
+  assert.ok(!rolesAvec.some((r) => r.startsWith('structure')),
+    `aucun rôle structure attendu, reçu ${JSON.stringify(rolesAvec)}`)
+  // …et la pergola est bien la ligne structure, à sa quantité.
+  assert.equal(avec.filter((r) => String(r.produit) === String(PERGOLA.id)).length, 1)
 })

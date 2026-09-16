@@ -1,6 +1,13 @@
 import { FormField, Input } from '../../../../ui'
 import { getField } from '../draftCore'
 import TraceToitClient from './TraceToitClient'
+// STKCAT10 — LE MÊME sélecteur de structures que le générateur de devis
+// (décision fondateur 16/09/2026) : la fiche lead épingle un PRODUIT du
+// catalogue (`structure_produit`, STKCAT9) — une pergola, un carport, un bac
+// lesté — au lieu du seul couple acier/aluminium. Le composant rend le champ
+// acier/aluminium d'hier en REPLI quand la société n'a aucune catégorie typée
+// « structure » : cette section ne perd jamais son contrôle.
+import StructureSelector from '../../../stock/StructureSelector'
 
 const TYPES_TOITURE = {
   terrasse_beton: 'Terrasse béton', tole_metal: 'Tôle/Métal', tuiles: 'Tuiles',
@@ -103,15 +110,30 @@ export default function SectionSite({ state, setField, errors = {} }) {
         </div>
       </div>
       <div className="form-row">
-        <FormField label="Structure" htmlFor="lf-structure" error={errors.structure_pref}>
-          <select
-            id="lf-structure" className={errors.structure_pref ? 'form-select is-invalid' : 'form-select'}
-            aria-invalid={errors.structure_pref ? true : undefined}
-            value={v('structure_pref')} onChange={(e) => setField('structure_pref', e.target.value)}
-          >
-            {enumOptions(STRUCTURES)}
-          </select>
-        </FormField>
+        {/* STKCAT10 — le champ « Structure » est piloté par le CATALOGUE ;
+            `fallback` = le champ acier/aluminium d'hier, au caractère près,
+            rendu tel quel tant qu'aucune structure typée n'existe. Le
+            sélecteur écrit `structure_produit` par le MÊME `setField` que les
+            autres champs : le chemin d'enregistrement de la fiche est
+            inchangé (la garde de société vit côté serveur, STKCAT9). */}
+        <StructureSelector
+          id="lf-structure-produit"
+          label="Structure"
+          value={v('structure_produit')}
+          onChange={(val) => setField('structure_produit', val)}
+          error={errors.structure_produit}
+          fallback={(
+            <FormField label="Structure" htmlFor="lf-structure" error={errors.structure_pref}>
+              <select
+                id="lf-structure" className={errors.structure_pref ? 'form-select is-invalid' : 'form-select'}
+                aria-invalid={errors.structure_pref ? true : undefined}
+                value={v('structure_pref')} onChange={(e) => setField('structure_pref', e.target.value)}
+              >
+                {enumOptions(STRUCTURES)}
+              </select>
+            </FormField>
+          )}
+        />
         <FormField label="Étages / hauteur" htmlFor="lf-nb-etages" error={errors.nb_etages}>
           <Input
             id="lf-nb-etages" type="number" step="any" invalid={!!errors.nb_etages}

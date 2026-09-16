@@ -33,6 +33,23 @@ import {
 const structFromLead = (lead) =>
   (lead && lead.structure_pref === 'aluminium') ? 'aluminium' : 'acier'
 
+/* STKCAT10 — LE PRODUIT DE STRUCTURE ÉPINGLÉ SUR LE LEAD (`structure_produit`,
+   STKCAT9 : id `stock.Produit`, écrit depuis la fiche lead). Il PRIME sur la
+   préférence acier/alu partout où cet écran compose LUI-MÊME les lignes —
+   c'est-à-dire l'agricole (pompage) et l'industriel/commercial, les trois
+   marchés qui n'ont AUCUN dry-run serveur.
+
+   LE RÉSIDENTIEL, LUI, NE L'ENVOIE PAS — ET C'EST VOLONTAIRE : sa création
+   part à `POST /ventes/devis/auto/`, qui ne lit PAS `structure_produit_id`
+   dans le corps et résout la structure DEPUIS LE LEAD lui-même
+   (`apps/ventes/domain/creation.py::_structure_demandee`, STKCAT9 : id épinglé
+   → préférence acier/alu → acier). Le renvoyer ici le dupliquerait sans rien
+   changer, et créerait une seconde source de vérité à faire diverger. */
+const structProduitFromLead = (lead) => {
+  const id = lead?.structure_produit
+  return (id === null || id === undefined || id === '') ? undefined : String(id)
+}
+
 // ERR107 — Cohérence d'arrondi écran : une ligne est ENREGISTRÉE en HT 2 déc.
 // (htFromTtc), donc le TTC RÉAFFICHÉ d'une ligne est ttcFromHt(htFromTtc(ttc)),
 // qui peut différer du TTC brut saisi d'1 MAD. Pour que le total d'étude affiché
@@ -150,6 +167,8 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       alim: 'tri', typePompe: 'immergee', distance: '20',
       // QX19 — respecte la préférence de structure du lead (défaut acier).
       structureType: structFromLead(lead),
+      // STKCAT10 — …et le PRODUIT épinglé prime dessus quand il existe.
+      structureProduitId: structProduitFromLead(lead),
       hmt: lead.pompe_hmt_m != null ? String(lead.pompe_hmt_m) : '',
       debit: lead.pompe_debit_m3h != null ? String(lead.pompe_debit_m3h) : '',
       heures: String(heuresPompage),
@@ -226,6 +245,9 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         const opt = optimalKwcByPayback({
           produits, factures: facturesBalayage, dayUsagePct,
           panelW: 710, structureType: structFromLead(lead),
+          // STKCAT10 — le balayage chiffre chaque palier avec LA structure
+          // réellement retenue (produit épinglé s'il existe), jamais une autre.
+          structureProduitId: structProduitFromLead(lead),
           discountPct: discountStr || '0', kwhPrice, efficiency, besoinKwc,
           marques,
           consoAnnuelleKwh: consoAnnuelleDepuisFactures(
@@ -298,6 +320,10 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         reponse = await ventesApi.creerDevisAuto({
           lead: lead.id,
           remise_globale: discountStr || '0',
+          // STKCAT10 — AUCUN `structure_produit_id` ici, DÉLIBÉRÉMENT :
+          // `POST /ventes/devis/auto/` ne le lit pas dans le corps et résout
+          // la structure depuis le LEAD (`_structure_demandee`, STKCAT9).
+          // L'envoyer serait une seconde source de vérité pour rien.
           // U3-MOTEUR — `kwpAuto` ne peut plus venir ici que d'une taille
           // EXPLICITEMENT choisie par un humain (cible tapée pour ce devis, ou
           // `taille_souhaitee_kwc` du lead) : elle reste souveraine et le
@@ -344,6 +370,8 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       kwp: kwpAuto, panelW: 710, nbPanneaux: panels,
       // QX19 — respecte la préférence de structure du lead (défaut acier).
       structureType: structFromLead(lead),
+      // STKCAT10 — le PRODUIT épinglé prime dessus quand il existe.
+      structureProduitId: structProduitFromLead(lead),
       marques,
       // PVORD — ordre par défaut de la société (voir la doc du paramètre
       // plus haut) ; absent/vide = ordre canonique inchangé.
