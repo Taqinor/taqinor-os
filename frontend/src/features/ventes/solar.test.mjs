@@ -1987,6 +1987,7 @@ test('STKCAT24 — structure_acier/alu DÉCLARÉ explicitement : bucketé tel qu
   const by = (label) => groups.find(g => g.label === label)
   assert.equal(by('Structures acier')?.items?.[0]?.id, 9020)
   assert.equal(by('Structures aluminium')?.items?.[0]?.id, 9021)
+})
 
 /* ── STKCAT10 — LE SÉLECTEUR DE STRUCTURES PILOTÉ PAR LE CATALOGUE ──────────
    Décision fondateur 16/09/2026 : le bouton acier/aluminium est remplacé par
