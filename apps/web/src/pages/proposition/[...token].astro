@@ -430,9 +430,19 @@ const stickyPrixReels: readonly number[] = ok
       .map((o) => optionTtc(data!, o))
   : [];
 const stickyPlusieursPrix = new Set(stickyPrixReels).size > 1;
-const stickyTtc = stickyPlusieursPrix
-  ? Math.min(...stickyPrixReels)
-  : (ok && heroHasRealPrice ? optionTtc(data!, reco ?? 'sans_batterie') : null);
+// PREVIEW-V3 (16/09/2026) — LE CTA COLLANT DIT LE PRIX QUE LE CLIENT SIGNE.
+// La correction du 15/09 avait raison sur son constat (« à partir de » ne doit
+// pas désigner le prix le PLUS HAUT) mais s'est arrêtée à mi-chemin : elle a
+// gardé « à partir de » et pris le MINIMUM des deux options — si bien que la
+// barre collante et le héros affichaient DEUX prix différents sur la même
+// page, l'incohérence de prix qui est le premier signal d'alarme d'un acheteur
+// marocain. « À partir de » est du langage de CATALOGUE ; ce document est un
+// devis nominatif, pour une installation précise. La barre montre donc
+// exactement le prix du héros : celui de l'option retenue. Le prix de l'autre
+// option reste affiché, en toutes lettres, sur sa propre carte.
+const stickyTtc = ok && heroHasRealPrice
+  ? optionTtc(data!, reco ?? 'sans_batterie')
+  : null;
 // WJ114 — note personnelle du vendeur (lecture défensive, backend pas encore
 // livré aujourd'hui) : n'affiche RIEN tant que l'ERP ne fournit pas ce bloc.
 const seller = ok ? sellerNote(data!) : null;
@@ -2132,10 +2142,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               seule la FORMULATION manquait. Aucun chiffre n'est ajouté. */}
           {estPreVisite && (
             <p class="cine-in cine-in-3 mt-6 rounded-xl border border-white/10 bg-white/5 p-3.5 text-sm text-lune-soft sm:p-4" data-pre-visite data-i18n
-              data-fr="Cette page est une PRÉ-VISITE : elle décrit ce que nous avons compris de votre projet, avant le chiffrage. Le prix est établi après la visite technique — il n’y a donc encore rien à signer ici."
-              data-en="This page is a PRE-VISIT: it describes what we understood of your project, before pricing. The price is set after the technical visit — so there is nothing to sign here yet."
-              data-ar="هذه الصفحة زيارة تمهيدية: تصف ما فهمناه من مشروعكم، قبل التسعير. يُحدَّد الثمن بعد الزيارة التقنية — فلا شيء للتوقيع هنا بعد.">
-              Cette page est une PRÉ-VISITE : elle décrit ce que nous avons compris de votre projet, avant le chiffrage. Le prix est établi après la visite technique — il n’y a donc encore rien à signer ici.
+              data-fr="PRÉ-VISITE : cette page décrit votre projet tel que compris, avant chiffrage. Le prix arrive après la visite technique — rien à signer ici."
+              data-en="PRE-VISIT: this page describes your project as we understood it, before pricing. The price comes after the technical visit — nothing to sign here."
+              data-ar="زيارة تمهيدية: تصف هذه الصفحة مشروعكم كما فهمناه، قبل التسعير. يأتي الثمن بعد الزيارة التقنية — لا شيء للتوقيع هنا.">
+              PRÉ-VISITE : cette page décrit votre projet tel que compris, avant chiffrage. Le prix arrive après la visite technique — rien à signer ici.
             </p>
           )}
           {/* data-hero-ttc-value / data-hero-eco-value / data-hero-eco-sub —
@@ -2615,29 +2625,16 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               data-ar={anneesAr(INSTALL_WARRANTY_YEARS)}>{INSTALL_WARRANTY_YEARS} ans</span>
             <span class="text-lune" data-i18n data-fr="de pose Taqinor" data-en="of Taqinor installation work" data-ar="على تركيب تاقينور">de pose Taqinor</span>
           </p>
-          {/* PREVIEW DENSITE (2026-09-15) - cette phrase EXPLIQUE les deux
-              chiffres de garantie panneau juste au-dessus, eux-memes gates par
-              `equipPresence.panneaux`. Non gatee, elle promettait « deux
-              garanties » sans qu'aucun chiffre ne soit affiche (un devis sans
-              ligne panneau : un pompage). Elle suit desormais exactement la
-              condition de ce qu'elle decrit. */}
-          {equipPresence.panneaux && (
-            <p class="mt-2 text-xs text-lune-faint" data-i18n
-              data-fr="Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans."
-              data-en="Two distinct warranties: one covers the panel itself, the other the power it still delivers over the years."
-              data-ar="ضمانان مختلفان: أحدهما يغطي اللوح نفسه، والآخر القدرة التي يظل ينتجها عبر السنين.">
-              Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans.
-            </p>
-          )}
-          {/* (fondateur 2026-08-17) réassurance : ce que vaut une garantie
-              fabricant si l'installateur venait à changer. Fait vérifiable — la
-              garantie porte sur le MATÉRIEL, pas sur le poseur. */}
+          {/* PREVIEW-V3 (16/09/2026) — DEUX PARAGRAPHES → UNE LIGNE. L'un
+              expliquait la différence produit/puissance, l'autre la
+              transférabilité : 41 mots pour deux faits qui tiennent en un.
+              Rien n'est perdu — le fait « produit vs puissance » reste gaté
+              sur la présence de panneaux, exactement comme avant. */}
           <p class="mt-3 text-sm text-lune-soft" data-i18n
-            data-fr="Les garanties fabricant sont attachées au matériel : elles suivent votre installation, restent transférables avec le bien et demeurent valables quel que soit l’installateur."
-            data-en="Manufacturer warranties are attached to the equipment: they follow your installation, transfer with the property and remain valid whoever the installer is."
-            data-ar="ضمانات المصنّع مرتبطة بالمعدات: فهي ترافق تركيبكم، وتنتقل مع الملك، وتبقى سارية مهما كان المُركِّب.">
-            Les garanties fabricant sont attachées au matériel : elles suivent votre installation,
-            restent transférables avec le bien et demeurent valables quel que soit l’installateur.
+            data-fr={equipPresence.panneaux ? "Deux garanties : le panneau, et la puissance qu’il délivre. Elles portent sur le matériel — transférables avec le bien, valables quel que soit l’installateur." : "Les garanties portent sur le matériel — transférables avec le bien, valables quel que soit l’installateur."}
+            data-en={equipPresence.panneaux ? "Two warranties: the panel, and the power it delivers. They cover the equipment — transferable with the property, valid whoever the installer is." : "Warranties cover the equipment — transferable with the property, valid whoever the installer is."}
+            data-ar={equipPresence.panneaux ? "ضمانان: اللوح، والقدرة التي ينتجها. وهما يخصّان المعدات — ينتقلان مع الملك، ويبقيان ساريين مهما كان المُركّب." : "الضمانات تخصّ المعدات — تنتقل مع الملك، وتبقى سارية مهما كان المُركّب."}>
+            {equipPresence.panneaux ? "Deux garanties : le panneau, et la puissance qu’il délivre. Elles portent sur le matériel — transférables avec le bien, valables quel que soit l’installateur." : "Les garanties portent sur le matériel — transférables avec le bien, valables quel que soit l’installateur."}
           </p>
         </div>
 
@@ -2662,10 +2659,14 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 data-ar={seller?.name ? `مستشاركم: ${seller.name}.` : 'مستشاركم في تاقينور يتابع هذا الملف.'}>
                 {seller?.name ? `Votre conseiller : ${seller.name}.` : 'Votre conseiller Taqinor suit ce dossier.'}
               </span>{' '}
-              <a href={waLinkDiscuss} target="_blank" rel="noopener noreferrer"
-                class="text-brass-300 underline underline-offset-4" data-contact-channel="whatsapp" data-i18n
-                data-fr="Le joindre sur WhatsApp" data-en="Reach them on WhatsApp" data-ar="التواصل عبر واتساب">
-                Le joindre sur WhatsApp
+              {/* PREVIEW-V3 — QUATRIÈME bouton WhatsApp de la page, pour le
+                  même numéro et le même lien que le héros et que le bloc
+                  contact. Il devient une ANCRE vers le bloc de contact unique,
+                  où les trois canaux (WhatsApp, rappel, question) vivent
+                  ensemble — le nom du conseiller, lui, reste ici. */}
+              <a href="#confiance" class="text-brass-300 underline underline-offset-4" data-i18n
+                data-fr="Le contacter" data-en="Contact them" data-ar="الاتصال به">
+                Le contacter
               </a>
             </p>
           </div>
@@ -3762,10 +3763,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   data-ar="وماذا لو أضفت بطارية؟ جرّب المحاكاة">Et si j’ajoute une batterie ? Simulez</summary>
               <div id="battery-sim" data-battery-sim-config={batterySimConfig}>
               <p class="v2-body text-sm text-lune-soft" data-i18n
-                data-fr="Déplacez le curseur : voyez ce qu’une ou plusieurs batteries changeraient — plus de solaire gardé chez vous, moins de réseau le soir, et des heures d’autonomie en cas de coupure."
-                data-en="Move the slider: see what one or more batteries would change — more solar kept at home, less grid in the evening, and hours of backup during an outage."
-                data-ar="حرّك المؤشر: شاهد ما ستغيّره بطارية واحدة أو أكثر — طاقة شمسية أكثر تبقى في منزلك، وشبكة أقل في المساء، وساعات استقلالية عند انقطاع التيار.">
-                Déplacez le curseur : voyez ce qu’une ou plusieurs batteries changeraient — plus de solaire gardé chez vous, moins de réseau le soir, et des heures d’autonomie en cas de coupure.
+                data-fr="Déplacez le curseur : voyez l’effet d’une ou plusieurs batteries — plus d’autonomie, moins de réseau le soir."
+                data-en="Move the slider: see the effect of one or more batteries — more backup, less grid in the evening."
+                data-ar="حرّك المؤشر: شاهد أثر بطارية واحدة أو أكثر — استقلالية أكبر، وشبكة أقل في المساء.">
+                Déplacez le curseur : voyez l’effet d’une ou plusieurs batteries — plus d’autonomie, moins de réseau le soir.
               </p>
 
               <!-- ORDRE FONDATEUR (24/08/2026, soir) — curseur 0..N unités,
@@ -4006,10 +4007,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
 
               <!-- Hypothèses (DoD / rendement) + libellé honnête « jamais mesuré ». -->
               <p id="battery-sim-assumptions" class="mt-4 text-xs text-lune-faint" data-i18n
-                data-fr="Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Le prix batterie affiché est celui de votre devis ; toute autre configuration est chiffrée sur étude."
-                data-en="Assumptions: LFP lithium battery, 90% depth of discharge, round-trip efficiency ≈ 92%. Typical Moroccan profile adjusted to your bill — never a measured figure. The battery price shown is from your quote; any other configuration is priced on request."
-                data-ar="الافتراضات: بطارية ليثيوم LFP، عمق تفريغ 90٪، كفاءة ذهاب وإياب ≈ 92٪. نمط نموذجي في المغرب معدّل حسب فاتورتكم — وليس رقماً مقيساً. السعر المعروض للبطارية هو سعر عرضكم؛ أي تكوين آخر يُسعّر حسب الدراسة.">
-                Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Le prix batterie affiché est celui de votre devis ; toute autre configuration est chiffrée sur étude.
+                data-fr="Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Toute autre configuration est chiffrée sur étude."
+                data-en="Assumptions: LFP lithium battery, 90% depth of discharge, round-trip efficiency ≈ 92%. Typical Moroccan profile adjusted to your bill — never a measured figure. Any other configuration is priced on request."
+                data-ar="الافتراضات: بطارية ليثيوم LFP، عمق تفريغ 90٪، كفاءة ذهاب وإياب ≈ 92٪. نمط نموذجي في المغرب معدّل حسب فاتورتكم — وليس رقماً مقيساً. أي تكوين آخر يُسعّر حسب الدراسة.">
+                Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Toute autre configuration est chiffrée sur étude.
               </p>
               </div>
               </details>
@@ -4288,10 +4289,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                       client, descend juste en dessous dans un <details> natif —
                       intacte, mot pour mot, dans les trois langues. */}
                   <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
-                    data-fr="En clair : au Maroc, le prix du kWh monte par paliers. Plus vous consommez, plus les derniers kWh du mois vous coûtent cher — et c’est précisément ceux-là que le solaire vous évite en premier."
-                    data-en="In plain terms: in Morocco the price per kWh rises in steps. The more you consume, the more the last kWh of the month cost you — and those are exactly the ones solar removes first."
-                    data-ar="ببساطة: في المغرب يرتفع ثمن الكيلوواط.ساعة على درجات. كلما استهلكتم أكثر، غلت عليكم آخر كيلوواطات الشهر — وهي بالضبط ما تتفاداه الطاقة الشمسية أولاً.">
-                    En clair : au Maroc, le prix du kWh monte par paliers. Plus vous consommez, plus les derniers kWh du mois vous coûtent cher — et c’est précisément ceux-là que le solaire vous évite en premier.
+                    data-fr="En clair : au Maroc le kWh monte par paliers — vos derniers kWh du mois, les plus chers, sont évités en premier."
+                    data-en="In plain terms: in Morocco the kWh rises in steps — your last kWh of the month, the priciest, are the first ones removed."
+                    data-ar="ببساطة: في المغرب يرتفع ثمن الكيلوواط.ساعة على درجات — وآخر كيلوواطات الشهر، وهي الأغلى، هي أول ما تتفادونه.">
+                    En clair : au Maroc le kWh monte par paliers — vos derniers kWh du mois, les plus chers, sont évités en premier.
                   </p>
                   <details class="mt-2">
                   <summary class="cursor-pointer text-xs text-lune-faint" data-i18n
@@ -4882,10 +4883,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             Explorer d’autres tailles
           </h2>
           <p class="mt-3 text-sm text-lune-soft" data-i18n
-            data-fr="La carte marquée « C’est votre devis officiel » est la vôtre. Les deux autres sont là pour comparer : rien de ce que vous touchez ici ne change votre devis ni votre signature."
-            data-en="The card marked “This is your official quote” is yours. The other two are here to compare: nothing you touch here changes your quote or your signature."
-            data-ar="البطاقة المعلَّمة « هذا هو عرضكم الرسمي » هي بطاقتكم. الحجمان الآخران للمقارنة فقط: لا شيء تلمسونه هنا يغيّر عرضكم أو توقيعكم.">
-            La carte marquée « C’est votre devis officiel » est la vôtre. Les deux autres sont là pour comparer : rien de ce que vous touchez ici ne change votre devis ni votre signature.
+            data-fr="La carte « C’est votre devis officiel » est la vôtre — les autres ne servent qu’à comparer, sans rien changer à votre signature."
+            data-en="The card “This is your official quote” is yours — the others are only for comparison, and change nothing about your signature."
+            data-ar="البطاقة « هذا هو عرضكم الرسمي » هي بطاقتكم — والباقي للمقارنة فقط، دون أي تغيير في توقيعكم.">
+            La carte « C’est votre devis officiel » est la vôtre — les autres ne servent qu’à comparer, sans rien changer à votre signature.
           </p>
 
           {/* ── UNE SEULE BASCULE, AU-DESSUS DES TROIS CARTES (jamais une
@@ -5325,10 +5326,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   </p>
                 ) : (
                   <p class="mt-2 text-lune-soft" data-i18n
-                    data-fr="Les chiffres ci-dessus sont ceux de cette taille. Les courbes, le calepinage et le schéma électrique plus bas décrivent, eux, votre devis officiel — demandez cette taille pour en recevoir l’étude complète."
-                    data-en="The figures above are those of this size. The curves, roof layout and electrical diagram further down describe your official quote — request this size to receive its full study."
-                    data-ar="الأرقام أعلاه تخص هذا الحجم. أما المنحنيات وتوزيع الألواح والمخطط الكهربائي أدناه فتصف عرضكم الرسمي — اطلبوا هذا الحجم لتلقّي دراسته الكاملة.">
-                    Les chiffres ci-dessus sont ceux de cette taille. Les courbes, le calepinage et le schéma électrique plus bas décrivent, eux, votre devis officiel — demandez cette taille pour en recevoir l’étude complète.
+                    data-fr="Ces chiffres sont ceux de cette taille. Courbes, calepinage et schéma plus bas décrivent votre devis officiel — demandez cette taille pour l’étude complète."
+                    data-en="These figures are those of this size. Curves, roof layout and diagram further down describe your official quote — request this size for its full study."
+                    data-ar="هذه الأرقام تخص هذا الحجم. المنحنيات وتوزيع الألواح والمخطط أدناه تصف عرضكم الرسمي — اطلبوا هذا الحجم للدراسة الكاملة.">
+                    Ces chiffres sont ceux de cette taille. Courbes, calepinage et schéma plus bas décrivent votre devis officiel — demandez cette taille pour l’étude complète.
                   </p>
                 )}
                 {/* ── LE DESSIN DE CETTE OPTION (correction #8) ──────────────
@@ -5628,24 +5629,23 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             Aucun nom de personne ici : le gérant reste sur la page légale. */}
         <div class="cine-card mt-4 rounded-xl p-5 sm:p-6">
           <p class="text-sm text-lune">{LEGAL_IDENTITY.raisonSociale}</p>
-          <p class="fig mt-1 text-xs text-lune-faint" dir="ltr">{LEGAL_IDENTITY.rcCourt} · ICE {LEGAL_IDENTITY.ice}</p>
+          {/* PREVIEW-V3 — loi 31-08 art. 29-2 : l'offre à distance doit porter
+              la dénomination, le RC ET LE CAPITAL SOCIAL — c'est la mention
+              que tout le monde oublie, et elle vit déjà dans LEGAL_IDENTITY
+              (même constante que /mentions-legales). Ni CNSS ni taxe
+              professionnelle : aucune ne concerne un devis. */}
+          <p class="fig mt-1 text-xs text-lune-faint" dir="ltr">{LEGAL_IDENTITY.rcCourt} · ICE {LEGAL_IDENTITY.ice} · Capital {LEGAL_IDENTITY.capital}</p>
           <p class="mt-2 text-xs text-lune-faint">
             <a href="/mentions-legales" target="_blank" rel="noopener" class="underline underline-offset-4 hover:text-lune-soft" data-i18n
               data-fr="Mentions légales complètes" data-en="Full legal notice" data-ar="المعلومات القانونية الكاملة">
               Mentions légales complètes
             </a>
           </p>
-          {/* Le SAV : le canal réel et le délai DÉJÀ annoncé plus bas au bloc
-              contact (WJ58, « sous 1 h, 7j/7 », tranché par le fondateur le
-              03/07) — même promesse, jamais un second délai. */}
-          <p class="mt-3 text-sm text-lune-soft" data-sav-ligne>
-            <span data-i18n
-              data-fr="SAV et questions après pose : joignables sur WhatsApp, réponse sous 1 h, 7j/7."
-              data-en="After-sales and post-installation questions: reachable on WhatsApp, reply within 1 h, 7 days a week."
-              data-ar="خدمة ما بعد البيع والأسئلة بعد التركيب: عبر واتساب، رد خلال ساعة واحدة، 7 أيام على 7.">
-              SAV et questions après pose : joignables sur WhatsApp, réponse sous 1 h, 7j/7.
-            </span>
-          </p>
+          {/* PREVIEW-V3 — la ligne SAV qui vivait ici répétait MOT POUR MOT la
+              promesse de délai du bloc contact juste dessous (et une
+              troisième fois au formulaire de signature). Trois fois la même
+              phrase ne rassure pas : elle dilue. Une seule reste, dans le
+              bloc contact — là où le lecteur agit. */}
         </div>
         {/* ── PREVIEW v2 · LES GARANTIES SONT MONTÉES AVEC LE MATÉRIEL ────
             (fondateur Reda, 2026-09-16.) La checklist anti-arnaque marocaine
@@ -5776,14 +5776,22 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             <p class="mt-2 text-sm text-lune-faint">Reda Kasri — <span data-i18n data-fr="fondateur, Taqinor" data-en="founder, Taqinor" data-ar="مؤسس تاقينور">fondateur, Taqinor</span></p>
           </div>
         )}
-      </section>
 
       <!-- ── WJ12/WJ29 · CONTACT AU MOINDRE DOUTE (avant la signature) ─────── -->
       {/* WJ29 — les trois boutons gardent leur lien instantané (wa.me / tel:)
           intact, ET notifient l'équipe en interne via le proxy same-origin
           /api/proposition-contact (dégrade toujours proprement — voir script
-          ci-dessous). `data-contact-channel` pilote le canal envoyé. */}
-      <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-contact-token={token}>
+          ci-dessous). `data-contact-channel` pilote le canal envoyé.
+
+          PREVIEW-V3 (16/09/2026) — CE BLOC N'EST PLUS UNE SECTION SÉPARÉE.
+          « Qui est Taqinor ? » et « Une question avant de signer ? » se
+          suivaient sans la moindre rupture visible — le lecteur voyait déjà
+          un seul bloc, mais empilé en trois boîtes, avec la même promesse de
+          délai dite deux fois. Le contact descend donc DANS `#confiance` :
+          qui nous sommes, puis comment nous joindre, dans la même respiration.
+          `data-contact-token` reste porté par l'élément (le script le cible
+          par attribut, jamais par balise) : aucun câblage ne bouge. */}
+      <div class="pt-8" data-contact-token={token}>
         <div class="cine-card rounded-2xl p-6 sm:p-7">
           <p class="v2-body text-lune" data-i18n
             data-fr="Une question avant de signer ? Parlons-en — sans engagement, et sans appel commercial non sollicité."
@@ -5878,6 +5886,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           </p>
           <p id="contact-confirm" class="mt-3 text-sm text-brass-300" role="status" aria-live="polite" hidden></p>
         </div>
+      </div>
       </section>
 
       {/* ── PV81 · « DEMANDER UNE MODIFICATION » — REPLIÉ, ET AVANT LA
@@ -6901,25 +6910,14 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            référence datée. Dire « source à préciser » à côté d'un chiffre est
            honnête ; laisser croire à une publication qui n'est pas citée ne
            l'est pas. Le jour où la source arrive, seule cette ligne change. -->
-      {enviro && (
-        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="cine-card v2-body flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-2xl p-5 text-sm text-lune-soft sm:p-6">
-            <span class="fig lum text-2xl" dir="ltr">{formatNumber(enviro.co2TonnesPerYear, 1)} t CO₂ / an</span>
-            <span data-i18n
-              data-fr="évités par votre production solaire."
-              data-en="avoided by your solar production."
-              data-ar="تُتجنَّب بفضل إنتاجكم الشمسي.">
-              évités par votre production solaire.
-            </span>
-            <span class="block w-full text-xs text-lune-faint" data-i18n
-              data-fr="Calculé avec le facteur d’émission du réseau marocain — source à préciser."
-              data-en="Computed with the Moroccan grid emission factor — source to be specified."
-              data-ar="محسوب بمعامل انبعاثات الشبكة المغربية — المصدر يبقى للتحديد.">
-              Calculé avec le facteur d’émission du réseau marocain — source à préciser.
-            </span>
-          </p>
-        </section>
-      )}
+      {/* PREVIEW-V3 (16/09/2026) — LA CARTE CO₂ FOND DANS LE REPLI.
+           Le même chiffre était dit DEUX fois : en grand dans une carte à
+           lui seul, puis dans la ligne de méthode « Impact CO₂ » du repli
+           « Nos hypothèses » juste en dessous. Le client qui décide regarde
+           le prix, la production et la garantie ; la tonne de CO₂ est un
+           fait qu'il veut pouvoir VÉRIFIER, pas un argument répété. Elle
+           rejoint donc sa méthode, dans le repli — rien n'est perdu, et le
+           facteur d'émission continue de dire que sa source est à préciser. */}
 
       <!-- ── WJ32 · « NOS HYPOTHÈSES » — disclosure sourcée ──────────────────
            <details> natif : accessible sans JS, zéro CLS (rien ne bouge autour). -->
@@ -6946,10 +6944,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 <div>
                   <dt class="text-lune-faint" data-i18n data-fr="Impact CO₂" data-en="CO₂ impact" data-ar="أثر ثاني أكسيد الكربون">Impact CO₂</dt>
                   <dd class="mt-0.5 text-lune-soft" data-i18n
-                    data-fr={`Production estimée × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh — facteur d’émission du réseau marocain, source à préciser.`}
-                    data-en={`Estimated production × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh — Moroccan grid emission factor, source to be specified.`}
-                    data-ar={`الإنتاج المقدّر × ${formatNumber(enviro.kgPerKwh, 2)} كلغ CO₂/kWh — معامل انبعاث الشبكة المغربية، المصدر يبقى للتحديد.`}>
-                    Production estimée × {formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh — facteur d’émission du réseau marocain, source à préciser.
+                    data-fr={`${formatNumber(enviro.co2TonnesPerYear, 1)} t CO₂/an évitées — production estimée × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh, facteur d’émission du réseau marocain, source à préciser.`}
+                    data-en={`${formatNumber(enviro.co2TonnesPerYear, 1)} t CO₂/year avoided — estimated production × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh, Moroccan grid emission factor, source to be specified.`}
+                    data-ar={`${formatNumber(enviro.co2TonnesPerYear, 1)} طن CO₂/سنة يُتجنّب — الإنتاج المقدّر × ${formatNumber(enviro.kgPerKwh, 2)} كلغ CO₂/kWh، معامل انبعاث الشبكة المغربية، المصدر يبقى للتحديد.`}>
+                    {formatNumber(enviro.co2TonnesPerYear, 1)} t CO₂/an évitées — production estimée × {formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh, facteur d’émission du réseau marocain, source à préciser.
                   </dd>
                 </div>
               )}
@@ -7100,18 +7098,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         <div class="mx-auto flex max-w-4xl items-center justify-between gap-4">
           <div class="min-w-0">
             {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — `truncate` sur une
-                seule ligne coupait le suffixe « TTC » à 390 px dès que la
-                mention « À partir de » était rendue : le client lisait un
-                montant SANS savoir s'il était TTC, ce qui est exactement
-                l'ambiguïté que la checklist anti-arnaque cherche. « À partir
-                de » monte sur sa propre micro-ligne ; le montant et son « TTC »
-                tiennent ensemble, sans troncature possible. */}
+                seule ligne coupait le suffixe « TTC » à 390 px : le client
+                lisait un montant SANS savoir s'il était TTC, exactement
+                l'ambiguïté que la checklist anti-arnaque cherche. Le montant
+                et son « TTC » tiennent donc ensemble, sans troncature possible.
+                PREVIEW-V3 — et la micro-ligne « à partir de » disparaît : la
+                barre porte le prix de l'option retenue, le MÊME que le héros
+                (voir `stickyTtc` dans le frontmatter). */}
             {heroHasRealPrice ? (
               <>
-                {stickyPlusieursPrix && (
-                  <p class="truncate text-[11px] leading-tight text-lune-faint" data-i18n
-                    data-fr="À partir de" data-en="From" data-ar="ابتداءً من">À partir de</p>
-                )}
                 <p class="text-sm leading-tight text-lune-soft">
                   <span class="lum fig text-lg" dir="ltr">{formatMAD(stickyTtc ?? 0)}</span>
                   <span class="text-lune-faint" data-i18n data-fr=" TTC" data-en=" incl. tax" data-ar=" شامل الضريبة"> TTC</span>

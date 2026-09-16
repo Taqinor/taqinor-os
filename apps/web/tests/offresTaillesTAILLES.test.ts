@@ -717,7 +717,11 @@ describe('#8 — vue de détail vivante', () => {
   it('quand la taille regardée n’est PAS le devis, la page le DIT', () => {
     const bloc = sectionTailles(CODE);
     expect(bloc).toContain('{estLEtatOfficiel ? (');
-    expect(bloc).toContain('décrivent, eux, votre devis officiel');
+    // RECALIBRÉ — décision fondateur du 16/09/2026 : la phrase a été
+    // raccourcie (31 → 23 mots) sans changer ce qu'elle affirme. Le test
+    // verrouille le FAIT (« ces chiffres ne sont pas ceux de votre devis »),
+    // plus une tournure de phrase.
+    expect(bloc).toContain('décrivent votre devis officiel');
   });
 
   it('le dessin d’une option vient du VRAI contrat, jamais d’un SVG deviné', () => {

@@ -325,10 +325,15 @@ describe('PV81 — polish : rien de vide, rien qui se contredit', () => {
   it('la réassurance « garantie attachée au matériel » est dite en FR/EN/AR', () => {
     // PREVIEW v2 — RECALIBRÉ (Reda, 2026-09-16) : même déménagement que la
     // carte des garanties ci-dessus, vers « Ce que vous recevez ».
+    // RECALIBRÉ à NOUVEAU — décision fondateur du 16/09/2026 (PREVIEW-V3) :
+    // les DEUX paragraphes garanties (41 mots) ont fusionné en une ligne. Le
+    // FAIT verrouillé ne change pas — la garantie porte sur le MATÉRIEL,
+    // transférable, quel que soit l'installateur — seule la tournure a
+    // maigri, et elle reste dite en FR/EN/AR.
     const bloc = PROPOSITION.slice(at('id="installation"'), at('id="roof3d"'));
-    expect(bloc).toContain('Les garanties fabricant sont attachées au matériel');
-    expect(bloc).toContain('Manufacturer warranties are attached to the equipment');
-    expect(bloc).toContain('ضمانات المصنّع مرتبطة بالمعدات');
+    expect(bloc).toContain('portent sur le matériel — transférables avec le bien, valables quel que soit l’installateur');
+    expect(bloc).toContain('cover the equipment — transferable with the property, valid whoever the installer is');
+    expect(bloc).toContain('ينتقلان مع الملك');
   });
 
   it('le cumul mesuré porte sa DATE DE RELEVÉ, lue dans les données (jamais écrite en dur)', () => {
