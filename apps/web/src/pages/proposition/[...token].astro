@@ -617,6 +617,25 @@ const chartSvgEn = ok && chartSeries.mode !== 'none'
 const chartSvgAr = ok && chartSeries.mode !== 'none'
   ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, undefined, 'ar')
   : '';
+// ── PREVIEW-V3 (16/09/2026) · LA VIGNETTE PRODUCTION / CONSOMMATION ──────────
+// Le graphe complet est parti dans le repli « Comment ces économies sont-elles
+// calculées ? » en v2 — et la page a perdu du même coup la SEULE image qui
+// répond à la question que tout acheteur solaire se pose : « est-ce que ça
+// couvre ce que je consomme ? ». Elle revient ici en vignette de ~130 px, sans
+// étiquettes de mois ni annotation, avec deux pastilles HTML à côté. MÊMES
+// séries backend, MÊME fonction pure : la vignette et le graphe complet ne
+// peuvent pas diverger d'un kWh, et aucun chiffre nouveau n'entre sur la page.
+const COMPACT_CHART_BOX = { width: 320, height: 130, padLeft: 6, padRight: 6, padTop: 8, padBottom: 10 };
+const COMPACT_CHART_OPTS = { labels: false, annotate: false };
+const chartCompactFr = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, COMPACT_CHART_BOX, 'fr', COMPACT_CHART_OPTS)
+  : '';
+const chartCompactEn = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, COMPACT_CHART_BOX, 'en', COMPACT_CHART_OPTS)
+  : '';
+const chartCompactAr = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption, COMPACT_CHART_BOX, 'ar', COMPACT_CHART_OPTS)
+  : '';
 const showChart = ok && hasProductionSeries(data!) && chartSvgFr.length > 0;
 const chartHasConso = chartSeries.mode === 'comparison';
 // CJ2b (21/08/2026) — l'argent MENSUEL réel, comparé au même graphe : voir
@@ -3373,6 +3392,32 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </div>
           )}
 
+          {showChart && (
+            /* PREVIEW-V3 · LA VIGNETTE, AU-DESSUS DU REPLI. Deux pastilles en
+               HTML plutôt qu'une légende dans le SVG : elles se traduisent
+               avec le reste de la page (FR/EN/AR), le SVG n'a pas à porter de
+               texte. Le graphe COMPLET (étiquettes de mois, pic, total annuel,
+               bascule journée/année) reste intact dans le repli juste dessous
+               — ceci en est la vignette, pas un second dessin. */
+            <div class="mt-4 rounded-xl border border-white/10 bg-nuit-800/40 p-4">
+              <div class="chart-svg" data-chart-lang="fr" set:html={chartCompactFr}></div>
+              <div class="chart-svg" data-chart-lang="en" hidden set:html={chartCompactEn}></div>
+              <div class="chart-svg" data-chart-lang="ar" hidden set:html={chartCompactAr}></div>
+              <p class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-lune-faint">
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="inline-block h-2 w-2 flex-none rounded-full" style="background: var(--color-brass-400)" aria-hidden="true"></span>
+                  <span data-i18n data-fr="Production solaire" data-en="Solar production" data-ar="الإنتاج الشمسي">Production solaire</span>
+                </span>
+                {chartHasConso && (
+                  <span class="inline-flex items-center gap-1.5">
+                    <span class="inline-block h-2 w-2 flex-none rounded-full" style="background: var(--color-azur-300)" aria-hidden="true"></span>
+                    <span data-i18n data-fr="Votre consommation" data-en="Your consumption" data-ar="استهلاككم">Votre consommation</span>
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
+
           {/* PREVIEW DENSITE (2026-09-15) — REPLI, PAS SUPPRESSION : la carte
                  phare des economies (−X %, avant → apres, anneau de couverture)
                  reste VISIBLE au-dessus ; tout le detail de METHODE se replie
@@ -4606,7 +4651,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 {realPrice ? (
                   <>
                     <p class="fig fig-md lum mt-3" dir="ltr">{formatMAD(optionTtc(data!, opt))}</p>
-                    <p class="text-sm text-lune-faint" data-i18n data-fr="TTC, clé en main" data-en="incl. tax, turnkey" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
+                    {/* PREVIEW-V3 — « TVA incluse » rejoint le prix dominant : la
+                        loi 31-08 art. 5 veut le TTC en évidence, et le détail
+                        HT→TVA→TTC se replie juste dessous (il reste entier). */}
+                    <p class="text-sm text-lune-faint" data-i18n data-fr="TTC, clé en main · TVA incluse" data-en="incl. tax, turnkey · VAT included" data-ar="شامل الضريبة، تسليم مفتاح في اليد · الضريبة مدرَجة">TTC, clé en main · TVA incluse</p>
                   </>
                 ) : (
                   <p class="v2-body mt-3 text-lune-soft" data-i18n
@@ -4732,9 +4780,20 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   </p>
                 )}
 
-                <!-- Chaîne de prix explicite -->
+                {/* PREVIEW-V3 — LE DÉTAIL DU PRIX SE REPLIE, IL NE DISPARAÎT PAS.
+                    Cinq lignes HT/remise/TVA/TTC × deux cartes occupaient un
+                    tiers d'écran au-dessus du bouton, alors que le chiffre qui
+                    décide est le TTC déjà affiché en tête. Le repli natif garde
+                    la chaîne ENTIÈRE à un clic — et le <dl> ci-dessous est
+                    inchangé, balise pour balise. */}
                 {totaux && (
-                  <dl class="mt-5 space-y-1.5 border-t border-white/10 pt-4 text-sm">
+                  <details class="mt-5 fold-native border-t border-white/10 pt-4">
+                  <summary class="cursor-pointer text-sm text-brass-300 underline-offset-2 hover:underline" data-i18n
+                    data-fr="Voir le détail du prix"
+                    data-en="See the price breakdown"
+                    data-ar="عرض تفصيل الثمن">Voir le détail du prix</summary>
+                <!-- Chaîne de prix explicite -->
+                  <dl class="mt-3 space-y-1.5 text-sm">
                     <div class="flex justify-between">
                       <dt class="text-lune-faint" data-i18n data-fr="Sous-total HT" data-en="Subtotal excl. tax" data-ar="المجموع الفرعي (بدون ضريبة)">Sous-total HT</dt>
                       <dd class="fig text-lune-soft" dir="ltr">{formatMAD(totaux.ht_brut)}</dd>
@@ -4758,6 +4817,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                       <dd class="fig text-lg text-lune" dir="ltr">{formatMAD(totaux.ttc)}</dd>
                     </div>
                   </dl>
+                  </details>
                 )}
               </article>
             );
