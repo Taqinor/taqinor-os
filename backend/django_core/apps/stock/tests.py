@@ -2282,3 +2282,109 @@ class TestStkcat3TypageALaSource(TestCase):
         self.assertEqual(types.get('Panneaux solaires'), 'panneau')
         self.assertEqual(types.get('Onduleurs'), 'onduleur')
         self.assertEqual(types.get('Accessoires'), 'accessoire')
+
+
+# ── STKCAT4 (16/09/2026) — migration de données des bases EXISTANTES ────────
+#
+# STKCAT3 type à la source, mais un tenant amorcé HIER garde ses catégories
+# NULL. La migration 0146 les comble par nom EXACT, UNIQUEMENT là où c'est
+# NULL. La fonction est appelée DIRECTEMENT avec le registre d'applications
+# (même patron que ``TestPvlvIdentiteBatterieBosb`` plus haut).
+
+class TestStkcat4MigrationTypageCategories(TestCase):
+    MIGRATION = 'apps.stock.migrations.0146_stkcat4_typer_categories_existantes'
+
+    def setUp(self):
+        from apps.stock.models import Categorie
+        self.Categorie = Categorie
+        self.company = make_company(slug='test-stkcat4-migration')
+
+    def _migration(self):
+        import importlib
+        return importlib.import_module(self.MIGRATION)
+
+    def _jouer(self):
+        from django.apps import apps as registre
+        self._migration().typer_categories_existantes(registre, None)
+
+    def _cat(self, nom, **kwargs):
+        kwargs.setdefault('company', self.company)
+        return self.Categorie.objects.create(nom=nom, **kwargs)
+
+    # ── Ce qu'elle POSE ─────────────────────────────────────────────────
+    def test_une_categorie_nulle_de_la_taxonomie_est_typee(self):
+        cat = self._cat('Structures & fixation')
+        self.assertIsNone(cat.type_equipement)
+        self._jouer()
+        cat.refresh_from_db()
+        self.assertEqual(cat.type_equipement, 'structure')
+
+    def test_toute_la_taxonomie_est_couverte(self):
+        from apps.stock.management.commands.seed_catalogue import TAXONOMIE
+        for nom, ordre in TAXONOMIE:
+            self._cat(nom, ordre=ordre)
+        self._jouer()
+        restees_nulles = list(self.Categorie.objects.filter(
+            company=self.company, type_equipement__isnull=True)
+            .values_list('nom', flat=True))
+        self.assertEqual(restees_nulles, [])
+
+    def test_les_categories_sans_societe_sont_incluses(self):
+        """`company` NULL n'est PAS une exclusion : le filtre ne mentionne
+        jamais la société, donc aucune ligne n'échappe à la passe."""
+        cat = self._cat('Batteries', company=None)
+        self._jouer()
+        cat.refresh_from_db()
+        self.assertEqual(cat.type_equipement, 'batterie')
+
+    def test_plusieurs_societes_traitees_en_une_passe(self):
+        from authentication.models import Company
+        autre = Company.objects.create(nom='Autre STKCAT4',
+                                       slug='stkcat4-autre')
+        mienne = self._cat('Pompes')
+        sienne = self._cat('Pompes', company=autre)
+        self._jouer()
+        mienne.refresh_from_db()
+        sienne.refresh_from_db()
+        self.assertEqual(mienne.type_equipement, 'pompe')
+        self.assertEqual(sienne.type_equipement, 'pompe')
+
+    # ── Ce qu'elle NE TOUCHE JAMAIS ─────────────────────────────────────
+    def test_une_categorie_typee_a_la_main_survit(self):
+        cat = self._cat('Câbles', type_equipement='accessoire')
+        self._jouer()
+        cat.refresh_from_db()
+        self.assertEqual(cat.type_equipement, 'accessoire')
+
+    def test_une_categorie_inconnue_reste_nulle(self):
+        cat = self._cat('Consommables de chantier')
+        self._jouer()
+        cat.refresh_from_db()
+        self.assertIsNone(cat.type_equipement)
+
+    def test_idempotente(self):
+        cat = self._cat('Variateurs')
+        self._jouer()
+        self._jouer()
+        cat.refresh_from_db()
+        self.assertEqual(cat.type_equipement, 'variateur')
+
+    # ── Forme de la migration ───────────────────────────────────────────
+    def test_reverse_est_un_noop_explicite(self):
+        from django.db import migrations
+        operations = self._migration().Migration.operations
+        self.assertEqual(len(operations), 1)
+        self.assertIs(operations[0].reverse_code, migrations.RunPython.noop)
+
+    def test_la_copie_figee_ne_contredit_jamais_la_table_vivante(self):
+        """La migration porte une COPIE de la table (histoire figée). Ajouter
+        une catégorie à la table vivante reste libre ; en changer une d'avis
+        exige une nouvelle migration explicite — c'est ce que ce test force."""
+        from apps.stock.management.commands.seed_catalogue import (
+            TYPES_PAR_CATEGORIE,
+        )
+        figee = self._migration().TYPES_PAR_CATEGORIE
+        for nom, type_attendu in figee.items():
+            self.assertEqual(
+                TYPES_PAR_CATEGORIE.get(nom), type_attendu,
+                f'la migration 0146 et la table vivante divergent sur {nom}')
