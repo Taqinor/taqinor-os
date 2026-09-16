@@ -10,21 +10,33 @@
  * d'engagement — apps/ventes/public_views.py::_appareil_equipe). L'ouverture
  * d'un Aperçu interne pose le même cookie (ceinture).
  *
- * `?retirer=1` efface le marquage (un appareil prêté/vendu redevient normal).
+ * T4 (cookie partagé ERP↔site) — le marquage est désormais AUTOMATIQUE pour
+ * tout navigateur déjà connecté à l'ERP (api.taqinor.ma) : celui-ci pose
+ * lui-même `tq_equipe`/`tq_appareil` avec `Domain=taqinor.ma`, lu ici comme
+ * sur `/proposition/<token>` sans action manuelle. Cette page reste le
+ * REPLI MANUEL (téléphone jamais connecté à l'ERP, navigateur distinct…) —
+ * même domaine partagé pour rester cohérente avec le marquage automatique.
+ *
+ * `?retirer=1` efface le marquage (un appareil prêté/vendu redevient normal)
+ * — les DEUX variantes (host-only ET domaine partagé, selon ce qui a pu être
+ * posé par le passé sur cet hôte).
  * noindex : page utilitaire interne, jamais un contenu à référencer. Aucune
  * donnée n'est collectée ici — le cookie ne porte que « 1 ».
  */
 export const prerender = false;
 
 import Layout from '../layouts/Layout.astro';
+import { domaineCookiePartage, SITE_HOST } from '../lib/visite';
 
+const domainePartage = domaineCookiePartage(Astro.url.hostname, SITE_HOST);
 const retirer = Astro.url.searchParams.get('retirer') === '1';
 if (retirer) {
   Astro.cookies.delete('tq_equipe', { path: '/' });
+  if (domainePartage) Astro.cookies.delete('tq_equipe', { path: '/', domain: domainePartage });
 } else {
   Astro.cookies.set('tq_equipe', '1', {
     maxAge: 730 * 24 * 3600, path: '/', secure: true, httpOnly: true,
-    sameSite: 'lax',
+    sameSite: 'lax', domain: domainePartage,
   });
 }
 ---
@@ -52,6 +64,12 @@ if (retirer) {
           compteront plus jamais comme des lectures client&nbsp;: aucun
           compteur, aucune notification — même en ouvrant le vrai lien envoyé
           au client.
+        </p>
+        <p class="mt-4 text-lune-soft">
+          Un navigateur déjà connecté à l'espace ERP (api.taqinor.ma) est
+          désormais marqué <strong>automatiquement</strong> — cette page ne
+          reste nécessaire que pour un appareil qui n'ouvre jamais l'ERP
+          (téléphone perso non connecté, navigateur distinct…).
         </p>
         <p class="mt-4 text-lune-soft">
           À faire une fois sur <strong>chaque</strong> appareil de l'équipe
