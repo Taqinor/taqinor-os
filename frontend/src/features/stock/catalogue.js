@@ -8,7 +8,7 @@ import {
   ClipboardList, Package,
 } from 'lucide-react'
 import {
-  parseWatt, parseKw, parseKwh, parsePhaseIsTri, tauxTvaOf, ttcFromHt,
+  parseWatt, parseKw, parseKwh, parsePhaseIsTri, tauxTvaOf, ttcFromHt, _norm,
 } from '../ventes/solar.js'
 
 export const MARQUE_GENERIQUE = 'Génériques'
@@ -179,14 +179,28 @@ export function groupCatalogue(produits) {
   return out
 }
 
-// Recherche transverse (nom, SKU, marque, catégorie, spec)
+// Recherche transverse (nom, SKU, marque, catégorie, spec, description) —
+// STKCAT15 : insensible aux accents/casse des DEUX côtés (requête ET botte de
+// foin produit, via `_norm` partagée avec solar.js) et à jetons ET — chaque
+// mot de la requête doit être un sous-mot d'AU MOINS un des champs du produit
+// pour que celui-ci soit retenu (« hybride deye » == « deye hybride »), donc
+// un jeton numérique nu (« 550 ») trouve aussi bien un nom qu'une spec
+// (keySpec) qui le contient. Union stricte des anciens champs (nom, sku,
+// marque, catégorie, spec) + description en prime — jamais un champ retiré.
+const _prepTexte = (s) => _norm(s).replace(/['’ʼ`]/g, ' ').replace(/\s+/g, ' ').trim()
+
+function _botteDeFoin(p) {
+  return _prepTexte([
+    p.nom, p.sku, p.marque, p.categorie?.nom, keySpec(p), p.description,
+  ].filter(Boolean).join(' '))
+}
+
 export function searchCatalogue(produits, query) {
-  const q = (query || '').trim().toLowerCase()
+  const q = _prepTexte(query)
   if (!q) return produits
-  return produits.filter(p =>
-    (p.nom || '').toLowerCase().includes(q)
-    || (p.sku || '').toLowerCase().includes(q)
-    || (p.marque || '').toLowerCase().includes(q)
-    || (p.categorie?.nom || '').toLowerCase().includes(q)
-    || (keySpec(p) || '').toLowerCase().includes(q))
+  const jetons = q.split(' ').filter(Boolean)
+  return produits.filter((p) => {
+    const foin = _botteDeFoin(p)
+    return jetons.every((j) => foin.includes(j))
+  })
 }

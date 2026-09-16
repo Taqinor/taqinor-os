@@ -53,6 +53,34 @@ test('recherche transverse : trouve par nom, marque, catégorie et spec', () => 
   assert.equal(searchCatalogue(FIXTURE, '').length, FIXTURE.length)
 })
 
+// STKCAT15 — accents, jetons ET (ordre indifférent), jeton numérique nu sur
+// une spec. Catalogue étendu LOCAL (jamais le FIXTURE partagé, pour ne pas
+// perturber le comptage de catégories du test « groupement » ci-dessus).
+test('STKCAT15 — recherche insensible aux accents, jetons ET, jeton numérique sur spec', () => {
+  const CATALOGUE_ETENDU = [
+    ...FIXTURE,
+    {
+      id: 9, nom: 'Câble solaire 6mm² — rouge (au mètre)', marque: 'Nexans',
+      prix_vente: '15.00', tva: '20.00', categorie: { nom: 'Câbles', ordre: 70 },
+    },
+    {
+      id: 10, nom: 'Module PV 550 W', marque: 'Jinko',
+      prix_vente: '900.00', tva: '10.00', categorie: CAT.panneaux,
+    },
+  ]
+  // accent-insensible : « cable » (sans accent) trouve « Câble … »
+  assert.ok(searchCatalogue(CATALOGUE_ETENDU, 'cable').some(p => p.id === 9))
+  // jetons ET, ordre indifférent : « hybride deye » == « deye hybride »
+  assert.ok(searchCatalogue(CATALOGUE_ETENDU, 'hybride deye').some(p => p.id === 4))
+  assert.ok(searchCatalogue(CATALOGUE_ETENDU, 'deye hybride').some(p => p.id === 4))
+  // jeton numérique nu trouve une spec (nom contient 550)
+  assert.ok(searchCatalogue(CATALOGUE_ETENDU, '550').some(p => p.id === 10))
+  // superset : tout ce que l'ancienne recherche trouvait, la nouvelle le
+  // trouve toujours (jamais un champ caché par rapport à avant).
+  assert.equal(searchCatalogue(CATALOGUE_ETENDU, 'veichi').length, 1)
+  assert.equal(searchCatalogue(CATALOGUE_ETENDU, 'panneaux photo').length, 3) // +Module PV 550W
+})
+
 test('spec clé par catégorie : Wc, kW+tension, CV/HMT/courbe', () => {
   assert.equal(keySpec(FIXTURE[0]), '710 Wc')
   assert.equal(keySpec(FIXTURE[4]), '7.5 kW · 380 V')
