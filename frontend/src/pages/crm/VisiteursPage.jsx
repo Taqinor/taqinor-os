@@ -48,12 +48,36 @@ function raccourcirAppareil(appareilId) {
   return appareilId.length > 8 ? `${appareilId.slice(0, 8)}…` : appareilId
 }
 
+// Tronque le user-agent affiché dans la colonne « Navigateur » — la chaîne
+// complète reste dans le `title` HTML.
+function tronquerNavigateur(userAgent) {
+  if (!userAgent) return '—'
+  return userAgent.length > 40 ? `${userAgent.slice(0, 40)}…` : userAgent
+}
+
+// VIS-LEAD (14-16/09/2026) — la notification `devis_opened` pointe désormais
+// `/crm/visiteurs?lead=<id>` : ce texte résume les lectures CLIENT de chaque
+// devis du lead, à partir de `lecture` (forme exacte de
+// `apps.ventes.selectors.share_link_lecture_map` — jamais un chiffre
+// inventé : une clé absente du serveur est simplement omise ici).
+function texteLecture(lecture) {
+  if (!lecture) return 'Jamais partagé'
+  const morceaux = []
+  if (lecture.nombre_vues != null) morceaux.push(`Ouvert ${lecture.nombre_vues} fois`)
+  if (lecture.premiere_consultation) morceaux.push(`première le ${formatDateTime(lecture.premiere_consultation)}`)
+  if (lecture.derniere_consultation) morceaux.push(`dernière le ${formatDateTime(lecture.derniere_consultation)}`)
+  return morceaux.length > 0 ? morceaux.join(' · ') : 'Envoyé, jamais ouvert'
+}
+
 const MAX_LEADS_AFFICHES = 5
 
 export default function VisiteursPage() {
   const isResponsableOuAdmin = useIsAdminOrResponsable()
   const [searchParams, setSearchParams] = useSearchParams()
   const appareilFiltre = searchParams.get('appareil') || ''
+  // VIS-LEAD — `?lead=<id>` bascule tout l'écran en mode « historique des
+  // accès de CE lead » (voir le rendu conditionnel plus bas).
+  const leadId = searchParams.get('lead') || ''
 
   const [appareils, setAppareils] = useState([])
   const [loading, setLoading] = useState(true)
@@ -70,6 +94,14 @@ export default function VisiteursPage() {
   const [ouvertId, setOuvertId] = useState(null)
   const [visitesDetail, setVisitesDetail] = useState([])
   const [loadingDetail, setLoadingDetail] = useState(false)
+
+  // VIS-LEAD — fiche du lead (dont `devis[].lecture`) et ses visites brutes.
+  const [lead, setLead] = useState(null)
+  const [loadingLead, setLoadingLead] = useState(true)
+  const [erreurLead, setErreurLead] = useState(false)
+  const [visitesLead, setVisitesLead] = useState([])
+  const [loadingVisitesLead, setLoadingVisitesLead] = useState(true)
+  const [erreurVisitesLead, setErreurVisitesLead] = useState(false)
 
   const chargerAppareils = () => {
     // setState différé au prochain microtask (jamais synchrone dans l'effet) —
@@ -92,17 +124,48 @@ export default function VisiteursPage() {
       .finally(() => setLoadingEquipe(false))
   }
 
-  useEffect(() => { chargerAppareils() },
+  useEffect(() => {
+    // Mode lead : la liste agrégée par appareil n'a pas sa place ici (voir
+    // les deux effets VIS-LEAD ci-dessous) — on évite l'appel inutile.
+    if (leadId) return
+    chargerAppareils()
+  },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chargerAppareils referme déjà appareilFiltre ; l'ajouter provoquerait une recréation d'effet identique.
-    [appareilFiltre])
+    [appareilFiltre, leadId])
 
   useEffect(() => { chargerEquipe() }, [])
+
+  // VIS-LEAD — fiche du lead (nom/prénom + devis[].lecture).
+  useEffect(() => {
+    if (!leadId) return
+    queueMicrotask(() => { setLoadingLead(true); setErreurLead(false) })
+    crmApi.getLead(leadId)
+      .then((r) => setLead(r.data))
+      .catch(() => setErreurLead(true))
+      .finally(() => setLoadingLead(false))
+  }, [leadId])
+
+  // VIS-LEAD — visites brutes de ce lead (tableau « Accès »).
+  useEffect(() => {
+    if (!leadId) return
+    queueMicrotask(() => { setLoadingVisitesLead(true); setErreurVisitesLead(false) })
+    crmApi.getVisitesExternes({ lead: leadId })
+      .then((r) => setVisitesLead(r.data?.results ?? r.data ?? []))
+      .catch(() => setErreurVisitesLead(true))
+      .finally(() => setLoadingVisitesLead(false))
+  }, [leadId])
 
   const equipeParAppareil = useMemo(() => {
     const map = new Map()
     for (const e of equipe) map.set(e.appareil_id, e)
     return map
   }, [equipe])
+
+  // Les plus récentes d'abord — le serveur ne garantit pas l'ordre.
+  const visitesLeadTriees = useMemo(
+    () => [...visitesLead].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+    [visitesLead],
+  )
 
   const toggleDetail = (appareilId) => {
     if (ouvertId === appareilId) { setOuvertId(null); return }
@@ -156,6 +219,155 @@ export default function VisiteursPage() {
     const next = new URLSearchParams(searchParams)
     next.delete('appareil')
     setSearchParams(next)
+  }
+
+  // VIS-LEAD — retire `?lead=` pour revenir à la vue agrégée par appareil.
+  const effacerFiltreLead = () => {
+    const next = new URLSearchParams(searchParams)
+    next.delete('lead')
+    setSearchParams(next)
+  }
+
+  // VIS-LEAD (14-16/09/2026) — la notification `devis_opened` pointe
+  // désormais `/crm/visiteurs?lead=<id>` : un écran DÉDIÉ (bandeau + lectures
+  // des devis + accès bruts de CE lead), distinct de la vue agrégée par
+  // appareil ci-dessous (mode `?appareil=` ou sans filtre, INCHANGÉE).
+  if (leadId) {
+    const nomComplet = lead ? `${lead.nom || ''} ${lead.prenom || ''}`.trim() : ''
+    return (
+      <div className="page">
+        <div className="lp-controlbar crm-controlbar mb-3">
+          <h1 className="lp-cb-title flex items-center gap-2">
+            <Radar className="h-5 w-5" aria-hidden="true" />
+            Historique des accès{nomComplet ? ` — ${nomComplet}` : ''}
+          </h1>
+        </div>
+        <div className="mb-3 flex items-center gap-2 text-sm">
+          <Link to={`/crm/leads/${leadId}`}>Voir la fiche</Link>
+          <Button variant="ghost" size="sm" onClick={effacerFiltreLead}>Tous les appareils</Button>
+        </div>
+
+        <Card className="mb-3">
+          <CardContent className="pt-4">
+            <h2 style={{ fontSize: 15, fontWeight: 600, marginTop: 0 }}>Lectures des devis</h2>
+            {loadingLead ? (
+              <Spinner />
+            ) : erreurLead ? (
+              <p className="text-sm text-muted-foreground">Indisponible pour le moment.</p>
+            ) : (lead?.devis || []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucun devis pour ce lead.</p>
+            ) : (
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {lead.devis.map((d) => (
+                  <li key={d.id}>
+                    <strong>{d.reference}</strong> · {texteLecture(d.lecture)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-4">
+            <h2 style={{ fontSize: 15, fontWeight: 600, marginTop: 0 }}>Accès</h2>
+            {loadingVisitesLead ? (
+              <Spinner />
+            ) : erreurVisitesLead ? (
+              <p className="text-sm text-muted-foreground">Indisponible pour le moment.</p>
+            ) : visitesLeadTriees.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucun accès enregistré pour ce lead.</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left' }}>Date</th>
+                    <th style={{ textAlign: 'left' }}>Quoi</th>
+                    <th style={{ textAlign: 'right' }}>Durée</th>
+                    <th style={{ textAlign: 'left' }}>Appareil</th>
+                    <th style={{ textAlign: 'left' }}>IP</th>
+                    <th style={{ textAlign: 'left' }}>Navigateur</th>
+                    {isResponsableOuAdmin && <th />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visitesLeadTriees.map((v) => {
+                    const estEquipe = !!v.appareil_id && equipeParAppareil.has(v.appareil_id)
+                    return (
+                      <tr key={v.id}>
+                        <td>{formatDateTime(v.created_at)}</td>
+                        <td>
+                          {v.point_display || v.point}
+                          {v.contexte ? ` — ${v.contexte}` : ''}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>{humaniserDuree(v.duree_s)}</td>
+                        <td title={v.appareil_id || undefined}>
+                          {raccourcirAppareil(v.appareil_id)}{' '}
+                          {estEquipe && <Badge tone="success">Équipe</Badge>}
+                        </td>
+                        <td>{v.ip || '—'}</td>
+                        <td title={v.user_agent || ''}>{tronquerNavigateur(v.user_agent)}</td>
+                        {isResponsableOuAdmin && (
+                          <td>
+                            {v.appareil_id && (
+                              estEquipe ? (
+                                <Button
+                                  variant="outline" size="sm"
+                                  disabled={busyAppareil === v.appareil_id}
+                                  onClick={() => retirerDeLEquipe(v.appareil_id)}
+                                >
+                                  Retirer
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="outline" size="sm"
+                                  onClick={() => ouvrirDialogueEquipe(v.appareil_id)}
+                                >
+                                  Marquer équipe
+                                </Button>
+                              )
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Dialog open={!!dialogAppareil} onOpenChange={(o) => { if (!o) setDialogAppareil(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Marquer cet appareil équipe</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">
+                Ses visites ne compteront plus dans les alertes concurrence, dès
+                maintenant et rétroactivement.
+              </p>
+              <Label htmlFor="vis-lead-libelle">Libellé (optionnel)</Label>
+              <Input
+                id="vis-lead-libelle"
+                placeholder="ex. Téléphone Reda"
+                value={libelle}
+                onChange={(e) => setLibelle(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDialogAppareil(null)} disabled={saving}>
+                Annuler
+              </Button>
+              <Button onClick={confirmerMarquerEquipe} disabled={saving} loading={saving}>
+                Marquer équipe
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    )
   }
 
   return (
