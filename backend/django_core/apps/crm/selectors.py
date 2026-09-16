@@ -4525,12 +4525,9 @@ def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
     (``ventes.Devis.lead``, ``related_name='devis'``) en pure relation ORM
     string-FK — ``apps.ventes.models`` n'est jamais importé.
 
-    ``Lead.structure_produit`` (STKCAT9) N'EXISTE PAS dans ce dépôt au moment
-    d'écrire ces lignes : vérifié par ``grep structure_produit
-    apps/crm/models.py`` (aucune occurrence). Le jour où ce champ atterrit, la
-    seule chose à faire est d'élargir le filtre ci-dessous
-    (``| Q(structure_produit_id=produit_id)``) — on ne devine pas un champ
-    absent, et on ne construit pas un repli qui ferait semblant.
+    Depuis STKCAT9, ``Lead.structure_produit`` (la structure choisie sur le
+    lead) est un SECOND lien direct : un lead qui a retenu ce produit comme
+    structure est listé même sans devis.
 
     ``user`` (optionnel, mot-clé) rejoue la portée de
     ``LeadViewSet.get_queryset`` — ``scope_queryset(..., ['owner'])`` : un rôle
@@ -4542,6 +4539,8 @@ def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
     de ``STAGES.py`` telle que stockée (l'écran en rend le libellé français).
     Forme contractuelle : ``apps/stock/contract_samples/produit_utilise_dans.json``.
     """
+    from django.db.models import Q
+
     from core.scoping import scope_queryset
 
     from .models import Lead
@@ -4555,8 +4554,11 @@ def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
     if limite <= 0:
         return []
 
-    qs = Lead.objects.filter(
-        company=company, devis__lignes__produit_id=produit_id)
+    # STKCAT25 bis — deux liens : à travers ses devis, OU directement par la
+    # structure choisie sur le lead (``Lead.structure_produit``, STKCAT9).
+    qs = Lead.objects.filter(company=company).filter(
+        Q(devis__lignes__produit_id=produit_id)
+        | Q(structure_produit_id=produit_id))
     if user is not None:
         qs = scope_queryset(qs, user, ['owner'])
     qs = qs.distinct().order_by('-date_creation', '-id')

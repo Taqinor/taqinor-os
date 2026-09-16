@@ -217,6 +217,15 @@ class ContenuTests(UtiliseDansBase):
         self.assertEqual(
             [c['id'] for c in resp.data['chantiers']], [self.chantier.pk])
 
+    def test_un_lead_lie_par_sa_structure_choisie_est_liste_sans_devis(self):
+        # STKCAT9 + STKCAT25 bis : Lead.structure_produit est un lien direct.
+        lead_structure = Lead.objects.create(
+            company=self.company, nom='Benani', prenom='Sara',
+            ville='Rabat', owner=self.large, structure_produit=self.produit)
+        resp = self._get(self.large)
+        self.assertIn(lead_structure.pk, [lead['id'] for lead in resp.data['leads']])
+        self.assertIn(self.lead.pk, [lead['id'] for lead in resp.data['leads']])
+
     def test_un_autre_produit_ne_ramene_rien(self):
         resp = self._get(self.large, produit=self.autre_produit)
         self.assertEqual(resp.data['devis'], [])
