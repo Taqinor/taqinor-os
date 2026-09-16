@@ -4789,10 +4789,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             Explorer d’autres tailles
           </h2>
           <p class="mt-3 text-sm text-lune-soft" data-i18n
-            data-fr="Votre devis est la taille « Recommandé ». Les deux autres sont là pour comparer : rien de ce que vous touchez ici ne change votre devis ni votre signature."
-            data-en="Your quote is the “Recommended” size. The other two are here to compare: nothing you touch here changes your quote or your signature."
-            data-ar="عرضكم هو حجم « موصى به ». الحجمان الآخران للمقارنة فقط: لا شيء تلمسونه هنا يغيّر عرضكم أو توقيعكم.">
-            Votre devis est la taille « Recommandé ». Les deux autres sont là pour comparer : rien de ce que vous touchez ici ne change votre devis ni votre signature.
+            data-fr="La carte marquée « C’est votre devis officiel » est la vôtre. Les deux autres sont là pour comparer : rien de ce que vous touchez ici ne change votre devis ni votre signature."
+            data-en="The card marked “This is your official quote” is yours. The other two are here to compare: nothing you touch here changes your quote or your signature."
+            data-ar="البطاقة المعلَّمة « هذا هو عرضكم الرسمي » هي بطاقتكم. الحجمان الآخران للمقارنة فقط: لا شيء تلمسونه هنا يغيّر عرضكم أو توقيعكم.">
+            La carte marquée « C’est votre devis officiel » est la vôtre. Les deux autres sont là pour comparer : rien de ce que vous touchez ici ne change votre devis ni votre signature.
           </p>
 
           {/* ── UNE SEULE BASCULE, AU-DESSUS DES TROIS CARTES (jamais une
@@ -4891,10 +4891,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     que le devis officiel — le badge mentirait (Fable C2). */}
                 {t.estLeDevis && (
                   <span class="absolute -top-3 left-5 rounded-full bg-brass-400 px-3 py-1 text-[11px] font-bold text-nuit sm:left-6" data-i18n
-                    data-fr="Recommandé — c’est votre devis officiel"
-                    data-en="Recommended — this is your official quote"
-                    data-ar="موصى به — هذا هو عرضكم الرسمي">
-                    Recommandé — c’est votre devis officiel
+                    data-fr="C’est votre devis officiel"
+                    data-en="This is your official quote"
+                    data-ar="هذا هو عرضكم الرسمي">
+                    C’est votre devis officiel
                   </span>
                 )}
                 <h3 class="display mt-2 text-xl text-lune">{t.titre}</h3>
@@ -5356,11 +5356,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               aria-current="true"
               style={gammes.courante.recommandee ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
             >
-              {gammes.courante.recommandee && (
-                <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-i18n data-fr="Recommandé" data-en="Recommended" data-ar="موصى به">
-                  Recommandé
-                </span>
-              )}
+              {/* PREVIEW v2 — « Votre devis » est un FAIT vérifiable (c'est
+                  bien ce document-ci) ; « Recommandé » était un AVIS en
+                  concurrence avec celui du chapitre du prix. */}
+              <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-i18n data-fr="Votre devis" data-en="Your quote" data-ar="عرضكم">
+                Votre devis
+              </span>
               <h3 class="display text-xl text-lune">{gammes.courante.nom}</h3>
               {typeof gammes.courante.total_ttc === 'number' && (
                 <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(gammes.courante.total_ttc)}</p>
@@ -5374,16 +5375,26 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </p>
             </article>
 
+            {/* ── PREVIEW v2 · UN SEUL « RECOMMANDÉ » SUR TOUTE LA PAGE ───────
+                (fondateur Reda, 2026-09-16.) La page pouvait afficher
+                « Avec batterie — Recommandé » au chapitre du prix ET
+                « Premium — Recommandé » ici, sur DEUX montants différents,
+                pendant que le formulaire annonçait la signature de la gamme
+                courante. Le client ne savait plus lequel commandait — et « un
+                prix clair » est le premier point de toutes les checklists
+                anti-arnaque marocaines.
+
+                Le badge « Recommandé » ne vit plus QU'À un endroit : la carte
+                de l'option retenue, au chapitre du prix. La gamme sœur garde
+                tout ce qui est FACTUEL et n'a rien perdu : son nom, son TTC,
+                l'écart en MAD absolus et le lien qui ouvre SON document.
+                `gammes.soeur.recommandee` continue de teinter sa bordure —
+                le signal reste, la contradiction part. */}
             <article
               class="cine-card relative flex flex-col rounded-2xl p-6"
               data-gamme-carte="soeur"
               style={gammes.soeur.recommandee ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
             >
-              {gammes.soeur.recommandee && (
-                <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-i18n data-fr="Recommandé" data-en="Recommended" data-ar="موصى به">
-                  Recommandé
-                </span>
-              )}
               <h3 class="display text-xl text-lune">{gammes.soeur.nom}</h3>
               {typeof gammes.soeur.total_ttc === 'number' && (
                 <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(gammes.soeur.total_ttc)}</p>
