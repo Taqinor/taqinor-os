@@ -1477,7 +1477,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                             // Vide le produit choisi s'il ne correspond plus au slot.
                             if (next && equip.produit) {
                               const sel = produits.find((p) => String(p.id) === String(equip.produit))
-                              if (typeOf(sel) !== next) setEquip(s => ({ ...s, produit: '' }))
+                              if (typeOfProduit(sel) !== next) setEquip(s => ({ ...s, produit: '' }))
                             }
                           }}>
                     <SelectTrigger id="eq-slot"><SelectValue /></SelectTrigger>
