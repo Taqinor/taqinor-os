@@ -134,15 +134,25 @@ class Command(BaseCommand):
                 defaults={'nom': nom, 'delai_jours': delai})
 
         # ── Stock ──────────────────────────────────────────────────────
+        # STKCAT3 — les trois catégories de démonstration naissent TYPÉES,
+        # depuis la MÊME table nom→type que le seeder catalogue (une seule
+        # source dans le dépôt) : un jeu de démo non typé donnait un écran
+        # Stock où le rail « type d'équipement » ne filtrait rien.
+        from apps.stock.management.commands.seed_catalogue import (
+            type_equipement_pour,
+        )
         cat_panneaux = Categorie.objects.create(
             company=company, nom='Panneaux solaires',
-            description='Modules photovoltaïques')
+            description='Modules photovoltaïques',
+            type_equipement=type_equipement_pour('Panneaux solaires'))
         cat_onduleurs = Categorie.objects.create(
             company=company, nom='Onduleurs',
-            description='Onduleurs et micro-onduleurs')
+            description='Onduleurs et micro-onduleurs',
+            type_equipement=type_equipement_pour('Onduleurs'))
         cat_access = Categorie.objects.create(
             company=company, nom='Accessoires',
-            description='Câblage, fixations, connectique')
+            description='Câblage, fixations, connectique',
+            type_equipement=type_equipement_pour('Accessoires'))
 
         f_sunpro = Fournisseur.objects.create(
             company=company, nom='SunPro Maroc',

@@ -8,7 +8,7 @@ from decimal import Decimal
 from io import StringIO
 
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from apps.stock.models import Produit, MouvementStock
 
@@ -2158,3 +2158,127 @@ class TestPvlvIdentiteBatterieBosb(TestCase):
         self.assertEqual(fiche.bat_dod_pct, Decimal('90.0'))
         self.assertEqual(fiche.bat_max_charge_kw, Decimal('9.22'))
         self.assertIsNone(fiche.bat_v_nominal)
+
+
+# ── STKCAT3 (16/09/2026) — les catégories sont TYPÉES À LA SOURCE ───────────
+#
+# Avant STKCAT3, les QUATRE chemins qui créent des catégories
+# (``seed_catalogue.get_categorie``, sa passe taxonomie, le gabarit tenant
+# SOL10 et ``seed_demo``) posaient des catégories sans ``type_equipement`` :
+# le champ était NULL PARTOUT, donc le rail « type d'équipement » de l'écran
+# Stock ne filtrait rien. UNE table nom→type (``TYPES_PAR_CATEGORIE``) les
+# alimente désormais tous les quatre.
+
+class TestStkcat3TypageALaSource(TestCase):
+    def setUp(self):
+        from apps.stock.models import Categorie
+        self.Categorie = Categorie
+        self.company = make_company(slug='test-stkcat3-typage')
+
+    def _table(self):
+        from apps.stock.management.commands.seed_catalogue import (
+            TAXONOMIE, TYPES_PAR_CATEGORIE,
+        )
+        return TAXONOMIE, TYPES_PAR_CATEGORIE
+
+    def _types_poses(self):
+        return {c.nom: c.type_equipement
+                for c in self.Categorie.objects.filter(company=self.company)}
+
+    # ── La table elle-même ───────────────────────────────────────────────
+    def test_la_table_couvre_toute_la_taxonomie_avec_des_valeurs_valides(self):
+        from apps.stock.models import Categorie
+        taxonomie, table = self._table()
+        valides = set(Categorie.TypeEquipement.values)
+        for nom, _ordre in taxonomie:
+            self.assertIn(nom, table, f'catégorie non typée : {nom}')
+            self.assertIn(table[nom], valides)
+
+    def test_les_arbitrages_ecrits_sont_ceux_appliques(self):
+        """Les arbitrages du commentaire de la table — relus ici pour qu'un
+        changement silencieux d'avis casse un test, pas la prod."""
+        _taxonomie, table = self._table()
+        self.assertEqual(table['Protection & accessoires'], 'protection')
+        self.assertEqual(table['Onduleurs réseau'], 'onduleur')
+        self.assertEqual(table['Onduleurs hybrides'], 'onduleur')
+        self.assertEqual(table['Onduleurs hors réseau'], 'onduleur')
+        self.assertEqual(table['Services & prestations'], 'service')
+        self.assertEqual(table['Structures & fixation'], 'structure')
+        self.assertEqual(table['Panneaux photovoltaïques'], 'panneau')
+        self.assertEqual(table['Batteries'], 'batterie')
+        self.assertEqual(table['Câbles'], 'cable')
+        self.assertEqual(table['Pompes'], 'pompe')
+        self.assertEqual(table['Variateurs'], 'variateur')
+
+    def test_un_nom_libre_n_a_jamais_de_type_devine(self):
+        from apps.stock.management.commands.seed_catalogue import (
+            type_equipement_pour,
+        )
+        self.assertIsNone(type_equipement_pour('Consommables de chantier'))
+        self.assertIsNone(type_equipement_pour(''))
+
+    # ── Chemin 1+2 : seed_catalogue (création + passe taxonomie) ─────────
+    def test_un_seed_neuf_laisse_les_onze_categories_typees(self):
+        taxonomie, table = self._table()
+        seed(self.company)
+        poses = self._types_poses()
+        self.assertEqual(len(taxonomie), 11)
+        for nom, _ordre in taxonomie:
+            self.assertEqual(poses.get(nom), table[nom],
+                             f'catégorie mal typée : {nom}')
+
+    def test_second_run_sans_diff(self):
+        seed(self.company)
+        avant = self._types_poses()
+        seed(self.company)
+        self.assertEqual(self._types_poses(), avant)
+
+    def test_une_categorie_preexistante_non_typee_est_comblee(self):
+        self.Categorie.objects.create(
+            company=self.company, nom='Batteries', ordre=40)
+        seed(self.company)
+        cat = self.Categorie.objects.get(
+            company=self.company, nom='Batteries')
+        self.assertEqual(cat.type_equipement, 'batterie')
+
+    def test_un_type_pose_a_la_main_n_est_jamais_ecrase(self):
+        """L'arbitrage du fondateur dans l'écran Catégories gagne TOUJOURS."""
+        self.Categorie.objects.create(
+            company=self.company, nom='Câbles', ordre=70,
+            type_equipement='accessoire')
+        seed(self.company)
+        cat = self.Categorie.objects.get(company=self.company, nom='Câbles')
+        self.assertEqual(cat.type_equipement, 'accessoire')
+
+    def test_une_categorie_libre_reste_non_typee(self):
+        self.Categorie.objects.create(
+            company=self.company, nom='Consommables de chantier', ordre=200)
+        seed(self.company)
+        cat = self.Categorie.objects.get(
+            company=self.company, nom='Consommables de chantier')
+        self.assertIsNone(cat.type_equipement)
+
+    # ── Chemin 3 : gabarit tenant SOL10 ─────────────────────────────────
+    def test_le_gabarit_solaire_type_ses_categories(self):
+        from authentication.models import Company
+        from authentication.tenant_templates import appliquer_gabarit_solaire
+        taxonomie, table = self._table()
+        tenant = Company.objects.create(nom='Tenant SOL10', slug='stkcat3-sol')
+        appliquer_gabarit_solaire(tenant)
+        poses = {c.nom: c.type_equipement
+                 for c in self.Categorie.objects.filter(company=tenant)}
+        for nom, _ordre in taxonomie:
+            self.assertEqual(poses.get(nom), table[nom],
+                             f'catégorie mal typée par le gabarit : {nom}')
+
+    # ── Chemin 4 : seed_demo ────────────────────────────────────────────
+    @override_settings(DEBUG=True)
+    def test_seed_demo_type_ses_trois_categories(self):
+        call_command('seed_demo', verbosity=0)
+        types = {c.nom: c.type_equipement
+                 for c in self.Categorie.objects.filter(
+                     nom__in=['Panneaux solaires', 'Onduleurs',
+                              'Accessoires'])}
+        self.assertEqual(types.get('Panneaux solaires'), 'panneau')
+        self.assertEqual(types.get('Onduleurs'), 'onduleur')
+        self.assertEqual(types.get('Accessoires'), 'accessoire')

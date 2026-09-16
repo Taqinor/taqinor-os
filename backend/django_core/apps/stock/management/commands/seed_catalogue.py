@@ -211,6 +211,75 @@ TAXONOMIE = [
 ]
 
 
+# ── STKCAT3 — CATÉGORIE → TYPE D'ÉQUIPEMENT (stock.Categorie.TypeEquipement)
+# LA SEULE table nom→type du dépôt. Les QUATRE chemins qui créent des
+# catégories la lisent — ce seeder, sa passe taxonomie, le gabarit tenant
+# SOL10 (authentication/tenant_templates.py) et seed_demo — au lieu de poser
+# chacun des catégories NON typées, ce qui laissait `type_equipement` NULL
+# PARTOUT et rendait le rail « catégorie » inutilisable pour filtrer.
+#
+# ARBITRAGES, écrits une fois pour toutes :
+#   · « Protection & accessoires » → protection. C'est la catégorie
+#     fourre-tout de ``classify_categorie`` (tout l'inconnu y tombe) ; sa
+#     moitié lourde est de la protection (disjoncteurs, parafoudres,
+#     coffrets), et `accessoire` aurait fait passer un parafoudre pour un
+#     consommable.
+#   · les TROIS catégories d'onduleurs (réseau, hybrides, hors réseau) →
+#     onduleur. Le TYPE dit la fonction de l'équipement, pas sa topologie :
+#     la distinction réseau/hybride/hors-réseau est DÉJÀ portée par le RÔLE de
+#     composition (`onduleur_reseau`/`onduleur_hybride`/`onduleur_offgrid`).
+#   · « Services & prestations » → service (valeur ajoutée par STKCAT2) : une
+#     prestation n'est pas un équipement, et sans type honnête la catégorie
+#     restait NULL, indistinguable d'une catégorie simplement non typée.
+#   · « Structures & fixation » → structure ; « Panneaux photovoltaïques » →
+#     panneau ; « Batteries » → batterie ; « Câbles » → cable ; « Pompes » →
+#     pompe ; « Variateurs » → variateur.
+TYPES_PAR_CATEGORIE = {
+    'Panneaux photovoltaïques': 'panneau',
+    'Onduleurs réseau': 'onduleur',
+    'Onduleurs hybrides': 'onduleur',
+    'Onduleurs hors réseau': 'onduleur',
+    'Batteries': 'batterie',
+    'Structures & fixation': 'structure',
+    'Protection & accessoires': 'protection',
+    'Câbles': 'cable',
+    'Pompes': 'pompe',
+    'Variateurs': 'variateur',
+    'Services & prestations': 'service',
+    # Les trois catégories du jeu de DÉMONSTRATION (``seed_demo``), qui
+    # portent leurs propres libellés : MÊME table, un seul endroit à tenir.
+    'Panneaux solaires': 'panneau',
+    'Onduleurs': 'onduleur',
+    'Accessoires': 'accessoire',
+}
+
+
+def type_equipement_pour(nom_categorie):
+    """Le ``type_equipement`` d'une catégorie par son nom EXACT, sinon None.
+
+    None = catégorie LIBRE (créée ou renommée par une société) : elle reste
+    NON typée, exactement comme avant — jamais un type deviné par
+    ressemblance, jamais un type imposé à un libellé qu'on ne connaît pas."""
+    return TYPES_PAR_CATEGORIE.get(nom_categorie)
+
+
+def appliquer_type_equipement(categorie):
+    """Pose le ``type_equipement`` d'une catégorie SEULEMENT s'il est vide.
+
+    Aucune écriture si la catégorie porte déjà un type (un arbitrage posé à la
+    main dans l'écran Catégories n'est JAMAIS écrasé) ni si son nom est libre.
+    Renvoie True quand une écriture a eu lieu — donc False au second passage :
+    le seeder reste idempotent, un re-run ne produit aucun diff."""
+    if categorie.type_equipement:
+        return False
+    attendu = type_equipement_pour(categorie.nom)
+    if not attendu:
+        return False
+    categorie.type_equipement = attendu
+    categorie.save(update_fields=['type_equipement'])
+    return True
+
+
 def classify_categorie(nom):
     """Catégorie cible d'un produit, par mots-clés du nom (insensible accents
     usuels). Tout produit a EXACTEMENT une catégorie ; l'inconnu tombe dans
@@ -1566,11 +1635,17 @@ class Command(BaseCommand):
 
         def get_categorie(nom):
             if nom not in categories:
-                categories[nom], _ = Categorie.objects.get_or_create(
+                # STKCAT3 — le TYPE est posé À LA SOURCE, à la création ; une
+                # catégorie qui existait déjà SANS type est comblée (jamais
+                # écrasée si elle en porte un).
+                categorie, _ = Categorie.objects.get_or_create(
                     company=company, nom=nom,
                     defaults={'description': 'Catalogue simulateur',
-                              'ordre': _ordres.get(nom, 100)},
+                              'ordre': _ordres.get(nom, 100),
+                              'type_equipement': type_equipement_pour(nom)},
                 )
+                appliquer_type_equipement(categorie)
+                categories[nom] = categorie
             return categories[nom]
 
         for nom, sku, cat, sell_ttc, buy_ttc, qte, seuil in CATALOGUE:
@@ -1895,16 +1970,23 @@ class Command(BaseCommand):
         # déjà à 10 % n'est jamais retouché. Seuls tva / prix HT dérivés
         # bougent — le TTC affiché et chiffré ne change JAMAIS.
         # ── Taxonomie CATÉGORIE → MARQUE (re-catégorisation autorisée) ──
-        # Crée les 10 catégories ordonnées et range CHAQUE produit dans
-        # exactement une. Rien n'est supprimé ; prix/specs/marques intacts.
+        # Crée les 11 catégories ordonnées (STKCAT3 : le commentaire disait
+        # « 10 », périmé depuis l'ajout d'« Onduleurs hors réseau ») et range
+        # CHAQUE produit dans exactement une. Rien n'est supprimé ;
+        # prix/specs/marques intacts.
         taxo = {}
         for nom_cat, ordre in TAXONOMIE:
             cat, created_cat = Categorie.objects.get_or_create(
                 company=company, nom=nom_cat,
-                defaults={'description': 'Taxonomie catalogue', 'ordre': ordre})
+                defaults={'description': 'Taxonomie catalogue', 'ordre': ordre,
+                          # STKCAT3 — typée dès la création.
+                          'type_equipement': type_equipement_pour(nom_cat)})
             if cat.ordre != ordre:
                 cat.ordre = ordre
                 cat.save(update_fields=['ordre'])
+            # STKCAT3 — comble une catégorie préexistante restée NON typée ;
+            # un type posé à la main par le fondateur n'est jamais écrasé.
+            appliquer_type_equipement(cat)
             taxo[nom_cat] = cat
         # AUD201 (R2-31, correctif 1) — les trois boucles ci-dessous ne
         # mutent QUE les SKU réellement semés par ce fichier (``SKUS_SEMES``).
