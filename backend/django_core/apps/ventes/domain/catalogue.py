@@ -35,6 +35,7 @@ import unicodedata
 # ``solar_design`` est du stdlib pur : cet import ne tire ni Django, ni
 # modèle, ni I/O, et ne peut donc pas boucler.
 from apps.ventes import solar_design as _sd
+from core.product_roles import est_panneau as _est_panneau
 
 
 def marque_preferee(company, gamme_nom, role):
@@ -742,6 +743,11 @@ def _est_triphase(nom):
     return bool(_TRI_RE.search(nom or ''))
 
 
+def _exclut_panneau(d):
+    """STKCAT22 — familles qui ne sont JAMAIS un panneau (miroir de solar.js isPanel)."""
+    return any(k in d for k in ('onduleur', 'batterie', 'smart meter', 'wifi', 'dongle'))
+
+
 def classer_produit(nom):
     """Catégorie catalogue d'un produit — port de ``classifyProduct``.
 
@@ -765,7 +771,12 @@ def classer_produit(nom):
         return 'onduleur_offgrid'
     if 'onduleur' in n and ('reseau' in n or 'injection' in n):
         return 'onduleur_reseau'
-    if 'panneau' in n:
+    # STKCAT22 (paire indissociable avec solar.js::classifyProduct) — la
+    # reconnaissance ELARGIE de core.product_roles.est_panneau (mot « panneau(x) »,
+    # « module » + qualifiant PV, marque + wattage) remplace le seul mot
+    # « panneau » ; memes exclusions que l'ecran (isPanel) : onduleur, batterie,
+    # smart meter, wifi, dongle ne sont jamais des panneaux.
+    if _est_panneau(nom or '', exclut=_exclut_panneau):
         return 'panneau'
     if 'batterie' in n:
         return 'batterie'

@@ -1317,7 +1317,10 @@ export function classifyProduct(nom) {
   if (n.includes('onduleur') && (n.includes('reseau') || n.includes('injection'))) {
     return 'onduleur_reseau'
   }
-  if (n.includes('panneau')) return 'panneau'
+  // STKCAT22 (paire indissociable avec classer_produit côté serveur) — la
+  // reconnaissance élargie isPanel (panneau, module + qualifiant PV, marque +
+  // wattage) remplace le seul mot « panneau ».
+  if (isPanel(nom)) return 'panneau'
   if (n.includes('batterie')) return 'batterie'
   if (n.includes('structure')) return 'structure'
   if (n.includes('socle')) return 'socle'
