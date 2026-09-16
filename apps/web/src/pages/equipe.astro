@@ -4,22 +4,29 @@
  * Meryem comme téléphone équipe »).
  *
  * Ouvrir cette page UNE FOIS sur un appareil pose le cookie `tq_equipe`
- * (2 ans) : dès lors, les propositions ouvertes depuis cet appareil — MÊME
- * par le vrai lien client — ne comptent plus jamais comme des lectures
- * client (ni compteur, ni note chatter, ni notification, ni beacon
- * d'engagement — apps/ventes/public_views.py::_appareil_equipe). L'ouverture
- * d'un Aperçu interne pose le même cookie (ceinture).
+ * (2 ans, propre à CE navigateur) : dès lors, les propositions ouvertes
+ * depuis cet appareil — MÊME par le vrai lien client — ne comptent plus
+ * jamais comme des lectures client (ni compteur, ni note chatter, ni
+ * notification, ni beacon d'engagement —
+ * apps/ventes/public_views.py::_appareil_equipe). L'ouverture d'un Aperçu
+ * interne pose le même cookie (ceinture).
  *
- * T4 (cookie partagé ERP↔site) — le marquage est désormais AUTOMATIQUE pour
- * tout navigateur déjà connecté à l'ERP (api.taqinor.ma) : celui-ci pose
- * lui-même `tq_equipe`/`tq_appareil` avec `Domain=taqinor.ma`, lu ici comme
- * sur `/proposition/<token>` sans action manuelle. Cette page reste le
- * REPLI MANUEL (téléphone jamais connecté à l'ERP, navigateur distinct…) —
- * même domaine partagé pour rester cohérente avec le marquage automatique.
+ * M4 (décision orchestrateur, correctif round 2 — 16/09/2026) — un
+ * navigateur déjà connecté à l'ERP (api.taqinor.ma) est reconnu
+ * AUTOMATIQUEMENT, mais PAS via ce cookie : `tq_equipe` n'est PAS scopé
+ * société, donc l'ERP ne le pose JAMAIS. L'ERP pose seulement `tq_appareil`
+ * (identifiant partagé, `Domain=taqinor.ma`, voir T1/T2) et enregistre
+ * l'appareil dans le registre SERVEUR `crm.AppareilEquipe`, scopé par
+ * société. Cette page reste le SEUL endroit qui pose `tq_equipe`, et le
+ * repli MANUEL pour un appareil qui n'ouvre jamais l'ERP (téléphone perso
+ * non connecté, navigateur distinct…).
  *
- * `?retirer=1` efface le marquage (un appareil prêté/vendu redevient normal)
- * — les DEUX variantes (host-only ET domaine partagé, selon ce qui a pu être
- * posé par le passé sur cet hôte).
+ * `?retirer=1` efface UNIQUEMENT le marquage par cookie de CE navigateur
+ * (les deux variantes posées ici : host-only ET domaine partagé). Un
+ * appareil enregistré côté ERP (registre serveur) reste exclu tant qu'il
+ * n'est pas retiré depuis « Visiteurs & alertes » dans l'ERP — cette page ne
+ * peut PAS l'en retirer. `tq_appareil` n'est jamais supprimé (continuité des
+ * traces).
  * noindex : page utilitaire interne, jamais un contenu à référencer. Aucune
  * donnée n'est collectée ici — le cookie ne porte que « 1 ».
  */
@@ -52,8 +59,14 @@ if (retirer) {
       <>
         <h1 class="text-2xl font-semibold">Marquage retiré</h1>
         <p class="mt-4 text-lune-soft">
-          Cet appareil est redevenu un appareil normal : ses ouvertures de
-          propositions comptent à nouveau comme des lectures client.
+          Le marquage par cookie de <strong>ce navigateur</strong> est retiré
+          : ses ouvertures de propositions comptent à nouveau comme des
+          lectures client.
+        </p>
+        <p class="mt-4 text-lune-soft">
+          Si cet appareil est aussi enregistré côté ERP (registre serveur),
+          il reste exclu tant qu'il n'est pas retiré depuis « Visiteurs &amp;
+          alertes » dans l'ERP — cette page ne peut pas l'en retirer.
         </p>
       </>
     ) : (
@@ -67,9 +80,9 @@ if (retirer) {
         </p>
         <p class="mt-4 text-lune-soft">
           Un navigateur déjà connecté à l'espace ERP (api.taqinor.ma) est
-          désormais marqué <strong>automatiquement</strong> — cette page ne
-          reste nécessaire que pour un appareil qui n'ouvre jamais l'ERP
-          (téléphone perso non connecté, navigateur distinct…).
+          reconnu <strong>automatiquement</strong> (registre serveur) — cette
+          page ne reste nécessaire que pour un appareil qui n'ouvre jamais
+          l'ERP (téléphone perso non connecté, navigateur distinct…).
         </p>
         <p class="mt-4 text-lune-soft">
           À faire une fois sur <strong>chaque</strong> appareil de l'équipe
