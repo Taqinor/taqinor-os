@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   groupCatalogue, searchCatalogue, keySpec, sansPrix, MARQUE_GENERIQUE,
+  typeOfProduit, familleAttendue,
 } from './catalogue.js'
 import {
   classifyProduct, isPanel, isBattery, isReseauInverter, isHybridInverter,
@@ -112,4 +113,51 @@ test('762 — exclusivité : un onduleur réseau n\'est ni hybride ni batterie',
   assert.equal(isHybridInverter(reseau), false)
   assert.equal(isBattery(reseau), false)
   assert.equal(isPanel(reseau), false)
+})
+
+test('typeOfProduit : type d\'un produit via categorie_type ou categorie.type_equipement', () => {
+  // Avec categorie_type plat
+  const withFlat = { categorie_type: 'onduleur_reseau', categorie: { type_equipement: 'onduleur' } }
+  assert.equal(typeOfProduit(withFlat), 'onduleur_reseau')
+
+  // Repli sur categorie.type_equipement
+  const withNested = { categorie: { type_equipement: 'panneau' } }
+  assert.equal(typeOfProduit(withNested), 'panneau')
+
+  // Aucun type
+  const noType = { categorie: {} }
+  assert.equal(typeOfProduit(noType), null)
+
+  // Produit null/undefined
+  assert.equal(typeOfProduit(null), null)
+  assert.equal(typeOfProduit(undefined), null)
+})
+
+test('familleAttendue : mappe les rôles aux familles de produits', () => {
+  // Structure — trois rôles
+  assert.equal(familleAttendue('structure'), 'structure')
+  assert.equal(familleAttendue('structure_acier'), 'structure')
+  assert.equal(familleAttendue('structure_alu'), 'structure')
+
+  // Panneau
+  assert.equal(familleAttendue('panneau'), 'panneau')
+
+  // Batterie
+  assert.equal(familleAttendue('batterie'), 'batterie')
+
+  // Onduleurs — tous retournent null
+  assert.equal(familleAttendue('onduleur_reseau'), null)
+  assert.equal(familleAttendue('onduleur_hybride'), null)
+  assert.equal(familleAttendue('onduleur_offgrid'), null)
+
+  // Câbles — tous retournent null
+  assert.equal(familleAttendue('cable_dc'), null)
+  assert.equal(familleAttendue('cable_terre'), null)
+
+  // Rôle inconnu
+  assert.equal(familleAttendue('role_inconnu'), null)
+
+  // null/undefined
+  assert.equal(familleAttendue(null), null)
+  assert.equal(familleAttendue(undefined), null)
 })

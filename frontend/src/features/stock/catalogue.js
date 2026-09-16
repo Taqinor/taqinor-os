@@ -76,6 +76,21 @@ export function keySpec(p) {
 export const prixTtc = (p) => ttcFromHt(p.prix_vente, tauxTvaOf(p))
 export const sansPrix = (p) => !(parseFloat(p.prix_vente) > 0)
 
+// Type d'un produit : le champ plat `categorie_type` avec repli sur la
+// catégorie imbriquée pour rester robuste si l'API n'a pas encore le champ.
+export const typeOfProduit = (p) => p?.categorie_type ?? p?.categorie?.type_equipement ?? null
+
+// Famille attendue pour un rôle dans la composition d'une installation.
+// Mappe les rôles aux familles de produits : 'structure' pour les structures,
+// 'panneau' pour les panneaux, 'batterie' pour les batteries, null pour tout le reste.
+export const familleAttendue = (role) => {
+  if (!role) return null
+  if (['structure', 'structure_acier', 'structure_alu'].includes(role)) return 'structure'
+  if (role === 'panneau') return 'panneau'
+  if (role === 'batterie') return 'batterie'
+  return null
+}
+
 /* ── APX19 — Sévérité du niveau de stock ───────────────────────────────────
    Avant, RUPTURE (0 en stock, on ne peut plus vendre) et SOUS SEUIL (il en
    reste, il faut recommander) partageaient un unique badge « stock bas » :
