@@ -1837,7 +1837,8 @@ class AppareilEquipeSerializer(serializers.ModelSerializer):
     """QJ-EQUIPE-2 — un appareil ÉQUIPE, exclu du traçage anti-fraude.
 
     La société et ``cree_par`` sont posés côté serveur (jamais lus du corps de
-    requête, multi-tenant) ; voir ``AppareilEquipeViewSet.perform_create``.
+    requête, multi-tenant) ; voir ``crm.services.enregistrer_appareil_equipe``,
+    l'unique chemin d'écriture du registre (``create`` et ``ce_navigateur``).
     """
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     cree_par = serializers.PrimaryKeyRelatedField(read_only=True)

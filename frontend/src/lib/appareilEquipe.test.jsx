@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import {
   lireCookie, estUuidPlausible, cleEnregistrement, doitEnregistrer,
-  enregistrerNavigateurEquipe,
+  enregistrerNavigateurEquipe, CLE_APPAREIL_ERP,
 } from './appareilEquipe'
 
 /* QJ-EQUIPE-3 — voir le commentaire d'en-tête de appareilEquipe.js pour le
@@ -122,6 +122,22 @@ describe('enregistrerNavigateurEquipe (effet best-effort)', () => {
     const api = { enregistrerNavigateurEquipe: (data) => { recu = data; return Promise.resolve({ data: {} }) } }
     await enregistrerNavigateurEquipe({ id: 8 }, { api, storage: fakeStorage() })
     expect(recu.appareil_id).toBe('')
+  })
+
+  it('sans cookie, renvoie l’identifiant attribué la dernière fois par le serveur (localStorage)', async () => {
+    const uuid = '22222222-2222-4222-8222-222222222222'
+    let recu = null
+    const api = { enregistrerNavigateurEquipe: (data) => { recu = data; return Promise.resolve({ data: {} }) } }
+    await enregistrerNavigateurEquipe({ id: 10 }, { api, storage: fakeStorage({ [CLE_APPAREIL_ERP]: uuid }) })
+    expect(recu.appareil_id).toBe(uuid)
+  })
+
+  it('mémorise l’identifiant renvoyé par le serveur pour le prochain passage', async () => {
+    const uuid = '33333333-3333-4333-8333-333333333333'
+    const api = { enregistrerNavigateurEquipe: () => Promise.resolve({ data: { appareil_id: uuid } }) }
+    const storage = fakeStorage()
+    await enregistrerNavigateurEquipe({ id: 11 }, { api, storage })
+    expect(storage.getItem(CLE_APPAREIL_ERP)).toBe(uuid)
   })
 
   it('avale un échec réseau sans throw, et ne pose pas la clé de rappel', async () => {

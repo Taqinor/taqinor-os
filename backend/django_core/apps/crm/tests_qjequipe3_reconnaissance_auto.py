@@ -161,6 +161,20 @@ class TestGatePublicReconnaitLappareilEquipe(TestCase):
         self.assertTrue(resultat)
         self.assertEqual(VisiteExterne.objects.count(), 1)
 
+    def test_appareil_equipe_dune_autre_societe_reste_compte(self):
+        """MULTI-TENANT (revue adversariale 16/09) — le registre est scopé
+        société : le navigateur d'un utilisateur d'une AUTRE société de cet
+        ERP, qui peut être NOTRE prospect, n'est pas « équipe » pour nous."""
+        from apps.ventes.public_views import _stamp_view_si_public
+
+        AppareilEquipe.objects.create(
+            company=make_company('qjeq3-gate-autre'),
+            appareil_id=AUTRE_APPAREIL)
+        resultat = _stamp_view_si_public(
+            self.link, False, self._requete(entete=AUTRE_APPAREIL))
+        self.assertTrue(resultat)
+        self.assertEqual(VisiteExterne.objects.count(), 1)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # (c) « Reconnaître ce navigateur »
@@ -213,18 +227,17 @@ class TestCeNavigateur(TestCase):
                 company=self.company, appareil_id=AUTRE_APPAREIL).libelle,
             'Téléphone Reda')
 
-    def test_les_deux_cookies_partages_sont_poses(self):
+    def test_le_cookie_appareil_est_pose_jamais_tq_equipe(self):
+        """Revue adversariale 16/09 — l'ERP pose `tq_appareil` (lisible par le
+        site, qui aligne son localStorage dessus) et JAMAIS `tq_equipe` : ce
+        dernier n'est pas scopé société (voir `requete_marquee_equipe`)."""
         reponse = self.api.post(
             CE_NAVIGATEUR_URL, {'appareil_id': AUTRE_APPAREIL}, format='json')
-        self.assertIn(visites.COOKIE_EQUIPE, reponse.cookies)
         self.assertIn(visites.COOKIE_APPAREIL, reponse.cookies)
-        self.assertEqual(reponse.cookies[visites.COOKIE_EQUIPE].value, '1')
         self.assertEqual(
             reponse.cookies[visites.COOKIE_APPAREIL].value, AUTRE_APPAREIL)
-        # `tq_equipe` n'a jamais besoin d'être lu par du JavaScript ;
-        # `tq_appareil` SI (le site aligne son localStorage dessus).
-        self.assertTrue(reponse.cookies[visites.COOKIE_EQUIPE]['httponly'])
         self.assertFalse(reponse.cookies[visites.COOKIE_APPAREIL]['httponly'])
+        self.assertNotIn(visites.COOKIE_EQUIPE, reponse.cookies)
 
     @override_settings(PUBLIC_SITE_URL='https://taqinor.ma',
                        ALLOWED_HOSTS=['api.taqinor.ma'])
@@ -236,8 +249,6 @@ class TestCeNavigateur(TestCase):
             format='json', HTTP_HOST='api.taqinor.ma')
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(
-            reponse.cookies[visites.COOKIE_EQUIPE]['domain'], 'taqinor.ma')
-        self.assertEqual(
             reponse.cookies[visites.COOKIE_APPAREIL]['domain'], 'taqinor.ma')
 
     @override_settings(PUBLIC_SITE_URL='https://taqinor.ma')
@@ -248,7 +259,6 @@ class TestCeNavigateur(TestCase):
             CE_NAVIGATEUR_URL, {'appareil_id': AUTRE_APPAREIL},
             format='json', HTTP_HOST='testserver')
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(reponse.cookies[visites.COOKIE_EQUIPE]['domain'], '')
         self.assertEqual(
             reponse.cookies[visites.COOKIE_APPAREIL]['domain'], '')
 

@@ -13,9 +13,13 @@ import crmApi from '../api/crmApi'
    Fonctions PURES (testables sans DOM réel) + UNE fonction d'effet
    (`enregistrerNavigateurEquipe`) qui orchestre le tout. Le module ne pose
    JAMAIS lui-même de cookie — c'est la RÉPONSE du serveur qui pose
-   `tq_equipe`/`tq_appareil` (Domain=taqinor.ma) ; on se contente de relire
-   `tq_appareil` s'il existe déjà, pour laisser le serveur réutiliser le même
-   identifiant plutôt que d'en émettre un nouveau à chaque appareil.
+   `tq_appareil` sur le domaine partagé du site (jamais `tq_equipe`, signal
+   non scopé société : l'exclusion vient du registre serveur, scopé société).
+   On se contente de relire `tq_appareil` s'il existe déjà — sinon
+   l'identifiant que le serveur nous a attribué la dernière fois
+   (localStorage `tq_appareil_erp`) — pour qu'il réutilise le même identifiant
+   plutôt que d'en émettre un nouveau à chaque passage (un navigateur qui perd
+   ses cookies mais garde son localStorage ne crée pas une ligne par jour).
    ========================================================================== */
 
 const VINGT_QUATRE_HEURES_MS = 24 * 60 * 60 * 1000
@@ -44,6 +48,9 @@ export function lireCookie(nom, source = (typeof document !== 'undefined' ? docu
 export function estUuidPlausible(v) {
   return typeof v === 'string' && UUID_RE.test(v)
 }
+
+/** Clé localStorage de l'identifiant attribué par le serveur (repli sans cookie). */
+export const CLE_APPAREIL_ERP = 'tq_appareil_erp'
 
 /** Clé localStorage « déjà enregistré » — une par utilisateur (poste partagé). */
 export function cleEnregistrement(userId) {
@@ -78,16 +85,26 @@ export function enregistrerNavigateurEquipe(user, { api = crmApi, storage = loca
   if (!doitEnregistrer(dernier, maintenantEff)) return Promise.resolve()
 
   const cookieAppareil = lireCookie('tq_appareil')
-  const appareilId = estUuidPlausible(cookieAppareil) ? cookieAppareil : ''
+  let appareilId = estUuidPlausible(cookieAppareil) ? cookieAppareil : ''
+  if (!appareilId) {
+    try {
+      const memorise = storage?.getItem(CLE_APPAREIL_ERP)
+      if (estUuidPlausible(memorise)) appareilId = memorise
+    } catch {
+      /* storage indisponible : le serveur attribuera un identifiant */
+    }
+  }
   const navigateurUA = (typeof navigator !== 'undefined' && navigator.userAgent) || ''
 
   return api.enregistrerNavigateurEquipe({
     appareil_id: appareilId,
     navigateur: navigateurUA.slice(0, 80),
   })
-    .then(() => {
+    .then((res) => {
       try {
         storage?.setItem(cle, maintenantEff.toISOString())
+        const attribue = res?.data?.appareil_id
+        if (estUuidPlausible(attribue)) storage?.setItem(CLE_APPAREIL_ERP, attribue)
       } catch {
         /* best-effort : un storage indisponible (navigation privée…) ne doit
            jamais empêcher l'enregistrement serveur, juste le re-tenter plus

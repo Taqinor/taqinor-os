@@ -62,17 +62,21 @@ FENETRE_CORRELATION_JOURS = 30
 
 # ── QJEQUIPE3 — les DEUX cookies partagés site ↔ ERP ────────────────────────
 #
-# Posés sur le domaine enregistrable du site (``settings.PUBLIC_SITE_URL``, ex.
-# ``taqinor.ma``) pour être lisibles à la fois par le site public (le Worker SSR
-# les relaie en en-têtes sur ses fetchs) ET par les liens directs servis par
-# l'ERP (``api.taqinor.ma``) :
+# Posés sur le domaine enregistrable du site (hôte de ``settings.PUBLIC_SITE_URL``)
+# pour être lisibles à la fois par le site public (le Worker SSR les relaie en
+# en-têtes sur ses fetchs) ET par les liens directs servis par l'API de l'ERP
+# (sous-domaine du même site) :
 #
-#   · ``tq_equipe``   — « ce navigateur est un navigateur de l'équipe » ('1') ;
+#   · ``tq_equipe``   — « ce navigateur est un navigateur de l'équipe » ('1').
+#     Posé UNIQUEMENT par le site (page ``/equipe``, ouverture d'un Aperçu
+#     interne) : signal NON scopé société, donc JAMAIS posé par l'ERP — un
+#     utilisateur d'une AUTRE société de cet ERP, prospect chez nous, doit
+#     rester compté ;
 #   · ``tq_appareil`` — l'``appareil_id`` (uuid v4) de CET appareil, le même
-#     identifiant que le site pose dans son ``localStorage``. C'est lui qui
-#     permet au registre SERVEUR ``crm.AppareilEquipe`` de reconnaître
-#     l'appareil même quand le cookie ``tq_equipe`` manque (autre navigateur,
-#     navigateur intégré WhatsApp, navigation privée).
+#     identifiant que le site pose dans son ``localStorage`` ; posé par le
+#     site ET par l'ERP (``ce-navigateur``). C'est lui qui permet au registre
+#     SERVEUR ``crm.AppareilEquipe`` — scopé société — de reconnaître
+#     l'appareil quel que soit le navigateur ou le cookie ``tq_equipe``.
 COOKIE_EQUIPE = 'tq_equipe'
 COOKIE_APPAREIL = 'tq_appareil'
 
@@ -171,7 +175,7 @@ def appareil_de_requete(request) -> str:
          jamais : sans ce relais, une ouverture de proposition n'a AUCUNE des
          trois premières sources et le registre n'exclut rien) ;
       4. QJEQUIPE3 — le cookie ``tq_appareil`` lui-même, quand la requête
-         arrive DIRECTEMENT sur l'ERP (``api.taqinor.ma``) sans passer par le
+         arrive DIRECTEMENT sur l'API de l'ERP (sous-domaine du site) sans passer par le
          SSR : lien PDF ouvert à la main, document servi par l'API. Le cookie
          est posé sur le domaine enregistrable du site, donc visible des deux
          côtés.
@@ -262,6 +266,12 @@ def requete_marquee_equipe(company, request) -> bool:
          relayé par le SSR, ou cookie ``tq_appareil``) — le seul des trois qui
          survit à un changement de navigateur ou à une navigation privée.
 
+    MULTI-TENANT : les signaux 1-2 ne sont PAS scopés société — ce sont des
+    gestes DÉLIBÉRÉS faits sur le site (``/equipe``, aperçu interne), jamais
+    posés par l'ERP ; le signal 3 l'est, et c'est le seul que l'ERP alimente
+    (``ce-navigateur``) : un utilisateur d'une autre société de cet ERP qui
+    est NOTRE prospect reste compté.
+
     Best-effort absolu : jamais d'exception, ``False`` sur ``request`` absent
     (mieux vaut compter une lecture de trop que casser un point public)."""
     if request is None:
@@ -320,8 +330,9 @@ def enregistrer_appareil_equipe(company, appareil_id, *, libelle='',
 def domaine_cookies_equipe(request):
     """Domaine à poser sur ``tq_equipe``/``tq_appareil``, ou ``None``.
 
-    Les deux cookies doivent être lisibles par le SITE (``taqinor.ma``, où le
-    Worker SSR les relaie en en-têtes) ET par l'ERP (``api.taqinor.ma``, qui
+    Les cookies doivent être lisibles par le SITE (hôte de ``PUBLIC_SITE_URL``,
+    où le Worker SSR les relaie en en-têtes) ET par l'API de l'ERP (son
+    sous-domaine, qui
     sert les liens PDF directs) : ils sont donc posés sur le domaine
     enregistrable du site, lu de ``settings.PUBLIC_SITE_URL`` — jamais dérivé
     de la requête (SCA29 : aucune marque en dur, et l'hôte entrant n'est pas

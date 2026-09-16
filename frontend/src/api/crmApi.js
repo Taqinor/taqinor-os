@@ -389,8 +389,9 @@ const crmApi = {
   // l'ERP est un appareil équipe (plus besoin du marquage manuel ci-dessus
   // pour l'usage courant — il reste le filet pour un appareil externe, ex.
   // le téléphone perso d'un commercial). `data` : { appareil_id, navigateur }
-  // — la réponse pose ELLE-MÊME les cookies partagés `tq_equipe`/
-  // `tq_appareil` (Domain=taqinor.ma) ; rien à faire côté client.
+  // — la réponse pose ELLE-MÊME le cookie partagé `tq_appareil` sur le
+  // domaine du site (jamais `tq_equipe`, non scopé société : l'exclusion vient
+  // du registre serveur, scopé société) ; rien à faire côté client.
   enregistrerNavigateurEquipe: (data) => api.post('/crm/appareils-equipe/ce-navigateur/', data),
   deleteAppareilEquipe: (id) => api.delete(`/crm/appareils-equipe/${id}/`),
 

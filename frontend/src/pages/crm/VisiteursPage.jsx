@@ -206,7 +206,7 @@ export default function VisiteursPage() {
     setBusyAppareil(appareilId)
     try {
       await crmApi.deleteAppareilEquipe(entree.id)
-      toast.success('Appareil retiré de l’équipe.')
+      toast.success('Appareil retiré de l’équipe. S’il se connecte encore à l’ERP, il sera reconnu à nouveau automatiquement.')
       await Promise.all([chargerAppareils(), chargerEquipe()])
     } catch (err) {
       toast.error(frenchError(err, "Impossible de retirer cet appareil."))

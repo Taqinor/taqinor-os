@@ -46,7 +46,7 @@ from .serializers import (
 from apps.records.views import ChatterViewSetMixin
 from . import activity
 from .services import (
-    COOKIE_APPAREIL, COOKIE_EQUIPE, default_responsable_for,
+    COOKIE_APPAREIL, default_responsable_for,
     domaine_cookies_equipe, enregistrer_appareil_equipe,
 )
 from .devis_auto import champs_manquants, message_manquants
@@ -4246,8 +4246,8 @@ _UUID_APPAREIL_RE = re.compile(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
     re.IGNORECASE)
 
-#: Durée de vie des deux cookies d'équipe : 2 ans. Marquer « ce navigateur est
-#: à l'équipe » est une décision durable, pas une session.
+#: Durée de vie du cookie ``tq_appareil`` posé par l'ERP : 2 ans. L'identité
+#: d'un navigateur de l'équipe est durable, pas une session.
 _COOKIES_EQUIPE_MAX_AGE = 730 * 24 * 3600
 
 #: Longueur retenue du navigateur annoncé dans le libellé automatique — assez
@@ -4323,10 +4323,18 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
         SITE dans son ``localStorage`` — n'est pas lisible depuis l'ERP. Cet
         endpoint fait les deux en un seul appel : il retient l'identifiant
         (celui envoyé par l'écran, sinon celui du cookie ``tq_appareil``,
-        sinon un neuf), l'inscrit au registre de la société, et REPOSE les deux
-        cookies partagés sur le domaine du site — de sorte que la prochaine
-        ouverture d'une proposition, qu'elle passe par le SSR (en-tête
-        ``X-Appareil-Id``) ou directement par l'API (cookie), soit reconnue.
+        sinon un neuf), l'inscrit au registre de la société, et pose le cookie
+        partagé ``tq_appareil`` sur le domaine du site — de sorte que la
+        prochaine ouverture d'une proposition, qu'elle passe par le SSR
+        (en-tête ``X-Appareil-Id``) ou directement par l'API (cookie), soit
+        reconnue PAR LE REGISTRE, scopé société.
+
+        JAMAIS le cookie ``tq_equipe`` (revue adversariale 16/09/2026) : ce
+        signal court-circuite le gate public SANS regarder la société. Un
+        utilisateur d'une AUTRE société de cet ERP peut être NOTRE prospect —
+        avec ``tq_equipe`` posé à sa connexion, l'ouverture de son propre
+        devis chez nous ne notifierait plus jamais personne. Le registre, lui,
+        ne connaît l'appareil que pour SA société.
 
         OUVERT À TOUT RÔLE, délibérément : un commercial doit pouvoir dire
         « ce téléphone est le mien » sans passer par un responsable. Il ne
@@ -4356,6 +4364,12 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
         appareil, _cree = enregistrer_appareil_equipe(
             request.user.company, appareil_id, libelle=libelle,
             user=request.user)
+        if appareil is None:
+            # Compte sans société (jamais un 500 pour un appel de fond).
+            return Response(
+                {'detail': 'Aucune société rattachée à ce compte : '
+                           'appareil non enregistré.'},
+                status=status.HTTP_400_BAD_REQUEST)
 
         reponse = Response(self.get_serializer(appareil).data,
                            status=status.HTTP_200_OK)
@@ -4371,10 +4385,10 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
             'secure': request.is_secure() or not settings.DEBUG,
             'samesite': 'Lax',
         }
-        # `tq_equipe` n'a jamais besoin d'être lu par du JavaScript : httpOnly.
-        reponse.set_cookie(COOKIE_EQUIPE, '1', httponly=True, **commun)
-        # `tq_appareil` SI : le site le lit pour aligner son `localStorage` et
-        # le relayer en en-tête `X-Appareil-Id` sur ses fetchs SSR.
+        # `tq_appareil` lisible par JavaScript (httponly=False) : le site le
+        # lit pour aligner son `localStorage` et le relayer en en-tête
+        # `X-Appareil-Id` sur ses fetchs SSR. `tq_equipe` n'est PAS posé ici —
+        # voir le docstring (signal non scopé société).
         reponse.set_cookie(COOKIE_APPAREIL, appareil.appareil_id,
                            httponly=False, **commun)
         return reponse

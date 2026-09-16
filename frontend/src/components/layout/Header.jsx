@@ -76,7 +76,7 @@ export default function Header({ onMenu }) {
   // depuis leur téléphone pour vérifier un devis, ce qui déclenchait la
   // notification « devis ouvert » comme si c'était le prospect. Désormais
   // tout navigateur connecté à l'ERP s'enregistre lui-même comme appareil
-  // équipe côté serveur (cookie partagé taqinor.ma posé par la réponse),
+  // équipe côté serveur (registre scopé société + cookie d'identifiant partagé),
   // sans geste manuel — au plus une fois par 24 h, en best-effort.
   useEffect(() => {
     if (user?.id) enregistrerNavigateurEquipe(user)
