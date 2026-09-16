@@ -2188,3 +2188,131 @@ class ChaineJusquAuPayloadTests(_Base):
                    if o['cle'] == 'eco')
         self.assertIs(eco['ajuste'], False)
         self.assertEqual(eco['sans']['nb_panneaux'], 10)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. STKCAT8 — LES TROIS CARTES COMPOSENT LA STRUCTURE DU DEVIS
+# ═══════════════════════════════════════════════════════════════════════════
+
+class StructureDuDevisDansLesTaillesTests(TestCase):
+    """Un devis ALUMINIUM ne reçoit plus une carte Éco/Max chiffrée en ACIER.
+
+    Le balayage de tailles composait chaque champ candidat avec le défaut
+    ``structure_type='acier'`` : trois cartes, deux matériaux, et un client qui
+    lit deux prix pour la même installation. La structure se LIT désormais sur
+    les LIGNES du devis — exactement comme le module de batterie (BATHOMO).
+    """
+
+    CATALOGUE = (
+        ('Panneau Canadien Solar 710W', '1450'),
+        ('Onduleur réseau Huawei 5kW Monophasé', '14000'),
+        ('Onduleur hybride Deye 5kW Monophasé', '17000'),
+        ('Structures acier', '500'),
+        ('Structures aluminium', '850'),
+        ('Socles', '80'),
+        ('Transport', '1000'),
+    )
+
+    def _company(self, slug):
+        from authentication.models import Company
+        return Company.objects.create(slug=slug, nom=slug)
+
+    def _semer_catalogue(self, company):
+        produits = {}
+        for nom, prix in self.CATALOGUE:
+            produits[nom] = Produit.objects.create(
+                company=company, nom=nom, prix_vente=Decimal(prix),
+                prix_achat=Decimal('1'), quantite_stock=100)
+        return produits
+
+    def _devis_avec_structure(self, company, produit_structure):
+        devis = Devis.objects.create(
+            company=company, reference='DEV-%s' % company.slug.upper(),
+            statut='brouillon', client=_client_de(company),
+            taux_tva=Decimal('20'), mode_installation='residentiel')
+        LigneDevis.objects.create(
+            devis=devis, produit=produit_structure,
+            designation=produit_structure.nom, quantite=Decimal('8'),
+            prix_unitaire=produit_structure.prix_vente, remise=Decimal('0'),
+            ordre=0)
+        return devis
+
+    def _contexte_reel(self, devis, company):
+        from apps.ventes.services import catalogue_de_la_societe
+        return ot._Contexte(
+            devis, {}, 710.0, catalogue_de_la_societe(company), {}, [])
+
+    @staticmethod
+    def _structure_composee(lignes):
+        roles = list(lignes.roles)
+        for index, ligne in enumerate(lignes):
+            if str(roles[index]).startswith('structure'):
+                return roles[index], ligne.designation
+        return None, None
+
+    def test_un_devis_aluminium_compose_ses_tailles_en_aluminium(self):
+        company = self._company('stkcat8-alu')
+        produits = self._semer_catalogue(company)
+        devis = self._devis_avec_structure(
+            company, produits['Structures aluminium'])
+        contexte = self._contexte_reel(devis, company)
+
+        self.assertEqual(contexte.structure_produit_id,
+                         produits['Structures aluminium'].id)
+        lignes = contexte.composer(8, avec_batterie=False)
+        self.assertIsNotNone(lignes)
+        role, designation = self._structure_composee(lignes)
+        self.assertEqual(designation, 'Structures aluminium')
+        self.assertEqual(role, 'structure_alu')
+
+    def test_un_devis_acier_reste_en_acier(self):
+        """Non-régression : le comportement d'hier pour un devis acier."""
+        company = self._company('stkcat8-acier')
+        produits = self._semer_catalogue(company)
+        devis = self._devis_avec_structure(
+            company, produits['Structures acier'])
+        contexte = self._contexte_reel(devis, company)
+
+        lignes = contexte.composer(8, avec_batterie=False)
+        self.assertIsNotNone(lignes)
+        self.assertEqual(self._structure_composee(lignes),
+                         ('structure_acier', 'Structures acier'))
+
+    def test_un_devis_sans_ligne_structure_compose_comme_hier(self):
+        company = self._company('stkcat8-sans')
+        self._semer_catalogue(company)
+        devis = Devis.objects.create(
+            company=company, reference='DEV-STKCAT8-SANS',
+            statut='brouillon', client=_client_de(company),
+            taux_tva=Decimal('20'), mode_installation='residentiel')
+        contexte = self._contexte_reel(devis, company)
+
+        self.assertIsNone(contexte.structure_produit_id)
+        lignes = contexte.composer(8, avec_batterie=False)
+        self.assertIsNotNone(lignes)
+        self.assertEqual(self._structure_composee(lignes),
+                         ('structure_acier', 'Structures acier'))
+
+    def test_un_devis_a_pergola_compose_sa_pergola(self):
+        """La pergola : son NOM ne dit pas « structure », c'est sa CATÉGORIE
+        TYPÉE qui la désigne — de bout en bout, de la lecture du devis au kit
+        composé pour les cartes Éco/Max."""
+        from apps.stock.models import Categorie
+
+        company = self._company('stkcat8-pergola')
+        self._semer_catalogue(company)
+        categorie = Categorie.objects.create(
+            company=company, nom='Structures spéciales', ordre=15,
+            type_equipement=Categorie.TypeEquipement.STRUCTURE)
+        pergola = Produit.objects.create(
+            company=company, nom='Pergola acier 4x3', categorie=categorie,
+            prix_vente=Decimal('18000'), prix_achat=Decimal('1'),
+            quantite_stock=5)
+        devis = self._devis_avec_structure(company, pergola)
+        contexte = self._contexte_reel(devis, company)
+
+        self.assertEqual(contexte.structure_produit_id, pergola.id)
+        lignes = contexte.composer(8, avec_batterie=False)
+        self.assertIsNotNone(lignes)
+        self.assertEqual(self._structure_composee(lignes),
+                         ('structure_acier', 'Pergola acier 4x3'))

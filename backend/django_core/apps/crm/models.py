@@ -784,6 +784,26 @@ class Lead(SoftDeleteModel):
         max_digits=6, decimal_places=2, null=True, blank=True)
     structure_pref = models.CharField(
         max_length=12, choices=StructurePref.choices, blank=True, null=True)
+    # STKCAT9 (fondateur 16/09/2026) — LE PRODUIT de structure choisi pour ce
+    # lead. ``structure_pref`` ne sait dire que « acier » ou « aluminium » : il
+    # ne peut donc PAS désigner une pergola, un carport ou un bac lesté, alors
+    # que le rail « catégorie typée » (STKCAT2) les rend enfin composables.
+    # Les deux COHABITENT : le produit, quand il est arrêté, est souverain ; à
+    # défaut, la préférence acier/alu décide comme avant (cf.
+    # ``ventes.domain.creation._structure_demandee``). Référence de modèle EN
+    # CHAÎNE — ``apps.crm`` n'importe jamais les modèles d'``apps.stock``.
+    structure_produit = models.ForeignKey(
+        'stock.Produit',
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name='+',
+        verbose_name='Structure choisie (catalogue)',
+        help_text='Produit de structure retenu pour ce lead (une fiche du '
+                  'catalogue dont la catégorie est typée « Structure »). '
+                  'Vide = c\'est « Préférence de structure » (acier / '
+                  'aluminium) qui décide, exactement comme avant.',
+    )
     taille_souhaitee_kwc = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     batterie_souhaitee = models.CharField(

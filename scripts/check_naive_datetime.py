@@ -118,7 +118,12 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # ajoutée à LeadActivity.OUTCOMES). MÊME champ, déclaration identique
     # avant/après (vérifié contre HEAD : `paye_le = models.DateField(
     # null=True, blank=True, verbose_name='Payée le')`). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2538",  # CommissionPartenaire.paye_le
+    # Remappe 2538->2558 (lane STKCAT9 16/09 : +20 lignes inserees AVANT
+    # CommissionPartenaire dans crm/models.py — le champ
+    # Lead.structure_produit et son commentaire). MEME champ, declaration
+    # identique avant/apres (verifie contre main : `paye_le = models.DateField(
+    # null=True, blank=True, verbose_name='Payee le')`). Bug-class #34.
+    "backend/django_core/apps/crm/models.py:2558",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.
