@@ -3406,12 +3406,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               <div class="chart-svg" data-chart-lang="ar" hidden set:html={chartCompactAr}></div>
               <p class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-lune-faint">
                 <span class="inline-flex items-center gap-1.5">
-                  <span class="inline-block h-2 w-2 flex-none rounded-full" style="background: var(--color-brass-400)" aria-hidden="true"></span>
+                  <span class="inline-block h-2 w-2 flex-none rounded-full" style="background: var(--color-brass-400, #e8b54a)" aria-hidden="true"></span>
                   <span data-i18n data-fr="Production solaire" data-en="Solar production" data-ar="الإنتاج الشمسي">Production solaire</span>
                 </span>
                 {chartHasConso && (
                   <span class="inline-flex items-center gap-1.5">
-                    <span class="inline-block h-2 w-2 flex-none rounded-full" style="background: var(--color-azur-300)" aria-hidden="true"></span>
+                    <span class="inline-block h-2 w-2 flex-none rounded-full" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
                     <span data-i18n data-fr="Votre consommation" data-en="Your consumption" data-ar="استهلاككم">Votre consommation</span>
                   </span>
                 )}
@@ -6225,17 +6225,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                    sur l'option recommandée. Sur l'autre option, le
                    pourcentage seul reste vrai : le script ci-dessous masque
                    alors le montant plutôt que d'en dériver un second. */
-                <p class="mt-2 text-sm text-lune-soft">
-                  <span data-i18n
-                    data-fr={`Acompte de ${acompte.pct} % à l’acceptation`}
-                    data-en={`${acompte.pct}% deposit on acceptance`}
-                    data-ar={`تسبيق بنسبة ${acompte.pct}% عند القبول`}>Acompte de {acompte.pct} % à l’acceptation</span>
-                  <span data-sign-acompte-montant> — <span dir="ltr">{formatMAD(acompte.ttcNumber)} TTC</span></span>
-                  <span data-i18n
-                    data-fr=", par virement bancaire ou chèque barré non endossable."
-                    data-en=", by bank transfer or crossed non-endorsable cheque."
-                    data-ar="، عبر تحويل بنكي أو شيك مسطر غير قابل للتظهير.">, par virement bancaire ou chèque barré non endossable.</span>
-                </p>
+                <p class="mt-2 text-sm text-lune-soft"><span data-i18n data-fr={`Acompte de ${acompte.pct} % à l’acceptation`} data-en={`${acompte.pct}% deposit on acceptance`} data-ar={`تسبيق بنسبة ${acompte.pct}% عند القبول`}>Acompte de {acompte.pct} % à l’acceptation</span><span data-sign-acompte-montant> — <span dir="ltr">{formatMAD(acompte.ttcNumber)} TTC</span></span><span data-i18n data-fr=", par virement bancaire ou chèque barré non endossable." data-en=", by bank transfer or crossed non-endorsable cheque." data-ar="، عبر تحويل بنكي أو شيك مسطر غير قابل للتظهير.">, par virement bancaire ou chèque barré non endossable.</span></p>
               ) : (
                 <p class="mt-2 text-sm text-lune-soft" data-i18n
                   data-fr="Un acompte est demandé à l’acceptation, par virement bancaire ou chèque barré non endossable — votre conseiller vous en confirme le montant."
@@ -7144,9 +7134,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               href="#signer"
               class="btn-pill shrink-0 whitespace-nowrap"
               style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
-              data-i18n data-fr="Signer en ligne" data-en="Sign online" data-ar="التوقيع إلكترونياً"
+              data-i18n data-fr="Signer" data-en="Sign" data-ar="توقيع"
             >
-              Signer en ligne
+              Signer
             </a>
           ) : (
             <!-- WJ83 — sans prix réel, le CTA principal ne peut pas pointer vers
