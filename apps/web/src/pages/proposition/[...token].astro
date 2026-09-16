@@ -135,6 +135,7 @@ import {
   // PREVIEW-V3 (16/09/2026) — ce que le client doit savoir AVANT de signer :
   // l'acompte réel, les conditions générales que le PDF imprime, et la
   // promesse d'accusé de réception SEULEMENT quand elle sera tenue.
+  acompteMontantPourOption,
   resolveAcompte,
   resolveConditions,
   promptConfirmationEmail,
@@ -1211,6 +1212,23 @@ const validity = ok ? resolveValidity(data!) : { label: null, fromBackend: false
 const acompte = ok ? resolveAcompte(data!) : null;
 const conditions = ok ? resolveConditions(data!) : [];
 const confirmationEmail = ok ? promptConfirmationEmail(data!) : false;
+// ── PREVIEW-V3-FIX (16/09/2026, audit C1/C8) — L'ACOMPTE ET LA BARRE COLLANTE
+// SUIVENT L'OPTION QUE LE CLIENT COCHE.
+// Le récap disait « Acompte — 34 200 MAD » à côté d'un « Vous signez 78 000 »
+// dès que le vendeur recommandait l'option la MOINS chère : la page devinait
+// l'option de l'acompte (`reco`) alors que le backend l'avait calculée sur une
+// autre. Le serveur sert désormais UN MONTANT PAR OPTION (`acompte.montants`,
+// même `next_tranche`, même arrondi) ; la page les PRÉ-FORMATE ici, une fois,
+// et le script ne fait plus que choisir la chaîne de la case cochée — aucun
+// chiffre n'est calculé, ni côté serveur de rendu, ni côté navigateur.
+const acompteMontantsFmt: Record<string, string> = {};
+for (const opt of ['sans_batterie', 'avec_batterie'] as const) {
+  const montant = acompteMontantPourOption(acompte, opt, twoOptions);
+  if (montant !== null) acompteMontantsFmt[opt] = formatMAD(montant);
+}
+// L'option cochée au premier paint = celle du radio `checked` plus bas.
+const optionInitiale: OptionKey = preselect ?? reco ?? 'sans_batterie';
+const acompteMontantInitial = acompteMontantsFmt[optionInitiale] ?? null;
 // Loi 31-08 art. 2 : le droit de rétractation de 7 jours (art. 36) protège le
 // CONSOMMATEUR — « besoins non professionnels, usage personnel ou familial ».
 // Un devis industriel, commercial ou agricole d'exploitation n'y ouvre pas
@@ -1913,11 +1931,13 @@ const signConfig = ok
       // ce flag pour couper les beacons de vue/engagement et désactiver la
       // signature/le contact.
       apercuInterne,
-      // PREVIEW-V3 — l'option SUR LAQUELLE le backend a calculé l'acompte
-      // (`option_totaux` pré-acceptation = le total AFFICHÉ, donc l'option
-      // recommandée). Le récap masque le montant sur l'autre option plutôt
-      // que d'en dériver un second qui ne figure dans aucun document.
-      acompteOption: reco ?? preselect ?? null,
+      // PREVIEW-V3-FIX (audit C1) — L'ACOMPTE DE CHAQUE OPTION, DÉJÀ FORMATÉ.
+      // Le backend calcule un montant par option servable (même échéancier,
+      // même arrondi) ; la page les a formatés au rendu. Le script choisit
+      // celui de la case cochée — il ne devine plus l'option et ne dérive
+      // aucun chiffre. Option sans montant servi ⇒ clé absente ⇒ le montant
+      // est masqué (le pourcentage, lui, reste vrai).
+      acompteMontants: acompteMontantsFmt,
     })
   : null;
 
@@ -6196,7 +6216,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               <p class="tech-label text-lune-faint" data-i18n data-fr="Vous signez" data-en="You are signing" data-ar="أنتم توقّعون">Vous signez</p>
               {heroHasRealPrice ? (
                 <p class="mt-1 flex flex-wrap items-baseline gap-x-2">
-                  <span class="display text-2xl text-lune" dir="ltr" data-sign-recap-ttc>{formatMAD(optionTtc(data!, preselect ?? reco ?? 'sans_batterie'))}</span>
+                  <span class="display text-2xl text-lune" dir="ltr" data-sign-recap-ttc>{formatMAD(optionTtc(data!, optionInitiale))}</span>
                   <span class="text-sm text-lune-soft" data-i18n data-fr="TTC · TVA incluse" data-en="incl. VAT" data-ar="بجميع الرسوم · الضريبة مُدرَجة">TTC · TVA incluse</span>
                 </p>
               ) : (
@@ -6219,13 +6239,14 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               )}
               {acompte ? (
                 /* B2 (CGI art. 193) — virement / chèque barré non endossable,
-                   jamais « espèces » : l'amende de 6 % frappe LE VENDEUR. Le
-                   montant est celui de la PREMIÈRE tranche de l'échéancier
-                   réel, calculée par le backend sur le total affiché — donc
-                   sur l'option recommandée. Sur l'autre option, le
-                   pourcentage seul reste vrai : le script ci-dessous masque
-                   alors le montant plutôt que d'en dériver un second. */
-                <p class="mt-2 text-sm text-lune-soft"><span data-i18n data-fr={`Acompte de ${acompte.pct} % à l’acceptation`} data-en={`${acompte.pct}% deposit on acceptance`} data-ar={`تسبيق بنسبة ${acompte.pct}% عند القبول`}>Acompte de {acompte.pct} % à l’acceptation</span><span data-sign-acompte-montant> — <span dir="ltr">{formatMAD(acompte.ttcNumber)} TTC</span></span><span data-i18n data-fr=", par virement bancaire ou chèque barré non endossable." data-en=", by bank transfer or crossed non-endorsable cheque." data-ar="، عبر تحويل بنكي أو شيك مسطر غير قابل للتظهير.">, par virement bancaire ou chèque barré non endossable.</span></p>
+                   jamais « espèces » : l'amende de 6 % frappe LE VENDEUR.
+                   PREVIEW-V3-FIX (audit C1) — le montant est celui de la
+                   PREMIÈRE tranche de l'échéancier réel, CALCULÉ PAR LE
+                   BACKEND POUR CHAQUE OPTION (`acompte.montants`) : le script
+                   ci-dessous écrit celui de la case cochée, et masque le
+                   montant quand le serveur n'en sert pas pour cette option
+                   (le pourcentage, lui, reste vrai). */
+                <p class="mt-2 text-sm text-lune-soft"><span data-i18n data-fr={`Acompte de ${acompte.pct} % à l’acceptation`} data-en={`${acompte.pct}% deposit on acceptance`} data-ar={`تسبيق بنسبة ${acompte.pct}% عند القبول`}>Acompte de {acompte.pct} % à l’acceptation</span><span data-sign-acompte-montant hidden={!acompteMontantInitial}> — <span dir="ltr" data-sign-acompte-valeur>{acompteMontantInitial ?? ''} TTC</span></span><span data-i18n data-fr=", par virement bancaire ou chèque barré non endossable." data-en=", by bank transfer or crossed non-endorsable cheque." data-ar="، عبر تحويل بنكي أو شيك مسطر غير قابل للتظهير.">, par virement bancaire ou chèque barré non endossable.</span></p>
               ) : (
                 <p class="mt-2 text-sm text-lune-soft" data-i18n
                   data-fr="Un acompte est demandé à l’acceptation, par virement bancaire ou chèque barré non endossable — votre conseiller vous en confirme le montant."
@@ -6260,6 +6281,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-white/12 p-4 text-sm has-[:checked]:border-brass-400">
                       <input
                         type="radio"
+                        id={`sign-option-${opt}`}
                         name="option"
                         value={opt}
                         checked={opt === preselect}
@@ -7094,11 +7116,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 et son « TTC » tiennent donc ensemble, sans troncature possible.
                 PREVIEW-V3 — et la micro-ligne « à partir de » disparaît : la
                 barre porte le prix de l'option retenue, le MÊME que le héros
-                (voir `stickyTtc` dans le frontmatter). */}
+                (voir `stickyTtc` dans le frontmatter).
+                PREVIEW-V3-FIX (audit C8) — et elle SUIT la case cochée : le
+                script recopie ici le prix déjà rendu sur le radio choisi, pour
+                qu'une barre « 114 000 MAD » ne surplombe plus un récap
+                « Vous signez 78 000 MAD ». Jamais un montant recalculé. */}
             {heroHasRealPrice ? (
               <>
                 <p class="text-sm leading-tight text-lune-soft">
-                  <span class="lum fig text-lg" dir="ltr">{formatMAD(stickyTtc ?? 0)}</span>
+                  <span class="lum fig text-lg" dir="ltr" data-sticky-ttc>{formatMAD(stickyTtc ?? 0)}</span>
                   <span class="text-lune-faint" data-i18n data-fr=" TTC" data-en=" incl. tax" data-ar=" شامل الضريبة"> TTC</span>
                 </p>
               </>
@@ -7218,9 +7244,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
      *  coupe toute balise/beacon de vue-engagement et désactive la signature/le
      *  contact (déjà rendus masqués/désactivés côté serveur ci-dessus). */
     apercuInterne?: boolean;
-    /** PREVIEW-V3 — l'option pour laquelle `acompte.ttc` a été calculé côté
-     *  serveur ; sur toute autre option, seul le pourcentage est affiché. */
-    acompteOption?: OptionKey | null;
+    /** PREVIEW-V3-FIX — le montant d'acompte DÉJÀ FORMATÉ de chaque option
+     *  servable (clé `sans_batterie`/`avec_batterie`). Option absente de la
+     *  table ⇒ le montant est masqué, seul le pourcentage reste affiché. */
+    acompteMontants?: Record<string, string>;
   }
 
   // ── WJ17/WJ43 · bascule de langue FR/EN/عربي — MÊME mécanisme dual-node que
@@ -8121,13 +8148,17 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     // (DOC art. 65-5 : récapitulatif exact + moyen de corriger). Les deux TTC
     // sont ceux que le backend a déjà servis sur les radios — on les LIT, on
     // ne les recalcule pas.
-    // Le MONTANT de l'acompte, lui, n'existe que pour UNE option : le backend
-    // le calcule sur le total affiché (option recommandée). Sur l'autre, seul
-    // le POURCENTAGE reste vrai — on masque donc le montant plutôt que d'en
-    // dériver un second, qui ne figurerait dans aucun document.
+    // PREVIEW-V3-FIX (audit C1/C8) — LE MONTANT DE L'ACOMPTE AUSSI, ET LA
+    // BARRE COLLANTE AVEC. Le backend sert un acompte PAR OPTION
+    // (`acompte.montants`, même échéancier, même arrondi) et le rendu les a
+    // formatés dans `cfg.acompteMontants` : on écrit celui de la case cochée.
+    // Option sans montant servi ⇒ montant masqué (le pourcentage reste vrai).
     {
       const recapTtc = document.querySelector<HTMLElement>('[data-sign-recap-ttc]');
       const acompteMontant = document.querySelector<HTMLElement>('[data-sign-acompte-montant]');
+      const acompteValeur = document.querySelector<HTMLElement>('[data-sign-acompte-valeur]');
+      const stickyTtcEl = document.querySelector<HTMLElement>('[data-sticky-ttc]');
+      const montantsAcompte = cfg.acompteMontants ?? {};
       const prixParOption = new Map<string, string>();
       form?.querySelectorAll<HTMLInputElement>('input[name="option"]').forEach((radio) => {
         const prix = radio.closest('label')?.querySelector<HTMLElement>('[dir="ltr"]')?.textContent;
@@ -8135,12 +8166,18 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       });
       function syncRecap(): void {
         const opt = selectedOption();
-        if (recapTtc && opt) {
-          const prix = prixParOption.get(opt);
-          if (prix) recapTtc.textContent = prix;
-        }
+        const prix = opt ? prixParOption.get(opt) : undefined;
+        if (recapTtc && prix) recapTtc.textContent = prix;
+        // C8 — la barre collante dit le prix que le client signe, toujours.
+        if (stickyTtcEl && prix) stickyTtcEl.textContent = prix;
         if (acompteMontant) {
-          acompteMontant.hidden = !!(cfg.twoOptions && opt && opt !== cfg.acompteOption);
+          const montant = opt ? montantsAcompte[opt] : undefined;
+          if (montant) {
+            if (acompteValeur) acompteValeur.textContent = `${montant} TTC`;
+            acompteMontant.hidden = false;
+          } else {
+            acompteMontant.hidden = true;
+          }
         }
       }
       form?.querySelectorAll<HTMLInputElement>('input[name="option"]').forEach((radio) => {

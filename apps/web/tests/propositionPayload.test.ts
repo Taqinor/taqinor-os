@@ -395,7 +395,9 @@ const NON_LU: Readonly<Record<string, string>> = {
   // `tests/propositionAcompteV3.test.ts`.
   'acompte.pourcentage': 'Pourcentage de la première tranche de l’échéancier : lu par `resolveAcompte` (frontmatter, bloc de signature), jamais par le lecteur typé.',
   'acompte.ttc': 'Montant TTC de cette même tranche : lu par `resolveAcompte`, affiché au-dessus du bouton de signature.',
-  'acompte.libelle': 'Libellé de la tranche tel que l’échéancier le nomme : lu par `resolveAcompte` en repli d’affichage.',
+  'acompte.option': 'Option sur laquelle le serveur a calculé `acompte.ttc` (PREVIEW-V3-FIX, audit C1) : lue par `resolveAcompte`/`acompteMontantPourOption` pour ne JAMAIS afficher l’acompte d’une autre option que celle cochée.',
+  'acompte.montants.sans_batterie': 'Acompte de l’option « sans batterie », calculé par le même `next_tranche` que `ttc` : lu par `acompteMontantPourOption` quand le client coche cette option, jamais par le lecteur typé.',
+  'acompte.montants.avec_batterie': 'Acompte de l’option « avec batterie », même source et même arrondi : lu par `acompteMontantPourOption` quand le client coche cette option, jamais par le lecteur typé.',
   'conditions[]': 'Les puces CGV que le PDF imprime : lues par `resolveConditions` et dépliées sous la case d’acceptation (loi 31-08 art. 30), jamais par le lecteur typé.',
   'paiement_moyens[]': 'Constante serveur virement/chèque (CGI art. 193) : la page écrit la phrase de règlement, elle n’a pas de valeur à en extraire.',
   'confirmation_email': 'Booléen disant si un e-mail de confirmation partira vraiment : lu par `promptConfirmationEmail` pour n’afficher la promesse que dans ce cas.',

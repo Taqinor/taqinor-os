@@ -247,7 +247,7 @@ def _tranche_type(key):
     return TRANCHE_TYPE.get(key, Facture.TypeFacture.INTERMEDIAIRE)
 
 
-def next_tranche(devis, lignes=None):
+def next_tranche(devis, lignes=None, option=None):
     """Décrit la prochaine tranche à facturer, ou None si l'échéancier est complet.
 
     Retourne un dict : key, label, type, pourcentage, ht, tva, ttc, is_last.
@@ -255,6 +255,14 @@ def next_tranche(devis, lignes=None):
     NPLUS1 (27/08/2026) — ``lignes`` (optionnel) est propagé tel quel à
     ``option_totaux`` : un appelant qui a déjà les lignes en main (chemin
     d'acceptation) évite une requête de plus. Absent ⇒ comportement d'hier.
+
+    PREVIEW-V3-FIX (16/09/2026) — ``option`` (optionnel) est propagé tel quel
+    à ``option_totaux`` : la page publique doit annoncer l'acompte de l'option
+    que le client est en train de COCHER, pas seulement celui de l'option
+    effective. Un seul arrondi existe donc toujours — celui d'ici — au lieu
+    d'une seconde règle recopiée côté vue (le défaut C1 de l'audit : la page
+    devinait l'option et pouvait afficher l'acompte de l'AUTRE). ``None``
+    (tous les appelants historiques) ⇒ ``option_effective``, inchangé.
 
     QJR21 — une tranche qui DÉCLARE un montant vaut ce montant TTC ; son
     ``pourcentage`` est alors DÉRIVÉ (montant ÷ total TTC), jamais la valeur
@@ -277,7 +285,7 @@ def next_tranche(devis, lignes=None):
     # QJR24/D9 — avant acceptation, ce sont les totaux du TOTAL AFFICHÉ
     # (option recommandée / AVEC), jamais la somme des deux options.
     from apps.ventes.utils.options import option_totaux
-    opt = option_totaux(devis, lignes=lignes)
+    opt = option_totaux(devis, option=option, lignes=lignes)
     total_ht = Decimal(str(opt['ht']))
     total_tva = Decimal(str(opt['tva']))
     total_ttc = Decimal(str(opt['ttc']))

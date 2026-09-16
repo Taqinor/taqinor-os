@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  acompteMontantPourOption,
   mapAcceptResponseToUiState,
   promptConfirmationEmail,
   resolveAcompte,
@@ -20,18 +21,22 @@ import {
 describe('resolveAcompte — l\'acompte réel, ou rien', () => {
   it('rend le pourcentage sans décimale inutile et le TTC du serveur', () => {
     const a = resolveAcompte({
-      acompte: { pourcentage: '30.00', ttc: '34200.00', libelle: 'Acompte' },
+      acompte: {
+        pourcentage: '30.00', ttc: '34200.00', option: 'avec_batterie',
+        montants: { sans_batterie: '23400.00', avec_batterie: '34200.00' },
+      },
     } as never);
     expect(a).not.toBeNull();
     expect(a!.pct).toBe('30');
     expect(a!.ttc).toBe('34200.00');
     expect(a!.ttcNumber).toBe(34200);
-    expect(a!.libelle).toBe('Acompte');
+    expect(a!.option).toBe('avec_batterie');
+    expect(a!.montants).toEqual({ sans_batterie: 23400, avec_batterie: 34200 });
   });
 
   it('garde une décimale réelle, en virgule française', () => {
     const a = resolveAcompte({
-      acompte: { pourcentage: '33.50', ttc: '1000.00', libelle: 'Acompte' },
+      acompte: { pourcentage: '33.50', ttc: '1000.00' },
     } as never);
     expect(a!.pct).toBe('33,5');
   });
@@ -45,7 +50,7 @@ describe('resolveAcompte — l\'acompte réel, ou rien', () => {
   it('rend null sur un montant nul, négatif ou illisible', () => {
     for (const ttc of ['0.00', '-10.00', '', 'trente', 'NaN']) {
       expect(resolveAcompte({
-        acompte: { pourcentage: '30.00', ttc, libelle: 'Acompte' },
+        acompte: { pourcentage: '30.00', ttc },
       } as never)).toBeNull();
     }
   });
@@ -58,11 +63,58 @@ describe('resolveAcompte — l\'acompte réel, ou rien', () => {
     }
   });
 
-  it('retombe sur « Acompte » quand le libellé manque, sans inventer autre chose', () => {
-    const a = resolveAcompte({
-      acompte: { pourcentage: '30', ttc: '100.00' },
+  it('écarte une table de montants illisible sans perdre l’acompte lui-même', () => {
+    // PREVIEW-V3-FIX — backend antérieur au correctif (ni `option` ni
+    // `montants`), ou table malformée : l'acompte reste lisible, la table est
+    // vide, et `acompteMontantPourOption` se taira plutôt que de deviner.
+    for (const montants of [undefined, null, 'x', [], { sans_batterie: '0.00' },
+      { autre_chose: '10.00' }]) {
+      const a = resolveAcompte({
+        acompte: { pourcentage: '30', ttc: '100.00', montants },
+      } as never);
+      expect(a!.ttcNumber).toBe(100);
+      expect(a!.montants).toEqual({});
+      expect(a!.option).toBeNull();
+    }
+  });
+});
+
+describe('acompteMontantPourOption — l’acompte de l’option COCHÉE (audit C1)', () => {
+  const deuxOptions = resolveAcompte({
+    acompte: {
+      pourcentage: '30.00', ttc: '34200.00', option: 'avec_batterie',
+      montants: { sans_batterie: '23400.00', avec_batterie: '34200.00' },
+    },
+  } as never);
+
+  it('LE DÉFAUT C1 : cocher « sans batterie » ne montre plus l’acompte de l’AUTRE option', () => {
+    expect(acompteMontantPourOption(deuxOptions, 'sans_batterie', true)).toBe(23400);
+    expect(acompteMontantPourOption(deuxOptions, 'avec_batterie', true)).toBe(34200);
+  });
+
+  it('devis à option unique : le seul montant du devis, quelle que soit la clé', () => {
+    const mono = resolveAcompte({
+      acompte: {
+        pourcentage: '30.00', ttc: '3240.00', option: '',
+        montants: { sans_batterie: '3240.00' },
+      },
     } as never);
-    expect(a!.libelle).toBe('Acompte');
+    expect(acompteMontantPourOption(mono, 'sans_batterie', false)).toBe(3240);
+    expect(acompteMontantPourOption(mono, 'avec_batterie', false)).toBe(3240);
+  });
+
+  it('backend antérieur (un seul `ttc` + `option`) : le montant UNIQUEMENT sur son option', () => {
+    const ancien = resolveAcompte({
+      acompte: { pourcentage: '30.00', ttc: '34200.00', option: 'avec_batterie' },
+    } as never);
+    expect(acompteMontantPourOption(ancien, 'avec_batterie', true)).toBe(34200);
+    expect(acompteMontantPourOption(ancien, 'sans_batterie', true)).toBeNull();
+  });
+
+  it('sans acompte, sans option, ou option inconnue : rien — jamais un chiffre de repli', () => {
+    expect(acompteMontantPourOption(null, 'sans_batterie', true)).toBeNull();
+    expect(acompteMontantPourOption(deuxOptions, null, true)).toBeNull();
+    expect(acompteMontantPourOption(undefined, 'avec_batterie', false)).toBeNull();
   });
 });
 

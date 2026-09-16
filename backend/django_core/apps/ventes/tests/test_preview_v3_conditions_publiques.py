@@ -70,6 +70,37 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
                 remise=Decimal('0'))
         return devis
 
+    def _devis_deux_options(self, suffixe):
+        """PREVIEW-V3-FIX (C1) — un VRAI devis à deux options.
+
+        Fixture reprise mot pour mot de ``test_qjr_solde_deux_options`` (la
+        même composition, les mêmes prix) : ses totaux y sont déjà épinglés —
+        37 320 TTC « sans », 68 880 TTC « avec » — donc les acomptes attendus
+        ici (30 %) sont 11 196,00 et 20 664,00, eux aussi déjà assertés
+        là-bas. Aucun chiffre neuf n'est inventé pour ce test.
+        """
+        from apps.stock.models import Produit
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-{suffixe}',
+            client=self.client_obj, statut=Devis.Statut.ENVOYE,
+            taux_tva=Decimal('20'), created_by=self.seller,
+            etude_params={'scenario': 'Les deux (Sans + Avec)'})
+        for desig, qty, pu in (
+                ('Onduleur réseau', '1', '11700'),
+                ('Onduleur hybride', '1', '24000'),
+                ('Panneau mono 550W', '14', '1100'),
+                ('Batterie 5 kWh', '1', '14000'),
+                ('Installation', '1', '4000')):
+            produit = Produit.objects.create(
+                company=self.company, nom=desig,
+                sku=f'{suffixe}-{desig[:10]}',
+                prix_vente=Decimal(pu), quantite_stock=100)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=desig,
+                quantite=Decimal(qty), prix_unitaire=Decimal(pu),
+                remise=Decimal('0'))
+        return devis
+
     def _payload(self, link=None):
         lien = link or self.link
         resp = self.api.get(
@@ -85,7 +116,49 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         self.assertEqual(data['acompte']['ttc'], '3240.00')
         self.assertEqual(Decimal(data['acompte']['pourcentage']),
                          Decimal('30'))
-        self.assertTrue(data['acompte']['libelle'].strip())
+        # PREVIEW-V3-FIX (C9) — `libelle` n'est plus servi : il ne l'était
+        # jamais lu, et la phrase de la page porte ses trois langues.
+        self.assertNotIn('libelle', data['acompte'])
+
+    def test_acompte_porte_un_montant_par_option_servable(self):
+        """PREVIEW-V3-FIX (C1) — le client coche une option, il doit lire
+        L'ACOMPTE DE CETTE OPTION. Devis mono-option : une seule entrée, du
+        même montant que `ttc` (aucune option ne filtre les lignes)."""
+        data = self._payload()
+        montants = data['acompte']['montants']
+        self.assertEqual(list(montants.values()), ['3240.00'])
+        self.assertEqual(len(montants), 1)
+        self.assertEqual(data['acompte']['option'], '')
+
+    def test_acompte_porte_les_deux_montants_sur_un_devis_a_deux_options(self):
+        """LE DÉFAUT C1, ÉPINGLÉ. Avant : un seul montant (celui de l'option
+        effective) et la page DEVINAIT laquelle — un vendeur qui recommande
+        « Sans batterie » faisait lire au client l'acompte de l'option AVEC.
+        Maintenant : un montant par option, calculé par le MÊME
+        ``next_tranche`` (même arrondi), et l'option de référence est dite."""
+        devis = self._devis_deux_options('PV3003')
+        data = self._payload(ShareLink.for_devis(devis))
+        acompte = data['acompte']
+        self.assertEqual(acompte['montants'], {
+            'sans_batterie': '11196.00',   # 30 % de 37 320 TTC
+            'avec_batterie': '20664.00',   # 30 % de 68 880 TTC
+        })
+        # Avant acceptation, l'ERP facture l'option du TOTAL AFFICHÉ (D9).
+        self.assertEqual(acompte['option'], 'avec_batterie')
+        self.assertEqual(acompte['ttc'], '20664.00')
+        self.assertEqual(acompte['ttc'], acompte['montants']['avec_batterie'])
+
+    def test_acompte_suit_loption_acceptee_une_fois_le_devis_signe(self):
+        """Après acceptation de « Sans batterie », ``ttc`` bascule sur cette
+        option — les DEUX montants restent servis, aucun ne se contredit."""
+        devis = self._devis_deux_options('PV3004')
+        devis.statut = Devis.Statut.ACCEPTE
+        devis.option_acceptee = 'sans_batterie'
+        devis.save(update_fields=['statut', 'option_acceptee'])
+        acompte = self._payload(ShareLink.for_devis(devis))['acompte']
+        self.assertEqual(acompte['option'], 'sans_batterie')
+        self.assertEqual(acompte['ttc'], '11196.00')
+        self.assertEqual(acompte['montants']['sans_batterie'], '11196.00')
 
     def test_acompte_est_le_meme_chiffre_avant_et_apres_signature(self):
         """La page et l'écran de succès lisent LE MÊME helper — donc jamais

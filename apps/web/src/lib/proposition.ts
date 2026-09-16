@@ -238,8 +238,20 @@ export interface ProposalResponse {
    * quand le montant n'est pas calculable, **jamais `null`** — la page dit
    * alors sa phrase SANS chiffre, comme `date_validite` fait déjà pour la
    * date. Montants en texte décimal MAD TTC (jamais un flottant).
+   *
+   * PREVIEW-V3-FIX (16/09/2026, audit C1) — `montants` porte CE MÊME acompte
+   * pour chaque option servable (clés `sans_batterie`/`avec_batterie`,
+   * calculées par le MÊME `next_tranche`, donc le même arrondi au centime) et
+   * `option` dit sur laquelle `ttc` a été calculé. La page lit la case
+   * COCHÉE : elle ne devine plus l'option, elle ne dérive aucun montant.
+   * `libelle` n'est plus servi (audit C9 : jamais lu).
    */
-  acompte?: { pourcentage?: string | null; ttc?: string | null; libelle?: string | null } | null;
+  acompte?: {
+    pourcentage?: string | null;
+    ttc?: string | null;
+    option?: string | null;
+    montants?: Record<string, string> | null;
+  } | null;
   /**
    * PREVIEW-V3 — les puces « Conditions générales du devis » que le PDF
    * imprime, en texte (mêmes gabarits moteur, substitués et dé-échappés côté
@@ -1863,8 +1875,18 @@ export interface AcompteResolu {
   ttc: string;
   /** Montant TTC en nombre (pour un formateur), toujours fini et > 0. */
   ttcNumber: number;
-  /** Libellé de la tranche tel que l'échéancier le nomme (« Acompte »). */
-  libelle: string;
+  /**
+   * PREVIEW-V3-FIX — le MÊME acompte, par option servable, tel que le serveur
+   * l'a calculé (jamais dérivé ici). Une option sans montant lisible est
+   * simplement absente de la table.
+   */
+  montants: Partial<Record<OptionKey, number>>;
+  /** L'option sur laquelle le serveur a calculé `ttc` (`null` si aucune). */
+  option: OptionKey | null;
+}
+
+function optionKeyOrNull(v: unknown): OptionKey | null {
+  return v === 'sans_batterie' || v === 'avec_batterie' ? v : null;
 }
 
 export function resolveAcompte(
@@ -1879,10 +1901,41 @@ export function resolveAcompte(
   if (!Number.isFinite(pctNumber) || pctNumber <= 0) return null;
   // « 30.00 » → « 30 » ; « 33.50 » → « 33,5 » (virgule décimale FR).
   const pct = String(Math.round(pctNumber * 100) / 100).replace('.', ',');
-  const libelle = typeof raw.libelle === 'string' && raw.libelle.trim()
-    ? raw.libelle.trim()
-    : 'Acompte';
-  return { pct, ttc: ttcTxt, ttcNumber, libelle };
+  const montants: Partial<Record<OptionKey, number>> = {};
+  const bruts = raw.montants;
+  if (bruts && typeof bruts === 'object' && !Array.isArray(bruts)) {
+    for (const [cle, valeur] of Object.entries(bruts)) {
+      const opt = optionKeyOrNull(cle);
+      if (!opt) continue;
+      const n = Number(typeof valeur === 'string' ? valeur.trim() : NaN);
+      if (Number.isFinite(n) && n > 0) montants[opt] = n;
+    }
+  }
+  return { pct, ttc: ttcTxt, ttcNumber, montants, option: optionKeyOrNull(raw.option) };
+}
+
+/**
+ * PREVIEW-V3-FIX (audit C1) — LE MONTANT D'ACOMPTE DE L'OPTION QUE LE CLIENT
+ * COCHE, ou `null` quand le serveur ne l'a pas servi.
+ *
+ * Aucune arithmétique ici : on LIT la table servie par le backend, qui l'a
+ * calculée avec l'unique règle d'arrondi de l'ERP (`echeancier.next_tranche`).
+ *  - devis à option unique ⇒ il n'y a qu'une composition, donc `ttcNumber` ;
+ *  - deux options ⇒ le montant de l'option cochée, sinon (backend antérieur
+ *    au correctif) `ttcNumber` UNIQUEMENT si le serveur dit l'avoir calculé
+ *    sur cette option-là — jamais sur l'autre, jamais un chiffre dérivé.
+ */
+export function acompteMontantPourOption(
+  a: AcompteResolu | null | undefined,
+  opt: OptionKey | null | undefined,
+  twoOptions: boolean,
+): number | null {
+  if (!a) return null;
+  if (!twoOptions) return a.ttcNumber;
+  if (!opt) return null;
+  const m = a.montants[opt];
+  if (typeof m === 'number' && Number.isFinite(m) && m > 0) return m;
+  return a.option === opt ? a.ttcNumber : null;
 }
 
 /**

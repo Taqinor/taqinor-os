@@ -2858,17 +2858,54 @@ def _acompte_publique(devis, lignes=None):
 
     Best-effort : toute exception rend ``None`` (clé ABSENTE côté payload,
     jamais ``null`` — règle `additif_vs_null` du contrat).
+
+    PREVIEW-V3-FIX (16/09/2026) — L'ACOMPTE SUIT L'OPTION QUE LE CLIENT COCHE.
+    L'audit C1 : ``ttc`` n'existait que pour UNE option (celle du total
+    affiché) et la page DEVINAIT laquelle (``reco``) — un vendeur qui
+    recommande « Sans batterie » sur un devis à deux options faisait donc lire
+    au client l'acompte de l'option AVEC, à l'endroit exact où il décide. Le
+    serveur publie désormais :
+
+    * ``option``   — l'option sur laquelle l'ERP a calculé ``ttc``
+      (``options.option_effective``, la MÊME que la facturation), ``''`` quand
+      le devis n'en distingue aucune ;
+    * ``montants`` — le montant de la PREMIÈRE tranche pour CHAQUE option
+      servable, calculé par le MÊME ``next_tranche`` (donc le même arrondi au
+      centime, jamais une règle recopiée) : la page lit la case cochée au lieu
+      de deviner. Devis mono-option ⇒ une seule entrée, sous la clé de
+      l'option effective (défaut ``sans_batterie``) — le montant ne dépend
+      alors d'aucune option, toutes les lignes sont facturées.
+
+    ``libelle`` a été RETIRÉ (audit C9) : servi, jamais lu — la phrase de la
+    page porte ses trois langues (« Acompte » / « deposit » / « تسبيق »), un
+    libellé FR d'échéancier ne peut pas s'y substituer sans casser l'arabe.
     """
     from decimal import Decimal
     try:
         from .utils.echeancier import next_tranche
+        from .utils.options import (AVEC_BATTERIE, SANS_BATTERIE,
+                                    deux_options_declarees, option_effective)
         tr = next_tranche(devis, lignes=lignes)
         if tr is None:
             return None
+        effective = option_effective(devis) or ''
+        if deux_options_declarees(devis):
+            cles = (SANS_BATTERIE, AVEC_BATTERIE)
+        else:
+            cles = (effective or SANS_BATTERIE,)
+        montants = {}
+        for cle in cles:
+            tr_opt = next_tranche(devis, lignes=lignes, option=cle)
+            if tr_opt is None:
+                continue
+            montant = Decimal(str(tr_opt['ttc']))
+            if montant > 0:
+                montants[cle] = str(montant)
         return {
             'pourcentage': str(Decimal(str(tr.get('pourcentage')))),
             'ttc': str(Decimal(str(tr['ttc']))),
-            'libelle': str(tr.get('label') or ''),
+            'option': effective,
+            'montants': montants,
         }
     except Exception:  # noqa: BLE001 — best-effort
         return None
