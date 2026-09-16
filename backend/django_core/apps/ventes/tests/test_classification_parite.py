@@ -36,6 +36,7 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from apps.ventes.domain.catalogue import classer_produit
 from apps.ventes.quote_engine.builder import (
     _battery_kwh_from_items,
     _is_battery,
@@ -173,3 +174,30 @@ class BatterieCapaciteParitesTest(SimpleTestCase):
             total, attendu, places=6,
             msg="capacité totale attendue {} kWh (somme des kWh RÉELLEMENT "
                 "lisibles), obtenu {}".format(attendu, total))
+
+
+class ClassificationRoleStkcat19Test(SimpleTestCase):
+    """STKCAT19 — colonne ``role`` (``classer_produit`` / ``classifyProduct``).
+
+    Comportement MOT-CLÉ COURANT, REPLI DERRIÈRE LE RÔLE DÉCLARÉ (voir
+    ``notes.role_stkcat19`` de la fixture) : STKCAT21 fera du rôle produit
+    DÉCLARÉ sur la fiche la source PRIORITAIRE, ce classifieur par mot-clé
+    n'en restera qu'un repli pour les produits sans rôle déclaré. ``role``
+    n'est porté QUE par les cas structure/accessoire ajoutés par STKCAT19 (pas
+    par les neuf cas résidentiels panneau/batterie/onduleur ci-dessus, hors
+    périmètre de cette colonne) — on ne teste donc que ceux qui la portent.
+    """
+
+    def test_role_sur_les_cas_qui_la_portent(self):
+        cas_avec_role = [c for c in _cas() if 'role' in c]
+        self.assertTrue(
+            cas_avec_role,
+            'aucun cas ne porte la colonne role (STKCAT19) — '
+            'classification_lignes.json a régressé')
+        for c in cas_avec_role:
+            d = c['designation']
+            with self.subTest(cas=_etiquette(c), colonne='role'):
+                self.assertEqual(
+                    classer_produit(d), c['role'],
+                    "classer_produit(« {} ») attendu {} (contrat "
+                    "QJR2/STKCAT19)".format(d, c['role']))
