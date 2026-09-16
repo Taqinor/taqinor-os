@@ -416,3 +416,67 @@ describe('WIR221 — « Mettre au rebut » (menu de ligne)', () => {
     expect(screen.queryByRole('menuitem', { name: /Mettre au rebut/ })).toBeNull()
   })
 })
+
+/* ============================================================================
+   STKCAT17 — « Trois mensonges d'écran » :
+   1) le badge « prix à renseigner » n'était visible qu'en lecture seule —
+      l'éditeur (celui qui peut justement corriger le prix) ne le voyait pas ;
+   2) badge `categorie_type_display` (déjà servi par le backend) affiché sous
+      le nom de catégorie ; colonne Catégorie recherchable.
+   (Le 3e mensonge — « Stock bas » couvrant severiteStock !== SEV_OK au lieu
+   de `is_low_stock` — vit dans StockList.jsx, testé par `severiteStock`
+   ci-dessus : {stock:0, seuil:0} => 'rupture', ligne 194-197.)
+   ========================================================================== */
+
+const sansPrixFixture = (over = {}) => baseProduit({
+  id: 30, nom: 'Régulateur MPPT 60A', sku: 'REG-60', prix_vente: '', ...over,
+})
+
+describe('STKCAT17 — badge « prix à renseigner » visible aux éditeurs', () => {
+  it('canWrite=false : le badge est affiché (comportement déjà en place)', () => {
+    renderTable({ produits: [sansPrixFixture()], canWrite: false, onInlineSave: null })
+    expect(screen.getAllByText('prix à renseigner').length).toBeGreaterThan(0)
+  })
+
+  it('canWrite=true : le badge est AUSSI affiché (avant : invisible aux éditeurs)', () => {
+    renderTable({
+      produits: [sansPrixFixture()], canWrite: true,
+      onInlineSave: vi.fn().mockResolvedValue({}),
+    })
+    expect(screen.getAllByText('prix à renseigner').length).toBeGreaterThan(0)
+  })
+
+  it('canWrite=true avec un prix renseigné : pas de badge, la cellule reste éditable', () => {
+    renderTable({
+      produits: [baseProduit({ prix_vente: '1000' })], canWrite: true,
+      onInlineSave: vi.fn().mockResolvedValue({}),
+    })
+    expect(screen.queryByText('prix à renseigner')).toBeNull()
+    expect(screen.getAllByTitle('Double-cliquez pour modifier').length).toBeGreaterThan(0)
+  })
+})
+
+describe('STKCAT17 — catégorie : type affiché + colonne recherchable', () => {
+  it('affiche categorie_type_display sous le nom de catégorie quand il est servi', () => {
+    renderTable({
+      produits: [baseProduit({ categorie: { id: 3, nom: 'Onduleurs', ordre: 2 }, categorie_type_display: 'Onduleur' })],
+    })
+    expect(screen.getAllByText('Onduleurs').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Onduleur').length).toBeGreaterThan(0)
+  })
+
+  it('sans categorie_type_display (null) : aucun badge de type, pas de crash', () => {
+    renderTable({
+      produits: [baseProduit({ categorie: { id: 3, nom: 'Onduleurs', ordre: 2 }, categorie_type_display: null })],
+    })
+    expect(screen.getAllByText('Onduleurs').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Onduleur')).toBeNull()
+  })
+
+  // La colonne Catégorie porte désormais `searchable: true` (frontend/src/pages/
+  // stock/CatalogueTable.jsx). Le moteur DataTable ne rend son propre champ de
+  // recherche que si `searchable` est vrai au niveau TABLE — ici toujours
+  // `false` (StockList fait déjà la recherche transverse en amont) — donc ce
+  // flag colonne n'a encore aucun effet observable : il n'active un vrai
+  // comportement qu'avec STKCAT26 (recherche du moteur branchée), testé là-bas.
+})
