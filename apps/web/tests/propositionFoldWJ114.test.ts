@@ -116,17 +116,27 @@ describe('WJ114 — bloc « décider en 10 secondes » (au-dessus du pli, mobile
     expect(heroSection).toContain('headline.monthly');
   });
 
-  it('kWc et kWh ont quitté le pli pour leurs chapitres dédiés', () => {
-    // Les commentaires du bloc EXPLIQUENT ce déménagement (ils citent donc
-    // « kWc »/« kWh ») : la garde doit lire le RENDU, pas la documentation.
+  // PREVIEW v2 — RECALIBRÉ sur la décision fondateur (Reda, 2026-09-16) :
+  // « I don't have any rule, I just want to be the best and for Morocco. »
+  // kWc et kWh REVIENNENT dans le pli — en LÉGENDE, sous les deux cartes, pas
+  // en cartes concurrentes : la décision doit être complète à l'écran 1.
+  it('kWc et kWh sont une LÉGENDE du pli, jamais une troisième carte', () => {
+    // Les commentaires du bloc citent « kWc »/« kWh » : la garde doit lire le
+    // RENDU, pas la documentation.
     const rendu = heroSection
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ')
       .replace(/<!--[\s\S]*?-->/g, ' ');
-    // L-DEUXOPT (25/08) — même recalage que plus bas : la figure du héro
-    // s'appelle désormais `heroKwc` ; la garde vise le nom RÉEL du source.
-    expect(rendu).not.toContain('formatNumber(heroKwc, 2)');
-    expect(rendu).not.toContain('kWc');
-    expect(rendu).not.toContain('kWh');
+    // Les deux CARTES (#prop-fold-figures) ne portent toujours que le prix et
+    // l'économie ; la légende (#prop-fold-specs) porte taille et production.
+    const cartes = rendu.slice(rendu.indexOf('id="prop-fold-figures"'), rendu.indexOf('id="prop-fold-specs"'));
+    expect(cartes.length).toBeGreaterThan(0);
+    expect(cartes).not.toContain('formatNumber(heroKwc, 2)');
+    expect(cartes).not.toContain('kWc');
+    expect(cartes).not.toContain('kWh');
+    // Et la légende ne fait que RÉAFFICHER des variables déjà calculées.
+    const specs = rendu.slice(rendu.indexOf('id="prop-fold-specs"'), rendu.indexOf('id="prop-fold-cta"'));
+    expect(specs).toContain('formatNumber(heroKwc, 2)');
+    expect(specs).toContain('formatNumber(prodKwh)');
     expect(PROPOSITION).toContain('id="installation"');
     expect(PROPOSITION).toContain('id="production"');
     // Les deux valeurs restent RENDUES ailleurs sur la page.

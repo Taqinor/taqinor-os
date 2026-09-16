@@ -533,26 +533,28 @@ describe('[...token].astro — la section « Explorer d’autres tailles »', ()
     expect(CODE).toContain('{tailles && tailleDefaut && (');
   });
 
-  it('est placée AVANT #options (les tailles décident, #options détaille)', () => {
+  // PREVIEW v2 — RECALIBRÉ sur la décision fondateur (Reda, 2026-09-16) :
+  // « I don't have any rule, I just want to be the best and for Morocco. »
+  // Les tailles rejoignent le chapitre « Votre choix » : #options porte le prix
+  // de l'offre officielle, les tailles explorent, les gammes suivent — une
+  // seule zone de prix au lieu de trois surfaces dispersées dans la page.
+  it('vit dans « Votre choix », juste après #options', () => {
     const tailles = PAGE.indexOf('id="tailles"');
     const options = PAGE.indexOf('id="options"');
-    expect(tailles).toBeGreaterThan(0);
-    expect(options).toBeGreaterThan(tailles);
+    expect(options).toBeGreaterThan(0);
+    expect(tailles).toBeGreaterThan(options);
   });
 
-  it('APERÇU D’ABORD : les cartes suivent le HÉROS et précèdent TOUS les détails', () => {
-    // ORDRE FONDATEUR (26/08/2026) — la section vivait après le calepinage,
-    // l'installation, la production, les économies et le schéma : le client
-    // traversait toute la page avant de découvrir qu'il avait un CHOIX. La
-    // règle d'audit est l'aperçu d'abord.
-    const hero = PAGE.indexOf('data-track-section="hero"');
+  it('LE CHOIX RESTE GROUPÉ : après le prix, avant les gammes et la signature', () => {
     const tailles = PAGE.indexOf('id="tailles"');
-    expect(hero, 'ancre héros absente').toBeGreaterThan(0);
     expect(tailles, 'ancre #tailles absente').toBeGreaterThan(0);
-    expect(hero).toBeLessThan(tailles);
-    for (const ancre of ['id="roof3d"', 'id="installation"', 'id="production"',
-      'id="financing-headline"', 'id="sld"', 'id="confiance"', 'id="faq"',
-      'id="options"', 'id="signer"']) {
+    for (const ancre of ['data-track-section="hero"', 'id="installation"',
+      'id="roof3d"', 'id="financing-headline"', 'id="options"']) {
+      const idx = PAGE.indexOf(ancre);
+      expect(idx, `ancre ${ancre} absente`).toBeGreaterThan(0);
+      expect(idx, `${ancre} doit précéder #tailles`).toBeLessThan(tailles);
+    }
+    for (const ancre of ['id="gammes"', 'id="confiance"', 'id="signer"', 'id="sld"', 'id="faq"']) {
       const idx = PAGE.indexOf(ancre);
       expect(idx, `ancre ${ancre} absente`).toBeGreaterThan(0);
       expect(tailles, `#tailles doit précéder ${ancre}`).toBeLessThan(idx);
@@ -568,7 +570,10 @@ describe('[...token].astro — la section « Explorer d’autres tailles »', ()
 
   it('le badge dit un FAIT vérifiable, jamais « populaire » ni une urgence', () => {
     const bloc = sectionTailles(CODE);
-    expect(bloc).toContain('data-fr="Recommandé — c’est votre devis officiel"');
+    // PREVIEW v2 — RECALIBRÉ (Reda, 2026-09-16) : un SEUL « Recommandé » sur
+    // toute la page (celui de l'option retenue) ; ce badge-ci dit le fait seul.
+    expect(bloc).toContain('data-fr="C’est votre devis officiel"');
+    expect(bloc).not.toContain('data-fr="Recommandé');
     // Interdits fondateur : badge de popularité, urgence fabriquée, prix barré.
     for (const mot of ['populaire', 'le plus choisi', 'offre limitée', 'plus que', 'best-seller']) {
       expect(bloc.toLowerCase(), mot).not.toContain(mot);

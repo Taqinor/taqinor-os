@@ -779,7 +779,11 @@ describe('GAMMES — choix de gamme sur la page proposition', () => {
     expect(debut).toBeGreaterThan(0);
     expect(bloc).toContain('data-gamme-carte="courante"');
     expect(bloc).toContain('data-gamme-carte="soeur"');
-    expect(bloc).toContain('data-fr="Recommandé" data-en="Recommended" data-ar="موصى به"');
+    // PREVIEW v2 — RECALIBRÉ (Reda, 2026-09-16) : un SEUL « Recommandé » sur
+    // toute la page. La gamme courante dit le FAIT (« Votre devis ») ; la sœur
+    // n'a plus de badge — elle garde nom, TTC, écart en MAD et son lien.
+    expect(bloc).toContain('data-fr="Votre devis" data-en="Your quote" data-ar="عرضكم"');
+    expect(bloc).not.toContain('data-fr="Recommandé" data-en="Recommended" data-ar="موصى به"');
     expect(bloc).toContain('data-gamme-ecart');
     expect(bloc).toContain('gammes.courante.nom');
     expect(bloc).toContain('gammes.soeur.nom');
