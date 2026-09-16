@@ -1111,7 +1111,7 @@ _LEAD_PROVENANCE_MARQUEURS = (
     'facture', 'ete_differente', 'conso_', 'kwh', 'bill_', 'tranche_onee',
     'raccordement', 'regularisation_', 'equip_', 'occupation_jour', 'pompe_',
     'toiture', 'roof_', 'orientation', 'inclinaison', 'ombrage', 'gps_',
-    'nb_etages', 'structure_pref', 'kwc', 'batterie', 'distributeur',
+    'nb_etages', 'structure_', 'kwc', 'batterie', 'distributeur',
 )
 
 # Les raisons, mutualisées par famille : une seule phrase à relire, et un champ
@@ -1139,6 +1139,16 @@ _RAISON_QUALIFICATION = (
     "premier contact), pas une valeur d'étude re-saisie dans le devis : elle "
     "vit sa vie côté CRM et n'a pas de copie dans `etude_params`."
 )
+_RAISON_STRUCTURE = (
+    "CHOIX DE MATÉRIEL du lead (STKCAT9) : depuis le 16/09/2026 il DESCEND "
+    "jusqu'à la composition — `build_devis_auto` en dérive la structure du "
+    "kit — mais il n'est toujours PAS RECOPIÉ dans `Devis.etude_params`. Ce "
+    "que le devis garde de ce choix, ce sont ses LIGNES (la ligne structure "
+    "vendue, relue par `structure_produit_id_du_devis`) : c'est là que la "
+    "dérive se verrait, pas dans une estampille. L'estampiller ferait "
+    "clignoter la bannière sur une valeur dont le devis ne détient aucune "
+    "copie."
+)
 _RAISON_TRANCHE = (
     "valeur RE-DÉRIVÉE par l'étude à chaque rendu depuis la facture et la "
     "consommation (elles, sont estampillées) : l'estampiller en plus ferait "
@@ -1160,7 +1170,13 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
     + [(champ, _RAISON_QUALIFICATION) for champ in (
         'bill_range_bucket', 'roof_type', 'roof_age', 'distributeur',
         'raccordement', 'batterie_souhaitee', 'taille_souhaitee_kwc',
-        'structure_pref', 'nb_etages', 'regularisation_8221',
+        'nb_etages', 'regularisation_8221',
+    )]
+    # STKCAT9 — les DEUX expressions du choix de structure, avec LEUR raison
+    # (le marqueur est passé de « structure_pref » à « structure_ », donc la
+    # garde surveille désormais les deux ; une omission serait rouge).
+    + [(champ, _RAISON_STRUCTURE) for champ in (
+        'structure_pref', 'structure_produit',
     )]
     + [
         ('occupation_jour', _RAISON_LU_EN_DIRECT),
