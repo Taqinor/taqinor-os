@@ -91,7 +91,13 @@ export const POST: APIRoute = async ({ request }) => {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify(mode === 'lecture' && code ? { code } : {}),
+      // PREVIEW-V3-FIX (16/09/2026, audit C5) — LE CHAMP S'APPELLE `otp_code`.
+      // `proposal_verify_otp_lecture` lit son corps avec
+      // `_texte_du_corps(request, 'otp_code')` : un corps `{code: "123456"}`
+      // était donc lu comme un code VIDE, et l'endpoint répondait « le code a
+      // expiré ou n'a pas été demandé » quel que soit le code saisi — le
+      // chemin de vérification n'aurait jamais pu aboutir.
+      body: JSON.stringify(mode === 'lecture' && code ? { otp_code: code } : {}),
     });
     upstreamStatus = res.status;
     try {

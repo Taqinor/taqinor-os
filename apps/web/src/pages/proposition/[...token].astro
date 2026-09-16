@@ -136,6 +136,7 @@ import {
   // l'acompte réel, les conditions générales que le PDF imprime, et la
   // promesse d'accusé de réception SEULEMENT quand elle sera tenue.
   acompteMontantPourOption,
+  OTP_LECTURE_DETAIL,
   resolveAcompte,
   resolveConditions,
   promptConfirmationEmail,
@@ -288,6 +289,9 @@ let data: ProposalResponse | null = null;
 let errorDetail: string | null = null;
 let httpStatus = 200;
 let isTimeout = false;
+// PREVIEW-V3-FIX (audit C5) — la lecture de ce lien exige un code (403
+// `otp_required`) : l'écran de saisie remplace le message d'erreur.
+let otpLectureRequis = false;
 
 // ── W316 — Rate-limit le SSR de cette page : un token de proposition est un
 // identifiant devinable (chaîne opaque mais finie) ; sans garde-fou, un
@@ -349,11 +353,24 @@ if (!rl.allowed) {
       } catch {
         detail = '';
       }
-      errorDetail =
-        detail ||
-        (res.status === 404
-          ? 'Ce lien de proposition est introuvable ou a expiré.'
-          : 'Cette proposition n’est pas accessible pour le moment.');
+      // ── PREVIEW-V3-FIX (16/09/2026, audit C5) — LE 403 « otp_required »
+      // N'ATTERRIT PLUS EN TOUTES LETTRES SOUS LES YEUX DU CLIENT.
+      // `ShareLink.otp_lecture` est un réglage PAR LIEN, actif en production :
+      // quand le commercial le pose, CE fetch (la lecture elle-même) répond
+      // 403 `otp_required` et la page affichait ce littéral machine comme
+      // message d'erreur — le PREMIER écran du client. Le correctif de v3 ne
+      // couvrait que `/accept/`, c'est-à-dire un cas qui suppose le GET déjà
+      // passé. Ici : un écran de saisie, servi par les DEUX endpoints que le
+      // proxy `/api/proposition-otp` relaie déjà (`demander` / `verifier`).
+      // Le backend déverrouille alors la LECTURE de ce lien côté serveur
+      // (une heure, `otp_lecture_verified`) : il suffit de recharger.
+      otpLectureRequis = res.status === 403 && detail.trim() === OTP_LECTURE_DETAIL;
+      errorDetail = otpLectureRequis
+        ? 'Cette proposition est protégée par un code à usage unique.'
+        : detail ||
+          (res.status === 404
+            ? 'Ce lien de proposition est introuvable ou a expiré.'
+            : 'Cette proposition n’est pas accessible pour le moment.');
     }
   } catch (err) {
     httpStatus = 502;
@@ -1993,7 +2010,54 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
   skipVisitBeacon={apercuInterne}
   consentInline={true}
 >
-  {!ok ? (
+  {!ok && otpLectureRequis ? (
+    <section id="otp-lecture" class="mx-auto flex min-h-[60dvh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center" data-token={token}>
+      {/* ── PREVIEW-V3-FIX (audit C5) · L'ÉCRAN DE CODE, PAS LE MOT « otp_required »
+           Le lien porte `otp_lecture` : le backend refuse la LECTURE tant qu'un
+           code à usage unique n'a pas été vérifié, et la page affichait jusqu'ici
+           le littéral machine du refus. Le proxy same-origin `/api/proposition-otp`
+           relaie déjà les deux endpoints publics (`otp-lecture/demander` puis
+           `otp-lecture/verifier`) ; une vérification réussie déverrouille la
+           lecture de CE lien côté serveur pour une heure, il suffit alors de
+           recharger la même URL. Aucun nouvel endpoint, aucun secret côté page.
+           FR seul, comme l'écran d'erreur voisin : la bascule de langue vit dans
+           la page chargée, elle n'existe pas sur ces états. */}
+      <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
+      <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Proposition protégée</h1>
+      <p class="v2-body mt-4 max-w-md">
+        Pour votre confidentialité, cette proposition ne s’ouvre qu’avec un code à
+        usage unique. Nous l’envoyons au contact enregistré sur votre devis.
+      </p>
+      <form id="otp-lecture-form" class="mt-8 w-full max-w-sm text-start" novalidate>
+        <button type="button" id="otp-lecture-demander" class="btn-pill w-full justify-center"
+          style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
+          Recevoir mon code
+        </button>
+        <label for="otp-lecture-code" class="tech-label mt-6 block text-lune-faint">Code reçu</label>
+        <input
+          id="otp-lecture-code"
+          name="otp_code"
+          type="text"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          maxlength="6"
+          class="mt-2 w-full rounded-xl border border-white/15 bg-nuit/60 px-4 py-3 text-lg text-lune"
+          dir="ltr"
+          placeholder="------"
+        />
+        <button type="submit" id="otp-lecture-valider" class="btn-pill mt-4 w-full justify-center">
+          Ouvrir ma proposition
+        </button>
+      </form>
+      <p id="otp-lecture-message" class="mt-4 min-h-[1.25rem] max-w-sm text-sm text-lune-soft" role="status" aria-live="polite"></p>
+      <p class="mt-6 text-sm text-lune-faint">
+        Vous ne recevez rien&nbsp;? Votre conseiller Taqinor peut vous ouvrir l’accès.
+      </p>
+      <a href={waLinkFallback} target="_blank" rel="noopener noreferrer" class="btn-pill mt-4">
+        Contacter sur WhatsApp
+      </a>
+    </section>
+  ) : !ok ? (
     <!-- ── État « lien expiré / introuvable » ─────────────────────────────── -->
     <!-- WJ81 — la page ne reste JAMAIS blanche : ce cadre de marque (rappel
          visuel Taqinor, jamais une page d'erreur générique du navigateur/
@@ -10300,6 +10364,82 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         translate = clampTranslate(translate, viewportSize(), contentSize, scale);
         apply();
       }
+    });
+  })();
+</script>
+
+<script>
+  // ── PREVIEW-V3-FIX (16/09/2026, audit C5) · L'ÉCRAN DE CODE DE LECTURE ────
+  // Îlot autonome : il ne s'exécute QUE sur l'écran `#otp-lecture` (donc
+  // jamais sur la proposition chargée, où il n'a rien à faire). Astro
+  // regroupe tous les <script> de la page dans le même bundle — la garde
+  // `if (!section) return;` est donc la porte, pas le rendu conditionnel.
+  (function otpLecture(): void {
+    const section = document.getElementById('otp-lecture');
+    if (!section) return;
+    const token = section.getAttribute('data-token') || '';
+    const form = document.getElementById('otp-lecture-form') as HTMLFormElement | null;
+    const demander = document.getElementById('otp-lecture-demander') as HTMLButtonElement | null;
+    const valider = document.getElementById('otp-lecture-valider') as HTMLButtonElement | null;
+    const champ = document.getElementById('otp-lecture-code') as HTMLInputElement | null;
+    const message = document.getElementById('otp-lecture-message');
+
+    function dire(texte: string): void {
+      if (message) message.textContent = texte;
+    }
+
+    // UN SEUL chemin réseau : le proxy same-origin, qui relaie `demander`
+    // (sans code) ou `verifier` (avec code). Le navigateur du client
+    // n'appelle jamais le backend en cross-origin.
+    async function appeler(code: string): Promise<{ ok: boolean; detail: string }> {
+      try {
+        const res = await fetch('/api/proposition-otp', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(code ? { token, mode: 'lecture', code } : { token, mode: 'lecture' }),
+        });
+        const body = (await res.json().catch(() => ({}))) as { ok?: boolean; detail?: string };
+        return {
+          ok: res.ok && body.ok !== false,
+          detail: typeof body.detail === 'string' ? body.detail : '',
+        };
+      } catch {
+        return { ok: false, detail: 'Service momentanément indisponible. Veuillez réessayer.' };
+      }
+    }
+
+    demander?.addEventListener('click', async () => {
+      demander.disabled = true;
+      dire('Envoi du code…');
+      const r = await appeler('');
+      demander.disabled = false;
+      dire(r.ok
+        ? 'Code envoyé. Saisissez-le ci-dessous — il est valable 10 minutes.'
+        : (r.detail || 'Le code n’a pas pu être envoyé. Réessayez dans un instant.'));
+      champ?.focus();
+    });
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = (champ?.value || '').trim();
+      if (!code) {
+        dire('Saisissez le code reçu.');
+        champ?.focus();
+        return;
+      }
+      if (valider) valider.disabled = true;
+      dire('Vérification…');
+      const r = await appeler(code);
+      if (r.ok) {
+        // Le serveur a déverrouillé la LECTURE de ce lien (une heure) : la
+        // même URL rend désormais la proposition. Rien à transporter.
+        dire('Code vérifié — ouverture de votre proposition…');
+        window.location.reload();
+        return;
+      }
+      if (valider) valider.disabled = false;
+      dire(r.detail || 'Code incorrect. Vérifiez le code reçu et réessayez.');
+      champ?.select();
     });
   })();
 </script>
