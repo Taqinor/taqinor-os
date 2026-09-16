@@ -6445,14 +6445,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         <>
         <div class="seam-soft" aria-hidden="true"></div>
         <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20" data-track-section="sld">
-          <p class="tech-label rule-brass cine-in text-brass-300" data-i18n data-fr="Étude électrique" data-en="Electrical study" data-ar="الدراسة الكهربائية">Étude électrique</p>
-          <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Schéma électrique" data-en="Electrical diagram" data-ar="المخطط الكهربائي">Schéma électrique</h2>
-          <p class="v2-body cine-in cine-in-2 mt-2 text-sm text-lune-soft" data-i18n
-            data-fr="Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens."
-            data-en="Your installation’s single-line diagram, as designed by our technicians."
-            data-ar="المخطط الأحادي الخط لتركيبتكم، كما درسه فنيونا.">
-            Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens.
-          </p>
+          {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — le sur-titre, le <h2> et
+              la phrase d'introduction occupaient un écran pour annoncer un
+              document que presque personne n'ouvre AVANT de signer (et que le
+              PDF embarque déjà en annexe). Ils descendent DANS le repli : la
+              section, son ancre #sld et son data-track-section restent, le
+              titre devient la ligne qu'on ouvre. */}
           <!-- WJ129 — carte-teaser cliquable (remplace l'ancien SVG écrasé à
                302×213 px illisible en mobile) : mobile = hauteur maîtrisée +
                crop haut-gauche + voile + affordance « Agrandir » ; desktop
@@ -6469,6 +6467,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               data-fr="Voir le schéma électrique de l’installation"
               data-en="See the installation’s electrical diagram"
               data-ar="عرض المخطط الكهربائي للتركيب">Voir le schéma électrique de l’installation</summary>
+            <h2 class="display cine-in cine-in-1 mt-4 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Schéma électrique" data-en="Electrical diagram" data-ar="المخطط الكهربائي">Schéma électrique</h2>
+            <p class="v2-body cine-in cine-in-2 mt-2 text-sm text-lune-soft" data-i18n
+              data-fr="Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens."
+              data-en="Your installation’s single-line diagram, as designed by our technicians."
+              data-ar="المخطط الأحادي الخط لتركيبتكم، كما درسه فنيونا.">
+              Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens.
+            </p>
           <button
             type="button"
             id="sld-teaser"
@@ -6591,8 +6596,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            succès (au-dessus, plus haut sur la page). -->
       <section id="etapes-suivantes" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-en="What happens next?" data-ar="ماذا بعد؟">Et après ?</h2>
+        {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — quatre cartes de
+            processus, empilées sur mobile, pour un client qui n'a pas encore
+            signé : la PREMIÈRE étape est la seule qui le concerne
+            maintenant. Les trois suivantes restent entières, sous un titre
+            qu'il ouvre s'il veut voir la suite. Aucune étape n'est
+            supprimée ni reformulée — `nextSteps()` reste la source unique,
+            partagée avec la ligne de délai de « Ce que vous recevez ». */}
         <ol class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {steps.map((s, i) => (
+          {steps.slice(0, 1).map((s, i) => (
             <li class="cine-card rounded-xl p-5">
               <p class="fig text-brass-300">{i + 1}.</p>
               <p class="mt-1 text-sm font-bold text-lune" data-i18n data-fr={s.title} data-en={s.titleEn} data-ar={s.titleAr}>{s.title}</p>
@@ -6600,6 +6612,21 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </li>
           ))}
         </ol>
+        {steps.length > 1 && (
+          <details class="prop-fold mt-4">
+            <summary class="prop-fold-summary cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden" data-i18n
+              data-fr="Et ensuite : visite technique, pose, mise en service"
+              data-en="And then: technical visit, installation, commissioning"
+              data-ar="ثم: الزيارة التقنية، التركيب، التشغيل">Et ensuite : visite technique, pose, mise en service</summary>
+            <ol class="mt-4 grid gap-4 sm:grid-cols-3" start="2">
+              {steps.slice(1).map((s, i) => (
+                <li class="cine-card rounded-xl p-5">
+                  <p class="fig text-brass-300">{i + 2}.</p>
+                  <p class="mt-1 text-sm font-bold text-lune" data-i18n data-fr={s.title} data-en={s.titleEn} data-ar={s.titleAr}>{s.title}</p>
+                  <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr={s.body} data-en={s.bodyEn} data-ar={s.bodyAr}>{s.body}</p>
+                </li>
+              ))}
+            </ol>
         <!-- PV80 — « Après l’installation » était une SECTION à part, juste
              en dessous, avec son propre titre pour trois puces de suivi : elle
              raconte la même histoire que la timeline ci-dessus. Fusionnée ici,
@@ -6612,6 +6639,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             ))}
           </ul>
         </div>
+          </details>
+        )}
       </section>
 
       <!-- ── PV80 · FAQ — les TROIS objections qui reviennent vraiment. La liste
@@ -6843,12 +6872,24 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       >
         <div class="mx-auto flex max-w-4xl items-center justify-between gap-4">
           <div class="min-w-0">
+            {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — `truncate` sur une
+                seule ligne coupait le suffixe « TTC » à 390 px dès que la
+                mention « À partir de » était rendue : le client lisait un
+                montant SANS savoir s'il était TTC, ce qui est exactement
+                l'ambiguïté que la checklist anti-arnaque cherche. « À partir
+                de » monte sur sa propre micro-ligne ; le montant et son « TTC »
+                tiennent ensemble, sans troncature possible. */}
             {heroHasRealPrice ? (
-              <p class="truncate text-sm text-lune-soft">
-                <span data-i18n data-fr={stickyPlusieursPrix ? 'À partir de ' : ''} data-en={stickyPlusieursPrix ? 'From ' : ''} data-ar={stickyPlusieursPrix ? 'ابتداءً من ' : ''}>{stickyPlusieursPrix ? 'À partir de ' : ''}</span>
-                <span class="lum fig text-lg" dir="ltr">{formatMAD(stickyTtc ?? 0)}</span>
-                <span class="text-lune-faint" data-i18n data-fr=" TTC" data-en=" incl. tax" data-ar=" شامل الضريبة"> TTC</span>
-              </p>
+              <>
+                {stickyPlusieursPrix && (
+                  <p class="truncate text-[11px] leading-tight text-lune-faint" data-i18n
+                    data-fr="À partir de" data-en="From" data-ar="ابتداءً من">À partir de</p>
+                )}
+                <p class="text-sm leading-tight text-lune-soft">
+                  <span class="lum fig text-lg" dir="ltr">{formatMAD(stickyTtc ?? 0)}</span>
+                  <span class="text-lune-faint" data-i18n data-fr=" TTC" data-en=" incl. tax" data-ar=" شامل الضريبة"> TTC</span>
+                </p>
+              </>
             ) : (
               <!-- WJ83 — garde-fou zéro-total : jamais "0 MAD TTC" comme un
                    vrai prix. -->
