@@ -38,8 +38,14 @@ importer vers le bas.
 classifieur par mots-clés, qui vit côté ``ventes``, est donc INJECTÉ en
 paramètre (``classer_nom``), jamais importé. Ce module reste du Python pur :
 il se teste et s'exécute sans base ni settings.
+
+STKCAT22 y a ajouté la TABLE DE RECONNAISSANCE « PANNEAU » (voir plus bas) :
+même motif, même raison — trois lecteurs répondaient trois choses différentes
+sur la même désignation.
 """
 from __future__ import annotations
+
+import re
 
 #: LE vocabulaire de rôles de composition/devis. Copie DÉPLACÉE (et non
 #: dupliquée) de l'ancien littéral ``apps.ventes.models.ROLES_AUTO_COMPOSITION``
@@ -196,3 +202,78 @@ def contradiction_role_nom(role, role_mot_cle):
     return ("rôle déclaré « %s » en contradiction avec la désignation, que les "
             "mots-clés classent « %s » — le rôle déclaré est conservé"
             % (role, role_mot_cle))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# STKCAT22 — LA TABLE DE RECONNAISSANCE « PANNEAU », PARTAGÉE
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# LE DÉFAUT MESURÉ. « Est-ce un panneau ? » avait TROIS réponses différentes
+# dans ce dépôt, sur la MÊME désignation :
+#
+#   · ``apps.ventes.solar_design.is_panel`` (le moteur PDF, élargi le
+#     19/08/2026) : « Module PV 550 W » → OUI ;
+#   · ``seed_catalogue.classify_categorie`` : NON — le produit tombait dans la
+#     catégorie fourre-tout « Protection & accessoires » ;
+#   · ``seed_catalogue.is_panneau`` (le prédicat FISCAL) : NON — donc TVA 20 %
+#     sur un panneau photovoltaïque, qui est à 10 % depuis la réforme.
+#
+# Les trois PROMETTAIENT en prose d'être alignés. Une prose ne se vérifie pas.
+# La table vit désormais ICI, une fois, et les trois lecteurs l'IMPORTENT.
+#
+# CE QUE LA TABLE SAIT RECONNAÎTRE, ET DANS QUEL ORDRE (:func:`est_panneau`) :
+#   1. le mot « panneau »/« panneaux » à FRONTIÈRE DE MOT ;
+#   2. (si l'appelant fournit ``exclut``) une AUTRE famille de produit → NON ;
+#   3. « module » + un qualifiant photovoltaïque ;
+#   4. une MARQUE de panneau ET un wattage lisible — jamais la marque seule :
+#      Canadian Solar, Huawei et consorts vendent aussi des onduleurs.
+#
+# L'ORDRE DE L'EXCLUSION EST LE CHOIX DE L'APPELANT, et c'est délibéré : le
+# moteur PDF veut « panneau » écrit en toutes lettres qui l'emporte (il classe
+# la ligne telle qu'elle est facturée), tandis que le prédicat FISCAL du seeder
+# veut l'inverse (« Nettoyage panneaux » est une PRESTATION à 20 %, quel que
+# soit le mot « panneaux » dans son nom). Les deux appellent donc la même
+# table, chacun avec son ordre — au lieu d'avoir chacun sa table.
+
+#: Le mot « panneau »/« panneaux » à FRONTIÈRE DE MOT (jamais une sous-chaîne
+#: nue — même garde-fou que ``seed_catalogue.is_offgrid``).
+PANNEAU_RE = re.compile(r'\bpanneau(x)?\b')
+
+#: Qualifiants qui font d'un « module » un module PHOTOVOLTAÏQUE. Sans eux,
+#: « module » seul désignerait aussi un module de batterie ou de coffret.
+PANNEAU_MODULE_QUALIFIERS = ('pv', 'photovolta', 'solaire', 'solar')
+
+#: Marques de panneaux. Elles ne suffisent JAMAIS seules — il faut un wattage
+#: lisible à côté. On préfère l'omission au faux positif.
+PANNEAU_MARQUES = (
+    'canadian solar', 'canadien solar', 'jinko', 'longi', 'trina',
+    'ja solar', 'risen', 'sunpower', 'qcells', 'q cells', 'astronergy',
+    'znshine',
+)
+
+#: Un wattage lisible : « 550 W », « 710Wc ». MÊME expression que celle dont
+#: ``apps.ventes.solar_design`` se sert pour LIRE la puissance — ce module en
+#: est la source, ``solar_design._WATT_RE`` en est l'alias (une seule regex).
+WATT_RE = re.compile(r'(\d{3,4})\s*(?:wc|w)\b', re.IGNORECASE)
+
+
+def est_panneau(nom, exclut=None):
+    """Le texte ``nom`` désigne-t-il un PANNEAU photovoltaïque ?
+
+    ``exclut`` — prédicat OPTIONNEL ``(texte minusculé) -> bool`` qui dit
+    « ce texte appartient à une AUTRE famille de produit ». Il est consulté
+    APRÈS le mot « panneau » et AVANT les deux reconnaissances élargies
+    (module+qualifiant, marque+watt) : un onduleur ou une batterie portant une
+    marque de panneau n'est jamais un panneau. Absent ⇒ aucune exclusion
+    (l'appelant a déjà filtré lui-même, comme le fait le seeder).
+
+    Fonction PURE : ni Django, ni base, ni I/O.
+    """
+    d = (nom or '').lower()
+    if PANNEAU_RE.search(d):
+        return True
+    if exclut is not None and exclut(d):
+        return False
+    if 'module' in d and any(q in d for q in PANNEAU_MODULE_QUALIFIERS):
+        return True
+    return bool(any(m in d for m in PANNEAU_MARQUES) and WATT_RE.search(d))
