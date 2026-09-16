@@ -203,6 +203,20 @@ class ProduitSerializer(serializers.ModelSerializer):
     categorie_type = serializers.CharField(
         source='categorie.type_equipement', read_only=True, allow_null=True)
     categorie_type_display = serializers.SerializerMethodField()
+    # ── STKCAT21 — LE RÔLE DE DEVIS, RÉSOLU ET TRAÇABLE ────────────────────
+    # ``role_devis`` (le champ modèle, listé dans ``fields``) est le rôle
+    # DÉCLARÉ : écrit par le fondateur, vide par défaut. Les deux champs
+    # ci-dessous exposent, EN LECTURE SEULE, ce que le serveur en fait :
+    #   · ``role_devis_effectif`` — le rôle RETENU après les trois rangs
+    #     (déclaré → famille de la catégorie → mots-clés du nom) ;
+    #   · ``role_devis_source``   — LEQUEL des trois a répondu
+    #     ('declare' / 'categorie' / 'nom', ou None).
+    # La source est exposée parce qu'un rôle DEVINÉ et un rôle DÉCLARÉ ne se
+    # valent pas à l'écran : c'est ce qui permet de dire « rôle déduit du nom »
+    # plutôt que de faire passer une devinette pour une donnée. Aucun prix
+    # d'achat, aucune marge n'entre ici.
+    role_devis_effectif = serializers.SerializerMethodField()
+    role_devis_source = serializers.SerializerMethodField()
     # N14 — quantité ENGAGÉE par des réservations de chantier (non consommée) et
     # DISPONIBLE = stock total − réservé. Les vues stock + alertes de stock bas
     # tiennent compte de l'engagé-mais-non-consommé.
@@ -475,6 +489,9 @@ class ProduitSerializer(serializers.ModelSerializer):
             # PVOND — contrat onduleur / appariement batterie (lecture seule)
             'specs_solaire',
             'is_low_stock', 'categorie_type', 'categorie_type_display',
+            # STKCAT21 — rôle de devis : le DÉCLARÉ (écriture), puis le
+            # RÉSOLU et sa SOURCE (lecture seule), à côté du rail catégorie.
+            'role_devis', 'role_devis_effectif', 'role_devis_source',
             'quantite_reservee', 'quantite_disponible',
             'is_low_stock_disponible', 'nb_mouvements',
             'premiere_date_mouvement', 'derniere_date_mouvement',
@@ -601,6 +618,49 @@ class ProduitSerializer(serializers.ModelSerializer):
         if cat is None or not cat.type_equipement:
             return None
         return cat.get_type_equipement_display()
+
+    # ── STKCAT21 — résolution du rôle de devis ────────────────────────────
+    def _role_resolu(self, obj):
+        """``(role, source)`` du produit — calculé UNE fois par objet.
+
+        Le classifieur par mots-clés est lu par le SÉLECTEUR de ventes
+        (``apps.ventes.selectors.classer_produit_nom``) : lecture cross-app
+        sanctionnée, jamais un import de ``apps.ventes.domain``. La catégorie
+        est déjà déréférencée par ``categorie``/``categorie_type_display``
+        dans la même sérialisation — aucune requête de plus.
+        """
+        cache = getattr(obj, '_stkcat21_role_resolu', None)
+        if cache is None:
+            from apps.ventes.selectors import classer_produit_nom
+            from core.product_roles import role_effectif
+            cat = obj.categorie
+            cache = role_effectif(
+                role_devis=obj.role_devis,
+                type_equipement=getattr(cat, 'type_equipement', None),
+                nom=obj.nom,
+                classer_nom=classer_produit_nom,
+            )
+            obj._stkcat21_role_resolu = cache
+        return cache
+
+    def validate_role_devis(self, value):
+        """Normalise « pas de rôle » en ``None`` (jamais la chaîne vide).
+
+        Le champ est nullable ET ``blank=True`` : sans cette normalisation, un
+        écran qui envoie ``''`` pour effacer le rôle stockerait une chaîne vide
+        à côté des NULL — deux façons d'écrire « non déclaré », dont une que
+        les filtres ``role_devis__isnull`` ne verraient pas. Les valeurs hors
+        vocabulaire sont, elles, déjà refusées par les ``choices`` du modèle.
+        """
+        return value or None
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_role_devis_effectif(self, obj):
+        return self._role_resolu(obj)[0]
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_role_devis_source(self, obj):
+        return self._role_resolu(obj)[1]
 
     def get_is_low_stock(self, obj):
         # Comportement historique conservé (stock brut vs seuil).

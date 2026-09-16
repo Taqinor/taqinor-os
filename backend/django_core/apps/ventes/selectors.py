@@ -3093,3 +3093,22 @@ def kpis_factures(qs):
         'nb_en_retard': nb_en_retard,
         'total_a_echoir_7j': str(total_a_echoir_7j),
     }
+
+
+def classer_produit_nom(nom):
+    """STKCAT21 — le RÔLE de composition déduit des MOTS-CLÉS d'un nom, ou
+    ``None``.
+
+    Point d'entrée cross-app SANCTIONNÉ du classifieur par mots-clés : c'est
+    par ici que ``apps.stock`` (le sérialiseur produit) lit la classification
+    ventes, sans jamais importer ``apps.ventes.domain.catalogue`` — frontière
+    inter-app, CLAUDE.md.
+
+    Enveloppe MINCE de ``domain.catalogue.classer_produit`` : même entrée, même
+    sortie, aucune règle en plus. C'est le REPLI PERMANENT de
+    ``core.product_roles.role_effectif`` (rang 3, derrière le rôle déclaré sur
+    la fiche et la famille de la catégorie) — il n'est jamais retiré. Pure
+    lecture : ne requête rien, n'écrit rien.
+    """
+    from .domain.catalogue import classer_produit
+    return classer_produit(nom)

@@ -3,6 +3,11 @@ from decimal import Decimal
 from django.db import models
 
 from core.models import TenantModel  # SCA4 — socle multi-tenant
+# STKCAT21 — LE vocabulaire de rôles de devis. Il vit dans ``core`` (couche de
+# FONDATION) et PAS dans ``apps.ventes`` : ce module ne peut pas importer une
+# app métier sœur (frontière inter-app, verrouillée par ``.importlinter``),
+# et une copie locale aurait fait un miroir de plus à tenir à la main.
+from core.product_roles import ROLES_DEVIS
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -707,6 +712,41 @@ class Produit(models.Model):
     )
     tva = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_archived = models.BooleanField(default=False)
+
+    # ── STKCAT21 — RÔLE DU PRODUIT DANS UN DEVIS, enfin une DONNÉE ──────────
+    # Jusqu'ici, « ce produit est-il un panneau, une structure, un câble ? »
+    # n'existait nulle part : la réponse était RE-DEVINÉE à chaque lecture à
+    # partir de MOTS-CLÉS du nom, par des classifieurs séparés. Un produit réel
+    # nommé « Pergola alu » n'était donc reconnu par aucun d'eux (défaut
+    # fondateur « Pergola introuvable », audit L3 du 16/09/2026).
+    #
+    # NULLABLE ET SANS BACKFILL : tout produit existant vaut NULL, donc la
+    # résolution retombe EXACTEMENT sur le comportement d'aujourd'hui
+    # (catégorie typée puis mots-clés). Le champ ne fait qu'AJOUTER un premier
+    # rang de lecture, il n'en retire aucun — les mots-clés restent un REPLI
+    # PERMANENT (cf. ``core.product_roles.role_effectif``).
+    #
+    # Le vocabulaire vient de ``core.product_roles.ROLES_DEVIS`` : le MÊME
+    # tuple que ``apps.ventes.models.ROLES_AUTO_COMPOSITION``, lu depuis la
+    # couche de fondation parce que ``apps.stock`` n'a pas le droit d'importer
+    # ``apps.ventes``. Les LIBELLÉS FR, eux, vivent côté ventes/écran
+    # (``LIBELLES_ROLES`` / ``solar.js PRODUCT_CATEGORIES``, alignés par
+    # ``scripts/check_roles_mirror.py``) : inatteignables d'ici, et inutiles —
+    # l'écran affiche son propre libellé par ``roleLabel``. Les ``choices``
+    # portent donc la clé des deux côtés, délibérément.
+    #
+    # INDEXÉ : le rail « rôle » a vocation à FILTRER le catalogue (« montre-moi
+    # les structures »), exactement ce pour quoi ``categorie.type_equipement``
+    # a été typé par STKCAT4.
+    role_devis = models.CharField(
+        max_length=32,
+        choices=[(role, role) for role in ROLES_DEVIS],
+        null=True, blank=True, db_index=True,
+        verbose_name='Rôle sur un devis',
+        help_text="Rôle DÉCLARÉ du produit dans une composition de devis "
+                  "(panneau, batterie, structure…). Vide = non déclaré : le "
+                  "rôle est alors déduit de la catégorie puis des mots-clés "
+                  "du nom, comme avant.")
 
     # ── NTWMS38 — Marchandises dangereuses / matières sensibles ────────────
     # Le catalogue solaire contient des BATTERIES LITHIUM : leur stockage et
