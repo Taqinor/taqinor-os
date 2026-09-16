@@ -13,6 +13,7 @@ import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import { resilientMutation } from '../../lib/resilientMutation'
 import { useStaleGuard } from '../../hooks/useStaleGuard'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, IconButton,
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -110,7 +111,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
 
   useEffect(() => {
     crmApi.getClients().then(r => setClients(r.data.results ?? r.data)).catch(() => {})
-    stockApi.getProduits().then(r => setProduits(r.data.results ?? r.data)).catch(() => {})
+    fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
+      .then(setProduits).catch(() => {})
     ventesApi.getBonsCommande().then(r => setBonsCommande(r.data.results ?? r.data)).catch(() => {})
   }, [])
 

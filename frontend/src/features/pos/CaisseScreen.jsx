@@ -22,6 +22,7 @@ import posApi from '../../api/posApi'
 import api from '../../api/axios'
 import { prixTtc, sansPrix } from '../stock/catalogue'
 import { formatMAD } from '../../lib/format'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, Input, Label, Badge, EmptyState,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -112,10 +113,10 @@ export default function CaisseScreen() {
   }, [])
 
   useEffect(() => {
-    posApi.getProduits().then((r) => {
-      const data = r?.data?.results ?? r?.data ?? []
-      setProduits(Array.isArray(data) ? data : [])
-    }).catch(() => setProduits([]))
+    fetchAllPages((page) => posApi.getProduits({ page }).then((r) => r.data))
+      .then((data) => {
+        setProduits(Array.isArray(data) ? data : [])
+      }).catch(() => setProduits([]))
   }, [])
 
   useEffect(() => {
