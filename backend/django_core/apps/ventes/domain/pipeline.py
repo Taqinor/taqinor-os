@@ -737,6 +737,12 @@ def ecrire_lignes(devis, composition, *, company, avertissements=None):
     QJR304 — LA RÈGLE R4-A S'APPLIQUE ICI, AU POINT OÙ LA QUANTITÉ DEVIENT
     FACTURÉE. Voir :func:`_appliquer_preseance_quantite`.
     """
+    # STKCAT23 (bis) — le rôle ÉMIS par la composition (``lignes.roles``,
+    # parallèle aux specs) voyage avec chaque ligne jusqu'à l'écrivain : une
+    # pergola (nom sans mot-clé, rôle non déclaré) est ainsi stockée avec son
+    # rôle ``structure`` au lieu de NULL. Un dict passé par l'écran reste
+    # TEL QUEL (il porte, ou non, son propre ``role_devis``).
+    roles_emis = list(getattr(composition, 'roles', None) or ())
     lignes_in = [
         spec if isinstance(spec, dict) else {
             'produit': getattr(spec.produit, 'id', None),
@@ -745,6 +751,8 @@ def ecrire_lignes(devis, composition, *, company, avertissements=None):
             'prix_unitaire': str(spec.prix_unitaire),
             'ordre': index,
             'variante': getattr(spec, 'variante', '') or '',
+            'role_devis': (roles_emis[index]
+                           if index < len(roles_emis) else None),
         }
         for index, spec in enumerate(composition or ())
     ]

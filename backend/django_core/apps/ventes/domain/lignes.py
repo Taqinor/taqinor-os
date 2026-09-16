@@ -829,6 +829,10 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
         raise ValueError(MSG_REMPLACEMENT_VIDE)
     _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
     _VALID_VARIANTES = {c.value for c in LigneDevis.Variante}
+    # STKCAT23 (bis) — vocabulaire des rôles : un rôle hors liste n'est
+    # jamais écrit tel quel, creer_ligne le résout lui-même.
+    from core.product_roles import ROLES_DEVIS
+    _VALID_ROLES = set(ROLES_DEVIS)
     devis.lignes.all().delete()
     for idx, li in enumerate(lignes_in):
         if not isinstance(li, dict):
@@ -883,6 +887,9 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
         variante = str(li.get('variante') or '')
         if variante not in _VALID_VARIANTES:
             variante = ''
+        role_emis = str(li.get('role_devis') or '')
+        extra_role = ({'role_devis': role_emis}
+                      if role_emis in _VALID_ROLES else {})
         creer_ligne(
             devis, produit=produit,
             designation=(li.get('designation') or produit.nom)[:255],
@@ -890,6 +897,7 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
             taux_tva=Decimal(str(taux)) if taux is not None else None,
             optionnelle=bool(li.get('optionnelle', False)),
             type_ligne='produit', ordre=ordre, variante=variante,
+            **extra_role,
             # QJR59 / D12 — les marqueurs de saisie MANUELLE font l'aller
             # retour. Sans eux ici, ce chemin (le SEUL chemin d'écriture de
             # l'écran, création comme édition) les remettrait à False à

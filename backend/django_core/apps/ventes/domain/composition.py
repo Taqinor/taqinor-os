@@ -1771,12 +1771,19 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
                     avertissements.append(AVERTISSEMENTS_KIT_ABSENT[classe])
                 continue
             ordre += 1
+            # STKCAT23 (bis) — le rôle ÉMIS voyage avec la ligne : la classe
+            # complétée EST le rôle, sauf « structure » où le nom du produit
+            # tranche (acier/alu → alias, sinon générique), même règle que
+            # role_structure_du_produit.
+            role_emis = (role_structure_du_produit(spec.produit)
+                         if classe == 'structure' else classe)
             creer_ligne(
                 devis, produit=spec.produit,
                 designation=spec.designation,
                 quantite=Decimal(str(spec.quantite)),
                 prix_unitaire=Decimal(spec.prix_unitaire),
                 remise=Decimal('0'), ordre=ordre,
+                role_devis=role_emis,
                 # QJR81 — l'option que cette ligne SERT. Vide (le cas de tout
                 # devis non varianté) ⇒ ligne COMMUNE, comme avant.
                 variante=getattr(spec, 'variante', '') or '')

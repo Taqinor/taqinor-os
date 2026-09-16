@@ -72,7 +72,7 @@ RATE_NAME_RE = re.compile(r"(taux_|_pct$|pourcentage)", re.IGNORECASE)
 # ble, lui, est arrondi au centime au moment de la facturation.
 DECIMAL_PLACES_ALLOWLIST = {
     "backend/django_core/apps/gestion_projet/models.py:103",
-    "backend/django_core/apps/stock/models.py:788",
+    "backend/django_core/apps/stock/models.py:834",
     "backend/django_core/apps/btp_chantier/models.py:831",
     "backend/django_core/apps/btp_chantier/models.py:1169",
     "backend/django_core/apps/contrats/models.py:4268",

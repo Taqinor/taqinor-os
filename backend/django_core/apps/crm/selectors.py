@@ -4559,8 +4559,13 @@ def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
     qs = Lead.objects.filter(company=company).filter(
         Q(devis__lignes__produit_id=produit_id)
         | Q(structure_produit_id=produit_id))
+    # Comme la liste /crm/leads par défaut : les leads archivés n'y figurent pas.
+    qs = qs.filter(is_archived=False)
     if user is not None:
         qs = scope_queryset(qs, user, ['owner'])
+        # NTADM3 — même périmètre d'entités que LeadViewSet (EntiteScopeMixin).
+        from core.entite_scoping import scope_entite_queryset
+        qs = scope_entite_queryset(qs, user)
     qs = qs.distinct().order_by('-date_creation', '-id')
 
     lignes = []

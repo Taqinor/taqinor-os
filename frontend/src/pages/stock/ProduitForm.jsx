@@ -700,8 +700,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
       const courbePointsValides = courbeRows
         .map(r => ({ debit: parseFloat(r.debit), hmt: parseFloat(r.hmt) }))
         .filter(r => Number.isFinite(r.debit) && Number.isFinite(r.hmt))
-      const courbePompePayload = courbePointsValides.length
-        ? {
+      const courbePompePayload = courbePointsValides.length >= 2 ? {
             debits_m3h: courbePointsValides.map(r => r.debit),
             hmt_m:      courbePointsValides.map(r => r.hmt),
           }

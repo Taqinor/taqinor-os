@@ -3171,6 +3171,10 @@ def devis_utilisant_produit(user, produit_id, limit=20):
         qs = qs.filter(client_id=scope).exclude(statut=Devis.Statut.BROUILLON)
     else:
         qs = scope_queryset(qs, user, ['created_by'])
+        # NTADM3 — même périmètre d'entités que DevisViewSet (EntiteScopeMixin) ;
+        # renvoie qs inchangé pour un rôle sans périmètre.
+        from core.entite_scoping import scope_entite_queryset
+        qs = scope_entite_queryset(qs, user)
 
     qs = (qs.filter(lignes__produit_id=produit_id)
             .select_related('client')
