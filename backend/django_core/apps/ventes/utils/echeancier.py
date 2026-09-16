@@ -207,6 +207,48 @@ def tranches_normalisees(devis) -> list:
             for key in TRANCHE_ORDER]
 
 
+def pourcentages_echeancier(devis, lignes=None) -> list:
+    """PREVIEW-V3-FIX (16/09/2026, audit C3) — LE POIDS DE CHAQUE TRANCHE DE
+    CE DEVIS, en pourcentage : ``[{key, libelle, pct}]`` dans l'ordre.
+
+    Le défaut qu'elle ferme : la page publique affichait l'acompte depuis
+    l'échéancier RÉEL du devis (``next_tranche``) et, trois lignes plus bas,
+    les conditions générales depuis les pourcentages de la SOCIÉTÉ
+    (``payment_terms_for``). Sur un devis à échéancier négocié, le client
+    lisait « Acompte de 40 % » puis « Acompte à la commande : 30% » — deux
+    vérités sur le même écran. Les deux lectures partent désormais d'ici.
+
+    MÊME règle d'unité que :func:`next_tranche` : une tranche en pourcentage
+    vaut sa valeur ; une tranche déclarée en DIRHAMS (QJR21) publie son poids
+    réel (montant ÷ TTC du devis, au centième). Le TTC n'est lu qu'en présence
+    d'une telle tranche — un échéancier en pourcentages ne coûte aucune
+    requête de plus.
+
+    NUANCE ASSUMÉE : ``next_tranche`` fait de la DERNIÈRE tranche le RESTE
+    exact (pour que la somme des factures égale le devis au centime). Ici on
+    publie le poids DÉCLARÉ, identique tant qu'aucune facture n'est encore
+    émise — ce qui est toujours le cas quand la page client lit ces
+    pourcentages. La PREMIÈRE tranche, elle, est identique dans tous les cas :
+    c'est l'invariant dont dépend « jamais deux acomptes à l'écran ».
+    """
+    tranches = tranches_normalisees(devis)
+    total_ttc = None
+    out = []
+    for tranche in tranches:
+        if tranche['unite'] == UNITE_MONTANT:
+            if total_ttc is None:
+                from apps.ventes.utils.options import option_totaux
+                total_ttc = Decimal(
+                    str(option_totaux(devis, lignes=lignes)['ttc']))
+            pct = (_q(Decimal(str(tranche['valeur'])) / total_ttc * 100)
+                   if total_ttc > 0 else Decimal('0'))
+        else:
+            pct = Decimal(str(tranche['valeur']))
+        out.append({'key': tranche['key'], 'libelle': tranche['libelle'],
+                    'pct': pct})
+    return out
+
+
 def schedule_for_devis(devis):
     """Vue historique ``[(clé, pct_or_montant)]`` de ``tranches_normalisees``.
 

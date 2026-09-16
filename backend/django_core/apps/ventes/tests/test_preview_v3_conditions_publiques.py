@@ -230,6 +230,38 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         self.assertIn('40', joint)
         self.assertIn('50', joint)
 
+    def test_les_conditions_suivent_lecheancier_negocie_du_devis(self):
+        """LE DÉFAUT C3, ÉPINGLÉ. `acompte` venait de l'échéancier RÉEL du
+        devis et `conditions` des pourcentages de la SOCIÉTÉ : sur un devis à
+        échéancier négocié, le récap disait « Acompte de 40 % » et la puce,
+        trois lignes plus bas, « Acompte à la commande : 30% ». Une seule
+        source désormais — et la page ne peut plus afficher deux acomptes."""
+        self.devis.echeancier = [
+            {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 40},
+            {'libelle': 'Livraison du matériel', 'type': 'materiel',
+             'pct_or_montant': 50},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 10},
+        ]
+        self.devis.save(update_fields=['echeancier'])
+        data = self._payload()
+        joint = ' | '.join(data['conditions'])
+        self.assertIn('Acompte à la commande', joint)
+        self.assertIn('40', joint)
+        self.assertIn('50', joint)
+        # LE point du correctif : UN SEUL pourcentage d'acompte à l'écran.
+        self.assertEqual(Decimal(data['acompte']['pourcentage']),
+                         Decimal('40'))
+        self.assertNotIn('30%', joint.replace(' ', ''))
+
+    def test_les_pourcentages_sont_ecrits_comme_on_les_lit(self):
+        """« 40 », jamais « 40.00 » : les puces sont du texte client."""
+        from apps.ventes.public_views import _pct_lisible
+        from decimal import Decimal as D
+        self.assertEqual(_pct_lisible(D('40.00')), '40')
+        self.assertEqual(_pct_lisible(D('33.50')), '33,5')
+        self.assertEqual(_pct_lisible(30), '30')
+        self.assertEqual(_pct_lisible(30.0), '30')
+
     # ── moyens de paiement ──────────────────────────────────────────────
     def test_paiement_moyens_ne_propose_jamais_les_especes(self):
         """Art. 193 CGI : au-delà de 20 000 MAD l'espèce expose LE VENDEUR à

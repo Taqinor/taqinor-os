@@ -2911,7 +2911,22 @@ def _acompte_publique(devis, lignes=None):
         return None
 
 
-def _conditions_publiques(data):
+def _pct_lisible(valeur):
+    """PREVIEW-V3-FIX — un pourcentage d'échéancier écrit comme on le lit :
+    « 40 » et non « 40.00 », « 33,5 » et non « 33.50 » (virgule FR, comme
+    ``resolveAcompte`` côté page). Jamais de notation exponentielle (le piège
+    de ``Decimal.normalize()``)."""
+    from decimal import Decimal, InvalidOperation
+    try:
+        d = Decimal(str(valeur))
+    except (InvalidOperation, TypeError, ValueError):
+        return str(valeur)
+    if d == d.to_integral_value():
+        return str(int(d))
+    return format(d, 'f').rstrip('0').rstrip('.').replace('.', ',')
+
+
+def _conditions_publiques(data, devis=None):
     """PREVIEW-V3 — les puces « Conditions générales du devis » du PDF, en texte.
 
     SOURCE UNIQUE : ``DEFAULT_DOC_TEXTS['cgv_bullets']`` du moteur vendoré —
@@ -2925,6 +2940,27 @@ def _conditions_publiques(data):
     l'inverse (le moteur vendoré n'importe rien de ``apps`` et tourne aussi
     en ``__main__``). On ne lit AUCUN global de rendu (``PAY_A``/``TVA_NOTE``
     sont réécrits par chaque rendu sous verrou) — seulement le littéral.
+
+    PREVIEW-V3-FIX (16/09/2026, audit C3) — LES POURCENTAGES VIENNENT DU DEVIS.
+    Ils étaient lus dans ``data['payment_terms']`` = ``payment_terms_for
+    (société, mode)`` : la SOCIÉTÉ seule, jamais le devis. Sur un devis à
+    échéancier négocié (``Devis.echeancier``, FG46), le récap disait « Acompte
+    de 40 % » et la puce, trois lignes plus bas, « Acompte à la commande :
+    30% » — deux vérités sur le même écran, à l'endroit exact où le client
+    décide. Les deux lectures partent désormais de la MÊME source, la
+    fonction d'échéancier qui prend LE DEVIS
+    (``utils.echeancier.pourcentages_echeancier``, celle dont
+    ``next_tranche`` sert la première tranche).
+
+    ``devis`` absent ⇒ comportement d'hier, à l'octet (société seule).
+
+    HORS PÉRIMÈTRE, ET DIT : le PDF garde son propre chemin
+    (``_cgv_bullets_html`` lit les globals ``PAY_A``/``PAY_M``/``PAY_S``
+    posés depuis le même ``payment_terms``). Il hérite donc encore de
+    l'écart sur un devis à échéancier négocié. Le corriger demanderait de
+    changer ce que le moteur IMPRIME ; ce commit ne touche que ce que la page
+    AFFICHE (consigne : ne pas changer le comportement du PDF tant que la
+    même fonction ne sert pas les deux).
     """
     import html as _html
     try:
@@ -2937,9 +2973,34 @@ def _conditions_publiques(data):
              if isinstance(_surcharges, dict) else None)
             or DEFAULT_DOC_TEXTS.get('cgv_bullets') or [])
         terms = (data or {}).get('payment_terms') or {}
-        acompte = int(terms.get('acompte', 30))
-        materiel = int(terms.get('materiel', 60))
-        solde = int(terms.get('solde', 10))
+        # Défauts : la société (comportement d'hier, à l'octet).
+        slots = {'acompte': terms.get('acompte', 30),
+                 'materiel': terms.get('materiel', 60),
+                 'solde': terms.get('solde', 10)}
+        if devis is not None:
+            try:
+                from .utils.echeancier import pourcentages_echeancier
+                tranches = pourcentages_echeancier(devis)
+            except Exception:  # noqa: BLE001 — best-effort, société en repli
+                tranches = []
+            if tranches:
+                if len(tranches) == 3:
+                    # Forme canonique (acompte / matériel / solde), nommée ou
+                    # simplement positionnelle : les trois puces suivent.
+                    for cle, tr in zip(('acompte', 'materiel', 'solde'),
+                                       tranches):
+                        slots[cle] = tr['pct']
+                else:
+                    par_cle = {t['key']: t['pct'] for t in tranches}
+                    for cle in ('acompte', 'materiel', 'solde'):
+                        if cle in par_cle:
+                            slots[cle] = par_cle[cle]
+                    # La PREMIÈRE tranche EST l'acompte, quel que soit son
+                    # nom : c'est celle que `next_tranche` sert au client.
+                    slots['acompte'] = tranches[0]['pct']
+        acompte = _pct_lisible(slots['acompte'])
+        materiel = _pct_lisible(slots['materiel'])
+        solde = _pct_lisible(slots['solde'])
         tva_note = (data or {}).get('tva_note') or ''
         valid_until = ((data or {}).get('valid_until') or '').strip()
         validite_offre = (
@@ -3570,7 +3631,7 @@ def proposal_data(request, token):
         _date_validite = _date_validite_publique(devis)
         if _date_validite is not None:
             payload['date_validite'] = _date_validite
-        _conditions = _conditions_publiques(data)
+        _conditions = _conditions_publiques(data, devis)
         if _conditions is not None:
             payload['conditions'] = _conditions
         payload['paiement_moyens'] = list(PAIEMENT_MOYENS_PUBLICS)
