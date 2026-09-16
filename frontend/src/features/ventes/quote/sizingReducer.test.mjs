@@ -359,3 +359,71 @@ test('REOUVERTURE : un scénario hors contrat du moteur PDF est IGNORÉ', () => 
   assert.equal(s.scenario, SCENARIO_LES_DEUX)
   assert.equal(s.touche.scenario, false)
 })
+
+/* ── STKCAT10 — LE PRODUIT DE STRUCTURE, VALIDÉ CONTRE LE CATALOGUE ─────────
+   Décision fondateur 16/09/2026. Le reducer reste PUR : il ne va chercher
+   aucun catalogue, c'est l'action qui lui apporte la liste des structures
+   réellement sélectionnables (`structuresEligibles`). Il ne peut donc jamais
+   poser sur le devis une structure que l'écran ne propose pas. */
+
+const LEAD_PERGOLA = {
+  type_installation: 'residentiel',
+  structure_pref: 'aluminium',
+  structure_produit: 71,
+}
+
+test('STKCAT10 — SAISI structureProduit : pose l’id ET le MÊME drapeau que le bouton acier/alu', () => {
+  assert.equal(ETAT_INITIAL.structureProduitId, '')
+  const s = sizingReducer(ETAT_INITIAL,
+    { type: 'SAISI', champ: 'structureProduit', valeur: 71 })
+  assert.equal(s.structureProduitId, '71')       // toujours une chaîne
+  assert.deepEqual(drapeauxPoses(s), ['structure'])
+  // Les SIX drapeaux restent SIX : un seul choix pour le vendeur.
+  assert.deepEqual(Object.keys(s.touche).sort(), [...DRAPEAUX_TOUCHE].sort())
+  // Vider le sélecteur (« Aucune structure ») rend la chaîne vide, pas null.
+  const vide = sizingReducer(s, { type: 'SAISI', champ: 'structureProduit', valeur: '' })
+  assert.equal(vide.structureProduitId, '')
+})
+
+test('STKCAT10 — LEAD_APPLIQUE : le produit épinglé n’est appliqué que s’il est ÉLIGIBLE', () => {
+  const ok = sizingReducer(ETAT_INITIAL, {
+    type: 'LEAD_APPLIQUE', lead: LEAD_PERGOLA, structuresEligibles: [12, 71, 99],
+  })
+  assert.equal(ok.structureProduitId, '71')
+  // Le repli acier/alu reste posé en parallèle : c'est lui qui décide si le
+  // produit venait à disparaître du catalogue.
+  assert.equal(ok.structure, 'aluminium')
+  assert.deepEqual(drapeauxPoses(ok), [])        // un pré-remplissage ne « touche » rien
+
+  // Id ABSENT de la liste (archivé, dépricé, détypé, autre société) : rien
+  // n'est appliqué — jamais une structure que l'écran ne propose pas.
+  const horsListe = sizingReducer(ETAT_INITIAL, {
+    type: 'LEAD_APPLIQUE', lead: LEAD_PERGOLA, structuresEligibles: [12, 99],
+  })
+  assert.equal(horsListe.structureProduitId, '')
+  assert.equal(horsListe.structure, 'aluminium')
+
+  // Aucune liste portée par l'action ⇒ comportement d'HIER, inchangé.
+  const sansListe = sizingReducer(ETAT_INITIAL,
+    { type: 'LEAD_APPLIQUE', lead: LEAD_PERGOLA })
+  assert.equal(sansListe.structureProduitId, '')
+  assert.equal(sansListe.structure, 'aluminium')
+
+  // Lead SANS produit épinglé ⇒ rien, même avec une liste (aucun défaut posé).
+  const sansProduit = sizingReducer(ETAT_INITIAL, {
+    type: 'LEAD_APPLIQUE',
+    lead: { type_installation: 'residentiel', structure_pref: 'acier' },
+    structuresEligibles: [12, 71],
+  })
+  assert.equal(sansProduit.structureProduitId, '')
+})
+
+test('STKCAT10 — LEAD_APPLIQUE n’écrase JAMAIS une structure déjà choisie à l’écran', () => {
+  const touche = sizingReducer(ETAT_INITIAL,
+    { type: 'SAISI', champ: 'structureProduit', valeur: '12' })
+  const s = sizingReducer(touche, {
+    type: 'LEAD_APPLIQUE', lead: LEAD_PERGOLA, structuresEligibles: [12, 71],
+  })
+  assert.equal(s.structureProduitId, '12')
+  assert.equal(s.structure, 'acier')   // le repli du lead non plus
+})
