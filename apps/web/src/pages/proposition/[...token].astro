@@ -1868,6 +1868,20 @@ const signConfig = ok
    diverger : une puce d'ancre ne doit jamais pointer vers une section absente
    du DOM. Aucun chiffre n'est calculé ici. */
 const showInstallationChapitre = !!(puissance || nbPanneaux || equipmentGroups.length > 0);
+/* Le résumé VISIBLE de « Ce que vous recevez » : une SÉLECTION de lignes déjà
+   rendues par `equipmentGroups`, jamais une reformulation. Deux lignes de
+   Production (typiquement panneaux + onduleur), une de Stockage (la batterie
+   quand elle est retenue), une de Protection et une de Structure/pose — six au
+   plus. Un devis qui ne porte pas une de ces familles n'affiche simplement pas
+   la ligne correspondante. */
+const equipmentResume = (() => {
+  const pick = (id: string, n: number) =>
+    (equipmentGroups.find((g) => g.id === id)?.lines ?? []).slice(0, n);
+  return [...pick('production', 2), ...pick('stockage', 1), ...pick('protection', 1), ...pick('structure', 1)].slice(0, 6);
+})();
+/* La phrase de délai de pose : l'étape « Installation » de « Et après ? », mot
+   pour mot (même fourchette indicative, une seule source). */
+const delaiPose = steps.find((st) => st.id === 'installation') ?? null;
 const showEconomiesChapitre =
   !isAgricole && !!headline && !!(headline.cumulative || headline.annual || paybackHero || prodKwh || synthese || showCouvertureDonut);
 const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
@@ -2387,7 +2401,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            tableau structuré juste en dessous. -->
       {(puissance || nbPanneaux || equipmentGroups.length > 0) && (
         <section id="installation" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8">
-          <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre installation" data-en="Your installation" data-ar="تركيبكم">Votre installation</h2>
+          {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — « Votre installation »
+              nommait le sujet ; « Ce que vous recevez » répond à la question que
+              le client se pose vraiment devant un devis solaire au Maroc.
+              L'ancre #installation et le crochet data-track-section ne bougent
+              pas : seul le libellé change. */}
+          <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Ce que vous recevez" data-en="What you receive" data-ar="ما ستحصلون عليه">Ce que vous recevez</h2>
           {/* PV81 — les 3 specs occupaient trois CARTES pleine largeur sur mobile
               (~330 px) pour trois valeurs de quelques caractères. Elles tiennent
               en UNE ligne au-dessus du tableau : c'est une légende, pas un
@@ -2441,6 +2460,164 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </p>
           )}
 
+          {/* ── PREVIEW v2 · LE RÉSUMÉ AVANT LE TABLEAU ──────────────────────
+              (fondateur Reda, 2026-09-16.) Le tableau complet — jusqu'à une
+              trentaine de lignes, ses fiches techniques et ses volets « Dans
+              votre installation » — était la PREMIÈRE chose lue de ce chapitre.
+              Le client marocain qui vérifie un devis cherche d'abord trois
+              choses : quelles marques, quelles garanties, quel délai. Elles
+              sont ici, visibles ; le tableau exhaustif reste entier, replié
+              juste en dessous.
+
+              ZÉRO DÉRIVATION : `equipmentResume` ne fait que SÉLECTIONNER des
+              lignes déjà rendues par `equipmentGroups` (les deux premières de
+              Production, la première de Stockage, Protection et Structure) —
+              même désignation, même marque, même quantité, aucun texte
+              reformulé, aucune ligne inventée. */}
+          {equipmentResume.length > 0 && (
+            <ul class="mt-4 space-y-2" data-equip-resume>
+              {equipmentResume.map((it) => (
+                <li class="flex items-baseline gap-2.5 text-sm text-lune">
+                  <span class="fig shrink-0 text-brass-300" dir="ltr">{formatNumber(it.quantite)} ×</span>
+                  <span class="min-w-0">
+                    {it.designation}
+                    {it.marque ? <span class="text-lune-soft"> · {it.marque}</span> : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+        {/* ── PV81 · LES GARANTIES RACONTENT UNE SEULE HISTOIRE ────────────────
+            Trois cartes disaient trois nombres qui ne parlaient pas de la même
+            chose : un « 20 à 25 ans » SANS libellé (durée de vie, lu comme une
+            garantie), « 30 ans panneaux / 10 ans onduleur » juste en dessous, et
+            « 25 ans » du cumul d'économies plus haut. Le chiffre orphelin part ;
+            restent les DEUX garanties constructeur réelles + l'engagement de
+            pose, désormais chiffré lui aussi (2 ans, comme le PDF). Les
+            certifications ne sont pas répétées ici : elles vivent dans le
+            bandeau de badges juste en dessous (IEC → la fiche du panneau
+            devisé, « Loi 82-21 » → /loi-82-21, page dédiée FR/EN/AR qui
+            existe bel et bien — voir `certKeys`/`certHrefs` plus haut). */}
+        {/* (fondateur 2026-08-18) CHAQUE GARANTIE EST GATÉE SUR SA LIGNE DE DEVIS.
+            Les deux garanties constructeur ne sont annoncées que si le devis
+            porte effectivement un panneau / un onduleur (`equipmentPresence`,
+            lu sur les lignes des deux options). Un devis de POMPAGE promettait
+            sinon une garantie onduleur pour un matériel absent du devis. La
+            garantie de POSE, elle, est l'engagement de Taqinor : toujours vraie. */}
+        <div class="cine-card mt-5 rounded-xl p-5">
+          {/* ── QUICK WIN (fondateur, 26/08/2026) — DEUX GARANTIES PANNEAU, PAS
+                 UNE. « 30 ans de performance panneaux » se lisait comme LA
+                 garantie du panneau, alors que ce sont deux engagements
+                 différents et que le client a droit aux deux :
+                   · la garantie PRODUIT couvre le panneau lui-même (défaut de
+                     fabrication) ;
+                   · la garantie RENDEMENT couvre la puissance encore délivrée
+                     au bout de N années.
+                 Les TROIS durées viennent de `lib/warranty.ts`, source unique
+                 partagée avec le PDF — aucune n'est écrite en dur ici.
+
+                 LA POSE RESTE AFFICHÉE, AVEC SES 2 ANS. Un premier passage de
+                 cette lane l'avait retirée en croyant sa durée « non arrêtée » :
+                 c'était FAUX. L'en-tête de `lib/warranty.ts` la tranche
+                 explicitement (« ADJUDICATION DES CHIFFRES, 2026-07-04 :
+                 POSE / main-d'œuvre Taqinor : 2 ans »), et `fiches.ts` la
+                 publie déjà. Retirer un engagement commercial adjugé est un
+                 recul, pas une prudence — la discipline « omettre plutôt que
+                 supposer » ne s'applique QU'À un chiffre réellement absent. */}
+          <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
+            {equipPresence.panneaux && (
+              <>
+                <span class="fig text-lune" dir="ltr" data-i18n
+                  data-fr={`${PANEL_PRODUCT_WARRANTY_YEARS} ans`}
+                  data-en={`${PANEL_PRODUCT_WARRANTY_YEARS} years`}
+                  data-ar={anneesAr(PANEL_PRODUCT_WARRANTY_YEARS)}>{PANEL_PRODUCT_WARRANTY_YEARS} ans</span>
+                <span data-i18n data-fr="de garantie produit panneaux" data-en="of panel product warranty" data-ar="ضمان منتج الألواح">de garantie produit panneaux</span>
+                <span class="text-lune-faint" aria-hidden="true">·</span>
+                <span class="fig text-lune" dir="ltr" data-i18n
+                  data-fr={`${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`}
+                  data-en={`${PANEL_PERFORMANCE_WARRANTY_YEARS} years`}
+                  data-ar={anneesAr(PANEL_PERFORMANCE_WARRANTY_YEARS)}>{PANEL_PERFORMANCE_WARRANTY_YEARS} ans</span>
+                <span data-i18n data-fr="de garantie rendement panneaux" data-en="of panel performance warranty" data-ar="ضمان مردودية الألواح">de garantie rendement panneaux</span>
+                {equipPresence.onduleur && <span class="text-lune-faint" aria-hidden="true">·</span>}
+              </>
+            )}
+            {equipPresence.onduleur && (
+              <>
+                <span class="fig text-lune" dir="ltr" data-i18n
+                  data-fr={`${INVERTER_WARRANTY_YEARS} ans`}
+                  data-en={`${INVERTER_WARRANTY_YEARS} years`}
+                  data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}>{INVERTER_WARRANTY_YEARS} ans</span>
+                <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
+                <span class="text-lune-faint" aria-hidden="true">·</span>
+              </>
+            )}
+            {/* La pose porte SA durée, exactement comme le PDF
+                (theme.WARRANTIES : « 2 ans — Installation »). C'est
+                l'ENGAGEMENT de Taqinor, pas une garantie constructeur : elle
+                est donc INCONDITIONNELLE — affichée même sur un devis sans
+                panneau ni onduleur (un pompage), parce qu'on pose quand même. */}
+            <span class="fig text-lune" dir="ltr" data-i18n
+              data-fr={`${INSTALL_WARRANTY_YEARS} ans`}
+              data-en={`${INSTALL_WARRANTY_YEARS} years`}
+              data-ar={anneesAr(INSTALL_WARRANTY_YEARS)}>{INSTALL_WARRANTY_YEARS} ans</span>
+            <span class="text-lune" data-i18n data-fr="de pose Taqinor" data-en="of Taqinor installation work" data-ar="على تركيب تاقينور">de pose Taqinor</span>
+          </p>
+          {/* PREVIEW DENSITE (2026-09-15) - cette phrase EXPLIQUE les deux
+              chiffres de garantie panneau juste au-dessus, eux-memes gates par
+              `equipPresence.panneaux`. Non gatee, elle promettait « deux
+              garanties » sans qu'aucun chiffre ne soit affiche (un devis sans
+              ligne panneau : un pompage). Elle suit desormais exactement la
+              condition de ce qu'elle decrit. */}
+          {equipPresence.panneaux && (
+            <p class="mt-2 text-xs text-lune-faint" data-i18n
+              data-fr="Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans."
+              data-en="Two distinct warranties: one covers the panel itself, the other the power it still delivers over the years."
+              data-ar="ضمانان مختلفان: أحدهما يغطي اللوح نفسه، والآخر القدرة التي يظل ينتجها عبر السنين.">
+              Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans.
+            </p>
+          )}
+          {/* (fondateur 2026-08-17) réassurance : ce que vaut une garantie
+              fabricant si l'installateur venait à changer. Fait vérifiable — la
+              garantie porte sur le MATÉRIEL, pas sur le poseur. */}
+          <p class="mt-3 text-sm text-lune-soft" data-i18n
+            data-fr="Les garanties fabricant sont attachées au matériel : elles suivent votre installation, restent transférables avec le bien et demeurent valables quel que soit l’installateur."
+            data-en="Manufacturer warranties are attached to the equipment: they follow your installation, transfer with the property and remain valid whoever the installer is."
+            data-ar="ضمانات المصنّع مرتبطة بالمعدات: فهي ترافق تركيبكم، وتنتقل مع الملك، وتبقى سارية مهما كان المُركِّب.">
+            Les garanties fabricant sont attachées au matériel : elles suivent votre installation,
+            restent transférables avec le bien et demeurent valables quel que soit l’installateur.
+          </p>
+        </div>
+
+
+          {/* ── PREVIEW v2 · LE DÉLAI ET LE RESPONSABLE ──────────────────────
+              Les deux dernières colonnes de la checklist anti-arnaque : sous
+              quel délai on pose, et qui répond. Le délai est la phrase EXACTE
+              de l'étape « Installation » de « Et après ? » (`nextSteps`, même
+              source, même fourchette indicative) — jamais un second chiffre.
+              Le nom du responsable vient UNIQUEMENT du payload (`seller.name`,
+              jamais un prénom écrit en dur) ; sans nom servi, la page dit
+              « votre conseiller Taqinor » et le lien WhatsApp reste le même. */}
+          <div class="mt-4 space-y-2 text-sm text-lune-soft">
+            {delaiPose && (
+              <p data-delai-pose data-i18n
+                data-fr={delaiPose.body} data-en={delaiPose.bodyEn} data-ar={delaiPose.bodyAr}>{delaiPose.body}</p>
+            )}
+            <p data-responsable-ligne>
+              <span data-i18n
+                data-fr={seller?.name ? `Votre conseiller : ${seller.name}.` : 'Votre conseiller Taqinor suit ce dossier.'}
+                data-en={seller?.name ? `Your advisor: ${seller.name}.` : 'Your Taqinor advisor is following this file.'}
+                data-ar={seller?.name ? `مستشاركم: ${seller.name}.` : 'مستشاركم في تاقينور يتابع هذا الملف.'}>
+                {seller?.name ? `Votre conseiller : ${seller.name}.` : 'Votre conseiller Taqinor suit ce dossier.'}
+              </span>{' '}
+              <a href={waLinkDiscuss} target="_blank" rel="noopener noreferrer"
+                class="text-brass-300 underline underline-offset-4" data-contact-channel="whatsapp" data-i18n
+                data-fr="Le joindre sur WhatsApp" data-en="Reach them on WhatsApp" data-ar="التواصل عبر واتساب">
+                Le joindre sur WhatsApp
+              </a>
+            </p>
+          </div>
+
           <!-- ── PV80 · CE QUI SERA POSÉ CHEZ VOUS — tableau STRUCTURÉ ────────
                Désignation × quantité, groupé par famille (production, stockage,
                protection, structure), SANS prix par ligne : le prix vit au
@@ -2451,7 +2628,14 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                plus jamais). Aucune ligne du devis n'est perdue :
                un libellé non reconnu tombe dans « Autres postes ». -->
           {equipmentGroups.length > 0 && (
-            <div class="cine-card mt-4 rounded-2xl p-5 sm:p-6" id="equipement">
+            <details class="cine-card prop-fold mt-4 rounded-2xl p-5 sm:p-6">
+            <summary class="prop-fold-summary cursor-pointer list-none text-sm font-bold text-lune marker:hidden [&::-webkit-details-marker]:hidden" data-i18n
+              data-fr="Le détail complet du matériel et les fiches techniques"
+              data-en="The full equipment list and datasheets"
+              data-ar="التفصيل الكامل للمعدات والأوراق التقنية">
+              Le détail complet du matériel et les fiches techniques
+            </summary>
+            <div class="mt-4" id="equipement">
               <div class="flex flex-wrap items-baseline justify-between gap-2">
                 <p class="tech-label text-lune-faint" data-i18n
                   data-fr="Ce qui sera posé chez vous" data-en="What will be installed" data-ar="ما سيتم تركيبه عندكم">
@@ -2618,6 +2802,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 </p>
               )}
             </div>
+            </details>
           )}
         </section>
       )}
@@ -5304,106 +5489,20 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               visiter un chantier, assurance, nombre d'installations. */}
       <section id="confiance" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-en="Why trust us" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</h2>
-        {/* ── PV81 · LES GARANTIES RACONTENT UNE SEULE HISTOIRE ────────────────
-            Trois cartes disaient trois nombres qui ne parlaient pas de la même
-            chose : un « 20 à 25 ans » SANS libellé (durée de vie, lu comme une
-            garantie), « 30 ans panneaux / 10 ans onduleur » juste en dessous, et
-            « 25 ans » du cumul d'économies plus haut. Le chiffre orphelin part ;
-            restent les DEUX garanties constructeur réelles + l'engagement de
-            pose, désormais chiffré lui aussi (2 ans, comme le PDF). Les
-            certifications ne sont pas répétées ici : elles vivent dans le
-            bandeau de badges juste en dessous (IEC → la fiche du panneau
-            devisé, « Loi 82-21 » → /loi-82-21, page dédiée FR/EN/AR qui
-            existe bel et bien — voir `certKeys`/`certHrefs` plus haut). */}
-        {/* (fondateur 2026-08-18) CHAQUE GARANTIE EST GATÉE SUR SA LIGNE DE DEVIS.
-            Les deux garanties constructeur ne sont annoncées que si le devis
-            porte effectivement un panneau / un onduleur (`equipmentPresence`,
-            lu sur les lignes des deux options). Un devis de POMPAGE promettait
-            sinon une garantie onduleur pour un matériel absent du devis. La
-            garantie de POSE, elle, est l'engagement de Taqinor : toujours vraie. */}
-        <div class="cine-card mt-5 rounded-xl p-5">
-          {/* ── QUICK WIN (fondateur, 26/08/2026) — DEUX GARANTIES PANNEAU, PAS
-                 UNE. « 30 ans de performance panneaux » se lisait comme LA
-                 garantie du panneau, alors que ce sont deux engagements
-                 différents et que le client a droit aux deux :
-                   · la garantie PRODUIT couvre le panneau lui-même (défaut de
-                     fabrication) ;
-                   · la garantie RENDEMENT couvre la puissance encore délivrée
-                     au bout de N années.
-                 Les TROIS durées viennent de `lib/warranty.ts`, source unique
-                 partagée avec le PDF — aucune n'est écrite en dur ici.
-
-                 LA POSE RESTE AFFICHÉE, AVEC SES 2 ANS. Un premier passage de
-                 cette lane l'avait retirée en croyant sa durée « non arrêtée » :
-                 c'était FAUX. L'en-tête de `lib/warranty.ts` la tranche
-                 explicitement (« ADJUDICATION DES CHIFFRES, 2026-07-04 :
-                 POSE / main-d'œuvre Taqinor : 2 ans »), et `fiches.ts` la
-                 publie déjà. Retirer un engagement commercial adjugé est un
-                 recul, pas une prudence — la discipline « omettre plutôt que
-                 supposer » ne s'applique QU'À un chiffre réellement absent. */}
-          <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
-            {equipPresence.panneaux && (
-              <>
-                <span class="fig text-lune" dir="ltr" data-i18n
-                  data-fr={`${PANEL_PRODUCT_WARRANTY_YEARS} ans`}
-                  data-en={`${PANEL_PRODUCT_WARRANTY_YEARS} years`}
-                  data-ar={anneesAr(PANEL_PRODUCT_WARRANTY_YEARS)}>{PANEL_PRODUCT_WARRANTY_YEARS} ans</span>
-                <span data-i18n data-fr="de garantie produit panneaux" data-en="of panel product warranty" data-ar="ضمان منتج الألواح">de garantie produit panneaux</span>
-                <span class="text-lune-faint" aria-hidden="true">·</span>
-                <span class="fig text-lune" dir="ltr" data-i18n
-                  data-fr={`${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`}
-                  data-en={`${PANEL_PERFORMANCE_WARRANTY_YEARS} years`}
-                  data-ar={anneesAr(PANEL_PERFORMANCE_WARRANTY_YEARS)}>{PANEL_PERFORMANCE_WARRANTY_YEARS} ans</span>
-                <span data-i18n data-fr="de garantie rendement panneaux" data-en="of panel performance warranty" data-ar="ضمان مردودية الألواح">de garantie rendement panneaux</span>
-                {equipPresence.onduleur && <span class="text-lune-faint" aria-hidden="true">·</span>}
-              </>
-            )}
-            {equipPresence.onduleur && (
-              <>
-                <span class="fig text-lune" dir="ltr" data-i18n
-                  data-fr={`${INVERTER_WARRANTY_YEARS} ans`}
-                  data-en={`${INVERTER_WARRANTY_YEARS} years`}
-                  data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}>{INVERTER_WARRANTY_YEARS} ans</span>
-                <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
-                <span class="text-lune-faint" aria-hidden="true">·</span>
-              </>
-            )}
-            {/* La pose porte SA durée, exactement comme le PDF
-                (theme.WARRANTIES : « 2 ans — Installation »). C'est
-                l'ENGAGEMENT de Taqinor, pas une garantie constructeur : elle
-                est donc INCONDITIONNELLE — affichée même sur un devis sans
-                panneau ni onduleur (un pompage), parce qu'on pose quand même. */}
-            <span class="fig text-lune" dir="ltr" data-i18n
-              data-fr={`${INSTALL_WARRANTY_YEARS} ans`}
-              data-en={`${INSTALL_WARRANTY_YEARS} years`}
-              data-ar={anneesAr(INSTALL_WARRANTY_YEARS)}>{INSTALL_WARRANTY_YEARS} ans</span>
-            <span class="text-lune" data-i18n data-fr="de pose Taqinor" data-en="of Taqinor installation work" data-ar="على تركيب تاقينور">de pose Taqinor</span>
-          </p>
-          {/* PREVIEW DENSITE (2026-09-15) - cette phrase EXPLIQUE les deux
-              chiffres de garantie panneau juste au-dessus, eux-memes gates par
-              `equipPresence.panneaux`. Non gatee, elle promettait « deux
-              garanties » sans qu'aucun chiffre ne soit affiche (un devis sans
-              ligne panneau : un pompage). Elle suit desormais exactement la
-              condition de ce qu'elle decrit. */}
-          {equipPresence.panneaux && (
-            <p class="mt-2 text-xs text-lune-faint" data-i18n
-              data-fr="Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans."
-              data-en="Two distinct warranties: one covers the panel itself, the other the power it still delivers over the years."
-              data-ar="ضمانان مختلفان: أحدهما يغطي اللوح نفسه، والآخر القدرة التي يظل ينتجها عبر السنين.">
-              Deux garanties distinctes : l’une couvre le panneau lui-même, l’autre la puissance qu’il délivre encore au fil des ans.
-            </p>
-          )}
-          {/* (fondateur 2026-08-17) réassurance : ce que vaut une garantie
-              fabricant si l'installateur venait à changer. Fait vérifiable — la
-              garantie porte sur le MATÉRIEL, pas sur le poseur. */}
-          <p class="mt-3 text-sm text-lune-soft" data-i18n
-            data-fr="Les garanties fabricant sont attachées au matériel : elles suivent votre installation, restent transférables avec le bien et demeurent valables quel que soit l’installateur."
-            data-en="Manufacturer warranties are attached to the equipment: they follow your installation, transfer with the property and remain valid whoever the installer is."
-            data-ar="ضمانات المصنّع مرتبطة بالمعدات: فهي ترافق تركيبكم، وتنتقل مع الملك، وتبقى سارية مهما كان المُركِّب.">
-            Les garanties fabricant sont attachées au matériel : elles suivent votre installation,
-            restent transférables avec le bien et demeurent valables quel que soit l’installateur.
-          </p>
-        </div>
+        {/* ── PREVIEW v2 · LES GARANTIES SONT MONTÉES AVEC LE MATÉRIEL ────
+            (fondateur Reda, 2026-09-16.) La checklist anti-arnaque marocaine
+            lit « marque/modèle » et « garantie » d'un même mouvement : les
+            durées vivent désormais DANS « Ce que vous recevez », collées aux
+            lignes qu'elles couvrent. Elles ne sont PAS répétées ici — un
+            renvoi, pas un doublon. */}
+        <p class="mt-4 text-sm text-lune-soft">
+          <a href="#installation" class="text-brass-300 underline underline-offset-4" data-i18n
+            data-fr="Les durées de garantie sont indiquées avec le matériel, plus haut."
+            data-en="Warranty durations are listed with the equipment, further up."
+            data-ar="مُدد الضمان مذكورة مع المعدات، في الأعلى.">
+            Les durées de garantie sont indiquées avec le matériel, plus haut.
+          </a>
+        </p>
 
         <!-- WJ35 — compteur de production réellement mesurée (aucune note/avis
              ici : décision fondateur 2026-08-17). La DATE DE RELEVÉ accompagne le
