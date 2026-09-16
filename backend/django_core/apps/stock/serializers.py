@@ -1,3 +1,5 @@
+import math
+
 from django.db import IntegrityError, models, transaction
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
@@ -259,6 +261,64 @@ class ProduitSerializer(serializers.ModelSerializer):
     # déclare donc explicitement optionnel ici aussi.
     sku = serializers.CharField(
         required=False, allow_null=True, allow_blank=True, max_length=50)
+
+    # ── STKCAT20 — courbe de pompe : validation de FORME + garde
+    # anti-effacement ────────────────────────────────────────────────────
+    def validate_courbe_pompe(self, value):
+        """Miroir EXACT de `ProduitAdminForm.clean()` (admin.py,
+        CHAMP_CATALOGUE_VIDE_INTERDIT) côté API : une courbe déjà enregistrée
+        (valeur RÉELLE saisie à la main, non reconstructible) ne peut jamais
+        être remplacée par une valeur vide (None/{}) — seule une transition
+        vers une NOUVELLE courbe valide est acceptée. La création
+        (``self.instance`` absent) est exemptée, exactement comme côté admin
+        (un produit fraîchement créé part légitimement sans courbe).
+
+        Miroir aussi la garde de FORME que `debitAtHmt`/`selectPompeByCurve`
+        (frontend/src/features/ventes/solar.js) appliquent silencieusement
+        avant de considérer une pompe éligible : un dict à deux listes
+        `debits_m3h`/`hmt_m` de MÊME longueur, au moins 2 points, valeurs
+        toutes des nombres finis. Ici, la moindre divergence de forme est un
+        400 explicite plutôt qu'une pompe qui redevient invisible en
+        silence au dimensionnement.
+        """
+        if not value:
+            if self.instance is not None and self.instance.courbe_pompe:
+                raise serializers.ValidationError(
+                    "Vider ce champ est interdit : il porte une courbe de "
+                    "performance constructeur RÉELLE, saisie à la main et "
+                    "non reconstructible depuis l'ERP. Remplacez-la par la "
+                    "NOUVELLE courbe au lieu de la vider — si elle doit "
+                    "réellement redevenir vide, c'est une décision "
+                    "fondateur, pas une simple mise à jour.")
+            return value
+        if not isinstance(value, dict):
+            raise serializers.ValidationError(
+                "La courbe de pompe doit être un objet "
+                "{\"debits_m3h\": [...], \"hmt_m\": [...]}.")
+        debits = value.get('debits_m3h')
+        hmts = value.get('hmt_m')
+        if not isinstance(debits, list) or not isinstance(hmts, list):
+            raise serializers.ValidationError(
+                "La courbe de pompe doit contenir des listes `debits_m3h` "
+                "et `hmt_m`.")
+        if len(debits) != len(hmts):
+            raise serializers.ValidationError(
+                "`debits_m3h` et `hmt_m` doivent avoir la MÊME longueur "
+                f"({len(debits)} contre {len(hmts)}).")
+        if len(debits) < 2:
+            raise serializers.ValidationError(
+                "La courbe de pompe doit compter au moins 2 points.")
+
+        def _nombre_fini(v):
+            return (isinstance(v, (int, float)) and not isinstance(v, bool)
+                    and math.isfinite(v))
+
+        if not all(_nombre_fini(v) for v in debits) or not all(
+                _nombre_fini(v) for v in hmts):
+            raise serializers.ValidationError(
+                "`debits_m3h` et `hmt_m` ne doivent contenir que des "
+                "nombres finis.")
+        return value
 
     def validate_code_barres(self, value):
         # XSTK3 — doublon PROPRE (400) même société, plutôt qu'une
