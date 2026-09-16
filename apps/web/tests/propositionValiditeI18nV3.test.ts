@@ -64,11 +64,18 @@ describe('audit C4 — le mois suit la langue', () => {
     // Les trois phrases de validité (héros, récap de signature, barre
     // collante) doivent lire le libellé de LEUR langue.
     expect(PROPOSITION).toContain('data-en={`Quote valid until ${validity.labelEn ?? validity.label}`}');
-    expect(PROPOSITION).toContain('${validity.labelAr ?? validity.label} ضمناً.`}');
-    expect(PROPOSITION).toContain('data-en={`This proposal and its price are valid up to and including ${validity.labelEn ?? validity.label}.`}');
+    // RECALIBRÉ — décision fondateur 16/09 : réduire au minimum prouvé. Dans le
+    // récap de signature, la phrase complète (« Cette proposition et son prix
+    // sont valables jusqu'au X inclus. ») devient une INCISE de la ligne
+    // acompte (« · valable jusqu'au X inclus »). Le fond de l'art. 29-6 est
+    // intact : une date, dite, avec « inclus ». Ce que ce test protège n'a pas
+    // changé d'un pouce — chaque langue lit SON libellé, jamais le français.
+    expect(PROPOSITION).toContain('${validity.labelAr ?? validity.label} ضمناً`}');
+    expect(PROPOSITION).toContain('data-en={`valid up to and including ${validity.labelEn ?? validity.label}`}');
     // Le littéral fautif (le libellé FR dans un attribut EN/AR) a disparu.
     expect(PROPOSITION).not.toContain('data-en={`Quote valid until ${validity.label}`}');
-    expect(PROPOSITION).not.toContain('including ${validity.label}.`}');
+    expect(PROPOSITION).not.toContain('including ${validity.label}`}');
+    expect(PROPOSITION).not.toContain('${validity.label} ضمناً');
   });
 
   it('la date de validité n’est plus affichée DEUX fois dans le héros', () => {

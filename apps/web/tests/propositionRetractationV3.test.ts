@@ -51,8 +51,15 @@ describe('audit C2 — le mode qui décide de la rétractation', () => {
     expect(gate).toBeGreaterThan(0);
     // La phrase client elle-même (art. 36) ne vit qu'après le gate — le seul
     // autre « 7 jours » du fichier est le commentaire qui explique le gate.
-    const phrase = 'Vous disposez de 7 jours francs pour vous rétracter';
+    // RECALIBRÉ — décision fondateur 16/09 : réduire au minimum prouvé. La
+    // phrase raccourcit (« 7 jours francs pour vous rétracter après
+    // acceptation… ») ; le GATE, lui, ne bouge pas d'un caractère, et c'est
+    // tout ce que ce test protège : le droit n'est promis qu'au consommateur.
+    const phrase = '7 jours francs pour vous rétracter';
     expect(PROPOSITION.indexOf(phrase)).toBeGreaterThan(gate);
     expect(PROPOSITION.split(phrase).length - 1).toBeGreaterThanOrEqual(1);
+    // Les trois obligations chiffrées de l'art. 36/37 restent dites.
+    expect(PROPOSITION).toContain('sans justification ni pénalité');
+    expect(PROPOSITION).toContain('remboursé sous 15 jours');
   });
 });
