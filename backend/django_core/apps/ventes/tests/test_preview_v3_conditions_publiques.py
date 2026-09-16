@@ -51,10 +51,13 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         self.api = APIClient()
 
     # ── fixtures ────────────────────────────────────────────────────────
-    def _produit(self):
+    def _produit(self, suffixe='PV3001'):
+        # SKU unique par devis : (company, sku) est UNIQUE en base, et un test
+        # construit plusieurs devis (setUp + le sien) — CI 35143553611.
         from apps.stock.models import Produit
         return Produit.objects.create(
-            company=self.company, nom='Panneau PV3', sku='PV3-PANNEAU',
+            company=self.company, nom='Panneau PV3',
+            sku=f'PV3-PANNEAU-{suffixe}',
             prix_vente=Decimal('1000'), quantite_stock=100)
 
     def _devis(self, suffixe, avec_lignes=True, client=None):
@@ -79,7 +82,7 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         pu_panneau = Decimal('1000') if avec_lignes else Decimal('0')
         pu_onduleur = Decimal('11700') if avec_lignes else Decimal('0')
         LigneDevis.objects.create(
-            devis=devis, produit=self._produit(), designation='Panneau',
+            devis=devis, produit=self._produit(suffixe), designation='Panneau',
             quantite=Decimal('10'), prix_unitaire=pu_panneau,
             remise=Decimal('0'))
         LigneDevis.objects.create(
