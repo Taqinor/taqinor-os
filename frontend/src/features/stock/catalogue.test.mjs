@@ -4,11 +4,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   groupCatalogue, searchCatalogue, keySpec, sansPrix, MARQUE_GENERIQUE,
-  typeOfProduit, familleAttendue,
+  typeOfProduit, familleAttendue, categorieIcone,
 } from './catalogue.js'
 import {
   classifyProduct, isPanel, isBattery, isReseauInverter, isHybridInverter,
 } from '../ventes/solar.js'
+import { Sun, Zap, Cpu, Droplets, ClipboardList } from 'lucide-react'
 
 const CAT = {
   panneaux: { nom: 'Panneaux photovoltaïques', ordre: 10 },
@@ -188,4 +189,36 @@ test('familleAttendue : mappe les rôles aux familles de produits', () => {
   // null/undefined
   assert.equal(familleAttendue(null), null)
   assert.equal(familleAttendue(undefined), null)
+})
+
+// STKCAT16 — icônes et keySpec pilotées par typeOfProduit, repli par nom.
+test('STKCAT16 — rendu byte-identique sur le catalogue semé (aucun type renseigné)', () => {
+  // FIXTURE ne porte ni categorie_type ni categorie.type_equipement : le
+  // repli par NOM doit produire EXACTEMENT les mêmes icônes/spécs qu'avant
+  // STKCAT16 (valeurs capturées sur l'implémentation pré-changement).
+  assert.equal(categorieIcone(FIXTURE[0]), Sun)           // Panneaux photovoltaïques
+  assert.equal(categorieIcone(FIXTURE[2]), Zap)           // Onduleurs réseau
+  assert.equal(categorieIcone(FIXTURE[3]), Zap)           // Onduleurs hybrides
+  assert.equal(categorieIcone(FIXTURE[4]), Cpu)           // Variateurs
+  assert.equal(categorieIcone(FIXTURE[5]), Droplets)      // Pompes
+  assert.equal(categorieIcone(FIXTURE[6]), ClipboardList) // Services & prestations
+
+  assert.equal(keySpec(FIXTURE[0]), '710 Wc')
+  assert.equal(keySpec(FIXTURE[4]), '7.5 kW · 380 V')
+  assert.ok(keySpec(FIXTURE[5]).includes('10 CV'))
+  assert.ok(keySpec(FIXTURE[5]).includes('courbe constructeur'))
+  assert.equal(keySpec(FIXTURE[6]), null)
+})
+
+test('STKCAT16 — une catégorie « PV Modules » typée panneau obtient Sun + spec Wc', () => {
+  // "PV Modules" ne matche PAS /panneau/i par NOM : seul le type fait passer.
+  const p = { nom: 'Module PV 550 W', categorie: { nom: 'PV Modules', ordre: 5, type_equipement: 'panneau' } }
+  assert.equal(categorieIcone(p), Sun)
+  assert.equal(keySpec(p), '550 Wc')
+})
+
+test('STKCAT16 — structure/protection/service : keySpec renvoie explicitement null', () => {
+  assert.equal(keySpec({ nom: 'Rail alu 3m', categorie_type: 'structure' }), null)
+  assert.equal(keySpec({ nom: 'Disjoncteur différentiel 32A', categorie_type: 'protection' }), null)
+  assert.equal(keySpec({ nom: 'Installation', categorie_type: 'service' }), null)
 })

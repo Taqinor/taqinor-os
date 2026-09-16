@@ -32,7 +32,31 @@ const ICONES_CATEGORIE = [
   [/service|prestation/i, ClipboardList],
 ]
 
+// STKCAT16 — icône par TYPE d'équipement (`typeOfProduit`, cf. plus bas :
+// champ plat `categorie_type` ou `categorie.type_equipement`, l'enum stable
+// stock.Categorie.TypeEquipement côté serveur) — fiable même si la catégorie
+// est renommée/traduite, contrairement aux regex par NOM ci-dessus. Pas
+// d'icône « compteur » dédiée dans le jeu lucide déjà importé pour ce module :
+// Zap (déjà l'icône Onduleur) est la plus proche sémantiquement — un compteur
+// mesure de l'électricité, ce n'est pas une protection mécanique (ShieldCheck
+// reste réservé aux disjoncteurs/parafoudres de la catégorie Protection).
+const ICONE_PAR_TYPE = {
+  panneau: Sun,
+  onduleur: Zap,
+  batterie: BatteryCharging,
+  structure: Wrench,
+  protection: ShieldCheck,
+  cable: Cable,
+  pompe: Droplets,
+  variateur: Cpu,
+  compteur: Zap,
+  accessoire: ShieldCheck,
+  service: ClipboardList,
+}
+
 export function categorieIcone(produit) {
+  const type = typeOfProduit(produit)
+  if (type && ICONE_PAR_TYPE[type]) return ICONE_PAR_TYPE[type]
   const nom = produit?.categorie?.nom ?? ''
   for (const [motif, Icone] of ICONES_CATEGORIE) {
     if (motif.test(nom)) return Icone
@@ -40,8 +64,47 @@ export function categorieIcone(produit) {
   return Package
 }
 
-// Spec CLÉ par catégorie — celle qui compte pour choisir l'article.
+// STKCAT16 — même formule que l'ancien aiguillage par NOM ci-dessous, mais
+// pilotée par `typeOfProduit`. Structure/protection/service/compteur/
+// accessoire n'ont explicitement AUCUNE spec clé inventée (comme les
+// catégories homonymes par nom ne le faisaient déjà pas).
+function _keySpecParType(type, p) {
+  const nom = p.nom ?? ''
+  if (type === 'panneau') {
+    const w = parseWatt(nom)
+    return w ? `${w} Wc` : null
+  }
+  if (type === 'onduleur' || type === 'variateur') {
+    const kw = parseFloat(p.pompe_kw) || parseKw(nom)
+    const phase = p.tension_v
+      ? `${p.tension_v} V`
+      : (parsePhaseIsTri(nom) ? 'Triphasé' : (/monophas/i.test(nom) ? 'Monophasé' : null))
+    if (kw && phase) return `${kw} kW · ${phase}`
+    return kw ? `${kw} kW` : phase
+  }
+  if (type === 'batterie') {
+    const kwh = parseKwh(nom)
+    return kwh ? `${kwh} kWh` : null
+  }
+  if (type === 'pompe') {
+    const cv = parseFloat(p.pompe_cv)
+    const hmt = parseFloat(p.hmt_m)
+    const parts = []
+    if (cv) parts.push(`${cv} CV`)
+    if (hmt) parts.push(`HMT max ${hmt} m`)
+    if (p.courbe_pompe) parts.push('courbe constructeur')
+    return parts.join(' · ') || null
+  }
+  if (type === 'cable') return /m[eè]tre/i.test(nom) ? 'au mètre' : null
+  return null
+}
+
+// Spec CLÉ par catégorie — celle qui compte pour choisir l'article. Lit
+// d'abord `typeOfProduit(p)` (STKCAT16) ; retombe sur les égalités de nom
+// historiques quand le type est absent (catégorie pas encore migrée).
 export function keySpec(p) {
+  const type = typeOfProduit(p)
+  if (type) return _keySpecParType(type, p)
   const cat = p.categorie?.nom ?? ''
   const nom = p.nom ?? ''
   if (cat.startsWith('Panneaux')) {
