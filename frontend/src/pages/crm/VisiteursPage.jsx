@@ -351,7 +351,7 @@ export default function VisiteursPage() {
               <Label htmlFor="vis-lead-libelle">Libellé (optionnel)</Label>
               <Input
                 id="vis-lead-libelle"
-                placeholder="ex. Téléphone Reda"
+                placeholder="ex. Téléphone du commercial"
                 value={libelle}
                 onChange={(e) => setLibelle(e.target.value)}
               />
@@ -580,7 +580,7 @@ export default function VisiteursPage() {
             <Label htmlFor="vis-libelle">Libellé (optionnel)</Label>
             <Input
               id="vis-libelle"
-              placeholder="ex. Téléphone Reda"
+              placeholder="ex. Téléphone du commercial"
               value={libelle}
               onChange={(e) => setLibelle(e.target.value)}
             />
