@@ -74,6 +74,28 @@ class TestBuildFromLayout(TestCase):
         # reference uses the DEV-YYYYMM-NNNN scheme (never count()+1)
         self.assertTrue(devis.reference.startswith('DEV-'))
 
+    def test_lead_structure_produit_fallback_chemin_3d(self):
+        # STKCAT8/STKCAT9 (bis) — sans choix explicite, le chemin 3D lit la
+        # structure épinglée sur le lead : une pergola typée « structure »,
+        # sans le mot acier/alu, devient LA ligne structure du devis.
+        from apps.stock.models import Categorie
+        cat = Categorie.objects.create(
+            company=self.company, nom='Pergolas', type_equipement='structure')
+        pergola = Produit.objects.create(
+            company=self.company, nom='Pergola 4x3', prix_vente=Decimal('900'),
+            categorie=cat)
+        layout = {
+            'scenario': 'reseau',
+            'result': {'panels': 12, 'kwc': 6.6,
+                       'annualKwh': 10800, 'savings': 9200},
+        }
+        devis = build_devis_from_layout(
+            layout=layout, user=self.user, company=self.company,
+            lead=self._lead(structure_produit=pergola))
+        lignes = list(devis.lignes.all())
+        self.assertTrue(any(li.produit_id == pergola.id for li in lignes))
+        self.assertFalse(any('Structures acier' in li.designation for li in lignes))
+
     def test_hybride_with_battery(self):
         layout = {
             'scenario': 'avec_batterie',

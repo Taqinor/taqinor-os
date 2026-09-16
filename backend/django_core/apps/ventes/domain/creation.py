@@ -357,7 +357,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0'),
                             deux_options=False, journal=None, phase=None,
                             dimensionnement_avec=None,
-                            mppt_paires=1, structure_type='acier',
+                            mppt_paires=1, structure_type=None,
                             structure_produit_id=None):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
 
@@ -441,6 +441,12 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
       options pouvait naître avec un seul onduleur composable, et ne servir
       qu'une des deux options qu'il promet au client.
     """
+    # STKCAT8/STKCAT9 (bis) — le chemin 3D suit la MÊME règle que /auto/ :
+    # le choix imposé par l'appelant d'abord, sinon la structure épinglée
+    # sur le lead, sinon sa préférence acier/aluminium, sinon acier (le
+    # défaut historique — un appelant qui passe 'acier' compose comme hier).
+    structure_produit_id, structure_type = _structure_demandee(
+        lead, structure_produit_id, structure_type)
     from apps.ventes.models import Devis
 
     if client is None:

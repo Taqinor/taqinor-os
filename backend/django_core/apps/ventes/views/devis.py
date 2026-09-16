@@ -522,7 +522,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 if _brut_structure_id not in (None, '') else None)
         except (TypeError, ValueError):
             structure_produit_id = None
-        structure_type = request.data.get('structure_type') or 'acier'
+        # STKCAT9 bis — absent = None : la création 3D retombe alors sur la
+        # structure du LEAD (produit épinglé, puis préférence), comme /auto/.
+        structure_type = request.data.get('structure_type') or None
 
         # QJ17 — pre-flight composition check: validate catalogue before building.
         composition_errors = validate_composition_for_layout(layout, company)
@@ -573,7 +575,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             lead=lead_obj, client=client_obj,
             taux_tva=taux_tva, remise_globale=remise,
             structure_produit_id=structure_produit_id,
-            structure_type=str(structure_type),
+            structure_type=(str(structure_type) if structure_type else None),
             phase=normaliser_phase(getattr(lead_obj, 'raccordement', None)))
 
         # QJ17 — persist the layout hash on the newly-created devis so future
