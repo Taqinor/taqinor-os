@@ -34,6 +34,23 @@
 import { getLocaleFromPath } from '../i18n/utils';
 import type { Locale } from '../i18n/config';
 
+interface Props {
+  /**
+   * PREVIEW DENSITE (2026-09-15) - rend le bandeau DANS LE FLUX, en fin de
+   * page, au lieu de `position: fixed` en bas d'ecran. Motif : sur la page
+   * proposition, ce bandeau (z-60) recouvrait en permanence le CTA collant
+   * de signature (z-40) tant que le visiteur n'avait pas repondu - le seul
+   * appel a l'action permanent de la page etait donc invisible. La SEMANTIQUE
+   * de consentement est strictement inchangee : meme id, meme cle
+   * localStorage `tq_consent`, memes boutons, meme evenement
+   * `tq:consent-change`, meme gating des beacons. Seule la position change.
+   * Defaut `false` : toutes les autres pages gardent le bandeau fixe.
+   */
+  inline?: boolean;
+}
+
+const { inline = false } = Astro.props;
+
 const locale = getLocaleFromPath(Astro.url.pathname);
 
 const STR: Record<Locale, { text: string; accept: string; decline: string }> = {
@@ -58,14 +75,17 @@ const s = STR[locale] ?? STR.fr;
 
 <div
   id="tq-consent-banner"
-  class="fixed inset-x-0 bottom-0 z-[60] hidden border-t border-white/10 bg-nuit/95 px-4 py-4 backdrop-blur sm:px-6"
-  style="padding-bottom: max(1rem, env(safe-area-inset-bottom));"
+  class={inline
+    ? 'hidden border-t border-white/10 bg-nuit/95 px-4 pt-3 pb-28 sm:px-6'
+    : 'fixed inset-x-0 bottom-0 z-[60] hidden border-t border-white/10 bg-nuit/95 px-4 py-4 backdrop-blur sm:px-6'}
+  style={inline ? undefined : 'padding-bottom: max(1rem, env(safe-area-inset-bottom));'}
   role="region"
   aria-label={s.accept}
   data-consent-banner
+  data-consent-inline={inline ? 'true' : undefined}
 >
   <div class="mx-auto flex max-w-6xl flex-col items-center gap-3 sm:flex-row sm:justify-between">
-    <p class="text-sm text-lune-soft">{s.text}</p>
+    <p class={inline ? 'text-xs text-lune-faint' : 'text-sm text-lune-soft'}>{s.text}</p>
     <div class="flex shrink-0 gap-2">
       <button
         type="button"

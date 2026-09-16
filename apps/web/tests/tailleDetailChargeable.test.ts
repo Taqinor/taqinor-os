@@ -404,50 +404,58 @@ describe('page — F2 : le tableau année par année suit la taille chargée', (
 // ── 8. LA CARTE RÉCAPITULATIVE MONO-OPTION ─────────────────────────────────
 
 describe('page — le récapitulatif « Recommandé » quand une seule option est envoyée', () => {
-  it('n’existe QUE sans `offres_tailles` : jamais deux récapitulatifs', () => {
-    expect(CODE).toContain('{ok && !tailles && (heroTtc !== null || ecoHero || paybackHero || heroKwc || prodKwh) && (');
-    expect(CODE).toContain('data-recap-mono');
+  // PREVIEW v2 — RECALIBRÉ sur la décision fondateur (Reda, 2026-09-16) :
+  // « I don't have any rule, I just want to be the best and for Morocco. »
+  // La section `data-recap-mono` republiait, sur un écran entier sous le héros,
+  // six chiffres que le héros venait de donner. Elle REMONTE DANS LE PLI : son
+  // INTENTION (« le client mono-option ne lit pas une page moins informative »)
+  // est le contrat testé ci-dessous, sa forme « section séparée » ne l'est plus.
+  it('ses valeurs sont servies DANS LE PLI, jamais sur un second écran', () => {
+    expect(CODE).toContain('id="prop-fold-figures"');
+    expect(CODE).toContain('id="prop-fold-specs"');
+    // La section séparée n'existe plus : le pli en tient lieu.
+    expect(CODE).not.toContain('data-recap-mono');
   });
 
-  it('ouvre la page : il vient AVANT la section des tailles', () => {
-    const recap = CODE.indexOf('data-recap-mono');
+  it('ouvre la page : le pli précède TOUT le reste, tailles comprises', () => {
+    const pli = CODE.indexOf('id="prop-fold-figures"');
     const tailles = CODE.indexOf('id="tailles"');
-    expect(recap).toBeGreaterThan(0);
-    expect(tailles).toBeGreaterThan(recap);
+    expect(pli).toBeGreaterThan(0);
+    expect(tailles).toBeGreaterThan(pli);
   });
 
-  it('reste DENSE : prix, économie, payback, puissance, production, couverture, batterie', () => {
-    const debut = CODE.indexOf('data-recap-mono');
-    // La fenêtre s'arrête à la section SUIVANTE : au-delà commence le bloc
-    // des tailles, dont les `data-taille-*` ne sont pas ceux du récapitulatif.
-    const bloc = CODE.slice(debut, CODE.indexOf('{tailles && tailleDefaut && (', debut));
+  it('reste DENSE : prix, économie, payback, puissance, production, couverture', () => {
+    const debut = CODE.indexOf('id="prop-fold-figures"');
+    const bloc = CODE.slice(debut, CODE.indexOf('id="prop-fold-cta"', debut));
     for (const valeur of [
       'formatMAD(heroTtc)', 'formatMAD(ecoHero)', '{paybackHero}',
       'formatNumber(heroKwc, 2)', 'formatNumber(prodKwh)',
-      'formatPercent(couverture.pct, 0)', 'batteryUnitCapacityLabel',
+      'formatPercent(couverture.pct, 0)',
     ]) {
       expect(bloc, valeur).toContain(valeur);
     }
+    // La banque de batterie est NOMMÉE ligne à ligne dans « Ce que vous
+    // recevez » (data-equip-resume), à partir des lignes réelles du devis.
+    expect(CODE).toContain('data-equip-resume');
   });
 
   it('n’a AUCUNE sémantique de sélection : c’est un résumé, pas un choix', () => {
-    const debut = CODE.indexOf('data-recap-mono');
-    // La fenêtre s'arrête à la section SUIVANTE : au-delà commence le bloc
-    // des tailles, dont les `data-taille-*` ne sont pas ceux du récapitulatif.
-    const bloc = CODE.slice(debut, CODE.indexOf('{tailles && tailleDefaut && (', debut));
+    const debut = CODE.indexOf('id="prop-fold-figures"');
+    const bloc = CODE.slice(debut, CODE.indexOf('id="prop-fold-cta"', debut));
     for (const interdit of ['data-taille-cle', 'data-taille-carte', 'aria-current', 'data-taille-cta']) {
       expect(bloc, interdit).not.toContain(interdit);
     }
   });
 
   it('chaque item est GARDÉ : jamais un zéro de remplissage', () => {
-    const debut = CODE.indexOf('data-recap-mono');
-    // La fenêtre s'arrête à la section SUIVANTE : au-delà commence le bloc
-    // des tailles, dont les `data-taille-*` ne sont pas ceux du récapitulatif.
-    const bloc = CODE.slice(debut, CODE.indexOf('{tailles && tailleDefaut && (', debut));
-    for (const garde of ['{heroTtc !== null ? (', '{ecoHero ? (', '{paybackHero ? (',
-      '{heroKwc ? (', '{prodKwh ? (', '{showCouvertureDonut && couverture ? (']) {
+    const debut = CODE.indexOf('id="prop-fold-figures"');
+    const bloc = CODE.slice(debut, CODE.indexOf('id="prop-fold-cta"', debut));
+    for (const garde of ['{heroTtc !== null ? (', '{heroKwc ? (', '{prodKwh ? (',
+      '{showCouvertureDonut && couverture ? (']) {
       expect(bloc, garde).toContain(garde);
     }
+    // Économie et payback partagent une seule carte gardée (`ecoHero` sinon
+    // repli `paybackHero`) : aucun des deux n'est affiché sans valeur réelle.
+    expect(bloc).toContain('{(ecoHero || paybackHero) ? (');
   });
 });

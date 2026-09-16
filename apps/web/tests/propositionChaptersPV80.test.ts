@@ -81,53 +81,57 @@ describe('PV80 — plus AUCUN crédit / financement / échelonnement', () => {
 });
 
 describe('PV81 — LA PREUVE AVANT LE STYLO : l’ordre des chapitres', () => {
-  it('l’APERÇU des tailles s’intercale entre le héros et le premier détail', () => {
-    // ORDRE FONDATEUR (26/08/2026) — « aperçu d'abord ». La section
-    // « Explorer d'autres tailles » rendait APRÈS le calepinage,
-    // l'installation, la production, les économies et le schéma : le client
-    // devait traverser la page entière avant de découvrir qu'il avait un
-    // CHOIX. Elle suit désormais immédiatement le héros. Les dix chapitres
-    // ci-dessous gardent, eux, exactement l'ordre qu'ils avaient.
-    const hero = at('id="prop-fold-figures"');
+  // PREVIEW v2 — RECALIBRÉ sur la décision fondateur (Reda, 2026-09-16) :
+  // « I don't have any rule, I just want to be the best and for Morocco. »
+  // L'ordre « la preuve avant le stylo » est remplacé par l'ordre « Maroc
+  // d'abord » : ce que le client reçoit et qui vend, avant l'analyse.
+  it('« Votre choix » est groupé : le prix, puis les tailles, puis les gammes', () => {
+    const prix = at('id="options"');
     const tailles = at('id="tailles"');
-    const roof3d = at('id="roof3d"');
+    const gammes = at('id="gammes"');
     expect(tailles, 'ancre #tailles absente').toBeGreaterThan(0);
-    expect(hero).toBeLessThan(tailles);
-    expect(tailles).toBeLessThan(roof3d);
+    expect(prix).toBeLessThan(tailles);
+    expect(tailles).toBeLessThan(gammes);
   });
 
-  it('héros → toit 3D → installation → production → économies → schéma → PREUVE → prix → signature → suite', () => {
+  it('héros → ce que vous recevez → toit 3D → économies → choix → Taqinor → signature', () => {
     const hero = at('id="prop-fold-figures"');
-    const roof3d = at('id="roof3d"');
     const install = at('id="installation"');
-    const production = at('id="production"');
+    const roof3d = at('id="roof3d"');
     const economies = at('id="financing-headline"');
-    const sld = at('id="sld"');
-    const confiance = at('id="confiance"');
-    const faq = at('id="faq"');
+    const production = at('id="production"');
     const prix = at('id="options"');
+    const confiance = at('id="confiance"');
     const signer = at('id="signer"');
+    const sld = at('id="sld"');
     const suite = at('id="etapes-suivantes"');
-    for (const [name, idx] of Object.entries({ hero, roof3d, install, production, economies, sld, confiance, faq, prix, signer, suite })) {
+    const faq = at('id="faq"');
+    for (const [name, idx] of Object.entries({ hero, install, roof3d, economies, production, prix, confiance, signer, sld, suite, faq })) {
       expect(idx, `ancre ${name} absente`).toBeGreaterThan(0);
     }
-    expect(hero).toBeLessThan(roof3d);
-    expect(roof3d).toBeLessThan(install);
-    expect(install).toBeLessThan(production);
-    expect(production).toBeLessThan(economies);
-    expect(economies).toBeLessThan(sld);
-    expect(sld).toBeLessThan(confiance);
-    expect(confiance).toBeLessThan(faq);
-    expect(faq).toBeLessThan(prix);
-    expect(prix).toBeLessThan(signer);
-    expect(signer).toBeLessThan(suite);
+    expect(hero).toBeLessThan(install);
+    expect(install).toBeLessThan(roof3d);
+    expect(roof3d).toBeLessThan(economies);
+    // Le chapitre « Votre production » vit DANS le repli de méthode des
+    // économies : il garde son ancre et son data-track-section.
+    expect(economies).toBeLessThan(production);
+    expect(production).toBeLessThan(prix);
+    expect(prix).toBeLessThan(confiance);
+    expect(confiance).toBeLessThan(signer);
+    // La documentation de référence ferme la page, après l'engagement.
+    expect(signer).toBeLessThan(sld);
+    expect(sld).toBeLessThan(suite);
+    expect(suite).toBeLessThan(faq);
   });
 
   it('les objections sont traitées AVANT la demande d’engagement, jamais après', () => {
     // C'était le défaut central du premier jet : garanties, FAQ et « demander
     // une modification » vivaient tous APRÈS le formulaire de signature.
+    // PREVIEW v2 — les GARANTIES remontent plus haut encore (avec le matériel,
+    // dans « Ce que vous recevez »), l'identité légale précède la signature, et
+    // la FAQ rejoint la documentation de référence en fin de page.
+    expect(at('id="installation"')).toBeLessThan(at('id="signer"'));
     expect(at('id="confiance"')).toBeLessThan(at('id="signer"'));
-    expect(at('id="faq"')).toBeLessThan(at('id="signer"'));
     expect(at('data-revision-token')).toBeLessThan(at('id="signer"'));
   });
 
@@ -250,22 +254,35 @@ describe('PV81 — polish : rien de vide, rien qui se contredit', () => {
     expect(PROPOSITION).toContain('jamais un chiffre mesuré');
   });
 
-  it('le héros ne garde que DEUX nombres (prix + économie), pas quatre', () => {
-    const hero = PROPOSITION.slice(at('id="prop-fold-figures"'), at('id="prop-fold-cta"'));
-    expect(hero).toContain('formatMAD(heroTtc)');
-    expect(hero).toContain('ecoHero ? formatMAD(ecoHero) : paybackHero');
-    // kWc et kWh ont quitté le pli : ils vivent dans leurs chapitres.
-    expect(hero).not.toContain('kWc');
-    expect(hero).not.toContain('kWh');
+  // PREVIEW v2 — RECALIBRÉ sur la décision fondateur (Reda, 2026-09-16) :
+  // « I don't have any rule, I just want to be the best and for Morocco. »
+  // PV81 sortait kWc/kWh du pli ; la décision est maintenant « la décision est
+  // complète à l'écran 1 » (Aurora/OpenSolar ouvrent sur 3-4 chiffres, la
+  // divulgation californienne exige le total sur la couverture). Les DEUX
+  // cartes restent la hiérarchie — le reste est une ligne de légende.
+  it('le pli porte DEUX cartes (prix + économie) et une ligne de légende', () => {
+    const cartes = PROPOSITION.slice(at('id="prop-fold-figures"'), at('id="prop-fold-specs"'));
+    expect(cartes).toContain('formatMAD(heroTtc)');
+    expect(cartes).toContain('ecoHero ? formatMAD(ecoHero) : paybackHero');
+    // Les deux CARTES ne portent toujours que le prix et l'économie.
+    expect(cartes).not.toContain('kWc');
+    expect(cartes).not.toContain('kWh');
     // Le cadrage mensuel réutilise le chiffre DÉJÀ calculé, jamais un nouveau.
-    expect(hero).toContain('headline.monthly');
+    expect(cartes).toContain('headline.monthly');
+    // La légende réutilise les variables DÉJÀ calculées pour les chapitres.
+    const specs = PROPOSITION.slice(at('id="prop-fold-specs"'), at('id="prop-fold-cta"'));
+    expect(specs).toContain('formatNumber(heroKwc, 2)');
+    expect(specs).toContain('formatNumber(prodKwh)');
     expect(at('id="installation"')).toBeGreaterThan(0);
     expect(at('id="production"')).toBeGreaterThan(0);
   });
 
   it('les garanties racontent UNE histoire, chiffrée par la SOURCE UNIQUE warranty.ts', () => {
     expect(CODE).not.toContain('20 à 25 ans');
-    const bloc = PROPOSITION.slice(at('id="confiance"'), at('id="faq"'));
+    // PREVIEW v2 — RECALIBRÉ (Reda, 2026-09-16) : la carte des garanties vit
+    // DANS « Ce que vous recevez », collée aux lignes qu'elle couvre ; le
+    // chapitre « Qui est Taqinor ? » n'en porte plus qu'un renvoi.
+    const bloc = PROPOSITION.slice(at('id="installation"'), at('id="roof3d"'));
     // (fondateur 2026-08-17) plus AUCUN chiffre de garantie codé en dur dans le
     // bloc : les trois durées sont importées de src/lib/warranty.ts — la même
     // source que le PDF (backend residential/theme.py WARRANTIES). Corriger une
@@ -306,10 +323,17 @@ describe('PV81 — polish : rien de vide, rien qui se contredit', () => {
   });
 
   it('la réassurance « garantie attachée au matériel » est dite en FR/EN/AR', () => {
-    const bloc = PROPOSITION.slice(at('id="confiance"'), at('id="faq"'));
-    expect(bloc).toContain('Les garanties fabricant sont attachées au matériel');
-    expect(bloc).toContain('Manufacturer warranties are attached to the equipment');
-    expect(bloc).toContain('ضمانات المصنّع مرتبطة بالمعدات');
+    // PREVIEW v2 — RECALIBRÉ (Reda, 2026-09-16) : même déménagement que la
+    // carte des garanties ci-dessus, vers « Ce que vous recevez ».
+    // RECALIBRÉ à NOUVEAU — décision fondateur du 16/09/2026 (PREVIEW-V3) :
+    // les DEUX paragraphes garanties (41 mots) ont fusionné en une ligne. Le
+    // FAIT verrouillé ne change pas — la garantie porte sur le MATÉRIEL,
+    // transférable, quel que soit l'installateur — seule la tournure a
+    // maigri, et elle reste dite en FR/EN/AR.
+    const bloc = PROPOSITION.slice(at('id="installation"'), at('id="roof3d"'));
+    expect(bloc).toContain('portent sur le matériel — transférables avec le bien, valables quel que soit l’installateur');
+    expect(bloc).toContain('cover the equipment — transferable with the property, valid whoever the installer is');
+    expect(bloc).toContain('ينتقلان مع الملك');
   });
 
   it('le cumul mesuré porte sa DATE DE RELEVÉ, lue dans les données (jamais écrite en dur)', () => {
@@ -344,7 +368,9 @@ describe('PV81 — polish : rien de vide, rien qui se contredit', () => {
 
 describe('PV80 — i18n : tout nouveau texte porte ses trois langues', () => {
   const NEW_LABELS: Array<[string, string, string]> = [
-    ['Votre installation', 'Your installation', 'تركيبكم'],
+    // PREVIEW v2 — RECALIBRÉ (Reda, 2026-09-16) : « Votre installation » nommait
+    // le sujet ; « Ce que vous recevez » répond à la question du client marocain.
+    ['Ce que vous recevez', 'What you receive', 'ما ستحصلون عليه'],
     ['Votre production', 'Your production', 'إنتاجكم'],
     ['Vos économies', 'Your savings', 'توفيراتكم'],
     ['Avec batterie', 'With a battery', 'مع بطارية'],

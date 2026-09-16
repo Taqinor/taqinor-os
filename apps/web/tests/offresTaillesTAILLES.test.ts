@@ -533,26 +533,28 @@ describe('[...token].astro — la section « Explorer d’autres tailles »', ()
     expect(CODE).toContain('{tailles && tailleDefaut && (');
   });
 
-  it('est placée AVANT #options (les tailles décident, #options détaille)', () => {
+  // PREVIEW v2 — RECALIBRÉ sur la décision fondateur (Reda, 2026-09-16) :
+  // « I don't have any rule, I just want to be the best and for Morocco. »
+  // Les tailles rejoignent le chapitre « Votre choix » : #options porte le prix
+  // de l'offre officielle, les tailles explorent, les gammes suivent — une
+  // seule zone de prix au lieu de trois surfaces dispersées dans la page.
+  it('vit dans « Votre choix », juste après #options', () => {
     const tailles = PAGE.indexOf('id="tailles"');
     const options = PAGE.indexOf('id="options"');
-    expect(tailles).toBeGreaterThan(0);
-    expect(options).toBeGreaterThan(tailles);
+    expect(options).toBeGreaterThan(0);
+    expect(tailles).toBeGreaterThan(options);
   });
 
-  it('APERÇU D’ABORD : les cartes suivent le HÉROS et précèdent TOUS les détails', () => {
-    // ORDRE FONDATEUR (26/08/2026) — la section vivait après le calepinage,
-    // l'installation, la production, les économies et le schéma : le client
-    // traversait toute la page avant de découvrir qu'il avait un CHOIX. La
-    // règle d'audit est l'aperçu d'abord.
-    const hero = PAGE.indexOf('data-track-section="hero"');
+  it('LE CHOIX RESTE GROUPÉ : après le prix, avant les gammes et la signature', () => {
     const tailles = PAGE.indexOf('id="tailles"');
-    expect(hero, 'ancre héros absente').toBeGreaterThan(0);
     expect(tailles, 'ancre #tailles absente').toBeGreaterThan(0);
-    expect(hero).toBeLessThan(tailles);
-    for (const ancre of ['id="roof3d"', 'id="installation"', 'id="production"',
-      'id="financing-headline"', 'id="sld"', 'id="confiance"', 'id="faq"',
-      'id="options"', 'id="signer"']) {
+    for (const ancre of ['data-track-section="hero"', 'id="installation"',
+      'id="roof3d"', 'id="financing-headline"', 'id="options"']) {
+      const idx = PAGE.indexOf(ancre);
+      expect(idx, `ancre ${ancre} absente`).toBeGreaterThan(0);
+      expect(idx, `${ancre} doit précéder #tailles`).toBeLessThan(tailles);
+    }
+    for (const ancre of ['id="gammes"', 'id="confiance"', 'id="signer"', 'id="sld"', 'id="faq"']) {
       const idx = PAGE.indexOf(ancre);
       expect(idx, `ancre ${ancre} absente`).toBeGreaterThan(0);
       expect(tailles, `#tailles doit précéder ${ancre}`).toBeLessThan(idx);
@@ -568,7 +570,10 @@ describe('[...token].astro — la section « Explorer d’autres tailles »', ()
 
   it('le badge dit un FAIT vérifiable, jamais « populaire » ni une urgence', () => {
     const bloc = sectionTailles(CODE);
-    expect(bloc).toContain('data-fr="Recommandé — c’est votre devis officiel"');
+    // PREVIEW v2 — RECALIBRÉ (Reda, 2026-09-16) : un SEUL « Recommandé » sur
+    // toute la page (celui de l'option retenue) ; ce badge-ci dit le fait seul.
+    expect(bloc).toContain('data-fr="C’est votre devis officiel"');
+    expect(bloc).not.toContain('data-fr="Recommandé');
     // Interdits fondateur : badge de popularité, urgence fabriquée, prix barré.
     for (const mot of ['populaire', 'le plus choisi', 'offre limitée', 'plus que', 'best-seller']) {
       expect(bloc.toLowerCase(), mot).not.toContain(mot);
@@ -712,7 +717,11 @@ describe('#8 — vue de détail vivante', () => {
   it('quand la taille regardée n’est PAS le devis, la page le DIT', () => {
     const bloc = sectionTailles(CODE);
     expect(bloc).toContain('{estLEtatOfficiel ? (');
-    expect(bloc).toContain('décrivent, eux, votre devis officiel');
+    // RECALIBRÉ — décision fondateur du 16/09/2026 : la phrase a été
+    // raccourcie (31 → 23 mots) sans changer ce qu'elle affirme. Le test
+    // verrouille le FAIT (« ces chiffres ne sont pas ceux de votre devis »),
+    // plus une tournure de phrase.
+    expect(bloc).toContain('décrivent votre devis officiel');
   });
 
   it('le dessin d’une option vient du VRAI contrat, jamais d’un SVG deviné', () => {
@@ -988,11 +997,18 @@ describe('CONSOLIDATION — la hiérarchie des surfaces de prix se lit', () => {
     expect(CODE).toContain('l’une de ces versions');
   });
 
-  it('gammes ET versions sont repliées, et s’ouvrent seules quand aucune taille ne les précède', () => {
-    for (const fold of ['<details class="gammes-fold" open={!tailles}>',
-      '<details class="versions-fold" open={!tailles}>']) {
+  // PREVIEW DENSITE (2026-09-15) — PROPOSITION EN ATTENTE DE LA DECISION DU
+  // FONDATEUR (rien n'est tranche) : les gammes et les versions sont le
+  // SECONDAIRE, elles resteraient donc repliees MEME quand aucune section de
+  // tailles ne les precede (sans tailles, la page ouvrait trois totaux d'un
+  // coup). L'intention du verrou est inchangee — « repliees, rien n'est
+  // supprime » — seule l'ouverture automatique disparait.
+  it('gammes ET versions sont repliées — TOUJOURS, plus seulement quand une taille les précède', () => {
+    for (const fold of ['<details class="gammes-fold">',
+      '<details class="versions-fold">']) {
       expect(CODE, fold).toContain(fold);
     }
+    expect(CODE).not.toContain('open={!tailles}');
   });
 
   it('SAFARI iOS — les <summary> qui se veulent sans puce le sont VRAIMENT', () => {

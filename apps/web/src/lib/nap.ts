@@ -31,6 +31,27 @@ export const NAP = {
 } as const;
 
 /**
+ * Identité légale publiée — MÊME source pour /mentions-legales et pour la page
+ * de proposition (PREVIEW v2, fondateur Reda 2026-09-16). Les checklists
+ * anti-arnaque marocaines demandent toutes la même chose avant de signer : une
+ * raison sociale, un RC, un ICE — vérifiables au registre. Ces valeurs sont
+ * celles du dossier d'entreprise déjà publiées sur /mentions-legales ; elles
+ * sont DÉPLACÉES ici, pas réécrites, pour qu'aucune page ne puisse en publier
+ * une variante. Pas d'adresse postale : décision propriétaire (zone de service).
+ * Le gérant N'EST PAS repris dans cette constante — il reste sur la page
+ * légale, et aucun prénom ne doit apparaître dans un gabarit client.
+ */
+export const LEGAL_IDENTITY = {
+  raisonSociale: 'TAQINOR Solutions SARLAU',
+  formeJuridique: 'Société à responsabilité limitée à associé unique',
+  rc: 'RC 691213 — Tribunal de Commerce de Casablanca',
+  rcCourt: 'RC 691213 Casablanca',
+  ice: '003799642000067',
+  capital: '100 000,00 MAD',
+  gerant: 'M. Reda Kasri',
+} as const;
+
+/**
  * W288 — URLs d'entité (`sameAs`) pour le JSON-LD LocalBusiness : fiche Google
  * Business Profile + profils sociaux actifs. LIVRÉ VIDE (même règle
  * d'intégrité que testimonials.ts) — tant que WG5 (GBP) / WG8 (réseaux

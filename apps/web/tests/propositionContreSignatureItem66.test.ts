@@ -1,18 +1,23 @@
-// Audit item 66 (revue Fable finale) — la contre-signature Taqinor.
+// Audit item 66 — la contre-signature Taqinor.
 //
-// Le PDF (apps/ventes/quote_engine/residential/trust.py) affiche DEUX cases
-// de signature côte à côte : « Bon pour accord — le client » (nom + zone de
-// tracé + « Nom, date, mention « Bon pour accord » & signature ») ET
-// « Pour {brand} / Cachet et signature » (+ « Le devis fait foi dès
-// réception de l'acompte »). La page /proposition/[token] ne portait QUE la
-// première (le canvas manuscrit du client, section #signer) — le client
-// signait seul, sans jamais voir sur l'écran l'engagement RÉCIPROQUE que le
-// PDF lui montre pourtant. Ce test pin le panneau additif qui comble l'écart :
-// DISPLAY ONLY (aucun canvas, aucun nouvel endpoint), sous le bloc de
-// signature existant, jamais un layout qui dérange le formulaire au-dessus.
+// RECALIBRÉ — décision fondateur du 16/09/2026 : « réduire au minimum prouvé ».
+// L'item 66 avait ajouté à la PAGE un panneau « Pour Taqinor — signature et
+// cachet », parce que le PDF en affiche un. La recherche vérifiée (r8/r9
+// sign_flows : DocuSign, Jobber, Housecall Pro, ServiceTitan, OpenSolar,
+// Yousign) ne montre AUCUN flux qui expose au client le cachet du vendeur
+// AVANT qu'il signe : la contre-signature vit sur le document et dans l'accusé
+// de réception. Le panneau quitte donc l'écran d'acceptation.
 //
-// Même convention que propositionFoldWJ114.test.ts : lecture SOURCE en texte
-// (un montage DOM complet d'un .astro n'est pas praticable ici).
+// L'INTENTION de l'item 66 — le client ne doit pas signer sans savoir que
+// l'engagement est RÉCIPROQUE — n'est pas abandonnée, elle change de support :
+//   (1) la phrase de droit (DOC art. 65-5 : le contrat naît de l'ACCEPTATION,
+//       l'acompte ne fait que déclencher les travaux) est rendue SOUS le bouton
+//       de signature, dans les trois langues ;
+//   (2) le PDF garde ses DEUX cases de signature côte à côte — c'est le moteur
+//       vendoré (règle #4), rien n'y a été touché, et ce test le vérifie.
+//
+// Ce fichier verrouille donc : le panneau n'est PLUS dans le formulaire, la
+// phrase EST sous le bouton, et le moteur PDF est intact.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -20,68 +25,60 @@ import { fileURLToPath } from 'node:url';
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(root(rel), 'utf-8');
 const PROPOSITION = read('../src/pages/proposition/[...token].astro');
+const TRUST_PY = read(
+  '../../../backend/django_core/apps/ventes/quote_engine/residential/trust.py',
+);
 
-// Le panneau doit vivre ENTRE la fin du formulaire de signature du client
-// (#sign-form) et le bloc « quelle version télécharger » qui suit — jamais
-// À L'INTÉRIEUR du <form>, jamais avant le canvas client.
-const formEnd = PROPOSITION.indexOf('</form>', PROPOSITION.indexOf('id="sign-form"'));
-const panelStart = PROPOSITION.indexOf('id="prop-contre-signature"');
-const pdfVariantStart = PROPOSITION.indexOf('L-VAR · QUELLE VERSION TÉLÉCHARGER');
-const panel = PROPOSITION.slice(panelStart, pdfVariantStart);
+const formStart = PROPOSITION.indexOf('id="sign-form"');
+const formEnd = PROPOSITION.indexOf('</form>', formStart);
+const form = PROPOSITION.slice(formStart, formEnd);
+const boutonIdx = PROPOSITION.indexOf('id="sign-submit"');
 
-describe('Audit item 66 — panneau de contre-signature Taqinor', () => {
-  it('existe et est monté APRÈS le formulaire de signature client, avant le bloc PDF', () => {
-    expect(formEnd).toBeGreaterThan(0);
-    expect(panelStart).toBeGreaterThan(formEnd);
-    expect(pdfVariantStart).toBeGreaterThan(panelStart);
+describe('Audit item 66 — la réciprocité, sans panneau avant la signature', () => {
+  it('le panneau « signature et cachet » a quitté la page (décision fondateur 16/09)', () => {
+    expect(PROPOSITION).not.toContain('id="prop-contre-signature"');
+    expect(PROPOSITION).not.toContain('data-testid="contre-signature-marque"');
+    // Le libellé RENDU du panneau (le gabarit `Pour ${brand} — …`) a disparu ;
+    // seul le commentaire qui explique la décision en parle encore.
+    expect(PROPOSITION).not.toContain('Pour ${brand} — signature et cachet');
+    expect(PROPOSITION).not.toContain('For ${brand} — signature and stamp');
   });
 
-  it('reste dans la section #signer (montage additif, pas une nouvelle section)', () => {
-    const signerStart = PROPOSITION.indexOf('id="signer"');
-    const signerEnd = PROPOSITION.indexOf('</section>', panelStart);
-    expect(panelStart).toBeGreaterThan(signerStart);
-    expect(panelStart).toBeLessThan(signerEnd);
+  it('sa phrase de droit survit, SOUS le bouton de signature (DOC art. 65-5)', () => {
+    const phrase = 'Votre commande est ferme dès votre acceptation';
+    const idx = PROPOSITION.indexOf(phrase);
+    expect(idx).toBeGreaterThan(0);
+    // Sous le bouton, pas avant : c'est de l'information, pas une étape.
+    expect(idx).toBeGreaterThan(boutonIdx);
+    expect(idx).toBeLessThan(formEnd);
+    // La suite exacte : l'acompte DÉCLENCHE les travaux, il ne forme pas le
+    // contrat. L'ancienne phrase (« Le devis fait foi dès réception de
+    // l'acompte ») disait au client l'inverse du droit, à son désavantage.
+    expect(PROPOSITION).toContain('les travaux démarrent à réception de l’acompte.');
+    expect(PROPOSITION).not.toContain('Le devis fait foi');
   });
 
-  it('porte un data-testid stable', () => {
-    expect(panel).toContain('data-testid="contre-signature-marque"');
+  it('cette phrase porte ses trois langues (jamais du français figé sous EN/AR)', () => {
+    const bloc = PROPOSITION.slice(boutonIdx, formEnd);
+    expect(bloc).toContain('Your order is firm as soon as you accept');
+    expect(bloc).toContain('يصبح طلبكم نهائياً بمجرد قبولكم');
   });
 
-  it('DISPLAY ONLY : aucun <canvas>, aucun <form>, aucun nouvel appel réseau/endpoint', () => {
-    expect(panel).not.toContain('<canvas');
-    expect(panel).not.toContain('<form');
-    expect(panel).not.toContain('fetch(');
-    expect(panel).not.toMatch(/api\//);
+  it('aucun nom de vendeur n’est fabriqué dans le formulaire d’acceptation', () => {
+    // Le panneau affichait `seller.name` quand le backend le servait. Il n'y a
+    // plus de nom de contre-signataire du tout dans le formulaire : rien à
+    // inventer quand le payload est muet.
+    expect(form).not.toContain('seller?.name');
+    expect(form).not.toContain('{seller.name}');
   });
 
-  it('reprend le cadrage EXACT du PDF : « Pour {brand} — signature et cachet »', () => {
-    expect(panel).toContain('Pour ${brand} — signature et cachet');
+  it('le PDF, lui, garde ses DEUX cases de signature (moteur vendoré, règle #4)', () => {
+    expect(TRUST_PY).toContain('Bon pour accord — le client');
+    expect(TRUST_PY).toContain('Pour {brand}');
+    expect(TRUST_PY).toContain('Cachet et signature');
   });
 
-  it('mirroire la ligne d\'engagement du PDF (trust.py : « Le devis fait foi dès réception de l\'acompte »)', () => {
-    expect(panel).toContain('Le devis fait foi dès réception de l’acompte.');
-  });
-
-  it('les TROIS langues sont posées via data-i18n (data-fr/data-en/data-ar), jamais un texte figé seul', () => {
-    // Le libellé « Pour {brand} » : 3 langues + le nœud FR par défaut (tri-node).
-    expect(panel).toContain('data-i18n');
-    expect((panel.match(/data-fr=/g) ?? []).length).toBeGreaterThanOrEqual(2);
-    expect((panel.match(/data-en=/g) ?? []).length).toBeGreaterThanOrEqual(2);
-    expect((panel.match(/data-ar=/g) ?? []).length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('utilise les tokens de thème existants de la page (nuit/lune/brass), jamais une couleur codée en dur', () => {
-    expect(panel).toContain('text-lune');
-    expect(panel).not.toMatch(/#[0-9a-fA-F]{3,6}/);
-    expect(panel).not.toContain('rgb(');
-  });
-
-  it('le nom du signataire est CONDITIONNÉ à seller?.name — jamais un nom fabriqué quand le backend ne le fournit pas', () => {
-    expect(panel).toContain('{seller?.name && (');
-    expect(panel).toContain('{seller.name}');
-  });
-
-  it('const brand est un littéral simple (site public Taqinor, jamais multi-tenant) — pas une valeur dérivée du payload', () => {
+  it('const brand est un littéral simple (site public Taqinor, jamais multi-tenant)', () => {
     expect(PROPOSITION).toContain("const brand = 'Taqinor';");
   });
 });

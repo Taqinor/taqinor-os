@@ -42,8 +42,10 @@ describe('PVUNI — drapeau de calepinage périmé', () => {
     expect(debutSection).toBeGreaterThan(-1);
     expect(label).toBeGreaterThan(legende);
     expect(label).toBeGreaterThan(debutSection);
-    // …et avant la section suivante de la page.
-    expect(label).toBeLessThan(PAGE.indexOf('id="installation"'));
+    // …et avant la section suivante de la page. PREVIEW v2 — RECALIBRÉ (Reda,
+    // 2026-09-16) : le voisin d'après la 3D n'est plus #installation (remonté
+    // au-dessus d'elle) mais le chapitre des économies.
+    expect(label).toBeLessThan(PAGE.indexOf('id="financing-headline"'));
   });
 
   it('le bloc est CONDITIONNEL — absent du DOM sur un devis sain', () => {

@@ -386,6 +386,22 @@ const LUES_HORS_RENOMMAGE: Readonly<Record<string, string>> = {
  * que personne n'ait tranché.
  */
 const NON_LU: Readonly<Record<string, string>> = {
+  // ── PREVIEW-V3 (16/09/2026) — LUES PAR LA PAGE, PAS PAR LE LECTEUR TYPÉ ──
+  // Ces sept feuilles sont bien rendues au client (bloc de signature), mais
+  // par des helpers PURS appelés dans le frontmatter — `resolveAcompte`,
+  // `resolveConditions`, `promptConfirmationEmail`, `resolveValidity` — et
+  // non par `lireProposal`, qui reste le lecteur du DEVIS (matériel, argent,
+  // production). Même statut que `mode_kpis` ci-dessous. Leur garde propre :
+  // `tests/propositionAcompteV3.test.ts`.
+  'acompte.pourcentage': 'Pourcentage de la première tranche de l’échéancier : lu par `resolveAcompte` (frontmatter, bloc de signature), jamais par le lecteur typé.',
+  'acompte.ttc': 'Montant TTC de cette même tranche : lu par `resolveAcompte`, affiché au-dessus du bouton de signature.',
+  'acompte.option': 'Option sur laquelle le serveur a calculé `acompte.ttc` (PREVIEW-V3-FIX, audit C1) : lue par `resolveAcompte`/`acompteMontantPourOption` pour ne JAMAIS afficher l’acompte d’une autre option que celle cochée.',
+  'acompte.montants.sans_batterie': 'Acompte de l’option « sans batterie », calculé par le même `next_tranche` que `ttc` : lu par `acompteMontantPourOption` quand le client coche cette option, jamais par le lecteur typé.',
+  'acompte.montants.avec_batterie': 'Acompte de l’option « avec batterie », même source et même arrondi : lu par `acompteMontantPourOption` quand le client coche cette option, jamais par le lecteur typé.',
+  'conditions[]': 'Les puces CGV que le PDF imprime : lues par `resolveConditions` et dépliées sous la case d’acceptation (loi 31-08 art. 30), jamais par le lecteur typé.',
+  'paiement_moyens[]': 'Constante serveur virement/chèque (CGI art. 193) : la page écrit la phrase de règlement, elle n’a pas de valeur à en extraire.',
+  'confirmation_email': 'Booléen disant si un e-mail de confirmation partira vraiment : lu par `promptConfirmationEmail` pour n’afficher la promesse que dans ce cas.',
+  'date_validite': 'Échéance réelle du devis : lue par `resolveValidity` (déjà en place avant que le backend ne la serve), rendue près du prix et dans le récap de signature.',
   // ── Contrôle de la réponse, pas une valeur de proposition ────────────────
   'detail': 'Message d’erreur des réponses 404/403 (jeton expiré, OTP non vérifié) : la page traite l’échec par le code HTTP, elle ne lit pas ce texte.',
   'mode_kpis': 'Bloc de KPI propre aux modes non résidentiels : rendu par le frontmatter selon `mode_installation`, jamais par le lecteur typé.',
@@ -556,6 +572,8 @@ const NON_LU_DOCUMENTATION: Readonly<Record<string, string>> = {
   'notes.futur_test_de_forme': 'Note de contrat : le test de forme QJR7 viendra plus tard (documentation).',
   'notes.forme_serveur_qjr228': 'Note de contrat : pourquoi cette carte déclare `forme_serveur` (documentation).',
   'notes.cle_detail': 'Note de contrat : pourquoi `detail` figure dans l’exemple à `null` (documentation).',
+  // PREVIEW-V3 (16/09/2026)
+  'notes.preview_v3_conditions_avant_signature': 'Note de contrat : pourquoi la page connaît désormais l’acompte, l’échéance, les conditions et les moyens de règlement AVANT la signature (documentation).',
 };
 
 describe('QJW20 — chaque feuille de `proposal_data` est soit LUE, soit REFUSÉE par écrit', () => {

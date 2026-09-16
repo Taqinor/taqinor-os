@@ -255,11 +255,29 @@ function peakAnnualLabel(production: number[], lang: ChartLang, box: ChartBox): 
  * langue. Les tailles de police (7→9/9.5) sont relevées pour rester lisibles
  * sur les petits écrans (l'essentiel du trafic de cette page).
  */
+export interface ProposalChartOptions {
+  /** Dessiner les 12 étiquettes de mois sous les barres. Défaut : `true`. */
+  labels?: boolean;
+  /** Dessiner l'annotation pic mensuel / total annuel. Défaut : `true`. */
+  annotate?: boolean;
+}
+
 export function renderProposalChart(
   monthlyProduction: unknown,
   monthlyConsumption: unknown,
   box: ChartBox = DEFAULT_CHART_BOX,
   lang: ChartLang = 'fr',
+  /**
+   * PREVIEW-V3 (16/09/2026) — rendu COMPACT, additif. Les deux options
+   * valent `true` par défaut : un appel sans ce paramètre rend un SVG
+   * OCTET POUR OCTET identique à celui d'hier (un test l'exige). Mises à
+   * `false`, elles retirent les 12 étiquettes de mois et l'annotation
+   * pic/annuel — de quoi poser une vignette de ~130 px au-dessus du repli
+   * « Vos économies », avec deux pastilles HTML à côté, SANS jamais
+   * changer les séries : ce sont les MÊMES tableaux backend que le graphe
+   * complet, donc les deux ne peuvent pas raconter deux histoires.
+   */
+  opts: ProposalChartOptions = {},
 ): string {
   const series = resolveSeries(monthlyProduction, monthlyConsumption);
   if (series.mode === 'none' || !series.production) return '';
@@ -278,14 +296,14 @@ export function renderProposalChart(
   // mobile de toute la page (WJ80).
   const plotW = box.width - box.padLeft - box.padRight;
   const slot = plotW / 12;
-  const labels = monthLabels.map((lbl, m) => {
+  const labels = opts.labels === false ? '' : monthLabels.map((lbl, m) => {
     const cx = box.padLeft + m * slot + slot / 2;
     return `<text x="${cx.toFixed(2)}" y="${(box.height - 6).toFixed(2)}" text-anchor="middle" font-size="9" fill="${FAINT}">${esc(lbl)}</text>`;
   }).join('');
 
   const baseline = `<line x1="${box.padLeft}" y1="${baseY.toFixed(2)}" x2="${(box.width - box.padRight).toFixed(2)}" y2="${baseY.toFixed(2)}" stroke="${RULE}" stroke-opacity="0.12" stroke-width="1"/>`;
 
-  const peakAnnual = peakAnnualLabel(series.production, lang, box);
+  const peakAnnual = opts.annotate === false ? '' : peakAnnualLabel(series.production, lang, box);
 
   const descByLang: Record<ChartLang, { comparison: string; production: string; title: string }> = {
     fr: {

@@ -56,6 +56,14 @@ interface Props {
    * `false` : toutes les autres pages gardent la balise, rendu inchangé.
    */
   skipVisitBeacon?: boolean;
+  /**
+   * PREVIEW DENSITE (2026-09-15) - rend le bandeau de consentement DANS LE
+   * FLUX en fin de page au lieu de `position: fixed` en bas d'ecran. Reserve
+   * aux pages qui portent deja un element colle en bas (le CTA collant de la
+   * proposition, z-40, que le bandeau z-60 recouvrait en permanence). La
+   * logique de consentement est strictement inchangee. Defaut `false`.
+   */
+  consentInline?: boolean;
 }
 const {
   title,
@@ -69,6 +77,7 @@ const {
   locales,
   footerMinimal = false,
   skipVisitBeacon = false,
+  consentInline = false,
 } = Astro.props;
 // WJ76 — repli sur `title` quand la page ne fournit pas de titre de partage
 // dédié : rendu STRICTEMENT inchangé pour toutes les pages existantes.
@@ -297,7 +306,7 @@ const jsonLd = {
     <!-- WB31 — Bandeau minimal de consentement analytics/tracking : fournit
          le signal `tq_consent` (localStorage) lu par la capture fbclid/UTM
          ci-dessus (WB29) et par le funnel beacon (WB30). -->
-    <ConsentBanner />
+    <ConsentBanner inline={consentInline} />
     <!-- LANE T-WEB (25/08/2026) — Balise de visite site entier : empreinte
          d'appareil anonyme + durée cumulée par page (lib/visite.ts,
          demarrerBalise). Le pont define:vars→window est nécessaire pour faire

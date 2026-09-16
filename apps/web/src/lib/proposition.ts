@@ -232,6 +232,47 @@ export interface ProposalResponse {
    */
   date_validite?: string | null;
   /**
+   * PREVIEW-V3 (16/09/2026) — la PREMIÈRE tranche de l'échéancier, telle que
+   * le devis la facturera (`apps/ventes/utils/echeancier.next_tranche`, LE
+   * même helper que l'écran de succès post-signature). Clé ADDITIVE : absente
+   * quand le montant n'est pas calculable, **jamais `null`** — la page dit
+   * alors sa phrase SANS chiffre, comme `date_validite` fait déjà pour la
+   * date. Montants en texte décimal MAD TTC (jamais un flottant).
+   *
+   * PREVIEW-V3-FIX (16/09/2026, audit C1) — `montants` porte CE MÊME acompte
+   * pour chaque option servable (clés `sans_batterie`/`avec_batterie`,
+   * calculées par le MÊME `next_tranche`, donc le même arrondi au centime) et
+   * `option` dit sur laquelle `ttc` a été calculé. La page lit la case
+   * COCHÉE : elle ne devine plus l'option, elle ne dérive aucun montant.
+   * `libelle` n'est plus servi (audit C9 : jamais lu).
+   */
+  acompte?: {
+    pourcentage?: string | null;
+    ttc?: string | null;
+    option?: string | null;
+    montants?: Record<string, string> | null;
+  } | null;
+  /**
+   * PREVIEW-V3 — les puces « Conditions générales du devis » que le PDF
+   * imprime, en texte (mêmes gabarits moteur, substitués et dé-échappés côté
+   * serveur). Clé ADDITIVE. Il n'existe AUCUNE page CGV publiée : ces lignes
+   * SONT les conditions, la page les affiche donc au lieu d'inventer un lien.
+   */
+  conditions?: string[] | null;
+  /**
+   * PREVIEW-V3 — moyens de règlement proposables avant signature. Constante
+   * serveur `['virement', 'cheque']` : l'art. 193 du CGI met l'amende de 6 %
+   * sur les espèces à la charge DU VENDEUR, le mot n'apparaît donc jamais.
+   */
+  paiement_moyens?: string[] | null;
+  /**
+   * PREVIEW-V3 — ce client recevra-t-il VRAIMENT un e-mail de confirmation à
+   * l'acceptation ? (`domain.cycle_vie._send_acceptance_emails` n'envoie que
+   * `if dest:`.) Faux/absent → la page ne promet rien : promettre un accusé
+   * qui ne part pas laisserait la rétractation à 30 jours (loi 31-08 art. 32).
+   */
+  confirmation_email?: boolean | null;
+  /**
    * WJ25 — layout de toiture OPTIONNEL (backend PLAN2 QJ26, pas encore exposé
    * aujourd'hui : le champ est absent → la page garde le héros statique). Quand
    * il arrive, sa forme est celle de `serializeLayout` du builder
@@ -1760,6 +1801,16 @@ export const GREEN_LOAN_MONTHS = 84;
 export interface ValidityWindow {
   /** Date d'échéance affichable (libellé FR « JJ mois AAAA »), ou null. */
   label: string | null;
+  /**
+   * PREVIEW-V3-FIX (16/09/2026, audit C4) — LE MÊME JOUR, DANS LA LANGUE DU
+   * LECTEUR. `label` (français) était injecté tel quel dans `data-en`/`data-ar` :
+   * un client anglophone lisait « valid up to and including 15 octobre 2026 »
+   * et un arabophone « إلى غاية 15 octobre 2026 » — que le bidi réordonnait en
+   * « octobre 15 2026 », sur la première phrase légale (art. 29-6) qu'il lit.
+   */
+  labelEn: string | null;
+  /** Idem, mois marocains en arabe (يناير … دجنبر) — RTL naturel, sans markup. */
+  labelAr: string | null;
   /** Vrai quand la date vient RÉELLEMENT du backend (sinon repli libellé). */
   fromBackend: boolean;
   /** Vrai si l'échéance est déjà passée (offre expirée). */
@@ -1769,6 +1820,26 @@ export interface ValidityWindow {
 const MONTHS_FR = [
   'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
   'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+];
+
+/**
+ * PREVIEW-V3-FIX (audit C4) — LES MOIS DES DEUX AUTRES LANGUES DE LA PAGE.
+ *
+ * Tables explicites plutôt qu'`Intl.DateTimeFormat` : le rendu de cette page
+ * est SERVEUR (workerd) et un jeu de locales incomplet y dégraderait en
+ * silence (mois anglais, chiffres hindi-arabes, calendrier hégirien) — sur une
+ * phrase légale, un repli silencieux est pire qu'une table. Les noms arabes
+ * sont le jeu MAROCAIN (celui du Bulletin officiel et de la locale `ar-MA`),
+ * pas le jeu levantin : « غشت » et non « أغسطس », « دجنبر » et non « ديسمبر ».
+ */
+const MONTHS_EN = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+const MONTHS_AR = [
+  'يناير', 'فبراير', 'مارس', 'أبريل', 'ماي', 'يونيو',
+  'يوليوز', 'غشت', 'شتنبر', 'أكتوبر', 'نونبر', 'دجنبر',
 ];
 
 /**
@@ -1800,6 +1871,21 @@ export function formatFrenchDate(dt: Date): string {
 }
 
 /**
+ * PREVIEW-V3-FIX (audit C4) — la MÊME date, dans la langue demandée.
+ * EN : « 15 July 2026 » (jour d'abord, comme la page FR/AR — un seul gabarit,
+ * jamais deux ordres de lecture selon la langue). AR : « 15 يوليوز 2026 »,
+ * dont l'algorithme bidi rend l'ordre correct sans aucun markup (c'est le mot
+ * FRANÇAIS au milieu qui cassait la phrase arabe, pas les chiffres).
+ */
+export function formatDateLang(dt: Date, lang: PropLang): string {
+  const jour = dt.getUTCDate();
+  const an = dt.getUTCFullYear();
+  if (lang === 'en') return `${jour} ${MONTHS_EN[dt.getUTCMonth()]} ${an}`;
+  if (lang === 'ar') return `${jour} ${MONTHS_AR[dt.getUTCMonth()]} ${an}`;
+  return formatFrenchDate(dt);
+}
+
+/**
  * WJ15 — Résout la fenêtre de validité du devis SANS jamais inventer une date.
  *  - Si le backend fournit `date_validite` (racine ou `quote`), on l'affiche
  *    telle quelle (`fromBackend: true`), en signalant si elle est déjà passée.
@@ -1813,9 +1899,122 @@ export function resolveValidity(
 ): ValidityWindow {
   const raw = p.date_validite ?? p.quote?.date_validite ?? null;
   const dt = parseBackendDate(raw);
-  if (!dt) return { label: null, fromBackend: false, expired: false };
+  if (!dt) {
+    return { label: null, labelEn: null, labelAr: null, fromBackend: false, expired: false };
+  }
   const expired = dt.getTime() < now.getTime();
-  return { label: formatFrenchDate(dt), fromBackend: true, expired };
+  return {
+    label: formatFrenchDate(dt),
+    labelEn: formatDateLang(dt, 'en'),
+    labelAr: formatDateLang(dt, 'ar'),
+    fromBackend: true,
+    expired,
+  };
+}
+
+/**
+ * PREVIEW-V3 — l'acompte RÉEL du devis, prêt à afficher, ou `null`.
+ *
+ * MÊME discipline que `resolveValidity` : rien n'est fabriqué. Clé absente,
+ * montant nul, pourcentage illisible ⇒ `null` ⇒ la page dit sa phrase sans
+ * chiffre. `pct` est rendu SANS décimales inutiles (« 30 », pas « 30.00 ») ;
+ * `ttc` garde le texte décimal du serveur (le formatage MAD est l'affaire de
+ * la page, qui a déjà son formateur).
+ */
+export interface AcompteResolu {
+  /** Pourcentage lisible, sans décimale superflue : « 30 », « 33,5 ». */
+  pct: string;
+  /** Montant TTC en texte décimal brut du serveur : « 3240.00 ». */
+  ttc: string;
+  /** Montant TTC en nombre (pour un formateur), toujours fini et > 0. */
+  ttcNumber: number;
+  /**
+   * PREVIEW-V3-FIX — le MÊME acompte, par option servable, tel que le serveur
+   * l'a calculé (jamais dérivé ici). Une option sans montant lisible est
+   * simplement absente de la table.
+   */
+  montants: Partial<Record<OptionKey, number>>;
+  /** L'option sur laquelle le serveur a calculé `ttc` (`null` si aucune). */
+  option: OptionKey | null;
+}
+
+function optionKeyOrNull(v: unknown): OptionKey | null {
+  return v === 'sans_batterie' || v === 'avec_batterie' ? v : null;
+}
+
+export function resolveAcompte(
+  p: Pick<ProposalResponse, 'acompte'> | null | undefined,
+): AcompteResolu | null {
+  const raw = p?.acompte;
+  if (!raw || typeof raw !== 'object') return null;
+  const ttcTxt = typeof raw.ttc === 'string' ? raw.ttc.trim() : '';
+  const ttcNumber = Number(ttcTxt);
+  if (!ttcTxt || !Number.isFinite(ttcNumber) || ttcNumber <= 0) return null;
+  const pctNumber = Number(String(raw.pourcentage ?? '').trim());
+  if (!Number.isFinite(pctNumber) || pctNumber <= 0) return null;
+  // « 30.00 » → « 30 » ; « 33.50 » → « 33,5 » (virgule décimale FR).
+  const pct = String(Math.round(pctNumber * 100) / 100).replace('.', ',');
+  const montants: Partial<Record<OptionKey, number>> = {};
+  const bruts = raw.montants;
+  if (bruts && typeof bruts === 'object' && !Array.isArray(bruts)) {
+    for (const [cle, valeur] of Object.entries(bruts)) {
+      const opt = optionKeyOrNull(cle);
+      if (!opt) continue;
+      const n = Number(typeof valeur === 'string' ? valeur.trim() : NaN);
+      if (Number.isFinite(n) && n > 0) montants[opt] = n;
+    }
+  }
+  return { pct, ttc: ttcTxt, ttcNumber, montants, option: optionKeyOrNull(raw.option) };
+}
+
+/**
+ * PREVIEW-V3-FIX (audit C1) — LE MONTANT D'ACOMPTE DE L'OPTION QUE LE CLIENT
+ * COCHE, ou `null` quand le serveur ne l'a pas servi.
+ *
+ * Aucune arithmétique ici : on LIT la table servie par le backend, qui l'a
+ * calculée avec l'unique règle d'arrondi de l'ERP (`echeancier.next_tranche`).
+ *  - devis à option unique ⇒ il n'y a qu'une composition, donc `ttcNumber` ;
+ *  - deux options ⇒ le montant de l'option cochée, sinon (backend antérieur
+ *    au correctif) `ttcNumber` UNIQUEMENT si le serveur dit l'avoir calculé
+ *    sur cette option-là — jamais sur l'autre, jamais un chiffre dérivé.
+ */
+export function acompteMontantPourOption(
+  a: AcompteResolu | null | undefined,
+  opt: OptionKey | null | undefined,
+  twoOptions: boolean,
+): number | null {
+  if (!a) return null;
+  if (!twoOptions) return a.ttcNumber;
+  if (!opt) return null;
+  const m = a.montants[opt];
+  if (typeof m === 'number' && Number.isFinite(m) && m > 0) return m;
+  return a.option === opt ? a.ttcNumber : null;
+}
+
+/**
+ * PREVIEW-V3 — les conditions générales à afficher sous la case unique, ou
+ * `[]`. Aucune page CGV n'existe : ces lignes SONT les conditions (les puces
+ * que le PDF imprime). Tableau vide ⇒ la case dit « ses conditions » sans
+ * lien mort. Défensif : non-tableau, entrées non-texte ou vides écartées.
+ */
+export function resolveConditions(
+  p: Pick<ProposalResponse, 'conditions'> | null | undefined,
+): string[] {
+  const raw = p?.conditions;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((c): c is string => typeof c === 'string' && c.trim().length > 0)
+    .map((c) => c.trim());
+}
+
+/**
+ * PREVIEW-V3 — promettre l'e-mail de confirmation UNIQUEMENT quand il partira.
+ * Le backend le sait (`confirmation_email`) ; absent/faux ⇒ la page se tait.
+ */
+export function promptConfirmationEmail(
+  p: Pick<ProposalResponse, 'confirmation_email'> | null | undefined,
+): boolean {
+  return p?.confirmation_email === true;
 }
 
 /**
@@ -1866,6 +2065,23 @@ export function localizedStamp(d: Date, lang: PropLang): string {
   } catch {
     return d.toLocaleString('fr-FR');
   }
+}
+
+/**
+ * PREVIEW DENSITE (2026-09-15) - libelle d'ATTENTE, AVANT toute signature. La
+ * page affichait « signature horodatee le <maintenant> » des l'hydratation,
+ * c'est-a-dire un horodatage de signature pour un document NON SIGNE : le
+ * genre de detail qu'un lecteur mefiant retient. Le vrai horodatage
+ * (signStampLabel ci-dessous) n'apparait qu'une fois la signature aboutie.
+ */
+export function signStampPendingLabel(reference: string, lang: PropLang): string {
+  if (lang === 'ar') {
+    return `المرجع ${reference} · سيظهر توقيت توقيعكم هنا عند التأكيد.`;
+  }
+  if (lang === 'en') {
+    return `Ref. ${reference} · your signature's timestamp will appear here once you confirm.`;
+  }
+  return `Réf. ${reference} · l’horodatage de votre signature s’affichera ici à la validation.`;
 }
 
 /** WJ42 — Libellé « Réf. … · signature horodatée le … » dans les 3 langues. */
@@ -2489,10 +2705,69 @@ export function isOtpIncorrectDetail(detail: string | null | undefined): boolean
   return (detail ?? '').trim() === OTP_REQUIRED_MESSAGES[2];
 }
 
+/**
+ * PREVIEW-V3 (16/09/2026) — LE DEUXIÈME OTP, celui qui laissait le client
+ * devant le mot « otp_required ».
+ *
+ * Deux mécanismes distincts gardent l'acceptation, et un seul avait une UI :
+ *  (a) `ShareLink.otp_lecture` — un réglage PAR LIEN posé par le commercial.
+ *      Le backend répond **403 `{detail: 'otp_required'}`** (littéral machine,
+ *      `public_views.proposal_accept`). Jusqu'ici RIEN ne le reconnaissait :
+ *      la page affichait la chaîne brute « otp_required » au client.
+ *  (b) `ESIGN_OTP_ENABLED` — l'OTP de SIGNATURE, inerte aujourd'hui, qui
+ *      répond **400** avec l'un des trois messages FR ci-dessus.
+ *
+ * Cette fonction PURE traduit (statut, detail) en état d'écran. Les deux
+ * mécanismes partagent le MÊME bloc d'OTP à l'écran (un code à saisir), mais
+ * pas le même endpoint de demande — d'où `kind` distinct.
+ */
+export type AcceptUiState =
+  | { kind: 'ok' }
+  | { kind: 'otp-lecture' }
+  | { kind: 'otp-esign'; incorrect: boolean }
+  | { kind: 'error'; message: string };
+
+/** Le littéral machine que renvoie le gate `otp_lecture` (jamais traduit). */
+export const OTP_LECTURE_DETAIL = 'otp_required';
+
+export function mapAcceptResponseToUiState(
+  status: number,
+  detail?: string | null,
+): AcceptUiState {
+  if (status >= 200 && status < 300) return { kind: 'ok' };
+  const d = (detail ?? '').trim();
+  if (status === 403 && d === OTP_LECTURE_DETAIL) return { kind: 'otp-lecture' };
+  if (isOtpRequiredDetail(d)) {
+    return { kind: 'otp-esign', incorrect: isOtpIncorrectDetail(d) };
+  }
+  // Jamais le littéral machine en face du client, même hors 403.
+  const message = (!d || d === OTP_LECTURE_DETAIL)
+    ? 'Un code de confirmation est nécessaire pour valider cette proposition.'
+    : d;
+  return { kind: 'error', message };
+}
+
 /** Construit l'URL backend de demande d'envoi d'un code OTP (même convention que `/accept/`). */
 export function otpRequestEndpoint(apiBase: string, token: string): string {
   const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
   return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/otp/`;
+}
+
+/**
+ * PREVIEW-V3 — les DEUX endpoints de l'OTP de LECTURE (`ShareLink.otp_lecture`).
+ * Distincts de `otpRequestEndpoint` ci-dessus, qui sert l'OTP de SIGNATURE :
+ * celui-ci déverrouille le LIEN côté serveur pour une heure, l'autre voyage
+ * dans le corps d'acceptation. Les confondre enverrait un code qui ne
+ * déverrouille rien. Même mount `ventes/` que l'OTP de signature (l'alias
+ * headless d'`apps/ventes/urls.py`, posé pour cette page).
+ */
+export function otpLectureEndpoint(
+  apiBase: string,
+  token: string,
+  action: 'demander' | 'verifier',
+): string {
+  const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
+  return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/otp-lecture/${action}/`;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -3367,9 +3642,9 @@ export function nextSteps(): NextStep[] {
       title: 'Signature',
       titleAr: 'التوقيع',
       titleEn: 'Signature',
-      body: 'Vous signez en ligne ci-dessous. Votre conseiller Taqinor confirme la réception dans la journée.',
-      bodyAr: 'توقعون إلكترونياً أدناه، ويؤكد مستشاركم الاستلام خلال اليوم نفسه.',
-      bodyEn: 'You sign online below. Your Taqinor advisor confirms receipt the same day.',
+      body: 'Vous signez en ligne ci-dessus. Votre conseiller Taqinor confirme la réception dans la journée.',
+      bodyAr: 'توقعون إلكترونياً أعلاه، ويؤكد مستشاركم الاستلام خلال اليوم نفسه.',
+      bodyEn: 'You sign online above. Your Taqinor advisor confirms receipt the same day.',
     },
     {
       id: 'visite',

@@ -207,6 +207,48 @@ def tranches_normalisees(devis) -> list:
             for key in TRANCHE_ORDER]
 
 
+def pourcentages_echeancier(devis, lignes=None) -> list:
+    """PREVIEW-V3-FIX (16/09/2026, audit C3) — LE POIDS DE CHAQUE TRANCHE DE
+    CE DEVIS, en pourcentage : ``[{key, libelle, pct}]`` dans l'ordre.
+
+    Le défaut qu'elle ferme : la page publique affichait l'acompte depuis
+    l'échéancier RÉEL du devis (``next_tranche``) et, trois lignes plus bas,
+    les conditions générales depuis les pourcentages de la SOCIÉTÉ
+    (``payment_terms_for``). Sur un devis à échéancier négocié, le client
+    lisait « Acompte de 40 % » puis « Acompte à la commande : 30% » — deux
+    vérités sur le même écran. Les deux lectures partent désormais d'ici.
+
+    MÊME règle d'unité que :func:`next_tranche` : une tranche en pourcentage
+    vaut sa valeur ; une tranche déclarée en DIRHAMS (QJR21) publie son poids
+    réel (montant ÷ TTC du devis, au centième). Le TTC n'est lu qu'en présence
+    d'une telle tranche — un échéancier en pourcentages ne coûte aucune
+    requête de plus.
+
+    NUANCE ASSUMÉE : ``next_tranche`` fait de la DERNIÈRE tranche le RESTE
+    exact (pour que la somme des factures égale le devis au centime). Ici on
+    publie le poids DÉCLARÉ, identique tant qu'aucune facture n'est encore
+    émise — ce qui est toujours le cas quand la page client lit ces
+    pourcentages. La PREMIÈRE tranche, elle, est identique dans tous les cas :
+    c'est l'invariant dont dépend « jamais deux acomptes à l'écran ».
+    """
+    tranches = tranches_normalisees(devis)
+    total_ttc = None
+    out = []
+    for tranche in tranches:
+        if tranche['unite'] == UNITE_MONTANT:
+            if total_ttc is None:
+                from apps.ventes.utils.options import option_totaux
+                total_ttc = Decimal(
+                    str(option_totaux(devis, lignes=lignes)['ttc']))
+            pct = (_q(Decimal(str(tranche['valeur'])) / total_ttc * 100)
+                   if total_ttc > 0 else Decimal('0'))
+        else:
+            pct = Decimal(str(tranche['valeur']))
+        out.append({'key': tranche['key'], 'libelle': tranche['libelle'],
+                    'pct': pct})
+    return out
+
+
 def schedule_for_devis(devis):
     """Vue historique ``[(clé, pct_or_montant)]`` de ``tranches_normalisees``.
 
@@ -247,7 +289,7 @@ def _tranche_type(key):
     return TRANCHE_TYPE.get(key, Facture.TypeFacture.INTERMEDIAIRE)
 
 
-def next_tranche(devis, lignes=None):
+def next_tranche(devis, lignes=None, option=None):
     """Décrit la prochaine tranche à facturer, ou None si l'échéancier est complet.
 
     Retourne un dict : key, label, type, pourcentage, ht, tva, ttc, is_last.
@@ -255,6 +297,14 @@ def next_tranche(devis, lignes=None):
     NPLUS1 (27/08/2026) — ``lignes`` (optionnel) est propagé tel quel à
     ``option_totaux`` : un appelant qui a déjà les lignes en main (chemin
     d'acceptation) évite une requête de plus. Absent ⇒ comportement d'hier.
+
+    PREVIEW-V3-FIX (16/09/2026) — ``option`` (optionnel) est propagé tel quel
+    à ``option_totaux`` : la page publique doit annoncer l'acompte de l'option
+    que le client est en train de COCHER, pas seulement celui de l'option
+    effective. Un seul arrondi existe donc toujours — celui d'ici — au lieu
+    d'une seconde règle recopiée côté vue (le défaut C1 de l'audit : la page
+    devinait l'option et pouvait afficher l'acompte de l'AUTRE). ``None``
+    (tous les appelants historiques) ⇒ ``option_effective``, inchangé.
 
     QJR21 — une tranche qui DÉCLARE un montant vaut ce montant TTC ; son
     ``pourcentage`` est alors DÉRIVÉ (montant ÷ total TTC), jamais la valeur
@@ -277,7 +327,7 @@ def next_tranche(devis, lignes=None):
     # QJR24/D9 — avant acceptation, ce sont les totaux du TOTAL AFFICHÉ
     # (option recommandée / AVEC), jamais la somme des deux options.
     from apps.ventes.utils.options import option_totaux
-    opt = option_totaux(devis, lignes=lignes)
+    opt = option_totaux(devis, option=option, lignes=lignes)
     total_ht = Decimal(str(opt['ht']))
     total_tva = Decimal(str(opt['tva']))
     total_ttc = Decimal(str(opt['ttc']))

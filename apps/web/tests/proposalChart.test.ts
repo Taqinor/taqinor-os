@@ -164,3 +164,44 @@ describe('renderProposalChart — SVG', () => {
     expect(svg).toContain('janv. · consommation 1 200 kWh');
   });
 });
+
+describe('renderProposalChart — mode compact (PREVIEW-V3)', () => {
+  it('sans options : SVG OCTET POUR OCTET identique à avant (aucune régression possible)', () => {
+    expect(renderProposalChart(PROD, CONS, undefined, 'fr', {}))
+      .toBe(renderProposalChart(PROD, CONS, undefined, 'fr'));
+    expect(renderProposalChart(PROD, CONS, undefined, 'ar', { labels: true, annotate: true }))
+      .toBe(renderProposalChart(PROD, CONS, undefined, 'ar'));
+  });
+
+  it('compact : ni étiquettes de mois, ni annotation pic/annuel', () => {
+    const svg = renderProposalChart(PROD, CONS, undefined, 'fr', { labels: false, annotate: false });
+    for (const lbl of MONTH_LABELS_FR) expect(svg).not.toContain(`>${lbl}<`);
+    expect(svg).not.toContain('pic ≈');
+    expect(svg).not.toContain('/an<');
+  });
+
+  it('compact : MÊMES séries — 24 barres, mêmes valeurs au survol', () => {
+    const svg = renderProposalChart(PROD, CONS, undefined, 'fr', { labels: false, annotate: false });
+    expect((svg.match(/<rect /g) ?? [])).toHaveLength(24);
+    expect(svg).toContain('janv. · production 800 kWh');
+    expect(svg).toContain('janv. · consommation 1 200 kWh');
+  });
+
+  it('les deux options sont indépendantes', () => {
+    const sansLabels = renderProposalChart(PROD, CONS, undefined, 'fr', { labels: false });
+    expect(sansLabels).not.toContain('>janv.<');
+    expect(sansLabels).toContain('pic ≈');
+    const sansAnnot = renderProposalChart(PROD, CONS, undefined, 'fr', { annotate: false });
+    expect(sansAnnot).toContain('>janv.<');
+    expect(sansAnnot).not.toContain('pic ≈');
+  });
+
+  it('la vignette garde son rôle d’image accessible et sa boîte déclarée', () => {
+    const svg = renderProposalChart(PROD, CONS,
+      { width: 320, height: 130, padLeft: 6, padRight: 6, padTop: 8, padBottom: 10 },
+      'fr', { labels: false, annotate: false });
+    expect(svg).toContain('viewBox="0 0 320 130"');
+    expect(svg).toContain('role="img"');
+    expect(svg).toContain('<desc>');
+  });
+});
