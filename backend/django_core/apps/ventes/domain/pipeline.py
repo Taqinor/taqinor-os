@@ -98,6 +98,10 @@ class IntentionComposition:
       peuvent donc plus être posés dans une combinaison contradictoire.
     * ``structure_type`` / ``mppt_paires`` — les deux paramètres que la
       création ne transmettait pas (QB80).
+    * ``structure_produit_id`` — STKCAT1/STKCAT7, LE PRODUIT de structure
+      choisi (id ``stock.Produit``). PRIORITAIRE sur ``structure_type``, qui
+      n'est plus qu'un ALIAS DÉPRÉCIÉ ; ``None`` (LE DÉFAUT) ⇒ composition
+      strictement inchangée.
     * ``phase`` — PVCOMPAT, le raccordement déclaré du client.
     * ``gamme_nom_devis`` — la gamme demandée POUR CE DEVIS-LÀ, lue par
       ``carte_marques_composition``. ``None`` ⇒ les marques par défaut de la
@@ -122,6 +126,7 @@ class IntentionComposition:
     panel_watt: object = None
     scenario: str = COMPOSITION_SANS
     structure_type: str = 'acier'
+    structure_produit_id: object = None
     taux_tva: Decimal = Decimal('20')
     mppt_paires: int = 1
     phase: object = None
@@ -169,6 +174,10 @@ def composer(intention):
     commun = dict(
         panel_watt=intention.panel_watt,
         structure_type=intention.structure_type,
+        # STKCAT7 — le produit de structure CHOISI suit les deux formes de
+        # composition (mono-optimum et fusion L-2OPT) : un paramètre transmis
+        # d'un côté et oublié de l'autre est exactement ce que QJR80 a corrigé.
+        structure_produit_id=getattr(intention, 'structure_produit_id', None),
         taux_tva=intention.taux_tva,
         avertissements=intention.avertissements,
         # U3 — les règles de gamme vivent CÔTÉ SERVEUR et sont résolues ICI :
@@ -547,6 +556,10 @@ class IntentionDevis:
     taux_tva: Decimal = Decimal('20')
     remise_globale: Decimal = Decimal('0')
     structure_type: str = 'acier'
+    #: STKCAT1/STKCAT7 — LE PRODUIT de structure choisi (id ``stock.Produit``),
+    #: prioritaire sur ``structure_type`` (alias déprécié). ``None`` (LE
+    #: DÉFAUT) ⇒ pipeline strictement inchangé.
+    structure_produit_id: object = None
     mppt_paires: int = 1
     phase: object = None
     gamme_nom_devis: object = None
@@ -694,6 +707,7 @@ def intention_de_composition(intention, cible, *, avertissements=None):
         panel_watt=cible.panel_watt,
         scenario=_scenario_de(intention),
         structure_type=intention.structure_type,
+        structure_produit_id=getattr(intention, 'structure_produit_id', None),
         taux_tva=intention.taux_tva,
         mppt_paires=intention.mppt_paires,
         phase=intention.phase,

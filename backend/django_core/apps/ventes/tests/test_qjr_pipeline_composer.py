@@ -191,8 +191,13 @@ class LesDeuxCheminsRemplissentLaMemeIntention(_Base):
     #: Les champs de composition qui doivent concorder. ``avertissements`` est
     #: un CANAL (une liste que l'appelant fournit pour être enrichi), pas un
     #: paramètre de composition : il est légitimement différent.
+    #: STKCAT7 — ``structure_produit_id`` EST un paramètre de composition (il
+    #: décide la ligne structure), donc il doit concorder comme les autres :
+    #: transmis par le dry-run et oublié par la création, l'aperçu montrerait
+    #: une pergola et le devis vendrait de l'acier.
     CHAMPS = ('kwc', 'nb_panneaux', 'panel_watt', 'scenario',
-              'structure_type', 'taux_tva', 'mppt_paires', 'phase',
+              'structure_type', 'structure_produit_id',
+              'taux_tva', 'mppt_paires', 'phase',
               'gamme_nom_devis', 'dimensionnement_avec')
 
     def _capturer(self, appel):
@@ -262,7 +267,8 @@ class LIntentionEstGeleeEtLeScenarioValide(SimpleTestCase):
         from apps.ventes.domain.composition import composition_residentielle
         signature = inspect.signature(composition_residentielle)
         intention = pipeline.IntentionComposition(company=None)
-        for champ in ('structure_type', 'taux_tva', 'mppt_paires', 'phase'):
+        for champ in ('structure_type', 'structure_produit_id', 'taux_tva',
+                      'mppt_paires', 'phase'):
             self.assertEqual(signature.parameters[champ].default,
                              getattr(intention, champ), champ)
 
