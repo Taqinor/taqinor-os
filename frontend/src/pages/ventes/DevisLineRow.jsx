@@ -188,7 +188,13 @@ function DevisLineRowImpl({
           produits={produits}
           value={l.produit}
           onChange={id => onProduitChange(l._key, id)}
-          typeFilter={classifyProduct(l.designation) || undefined}
+          // STKCAT24 — le rôle STOCKÉ de la ligne (`role_devis`, posé à la
+          // création par STKCAT23) l'emporte sur la re-devinette par mots-clés :
+          // une désignation éditée à la main après coup ne perd plus le rôle
+          // d'origine. Une ligne sans rôle stocké (créée avant STKCAT23, ou
+          // ligne libre) retombe sur `classifyProduct` — comportement
+          // historique inchangé.
+          typeFilter={l.role_devis || classifyProduct(l.designation) || undefined}
           onProduitCreated={onProduitCreated}
           // VX238(c) — choisir un produit avance directement le focus sur la
           // Qté de CETTE ligne (réutilise data-line-key, VX90) au lieu de

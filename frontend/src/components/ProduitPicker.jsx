@@ -39,6 +39,15 @@ import ProduitQuickCreateModal from './ProduitQuickCreateModal'
    sinon reste atteignable via la recherche — jamais perdu. Curseur clavier
    continu sur UN seul tableau `selectables` couvrant les deux sections.
 
+   STKCAT24 — Recommandé lit AUSSI le rôle EFFECTIF résolu côté serveur
+   (STKCAT21 `role_devis_effectif` : déclaré → catégorie → mots-clés du nom) :
+   un troisième terme, encore en UNION, jamais une substitution des deux
+   précédents. `structure_acier`/`structure_alu` et le rôle générique
+   `structure` se reconnaissent mutuellement via `familleAttendue` (même
+   famille), dans les deux sens — un produit dont le rôle effectif est le
+   générique `structure` reste Recommandé sur une ligne `structure_acier`,
+   et réciproquement.
+
    QG6 — « + Nouveau produit » : visible uniquement pour Directeur + Commercial
    responsable (hook QG5, backend QG4 est la garde qui compte). `onProduitCreated`
    (optionnel) est appelé avec le produit créé EN PLUS de la sélection auto sur
@@ -82,6 +91,8 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
   const isRecommande = (p) => !!typeFilter && (
     classifyProduct(p.nom) === typeFilter
     || (famille !== null && typeOfProduit(p) === famille)
+    || p.role_devis_effectif === typeFilter
+    || (famille !== null && famille === familleAttendue(p.role_devis_effectif))
   )
 
   // STKCAT13 — chargement paresseux des catégories, uniquement à l'ouverture
