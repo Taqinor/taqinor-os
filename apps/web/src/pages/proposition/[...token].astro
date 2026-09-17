@@ -429,6 +429,10 @@ if (apercuInterne && !equipeAppareil) {
   });
 }
 const q = data?.quote;
+// BAT-DIFF (17/09/2026) — l'option « avec » est servie par un onduleur hybride
+// SANS batterie chiffrée (le client l'ajoutera plus tard) : chaque libellé
+// d'option « avec » de cette page passe ce drapeau à `optionLabel*`.
+const avecDifferee = q?.avec_batterie_differee === true;
 const twoOptions = ok ? hasTwoOptions(data!) : false;
 // LANE CHOIX-AVEC (fondateur, 25/08/2026) — INVARIANT DOCUMENTÉ, PAS RÉÉCRIT :
 // `reco` est LE pivot de toute surface de cette page qui ne peut montrer
@@ -1486,7 +1490,11 @@ const ecoVariantes: readonly ('sans' | 'avec')[] = ecoPeriodes
   : [];
 const ECO_VARIANTE_LABELS: Record<'sans' | 'avec', OccTri> = {
   sans: { fr: 'Sans batterie', en: 'Without battery', ar: 'بدون بطارية' },
-  avec: { fr: 'Avec batterie', en: 'With battery', ar: 'مع بطارية' },
+  avec: {
+    fr: optionLabel('avec_batterie', avecDifferee),
+    en: optionLabelEn('avec_batterie', avecDifferee),
+    ar: optionLabelAr('avec_batterie', avecDifferee),
+  },
 };
 /** Le bloc servi pour un (profil, variante) — pure LECTURE d'un objet déjà
  *  calculé, jamais un mélange entre deux comportements. */
@@ -2957,10 +2965,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </div>
               {equipmentExtra.length > 0 && (
                 <p class="mt-5 border-t border-white/10 pt-4 text-sm text-lune-soft" data-i18n
-                  data-fr={`L’option « ${optionLabel('avec_batterie')} » ajoute : ${equipmentExtra.map((it) => `${it.designation} ×${formatNumber(it.quantite)}`).join(', ')}.`}
-                  data-en={`The “${optionLabelEn('avec_batterie')}” option adds: ${equipmentExtra.map((it) => `${it.designation} ×${formatNumber(it.quantite)}`).join(', ')}.`}
-                  data-ar={`يضيف خيار «${optionLabelAr('avec_batterie')}»: ${equipmentExtra.map((it) => `${it.designation} ×${formatNumber(it.quantite)}`).join('، ')}.`}>
-                  L’option « {optionLabel('avec_batterie')} » ajoute :{' '}
+                  data-fr={`L’option « ${optionLabel('avec_batterie', avecDifferee)} » ajoute : ${equipmentExtra.map((it) => `${it.designation} ×${formatNumber(it.quantite)}`).join(', ')}.`}
+                  data-en={`The “${optionLabelEn('avec_batterie', avecDifferee)}” option adds: ${equipmentExtra.map((it) => `${it.designation} ×${formatNumber(it.quantite)}`).join(', ')}.`}
+                  data-ar={`يضيف خيار «${optionLabelAr('avec_batterie', avecDifferee)}»: ${equipmentExtra.map((it) => `${it.designation} ×${formatNumber(it.quantite)}`).join('، ')}.`}>
+                  L’option « {optionLabel('avec_batterie', avecDifferee)} » ajoute :{' '}
                   {equipmentExtra.map((it) => `${it.designation} ×${formatNumber(it.quantite)}`).join(', ')}.
                 </p>
               )}
@@ -4761,7 +4769,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     Recommandé
                   </span>
                 )}
-                <h3 class="display text-xl text-lune" data-i18n data-fr={optionLabel(opt)} data-en={optionLabelEn(opt)} data-ar={optionLabelAr(opt)}>{optionLabel(opt)}</h3>
+                <h3 class="display text-xl text-lune" data-i18n data-fr={optionLabel(opt, avecDifferee)} data-en={optionLabelEn(opt, avecDifferee)} data-ar={optionLabelAr(opt, avecDifferee)}>{optionLabel(opt, avecDifferee)}</h3>
                 {/* L-DEUXOPT — « N panneaux · X kWc » (+ « Batteries : Y kWh »
                     côté avec) : données du contrat UNIQUEMENT, chaque
                     sous-valeur omise individuellement si `null` — jamais un
@@ -6379,7 +6387,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                      de l'option DOIT venir de la même source que le TTC affiché
                      juste à côté, sinon les deux pourraient se contredire sur un
                      devis sans pré-sélection servie. */
-                  <><span class="text-lune" data-sign-recap-option>{optionLabel(optionInitiale)}</span>{' · '}</>
+                  <><span class="text-lune" data-sign-recap-option>{optionLabel(optionInitiale, avecDifferee)}</span>{' · '}</>
                 )}
                 {heroHasRealPrice ? (
                   /* « TTC » suffit ici — « toutes taxes comprises » le dit. La
@@ -6468,7 +6476,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                         checked={opt === preselect}
                         class="sr-only"
                       />
-                      <span class="text-lune" data-option-label data-i18n data-fr={optionLabel(opt)} data-en={optionLabelEn(opt)} data-ar={optionLabelAr(opt)}>{optionLabel(opt)}</span>
+                      <span class="text-lune" data-option-label data-i18n data-fr={optionLabel(opt, avecDifferee)} data-en={optionLabelEn(opt, avecDifferee)} data-ar={optionLabelAr(opt, avecDifferee)}>{optionLabel(opt, avecDifferee)}</span>
                       {hasRealPrice(data!, opt) ? (
                         <span class="text-xs text-lune-faint" dir="ltr">{formatMAD(optionTtc(data!, opt))}</span>
                       ) : (

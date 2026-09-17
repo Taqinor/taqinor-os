@@ -122,12 +122,24 @@ class TotalAfficheRepliTests(TestCase):
             self.company, self.user, self.client_obj, _LIGNES_DEUX_OPTIONS,
             reference='DEV-REPLI-PRE2', etude_params=None)
         self.assertFalse(deux_options_declarees(sans_declaration))
-        # Z1 — hybride déclaré mais SANS batterie réelle : jamais deux options.
+        # BAT-DIFF (17/09/2026) — hybride FACE à un onduleur réseau, déclaré
+        # « Les deux », SANS batterie chiffrée : DEUX options (l'option
+        # « avec » = onduleur hybride, batterie à ajouter plus tard). Avant,
+        # Z1 le ramenait à une option unique qui additionnait les deux
+        # onduleurs — le prix d'aucune vente réelle.
+        hybride_face_reseau = make_devis(
+            self.company, self.user, self.client_obj, [
+                ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
+                ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67', '20'),
+                ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33', '20'),
+            ], reference='DEV-REPLI-PRE3', etude_params=dict(DEUX_OPTIONS))
+        self.assertTrue(deux_options_declarees(hybride_face_reseau))
+        # Z1 — hybride SEUL (aucun onduleur réseau, aucune batterie) : rien à
+        # comparer, jamais deux options.
         hybride_seul = make_devis(self.company, self.user, self.client_obj, [
             ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
-            ('Onduleur réseau Huawei 10kW Triphasé', '1', '16666.67', '20'),
             ('Onduleur hybride Deye 10kW Triphasé', '1', '23333.33', '20'),
-        ], reference='DEV-REPLI-PRE3', etude_params=dict(DEUX_OPTIONS))
+        ], reference='DEV-REPLI-PRE4', etude_params=dict(DEUX_OPTIONS))
         self.assertFalse(deux_options_declarees(hybride_seul))
 
     def test_serializer_expose_les_deux_totaux_sous_moteur_en_echec(self):

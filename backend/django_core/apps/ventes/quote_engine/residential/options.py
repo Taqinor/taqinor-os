@@ -468,6 +468,14 @@ def build_pages(ctx) -> list:
     # pendu), texte NAVY sur la barre or (jamais blanc sur #F5A623 — contraste)
     # et une ligne « Pourquoi » sous l'option recommandée qui JUSTIFIE la
     # recommandation au lieu de la seule pastille.
+    # BAT-DIFF — libellé de l'option « avec » fourni par le builder (« Avec
+    # batterie » ou « Hybride, batterie plus tard ») et justification de la
+    # recommandation adaptée : sans batterie, « vos soirées passent sur
+    # batterie » serait faux. Vieux dict ⇒ textes historiques.
+    libelle_avec = d.get("libelle_avec") or "Avec batterie"
+    pourquoi_avec = (d.get("pourquoi_avec")
+                     or "Pourquoi nous la recommandons : vos soirées et les "
+                        "coupures passent sur batterie.")
     if deux_options:
         deltas_html = (
             '<div class="p2-deltas">'
@@ -478,10 +486,9 @@ def build_pages(ctx) -> list:
             '<div class="p2-dcard">'
             f'<div class="p2-dhead" style="background:{C["gold"]};'
             f'color:{C["navy"]}">'
-            'Spécifique à l&rsquo;option 2 — Avec batterie</div>'
+            f'Spécifique à l&rsquo;option 2 — {libelle_avec}</div>'
             f'<div class="p2-dbody"><ul>{delta_avec_html}</ul>'
-            '<div class="p2-dwhy">Pourquoi nous la recommandons : vos '
-            'soirées et les coupures passent sur batterie.</div></div></div>'
+            f'<div class="p2-dwhy">{pourquoi_avec}</div></div></div>'
             '</div>')
     else:
         deltas_html = ""
@@ -490,7 +497,7 @@ def build_pages(ctx) -> list:
         totals_html = (
             _totals_chain("Option 1 — Sans batterie", C["navy"],
                           d["totaux_sans"], fmt, C)
-            + _totals_chain("Option 2 — Avec batterie", C["gold"],
+            + _totals_chain(f"Option 2 — {libelle_avec}", C["gold"],
                             d["totaux_avec"], fmt, C, recommended=True))
         # L-2OPTPDF — dès qu'une ligne appariée entre dans le tableau, celui-ci
         # n'est plus « commun » aux deux options : il les COMPARE. Sans paire
@@ -501,7 +508,7 @@ def build_pages(ctx) -> list:
     else:
         # QX5 — une seule carte de totaux pour l'unique option réelle.
         _tot = d["totaux_avec"] if avec_ok else d["totaux_sans"]
-        _lbl = ("Total — Avec batterie" if avec_ok
+        _lbl = (f"Total — {libelle_avec}" if avec_ok
                 else "Total — Sans batterie")
         _acc = C["gold"] if avec_ok else C["navy"]
         totals_html = _totals_chain(_lbl, _acc, _tot, fmt, C)
@@ -657,7 +664,7 @@ def build_pages(ctx) -> list:
             f'<td class="p2-cmp-v p2-cmp-a">{b}</td></tr>'
             for k, a, b in rows)
         return ('<table class="p2-cmp"><thead><tr><th></th>'
-                '<th>Sans batterie</th><th>Avec batterie</th></tr></thead>'
+                f'<th>Sans batterie</th><th>{libelle_avec}</th></tr></thead>'
                 f'<tbody>{_crows}</tbody></table>')
 
     # L-2OPTPDF — À PARTIR DE 4 LIGNES, LE COMPARATIF SE LIT SUR DEUX COLONNES.

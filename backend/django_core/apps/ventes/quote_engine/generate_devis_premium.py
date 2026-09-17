@@ -369,6 +369,9 @@ ONEPAGE_NOTE_BATTERIE = False
 # une page. Défaut None = aucune économie affichée sur le chemin autonome ;
 # le builder la pose TOUJOURS pour un vrai devis.
 ONEPAGE_BRANCHE = None
+# BAT-DIFF — libellé de l'option « avec » (« Avec batterie » ou « Hybride,
+# batterie plus tard ») posé par le builder ; sert la mention du une-page.
+LIBELLE_AVEC = "Avec batterie"
 # QJR13 — capacité batterie TOTALE des LIGNES du devis (``data
 # ['batterie_kwh_total']``, calculé par ``builder._battery_kwh_from_items`` sur
 # l'option AVEC). Défaut 0 = « aucune batterie connue » : un optimum du moteur
@@ -3752,10 +3755,13 @@ def page_onepage(items, tronquees=0):
     # donc le texte qui dit CE QUE CE DOCUMENT CHIFFRE doit dire la même
     # chose que les lignes réellement imprimées au-dessus. Un texte figé sur
     # « sans batterie » aurait décrit une page en réalité chiffrée avec.
-    _onepage_note_ceci = ("avec batterie" if ONEPAGE_BRANCHE == "avec"
+    # BAT-DIFF — l'option « avec » porte le libellé du builder (« Hybride,
+    # batterie plus tard » quand elle est servie sans batterie chiffrée).
+    _libelle_avec_min = LIBELLE_AVEC[:1].lower() + LIBELLE_AVEC[1:]
+    _onepage_note_ceci = (_libelle_avec_min if ONEPAGE_BRANCHE == "avec"
                           else "sans batterie")
     _onepage_note_autre = ("sans batterie" if ONEPAGE_BRANCHE == "avec"
-                           else "avec batterie")
+                           else _libelle_avec_min)
 
     header_html = _onepage_header_html()
 
@@ -4017,7 +4023,7 @@ def apply_quote_data(data: dict) -> None:
     # builder, la page n'existe pas et le PDF est byte-identique.
     global INCLUDE_ANNEXE, ELECTRICAL_DESIGN, SLD_SVG
     global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
-    global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE
+    global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE, LIBELLE_AVEC
     global LINKS  # QRP1 — liens client (proposition tokenisée)
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
     global DEVISE  # FG52 — devise du document (ISO 4217)
@@ -4155,6 +4161,7 @@ def apply_quote_data(data: dict) -> None:
     PAY_M = int(_terms.get("materiel", 60))
     PAY_S = int(_terms.get("solde", 10))
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
+    LIBELLE_AVEC = str(data.get("libelle_avec") or "Avec batterie")
     LINKS = dict(data.get("links") or {})
     global ONEPAGE_BRANCHE  # M4 — branche des lignes du format une page
     _br = data.get("onepage_branche")

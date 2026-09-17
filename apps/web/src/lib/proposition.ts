@@ -100,6 +100,11 @@ export interface ProposalQuote {
   totaux_avec?: ProposalTotaux;
   display_total?: number;
   nb_options?: number;
+  /** BAT-DIFF (17/09/2026) — l'option « avec » est servie par un onduleur
+   *  hybride SANS batterie chiffrée (le client l'ajoutera plus tard) ;
+   *  `libelle_avec` est le libellé que le document imprime à sa place. */
+  avec_batterie_differee?: boolean;
+  libelle_avec?: string;
   roof_image_key?: string;
   /** Factures mensuelles (MAD) du client si le backend les expose — sert
    *  uniquement à l'accroche « < votre facture actuelle » (WJ10). Optionnel :
@@ -880,19 +885,25 @@ export function hasRealPrice(p: ProposalResponse, opt: OptionKey): boolean {
   return Number.isFinite(ttc) && ttc > 0;
 }
 
-/** Étiquette FR courte d'une option. */
-export function optionLabel(opt: OptionKey): string {
-  return opt === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie';
+/** Étiquette FR courte d'une option.
+ *  BAT-DIFF — `differee` (= `quote.avec_batterie_differee`) : l'option
+ *  « avec » n'a pas de batterie chiffrée, l'onduleur hybride est prêt pour
+ *  une batterie ajoutée plus tard — jamais « Avec batterie » dans ce cas. */
+export function optionLabel(opt: OptionKey, differee = false): string {
+  if (opt !== 'avec_batterie') return 'Sans batterie';
+  return differee ? 'Hybride, batterie plus tard' : 'Avec batterie';
 }
 
 /** WJ43 — Étiquette arabe d'une option (paire de `optionLabel` pour le data-i18n). */
-export function optionLabelAr(opt: OptionKey): string {
-  return opt === 'avec_batterie' ? 'مع بطارية' : 'بدون بطارية';
+export function optionLabelAr(opt: OptionKey, differee = false): string {
+  if (opt !== 'avec_batterie') return 'بدون بطارية';
+  return differee ? 'هجين، البطارية لاحقاً' : 'مع بطارية';
 }
 
 /** WJ43 — Étiquette anglaise d'une option (paire de `optionLabel` pour le data-i18n). */
-export function optionLabelEn(opt: OptionKey): string {
-  return opt === 'avec_batterie' ? 'With battery' : 'Without battery';
+export function optionLabelEn(opt: OptionKey, differee = false): string {
+  if (opt !== 'avec_batterie') return 'Without battery';
+  return differee ? 'Hybrid, battery later' : 'With battery';
 }
 
 /** Lignes d'équipement d'une option (toujours un tableau). */
@@ -4874,6 +4885,8 @@ export interface ProposalQuoteLu {
   /** `null` quand le serveur ne se prononce pas — jamais un `false` fabriqué. */
   sansOk: boolean | null;
   avecOk: boolean | null;
+  /** BAT-DIFF — option « avec » servie sans batterie chiffrée. */
+  avecBatterieDifferee: boolean | null;
   scenario: string | null;
   totauxSans: ProposalTotauxLus | null;
   totauxAvec: ProposalTotauxLus | null;
@@ -4972,6 +4985,7 @@ function lireQuote(brut: unknown): ProposalQuoteLu | null {
     displayTotal: finiteOrNull(q.display_total),
     sansOk: booleenOuNull(q.sans_ok),
     avecOk: booleenOuNull(q.avec_ok),
+    avecBatterieDifferee: booleenOuNull(q.avec_batterie_differee),
     scenario: nonEmptyStringOrNull(q.scenario),
     totauxSans: lireTotaux(q.totaux_sans),
     totauxAvec: lireTotaux(q.totaux_avec),

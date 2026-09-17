@@ -191,6 +191,93 @@ class TestBuildQuoteData(TestCase):
                             for it in data['sans_items']), 2)
         self.assertAlmostEqual(data['totaux_sans']['ht_brut'], attendu, places=2)
 
+    def test_bat_diff_hybride_face_au_reseau_sans_batterie_rend_deux_options(self):
+        """BAT-DIFF (ORDRE FONDATEUR, 17/09/2026) — le client veut les deux
+        options, mais l'option « avec » ne doit contenir que l'ONDULEUR
+        HYBRIDE : il ajoutera les batteries plus tard (quantité batterie 0
+        dans l'édition complète). AVANT : Z1 (``has_batterie`` faux) ramenait
+        ce devis à UNE option « Sans batterie » dont la composition était
+        toutes les lignes — les DEUX onduleurs additionnés dans un seul prix.
+        APRÈS : deux vraies options ; l'option « avec » est nommée « Hybride,
+        batterie plus tard », ses économies sont celles de « sans » (aucun
+        forfait 0,85, aucune batterie inventée — Z1 tient)."""
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.ventes.quote_engine.builder import (
+            LIBELLE_AVEC_BATTERIE_DIFFEREE, PUCE_AVEC_BATTERIE_DIFFEREE,
+        )
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '14', '1100'),
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 10kW', '1', '24000'),
+            ('Batterie 10 kWh', '0', '25000'),   # « il ajoutera plus tard »
+            ('Installation', '1', '4000'),
+        ], reference='DEV-BATDIFF-1', etude_params=DEUX_OPTIONS)
+        data = build_quote_data(devis)
+        self.assertTrue(data['deux_options'])
+        self.assertEqual(data['nb_options'], 2)
+        self.assertTrue(data['sans_ok'])
+        self.assertTrue(data['avec_ok'])
+        self.assertEqual(data['scenario'], 'Les deux (Sans + Avec)')
+        self.assertEqual(data['variantes_servables'], ['sans', 'avec'])
+        sans = [it['designation'].lower() for it in data['sans_items']]
+        avec = [it['designation'].lower() for it in data['avec_items']]
+        self.assertTrue(any('réseau' in d for d in sans))
+        self.assertFalse(any('hybride' in d for d in sans))
+        self.assertTrue(any('hybride' in d for d in avec))
+        self.assertFalse(any('réseau' in d for d in avec))
+        # Aucune batterie CHIFFRÉE nulle part (la ligne à quantité 0 n'équipe
+        # rien) et aucune capacité publiée.
+        self.assertFalse(any('batterie' in it['designation'].lower()
+                             and it['quantite'] > 0
+                             for it in data['sans_items'] + data['avec_items']))
+        self.assertIsNone(data['batterie_kwh_total'])
+        # Le document NOMME l'option honnêtement.
+        self.assertTrue(data['avec_batterie_differee'])
+        self.assertEqual(data['libelle_avec'], LIBELLE_AVEC_BATTERIE_DIFFEREE)
+        self.assertIn(PUCE_AVEC_BATTERIE_DIFFEREE, data['avec_bullets'])
+        self.assertTrue(data['pourquoi_avec'])
+        # Économies « avec » = « sans » : rien n'est décalé sans stockage.
+        self.assertEqual(data['eco_a_ann'], data['eco_s_ann'])
+        # Chaque option porte SON onduleur — jamais les deux dans un prix.
+        self.assertAlmostEqual(data['totaux_sans']['ht_brut'],
+                               14 * 1100 + 11700 + 4000, places=2)
+        self.assertAlmostEqual(data['totaux_avec']['ht_brut'],
+                               14 * 1100 + 24000 + 4000, places=2)
+        self.assertEqual(data['display_total'], data['totaux_avec']['ttc'])
+        self.assertTrue(any('batterie plus tard' in a
+                            for a in data['avertissements_internes']))
+
+    def test_bat_diff_ligne_batterie_absente_meme_verdict(self):
+        """Même devis SANS la ligne batterie (retirée au lieu de mise à 0) :
+        même document à deux options, même libellé."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '14', '1100'),
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 10kW', '1', '24000'),
+        ], reference='DEV-BATDIFF-2', etude_params=DEUX_OPTIONS)
+        data = build_quote_data(devis)
+        self.assertTrue(data['deux_options'])
+        self.assertTrue(data['avec_batterie_differee'])
+        self.assertEqual(data['libelle_avec'], 'Hybride, batterie plus tard')
+
+    def test_bat_diff_non_declare_reste_artefact_mono_option(self):
+        """Les deux onduleurs sans batterie et SANS scénario déclaré : PV86
+        inchangé — une seule présentation « Sans batterie », total complet,
+        aucun libellé « batterie plus tard »."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '14', '1100'),
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 10kW', '1', '24000'),
+        ], reference='DEV-BATDIFF-3')
+        data = build_quote_data(devis)
+        self.assertFalse(data['deux_options'])
+        self.assertFalse(data['avec_ok'])
+        self.assertFalse(data['avec_batterie_differee'])
+        self.assertEqual(data['libelle_avec'], 'Avec batterie')
+        self.assertEqual(data['scenario'], 'Sans batterie')
+
     @patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket')
     @patch('apps.ventes.utils.pdf._upload_pdf')
     def test_qjr17_le_repli_sur_le_moteur_legacy_est_bruyant(self, _up, _bucket):

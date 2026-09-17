@@ -3232,7 +3232,16 @@ export function avecBatterieAvailability(lines, produits, kwp) {
     isHybridInverter(l.designation) && parseFloat(l.quantite) > 0)
   const hasBat = lines.some(l =>
     isBattery(l.designation) && parseFloat(l.quantite) > 0)
-  if (hasHyb && hasBat) return { available: true }
+  const hasRes = lines.some(l =>
+    isReseauInverter(l.designation) && parseFloat(l.quantite) > 0)
+  if (hasHyb && hasBat) return { available: true, batterieDifferee: false }
+  // BAT-DIFF (fondateur, 17/09/2026) — même règle que le noyau
+  // (`utils.options.familles_servables`, testée là-bas et ici par
+  // `solar.avecBatterieAvailability.test.jsx`) : un hybride FACE à un réseau sert
+  // l'option « avec » même sans batterie chiffrée (le client l'ajoutera plus
+  // tard). Le document la nomme « Hybride, batterie plus tard » et calcule
+  // ses économies sans stockage. Un hybride SEUL reste mono-option (Z1).
+  if (hasHyb && hasRes) return { available: true, batterieDifferee: true }
   // Diagnostic : le plus gros hybride du stock suffit-il, même composé ?
   const maxKw = Math.max(0, ...produits
     .filter(p => isHybridInverter(p.nom))
