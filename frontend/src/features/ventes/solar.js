@@ -3235,8 +3235,9 @@ export function avecBatterieAvailability(lines, produits, kwp) {
   const hasRes = lines.some(l =>
     isReseauInverter(l.designation) && parseFloat(l.quantite) > 0)
   if (hasHyb && hasBat) return { available: true, batterieDifferee: false }
-  // BAT-DIFF (fondateur, 17/09/2026) — MIROIR de `utils.options.
-  // familles_servables` : un onduleur hybride FACE à un onduleur réseau sert
+  // BAT-DIFF (fondateur, 17/09/2026) — même règle que le noyau
+  // (`utils.options.familles_servables`, testée là-bas et ici par
+  // `solar.avecBatterieAvailability.test.jsx`) : un hybride FACE à un réseau sert
   // l'option « avec » même sans batterie chiffrée (le client l'ajoutera plus
   // tard). Le document la nomme « Hybride, batterie plus tard » et calcule
   // ses économies sans stockage. Un hybride SEUL reste mono-option (Z1).
