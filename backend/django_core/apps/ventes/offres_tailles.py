@@ -1305,6 +1305,15 @@ def deriver(devis, data):
         return None
 
     avec_servable = 'avec' in list((data or {}).get('variantes_servables') or [])
+    # BAT-DIFF (17/09/2026) — option « avec » servie SANS batterie chiffrée
+    # (« Hybride, batterie plus tard ») : l'explorateur de tailles n'a pas de
+    # variante « avec batterie ». Le moteur y composerait des banques de
+    # catalogue (Éco/Max) que le client n'a pas demandées, sous une bascule
+    # « Avec batterie » que son devis contredit — des prix qu'aucune page ne
+    # porte. Les tailles se servent « sans » seulement ; l'option hybride du
+    # client reste sur ses cartes d'option (le devis officiel).
+    if bool((data or {}).get('avec_batterie_differee')):
+        avec_servable = False
     stockees = lire_config_stockee(devis)
 
     nb_devis = _positif((data or {}).get('nb_panneaux_sans')) \

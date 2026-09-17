@@ -18,6 +18,7 @@ bout.
 Fixtures calquées sur ``test_cj2b_economies_publiques.py`` : Casablanca est
 dans la table de référence PVGIS, aucun accès réseau n'est nécessaire.
 """
+import json
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -384,3 +385,26 @@ class AvecOkFauxPayloadTests(_PayloadBase):
         self.assertFalse(d['divergent'])
         self.assertEqual(d['sans']['nb_panneaux'], 14)
         self.assertEqual(p['production_par_option'], {'sans': None, 'avec': None})
+
+
+class BatterieDifereePayloadTests(_PayloadBase):
+    """BAT-DIFF (17/09/2026) — réseau + hybride, AUCUNE batterie chiffrée,
+    scénario « Les deux » : l'option « avec » est servie (« Hybride, batterie
+    plus tard ») mais AUCUN bloc batterie de catalogue ne franchit la
+    frontière publique — ni échelle de paliers (un palier pré-sélectionné à
+    58 865 MAD sous une carte à 73 935 MAD), ni variante « avec » des tailles."""
+
+    def test_option_avec_servie_sans_paliers_batterie(self):
+        devis = self._devis('do-batdiff')
+        devis.lignes.filter(designation__icontains='Batterie').delete()
+        p = self._payload(devis)
+        self.assertTrue(p['quote']['avec_ok'])
+        self.assertTrue(p['quote']['avec_batterie_differee'])
+        self.assertEqual(p['quote']['libelle_avec'],
+                         'Hybride, batterie plus tard')
+        self.assertIn('avec', p['dimensionnement_options'])
+        self.assertNotIn('paliers_batterie', p)
+        self.assertNotIn('couverture_batterie', p)
+        offres = p.get('offres_tailles')
+        if offres:
+            self.assertNotIn('"avec": {', json.dumps(offres))
