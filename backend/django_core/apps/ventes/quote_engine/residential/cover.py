@@ -617,17 +617,21 @@ def build(ctx):
 
     # QJR210 — chaque carte NOMME son option (``opt``) : c'est par elle que le
     # mot « estimée / calculée » va chercher le modèle de SA colonne.
+    # BAT-DIFF — le libellé de l'option « avec » vient du builder : « Avec
+    # batterie », ou « Hybride, batterie plus tard » quand l'option est servie
+    # sans batterie chiffrée. Absent (vieux dict) ⇒ libellé historique.
+    libelle_avec = d.get("libelle_avec") or "Avec batterie"
     if deux_options:
         opts_html = (
             _opt_card("Option 1", "Sans batterie", total_sans, pkwc_sans,
                       roi_s, sans_bullets, eco=eco_s_ann, opt="sans")
-            + _opt_card("Option 2", "Avec batterie", total_avec, pkwc_avec,
+            + _opt_card("Option 2", libelle_avec, total_avec, pkwc_avec,
                         roi_a, avec_bullets, eco=eco_a_ann, reco=True,
                         opt="avec"))
     elif avec_ok:
         # Option unique AVEC batterie : une carte pleine largeur, pas de « Sans »
         # fabriquée (dépourvue d'onduleur).
-        opts_html = _opt_card("Votre installation", "Avec batterie", total_avec,
+        opts_html = _opt_card("Votre installation", libelle_avec, total_avec,
                               pkwc_avec, roi_a, avec_bullets, eco=eco_a_ann,
                               full=True, opt="avec")
     else:

@@ -3796,6 +3796,13 @@ export default function DevisGenerator({
                 option partielle silencieuse.
               </div>
             )}
+            {showAvec && lines.length > 0 && avecDispo.batterieDifferee && (
+              <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
+                Option « avec » sans batterie chiffrée : le document la présente comme
+                « Hybride, batterie plus tard » (onduleur hybride seul, économies
+                calculées sans stockage). Le client pourra ajouter la batterie ensuite.
+              </div>
+            )}
             {errors.conso && (
               <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                 {errors.conso}

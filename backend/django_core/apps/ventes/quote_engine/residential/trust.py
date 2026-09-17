@@ -308,6 +308,8 @@ def build(ctx) -> str:
     # options ; mono-option → on nomme l'unique option (aucune case fantôme).
     _deux = bool(d.get("deux_options", True))
     _avec_ok = bool(d.get("avec_ok", True))
+    # BAT-DIFF — libellé de l'option « avec » fourni par le builder.
+    _libelle_avec = d.get("libelle_avec") or "Avec batterie"
     if _deux:
         # QRES33/44 — le client coche une option CHIFFRÉE avant de signer
         # (l'ancienne rangée de cases sans prix laissait signer un accord
@@ -320,11 +322,11 @@ def build(ctx) -> str:
             '<div class="p3-accord-pick">Cochez votre option :'
             f'<span class="p3-box"></span> Sans batterie — '
             f'<b>{theme.fmt(_ts)} MAD TTC</b>'
-            f'<span class="p3-box"></span> Avec batterie — '
+            f'<span class="p3-box"></span> {_libelle_avec} — '
             f'<b>{theme.fmt(_ta)} MAD TTC</b>'
             '<span class="p3-reco-mini">recommandé</span></div>')
     else:
-        accord_opt_html = ("Avec batterie" if _avec_ok else "Sans batterie")
+        accord_opt_html = (_libelle_avec if _avec_ok else "Sans batterie")
         accord_pick_html = ""
 
     # Scan-to-sign QR (degrades to the text link if qrcode is unavailable).

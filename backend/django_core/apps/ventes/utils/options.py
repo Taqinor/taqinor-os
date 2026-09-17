@@ -571,10 +571,26 @@ def familles_servables(*, has_reseau, has_hybride, has_offgrid,
 
     « sans » a besoin d'un onduleur RÉSEAU ; « avec » d'un onduleur HYBRIDE ou
     AUTONOME (QJR-OFFGRID) **et** d'une batterie RÉELLE (Z1 : sans batterie
-    chiffrée, jamais d'option « avec »).
+    chiffrée, jamais d'option « avec »)…
+
+    …SAUF le cas BAT-DIFF (ordre fondateur, 17/09/2026 — « le client veut les
+    deux options, mais l'option avec batterie ne contient que l'onduleur
+    hybride, il ajoutera les batteries plus tard ») : un onduleur HYBRIDE
+    face à un onduleur RÉSEAU sert l'option « avec » MÊME sans batterie
+    chiffrée. L'alternative commerciale est alors RÉELLE (deux onduleurs
+    différents, deux prix réellement présentés) ; la batterie est simplement
+    DIFFÉRÉE — le document le dit en toutes lettres
+    (``builder.LIBELLE_AVEC_BATTERIE_DIFFEREE``) et ses économies « avec »
+    sont calculées SANS stockage. Rien n'est inventé : Z1 tient (aucune
+    batterie de synthèse, jamais), seule la composition des lignes RÉELLES
+    fait l'option. Un hybride SEUL (pas d'onduleur réseau, pas de batterie)
+    reste mono-option « Sans batterie » (Z1 inchangé : il n'y a rien à
+    comparer) ; l'onduleur AUTONOME exige toujours une batterie réelle (un
+    site isolé sans stockage n'est pas une offre).
     """
     return (bool(has_reseau),
-            bool((has_hybride or has_offgrid) and has_batterie))
+            bool((has_hybride and (has_batterie or has_reseau))
+                 or (has_offgrid and has_batterie)))
 
 
 def deux_options_depuis_paniers(sans_ok, avec_ok, *, alternative_declaree,

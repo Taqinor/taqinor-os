@@ -208,7 +208,8 @@ def coverage_donut(pct, w=1.95, h=1.95) -> str:
 
 def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
                   w=6.9, h=2.35, cashflow_sans=None, cashflow_avec=None,
-                  deux=True, avec_ok=True) -> str:
+                  deux=True, avec_ok=True,
+                  libelle_avec="Avec batterie") -> str:
     import numpy as np
     years = np.arange(0, 26)
     # QX39 — quand le cumul du cashflow 25 ans réel est fourni (dégradation
@@ -229,7 +230,7 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
     # étiquette « rentabilisé » qui se chevauchent sur un devis réseau seul.
     if deux:
         series = [(cs, NAVY, "Sans batterie", roi_s, 13),
-                  (ca, GOLD, "Avec batterie", roi_a, -24)]
+                  (ca, GOLD, libelle_avec, roi_a, -24)]
         fill_curve = ca
     else:
         one = (ca, GOLD, None, roi_a, 13) if avec_ok else (cs, NAVY, None, roi_s, 13)
@@ -362,7 +363,9 @@ def build_all(data: dict) -> dict:
         cashflow_sans=data.get("cashflow_sans"),
         cashflow_avec=data.get("cashflow_avec"),
         deux=bool(data.get("deux_options", True)),
-        avec_ok=bool(data.get("avec_ok", True)))
+        avec_ok=bool(data.get("avec_ok", True)),
+        # BAT-DIFF — légende de la courbe « avec » = libellé du builder.
+        libelle_avec=data.get("libelle_avec") or "Avec batterie")
     _pb_args = (data["total_sans"], data["total_avec"],
                 data["eco_s_ann"], data["eco_a_ann"],
                 data["roi_s"], data["roi_a"])

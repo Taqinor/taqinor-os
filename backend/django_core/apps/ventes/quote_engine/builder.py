@@ -707,6 +707,70 @@ def _scalaires_par_option(sans_lignes, avec_lignes) -> dict:
     }
 
 
+# ── BAT-DIFF (ordre fondateur, 17/09/2026) — L'OPTION « AVEC » SANS BATTERIE ─
+#
+# Le client demande les deux options, mais veut que l'option « avec batterie »
+# ne contienne que l'ONDULEUR HYBRIDE — il ajoutera les batteries plus tard.
+# Jusqu'ici ce devis (réseau + hybride, quantité batterie 0 ou ligne absente)
+# tombait sur la branche Z1 : ``has_batterie`` faux ⇒ document MONO-option
+# « Sans batterie » dont la composition était TOUTES les lignes… les DEUX
+# onduleurs compris. Le client ne voyait qu'une option, et son prix
+# additionnait deux onduleurs qu'il n'achètera jamais ensemble.
+#
+# La règle de servabilité vit dans le noyau (``utils.options.
+# familles_servables``) : un hybride FACE à un onduleur réseau sert l'option
+# « avec » sans batterie chiffrée. Ici, le document : (1) NOMME l'option
+# honnêtement — jamais « Avec batterie » pour une option qui n'en porte pas ;
+# (2) calcule ses économies SANS stockage (aucun forfait 0,85 « faute de
+# capacité », aucune batterie de synthèse — Z1 tient) ; (3) laisse le
+# vocabulaire des CLÉS (``scenario``/``recommended`` = « Avec batterie »)
+# inchangé : c'est le contrat partagé avec l'écran et le noyau, seuls les
+# LIBELLÉS rendus changent.
+LIBELLE_AVEC_BATTERIE = "Avec batterie"
+LIBELLE_AVEC_BATTERIE_DIFFEREE = "Hybride, batterie plus tard"
+#: Une phrase, vraie pour tout onduleur hybride, qui remplace la justification
+#: « vos soirées et les coupures passent sur batterie » (fausse sans batterie).
+POURQUOI_AVEC_BATTERIE_DIFFEREE = (
+    "Pourquoi nous la recommandons : l'onduleur hybride est prêt pour la "
+    "batterie — vous l'ajoutez quand vous voulez, sans changer d'onduleur.")
+PUCE_AVEC_BATTERIE_DIFFEREE = "Batterie : à ajouter plus tard (onduleur prêt)"
+
+
+def _etude_horaire_sans_stockage(bloc):
+    """BAT-DIFF — copie du bloc horaire où l'option « avec » porte les chiffres
+    de « sans » : sans batterie, les deux options autoconsomment pareil.
+
+    Le bloc ``etude_params['etude_horaire']`` peut avoir été calculé AVANT que
+    le vendeur ne retire la batterie (édition complète) : ses économies
+    « avec » décriraient alors un stockage que le devis ne porte plus. Un bloc
+    déjà recalculé sans batterie est un NO-OP exact (avec == sans déjà).
+    Fonction pure, ne lève jamais : un bloc illisible est rendu tel quel
+    (``pricing._lire_etude_horaire`` le refusera de toute façon).
+    """
+    if not isinstance(bloc, dict):
+        return bloc
+    copie = dict(bloc)
+    annuel = bloc.get("annuel")
+    if isinstance(annuel, dict):
+        a = dict(annuel)
+        for cle_avec, cle_sans in (
+                ("economie_avec_mad", "economie_sans_mad"),
+                ("taux_autoconso_avec", "taux_autoconso_sans"),
+                ("facture_apres_avec_mad", "facture_apres_sans_mad"),
+                ("autoconsomme_avec_kwh", "autoconsomme_sans_kwh"),
+                ("couverture_avec", "couverture_sans")):
+            if cle_sans in a:
+                a[cle_avec] = a[cle_sans]
+        copie["annuel"] = a
+    mois = bloc.get("mois")
+    if isinstance(mois, list):
+        copie["mois"] = [
+            ({**m, "economie_avec_mad": m.get("economie_sans_mad")}
+             if isinstance(m, dict) and "economie_sans_mad" in m else m)
+            for m in mois]
+    return copie
+
+
 # Whitelisted PDF format options (mirroring the simulator's payload). The
 # defaults reproduce today's premium 3-page output exactly.
 DEFAULT_PDF_OPTIONS = {
@@ -1211,7 +1275,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # correction du classifieur, un « Onduleur hors réseau » comptait pour un
     # onduleur RÉSEAU et passait par ``sans_ok`` — le nier sans étendre Z1
     # transformerait un document qui se rendait en refus.
-    hybride_sans_batterie = has_hybride and not has_batterie
+    # BAT-DIFF (17/09/2026) — le rattrapage Z1 ne vaut plus que pour l'hybride
+    # SEUL : face à un onduleur RÉSEAU, l'hybride sans batterie est une vraie
+    # deuxième option (« batterie plus tard »), servie par le chemin normal —
+    # cf. ``LIBELLE_AVEC_BATTERIE_DIFFEREE`` et ``utils.options.
+    # familles_servables``. Sans cette exclusion, le document mono-option
+    # additionnait les DEUX onduleurs dans un seul prix.
+    hybride_sans_batterie = (has_hybride and not has_batterie
+                             and not has_reseau)
     offgrid_sans_batterie = has_offgrid and not has_batterie
     option_unique_sans_batterie = (hybride_sans_batterie
                                    or offgrid_sans_batterie)
@@ -1533,6 +1604,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # à deux options (la recommandation stockée y reste souveraine).
     if not deux_options:
         recommended = 'Avec batterie' if avec_ok else 'Sans batterie'
+
+    # ── BAT-DIFF (17/09/2026) — L'OPTION « AVEC » EST-ELLE SERVIE SANS
+    # BATTERIE ? Lu APRÈS tout repli/rétrécissement : ``avec_ok`` est ici le
+    # drapeau FINAL (PV86 l'a déjà éteint sur un artefact non déclaré, QF6 sur
+    # un scénario « Sans batterie »). Vrai ⇒ l'option « avec » est un onduleur
+    # hybride prêt pour une batterie que le client ajoutera plus tard : le
+    # document la NOMME ainsi et calcule ses économies SANS stockage.
+    avec_batterie_differee = bool(avec_ok and not has_batterie)
+    libelle_avec = (LIBELLE_AVEC_BATTERIE_DIFFEREE if avec_batterie_differee
+                    else LIBELLE_AVEC_BATTERIE)
+    if avec_batterie_differee:
+        # Trace INTERNE (vendeur/support), jamais rendue au client.
+        avertissements_internes.append(
+            "onduleur hybride sans ligne batterie chiffrée — option « avec » "
+            "servie « batterie plus tard » (économies calculées sans "
+            "stockage, aucune batterie n'est inventée)")
 
     # ── F1/L-2OPT (26/08/2026) — UN DOCUMENT RÉTRÉCI PORTE LES SCALAIRES DE LA
     # VARIANTE QU'IL REND ────────────────────────────────────────────────────
@@ -1931,13 +2018,21 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # byte-identique à avant.
         charges_fixes_mad=_co_charges_fixes,
         autoconso_sans=_autoconso_sans if _autoconso_sans else AUTOCONSO_SANS,
-        autoconso_avec=_autoconso_avec if _autoconso_avec else AUTOCONSO_AVEC,
+        # BAT-DIFF — option « avec » SANS stockage : même taux que « sans »
+        # (rien n'est décalé). Le forfait 0,85 « faute de capacité » et le
+        # taux forcé par le vendeur (saisi en pensant à une batterie) sont
+        # tous deux écartés — c'est exactement le chiffre inventé que Z1
+        # interdit. Sinon : comportement byte-identique à avant.
+        autoconso_avec=(
+            (_autoconso_sans if _autoconso_sans else AUTOCONSO_SANS)
+            if avec_batterie_differee
+            else (_autoconso_avec if _autoconso_avec else AUTOCONSO_AVEC)),
         # ORDRE FONDATEUR (18/08) — capacité batterie RÉELLE de l'option 2 :
         # le taux d'autoconsommation « avec batterie » en est dérivé
         # (60 % + capacité × 1 cycle/jour) au lieu d'un forfait 85 %. Un taux
         # explicitement forcé par le vendeur (etude_params.autoconso_avec)
         # reste souverain : on ne dérive alors rien.
-        battery_kwh=(None if _autoconso_avec
+        battery_kwh=(None if (_autoconso_avec or avec_batterie_differee)
                      else (_battery_kwh_from_items(avec_items, _blob) or None)),
         productible=_productible,
         fallback_tarif_kwh=_onee_tarif,
@@ -1952,7 +2047,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # porte un : les économies deviennent l'intégration réelle production ×
         # consommation, mois par mois, au lieu du forfait 60 %. Absent ⇒
         # ``calculate_savings_roi`` garde EXACTEMENT son comportement d'avant.
-        etude_horaire=etude.get("etude_horaire"),
+        # BAT-DIFF — un bloc calculé AVANT le retrait de la batterie porterait
+        # encore ses économies « avec » : on les ramène à « sans ».
+        etude_horaire=(_etude_horaire_sans_stockage(etude.get("etude_horaire"))
+                       if avec_batterie_differee
+                       else etude.get("etude_horaire")),
     )
     # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
@@ -2721,6 +2820,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     sans_bullets = _bullets(sans_items)
     avec_bullets = _bullets(avec_items)
+    if avec_batterie_differee:
+        # BAT-DIFF — la carte de l'option « avec » DIT que la batterie est à
+        # ajouter (aucune puce batterie ne sort de ``_bullets`` : la ligne est
+        # absente ou à quantité 0). Juste après panneaux + onduleur, dans la
+        # limite des six puces que la carte affiche.
+        avec_bullets = list(avec_bullets)
+        avec_bullets.insert(min(2, len(avec_bullets)),
+                            PUCE_AVEC_BATTERIE_DIFFEREE)
+        avec_bullets = avec_bullets[:6]
 
     # Strip the internal helper key before handing items to the generator.
     for rows in (sans_items, avec_items):
@@ -3064,6 +3172,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "sans_ok": bool(sans_ok),
         "avec_ok": bool(avec_ok),
         "deux_options": bool(deux_options),
+        # BAT-DIFF (17/09/2026) — l'option « avec » est servie par un onduleur
+        # hybride SANS batterie chiffrée (le client l'ajoutera plus tard).
+        # ``libelle_avec`` est le libellé que TOUS les renderers impriment à la
+        # place de « Avec batterie » ; ``pourquoi_avec`` la justification de la
+        # recommandation. Clés ADDITIVES : à faux, byte-identique à avant.
+        "avec_batterie_differee": avec_batterie_differee,
+        "libelle_avec": libelle_avec,
+        "pourquoi_avec": (POURQUOI_AVEC_BATTERIE_DIFFEREE
+                          if avec_batterie_differee else None),
         # L-VAR/PACT10 — variantes PHYSIQUEMENT SERVABLES par les lignes du
         # devis, AVANT le rétrécissement QF6 : c'est ce que le client peut
         # légitimement demander en téléchargement (``?variante=…``), même quand

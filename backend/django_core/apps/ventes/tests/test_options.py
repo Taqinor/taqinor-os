@@ -180,3 +180,69 @@ class TestOptionDownstream(TestCase):
         self.assertEqual(t['ht'], Decimal(str(devis.total_ht)))
         self.assertEqual(t['ttc'], Decimal(str(devis.total_ttc)))
         self.assertEqual(len(option_lines(devis)), 2)
+
+
+class TestFamillesServables(SimpleTestCase):
+    """BAT-DIFF (ordre fondateur, 17/09/2026) — servabilité PURE par familles.
+
+    « avec » = hybride + batterie réelle, OU hybride FACE à un onduleur réseau
+    (batterie différée — le client l'ajoutera plus tard). L'autonome exige
+    toujours une batterie ; l'hybride SEUL reste mono-option (Z1).
+    """
+
+    def _f(self, **familles):
+        from apps.ventes.utils.options import familles_servables
+        base = dict(has_reseau=False, has_hybride=False, has_offgrid=False,
+                    has_batterie=False)
+        base.update(familles)
+        return familles_servables(**base)
+
+    def test_hybride_face_au_reseau_sans_batterie_sert_les_deux(self):
+        self.assertEqual(self._f(has_reseau=True, has_hybride=True),
+                         (True, True))
+
+    def test_hybride_seul_sans_batterie_ne_sert_rien(self):
+        self.assertEqual(self._f(has_hybride=True), (False, False))
+
+    def test_hybride_et_batterie_sans_reseau(self):
+        self.assertEqual(self._f(has_hybride=True, has_batterie=True),
+                         (False, True))
+
+    def test_reseau_seul(self):
+        self.assertEqual(self._f(has_reseau=True), (True, False))
+
+    def test_autonome_face_au_reseau_sans_batterie_reste_mono(self):
+        self.assertEqual(self._f(has_reseau=True, has_offgrid=True),
+                         (True, False))
+
+    def test_autonome_avec_batterie(self):
+        self.assertEqual(self._f(has_offgrid=True, has_batterie=True),
+                         (False, True))
+
+
+class TestEtudeHoraireSansStockage(SimpleTestCase):
+    """BAT-DIFF — un bloc horaire calculé AVEC batterie est ramené à « sans »."""
+
+    def test_avec_prend_les_chiffres_de_sans(self):
+        from apps.ventes.quote_engine.builder import _etude_horaire_sans_stockage
+        bloc = {
+            'kwc': 9.94,
+            'annuel': {'economie_sans_mad': 9000.0, 'economie_avec_mad': 14000.0,
+                       'taux_autoconso_sans': 0.55, 'taux_autoconso_avec': 0.9,
+                       'facture_apres_sans_mad': 3000.0,
+                       'facture_apres_avec_mad': 1000.0},
+            'mois': [{'economie_sans_mad': 700.0, 'economie_avec_mad': 1200.0}],
+        }
+        copie = _etude_horaire_sans_stockage(bloc)
+        self.assertEqual(copie['annuel']['economie_avec_mad'], 9000.0)
+        self.assertEqual(copie['annuel']['taux_autoconso_avec'], 0.55)
+        self.assertEqual(copie['annuel']['facture_apres_avec_mad'], 3000.0)
+        self.assertEqual(copie['mois'][0]['economie_avec_mad'], 700.0)
+        # Le bloc d'origine n'est pas muté (fonction pure).
+        self.assertEqual(bloc['annuel']['economie_avec_mad'], 14000.0)
+        self.assertEqual(bloc['mois'][0]['economie_avec_mad'], 1200.0)
+
+    def test_bloc_illisible_rendu_tel_quel(self):
+        from apps.ventes.quote_engine.builder import _etude_horaire_sans_stockage
+        self.assertIsNone(_etude_horaire_sans_stockage(None))
+        self.assertEqual(_etude_horaire_sans_stockage('x'), 'x')
