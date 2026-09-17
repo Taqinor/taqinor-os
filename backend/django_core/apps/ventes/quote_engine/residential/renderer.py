@@ -149,7 +149,26 @@ def synthese_economies(data: dict) -> dict | None:
             else:
                 conso = max(1, round(annual_before))  # dernier repli (1 MAD/kWh)
             coverage_estimated = True
-        coverage = min(100, max(1, round(prod_kwh / conso * 100)))
+        # COUV-AUTO (fondateur, 17/09/2026) — la donut dit « de votre
+        # consommation annuelle assurée par le solaire » : c'est la part
+        # AUTOCONSOMMÉE de la conso, pas production ÷ conso. L'ancienne
+        # formule imprimait « 100 % » dès que le système produisait autant
+        # que le client consomme, alors que le surplus injecté n'est pas
+        # valorisé (loi 82-21) et que le soir vient toujours du réseau.
+        # Même définition que la « Couverture » de la proposition en ligne
+        # (moteur horaire : autoconsommé ÷ conso). Le taux est celui de
+        # l'option dont la synthèse lit déjà les économies (``_avec``) ;
+        # sans taux publié (vieux dict), repli sur la formule historique.
+        _taux = (data.get("autoconso_avec") if _avec
+                 else data.get("autoconso_sans"))
+        try:
+            _taux = float(_taux) if _taux is not None else None
+        except (TypeError, ValueError):
+            _taux = None
+        if _taux is not None and 0 < _taux <= 1:
+            coverage = min(100, max(1, round(prod_kwh * _taux / conso * 100)))
+        else:
+            coverage = min(100, max(1, round(prod_kwh / conso * 100)))
         # ── CJ2b (ORDRE FONDATEUR, 21/08/2026) — L'ÉCONOMIE DEVIENT CHIFFRÉE ──
         # « after correcting the annual saving chart (per month) bring it back
         # to the quote pdf ». Le graphe portait déjà l'économie EN CREUX (l'écart

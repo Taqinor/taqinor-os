@@ -3058,6 +3058,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # production de SA branche au lieu de celle de l'option mise en avant.
         "prod_kwh_sans": prod_kwh_sans,
         "prod_kwh_avec": prod_kwh_avec,
+        # COUV-AUTO (fondateur, 17/09/2026) — taux d'autoconsommation
+        # EFFECTIFS de chaque option (fraction 0-1, ceux que le modèle a
+        # réellement appliqués). La couverture de la page 1 en dérive :
+        # part de la conso ASSURÉE par le solaire = autoconsommé ÷ conso,
+        # jamais production ÷ conso (un système qui produit autant qu'on
+        # consomme imprimait « 100 % », alors que la loi 82-21 ne valorise
+        # pas le surplus). Clés ADDITIVES.
+        "autoconso_sans": roi.get("autoconso_sans"),
+        "autoconso_avec": roi.get("autoconso_avec"),
         "total_sans": total_sans,
         "total_avec": total_avec,
         "total_sans_before": total_sans_before,

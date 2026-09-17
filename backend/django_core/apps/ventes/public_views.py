@@ -2624,6 +2624,15 @@ def _echelle_paliers_batterie_publique(devis, data, est_residentiel):
     fait jamais tomber la page client)."""
     if not est_residentiel or not bool(data.get('avec_ok')):
         return None
+    # BAT-DIFF (17/09/2026) — option « avec » servie SANS batterie chiffrée
+    # (« Hybride, batterie plus tard ») : ``avec_ok`` est vrai, mais aucun
+    # module batterie n'existe au devis. L'échelle composait alors des
+    # paliers de catalogue (4,6 / 9,2 kWh…) avec un palier PRÉ-SÉLECTIONNÉ,
+    # un prix et des économies qu'aucune page du document ne porte — le
+    # client lisait « 58 865 MAD » sous une carte à 73 935 MAD. Une option
+    # sans batterie n'a pas d'échelle de batterie : on omet.
+    if bool(data.get('avec_batterie_differee')):
+        return None
     try:
         from . import dimensionnement
         fonction = getattr(dimensionnement, 'echelle_paliers_batterie', None)

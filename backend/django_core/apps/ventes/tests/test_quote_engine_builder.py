@@ -901,9 +901,17 @@ class TestQuoteNumbersHonestyPack(TestCase):
         self.assertEqual(data['conso_annuelle_kwh'], 12000)
         d = renderer._augment(data)
         self.assertFalse(d['coverage_estimated'])
-        # couverture = prod/conso arrondie, jamais planchée à 40
-        self.assertEqual(d['coverage_pct'],
-                         min(100, max(1, round(data['prod_kwh'] / 12000 * 100))))
+        # COUV-AUTO (17/09/2026) — couverture = part AUTOCONSOMMÉE de la conso
+        # (prod × taux de l'option lue ÷ conso), jamais prod/conso (qui
+        # imprimait « 100 % » sur un système produisant autant que la conso),
+        # jamais planchée à 40.
+        taux = data['autoconso_avec']
+        self.assertTrue(0 < taux <= 1)
+        self.assertEqual(
+            d['coverage_pct'],
+            min(100, max(1, round(data['prod_kwh'] * taux / 12000 * 100))))
+        self.assertLess(d['coverage_pct'],
+                        min(100, round(data['prod_kwh'] / 12000 * 100)) + 1)
 
     def test_coverage_flagged_estimation_without_real_conso(self):
         """Sans conso réelle MAIS avec un barème distributeur réel, la
