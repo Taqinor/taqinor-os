@@ -32,6 +32,7 @@ from apps.calepinage.models import (
     CalepinageVersion,
     ParametresCalepinage,
 )
+from apps.calepinage.services.variantes import bascule_autorisee
 from apps.crm.models import Client
 from authentication.models import Company
 
@@ -147,14 +148,17 @@ class VarianteRetenueUniqueTest(BaseSociete):
                                                client=self.client_a)
 
     def test_deux_retenues_impossible(self):
-        CalepinageVariante.objects.create(company=self.company,
-                                          calepinage=self.pivot,
-                                          nom='A', retenue=True)
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                CalepinageVariante.objects.create(company=self.company,
-                                                  calepinage=self.pivot,
-                                                  nom='B', retenue=True)
+        # ``retenue`` ne s'écrit que par le chemin sanctionné (CAL9) ; on s'y
+        # place ici pour éprouver la contrainte de BASE elle-même.
+        with bascule_autorisee():
+            CalepinageVariante.objects.create(company=self.company,
+                                              calepinage=self.pivot,
+                                              nom='A', retenue=True)
+            with self.assertRaises(IntegrityError):
+                with transaction.atomic():
+                    CalepinageVariante.objects.create(company=self.company,
+                                                      calepinage=self.pivot,
+                                                      nom='B', retenue=True)
 
     def test_plusieurs_non_retenues_possibles(self):
         CalepinageVariante.objects.create(company=self.company,

@@ -255,6 +255,25 @@ class CalepinageVariante(TenantModel):
     def __str__(self):
         return self.nom
 
+    def save(self, *args, **kwargs):
+        """CAL9 — ``retenue`` ne s'écrit QUE par le service de variantes.
+
+        La contrainte de base interdit DEUX retenues ; elle n'interdit pas
+        d'en laisser ZÉRO. C'est l'autre moitié du bug : un calepinage sans
+        option choisie. Le chemin d'écriture unique
+        (``services/variantes.py``) garantit les deux à la fois, et ce garde
+        empêche de le contourner par distraction. Aucune migration : c'est du
+        comportement, pas du schéma.
+        """
+        from .services.variantes import (
+            bascule_en_cours,
+            refuser_ecriture_directe,
+        )
+
+        if self.retenue and not bascule_en_cours():
+            raise ValidationError({'retenue': refuser_ecriture_directe()})
+        return super().save(*args, **kwargs)
+
 
 class ParametresCalepinage(TenantModel):
     """CAL45 — LES réglages société du module : UNE base, sept extensions.
