@@ -790,6 +790,58 @@ class MatriceApprobation(TenantModel):
             return None
         return self.montant_max - self.montant_min
 
+    # ── NTWFL33 — conflit de portée détecté à la sauvegarde ─────────────────
+    #
+    # ``core.selectors.resoudre_matrice`` départage les lignes candidates par
+    # SPÉCIFICITÉ (département+montant > département > montant > défaut) puis,
+    # à égalité, par ``id`` — un départage arbitraire qui ne devrait jamais
+    # décider seul. Deux lignes actives de portée EXACTEMENT identique sont
+    # donc une AMBIGUÏTÉ : aucune n'est plus spécifique que l'autre, et c'est
+    # le hasard de l'ordre de création qui tranche.
+    #
+    # On AVERTIT sans jamais BLOQUER : un admin peut légitimement vouloir
+    # préparer une règle de remplacement avant de désactiver l'ancienne. La
+    # sauvegarde passe, le message dit quelle règle entre en conflit.
+
+    def conflits_de_portee(self):
+        """Autres lignes ACTIVES de la société couvrant la MÊME portée exacte.
+
+        Portée = ``type_objet`` + ``departement`` (comparé sans casse ni
+        espaces de bord, comme dans ``couvre``) + les DEUX bornes de montant.
+        Une ligne inactive ne conflite avec rien (elle ne participe pas à la
+        résolution). Liste, triée par ``id``, vide en l'absence de conflit."""
+        if not self.actif or self.company_id is None or not self.type_objet:
+            return []
+        candidats = type(self).objects.filter(
+            company_id=self.company_id,
+            actif=True,
+            type_objet=self.type_objet,
+            montant_min=self.montant_min,
+            montant_max=self.montant_max,
+        )
+        if self.pk is not None:
+            candidats = candidats.exclude(pk=self.pk)
+        departement = (self.departement or '').strip().lower()
+        return [
+            autre for autre in candidats.order_by('id')
+            if (autre.departement or '').strip().lower() == departement
+        ]
+
+    def avertissements_de_conflit(self):
+        """Messages d'avertissement (jamais bloquants) — un par conflit.
+
+        Chaque message NOMME la règle en conflit (son id et son libellé) :
+        « il y a un conflit » sans dire lequel n'est pas actionnable."""
+        return [
+            (f'Conflit de portée avec la règle #{autre.pk} « {autre} » : '
+             "elle couvre EXACTEMENT le même type d'objet, le même "
+             'département et la même plage de montant. Aucune des deux '
+             "n'étant plus spécifique, la règle appliquée dépendrait de "
+             "l'ordre de création — enregistrement conservé, à vous de "
+             'trancher (désactivez-en une ou resserrez sa portée).')
+            for autre in self.conflits_de_portee()
+        ]
+
 
 # ---------------------------------------------------------------------------
 # NTWFL12/13 — Formulaires dynamiques rattachés aux processus BPM.

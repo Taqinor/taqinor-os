@@ -233,6 +233,10 @@ class WorkflowTemplateStepSerializer(serializers.Serializer):
     sla_heures = serializers.IntegerField(allow_null=True)
     role_requis = serializers.CharField(allow_blank=True)
     escalade_vers = serializers.CharField(allow_blank=True)
+    # NTWFL31 — formulaire NTWFL12 livré AVEC le modèle ({code, nom, schema,
+    # champs_conditionnels}). Absent des modèles qui n'en portent pas : la clé
+    # est alors simplement omise de la sortie (``required=False``).
+    formulaire = serializers.JSONField(required=False)
 
 
 class WorkflowTemplateSerializer(serializers.Serializer):
@@ -381,15 +385,28 @@ class MatriceApprobationSerializer(serializers.ModelSerializer):
     ``company`` imposée côté serveur (``TenantMixin``). ``chaine_paliers`` est
     validée en forme (liste de dicts avec ``palier``/``role_requis``) — le
     contenu métier (rôle réellement habilité) reste déclaratif, sans contrôle
-    cross-app depuis ``core``."""
+    cross-app depuis ``core``.
+
+    NTWFL33 — ``avertissements`` est un champ de SORTIE : il signale, sans
+    jamais bloquer l'écriture, les autres règles actives de portée exactement
+    identique (résolution ambiguë). Coût : une requête indexée par ligne
+    renvoyée (``core_matappr_co_typ_act_idx``) ; la liste par société est
+    volontairement non paginée car petite."""
+
+    avertissements = serializers.SerializerMethodField()
 
     class Meta:
         model = MatriceApprobation
         fields = [
             'id', 'type_objet', 'departement', 'montant_min', 'montant_max',
-            'chaine_paliers', 'actif', 'created_at', 'updated_at',
+            'chaine_paliers', 'actif', 'avertissements', 'created_at',
+            'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_avertissements(self, obj):
+        """NTWFL33 — avertissements de conflit de portée (jamais bloquants)."""
+        return obj.avertissements_de_conflit()
 
     def validate_type_objet(self, value):
         value = (value or '').strip()

@@ -78,11 +78,16 @@ from .views import (
     WorkflowDefinitionViewSet,
     WorkflowStepDefinitionViewSet,
     WorkflowTemplateViewSet,
+    analyse_goulots_workflow_view,
+    approuver_etapes_en_masse,
+    charge_approbateurs_view,
     db_stats_view,
     health_live,
     health_ready,
     maintenance_toggle,
+    mes_processus_view,
     metrics_view,
+    rapport_conformite_view,
     secrets_rotation_due,
 )
 
@@ -170,6 +175,26 @@ router.register(r'ui-boutons', UiActionBoutonViewSet, basename='ui-bouton')
 router.register(r'ui-onglets', UiOngletCustomViewSet, basename='ui-onglet')
 
 urlpatterns = router.urls + [
+    # NTWFL16 — approbation groupée « identique » (même type d'objet + même
+    # palier), un commentaire unique, N décisions journalisées séparément.
+    path('workflows/approuver-en-masse/', approuver_etapes_en_masse,
+         name='workflows-approuver-en-masse'),
+    # NTWFL23 — audit de processus : durée observée par étape (moyenne /
+    # médiane / p90), taux de rejet, taux d'escalade SLA, étape goulot.
+    # NTWFL28 — widget « Mes processus » : les étapes BPM de l'utilisateur
+    # COURANT groupées par échéance (en retard / aujourd'hui / à venir).
+    path('workflows/mes-processus/', mes_processus_view,
+         name='workflows-mes-processus'),
+    # NTWFL30 — rapport admin de charge d'approbateur (surcharge signalée,
+    # jamais redistribuée automatiquement).
+    path('workflows/charge-approbateurs/', charge_approbateurs_view,
+         name='workflows-charge-approbateurs'),
+    # NTWFL34 — piste d'audit EXTERNE des décisions d'approbation (JSON ou
+    # classeur .xlsx via ?format=xlsx).
+    path('workflows/rapport-conformite/', rapport_conformite_view,
+         name='workflows-rapport-conformite'),
+    path('workflows/<int:pk>/analyse/', analyse_goulots_workflow_view,
+         name='workflows-analyse-goulots'),
     # XPLT10 — accès public lecture seule (aucune identité de confiance,
     # résolu depuis le seul jeton) + mode TV (rotation des dashboards partagés).
     path('dashboards-partages/public/<str:token>/', dashboard_public,

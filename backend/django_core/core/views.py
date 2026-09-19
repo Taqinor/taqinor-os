@@ -33,6 +33,7 @@ from rest_framework.views import APIView
 from authentication.permissions import (
     IsAdminOrResponsableTier,
     IsAdminRole,
+    IsAnyRole,
     IsResponsableOrAdmin,
 )
 
@@ -234,6 +235,20 @@ class WorkflowDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAuthenticated()]
         return [IsAdminOrResponsableTier()]
 
+    @action(detail=True, methods=['post'])
+    def dupliquer(self, request, pk=None):
+        """NTWFL27 — ``POST core/workflow-definitions/{id}/dupliquer/``.
+
+        Clone le processus (étapes + formulaires rattachés) en une définition
+        INDÉPENDANTE de la même société : code auto-suffixé, ``actif=False``
+        (brouillon), éditable sans jamais toucher l'originale. ``get_object``
+        passe par le queryset scopé de ``TenantMixin`` — la définition d'un
+        autre tenant est introuvable."""
+        definition = self.get_object()
+        copie = workflow_templates.dupliquer_definition_workflow(definition)
+        serializer = self.get_serializer(copie)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 class MatriceApprobationViewSet(TenantMixin, viewsets.ModelViewSet):
     """NTWFL1 — CRUD admin de la matrice d'approbation d'entreprise unifiée.
@@ -313,6 +328,278 @@ class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
         ctx = super().get_serializer_context()
         ctx['require_definition'] = True
         return ctx
+
+
+@extend_schema(
+    request=inline_serializer(
+        name='ApprobationGroupeeRequest',
+        fields={
+            'step_ids': drf_serializers.ListField(
+                child=drf_serializers.IntegerField()),
+            'commentaire': drf_serializers.CharField(required=False),
+        },
+    ),
+    responses={200: inline_serializer(
+        name='ApprobationGroupeeResponse',
+        fields={
+            'approuves': drf_serializers.ListField(
+                child=drf_serializers.IntegerField()),
+            'exclusions': drf_serializers.JSONField(),
+        },
+    )},
+)
+@api_view(['POST'])
+@permission_classes([IsAnyRole])
+def approuver_etapes_en_masse(request):
+    """NTWFL16 — ``POST core/workflows/approuver-en-masse/``.
+
+    Corps : ``{"step_ids": [1, 2, 3], "commentaire": "…"}``. Approuve d'un
+    seul geste des étapes BPM INTERCHANGEABLES (même type d'objet + même
+    palier) avec UN commentaire, en journalisant chaque décision
+    SÉPARÉMENT (N décisions, jamais un seul journal pour N objets).
+
+    Les ``step_ids`` sont résolus dans les seules étapes en attente de la
+    société de l'appelant (``pending_steps_for_company``) — un id d'une autre
+    société est simplement introuvable. Une sélection hétérogène (paliers ou
+    types d'objet différents) est refusée en 400 avec un message explicite ;
+    une ligne dont le formulaire requis n'est pas rempli est ÉCARTÉE avec son
+    motif, sans bloquer les autres."""
+    from . import workflow as workflow_engine
+
+    company = getattr(request.user, 'company', None)
+    if company is None:
+        return Response(
+            {'detail': "Utilisateur sans société."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    demandes = (request.data or {}).get('step_ids') or []
+    try:
+        voulus = {int(v) for v in demandes}
+    except (TypeError, ValueError):
+        return Response(
+            {'detail': "Le champ « step_ids » doit être une liste d'entiers."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not voulus:
+        return Response(
+            {'detail': "Champ « step_ids » requis (au moins une étape)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    en_attente = workflow_engine.pending_steps_for_company(company)
+    steps = [s for s in en_attente if s.pk in voulus]
+    introuvables = sorted(voulus - {s.pk for s in steps})
+    if not steps:
+        return Response(
+            {'detail': "Aucune étape en attente ne correspond à la sélection."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    commentaire = ((request.data or {}).get('commentaire') or '').strip()
+    try:
+        resultat = workflow_engine.approuver_en_masse(
+            steps, user=request.user, commentaire=commentaire)
+    except ValueError as exc:
+        return Response(
+            {'detail': str(exc)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    exclusions = list(resultat['exclusions'])
+    for step_id in introuvables:
+        exclusions.append({
+            'step_id': step_id,
+            'motif': ("Étape introuvable ou déjà décidée : hors de "
+                      "l'approbation groupée."),
+        })
+    return Response({
+        'approuves': [s.pk for s in resultat['decisions']],
+        'exclusions': exclusions,
+    })
+
+
+@extend_schema(responses={200: inline_serializer(
+    name='AnalyseGoulotsResponse',
+    fields={
+        'definition_id': drf_serializers.IntegerField(),
+        'goulot_ordre': drf_serializers.IntegerField(allow_null=True),
+        'etapes': drf_serializers.JSONField(),
+    },
+)})
+@api_view(['GET'])
+@permission_classes([IsAdminOrResponsableTier])
+def analyse_goulots_workflow_view(request, pk):
+    """NTWFL23 — ``GET core/workflows/{id}/analyse/?periode=AAAA-MM``.
+
+    Audit LECTURE SEULE d'une définition de workflow : durée réellement
+    observée par étape (moyenne / médiane / p90 de ``decided_le -
+    created_at``), taux de rejet, taux d'escalade SLA, et l'étape goulot.
+    Bornée à la société de l'appelant — la définition d'un autre tenant
+    renvoie 404, indistinctement d'un id inexistant."""
+    from . import selectors as core_selectors
+
+    company = getattr(request.user, 'company', None)
+    analyse = core_selectors.analyse_goulots_workflow(
+        company, pk, periode=request.query_params.get('periode'))
+    if analyse is None:
+        return Response(
+            {'detail': 'Introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(analyse)
+
+
+@extend_schema(responses={200: inline_serializer(
+    name='MesProcessusResponse',
+    fields={
+        'en_retard': drf_serializers.JSONField(),
+        'aujourd_hui': drf_serializers.JSONField(),
+        'a_venir': drf_serializers.JSONField(),
+        'sans_echeance': drf_serializers.JSONField(),
+    },
+)})
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def mes_processus_view(request):
+    """NTWFL28 — ``GET core/workflows/mes-processus/``.
+
+    Alimente le widget « Mes processus » : les étapes BPM encore en attente
+    dont l'utilisateur COURANT est l'assigné, groupées par échéance (en
+    retard / aujourd'hui / à venir / sans échéance). Ne renvoie JAMAIS les
+    étapes d'un autre utilisateur ni d'une autre société.
+
+    Le « aujourd'hui » métier (Casablanca) est résolu ICI puis injecté dans le
+    sélecteur — aucune date n'est décidée au fond de la chaîne."""
+    from . import selectors as core_selectors
+    from .dates import aujourd_hui_local
+
+    company = getattr(request.user, 'company', None)
+    seaux = core_selectors.mes_processus(
+        company, request.user, aujourd_hui_local())
+    return Response(seaux)
+
+
+@extend_schema(responses={200: inline_serializer(
+    name='ChargeApprobateursResponse',
+    fields={
+        'seuil': drf_serializers.IntegerField(),
+        'approbateurs': drf_serializers.JSONField(),
+    },
+)})
+@api_view(['GET'])
+@permission_classes([IsAdminOrResponsableTier])
+def charge_approbateurs_view(request):
+    """NTWFL30 — ``GET core/workflows/charge-approbateurs/?seuil=&periode=``.
+
+    Rapport admin LECTURE SEULE : nombre d'items d'approbation en attente par
+    assigné, trié par charge décroissante, avec un drapeau ``surcharge`` au
+    delà du seuil (défaut 20) et une SUGGESTION de redistribution ou de
+    délégation temporaire. Ne redistribue ni ne délègue jamais lui-même."""
+    from . import selectors as core_selectors
+
+    company = getattr(request.user, 'company', None)
+    seuil = core_selectors.SEUIL_SURCHARGE_APPROBATEUR
+    brut = request.query_params.get('seuil')
+    if brut not in (None, ''):
+        try:
+            seuil = int(brut)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': "Le paramètre « seuil » doit être un entier."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if seuil < 0:
+            return Response(
+                {'detail': "Le paramètre « seuil » doit être positif."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    return Response(core_selectors.rapport_charge_approbateurs(
+        company, periode=request.query_params.get('periode'), seuil=seuil))
+
+
+#: NTWFL34 — colonnes de la piste d'audit des décisions, dans l'ordre affiché
+#: à l'écran ET dans le classeur (une seule source de vérité pour les deux).
+_COLONNES_CONFORMITE = [
+    ('source', 'Source'),
+    ('objet', 'Objet'),
+    ('etape', 'Étape'),
+    ('decision', 'Décision'),
+    ('montant', 'Montant'),
+    ('approbateur', 'Approbateur'),
+    ('decide_le', 'Décidé le'),
+    ('delai_heures', 'Délai de décision (h)'),
+    ('delegation', 'Décidé au nom de'),
+]
+
+
+@extend_schema(responses={200: inline_serializer(
+    name='RapportConformiteResponse',
+    fields={
+        'periode': drf_serializers.CharField(allow_null=True),
+        'colonnes': drf_serializers.JSONField(),
+        'decisions': drf_serializers.JSONField(),
+        'sources': drf_serializers.JSONField(),
+        'sources_en_erreur': drf_serializers.JSONField(),
+    },
+)})
+@api_view(['GET'])
+@permission_classes([IsAdminOrResponsableTier])
+def rapport_conformite_view(request):
+    """NTWFL34 — ``GET core/workflows/rapport-conformite/?periode=AAAA-MM``.
+
+    Piste d'audit EXTERNE des DÉCISIONS d'approbation (pas de la conformité
+    qualité) : source, objet, montant, approbateur, délai de décision et
+    délégation éventuelle, scopés société. ``?format=xlsx`` renvoie le
+    classeur téléchargeable ; sans ``periode``, tout l'historique.
+
+    Les sources hors ``core`` sont celles que les apps ont branchées via
+    ``core.workflow.register_source_conformite`` ; le rapport dit lesquelles
+    ont été interrogées et lesquelles ont échoué — il ne se prétend jamais
+    complet quand il ne l'est pas."""
+    from . import workflow as workflow_engine
+
+    company = getattr(request.user, 'company', None)
+    periode = request.query_params.get('periode')
+    rapport = workflow_engine.decisions_conformite(company, periode=periode)
+    if request.query_params.get('format') == 'xlsx':
+        return _conformite_xlsx_response(rapport)
+    rapport['colonnes'] = [
+        {'cle': cle, 'libelle': libelle}
+        for cle, libelle in _COLONNES_CONFORMITE
+    ]
+    return Response(rapport)
+
+
+def _conformite_xlsx_response(rapport):
+    """Classeur .xlsx de la piste d'audit des décisions (NTWFL34)."""
+    import io
+
+    from django.http import HttpResponse
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Decisions approbation'
+    ws.append([libelle for _, libelle in _COLONNES_CONFORMITE])
+    for ligne in rapport['decisions']:
+        cellules = []
+        for cle, _ in _COLONNES_CONFORMITE:
+            valeur = ligne.get(cle)
+            if cle == 'decide_le' and valeur is not None:
+                # openpyxl refuse un datetime AWARE : on le ramène en heure
+                # locale métier avant de retirer le fuseau (jamais un décalage
+                # silencieux vers UTC dans une pièce d'audit).
+                from .dates import maintenant_local
+                valeur = maintenant_local(valeur).replace(tzinfo=None)
+            cellules.append(valeur)
+        ws.append(cellules)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    filename = (
+        f"decisions-approbation-{rapport.get('periode') or 'historique'}.xlsx")
+    resp = HttpResponse(
+        buffer.getvalue(),
+        content_type=('application/vnd.openxmlformats-officedocument.'
+                      'spreadsheetml.sheet'))
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
 
 
 class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):

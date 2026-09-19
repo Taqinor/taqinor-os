@@ -92,6 +92,10 @@ __all__ = [
     'etapes_a_mi_sla',
     'marquer_rappel_envoye',
     'valider_definition_steps',
+    'cohorte_approbation',
+    'approuver_en_masse',
+    'register_source_conformite',
+    'decisions_conformite',
 ]
 
 
@@ -663,6 +667,130 @@ def decide_step(
         step=step)
 
 
+# ── NTWFL16 — approbation groupée « identique » depuis l'inbox XKB1 ──────────
+#
+# L'inbox laisse cocher PLUSIEURS lignes. Une approbation groupée n'est
+# légitime que si les lignes cochées sont réellement INTERCHANGEABLES : même
+# type d'objet (``WorkflowInstance.content_type``) ET même palier
+# (``WorkflowStepInstance.ordre``). Sinon un seul clic décide des choses de
+# natures différentes — exactement ce que la traçabilité doit interdire.
+#
+# TRAÇABILITÉ : chaque ligne retenue est décidée SÉPARÉMENT via
+# ``decide_step`` — N décisions journalisées (une ``WorkflowStepInstance``
+# avec son ``assignee``/``decided_le``/``commentaire`` par item), JAMAIS une
+# seule écriture globale pour N objets. Le commentaire unique saisi par
+# l'approbateur est recopié sur chacune.
+
+
+def cohorte_approbation(step):
+    """Clé d'interchangeabilité d'une étape : (type d'objet, palier).
+
+    Deux étapes ne sont approuvables en un seul geste que si cette clé est
+    IDENTIQUE — même ``content_type`` de cible et même ``ordre`` d'étape
+    (le palier de la chaîne). Lecture pure, aucune écriture."""
+    return (step.instance.content_type_id, step.ordre)
+
+
+def _signature_formulaire(step):
+    """Signature comparable du formulaire d'une étape (NTWFL16).
+
+    ``(formulaire_id, réponses canoniques)`` — ``(None, '{}')`` pour une
+    étape sans formulaire rattaché. Sert à n'accepter dans un même geste que
+    des lignes « sans formulaire requis » OU « avec formulaire identique
+    pré-rempli »."""
+    try:
+        donnees = json.dumps(
+            step.donnees_formulaire or {}, sort_keys=True, default=str)
+    except (TypeError, ValueError):  # pragma: no cover - défensif
+        donnees = repr(step.donnees_formulaire)
+    return (step.step_def.formulaire_id, donnees)
+
+
+@transaction.atomic
+def approuver_en_masse(steps, *, user=None, commentaire='', now=None):
+    """NTWFL16 — approuve d'un seul geste N étapes INTERCHANGEABLES.
+
+    ``steps`` est un itérable de ``WorkflowStepInstance`` DÉJÀ bornées à la
+    société de l'appelant (la vue les résout via
+    ``pending_steps_for_company``) ; ``commentaire`` est le commentaire UNIQUE
+    saisi pour le lot ; ``now`` est passé explicitement (déterminisme).
+
+    Retourne ``{'cohorte': (content_type_id, ordre), 'decisions': [étapes
+    décidées], 'exclusions': [{'step_id', 'motif'}]}`` — une ligne écartée
+    porte TOUJOURS un motif explicite en français, jamais un silence.
+
+    Sont écartées : une étape qui n'est plus en attente, une étape dont le
+    processus n'est plus en cours, une étape dont un formulaire requis
+    (NTWFL12) n'est pas complété, et une étape dont le formulaire diverge de
+    celui des autres lignes retenues.
+
+    Lève ``ValueError`` si la sélection est vide ou mélange plusieurs
+    cohortes (types d'objet ou paliers différents) — aucune approbation
+    « à peu près identique » n'est acceptée."""
+    moment = _resolve_now(now)
+    selection = list(steps)
+    if not selection:
+        raise ValueError("Aucune étape sélectionnée.")
+
+    cohortes = {cohorte_approbation(s) for s in selection}
+    if len(cohortes) > 1:
+        raise ValueError(
+            "L'approbation groupée exige le MÊME type d'objet et le MÊME "
+            f"palier pour toutes les lignes : {len(cohortes)} combinaisons "
+            "distinctes ont été sélectionnées.")
+    cohorte = next(iter(cohortes))
+
+    exclusions = []
+    candidats = []
+    for step in selection:
+        if step.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
+            exclusions.append({
+                'step_id': step.pk,
+                'motif': "Cette étape n'est plus en attente de décision.",
+            })
+            continue
+        if step.instance.statut != WorkflowInstance.STATUT_EN_COURS:
+            exclusions.append({
+                'step_id': step.pk,
+                'motif': "Le processus de cet élément n'est plus en cours.",
+            })
+            continue
+        if _formulaire_incomplet(step):
+            exclusions.append({
+                'step_id': step.pk,
+                'motif': (
+                    "Formulaire requis non complété : cet élément est exclu "
+                    "de l'approbation groupée, décidez-le individuellement."),
+            })
+            continue
+        candidats.append(step)
+
+    reference = _signature_formulaire(candidats[0]) if candidats else None
+    retenus = []
+    for step in candidats:
+        if _signature_formulaire(step) != reference:
+            exclusions.append({
+                'step_id': step.pk,
+                'motif': (
+                    "Formulaire différent de celui des autres lignes "
+                    "sélectionnées : cet élément est exclu de l'approbation "
+                    "groupée."),
+            })
+            continue
+        retenus.append(step)
+
+    decisions = [
+        decide_step(step, approve=True, user=user, commentaire=commentaire,
+                    now=moment)
+        for step in retenus
+    ]
+    return {
+        'cohorte': cohorte,
+        'decisions': decisions,
+        'exclusions': exclusions,
+    }
+
+
 # ── NTWFL3 — délégation de vacances (XKB3) branchée sur le moteur BPM ───────
 #
 # ``core`` reste FONDATION (contrat import-linter
@@ -696,6 +824,145 @@ def delegants_actifs_pour(suppleant, company, at=None):
         return list(_delegation_resolver(suppleant, company, at=at) or [])
     except Exception:  # pragma: no cover - défensif
         return []
+
+
+# ── NTWFL34 — piste d'audit EXTERNE des décisions d'approbation ──────────────
+#
+# Un auditeur externe demande « montrez-moi toutes les décisions d'approbation
+# du mois de mars, qui a décidé, en combien de temps, et au nom de qui ». Cette
+# piste doit couvrir TOUTES les sources d'approbation de la maison, or ``core``
+# est une couche de FONDATION : il ne peut pas importer ``apps.automation``,
+# ``apps.contrats`` ni ``apps.ged`` pour aller lire leurs décisions.
+#
+# Même patron que ``register_delegation_resolver`` / le registre de calendrier
+# ouvré : chaque app BRANCHE sa source dans son ``apps.py ready()``, ``core``
+# n'en connaît que la signature. La source native FG366 (ce moteur) est
+# toujours présente, sans registre. Chaque source est appelée en BEST-EFFORT :
+# une app qui casse ne fait jamais tomber le rapport entier, elle disparaît
+# simplement de la ligne — et le rapport DIT lesquelles ont échoué plutôt que
+# de laisser croire à une piste complète.
+
+SOURCE_CONFORMITE_BPM = 'workflow'
+
+#: ``{nom: fn(company, periode) -> [ligne, ...]}`` — branché par les apps.
+_sources_conformite = {}
+
+#: Motif posé par ``decide_step`` quand la décision est prise « au nom de ».
+_MOTIF_DELEGATION = re.compile(
+    r'^\[Décidé par .+? au nom de (?P<delegant>.+?)\]')
+
+
+def register_source_conformite(nom, fn):
+    """Enregistre une source de décisions pour la piste d'audit (NTWFL34).
+
+    ``fn(company, periode) -> [{'source', 'objet', 'montant', 'approbateur',
+    'decide_le', 'delai_heures', 'delegation'}, ...]``. Appelée par le
+    ``ready()`` de l'app propriétaire des décisions. Un second appel du même
+    ``nom`` REMPLACE la source (jamais d'accumulation silencieuse)."""
+    _sources_conformite[nom] = fn
+
+
+def _delegation_depuis_commentaire(commentaire):
+    """Nom du délégant si la décision a été prise « au nom de », sinon ''."""
+    trouve = _MOTIF_DELEGATION.match(commentaire or '')
+    return trouve.group('delegant') if trouve else ''
+
+
+def _decisions_conformite_bpm(company, periode=None):
+    """Décisions du moteur BPM FG366 (source NATIVE de ``core``).
+
+    ``montant`` reste VIDE : une ``WorkflowInstance`` ne porte aucun montant
+    (sa cible générique n'est pas introspectée pour en devenir un) — mieux
+    vaut une colonne vide qu'un chiffre déduit. Les sources branchées par les
+    apps, qui connaissent leurs objets, la remplissent."""
+    qs = (
+        WorkflowStepInstance.objects
+        .filter(company=company, decided_le__isnull=False)
+        .exclude(statut=WorkflowStepInstance.STATUT_EN_ATTENTE)
+        .select_related('instance', 'instance__definition',
+                        'instance__content_type', 'assignee')
+    )
+    if periode:
+        try:
+            annee, mois = (int(p) for p in str(periode).split('-')[:2])
+        except (TypeError, ValueError):
+            pass
+        else:
+            qs = qs.filter(decided_le__year=annee, decided_le__month=mois)
+
+    lignes = []
+    for step in qs.order_by('decided_le', 'id'):
+        ct = step.instance.content_type
+        cible = (f'{ct.app_label}.{ct.model} #{step.instance.object_id}'
+                 if ct else f'#{step.instance.object_id}')
+        delai = None
+        if step.created_at and step.decided_le:
+            delai = round(
+                (step.decided_le - step.created_at).total_seconds() / 3600.0, 4)
+        lignes.append({
+            'source': SOURCE_CONFORMITE_BPM,
+            'objet': (f'{step.instance.definition.code} '
+                      f'#{step.instance_id} → {cible}'),
+            'etape': step.step_def.nom if step.step_def_id else '',
+            'decision': step.get_statut_display(),
+            'montant': None,
+            'approbateur': (str(step.assignee) if step.assignee_id else ''),
+            'decide_le': step.decided_le,
+            'delai_heures': delai,
+            'delegation': _delegation_depuis_commentaire(step.commentaire),
+        })
+    return lignes
+
+
+def decisions_conformite(company, periode=None):
+    """NTWFL34 — TOUTES les décisions d'approbation d'une société.
+
+    ``periode`` : chaîne ``'AAAA-MM'`` (un mois) ou ``None`` (tout
+    l'historique). Renvoie ``{'periode', 'decisions', 'sources',
+    'sources_en_erreur'}`` : ``decisions`` est trié par date de décision (les
+    lignes sans date en dernier), ``sources`` liste les sources réellement
+    interrogées et ``sources_en_erreur`` celles qui ont échoué — un rapport
+    d'audit ne prétend JAMAIS être complet quand il ne l'est pas.
+
+    Toujours borné à ``company`` ; ``None`` renvoie un rapport vide."""
+    rapport = {'periode': periode or None, 'decisions': [],
+               'sources': [], 'sources_en_erreur': []}
+    if company is None:
+        return rapport
+
+    fournisseurs = [(SOURCE_CONFORMITE_BPM, _decisions_conformite_bpm)]
+    fournisseurs += sorted(_sources_conformite.items())
+
+    lignes = []
+    for nom, fn in fournisseurs:
+        try:
+            produites = list(fn(company, periode) or [])
+        except Exception:  # noqa: BLE001 — une source cassée n'emporte pas tout
+            rapport['sources_en_erreur'].append(nom)
+            continue
+        rapport['sources'].append(nom)
+        for ligne in produites:
+            ligne.setdefault('source', nom)
+            lignes.append(ligne)
+
+    lignes.sort(key=_cle_tri_conformite)
+    rapport['decisions'] = lignes
+    return rapport
+
+
+def _cle_tri_conformite(ligne):
+    """Clé de tri d'une ligne d'audit : date de décision, puis source, objet.
+
+    Trie sur l'HORODATAGE (float) plutôt que sur le ``datetime`` lui-même :
+    une source branchée par une app pourrait renvoyer un datetime naïf, et
+    comparer un naïf à un aware lèverait ``TypeError`` en plein rapport."""
+    moment = ligne.get('decide_le')
+    try:
+        horodatage = moment.timestamp()
+    except (AttributeError, ValueError, OSError, OverflowError):
+        horodatage = 0.0
+    return (moment is None, horodatage,
+            str(ligne.get('source') or ''), str(ligne.get('objet') or ''))
 
 
 # ── NTWFL9 — validation d'une définition AVANT sauvegarde ───────────────────
