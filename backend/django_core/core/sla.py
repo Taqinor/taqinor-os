@@ -78,6 +78,20 @@ class SlaSnapshot(TenantModel):
     credit_statut = models.CharField(
         'Statut du crédit', max_length=15, choices=CreditStatut.choices,
         default=CreditStatut.NON_APPLICABLE)
+    # NTOBS25 — TRAÇABILITÉ D'UN RECALCUL. Un rapport SLA déjà publié peut
+    # devoir être refait (une sonde qui remontait faux, une fenêtre de
+    # maintenance requalifiée après coup). Sans ces deux champs, le client voit
+    # un chiffre changer sans explication ; avec eux, l'écran peut dire QUAND et
+    # POURQUOI. ``genere_le`` garde la date de la PREMIÈRE génération : c'est
+    # ``recalcule_le`` qui bouge, jamais lui.
+    # Vides = snapshot jamais recalculé (cas de tous les rapports existants).
+    recalcule_le = models.DateTimeField(
+        'Recalculé le', null=True, blank=True,
+        help_text='Vide = jamais recalculé depuis sa génération.')
+    raison_recalcul = models.CharField(
+        'Raison du recalcul', max_length=255, blank=True, default='',
+        help_text='Motif lisible du recalcul, affiché à côté du chiffre '
+                  'corrigé (jamais un recalcul silencieux).')
 
     class Meta:
         verbose_name = 'Rapport SLA mensuel'
