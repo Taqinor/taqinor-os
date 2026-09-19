@@ -382,6 +382,14 @@ def noter_campagne(campagne, user, body):
     return log_note(campagne, user, body, company=campagne.company)
 
 
+def noter_idee(idee, user, body):
+    """NTIDE3 — note manuelle de chatter sur une idée (« manuel noter
+    action » du critère d'acceptation), même raccourci que
+    ``noter_campagne`` (NTIDE33)."""
+    from apps.records.services import log_note
+    return log_note(idee, user, body, company=idee.company)
+
+
 # ── Fermeture de feedback via annonce produit (NTIDE39) ─────────────────────
 
 
