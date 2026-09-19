@@ -2125,6 +2125,20 @@ class FicheTechnique(models.Model):
         help_text='Technologie de cellule (ex. N-type TOPCon, PERC…).')
     bifacial = models.BooleanField(
         default=False, help_text='Module bifacial (production face arrière).')
+    # ── CAL112 — facteur de bifacialité. ──
+    #
+    # Le booléen ci-dessus ne dit QUE « bifacial ou non » : impossible d'en
+    # tirer un gain face arrière. PVsyst modélise un facteur de bifacialité
+    # publié par le fabricant (généralement 65-90 %) combiné à un albédo de
+    # site — l'albédo se saisit côté projet de calepinage (hors fiche
+    # produit, tâche séparée), pas ici. Le booléen reste, non supprimé.
+    #
+    # Optionnel — vide = « non publié », AUCUN gain bifacial calculé (ni 0,
+    # qui affirmerait à tort une bifacialité nulle mesurée).
+    bifacialite_pct = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text='Facteur de bifacialité publié par le fabricant (%). '
+                  'Vide = non publié : aucun gain bifacial calculé.')
     temp_coeff_voc_pct_c = models.DecimalField(
         max_digits=5, decimal_places=3, null=True, blank=True,
         help_text='Coefficient de température de Voc (%/°C).')
