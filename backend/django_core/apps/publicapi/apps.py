@@ -64,3 +64,13 @@ class PublicApiConfig(AppConfig):
             'publicapi_api_event_retention',
             lambda now, apply_: purger_evenements(now, apply_),
         )
+        # NTAPI38 — rétention du journal d'appels, bornée PAR SOCIÉTÉ par le
+        # MÊME plafond de plan (`ApiUsagePlan.retention_livraisons_jours`,
+        # NTAPI7) : une trace d'appel est le même matériau qu'une livraison ou
+        # qu'un évènement, jamais une troisième notion de rétention à régler.
+        # Société sans plan → `API_CALL_LOG_RETENTION_DAYS` (défaut 0 = OFF).
+        from .call_log import purger_appels
+        register_retention_policy(
+            'publicapi_api_call_log_retention',
+            lambda now, apply_: purger_appels(now, apply_),
+        )
