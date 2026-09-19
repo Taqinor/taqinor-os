@@ -275,6 +275,11 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         except TransitionRefusee as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
+        # DA-EVENT-VIEWSET (NTP2P38) — ce chemin direct (sans plan
+        # d'approbation) contourne `services.approuver_etape_achat`, qui émet
+        # déjà l'événement à la dernière étape : sans cet appel, une demande
+        # approuvée SANS étapes n'émettait jamais `demande_achat_approuvee`.
+        services.emettre_demande_achat_approuvee(da, user=request.user)
         _notifier_demandeur_decision(da, approuvee=True)
         return Response(self.get_serializer(da).data)
 
