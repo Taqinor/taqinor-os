@@ -163,6 +163,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   function updateSelected(transform: (o: Obstacle) => Obstacle) {
     const idx = ctx.obstacles.findIndex((x) => x.id === ctx.selectedObsId);
     if (idx < 0) return;
+    ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
     ctx.obstacles[idx] = transform(ctx.obstacles[idx]);
     redrawObstacles();
     syncObsEdit();
@@ -171,6 +172,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
 
   function deleteSelected() {
     if (!ctx.selectedObsId) return;
+    ctx.pushWorkshopHistory?.(); // CAL100 — Ctrl+Z restaure l'obstacle À L'IDENTIQUE
     ctx.obstacles = ctx.obstacles.filter((x) => x.id !== ctx.selectedObsId);
     ctx.selectedObsId = null;
     redrawObstacles();
@@ -179,6 +181,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   }
 
   function addObstacle(o: Obstacle) {
+    ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
     ctx.obstacles.push(o);
     ctx.selectedObsId = o.id;
     redrawObstacles();

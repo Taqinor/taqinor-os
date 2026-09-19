@@ -45,6 +45,11 @@ export interface LayoutHistory {
 /** Profondeur par défaut du tampon circulaire. */
 export const LAYOUT_HISTORY_LIMIT = 50;
 
+import { type LngLat } from '../../lib/roof';
+import { type Obstacle } from '../../lib/obstacles';
+import { type AreaRecord, type RoofType } from './types';
+import { type FreeLayoutState } from '../../lib/freeLayout';
+
 /**
  * PV30 — MÊME mécanique d'historique, pour un état qui n'est PAS une occupation de
  * cellules : le placement libre photographie une liste de positions continues. On garde
@@ -102,6 +107,61 @@ export function createValueHistory<T>(copy: (v: T) => T, limit: number = LAYOUT_
 /** Copie PROFONDE d'une occupation (jamais une référence partagée avec l'état vivant). */
 function snapshotOf(occupied: ReadonlySet<number>): LayoutSnapshot {
   return [...occupied].sort((a, b) => a - b);
+}
+
+// ═══════════ CAL100 — historique de TOUT l'atelier ═══════════
+// L'annuler/rétablir ne couvrait que l'occupation de la disposition — effacer un obstacle
+// ou une zone était irréversible. `createValueHistory` généralise DÉJÀ le mécanisme (photo +
+// tampon circulaire + `drop`) à n'importe quel état, paramétré par sa fonction de COPIE — ce
+// qui manquait, c'était un état qui couvre TOUT l'atelier (obstacles/zones/tracé/pose), pas
+// un second mécanisme. `WorkshopSnapshot` + `createWorkshopHistory` ci-dessous ne sont QUE
+// cette généralisation : même tampon circulaire (défaut LAYOUT_HISTORY_LIMIT), mêmes
+// garanties (photos = copies profondes, `drop` pour un geste refusé).
+
+/** Photo de TOUT l'atelier : tracé (sommets), obstacles, zones (« plusieurs zones »), et la
+ *  pose/pente/face du pan ACTIF — mêmes types que `ctx` (LngLat/Obstacle/AreaRecord), aucune
+ *  forme inventée. Le caller (layoutEditor.ts) construit/applique ces champs ; ce module ne
+ *  connaît QUE la mécanique d'historique, jamais la sémantique métier de chaque champ. */
+export interface WorkshopSnapshot {
+  vertices: LngLat[];
+  obstacles: Obstacle[];
+  areas: AreaRecord[];
+  roofType: RoofType;
+  pitchDeg: number;
+  facingAzimuthDeg: number;
+  /** Occupation de la disposition personnalisée (mode lattice) — absente en placement libre
+   *  ou hors mode « Personnaliser ». Même liste TRIÉE que `LayoutSnapshot`. */
+  layoutOccupied?: LayoutSnapshot;
+  /** État du placement libre — absent en mode lattice. */
+  freeState?: FreeLayoutState;
+}
+
+/** Copie PROFONDE d'un instantané d'atelier (jamais une référence partagée). */
+export function copyWorkshopSnapshot(s: WorkshopSnapshot): WorkshopSnapshot {
+  return {
+    vertices: s.vertices.map((v) => [v[0], v[1]] as LngLat),
+    obstacles: s.obstacles.map((o) => ({ ...o })),
+    areas: s.areas.map((a) => ({
+      ...a,
+      vertices: a.vertices.map((v) => [v[0], v[1]] as LngLat),
+      obstacles: a.obstacles.map((o) => ({ ...o })),
+    })),
+    roofType: s.roofType,
+    pitchDeg: s.pitchDeg,
+    facingAzimuthDeg: s.facingAzimuthDeg,
+    layoutOccupied: s.layoutOccupied ? [...s.layoutOccupied] : undefined,
+    freeState: s.freeState ? { panels: s.freeState.panels.map((p) => ({ ...p })) } : undefined,
+  };
+}
+
+/**
+ * CAL100 — historique GÉNÉRALISÉ (tracé + obstacles + zones + pose), même mécanique que
+ * `createLayoutHistory`/`createValueHistory` (photo + tampon circulaire + `drop`). Le caller
+ * construit son propre `WorkshopSnapshot` depuis `ctx` avant/après chaque action et l'applique
+ * en retour à `ctx` — ce module ne fait QUE se souvenir des photos.
+ */
+export function createWorkshopHistory(limit: number = LAYOUT_HISTORY_LIMIT): ValueHistory<WorkshopSnapshot> {
+  return createValueHistory<WorkshopSnapshot>(copyWorkshopSnapshot, limit);
 }
 
 export function createLayoutHistory(limit: number = LAYOUT_HISTORY_LIMIT): LayoutHistory {

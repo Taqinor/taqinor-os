@@ -129,6 +129,12 @@ export interface Ctx {
   /** W109 — débord panneaux autorisé au-delà de la rive (m), saisi par l'utilisateur. 0 par
    *  défaut → calepinage/solve inchangés. Change la CAPACITÉ géométrique, jamais le cap besoin. */
   overhangM: number;
+  /** CAL100 — photographie TOUT l'atelier (tracé/obstacles/zones/pose) pour l'annuler/
+   *  rétablir GÉNÉRALISÉ. `createLayoutEditor` s'auto-enregistre ici à sa construction (le
+   *  seul module qui possède l'historique) ; `obstaclesUi.ts`/toute autre mutation l'appelle
+   *  AVANT de muter `ctx` pour que le geste devienne annulable. Optionnel : absent (layout
+   *  editor pas encore monté, ou tests unitaires isolés) → no-op, comportement inchangé. */
+  pushWorkshopHistory?: () => void;
   /** CAL75 — écart LATÉRAL entre panneaux d'une même rangée EN POSE OPTIMISÉE (m), saisi par
    *  la société. Optionnel : absent/non fini → PANEL_SIDE_GAP_M (2 cm, valeur d'étude),
    *  calepinage identique à aujourd'hui. Un `ctx` antérieur à CAL75 ne porte pas ce champ —
