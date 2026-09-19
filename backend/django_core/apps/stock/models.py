@@ -2288,6 +2288,33 @@ class FicheTechnique(models.Model):
         help_text='Puissance de DÉCHARGE maximale du port batterie (kW). '
                   'Onduleur hybride uniquement.')
 
+    # ── CAL115 — chaînes par MPPT, entrées par MPPT, puissance apparente
+    # max. de l'onduleur. ──
+    #
+    # ``ond_n_mppt``, les plages MPPT, ``ond_v_max_abs``,
+    # ``ond_i_max_mppt_a``, ``ond_isc_max_mppt_a`` existent déjà — mais rien
+    # ne dit COMBIEN de chaînes une entrée accepte, ni la puissance
+    # apparente (kVA), ni la puissance DC maximale recommandée. PVsyst
+    # modélise 8-12 entrées MPPT avec limitation de courant PAR entrée.
+    #
+    # TOUS OPTIONNELS — vide = non publié.
+    ond_entrees_par_mppt = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Nombre d'entrées (chaînes physiques) par tracker MPPT. "
+                  'Vide = non publié.')
+    ond_chaines_max_par_mppt = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Nombre maximal de chaînes acceptées par tracker MPPT. '
+                  'Vide = non publié.')
+    ond_s_max_kva = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Puissance apparente AC maximale (kVA). Vide = non '
+                  'publié.')
+    ond_dc_max_kwc = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Puissance DC maximale recommandée (kWc). Vide = non '
+                  'publié.')
+
     # ── PV5 — Batterie ──
     bat_kwh_nominal = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True,

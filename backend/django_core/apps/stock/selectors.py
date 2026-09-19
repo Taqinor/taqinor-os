@@ -1576,7 +1576,9 @@ def specs_for_produit(produit):
         déjà sur la fiche mais omis de ce bloc — cf. CAL111-113) ;
       * ``onduleur`` → ``{n_mppt, mppt_v_min, mppt_v_max, v_max_abs,
         i_max_mppt_a, ac_kw, phases, rendement_euro_pct, v_demarrage_v,
-        isc_max_mppt_a, bat_max_charge_kw, bat_max_decharge_kw}`` ;
+        isc_max_mppt_a, bat_max_charge_kw, bat_max_decharge_kw,
+        entrees_par_mppt, chaines_max_par_mppt, s_max_kva, dc_max_kwc}``
+        (les quatre dernières, CAL115) ;
       * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
         max_charge_kw, max_decharge_kw, max_modules_par_banc,
         rendement_ar_pct}``.
@@ -1651,6 +1653,14 @@ def specs_for_produit(produit):
             # forcément les champs récents — absent ≡ NULL (non évaluable).
             ('bat_max_charge_kw', getattr(fiche, 'ond_bat_max_charge_kw', None)),
             ('bat_max_decharge_kw', getattr(fiche, 'ond_bat_max_decharge_kw', None)),
+            # CAL115 — chaînes/entrées par MPPT, puissance apparente et DC
+            # max. getattr : les doubles de test (_FausseFiche) ne portent
+            # pas forcément les champs récents — absent ≡ NULL (non publié).
+            ('entrees_par_mppt', getattr(fiche, 'ond_entrees_par_mppt', None)),
+            ('chaines_max_par_mppt',
+             getattr(fiche, 'ond_chaines_max_par_mppt', None)),
+            ('s_max_kva', getattr(fiche, 'ond_s_max_kva', None)),
+            ('dc_max_kwc', getattr(fiche, 'ond_dc_max_kwc', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'batterie':
