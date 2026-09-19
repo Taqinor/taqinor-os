@@ -1304,3 +1304,25 @@ def emettre_langue_changed(company, *, ancienne_langue, nouvelle_langue,
             'NTI18N43 : émission langue_changed échouée (%s %s → %s)',
             portee, avant, apres, exc_info=True)
     return True
+
+
+# ── NTOBS26 — Incidents publics (apps.statuspage) sur le bus ────────────────
+# Une intégration tierce (webhook sortant, page de statut miroir) doit savoir
+# qu'un incident vient de s'ouvrir/se résoudre — système (``company=None``,
+# visible de tous les tenants) ou spécifique à une société. Émis par
+# ``apps.statuspage.receivers`` (le SEUL point d'écriture du statut d'un
+# ``IncidentPublic``), consommé par ``apps.publicapi`` (webhook sortant),
+# jamais un import direct ``statuspage`` -> ``publicapi``. Arguments :
+# ``incident`` (l'instance ``IncidentPublic``), ``company`` (peut être
+# ``None`` : incident système).
+incident_opened = django.dispatch.Signal()
+incident_resolved = django.dispatch.Signal()
+
+# NTOBS26 — Émis par
+# ``core.maintenance_windows.MaintenanceWindowListCreateView.perform_create``
+# à la CRÉATION d'une fenêtre de maintenance : ANNONCE immédiate côté webhook
+# sortant — distinct du rappel in-app 24h/1h avant l'échéance, qui reste porté
+# par ``core.notify_registry`` (``_notifier_fenetre``, inchangé). Arguments :
+# ``fenetre`` (l'instance ``MaintenanceWindow``), ``company`` (peut être
+# ``None`` : annonce système large), ``user`` (peut être ``None``).
+maintenance_window_announced = django.dispatch.Signal()
