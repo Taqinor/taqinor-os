@@ -1658,6 +1658,105 @@ def annonces_livraison_bon_commande(bon_commande):
     ]
 
 
+#: NTPRT23 — les trois états de RÈGLEMENT que le portail fournisseur affiche.
+#: Ce sont des LIBELLÉS dérivés, jamais un second champ en base : le statut qui
+#: fait foi reste ``FactureFournisseur.statut`` (recalculé par
+#: ``services.recompute_facture_fournisseur_statut`` depuis les paiements
+#: réels). Un quatrième état stocké ailleurs finirait par le contredire.
+REGLEMENT_A_PAYER = 'a_payer'
+REGLEMENT_PAYEE = 'payee'
+REGLEMENT_EN_RETARD = 'en_retard'
+
+REGLEMENT_LIBELLES = {
+    REGLEMENT_A_PAYER: 'À payer',
+    REGLEMENT_PAYEE: 'Payée',
+    REGLEMENT_EN_RETARD: 'En retard',
+}
+
+
+def statut_reglement_facture_fournisseur(facture_ligne, a_la_date=None):
+    """NTPRT23 — état de règlement d'UNE facture, dérivé de l'interne.
+
+    ``facture_ligne`` est une ligne de
+    ``services.factures_sous_traitant_qs_generique`` (la charge utile que le
+    portail tokenisé XPUR22 sert DÉJÀ) : on ne relit pas la base, on ne
+    recalcule aucun montant, on QUALIFIE. Les règles, dans cet ordre :
+
+    * ``statut`` interne ``payee`` (ou solde dû nul) ⇒ **payée**. Le solde est
+      la seconde condition parce qu'un acompte ou un avoir peut solder une
+      facture dont le statut n'a pas encore été recalculé ; afficher « à payer »
+      sur une facture soldée serait une erreur visible par le fournisseur ;
+    * échéance dépassée et solde restant ⇒ **en retard** ;
+    * sinon ⇒ **à payer** (y compris ``partiellement_payee`` : il reste dû).
+
+    Une facture SANS date d'échéance n'est jamais « en retard » — on ne déclare
+    pas un retard sur une échéance qui n'a jamais été fixée.
+    """
+    from decimal import Decimal
+
+    from core.dates import aujourd_hui_local
+
+    from .models import FactureFournisseur
+
+    solde = facture_ligne.get('solde_du') or Decimal('0')
+    if not isinstance(solde, Decimal):
+        solde = Decimal(str(solde))
+    if (facture_ligne.get('statut') == FactureFournisseur.Statut.PAYEE
+            or solde <= 0):
+        return REGLEMENT_PAYEE, 0
+
+    echeance = facture_ligne.get('date_echeance')
+    if echeance is None:
+        return REGLEMENT_A_PAYER, 0
+
+    reference = a_la_date or aujourd_hui_local()
+    retard = (reference - echeance).days
+    if retard > 0:
+        return REGLEMENT_EN_RETARD, retard
+    return REGLEMENT_A_PAYER, 0
+
+
+def factures_portail_fournisseur(company, fournisseur_id, *, a_la_date=None):
+    """NTPRT23 — « Mes factures & statut de paiement », portail FOURNISSEUR.
+
+    LECTURE STRICTEMENT SEULE : aucun service d'écriture ne correspond à cette
+    liste, et il n'en existe pas — un fournisseur ne solde jamais sa propre
+    facture, il la CONSULTE.
+
+    Le statut affiché MATCHE l'interne par construction, pas par recopie : la
+    liste est celle que ``services.factures_sous_traitant_qs_generique`` sert
+    déjà au portail tokenisé (mêmes montants, même ``statut``, même
+    ``statut_display`` que l'écran comptable interne), enrichie du seul
+    ``statut_reglement`` dérivé (à payer / payée / en retard). Il n'y a donc
+    qu'UNE définition du statut de règlement dans le dépôt.
+
+    Bornée au couple (société, fournisseur) du COMPTE connecté : un
+    ``fournisseur_id`` absent — ou d'une autre société — renvoie une liste
+    VIDE, jamais les factures de la société entière.
+    """
+    if company is None or not fournisseur_id:
+        return []
+
+    from .models import Fournisseur
+    from .services import factures_sous_traitant_qs_generique
+
+    fournisseur = (Fournisseur.objects
+                   .filter(company=company, pk=fournisseur_id).first())
+    if fournisseur is None:
+        return []
+
+    lignes = []
+    for ligne in factures_sous_traitant_qs_generique(company, fournisseur):
+        reglement, retard = statut_reglement_facture_fournisseur(
+            ligne, a_la_date=a_la_date)
+        enrichie = dict(ligne)
+        enrichie['statut_reglement'] = reglement
+        enrichie['statut_reglement_display'] = REGLEMENT_LIBELLES[reglement]
+        enrichie['jours_de_retard'] = retard
+        lignes.append(enrichie)
+    return lignes
+
+
 # ── PV6 — Specs & Kit de calepinage DÉRIVÉS de FicheTechnique (PV5) ─────────
 # Point d'entrée cross-app LECTURE SEULE : le moteur de calepinage
 # (core.calepinage) et les autres apps lisent les caractéristiques d'un
