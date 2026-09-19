@@ -567,6 +567,108 @@ def candidature_fournisseur(request):
         status=status.HTTP_201_CREATED)
 
 
+#: NTPRT23 — carte factures fournisseur : reflet EXACT de
+#: ``apps.stock.selectors.factures_portail_fournisseur``. Même remarque que
+#: ``_ID_BCF`` : ``ViewSet`` nu ⇒ type explicite (YAPIC6).
+_ID_FACTURE_FOURNISSEUR = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description='Identifiant de la facture du fournisseur connecté.',
+)
+
+
+class MesFacturesPortailFournisseurLigneSerializer(serializers.Serializer):
+    """Une facture telle que le portail la montre au fournisseur.
+
+    Reflet EXACT de ``apps.stock.selectors.factures_portail_fournisseur`` :
+    LECTURE STRICTEMENT SEULE (aucun service d'écriture ne correspond — un
+    fournisseur consulte le statut de règlement, il ne le solde jamais
+    lui-même). ``statut_reglement`` est la dérivation UNIQUE du dépôt
+    (``stock.selectors.statut_reglement_facture_fournisseur``) : le même
+    calcul que l'écran comptable interne, jamais un second calcul qui
+    pourrait diverger.
+    """
+    id = serializers.IntegerField()
+    reference = serializers.CharField()
+    date_facture = serializers.DateField(allow_null=True)
+    date_echeance = serializers.DateField(allow_null=True)
+    montant_ttc = serializers.DecimalField(max_digits=14, decimal_places=2)
+    statut = serializers.CharField()
+    statut_display = serializers.CharField()
+    solde_du = serializers.DecimalField(max_digits=14, decimal_places=2)
+    statut_reglement = serializers.CharField()
+    statut_reglement_display = serializers.CharField()
+    jours_de_retard = serializers.IntegerField()
+
+
+class MesFacturesPortailFournisseurViewSet(viewsets.ViewSet):
+    """NTPRT23 — « Mes factures & statut de paiement » du portail FOURNISSEUR
+    authentifié.
+
+    LECTURE STRICTEMENT SEULE : il n'existe, et il n'existera jamais, aucun
+    service permettant à un fournisseur de solder sa propre facture — il la
+    CONSULTE. Le fournisseur est résolu depuis le compte connecté
+    (``portal_scope_id``), jamais d'un paramètre. La lecture passe par
+    ``apps.stock.selectors`` — jamais un import de ``apps.stock.models``/
+    ``apps.achats.models`` depuis portail (frontière cross-app CLAUDE.md), et
+    le statut affiché MATCHE, par construction, le module comptabilité
+    interne (même sélecteur, même fonction de dérivation).
+    """
+
+    permission_classes = [IsPortalFournisseurUser]
+    serializer_class = MesFacturesPortailFournisseurLigneSerializer
+
+    @extend_schema(responses=inline_serializer(
+        name='MesFacturesPortailFournisseur',
+        fields={
+            'results': serializers.ListField(
+                child=MesFacturesPortailFournisseurLigneSerializer()),
+        }))
+    def list(self, request):
+        from apps.stock.selectors import factures_portail_fournisseur
+        return Response({'results': factures_portail_fournisseur(
+            request.user.company, portal_scope_id(request.user))})
+
+    @extend_schema(parameters=[_ID_FACTURE_FOURNISSEUR],
+                   responses=MesFacturesPortailFournisseurLigneSerializer)
+    def retrieve(self, request, pk=None):
+        from apps.stock.selectors import factures_portail_fournisseur
+        for ligne in factures_portail_fournisseur(
+                request.user.company, portal_scope_id(request.user)):
+            if str(ligne['id']) == str(pk):
+                return Response(ligne)
+        return Response({'detail': 'Introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+
+class MaPerformanceFournisseurSerializer(serializers.Serializer):
+    """NTPRT26 — carte « Ma performance », reflet EXACT de
+    ``apps.stock.selectors.performance_portail_fournisseur``."""
+    fournisseur_nom = serializers.CharField(allow_blank=True)
+    otd_ecart_moyen_jours = serializers.FloatField(allow_null=True)
+    otd_a_lheure_pct = serializers.FloatField(allow_null=True)
+    receptions_controlees = serializers.IntegerField()
+    receptions_conformes = serializers.IntegerField()
+    taux_conformite_reception_pct = serializers.FloatField(allow_null=True)
+
+
+@extend_schema(responses=MaPerformanceFournisseurSerializer)
+@api_view(['GET'])
+@permission_classes([IsPortalFournisseurUser])
+def ma_performance_fournisseur(request):
+    """NTPRT26 — carte « Ma performance » du portail FOURNISSEUR connecté.
+
+    LECTURE SEULE, et rien d'autre : aucun service ne permet à un
+    fournisseur de toucher sa propre note. Les chiffres MATCHENT le calcul
+    interne parce qu'ils SONT le calcul interne (``stock.services.otd_stats``
+    + ``stock.selectors.taux_conformite_reception_fournisseur``, les mêmes
+    fonctions que l'action interne ``fournisseurs/{id}/performance/``) — le
+    fournisseur est résolu du compte connecté, jamais d'un paramètre.
+    """
+    from apps.stock.selectors import performance_portail_fournisseur
+    return Response(performance_portail_fournisseur(
+        request.user.company, portal_scope_id(request.user)))
+
+
 class RessourcesPartenairePortailLigneSerializer(serializers.Serializer):
     """Une ressource marketing telle que le portail la montre au partenaire —
     payload volontairement pauvre : jamais de métadonnée interne."""

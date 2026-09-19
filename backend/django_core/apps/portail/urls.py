@@ -27,6 +27,7 @@ from .views import (
 )
 from .views_client import (
     MesChantiersPortailViewSet,
+    MesContratsMaintenancePortailViewSet,
     MesDemandesSavPortailViewSet,
     MesDevisPortailViewSet,
     MesDocumentsPortailViewSet,
@@ -34,15 +35,19 @@ from .views_client import (
     MesLivraisonsPortailViewSet,
     MonEquipePortailViewSet,
     SatisfactionPortailViewSet,
+    exporter_mes_donnees,
     ma_consommation_client,
+    recherche_portail_client,
     tableau_de_bord_client,
 )
 from .views_externes import (
     MesBcfPortailFournisseurViewSet,
     MesCommissionsPortailPartenaireViewSet,
+    MesFacturesPortailFournisseurViewSet,
     MesSoumissionsPortailPartenaireViewSet,
     RessourcesPartenairePortailViewSet,
     candidature_fournisseur,
+    ma_performance_fournisseur,
     preference_portail,
     tableau_de_bord_fournisseur,
     tableau_de_bord_partenaire,
@@ -114,6 +119,16 @@ router.register(r'mes-commissions', MesCommissionsPortailPartenaireViewSet,
 # partenaires (ACL par rôle système « Portail partenaire »), lecture seule.
 router.register(r'ressources', RessourcesPartenairePortailViewSet,
                 basename='portail-ressources')
+# NTPRT23 — « Mes factures & statut de paiement » du portail FOURNISSEUR
+# connecté, lecture seule.
+router.register(r'mes-factures-fournisseur',
+                MesFacturesPortailFournisseurViewSet,
+                basename='portail-mes-factures-fournisseur')
+# NTPRT16 — « Mes contrats » (maintenance) : liste + demande de
+# renouvellement/résiliation, portail CLIENT.
+router.register(r'mes-contrats-maintenance',
+                MesContratsMaintenancePortailViewSet,
+                basename='portail-mes-contrats-maintenance')
 
 urlpatterns = [
     # NTPRT9 — tableau de bord du portail CLIENT (garde de portée EXACTE,
@@ -124,6 +139,13 @@ urlpatterns = [
     # sous-performance ouvertes, lecture seule.
     path('client/ma-consommation/', ma_consommation_client,
          name='portail-client-ma-consommation'),
+    # NTPRT36 — export « mes données » (portabilité, loi 09-08) : zip
+    # devis/factures/tickets/documents du client connecté.
+    path('client/mes-donnees/export/', exporter_mes_donnees,
+         name='portail-client-mes-donnees-export'),
+    # NTPRT38 — recherche globale, version scopée-portail du client connecté.
+    path('client/recherche/', recherche_portail_client,
+         name='portail-client-recherche'),
     # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et
     # PARTENAIRE (gardes de portée EXACTE, symétriques du portail client).
     path('fournisseur/tableau-de-bord/', tableau_de_bord_fournisseur,
@@ -135,6 +157,10 @@ urlpatterns = [
     # quelconque » plutôt qu'une portée exacte.
     path('ma-preference/', preference_portail,
          name='portail-ma-preference'),
+    # NTPRT26 — carte « Ma performance » du portail FOURNISSEUR connecté,
+    # lecture seule.
+    path('ma-performance/', ma_performance_fournisseur,
+         name='portail-ma-performance'),
     # NTPRT25 — auto-inscription fournisseur : PUBLIC (AllowAny) et
     # rate-limité. Volontairement déclaré AVANT le routeur pour qu'aucun
     # ViewSet ne puisse l'ombrer.
