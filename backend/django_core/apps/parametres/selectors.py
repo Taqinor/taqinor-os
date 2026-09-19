@@ -101,6 +101,30 @@ def adresse_affichage(company) -> str:
     return (p.adresse or "").strip()
 
 
+def statut_libelle(company, domaine: str, cle: str, langue: str = 'fr') -> str:
+    """NTI18N25 — libellé d'affichage d'un statut métier, langue-consciente.
+
+    Ordre de priorité :
+      1. surcharge société `StatutConfig` (N58) — TOUJOURS en français (un
+         override manuel est un texte FR saisi par le tenant) : ne s'applique
+         que si `langue == 'fr'`, jamais utilisée comme traduction EN/AR ;
+      2. `i18n_labels.STATUT_LABELS` (NTI18N25) ;
+      3. la clé canonique brute (jamais d'exception).
+
+    Ne renomme ni ne réordonne jamais la clé canonique elle-même — ceci ne
+    calcule qu'un LIBELLÉ, jamais une transition d'état.
+    """
+    from .i18n_labels import statut_label
+    from .models_statuses import StatutConfig
+
+    if langue == 'fr' and company is not None:
+        override = StatutConfig.objects.filter(
+            company=company, domaine=domaine, cle=cle).first()
+        if override is not None and override.libelle:
+            return override.libelle
+    return statut_label(domaine, cle, langue)
+
+
 def tariff_for(company) -> dict:
     """Repères ROI/tarifaires CANONIQUES d'une société (source unique — DC5).
 
