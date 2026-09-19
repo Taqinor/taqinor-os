@@ -32,3 +32,15 @@ class MlopsConfig(AppConfig):
         ),
         'categorie': 'Technique',
     }
+
+    def ready(self):
+        # NTAI27 — branche ce registre comme résolveur d'hyperparamètres de
+        # `core.score_params` (même patron additif que `core.workflow.
+        # register_business_day_advance`/`core.notify_registry.
+        # register_notify`) : `core` expose le seam, `mlops` s'y branche
+        # depuis son propre `ready()`, sans que `core` n'importe jamais
+        # `apps.mlops` (contrat import-linter core-foundation-is-a-base-layer).
+        from core.score_params import register_params_resolver
+
+        from . import selectors
+        register_params_resolver(selectors.params_actifs)
