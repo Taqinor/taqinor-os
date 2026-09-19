@@ -457,6 +457,11 @@ class EventType(models.TextChoices):
         'portail_jalon_chantier_atteint', 'Jalon de chantier atteint')
     PORTAIL_TICKET_MAJ = (
         'portail_ticket_maj', 'Mise à jour de votre ticket')
+    # NTWFL18 — le dossier transverse (core.Dossier, NTWFL17) a une échéance
+    # dépassée alors qu'il est encore ouvert (balayage quotidien
+    # core.dossiers.notifier_echeances_depassees). Notifie le propriétaire.
+    DOSSIER_ECHEANCE_DEPASSEE = (
+        'dossier_echeance_depassee', 'Dossier en retard (échéance dépassée)')
 
 
 class Channel(models.TextChoices):
