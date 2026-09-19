@@ -85,6 +85,18 @@ def _ip(request):
     return ip_de_requete(request)
 
 
+def _auditer_portail(action, request, *, instance=None, detail=''):
+    """NTPRT7 — Journalise une action portail dans le journal d'activité
+    EXISTANT (``audit.AuditLog``), flag ``via_portail=True`` — jamais un 2e
+    système d'audit. Best-effort (``record`` n'élève jamais) : un souci de
+    journalisation ne casse jamais la requête du client."""
+    from apps.audit.recorder import record
+    record(
+        action, instance=instance, company=request.user.company,
+        user=request.user, detail=detail, via_portail=True,
+    )
+
+
 @extend_schema(responses=inline_serializer(
     name='PortailClientTableauDeBord',
     fields={
@@ -229,6 +241,11 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
                     acceptation, nom=nom, ip=_ip(request))
 
         devis.refresh_from_db(fields=['statut'])
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.ACCEPT, request, instance=devis,
+            detail='Devis accepté via le portail client')
         return Response({
             'detail': 'Devis accepté. Merci !',
             'reference': devis.reference,
@@ -324,6 +341,12 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
         paiement.save(update_fields=['montant', 'methode'])
         services.initier_paiement_facture(paiement)
         paiement.refresh_from_db(fields=['reference', 'statut'])
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.PAYMENT, request, instance=paiement,
+            detail=f'Intention de paiement facture #{facture.id} '
+                   'initiée depuis le portail client')
 
         # Repli virement : UNIQUEMENT le nom, la banque et le RIB de la société
         # émettrice — jamais le reste de son identité légale (on ne déverse pas
@@ -493,6 +516,13 @@ class MesLivraisonsPortailViewSet(viewsets.ViewSet):
         if err:
             return Response({'detail': err},
                             status=status.HTTP_404_NOT_FOUND)
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True
+        # (« téléchargement doc »).
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.EXPORT, request, instance=att,
+            detail='Photo de preuve de livraison consultée depuis le '
+                   'portail client')
         resp = HttpResponse(
             data, content_type=att.mime or 'application/octet-stream')
         nom = (att.filename or 'preuve-livraison').replace('"', '')
@@ -626,6 +656,11 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
             company=company, client_id=client_id, chantier_id=chantier_id,
             sujet=sujet, description=description,
             statut=DemandeTicketPortail.Statut.SOUMISE)
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.CREATE, request, instance=demande,
+            detail='Ticket SAV ouvert depuis le portail client')
         return Response(self._ligne(demande),
                         status=status.HTTP_201_CREATED)
 

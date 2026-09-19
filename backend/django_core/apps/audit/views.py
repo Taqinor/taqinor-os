@@ -277,6 +277,31 @@ def security_events(request):
     return Response({'count': len(data), 'results': data})
 
 
+# NTPRT7 — onglet « Accès portail » : réutilise le Journal d'activité EXISTANT,
+# pré-filtré ``via_portail=True`` (même patron que ``security_events``
+# ci-dessus) — jamais un 2e système d'audit. Gardé par la MÊME permission que
+# tout le reste du Journal (``CanViewActivityLog``, Directeur/admin interne
+# par défaut) : un compte portail externe n'atteint de toute façon jamais
+# ``/api/django/audit/*`` (exclu en amont, cf. ``roles.permissions``).
+@api_view(['GET'])
+@permission_classes([CanViewActivityLog])
+def portal_access_events(request):
+    """Accès portail (company-scopés, plus récent d'abord).
+
+    Filtres : ``?action=``, ``?user=``, ``?from=``/``?to=``, ``?search=``,
+    ``?limit=`` (défaut 100, max 500) — les mêmes que ``security_events``,
+    sur le sous-ensemble ``via_portail=True`` au lieu du sous-ensemble
+    sécurité."""
+    qs = _apply_filters(_company_qs(request), request.query_params)
+    qs = qs.filter(via_portail=True)
+    try:
+        limit = min(int(request.query_params.get('limit', 100)), 500)
+    except (TypeError, ValueError):
+        limit = 100
+    data = AuditLogSerializer(qs[:limit], many=True).data
+    return Response({'count': len(data), 'results': data})
+
+
 # VX243(b) — lecture record-scopée du Journal (« l'historique de MON dossier »).
 # Le Journal global (stats / AuditLogViewSet) reste gaté `can_view_activity_log`
 # tout-ou-rien : un commercial ne peut pas voir qui a modifié SON propre lead
