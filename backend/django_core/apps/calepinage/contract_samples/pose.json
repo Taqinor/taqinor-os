@@ -1,0 +1,196 @@
+{
+  "endpoint": "POST /api/django/calepinage/moteur/pose/",
+  "pourquoi": "La POSE proprement dite : on soumet un relevé (contour, pans, obstacles, zones, allée, rives, kit) et le moteur rend les panneaux POSÉS avec le régime de preuve sous lequel il les a posés. CAL77 est fondue ici — la demande et la réponse voyagent dans le MÊME dépôt, sinon la lane qui écrit le formulaire et celle qui écrit la vue figent deux vocabulaires (PACT10, incident AO du 03/08/2026). LA DEMANDE EST DANS `demande` — c'est la seule clé de ce dossier qui n'est pas un état de réponse, et elle est délibérée : `exemple` reste ce que `scripts/check_api_shapes.py` compare au dictionnaire RÉELLEMENT renvoyé par la vue, et une demande rangée sous `exemple_*` se serait fait lire comme une seconde forme de réponse. AUCUNE CLÉ INVENTÉE : `demande` reprend mot pour mot le document d'entrée de `core/calepinage/serialisation.py` (`EntreeCalepinage.vers_dict` → `surface_vers_dict`, `_obstacle`, `_zone`, `_kit`, `_parametres`, `_rives`) avec ses énumérations réelles (`NORD_SUD`/`EST_OUEST`, `PORTRAIT`/`PAYSAGE`, `RELEVE`/`DECLARE_CLIENT`/`ECARTE`, `ENVELOPPE`/`INTERDITE`/`RESERVEE`/`PREFEREE`, `rangees_explicites_dp`) ; `exemple` reprend `plan_vers_json` (tables et rangées posées), `preuve_vers_json` (régime de preuve, bornes, contrôles passés) et `marges_vers_json` (marges mesurées). RÉGIME DE PREUVE, PAS SIMPLE VERDICT : `methode` + `methode_exacte` + `optimal` + `borne_superieure` disent SOUS QUEL RÉGIME le compte a été obtenu — un compte sans son régime n'est pas opposable. DISCIPLINE DU NULL : une marge ou une borne NON MESURÉE vaut `null`, jamais `0` (`Marges` rend `0.0` aussi bien pour « au ras » que pour « aucune marge de ce type dans ce plan » ; le critère de mesure est le repère fautif, et `marges_du_plan` ne nomme une rangée ou un obstacle que lorsqu'il a réellement mesuré quelque chose). `exemple_vide` = relevé accepté mais AUCUN module posable (contour trop étroit une fois les rives et l'allée retirées) : toutes les clés restent présentes, `verdict` porte la raison, et le compte vaut bien `0` — là, le zéro est MESURÉ. Valeurs : des PLACEHOLDERS assumés (repères « d'essai », empreinte visiblement factice), aucun chiffre client, aucun prix.",
+  "demande": {
+    "schema_version": 1,
+    "repere": "SITE-ESSAI",
+    "contour": [[0.0, 0.0], [8.0, 0.0], [8.0, 6.0], [0.0, 6.0]],
+    "surfaces": [
+      {
+        "type": "polygone",
+        "repere": "PAN-A",
+        "contour": [[0.0, 0.0], [8.0, 0.0], [8.0, 6.0], [0.0, 6.0]],
+        "trous": [],
+        "rives": {
+          "laterale_m": 0.35,
+          "extremite_m": 0.35,
+          "acrotere_m": 0.0,
+          "joint_m": 0.0
+        },
+        "axe_rangee": "NORD_SUD",
+        "niveau": 0,
+        "pente_deg": 0.0,
+        "azimut_deg": 180.0,
+        "origine": [0.0, 0.0],
+        "coupures": []
+      }
+    ],
+    "kits": [
+      {
+        "code": "portrait",
+        "libelle": "Portrait",
+        "module_long_m": 2.278,
+        "module_court_m": 1.134,
+        "puissance_module_wc": 720,
+        "inclinaison_deg": 10.0,
+        "orientation": "PORTRAIT",
+        "modules_par_table": 2,
+        "faitage_m": 0.0
+      }
+    ],
+    "parametres": {
+      "kits": ["portrait"],
+      "rives": {
+        "laterale_m": 0.35,
+        "extremite_m": 0.35,
+        "acrotere_m": 0.0,
+        "joint_m": 0.0
+      },
+      "axe_rangee": "NORD_SUD",
+      "mode_pose": "rangees_explicites_dp",
+      "allee_m": 0.6,
+      "degagement_defaut_m": 0.3,
+      "degagement_nature_inconnue_m": 0.5,
+      "pas_recherche_m": 0.01,
+      "engagement_modules": null,
+      "plafond_kwc": null,
+      "marge_troncon_min_m": 0.02,
+      "marge_bande_min_m": 0.04,
+      "graine": 0
+    },
+    "obstacles": [
+      {
+        "repere": "OBS-1",
+        "x0": 3.0,
+        "x1": 3.8,
+        "y0": 2.0,
+        "y1": 2.8,
+        "type_obstacle": "SOUCHE",
+        "provenance": "RELEVE",
+        "degagement_m": 0.5,
+        "hauteur_m": 1.2,
+        "regle_appliquee": ""
+      }
+    ],
+    "zones": [
+      {
+        "repere": "ZONE-1",
+        "nature": "INTERDITE",
+        "sommets": [[6.0, 0.0], [8.0, 0.0], [8.0, 1.5], [6.0, 1.5]],
+        "hauteur_m": null,
+        "retrait_m": 0.0
+      }
+    ],
+    "engagements": []
+  },
+  "exemple": {
+    "schema_version": 1,
+    "repere": "SITE-ESSAI",
+    "hash_entree": "abababababababababababababababababababababababababababababababab",
+    "version_moteur": "non-publie-dans-cet-exemple",
+    "total_modules": 12,
+    "kwc": 8.64,
+    "engageable": true,
+    "motifs_non_engageable": [],
+    "verdict": "Pose complète : 12 modules posés, optimum prouvé.",
+    "plans": [
+      {
+        "surface": "PAN-A",
+        "modules": 12,
+        "ecart_a_l_optimum": 0,
+        "rangees": [
+          {
+            "surface": "PAN-A",
+            "x0": 0.35,
+            "y0": 0.35,
+            "kit": "portrait",
+            "modules": 6,
+            "emprise_m": 2.278,
+            "troncons": [[0.35, 7.65]]
+          },
+          {
+            "surface": "PAN-A",
+            "x0": 3.228,
+            "y0": 3.228,
+            "kit": "portrait",
+            "modules": 6,
+            "emprise_m": 2.278,
+            "troncons": [[0.35, 7.65]]
+          }
+        ],
+        "tables": [
+          { "x0": 0.35, "x1": 2.618, "y0": 0.35, "y1": 2.628, "kit": "portrait" },
+          { "x0": 2.618, "x1": 4.886, "y0": 0.35, "y1": 2.628, "kit": "portrait" }
+        ]
+      }
+    ],
+    "preuve": {
+      "total_retenu": 12,
+      "total_optimal": 12,
+      "methode": "programmation_dynamique",
+      "methode_exacte": true,
+      "optimal": true,
+      "libelle": "Optimum prouvé par programmation dynamique.",
+      "pas_cm": 1.0,
+      "nb_optima": 1,
+      "borne_superieure": 12,
+      "marge_troncon_min": 0.042,
+      "marge_bande_min": 0.061,
+      "rangee_critique": "R2",
+      "obstacle_critique": "OBS-1",
+      "controles": ["EMPRISE_DANS_SURFACE", "ALLEE_RESPECTEE"],
+      "version_moteur": "non-publie-dans-cet-exemple"
+    },
+    "marges": {
+      "troncon_min_cm": 4.2,
+      "bande_min_cm": 6.1,
+      "rangee_critique": "R2",
+      "obstacle_critique": "OBS-1"
+    }
+  },
+  "exemple_vide": {
+    "schema_version": 1,
+    "repere": "SITE-ESSAI",
+    "hash_entree": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "version_moteur": "non-publie-dans-cet-exemple",
+    "total_modules": 0,
+    "kwc": 0.0,
+    "engageable": false,
+    "motifs_non_engageable": [
+      "Aucun module posable : la largeur utile restante est inférieure à un module."
+    ],
+    "verdict": "Aucun module posable une fois les rives et l'allée retirées.",
+    "plans": [
+      {
+        "surface": "PAN-A",
+        "modules": 0,
+        "ecart_a_l_optimum": 0,
+        "rangees": [],
+        "tables": []
+      }
+    ],
+    "preuve": {
+      "total_retenu": 0,
+      "total_optimal": 0,
+      "methode": "programmation_dynamique",
+      "methode_exacte": true,
+      "optimal": true,
+      "libelle": "Aucune rangée ne tient dans la surface utile.",
+      "pas_cm": 1.0,
+      "nb_optima": 1,
+      "borne_superieure": 0,
+      "marge_troncon_min": null,
+      "marge_bande_min": null,
+      "rangee_critique": "",
+      "obstacle_critique": "",
+      "controles": [],
+      "version_moteur": "non-publie-dans-cet-exemple"
+    },
+    "marges": {
+      "troncon_min_cm": null,
+      "bande_min_cm": null,
+      "rangee_critique": "",
+      "obstacle_critique": ""
+    }
+  }
+}
