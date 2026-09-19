@@ -97,23 +97,60 @@ def _auditer_portail(action, request, *, instance=None, detail=''):
     )
 
 
-@extend_schema(responses=inline_serializer(
-    name='PortailClientTableauDeBord',
-    fields={
-        'devis_en_attente': serializers.IntegerField(),
-        'factures_impayees': serializers.IntegerField(),
-        'prochaine_echeance': serializers.DateField(allow_null=True),
-        'tickets_ouverts': serializers.IntegerField(),
-        'prochain_jalon': inline_serializer(
-            name='PortailClientProchainJalon',
-            fields={
-                'chantier_id': serializers.IntegerField(),
-                'chantier_reference': serializers.CharField(),
-                'libelle': serializers.CharField(),
-                'date_jalon': serializers.DateField(allow_null=True),
-            },
-            allow_null=True),
-    }))
+def _prochain_jalon_pour_chantier(company, client_id, chantier_id):
+    """NTPRT37 — prochain jalon NON ATTEINT d'UN site précis du client.
+
+    Même forme que ``installations.selectors.prochain_jalon_client_portail``
+    (« widget concerné » par le sélecteur de site), mais bornée à un seul
+    chantier au lieu du plus récent tous chantiers confondus. Réutilise
+    ``installations.selectors.chantier_du_client_portail_obj`` (le garde-fou
+    déjà en place ailleurs dans ce module : un chantier d'un autre client — ou
+    inexistant — renvoie ``None``, jamais une fuite) + le sélecteur PORTAIL
+    ``jalons_du_chantier`` (même app, aucune donnée nouvelle)."""
+    from apps.installations.selectors import chantier_du_client_portail_obj
+
+    from .selectors import jalons_du_chantier
+
+    chantier = chantier_du_client_portail_obj(company, client_id, chantier_id)
+    if chantier is None:
+        return None
+    jalon = jalons_du_chantier(company, chantier.id).filter(
+        atteint=False).first()
+    if jalon is None:
+        return None
+    return {
+        'chantier_id': chantier.id,
+        'chantier_reference': chantier.reference,
+        'libelle': jalon.libelle,
+        'date_jalon': jalon.date_jalon,
+    }
+
+
+@extend_schema(
+    parameters=[OpenApiParameter(
+        name='chantier', type=OpenApiTypes.INT, required=False,
+        location=OpenApiParameter.QUERY,
+        description='NTPRT37 — site (chantier) sélectionné : borne '
+                    '« prochain_jalon » à CE site. Absent ou invalide : '
+                    'comportement inchangé (jalon le plus proche tous sites '
+                    'confondus).')],
+    responses=inline_serializer(
+        name='PortailClientTableauDeBord',
+        fields={
+            'devis_en_attente': serializers.IntegerField(),
+            'factures_impayees': serializers.IntegerField(),
+            'prochaine_echeance': serializers.DateField(allow_null=True),
+            'tickets_ouverts': serializers.IntegerField(),
+            'prochain_jalon': inline_serializer(
+                name='PortailClientProchainJalon',
+                fields={
+                    'chantier_id': serializers.IntegerField(),
+                    'chantier_reference': serializers.CharField(),
+                    'libelle': serializers.CharField(),
+                    'date_jalon': serializers.DateField(allow_null=True),
+                },
+                allow_null=True),
+        }))
 @api_view(['GET'])
 @permission_classes([IsPortalClientUser])
 def tableau_de_bord_client(request):
@@ -128,7 +165,18 @@ def tableau_de_bord_client(request):
     domaine (``ventes``/``sav``/``installations``) — jamais un import direct
     de leurs modèles depuis ``portail`` (frontière cross-app CLAUDE.md) — donc
     les compteurs matchent, par construction, ce que l'écran interne montre
-    pour ce même client."""
+    pour ce même client.
+
+    NTPRT37 — sélecteur de site (multi-chantiers B2B) : ``?chantier=<id>``
+    est un filtre ADDITIF, aucune donnée nouvelle. SEUL ``prochain_jalon``
+    (par nature lié à UN chantier) en tient compte ; ``devis_en_attente``/
+    ``factures_impayees``/``tickets_ouverts`` restent au niveau CLIENT quel
+    que soit le site choisi (critère d'acceptation NTPRT37) — ce sont des
+    agrégats société-client, jamais scindés par site. Un ``chantier`` absent
+    laisse le comportement d'avant (jalon le plus proche tous sites
+    confondus) ; un ``chantier`` fourni mais INVALIDE (inexistant, ou d'un
+    autre client) renvoie ``prochain_jalon: null`` — jamais un repli
+    silencieux vers l'agrégat global ni les données d'un autre site."""
     from apps.installations.selectors import prochain_jalon_client_portail
     from apps.sav.selectors import tickets_ouverts_client
     from apps.ventes.selectors import resume_portail_client
@@ -136,25 +184,37 @@ def tableau_de_bord_client(request):
     company, client_id = _scope(request)
     resume = resume_portail_client(company, client_id)
     resume['tickets_ouverts'] = tickets_ouverts_client(company, client_id)
-    resume['prochain_jalon'] = prochain_jalon_client_portail(
-        company, client_id)
+    chantier_id = request.query_params.get('chantier')
+    jalon = None
+    if chantier_id:
+        jalon = _prochain_jalon_pour_chantier(company, client_id, chantier_id)
+    resume['prochain_jalon'] = (
+        jalon if chantier_id else prochain_jalon_client_portail(
+            company, client_id))
     return Response(resume)
 
 
-@extend_schema(responses=inline_serializer(
-    name='PortailClientMaConsommation',
-    fields={
-        'window_days': serializers.IntegerField(),
-        'provider_configure': serializers.BooleanField(),
-        'points': serializers.ListField(child=inline_serializer(
-            name='PortailClientConsommationPoint',
-            fields={
-                'date': serializers.DateField(),
-                'energy_kwh': serializers.DecimalField(
-                    max_digits=12, decimal_places=2),
-            })),
-        'alertes_ouvertes': serializers.IntegerField(),
-    }))
+@extend_schema(
+    parameters=[OpenApiParameter(
+        name='chantier', type=OpenApiTypes.INT, required=False,
+        location=OpenApiParameter.QUERY,
+        description='NTPRT37 — site (chantier) sélectionné : borne '
+                    '« alertes_ouvertes » à CE site. Absent ou invalide : '
+                    'comportement inchangé (tous les sites du client).')],
+    responses=inline_serializer(
+        name='PortailClientMaConsommation',
+        fields={
+            'window_days': serializers.IntegerField(),
+            'provider_configure': serializers.BooleanField(),
+            'points': serializers.ListField(child=inline_serializer(
+                name='PortailClientConsommationPoint',
+                fields={
+                    'date': serializers.DateField(),
+                    'energy_kwh': serializers.DecimalField(
+                        max_digits=12, decimal_places=2),
+                })),
+            'alertes_ouvertes': serializers.IntegerField(),
+        }))
 @api_view(['GET'])
 @permission_classes([IsPortalClientUser])
 def ma_consommation_client(request):
@@ -167,7 +227,18 @@ def ma_consommation_client(request):
     No-op gracieux (critère d'acceptation) : sans provider configuré
     (défaut ``NoOpProvider`` — saisie manuelle absente), ``points`` est une
     liste VIDE et ``provider_configure`` est faux — jamais une erreur 500,
-    l'écran affiche alors un état vide explicite."""
+    l'écran affiche alors un état vide explicite.
+
+    NTPRT37 — sélecteur de site : ``?chantier=<id>`` borne
+    ``alertes_ouvertes`` à ce SEUL chantier (le queryset renvoyé par
+    ``underperformance_flags_client_portail`` porte déjà une FK
+    ``installation`` — on la filtre ici, sans toucher au sélecteur ni
+    inventer de donnée). La série ``points`` reste l'agrégat CLIENT :
+    ``monitoring.selectors`` ne fournit qu'un total tous systèmes confondus,
+    et cette tâche n'ajoute aucune donnée nouvelle. Un ``chantier`` fourni
+    mais d'un autre client (ou inexistant) est IGNORÉ — comportement
+    inchangé, jamais une fuite ni une erreur."""
+    from apps.installations.selectors import chantier_du_client_portail_obj
     from apps.monitoring.selectors import (
         production_kwh_series_client_portail,
         underperformance_flags_client_portail,
@@ -176,8 +247,238 @@ def ma_consommation_client(request):
     company, client_id = _scope(request)
     serie = production_kwh_series_client_portail(company, client_id)
     alertes = underperformance_flags_client_portail(company, client_id)
+    chantier_id = request.query_params.get('chantier')
+    if chantier_id and chantier_du_client_portail_obj(
+            company, client_id, chantier_id) is not None:
+        alertes = alertes.filter(installation_id=chantier_id)
     serie['alertes_ouvertes'] = alertes.count()
     return Response(serie)
+
+
+# ── NTPRT36 — Export « mes données » (portabilité, loi 09-08) ──────────────
+
+@extend_schema(responses={(200, 'application/zip'): OpenApiTypes.BINARY})
+@api_view(['GET'])
+@permission_classes([IsPortalClientUser])
+def exporter_mes_donnees(request):
+    """NTPRT36 — bouton « Télécharger mes données » : un zip devis/factures/
+    tickets/documents du client connecté.
+
+    DÉCISION (infrastructure DSR existante — ``core.dsr.exporter``, FG394) :
+    elle agrège par IDENTITÉ (email/téléphone) TOUS les fournisseurs DSR
+    enregistrés (crm/rh/ao/stock…), potentiellement bien au-delà de « mes
+    devis/factures/tickets/documents » et sans jamais filtrer par
+    ``client_id`` — le critère d'acceptation NTPRT36 (« strictement les
+    enregistrements où ``client_id`` == celui du compte demandeur ») serait
+    donc violé, et l'export toucherait des domaines hors du périmètre de ce
+    lot (interdit : cross-app hors ``selectors.py``). Cette vue fait
+    l'EXPORT MINIMAL DIRECT que la tâche prévoit en repli : elle relit les
+    QUATRE mêmes sélecteurs déjà scopés (société, client) que les écrans
+    portail équivalents (``mes-devis``/``mes-factures``/``mes-demandes-sav``/
+    ``mes-documents``) — aucune requête supplémentaire, aucune donnée que le
+    client ne voit pas déjà par ailleurs.
+
+    Chaque ligne du zip appartient STRICTEMENT au client connecté : aucun
+    sélecteur ici n'accepte de paramètre autre que (société, client_id)."""
+    import io
+    import json
+    import zipfile
+    from decimal import Decimal
+
+    from django.http import HttpResponse
+    from django.utils import timezone
+
+    from apps.ged.selectors import documents_partages_client_portail, latest_version
+    from apps.records.storage import fetch_attachment
+    from apps.ventes.selectors import (
+        devis_du_client_portail, factures_du_client_portail,
+    )
+
+    from .models import DemandeTicketPortail
+
+    company, client_id = _scope(request)
+
+    def _json_safe(valeur):
+        import datetime
+        if isinstance(valeur, Decimal):
+            return str(valeur)
+        if isinstance(valeur, (datetime.date, datetime.datetime)):
+            return valeur.isoformat()
+        return valeur
+
+    def _serialise(lignes):
+        return [{cle: _json_safe(v) for cle, v in ligne.items()}
+                for ligne in lignes]
+
+    devis = _serialise(devis_du_client_portail(company, client_id))
+    factures = _serialise(factures_du_client_portail(company, client_id))
+    tickets = [{
+        'id': d.id,
+        'sujet': d.sujet,
+        'description': d.description,
+        'statut': d.statut,
+        'statut_display': d.get_statut_display(),
+        'date_creation': (d.date_creation.isoformat()
+                          if d.date_creation else None),
+    } for d in DemandeTicketPortail.objects.filter(
+        company=company, client_id=client_id)]
+    documents = list(documents_partages_client_portail(company, client_id))
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            'devis.json', json.dumps(devis, ensure_ascii=False, indent=2))
+        archive.writestr(
+            'factures.json',
+            json.dumps(factures, ensure_ascii=False, indent=2))
+        archive.writestr(
+            'tickets.json', json.dumps(tickets, ensure_ascii=False, indent=2))
+        noms_utilises = set()
+        for document in documents:
+            version = latest_version(document)
+            if version is None:
+                continue
+            data, erreur = fetch_attachment(version.file_key)
+            if erreur:
+                continue
+            nom = (version.filename or document.nom
+                   or f'document-{document.id}').replace('/', '_')
+            # Deux documents ne partagent JAMAIS le même chemin dans le zip.
+            if nom in noms_utilises:
+                nom = f'{document.id}-{nom}'
+            noms_utilises.add(nom)
+            archive.writestr(f'documents/{nom}', data)
+        manifeste = {
+            'client_id': client_id,
+            'exporte_le': timezone.now().isoformat(),
+            'devis': len(devis),
+            'factures': len(factures),
+            'tickets': len(tickets),
+            'documents': len(documents),
+        }
+        archive.writestr(
+            'manifest.json', json.dumps(manifeste, ensure_ascii=False,
+                                        indent=2))
+
+    from apps.audit.models import AuditLog
+    _auditer_portail(
+        AuditLog.Action.EXPORT, request,
+        detail='Export « mes données » (portabilité) depuis le portail '
+               'client')
+    reponse = HttpResponse(buffer.getvalue(), content_type='application/zip')
+    reponse['Content-Disposition'] = 'attachment; filename="mes-donnees.zip"'
+    reponse['X-Content-Type-Options'] = 'nosniff'
+    return reponse
+
+
+# ── NTPRT38 — Recherche globale, scopée au portail CLIENT connecté ─────────
+
+class RecherchePortailResultatSerializer(serializers.Serializer):
+    """Un résultat individuel d'un groupe de la recherche portail."""
+    id = serializers.IntegerField()
+    label = serializers.CharField()
+    sublabel = serializers.CharField(allow_blank=True)
+
+
+class RecherchePortailGroupeSerializer(serializers.Serializer):
+    type = serializers.CharField()
+    label = serializers.CharField()
+    results = serializers.ListField(child=RecherchePortailResultatSerializer())
+
+
+class RecherchePortailSerializer(serializers.Serializer):
+    """Même enveloppe que la recherche globale INTERNE
+    (``apps.reporting.search.global_search`` — ``{query, groups: [{type,
+    label, results}]}``), pour que le hook frontend existant se transpose
+    sans réinvention. Le CONTENU, lui, est une version scopée-portail
+    entièrement réécrite ici (voir docstring de la vue)."""
+    query = serializers.CharField(allow_blank=True)
+    groups = serializers.ListField(child=RecherchePortailGroupeSerializer())
+
+
+@extend_schema(
+    parameters=[OpenApiParameter(
+        name='q', type=OpenApiTypes.STR, location=OpenApiParameter.QUERY,
+        description='Mot-clé recherché.')],
+    responses=RecherchePortailSerializer)
+@api_view(['GET'])
+@permission_classes([IsPortalClientUser])
+def recherche_portail_client(request):
+    """NTPRT38 — recherche globale, VERSION SCOPÉE-PORTAIL du client connecté.
+
+    ``apps.reporting.search.global_search`` (T5/ARC29) est la recherche
+    INTERNE : elle balaie leads/clients/chantiers/équipements de TOUTE la
+    société, gardée ``IsAnyRole`` (qui exclut explicitement un compte
+    ``portail_*``), et ses fonctions de requête (``_spec_devis``…) importent
+    directement les modèles métier — deux raisons pour lesquelles elle ne
+    peut PAS être appelée telle quelle depuis ici. Cette vue est donc une
+    recherche DISTINCTE, mais délibérément restreinte aux QUATRE mêmes
+    sélecteurs déjà scopés (société, client) que les écrans portail
+    (``mes-devis``/``mes-factures``/``mes-demandes-sav``/``mes-documents``) :
+    AUCUN nouvel index, un simple filtre par mot-clé sur les lignes que ces
+    sélecteurs renvoient déjà. L'enveloppe ``{query, groups}`` reprend
+    volontairement celle de la recherche interne (même vocabulaire) sans
+    partager une ligne de son code.
+
+    Un mot-clé vide renvoie des groupes vides — jamais toutes les données du
+    client déversées sans filtre. Chaque sélecteur étant borné (société,
+    client_id), un résultat ne peut JAMAIS provenir d'un autre compte."""
+    from django.db.models import Q
+
+    from apps.ged.selectors import documents_partages_client_portail
+    from apps.ventes.selectors import (
+        devis_du_client_portail, factures_du_client_portail,
+    )
+
+    from .models import DemandeTicketPortail
+
+    q = (request.query_params.get('q') or '').strip()
+    company, client_id = _scope(request)
+    groupes = []
+    if q:
+        aiguille = q.lower()
+
+        devis = [d for d in devis_du_client_portail(company, client_id)
+                 if aiguille in (d.get('reference') or '').lower()]
+        groupes.append({
+            'type': 'devis', 'label': 'Devis',
+            'results': [{'id': d['id'], 'label': d['reference'],
+                        'sublabel': d.get('statut_display', '')}
+                       for d in devis]})
+
+        factures = [f for f in factures_du_client_portail(company, client_id)
+                    if aiguille in (f.get('reference') or '').lower()]
+        groupes.append({
+            'type': 'facture', 'label': 'Factures',
+            'results': [{'id': f['id'], 'label': f['reference'],
+                        'sublabel': f.get('statut_display', '')}
+                       for f in factures]})
+
+        tickets = DemandeTicketPortail.objects.filter(
+            company=company, client_id=client_id).filter(
+                Q(sujet__icontains=q) | Q(description__icontains=q))
+        groupes.append({
+            'type': 'ticket', 'label': 'Tickets',
+            'results': [{'id': d.id, 'label': d.sujet,
+                        'sublabel': d.get_statut_display()}
+                       for d in tickets]})
+
+        documents = documents_partages_client_portail(
+            company, client_id).filter(
+                Q(nom__icontains=q) | Q(reference__icontains=q))
+        groupes.append({
+            'type': 'document', 'label': 'Documents',
+            'results': [{'id': d.id, 'label': d.nom,
+                        'sublabel': d.reference or ''}
+                       for d in documents]})
+    else:
+        groupes = [
+            {'type': 'devis', 'label': 'Devis', 'results': []},
+            {'type': 'facture', 'label': 'Factures', 'results': []},
+            {'type': 'ticket', 'label': 'Tickets', 'results': []},
+            {'type': 'document', 'label': 'Documents', 'results': []},
+        ]
+    return Response({'query': q, 'groups': groupes})
 
 
 class MesDevisPortailViewSet(viewsets.ViewSet):
@@ -597,6 +898,18 @@ class MesDemandesSavPortailLigneSerializer(serializers.Serializer):
     date_creation = serializers.DateTimeField(allow_null=True)
 
 
+class MesDemandesSavPortailFilEntreeSerializer(serializers.Serializer):
+    """NTPRT12 — une entrée du fil CLIENT-VISIBLE d'un ticket SAV.
+
+    Reflet EXACT de ``apps.sav.selectors.fil_client_du_ticket`` — payload
+    volontairement pauvre (corps, horodatage, auteur), jamais un champ
+    interne (coût, technicien assigné, SLA)."""
+    id = serializers.IntegerField()
+    body = serializers.CharField(allow_blank=True)
+    created_at = serializers.DateTimeField(allow_null=True)
+    auteur = serializers.CharField(allow_blank=True)
+
+
 class MesDemandesSavPortailViewSet(viewsets.ViewSet):
     """AUD525 — « Mes demandes SAV » : la surface CLIENT de FG233.
 
@@ -730,6 +1043,36 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response({'enregistre': enregistrer_consultation_portail(
             company, article_id)})
+
+    # ── NTPRT12 — Fil de commentaires CLIENT-VISIBLE du ticket SAV lié ─────
+
+    @extend_schema(parameters=[_ID_DEMANDE_SAV], responses=inline_serializer(
+        name='MesDemandesSavPortailFil',
+        fields={'results': serializers.ListField(
+            child=MesDemandesSavPortailFilEntreeSerializer())}))
+    @action(detail=True, methods=['get'], url_path='fil')
+    def fil(self, request, pk=None):
+        """NTPRT12 — fil de commentaires CLIENT-VISIBLE du ticket SAV créé à
+        partir de cette demande portail.
+
+        Passe par ``apps.sav.selectors.fil_client_du_ticket`` (jamais un
+        import de ``apps.sav.models`` — frontière cross-app CLAUDE.md), qui
+        ne renvoie QUE les entrées explicitement marquées
+        ``visible_client`` : une note technicien, un journal de statut ou un
+        échange interne n'apparaît JAMAIS ici. Une demande pas encore prise
+        en charge (aucun ticket SAV créé) renvoie un fil VIDE, jamais une
+        erreur."""
+        from apps.sav.selectors import fil_client_du_ticket
+
+        demande = self._mes_demandes(request).filter(pk=pk).first()
+        if demande is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if not demande.ticket_id:
+            return Response({'results': []})
+        company, client_id = _scope(request)
+        return Response({'results': fil_client_du_ticket(
+            company, client_id, demande.ticket_id)})
 
 
 # ── NTPRT35 — Widget « Satisfaction » post-interaction ──────────────────────
@@ -1236,3 +1579,145 @@ class MesDocumentsPortailViewSet(viewsets.ViewSet):
         return Response(
             DocumentClientPortailSerializer(document).data,
             status=status.HTTP_201_CREATED)
+
+
+# ── NTPRT16 — « Mes contrats » (maintenance) ────────────────────────────────
+#
+# ``viewsets.ViewSet`` nu (aucun queryset), même remarque YAPIC6 que
+# ``MesDocumentsPortailViewSet`` ci-dessus.
+_ID_CONTRAT_MAINTENANCE = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description='Identifiant du contrat de maintenance du client connecté.',
+)
+
+
+class MesContratsMaintenancePortailLigneSerializer(serializers.Serializer):
+    """Un contrat de maintenance tel que le portail le montre au client.
+
+    Reflet EXACT de ``apps.sav.selectors.contrats_maintenance_portail_client``
+    — lecture minimisée (loi 09-08) : périodicité, dates, prix, droits
+    inclus, JAMAIS un champ interne (SLA, tarif d'usage, dernière
+    facturation, notes)."""
+    id = serializers.IntegerField()
+    periodicite = serializers.CharField()
+    periodicite_display = serializers.CharField()
+    date_debut = serializers.DateField(allow_null=True)
+    date_renouvellement = serializers.DateField(allow_null=True)
+    duree_mois = serializers.IntegerField(allow_null=True)
+    actif = serializers.BooleanField()
+    prix = serializers.DecimalField(
+        max_digits=10, decimal_places=2, allow_null=True)
+    chantier = serializers.CharField(allow_blank=True)
+    visites_incluses_an = serializers.IntegerField(allow_null=True)
+    deplacements_inclus_an = serializers.IntegerField(allow_null=True)
+    pieces_couvertes_pct = serializers.IntegerField(allow_null=True)
+
+
+class MesContratsMaintenancePortailViewSet(viewsets.ViewSet):
+    """NTPRT16 — « Mes contrats » (maintenance) : liste en lecture seule +
+    demande de renouvellement/résiliation, portail CLIENT.
+
+    Pendant SAV de ``contrats.selectors.contrats_portail_client`` (XCTR14,
+    servi côté public tokenisé par ``apps.contrats.public_views`` — hors
+    périmètre de cette tâche) : ici, la famille des contrats de MAINTENANCE
+    (``apps.sav.ContratMaintenance``), authentifiée sur le compte portail
+    connecté au lieu d'un jeton.
+
+    LECTURE — ``apps.sav.selectors.contrats_maintenance_portail_client``
+    (jamais un import de ``apps.sav.models`` — frontière cross-app
+    CLAUDE.md), scopée société ET client : un contrat d'un autre client est
+    INTROUVABLE, jamais « trouvé puis refusé ».
+
+    ÉCRITURE — ``demander`` n'appelle QUE
+    ``apps.sav.services.demander_action_portail_maintenance`` : une demande
+    de renouvellement/résiliation reste une DEMANDE traitée en interne,
+    JAMAIS un changement direct de ``actif``/date sur le contrat. NTPRT6 — un
+    membre d'équipe « lecture seule » ne peut pas déposer de demande.
+    """
+
+    permission_classes = [IsPortalClientUser]
+    serializer_class = MesContratsMaintenancePortailLigneSerializer
+
+    @extend_schema(responses=inline_serializer(
+        name='MesContratsMaintenancePortail',
+        fields={'results': serializers.ListField(
+            child=MesContratsMaintenancePortailLigneSerializer())}))
+    def list(self, request):
+        from apps.sav.selectors import contrats_maintenance_portail_client
+        company, client_id = _scope(request)
+        return Response({'results': contrats_maintenance_portail_client(
+            company, client_id)})
+
+    @extend_schema(parameters=[_ID_CONTRAT_MAINTENANCE],
+                   responses=MesContratsMaintenancePortailLigneSerializer)
+    def retrieve(self, request, pk=None):
+        from apps.sav.selectors import contrats_maintenance_portail_client
+        company, client_id = _scope(request)
+        for ligne in contrats_maintenance_portail_client(company, client_id):
+            if str(ligne['id']) == str(pk):
+                return Response(ligne)
+        return Response({'detail': 'Introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    @extend_schema(
+        parameters=[_ID_CONTRAT_MAINTENANCE],
+        request=inline_serializer(
+            name='MesContratsMaintenancePortailDemande',
+            fields={
+                'type_demande': serializers.ChoiceField(
+                    choices=['renouvellement', 'resiliation']),
+                'message': serializers.CharField(
+                    required=False, allow_blank=True),
+            }),
+        responses=inline_serializer(
+            name='MesContratsMaintenancePortailDemandeReponse',
+            fields={'detail': serializers.CharField()}))
+    @action(detail=True, methods=['post'], url_path='demander')
+    def demander(self, request, pk=None):
+        """Enregistre une demande de renouvellement/résiliation.
+
+        Les erreurs NOMMENT le champ fautif. ``contrat`` et ``client_id``
+        viennent TOUJOURS du sélecteur scopé société+client, jamais d'un
+        paramètre de requête."""
+        from apps.sav.selectors import contrat_maintenance_du_client
+        from apps.sav.services import (
+            DemandeContratMaintenanceError,
+            demander_action_portail_maintenance,
+        )
+
+        # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS déposer
+        # de demande sur un contrat (consultation uniquement).
+        if not services.peut_ecrire_portail_client(request.user):
+            return Response(
+                {'detail': "Votre accès est en lecture seule : vous ne "
+                           "pouvez pas faire de demande sur ce contrat."},
+                status=status.HTTP_403_FORBIDDEN)
+
+        company, client_id = _scope(request)
+        contrat = contrat_maintenance_du_client(company, client_id, pk)
+        if contrat is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        type_demande = (request.data.get('type_demande') or '').strip()
+        message = (request.data.get('message') or '').strip()
+        try:
+            demander_action_portail_maintenance(
+                contrat, type_demande=type_demande, message=message,
+                demandeur=request.user)
+        except DemandeContratMaintenanceError:
+            return Response(
+                {'type_demande': 'Choisissez « renouvellement » ou '
+                                 '« résiliation ».'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.CREATE, request, instance=contrat,
+            detail=f'Demande « {type_demande} » sur contrat de maintenance '
+                   'depuis le portail client')
+        return Response({
+            'detail': 'Votre demande a bien été enregistrée. Elle sera '
+                      'traitée par nos équipes.',
+        })
