@@ -2682,6 +2682,18 @@ def pick_round_robin_owner(company):
 
 # FG28 — SLA première prise de contact ────────────────────────────────────────
 
+def prefixe_activite_message_ouvert(etape):
+    """RLC3 — le PRÉFIXE de la ligne de chatter « message ouvert » de CETTE
+    touche.
+
+    UNE seule source : ``journaliser_whatsapp_ouvert`` juste dessous l'écrit,
+    ``RelanceEtapeSerializer.get_message_ouvert_le`` le relit. Deux littéraux
+    auraient dérivé au premier ajustement de la phrase, et le rappel « message
+    ouvert ? » du panneau « Fait » se serait tu sans que rien ne rougisse."""
+    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+    return f'WhatsApp ouvert — touche « {libelle} »'
+
+
 def journaliser_whatsapp_ouvert(etape, user):
     """RELANCE-WA (fondateur 08/09/2026) — ouvrir WhatsApp depuis une touche
     n'AVANCE plus la touche. Le clic est INSCRIT dans l'historique du lead
@@ -2691,11 +2703,10 @@ def journaliser_whatsapp_ouvert(etape, user):
     touche faite (décision D5 du 07/09) : une conversation ouverte n'est pas
     une réponse du client. Aucune issue posée → aucune cadence arrêtée,
     aucune avance d'étape."""
-    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
     return LeadActivity.objects.create(
         company=etape.company, lead=etape.lead, user=user,
         kind=LeadActivity.Kind.WHATSAPP,
-        body=(f'WhatsApp ouvert — touche « {libelle} » (cadence '
+        body=(f'{prefixe_activite_message_ouvert(etape)} (cadence '
               f'{etape.cadence}) : message préparé ; la touche reste à faire '
               "jusqu'à la réponse du client."))
 

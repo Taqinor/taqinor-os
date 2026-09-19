@@ -153,6 +153,13 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     # l'écran n'avait aucun moyen de le faire sans réinventer la table des
     # libellés. « Annulée (moteur) » vient donc du modèle, pas du front.
     statut_libelle = serializers.SerializerMethodField()
+    # RLC3 — le message de CETTE touche a-t-il été OUVERT ? Horodatage de
+    # l'activité « WhatsApp ouvert » (posée par le clic humain,
+    # ``services.journaliser_whatsapp_ouvert`` — jamais un envoi), ou ``null``.
+    # Le panneau « Fait » d'une touche MESSAGE le rappelle et, à défaut,
+    # demande une confirmation explicite : Meryem peut avoir écrit depuis son
+    # téléphone, donc jamais un blocage — seulement une question.
+    message_ouvert_le = serializers.SerializerMethodField()
 
     class Meta:
         model = RelanceEtape
@@ -167,7 +174,7 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             'cadence', 'ordre', 'due_date', 'due_at', 'canal', 'libelle',
             'template_cle', 'statut', 'note', 'overdue', 'devis',
             'devis_reference', 'traite_le', 'traite_par_nom',
-            'statut_libelle',
+            'statut_libelle', 'message_ouvert_le',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
@@ -220,6 +227,32 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
     def get_statut_libelle(self, obj) -> str:
         return obj.get_statut_display()
+
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_message_ouvert_le(self, obj):
+        """RLC3 — quand le message de cette touche a été OUVERT (dernière
+        activité « WhatsApp ouvert » portant son libellé), sinon ``None``.
+
+        COÛT BORNÉ, délibérément : une requête, et seulement pour une touche
+        MESSAGE encore À FAIRE — le seul cas où le panneau « Fait » peut
+        s'ouvrir et donc le seul où la réponse sert. Une touche d'appel, ou
+        déjà traitée, ne paie rien : la file du jour et l'écran de suivi (qui
+        servent surtout de l'historique) ne gagnent pas une requête par ligne.
+
+        Le préfixe de reconnaissance vient de ``services`` — la même fonction
+        que l'écriture, jamais un second littéral."""
+        if obj.statut != RelanceEtape.Statut.A_FAIRE:
+            return None
+        if obj.canal not in (RelanceEtape.Canal.WHATSAPP,
+                             RelanceEtape.Canal.EMAIL):
+            return None
+        from .services import prefixe_activite_message_ouvert
+        return (LeadActivity.objects
+                .filter(lead_id=obj.lead_id,
+                        kind=LeadActivity.Kind.WHATSAPP,
+                        body__startswith=prefixe_activite_message_ouvert(obj))
+                .order_by('-created_at')
+                .values_list('created_at', flat=True).first())
 
 
 class _CurrentCompanyDefault:
