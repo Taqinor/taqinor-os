@@ -895,6 +895,18 @@ export interface PackOptions {
    * sur `clearanceM` (donc `OBSTACLE_CLEARANCE_M`). Tableau absent → calepinage inchangé.
    */
   obstructionClearancesM?: number[];
+  /**
+   * CAL75 — écart LATÉRAL entre deux panneaux d'une même rangée (m). Absent/non fini →
+   * `PANEL_SIDE_GAP_M` (2 cm, jeu de pose historique) : calepinage identique à aujourd'hui.
+   * Négatif ramené à 0 (jamais un recouvrement).
+   */
+  colGapM?: number;
+  /**
+   * CAL75 — écart SUPPLÉMENTAIRE entre rangées (m), AU-DESSUS du pas minimal de sécurité
+   * anti-ombrage (`rowPitchM` / l'écart de chevron Est-Ouest — jamais réduit, la physique
+   * reste tenue). Absent/0 → calepinage identique à aujourd'hui. Négatif ramené à 0.
+   */
+  rowGapExtraM?: number;
 }
 
 /**
@@ -1065,6 +1077,10 @@ interface CellParams {
   rowWidthM: number;
   /** Panneaux par cellule : 1 (Sud) ou 2 (chevron E-O dos à dos). */
   panelsPerCell: number;
+  /** CAL75 — écart LATÉRAL entre deux panneaux d'une même rangée (m). Défaut
+   *  `PANEL_SIDE_GAP_M` (2 cm, jeu de pose) — champ ajouté pour rester réglable, jamais
+   *  réinventé : `packConfig` le fixe à `PANEL_SIDE_GAP_M` quand `opts.colGapM` est absent. */
+  colGapM: number;
 }
 
 /**
@@ -1102,7 +1118,7 @@ function packCells(
     if (vv > vMax) vMax = vv;
   }
 
-  const colPitch = p.rowWidthM + PANEL_SIDE_GAP_M;
+  const colPitch = p.rowWidthM + p.colGapM;
   // W108 — débord : on étend la fenêtre de balayage d'un nombre ENTIER de pas de
   // chaque côté (la PHASE du lattice reste inchangée → panneaux intérieurs
   // identiques au pixel près). overhangM=0 → ohRows=ohCols=0 → tout est identique.
@@ -1427,6 +1443,14 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
     footprintPerPanelM2: slopeLenM * Math.cos(beta) * rowWidthM,
   });
 
+  // CAL75 — écart rangée/colonne RÉGLABLE en pose optimisée (jusqu'ici réglable
+  // SEULEMENT en placement libre, cf. FREE_PANEL_GAP_M). Défauts = les constantes
+  // d'étude historiques → calepinage identique au millimètre quand les options sont
+  // absentes ; ce n'est jamais un pas AJOUTÉ au minimum d'ombrage (la sécurité
+  // solaire reste `rowPitchM`/l'écart de chevron E-O), mais un SUPPLÉMENT au-dessus.
+  const rowGapExtraM = Math.max(0, opts.rowGapExtraM ?? 0);
+  const colGapM = opts.colGapM != null && Number.isFinite(opts.colGapM) ? Math.max(0, opts.colGapM) : PANEL_SIDE_GAP_M;
+
   // Pas d'empilement, UNE seule règle solaire pour les deux familles.
   //  - Sud : 1 panneau/cellule, pas = empreinte + ombre(cos) + marge.
   //  - Est-Ouest : 2 panneaux/cellule (chevron dos à dos), profondeur = 2 empreintes,
@@ -1446,17 +1470,19 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
       return {
         panelDepthM,
         cellDepthM: 2 * panelDepthM,
-        pitchM: 2 * panelDepthM + interTentGap,
+        pitchM: 2 * panelDepthM + interTentGap + rowGapExtraM,
         rowWidthM,
         panelsPerCell: 2,
+        colGapM,
       };
     }
     return {
       panelDepthM,
       cellDepthM: panelDepthM,
-      pitchM: rowPitchM(slopeLenM, tiltDeg, latitudeDeg),
+      pitchM: rowPitchM(slopeLenM, tiltDeg, latitudeDeg) + rowGapExtraM,
       rowWidthM,
       panelsPerCell: 1,
+      colGapM,
     };
   };
 

@@ -244,6 +244,195 @@ export function computeRidgeLifts(pans: RidgePan[]): number[] {
   return lifts;
 }
 
+// ═══════════ CAL56 — préréts de forme de toiture (2/4 pans, appentis, plat) ═══════════
+// L'atelier ne connaissait qu'un type binaire par zone (plat/pente saisi manuellement) —
+// aucun préré ne GÉNÉRAIT les pans depuis le contour tracé. Ci-dessous : géométrie PURE
+// (aucun Three, aucun DOM) qui découpe le contour FERMÉ en pans cohérents ; le rendu 3D
+// de chaque pan réutilise ensuite le chemin existant (une zone `ctx.areas` par pan, comme
+// le mode « plusieurs zones » — computeRidgeLifts ci-dessus aligne déjà leurs faîtières).
+// Chaque pan reste ensuite éditable INDIVIDUELLEMENT (roofType/pitchDeg/azimuth par zone,
+// mécanique zones.ts inchangée) — ce module ne fait QUE proposer la partition initiale.
+
+/** Préréts de forme proposés. 'flat' et 'shed' (appentis) ne redécoupent rien (1 pan) ;
+ *  'gable' (2 pans, faîtière centrale) et 'hip' (4 pans/croupe, pans en éventail depuis le
+ *  centre) partitionnent le contour tracé. */
+export type RoofShapePreset = 'flat' | 'shed' | 'gable' | 'hip';
+
+/** Un pan généré : son contour (même convention que `ctx.vertices` — anneau OUVERT, sans
+ *  point de fermeture dupliqué) + l'azimut de face proposé (perpendiculaire sortant de son
+ *  arête de référence). `flat` n'a pas de face — azimut ignoré côté appelant (roofType reste
+ *  'flat'). */
+export interface RoofShapePan {
+  vertices: LngLat[];
+  facingAzimuthDeg: number;
+}
+
+/** Projection ENU locale (mètres) autour d'une origine — même formule que partout ailleurs
+ *  dans roofPro11 (freeMode.toEnu, estimatorBrainV2.roofDominantAzimuthDeg). */
+function shapeToEnu(pt: LngLat, origin: LngLat): [number, number] {
+  const cosLat = Math.cos(origin[1] * DEG2RAD);
+  return [(pt[0] - origin[0]) * DEG2M * cosLat, (pt[1] - origin[1]) * DEG2M];
+}
+function shapeFromEnu(p: [number, number], origin: LngLat): LngLat {
+  const cosLat = Math.cos(origin[1] * DEG2RAD);
+  return [origin[0] + p[0] / (DEG2M * cosLat), origin[1] + p[1] / DEG2M];
+}
+
+/** Azimut (0=N, 90=E…) d'un vecteur ENU (E, N) — même convention que roofDominantAzimuthDeg. */
+function enuAzimuthDeg(de: number, dn: number): number {
+  return (Math.atan2(de, dn) / DEG2RAD + 360) % 360;
+}
+
+/** Centre (moyenne des sommets, ENU) — suffit à déterminer le côté « extérieur » d'une
+ *  arête sur un contour convexe (le cas visé : un pan de toit tracé est quasi convexe). */
+function enuVertexAverage(pts: [number, number][]): [number, number] {
+  let sx = 0;
+  let sy = 0;
+  for (const [x, y] of pts) {
+    sx += x;
+    sy += y;
+  }
+  return [sx / pts.length, sy / pts.length];
+}
+
+/** Azimut de face sortant de l'arête (a→b), perpendiculaire à l'arête et pointant à
+ *  l'opposé du centre du contour. */
+function outwardEdgeAzimuthDeg(a: [number, number], b: [number, number], center: [number, number]): number {
+  const de = b[0] - a[0];
+  const dn = b[1] - a[1];
+  // Deux perpendiculaires possibles ; on garde celle qui s'éloigne du centre.
+  const n1: [number, number] = [dn, -de];
+  const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const toMid: [number, number] = [mid[0] - center[0], mid[1] - center[1]];
+  const dot1 = n1[0] * toMid[0] + n1[1] * toMid[1];
+  const outward: [number, number] = dot1 >= 0 ? n1 : [-n1[0], -n1[1]];
+  return enuAzimuthDeg(outward[0], outward[1]);
+}
+
+/** Découpe un polygone ENU par un demi-plan (Sutherland-Hodgman) : garde les points du
+ *  côté `dot(p, normal) − offset ≤ 0`. Général (convexe ou concave), aire EXACTE de part
+ *  et d'autre (aucune perte ni double-compte à la coupe). */
+function clipHalfPlane(
+  poly: readonly [number, number][],
+  normal: [number, number],
+  offset: number,
+): [number, number][] {
+  const side = (p: [number, number]) => p[0] * normal[0] + p[1] * normal[1] - offset;
+  const lerp = (a: [number, number], b: [number, number]): [number, number] => {
+    const da = side(a);
+    const db = side(b);
+    const t = da / (da - db);
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  };
+  const out: [number, number][] = [];
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const cur = poly[i];
+    const prev = poly[(i - 1 + n) % n];
+    const curSide = side(cur);
+    const prevSide = side(prev);
+    if (curSide <= 0) {
+      if (prevSide > 0) out.push(lerp(prev, cur));
+      out.push(cur);
+    } else if (prevSide <= 0) {
+      out.push(lerp(prev, cur));
+    }
+  }
+  return out;
+}
+
+/**
+ * CAL56 — génère les pans d'un préré de forme depuis le contour FERMÉ tracé (≥ 3 sommets).
+ * PUR : aucune dimension inventée, seule la géométrie du tracé (+ la pente saisie, laissée
+ * au caller — ce module ne pose qu'un contour et un azimut par pan).
+ *  - 'flat'/'shed' : 1 pan = le contour entier (appentis = une seule face inclinée).
+ *  - 'gable' (2 pans) : coupe le long de l'arête la plus longue (axe de faîtière), à la
+ *    moitié de la profondeur perpendiculaire — deux pans qui se font face, faîtière commune
+ *    (`computeRidgeLifts` les aligne au rendu).
+ *  - 'hip' (4 pans pour un contour à 4 sommets, N pans pour un contour à N sommets) :
+ *    éventail depuis le centre — chaque arête devient la base d'un pan, l'aire totale est
+ *    EXACTEMENT conservée (identité shoelace : la somme des aires signées des triangles
+ *    (centre, sommet_i, sommet_i+1) vaut l'aire du polygone, quel que soit le point centre).
+ * Un contour < 3 sommets renvoie [] (rien à découper).
+ */
+export function generateRoofShapePans(ring: LngLat[], shape: RoofShapePreset): RoofShapePan[] {
+  if (!Array.isArray(ring) || ring.length < 3) return [];
+  if (shape === 'flat' || shape === 'shed') {
+    const origin = ring[0];
+    const enu = ring.map((p) => shapeToEnu(p, origin));
+    const center = enuVertexAverage(enu);
+    // Appentis : face = l'arête la plus longue (le grand côté donne le sens de pente,
+    // même heuristique que roofDominantAzimuthDeg). Plat : azimut ignoré par l'appelant.
+    let bestLen = -1;
+    let az = 180;
+    for (let i = 0; i < enu.length; i++) {
+      const a = enu[i];
+      const b = enu[(i + 1) % enu.length];
+      const len = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
+      if (len > bestLen) {
+        bestLen = len;
+        az = outwardEdgeAzimuthDeg(a, b, center);
+      }
+    }
+    return [{ vertices: [...ring], facingAzimuthDeg: shape === 'flat' ? 180 : az }];
+  }
+  const origin = ring[0];
+  const enu = ring.map((p) => shapeToEnu(p, origin));
+  const center = enuVertexAverage(enu);
+  if (shape === 'hip') {
+    const pans: RoofShapePan[] = [];
+    for (let i = 0; i < enu.length; i++) {
+      const a = enu[i];
+      const b = enu[(i + 1) % enu.length];
+      const triEnu: [number, number][] = [center, a, b];
+      pans.push({
+        vertices: triEnu.map((p) => shapeFromEnu(p, origin)),
+        facingAzimuthDeg: outwardEdgeAzimuthDeg(a, b, center),
+      });
+    }
+    return pans;
+  }
+  // 'gable' — axe de faîtière = direction de l'arête la plus longue.
+  let bestLen = -1;
+  let ux = 1;
+  let uy = 0;
+  for (let i = 0; i < enu.length; i++) {
+    const a = enu[i];
+    const b = enu[(i + 1) % enu.length];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = dx * dx + dy * dy;
+    if (len > bestLen) {
+      bestLen = len;
+      const l = Math.sqrt(len) || 1;
+      ux = dx / l;
+      uy = dy / l;
+    }
+  }
+  // Axe perpendiculaire (profondeur du pan) — normale unitaire de l'axe de faîtière.
+  const vx = -uy;
+  const vy = ux;
+  const proj = (p: [number, number]) => p[0] * vx + p[1] * vy;
+  let vMin = Infinity;
+  let vMax = -Infinity;
+  for (const p of enu) {
+    const v = proj(p);
+    if (v < vMin) vMin = v;
+    if (v > vMax) vMax = v;
+  }
+  const vMid = (vMin + vMax) / 2;
+  const sideA = clipHalfPlane(enu, [vx, vy], vMid); // v ≤ vMid → face vers −v (loin de la faîtière)
+  const sideB = clipHalfPlane(enu, [-vx, -vy], -vMid); // v ≥ vMid → face vers +v
+  // La face de CHAQUE pan est perpendiculaire à l'axe de faîtière, à l'opposé de la coupe —
+  // calculée DIRECTEMENT depuis l'axe (v), jamais en cherchant « la plus longue arête » du
+  // pan : celle-ci est à ÉGALITÉ entre l'égout réel et l'arête de coupe (même longueur, la
+  // faîtière étant parallèle aux égouts), un départage ambigu aurait pu retenir la coupe.
+  const pans: RoofShapePan[] = [];
+  if (sideA.length >= 3) pans.push({ vertices: sideA.map((p) => shapeFromEnu(p, origin)), facingAzimuthDeg: enuAzimuthDeg(-vx, -vy) });
+  if (sideB.length >= 3) pans.push({ vertices: sideB.map((p) => shapeFromEnu(p, origin)), facingAzimuthDeg: enuAzimuthDeg(vx, vy) });
+  return pans;
+}
+
 // ═══════════ STRUCTURE RÉELLE TAQINOR — toit plat (fiche géométrique du 18/08) ═══════════
 // Relevé sur les photos de chantier du dépôt (`equipe-pose-structure`, `mesure-rails`,
 // `champ-villa`) : la structure n'appartient PAS au panneau. Ce n'est ni un bac lesté

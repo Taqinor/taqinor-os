@@ -10,6 +10,39 @@ import { aggregateAreas, areaLabel, type AreaResult } from '../../lib/roofAreas'
 import { annualSavingsMad } from '../../lib/estimatorBrainV2';
 import { fmt, fmtMad, esc } from './dom';
 import { type Ctx } from './context';
+import { type AreaRecord } from './types';
+import { type RoofShapePan, type RoofShapePreset } from './scene3d';
+
+/**
+ * CAL56 — traduit les pans générés par `generateRoofShapePans` (scene3d.ts, géométrie pure)
+ * en `AreaRecord[]` prêts à remplacer `ctx.areas` : un pan = une zone, exactement le même
+ * objet que « + Ajouter une zone » crée à la main (mécanique multi-zones INCHANGÉE — chaque
+ * pan reste ensuite éditable individuellement via le panneau « Zones »). `makeId` est injecté
+ * (aucun Date.now()/Math.random() ici) pour rester pur et testable ; roofType = 'flat' pour
+ * le préré 'flat', 'pitched' sinon (pente = `pitchDeg` saisi par l'utilisateur, inchangé — ce
+ * module ne l'invente pas).
+ */
+export function buildAreasFromShape(
+  pans: RoofShapePan[],
+  shape: RoofShapePreset,
+  pitchDeg: number,
+  makeId: () => string,
+): AreaRecord[] {
+  return pans.map((pan) => ({
+    id: makeId(),
+    label: '',
+    vertices: pan.vertices,
+    obstacles: [],
+    roofType: shape === 'flat' ? 'flat' : 'pitched',
+    pitchDeg,
+    facingAzimuthDeg: pan.facingAzimuthDeg,
+    facingManual: shape !== 'flat',
+    neededPanels: 0,
+    neededAuto: true,
+    result: null,
+    renderPlan: null,
+  }));
+}
 
 export interface Zones {
   liveActiveResult: () => AreaResult | null;
