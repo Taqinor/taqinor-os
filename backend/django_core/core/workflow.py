@@ -92,6 +92,8 @@ __all__ = [
     'etapes_a_mi_sla',
     'marquer_rappel_envoye',
     'valider_definition_steps',
+    'cohorte_approbation',
+    'approuver_en_masse',
 ]
 
 
@@ -661,6 +663,130 @@ def decide_step(
     return rejeter_etape(
         step.instance, user=user, commentaire=commentaire, now=now,
         step=step)
+
+
+# ── NTWFL16 — approbation groupée « identique » depuis l'inbox XKB1 ──────────
+#
+# L'inbox laisse cocher PLUSIEURS lignes. Une approbation groupée n'est
+# légitime que si les lignes cochées sont réellement INTERCHANGEABLES : même
+# type d'objet (``WorkflowInstance.content_type``) ET même palier
+# (``WorkflowStepInstance.ordre``). Sinon un seul clic décide des choses de
+# natures différentes — exactement ce que la traçabilité doit interdire.
+#
+# TRAÇABILITÉ : chaque ligne retenue est décidée SÉPARÉMENT via
+# ``decide_step`` — N décisions journalisées (une ``WorkflowStepInstance``
+# avec son ``assignee``/``decided_le``/``commentaire`` par item), JAMAIS une
+# seule écriture globale pour N objets. Le commentaire unique saisi par
+# l'approbateur est recopié sur chacune.
+
+
+def cohorte_approbation(step):
+    """Clé d'interchangeabilité d'une étape : (type d'objet, palier).
+
+    Deux étapes ne sont approuvables en un seul geste que si cette clé est
+    IDENTIQUE — même ``content_type`` de cible et même ``ordre`` d'étape
+    (le palier de la chaîne). Lecture pure, aucune écriture."""
+    return (step.instance.content_type_id, step.ordre)
+
+
+def _signature_formulaire(step):
+    """Signature comparable du formulaire d'une étape (NTWFL16).
+
+    ``(formulaire_id, réponses canoniques)`` — ``(None, '{}')`` pour une
+    étape sans formulaire rattaché. Sert à n'accepter dans un même geste que
+    des lignes « sans formulaire requis » OU « avec formulaire identique
+    pré-rempli »."""
+    try:
+        donnees = json.dumps(
+            step.donnees_formulaire or {}, sort_keys=True, default=str)
+    except (TypeError, ValueError):  # pragma: no cover - défensif
+        donnees = repr(step.donnees_formulaire)
+    return (step.step_def.formulaire_id, donnees)
+
+
+@transaction.atomic
+def approuver_en_masse(steps, *, user=None, commentaire='', now=None):
+    """NTWFL16 — approuve d'un seul geste N étapes INTERCHANGEABLES.
+
+    ``steps`` est un itérable de ``WorkflowStepInstance`` DÉJÀ bornées à la
+    société de l'appelant (la vue les résout via
+    ``pending_steps_for_company``) ; ``commentaire`` est le commentaire UNIQUE
+    saisi pour le lot ; ``now`` est passé explicitement (déterminisme).
+
+    Retourne ``{'cohorte': (content_type_id, ordre), 'decisions': [étapes
+    décidées], 'exclusions': [{'step_id', 'motif'}]}`` — une ligne écartée
+    porte TOUJOURS un motif explicite en français, jamais un silence.
+
+    Sont écartées : une étape qui n'est plus en attente, une étape dont le
+    processus n'est plus en cours, une étape dont un formulaire requis
+    (NTWFL12) n'est pas complété, et une étape dont le formulaire diverge de
+    celui des autres lignes retenues.
+
+    Lève ``ValueError`` si la sélection est vide ou mélange plusieurs
+    cohortes (types d'objet ou paliers différents) — aucune approbation
+    « à peu près identique » n'est acceptée."""
+    moment = _resolve_now(now)
+    selection = list(steps)
+    if not selection:
+        raise ValueError("Aucune étape sélectionnée.")
+
+    cohortes = {cohorte_approbation(s) for s in selection}
+    if len(cohortes) > 1:
+        raise ValueError(
+            "L'approbation groupée exige le MÊME type d'objet et le MÊME "
+            f"palier pour toutes les lignes : {len(cohortes)} combinaisons "
+            "distinctes ont été sélectionnées.")
+    cohorte = next(iter(cohortes))
+
+    exclusions = []
+    candidats = []
+    for step in selection:
+        if step.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
+            exclusions.append({
+                'step_id': step.pk,
+                'motif': "Cette étape n'est plus en attente de décision.",
+            })
+            continue
+        if step.instance.statut != WorkflowInstance.STATUT_EN_COURS:
+            exclusions.append({
+                'step_id': step.pk,
+                'motif': "Le processus de cet élément n'est plus en cours.",
+            })
+            continue
+        if _formulaire_incomplet(step):
+            exclusions.append({
+                'step_id': step.pk,
+                'motif': (
+                    "Formulaire requis non complété : cet élément est exclu "
+                    "de l'approbation groupée, décidez-le individuellement."),
+            })
+            continue
+        candidats.append(step)
+
+    reference = _signature_formulaire(candidats[0]) if candidats else None
+    retenus = []
+    for step in candidats:
+        if _signature_formulaire(step) != reference:
+            exclusions.append({
+                'step_id': step.pk,
+                'motif': (
+                    "Formulaire différent de celui des autres lignes "
+                    "sélectionnées : cet élément est exclu de l'approbation "
+                    "groupée."),
+            })
+            continue
+        retenus.append(step)
+
+    decisions = [
+        decide_step(step, approve=True, user=user, commentaire=commentaire,
+                    now=moment)
+        for step in retenus
+    ]
+    return {
+        'cohorte': cohorte,
+        'decisions': decisions,
+        'exclusions': exclusions,
+    }
 
 
 # ── NTWFL3 — délégation de vacances (XKB3) branchée sur le moteur BPM ───────

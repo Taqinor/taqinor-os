@@ -33,6 +33,7 @@ from rest_framework.views import APIView
 from authentication.permissions import (
     IsAdminOrResponsableTier,
     IsAdminRole,
+    IsAnyRole,
     IsResponsableOrAdmin,
 )
 
@@ -313,6 +314,91 @@ class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
         ctx = super().get_serializer_context()
         ctx['require_definition'] = True
         return ctx
+
+
+@extend_schema(
+    request=inline_serializer(
+        name='ApprobationGroupeeRequest',
+        fields={
+            'step_ids': drf_serializers.ListField(
+                child=drf_serializers.IntegerField()),
+            'commentaire': drf_serializers.CharField(required=False),
+        },
+    ),
+    responses={200: inline_serializer(
+        name='ApprobationGroupeeResponse',
+        fields={
+            'approuves': drf_serializers.ListField(
+                child=drf_serializers.IntegerField()),
+            'exclusions': drf_serializers.JSONField(),
+        },
+    )},
+)
+@api_view(['POST'])
+@permission_classes([IsAnyRole])
+def approuver_etapes_en_masse(request):
+    """NTWFL16 — ``POST core/workflows/approuver-en-masse/``.
+
+    Corps : ``{"step_ids": [1, 2, 3], "commentaire": "…"}``. Approuve d'un
+    seul geste des étapes BPM INTERCHANGEABLES (même type d'objet + même
+    palier) avec UN commentaire, en journalisant chaque décision
+    SÉPARÉMENT (N décisions, jamais un seul journal pour N objets).
+
+    Les ``step_ids`` sont résolus dans les seules étapes en attente de la
+    société de l'appelant (``pending_steps_for_company``) — un id d'une autre
+    société est simplement introuvable. Une sélection hétérogène (paliers ou
+    types d'objet différents) est refusée en 400 avec un message explicite ;
+    une ligne dont le formulaire requis n'est pas rempli est ÉCARTÉE avec son
+    motif, sans bloquer les autres."""
+    from . import workflow as workflow_engine
+
+    company = getattr(request.user, 'company', None)
+    if company is None:
+        return Response(
+            {'detail': "Utilisateur sans société."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    demandes = (request.data or {}).get('step_ids') or []
+    try:
+        voulus = {int(v) for v in demandes}
+    except (TypeError, ValueError):
+        return Response(
+            {'detail': "Le champ « step_ids » doit être une liste d'entiers."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not voulus:
+        return Response(
+            {'detail': "Champ « step_ids » requis (au moins une étape)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    en_attente = workflow_engine.pending_steps_for_company(company)
+    steps = [s for s in en_attente if s.pk in voulus]
+    introuvables = sorted(voulus - {s.pk for s in steps})
+    if not steps:
+        return Response(
+            {'detail': "Aucune étape en attente ne correspond à la sélection."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    commentaire = ((request.data or {}).get('commentaire') or '').strip()
+    try:
+        resultat = workflow_engine.approuver_en_masse(
+            steps, user=request.user, commentaire=commentaire)
+    except ValueError as exc:
+        return Response(
+            {'detail': str(exc)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    exclusions = list(resultat['exclusions'])
+    for step_id in introuvables:
+        exclusions.append({
+            'step_id': step_id,
+            'motif': ("Étape introuvable ou déjà décidée : hors de "
+                      "l'approbation groupée."),
+        })
+    return Response({
+        'approuves': [s.pk for s in resultat['decisions']],
+        'exclusions': exclusions,
+    })
 
 
 class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):

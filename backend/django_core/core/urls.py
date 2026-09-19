@@ -78,6 +78,7 @@ from .views import (
     WorkflowDefinitionViewSet,
     WorkflowStepDefinitionViewSet,
     WorkflowTemplateViewSet,
+    approuver_etapes_en_masse,
     db_stats_view,
     health_live,
     health_ready,
@@ -170,6 +171,10 @@ router.register(r'ui-boutons', UiActionBoutonViewSet, basename='ui-bouton')
 router.register(r'ui-onglets', UiOngletCustomViewSet, basename='ui-onglet')
 
 urlpatterns = router.urls + [
+    # NTWFL16 — approbation groupée « identique » (même type d'objet + même
+    # palier), un commentaire unique, N décisions journalisées séparément.
+    path('workflows/approuver-en-masse/', approuver_etapes_en_masse,
+         name='workflows-approuver-en-masse'),
     # XPLT10 — accès public lecture seule (aucune identité de confiance,
     # résolu depuis le seul jeton) + mode TV (rotation des dashboards partagés).
     path('dashboards-partages/public/<str:token>/', dashboard_public,
