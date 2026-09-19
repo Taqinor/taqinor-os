@@ -512,6 +512,96 @@ def charge_approbateurs_view(request):
         company, periode=request.query_params.get('periode'), seuil=seuil))
 
 
+#: NTWFL34 — colonnes de la piste d'audit des décisions, dans l'ordre affiché
+#: à l'écran ET dans le classeur (une seule source de vérité pour les deux).
+_COLONNES_CONFORMITE = [
+    ('source', 'Source'),
+    ('objet', 'Objet'),
+    ('etape', 'Étape'),
+    ('decision', 'Décision'),
+    ('montant', 'Montant'),
+    ('approbateur', 'Approbateur'),
+    ('decide_le', 'Décidé le'),
+    ('delai_heures', 'Délai de décision (h)'),
+    ('delegation', 'Décidé au nom de'),
+]
+
+
+@extend_schema(responses={200: inline_serializer(
+    name='RapportConformiteResponse',
+    fields={
+        'periode': drf_serializers.CharField(allow_null=True),
+        'colonnes': drf_serializers.JSONField(),
+        'decisions': drf_serializers.JSONField(),
+        'sources': drf_serializers.JSONField(),
+        'sources_en_erreur': drf_serializers.JSONField(),
+    },
+)})
+@api_view(['GET'])
+@permission_classes([IsAdminOrResponsableTier])
+def rapport_conformite_view(request):
+    """NTWFL34 — ``GET core/workflows/rapport-conformite/?periode=AAAA-MM``.
+
+    Piste d'audit EXTERNE des DÉCISIONS d'approbation (pas de la conformité
+    qualité) : source, objet, montant, approbateur, délai de décision et
+    délégation éventuelle, scopés société. ``?format=xlsx`` renvoie le
+    classeur téléchargeable ; sans ``periode``, tout l'historique.
+
+    Les sources hors ``core`` sont celles que les apps ont branchées via
+    ``core.workflow.register_source_conformite`` ; le rapport dit lesquelles
+    ont été interrogées et lesquelles ont échoué — il ne se prétend jamais
+    complet quand il ne l'est pas."""
+    from . import workflow as workflow_engine
+
+    company = getattr(request.user, 'company', None)
+    periode = request.query_params.get('periode')
+    rapport = workflow_engine.decisions_conformite(company, periode=periode)
+    if request.query_params.get('format') == 'xlsx':
+        return _conformite_xlsx_response(rapport)
+    rapport['colonnes'] = [
+        {'cle': cle, 'libelle': libelle}
+        for cle, libelle in _COLONNES_CONFORMITE
+    ]
+    return Response(rapport)
+
+
+def _conformite_xlsx_response(rapport):
+    """Classeur .xlsx de la piste d'audit des décisions (NTWFL34)."""
+    import io
+
+    from django.http import HttpResponse
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Decisions approbation'
+    ws.append([libelle for _, libelle in _COLONNES_CONFORMITE])
+    for ligne in rapport['decisions']:
+        cellules = []
+        for cle, _ in _COLONNES_CONFORMITE:
+            valeur = ligne.get(cle)
+            if cle == 'decide_le' and valeur is not None:
+                # openpyxl refuse un datetime AWARE : on le ramène en heure
+                # locale métier avant de retirer le fuseau (jamais un décalage
+                # silencieux vers UTC dans une pièce d'audit).
+                from .dates import maintenant_local
+                valeur = maintenant_local(valeur).replace(tzinfo=None)
+            cellules.append(valeur)
+        ws.append(cellules)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    filename = (
+        f"decisions-approbation-{rapport.get('periode') or 'historique'}.xlsx")
+    resp = HttpResponse(
+        buffer.getvalue(),
+        content_type=('application/vnd.openxmlformats-officedocument.'
+                      'spreadsheetml.sheet'))
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
 class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG381 — dashboards sans-code, sauvegardés par utilisateur/société.
 

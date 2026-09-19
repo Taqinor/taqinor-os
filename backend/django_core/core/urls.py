@@ -87,6 +87,7 @@ from .views import (
     maintenance_toggle,
     mes_processus_view,
     metrics_view,
+    rapport_conformite_view,
     secrets_rotation_due,
 )
 
@@ -188,6 +189,10 @@ urlpatterns = router.urls + [
     # jamais redistribuée automatiquement).
     path('workflows/charge-approbateurs/', charge_approbateurs_view,
          name='workflows-charge-approbateurs'),
+    # NTWFL34 — piste d'audit EXTERNE des décisions d'approbation (JSON ou
+    # classeur .xlsx via ?format=xlsx).
+    path('workflows/rapport-conformite/', rapport_conformite_view,
+         name='workflows-rapport-conformite'),
     path('workflows/<int:pk>/analyse/', analyse_goulots_workflow_view,
          name='workflows-analyse-goulots'),
     # XPLT10 — accès public lecture seule (aucune identité de confiance,

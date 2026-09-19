@@ -94,6 +94,8 @@ __all__ = [
     'valider_definition_steps',
     'cohorte_approbation',
     'approuver_en_masse',
+    'register_source_conformite',
+    'decisions_conformite',
 ]
 
 
@@ -822,6 +824,145 @@ def delegants_actifs_pour(suppleant, company, at=None):
         return list(_delegation_resolver(suppleant, company, at=at) or [])
     except Exception:  # pragma: no cover - défensif
         return []
+
+
+# ── NTWFL34 — piste d'audit EXTERNE des décisions d'approbation ──────────────
+#
+# Un auditeur externe demande « montrez-moi toutes les décisions d'approbation
+# du mois de mars, qui a décidé, en combien de temps, et au nom de qui ». Cette
+# piste doit couvrir TOUTES les sources d'approbation de la maison, or ``core``
+# est une couche de FONDATION : il ne peut pas importer ``apps.automation``,
+# ``apps.contrats`` ni ``apps.ged`` pour aller lire leurs décisions.
+#
+# Même patron que ``register_delegation_resolver`` / le registre de calendrier
+# ouvré : chaque app BRANCHE sa source dans son ``apps.py ready()``, ``core``
+# n'en connaît que la signature. La source native FG366 (ce moteur) est
+# toujours présente, sans registre. Chaque source est appelée en BEST-EFFORT :
+# une app qui casse ne fait jamais tomber le rapport entier, elle disparaît
+# simplement de la ligne — et le rapport DIT lesquelles ont échoué plutôt que
+# de laisser croire à une piste complète.
+
+SOURCE_CONFORMITE_BPM = 'workflow'
+
+#: ``{nom: fn(company, periode) -> [ligne, ...]}`` — branché par les apps.
+_sources_conformite = {}
+
+#: Motif posé par ``decide_step`` quand la décision est prise « au nom de ».
+_MOTIF_DELEGATION = re.compile(
+    r'^\[Décidé par .+? au nom de (?P<delegant>.+?)\]')
+
+
+def register_source_conformite(nom, fn):
+    """Enregistre une source de décisions pour la piste d'audit (NTWFL34).
+
+    ``fn(company, periode) -> [{'source', 'objet', 'montant', 'approbateur',
+    'decide_le', 'delai_heures', 'delegation'}, ...]``. Appelée par le
+    ``ready()`` de l'app propriétaire des décisions. Un second appel du même
+    ``nom`` REMPLACE la source (jamais d'accumulation silencieuse)."""
+    _sources_conformite[nom] = fn
+
+
+def _delegation_depuis_commentaire(commentaire):
+    """Nom du délégant si la décision a été prise « au nom de », sinon ''."""
+    trouve = _MOTIF_DELEGATION.match(commentaire or '')
+    return trouve.group('delegant') if trouve else ''
+
+
+def _decisions_conformite_bpm(company, periode=None):
+    """Décisions du moteur BPM FG366 (source NATIVE de ``core``).
+
+    ``montant`` reste VIDE : une ``WorkflowInstance`` ne porte aucun montant
+    (sa cible générique n'est pas introspectée pour en devenir un) — mieux
+    vaut une colonne vide qu'un chiffre déduit. Les sources branchées par les
+    apps, qui connaissent leurs objets, la remplissent."""
+    qs = (
+        WorkflowStepInstance.objects
+        .filter(company=company, decided_le__isnull=False)
+        .exclude(statut=WorkflowStepInstance.STATUT_EN_ATTENTE)
+        .select_related('instance', 'instance__definition',
+                        'instance__content_type', 'assignee')
+    )
+    if periode:
+        try:
+            annee, mois = (int(p) for p in str(periode).split('-')[:2])
+        except (TypeError, ValueError):
+            pass
+        else:
+            qs = qs.filter(decided_le__year=annee, decided_le__month=mois)
+
+    lignes = []
+    for step in qs.order_by('decided_le', 'id'):
+        ct = step.instance.content_type
+        cible = (f'{ct.app_label}.{ct.model} #{step.instance.object_id}'
+                 if ct else f'#{step.instance.object_id}')
+        delai = None
+        if step.created_at and step.decided_le:
+            delai = round(
+                (step.decided_le - step.created_at).total_seconds() / 3600.0, 4)
+        lignes.append({
+            'source': SOURCE_CONFORMITE_BPM,
+            'objet': (f'{step.instance.definition.code} '
+                      f'#{step.instance_id} → {cible}'),
+            'etape': step.step_def.nom if step.step_def_id else '',
+            'decision': step.get_statut_display(),
+            'montant': None,
+            'approbateur': (str(step.assignee) if step.assignee_id else ''),
+            'decide_le': step.decided_le,
+            'delai_heures': delai,
+            'delegation': _delegation_depuis_commentaire(step.commentaire),
+        })
+    return lignes
+
+
+def decisions_conformite(company, periode=None):
+    """NTWFL34 — TOUTES les décisions d'approbation d'une société.
+
+    ``periode`` : chaîne ``'AAAA-MM'`` (un mois) ou ``None`` (tout
+    l'historique). Renvoie ``{'periode', 'decisions', 'sources',
+    'sources_en_erreur'}`` : ``decisions`` est trié par date de décision (les
+    lignes sans date en dernier), ``sources`` liste les sources réellement
+    interrogées et ``sources_en_erreur`` celles qui ont échoué — un rapport
+    d'audit ne prétend JAMAIS être complet quand il ne l'est pas.
+
+    Toujours borné à ``company`` ; ``None`` renvoie un rapport vide."""
+    rapport = {'periode': periode or None, 'decisions': [],
+               'sources': [], 'sources_en_erreur': []}
+    if company is None:
+        return rapport
+
+    fournisseurs = [(SOURCE_CONFORMITE_BPM, _decisions_conformite_bpm)]
+    fournisseurs += sorted(_sources_conformite.items())
+
+    lignes = []
+    for nom, fn in fournisseurs:
+        try:
+            produites = list(fn(company, periode) or [])
+        except Exception:  # noqa: BLE001 — une source cassée n'emporte pas tout
+            rapport['sources_en_erreur'].append(nom)
+            continue
+        rapport['sources'].append(nom)
+        for ligne in produites:
+            ligne.setdefault('source', nom)
+            lignes.append(ligne)
+
+    lignes.sort(key=_cle_tri_conformite)
+    rapport['decisions'] = lignes
+    return rapport
+
+
+def _cle_tri_conformite(ligne):
+    """Clé de tri d'une ligne d'audit : date de décision, puis source, objet.
+
+    Trie sur l'HORODATAGE (float) plutôt que sur le ``datetime`` lui-même :
+    une source branchée par une app pourrait renvoyer un datetime naïf, et
+    comparer un naïf à un aware lèverait ``TypeError`` en plein rapport."""
+    moment = ligne.get('decide_le')
+    try:
+        horodatage = moment.timestamp()
+    except (AttributeError, ValueError, OSError, OverflowError):
+        horodatage = 0.0
+    return (moment is None, horodatage,
+            str(ligne.get('source') or ''), str(ligne.get('objet') or ''))
 
 
 # ── NTWFL9 — validation d'une définition AVANT sauvegarde ───────────────────
