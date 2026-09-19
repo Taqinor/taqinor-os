@@ -1,0 +1,217 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/resultat/",
+  "pourquoi": "Le `resultat` d'un calepinage : ce que la pose donne une fois l'électricité chaînée et la production simulée. PACT10 — POURQUOI CE CONTRAT PART SEUL : ce `resultat` est consommé par au moins QUATRE moitiés d'écran (carte des chaînes CAL126, panneau Production CAL236, diagramme de pertes CAL143, comparatif de variantes CAL145) et produit par autant de services ; publier le contrat DANS la tâche productrice ne prévient rien, puisque les lanes consommatrices sont file-disjointes d'elle et auraient déjà inventé leurs clés. Il atterrit donc SEUL sur `main` d'abord, sans une ligne de code. AUCUNE CLÉ INVENTÉE — d'où vient chaque bloc : `electrique.chainage` reprend `core/calepinage/electrique.Chainage` (`modules`, `modules_par_chaine`, `chaines`, `reste`, `puissance_module_wc`) et `electrique.onduleurs` reprend `Onduleurs` (`taille_kw`, `nombre`, `puissance_dc_kwc`, `conforme`, `motif`) ; les `verdicts` reprennent les contrôles réellement évalués par `apps/ventes/compatibilites.py` (`voc_cold_under_vmax`, `vmp_cold_under_mppt_max`, `vmp_hot_over_mppt_min`, courant par entrée MPPT via `i_max_mppt_a`/`n_mppt`, ratio DC/AC) ; `production` reprend `apps/ventes/etude._pr_block` (`performance_ratio`, `total_loss_pct`, `loss_breakdown`, `p50_kwh`, `p75_kwh`, `p90_kwh`, `annual_variability`, `specific_yield_kwh_kwc`) ; les postes de `pertes` sont ceux de `DEFAULT_LOSS_FACTORS` (`temperature`, `soiling`, `wiring`, `inverter`, `mismatch`, `availability`) plus `shading`, mesuré par le tracé d'ombres. L'AFFECTATION EST NOMINATIVE : `electrique.affectation` donne, module par module, sa chaîne ET son entrée MPPT — c'est la table que CAL126 teinte, et sans elle l'écran recalculerait une partition (donc une AUTRE partition que celle qui a été dimensionnée). CHAQUE POSTE DE PERTE PORTE SA SOURCE (`fiche`, `saisie`, `pvgis`, `mesure`, `hypothese`) : décision CAL238 — `loss` est une ENTRÉE d'appel PVGIS, le module passe TOUJOURS la somme explicite de ses postes et affiche la valeur passée ; jamais un 14 % ni un 20 % caché. Un poste non sourcé est rendu tel quel (`source: null`) pour que l'écran le hachure et le nomme, jamais pour qu'il disparaisse. DISCIPLINE DU NULL — `exemple_vide` = calepinage POSÉ mais NON SIMULÉ : la pose est un fait (modules et kWc sont connus et restent chiffrés), l'électrique n'a pas été chaîné et la production n'a pas été lancée — toutes leurs clés sont PRÉSENTES et valent `null`, jamais `0`. Un `0 kWh` se lirait « cette toiture ne produit rien » là où personne n'a lancé de simulation ; un `PR = 0` se lirait « installation catastrophique ». Les listes non produites sont vides (`[]`), ce qui se distingue sans ambiguïté d'une liste de zéros. Valeurs : des PLACEHOLDERS assumés (repères « d'essai », empreinte visiblement factice), aucun chiffre client, aucun prix, aucun prix d'achat.",
+  "exemple": {
+    "calepinage": 1,
+    "variante": 11,
+    "simule": true,
+    "calcule_le": "2026-09-19T11:30:00Z",
+    "schema_version": 1,
+    "hash_entree": "abababababababababababababababababababababababababababababababab",
+    "version_moteur": "non-publie-dans-cet-exemple",
+    "pose": {
+      "total_modules": 12,
+      "kwc": 8.64,
+      "puissance_module_wc": 720,
+      "pans": [
+        { "pan": "PAN-A", "modules": 8, "kwc": 5.76, "azimut_deg": 180.0, "inclinaison_deg": 15.0 },
+        { "pan": "PAN-B", "modules": 4, "kwc": 2.88, "azimut_deg": 90.0, "inclinaison_deg": 15.0 }
+      ]
+    },
+    "electrique": {
+      "chainage": {
+        "modules": 12,
+        "modules_par_chaine": 6,
+        "chaines": 2,
+        "reste": 0,
+        "puissance_module_wc": 720
+      },
+      "onduleurs": [
+        {
+          "reference": "ONDULEUR-ESSAI-1",
+          "taille_kw": 10.0,
+          "nombre": 1,
+          "puissance_dc_kwc": 8.64,
+          "ratio_dc_ac": 0.864,
+          "n_mppt": 2,
+          "conforme": true,
+          "motif": ""
+        }
+      ],
+      "affectation": [
+        { "module": "PAN-A#1", "pan": "PAN-A", "chaine": 1, "onduleur": 1, "mppt": 1 },
+        { "module": "PAN-A#2", "pan": "PAN-A", "chaine": 1, "onduleur": 1, "mppt": 1 },
+        { "module": "PAN-B#1", "pan": "PAN-B", "chaine": 2, "onduleur": 1, "mppt": 2 },
+        { "module": "PAN-B#2", "pan": "PAN-B", "chaine": 2, "onduleur": 1, "mppt": 2 },
+        { "module": "PAN-B#3", "pan": "PAN-B", "chaine": null, "onduleur": null, "mppt": null }
+      ],
+      "verdicts": [
+        {
+          "code": "voc_cold_under_vmax",
+          "libelle": "Voc à froid sous la tension maximale admissible de l'onduleur",
+          "conforme": true,
+          "bloquant": true,
+          "source": "fiche",
+          "detail": ""
+        },
+        {
+          "code": "vmp_cold_under_mppt_max",
+          "libelle": "Vmp à froid dans le haut de la plage MPPT",
+          "conforme": true,
+          "bloquant": true,
+          "source": "fiche",
+          "detail": ""
+        },
+        {
+          "code": "vmp_hot_over_mppt_min",
+          "libelle": "Vmp à chaud au-dessus du bas de la plage MPPT",
+          "conforme": true,
+          "bloquant": true,
+          "source": "fiche",
+          "detail": ""
+        },
+        {
+          "code": "courant_par_entree_mppt",
+          "libelle": "Courant par entrée MPPT sous le courant admissible",
+          "conforme": true,
+          "bloquant": true,
+          "source": "fiche",
+          "detail": ""
+        },
+        {
+          "code": "ratio_dc_ac",
+          "libelle": "Ratio DC/AC dans la fourchette retenue par la société",
+          "conforme": true,
+          "bloquant": false,
+          "source": "saisie",
+          "detail": ""
+        }
+      ]
+    },
+    "production": {
+      "base": {
+        "source": "pvgis",
+        "fenetre_annees": "à renseigner par la réponse PVGIS",
+        "loss_passee_pct": 20.1,
+        "commentaire": "CAL238 — `loss` est une ENTRÉE d'appel : la valeur passée est la somme explicite des postes ci-dessous, jamais un défaut caché."
+      },
+      "total": {
+        "kwc": 8.64,
+        "p50_kwh": 13000.0,
+        "p75_kwh": 12400.0,
+        "p90_kwh": 11900.0,
+        "performance_ratio": 0.799,
+        "specific_yield_kwh_kwc": 1504.6,
+        "annual_variability": 0.06,
+        "total_loss_pct": 20.1
+      },
+      "mensuel": [
+        { "mois": 1, "p50_kwh": 880.0 },
+        { "mois": 2, "p50_kwh": 920.0 },
+        { "mois": 3, "p50_kwh": 1120.0 },
+        { "mois": 4, "p50_kwh": 1190.0 },
+        { "mois": 5, "p50_kwh": 1260.0 },
+        { "mois": 6, "p50_kwh": 1250.0 },
+        { "mois": 7, "p50_kwh": 1280.0 },
+        { "mois": 8, "p50_kwh": 1240.0 },
+        { "mois": 9, "p50_kwh": 1130.0 },
+        { "mois": 10, "p50_kwh": 1030.0 },
+        { "mois": 11, "p50_kwh": 870.0 },
+        { "mois": 12, "p50_kwh": 830.0 }
+      ],
+      "par_pan": [
+        {
+          "pan": "PAN-A",
+          "modules": 8,
+          "kwc": 5.76,
+          "p50_kwh": 8900.0,
+          "p75_kwh": 8490.0,
+          "p90_kwh": 8150.0,
+          "performance_ratio": 0.81,
+          "specific_yield_kwh_kwc": 1545.1,
+          "shading_annual_loss_pct": 2.1
+        },
+        {
+          "pan": "PAN-B",
+          "modules": 4,
+          "kwc": 2.88,
+          "p50_kwh": 4100.0,
+          "p75_kwh": 3910.0,
+          "p90_kwh": 3750.0,
+          "performance_ratio": 0.78,
+          "specific_yield_kwh_kwc": 1423.6,
+          "shading_annual_loss_pct": 5.9
+        }
+      ]
+    },
+    "pertes": [
+      { "poste": "shading", "libelle": "Horizon et ombrage proche", "pct": 3.4, "source": "mesure" },
+      { "poste": "temperature", "libelle": "Échauffement cellule au-dessus du STC", "pct": 8.0, "source": "hypothese" },
+      { "poste": "soiling", "libelle": "Salissure et poussière", "pct": 3.0, "source": "hypothese" },
+      { "poste": "wiring", "libelle": "Pertes ohmiques DC et AC", "pct": 2.0, "source": "hypothese" },
+      { "poste": "inverter", "libelle": "Rendement de conversion onduleur", "pct": 2.5, "source": "fiche" },
+      { "poste": "mismatch", "libelle": "Dispersion modules, connectique, LID", "pct": 2.0, "source": "hypothese" },
+      { "poste": "availability", "libelle": "Indisponibilité réseau et maintenance", "pct": 1.0, "source": null }
+    ],
+    "avertissements": []
+  },
+  "exemple_vide": {
+    "calepinage": 2,
+    "variante": 21,
+    "simule": false,
+    "calcule_le": null,
+    "schema_version": 1,
+    "hash_entree": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "version_moteur": null,
+    "pose": {
+      "total_modules": 12,
+      "kwc": 8.64,
+      "puissance_module_wc": 720,
+      "pans": [
+        { "pan": "PAN-A", "modules": 12, "kwc": 8.64, "azimut_deg": 180.0, "inclinaison_deg": 15.0 }
+      ]
+    },
+    "electrique": {
+      "chainage": null,
+      "onduleurs": [],
+      "affectation": [],
+      "verdicts": []
+    },
+    "production": {
+      "base": {
+        "source": null,
+        "fenetre_annees": null,
+        "loss_passee_pct": null,
+        "commentaire": "Aucune simulation lancée : aucune perte n'a été passée à PVGIS."
+      },
+      "total": {
+        "kwc": 8.64,
+        "p50_kwh": null,
+        "p75_kwh": null,
+        "p90_kwh": null,
+        "performance_ratio": null,
+        "specific_yield_kwh_kwc": null,
+        "annual_variability": null,
+        "total_loss_pct": null
+      },
+      "mensuel": [],
+      "par_pan": [
+        {
+          "pan": "PAN-A",
+          "modules": 12,
+          "kwc": 8.64,
+          "p50_kwh": null,
+          "p75_kwh": null,
+          "p90_kwh": null,
+          "performance_ratio": null,
+          "specific_yield_kwh_kwc": null,
+          "shading_annual_loss_pct": null
+        }
+      ]
+    },
+    "pertes": [],
+    "avertissements": [
+      "Calepinage non simulé : la pose est connue, la production ne l'est pas."
+    ]
+  }
+}
