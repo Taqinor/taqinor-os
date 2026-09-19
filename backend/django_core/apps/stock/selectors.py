@@ -1717,6 +1717,40 @@ def specs_for_produit(produit):
     return out
 
 
+def dimensions_de_pose(produit):
+    """CAL119 — sélecteur « dimensions de pose », pour construire un kit de
+    calepinage depuis un produit réel.
+
+    ``core/calepinage`` travaillait sur des ``Kit`` aux dimensions écrites
+    en dur (``core/calepinage/types.py``) et l'unique passerelle
+    produit→kit vivait côté AO (``apps/ao/services.py``
+    ``kit_panneau_du_produit``), inaccessible à une autre app sans importer
+    ``apps.ao``. Ce sélecteur rend le même sous-ensemble, lu directement sur
+    ``FicheTechnique`` (PV5/CAL111-118), pour que ``apps.calepinage``
+    construise son kit SANS importer ``apps.ao`` ni ``apps.stock.models``.
+
+    Rend ``{longueur_mm, largeur_mm, epaisseur_mm, poids_kg, puissance_wc}``
+    — clé ABSENTE (jamais ``None``) si non saisie sur la fiche. Produit sans
+    fiche, ou fiche dont ``type_fiche`` n'est pas ``'module'`` → dict VIDE
+    (un kit de pose se construit depuis un MODULE, jamais un onduleur/une
+    batterie). Lecture seule."""
+    fiche = getattr(produit, 'fiche_technique', None)
+    if fiche is None or fiche.type_fiche != 'module':
+        return {}
+
+    out = {}
+    for key, value in (
+        ('longueur_mm', fiche.longueur_mm),
+        ('largeur_mm', fiche.largeur_mm),
+        ('epaisseur_mm', fiche.epaisseur_mm),
+        ('poids_kg', fiche.poids_kg),
+        ('puissance_wc', fiche.pmax_wc),
+    ):
+        if value is not None:
+            out[key] = value
+    return out
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # PVOND — CONTRAT DE DONNÉES « ONDULEUR » : ajouter un onduleur demain doit
 # être de la pure SAISIE, jamais du code.
