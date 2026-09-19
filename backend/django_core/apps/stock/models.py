@@ -2176,6 +2176,31 @@ class FicheTechnique(models.Model):
                   'modèle Uc-Uv (W/m³sK — « /(m/s)/m²/K »). Vide = non '
                   'publié.')
 
+    # ── CAL113 — dégradation annuelle & paliers de garantie du module. ──
+    #
+    # Ces valeurs vivaient en constantes de code
+    # (``apps/ventes/solar_design.py`` : ``DEFAULT_WARRANTY_FLOORS =
+    # {10: 0.90, 25: 0.80}``, ``DEFAULT_YEAR1_DEGRADATION = 0.02``) alors que
+    # la datasheet les publie. Optionnels — vides = « non publié » : le
+    # moteur ventes retombe alors sur son hypothèse de référence et LE DIT
+    # (discipline déjà appliquée au rendement aller-retour batterie).
+    degradation_annuelle_pct = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        help_text='Dégradation annuelle linéaire publiée (%/an), années '
+                  '2+. Vide = non publié.')
+    degradation_annee1_pct = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        help_text='Dégradation de la première année publiée (%). Vide = '
+                  'non publié.')
+    garantie_pct_a_10_ans = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text='Palier de garantie de production à 10 ans publié (% de '
+                  'Pmax nominal). Vide = non publié.')
+    garantie_pct_a_25_ans = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text='Palier de garantie de production à 25 ans publié (% de '
+                  'Pmax nominal). Vide = non publié.')
+
     # ── PV5 — Onduleur ──
     ond_n_mppt = models.PositiveSmallIntegerField(
         null=True, blank=True, help_text="Nombre d'entrées MPPT.")
