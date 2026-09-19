@@ -3410,6 +3410,59 @@ class SearchChunk(TenantModel):
         return f'{self.content_type}#{self.object_id} — {self.titre}'
 
 
+# ---------------------------------------------------------------------------
+# NTOBS21 — Réglages de FIABILITÉ par société : qui veut être prévenu de quoi.
+#
+# Les trois canaux d'information « fiabilité » (fenêtre de maintenance
+# planifiée, quota d'usage bientôt atteint, incident sur une région) partaient
+# jusqu'ici selon une politique unique, la même pour toutes les sociétés — donc
+# soit trop bavarde pour l'une, soit muette pour l'autre. Ce modèle porte le
+# choix de CHAQUE société, en un seul endroit.
+#
+# UNE ligne par société (``OneToOneField``) : ces réglages n'ont pas
+# d'historique, ils ont un ÉTAT courant. L'absence de ligne vaut les défauts
+# déclarés ici (tout activé, aucune région filtrée) — le lecteur applique donc
+# le comportement actuel tant qu'une société n'a rien réglé, sans migration de
+# données.
+#
+# ``core`` reste fondation : aucun import d'app métier (``authentication`` est
+# une app de fondation). Le consommateur est ``core/usage_limits.py``.
+# ---------------------------------------------------------------------------
+
+
+class ReliabilitySettings(TimestampedModel):
+    """Réglages de fiabilité d'une société (NTOBS21).
+
+    Trois interrupteurs de notification plus un filtre de région. Défauts =
+    comportement actuel : une société qui n'a jamais ouvert cet écran reçoit
+    exactement ce qu'elle recevait avant.
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant (societe)
+        related_name='reliability_settings', verbose_name='Société')
+
+    notifier_maintenance_email = models.BooleanField(
+        'Prévenir par e-mail des maintenances', default=True)
+    notifier_quota_email = models.BooleanField(
+        'Prévenir par e-mail des quotas', default=True)
+    notifier_incident_region = models.CharField(
+        'Région suivie pour les incidents', max_length=100,
+        null=True, blank=True, default='',
+        help_text='Vide = tous les incidents, sans filtre de région.')
+    afficher_badge_sla_dashboard = models.BooleanField(
+        'Afficher le badge SLA sur le tableau de bord', default=True)
+
+    class Meta:
+        verbose_name = 'Réglages de fiabilité'
+        verbose_name_plural = 'Réglages de fiabilité'
+        ordering = ['company_id']
+
+    def __str__(self):
+        return f'Fiabilité — société {self.company_id}'
+
+
 # NTSEC21 — Partage niveau enregistrement : ``SharingRule`` défini dans
 # ``core/sharing.py`` (même pattern d'éclatement que ``core/idempotency.py``),
 # réexporté ici en tout dernier pour que la découverte Django (app_label 'core',
