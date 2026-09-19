@@ -1581,7 +1581,9 @@ def specs_for_produit(produit):
         (les quatre dernières, CAL115) ;
       * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
         max_charge_kw, max_decharge_kw, max_modules_par_banc,
-        rendement_ar_pct}``.
+        rendement_ar_pct}`` ;
+      * ``optimiseur`` (CAL116) → ``{pmax_in_w, v_in_min, v_in_max,
+        i_in_max_a, rendement_pct, modules_par_optimiseur}``.
 
     ⚠ LE DICT RENDU EST PLAT — c'est le BLOC du ``type_fiche``, pas un dict de
     blocs : lire ``specs_for_produit(p)['batterie']`` rend toujours ``None``.
@@ -1689,6 +1691,19 @@ def specs_for_produit(produit):
             # champ récent — absent ≡ NULL (non publié, hypothèse déclarée).
             ('rendement_ar_pct',
              getattr(fiche, 'bat_rendement_ar_pct', None)),
+        ):
+            _put(out, key, value)
+    elif fiche.type_fiche == 'optimiseur':
+        # CAL116 — optimiseur de puissance / micro-onduleur : bloc neuf,
+        # aucune fiche existante n'en porte le type avant cette tâche.
+        for key, value in (
+            ('pmax_in_w', getattr(fiche, 'opt_pmax_in_w', None)),
+            ('v_in_min', getattr(fiche, 'opt_v_in_min', None)),
+            ('v_in_max', getattr(fiche, 'opt_v_in_max', None)),
+            ('i_in_max_a', getattr(fiche, 'opt_i_in_max_a', None)),
+            ('rendement_pct', getattr(fiche, 'opt_rendement_pct', None)),
+            ('modules_par_optimiseur',
+             getattr(fiche, 'opt_modules_par_optimiseur', None)),
         ):
             _put(out, key, value)
     return out

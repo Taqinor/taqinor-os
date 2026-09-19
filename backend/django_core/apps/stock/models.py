@@ -2104,6 +2104,11 @@ class FicheTechnique(models.Model):
         MODULE = 'module', 'Module (panneau)'
         ONDULEUR = 'onduleur', 'Onduleur'
         BATTERIE = 'batterie', 'Batterie'
+        # CAL116 — optimiseur de puissance / micro-onduleur : PVsyst
+        # modélise les optimiseurs comme composants avec leur propre perte
+        # de conversion, PV*SOL les micro-onduleurs. Choix ADDITIF : aucune
+        # fiche existante ne change de type.
+        OPTIMISEUR = 'optimiseur', 'Optimiseur / micro-onduleur'
         AUTRE = 'autre', 'Autre'
 
     type_fiche = models.CharField(
@@ -2392,6 +2397,34 @@ class FicheTechnique(models.Model):
         help_text='Rendement aller-retour publié (%, « round-trip '
                   'efficiency »). Vide = non publié : le moteur applique '
                   'alors son hypothèse de référence et le dit.')
+
+    # ── CAL116 — Optimiseur de puissance / micro-onduleur
+    # (``type_fiche='optimiseur'``). ──
+    #
+    # Aucun bloc n'existait pour ce composant : ``grep -n "optimiseur"
+    # apps/ventes`` ne rendait que ``composition_deux_optimiseurs`` (un
+    # comparateur de dimensionnement, sans rapport avec un optimiseur de
+    # puissance). TOUS OPTIONNELS — vide = non publié.
+    opt_pmax_in_w = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        help_text="Puissance d'entrée max. de l'optimiseur (Wc). Vide = "
+                  'non publié.')
+    opt_v_in_min = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text="Tension d'entrée minimale (V). Vide = non publié.")
+    opt_v_in_max = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text="Tension d'entrée maximale (V). Vide = non publié.")
+    opt_i_in_max_a = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        help_text="Courant d'entrée maximal (A). Vide = non publié.")
+    opt_rendement_pct = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text="Rendement de conversion publié (%). Vide = non publié.")
+    opt_modules_par_optimiseur = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Nombre de modules gérés par optimiseur (1 ou 2, '
+                  'typiquement). Vide = non publié.')
 
     # ── PDF constructeur d'origine (optionnel) ──
     #
