@@ -4,6 +4,7 @@ import { CalendarCheck2, ShieldCheck } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { Button, Card, CardContent, Input, Label, Spinner, Switch } from '../../ui'
 import { toast } from '../../ui/confirm'
+import ReglesApprobationAchatSection from './ReglesApprobationAchatSection'
 
 /* ============================================================================
    WIR26 — Paramètres → Achats (`stock.AchatsParametres`, singleton par
@@ -252,6 +253,11 @@ export default function AchatsParametresPage() {
           </Button>
         </div>
       </form>
+
+      {/* NTP2P32 — CRUD des règles d'approbation d'achat (seuil/chantier/nb
+          approbateurs), écran autonome (ses propres appels API, jamais
+          rattaché au formulaire AchatsParametres ci-dessus). */}
+      <ReglesApprobationAchatSection />
     </div>
   )
 }

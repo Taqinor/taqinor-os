@@ -83,6 +83,14 @@ const coreApi = {
     remove: (id) => api.delete(`/core/workflow-definitions/${id}/`),
   },
 
+  // NTWFL1 — matrice d'approbation d'entreprise unifiée (CRUD admin dans les
+  // Paramètres). Lecture ouverte à tout utilisateur authentifié côté serveur
+  // (`GET` seul, `IsAuthenticated`) — NTWFL32 (simulateur) n'utilise QUE
+  // `list()`, jamais d'écriture.
+  matricesApprobation: {
+    list: () => api.get('/core/matrices-approbation/'),
+  },
+
   // NTWFL12/13/14 — formulaires dynamiques rattachables aux étapes de
   // workflow (FormBuilder.jsx) + bibliothèque de champs réutilisables.
   formulaires: {

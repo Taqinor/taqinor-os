@@ -121,6 +121,10 @@ const EtatDependancesPage = lazy(() => import('../../pages/parametres/EtatDepend
 // NTOBS16 — Paramètres → Fiabilité → SLA (destination du badge Dashboard).
 // Nav ET route ensemble (motif PACT150).
 const SlaReportPage = lazy(() => import('../../pages/parametres/SlaReportPage'))
+// NTOBS19 — Paramètres → Fiabilité → Assistant « Créer une fenêtre de
+// maintenance » (wizard 3 étapes au-dessus de core.MaintenanceWindow, NTOBS9,
+// tel quel — aucun nouveau modèle). Nav ET route ensemble (motif PACT150).
+const MaintenanceWizard = lazy(() => import('../../pages/parametres/MaintenanceWizard'))
 // WIR26 — Paramètres → Achats (`stock.AchatsParametres`, singleton par
 // société) : conformité (XPUR1), RAS-TVA (XPUR2), tolérances 3-voies
 // (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
@@ -273,6 +277,10 @@ const config = {
       { to: '/parametres/etat-dependances', label: 'État des dépendances', icon: <Cable size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTOBS16 — nav ET route ensemble (motif PACT150).
       { to: '/parametres/sla', label: 'SLA', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS19 — création réservée Directeur/Administrateur côté serveur
+      // (`IsDirecteurOrAdmin`, core/maintenance_windows.py) — nav ET route
+      // ensemble (motif PACT150).
+      { to: '/parametres/maintenance', label: 'Fenêtre de maintenance', icon: <AlertTriangle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // MSGACC1 — nav ET route ensemble (motif PACT150).
       { to: '/parametres/messages-accueil', label: 'Messages d’accueil', icon: <Sun size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
@@ -307,6 +315,7 @@ const config = {
     { path: '/parametres/limites-usage', component: LimitesUsagePage, roles: ['responsable', 'admin'] },
     { path: '/parametres/etat-dependances', component: EtatDependancesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/sla', component: SlaReportPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/maintenance', component: MaintenanceWizard, roles: ['admin'] },
     // MSGACC1 — nav ET route ensemble (motif PACT150).
     { path: '/parametres/messages-accueil', component: MessagesAccueilPage, roles: ['responsable', 'admin'] },
     // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint

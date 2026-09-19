@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Workflow, CalendarClock, GitBranch } from 'lucide-react'
+import { Workflow, CalendarClock, GitBranch, FlaskConical } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -34,6 +34,9 @@ const WorkflowDesigner = lazy(() => import('./WorkflowDesigner'))
 // FormulaireDefinition.schema (NTWFL12/13). Route dediee, `:id` = 'nouveau'
 // pour une creation.
 const FormBuilder = lazy(() => import('./FormBuilder'))
+// NTWFL32 -- simulateur "what-if" de la matrice d'approbation (NTWFL1), pur
+// GET, route dediee /workflow/matrice-simulateur (avant /workflow generique).
+const MatriceSimulator = lazy(() => import('./MatriceSimulator'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -61,6 +64,12 @@ const config = {
         icon: <Workflow size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      {
+        to: '/workflow/matrice-simulateur',
+        label: 'Simulateur matrice',
+        icon: <FlaskConical size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
   // routes.meta — du plus spécifique au plus général (le préfixe /workflow en dernier).
@@ -72,14 +81,16 @@ const config = {
   // préfixe général `/workflow` ci-dessous (titre « Workflows »).
   titles: [
     ['/workflow/taches-planifiees', 'Tâches planifiées'],
+    ['/workflow/matrice-simulateur', 'Simulateur matrice'],
     ['/workflow', 'Workflows'],
   ],
   sectionLabels: { workflow: 'Workflow' },
   routes: [
     { path: '/workflow/taches-planifiees', component: TachesPlanifieesScreen, roles: ROLES },
-    // NTWFL6/14 -- doivent précéder `/workflow` (plus spécifique en premier).
+    // NTWFL6/14/32 -- doivent précéder `/workflow` (plus spécifique en premier).
     { path: '/workflow/formulaires/:id', component: FormBuilder, roles: ROLES },
     { path: '/workflow/:id/designer', component: WorkflowDesigner, roles: ROLES },
+    { path: '/workflow/matrice-simulateur', component: MatriceSimulator, roles: ROLES },
     { path: '/workflow', component: WorkflowsScreen, roles: ROLES },
   ],
 }

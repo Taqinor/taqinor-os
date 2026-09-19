@@ -32,6 +32,10 @@ import {
 } from '../../ui'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { usePullToRefresh } from '../../ui/usePullToRefresh'
+// NTMOB9 — suivi de position watchPosition derrière un consentement
+// explicite, limité à la session d'intervention ouverte (coexiste avec le
+// check-in manuel F6 ci-dessous, jamais remplacé).
+import GpsTrackingToggle from '../../features/installations/GpsTrackingToggle'
 import {
   PreparationPanel, TrajetPanel, PhotosPanel,
 } from '../../features/installations/InterventionFieldExecution'
@@ -655,6 +659,8 @@ function InterventionFlowSheet({
               </p>
             )}
           </div>
+          {/* NTMOB9 — suivi de position, coexiste avec le check-in manuel F6. */}
+          <GpsTrackingToggle intervention={interv} />
           <div className="pt-1"><CompteRenduButton intervention={interv} /></div>
         </SheetHeader>
 
