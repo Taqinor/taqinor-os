@@ -13,6 +13,15 @@ import base64, html, io, re, subprocess, sys, tempfile, threading
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
+# NTI18N5 — catalogue des libellés structurels du document (fr/en/ar). Données
+# pures : ni Django, ni ``apps``, ni I/O — ce moteur vendoré reste donc
+# démarrable hors Django, et exécutable directement comme ``__main__`` (d'où le
+# double chemin d'import : paquet d'abord, module voisin ensuite).
+try:
+    from . import i18n_labels
+except ImportError:  # exécution directe du moteur depuis son dossier
+    import i18n_labels
+
 
 def _render_pdf_weasyprint(html_string, out_path):
     """Render HTML to PDF using WeasyPrint (no browser needed)."""
@@ -352,6 +361,13 @@ CUSTOM_ACOMPTE = None          # user-defined acompte (MAD) for custom mode
 # Q8 (fondateur, 20/08/2026) — les documents sont en MAD, point. La variable
 # reste (exports/compat) mais n'est plus imprimée : `fmt()` écrit MAD.
 DEVISE = "MAD"
+# NTI18N5 — LANGUE DU DOCUMENT (fr/en/ar) et sa table de libellés structurels,
+# routée par le builder. Défauts FRANÇAIS : le chemin autonome et tout appel
+# sans ces clés rendent EXACTEMENT le document d'aujourd'hui, au caractère près
+# (les valeurs françaises du catalogue sont les littéraux historiques du
+# gabarit, entités numériques comprises).
+LANGUE_SORTIE = i18n_labels.LANGUE_DE_REPLI
+LIBELLES_DOC = i18n_labels.libelles(i18n_labels.LANGUE_DE_REPLI)
 PAGES_TOTAL = 3                # nombre réel de pages (+1 étude, +1 annexe PV46)
 PAGE3_NUM = 3                  # numéro de la page de signature
 # PV46 — annexe technique : défauts INERTES (le chemin autonome et tout appel
@@ -790,6 +806,18 @@ def _multi_villa_html():
 
 # QRES66 (fondateur, 18/08/2026) — le bloc « Financement possible » (QK3)
 # est SUPPRIMÉ du rendu legacy. Ne pas le réintroduire.
+
+
+def _L(cle):
+    """NTI18N5 — libellé STRUCTUREL du gabarit dans la langue du document.
+
+    Lit la table déjà routée par le builder (``data["libelles_document"]``) ;
+    à défaut — appelant historique, charge utile partielle, chemin autonome —
+    résout depuis ``LANGUE_SORTIE``, dont le défaut est le français. Un client
+    ne peut donc lire ni un blanc ni un nom de clé : au pire il lit le français.
+    """
+    valeur = (LIBELLES_DOC or {}).get(cle)
+    return valeur if valeur else i18n_labels.libelle(cle, LANGUE_SORTIE)
 
 
 def _doc_text(key):
@@ -3696,12 +3724,16 @@ def page_onepage(items, tronquees=0):
             f'font-size:{size};font-weight:{weight};color:{color};white-space:nowrap;">{value}</span>'
             f'</div>')
 
-    totals_html = _tot_line("Sous-total HT", _fmt2(total_ht) + "&nbsp;MAD")
+    # NTI18N5 — SEULS LES MOTS changent avec la langue : chaque montant reste
+    # produit par `_fmt2` et la ponctuation des pourcentages (espace fine
+    # `&#8201;`) est celle du document français, dans les trois langues.
+    totals_html = _tot_line(_L("sous_total_ht"), _fmt2(total_ht) + "&nbsp;MAD")
     if DISCOUNT_PCT > 0:
         _pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
         totals_html += _tot_line(
-            f"Remise ({_pct}&#8201;%)", "&#8722;" + _fmt2(remise) + "&nbsp;MAD", neg=True)
-        totals_html += _tot_line("Total HT", _fmt2(net_ht) + "&nbsp;MAD")
+            f"{_L('remise')} ({_pct}&#8201;%)",
+            "&#8722;" + _fmt2(remise) + "&nbsp;MAD", neg=True)
+        totals_html += _tot_line(_L("total_ht"), _fmt2(net_ht) + "&nbsp;MAD")
     # TVA éclatée par taux présent (réforme 10/20) ; un seul taux → ligne
     # unique identique aux devis historiques.
     _buckets = totaux.get("tva_par_taux") or []
@@ -3709,14 +3741,15 @@ def page_onepage(items, tronquees=0):
         for _b in _buckets:
             _r = int(_b["taux"]) if _b["taux"] == int(_b["taux"]) else _b["taux"]
             totals_html += _tot_line(
-                f"TVA ({_r}&#8201;%)", _fmt2(_b["montant"]) + "&nbsp;MAD")
+                f"{_L('tva')} ({_r}&#8201;%)", _fmt2(_b["montant"]) + "&nbsp;MAD")
     else:
         _rate = _buckets[0]["taux"] if _buckets else TVA_PCT
         _tva_pct = int(_rate) if _rate == int(_rate) else _rate
-        totals_html += _tot_line(f"TVA ({_tva_pct}&#8201;%)", _fmt2(tva_amt) + "&nbsp;MAD")
+        totals_html += _tot_line(f"{_L('tva')} ({_tva_pct}&#8201;%)",
+                                 _fmt2(tva_amt) + "&nbsp;MAD")
     # QJR122 — même chaîne additive que la page 2 : le Total TTC du une-page
     # s'imprime au CENTIME (il était seul arrondi à l'unité de son bloc).
-    totals_html += _tot_line("Total TTC", _fmt2(total) + "&nbsp;MAD", navy=True)
+    totals_html += _tot_line(_L("total_ttc"), _fmt2(total) + "&nbsp;MAD", navy=True)
 
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS total) ──────────────
     # Rendu SEUL : n'affiche que les add-ons proposés (P.U. + total TTC), jamais
@@ -3778,7 +3811,7 @@ def page_onepage(items, tronquees=0):
 
   <!-- CLIENT BLOCK -->
   <div style="background:{CG1};padding:12px 24px;border-bottom:1px solid {CG2};">
-    <div style="font-size:6.5pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Client</div>
+    <div style="font-size:6.5pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">{_L("client")}</div>
     <div style="font-size:11pt;font-weight:700;color:{CN};">{CLIENT_NAME}</div>
     <div style="font-size:8.5pt;color:{CG7};margin-top:2px;">{CLIENT_ADDR}</div>
     <div style="font-size:8.5pt;color:{CG4};margin-top:1px;">{CLIENT_PHONE}</div>
@@ -3801,12 +3834,12 @@ def page_onepage(items, tronquees=0):
       </colgroup>
       <thead>
         <tr style="background:{CN};">
-          <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:left;text-transform:uppercase;letter-spacing:.5px;">D&#233;signation</th>
-          <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:left;text-transform:uppercase;letter-spacing:.5px;">Marque</th>
-          <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:center;text-transform:uppercase;letter-spacing:.5px;">Qt&#233;</th>
-          <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:right;text-transform:uppercase;letter-spacing:.5px;">P.U. HT (MAD)</th>
-          <th style="padding:8px 6px;color:white;font-weight:700;font-size:7.5pt;text-align:center;text-transform:uppercase;letter-spacing:.5px;">TVA</th>
-          <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:right;text-transform:uppercase;letter-spacing:.5px;">Total HT (MAD)</th>
+          <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:left;text-transform:uppercase;letter-spacing:.5px;">{_L("designation")}</th>
+          <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:left;text-transform:uppercase;letter-spacing:.5px;">{_L("marque")}</th>
+          <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:center;text-transform:uppercase;letter-spacing:.5px;">{_L("qte")}</th>
+          <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:right;text-transform:uppercase;letter-spacing:.5px;">{_L("pu_ht")} (MAD)</th>
+          <th style="padding:8px 6px;color:white;font-weight:700;font-size:7.5pt;text-align:center;text-transform:uppercase;letter-spacing:.5px;">{_L("tva")}</th>
+          <th style="padding:8px 10px;color:white;font-weight:700;font-size:7.5pt;text-align:right;text-transform:uppercase;letter-spacing:.5px;">{_L("total_ht")} (MAD)</th>
         </tr>
       </thead>
       <tbody>
@@ -3831,9 +3864,9 @@ def page_onepage(items, tronquees=0):
     {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">Ce document chiffre l&#8217;option ' + _onepage_note_ceci + '. Une option ' + _onepage_note_autre + ' est disponible &#8212; voir la proposition compl&#232;te.</div>' if ONEPAGE_NOTE_BATTERIE else ''}
     <div style="font-size:7pt;color:{CG4};">
       <span style="margin-right:20px;">{_doc_text("validite_onepage")}</span>
-      <span style="margin-right:20px;">&#183; Acompte&#160;: {PAY_A}&#37;</span>
-      <span style="margin-right:20px;">&#183; {PAY_M}&#37; &#224; la r&#233;ception du mat&#233;riel</span>
-      <span style="margin-right:20px;">&#183; {PAY_S}&#37; apr&#232;s mise en marche</span>
+      <span style="margin-right:20px;">&#183; {_L("acompte")}&#160;: {PAY_A}&#37;</span>
+      <span style="margin-right:20px;">&#183; {PAY_M}&#37; {_L("a_la_reception_materiel")}</span>
+      <span style="margin-right:20px;">&#183; {PAY_S}&#37; {_L("apres_mise_en_marche")}</span>
       <span>&#183; {TVA_NOTE}</span>
       {'<span>&#183; ' + _note_remise_par_ligne() + '</span>' if DISCOUNT_PCT > 0 else ''}
     </div>
@@ -3848,7 +3881,7 @@ def page_onepage(items, tronquees=0):
       <div style="font-size:7pt;color:#888;text-align:center;">
         {ENT_CONTACT_LINE}
       </div>
-      <div style="font-size:7pt;color:#888;">R&#233;f.&#160;{REF}</div>
+      <div style="font-size:7pt;color:#888;">{_L("reference")}&#160;{REF}</div>
     </div>
     <div style="font-size:7.5px;color:#888;text-align:center;font-style:italic;">
       {ENT_LEGAL_LINE}
@@ -3859,15 +3892,75 @@ def page_onepage(items, tronquees=0):
 """
 
 
+def _css_arabe():
+    """NTI18N5 \u2014 @font-face arabe (Noto Sans Arabic d\u00e9j\u00e0 vendor\u00e9e dans
+    ``assets/fonts/``) + famille appliqu\u00e9e au document, pour un document ARABE
+    seulement.
+
+    Charg\u00e9e PARESSEUSEMENT : un document fr/en ne lit pas ces woff2 et ne paie
+    donc rien. Fichiers absents \u21d2 cha\u00eene vide : le gabarit retombe sur une
+    police syst\u00e8me (d\u00e9gradation propre, jamais un PDF cass\u00e9), au prix d'un
+    rendu arabe moins soign\u00e9.
+    """
+    faces = (_font_face("Noto Sans Arabic", 400, "normal",
+                        _load_gfont("NotoSansArabic-400.woff2"))
+             + _font_face("Noto Sans Arabic", 700, "normal",
+                          _load_gfont("NotoSansArabic-700.woff2")))
+    if not faces:
+        return ""
+    # La pile garde DM Sans derri\u00e8re : les chiffres et les segments latins
+    # (r\u00e9f\u00e9rences, MAD, noms de marque) restent dans la police du document.
+    return (faces + 'body,body *{font-family:"Noto Sans Arabic","DM Sans",'
+                    'sans-serif !important;}')
+
+
+def _attributs_langue_html():
+    """NTI18N5 \u2014 attributs ``lang``/``dir`` de l'\u00e9l\u00e9ment racine du document.
+
+    Un document fran\u00e7ais rend EXACTEMENT ``lang="fr"`` (aucun attribut ajout\u00e9) ;
+    un document arabe porte ``dir="rtl"``, d'o\u00f9 WeasyPrint tire l'alignement \u00e0
+    droite et l'ordre miroir des colonnes de tableau.
+    """
+    attrs = f'lang="{LANGUE_SORTIE}"'
+    if i18n_labels.est_rtl(LANGUE_SORTIE):
+        attrs += ' dir="rtl"'
+    return attrs
+
+
 def build_html_onepage(items, tronquees=0):
     """Minimal HTML shell for the one-page PDF."""
     return f"""<!DOCTYPE html>
-<html lang="fr" style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
+<html {_attributs_langue_html()} style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
 <title>Devis {ENT_NOM_MARQUE} N\u00b0 {REF}</title>
-<style>{CSS}</style></head>
+<style>{CSS}{_css_arabe() if i18n_labels.est_rtl(LANGUE_SORTIE) else ""}</style></head>
 <body style="background:#FFFFFF !important;">
 {page_onepage(items, tronquees)}
 </body></html>"""
+
+
+def _formes_total_ttc():
+    """QJR161 + NTI18N5 \u2014 formes du libell\u00e9 \u00ab Total TTC \u00bb \u00e0 reconna\u00eetre dans les
+    bo\u00eetes de texte compos\u00e9es par WeasyPrint.
+
+    La mesure de d\u00e9bordement du une-page REP\u00c8RE le bas du bloc de totaux par
+    son libell\u00e9. Cherch\u00e9 en dur, ce libell\u00e9 devenait introuvable d\u00e8s que le
+    document changeait de langue : la mesure rendait alors ``None``, la garde
+    QJR161 se taisait, et un devis dense pouvait de nouveau faire dispara\u00eetre
+    son propre Total TTC dans la zone ``overflow:hidden`` sans qu'aucun compteur
+    de pages ne bouge. On d\u00e9rive donc les formes de la table de libell\u00e9s
+    ACTIVE, en gardant les formes fran\u00e7aises comme filet.
+
+    Les deux casses sont fournies : le libell\u00e9 est rendu en
+    ``text-transform:uppercase``, et WeasyPrint compose le texte transform\u00e9.
+    (Les trois traductions de cette cl\u00e9 sont sans entit\u00e9 HTML : la cha\u00eene du
+    gabarit est donc bien celle du texte compos\u00e9.)
+    """
+    formes = []
+    for brut in (_L("total_ttc"), i18n_labels.libelle("total_ttc", "fr")):
+        for forme in (brut, brut.upper()):
+            if forme and forme not in formes:
+                formes.append(forme)
+    return tuple(formes)
 
 
 def _mesure_onepage(html):
@@ -3896,9 +3989,10 @@ def _mesure_onepage(html):
         limite = page.height - ONEPAGE_FOOTER_PX
         bas_totaux = None
         hauteurs = []
+        formes = _formes_total_ttc()
         for boite in _boites_texte_onepage(page):
             texte = (getattr(boite, "text", "") or "")
-            if "Total TTC" in texte or "TOTAL TTC" in texte:
+            if any(forme in texte for forme in formes):
                 bas = boite.position_y + boite.height
                 bas_totaux = bas if bas_totaux is None else max(bas_totaux, bas)
             hauteurs.append(boite.height)
@@ -4027,6 +4121,7 @@ def apply_quote_data(data: dict) -> None:
     global LINKS  # QRP1 — liens client (proposition tokenisée)
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
     global DEVISE  # FG52 — devise du document (ISO 4217)
+    global LANGUE_SORTIE, LIBELLES_DOC  # NTI18N5 — langue + libellés du gabarit
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
     global WATERMARK_STANDARD  # L-NIV — filigrane PDF public niveau standard
     SAVINGS_METHOD = data.get("savings_method")
@@ -4101,6 +4196,15 @@ def apply_quote_data(data: dict) -> None:
         f"TVA {_tva_lbl} % appliquée sur l'ensemble des équipements et travaux.")
     # FG52 — devise portée par le document (défaut MAD = comportement inchangé).
     DEVISE         = (data.get("devise") or "MAD").strip().upper()
+    # NTI18N5 — langue du document + table de libellés ROUTÉE par le builder.
+    # Sans ces clés (appelant historique), la langue est le français et la table
+    # est la française : document inchangé au caractère près. Une langue hors
+    # fr/en/ar est ramenée au français avant d'atteindre le moindre gabarit.
+    LANGUE_SORTIE  = i18n_labels.normaliser(data.get("langue_sortie"))
+    _libelles_recus = data.get("libelles_document")
+    LIBELLES_DOC   = (dict(_libelles_recus)
+                      if isinstance(_libelles_recus, dict) and _libelles_recus
+                      else i18n_labels.libelles(LANGUE_SORTIE))
     # DC1 — identité société (multi-tenant) : réinitialise les défauts puis
     # applique le profil de la société du devis. Champs vides → littéraux
     # Taqinor historiques (byte-identique) ; sinon SON identité s'affiche.
