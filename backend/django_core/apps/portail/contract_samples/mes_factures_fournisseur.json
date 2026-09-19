@@ -1,0 +1,40 @@
+{
+  "endpoint": "GET /api/django/portail/mes-factures-fournisseur/",
+  "pourquoi": "NTPRT23 — « Mes factures & statut de paiement » du portail FOURNISSEUR authentifié, servie par MesFacturesPortailFournisseurViewSet.list via apps.stock.selectors.factures_portail_fournisseur (elle-même appuyée sur services.factures_sous_traitant_qs_generique, déjà servie au portail public tokenisé XPUR22). Le fournisseur est résolu du COMPTE connecté (portal_scope_id), jamais d'un paramètre. LECTURE STRICTEMENT SEULE : aucun service ne permet à un fournisseur de solder sa propre facture. statut_reglement/statut_reglement_display/jours_de_retard viennent de l'UNIQUE dérivation du dépôt (stock.selectors.statut_reglement_facture_fournisseur) — le même calcul que l'écran comptable interne, jamais un second calcul qui diverge. Enveloppe NON paginée : {results: [...]}.",
+  "exemple": {
+    "results": [
+      {
+        "id": 501,
+        "reference": "FF-2026-0501",
+        "date_facture": "2026-08-01",
+        "date_echeance": "2026-08-31",
+        "montant_ttc": "48000.00",
+        "statut": "a_payer",
+        "statut_display": "À payer",
+        "solde_du": "48000.00",
+        "statut_reglement": "en_retard",
+        "statut_reglement_display": "En retard",
+        "jours_de_retard": 12
+      },
+      {
+        "id": 502,
+        "reference": "FF-2026-0502",
+        "date_facture": "2026-07-01",
+        "date_echeance": "2026-07-31",
+        "montant_ttc": "12000.00",
+        "statut": "payee",
+        "statut_display": "Payée",
+        "solde_du": "0.00",
+        "statut_reglement": "payee",
+        "statut_reglement_display": "Payée",
+        "jours_de_retard": 0
+      }
+    ]
+  },
+  "exemple_vide": {
+    "results": []
+  },
+  "notes": {
+    "aucun_montant_interne": "Contrairement à l'écran interne, aucun prix_achat/aucune marge n'y figure jamais — seuls les champs déjà exposés par factures_sous_traitant_qs_generique au portail tokenisé XPUR22."
+  }
+}
