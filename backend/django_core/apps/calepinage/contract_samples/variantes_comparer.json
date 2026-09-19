@@ -1,0 +1,192 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/comparer/",
+  "pourquoi": "Le comparatif des variantes d'UN calepinage du module autonome. La comparaison AO existe déjà (`GET /api/django/ao/variantes/comparer/?ids=`, `apps/ao/calepinage_service.comparer_variantes`) mais elle est bornée aux `VarianteCalepinage` d'une `ToitureAO` et se compare par une liste d'`ids` passée en requête ; le module neutre compare les `CalepinageVariante` d'un calepinage NOMMÉ dans le chemin — une seule forme d'URL, `/api/django/calepinage/calepinages/<pk>/…`, sous-ressource en `@action`. PACT10 : ce contrat part SEUL sur `main` avant la lane du sélecteur (CAL145) et celle de l'écran. POURQUOI LES COLONNES DE PRODUCTION SONT DÉJÀ LÀ : CAL145 publiera le comparatif sur la PRODUCTION (kWc, P50, PR, autoconsommation, pertes dominantes) et non seulement sur le comptage de modules ; les écrire ici évite que le comparatif dérive du contrat le jour où elles arrivent — l'ajout d'une colonne par la lane d'en face est exactement le mode de panne que PACT10 ferme. AUCUNE CLÉ INVENTÉE : le bloc de comptage reprend `comparer_variantes` (`id`, `nom`, `role`, `statut`, `est_retenue`, `total_modules`, `kwc`, `total_optimal`, `optimal`, `methode`, `marge_troncon_min`, `marge_bande_min`, `version_moteur`, `entree_hash`, plus `lignes` / `introuvables` / `reference_modules`) et le bloc de production reprend `apps/ventes/etude._pr_block` (`performance_ratio`, `p50_kwh`, `p75_kwh`, `p90_kwh`, `specific_yield_kwh_kwc`, `loss_breakdown`) et le bloc `self_consumption` (`self_consumption_rate`) ; les postes de pertes cités sont ceux de `DEFAULT_LOSS_FACTORS` (`temperature`, `soiling`, `wiring`, `inverter`, `mismatch`, `availability`) plus `shading`, chacun porteur de sa SOURCE. UNE VARIANTE NON SIMULÉE EST DITE NON SIMULÉE : `simulee` vaut `false` et TOUTES ses grandeurs de production valent `null` — jamais `0`, qui se lirait « zéro kWh » là où personne n'a lancé de simulation. L'ÉCART EST TOUJOURS RELATIF À LA RETENUE : la variante retenue porte donc `ecart_modules` et `ecart_kwc` à `0` (un écart MESURÉ, nul par construction), et une variante non simulée porte `ecart_p50_kwh` à `null`. `exemple_vide` = calepinage à une SEULE variante : la liste garde sa forme, `retenue_id` la désigne, et tous les écarts valent `null` — il n'y a rien à quoi se comparer, ce n'est pas un écart nul. Valeurs : des PLACEHOLDERS assumés, aucun chiffre client, aucun prix.",
+  "exemple": {
+    "calepinage": 1,
+    "retenue_id": 11,
+    "reference_modules": 12,
+    "introuvables": [],
+    "lignes": [
+      {
+        "id": 11,
+        "nom": "Variante retenue — portrait plein sud",
+        "role": "reference",
+        "statut": "CALCULEE",
+        "est_retenue": true,
+        "simulee": true,
+        "total_modules": 12,
+        "kwc": 8.64,
+        "total_optimal": 12,
+        "optimal": true,
+        "methode": "programmation_dynamique",
+        "orientation": {
+          "axe_rangee": "NORD_SUD",
+          "orientation_module": "PORTRAIT",
+          "azimut_deg": 180.0,
+          "inclinaison_deg": 10.0
+        },
+        "marge_troncon_min": 0.042,
+        "marge_bande_min": null,
+        "marges": {
+          "troncon_min_cm": 4.2,
+          "bande_min_cm": null,
+          "rangee_critique": "R2",
+          "obstacle_critique": ""
+        },
+        "production": {
+          "p50_kwh": 13000.0,
+          "p75_kwh": 12400.0,
+          "p90_kwh": 11900.0,
+          "performance_ratio": 0.8,
+          "specific_yield_kwh_kwc": 1504.6,
+          "self_consumption_rate": 0.62,
+          "pertes_dominantes": [
+            { "poste": "temperature", "pct": 8.0, "source": "hypothese" },
+            { "poste": "shading", "pct": 3.4, "source": "tracé d'ombres" },
+            { "poste": "soiling", "pct": 3.0, "source": "hypothese" }
+          ]
+        },
+        "ecart_modules": 0,
+        "ecart_kwc": 0.0,
+        "ecart_p50_kwh": 0.0,
+        "version_moteur": "non-publie-dans-cet-exemple",
+        "entree_hash": "abababababababababababababababababababababababababababababababab"
+      },
+      {
+        "id": 12,
+        "nom": "Variante — paysage, allée élargie",
+        "role": "sensibilite",
+        "statut": "CALCULEE",
+        "est_retenue": false,
+        "simulee": true,
+        "total_modules": 10,
+        "kwc": 7.2,
+        "total_optimal": 10,
+        "optimal": true,
+        "methode": "programmation_dynamique",
+        "orientation": {
+          "axe_rangee": "EST_OUEST",
+          "orientation_module": "PAYSAGE",
+          "azimut_deg": 90.0,
+          "inclinaison_deg": 10.0
+        },
+        "marge_troncon_min": 0.088,
+        "marge_bande_min": 0.061,
+        "marges": {
+          "troncon_min_cm": 8.8,
+          "bande_min_cm": 6.1,
+          "rangee_critique": "R1",
+          "obstacle_critique": "OBS-1"
+        },
+        "production": {
+          "p50_kwh": 10400.0,
+          "p75_kwh": 9900.0,
+          "p90_kwh": 9500.0,
+          "performance_ratio": 0.81,
+          "specific_yield_kwh_kwc": 1444.4,
+          "self_consumption_rate": 0.66,
+          "pertes_dominantes": [
+            { "poste": "temperature", "pct": 8.0, "source": "hypothese" },
+            { "poste": "soiling", "pct": 3.0, "source": "hypothese" },
+            { "poste": "inverter", "pct": 2.5, "source": "fiche" }
+          ]
+        },
+        "ecart_modules": -2,
+        "ecart_kwc": -1.44,
+        "ecart_p50_kwh": -2600.0,
+        "version_moteur": "non-publie-dans-cet-exemple",
+        "entree_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      },
+      {
+        "id": 13,
+        "nom": "Variante — kits mixtes (non simulée)",
+        "role": "exploration",
+        "statut": "CALCULEE",
+        "est_retenue": false,
+        "simulee": false,
+        "total_modules": 13,
+        "kwc": 9.36,
+        "total_optimal": 13,
+        "optimal": true,
+        "methode": "programmation_dynamique",
+        "orientation": {
+          "axe_rangee": "NORD_SUD",
+          "orientation_module": "PORTRAIT",
+          "azimut_deg": 180.0,
+          "inclinaison_deg": 10.0
+        },
+        "marge_troncon_min": 0.021,
+        "marge_bande_min": null,
+        "marges": {
+          "troncon_min_cm": 2.1,
+          "bande_min_cm": null,
+          "rangee_critique": "R3",
+          "obstacle_critique": ""
+        },
+        "production": {
+          "p50_kwh": null,
+          "p75_kwh": null,
+          "p90_kwh": null,
+          "performance_ratio": null,
+          "specific_yield_kwh_kwc": null,
+          "self_consumption_rate": null,
+          "pertes_dominantes": []
+        },
+        "ecart_modules": 1,
+        "ecart_kwc": 0.72,
+        "ecart_p50_kwh": null,
+        "version_moteur": "non-publie-dans-cet-exemple",
+        "entree_hash": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "calepinage": 2,
+    "retenue_id": 21,
+    "reference_modules": 12,
+    "introuvables": [],
+    "lignes": [
+      {
+        "id": 21,
+        "nom": "Variante unique",
+        "role": "reference",
+        "statut": "CALCULEE",
+        "est_retenue": true,
+        "simulee": false,
+        "total_modules": 12,
+        "kwc": 8.64,
+        "total_optimal": 12,
+        "optimal": true,
+        "methode": "programmation_dynamique",
+        "orientation": {
+          "axe_rangee": "NORD_SUD",
+          "orientation_module": "PORTRAIT",
+          "azimut_deg": 180.0,
+          "inclinaison_deg": 10.0
+        },
+        "marge_troncon_min": null,
+        "marge_bande_min": null,
+        "marges": {
+          "troncon_min_cm": null,
+          "bande_min_cm": null,
+          "rangee_critique": "",
+          "obstacle_critique": ""
+        },
+        "production": {
+          "p50_kwh": null,
+          "p75_kwh": null,
+          "p90_kwh": null,
+          "performance_ratio": null,
+          "specific_yield_kwh_kwc": null,
+          "self_consumption_rate": null,
+          "pertes_dominantes": []
+        },
+        "ecart_modules": null,
+        "ecart_kwc": null,
+        "ecart_p50_kwh": null,
+        "version_moteur": "non-publie-dans-cet-exemple",
+        "entree_hash": "abababababababababababababababababababababababababababababababab"
+      }
+    ]
+  }
+}
