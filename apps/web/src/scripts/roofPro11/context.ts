@@ -24,6 +24,7 @@ import { type Appliance, type HourlyCurve } from '../../lib/applianceConsumption
 import { type LayoutState } from '../../lib/layoutVariability';
 import { type FreeLayoutState, type FreeMargins } from '../../lib/freeLayout';
 import { type ShadeObstruction } from '../../lib/shadingEngine';
+import { type Measurement } from './mesureUi';
 import {
   type InitOptions,
   type RoofType,
@@ -129,6 +130,10 @@ export interface Ctx {
   /** W109 — débord panneaux autorisé au-delà de la rive (m), saisi par l'utilisateur. 0 par
    *  défaut → calepinage/solve inchangés. Change la CAPACITÉ géométrique, jamais le cap besoin. */
   overhangM: number;
+  /** CAL102 — mesures posées sur le pan actif (distance/surface/angle), persistables avec le
+   *  calepinage. Optionnel : un `ctx` antérieur à CAL102 n'en porte pas — `createMesureUi`
+   *  l'initialise à la première pose (`ensure()`), jamais lu en aveugle. */
+  measurements?: Measurement[];
   /** CAL100 — photographie TOUT l'atelier (tracé/obstacles/zones/pose) pour l'annuler/
    *  rétablir GÉNÉRALISÉ. `createLayoutEditor` s'auto-enregistre ici à sa construction (le
    *  seul module qui possède l'historique) ; `obstaclesUi.ts`/toute autre mutation l'appelle
