@@ -15,6 +15,23 @@ from .models import ApiKey, hash_key
 
 AUTH_KEYWORD = 'Api-Key'
 
+# NTAPI38 — attribut posé sur la ``HttpRequest`` SOUS-JACENTE par chacun des
+# trois authenticators, et relu par `middleware.PublicApiCallLogMiddleware`.
+# Même raison que `RATE_LIMIT_STATE_ATTR` plus bas : un middleware ne voit que
+# la `HttpRequest` de Django, jamais la `Request` de DRF sur laquelle vit
+# `request.auth`. Passer par la requête évite au journal de re-résoudre la clé
+# (une seconde requête SQL + un second hachage à chaque appel).
+API_KEY_STATE_ATTR = 'publicapi_api_key'
+
+
+def memoriser_cle(request, api_key):
+    """Dépose la clé résolue sur la requête (DRF ET Django sous-jacente)."""
+    setattr(request, API_KEY_STATE_ATTR, api_key)
+    sous_jacent = getattr(request, '_request', None)
+    if sous_jacent is not None:
+        setattr(sous_jacent, API_KEY_STATE_ATTR, api_key)
+    return api_key
+
 
 class ApiKeyUser:
     """Acteur léger anonyme représentant une clé d'API.
@@ -75,6 +92,7 @@ class ApiKeyAuthentication(authentication.BaseAuthentication):
         # Trace d'usage (best-effort, non bloquant).
         ApiKey.objects.filter(pk=api_key.pk).update(last_used_at=timezone.now())
 
+        memoriser_cle(request, api_key)
         return (ApiKeyUser(api_key), api_key)
 
     def authenticate_header(self, request):
@@ -138,6 +156,7 @@ class OAuthBearerAuthentication(authentication.BaseAuthentication):
         OAuthClient.objects.filter(pk=oauth_client.pk).update(
             last_used_at=timezone.now())
         ApiKey.objects.filter(pk=api_key.pk).update(last_used_at=timezone.now())
+        memoriser_cle(request, api_key)
         return (ApiKeyUser(api_key), api_key)
 
     def authenticate_header(self, request):
@@ -170,6 +189,7 @@ class QueryTokenAuthentication(authentication.BaseAuthentication):
         if api_key.est_expiree:
             raise exceptions.AuthenticationFailed('Jeton expiré.')
         ApiKey.objects.filter(pk=api_key.pk).update(last_used_at=timezone.now())
+        memoriser_cle(request, api_key)
         return (ApiKeyUser(api_key), api_key)
 
     def authenticate_header(self, request):

@@ -40,6 +40,7 @@ from .public_btp_views import (
     PublicReserveChantierViewSet, PublicVisaDocumentViewSet,
 )
 from .public_uxviews_views import PublicFavoriViewSet, PublicSavedViewViewSet
+from .public_achats_views import PublicDemandeAchatViewSet, PublicRFQViewSet
 
 router = DefaultRouter()
 router.register(r'leads', PublicLeadViewSet, basename='public-lead')
@@ -79,6 +80,14 @@ router.register(
 router.register(r'favoris', PublicFavoriViewSet, basename='public-favori')
 router.register(
     r'saved-views', PublicSavedViewViewSet, basename='public-saved-view')
+# NTP2P39 — objets Procure-to-Pay (apps.installations), scope `lecture_achats`.
+# Sous-préfixe `achats/…` (même choix que `scm/…` et `btp/…`) : même routeur,
+# mêmes garanties testées par `tests_ntapi42_contract_consistency`.
+router.register(
+    r'achats/demandes-achat', PublicDemandeAchatViewSet,
+    basename='public-achats-demande')
+router.register(
+    r'achats/rfq', PublicRFQViewSet, basename='public-achats-rfq')
 
 urlpatterns = [
     # XPLT5 — écriture (scopes leads:write / activities:write), distincte du
