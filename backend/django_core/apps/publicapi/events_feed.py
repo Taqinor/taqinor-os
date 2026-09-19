@@ -127,16 +127,26 @@ def scopes_lisibles(api_key):
     ]
 
 
-def lire(api_key, *, after=0, limit=LIMITE_PAR_DEFAUT):
+def lire(api_key, *, after=0, limit=LIMITE_PAR_DEFAUT, types=None):
     """Page d'évènements strictement APRÈS ``after``, par ordre de séquence.
 
     Toujours scopé à la société de la clé, et restreint aux familles
     d'évènements dont la clé porte le scope de lecture.
+
+    ``types`` (NTAPI32) restreint EN PLUS à une liste de codes demandés — un
+    trigger no-code (Zapier/Make) s'abonne à UN évènement et ne veut pas
+    filtrer tout le flux chez lui. Le filtre est une INTERSECTION avec les
+    familles déjà autorisées : demander un code dont la clé n'a pas le scope
+    de lecture ne l'ouvre jamais, la page revient simplement vide (aucune
+    escalade, et aucun signal sur l'existence d'évènements non autorisés).
     """
     from .models import ApiEvent
 
     limit = max(1, min(int(limit or LIMITE_PAR_DEFAUT), LIMITE_MAX))
     autorises = scopes_lisibles(api_key)
+    if types:
+        demandes = set(types)
+        autorises = [event for event in autorises if event in demandes]
     if not autorises:
         return [], limit
     qs = (ApiEvent.objects
