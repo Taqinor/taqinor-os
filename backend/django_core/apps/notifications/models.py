@@ -818,6 +818,14 @@ class Holiday(models.Model):
     recurrent_annuel = models.BooleanField(
         default=False,
         verbose_name='Récurrent chaque année')
+    # HOLIDAY-PAYS (complément NTI18N13) — additif, défaut ``MA`` (même
+    # patron/casse que `authentication.Company.pays`, SOL8) : TOUTES les
+    # lignes existantes (calendrier marocain) restent ``MA``, donc AUCUN
+    # comportement ne change tant qu'un appelant ne demande pas
+    # explicitement à filtrer par pays (`calendar_utils.feries_entre`).
+    pays = models.CharField(
+        'Pays (ISO 3166-1 alpha-2)', max_length=2, default='MA',
+        help_text='Code pays ISO du jour férié (MA = Maroc).')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
