@@ -13,6 +13,8 @@ référencent devis_id/facture_id opaques et passent par le service ventes pour
 l'acceptation). ``/proposal`` reste l'unique voie PDF devis (règle #4).
 """
 
+from datetime import timedelta
+
 from apps.compta.services import (  # noqa: F401
     cmi_actif,
     initier_paiement_facture,
@@ -413,3 +415,223 @@ def upsert_jalon_chantier(company, chantier_id, cle_phase, libelle,
         company=company, chantier_id=chantier_id, cle_phase=cle_phase,
         defaults=defaults)
     return jalon
+
+
+# ── NTPRT6 — Invitation & gestion de l'équipe du portail client ─────────────
+#
+# L'admin client du portail (le PREMIER compte provisionné, NTPRT2 — aucune
+# ``InvitationPortail`` ne le concerne) invite des collègues depuis
+# ``/portail/client/equipe`` avec un rôle ``lecture`` ou ``ecriture``. Seul
+# l'admin peut inviter (garde côté vue : un compte lié à une invitation
+# n'est jamais admin). L'invité reçoit un email avec un lien tokenisé, pose
+# SON PROPRE mot de passe (jamais un mot de passe temporaire généré ici —
+# à la différence de NTPRT2/4, c'est l'invité qui le choisit à l'acceptation)
+# et devient un 2ᵉ ``CustomUser`` ``portee=portail_client`` lié au MÊME
+# ``client_id`` que l'admin.
+
+#: Durée de validité d'une invitation avant expiration.
+DUREE_VALIDITE_INVITATION = timedelta(days=7)
+
+
+def _envoyer_invitation_portail(invitation, company):
+    """Envoie le lien d'invitation à l'email invité. Best-effort, jamais
+    fatal — sans email envoyé, l'admin peut toujours transmettre le lien
+    autrement (le token reste valable jusqu'à expiration)."""
+    try:
+        from django.conf import settings
+        from django.core.mail import send_mail
+
+        from .branding import marque_portail
+        societe = (marque_portail(company).get('nom_affichage')
+                   or 'votre prestataire')
+        site = (getattr(settings, 'SITE_URL', '') or '').rstrip('/')
+        lien = (f'{site}/portail/invitation/accepter'
+                f'?token={invitation.token_invitation}')
+        send_mail(
+            subject=f"Invitation au portail {societe}",
+            message=(
+                f'Bonjour,\n\n'
+                f"Vous êtes invité·e à rejoindre l'équipe du portail client "
+                f'de {societe}.\n\n'
+                f'Ouvrez ce lien pour créer votre mot de passe :\n{lien}\n\n'
+                f'Ce lien expire le '
+                f'{invitation.expire_le:%d/%m/%Y %H:%M}.\n'
+            ),
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+            recipient_list=[invitation.email],
+            fail_silently=True,
+        )
+        return True
+    except Exception:  # noqa: BLE001 - un email KO ne casse jamais l'invitation
+        return False
+
+
+def inviter_membre_portail(company, client_id, email, role):
+    """NTPRT6 — Crée une invitation « équipe portail » et l'envoie par email.
+
+    ``client_id`` doit correspondre à un ``ComptePortailClient`` déjà
+    provisionné (NTPRT2) de CETTE société — sinon ``None`` (jamais
+    d'invitation flottante sans compte cible). ``role`` invalide retombe sur
+    ``lecture`` (le choix le moins permissif — jamais un défaut permissif
+    silencieux).
+    """
+    import secrets
+
+    from django.utils import timezone
+
+    from .models import ComptePortailClient, InvitationPortail
+
+    if company is None or not client_id or not (email or '').strip():
+        return None
+    compte = ComptePortailClient.objects.filter(
+        company=company, client_id=client_id).first()
+    if compte is None:
+        return None
+    if role not in InvitationPortail.Role.values:
+        role = InvitationPortail.Role.LECTURE
+
+    invitation = InvitationPortail.objects.create(
+        company=company,
+        compte_portail_client=compte,
+        email=email.strip().lower(),
+        role=role,
+        token_invitation=secrets.token_urlsafe(32),
+        expire_le=timezone.now() + DUREE_VALIDITE_INVITATION,
+    )
+    _envoyer_invitation_portail(invitation, company)
+    return invitation
+
+
+def accepter_invitation_portail(token, mot_de_passe):
+    """NTPRT6 — L'invité pose son mot de passe et devient un VRAI compte.
+
+    Refuse (renvoie ``None``) un token inconnu, déjà accepté, révoqué, ou
+    expiré — une invitation expirée reste visible (trace), mais n'ouvre plus
+    jamais d'accès. Idempotent SANS double compte : un second appel sur une
+    invitation déjà acceptée est un no-op (renvoie ``None``, le compte
+    existant n'est jamais retouché).
+    """
+    from django.db import transaction
+    from django.utils import timezone
+
+    from apps.roles.models import (
+        PORTAIL_CLIENT_PERMISSIONS,
+        ROLE_PORTAIL_CLIENT,
+        Role,
+    )
+    from authentication.models import CustomUser
+
+    from .models import InvitationPortail
+
+    if not token or not (mot_de_passe or '').strip():
+        return None
+    invitation = InvitationPortail.objects.filter(
+        token_invitation=token,
+        statut=InvitationPortail.Statut.EN_ATTENTE,
+    ).first()
+    if invitation is None or invitation.expiree:
+        return None
+
+    with transaction.atomic():
+        compte = invitation.compte_portail_client
+        role, _ = Role.objects.get_or_create(
+            company=invitation.company,
+            nom=ROLE_PORTAIL_CLIENT,
+            defaults={
+                'permissions': list(PORTAIL_CLIENT_PERMISSIONS),
+                'est_systeme': True,
+            },
+        )
+        user = CustomUser(
+            username=_username_portail_disponible(
+                invitation.email or f'invite-{invitation.id}'),
+            email=invitation.email,
+            company=invitation.company,
+            role=role,
+            portee=CustomUser.PORTEE_PORTAIL_CLIENT,
+            portail_client_id=compte.client_id,
+            # C'est l'invité qui choisit son mot de passe MAINTENANT — pas de
+            # mot de passe temporaire à changer (à la différence de NTPRT2).
+            must_change_password=False,
+            is_staff=False,
+            is_superuser=False,
+        )
+        user.set_password(mot_de_passe)
+        # Un mot de passe trop court/faible reste de la responsabilité du
+        # formulaire appelant (mêmes règles que le changement de mot de passe
+        # standard) — on ne réinvente pas ici une 2ᵉ politique de complexité.
+        user.save()
+
+        invitation.utilisateur_cree = user
+        invitation.statut = InvitationPortail.Statut.ACCEPTEE
+        invitation.date_acceptation = timezone.now()
+        invitation.save(update_fields=[
+            'utilisateur_cree', 'statut', 'date_acceptation'])
+
+    return user
+
+
+def revoquer_invitation_portail(company, invitation_id):
+    """NTPRT6 — Révoque une invitation. Si déjà acceptée, ferme AUSSI l'accès
+    du compte utilisateur créé (même garantie que ``revoquer_acces_client`` :
+    une révocation ferme réellement la porte JWT, jamais un simple drapeau
+    métier non lu par l'auth)."""
+    from django.db import transaction
+
+    from authentication.models import CustomUser
+
+    from .models import InvitationPortail
+
+    if company is None or not invitation_id:
+        return None
+    with transaction.atomic():
+        invitation = (InvitationPortail.objects
+                      .select_for_update()
+                      .filter(company=company, pk=invitation_id)
+                      .first())
+        if invitation is None:
+            return None
+        invitation.statut = InvitationPortail.Statut.REVOQUEE
+        invitation.save(update_fields=['statut'])
+        if invitation.utilisateur_cree_id:
+            CustomUser.objects.filter(
+                pk=invitation.utilisateur_cree_id).update(is_active=False)
+    return invitation
+
+
+def role_portail_client(user):
+    """NTPRT6 — Rôle « équipe portail » (lecture/écriture) du compte connecté.
+
+    Le compte ADMIN (premier provisionné par NTPRT2 — AUCUNE
+    ``InvitationPortail`` ne le concerne) a toujours accès plein : renvoie
+    ``ECRITURE``. Un compte créé par acceptation d'une invitation porte le
+    rôle choisi par l'admin à l'invitation, gelé au moment de l'acceptation.
+    """
+    from .models import InvitationPortail
+
+    invitation = InvitationPortail.objects.filter(
+        utilisateur_cree=user,
+        statut=InvitationPortail.Statut.ACCEPTEE,
+    ).first()
+    if invitation is None:
+        return InvitationPortail.Role.ECRITURE
+    return invitation.role
+
+
+def peut_ecrire_portail_client(user):
+    """NTPRT6 — Faux pour un membre d'équipe en rôle ``lecture`` SEULEMENT.
+
+    Critère d'acceptation : un compte « lecture » ne peut ni accepter un
+    devis, ni ouvrir un ticket SAV — seulement consulter. L'admin et un
+    membre ``ecriture`` gardent exactement le comportement d'aujourd'hui.
+    """
+    from .models import InvitationPortail
+    return role_portail_client(user) != InvitationPortail.Role.LECTURE
+
+
+def est_admin_portail_client(user):
+    """NTPRT6 — Seul l'admin (compte SANS invitation, premier provisionné par
+    NTPRT2) peut inviter/révoquer des collègues. Un membre d'équipe, même en
+    rôle ``ecriture``, ne gère jamais l'équipe lui-même."""
+    from .models import InvitationPortail
+    return not InvitationPortail.objects.filter(utilisateur_cree=user).exists()

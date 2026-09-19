@@ -19,6 +19,7 @@ l'en-tête `Host` autant qu'il voulait, et (b) charger la base gratuitement. Le
 quota est par IP, donc indépendant du `Host` — faire varier le domaine ne
 réarme pas le compteur, ce qui est précisément l'abus visé.
 """
+from rest_framework import status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes)
 from rest_framework.permissions import AllowAny
@@ -58,3 +59,55 @@ def theme_portail_public(request):
     if company is None:
         return Response(dict(MARQUE_VIDE))
     return Response(marque_portail(company))
+
+
+# ── NTPRT6 — Acceptation PUBLIQUE d'une invitation à l'équipe portail ───────
+
+class AccepterInvitationPortailThrottle(SimpleRateThrottle):
+    """Formulaire anonyme d'écriture (pose un mot de passe + crée un compte) :
+    même patron de limitation par IP que ``CandidatureFournisseurThrottle``
+    (NTPRT25) — un token seul ne suffit pas à se dispenser d'un plafond."""
+
+    scope = 'portail_accepter_invitation'
+    rate = '20/hour'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': self.get_ident(request),
+        }
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([AccepterInvitationPortailThrottle])
+def accepter_invitation_portail_public(request):
+    """NTPRT6 — L'invité pose son mot de passe via le lien reçu par email.
+
+    ``token`` et ``mot_de_passe`` sont les SEULS champs lus — jamais d'email
+    ni de rôle depuis le corps (l'un et l'autre viennent de l'invitation
+    elle-même, posée côté serveur à l'appel ``inviter_membre_portail``). La
+    réponse ne renvoie AUCUNE information sur l'invitation en cas d'échec
+    (token inconnu/expiré/déjà utilisé/révoqué) — un seul message générique,
+    jamais de quoi distinguer un token invalide d'un token déjà consommé.
+    """
+    from . import services
+
+    token = (request.data.get('token') or '').strip()
+    mot_de_passe = request.data.get('mot_de_passe') or ''
+    if not token or not mot_de_passe:
+        return Response(
+            {'detail': 'Le token et le mot de passe sont requis.'},
+            status=status.HTTP_400_BAD_REQUEST)
+
+    user = services.accepter_invitation_portail(token, mot_de_passe)
+    if user is None:
+        return Response(
+            {'detail': 'Invitation introuvable, déjà utilisée, révoquée '
+                       'ou expirée.'},
+            status=status.HTTP_400_BAD_REQUEST)
+    return Response(
+        {'detail': 'Compte créé — vous pouvez maintenant vous connecter.'})

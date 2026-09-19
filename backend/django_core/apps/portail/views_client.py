@@ -161,6 +161,14 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
         from apps.ventes.selectors import devis_du_client_portail_obj
         from apps.ventes.services import AcceptError, accept_devis
 
+        # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS accepter
+        # de devis (consultation uniquement).
+        if not services.peut_ecrire_portail_client(request.user):
+            return Response(
+                {'detail': "Votre accès est en lecture seule : vous ne "
+                           "pouvez pas accepter de devis."},
+                status=status.HTTP_403_FORBIDDEN)
+
         company, client_id = _scope(request)
         devis = devis_du_client_portail_obj(company, client_id, pk)
         if devis is None:
@@ -591,6 +599,14 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
         (un id étranger est ignoré, jamais lié)."""
         from .models import DemandeTicketPortail
 
+        # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS ouvrir de
+        # ticket (consultation uniquement).
+        if not services.peut_ecrire_portail_client(request.user):
+            return Response(
+                {'detail': "Votre accès est en lecture seule : vous ne "
+                           "pouvez pas ouvrir de ticket."},
+                status=status.HTTP_403_FORBIDDEN)
+
         company, client_id = _scope(request)
         sujet = (request.data.get('sujet') or '').strip()[:200]
         if not sujet:
@@ -884,3 +900,108 @@ class MesChantiersPortailViewSet(viewsets.ViewSet):
         resp['Content-Disposition'] = f'inline; filename="{nom}"'
         resp['X-Content-Type-Options'] = 'nosniff'
         return resp
+
+
+class MonEquipePortailLigneSerializer(serializers.Serializer):
+    """Une invitation/membre d'équipe telle que le portail la montre au
+    client — payload volontairement pauvre : jamais le token d'invitation."""
+    id = serializers.IntegerField()
+    email = serializers.EmailField()
+    role = serializers.CharField()
+    role_display = serializers.CharField()
+    statut = serializers.CharField()
+    statut_display = serializers.CharField()
+    date_creation = serializers.DateTimeField(allow_null=True)
+    date_acceptation = serializers.DateTimeField(allow_null=True)
+
+
+class MonEquipePortailViewSet(viewsets.ViewSet):
+    """NTPRT6 — « Mon équipe » : invitations/membres du portail client.
+
+    Toute l'équipe (admin + invités) peut CONSULTER le roster
+    (``IsPortalClientUser``) ; SEUL l'admin (compte SANS invitation, premier
+    provisionné par NTPRT2) peut inviter ou révoquer — ``services.
+    est_admin_portail_client`` fait la distinction, jamais un rôle inventé
+    en plus de lecture/écriture.
+    """
+
+    permission_classes = [IsPortalClientUser]
+    serializer_class = MonEquipePortailLigneSerializer
+
+    @staticmethod
+    def _ligne(invitation):
+        return {
+            'id': invitation.id,
+            'email': invitation.email,
+            'role': invitation.role,
+            'role_display': invitation.get_role_display(),
+            'statut': invitation.statut,
+            'statut_display': invitation.get_statut_display(),
+            'date_creation': (invitation.created_at.isoformat()
+                              if invitation.created_at else None),
+            'date_acceptation': (invitation.date_acceptation.isoformat()
+                                 if invitation.date_acceptation else None),
+        }
+
+    def _invitations(self, request):
+        from .models import InvitationPortail
+        company, client_id = _scope(request)
+        return InvitationPortail.objects.filter(
+            company=company, compte_portail_client__client_id=client_id)
+
+    @extend_schema(responses=inline_serializer(
+        name='MonEquipePortail',
+        fields={'results': serializers.ListField(
+            child=MonEquipePortailLigneSerializer())}))
+    def list(self, request):
+        return Response({
+            'results': [self._ligne(i) for i in self._invitations(request)]})
+
+    @extend_schema(request=inline_serializer(
+        name='MonEquipePortailInviter',
+        fields={
+            'email': serializers.EmailField(),
+            'role': serializers.ChoiceField(
+                choices=['lecture', 'ecriture'], required=False),
+        }))
+    def create(self, request):
+        """Invite un collègue. RÉSERVÉ à l'admin (voir docstring de classe)."""
+        if not services.est_admin_portail_client(request.user):
+            return Response(
+                {'detail': "Seul l'administrateur du portail peut inviter "
+                           "des collègues."},
+                status=status.HTTP_403_FORBIDDEN)
+
+        email = (request.data.get('email') or '').strip()
+        if not email:
+            return Response({'email': 'Ce champ est obligatoire.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        role = request.data.get('role') or 'lecture'
+        company, client_id = _scope(request)
+        invitation = services.inviter_membre_portail(
+            company, client_id, email, role)
+        if invitation is None:
+            return Response(
+                {'detail': "Impossible de créer l'invitation."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self._ligne(invitation),
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='revoquer')
+    def revoquer(self, request, pk=None):
+        """Révoque une invitation (et ferme l'accès si déjà acceptée).
+        RÉSERVÉ à l'admin."""
+        if not services.est_admin_portail_client(request.user):
+            return Response(
+                {'detail': "Seul l'administrateur du portail peut révoquer "
+                           "un accès d'équipe."},
+                status=status.HTTP_403_FORBIDDEN)
+
+        company, _client_id = _scope(request)
+        invitation = self._invitations(request).filter(pk=pk).first()
+        if invitation is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        services.revoquer_invitation_portail(company, invitation.id)
+        invitation.refresh_from_db()
+        return Response(self._ligne(invitation))

@@ -31,6 +31,7 @@ from .views_client import (
     MesDevisPortailViewSet,
     MesFacturesPortailViewSet,
     MesLivraisonsPortailViewSet,
+    MonEquipePortailViewSet,
     SatisfactionPortailViewSet,
     tableau_de_bord_client,
 )
@@ -85,6 +86,11 @@ router.register(r'mes-chantiers', MesChantiersPortailViewSet,
 # aucun écran client pour y répondre).
 router.register(r'satisfaction', SatisfactionPortailViewSet,
                 basename='portail-satisfaction')
+# NTPRT6 — « Mon équipe » : invitation/gestion des utilisateurs du portail
+# client par l'admin client lui-même (lecture ouverte à toute l'équipe,
+# invitation/révocation réservées à l'admin — services.est_admin_portail_client).
+router.register(r'mon-equipe', MonEquipePortailViewSet,
+                basename='portail-mon-equipe')
 # NTPRT21 — surface self-service du FOURNISSEUR connecté : ses bons de
 # commande, et la confirmation de date d'arrivée (le même effet que le chemin
 # tokenisé XPUR22, simplement authentifié).
