@@ -8,9 +8,9 @@ Ordre de priorité (le premier trouvé gagne) :
        choix ponctuel, écrase tout) ;
     2. ``Client.langue_document`` (préférence du CLIENT, apps.crm) ;
     3. langue par défaut de la SOCIÉTÉ (``CompanyProfile.langue_repli``,
-       NTI18N34 — lu défensivement via ``getattr``/import tardif : ce champ
-       N'EXISTE PAS ENCORE, cette fonction reste correcte avant ET après son
-       arrivée, sans modification) ;
+       NTI18N34 — lu défensivement via ``getattr``/import tardif, y compris
+       pour une société créée avant l'arrivée de ce champ : le défaut FR du
+       modèle préserve alors le comportement historique) ;
     4. FR (repli de dernier recours, comportement historique inchangé).
 
 Ne renvoie JAMAIS autre chose qu'une des langues supportées par le cadre i18n
@@ -65,10 +65,10 @@ def resolve_langue_sortie(*, langue_explicite=None, client=None, company=None) -
         return client_langue
 
     if company is not None:
-        # NTI18N34 (pas encore construit) : ``CompanyProfile.langue_repli``.
-        # Import tardif + best-effort : aucune dépendance dure sur un champ
-        # qui n'existe pas encore, aucune exception ne doit jamais atteindre
-        # un appelant de génération de PDF.
+        # NTI18N34 : ``CompanyProfile.langue_repli``. Import tardif +
+        # best-effort : aucune exception ne doit jamais atteindre un
+        # appelant de génération de PDF (même une société d'avant NTI18N34,
+        # sans le champ en base, ne peut jamais faire lever cette fonction).
         try:
             from apps.parametres.models_company import CompanyProfile
             profile = CompanyProfile.get(company)

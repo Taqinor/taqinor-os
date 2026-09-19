@@ -202,6 +202,13 @@ class EmailTemplate(models.Model):
     cle = models.CharField(max_length=40, choices=Cle.choices)
     sujet = models.CharField(max_length=255, blank=True, default='')
     corps = models.TextField(blank=True, default='')
+    # ── NTI18N26 — traduction du modèle d'e-mail (au-delà du FR implicite) ──
+    # Additifs, vides par défaut : une société qui ne les renseigne pas garde
+    # un rendu strictement identique (FR via `sujet`/`corps` ci-dessus).
+    sujet_en = models.CharField(max_length=255, blank=True, default='')
+    corps_en = models.TextField(blank=True, default='')
+    sujet_ar = models.CharField(max_length=255, blank=True, default='')
+    corps_ar = models.TextField(blank=True, default='')
 
     class Meta:
         # app_label explicite : ce module n'est pas importé par ``models.py``
@@ -217,11 +224,17 @@ class EmailTemplate(models.Model):
         return f'{self.company_id}:{self.cle}'
 
     @classmethod
-    def get_template(cls, company, cle):
-        """Renvoie ``{'sujet', 'corps'}`` pour (company, cle), défaut si absent.
+    def get_template(cls, company, cle, langue='fr'):
+        """Renvoie ``{'sujet', 'corps'}`` pour (company, cle, langue).
 
         Aide destinée à l'action e-mail de l'automation (câblage dans une autre
         lane) : un sujet/corps vide retombe sur le défaut de la clé.
+
+        NTI18N26 — ``langue`` (``'fr'`` par défaut, backward-compatible) :
+        pour ``en``/``ar``, un sujet/corps traduit renseigné par la société
+        prime ; sinon repli sur le FR (``sujet``/``corps``) puis sur le
+        défaut FR de la clé — jamais un échec silencieux visible côté client.
+        L'appelant résout ``langue`` via la même priorité que NTI18N4.
         """
         default = EMAIL_TEMPLATE_DEFAULTS.get(cle, {'sujet': '', 'corps': ''})
         row = None
@@ -229,14 +242,20 @@ class EmailTemplate(models.Model):
             row = cls.objects.filter(company=company, cle=cle).first()
         if row is None:
             return {'sujet': default['sujet'], 'corps': default['corps']}
-        return {
-            'sujet': row.sujet.strip() or default['sujet'],
-            'corps': row.corps.strip() or default['corps'],
-        }
+        sujet_fr = row.sujet.strip() or default['sujet']
+        corps_fr = row.corps.strip() or default['corps']
+        if langue in ('en', 'ar'):
+            sujet_langue = row.sujet_en if langue == 'en' else row.sujet_ar
+            corps_langue = row.corps_en if langue == 'en' else row.corps_ar
+            return {
+                'sujet': sujet_langue.strip() or sujet_fr,
+                'corps': corps_langue.strip() or corps_fr,
+            }
+        return {'sujet': sujet_fr, 'corps': corps_fr}
 
     @classmethod
-    def render(cls, company, cle, **context):
-        """Sujet + corps de (company, cle) avec les placeholders substitués.
+    def render(cls, company, cle, langue='fr', **context):
+        """Sujet + corps de (company, cle, langue) avec placeholders substitués.
 
         Substitution tolérante : un placeholder absent du ``context`` est laissé
         tel quel (jamais de ``KeyError``) — l'appelant fournit ce qu'il a.
@@ -245,8 +264,11 @@ class EmailTemplate(models.Model):
         nom du profil société (``parametres.selectors.company_identity``), sinon
         littéral historique de la clé — un tenant nommé voit SON nom, une société
         sans profil garde le rendu d'aujourd'hui.
+
+        NTI18N26 — ``langue`` par défaut ``'fr'`` (backward-compatible : tout
+        appelant existant qui ne le passe pas garde un rendu identique).
         """
-        tpl = cls.get_template(company, cle)
+        tpl = cls.get_template(company, cle, langue)
         if 'entreprise' not in context:
             nom = ''
             try:
