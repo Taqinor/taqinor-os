@@ -25,6 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .score_factors import facteur, jours, nombre, top_facteurs
+from .score_params import NOM_WIN_PROBA, resoudre
 
 # Probabilité de conversion de BASE par clé d'étape — reprise 1:1 de
 # l'heuristique statique historique de ``apps/reporting/pipeline.py``. Les clés
@@ -90,6 +91,23 @@ _RELANCE_BONUS_EACH = 0.04
 _RELANCE_BONUS_CAP = 0.12
 
 
+# NTAI27 — hyperparamètres VERSIONNABLES par société. Les constantes
+# ci-dessus sont les défauts du CODE. ``STAGE_BASE_PROBABILITY`` est incluse :
+# seules ses clés DÉJÀ présentes sont acceptées, donc une société peut
+# recalibrer la base d'une étape mais jamais inventer une étape (règle #2 —
+# les étapes viennent de STAGES.py, et core n'en renomme aucune).
+DEFAUTS_PARAMS = {
+    'STAGE_BASE_PROBABILITY': STAGE_BASE_PROBABILITY,
+    'DEFAULT_BASE': DEFAULT_BASE,
+    'STALE_DAYS': _STALE_DAYS,
+    'RECENCY_FLOOR': _RECENCY_FLOOR,
+    'RELANCE_BONUS_EACH': _RELANCE_BONUS_EACH,
+    'RELANCE_BONUS_CAP': _RELANCE_BONUS_CAP,
+    'PRIORITY_FACTOR': _PRIORITY_FACTOR,
+    'CANAL_FACTOR': _CANAL_FACTOR,
+}
+
+
 @dataclass
 class WinProbabilityResult:
     """Résultat de :func:`win_probability`.
@@ -111,11 +129,16 @@ class WinProbabilityResult:
     facteurs: list = field(default_factory=list)
 
 
-def base_probability_for_stage(stage) -> float:
-    """Probabilité de base d'une clé d'étape (repli ``DEFAULT_BASE``)."""
+def base_probability_for_stage(stage, params=None) -> float:
+    """Probabilité de base d'une clé d'étape (repli ``DEFAULT_BASE``).
+
+    NTAI27 — ``params`` (optionnel) porte la table recalibrée d'une société ;
+    sans lui, la table du CODE s'applique, comportement inchangé."""
+    params = params or DEFAUTS_PARAMS
     if stage is None:
-        return DEFAULT_BASE
-    return STAGE_BASE_PROBABILITY.get(str(stage), DEFAULT_BASE)
+        return params['DEFAULT_BASE']
+    return params['STAGE_BASE_PROBABILITY'].get(
+        str(stage), params['DEFAULT_BASE'])
 
 
 def _clamp01(x: float) -> float:
@@ -137,19 +160,21 @@ def _coerce_float(raw, default=None):
         return default
 
 
-def _recency_factor(age_days: float | None) -> float | None:
+def _recency_factor(age_days: float | None, params=None) -> float | None:
     """Multiplicateur de fraîcheur ``[_RECENCY_FLOOR, 1.0]``.
 
     ``age_days`` = jours depuis la dernière activité/avancée du lead. Un lead
     frais (0 j) garde 1.0 ; à ``_STALE_DAYS`` jours et au-delà il atteint le
     plancher. Décroissance linéaire. ``None``/négatif → pas d'ajustement."""
+    params = params or DEFAUTS_PARAMS
+    stale = params['STALE_DAYS'] or _STALE_DAYS
     if age_days is None or age_days < 0:
         return None
-    ratio = min(age_days, _STALE_DAYS) / _STALE_DAYS  # 0..1
-    return 1.0 - ratio * (1.0 - _RECENCY_FLOOR)
+    ratio = min(age_days, stale) / stale  # 0..1
+    return 1.0 - ratio * (1.0 - params['RECENCY_FLOOR'])
 
 
-def win_probability(features) -> WinProbabilityResult:
+def win_probability(features, *, company=None) -> WinProbabilityResult:
     """Probabilité de gain ``[0, 1]`` d'un lead à partir de ses features.
 
     ``features`` : un mapping (dict) fourni par l'app appelante depuis SES
@@ -169,15 +194,22 @@ def win_probability(features) -> WinProbabilityResult:
     fournie (au-delà de l'étape), le résultat est exactement la base d'étape —
     dégradation propre, comportement identique à l'ancienne heuristique.
 
-    Pur, déterministe, sans base de données ni réseau.
+    NTAI27 — ``company`` (optionnel) fait lire la table de base d'étape et les
+    multiplicateurs dans la version d'hyperparamètres ACTIVE de cette société,
+    avec repli sur les défauts du code clé par clé. Sans ``company``, la
+    fonction reste PURE et déterministe, et rend exactement le même résultat
+    qu'avant NTAI27.
     """
     feats = features or {}
     if not isinstance(feats, dict):
         feats = {}
 
+    # NTAI27 — seuils de CETTE société, à défaut ceux du code.
+    params = resoudre(company, NOM_WIN_PROBA, DEFAUTS_PARAMS)
+
     stage = feats.get('stage')
     stage_key = '' if stage is None else str(stage)
-    base = base_probability_for_stage(stage)
+    base = base_probability_for_stage(stage, params)
 
     factors: dict = {'stage_base': round(base, 4)}
     # NTAI31 — la base d'étape EST un signal : c'est de là que part la
@@ -215,7 +247,7 @@ def win_probability(features) -> WinProbabilityResult:
 
     # ── Recency (fraîcheur) ─────────────────────────────────────────────────
     age_days = _coerce_float(feats.get('age_days'))
-    rec = _recency_factor(age_days)
+    rec = _recency_factor(age_days, params)
     if rec is not None:
         avant = prob
         prob *= rec
@@ -230,7 +262,7 @@ def win_probability(features) -> WinProbabilityResult:
     # ── Priorité ────────────────────────────────────────────────────────────
     prio_raw = feats.get('priorite')
     if prio_raw is not None:
-        pf = _PRIORITY_FACTOR.get(str(prio_raw).strip().lower())
+        pf = params['PRIORITY_FACTOR'].get(str(prio_raw).strip().lower())
         if pf is not None:
             avant = prob
             prob *= pf
@@ -243,7 +275,7 @@ def win_probability(features) -> WinProbabilityResult:
     # ── Canal d'acquisition ─────────────────────────────────────────────────
     canal_raw = feats.get('canal')
     if canal_raw is not None:
-        cf = _CANAL_FACTOR.get(str(canal_raw).strip().lower())
+        cf = params['CANAL_FACTOR'].get(str(canal_raw).strip().lower())
         if cf is not None:
             avant = prob
             prob *= cf
@@ -256,7 +288,8 @@ def win_probability(features) -> WinProbabilityResult:
     # ── Relances (engagement) — bonus additif plafonné ──────────────────────
     relances = _coerce_float(feats.get('relances'))
     if relances is not None and relances > 0:
-        bonus = min(relances * _RELANCE_BONUS_EACH, _RELANCE_BONUS_CAP)
+        bonus = min(relances * params['RELANCE_BONUS_EACH'],
+                    params['RELANCE_BONUS_CAP'])
         prob += bonus
         factors['relances_bonus'] = round(bonus, 4)
         facteurs.append(facteur(

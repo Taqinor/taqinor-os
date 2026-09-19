@@ -25,6 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .score_factors import facteurs_ponderes, jours, nombre, top_facteurs
+from .score_params import NOM_CHURN, resoudre
 
 # ── Bandes de risque (libellés FR, ordre du moins au plus à risque) ──────────
 BAND_FAIBLE = 'faible'
@@ -69,6 +70,27 @@ SAV_SATURATION_TICKETS = 5.0
 # Un client qu'on n'a pas vu depuis longtemps sur le terrain dérive. Poids.
 WEIGHT_INTERVENTION = 0.10
 INTERVENTION_SATURATION_DAYS = 540.0
+
+
+# NTAI27 — hyperparamètres VERSIONNABLES par société. Les constantes
+# ci-dessus restent LA référence (les défauts du code) ; une société qui a
+# activé une version de paramètres dans le registre de modèles voit ses
+# valeurs se substituer, clé par clé, via ``core.score_params.resoudre``.
+# Toute clé absente de cette table est refusée : la liste blanche est ici.
+DEFAUTS_PARAMS = {
+    'INACTIVITY_SATURATION_DAYS': INACTIVITY_SATURATION_DAYS,
+    'WEIGHT_INACTIVITY': WEIGHT_INACTIVITY,
+    'WEIGHT_CONTRACT': WEIGHT_CONTRACT,
+    'CONTRACT_LAPSE_SATURATION_DAYS': CONTRACT_LAPSE_SATURATION_DAYS,
+    'CONTRACT_ACTIVE_RELIEF': CONTRACT_ACTIVE_RELIEF,
+    'WEIGHT_SAV': WEIGHT_SAV,
+    'SAV_SATURATION_TICKETS': SAV_SATURATION_TICKETS,
+    'WEIGHT_INTERVENTION': WEIGHT_INTERVENTION,
+    'INTERVENTION_SATURATION_DAYS': INTERVENTION_SATURATION_DAYS,
+    'DEFAULT_RISK': DEFAULT_RISK,
+    'BAND_THRESHOLD_MOYEN': BAND_THRESHOLD_MOYEN,
+    'BAND_THRESHOLD_ELEVE': BAND_THRESHOLD_ELEVE,
+}
 
 
 @dataclass
@@ -124,16 +146,20 @@ def _ramp(value: float | None, saturation: float) -> float | None:
     return min(value, saturation) / saturation
 
 
-def band_for_score(score: float) -> str:
-    """Bande de risque (``faible`` / ``moyen`` / ``élevé``) d'un score ``[0, 1]``."""
-    if score >= BAND_THRESHOLD_ELEVE:
+def band_for_score(score: float, params=None) -> str:
+    """Bande de risque (``faible`` / ``moyen`` / ``élevé``) d'un score ``[0, 1]``.
+
+    NTAI27 — ``params`` (optionnel) porte les seuils résolus pour une société ;
+    sans lui, les seuils du CODE s'appliquent, comportement inchangé."""
+    params = params or DEFAUTS_PARAMS
+    if score >= params['BAND_THRESHOLD_ELEVE']:
         return BAND_ELEVE
-    if score >= BAND_THRESHOLD_MOYEN:
+    if score >= params['BAND_THRESHOLD_MOYEN']:
         return BAND_MOYEN
     return BAND_FAIBLE
 
 
-def churn_risk(features) -> ChurnRiskResult:
+def churn_risk(features, *, company=None) -> ChurnRiskResult:
     """Score de churn ``[0, 1]`` d'un client à partir de ses features.
 
     ``features`` : un mapping (dict) fourni par l'app appelante depuis SES
@@ -156,12 +182,22 @@ def churn_risk(features) -> ChurnRiskResult:
     élevé (monotone). Tout reste borné à ``[0, 1]``.
 
     Si AUCUNE feature exploitable n'est fournie, le résultat est ``DEFAULT_RISK``
-    avec ``used_fallback=True`` — dégradation propre. Pur, déterministe, sans
-    base de données ni réseau.
+    avec ``used_fallback=True`` — dégradation propre.
+
+    NTAI27 — ``company`` (optionnel) fait lire les poids et seuils dans la
+    version d'hyperparamètres ACTIVE de cette société, avec repli sur les
+    défauts du code clé par clé. Sans ``company``, la fonction reste PURE et
+    déterministe (aucune base, aucun réseau) et son résultat est identique à
+    celui d'avant NTAI27.
     """
     feats = features or {}
     if not isinstance(feats, dict):
         feats = {}
+
+    # NTAI27 — seuils de CETTE société, à défaut ceux du code. Sans ``company``
+    # (le cas de tous les appels existants) la fonction reste PURE : aucun
+    # résolveur n'est consulté, aucune requête n'est émise.
+    params = resoudre(company, NOM_CHURN, DEFAUTS_PARAMS)
 
     factors: dict = {}
     # NTAI31 — ``(cle, libellé clair, valeur normalisée, poids)`` de chaque
@@ -174,16 +210,16 @@ def churn_risk(features) -> ChurnRiskResult:
 
     # ── Inactivité (jours depuis la dernière activité) ──────────────────────
     jours_inactifs = _coerce_float(feats.get('days_since_last_activity'))
-    inact = _ramp(jours_inactifs, INACTIVITY_SATURATION_DAYS)
+    inact = _ramp(jours_inactifs, params['INACTIVITY_SATURATION_DAYS'])
     if inact is not None:
-        weighted_sum += inact * WEIGHT_INACTIVITY
-        weight_total += WEIGHT_INACTIVITY
+        weighted_sum += inact * params['WEIGHT_INACTIVITY']
+        weight_total += params['WEIGHT_INACTIVITY']
         factors['inactivity'] = round(inact, 4)
         composantes.append((
             'inactivity',
             ('Activité récente' if not jours_inactifs
              else f'Sans activité depuis {jours(jours_inactifs)}'),
-            inact, WEIGHT_INACTIVITY))
+            inact, params['WEIGHT_INACTIVITY']))
         used_any = True
 
     # ── Contrat de maintenance ──────────────────────────────────────────────
@@ -193,7 +229,8 @@ def churn_risk(features) -> ChurnRiskResult:
     contract_libelle = ''
     if lapse_days is not None and lapse_days > 0:
         # Contrat lapsé : risque proportionnel à l'ancienneté du lapse.
-        contract_component = _ramp(lapse_days, CONTRACT_LAPSE_SATURATION_DAYS)
+        contract_component = _ramp(
+            lapse_days, params['CONTRACT_LAPSE_SATURATION_DAYS'])
         contract_libelle = ('Contrat de maintenance expiré depuis '
                             f'{jours(lapse_days)}')
     elif contract_active is True:
@@ -205,54 +242,56 @@ def churn_risk(features) -> ChurnRiskResult:
         contract_component = 0.5
         contract_libelle = 'Aucun contrat de maintenance actif'
     if contract_component is not None:
-        weighted_sum += contract_component * WEIGHT_CONTRACT
-        weight_total += WEIGHT_CONTRACT
+        weighted_sum += contract_component * params['WEIGHT_CONTRACT']
+        weight_total += params['WEIGHT_CONTRACT']
         factors['contract'] = round(contract_component, 4)
         composantes.append((
-            'contract', contract_libelle, contract_component, WEIGHT_CONTRACT))
+            'contract', contract_libelle, contract_component,
+            params['WEIGHT_CONTRACT']))
         used_any = True
 
     # ── Tickets SAV ouverts ─────────────────────────────────────────────────
     tickets = _coerce_float(feats.get('open_sav_tickets'))
-    sav = _ramp(tickets, SAV_SATURATION_TICKETS)
+    sav = _ramp(tickets, params['SAV_SATURATION_TICKETS'])
     if sav is not None:
-        weighted_sum += sav * WEIGHT_SAV
-        weight_total += WEIGHT_SAV
+        weighted_sum += sav * params['WEIGHT_SAV']
+        weight_total += params['WEIGHT_SAV']
         factors['sav'] = round(sav, 4)
         composantes.append((
             'sav',
             ('Aucun ticket SAV ouvert' if not tickets
              else f'{nombre(tickets)} ticket(s) SAV non résolu(s)'),
-            sav, WEIGHT_SAV))
+            sav, params['WEIGHT_SAV']))
         used_any = True
 
     # ── Ancienneté de la dernière intervention ──────────────────────────────
     age_intervention = _coerce_float(feats.get('last_intervention_age'))
-    interv = _ramp(age_intervention, INTERVENTION_SATURATION_DAYS)
+    interv = _ramp(age_intervention, params['INTERVENTION_SATURATION_DAYS'])
     if interv is not None:
-        weighted_sum += interv * WEIGHT_INTERVENTION
-        weight_total += WEIGHT_INTERVENTION
+        weighted_sum += interv * params['WEIGHT_INTERVENTION']
+        weight_total += params['WEIGHT_INTERVENTION']
         factors['intervention'] = round(interv, 4)
         composantes.append((
             'intervention',
             f'Dernière intervention terrain il y a {jours(age_intervention)}',
-            interv, WEIGHT_INTERVENTION))
+            interv, params['WEIGHT_INTERVENTION']))
         used_any = True
 
     # ── Repli propre : aucune feature exploitable ───────────────────────────
     if not used_any:
-        score = _clamp01(DEFAULT_RISK)
+        score = _clamp01(params['DEFAULT_RISK'])
         return ChurnRiskResult(
             score=round(score, 4),
-            band=band_for_score(score),
+            band=band_for_score(score, params),
             used_fallback=True,
-            factors={'default': round(DEFAULT_RISK, 4)},
+            factors={'default': round(params['DEFAULT_RISK'], 4)},
             facteurs=[],
         )
 
     # Moyenne pondérée sur les SEULES composantes présentes (les features
     # absentes ne diluent pas le score vers 0).
-    score = weighted_sum / weight_total if weight_total > 0 else DEFAULT_RISK
+    score = (weighted_sum / weight_total if weight_total > 0
+             else params['DEFAULT_RISK'])
 
     # NTAI31 — contributions des composantes pondérées (leur somme REDONNE le
     # score ci-dessus, avant bonus de fidélité et bornage).
@@ -260,24 +299,24 @@ def churn_risk(features) -> ChurnRiskResult:
 
     # Bonus de fidélité : un contrat explicitement actif RÉDUIT le risque.
     if contract_active is True and (lapse_days is None or lapse_days <= 0):
-        score -= CONTRACT_ACTIVE_RELIEF
-        factors['active_relief'] = -round(CONTRACT_ACTIVE_RELIEF, 4)
-        facteurs.append(_facteur_fidelite())
+        relief = params['CONTRACT_ACTIVE_RELIEF']
+        score -= relief
+        factors['active_relief'] = -round(relief, 4)
+        facteurs.append(_facteur_fidelite(relief))
 
     score = _clamp01(score)
 
     return ChurnRiskResult(
         score=round(score, 4),
-        band=band_for_score(score),
+        band=band_for_score(score, params),
         used_fallback=False,
         factors=factors,
         facteurs=top_facteurs(facteurs),
     )
 
 
-def _facteur_fidelite():
+def _facteur_fidelite(relief):
     """Le bonus de fidélité, exprimé comme un facteur NÉGATIF (il rassure)."""
     from .score_factors import facteur
     return facteur(
-        'active_relief', 'Contrat de maintenance actif (fidélité)',
-        -CONTRACT_ACTIVE_RELIEF)
+        'active_relief', 'Contrat de maintenance actif (fidélité)', -relief)
