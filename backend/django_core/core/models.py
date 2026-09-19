@@ -679,6 +679,215 @@ class WorkflowStepInstance(TimestampedModel):
 
 
 # ---------------------------------------------------------------------------
+# NTWFL17 — Dossier transverse (« case »), l'objet de travail qui n'appartient
+# à AUCUNE app métier.
+#
+# Le besoin : une réclamation complexe ou un onboarding grand compte traverse
+# le lead, le devis, le ticket SAV, le chantier, la facture et le contrat. Tant
+# qu'aucun objet ne les tient ENSEMBLE, l'équipe recolle ce fil à la main dans
+# six écrans. ``Dossier`` est ce fil — et il vit dans ``core`` précisément
+# parce qu'il n'a le droit d'appartenir à aucune des six apps (contrat
+# import-linter ``core-foundation-is-a-base-layer``).
+#
+# Trois modèles, aucun import métier :
+#   * ``Dossier``               — l'en-tête (type, titre, statut PROPRE,
+#     propriétaire, échéance, priorité) ;
+#   * ``DossierLien``           — les N objets rattachés, désignés par
+#     ``contenttypes`` (``content_type`` + ``object_id``), JAMAIS par une FK
+#     réelle vers une app domaine ;
+#   * ``DossierChecklistItem``  — les étapes à cocher.
+#
+# ``statut`` est DÉLIBÉRÉMENT indépendant de ``STAGES.py`` : le funnel
+# commercial décrit l'avancement d'une OPPORTUNITÉ, pas la vie d'un dossier de
+# réclamation. Les deux vocabulaires ne se mélangent jamais (règle #2).
+# ---------------------------------------------------------------------------
+
+
+class Dossier(TenantModel):
+    """En-tête d'un dossier transverse (NTWFL17).
+
+    ``type_dossier`` est un choix FERMÉ : le catalogue vit ici, en un seul
+    endroit, et s'étend par une migration ``AlterField`` — jamais par une
+    chaîne libre saisie dans un écran (deux orthographes du même type
+    casseraient tout regroupement). ``statut`` a son propre cycle de vie,
+    étranger au funnel ``STAGES.py``.
+    """
+
+    TYPE_RECLAMATION_COMPLEXE = 'reclamation_complexe'
+    TYPE_ONBOARDING_GRAND_COMPTE = 'onboarding_grand_compte'
+    TYPE_LITIGE = 'litige'
+    TYPE_PROJET_TRANSVERSE = 'projet_transverse'
+    TYPE_AUTRE = 'autre'
+    TYPE_CHOICES = [
+        (TYPE_RECLAMATION_COMPLEXE, 'Réclamation complexe'),
+        (TYPE_ONBOARDING_GRAND_COMPTE, 'Onboarding grand compte'),
+        (TYPE_LITIGE, 'Litige'),
+        (TYPE_PROJET_TRANSVERSE, 'Projet transverse'),
+        (TYPE_AUTRE, 'Autre'),
+    ]
+
+    STATUT_OUVERT = 'ouvert'
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_EN_ATTENTE = 'en_attente'
+    STATUT_CLOS = 'clos'
+    STATUT_ABANDONNE = 'abandonne'
+    STATUT_CHOICES = [
+        (STATUT_OUVERT, 'Ouvert'),
+        (STATUT_EN_COURS, 'En cours'),
+        (STATUT_EN_ATTENTE, 'En attente'),
+        (STATUT_CLOS, 'Clos'),
+        (STATUT_ABANDONNE, 'Abandonné'),
+    ]
+    #: Statuts qui ferment le dossier (plus aucune échéance à surveiller).
+    STATUTS_FERMES = (STATUT_CLOS, STATUT_ABANDONNE)
+
+    PRIORITE_BASSE = 'basse'
+    PRIORITE_NORMALE = 'normale'
+    PRIORITE_HAUTE = 'haute'
+    PRIORITE_CRITIQUE = 'critique'
+    PRIORITE_CHOICES = [
+        (PRIORITE_BASSE, 'Basse'),
+        (PRIORITE_NORMALE, 'Normale'),
+        (PRIORITE_HAUTE, 'Haute'),
+        (PRIORITE_CRITIQUE, 'Critique'),
+    ]
+
+    type_dossier = models.CharField(
+        'Type de dossier', max_length=32,
+        choices=TYPE_CHOICES, default=TYPE_AUTRE,
+        help_text='Catalogue fermé — étendu par migration, jamais par saisie.')
+    titre = models.CharField('Titre', max_length=200)
+    description = models.TextField('Description', blank=True, default='')
+    statut = models.CharField(
+        'Statut', max_length=16, choices=STATUT_CHOICES,
+        default=STATUT_OUVERT,
+        help_text="Cycle de vie PROPRE au dossier — sans rapport avec le "
+                  'funnel commercial (STAGES.py).')
+    priorite = models.CharField(
+        'Priorité', max_length=16, choices=PRIORITE_CHOICES,
+        default=PRIORITE_NORMALE)
+    proprietaire = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='core_dossiers_possedes',
+        verbose_name='Propriétaire')
+    echeance = models.DateField(
+        'Échéance', null=True, blank=True,
+        help_text='Vide = aucune date cible surveillée.')
+
+    class Meta:
+        verbose_name = 'Dossier'
+        verbose_name_plural = 'Dossiers'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='core_dossier_co_statut_idx'),
+            models.Index(fields=['company', 'type_dossier'],
+                         name='core_dossier_co_type_idx'),
+            models.Index(fields=['company', 'echeance'],
+                         name='core_dossier_co_ech_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.titre} ({self.get_type_dossier_display()})'
+
+    @property
+    def est_ferme(self):
+        """Vrai si le dossier ne réclame plus aucune surveillance."""
+        return self.statut in self.STATUTS_FERMES
+
+    def est_en_retard(self, aujourd_hui):
+        """Vrai si l'échéance est dépassée ET le dossier encore ouvert.
+
+        ``aujourd_hui`` est TOUJOURS passé par l'appelant (déterminisme
+        testable — même discipline que ``core.workflow``)."""
+        if self.echeance is None or self.est_ferme:
+            return False
+        return self.echeance < aujourd_hui
+
+
+class DossierLien(TenantModel):
+    """Un objet métier rattaché à un dossier (NTWFL17).
+
+    La cible est désignée GÉNÉRIQUEMENT (``content_type`` + ``object_id``) :
+    aucune FK réelle vers ``crm``/``ventes``/``sav``/``installations``… —
+    ``core`` resterait fondation même si l'une de ces apps disparaissait.
+    ``libelle`` fige un intitulé lisible au moment du rattachement, pour que
+    la liste reste affichable sans aller chercher chaque cible.
+    """
+
+    dossier = models.ForeignKey(
+        Dossier, on_delete=models.CASCADE,
+        related_name='liens', verbose_name='Dossier')
+    content_type = models.ForeignKey(
+        ContentType, on_delete=models.CASCADE,
+        related_name='+', verbose_name='Type de cible')
+    object_id = models.PositiveIntegerField('Identifiant de la cible')
+    cible = GenericForeignKey('content_type', 'object_id')
+    libelle = models.CharField(
+        'Libellé', max_length=200, blank=True, default='',
+        help_text='Intitulé figé de la cible au moment du rattachement.')
+
+    class Meta:
+        verbose_name = 'Objet lié au dossier'
+        verbose_name_plural = 'Objets liés au dossier'
+        ordering = ['dossier', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['dossier', 'content_type', 'object_id'],
+                name='core_dossier_lien_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['content_type', 'object_id'],
+                         name='core_doslien_target_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.dossier_id} → {self.content_type_id}#{self.object_id}'
+
+    @property
+    def cle_modele(self):
+        """``'app_label.model'`` de la cible — jamais un import de l'app."""
+        ct = self.content_type
+        return f'{ct.app_label}.{ct.model}' if ct else ''
+
+
+class DossierChecklistItem(TenantModel):
+    """Une étape à cocher d'un dossier (NTWFL17).
+
+    Reprend le trio éprouvé par ``installations.ChantierChecklistItem`` —
+    ``fait`` / ``fait_par`` / ``fait_le``. Différence assumée : pas de clé
+    ``cle``, car une checklist de dossier est SAISIE librement par l'équipe et
+    non matérialisée depuis un modèle d'étapes ; il n'y a donc rien à
+    réconcilier d'un passage à l'autre.
+    """
+
+    dossier = models.ForeignKey(
+        Dossier, on_delete=models.CASCADE,
+        related_name='checklist', verbose_name='Dossier')
+    libelle = models.CharField('Libellé', max_length=200)
+    ordre = models.PositiveIntegerField('Ordre', default=0)
+    fait = models.BooleanField('Fait', default=False)
+    fait_par = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='core_dossier_items_faits',
+        verbose_name='Fait par')
+    fait_le = models.DateTimeField('Fait le', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Étape de checklist (dossier)'
+        verbose_name_plural = 'Étapes de checklist (dossier)'
+        ordering = ['dossier', 'ordre', 'id']
+        indexes = [
+            models.Index(fields=['dossier', 'ordre'],
+                         name='core_dositem_ordre_idx'),
+        ]
+
+    def __str__(self):
+        coche = '✓' if self.fait else '—'
+        return f'{self.dossier_id} · {self.libelle} · {coche}'
+
+
+# ---------------------------------------------------------------------------
 # NTWFL1 — Matrice d'approbation d'entreprise UNIFIÉE (objet × montant ×
 # département → chaîne de paliers).
 #
