@@ -314,8 +314,16 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 from apps.audit.recorder import record
                 from apps.audit.models import AuditLog
                 actor = u.username if u is not None else raw_uname
+                # AUDIT-LOGIN-PORTAIL — ce même endpoint sert aussi le login
+                # des comptes PORTAIL externes (client/fournisseur/partenaire,
+                # `portee != 'interne'`) : sans ce drapeau, leurs connexions
+                # étaient journalisées indistinctement des connexions internes,
+                # invisibles au filtre `via_portail=True` (NTPRT7, réservé
+                # Directeur — `apps/audit/views.py`). Même littéral que
+                # `core.permissions.ScopedPermission`/`_user_has_or_legacy`.
                 record(AuditLog.Action.LOGIN, user=u, actor_username=actor,
-                       company=getattr(u, 'company', None), detail='Connexion')
+                       company=getattr(u, 'company', None), detail='Connexion',
+                       via_portail=getattr(u, 'portee', 'interne') != 'interne')
             except Exception:
                 pass
             # NTSEC12 — détection « impossible travel » (best-effort, jamais
