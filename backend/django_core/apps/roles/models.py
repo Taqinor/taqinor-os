@@ -508,6 +508,60 @@ ALL_PERMISSIONS = [
     'ux_corbeille_consulter',
     'ux_corbeille_restaurer',
     'ux_edition_masse_executer',
+    # ── NTP2P36 — permissions fines par rôle sur l'approbation d'achats et
+    # notes de frais ──────────────────────────────────────────────────────
+    # Quatre gestes d'approbation/validation distincts, DISJOINTS de
+    # ``stock_gerer``/``installation_gerer`` : un compte peut créer une
+    # demande d'achat sans pouvoir l'approuver. Aucune de ces vérifications
+    # n'est câblée ici — le catalogue rend seulement les codes octroyables
+    # (Paramètres → grille rôles) et prêts à être exigés côté vue quand les
+    # actions correspondantes appliquent la garde (apps/installations,
+    # apps/stock, apps/frais — hors du présent périmètre roles-only).
+    #   * ``approuver_demande_achat``        — décide une étape de
+    #     ``EtapeApprobationAchat`` (NTP2P2, action ``approuver-etape``).
+    #   * ``approuver_note_frais_direction`` — valide l'escalade direction
+    #     d'une ``NoteFrais`` (NTP2P11).
+    #   * ``valider_dossier_fournisseur``    — valide/rejette un dossier
+    #     fournisseur en attente (NTP2P7, action ``valider-dossier``).
+    #   * ``emettre_carte_achat``            — émet une carte d'achat
+    #     virtuelle (NTP2P15, GATED-founder/COST, non construit sur main).
+    # Non-terminées par ``_voir``/``_gerer`` : ce sont des gestes d'ÉCRITURE
+    # au sens de ``CustomUser._role_grants_write`` (même patron que
+    # ``douane_responsable``/``btp_visa_approuver``), pas des codes élevés
+    # (pas d'exposition de donnée sensible — cf. ``ELEVATED_PERMISSIONS``).
+    'approuver_demande_achat',
+    'approuver_note_frais_direction',
+    'valider_dossier_fournisseur',
+    'emettre_carte_achat',
+    # ── NTOBS22 — permissions fines par rôle sur les écrans Fiabilité
+    # (Paramètres → Fiabilité : Sauvegardes/Limites & usage/SLA/fenêtres de
+    # maintenance/export de réversibilité) ───────────────────────────────
+    #   * ``fiabilite_voir``           — lecture seule des écrans du groupe
+    #     (remplace le ``fiabilite_lecture`` du plan : le suffixe ``_voir``
+    #     est OBLIGATOIRE pour tout code de LECTURE — ``CustomUser.
+    #     _role_grants_write`` ne reconnaît que ``_voir``/``_view`` comme
+    #     lecture ; un code ``fiabilite_lecture`` isolé aurait rendu
+    #     « responsable » — et donc capable d'ouvrir tout endpoint interne
+    #     gardé ``IsResponsableOrAdmin`` — le premier rôle qui l'aurait porté
+    #     seul, à l'exact inverse du besoin lecture-seule).
+    #   * ``fiabilite_administration`` — crée une fenêtre de maintenance,
+    #     lance un export de réversibilité, édite ``SlaCreditPolicy``/
+    #     ``ReliabilitySettings``. Réservé Directeur (hérité via
+    #     ``ALL_PERMISSIONS``/``DIRECTEUR_PERMISSIONS`` ci-dessous).
+    # Le câblage des 6 vues ``core.{maintenance_windows,sla,views}`` (encore
+    # sur ``IsDirecteurOrAdmin``/``IsAdminOrResponsableTier`` codé en dur) est
+    # HORS du périmètre roles-only de cette tâche — ces deux codes ne sont
+    # pour l'instant consommés par AUCUN viewset routé. Aucun rôle « Comptable »
+    # n'existe dans ce dépôt (les rôles système sont Directeur/Administrateur/
+    # Commercial responsable/Commercial/Commercial terrain/Technicien
+    # responsable/Technicien/Viewer/Admin RH/Admin Ventes + les 3 rôles
+    # portail) : ``fiabilite_voir`` n'est donc octroyé à AUCUN rôle par défaut
+    # ici (jamais d'invention d'un rôle système non demandé) — un
+    # Administrateur peut le cocher manuellement sur le rôle de son choix
+    # (Viewer, par ex.) via l'éditeur de rôles existant, comme tout code de ce
+    # catalogue.
+    'fiabilite_voir',
+    'fiabilite_administration',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -576,6 +630,20 @@ PERMISSION_MODULE = {
     **{c: 'assurances' for c in ALL_PERMISSIONS if c.startswith('assurances_')},
     'douane_responsable': 'douane',
     'transport_responsable': 'transport',
+    # NTP2P36 — gestes d'approbation achats/notes de frais, groupés sous
+    # l'app Django propriétaire du modèle concerné (jamais la page frontend
+    # qui les affiche, qui peut différer — cf. ``compta``/``rh`` pour
+    # NoteFrais alors que le modèle vit dans ``apps.frais``).
+    'approuver_demande_achat': 'installations',
+    'valider_dossier_fournisseur': 'stock',
+    'emettre_carte_achat': 'stock',
+    'approuver_note_frais_direction': 'frais',
+    # NTOBS22 — ``fiabilite_voir``/``fiabilite_administration`` sont
+    # VOLONTAIREMENT absents d'ici : les écrans Fiabilité vivent sous
+    # ``apps.parametres`` (``module_manifest.installable = False`` — jamais
+    # togglable), même statut fondation que ``parametres_voir`` ci-dessus
+    # (cf. ``test_fondation_et_donnees_sensibles_sans_module``) : les
+    # mapper masquerait leur case sur un toggle qui n'existe pas.
 }
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
