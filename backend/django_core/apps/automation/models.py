@@ -68,6 +68,16 @@ class TriggerType(models.TextChoices):
     CUSTOM_RECORD_SAVED = (
         'custom_record_saved',
         "Enregistrement d'objet personnalisé créé/modifié")
+    # AUTOMATION-TRIGGERS — quatre événements du bus ``core.events`` déjà émis
+    # par leur app propriétaire (NTP2P38, NTI18N43, NTWFL18) mais sans
+    # TriggerType/abonné côté automation : mêmes garanties que DEVIS_ACCEPTED
+    # (AUD823) — abonné au bus, jamais à un post_save brut.
+    DEMANDE_ACHAT_APPROUVEE = (
+        'demande_achat_approuvee', "Demande d'achat approuvée")
+    RFQ_ATTRIBUEE = ('rfq_attribuee', 'RFQ attribuée à un fournisseur')
+    LANGUE_CHANGED = ('langue_changed', 'Langue de document changée')
+    DOSSIER_ECHEANCE_DEPASSEE = (
+        'dossier_echeance_depassee', 'Dossier en retard (échéance dépassée)')
 
 
 # XPLT3 — whitelist FERMÉE (app_label, model) -> {champ date autorisé: label}
