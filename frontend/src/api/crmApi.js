@@ -111,6 +111,12 @@ const crmApi = {
   },
   marquerRelanceEtapeSautee: (id, note) =>
     api.post(`/crm/relance-etapes/${id}/sauter/`, note ? { note } : {}),
+  // RLC1 — annule une touche traitée par erreur (< 24 h) : elle redevient à
+  // faire à son échéance d'origine et les effets encore défaisables de son
+  // issue sont retirés. Refus motivé en 400 `{erreurs: {champ: message}}` —
+  // la fenêtre de 24 h, comme toutes les règles, est tranchée SERVEUR.
+  annulerRelanceEtape: (id) =>
+    api.post(`/crm/relance-etapes/${id}/annuler/`),
   // MRY13 — message rendu côté serveur (forme `relance_etape_message`) : lu
   // AVANT ouverture de WhatsApp (aperçu), jamais un envoi.
   getRelanceEtapeMessage: (id) => api.get(`/crm/relance-etapes/${id}/message/`),

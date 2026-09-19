@@ -3064,6 +3064,30 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         gestes qui suivent."""
         return self._marquer(request, RelanceEtape.Statut.SAUTEE)
 
+    @action(detail=True, methods=['post'])
+    def annuler(self, request, pk=None):
+        """RLC1 — Annule une touche « Fait »/« Sautée » traitée par erreur.
+
+        La touche redevient à faire À SON ÉCHÉANCE D'ORIGINE et les effets
+        automatiques de son issue sont défaits tant qu'ils le sont encore
+        (touches rouvertes par le retrait de l'arrêt de cadence, étape
+        programmée supprimée, avance d'étape défaite) — le service
+        ``annuler_touche_relance`` porte toute la règle.
+
+        Refus MOTIVÉ en 400 ``{"erreurs": {champ: message}}`` (même forme que
+        ``fait``) : passé 24 h, devis parti, dossier parqué au froid, lead
+        signé/perdu, étape suivante déjà traitée. Écriture → garde
+        ``IsResponsableOrAdmin`` par défaut de ``get_permissions`` (jamais
+        listée parmi les lectures)."""
+        etape = self.get_object()
+        from .services import AnnulationToucheRefusee, annuler_touche_relance
+        try:
+            etape = annuler_touche_relance(etape, request.user)
+        except AnnulationToucheRefusee as refus:
+            return Response({'erreurs': {refus.champ: refus.message}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(etape).data)
+
     @action(detail=True, methods=['get'])
     def message(self, request, pk=None):
         """MRY13 — Le message de CETTE touche, rendu côté serveur.

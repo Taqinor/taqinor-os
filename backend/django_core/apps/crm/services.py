@@ -1373,6 +1373,289 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     return etape
 
 
+# ── RLC1 — ANNULER UNE TOUCHE TRAITÉE PAR ERREUR (retour arrière < 24 h) ─────
+#
+# Relevé fondateur du 08/09/2026 (lead test1 aa) : « une touche "Fait" par
+# erreur ne se défait pas ». Ce qui manquait n'est pas un journal de plus —
+# c'est le RETRAIT d'un geste, journalisé comme tout le reste.
+#
+# TROIS RÈGLES, et rien d'autre :
+#   1. on ne défait QUE ce que le code PROUVE défaisable. Chaque effet annulé
+#      ci-dessous est rattaché à sa clôture par une preuve datée (``created_at``
+#      d'une étape née dans la fenêtre de la clôture, ``traite_le`` d'une touche
+#      annulée par l'arrêt de cadence, entrée de chatter du mouvement d'étape) ;
+#   2. un effet devenu irréversible donne un REFUS MOTIVÉ nommant le champ
+#      fautif — jamais une annulation à moitié faite qui laisserait le plan
+#      incohérent. Irréversibles : devis parti (le lead est passé « Devis
+#      envoyé »), cadence clôturée (dossier parqué au Froid avec ses réveils),
+#      lead signé ou perdu, touche suivante déjà traitée, étape du lead
+#      déplacée depuis par quelqu'un d'autre ;
+#   3. rien n'est EFFACÉ de l'historique : la ligne de chatter de la touche
+#      reste (elle dit la vérité de ce qui a été saisi), et l'annulation AJOUTE
+#      sa propre note système qui dit qui a annulé et ce qui a été défait.
+
+#: RLC1 — au-delà, une touche traitée ne s'annule plus (« depuis moins de
+#: 24 h »). Le contrôle est SERVEUR ; l'écran n'affiche le bouton que dans la
+#: même fenêtre, jamais l'inverse.
+ANNULATION_TOUCHE_HEURES = 24
+
+#: RLC1 — largeur de la fenêtre qui RATTACHE un effet à la clôture qui l'a
+#: produit. Toute la cascade de ``marquer_etape_relance`` (matérialisation de la
+#: touche suivante, arrêt de cadence par le récepteur MRY9, filets, mouvement
+#: d'étape du funnel) est SYNCHRONE dans la requête qui a coché la touche :
+#: deux minutes sont une borne très large pour une requête HTTP, et assez
+#: étroite pour ne pas attraper un geste ultérieur indépendant sur le lead.
+_ANNULATION_FENETRE_EFFETS = datetime.timedelta(minutes=2)
+
+#: RLC1 — les issues qui valent « le client a RÉPONDU » : ce sont elles qui
+#: font avancer le funnel (récepteur QJ7). Si une AUTRE activité du lead en
+#: porte une, l'avance d'étape est confirmée par ailleurs et l'annulation de
+#: CETTE touche ne la défait pas (règle fondateur : « annulée si aucune autre
+#: réponse ne l'a confirmée »).
+_OUTCOMES_REPONSE_CONFIRMEE = ('joint', 'interesse')
+
+
+class AnnulationToucheRefusee(Exception):
+    """RLC1 — refus MOTIVÉ d'une annulation de touche.
+
+    Porte le CHAMP fautif et le message exact à afficher sous lui (règle
+    fondateur du 08/09/2026) — jamais un « action impossible » générique qui
+    laisserait l'utilisatrice deviner ce qui bloque."""
+
+    def __init__(self, champ, message):
+        super().__init__(message)
+        self.champ = champ
+        self.message = message
+
+
+def _stage_depuis_libelle(valeur):
+    """La clé d'étape STAGES.py derrière une valeur de chatter.
+
+    Le chatter stocke le LIBELLÉ FR (``activity._display``) ; d'anciennes
+    écritures portent la clé brute — les deux sont acceptées, comme le fait
+    déjà la vérification d'annulation LB39. ``None`` si la valeur ne désigne
+    aucune étape connue : on ne devine JAMAIS une étape."""
+    brut = (valeur or '').strip()
+    if not brut:
+        return None
+    if brut in stages.STAGES:
+        return brut
+    for cle, libelle in stages.STAGE_LABELS.items():
+        if brut == libelle:
+            return cle
+    return None
+
+
+def _activite_de_cloture(etape, *, debut, fin):
+    """RLC1 — l'unique ligne de chatter que ``marquer_etape_relance`` a écrite
+    pour CETTE clôture (celle qui porte son issue).
+
+    Reconnue par son corps (« Touche « <libellé> » … ») dans la fenêtre de la
+    clôture : c'est la seule activité de toute la cascade à porter un
+    ``outcome``, ce qui permet de la distinguer d'une réponse saisie AILLEURS.
+    ``None`` si elle est introuvable — l'appelant retombe alors sur la fenêtre,
+    jamais sur une supposition."""
+    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+    return (etape.lead.activites
+            .filter(created_at__gte=debut, created_at__lte=fin,
+                    body__startswith=f'Touche « {libelle} »')
+            .order_by('created_at', 'pk').first())
+
+
+def _defaire_avance_funnel(lead, user, mouvements, *, debut, fin, cloture):
+    """RLC1 — défait l'avance d'étape produite par la clôture qu'on annule.
+
+    ``mouvements`` = les entrées de chatter ``field='stage'`` écrites dans la
+    fenêtre ``[debut, fin]`` de la clôture, dans l'ordre. L'étape est ramenée à
+    l'``old_value`` du PREMIER mouvement : la chaîne entière (NEW → Contacté,
+    puis le cran suivant si l'issue en a déclenché deux) se défait d'un coup,
+    jamais à moitié.
+
+    NE défait RIEN quand une AUTRE réponse confirmée du client existe sur le
+    lead : l'avance tient alors de CELLE-LÀ, et la retirer effacerait un fait
+    vrai (règle fondateur : « annulée si aucune autre réponse ne l'a
+    confirmée »). « Autre » = toute activité à issue joint/intéressé saisie par
+    un humain, sauf la ligne de la clôture elle-même (``cloture``) — à défaut de
+    savoir laquelle c'est, toute la fenêtre de la clôture est écartée.
+
+    Renvoie ``(ancienne_cle, nouvelle_cle)`` si l'étape a bougé, sinon
+    ``None``. Passe par ``appliquer_stage_lead`` (point de passage canonique
+    CRX20) : aucun déplacement d'étape muet."""
+    if not mouvements:
+        return None
+    autres_reponses = lead.activites.filter(
+        outcome__in=_OUTCOMES_REPONSE_CONFIRMEE, user__isnull=False)
+    if cloture is not None:
+        autres_reponses = autres_reponses.exclude(pk=cloture.pk)
+    else:
+        autres_reponses = autres_reponses.exclude(
+            created_at__gte=debut, created_at__lte=fin)
+    if autres_reponses.exists():
+        return None
+    cible = _stage_depuis_libelle(mouvements[0].old_value)
+    if cible is None or cible == lead.stage:
+        return None
+    ancien = lead.stage
+    if not appliquer_stage_lead(lead, cible, user=user):
+        return None
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.MODIFICATION,
+        field='stage', field_label='Étape',
+        old_value=stages.STAGE_LABELS.get(ancien, ancien),
+        new_value=stages.STAGE_LABELS.get(cible, cible),
+        body='annulation de touche — avance automatique défaite')
+    return ancien, cible
+
+
+def annuler_touche_relance(etape, user):
+    """RLC1 — Annule une touche « Fait »/« Sautée » traitée par erreur.
+
+    La touche redevient ``a_faire`` à SON échéance d'origine (``due_at``/
+    ``due_date`` n'ont jamais bougé — seuls statut, note et traçabilité de
+    clôture sont retirés), et les effets automatiques de son issue sont défaits
+    dans la mesure où le code les prouve défaisables :
+
+      * les touches ANNULÉES par l'arrêt de cadence que cette issue a
+        déclenché (récepteur MRY9, ``traite_par`` NULL + motif en note)
+        redeviennent ``a_faire`` ;
+      * l'étape que cette clôture a fait NAÎTRE — barreau suivant du protocole
+        (``materialiser_touche_suivante``) ou étape de filet
+        (``assurer_prochaine_etape_apres_succes`` / visite) — est supprimée ;
+      * l'avance d'étape du funnel (NEW → Contacté, et le cran suivant s'il a
+        été franchi dans le même geste) est défaite quand aucune AUTRE réponse
+        du client ne l'a confirmée.
+
+    Refus motivé (``AnnulationToucheRefusee``, champ + message exact) quand un
+    effet n'est plus défaisable — voir le bloc de doctrine au-dessus.
+
+    Journalise UNE note système (``user`` NULL — annuler est un geste tracé,
+    pas une prise de contact ; le nom de l'auteur vit dans le texte) qui dit
+    qui a annulé et ce qui a été défait. Renvoie la touche remise à faire."""
+    from django.db import transaction
+
+    if etape.statut not in (RelanceEtape.Statut.FAIT,
+                            RelanceEtape.Statut.SAUTEE):
+        raise AnnulationToucheRefusee(
+            'statut',
+            "Cette touche n'a pas été traitée par quelqu'un : il n'y a rien "
+            'à annuler.')
+    if etape.traite_le is None:
+        raise AnnulationToucheRefusee(
+            'traite_le',
+            "Cette touche ne porte pas d'horodatage de traitement : son "
+            "annulation ne peut pas être bornée aux "
+            f'{ANNULATION_TOUCHE_HEURES} h.')
+    if (timezone.now() - etape.traite_le
+            > datetime.timedelta(hours=ANNULATION_TOUCHE_HEURES)):
+        raise AnnulationToucheRefusee(
+            'traite_le',
+            f'Passé {ANNULATION_TOUCHE_HEURES} h, une touche traitée ne '
+            "s'annule plus. Relancez la cadence depuis la fiche.")
+
+    lead = etape.lead
+    if lead.pk:
+        lead.refresh_from_db(fields=['stage', 'perdu'])
+    if lead.perdu:
+        raise AnnulationToucheRefusee(
+            'lead',
+            'Ce lead est marqué perdu : rouvrez-le avant d\'annuler une '
+            'touche de son plan.')
+    if lead.stage == stages.SIGNED:
+        raise AnnulationToucheRefusee(
+            'lead',
+            'Ce lead est signé : les touches de son plan ne se rouvrent plus.')
+
+    debut = etape.traite_le
+    fin = debut + _ANNULATION_FENETRE_EFFETS
+    # Ce que CETTE clôture a fait naître (preuve : l'horodatage de création).
+    nees = lead.relance_etapes.filter(
+        created_at__gte=debut, created_at__lte=fin).exclude(pk=etape.pk)
+    if nees.filter(cadence='reveil').exists():
+        raise AnnulationToucheRefusee(
+            'statut',
+            'Cette touche a clôturé la cadence : le dossier est parti au '
+            'froid avec ses réveils. Utilisez « Relancer la cadence » sur la '
+            'fiche plutôt que cette annulation.')
+    if nees.exclude(statut=RelanceEtape.Statut.A_FAIRE).exists():
+        raise AnnulationToucheRefusee(
+            'statut',
+            "L'étape programmée par cette touche a déjà été traitée : "
+            "annuler celle-ci n'est plus possible.")
+
+    mouvements = list(lead.activites.filter(
+        kind=LeadActivity.Kind.MODIFICATION, field='stage',
+        created_at__gte=debut, created_at__lte=fin,
+    ).order_by('created_at', 'pk'))
+    if any(_stage_depuis_libelle(m.new_value) == stages.QUOTE_SENT
+           for m in mouvements):
+        raise AnnulationToucheRefusee(
+            'statut',
+            "Cette touche a acté l'envoi du devis (le lead est passé « "
+            f'{stages.STAGE_LABELS[stages.QUOTE_SENT]} ») : cet effet ne se '
+            'défait pas ici.')
+    if mouvements:
+        arrivee = _stage_depuis_libelle(mouvements[-1].new_value)
+        if arrivee is not None and lead.stage != arrivee:
+            raise AnnulationToucheRefusee(
+                'lead',
+                "L'étape du lead a changé depuis : l'avance produite par "
+                'cette touche ne peut plus être défaite.')
+
+    with transaction.atomic():
+        # L'ÉTAPE DU LEAD D'ABORD, les touches ensuite — l'ordre compte : un
+        # retour vers COLD réveille le récepteur d'arrêt de cadence (MRY9 (b)),
+        # qui n'annule que les touches encore À FAIRE. Défaire l'avance AVANT
+        # de rouvrir les touches les met donc hors de sa portée ; l'inverse les
+        # aurait refermées dans la seconde.
+        mouvement_defait = _defaire_avance_funnel(
+            lead, user, mouvements, debut=debut, fin=fin,
+            cloture=_activite_de_cloture(etape, debut=debut, fin=fin))
+        supprimees = sorted(
+            (e.libelle or e.get_canal_display())
+            for e in nees.only('libelle', 'canal'))
+        nees.delete()
+        # Les touches retirées du plan par l'ARRÊT de cadence déclenché par
+        # cette issue : elles n'ont jamais été traitées par un humain
+        # (`traite_par` NULL), leur motif vit en note — les deux repartent.
+        restaurees = lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.ANNULEE,
+            traite_le__gte=debut, traite_le__lte=fin,
+        ).update(statut=RelanceEtape.Statut.A_FAIRE, note='', traite_le=None)
+        libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+        etape.statut = RelanceEtape.Statut.A_FAIRE
+        etape.note = ''
+        etape.traite_par = None
+        etape.traite_le = None
+        etape.save(update_fields=['statut', 'note', 'traite_par', 'traite_le'])
+        prochaine = _prochaine_touche_a_faire(lead)
+        lead.relance_date = prochaine.due_date if prochaine else None
+        lead.save(update_fields=['relance_date'])
+        sync_relance_activity(lead, user)
+        # JAMAIS un prénom en dur : l'auteur vient de la variable `user`.
+        qui = getattr(user, 'username', '') or 'système'
+        morceaux = [
+            f'Annulation par {qui} : touche « {libelle} » '
+            f'({etape.get_canal_display()}, cadence {etape.cadence}) remise '
+            f'à faire au {etape.due_date:%d/%m/%Y}.']
+        if restaurees:
+            morceaux.append(
+                f'{restaurees} touche(s) remise(s) à faire '
+                "(arrêt de cadence défait).")
+        if supprimees:
+            morceaux.append(
+                'Étape(s) programmée(s) par cette touche retirée(s) : '
+                + ', '.join(f'« {s} »' for s in supprimees) + '.')
+        if mouvement_defait:
+            ancien, cible = mouvement_defait
+            morceaux.append(
+                'Étape du lead ramenée de « '
+                f'{stages.STAGE_LABELS.get(ancien, ancien)} » à « '
+                f'{stages.STAGE_LABELS.get(cible, cible)} ».')
+        activity.log_note(lead, None, ' '.join(morceaux))
+    return etape
+
+
 #: MRY11 × MRY9 — les issues qui INTERDISENT la clôture, même sur la dernière
 #: touche : on a joint la personne (ou on est convenu d'un rappel). La mettre
 #: au froid et l'étiqueter « injoignable » serait l'inverse du bon geste.
