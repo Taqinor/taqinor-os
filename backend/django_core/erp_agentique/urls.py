@@ -81,6 +81,9 @@ _APP_URLS = [
     # ODX11 — Appels d'offres (marchés publics/privés). Nouveau préfixe ; les
     # anciennes routes /compta/… restent servies à l'identique (mêmes ViewSets).
     path('ao/', include('apps.ao.urls')),
+    # CAL4 — Module Calepinage autonome. Forme d'URL unique (CAL233) :
+    # /api/django/calepinage/calepinages/<pk>/… + /calepinage/parametres/.
+    path('calepinage/', include('apps.calepinage.urls')),
     # ODX12 — Portail self-service client. Nouveau préfixe ; les anciennes
     # routes /compta/… restent servies à l'identique (mêmes ViewSets/vues).
     path('portail/', include('apps.portail.urls')),
