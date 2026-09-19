@@ -2759,8 +2759,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # le `permission_classes` de l'@action (garde AUD421 / bug CI #25) :
         # sans ces noms, la déclaration inline serait décorative et l'action
         # retomberait sur `IsResponsableOrAdmin`.
+        # RLC2 — `journal` est une LECTURE PURE (le sélecteur n'écrit rien) :
+        # même garde que `list`, et listée ICI nommément parce que
+        # get_permissions() PRIME sur le `permission_classes` de l'@action.
         if self.action in ('list', 'message', 'suivi',
-                           'kpi_adherence', 'mes_stats'):
+                           'kpi_adherence', 'mes_stats', 'journal'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -2887,6 +2890,38 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             'resume': resume,
             'results': lignes,
         })
+
+    @extend_schema(responses=inline_serializer('CrmJournalRelance', {
+        'lead': serializers.IntegerField(),
+        'etat': serializers.DictField(),
+        'lignes': serializers.ListField(child=serializers.DictField()),
+    }))
+    @action(detail=False, methods=['get'], url_path='journal',
+            permission_classes=[IsAnyRole])
+    def journal(self, request):
+        """RLC2 — le journal « ce qui s'est passé » du plan de relance d'un lead,
+        et son état courant en une phrase (forme `journal_relance`).
+
+        ``?lead=<id>`` OBLIGATOIRE. LECTURE PURE : le sélecteur
+        ``journal_relance`` fusionne les touches traitées et la tranche utile du
+        chatter — aucune écriture, aucun nouveau journal.
+
+        404 « Lead inconnu. » quand le lead n'existe pas OU sort de la portée de
+        visibilité du demandeur : les deux cas sont indistinguables exprès — un
+        message différent servirait d'oracle d'existence."""
+        from .selectors import journal_relance
+
+        brut = (request.query_params.get('lead') or '').strip()
+        if not brut.isdigit():
+            return Response(
+                {'lead': 'Identifiant de lead obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        journal = journal_relance(
+            request.user.company, request.user, int(brut))
+        if journal is None:
+            return Response({'detail': 'Lead inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(journal)
 
     @extend_schema(responses=inline_serializer('CrmKpiAdherence', {
         'periode_jours': serializers.IntegerField(),

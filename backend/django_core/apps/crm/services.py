@@ -1262,8 +1262,8 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # MRY5 — le corps disait « Relance J+{ordre} », faux depuis que `ordre`
     # est un RANG dans la cadence et non plus un délai en jours (la touche 2
     # de la prise de contact tombe à J0 + 3 minutes, pas à J+2).
-    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
-    corps = (f'Touche « {libelle} » ({etape.get_canal_display()}, cadence '
+    corps = (f'{prefixe_activite_touche(etape)} '
+             f'({etape.get_canal_display()}, cadence '
              f'{etape.cadence}) marquée {verbe}.')
     if body:
         corps += f' {body}'
@@ -1455,10 +1455,9 @@ def _activite_de_cloture(etape, *, debut, fin):
     ``outcome``, ce qui permet de la distinguer d'une réponse saisie AILLEURS.
     ``None`` si elle est introuvable — l'appelant retombe alors sur la fenêtre,
     jamais sur une supposition."""
-    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
     return (etape.lead.activites
             .filter(created_at__gte=debut, created_at__lte=fin,
-                    body__startswith=f'Touche « {libelle} »')
+                    body__startswith=prefixe_activite_touche(etape))
             .order_by('created_at', 'pk').first())
 
 
@@ -2681,6 +2680,18 @@ def pick_round_robin_owner(company):
 
 
 # FG28 — SLA première prise de contact ────────────────────────────────────────
+
+def prefixe_activite_touche(etape):
+    """RLC2 — le PRÉFIXE de la ligne de chatter d'une touche CLÔTURÉE.
+
+    Écrit par ``marquer_etape_relance``, relu par l'annulation (RLC1) et par le
+    journal du plan (``selectors.journal_relance``, qui apparie une touche avec
+    l'ISSUE saisie à sa clôture). Même raison que
+    ``prefixe_activite_message_ouvert`` : trois littéraux identiques auraient
+    dérivé, et l'appariement se serait tu sans qu'aucune garde ne rougisse."""
+    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+    return f'Touche « {libelle} »'
+
 
 def prefixe_activite_message_ouvert(etape):
     """RLC3 — le PRÉFIXE de la ligne de chatter « message ouvert » de CETTE
