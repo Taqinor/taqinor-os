@@ -2477,6 +2477,31 @@ def plafond_notes_frais_actif(company):
     return bool(params and params.plafond_notes_frais_actif)
 
 
+#: NTP2P35 — ancienneté par défaut, en jours, d'un brouillon de demande d'achat
+#: purgeable quand la société n'a rien configuré (``purge_brouillon_jours = 0``).
+PURGE_BROUILLON_JOURS_DEFAUT = 90
+
+
+def purge_brouillon_jours(company):
+    """NTP2P35 — ancienneté EFFECTIVE, en jours, d'un brouillon purgeable.
+
+    Résout le sens de ``0`` UNE fois, ici : ``0`` (défaut du champ, et défaut
+    de toute société qui n'a rien configuré) veut dire « utiliser le défaut de
+    90 jours », JAMAIS « zéro jour ». Un appelant qui lirait le champ brut
+    purgerait tous les brouillons du jour à la première exécution — c'est
+    exactement l'accident que ce sélecteur existe pour rendre impossible.
+
+    Point d'entrée cross-app en LECTURE SEULE : la tâche de purge lit ce
+    sélecteur, jamais ``stock.models`` ni le champ brut.
+    """
+    if company is None:
+        return PURGE_BROUILLON_JOURS_DEFAUT
+    from .models import AchatsParametres
+    params = AchatsParametres.objects.filter(company=company).first()
+    configure = getattr(params, 'purge_brouillon_jours', 0) or 0
+    return configure if configure > 0 else PURGE_BROUILLON_JOURS_DEFAUT
+
+
 def progression_onboarding(dossier):
     """Avancement d'un dossier : pièces requises reçues / total requis.
 

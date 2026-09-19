@@ -1863,6 +1863,11 @@ class AchatsParametresSerializer(serializers.ModelSerializer):
             # inchangé).
             'budget_departement_actif', 'onboarding_fournisseur_obligatoire',
             'sod_stricte', 'plafond_notes_frais_actif',
+            # NTP2P35 — seuil de purge des demandes d'achat en brouillon.
+            # 0 = « utiliser le défaut (90 jours) », jamais « purger tout de
+            # suite » : l'écran Paramètres → Achats doit pouvoir le poser sans
+            # qu'un 0 laissé par défaut efface les brouillons du jour.
+            'purge_brouillon_jours',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']

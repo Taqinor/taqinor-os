@@ -550,6 +550,17 @@ class AchatsParametres(models.Model):
         max_digits=14, decimal_places=2, default=0,
         help_text='NTWMS21 — valeur MAD au-dessus de laquelle un transfert '
                   'exige une approbation. 0 = désactivé.')
+    # NTP2P35 — ancienneté (en jours) au-delà de laquelle une demande d'achat
+    # restée BROUILLON est purgée. 0 (défaut) = « utiliser le défaut 90 j » et
+    # NON « purger tout de suite » : un 0 lu comme « zéro jour » effacerait
+    # chaque brouillon de la journée dès la première purge — c'est pourquoi le
+    # sens de 0 est FIXÉ ici, sur le champ, et pas laissé à l'interprétation de
+    # chaque appelant.
+    purge_brouillon_jours = models.PositiveIntegerField(
+        default=0,
+        help_text="NTP2P35 — ancienneté en jours au-delà de laquelle une "
+                  "demande d'achat restée brouillon est purgée. 0 = utiliser "
+                  'le défaut (90 jours).')
 
 
 class ToleranceRapprochementCategorie(TenantModel):
