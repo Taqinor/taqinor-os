@@ -235,6 +235,20 @@ class WorkflowDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAuthenticated()]
         return [IsAdminOrResponsableTier()]
 
+    @action(detail=True, methods=['post'])
+    def dupliquer(self, request, pk=None):
+        """NTWFL27 — ``POST core/workflow-definitions/{id}/dupliquer/``.
+
+        Clone le processus (étapes + formulaires rattachés) en une définition
+        INDÉPENDANTE de la même société : code auto-suffixé, ``actif=False``
+        (brouillon), éditable sans jamais toucher l'originale. ``get_object``
+        passe par le queryset scopé de ``TenantMixin`` — la définition d'un
+        autre tenant est introuvable."""
+        definition = self.get_object()
+        copie = workflow_templates.dupliquer_definition_workflow(definition)
+        serializer = self.get_serializer(copie)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 class MatriceApprobationViewSet(TenantMixin, viewsets.ModelViewSet):
     """NTWFL1 — CRUD admin de la matrice d'approbation d'entreprise unifiée.

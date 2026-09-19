@@ -23,6 +23,8 @@ Conception
   serveur — jamais une valeur du corps de requête ; les templates eux-mêmes
   sont globaux (sans société).
 """
+import copy as _copy
+
 from django.db import transaction
 
 from core.models import (
@@ -35,6 +37,7 @@ __all__ = [
     'liste_modeles_workflow',
     'get_modele_workflow',
     'installer_modele_workflow',
+    'dupliquer_definition_workflow',
     'ModeleWorkflowInconnu',
 ]
 
@@ -283,3 +286,100 @@ def installer_modele_workflow(company, code):
             escalade_vers=step.get('escalade_vers', ''),
         )
     return definition, True
+
+
+# ---------------------------------------------------------------------------
+# NTWFL27 — duplication ad-hoc d'un processus DÉJÀ personnalisé.
+#
+# Le catalogue ci-dessus sert de point de départ NEUF. Il ne répond pas au
+# besoin inverse : « je repars de MON processus existant, déjà adapté à ma
+# société, pour en faire une variante ». D'où cette duplication profonde —
+# étapes ET formulaires rattachés —, qui produit une copie strictement
+# INDÉPENDANTE : éditer la copie (ou son formulaire) ne touche jamais
+# l'original. La copie naît en BROUILLON (``actif=False``) pour qu'elle ne
+# puisse pas être démarrée par erreur avant d'avoir été relue.
+# ---------------------------------------------------------------------------
+
+_SUFFIXE_COPIE = 'copie'
+_MAX_TENTATIVES_CODE = 500
+
+
+def _code_copie_libre(model, company, code_source, longueur_max=64):
+    """Premier code libre ``<source>-copie`` / ``<source>-copie-N``.
+
+    Le marqueur est TOUJOURS conservé entier : c'est la base qui est tronquée
+    pour tenir dans ``longueur_max`` (un code tronqué qui perdrait son
+    « -copie » redeviendrait indistinguable de l'original)."""
+    n = 1
+    while n <= _MAX_TENTATIVES_CODE:
+        marqueur = (f'-{_SUFFIXE_COPIE}' if n == 1
+                    else f'-{_SUFFIXE_COPIE}-{n}')
+        candidat = code_source[:longueur_max - len(marqueur)] + marqueur
+        if not model.objects.filter(company=company, code=candidat).exists():
+            return candidat
+        n += 1
+    raise ValueError(
+        "Impossible de dériver un code de copie libre pour "
+        f"« {code_source} »."
+    )
+
+
+def _nom_copie(nom_source, longueur_max):
+    """``<nom> (copie)``, tronqué sur le NOM pour garder la mention visible."""
+    mention = ' (copie)'
+    return nom_source[:longueur_max - len(mention)] + mention
+
+
+@transaction.atomic
+def dupliquer_definition_workflow(definition):
+    """NTWFL27 — copie profonde et INDÉPENDANTE de ``definition``.
+
+    Copie la définition, TOUTES ses étapes (avec leurs gardes de transition,
+    groupes parallèles, SLA et calendrier ouvré) et, pour chaque formulaire
+    dynamique rattaché, un formulaire COPIÉ propre à la nouvelle définition.
+    Un même formulaire réutilisé par plusieurs étapes n'est copié QU'UNE fois
+    (les étapes de la copie le partagent, comme dans l'original).
+
+    La copie appartient à la même société, porte un ``code`` auto-suffixé libre
+    et naît ``actif=False`` (brouillon). Retourne la nouvelle définition."""
+    from core.models import FormulaireDefinition
+
+    company = definition.company
+    copie = WorkflowDefinition.objects.create(
+        company=company,
+        code=_code_copie_libre(WorkflowDefinition, company, definition.code),
+        nom=_nom_copie(definition.nom, 120),
+        description=definition.description,
+        actif=False,
+    )
+
+    formulaires_copies = {}
+    for step in definition.steps.order_by('ordre', 'id'):
+        source = step.formulaire
+        if source is not None and source.pk not in formulaires_copies:
+            formulaires_copies[source.pk] = FormulaireDefinition.objects.create(
+                company=source.company,
+                code=_code_copie_libre(
+                    FormulaireDefinition, source.company, source.code),
+                nom=_nom_copie(source.nom, 160),
+                schema=_copy.deepcopy(source.schema),
+                champs_conditionnels=_copy.deepcopy(
+                    source.champs_conditionnels),
+                actif=source.actif,
+            )
+        WorkflowStepDefinition.objects.create(
+            definition=copie,
+            ordre=step.ordre,
+            nom=step.nom,
+            type_approbation=step.type_approbation,
+            sla_heures=step.sla_heures,
+            role_requis=step.role_requis,
+            escalade_vers=step.escalade_vers,
+            calendrier_ouvre=step.calendrier_ouvre,
+            condition_transition=_copy.deepcopy(step.condition_transition),
+            etape_alternative_si_echec=step.etape_alternative_si_echec,
+            groupe_parallele=step.groupe_parallele,
+            formulaire=(None if source is None
+                        else formulaires_copies[source.pk]),
+        )
+    return copie
