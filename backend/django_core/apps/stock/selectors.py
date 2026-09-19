@@ -1767,10 +1767,15 @@ def taux_conformite_reception_fournisseur(company, fournisseur_id):
     ``taux_conformite_pct = None`` plutôt que zéro, qui se lirait comme un
     fournisseur catastrophique.
 
-    DÉFINITION UNIQUE, lue par l'écran interne (``services
-    .supplier_performance``) ET par la carte portail (NTPRT26) : deux calculs
-    séparés finiraient par afficher deux chiffres différents au fournisseur et
-    à l'acheteur, sur la même relation.
+    DÉFINITION UNIQUE du taux de conformité dans le dépôt, appelée par la carte
+    portail (NTPRT26) : deux calculs séparés finiraient par afficher deux
+    chiffres différents au fournisseur et à l'acheteur, sur la même relation.
+
+    Le scorecard interne (``services.supplier_performance``) ne l'expose pas
+    ENCORE : la réponse de ``fournisseurs/{id}/performance/`` est sous contrat
+    versionné dans ``docs/api-contracts.md``, un document GÉNÉRÉ ; y ajouter la
+    clé se fait avec sa régénération, pas en passant. Quand elle sera ajoutée,
+    elle appellera cette fonction — le chiffre ne peut donc pas diverger.
     """
     vide = {
         'receptions_controlees': 0,
