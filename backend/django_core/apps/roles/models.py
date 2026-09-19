@@ -533,6 +533,35 @@ ALL_PERMISSIONS = [
     'approuver_note_frais_direction',
     'valider_dossier_fournisseur',
     'emettre_carte_achat',
+    # ── NTOBS22 — permissions fines par rôle sur les écrans Fiabilité
+    # (Paramètres → Fiabilité : Sauvegardes/Limites & usage/SLA/fenêtres de
+    # maintenance/export de réversibilité) ───────────────────────────────
+    #   * ``fiabilite_voir``           — lecture seule des écrans du groupe
+    #     (remplace le ``fiabilite_lecture`` du plan : le suffixe ``_voir``
+    #     est OBLIGATOIRE pour tout code de LECTURE — ``CustomUser.
+    #     _role_grants_write`` ne reconnaît que ``_voir``/``_view`` comme
+    #     lecture ; un code ``fiabilite_lecture`` isolé aurait rendu
+    #     « responsable » — et donc capable d'ouvrir tout endpoint interne
+    #     gardé ``IsResponsableOrAdmin`` — le premier rôle qui l'aurait porté
+    #     seul, à l'exact inverse du besoin lecture-seule).
+    #   * ``fiabilite_administration`` — crée une fenêtre de maintenance,
+    #     lance un export de réversibilité, édite ``SlaCreditPolicy``/
+    #     ``ReliabilitySettings``. Réservé Directeur (hérité via
+    #     ``ALL_PERMISSIONS``/``DIRECTEUR_PERMISSIONS`` ci-dessous).
+    # Le câblage des 6 vues ``core.{maintenance_windows,sla,views}`` (encore
+    # sur ``IsDirecteurOrAdmin``/``IsAdminOrResponsableTier`` codé en dur) est
+    # HORS du périmètre roles-only de cette tâche — ces deux codes ne sont
+    # pour l'instant consommés par AUCUN viewset routé. Aucun rôle « Comptable »
+    # n'existe dans ce dépôt (les rôles système sont Directeur/Administrateur/
+    # Commercial responsable/Commercial/Commercial terrain/Technicien
+    # responsable/Technicien/Viewer/Admin RH/Admin Ventes + les 3 rôles
+    # portail) : ``fiabilite_voir`` n'est donc octroyé à AUCUN rôle par défaut
+    # ici (jamais d'invention d'un rôle système non demandé) — un
+    # Administrateur peut le cocher manuellement sur le rôle de son choix
+    # (Viewer, par ex.) via l'éditeur de rôles existant, comme tout code de ce
+    # catalogue.
+    'fiabilite_voir',
+    'fiabilite_administration',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -609,6 +638,12 @@ PERMISSION_MODULE = {
     'valider_dossier_fournisseur': 'stock',
     'emettre_carte_achat': 'stock',
     'approuver_note_frais_direction': 'frais',
+    # NTOBS22 — ``fiabilite_voir``/``fiabilite_administration`` sont
+    # VOLONTAIREMENT absents d'ici : les écrans Fiabilité vivent sous
+    # ``apps.parametres`` (``module_manifest.installable = False`` — jamais
+    # togglable), même statut fondation que ``parametres_voir`` ci-dessus
+    # (cf. ``test_fondation_et_donnees_sensibles_sans_module``) : les
+    # mapper masquerait leur case sur un toggle qui n'existe pas.
 }
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
