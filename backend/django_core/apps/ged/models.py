@@ -1081,7 +1081,10 @@ class AclGed(models.Model):
     # jamais un import de ``apps.crm.models`` (contrat CI
     # ``ged-models-decoupled`` — string FKs seulement).
     client = models.ForeignKey(
-        'crm.Client', on_delete=models.CASCADE,
+        'crm.Client',
+        # on_delete: une entrée ACL est un droit accordé À ce client — sans
+        # lui elle ne désigne plus personne ; la ligne suit son principal.
+        on_delete=models.CASCADE,
         null=True, blank=True, db_constraint=False,
         related_name='ged_acls', verbose_name='client (portail)')
     niveau = models.CharField(

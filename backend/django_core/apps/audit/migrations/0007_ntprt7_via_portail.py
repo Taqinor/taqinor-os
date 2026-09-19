@@ -42,10 +42,7 @@ class Migration(migrations.Migration):
             field=models.BooleanField(
                 default=False, db_index=True, verbose_name='Via portail'),
         ),
-        migrations.AddIndex(
-            model_name='auditlog',
-            index=models.Index(
-                fields=['company', 'via_portail', '-timestamp'],
-                name='audit_via_portail_idx'),
-        ),
+        # L'index (company, via_portail, -timestamp) est posé par 0008 en
+        # CONCURRENT (YOPSB6) : audit_auditlog est une table vivante, un
+        # AddIndex nu la verrouillerait en écriture pendant la construction.
     ]

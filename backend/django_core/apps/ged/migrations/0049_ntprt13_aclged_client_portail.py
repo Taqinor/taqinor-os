@@ -36,10 +36,8 @@ class Migration(migrations.Migration):
                 verbose_name="client (portail)",
             ),
         ),
-        migrations.AddIndex(
-            model_name="aclged",
-            index=models.Index(fields=["client"], name="ged_acl_client_idx"),
-        ),
+        # L'index ``ged_acl_client_idx`` est posé par 0050 en CONCURRENT
+        # (YOPSB6) : ged_aclged est une table vivante (chaque partage écrit).
         migrations.RemoveConstraint(
             model_name="aclged",
             name="ged_acl_principal_required",

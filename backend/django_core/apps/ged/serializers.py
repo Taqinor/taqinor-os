@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, Cabinet, CertificatDestruction,
     ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
@@ -1122,7 +1124,7 @@ class RegleApprobationGedSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
 
-class AclGedSerializer(serializers.ModelSerializer):
+class AclGedSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """WIR163 — Droit d'accès GED19 par dossier/document (héritage + override).
 
     ``company``/``created_by`` posés côté serveur (TenantMixin/ViewSet) —
@@ -1145,6 +1147,9 @@ class AclGedSerializer(serializers.ModelSerializer):
         source='folder.nom', read_only=True, default=None)
     document_nom = serializers.CharField(
         source='document.nom', read_only=True, default=None)
+    # Un id de client d'une AUTRE société ne doit jamais devenir un partage :
+    # validation même-société du FK écrivable (check_fk_scoping).
+    same_company_fields = ('client',)
 
     class Meta:
         model = AclGed

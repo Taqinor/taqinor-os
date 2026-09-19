@@ -217,7 +217,9 @@ def construire_810(*, facture, partenaire=None, maintenant=None,
     identifiant_partenaire = getattr(partenaire, 'identifiant', '') or ''
     message = _enveloppe(
         emetteur_qualifiant=QUALIFIANT_DEFAUT,
-        emetteur=(getattr(facture.company, 'slug', '') or 'TAQINOR')[:15],
+        emetteur=(getattr(facture.company, 'slug', '')
+                  or getattr(facture.company, 'nom', '')
+                  or 'EMETTEUR')[:15],
         destinataire_qualifiant=_qualifiant(partenaire),
         destinataire=identifiant_partenaire[:15],
         maintenant=maintenant, controle=controle, usage=usage,

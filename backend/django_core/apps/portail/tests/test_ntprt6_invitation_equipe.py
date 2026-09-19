@@ -25,6 +25,7 @@ from decimal import Decimal
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
+from testkit.time import frozen
 
 from apps.crm.models import Client
 from apps.portail.models import InvitationPortail
@@ -77,15 +78,19 @@ class ServiceInvitationTests(TestCase):
         self.client_crm, self.admin = make_admin_et_compte(self.company)
 
     def test_inviter_cree_une_invitation_avec_token_et_expiration(self):
-        invitation = inviter_membre_portail(
-            self.company, self.client_crm.id, 'collegue@example.invalid',
-            'lecture')
+        # Horloge GELÉE (check_test_determinism) : l'expiration se juge
+        # contre l'instant de création, pas contre un now() vivant.
+        ancre = timezone.make_aware(timezone.datetime(2026, 9, 15, 12, 0, 0))
+        with frozen(ancre):
+            invitation = inviter_membre_portail(
+                self.company, self.client_crm.id, 'collegue@example.invalid',
+                'lecture')
 
         self.assertIsNotNone(invitation)
         self.assertTrue(invitation.token_invitation)
         self.assertEqual(invitation.role, InvitationPortail.Role.LECTURE)
         self.assertEqual(invitation.statut, InvitationPortail.Statut.EN_ATTENTE)
-        self.assertGreater(invitation.expire_le, timezone.now())
+        self.assertGreater(invitation.expire_le, ancre)
 
     def test_inviter_role_invalide_retombe_sur_lecture(self):
         invitation = inviter_membre_portail(

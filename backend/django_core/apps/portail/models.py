@@ -573,6 +573,8 @@ class InvitationPortail(TenantModel):
     # compte portail cible de l'invitation.
     compte_portail_client = models.ForeignKey(
         'ComptePortailClient',
+        # on_delete: l'invitation n'existe que pour rejoindre CE compte
+        # portail — compte supprimé = invitation sans objet, elle suit.
         on_delete=models.CASCADE,
         related_name='invitations',
         verbose_name='Compte portail client',

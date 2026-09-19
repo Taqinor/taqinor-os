@@ -210,7 +210,7 @@ class UptimeDayBucket(TenantModel):
         return f'{self.composant} — {self.date} ({self.statut_pire_du_jour})'
 
 
-class ComponentStatusLog(TimestampedModel):
+class ComponentStatusLog(TenantModel):
     """NTOBS33 — historique BRUT des changements de statut d'un composant,
     consultable AVANT qu'un incident ne soit créé manuellement.
 
@@ -221,8 +221,14 @@ class ComponentStatusLog(TimestampedModel):
     quand ils diffèrent, pour éviter le bruit d'un flot continu à 288
     lignes/jour/composant)."""
 
+    # Redéclaré sur le socle TenantModel (pattern béni par sa docstring) :
+    # ici company est NULLABLE — un composant SYSTÈME est partagé entre tous
+    # les tenants — et le related_name historique est conservé.
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company',
+        # on_delete: journal technique interne au tenant — il meurt avec la
+        # société ; les composants système (company NULL) ne sont pas touchés.
+        on_delete=models.CASCADE,
         null=True, blank=True, related_name='statuspage_component_logs',
         verbose_name='Société',
         help_text='NULL = composant système, partagé entre tous les tenants.')
