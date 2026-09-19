@@ -649,6 +649,13 @@ const installationsApi = {
       reason ? { reason } : {}),
   getPositionsTechniciens: (params) =>
     api.get('/installations/positions-techniciens/', { params }),
+  // NTMOB9 — remontée périodique de position (watchPosition « Ma journée »,
+  // limitée à la session d'intervention ouverte) : distance/géofencing
+  // calculés SERVEUR (jamais fournis ici) ; 403 si consentement absent —
+  // le client doit alors basculer sur le pointage manuel, jamais réessayer
+  // en boucle.
+  pingPosition: (data) =>
+    api.post('/installations/positions-techniciens/ping/', data),
   getCarteLivePositions: () =>
     api.get('/installations/positions-techniciens/carte-live/'),
   getGeofenceAlertes: (params) =>

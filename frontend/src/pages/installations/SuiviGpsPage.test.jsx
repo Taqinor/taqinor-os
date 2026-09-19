@@ -33,6 +33,25 @@ const inst = vi.hoisted(() => ({
     }],
   })),
   acquitterGeofenceAlerte: vi.fn(() => Promise.resolve({ data: {} })),
+  // NTMOB9 — Historique de présence (dérivé des positions par chantier).
+  getInstallations: vi.fn(() => Promise.resolve({
+    data: [{ id: 100, reference: 'CH-2026-001' }],
+  })),
+  getInterventions: vi.fn(() => Promise.resolve({
+    data: [{ id: 200 }],
+  })),
+  getPositionsTechniciens: vi.fn(() => Promise.resolve({
+    data: [
+      {
+        id: 1, technicien: 10, technicien_nom: 'ahmed', intervention: 200,
+        captured_at: '2026-07-18T08:00:00Z', hors_perimetre: false,
+      },
+      {
+        id: 2, technicien: 10, technicien_nom: 'ahmed', intervention: 200,
+        captured_at: '2026-07-18T12:00:00Z', hors_perimetre: true,
+      },
+    ],
+  })),
 }))
 vi.mock('../../api/installationsApi', () => ({ default: inst }))
 vi.mock('../../api/crmApi', () => ({
@@ -108,5 +127,42 @@ describe('SuiviGpsPage (WIR113)', () => {
 
     await user.click(screen.getByRole('button', { name: /Acquitter/i }))
     await waitFor(() => expect(inst.acquitterGeofenceAlerte).toHaveBeenCalledWith(5))
+  })
+
+  it("Historique de présence : choisir un chantier dérive entrée/sortie depuis les positions (NTMOB9)", async () => {
+    const user = userEvent.setup()
+    render(<SuiviGpsPage />)
+    await screen.findByTestId('consentement-1')
+
+    await user.click(screen.getByRole('tab', { name: /Historique de présence/i }))
+    await waitFor(() => expect(inst.getInstallations).toHaveBeenCalled())
+
+    await user.selectOptions(screen.getByLabelText('Chantier'), '100')
+    await waitFor(() => expect(inst.getInterventions)
+      .toHaveBeenCalledWith(expect.objectContaining({ installation: '100' })))
+    await waitFor(() => expect(inst.getPositionsTechniciens)
+      .toHaveBeenCalledWith(expect.objectContaining({ intervention: 200 })))
+
+    // Première position dans le rayon (hors_perimetre=false) = une entrée ;
+    // transition vers hors_perimetre=true = une sortie — DÉRIVÉ, jamais un
+    // champ serveur.
+    const entree = await screen.findByTestId('presence-1-entree')
+    expect(entree.textContent).toContain('ahmed')
+    expect(entree.textContent).toContain('Entrée')
+    const sortie = await screen.findByTestId('presence-2-sortie')
+    expect(sortie.textContent).toContain('Sortie')
+  })
+
+  it("Historique de présence : le filtre type de franchissement réduit la liste", async () => {
+    const user = userEvent.setup()
+    render(<SuiviGpsPage />)
+    await screen.findByTestId('consentement-1')
+    await user.click(screen.getByRole('tab', { name: /Historique de présence/i }))
+    await user.selectOptions(screen.getByLabelText('Chantier'), '100')
+    await screen.findByTestId('presence-1-entree')
+
+    await user.selectOptions(screen.getByLabelText('Type de franchissement'), 'sortie')
+    expect(screen.queryByTestId('presence-1-entree')).not.toBeInTheDocument()
+    expect(screen.getByTestId('presence-2-sortie')).toBeInTheDocument()
   })
 })
