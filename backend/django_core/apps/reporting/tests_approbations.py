@@ -548,3 +548,86 @@ class TestVx218NiveauEscalade(ApprobationsBase):
         self.assertIn('niveau_escalade', item)
         self.assertIsNone(item['niveau_escalade'])
         self.assertIsNone(item['derniere_relance_le'])
+
+
+class TestNtai37ScoreIa(TestCase):
+    """NTAI37 — classement/priorisation IA (``?trier=ia``), pur, déterministe."""
+
+    def test_en_retard_toujours_devant_un_montant_seul(self):
+        from apps.reporting.approbations import _score_ia
+
+        en_retard = {'en_retard': True, 'anciennete_jours': 5, 'montant': None}
+        gros_montant = {'en_retard': False, 'anciennete_jours': 0,
+                        'montant': 900000}
+        score_retard, raison_retard = _score_ia(en_retard)
+        score_montant, _raison = _score_ia(gros_montant)
+        self.assertGreater(score_retard, score_montant)
+        self.assertIn('en retard', raison_retard)
+
+    def test_escalade_pese_plus_que_relance(self):
+        from apps.reporting.approbations import _score_ia
+
+        escalade = {'niveau_escalade': 'escalade', 'anciennete_jours': 0}
+        relance = {'niveau_escalade': 'relance', 'anciennete_jours': 0}
+        score_escalade, raison_escalade = _score_ia(escalade)
+        score_relance, _r = _score_ia(relance)
+        self.assertGreater(score_escalade, score_relance)
+        self.assertIn('escaladée', raison_escalade)
+
+    def test_score_deterministe_reproductible(self):
+        from apps.reporting.approbations import _score_ia
+
+        item = {'en_retard': True, 'anciennete_jours': 12,
+                'montant': 50000, 'niveau_escalade': 'relance'}
+        self.assertEqual(_score_ia(item), _score_ia(dict(item)))
+
+    def test_sans_aucun_signal_raison_nomme_lanciennete(self):
+        from apps.reporting.approbations import _score_ia
+
+        score, raison = _score_ia({'anciennete_jours': 1})
+        self.assertGreaterEqual(score, 0)
+        self.assertIn('ancienneté', raison)
+
+    def test_trier_ia_ordonne_par_score_decroissant(self):
+        from apps.reporting.approbations import _trier_items
+
+        items = [
+            {'id': 1, 'en_retard': False, 'anciennete_jours': 0,
+             'montant': None},
+            {'id': 2, 'en_retard': True, 'anciennete_jours': 8,
+             'montant': None},
+        ]
+        _trier_items(items, 'ia')
+        self.assertEqual([it['id'] for it in items], [2, 1])
+        self.assertIn('score_ia', items[0])
+        self.assertIn('raison_ia', items[0])
+
+
+class TestNtai37EndpointTrierIa(ApprobationsBase):
+    """NTAI37 — ``?trier=ia`` sur l'endpoint réel (source installations)."""
+
+    def _set_created(self, obj, when):
+        type(obj).objects.filter(pk=obj.pk).update(date_creation=when)
+        obj.refresh_from_db()
+
+    def test_lapprobation_la_plus_urgente_remonte_en_tete(self):
+        ApprobationSlaConfig.objects.create(company=self.company, sla_jours=2)
+        ancienne = DemandeAchat.objects.create(
+            company=self.company, reference='DA-NTAI37-OLD', objet='X',
+            statut=DemandeAchat.Statut.SOUMISE)
+        self._set_created(
+            ancienne,
+            timezone.make_aware(datetime.datetime(2026, 6, 1, 8, 0, 0)))
+        fraiche = DemandeAchat.objects.create(
+            company=self.company, reference='DA-NTAI37-NEW', objet='X',
+            statut=DemandeAchat.Statut.SOUMISE)
+        self._set_created(fraiche, timezone.now())
+
+        resp = self.api.get(
+            self._url() + '?source=installations&trier=ia')
+        self.assertEqual(resp.status_code, 200)
+        items = resp.data['items']
+        self.assertEqual(items[0]['libelle'], 'Réquisition DA-NTAI37-OLD')
+        self.assertIn('score_ia', items[0])
+        self.assertIn('raison_ia', items[0])
+        self.assertTrue(items[0]['raison_ia'])

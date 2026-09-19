@@ -231,7 +231,67 @@ def _enrichir_urgence(items, company):
 _TRI_URGENCE = 'urgence'
 _TRI_ANCIENNETE = 'anciennete'
 _TRI_MONTANT = 'montant'
-_TRIS_VALIDES = {_TRI_URGENCE, _TRI_ANCIENNETE, _TRI_MONTANT}
+_TRI_IA = 'ia'
+_TRIS_VALIDES = {_TRI_URGENCE, _TRI_ANCIENNETE, _TRI_MONTANT, _TRI_IA}
+
+# NTAI37 — poids du score de priorisation « ia ». PUR (aucun appel LLM) :
+# une combinaison DÉTERMINISTE de trois signaux déjà présents sur chaque item
+# — jamais un chiffre inventé. Plafonds explicites pour qu'un seul signal
+# extrême (une ancienneté de plusieurs années, un montant à 7 chiffres) ne
+# domine pas tout le score.
+_IA_POIDS_RETARD = 5.0
+_IA_POIDS_ESCALADE = 3.0
+_IA_POIDS_RELANCE = 1.5
+_IA_ANCIENNETE_PLAFOND_JOURS = 30
+_IA_MONTANT_PLAFOND = 1_000_000
+
+
+def _score_ia(item):
+    """NTAI37 — score de priorisation DÉTERMINISTE + une raison courte en
+    clair, à partir des SEULS signaux déjà portés par l'item (urgence/SLA
+    ZCTR9, montant réel VX100, escalade VX218) — jamais un signal fabriqué
+    pour l'occasion. Renvoie ``(score, raison)``."""
+    raisons = []
+    score = 0.0
+
+    if item.get('en_retard'):
+        score += _IA_POIDS_RETARD
+        raisons.append(
+            'en retard (%s j ouvrés)' % item.get('anciennete_jours', 0))
+
+    niveau = item.get('niveau_escalade')
+    if niveau == 'escalade':
+        score += _IA_POIDS_ESCALADE
+        raisons.append('escaladée')
+    elif niveau == 'relance':
+        score += _IA_POIDS_RELANCE
+        raisons.append('déjà relancée')
+
+    anciennete = min(item.get('anciennete_jours', 0) or 0,
+                     _IA_ANCIENNETE_PLAFOND_JOURS)
+    score += anciennete / _IA_ANCIENNETE_PLAFOND_JOURS
+
+    montant = item.get('montant')
+    if montant:
+        score += min(float(montant), _IA_MONTANT_PLAFOND) / _IA_MONTANT_PLAFOND
+        if not item.get('en_retard'):
+            raisons.append('montant élevé (%s MAD)' % montant)
+
+    if not raisons:
+        raisons.append(
+            'ancienneté %s j ouvrés' % item.get('anciennete_jours', 0))
+    return round(score, 4), ', '.join(raisons)
+
+
+def _enrichir_score_ia(items):
+    """NTAI37 — ajoute ``score_ia``/``raison_ia`` à chaque item, en place.
+    Suppose ``_enrichir_urgence`` déjà appliqué (lit ``en_retard``/
+    ``anciennete_jours``)."""
+    for it in items:
+        score, raison = _score_ia(it)
+        it['score_ia'] = score
+        it['raison_ia'] = raison
+    return items
 
 
 def _trier_items(items, trier):
@@ -242,6 +302,8 @@ def _trier_items(items, trier):
     - ``montant`` : demandes avec un montant connu d'abord (décroissant),
       celles sans montant (aucune source homogène ne l'expose aujourd'hui)
       en dernier, triées par ancienneté à défaut.
+    - ``ia`` (NTAI37) : ``score_ia`` décroissant (urgence/impact combinés) —
+      voir :func:`_score_ia`.
     Tri stable : conserve l'ordre source/id existant à valeur égale."""
     if trier == _TRI_URGENCE:
         items.sort(key=lambda it: (
@@ -253,6 +315,9 @@ def _trier_items(items, trier):
             it.get('montant') is None,
             -(it.get('montant') or 0),
             -it.get('anciennete_jours', 0)))
+    elif trier == _TRI_IA:
+        _enrichir_score_ia(items)
+        items.sort(key=lambda it: -it.get('score_ia', 0))
     return items
 
 
