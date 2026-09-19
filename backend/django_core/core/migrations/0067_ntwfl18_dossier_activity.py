@@ -56,7 +56,7 @@ class Migration(migrations.Migration):
                     blank=True, default='', verbose_name='Contenu')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='core_dossieractivity_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('dossier', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,

@@ -69,7 +69,7 @@ class Migration(migrations.Migration):
                     verbose_name='Échéance')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='core_dossier_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('proprietaire', models.ForeignKey(
                     blank=True, null=True,
@@ -101,7 +101,7 @@ class Migration(migrations.Migration):
                     max_length=200, verbose_name='Libellé')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='core_dossierlien_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('content_type', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
@@ -136,7 +136,7 @@ class Migration(migrations.Migration):
                     blank=True, null=True, verbose_name='Fait le')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='core_dossierchecklistitem_set',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
                 ('dossier', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
