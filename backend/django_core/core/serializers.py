@@ -385,15 +385,28 @@ class MatriceApprobationSerializer(serializers.ModelSerializer):
     ``company`` imposée côté serveur (``TenantMixin``). ``chaine_paliers`` est
     validée en forme (liste de dicts avec ``palier``/``role_requis``) — le
     contenu métier (rôle réellement habilité) reste déclaratif, sans contrôle
-    cross-app depuis ``core``."""
+    cross-app depuis ``core``.
+
+    NTWFL33 — ``avertissements`` est un champ de SORTIE : il signale, sans
+    jamais bloquer l'écriture, les autres règles actives de portée exactement
+    identique (résolution ambiguë). Coût : une requête indexée par ligne
+    renvoyée (``core_matappr_co_typ_act_idx``) ; la liste par société est
+    volontairement non paginée car petite."""
+
+    avertissements = serializers.SerializerMethodField()
 
     class Meta:
         model = MatriceApprobation
         fields = [
             'id', 'type_objet', 'departement', 'montant_min', 'montant_max',
-            'chaine_paliers', 'actif', 'created_at', 'updated_at',
+            'chaine_paliers', 'actif', 'avertissements', 'created_at',
+            'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_avertissements(self, obj):
+        """NTWFL33 — avertissements de conflit de portée (jamais bloquants)."""
+        return obj.avertissements_de_conflit()
 
     def validate_type_objet(self, value):
         value = (value or '').strip()
