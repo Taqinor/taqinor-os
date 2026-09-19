@@ -2398,6 +2398,27 @@ class FicheTechnique(models.Model):
                   'efficiency »). Vide = non publié : le moteur applique '
                   'alors son hypothèse de référence et le dit.')
 
+    # ── CAL118 — nombre de cycles publié & vieillissement calendaire. ──
+    #
+    # Le bloc batterie porte capacité/DoD/tension/puissances/rendement
+    # aller-retour mais AUCUN nombre de cycles ni courbe de vieillissement ;
+    # SAM (NREL) modélise explicitement la dégradation calendaire ET
+    # cyclique. TOUS OPTIONNELS — vides = « non publiés ».
+    bat_cycles_publies = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Nombre de cycles publié par le fabricant (à la '
+                  'rétention de fin de vie ci-dessous). Vide = non publié.')
+    bat_retention_fin_de_vie_pct = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('1')),
+                    MaxValueValidator(Decimal('100'))],
+        help_text='Rétention de capacité publiée en fin de vie garantie '
+                  '(% de la capacité nominale, ex. 80 %). Vide = non '
+                  'publié.')
+    bat_garantie_annees = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Durée de garantie publiée (années). Vide = non publié.')
+
     # ── CAL116 — Optimiseur de puissance / micro-onduleur
     # (``type_fiche='optimiseur'``). ──
     #

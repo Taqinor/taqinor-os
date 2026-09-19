@@ -1581,7 +1581,8 @@ def specs_for_produit(produit):
         (les quatre dernières, CAL115) ;
       * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
         max_charge_kw, max_decharge_kw, max_modules_par_banc,
-        rendement_ar_pct}`` ;
+        rendement_ar_pct, cycles_publies, retention_fin_de_vie_pct,
+        garantie_annees}`` (les trois dernières, CAL118) ;
       * ``optimiseur`` (CAL116) → ``{pmax_in_w, v_in_min, v_in_max,
         i_in_max_a, rendement_pct, modules_par_optimiseur}``.
 
@@ -1691,6 +1692,13 @@ def specs_for_produit(produit):
             # champ récent — absent ≡ NULL (non publié, hypothèse déclarée).
             ('rendement_ar_pct',
              getattr(fiche, 'bat_rendement_ar_pct', None)),
+            # CAL118 — nombre de cycles publié & vieillissement calendaire.
+            # getattr : les doubles de test (_FausseFiche) ne portent pas
+            # forcément les champs récents — absent ≡ NULL (non publié).
+            ('cycles_publies', getattr(fiche, 'bat_cycles_publies', None)),
+            ('retention_fin_de_vie_pct',
+             getattr(fiche, 'bat_retention_fin_de_vie_pct', None)),
+            ('garantie_annees', getattr(fiche, 'bat_garantie_annees', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'optimiseur':
