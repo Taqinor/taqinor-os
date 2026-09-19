@@ -336,12 +336,22 @@ def generer_sla_mensuel(periode=None):
 # ── API ──────────────────────────────────────────────────────────────────
 
 class SlaSnapshotSerializer(serializers.ModelSerializer):
+    # NTOBS23 — ``genere_le`` dans le fuseau d'affichage DE LA SOCIÉTÉ DU
+    # SNAPSHOT (``SlaSnapshot.company`` est toujours renseignée, contrairement
+    # à une fenêtre de maintenance système-wide).
+    genere_le_local = serializers.SerializerMethodField()
+
     class Meta:
         model = SlaSnapshot
         fields = [
             'id', 'periode', 'uptime_pct', 'latence_p95_ms', 'genere_le',
             'credit_du_pct', 'credit_du_montant', 'credit_statut',
+            'genere_le_local',
         ]
+
+    def get_genere_le_local(self, obj) -> str:
+        from .tz_display import to_company_tz
+        return to_company_tz(obj.genere_le, obj.company).isoformat()
 
 
 class SlaCreditDuSerializer(serializers.ModelSerializer):

@@ -134,13 +134,33 @@ def notifier_fenetres_a_venir(now=None):
 # ── API ──────────────────────────────────────────────────────────────────
 
 class MaintenanceWindowSerializer(serializers.ModelSerializer):
+    # NTOBS23 — horodatages dans le fuseau d'affichage du VIEWER (pas de la
+    # fenêtre elle-même : une fenêtre système-wide, company=None, doit
+    # s'afficher à l'heure locale de CHAQUE tenant qui la consulte).
+    debute_le_local = serializers.SerializerMethodField()
+    termine_le_local = serializers.SerializerMethodField()
+
     class Meta:
         model = MaintenanceWindow
         fields = [
             'id', 'company', 'region', 'debute_le', 'termine_le', 'impact',
             'description', 'statut', 'created_at',
+            'debute_le_local', 'termine_le_local',
         ]
         read_only_fields = ['statut']
+
+    def _viewer_company(self):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        return getattr(user, 'company', None)
+
+    def get_debute_le_local(self, obj) -> str:
+        from .tz_display import to_company_tz
+        return to_company_tz(obj.debute_le, self._viewer_company()).isoformat()
+
+    def get_termine_le_local(self, obj) -> str:
+        from .tz_display import to_company_tz
+        return to_company_tz(obj.termine_le, self._viewer_company()).isoformat()
 
 
 class IsDirecteurOrAdmin(BasePermission):
@@ -186,7 +206,8 @@ def annuler_fenetre(request, pk):
     fenetre.statut = MaintenanceWindow.Statut.ANNULE
     fenetre.save(update_fields=['statut', 'updated_at'])
     _notifier_annulation(fenetre)
-    return Response(MaintenanceWindowSerializer(fenetre).data)
+    return Response(MaintenanceWindowSerializer(
+        fenetre, context={'request': request}).data)
 
 
 def _notifier_annulation(fenetre):
@@ -220,4 +241,5 @@ def fenetres_actives(request):
                     MaintenanceWindow.Statut.EN_COURS],
         debute_le__lte=horizon, termine_le__gte=now,
     ).order_by('debute_le')
-    return Response(MaintenanceWindowSerializer(qs, many=True).data)
+    return Response(MaintenanceWindowSerializer(
+        qs, many=True, context={'request': request}).data)
