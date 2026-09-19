@@ -1250,7 +1250,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if not body:
             return Response({'body': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        act = activity.log_note(ticket, request.user, body)
+        # NTPRT12 — opt-in EXPLICITE : sans `visible_client` vrai dans le
+        # corps, la note reste interne et le portail client ne la voit jamais.
+        visible_client = request.data.get('visible_client') in (
+            True, 'true', 'True', '1', 1, 'on')
+        act = activity.log_note(
+            ticket, request.user, body, visible_client=visible_client)
         # ZSAV9 — notifie les suiveurs du ticket (jamais l'auteur de la note).
         from .services import notify_followers
         from apps.notifications.models import EventType

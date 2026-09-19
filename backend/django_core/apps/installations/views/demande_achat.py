@@ -116,6 +116,13 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             val = params.get(key)
             if val:
                 qs = qs.filter(**{col: val})
+        # NTP2P35 — la liste ACTIVE masque les brouillons archivés par la tâche
+        # planifiée ; `?archivees=1` les montre (et eux SEULS) sans que rien
+        # n'ait été supprimé. Les vues de détail (`retrieve`) et les actions
+        # gardent l'accès à une demande archivée : elle reste consultable.
+        if self.action == 'list':
+            voulu = params.get('archivees') in ('1', 'true', 'True')
+            qs = qs.filter(archivee=voulu)
         return qs
 
     def _check_all_tenant(self, serializer):

@@ -995,6 +995,97 @@ def tickets_ouverts_client(company, client_id):
         statut__in=Ticket.OPEN_STATUTS).count()
 
 
+def fil_client_du_ticket(company, client_id, ticket_id):
+    """NTPRT12 — fil de commentaires CLIENT-VISIBLE d'un ticket, en lecture.
+
+    Le chatter d'un ticket est interne : seules les entrées explicitement
+    marquées ``visible_client`` sont renvoyées ici. Une note technicien
+    ordinaire, un journal de changement de statut, un e-mail ou un WhatsApp
+    interne n'y apparaissent JAMAIS — il n'y a pas de dérivation sur le
+    ``kind`` qui pourrait les faire fuiter par accident.
+
+    Point d'entrée cross-app en LECTURE SEULE pour ``apps.portail`` (jamais un
+    import de ``apps.sav.models``). Exige le triplet (société, client, ticket) :
+    le ticket d'un autre client renvoie une liste vide, jamais une erreur qui
+    révélerait son existence. Payload pauvre : le corps, l'horodatage et
+    l'auteur, jamais un champ interne (coût, technicien assigné, SLA).
+    """
+    if company is None or not client_id or not ticket_id:
+        return []
+    ticket = Ticket.objects.filter(
+        company=company, client_id=client_id, id=ticket_id).first()
+    if ticket is None:
+        return []
+    entrees = (TicketActivity.objects
+               .filter(company=company, ticket=ticket, visible_client=True)
+               .select_related('user')
+               .order_by('created_at', 'id'))
+    return [{
+        'id': entree.id,
+        'body': entree.body or '',
+        'created_at': entree.created_at,
+        'auteur': getattr(entree.user, 'username', '') or '',
+    } for entree in entrees]
+
+
+def contrats_maintenance_portail_client(company, client_id):
+    """NTPRT16 — contrats de maintenance d'UN client, projetés pour le portail.
+
+    Pendant SAV de ``contrats.selectors.contrats_portail_client`` (XCTR14) :
+    l'écran « Mes contrats » du portail liste les deux familles côte à côte.
+    Point d'entrée cross-app en LECTURE SEULE (``apps.portail`` n'importe
+    jamais ``apps.sav.models``), scopé société ET client — un contrat d'un
+    autre client ou d'une autre société est INTROUVABLE, jamais « trouvé puis
+    refusé ».
+
+    Lecture minimisée (loi 09-08) : uniquement ce dont le client a besoin —
+    périodicité, dates, prix, droits inclus. JAMAIS un champ interne
+    (``sla_response_days``/``sla_resolution_days``, ``tarif_usage``,
+    ``derniere_facturation``, ``notes``). Renvoie une liste de dicts, contrats
+    actifs d'abord puis par date de début décroissante.
+    """
+    from .models import ContratMaintenance
+
+    if company is None or not client_id:
+        return []
+    contrats = (ContratMaintenance.objects
+                .filter(company=company, client_id=client_id)
+                .select_related('installation')
+                .order_by('-actif', '-date_debut', '-id'))
+    rows = []
+    for contrat in contrats:
+        rows.append({
+            'id': contrat.id,
+            'periodicite': contrat.periodicite,
+            'periodicite_display': contrat.get_periodicite_display(),
+            'date_debut': contrat.date_debut,
+            'date_renouvellement': contrat.date_renouvellement,
+            'duree_mois': contrat.duree_mois,
+            'actif': contrat.actif,
+            'prix': contrat.prix,
+            'chantier': (str(contrat.installation)
+                         if contrat.installation_id else ''),
+            'visites_incluses_an': contrat.visites_incluses_an,
+            'deplacements_inclus_an': contrat.deplacements_inclus_an,
+            'pieces_couvertes_pct': contrat.pieces_couvertes_pct,
+        })
+    return rows
+
+
+def contrat_maintenance_du_client(company, client_id, contrat_id):
+    """NTPRT16 — un contrat de maintenance PRÉCIS du client portail, ou None.
+
+    Exige le triplet (société, client, id) : le contrat d'autrui est
+    introuvable. Sert de garde au point d'écriture
+    ``services.demander_action_portail_maintenance``."""
+    from .models import ContratMaintenance
+
+    if company is None or not client_id or not contrat_id:
+        return None
+    return ContratMaintenance.objects.filter(
+        company=company, client_id=client_id, id=contrat_id).first()
+
+
 def equipement_scoped_by_serial(company, numero_serie):
     """XSTK7 — un ``sav.Equipement`` scopé société, par n° de série (lecture
     seule). Point d'entrée cross-app pour le rapport de traçabilité
