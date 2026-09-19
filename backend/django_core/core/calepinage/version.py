@@ -34,6 +34,21 @@ VERSION_MOTEUR = "2.0.0"
 #: Version du schéma JSON d'entrée/sortie (``serialisation.py``). Elle évolue
 #: indépendamment de ``VERSION_MOTEUR`` : un moteur peut gagner une capacité
 #: sans changer le format d'échange.
+#:
+#: Journal du SCHÉMA :
+#:
+#: * **1 — schéma d'origine (AOF57).**
+#: * **CAL166 — alignement de ``schema.json`` sur le code, SANS incrément.**
+#:   ``schema.json`` n'énumérait que deux ``mode_pose`` et ne déclarait ni
+#:   ``rangees_imposees`` ni ``phase_forcee_m``, alors que ``serialisation.py``
+#:   sérialise les trois modes depuis PV29/PV31/PV52. Le fichier de schéma
+#:   était FAUX, pas plus ancien : le format d'échange lui-même n'a jamais
+#:   changé, donc rien à migrer et rien à incrémenter. L'incrément a d'ailleurs
+#:   été mesuré IMPOSSIBLE ici : ``schema_version`` entre dans ``vers_dict()``,
+#:   donc dans ``hash_entree`` — passer à 2 fait dériver l'empreinte GELÉE des
+#:   golden (école : ``7a74fc0e…`` → ``851ce421…``) et invaliderait l'empreinte
+#:   de toutes les études déjà persistées, pour une correction de
+#:   DOCUMENTATION. Aucun comptage publiable n'est touché par CAL166.
 SCHEMA_VERSION = 1
 
 
