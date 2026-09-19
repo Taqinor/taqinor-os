@@ -1757,6 +1757,98 @@ def factures_portail_fournisseur(company, fournisseur_id, *, a_la_date=None):
     return lignes
 
 
+def taux_conformite_reception_fournisseur(company, fournisseur_id):
+    """Part des réceptions CONTRÔLÉES de ce fournisseur jugées conformes.
+
+    Source : ``ControleReception`` (NTWMS34), le verdict qu'un plan
+    d'échantillonnage exige avant de confirmer une réception. Seules les
+    réceptions RÉELLEMENT contrôlées entrent au dénominateur : une société qui
+    ne contrôle rien n'a pas un taux de 0 %, elle n'a pas de taux — d'où
+    ``taux_conformite_pct = None`` plutôt que zéro, qui se lirait comme un
+    fournisseur catastrophique.
+
+    DÉFINITION UNIQUE, lue par l'écran interne (``services
+    .supplier_performance``) ET par la carte portail (NTPRT26) : deux calculs
+    séparés finiraient par afficher deux chiffres différents au fournisseur et
+    à l'acheteur, sur la même relation.
+    """
+    vide = {
+        'receptions_controlees': 0,
+        'receptions_conformes': 0,
+        'taux_conformite_pct': None,
+    }
+    if company is None or not fournisseur_id:
+        return vide
+
+    from .models import ControleReception
+
+    qs = ControleReception.objects.filter(
+        company=company,
+        reception__bon_commande__fournisseur_id=fournisseur_id)
+    total = qs.count()
+    if not total:
+        return vide
+    conformes = qs.filter(
+        resultat=ControleReception.Resultat.CONFORME).count()
+    return {
+        'receptions_controlees': total,
+        'receptions_conformes': conformes,
+        'taux_conformite_pct': round(conformes / total * 100, 1),
+    }
+
+
+def performance_portail_fournisseur(company, fournisseur_id):
+    """NTPRT26 — carte « Ma performance » du portail FOURNISSEUR.
+
+    LECTURE SEULE, et rien d'autre : il n'existe aucun service permettant à un
+    fournisseur de toucher sa propre note — ce serait la vider de son sens.
+
+    Les chiffres MATCHENT le calcul interne parce qu'ils SONT le calcul
+    interne : la ponctualité vient de ``services.otd_stats`` (XPUR7), la même
+    fonction que l'action interne ``fournisseurs/{id}/performance/`` ; la
+    conformité vient de ``taux_conformite_reception_fournisseur``, également
+    partagée. Aucune formule n'est réécrite ici.
+
+    Ce que la carte NE porte PAS, délibérément : aucun montant (ni dépenses, ni
+    prix d'achat), aucun score de risque interne, aucun détail d'incident. Un
+    fournisseur a droit de savoir comment il livre ; il n'a pas à lire notre
+    jugement commercial sur lui ni le volume d'affaires qu'on lui confie.
+
+    Un ``fournisseur_id`` absent — ou d'une autre société — renvoie une carte
+    VIDE, jamais les chiffres de la société entière.
+    """
+    vide = {
+        'fournisseur_nom': '',
+        'otd_ecart_moyen_jours': None,
+        'otd_a_lheure_pct': None,
+        'receptions_controlees': 0,
+        'receptions_conformes': 0,
+        'taux_conformite_reception_pct': None,
+    }
+    if company is None or not fournisseur_id:
+        return vide
+
+    from .models import Fournisseur
+    from .services import otd_stats
+
+    fournisseur = (Fournisseur.objects
+                   .filter(company=company, pk=fournisseur_id).first())
+    if fournisseur is None:
+        return vide
+
+    otd = otd_stats(company, fournisseur)
+    conformite = taux_conformite_reception_fournisseur(
+        company, fournisseur.pk)
+    return {
+        'fournisseur_nom': fournisseur.nom,
+        'otd_ecart_moyen_jours': otd['otd_ecart_moyen_jours'],
+        'otd_a_lheure_pct': otd['otd_a_lheure_pct'],
+        'receptions_controlees': conformite['receptions_controlees'],
+        'receptions_conformes': conformite['receptions_conformes'],
+        'taux_conformite_reception_pct': conformite['taux_conformite_pct'],
+    }
+
+
 # ── PV6 — Specs & Kit de calepinage DÉRIVÉS de FicheTechnique (PV5) ─────────
 # Point d'entrée cross-app LECTURE SEULE : le moteur de calepinage
 # (core.calepinage) et les autres apps lisent les caractéristiques d'un

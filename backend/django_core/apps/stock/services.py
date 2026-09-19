@@ -3257,6 +3257,16 @@ def supplier_performance(company, fournisseur):
     from apps.qhse.selectors import scar_count_par_fournisseur
     scar = scar_count_par_fournisseur(company, fournisseur.id)
 
+    # NTPRT26 — le taux de conformité à réception (NTWMS34) a UNE seule
+    # définition dans le dépôt, ``selectors
+    # .taux_conformite_reception_fournisseur``, que la carte « Ma performance »
+    # du portail fournisseur consomme. Il n'est PAS ajouté à ce scorecard ici :
+    # la réponse de ``fournisseurs/{id}/performance/`` est sous contrat versionné
+    # (``docs/api-contracts.md``, un document GÉNÉRÉ hors du périmètre de cette
+    # lane), donc l'ajout de clé se fait avec sa régénération — pas en passant.
+    # Le chiffre ne peut pas diverger entre-temps : les deux côtés appelleront
+    # la même fonction.
+
     return {
         'fournisseur_id': fournisseur.id,
         'fournisseur_nom': fournisseur.nom,
