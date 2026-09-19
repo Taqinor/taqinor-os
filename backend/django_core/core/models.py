@@ -416,6 +416,25 @@ class WorkflowDefinition(TimestampedModel):
     nom = models.CharField('Nom', max_length=120)
     description = models.TextField('Description', blank=True, default='')
     actif = models.BooleanField('Actif', default=True)
+    # NTWFL25 — VERSIONNEMENT. Un ``code`` désigne désormais une LIGNÉE de
+    # définitions, et non plus une ligne unique : éditer les étapes d'une
+    # définition qui a des instances en cours en crée la version suivante au
+    # lieu de muter la structure sous les pieds de ces instances (voir
+    # ``core.workflow.editer_etapes_definition``). L'unicité porte donc sur le
+    # TRIPLET (société, code, version) ; les définitions existantes valent
+    # toutes ``version=1``, donc leur unicité (société, code) est préservée.
+    version = models.PositiveIntegerField(
+        'Version', default=1,
+        help_text='Incrémentée à chaque modification STRUCTURELLE des étapes '
+                  "faite alors que des instances tournaient.")
+    # Chaînage de l'historique, en LECTURE SEULE (même patron que
+    # ``contrats.VersionContrat`` / ``kb.KbArticleVersion``, qui restent la
+    # référence de ce motif). SET_NULL : purger une très vieille version ne
+    # casse jamais les suivantes.
+    definition_precedente = models.ForeignKey(
+        'self', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='versions_suivantes',
+        verbose_name='Version précédente')
 
     class Meta:
         verbose_name = 'Définition de workflow'
@@ -423,16 +442,18 @@ class WorkflowDefinition(TimestampedModel):
         ordering = ['nom', 'id']
         constraints = [
             models.UniqueConstraint(
-                fields=['company', 'code'],
-                name='core_wf_def_company_code_uniq'),
+                fields=['company', 'code', 'version'],
+                name='core_wf_def_co_code_ver_uniq'),
         ]
         indexes = [
             models.Index(fields=['company', 'actif'],
                          name='core_wf_def_co_actif_idx'),
+            models.Index(fields=['company', 'code', 'version'],
+                         name='core_wf_def_co_cod_ver_idx'),
         ]
 
     def __str__(self):
-        return f'{self.nom} ({self.code})'
+        return f'{self.nom} ({self.code} v{self.version})'
 
 
 class WorkflowStepDefinition(TimestampedModel):
@@ -563,6 +584,17 @@ class WorkflowInstance(TimestampedModel):
     definition = models.ForeignKey(
         WorkflowDefinition, on_delete=models.PROTECT,
         related_name='instances', verbose_name='Définition')
+    # NTWFL25 — l'instance est ÉPINGLÉE à la version de définition sur
+    # laquelle elle a démarré. La FK ``definition`` suffit techniquement (une
+    # nouvelle version est une LIGNE neuve, l'instance continue de pointer
+    # l'ancienne), mais le numéro rend l'épinglage LISIBLE : un écran, un
+    # export ou un rapport de conformité n'a plus à déréférencer la définition
+    # pour dire « cette approbation s'est jouée en v2 ». Posé une seule fois,
+    # au démarrage, et réécrit UNIQUEMENT par la migration manuelle
+    # ``core.workflow.migrer_instance_vers_version``.
+    definition_version = models.PositiveIntegerField(
+        'Version de la définition', default=1,
+        help_text="Version de la définition au démarrage de l'instance.")
 
     # Cible générique — AUCUN import métier (contenttypes = fondation).
     content_type = models.ForeignKey(

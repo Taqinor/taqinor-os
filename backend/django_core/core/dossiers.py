@@ -172,6 +172,8 @@ def code_definition_pour_type(type_dossier):
 def definition_pour_type(company, type_dossier):
     """La ``WorkflowDefinition`` ACTIVE configurée pour ce type, ou ``None``.
 
+    NTWFL25 — un ``code`` désigne une lignée de versions : un nouveau dossier
+    démarre sur la DERNIÈRE version active, jamais sur une version historisée.
     Aucun modèle configuré = aucun processus démarré : un dossier sans
     processus reste parfaitement valide (c'est le cas par défaut)."""
     if not type_dossier:
@@ -179,7 +181,7 @@ def definition_pour_type(company, type_dossier):
     return (WorkflowDefinition.objects
             .filter(company=company, actif=True,
                     code=code_definition_pour_type(type_dossier))
-            .order_by('-id')
+            .order_by('-version', '-id')
             .first())
 
 

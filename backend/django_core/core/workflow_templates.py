@@ -459,8 +459,14 @@ def installer_modele_workflow(company, code):
     """
     tpl = get_modele_workflow(code)
 
-    existing = WorkflowDefinition.objects.filter(
-        company=company, code=code).first()
+    # NTWFL25 — un ``code`` désigne une LIGNÉE de versions : on réutilise la
+    # dernière version active, à défaut la plus récente (sans ce repli, une
+    # lignée entièrement désactivée referait naître une v1 et collisionnerait
+    # sur l'unicité (société, code, version)).
+    lignee = WorkflowDefinition.objects.filter(company=company, code=code)
+    existing = lignee.filter(actif=True).order_by('-version', '-id').first()
+    if existing is None:
+        existing = lignee.order_by('-version', '-id').first()
     if existing is not None:
         return existing, False
 
