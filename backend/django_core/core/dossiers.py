@@ -22,7 +22,14 @@ Le « maintenant » est TOUJOURS passé explicitement par l'appelant
 from django.db import transaction
 
 from .dates import aujourd_hui_local
-from .models import Dossier, DossierActivity
+from .models import Dossier, DossierActivity, WorkflowDefinition
+
+#: NTWFL20 — préfixe du ``code`` d'une ``WorkflowDefinition`` associée à un
+#: ``type_dossier``. Une définition ``dossier_onboarding_grand_compte`` est LE
+#: processus des dossiers de ce type. Convention plutôt que table de mapping :
+#: le designer de processus (NTWFL6) édite déjà le ``code``, et une seconde
+#: table ne ferait que dédoubler la source de vérité.
+PREFIXE_CODE_DOSSIER = 'dossier_'
 
 __all__ = [
     'journaliser_creation',
@@ -33,6 +40,10 @@ __all__ = [
     'dossiers_echeance_depassee',
     'marquer_rappel_echeance',
     'notifier_echeances_depassees',
+    'code_definition_pour_type',
+    'definition_pour_type',
+    'demarrer_processus_si_configure',
+    'etape_courante_du_dossier',
 ]
 
 
@@ -148,3 +159,61 @@ def notifier_echeances_depassees(company, aujourd_hui=None):
         _emettre_echeance_depassee(dossier)
         alertes.append(dossier)
     return alertes
+
+
+# ── NTWFL20 — le processus d'approbation PROPRE au dossier ──────────────────
+
+
+def code_definition_pour_type(type_dossier):
+    """``'onboarding_grand_compte'`` → ``'dossier_onboarding_grand_compte'``."""
+    return f'{PREFIXE_CODE_DOSSIER}{type_dossier}'
+
+
+def definition_pour_type(company, type_dossier):
+    """La ``WorkflowDefinition`` ACTIVE configurée pour ce type, ou ``None``.
+
+    Aucun modèle configuré = aucun processus démarré : un dossier sans
+    processus reste parfaitement valide (c'est le cas par défaut)."""
+    if not type_dossier:
+        return None
+    return (WorkflowDefinition.objects
+            .filter(company=company, actif=True,
+                    code=code_definition_pour_type(type_dossier))
+            .order_by('-id')
+            .first())
+
+
+def demarrer_processus_si_configure(dossier, user=None, now=None):
+    """Démarre le processus du ``type_dossier`` et l'attache au dossier.
+
+    Retourne la ``WorkflowInstance`` démarrée, ou ``None`` si aucun modèle
+    n'est configuré pour ce type (ou si le dossier en porte déjà un —
+    on ne redémarre JAMAIS un processus par-dessus un autre).
+    """
+    if dossier.workflow_instance_id:
+        return None
+    definition = definition_pour_type(dossier.company, dossier.type_dossier)
+    if definition is None:
+        return None
+
+    from .workflow import demarrer_workflow
+    instance = demarrer_workflow(
+        definition, dossier, dossier.company, user=user, now=now)
+    dossier.workflow_instance = instance
+    dossier.save(update_fields=['workflow_instance', 'updated_at'])
+    journaliser_changement(
+        dossier, 'workflow_instance', 'Processus attaché',
+        '', definition.nom, user=user)
+    return instance
+
+
+def etape_courante_du_dossier(dossier):
+    """L'étape ACTIVE du processus attaché, ou ``None``.
+
+    Ce que l'écran dossier affiche : ni le dossier sans processus, ni le
+    processus terminé n'ont d'étape courante."""
+    instance = dossier.workflow_instance
+    if instance is None:
+        return None
+    from .workflow import etape_courante_de
+    return etape_courante_de(instance)

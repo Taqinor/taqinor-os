@@ -88,18 +88,38 @@ class DossierSerializer(serializers.ModelSerializer):
         source='proprietaire.username', read_only=True, default='')
     liens = DossierLienSerializer(many=True, read_only=True)
     checklist = DossierChecklistItemSerializer(many=True, read_only=True)
+    # NTWFL20 — l'étape courante du processus attaché, telle que l'écran
+    # dossier l'affiche. ``None`` si le dossier n'a pas de processus (cas par
+    # défaut) ou si celui-ci est terminé.
+    etape_courante = serializers.SerializerMethodField()
 
     class Meta:
         model = Dossier
         # ``company`` est posée CÔTÉ SERVEUR — jamais lue du corps.
+        # ``workflow_instance`` est posée par le moteur (NTWFL20), jamais par
+        # le client : un dossier ne « choisit » pas son processus au POST.
         fields = ['id', 'type_dossier', 'type_dossier_label', 'titre',
                   'description', 'statut', 'statut_label', 'priorite',
                   'priorite_label', 'proprietaire', 'proprietaire_username',
-                  'echeance', 'liens', 'checklist',
-                  'created_at', 'updated_at']
+                  'echeance', 'liens', 'checklist', 'workflow_instance',
+                  'etape_courante', 'created_at', 'updated_at']
         read_only_fields = ['id', 'type_dossier_label', 'statut_label',
                             'priorite_label', 'proprietaire_username',
-                            'liens', 'checklist', 'created_at', 'updated_at']
+                            'liens', 'checklist', 'workflow_instance',
+                            'etape_courante', 'created_at', 'updated_at']
+
+    def get_etape_courante(self, obj):
+        etape = dossiers_service.etape_courante_du_dossier(obj)
+        if etape is None:
+            return None
+        return {
+            'id': etape.pk,
+            'ordre': etape.ordre,
+            'nom': etape.step_def.nom,
+            'statut': etape.statut,
+            'statut_label': etape.get_statut_display(),
+            'sla_echeance': etape.sla_echeance,
+        }
 
 
 def resoudre_content_type(cle_modele):
@@ -135,9 +155,12 @@ class DossierViewSet(CompanyScopedModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        """NTWFL18 — l'ouverture d'un dossier ouvre aussi son chatter."""
+        """Ouvre le chatter (NTWFL18) puis, si un modèle de processus est
+        configuré pour ce ``type_dossier``, démarre le workflow (NTWFL20)."""
         super().perform_create(serializer)
         dossiers_service.journaliser_creation(
+            serializer.instance, user=self.request.user)
+        dossiers_service.demarrer_processus_si_configure(
             serializer.instance, user=self.request.user)
 
     def perform_update(self, serializer):

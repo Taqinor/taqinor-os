@@ -781,6 +781,17 @@ class Dossier(TenantModel):
     dernier_rappel_echeance_le = models.DateField(
         'Dernier rappel d\'échéance', null=True, blank=True,
         help_text='Vide = jamais alerté ; une seule alerte par jour.')
+    # NTWFL20 — un dossier peut porter SON PROPRE processus d'approbation
+    # (ex. onboarding grand compte à 4 étapes), démarré depuis la définition
+    # configurée pour son ``type_dossier`` (voir
+    # ``core.dossiers.definition_pour_type``). SET_NULL : purger une instance
+    # de workflow ne détruit jamais le dossier — il redevient simplement un
+    # dossier sans processus. Vide = aucun processus attaché (défaut, et
+    # comportement inchangé pour tout dossier créé avant NTWFL20).
+    workflow_instance = models.ForeignKey(
+        'WorkflowInstance', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='dossiers',
+        verbose_name='Processus attaché')
 
     class Meta:
         verbose_name = 'Dossier'
