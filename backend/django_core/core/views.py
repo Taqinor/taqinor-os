@@ -26,7 +26,9 @@ from rest_framework.decorators import (
     permission_classes,
     action,
 )
-from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
+from rest_framework.permissions import (
+    SAFE_METHODS, AllowAny, BasePermission, IsAuthenticated,
+)
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -1415,6 +1417,28 @@ class RegistreTraitementViewSet(TenantMixin, viewsets.ModelViewSet):
         return response
 
 
+class FiabiliteBackupPermission(BasePermission):
+    """NTOBS22 — lecture (``fiabilite_voir``) vs administration
+    (``fiabilite_administration``) sur l'écran Sauvegardes, au lieu du garde
+    ``IsAdminOrResponsableTier`` codé en dur. Un GET (list/retrieve) est
+    accordé à l'un OU l'autre code ; toute autre méthode (créer une
+    sauvegarde, relancer) exige ``fiabilite_administration``. Le repli
+    Admin/Responsable (``IsAdminOrResponsableTier``) est conservé À
+    L'IDENTIQUE : ce palier existant ne perd JAMAIS son accès actuel."""
+
+    def has_permission(self, request, view):
+        u = request.user
+        if not (u and u.is_authenticated):
+            return False
+        if IsAdminOrResponsableTier().has_permission(request, view):
+            return True
+        if request.method in SAFE_METHODS:
+            return (
+                u.has_erp_permission('fiabilite_voir')
+                or u.has_erp_permission('fiabilite_administration'))
+        return u.has_erp_permission('fiabilite_administration')
+
+
 class BackupRunViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG395 — sauvegarde/restauration en libre-service (par société).
 
@@ -1430,7 +1454,7 @@ class BackupRunViewSet(TenantMixin, viewsets.ModelViewSet):
       * ``POST …/sauvegardes/{id}/relancer/`` → ré-exécute l'opération.
     """
     serializer_class = BackupRunSerializer
-    permission_classes = [IsAdminOrResponsableTier]
+    permission_classes = [FiabiliteBackupPermission]
     queryset = BackupRun.objects.all()
 
     def perform_create(self, serializer):

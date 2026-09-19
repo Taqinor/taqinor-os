@@ -22,7 +22,9 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, serializers, status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.permissions import (
+    SAFE_METHODS, BasePermission, IsAuthenticated,
+)
 from rest_framework.response import Response
 
 from .models import TimestampedModel
@@ -163,18 +165,33 @@ class MaintenanceWindowSerializer(serializers.ModelSerializer):
         return to_company_tz(obj.termine_le, self._viewer_company()).isoformat()
 
 
-class IsDirecteurOrAdmin(BasePermission):
-    """NTOBS9 — création/annulation réservée Directeur/Administrateur (même
-    patron local que les autres apps — jamais un import cross-app)."""
+class FiabilitePermission(BasePermission):
+    """NTOBS22 — lecture (``fiabilite_voir``) vs administration
+    (``fiabilite_administration``) sur les fenêtres de maintenance, au lieu
+    d'un garde ``IsDirecteurOrAdmin`` codé en dur. Un GET (liste) est accordé
+    à l'un OU l'autre code ; POST (création/annulation) exige
+    ``fiabilite_administration``. Le repli Directeur/Administrateur
+    (``_est_admin``) est conservé À L'IDENTIQUE : ce palier ne perd JAMAIS
+    son accès actuel, qu'il porte ou non explicitement les nouveaux codes."""
 
     def has_permission(self, request, view):
         u = request.user
-        return bool(u and u.is_authenticated and _est_admin(u))
+        if not (u and u.is_authenticated):
+            return False
+        if _est_admin(u):
+            return True
+        if request.method in SAFE_METHODS:
+            return (
+                u.has_erp_permission('fiabilite_voir')
+                or u.has_erp_permission('fiabilite_administration'))
+        return u.has_erp_permission('fiabilite_administration')
 
 
 class MaintenanceWindowListCreateView(generics.ListCreateAPIView):
-    """GET/POST /api/django/core/maintenance-windows/ — Directeur/
-    Administrateur uniquement (cross-tenant : gestion souvent système-wide).
+    """GET/POST /api/django/core/maintenance-windows/ — lecture ouverte à
+    ``fiabilite_voir``/``fiabilite_administration``, création réservée à
+    ``fiabilite_administration`` (Directeur/Administrateur héritent des
+    deux — NTOBS22).
 
     Un Directeur/Administrateur d'UN tenant reste néanmoins BORNÉ à sa propre
     société : ``company`` est forcée côté serveur à la sienne, sauf pour un
@@ -182,7 +199,7 @@ class MaintenanceWindowListCreateView(generics.ListCreateAPIView):
     poser ``company=None`` (annonce système large) ou une autre société."""
 
     serializer_class = MaintenanceWindowSerializer
-    permission_classes = [IsAuthenticated, IsDirecteurOrAdmin]
+    permission_classes = [IsAuthenticated, FiabilitePermission]
     pagination_class = None
     queryset = MaintenanceWindow.objects.all().order_by('-debute_le')
 
@@ -195,7 +212,7 @@ class MaintenanceWindowListCreateView(generics.ListCreateAPIView):
 
 @extend_schema(request=None, responses=MaintenanceWindowSerializer)
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, IsDirecteurOrAdmin])
+@permission_classes([IsAuthenticated, FiabilitePermission])
 def annuler_fenetre(request, pk):
     """POST /api/django/core/maintenance-windows/<pk>/annuler/ — annule une
     fenêtre et notifie (retrait de la bannière + information des admins)."""

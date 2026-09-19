@@ -29,7 +29,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import (
-    BasePermission, IsAuthenticated,
+    SAFE_METHODS, BasePermission, IsAuthenticated,
 )
 from rest_framework.response import Response
 
@@ -520,37 +520,55 @@ def sla_export_pdf(request, periode):
     return response
 
 
-class IsDirecteurOrAdmin(BasePermission):
-    """NTOBS4 — action réservée Directeur/Administrateur (même patron local
-    que ``apps.credit.views.IsDirecteurOrAdmin`` / ``apps.statuspage.views``,
-    dupliqué exprès : jamais un import cross-app d'une classe de permission)."""
+def _est_admin(user):
+    if getattr(user, 'is_superuser', False) or getattr(user, 'is_admin_role', False):
+        return True
+    role = getattr(user, 'role', None)
+    return bool(role and role.nom in ('Directeur', 'Administrateur'))
+
+
+class FiabilitePermission(BasePermission):
+    """NTOBS22 — lecture (``fiabilite_voir``) vs administration
+    (``fiabilite_administration``) sur les écrans SLA, au lieu d'un garde
+    ``IsDirecteurOrAdmin`` codé en dur. Un GET est accordé à l'un OU l'autre
+    code ; toute autre méthode exige ``fiabilite_administration``. Le repli
+    Directeur/Administrateur (``_est_admin``) est conservé À L'IDENTIQUE :
+    ce palier ne perd JAMAIS son accès actuel."""
 
     def has_permission(self, request, view):
         u = request.user
         if not (u and u.is_authenticated):
             return False
-        if getattr(u, 'is_superuser', False) or getattr(u, 'is_admin_role', False):
+        if _est_admin(u):
             return True
-        role = getattr(u, 'role', None)
-        return bool(role and role.nom in ('Directeur', 'Administrateur'))
+        if request.method in SAFE_METHODS:
+            return (
+                u.has_erp_permission('fiabilite_voir')
+                or u.has_erp_permission('fiabilite_administration'))
+        return u.has_erp_permission('fiabilite_administration')
 
 
 class SlaCreditsDusListView(generics.ListAPIView):
-    """GET /api/django/core/sla/credits/ — crédits SLA dus, TOUTES sociétés
-    (Directeur/Administrateur uniquement — vue de pilotage cross-tenant,
-    jamais accessible à un compte société-scopé normal)."""
+    """GET /api/django/core/sla/credits/ — Directeur/Administrateur : crédits
+    SLA dus TOUTES sociétés (pilotage cross-tenant, inchangé — NTOBS22). Un
+    compte ``fiabilite_voir`` non-admin reste BORNÉ à SA société : une
+    permission de lecture pensée pour consulter SES PROPRES données
+    Fiabilité n'élargit jamais l'accès à une vue cross-tenant."""
 
     serializer_class = SlaCreditDuSerializer
-    permission_classes = [IsAuthenticated, IsDirecteurOrAdmin]
+    permission_classes = [IsAuthenticated, FiabilitePermission]
     pagination_class = None
 
     def get_queryset(self):
-        return (
+        qs = (
             SlaSnapshot.objects
             .exclude(credit_statut=SlaSnapshot.CreditStatut.NON_APPLICABLE)
             .select_related('company')
             .order_by('-periode')
         )
+        if not _est_admin(self.request.user):
+            qs = qs.filter(company=self.request.user.company)
+        return qs
 
 
 @extend_schema(
@@ -559,7 +577,7 @@ class SlaCreditsDusListView(generics.ListAPIView):
     }),
     responses=SlaSnapshotSerializer)
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, IsDirecteurOrAdmin])
+@permission_classes([IsAuthenticated, FiabilitePermission])
 def sla_credit_statut(request, pk):
     """POST /api/django/core/sla/credits/<pk>/statut/ — trace la décision
     humaine sur un crédit (``emis``/``refuse``). N'ÉMET JAMAIS d'avoir : cette
