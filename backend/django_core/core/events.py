@@ -1249,3 +1249,58 @@ rfq_attribuee = django.dispatch.Signal()
 # ne l'est pas : un signal jamais émis serait un seam creux, pas un contrat
 # (même arbitrage que pour ``scm.score_fournisseur_degrade`` plus haut). La
 # tâche qui touchera ``apps/compta`` l'ajoutera ici, sans rien casser.
+
+# ── NTI18N43 — Bascule de langue (société ou client) ────────────────────────
+# Une intégration tierce synchronisée (un CRM externe, un outil d'e-mailing)
+# doit savoir qu'un client est passé au français ou à l'arabe : sinon elle
+# continue d'écrire dans l'ancienne langue, et c'est le client qui le
+# découvre. Émis quand la langue de DOCUMENT d'un client change, ou quand la
+# langue par DÉFAUT de la société change ; consommé par ``apps.publicapi``
+# (webhook sortant ``langue_changed``, voir
+# ``apps/publicapi/i18n_event_receivers.py``) — jamais un import direct de
+# ``publicapi`` depuis l'app qui écrit la langue (même patron que
+# ``btp_reserve_levee`` plus haut).
+#
+# Arguments : ``company``, ``portee`` (``'client'`` ou ``'societe'``),
+# ``client_id`` (``int`` ou ``None`` pour une bascule société),
+# ``ancienne_langue``, ``nouvelle_langue`` (codes courts, ex. ``'fr'`` /
+# ``'ar'``), ``user`` (peut être ``None``).
+langue_changed = django.dispatch.Signal()
+
+#: NTI18N43 — portées reconnues de la bascule de langue.
+PORTEE_LANGUE_CLIENT = 'client'
+PORTEE_LANGUE_SOCIETE = 'societe'
+
+
+def emettre_langue_changed(company, *, ancienne_langue, nouvelle_langue,
+                           portee=PORTEE_LANGUE_CLIENT, client_id=None,
+                           user=None, sender=None):
+    """Émet ``langue_changed`` — BEST-EFFORT, et seulement si ça a bougé.
+
+    L'app qui ÉCRIT la langue appelle cette fonction en UNE ligne, plutôt que
+    de re-coder la garde « la valeur a-t-elle réellement changé ? » et le
+    try/except à chaque point d'écriture (le chemin le plus sûr pour qu'un des
+    points l'oublie). Retourne ``True`` si un événement est parti.
+
+    Une langue identique avant/après n'émet RIEN : un webhook ne doit pas
+    partir parce qu'un formulaire a été ré-enregistré sans changement.
+    """
+    avant = (ancienne_langue or '').strip().lower()
+    apres = (nouvelle_langue or '').strip().lower()
+    if avant == apres:
+        return False
+    try:
+        langue_changed.send(
+            sender=sender or 'core.events',
+            company=company,
+            portee=portee,
+            client_id=client_id,
+            ancienne_langue=avant,
+            nouvelle_langue=apres,
+            user=user)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTI18N43 : émission langue_changed échouée (%s %s → %s)',
+            portee, avant, apres, exc_info=True)
+    return True
