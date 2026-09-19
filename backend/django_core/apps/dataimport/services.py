@@ -33,7 +33,9 @@ pipeline ``crm.Lead``). Trois protections, toutes actives par défaut :
 Une cellule VIDE n'écrase jamais rien, quel que soit le mode : ``_row_to_fields``
 écarte les valeurs vides avant tout traitement.
 """
+import json
 import logging
+import re
 
 from django.db import transaction
 
@@ -354,6 +356,81 @@ def _map_headers(headers, target, saved_mapping=None):
     return mapped, unmapped
 
 
+# ── NTAI33 — Mapping d'import INTELLIGENT (colonnes non reconnues) ──────────
+#
+# Le mapping automatique (`_map_headers`) reconnaît un en-tête par son NOM
+# NORMALISÉ (FIELD_MAPS) — un en-tête inhabituel (« Coordonnées tél. »,
+# « E-mail pro ») reste alors dans `non_mappees`, et l'utilisateur le mappe à
+# la main. Ce qui suit propose, EN PLUS, un mapping pour ces en-têtes non
+# reconnus via le LLM (prompt NTAI5) — SUR LES SEULS EN-TÊTES, jamais une
+# donnée de ligne (respect PII NTAI3). Suggestion SEULEMENT : `dry_run`
+# l'expose sous une clé séparée (`mapping_propose_ia`), jamais fusionnée dans
+# `mapping` — l'utilisateur VALIDE avant tout commit, exactement comme un
+# mapping sauvegardé (XPLT2). Sans clé LLM configurée : no-op propre, le
+# comportement manuel actuel est INCHANGÉ.
+
+IA_MAPPING_SYSTEM = (
+    "Tu proposes un mapping entre des EN-TÊTES DE COLONNES d'un fichier "
+    "d'import et des CHAMPS CIBLES connus d'un ERP. Réponds UNIQUEMENT par un "
+    'objet JSON {"en-tete": "champ", ...} associant CHAQUE en-tête fourni à '
+    'AU PLUS un champ de la liste donnée (omets un en-tête sans '
+    "correspondance claire). N'invente AUCUN champ hors de la liste fournie."
+)
+
+
+def _parse_mapping_ia(texte):
+    """Extrait un mapping ``{en-tete: champ}`` d'une sortie LLM (JSON
+    éventuellement noyé dans du texte). Ne lève jamais : une sortie non
+    exploitable renvoie ``{}``."""
+    match = re.search(r'\{.*\}', str(texte or ''), re.DOTALL)
+    if not match:
+        return {}
+    try:
+        charge = json.loads(match.group(0))
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(charge, dict):
+        return {}
+    return {str(k): str(v) for k, v in charge.items()
+            if isinstance(k, str) and isinstance(v, str)}
+
+
+def proposer_mapping_ia(target, en_tetes_non_mappes):
+    """NTAI33 — Propose un mapping colonne→champ pour les en-têtes que le
+    mapping automatique n'a PAS reconnus, à partir des EN-TÊTES SEULS.
+
+    Sans clé LLM configurée, ou sans en-tête à proposer, ou sans champ connu
+    pour ``target`` : no-op propre, renvoie ``{}``. Le mapping renvoyé
+    n'accepte QUE des en-têtes RÉELLEMENT demandés et des champs RÉELLEMENT
+    connus de la cible (``FIELD_MAPS[target]``) — un champ halluciné par le
+    modèle, ou un en-tête inventé, est silencieusement écarté."""
+    if not en_tetes_non_mappes or target not in FIELD_MAPS:
+        return {}
+    from core.ai.registry import get_provider, is_capability_configured
+
+    if not is_capability_configured('llm'):
+        return {}
+    champs_connus = sorted(set(FIELD_MAPS[target].values()))
+    if not champs_connus:
+        return {}
+    prompt = ('En-têtes à mapper : %s\nChamps cibles possibles : %s'
+              % (json.dumps(list(en_tetes_non_mappes), ensure_ascii=False),
+                 json.dumps(champs_connus, ensure_ascii=False)))
+    try:
+        res = get_provider('llm').complete(
+            prompt=prompt, system=IA_MAPPING_SYSTEM, max_tokens=300)
+    except Exception:  # noqa: BLE001 — un échec IA ne casse jamais le dry-run.
+        logger.debug('NTAI33 : proposition de mapping IA échouée',
+                     exc_info=True)
+        return {}
+    if not res.ok:
+        return {}
+    charge = _parse_mapping_ia((res.data or {}).get('text'))
+    entetes = set(en_tetes_non_mappes)
+    return {entete: champ for entete, champ in charge.items()
+            if entete in entetes and champ in champs_connus}
+
+
 def dry_run(file_bytes, filename, target, company=None, mapping_name=None,
             mode='creer', ecraser=False, external_system=None):
     """Aperçu : mapping colonne→champ + 10 premières lignes mappées + non-mappés.
@@ -397,6 +474,12 @@ def dry_run(file_bytes, filename, target, company=None, mapping_name=None,
         'mode': mode,
         'ecraser': bool(ecraser),
     }
+    # NTAI33 — suggestion SEULEMENT (clé séparée, jamais fusionnée à
+    # `mapping`) : sans clé LLM, `proposer_mapping_ia` no-op à `{}` et le
+    # comportement manuel actuel reste inchangé.
+    mapping_ia = proposer_mapping_ia(target, unmapped)
+    if mapping_ia:
+        result['mapping_propose_ia'] = mapping_ia
     if company is not None and mapped:
         result.update(_analyser_conflits(
             target, rows, mapped, company, mode, external_system,

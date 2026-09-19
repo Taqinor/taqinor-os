@@ -18,6 +18,7 @@ from core.selectors import get_company_object
 
 from . import services
 from .models import ImportJob
+from .translations_i18n import exporter_traductions_csv, importer_traductions_csv
 
 logger = logging.getLogger(__name__)
 
@@ -214,3 +215,47 @@ def job_erreurs_csv(request, job_id):
     resp = HttpResponse(buf.getvalue(), content_type='text/csv; charset=utf-8')
     resp['Content-Disposition'] = f'attachment; filename="import_{job.pk}_erreurs.csv"'
     return resp
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def export_traductions(request):
+    """NTI18N29 — ``GET traductions/export.csv`` : CSV des surcharges de
+    traduction de la société (colonnes ``cle|fr|en|ar|statut_traduction``),
+    pour relecture par un traducteur externe hors-ligne."""
+    contenu = exporter_traductions_csv(request.user.company)
+    resp = HttpResponse(contenu, content_type='text/csv; charset=utf-8')
+    resp['Content-Disposition'] = 'attachment; filename="traductions.csv"'
+    return resp
+
+
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+@parser_classes([MultiPartParser, FormParser])
+def import_traductions(request):
+    """NTI18N29 — ``POST traductions/import/`` (multipart ``file``) : réimporte
+    un CSV corrigé, upsert des seules colonnes de locale FOURNIES et non
+    vides (jamais un effacement silencieux). Journalisé via
+    ``dataimport.ImportJob`` (``target='traductions'``)."""
+    f = request.FILES.get('file')
+    if f is None:
+        return Response({'detail': 'Aucun fichier fourni.'}, status=400)
+    size = getattr(f, 'size', None)
+    if size is not None and size > MAX_UPLOAD_BYTES:
+        return Response(
+            {'detail': 'Fichier trop volumineux : '
+                       f'{size} octets (max {MAX_UPLOAD_BYTES}).'},
+            status=400)
+    try:
+        job = importer_traductions_csv(
+            f.read(), f.name, request.user.company, user=request.user)
+    except Exception:
+        logger.warning('Import de traductions échoué', exc_info=True)
+        return Response(
+            {'detail': 'Lecture du fichier impossible (format invalide ?).'},
+            status=400)
+    return Response({
+        'job': job.pk, 'statut': job.statut, 'total_lignes': job.total_lignes,
+        'created_count': job.created_count, 'updated_count': job.updated_count,
+        'error_count': job.error_count,
+    })

@@ -384,6 +384,10 @@ INSTALLED_APPS = [
     # incidents + post-mortems + historique 90j). Aucun modèle métier
     # importé : lit `core.health.check_services()` via un job beat.
     'apps.statuspage',
+    # Groupe NTAI (P3) — MLOps par tenant : versionne les hyperparamètres/
+    # seuils des scorers purs `core/*.py` par société (registre + feature
+    # store léger). N'importe aucune app métier.
+    'apps.mlops',
 ]
 
 # SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables
@@ -1113,6 +1117,8 @@ CELERY_TASK_ROUTES = {
     'dataquality.evaluer_qualite_donnees': {'queue': 'scheduled'},
     # NTDATA24 — consolidation hebdomadaire des golden records.
     'dataquality.consolider_golden_records': {'queue': 'scheduled'},
+    # NTAI30 — matérialisation quotidienne du feature store léger (mlops).
+    'mlops.recompute_features': {'queue': 'scheduled'},
     # NTDATA42 — détection hebdomadaire d'anomalies sur les métriques nommées.
     'semantic.detecter_anomalies_metriques': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.

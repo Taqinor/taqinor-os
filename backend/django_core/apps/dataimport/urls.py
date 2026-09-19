@@ -1,5 +1,8 @@
 from django.urls import path
-from .views import dry_run, commit, save_mapping, list_mappings, job_erreurs_csv
+from .views import (
+    dry_run, commit, save_mapping, list_mappings, job_erreurs_csv,
+    export_traductions, import_traductions,
+)
 from .exports_view import export_list
 # N97 — export configurable & sauvegarde (s'ajoute à côté de l'import).
 from .export_views import export_objects_list, export_object, sauvegarde
@@ -16,4 +19,10 @@ urlpatterns = [
     path('export-objects/', export_objects_list, name='export-objects'),
     path('export-object/', export_object, name='export-object'),
     path('sauvegarde/', sauvegarde, name='export-sauvegarde'),
+    # NTI18N29 — export/import CSV des surcharges de traduction (relecture
+    # traducteur hors-ligne).
+    path('traductions/export.csv', export_traductions,
+         name='import-traductions-export'),
+    path('traductions/import/', import_traductions,
+         name='import-traductions-import'),
 ]

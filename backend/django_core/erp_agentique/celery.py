@@ -360,6 +360,13 @@ app.conf.beat_schedule = {
         'task': 'dataquality.consolider_golden_records',
         'schedule': crontab(hour=4, minute=15, day_of_week=0),
     },
+    # NTAI30 — matérialise le feature store léger (FeatureVector) de chaque
+    # société. Quotidien, tôt (avant les scorers/rapports du matin) ; lecture
+    # seule côté métier — ne fait qu'upserter une VUE dérivée.
+    'mlops-recompute-features': {
+        'task': 'mlops.recompute_features',
+        'schedule': crontab(hour=4, minute=30),
+    },
     # YSERV13 — contrôle d'intégrité inter-documents hebdomadaire (états
     # orphelins entre apps) ; notifie seulement si ≥1 anomalie détectée.
     'reporting-controle-integrite-hebdo': {
