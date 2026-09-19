@@ -1199,3 +1199,16 @@ saved_view_shared = django.dispatch.Signal()
 # ``obj`` (l'objet métier restauré, peut être ``None`` si la cible avait
 # disparu), ``company``, ``user`` (peut être ``None``).
 record_restored = django.dispatch.Signal()
+
+# NTWFL18 — Émis par le balayage journalier ``core.dossiers
+# .notifier_echeances_depassees`` pour CHAQUE dossier transverse (NTWFL17)
+# dont l'échéance est dépassée alors qu'il est encore ouvert. Dédupliqué à la
+# source par ``Dossier.dernier_rappel_echeance_le`` : un dossier en retard
+# n'émet qu'UNE fois par jour, quel que soit le nombre de passages du job
+# (même discipline anti-double-notification que NTWFL5 sur les étapes BPM).
+# ``core`` ne connaît aucun canal : il émet, et ``apps.notifications``
+# notifie le propriétaire. Émission best-effort, jamais bloquante pour le
+# balayage des dossiers suivants. Arguments : ``dossier`` (l'instance
+# ``core.Dossier``), ``company``, ``proprietaire`` (``CustomUser`` ou
+# ``None`` si le dossier n'a pas de propriétaire désigné).
+dossier_echeance_depassee = django.dispatch.Signal()

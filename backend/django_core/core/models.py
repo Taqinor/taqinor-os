@@ -773,6 +773,14 @@ class Dossier(TenantModel):
     echeance = models.DateField(
         'Échéance', null=True, blank=True,
         help_text='Vide = aucune date cible surveillée.')
+    # NTWFL18 — marqueur anti-double-alerte : la date (locale) du DERNIER
+    # rappel d'échéance dépassée émis pour ce dossier. Le balayage quotidien
+    # ne réveille que les dossiers dont ce marqueur n'est pas déjà celui du
+    # jour — même discipline que ``WorkflowStepInstance.dernier_rappel_le``
+    # (NTWFL5), à la granularité du JOUR puisque le balayage est journalier.
+    dernier_rappel_echeance_le = models.DateField(
+        'Dernier rappel d\'échéance', null=True, blank=True,
+        help_text='Vide = jamais alerté ; une seule alerte par jour.')
 
     class Meta:
         verbose_name = 'Dossier'
@@ -885,6 +893,55 @@ class DossierChecklistItem(TenantModel):
     def __str__(self):
         coche = '✓' if self.fait else '—'
         return f'{self.dossier_id} · {self.libelle} · {coche}'
+
+
+class DossierActivity(TenantModel):
+    """Chatter d'un dossier transverse (NTWFL18).
+
+    Même grammaire que ``crm.LeadActivity`` et ``contrats.ContratActivity`` :
+    des entrées AUTOMATIQUES (changement de statut, rattachement/détachement
+    d'un objet) et des NOTES manuelles. L'auteur et la société sont TOUJOURS
+    posés côté serveur — jamais lus du corps d'une requête.
+    """
+
+    KIND_CREATION = 'creation'
+    KIND_MODIFICATION = 'modification'
+    KIND_LIEN = 'lien'
+    KIND_NOTE = 'note'
+    KIND_CHOICES = [
+        (KIND_CREATION, 'Création'),
+        (KIND_MODIFICATION, 'Modification'),
+        (KIND_LIEN, 'Rattachement'),
+        (KIND_NOTE, 'Note'),
+    ]
+
+    dossier = models.ForeignKey(
+        Dossier, on_delete=models.CASCADE,
+        related_name='activites', verbose_name='Dossier')
+    kind = models.CharField(
+        'Type', max_length=16, choices=KIND_CHOICES, default=KIND_NOTE)
+    field = models.CharField('Champ', max_length=100, blank=True, default='')
+    field_label = models.CharField(
+        'Libellé du champ', max_length=150, blank=True, default='')
+    old_value = models.TextField('Ancienne valeur', blank=True, default='')
+    new_value = models.TextField('Nouvelle valeur', blank=True, default='')
+    body = models.TextField('Contenu', blank=True, default='')
+    user = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='core_dossier_activites',
+        verbose_name='Auteur')
+
+    class Meta:
+        verbose_name = 'Activité de dossier'
+        verbose_name_plural = 'Activités de dossier'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['dossier', '-created_at'],
+                         name='core_dosact_dos_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.dossier_id} {self.kind} {self.field}'.strip()
 
 
 # ---------------------------------------------------------------------------

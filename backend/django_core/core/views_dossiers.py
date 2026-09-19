@@ -7,6 +7,14 @@ serveur, jamais lue du corps), plus trois actions de détail :
   * ``POST {id}/delier/``   — détache cet objet ;
   * ``GET/POST {id}/checklist/`` — lit la checklist ou y ajoute/coche une étape.
 
+NTWFL18 ajoute le chatter (``core.DossierActivity``) :
+
+  * ``GET  {id}/historique/`` — le fil d'activité du dossier ;
+  * ``POST {id}/noter/``      — une note manuelle ;
+  * les changements de statut et les rattachements/détachements écrivent une
+    entrée AUTOMATIQUE — l'auteur vient toujours de la requête, jamais du
+    corps.
+
 La cible d'un lien est désignée par sa CHAÎNE ``app_label.model`` +
 ``object_id`` : ``core`` reste une couche de fondation et n'importe aucune app
 métier (contrat import-linter ``core-foundation-is-a-base-layer``) — la
@@ -18,8 +26,34 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from .models import Dossier, DossierChecklistItem, DossierLien
+from . import dossiers as dossiers_service
+from .models import (
+    Dossier, DossierActivity, DossierChecklistItem, DossierLien,
+)
 from .viewsets import CompanyScopedModelViewSet
+
+#: NTWFL18 — champs dont un changement écrit une entrée de chatter AUTOMATIQUE.
+CHAMPS_SUIVIS = [
+    ('statut', 'Statut'),
+    ('priorite', 'Priorité'),
+    ('proprietaire_id', 'Propriétaire'),
+    ('echeance', 'Échéance'),
+    ('type_dossier', 'Type de dossier'),
+]
+
+
+class DossierActivitySerializer(serializers.ModelSerializer):
+    kind_label = serializers.CharField(
+        source='get_kind_display', read_only=True)
+    user_username = serializers.CharField(
+        source='user.username', read_only=True, default='')
+
+    class Meta:
+        model = DossierActivity
+        fields = ['id', 'kind', 'kind_label', 'field', 'field_label',
+                  'old_value', 'new_value', 'body', 'user_username',
+                  'created_at']
+        read_only_fields = fields
 
 
 class DossierLienSerializer(serializers.ModelSerializer):
@@ -100,6 +134,45 @@ class DossierViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(type_dossier=type_dossier)
         return qs
 
+    def perform_create(self, serializer):
+        """NTWFL18 — l'ouverture d'un dossier ouvre aussi son chatter."""
+        super().perform_create(serializer)
+        dossiers_service.journaliser_creation(
+            serializer.instance, user=self.request.user)
+
+    def perform_update(self, serializer):
+        """NTWFL18 — journalise les champs suivis qui ont réellement bougé."""
+        avant = {
+            champ: getattr(serializer.instance, champ)
+            for champ, _ in CHAMPS_SUIVIS
+        }
+        super().perform_update(serializer)
+        dossier = serializer.instance
+        for champ, libelle in CHAMPS_SUIVIS:
+            dossiers_service.journaliser_changement(
+                dossier, champ, libelle, avant[champ], getattr(dossier, champ),
+                user=self.request.user)
+
+    @action(detail=True, methods=['get'])
+    def historique(self, request, pk=None):
+        """Le chatter du dossier, du plus récent au plus ancien."""
+        dossier = self.get_object()
+        return Response(DossierActivitySerializer(
+            dossiers_service.historique(dossier), many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def noter(self, request, pk=None):
+        """Ajoute une note MANUELLE au chatter (``{body}``)."""
+        dossier = self.get_object()
+        activite = dossiers_service.noter(
+            dossier, request.data.get('body'), user=request.user)
+        if activite is None:
+            return Response(
+                {'body': 'Une note ne peut pas être vide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(DossierActivitySerializer(activite).data,
+                        status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'])
     def lier(self, request, pk=None):
         """Rattache ``{cle_modele, object_id, libelle?}`` au dossier."""
@@ -127,6 +200,10 @@ class DossierViewSet(CompanyScopedModelViewSet):
                 'company': dossier.company,
                 'libelle': (request.data.get('libelle') or '')[:200],
             })
+        if cree:
+            dossiers_service.journaliser_lien(
+                dossier, lien.cle_modele, object_id,
+                libelle=lien.libelle, user=request.user)
         return Response(
             DossierLienSerializer(lien).data,
             status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK)
@@ -147,6 +224,10 @@ class DossierViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         supprimes, _ = DossierLien.objects.filter(
             dossier=dossier, content_type=ct, object_id=object_id).delete()
+        if supprimes:
+            dossiers_service.journaliser_lien(
+                dossier, f'{ct.app_label}.{ct.model}', object_id,
+                action='detache', user=request.user)
         return Response({'detache': bool(supprimes)})
 
     @action(detail=True, methods=['get', 'post'])
