@@ -856,6 +856,31 @@ class CompanyProfile(models.Model):
         help_text='Communauté autonome espagnole. Préparation pack pays ES '
                   '— inactif.')
 
+    # ── NTI18N22 — Décomposition optionnelle de l'adresse libre, ADDITIVE ──
+    # `adresse` (TextField historique, ci-dessus) reste le champ d'affichage/
+    # repli : TOUJOURS conservé tel quel, jamais migré ni vidé. Ces quatre
+    # champs structurés sont facultatifs ; un document (PDF) qui les
+    # consomme doit retomber sur `adresse` s'ils sont vides — voir
+    # `selectors.adresse_affichage`. Une société existante sans ces champs
+    # continue de s'afficher IDENTIQUEMENT sur ses PDF (non-régression).
+    adresse_rue = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Rue',
+        help_text="Numéro et voie. Vide = utiliser l'adresse libre "
+                  "(`adresse`) telle quelle.")
+    adresse_code_postal = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Code postal')
+    adresse_ville = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Ville')
+    adresse_pays = models.CharField(
+        max_length=2, blank=True, default='',
+        verbose_name='Pays (adresse)',
+        help_text="Code pays ISO 3166-1 alpha-2 de CETTE adresse (ex. MA, "
+                  "FR, ES) — distinct de la langue/du pack pays de la "
+                  "société.")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

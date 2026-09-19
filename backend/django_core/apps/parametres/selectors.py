@@ -75,6 +75,32 @@ def company_identity(company) -> dict:
     }
 
 
+def adresse_affichage(company) -> str:
+    """NTI18N22 — adresse « effective » d'une société pour un document (PDF).
+
+    Priorité : si AU MOINS UN des champs structurés (`adresse_rue`,
+    `adresse_code_postal`, `adresse_ville`, `adresse_pays`) est renseigné, on
+    reconstruit une ligne d'adresse à partir d'eux ; sinon on retombe sur le
+    TextField libre historique `adresse`, tel quel — NON-RÉGRESSION totale
+    pour une société qui n'a jamais rempli les champs structurés (NTI18N22).
+    Aucune exception : une société sans profil renvoie une chaîne vide.
+    """
+    p = _profile(company)
+    if p is None:
+        return ""
+    parties_structurees = [
+        (getattr(p, "adresse_rue", "") or "").strip(),
+        (getattr(p, "adresse_code_postal", "") or "").strip(),
+        (getattr(p, "adresse_ville", "") or "").strip(),
+        (getattr(p, "adresse_pays", "") or "").strip(),
+    ]
+    if any(parties_structurees):
+        rue, code_postal, ville, pays = parties_structurees
+        ligne_ville = " ".join(x for x in (code_postal, ville) if x)
+        return ", ".join(x for x in (rue, ligne_ville, pays) if x)
+    return (p.adresse or "").strip()
+
+
 def tariff_for(company) -> dict:
     """Repères ROI/tarifaires CANONIQUES d'une société (source unique — DC5).
 
