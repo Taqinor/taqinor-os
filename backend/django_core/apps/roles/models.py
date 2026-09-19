@@ -508,6 +508,31 @@ ALL_PERMISSIONS = [
     'ux_corbeille_consulter',
     'ux_corbeille_restaurer',
     'ux_edition_masse_executer',
+    # ── NTP2P36 — permissions fines par rôle sur l'approbation d'achats et
+    # notes de frais ──────────────────────────────────────────────────────
+    # Quatre gestes d'approbation/validation distincts, DISJOINTS de
+    # ``stock_gerer``/``installation_gerer`` : un compte peut créer une
+    # demande d'achat sans pouvoir l'approuver. Aucune de ces vérifications
+    # n'est câblée ici — le catalogue rend seulement les codes octroyables
+    # (Paramètres → grille rôles) et prêts à être exigés côté vue quand les
+    # actions correspondantes appliquent la garde (apps/installations,
+    # apps/stock, apps/frais — hors du présent périmètre roles-only).
+    #   * ``approuver_demande_achat``        — décide une étape de
+    #     ``EtapeApprobationAchat`` (NTP2P2, action ``approuver-etape``).
+    #   * ``approuver_note_frais_direction`` — valide l'escalade direction
+    #     d'une ``NoteFrais`` (NTP2P11).
+    #   * ``valider_dossier_fournisseur``    — valide/rejette un dossier
+    #     fournisseur en attente (NTP2P7, action ``valider-dossier``).
+    #   * ``emettre_carte_achat``            — émet une carte d'achat
+    #     virtuelle (NTP2P15, GATED-founder/COST, non construit sur main).
+    # Non-terminées par ``_voir``/``_gerer`` : ce sont des gestes d'ÉCRITURE
+    # au sens de ``CustomUser._role_grants_write`` (même patron que
+    # ``douane_responsable``/``btp_visa_approuver``), pas des codes élevés
+    # (pas d'exposition de donnée sensible — cf. ``ELEVATED_PERMISSIONS``).
+    'approuver_demande_achat',
+    'approuver_note_frais_direction',
+    'valider_dossier_fournisseur',
+    'emettre_carte_achat',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -576,6 +601,14 @@ PERMISSION_MODULE = {
     **{c: 'assurances' for c in ALL_PERMISSIONS if c.startswith('assurances_')},
     'douane_responsable': 'douane',
     'transport_responsable': 'transport',
+    # NTP2P36 — gestes d'approbation achats/notes de frais, groupés sous
+    # l'app Django propriétaire du modèle concerné (jamais la page frontend
+    # qui les affiche, qui peut différer — cf. ``compta``/``rh`` pour
+    # NoteFrais alors que le modèle vit dans ``apps.frais``).
+    'approuver_demande_achat': 'installations',
+    'valider_dossier_fournisseur': 'stock',
+    'emettre_carte_achat': 'stock',
+    'approuver_note_frais_direction': 'frais',
 }
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
