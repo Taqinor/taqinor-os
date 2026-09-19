@@ -2132,6 +2132,36 @@ class FicheTechnique(models.Model):
         max_digits=5, decimal_places=3, null=True, blank=True,
         help_text='Coefficient de température de Pmax (%/°C).')
 
+    # ── CAL111 — Modèle thermique du module (NOCT / coefficients Uc-Uv). ──
+    #
+    # La fiche portait déjà les coefficients de température Voc/Pmax
+    # ci-dessus, mais AUCUN paramètre de température de cellule : le calcul
+    # solaire (``apps/ventes/solar_design.py``) fixait la température cellule
+    # en dur (``DEFAULT_COLD_TEMP_C``/``DEFAULT_HOT_TEMP_C``). PVsyst rend le
+    # modèle thermique sélectionnable et paramétré par Uc (perte constante)
+    # et Uv (perte proportionnelle au vent), NOCT étant la température
+    # nominale de fonctionnement en cellule (« Nominal Operating Cell
+    # Temperature », condition 800 W/m², 20 °C, 1 m/s).
+    #
+    # TOUS OPTIONNELS — vide = « non publié », JAMAIS 0 (un 0 W/m²K serait
+    # une perte thermique nulle inventée). Purement additif : aucune fiche
+    # existante n'est modifiée, aucun calcul ne lit encore ces champs (ils
+    # ne sont pas encore servis par ``specs_for_produit`` — cf. CAL114).
+    noct_c = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        help_text='NOCT — température nominale de fonctionnement en '
+                  'cellule (°C, condition 800 W/m², 20 °C, 1 m/s). '
+                  'Vide = non publié.')
+    uc_w_m2k = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Coefficient thermique constant Uc du modèle Uc-Uv '
+                  '(W/m²K). Vide = non publié.')
+    uv_w_m3sk = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Coefficient thermique proportionnel au vent Uv du '
+                  'modèle Uc-Uv (W/m³sK — « /(m/s)/m²/K »). Vide = non '
+                  'publié.')
+
     # ── PV5 — Onduleur ──
     ond_n_mppt = models.PositiveSmallIntegerField(
         null=True, blank=True, help_text="Nombre d'entrées MPPT.")
