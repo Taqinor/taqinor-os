@@ -827,6 +827,35 @@ class CompanyProfile(models.Model):
                   'automatisé. Vide = non communiqué.',
     )
 
+    # ── NTI18N20 — Pack pays Espagne, PRÉPARATION uniquement (squelette,
+    # non actif) ──────────────────────────────────────────────────────────
+    # Additifs, VIDES par défaut : aucune société existante n'est affectée.
+    # Pas de conformité fiscale espagnole (Veri*Factu/SII) — seulement le
+    # squelette de champs. `tax_id_validators.validate_nif_cif_es` (NTI18N19,
+    # déjà construit) sait valider `nif_cif` dès qu'un appelant le dispatche
+    # via `pack_pays` (NTI18N16 — GATED-founder, non construit) : ce champ-ci
+    # n'est branché à AUCUNE validation ni activation commerciale tant que ce
+    # jour n'est pas arrivé. GATED-founder avant toute vente commerciale en
+    # Espagne.
+    nif_cif = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='NIF/CIF',
+        help_text='Identifiant fiscal espagnol (NIF personne physique, CIF '
+                  'personne morale). Préparation pack pays ES — inactif.')
+    # `provincia`/`comunidad autónoma` sont des concepts propres à l'adresse
+    # espagnole, absents de la décomposition générique NTI18N22
+    # (adresse_rue/adresse_code_postal/adresse_ville/adresse_pays) : deux
+    # champs dédiés plutôt que de les forcer dans un schéma générique.
+    adresse_provincia = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Provincia (ES)',
+        help_text='Province espagnole. Préparation pack pays ES — inactif.')
+    adresse_comunidad_autonoma = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Comunidad autónoma (ES)',
+        help_text='Communauté autonome espagnole. Préparation pack pays ES '
+                  '— inactif.')
+
     class Meta:
         verbose_name = 'Profil entreprise'
 
