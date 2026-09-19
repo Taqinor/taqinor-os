@@ -20,11 +20,12 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from .models import (
-    ComponentStatus, IncidentPublic, StatusSubscriber, UptimeDayBucket,
+    ComponentStatus, ComponentStatusLog, IncidentPublic, StatusSubscriber,
+    UptimeDayBucket,
 )
 from .serializers import (
-    ComponentStatusPublicSerializer, IncidentPublicSerializer,
-    UptimeDayBucketSerializer,
+    ComponentStatusLogSerializer, ComponentStatusPublicSerializer,
+    IncidentPublicSerializer, UptimeDayBucketSerializer,
 )
 
 PUBLIC_STATUS_CACHE_KEY = 'statuspage:public:status'
@@ -184,6 +185,58 @@ def publier_postmortem(request, pk):
         AuditLog.Action.STATUS, instance=incident,
         detail=f'Post-mortem publié pour l\'incident « {incident.titre} ».')
     return Response(IncidentPublicSerializer(incident).data)
+
+
+# ── NTOBS33 — historique brut des changements de statut (admin interne) ────
+
+_SEVERITE_SUGGEREE = {
+    ComponentStatus.Statut.MAJOR_OUTAGE: IncidentPublic.Severite.CRITIQUE,
+    ComponentStatus.Statut.PARTIAL_OUTAGE: IncidentPublic.Severite.MAJEURE,
+    ComponentStatus.Statut.DEGRADED: IncidentPublic.Severite.MINEURE,
+}
+
+
+class HistoriqueStatutComponentView(generics.ListAPIView):
+    """GET /api/django/statuspage/historique-statut/ — Directeur/
+    Administrateur uniquement : les 30 derniers changements de statut
+    RÉELLEMENT détectés (tous composants confondus), pour vérifier
+    « ce composant a-t-il vraiment flanché » avant de publier un incident
+    manuellement."""
+
+    serializer_class = ComponentStatusLogSerializer
+    permission_classes = [IsAuthenticated, IsDirecteurOrAdmin]
+    pagination_class = None
+
+    def get_queryset(self):
+        return ComponentStatusLog.objects.order_by('-created_at')[:30]
+
+
+@extend_schema(responses=inline_serializer('PrefillIncidentDepuisLog', {
+    'titre': drf_serializers.CharField(),
+    'severite': drf_serializers.CharField(),
+    'region': drf_serializers.CharField(),
+    'composants': drf_serializers.ListField(child=drf_serializers.CharField()),
+    'debute_le': drf_serializers.DateTimeField(),
+}))
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsDirecteurOrAdmin])
+def prefill_incident_depuis_log(request, pk):
+    """GET /api/django/statuspage/historique-statut/<pk>/prefill-incident/ —
+    pré-remplit (sans RIEN créer — l'humain reste décisionnaire) les champs
+    d'un nouvel ``IncidentPublic`` à partir d'un événement de l'historique
+    brut. La sévérité est une SUGGESTION dérivée du nouveau statut, jamais un
+    texte narratif généré automatiquement (le titre reste à écrire par le
+    fondateur — cf. règle checked-facts-only du module)."""
+    log = get_object_or_404(ComponentStatusLog, pk=pk)
+    severite = _SEVERITE_SUGGEREE.get(
+        log.nouveau_statut, IncidentPublic.Severite.MINEURE)
+    return Response({
+        'titre': '',
+        'severite': severite,
+        'region': log.region,
+        'composants': [log.composant],
+        'debute_le': log.created_at,
+    })
 
 
 @extend_schema(responses=drf_serializers.DictField(

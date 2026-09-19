@@ -210,6 +210,46 @@ class UptimeDayBucket(TenantModel):
         return f'{self.composant} — {self.date} ({self.statut_pire_du_jour})'
 
 
+class ComponentStatusLog(TimestampedModel):
+    """NTOBS33 — historique BRUT des changements de statut d'un composant,
+    consultable AVANT qu'un incident ne soit créé manuellement.
+
+    Append-only : UN enregistrement par changement de statut RÉELLEMENT
+    DÉTECTÉ (pas un par tick de 5 min — le job beat
+    ``tasks.rafraichir_composants`` compare l'ancien statut ``ComponentStatus``
+    au nouveau AVANT d'écraser la ligne courante, et ne journalise ici QUE
+    quand ils diffèrent, pour éviter le bruit d'un flot continu à 288
+    lignes/jour/composant)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='statuspage_component_logs',
+        verbose_name='Société',
+        help_text='NULL = composant système, partagé entre tous les tenants.')
+    composant = models.CharField('Composant', max_length=120)
+    region = models.CharField('Région', max_length=60, blank=True, default='')
+    ancien_statut = models.CharField(
+        'Ancien statut', max_length=20, choices=ComponentStatus.Statut.choices,
+        blank=True, default='',
+        help_text="Vide pour le tout premier enregistrement d'un composant.")
+    nouveau_statut = models.CharField(
+        'Nouveau statut', max_length=20, choices=ComponentStatus.Statut.choices)
+
+    class Meta:
+        verbose_name = 'Historique brut de statut composant'
+        verbose_name_plural = 'Historiques bruts de statut composant'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['composant', '-created_at'],
+                         name='statuspage_compstatuslog_idx'),
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.composant} : {self.ancien_statut or "?"} '
+            f'-> {self.nouveau_statut}')
+
+
 def _default_subscriber_token():
     import secrets
     return secrets.token_urlsafe(32)

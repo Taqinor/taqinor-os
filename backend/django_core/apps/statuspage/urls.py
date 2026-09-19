@@ -1,7 +1,8 @@
 from django.urls import path
 
 from .views import (
-    PublicIncidentDetailView, PublicIncidentsView, public_abonner,
+    HistoriqueStatutComponentView, PublicIncidentDetailView,
+    PublicIncidentsView, prefill_incident_depuis_log, public_abonner,
     public_confirmer_abonnement, public_desabonner, public_status,
     public_uptime_90j, publier_postmortem,
 )
@@ -18,6 +19,12 @@ urlpatterns = [
     # NTOBS2 — action interne (Directeur/Administrateur), authentifiée.
     path('incidents/<int:pk>/publier-postmortem/', publier_postmortem,
          name='statuspage-publier-postmortem'),
+    # NTOBS33 — historique brut des changements de statut (admin interne).
+    path('historique-statut/', HistoriqueStatutComponentView.as_view(),
+         name='statuspage-historique-statut'),
+    path('historique-statut/<int:pk>/prefill-incident/',
+         prefill_incident_depuis_log,
+         name='statuspage-historique-statut-prefill-incident'),
     # NTOBS14 — frise d'uptime 90 jours (agrégats pré-calculés).
     path('public/uptime-90j/', public_uptime_90j,
          name='statuspage-public-uptime-90j'),
