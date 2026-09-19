@@ -68,3 +68,71 @@ class CompteFournisseurPortail(TenantModel):
 
     def __str__(self):
         return f'Portail fournisseur {self.fournisseur_id} · {self.utilisateur_id}'
+
+
+class AnnonceLivraisonFournisseur(TenantModel):
+    """NTPRT22 — ASN : le fournisseur ANNONCE une expédition sur un BCF.
+
+    Le fournisseur déclare « c'est parti, voici quoi, par qui, quand ». Le stock
+    interne le voit sur le bon de commande AVANT que la marchandise arrive, ce
+    qui permet de préparer le quai et de repérer un retard le jour de
+    l'expédition au lieu du jour de la livraison.
+
+    CE MODÈLE EST INFORMATIF, ET C'EST TOUT SON INTÉRÊT. Une annonce ne bouge
+    AUCUN stock : elle ne crée ni ``MouvementStock``, ni ``ReceptionFournisseur``,
+    ni ``quantite_recue``. La seule chose qui fait entrer de la marchandise reste
+    la réception CONFIRMÉE côté interne. Sinon un fournisseur pourrait, depuis
+    son portail, créditer notre stock d'une palette qui n'est jamais arrivée —
+    et le stock cesserait d'être une mesure pour devenir une déclaration.
+
+    Distinct de ``services_wms.bordereau_asn_unite`` (NTWMS27), qui est l'ASN
+    SORTANT d'une unité logistique scellée que NOUS expédions : ici l'annonce
+    est ENTRANTE et adossée à un bon de commande fournisseur. Distinct aussi de
+    ``RendezVousTransporteur`` (NTWMS35), qui réserve un CRÉNEAU de quai sans
+    rien dire du contenu.
+
+    ``lignes`` porte les quantités annoncées par produit
+    (``[{'produit_id', 'produit_nom', 'quantite'}, …]``, normalisées par
+    ``services.annoncer_livraison_fournisseur`` contre les lignes du BCF) —
+    JAMAIS un prix : le fournisseur annonce ce qu'il envoie, pas ce qu'il
+    facture.
+    """
+
+    class Statut(models.TextChoices):
+        ANNONCEE = 'annoncee', 'Annoncée'
+        EN_TRANSIT = 'en_transit', 'En transit'
+        LIVREE = 'livree', 'Livrée'
+
+    bon_commande_fournisseur = models.ForeignKey(
+        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,  # on_delete: CASCADE — une annonce d'expédition ne désigne QUE son bon de commande (déclaration informative, aucun mouvement de stock, aucune écriture comptable) ; le bon supprimé, elle n'annonce plus rien
+        related_name='annonces_livraison', verbose_name='Bon de commande')
+    date_expedition = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expédition")
+    date_livraison_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date de livraison prévue')
+    transporteur = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Transporteur')
+    numero_suivi = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Numéro de suivi')
+    lignes = models.JSONField(
+        default=list, blank=True, verbose_name='Quantités annoncées',
+        help_text="Quantités annoncées par produit. Jamais un prix : le "
+                  "fournisseur annonce ce qu'il envoie, pas ce qu'il facture.")
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.ANNONCEE,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Annonce de livraison fournisseur'
+        verbose_name_plural = 'Annonces de livraison fournisseur'
+        ordering = ['-date_expedition', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_asnfou_co_statut'),
+            models.Index(fields=['bon_commande_fournisseur', 'statut'],
+                         name='idx_asnfou_bcf_statut'),
+        ]
+
+    def __str__(self):
+        return (f'Annonce {self.bon_commande_fournisseur_id} · '
+                f'{self.get_statut_display()}')

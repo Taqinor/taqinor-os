@@ -2814,6 +2814,7 @@ from .models_van_sales import StockVehicule  # noqa: E402,F401
 
 # ── Groupe NTPRT — PORTAIL FOURNISSEUR (comptes réels, annonces de livraison) ─
 from .models_portail_fournisseur import (  # noqa: E402,F401
+    AnnonceLivraisonFournisseur,
     CompteFournisseurPortail,
 )
 

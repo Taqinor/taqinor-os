@@ -6381,6 +6381,241 @@ def reactiver_acces_compte_fournisseur(company, fournisseur_id):
         company, fournisseur_id, actif=True)
 
 
+# ── NTPRT22 — ASN : annonce de livraison déposée par le FOURNISSEUR ─────────
+#
+# L'annonce est INFORMATIVE, et c'est tout son intérêt : elle ne crée ni
+# ``MouvementStock``, ni ``ReceptionFournisseur``, ni ``quantite_recue``. La
+# seule chose qui fait entrer de la marchandise reste la réception CONFIRMÉE
+# côté interne (``confirm_reception_fournisseur``). Sinon un fournisseur
+# pourrait, depuis son portail, créditer notre stock d'une palette jamais
+# arrivée — et le stock cesserait d'être une MESURE pour devenir une
+# DÉCLARATION.
+#
+# Les fonctions ci-dessous sont les points d'entrée cross-app d'``apps.portail``
+# (jamais un import de ``apps.stock.models`` depuis portail). L'isolation est
+# celle du reste du portail fournisseur : un BCF d'un autre fournisseur — ou
+# d'une autre société — est INTROUVABLE (``ValueError``), jamais « trouvé puis
+# refusé ».
+
+
+def _bcf_visible_par_le_fournisseur(company, fournisseur_id, bcf_id):
+    """Le BCF que CE fournisseur a le droit de voir, ou ``ValueError``.
+
+    Mêmes exclusions que ``selectors.bcf_portail_fournisseur`` : un brouillon
+    n'a jamais été envoyé et un bon annulé n'attend plus rien — annoncer une
+    expédition sur l'un ou l'autre n'a pas de sens, et la réponse ne doit pas
+    révéler qu'il existe.
+    """
+    from .models import BonCommandeFournisseur
+
+    bc = (BonCommandeFournisseur.objects
+          .filter(pk=bcf_id, company=company, fournisseur_id=fournisseur_id)
+          .exclude(statut=BonCommandeFournisseur.Statut.BROUILLON)
+          .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
+          .first())
+    if bc is None:
+        raise ValueError(
+            "Ce bon de commande n'appartient pas à ce fournisseur.")
+    return bc
+
+
+def _normaliser_lignes_annonce(bon_commande, lignes):
+    """``(lignes_normalisees, erreurs)`` — quantités annoncées par article.
+
+    Chaque entrée doit désigner un article RÉELLEMENT commandé sur ce bon
+    (``produit_id``, ou ``designation`` pour une ligne libre/service) : sans
+    cela le fournisseur annoncerait l'arrivée d'un article qu'on ne lui a
+    jamais commandé, et le quai préparerait une place pour rien. Aucun prix
+    n'est lu ni stocké — l'annonce dit QUOI arrive, jamais combien ça coûte.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    par_produit = {}
+    par_designation = {}
+    for ligne in bon_commande.lignes.select_related('produit'):
+        if ligne.produit_id:
+            par_produit[ligne.produit_id] = ligne.produit.nom
+        else:
+            libelle = (ligne.designation or '').strip()
+            if libelle:
+                par_designation[libelle] = libelle
+
+    normalisees = []
+    for brute in (lignes or []):
+        if not isinstance(brute, dict):
+            return None, {'lignes': 'Chaque ligne annoncée doit être un objet '
+                                    '{produit_id, quantite}.'}
+        produit_id = brute.get('produit_id')
+        designation = str(brute.get('designation') or '').strip()
+
+        if produit_id not in (None, ''):
+            try:
+                produit_id = int(produit_id)
+            except (TypeError, ValueError):
+                return None, {'lignes': 'Identifiant d\'article illisible.'}
+            if produit_id not in par_produit:
+                return None, {'lignes': 'Un des articles annoncés ne figure '
+                                        'pas sur ce bon de commande.'}
+            nom = par_produit[produit_id]
+        elif designation:
+            if designation not in par_designation:
+                return None, {'lignes': 'Un des articles annoncés ne figure '
+                                        'pas sur ce bon de commande.'}
+            produit_id = None
+            nom = designation
+        else:
+            return None, {'lignes': 'Chaque ligne annoncée doit désigner un '
+                                    'article du bon de commande.'}
+
+        try:
+            quantite = Decimal(str(brute.get('quantite')))
+        except (InvalidOperation, TypeError, ValueError):
+            return None, {'lignes': 'Quantité annoncée illisible.'}
+        if quantite <= 0:
+            return None, {'lignes': 'Une quantité annoncée doit être '
+                                    'strictement positive.'}
+
+        normalisees.append({
+            'produit_id': produit_id,
+            'produit_nom': nom,
+            'quantite': str(quantite),
+        })
+    return normalisees, None
+
+
+def annoncer_livraison_fournisseur(
+        company, fournisseur_id, bcf_id, *, date_expedition=None,
+        date_livraison_prevue=None, transporteur='', numero_suivi='',
+        lignes=None):
+    """NTPRT22 — le fournisseur annonce une expédition sur un de SES BCF.
+
+    Renvoie ``(annonce, erreurs)`` : ``erreurs`` est un dict champ → message
+    quand la saisie est refusée (l'annonce n'est alors pas créée), ``None``
+    sinon. Lève ``ValueError`` si le bon de commande n'est pas celui de ce
+    fournisseur — le même « introuvable » que le reste du portail.
+
+    AUCUN effet sur le stock : ni mouvement, ni réception, ni ``quantite_recue``
+    (verrouillé par un test dédié). La seule chose qui change côté interne est
+    que le bon de commande AFFICHE désormais « livraison annoncée ».
+
+    ``date_livraison_prevue`` de l'ANNONCE est la date que le FOURNISSEUR
+    déclare ; celle du BCF (``BonCommandeFournisseur.date_livraison_prevue``,
+    XPUR7) reste la date DEMANDÉE et n'est jamais écrasée — c'est elle qui rend
+    l'OTD promis-vs-reçu mesurable.
+    """
+    from .models import AnnonceLivraisonFournisseur
+
+    bon_commande = _bcf_visible_par_le_fournisseur(
+        company, fournisseur_id, bcf_id)
+    lignes_normalisees, erreurs = _normaliser_lignes_annonce(
+        bon_commande, lignes)
+    if erreurs is not None:
+        return None, erreurs
+
+    annonce = AnnonceLivraisonFournisseur.objects.create(
+        company=company,
+        bon_commande_fournisseur=bon_commande,
+        date_expedition=date_expedition,
+        date_livraison_prevue=date_livraison_prevue,
+        transporteur=str(transporteur or '')[:120],
+        numero_suivi=str(numero_suivi or '')[:100],
+        lignes=lignes_normalisees,
+        statut=AnnonceLivraisonFournisseur.Statut.ANNONCEE,
+    )
+    notify_annonce_livraison_fournisseur(annonce)
+    return annonce, None
+
+
+#: Avancement autorisé d'une annonce : le fournisseur avance, il ne revient
+#: jamais en arrière (une livraison ne se « dé-livre » pas).
+_AVANCEMENT_ANNONCE = {'annoncee': 0, 'en_transit': 1, 'livree': 2}
+
+
+def mettre_a_jour_statut_annonce_livraison(
+        company, fournisseur_id, annonce_id, *, statut):
+    """NTPRT22 — le fournisseur avance le statut d'une de SES annonces.
+
+    Renvoie ``(annonce, erreurs)``. Lève ``ValueError`` si l'annonce n'est pas
+    celle de ce fournisseur. Le statut ne recule jamais, et « livrée » ici reste
+    une DÉCLARATION du fournisseur : elle ne confirme aucune réception et ne
+    touche aucun stock.
+    """
+    from .models import AnnonceLivraisonFournisseur, BonCommandeFournisseur
+
+    annonce = (AnnonceLivraisonFournisseur.objects
+               .filter(pk=annonce_id, company=company,
+                       bon_commande_fournisseur__fournisseur_id=fournisseur_id)
+               .exclude(bon_commande_fournisseur__statut=(
+                   BonCommandeFournisseur.Statut.ANNULE))
+               .first())
+    if annonce is None:
+        raise ValueError("Cette annonce n'appartient pas à ce fournisseur.")
+
+    demande = str(statut or '').strip()
+    if demande not in AnnonceLivraisonFournisseur.Statut.values:
+        return None, {'statut': 'Statut inconnu : attendu « annoncee », '
+                                '« en_transit » ou « livree ».'}
+    if _AVANCEMENT_ANNONCE[demande] < _AVANCEMENT_ANNONCE[annonce.statut]:
+        return None, {'statut': 'Une livraison déjà annoncée plus loin ne '
+                                'revient pas en arrière.'}
+    if demande != annonce.statut:
+        annonce.statut = demande
+        annonce.save(update_fields=['statut', 'updated_at'])
+    return annonce, None
+
+
+def notify_annonce_livraison_fournisseur(annonce):
+    """NTPRT22 — prévient l'interne qu'une livraison vient d'être annoncée.
+
+    Même mécanique que ``notify_bcf_confirmation_fournisseur`` (notification
+    in-app existante + trace dans le chatter du BCF), best-effort TOTAL : un
+    échec des deux canaux ne casse jamais l'annonce elle-même — le bon de
+    commande l'affiche de toute façon.
+    """
+    bc = annonce.bon_commande_fournisseur
+    if bc.created_by_id is not None:
+        try:
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify
+            notify(
+                bc.created_by, EventType.APPROVAL_DECIDED,
+                title='Livraison annoncée',
+                body=(
+                    f'{bc.fournisseur.nom} annonce une expédition sur le BCF '
+                    f'{bc.reference}'
+                    + (f' (arrivée prévue le {annonce.date_livraison_prevue})'
+                       if annonce.date_livraison_prevue else '')
+                    + '.'),
+                company=bc.company,
+            )
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.info(
+                'NTPRT22: notification annonce livraison BCF %s non envoyée',
+                bc.pk)
+    try:
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.records.models import Comment
+
+        from .models import BonCommandeFournisseur
+        Comment.objects.create(
+            company=bc.company,
+            content_type=ContentType.objects.get_for_model(
+                BonCommandeFournisseur),
+            object_id=bc.pk,
+            body=(
+                f'{bc.fournisseur.nom} a annoncé une expédition via le '
+                'portail fournisseur'
+                + (f' (transporteur {annonce.transporteur})'
+                   if annonce.transporteur else '')
+                + '. Aucun stock n\'a bougé : la réception reste à confirmer '
+                  'en interne.'),
+            author=None,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        pass
+
+
 # ── XPUR24 — Tableau de bord achats (analyse des dépenses) ──────────────────
 # FG59 note UN fournisseur (scorecard) et FG132 vieillit les dettes (balance
 # âgée), mais aucune vue TRANSVERSE des achats n'existait. Admin/responsable

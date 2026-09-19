@@ -1441,10 +1441,12 @@ def resume_portail_fournisseur(company, fournisseur_id):
     absent renvoie des compteurs à zéro, JAMAIS les chiffres de la société
     entière — c'est la différence entre un tableau de bord vide et une fuite.
 
-    Ne contient QUE ce qui existe réellement aujourd'hui : les livraisons
-    annoncées (ASN, NTPRT22) et les documents légaux à expiration (NTPRT24)
-    ne sont pas encore modélisés — on ne fabrique pas un chiffre pour remplir
-    une carte.
+    Ne contient QUE ce qui existe réellement aujourd'hui : les documents légaux
+    à expiration (NTPRT24) ne sont pas encore modélisés — on ne fabrique pas un
+    chiffre pour remplir une carte. Les livraisons annoncées le sont désormais
+    (``AnnonceLivraisonFournisseur``, NTPRT22) : le compteur ci-dessous compte
+    celles qui n'ont pas encore été déclarées livrées, donc celles que le quai
+    attend.
     """
     from decimal import Decimal
 
@@ -1452,6 +1454,7 @@ def resume_portail_fournisseur(company, fournisseur_id):
         'fournisseur_nom': '',
         'bcf_a_confirmer': 0,
         'bcf_en_cours': 0,
+        'livraisons_annoncees': 0,
         'receptions_recentes': 0,
         'factures_a_payer': 0,
         'montant_a_payer': '0',
@@ -1460,8 +1463,8 @@ def resume_portail_fournisseur(company, fournisseur_id):
         return vide
 
     from .models import (
-        BonCommandeFournisseur, FactureFournisseur, Fournisseur,
-        ReceptionFournisseur,
+        AnnonceLivraisonFournisseur, BonCommandeFournisseur,
+        FactureFournisseur, Fournisseur, ReceptionFournisseur,
     )
 
     fournisseur = (Fournisseur.objects
@@ -1485,6 +1488,14 @@ def resume_portail_fournisseur(company, fournisseur_id):
             date_confirmee_fournisseur__isnull=True).count(),
         'bcf_en_cours': bcf.exclude(
             statut=BonCommandeFournisseur.Statut.RECU).count(),
+        # NTPRT22 — expéditions annoncées que le quai attend encore (une
+        # annonce déclarée livrée n'est plus une attente).
+        'livraisons_annoncees': (
+            AnnonceLivraisonFournisseur.objects
+            .filter(company=company,
+                    bon_commande_fournisseur__fournisseur=fournisseur)
+            .exclude(statut=AnnonceLivraisonFournisseur.Statut.LIVREE)
+            .count()),
         'receptions_recentes': (ReceptionFournisseur.objects
                                 .filter(company=company,
                                         bon_commande__fournisseur=fournisseur)
@@ -1579,6 +1590,72 @@ def compte_fournisseur_portail_actif(company_id, fournisseur_id):
             .values_list('actif', flat=True)
             .first())
     return etat
+
+
+def _ligne_annonce_livraison(annonce, bon_commande=None):
+    """Charge utile d'UNE annonce de livraison — la MÊME des deux côtés.
+
+    Le portail fournisseur et l'écran interne du bon de commande lisent cette
+    fonction : deux mises en forme divergeraient dès la première évolution, et
+    « le fournisseur voit autre chose que nous » est exactement ce qu'une
+    annonce de livraison ne doit jamais produire. Aucun prix n'y figure.
+
+    ``bon_commande`` est passé par l'appelant qui l'a DÉJÀ en main (l'écran
+    interne part du bon de commande) : sans ça chaque annonce rouvrirait une
+    requête pour relire la référence qu'on tient déjà.
+    """
+    bc = bon_commande if bon_commande is not None else (
+        annonce.bon_commande_fournisseur
+        if annonce.bon_commande_fournisseur_id else None)
+    return {
+        'id': annonce.id,
+        'bon_commande_id': annonce.bon_commande_fournisseur_id,
+        'bon_commande_reference': (bc.reference if bc is not None else ''),
+        'date_expedition': annonce.date_expedition,
+        'date_livraison_prevue': annonce.date_livraison_prevue,
+        'transporteur': annonce.transporteur or '',
+        'numero_suivi': annonce.numero_suivi or '',
+        'statut': annonce.statut,
+        'statut_display': annonce.get_statut_display(),
+        'lignes': list(annonce.lignes or []),
+    }
+
+
+def annonces_livraison_portail_fournisseur(company, fournisseur_id):
+    """NTPRT22 — annonces de livraison déposées par CE fournisseur.
+
+    Bornée au couple (société, fournisseur) du COMPTE connecté : un
+    ``fournisseur_id`` absent — ou d'une autre société — renvoie une liste
+    VIDE, jamais les annonces de la société entière. LECTURE SEULE.
+    """
+    if company is None or not fournisseur_id:
+        return []
+
+    from .models import AnnonceLivraisonFournisseur
+
+    qs = (AnnonceLivraisonFournisseur.objects
+          .filter(company=company,
+                  bon_commande_fournisseur__fournisseur_id=fournisseur_id)
+          .select_related('bon_commande_fournisseur')
+          .order_by('-date_expedition', '-id'))
+    return [_ligne_annonce_livraison(annonce) for annonce in qs]
+
+
+def annonces_livraison_bon_commande(bon_commande):
+    """NTPRT22 — annonces portées par CE bon de commande, côté INTERNE.
+
+    C'est ce que l'écran des bons de commande affiche sous « livraison
+    annoncée » : une annonce déposée au portail y apparaît immédiatement, sans
+    aucune action manuelle (critère d'acceptation NTPRT22). Même charge utile
+    que celle servie au fournisseur — jamais une seconde mise en forme.
+    """
+    if bon_commande is None or not getattr(bon_commande, 'pk', None):
+        return []
+    return [
+        _ligne_annonce_livraison(annonce, bon_commande=bon_commande)
+        for annonce in bon_commande.annonces_livraison.order_by(
+            '-date_expedition', '-id')
+    ]
 
 
 # ── PV6 — Specs & Kit de calepinage DÉRIVÉS de FicheTechnique (PV5) ─────────
