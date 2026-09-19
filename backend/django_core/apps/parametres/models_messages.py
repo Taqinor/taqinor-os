@@ -298,6 +298,13 @@ class MessageTemplate(models.Model):
     cle = models.CharField(max_length=40, choices=Cle.choices)
     corps_fr = models.TextField(blank=True, default='')
     corps_darija = models.TextField(blank=True, default='')
+    # ── NTI18N26 — au-delà de fr/darija : anglais + arabe CLASSIQUE ─────────
+    # Additifs, vides par défaut (comportement historique inchangé tant
+    # qu'aucune société ne les renseigne). `corps_ar` est l'arabe standard
+    # (MSA), DISTINCT de `corps_darija` (arabe dialectal marocain) déjà
+    # existant — deux registres différents, jamais confondus.
+    corps_en = models.TextField(blank=True, default='')
+    corps_ar = models.TextField(blank=True, default='')
 
     class Meta:
         unique_together = [('company', 'cle')]
@@ -315,6 +322,15 @@ class MessageTemplate(models.Model):
         s'il est renseigné ; sinon le défaut Darija de la clé s'il existe ;
         sinon seulement la chaîne FR (``row.corps_fr`` puis le défaut FR) —
         jamais une traduction automatique.
+
+        NTI18N26 — ``en``/``ar`` (arabe standard, distinct de la Darija) :
+        même patron que la Darija, mais SANS défaut dédié (aucun texte validé
+        n'existe pour ces deux langues) — un corps EN/AR non renseigné par la
+        société retombe directement sur le FR (jamais un échec silencieux
+        visible côté client : une chaîne non-vide est toujours renvoyée).
+        L'appelant résout `langue` via la même priorité que NTI18N4
+        (`apps.parametres.i18n_resolver.resolve_langue_sortie` — langue du
+        client d'abord).
         """
         row = cls.objects.filter(company=company, cle=cle).first()
         default = MESSAGE_TEMPLATE_DEFAULTS.get(cle, '')
@@ -326,4 +342,8 @@ class MessageTemplate(models.Model):
             default_darija = MESSAGE_TEMPLATE_DEFAULTS_DARIJA.get(cle)
             if default_darija:
                 return default_darija
+        elif langue in ('en', 'ar') and row is not None:
+            corps_langue = row.corps_en if langue == 'en' else row.corps_ar
+            if corps_langue.strip():
+                return corps_langue
         return corps_fr.strip() or default
