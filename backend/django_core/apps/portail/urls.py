@@ -40,6 +40,7 @@ from .views_externes import (
     MesBcfPortailFournisseurViewSet,
     MesCommissionsPortailPartenaireViewSet,
     MesSoumissionsPortailPartenaireViewSet,
+    RessourcesPartenairePortailViewSet,
     candidature_fournisseur,
     preference_portail,
     tableau_de_bord_fournisseur,
@@ -108,6 +109,10 @@ router.register(r'mes-soumissions', MesSoumissionsPortailPartenaireViewSet,
 # NTPRT30 — « Mes commissions » : relevé (écran) + export PDF, lecture seule.
 router.register(r'mes-commissions', MesCommissionsPortailPartenaireViewSet,
                 basename='portail-mes-commissions')
+# NTPRT31 — « Ressources » : documents GED partagés GLOBALEMENT avec TOUS les
+# partenaires (ACL par rôle système « Portail partenaire »), lecture seule.
+router.register(r'ressources', RessourcesPartenairePortailViewSet,
+                basename='portail-ressources')
 
 urlpatterns = [
     # NTPRT9 — tableau de bord du portail CLIENT (garde de portée EXACTE,
