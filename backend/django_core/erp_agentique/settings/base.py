@@ -1134,6 +1134,8 @@ CELERY_TASK_ROUTES = {
     'core.dispatch_outbox': {'queue': 'scheduled'},
     'core.ensure_partitions': {'queue': 'scheduled'},
     'core.scan_live_isolation': {'queue': 'scheduled'},
+    # NTWFL17 — balayage quotidien des échéances de dossier dépassées.
+    'core.notifier_dossiers_echeance_depassee': {'queue': 'scheduled'},
     'ged.purge_corbeille_echue': {'queue': 'scheduled'},
     'ged.signature_relances_expiration': {'queue': 'scheduled'},
     'ged.verifier_integrite_archives': {'queue': 'scheduled'},
