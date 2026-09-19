@@ -1368,6 +1368,11 @@ app.conf.beat_schedule = {
         'task': 'core.recalculer_sla_perimes',
         'schedule': crontab(hour=3, minute=45),
     },
+    # NTOBS34 — alerte fondateur si un audit TrustCenterEntry a plus de 12 mois.
+    'core-verifier-fraicheur-trust-center': {
+        'task': 'core.verifier_fraicheur_trust_center',
+        'schedule': crontab(hour=6, minute=30),
+    },
 }
 
 

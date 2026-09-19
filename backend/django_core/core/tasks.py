@@ -238,6 +238,99 @@ def generer_sla_mensuel_task():
     return {'ok': True}
 
 
+# ── NTOBS34 — fraîcheur des TrustCenterEntry (alerte fondateur) ────────────
+#
+# LIMITE ASSUMÉE DE CE LOT (lane isolée, ``core/models.py``/``core/
+# migrations`` appartiennent à une autre lane en ce moment) : le champ
+# ``TrustCenterEntry.alerte_expiration_envoyee`` nommé par le plan n'est PAS
+# posé ici. En ATTENDANT cette migration, l'anti-spam (« pas de spam
+# quotidien ») repose sur le cache Django, clé par (entrée, date d'audit) —
+# une entrée MISE À JOUR (nouvelle ``dernier_audit_le``) change la clé et
+# redevient donc notifiable, exactement le comportement « flag remis à False
+# si l'entrée est mise à jour » demandé par le plan, SANS nouveau champ. Dès
+# que la migration réelle existe, ``_marquer_alerte_envoyee``/``_a_deja_
+# alerte`` basculent AUTOMATIQUEMENT sur le vrai champ (voir ``try/except``
+# ci-dessous) — aucun code à changer. Migration exacte à poser par
+# l'orchestrateur :
+#
+#     alerte_expiration_envoyee = models.BooleanField(default=False)
+
+TRUST_CENTER_AUDIT_MAX_MOIS = 12
+TRUST_CENTER_ALERTE_CACHE_TTL_SECONDS = 60 * 60 * 24 * 40  # ~40 jours
+
+
+def _trust_center_alerte_cache_key(entry):
+    return (
+        f'trust_center_expiration_notifie:{entry.pk}:{entry.dernier_audit_le}')
+
+
+def _trust_center_deja_alerte(entry):
+    try:
+        return bool(entry.alerte_expiration_envoyee)
+    except AttributeError:
+        from django.core.cache import cache
+
+        return bool(cache.get(_trust_center_alerte_cache_key(entry)))
+
+
+def _trust_center_marquer_alerte(entry):
+    from django.core.exceptions import FieldError
+
+    from .trust_center import TrustCenterEntry
+
+    try:
+        TrustCenterEntry.objects.filter(pk=entry.pk).update(
+            alerte_expiration_envoyee=True)
+    except FieldError:
+        from django.core.cache import cache
+
+        cache.set(
+            _trust_center_alerte_cache_key(entry), True,
+            TRUST_CENTER_ALERTE_CACHE_TTL_SECONDS)
+
+
+@shared_task(name='core.verifier_fraicheur_trust_center')
+def verifier_fraicheur_trust_center_task():
+    """NTOBS34 — job beat quotidien : notifie le Directeur (``notify()``) si
+    un ``TrustCenterEntry`` a un ``dernier_audit_le`` de plus de 12 mois,
+    UNE SEULE FOIS par audit (jamais de spam quotidien tant que l'entrée
+    n'est pas mise à jour)."""
+    from django.utils import timezone as dj_timezone
+    from dateutil.relativedelta import relativedelta
+
+    from authentication.models import CustomUser
+
+    from . import notify_registry
+    from .trust_center import TrustCenterEntry
+
+    seuil = (
+        dj_timezone.now().date()
+        - relativedelta(months=TRUST_CENTER_AUDIT_MAX_MOIS))
+    # TrustCenterEntry est un contenu SYSTÈME (aucune société) : la cible est
+    # le fondateur/opérateur plateforme (superuser), jamais le Directeur de
+    # CHAQUE tenant (qui n'a aucun contrôle sur ce contenu partagé).
+    superusers = CustomUser.objects.filter(is_superuser=True, is_active=True)
+    notifies = 0
+    for entry in TrustCenterEntry.objects.filter(
+            dernier_audit_le__isnull=False, dernier_audit_le__lt=seuil):
+        if _trust_center_deja_alerte(entry):
+            continue
+        for admin in superusers:
+            notify_registry.notify(
+                admin, 'trust_center_audit_expire',
+                f'Audit expiré — {entry.titre}',
+                body=(
+                    f'Dernier audit le {entry.dernier_audit_le:%d/%m/%Y} '
+                    f'(plus de {TRUST_CENTER_AUDIT_MAX_MOIS} mois).'),
+            )
+        _trust_center_marquer_alerte(entry)
+        notifies += 1
+    logger.info(
+        'core.verifier_fraicheur_trust_center: %d entrée(s) alertée(s).',
+        notifies)
+    return {'notifies': notifies}
+
+
 @shared_task(name='core.recalculer_sla_perimes')
 def recalculer_sla_perimes_task():
     """NTOBS25 — recalcul de rattrapage quotidien : régénère les
