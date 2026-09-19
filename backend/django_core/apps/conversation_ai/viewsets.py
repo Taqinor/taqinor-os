@@ -85,6 +85,34 @@ class AppelCommercialViewSet(CompanyScopedModelViewSet):
         if appel.fichier_key:
             transaction.on_commit(lambda: _enfiler_transcription(appel.id))
 
+    @action(detail=False, methods=['get'], url_path='synthese')
+    def synthese(self, request):
+        """NTAI23 — ``GET appels/synthese/?debut=&fin=``.
+
+        Coaching commercial agrégé (objections fréquentes, sentiment moyen,
+        produits cités, découpage par commercial) sur les appels déjà
+        analysés (NTAI22) de la société — LECTURE SEULE, scopé société.
+        ``debut``/``fin`` (``AAAA-MM-JJ``) filtrent sur la date d'analyse.
+        """
+        from datetime import date
+
+        from .selectors import synthese_appels
+
+        def _parse(valeur):
+            if not valeur:
+                return None
+            try:
+                return date.fromisoformat(valeur)
+            except ValueError:
+                return None
+
+        periode = (
+            _parse(request.query_params.get('debut')),
+            _parse(request.query_params.get('fin')),
+        )
+        company = self.request.user.company
+        return Response(synthese_appels(company, periode=periode))
+
     @action(detail=True, methods=['post'], url_path='analyser')
     def analyser(self, request, pk=None):
         """NTAI22 — ``POST appels/<id>/analyser/``.
