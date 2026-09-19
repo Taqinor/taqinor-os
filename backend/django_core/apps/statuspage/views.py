@@ -169,6 +169,20 @@ def publier_postmortem(request, pk):
             status=status.HTTP_400_BAD_REQUEST)
     incident.postmortem_publie_le = timezone.now()
     incident.save(update_fields=['postmortem_publie_le', 'updated_at'])
+    # NTOBS30 — action Fiabilité sensible journalisée dans audit.AuditLog
+    # (infra déjà existante). Ce module n'est PAS ``core`` : ``apps.statuspage``
+    # n'est pas couvert par le contrat import-linter
+    # ``core-foundation-is-a-base-layer`` (qui interdit UNIQUEMENT à ``core``
+    # d'importer ``apps``) — même patron déjà utilisé par de nombreuses autres
+    # apps satellites (crm, compta, contrats…), jamais un import depuis
+    # ``core``. Jamais de donnée sensible en clair (pas le contenu du
+    # post-mortem, juste un résumé).
+    from apps.audit.recorder import record as audit_record
+    from apps.audit.models import AuditLog
+
+    audit_record(
+        AuditLog.Action.STATUS, instance=incident,
+        detail=f'Post-mortem publié pour l\'incident « {incident.titre} ».')
     return Response(IncidentPublicSerializer(incident).data)
 
 
