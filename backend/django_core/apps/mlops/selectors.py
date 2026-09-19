@@ -44,6 +44,23 @@ def version_active(company, nom):
             .order_by('-version').first())
 
 
+def feature_vector(company, content_type, object_id):
+    """NTAI30 — ``features_json`` matérialisé d'une entité (``content_type``
+    ex. ``'crm.lead'``, ``object_id``), ou ``{}`` sans vecteur matérialisé —
+    l'appelant garde alors son calcul direct habituel (repli inchangé,
+    jamais une exception)."""
+    if company is None or not content_type or not object_id:
+        return {}
+    from .models import FeatureVector
+
+    vecteur = FeatureVector.objects.filter(
+        company=company, content_type=content_type,
+        object_id=object_id).first()
+    if vecteur is None or not isinstance(vecteur.features_json, dict):
+        return {}
+    return vecteur.features_json
+
+
 def versions_pour_company(company, nom=None):
     """Toutes les versions (actives ou non) d'un scorer — ou de tous les
     scorers — pour une société, les plus récentes d'abord."""

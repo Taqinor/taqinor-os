@@ -66,3 +66,40 @@ class ModeleML(TenantModel):
     def __str__(self):
         drapeau = ' (actif)' if self.actif else ''
         return f'{self.get_nom_display()} v{self.version}{drapeau}'
+
+
+class FeatureVector(TenantModel):
+    """NTAI30 — Signaux MATÉRIALISÉS d'une entité, consommés par les scorers.
+
+    ``content_type`` — étiquette texte du modèle source (ex. ``'crm.lead'``),
+    JAMAIS une FK vers une app métier (même patron que ``core.SearchChunk``,
+    NTAI24) : ce module reste lisible depuis n'importe quelle app appelante
+    sans lui faire importer de modèle métier. ``object_id`` est l'identifiant
+    de l'objet dans SON app.
+
+    Alimenté par ``services.recompute_features`` (best-effort, Celery) ; un
+    scorer/sélecteur consomme le vecteur via ``selectors.feature_vector``
+    quand présent, et retombe sur un calcul direct sinon (repli inchangé).
+    """
+
+    content_type = models.CharField(max_length=60)
+    object_id = models.PositiveBigIntegerField()
+    features_json = models.JSONField(default=dict, blank=True)
+    calcule_le = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Vecteur de features'
+        verbose_name_plural = 'Vecteurs de features'
+        ordering = ['content_type', 'object_id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'content_type', 'object_id'],
+                name='uniq_mlops_featvec_co_ct_obj'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'content_type'],
+                         name='mlops_featvec_co_ct_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.content_type}:{self.object_id}'
