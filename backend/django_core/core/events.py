@@ -1326,3 +1326,46 @@ incident_resolved = django.dispatch.Signal()
 # ``fenetre`` (l'instance ``MaintenanceWindow``), ``company`` (peut être
 # ``None`` : annonce système large), ``user`` (peut être ``None``).
 maintenance_window_announced = django.dispatch.Signal()
+
+# ── NTOBS30-reste — Actions Fiabilité auditées (apps.audit) ────────────────
+# Sur les 5 actions Fiabilité listées par le plan NTOBS30 (création
+# MaintenanceWindow, lancement export de réversibilité, publication
+# post-mortem, émission crédit SLA, édition SlaCreditPolicy), les 4 qui
+# vivent dans ``core`` (``core`` NE PEUT JAMAIS importer ``apps.audit`` —
+# contrat import-linter ``core-foundation-is-a-base-layer``) émettent ici ;
+# ``apps.audit.receivers`` s'y abonne (M4, même patron que
+# ``document_pdf_generated``/``bulk_edit_applied`` plus haut). La publication
+# de post-mortem (5ᵉ action) vit dans ``apps.statuspage`` — pas ``core`` —
+# et appelle déjà ``apps.audit.recorder`` directement (satellite → satellite,
+# aucune contrainte import-linter).
+#
+# LIMITE ASSUMÉE (héritée de la lane NTOBS30 d'origine, voir la docstring de
+# ``apps/statuspage/tests/test_ntobs30_postmortem_audit_log.py``) : la 5ᵉ
+# action « édition SlaCreditPolicy » n'a AUCUNE vue d'écriture dans ce dépôt
+# (``SlaCreditPolicy`` — ``core/sla.py`` — n'est exposée par aucun viewset ni
+# admin ; seule écriture existante = ORM direct / seed). Aucun signal
+# ``sla_credit_policy_edited`` n'est déclaré ici tant que son émetteur ne
+# l'est pas : un signal jamais émis serait un seam creux, pas un contrat
+# (même arbitrage que ``facture_fournisseur_exception_3voies`` plus haut).
+
+# Émis par ``core.maintenance_windows.MaintenanceWindowListCreateView.
+# perform_create`` à la CRÉATION d'une fenêtre de maintenance (même site que
+# ``maintenance_window_announced`` ci-dessus — DEUX signaux distincts pour
+# DEUX abonnés distincts : publicapi webhook vs audit trail interne).
+# Arguments : ``fenetre`` (l'instance ``MaintenanceWindow``), ``company``
+# (peut être ``None``), ``user``.
+maintenance_window_created = django.dispatch.Signal()
+
+# Émis par ``core.export_registry.declencher_export_reversibilite`` au
+# DÉCLENCHEMENT d'un export de réversibilité (avant même que la tâche Celery
+# ne le construise — l'action auditée est la DEMANDE, pas son aboutissement).
+# Arguments : ``run`` (l'``ExportReversibiliteRun`` fraîchement créé,
+# ``statut='en_cours'``), ``company``, ``user`` (le demandeur).
+export_reversibilite_declenche = django.dispatch.Signal()
+
+# Émis par ``core.sla.sla_credit_statut`` quand un humain trace la décision
+# ``emis``/``refuse`` sur un crédit SLA (``SlaSnapshot.credit_statut``).
+# N'ÉMET jamais l'avoir lui-même (cf. docstring de la vue) — seulement le
+# FAIT qu'un humain a décidé. Arguments : ``snapshot`` (le ``SlaSnapshot``),
+# ``company``, ``ancien_statut``, ``nouveau_statut``, ``user``.
+sla_credit_statut_change = django.dispatch.Signal()
