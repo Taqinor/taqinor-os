@@ -1879,3 +1879,172 @@ def maintenance_toggle(request):
     else:
         obj = MaintenanceMode.get_solo()
     return Response({'actif': obj.actif, 'message': obj.message})
+
+
+# ── NTOBS17 — export PDF générique du trust center (dossier RFP) ───────────
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def trust_center_export_pdf(request):
+    """GET /api/django/core/trust-center/export-pdf/ — dossier de confiance
+    PDF générique (document commercial, HORS Rule#4), aucune donnée société."""
+    from django.http import HttpResponse
+
+    from .pdf_trust_center import generer_pdf_trust_center
+
+    pdf_bytes = generer_pdf_trust_center()
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        'attachment; filename="dossier-confiance-taqinor.pdf"')
+    return response
+
+
+# ── NTOBS18 — registre de fiabilité (PDF interne consolidé) ─────────────────
+
+
+def _est_directeur_ou_admin(user):
+    if getattr(user, 'is_superuser', False) or getattr(user, 'is_admin_role', False):
+        return True
+    role = getattr(user, 'role', None)
+    return bool(role and role.nom in ('Directeur', 'Administrateur'))
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def registre_fiabilite_export_pdf(request):
+    """GET /api/django/core/registre-fiabilite/export-pdf/
+    ?periode_debut=YYYY-MM&periode_fin=YYYY-MM — Directeur/Administrateur
+    uniquement, scopé société de l'appelant."""
+    from datetime import datetime
+
+    from django.http import HttpResponse
+
+    from .pdf_registre_fiabilite import generer_pdf_registre_fiabilite
+
+    if not _est_directeur_ou_admin(request.user):
+        return Response(status=status.HTTP_403_FORBIDDEN)
+
+    debut_str = request.query_params.get('periode_debut')
+    fin_str = request.query_params.get('periode_fin')
+    try:
+        debut = datetime.strptime(debut_str, '%Y-%m').date().replace(day=1)
+        fin = datetime.strptime(fin_str, '%Y-%m').date().replace(day=1)
+    except (TypeError, ValueError):
+        return Response(
+            {'detail': 'Format de période invalide (attendu YYYY-MM).'},
+            status=status.HTTP_400_BAD_REQUEST)
+    if fin < debut:
+        return Response(
+            {'detail': 'periode_fin doit être postérieure à periode_debut.'},
+            status=status.HTTP_400_BAD_REQUEST)
+
+    pdf_bytes = generer_pdf_registre_fiabilite(
+        request.user.company, debut, fin)
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'attachment; filename="registre-fiabilite-{debut_str}-{fin_str}.pdf"')
+    return response
+
+
+# ── NTOBS28 — export CSV/XLSX de l'historique SLA + incidents ──────────────
+
+
+def _sla_export_rows(company):
+    from .sla import SlaSnapshot
+
+    return list(SlaSnapshot.objects.filter(company=company).order_by('periode'))
+
+
+def _incidents_export_rows(company):
+    from django.apps import apps as django_apps
+    from django.db.models import Q
+
+    try:
+        incident_model = django_apps.get_model('statuspage', 'IncidentPublic')
+    except LookupError:
+        return []
+    return list(
+        incident_model.objects
+        .filter(Q(company__isnull=True) | Q(company=company))
+        .order_by('-debute_le'))
+
+
+def _sla_export_csv_response(snapshots, incidents):
+    import csv
+
+    from django.http import HttpResponse
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = (
+        'attachment; filename="sla-incidents-historique.csv"')
+    writer = csv.writer(response)
+    writer.writerow(['SLA mensuel'])
+    writer.writerow(['periode', 'uptime_pct', 'latence_p95_ms', 'credit_du_pct'])
+    for s in snapshots:
+        writer.writerow([
+            s.periode.isoformat(), s.uptime_pct,
+            s.latence_p95_ms if s.latence_p95_ms is not None else '',
+            s.credit_du_pct if s.credit_du_pct is not None else '',
+        ])
+    writer.writerow([])
+    writer.writerow(['Incidents'])
+    writer.writerow(['debute_le', 'titre', 'severite', 'statut', 'resolu_le'])
+    for i in incidents:
+        writer.writerow([
+            i.debute_le.isoformat(), i.titre, i.severite, i.statut,
+            i.resolu_le.isoformat() if i.resolu_le else '',
+        ])
+    return response
+
+
+def _sla_export_xlsx_response(snapshots, incidents):
+    import io
+
+    from django.http import HttpResponse
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws_sla = wb.active
+    ws_sla.title = 'SLA mensuel'
+    ws_sla.append(['periode', 'uptime_pct', 'latence_p95_ms', 'credit_du_pct'])
+    for s in snapshots:
+        ws_sla.append([
+            s.periode.isoformat(), float(s.uptime_pct),
+            s.latence_p95_ms, float(s.credit_du_pct) if s.credit_du_pct is not None else None,
+        ])
+
+    ws_inc = wb.create_sheet('Incidents')
+    ws_inc.append(['debute_le', 'titre', 'severite', 'statut', 'resolu_le'])
+    for i in incidents:
+        ws_inc.append([
+            i.debute_le.replace(tzinfo=None), i.titre, i.severite, i.statut,
+            i.resolu_le.replace(tzinfo=None) if i.resolu_le else None,
+        ])
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    resp = HttpResponse(
+        buffer.getvalue(),
+        content_type=('application/vnd.openxmlformats-officedocument.'
+                      'spreadsheetml.sheet'))
+    resp['Content-Disposition'] = (
+        'attachment; filename="sla-incidents-historique.xlsx"')
+    return resp
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def sla_export_csv(request):
+    """GET /api/django/core/sla/export-csv/?format=csv|xlsx — historique SLA
+    (une ligne par mois) + incidents (une ligne par incident), scopé société.
+    Réutilise le patron d'export CSV/XLSX déjà en place ailleurs dans ce
+    fichier (``RegistreTraitementViewSet.export_csv`` / ``_couts_xlsx_response``)
+    — jamais un nouveau moteur d'export."""
+    company = request.user.company
+    snapshots = _sla_export_rows(company)
+    incidents = _incidents_export_rows(company)
+    if request.query_params.get('format') == 'xlsx':
+        return _sla_export_xlsx_response(snapshots, incidents)
+    return _sla_export_csv_response(snapshots, incidents)

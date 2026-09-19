@@ -88,7 +88,10 @@ from .views import (
     mes_processus_view,
     metrics_view,
     rapport_conformite_view,
+    registre_fiabilite_export_pdf,
     secrets_rotation_due,
+    sla_export_csv,
+    trust_center_export_pdf,
 )
 
 router = DefaultRouter()
@@ -247,6 +250,8 @@ urlpatterns = router.urls + [
     path('sla/', SlaSnapshotListView.as_view(), name='sla-list'),
     path('sla/<str:periode>/export-pdf/', sla_export_pdf,
          name='sla-export-pdf'),
+    # NTOBS28 — export CSV/XLSX de l'historique SLA + incidents.
+    path('sla/export-csv/', sla_export_csv, name='sla-export-csv'),
     # NTOBS4 — crédits SLA dus (Directeur/Administrateur, cross-tenant).
     path('sla/credits/', SlaCreditsDusListView.as_view(),
          name='sla-credits-dus'),
@@ -282,6 +287,12 @@ urlpatterns = router.urls + [
          name='maintenance-windows-annuler'),
     # NTOBS10 — page « Confiance » (trust center), publique.
     path('trust-center/', trust_center_public, name='trust-center-public'),
+    # NTOBS17 — dossier de confiance PDF générique (RFP), public.
+    path('trust-center/export-pdf/', trust_center_export_pdf,
+         name='trust-center-export-pdf'),
+    # NTOBS18 — registre de fiabilité PDF consolidé (Directeur/Administrateur).
+    path('registre-fiabilite/export-pdf/', registre_fiabilite_export_pdf,
+         name='registre-fiabilite-export-pdf'),
     # NTOBS11 — mode dégradé par dépendance externe, publique (aucune donnée
     # société, même politique que health/live|ready ci-dessus).
     path('degraded-mode-status/', degraded_mode_status_view,
