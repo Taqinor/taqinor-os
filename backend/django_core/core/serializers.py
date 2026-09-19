@@ -233,6 +233,10 @@ class WorkflowTemplateStepSerializer(serializers.Serializer):
     sla_heures = serializers.IntegerField(allow_null=True)
     role_requis = serializers.CharField(allow_blank=True)
     escalade_vers = serializers.CharField(allow_blank=True)
+    # NTWFL31 — formulaire NTWFL12 livré AVEC le modèle ({code, nom, schema,
+    # champs_conditionnels}). Absent des modèles qui n'en portent pas : la clé
+    # est alors simplement omise de la sortie (``required=False``).
+    formulaire = serializers.JSONField(required=False)
 
 
 class WorkflowTemplateSerializer(serializers.Serializer):
