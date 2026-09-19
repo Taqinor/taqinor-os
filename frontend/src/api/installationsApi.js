@@ -473,6 +473,18 @@ const installationsApi = {
   deleteDemandeAchatLigne: (id) =>
     api.delete(`/installations/demandes-achat-lignes/${id}/`),
 
+  // NTP2P2/NTP2P32 — règles d'approbation des demandes d'achat (seuil de
+  // montant + périmètre chantier optionnel + nombre d'approbateurs). Lecture
+  // tout rôle, écriture responsable/admin (reflète `IsAnyRole`/
+  // `IsResponsableOrAdmin` côté serveur, `RegleApprobationAchatViewSet`).
+  getReglesApprobationAchat: (params) =>
+    api.get('/installations/regles-approbation-achat/', { params }),
+  saveRegleApprobationAchat: (id, data) => id
+    ? api.patch(`/installations/regles-approbation-achat/${id}/`, data)
+    : api.post('/installations/regles-approbation-achat/', data),
+  deleteRegleApprobationAchat: (id) =>
+    api.delete(`/installations/regles-approbation-achat/${id}/`),
+
   // ── XMFG1-16 — Atelier MRP-lite : ordres d'assemblage / démontage (kitting) ──
 
   // FG328 — ordres d'assemblage (kits → composite). Référence/société posées
