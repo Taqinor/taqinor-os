@@ -238,6 +238,20 @@ def generer_sla_mensuel_task():
     return {'ok': True}
 
 
+@shared_task(name='core.recalculer_sla_perimes')
+def recalculer_sla_perimes_task():
+    """NTOBS25 — recalcul de rattrapage quotidien : régénère les
+    ``SlaSnapshot`` périmés par un ``IncidentPublic`` déclaré/modifié
+    tardivement (planifié quotidiennement). Enveloppe fine de ``core.sla``."""
+    from . import sla
+
+    regeneres = sla.recalculer_sla_perimes()
+    logger.info(
+        'core.recalculer_sla_perimes: %d snapshot(s) régénéré(s).',
+        len(regeneres))
+    return {'regeneres': len(regeneres)}
+
+
 REVERSIBILITE_BUCKET = 'erp-reversibilite'
 
 

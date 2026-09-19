@@ -1362,6 +1362,12 @@ app.conf.beat_schedule = {
         'task': 'core.purger_donnees_fiabilite',
         'schedule': crontab(day_of_month=1, hour=4, minute=0),
     },
+    # NTOBS25 — recalcul quotidien des SlaSnapshot périmés par un incident
+    # déclaré/modifié tardivement (chevauchant une période déjà générée).
+    'core-recalculer-sla-perimes': {
+        'task': 'core.recalculer_sla_perimes',
+        'schedule': crontab(hour=3, minute=45),
+    },
 }
 
 

@@ -16,6 +16,7 @@ inventé — quand aucune mesure n'est disponible pour la période).
 from __future__ import annotations
 
 import calendar
+import logging
 from datetime import datetime, timedelta
 
 from django.apps import apps as django_apps
@@ -33,6 +34,8 @@ from rest_framework.permissions import (
 from rest_framework.response import Response
 
 from .models import TenantModel
+
+logger = logging.getLogger(__name__)
 
 # Pondération de la sévérité d'un incident dans le calcul de disponibilité —
 # méthodologie DOCUMENTÉE et dérivée d'horodatages réels (jamais un chiffre
@@ -331,6 +334,94 @@ def generer_sla_mensuel(periode=None):
         generer_snapshot_societe(company, periode)
         for company in Company.objects.filter(actif=True)
     ]
+
+
+# ── NTOBS25 — recalcul de rattrapage si un incident est déclaré tardivement ─
+#
+# Si le fondateur crée/modifie un ``IncidentPublic`` (NTOBS1) dont la période
+# chevauche un ``SlaSnapshot`` déjà généré, ce dernier devient PÉRIMÉ (l'uptime
+# calculé ne reflète plus l'incident tardif). ``generer_snapshot_societe``
+# sait déjà régénérer un snapshot existant SANS écraser une décision humaine
+# déjà prise sur le crédit (``emis``/``refuse``) — ce module ne fait que
+# DÉTECTER quels snapshots sont périmés et les régénérer.
+#
+# LIMITE ASSUMÉE DE CE LOT (lane isolée ``core/{sla.py,tasks.py}`` — le
+# schéma ``core/models.py``/``core/migrations`` appartient à une autre lane en
+# ce moment) : le plan nommait deux nouveaux champs de traçabilité
+# (``SlaSnapshot.recalcule_le``, ``SlaSnapshot.raison_recalcul``), non posés
+# ici — le recalcul est journalisé via le logger applicatif (voir
+# ``logger.info`` ci-dessous) plutôt que persistés en base. Migration exacte
+# à poser par l'orchestrateur :
+#
+#     recalcule_le = models.DateTimeField(null=True, blank=True)
+#     raison_recalcul = models.CharField(max_length=255, blank=True, default='')
+
+def _snapshots_perimes_par_incident_tardif(company):
+    """``SlaSnapshot`` de ``company`` dont ``genere_le`` précède la dernière
+    modification (``updated_at``) d'un ``IncidentPublic`` touchant sa
+    période — système (``company=None``) ou propre à elle."""
+    try:
+        incident_model = django_apps.get_model('statuspage', 'IncidentPublic')
+    except LookupError:
+        return []
+
+    perimes = []
+    for snapshot in SlaSnapshot.objects.filter(company=company):
+        debut, fin = _mois_bounds(snapshot.periode)
+        touche_tardivement = incident_model.objects.filter(
+            Q(company__isnull=True) | Q(company=company),
+            debute_le__lt=fin,
+        ).filter(
+            Q(resolu_le__gte=debut) | Q(resolu_le__isnull=True),
+        ).filter(updated_at__gt=snapshot.genere_le).exists()
+        if touche_tardivement:
+            perimes.append(snapshot)
+    return perimes
+
+
+def _notifier_recalcul_credit(company, snapshot, ancien_montant):
+    """Notifie le Directeur qu'un recalcul a fait bouger le crédit SLA dû.
+
+    ``'sla_credit_recalcule'`` (string littéral, jamais un import
+    ``apps.notifications`` — contrat import-linter
+    ``core-foundation-is-a-base-layer``) reflète un ``EventType.
+    SLA_CREDIT_RECALCULE`` PAS ENCORE catalogué (migration ``apps.
+    notifications`` hors périmètre de cette lane) : le stockage fonctionne
+    (``Notification.event_type`` n'est pas contraint en base par les
+    ``choices`` Django), seul l'affichage libellé attend cette migration
+    future."""
+    from . import notify_registry
+    from .maintenance_windows import admins_cibles
+
+    titre = f'Crédit SLA recalculé — {snapshot.periode:%B %Y}'
+    body = (
+        f'Ancien montant : {ancien_montant}. '
+        f'Nouveau montant : {snapshot.credit_du_montant}.')
+    for admin in admins_cibles(company):
+        notify_registry.notify(
+            admin, 'sla_credit_recalcule', titre, body=body, company=company)
+
+
+def recalculer_sla_perimes():
+    """NTOBS25 — job beat quotidien : régénère chaque ``SlaSnapshot`` périmé
+    par un incident déclaré/modifié tardivement, notifie le Directeur si le
+    crédit dû change de montant. Renvoie la liste des snapshots régénérés."""
+    from authentication.models import Company
+
+    regeneres = []
+    for company in Company.objects.filter(actif=True):
+        for snapshot in _snapshots_perimes_par_incident_tardif(company):
+            ancien_montant = snapshot.credit_du_montant
+            nouveau = generer_snapshot_societe(company, snapshot.periode)
+            regeneres.append(nouveau)
+            logger.info(
+                'core.recalculer_sla_perimes: société=%s périodeMoi=%s '
+                'ancien_credit=%s nouveau_credit=%s',
+                company.id, snapshot.periode, ancien_montant,
+                nouveau.credit_du_montant)
+            if nouveau.credit_du_montant != ancien_montant:
+                _notifier_recalcul_credit(company, nouveau, ancien_montant)
+    return regeneres
 
 
 # ── API ──────────────────────────────────────────────────────────────────
