@@ -881,6 +881,26 @@ class CompanyProfile(models.Model):
                   "FR, ES) — distinct de la langue/du pack pays de la "
                   "société.")
 
+    # ── NTI18N34 — langue de secours (fallback), distincte du FR codé en dur
+    # ────────────────────────────────────────────────────────────────────
+    # Dernier niveau de repli de `apps.parametres.i18n_resolver.
+    # resolve_langue_sortie` (NTI18N4), lu défensivement AVANT cette tâche
+    # (`getattr`) — cette migration ne fait qu'ajouter la colonne, la
+    # fonction de résolution n'a besoin d'AUCUN changement. Défaut 'fr' =
+    # comportement historique inchangé pour toute société existante.
+    class LangueRepli(models.TextChoices):
+        FR = 'fr', 'Français'
+        EN = 'en', 'English'
+        AR = 'ar', 'العربية'
+
+    langue_repli = models.CharField(
+        max_length=2, choices=LangueRepli.choices,
+        default=LangueRepli.FR,
+        verbose_name='Langue de secours',
+        help_text="Langue de repli des documents générés (PDF) quand ni une "
+                  "langue explicite ni la langue du client ne sont connues. "
+                  "Défaut FR (comportement historique).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 
