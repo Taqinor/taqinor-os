@@ -125,6 +125,31 @@ def statut_libelle(company, domaine: str, cle: str, langue: str = 'fr') -> str:
     return statut_label(domaine, cle, langue)
 
 
+def langue_interface_verrouillee(company) -> bool:
+    """NTI18N35 — société avec la langue d'interface verrouillée ?
+
+    Point d'entrée cross-app PRÊT pour ``authentication.views.
+    LangueInterfaceView`` (PATCH /auth/me/langue/, hors périmètre de cette
+    lane) : cet endpoint devra appeler cette fonction et renvoyer 403 quand
+    elle est vraie. Jamais d'exception — une société sans profil (ou hors
+    requête) n'est jamais verrouillée."""
+    p = _profile(company)
+    return bool(p is not None and p.langue_interface_verrouillee)
+
+
+def langue_par_defaut_effective(company) -> str | None:
+    """NTI18N35 — langue à imposer si l'interface est verrouillée.
+
+    Renvoie ``CompanyProfile.langue_repli`` quand
+    ``langue_interface_verrouillee`` est vrai, sinon ``None`` (« pas
+    d'imposition » — l'utilisateur garde sa préférence individuelle,
+    comportement historique)."""
+    p = _profile(company)
+    if p is None or not p.langue_interface_verrouillee:
+        return None
+    return p.langue_repli
+
+
 def tariff_for(company) -> dict:
     """Repères ROI/tarifaires CANONIQUES d'une société (source unique — DC5).
 

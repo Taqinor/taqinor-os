@@ -901,6 +901,25 @@ class CompanyProfile(models.Model):
                   "langue explicite ni la langue du client ne sont connues. "
                   "Défaut FR (comportement historique).")
 
+    # ── NTI18N35 — verrouillage de la langue d'INTERFACE par société ───────
+    # Défaut False = comportement historique inchangé : chaque utilisateur
+    # choisit librement sa langue d'interface (NTI18N3/NTI18N8). Actif :
+    # impose `langue_repli` (langue par défaut société, NTI18N34) à tous les
+    # utilisateurs de la société, masque/désactive le sélecteur individuel.
+    # Câblage du 403 réel sur `PATCH /auth/me/langue/`
+    # (``authentication.views.LangueInterfaceView``, dont le commentaire
+    # NTI18N3 annonce déjà cette tâche) : HORS PÉRIMÈTRE de cette lane
+    # (apps/parametres uniquement — `authentication` est une autre app) ;
+    # voir `selectors.langue_interface_verrouillee`, prêt à être consommé
+    # par cette vue.
+    langue_interface_verrouillee = models.BooleanField(
+        default=False,
+        verbose_name="Langue d'interface verrouillée",
+        help_text="Empêche les utilisateurs de la société de changer de "
+                  "langue d'interface individuellement ; impose la langue "
+                  "par défaut de la société (langue_repli) à tous. "
+                  "Désactivé par défaut.")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 
