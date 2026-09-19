@@ -4,18 +4,20 @@ Critère d'acceptation, les deux volets :
   * chaque appel public crée une entrée AVEC latence et `request_id` ;
   * la purge respecte la rétention DU PLAN de la société (NTAPI7).
 
-Le middleware est éprouvé BRANCHÉ (`override_settings(MIDDLEWARE=…)`) et non
-appelé à la main : c'est la seule façon de prouver que `request.request_id`
-(posé par `core.middleware.RequestIdMiddleware`, plus haut dans la pile) et le
-statut réel de la réponse arrivent bien dans la ligne.
+Le middleware est éprouvé BRANCHÉ, via la pile RÉELLE du projet (pas appelé à
+la main) : c'est la seule façon de prouver que `request.request_id` (posé par
+`core.middleware.RequestIdMiddleware`, plus haut dans la pile) et le statut
+réel de la réponse arrivent bien dans la ligne.
 
-Le middleware n'est PAS encore inscrit dans `erp_agentique/settings/base.py`
-(hors périmètre de cette lane) : sans cette inscription, la journalisation est
-inerte en production — le modèle, la purge et le middleware sont prêts.
+NTAPI38-middleware — le middleware est désormais inscrit dans
+`erp_agentique/settings/base.py` (juste après `RequestIdMiddleware`, dont il
+lit `request.request_id`) : la pile de test par défaut le porte déjà, sans
+qu'il faille l'ajouter via `override_settings(MIDDLEWARE=…)` (un ajout en
+double l'aurait fait tourner deux fois par requête, doublant chaque ligne
+`ApiCallLog`).
 """
 from datetime import timedelta
 
-from django.conf import settings
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -27,13 +29,6 @@ from core.models import ApiUsagePlan
 from . import call_log
 from .constants import SCOPE_READ_LEADS
 from .models import ApiCallLog, ApiKey
-
-# La pile RÉELLE du projet + le middleware de journalisation en dernier : il
-# doit voir le statut final de la réponse ET le `request_id` posé en tête de
-# pile par `RequestIdMiddleware` (YAPIC4).
-MIDDLEWARE_AVEC_JOURNAL = list(settings.MIDDLEWARE) + [
-    'apps.publicapi.middleware.PublicApiCallLogMiddleware',
-]
 
 
 def _company(slug, nom):
@@ -47,7 +42,6 @@ def _key_client(raw_key):
     return api
 
 
-@override_settings(MIDDLEWARE=MIDDLEWARE_AVEC_JOURNAL)
 class Ntapi38JournalisationTests(TestCase):
     def setUp(self):
         self.co = _company('ntapi38', 'NTAPI38')

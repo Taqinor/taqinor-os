@@ -16,7 +16,9 @@ from rest_framework import filters, generics, status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
-from rest_framework.exceptions import MethodNotAllowed, ValidationError
+from rest_framework.exceptions import (
+    MethodNotAllowed, PermissionDenied, ValidationError,
+)
 from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
@@ -36,6 +38,7 @@ from authentication.permissions import (
 # jamais ``compta.views``, ce qui garde ``ventes`` libre de toute dépendance
 # transitive vers ``apps.audit`` (contrat import-linter M4 « ventes → audit »).
 from apps.audit.recorder import record as _audit_record
+from apps.frais.permissions import PeutApprouverNoteFraisDirection
 
 from . import selectors, services
 from .models import (
@@ -4403,8 +4406,21 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
         """Valide la note et poste la charge au grand livre (FG135).
 
         Corps : ``{compte_charge?}``. Refusé en période close. Idempotent.
+
+        NTP2P36 — une note ESCALADÉE en direction (``escalade_direction``,
+        NTP2P11) exige EN PLUS le code fin ``approuver_note_frais_direction``
+        (une note ordinaire reste validable par tout porteur de
+        ``compta_valider`` — inchangé). L'objet doit être chargé pour
+        connaître ``escalade_direction`` : la garde ne peut donc pas vivre
+        dans ``get_permissions()`` (appelé avant ``get_object()``).
         """
         note = self.get_object()  # scopée société par TenantMixin.
+        if note.escalade_direction and not (
+                PeutApprouverNoteFraisDirection().has_permission(
+                    request, self)):
+            raise PermissionDenied(
+                "Permission « approuver_note_frais_direction » requise pour "
+                "valider une note de frais escaladée en direction.")
         compte_charge = None
         cc_id = request.data.get('compte_charge')
         if cc_id:

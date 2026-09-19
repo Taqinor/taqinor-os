@@ -406,6 +406,12 @@ MIDDLEWARE = [
     # core.exceptions.taqinor_exception_handler (YAPIC3) et
     # core.observability.RequestObservabilityMiddleware le lisent tous deux.
     'core.middleware.RequestIdMiddleware',
+    # NTAPI38-middleware — journalise chaque appel public (`/api/public/…`,
+    # `publicapi.ApiCallLog` : latence, statut, request_id) ; APRÈS
+    # RequestIdMiddleware dont il lit `request.request_id`. Test de préfixe
+    # de chaîne pour tout le reste de l'ERP (aucune requête SQL ajoutée
+    # hors `/api/public/`) — voir `apps/publicapi/middleware.py`.
+    'apps.publicapi.middleware.PublicApiCallLogMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',

@@ -37,6 +37,7 @@ from ..models import (
     DemandeAchat, DemandeAchatLigne, EtapeApprobationAchat,
     RegleApprobationAchat,
 )
+from ..permissions import PeutApprouverDemandeAchat
 from ..serializers import (
     DemandeAchatSerializer, DemandeAchatLigneSerializer,
     EtapeApprobationAchatSerializer, RegleApprobationAchatSerializer,
@@ -103,6 +104,13 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     serializer_class = DemandeAchatSerializer
 
     def get_permissions(self):
+        # NTP2P36 — `approuver-etape` exige EN PLUS le code fin
+        # `approuver_demande_achat` (le viewset a son propre `get_permissions`
+        # branché sur `self.action` : un `permission_classes=` posé sur le
+        # décorateur `@action` serait écrasé par ce branchement, d'où la garde
+        # DEDANS plutôt que sur `@action`).
+        if self.action == 'approuver_etape':
+            return [IsResponsableOrAdmin(), PeutApprouverDemandeAchat()]
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
