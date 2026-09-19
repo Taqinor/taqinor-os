@@ -72,8 +72,11 @@ def _username_portail_disponible(base):
     return candidat
 
 
-def _envoyer_identifiants_portail(user, mot_de_passe, company):
-    """Envoie le mot de passe temporaire au client. Best-effort, jamais fatal.
+def _envoyer_identifiants_portail(
+        user, mot_de_passe, company, *, portee_libelle='client'):
+    """Envoie le mot de passe temporaire au destinataire. Best-effort, jamais
+    fatal. ``portee_libelle`` (« client »/« partenaire »/…) n'affecte que le
+    libellé de l'email — jamais la logique d'accès.
 
     Sans ``SENDGRID_API_KEY`` le backend email est la console (local) ou un
     no-op : le provisionnement RÉUSSIT quand même (le mot de passe est alors
@@ -93,10 +96,11 @@ def _envoyer_identifiants_portail(user, mot_de_passe, company):
         societe = (marque_portail(company).get('nom_affichage')
                    or 'votre prestataire')
         send_mail(
-            subject=f'Votre accès au portail client {societe}',
+            subject=f'Votre accès au portail {portee_libelle} {societe}',
             message=(
                 f'Bonjour,\n\n'
-                f'Votre accès au portail client de {societe} est ouvert.\n\n'
+                f'Votre accès au portail {portee_libelle} de {societe} est '
+                f'ouvert.\n\n'
                 f'Identifiant : {user.username}\n'
                 f'Mot de passe temporaire : {mot_de_passe}\n\n'
                 f'Il vous sera demandé de le changer à la première '
@@ -190,6 +194,86 @@ def provisionner_compte_portail_client(company, client_id):
         user.save()
 
     _envoyer_identifiants_portail(user, mot_de_passe, company)
+    return user, True
+
+
+# ── NTPRT4 — Provisionnement d'un VRAI compte utilisateur portail partenaire ─
+#
+# Même mécanique que NTPRT2 ci-dessus, pour ``compta.Partenaire`` (apporteurs/
+# sous-revendeurs/installateurs — le modèle vit physiquement dans
+# ``apps.crm`` depuis ODX13, mais reste accessible via le ré-export
+# ``apps.compta.models.Partenaire`` : lecture directe scopée société, jamais
+# ``apps.crm.models`` importé ici). Le ``CustomUser``
+# ``portee=portail_partenaire`` rattaché par ``portail_partenaire_id`` devient
+# le mécanisme d'accès PRIMAIRE, via le login JWT standard — jamais un second
+# système d'auth. ``Partenaire.token_acces`` (lien ponctuel/legacy) reste
+# intact et inchangé.
+
+def provisionner_compte_partenaire(company, partenaire_id):
+    """NTPRT4 — Crée (ou relie) le compte utilisateur portail d'un partenaire.
+
+    Renvoie ``(user, cree)`` où ``cree`` dit si un ``CustomUser`` a été créé
+    par CET appel. Idempotent SANS effet de bord : un compte déjà rattaché à
+    CE partenaire dans CETTE société est renvoyé tel quel (ni mot de passe
+    réinitialisé, ni réactivation silencieuse d'un accès révoqué). Le
+    partenaire est résolu dans CETTE société uniquement — un id absent ou
+    d'une autre société renvoie ``(None, False)``, jamais un compte croisé.
+    """
+    from django.db import transaction
+    from django.utils.crypto import get_random_string
+
+    from apps.compta.models import Partenaire
+    from apps.roles.models import (
+        PORTAIL_PARTENAIRE_PERMISSIONS,
+        ROLE_PORTAIL_PARTENAIRE,
+        Role,
+    )
+    from authentication.models import CustomUser
+
+    if company is None or not partenaire_id:
+        return None, False
+    partenaire = Partenaire.objects.filter(
+        company=company, pk=partenaire_id).first()
+    if partenaire is None:
+        return None, False
+
+    with transaction.atomic():
+        existant = CustomUser.objects.filter(
+            company=company,
+            portee=CustomUser.PORTEE_PORTAIL_PARTENAIRE,
+            portail_partenaire_id=partenaire.id,
+        ).first()
+        if existant is not None:
+            return existant, False
+
+        role, _ = Role.objects.get_or_create(
+            company=company,
+            nom=ROLE_PORTAIL_PARTENAIRE,
+            defaults={
+                'permissions': list(PORTAIL_PARTENAIRE_PERMISSIONS),
+                'est_systeme': True,
+            },
+        )
+
+        email = (partenaire.email or '').strip()
+        mot_de_passe = get_random_string(LONGUEUR_MOT_DE_PASSE_TEMPORAIRE)
+        user = CustomUser(
+            username=_username_portail_disponible(
+                email or f'partenaire-{partenaire.id}'),
+            email=email,
+            company=company,
+            role=role,
+            portee=CustomUser.PORTEE_PORTAIL_PARTENAIRE,
+            portail_partenaire_id=partenaire.id,
+            must_change_password=True,
+            is_staff=False,
+            is_superuser=False,
+        )
+        user.set_password(mot_de_passe)
+        user.save()
+
+    _envoyer_identifiants_portail(
+        user, mot_de_passe, company, portee_libelle='partenaire')
     return user, True
 
 

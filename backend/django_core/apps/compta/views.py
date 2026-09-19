@@ -27,7 +27,9 @@ from rest_framework.views import APIView
 from django.utils import timezone
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import HasPermissionOrLegacy, IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAdminRole, IsResponsableOrAdmin,
+)
 
 # NTTRE42 — la trace d'audit des actions sensibles trésorerie est écrite ICI (vue)
 # et non dans ``compta.services`` : ``ventes`` importe ``compta.services`` mais
@@ -8769,6 +8771,45 @@ class PartenaireViewSet(_ComptaBaseViewSet):
         partenaire.save(update_fields=[
             'statut_onboarding', 'actif', 'date_activation'])
         return Response(self.get_serializer(partenaire).data)
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='provisionner-acces',
+        permission_classes=[IsAdminRole],
+    )
+    def provisionner_acces(self, request, pk=None):
+        """NTPRT4 — Ouvre au partenaire un vrai compte utilisateur portail.
+
+        RÉSERVÉ À L'ADMINISTRATEUR INTERNE (``IsAdminRole``), même garde que
+        l'action jumelle NTPRT2 (``ComptePortailClientViewSet.provisionner_acces``) :
+        ouvrir un accès externe à des données partenaire (soumissions,
+        commissions) est une action d'administration. Le mot de passe
+        temporaire n'est JAMAIS renvoyé ici : il part par email au partenaire
+        (cf. ``apps.portail.services.provisionner_compte_partenaire``).
+        """
+        from apps.portail import services as portail_services
+
+        partenaire = self.get_object()
+        user, cree = portail_services.provisionner_compte_partenaire(
+            request.user.company, partenaire.id)
+        if user is None:
+            return Response(
+                {'detail': 'Partenaire inconnu pour cette société.'},
+                status=400)
+        return Response({
+            'utilisateur_id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'actif': user.is_active,
+            'cree': cree,
+            'detail': (
+                'Accès portail créé — mot de passe temporaire envoyé par '
+                'email.'
+                if cree else
+                'Un accès portail existe déjà pour ce partenaire.'
+            ),
+        })
 
 
 class SoumissionLeadPartenaireViewSet(_ComptaBaseViewSet):
