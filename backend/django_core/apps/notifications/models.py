@@ -442,6 +442,21 @@ class EventType(models.TextChoices):
     # quotidiennement jusqu'à saisie complète.
     FETES_MOBILES_A_SAISIR = (
         'fetes_mobiles_a_saisir', 'Fêtes mobiles à saisir')
+    # NTPRT18 — notifications PORTAIL (compte `CustomUser`
+    # `portee=portail_client/portail_fournisseur/portail_partenaire`,
+    # NTPRT1/2). Réutilisent le canal `notify()` existant tel quel (in-app +
+    # email SendGrid/Brevo-gated) — jamais un second moteur : avant NTPRT18,
+    # les rares notifications client-facing (ex. livraisons,
+    # `apps.installations.livraison_client_notify`) envoyaient un email
+    # directement, hors de ce système de préférences/canal.
+    PORTAIL_DEVIS_PRET = (
+        'portail_devis_pret', 'Votre devis est prêt')
+    PORTAIL_FACTURE_ECHUE = (
+        'portail_facture_echue', 'Facture échue')
+    PORTAIL_JALON_CHANTIER_ATTEINT = (
+        'portail_jalon_chantier_atteint', 'Jalon de chantier atteint')
+    PORTAIL_TICKET_MAJ = (
+        'portail_ticket_maj', 'Mise à jour de votre ticket')
 
 
 class Channel(models.TextChoices):

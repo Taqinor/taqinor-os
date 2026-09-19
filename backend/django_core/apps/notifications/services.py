@@ -55,6 +55,16 @@ EVENT_DEFAULT_OVERRIDES = {
     # doit les recevoir aussi par e-mail, pas seulement en in-app.
     'relance_due': {'email': True},
     'premier_contact_depasse': {'email': True},
+    # NTPRT18 — un compte portail (client/fournisseur/partenaire) ne vit pas
+    # connecté à l'ERP toute la journée comme un collaborateur interne : la
+    # cloche in-app seule passerait inaperçue. Email ON par défaut pour les
+    # 4 événements portail (SendGrid/Brevo-gated : no-op sans clé, comme le
+    # canal interne — voir `_is_email_configured`), surchargeable comme
+    # toujours par une ligne `NotificationPreference` explicite.
+    'portail_devis_pret': {'email': True},
+    'portail_facture_echue': {'email': True},
+    'portail_jalon_chantier_atteint': {'email': True},
+    'portail_ticket_maj': {'email': True},
 }
 
 # ERR91 — Bornes cohérentes pour la ligne in-app. `title` (255) et `link` (512)
