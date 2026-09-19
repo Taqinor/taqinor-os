@@ -94,4 +94,14 @@ describe('DossierList (NTWFL19)', () => {
       expect.objectContaining({ type_dossier: 'litige' }),
     ))
   })
+
+  it('bascule vers la vue kanban (NTWFL21)', async () => {
+    const { container } = renderScreen()
+    await screen.findByText('Nouveau dossier')
+    fireEvent.click(screen.getByRole('radio', { name: 'Kanban' }))
+    // Le tableau disparaît, les colonnes de statut apparaissent.
+    expect(container.querySelector('[data-dt-table]')).toBeNull()
+    expect(await screen.findByText('Ouvert', { selector: '.kb-col-title' })).toBeInTheDocument()
+    expect(screen.getByText('Réclamation client X')).toBeInTheDocument()
+  })
 })

@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { Plus, List, LayoutGrid } from 'lucide-react'
 import coreApi from '../../api/coreApi'
 import useResource from '../../hooks/useResource'
 import { unwrapList } from '../../api/resource'
 import {
-  DataTable, Button, Badge, StatusPill, toast,
+  DataTable, Button, Badge, StatusPill, Segmented, toast,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Input, Label,
@@ -16,6 +16,15 @@ import {
   TYPE_DOSSIER_OPTIONS, STATUT_DOSSIER_OPTIONS, PRIORITE_DOSSIER_OPTIONS,
   prioriteTone, estEnRetard,
 } from '../../features/workflow/dossiers'
+import DossierKanbanView from './views/DossierKanbanView'
+
+// NTWFL21 — bascule liste/kanban (patron déjà éprouvé : chantiers/leads).
+// `Segmented` instancie `opt.icon` lui-même (`<Icon .../>`) : passer le
+// COMPOSANT, jamais un élément déjà rendu.
+const VUE_OPTIONS = [
+  { value: 'liste', label: 'Liste', icon: List },
+  { value: 'kanban', label: 'Kanban', icon: LayoutGrid },
+]
 
 /* ============================================================================
    NTWFL19 — liste des dossiers transverses (`/dossiers`).
@@ -125,6 +134,7 @@ export default function DossierList() {
   const [filtreType, setFiltreType] = useState(TOUS)
   const [filtreStatut, setFiltreStatut] = useState(TOUS)
   const [showCreate, setShowCreate] = useState(false)
+  const [vue, setVue] = useState('liste')
 
   const params = useMemo(() => ({
     type_dossier: filtreType === TOUS ? undefined : filtreType,
@@ -138,6 +148,18 @@ export default function DossierList() {
   )
 
   const aujourdHui = AUJOURD_HUI()
+
+  // NTWFL21 — changement de statut depuis le kanban : optimiste (la carte
+  // change de colonne immédiatement), le chatter (NTWFL18) est journalisé
+  // côté serveur par `DossierViewSet.perform_update`, jamais dupliqué ici.
+  const changerStatut = async (dossier, statut) => {
+    try {
+      await coreApi.dossiers.update(dossier.id, { statut })
+      refetch()
+    } catch {
+      toast.error('Changement de statut impossible.')
+    }
+  }
 
   const columns = useMemo(() => [
     {
@@ -256,20 +278,30 @@ export default function DossierList() {
             ))}
           </SelectContent>
         </Select>
+        <Segmented options={VUE_OPTIONS} value={vue} onChange={setVue} size="sm" />
       </div>
 
-      <DataTable
-        data={rows}
-        columns={columns}
-        getRowId={(d) => d.id}
-        loading={loading}
-        searchable
-        searchPlaceholder="Rechercher un titre, un propriétaire…"
-        onRowClick={(d) => navigate(`/dossiers/${d.id}`)}
-        emptyTitle="Aucun dossier"
-        emptyDescription={error || 'Aucun dossier ne correspond à cette vue.'}
-        aria-label="Liste des dossiers"
-      />
+      {vue === 'kanban' ? (
+        <DossierKanbanView
+          items={rows}
+          aujourdHui={aujourdHui}
+          onOpen={(d) => navigate(`/dossiers/${d.id}`)}
+          onChangeStatus={changerStatut}
+        />
+      ) : (
+        <DataTable
+          data={rows}
+          columns={columns}
+          getRowId={(d) => d.id}
+          loading={loading}
+          searchable
+          searchPlaceholder="Rechercher un titre, un propriétaire…"
+          onRowClick={(d) => navigate(`/dossiers/${d.id}`)}
+          emptyTitle="Aucun dossier"
+          emptyDescription={error || 'Aucun dossier ne correspond à cette vue.'}
+          aria-label="Liste des dossiers"
+        />
+      )}
 
       <NouveauDossierDialog
         open={showCreate}
