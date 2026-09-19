@@ -290,6 +290,40 @@ def latest_version(document):
     return document.versions.order_by('-version').first()
 
 
+# ── NTPRT13 — "Mes documents" (GED partagée avec le portail CLIENT) ────────
+#
+# Critère d'acceptation : un document GED SANS ACL explicite pour ce client
+# n'apparaît JAMAIS côté portail. On ne résout donc QUE les ACL directement
+# posées sur le DOCUMENT avec ``client_id`` — jamais l'héritage dossier
+# (``AclGed.herite``/``folder``), qui resterait un canal invisible pour ce
+# critère (hors périmètre de cette tâche — l'héritage sert la GED interne).
+
+def documents_partages_client_portail(company, client_id):
+    """Documents GED partagés EXPLICITEMENT avec ``client_id`` (QuerySet, plus
+    récent d'abord). ``company``/``client_id`` absents → queryset vide."""
+    if company is None or not client_id:
+        return Document.objects.none()
+    doc_ids = (AclGed.objects
+               .filter(company=company, client_id=client_id,
+                       document__isnull=False)
+               .values_list('document_id', flat=True))
+    return (Document.objects
+            .filter(company=company, id__in=doc_ids,
+                    supprime_le__isnull=True)
+            .order_by('-created_at', '-id'))
+
+
+def document_partage_client_portail(company, client_id, document_id):
+    """UN document GED partagé avec ``client_id``, ou ``None``.
+
+    Un document existant mais SANS ACL explicite pour ce client — ou d'une
+    autre société — est INTROUVABLE : jamais « trouvé puis refusé »."""
+    if not document_id:
+        return None
+    return documents_partages_client_portail(
+        company, client_id).filter(pk=document_id).first()
+
+
 def partages_for_company(company):
     """GED20 — Partages publics tokenisés d'une société (QuerySet).
 

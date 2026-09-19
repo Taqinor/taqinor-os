@@ -1040,3 +1040,160 @@ class MonEquipePortailViewSet(viewsets.ViewSet):
         services.revoquer_invitation_portail(company, invitation.id)
         invitation.refresh_from_db()
         return Response(self._ligne(invitation))
+
+
+class MesDocumentsPortailLigneSerializer(serializers.Serializer):
+    """Un document GED tel que le portail le montre au client — payload
+    volontairement pauvre : jamais de métadonnée interne (custom_data, ACL,
+    verrous…)."""
+    id = serializers.IntegerField()
+    nom = serializers.CharField()
+    reference = serializers.CharField(allow_blank=True)
+    taille = serializers.IntegerField(allow_null=True)
+    mime = serializers.CharField(allow_null=True)
+    date_creation = serializers.DateTimeField(allow_null=True)
+
+
+class MesDocumentsPortailViewSet(viewsets.ViewSet):
+    """NTPRT13 — « Mes documents » : documents GED partagés EXPLICITEMENT
+    avec ce client (lecture) + dépôt de justificatifs (factures ONEE…).
+
+    LECTURE — réutilise ``ged.AclGed``/``ged.selectors`` (jamais un nouveau
+    modèle de partage) : ``ged.selectors.documents_partages_client_portail``
+    ne renvoie QUE les documents portant une ``AclGed`` EXPLICITE
+    ``client=<ce client>`` — un document sans cette ACL n'apparaît JAMAIS ici
+    (critère d'acceptation NTPRT13), même s'il vit dans un dossier par
+    ailleurs partagé (l'héritage dossier reste un canal INTERNE, hors
+    périmètre de cette surface client).
+
+    ÉCRITURE — le dépôt réutilise ``apps.compta.serializers.
+    DocumentClientPortailSerializer``/``DocumentClientPortail`` (FG231)
+    À L'IDENTIQUE (même mixin MinIO AUD835, même dépôt GED miroir WIR94 via
+    les récepteurs ``apps/portail/receivers.py``) : AUCUN nouveau modèle
+    d'upload. Seule la SURFACE change (ce ViewSet, atteignable par un compte
+    portail réel — l'ancien ``DocumentClientPortailViewSet`` reste
+    ``IsResponsableOrAdmin``, donc fermé à un compte externe, même patron que
+    le correctif AUD525 sur les tickets SAV). ``client_id``/``company`` sont
+    TOUJOURS forcés depuis le compte connecté, jamais lus du corps.
+    """
+
+    permission_classes = [IsPortalClientUser]
+    serializer_class = MesDocumentsPortailLigneSerializer
+
+    @staticmethod
+    def _ligne(document):
+        from apps.ged.selectors import latest_version
+        version = latest_version(document)
+        return {
+            'id': document.id,
+            'nom': document.nom,
+            'reference': document.reference or '',
+            'taille': version.size if version else None,
+            'mime': version.mime if version else None,
+            'date_creation': (document.created_at.isoformat()
+                              if document.created_at else None),
+        }
+
+    @extend_schema(responses=inline_serializer(
+        name='MesDocumentsPortail',
+        fields={'results': serializers.ListField(
+            child=MesDocumentsPortailLigneSerializer())}))
+    def list(self, request):
+        from apps.ged.selectors import documents_partages_client_portail
+        company, client_id = _scope(request)
+        docs = documents_partages_client_portail(company, client_id)
+        return Response({'results': [self._ligne(d) for d in docs]})
+
+    def retrieve(self, request, pk=None):
+        from apps.ged.selectors import document_partage_client_portail
+        company, client_id = _scope(request)
+        doc = document_partage_client_portail(company, client_id, pk)
+        if doc is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(self._ligne(doc))
+
+    @action(detail=True, methods=['get'], url_path='telecharger')
+    def telecharger(self, request, pk=None):
+        """Sert le contenu de la VERSION COURANTE du document partagé.
+
+        Même patron que ``MesLivraisonsPortailViewSet.preuve_photo`` :
+        ``apps.records`` est une app de FONDATION (import direct autorisé) ;
+        le scope/l'ACL, eux, viennent du sélecteur GED."""
+        from django.http import HttpResponse
+
+        from apps.ged.selectors import (
+            document_partage_client_portail, latest_version,
+        )
+        from apps.records.storage import fetch_attachment
+
+        company, client_id = _scope(request)
+        doc = document_partage_client_portail(company, client_id, pk)
+        if doc is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        version = latest_version(doc)
+        if version is None:
+            return Response({'detail': 'Aucun fichier disponible.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        data, err = fetch_attachment(version.file_key)
+        if err:
+            return Response({'detail': err},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # GED21 — un document diffusé sous contrôle (filigrane) le reste sur
+        # CE canal aussi ; jamais un flux non filigrané qui contournerait la
+        # règle appliquée partout ailleurs (aperçu interne, partage public).
+        mime = version.mime or 'application/octet-stream'
+        if getattr(doc, 'watermark_diffusion', False):
+            try:
+                from apps.ged import services as ged_services
+                label = ged_services.watermark_label(company=company)
+                data, _marque = ged_services.apply_watermark(data, mime, label)
+            except Exception:  # noqa: BLE001 - dégrade à l'original, jamais 500
+                pass
+
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.EXPORT, request, instance=doc,
+            detail='Document GED téléchargé depuis le portail client')
+
+        nom = (version.filename or doc.nom or 'document').replace('"', '')
+        resp = HttpResponse(data, content_type=mime)
+        resp['Content-Disposition'] = f'attachment; filename="{nom}"'
+        resp['X-Content-Type-Options'] = 'nosniff'
+        return resp
+
+    def create(self, request):
+        """Dépose un justificatif (facture ONEE…) — réutilise
+        ``DocumentClientPortailSerializer``/``DocumentClientPortail``
+        EXISTANTS (FG231) tels quels. ``client_id``/``company`` forcés côté
+        serveur, jamais lus du corps."""
+        from apps.compta.serializers import DocumentClientPortailSerializer
+
+        # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS déposer
+        # de document (consultation uniquement).
+        if not services.peut_ecrire_portail_client(request.user):
+            return Response(
+                {'detail': "Votre accès est en lecture seule : vous ne "
+                           "pouvez pas déposer de document."},
+                status=status.HTTP_403_FORBIDDEN)
+
+        company, client_id = _scope(request)
+        donnees = request.data.copy()
+        donnees['client_id'] = client_id
+        donnees.pop('lead_id', None)
+        serializer = DocumentClientPortailSerializer(
+            data=donnees, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        document = serializer.save(company=company, client_id=client_id)
+
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.CREATE, request, instance=document,
+            detail='Justificatif déposé depuis le portail client')
+        return Response(
+            DocumentClientPortailSerializer(document).data,
+            status=status.HTTP_201_CREATED)

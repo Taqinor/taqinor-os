@@ -29,6 +29,7 @@ from .views_client import (
     MesChantiersPortailViewSet,
     MesDemandesSavPortailViewSet,
     MesDevisPortailViewSet,
+    MesDocumentsPortailViewSet,
     MesFacturesPortailViewSet,
     MesLivraisonsPortailViewSet,
     MonEquipePortailViewSet,
@@ -91,6 +92,10 @@ router.register(r'satisfaction', SatisfactionPortailViewSet,
 # invitation/révocation réservées à l'admin — services.est_admin_portail_client).
 router.register(r'mon-equipe', MonEquipePortailViewSet,
                 basename='portail-mon-equipe')
+# NTPRT13 — « Mes documents » : documents GED partagés EXPLICITEMENT (ged.AclGed
+# .client) + dépôt de justificatifs (réutilise DocumentClientPortail existant).
+router.register(r'mes-documents', MesDocumentsPortailViewSet,
+                basename='portail-mes-documents')
 # NTPRT21 — surface self-service du FOURNISSEUR connecté : ses bons de
 # commande, et la confirmation de date d'arrivée (le même effet que le chemin
 # tokenisé XPUR22, simplement authentifié).
