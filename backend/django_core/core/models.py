@@ -416,23 +416,50 @@ class WorkflowDefinition(TimestampedModel):
     nom = models.CharField('Nom', max_length=120)
     description = models.TextField('Description', blank=True, default='')
     actif = models.BooleanField('Actif', default=True)
+    # NTWFL25 — VERSIONNEMENT. Un ``code`` désigne désormais une LIGNÉE de
+    # définitions, et non plus une ligne unique : éditer les étapes d'une
+    # définition qui a des instances en cours en crée la version suivante au
+    # lieu de muter la structure sous les pieds de ces instances (voir
+    # ``core.workflow.editer_etapes_definition``). L'unicité porte donc sur le
+    # TRIPLET (société, code, version) ; les définitions existantes valent
+    # toutes ``version=1``, donc leur unicité (société, code) est préservée.
+    version = models.PositiveIntegerField(
+        'Version', default=1,
+        help_text='Incrémentée à chaque modification STRUCTURELLE des étapes '
+                  "faite alors que des instances tournaient.")
+    # Chaînage de l'historique, en LECTURE SEULE (même patron que
+    # ``contrats.VersionContrat`` / ``kb.KbArticleVersion``, qui restent la
+    # référence de ce motif). SET_NULL : purger une très vieille version ne
+    # casse jamais les suivantes.
+    definition_precedente = models.ForeignKey(
+        'self', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='versions_suivantes',
+        verbose_name='Version précédente')
 
     class Meta:
         verbose_name = 'Définition de workflow'
         verbose_name_plural = 'Définitions de workflow'
         ordering = ['nom', 'id']
         constraints = [
+            # NTWFL25 — l'unicité porte sur le TRIPLET (société, code, version) :
+            # un ``code`` désigne une lignée. Le NOM historique est conservé
+            # tel quel, volontairement : le renommer ferait dériver la
+            # migration 0002 qui l'a créé (le nom n'y correspondrait plus à
+            # aucune contrainte déclarée dans ce fichier) pour un gain
+            # purement cosmétique.
             models.UniqueConstraint(
-                fields=['company', 'code'],
+                fields=['company', 'code', 'version'],
                 name='core_wf_def_company_code_uniq'),
         ]
         indexes = [
             models.Index(fields=['company', 'actif'],
                          name='core_wf_def_co_actif_idx'),
+            # Pas d'index supplémentaire sur (company, code, version) : la
+            # contrainte d'unicité ci-dessus en pose déjà un, identique.
         ]
 
     def __str__(self):
-        return f'{self.nom} ({self.code})'
+        return f'{self.nom} ({self.code} v{self.version})'
 
 
 class WorkflowStepDefinition(TimestampedModel):
@@ -563,6 +590,17 @@ class WorkflowInstance(TimestampedModel):
     definition = models.ForeignKey(
         WorkflowDefinition, on_delete=models.PROTECT,
         related_name='instances', verbose_name='Définition')
+    # NTWFL25 — l'instance est ÉPINGLÉE à la version de définition sur
+    # laquelle elle a démarré. La FK ``definition`` suffit techniquement (une
+    # nouvelle version est une LIGNE neuve, l'instance continue de pointer
+    # l'ancienne), mais le numéro rend l'épinglage LISIBLE : un écran, un
+    # export ou un rapport de conformité n'a plus à déréférencer la définition
+    # pour dire « cette approbation s'est jouée en v2 ». Posé une seule fois,
+    # au démarrage, et réécrit UNIQUEMENT par la migration manuelle
+    # ``core.workflow.migrer_instance_vers_version``.
+    definition_version = models.PositiveIntegerField(
+        'Version de la définition', default=1,
+        help_text="Version de la définition au démarrage de l'instance.")
 
     # Cible générique — AUCUN import métier (contenttypes = fondation).
     content_type = models.ForeignKey(
@@ -676,6 +714,287 @@ class WorkflowStepInstance(TimestampedModel):
 
     def __str__(self):
         return f'{self.instance_id}/{self.ordre} ({self.get_statut_display()})'
+
+
+# ---------------------------------------------------------------------------
+# NTWFL17 — Dossier transverse (« case »), l'objet de travail qui n'appartient
+# à AUCUNE app métier.
+#
+# Le besoin : une réclamation complexe ou un onboarding grand compte traverse
+# le lead, le devis, le ticket SAV, le chantier, la facture et le contrat. Tant
+# qu'aucun objet ne les tient ENSEMBLE, l'équipe recolle ce fil à la main dans
+# six écrans. ``Dossier`` est ce fil — et il vit dans ``core`` précisément
+# parce qu'il n'a le droit d'appartenir à aucune des six apps (contrat
+# import-linter ``core-foundation-is-a-base-layer``).
+#
+# Trois modèles, aucun import métier :
+#   * ``Dossier``               — l'en-tête (type, titre, statut PROPRE,
+#     propriétaire, échéance, priorité) ;
+#   * ``DossierLien``           — les N objets rattachés, désignés par
+#     ``contenttypes`` (``content_type`` + ``object_id``), JAMAIS par une FK
+#     réelle vers une app domaine ;
+#   * ``DossierChecklistItem``  — les étapes à cocher.
+#
+# ``statut`` est DÉLIBÉRÉMENT indépendant de ``STAGES.py`` : le funnel
+# commercial décrit l'avancement d'une OPPORTUNITÉ, pas la vie d'un dossier de
+# réclamation. Les deux vocabulaires ne se mélangent jamais (règle #2).
+# ---------------------------------------------------------------------------
+
+
+class Dossier(TenantModel):
+    """En-tête d'un dossier transverse (NTWFL17).
+
+    ``type_dossier`` est un choix FERMÉ : le catalogue vit ici, en un seul
+    endroit, et s'étend par une migration ``AlterField`` — jamais par une
+    chaîne libre saisie dans un écran (deux orthographes du même type
+    casseraient tout regroupement). ``statut`` a son propre cycle de vie,
+    étranger au funnel ``STAGES.py``.
+    """
+
+    TYPE_RECLAMATION_COMPLEXE = 'reclamation_complexe'
+    TYPE_ONBOARDING_GRAND_COMPTE = 'onboarding_grand_compte'
+    TYPE_LITIGE = 'litige'
+    TYPE_PROJET_TRANSVERSE = 'projet_transverse'
+    TYPE_AUTRE = 'autre'
+    TYPE_CHOICES = [
+        (TYPE_RECLAMATION_COMPLEXE, 'Réclamation complexe'),
+        (TYPE_ONBOARDING_GRAND_COMPTE, 'Onboarding grand compte'),
+        (TYPE_LITIGE, 'Litige'),
+        (TYPE_PROJET_TRANSVERSE, 'Projet transverse'),
+        (TYPE_AUTRE, 'Autre'),
+    ]
+
+    STATUT_OUVERT = 'ouvert'
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_EN_ATTENTE = 'en_attente'
+    STATUT_CLOS = 'clos'
+    STATUT_ABANDONNE = 'abandonne'
+    STATUT_CHOICES = [
+        (STATUT_OUVERT, 'Ouvert'),
+        (STATUT_EN_COURS, 'En cours'),
+        (STATUT_EN_ATTENTE, 'En attente'),
+        (STATUT_CLOS, 'Clos'),
+        (STATUT_ABANDONNE, 'Abandonné'),
+    ]
+    #: Statuts qui ferment le dossier (plus aucune échéance à surveiller).
+    STATUTS_FERMES = (STATUT_CLOS, STATUT_ABANDONNE)
+
+    PRIORITE_BASSE = 'basse'
+    PRIORITE_NORMALE = 'normale'
+    PRIORITE_HAUTE = 'haute'
+    PRIORITE_CRITIQUE = 'critique'
+    PRIORITE_CHOICES = [
+        (PRIORITE_BASSE, 'Basse'),
+        (PRIORITE_NORMALE, 'Normale'),
+        (PRIORITE_HAUTE, 'Haute'),
+        (PRIORITE_CRITIQUE, 'Critique'),
+    ]
+
+    type_dossier = models.CharField(
+        'Type de dossier', max_length=32,
+        choices=TYPE_CHOICES, default=TYPE_AUTRE,
+        help_text='Catalogue fermé — étendu par migration, jamais par saisie.')
+    titre = models.CharField('Titre', max_length=200)
+    description = models.TextField('Description', blank=True, default='')
+    statut = models.CharField(
+        'Statut', max_length=16, choices=STATUT_CHOICES,
+        default=STATUT_OUVERT,
+        help_text="Cycle de vie PROPRE au dossier — sans rapport avec le "
+                  'funnel commercial (STAGES.py).')
+    priorite = models.CharField(
+        'Priorité', max_length=16, choices=PRIORITE_CHOICES,
+        default=PRIORITE_NORMALE)
+    proprietaire = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='core_dossiers_possedes',
+        verbose_name='Propriétaire')
+    echeance = models.DateField(
+        'Échéance', null=True, blank=True,
+        help_text='Vide = aucune date cible surveillée.')
+    # NTWFL18 — marqueur anti-double-alerte : la date (locale) du DERNIER
+    # rappel d'échéance dépassée émis pour ce dossier. Le balayage quotidien
+    # ne réveille que les dossiers dont ce marqueur n'est pas déjà celui du
+    # jour — même discipline que ``WorkflowStepInstance.dernier_rappel_le``
+    # (NTWFL5), à la granularité du JOUR puisque le balayage est journalier.
+    dernier_rappel_echeance_le = models.DateField(
+        'Dernier rappel d\'échéance', null=True, blank=True,
+        help_text='Vide = jamais alerté ; une seule alerte par jour.')
+    # NTWFL20 — un dossier peut porter SON PROPRE processus d'approbation
+    # (ex. onboarding grand compte à 4 étapes), démarré depuis la définition
+    # configurée pour son ``type_dossier`` (voir
+    # ``core.dossiers.definition_pour_type``). SET_NULL : purger une instance
+    # de workflow ne détruit jamais le dossier — il redevient simplement un
+    # dossier sans processus. Vide = aucun processus attaché (défaut, et
+    # comportement inchangé pour tout dossier créé avant NTWFL20).
+    workflow_instance = models.ForeignKey(
+        'WorkflowInstance', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='dossiers',
+        verbose_name='Processus attaché')
+
+    class Meta:
+        verbose_name = 'Dossier'
+        verbose_name_plural = 'Dossiers'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='core_dossier_co_statut_idx'),
+            models.Index(fields=['company', 'type_dossier'],
+                         name='core_dossier_co_type_idx'),
+            models.Index(fields=['company', 'echeance'],
+                         name='core_dossier_co_ech_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.titre} ({self.get_type_dossier_display()})'
+
+    @property
+    def est_ferme(self):
+        """Vrai si le dossier ne réclame plus aucune surveillance."""
+        return self.statut in self.STATUTS_FERMES
+
+    def est_en_retard(self, aujourd_hui):
+        """Vrai si l'échéance est dépassée ET le dossier encore ouvert.
+
+        ``aujourd_hui`` est TOUJOURS passé par l'appelant (déterminisme
+        testable — même discipline que ``core.workflow``)."""
+        if self.echeance is None or self.est_ferme:
+            return False
+        return self.echeance < aujourd_hui
+
+
+class DossierLien(TenantModel):
+    """Un objet métier rattaché à un dossier (NTWFL17).
+
+    La cible est désignée GÉNÉRIQUEMENT (``content_type`` + ``object_id``) :
+    aucune FK réelle vers ``crm``/``ventes``/``sav``/``installations``… —
+    ``core`` resterait fondation même si l'une de ces apps disparaissait.
+    ``libelle`` fige un intitulé lisible au moment du rattachement, pour que
+    la liste reste affichable sans aller chercher chaque cible.
+    """
+
+    dossier = models.ForeignKey(
+        Dossier,
+        on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='liens', verbose_name='Dossier')
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,  # on_delete: clé de cible générique
+        related_name='+', verbose_name='Type de cible')
+    object_id = models.PositiveIntegerField('Identifiant de la cible')
+    cible = GenericForeignKey('content_type', 'object_id')
+    libelle = models.CharField(
+        'Libellé', max_length=200, blank=True, default='',
+        help_text='Intitulé figé de la cible au moment du rattachement.')
+
+    class Meta:
+        verbose_name = 'Objet lié au dossier'
+        verbose_name_plural = 'Objets liés au dossier'
+        ordering = ['dossier', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['dossier', 'content_type', 'object_id'],
+                name='core_dossier_lien_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['content_type', 'object_id'],
+                         name='core_doslien_target_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.dossier_id} → {self.content_type_id}#{self.object_id}'
+
+    @property
+    def cle_modele(self):
+        """``'app_label.model'`` de la cible — jamais un import de l'app."""
+        ct = self.content_type
+        return f'{ct.app_label}.{ct.model}' if ct else ''
+
+
+class DossierChecklistItem(TenantModel):
+    """Une étape à cocher d'un dossier (NTWFL17).
+
+    Reprend le trio éprouvé par ``installations.ChantierChecklistItem`` —
+    ``fait`` / ``fait_par`` / ``fait_le``. Différence assumée : pas de clé
+    ``cle``, car une checklist de dossier est SAISIE librement par l'équipe et
+    non matérialisée depuis un modèle d'étapes ; il n'y a donc rien à
+    réconcilier d'un passage à l'autre.
+    """
+
+    dossier = models.ForeignKey(
+        Dossier,
+        on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='checklist', verbose_name='Dossier')
+    libelle = models.CharField('Libellé', max_length=200)
+    ordre = models.PositiveIntegerField('Ordre', default=0)
+    fait = models.BooleanField('Fait', default=False)
+    fait_par = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='core_dossier_items_faits',
+        verbose_name='Fait par')
+    fait_le = models.DateTimeField('Fait le', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Étape de checklist (dossier)'
+        verbose_name_plural = 'Étapes de checklist (dossier)'
+        ordering = ['dossier', 'ordre', 'id']
+        indexes = [
+            models.Index(fields=['dossier', 'ordre'],
+                         name='core_dositem_ordre_idx'),
+        ]
+
+    def __str__(self):
+        coche = '✓' if self.fait else '—'
+        return f'{self.dossier_id} · {self.libelle} · {coche}'
+
+
+class DossierActivity(TenantModel):
+    """Chatter d'un dossier transverse (NTWFL18).
+
+    Même grammaire que ``crm.LeadActivity`` et ``contrats.ContratActivity`` :
+    des entrées AUTOMATIQUES (changement de statut, rattachement/détachement
+    d'un objet) et des NOTES manuelles. L'auteur et la société sont TOUJOURS
+    posés côté serveur — jamais lus du corps d'une requête.
+    """
+
+    KIND_CREATION = 'creation'
+    KIND_MODIFICATION = 'modification'
+    KIND_LIEN = 'lien'
+    KIND_NOTE = 'note'
+    KIND_CHOICES = [
+        (KIND_CREATION, 'Création'),
+        (KIND_MODIFICATION, 'Modification'),
+        (KIND_LIEN, 'Rattachement'),
+        (KIND_NOTE, 'Note'),
+    ]
+
+    dossier = models.ForeignKey(
+        Dossier,
+        on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='activites', verbose_name='Dossier')
+    kind = models.CharField(
+        'Type', max_length=16, choices=KIND_CHOICES, default=KIND_NOTE)
+    field = models.CharField('Champ', max_length=100, blank=True, default='')
+    field_label = models.CharField(
+        'Libellé du champ', max_length=150, blank=True, default='')
+    old_value = models.TextField('Ancienne valeur', blank=True, default='')
+    new_value = models.TextField('Nouvelle valeur', blank=True, default='')
+    body = models.TextField('Contenu', blank=True, default='')
+    user = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='core_dossier_activites',
+        verbose_name='Auteur')
+
+    class Meta:
+        verbose_name = 'Activité de dossier'
+        verbose_name_plural = 'Activités de dossier'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['dossier', '-created_at'],
+                         name='core_dosact_dos_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.dossier_id} {self.kind} {self.field}'.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -1503,6 +1822,19 @@ class ModuleToggle(TimestampedModel):
     raison = models.CharField(
         'Raison', max_length=255, blank=True, default='',
         help_text='Note optionnelle (ex. « hors offre », « en pilote »).')
+    # NTI18N36 — GRANULARITÉ RTL. Le passage en arabe ne peut pas être un
+    # interrupteur unique : un module dont les écrans n'ont pas encore été
+    # migrés s'affiche cassé en RTL (colonnes inversées, icônes
+    # directionnelles à l'envers). Ce drapeau rend la transition PROGRESSIVE :
+    # un utilisateur en ``locale=ar`` voit en RTL les modules déjà migrés, et
+    # les autres restent FORCÉS en LTR avec une mention discrète, au lieu de
+    # tout basculer d'un coup. Défaut FAUX = comportement strictement
+    # inchangé (tout en LTR) tant qu'un module n'est pas déclaré prêt.
+    # Le résolveur est ``core.rtl.direction_module``.
+    rtl_pret = models.BooleanField(
+        'Prêt pour le RTL', default=False,
+        help_text="Coché, ce module s'affiche en RTL pour un utilisateur en "
+                  'langue de droite à gauche ; sinon il reste en LTR.')
 
     class Meta:
         verbose_name = 'Activation de module'
@@ -3076,6 +3408,59 @@ class SearchChunk(TenantModel):
 
     def __str__(self):
         return f'{self.content_type}#{self.object_id} — {self.titre}'
+
+
+# ---------------------------------------------------------------------------
+# NTOBS21 — Réglages de FIABILITÉ par société : qui veut être prévenu de quoi.
+#
+# Les trois canaux d'information « fiabilité » (fenêtre de maintenance
+# planifiée, quota d'usage bientôt atteint, incident sur une région) partaient
+# jusqu'ici selon une politique unique, la même pour toutes les sociétés — donc
+# soit trop bavarde pour l'une, soit muette pour l'autre. Ce modèle porte le
+# choix de CHAQUE société, en un seul endroit.
+#
+# UNE ligne par société (``OneToOneField``) : ces réglages n'ont pas
+# d'historique, ils ont un ÉTAT courant. L'absence de ligne vaut les défauts
+# déclarés ici (tout activé, aucune région filtrée) — le lecteur applique donc
+# le comportement actuel tant qu'une société n'a rien réglé, sans migration de
+# données.
+#
+# ``core`` reste fondation : aucun import d'app métier (``authentication`` est
+# une app de fondation). Le consommateur est ``core/usage_limits.py``.
+# ---------------------------------------------------------------------------
+
+
+class ReliabilitySettings(TimestampedModel):
+    """Réglages de fiabilité d'une société (NTOBS21).
+
+    Trois interrupteurs de notification plus un filtre de région. Défauts =
+    comportement actuel : une société qui n'a jamais ouvert cet écran reçoit
+    exactement ce qu'elle recevait avant.
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant (societe)
+        related_name='reliability_settings', verbose_name='Société')
+
+    notifier_maintenance_email = models.BooleanField(
+        'Prévenir par e-mail des maintenances', default=True)
+    notifier_quota_email = models.BooleanField(
+        'Prévenir par e-mail des quotas', default=True)
+    notifier_incident_region = models.CharField(
+        'Région suivie pour les incidents', max_length=100,
+        null=True, blank=True, default='',
+        help_text='Vide = tous les incidents, sans filtre de région.')
+    afficher_badge_sla_dashboard = models.BooleanField(
+        'Afficher le badge SLA sur le tableau de bord', default=True)
+
+    class Meta:
+        verbose_name = 'Réglages de fiabilité'
+        verbose_name_plural = 'Réglages de fiabilité'
+        ordering = ['company_id']
+
+    def __str__(self):
+        return f'Fiabilité — société {self.company_id}'
 
 
 # NTSEC21 — Partage niveau enregistrement : ``SharingRule`` défini dans

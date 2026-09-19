@@ -162,6 +162,12 @@ EVENT_BTP_DGD_FINALISE = 'dgd.finalise'
 # pointées) : littéralement celles nommées par le plan NTUX32.
 EVENT_SAVED_VIEW_SHARED = 'saved_view_shared'
 EVENT_RECORD_RESTORED = 'record_restored'
+# NTI18N43 — bascule de langue (document d'un client, ou défaut de la société),
+# consommée depuis `core.events.langue_changed` par
+# `apps/publicapi/i18n_event_receivers.py` (jamais un import direct
+# `crm`/`parametres` -> `publicapi`). Clé SOULIGNÉE : littéralement celle
+# nommée par le plan NTI18N43.
+EVENT_LANGUE_CHANGED = 'langue_changed'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
@@ -188,6 +194,7 @@ EVENT_CHOICES = [
     (EVENT_BTP_DGD_FINALISE, 'BTP — décompte général finalisé'),
     (EVENT_SAVED_VIEW_SHARED, 'Vue partagée à l\'équipe'),
     (EVENT_RECORD_RESTORED, 'Élément restauré depuis la corbeille'),
+    (EVENT_LANGUE_CHANGED, 'Langue changée (client ou société)'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 

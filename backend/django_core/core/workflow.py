@@ -96,6 +96,13 @@ __all__ = [
     'approuver_en_masse',
     'register_source_conformite',
     'decisions_conformite',
+    # NTWFL25 — versionnement des définitions.
+    'derniere_version_active',
+    'instances_actives',
+    'a_des_instances_actives',
+    'forker_definition',
+    'editer_etapes_definition',
+    'migrer_instance_vers_version',
 ]
 
 
@@ -162,6 +169,9 @@ def demarrer_workflow(definition, target, company, user=None, now=None):
     instance = WorkflowInstance.objects.create(
         company=company,
         definition=definition,
+        # NTWFL25 — épinglage : l'instance retient la version sur laquelle
+        # elle démarre, et n'en bouge plus (sauf migration MANUELLE).
+        definition_version=getattr(definition, 'version', 1) or 1,
         content_type=ct,
         object_id=target.pk,
         statut=WorkflowInstance.STATUT_EN_COURS,
@@ -1074,8 +1084,15 @@ def _definition_depuis_matrice(company, matrice):
         return None
 
     code = _signature_definition_matrice(matrice.type_objet, paliers)
-    definition = WorkflowDefinition.objects.filter(
-        company=company, code=code).first()
+    # NTWFL25 — la lignée ``code`` peut porter plusieurs versions : on réutilise
+    # la DERNIÈRE version active ; à défaut, la plus récente quelle qu'elle
+    # soit (comportement historique préservé — sans ce repli, une lignée
+    # entièrement désactivée referait naître une v1 et collisionnerait sur
+    # l'unicité (société, code, version)).
+    lignee = WorkflowDefinition.objects.filter(company=company, code=code)
+    definition = lignee.filter(actif=True).order_by('-version', '-id').first()
+    if definition is None:
+        definition = lignee.order_by('-version', '-id').first()
     if definition is not None:
         return definition
 
@@ -1126,3 +1143,298 @@ def demarrer_depuis_matrice(
     if definition is None:
         return None
     return demarrer_workflow(definition, target, company, user=user, now=now)
+
+
+# ── NTWFL25 — versionnement des définitions et migration MANUELLE d'instance ─
+#
+# Le problème que cela règle : jusqu'ici, éditer les étapes d'une définition
+# changeait la structure SOUS LES PIEDS des instances déjà en cours — une
+# approbation démarrée sur 3 paliers pouvait se retrouver, au milieu du
+# parcours, avec 5 paliers dont deux qu'on n'avait jamais vus, ou pire, sans
+# l'étape où elle attendait. Désormais un ``code`` désigne une LIGNÉE :
+#
+#   * une édition STRUCTURELLE alors que des instances tournent FORKE la
+#     version suivante (``version + 1``, ``definition_precedente`` chaînée) et
+#     désactive l'ancienne — les instances en cours ne bougent PAS, les
+#     nouvelles démarrent sur la dernière version active ;
+#   * sans instance, la mutation EN PLACE reste autorisée (compat rétroactive :
+#     un brouillon qu'on retouche ne fabrique pas une v2 pour rien) ;
+#   * faire AVANCER une instance bloquée vers la nouvelle structure reste un
+#     geste MANUEL et explicite (``migrer_instance_vers_version``), jamais un
+#     effet de bord : l'administrateur déclare lui-même la correspondance
+#     ancien→nouvel index d'étape. Deviner ce mapping serait exactement le
+#     risque que le versionnement existe pour supprimer.
+#
+# Le patron « historique en lecture seule » est celui de
+# ``contrats.VersionContrat`` / ``kb.KbArticleVersion`` (cités comme référence,
+# jamais modifiés par cette tâche).
+
+#: Champs d'une étape recopiés/appliqués lors d'un fork ou d'une édition.
+CHAMPS_ETAPE = (
+    'nom', 'type_approbation', 'sla_heures', 'role_requis', 'escalade_vers',
+    'calendrier_ouvre', 'condition_transition', 'etape_alternative_si_echec',
+    'groupe_parallele', 'formulaire',
+)
+
+
+def derniere_version_active(company, code):
+    """La définition ACTIVE la plus récente de la lignée ``code``.
+
+    C'est elle que démarrent les nouvelles instances. ``None`` si la lignée
+    n'existe pas ou n'a plus de version active."""
+    from core.models import WorkflowDefinition
+    return (WorkflowDefinition.objects
+            .filter(company=company, code=code, actif=True)
+            .order_by('-version', '-id')
+            .first())
+
+
+def instances_actives(definition):
+    """Les instances de ``definition`` encore EN COURS."""
+    return definition.instances.filter(statut=WorkflowInstance.STATUT_EN_COURS)
+
+
+def a_des_instances_actives(definition):
+    """Vrai si au moins une instance de ``definition`` tourne encore."""
+    return instances_actives(definition).exists()
+
+
+def _etapes_jamais_instanciees(definition):
+    """Vrai si AUCUNE instance (même terminée) ne référence ces étapes.
+
+    ``WorkflowStepInstance.step_def`` est en PROTECT : une étape déjà jouée ne
+    peut pas être supprimée. C'est aussi la bonne règle métier — l'historique
+    d'une instance terminée ne se réécrit pas."""
+    return not WorkflowStepInstance.objects.filter(
+        step_def__definition=definition).exists()
+
+
+def _valeurs_etape(source):
+    """Extrait les champs d'étape d'un ``dict`` ou d'un objet étape."""
+    if isinstance(source, dict):
+        return {champ: source[champ] for champ in CHAMPS_ETAPE
+                if champ in source}
+    return {champ: getattr(source, champ) for champ in CHAMPS_ETAPE}
+
+
+def _materialiser_etapes(definition, etapes):
+    """Crée les ``WorkflowStepDefinition`` de ``definition``, renumérotées 1..n.
+
+    ``etapes`` est une liste de ``dict`` (ou d'étapes existantes à recopier) :
+    l'ordre de la liste FAIT l'ordre, ce qui garantit l'unicité
+    (definition, ordre) sans faire confiance à un index envoyé par un client.
+    """
+    from core.models import WorkflowStepDefinition
+    creees = []
+    for index, source in enumerate(etapes, start=1):
+        valeurs = _valeurs_etape(source)
+        valeurs.setdefault('nom', f'Étape {index}')
+        creees.append(WorkflowStepDefinition.objects.create(
+            definition=definition, ordre=index, **valeurs))
+    return creees
+
+
+@transaction.atomic
+def forker_definition(definition, etapes=None):
+    """Crée la version SUIVANTE de ``definition`` (NTWFL25).
+
+    ``etapes`` décrit la nouvelle structure ; ``None`` recopie la structure
+    actuelle (simple montée de version). L'ancienne version passe
+    ``actif=False`` — elle devient de l'historique en lecture seule, que les
+    instances déjà démarrées continuent d'exécuter sans être touchées.
+    """
+    from core.models import WorkflowDefinition
+
+    if etapes is None:
+        etapes = list(definition.steps.order_by('ordre', 'id'))
+
+    version_max = (WorkflowDefinition.objects
+                   .filter(company=definition.company, code=definition.code)
+                   .order_by('-version')
+                   .values_list('version', flat=True)
+                   .first()) or definition.version
+
+    nouvelle = WorkflowDefinition.objects.create(
+        company=definition.company,
+        code=definition.code,
+        nom=definition.nom,
+        description=definition.description,
+        actif=True,
+        version=version_max + 1,
+        definition_precedente=definition,
+    )
+    _materialiser_etapes(nouvelle, etapes)
+
+    if definition.actif:
+        definition.actif = False
+        definition.save(update_fields=['actif', 'updated_at'])
+    return nouvelle
+
+
+@transaction.atomic
+def editer_etapes_definition(definition, etapes):
+    """Applique une édition STRUCTURELLE — en place, ou en forkant (NTWFL25).
+
+    Retourne ``(definition_cible, forkee)``. ``forkee=True`` signifie qu'une
+    NOUVELLE version porte les étapes demandées et que ``definition`` est
+    restée intacte pour les instances qui l'exécutent.
+
+    Le fork s'impose dès qu'une instance a matérialisé ces étapes — en cours
+    (elle attendrait une étape disparue) comme terminée (son historique ne se
+    réécrit pas, et ``step_def`` est en PROTECT). Une définition jamais
+    instanciée mute EN PLACE : c'est la compatibilité rétroactive attendue.
+    """
+    if a_des_instances_actives(definition) or not _etapes_jamais_instanciees(
+            definition):
+        return forker_definition(definition, etapes), True
+
+    definition.steps.all().delete()
+    _materialiser_etapes(definition, etapes)
+    return definition, False
+
+
+def _valider_mapping(instance, nouvelle_definition, mapping_etapes):
+    """Contrôle le mapping ancien→nouvel index avant toute écriture.
+
+    Lève ``ValueError`` (message FR, actionnable) au premier défaut. Le
+    mapping est EXIGÉ exhaustif sur les étapes déjà DÉCIDÉES : abandonner
+    silencieusement une décision prise serait perdre de l'audit.
+    """
+    if instance.statut != WorkflowInstance.STATUT_EN_COURS:
+        raise ValueError(
+            'Seule une instance EN COURS peut être migrée vers une autre '
+            'version.')
+    if nouvelle_definition.pk == instance.definition_id:
+        raise ValueError(
+            "L'instance exécute déjà cette version de la définition.")
+    if nouvelle_definition.company_id != instance.company_id:
+        raise ValueError(
+            'La définition cible appartient à une autre société.')
+    if nouvelle_definition.code != instance.definition.code:
+        raise ValueError(
+            'La définition cible appartient à une autre lignée de processus '
+            f'(« {nouvelle_definition.code} » au lieu de '
+            f'« {instance.definition.code} »).')
+    if not isinstance(mapping_etapes, dict) or not mapping_etapes:
+        raise ValueError(
+            "Le mapping ancien→nouvel index d'étape est obligatoire : la "
+            'migration est un geste manuel, jamais une déduction.')
+
+    try:
+        mapping = {int(ancien): int(nouveau)
+                   for ancien, nouveau in mapping_etapes.items()}
+    except (TypeError, ValueError):
+        raise ValueError(
+            "Le mapping d'étapes doit associer des index entiers.")
+
+    ordres_cibles = set(
+        nouvelle_definition.steps.values_list('ordre', flat=True))
+    inconnus = sorted(set(mapping.values()) - ordres_cibles)
+    if inconnus:
+        raise ValueError(
+            'Étapes inexistantes dans la version cible : '
+            f"{', '.join(str(o) for o in inconnus)}.")
+
+    if len(set(mapping.values())) != len(mapping):
+        raise ValueError(
+            "Deux étapes d'origine ne peuvent pas viser la même étape "
+            'cible.')
+
+    steps = {step.ordre: step for step in instance.step_instances.all()}
+    orphelins = sorted(set(mapping) - set(steps))
+    if orphelins:
+        raise ValueError(
+            "Étapes inexistantes dans l'instance à migrer : "
+            f"{', '.join(str(o) for o in orphelins)}.")
+
+    decidees_non_mappees = sorted(
+        ordre for ordre, step in steps.items()
+        if step.statut != WorkflowStepInstance.STATUT_EN_ATTENTE
+        and ordre not in mapping)
+    if decidees_non_mappees:
+        raise ValueError(
+            'Étapes déjà décidées sans correspondance dans le mapping : '
+            f"{', '.join(str(o) for o in decidees_non_mappees)}. Le mapping "
+            'doit être exhaustif sur les décisions prises.')
+
+    if instance.etape_courante not in mapping:
+        raise ValueError(
+            f"L'étape courante ({instance.etape_courante}) doit figurer dans "
+            "le mapping : c'est elle qui décide où l'instance reprend.")
+
+    return mapping, steps
+
+
+@transaction.atomic
+def migrer_instance_vers_version(instance, nouvelle_definition,
+                                 mapping_etapes, now=None):
+    """Déplace MANUELLEMENT une instance en cours vers une autre version.
+
+    ``mapping_etapes`` — ``{ancien_ordre: nouvel_ordre}`` — est fourni par
+    l'administrateur : jamais deviné, jamais automatique (une correspondance
+    devinée ferait sauter ou rejouer une approbation). Il doit couvrir toutes
+    les étapes DÉJÀ DÉCIDÉES ainsi que l'étape courante.
+
+    Effet, sans rien perdre :
+      * chaque étape mappée est RE-POINTÉE sur l'étape correspondante de la
+        version cible (sa décision, son décideur, sa date et son commentaire
+        sont conservés tels quels) ;
+      * les étapes EN ATTENTE non mappées sont supprimées (il n'y a rien à
+        perdre) et remplacées par les étapes de la version cible qu'aucune
+        étape mappée ne couvre déjà ;
+      * l'instance est ré-épinglée (``definition`` + ``definition_version``) et
+        reprend à ``mapping_etapes[etape_courante]``.
+
+    Lève ``ValueError`` (message FR) si le mapping n'est pas recevable —
+    AVANT toute écriture.
+    """
+    moment = _resolve_now(now)
+    mapping, steps = _valider_mapping(
+        instance, nouvelle_definition, mapping_etapes)
+
+    etapes_cibles = {
+        step.ordre: step
+        for step in nouvelle_definition.steps.order_by('ordre', 'id')
+    }
+
+    # Les étapes EN ATTENTE que l'administrateur n'a pas mappées disparaissent.
+    for ordre, step in list(steps.items()):
+        if (ordre not in mapping
+                and step.statut == WorkflowStepInstance.STATUT_EN_ATTENTE):
+            step.delete()
+            steps.pop(ordre)
+
+    for ancien_ordre, nouvel_ordre in sorted(mapping.items()):
+        step = steps[ancien_ordre]
+        cible = etapes_cibles[nouvel_ordre]
+        step.step_def = cible
+        step.ordre = nouvel_ordre
+        step.sla_echeance = _sla_echeance(
+            step.created_at or moment, cible.sla_heures,
+            calendrier_ouvre=cible.calendrier_ouvre,
+            company=instance.company)
+        step.save(update_fields=['step_def', 'ordre', 'sla_echeance',
+                                 'updated_at'])
+
+    couverts = set(mapping.values())
+    for ordre, cible in etapes_cibles.items():
+        if ordre in couverts:
+            continue
+        WorkflowStepInstance.objects.create(
+            company=instance.company,
+            instance=instance,
+            step_def=cible,
+            ordre=ordre,
+            statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
+            sla_echeance=_sla_echeance(
+                moment, cible.sla_heures,
+                calendrier_ouvre=cible.calendrier_ouvre,
+                company=instance.company),
+        )
+
+    instance.definition = nouvelle_definition
+    instance.definition_version = nouvelle_definition.version
+    instance.etape_courante = mapping[instance.etape_courante]
+    instance.save(update_fields=['definition', 'definition_version',
+                                 'etape_courante', 'updated_at'])
+    return instance
