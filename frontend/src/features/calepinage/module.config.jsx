@@ -58,12 +58,16 @@ const AtelierCalepinage = lazy(async () => {
   return { default: () => <ToitureDesign mode="calepinage" /> }
 })
 
+// CAL35 — la LISTE réelle : vignettes, filtres RÉELLEMENT servis par CAL16,
+// pagination et état vide qui explique le geste de création.
+const CalepinageList = lazy(() => import('./CalepinageList'))
+
 /* ── Écrans de CETTE lane, en attente de leur tâche ────────────────────────
-   CAL35 (liste) et CAL36 (création) arrivent dans les deux commits suivants de
-   cette même lane et REMPLACENT ces deux enveloppes par les écrans réels. Elles
-   ne sont pas un « écran en construction » qui s'installe : elles existent pour
-   qu'aucune entrée de nav ne mène nulle part entre deux commits, ce que la
-   garde `check_ecrans_atteignables.py` interdit à juste titre. */
+   CAL36 (création) arrive dans le commit suivant de cette même lane et REMPLACE
+   cette enveloppe par l'écran réel. Elle n'est pas un « écran en construction »
+   qui s'installe : elle existe pour qu'aucune entrée de nav ne mène nulle part
+   entre deux commits, ce que la garde `check_ecrans_atteignables.py` interdit
+   à juste titre. */
 function RouteEnPreparation({ titre, description, icon }) {
   return (
     <EmptyState
@@ -113,11 +117,7 @@ const config = {
   ],
   sectionLabels: { calepinage: 'Calepinage' },
   routes: [
-    { path: '/calepinage', component: enPreparation({
-      titre: 'Calepinages',
-      icon: LayoutGrid,
-      description: "La liste des calepinages de votre société arrive avec l’écran dédié (CAL35).",
-    }), roles: ROLES },
+    { path: '/calepinage', component: CalepinageList, roles: ROLES },
     // AVANT `/calepinage/:id` — sinon « nouveau » est lu comme un identifiant.
     { path: '/calepinage/nouveau', component: enPreparation({
       titre: 'Nouveau calepinage',
