@@ -40,12 +40,13 @@ class SeederDisponibleTests(TestCase):
     def test_ma_is_available_today(self):
         self.assertTrue(seeder_disponible('MA'))
 
-    def test_fr_sn_ci_not_available_until_nti18n13_ships(self):
-        # COMPOSITION GUARD : ces seeders sont le ressort de NTI18N13
-        # (autre lane, non construit). Aucune erreur ; juste indisponibles.
-        self.assertFalse(seeder_disponible('FR'))
-        self.assertFalse(seeder_disponible('SN'))
-        self.assertFalse(seeder_disponible('CI'))
+    def test_fr_sn_ci_available_since_nti18n13(self):
+        # NTI18N13 (drain 20/09/2026) a livré seed_holidays_fr/sn/ci dans
+        # apps/notifications — la détection dynamique doit les voir sans
+        # qu'aucune liste ne soit tenue à la main ici.
+        self.assertTrue(seeder_disponible('FR'))
+        self.assertTrue(seeder_disponible('SN'))
+        self.assertTrue(seeder_disponible('CI'))
 
     def test_unknown_pays_never_raises(self):
         self.assertFalse(seeder_disponible('ZZ'))
