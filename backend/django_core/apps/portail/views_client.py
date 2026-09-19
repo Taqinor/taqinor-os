@@ -141,6 +141,45 @@ def tableau_de_bord_client(request):
     return Response(resume)
 
 
+@extend_schema(responses=inline_serializer(
+    name='PortailClientMaConsommation',
+    fields={
+        'window_days': serializers.IntegerField(),
+        'provider_configure': serializers.BooleanField(),
+        'points': serializers.ListField(child=inline_serializer(
+            name='PortailClientConsommationPoint',
+            fields={
+                'date': serializers.DateField(),
+                'energy_kwh': serializers.DecimalField(
+                    max_digits=12, decimal_places=2),
+            })),
+        'alertes_ouvertes': serializers.IntegerField(),
+    }))
+@api_view(['GET'])
+@permission_classes([IsPortalClientUser])
+def ma_consommation_client(request):
+    """NTPRT15 — « Ma consommation » : série de production (kWh) + drapeaux
+    de sous-performance OUVERTS des systèmes du client connecté — LECTURE
+    SEULE (``monitoring.selectors``, jamais un import de ``monitoring.
+    models`` — frontière cross-app CLAUDE.md), jamais d'écriture depuis le
+    portail.
+
+    No-op gracieux (critère d'acceptation) : sans provider configuré
+    (défaut ``NoOpProvider`` — saisie manuelle absente), ``points`` est une
+    liste VIDE et ``provider_configure`` est faux — jamais une erreur 500,
+    l'écran affiche alors un état vide explicite."""
+    from apps.monitoring.selectors import (
+        production_kwh_series_client_portail,
+        underperformance_flags_client_portail,
+    )
+
+    company, client_id = _scope(request)
+    serie = production_kwh_series_client_portail(company, client_id)
+    alertes = underperformance_flags_client_portail(company, client_id)
+    serie['alertes_ouvertes'] = alertes.count()
+    return Response(serie)
+
+
 class MesDevisPortailViewSet(viewsets.ViewSet):
     """NTPRT10 — « Mes devis » : liste, détail, acceptation."""
 

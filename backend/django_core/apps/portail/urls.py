@@ -34,6 +34,7 @@ from .views_client import (
     MesLivraisonsPortailViewSet,
     MonEquipePortailViewSet,
     SatisfactionPortailViewSet,
+    ma_consommation_client,
     tableau_de_bord_client,
 )
 from .views_externes import (
@@ -119,6 +120,10 @@ urlpatterns = [
     # symétrique de NTPRT20/NTPRT27 ci-dessous).
     path('client/tableau-de-bord/', tableau_de_bord_client,
          name='portail-client-tableau-de-bord'),
+    # NTPRT15 — « Ma consommation » : série de production + alertes de
+    # sous-performance ouvertes, lecture seule.
+    path('client/ma-consommation/', ma_consommation_client,
+         name='portail-client-ma-consommation'),
     # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et
     # PARTENAIRE (gardes de portée EXACTE, symétriques du portail client).
     path('fournisseur/tableau-de-bord/', tableau_de_bord_fournisseur,
