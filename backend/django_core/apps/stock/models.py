@@ -2812,6 +2812,11 @@ from .models_consignation import (  # noqa: E402,F401
 from .models_rfa import AccordRFAFournisseur  # noqa: E402,F401
 from .models_van_sales import StockVehicule  # noqa: E402,F401
 
+# ── Groupe NTPRT — PORTAIL FOURNISSEUR (comptes réels, annonces de livraison) ─
+from .models_portail_fournisseur import (  # noqa: E402,F401
+    CompteFournisseurPortail,
+)
+
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────
 # PrixFournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur,

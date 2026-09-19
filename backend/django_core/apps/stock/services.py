@@ -6156,6 +6156,231 @@ def notify_bcf_confirmation_fournisseur(bc):
         pass
 
 
+# ── NTPRT3 — Compte fournisseur RÉEL (remplace le jeton comme voie primaire) ─
+#
+# Avant NTPRT3 le seul accès d'un fournisseur était ``PortailFournisseurToken``
+# (XPUR22) : un jeton opaque dans un lien email. NTPRT3 fait du compte
+# utilisateur RÉEL la voie PRIMAIRE — un ``CustomUser``
+# ``portee=portail_fournisseur`` qui se connecte par le login JWT STANDARD,
+# jamais un second système d'authentification. Le jeton reste EN PLACE, sans un
+# octet de changement, pour les liens ponctuels (« confirmez ce BCF par
+# email ») qui n'exigent pas de compte.
+#
+# Décisions de sécurité (délibérément strictes, alignées sur NTPRT2) :
+#   * Le mot de passe temporaire ne sort JAMAIS dans une réponse HTTP : il part
+#     par email (console en local, SendGrid gated en prod — no-op sans clé). Le
+#     compte naît ``must_change_password=True`` : la garde portail refuse tout
+#     écran tant qu'il n'est pas remplacé (AUD139).
+#   * Idempotent SANS effet de bord : re-provisionner ne réinitialise aucun mot
+#     de passe et ne RÉACTIVE JAMAIS un accès révoqué — réactiver en silence un
+#     accès retiré serait un élargissement d'accès que personne n'a demandé.
+#   * Le compte porte le rôle système « Portail fournisseur » (permissions
+#     ``portail_*`` uniquement, aucun code interne) : par construction il
+#     n'atteint aucun endpoint interne (NTPRT1 + NTPRT5).
+
+#: Longueur du mot de passe temporaire (jamais journalisé, jamais rendu).
+LONGUEUR_MOT_DE_PASSE_PORTAIL_FOURNISSEUR = 16
+
+
+def _username_portail_fournisseur_disponible(base):
+    """Renvoie un ``username`` LIBRE dérivé de ``base``.
+
+    ``CustomUser.username`` est unique GLOBALEMENT (toutes sociétés
+    confondues) : deux sociétés peuvent référencer le même fournisseur avec le
+    même email. On suffixe donc ``-2``, ``-3``… jusqu'à trouver un identifiant
+    libre, sans jamais voler celui d'un compte existant.
+    """
+    from authentication.models import CustomUser
+
+    base = (base or '').strip().lower()[:140] or 'portail-fournisseur'
+    candidat = base
+    suffixe = 1
+    while CustomUser.objects.filter(username=candidat).exists():
+        suffixe += 1
+        candidat = f'{base}-{suffixe}'[:150]
+    return candidat
+
+
+def _nom_affiche_societe(company):
+    """Nom de marque de la société pour un email sortant (NTPRT19).
+
+    Lit ``core.TenantTheme`` (couche de fondation, jamais une app métier) puis
+    retombe sur la raison sociale. Ne lève jamais : un thème absent ne doit pas
+    empêcher l'ouverture d'un accès.
+    """
+    try:
+        from core.models import TenantTheme
+        theme = TenantTheme.objects.filter(company=company).first()
+        if theme is not None and (theme.nom_affichage or '').strip():
+            return theme.nom_affichage.strip()
+    except Exception:  # noqa: BLE001 — la marque ne casse jamais un accès
+        pass
+    return (getattr(company, 'nom', '') or '').strip()
+
+
+def _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company):
+    """Envoie le mot de passe temporaire au fournisseur. Best-effort.
+
+    Sans ``SENDGRID_API_KEY`` le backend email est la console (local) ou un
+    no-op : le provisionnement RÉUSSIT quand même (le mot de passe est alors
+    redéfini par le flux « mot de passe oublié » standard). Le mot de passe
+    n'est jamais renvoyé à l'appelant HTTP.
+    """
+    if not user.email:
+        return False
+    try:
+        from django.conf import settings as dj_settings
+        from django.core.mail import send_mail
+
+        societe = _nom_affiche_societe(company) or 'votre client'
+        send_mail(
+            subject=f'Votre accès au portail fournisseur {societe}',
+            message=(
+                f'Bonjour,\n\n'
+                f'Votre accès au portail fournisseur de {societe} est '
+                f'ouvert.\n\n'
+                f'Identifiant : {user.username}\n'
+                f'Mot de passe temporaire : {mot_de_passe}\n\n'
+                f'Il vous sera demandé de le changer à la première '
+                f'connexion.\n'
+            ),
+            from_email=getattr(dj_settings, 'DEFAULT_FROM_EMAIL', None),
+            recipient_list=[user.email],
+            fail_silently=True,
+        )
+        return True
+    except Exception:  # noqa: BLE001 — un email KO ne casse jamais l'accès
+        return False
+
+
+def provisionner_compte_fournisseur(company, fournisseur_id):
+    """NTPRT3 — crée (ou renvoie) le compte portail RÉEL d'un fournisseur.
+
+    Renvoie ``(user, cree)`` où ``cree`` dit si un ``CustomUser`` a été créé par
+    CET appel. Un ``fournisseur_id`` absent, ou d'une AUTRE société, renvoie
+    ``(None, False)`` — jamais un compte croisé.
+
+    Le compte porte ``portail_fournisseur_id = fournisseur.id`` : c'est CE
+    champ que lisent les gardes (``roles.permissions.IsPortalFournisseurUser``)
+    et les sélecteurs, donc le compte ne voit jamais que SES documents.
+    """
+    from django.db import transaction
+    from django.utils.crypto import get_random_string
+
+    from apps.roles.models import (
+        PORTAIL_FOURNISSEUR_PERMISSIONS,
+        ROLE_PORTAIL_FOURNISSEUR,
+        Role,
+    )
+    from authentication.models import CustomUser
+
+    from .models import CompteFournisseurPortail, Fournisseur
+
+    if company is None or not fournisseur_id:
+        return None, False
+    fournisseur = (Fournisseur.objects
+                   .filter(company=company, pk=fournisseur_id).first())
+    if fournisseur is None:
+        return None, False
+
+    with transaction.atomic():
+        # Idempotence : un compte déjà rattaché à CE fournisseur dans CETTE
+        # société est renvoyé tel quel — ni mot de passe réinitialisé, ni
+        # réactivation silencieuse d'un accès révoqué.
+        existant = (CompteFournisseurPortail.objects
+                    .select_related('utilisateur')
+                    .filter(company=company, fournisseur=fournisseur)
+                    .first())
+        if existant is not None:
+            return existant.utilisateur, False
+
+        role, _ = Role.objects.get_or_create(
+            company=company,
+            nom=ROLE_PORTAIL_FOURNISSEUR,
+            defaults={
+                'permissions': list(PORTAIL_FOURNISSEUR_PERMISSIONS),
+                'est_systeme': True,
+            },
+        )
+
+        email = (fournisseur.email or '').strip()
+        mot_de_passe = get_random_string(
+            LONGUEUR_MOT_DE_PASSE_PORTAIL_FOURNISSEUR)
+        user = CustomUser(
+            username=_username_portail_fournisseur_disponible(
+                email or f'fournisseur-{fournisseur.id}'),
+            email=email,
+            company=company,
+            role=role,
+            portee=CustomUser.PORTEE_PORTAIL_FOURNISSEUR,
+            portail_fournisseur_id=fournisseur.id,
+            must_change_password=True,
+            is_staff=False,
+            is_superuser=False,
+        )
+        user.set_password(mot_de_passe)
+        user.save()
+        CompteFournisseurPortail.objects.create(
+            company=company, fournisseur=fournisseur, utilisateur=user)
+
+    _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company)
+    return user, True
+
+
+def _basculer_acces_compte_fournisseur(company, fournisseur_id, *, actif):
+    """Pose ``actif`` sur le compte portail ET ``is_active`` sur son compte
+    utilisateur, atomiquement. Renvoie ``(compte, nb_utilisateurs)``.
+
+    Les DEUX portes se ferment ensemble : ``actif`` est le drapeau métier
+    (« cet accès est-il ouvert ? ») et ``is_active`` est celui que SimpleJWT
+    refuse dès l'authentification, y compris sur un jeton déjà distribué. Un
+    seul des deux laisserait une porte ouverte.
+    """
+    from django.db import transaction
+
+    from authentication.models import CustomUser
+
+    from .models import CompteFournisseurPortail
+
+    if company is None or not fournisseur_id:
+        return None, 0
+
+    with transaction.atomic():
+        compte = (CompteFournisseurPortail.objects
+                  .select_for_update()
+                  .filter(company=company, fournisseur_id=fournisseur_id)
+                  .first())
+        if compte is None:
+            return None, 0
+        if compte.actif != actif:
+            compte.actif = actif
+            compte.save(update_fields=['actif', 'updated_at'])
+        nb = CustomUser.objects.filter(
+            company=company,
+            portee=CustomUser.PORTEE_PORTAIL_FOURNISSEUR,
+            portail_fournisseur_id=fournisseur_id,
+        ).update(is_active=actif)
+    return compte, nb
+
+
+def revoquer_acces_compte_fournisseur(company, fournisseur_id):
+    """NTPRT3 — ferme l'accès portail d'un fournisseur (les deux portes).
+
+    Rien n'est supprimé : la ligne reste pour la traçabilité, et
+    ``reactiver_acces_compte_fournisseur`` est l'action EXPLICITE et symétrique
+    qui rouvre l'accès — jamais un effet de bord d'un re-provisionnement.
+    """
+    return _basculer_acces_compte_fournisseur(
+        company, fournisseur_id, actif=False)
+
+
+def reactiver_acces_compte_fournisseur(company, fournisseur_id):
+    """NTPRT3 — rouvre un accès portail fournisseur révoqué (action
+    explicite)."""
+    return _basculer_acces_compte_fournisseur(
+        company, fournisseur_id, actif=True)
+
+
 # ── XPUR24 — Tableau de bord achats (analyse des dépenses) ──────────────────
 # FG59 note UN fournisseur (scorecard) et FG132 vieillit les dettes (balance
 # âgée), mais aucune vue TRANSVERSE des achats n'existait. Admin/responsable

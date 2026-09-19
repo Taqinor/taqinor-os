@@ -1555,6 +1555,32 @@ def bcf_portail_fournisseur(company, fournisseur_id):
     return lignes
 
 
+def compte_fournisseur_portail_actif(company_id, fournisseur_id):
+    """NTPRT3 — l'accès portail de ce fournisseur est-il OUVERT ?
+
+    Trois réponses distinctes, et la distinction compte :
+
+    * ``True``  — un compte existe et son accès est ouvert ;
+    * ``False`` — un compte existe et son accès a été RÉVOQUÉ ;
+    * ``None``  — aucun compte enregistré. Ce n'est PAS une révocation : un
+      fournisseur qui n'a jamais eu de compte portail ne doit pas être traité
+      comme un accès retiré (le chemin tokenisé XPUR22 reste le sien).
+
+    Point d'entrée cross-app en LECTURE SEULE (``apps.roles``/``apps.portail``
+    n'importent jamais ``apps.stock.models``).
+    """
+    if not company_id or not fournisseur_id:
+        return None
+
+    from .models import CompteFournisseurPortail
+
+    etat = (CompteFournisseurPortail.objects
+            .filter(company_id=company_id, fournisseur_id=fournisseur_id)
+            .values_list('actif', flat=True)
+            .first())
+    return etat
+
+
 # ── PV6 — Specs & Kit de calepinage DÉRIVÉS de FicheTechnique (PV5) ─────────
 # Point d'entrée cross-app LECTURE SEULE : le moteur de calepinage
 # (core.calepinage) et les autres apps lisent les caractéristiques d'un
