@@ -3463,6 +3463,97 @@ class ReliabilitySettings(TimestampedModel):
         return f'Fiabilité — société {self.company_id}'
 
 
+# ---------------------------------------------------------------------------
+# NTI18N39 — Instantané HEBDOMADAIRE de la couverture i18n de l'interface.
+#
+# Le rapport de couverture (NTI18N1, `scripts/extract_i18n_strings.py`) était
+# produit à la main et committé en JSON ; l'écran NTI18N28 lisait ce fichier.
+# Ce modèle en garde l'HISTORIQUE pour que l'écran puisse afficher la date du
+# dernier calcul ET un delta vs la semaine précédente, ce qu'un fichier unique
+# ne permet pas (il n'a aucune mémoire de son état antérieur).
+#
+# CE QUE LES CHIFFRES MESURENT, EXACTEMENT : le code source de l'interface du
+# PRODUIT (`frontend/src`), pas les données d'un tenant. Les valeurs sont donc
+# IDENTIQUES d'une société à l'autre à une semaine donnée. La ligne est
+# néanmoins par société (``TenantModel``, comme ``SlaSnapshot``) parce que
+# l'écran qui la consomme vit dans Paramètres → Localisation D'UNE société :
+# elle lit l'historique de son propre tenant sans requête cross-tenant. Ce
+# n'est jamais une mesure par tenant, et rien ici ne le laisse croire.
+#
+# Clé d'idempotence : (société, semaine) — ``semaine`` est le LUNDI de la
+# semaine ISO. Un job rejoué le même lundi met la ligne à jour, il n'en
+# empile pas une seconde.
+#
+# ``core`` reste fondation : aucun import d'app métier.
+# ---------------------------------------------------------------------------
+
+
+class I18nCoverageSnapshot(TenantModel):
+    """Couverture i18n de l'UI mesurée une semaine donnée (NTI18N39).
+
+    ``company`` (obligatoire, imposée côté serveur) et ``created_at`` /
+    ``updated_at`` viennent de ``TenantModel``.
+    """
+
+    semaine = models.DateField(
+        'Semaine (lundi)',
+        help_text='Lundi de la semaine ISO couverte par la mesure.')
+    calcule_le = models.DateTimeField('Calculé le', default=timezone.now)
+    couverture_pct = models.DecimalField(
+        'Couverture (%)', max_digits=5, decimal_places=1,
+        help_text='Part des composants de page migrés vers useI18n/useT.')
+    composants_total = models.PositiveIntegerField(
+        'Composants de page', default=0)
+    composants_migres = models.PositiveIntegerField(
+        'Composants migrés', default=0)
+    chaines_en_dur = models.PositiveIntegerField(
+        'Chaînes en dur restantes', default=0)
+    par_domaine = models.JSONField(
+        'Détail par domaine', default=dict, blank=True,
+        help_text='Rapport par domaine (crm/ventes/stock…) tel que produit '
+                  'par scripts/extract_i18n_strings.py — jamais recalculé ici.')
+
+    class Meta:
+        verbose_name = 'Couverture i18n (instantané)'
+        verbose_name_plural = 'Couverture i18n (instantanés)'
+        ordering = ['-semaine']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'semaine'],
+                name='core_i18ncoverage_co_semaine'),
+        ]
+
+    def __str__(self):
+        return (f'Couverture i18n {self.couverture_pct}% — semaine du '
+                f'{self.semaine:%d/%m/%Y}')
+
+    @staticmethod
+    def lundi_de(jour):
+        """Lundi de la semaine ISO contenant ``jour``."""
+        from datetime import timedelta
+        return jour - timedelta(days=jour.weekday())
+
+    def precedent(self):
+        """L'instantané de la société STRICTEMENT antérieur, ou ``None``.
+
+        ``None`` = aucune mesure antérieure : l'écran affiche « pas de
+        comparaison disponible », jamais un delta de 0 qui laisserait croire à
+        une semaine sans progrès.
+        """
+        return (type(self).objects
+                .filter(company_id=self.company_id, semaine__lt=self.semaine)
+                .order_by('-semaine')
+                .first())
+
+    @property
+    def delta_pct(self):
+        """Écart de couverture vs la semaine précédente, ``None`` si inconnu."""
+        precedent = self.precedent()
+        if precedent is None:
+            return None
+        return self.couverture_pct - precedent.couverture_pct
+
+
 # NTSEC21 — Partage niveau enregistrement : ``SharingRule`` défini dans
 # ``core/sharing.py`` (même pattern d'éclatement que ``core/idempotency.py``),
 # réexporté ici en tout dernier pour que la découverte Django (app_label 'core',
