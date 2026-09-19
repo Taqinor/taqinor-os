@@ -150,7 +150,10 @@ class PositionTechnicienViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
 
 class GeofenceAlertViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
-    """XFSM23 — alertes géofence (lecture + acquittement responsable/admin)."""
+    """XFSM23/NTMOB9 — franchissements du rayon chantier (lecture +
+    acquittement responsable/admin). Filtrable par ``intervention``, par
+    ``chantier`` et par ``type_franchissement`` (``entree``/``sortie``) : c'est
+    la lecture qui alimente l'historique de présence par chantier (NTMOB9)."""
     queryset = GeofenceAlert.objects.select_related(
         'intervention', 'technicien', 'position').all()
     serializer_class = GeofenceAlertSerializer
@@ -160,9 +163,16 @@ class GeofenceAlertViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        intervention = self.request.query_params.get('intervention')
+        params = self.request.query_params
+        intervention = params.get('intervention')
         if intervention:
             qs = qs.filter(intervention_id=intervention)
+        chantier = params.get('chantier')
+        if chantier:
+            qs = qs.filter(intervention__installation_id=chantier)
+        type_franchissement = params.get('type_franchissement')
+        if type_franchissement in GeofenceAlert.TypeFranchissement.values:
+            qs = qs.filter(type_franchissement=type_franchissement)
         return qs
 
     @action(detail=True, methods=['post'])

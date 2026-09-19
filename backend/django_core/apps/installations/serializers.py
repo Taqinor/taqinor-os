@@ -2998,20 +2998,24 @@ class PositionTechnicienSerializer(serializers.ModelSerializer):
 
 
 class GeofenceAlertSerializer(serializers.ModelSerializer):
-    """XFSM23 — alerte géofence (position hors du rayon attendu du chantier
-    pendant une intervention active). Lecture seule côté API — générée
-    uniquement par le service ``enregistrer_position``."""
+    """XFSM23/NTMOB9 — franchissement du rayon attendu du chantier pendant une
+    intervention active : ``sortie`` (position hors rayon) ou ``entree``
+    (arrivée sur site, NTMOB9). Lecture seule côté API — généré uniquement par
+    le service ``enregistrer_position``."""
     technicien_nom = serializers.CharField(
         source='technicien.username', read_only=True, default=None)
+    type_franchissement_display = serializers.CharField(
+        source='get_type_franchissement_display', read_only=True, default=None)
 
     class Meta:
         model = GeofenceAlert
         fields = [
             'id', 'intervention', 'technicien', 'technicien_nom', 'position',
             'distance_site_km', 'rayon_attendu_km', 'created_at',
+            'type_franchissement', 'type_franchissement_display',
             'acquittee', 'acquittee_par', 'acquittee_le',
         ]
         read_only_fields = [
             'intervention', 'technicien', 'position', 'distance_site_km',
-            'rayon_attendu_km', 'created_at',
+            'rayon_attendu_km', 'created_at', 'type_franchissement',
         ]
