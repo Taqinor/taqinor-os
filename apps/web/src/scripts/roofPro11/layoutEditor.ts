@@ -62,6 +62,12 @@ import {
   checkPanelAt,
   findFreeSpot,
   copyFreeState,
+  rotateFreePanels,
+  snapCandidateForPanel,
+  alignPanels,
+  distributePanels,
+  toUV,
+  toENU,
   type FreeGeom,
   type FreeCheck,
   type FreeLayoutState,
@@ -159,6 +165,16 @@ export interface LayoutEditor {
    *  centre sur la lattice courante et rend la 3D avec CETTE occupation. Renvoie true si
    *  la disposition a été appliquée. */
   hydrateLayout: (centers: readonly { cx: number; cy: number }[], origin?: readonly [number, number], mode?: 'lattice' | 'free') => boolean;
+  /** CAL80 — tourne la sélection libre donnée (angle ABSOLU, °). Tout ou rien ; refusée
+   *  SEULEMENT sur une contrainte DURE réelle (chevauchement, sortie de contour, obstacle). */
+  freeRotateSelection: (angleDeg: number, members: readonly number[]) => boolean;
+  /** CAL81 — position AIMANTÉE (bord de toit / autre panneau) pour un glissé en cours ; ne
+   *  modifie rien, l'appelant applique ensuite le déplacement normalement. */
+  freeSnapCandidate: (idx: number, cx: number, cy: number) => { cx: number; cy: number; snapped: boolean };
+  /** CAL81 — « aligner » la sélection libre (rangée ou colonne droite). Tout ou rien. */
+  freeAlignSelection: (axis: 'row' | 'col', members: readonly number[]) => boolean;
+  /** CAL81 — « distribuer » la sélection libre à écart égal. Tout ou rien. */
+  freeDistributeSelection: (members: readonly number[]) => boolean;
 }
 
 /**
@@ -704,6 +720,85 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (layoutNoteEl) {
       layoutNoteEl.textContent = `Panneau retiré — ${fmt(st.panels.length)} posés. Le devis suivra ce nombre à l’enregistrement.`;
     }
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /** CAL80 — tourne la sélection libre (angle ABSOLU, ° ; chaque membre autour de SON propre
+   *  centre) — tout ou rien, refusée SEULEMENT sur une contrainte DURE réelle (chevauchement,
+   *  sortie de contour, obstacle). */
+  function freeRotateSelection(angleDeg: number, members: readonly number[]): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g || !members.length) return false;
+    recordFreeHistory();
+    const res = rotateFreePanels(st, g, members, angleDeg, margins());
+    if (!res.ok) {
+      freeHistory.drop();
+      flashRefusal(members);
+      if (layoutNoteEl) {
+        const why = res.blocked ? res.blocked.violations.map(violationLabel).join(', ') : 'rotation invalide';
+        layoutNoteEl.textContent = `Rotation refusée : ${why} — rien n’a bougé.`;
+      }
+      renderLayoutPanel();
+      return false;
+    }
+    if (layoutNoteEl) layoutNoteEl.textContent = `Tourné — ${fmt(members.length)} panneaux (placement libre).`;
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /** CAL81 — position AIMANTÉE (bord de toit / autre panneau) pour un glissé libre en cours,
+   *  dans le seuil `LAYOUT_GRAB_PX`-équivalent (même pas que `FREE_STEP_M`, ×10 = 10 cm). Ne
+   *  MODIFIE rien : c'est une proposition que l'appelant valide ensuite normalement. */
+  const FREE_SNAP_THRESHOLD_M = 0.1;
+  function freeSnapCandidate(idx: number, cx: number, cy: number): { cx: number; cy: number; snapped: boolean } {
+    const g = freeGeom();
+    const st = freeState();
+    if (!st || !g) return { cx, cy, snapped: false };
+    const [u, v] = toUV(g, cx, cy);
+    const snap = snapCandidateForPanel(st, g, idx, u, v, FREE_SNAP_THRESHOLD_M);
+    const [scx, scy] = toENU(g, snap.cu, snap.cv);
+    return { cx: snap.snapped ? scx : cx, cy: snap.snapped ? scy : cy, snapped: snap.snapped };
+  }
+
+  /** CAL81 — « aligner » la sélection libre (rangée ou colonne droite) — tout ou rien. */
+  function freeAlignSelection(axis: 'row' | 'col', members: readonly number[]): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g || members.length < 2) return false;
+    recordFreeHistory();
+    const res = alignPanels(st, g, members, axis, margins());
+    if (!res.ok) {
+      freeHistory.drop();
+      flashRefusal(members);
+      if (layoutNoteEl) layoutNoteEl.textContent = `Alignement refusé — rien n’a bougé.`;
+      renderLayoutPanel();
+      return false;
+    }
+    if (layoutNoteEl) layoutNoteEl.textContent = `Aligné — ${fmt(members.length)} panneaux (placement libre).`;
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /** CAL81 — « distribuer » la sélection libre à écart égal — tout ou rien. */
+  function freeDistributeSelection(members: readonly number[]): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g || members.length < 3) return false;
+    recordFreeHistory();
+    const res = distributePanels(st, g, members, margins());
+    if (!res.ok) {
+      freeHistory.drop();
+      flashRefusal(members);
+      if (layoutNoteEl) layoutNoteEl.textContent = `Distribution refusée — rien n’a bougé.`;
+      renderLayoutPanel();
+      return false;
+    }
+    if (layoutNoteEl) layoutNoteEl.textContent = `Distribué — ${fmt(members.length)} panneaux (placement libre).`;
     renderCustomLayout();
     renderLayoutPanel();
     return true;
@@ -2302,5 +2397,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       };
       syncFreeInputs();
     },
+    freeRotateSelection,
+    freeSnapCandidate,
+    freeAlignSelection,
+    freeDistributeSelection,
   };
 }

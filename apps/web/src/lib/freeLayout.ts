@@ -47,6 +47,12 @@ export interface FreePanel {
   cx: number;
   cy: number;
   face?: 'E' | 'W';
+  /** CAL80 — rotation propre du panneau (degrés), EN PLUS de l'axe de rangée (g.u/g.s) :
+   *  0/absent = panneau aligné sur la rangée, comportement INCHANGÉ (le rectangle axé
+   *  reste le chemin rapide partout ailleurs dans ce module — `rectOfPanel`/`checkRect`
+   *  n'y touchent pas). Une valeur non nulle est lue UNIQUEMENT par les fonctions
+   *  `rotate*`/`panelCornersUV` ci-dessous. */
+  angleDeg?: number;
 }
 
 /** Anneau d'exclusion : empreinte ENU d'un obstacle + son dégagement propre (m). */
@@ -323,6 +329,198 @@ export function checkPanelAt(
   return checkRect(state, g, rectAt(g, cu, cv), margins, new Set([idx]));
 }
 
+// ═══════════ CAL80 — rotation LIBRE d'un panneau ou d'une sélection ═══════════
+// Le rectangle AXÉ (RectUV) suffit tant que tous les panneaux partagent l'axe de rangée —
+// c'est le chemin rapide gardé INCHANGÉ partout au-dessus. Une rotation PROPRE au panneau
+// casse cette hypothèse : les fonctions ci-dessous travaillent sur le POLYGONE à 4 coins
+// (rotation générale) et retombent EXACTEMENT sur `rectAt`/`rectsOverlap` à angle 0 (mêmes
+// coins, à l'ordre près) — aucune régression du chemin non tourné.
+
+/** 4 coins (u, v) d'un panneau centré en (cu, cv), tourné de `angleDeg` (propre au panneau,
+ *  EN PLUS de l'axe de rangée déjà porté par le repère (u, v)). angleDeg=0 → mêmes 4 coins
+ *  que `rectAt` (à l'ordre près), donc les mêmes tests d'intersection. */
+export function panelCornersUV(g: FreeGeom, cu: number, cv: number, angleDeg: number): Vec2[] {
+  const hw = g.widthM / 2;
+  const hd = g.depthM / 2;
+  const rad = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const local: Vec2[] = [
+    [-hw, -hd],
+    [hw, -hd],
+    [hw, hd],
+    [-hw, hd],
+  ];
+  return local.map(([lu, lv]): Vec2 => [cu + lu * cos - lv * sin, cv + lu * sin + lv * cos]);
+}
+
+/** Axes de séparation candidats (normales des arêtes) d'un polygone convexe. */
+function polyAxes(poly: Vec2[]): Vec2[] {
+  const axes: Vec2[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    const edge: Vec2 = [b[0] - a[0], b[1] - a[1]];
+    const len = Math.hypot(edge[0], edge[1]) || 1;
+    axes.push([-edge[1] / len, edge[0] / len]); // normale unitaire
+  }
+  return axes;
+}
+
+/** Projection [min, max] d'un polygone sur un axe unitaire. */
+function projectPoly(poly: Vec2[], axis: Vec2): [number, number] {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const [x, y] of poly) {
+    const p = x * axis[0] + y * axis[1];
+    if (p < min) min = p;
+    if (p > max) max = p;
+  }
+  return [min, max];
+}
+
+/**
+ * SAT (Separating Axis Theorem) — deux polygones CONVEXES se recouvrent-ils (aire commune
+ * non nulle) ? Général (fonctionne pour tout angle) ; à angle 0 sur deux rectangles axés,
+ * équivalent exact de `rectsOverlap`. Se toucher pile (séparation nulle) n'est PAS un
+ * recouvrement — même tolérance que `rectsOverlap` (FREE_OVERLAP_EPS_M).
+ */
+export function polyOverlap(a: Vec2[], b: Vec2[]): boolean {
+  const axes = [...polyAxes(a), ...polyAxes(b)];
+  for (const axis of axes) {
+    const [aMin, aMax] = projectPoly(a, axis);
+    const [bMin, bMax] = projectPoly(b, axis);
+    const gap = Math.max(bMin - aMax, aMin - bMax);
+    if (gap >= -FREE_OVERLAP_EPS_M) return false; // un axe sépare (ou contact pile) → pas de recouvrement
+  }
+  return true;
+}
+
+/** Séparation (m) entre deux polygones convexes disjoints : 0 s'ils se recouvrent/touchent,
+ *  sinon la distance minimale coin-à-arête (les deux sens — suffit pour deux convexes). */
+export function polySeparation(a: Vec2[], b: Vec2[]): number {
+  if (polyOverlap(a, b)) return 0;
+  let min = Infinity;
+  const edgesOf = (poly: Vec2[]): [Vec2, Vec2][] =>
+    poly.map((p, i) => [p, poly[(i + 1) % poly.length]] as [Vec2, Vec2]);
+  const distToEdges = (p: Vec2, edges: [Vec2, Vec2][]): number => {
+    let d = Infinity;
+    for (const [s, e] of edges) d = Math.min(d, distPointSeg(p, s, e));
+    return d;
+  };
+  const edgesB = edgesOf(b);
+  const edgesA = edgesOf(a);
+  for (const p of a) min = Math.min(min, distToEdges(p, edgesB));
+  for (const p of b) min = Math.min(min, distToEdges(p, edgesA));
+  return min;
+}
+
+/**
+ * Vérifie la rotation du panneau `idx` À SA POSITION ACTUELLE. Comme les autres contrôles de
+ * ce module : DURE = sortie du contour / recouvrement / obstacle (jamais négociable) ;
+ * RELÂCHABLE = retrait de rive / écart panneau (mêmes marges que le déplacement). CAL80 ne
+ * refuse la rotation QUE sur une contrainte DURE réelle (`hard`) — l'appelant peut choisir de
+ * l'autoriser même sous l'écart/retrait relâchable, exactement comme un déplacement.
+ */
+export function checkPanelRotation(
+  state: FreeLayoutState,
+  g: FreeGeom,
+  idx: number,
+  angleDeg: number,
+  margins: FreeMargins,
+): FreeCheck {
+  if (idx < 0 || idx >= state.panels.length) return { ok: false, violations: ['outline'], hard: true, edgeM: 0, panelM: null };
+  const p = state.panels[idx];
+  const [cu, cv] = toUV(g, p.cx, p.cy);
+  const corners = panelCornersUV(g, cu, cv, angleDeg);
+  const violations: FreeViolation[] = [];
+  const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
+
+  // — DURE 1 : entièrement dans le contour —
+  let edgeM = Infinity;
+  let outside = false;
+  for (const c of corners) {
+    const sd = signedInsideDist(c, ringUV);
+    if (sd < edgeM) edgeM = sd;
+    if (sd < -FREE_EDGE_EPS_M) outside = true;
+  }
+  // ringCrossesRect attend un RectUV AXÉ ; le panneau tourné est un polygone à 4 coins
+  // quelconque, donc on rejoue directement son intersection de segments sur SES arêtes.
+  const rectEdges: [Vec2, Vec2][] = corners.map((c, i) => [c, corners[(i + 1) % 4]] as [Vec2, Vec2]);
+  let ringCrosses = false;
+  for (let i = 0, j = ringUV.length - 1; i < ringUV.length && !ringCrosses; j = i++) {
+    for (const [a, b] of rectEdges) {
+      if (segmentsCross(ringUV[j], ringUV[i], a, b)) {
+        ringCrosses = true;
+        break;
+      }
+    }
+  }
+  if (outside || ringCrosses) violations.push('outline');
+
+  // — DURE 2 : aucun recouvrement panneau-panneau (+ RELÂCHABLE : écart minimal) —
+  let panelM: number | null = null;
+  let overlaps = false;
+  for (let i = 0; i < state.panels.length; i++) {
+    if (i === idx) continue;
+    const other = state.panels[i];
+    const otherCorners = other.angleDeg
+      ? panelCornersUV(g, ...toUV(g, other.cx, other.cy), other.angleDeg)
+      : rectCorners(rectOfPanel(g, other));
+    const sep = polySeparation(corners, otherCorners);
+    if (panelM === null || sep < panelM) panelM = sep;
+    if (polyOverlap(corners, otherCorners)) overlaps = true;
+  }
+  if (overlaps) violations.push('overlap');
+
+  // — DURE 3 : obstacles —
+  for (const o of g.obstacles) {
+    if (o.ring.length < 3) continue;
+    const ringO = o.ring.map(([x, y]) => toUV(g, x, y));
+    // distance polygone-à-polygone (même esprit que distRectToPolygon, généralisé).
+    const d = polyOverlap(corners, ringO) ? 0 : polySeparation(corners, ringO);
+    if (d <= o.clearanceM) {
+      violations.push('obstacle');
+      break;
+    }
+  }
+
+  if (!violations.includes('outline') && edgeM < margins.setbackM - FREE_EDGE_EPS_M) violations.push('setback');
+  if (!overlaps && panelM !== null && panelM < margins.gapM - FREE_EDGE_EPS_M) violations.push('gap');
+
+  const hard = violations.some((v) => v === 'outline' || v === 'overlap' || v === 'obstacle');
+  return { ok: violations.length === 0, violations, hard, edgeM, panelM };
+}
+
+/**
+ * Applique la rotation du panneau `idx` (ou d'un groupe, angle IDENTIQUE pour chaque membre —
+ * une sélection tourne en bloc, chaque panneau autour de son PROPRE centre). TOUT OU RIEN :
+ * refusée si un seul membre viole une contrainte DURE (`hard`) — jamais un chevauchement
+ * réel, conformément au CAL80 : « refusée seulement si elle crée un chevauchement réel ».
+ * Les contraintes RELÂCHABLES (retrait/écart) ne bloquent PAS la rotation, comme un déplacement
+ * sous marge assouplie reste possible — seule une violation DURE (hard) refuse le geste.
+ */
+export function rotateFreePanels(
+  state: FreeLayoutState,
+  g: FreeGeom,
+  indices: readonly number[],
+  angleDeg: number,
+  margins: FreeMargins,
+): { ok: boolean; blocked?: FreeCheck; blockedIndex?: number } {
+  const members = [...new Set(indices)].filter((i) => i >= 0 && i < state.panels.length);
+  if (!members.length) return { ok: false };
+  if (!Number.isFinite(angleDeg)) return { ok: false };
+  for (const idx of members) {
+    const chk = checkPanelRotation(state, g, idx, angleDeg, margins);
+    if (chk.hard) return { ok: false, blocked: chk, blockedIndex: idx };
+  }
+  // Commit atomique : rien n'a été muté tant que tous les membres n'étaient pas validés.
+  for (const idx of members) {
+    state.panels[idx] = { ...state.panels[idx], angleDeg: ((angleDeg % 360) + 360) % 360 };
+  }
+  return { ok: true };
+}
+
 /** Résultat d'un déplacement libre : TOUT OU RIEN, comme en mode lattice. */
 export interface FreeMoveResult {
   ok: boolean;
@@ -513,6 +711,128 @@ export function findFreeSpot(
     }
   }
   return null;
+}
+
+// ═══════════ CAL81 — aimantation + aligner/distribuer ═══════════
+// Le placement libre se calait déjà sur un pas de STABILITÉ (FREE_STEP_M, freeMode.ts) mais
+// sur AUCUNE arête ni aucun autre panneau — l'aimantation propose une position CANDIDATE
+// (jamais imposée : hors seuil, la position demandée ressort inchangée) que l'appelant valide
+// ensuite normalement via `placeFreePanels`/`moveFreePanels`.
+
+/** Position candidate après aimantation (u, v) — `snapped` dit si au moins un axe a accroché. */
+export interface SnapResult {
+  cu: number;
+  cv: number;
+  snapped: boolean;
+}
+
+/**
+ * CAL81 — propose une position aimantée pour le panneau `idx` visant (cu, cv) : accroche
+ * indépendamment sur u et v au candidat le plus proche dans `thresholdM`, parmi (a) les bords
+ * du toit (le panneau vient tangenter la rive) et (b) le bord d'un AUTRE panneau (bord à bord,
+ * écart nul — l'utilisateur resserre ensuite lui-même s'il veut un jeu). Repère (u, v) —
+ * même hypothèse que tout ce module : tous les panneaux partagent les dimensions de `g`.
+ */
+export function snapCandidateForPanel(
+  state: FreeLayoutState,
+  g: FreeGeom,
+  idx: number,
+  cu: number,
+  cv: number,
+  thresholdM: number,
+): SnapResult {
+  const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
+  let uMin = Infinity;
+  let uMax = -Infinity;
+  let vMin = Infinity;
+  let vMax = -Infinity;
+  for (const [u, v] of ringUV) {
+    if (u < uMin) uMin = u;
+    if (u > uMax) uMax = u;
+    if (v < vMin) vMin = v;
+    if (v > vMax) vMax = v;
+  }
+  const hw = g.widthM / 2;
+  const hd = g.depthM / 2;
+  const uTargets: number[] = [uMin + hw, uMax - hw];
+  const vTargets: number[] = [vMin + hd, vMax - hd];
+  for (let i = 0; i < state.panels.length; i++) {
+    if (i === idx) continue;
+    const [ou, ov] = toUV(g, state.panels[i].cx, state.panels[i].cy);
+    uTargets.push(ou - hw - hw, ou + hw + hw);
+    vTargets.push(ov - hd - hd, ov + hd + hd);
+  }
+  const nearest = (value: number, targets: number[]): { v: number; snapped: boolean } => {
+    let best = value;
+    let bestDist = Infinity;
+    let snapped = false;
+    for (const t of targets) {
+      const d = Math.abs(t - value);
+      if (d <= thresholdM && d < bestDist) {
+        bestDist = d;
+        best = t;
+        snapped = true;
+      }
+    }
+    return { v: best, snapped };
+  };
+  const su = nearest(cu, uTargets);
+  const sv = nearest(cv, vTargets);
+  return { cu: su.v, cv: sv.v, snapped: su.snapped || sv.snapped };
+}
+
+/**
+ * CAL81 — « aligner » : cale la sélection sur l'axe du PREMIER membre — 'row' aligne v (une
+ * rangée droite), 'col' aligne u (une colonne droite). TOUT OU RIEN (`placeFreePanels`) :
+ * refusé si un seul membre viole une contrainte à sa nouvelle position.
+ */
+export function alignPanels(
+  state: FreeLayoutState,
+  g: FreeGeom,
+  indices: readonly number[],
+  axis: 'row' | 'col',
+  margins: FreeMargins,
+): FreeMoveResult {
+  const members = [...new Set(indices)].filter((i) => i >= 0 && i < state.panels.length);
+  if (members.length < 2) return { ok: false, positions: [] };
+  const [refU, refV] = toUV(g, state.panels[members[0]].cx, state.panels[members[0]].cy);
+  const placements: FreePlacement[] = members.map((idx) => {
+    const [u, v] = toUV(g, state.panels[idx].cx, state.panels[idx].cy);
+    const newU = axis === 'col' ? refU : u;
+    const newV = axis === 'row' ? refV : v;
+    const [cx, cy] = toENU(g, newU, newV);
+    return { index: idx, cx, cy };
+  });
+  return placeFreePanels(state, g, placements, margins);
+}
+
+/**
+ * CAL81 — « distribuer » : répartit la sélection à ÉCART ÉGAL sur l'axe u entre ses deux
+ * membres extrêmes (qui ne bougent pas), chaque panneau gardant sa propre coordonnée v.
+ * TOUT OU RIEN : refusé si la répartition créerait un chevauchement/une sortie de contour.
+ */
+export function distributePanels(
+  state: FreeLayoutState,
+  g: FreeGeom,
+  indices: readonly number[],
+  margins: FreeMargins,
+): FreeMoveResult {
+  const members = [...new Set(indices)].filter((i) => i >= 0 && i < state.panels.length);
+  if (members.length < 3) return { ok: false, positions: [] };
+  const withUV = members.map((idx) => {
+    const [u, v] = toUV(g, state.panels[idx].cx, state.panels[idx].cy);
+    return { idx, u, v };
+  });
+  withUV.sort((a, b) => a.u - b.u);
+  const uMin = withUV[0].u;
+  const uMax = withUV[withUV.length - 1].u;
+  const step = (uMax - uMin) / (withUV.length - 1);
+  const placements: FreePlacement[] = withUV.map((w, i) => {
+    const newU = uMin + i * step;
+    const [cx, cy] = toENU(g, newU, w.v);
+    return { index: w.idx, cx, cy };
+  });
+  return placeFreePanels(state, g, placements, margins);
 }
 
 /** Copie PROFONDE d'un état libre (photo d'historique — jamais une référence partagée). */
