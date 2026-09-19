@@ -441,15 +441,21 @@ class WorkflowDefinition(TimestampedModel):
         verbose_name_plural = 'Définitions de workflow'
         ordering = ['nom', 'id']
         constraints = [
+            # NTWFL25 — l'unicité porte sur le TRIPLET (société, code, version) :
+            # un ``code`` désigne une lignée. Le NOM historique est conservé
+            # tel quel, volontairement : le renommer ferait dériver la
+            # migration 0002 qui l'a créé (le nom n'y correspondrait plus à
+            # aucune contrainte déclarée dans ce fichier) pour un gain
+            # purement cosmétique.
             models.UniqueConstraint(
                 fields=['company', 'code', 'version'],
-                name='core_wf_def_co_code_ver_uniq'),
+                name='core_wf_def_company_code_uniq'),
         ]
         indexes = [
             models.Index(fields=['company', 'actif'],
                          name='core_wf_def_co_actif_idx'),
-            models.Index(fields=['company', 'code', 'version'],
-                         name='core_wf_def_co_cod_ver_idx'),
+            # Pas d'index supplémentaire sur (company, code, version) : la
+            # contrainte d'unicité ci-dessus en pose déjà un, identique.
         ]
 
     def __str__(self):
@@ -867,10 +873,12 @@ class DossierLien(TenantModel):
     """
 
     dossier = models.ForeignKey(
-        Dossier, on_delete=models.CASCADE,
+        Dossier,
+        on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
         related_name='liens', verbose_name='Dossier')
     content_type = models.ForeignKey(
-        ContentType, on_delete=models.CASCADE,
+        ContentType,
+        on_delete=models.CASCADE,  # on_delete: clé de cible générique
         related_name='+', verbose_name='Type de cible')
     object_id = models.PositiveIntegerField('Identifiant de la cible')
     cible = GenericForeignKey('content_type', 'object_id')
@@ -913,7 +921,8 @@ class DossierChecklistItem(TenantModel):
     """
 
     dossier = models.ForeignKey(
-        Dossier, on_delete=models.CASCADE,
+        Dossier,
+        on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
         related_name='checklist', verbose_name='Dossier')
     libelle = models.CharField('Libellé', max_length=200)
     ordre = models.PositiveIntegerField('Ordre', default=0)
@@ -959,7 +968,8 @@ class DossierActivity(TenantModel):
     ]
 
     dossier = models.ForeignKey(
-        Dossier, on_delete=models.CASCADE,
+        Dossier,
+        on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
         related_name='activites', verbose_name='Dossier')
     kind = models.CharField(
         'Type', max_length=16, choices=KIND_CHOICES, default=KIND_NOTE)

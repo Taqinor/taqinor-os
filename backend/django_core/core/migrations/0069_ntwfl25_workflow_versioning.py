@@ -49,6 +49,11 @@ class Migration(migrations.Migration):
                           "l'instance.",
                 verbose_name='Version de la définition'),
         ),
+        # Le NOM de la contrainte est CONSERVÉ : seul son jeu de colonnes
+        # change (company, code) -> (company, code, version). Garder le nom
+        # évite de faire dériver la migration 0002 qui l'a créé, et n'enlève
+        # rien à la garantie : toutes les définitions existantes valent
+        # version=1, donc l'unicité (société, code) reste vraie.
         migrations.RemoveConstraint(
             model_name='workflowdefinition',
             name='core_wf_def_company_code_uniq',
@@ -57,11 +62,9 @@ class Migration(migrations.Migration):
             model_name='workflowdefinition',
             constraint=models.UniqueConstraint(
                 fields=('company', 'code', 'version'),
-                name='core_wf_def_co_code_ver_uniq'),
+                name='core_wf_def_company_code_uniq'),
         ),
-        migrations.AddIndex(
-            model_name='workflowdefinition',
-            index=models.Index(fields=['company', 'code', 'version'],
-                               name='core_wf_def_co_cod_ver_idx'),
-        ),
+        # Aucun AddIndex : la contrainte d'unicité ci-dessus pose déjà l'index
+        # sur (company, code, version) — un second serait une duplication, et
+        # un AddIndex non concurrent poserait un verrou d'écriture en prod.
     ]
