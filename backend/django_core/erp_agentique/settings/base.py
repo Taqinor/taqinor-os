@@ -1388,6 +1388,8 @@ CELERY_TASK_ROUTES = {
     'core.notifier_fenetres_maintenance': {'queue': 'scheduled'},
     # NTOBS13 — notification de seuil de quota (80%/100%), beat quotidien.
     'core.notifier_seuils_usage': {'queue': 'scheduled'},
+    # NTOBS24 — purge mensuelle des vieilles données Fiabilité.
+    'core.purger_donnees_fiabilite': {'queue': 'scheduled'},
     # NTGRC21 — relance des attestations de conformité non signées (beat).
     'grc.rappels_grc': {'queue': 'scheduled'},
     # NTRH — rappels de parcours de formation + tâches d'intégration/sortie

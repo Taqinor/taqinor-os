@@ -1355,6 +1355,13 @@ app.conf.beat_schedule = {
         'task': 'core.notifier_seuils_usage',
         'schedule': crontab(hour=7, minute=10),
     },
+    # NTOBS24 — purge GFS mensuelle des vieilles données Fiabilité (incidents
+    # résolus >2 ans, exports de réversibilité expirés >30j, buckets d'uptime
+    # >400j).
+    'core-purger-donnees-fiabilite': {
+        'task': 'core.purger_donnees_fiabilite',
+        'schedule': crontab(day_of_month=1, hour=4, minute=0),
+    },
 }
 
 

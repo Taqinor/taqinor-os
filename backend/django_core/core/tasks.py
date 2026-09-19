@@ -390,3 +390,106 @@ def notifier_seuils_usage_task():
     n = usage_limits.notifier_seuils_usage()
     logger.info('core.notifier_seuils_usage: %d notification(s).', n)
     return {'notifies': n}
+
+
+# ── NTOBS24 — purge planifiée des vieilles données Fiabilité ───────────────
+#
+# Seuils VERSIONNÉS EN CONSTANTES, jamais en DB — même style que
+# ``core.degraded_mode.DEGRADED_MODE_MATRIX`` (NTOBS11) : les changer exige un
+# déploiement de code, jamais un réglage à chaud, cohérent avec des seuils qui
+# déclenchent une SUPPRESSION de données. Aucune de ces trois entités n'est un
+# document ``apps.ged`` couvert par une ``PolitiqueRetention`` (celle-ci
+# reste réservée aux documents GED : cabinet/dossier/type_document) — donc
+# TOUJOURS une suppression dure ici, jamais un archivage GED.
+RETENTION_INCIDENT_PUBLIC_JOURS = 365 * 2  # 2 ans après résolution
+RETENTION_EXPORT_REVERSIBILITE_JOURS = 30  # après expiration du lien signé
+RETENTION_UPTIME_DAY_BUCKET_JOURS = 400  # ~13 mois (garde la comparaison N-1)
+
+
+def _purger_incidents_resolus_perimes(now):
+    from datetime import timedelta
+
+    from django.apps import apps as django_apps
+
+    try:
+        incident_model = django_apps.get_model('statuspage', 'IncidentPublic')
+    except LookupError:
+        return 0
+    seuil = now - timedelta(days=RETENTION_INCIDENT_PUBLIC_JOURS)
+    deleted, _ = incident_model.objects.filter(
+        statut=incident_model.Statut.RESOLVED, resolu_le__lt=seuil).delete()
+    return deleted
+
+
+def _purger_exports_reversibilite_expires(now):
+    from datetime import timedelta
+
+    from .export_registry import ExportReversibiliteRun
+
+    seuil = now - timedelta(days=RETENTION_EXPORT_REVERSIBILITE_JOURS)
+    expires = ExportReversibiliteRun.objects.filter(expire_le__lt=seuil)
+
+    client = None
+    for run in expires.exclude(fichier_key=''):
+        try:
+            if client is None:
+                from .backup import _minio_client
+                client = _minio_client()
+            client.delete_object(
+                Bucket=REVERSIBILITE_BUCKET, Key=run.fichier_key)
+        except Exception:  # noqa: BLE001 — best-effort, une clé KO n'en bloque pas d'autres
+            logger.exception(
+                'core.purger_donnees_fiabilite: échec suppression MinIO '
+                '%s.', run.fichier_key)
+
+    deleted, _ = expires.delete()
+    return deleted
+
+
+def _purger_uptime_buckets_perimes(now):
+    from datetime import timedelta
+
+    from django.apps import apps as django_apps
+
+    try:
+        bucket_model = django_apps.get_model('statuspage', 'UptimeDayBucket')
+    except LookupError:
+        return 0
+    seuil_date = (now - timedelta(days=RETENTION_UPTIME_DAY_BUCKET_JOURS)).date()
+    deleted, _ = bucket_model.objects.filter(date__lt=seuil_date).delete()
+    return deleted
+
+
+@shared_task(name='core.purger_donnees_fiabilite')
+def purger_donnees_fiabilite_task():
+    """NTOBS24 — purge GFS mensuelle (planifiée le 1er du mois) des données
+    du groupe Fiabilité devenues trop anciennes : ``IncidentPublic`` résolus
+    depuis plus de 2 ans, ``ExportReversibiliteRun`` (fichier MinIO + ligne
+    DB) expirés depuis plus de 30 jours, ``UptimeDayBucket`` de plus de
+    400 jours. Idempotente (les lignes déjà purgées ne le sont plus)."""
+    from django.utils import timezone as dj_timezone
+
+    now = dj_timezone.now()
+    resultat = {
+        'incidents': 0, 'exports_reversibilite': 0, 'uptime_buckets': 0,
+    }
+    try:
+        resultat['incidents'] = _purger_incidents_resolus_perimes(now)
+    except Exception:  # noqa: BLE001 — best-effort, une source KO n'en bloque pas d'autres
+        logger.exception(
+            'core.purger_donnees_fiabilite: échec purge IncidentPublic.')
+    try:
+        resultat['exports_reversibilite'] = (
+            _purger_exports_reversibilite_expires(now))
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            'core.purger_donnees_fiabilite: échec purge '
+            'ExportReversibiliteRun.')
+    try:
+        resultat['uptime_buckets'] = _purger_uptime_buckets_perimes(now)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            'core.purger_donnees_fiabilite: échec purge UptimeDayBucket.')
+
+    logger.info('core.purger_donnees_fiabilite: %s', resultat)
+    return resultat
