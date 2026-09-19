@@ -305,12 +305,19 @@ INCLINAISON_CHEVRON_EW_DEG = 10.0
 #: c'est le chevron le moins profond, donc le plus dense, et la seule raison
 #: commerciale de proposer un est-ouest.
 #:
-#: LIMITE ASSUMÉE : l'espacement entre chevrons reste celui de la politique
-#: villa (``AntiOmbrage``, ombre de faîte pleine), alors que le site retranche
-#: l'empreinte propre du chevron de cette ombre (l'ombre du faîte tombe DANS la
-#: moitié ouest du chevron) et ne garde que le résidu + 20 cm de passage. Le
-#: moteur est donc CONSERVATEUR ici : il peut poser une rangée de moins, jamais
-#: une de trop. Aucune politique n'est inventée pour masquer l'écart.
+#: ESPACEMENT ENTRE CHEVRONS — deux politiques NOMMÉES, plus une limite muette
+#: (CAL167). Le DÉFAUT n'a pas bougé : ``AntiOmbrage`` compte l'ombre de faîte
+#: PLEINE (``EW_OMBRE_PLEINE``), donc le moteur reste CONSERVATEUR — il peut
+#: poser un chevron de moins, jamais un de trop, et tout calepinage déjà publié
+#: se rejoue au bit près. L'autre politique, celle du site
+#: (``EW_EMPREINTE_RETRANCHEE``), est désormais disponible en OPTION EXPLICITE :
+#: le pan ouest du chevron absorbe sa propre ombre de faîte, seul le résidu qui
+#: déborde plus le passage de maintenance sépare deux chevrons. Elle EXIGE la
+#: latitude du site (l'ombre de faîte est-ouest a une direction) et elle est
+#: nommée dans ``AntiOmbrage.hypothese`` : un compte plus dense dit POURQUOI il
+#: l'est. La différence entre les deux se lit sur
+#: ``AntiOmbrage.ecart_a_l_ombre_pleine_m`` — elle tient toute dans l'empreinte
+#: du pan, aucune autre hypothèse ne bouge.
 KIT_VILLA_EW = Kit(
     code="VILLA_720_EW",
     libelle="Chevron dos-à-dos 2 modules 720 Wc — est-ouest (2,384 × 2,57)",
@@ -427,6 +434,20 @@ class PolitiquePas:
 
     def allee_minimale(self):
         raise NotImplementedError
+
+    @property
+    def hypothese(self):
+        """La phrase qui NOMME la politique retenue, pour la PREUVE (CAL167).
+
+        Une politique de pas est un CHOIX : deux calepinages de la même
+        toiture peuvent légitimement ne pas rendre le même compte selon
+        l'hypothèse solaire et la famille de pose. Un compte publié sans son
+        hypothèse n'est pas vérifiable — ce slot existe pour que la preuve
+        rendue au client, et l'atelier qui affiche le pas (CAL86), disent
+        exactement la MÊME chose. Les implémentations qui ont une hypothèse à
+        expliquer la GÉNÈRENT ; les autres rendent leur code.
+        """
+        return self.code
 
 
 # ================================================================= paramètres
