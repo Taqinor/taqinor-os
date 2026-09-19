@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   toNumber, formatMAD, formatNumber, formatPercent,
   formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA, normalizeMaPhone,
-  timeAgo, nbsp,
+  timeAgo, formatPersonName, nbsp,
 } from './format.js'
 
 // Intl fr-FR utilise des espaces insécables variables (U+00A0 / U+202F) comme
@@ -204,6 +204,21 @@ test('LW7 : normalizeMaPhone rejette (null) tout ce qui n\'est pas un numéro ma
   // (renvoyé tel quel, sans le former en « +212… ») est aussi null ici.
   assert.equal(canonicalPhoneMA('0812345678'), '0812345678')
   assert.equal(normalizeMaPhone('0812345678'), null)
+})
+
+// NTI18N23 — nom complet ordonné selon la locale ('fr'/'ar' -> « Prénom Nom »,
+// comportement historique préservé caractère pour caractère).
+test('formatPersonName : « Prénom Nom » par défaut, sans régression FR', () => {
+  assert.equal(formatPersonName('Reda', 'Kasri'), 'Reda Kasri')
+  assert.equal(formatPersonName('Reda', 'Kasri', { locale: 'fr' }), 'Reda Kasri')
+  assert.equal(formatPersonName('Reda', 'Kasri', { locale: 'ar' }), 'Reda Kasri')
+  assert.equal(formatPersonName('Reda', 'Kasri', { locale: 'en' }), 'Reda Kasri')
+  // Un seul des deux fournis -> l'autre, sans espace parasite.
+  assert.equal(formatPersonName('Reda', ''), 'Reda')
+  assert.equal(formatPersonName('', 'Kasri'), 'Kasri')
+  assert.equal(formatPersonName(null, null), '')
+  // Espaces superflus retirés (jamais reflétés dans le résultat).
+  assert.equal(formatPersonName('  Reda  ', '  Kasri  '), 'Reda Kasri')
 })
 
 // VX122 — finesse française : espace fine insécable (U+202F) devant : ; ! ?
