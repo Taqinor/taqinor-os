@@ -204,6 +204,13 @@ app.conf.beat_schedule = {
         'task': 'notifications.purge_notifications_anciennes',
         'schedule': crontab(hour=2, minute=45),
     },
+    # NTI18N37 — rappel quotidien (novembre-décembre uniquement) de saisie
+    # des 4 fêtes mobiles de l'année suivante ; s'arrête de lui-même dès que
+    # la saisie est complète (voir apps/notifications/tasks.py).
+    'notifications-rappel-fetes-mobiles': {
+        'task': 'notifications.rappel_fetes_mobiles',
+        'schedule': crontab(hour=7, minute=40, month_of_year='11,12'),
+    },
     # NTPLT10 — filet beat de l'outbox : livre les événements pending/failed
     # échus (en plus de l'enqueue on_commit immédiat) toutes les 5 minutes.
     'core-dispatch-outbox': {

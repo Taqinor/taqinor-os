@@ -435,6 +435,13 @@ class EventType(models.TextChoices):
     #     couper l'une sans l'autre dans les préférences.
     VISITE_TERRAIN_A_VALIDER = (
         'visite_terrain_a_valider', 'Visite technique à valider')
+    # NTI18N37 — rappel Beat de fin d'année : les 4 fêtes hégiriennes de
+    # l'année N+1 (Aïd el-Fitr, Aïd el-Adha, 1er Moharram, Aïd el-Mawlid,
+    # NTI18N33/`apps.parametres.fetes_mobiles`) ne sont pas toutes saisies
+    # (`Holiday.recurrent_annuel=False`, NTI18N14) — notifie l'admin RH
+    # quotidiennement jusqu'à saisie complète.
+    FETES_MOBILES_A_SAISIR = (
+        'fetes_mobiles_a_saisir', 'Fêtes mobiles à saisir')
 
 
 class Channel(models.TextChoices):

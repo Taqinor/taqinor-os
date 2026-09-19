@@ -1103,6 +1103,8 @@ CELERY_TASK_ROUTES = {
     'notifications.sweep_daily': {'queue': 'scheduled'},
     'notifications.reveiller_snoozes': {'queue': 'scheduled'},
     'notifications.purge_notifications_anciennes': {'queue': 'scheduled'},
+    # NTI18N37 — rappel de saisie des fêtes mobiles N+1 (novembre-décembre).
+    'notifications.rappel_fetes_mobiles': {'queue': 'scheduled'},
     'automation.time_triggers_daily': {'queue': 'scheduled'},
     # NTEXT7 — reprise des séquences d'automatisation suspendues (beat */5min).
     'automation.process_due_automation_steps': {'queue': 'scheduled'},
