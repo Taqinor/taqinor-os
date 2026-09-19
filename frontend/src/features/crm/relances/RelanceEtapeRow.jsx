@@ -187,6 +187,11 @@ function heureDue(etape) {
   }).format(t)
 }
 
+// RLC3 (relevé fondateur du 08/09/2026) — les canaux dont la touche consiste à
+// ÉCRIRE : c'est là, et seulement là, que la question « le message a-t-il été
+// ouvert ? » a un sens. Un appel a déjà son issue obligatoire (CKP2/CKP4).
+const CANAUX_MESSAGE = ['whatsapp', 'email']
+
 /** `traite_le` (ISO, MRY30/MRY31) → « HH:MM » heure Casablanca — JAMAIS le
     repli « maintenant » de `heureDue` ci-dessus (c'est un horodatage PASSÉ,
     pas une échéance à venir). `null` si absent/invalide. */
@@ -261,12 +266,18 @@ export default function RelanceEtapeRow({
   // VISCAD6 — modale de planification de la visite, PARTAGÉE par le panneau
   // de coaching (ci-dessous) et l'issue « Visite acceptée » du Fait.
   const [planifierOuvert, setPlanifierOuvert] = useState(false)
+  // RLC3 — la confirmation explicite « marquer faite sans avoir ouvert le
+  // message ? ». Jamais un blocage : la case est TOUJOURS disponible (Meryem
+  // peut avoir écrit depuis son téléphone) — elle rend seulement le geste
+  // conscient, et le dit dans le chatter.
+  const [sansOuverture, setSansOuverture] = useState(false)
   const busy = busyId === etape.id
 
   const fermer = () => {
     setPanel('')
     setNote(''); setReponseIdx(null); setRappelLe(''); setRappelHeure('')
     setReportDate(''); setReportHeure(''); setErreurOutcome('')
+    setSansOuverture(false)
   }
 
   const questionsTouche = QUESTIONS[etape.cadence] ?? QUESTIONS.contact
@@ -277,10 +288,20 @@ export default function RelanceEtapeRow({
     : questionsTouche.reponses
   const reponseChoisie = reponseIdx == null
     ? null : reponsesDisponibles[reponseIdx]
+  // RLC3 — cette touche consiste-t-elle à écrire, et le message a-t-il été
+  // ouvert ? `message_ouvert_le` vient du SERVEUR (activité « WhatsApp
+  // ouvert », contrat `relance_etape_v2`) — jamais une mémoire d'écran, qui
+  // aurait tout oublié au rechargement de la page.
+  const toucheMessage = CANAUX_MESSAGE.includes(etape.canal)
+  const messageOuvertLe = toucheMessage
+    ? heureTraite(etape.message_ouvert_le) : null
+  const confirmationOuvertureRequise = (
+    toucheMessage && !messageOuvertLe && !sansOuverture)
 
   const confirmerFait = () => {
     if (!reponseChoisie) return
     if (reponseChoisie.rappel && !rappelLe) return
+    if (confirmationOuvertureRequise) return
     const payload = {}
     if (note.trim()) payload.note = note.trim()
     else if (reponseChoisie.note) payload.note = reponseChoisie.note
@@ -288,6 +309,11 @@ export default function RelanceEtapeRow({
     if (reponseChoisie.rappel && rappelLe) {
       payload.rappel_le = rappelLe
       if (rappelHeure) payload.rappel_heure = rappelHeure
+    }
+    // RLC3 — le geste assumé est TRACÉ : `body` s'ajoute à la ligne de chatter
+    // de la touche (`marquer_etape_relance`), sans toucher à la note libre.
+    if (toucheMessage && !messageOuvertLe) {
+      payload.body = 'Marquée faite sans ouverture du message depuis l’ERP.'
     }
     setErreurOutcome('')
     // VISCAD6 — l'outcome choisi est lu AVANT l'appel (le state se ferme/se
@@ -423,6 +449,33 @@ export default function RelanceEtapeRow({
           {questionsTouche.aide && (
             <p className="text-xs text-muted-foreground">{questionsTouche.aide}</p>
           )}
+          {/* RLC3 — sur une touche MESSAGE, le panneau rappelle d'abord si le
+              message a été ouvert. Ouvert : on le dit, et rien n'est demandé.
+              Pas ouvert : une confirmation EXPLICITE, jamais un blocage —
+              Meryem peut parfaitement avoir écrit depuis son téléphone. */}
+          {toucheMessage && messageOuvertLe && (
+            <p
+              className="text-xs text-muted-foreground"
+              data-testid="rappel-message-ouvert"
+            >
+              Message ouvert à {messageOuvertLe} depuis l’ERP.
+            </p>
+          )}
+          {toucheMessage && !messageOuvertLe && (
+            <label
+              className="flex items-start gap-1.5 text-xs"
+              data-testid="confirmer-sans-ouverture"
+            >
+              <input
+                type="checkbox" className="mt-0.5" checked={sansOuverture}
+                onChange={(e) => setSansOuverture(e.target.checked)}
+              />
+              <span>
+                Ce message n’a pas été ouvert depuis l’ERP — marquer faite sans
+                avoir ouvert le message ?
+              </span>
+            </label>
+          )}
           <div className="flex flex-wrap gap-1.5" role="group" aria-label={questionsTouche.question}>
             {reponsesDisponibles.map((r, idx) => (
               <Button
@@ -468,7 +521,9 @@ export default function RelanceEtapeRow({
             </Button>
             <Button
               size="sm"
-              disabled={busy || !reponseChoisie || (reponseChoisie.rappel && !rappelLe)}
+              disabled={busy || !reponseChoisie
+                || (reponseChoisie.rappel && !rappelLe)
+                || confirmationOuvertureRequise}
               onClick={confirmerFait}
             >
               Confirmer

@@ -2759,8 +2759,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # le `permission_classes` de l'@action (garde AUD421 / bug CI #25) :
         # sans ces noms, la déclaration inline serait décorative et l'action
         # retomberait sur `IsResponsableOrAdmin`.
+        # RLC2 — `journal` est une LECTURE PURE (le sélecteur n'écrit rien) :
+        # même garde que `list`, et listée ICI nommément parce que
+        # get_permissions() PRIME sur le `permission_classes` de l'@action.
         if self.action in ('list', 'message', 'suivi',
-                           'kpi_adherence', 'mes_stats'):
+                           'kpi_adherence', 'mes_stats', 'journal'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -2887,6 +2890,38 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             'resume': resume,
             'results': lignes,
         })
+
+    @extend_schema(responses=inline_serializer('CrmJournalRelance', {
+        'lead': serializers.IntegerField(),
+        'etat': serializers.DictField(),
+        'lignes': serializers.ListField(child=serializers.DictField()),
+    }))
+    @action(detail=False, methods=['get'], url_path='journal',
+            permission_classes=[IsAnyRole])
+    def journal(self, request):
+        """RLC2 — le journal « ce qui s'est passé » du plan de relance d'un lead,
+        et son état courant en une phrase (forme `journal_relance`).
+
+        ``?lead=<id>`` OBLIGATOIRE. LECTURE PURE : le sélecteur
+        ``journal_relance`` fusionne les touches traitées et la tranche utile du
+        chatter — aucune écriture, aucun nouveau journal.
+
+        404 « Lead inconnu. » quand le lead n'existe pas OU sort de la portée de
+        visibilité du demandeur : les deux cas sont indistinguables exprès — un
+        message différent servirait d'oracle d'existence."""
+        from .selectors import journal_relance
+
+        brut = (request.query_params.get('lead') or '').strip()
+        if not brut.isdigit():
+            return Response(
+                {'lead': 'Identifiant de lead obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        journal = journal_relance(
+            request.user.company, request.user, int(brut))
+        if journal is None:
+            return Response({'detail': 'Lead inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(journal)
 
     @extend_schema(responses=inline_serializer('CrmKpiAdherence', {
         'periode_jours': serializers.IntegerField(),
@@ -3063,6 +3098,30 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         réponse ». Sans cela, sauter le message d'identité supprimait les dix
         gestes qui suivent."""
         return self._marquer(request, RelanceEtape.Statut.SAUTEE)
+
+    @action(detail=True, methods=['post'])
+    def annuler(self, request, pk=None):
+        """RLC1 — Annule une touche « Fait »/« Sautée » traitée par erreur.
+
+        La touche redevient à faire À SON ÉCHÉANCE D'ORIGINE et les effets
+        automatiques de son issue sont défaits tant qu'ils le sont encore
+        (touches rouvertes par le retrait de l'arrêt de cadence, étape
+        programmée supprimée, avance d'étape défaite) — le service
+        ``annuler_touche_relance`` porte toute la règle.
+
+        Refus MOTIVÉ en 400 ``{"erreurs": {champ: message}}`` (même forme que
+        ``fait``) : passé 24 h, devis parti, dossier parqué au froid, lead
+        signé/perdu, étape suivante déjà traitée. Écriture → garde
+        ``IsResponsableOrAdmin`` par défaut de ``get_permissions`` (jamais
+        listée parmi les lectures)."""
+        etape = self.get_object()
+        from .services import AnnulationToucheRefusee, annuler_touche_relance
+        try:
+            etape = annuler_touche_relance(etape, request.user)
+        except AnnulationToucheRefusee as refus:
+            return Response({'erreurs': {refus.champ: refus.message}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(etape).data)
 
     @action(detail=True, methods=['get'])
     def message(self, request, pk=None):
