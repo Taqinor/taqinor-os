@@ -42,6 +42,14 @@ class TrustCenterEntry(TimestampedModel):
         help_text='PDF justificatif, optionnel.')
     dernier_audit_le = models.DateField('Dernier audit le', null=True, blank=True)
     ordre_affichage = models.PositiveIntegerField('Ordre', default=100)
+    # NTOBS34 — marqueur anti-double-alerte : posé la PREMIÈRE fois qu'une
+    # alerte d'expiration part pour cette entrée (une certification arrivée au
+    # bout de sa validité). Sans lui, un balayage périodique réémettrait la
+    # même alerte à chaque passage. Défaut FAUX = aucune entrée existante n'est
+    # considérée comme déjà alertée, donc la première alerte partira bien.
+    alerte_expiration_envoyee = models.BooleanField(
+        "Alerte d'expiration envoyée", default=False,
+        help_text='Faux = jamais alertée ; posé une seule fois.')
 
     class Meta:
         verbose_name = 'Entrée trust center'
