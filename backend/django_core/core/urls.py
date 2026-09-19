@@ -16,7 +16,7 @@ fichier, donc non modifié par cette tâche « core-only ») :
 
     path('api/django/core/', include('core.urls')),
 """
-from django.urls import path
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .dashboard_partage import (
@@ -298,3 +298,7 @@ urlpatterns = router.urls + [
     path('degraded-mode-status/', degraded_mode_status_view,
          name='degraded-mode-status'),
 ]
+
+# NTWFL17 — routes du dossier transverse (core.Dossier), définies dans leur
+# propre URLConf pour ne pas toucher ce fichier lors de leur construction.
+urlpatterns += [path('', include('core.urls_dossiers'))]
