@@ -444,6 +444,36 @@ def analyse_goulots_workflow_view(request, pk):
     return Response(analyse)
 
 
+@extend_schema(responses={200: inline_serializer(
+    name='MesProcessusResponse',
+    fields={
+        'en_retard': drf_serializers.JSONField(),
+        'aujourd_hui': drf_serializers.JSONField(),
+        'a_venir': drf_serializers.JSONField(),
+        'sans_echeance': drf_serializers.JSONField(),
+    },
+)})
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def mes_processus_view(request):
+    """NTWFL28 — ``GET core/workflows/mes-processus/``.
+
+    Alimente le widget « Mes processus » : les étapes BPM encore en attente
+    dont l'utilisateur COURANT est l'assigné, groupées par échéance (en
+    retard / aujourd'hui / à venir / sans échéance). Ne renvoie JAMAIS les
+    étapes d'un autre utilisateur ni d'une autre société.
+
+    Le « aujourd'hui » métier (Casablanca) est résolu ICI puis injecté dans le
+    sélecteur — aucune date n'est décidée au fond de la chaîne."""
+    from . import selectors as core_selectors
+    from .dates import aujourd_hui_local
+
+    company = getattr(request.user, 'company', None)
+    seaux = core_selectors.mes_processus(
+        company, request.user, aujourd_hui_local())
+    return Response(seaux)
+
+
 class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG381 — dashboards sans-code, sauvegardés par utilisateur/société.
 

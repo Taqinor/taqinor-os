@@ -403,6 +403,97 @@ def analyse_goulots_workflow(company, definition_id, periode=None):
     }
 
 
+# ── NTWFL28 — « Mes processus » : ce que l'utilisateur courant porte ─────────
+#
+# Un approbateur n'a aucune vue de CE QU'IL doit faire : ses étapes en attente
+# sont noyées dans l'inbox globale. Ce sélecteur renvoie les processus dont
+# l'utilisateur courant porte une étape, GROUPÉS par échéance.
+#
+# ``today`` est TOUJOURS passé par l'appelant (aucun ``aujourd'hui`` calculé au
+# fond d'un helper) : le bucket d'une étape dépend de la date MÉTIER de
+# Casablanca, que la vue résout une fois via ``core.dates.aujourd_hui_local``.
+#
+# PÉRIMÈTRE LIVRÉ : la moitié « instances de workflow FG366 ». La moitié
+# « dossiers transverses » attend le modèle ``core.Dossier`` (NTWFL17) ; ce
+# sélecteur est conçu pour l'accueillir sans changer sa forme de sortie (mêmes
+# quatre seaux, une clé ``dossiers`` viendra à côté de ``instances``).
+
+BUCKET_EN_RETARD = 'en_retard'
+BUCKET_AUJOURD_HUI = 'aujourd_hui'
+BUCKET_A_VENIR = 'a_venir'
+BUCKET_SANS_ECHEANCE = 'sans_echeance'
+
+
+def _bucket_echeance(echeance_date, today):
+    """Seau d'échéance d'une date : retard / aujourd'hui / à venir / sans.
+
+    Une étape SANS échéance tombe dans son propre seau — on ne lui invente
+    jamais une date pour la ranger de force dans « à venir »."""
+    if echeance_date is None:
+        return BUCKET_SANS_ECHEANCE
+    if echeance_date < today:
+        return BUCKET_EN_RETARD
+    if echeance_date == today:
+        return BUCKET_AUJOURD_HUI
+    return BUCKET_A_VENIR
+
+
+def mes_processus(company, utilisateur, today):
+    """NTWFL28 — processus BPM portés par ``utilisateur``, par échéance.
+
+    Une instance est « à moi » si j'y porte une étape ENCORE EN ATTENTE dont
+    je suis l'assigné (``WorkflowStepInstance.assignee``) et dont le processus
+    est toujours en cours. ``today`` (date métier) est OBLIGATOIRE — le seau
+    d'une ligne en dépend, et un helper ne doit jamais décider du « jour ».
+
+    Renvoie ``{'en_retard': [...], 'aujourd_hui': [...], 'a_venir': [...],
+    'sans_echeance': [...]}`` où chaque entrée décrit une étape à traiter ::
+
+        {'instance_id', 'step_id', 'definition_code', 'definition_nom',
+         'etape_nom', 'ordre', 'echeance', 'content_type_id', 'object_id'}
+
+    ``echeance`` est la DATE métier de ``sla_echeance`` (ou ``None``).
+    Lecture seule, bornée à la société ; jamais les étapes d'autrui."""
+    from .dates import maintenant_local
+    from .models import WorkflowInstance, WorkflowStepInstance
+
+    seaux = {
+        BUCKET_EN_RETARD: [],
+        BUCKET_AUJOURD_HUI: [],
+        BUCKET_A_VENIR: [],
+        BUCKET_SANS_ECHEANCE: [],
+    }
+    if company is None or utilisateur is None or today is None:
+        return seaux
+    if not getattr(utilisateur, 'pk', None):
+        return seaux
+
+    steps = (
+        WorkflowStepInstance.objects
+        .filter(company=company,
+                assignee=utilisateur,
+                statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
+                instance__statut=WorkflowInstance.STATUT_EN_COURS)
+        .select_related('instance', 'instance__definition', 'step_def')
+        .order_by('sla_echeance', 'id')
+    )
+    for step in steps:
+        echeance = (maintenant_local(step.sla_echeance).date()
+                    if step.sla_echeance else None)
+        seaux[_bucket_echeance(echeance, today)].append({
+            'instance_id': step.instance_id,
+            'step_id': step.pk,
+            'definition_code': step.instance.definition.code,
+            'definition_nom': step.instance.definition.nom,
+            'etape_nom': step.step_def.nom,
+            'ordre': step.ordre,
+            'echeance': echeance,
+            'content_type_id': step.instance.content_type_id,
+            'object_id': step.instance.object_id,
+        })
+    return seaux
+
+
 def traitements_haut_risque(company, actifs_seuls=True):
     """NTGRC27 — traitements CNDP marqués « données sensibles / haut risque ».
 

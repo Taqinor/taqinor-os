@@ -84,6 +84,7 @@ from .views import (
     health_live,
     health_ready,
     maintenance_toggle,
+    mes_processus_view,
     metrics_view,
     secrets_rotation_due,
 )
@@ -178,6 +179,10 @@ urlpatterns = router.urls + [
          name='workflows-approuver-en-masse'),
     # NTWFL23 — audit de processus : durée observée par étape (moyenne /
     # médiane / p90), taux de rejet, taux d'escalade SLA, étape goulot.
+    # NTWFL28 — widget « Mes processus » : les étapes BPM de l'utilisateur
+    # COURANT groupées par échéance (en retard / aujourd'hui / à venir).
+    path('workflows/mes-processus/', mes_processus_view,
+         name='workflows-mes-processus'),
     path('workflows/<int:pk>/analyse/', analyse_goulots_workflow_view,
          name='workflows-analyse-goulots'),
     # XPLT10 — accès public lecture seule (aucune identité de confiance,
