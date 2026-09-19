@@ -24,6 +24,108 @@ SECTIONS_PARAMETRES = (
 )
 
 
+def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
+                      depuis=None, q=None):
+    """CAL10 — les calepinages de ``company``, filtrés, en lecture pure.
+
+    Args:
+        company: la société — TOUJOURS celle passée, jamais lue d'un corps de
+            requête. ``None`` renvoie un queryset VIDE (un filtre absent ne
+            doit jamais se muer en absence de filtre).
+        lead_id / client_id: restreint à un lead ou à un client.
+        statut: ``brouillon`` / ``valide`` / ``perime``.
+        depuis: date/heure — ne rend que ce qui a été créé à partir d'elle.
+        q: recherche libre sur le TITRE (rien d'autre : on n'énumère pas
+            l'annuaire client depuis ce module).
+
+    Returns:
+        Un ``QuerySet`` ordonné du plus récent au plus ancien.
+    """
+    from .models import Calepinage
+
+    if company is None:
+        return Calepinage.objects.none()
+    lignes = Calepinage.objects.filter(company=company)
+    if lead_id:
+        lignes = lignes.filter(lead_id=lead_id)
+    if client_id:
+        lignes = lignes.filter(client_id=client_id)
+    if statut:
+        lignes = lignes.filter(statut=statut)
+    if depuis:
+        lignes = lignes.filter(created_at__gte=depuis)
+    terme = (q or '').strip()
+    if terme:
+        lignes = lignes.filter(titre__icontains=terme)
+    return lignes.order_by('-created_at', '-id')
+
+
+def calepinage_detail(pk, company):
+    """CAL10 — UN calepinage borné société, ou ``None``.
+
+    Un calepinage d'une autre société est INTROUVABLE (``None``), jamais
+    « interdit » : l'appelant répond 404 et n'apprend rien de son existence.
+    """
+    from .models import Calepinage
+
+    if company is None or not pk:
+        return None
+    return (Calepinage.objects
+            .filter(pk=pk, company=company)
+            .select_related('client', 'devis')
+            .first())
+
+
+def versions(calepinage):
+    """CAL10 — l'historique d'un calepinage, du plus récent au plus ancien."""
+    from .models import CalepinageVersion
+
+    if calepinage is None or not getattr(calepinage, 'pk', None):
+        return CalepinageVersion.objects.none()
+    return (CalepinageVersion.objects
+            .filter(calepinage=calepinage)
+            .order_by('-created_at', '-id'))
+
+
+def variantes(calepinage):
+    """CAL10 — les variantes d'un calepinage, la RETENUE en tête."""
+    from .models import CalepinageVariante
+
+    if calepinage is None or not getattr(calepinage, 'pk', None):
+        return CalepinageVariante.objects.none()
+    return (CalepinageVariante.objects
+            .filter(calepinage=calepinage)
+            .order_by('-retenue', 'id'))
+
+
+def calepinage_du_devis(devis_id, company):
+    """CAL10 — le calepinage rattaché à ce devis, ou ``None``.
+
+    Point d'entrée cross-app : ``ventes`` sait si un devis a une conception
+    sans jamais importer ``apps.calepinage.models``.
+    """
+    from .models import Calepinage
+
+    if company is None or not devis_id:
+        return None
+    return (Calepinage.objects
+            .filter(company=company, devis_id=devis_id)
+            .order_by('-created_at', '-id')
+            .first())
+
+
+def calepinage_de_l_affaire(appel_offre_id, company):
+    """CAL10 — le calepinage rattaché à cette affaire d'AO, ou ``None``."""
+    from .models import Calepinage
+
+    if company is None or not appel_offre_id:
+        return None
+    return (Calepinage.objects
+            .filter(company=company, appel_offre_id=appel_offre_id)
+            .order_by('-created_at', '-id')
+            .first())
+
+
 def parametres_de_societe(company):
     """CAL45 — les réglages calepinage de ``company``, TOUJOURS complets.
 
