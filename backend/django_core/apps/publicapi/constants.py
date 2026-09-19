@@ -56,6 +56,17 @@ SCOPE_READ_BTP = 'read:btp'
 SCOPE_READ_FAVORIS = 'read:favoris'
 SCOPE_READ_VUES = 'read:vues'
 
+# NTP2P39 — objets Procure-to-Pay (apps.installations : `DemandeAchat` FG310,
+# `RFQ` FG311) en LECTURE SEULE, pour un donneur d'ordre ou un outil d'achat
+# tiers qui suit l'avancement des réquisitions depuis son propre système.
+# Identifiant tel que nommé au plan (``lecture_achats``) — il ne suit pas le
+# préfixe ``read:`` des scopes historiques, c'est volontaire et figé ici (même
+# exception assumée que ``juridique:read``, NTJUR41).
+# CE SCOPE N'OUVRE AUCUN COÛT D'ACHAT : ni `prix_estime` de ligne, ni
+# `RFQOffre.montant_ht` (documenté « Montants INTERNES »), ni aucune marge —
+# voir `apps/publicapi/public_achats_views.py`, qui justifie chaque omission.
+SCOPE_READ_ACHATS = 'lecture_achats'
+
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
 # viennent de STAGES.py (jamais hardcodés).
@@ -87,6 +98,8 @@ SCOPE_CHOICES = [
      "Lire les favoris épinglés d'un utilisateur consentant (?owner=)"),
     (SCOPE_READ_VUES,
      "Lire les vues sauvegardées d'équipe, ou d'un utilisateur consentant (?owner=)"),
+    (SCOPE_READ_ACHATS,
+     "Lire les demandes d'achat et les demandes de prix (sans aucun prix d'achat)"),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
     (SCOPE_WRITE_DEVIS, 'Créer un devis brouillon (jamais envoyé/accepté)'),

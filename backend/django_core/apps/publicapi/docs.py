@@ -254,6 +254,37 @@ def public_api_reference():
                 'tri': ['id', 'ordre'],
                 'updated_since': 'updated_at',
             },
+            {
+                'chemin': '/api/public/v1/achats/demandes-achat/',
+                'scope': 'lecture_achats',
+                'description': (
+                    "NTP2P39 — demandes d'achat (réquisitions, FG310) : "
+                    "référence, objet, statut, priorité, date de besoin, "
+                    "chantier/programme et montant ESTIMÉ (ordre de grandeur "
+                    "d'engagement). Les LIGNES ne sont pas exposées : leur "
+                    "prix unitaire estimé est un prix d'achat interne."
+                ),
+                'filtres': [
+                    'statut', 'priorite', 'chantier', 'programme', 'reference',
+                ],
+                'tri': ['date_creation', 'date_modification', 'id'],
+                'updated_since': 'date_modification',
+            },
+            {
+                'chemin': '/api/public/v1/achats/rfq/',
+                'scope': 'lecture_achats',
+                'description': (
+                    "NTP2P39 — demandes de prix (RFQ, FG311) : référence, "
+                    "objet, statut, date limite, fournisseurs CONSULTÉS (avec "
+                    "« a répondu ») et offre RETENUE par son identité "
+                    "(fournisseur + délai). Jamais le montant d'une offre "
+                    "(prix d'achat interne), jamais le jeton de consultation "
+                    "(il ouvre la page de réponse sans login)."
+                ),
+                'filtres': ['statut', 'demande', 'reference'],
+                'tri': ['date_creation', 'date_modification', 'id'],
+                'updated_since': 'date_modification',
+            },
         ],
         'endpoints_ecriture': {
             'description': (
