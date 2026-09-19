@@ -364,3 +364,42 @@ def sequential_actions(
             run.stopped_at = step.index
             break
     return run
+
+
+# ── NTAPI41 — franchissement de palier, générique ────────────────────────────
+#
+# Motif « notifier une fois par palier franchi, jamais deux fois, se
+# ré-armer en redescendant sous le plus bas palier » — jusqu'ici réinventé
+# LOCALEMENT à chaque appelant (ex. ``core.usage_limits`` pour les quotas
+# NTOBS13, avec son propre cache Django). Généralisé ici en fonction PURE,
+# fondation, réutilisable par n'importe quelle alerte à seuils (quota,
+# taux d'erreur, toute métrique bornée) — SANS état : c'est à l'appelant de
+# décider où persister le dernier palier notifié (cache, champ modèle...).
+
+def palier_franchi(valeur: float | int | None, paliers: Iterable[float | int],
+                   dernier_palier: float | int | None = None):
+    """Plus haut palier parmi ``paliers`` que ``valeur`` vient de franchir.
+
+    ``paliers`` : seuils numériques, ordre indifférent (ex. ``(80, 100)``
+    pour un quota en %, ``(10,)`` pour un taux d'erreur simple).
+
+    Renvoie :
+      - ``None`` si ``valeur`` est absente, sous le plus bas palier (l'appelant
+        peut alors remettre son état à zéro — ré-armement), ou si le palier
+        atteint est déjà ``dernier_palier`` (jamais une seconde notification
+        pour le même palier) ;
+      - sinon le palier le PLUS HAUT atteint (``valeur >= palier``) — un saut
+        direct de 0% à 150% avec des paliers ``(80, 100)`` ne notifie QUE
+        100, jamais deux notifications d'un coup.
+    """
+    paliers = list(paliers or ())
+    if valeur is None or not paliers:
+        return None
+    plus_bas = min(paliers)
+    if valeur < plus_bas:
+        return None
+    atteints = sorted((p for p in paliers if valeur >= p), reverse=True)
+    if not atteints:
+        return None
+    plus_haut = atteints[0]
+    return plus_haut if plus_haut != dernier_palier else None

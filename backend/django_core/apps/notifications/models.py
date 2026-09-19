@@ -392,6 +392,13 @@ class EventType(models.TextChoices):
     # service automatique vers une cible qui a cessé de répondre.
     API_WEBHOOK_DESACTIVE = (
         'api_webhook_desactive', 'Webhook désactivé automatiquement')
+    # NTAPI41 — le taux d'erreur 5xx d'une intégration sortante (webhook) sur
+    # une fenêtre glissante dépasse un seuil configurable : notifie l'admin
+    # AVANT que le webhook n'atteigne le seuil d'échecs consécutifs qui le
+    # désactiverait (NTAPI11, `API_WEBHOOK_DESACTIVE` ci-dessus) — signal
+    # précoce, distinct, jamais un doublon de l'alerte de désactivation.
+    API_TAUX_ERREUR_ELEVE = (
+        'api_taux_erreur_eleve', "Taux d'erreur élevé sur une intégration")
     # NTOBS6 — l'export de réversibilité complet d'un tenant (ZIP CSV+fichiers,
     # core.export_registry) devient téléchargeable : notifie le demandeur avec
     # le lien tokenisé (7 jours, core.signed_download).

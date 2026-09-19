@@ -1287,3 +1287,42 @@ def notify_security_change(user, title, body='', *, link=None, company=None):
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('Email notification sécurité échoué : %s', exc)
     return created
+
+
+# =============================================================================
+# NTAPI41 — alertes de santé d'intégration à seuils configurables (quota
+# proche de sa limite, pic de taux d'erreur). Le troisième cas de la même
+# famille — un webhook auto-désactivé après trop d'échecs consécutifs — est
+# DÉJÀ couvert de bout en bout par NTAPI11 (`apps.publicapi.webhook_health`,
+# `EventType.API_WEBHOOK_DESACTIVE`) : rien à reconstruire ici.
+# =============================================================================
+
+def notify_integration_health(company, recipients, *, title, valeur, paliers,
+                              dernier_palier=None, body='', link='',
+                              event_type=EventType.API_TAUX_ERREUR_ELEVE,
+                              reason=''):
+    """Notifie `recipients` quand `valeur` franchit un nouveau palier.
+
+    Réutilise `core.rules.palier_franchi` (FG367-adjacent, motif générique
+    « une notification par palier franchi, jamais deux fois, ré-armement
+    sous le plus bas palier ») pour la décision, et `notify_many()` pour
+    l'émission — cette fonction ne fait AUCUNE requête métier : l'appelant
+    (ex. un job `apps.publicapi` calculant le taux d'erreur 5xx d'un webhook
+    sur une fenêtre glissante, ou une vérification de quota) fournit
+    `valeur` déjà calculée et `dernier_palier` (persisté où il veut — cache,
+    champ modèle — cette fonction ne persiste rien elle-même).
+
+    `paliers` : seuils numériques (ex. ``(80, 100)`` pour un quota en %,
+    ``(10,)`` pour un taux d'erreur simple en %). `event_type` par défaut
+    `API_TAUX_ERREUR_ELEVE` ; passer `EventType.USAGE_QUOTA_SEUIL_FRANCHI`
+    pour une alerte de quota.
+
+    Renvoie le nouveau palier notifié (à persister par l'appelant), ou
+    `None` si rien de neuf à notifier."""
+    from core.rules import palier_franchi
+    palier = palier_franchi(valeur, paliers, dernier_palier)
+    if palier is None:
+        return None
+    notify_many(recipients, event_type, title, body=body, link=link,
+                company=company, reason=reason)
+    return palier
