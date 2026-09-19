@@ -392,6 +392,13 @@ class EventType(models.TextChoices):
     # service automatique vers une cible qui a cessé de répondre.
     API_WEBHOOK_DESACTIVE = (
         'api_webhook_desactive', 'Webhook désactivé automatiquement')
+    # NTAPI41 — le taux d'erreur 5xx d'une intégration sortante (webhook) sur
+    # une fenêtre glissante dépasse un seuil configurable : notifie l'admin
+    # AVANT que le webhook n'atteigne le seuil d'échecs consécutifs qui le
+    # désactiverait (NTAPI11, `API_WEBHOOK_DESACTIVE` ci-dessus) — signal
+    # précoce, distinct, jamais un doublon de l'alerte de désactivation.
+    API_TAUX_ERREUR_ELEVE = (
+        'api_taux_erreur_eleve', "Taux d'erreur élevé sur une intégration")
     # NTOBS6 — l'export de réversibilité complet d'un tenant (ZIP CSV+fichiers,
     # core.export_registry) devient téléchargeable : notifie le demandeur avec
     # le lien tokenisé (7 jours, core.signed_download).
@@ -428,6 +435,28 @@ class EventType(models.TextChoices):
     #     couper l'une sans l'autre dans les préférences.
     VISITE_TERRAIN_A_VALIDER = (
         'visite_terrain_a_valider', 'Visite technique à valider')
+    # NTI18N37 — rappel Beat de fin d'année : les 4 fêtes hégiriennes de
+    # l'année N+1 (Aïd el-Fitr, Aïd el-Adha, 1er Moharram, Aïd el-Mawlid,
+    # NTI18N33/`apps.parametres.fetes_mobiles`) ne sont pas toutes saisies
+    # (`Holiday.recurrent_annuel=False`, NTI18N14) — notifie l'admin RH
+    # quotidiennement jusqu'à saisie complète.
+    FETES_MOBILES_A_SAISIR = (
+        'fetes_mobiles_a_saisir', 'Fêtes mobiles à saisir')
+    # NTPRT18 — notifications PORTAIL (compte `CustomUser`
+    # `portee=portail_client/portail_fournisseur/portail_partenaire`,
+    # NTPRT1/2). Réutilisent le canal `notify()` existant tel quel (in-app +
+    # email SendGrid/Brevo-gated) — jamais un second moteur : avant NTPRT18,
+    # les rares notifications client-facing (ex. livraisons,
+    # `apps.installations.livraison_client_notify`) envoyaient un email
+    # directement, hors de ce système de préférences/canal.
+    PORTAIL_DEVIS_PRET = (
+        'portail_devis_pret', 'Votre devis est prêt')
+    PORTAIL_FACTURE_ECHUE = (
+        'portail_facture_echue', 'Facture échue')
+    PORTAIL_JALON_CHANTIER_ATTEINT = (
+        'portail_jalon_chantier_atteint', 'Jalon de chantier atteint')
+    PORTAIL_TICKET_MAJ = (
+        'portail_ticket_maj', 'Mise à jour de votre ticket')
 
 
 class Channel(models.TextChoices):
@@ -789,6 +818,14 @@ class Holiday(models.Model):
     recurrent_annuel = models.BooleanField(
         default=False,
         verbose_name='Récurrent chaque année')
+    # HOLIDAY-PAYS (complément NTI18N13) — additif, défaut ``MA`` (même
+    # patron/casse que `authentication.Company.pays`, SOL8) : TOUTES les
+    # lignes existantes (calendrier marocain) restent ``MA``, donc AUCUN
+    # comportement ne change tant qu'un appelant ne demande pas
+    # explicitement à filtrer par pays (`calendar_utils.feries_entre`).
+    pays = models.CharField(
+        'Pays (ISO 3166-1 alpha-2)', max_length=2, default='MA',
+        help_text='Code pays ISO du jour férié (MA = Maroc).')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
