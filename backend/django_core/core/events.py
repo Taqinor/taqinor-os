@@ -1212,3 +1212,40 @@ record_restored = django.dispatch.Signal()
 # ``core.Dossier``), ``company``, ``proprietaire`` (``CustomUser`` ou
 # ``None`` si le dossier n'a pas de propriétaire désigné).
 dossier_echeance_depassee = django.dispatch.Signal()
+
+# ── NTP2P38 — Événements du domaine Procure-to-Pay ──────────────────────────
+# Les deux gestes d'achat qu'un tiers attend d'être notifié. Émis par
+# ``apps.installations.services`` (le SEUL point d'écriture d'état de la
+# réquisition et de l'adjudication), consommables par ``apps.automation`` (une
+# ``AutomationRule`` sur ces ``TriggerType``) pour envoyer une notification ou
+# un webhook sortant configuré par le founder — AUCUN appel HTTP automatique
+# par défaut : l'app émet sur le bus, sans savoir qui écoute (même patron que
+# ``btp_reserve_levee`` plus haut).
+
+# Émis EXACTEMENT quand une ``installations.DemandeAchat`` (FG310) atteint le
+# statut ``approuvee``, que la décision vienne du guichet unique
+# (``services.decider_demande_achat``, XKB1) ou de la DERNIÈRE étape d'un plan
+# d'approbation à N paliers (``services.approuver_etape_achat``, NTP2P2) —
+# jamais sur une étape intermédiaire, jamais sur un refus. Arguments :
+# ``demande`` (l'instance déjà ``approuvee``), ``company``, ``user``
+# (l'approbateur, peut être ``None``), ``montant_estime`` (``Decimal``).
+demande_achat_approuvee = django.dispatch.Signal()
+
+# Émis EXACTEMENT quand une ``installations.RFQ`` (FG311) est ADJUGÉE : une
+# offre à fournisseur catalogue est retenue ET le bon de commande fournisseur
+# du gagnant vient d'être créé (``services.marquer_rfq_attribuee``). Retenir
+# une offre à fournisseur nom-libre ne fait que basculer la sélection : ce
+# n'est pas une attribution, et rien n'est émis. Arguments : ``rfq``
+# (l'instance clôturée), ``offre`` (la ``RFQOffre`` retenue), ``company``,
+# ``user`` (peut être ``None``), ``bon_commande_id`` (le BCF créé).
+rfq_attribuee = django.dispatch.Signal()
+
+# NTP2P38 — ADAPTATION DE PÉRIMÈTRE, pour le 3ᵉ événement prévu au plan
+# (``facture_fournisseur_exception_3voies``) : le rapprochement 3 voies est
+# FG131 et vit intégralement dans ``apps.compta.services``
+# (``evaluer_rapprochement`` est le seul endroit où un écart reçu↔facturé est
+# calculé et où le statut « en écart » est posé), app qui n'appartient pas à
+# la lane de ce commit. Aucun signal n'est déclaré ici tant que son émetteur
+# ne l'est pas : un signal jamais émis serait un seam creux, pas un contrat
+# (même arbitrage que pour ``scm.score_fournisseur_degrade`` plus haut). La
+# tâche qui touchera ``apps/compta`` l'ajoutera ici, sans rien casser.

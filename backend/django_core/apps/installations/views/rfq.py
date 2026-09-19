@@ -181,6 +181,15 @@ class RFQViewSet(CompanyScopedModelViewSet):
                             fournisseur=offre.fournisseur, prix_achat=prix,
                             date=_tz.now().date())
 
+            # NTP2P38 — l'adjudication est faite (BCF du gagnant créé) : le bus
+            # ``core.events`` l'annonce, pour qu'une ``AutomationRule`` puisse
+            # notifier ou déclencher un webhook sortant configuré. Retenir une
+            # offre nom-libre n'arrive jamais ici : ce n'est pas une
+            # attribution, et rien n'est émis.
+            from apps.installations.services import marquer_rfq_attribuee
+            marquer_rfq_attribuee(
+                rfq, offre, user=request.user, bon_commande_id=bon.id)
+
         return Response(self.get_serializer(rfq).data)
 
     @action(detail=True, methods=['post'], url_path='consulter')
