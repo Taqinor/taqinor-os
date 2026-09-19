@@ -1137,6 +1137,8 @@ CELERY_TASK_ROUTES = {
     'installations.meteo_planning_j3': {'queue': 'scheduled'},
     # NTP2P33 — relance RFQ non répondue à J-2 de la date limite de réponse.
     'installations.relancer_rfq_en_attente': {'queue': 'scheduled'},
+    # NTP2P35 — archivage mensuel des brouillons de demande d'achat abandonnés.
+    'installations.purger_demandes_achat_brouillon': {'queue': 'scheduled'},
     'rh.alertes_expiration': {'queue': 'scheduled'},
     'rh.alertes_cdd': {'queue': 'scheduled'},
     'sav.generer_visites_dues_quotidien': {'queue': 'scheduled'},

@@ -1591,11 +1591,15 @@ class DemandeAchatSerializer(serializers.ModelSerializer):
             'approuvee_par', 'date_decision', 'note', 'lignes',
             'montant_estime',
             'created_by', 'date_creation', 'date_modification',
+            # NTP2P35 — `epinglee` est le SEUL des trois que le terrain écrit
+            # (protéger un brouillon de l'archivage automatique) ; `archivee`
+            # et `date_archivage` sont posés par la tâche planifiée.
+            'archivee', 'epinglee', 'date_archivage',
         ]
         read_only_fields = [
             'reference', 'statut', 'bon_commande', 'approuvee_par',
             'date_decision', 'motif_refus', 'created_by', 'date_creation',
-            'date_modification',
+            'date_modification', 'archivee', 'date_archivage',
         ]
 
     def validate_objet(self, value):

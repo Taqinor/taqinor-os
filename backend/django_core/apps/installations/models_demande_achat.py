@@ -143,6 +143,22 @@ class DemandeAchat(DocumentMetier):
         related_name='installations_demandes_achat_creees')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
+    # ── NTP2P35 — hygiène des brouillons abandonnés ─────────────────────────
+    # `archivee` remplace toute idée de suppression dure : la réquisition
+    # sort des listes actives par défaut mais reste intégralement consultable
+    # (filtre « archivées »), donc rien n'est jamais perdu. `epinglee` est
+    # l'échappatoire explicite du terrain : un brouillon épinglé n'est JAMAIS
+    # archivé par la tâche planifiée, quel que soit son âge. Les deux sont
+    # additifs à False : le comportement historique est inchangé tant que la
+    # tâche n'a rien archivé.
+    archivee = models.BooleanField(
+        default=False, verbose_name='Archivée',
+        help_text='Retirée des listes actives par défaut ; jamais supprimée.')
+    epinglee = models.BooleanField(
+        default=False, verbose_name='Épinglée',
+        help_text="Un brouillon épinglé n'est jamais archivé automatiquement.")
+    date_archivage = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'archivage")
 
     class Meta:
         verbose_name = "Demande d'achat"

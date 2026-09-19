@@ -556,6 +556,13 @@ app.conf.beat_schedule = {
         'task': 'installations.relancer_rfq_en_attente',
         'schedule': crontab(hour=7, minute=15),
     },
+    # NTP2P35 — archivage MENSUEL des brouillons de demande d'achat abandonnés
+    # (> seuil société, défaut 90 j). Jamais de suppression dure, jamais un
+    # brouillon épinglé ; heure creuse du 1er du mois.
+    'installations-purger-demandes-achat-brouillon': {
+        'task': 'installations.purger_demandes_achat_brouillon',
+        'schedule': crontab(hour=3, minute=55, day_of_month=1),
+    },
     # ZSTK1 — recompute réappro + alertes de rupture (« reordering rules
     # run » façon Odoo), quotidien, heure creuse matinale. Suggestion
     # seulement (aucun BCF créé automatiquement), idempotent par société.
