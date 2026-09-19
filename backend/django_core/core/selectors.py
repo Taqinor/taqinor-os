@@ -259,6 +259,150 @@ def wrap_email_html(
         return corps_texte or ''
 
 
+# ── NTWFL23 — audit de processus : temps par étape et goulot d'étranglement ──
+#
+# La question « où mon processus perd-il du temps ? » n'a jamais de réponse
+# tant qu'on ne mesure pas les étapes RÉELLEMENT clôturées. Ce sélecteur ne
+# lit que des ``WorkflowStepInstance`` décidées (``decided_le`` renseigné) et
+# en tire, par étape du MODÈLE (``WorkflowStepDefinition``), la durée observée
+# ``decided_le - created_at`` (moyenne / médiane / p90), le taux de rejet et le
+# taux d'escalade SLA. Lecture seule, aucune écriture, bornée à la société.
+
+
+def _percentile_rang_proche(valeurs_triees, fraction):
+    """Percentile par RANG LE PLUS PROCHE (pas d'interpolation).
+
+    ``valeurs_triees`` est une liste NON VIDE déjà triée croissante ;
+    ``fraction`` ∈ ]0, 1]. Choix du rang le plus proche (et non une
+    interpolation linéaire) pour que la valeur renvoyée soit TOUJOURS une
+    durée réellement observée — un p90 « interpolé » n'existe dans aucun
+    dossier et ne se justifie pas devant un auditeur."""
+    import math
+    n = len(valeurs_triees)
+    rang = math.ceil(fraction * n)
+    rang = min(max(rang, 1), n)
+    return valeurs_triees[rang - 1]
+
+
+def _mediane(valeurs_triees):
+    """Médiane d'une liste NON VIDE déjà triée croissante."""
+    n = len(valeurs_triees)
+    milieu = n // 2
+    if n % 2:
+        return valeurs_triees[milieu]
+    return (valeurs_triees[milieu - 1] + valeurs_triees[milieu]) / 2
+
+
+def analyse_goulots_workflow(company, definition_id, periode=None):
+    """NTWFL23 — durées observées par étape + goulot d'une définition BPM.
+
+    ``periode`` : chaîne ``'AAAA-MM'`` (restreint aux décisions de ce mois) ou
+    ``None`` (tout l'historique). Renvoie ``None`` si la définition n'existe
+    pas POUR CETTE SOCIÉTÉ — la définition d'un autre tenant est donc
+    indistinguable d'une définition inexistante (jamais de fuite).
+
+    Structure renvoyée::
+
+        {'definition_id', 'definition_code', 'definition_nom', 'periode',
+         'nb_instances', 'etapes': [{'step_def_id', 'ordre', 'nom',
+         'nb_decisions', 'duree_moyenne_h', 'duree_mediane_h', 'duree_p90_h',
+         'taux_rejet', 'taux_escalade', 'goulot'}, ...],
+         'goulot_ordre': int|None}
+
+    Une étape sans AUCUNE décision clôturée sur la période porte des durées
+    ``None`` (jamais 0 : « pas mesuré » et « instantané » ne sont pas la même
+    information) et ne peut pas être élue goulot. Le goulot est l'étape à la
+    durée MOYENNE la plus élevée parmi celles réellement mesurées."""
+    from .models import (
+        WorkflowDefinition, WorkflowInstance, WorkflowStepInstance,
+    )
+
+    if company is None or not definition_id:
+        return None
+    definition = WorkflowDefinition.objects.filter(
+        company=company, pk=definition_id).first()
+    if definition is None:
+        return None
+
+    decidees = WorkflowStepInstance.objects.filter(
+        company=company,
+        instance__definition=definition,
+        decided_le__isnull=False,
+    )
+    if periode:
+        try:
+            annee, mois = (int(p) for p in str(periode).split('-')[:2])
+        except (TypeError, ValueError):
+            pass
+        else:
+            decidees = decidees.filter(
+                decided_le__year=annee, decided_le__month=mois)
+
+    par_step_def = {}
+    for step in decidees.values(
+            'step_def_id', 'statut', 'created_at', 'decided_le'):
+        seau = par_step_def.setdefault(
+            step['step_def_id'],
+            {'durees': [], 'rejets': 0, 'escalades': 0, 'total': 0})
+        seau['total'] += 1
+        if step['statut'] == WorkflowStepInstance.STATUT_REJETE:
+            seau['rejets'] += 1
+        elif step['statut'] == WorkflowStepInstance.STATUT_ESCALADE:
+            seau['escalades'] += 1
+        ecart = step['decided_le'] - step['created_at']
+        seau['durees'].append(ecart.total_seconds() / 3600.0)
+
+    etapes = []
+    for step_def in definition.steps.order_by('ordre', 'id'):
+        seau = par_step_def.get(step_def.pk)
+        if not seau or not seau['durees']:
+            etapes.append({
+                'step_def_id': step_def.pk,
+                'ordre': step_def.ordre,
+                'nom': step_def.nom,
+                'nb_decisions': 0,
+                'duree_moyenne_h': None,
+                'duree_mediane_h': None,
+                'duree_p90_h': None,
+                'taux_rejet': None,
+                'taux_escalade': None,
+                'goulot': False,
+            })
+            continue
+        durees = sorted(seau['durees'])
+        total = seau['total']
+        etapes.append({
+            'step_def_id': step_def.pk,
+            'ordre': step_def.ordre,
+            'nom': step_def.nom,
+            'nb_decisions': total,
+            'duree_moyenne_h': round(sum(durees) / len(durees), 4),
+            'duree_mediane_h': round(_mediane(durees), 4),
+            'duree_p90_h': round(_percentile_rang_proche(durees, 0.9), 4),
+            'taux_rejet': round(seau['rejets'] / total, 4),
+            'taux_escalade': round(seau['escalades'] / total, 4),
+            'goulot': False,
+        })
+
+    mesurees = [e for e in etapes if e['duree_moyenne_h'] is not None]
+    goulot_ordre = None
+    if mesurees:
+        goulot = max(mesurees, key=lambda e: (e['duree_moyenne_h'], -e['ordre']))
+        goulot['goulot'] = True
+        goulot_ordre = goulot['ordre']
+
+    return {
+        'definition_id': definition.pk,
+        'definition_code': definition.code,
+        'definition_nom': definition.nom,
+        'periode': periode or None,
+        'nb_instances': WorkflowInstance.objects.filter(
+            company=company, definition=definition).count(),
+        'etapes': etapes,
+        'goulot_ordre': goulot_ordre,
+    }
+
+
 def traitements_haut_risque(company, actifs_seuls=True):
     """NTGRC27 — traitements CNDP marqués « données sensibles / haut risque ».
 

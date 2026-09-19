@@ -401,6 +401,35 @@ def approuver_etapes_en_masse(request):
     })
 
 
+@extend_schema(responses={200: inline_serializer(
+    name='AnalyseGoulotsResponse',
+    fields={
+        'definition_id': drf_serializers.IntegerField(),
+        'goulot_ordre': drf_serializers.IntegerField(allow_null=True),
+        'etapes': drf_serializers.JSONField(),
+    },
+)})
+@api_view(['GET'])
+@permission_classes([IsAdminOrResponsableTier])
+def analyse_goulots_workflow_view(request, pk):
+    """NTWFL23 — ``GET core/workflows/{id}/analyse/?periode=AAAA-MM``.
+
+    Audit LECTURE SEULE d'une définition de workflow : durée réellement
+    observée par étape (moyenne / médiane / p90 de ``decided_le -
+    created_at``), taux de rejet, taux d'escalade SLA, et l'étape goulot.
+    Bornée à la société de l'appelant — la définition d'un autre tenant
+    renvoie 404, indistinctement d'un id inexistant."""
+    from . import selectors as core_selectors
+
+    company = getattr(request.user, 'company', None)
+    analyse = core_selectors.analyse_goulots_workflow(
+        company, pk, periode=request.query_params.get('periode'))
+    if analyse is None:
+        return Response(
+            {'detail': 'Introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(analyse)
+
+
 class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG381 — dashboards sans-code, sauvegardés par utilisateur/société.
 

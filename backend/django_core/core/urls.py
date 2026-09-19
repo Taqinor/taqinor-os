@@ -78,6 +78,7 @@ from .views import (
     WorkflowDefinitionViewSet,
     WorkflowStepDefinitionViewSet,
     WorkflowTemplateViewSet,
+    analyse_goulots_workflow_view,
     approuver_etapes_en_masse,
     db_stats_view,
     health_live,
@@ -175,6 +176,10 @@ urlpatterns = router.urls + [
     # palier), un commentaire unique, N décisions journalisées séparément.
     path('workflows/approuver-en-masse/', approuver_etapes_en_masse,
          name='workflows-approuver-en-masse'),
+    # NTWFL23 — audit de processus : durée observée par étape (moyenne /
+    # médiane / p90), taux de rejet, taux d'escalade SLA, étape goulot.
+    path('workflows/<int:pk>/analyse/', analyse_goulots_workflow_view,
+         name='workflows-analyse-goulots'),
     # XPLT10 — accès public lecture seule (aucune identité de confiance,
     # résolu depuis le seul jeton) + mode TV (rotation des dashboards partagés).
     path('dashboards-partages/public/<str:token>/', dashboard_public,
