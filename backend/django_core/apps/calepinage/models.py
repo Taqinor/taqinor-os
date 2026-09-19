@@ -189,6 +189,25 @@ class CalepinageVersion(TenantModel):
     def __str__(self):
         return self.libelle or f'Version #{self.pk}'
 
+    def save(self, *args, **kwargs):
+        """CAL8 — un instantané n'est JAMAIS réécrit après sa création.
+
+        C'est ce qui en fait une preuve : une version qu'on peut retoucher ne
+        prouve rien. Le refus est ici, sur le modèle, et pas seulement dans le
+        service — pour qu'aucun chemin d'écriture (admin, script, futur
+        sérialiseur) ne puisse le contourner par distraction. Aucune migration
+        n'est ajoutée : c'est du comportement, pas du schéma.
+        """
+        if self.pk is not None:
+            raise ValidationError({
+                'calepinage': (
+                    "Une version de calepinage est un instantané gelé : elle "
+                    "ne peut pas être modifiée après sa création. Enregistrez "
+                    "une nouvelle version."
+                ),
+            })
+        return super().save(*args, **kwargs)
+
 
 class CalepinageVariante(TenantModel):
     """CAL9 — une option comparée ; UNE SEULE peut être retenue.
