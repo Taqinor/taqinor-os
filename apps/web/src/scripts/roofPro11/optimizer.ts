@@ -483,15 +483,25 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       setbacksM: setbacksForMargin(w.margin), // PV63 — latéral / extrémité / acrotère
       setbackM,
       overhangM: ctx.overhangM, // W109 — le gagnant rendu déborde comme le solve l'a évalué
+      colGapM: ctx.colGapM, // CAL75 — écart réglable, re-pavé à chaud (défaut : inchangé)
+      rowGapExtraM: ctx.rowGapExtraM,
     });
     // PV62 — pose MIXTE : grille dédiée du pack (repli meilleur uniforme si le mixte perd).
     const grid = w.layout === 'mixed' ? pack.mixed ?? pack.best : w.layout === 'portrait' ? pack.portrait : pack.landscape;
-    renderScene(pack, grid, w.tiltDeg, w.family, w.placedCount);
+    // CAL75 — le solveur (V7) a choisi cette config à l'écart D'ÉTUDE ; un écart personnalisé
+    // change ce qui tient VRAIMENT dans ce même contour → le compte AFFICHÉ vient du pack
+    // RE-PAVÉ (placedFor, même plafond besoin que partout ailleurs), kWc/kWh mis à l'échelle
+    // du VRAI compte rendu (jamais un chiffre en désaccord avec la 3D affichée). Écart
+    // absent/par défaut → grid.count === w.placedCount → scale = 1 → chiffres INCHANGÉS.
+    const placedCount = placedFor(grid);
+    const gapScale = w.placedCount > 0 ? placedCount / w.placedCount : placedCount > 0 ? 1 : 0;
+    renderScene(pack, grid, w.tiltDeg, w.family, placedCount);
     // W94 — écrête la production AFFICHÉE au plafond AC de l'onduleur (le solveur V7
     // calcule le kWh DC brut sans clip) : un Sud est inchangé (ratio = design), une
     // « tente » E-O sur-densifiée est ramenée sous la valeur non écrêtée. On recalcule
     // couverture + économies (plafonnées à la conso) à partir du kWh écrêté.
-    const annualKwh = clipDcAcKwh(w.annualKwh, effectiveDcAcRatio(w.family));
+    const annualKwh = clipDcAcKwh(w.annualKwh, effectiveDcAcRatio(w.family)) * gapScale;
+    const kwc = w.kwc * gapScale;
     const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
     const savings = annualSavingsMad(annualKwh, target);
     const pct = target > 0 ? (annualKwh / target) * 100 : 0;
@@ -505,14 +515,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       : ctx.devisMode && ctx.neededPanels <= 0
         ? `Ce devis ne porte aucun panneau — aucune pose proposée. Fixez un nombre (facture ou saisie) pour calepiner.`
         : isReco
-          ? `Meilleure combinaison pour votre facture : ${liveOrientationLabel(w)} à ${w.tiltDeg}°, ${w.placedCount} panneaux ≈ ${cov} % de la facture. Touchez une option pour la verrouiller — le reste se re-résout.`
-          : `Vos choix sont tenus, le reste a été re-résolu : ${w.placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent l'option optimale de chaque groupe.`;
+          ? `Meilleure combinaison pour votre facture : ${liveOrientationLabel(w)} à ${w.tiltDeg}°, ${placedCount} panneaux ≈ ${cov} % de la facture. Touchez une option pour la verrouiller — le reste se re-résout.`
+          : `Vos choix sont tenus, le reste a été re-résolu : ${placedCount} panneaux ≈ ${cov} % de la facture. Les badges « Recommandé » montrent l'option optimale de chaque groupe.`;
     paintCard(
       {
         title: `${liveOrientationLabel(w)} ${w.tiltDeg}° · ${w.layoutLabel}`,
         isReco,
-        count: w.placedCount,
-        kwc: w.kwc,
+        count: placedCount,
+        kwc,
         annualKwh,
         pct,
         savingsLow: savings.low,

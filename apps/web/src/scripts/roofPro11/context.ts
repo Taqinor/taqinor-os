@@ -129,6 +129,16 @@ export interface Ctx {
   /** W109 — débord panneaux autorisé au-delà de la rive (m), saisi par l'utilisateur. 0 par
    *  défaut → calepinage/solve inchangés. Change la CAPACITÉ géométrique, jamais le cap besoin. */
   overhangM: number;
+  /** CAL75 — écart LATÉRAL entre panneaux d'une même rangée EN POSE OPTIMISÉE (m), saisi par
+   *  la société. Optionnel : absent/non fini → PANEL_SIDE_GAP_M (2 cm, valeur d'étude),
+   *  calepinage identique à aujourd'hui. Un `ctx` antérieur à CAL75 ne porte pas ce champ —
+   *  jamais lu en aveugle (même garde que `freeMargins`, cf. layoutEditor.ts `margins()`).
+   *  Jusqu'ici réglable SEULEMENT en placement libre (freeMargins). */
+  colGapM?: number;
+  /** CAL75 — écart SUPPLÉMENTAIRE entre rangées EN POSE OPTIMISÉE (m), AU-DESSUS du pas
+   *  minimal anti-ombrage (jamais réduit — la physique reste tenue). Optionnel : absent/0 →
+   *  calepinage identique à aujourd'hui. */
+  rowGapExtraM?: number;
 
   // — Besoin « panneaux nécessaires » de la zone active (mutable) —
   neededPanels: number;
