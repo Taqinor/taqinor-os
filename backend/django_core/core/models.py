@@ -1812,6 +1812,19 @@ class ModuleToggle(TimestampedModel):
     raison = models.CharField(
         'Raison', max_length=255, blank=True, default='',
         help_text='Note optionnelle (ex. « hors offre », « en pilote »).')
+    # NTI18N36 — GRANULARITÉ RTL. Le passage en arabe ne peut pas être un
+    # interrupteur unique : un module dont les écrans n'ont pas encore été
+    # migrés s'affiche cassé en RTL (colonnes inversées, icônes
+    # directionnelles à l'envers). Ce drapeau rend la transition PROGRESSIVE :
+    # un utilisateur en ``locale=ar`` voit en RTL les modules déjà migrés, et
+    # les autres restent FORCÉS en LTR avec une mention discrète, au lieu de
+    # tout basculer d'un coup. Défaut FAUX = comportement strictement
+    # inchangé (tout en LTR) tant qu'un module n'est pas déclaré prêt.
+    # Le résolveur est ``core.rtl.direction_module``.
+    rtl_pret = models.BooleanField(
+        'Prêt pour le RTL', default=False,
+        help_text="Coché, ce module s'affiche en RTL pour un utilisateur en "
+                  'langue de droite à gauche ; sinon il reste en LTR.')
 
     class Meta:
         verbose_name = 'Activation de module'
