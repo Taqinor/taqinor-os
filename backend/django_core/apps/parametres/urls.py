@@ -20,6 +20,7 @@ from .views_pos import (
     update_parametres_pos,
 )
 from .views_onboarding import onboarding_localisation
+from .views_fetes_mobiles import fetes_mobiles_enregistrer, fetes_mobiles_etat
 
 # N58 — configuration d'affichage des statuts métier (chantier/SAV/BC).
 # Routeur isolé (registre dédié) pour ne pas perturber les vues fonctions.
@@ -123,4 +124,7 @@ urlpatterns = [
     # NTI18N31 — assistant « Onboarding pays » (devise/fuseau/langue de
     # secours + seed des jours fériés, en un seul appel).
     path('onboarding-localisation/', onboarding_localisation),
+    # NTI18N33 — assistant de saisie guidée des fêtes mobiles hégiriennes.
+    path('fetes-mobiles/', fetes_mobiles_etat),
+    path('fetes-mobiles/enregistrer/', fetes_mobiles_enregistrer),
 ]
