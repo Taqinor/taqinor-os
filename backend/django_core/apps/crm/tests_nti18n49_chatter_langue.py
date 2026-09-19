@@ -125,3 +125,60 @@ class ClientLangueDocumentChatterTests(TestCase):
             self.client_obj, self.user, old_value='fr', new_value='fr')
         self.assertEqual(entries, [])
         self.assertEqual(self._modifications().count(), 0)
+
+
+class ClientLangueDocumentDomainEventTests(TestCase):
+    """CRM-LANGUE-EVENT — NTI18N43 comblé : ``ClientViewSet.perform_update``
+    émet désormais ``core.events.langue_changed`` (seam jusqu'ici sans
+    émetteur, consommé par le webhook sortant ``apps.publicapi``)."""
+
+    def setUp(self):
+        self.company = _company(slug='ntl43-co', nom='NTL43 Co')
+        self.user = User.objects.create_user(
+            username='ntl43_user', password='x', role_legacy='responsable',
+            company=self.company)
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client FR', langue_document='fr')
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def test_patch_via_api_emits_langue_changed(self):
+        from core.events import langue_changed
+
+        recus = []
+        langue_changed.connect(
+            lambda sender, **kw: recus.append(kw),
+            dispatch_uid='test_ntl43_recepteur')
+        try:
+            resp = self.api.patch(
+                f'/api/django/crm/clients/{self.client_obj.id}/',
+                {'langue_document': 'ar'}, format='json')
+            self.assertEqual(resp.status_code, 200, resp.data)
+        finally:
+            langue_changed.disconnect(dispatch_uid='test_ntl43_recepteur')
+
+        self.assertEqual(len(recus), 1)
+        evt = recus[0]
+        self.assertEqual(evt['company'], self.company)
+        self.assertEqual(evt['client_id'], self.client_obj.id)
+        self.assertEqual(evt['ancienne_langue'], 'fr')
+        self.assertEqual(evt['nouvelle_langue'], 'ar')
+        self.assertEqual(evt['user'], self.user)
+
+    def test_patch_sans_changement_n_emet_rien(self):
+        from core.events import langue_changed
+
+        recus = []
+        langue_changed.connect(
+            lambda sender, **kw: recus.append(kw),
+            dispatch_uid='test_ntl43_recepteur_noop')
+        try:
+            resp = self.api.patch(
+                f'/api/django/crm/clients/{self.client_obj.id}/',
+                {'langue_document': 'fr'}, format='json')
+            self.assertEqual(resp.status_code, 200, resp.data)
+        finally:
+            langue_changed.disconnect(dispatch_uid='test_ntl43_recepteur_noop')
+
+        self.assertEqual(recus, [])
