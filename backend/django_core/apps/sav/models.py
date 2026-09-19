@@ -1227,6 +1227,17 @@ class TicketActivity(models.Model):
         verbose_name="Résultat de l'interaction")
     duree_minutes = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Durée (minutes)')
+    # ── NTPRT12 — visibilité CLIENT d'une entrée du chatter ─────────────────
+    # Le chatter d'un ticket est INTERNE par construction : `visible_client`
+    # est donc à False par défaut, et TOUTE entrée existante (note technicien,
+    # journal de changement, e-mail, WhatsApp, appel) reste invisible du
+    # portail. Seule une note explicitement marquée visible client remonte
+    # dans le fil de commentaires de « Mes tickets SAV » — jamais par défaut,
+    # jamais par déduction sur le `kind`.
+    visible_client = models.BooleanField(
+        default=False, verbose_name='Visible par le client',
+        help_text='Quand actif, cette entrée apparaît dans le fil du portail '
+                  'client. Défaut : entrée INTERNE, jamais exposée.')
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ticket_activities')

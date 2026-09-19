@@ -995,6 +995,39 @@ def tickets_ouverts_client(company, client_id):
         statut__in=Ticket.OPEN_STATUTS).count()
 
 
+def fil_client_du_ticket(company, client_id, ticket_id):
+    """NTPRT12 — fil de commentaires CLIENT-VISIBLE d'un ticket, en lecture.
+
+    Le chatter d'un ticket est interne : seules les entrées explicitement
+    marquées ``visible_client`` sont renvoyées ici. Une note technicien
+    ordinaire, un journal de changement de statut, un e-mail ou un WhatsApp
+    interne n'y apparaissent JAMAIS — il n'y a pas de dérivation sur le
+    ``kind`` qui pourrait les faire fuiter par accident.
+
+    Point d'entrée cross-app en LECTURE SEULE pour ``apps.portail`` (jamais un
+    import de ``apps.sav.models``). Exige le triplet (société, client, ticket) :
+    le ticket d'un autre client renvoie une liste vide, jamais une erreur qui
+    révélerait son existence. Payload pauvre : le corps, l'horodatage et
+    l'auteur, jamais un champ interne (coût, technicien assigné, SLA).
+    """
+    if company is None or not client_id or not ticket_id:
+        return []
+    ticket = Ticket.objects.filter(
+        company=company, client_id=client_id, id=ticket_id).first()
+    if ticket is None:
+        return []
+    entrees = (TicketActivity.objects
+               .filter(company=company, ticket=ticket, visible_client=True)
+               .select_related('user')
+               .order_by('created_at', 'id'))
+    return [{
+        'id': entree.id,
+        'body': entree.body or '',
+        'created_at': entree.created_at,
+        'auteur': getattr(entree.user, 'username', '') or '',
+    } for entree in entrees]
+
+
 def contrats_maintenance_portail_client(company, client_id):
     """NTPRT16 — contrats de maintenance d'UN client, projetés pour le portail.
 

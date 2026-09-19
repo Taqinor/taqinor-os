@@ -136,8 +136,11 @@ class TicketActivitySerializer(serializers.ModelSerializer):
             # NTSRV5 — trace structurée d'un appel (vide sur toutes les
             # entrées non-appel : comportement inchangé côté UI).
             'outcome', 'outcome_label', 'duree_minutes',
+            # NTPRT12 — l'écran INTERNE montre si l'entrée est exposée au
+            # client ; la valeur est posée par l'action `noter`, jamais ici.
+            'visible_client',
         ]
-        read_only_fields = ['outcome', 'duree_minutes']
+        read_only_fields = ['outcome', 'duree_minutes', 'visible_client']
 
     def get_user_nom(self, obj):
         return getattr(obj.user, 'username', None)
