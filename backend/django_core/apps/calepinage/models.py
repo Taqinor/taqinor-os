@@ -265,7 +265,10 @@ class CalepinageVariante(TenantModel):
         empêche de le contourner par distraction. Aucune migration : c'est du
         comportement, pas du schéma.
         """
-        from .services.variantes import (
+        # Import du VERROU seul (``garde_retenue``, stdlib pure) et jamais du
+        # service : ``models -> services.variantes -> apps.ventes.services ->
+        # … -> apps.ao.models`` ferait rougir le contrat CAL5 (mesuré).
+        from .garde_retenue import (
             bascule_en_cours,
             refuser_ecriture_directe,
         )
