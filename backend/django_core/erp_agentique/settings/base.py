@@ -1402,6 +1402,13 @@ CELERY_TASK_ROUTES = {
     'core.notifier_fenetres_maintenance': {'queue': 'scheduled'},
     # NTOBS13 — notification de seuil de quota (80%/100%), beat quotidien.
     'core.notifier_seuils_usage': {'queue': 'scheduled'},
+    # NTOBS24 — purge mensuelle des vieilles données Fiabilité.
+    'core.purger_donnees_fiabilite': {'queue': 'scheduled'},
+    # NTOBS25 — recalcul quotidien des SlaSnapshot périmés par un incident
+    # déclaré/modifié tardivement.
+    'core.recalculer_sla_perimes': {'queue': 'scheduled'},
+    # NTOBS34 — vérification quotidienne de la fraîcheur des TrustCenterEntry.
+    'core.verifier_fraicheur_trust_center': {'queue': 'scheduled'},
     # NTGRC21 — relance des attestations de conformité non signées (beat).
     'grc.rappels_grc': {'queue': 'scheduled'},
     # NTRH — rappels de parcours de formation + tâches d'intégration/sortie

@@ -1369,6 +1369,24 @@ app.conf.beat_schedule = {
         'task': 'core.notifier_seuils_usage',
         'schedule': crontab(hour=7, minute=10),
     },
+    # NTOBS24 — purge GFS mensuelle des vieilles données Fiabilité (incidents
+    # résolus >2 ans, exports de réversibilité expirés >30j, buckets d'uptime
+    # >400j).
+    'core-purger-donnees-fiabilite': {
+        'task': 'core.purger_donnees_fiabilite',
+        'schedule': crontab(day_of_month=1, hour=4, minute=0),
+    },
+    # NTOBS25 — recalcul quotidien des SlaSnapshot périmés par un incident
+    # déclaré/modifié tardivement (chevauchant une période déjà générée).
+    'core-recalculer-sla-perimes': {
+        'task': 'core.recalculer_sla_perimes',
+        'schedule': crontab(hour=3, minute=45),
+    },
+    # NTOBS34 — alerte fondateur si un audit TrustCenterEntry a plus de 12 mois.
+    'core-verifier-fraicheur-trust-center': {
+        'task': 'core.verifier_fraicheur_trust_center',
+        'schedule': crontab(hour=6, minute=30),
+    },
 }
 
 

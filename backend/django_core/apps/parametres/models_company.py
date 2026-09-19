@@ -920,6 +920,20 @@ class CompanyProfile(models.Model):
                   "par défaut de la société (langue_repli) à tous. "
                   "Désactivé par défaut.")
 
+    # ── NTOBS23 — fuseau horaire d'AFFICHAGE des horodatages du groupe
+    # Fiabilité (IncidentPublic/SlaSnapshot/MaintenanceWindow — NTOBS1/3/9),
+    # stockés en UTC (Django standard) mais affichés bruts aujourd'hui.
+    # Réglage GÉNÉRAL (Paramètres généraux, pas seulement Fiabilité) —
+    # défaut Africa/Casablanca = comportement historique inchangé pour toute
+    # société existante. Consommé par `core.tz_display.to_company_tz`.
+    timezone_affichage = models.CharField(
+        max_length=50, default='Africa/Casablanca',
+        verbose_name="Fuseau horaire d'affichage",
+        help_text="Nom de fuseau IANA (ex. Africa/Casablanca, Europe/Paris) "
+                  "utilisé pour afficher les horodatages générés côté "
+                  "serveur. Défaut Africa/Casablanca (comportement "
+                  "historique inchangé).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 
