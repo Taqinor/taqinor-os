@@ -474,6 +474,44 @@ def mes_processus_view(request):
     return Response(seaux)
 
 
+@extend_schema(responses={200: inline_serializer(
+    name='ChargeApprobateursResponse',
+    fields={
+        'seuil': drf_serializers.IntegerField(),
+        'approbateurs': drf_serializers.JSONField(),
+    },
+)})
+@api_view(['GET'])
+@permission_classes([IsAdminOrResponsableTier])
+def charge_approbateurs_view(request):
+    """NTWFL30 — ``GET core/workflows/charge-approbateurs/?seuil=&periode=``.
+
+    Rapport admin LECTURE SEULE : nombre d'items d'approbation en attente par
+    assigné, trié par charge décroissante, avec un drapeau ``surcharge`` au
+    delà du seuil (défaut 20) et une SUGGESTION de redistribution ou de
+    délégation temporaire. Ne redistribue ni ne délègue jamais lui-même."""
+    from . import selectors as core_selectors
+
+    company = getattr(request.user, 'company', None)
+    seuil = core_selectors.SEUIL_SURCHARGE_APPROBATEUR
+    brut = request.query_params.get('seuil')
+    if brut not in (None, ''):
+        try:
+            seuil = int(brut)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': "Le paramètre « seuil » doit être un entier."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if seuil < 0:
+            return Response(
+                {'detail': "Le paramètre « seuil » doit être positif."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    return Response(core_selectors.rapport_charge_approbateurs(
+        company, periode=request.query_params.get('periode'), seuil=seuil))
+
+
 class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     """FG381 — dashboards sans-code, sauvegardés par utilisateur/société.
 

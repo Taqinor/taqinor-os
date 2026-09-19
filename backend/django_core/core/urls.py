@@ -80,6 +80,7 @@ from .views import (
     WorkflowTemplateViewSet,
     analyse_goulots_workflow_view,
     approuver_etapes_en_masse,
+    charge_approbateurs_view,
     db_stats_view,
     health_live,
     health_ready,
@@ -183,6 +184,10 @@ urlpatterns = router.urls + [
     # COURANT groupées par échéance (en retard / aujourd'hui / à venir).
     path('workflows/mes-processus/', mes_processus_view,
          name='workflows-mes-processus'),
+    # NTWFL30 — rapport admin de charge d'approbateur (surcharge signalée,
+    # jamais redistribuée automatiquement).
+    path('workflows/charge-approbateurs/', charge_approbateurs_view,
+         name='workflows-charge-approbateurs'),
     path('workflows/<int:pk>/analyse/', analyse_goulots_workflow_view,
          name='workflows-analyse-goulots'),
     # XPLT10 — accès public lecture seule (aucune identité de confiance,

@@ -494,6 +494,103 @@ def mes_processus(company, utilisateur, today):
     return seaux
 
 
+# ── NTWFL30 — alerte de charge d'approbateur (surcharge) ────────────────────
+#
+# Une chaîne d'approbation ne tombe pas en panne : elle s'engorge sur UNE
+# personne. Ce sélecteur compte les items EN ATTENTE par assigné pour qu'un
+# rapport admin puisse le SIGNALER. Il ne redistribue JAMAIS et ne délègue
+# jamais tout seul — la redistribution ou la délégation temporaire (NTWFL3)
+# reste une décision humaine.
+
+#: Seuil par défaut au-delà duquel un approbateur est signalé en surcharge.
+#: Configurable par l'appelant (``seuil=``) — jamais codé en dur ailleurs.
+SEUIL_SURCHARGE_APPROBATEUR = 20
+
+
+def charge_approbateur(company, utilisateur, periode=None):
+    """NTWFL30 — nombre d'items d'approbation EN ATTENTE pour ``utilisateur``.
+
+    ``periode`` : chaîne ``'AAAA-MM'`` restreignant le comptage aux étapes
+    CRÉÉES ce mois-là, ou ``None`` (toute la charge en cours — le cas utile
+    pour détecter une surcharge vivante). Renvoie un entier.
+
+    Compte les ``WorkflowStepInstance`` encore en attente dont ``utilisateur``
+    est l'assigné, sur un processus toujours en cours. Lecture seule."""
+    from .models import WorkflowInstance, WorkflowStepInstance
+
+    if company is None or not getattr(utilisateur, 'pk', None):
+        return 0
+    qs = WorkflowStepInstance.objects.filter(
+        company=company,
+        assignee=utilisateur,
+        statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
+        instance__statut=WorkflowInstance.STATUT_EN_COURS,
+    )
+    if periode:
+        try:
+            annee, mois = (int(p) for p in str(periode).split('-')[:2])
+        except (TypeError, ValueError):
+            pass
+        else:
+            qs = qs.filter(created_at__year=annee, created_at__month=mois)
+    return qs.count()
+
+
+def rapport_charge_approbateurs(company, periode=None,
+                                seuil=SEUIL_SURCHARGE_APPROBATEUR):
+    """NTWFL30 — charge de TOUS les approbateurs d'une société, triée.
+
+    Renvoie ``{'seuil': int, 'periode': str|None, 'approbateurs': [
+    {'utilisateur_id', 'username', 'nb_en_attente', 'surcharge',
+    'suggestion'}, ...]}`` trié par charge décroissante.
+
+    ``surcharge`` est vrai STRICTEMENT au-delà du seuil (« >20 items »), et
+    ``suggestion`` porte alors une phrase d'aide — une SUGGESTION de
+    redistribution ou de délégation temporaire (NTWFL3), jamais une action
+    automatique."""
+    from django.db.models import Count
+
+    from .models import WorkflowInstance, WorkflowStepInstance
+
+    resultat = {'seuil': seuil, 'periode': periode or None,
+                'approbateurs': []}
+    if company is None:
+        return resultat
+
+    qs = WorkflowStepInstance.objects.filter(
+        company=company,
+        assignee__isnull=False,
+        statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
+        instance__statut=WorkflowInstance.STATUT_EN_COURS,
+    )
+    if periode:
+        try:
+            annee, mois = (int(p) for p in str(periode).split('-')[:2])
+        except (TypeError, ValueError):
+            pass
+        else:
+            qs = qs.filter(created_at__year=annee, created_at__month=mois)
+
+    lignes = (
+        qs.values('assignee_id', 'assignee__username')
+        .annotate(nb_en_attente=Count('id'))
+        .order_by('-nb_en_attente', 'assignee_id')
+    )
+    for ligne in lignes:
+        surcharge = ligne['nb_en_attente'] > seuil
+        resultat['approbateurs'].append({
+            'utilisateur_id': ligne['assignee_id'],
+            'username': ligne['assignee__username'],
+            'nb_en_attente': ligne['nb_en_attente'],
+            'surcharge': surcharge,
+            'suggestion': (
+                "Approbateur en surcharge : envisagez de redistribuer une "
+                "partie de ses approbations ou de poser une délégation "
+                "temporaire." if surcharge else ''),
+        })
+    return resultat
+
+
 def traitements_haut_risque(company, actifs_seuls=True):
     """NTGRC27 — traitements CNDP marqués « données sensibles / haut risque ».
 
