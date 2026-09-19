@@ -487,6 +487,77 @@ def decider_approbation(request):
     return Response(body, status=status_code)
 
 
+def _approuver_en_masse_workflow(company, user, workflow_items, motif):
+    """WFL16-INBOX — route les items ``source='workflow'`` d'une approbation
+    groupée via ``core.workflow.approuver_en_masse`` (NTWFL16, livré) au lieu
+    de les décider un par un via ``_decider_approbation_core`` : ce dernier
+    n'appliquait AUCUNE garde de cohorte — un lot mélangeant deux types
+    d'objet ou deux paliers différents « passait » silencieusement, alors que
+    ``approuver_en_masse`` l'exige explicitement (même type d'objet + même
+    palier pour tout le lot, sinon ``ValueError``).
+
+    Renvoie une liste d'entrées ``{source, id, ok, detail}`` — même forme que
+    la boucle historique, pour ne rien changer côté frontend."""
+    from core import workflow as core_workflow
+
+    resultats = []
+    ids_par_item = {}
+    for item in workflow_items:
+        try:
+            ids_par_item[item.get('id')] = int(item.get('id'))
+        except (TypeError, ValueError):
+            resultats.append({
+                'source': 'workflow', 'id': item.get('id'), 'ok': False,
+                'detail': 'Identifiant invalide.',
+            })
+
+    voulus = set(ids_par_item.values())
+    steps = [
+        s for s in core_workflow.pending_steps_for_company(company)
+        if s.id in voulus
+    ]
+    trouves = {s.id for s in steps}
+    for raw_id, step_id in ids_par_item.items():
+        if step_id not in trouves:
+            resultats.append({
+                'source': 'workflow', 'id': raw_id, 'ok': False,
+                'detail': 'Introuvable.',
+            })
+
+    if not steps:
+        return resultats
+
+    try:
+        rapport = core_workflow.approuver_en_masse(
+            steps, user=user, commentaire=motif)
+    except ValueError as exc:
+        # Sélection vide ou cohortes mélangées (types/paliers différents) :
+        # AUCUNE étape de ce sous-lot n'a été décidée — un motif explicite,
+        # jamais un succès partiel silencieux.
+        for step in steps:
+            resultats.append({
+                'source': 'workflow', 'id': step.id, 'ok': False,
+                'detail': str(exc),
+            })
+        return resultats
+
+    decides = {d.pk for d in rapport['decisions']}
+    exclus = {e['step_id']: e['motif'] for e in rapport['exclusions']}
+    for step in steps:
+        if step.id in decides:
+            resultats.append({
+                'source': 'workflow', 'id': step.id, 'ok': True,
+                'detail': 'Décision enregistrée.',
+            })
+        else:
+            resultats.append({
+                'source': 'workflow', 'id': step.id, 'ok': False,
+                'detail': exclus.get(
+                    step.id, 'Exclu de l\'approbation groupée.'),
+            })
+    return resultats
+
+
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 def decider_en_masse(request):
@@ -495,7 +566,13 @@ def decider_en_masse(request):
     Applique la même décision à chaque item via ``_decider_approbation_core``
     (réutilise sa logique un par un, sans passer par un ``Request`` DRF
     factice) ; renvoie le détail des réussites/échecs sans jamais laisser un
-    échec interrompre les suivants."""
+    échec interrompre les suivants.
+
+    WFL16-INBOX — EXCEPTION pour ``decision='approuver'`` : les items
+    ``source='workflow'`` ne sont PLUS décidés un par un, ils passent par
+    ``core.workflow.approuver_en_masse`` (garde de cohorte, voir
+    ``_approuver_en_masse_workflow``). Un refus (``'refuser'``) garde le
+    chemin historique — ``approuver_en_masse`` ne couvre que l'approbation."""
     company = _co(request.user)
     if company is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
@@ -504,8 +581,18 @@ def decider_en_masse(request):
     decision = request.data.get('decision')
     motif = (request.data.get('motif') or '').strip()
 
+    if decision == 'approuver':
+        workflow_items = [it for it in items if it.get('source') == 'workflow']
+        autres_items = [it for it in items if it.get('source') != 'workflow']
+    else:
+        workflow_items, autres_items = [], items
+
     resultats = []
-    for item in items:
+    if workflow_items:
+        resultats.extend(_approuver_en_masse_workflow(
+            company, request.user, workflow_items, motif))
+
+    for item in autres_items:
         status_code, body = _decider_approbation_core(
             company, request.user, item.get('source'), item.get('id'),
             decision, motif)
