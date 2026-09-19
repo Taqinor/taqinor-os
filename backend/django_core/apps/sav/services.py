@@ -2088,6 +2088,91 @@ def traiter_message_whatsapp(company, *, message_id, telephone, texte):
     return (ticket, cree)
 
 
+# ── NTPRT16 — « Mes contrats » : demande client de renouvellement/résiliation ─
+
+class DemandeContratMaintenanceError(Exception):
+    """Levée quand une demande portail sur un contrat de maintenance est
+    invalide (type inconnu)."""
+
+
+#: Libellés FR des deux demandes possibles — mêmes intitulés que le pendant
+#: ``contrats.services.demander_action_portail`` (XCTR14) pour que l'écran
+#: « Mes contrats » présente une seule terminologie au client.
+DEMANDES_CONTRAT_MAINTENANCE = {
+    'renouvellement': 'Demande de renouvellement',
+    'resiliation': 'Demande de résiliation',
+}
+
+
+def demander_action_portail_maintenance(contrat, *, type_demande, message='',
+                                        demandeur=None):
+    """NTPRT16 — enregistre une DEMANDE client sur un contrat de maintenance.
+
+    Côté client, « Demander un renouvellement » / « Demander une résiliation »
+    reste une DEMANDE traitée en interne : cette fonction ne touche JAMAIS
+    ``ContratMaintenance.actif`` ni aucune date du contrat. Elle journalise la
+    demande et notifie l'interne — la décision, elle, se prend dans l'ERP.
+
+    ``ContratMaintenance`` n'a pas de chatter propre (contrairement à
+    ``contrats.Contrat`` → ``ContratActivity``) : la note est donc portée par le
+    chatter GÉNÉRIQUE du socle ``records.Activity`` (ARC8, ``kind=note``,
+    ``company`` explicite) plutôt que par un nouveau journal maison, et jamais
+    par ``TicketActivity`` — un renouvellement d'abonnement n'est pas un ticket
+    SAV et ne doit pas entrer dans les compteurs/SLA du support.
+
+    Renvoie l'entrée ``records.Activity`` créée.
+    """
+    libelle = DEMANDES_CONTRAT_MAINTENANCE.get(type_demande)
+    if libelle is None:
+        raise DemandeContratMaintenanceError('Type de demande invalide.')
+
+    texte = libelle
+    message = (message or '').strip()
+    if message:
+        texte = f'{texte} — {message[:2000]}'
+
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Activity
+
+    activite = Activity.objects.create(
+        company=contrat.company,
+        content_type=ContentType.objects.get_for_model(type(contrat)),
+        object_id=contrat.id,
+        kind=Activity.Kind.NOTE,
+        summary=libelle[:255],
+        body=f'[Portail client] {texte}',
+        created_by=demandeur,
+    )
+    _notifier_demande_contrat_maintenance(contrat, libelle)
+    return activite
+
+
+def _notifier_demande_contrat_maintenance(contrat, titre):
+    """Notifie l'interne d'une demande portail sur un contrat de maintenance.
+
+    Frontière cross-app : appelle EXCLUSIVEMENT
+    ``apps.notifications.services`` (jamais ses ``models``/``views``), import
+    fonction-local. BEST-EFFORT : une erreur de notification ne fait jamais
+    échouer l'enregistrement de la demande, déjà journalisée."""
+    try:
+        from apps.notifications.services import notify_many, resolve_recipients
+    except Exception:  # pragma: no cover - app notifications absente
+        return
+    client_nom = str(contrat.client) if contrat.client_id else 'Un client'
+    body = (f'{client_nom} a demandé « {titre.lower()} » sur son contrat de '
+            'maintenance. Aucun statut n\'a été modifié : la demande est à '
+            'traiter en interne.')
+    try:
+        notify_many(
+            resolve_recipients(contrat.company, 'digest'), 'digest', titre,
+            body=body, link='/sav/contrats', company=contrat.company)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        logger.warning(
+            'NTPRT16: notification de demande portail échouée (contrat %s)',
+            getattr(contrat, 'pk', '?'), exc_info=True)
+
+
 def repondre_par_email(ticket, *, corps, sujet='', destinataire='',
                        user=None):
     """NTSRV1 — envoie une réponse e-mail depuis un ticket et logue le fil.
