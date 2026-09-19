@@ -21,7 +21,7 @@ class AuditLogSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'action', 'action_label', 'utilisateur', 'actor_username',
             'module', 'model', 'object_id', 'object_repr', 'detail',
-            'timestamp', 'timestamp_local',
+            'timestamp', 'timestamp_local', 'via_portail',
         )
 
     def get_utilisateur(self, obj):

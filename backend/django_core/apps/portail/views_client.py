@@ -85,6 +85,18 @@ def _ip(request):
     return ip_de_requete(request)
 
 
+def _auditer_portail(action, request, *, instance=None, detail=''):
+    """NTPRT7 — Journalise une action portail dans le journal d'activité
+    EXISTANT (``audit.AuditLog``), flag ``via_portail=True`` — jamais un 2e
+    système d'audit. Best-effort (``record`` n'élève jamais) : un souci de
+    journalisation ne casse jamais la requête du client."""
+    from apps.audit.recorder import record
+    record(
+        action, instance=instance, company=request.user.company,
+        user=request.user, detail=detail, via_portail=True,
+    )
+
+
 @extend_schema(responses=inline_serializer(
     name='PortailClientTableauDeBord',
     fields={
@@ -129,6 +141,45 @@ def tableau_de_bord_client(request):
     return Response(resume)
 
 
+@extend_schema(responses=inline_serializer(
+    name='PortailClientMaConsommation',
+    fields={
+        'window_days': serializers.IntegerField(),
+        'provider_configure': serializers.BooleanField(),
+        'points': serializers.ListField(child=inline_serializer(
+            name='PortailClientConsommationPoint',
+            fields={
+                'date': serializers.DateField(),
+                'energy_kwh': serializers.DecimalField(
+                    max_digits=12, decimal_places=2),
+            })),
+        'alertes_ouvertes': serializers.IntegerField(),
+    }))
+@api_view(['GET'])
+@permission_classes([IsPortalClientUser])
+def ma_consommation_client(request):
+    """NTPRT15 — « Ma consommation » : série de production (kWh) + drapeaux
+    de sous-performance OUVERTS des systèmes du client connecté — LECTURE
+    SEULE (``monitoring.selectors``, jamais un import de ``monitoring.
+    models`` — frontière cross-app CLAUDE.md), jamais d'écriture depuis le
+    portail.
+
+    No-op gracieux (critère d'acceptation) : sans provider configuré
+    (défaut ``NoOpProvider`` — saisie manuelle absente), ``points`` est une
+    liste VIDE et ``provider_configure`` est faux — jamais une erreur 500,
+    l'écran affiche alors un état vide explicite."""
+    from apps.monitoring.selectors import (
+        production_kwh_series_client_portail,
+        underperformance_flags_client_portail,
+    )
+
+    company, client_id = _scope(request)
+    serie = production_kwh_series_client_portail(company, client_id)
+    alertes = underperformance_flags_client_portail(company, client_id)
+    serie['alertes_ouvertes'] = alertes.count()
+    return Response(serie)
+
+
 class MesDevisPortailViewSet(viewsets.ViewSet):
     """NTPRT10 — « Mes devis » : liste, détail, acceptation."""
 
@@ -160,6 +211,14 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
         """
         from apps.ventes.selectors import devis_du_client_portail_obj
         from apps.ventes.services import AcceptError, accept_devis
+
+        # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS accepter
+        # de devis (consultation uniquement).
+        if not services.peut_ecrire_portail_client(request.user):
+            return Response(
+                {'detail': "Votre accès est en lecture seule : vous ne "
+                           "pouvez pas accepter de devis."},
+                status=status.HTTP_403_FORBIDDEN)
 
         company, client_id = _scope(request)
         devis = devis_du_client_portail_obj(company, client_id, pk)
@@ -221,6 +280,11 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
                     acceptation, nom=nom, ip=_ip(request))
 
         devis.refresh_from_db(fields=['statut'])
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.ACCEPT, request, instance=devis,
+            detail='Devis accepté via le portail client')
         return Response({
             'detail': 'Devis accepté. Merci !',
             'reference': devis.reference,
@@ -316,6 +380,12 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
         paiement.save(update_fields=['montant', 'methode'])
         services.initier_paiement_facture(paiement)
         paiement.refresh_from_db(fields=['reference', 'statut'])
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.PAYMENT, request, instance=paiement,
+            detail=f'Intention de paiement facture #{facture.id} '
+                   'initiée depuis le portail client')
 
         # Repli virement : UNIQUEMENT le nom, la banque et le RIB de la société
         # émettrice — jamais le reste de son identité légale (on ne déverse pas
@@ -485,6 +555,13 @@ class MesLivraisonsPortailViewSet(viewsets.ViewSet):
         if err:
             return Response({'detail': err},
                             status=status.HTTP_404_NOT_FOUND)
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True
+        # (« téléchargement doc »).
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.EXPORT, request, instance=att,
+            detail='Photo de preuve de livraison consultée depuis le '
+                   'portail client')
         resp = HttpResponse(
             data, content_type=att.mime or 'application/octet-stream')
         nom = (att.filename or 'preuve-livraison').replace('"', '')
@@ -591,6 +668,14 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
         (un id étranger est ignoré, jamais lié)."""
         from .models import DemandeTicketPortail
 
+        # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS ouvrir de
+        # ticket (consultation uniquement).
+        if not services.peut_ecrire_portail_client(request.user):
+            return Response(
+                {'detail': "Votre accès est en lecture seule : vous ne "
+                           "pouvez pas ouvrir de ticket."},
+                status=status.HTTP_403_FORBIDDEN)
+
         company, client_id = _scope(request)
         sujet = (request.data.get('sujet') or '').strip()[:200]
         if not sujet:
@@ -610,6 +695,11 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
             company=company, client_id=client_id, chantier_id=chantier_id,
             sujet=sujet, description=description,
             statut=DemandeTicketPortail.Statut.SOUMISE)
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.CREATE, request, instance=demande,
+            detail='Ticket SAV ouvert depuis le portail client')
         return Response(self._ligne(demande),
                         status=status.HTTP_201_CREATED)
 
@@ -884,3 +974,265 @@ class MesChantiersPortailViewSet(viewsets.ViewSet):
         resp['Content-Disposition'] = f'inline; filename="{nom}"'
         resp['X-Content-Type-Options'] = 'nosniff'
         return resp
+
+
+class MonEquipePortailLigneSerializer(serializers.Serializer):
+    """Une invitation/membre d'équipe telle que le portail la montre au
+    client — payload volontairement pauvre : jamais le token d'invitation."""
+    id = serializers.IntegerField()
+    email = serializers.EmailField()
+    role = serializers.CharField()
+    role_display = serializers.CharField()
+    statut = serializers.CharField()
+    statut_display = serializers.CharField()
+    date_creation = serializers.DateTimeField(allow_null=True)
+    date_acceptation = serializers.DateTimeField(allow_null=True)
+
+
+class MonEquipePortailViewSet(viewsets.ViewSet):
+    """NTPRT6 — « Mon équipe » : invitations/membres du portail client.
+
+    Toute l'équipe (admin + invités) peut CONSULTER le roster
+    (``IsPortalClientUser``) ; SEUL l'admin (compte SANS invitation, premier
+    provisionné par NTPRT2) peut inviter ou révoquer — ``services.
+    est_admin_portail_client`` fait la distinction, jamais un rôle inventé
+    en plus de lecture/écriture.
+    """
+
+    permission_classes = [IsPortalClientUser]
+    serializer_class = MonEquipePortailLigneSerializer
+
+    @staticmethod
+    def _ligne(invitation):
+        return {
+            'id': invitation.id,
+            'email': invitation.email,
+            'role': invitation.role,
+            'role_display': invitation.get_role_display(),
+            'statut': invitation.statut,
+            'statut_display': invitation.get_statut_display(),
+            'date_creation': (invitation.created_at.isoformat()
+                              if invitation.created_at else None),
+            'date_acceptation': (invitation.date_acceptation.isoformat()
+                                 if invitation.date_acceptation else None),
+        }
+
+    def _invitations(self, request):
+        from .models import InvitationPortail
+        company, client_id = _scope(request)
+        return InvitationPortail.objects.filter(
+            company=company, compte_portail_client__client_id=client_id)
+
+    @extend_schema(responses=inline_serializer(
+        name='MonEquipePortail',
+        fields={'results': serializers.ListField(
+            child=MonEquipePortailLigneSerializer())}))
+    def list(self, request):
+        return Response({
+            'results': [self._ligne(i) for i in self._invitations(request)]})
+
+    @extend_schema(request=inline_serializer(
+        name='MonEquipePortailInviter',
+        fields={
+            'email': serializers.EmailField(),
+            'role': serializers.ChoiceField(
+                choices=['lecture', 'ecriture'], required=False),
+        }))
+    def create(self, request):
+        """Invite un collègue. RÉSERVÉ à l'admin (voir docstring de classe)."""
+        if not services.est_admin_portail_client(request.user):
+            return Response(
+                {'detail': "Seul l'administrateur du portail peut inviter "
+                           "des collègues."},
+                status=status.HTTP_403_FORBIDDEN)
+
+        email = (request.data.get('email') or '').strip()
+        if not email:
+            return Response({'email': 'Ce champ est obligatoire.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        role = request.data.get('role') or 'lecture'
+        company, client_id = _scope(request)
+        invitation = services.inviter_membre_portail(
+            company, client_id, email, role)
+        if invitation is None:
+            return Response(
+                {'detail': "Impossible de créer l'invitation."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self._ligne(invitation),
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='revoquer')
+    def revoquer(self, request, pk=None):
+        """Révoque une invitation (et ferme l'accès si déjà acceptée).
+        RÉSERVÉ à l'admin."""
+        if not services.est_admin_portail_client(request.user):
+            return Response(
+                {'detail': "Seul l'administrateur du portail peut révoquer "
+                           "un accès d'équipe."},
+                status=status.HTTP_403_FORBIDDEN)
+
+        company, _client_id = _scope(request)
+        invitation = self._invitations(request).filter(pk=pk).first()
+        if invitation is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        services.revoquer_invitation_portail(company, invitation.id)
+        invitation.refresh_from_db()
+        return Response(self._ligne(invitation))
+
+
+class MesDocumentsPortailLigneSerializer(serializers.Serializer):
+    """Un document GED tel que le portail le montre au client — payload
+    volontairement pauvre : jamais de métadonnée interne (custom_data, ACL,
+    verrous…)."""
+    id = serializers.IntegerField()
+    nom = serializers.CharField()
+    reference = serializers.CharField(allow_blank=True)
+    taille = serializers.IntegerField(allow_null=True)
+    mime = serializers.CharField(allow_null=True)
+    date_creation = serializers.DateTimeField(allow_null=True)
+
+
+class MesDocumentsPortailViewSet(viewsets.ViewSet):
+    """NTPRT13 — « Mes documents » : documents GED partagés EXPLICITEMENT
+    avec ce client (lecture) + dépôt de justificatifs (factures ONEE…).
+
+    LECTURE — réutilise ``ged.AclGed``/``ged.selectors`` (jamais un nouveau
+    modèle de partage) : ``ged.selectors.documents_partages_client_portail``
+    ne renvoie QUE les documents portant une ``AclGed`` EXPLICITE
+    ``client=<ce client>`` — un document sans cette ACL n'apparaît JAMAIS ici
+    (critère d'acceptation NTPRT13), même s'il vit dans un dossier par
+    ailleurs partagé (l'héritage dossier reste un canal INTERNE, hors
+    périmètre de cette surface client).
+
+    ÉCRITURE — le dépôt réutilise ``apps.compta.serializers.
+    DocumentClientPortailSerializer``/``DocumentClientPortail`` (FG231)
+    À L'IDENTIQUE (même mixin MinIO AUD835, même dépôt GED miroir WIR94 via
+    les récepteurs ``apps/portail/receivers.py``) : AUCUN nouveau modèle
+    d'upload. Seule la SURFACE change (ce ViewSet, atteignable par un compte
+    portail réel — l'ancien ``DocumentClientPortailViewSet`` reste
+    ``IsResponsableOrAdmin``, donc fermé à un compte externe, même patron que
+    le correctif AUD525 sur les tickets SAV). ``client_id``/``company`` sont
+    TOUJOURS forcés depuis le compte connecté, jamais lus du corps.
+    """
+
+    permission_classes = [IsPortalClientUser]
+    serializer_class = MesDocumentsPortailLigneSerializer
+
+    @staticmethod
+    def _ligne(document):
+        from apps.ged.selectors import latest_version
+        version = latest_version(document)
+        return {
+            'id': document.id,
+            'nom': document.nom,
+            'reference': document.reference or '',
+            'taille': version.size if version else None,
+            'mime': version.mime if version else None,
+            'date_creation': (document.created_at.isoformat()
+                              if document.created_at else None),
+        }
+
+    @extend_schema(responses=inline_serializer(
+        name='MesDocumentsPortail',
+        fields={'results': serializers.ListField(
+            child=MesDocumentsPortailLigneSerializer())}))
+    def list(self, request):
+        from apps.ged.selectors import documents_partages_client_portail
+        company, client_id = _scope(request)
+        docs = documents_partages_client_portail(company, client_id)
+        return Response({'results': [self._ligne(d) for d in docs]})
+
+    def retrieve(self, request, pk=None):
+        from apps.ged.selectors import document_partage_client_portail
+        company, client_id = _scope(request)
+        doc = document_partage_client_portail(company, client_id, pk)
+        if doc is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(self._ligne(doc))
+
+    @action(detail=True, methods=['get'], url_path='telecharger')
+    def telecharger(self, request, pk=None):
+        """Sert le contenu de la VERSION COURANTE du document partagé.
+
+        Même patron que ``MesLivraisonsPortailViewSet.preuve_photo`` :
+        ``apps.records`` est une app de FONDATION (import direct autorisé) ;
+        le scope/l'ACL, eux, viennent du sélecteur GED."""
+        from django.http import HttpResponse
+
+        from apps.ged.selectors import (
+            document_partage_client_portail, latest_version,
+        )
+        from apps.records.storage import fetch_attachment
+
+        company, client_id = _scope(request)
+        doc = document_partage_client_portail(company, client_id, pk)
+        if doc is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        version = latest_version(doc)
+        if version is None:
+            return Response({'detail': 'Aucun fichier disponible.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        data, err = fetch_attachment(version.file_key)
+        if err:
+            return Response({'detail': err},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # GED21 — un document diffusé sous contrôle (filigrane) le reste sur
+        # CE canal aussi ; jamais un flux non filigrané qui contournerait la
+        # règle appliquée partout ailleurs (aperçu interne, partage public).
+        mime = version.mime or 'application/octet-stream'
+        if getattr(doc, 'watermark_diffusion', False):
+            try:
+                from apps.ged import services as ged_services
+                label = ged_services.watermark_label(company=company)
+                data, _marque = ged_services.apply_watermark(data, mime, label)
+            except Exception:  # noqa: BLE001 - dégrade à l'original, jamais 500
+                pass
+
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.EXPORT, request, instance=doc,
+            detail='Document GED téléchargé depuis le portail client')
+
+        nom = (version.filename or doc.nom or 'document').replace('"', '')
+        resp = HttpResponse(data, content_type=mime)
+        resp['Content-Disposition'] = f'attachment; filename="{nom}"'
+        resp['X-Content-Type-Options'] = 'nosniff'
+        return resp
+
+    def create(self, request):
+        """Dépose un justificatif (facture ONEE…) — réutilise
+        ``DocumentClientPortailSerializer``/``DocumentClientPortail``
+        EXISTANTS (FG231) tels quels. ``client_id``/``company`` forcés côté
+        serveur, jamais lus du corps."""
+        from apps.compta.serializers import DocumentClientPortailSerializer
+
+        # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS déposer
+        # de document (consultation uniquement).
+        if not services.peut_ecrire_portail_client(request.user):
+            return Response(
+                {'detail': "Votre accès est en lecture seule : vous ne "
+                           "pouvez pas déposer de document."},
+                status=status.HTTP_403_FORBIDDEN)
+
+        company, client_id = _scope(request)
+        donnees = request.data.copy()
+        donnees['client_id'] = client_id
+        donnees.pop('lead_id', None)
+        serializer = DocumentClientPortailSerializer(
+            data=donnees, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        document = serializer.save(company=company, client_id=client_id)
+
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        from apps.audit.models import AuditLog
+        _auditer_portail(
+            AuditLog.Action.CREATE, request, instance=document,
+            detail='Justificatif déposé depuis le portail client')
+        return Response(
+            DocumentClientPortailSerializer(document).data,
+            status=status.HTTP_201_CREATED)

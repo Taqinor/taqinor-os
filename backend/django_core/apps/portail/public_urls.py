@@ -7,8 +7,14 @@ toujours pouvoir se brander.
 """
 from django.urls import path
 
-from .public_views import theme_portail_public
+from .public_views import (
+    accepter_invitation_portail_public,
+    theme_portail_public,
+)
 
 urlpatterns = [
     path('theme/', theme_portail_public, name='portail-theme-public'),
+    # NTPRT6 — l'invité pose son mot de passe via le lien reçu par email.
+    path('invitations/accepter/', accepter_invitation_portail_public,
+         name='portail-invitation-accepter'),
 ]

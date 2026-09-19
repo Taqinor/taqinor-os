@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AuditLogViewSet, stats, meta, security_events, security_events_export,
-    object_as_of, object_history,
+    object_as_of, object_history, portal_access_events,
 )
 from .analytics import audit_analytics
 
@@ -18,6 +18,9 @@ urlpatterns = [
     # NTSEC15 — export CSV des évènements de sécurité (Directeur only).
     path('security/export/', security_events_export,
          name='audit-security-export'),
+    # NTPRT7 — onglet « Accès portail » : actions authentifiées via le portail
+    # externe (client/fournisseur/partenaire), filtrées via_portail=True.
+    path('portail/', portal_access_events, name='audit-portail'),
     # FG97 — rollups analytiques du journal (utilisateurs, mix actions, churn)
     path('analytics/', audit_analytics, name='audit-analytics'),
     # YHARD3 — reconstruction as-of générique (content_type = "app_label.model")

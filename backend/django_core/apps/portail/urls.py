@@ -29,15 +29,19 @@ from .views_client import (
     MesChantiersPortailViewSet,
     MesDemandesSavPortailViewSet,
     MesDevisPortailViewSet,
+    MesDocumentsPortailViewSet,
     MesFacturesPortailViewSet,
     MesLivraisonsPortailViewSet,
+    MonEquipePortailViewSet,
     SatisfactionPortailViewSet,
+    ma_consommation_client,
     tableau_de_bord_client,
 )
 from .views_externes import (
     MesBcfPortailFournisseurViewSet,
     MesCommissionsPortailPartenaireViewSet,
     MesSoumissionsPortailPartenaireViewSet,
+    RessourcesPartenairePortailViewSet,
     candidature_fournisseur,
     preference_portail,
     tableau_de_bord_fournisseur,
@@ -85,6 +89,15 @@ router.register(r'mes-chantiers', MesChantiersPortailViewSet,
 # aucun écran client pour y répondre).
 router.register(r'satisfaction', SatisfactionPortailViewSet,
                 basename='portail-satisfaction')
+# NTPRT6 — « Mon équipe » : invitation/gestion des utilisateurs du portail
+# client par l'admin client lui-même (lecture ouverte à toute l'équipe,
+# invitation/révocation réservées à l'admin — services.est_admin_portail_client).
+router.register(r'mon-equipe', MonEquipePortailViewSet,
+                basename='portail-mon-equipe')
+# NTPRT13 — « Mes documents » : documents GED partagés EXPLICITEMENT (ged.AclGed
+# .client) + dépôt de justificatifs (réutilise DocumentClientPortail existant).
+router.register(r'mes-documents', MesDocumentsPortailViewSet,
+                basename='portail-mes-documents')
 # NTPRT21 — surface self-service du FOURNISSEUR connecté : ses bons de
 # commande, et la confirmation de date d'arrivée (le même effet que le chemin
 # tokenisé XPUR22, simplement authentifié).
@@ -97,12 +110,20 @@ router.register(r'mes-soumissions', MesSoumissionsPortailPartenaireViewSet,
 # NTPRT30 — « Mes commissions » : relevé (écran) + export PDF, lecture seule.
 router.register(r'mes-commissions', MesCommissionsPortailPartenaireViewSet,
                 basename='portail-mes-commissions')
+# NTPRT31 — « Ressources » : documents GED partagés GLOBALEMENT avec TOUS les
+# partenaires (ACL par rôle système « Portail partenaire »), lecture seule.
+router.register(r'ressources', RessourcesPartenairePortailViewSet,
+                basename='portail-ressources')
 
 urlpatterns = [
     # NTPRT9 — tableau de bord du portail CLIENT (garde de portée EXACTE,
     # symétrique de NTPRT20/NTPRT27 ci-dessous).
     path('client/tableau-de-bord/', tableau_de_bord_client,
          name='portail-client-tableau-de-bord'),
+    # NTPRT15 — « Ma consommation » : série de production + alertes de
+    # sous-performance ouvertes, lecture seule.
+    path('client/ma-consommation/', ma_consommation_client,
+         name='portail-client-ma-consommation'),
     # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et
     # PARTENAIRE (gardes de portée EXACTE, symétriques du portail client).
     path('fournisseur/tableau-de-bord/', tableau_de_bord_fournisseur,
