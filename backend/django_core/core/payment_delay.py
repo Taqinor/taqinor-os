@@ -28,6 +28,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .score_factors import facteurs_ponderes, jours, nombre
+
 # ── Bandes de risque (libellés FR, ordre du moins au plus à risque) ──────────
 BAND_FAIBLE = 'faible'
 BAND_MOYEN = 'moyen'
@@ -86,6 +88,10 @@ class PaymentDelayResult:
     amount: float = 0.0
     used_fallback: bool = False
     factors: dict = field(default_factory=dict)
+    # NTAI31 — les TROIS signaux les plus déterminants, en langage clair, avec
+    # leur contribution SIGNÉE au score rendu. ``factors`` garde le détail
+    # normalisé de TOUTES les composantes.
+    facteurs: list = field(default_factory=list)
 
 
 def _clamp01(x: float) -> float:
@@ -192,6 +198,9 @@ def payment_delay_risk(features) -> PaymentDelayResult:
         amount = 0.0
 
     factors: dict = {}
+    # NTAI31 — ``(cle, libellé clair, valeur normalisée, poids)`` par composante
+    # PRÉSENTE ; la contribution se calcule une fois ``weight_total`` connu.
+    composantes: list = []
     weighted_sum = 0.0
     weight_total = 0.0
     used_any = False
@@ -207,39 +216,52 @@ def payment_delay_risk(features) -> PaymentDelayResult:
         weighted_sum += overdue * WEIGHT_OVERDUE
         weight_total += WEIGHT_OVERDUE
         factors['overdue'] = round(overdue, 4)
+        composantes.append((
+            'overdue',
+            ("Facture pas encore en retard" if not days_overdue
+             else f'Facture en retard de {jours(days_overdue)}'),
+            overdue, WEIGHT_OVERDUE))
         used_any = True
 
     # ── Retard moyen historique du client ───────────────────────────────────
-    history = _ramp(
-        _coerce_float(feats.get('client_avg_delay_days')),
-        CLIENT_AVG_DELAY_SATURATION_DAYS,
-    )
+    retard_moyen = _coerce_float(feats.get('client_avg_delay_days'))
+    history = _ramp(retard_moyen, CLIENT_AVG_DELAY_SATURATION_DAYS)
     if history is not None:
         weighted_sum += history * WEIGHT_CLIENT_HISTORY
         weight_total += WEIGHT_CLIENT_HISTORY
         factors['client_history'] = round(history, 4)
+        composantes.append((
+            'client_history',
+            f'Retard moyen du client : {jours(retard_moyen)}',
+            history, WEIGHT_CLIENT_HISTORY))
         used_any = True
 
     # ── Impayés / retards tardifs passés du client ──────────────────────────
-    prior_late = _ramp(
-        _coerce_float(feats.get('client_prior_late_count')),
-        PRIOR_LATE_SATURATION_COUNT,
-    )
+    impayes = _coerce_float(feats.get('client_prior_late_count'))
+    prior_late = _ramp(impayes, PRIOR_LATE_SATURATION_COUNT)
     if prior_late is not None:
         weighted_sum += prior_late * WEIGHT_PRIOR_LATE
         weight_total += WEIGHT_PRIOR_LATE
         factors['prior_late'] = round(prior_late, 4)
+        composantes.append((
+            'prior_late',
+            ("Aucune facture payée en retard par le passé" if not impayes
+             else f'{nombre(impayes)} facture(s) déjà payée(s) en retard'),
+            prior_late, WEIGHT_PRIOR_LATE))
         used_any = True
 
     # ── Relances déjà envoyées sans paiement ────────────────────────────────
-    relance = _ramp(
-        _coerce_float(feats.get('relance_count')),
-        RELANCE_SATURATION_COUNT,
-    )
+    relances = _coerce_float(feats.get('relance_count'))
+    relance = _ramp(relances, RELANCE_SATURATION_COUNT)
     if relance is not None:
         weighted_sum += relance * WEIGHT_RELANCE
         weight_total += WEIGHT_RELANCE
         factors['relance'] = round(relance, 4)
+        composantes.append((
+            'relance',
+            ("Aucune relance envoyée" if not relances
+             else f'{nombre(relances)} relance(s) sans paiement'),
+            relance, WEIGHT_RELANCE))
         used_any = True
 
     # ── Repli propre : aucune feature exploitable ───────────────────────────
@@ -251,6 +273,7 @@ def payment_delay_risk(features) -> PaymentDelayResult:
             amount=round(amount, 2),
             used_fallback=True,
             factors={'default': round(DEFAULT_RISK, 4)},
+            facteurs=[],
         )
 
     # Moyenne pondérée sur les SEULES composantes présentes (garde-fou contre la
@@ -264,4 +287,7 @@ def payment_delay_risk(features) -> PaymentDelayResult:
         amount=round(amount, 2),
         used_fallback=False,
         factors=factors,
+        # NTAI31 — contributions réelles au score ci-dessus (leur somme le
+        # redonne avant bornage), triées du plus déterminant au moins.
+        facteurs=facteurs_ponderes(composantes, weight_total),
     )

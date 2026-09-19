@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .score_factors import facteur, jours, nombre, top_facteurs
+
 # Probabilité de conversion de BASE par clé d'étape — reprise 1:1 de
 # l'heuristique statique historique de ``apps/reporting/pipeline.py``. Les clés
 # sont les clés canoniques de ``STAGES.py`` (résolues par l'appelant) ; core
@@ -101,6 +103,12 @@ class WinProbabilityResult:
     stage: str = ''
     used_fallback: bool = False        # True = aucune feature exploitable
     factors: dict = field(default_factory=dict)
+    # NTAI31 — les TROIS signaux les plus déterminants, en langage clair. Ce
+    # scorer est MULTIPLICATIF : la contribution d'un signal est le DELTA de
+    # probabilité qu'il a réellement appliqué (proba après − proba avant), pas
+    # son multiplicateur brut — un facteur 0,9 appliqué à 0,8 retire 0,08, pas
+    # « 0,9 ». ``factors`` garde les multiplicateurs bruts.
+    facteurs: list = field(default_factory=list)
 
 
 def base_probability_for_stage(stage) -> float:
@@ -172,27 +180,51 @@ def win_probability(features) -> WinProbabilityResult:
     base = base_probability_for_stage(stage)
 
     factors: dict = {'stage_base': round(base, 4)}
+    # NTAI31 — la base d'étape EST un signal : c'est de là que part la
+    # probabilité, et souvent le premier facteur d'explication.
+    facteurs = [facteur(
+        'stage_base',
+        ('Étape ' + stage_key if stage_key else 'Étape non renseignée'),
+        base)]
 
     # ── Cas terminaux : court-circuit, aucun ajustement ─────────────────────
     if feats.get('perdu') is True:
         return WinProbabilityResult(
             probability=0.0, base=base, stage=stage_key,
             used_fallback=False, factors={**factors, 'perdu': 0.0},
+            # Le motif « perdu » EFFACE la base d'étape : sa contribution est
+            # exactement ce qu'il retire (aucune base d'étape ne vaut 0, donc
+            # ce delta n'est jamais négligeable).
+            facteurs=[facteur('perdu', 'Lead marqué perdu', -base)],
         )
     if stage_key == _TERMINAL_WON:
         return WinProbabilityResult(
             probability=1.0, base=base, stage=stage_key,
             used_fallback=False, factors={**factors, 'gagne': 1.0},
+            # Un lead signé n'est pas « ajusté » : ce seul signal ÉTABLIT la
+            # probabilité à 1,0 — sa contribution est donc la probabilité
+            # entière, et non un delta par rapport à la base d'étape (qui vaut
+            # déjà 1,0 pour l'étape SIGNED : un delta y serait nul, donc
+            # écarté comme négligeable, et le score n'aurait plus aucune
+            # explication).
+            facteurs=[facteur('gagne', 'Lead signé', 1.0)],
         )
 
     prob = base
     used_any = False
 
     # ── Recency (fraîcheur) ─────────────────────────────────────────────────
-    rec = _recency_factor(_coerce_float(feats.get('age_days')))
+    age_days = _coerce_float(feats.get('age_days'))
+    rec = _recency_factor(age_days)
     if rec is not None:
+        avant = prob
         prob *= rec
         factors['recency'] = round(rec, 4)
+        facteurs.append(facteur(
+            'recency',
+            ('Activité du jour' if not age_days
+             else f'Dernière activité il y a {jours(age_days)}'),
+            prob - avant))
         used_any = True
 
     # ── Priorité ────────────────────────────────────────────────────────────
@@ -200,8 +232,12 @@ def win_probability(features) -> WinProbabilityResult:
     if prio_raw is not None:
         pf = _PRIORITY_FACTOR.get(str(prio_raw).strip().lower())
         if pf is not None:
+            avant = prob
             prob *= pf
             factors['priorite'] = round(pf, 4)
+            facteurs.append(facteur(
+                'priorite', f'Priorité {str(prio_raw).strip().lower()}',
+                prob - avant))
             used_any = True
 
     # ── Canal d'acquisition ─────────────────────────────────────────────────
@@ -209,8 +245,12 @@ def win_probability(features) -> WinProbabilityResult:
     if canal_raw is not None:
         cf = _CANAL_FACTOR.get(str(canal_raw).strip().lower())
         if cf is not None:
+            avant = prob
             prob *= cf
             factors['canal'] = round(cf, 4)
+            facteurs.append(facteur(
+                'canal', f'Canal {str(canal_raw).strip().lower()}',
+                prob - avant))
             used_any = True
 
     # ── Relances (engagement) — bonus additif plafonné ──────────────────────
@@ -219,6 +259,9 @@ def win_probability(features) -> WinProbabilityResult:
         bonus = min(relances * _RELANCE_BONUS_EACH, _RELANCE_BONUS_CAP)
         prob += bonus
         factors['relances_bonus'] = round(bonus, 4)
+        facteurs.append(facteur(
+            'relances_bonus', f'{nombre(relances)} relance(s) effectuée(s)',
+            bonus))
         used_any = True
 
     prob = _clamp01(prob)
@@ -229,4 +272,5 @@ def win_probability(features) -> WinProbabilityResult:
         stage=stage_key,
         used_fallback=not used_any,
         factors=factors,
+        facteurs=top_facteurs(facteurs),
     )

@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .score_factors import facteurs_ponderes, jours, nombre, top_facteurs
+
 # ── Bandes de risque (libellés FR, ordre du moins au plus à risque) ──────────
 BAND_FAIBLE = 'faible'
 BAND_MOYEN = 'moyen'
@@ -83,6 +85,11 @@ class ChurnRiskResult:
     band: str
     used_fallback: bool = False
     factors: dict = field(default_factory=dict)
+    # NTAI31 — les TROIS signaux les plus déterminants, en langage clair, avec
+    # leur contribution SIGNÉE au score rendu. ``factors`` garde le détail
+    # normalisé de TOUTES les composantes : rien n'est perdu, on ajoute la
+    # lecture humaine par-dessus.
+    facteurs: list = field(default_factory=list)
 
 
 def _clamp01(x: float) -> float:
@@ -157,60 +164,79 @@ def churn_risk(features) -> ChurnRiskResult:
         feats = {}
 
     factors: dict = {}
+    # NTAI31 — ``(cle, libellé clair, valeur normalisée, poids)`` de chaque
+    # composante PRÉSENTE : la contribution ne peut être calculée qu'une fois
+    # ``weight_total`` connu, donc on collecte d'abord.
+    composantes: list = []
     weighted_sum = 0.0
     weight_total = 0.0
     used_any = False
 
     # ── Inactivité (jours depuis la dernière activité) ──────────────────────
-    inact = _ramp(
-        _coerce_float(feats.get('days_since_last_activity')),
-        INACTIVITY_SATURATION_DAYS,
-    )
+    jours_inactifs = _coerce_float(feats.get('days_since_last_activity'))
+    inact = _ramp(jours_inactifs, INACTIVITY_SATURATION_DAYS)
     if inact is not None:
         weighted_sum += inact * WEIGHT_INACTIVITY
         weight_total += WEIGHT_INACTIVITY
         factors['inactivity'] = round(inact, 4)
+        composantes.append((
+            'inactivity',
+            ('Activité récente' if not jours_inactifs
+             else f'Sans activité depuis {jours(jours_inactifs)}'),
+            inact, WEIGHT_INACTIVITY))
         used_any = True
 
     # ── Contrat de maintenance ──────────────────────────────────────────────
     contract_active = feats.get('contract_active')
     lapse_days = _coerce_float(feats.get('days_since_contract_end'))
     contract_component: float | None = None
+    contract_libelle = ''
     if lapse_days is not None and lapse_days > 0:
         # Contrat lapsé : risque proportionnel à l'ancienneté du lapse.
         contract_component = _ramp(lapse_days, CONTRACT_LAPSE_SATURATION_DAYS)
+        contract_libelle = ('Contrat de maintenance expiré depuis '
+                            f'{jours(lapse_days)}')
     elif contract_active is True:
         # Contrat actif et non lapsé : composante de risque faible.
         contract_component = 0.0
+        contract_libelle = 'Contrat de maintenance actif'
     elif contract_active is False:
         # Pas de contrat actif, lapse inconnu : risque modéré attribué.
         contract_component = 0.5
+        contract_libelle = 'Aucun contrat de maintenance actif'
     if contract_component is not None:
         weighted_sum += contract_component * WEIGHT_CONTRACT
         weight_total += WEIGHT_CONTRACT
         factors['contract'] = round(contract_component, 4)
+        composantes.append((
+            'contract', contract_libelle, contract_component, WEIGHT_CONTRACT))
         used_any = True
 
     # ── Tickets SAV ouverts ─────────────────────────────────────────────────
-    sav = _ramp(
-        _coerce_float(feats.get('open_sav_tickets')),
-        SAV_SATURATION_TICKETS,
-    )
+    tickets = _coerce_float(feats.get('open_sav_tickets'))
+    sav = _ramp(tickets, SAV_SATURATION_TICKETS)
     if sav is not None:
         weighted_sum += sav * WEIGHT_SAV
         weight_total += WEIGHT_SAV
         factors['sav'] = round(sav, 4)
+        composantes.append((
+            'sav',
+            ('Aucun ticket SAV ouvert' if not tickets
+             else f'{nombre(tickets)} ticket(s) SAV non résolu(s)'),
+            sav, WEIGHT_SAV))
         used_any = True
 
     # ── Ancienneté de la dernière intervention ──────────────────────────────
-    interv = _ramp(
-        _coerce_float(feats.get('last_intervention_age')),
-        INTERVENTION_SATURATION_DAYS,
-    )
+    age_intervention = _coerce_float(feats.get('last_intervention_age'))
+    interv = _ramp(age_intervention, INTERVENTION_SATURATION_DAYS)
     if interv is not None:
         weighted_sum += interv * WEIGHT_INTERVENTION
         weight_total += WEIGHT_INTERVENTION
         factors['intervention'] = round(interv, 4)
+        composantes.append((
+            'intervention',
+            f'Dernière intervention terrain il y a {jours(age_intervention)}',
+            interv, WEIGHT_INTERVENTION))
         used_any = True
 
     # ── Repli propre : aucune feature exploitable ───────────────────────────
@@ -221,16 +247,22 @@ def churn_risk(features) -> ChurnRiskResult:
             band=band_for_score(score),
             used_fallback=True,
             factors={'default': round(DEFAULT_RISK, 4)},
+            facteurs=[],
         )
 
     # Moyenne pondérée sur les SEULES composantes présentes (les features
     # absentes ne diluent pas le score vers 0).
     score = weighted_sum / weight_total if weight_total > 0 else DEFAULT_RISK
 
+    # NTAI31 — contributions des composantes pondérées (leur somme REDONNE le
+    # score ci-dessus, avant bonus de fidélité et bornage).
+    facteurs = facteurs_ponderes(composantes, weight_total, limite=None)
+
     # Bonus de fidélité : un contrat explicitement actif RÉDUIT le risque.
     if contract_active is True and (lapse_days is None or lapse_days <= 0):
         score -= CONTRACT_ACTIVE_RELIEF
         factors['active_relief'] = -round(CONTRACT_ACTIVE_RELIEF, 4)
+        facteurs.append(_facteur_fidelite())
 
     score = _clamp01(score)
 
@@ -239,4 +271,13 @@ def churn_risk(features) -> ChurnRiskResult:
         band=band_for_score(score),
         used_fallback=False,
         factors=factors,
+        facteurs=top_facteurs(facteurs),
     )
+
+
+def _facteur_fidelite():
+    """Le bonus de fidélité, exprimé comme un facteur NÉGATIF (il rassure)."""
+    from .score_factors import facteur
+    return facteur(
+        'active_relief', 'Contrat de maintenance actif (fidélité)',
+        -CONTRACT_ACTIVE_RELIEF)
