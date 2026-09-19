@@ -1568,7 +1568,12 @@ def specs_for_produit(produit):
 
       * ``module`` → ``{vmp_v, voc_v, isc_a, imp_a, pmax_wc,
         temp_coeff_voc_pct_c, temp_coeff_pmax_pct_c, longueur_mm,
-        largeur_mm}`` ;
+        largeur_mm, epaisseur_mm, poids_kg, rendement_pct, techno_cellule,
+        bifacial, noct_c, uc_w_m2k, uv_w_m3sk, bifacialite_pct,
+        degradation_annuelle_pct, degradation_annee1_pct,
+        garantie_pct_a_10_ans, garantie_pct_a_25_ans}`` (CAL114 : poids,
+        épaisseur, rendement, technologie de cellule et bifacial étaient
+        déjà sur la fiche mais omis de ce bloc — cf. CAL111-113) ;
       * ``onduleur`` → ``{n_mppt, mppt_v_min, mppt_v_max, v_max_abs,
         i_max_mppt_a, ac_kw, phases, rendement_euro_pct, v_demarrage_v,
         isc_max_mppt_a, bat_max_charge_kw, bat_max_decharge_kw}`` ;
@@ -1603,6 +1608,25 @@ def specs_for_produit(produit):
             ('temp_coeff_pmax_pct_c', fiche.temp_coeff_pmax_pct_c),
             ('longueur_mm', fiche.longueur_mm),
             ('largeur_mm', fiche.largeur_mm),
+            # CAL114 — clés déjà présentes sur la fiche (AUD835/PV5) mais
+            # jusqu'ici OMISES de ce bloc : le poids est indispensable au
+            # lestage (g), les dimensions/épaisseur au kit de calepinage (h).
+            ('epaisseur_mm', fiche.epaisseur_mm),
+            ('poids_kg', fiche.poids_kg),
+            ('rendement_pct', fiche.rendement_pct),
+            ('techno_cellule', fiche.techno_cellule or None),
+            ('bifacial', fiche.bifacial),
+            # CAL111 — modèle thermique NOCT / Uc-Uv (optionnel).
+            ('noct_c', fiche.noct_c),
+            ('uc_w_m2k', fiche.uc_w_m2k),
+            ('uv_w_m3sk', fiche.uv_w_m3sk),
+            # CAL112 — facteur de bifacialité publié (optionnel).
+            ('bifacialite_pct', fiche.bifacialite_pct),
+            # CAL113 — dégradation annuelle & paliers de garantie (optionnels).
+            ('degradation_annuelle_pct', fiche.degradation_annuelle_pct),
+            ('degradation_annee1_pct', fiche.degradation_annee1_pct),
+            ('garantie_pct_a_10_ans', fiche.garantie_pct_a_10_ans),
+            ('garantie_pct_a_25_ans', fiche.garantie_pct_a_25_ans),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'onduleur':
