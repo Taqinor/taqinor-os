@@ -2104,6 +2104,11 @@ class FicheTechnique(models.Model):
         MODULE = 'module', 'Module (panneau)'
         ONDULEUR = 'onduleur', 'Onduleur'
         BATTERIE = 'batterie', 'Batterie'
+        # CAL116 — optimiseur de puissance / micro-onduleur : PVsyst
+        # modélise les optimiseurs comme composants avec leur propre perte
+        # de conversion, PV*SOL les micro-onduleurs. Choix ADDITIF : aucune
+        # fiche existante ne change de type.
+        OPTIMISEUR = 'optimiseur', 'Optimiseur / micro-onduleur'
         AUTRE = 'autre', 'Autre'
 
     type_fiche = models.CharField(
@@ -2125,12 +2130,81 @@ class FicheTechnique(models.Model):
         help_text='Technologie de cellule (ex. N-type TOPCon, PERC…).')
     bifacial = models.BooleanField(
         default=False, help_text='Module bifacial (production face arrière).')
+    # ── CAL112 — facteur de bifacialité. ──
+    #
+    # Le booléen ci-dessus ne dit QUE « bifacial ou non » : impossible d'en
+    # tirer un gain face arrière. PVsyst modélise un facteur de bifacialité
+    # publié par le fabricant (généralement 65-90 %) combiné à un albédo de
+    # site — l'albédo se saisit côté projet de calepinage (hors fiche
+    # produit, tâche séparée), pas ici. Le booléen reste, non supprimé.
+    #
+    # Optionnel — vide = « non publié », AUCUN gain bifacial calculé (ni 0,
+    # qui affirmerait à tort une bifacialité nulle mesurée).
+    bifacialite_pct = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text='Facteur de bifacialité publié par le fabricant (%). '
+                  'Vide = non publié : aucun gain bifacial calculé.')
     temp_coeff_voc_pct_c = models.DecimalField(
         max_digits=5, decimal_places=3, null=True, blank=True,
         help_text='Coefficient de température de Voc (%/°C).')
     temp_coeff_pmax_pct_c = models.DecimalField(
         max_digits=5, decimal_places=3, null=True, blank=True,
         help_text='Coefficient de température de Pmax (%/°C).')
+
+    # ── CAL111 — Modèle thermique du module (NOCT / coefficients Uc-Uv). ──
+    #
+    # La fiche portait déjà les coefficients de température Voc/Pmax
+    # ci-dessus, mais AUCUN paramètre de température de cellule : le calcul
+    # solaire (``apps/ventes/solar_design.py``) fixait la température cellule
+    # en dur (``DEFAULT_COLD_TEMP_C``/``DEFAULT_HOT_TEMP_C``). PVsyst rend le
+    # modèle thermique sélectionnable et paramétré par Uc (perte constante)
+    # et Uv (perte proportionnelle au vent), NOCT étant la température
+    # nominale de fonctionnement en cellule (« Nominal Operating Cell
+    # Temperature », condition 800 W/m², 20 °C, 1 m/s).
+    #
+    # TOUS OPTIONNELS — vide = « non publié », JAMAIS 0 (un 0 W/m²K serait
+    # une perte thermique nulle inventée). Purement additif : aucune fiche
+    # existante n'est modifiée, aucun calcul ne lit encore ces champs (ils
+    # ne sont pas encore servis par ``specs_for_produit`` — cf. CAL114).
+    noct_c = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        help_text='NOCT — température nominale de fonctionnement en '
+                  'cellule (°C, condition 800 W/m², 20 °C, 1 m/s). '
+                  'Vide = non publié.')
+    uc_w_m2k = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Coefficient thermique constant Uc du modèle Uc-Uv '
+                  '(W/m²K). Vide = non publié.')
+    uv_w_m3sk = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Coefficient thermique proportionnel au vent Uv du '
+                  'modèle Uc-Uv (W/m³sK — « /(m/s)/m²/K »). Vide = non '
+                  'publié.')
+
+    # ── CAL113 — dégradation annuelle & paliers de garantie du module. ──
+    #
+    # Ces valeurs vivaient en constantes de code
+    # (``apps/ventes/solar_design.py`` : ``DEFAULT_WARRANTY_FLOORS =
+    # {10: 0.90, 25: 0.80}``, ``DEFAULT_YEAR1_DEGRADATION = 0.02``) alors que
+    # la datasheet les publie. Optionnels — vides = « non publié » : le
+    # moteur ventes retombe alors sur son hypothèse de référence et LE DIT
+    # (discipline déjà appliquée au rendement aller-retour batterie).
+    degradation_annuelle_pct = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        help_text='Dégradation annuelle linéaire publiée (%/an), années '
+                  '2+. Vide = non publié.')
+    degradation_annee1_pct = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        help_text='Dégradation de la première année publiée (%). Vide = '
+                  'non publié.')
+    garantie_pct_a_10_ans = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text='Palier de garantie de production à 10 ans publié (% de '
+                  'Pmax nominal). Vide = non publié.')
+    garantie_pct_a_25_ans = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text='Palier de garantie de production à 25 ans publié (% de '
+                  'Pmax nominal). Vide = non publié.')
 
     # ── PV5 — Onduleur ──
     ond_n_mppt = models.PositiveSmallIntegerField(
@@ -2219,6 +2293,33 @@ class FicheTechnique(models.Model):
         help_text='Puissance de DÉCHARGE maximale du port batterie (kW). '
                   'Onduleur hybride uniquement.')
 
+    # ── CAL115 — chaînes par MPPT, entrées par MPPT, puissance apparente
+    # max. de l'onduleur. ──
+    #
+    # ``ond_n_mppt``, les plages MPPT, ``ond_v_max_abs``,
+    # ``ond_i_max_mppt_a``, ``ond_isc_max_mppt_a`` existent déjà — mais rien
+    # ne dit COMBIEN de chaînes une entrée accepte, ni la puissance
+    # apparente (kVA), ni la puissance DC maximale recommandée. PVsyst
+    # modélise 8-12 entrées MPPT avec limitation de courant PAR entrée.
+    #
+    # TOUS OPTIONNELS — vide = non publié.
+    ond_entrees_par_mppt = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Nombre d'entrées (chaînes physiques) par tracker MPPT. "
+                  'Vide = non publié.')
+    ond_chaines_max_par_mppt = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Nombre maximal de chaînes acceptées par tracker MPPT. '
+                  'Vide = non publié.')
+    ond_s_max_kva = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Puissance apparente AC maximale (kVA). Vide = non '
+                  'publié.')
+    ond_dc_max_kwc = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Puissance DC maximale recommandée (kWc). Vide = non '
+                  'publié.')
+
     # ── PV5 — Batterie ──
     bat_kwh_nominal = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True,
@@ -2296,6 +2397,55 @@ class FicheTechnique(models.Model):
         help_text='Rendement aller-retour publié (%, « round-trip '
                   'efficiency »). Vide = non publié : le moteur applique '
                   'alors son hypothèse de référence et le dit.')
+
+    # ── CAL118 — nombre de cycles publié & vieillissement calendaire. ──
+    #
+    # Le bloc batterie porte capacité/DoD/tension/puissances/rendement
+    # aller-retour mais AUCUN nombre de cycles ni courbe de vieillissement ;
+    # SAM (NREL) modélise explicitement la dégradation calendaire ET
+    # cyclique. TOUS OPTIONNELS — vides = « non publiés ».
+    bat_cycles_publies = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Nombre de cycles publié par le fabricant (à la '
+                  'rétention de fin de vie ci-dessous). Vide = non publié.')
+    bat_retention_fin_de_vie_pct = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('1')),
+                    MaxValueValidator(Decimal('100'))],
+        help_text='Rétention de capacité publiée en fin de vie garantie '
+                  '(% de la capacité nominale, ex. 80 %). Vide = non '
+                  'publié.')
+    bat_garantie_annees = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Durée de garantie publiée (années). Vide = non publié.')
+
+    # ── CAL116 — Optimiseur de puissance / micro-onduleur
+    # (``type_fiche='optimiseur'``). ──
+    #
+    # Aucun bloc n'existait pour ce composant : ``grep -n "optimiseur"
+    # apps/ventes`` ne rendait que ``composition_deux_optimiseurs`` (un
+    # comparateur de dimensionnement, sans rapport avec un optimiseur de
+    # puissance). TOUS OPTIONNELS — vide = non publié.
+    opt_pmax_in_w = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        help_text="Puissance d'entrée max. de l'optimiseur (Wc). Vide = "
+                  'non publié.')
+    opt_v_in_min = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text="Tension d'entrée minimale (V). Vide = non publié.")
+    opt_v_in_max = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text="Tension d'entrée maximale (V). Vide = non publié.")
+    opt_i_in_max_a = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        help_text="Courant d'entrée maximal (A). Vide = non publié.")
+    opt_rendement_pct = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text="Rendement de conversion publié (%). Vide = non publié.")
+    opt_modules_par_optimiseur = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Nombre de modules gérés par optimiseur (1 ou 2, '
+                  'typiquement). Vide = non publié.')
 
     # ── PDF constructeur d'origine (optionnel) ──
     #
