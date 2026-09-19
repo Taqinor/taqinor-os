@@ -7,6 +7,7 @@ gatage 404 des modules désactivés vise donc le bon module sans entrée
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .views import backtests
 from .viewsets import ModeleMLViewSet
 
 router = DefaultRouter()
@@ -14,5 +15,7 @@ router = DefaultRouter()
 router.register(r'modeles', ModeleMLViewSet, basename='mlops-modele')
 
 urlpatterns = [
+    # NTAI28 — backtesting des scorers (lecture admin).
+    path('backtests/', backtests, name='mlops-backtests'),
     path('', include(router.urls)),
 ]
