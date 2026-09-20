@@ -85,6 +85,12 @@ const SaisiePente = lazy(() => import('./SaisiePente'))
 // CAL195 — le schéma unifilaire du calepinage, composé par le MÊME moteur que
 // le devis : l'écran l'affiche, il ne dessine rien.
 const SchemaUnifilairePanel = lazy(() => import('./SchemaUnifilairePanel'))
+/* CAL89 — le MODE TERRAIN : une centrale au SOL. Dimensions et pente SAISIES,
+   tables/compte/pas inter-rangées RENDUS par le moteur (CAL88), taux
+   d'occupation affiché comme une SORTIE. Contextuel à UN calepinage (il écrit
+   dans SON document `roof_layout`), donc un deep-link comme la pente ou le
+   pompage — et le mode toiture n'est touché nulle part. */
+const ModeTerrain = lazy(() => import('./ModeTerrain'))
 
 const config = {
   key: 'calepinage',
@@ -135,6 +141,8 @@ const config = {
     { path: '/calepinage/:id/plan', component: PlanImporteCalage, roles: ROLES },
     // CAL58 — la pente de CE calepinage, par l'un des trois modes de saisie.
     { path: '/calepinage/:id/pente', component: SaisiePente, roles: ROLES },
+    // CAL89 — le champ au SOL de CE calepinage (mode terrain).
+    { path: '/calepinage/:id/terrain', component: ModeTerrain, roles: ROLES },
     // contextuelle: le schéma unifilaire d'UN calepinage, ouvert depuis son atelier (CAL195) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/schema', component: SchemaUnifilairePanel, roles: ROLES },
   ],

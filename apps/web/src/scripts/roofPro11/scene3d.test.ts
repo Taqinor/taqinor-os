@@ -19,6 +19,9 @@ import {
   type AffectationRow,
   projectPlanView,
   type MixedRidgePan,
+  construireChampPose,
+  pasInterRangeeMesure,
+  type PlanMoteurSurface,
 } from './scene3d';
 import { buildAreasFromShape } from './zones';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
@@ -372,5 +375,102 @@ describe('CAL104 — projectPlanView', () => {
     expect(projectPlanView(null, [], opts)).toBeNull();
     expect(projectPlanView(ring.slice(0, 2), [], opts)).toBeNull();
     expect(projectPlanView(ring, [], { widthPx: 0, heightPx: 400 })).toBeNull();
+  });
+});
+
+// CAL89 — le CHAMP AU SOL est POSÉ par le moteur : l'atelier le place, il ne le
+// décide pas. Ce que ces tests interdisent : une seconde formule de pas
+// inter-rangées côté client (le pas est MESURÉ sur les rangées du moteur), un
+// taux d'occupation présenté comme une saisie (c'est une SORTIE), et un chiffre
+// inventé quand une donnée manque (on rend `null` et on le dit).
+describe('CAL89 — champ au sol : placer le plan du moteur, ne rien recalculer', () => {
+  /** Un plan de moteur RÉALISTE, à la forme du contrat `pose.json` : deux rangées
+   *  de deux tables, entraxe 6 m (0 → 6), tables de 4 m × 2,3 m. */
+  const PLAN: PlanMoteurSurface = {
+    surface: 'TERRAIN-A',
+    modules: 16,
+    rangees: [
+      { y0: 0, modules: 8 },
+      { y0: 6, modules: 8 },
+    ],
+    tables: [
+      { x0: 0, x1: 4, y0: 0, y1: 2.3, kit: 'portrait' },
+      { x0: 4.5, x1: 8.5, y0: 0, y1: 2.3, kit: 'portrait' },
+      { x0: 0, x1: 4, y0: 6, y1: 8.3, kit: 'portrait' },
+      { x0: 4.5, x1: 8.5, y0: 6, y1: 8.3, kit: 'portrait' },
+    ],
+  };
+
+  it('le pas inter-rangées est MESURÉ sur les rangées du moteur, jamais recalculé', () => {
+    expect(pasInterRangeeMesure(PLAN.rangees)).toBeCloseTo(6, 9);
+    const champ = construireChampPose(PLAN, { tiltDeg: 25, aireTerrainM2: 200 });
+    expect(champ.pasInterRangeeM).toBeCloseTo(6, 9);
+  });
+
+  it('moins de deux rangées → le pas n’est PAS mesurable : null, et on le dit', () => {
+    expect(pasInterRangeeMesure([{ y0: 0 }])).toBeNull();
+    expect(pasInterRangeeMesure(undefined)).toBeNull();
+    const champ = construireChampPose({ ...PLAN, rangees: [{ y0: 0 }] }, { tiltDeg: 25, aireTerrainM2: 200 });
+    expect(champ.pasInterRangeeM).toBeNull();
+    expect(champ.nonMesure.join(' ')).toMatch(/pas inter-rangées/i);
+  });
+
+  it('le compte de modules est celui du MOTEUR (les tables ne sont jamais recomptées)', () => {
+    const champ = construireChampPose(PLAN, { tiltDeg: 25, aireTerrainM2: 200 });
+    expect(champ.modules).toBe(16); // et non 4 (le nombre de tables)
+    expect(champ.tables).toHaveLength(4);
+  });
+
+  it('le taux d’occupation est une SORTIE : emprises du moteur ÷ terrain tracé', () => {
+    const champ = construireChampPose(PLAN, { tiltDeg: 25, aireTerrainM2: 200 });
+    const empriseAttendue = 4 * (4 * 2.3); // quatre tables de 4 m × 2,3 m
+    expect(champ.empriseTablesM2).toBeCloseTo(empriseAttendue, 9);
+    expect(champ.tauxOccupation).toBeCloseTo(empriseAttendue / 200, 9);
+    expect(champ.tauxOccupation).toBeGreaterThan(0);
+    expect(champ.tauxOccupation).toBeLessThan(1);
+  });
+
+  it('sans surface de terrain, le taux d’occupation vaut null — jamais 0 « par défaut »', () => {
+    const champ = construireChampPose(PLAN, { tiltDeg: 25 });
+    expect(champ.tauxOccupation).toBeNull();
+    expect(champ.nonMesure.join(' ')).toMatch(/occupation/i);
+  });
+
+  it('pente du TERRAIN saisie → les tables montent d’autant ; absente → terrain horizontal', () => {
+    const plat = construireChampPose(PLAN, { tiltDeg: 25, aireTerrainM2: 200 });
+    expect(plat.tables.every((t) => t.z === 0)).toBe(true);
+    expect(plat.nonMesure.join(' ')).toMatch(/pente du terrain/i);
+
+    const pentu = construireChampPose(PLAN, { tiltDeg: 25, penteTerrainDeg: 10, aireTerrainM2: 200 });
+    const bas = pentu.tables.find((t) => t.cy < 3);
+    const haut = pentu.tables.find((t) => t.cy > 3);
+    expect(bas && haut).toBeTruthy();
+    // Avancée de 6 m sur une pente de 10° → dénivelé = 6·tan(10°).
+    expect((haut as { z: number }).z - (bas as { z: number }).z).toBeCloseTo(6 * Math.tan((10 * Math.PI) / 180), 6);
+  });
+
+  it('hauteur libre saisie → toutes les tables sont posées à cette hauteur', () => {
+    const champ = construireChampPose(PLAN, { tiltDeg: 15, hauteurLibreM: 2.4, aireTerrainM2: 200 });
+    const bas = champ.tables.find((t) => t.cy < 3) as { z: number };
+    expect(bas.z).toBeCloseTo(2.4, 9);
+  });
+
+  it('un plan vide ne fabrique rien et dit ce qui manque', () => {
+    const champ = construireChampPose(null, { tiltDeg: 25 });
+    expect(champ.tables).toHaveLength(0);
+    expect(champ.modules).toBeNull();
+    expect(champ.pasInterRangeeM).toBeNull();
+    expect(champ.tauxOccupation).toBeNull();
+    expect(champ.nonMesure.length).toBeGreaterThan(0);
+  });
+
+  it('les tables portent l’inclinaison SAISIE et leur kit, telles quelles', () => {
+    const champ = construireChampPose(PLAN, { tiltDeg: 25, aireTerrainM2: 200 });
+    for (const t of champ.tables) {
+      expect(t.inclinaisonRad).toBeCloseTo((25 * Math.PI) / 180, 9);
+      expect(t.kit).toBe('portrait');
+      expect(t.largeurM).toBeCloseTo(4, 9);
+      expect(t.profondeurM).toBeCloseTo(2.3, 9);
+    }
   });
 });
