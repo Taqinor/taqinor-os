@@ -663,6 +663,78 @@ def rotation_ad_extra_fields(payload):
     return extra
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# PUB118 — Recombinaison DCO zéro-clé : « mes pubs créent des pubs »
+# ═════════════════════════════════════════════════════════════════════════════
+DCO_CREATIVE_SOURCE = 'dco_recombination'
+
+
+def propose_dco_recombination(company, *, adset, now=None, proposed_by=None,
+                              window_days=None, reason_fr=None):
+    """PUB118 — PROPOSE une ad DCO recombinée depuis les miroirs de la société.
+
+    Chaîne complète, ZÉRO clé externe et ZÉRO dépense :
+
+      1. ``dco.plan_adset_creative_mode`` ARBITRE le mode de l'ad set —
+         le DCO natif est réservé au BOOTSTRAP à froid et un ad set DCO ne
+         porte qu'UN ad : l'exclusion mutuelle DCO ↔ rotation multi-ads est
+         validée là (``DcoModeConflict``, raison FR, remontée telle quelle) ;
+      2. ``dco.harvest_winning_pool`` moissonne les visuels/textes des créatifs
+         mirorés GAGNANTS (pool conditionné à la perf) ;
+      3. ``dco.build_asset_feed_spec`` plafonne (10 visuels × 5 titres ×
+         5 textes, 30 au total) et VALIDE la spec ;
+      4. une ``EngineAction`` CREATE_AD est PROPOSÉE, spec INLINE (PUB117) —
+         approbation humaine requise, ad née PAUSED à l'application.
+
+    Ne crée JAMAIS rien sur Meta. Lève ``dco.DcoModeConflict`` /
+    ``dco.DcoPoolEmpty`` (sous-classes de ``ValueError`` → 400 côté vue).
+    """
+    from . import dco, naming
+
+    if not adset.meta_id:
+        raise dco.DcoPoolEmpty(
+            "Recombinaison DCO impossible : l'ad set n'a pas d'ID Meta "
+            "(resynchroniser les miroirs d'abord).")
+
+    decision = dco.plan_adset_creative_mode(
+        adset, requested_mode=dco.MODE_DCO_BOOTSTRAP,
+        existing_ad_count=adset.ads.count())
+
+    harvest_kw = {'now': now}
+    if window_days:
+        harvest_kw['window_days'] = window_days
+    pool = dco.harvest_winning_pool(company, **harvest_kw)
+    spec = dco.build_asset_feed_spec(pool)
+
+    now = now or timezone.now()
+    name = naming.build_name({
+        'date': now.strftime('%Y%m%d'), 'format': 'DCO',
+        'hook': 'RECOMBINAISON'})
+    if not name:  # convention vide → repli explicite, jamais un nom vide
+        name = f'DCO {adset.name or adset.meta_id}'
+
+    media_count = len(spec.get('images') or spec.get('videos') or [])
+    reason_fr = reason_fr or (
+        f"Recombinaison DCO (bootstrap à froid) sur l'ad set "
+        f"« {adset.name or adset.meta_id} » : {media_count} visuel(s) × "
+        f"{len(spec.get('titles') or [])} titre(s) × "
+        f"{len(spec.get('bodies') or [])} texte(s) issus UNIQUEMENT de vos "
+        f"créatifs gagnants déjà diffusés — Meta teste les combinaisons à "
+        f"l'impression.")
+    payload = {
+        'adset_id': adset.meta_id,
+        'name': name,
+        'asset_feed_spec': spec,
+        'creative_source': DCO_CREATIVE_SOURCE,
+        'dco_mode': decision.mode,
+        'dco_cold_start': decision.is_cold_start,
+        'source_creative_ids': list(pool.get('sources') or []),
+    }
+    return propose_action(
+        company, kind=EngineAction.Kind.CREATE_AD, reason_fr=reason_fr,
+        payload=payload, proposed_by=proposed_by)
+
+
 # ── ADSDEEP40 — Action de règle « montée de budget » LEARNING-SAFE (≤20 %) ────
 def propose_learning_safe_scale_up(company, *, adset_meta_id,
                                    current_daily_budget_mad, scale_pct,
@@ -1525,6 +1597,17 @@ def _dispatch(client, action):
             campaign_id=payload.get('campaign_id', ''),
             extra_fields=payload.get('extra_fields'))
     if kind == EngineAction.Kind.CREATE_AD:
+        # PUB118 — une ad à spec créative DYNAMIQUE (recombinaison DCO) porte
+        # son ``asset_feed_spec`` INLINE : elle route vers la méthode dédiée du
+        # client (PUB117), qui encode la spec et FORCE PAUSED comme toute
+        # création. Sans spec, chemin historique inchangé.
+        asset_feed_spec = payload.get('asset_feed_spec')
+        if asset_feed_spec:
+            return client.create_ad_with_asset_feed_spec(
+                name=payload.get('name', ''),
+                adset_id=payload.get('adset_id', ''),
+                asset_feed_spec=asset_feed_spec,
+                extra_fields=payload.get('extra_fields'))
         return client.create_ad(
             name=payload.get('name', ''),
             adset_id=payload.get('adset_id', ''),

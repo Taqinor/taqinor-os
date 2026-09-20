@@ -1,10 +1,12 @@
 """ADSENG29 — Arbitrage DCO (Dynamic Creative Optimization) — creative-sci §e.
 
-STATUT (PUB25, 2026-07-19) — NON CÂBLÉ en production : aucun appelant hors tests.
-Pas un doublon. EN ATTENTE DE : un flux de création qui consulte cet arbitre au
-bootstrap cold-start (le DCO natif Meta reste réservé au démarrage à froid et
-n'est déclenché par aucun chemin de génération/lancement aujourd'hui). Capacité
-prête + testée ; jamais mort silencieux.
+STATUT (PUB118, 2026-09-20) — CÂBLÉ. L'appelant que ce module attendait existe :
+``services.propose_dco_recombination`` (bouton « Recombiner (DCO) » du cockpit)
+consulte l'arbitre au bootstrap cold-start, moissonne le pool des créatifs
+mirorés GAGNANTS (``harvest_winning_pool``) et compose une spec plafonnée
+(``build_asset_feed_spec``) validée par ``validate_dco_asset_spec`` +
+``validate_mutual_exclusion``. Historique : ce module est resté sans appelant du
+19/07 au 20/09 (PUB25) — prêt + testé, jamais mort silencieux.
 
 Le DCO natif de Meta est réservé au **bootstrap de démarrage à froid** (aucune
 donnée) : Meta assemble automatiquement image/vidéo/texte pour amorcer un
@@ -146,6 +148,186 @@ def validate_mutual_exclusion(*, mode, existing_ad_count=0,
             "Rotation multi-ads impossible : l'ad set est en DCO "
             "(is_dynamic_creative) — exclusion mutuelle.")
     return mode
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PUB118 — Recombinaison DCO ZÉRO-CLÉ depuis les MIROIRS
+# ═════════════════════════════════════════════════════════════════════════════
+# Le premier « mes pubs créent des pubs » sans aucune clé externe : la synchro
+# miroite DÉJÀ les visuels (``image_hash``/``video_id``) et les textes
+# (``body``/``title``/``description``/``cta_type``/``link_url``) de chaque
+# créatif diffusé (``AdCreativeMirror``, ADSDEEP11). Meta, lui, sait recombiner
+# une spec d'assets et AUTO-TESTER les combinaisons à l'impression. Il suffit
+# donc de MOISSONNER le pool des créatifs GAGNANTS et de composer une spec
+# plafonnée — aucun LLM, aucune clé, aucune dépense.
+#
+# Le pool est CONDITIONNÉ À LA PERFORMANCE (un remix superficiel ne gagne rien) :
+# seules les ads qui ont réellement produit des résultats sur la fenêtre entrent,
+# classées par résultats décroissants. Une société sans aucun gagnant ne produit
+# AUCUNE proposition (``DcoPoolEmpty``) — jamais une spec bâtie sur du vide.
+HARVEST_WINDOW_DAYS = 30
+HARVEST_MIN_RESULTS = 1
+
+# Champs de pool (clés internes de ``_FIELD_CAPS``) lus sur le miroir de créatif.
+_MIRROR_FIELD_FOR_POOL = {
+    'images': 'image_hash',
+    'videos': 'video_id',
+    'titles': 'title',
+    'bodies': 'body',
+    'descriptions': 'description',
+    'ctas': 'cta_type',
+    'links': 'link_url',
+}
+
+# Formes GRAPH d'``asset_feed_spec`` (Marketing API). Les trois premières sont
+# celles que ce dépôt OBSERVE déjà : ``sync._extract_creative_fields`` miroite
+# l'``asset_feed_spec`` tel quel et la fixture ADSDEEP11 porte
+# ``{'bodies': [{'text': 'A'}]}`` ; PUB117 écrit ``images: [{'hash': …}]`` /
+# ``titles: [{'text': …}]`` / ``ad_formats: ['SINGLE_IMAGE']``. On n'invente
+# aucune autre forme : chaque entrée ci-dessous suit exactement ce gabarit.
+AD_FORMAT_IMAGE = 'SINGLE_IMAGE'
+AD_FORMAT_VIDEO = 'SINGLE_VIDEO'
+
+
+class DcoPoolEmpty(ValueError):
+    """PUB118 — Le pool de recombinaison est inexploitable (raison FR)."""
+
+
+def harvest_winning_pool(company, *, now=None, window_days=HARVEST_WINDOW_DAYS,
+                         min_results=HARVEST_MIN_RESULTS, max_ads=None):
+    """Moissonne le pool d'assets des créatifs mirorés GAGNANTS d'une société.
+
+    « Gagnant » = l'ad a produit au moins ``min_results`` résultats RÉELS sur la
+    fenêtre (``InsightSnapshot``) ; les ads sans résultat n'entrent pas, même
+    avec des impressions (le pool est conditionné à la perf — un remix de
+    perdants ne gagne rien). Les ads sont parcourues par résultats décroissants,
+    puis impressions, pour que les plafonds tronquent les MOINS bons.
+
+    Renvoie ``{images, videos, titles, bodies, descriptions, ctas, links,
+    sources}`` — des listes de chaînes DÉDUPLIQUÉES dans l'ordre de mérite
+    (``sources`` = les ``creative_meta_id`` d'où viennent les assets, pour la
+    traçabilité de la proposition). Tout est lu sur les MIROIRS : aucun asset
+    n'est fabriqué.
+    """
+    import datetime
+
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+    from django.utils import timezone
+
+    from .models import AdCreativeMirror, AdMirror, InsightSnapshot
+
+    now = now or timezone.now()
+    today = now.date() if hasattr(now, 'date') else now
+    start = today - datetime.timedelta(days=max(1, window_days) - 1)
+    ct = ContentType.objects.get_for_model(AdMirror)
+
+    ranked = (InsightSnapshot.objects
+              .filter(company=company, content_type=ct,
+                      date__gte=start, date__lte=today)
+              .values('object_id')
+              .annotate(results=Sum('results'), impressions=Sum('impressions'))
+              .filter(results__gte=min_results)
+              .order_by('-results', '-impressions', 'object_id'))
+    ad_ids = [row['object_id'] for row in ranked]
+    if max_ads:
+        ad_ids = ad_ids[:max_ads]
+
+    mirrors = {
+        m.ad_id: m
+        for m in AdCreativeMirror.objects.filter(
+            company=company, ad_id__in=ad_ids)}
+
+    pool = {key: [] for key in _MIRROR_FIELD_FOR_POOL}
+    pool['sources'] = []
+    for ad_id in ad_ids:
+        mirror = mirrors.get(ad_id)
+        if mirror is None:
+            continue
+        used = False
+        for pool_key, attr in _MIRROR_FIELD_FOR_POOL.items():
+            value = (getattr(mirror, attr, '') or '').strip()
+            if value and value not in pool[pool_key]:
+                pool[pool_key].append(value)
+                used = True
+        if used and mirror.creative_meta_id:
+            pool['sources'].append(mirror.creative_meta_id)
+    return pool
+
+
+def cap_pool(pool):
+    """Applique les plafonds DCO à un pool moissonné (copie ; jamais en place).
+
+    Deux passes : (1) plafond PAR CHAMP (``_FIELD_CAPS`` — 10 visuels, 5 titres,
+    5 textes…) ; (2) plafond TOTAL (30 assets) en retirant la queue du champ le
+    PLUS fourni, jusqu'à repasser sous la barre (on sacrifie toujours l'asset le
+    moins méritant du champ le plus redondant). ``sources`` n'est pas un champ
+    d'assets et n'entre dans aucun plafond."""
+    capped = {key: list(values or [])[:_FIELD_CAPS[key]]
+              for key, values in ((k, pool.get(k)) for k in _FIELD_CAPS)}
+    total = sum(len(v) for v in capped.values())
+    while total > DCO_MAX_TOTAL_ASSETS:
+        biggest = max(capped, key=lambda k: (len(capped[k]), k))
+        if not capped[biggest]:
+            break  # défensif : plus rien à retirer
+        capped[biggest].pop()
+        total -= 1
+    capped['sources'] = list(pool.get('sources') or [])
+    return capped
+
+
+def build_asset_feed_spec(pool):
+    """Compose l'``asset_feed_spec`` GRAPH d'une recombinaison DCO.
+
+    Plafonne (``cap_pool``), VALIDE (``validate_dco_asset_spec`` — la source de
+    vérité des plafonds), puis traduit en formes Graph. Un seul FAMILLE de média
+    par spec (images OU vidéos, images d'abord) : ``ad_formats`` est déclaré par
+    spec et ce dépôt n'a jamais observé de spec mixte — on n'en invente pas une.
+
+    Lève ``DcoPoolEmpty`` (FR) si le pool n'a aucun visuel ou aucun texte
+    principal : une spec sans média ni corps ne diffuse rien.
+    """
+    # Le choix de FAMILLE se fait AVANT les plafonds : sinon le plafond total
+    # aurait déjà rogné des visuels au profit de médias qu'on s'apprête à jeter.
+    pool = dict(pool or {})
+    if pool.get('images'):
+        pool['videos'] = []
+    elif pool.get('videos'):
+        pool['images'] = []
+    capped = cap_pool(pool)
+    if capped['images']:
+        media_field, ad_format = 'images', AD_FORMAT_IMAGE
+    elif capped['videos']:
+        media_field, ad_format = 'videos', AD_FORMAT_VIDEO
+    else:
+        raise DcoPoolEmpty(
+            "Recombinaison DCO impossible : aucun visuel (image_hash / "
+            "video_id) dans les créatifs mirorés gagnants de la société.")
+    if not capped['bodies']:
+        raise DcoPoolEmpty(
+            "Recombinaison DCO impossible : aucun texte principal dans les "
+            "créatifs mirorés gagnants (une spec sans corps ne diffuse rien).")
+
+    # Le validateur DCO tranche les plafonds sur la spec EFFECTIVE (après le
+    # choix de famille) — jamais sur le pool d'avant.
+    validate_dco_asset_spec(
+        {key: capped[key] for key in _FIELD_CAPS})
+
+    spec = {'ad_formats': [ad_format]}
+    if media_field == 'images':
+        spec['images'] = [{'hash': h} for h in capped['images']]
+    else:
+        spec['videos'] = [{'video_id': v} for v in capped['videos']]
+    spec['bodies'] = [{'text': t} for t in capped['bodies']]
+    if capped['titles']:
+        spec['titles'] = [{'text': t} for t in capped['titles']]
+    if capped['descriptions']:
+        spec['descriptions'] = [{'text': t} for t in capped['descriptions']]
+    if capped['ctas']:
+        spec['call_to_action_types'] = list(capped['ctas'])
+    if capped['links']:
+        spec['link_urls'] = [{'website_url': u} for u in capped['links']]
+    return spec
 
 
 def plan_adset_creative_mode(adset, *, requested_mode=None,

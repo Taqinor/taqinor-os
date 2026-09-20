@@ -3339,6 +3339,47 @@ class AdsCockpitView(APIView):
             ads_cockpit_rows(company, as_of=fin, start_date=debut))
 
 
+class AdSetDcoRecombineView(APIView):
+    """PUB118 — Bouton « Recombiner (DCO) » du cockpit : PROPOSE une ad DCO
+    recombinée depuis les créatifs mirorés GAGNANTS de la société.
+
+    ``POST /api/django/adsengine/adsets/<adset_meta_id>/recombiner-dco/`` —
+    company-scopé, gaté ``adsengine_manage`` (fabriquer une ad est un geste de
+    gestion, jamais de lecture). Vue MINCE : toute la logique vit dans
+    ``services.propose_dco_recombination`` (arbitre ``dco`` + moisson + spec
+    plafonnée). AUCUN automatisme : rien ne part sans ce clic, puis sans
+    l'approbation de la proposition — et l'ad née à l'application est PAUSED.
+
+    Refus métier (ad set déjà signalé, exclusion mutuelle DCO ↔ rotation, pool
+    vide) → 400 avec la raison FR telle quelle (jamais un 500)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    @extend_schema(request=None, responses=inline_serializer(
+        'AdsengineDcoRecombinaison', {
+            'action': drf_serializers.DictField(required=False),
+            'detail': drf_serializers.CharField(required=False),
+        }))
+    def post(self, request, adset_meta_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        from .models import AdSetMirror
+        from .services import propose_dco_recombination
+
+        adset = AdSetMirror.objects.filter(
+            company=company, meta_id=adset_meta_id).first()
+        if adset is None:
+            return Response({'detail': "Ad set introuvable."}, status=404)
+        try:
+            action = propose_dco_recombination(
+                company, adset=adset, proposed_by=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(
+            {'action': EngineActionSerializer(action).data}, status=201)
+
+
 # ══ ADSDEEP53/54 — Boîte de réception des commentaires (câblage front↔back) ═══
 # Vues MINCES : lecture des miroirs company-scopée + chaque action inline ne
 # fait que PROPOSER une ``EngineAction`` via les fonctions ``propose_*`` DÉJÀ
