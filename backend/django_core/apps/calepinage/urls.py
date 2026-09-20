@@ -18,6 +18,10 @@ from rest_framework.routers import DefaultRouter
 from .views.calepinages import CalepinageViewSet
 from .views.moteur import MoteurCalculerView, MoteurResultatView
 from .views.parametres import ParametresCalepinageView
+# CAL243 — rattache l'action ``equipements`` au ``CalepinageViewSet`` par
+# import (affectation d'attribut de classe, voir la docstring du module) ;
+# doit s'exécuter AVANT ``router.register`` pour que le routeur la découvre.
+from .views import equipements as _equipements_action  # noqa: F401
 
 router = DefaultRouter()
 router.register(r'calepinages', CalepinageViewSet, basename='calepinage')
