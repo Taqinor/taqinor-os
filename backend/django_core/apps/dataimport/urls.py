@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
     dry_run, commit, save_mapping, list_mappings, job_erreurs_csv,
     export_traductions, import_traductions,
+    export_feries, import_feries,
 )
 from .exports_view import export_list
 # N97 — export configurable & sauvegarde (s'ajoute à côté de l'import).
@@ -25,4 +26,8 @@ urlpatterns = [
          name='import-traductions-export'),
     path('traductions/import/', import_traductions,
          name='import-traductions-import'),
+    # NTI18N45 — export/import CSV du calendrier de jours fériés multi-pays
+    # (préparation hors-ligne du calendrier RH, idempotent par pays+date).
+    path('feries/export.csv', export_feries, name='import-feries-export'),
+    path('feries/import/', import_feries, name='import-feries-import'),
 ]

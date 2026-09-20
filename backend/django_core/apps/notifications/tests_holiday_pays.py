@@ -21,6 +21,7 @@ from authentication.models import Company
 
 from .calendar_utils import feries_entre
 from .models import Holiday
+from .selectors import holidays_for_export, upsert_holiday
 
 
 def _co(nom):
@@ -78,6 +79,78 @@ class FeriesEntreFiltragePaysTests(TestCase):
             self.co, datetime.date(2024, 1, 1), datetime.date(2024, 12, 31),
             pays='SN')
         self.assertEqual(dates, [])
+
+
+class HolidaysForExportSelectorTests(TestCase):
+    """NTI18N45 — sélecteur cross-app en LECTURE pour
+    ``apps.dataimport.holidays_import``."""
+
+    def test_renvoie_les_champs_attendus_tries_pays_puis_date(self):
+        co = _co('HolExportCo')
+        Holiday.objects.create(
+            company=co, date=datetime.date(2026, 12, 25), nom='Noël',
+            pays='FR')
+        Holiday.objects.create(
+            company=co, date=datetime.date(2026, 1, 1),
+            nom='Jour de l\'An', pays='FR', recurrent_annuel=True)
+        lignes = holidays_for_export(co)
+        self.assertEqual(len(lignes), 2)
+        self.assertEqual(
+            [ligne['date'] for ligne in lignes],
+            [datetime.date(2026, 1, 1), datetime.date(2026, 12, 25)])
+        self.assertEqual(set(lignes[0]), {'pays', 'date', 'nom',
+                                          'recurrent_annuel'})
+
+    def test_isolation_societe(self):
+        co1 = _co('HolExportIso1')
+        co2 = _co('HolExportIso2')
+        Holiday.objects.create(
+            company=co2, date=datetime.date(2026, 1, 1), nom='Fuite')
+        self.assertEqual(holidays_for_export(co1), [])
+
+    def test_sans_societe_renvoie_liste_vide(self):
+        self.assertEqual(holidays_for_export(None), [])
+
+
+class UpsertHolidaySelectorTests(TestCase):
+    """NTI18N45 — écriture cross-app IDEMPOTENTE par (company, pays, date)
+    pour ``apps.dataimport.holidays_import``."""
+
+    def test_premier_appel_cree(self):
+        co = _co('HolUpsertCo1')
+        holiday, cree = upsert_holiday(
+            co, pays='FR', date=datetime.date(2026, 7, 14),
+            nom='Fête nationale', recurrent_annuel=True)
+        self.assertTrue(cree)
+        self.assertEqual(holiday.nom, 'Fête nationale')
+
+    def test_rejouer_avec_meme_cle_met_a_jour_sans_dupliquer(self):
+        co = _co('HolUpsertCo2')
+        upsert_holiday(
+            co, pays='FR', date=datetime.date(2026, 7, 14),
+            nom='Ancien libellé')
+        _holiday, cree = upsert_holiday(
+            co, pays='FR', date=datetime.date(2026, 7, 14),
+            nom='Nouveau libellé')
+        self.assertFalse(cree)
+        self.assertEqual(
+            Holiday.objects.filter(
+                company=co, pays='FR', date=datetime.date(2026, 7, 14)
+            ).count(), 1)
+        self.assertEqual(
+            Holiday.objects.get(
+                company=co, pays='FR', date=datetime.date(2026, 7, 14)).nom,
+            'Nouveau libellé')
+
+    def test_deux_pays_meme_date_libelle_distinct_coexistent(self):
+        co = _co('HolUpsertCo3')
+        upsert_holiday(
+            co, pays='FR', date=datetime.date(2026, 1, 1), nom='FR NY')
+        upsert_holiday(
+            co, pays='SN', date=datetime.date(2026, 1, 1), nom='SN NY')
+        self.assertEqual(
+            Holiday.objects.filter(
+                company=co, date=datetime.date(2026, 1, 1)).count(), 2)
 
 
 class SeedersFrSnCiRegistreTests(TestCase):
