@@ -46,11 +46,12 @@ from .. import selectors
 from ..models import Calepinage
 from ..permissions import (
     CAL_GERER, CAL_VOIR, PeutGererCalepinage, PeutLireOuEcrireCalepinage,
+    PeutVoirCalepinage,
 )
 from ..serializers import CalepinageSerializer
 from ..services.layout import LayoutRefuse, enregistrer_layout
 
-__all__ = ['CalepinageViewSet', 'detail_calepinage']
+__all__ = ['CalepinageViewSet', 'contexte_conception', 'detail_calepinage']
 
 #: Durée de validité de l'URL présignée du rendu (celle du stockage ventes).
 DUREE_URL_IMAGE = timedelta(hours=1)
@@ -154,6 +155,19 @@ class CalepinageViewSet(CompanyScopedModelViewSet):
             'version': version.pk if version is not None else None,
         })
 
+    @action(detail=True, methods=['get'], url_path='design-context',
+            permission_classes=[PeutVoirCalepinage])
+    def design_context(self, request, pk=None):
+        """CAL231 — TOUT ce que l'atelier doit savoir d'un calepinage.
+
+        Jumeau NEUTRE de ``ventes``/``devis/<id>/design-context/`` (PV17) et de
+        ``ao``/``appels-offres/<id>/design-context/`` : mêmes sept clés,
+        TOUJOURS présentes (contrat
+        ``contract_samples/calepinage_design_context.json``). LECTURE PURE,
+        bornée société par ``get_queryset`` (404 pour une autre société).
+        """
+        return Response(contexte_conception(self.get_object(), request))
+
     @action(detail=True, methods=['post'], url_path='roof-image',
             permission_classes=[PeutGererCalepinage],
             parser_classes=[MultiPartParser, FormParser])
@@ -212,6 +226,157 @@ def _corps_de_layout(donnees):
     if not isinstance(donnees, dict) or not donnees:
         return None
     return donnees
+
+
+# ── CAL231 — LE CONTEXTE DE CONCEPTION (jumeau neutre de PV17) ────────────
+
+def contexte_conception(calepinage, request=None):
+    """Les SEPT clés du contexte d'atelier — toutes toujours présentes.
+
+    Dictionnaire LITTÉRAL (comme ``detail_calepinage``) pour que la garde de
+    contrat lise la forme réellement renvoyée.
+    """
+    company = getattr(calepinage, 'company', None)
+    contexte_devis = _contexte_devis_lie(calepinage, company)
+    geometrie = _geometrie(calepinage, contexte_devis)
+    cible = _cible(calepinage, contexte_devis)
+    return {
+        'calepinage': {
+            'id': calepinage.pk,
+            'titre': _texte(getattr(calepinage, 'titre', '')) or '',
+            'statut': calepinage.statut,
+            'lead': getattr(calepinage, 'lead_id', None),
+            'client': getattr(calepinage, 'client_id', None),
+            'devis': getattr(calepinage, 'devis_id', None),
+        },
+        'geometrie': geometrie,
+        'cible': cible,
+        'carte': _config_carte(),
+        'modifiable': not _raison_lecture_seule(contexte_devis),
+        'raison_lecture_seule': _raison_lecture_seule(contexte_devis),
+        'avertissements': _avertissements(geometrie, cible, contexte_devis),
+    }
+
+
+def _contexte_devis_lie(calepinage, company):
+    """Le contexte d'atelier du DEVIS lié, ou ``None``.
+
+    Lecture cross-app par ``apps.ventes.selectors`` — la MÊME fonction que
+    l'atelier devis, jamais un second calcul de cible ni une seconde façon de
+    dire « lecture seule ».
+    """
+    from apps.ventes.selectors import (
+        contexte_conception_devis, get_devis_by_pk,
+    )
+
+    devis_id = getattr(calepinage, 'devis_id', None)
+    if not devis_id or company is None:
+        return None
+    devis = get_devis_by_pk(devis_id)
+    if devis is None or devis.company_id != company.pk:
+        return None
+    return contexte_conception_devis(devis, company)
+
+
+def _geometrie(calepinage, contexte_devis):
+    """``{source, roof_layout, pin, outline, contour_client}``.
+
+    Le layout du CALEPINAGE prime ; à défaut, l'épingle et le contour posés
+    au diagnostic (CAL15). Sans aucune source, ``source`` vaut ``'none'`` et
+    rien n'est deviné — pas de centre du Maroc inventé.
+    """
+    from .. import selectors as cal_selectors
+
+    geo = cal_selectors.contexte_geographique(calepinage)
+    contour_client = geo['outline'] or []
+    if contexte_devis is not None:
+        contour_client = (contexte_devis.get('geometrie', {})
+                          .get('contour_client') or contour_client)
+    layout = getattr(calepinage, 'roof_layout', None)
+    if isinstance(layout, dict) and layout:
+        pin = layout.get('pin')
+        outline = layout.get('outline')
+        return {
+            'source': 'calepinage',
+            'roof_layout': layout,
+            'pin': pin if isinstance(pin, dict) else geo['pin'],
+            'outline': outline if isinstance(outline, list) else (
+                geo['outline'] or []),
+            'contour_client': contour_client,
+        }
+    if geo['pin'] is not None or geo['outline']:
+        return {
+            'source': 'lead',
+            'roof_layout': None,
+            'pin': geo['pin'],
+            'outline': geo['outline'] or [],
+            'contour_client': contour_client,
+        }
+    return {'source': 'none', 'roof_layout': None, 'pin': None,
+            'outline': [], 'contour_client': contour_client}
+
+
+def _cible(calepinage, contexte_devis):
+    """La cible de puissance, ou ``None`` — JAMAIS une puissance inventée.
+
+    Ordre : la cible du DEVIS lié (celle que l'atelier devis emploie), sinon
+    celle déduite des factures du lead (CAL147, quand elle existera), sinon
+    ``None`` — et l'écran affiche « non renseignée ». Un toit dessiné sur une
+    cible devinée ne correspond à aucun devis.
+    """
+    if contexte_devis is not None and contexte_devis.get('cible'):
+        return dict(contexte_devis['cible'], source='devis')
+    return _cible_des_factures(calepinage)
+
+
+def _cible_des_factures(calepinage):
+    """CAL147 — la cible déduite des factures du lead, ou ``None``.
+
+    Le déducteur de CAL147 n'est pas encore posé : tant qu'il manque, cette
+    fonction rend ``None``. C'est le refus explicite d'inventer une puissance
+    (un ``0`` ici se lirait « zéro kWc voulu »).
+    """
+    return None
+
+
+def _raison_lecture_seule(contexte_devis):
+    """La phrase FRANÇAISE du serveur ventes, reprise MOT POUR MOT.
+
+    Ni traduite, ni adoucie : si l'écran disait autre chose que la porte
+    d'écriture, l'utilisateur apprendrait le refus deux fois, et différemment.
+    """
+    if contexte_devis is None:
+        return ''
+    return contexte_devis.get('raison_lecture_seule') or ''
+
+
+def _avertissements(geometrie, cible, contexte_devis):
+    """Ce qui manque, DIT en français — jamais tu."""
+    messages = list((contexte_devis or {}).get('avertissements') or [])
+    if geometrie['source'] == 'none':
+        messages.append(
+            'Aucune géométrie de toiture connue pour ce calepinage : '
+            'commencez par situer le bâtiment sur la carte.')
+    if cible is None:
+        messages.append('Aucune cible de puissance connue : renseignez-la, '
+                        'ou rattachez un devis.')
+    return messages
+
+
+def _config_carte():
+    """Clés carte du builder 3D — MIROIR de ``ventes/views/roof_config.py``.
+
+    Mêmes variables d'environnement, même forme que les contextes devis et AO
+    (``apps/ao/selectors.py::_config_carte_builder`` fait exactement pareil) :
+    c'est de la CONFIGURATION, pas une donnée société — la lire ici évite de
+    faire dépendre ce module de ventes pour une clé d'API.
+    """
+    import os
+
+    maptiler = os.environ.get('PUBLIC_MAPTILER_KEY', '') or ''
+    mapbox = os.environ.get('PUBLIC_MAPBOX_TOKEN', '') or ''
+    return {'available': bool(maptiler), 'maptilerKey': maptiler,
+            'mapboxToken': mapbox or None}
 
 
 # ── CAL17 — L'AGRÉGAT DE DÉTAIL (la forme est le contrat) ──────────────────
