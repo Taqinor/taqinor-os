@@ -21,11 +21,22 @@ SECTIONS_PARAMETRES = (
     'presets',
     'favoris_materiel',
     'gabarits_dossier',
+    # CAL130 — norme électrique applicable + coefficients SAISIS. Section
+    # vide = aucune norme choisie (règle D5 : rien n'est supposé au Maroc).
+    'norme_electrique',
+    # CAL163 — paramètres de lestage SAISIS avec leur source. Section vide =
+    # aucun coefficient connu, donc aucune feuille calculée.
+    'lestage',
 )
+
+#: CAL246 — clés DÉRIVÉES publiées par ``GET /parametres/`` mais JAMAIS écrites :
+#: elles ne sont pas des sections (aucune n'entre dans ``enregistrer_parametres``).
+#: Le contrat les porte ; les gardes de cohérence les retirent avant de comparer.
+SECTIONS_LECTURE_SEULE = ('kits',)
 
 
 def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
-                      depuis=None, q=None):
+                      depuis=None, q=None, inclure_archives=False):
     """CAL10 — les calepinages de ``company``, filtrés, en lecture pure.
 
     Args:
@@ -37,6 +48,10 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
         depuis: date/heure — ne rend que ce qui a été créé à partir d'elle.
         q: recherche libre sur le TITRE (rien d'autre : on n'énumère pas
             l'annuaire client depuis ce module).
+        inclure_archives: CAL208 — ``False`` (défaut) exclut les calepinages
+            ARCHIVÉS (corbeille, ``apps.trash``) de la liste — un calepinage
+            archivé n'est jamais soft-supprimé, il sort juste de la vue par
+            défaut. ``True`` les inclut (écran corbeille).
 
     Returns:
         Un ``QuerySet`` ordonné du plus récent au plus ancien.
@@ -48,11 +63,12 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
     return appliquer_filtres_liste(
         Calepinage.objects.filter(company=company),
         lead_id=lead_id, client_id=client_id, statut=statut, depuis=depuis,
-        q=q)
+        q=q, inclure_archives=inclure_archives)
 
 
 def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
-                            statut=None, depuis=None, q=None):
+                            statut=None, depuis=None, q=None,
+                            inclure_archives=False):
     """CAL16 — LES filtres de la liste, écrits UNE fois.
 
     Le viewset (``views/calepinages.py``) et ce sélecteur servent la même
@@ -60,6 +76,11 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     divergeraient au premier ajout — et la leçon PV22 est qu'un filtre IGNORÉ
     (``?statut=`` servi à l'identique) fait ouvrir le mauvais objet. Un filtre
     absent ne filtre rien ; un filtre présent filtre RÉELLEMENT.
+
+    CAL208 — ``inclure_archives=False`` (le défaut, y compris pour le
+    viewset qui n'appelle PAS cet argument) exclut les calepinages archivés
+    (corbeille, ``apps.trash.selectors.ids_dans_corbeille`` — jamais un
+    import direct de ``ElementSupprime``, frontière inter-apps).
 
     L'ordre est celui du plus récent au plus ancien, dans les deux chemins.
     """
@@ -74,6 +95,11 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     terme = (q or '').strip()
     if terme:
         lignes = lignes.filter(titre__icontains=terme)
+    if not inclure_archives:
+        from apps.trash.selectors import ids_dans_corbeille
+
+        lignes = lignes.exclude(
+            pk__in=list(ids_dans_corbeille('calepinage.calepinage')))
     return lignes.order_by('-created_at', '-id')
 
 
@@ -143,12 +169,22 @@ def comparer_variantes(calepinage):
     lignes = list(variantes(calepinage))
     retenue = next((v for v in lignes if v.retenue), None)
     reference = _mesures_variante(retenue) if retenue is not None else {}
+    # CAL145 — la RÉFÉRENCE de production est calculée par le même chemin de
+    # lecture que les autres lignes : une retenue périmée ne sert donc pas de
+    # référence, et l'écart des autres vaut ``None`` plutôt qu'un écart
+    # mesuré contre un chiffre qui ne décrit plus ce toit.
+    reference_p50 = None
+    if retenue is not None:
+        simulee_ref, production_ref, _ = _production_comparee(retenue)
+        if simulee_ref:
+            reference_p50 = production_ref.get('p50_kwh')
     return {
         'calepinage': getattr(calepinage, 'pk', None),
         'retenue_id': retenue.pk if retenue is not None else None,
         'reference_modules': reference.get('total_modules'),
         'introuvables': [],
-        'lignes': [_ligne_comparaison(v, reference, len(lignes))
+        'lignes': [_ligne_comparaison(v, reference, len(lignes),
+                                      reference_p50=reference_p50)
                    for v in lignes],
     }
 
@@ -159,11 +195,26 @@ def _mesures_variante(variante):
     return resultat if isinstance(resultat, dict) else {}
 
 
-def _ligne_comparaison(variante, reference, nombre_de_lignes):
+def _production_comparee(variante):
+    """CAL145 — les colonnes de production, CALCULÉES À LA LECTURE.
+
+    Le service de comparaison lit le résultat déposé par le moteur (forme
+    imbriquée du module ou forme plate du parcours devis) et déclare « non
+    simulée » toute variante sans production — ou dont la production a été
+    calculée sur une AUTRE empreinte de layout que celle d'aujourd'hui. Rien
+    n'est stocké : le comparatif suit l'empreinte sans invalidation.
+    """
+    from .services.comparaison import colonnes_production
+
+    return colonnes_production(_mesures_variante(variante),
+                               layout_hash=getattr(variante, 'layout_hash',
+                                                   '') or None)
+
+
+def _ligne_comparaison(variante, reference, nombre_de_lignes,
+                       reference_p50=None):
     mesures = _mesures_variante(variante)
-    production = (mesures.get('production')
-                  if isinstance(mesures.get('production'), dict) else {})
-    simulee = bool(production)
+    simulee, production, _motif = _production_comparee(variante)
     comparable = nombre_de_lignes > 1 and bool(reference)
     return {
         'id': variante.pk,
@@ -184,24 +235,21 @@ def _ligne_comparaison(variante, reference, nombre_de_lignes):
         'production': dict(
             {cle: (production.get(cle) if simulee else None)
              for cle in CLES_PRODUCTION},
-            # Variante SIMULÉE : une liste vide, jamais ``None`` — « aucun
-            # poste de perte dominant » se lit, « pas de liste » ne se lit
-            # pas. Variante NON simulée : ``None`` comme toutes les autres
-            # grandeurs de production — une liste vide y ferait lire « nous
-            # avons cherché et n'avons rien trouvé » là où rien n'a été
-            # calculé (discipline du null, jamais le zéro).
-            pertes_dominantes=(
-                list(production.get('pertes_dominantes') or [])
-                if simulee else None)),
+            # TOUJOURS une liste, jamais ``None`` — simulée comme non
+            # simulée : « aucun poste de perte dominant » se lit, « pas
+            # de liste » ne se lit pas. C'est la forme publiée par le
+            # contrat ``variantes_comparer.json`` (ligne « non simulée »
+            # : toutes les grandeurs à ``null`` ET
+            # ``pertes_dominantes: []``).
+            pertes_dominantes=list(
+                production.get('pertes_dominantes') or [])),
         'ecart_modules': _ecart(mesures.get('total_modules'),
                                 reference.get('total_modules'), comparable),
         'ecart_kwc': _ecart(mesures.get('kwc'), reference.get('kwc'),
                             comparable),
         'ecart_p50_kwh': _ecart(
             production.get('p50_kwh') if simulee else None,
-            ((reference.get('production') or {}).get('p50_kwh')
-             if isinstance(reference.get('production'), dict) else None),
-            comparable),
+            reference_p50, comparable),
         'version_moteur': mesures.get('version_moteur') or '',
         'entree_hash': mesures.get('entree_hash') or '',
     }
@@ -284,6 +332,55 @@ def calepinage_retenu_pour_devis(devis_id, company):
         'kwc': kwc,
         'nb_modules': nb_modules,
         'planche_url': f'/calepinage/{calepinage.id}',
+    }
+
+
+#: CAL185 — les clés de la nomenclature d'une variante retenue. TOUJOURS
+#: toutes présentes : un appelant n'a jamais à deviner si une clé existe.
+CLES_NOMENCLATURE_RETENUE = ('calepinage', 'variante', 'nom', 'layout',
+                             'layout_hash')
+
+
+def nomenclature_variante_retenue(calepinage_id, company):
+    """CAL185 — la conception de la variante RETENUE, prête à être CHIFFRÉE.
+
+    Point d'entrée cross-app : ``apps.ventes`` chiffre la variante choisie
+    sans jamais importer ``apps.calepinage.models``. Ce que rend cette
+    fonction est la CONCEPTION (le document ``roof_layout`` de la variante) et
+    son empreinte — pas une liste de produits : le schéma v2 ne porte aucune
+    référence catalogue (cf. ``services.equipements``), et c'est la
+    composition ventes qui résout les produits. Une deuxième façon de choisir
+    un produit serait une deuxième vérité de chiffrage.
+
+    ``None`` quand le calepinage n'existe pas dans cette société, quand
+    AUCUNE variante n'y est retenue, ou quand la variante retenue ne porte
+    pas de conception — une variante sans dessin n'a rien à chiffrer, et on
+    ne retombe JAMAIS en silence sur la conception du calepinage parent (ce
+    serait chiffrer autre chose que ce que le commercial a retenu).
+    """
+    from .models import Calepinage, CalepinageVariante
+
+    if company is None or not calepinage_id:
+        return None
+    calepinage = (Calepinage.objects
+                  .filter(company=company, pk=calepinage_id)
+                  .first())
+    if calepinage is None:
+        return None
+    variante = (CalepinageVariante.objects
+                .filter(calepinage=calepinage, retenue=True)
+                .first())
+    if variante is None:
+        return None
+    layout = variante.roof_layout
+    if not isinstance(layout, dict) or not layout:
+        return None
+    return {
+        'calepinage': calepinage.pk,
+        'variante': variante.pk,
+        'nom': variante.nom or '',
+        'layout': layout,
+        'layout_hash': variante.layout_hash or '',
     }
 
 
@@ -438,3 +535,148 @@ def parametres_de_societe(company):
         section: (getattr(reglages, section, None) or {})
         for section in SECTIONS_PARAMETRES
     }
+
+
+def imagerie_site(company):
+    """CAL47 — la section « imagerie & pays » RÉSOLUE, toujours complète.
+
+    ``parametres_de_societe`` rend la section BRUTE (``{}`` tant que la
+    société n'a rien réglé) : c'est ce qui garantit l'équivalence stricte de
+    CAL45 sur l'endpoint. Un CONSOMMATEUR, lui, a besoin des huit clés du
+    contrat CAL46 (``contract_samples/site_imagerie.json``) pour ne jamais
+    tester l'absence de clé au lieu de l'absence de donnée : cette fonction
+    les lui donne, valeurs à ``null`` (ou ``[]``) quand rien n'est réglé.
+
+    Huit valeurs nulles veulent dire « comportement d'aujourd'hui » — pas
+    « pas de carte ». Aucun pays, aucun fournisseur, aucune altitude n'est
+    inventé ici : ce que la société n'a pas saisi reste inconnu.
+
+    Lecture PURE, bornée société (``company=None`` ⇒ tout inconnu).
+    """
+    from .services.site import section_vide
+
+    section = section_vide()
+    if company is None:
+        return section
+    section.update(parametres_de_societe(company).get('imagerie') or {})
+    return section
+
+
+def photos_site(calepinage):
+    """CAL52 — les photos de site d'un calepinage, prêtes à l'affichage.
+
+    Ordre : la plus récemment PRISE d'abord (jamais la plus récemment
+    importée — c'est la date de prise de vue qui situe le toit). Lecture
+    PURE ; un calepinage sans photo rend ``[]`` et jamais ``null``.
+    """
+    from .services.photos import photo_en_ligne
+
+    if calepinage is None or calepinage.pk is None:
+        return []
+    lignes = (calepinage.photos_site
+              .select_related('attachment', 'ajoutee_par')
+              .order_by('-prise_le', '-id'))
+    return [photo_en_ligne(photo) for photo in lignes]
+
+
+def releves_terrain(calepinage):
+    """CAL64 — les relevés terrain d'un calepinage, du plus récent au plus
+    ancien (par date de RELEVÉ, jamais par date d'envoi : le terrain et le
+    réseau ne coïncident pas).
+
+    Lecture PURE ; un calepinage sans relevé rend ``[]`` et jamais ``null``.
+    """
+    from .services.releve import releve_en_ligne
+
+    if calepinage is None or calepinage.pk is None:
+        return []
+    lignes = (calepinage.releves_terrain
+              .select_related('releve_par')
+              .prefetch_related('photos__attachment', 'photos__ajoutee_par')
+              .order_by('-releve_le', '-id'))
+    return [releve_en_ligne(releve) for releve in lignes]
+
+
+def presets_de_societe(company):
+    """CAL197 — les presets de conception disponibles pour l'atelier.
+
+    Joint DEUX sources, sans jamais copier l'une dans l'autre :
+
+    * ``module`` — les jeux PROPRES au module, section ``presets.jeux`` de
+      ``ParametresCalepinage`` (``services.presets.jeux_de_societe``) ;
+    * ``societe_ao`` — les presets AO de portée société
+      (``apps.ao.selectors.presets_calepinage``), lus tels quels.
+
+    Lecture PURE, bornée société — ``None`` rend les deux listes vides.
+    """
+    from apps.ao.selectors import presets_calepinage
+
+    from .services.presets import jeux_de_societe
+
+    module = jeux_de_societe(company)
+    ao = presets_calepinage(company, portee='societe') if company else []
+    return {
+        'module': module,
+        'societe_ao': [
+            {
+                'id': preset.pk,
+                'nom': preset.nom,
+                'parametres': preset.parametres,
+                'par_defaut': preset.par_defaut,
+                'description': preset.description,
+            }
+            for preset in ao
+        ],
+    }
+
+
+def kits_de_pose_disponibles(company):
+    """CAL198 — les kits de pose du catalogue AO, tels que le module les voit.
+
+    Lecture PURE : point d'entrée unique pour l'atelier (``apps.ao.selectors.
+    kits_de_pose``) — aucune donnée n'est recopiée en base côté module."""
+    from apps.ao.selectors import kits_de_pose
+
+    if company is None:
+        return []
+    return kits_de_pose(company)
+
+
+def favoris_materiel_de_societe(company):
+    """CAL200 — le matériel « favori conception » de la société, résolu.
+
+    La section ``favoris_materiel`` de ``ParametresCalepinage`` (CAL45) ne
+    porte que des identifiants produit (``{'modules': [...], 'onduleurs':
+    [...]}``) — ce sélecteur les résout sur le catalogue stock
+    (``apps.stock.selectors``) pour rendre marque/puissance/dimensions,
+    JAMAIS une fiche technique inventée. Un produit favori dont l'id est
+    devenu introuvable est simplement OMIS (le favori pointe dans le vide) ;
+    un produit trouvé mais SANS dimensions reste dans la liste, signalé
+    ``dimensions_renseignees: False`` — jamais une taille par défaut.
+    """
+    from apps.stock.selectors import dimensions_de_pose, get_produit_scoped
+
+    favoris = (parametres_de_societe(company).get('favoris_materiel') or {})
+    resultat = {}
+    for categorie, ids in favoris.items():
+        if not isinstance(ids, list):
+            continue
+        lignes = []
+        for produit_id in ids:
+            produit = get_produit_scoped(company, produit_id)
+            if produit is None:
+                continue
+            dims = dimensions_de_pose(produit)
+            lignes.append({
+                'id': produit.pk,
+                'nom': produit.nom,
+                'marque': getattr(produit, 'marque', '') or '',
+                'puissance_wc': dims.get('puissance_wc'),
+                'longueur_mm': dims.get('longueur_mm'),
+                'largeur_mm': dims.get('largeur_mm'),
+                'dimensions_renseignees': bool(
+                    dims.get('longueur_mm') and dims.get('largeur_mm')),
+                'archive': bool(getattr(produit, 'is_archived', False)),
+            })
+        resultat[categorie] = lignes
+    return resultat

@@ -128,6 +128,7 @@ SURFACE_PUBLIQUE = (
     "avertissement_vivier_batterie_vide",
     "bcf_share_url",
     "build_devis_auto",
+    "build_devis_depuis_calepinage_retenu",
     "build_devis_from_layout",
     "calculer_date_echeance",
     "capturer_configuration_devis",
@@ -219,6 +220,7 @@ SURFACE_PUBLIQUE = (
     "poser_validite_devis",
     "prix_applicable",
     "prix_forfait_ht",
+    "produits_a_renseigner",
     # QJR107 (30/08/2026) — ``profil_reel_existe`` RETIRÉE de la surface :
     # la fonction est supprimée (aucun appelant dans tout le dépôt), voir la
     # note de suppression en tête de ``domain/etudes.py``.

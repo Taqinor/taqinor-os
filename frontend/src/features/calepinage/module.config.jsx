@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `features/ao`). */
 import { lazy } from 'react'
-import { Grid3x3, LayoutGrid, PlusCircle } from 'lucide-react'
+import { BadgeCheck, Grid3x3, Library, LayoutGrid, PlusCircle } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -65,6 +65,80 @@ const CalepinageNouveau = lazy(() => import('./CalepinageNouveau'))
 // CAL42 — le comparatif des variantes (CAL105 fondue) : tableau une colonne par
 // variante + vue côte à côte, alimentés UNIQUEMENT par le contrat CAL3.
 const VariantesCompare = lazy(() => import('./VariantesCompare'))
+/* CAL121 — le panneau « fiches incomplètes » : pour les équipements RETENUS de
+   ce calepinage, le champ manquant et le calcul qu'il débloque. Contextuel à UN
+   calepinage (agrégat CAL243), donc une route de deep-link et non un item de
+   nav — un menu permanent n'aurait aucun calepinage à désigner. */
+const FichesIncompletes = lazy(() => import('./equipements/FichesIncompletes'))
+/* CAL159 — l'écran POMPAGE du module : puits, besoin, réservoir, courbe de
+   pompe avec point de fonctionnement et 12 volumes mensuels. L'atelier
+   (`ToitureDesign`) est un atelier de TOITURE et n'a aucune surface pompage ;
+   celle-ci est contextuelle à UN calepinage, donc un deep-link. */
+const PompagePanel = lazy(() => import('./pompage/PompagePanel'))
+/* CAL63 — le CALAGE d'un plan importé (translation, rotation, échelle prise sur
+   une distance RÉELLE saisie, aimantation) puis sa conversion en tracé de toit.
+   Contextuel à UN calepinage : deep-link, jamais un item de menu. */
+const PlanImporteCalage = lazy(() => import('./PlanImporteCalage'))
+/* CAL53 — le CALAGE d'une photo de site (CAL52 : drone/oblique/sol) sur la
+   carte, par ses 4 coins (réutilise `roofTextureWarp.js`, VT11). Contextuel à
+   UN calepinage : deep-link ouvert depuis l'atelier (CAL37), jamais un item
+   de menu permanent qui n'aurait aucun calepinage à désigner. */
+const PhotoSiteCalage = lazy(() => import('./PhotoSiteCalage'))
+// CAL201 — la bibliothèque du module (presets, kits, modèles, favoris) :
+// société active respectée, lecture seule sans `calepinage_gerer`.
+const Bibliotheque = lazy(() => import('./Bibliotheque'))
+/* CAL58 — la PENTE saisie de trois façons (degrés, pourcentage, cotes) qui
+   convergent vers une seule valeur, laquelle affiche toujours sa provenance. */
+const SaisiePente = lazy(() => import('./SaisiePente'))
+// CAL195 — le schéma unifilaire du calepinage, composé par le MÊME moteur que
+// le devis : l'écran l'affiche, il ne dessine rien.
+const SchemaUnifilairePanel = lazy(() => import('./SchemaUnifilairePanel'))
+/* CAL236 — le panneau « Production » (kWh, PR, kWh/kWc, P50/P90, par pan et au
+   total), alimenté par le contrat `calepinage_resultat.json` (CAL244) : rien
+   n'y est calculé, une grandeur absente s'affiche « non calculée ».
+   Contextuel à UN calepinage : deep-link, comme le schéma unifilaire. */
+const PanneauProduction = lazy(() => import('./production/PanneauProduction'))
+/* CAL143 — le diagramme de pertes (cascade), même échantillon serveur que
+   CAL236 : aucune perte n'y est recalculée, un poste non sourcé reste nommé
+   et hachuré. Contextuel à UN calepinage : deep-link. */
+const DiagrammePertes = lazy(() => import('./production/DiagrammePertes'))
+/* CAL89 — le MODE TERRAIN : une centrale au SOL. Dimensions et pente SAISIES,
+   tables/compte/pas inter-rangées RENDUS par le moteur (CAL88), taux
+   d'occupation affiché comme une SORTIE. Contextuel à UN calepinage (il écrit
+   dans SON document `roof_layout`), donc un deep-link comme la pente ou le
+   pompage — et le mode toiture n'est touché nulle part. */
+const ModeTerrain = lazy(() => import('./ModeTerrain'))
+/* CAL91 — l'OMBRIÈRE / carport : une surface de pose comme une autre (emprise,
+   hauteur libre, inclinaison, sens d'écoulement SAISIS ; pose rendue par le
+   moteur), qui se totalise par bâtiment avec les pans de toiture. Aucune
+   charge ni structure n'y est chiffrée. Contextuelle à UN calepinage. */
+const Ombriere = lazy(() => import('./Ombriere'))
+/* CAL93 — l'horizon lointain (relief à distance qui masque le soleil aux heures
+   rasantes), tracé en fond de la course du soleil et appliqué à la production en
+   poste de perte séparé de l'ombrage proche. Contextuel à UN calepinage : deep-link,
+   jamais un item de menu (une entrée permanente n'aurait aucun calepinage à désigner). */
+const HorizonPanel = lazy(() => import('./HorizonPanel'))
+/* CAL96 — la course du soleil par pan (azimut/hauteur, solstices+équinoxe), avec
+   l'horizon CAL92/CAL93 et les obstructions proches CAL94 surimprimés. Contextuelle à
+   UN calepinage : deep-link, jamais un item de menu (un pan n'existe que dans un
+   calepinage donné). */
+const CourseSoleil = lazy(() => import('./CourseSoleil'))
+/* CAL165 — les SOURCES des paramètres normatifs de la société (coefficients de
+   norme électrique, paramètres de lestage, dégagements) : un paramètre sans
+   provenance déclarée y est marqué « non sourcée » et sa valeur n'est pas
+   affichée. Réglages SOCIÉTÉ, donc un item de nav permanent et non un
+   deep-link : il n'y a aucun calepinage à désigner. */
+const SourcesNormatives = lazy(() => import('./commun/Provenance'))
+/* CAL196 — les DOSSIERS RÉGLEMENTAIRES de CE calepinage : pièces, état,
+   champs « à compléter » servis par le serveur. Contextuel à UN calepinage
+   (agrégat CAL247), donc un deep-link — un menu permanent n'aurait aucun
+   calepinage à désigner. */
+const DossiersReglementaires = lazy(() => import('./DossiersReglementaires'))
+/* CAL234 — l'AFFECTATION MANUELLE des chaînes : on glisse sur les modules,
+   le serveur verdicte la proposition (`evaluer-electrique/`, qui ne persiste
+   rien) et la validation part sur `entree-electrique/`. Contextuelle à UN
+   calepinage — elle corrige SON affectation, pas celle d'un autre. */
+const AffectationChaines = lazy(() => import('./plan/AffectationChaines'))
 
 const config = {
   key: 'calepinage',
@@ -87,25 +161,75 @@ const config = {
         icon: <PlusCircle size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      {
+        // CAL201 — presets/kits/modèles/favoris : un item de nav PERMANENT,
+        // contrairement aux panneaux contextuels d'UN calepinage ci-dessous.
+        to: '/calepinage/bibliotheque',
+        label: 'Bibliothèque',
+        icon: <Library size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
+      {
+        // CAL165 — la provenance des paramètres normatifs de la société.
+        to: '/calepinage/sources',
+        label: 'Sources des paramètres',
+        icon: <BadgeCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
   // `titles` — correspondance par PRÉFIXE, du plus spécifique au plus général.
   titles: [
     ['/calepinage/nouveau', 'Calepinage — Nouveau calepinage'],
+    ['/calepinage/bibliotheque', 'Calepinage — Bibliothèque'],
+    ['/calepinage/sources', 'Calepinage — Sources des paramètres'],
     ['/calepinage/', 'Calepinage — Atelier'],
     ['/calepinage', 'Calepinage — Calepinages'],
   ],
   sectionLabels: { calepinage: 'Calepinage' },
   routes: [
     { path: '/calepinage', component: CalepinageList, roles: ROLES },
-    // AVANT `/calepinage/:id` — sinon « nouveau » est lu comme un identifiant.
+    // AVANT `/calepinage/:id` — sinon « nouveau »/« bibliotheque » seraient lus
+    // comme un identifiant.
     { path: '/calepinage/nouveau', component: CalepinageNouveau, roles: ROLES },
+    { path: '/calepinage/bibliotheque', component: Bibliotheque, roles: ROLES },
+    // CAL165 — AVANT `/calepinage/:id` : « sources » n'est pas un identifiant.
+    { path: '/calepinage/sources', component: SourcesNormatives, roles: ROLES },
     // Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
     // contextuel à un objet, comme `/ao/affaires/:id/design`. C'est la cible de
     // la redirection après création (CAL36).
     { path: '/calepinage/:id', component: AtelierCalepinage, roles: ROLES },
     // contextuelle: comparatif d'UN calepinage, ouvert depuis son atelier (CAL37) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/variantes', component: VariantesCompare, roles: ROLES },
+    // CAL121 — contextuelle elle aussi : les fiches techniques trouées des
+    // équipements de CE calepinage, avec le calcul que chaque champ débloque.
+    { path: '/calepinage/:id/fiches', component: FichesIncompletes, roles: ROLES },
+    // CAL159 — le dimensionnement de pompage de CE calepinage.
+    { path: '/calepinage/:id/pompage', component: PompagePanel, roles: ROLES },
+    // CAL63 — caler le plan importé de CE calepinage sur la carte.
+    { path: '/calepinage/:id/plan', component: PlanImporteCalage, roles: ROLES },
+    // CAL53 — caler une photo de site (CAL52) de CE calepinage sur la carte.
+    { path: '/calepinage/:id/photos', component: PhotoSiteCalage, roles: ROLES },
+    // CAL58 — la pente de CE calepinage, par l'un des trois modes de saisie.
+    { path: '/calepinage/:id/pente', component: SaisiePente, roles: ROLES },
+    // CAL89 — le champ au SOL de CE calepinage (mode terrain).
+    { path: '/calepinage/:id/terrain', component: ModeTerrain, roles: ROLES },
+    // CAL91 — l'ombrière / carport de CE calepinage.
+    { path: '/calepinage/:id/ombriere', component: Ombriere, roles: ROLES },
+    // contextuelle: le schéma unifilaire d'UN calepinage, ouvert depuis son atelier (CAL195) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
+    { path: '/calepinage/:id/schema', component: SchemaUnifilairePanel, roles: ROLES },
+    // CAL236 — contextuelle : le panneau Production de CE calepinage.
+    { path: '/calepinage/:id/production', component: PanneauProduction, roles: ROLES },
+    // CAL143 — contextuelle : le diagramme de pertes de CE calepinage.
+    { path: '/calepinage/:id/pertes', component: DiagrammePertes, roles: ROLES },
+    // CAL93 — contextuelle elle aussi : l'horizon lointain d'UN calepinage.
+    { path: '/calepinage/:id/horizon', component: HorizonPanel, roles: ROLES },
+    // CAL96 — contextuelle : la course du soleil par pan d'UN calepinage.
+    { path: '/calepinage/:id/course-soleil', component: CourseSoleil, roles: ROLES },
+    // contextuelle: les dossiers réglementaires d'UN calepinage, ouverts depuis son atelier (CAL196) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
+    { path: '/calepinage/:id/dossiers', component: DossiersReglementaires, roles: ROLES },
+    // contextuelle: l'affectation des chaînes d'UN calepinage, corrigée à la main depuis son atelier (CAL234) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
+    { path: '/calepinage/:id/affectation', component: AffectationChaines, roles: ROLES },
   ],
 }
 

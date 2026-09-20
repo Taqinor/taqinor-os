@@ -90,7 +90,13 @@ class ChampsOptionnelsTest(BaseLayout):
                            resultat={'kwc': 6.9}, version_moteur='v1',
                            roof_image='cle/minio.png')
         relu = Calepinage.objects.get(pk=self.pivot.pk)
-        self.assertEqual(relu.resultat, {'kwc': 6.9})
+        # Le résultat DÉPOSÉ est conservé tel quel…
+        self.assertEqual(relu.resultat['kwc'], 6.9)
+        # …et la seule clé que le chemin de layout puisse AJOUTER est le
+        # verdict électrique rejoué (CAL128), qui peut ne pas être rendu
+        # — jamais une autre clé inventée.
+        self.assertLessEqual(set(relu.resultat) - {'kwc'},
+                             {'verdict_electrique'})
         self.assertEqual(relu.version_moteur, 'v1')
         self.assertEqual(relu.roof_image, 'cle/minio.png')
 

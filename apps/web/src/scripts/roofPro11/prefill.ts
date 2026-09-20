@@ -23,6 +23,9 @@ import { ROOF_TYPES } from '../../lib/lead';
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 import { deduceEdgeTypes, type SerializedEdge, type EdgeDeductionZone } from './edges';
 import { type EnvironmentObject } from './environment';
+import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone } from './zones';
+import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
+import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -360,6 +363,13 @@ export interface SerializeMeta {
    * SANS accès solaire — jamais avec des valeurs par défaut.
    */
   solarAccessByZone?: Record<string, SerializedSolarAccess | null | undefined>;
+  /** CAL76 — les quatre retraits de rive RÉGLÉS dans l'atelier (PV63 + le joint CAL76),
+   *  à écrire à la racine du document. Fourni par l'appelant (l'outil les tient dans
+   *  `setbacks`, cf. roof-tool-pro11.ts) : `prefill.ts` reste pur et n'invente rien. */
+  setbacksM?: PerimeterSetbacks;
+  /** CAL93 — le profil d'horizon lointain RÉELLEMENT en vigueur (`ctx.horizonProfile`,
+   *  tenu par `shadingUi.ts`). Fourni par l'appelant, comme `setbacksM` ci-dessus. */
+  horizonProfile?: HorizonProfile;
 }
 
 // ═══════════ PV71 — MATRICE D'OMBRAGE 12 × 24 (sérialisation) ═══════════
@@ -507,6 +517,22 @@ export interface SerializedLayout {
   /** CAL67 — objets d'environnement (arbres/bâtiments voisins) posés HORS contour. Omis
    *  ou vide = aucun objet (comportement historique, byte pour byte). */
   environment?: EnvironmentObject[];
+  /** CAL68/CAL69 — zones INTERDITE/RESERVEE/PREFEREE tracées dans l'atelier. Le nom du
+   *  tableau est `exclusionZones` (CAL232 : `zones` est PRIS par les pans depuis la v1).
+   *  Omis ou vide = aucune zone (comportement historique, byte pour byte). */
+  exclusionZones?: ReturnType<typeof serializeExclusionZones>;
+  /** CAL76 — les QUATRE retraits de rive (PV63 latéral/extrémité/acrotère + le joint
+   *  ajouté par CAL76) tels que RÉGLÉS dans l'atelier au moment de l'export. Champ RACINE
+   *  (un seul jeu de retraits pour tout le document, pas par zone). Omis ⇒ un lecteur
+   *  reprend `uniformSetbacks()` (comportement historique, byte pour byte) — voir
+   *  `deserializeSetbacksFromLayout`. Forme figée par `roof_layout_v2.schema.json`
+   *  (`$defs/perimeterSetbacks`). */
+  setbacksM?: PerimeterSetbacks;
+  /** CAL93 — le profil d'horizon lointain (CAL92 PVGIS, ou saisi) RÉELLEMENT en vigueur au
+   *  moment de l'export. Champ RACINE (une seule valeur pour tout le document). Omis ⇒
+   *  aucun horizon lointain modélisé — comportement historique, byte pour byte. Forme
+   *  figée par `roof_layout_v2.schema.json` (`$defs/horizonProfile`). */
+  horizonProfile?: HorizonProfile;
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -677,7 +703,65 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     // CAL67 — les objets d'environnement (arbres/bâtiments voisins) voyagent avec le
     // design, comme les mesures et l'ombrage tracé ci-dessus.
     ...(ctx.environment && ctx.environment.length ? { environment: serializeEnvironment(ctx.environment) } : {}),
+    // CAL69 — additif : rien n'est émis tant qu'aucune zone n'est tracée.
+    ...(ctx.exclusionZones && ctx.exclusionZones.length
+      ? { exclusionZones: serializeExclusionZones(ctx.exclusionZones) }
+      : {}),
+    // CAL76 — les quatre retraits de rive RÉGLÉS voyagent avec le document (jusqu'ici
+    // perdus au rechargement : `setbacks` ne vivait qu'en mémoire dans l'outil).
+    ...(meta?.setbacksM ? { setbacksM: { ...meta.setbacksM } } : {}),
+    // CAL93 — le profil d'horizon lointain voyage avec le document, comme `setbacksM`.
+    // Rien n'est écrit tant qu'aucun profil n'est renseigné (≥ 2 points exploitables).
+    ...(meta?.horizonProfile && meta.horizonProfile.points.length >= 2
+      ? { horizonProfile: serializeHorizonProfile(meta.horizonProfile) }
+      : {}),
   };
+}
+
+/**
+ * CAL76 — relit les quatre retraits de rive d'un layout sérialisé. Mêmes garde-fous que
+ * `deserializeShading`/`deserializeMeasurements` : un JSON douteux (clé manquante, valeur
+ * non finie, négative) ne casse jamais l'ouverture — `resolveSetbacks` renvoie des valeurs
+ * saines (repli sur `PERIMETER_SETBACK_M` pour les trois retraits historiques, 0 pour le
+ * joint). Renvoie `null` quand le document ne porte aucun `setbacksM` (documents
+ * antérieurs à CAL76) : l'appelant garde alors `uniformSetbacks()`, comportement
+ * strictement inchangé.
+ */
+export function deserializeSetbacksFromLayout(json: unknown): PerimeterSetbacks | null {
+  const raw = (json as { setbacksM?: Partial<PerimeterSetbacks> } | null | undefined)?.setbacksM;
+  if (!raw || typeof raw !== 'object') return null;
+  return resolveSetbacks(raw);
+}
+
+/** CAL93 — normalise un profil d'horizon avant écriture : points TRIÉS/assainis (aucun
+ *  point non fini), `hauteurMaxDeg` RECALCULÉE (jamais recopiée telle quelle — c'est la
+ *  seule définition, `horizonMaxHeightDeg`), source repliée sur `'saisie'` si absente. */
+export function serializeHorizonProfile(profile: HorizonProfile): HorizonProfile {
+  const points = sortedHorizonPoints(profile.points);
+  return {
+    source: profile.source === 'pvgis' ? 'pvgis' : 'saisie',
+    points,
+    hauteurMaxDeg: horizonMaxHeightDeg(points),
+  };
+}
+
+/**
+ * CAL93 — relit le profil d'horizon d'un layout sérialisé. Mêmes garde-fous que
+ * `deserializeSetbacksFromLayout` : un JSON douteux (points manquants/non finis, source
+ * inconnue) est assaini plutôt que de casser l'ouverture ; moins de 2 points exploitables
+ * (ou clé absente — document antérieur à CAL93) ⇒ `null`, jamais un horizon inventé.
+ */
+export function deserializeHorizonProfileFromLayout(json: unknown): HorizonProfile | null {
+  const raw = (json as { horizonProfile?: { source?: unknown; points?: unknown } } | null | undefined)?.horizonProfile;
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.points)) return null;
+  const points = sortedHorizonPoints(
+    (raw.points as Array<{ azimuthDeg?: unknown; heightDeg?: unknown }>)
+      .filter((p) => typeof p?.azimuthDeg === 'number' && typeof p?.heightDeg === 'number')
+      .map((p) => ({ azimuthDeg: p.azimuthDeg as number, heightDeg: p.heightDeg as number })),
+  );
+  if (points.length < 2) return null;
+  const source: HorizonSource = raw.source === 'pvgis' ? 'pvgis' : 'saisie';
+  return { source, points, hauteurMaxDeg: horizonMaxHeightDeg(points) };
 }
 
 /**
@@ -941,4 +1025,12 @@ export function referenceContourRing(brut: RawContourPoint[] | null | undefined)
     if (coordonneeValide(lat, lng)) ring.push([lng, lat]);
   }
   return ring.length >= 3 ? ring : null;
+}
+
+/** CAL69 — relit les zones d'exclusion d'un document d'atelier. Accepte soit le layout
+ *  complet (lit `.exclusionZones`), soit déjà le tableau brut. JSON douteux ⇒ tableau
+ *  vide, jamais une exception — même esprit que `deserializeMeasurements`. */
+export function deserializeExclusionZonesFromLayout(json: unknown): ExclusionZone[] {
+  const raw = (json as { exclusionZones?: unknown } | null | undefined)?.exclusionZones ?? json;
+  return deserializeExclusionZones(raw);
 }

@@ -241,6 +241,12 @@ le singulier une occurrence (`data-ao-zone` = une zone).
 |---|---|---|
 | `data-ao-panneau-differe` | Le repli squelette de `PanneauDiffere` | Le panneau de cet onglet est en cours de chargement (`lazy` + `Suspense`). Repère destiné au balayage e2e : un onglet doit finir par REMPLACER ce repère par son contenu réel — s'il persiste, le panneau ne se monte pas. |
 
+### 2.15 Fiche affaire : lien vers le calepinage 3D — CAL41 (20/09/2026) (`AffaireDetail.jsx`)
+
+| Hook | Propriétaire | Sémantique |
+|---|---|---|
+| `data-ao-lien-calepinage` | Onglet Calepinages (`AffaireDetail`, CAL41) | La carte de lien vers le calepinage 3D de l'affaire (`/calepinage/:id`), rendue SEULEMENT si `calepinage_id` existe, avec la phrase de préséance AO/3D citée de `docs/calepinage-module.md`. |
+
 ## Règle de non-invention
 
 Un écran AO qui a besoin d'un hook e2e stable choisit **d'abord un nom du

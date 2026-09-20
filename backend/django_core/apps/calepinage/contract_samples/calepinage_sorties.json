@@ -1,0 +1,236 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/sorties/",
+  "pourquoi": "CONTRAT D'ABORD (PACT10, incident « AO — Tableau de bord » du 03/08/2026 : 0 clé sur 6 concordante). Les SORTIES d'un calepinage se construisent des deux côtés à la fois — une lane backend écrit les rendus (planche, note de calcul, DXF, tableur, pack) et une lane frontend écrit le bloc « Documents » qui les propose. Les deux lanes sont file-disjointes par construction (`plan_lanes.py`), donc sans ce fichier elles inventent mécaniquement deux vocabulaires. Ce document est le porteur : le backend affirme que sa réponse lui est égale (`scripts/check_api_shapes.py`), le frontend l'IMPORTE au lieu d'écrire un `PAYLOAD` à la main (PACT13). CE QUE L'AGRÉGAT DIT, ET RIEN DE PLUS : quelles sorties existent pour CE calepinage, à quelle adresse on les télécharge, et — quand l'une manque — POURQUOI elle manque, en français, nommée. Il ne produit AUCUN document : c'est un inventaire, pas une fabrique. OÙ LE PNG EST PRODUIT : jamais ici. Aucun rasteriseur SVG n'est installé (weasyprint 62.3 n'a plus de sortie PNG, ni cairosvg ni svglib ne sont des dépendances) ; le PNG est une conversion NAVIGATEUR du SVG servi par cette même API (`frontend/src/features/ao/studio/svgToPng.js`) ; et le RENDU 3D n'a aucun endpoint propre — son URL présignée voyage dans l'agrégat de détail (clé `image`), donc son `endpoint` ici est celui du détail, jamais une route `image/` qui n'existe pas (annoncer une route morte, c'est PACT10 reproduit). C'est pourquoi chaque entrée porte `produit_par` : « serveur » (le fichier se télécharge tel quel) ou « navigateur » (le client convertit le SVG frère). DISCIPLINE DU NULL : une empreinte ou une version de moteur non encore calculée vaut `null`, jamais `\"\"` ni `0` — un calepinage sans conception n'a pas une empreinte vide, il n'en a pas. AUCUN PRIX : les sorties de ce module sont des pièces TECHNIQUES (implantation, note de calcul, nomenclature) ; elles ne portent ni `prix_achat`, ni coût de revient, ni marge, et le devis CLIENT reste rendu par le seul moteur premium (règle #4) — aucune entrée de cet inventaire n'ouvre un second chemin vers un PDF de devis. `exemple_vide` = un calepinage créé mais SANS conception enregistrée : toutes les clés restent présentes, toutes les sorties restent listées (on ne cache pas une sortie, on dit pourquoi elle n'est pas prête) et chacune porte son motif. Valeurs : des placeholders assumés (empreinte visiblement factice), aucun chiffre client. POURQUOI PAS `forme_serveur: complete` : le lecteur statique de `check_api_shapes.py` remonte, dans cette vue, le dictionnaire de la fonction interne qui compose UNE sortie (`code`/`disponible`/…) au lieu du dictionnaire de racine — la déclaration rougirait donc sur une prémisse fausse, exactement ce que la doctrine « un doute ne rougit jamais » du script interdit. La garantie est portée ailleurs, et plus fort : `tests/test_cal175_sorties.py` confronte la réponse RÉELLE à CE fichier dans LES DEUX SENS (clés de racine, clés d'une sortie, codes, ordre et adresses). Un renommage de clé côté serveur rougit en CI.",
+  "exemple": {
+    "calepinage": 41,
+    "titre": "Toiture atelier — Bouskoura",
+    "layout_hash": "0000000000000000000000000000000000000000000000000000000000000041",
+    "version_moteur": "calepinage-1.0.0",
+    "sorties": [
+      {
+        "code": "planche_pdf",
+        "libelle": "Planche de calepinage cotée (A3)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/41/planche.pdf/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null
+      },
+      {
+        "code": "planche_svg",
+        "libelle": "Planche de calepinage cotée (source vectorielle)",
+        "format": "svg",
+        "endpoint": "/api/django/calepinage/calepinages/41/planche.svg/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null
+      },
+      {
+        "code": "planche_png",
+        "libelle": "Planche de calepinage cotée (image)",
+        "format": "png",
+        "endpoint": "/api/django/calepinage/calepinages/41/planche.svg/",
+        "produit_par": "navigateur",
+        "disponible": true,
+        "motif_indisponible": null
+      },
+      {
+        "code": "plan_pose_pdf",
+        "libelle": "Plan de pose (équipe terrain)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/41/plan-pose.pdf/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null
+      },
+      {
+        "code": "plan_toiture_pdf",
+        "libelle": "Plan de toiture",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/41/plan-toiture.pdf/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null
+      },
+      {
+        "code": "plan_masse_pdf",
+        "libelle": "Plan de masse (bâtiment dans sa parcelle)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/41/plan-masse.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune parcelle saisie : le plan de masse ne dessine jamais une limite de parcelle qui n'a pas été fournie."
+      },
+      {
+        "code": "note_calcul_pdf",
+        "libelle": "Note de calcul",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/41/note-calcul.pdf/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null
+      },
+      {
+        "code": "dxf",
+        "libelle": "Export DXF (calques TOITURE / OBSTACLES / MODULES / COTES)",
+        "format": "dxf",
+        "endpoint": "/api/django/calepinage/calepinages/41/export.dxf/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null
+      },
+      {
+        "code": "tableur_xlsx",
+        "libelle": "Modules, chaînes et nomenclature (classeur)",
+        "format": "xlsx",
+        "endpoint": "/api/django/calepinage/calepinages/41/export.xlsx/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null
+      },
+      {
+        "code": "tableur_csv",
+        "libelle": "Modules, chaînes et nomenclature (CSV)",
+        "format": "csv",
+        "endpoint": "/api/django/calepinage/calepinages/41/export.csv/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null
+      },
+      {
+        "code": "image_3d",
+        "libelle": "Rendu 3D de la toiture",
+        "format": "png",
+        "endpoint": "/api/django/calepinage/calepinages/41/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null
+      },
+      {
+        "code": "pack_technique",
+        "libelle": "Dossier technique (pièces fusionnées)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/41/pack-technique/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null
+      }
+    ]
+  },
+  "exemple_vide": {
+    "calepinage": 42,
+    "titre": "",
+    "layout_hash": null,
+    "version_moteur": null,
+    "sorties": [
+      {
+        "code": "planche_pdf",
+        "libelle": "Planche de calepinage cotée (A3)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/42/planche.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : la planche se compose de la géométrie stockée, jamais d'un tracé reconstitué."
+      },
+      {
+        "code": "planche_svg",
+        "libelle": "Planche de calepinage cotée (source vectorielle)",
+        "format": "svg",
+        "endpoint": "/api/django/calepinage/calepinages/42/planche.svg/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : la planche se compose de la géométrie stockée, jamais d'un tracé reconstitué."
+      },
+      {
+        "code": "planche_png",
+        "libelle": "Planche de calepinage cotée (image)",
+        "format": "png",
+        "endpoint": "/api/django/calepinage/calepinages/42/planche.svg/",
+        "produit_par": "navigateur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : la planche se compose de la géométrie stockée, jamais d'un tracé reconstitué."
+      },
+      {
+        "code": "plan_pose_pdf",
+        "libelle": "Plan de pose (équipe terrain)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/42/plan-pose.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : la planche se compose de la géométrie stockée, jamais d'un tracé reconstitué."
+      },
+      {
+        "code": "plan_toiture_pdf",
+        "libelle": "Plan de toiture",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/42/plan-toiture.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : la planche se compose de la géométrie stockée, jamais d'un tracé reconstitué."
+      },
+      {
+        "code": "plan_masse_pdf",
+        "libelle": "Plan de masse (bâtiment dans sa parcelle)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/42/plan-masse.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune parcelle saisie : le plan de masse ne dessine jamais une limite de parcelle qui n'a pas été fournie."
+      },
+      {
+        "code": "note_calcul_pdf",
+        "libelle": "Note de calcul",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/42/note-calcul.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : la note de calcul ne se rend pas à partir de grandeurs absentes."
+      },
+      {
+        "code": "dxf",
+        "libelle": "Export DXF (calques TOITURE / OBSTACLES / MODULES / COTES)",
+        "format": "dxf",
+        "endpoint": "/api/django/calepinage/calepinages/42/export.dxf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : la géométrie exportée serait vide."
+      },
+      {
+        "code": "tableur_xlsx",
+        "libelle": "Modules, chaînes et nomenclature (classeur)",
+        "format": "xlsx",
+        "endpoint": "/api/django/calepinage/calepinages/42/export.xlsx/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : la géométrie exportée serait vide."
+      },
+      {
+        "code": "tableur_csv",
+        "libelle": "Modules, chaînes et nomenclature (CSV)",
+        "format": "csv",
+        "endpoint": "/api/django/calepinage/calepinages/42/export.csv/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : la géométrie exportée serait vide."
+      },
+      {
+        "code": "image_3d",
+        "libelle": "Rendu 3D de la toiture",
+        "format": "png",
+        "endpoint": "/api/django/calepinage/calepinages/42/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucun rendu 3D enregistré pour ce calepinage."
+      },
+      {
+        "code": "pack_technique",
+        "libelle": "Dossier technique (pièces fusionnées)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/42/pack-technique/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune pièce disponible : un dossier technique ne se remet pas amputé en silence."
+      }
+    ]
+  }
+}

@@ -9,6 +9,8 @@ import {
   withEvergreen,
   environmentRing,
   environmentShadeEntries,
+  environmentFootprintHalfWidthM,
+  environmentNeedsFootprint,
   ENV_MIN_HEIGHT_M,
   ENV_MAX_HEIGHT_M,
 } from './environment';
@@ -102,5 +104,51 @@ describe('CAL67 — environmentShadeEntries : sans hauteur, aucune ombre', () =>
     const withoutObj = environmentShadeEntries([], origin);
     expect(withObj).toHaveLength(1);
     expect(withoutObj).toEqual([]);
+  });
+});
+
+describe('CORRECTIF — sans EMPRISE saisie, aucune ombre (jamais un repli de 1,5 m)', () => {
+  const origin: [number, number] = [-7.6, 33.5];
+  const south: [number, number] = [-7.6, 33.4998];
+  const base = newEnvironmentObject('e4', 'batiment', south);
+
+  it('un arbre AVEC hauteur mais SANS houppier ne produit aucune obstruction', () => {
+    const o = withEnvHeight(newEnvironmentObject('e1', 'arbre', south), 6);
+    expect(environmentFootprintHalfWidthM(o)).toBeNull();
+    expect(environmentShadeEntries([o], origin)).toEqual([]);
+    expect(environmentNeedsFootprint(o)).toBe(true);
+  });
+
+  it('un bâtiment AVEC hauteur mais SANS longueur/largeur ni emprise ne produit aucune obstruction', () => {
+    const o = withEnvHeight(newEnvironmentObject('e2', 'batiment', south), 9);
+    expect(environmentShadeEntries([o], origin)).toEqual([]);
+    expect(environmentNeedsFootprint(o)).toBe(true);
+  });
+
+  it('dès que l’emprise est saisie, la demi-largeur vient de CETTE saisie', () => {
+    const o = withEnvHeight(withCrownDiameter(newEnvironmentObject('e3', 'arbre', south), 4), 6);
+    const entries = environmentShadeEntries([o], origin);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].halfWidthM).toBeCloseTo(2, 6);
+    expect(environmentNeedsFootprint(o)).toBe(false);
+  });
+
+  it('une emprise polygonale donne la demi-largeur du rayon maximal mesuré, pas un repli', () => {
+    const d = 10 / 111320; // ≈ 10 m en latitude
+    const o: typeof base = { ...base, heightM: 8, footprint: [
+      [south[0] - d, south[1] - d],
+      [south[0] + d, south[1] - d],
+      [south[0] + d, south[1] + d],
+      [south[0] - d, south[1] + d],
+    ] };
+    const entries = environmentShadeEntries([o], origin);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].halfWidthM).toBeGreaterThan(10); // demi-diagonale ≈ 14 m, mesurée
+    expect(environmentNeedsFootprint(o)).toBe(false);
+  });
+
+  it('sans hauteur, l’objet n’est pas signalé « emprise à saisir » (il est déjà sans ombre)', () => {
+    const o = newEnvironmentObject('e5', 'batiment', south);
+    expect(environmentNeedsFootprint(o)).toBe(false);
   });
 });

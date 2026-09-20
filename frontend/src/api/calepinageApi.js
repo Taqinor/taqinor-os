@@ -63,17 +63,31 @@ const calepinageApi = {
   calepinages: {
     ...crud('calepinages'),
 
+    // CAL199/CAL246 — les calepinages marqués MODÈLE de la société (drapeau
+    // `records.Tag`, jamais un champ propre). Lecture pure.
+    modeles: () => api.get('/calepinage/calepinages/modeles/'),
+
     // CAL18 — le document `roof_layout` (contrat v2 : CAL232,
     // `contract_samples/roof_layout_v2.schema.json`). GET relit, POST
     // enregistre ; le serveur ne touche que `roof_layout`/`layout_hash` et ne
     // change AUCUN statut.
     layout: (id) => api.get(`${pivot(id)}layout/`),
-    enregistrerLayout: (id, corps) => api.post(`${pivot(id)}layout/`, corps),
+    enregistrerLayoutCalepinage: (id, corps) => api.post(`${pivot(id)}layout/`, corps),
 
     // CAL19 — l'image d'aperçu de toiture, stockée par le MÊME chemin que les
     // ventes (MinIO + URL présignée) ; aucun second chemin de stockage.
     // `corps` est un FormData : on laisse axios poser sa frontière multipart.
     envoyerImage: (id, corps) => api.post(`${pivot(id)}roof-image/`, corps),
+
+    // CAL52 — les photos de site (drone/oblique/sol), MÊME magasin que
+    // `roof-image`. `corps` est un FormData (photo, genre, prise_le, legende).
+    photos: (id) => api.get(`${pivot(id)}photos/`),
+    ajouterPhoto: (id, corps) => api.post(`${pivot(id)}photos/`, corps),
+    // CAL53 — le calage (4 coins [latitude, longitude]) d'UNE photo de site,
+    // rechargé tel quel à la réouverture. `null` efface le calage.
+    calerPhoto: (id, photoId, coins) =>
+      api.patch(`${pivot(id)}photos/${photoId}/calage/`,
+        { calage: coins ? { coins } : null }),
 
     // CAL20 — historique. La restauration REJOUE une version en en créant une
     // NOUVELLE : jamais une réécriture, jamais une suppression d'historique.
@@ -92,9 +106,46 @@ const calepinageApi = {
     // serveur : un écran ne les recalcule jamais.
     comparer: (id) => api.get(`${pivot(id)}comparer/`),
 
+    // CAL243 — les équipements RETENUS et leur complétude de fiche
+    // (`contract_samples/calepinage_equipements.json`). Lecture PURE : aucune
+    // clé de prix d'achat ni de marge n'y transite (gardé par CAL122).
+    equipements: (id) => api.get(`${pivot(id)}equipements/`),
+
+    // CAL92/93 — le profil d'horizon PVGIS du site (`printhorizon`),
+    // contrat `contract_samples/calepinage_horizon.json`. Lecture PURE :
+    // n'enregistre rien — `HorizonPanel.jsx` persiste ensuite le profil
+    // choisi via `layout`/`enregistrerLayoutCalepinage` (CAL18).
+    horizon: (id) => api.get(`${pivot(id)}horizon/`),
+
+    // CAL159 — le dimensionnement du pompage (puits, besoin, réservoir,
+    // courbe + point de fonctionnement, 12 volumes mensuels, pompe/variateur),
+    // contrat `contract_samples/calepinage_pompage.json`. POST parce que
+    // l'entrée est une SAISIE ; le serveur n'écrit RIEN.
+    pompage: (id, corps) => api.post(`${pivot(id)}pompage/`, corps),
+
     // CAL244 — le résultat retenu du calepinage
     // (`contract_samples/calepinage_resultat.json`).
     resultat: (id) => api.get(`${pivot(id)}resultat/`),
+
+    /* CAL125 — l'ENTRÉE du calcul électrique. Le matériel est DÉSIGNÉ et les
+       longueurs/températures sont SAISIES ; la réponse est le `resultat`
+       recalculé. CAL234 y fait voyager `affectation_manuelle` : c'est LÀ, et
+       là seulement, qu'une affectation faite à la main est ENREGISTRÉE. */
+    enregistrerEntreeElectrique: (id, corps) =>
+      api.post(`${pivot(id)}entree-electrique/`, corps),
+
+    /* CAL128 — le VERDICT à chaud, sans rien persister (garde en lecture).
+       CAL234 : l'atelier y envoie l'affectation PROPOSÉE sous la MÊME clé
+       `affectation_manuelle`, et lit les bloquants NOMMÉS (contrainte, pan,
+       chaîne) avant de décider d'enregistrer. */
+    evaluerElectrique: (id, corps) =>
+      api.post(`${pivot(id)}evaluer-electrique/`, corps),
+
+    // CAL195 — le schéma unifilaire du calepinage, en SVG inline. Le SVG est
+    // composé PAR LE SERVEUR (même moteur que le devis, `core.electrique`) :
+    // l'écran l'affiche, il ne dessine rien. `svg: null` + `bloquants` quand
+    // la conception ne permet pas de dessiner — jamais un schéma approximatif.
+    schemaUnifilaire: (id) => api.get(`${pivot(id)}schema-unifilaire/`),
 
     // CAL247 — les dossiers réglementaires
     // (`contract_samples/dossiers_reglementaires.json`).

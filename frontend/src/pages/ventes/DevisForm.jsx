@@ -12,6 +12,13 @@ import {
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
+// CAL40 — le calepinage qui pilote ce devis, en LECTURE SEULE (badge « à jour »
+// / « à rejouer » calculé SERVEUR par CAL28, jamais recalculé à l'écran).
+import BlocCalepinageDevis from '../../features/ventes/BlocCalepinageDevis'
+// CAL188 — le badge « calepinage périmé » sur la fiche devis, lu du MÊME
+// champ serveur (`devis.layout_stale`/`layout_nb_panneaux`, CAL189) que la
+// page client — jamais recalculé ici.
+import BadgePerime from '../../features/calepinage/BadgePerime'
 import cpqApi from '../../api/cpqApi'
 import { resilientMutation } from '../../lib/resilientMutation'
 import { useStaleGuard } from '../../hooks/useStaleGuard'
@@ -863,6 +870,15 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             </div>
           )}
 
+          {/* CAL188 — le badge « calepinage périmé », lu de `devis.layout_stale`
+              (CAL189) : disparaît silencieusement si `false`/`null`. */}
+          {isEdit && devis?.id && (
+            <BadgePerime layoutStale={devis.layout_stale}
+              layoutNbPanneaux={devis.layout_nb_panneaux} />
+          )}
+          {/* CAL40 — le calepinage qui PILOTE ce devis (lien inverse CAL28).
+              Silencieux quand le devis n'en a aucun : jamais un bloc vide. */}
+          {isEdit && devis?.id && <BlocCalepinageDevis devisId={devis.id} />}
           {isEdit && devis?.id && <ConfigurationBadge devisId={devis.id} />}
           {isEdit && devis?.id && <EscaladeApprobationPanel devisId={devis.id} />}
           {isEdit && devis?.id && <ApprobationPanel devisId={devis.id} />}

@@ -57,6 +57,15 @@ from ..permissions import (
     PeutVoirCalepinage,
 )
 from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
+# CAL52 — la sous-ressource « photos de site » vit dans SON fichier
+# (``views/photos.py``) : une base de plus, zéro logique ajoutée ici.
+from .photos import PhotosSiteMixin
+# CAL64 — idem pour le relevé terrain mobile (``views/releve.py``).
+from .releve import ReleveTerrainMixin
+# CAL174 — les SOUS-RESSOURCES de sortie (planche PDF/SVG) vivent dans leur
+# propre module de vues ; elles sont greffées ICI, sur le viewset pivot, pour
+# rester des ``@action`` de la SEULE forme d'URL du module (CAL233).
+from .sorties import SortiesMixin
 from ..services.devis import (
     DevisRefuse, generer_devis, resynchroniser_devis,
 )
@@ -66,6 +75,8 @@ from ..services.variantes import (
     supprimer_variante,
 )
 from ..services.versions import VersionInvalide, restaurer_version
+from .electrique import ElectriqueActionsMixin
+from .schema import SchemaUnifilaireMixin  # CAL195
 
 __all__ = ['CalepinageViewSet', 'contexte_conception', 'detail_calepinage']
 
@@ -144,8 +155,10 @@ def _param_chemin(nom, description):
                             description=description)
 
 
-class CalepinageViewSet(ChatterViewSetMixin, ActionIdempotenteMixin,
-                        CompanyScopedModelViewSet):
+class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
+                        ChatterViewSetMixin, ActionIdempotenteMixin,
+                        ElectriqueActionsMixin, SortiesMixin,
+                        SchemaUnifilaireMixin, CompanyScopedModelViewSet):
     """CRUD du pivot ``Calepinage`` + ses sous-ressources en ``@action``.
 
     CAL26 — le chatter est celui de la PLATEFORME (``records``) :
@@ -457,6 +470,46 @@ class CalepinageViewSet(ChatterViewSetMixin, ActionIdempotenteMixin,
         """
         return Response(contexte_conception(self.get_object(), request))
 
+    # ── L'import bidirectionnel de contour (D4) : le sens AO → calepinage ──
+    @action(detail=True, methods=['post'], url_path='importer-contour-ao',
+            permission_classes=[PeutGererCalepinage])
+    def importer_contour_ao(self, request, pk=None):
+        """CAL240 — reprend dans ce calepinage le contour d'une toiture d'AO.
+
+        Symétrie exacte de ``apps/ao/views.py::ToitureAOViewSet.
+        reprendre_contour_3d`` (CAL241). Le corps désigne la source —
+        ``{"toiture": <id>}`` ou ``{"appel_offre": <id>}``, et à défaut
+        l'affaire déjà rattachée au calepinage ; le SERVEUR tranche.
+
+        SEUL LE CONTOUR VOYAGE : l'action écrit ``roof_layout['outline']`` et
+        rien d'autre. Aucune géométrie opposable ne bouge — ni obstacle, ni
+        chaîne de cotes, ni zone AO, ni variante retenue — et côté AO rien
+        n'est écrit du tout (lecture par ``apps.ao.selectors``, jamais ses
+        modèles : contrats import-linter).
+
+        Les refus viennent du service et portent leur statut : 404 pour une
+        toiture d'une autre société (introuvable, jamais « interdite »), 409
+        pour une affaire déposée ou close avec le motif EXACT du serveur AO,
+        400 pour une toiture sans ancre géographique — le champ à renseigner
+        est nommé. Le calepinage d'une autre société est, lui, introuvable par
+        ``get_queryset``.
+        """
+        from ..services.contour_ao import ContourAoRefuse, importer_contour_ao
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        try:
+            resultat = importer_contour_ao(
+                calepinage,
+                toiture_id=request.data.get('toiture'),
+                appel_offre_id=request.data.get('appel_offre'),
+                user=request.user)
+        except ContourAoRefuse as refus:
+            corps = {'detail': str(refus)}
+            if refus.champ:
+                corps[refus.champ] = [str(refus)]
+            return Response(corps, status=refus.statut)
+        return Response(resultat)
+
     @action(detail=True, methods=['post'], url_path='roof-image',
             permission_classes=[PeutGererCalepinage],
             parser_classes=[MultiPartParser, FormParser])
@@ -711,6 +764,7 @@ def detail_calepinage(calepinage, request=None):
 
     company = getattr(calepinage, 'company', None)
     layout = getattr(calepinage, 'roof_layout', None)
+    peremption = _peremption_calepinage(calepinage, company)
     return {
         'id': calepinage.pk,
         'reference': _reference(calepinage),
@@ -728,6 +782,11 @@ def detail_calepinage(calepinage, request=None):
         'layout_hash': _texte(getattr(calepinage, 'layout_hash', '')),
         'layout_schema_version': _schema_version(layout),
         'version_moteur': _texte(getattr(calepinage, 'version_moteur', '')),
+        # CAL188 — le MÊME champ serveur que la fiche devis (`apps.ventes.
+        # serializers`) et la liste calepinages (`CalepinageSerializer`) :
+        # l'en-tête de l'atelier n'a pas de troisième vérité.
+        'layout_stale': peremption['layout_stale'],
+        'layout_nb_panneaux': peremption['layout_nb_panneaux'],
         'versions': _compteur_versions(calepinage),
         'variantes': _compteur_variantes(calepinage),
         'image': _image(calepinage),
@@ -735,6 +794,24 @@ def detail_calepinage(calepinage, request=None):
             calepinage),
         'permissions': _permissions(calepinage, request),
     }
+
+
+def _peremption_calepinage(calepinage, company):
+    """``{layout_stale, layout_nb_panneaux}`` — CAL189, le MÊME helper que la
+    fiche devis (``apps.ventes.selectors.peremption_layout_devis``) et la
+    liste calepinages (``CalepinageSerializer._peremption``). Sans devis lié,
+    la péremption est INCONNUE (``None``), jamais ``False`` : il n'y a rien à
+    quoi comparer la conception (CAL188 — l'écran affiche « — »)."""
+    from apps.ventes.selectors import get_devis_by_pk, peremption_layout_devis
+
+    devis_id = getattr(calepinage, 'devis_id', None)
+    if not devis_id:
+        return {'layout_stale': None, 'layout_nb_panneaux': None}
+    devis = get_devis_by_pk(devis_id)
+    if devis is None or (company is not None
+                         and devis.company_id != company.pk):
+        return {'layout_stale': None, 'layout_nb_panneaux': None}
+    return peremption_layout_devis(devis)
 
 
 def _reference(calepinage):

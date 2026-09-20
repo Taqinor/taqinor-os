@@ -11,7 +11,11 @@ import {
   deserializeLayout,
   serializeSolarAccess,
   deserializeSolarAccess,
+  deserializeSetbacksFromLayout,
+  deserializeHorizonProfileFromLayout,
 } from './prefill';
+import { uniformSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
+import { type HorizonProfile } from '../../lib/horizonEngine';
 import { type Measurement } from './mesureUi';
 import { type EnvironmentObject } from './environment';
 import { type Ctx } from './context';
@@ -333,5 +337,100 @@ describe('CAL248 — accès solaire par module persisté dans le document', () =
     expect(avec.zones[0].geometry!.count).toBe(sans.zones[0].geometry!.count);
     expect(avec.zones[0].geometry!.kwc).toBe(sans.zones[0].geometry!.kwc);
     expect(avec.zones[0].geometry!.panels).toEqual(sans.zones[0].geometry!.panels);
+  });
+});
+
+describe('CAL76 — les quatre retraits de rive (setbacksM) persistés dans le document', () => {
+  it('absent par défaut : un document sans setbacksM ne porte pas la clé', () => {
+    const areas = [zone('z1')];
+    const layout = serializeLayout(makeCtx(areas));
+    expect('setbacksM' in layout).toBe(false);
+  });
+
+  it('écrit à la racine quand fourni par l’appelant (meta.setbacksM)', () => {
+    const areas = [zone('z1')];
+    const setbacks: PerimeterSetbacks = { lateralM: 0.6, extremityM: 0.7, parapetM: 0.4, jointM: 0.3 };
+    const layout = serializeLayout(makeCtx(areas), null, { setbacksM: setbacks });
+    expect(layout.setbacksM).toEqual(setbacks);
+  });
+
+  it('aller-retour JSON : les quatre valeurs sont conservées à l’identique', () => {
+    const areas = [zone('z1')];
+    const setbacks: PerimeterSetbacks = { lateralM: 0.6, extremityM: 0.7, parapetM: 0.4, jointM: 0.3 };
+    const layout = serializeLayout(makeCtx(areas), null, { setbacksM: setbacks });
+    const round = JSON.parse(JSON.stringify(layout));
+    expect(deserializeSetbacksFromLayout(round)).toEqual(setbacks);
+  });
+
+  it('un document SANS setbacksM (antérieur à CAL76) se relit sans erreur : null, jamais une valeur inventée', () => {
+    expect(deserializeSetbacksFromLayout(undefined)).toBeNull();
+    expect(deserializeSetbacksFromLayout({})).toBeNull();
+  });
+
+  it('valeur douteuse dans le JSON (négative, non finie) : assainie, jamais une exception', () => {
+    const cleaned = deserializeSetbacksFromLayout({
+      setbacksM: { lateralM: -1, extremityM: Number.NaN, parapetM: 0.4, jointM: -0.5 },
+    });
+    expect(cleaned).toEqual({ lateralM: 0, extremityM: expect.any(Number), parapetM: 0.4, jointM: 0 });
+  });
+
+  it('NON-RÉGRESSION : écrire setbacksM ne change aucun autre chiffre du document', () => {
+    const areas = [zone('z1')];
+    const sans = serializeLayout(makeCtx(areas));
+    const avec = serializeLayout(makeCtx(areas), null, { setbacksM: uniformSetbacks(0.5) });
+    expect(avec.result).toEqual(sans.result);
+    expect(avec.zones).toEqual(sans.zones);
+  });
+});
+
+describe('CAL93 — le profil d’horizon lointain (horizonProfile) persisté dans le document', () => {
+  const profil: HorizonProfile = {
+    source: 'saisie',
+    points: [{ azimuthDeg: 90, heightDeg: 8 }, { azimuthDeg: 270, heightDeg: 12 }],
+    hauteurMaxDeg: 12,
+  };
+
+  it('absent par défaut : un document sans horizonProfile ne porte pas la clé', () => {
+    const areas = [zone('z1')];
+    const layout = serializeLayout(makeCtx(areas));
+    expect('horizonProfile' in layout).toBe(false);
+  });
+
+  it('moins de deux points exploitables : rien n’est écrit', () => {
+    const areas = [zone('z1')];
+    const layout = serializeLayout(makeCtx(areas), null, {
+      horizonProfile: { source: 'saisie', points: [{ azimuthDeg: 90, heightDeg: 8 }], hauteurMaxDeg: 8 },
+    });
+    expect('horizonProfile' in layout).toBe(false);
+  });
+
+  it('écrit à la racine, points triés et hauteurMaxDeg RECALCULÉE (jamais recopiée)', () => {
+    const areas = [zone('z1')];
+    const layout = serializeLayout(makeCtx(areas), null, {
+      horizonProfile: { ...profil, hauteurMaxDeg: 999 }, // valeur fausse fournie, doit être ignorée
+    });
+    expect(layout.horizonProfile!.hauteurMaxDeg).toBe(12);
+    expect(layout.horizonProfile!.points.map((p) => p.azimuthDeg)).toEqual([90, 270]);
+  });
+
+  it('aller-retour JSON : le profil est conservé à l’identique', () => {
+    const areas = [zone('z1')];
+    const layout = serializeLayout(makeCtx(areas), null, { horizonProfile: profil });
+    const round = JSON.parse(JSON.stringify(layout));
+    expect(deserializeHorizonProfileFromLayout(round)).toEqual(profil);
+  });
+
+  it('un document SANS horizonProfile (antérieur à CAL93) se relit sans erreur : null', () => {
+    expect(deserializeHorizonProfileFromLayout(undefined)).toBeNull();
+    expect(deserializeHorizonProfileFromLayout({})).toBeNull();
+    expect(deserializeHorizonProfileFromLayout({ horizonProfile: { source: 'saisie', points: [{ azimuthDeg: 1, heightDeg: 2 }] } })).toBeNull();
+  });
+
+  it('NON-RÉGRESSION : écrire horizonProfile ne change aucun autre chiffre du document', () => {
+    const areas = [zone('z1')];
+    const sans = serializeLayout(makeCtx(areas));
+    const avec = serializeLayout(makeCtx(areas), null, { horizonProfile: profil });
+    expect(avec.result).toEqual(sans.result);
+    expect(avec.zones).toEqual(sans.zones);
   });
 });

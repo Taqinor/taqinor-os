@@ -23,9 +23,12 @@ Run :
 """
 from django.urls import URLPattern, URLResolver, get_resolver
 
+from django.contrib.contenttypes.models import ContentType
+
 from apps.calepinage.models import (
-    Calepinage, CalepinageVariante, CalepinageVersion,
+    Calepinage, CalepinageVariante, CalepinageVersion, PhotoSite,
 )
+from apps.records.models import Attachment
 from core.models import BackgroundJob
 
 from .test_api_liste import BaseApiCalepinage
@@ -90,6 +93,18 @@ class BalayageIsolationTest(BaseApiCalepinage):
             layout_hash='9' * 64)
         self.job_etranger = BackgroundJob.objects.create(
             company=self.autre, user=self.user_autre, kind='calepinage')
+        # CAL52 — une photo de site ÉTRANGÈRE : la pièce jointe est
+        # créée en base directement (aucun envoi MinIO n'est nécessaire
+        # pour qu'un chemin nomme un identifiant).
+        piece = Attachment.objects.create(
+            company=self.autre,
+            content_type=ContentType.objects.get_for_model(Calepinage),
+            object_id=self.cal_etranger.pk,
+            file_key='voisine/vol.png', filename='vol.png',
+            size=1, mime='image/png')
+        self.photo_etrangere = PhotoSite.objects.create(
+            company=self.autre, calepinage=self.cal_etranger,
+            attachment=piece, prise_le='2026-03-12')
         # Un objet À NOUS, pour les questions 2 et 3.
         self.mien = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='Le mien')
@@ -155,6 +170,7 @@ class BalayageIsolationTest(BaseApiCalepinage):
             'variante_id': (self.variante_etrangere.pk if etranger else 0),
             'version_id': (self.version_etrangere.pk if etranger else 0),
             'job_id': (self.job_etranger.pk if etranger else 0),
+            'photo_id': (self.photo_etrangere.pk if etranger else 0),
         }
         chemin = reste.lstrip('^').replace('$', '')
         for nom, valeur in valeurs.items():
