@@ -584,6 +584,16 @@ REFUS = {
     "frontend/src/pages/stock/CategoriesStock.jsx": [
         # STKCAT5 : table de SUGGESTIONS = dict d'une commande de gestion, pas un champ choices=
         ("TYPES_PAR_CATEGORIE", "SANS_SOURCE")],
+    # CAL21 — meme cas que `overrides.js` ci-dessous : la promesse s'adosse a
+    # un CONTRAT JSON committe (`apps/calepinage/contract_samples/
+    # variantes_comparer.json`, PACT10), pas a un champ `choices=`. Il n'y a
+    # donc aucune cible `source-choix:` a declarer, et la promesse est deja
+    # VERIFIEE ailleurs : `calepinageApi.test.mjs` echoue si un echantillon de
+    # contrat consomme ne pointe pas le chemin EXACT qu'il declare.
+    # Fragment ETROIT (et pas « conforme à ») : une entree large absorberait
+    # en silence la prochaine promesse ecrite dans ce fichier.
+    "frontend/src/api/calepinageApi.js": [
+        ("comparatif des variantes", "SANS_SOURCE")],
     "frontend/src/features/ventes/classifieurs.parite.test.mjs": [
         ("miroir de solar.js", "TEST")],
     "frontend/src/features/ventes/quote/overrides.js": [

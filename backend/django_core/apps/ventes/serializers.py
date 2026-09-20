@@ -267,6 +267,37 @@ class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
         from apps.crm.selectors import lead_values_changed_since
         return lead_values_changed_since(stamp, company=obj.company)
 
+    # CAL189 — LE CALEPINAGE DÉCRIT-IL ENCORE CE QUE LE DEVIS VEND ?
+    # ``layout_stale`` n'existait que dans la charge utile PUBLIQUE de la
+    # proposition : l'écran ERP ne pouvait pas le dire au commercial. Les deux
+    # clés viennent du MÊME calcul que la page publique
+    # (``selectors.peremption_layout_devis``), jamais d'une seconde règle.
+    layout_stale = serializers.SerializerMethodField()
+    layout_nb_panneaux = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.BooleanField(allow_null=True))
+    def get_layout_stale(self, obj):
+        return self._peremption_layout(obj)['layout_stale']
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_layout_nb_panneaux(self, obj):
+        return self._peremption_layout(obj)['layout_nb_panneaux']
+
+    def _peremption_layout(self, obj):
+        """DÉTAIL seulement : en LISTE, les deux clés valent ``null``.
+
+        Le calcul lit les LIGNES du devis — une par une, par devis. Le faire
+        en liste transformerait une page de devis en N+1. ``null`` y veut dire
+        « non calculé ici », jamais « à jour » : c'est la même discipline que
+        ``lead_valeurs_modifiees`` juste au-dessus.
+        """
+        if self.parent is not None:
+            return {'layout_stale': None, 'layout_nb_panneaux': None}
+        if not hasattr(obj, '_peremption_layout_cache'):
+            from .selectors import peremption_layout_devis
+            obj._peremption_layout_cache = peremption_layout_devis(obj)
+        return obj._peremption_layout_cache
+
     def get_marge_sous_seuil(self, obj):
         from apps.cpq.selectors import devis_marge_sous_seuil
         return devis_marge_sous_seuil(obj)

@@ -57,13 +57,13 @@
 - frontend/src/api/aoApi.js :: deverrouiller -> /api/django/ao/economie/<>/deverrouiller
     verrouillee:booleen
 - frontend/src/api/aoApi.js :: enregistrerLayout -> /api/django/ao/appels-offres/<>/layout
-    detail:inconnu, roof_layout:inconnu
+    calepinage_id:inconnu, champ:inconnu, detail:inconnu, roof_layout:inconnu
 - frontend/src/api/aoApi.js :: initialiserChecklist -> /api/django/ao/dossiers-ao/<>/initialiser-checklist
     crees:inconnu, deja_presents:inconnu
 - frontend/src/api/aoApi.js :: lancer -> /api/django/ao/calepinage/lancer
     id:inconnu, kind:inconnu, message_erreur:texte, progress_pct:inconnu, resultat:inconnu, statut:inconnu, variante:inconnu
 - frontend/src/api/aoApi.js :: layout -> /api/django/ao/appels-offres/<>/layout
-    detail:inconnu, roof_layout:inconnu
+    calepinage_id:inconnu, champ:inconnu, detail:inconnu, roof_layout:inconnu
 - frontend/src/api/aoApi.js :: lead -> /api/django/ao/appels-offres/<>/lead
     fiche:inconnu, lead_id:inconnu
 - frontend/src/api/aoApi.js :: marches -> /api/django/ao/calepinage/variantes/<>/marches
@@ -108,6 +108,10 @@
     calcule_le:inconnu, chantier_id:inconnu, date_reference:inconnu, lots:inconnu, source:texte, total_exposition:inconnu
 - frontend/src/api/btpChantierApi.js :: prerequis -> /api/django/btp-chantier/chantiers/<>/cloture-btp
     blocages:inconnu, pret:booleen
+- frontend/src/api/calepinageApi.js :: pose -> /api/django/calepinage/moteur/pose
+    engageable:inconnu, hash_entree:inconnu, kwc:inconnu, marges:inconnu, motifs_non_engageable:inconnu, plans:inconnu, preuve:inconnu, repere:inconnu, schema_version:inconnu, total_modules:inconnu, verdict:inconnu, version_moteur:inconnu
+- frontend/src/api/calepinageApi.js :: resultat -> /api/django/calepinage/moteur/resultat/<>
+    detail:texte, elements:liste, job_id:inconnu, kind:inconnu, message_erreur:texte, progress_pct:inconnu, resultat:inconnu, statut:inconnu, variante:inconnu
 - frontend/src/api/comptaApi.js :: accepterSuggestions -> /api/django/compta/rapprochements/<>/accepter-suggestions
     ignorees:inconnu, pointees:inconnu
 - frontend/src/api/comptaApi.js :: analyseVariation -> /api/django/compta/etats/analyse-variation

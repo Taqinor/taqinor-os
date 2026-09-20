@@ -40,8 +40,8 @@ class Ntapi20OpenApiSchemaTests(TestCase):
         # `docs.py`, comblé au passage NTUX33 puisque les deux ajouts
         # partagent le même routeur) ; NTUX33 ajoute 2 ressources UX
         # (`read:vues`/`read:favoris`) ; NTP2P39 ajoute 2 ressources
-        # Procure-to-Pay (`lecture_achats`), pour 16 au total : on fige
-        # l'ENSEMBLE exact (plus fort qu'un simple compte), donc un 17e
+        # Procure-to-Pay (`lecture_achats`), pour 17 au total (CAL214 : `public-calepinage`) : on fige
+        # l'ENSEMBLE exact (plus fort qu'un simple compte), donc un 18e
         # enregistrement resterait un choix délibéré, pas un accident.
         registered_basenames = {r[2] for r in public_router.registry}
         self.assertEqual(registered_basenames, {
@@ -53,6 +53,8 @@ class Ntapi20OpenApiSchemaTests(TestCase):
             # NTP2P39 — 2 ressources Procure-to-Pay (`lecture_achats` :
             # demandes d'achat FG310 et RFQ FG311, sans aucun prix d'achat).
             'public-achats-demande', 'public-achats-rfq',
+            # CAL214 — les conceptions de toiture (`read:calepinages`).
+            'public-calepinage',
         })
         for prefix, _viewset, _basename in public_router.registry:
             list_path = f'/api/public/v1/{prefix}/'
@@ -88,7 +90,7 @@ class Ntapi20OpenApiSchemaTests(TestCase):
         # un chemin fantôme ajouté par erreur.
         schema = build_openapi_schema()
         nb_operations = sum(len(ops) for ops in schema['paths'].values())
-        self.assertEqual(nb_operations, 48)
+        self.assertEqual(nb_operations, 50)  # + 2 (CAL214 calepinages list+detail)
 
     def test_covers_licence_statut_ntadm42(self):
         schema = build_openapi_schema()

@@ -31,8 +31,19 @@ SOUS_MODULES = (
     'io_layout',      # import/export du document roof_layout
 )
 
-#: Les DEUX seuls préfixes d'URL admis sous ``/api/django/calepinage/``.
-PREFIXES_URL_AUTORISES = ('calepinages', 'parametres')
+#: Les seuls préfixes d'URL admis sous ``/api/django/calepinage/``.
+#:
+#: CAL22 — ``moteur`` REJOINT les deux premiers, et c'est une exception
+#: BORNÉE, pas un relâchement : la règle « une seule forme d'URL » protège
+#: l'OBJET MÉTIER (un calepinage se sert sous ``calepinages/<pk>/…``, ses
+#: sous-ressources en ``@action``, jamais sous une seconde famille). Le moteur
+#: n'est pas cet objet : c'est un CALCUL SANS ÉTAT, sans identifiant, qui
+#: n'appartient à aucun calepinage — et son chemin
+#: (``/api/django/calepinage/moteur/calculer/``) est figé depuis le jour 1 par
+#: le contrat committé ``contract_samples/moteur_calculer.json`` (PACT10), que
+#: la lane d'en face consomme déjà. Le servir ailleurs aurait donc cassé le
+#: contrat pour sauver la lettre d'une règle qui ne le visait pas.
+PREFIXES_URL_AUTORISES = ('calepinages', 'moteur', 'parametres')
 
 __all__ = ['SOUS_MODULES', 'PREFIXES_URL_AUTORISES']
 

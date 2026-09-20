@@ -141,3 +141,49 @@ def purger_versions(calepinage, *, garder=None):
     if retirees:
         a_retirer.delete()
     return retirees
+
+
+def restaurer_version(version, *, user=None, libelle=''):
+    """CAL20 — REJOUE une version : elle est ré-enregistrée, jamais ressuscitée.
+
+    L'histoire ne se réécrit pas. Restaurer n'EFFACE rien et ne MODIFIE aucun
+    instantané : l'état restauré redevient l'état COURANT du calepinage et il
+    est déposé comme une version DE PLUS, en tête de l'historique. On peut donc
+    revenir sur une restauration comme sur n'importe quel enregistrement.
+
+    Le chemin d'écriture est celui de tout le monde
+    (``services.layout.enregistrer_layout``) : une seule façon d'écrire une
+    conception, donc une seule façon de l'historiser. Rejouer la version DÉJÀ
+    courante ne crée donc rien (``inchange``).
+
+    Returns:
+        ``{'calepinage', 'version', 'layout_hash', 'inchange'}`` —
+        ``version`` est la version NEUVE (``None`` si rien n'a changé).
+
+    Raises:
+        VersionInvalide: version non enregistrée, ou détachée de son
+            calepinage.
+    """
+    from .layout import enregistrer_layout
+
+    if version is None or not getattr(version, 'pk', None):
+        raise VersionInvalide(
+            "Cette version n'existe pas : impossible de la restaurer.",
+            champ='version')
+    calepinage = getattr(version, 'calepinage', None)
+    if calepinage is None:
+        raise VersionInvalide(
+            "Cette version n'est rattachée à aucun calepinage.",
+            champ='version')
+
+    resultat = enregistrer_layout(
+        calepinage, version.roof_layout, user=user,
+        libelle=libelle or f'Restauration de la version #{version.pk}',
+        resultat=version.resultat)
+    if not resultat['inchange']:
+        # CAL26 — l'ÉVÉNEMENT « version restaurée », en plus de son effet
+        # (l'enregistrement de conception se journalise de son côté).
+        from .journal import journaliser_restauration
+
+        journaliser_restauration(calepinage, version=version, user=user)
+    return resultat

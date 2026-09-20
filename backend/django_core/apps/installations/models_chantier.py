@@ -467,6 +467,18 @@ class StockReservation(models.Model):
     date_consommation = models.DateTimeField(null=True, blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
+    # CAL210 — origine de la réservation : l'id du calepinage (module
+    # autonome) qui a DIMENSIONNÉ les modules réservés, quand le devis du
+    # chantier en porte un retenu. Un id OPAQUE (jamais une FK vers
+    # ``apps.calepinage`` — même frontière inter-apps que ``lead_id`` sur
+    # ``Calepinage``), posé une seule fois par ``seed_reservations`` via
+    # ``apps.installations.selectors.calepinage_retenu_du_chantier``. Aucune
+    # nouvelle mécanique de réservation : la même réservation existante porte
+    # simplement sa provenance, pour qu'un magasinier sache quelle étude a
+    # engagé le stock. ``None`` pour toute réservation sans calepinage
+    # (comportement historique inchangé).
+    origine_calepinage_id = models.PositiveIntegerField(
+        'Calepinage d\'origine', null=True, blank=True)
 
     class Meta:
         verbose_name = 'Réservation de stock'

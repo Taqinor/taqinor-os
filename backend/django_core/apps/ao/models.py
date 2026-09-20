@@ -214,6 +214,24 @@ class AppelOffre(TenantModel):
         null=True, blank=True,
         verbose_name='Calepinage 3D enregistré (layout du builder)')
 
+    # ── CAL30 — le calepinage du MODULE, désigné par un identifiant OPAQUE ──
+    #
+    # Le module « calepinage » (``apps.calepinage``) porte désormais LE
+    # document de conception, son historique de versions et ses variantes.
+    # L'affaire pointe ce document par un ENTIER NU, jamais par une FK : le
+    # contrat import-linter ``ao-models-decoupled`` (et son symétrique
+    # ``calepinage-models-decoupled``, qui interdit ``apps.ao.models`` depuis
+    # le module) garde les DEUX chaînes de migrations mono-écrivain. Même
+    # patron que ``lead_id`` ci-dessus.
+    #
+    # ``NULL`` = aucun calepinage de module rattaché à cette affaire. Le
+    # champ n'est pas indexé : on lit TOUJOURS dans le sens affaire → document
+    # (par la clé primaire de l'affaire), jamais l'inverse, et un index posé
+    # « au cas où » coûterait un verrou de construction sur une table vivante.
+    calepinage_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Calepinage du module (identifiant)')
+
     class Meta:
         verbose_name = "Appel d'offres"
         verbose_name_plural = "Appels d'offres"

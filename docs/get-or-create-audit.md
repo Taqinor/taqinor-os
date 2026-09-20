@@ -67,6 +67,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/btp_chantier/offline_ops.py:117` | update_or_create | JournalChantier.objects | chantier, company, date |
 | `backend/django_core/apps/btp_chantier/services.py:1387` | update_or_create | LotChecklistItem.objects | cle, lot |
 | `backend/django_core/apps/btp_chantier/views.py:1164` | get_or_create | ParametresBtpChantier.objects | company |
+| `backend/django_core/apps/calepinage/views/calepinages.py:122` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
 | `backend/django_core/apps/chat/services.py:152` | get_or_create | MessageMention.objects | mentioned_user, message |
 | `backend/django_core/apps/chat/services.py:258` | get_or_create | UserChatStatus.objects | user |
 | `backend/django_core/apps/chat/services.py:433` | get_or_create | Conversation.objects | company, kind, name |
@@ -204,16 +205,16 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/installations/field_services.py:357` | get_or_create | FicheInterventionReleve.objects | intervention |
 | `backend/django_core/apps/installations/services.py:112` | get_or_create | ChecklistEtapeModele.objects | cle, company, template |
 | `backend/django_core/apps/installations/services.py:391` | get_or_create | DocumentProjet.objects | installation, type_doc |
-| `backend/django_core/apps/installations/services.py:499` | get_or_create | StockReservation.objects | installation, produit_id |
-| `backend/django_core/apps/installations/services.py:759` | get_or_create | StockReservation.objects | installation, produit_id |
-| `backend/django_core/apps/installations/services.py:844` | get_or_create | StockReservation.objects | installation, produit_id |
-| `backend/django_core/apps/installations/services.py:1195` | get_or_create | StageModele.objects | cle, company |
-| `backend/django_core/apps/installations/services.py:1853` | get_or_create | CommissioningRecord.objects | installation |
-| `backend/django_core/apps/installations/services.py:2062` | get_or_create | HandoverPack.objects | installation |
-| `backend/django_core/apps/installations/services.py:2124` | get_or_create | ReservationAssemblage.objects | ordre, produit_id |
-| `backend/django_core/apps/installations/services.py:3190` | get_or_create | SerieEntrepot.objects | company, numero_serie, produit_id |
-| `backend/django_core/apps/installations/services.py:3838` | get_or_create | JalonProjet.objects | installation, phase |
-| `backend/django_core/apps/installations/services.py:3927` | get_or_create | EmplacementStock.objects | company, nom |
+| `backend/django_core/apps/installations/services.py:511` | get_or_create | StockReservation.objects | installation, produit_id |
+| `backend/django_core/apps/installations/services.py:778` | get_or_create | StockReservation.objects | installation, produit_id |
+| `backend/django_core/apps/installations/services.py:863` | get_or_create | StockReservation.objects | installation, produit_id |
+| `backend/django_core/apps/installations/services.py:1214` | get_or_create | StageModele.objects | cle, company |
+| `backend/django_core/apps/installations/services.py:1872` | get_or_create | CommissioningRecord.objects | installation |
+| `backend/django_core/apps/installations/services.py:2081` | get_or_create | HandoverPack.objects | installation |
+| `backend/django_core/apps/installations/services.py:2143` | get_or_create | ReservationAssemblage.objects | ordre, produit_id |
+| `backend/django_core/apps/installations/services.py:3209` | get_or_create | SerieEntrepot.objects | company, numero_serie, produit_id |
+| `backend/django_core/apps/installations/services.py:3857` | get_or_create | JalonProjet.objects | installation, phase |
+| `backend/django_core/apps/installations/services.py:3946` | get_or_create | EmplacementStock.objects | company, nom |
 | `backend/django_core/apps/installations/views/approbation_bcf.py:100` | update_or_create | ApprobationBCF.objects | bcf, company |
 | `backend/django_core/apps/installations/views/checklist_etape.py:103` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/installations/views/checklist_template.py:103` | get_or_create | TypeIntervention.objects | cle, company |

@@ -708,3 +708,216 @@ def contexte_conception_affaire(appel_offre, company):
         'raison_lecture_seule': raison,
         'avertissements': avertissements,
     }
+
+
+# ── CAL62 — UNE seule porte d'analyse de plan pour tout le dépôt ───────────
+#
+# L'analyseur DXF existe déjà, il est testé, et il est en production
+# (``apps/ao/dxf.py`` ``analyser_dxf``, ezdxf, 5 Mo max, exposé par
+# ``POST /api/django/ao/toitures/dxf/analyser/``). Le module Calepinage n'y
+# avait AUCUN accès : la pente naturelle était d'en écrire un second, donc
+# d'avoir deux façons de lire le même fichier — et un jour deux contours
+# différents pour un même plan.
+#
+# Ce sélecteur est la porte FINE que ``apps.calepinage.services.import_plan``
+# appelle (jamais ``apps.ao.models`` ni ``apps.ao.views`` — contrat
+# import-linter). Il ne recode rien : il AIGUILLE selon le format réel du
+# fichier et délègue.
+
+#: Signature d'en-tête d'un PDF — on regarde le CONTENU, jamais l'extension
+#: (un « .dxf » renommé depuis un PDF est un cas réel d'atelier).
+_ENTETE_PDF = b'%PDF-'
+
+
+def analyser_plan_importe(contenu, *, nom_fichier=''):
+    """CAL62 — analyse un plan déposé (DXF ou PDF VECTORIEL) EN MÉMOIRE.
+
+    Rend la MÊME forme que ``dxf.analyser_dxf``, plus la clé ``format`` :
+
+        ``{'format': 'dxf'|'pdf', 'unite': …, 'calques': [{'nom', 'entites',
+        'sommets'}]}``
+
+    Une seule forme pour les deux formats : l'atelier choisit un « calque »
+    d'enveloppe de la même façon, qu'il vienne d'un DXF ou d'un PDF.
+
+    **``unite`` n'est JAMAIS devinée.** Le DXF la déclare (``$INSUNITS``) ou
+    vaut ``'inconnu'`` ; un PDF n'a que des points typographiques, donc
+    ``'inconnu'`` — c'est la calibration de l'atelier qui donne l'échelle,
+    jamais une conversion supposée ici.
+
+    Args:
+        contenu: les octets du fichier déposé.
+        nom_fichier: purement INDICATIF (messages) — le format est déduit du
+            contenu.
+
+    Raises:
+        dxf.DxfInvalide: fichier vide, trop lourd, illisible, ou PDF sans
+            aucun tracé vectoriel — message FRANÇAIS nommant la cause.
+    """
+    from . import dxf
+
+    if not contenu:
+        raise dxf.DxfInvalide(
+            'Le fichier déposé est vide : aucun plan à analyser.')
+    if len(contenu) > dxf.TAILLE_MAX_OCTETS:
+        raise dxf.DxfInvalide(
+            'Ce fichier dépasse 5 Mo : simplifiez-le (purge des calques '
+            'inutiles) puis réessayez.')
+
+    if contenu[:len(_ENTETE_PDF)] == _ENTETE_PDF:
+        return _analyser_pdf_vectoriel(contenu, nom_fichier=nom_fichier)
+
+    resultat = dict(dxf.analyser_dxf(contenu))
+    resultat['format'] = 'dxf'
+    return resultat
+
+
+def _analyser_pdf_vectoriel(contenu, *, nom_fichier=''):
+    """Tracés vectoriels d'un PDF → la forme « calques » de l'analyseur DXF.
+
+    PyMuPDF est DÉJÀ en production et DÉJÀ utilisé par ``apps.ao``
+    (``fabrique/metadonnees_pdf.py``, ``ingestion_service.rasteriser_pdf``) :
+    aucune dépendance n'est ajoutée, et ce n'est pas une seconde plomberie
+    PDF — c'est la même.
+
+    Un plan SCANNÉ ne contient aucun tracé : il est REFUSÉ en nommant la
+    cause. Le rasteriser pour en deviner un contour produirait une géométrie
+    inventée ; l'atelier a déjà la voie honnête pour ce cas (calibration
+    manuelle sur image, ``ingestion_service``).
+    """
+    from . import dxf
+
+    try:
+        import fitz  # PyMuPDF — déjà en production, jamais une seconde plomberie
+    except ImportError as erreur:  # pragma: no cover — dépendance présente
+        raise dxf.DxfInvalide(
+            "La bibliothèque de lecture PDF (PyMuPDF) n'est pas installée "
+            'sur ce serveur : ce plan ne peut pas être analysé.') from erreur
+
+    try:
+        document = fitz.open(stream=contenu, filetype='pdf')
+    except Exception as erreur:  # noqa: BLE001 — fichier hostile : jamais un 500
+        raise dxf.DxfInvalide(
+            "Ce fichier n'a pas pu être lu comme un PDF (export corrompu ou "
+            'protégé par mot de passe).') from erreur
+
+    calques = []
+    try:
+        for numero in range(document.page_count):
+            page = document.load_page(numero)
+            try:
+                traces = page.get_drawings()
+            except Exception:  # noqa: BLE001 — page corrompue : pas un 500
+                traces = []
+            sommets, entites = _sommets_des_traces(traces)
+            if entites:
+                calques.append({'nom': f'Page {numero + 1}',
+                                'entites': entites,
+                                'sommets': sommets})
+    finally:
+        document.close()
+
+    if not calques:
+        raise dxf.DxfInvalide(
+            'Ce PDF ne contient aucun tracé vectoriel : c\'est un plan '
+            'SCANNÉ (une image). Réimportez-le en DXF, ou en PDF vectoriel '
+            'exporté depuis le logiciel de dessin.')
+
+    return {'format': 'pdf', 'unite': 'inconnu', 'calques': calques}
+
+
+def _sommets_des_traces(traces):
+    """``(sommets de la PLUS GRANDE polyligne, nombre de tracés)``.
+
+    MÊME règle que l'analyseur DXF : on propose les sommets de la plus grande
+    entité, jamais un mélange de plusieurs tracés — un contour composite
+    n'existerait nulle part dans le fichier.
+    """
+    meilleure = []
+    entites = 0
+    for trace in traces or []:
+        for item in trace.get('items') or []:
+            points = _points_de_l_item(item)
+            if not points:
+                continue
+            entites += 1
+            if len(points) > len(meilleure):
+                meilleure = points
+    return meilleure, entites
+
+
+def _points_de_l_item(item):
+    """Points ``[x, y]`` d'un item de dessin PyMuPDF (ligne, rectangle).
+
+    Les courbes (``'c'``) sont IGNORÉES : approcher une Bézier par ses points
+    de contrôle produirait un contour qui n'est pas celui du plan.
+    """
+    if not item:
+        return []
+    operateur = item[0]
+    if operateur == 'l' and len(item) >= 3:
+        return [[float(item[1].x), float(item[1].y)],
+                [float(item[2].x), float(item[2].y)]]
+    if operateur == 're' and len(item) >= 2:
+        rect = item[1]
+        return [[float(rect.x0), float(rect.y0)],
+                [float(rect.x1), float(rect.y0)],
+                [float(rect.x1), float(rect.y1)],
+                [float(rect.x0), float(rect.y1)]]
+    return []
+
+# ── CAL22 — LA PORTE NEUTRE DU MOTEUR PARTAGÉ (lecture pure) ───────────────
+#
+# Le moteur de calepinage est un NOYAU PUR (``core/calepinage``) partagé par
+# plusieurs consommateurs ; sa SÉRIALISATION publiée vit, elle, dans
+# ``apps/ao/calepinage_io.py`` et son orchestration dans
+# ``apps/ao/calepinage_service.py``. Un consommateur hors AO (le module
+# ``apps.calepinage``) ne doit importer ni l'un ni l'autre : la frontière du
+# dépôt dit qu'une app tierce lit ``ao`` par CE fichier. Ces trois fonctions
+# minces sont donc la porte — et surtout PAS une seconde sérialisation, qui
+# dériverait de celle-ci au premier champ ajouté.
+#
+# LECTURE PURE : aucune ligne AO n'est lue, aucune n'est écrite (le service
+# sous-jacent ne touche pas l'ORM).
+
+
+def erreurs_moteur_calepinage():
+    """``(EntreeInvalide, CalepinageIncoherent)`` — les deux refus du moteur.
+
+    Un appelant hors AO doit pouvoir les ATTRAPER pour répondre 400 avec le
+    motif FRANÇAIS du serveur, sans importer le service.
+    """
+    from core.calepinage.exceptions import CalepinageIncoherent
+
+    from .calepinage_service import EntreeInvalide
+
+    return EntreeInvalide, CalepinageIncoherent
+
+
+def cout_calepinage(document, *, budget=None, tiroirs=False,
+                    suggestions=False):
+    """Le coût ESTIMÉ d'un calcul — chiffré AVANT de le lancer.
+
+    C'est ce chiffre qui pilote la bascule synchrone/asynchrone : au-delà du
+    budget, l'appelant rend 202 et la consigne de suivi, plutôt que de faire
+    attendre l'utilisateur devant un écran gelé.
+    """
+    from .calepinage_service import cout_estime
+
+    return cout_estime(document, budget=budget, tiroirs=tiroirs,
+                       suggestions=suggestions)
+
+
+def calepinage_json(document, *, company, user=None, tiroirs=True,
+                    suggestions=True, budget=None):
+    """Calcule un calepinage et rend le JSON PUBLIÉ du moteur.
+
+    ``company`` est OBLIGATOIRE (le service refuse de tourner hors société) et
+    sert à estampiller la sortie : aucune ligne n'est lue ni écrite. La forme
+    est celle qu'AO publie déjà — une seule sérialisation pour tous les
+    consommateurs.
+    """
+    from .calepinage_service import calepiner
+
+    return calepiner(document, company=company, user=user, tiroirs=tiroirs,
+                     suggestions=suggestions, budget=budget)

@@ -45,7 +45,24 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
 
     if company is None:
         return Calepinage.objects.none()
-    lignes = Calepinage.objects.filter(company=company)
+    return appliquer_filtres_liste(
+        Calepinage.objects.filter(company=company),
+        lead_id=lead_id, client_id=client_id, statut=statut, depuis=depuis,
+        q=q)
+
+
+def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
+                            statut=None, depuis=None, q=None):
+    """CAL16 — LES filtres de la liste, écrits UNE fois.
+
+    Le viewset (``views/calepinages.py``) et ce sélecteur servent la même
+    liste : sans cette fonction, ils auraient deux jeux de filtres qui
+    divergeraient au premier ajout — et la leçon PV22 est qu'un filtre IGNORÉ
+    (``?statut=`` servi à l'identique) fait ouvrir le mauvais objet. Un filtre
+    absent ne filtre rien ; un filtre présent filtre RÉELLEMENT.
+
+    L'ordre est celui du plus récent au plus ancien, dans les deux chemins.
+    """
     if lead_id:
         lignes = lignes.filter(lead_id=lead_id)
     if client_id:
@@ -98,6 +115,111 @@ def variantes(calepinage):
             .order_by('-retenue', 'id'))
 
 
+#: CAL21 — les postes de production du comparatif. TOUJOURS présents, à
+#: ``None`` quand la variante n'a pas été simulée : une variante non simulée
+#: n'est pas une variante à « zéro kWh ».
+CLES_PRODUCTION = ('p50_kwh', 'p75_kwh', 'p90_kwh', 'performance_ratio',
+                   'specific_yield_kwh_kwc', 'self_consumption_rate')
+
+
+def comparer_variantes(calepinage):
+    """CAL21 — le comparatif des variantes, à la forme du contrat CAL3.
+
+    Forme : ``{calepinage, retenue_id, reference_modules, introuvables,
+    lignes}`` (``contract_samples/variantes_comparer.json``).
+
+    TROIS DISCIPLINES, tenues ici et pas dans l'écran :
+
+    * une variante NON SIMULÉE le DIT (``simulee: false``) et TOUTES ses
+      grandeurs de production valent ``None`` — jamais ``0``, qui se lirait
+      « zéro kWh » là où personne n'a lancé de simulation ;
+    * l'écart est TOUJOURS relatif à la RETENUE : elle porte donc ``0`` (un
+      écart MESURÉ, nul par construction), et sans point de comparaison (une
+      seule variante, ou aucune retenue) les écarts valent ``None`` — il n'y a
+      rien à quoi se comparer, ce n'est pas un écart nul ;
+    * aucune grandeur n'est recalculée ici : tout est LU dans le ``resultat``
+      déposé par le moteur. Ce comparatif compare, il ne calcule pas.
+    """
+    lignes = list(variantes(calepinage))
+    retenue = next((v for v in lignes if v.retenue), None)
+    reference = _mesures_variante(retenue) if retenue is not None else {}
+    return {
+        'calepinage': getattr(calepinage, 'pk', None),
+        'retenue_id': retenue.pk if retenue is not None else None,
+        'reference_modules': reference.get('total_modules'),
+        'introuvables': [],
+        'lignes': [_ligne_comparaison(v, reference, len(lignes))
+                   for v in lignes],
+    }
+
+
+def _mesures_variante(variante):
+    """Les grandeurs LUES dans le ``resultat`` du moteur, jamais recalculées."""
+    resultat = getattr(variante, 'resultat', None)
+    return resultat if isinstance(resultat, dict) else {}
+
+
+def _ligne_comparaison(variante, reference, nombre_de_lignes):
+    mesures = _mesures_variante(variante)
+    production = (mesures.get('production')
+                  if isinstance(mesures.get('production'), dict) else {})
+    simulee = bool(production)
+    comparable = nombre_de_lignes > 1 and bool(reference)
+    return {
+        'id': variante.pk,
+        'nom': variante.nom,
+        'role': mesures.get('role') or '',
+        'statut': mesures.get('statut') or '',
+        'est_retenue': bool(variante.retenue),
+        'simulee': simulee,
+        'total_modules': mesures.get('total_modules'),
+        'kwc': mesures.get('kwc'),
+        'total_optimal': mesures.get('total_optimal'),
+        'optimal': mesures.get('optimal'),
+        'methode': mesures.get('methode'),
+        'orientation': mesures.get('orientation'),
+        'marge_troncon_min': mesures.get('marge_troncon_min'),
+        'marge_bande_min': mesures.get('marge_bande_min'),
+        'marges': mesures.get('marges'),
+        'production': dict(
+            {cle: (production.get(cle) if simulee else None)
+             for cle in CLES_PRODUCTION},
+            # Variante SIMULÉE : une liste vide, jamais ``None`` — « aucun
+            # poste de perte dominant » se lit, « pas de liste » ne se lit
+            # pas. Variante NON simulée : ``None`` comme toutes les autres
+            # grandeurs de production — une liste vide y ferait lire « nous
+            # avons cherché et n'avons rien trouvé » là où rien n'a été
+            # calculé (discipline du null, jamais le zéro).
+            pertes_dominantes=(
+                list(production.get('pertes_dominantes') or [])
+                if simulee else None)),
+        'ecart_modules': _ecart(mesures.get('total_modules'),
+                                reference.get('total_modules'), comparable),
+        'ecart_kwc': _ecart(mesures.get('kwc'), reference.get('kwc'),
+                            comparable),
+        'ecart_p50_kwh': _ecart(
+            production.get('p50_kwh') if simulee else None,
+            ((reference.get('production') or {}).get('p50_kwh')
+             if isinstance(reference.get('production'), dict) else None),
+            comparable),
+        'version_moteur': mesures.get('version_moteur') or '',
+        'entree_hash': mesures.get('entree_hash') or '',
+    }
+
+
+def _ecart(valeur, reference, comparable):
+    """L'écart MESURÉ, ou ``None`` quand il n'y a rien à quoi se comparer."""
+    if not comparable or valeur is None or reference is None:
+        return None
+    try:
+        if isinstance(valeur, int) and isinstance(reference, int) \
+                and not isinstance(valeur, bool):
+            return valeur - reference
+        return round(float(valeur) - float(reference), 3)
+    except (TypeError, ValueError):
+        return None
+
+
 def calepinage_du_devis(devis_id, company):
     """CAL10 — le calepinage rattaché à ce devis, ou ``None``.
 
@@ -112,6 +234,57 @@ def calepinage_du_devis(devis_id, company):
             .filter(company=company, devis_id=devis_id)
             .order_by('-created_at', '-id')
             .first())
+
+
+def calepinage_retenu_pour_devis(devis_id, company):
+    """CAL209 — le calepinage RETENU d'un devis : id, kWc, nb modules, lien.
+
+    Point d'entrée cross-app pour le chantier (``apps.installations``), qui ne
+    porte AUCUN champ calepinage — règle fondateur 12/09/2026 « le module
+    chantier ne garde QUE son cœur » : il se BRANCHE sur ce sélecteur, il
+    n'absorbe pas la donnée. Renvoie ``None`` quand le devis est absent, quand
+    aucun calepinage ne lui est rattaché, ou quand aucune variante n'y est
+    RETENUE (``CalepinageVariante.retenue``) — un calepinage sans option
+    choisie ne désigne rien de concret à renvoyer.
+
+    Le kWc et le nombre de modules sont lus, dans l'ordre : le résultat du
+    moteur (``variante.resultat['pose']`` — chaîné/simulé, CAL126+) puis, à
+    défaut, le résumé posé par l'atelier 3D (``variante.roof_layout['result']``
+    — présent dès qu'une pose a été dessinée, avant toute simulation). Aucune
+    valeur n'est recalculée ici : c'est une LECTURE pure, bornée société.
+    """
+    from .models import CalepinageVariante
+
+    calepinage = calepinage_du_devis(devis_id, company)
+    if calepinage is None:
+        return None
+    variante = (CalepinageVariante.objects
+                .filter(calepinage=calepinage, retenue=True)
+                .first())
+    if variante is None:
+        return None
+
+    kwc = None
+    nb_modules = None
+    resultat = variante.resultat if isinstance(variante.resultat, dict) else None
+    pose = resultat.get('pose') if resultat else None
+    if isinstance(pose, dict):
+        kwc = pose.get('kwc')
+        nb_modules = pose.get('total_modules')
+    if kwc is None and nb_modules is None:
+        roof_layout = (variante.roof_layout
+                       if isinstance(variante.roof_layout, dict) else None)
+        result = roof_layout.get('result') if roof_layout else None
+        if isinstance(result, dict):
+            kwc = result.get('kwc')
+            nb_modules = result.get('panels')
+
+    return {
+        'id': calepinage.id,
+        'kwc': kwc,
+        'nb_modules': nb_modules,
+        'planche_url': f'/calepinage/{calepinage.id}',
+    }
 
 
 def calepinage_de_l_affaire(appel_offre_id, company):

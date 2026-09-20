@@ -169,6 +169,21 @@ def public_api_reference():
                 'updated_since': None,
             },
             {
+                'chemin': '/api/public/v1/calepinages/',
+                'scope': 'read:calepinages',
+                'description': (
+                    "CAL214 — calepinages (conceptions de toiture) : identité, "
+                    "rattachement lead/client/devis, statut, empreinte du "
+                    "layout, puissance (kWc) et nombre de modules RÉELLEMENT "
+                    "calculés, liens de sorties. Jamais la géométrie brute "
+                    "(`roof_layout`, plans/rangées du moteur), jamais un coût "
+                    "interne."
+                ),
+                'filtres': ['statut', 'lead_id', 'client_id', 'devis_id'],
+                'tri': ['created_at', 'updated_at', 'id'],
+                'updated_since': 'updated_at',
+            },
+            {
                 'chemin': '/api/public/v1/scm/previsions-demande/',
                 'scope': 'read:scm',
                 'description': "Prévisions de demande (planification supply chain, NTSCM1/2/3).",

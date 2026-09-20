@@ -12,6 +12,12 @@ import { RecordShell } from '../../ui/module'
 import ChatterTimeline from '../../components/ChatterTimeline'
 import { formatDate, formatMAD, formatNumber } from '../../lib/format'
 import { StatutAffaire } from './statusAo'
+/* CAL242 — le bouton « Reprendre le tracé 3D » (sens calepinage → AO, CAL241).
+   Sans lui l'endpoint reste mort : c'est l'oubli du 03/08/2026, où le travail
+   existait et restait inaccessible. Il vit dans `features/calepinage` parce que
+   son jumeau (sens AO → calepinage) y vit aussi : une seule paire, un seul
+   rappel de ce qui voyage. */
+import { BoutonReprendreTrace3D } from '../calepinage/BoutonsContourAO'
 
 /* ============================================================================
    AOF171 — Fiche affaire (`RecordShell`) + chatter.
@@ -457,8 +463,12 @@ function SyntheseCalepinage({ synthese }) {
 function OngletCalepinages({ affaireId, synthese }) {
   const params = useMemo(() => ({ appel_offre: affaireId }), [affaireId])
   const [choisie, setChoisie] = useState(null)
+  /* CAL242 — un contour repris change la géométrie SOUS l'atelier : on relit la
+     toiture ET on remonte le studio par sa clé, plutôt que de lui faire deviner
+     qu'il doit se recharger. */
+  const [versionContour, setVersionContour] = useState(0)
 
-  const { data: toitures, loading, error } = useResource(
+  const { data: toitures, loading, error, refetch: rafraichirToitures } = useResource(
     () => aoApi.toitures.list(params), params,
     {
       initialData: [],
@@ -496,8 +506,18 @@ function OngletCalepinages({ affaireId, synthese }) {
         onChange={setChoisie}
         options={toitures.map((t) => ({ value: t.id, label: t.nom || t.libelle || `Toiture #${t.id}` }))}
       />
+      {/* CAL242 — l'autre sens de l'import bidirectionnel (CAL241) : la toiture
+          de CETTE affaire récupère le contour dessiné en 3D. Le refus 409
+          « affaire déposée/close » s'affiche sous le bouton, mot pour mot. */}
+      <BoutonReprendreTrace3D
+        toitureId={courante}
+        onImporte={async () => {
+          await rafraichirToitures()
+          setVersionContour((v) => v + 1)
+        }}
+      />
       <PanneauDiffere>
-        <CalepinageStudio toitureId={courante} />
+        <CalepinageStudio toitureId={courante} key={`${courante}-${versionContour}`} />
       </PanneauDiffere>
     </div>
   )

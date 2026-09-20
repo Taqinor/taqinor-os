@@ -35,6 +35,7 @@ import {
   PANEL2_WATT,
   type ConfigFamily,
   type PackResult,
+  type EastWestGeometry,
   type TariffGrid,
   annualSavingsMad,
   aspectForAzimuth,
@@ -179,6 +180,8 @@ interface SolveCtx {
   obstructionClearancesM?: number[];
   /** PV63 — retraits de rive séparés quand la marge est gardée. */
   setbacksM?: Partial<PerimeterSetbacks>;
+  /** CAL87 — géométrie est-ouest saisie (faîtage + écart inter-chevrons). */
+  eastWestGeometry?: EastWestGeometry;
   tariff: TariffGrid;
   yieldFn: YieldFn | undefined;
   roofAz: number;
@@ -214,7 +217,12 @@ function evalOne(
   const sbKey = setbacksM ? `${setbacksM.lateralM ?? ''}/${setbacksM.extremityM ?? ''}/${setbacksM.parapetM ?? ''}` : '';
   // W109 — overhangM entre dans la clé de cache (sinon deux solves d'overhang différents
   // entreraient en collision). overhangM=0 → même clé/pavage qu'avant (rétro-compatible).
-  const key = `${family}|${tiltDeg}|${Math.round(azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}|${sbKey}`;
+  // CAL87 — la géométrie est-ouest saisie entre dans la clé de cache (sinon deux faîtages
+  // différents partageraient le même pavage). Absente → clé IDENTIQUE à avant.
+  const ewKey = ctx.eastWestGeometry
+    ? `|ew${ctx.eastWestGeometry.ridgeGapM ?? ''}/${ctx.eastWestGeometry.interTentGapM ?? ''}`
+    : '';
+  const key = `${family}|${tiltDeg}|${Math.round(azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}|${sbKey}${ewKey}`;
   let pack = ctx.cache.get(key);
   if (!pack) {
     pack = packConfig(ctx.ring, ctx.latitudeDeg, {
@@ -226,6 +234,7 @@ function evalOne(
       overhangM: ctx.overhangM,
       obstructionClearancesM: ctx.obstructionClearancesM, // PV61 — dégagement par type
       setbacksM, // PV63 — retraits latéral / extrémité / acrotère
+      eastWestGeometry: ctx.eastWestGeometry, // CAL87 — faîtage + écart inter-chevrons saisis
     });
     ctx.cache.set(key, pack);
   }
@@ -345,6 +354,9 @@ export interface LiveSolveOptions {
   /** PV63 — retraits de rive séparés (latéral / extrémité / acrotère) quand la marge est
    *  GARDÉE. Absent → retrait unique PERIMETER_SETBACK_M (historique). */
   setbacksM?: Partial<PerimeterSetbacks>;
+  /** CAL87 — géométrie est-ouest saisie (faîtage + écart inter-chevrons). Absente →
+   *  valeurs d'aujourd'hui, variante est-ouest IDENTIQUE. */
+  eastWestGeometry?: EastWestGeometry;
 }
 
 export interface LiveSolveResult {
@@ -420,6 +432,7 @@ export function solveLive(
     overhangM: Math.max(0, options.overhangM ?? 0),
     obstructionClearancesM: options.obstructionClearancesM, // PV61
     setbacksM: options.setbacksM, // PV63
+    eastWestGeometry: options.eastWestGeometry, // CAL87
 
     tariff,
     yieldFn: options.yieldFn,

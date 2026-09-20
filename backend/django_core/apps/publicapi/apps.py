@@ -38,6 +38,12 @@ class PublicApiConfig(AppConfig):
         # `apps.uxviews`/`apps.trash` -> `apps.publicapi`.
         from . import uxviews_event_receivers
         uxviews_event_receivers.connect()
+        # CAL215 — abonné à la VALIDATION d'un calepinage (une variante passe
+        # à « retenue ») : webhook `calepinage.valide`. Le modèle écouté est
+        # résolu par le REGISTRE, jamais un import direct `apps.calepinage`
+        # -> `apps.publicapi` (et rien n'est branché sans le module).
+        from . import calepinage_event_receivers
+        calepinage_event_receivers.connect()
         # NTI18N43 — abonné à la bascule de langue du bus `core.events`
         # (`langue_changed`), jamais un import direct `apps.crm`/
         # `apps.parametres` -> `apps.publicapi`.

@@ -56,6 +56,12 @@ SCOPE_READ_BTP = 'read:btp'
 SCOPE_READ_FAVORIS = 'read:favoris'
 SCOPE_READ_VUES = 'read:vues'
 
+# CAL214 — calepinages (apps.calepinage) en LECTURE SEULE : identité,
+# rattachement lead/client/devis, statut, empreinte du layout, puissance et
+# nombre de modules RÉELLEMENT calculés, liens de sorties. Ce scope n'ouvre
+# JAMAIS la géométrie brute (`roof_layout`, plans/rangées du moteur) ni aucun
+# coût interne : voir `public_serializers.PublicCalepinageSerializer`.
+SCOPE_READ_CALEPINAGES = 'read:calepinages'
 # NTP2P39 — objets Procure-to-Pay (apps.installations : `DemandeAchat` FG310,
 # `RFQ` FG311) en LECTURE SEULE, pour un donneur d'ordre ou un outil d'achat
 # tiers qui suit l'avancement des réquisitions depuis son propre système.
@@ -112,6 +118,8 @@ SCOPE_CHOICES = [
      "Lire les favoris épinglés d'un utilisateur consentant (?owner=)"),
     (SCOPE_READ_VUES,
      "Lire les vues sauvegardées d'équipe, ou d'un utilisateur consentant (?owner=)"),
+    (SCOPE_READ_CALEPINAGES,
+     'Lire les calepinages (sans géométrie brute ni coût interne)'),
     (SCOPE_READ_ACHATS,
      "Lire les demandes d'achat et les demandes de prix (sans aucun prix d'achat)"),
     (SCOPE_READ_FIABILITE,
@@ -178,6 +186,12 @@ EVENT_BTP_DGD_FINALISE = 'dgd.finalise'
 # pointées) : littéralement celles nommées par le plan NTUX32.
 EVENT_SAVED_VIEW_SHARED = 'saved_view_shared'
 EVENT_RECORD_RESTORED = 'record_restored'
+# CAL215 — calepinage VALIDÉ : une variante vient d'être RETENUE (le geste
+# « c'est celle-là »). Émis par `apps/publicapi/calepinage_event_receivers.py`,
+# qui écoute le modèle via le registre — jamais un import direct
+# `apps.calepinage` -> `apps.publicapi`. Charge utile sans géométrie brute ni
+# coût interne (mêmes limites que la ressource publique CAL214).
+EVENT_CALEPINAGE_VALIDE = 'calepinage.valide'
 # NTI18N43 — bascule de langue (document d'un client, ou défaut de la société),
 # consommée depuis `core.events.langue_changed` par
 # `apps/publicapi/i18n_event_receivers.py` (jamais un import direct
@@ -218,6 +232,7 @@ EVENT_CHOICES = [
     (EVENT_BTP_DGD_FINALISE, 'BTP — décompte général finalisé'),
     (EVENT_SAVED_VIEW_SHARED, 'Vue partagée à l\'équipe'),
     (EVENT_RECORD_RESTORED, 'Élément restauré depuis la corbeille'),
+    (EVENT_CALEPINAGE_VALIDE, 'Calepinage — variante retenue'),
     (EVENT_LANGUE_CHANGED, 'Langue changée (client ou société)'),
     (EVENT_INCIDENT_OPENED, 'Incident — ouvert'),
     (EVENT_INCIDENT_RESOLVED, 'Incident — résolu'),
