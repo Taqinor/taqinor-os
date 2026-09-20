@@ -267,18 +267,6 @@ class DrapeauOnLeMoteurDonneLeCompte(_Base):
         casse['zones'][0]['vertices'] = [[0, 0], [1, 1]]
         self.assertIsNone(services.compte_moteur_du_layout(casse))
 
-    def test_aucune_ligne_ao_n_est_creee_par_un_devis_villa(self):
-        from apps.ao.models import AppelOffre, ToitureAO, VarianteCalepinage
-
-        avant = (AppelOffre.objects.count(), ToitureAO.objects.count(),
-                 VarianteCalepinage.objects.count())
-        build_devis_from_layout(
-            layout=layout_avec_geometrie(), user=self.user,
-            company=self.company, lead=self._lead())
-        apres = (AppelOffre.objects.count(), ToitureAO.objects.count(),
-                 VarianteCalepinage.objects.count())
-        self.assertEqual(avant, apres)
-
 
 @override_settings(USE_MOTEUR_CALEPINAGE=True)
 class UnDevisDejaEmisNEstJamaisRecalcule(_Base):

@@ -4,19 +4,16 @@ Constat F3 de l'audit L3 : `FactureAdmin.readonly_fields` se limitait à
 `('reference', 'date_emission', 'fichier_pdf')` (apps/ventes/admin.py:32-38
 avant ce correctif). Or :
 
-* `Facture.save()` (apps/facturation/models.py:355-386) ne porte AUCUN garde —
-  ni verrou de période, ni gel des champs financiers ;
-* le verrou de période (YLEDG3, `_guard_periode_verrouillee`,
-  apps/ventes/views/facture.py:188-203) et le gel de
-  `FACTURE_CHAMPS_FINANCIERS` (XFAC24, :45-53) vivent EXCLUSIVEMENT dans le
-  ViewSet, que le `ModelAdmin` n'appelle jamais (il n'avait aucun `save_model`
-  ni aucun `form`).
+* `Facture.save()` (apps/facturation/models.py:355-386) ne porte AUCUN garde
+  sur les champs financiers ;
+* le gel de `FACTURE_CHAMPS_FINANCIERS` (XFAC24) vit EXCLUSIVEMENT dans le
+  ViewSet, que le `ModelAdmin` n'appelle jamais.
 
 Un superutilisateur pouvait donc réécrire `remise_globale`, `taux_tva`,
-`escompte_*` ou `type_facture` d'une facture ÉMISE d'un exercice CLÔTURÉ, et
-supprimer purement et simplement une facture émise (et ses encaissements en
-CASCADE). S'y ajoutait F10 : aucun `admin.py` ne scopait `get_queryset`, donc
-un compte `is_staff` d'une société listait les factures des autres.
+`escompte_*` ou `type_facture` d'une facture ÉMISE, et supprimer purement et
+simplement une facture émise (et ses encaissements en CASCADE). S'y ajoutait
+F10 : aucun `admin.py` ne scopait `get_queryset`, donc un compte `is_staff`
+d'une société listait les factures des autres.
 
 Cadrage honnête (adjudication) : l'acteur est un SUPERUSER — défense en
 profondeur et intégrité de la piste d'audit, pas une brèche tenant prouvée. La
@@ -33,7 +30,6 @@ from django.test import Client as HttpClient
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
-from apps.compta.models import PeriodeComptable
 from apps.ventes.admin import SUPPRESSION_FACTURE_POSTEE_INTERDITE
 from apps.ventes.models import Facture
 from testkit.factories import ClientFactory, CompanyFactory, UserFactory
@@ -145,27 +141,6 @@ class FactureAdminVerrousTests(TestCase):
             self.fail(
                 "le formulaire d'admin n'a pas enregistré (HTTP %s au lieu de "
                 '302) — erreurs : %r' % (reponse.status_code, erreurs))
-
-    # ── (1) période comptable verrouillée ──────────────────────────────────
-    def test_periode_verrouillee_refuse_la_modification(self):
-        """Rouge avant AUD185 : le formulaire d'admin n'appelait aucun service,
-        donc la facture d'un exercice clôturé s'enregistrait sans un mot."""
-        PeriodeComptable.objects.create(
-            company=self.societe_a, date_debut=date(2000, 1, 1),
-            date_fin=date(2100, 1, 1), verrouillee=True,
-            type_periode=PeriodeComptable.Type.EXERCICE,
-            libelle='AUD185 exercice clôturé')
-
-        # `date_echeance` est un champ NON financier (donc encore éditable) :
-        # si le formulaire s'enregistrait, il changerait. C'est le témoin.
-        reponse = self._post_change(self.emise, date_echeance='2099-12-31')
-
-        # 200 = formulaire ré-affiché avec son erreur ; 302 aurait voulu dire
-        # « enregistré ».
-        self.assertEqual(reponse.status_code, 200)
-        self.assertContains(reponse, 'Période comptable clôturée')
-        self.emise.refresh_from_db()
-        self.assertNotEqual(str(self.emise.date_echeance), '2099-12-31')
 
     # ── (F3) gel des champs financiers d'une facture émise ─────────────────
     def test_champs_financiers_geles_sur_facture_emise(self):

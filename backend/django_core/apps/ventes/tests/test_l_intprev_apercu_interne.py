@@ -6,8 +6,7 @@ le côté questionnaire (crm) est une autre lane.
 
 ENQUÊTE — ce qui se déclenche AUJOURD'HUI à l'ouverture CLIENT (public_views.py) :
   1. ``_stamp_view`` (L123) — ``ShareLink.view_count``/``first_viewed_at``/
-     ``last_viewed_at`` + miroir marketing ``_enregistrer_ouverture_marketing``
-     → ``apps.marketing.models.OuverturePartage``.
+     ``last_viewed_at``.
   2. ``_notify_first_open`` (L176), sur la PREMIÈRE ouverture :
        a. ``noter_devis_ouvert`` (crm/services.py) — note chatter
           ``LeadActivity`` « Le client a ouvert le devis X » PUIS
@@ -42,7 +41,6 @@ from rest_framework.test import APIClient
 
 from apps.crm import stages
 from apps.crm.models import Client, Lead, LeadActivity
-from apps.marketing.models import OuverturePartage
 from apps.notifications.models import Notification
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis, ShareLink
@@ -220,30 +218,6 @@ class TestZeroTraceCompteurDeVues(TestCase):
             self.assertEqual(resp.status_code, 200)
         link.refresh_from_db()
         self.assertEqual(link.view_count, 0)
-
-
-class TestZeroTraceMiroirMarketing(TestCase):
-    """(b.1 bis) OuverturePartage — jamais écrit via le jeton interne."""
-
-    def setUp(self):
-        self.company = make_company('lintprev-mkt')
-        self.client_obj = make_client_obj(self.company)
-        self.devis = make_devis(self.company, self.client_obj, 'DEV-IP-M1')
-        self.link = make_link(self.devis)
-
-    def test_jeton_interne_ne_cree_aucune_ouverture_partage(self):
-        self.assertEqual(OuverturePartage.objects.filter(
-            company=self.company).count(), 0)
-        DjangoClient().get(
-            f'/api/django/public/proposal/{self.link.token_interne}/data/')
-        self.assertEqual(OuverturePartage.objects.filter(
-            company=self.company).count(), 0)
-
-    def test_jeton_public_cree_une_ouverture_partage(self):
-        DjangoClient().get(
-            f'/api/django/public/proposal/{self.link.token}/data/')
-        self.assertEqual(OuverturePartage.objects.filter(
-            company=self.company).count(), 1)
 
 
 class TestZeroTraceChatterEtStageFunnel(TestCase):

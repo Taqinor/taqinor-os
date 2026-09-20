@@ -1,9 +1,9 @@
 """QJR129 — un devis né « à partir de rien » porte un MARCHÉ, jamais un blanc.
 
-Constat CS7 (audit du 30/08/2026), vérifié en code : les trois chemins qui
-créent un devis sans composition — bordereau des prix AO, document OCR, réserve
-d'intervention — laissaient ``mode_installation`` NULL, alors que le chemin
-canonique le pose explicitement.
+Constat CS7 (audit du 30/08/2026), vérifié en code : les chemins qui créent un
+devis sans composition — document OCR, réserve d'intervention — laissaient
+``mode_installation`` NULL, alors que le chemin canonique le pose
+explicitement.
 
 Or le discriminateur de rendu ACCEPTE le vide
 (``quote_engine/residential/renderer.is_residential`` : ``if mode not in ("",
@@ -19,7 +19,6 @@ Lancer :
         apps.ventes.tests.test_qjr129_mode_installation_explicite -v 2
 """
 import itertools
-from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
@@ -203,92 +202,3 @@ class LeDevisDeReparationPorteLeMarcheDuChantier(_Base):
 
         devis = create_devis_from_reserve(reserve=reserve, user=self.user)
         self.assertEqual(devis.mode_installation, 'agricole')
-
-
-class LeDevisDeBordereauNEstPasResidentiel(_Base):
-    """CS7, chemin bordereau AO — le cas que l'audit nomme."""
-
-    slug = 'qjr129-boq'
-
-    def _bordereau(self, **lead_extra):
-        from apps.ao.models import (
-            AppelOffre, BordereauPrix, LigneBordereau, SectionBordereau,
-        )
-        from apps.crm.models import Lead
-
-        lead = Lead.objects.create(
-            company=self.company, nom='Commune urbaine de Rabat',
-            email='qjr129-boq-%d@example.com' % next(_seq), **lead_extra)
-        affaire = AppelOffre.objects.create(
-            company=self.company, reference='AO-QJR129-%d' % next(_seq),
-            objet='Travaux de terrassement et centrale PV', lead_id=lead.pk)
-        bordereau = BordereauPrix.objects.create(
-            company=self.company, appel_offre=affaire)
-        section = SectionBordereau.objects.create(
-            company=self.company, bordereau=bordereau, numero='A',
-            libelle='Gros œuvre', ordre=1)
-        LigneBordereau.objects.create(
-            company=self.company, bordereau=bordereau, section=section,
-            numero=1, designation='Terrassement', unite='m³',
-            quantite=Decimal('250'), prix_unitaire=Decimal('180.00'),
-            taux_tva=Decimal('20.00'))
-        return bordereau
-
-    def test_un_bordereau_ne_part_pas_en_proposition_solaire_residentielle(self):
-        from apps.ventes.domain.bordereau import creer_devis_depuis_bordereau
-
-        devis, rapport = creer_devis_depuis_bordereau(
-            self._bordereau(), user=self.user, company=self.company)
-        self.assertTrue(rapport['cree'])
-        self.assertEqual(devis.mode_installation,
-                         Devis.ModeInstallation.INDUSTRIEL)
-        self.assertFalse(
-            is_residential(devis),
-            'un marché de travaux à prix unitaires est routé vers le rendu '
-            '« proposition solaire résidentielle ».')
-        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
-
-    def test_le_marche_declare_par_le_lead_passe_devant(self):
-        from apps.ventes.domain.bordereau import creer_devis_depuis_bordereau
-
-        devis, _ = creer_devis_depuis_bordereau(
-            self._bordereau(type_installation='commercial'),
-            user=self.user, company=self.company)
-        self.assertEqual(devis.mode_installation, 'commercial')
-
-    def test_la_reouverture_realigne_un_brouillon_a_mode_vide(self):
-        """Un brouillon d'AVANT ce correctif porte un mode VIDE : la
-        réouverture idempotente le réaligne, une fois."""
-        from apps.ventes.domain.bordereau import creer_devis_depuis_bordereau
-
-        bordereau = self._bordereau()
-        devis, _ = creer_devis_depuis_bordereau(
-            bordereau, user=self.user, company=self.company)
-        # On remet l'état d'hier, à la main.
-        Devis.objects.filter(pk=devis.pk).update(mode_installation=None)
-
-        reouvert, rapport = creer_devis_depuis_bordereau(
-            bordereau, user=self.user, company=self.company)
-        self.assertFalse(rapport['cree'])
-        self.assertEqual(reouvert.pk, devis.pk)
-        self.assertEqual(reouvert.mode_installation,
-                         Devis.ModeInstallation.INDUSTRIEL)
-
-    def test_un_second_appel_reste_un_no_op(self):
-        """La garantie d'idempotence n'est pas cassée : un devis qui porte
-        DÉJÀ le bon mode est réouvert sans réécriture."""
-        from apps.ventes.domain.bordereau import creer_devis_depuis_bordereau
-
-        bordereau = self._bordereau()
-        devis, _ = creer_devis_depuis_bordereau(
-            bordereau, user=self.user, company=self.company)
-        reouvert, rapport = creer_devis_depuis_bordereau(
-            bordereau, user=self.user, company=self.company)
-        self.assertFalse(rapport['cree'])
-        self.assertEqual(reouvert.pk, devis.pk)
-        # La phrase de la voie SANS réécriture (celle de la voie « rafraîchi »
-        # est différente) : le mode n'a pas transformé un no-op en mise à jour.
-        self.assertIn(
-            'Un devis brouillon issu de ce bordereau existait déjà : il est '
-            "réouvert, aucun doublon n'a été créé.",
-            rapport['avertissements'])
