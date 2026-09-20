@@ -465,6 +465,27 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 status=status.HTTP_400_BAD_REQUEST)
 
         layout = request.data.get('layout')
+        # CAL185 — DEUXIÈME ENTRÉE, MÊME CHEMIN. Le commercial compare ses
+        # options DANS le calepinage, en retient une… et rien ne partait de
+        # cette variante retenue. `{"calepinage": <id>}` (sans `layout`) fait
+        # lire sa conception par `apps.calepinage.selectors` — jamais ses
+        # modèles — et la fait chiffrer par CE service, qui délègue lui-même à
+        # `build_devis_from_layout` : aucun second chemin de création de
+        # lignes. Un corps qui porte un `layout` explicite est inchangé.
+        calepinage_id = request.data.get('calepinage')
+        nomenclature = None
+        if (not isinstance(layout, dict) or not layout) and calepinage_id:
+            from apps.calepinage.selectors import nomenclature_variante_retenue
+            nomenclature = nomenclature_variante_retenue(
+                calepinage_id, company)
+            if nomenclature is None:
+                return Response(
+                    {'detail': "Aucune variante retenue à chiffrer sur ce "
+                               "calepinage : comparez vos options, retenez-en "
+                               "une, puis relancez.",
+                     'champ': 'calepinage'},
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+            layout = nomenclature['layout']
         if not isinstance(layout, dict) or not layout:
             return Response(
                 {'detail': 'Layout manquant ou invalide.'},
@@ -570,13 +591,24 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # un client triphasé pouvait encore recevoir un onduleur mono par
         # ICI alors que l'auto-devis (services.py, PVCOMPAT) la passait déjà.
         from apps.ventes.compatibilites import normaliser_phase
-        devis = build_devis_from_layout(
-            layout=layout, user=request.user, company=company,
-            lead=lead_obj, client=client_obj,
+        _composition = dict(
             taux_tva=taux_tva, remise_globale=remise,
             structure_produit_id=structure_produit_id,
             structure_type=(str(structure_type) if structure_type else None),
             phase=normaliser_phase(getattr(lead_obj, 'raccordement', None)))
+        # CAL185 — le rapport « à renseigner » n'existe que sur l'entrée
+        # calepinage ; l'entrée historique est byte-identique.
+        rapport = None
+        if nomenclature is not None:
+            from ..services import build_devis_depuis_calepinage_retenu
+            devis, rapport = build_devis_depuis_calepinage_retenu(
+                calepinage_id=calepinage_id, user=request.user,
+                company=company, lead=lead_obj, client=client_obj,
+                **_composition)
+        else:
+            devis = build_devis_from_layout(
+                layout=layout, user=request.user, company=company,
+                lead=lead_obj, client=client_obj, **_composition)
 
         # QJ17 — persist the layout hash on the newly-created devis so future
         # duplicate requests are caught in O(1).
@@ -590,15 +622,20 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         _emettre_layout_finalise(devis, request.user)
 
         link = ShareLink.for_devis(devis)
-        return Response(
-            {
-                'id': devis.id,
-                'reference': devis.reference,
-                'statut': devis.statut,
-                'proposal_token': link.token,
-                'proposal_path': chemin_proposition(devis, link.token),
-            },
-            status=status.HTTP_201_CREATED)
+        corps = {
+            'id': devis.id,
+            'reference': devis.reference,
+            'statut': devis.statut,
+            'proposal_token': link.token,
+            'proposal_path': chemin_proposition(devis, link.token),
+        }
+        # CAL185 — clés AJOUTÉES seulement sur l'entrée calepinage : la
+        # réponse de l'entrée historique ne bouge pas d'un octet.
+        if rapport is not None:
+            corps['calepinage'] = rapport['calepinage']
+            corps['variante'] = rapport['variante']
+            corps['a_renseigner'] = rapport['a_renseigner']
+        return Response(corps, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='design-context',
             permission_classes=[IsResponsableOrAdmin])
@@ -3166,6 +3203,15 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # si le devis n'a pas de données d'étude (géré par le moteur).
             if 'include_etude' in request.query_params:
                 raw['include_etude'] = request.query_params['include_etude'] in ('1', 'true')
+            # CAL183 — page « Calepinage » (planche cotée). Le défaut est AUTO
+            # (présente dès que le devis porte un calepinage dessinable) : le
+            # paramètre n'existe donc QUE pour trancher explicitement, et son
+            # absence laisse l'AUTO décider. `?include_calepinage=0` est
+            # l'opt-out ; toute autre valeur vaut « oui » — même lecture que
+            # `include_etude` juste au-dessus, jamais une seconde convention.
+            if 'include_calepinage' in request.query_params:
+                raw['include_calepinage'] = (
+                    request.query_params['include_calepinage'] in ('1', 'true'))
             # NTI18N4 — langue de sortie du document, INDÉPENDANTE de la
             # langue d'interface de qui génère le PDF. `?langue=` écrase la
             # résolution auto (priorité : explicite > Client.langue_document

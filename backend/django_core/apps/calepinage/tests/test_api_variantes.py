@@ -224,6 +224,11 @@ class ComparerTest(BaseVariantes):
                       url_comparer(self.calepinage.pk)).data['lignes']}
         self.assertFalse(lignes['B']['simulee'])
         for cle, valeur in lignes['B']['production'].items():
+            if cle == 'pertes_dominantes':
+                # Une LISTE, jamais ``None`` : « aucun poste dominant » se
+                # lit, « pas de liste » ne se lit pas (contrat CAL3/CAL145).
+                self.assertEqual(valeur, [])
+                continue
             self.assertIsNone(valeur, cle)
         self.assertIsNone(lignes['B']['ecart_p50_kwh'])
 

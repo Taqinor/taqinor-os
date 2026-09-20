@@ -283,6 +283,25 @@ class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
     def get_layout_nb_panneaux(self, obj):
         return self._peremption_layout(obj)['layout_nb_panneaux']
 
+    # CAL28/CAL40 — LE CALEPINAGE QUI PILOTE CE DEVIS. Le sélecteur existait
+    # (``selectors.calepinage_du_devis``) mais AUCUN sérialiseur ne le
+    # publiait : le bloc ``BlocCalepinageDevis`` (CAL40) restait invisible,
+    # faute de la clé ``calepinage`` qu'il lit sur la fiche devis. Lecture
+    # seule, jamais écrite : la donnée appartient à ``apps.calepinage``.
+    #
+    # DÉTAIL seulement, même discipline que ``layout_stale`` juste au-dessus :
+    # le sélecteur exécute une requête PAR devis, ce qui ferait de la liste un
+    # N+1. En liste la clé vaut ``null`` = « non calculé ici », jamais « pas de
+    # calepinage ».
+    calepinage = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_calepinage(self, obj):
+        if self.parent is not None:
+            return None
+        from .selectors import calepinage_du_devis
+        return calepinage_du_devis(obj)
+
     def _peremption_layout(self, obj):
         """DÉTAIL seulement : en LISTE, les deux clés valent ``null``.
 

@@ -16,12 +16,37 @@ from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
 from .views.calepinages import CalepinageViewSet
+from .views.consommation import ProfilsTypesView
 from .views.moteur import (
     MoteurCalculerView,
     MoteurPoseView,
     MoteurResultatView,
 )
-from .views.parametres import ParametresCalepinageView
+from .views.parametres import (
+    ParametresCalepinageView,
+    SuggestionPenteIGNView,
+)
+# CAL243 — rattache l'action ``equipements`` au ``CalepinageViewSet`` par
+# import (affectation d'attribut de classe, voir la docstring du module) ;
+# doit s'exécuter AVANT ``router.register`` pour que le routeur la découvre.
+from .views import equipements as _equipements_action  # noqa: F401
+# CAL144 — même forme pour l'export CSV (``calepinages/<pk>/export-csv/``) :
+# code dans un fichier neuf, enregistrement en une ligne additive.
+from .views import export_csv as _export_csv_action  # noqa: F401
+# CAL246 — même patron : rattache l'action ``modeles`` (bibliothèque).
+from .views import bibliotheque as _bibliotheque_action  # noqa: F401
+# CAL207 — même patron : rattache l'action ``deverrouiller``.
+from .views import verrou as _verrou_action  # noqa: F401
+# CAL208 — même patron : rattache ``archiver``/``restaurer-corbeille``.
+from .views import archivage as _archivage_action  # noqa: F401
+# CAL216 — même patron : rattache ``export-layout``/``import-layout``.
+from .views import io_layout as _io_layout_action  # noqa: F401
+# CAL159 — même discipline pour l'action ``pompage`` (dimensionnement du
+# pompage solaire, services CAL155-CAL158) : code dans son propre fichier,
+# rattachement par cet import, AVANT ``router.register``.
+from .views import pompage as _pompage_action  # noqa: F401
+# CAL139 — même patron : rattache ``pertes``/``enregistrer-pertes``.
+from .views import simulation as _simulation_actions  # noqa: F401
 
 # ``SimpleRouter`` et non ``DefaultRouter`` (même choix qu'``apps/ai_governance``)
 # : ``DefaultRouter`` ajoute une vue « api-root » que personne n'appelle ET un
@@ -53,5 +78,18 @@ urlpatterns = [
     # n'y a jamais deux jeux de réglages pour une même société).
     path('parametres/', ParametresCalepinageView.as_view(),
          name='calepinage-parametres'),
+    # CAL237 — la suggestion de pente/azimut IGN (France seule). Elle vit sous
+    # le préfixe ``parametres`` parce que c'est un RÉGLAGE société qui la
+    # commande (``imagerie.pays == 'fr'``, CAL47) : elle ne sert aucun objet
+    # métier, aucun identifiant de calepinage n'y entre, et elle ne persiste
+    # rien — elle PROPOSE.
+    path('parametres/suggestion-pente/', SuggestionPenteIGNView.as_view(),
+         name='calepinage-parametres-suggestion-pente'),
+    # CAL149 — les PROFILS TYPES de consommation de la société. Même raison
+    # que ci-dessus : c'est un RÉGLAGE société (aucun identifiant de
+    # calepinage n'y entre), donc il vit sous le préfixe ``parametres`` et
+    # n'ouvre aucune seconde famille d'URL pour l'objet métier.
+    path('parametres/profils-types/', ProfilsTypesView.as_view(),
+         name='calepinage-parametres-profils-types'),
     path('', include(router.urls)),
 ]

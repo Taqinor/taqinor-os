@@ -38,3 +38,51 @@ def expirees(company=None, *, now=None):
     if company is not None:
         qs = qs.filter(company=company)
     return qs
+
+
+def entree_active(instance):
+    """CAL208 — l'entrée de corbeille ACTIVE (non restaurée) d'``instance``,
+    ou ``None``.
+
+    Générique par ``contenttypes``, comme ``ElementSupprime`` lui-même :
+    utile à une app qui doit savoir si SA PROPRE cible est actuellement
+    archivée, sans requêter ``ElementSupprime`` directement (frontière
+    inter-apps, CLAUDE.md) — ex. exclure ses éléments archivés d'une liste
+    PAR DÉFAUT.
+    """
+    from django.contrib.contenttypes.models import ContentType
+
+    if instance is None or not getattr(instance, 'pk', None):
+        return None
+    content_type = ContentType.objects.get_for_model(type(instance))
+    return (ElementSupprime.objects
+            .filter(content_type=content_type, object_id=instance.pk,
+                    restaure_le__isnull=True)
+            .first())
+
+
+def ids_dans_corbeille(cle_modele, *, company=None):
+    """CAL208 — les ``object_id`` ACTIFS (non restaurés) de ``cle_modele``
+    (ex. ``'calepinage.calepinage'``).
+
+    Utile à un module qui doit exclure ses éléments archivés d'une liste PAR
+    DÉFAUT sans importer ``ElementSupprime`` directement. ``company`` est
+    OPTIONNELLE et resserre le résultat quand elle est fournie — l'omettre
+    reste SÛR : les identifiants Django sont uniques PAR TABLE, jamais par
+    société, donc exclure cet ensemble d'un queryset déjà scopé société ne
+    peut jamais en retirer la ligne d'une AUTRE société par erreur.
+    """
+    from django.contrib.contenttypes.models import ContentType
+
+    try:
+        app_label, modele = str(cle_modele).strip().lower().split('.', 1)
+        content_type = ContentType.objects.get_by_natural_key(
+            app_label, modele)
+    except (ValueError, ContentType.DoesNotExist):
+        return ElementSupprime.objects.none().values_list(
+            'object_id', flat=True)
+    qs = ElementSupprime.objects.filter(content_type=content_type,
+                                        restaure_le__isnull=True)
+    if company is not None:
+        qs = qs.filter(company=company)
+    return qs.values_list('object_id', flat=True)

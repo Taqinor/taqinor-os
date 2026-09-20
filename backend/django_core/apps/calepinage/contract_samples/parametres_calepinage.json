@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/parametres/",
-  "pourquoi": "CAL45 — LES réglages société du module Calepinage : UNE base, sept extensions. Sept tâches du groupe (imagerie/pays CAL47, dégagements CAL71, zones réglementaires CAL74, gabarits de disposition CAL82, presets CAL197, favoris matériel CAL200, gabarits de dossier CAL190) voulaient chacune leur modèle et leur migration pour la même surface : elles ÉTENDENT désormais une section de ce document, elles n'en créent plus. PACT10 : ce fichier part AVANT les deux moitiés — sans lui, la lane écran et la lane serveur inventent deux formes, exactement l'incident du 03/08/2026. Les SEPT clés sont TOUJOURS présentes : une société qui n'a jamais rien réglé reçoit sept objets vides, ce qui veut dire « comportement d'aujourd'hui, strictement inchangé » — jamais une clé absente que l'écran devrait deviner. Une section inconnue envoyée en PUT est refusée en NOMMANT la clé fautive. Source de vérité : apps/calepinage/selectors.py::parametres_de_societe (SECTIONS_PARAMETRES).",
+  "pourquoi": "CAL45 — LES réglages société du module Calepinage : UNE base, sept extensions. Sept tâches du groupe (imagerie/pays CAL47, dégagements CAL71, zones réglementaires CAL74, gabarits de disposition CAL82, presets CAL197, favoris matériel CAL200, gabarits de dossier CAL190) voulaient chacune leur modèle et leur migration pour la même surface : elles ÉTENDENT désormais une section de ce document, elles n'en créent plus. PACT10 : ce fichier part AVANT les deux moitiés — sans lui, la lane écran et la lane serveur inventent deux formes, exactement l'incident du 03/08/2026. Les SEPT clés sont TOUJOURS présentes : une société qui n'a jamais rien réglé reçoit sept objets vides, ce qui veut dire « comportement d'aujourd'hui, strictement inchangé » — jamais une clé absente que l'écran devrait deviner. Une section inconnue envoyée en PUT est refusée en NOMMANT la clé fautive. Source de vérité : apps/calepinage/selectors.py::parametres_de_societe (SECTIONS_PARAMETRES). CAL246 — la réponse porte AUSSI `kits` : le catalogue de kits de pose AO (apps.ao.selectors.kits_de_pose, CAL198), LU, jamais stocké — ce n'est pas une huitième section, et PUT le refuse comme toute clé inconnue (lecture seule depuis cet endpoint). La bibliothèque des calepinages MARQUÉS modèle (CAL199) est servie à part, `GET /api/django/calepinage/calepinages/modeles/`.",
   "exemple": {
     "imagerie": {
       "fournisseur": "google",
@@ -13,22 +13,69 @@
       "source": "valeur atelier actuelle, non sourcée"
     },
     "zones_types": {
-      "interdite": { "libelle": "Zone interdite", "retrait_m": 0.5 },
-      "servitude": { "libelle": "Servitude", "retrait_m": 1.0 }
+      "coupe_feu": {
+        "libelle": "Bande coupe-feu",
+        "nature": "INTERDITE",
+        "genre": "bande",
+        "largeur_m": 1.2,
+        "cote": "nord",
+        "sommets": [],
+        "retrait_m": 0.0,
+        "hauteur_m": null,
+        "source": "Arrêté préfectoral n° 2026-14, art. 7"
+      }
     },
     "gabarits_disposition": {
-      "portrait_2x10": { "orientation": "portrait", "rangees": 2, "colonnes": 10 }
+      "portrait_2x10": {
+        "orientation": "portrait",
+        "rangees": 2,
+        "colonnes": 10
+      }
     },
     "presets": {
-      "villa_standard": { "panneau_w": 580, "orientation": "portrait" }
+      "villa_standard": {
+        "panneau_w": 580,
+        "orientation": "portrait"
+      }
     },
     "favoris_materiel": {
-      "panneau": [412, 418],
-      "onduleur_hybride": [901]
+      "panneau": [
+        412,
+        418
+      ],
+      "onduleur_hybride": [
+        901
+      ]
     },
     "gabarits_dossier": {
       "raccordement_bt": { "libelle": "Dossier de raccordement BT", "pieces": ["plan_masse", "schema_unifilaire"] }
-    }
+    },
+    "norme_electrique": {
+      "norme": "nf_c_15_100",
+      "reference": "NF C 15-100 / UTE C 15-712-1 / IEC 62548",
+      "coefficients": {
+        "chute_dc_max_pct": { "valeur": 3.0, "reference": "UTE C 15-712-1 — chute de tension DC, maximum" }
+      }
+    },
+    "kits": [
+      {
+        "id": 12,
+        "code": "VILLA-720-EW",
+        "libelle": "Chevron dos-à-dos 720 Wc",
+        "mode": "table_dos_a_dos",
+        "modules_par_kit": 2,
+        "pas_rangee_m": 1.134,
+        "longueur_pente_m": 1.303,
+        "faitage_m": 0.0,
+        "emprise_transversale_m": 2.566,
+        "puissance_module_w": 720,
+        "inclinaison_deg": 15.0,
+        "orientation_modules": "portrait",
+        "actif": true,
+        "produit_id": 55,
+        "produit_archive": false
+      }
+    ]
   },
   "exemple_vide": {
     "imagerie": {},
@@ -37,6 +84,8 @@
     "gabarits_disposition": {},
     "presets": {},
     "favoris_materiel": {},
-    "gabarits_dossier": {}
+    "gabarits_dossier": {},
+    "norme_electrique": {},
+    "kits": []
   }
 }

@@ -68,7 +68,7 @@ const calepinageApi = {
     // enregistre ; le serveur ne touche que `roof_layout`/`layout_hash` et ne
     // change AUCUN statut.
     layout: (id) => api.get(`${pivot(id)}layout/`),
-    enregistrerLayout: (id, corps) => api.post(`${pivot(id)}layout/`, corps),
+    enregistrerLayoutCalepinage: (id, corps) => api.post(`${pivot(id)}layout/`, corps),
 
     // CAL19 — l'image d'aperçu de toiture, stockée par le MÊME chemin que les
     // ventes (MinIO + URL présignée) ; aucun second chemin de stockage.
@@ -92,9 +92,26 @@ const calepinageApi = {
     // serveur : un écran ne les recalcule jamais.
     comparer: (id) => api.get(`${pivot(id)}comparer/`),
 
+    // CAL243 — les équipements RETENUS et leur complétude de fiche
+    // (`contract_samples/calepinage_equipements.json`). Lecture PURE : aucune
+    // clé de prix d'achat ni de marge n'y transite (gardé par CAL122).
+    equipements: (id) => api.get(`${pivot(id)}equipements/`),
+
+    // CAL159 — le dimensionnement du pompage (puits, besoin, réservoir,
+    // courbe + point de fonctionnement, 12 volumes mensuels, pompe/variateur),
+    // contrat `contract_samples/calepinage_pompage.json`. POST parce que
+    // l'entrée est une SAISIE ; le serveur n'écrit RIEN.
+    pompage: (id, corps) => api.post(`${pivot(id)}pompage/`, corps),
+
     // CAL244 — le résultat retenu du calepinage
     // (`contract_samples/calepinage_resultat.json`).
     resultat: (id) => api.get(`${pivot(id)}resultat/`),
+
+    // CAL195 — le schéma unifilaire du calepinage, en SVG inline. Le SVG est
+    // composé PAR LE SERVEUR (même moteur que le devis, `core.electrique`) :
+    // l'écran l'affiche, il ne dessine rien. `svg: null` + `bloquants` quand
+    // la conception ne permet pas de dessiner — jamais un schéma approximatif.
+    schemaUnifilaire: (id) => api.get(`${pivot(id)}schema-unifilaire/`),
 
     // CAL247 — les dossiers réglementaires
     // (`contract_samples/dossiers_reglementaires.json`).

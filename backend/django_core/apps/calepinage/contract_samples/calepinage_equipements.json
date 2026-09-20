@@ -1,0 +1,92 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/equipements/",
+  "pourquoi": "CONTRAT D'ABORD (PACT10 / PACT11). CAL121 est l'écran qui lit cet agrégat, CAL243 est la vue qui le sert — deux lanes file-disjointes qui inventeraient mécaniquement deux formes sans ce fichier posé seul en premier (incident du 03/08/2026). L'agrégat rend le panneau, l'onduleur, la batterie et l'optimiseur RETENUS par le devis lié au calepinage (le devis porte l'équipement chiffré ; le calepinage porte la géométrie), un par famille — la première ligne PRODUIT du devis dont la fiche technique (`apps.stock.selectors.specs_for_produit` / `type_fiche_produit`) est de ce type. Pour chaque équipement retenu : `produit` (identifiant, jamais un prix), `designation`, `quantite` (saisie sur la ligne de devis), `specs` (le bloc électrique/dimensions lu sur la fiche technique — clé absente si non saisie, jamais une valeur inventée), `champs_renseignes`/`champs_manquants` (la complétude du contrat de champs de cette famille) et `sources` (d'où vient chaque valeur : `fiche` pour les specs constructeur, `saisie` pour la quantité — jamais `pvgis` ni `hypothese` ici, ce bloc ne porte aucune donnée climatique ni aucune hypothèse). Une famille sans ligne retenue vaut `null` (jamais un objet à moitié rempli). Sans devis lié, les quatre familles valent `null` et `devis` vaut `null`. AUCUNE clé `prix_achat`, `cout_achat` ni `marge` — gardé par CAL122.",
+  "exemple": {
+    "calepinage": 1,
+    "devis": 7,
+    "panneau": {
+      "produit": 21,
+      "designation": "Module PV 550 Wc",
+      "quantite": 12,
+      "specs": {
+        "vmp_v": 41.5,
+        "voc_v": 49.8,
+        "isc_a": 13.9,
+        "imp_a": 13.25,
+        "pmax_wc": 550,
+        "longueur_mm": 2278,
+        "largeur_mm": 1134,
+        "poids_kg": 27.5,
+        "rendement_pct": 21.3
+      },
+      "champs_renseignes": [
+        "vmp_v", "voc_v", "isc_a", "imp_a", "pmax_wc", "longueur_mm",
+        "largeur_mm", "poids_kg", "rendement_pct"
+      ],
+      "champs_manquants": [
+        "temp_coeff_voc_pct_c", "temp_coeff_pmax_pct_c", "epaisseur_mm",
+        "techno_cellule", "bifacial", "noct_c", "uc_w_m2k", "uv_w_m3sk",
+        "bifacialite_pct", "degradation_annuelle_pct",
+        "degradation_annee1_pct", "garantie_pct_a_10_ans",
+        "garantie_pct_a_25_ans"
+      ],
+      "sources": {
+        "quantite": "saisie",
+        "vmp_v": "fiche",
+        "voc_v": "fiche",
+        "isc_a": "fiche",
+        "imp_a": "fiche",
+        "pmax_wc": "fiche",
+        "longueur_mm": "fiche",
+        "largeur_mm": "fiche",
+        "poids_kg": "fiche",
+        "rendement_pct": "fiche"
+      }
+    },
+    "onduleur": {
+      "produit": 22,
+      "designation": "Onduleur hybride 10 kW",
+      "quantite": 1,
+      "specs": {
+        "n_mppt": 2,
+        "mppt_v_min": 120,
+        "mppt_v_max": 550,
+        "v_max_abs": 600,
+        "i_max_mppt_a": 13.5,
+        "ac_kw": 10,
+        "phases": 3,
+        "rendement_euro_pct": 97.5
+      },
+      "champs_renseignes": [
+        "n_mppt", "mppt_v_min", "mppt_v_max", "v_max_abs", "i_max_mppt_a",
+        "ac_kw", "phases", "rendement_euro_pct"
+      ],
+      "champs_manquants": [
+        "v_demarrage_v", "isc_max_mppt_a", "bat_max_charge_kw",
+        "bat_max_decharge_kw", "entrees_par_mppt", "chaines_max_par_mppt",
+        "s_max_kva", "dc_max_kwc"
+      ],
+      "sources": {
+        "quantite": "saisie",
+        "n_mppt": "fiche",
+        "mppt_v_min": "fiche",
+        "mppt_v_max": "fiche",
+        "v_max_abs": "fiche",
+        "i_max_mppt_a": "fiche",
+        "ac_kw": "fiche",
+        "phases": "fiche",
+        "rendement_euro_pct": "fiche"
+      }
+    },
+    "batterie": null,
+    "optimiseur": null
+  },
+  "exemple_vide": {
+    "calepinage": 2,
+    "devis": null,
+    "panneau": null,
+    "onduleur": null,
+    "batterie": null,
+    "optimiseur": null
+  }
+}
