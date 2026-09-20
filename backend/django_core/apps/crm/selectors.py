@@ -2220,8 +2220,8 @@ def equipements_pour_devis(devis):
 
 
 # Champs Lead autorisés dans les règles JSON d'un segment marketing (XMKT6,
-# apps.compta). Whitelist stricte — toute clé inconnue est rejetée côté
-# validation, jamais évaluée à l'aveugle.
+# module marketing de compta). Whitelist stricte — toute clé inconnue est
+# rejetée côté validation, jamais évaluée à l'aveugle.
 LEAD_SEGMENT_FIELDS = (
     'ville', 'type_installation', 'tags', 'canal', 'score', 'facture_energie',
 )
@@ -2229,8 +2229,9 @@ LEAD_SEGMENT_FIELDS = (
 
 def leads_matching_regles(company, regles):
     """XMKT6 — Renvoie le queryset de ``Lead`` correspondant aux règles JSON
-    d'un segment marketing. LECTURE SEULE, point d'entrée cross-app pour
-    ``apps.compta`` (jamais d'import direct de ``apps.crm.models`` ailleurs).
+    d'un segment marketing. LECTURE SEULE, point d'entrée cross-app pour le
+    module marketing de compta (jamais d'import direct de
+    ``apps.crm.models`` ailleurs).
 
     ``regles`` est un dict dont les clés viennent de ``LEAD_SEGMENT_FIELDS`` :
 
@@ -2243,8 +2244,8 @@ def leads_matching_regles(company, regles):
       ``facture_hiver``, la facture de référence du lead).
 
     Une clé absente de ``LEAD_SEGMENT_FIELDS`` lève ``ValueError`` — la
-    validation stricte vit ici, appelée par ``apps.compta.services`` avant
-    tout enregistrement/évaluation.
+    validation stricte vit ici, appelée par le module marketing de compta
+    avant tout enregistrement/évaluation.
     """
     from .models import Lead
 
@@ -2278,9 +2279,9 @@ def leads_matching_regles(company, regles):
 
 def lead_merge_fields(company, lead_id):
     """XMKT8 — Champs LECTURE SEULE d'un lead pour la substitution de
-    variables de fusion dans une campagne marketing (``apps.compta``, jamais
-    d'import direct de ``apps.crm.models``). Renvoie ``None`` si le lead
-    n'appartient pas à la société (jamais d'accès cross-tenant).
+    variables de fusion dans une campagne marketing (module marketing de
+    compta, jamais d'import direct de ``apps.crm.models``). Renvoie ``None``
+    si le lead n'appartient pas à la société (jamais d'accès cross-tenant).
 
     Ne renvoie JAMAIS ``prix_achat`` ni aucune donnée interne — uniquement
     les champs de contact/adresse déjà publics dans la fiche lead.
@@ -2306,8 +2307,9 @@ def lead_merge_fields(company, lead_id):
 
 def lead_contact_identifiers(company, lead_ids):
     """XMKT36 — email/téléphone LECTURE SEULE des leads d'un segment, pour le
-    hash SHA-256 côté serveur (``apps.compta``, jamais d'import direct de
-    ``apps.crm.models``). Scopé société : un id hors société est ignoré.
+    hash SHA-256 côté serveur (module marketing de compta, jamais d'import
+    direct de ``apps.crm.models``). Scopé société : un id hors société est
+    ignoré.
     Ne renvoie JAMAIS aucune donnée interne (prix_achat/marge inexistants
     ici) — uniquement les identifiants de contact déjà publics de la fiche."""
     from .models import Lead
@@ -3570,9 +3572,9 @@ def organic_referral_lead_series(company, *, date_start=None, date_end=None):
 
 def lead_criteria_for_territoire(company, lead_id):
     """NTCRM1 — Contexte plat de matching territoire pour un lead réel,
-    exposé aux AUTRES apps (``apps.territoires.views``) au lieu d'un import
-    direct de ``apps.crm.models`` — jamais cross-tenant : ``None`` si le lead
-    n'existe pas ou appartient à une autre société."""
+    exposé aux AUTRES apps (historiquement le module territoires) au lieu
+    d'un import direct de ``apps.crm.models`` — jamais cross-tenant : ``None``
+    si le lead n'existe pas ou appartient à une autre société."""
     from .models import Lead
 
     try:
@@ -3590,7 +3592,7 @@ def lead_criteria_for_territoire(company, lead_id):
 def leads_recents_pour_couverture(company, jours=30):
     """NTCRM25 — Leads récents (``jours`` derniers jours) de ``company``, avec
     leur contexte plat de matching territoire (même forme que
-    ``lead_criteria_for_territoire``), exposés à ``apps.territoires`` pour le
+    ``lead_criteria_for_territoire``), exposés au module territoires pour le
     rapport de couverture — jamais un import direct de ``apps.crm.models``
     depuis l'appelant."""
     from django.utils import timezone

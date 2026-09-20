@@ -8,13 +8,9 @@ Couvre :
   - un lead existant mais PERDU ou ARCHIVÉ n'est pas réutilisé (nouveau
     lead créé — cohérent avec YLEAD11 qui gère la réactivation séparément) ;
   - company-scopé : deux sociétés ne partagent jamais un lead même avec le
-    même numéro ;
-  - gated : ``compta.services.capturer_message_whatsapp`` est un NO-OP quand
-    WhatsApp est désactivé (comportement inchangé), et route bien vers
-    ``resolve_or_create_lead_from_whatsapp`` quand activé — idempotent par
-    ``wa_message_id`` (retry Meta ne recrée rien).
+    même numéro.
 """
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 from authentication.models import Company
 
@@ -85,43 +81,3 @@ class ResolveOrCreateFromWhatsappTests(TestCase):
         self.assertNotEqual(lead_a.pk, lead_b.pk)
         self.assertEqual(lead_a.company_id, self.company.id)
         self.assertEqual(lead_b.company_id, other_company.id)
-
-
-class CapturerMessageWhatsappGatedTests(TestCase):
-    """Vérifie le câblage compta.services.capturer_message_whatsapp → YLEAD8."""
-
-    def setUp(self):
-        self.company = Company.objects.create(
-            nom='Taqinor YLEAD8 Gate', slug='taqinor-ylead8-gate')
-
-    @override_settings(WHATSAPP_ENABLED=False)
-    def test_noop_when_whatsapp_disabled(self):
-        from apps.compta.services import capturer_message_whatsapp
-        log = capturer_message_whatsapp(
-            self.company, wa_message_id='wamid.1', expediteur='+212661110000')
-        self.assertIsNone(log)
-        self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
-
-    @override_settings(WHATSAPP_ENABLED=True, WHATSAPP_ACCESS_TOKEN='tok')
-    def test_second_inbound_message_reuses_lead_via_ylead8(self):
-        from apps.compta.services import capturer_message_whatsapp
-        log1 = capturer_message_whatsapp(
-            self.company, wa_message_id='wamid.a', expediteur='+212661110001',
-            nom_profil='Youssef')
-        log2 = capturer_message_whatsapp(
-            self.company, wa_message_id='wamid.b', expediteur='+212661110001',
-            nom_profil='Youssef')
-        self.assertIsNotNone(log1.lead_id)
-        self.assertEqual(log1.lead_id, log2.lead_id)
-        self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
-
-    @override_settings(WHATSAPP_ENABLED=True, WHATSAPP_ACCESS_TOKEN='tok')
-    def test_retry_same_wa_message_id_is_idempotent(self):
-        """Un retry Meta (même wa_message_id) ne retraite pas le message."""
-        from apps.compta.services import capturer_message_whatsapp
-        log1 = capturer_message_whatsapp(
-            self.company, wa_message_id='wamid.retry', expediteur='+212661110002')
-        log2 = capturer_message_whatsapp(
-            self.company, wa_message_id='wamid.retry', expediteur='+212661110002')
-        self.assertEqual(log1.pk, log2.pk)
-        self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
