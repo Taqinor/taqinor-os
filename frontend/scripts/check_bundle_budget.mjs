@@ -203,7 +203,9 @@ const PER_CHUNK_BUDGET_KB = 350
 // fichiers touchés. Budget monté au juste-dessus de la mesure.
 // 20/09/2026 : + lot 2 du module Calepinage — mesure RÉELLE 3752,6 Ko sur l arbre fusionné
 // sur l'arbre fusionné (voir commit).
-const TOTAL_BUDGET_KB = 3760
+// 20/09/2026 (lot 3 du module Calepinage, mesure RÉELLE 3806,7 Ko sur dev-cal-3 : ~25 écrans/panneaux
+// lazy du module + mode terrain/ombrière/horizon/course du soleil de l atelier) : 3760 -> 3815.
+const TOTAL_BUDGET_KB = 3815
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -318,7 +320,9 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // intégré, run 34705188854). Croissance une-route-un-chunk (classe #85).
 // 2026-09-20 : 835 -> 845 (mesure réelle 839, drain NT ~110 tâches, ~10
 // routes lazy neuves — même classe #85, croissance une-route-un-chunk).
-export const MAX_CHUNK_COUNT = 845
+// 20/09/2026 : 845 -> 865 (mesure réelle 863 sur dev-cal-3, lot 3 Calepinage — chaque écran contextuel
+// du module est un chunk lazy, jamais préchargé sur /login).
+export const MAX_CHUNK_COUNT = 865
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux
