@@ -273,6 +273,54 @@ class AnalyserDxfView(APIView):
         return Response(resultat)
 
 
+def _calepinage_pour_ecriture(appel_offre, user):
+    """CAL32 — LE calepinage du module où écrire la conception de l'affaire.
+
+    Le module est atteint par ses SEULES portes publiques
+    (``apps.calepinage.selectors`` / ``apps.calepinage.services``, imports
+    fonction-locaux) : jamais ses modèles — contrats import-linter
+    ``ao-models-decoupled`` / ``calepinage-models-decoupled``.
+
+    Ordre, et il n'y en a pas d'autre :
+
+    1. le calepinage DÉJÀ rattaché à l'affaire (le geste est idempotent) ;
+    2. sinon, un calepinage neuf créé sur le LEAD de l'affaire, puis rattaché.
+
+    Rend ``None`` — sans lever — quand l'affaire n'a pas de lead RÉSOLVABLE
+    dans sa société (aucun ``lead_id``, ou un identifiant devenu orphelin) :
+    la base REFUSE un calepinage qui n'a ni lead ni client (contrainte
+    ``calepinage_lead_ou_client``, CAL7) et ``AppelOffre`` ne porte AUCUN
+    client. Inventer un rattachement serait un lien faux, et refuser
+    l'enregistrement casserait un atelier qui fonctionne aujourd'hui :
+    l'affaire écrit alors ``roof_layout`` seul, exactement comme avant CAL32.
+    Le cas est couvert par un test.
+
+    Raises:
+        ValueError: refus métier du module sur le RATTACHEMENT (l'affaire est
+            déjà liée à un AUTRE calepinage) — message français, champ nommé.
+    """
+    from apps.calepinage import selectors as selectors_calepinage
+    from apps.calepinage import services as services_calepinage
+
+    company = getattr(appel_offre, 'company', None)
+    existant = selectors_calepinage.calepinage_de_l_affaire(
+        appel_offre.pk, company)
+    if existant is not None:
+        return existant
+    if not appel_offre.lead_id:
+        return None
+
+    try:
+        calepinage = services_calepinage.creer_pour_lead(
+            appel_offre.lead_id, company, user=user,
+            titre=f'Calepinage {appel_offre.reference}'.strip())
+    except ValueError:
+        # Lead orphelin ou d'une autre société : MÊME cas que « pas de lead ».
+        return None
+    return services_calepinage.lier_appel_offre(
+        calepinage, appel_offre.pk, user=user)
+
+
 # ── FG222 — Gestion des appels d'offres ────────────────────────────────────
 
 class AppelOffreViewSet(AoBaseViewSet):
@@ -478,6 +526,15 @@ class AppelOffreViewSet(AoBaseViewSet):
         (``ToitureAO``/``ZoneAO``/``ChaineCotes``) n'est pas réécrite — le
         layout est un document de TRAVAIL, pas un relevé.
 
+        CAL32 — LE DOCUMENT EST DÉSORMAIS CELUI DU MODULE. Le POST délègue à
+        ``apps.calepinage.services.enregistrer_layout`` (import fonction-local,
+        jamais ses modèles) : c'est lui qui pose l'empreinte et historise une
+        VERSION quand la géométrie a changé. ``AppelOffre.roof_layout`` reste
+        écrit en miroir — c'est ce que lisent encore le GET ci-dessous et
+        ``selectors.contexte_conception_affaire``, et CAL30 l'a délibérément
+        CONSERVÉ : tant que ces lecteurs ne sont pas rebranchés, cesser de
+        l'écrire ferait régresser l'atelier.
+
         Une affaire déposée ou close répond 409 avec le motif FRANÇAIS du
         serveur (le même que ``design-context``) : l'écran n'a rien à deviner.
         Affaire d'une autre société → 404 (get_queryset).
@@ -486,7 +543,8 @@ class AppelOffreViewSet(AoBaseViewSet):
 
         appel_offre = self.get_object()  # borné société par get_queryset
         if request.method.lower() == 'get':
-            return Response({'roof_layout': appel_offre.roof_layout})
+            return Response({'roof_layout': appel_offre.roof_layout,
+                             'calepinage_id': appel_offre.calepinage_id})
 
         # Le motif est celui du SELECTOR (source unique) : l'écran affiche au
         # chargement EXACTEMENT la phrase que le refus d'écriture renvoie.
@@ -504,9 +562,29 @@ class AppelOffreViewSet(AoBaseViewSet):
         if not isinstance(payload, dict) or not payload:
             return Response({'detail': 'Layout manquant ou invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.calepinage import services as services_calepinage
+
+        champs = ['roof_layout', 'updated_at']
         appel_offre.roof_layout = payload
-        appel_offre.save(update_fields=['roof_layout', 'updated_at'])
-        return Response({'roof_layout': appel_offre.roof_layout})
+        try:
+            calepinage = _calepinage_pour_ecriture(appel_offre, request.user)
+            if calepinage is not None:
+                services_calepinage.enregistrer_layout(
+                    calepinage, payload, user=request.user,
+                    libelle=f'Atelier 3D — affaire {appel_offre.reference}')
+                if appel_offre.calepinage_id != calepinage.pk:
+                    appel_offre.calepinage_id = calepinage.pk
+                    champs.insert(1, 'calepinage_id')
+        except ValueError as refus:
+            # ``CreationRefusee`` / ``LiaisonRefusee`` / ``LayoutRefuse`` —
+            # tous porteurs d'un message FRANÇAIS nommant le champ fautif.
+            return Response({'detail': str(refus),
+                             'champ': getattr(refus, 'champ', '')},
+                            status=status.HTTP_400_BAD_REQUEST)
+        appel_offre.save(update_fields=champs)
+        return Response({'roof_layout': appel_offre.roof_layout,
+                         'calepinage_id': appel_offre.calepinage_id})
 
     @action(detail=True, methods=['get'], url_path='transitions')
     def transitions(self, request, pk=None):
