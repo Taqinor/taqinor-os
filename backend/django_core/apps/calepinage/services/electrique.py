@@ -312,6 +312,7 @@ CHAMPS_ENTREE = (
     'longueur_chaine_forcee',
     'protections',          # CAL132 — décisions société sur la check-list
     'terre',                # CAL134 — check-list de mise à la terre
+    'exigence_marche',      # CAL127 — bornes imposées par le CPS du dossier
 )
 
 
@@ -479,8 +480,12 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     electrique, avertissements = bloc_electrique(conception,
                                                  verdicts=verdicts)
     pose = bloc_pose(conception)
+    ratio, messages_ratio = bloc_ratio_dc_ac(
+        conception,
+        exigence_marche=donnees.get('exigence_marche'),
+        parametres_societe=_parametres_electriques(calepinage))
 
-    messages = list(avertissements)
+    messages = list(avertissements) + list(messages_ratio)
     messages.extend(conception.manquantes)
     messages.extend(materiel['absents'])
     if conception.temperatures is not None and conception.temperatures.mention:
@@ -492,6 +497,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'calepinage': getattr(calepinage, 'pk', None),
         'variante': None,
         'simule': bool(conception.chaines),
+        'calcule_le': None,
         'schema_version': 1,
         'hash_entree': empreinte_entree(
             document, module_specs=materiel['module'],
@@ -501,6 +507,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'version_moteur': _version_moteur(),
         'pose': pose,
         'electrique': electrique,
+        # CAL127 — le ratio n'est PAS publié nu : sa borne et la SOURCE de sa
+        # borne voyagent avec lui, sinon « 1,28 » ne se relit pas.
+        'ratio_dc_ac': ratio,
         'temperatures': (conception.temperatures.en_dict()
                          if conception.temperatures is not None else None),
         'production': {
@@ -523,6 +532,25 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'pertes': [],
         'avertissements': messages,
     }
+
+
+def _parametres_electriques(calepinage):
+    """La section « norme électrique » des réglages société (CAL130).
+
+    Lecture PURE et tolérante : société absente (calcul hors base, test) ou
+    section jamais réglée ⇒ ``{}``, c'est-à-dire « comportement d'aujourd'hui,
+    strictement inchangé » — jamais une valeur par défaut inventée.
+    """
+    company = getattr(calepinage, 'company', None)
+    if company is None:
+        return {}
+    try:
+        from ..selectors import parametres_de_societe
+
+        return parametres_de_societe(company).get('norme_electrique') or {}
+    except Exception:  # noqa: BLE001 — un réglage illisible ne casse pas un
+        # calcul de tension ; il le laisse simplement sans borne société.
+        return {}
 
 
 def _version_moteur():
@@ -612,6 +640,145 @@ def verdicts_electriques(conception):
                    else '%s (%s)' % (ratio.texte, ratio.fourchette_texte)),
     })
     return tuple(verdicts)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CAL127 — LE RATIO DC/AC, SA BORNE, LA SOURCE DE SA BORNE, ET L'ÉCRÊTAGE
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Deux bornes coexistent dans le dépôt sans jamais être visibles ensemble :
+# ``MAX_DC_AC = 1.35`` (``apps/ventes/solar_design.py``, convention
+# onduleuriste) et ``BORNES_RATIO_AC_DC = (0.75, 1.00)``
+# (``core/calepinage/electrique.py``, « lues dans l'exigence du CPS »). Un
+# lecteur qui voit « 1,28 » sans savoir QUELLE borne le juge ne peut rien en
+# conclure.
+#
+# AUCUNE BORNE N'EST ÉCRITE ICI. Elles sont toutes LUES :
+#   * exigence de MARCHÉ (le CPS du dossier) — la plus forte, elle s'impose ;
+#   * paramètre SOCIÉTÉ (réglages du module) ;
+#   * à défaut, la borne du NOYAU électrique, publiée avec sa source.
+#
+# L'ÉCRÊTAGE : la perte d'écrêtage ne se déduit PAS d'un ratio. Elle se
+# calcule heure par heure (c'est ce que fait PVsyst) — donc elle exige la
+# série horaire de CAL135. Tant qu'aucune série n'est fournie, la perte vaut
+# ``null`` et le résultat DIT pourquoi ; ce qui est publié à sa place est la
+# seule grandeur réellement dérivable des puissances : les kWc DC au-dessus de
+# la capacité AC installée.
+
+SOURCE_BORNE_MARCHE = 'exigence de marché'
+SOURCE_BORNE_SOCIETE = 'paramètre société'
+SOURCE_BORNE_NOYAU = 'borne usuelle du noyau électrique'
+
+
+def bornes_ratio(*, exigence_marche=None, parametres_societe=None):
+    """``(borne_dc_ac, seuil_alerte, source, detail)`` — jamais une borne écrite ici.
+
+    ``exigence_marche`` et ``parametres_societe`` sont des dicts portant
+    ``ratio_dc_ac_max`` (et, optionnellement, ``ratio_dc_ac_alerte``). Le
+    premier qui en porte une l'emporte, et la SOURCE retenue voyage avec la
+    valeur.
+    """
+    from core.electrique.onduleurs import (
+        BORNE_USUELLE_DC_AC, SEUIL_ALERTE_DC_AC,
+    )
+
+    for donnees, source in ((exigence_marche, SOURCE_BORNE_MARCHE),
+                            (parametres_societe, SOURCE_BORNE_SOCIETE)):
+        borne = _nombre((donnees or {}).get('ratio_dc_ac_max'))
+        if borne is not None and borne > 0:
+            alerte = _nombre((donnees or {}).get('ratio_dc_ac_alerte'))
+            return (borne, alerte if alerte and alerte > 0 else None, source,
+                    (donnees or {}).get('reference') or '')
+    return (BORNE_USUELLE_DC_AC, SEUIL_ALERTE_DC_AC, SOURCE_BORNE_NOYAU,
+            "core.electrique.onduleurs — convention onduleuriste, borne "
+            "usuelle 1,35 et alerte au-delà de 1,50")
+
+
+def ecretage_depuis_serie(serie_dc_kw, puissance_ac_kw):
+    """Perte d'écrêtage en % d'énergie DC, calculée HEURE PAR HEURE.
+
+    C'est la seule façon honnête de la chiffrer : le ratio seul ne dit pas
+    combien d'heures passent au-dessus de la capacité AC. ``serie_dc_kw`` est
+    la série horaire de puissance DC (CAL135) ; sans elle, l'appelant publie
+    ``null`` et la raison, jamais un pourcentage forfaitaire.
+    """
+    ac = _nombre(puissance_ac_kw)
+    if not serie_dc_kw or ac is None or ac <= 0:
+        return None
+    total = 0.0
+    perdu = 0.0
+    for valeur in serie_dc_kw:
+        puissance = _nombre(valeur)
+        if puissance is None or puissance <= 0:
+            continue
+        total += puissance
+        if puissance > ac:
+            perdu += puissance - ac
+    if total <= 0:
+        return None
+    return round(perdu / total * 100.0, 3)
+
+
+def bloc_ratio_dc_ac(conception, *, exigence_marche=None,
+                     parametres_societe=None, serie_dc_kw=None):
+    """CAL127 — le ratio, SA borne, la SOURCE de sa borne, et l'écrêtage.
+
+    Rend ``(bloc, avertissements)``. Hors bornes, l'avertissement CITE la
+    borne ET sa source : « ratio DC/AC 1,52 au-dessus de la borne 1,35
+    (borne usuelle du noyau électrique) ».
+    """
+    from core.electrique.types import fr
+
+    from .chaines import evaluer_onduleurs
+
+    borne, alerte, source, detail = bornes_ratio(
+        exigence_marche=exigence_marche,
+        parametres_societe=parametres_societe)
+    evaluation = evaluer_onduleurs(conception)
+    valeur = None
+    puissance_ac = None
+    if evaluation is not None and evaluation.nombre:
+        puissance_ac = evaluation.puissance_ac_kw
+        ratio = evaluation.ratio_dc_ac
+        valeur = ratio.valeur if ratio is not None else None
+
+    avertissements = []
+    dans_bornes = None
+    if valeur is not None:
+        dans_bornes = valeur <= borne + 1e-9
+        if not dans_bornes:
+            avertissements.append(
+                "ratio DC/AC de %s au-dessus de la borne %s (%s%s) — "
+                "écrêtage aux heures pleines"
+                % (fr(valeur, 2), fr(borne, 2), source,
+                   ' : %s' % detail if detail else ''))
+        if alerte is not None and valeur > alerte + 1e-9:
+            avertissements.append(
+                "ratio DC/AC de %s au-dessus du seuil d'alerte %s (%s) — "
+                "surdimensionnement DC important"
+                % (fr(valeur, 2), fr(alerte, 2), source))
+
+    ecretage = ecretage_depuis_serie(serie_dc_kw, puissance_ac)
+    dc_kwc = (evaluation.puissance_dc_kwc if evaluation is not None else None)
+    return ({
+        'valeur': (round(valeur, 3) if valeur is not None else None),
+        'borne': borne,
+        'borne_source': source,
+        'borne_reference': detail,
+        'seuil_alerte': alerte,
+        'dans_bornes': dans_bornes,
+        'puissance_dc_kwc': (round(dc_kwc, 3) if dc_kwc else None),
+        'puissance_ac_kw': (round(puissance_ac, 3) if puissance_ac else None),
+        'dc_au_dessus_de_l_ac_kwc': (
+            round(max(0.0, dc_kwc - puissance_ac), 3)
+            if dc_kwc and puissance_ac else None),
+        'ecretage_pct': ecretage,
+        'ecretage_methode': (
+            "calculée heure par heure sur la série de puissance DC"
+            if ecretage is not None else
+            "non calculée : la perte d'écrêtage exige la série horaire "
+            "(CAL135) — aucun forfait n'est appliqué à sa place"),
+    }, tuple(avertissements))
 
 
 def _verdict(code, libelle, valeur, borne, sens, *, bloquant, unite):
