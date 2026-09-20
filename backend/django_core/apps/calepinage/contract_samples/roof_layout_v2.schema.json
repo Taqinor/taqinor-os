@@ -11,25 +11,42 @@
     "version": {
       "description": "1 = document historique, 2 = document émis par serializeLayout depuis PV13. Absent sur certains documents anciens : c'est toléré.",
       "type": "integer",
-      "enum": [1, 2]
+      "enum": [
+        1,
+        2
+      ]
     },
     "pin": {
       "description": "Repère {lat, lng} : le centroïde du contour, ou le point posé par le client. `null` quand aucun tracé n'existe.",
-      "oneOf": [{ "$ref": "#/$defs/latLng" }, { "type": "null" }]
+      "oneOf": [
+        {
+          "$ref": "#/$defs/latLng"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "outline": {
       "description": "Contour de la zone active en [[lat, lng], …] — attention, l'ordre est INVERSE de `zones[].vertices` ([lng, lat]). Tableau vide si aucun tracé fermé.",
       "type": "array",
-      "items": { "$ref": "#/$defs/couple" }
+      "items": {
+        "$ref": "#/$defs/couple"
+      }
     },
     "billKwh": {
       "description": "Consommation annuelle (kWh) issue de la facture, si connue. Jamais déduite ici.",
-      "type": ["number", "null"]
+      "type": [
+        "number",
+        "null"
+      ]
     },
     "zones": {
       "description": "Les PANS de toiture dessinés. Attention : `zones` désigne depuis la v1 les surfaces de pose, pas les zones d'exclusion — celles-ci vivent dans `exclusionZones` (voir CAL68).",
       "type": "array",
-      "items": { "$ref": "#/$defs/zone" }
+      "items": {
+        "$ref": "#/$defs/zone"
+      }
     },
     "activeAreaId": {
       "description": "Identifiant de la zone active au moment de la sérialisation.",
@@ -42,7 +59,11 @@
     "scenario": {
       "description": "Scénario commercial associé au design.",
       "type": "string",
-      "enum": ["reseau", "avec_batterie", "hybride"]
+      "enum": [
+        "reseau",
+        "avec_batterie",
+        "hybride"
+      ]
     },
     "panelWatt": {
       "description": "Puissance unitaire du panneau (W), telle que passée par la page. Jamais devinée.",
@@ -50,30 +71,55 @@
     },
     "battery": {
       "description": "Batterie retenue (forme minimale, tout optionnel). `null` = aucune batterie.",
-      "oneOf": [{ "$ref": "#/$defs/battery" }, { "type": "null" }]
+      "oneOf": [
+        {
+          "$ref": "#/$defs/battery"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "source": {
       "description": "D'où vient ce design.",
       "type": "string",
-      "enum": ["devis", "lead"]
+      "enum": [
+        "devis",
+        "lead"
+      ]
     },
     "devisId": {
       "description": "Identifiant du devis d'origine, ou `null`.",
-      "type": ["string", "integer", "null"]
+      "type": [
+        "string",
+        "integer",
+        "null"
+      ]
     },
     "shading12x24": {
       "description": "PV71 — matrice d'ombrage 12 mois × 24 heures (facteurs de dérate dans [0, 1], 1 = aucun ombrage), ou `null` si aucune ombre n'a été tracée. Taille FIXE, donc charge utile bornée. Une matrice de mauvaise forme est refusée EN BLOC par le sérialiseur (`serializeShading`) : mieux vaut aucune ombre qu'une matrice à moitié fausse.",
-      "oneOf": [{ "$ref": "#/$defs/matrice12x24" }, { "type": "null" }]
+      "oneOf": [
+        {
+          "$ref": "#/$defs/matrice12x24"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "environment": {
       "description": "CAL67 — objets d'environnement posés HORS contour (arbres, bâtiments voisins) qui ombrent le site. OPTIONNEL et additif : absent = aucun objet d'environnement, exactement le comportement d'aujourd'hui. Toutes les dimensions sont SAISIES ; aucune n'est estimée, et un objet sans `heightM` ne porte aucune ombre plutôt qu'une ombre inventée.",
       "type": "array",
-      "items": { "$ref": "#/$defs/environmentObject" }
+      "items": {
+        "$ref": "#/$defs/environmentObject"
+      }
     },
     "exclusionZones": {
       "description": "CAL68 — zones interdites / réservées / préférées, traduites vers `core.calepinage.types.Zone` (repere, nature, sommets, hauteur_m, retrait_m). OPTIONNEL et additif : absent = aucune zone, comportement d'aujourd'hui. NOMMAGE : la tâche CAL68 parle du « tableau `zones[]` », mais ce nom est PRIS depuis la v1 par les pans de toiture — réutiliser `zones` casserait tout document existant et les trois consommateurs backend d'un coup. Le tableau s'appelle donc `exclusionZones`, et c'est CE nom qui fait contrat.",
       "type": "array",
-      "items": { "$ref": "#/$defs/exclusionZone" }
+      "items": {
+        "$ref": "#/$defs/exclusionZone"
+      }
     },
     "measurements": {
       "description": "CAL102 — mesures posées (distance/surface/angle), annotations du calepinage (`roofPro11/mesureUi.ts`). OPTIONNEL et additif : absent ou vide = aucune mesure, comportement d'aujourd'hui. `serializeMeasurements` refuse toute entrée géométriquement invalide pour son genre plutôt que d'en persister une à moitié.",
@@ -83,14 +129,27 @@
     "poseSurfaces": {
       "description": "CAL89 — surfaces de pose qui ne sont PAS des pans de toiture : un champ au SOL. OPTIONNEL et additif : clé absente ou tableau vide = document d'aujourd'hui, et le mode TOITURE reste strictement inchangé (`zones` reste la toiture, cette clé ne la touche jamais). Le document et la 3D sont les mêmes ; seul le genre de surface change.",
       "type": "array",
-      "items": { "$ref": "#/$defs/poseSurface" }
+      "items": { "$ref": "#/$defs/poseSurface" },
+      "items": {
+        "$ref": "#/$defs/measurement"
+      }
+    },
+    "setbacksM": {
+      "description": "CAL76 — les quatre retraits de rive RÉGLÉS dans l'atelier (PV63 latéral/extrémité/acrotère + le joint ajouté par CAL76 : core/calepinage/types.py Rives.laterale_m/extremite_m/acrotere_m/joint_m). Champ RACINE (un seul jeu pour tout le document, pas par zone). OPTIONNEL et additif : absent = un lecteur reprend le retrait unique historique (PERIMETER_SETBACK_M pour les trois retraits historiques, 0 pour le joint) — comportement d'aujourd'hui, byte pour byte.",
+      "$ref": "#/$defs/perimeterSetbacks"
+    },
+    "horizonProfile": {
+      "description": "CAL93 — le profil d'horizon lointain (CAL92, obtenu de PVGIS printhorizon, ou saisi à la main) RÉELLEMENT en vigueur au moment de l'export. Champ RACINE (une seule valeur pour tout le document, pas par zone). OPTIONNEL et additif : absent = aucun horizon lointain modélisé — comportement d'aujourd'hui, byte pour byte. Moins de deux points exploitables n'est jamais écrit.",
+      "$ref": "#/$defs/horizonProfile"
     }
   },
   "$defs": {
     "couple": {
       "description": "Un couple de coordonnées. L'ordre dépend du champ qui le porte (voir sa description) : [lng, lat] pour `vertices` et `origin`, [lat, lng] pour `outline`.",
       "type": "array",
-      "items": { "type": "number" },
+      "items": {
+        "type": "number"
+      },
       "minItems": 2,
       "maxItems": 2
     },
@@ -98,8 +157,12 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "lat": { "type": "number" },
-        "lng": { "type": "number" }
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        }
       }
     },
     "matrice12x24": {
@@ -110,7 +173,11 @@
         "type": "array",
         "minItems": 24,
         "maxItems": 24,
-        "items": { "type": "number", "minimum": 0, "maximum": 1 }
+        "items": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
       }
     },
     "result": {
@@ -121,11 +188,18 @@
           "description": "Somme des panneaux POSÉS des géométries exportées. C'est la première clé que lit `_panneaux_du_layout` (puis `count`, puis `nb_panneaux`).",
           "type": "number"
         },
-        "kwc": { "type": "number" },
-        "annualKwh": { "type": "number" },
+        "kwc": {
+          "type": "number"
+        },
+        "annualKwh": {
+          "type": "number"
+        },
         "savings": {
           "description": "Économies annuelles (MAD) telles qu'AFFICHÉES par la page, ou `null` si l'appelant ne les fournit pas. JAMAIS recalculées ni sommées zone à zone (une somme sur-compte le plafond facture). Retirées de la charge utile publique par `_safe_roof_layout`.",
-          "type": ["number", "null"]
+          "type": [
+            "number",
+            "null"
+          ]
         }
       }
     },
@@ -133,9 +207,15 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "kwh": { "type": "number" },
-        "count": { "type": "number" },
-        "model": { "type": "string" }
+        "kwh": {
+          "type": "number"
+        },
+        "count": {
+          "type": "number"
+        },
+        "model": {
+          "type": "string"
+        }
       }
     },
     "zone": {
@@ -143,21 +223,32 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "id": { "type": "string" },
-        "label": { "type": "string" },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
         "vertices": {
           "description": "Contour du pan en [[lng, lat], …].",
           "type": "array",
-          "items": { "$ref": "#/$defs/couple" }
+          "items": {
+            "$ref": "#/$defs/couple"
+          }
         },
         "obstacles": {
           "type": "array",
-          "items": { "$ref": "#/$defs/obstacle" }
+          "items": {
+            "$ref": "#/$defs/obstacle"
+          }
         },
         "roofType": {
           "description": "OPTIONNEL depuis F2 : une zone posée par le SERVEUR depuis le tracé du client l'OMET délibérément (personne n'a mesuré ce toit, et un champ écrit ici descend jusqu'à l'annexe « paramètres du site » de la proposition CLIENT). Les deux lecteurs appliquent alors les valeurs de zone vierge de `newAreaRecord()`.",
           "type": "string",
-          "enum": ["flat", "pitched"]
+          "enum": [
+            "flat",
+            "pitched"
+          ]
         },
         "pitchDeg": {
           "description": "OPTIONNEL — même raison que `roofType` (F2).",
@@ -167,26 +258,45 @@
           "description": "OPTIONNEL — même raison que `roofType` (F2). Azimut de FACE (° ; 0 = N, 90 = E, 180 = S, 270 = O).",
           "type": "number"
         },
-        "facingManual": { "type": "boolean" },
+        "facingManual": {
+          "type": "boolean"
+        },
         "neededPanels": {
           "description": "Compte SOUHAITÉ (dimensionnement). À ne pas confondre avec `geometry.count`, le compte POSÉ, qui prime.",
           "type": "number"
         },
-        "neededAuto": { "type": "boolean" },
+        "neededAuto": {
+          "type": "boolean"
+        },
         "result": {
           "description": "Résultat de zone déjà calculé à l'écran, quand il existe. Prime sur `geometry` chez `extract_roof_config`.",
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "count": { "type": "number" },
-            "kwc": { "type": "number" },
-            "areaM2": { "type": "number" },
-            "annualKwh": { "type": "number" }
+            "count": {
+              "type": "number"
+            },
+            "kwc": {
+              "type": "number"
+            },
+            "areaM2": {
+              "type": "number"
+            },
+            "annualKwh": {
+              "type": "number"
+            }
           }
         },
         "shading12x24": {
           "description": "PV71 — matrice d'ombrage PROPRE à cette zone, lue en priorité sur la matrice de racine.",
-          "oneOf": [{ "$ref": "#/$defs/matrice12x24" }, { "type": "null" }]
+          "oneOf": [
+            {
+              "$ref": "#/$defs/matrice12x24"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "geometry": {
           "description": "WJ24 — géométrie pleine du pan (additive). Présente seulement si un plan de rendu existe. Le round-trip `deserializeLayout` l'ignore (dérivée, recalculée au boot) ; elle sert à l'export ERP et à la republication publique de la POSE RÉELLE.",
@@ -199,7 +309,9 @@
         "edges": {
           "description": "CAL57 — type d'arête par segment du contour. OPTIONNEL et additif : absent = aucune arête typée, comportement d'aujourd'hui (`computeRidgeLifts` continue de déduire un faîtage commun entre pans partageant une arête). Le type est déduit par défaut puis corrigible à la main ; AUCUN retrait n'en découle dans CAL57 (c'est CAL76).",
           "type": "array",
-          "items": { "$ref": "#/$defs/edge" }
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
         }
       }
     },
@@ -215,7 +327,14 @@
         "type": {
           "description": "`inconnue` existe pour qu'une arête dont le type n'a PAS pu être déduit garde sa place dans le tableau : l'omettre décalerait tous les `index` suivants.",
           "type": "string",
-          "enum": ["faitage", "noue", "arretier", "egout", "rive", "inconnue"]
+          "enum": [
+            "faitage",
+            "noue",
+            "arretier",
+            "egout",
+            "rive",
+            "inconnue"
+          ]
         },
         "manuel": {
           "description": "`true` quand un humain a corrigé le type déduit — la correction ne doit pas être écrasée à la relecture.",
@@ -228,9 +347,15 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "id": { "type": "string" },
-        "centerLng": { "type": "number" },
-        "centerLat": { "type": "number" },
+        "id": {
+          "type": "string"
+        },
+        "centerLng": {
+          "type": "number"
+        },
+        "centerLat": {
+          "type": "number"
+        },
         "lengthM": {
           "description": "Étendue NORD-SUD (m).",
           "type": "number"
@@ -242,7 +367,14 @@
         "type": {
           "description": "PV61 — type d'obstacle, qui porte son dégagement (`CLEARANCE_BY_TYPE`). Absent = dégagement par défaut (0,30 m), comportement historique ; jamais émis pour un obstacle sans type.",
           "type": "string",
-          "enum": ["cheminee", "ventilation", "chien_assis", "edicule", "antenne", "autre"]
+          "enum": [
+            "cheminee",
+            "ventilation",
+            "chien_assis",
+            "edicule",
+            "antenne",
+            "autre"
+          ]
         },
         "heightM": {
           "description": "CAL66 — hauteur de l'obstacle (m), SAISIE. OPTIONNEL et additif : absent = obstacle PLAN, qui ne porte aucune ombre — exactement le comportement d'aujourd'hui. Aucun défaut n'est inventé : un `0` explicite signifierait « mesuré à ras », ce qui n'est pas la même chose qu'une hauteur non renseignée.",
@@ -252,7 +384,16 @@
         "provenance": {
           "description": "CAL72 — d'où vient cet obstacle. OPTIONNEL et additif : absent = comportement d'aujourd'hui (aucun motif de non-engageabilité tiré de la provenance). Le moteur refuse d'engager un compte reposant sur du PLAN ou du DEVINE (`core/calepinage/obstacles.py`). DEUX VOCABULAIRES COEXISTENT dans le dépôt et les deux sont acceptés ici : `core.calepinage.types.Provenance` dit RELEVE / RELEVE_DOUTEUX, `apps.ao.models.ObstacleAO.Provenance` dit MESURE / MESURE_DOUTEUX ; ce sont les MÊMES états (RELEVE ≡ MESURE, RELEVE_DOUTEUX ≡ MESURE_DOUTEUX). Refuser l'une des deux graphies ferait rougir un producteur réel ; le traducteur vers le moteur les normalise.",
           "type": "string",
-          "enum": ["RELEVE", "MESURE", "RELEVE_DOUTEUX", "MESURE_DOUTEUX", "PLAN", "DEVINE", "DECLARE_CLIENT", "ECARTE"]
+          "enum": [
+            "RELEVE",
+            "MESURE",
+            "RELEVE_DOUTEUX",
+            "MESURE_DOUTEUX",
+            "PLAN",
+            "DEVINE",
+            "DECLARE_CLIENT",
+            "ECARTE"
+          ]
         }
       }
     },
@@ -264,10 +405,15 @@
           "description": "Azimut de FACE du pan (° ; 0 = N, 90 = E, 180 = S, 270 = O).",
           "type": "number"
         },
-        "tiltDeg": { "type": "number" },
+        "tiltDeg": {
+          "type": "number"
+        },
         "family": {
           "type": "string",
-          "enum": ["south", "eastwest"]
+          "enum": [
+            "south",
+            "eastwest"
+          ]
         },
         "flush": {
           "description": "Pose affleurante (toit en pente) ?",
@@ -288,12 +434,16 @@
         "panels": {
           "description": "Centres ENU (m) + face de CHAQUE panneau POSÉ, dans le repère `origin`. Ce sont les cellules RÉELLEMENT OCCUPÉES (PV27), pas les `count` premières du pavage — sans quoi une édition manuelle serait silencieusement effacée à l'export.",
           "type": "array",
-          "items": { "$ref": "#/$defs/panel" }
+          "items": {
+            "$ref": "#/$defs/panel"
+          }
         },
         "mode": {
           "description": "PV30 — MODE de placement. ADDITIF et OMIS par défaut. `free` signale un PLACEMENT LIBRE : les centres sont des positions choisies à la main, à recharger VERBATIM (les re-snapper sur la lattice détruirait le gain de place qu'ils enregistrent).",
           "type": "string",
-          "enum": ["free"]
+          "enum": [
+            "free"
+          ]
         },
         "solarAccess": {
           "description": "CAL248 — accès solaire PAR MODULE, persisté pour que le backend puisse le lire (`pointSolarAccess` / `cellsSolarAccess` vivent aujourd'hui côté client et ne sortent jamais de l'écran). OPTIONNEL et additif : absent = comportement d'aujourd'hui, JAMAIS une valeur par défaut — un module sans accès solaire calculé n'est pas un module à 100 %.",
@@ -305,12 +455,19 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "cx": { "type": "number" },
-        "cy": { "type": "number" },
+        "cx": {
+          "type": "number"
+        },
+        "cy": {
+          "type": "number"
+        },
         "face": {
           "description": "Face du module en configuration est-ouest. Jamais émise quand elle n'a pas de sens.",
           "type": "string",
-          "enum": ["E", "W"]
+          "enum": [
+            "E",
+            "W"
+          ]
         }
       }
     },
@@ -321,7 +478,14 @@
         "values": {
           "description": "Un facteur d'accès solaire par module, DANS LE MÊME ORDRE que `panels` et de la même longueur. Une entrée `null` = module non calculé (jamais 1, qui se lirait « aucun ombrage mesuré »).",
           "type": "array",
-          "items": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          }
         },
         "method": {
           "description": "Méthode de calcul, nommée — sans elle, deux jeux de valeurs issus de deux tracés différents ne sont pas comparables.",
@@ -343,14 +507,25 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "id": { "type": "string" },
-        "label": { "type": "string" },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
         "kind": {
           "type": "string",
-          "enum": ["arbre", "batiment"]
+          "enum": [
+            "arbre",
+            "batiment"
+          ]
         },
-        "centerLng": { "type": "number" },
-        "centerLat": { "type": "number" },
+        "centerLng": {
+          "type": "number"
+        },
+        "centerLat": {
+          "type": "number"
+        },
         "heightM": {
           "description": "Hauteur SAISIE (m). Absente = l'objet ne porte aucune ombre ; aucune hauteur n'est estimée.",
           "type": "number",
@@ -368,10 +543,18 @@
         "footprint": {
           "description": "Bâtiment : emprise en [[lng, lat], …]. À défaut d'emprise, `lengthM` / `widthM` décrivent un rectangle centré.",
           "type": "array",
-          "items": { "$ref": "#/$defs/couple" }
+          "items": {
+            "$ref": "#/$defs/couple"
+          }
         },
-        "lengthM": { "type": "number", "minimum": 0 },
-        "widthM": { "type": "number", "minimum": 0 }
+        "lengthM": {
+          "type": "number",
+          "minimum": 0
+        },
+        "widthM": {
+          "type": "number",
+          "minimum": 0
+        }
       }
     },
     "exclusionZone": {
@@ -383,16 +566,25 @@
           "description": "Devient le `repere` de la `Zone` du moteur.",
           "type": "string"
         },
-        "label": { "type": "string" },
+        "label": {
+          "type": "string"
+        },
         "nature": {
           "description": "Les quatre natures que le moteur pur traite déjà (`core/calepinage/types.py`). Une zone PREFEREE ne change JAMAIS un compte.",
           "type": "string",
-          "enum": ["ENVELOPPE", "INTERDITE", "RESERVEE", "PREFEREE"]
+          "enum": [
+            "ENVELOPPE",
+            "INTERDITE",
+            "RESERVEE",
+            "PREFEREE"
+          ]
         },
         "vertices": {
           "description": "Contour en [[lng, lat], …] — même ordre que `zones[].vertices`. Devient `Zone.sommets`.",
           "type": "array",
-          "items": { "$ref": "#/$defs/couple" }
+          "items": {
+            "$ref": "#/$defs/couple"
+          }
         },
         "setbackM": {
           "description": "Retrait SAISI (m) autour de la zone. Devient `Zone.retrait_m`.",
@@ -401,7 +593,10 @@
         },
         "heightM": {
           "description": "Hauteur (m), optionnelle. Devient `Zone.hauteur_m`. `null` = non renseignée.",
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "minimum": 0
         }
       }
@@ -411,15 +606,23 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "id": { "type": "string" },
+        "id": {
+          "type": "string"
+        },
         "kind": {
           "type": "string",
-          "enum": ["distance", "area", "angle"]
+          "enum": [
+            "distance",
+            "area",
+            "angle"
+          ]
         },
         "points": {
           "description": "Points lng/lat de la mesure. Minimum selon le genre : 2 pour `distance`, 3 pour `area`, exactement 3 pour `angle`.",
           "type": "array",
-          "items": { "$ref": "#/$defs/couple" }
+          "items": {
+            "$ref": "#/$defs/couple"
+          }
         },
         "label": {
           "description": "Libellé posé par l'utilisateur (optionnel — « côté sud »…).",
@@ -526,14 +729,109 @@
         "x1": { "type": "number" },
         "y0": { "type": "number" },
         "y1": { "type": "number" },
-        "kit": { "type": "string" }
+        "kit": { "type": "string" },
+    "perimeterSetbacks": {
+      "description": "CAL76 — les quatre retraits de rive, en mètres, chacun ≥ 0. Miroir du moteur partagé (core/calepinage/types.py Rives) : lateralM↔laterale_m, extremityM↔extremite_m, parapetM↔acrotere_m (« acrotère » est le mot affiché), jointM↔joint_m (nouveau, CAL76 — s'ajoute à extremityM, ne le remplace jamais).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lateralM",
+        "extremityM",
+        "parapetM",
+        "jointM"
+      ],
+      "properties": {
+        "lateralM": {
+          "type": "number",
+          "minimum": 0
+        },
+        "extremityM": {
+          "type": "number",
+          "minimum": 0
+        },
+        "parapetM": {
+          "type": "number",
+          "minimum": 0
+        },
+        "jointM": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "horizonPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "azimuthDeg",
+        "heightDeg"
+      ],
+      "properties": {
+        "azimuthDeg": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 360
+        },
+        "heightDeg": {
+          "type": "number"
+        }
+      }
+    },
+    "horizonProfile": {
+      "description": "CAL93 — miroir de apps/web/src/lib/horizonEngine.ts HorizonProfile. `source` : 'pvgis' (obtenu de PVGIS printhorizon, service CAL92) ou 'saisie' (relevé/corrigé à la main) — jamais mélangés dans la même liste de points. `hauteurMaxDeg` est TOUJOURS recalculée depuis `points` (horizonMaxHeightDeg), jamais recopiée indépendamment.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "points"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "pvgis",
+            "saisie"
+          ]
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/horizonPoint"
+          }
+        },
+        "hauteurMaxDeg": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
       }
     }
   },
   "exemple": {
     "version": 2,
-    "pin": { "lat": 33.5, "lng": -7.6 },
-    "outline": [[33.5, -7.6], [33.5, -7.5999], [33.5001, -7.5999], [33.5001, -7.6]],
+    "pin": {
+      "lat": 33.5,
+      "lng": -7.6
+    },
+    "outline": [
+      [
+        33.5,
+        -7.6
+      ],
+      [
+        33.5,
+        -7.5999
+      ],
+      [
+        33.5001,
+        -7.5999
+      ],
+      [
+        33.5001,
+        -7.6
+      ]
+    ],
     "billKwh": null,
     "activeAreaId": "z1",
     "zones": [
@@ -541,7 +839,24 @@
         "id": "z1",
         "label": "Pan Sud",
         "buildingId": "bat-1",
-        "vertices": [[0, 0], [10, 0], [10, 6], [0, 6]],
+        "vertices": [
+          [
+            0,
+            0
+          ],
+          [
+            10,
+            0
+          ],
+          [
+            10,
+            6
+          ],
+          [
+            0,
+            6
+          ]
+        ],
         "obstacles": [
           {
             "id": "obs-1",
@@ -555,10 +870,23 @@
           }
         ],
         "edges": [
-          { "index": 0, "type": "egout" },
-          { "index": 1, "type": "rive" },
-          { "index": 2, "type": "faitage", "manuel": true },
-          { "index": 3, "type": "rive" }
+          {
+            "index": 0,
+            "type": "egout"
+          },
+          {
+            "index": 1,
+            "type": "rive"
+          },
+          {
+            "index": 2,
+            "type": "faitage",
+            "manuel": true
+          },
+          {
+            "index": 3,
+            "type": "rive"
+          }
         ],
         "roofType": "pitched",
         "pitchDeg": 15.0,
@@ -573,15 +901,29 @@
           "flush": true,
           "kwc": 8.64,
           "count": 12,
-          "origin": [-7.6, 33.5],
+          "origin": [
+            -7.6,
+            33.5
+          ],
           "panels": [
-            { "cx": 0.0, "cy": 0.0 },
-            { "cx": 1.2, "cy": 0.0 }
+            {
+              "cx": 0.0,
+              "cy": 0.0
+            },
+            {
+              "cx": 1.2,
+              "cy": 0.0
+            }
           ],
           "solarAccess": {
-            "values": [0.98, null],
+            "values": [
+              0.98,
+              null
+            ],
             "method": "placeholder — la méthode réelle est nommée par CAL248",
-            "assumptions": { "environnement_inclus": true },
+            "assumptions": {
+              "environnement_inclus": true
+            },
             "computedAt": "2026-09-19T11:30:00Z"
           }
         }
@@ -604,12 +946,34 @@
         "id": "zx-1",
         "label": "Bande technique",
         "nature": "INTERDITE",
-        "vertices": [[6, 0], [8, 0], [8, 1.5], [6, 1.5]],
+        "vertices": [
+          [
+            6,
+            0
+          ],
+          [
+            8,
+            0
+          ],
+          [
+            8,
+            1.5
+          ],
+          [
+            6,
+            1.5
+          ]
+        ],
         "setbackM": 0.3,
         "heightM": null
       }
     ],
-    "result": { "panels": 12, "kwc": 8.64, "annualKwh": 13000, "savings": null },
+    "result": {
+      "panels": 12,
+      "kwc": 8.64,
+      "annualKwh": 13000,
+      "savings": null
+    },
     "scenario": "reseau",
     "panelWatt": 720,
     "battery": null,
@@ -617,7 +981,41 @@
     "devisId": null,
     "shading12x24": null,
     "measurements": [
-      { "id": "mes1", "kind": "distance", "points": [[0, 0], [10, 0]], "label": "côté sud" }
-    ]
+      {
+        "id": "mes1",
+        "kind": "distance",
+        "points": [
+          [
+            0,
+            0
+          ],
+          [
+            10,
+            0
+          ]
+        ],
+        "label": "côté sud"
+      }
+    ],
+    "setbacksM": {
+      "lateralM": 0.5,
+      "extremityM": 0.5,
+      "parapetM": 0.5,
+      "jointM": 0.0
+    },
+    "horizonProfile": {
+      "source": "saisie",
+      "points": [
+        {
+          "azimuthDeg": 90,
+          "heightDeg": 8.0
+        },
+        {
+          "azimuthDeg": 270,
+          "heightDeg": 12.5
+        }
+      ],
+      "hauteurMaxDeg": 12.5
+    }
   }
 }

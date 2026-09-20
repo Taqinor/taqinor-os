@@ -113,6 +113,16 @@ const ModeTerrain = lazy(() => import('./ModeTerrain'))
    moteur), qui se totalise par bâtiment avec les pans de toiture. Aucune
    charge ni structure n'y est chiffrée. Contextuelle à UN calepinage. */
 const Ombriere = lazy(() => import('./Ombriere'))
+/* CAL93 — l'horizon lointain (relief à distance qui masque le soleil aux heures
+   rasantes), tracé en fond de la course du soleil et appliqué à la production en
+   poste de perte séparé de l'ombrage proche. Contextuel à UN calepinage : deep-link,
+   jamais un item de menu (une entrée permanente n'aurait aucun calepinage à désigner). */
+const HorizonPanel = lazy(() => import('./HorizonPanel'))
+/* CAL96 — la course du soleil par pan (azimut/hauteur, solstices+équinoxe), avec
+   l'horizon CAL92/CAL93 et les obstructions proches CAL94 surimprimés. Contextuelle à
+   UN calepinage : deep-link, jamais un item de menu (un pan n'existe que dans un
+   calepinage donné). */
+const CourseSoleil = lazy(() => import('./CourseSoleil'))
 
 const config = {
   key: 'calepinage',
@@ -186,6 +196,10 @@ const config = {
     { path: '/calepinage/:id/production', component: PanneauProduction, roles: ROLES },
     // CAL143 — contextuelle : le diagramme de pertes de CE calepinage.
     { path: '/calepinage/:id/pertes', component: DiagrammePertes, roles: ROLES },
+    // CAL93 — contextuelle elle aussi : l'horizon lointain d'UN calepinage.
+    { path: '/calepinage/:id/horizon', component: HorizonPanel, roles: ROLES },
+    // CAL96 — contextuelle : la course du soleil par pan d'UN calepinage.
+    { path: '/calepinage/:id/course-soleil', component: CourseSoleil, roles: ROLES },
   ],
 }
 
