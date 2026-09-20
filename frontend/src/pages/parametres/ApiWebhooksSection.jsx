@@ -6,12 +6,12 @@
 import { useEffect, useState } from 'react'
 import {
   KeyRound, Webhook as WebhookIcon, Plus, Trash2, Copy, Check, Ban, BookOpen,
-  RotateCw, History, Send, Play, Sparkles,
+  RotateCw, History, Send, Play, Sparkles, Activity,
 } from 'lucide-react'
 import publicapiApi from '../../api/publicapiApi'
 import {
   Card, CardContent, Button, Input, Spinner, Badge, Switch, Checkbox, toast,
-  RadioGroup, RadioGroupItem,
+  RadioGroup, RadioGroupItem, Segmented,
 } from '../../ui'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { formatDateTime } from '../../lib/format'
@@ -329,6 +329,136 @@ function InteractiveConsole() {
                 </pre>
               )}
             </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+const FENETRE_OPTIONS = [
+  { value: '7', label: '7 j' },
+  { value: '30', label: '30 j' },
+  { value: '90', label: '90 j' },
+]
+
+// NTAPI39/40 — tableau de bord de monitoring des intégrations : appels/
+// erreurs/latence sur la fenêtre choisie, top endpoints, santé des webhooks
+// sur 24 h (déjà géré ci-dessus mais sans agrégat chiffré), jobs bulk
+// récents. Toutes les valeurs viennent telles quelles de
+// `apps/publicapi/monitoring.py` (calculées à la lecture, jamais un
+// compteur dénormalisé recalculé côté écran).
+function MonitoringDashboard() {
+  const [jours, setJours] = useState('7')
+  const [donnees, setDonnees] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let vivant = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de fenêtre
+    setLoading(true)
+    setError(false)
+    publicapiApi.getMonitoring(Number(jours))
+      .then((r) => { if (vivant) setDonnees(r.data) })
+      .catch(() => { if (vivant) setError(true) })
+      .finally(() => { if (vivant) setLoading(false) })
+    return () => { vivant = false }
+  }, [jours])
+
+  return (
+    <Card>
+      <CardContent className="pt-4 sm:pt-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <SectionTitle icon={<Activity className="size-4" />} label="Monitoring des intégrations" />
+          <Segmented options={FENETRE_OPTIONS} value={jours} onChange={setJours} size="sm" />
+        </div>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Volume d’appels, taux d’erreur et latence sur la fenêtre choisie, santé des
+          webhooks sur 24 h et jobs d’import/export en cours.
+        </p>
+
+        {loading && <p className="text-sm text-muted-foreground"><Spinner /> Chargement…</p>}
+        {!loading && error && (
+          <p className="text-sm text-destructive">Monitoring indisponible pour le moment.</p>
+        )}
+
+        {!loading && !error && donnees && (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-xs text-muted-foreground">Appels ({jours} j)</p>
+                <p className="text-lg font-semibold tabular-nums">{donnees.appels.total}</p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-xs text-muted-foreground">Taux d’erreur 4xx/5xx</p>
+                <p className="text-lg font-semibold tabular-nums">{donnees.appels.taux_erreur_pct} %</p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-xs text-muted-foreground">Latence moyenne</p>
+                <p className="text-lg font-semibold tabular-nums">
+                  {donnees.appels.latence_moyenne_ms ?? '—'} ms
+                </p>
+              </div>
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-xs text-muted-foreground">Latence p95</p>
+                <p className="text-lg font-semibold tabular-nums">
+                  {donnees.appels.latence_p95_ms ?? '—'} ms
+                </p>
+              </div>
+            </div>
+
+            {donnees.top_endpoints.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-medium">Endpoints les plus appelés</p>
+                <div className="flex flex-col gap-1">
+                  {donnees.top_endpoints.map((ep) => (
+                    <div key={ep.chemin} className="flex flex-wrap items-center justify-between gap-2 rounded bg-background px-2 py-1 text-xs">
+                      <code>{ep.chemin}</code>
+                      <span className="text-muted-foreground">
+                        {ep.appels} appel{ep.appels > 1 ? 's' : ''} · {ep.taux_erreur_pct} % erreur
+                        {ep.latence_moyenne_ms != null && ` · ${ep.latence_moyenne_ms} ms`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <p className="mb-1 text-xs font-medium">Santé des webhooks (24 h)</p>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Badge tone="success">{donnees.webhooks.succes_24h} succès</Badge>
+                <Badge tone={donnees.webhooks.echecs_24h > 0 ? 'warning' : 'neutral'}>
+                  {donnees.webhooks.echecs_24h} échec(s) retentable(s)
+                </Badge>
+                <Badge tone={donnees.webhooks.echecs_definitifs_24h > 0 ? 'danger' : 'neutral'}>
+                  {donnees.webhooks.echecs_definitifs_24h} échec(s) définitif(s)
+                </Badge>
+                <span className="text-muted-foreground">
+                  {donnees.webhooks.webhooks_actifs} actif(s) · {donnees.webhooks.webhooks_desactives} désactivé(s)
+                </span>
+              </div>
+            </div>
+
+            {donnees.jobs.derniers.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-medium">
+                  Jobs récents ({donnees.jobs.en_cours} en cours, {donnees.jobs.en_echec} en échec)
+                </p>
+                <div className="flex flex-col gap-1">
+                  {donnees.jobs.derniers.map((job) => (
+                    <div key={job.id} className="flex flex-wrap items-center justify-between gap-2 rounded bg-background px-2 py-1 text-xs">
+                      <span>{job.type} — {job.entite}</span>
+                      <span className="text-muted-foreground">
+                        {job.statut} · {job.progression_pct} % · {job.traites} traité(s)
+                        {job.erreurs > 0 && ` · ${job.erreurs} erreur(s)`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </CardContent>
@@ -708,6 +838,9 @@ export default function ApiWebhooksSection() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Monitoring des intégrations (NTAPI39/40) ── */}
+      <MonitoringDashboard />
 
       {/* ── Référence de l'API (FG105) ── */}
       <DocsReference />
