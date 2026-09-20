@@ -64,6 +64,24 @@ def _as_of_date(now):
     return datetime.date.today()
 
 
+def account_currency(company):
+    """PUB134 — Devise RÉELLE du compte publicitaire de ``company`` (ISO-4217,
+    ex. ``USD``), lue sur sa ``MetaConnection``.
+
+    Meta rapporte TOUS les montants (dépense, budgets, insights) dans la devise
+    DU COMPTE — pas en MAD. Les textes de décision du moteur écrivaient « MAD »
+    en dur : sur un compte facturé en USD, la première proposition affichait
+    « a dépensé 17.60 MAD », un chiffre juste avec une unité fausse.
+
+    Repli ``MAD`` quand la connexion est absente ou sa devise encore inconnue —
+    même convention que ``metrics.py``/``views.py`` (la devise de la société),
+    jamais une devise inventée pour un compte donné."""
+    from .models import MetaConnection
+
+    conn = MetaConnection.objects.filter(company=company).first()
+    return (conn.currency if conn else '') or 'MAD'
+
+
 # ── Évaluateurs par template (registre ; d'autres lanes/tasks en câblent plus) ─
 def _eval_frequency_high(company, policy, template, *, now, config):
     """Fatigue créative : fréquence glissante d'un ad set > seuil.
@@ -133,6 +151,7 @@ def _eval_cpl_band(company, policy, template, *, now, config):
     ct = ContentType.objects.get_for_model(AdCampaignMirror)
 
     findings = []
+    currency = account_currency(company)  # PUB134 — une lecture par évaluation
     # ADSDEEP39 — restreint au motif de nom de la règle (Selection Filter).
     _, campaigns = _scoped_mirrors(company, policy, 'campaign')
     for camp in campaigns:
@@ -147,7 +166,9 @@ def _eval_cpl_band(company, policy, template, *, now, config):
         det = anomaly.detect_cpl_band(
             daily_cpls, cpl_today, n_leads,
             band_low_mult=low_mult, band_high_mult=high_mult,
-            min_samples=min_samples)
+            min_samples=min_samples,
+            # PUB134 — devise RÉELLE du compte (jamais « MAD » en dur).
+            currency=currency)
         if det.fired:
             anomaly.record_anomaly(
                 company, det, entity_type='campaign',
@@ -724,10 +745,14 @@ def _propose_v2_action(company, policy, template, finding, *, config, dry_run):
         params = rule_templates.resolve_params(policy.template_key, policy.params)
         scale_pct = float(params.get(
             'scale_pct', services.LEARNING_SAFE_MAX_PCT))
+        # PUB134 — le budget courant est libellé dans la devise RÉELLE du compte
+        # (le miroir stocke des unités mineures de CETTE devise, pas des MAD).
+        currency = account_currency(company)
         reason = (
             f"{prefix}Surf-scaling : le CPL de l'ad set {target_id} s'améliore "
             f"(fenêtre courte < longue) — montée de budget learning-safe "
-            f"(≤{services.LEARNING_SAFE_MAX_PCT} %) proposée.")
+            f"(≤{services.LEARNING_SAFE_MAX_PCT} %) proposée depuis "
+            f"{current_mad:g} {currency}/j.")
         return services.propose_learning_safe_scale_up(
             company, adset_meta_id=target_id,
             current_daily_budget_mad=current_mad, scale_pct=scale_pct,

@@ -242,6 +242,11 @@ def detect_anomalies(company, *, now=None, config=None):
 
     start = _window_start_date(now, window_hours)
     created = []
+    # PUB134 — devise RÉELLE du compte : Meta facture le compte dans SA devise,
+    # écrire « MAD » en dur mentait dès qu'elle diffère (« a dépensé 17.60 MAD »
+    # vu en production sur un compte en USD). Une lecture par passe.
+    from .rules_engine import account_currency
+    currency = account_currency(company)
 
     for model in (AdCampaignMirror, AdSetMirror, AdMirror):
         ct = ContentType.objects.get_for_model(model)
@@ -261,11 +266,11 @@ def detect_anomalies(company, *, now=None, config=None):
                         company, alert_type=ALERT_ANOMALY,
                         message=(
                             f"Anomalie : {mirror.meta_id} a dépensé "
-                            f"{spend} MAD pour 0 résultat depuis le {start} — "
-                            f"pause proposée."),
+                            f"{spend} {currency} pour 0 résultat depuis le "
+                            f"{start} — pause proposée."),
                         action=action,
                         detail={'target_meta_id': mirror.meta_id,
-                                'spend': str(spend)})
+                                'spend': str(spend), 'currency': currency})
     return created
 
 
