@@ -1568,13 +1568,23 @@ def specs_for_produit(produit):
 
       * ``module`` → ``{vmp_v, voc_v, isc_a, imp_a, pmax_wc,
         temp_coeff_voc_pct_c, temp_coeff_pmax_pct_c, longueur_mm,
-        largeur_mm}`` ;
+        largeur_mm, epaisseur_mm, poids_kg, rendement_pct, techno_cellule,
+        bifacial, noct_c, uc_w_m2k, uv_w_m3sk, bifacialite_pct,
+        degradation_annuelle_pct, degradation_annee1_pct,
+        garantie_pct_a_10_ans, garantie_pct_a_25_ans}`` (CAL114 : poids,
+        épaisseur, rendement, technologie de cellule et bifacial étaient
+        déjà sur la fiche mais omis de ce bloc — cf. CAL111-113) ;
       * ``onduleur`` → ``{n_mppt, mppt_v_min, mppt_v_max, v_max_abs,
         i_max_mppt_a, ac_kw, phases, rendement_euro_pct, v_demarrage_v,
-        isc_max_mppt_a, bat_max_charge_kw, bat_max_decharge_kw}`` ;
+        isc_max_mppt_a, bat_max_charge_kw, bat_max_decharge_kw,
+        entrees_par_mppt, chaines_max_par_mppt, s_max_kva, dc_max_kwc}``
+        (les quatre dernières, CAL115) ;
       * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
         max_charge_kw, max_decharge_kw, max_modules_par_banc,
-        rendement_ar_pct}``.
+        rendement_ar_pct, cycles_publies, retention_fin_de_vie_pct,
+        garantie_annees}`` (les trois dernières, CAL118) ;
+      * ``optimiseur`` (CAL116) → ``{pmax_in_w, v_in_min, v_in_max,
+        i_in_max_a, rendement_pct, modules_par_optimiseur}``.
 
     ⚠ LE DICT RENDU EST PLAT — c'est le BLOC du ``type_fiche``, pas un dict de
     blocs : lire ``specs_for_produit(p)['batterie']`` rend toujours ``None``.
@@ -1603,6 +1613,31 @@ def specs_for_produit(produit):
             ('temp_coeff_pmax_pct_c', fiche.temp_coeff_pmax_pct_c),
             ('longueur_mm', fiche.longueur_mm),
             ('largeur_mm', fiche.largeur_mm),
+            # CAL114 — clés déjà présentes sur la fiche (AUD835/PV5) mais
+            # jusqu'ici OMISES de ce bloc : le poids est indispensable au
+            # lestage (g), les dimensions/épaisseur au kit de calepinage (h).
+            # getattr : les doubles de test (_FausseFiche) ne portent pas
+            # forcément les champs récents — absent ≡ NULL (non évaluable).
+            ('epaisseur_mm', getattr(fiche, 'epaisseur_mm', None)),
+            ('poids_kg', getattr(fiche, 'poids_kg', None)),
+            ('rendement_pct', getattr(fiche, 'rendement_pct', None)),
+            ('techno_cellule', getattr(fiche, 'techno_cellule', None) or None),
+            ('bifacial', getattr(fiche, 'bifacial', None)),
+            # CAL111 — modèle thermique NOCT / Uc-Uv (optionnel).
+            ('noct_c', getattr(fiche, 'noct_c', None)),
+            ('uc_w_m2k', getattr(fiche, 'uc_w_m2k', None)),
+            ('uv_w_m3sk', getattr(fiche, 'uv_w_m3sk', None)),
+            # CAL112 — facteur de bifacialité publié (optionnel).
+            ('bifacialite_pct', getattr(fiche, 'bifacialite_pct', None)),
+            # CAL113 — dégradation annuelle & paliers de garantie (optionnels).
+            ('degradation_annuelle_pct',
+             getattr(fiche, 'degradation_annuelle_pct', None)),
+            ('degradation_annee1_pct',
+             getattr(fiche, 'degradation_annee1_pct', None)),
+            ('garantie_pct_a_10_ans',
+             getattr(fiche, 'garantie_pct_a_10_ans', None)),
+            ('garantie_pct_a_25_ans',
+             getattr(fiche, 'garantie_pct_a_25_ans', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'onduleur':
@@ -1627,6 +1662,14 @@ def specs_for_produit(produit):
             # forcément les champs récents — absent ≡ NULL (non évaluable).
             ('bat_max_charge_kw', getattr(fiche, 'ond_bat_max_charge_kw', None)),
             ('bat_max_decharge_kw', getattr(fiche, 'ond_bat_max_decharge_kw', None)),
+            # CAL115 — chaînes/entrées par MPPT, puissance apparente et DC
+            # max. getattr : les doubles de test (_FausseFiche) ne portent
+            # pas forcément les champs récents — absent ≡ NULL (non publié).
+            ('entrees_par_mppt', getattr(fiche, 'ond_entrees_par_mppt', None)),
+            ('chaines_max_par_mppt',
+             getattr(fiche, 'ond_chaines_max_par_mppt', None)),
+            ('s_max_kva', getattr(fiche, 'ond_s_max_kva', None)),
+            ('dc_max_kwc', getattr(fiche, 'ond_dc_max_kwc', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'batterie':
@@ -1655,8 +1698,63 @@ def specs_for_produit(produit):
             # champ récent — absent ≡ NULL (non publié, hypothèse déclarée).
             ('rendement_ar_pct',
              getattr(fiche, 'bat_rendement_ar_pct', None)),
+            # CAL118 — nombre de cycles publié & vieillissement calendaire.
+            # getattr : les doubles de test (_FausseFiche) ne portent pas
+            # forcément les champs récents — absent ≡ NULL (non publié).
+            ('cycles_publies', getattr(fiche, 'bat_cycles_publies', None)),
+            ('retention_fin_de_vie_pct',
+             getattr(fiche, 'bat_retention_fin_de_vie_pct', None)),
+            ('garantie_annees', getattr(fiche, 'bat_garantie_annees', None)),
         ):
             _put(out, key, value)
+    elif fiche.type_fiche == 'optimiseur':
+        # CAL116 — optimiseur de puissance / micro-onduleur : bloc neuf,
+        # aucune fiche existante n'en porte le type avant cette tâche.
+        for key, value in (
+            ('pmax_in_w', getattr(fiche, 'opt_pmax_in_w', None)),
+            ('v_in_min', getattr(fiche, 'opt_v_in_min', None)),
+            ('v_in_max', getattr(fiche, 'opt_v_in_max', None)),
+            ('i_in_max_a', getattr(fiche, 'opt_i_in_max_a', None)),
+            ('rendement_pct', getattr(fiche, 'opt_rendement_pct', None)),
+            ('modules_par_optimiseur',
+             getattr(fiche, 'opt_modules_par_optimiseur', None)),
+        ):
+            _put(out, key, value)
+    return out
+
+
+def dimensions_de_pose(produit):
+    """CAL119 — sélecteur « dimensions de pose », pour construire un kit de
+    calepinage depuis un produit réel.
+
+    ``core/calepinage`` travaillait sur des ``Kit`` aux dimensions écrites
+    en dur (``core/calepinage/types.py``) et l'unique passerelle
+    produit→kit vivait côté AO (``apps/ao/services.py``
+    ``kit_panneau_du_produit``), inaccessible à une autre app sans un lien
+    direct vers ce module. Ce sélecteur rend le même sous-ensemble, lu
+    directement sur ``FicheTechnique`` (PV5/CAL111-118), pour que
+    ``apps.calepinage`` construise son kit sans dépendre du module AO ni de
+    ``apps.stock.models``.
+
+    Rend ``{longueur_mm, largeur_mm, epaisseur_mm, poids_kg, puissance_wc}``
+    — clé ABSENTE (jamais ``None``) si non saisie sur la fiche. Produit sans
+    fiche, ou fiche dont ``type_fiche`` n'est pas ``'module'`` → dict VIDE
+    (un kit de pose se construit depuis un MODULE, jamais un onduleur/une
+    batterie). Lecture seule."""
+    fiche = getattr(produit, 'fiche_technique', None)
+    if fiche is None or fiche.type_fiche != 'module':
+        return {}
+
+    out = {}
+    for key, value in (
+        ('longueur_mm', fiche.longueur_mm),
+        ('largeur_mm', fiche.largeur_mm),
+        ('epaisseur_mm', fiche.epaisseur_mm),
+        ('poids_kg', fiche.poids_kg),
+        ('puissance_wc', fiche.pmax_wc),
+    ):
+        if value is not None:
+            out[key] = value
     return out
 
 

@@ -1,0 +1,125 @@
+{
+  "endpoint": "POST /api/django/calepinage/moteur/calculer/",
+  "pourquoi": "Le calcul SYNCHRONE du moteur, servi par la porte PROPRE du module autonome. Constat : le seul accès HTTP au moteur aujourd'hui est gardé AO (`apps/ao/calepinage_urls.py`, permissions `ao_voir`/`ao_gerer`) — un module autonome a donc besoin de sa propre porte, et par conséquent de sa propre forme de réponse FIGÉE. PACT10 : ce contrat part SEUL sur `main` avant la lane qui écrit la vue et avant celle qui écrit l'écran. AUCUNE CLÉ INVENTÉE : chaque clé de `exemple` est produite aujourd'hui par le couple `apps/ao/calepinage_io.py` (`resultat_vers_json`, `plan_vers_json`, `preuve_vers_json`, `marges_vers_json`, `tiroirs_vides`) et `apps/ao/calepinage_service.calepiner` (qui y ajoute `company_id`, `preuve`, `engagement_modules`, `marges`, `tiroirs`, `suggestions`), au-dessus du contrat de `core/calepinage/serialisation.py` (`schema_version`, `hash_entree`, `version_moteur`). `depuis_cache` est ajouté par la vue (`dict(resultat, depuis_cache=False)`). DISCIPLINE DU NULL : une marge NON MESURÉE vaut `null`, jamais `0` — `Marges` rend `0.0` aussi bien pour « au ras » que pour « aucune marge de ce type n'existe dans ce plan », et publier ce zéro ferait lire « marge nulle » là où rien n'a été mesuré. FORME ENTIÈRE : `tiroirs` garde ses 5 clés et `suggestions` sa liste même quand le pré-vol de coût renonce à les produire — un écran qui reçoit parfois 4 clés et parfois 5 finit par tester l'absence de clé au lieu de l'absence de données. EXEMPLE_VIDE — UNE EXCEPTION ASSUMÉE : ici `exemple_vide` ne décrit pas un autre état du MÊME corps mais l'ACCUSÉ 202 que la même route rend quand le travail dépasse le budget synchrone (le client doit alors suivre le job). C'est la seule forme de la route que l'écran doit savoir lire sans la confondre avec un résultat ; ses clés sont celles du `BackgroundJob` réellement renvoyées par `LancerCalepinageView` (`kind`, `statut`, `progress_pct`, `message_erreur`, `resultat`, `variante`), l'identifiant étant nommé `job_id` et non `id` pour qu'aucun écran ne puisse le confondre avec l'id d'un calepinage. Valeurs : des PLACEHOLDERS assumés (empreinte visiblement factice, repères « d'essai »), aucun chiffre client.",
+  "exemple": {
+    "schema_version": 1,
+    "repere": "SITE-ESSAI",
+    "hash_entree": "abababababababababababababababababababababababababababababababab",
+    "version_moteur": "non-publie-dans-cet-exemple",
+    "company_id": 1,
+    "total_modules": 12,
+    "kwc": 8.64,
+    "engageable": true,
+    "motifs_non_engageable": [],
+    "engagement_modules": null,
+    "depuis_cache": false,
+    "plans": [
+      {
+        "surface": "PAN-A",
+        "modules": 12,
+        "ecart_a_l_optimum": 0,
+        "rangees": [
+          {
+            "surface": "PAN-A",
+            "x0": 0.35,
+            "y0": 0.35,
+            "kit": "portrait",
+            "modules": 6,
+            "emprise_m": 2.28,
+            "troncons": [[0.35, 6.35]]
+          },
+          {
+            "surface": "PAN-A",
+            "x0": 3.0,
+            "y0": 3.0,
+            "kit": "portrait",
+            "modules": 6,
+            "emprise_m": 2.28,
+            "troncons": [[0.35, 6.35]]
+          }
+        ],
+        "tables": [
+          { "x0": 0.35, "x1": 2.63, "y0": 0.35, "y1": 1.48, "kit": "portrait" }
+        ]
+      }
+    ],
+    "rangees": [
+      {
+        "surface": "PAN-A",
+        "x0": 0.35,
+        "y0": 0.35,
+        "kit": "portrait",
+        "modules": 6,
+        "emprise_m": 2.28,
+        "troncons": [[0.35, 6.35]]
+      },
+      {
+        "surface": "PAN-A",
+        "x0": 3.0,
+        "y0": 3.0,
+        "kit": "portrait",
+        "modules": 6,
+        "emprise_m": 2.28,
+        "troncons": [[0.35, 6.35]]
+      }
+    ],
+    "preuve": {
+      "total_retenu": 12,
+      "total_optimal": 12,
+      "methode": "programmation_dynamique",
+      "methode_exacte": true,
+      "optimal": true,
+      "libelle": "Optimum prouvé par programmation dynamique.",
+      "pas_cm": 1.0,
+      "nb_optima": 1,
+      "borne_superieure": 12,
+      "marge_troncon_min": 0.042,
+      "marge_bande_min": null,
+      "rangee_critique": "R2",
+      "obstacle_critique": "",
+      "controles": ["EMPRISE_DANS_SURFACE", "ALLEE_RESPECTEE"],
+      "version_moteur": "non-publie-dans-cet-exemple"
+    },
+    "marges": {
+      "troncon_min_cm": 4.2,
+      "bande_min_cm": null,
+      "rangee_critique": "R2",
+      "obstacle_critique": ""
+    },
+    "tiroirs": {
+      "kits": { "donnees": null, "valeurs": {} },
+      "allees": { "donnees": null, "valeurs": {} },
+      "rives": { "donnees": null, "valeurs": {} },
+      "orientation": { "donnees": null, "valeurs": {} },
+      "electrique": { "donnees": null, "valeurs": {} }
+    },
+    "suggestions": [
+      {
+        "code": "ALLEE_GRATUITE",
+        "titre": "Allée gratuite jusqu'à 1,94 m",
+        "gain_modules": 2,
+        "gain_kwc": 1.44,
+        "confiance": "HAUTE",
+        "question_a_poser": "Peut-on élargir l'allée de maintenance sans perdre de module ?",
+        "action": { "type": "parametres", "patch": { "allee_m": 1.94 } }
+      }
+    ]
+  },
+  "exemple_vide": {
+    "job_id": 1,
+    "kind": "calepinage",
+    "statut": "PENDING",
+    "progress_pct": 0,
+    "message_erreur": "",
+    "resultat": null,
+    "variante": null,
+    "detail": "Ce calepinage dépasse le budget de calcul synchrone : suivez-le sur /api/django/calepinage/moteur/jobs/<job_id>/.",
+    "cout_estime": {
+      "positions": 1,
+      "kits": 1,
+      "appels": 1,
+      "millisecondes": 1.0,
+      "motif": "placeholder — le coût réel est mesuré par le pré-vol du moteur"
+    }
+  }
+}

@@ -28,7 +28,8 @@ from core.calepinage.types import PolitiquePas
 __all__ = [
     "AlleeFixe", "AntiOmbrage", "Affleurant", "ELEVATION_DIMENSIONNEMENT_DEG",
     "DECLINAISON_SOLSTICE_DEG", "HEURE_SOLAIRE_DIMENSIONNEMENT",
-    "ELEVATION_PLANCHER_DEG", "position_solaire_solstice",
+    "ELEVATION_PLANCHER_DEG", "PASSAGE_CHEVRON_EW_M", "EW_OMBRE_PLEINE",
+    "EW_EMPREINTE_RETRANCHEE", "POLITIQUES_EW", "position_solaire_solstice",
     "politique_par_defaut",
 ]
 
@@ -55,6 +56,32 @@ HEURE_SOLAIRE_DIMENSIONNEMENT = 10.0
 #: rangée deviendrait absurde (une latitude polaire rendrait une toiture
 #: infinie). Le cerveau TypeScript porte exactement le même plancher.
 ELEVATION_PLANCHER_DEG = 5.0
+
+#: CAL167 — passage de maintenance/aération entre deux chevrons EST-OUEST (m).
+#: Porté du cerveau TypeScript du site, pas inventé ici :
+#: ``estimatorBrainV2.ts``, constante ``EW_MAINTENANCE_GAP_M = 0.2``.
+#: Ce n'est PAS un pas de rangée sud : entre deux chevrons dos-à-dos, ce qui
+#: sépare les tables est un passage d'homme, pas une contrainte solaire.
+PASSAGE_CHEVRON_EW_M = 0.20
+
+#: Politique d'espacement entre CHEVRONS est-ouest — l'ancienne, par DÉFAUT :
+#: l'ombre de faîte est comptée PLEINE, comme pour une rangée plein sud. Le
+#: moteur est alors conservateur (il peut poser un chevron de moins, jamais un
+#: de trop) : c'est la limite assumée que ``types.py`` documente sur
+#: ``KIT_VILLA_EW``.
+EW_OMBRE_PLEINE = "OMBRE_DE_FAITE_PLEINE"
+
+#: Politique d'espacement entre CHEVRONS est-ouest — celle du site, en OPTION
+#: EXPLICITE : un chevron en A absorbe sa PROPRE ombre de faîte tant qu'elle
+#: reste dans l'empreinte de son pan ouest ; seul le RÉSIDU qui déborde, plus
+#: le passage de maintenance, sépare deux chevrons. Elle exige la latitude du
+#: site : l'ombre de faîte est-ouest a une DIRECTION (composante ``|sin γ|``),
+#: et le noyau ne devine jamais un lieu.
+EW_EMPREINTE_RETRANCHEE = "EMPREINTE_CHEVRON_RETRANCHEE"
+
+#: Les deux seules valeurs acceptées — une politique inconnue est REFUSÉE en
+#: nommant le champ, jamais repliée en silence sur le défaut.
+POLITIQUES_EW = (EW_OMBRE_PLEINE, EW_EMPREINTE_RETRANCHEE)
 
 
 def _borner(valeur, bas=-1.0, haut=1.0):
@@ -124,6 +151,20 @@ class AntiOmbrage(PolitiquePas):
     courte et la toiture porte donc plus de rangées. Sans latitude, RIEN ne
     change : la constante historique s'applique et les comptes déjà publiés
     restent reproductibles au bit près.
+
+    **CAL167 — UNE SEULE politique de pas, deux familles de pose.** La même
+    classe gouverne désormais les rangées plein sud ET l'espacement entre
+    chevrons est-ouest, au lieu de laisser la seconde à une limite muette :
+
+    * ``politique_ew=EW_OMBRE_PLEINE`` (DÉFAUT) — l'ombre de faîte est comptée
+      pleine, comme pour une rangée sud. Conservateur, historique, bit pour
+      bit inchangé ;
+    * ``politique_ew=EW_EMPREINTE_RETRANCHEE`` — la politique du site : le pan
+      ouest du chevron absorbe sa propre ombre de faîte, seul le résidu plus
+      un passage d'homme sépare deux chevrons. Elle EXIGE ``latitude_deg``.
+
+    Le choix est NOMMÉ dans ``hypothese`` et l'écart entre les deux se lit sur
+    ``ecart_a_l_ombre_pleine_m`` : un compte plus dense dit pourquoi il l'est.
     """
 
     elevation_deg: float = ELEVATION_DIMENSIONNEMENT_DEG
@@ -133,6 +174,13 @@ class AntiOmbrage(PolitiquePas):
     latitude_deg: Optional[float] = None
     heure_solaire: float = HEURE_SOLAIRE_DIMENSIONNEMENT
     code: str = "ANTI_OMBRAGE"
+    #: CAL167 — politique d'espacement entre CHEVRONS est-ouest (kits
+    #: dos-à-dos). Le DÉFAUT reste l'ombre de faîte pleine : aucun calepinage
+    #: déjà publié ne change tant que l'appelant ne choisit pas l'autre.
+    politique_ew: str = EW_OMBRE_PLEINE
+    #: Passage de maintenance entre deux chevrons — lu uniquement par
+    #: ``EW_EMPREINTE_RETRANCHEE``.
+    passage_chevron_m: float = PASSAGE_CHEVRON_EW_M
 
     def __post_init__(self):
         if not (0.0 < self.elevation_deg < 90.0):
@@ -144,6 +192,21 @@ class AntiOmbrage(PolitiquePas):
             raise ValueError("latitude hors bornes (-90 à 90 degrés)")
         if not (0.0 <= self.heure_solaire <= 24.0):
             raise ValueError("heure solaire hors bornes (0 à 24)")
+        if self.politique_ew not in POLITIQUES_EW:
+            raise ValueError(
+                "champ `politique_ew` : politique d'espacement est-ouest "
+                "inconnue %r — attendu %s."
+                % (self.politique_ew, " ou ".join(POLITIQUES_EW)))
+        if (self.politique_ew == EW_EMPREINTE_RETRANCHEE
+                and self.latitude_deg is None):
+            raise ValueError(
+                "champ `latitude_deg` : la politique est-ouest "
+                "« empreinte du chevron retranchée » exige la LATITUDE du "
+                "site. L'ombre de faîte entre chevrons a une DIRECTION "
+                "est-ouest, que le noyau ne devine jamais : transmettez le "
+                "point GPS du calepinage.")
+        if self.passage_chevron_m < 0:
+            raise ValueError("champ `passage_chevron_m` : passage négatif")
 
     def hauteur_module_m(self, kit):
         """Hauteur du haut du module au-dessus du plan (côté pente × sin)."""
@@ -177,12 +240,100 @@ class AntiOmbrage(PolitiquePas):
         return max(0.0, hauteur * direction / math.tan(
             math.radians(self.elevation_effective_deg())))
 
+    # ------------------------------------------------ CAL167 : chevron E-O
+    def empreinte_pan_m(self, kit):
+        """Empreinte au sol d'UN pan du chevron (``panelDepthM`` du site).
+
+        Un chevron dos-à-dos en pose la moitié à l'est, l'autre à l'ouest :
+        son emprise transversale vaut deux fois cette empreinte (plus le
+        faîtage éventuel).
+        """
+        return kit.cote_dans_la_pente_m * math.cos(
+            math.radians(kit.inclinaison_deg))
+
+    def ombre_de_faite_ew_m(self, kit):
+        """Ombre du faîte PROJETÉE SUR L'AXE EST-OUEST, à l'heure de design.
+
+        Portage FIDÈLE de ``shadeLengthM(rise, lat, heure, eastWest=true)`` du
+        cerveau TypeScript : les chevrons s'empilent vers l'est, donc ce qui
+        les sépare est la composante ``|sin γ|`` de l'ombre — pas la
+        composante nord-sud ``|cos γ|`` qui gouverne les rangées plein sud.
+        """
+        if self.latitude_deg is None:
+            raise ValueError(
+                "champ `latitude_deg` : l'ombre de faîte est-ouest exige la "
+                "latitude du site (sa DIRECTION dépend du lieu).")
+        _alpha, azimut = position_solaire_solstice(self.latitude_deg,
+                                                   self.heure_solaire)
+        direction = abs(math.sin(math.radians(azimut)))
+        return max(0.0, self.hauteur_module_m(kit) * direction / math.tan(
+            math.radians(self.elevation_effective_deg())))
+
+    def pas_chevron_ew_m(self, kit):
+        """VIDE entre deux chevrons : ombre RÉSIDUELLE + passage d'homme.
+
+        ``max(0, ombre_de_faîte − empreinte d'un pan) + passage`` — identité
+        pour identité avec ``interTentGap`` du site. Le pan ouest du chevron
+        absorbe sa propre ombre de faîte tant qu'elle y tient ; ce qui déborde
+        (souvent zéro aux inclinaisons est-ouest réalistes) est le SEUL terme
+        solaire qui subsiste.
+        """
+        return (max(0.0, self.ombre_de_faite_ew_m(kit)
+                    - self.empreinte_pan_m(kit))
+                + self.passage_chevron_m)
+
+    def empreinte_ew_active(self, kit):
+        """La politique d'empreinte s'applique-t-elle à CE kit ?
+
+        Uniquement si elle a été CHOISIE et si le kit est bien un chevron
+        dos-à-dos : un module unique plein sud n'a pas de pan ouest pour
+        absorber quoi que ce soit.
+        """
+        return (self.politique_ew == EW_EMPREINTE_RETRANCHEE
+                and bool(getattr(kit, "dos_a_dos", False)))
+
+    def ecart_a_l_ombre_pleine_m(self, kit):
+        """Ce que l'empreinte du chevron LIBÈRE — l'écart, borné et expliqué.
+
+        Positif = la nouvelle politique serre les chevrons ; négatif = elle
+        les écarte. C'est la SEULE grandeur par laquelle les deux politiques
+        diffèrent : même soleil, même solstice, même heure de design.
+        """
+        return ((self.longueur_ombre_m(kit) + self.marge_m)
+                - self.pas_chevron_ew_m(kit))
+
+    @property
+    def hypothese(self):
+        """Phrase GÉNÉRÉE qui NOMME l'hypothèse retenue — jamais un texte écrit
+        à la main, et la même des deux côtés de l'écran (CAL86).
+        """
+        if self.latitude_deg is None:
+            solaire = ("élévation de dimensionnement %.1f° (valeur nationale "
+                       "— latitude du site non transmise)"
+                       % self.elevation_deg)
+        else:
+            solaire = ("élévation de dimensionnement %.1f° calculée à la "
+                       "latitude %.3f° à %.0f h solaire"
+                       % (self.elevation_effective_deg(), self.latitude_deg,
+                          self.heure_solaire))
+        if self.politique_ew == EW_EMPREINTE_RETRANCHEE:
+            ew = ("chevrons est-ouest : empreinte du pan retranchée de "
+                  "l'ombre de faîte, passage de %.2f m" % self.passage_chevron_m)
+        else:
+            ew = "chevrons est-ouest : ombre de faîte PLEINE (conservateur)"
+        return "%s ; %s" % (solaire, ew)
+
+    # ------------------------------------------------------------- le pas
     def pas_de_rangee_m(self, kit):
         """Pas COMPLET de rangée (profondeur + ombre + marge) — publiable."""
+        if self.empreinte_ew_active(kit):
+            return kit.emprise_transversale_m + self.pas_chevron_ew_m(kit)
         return (kit.emprise_transversale_m + self.longueur_ombre_m(kit)
                 + self.marge_m)
 
     def pas_apres_rangee(self, kit, y0):
+        if self.empreinte_ew_active(kit):
+            return max(self.allee_minimale_m, self.pas_chevron_ew_m(kit))
         return max(self.allee_minimale_m,
                    self.longueur_ombre_m(kit) + self.marge_m)
 

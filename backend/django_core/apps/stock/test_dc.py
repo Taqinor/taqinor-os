@@ -358,10 +358,11 @@ class TestPV6SpecsForProduitSelector(DCBase):
             type_fiche=FicheTechnique.TypeFiche.MODULE,
             pmax_wc=Decimal('550'), longueur_mm=2384, largeur_mm=1303)
         # voc_v/isc_a/imp_a/temp_coeff_* non saisis → absents du dict.
+        # `bifacial` (CAL111) a default=False, non nullable : toujours présent.
         specs = specs_for_produit(self.produit)
         self.assertEqual(specs, {
             'pmax_wc': Decimal('550'), 'longueur_mm': 2384,
-            'largeur_mm': 1303,
+            'largeur_mm': 1303, 'bifacial': False,
         })
 
     def test_onduleur_subset(self):
