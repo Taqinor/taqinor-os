@@ -2514,6 +2514,30 @@ def totaux_temps_ordre(ordre):
 # route CHAQUE écriture par ``core.documents.changer_statut``.
 
 
+def _log_transition_statut_chatter(instance, ancien, nouveau, *, user=None):
+    """NTP2P44 — journalise ancien→nouveau sur le chatter générique
+    (``records.Activity``) pour CHAQUE document du kit passant par
+    ``appliquer_statut_document`` (``DemandeAchat``/``OrdreSousTraitance`` à
+    ce jour — toutes deux déjà cibles ARC30 dans
+    ``apps/installations/platform.py``, chatter câblé sur leur viewset via
+    ``ChatterViewSetMixin``). Réutilise ``apps.records.services`` (fondation) :
+    aucun modèle ``*Activity`` maison, exactement le patron ``crm.LeadActivity``/
+    ``innovation.idee``. Best-effort strict — ne doit JAMAIS faire échouer la
+    transition métier elle-même (même contrat que les émetteurs d'événement
+    ``core.events`` de ce module)."""
+    try:
+        from apps.records.services import log_field_change
+        log_field_change(
+            instance, 'statut', ancien, nouveau, user=user,
+            field_label='Statut')
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTP2P44 : journal chatter de transition échoué (%s %s)',
+            type(instance).__name__, getattr(instance, 'pk', '?'),
+            exc_info=True)
+
+
 def appliquer_statut_document(instance, cible, *, user=None, champs=None):
     """AUD819 — applique une transition de statut GARDÉE sur un document du kit.
 
@@ -2532,6 +2556,10 @@ def appliquer_statut_document(instance, cible, *, user=None, champs=None):
     soumise, re-clôturer un ordre déjà clos) et les tables ``TRANSITIONS`` ne la
     déclarent PAS — un document ne « transite » pas vers lui-même (cf. la
     docstring de ``changer_statut``), et rien n'a changé d'état à annoncer.
+
+    NTP2P44 — une transition RÉELLE (pas la ré-application idempotente
+    ci-dessus) pose EN OUTRE une entrée ancien→nouveau sur le chatter
+    générique de l'instance (``_log_transition_statut_chatter``), best-effort.
 
     Retourne l'instance mutée.
     """
@@ -2554,7 +2582,9 @@ def appliquer_statut_document(instance, cible, *, user=None, champs=None):
             return instance
         if noms:
             instance.save(update_fields=noms)
+        ancien = instance.statut
         changer_statut(instance, cible, user=user)
+    _log_transition_statut_chatter(instance, ancien, cible, user=user)
     return instance
 
 
