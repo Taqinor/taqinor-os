@@ -82,7 +82,7 @@ import { isSimplePolygon, roofAreaLabel, zoomToFitRing, type LngLat } from '../l
 import { inferZoneFacingAmong } from '../lib/roofAdjacency';
 import { obstacleRing, type Obstacle } from '../lib/obstacles';
 import { areaLabel } from '../lib/roofAreas';
-import { buildSatelliteStyle } from '../lib/roofConfig';
+import { buildSatelliteStyle, imageryAttribution, resolveImageryProvider } from '../lib/roofConfig';
 import { type RoofTypeSelect } from '../lib/roofTypeSelect';
 import { type ScaledProduction, type PerKwcProduction, type SpecificDateProfile } from '../lib/productionEngine';
 import {
@@ -1112,18 +1112,34 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   };
 
   // — Three.js —
+  // CAL48 — fournisseur d'imagerie ACTIF (registre `lib/roofConfig`), résolu depuis la
+  // section `imagerie` des réglages société. Aucun contexte ⇒ null ⇒ attribution vide.
+  const activeImageryProvider = opts.imagery
+    ? resolveImageryProvider(opts.imagery, { maptilerKey: opts.maptilerKey, mapboxToken: opts.mapboxToken })
+    : null;
+  const activeImageryAttribution = activeImageryProvider
+    ? [imageryAttribution(activeImageryProvider, opts.imagery)]
+    : [];
+
   const map = new maplibregl.Map({
     container: mapEl,
     // Imagerie satellite : Mapbox (Maxar Vivid, plus nette sur le Maroc) si un
     // token PUBLIC_MAPBOX_TOKEN est posé, sinon REPLI inchangé sur le style
     // hybride MapTiler. La géolocalisation/recherche reste sur MapTiler (clé
     // toujours requise) — Mapbox n'apporte QUE l'imagerie.
-    style: buildSatelliteStyle({ maptilerKey: opts.maptilerKey, mapboxToken: opts.mapboxToken }) as maplibregl.StyleSpecification | string,
+    style: buildSatelliteStyle({
+      maptilerKey: opts.maptilerKey,
+      mapboxToken: opts.mapboxToken,
+      imagery: opts.imagery,
+    }) as maplibregl.StyleSpecification | string,
     center: MOROCCO_CENTER,
     zoom: 5,
     pitch: 0,
     maxPitch: 75,
-    attributionControl: { compact: true },
+    // CAL48 — l'attribution du fournisseur ACTIF est VISIBLE sur la carte (exigence du
+    // registre : un fournisseur sans attribution affichée n'est pas utilisable). Sans
+    // contexte d'imagerie, `customAttribution` est vide et le contrôle est identique.
+    attributionControl: { compact: true, customAttribution: activeImageryAttribution },
     fadeDuration: opts.reducedMotion ? 0 : 300,
   });
   opts.onReady?.();

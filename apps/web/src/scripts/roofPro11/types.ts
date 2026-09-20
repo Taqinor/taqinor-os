@@ -3,6 +3,7 @@
  * Extraits de roof-tool-pro11.ts (split modulaire 2026-06-20) — INCHANGÉS.
  */
 import { type RoofTypeSelect } from '../../lib/roofTypeSelect';
+import { type ImagerySettings } from '../../lib/roofConfig';
 import { type PackResult, type PanelGrid, type ConfigFamily, OBSTACLE_CLEARANCE_M } from '../../lib/estimatorBrainV2';
 import { type Obstacle, type ObstacleType, type ObstacleProvenance } from '../../lib/obstacles';
 import { type SerializeMeta, type DevisPayload, type RawContourPoint } from './prefill';
@@ -68,6 +69,11 @@ export interface InitOptions {
   // ne la passent jamais : absente → calque vide, boot octet pour octet
   // inchangé.
   referenceContour?: RawContourPoint[] | null;
+  // CAL47/CAL48 — section `imagerie` des réglages société (pays, fournisseur actif,
+  // fournisseurs autorisés, calques optionnels, attribution saisie), lue par la page
+  // HÔTE sur `GET /api/django/calepinage/parametres/` et transmise telle quelle.
+  // Absente/vide ⇒ imagerie et géocodage strictement inchangés (Maroc, MapTiler/Mapbox).
+  imagery?: ImagerySettings | null;
 }
 
 /** PV75 — sous-ensemble bancable de `simulation.pr` (P50/P90/PR/cascade des pertes),

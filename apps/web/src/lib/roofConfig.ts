@@ -187,7 +187,30 @@ export function mapboxStaticRoofImageUrl(
  * MapLibre (StyleSpecification) ; le type reste volontairement large pour garder
  * ce module pur (aucun import maplibre-gl, cf. test du périmètre des imports).
  */
-export function buildSatelliteStyle(opts: { maptilerKey: string; mapboxToken?: string }): string | object {
+export function buildSatelliteStyle(opts: {
+  maptilerKey: string;
+  mapboxToken?: string;
+  /** CAL48 — section `imagerie` des réglages société. ABSENTE ⇒ le style produit est
+   *  strictement celui d'avant CAL48 (aucune lecture du registre). */
+  imagery?: ImagerySettings | null;
+}): string | object {
+  // CAL48 — un contexte d'imagerie RENSEIGNÉ passe par le registre de fournisseurs
+  // (attribution du fournisseur actif incluse). Sans contexte, la logique historique
+  // est conservée telle quelle.
+  if (opts.imagery && Object.keys(opts.imagery).length > 0) {
+    const provider = resolveImageryProvider(opts.imagery, {
+      maptilerKey: opts.maptilerKey,
+      mapboxToken: opts.mapboxToken,
+    });
+    if (provider) {
+      const style = buildProviderStyle(
+        provider,
+        { maptilerKey: opts.maptilerKey, mapboxToken: opts.mapboxToken },
+        opts.imagery,
+      );
+      if (style) return style;
+    }
+  }
   const token = (opts.mapboxToken ?? '').trim();
   if (!token) return maptilerHybridStyleUrl(opts.maptilerKey);
   return {
@@ -203,4 +226,177 @@ export function buildSatelliteStyle(opts: { maptilerKey: string; mapboxToken?: s
     },
     layers: [{ id: 'mapbox-satellite', type: 'raster', source: 'mapbox-satellite' }],
   };
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL48 — REGISTRE DE FOURNISSEURS D'IMAGERIE
+//
+// Jusqu'ici `buildSatelliteStyle` connaissait DEUX fournisseurs codés en dur et
+// choisissait par la seule présence d'un jeton : aucun point d'entrée pour un
+// troisième (parité SolarEdge Designer / Aurora, qui laissent choisir la source
+// d'imagerie). Le registre ci-dessous déclare chaque fournisseur avec son
+// identifiant, ses tuiles (ou son style), son ATTRIBUTION OBLIGATOIRE et sa
+// résolution ANNONCÉE par le fournisseur (jamais estimée : inconnue ⇒ `null`).
+//
+// Le contexte vient des réglages société (CAL47, section `imagerie` de
+// `GET /api/django/calepinage/parametres/` — voir `contract_samples/site_imagerie.json`) :
+// `pays`, `fournisseur_imagerie`, `fournisseurs_autorises`, `attribution`.
+// Section vide/absente ⇒ `buildSatelliteStyle` produit EXACTEMENT le style
+// d'aujourd'hui (Mapbox si jeton, sinon MapTiler hybride).
+//
+// AUCUN fournisseur n'est ajouté par CAL48 : seuls `maptiler` et `mapbox`, déjà
+// en place, y sont déclarés.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Jetons/clés publics disponibles pour construire l'URL d'un fournisseur. */
+export interface ImageryKeys {
+  maptilerKey?: string;
+  mapboxToken?: string;
+}
+
+export interface ImageryProvider {
+  /** Identifiant stable, celui que la société pose dans `fournisseur_imagerie`. */
+  id: string;
+  /** Libellé affiché dans le sélecteur de l'atelier. */
+  label: string;
+  /** Mention légale du fournisseur, OBLIGATOIRE et affichée sur la carte. */
+  attribution: string;
+  /** Résolution ANNONCÉE par le fournisseur (m/pixel). `null` = non annoncée —
+   *  jamais un chiffre estimé. */
+  resolutionM: number | null;
+  /** Pays (ISO 3166-1 alpha-2, minuscules) où le fournisseur est proposé.
+   *  `null` = partout. */
+  countries: readonly string[] | null;
+  /** Modèles de tuiles `{z}/{x}/{y}` ; `null` = clé/jeton manquant ⇒ indisponible. */
+  tiles?: (keys: ImageryKeys) => string[] | null;
+  /** Style MapLibre complet servi par le fournisseur ; alternative à `tiles`. */
+  styleUrl?: (keys: ImageryKeys) => string | null;
+  tileSize?: number;
+  maxzoom?: number;
+  /** Quotas/conditions d'usage documentés, affichables à l'utilisateur. */
+  quotas?: string;
+}
+
+const PROVIDERS = new Map<string, ImageryProvider>();
+
+/** Déclare (ou remplace) un fournisseur dans le registre. */
+export function registerImageryProvider(p: ImageryProvider): void {
+  PROVIDERS.set(p.id, p);
+}
+
+export function getImageryProvider(id: string | null | undefined): ImageryProvider | null {
+  if (!id) return null;
+  return PROVIDERS.get(id) ?? null;
+}
+
+/** Tous les fournisseurs déclarés, dans l'ordre de déclaration. */
+export function imageryProviders(): ImageryProvider[] {
+  return [...PROVIDERS.values()];
+}
+
+registerImageryProvider({
+  id: 'maptiler',
+  label: 'MapTiler — hybride satellite',
+  attribution:
+    '© <a href="https://www.maptiler.com/copyright/" target="_blank" rel="noopener">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+  resolutionM: null,
+  countries: null,
+  styleUrl: (k) => (k.maptilerKey?.trim() ? maptilerHybridStyleUrl(k.maptilerKey.trim()) : null),
+});
+
+registerImageryProvider({
+  id: 'mapbox',
+  label: 'Mapbox Satellite (Maxar Vivid)',
+  attribution:
+    '© <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener">Mapbox</a> © <a href="https://www.maxar.com/" target="_blank" rel="noopener">Maxar</a>',
+  resolutionM: null,
+  countries: null,
+  tiles: (k) => (k.mapboxToken?.trim() ? [mapboxSatelliteTileUrl(k.mapboxToken.trim())] : null),
+  tileSize: 256,
+});
+
+/** Section `imagerie` des réglages société (CAL47), telle que servie. Toutes les
+ *  clés peuvent être nulles : section vide = comportement d'aujourd'hui. */
+export interface ImagerySettings {
+  pays?: string | null;
+  fournisseur_imagerie?: string | null;
+  fournisseurs_autorises?: readonly string[] | null;
+  calques_optionnels?: readonly string[] | null;
+  attribution?: string | null;
+}
+
+/** Fournisseurs PROPOSABLES : ceux admis par la société (dans SON ordre), déclarés
+ *  au registre, disponibles avec les clés en main et admis dans le pays du projet.
+ *  Société muette ⇒ tous les fournisseurs déclarés que le pays admet. */
+export function availableImageryProviders(
+  settings: ImagerySettings | null | undefined,
+  keys: ImageryKeys,
+): ImageryProvider[] {
+  const country = (settings?.pays ?? '').trim().toLowerCase() || null;
+  const allowed = settings?.fournisseurs_autorises?.length
+    ? settings.fournisseurs_autorises
+        .map((id) => getImageryProvider(id))
+        .filter((p): p is ImageryProvider => !!p)
+    : imageryProviders();
+  return allowed.filter((p) => {
+    if (p.countries && (!country || !p.countries.includes(country))) return false;
+    const tiles = p.tiles?.(keys) ?? null;
+    const style = p.styleUrl?.(keys) ?? null;
+    return !!(tiles?.length || style);
+  });
+}
+
+/** Fournisseur ACTIF : celui nommé par la société s'il est proposable, sinon le
+ *  premier proposable, sinon `null` (⇒ repli historique). */
+export function resolveImageryProvider(
+  settings: ImagerySettings | null | undefined,
+  keys: ImageryKeys,
+): ImageryProvider | null {
+  const list = availableImageryProviders(settings, keys);
+  const wanted = (settings?.fournisseur_imagerie ?? '').trim();
+  if (wanted) {
+    const hit = list.find((p) => p.id === wanted);
+    if (hit) return hit;
+  }
+  return list[0] ?? null;
+}
+
+/** Attribution AFFICHÉE pour un fournisseur : celle du fournisseur, complétée de la
+ *  mention SAISIE par la société quand elle en pose une (l'IGN impose la sienne). */
+export function imageryAttribution(
+  provider: ImageryProvider | null,
+  settings?: ImagerySettings | null,
+): string {
+  const societe = (settings?.attribution ?? '').trim();
+  const base = provider?.attribution ?? '';
+  if (societe && base && !base.includes(societe)) return `${base} ${societe}`;
+  return societe || base;
+}
+
+/** Style MapLibre (ou URL de style) d'un fournisseur du registre, attribution
+ *  incluse. `null` si le fournisseur n'est pas servable avec ces clés. */
+export function buildProviderStyle(
+  provider: ImageryProvider,
+  keys: ImageryKeys,
+  settings?: ImagerySettings | null,
+): string | object | null {
+  const attribution = imageryAttribution(provider, settings);
+  const tiles = provider.tiles?.(keys) ?? null;
+  if (tiles?.length) {
+    return {
+      version: 8,
+      sources: {
+        [provider.id]: {
+          type: 'raster',
+          tiles,
+          tileSize: provider.tileSize ?? 256,
+          ...(provider.maxzoom != null ? { maxzoom: provider.maxzoom } : {}),
+          attribution,
+        },
+      },
+      layers: [{ id: provider.id, type: 'raster', source: provider.id }],
+    };
+  }
+  const url = provider.styleUrl?.(keys) ?? null;
+  return url ?? null;
 }
