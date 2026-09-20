@@ -26,13 +26,14 @@ import {
   shadeObstructionsENU,
   shadowVector,
   pointSolarAccess,
+  pointSolarAccessMonth,
   solarAccessColorRGB,
   type ShadeObstruction,
   type ShadeObstructionENU,
 } from '../../lib/shadingEngine';
 import { roofObstacleShadeEntries, type Obstacle } from '../../lib/obstacles';
 import { environmentShadeEntries, type EnvironmentObject } from './environment';
-import { fallbackPerKwc } from '../../lib/productionEngine';
+import { fallbackPerKwc, type PerKwcProduction } from '../../lib/productionEngine';
 import { type LngLat } from '../../lib/roof';
 import { FLOORS, FLOOR_HEIGHT_M, GOLD } from './constants';
 import { $, esc } from './dom';
@@ -104,6 +105,43 @@ export function unifiedShadeEntries(
   ];
 }
 
+/** CAL95 — noms des mois pour le sélecteur saisonnier de la carte d'accès solaire. */
+export const HEATMAP_MONTH_LABELS: readonly string[] = [
+  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+];
+
+/** Un point de module à évaluer pour la carte d'accès solaire (ENU, mètres). */
+export interface HeatmapPoint {
+  cx: number;
+  cy: number;
+}
+
+/**
+ * CAL95 — valeurs d'accès solaire (0–1) de chaque module, en lecture ANNUELLE (`month`
+ * null, le défaut historique) ou pour UN MOIS donné (0 = janvier). Le mois n'ajoute
+ * aucun modèle : c'est la MÊME intégrale horaire dératée, restreinte au jour-type PVGIS
+ * du mois — décembre (soleil bas, ombres longues) sort donc plus rouge que juin sans
+ * qu'aucun coefficient saisonnier ne soit inventé.
+ *
+ * Aucune obstruction → tout à 1 (plein soleil uniforme) : la carte est verte partout,
+ * ce qui est la lecture honnête d'un toit sans obstruction renseignée. PURE.
+ */
+export function heatmapAccessValues(
+  latitudeDeg: number,
+  obstructions: readonly ShadeObstructionENU[],
+  prod: PerKwcProduction,
+  panels: readonly HeatmapPoint[],
+  month: number | null,
+): number[] {
+  if (!obstructions.length) return panels.map(() => 1);
+  return panels.map((p) =>
+    month == null
+      ? pointSolarAccess(latitudeDeg, obstructions, prod, p.cx, p.cy)
+      : pointSolarAccessMonth(latitudeDeg, obstructions, prod, p.cx, p.cy, month),
+  );
+}
+
 export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const { map, setStatus, recalcDisplays, applyHeatmap } = deps;
 
@@ -137,6 +175,32 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const heatmapBtn = $<HTMLButtonElement>('rp9-heatmap-toggle');
   const heatmapNoteEl = $('rp9-heatmap-note');
   let heatmapOn = false;
+  // CAL95 — LECTURE SAISONNIÈRE de la carte : null = annuel (le défaut historique),
+  // 0–11 = un mois. Le sélecteur est créé ici s'il n'existe pas déjà dans la page (même
+  // patron que le sélecteur de type d'obstacle, PV61) — aucune page n'a à être modifiée.
+  let heatmapMonth: number | null = null;
+  const heatmapMonthEl = ensureHeatmapMonthPicker();
+  function ensureHeatmapMonthPicker(): HTMLSelectElement | null {
+    const existing = $<HTMLSelectElement>('rp9-heatmap-month');
+    if (existing) return existing;
+    if (!heatmapBtn?.parentElement || typeof document.createElement !== 'function') return null;
+    const select = document.createElement('select');
+    select.id = 'rp9-heatmap-month';
+    select.className = 'rp9-input';
+    select.setAttribute('aria-label', 'Période de la carte d’accès solaire');
+    const annual = document.createElement('option');
+    annual.value = '';
+    annual.textContent = 'Année entière';
+    select.appendChild(annual);
+    HEATMAP_MONTH_LABELS.forEach((label, i) => {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+      select.appendChild(opt);
+    });
+    heatmapBtn.parentElement.appendChild(select);
+    return select;
+  }
 
   // — Hypothèse du moment de prise de vue (jour de l'année + heure solaire) —
   let imageryDay: number = IMAGERY_SUN_DEFAULT.dayOfYear;
@@ -229,11 +293,9 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     const enu = activeShadeEntries(); // CAL66/CAL67 — toutes les sources, pas seulement les ombres tracées
     const prod = ctx.prodPerKwc ?? fallbackPerKwc();
     const panels = plan.grid.panels;
-    // Accès solaire pré-calculé par cellule (0–1). Sans obstruction → tout à 1 (plein
-    // soleil uniforme) : la heatmap est alors verte partout, ce qui est honnête.
-    const access: number[] = panels.map((p) =>
-      enu.length ? pointSolarAccess(ctx.centroidLat, enu, prod, p.cx, p.cy) : 1,
-    );
+    // CAL95 — accès solaire pré-calculé par cellule (0–1), en lecture annuelle ou d'un
+    // mois. Sans obstruction → tout à 1 (plein soleil uniforme), ce qui est honnête.
+    const access = heatmapAccessValues(ctx.centroidLat, enu, prod, panels, heatmapMonth);
     return (cellIndex: number) => {
       const a = cellIndex >= 0 && cellIndex < access.length ? access[cellIndex] : 1;
       return solarAccessColorRGB(a);
@@ -248,12 +310,23 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   function setHeatmap(on: boolean) {
     heatmapOn = on;
     if (heatmapBtn) heatmapBtn.setAttribute('aria-pressed', String(on));
-    if (heatmapNoteEl) {
-      heatmapNoteEl.textContent = on
-        ? 'Carte d’accès solaire : vert = plein soleil toute l’année, rouge = souvent à l’ombre (calcul astronomique, pondéré par l’irradiation réelle du lieu). Tracez des ombres voisines pour la voir varier.'
-        : '';
-    }
+    syncHeatmapNote();
     applyHeatmap(on ? buildHeatmapColorFn() : null);
+  }
+
+  /** CAL95 — légende de la carte : la même lecture honnête qu'avant, avec la PÉRIODE
+   *  évaluée nommée (année entière par défaut, ou le mois choisi). */
+  function syncHeatmapNote() {
+    if (!heatmapNoteEl) return;
+    if (!heatmapOn) {
+      heatmapNoteEl.textContent = '';
+      return;
+    }
+    const periode = heatmapMonth == null ? 'toute l’année' : `en ${HEATMAP_MONTH_LABELS[heatmapMonth]}`;
+    heatmapNoteEl.textContent =
+      `Carte d’accès solaire (${heatmapMonth == null ? 'année entière' : HEATMAP_MONTH_LABELS[heatmapMonth]}) : ` +
+      `vert = plein soleil ${periode}, rouge = souvent à l’ombre (calcul astronomique, pondéré par l’irradiation réelle du lieu). ` +
+      'Obstacles de toiture à hauteur saisie, objets d’environnement et ombres tracées la font varier.';
   }
 
   /** Ligne pointillée base→bout de chaque ombre tracée, sur la carte 2D. */
@@ -407,6 +480,15 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   });
   // WJ21 — bascule de la carte d'accès solaire (heatmap d'irradiance).
   heatmapBtn?.addEventListener('click', () => setHeatmap(!heatmapOn));
+  // CAL95 — changer de mois ne change RIEN au modèle : la même intégrale horaire, lue
+  // sur le jour-type PVGIS du mois choisi (annuel = valeur vide).
+  heatmapMonthEl?.addEventListener('change', () => {
+    const raw = heatmapMonthEl.value;
+    const v = raw === '' ? null : Number(raw);
+    heatmapMonth = v != null && Number.isInteger(v) && v >= 0 && v <= 11 ? v : null;
+    syncHeatmapNote();
+    if (heatmapOn) applyHeatmap(buildHeatmapColorFn());
+  });
 
   // CAL60 — hauteur de bâtiment saisie (`change` : blur/Entrée, jamais à chaque frappe,
   // même règle que le reste de l'atelier — W81). Vide ou invalide → retour à l'hypothèse.

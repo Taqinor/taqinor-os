@@ -357,6 +357,35 @@ export function pointSolarAccess(
 }
 
 /**
+ * CAL95 — accès solaire d'un point pour UN MOIS (0 = janvier), pondéré par le jour-type
+ * PVGIS de ce mois : intégrale horaire dératée ÷ intégrale intacte. Même modèle exact
+ * que `pointSolarAccess`, simplement restreint à un mois — décembre (soleil bas) est
+ * donc mécaniquement plus ombragé que juin, sans aucun coefficient saisonnier inventé.
+ * Mois hors [0;11], aucune obstruction ou profil vide → 1. PUR.
+ */
+export function pointSolarAccessMonth(
+  latitudeDeg: number,
+  obstructions: readonly ShadeObstructionENU[],
+  prod: PerKwcProduction,
+  px: number,
+  py: number,
+  monthIndex: number,
+  diffuseFraction = DIFFUSE_FRACTION_WHEN_SHADED,
+): number {
+  if (!Number.isInteger(monthIndex) || monthIndex < 0 || monthIndex > 11) return 1;
+  if (!obstructions.length) return 1;
+  const profile = prod.typicalDayByMonth?.[monthIndex];
+  if (!profile || !profile.length) return 1;
+  const before = profile.reduce((a, b) => a + b, 0);
+  if (!(before > 0)) return 1;
+  const factors = hourlyShadeFactors(latitudeDeg, obstructions, px, py, diffuseFraction);
+  const row = factors[monthIndex];
+  const after = profile.reduce((acc, v, h) => acc + v * (row?.[h] ?? 1), 0);
+  const f = after / before;
+  return Number.isFinite(f) ? Math.max(0, Math.min(1, f)) : 1;
+}
+
+/**
  * Accès solaire de CHAQUE point d'une liste (même modèle que pointSolarAccess). Renvoie
  * un tableau aligné sur `points`. Sans obstruction → tout à 1 (heatmap uniformément
  * « plein soleil »). PUR.
