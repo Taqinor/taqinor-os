@@ -788,6 +788,82 @@ class MetaClient:
         return self._request(
             'POST', self._account_edge('ads'), data=payload)
 
+    # ── PUB117 — Écriture de CRÉATIFS (adcreatives + ad à spec dynamique) ─────
+    @staticmethod
+    def _encode_nested(fields):
+        """Encode en JSON les valeurs IMBRIQUÉES (dict/list) d'un dict de champs
+        de formulaire Meta — les objets ne voyagent pas autrement dans un
+        ``application/x-www-form-urlencoded``. Un ``status`` est RETIRÉ au
+        passage (défense en profondeur : aucune écriture de créatif ne porte de
+        statut)."""
+        encoded = {}
+        for key, value in dict(fields or {}).items():
+            if key == 'status':
+                continue
+            encoded[key] = (json.dumps(value)
+                            if isinstance(value, (dict, list)) else value)
+        return encoded
+
+    def create_adcreative(self, *, name, object_story_spec=None,
+                          asset_feed_spec=None, extra_fields=None):
+        """PUB117 — Crée un ADCREATIVE au compte (``POST /act_<id>/adcreatives``).
+
+        Le client savait LIRE ``object_story_spec``/``asset_feed_spec`` d'un
+        créatif diffusé (miroir ADSDEEP11) mais pas en ÉCRIRE un : aucun chemin
+        ne pouvait donc fabriquer un créatif neuf (seuls ``swap_ad_creative`` et
+        ``boost_page_post`` en créaient un, chacun enfermé dans son propre
+        scénario).
+
+        Un adcreative est **INERTE** : il ne diffuse RIEN tant qu'aucune ad ne le
+        porte — et une ad, elle, naît TOUJOURS PAUSED (``_forced_status_payload``).
+        Un adcreative n'a d'ailleurs pas de ``status`` côté Graph : cette méthode
+        n'en écrit donc AUCUN et n'accepte aucun kwarg ``status`` (le passer lève
+        ``TypeError``, signature fermée comme toutes les écritures du client —
+        invariant permanent règle #3). Un ``status`` glissé via ``extra_fields``
+        est retiré, jamais réémis.
+
+        Au moins une des deux specs est requise (fail-fast local : jamais un
+        aller-retour réseau pour un créatif vide). Les objets imbriqués voyagent
+        encodés JSON (``_encode_nested``)."""
+        if not object_story_spec and not asset_feed_spec:
+            raise MetaError(
+                "create_adcreative exige object_story_spec ou asset_feed_spec.")
+        base = {'name': name}
+        if object_story_spec:
+            base['object_story_spec'] = object_story_spec
+        if asset_feed_spec:
+            base['asset_feed_spec'] = asset_feed_spec
+        payload = self._encode_nested({**base, **dict(extra_fields or {})})
+        return self._request(
+            'POST', self._account_edge('adcreatives'), data=payload)
+
+    def create_ad_with_asset_feed_spec(self, *, name, adset_id,
+                                       asset_feed_spec, extra_fields=None):
+        """PUB117 — Crée une ad à spec créative DYNAMIQUE (``asset_feed_spec``
+        INLINE dans ``creative``) : Meta recombine lui-même les visuels × titres ×
+        textes fournis et auto-teste les combinaisons à l'impression (chemin DCO).
+
+        INVARIANT PERMANENT (règle #3) : comme TOUTE création d'ad, elle
+        n'accepte AUCUN ``status`` (le passer lève ``TypeError``) et FORCE
+        ``status=PAUSED`` via ``_forced_status_payload`` (mot final) — un
+        ``status=ACTIVE`` glissé dans ``extra_fields`` est retiré puis écrasé.
+
+        La VALIDATION du contenu de la spec (plafonds 10 visuels × 5 titres ×
+        5 textes, exclusion mutuelle DCO ↔ rotation) appartient à ``dco.py`` et
+        se fait chez l'appelant : ici on borne seulement le cas vide (fail-fast,
+        aucun appel réseau pour une spec absente)."""
+        if not asset_feed_spec:
+            raise MetaError(
+                "create_ad_with_asset_feed_spec exige un asset_feed_spec.")
+        base = {
+            'name': name,
+            'adset_id': adset_id,
+            'creative': json.dumps({'asset_feed_spec': asset_feed_spec}),
+        }
+        payload = self._forced_status_payload(base, extra_fields)
+        return self._request(
+            'POST', self._account_edge('ads'), data=payload)
+
     # ── ADSDEEP34 — A/B test NATIF Meta (ad_studies, SPLIT_TEST_V2) ──────────
     # Bornes documentées (dossier §7) : 2-5 cellules, ``treatment_percentage``
     # >= 10 %, somme des cellules = 100 %. Validées ICI (fail-fast) — jamais un
@@ -900,13 +976,8 @@ class MetaClient:
                     "swap_ad_creative exige creative_spec ou creative_id.")
             # Les objets imbriqués (object_story_spec, asset_feed_spec…) voyagent
             # en JSON dans les paramètres de formulaire Meta. ``status`` retiré :
-            # jamais posé sur le nouveau créatif non plus.
-            spec = {}
-            for key, value in dict(creative_spec).items():
-                if key == 'status':
-                    continue
-                spec[key] = (json.dumps(value)
-                             if isinstance(value, (dict, list)) else value)
+            # jamais posé sur le nouveau créatif non plus (``_encode_nested``).
+            spec = self._encode_nested(creative_spec)
             created = self._request(
                 'POST', self._account_edge('adcreatives'), data=spec)
             new_creative_id = str((created or {}).get('id') or '').strip()
