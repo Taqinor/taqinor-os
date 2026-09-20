@@ -103,6 +103,29 @@ class Calepinage(TenantModel):
         verbose_name='Créé par',
     )
 
+    #: CAL139 — LES POSTES DE PERTES du calepinage, EXPLICITES et SOURCÉS.
+    #:
+    #: Trois jeux de constantes se contredisaient dans le dépôt
+    #: (``DEFAULT_LOSS_FACTORS`` côté ventes, la perte système et la perte
+    #: « intégrée » du site public, les constantes de l'écran devis). Ici la
+    #: perte n'est plus une constante : c'est une LISTE de postes, chacun avec
+    #: sa valeur et sa SOURCE, éditable calepinage par calepinage. La SOMME de
+    #: ces postes est exactement la valeur ``loss`` passée à PVGIS (CAL238) —
+    #: un double comptage devient impossible par construction, parce qu'il n'y
+    #: a qu'UNE addition et qu'elle est publiée.
+    #:
+    #: Forme : ``[{poste, libelle, pct, source, reference, mensuel}]``.
+    #: ``mensuel`` (12 valeurs) n'existe que pour les postes saisonniers (la
+    #: salissure) et la ``pct`` d'un poste mensuel est la MOYENNE de ses douze
+    #: mois — le calcul vit dans ``services/pertes.py``, jamais ici.
+    #:
+    #: Liste VIDE = aucune perte renseignée, donc AUCUNE simulation possible
+    #: (``politique_de_pertes`` refuse) : c'est voulu — un « 14 % au cas où »
+    #: serait exactement le chiffre inventé que la règle fondateur interdit.
+    #: Champ AJOUTÉ EN FIN DE CLASSE (migration ``0005``) : aucune société
+    #: existante ne change de comportement en le recevant.
+    pertes = models.JSONField('Postes de pertes', default=list, blank=True)
+
     class Meta:
         verbose_name = 'Calepinage'
         verbose_name_plural = 'Calepinages'
@@ -136,6 +159,14 @@ class Calepinage(TenantModel):
             erreurs['client'] = (
                 "Un calepinage doit être rattaché à un lead ou à un client : "
                 "renseignez « Client » ou « Lead (identifiant) »."
+            )
+        if self.pertes is not None and not isinstance(self.pertes, list):
+            # CAL139 — les postes se donnent en LISTE ORDONNÉE : un objet
+            # indexé par nom de poste perdrait l'ordre d'affichage et
+            # laisserait croire qu'un poste peut être écrit deux fois.
+            erreurs['pertes'] = (
+                "Les postes de pertes se donnent en liste ordonnée "
+                f"(reçu : {type(self.pertes).__name__})."
             )
         if self.layout_hash and len(self.layout_hash) != 64:
             erreurs['layout_hash'] = (
@@ -502,6 +533,144 @@ class ReleveTerrain(TenantModel):
                     "La précision de l'azimut s'exprime en degrés positifs "
                     f"(reçu : {self.precision_azimut_deg})."
                 )
+        if erreurs:
+            raise ValidationError(erreurs)
+
+
+class ProfilTypeConsommation(TenantModel):
+    """CAL149 — un profil de consommation TYPE, SAISI par la société.
+
+    LE CONSTAT
+    ----------
+    Les profils de charge vivaient en CONSTANTES : ``DAY_USAGE_DEFAULTS`` et
+    ``COMMERCIAL_DAY_SHARE`` côté écran devis, ``_scaled_typical_load(…,
+    'residential')`` côté ``apps/ventes/solar_design.py``. Aucun n'est
+    sourçable, aucun n'est modifiable par la société, et aucun ne dit d'où il
+    sort — alors qu'un profil de charge décide du taux d'autoconsommation,
+    donc de la taille du champ et de la batterie vendus au client.
+
+    LES TROIS DÉCISIONS GRAVÉES ICI
+    -------------------------------
+    * **``provenance`` est OBLIGATOIRE.** Un profil sans provenance écrite est
+      REFUSÉ, en nommant le champ. C'est la garantie centrale de la tâche :
+      « aucun profil livré sans provenance écrite ». Les profils codés en dur
+      du dépôt restent en repli, mais ils sont ÉTIQUETÉS « hypothèse interne »
+      partout où ils servent (``services/profils_types.py``) — jamais
+      présentés comme une mesure.
+    * **La courbe est 24 h × SAISON.** ``courbe`` vaut ``{saison: [24
+      valeurs]}`` : une maison marocaine ne consomme pas en août comme en
+      janvier, et un profil unique annuel effacerait précisément l'écart qui
+      décide de l'autoconsommation. Une seule saison (``annuel``) reste
+      admise — c'est un choix DÉCLARÉ, pas un défaut caché.
+    * **Les valeurs sont des POIDS relatifs**, normalisés à la lecture
+      (``services/profils_types.py``) : la société saisit la forme de sa
+      journée, le module la cale sur l'énergie réellement connue. Enregistrer
+      des kWh absolus ferait d'un profil TYPE la consommation d'UN client.
+
+    Modèle ADDITIF (migration ``0006``) : une société sans profil se comporte
+    exactement comme avant — les profils de repli, étiquetés, restent servis.
+    """
+
+    #: Les saisons ADMISES d'une courbe. ``annuel`` = une seule courbe pour
+    #: toute l'année, DÉCLARÉE comme telle.
+    SAISONS = ('annuel', 'hiver', 'printemps', 'ete', 'automne')
+
+    #: Les heures d'une journée — une courbe en a exactement 24.
+    HEURES = 24
+
+    class Famille(models.TextChoices):
+        RESIDENTIEL = 'residentiel', 'Résidentiel'
+        COMMERCIAL = 'commercial', 'Commercial / tertiaire'
+        INDUSTRIEL = 'industriel', 'Industriel'
+        AGRICOLE = 'agricole', 'Agricole'
+        AUTRE = 'autre', 'Autre'
+
+    #: La clé employée par les écrans et les calculs (stable, minuscule).
+    cle = models.SlugField('Clé', max_length=60)
+    libelle = models.CharField('Libellé', max_length=160)
+    famille = models.CharField('Famille', max_length=16,
+                               choices=Famille.choices,
+                               default=Famille.RESIDENTIEL)
+    #: ``{saison: [24 poids]}`` — voir la docstring.
+    courbe = models.JSONField('Courbe 24 h par saison', default=dict)
+    #: OBLIGATOIRE — d'où vient ce profil (relevé, facturier, comptage,
+    #: mesure sur site, étude). Un profil sans provenance est refusé.
+    provenance = models.TextField('Provenance')
+    actif = models.BooleanField('Actif', default=True)
+    saisi_par = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,  # on_delete: le profil survit au départ de son auteur
+        null=True, blank=True,
+        related_name='calepinage_profils_types',
+        verbose_name='Saisi par',
+    )
+
+    class Meta:
+        verbose_name = 'Profil type de consommation'
+        verbose_name_plural = 'Profils types de consommation'
+        ordering = ['famille', 'libelle', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'cle'],
+                name='uniq_profil_type_conso_par_societe'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'famille'],
+                         name='cal_pro_co_fam_idx'),
+        ]
+
+    def __str__(self):
+        return self.libelle or self.cle
+
+    def clean(self):
+        """Refuse, EN FRANÇAIS et en NOMMANT le champ, un profil indéfendable."""
+        erreurs = {}
+        if not (self.provenance or '').strip():
+            erreurs['provenance'] = (
+                "La provenance est obligatoire : un profil type sans "
+                "provenance écrite ne peut être ni défendu devant un client "
+                "ni distingué d'une hypothèse interne."
+            )
+        if not isinstance(self.courbe, dict) or not self.courbe:
+            erreurs['courbe'] = (
+                "La courbe attend au moins une saison "
+                "(« {saison: [24 valeurs]} »)."
+            )
+        else:
+            for saison, valeurs in self.courbe.items():
+                if saison not in self.SAISONS:
+                    erreurs['courbe'] = (
+                        f"Saison inconnue : « {saison} ». Saisons admises : "
+                        f"{', '.join(self.SAISONS)}."
+                    )
+                    break
+                if not isinstance(valeurs, (list, tuple)) \
+                        or len(valeurs) != self.HEURES:
+                    erreurs['courbe'] = (
+                        f"La courbe de la saison « {saison} » attend "
+                        f"exactement {self.HEURES} valeurs, une par heure."
+                    )
+                    break
+                try:
+                    nombres = [float(valeur) for valeur in valeurs]
+                except (TypeError, ValueError):
+                    erreurs['courbe'] = (
+                        f"La courbe de la saison « {saison} » contient une "
+                        "valeur illisible."
+                    )
+                    break
+                if any(nombre < 0 for nombre in nombres):
+                    erreurs['courbe'] = (
+                        f"La courbe de la saison « {saison} » ne peut pas "
+                        "porter d'heure négative."
+                    )
+                    break
+                if sum(nombres) <= 0:
+                    erreurs['courbe'] = (
+                        f"La courbe de la saison « {saison} » est entièrement "
+                        "nulle : elle ne décrit aucune journée."
+                    )
+                    break
         if erreurs:
             raise ValidationError(erreurs)
 

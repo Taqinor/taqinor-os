@@ -63,7 +63,7 @@ class ManifesteModuleTest(SimpleTestCase):
 
 
 class ManifestePlateformeTest(SimpleTestCase):
-    """ARC28 — ``platform.py`` existe et ne déclare aucune surface non câblée."""
+    """ARC28 — ``platform.py`` ne déclare aucune surface NON CÂBLÉE.
 
     def test_chaque_surface_declaree_est_cablee(self):
         """L'invariant est « déclaré = câblé », pas « tout est vide ».

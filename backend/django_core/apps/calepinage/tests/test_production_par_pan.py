@@ -144,14 +144,23 @@ class ProductionParPanTest(unittest.TestCase):
         self.assertEqual([poste['poste'] for poste in resultat['pertes']],
                          [poste['poste'] for poste in POSTES_ESSAI])
 
-    def test_p75_p90_et_variabilite_restent_non_calcules(self):
+    def test_p75_p90_sont_publies_avec_l_origine_de_sigma(self):
+        """CAL142 a REMPLACÉ le « non calculé » de CAL138.
+
+        Sur une fenêtre d'UNE année, aucun écart-type n'est mesurable : les
+        quantiles sont publiés avec un σ d'HYPOTHÈSE, annoncé comme tel dans
+        les avertissements — jamais un σ mesuré qui n'aurait rien mesuré.
+        """
         resultat, _ = calculer([
             zone('PAN-SUD', modules=12, kwc=8.64, azimut=SUD)])
         total = resultat['production']['total']
-        self.assertIsNone(total['p75_kwh'])
-        self.assertIsNone(total['p90_kwh'])
-        self.assertIsNone(total['annual_variability'])
-        self.assertTrue(any('CAL142' in avis
+        self.assertIsNotNone(total['p75_kwh'])
+        self.assertIsNotNone(total['p90_kwh'])
+        self.assertLess(total['p90_kwh'], total['p75_kwh'])
+        self.assertLess(total['p75_kwh'], total['p50_kwh'])
+        self.assertEqual(total['annual_variability_source'], 'hypothese')
+        self.assertEqual(total['annual_variability_annees'], 1)
+        self.assertTrue(any('HYPOTHÈSE' in avis
                             for avis in resultat['avertissements']))
 
 

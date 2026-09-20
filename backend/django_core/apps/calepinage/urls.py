@@ -16,6 +16,7 @@ from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
 from .views.calepinages import CalepinageViewSet
+from .views.consommation import ProfilsTypesView
 from .views.moteur import (
     MoteurCalculerView,
     MoteurPoseView,
@@ -44,6 +45,8 @@ from .views import io_layout as _io_layout_action  # noqa: F401
 # pompage solaire, services CAL155-CAL158) : code dans son propre fichier,
 # rattachement par cet import, AVANT ``router.register``.
 from .views import pompage as _pompage_action  # noqa: F401
+# CAL139 — même patron : rattache ``pertes``/``enregistrer-pertes``.
+from .views import simulation as _simulation_actions  # noqa: F401
 
 # ``SimpleRouter`` et non ``DefaultRouter`` (même choix qu'``apps/ai_governance``)
 # : ``DefaultRouter`` ajoute une vue « api-root » que personne n'appelle ET un
@@ -82,5 +85,11 @@ urlpatterns = [
     # rien — elle PROPOSE.
     path('parametres/suggestion-pente/', SuggestionPenteIGNView.as_view(),
          name='calepinage-parametres-suggestion-pente'),
+    # CAL149 — les PROFILS TYPES de consommation de la société. Même raison
+    # que ci-dessus : c'est un RÉGLAGE société (aucun identifiant de
+    # calepinage n'y entre), donc il vit sous le préfixe ``parametres`` et
+    # n'ouvre aucune seconde famille d'URL pour l'objet métier.
+    path('parametres/profils-types/', ProfilsTypesView.as_view(),
+         name='calepinage-parametres-profils-types'),
     path('', include(router.urls)),
 ]
