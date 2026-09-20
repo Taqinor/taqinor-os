@@ -118,6 +118,13 @@ const aoApi = {
   batiments: crud('batiments'),
   toitures: {
     ...crud('toitures'),
+    /* CAL241/CAL242 — REPRENDRE LE TRACÉ 3D dans la toiture AO. Le serveur
+       n'écrit QUE `ToitureAO.contour_local_m` et son origine géographique :
+       aucune géométrie opposable (obstacles, cotes, zones, variante retenue)
+       ne bouge, et le refus 409 « affaire déposée/close » se propage TEL QUEL.
+       L'écran affiche le message du serveur sans le réécrire. */
+    reprendreContour3d: (id, corps) =>
+      api.post(`/ao/toitures/${id}/reprendre-contour-3d/`, corps),
     // PVG1 — analyse DXF réelle (MULTIPART), route HORS routeur DRF (ce
     // n'est pas une ressource) : `apps/ao/urls.py`
     // `path('toitures/dxf/analyser/', AnalyserDxfView.as_view(), …)`. Rien
