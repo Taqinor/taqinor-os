@@ -18,6 +18,8 @@ corps de la requête. Une clé i18n inconnue est simplement ignorée à l'affich
 côté frontend (le catalogue vit là-bas) ; le serveur n'impose pas de liste
 blanche de clés.
 """
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -141,3 +143,18 @@ class TranslationOverrideViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({
             'overrides': TranslationOverride.overrides_for_company(company),
         })
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @action(detail=False, methods=['get'], url_path='glossaire-export')
+    def glossaire_export(self, request):
+        """NTI18N46 — classeur XLSX du glossaire, pour relecture hors ligne.
+
+        Un onglet par domaine (statuts / unités / mentions légales) ; une case
+        de traduction EN ou AR absente est peinte en rouge. Action d'écriture au
+        sens des permissions (hors ``READ_ACTIONS``) : le fichier porte les
+        textes contractuels de la société, et la relecture linguistique est
+        précisément ce que ``localisation_gerer`` gouverne (NTI18N40).
+        """
+        from .glossaire_export import reponse_export
+
+        return reponse_export(self._company())
