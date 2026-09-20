@@ -281,6 +281,9 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     if (!moveObs) return;
     const idx = ctx.obstacles.findIndex((x) => x.id === moveObs.id);
     if (idx < 0) return;
+    // CAL100 — UNE SEULE photo pour tout le glissé, juste avant le PREMIER mouvement réel
+    // (un simple tap de sélection, sans glissé, ne pousse donc rien à annuler).
+    if (!moveObs.moved) ctx.pushWorkshopHistory?.();
     // Delta lng/lat : annule le parallaxe absolu de la vue inclinée.
     const centerLng = moveObs.centerLng + (lngLat[0] - moveObs.startLng);
     const centerLat = moveObs.centerLat + (lngLat[1] - moveObs.startLat);
@@ -337,6 +340,8 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     const mv = ctx.moveVertex;
     if (!mv) return;
     if (mv.idx < 0 || mv.idx >= ctx.vertices.length) return;
+    // CAL100 — même photo unique que le glissé d'obstacle, juste avant le premier mouvement.
+    if (!mv.moved) ctx.pushWorkshopHistory?.();
     // Delta lng/lat (annule le parallaxe de la vue inclinée), comme le glissé d'obstacle.
     const lng = mv.vLng + (lngLat[0] - mv.startLng);
     const lat = mv.vLat + (lngLat[1] - mv.startLat);
