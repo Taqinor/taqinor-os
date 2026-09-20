@@ -2,22 +2,20 @@
 
 LE CONSTAT
 ----------
-Le moteur (``core/calepinage``) est un NOYAU PUR ouvert à tout consommateur —
-``apps.ventes`` le consomme déjà pour la villa (``domain/geometrie.py`` via
-``apps.ao.selectors.calepinage_villa``). Mais son SEUL accès HTTP était gardé
-AO (``apps/ao/calepinage_urls.py``, permissions ``ao_voir``/``ao_gerer``) : un
-module autonome devait donc emprunter la porte d'un autre domaine, avec les
-permissions de cet autre domaine. Cette vue est la porte propre du module.
+Le moteur (``core/calepinage``) est un NOYAU PUR ouvert à tout consommateur.
+Mais son SEUL accès HTTP était gardé par le module d'appels d'offres (ses
+permissions à lui) : un module autonome devait donc emprunter la porte d'un
+autre domaine. Cette vue est la porte propre du module.
 
 CE QU'ELLE NE FAIT PAS
 ----------------------
 * elle ne REFAIT pas la sérialisation du moteur : elle appelle
-  ``apps.ao.selectors.calepinage_json`` (fonction mince ajoutée côté AO), donc
-  la forme publiée reste CELLE DU DÉPÔT — une seconde sérialisation dériverait
-  de la première au premier champ ajouté ;
+  ``moteur_service.calepinage_json`` (la porte mince du module, SOLMVP15),
+  donc la forme publiée reste CELLE DU DÉPÔT — une seconde sérialisation
+  dériverait de la première au premier champ ajouté ;
 * elle n'invente AUCUNE valeur par défaut de perte ni de tarif (décision D5) :
   ce que le document ne dit pas, le moteur ne le suppose pas ;
-* elle n'écrit RIEN : aucune ligne AO, aucun calepinage, aucun statut.
+* elle n'écrit RIEN : aucun calepinage, aucun statut, aucune ligne.
 
 LA BORNE DE COÛT
 ----------------
@@ -170,7 +168,7 @@ class MoteurCalculerView(APIView):
                                   dict(_DOCUMENT_MOTEUR)),
         responses={200: FORME_CALCULER, 202: FORME_ACCUSE})
     def post(self, request, *args, **kwargs):
-        from apps.ao.selectors import (
+        from ..moteur_service import (
             calepinage_json, cout_calepinage, erreurs_moteur_calepinage,
         )
 
@@ -298,7 +296,7 @@ class MoteurPoseView(APIView):
     régime n'est pas opposable.
 
     CE QUI LA DISTINGUE DE ``calculer``. Rien dans le moteur : c'est LE MÊME
-    point d'entrée neutre (``apps.ao.selectors.calepinage_json``), donc aucune
+    point d'entrée neutre (``moteur_service.calepinage_json``), donc aucune
     seconde sérialisation qui dériverait de la première. La différence est la
     RÉPONSE : ``calculer`` publie la carte complète de l'atelier (tiroirs,
     suggestions, cache, engagement) ; ``pose`` publie la POSE et sa preuve, et
@@ -326,7 +324,9 @@ class MoteurPoseView(APIView):
         }),
         responses={200: FORME_POSE})
     def post(self, request, *args, **kwargs):
-        from apps.ao.selectors import calepinage_json, erreurs_moteur_calepinage
+        from ..moteur_service import (
+            calepinage_json, erreurs_moteur_calepinage,
+        )
 
         entree_invalide, incoherent = erreurs_moteur_calepinage()
         donnees = request.data
