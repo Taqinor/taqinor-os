@@ -24,6 +24,13 @@ import uuid
 import httpx
 from django.conf import settings
 
+# Vocabulaire IA déplacé dans ``ai_lanes`` (module feuille — contrat ENG20 :
+# ``policy`` le consomme sans tirer la fabrique) ; ré-exporté ici pour les
+# appelants historiques. Le POURQUOI métier complet reste documenté sur le
+# grand banc de commentaires PUB126 ci-dessous.
+from .ai_lanes import (  # noqa: F401
+    AI_GENERATED_LANES, asset_is_ai_generated, lane_is_ai_generated,
+)
 from .models import CreativeAsset
 
 logger = logging.getLogger(__name__)
@@ -49,12 +56,7 @@ logger = logging.getLogger(__name__)
 # variante DÉRIVÉE d'un asset IA reste de l'IA : ``asset_is_ai_generated``
 # hérite donc du ``parent``. La divulgation suit le CONTENU, pas la plomberie.
 # ══════════════════════════════════════════════════════════════════════════
-# Vocabulaire déplacé dans ``ai_lanes`` (module feuille — contrat ENG20 :
-# ``policy`` le consomme sans tirer la fabrique) ; ré-exporté ici pour les
-# appelants historiques.
-from .ai_lanes import (  # noqa: F401
-    AI_GENERATED_LANES, asset_is_ai_generated, lane_is_ai_generated,
-)
+# (Le vocabulaire lui-même vit dans ``ai_lanes`` — importé en tête de module.)
 
 
 def _store_bytes(company, data, *, ext, content_type):
