@@ -474,3 +474,21 @@ def photos_site(calepinage):
               .select_related('attachment', 'ajoutee_par')
               .order_by('-prise_le', '-id'))
     return [photo_en_ligne(photo) for photo in lignes]
+
+
+def releves_terrain(calepinage):
+    """CAL64 — les relevés terrain d'un calepinage, du plus récent au plus
+    ancien (par date de RELEVÉ, jamais par date d'envoi : le terrain et le
+    réseau ne coïncident pas).
+
+    Lecture PURE ; un calepinage sans relevé rend ``[]`` et jamais ``null``.
+    """
+    from .services.releve import releve_en_ligne
+
+    if calepinage is None or calepinage.pk is None:
+        return []
+    lignes = (calepinage.releves_terrain
+              .select_related('releve_par')
+              .prefetch_related('photos__attachment', 'photos__ajoutee_par')
+              .order_by('-releve_le', '-id'))
+    return [releve_en_ligne(releve) for releve in lignes]

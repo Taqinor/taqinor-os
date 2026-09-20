@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10786, operations: 19090, components: 5740}
+counts: {paths: 10787, operations: 19092, components: 5740}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1128,6 +1128,8 @@ operations:
 - post /api/django/btp-chantier/visas/{id}/soumettre-observations/ -> django_btp_chantier_visas_soumettre_observations_create
 - get /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_retrieve
 - post /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_create
+- get /api/django/calepinage/calepinages/{id}/releve/ -> django_calepinage_calepinages_releve_retrieve
+- post /api/django/calepinage/calepinages/{id}/releve/ -> django_calepinage_calepinages_releve_create
 - get /api/django/calepinage/parametres/suggestion-pente/ -> django_calepinage_parametres_suggestion_pente_retrieve
 - post /api/django/calepinage/parametres/suggestion-pente/ -> django_calepinage_parametres_suggestion_pente_create
 - get /api/django/chat/canned-responses/ -> django_chat_canned_responses_list

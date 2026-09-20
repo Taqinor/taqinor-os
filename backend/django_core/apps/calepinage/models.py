@@ -336,6 +336,17 @@ class PhotoSite(TenantModel):
                                default='')
     #: CAL53 — calage/géoréférencement, posé plus tard. Vide = non calée.
     calage = models.JSONField('Calage', null=True, blank=True)
+    #: CAL64 — le relevé terrain auquel cette photo appartient, s'il y en a
+    #: un. Nullable et additif : une photo déposée seule (CAL52) reste une
+    #: photo de première classe. La chaîne est déclarée en TEXTE pour que
+    #: ``PhotoSite`` n'ait pas à être défini après ``ReleveTerrain``.
+    releve = models.ForeignKey(
+        'calepinage.ReleveTerrain',
+        on_delete=models.SET_NULL,  # on_delete: une photo survit à la suppression de son relevé
+        null=True, blank=True,
+        related_name='photos',
+        verbose_name='Relevé terrain',
+    )
     ajoutee_par = models.ForeignKey(
         'authentication.CustomUser',
         on_delete=models.SET_NULL,  # on_delete: la photo survit au départ de son auteur
@@ -373,6 +384,115 @@ class PhotoSite(TenantModel):
                 "La date de prise de vue ne peut pas être dans le futur "
                 f"(reçu : {self.prise_le:%d/%m/%Y})."
             )
+        if erreurs:
+            raise ValidationError(erreurs)
+
+
+class ReleveTerrain(TenantModel):
+    """CAL64 — un relevé terrain MOBILE : photos, cotes saisies, boussole.
+
+    LE CONSTAT
+    ----------
+    Le relevé terrain existait côté visite technique mais n'alimentait que la
+    TEXTURE du toit (VT13) ; l'AO a bien un modèle de relevé et de chaînes de
+    cotes (``apps/ao/models.py``) que le calepinage ne peut pas lire (les deux
+    apps sont mutuellement découplées, contrat import-linter). Le module avait
+    donc besoin de SON entrée de relevé — sans dupliquer le SOLVEUR, qui vit
+    dans le noyau pur (``core/calepinage/solveur_cotes.py``).
+
+    LES TROIS DÉCISIONS
+    -------------------
+    * **AUCUNE COTE INVENTÉE EN SILENCE.** Les chaînes saisies sont résolues
+      par ``core.calepinage.solveur_cotes.resoudre`` : une cote manquante est
+      DÉDUITE par fermeture et marquée ``A_CONFIRMER`` — le résultat le dit,
+      l'écran l'affiche, et personne ne croit avoir mesuré ce qu'il a déduit.
+    * **UN AZIMUT SANS PRÉCISION DÉCLARÉE N'EST PAS UN AZIMUT.** Une boussole
+      de téléphone se trompe de plusieurs degrés ; publier sa valeur nue la
+      ferait lire comme une mesure exacte. ``precision_azimut_deg`` est donc
+      OBLIGATOIRE dès qu'un azimut est saisi (refus nommant le champ).
+    * **LES PHOTOS SONT CELLES DE CAL52.** Un relevé pointe des ``PhotoSite``
+      existantes (``PhotoSite.releve``) : un seul magasin, une seule fiche
+      photo, jamais un second stockage « pour le mobile ».
+
+    ``geometrie`` est le RÉSULTAT résolu, recalculé à chaque enregistrement ;
+    ``chaines`` reste la SAISIE brute, jamais réécrite par le solveur.
+    """
+
+    calepinage = models.ForeignKey(
+        Calepinage,
+        on_delete=models.CASCADE,  # on_delete: un relevé n'existe pas hors de son calepinage
+        related_name='releves_terrain',
+        verbose_name='Calepinage',
+    )
+    #: La SAISIE brute : ``[{nom, tolerance_m, total_mesure, cotes:[…]}]``.
+    chaines = models.JSONField('Chaînes de cotes (saisie)', default=list,
+                               blank=True)
+    #: Le RÉSULTAT du solveur du noyau — jamais recodé ici.
+    geometrie = models.JSONField('Géométrie résolue', null=True, blank=True)
+    azimut_boussole_deg = models.FloatField('Azimut boussole (°)', null=True,
+                                            blank=True)
+    #: SA précision DÉCLARÉE — obligatoire dès qu'un azimut est saisi.
+    precision_azimut_deg = models.FloatField('Précision de l’azimut (°)',
+                                             null=True, blank=True)
+    #: SAISIE, jamais la date d'envoi (le terrain et le réseau ne coïncident
+    #: pas : un relevé synchronisé le lendemain daterait du mauvais jour).
+    releve_le = models.DateField('Relevé le')
+    notes = models.TextField('Notes de terrain', blank=True, default='')
+    releve_par = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,  # on_delete: le relevé survit au départ de son auteur
+        null=True, blank=True,
+        related_name='calepinage_releves_terrain',
+        verbose_name='Relevé par',
+    )
+
+    class Meta:
+        verbose_name = 'Relevé terrain'
+        verbose_name_plural = 'Relevés terrain'
+        ordering = ['-releve_le', '-id']
+        indexes = [
+            models.Index(fields=['calepinage', '-releve_le'],
+                         name='cal_rel_cal_date_idx'),
+            models.Index(fields=['company', '-created_at'],
+                         name='cal_rel_co_cree_idx'),
+        ]
+
+    def __str__(self):
+        return f'Relevé du {self.releve_le:%d/%m/%Y}' if self.releve_le \
+            else f'Relevé #{self.pk}'
+
+    def clean(self):
+        """Refuse, en français et en NOMMANT le champ, un relevé indéfendable."""
+        from django.utils import timezone
+
+        erreurs = {}
+        if self.releve_le is None:
+            erreurs['releve_le'] = (
+                "La date du relevé est obligatoire : elle est SAISIE, jamais "
+                "déduite de la date d'envoi."
+            )
+        elif self.releve_le > timezone.localdate():
+            erreurs['releve_le'] = (
+                "La date du relevé ne peut pas être dans le futur "
+                f"(reçu : {self.releve_le:%d/%m/%Y})."
+            )
+        if self.azimut_boussole_deg is not None:
+            if not 0.0 <= float(self.azimut_boussole_deg) < 360.0:
+                erreurs['azimut_boussole_deg'] = (
+                    "L'azimut boussole se compte de 0 à 360° depuis le nord "
+                    f"(reçu : {self.azimut_boussole_deg})."
+                )
+            if self.precision_azimut_deg is None:
+                erreurs['precision_azimut_deg'] = (
+                    "Un azimut relevé à la boussole doit porter sa précision "
+                    "déclarée (± degrés) : sans elle, il se lirait comme une "
+                    "mesure exacte."
+                )
+            elif float(self.precision_azimut_deg) < 0:
+                erreurs['precision_azimut_deg'] = (
+                    "La précision de l'azimut s'exprime en degrés positifs "
+                    f"(reçu : {self.precision_azimut_deg})."
+                )
         if erreurs:
             raise ValidationError(erreurs)
 
