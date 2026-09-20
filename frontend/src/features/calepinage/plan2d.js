@@ -1,10 +1,12 @@
+import { formatNumber } from '../../lib/format'
+
 /* CAL104 — helpers PURS de la vue 2D plan (aucun React) : mise en forme d'une cote et
    milieu d'un segment. Isolés pour que `Vue2DPlan.jsx` n'exporte que son composant. */
 
 /** Cote lisible : mètres à 2 décimales, séparateur français. */
 export function formatCote(m) {
   if (!Number.isFinite(m)) return '—'
-  return `${m.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`
+  return `${formatNumber(m, { decimals: 2 })} m`
 }
 
 /** Milieu d'un segment, pour poser l'étiquette de cote. */

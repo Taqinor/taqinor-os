@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    CAL17 (moitié écran) — LA FICHE D'UN CALEPINAGE, en un seul appel.
@@ -31,7 +32,7 @@ function texte(brut) {
 function moment(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString('fr-FR')
+  return Number.isNaN(d.getTime()) ? String(iso) : formatDateTime(d)
 }
 
 function Champ({ cle, label, children }) {

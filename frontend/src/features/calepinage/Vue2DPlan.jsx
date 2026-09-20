@@ -82,7 +82,7 @@ export default function Vue2DPlan({ plan, compte3d, titre }) {
       ref={boiteRef}
       data-testid="v2d-boite"
       data-plein-ecran={pleinEcran ? '1' : '0'}
-      className={pleinEcran ? 'fixed inset-0 z-50 overflow-auto bg-nuit-900 p-4' : 'border border-white/10 bg-nuit-800 p-3'}
+      className={pleinEcran ? 'fixed inset-0 z-[var(--z-overlay)] overflow-auto bg-nuit-900 p-4' : 'border border-white/10 bg-nuit-800 p-3'}
       aria-label="Vue 2D plan"
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
