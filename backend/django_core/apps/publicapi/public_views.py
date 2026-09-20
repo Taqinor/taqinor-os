@@ -177,8 +177,16 @@ class PublicCalepinageViewSet(PublicReadOnlyViewSet):
         return liste_calepinages(self._company())
 
     def _company(self):
-        """La société DE LA CLÉ — jamais lue d'un paramètre de requête."""
-        return getattr(self.request.auth, 'company', None)
+        """La société DE LA CLÉ — jamais lue d'un paramètre de requête.
+
+        ``None`` hors contexte de requête (génération du schéma OpenAPI, qui
+        introspecte ``get_queryset()`` sans requête) : le selector rend alors
+        un queryset VIDE mais typé, donc le schéma sait dériver le type de
+        ``{id}`` et rien ne fuite — l'absence de clé ne peut pas se muer en
+        absence de filtre.
+        """
+        requete = getattr(self, 'request', None)
+        return getattr(getattr(requete, 'auth', None), 'company', None)
 
 
 class PublicProduitViewSet(PublicReadOnlyViewSet):
