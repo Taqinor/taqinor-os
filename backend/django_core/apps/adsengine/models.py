@@ -1069,6 +1069,22 @@ class CreativeAsset(TenantModel):
     script_beats = models.JSONField(
         default=list, blank=True, verbose_name='Beats du script')
 
+    # ── PUB122 — Identifiants du média UPLOADÉ AU COMPTE publicitaire ─────────
+    # ``file_key`` est une clé MinIO : Meta ne sait pas la lire. Un créatif
+    # publicitaire ne référence QUE des identifiants de compte — ``image_hash``
+    # pour une image, ``video_id`` pour une vidéo. Ces deux champs portent le
+    # résultat de l'upload (``meta_client.upload_ad_image``/``upload_ad_video``)
+    # et rendent le service d'upload IDEMPOTENT : déjà renseigné ⇒ jamais de
+    # second upload. Vide = pas encore uploadé (jamais un identifiant fabriqué).
+    # Un média uploadé ne diffuse RIEN par lui-même (aucun statut n'existe sur
+    # ces edges) — invariant permanent règle #3.
+    meta_image_hash = models.CharField(
+        max_length=128, blank=True, default='',
+        verbose_name='Hash image Meta (compte)')
+    meta_video_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID vidéo Meta (compte)')
+
     class Meta:
         verbose_name = 'Asset créatif'
         verbose_name_plural = 'Assets créatifs'

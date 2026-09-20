@@ -170,6 +170,94 @@ class FalAdapter(CreativeFactoryAdapter):
         return client.get(url).content if url else None
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# PUB122 — Upload d'un asset de la créathèque VERS LE COMPTE publicitaire.
+# ``CreativeAsset.file_key`` est une clé MinIO : Meta ne sait pas la lire. Tant
+# qu'un asset n'a pas d'``image_hash``/``video_id`` de COMPTE, aucun créatif
+# publicitaire ne peut le référencer. Ce service fait le pont, une seule fois
+# par asset (IDEMPOTENT), et n'écrit JAMAIS de statut : un média uploadé ne
+# diffuse rien (invariant permanent règle #3).
+# ══════════════════════════════════════════════════════════════════════════
+VIDEO_ASSET_TYPES = (
+    CreativeAsset.AssetType.REEL, CreativeAsset.AssetType.EXPLAINER)
+
+
+def upload_asset_to_account(company, asset, *, client, media_url='',
+                            image_bytes=None):
+    """PUB122 — Upload le média d'``asset`` au compte publicitaire et PERSISTE
+    l'identifiant rendu (``meta_image_hash`` ou ``meta_video_id``).
+
+    Routage par type : un statique part sur ``adimages`` (octets ou URL), un
+    reel / explainer sur ``advideos`` (``file_url`` — une URL présignée MinIO
+    suffit, Meta va chercher le fichier).
+
+    IDEMPOTENT : un asset qui porte déjà son identifiant est renvoyé tel quel,
+    SANS le moindre appel réseau (``skipped``). Une erreur Graph laisse l'asset
+    INTACT (aucune écriture) et remonte une raison FR — jamais un identifiant
+    partiel en base.
+
+    Renvoie ``{'uploaded', 'skipped', 'image_hash', 'video_id', 'error',
+    'message'}``."""
+    from .meta_client import MetaClient, MetaError
+
+    def _result(**kwargs):
+        base = {'uploaded': False, 'skipped': False, 'image_hash': '',
+                'video_id': '', 'error': None, 'message': ''}
+        base.update(kwargs)
+        return base
+
+    if asset.company_id != getattr(company, 'id', company):
+        return _result(
+            error='autre_societe',
+            message="Cet asset appartient à une autre société — upload refusé.")
+
+    is_video = asset.asset_type in VIDEO_ASSET_TYPES
+    existing = asset.meta_video_id if is_video else asset.meta_image_hash
+    if existing:
+        return _result(
+            skipped=True,
+            image_hash='' if is_video else existing,
+            video_id=existing if is_video else '',
+            message="Média déjà présent sur le compte — aucun ré-upload.")
+
+    try:
+        if is_video:
+            payload = client.upload_ad_video(file_url=media_url)
+            new_id = str((payload or {}).get('id') or '')
+            if not new_id:
+                return _result(
+                    error='sans_identifiant',
+                    message=("Upload vidéo : Meta n'a renvoyé aucun "
+                             "identifiant — asset inchangé."))
+            asset.meta_video_id = new_id
+            asset.save(update_fields=['meta_video_id', 'updated_at'])
+            return _result(
+                uploaded=True, video_id=new_id,
+                message='Vidéo uploadée sur le compte publicitaire.')
+
+        payload = client.upload_ad_image(
+            image_bytes=image_bytes, image_url=media_url,
+            name=asset.file_key or '')
+        new_hash = MetaClient.image_hash_from_payload(payload)
+        if not new_hash:
+            return _result(
+                error='sans_hash',
+                message=("Upload image : Meta n'a renvoyé aucun hash — asset "
+                         "inchangé."))
+        asset.meta_image_hash = new_hash
+        asset.save(update_fields=['meta_image_hash', 'updated_at'])
+        return _result(
+            uploaded=True, image_hash=new_hash,
+            message='Image uploadée sur le compte publicitaire.')
+    except MetaError as exc:
+        logger.warning(
+            'upload_asset_to_account: asset %s — erreur Meta: %s',
+            asset.pk, exc)
+        return _result(
+            error='erreur_meta',
+            message=f"Upload refusé par Meta : {exc}")
+
+
 def _active_photo_consent(company, client_id, *, now=None):
     """PUB73 — Consentement PHOTO actif d'un client (ou None). Réutilise la
     garde PUB75 (couvre au moins la portée ``photo``)."""

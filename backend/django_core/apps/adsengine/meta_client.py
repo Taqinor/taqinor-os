@@ -16,6 +16,7 @@ Aucune dépendance pip nouvelle : ``httpx`` est déjà épinglé.
 """
 from __future__ import annotations
 
+import base64
 import json
 import time
 
@@ -863,6 +864,90 @@ class MetaClient:
         payload = self._forced_status_payload(base, extra_fields)
         return self._request(
             'POST', self._account_edge('ads'), data=payload)
+
+    # ── PUB122 — Upload de MÉDIAS AU COMPTE (adimages / advideos) ─────────────
+    # Le client n'avait que les edges de PAGE (``upload_page_photo``/
+    # ``upload_page_video``) : un média de la créathèque MinIO ne pouvait donc
+    # JAMAIS devenir un ``image_hash`` / ``video_id`` de COMPTE — or ce sont ces
+    # deux identifiants (et eux seuls) qu'un ``object_story_spec`` /
+    # ``asset_feed_spec`` de créatif publicitaire référence.
+    # Un média uploadé ne DIFFUSE rien : aucun statut n'existe sur ces edges, et
+    # aucune de ces méthodes n'en écrit ni n'en accepte (règle #3).
+    @staticmethod
+    def image_hash_from_payload(payload):
+        """Extrait le ``hash`` d'une réponse ``/adimages``.
+
+        Graph répond sous la forme ``{"images": {"<clé>": {"hash": …, "url": …}}}``
+        (la clé dépend du nom de fichier envoyé) : on prend le premier bloc plutôt
+        que de deviner la clé. Repli sur un ``hash`` à la racine. Renvoie ``''``
+        si la réponse n'en porte aucun (dégradation propre : l'appelant traite
+        l'absence de hash comme un échec EXPLICITE, jamais comme un succès)."""
+        if not isinstance(payload, dict):
+            return ''
+        images = payload.get('images')
+        if isinstance(images, dict):
+            for block in images.values():
+                if isinstance(block, dict) and block.get('hash'):
+                    return str(block['hash'])
+        return str(payload.get('hash') or '')
+
+    def upload_ad_image(self, *, image_bytes=None, image_url='', name='',
+                        extra_fields=None):
+        """PUB122 — Upload une IMAGE au compte (``POST /act_<id>/adimages``).
+
+        Deux sources, dans cet ordre de préférence :
+          * ``image_bytes`` — les octets du fichier, transmis en base64 dans le
+            paramètre de formulaire ``bytes`` (le corps est un
+            ``application/x-www-form-urlencoded`` : un binaire brut n'y passe pas) ;
+          * ``image_url`` — une URL distante (ex. présignée MinIO) dans ``url``.
+
+        Renvoie le payload Graph brut ; ``image_hash_from_payload`` en extrait le
+        hash. Aucun ``status`` n'est jamais émis ni accepté (une image de compte
+        n'a pas de statut et ne diffuse rien tant qu'aucune ad ne la porte —
+        invariant permanent règle #3). Source absente ⇒ refus LOCAL (fail-fast,
+        aucun aller-retour réseau)."""
+        if image_bytes is None and not image_url:
+            raise MetaError(
+                "upload_ad_image exige image_bytes ou image_url.")
+        body = {}
+        if image_bytes is not None:
+            body['bytes'] = base64.b64encode(image_bytes).decode('ascii')
+        else:
+            body['url'] = image_url
+        if name:
+            body['name'] = name
+        extras = dict(extra_fields or {})
+        extras.pop('status', None)  # jamais de statut sur un média de compte
+        body.update(extras)
+        return self._request(
+            'POST', self._account_edge('adimages'), data=body)
+
+    def upload_ad_video(self, *, file_url='', name='', extra_fields=None):
+        """PUB122 — Upload une VIDÉO au compte (``POST /act_<id>/advideos``).
+
+        Chemin SIMPLE d'abord : ``file_url`` (URL distante — une présignée MinIO
+        suffit, Meta va chercher le fichier lui-même). Le chemin CHUNKÉ (Resumable
+        Upload, pour un envoi octet par octet depuis ce process) n'est
+        DÉLIBÉRÉMENT pas implémenté ici : il exige un protocole start/transfer/
+        finish en plusieurs requêtes multipart, que ce client — tout en
+        ``application/x-www-form-urlencoded`` — ne porte pas. À câbler le jour où
+        un média n'est pas atteignable par URL.
+
+        Renvoie le payload Graph brut (``{'id': <video_id>}``). Aucun ``status``
+        n'est jamais émis ni accepté (règle #3). ``file_url`` absent ⇒ refus
+        LOCAL (fail-fast, aucun appel réseau)."""
+        if not file_url:
+            raise MetaError(
+                "upload_ad_video exige un file_url (URL atteignable par Meta ; "
+                "l'upload chunké n'est pas câblé).")
+        body = {'file_url': file_url}
+        if name:
+            body['name'] = name
+        extras = dict(extra_fields or {})
+        extras.pop('status', None)  # jamais de statut sur un média de compte
+        body.update(extras)
+        return self._request(
+            'POST', self._account_edge('advideos'), data=body)
 
     # ── ADSDEEP34 — A/B test NATIF Meta (ad_studies, SPLIT_TEST_V2) ──────────
     # Bornes documentées (dossier §7) : 2-5 cellules, ``treatment_percentage``
