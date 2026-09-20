@@ -459,6 +459,11 @@ class CalepinageViewSet(ChatterViewSetMixin, ActionIdempotenteMixin,
         """
         from apps.ventes import services as ventes_services
 
+        # L'OBJET D'ABORD (CAL29) : un calepinage d'une autre société doit
+        # rendre 404 quel que soit le corps envoyé. Valider le fichier avant
+        # aurait répondu « fichier manquant » sur un objet qui, pour cet
+        # appelant, n'existe pas — un oracle d'existence par la bande.
+        calepinage = self.get_object()  # borné société par get_queryset
         fichier = request.FILES.get('image') or request.FILES.get('file')
         if fichier is None:
             return Response(
@@ -470,7 +475,6 @@ class CalepinageViewSet(ChatterViewSetMixin, ActionIdempotenteMixin,
             return Response({'image': 'Image invalide (PNG ou JPEG attendu).'},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        calepinage = self.get_object()  # borné société par get_queryset
         cle = (f'roofs/{calepinage.company_id or 0}/'
                f'calepinage-{calepinage.pk}.{extension}')
         ventes_services.stocker_image_toiture(donnees, cle,
