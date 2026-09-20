@@ -412,6 +412,114 @@ def paiements_totaux_par_mode(facture_ids):
         .annotate(total=Sum('montant'), nb=Count('id')))
 
 
+def calepinage_du_devis(devis, company=None):
+    """CAL28 — le calepinage qui PILOTE ce devis, ou ``None``.
+
+    Le lien inverse n'existait pas : la fiche devis ne savait pas qu'un
+    calepinage la pilote, alors que c'est lui qui porte les versions, les
+    variantes et la planche. Cette fonction est le pont — MINCE, en lecture
+    seule, et passant par ``apps.calepinage.selectors`` (import FONCTION-LOCAL
+    pour éviter le cycle au chargement) : ``ventes`` n'importe JAMAIS
+    ``apps.calepinage.models``.
+
+    ``a_jour`` est une COMPARAISON DES DEUX EMPREINTES, jamais un recalcul de
+    géométrie : le devis et son calepinage portent la même empreinte tant que
+    la conception n'a pas divergé. Empreinte manquante d'un côté ⇒ ``None``
+    (inconnu), jamais ``False`` — on ne déclare pas « périmé » ce qu'on n'a pas
+    mesuré.
+    """
+    from apps.calepinage.selectors import calepinage_du_devis as _lire
+
+    if devis is None:
+        return None
+    company = company or getattr(devis, 'company', None)
+    calepinage = _lire(getattr(devis, 'pk', None), company)
+    if calepinage is None:
+        return None
+    empreinte_devis = getattr(devis, 'layout_hash', '') or ''
+    empreinte_cal = calepinage.layout_hash or ''
+    return {
+        'id': calepinage.pk,
+        'titre': calepinage.titre or '',
+        'layout_hash': empreinte_cal or None,
+        'a_jour': (empreinte_devis == empreinte_cal
+                   if empreinte_devis and empreinte_cal else None),
+    }
+
+
+def peremption_layout_devis(devis):
+    """CAL189 — ``{layout_stale, layout_nb_panneaux}`` d'un devis.
+
+    LE MÊME CALCUL QUE LA PAGE PUBLIQUE, pas un second. ``layout_stale``
+    n'était publié que dans la charge utile de la proposition
+    (``public_views.py`` ← ``quote_engine/builder.py``) : l'API interne ne
+    l'exposait nulle part, donc l'écran ERP ne pouvait pas dire au commercial
+    que sa 3D ne décrit plus ce que le devis vend. Le compte de modules du
+    layout est lu par le HELPER du moteur PDF (``_panneaux_du_layout``), et les
+    comptes des LIGNES par les mêmes primitives que le reste du domaine.
+
+    Un document à DEUX OPTIONS a DEUX comptes valides (LAYSTALE) : le
+    calepinage n'est périmé que s'il ne correspond à AUCUNE des deux — sinon on
+    afficherait au client un avertissement FAUX.
+
+    ``layout_stale`` vaut ``False`` quand le devis ne porte AUCUNE ligne de
+    panneau : il n'y a alors rien à comparer, et un « périmé » là-dessus serait
+    une alerte inventée.
+    """
+    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.quote_engine.builder import _panneaux_du_layout
+    from apps.ventes.services import _is_panel
+
+    if devis is None:
+        return {'layout_stale': None, 'layout_nb_panneaux': None}
+    layout_nb_panneaux = _panneaux_du_layout(
+        getattr(devis, 'roof_layout', None))
+
+    comptes = {}
+    for ligne in _lignes_produit_du_devis(devis):
+        if not _is_panel(getattr(ligne, 'designation', '') or ''):
+            continue
+        variante = (getattr(ligne, 'variante', '') or '')
+        cle = 'avec' if variante == 'avec' else 'sans'
+        try:
+            quantite = int(float(getattr(ligne, 'quantite', 0) or 0))
+        except (TypeError, ValueError):
+            continue
+        comptes[cle] = comptes.get(cle, 0) + quantite
+        if variante == '':
+            # Une ligne COMMUNE compte dans les deux options.
+            comptes['avec'] = comptes.get('avec', 0) + quantite
+    valides = {n for n in comptes.values() if n}
+    return {
+        'layout_stale': bool(layout_nb_panneaux and valides
+                             and layout_nb_panneaux not in valides),
+        'layout_nb_panneaux': layout_nb_panneaux,
+    }
+
+
+def devis_brouillon_pour_layout(company, lead_id, empreinte):
+    """CAL24 — le BROUILLON déjà né de ce calepinage, ou ``None``.
+
+    C'est la dédup de QJ17 (``lead`` + ``layout_hash``), rendue lisible aux
+    autres apps : re-cliquer « Générer le devis » doit redonner le brouillon
+    EXISTANT, jamais un doublon. Elle vivait inline dans la vue ``from-layout``
+    de ventes ; tout autre créateur (le module Calepinage) l'aurait recopiée,
+    donc fait dériver.
+
+    Scopée société, et seulement les BROUILLONS : un devis déjà envoyé ne se
+    « réutilise » pas — il se révise.
+    """
+    from .models import Devis
+
+    if company is None or not lead_id or not empreinte:
+        return None
+    return (Devis.objects
+            .filter(company=company, lead_id=lead_id,
+                    statut=Devis.Statut.BROUILLON, layout_hash=empreinte)
+            .order_by('-date_creation')
+            .first())
+
+
 def devis_card(devis_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un devis pour le partage dans la
     messagerie. Scopée société : None si le devis n'appartient pas à la société.

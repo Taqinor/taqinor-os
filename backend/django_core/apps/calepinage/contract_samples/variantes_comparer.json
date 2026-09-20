@@ -1,6 +1,7 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/comparer/",
-  "pourquoi": "Le comparatif des variantes d'UN calepinage du module autonome. La comparaison AO existe déjà (`GET /api/django/ao/variantes/comparer/?ids=`, `apps/ao/calepinage_service.comparer_variantes`) mais elle est bornée aux `VarianteCalepinage` d'une `ToitureAO` et se compare par une liste d'`ids` passée en requête ; le module neutre compare les `CalepinageVariante` d'un calepinage NOMMÉ dans le chemin — une seule forme d'URL, `/api/django/calepinage/calepinages/<pk>/…`, sous-ressource en `@action`. PACT10 : ce contrat part SEUL sur `main` avant la lane du sélecteur (CAL145) et celle de l'écran. POURQUOI LES COLONNES DE PRODUCTION SONT DÉJÀ LÀ : CAL145 publiera le comparatif sur la PRODUCTION (kWc, P50, PR, autoconsommation, pertes dominantes) et non seulement sur le comptage de modules ; les écrire ici évite que le comparatif dérive du contrat le jour où elles arrivent — l'ajout d'une colonne par la lane d'en face est exactement le mode de panne que PACT10 ferme. AUCUNE CLÉ INVENTÉE : le bloc de comptage reprend `comparer_variantes` (`id`, `nom`, `role`, `statut`, `est_retenue`, `total_modules`, `kwc`, `total_optimal`, `optimal`, `methode`, `marge_troncon_min`, `marge_bande_min`, `version_moteur`, `entree_hash`, plus `lignes` / `introuvables` / `reference_modules`) et le bloc de production reprend `apps/ventes/etude._pr_block` (`performance_ratio`, `p50_kwh`, `p75_kwh`, `p90_kwh`, `specific_yield_kwh_kwc`, `loss_breakdown`) et le bloc `self_consumption` (`self_consumption_rate`) ; les postes de pertes cités sont ceux de `DEFAULT_LOSS_FACTORS` (`temperature`, `soiling`, `wiring`, `inverter`, `mismatch`, `availability`) plus `shading`, chacun porteur de sa SOURCE. UNE VARIANTE NON SIMULÉE EST DITE NON SIMULÉE : `simulee` vaut `false` et TOUTES ses grandeurs de production valent `null` — jamais `0`, qui se lirait « zéro kWh » là où personne n'a lancé de simulation. L'ÉCART EST TOUJOURS RELATIF À LA RETENUE : la variante retenue porte donc `ecart_modules` et `ecart_kwc` à `0` (un écart MESURÉ, nul par construction), et une variante non simulée porte `ecart_p50_kwh` à `null`. `exemple_vide` = calepinage à une SEULE variante : la liste garde sa forme, `retenue_id` la désigne, et tous les écarts valent `null` — il n'y a rien à quoi se comparer, ce n'est pas un écart nul. Valeurs : des PLACEHOLDERS assumés, aucun chiffre client, aucun prix.",
+  "forme_serveur": "complete",
+  "pourquoi": "Le comparatif des variantes d'UN calepinage du module autonome. La comparaison AO existe déjà (`GET /api/django/ao/variantes/comparer/?ids=`, `apps/ao/calepinage_service.comparer_variantes`) mais elle est bornée aux `VarianteCalepinage` d'une `ToitureAO` et se compare par une liste d'`ids` passée en requête ; le module neutre compare les `CalepinageVariante` d'un calepinage NOMMÉ dans le chemin — une seule forme d'URL, `/api/django/calepinage/calepinages/<pk>/…`, sous-ressource en `@action`. PACT10 : ce contrat part SEUL sur `main` avant la lane du sélecteur (CAL145) et celle de l'écran. POURQUOI LES COLONNES DE PRODUCTION SONT DÉJÀ LÀ : CAL145 publiera le comparatif sur la PRODUCTION (kWc, P50, PR, autoconsommation, pertes dominantes) et non seulement sur le comptage de modules ; les écrire ici évite que le comparatif dérive du contrat le jour où elles arrivent — l'ajout d'une colonne par la lane d'en face est exactement le mode de panne que PACT10 ferme. AUCUNE CLÉ INVENTÉE : le bloc de comptage reprend `comparer_variantes` (`id`, `nom`, `role`, `statut`, `est_retenue`, `total_modules`, `kwc`, `total_optimal`, `optimal`, `methode`, `marge_troncon_min`, `marge_bande_min`, `version_moteur`, `entree_hash`, plus `lignes` / `introuvables` / `reference_modules`) et le bloc de production reprend `apps/ventes/etude._pr_block` (`performance_ratio`, `p50_kwh`, `p75_kwh`, `p90_kwh`, `specific_yield_kwh_kwc`, `loss_breakdown`) et le bloc `self_consumption` (`self_consumption_rate`) ; les postes de pertes cités sont ceux de `DEFAULT_LOSS_FACTORS` (`temperature`, `soiling`, `wiring`, `inverter`, `mismatch`, `availability`) plus `shading`, chacun porteur de sa SOURCE. UNE VARIANTE NON SIMULÉE EST DITE NON SIMULÉE : `simulee` vaut `false` et TOUTES ses grandeurs de production valent `null` — jamais `0`, qui se lirait « zéro kWh » là où personne n'a lancé de simulation. L'ÉCART EST TOUJOURS RELATIF À LA RETENUE : la variante retenue porte donc `ecart_modules` et `ecart_kwc` à `0` (un écart MESURÉ, nul par construction), et une variante non simulée porte `ecart_p50_kwh` à `null`. `exemple_vide` = calepinage à une SEULE variante : la liste garde sa forme, `retenue_id` la désigne, et tous les écarts valent `null` — il n'y a rien à quoi se comparer, ce n'est pas un écart nul. Valeurs : des PLACEHOLDERS assumés, aucun chiffre client, aucun prix. CAL21 — `forme_serveur: complete` : l'échantillon AFFIRME porter la carte complète de sa route ; `check_api_shapes.py` lit donc `apps/calepinage/selectors.py::comparer_variantes` (dictionnaire littéral) et rougit sur toute clé en trop ou en moins.",
   "exemple": {
     "calepinage": 1,
     "retenue_id": 11,
@@ -41,9 +42,21 @@
           "specific_yield_kwh_kwc": 1504.6,
           "self_consumption_rate": 0.62,
           "pertes_dominantes": [
-            { "poste": "temperature", "pct": 8.0, "source": "hypothese" },
-            { "poste": "shading", "pct": 3.4, "source": "tracé d'ombres" },
-            { "poste": "soiling", "pct": 3.0, "source": "hypothese" }
+            {
+              "poste": "temperature",
+              "pct": 8.0,
+              "source": "hypothese"
+            },
+            {
+              "poste": "shading",
+              "pct": 3.4,
+              "source": "tracé d'ombres"
+            },
+            {
+              "poste": "soiling",
+              "pct": 3.0,
+              "source": "hypothese"
+            }
           ]
         },
         "ecart_modules": 0,
@@ -86,9 +99,21 @@
           "specific_yield_kwh_kwc": 1444.4,
           "self_consumption_rate": 0.66,
           "pertes_dominantes": [
-            { "poste": "temperature", "pct": 8.0, "source": "hypothese" },
-            { "poste": "soiling", "pct": 3.0, "source": "hypothese" },
-            { "poste": "inverter", "pct": 2.5, "source": "fiche" }
+            {
+              "poste": "temperature",
+              "pct": 8.0,
+              "source": "hypothese"
+            },
+            {
+              "poste": "soiling",
+              "pct": 3.0,
+              "source": "hypothese"
+            },
+            {
+              "poste": "inverter",
+              "pct": 2.5,
+              "source": "fiche"
+            }
           ]
         },
         "ecart_modules": -2,

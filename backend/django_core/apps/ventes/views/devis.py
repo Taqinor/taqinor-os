@@ -3212,8 +3212,20 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         renderPlan) tel que le produit l'outil roofPro11. La société n'est
         jamais lue du corps : le devis est déjà borné à la société de
         l'utilisateur par ``get_queryset`` (un devis d'une autre société →
-        404). Seul ``roof_layout`` est touché ; aucun statut ne bouge
-        (préservation des statuts, règle #4)."""
+        404). Seuls ``roof_layout`` et ``layout_hash`` sont touchés ; aucun
+        statut ne bouge (préservation des statuts, règle #4).
+
+        CAL39 — CE CHEMIN ÉTAIT MUET. Il n'émettait AUCUN événement et ne
+        posait même pas ``layout_hash``, alors que ``from-layout`` et
+        ``sync-layout`` font les deux. Conséquences : la dédup au clic suivant
+        ne pouvait pas le reconnaître, et tout abonné au bus (le miroir de
+        calepinage, la note au chatter du lead) ignorait cet enregistrement —
+        un calepinage créé depuis la fiche lead restait gelé pendant que le
+        devis, lui, était redessiné ici. Il émet désormais le MÊME événement
+        que les deux autres, et pose la MÊME empreinte. AUCUNE ligne d'écran
+        ne change : le geste, la route et la réponse sont identiques."""
+        from ..services import layout_hash, poser_layout_hash
+
         devis = self.get_object()
         if request.method == 'GET':
             return Response({'roof_layout': devis.roof_layout})
@@ -3224,6 +3236,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             payload = payload['roof_layout']
         devis.roof_layout = payload
         devis.save(update_fields=['roof_layout'])
+        # La MÊME empreinte que les deux autres chemins (écriture ciblée, aucun
+        # statut touché) — puis la MÊME annonce.
+        poser_layout_hash(devis, layout_hash(payload))
+        _emettre_layout_finalise(devis, request.user)
         return Response({'roof_layout': devis.roof_layout})
 
     @action(

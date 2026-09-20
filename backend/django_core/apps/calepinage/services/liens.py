@@ -21,6 +21,10 @@ la demande ne doit pas produire une erreur.
 """
 from __future__ import annotations
 
+from .journal import (
+    journaliser_lien_appel_offre, journaliser_lien_devis,
+)
+
 
 class LiaisonRefusee(ValueError):
     """Refus métier de rattachement, message français, champ fautif nommé."""
@@ -58,7 +62,8 @@ def lier_devis(calepinage, devis_id, *, user=None):
             "Aucun devis n'a été indiqué : choisissez le devis auquel "
             "rattacher ce calepinage.", champ='devis')
 
-    if calepinage.devis_id and int(calepinage.devis_id) == int(devis_id):
+    ancien_devis = calepinage.devis_id
+    if ancien_devis and int(ancien_devis) == int(devis_id):
         return calepinage  # neutre : le lien demandé existe déjà.
 
     devis = get_devis_by_pk(devis_id)
@@ -83,6 +88,9 @@ def lier_devis(calepinage, devis_id, *, user=None):
             calepinage.lead_id = devis.lead_id
             champs.append('lead_id')
         calepinage.save(update_fields=champs + ['updated_at'])
+    # CAL26 — ancien → nouveau, par la primitive `records`.
+    journaliser_lien_devis(calepinage, ancien=ancien_devis,
+                           nouveau=devis.pk, user=user)
     return calepinage
 
 
@@ -112,7 +120,8 @@ def lier_appel_offre(calepinage, appel_offre_id, *, user=None):
             f"Appel d'offres introuvable (#{appel_offre_id}).",
             champ='appel_offre')
 
-    if calepinage.appel_offre_id and int(calepinage.appel_offre_id) == cle:
+    ancienne_affaire = calepinage.appel_offre_id
+    if ancienne_affaire and int(ancienne_affaire) == cle:
         return calepinage  # neutre : le lien demandé existe déjà.
 
     # Lecture cross-app par le SEUL sélecteur AO : une affaire d'une autre
@@ -131,6 +140,8 @@ def lier_appel_offre(calepinage, appel_offre_id, *, user=None):
                 champ='appel_offre')
         calepinage.appel_offre_id = cle
         calepinage.save(update_fields=['appel_offre_id', 'updated_at'])
+    journaliser_lien_appel_offre(calepinage, ancien=ancienne_affaire,
+                                 nouveau=cle, user=user)  # CAL26
     return calepinage
 
 

@@ -281,6 +281,24 @@ def _custom_record_groups(user, co, q):
     return groups
 
 
+def _spec_calepinage(co, q):
+    """CAL27 — un calepinage se retrouve par son TITRE, et par son client.
+
+    Le titre est la seule chaîne que le module porte en propre ; ``lead_id``
+    est un entier OPAQUE (jamais une FK dure vers ``crm``), donc la recherche
+    ne joint que le client et le sous-libellé se limite à ce que le calepinage
+    sait de lui-même.
+    """
+    from apps.calepinage.models import Calepinage
+    qs = Calepinage.objects.filter(**co).filter(
+        Q(titre__icontains=q) | Q(client__nom__icontains=q)
+    ).select_related('client').order_by('-id')
+    return 'calepinage', 'Calepinages', qs, lambda c: {
+        'id': c.id,
+        'label': c.titre or f'Calepinage #{c.id}',
+        'sublabel': getattr(c.client, 'nom', '') or c.get_statut_display()}
+
+
 # Registre LOCAL des specs de recherche, LISTE ORDONNÉE de couples
 # ``('app.model', spec_builder)`` — clé minuscule, alignée sur
 # ``core.platform`` / ``records.ALLOWED_TARGETS``. L'ORDRE est EXACTEMENT
@@ -311,6 +329,8 @@ _SEARCH_SPECS = [
     ('adsengine.adcampaignmirror', _spec_campagne),
     # VAO13 — avis de marché du sas de veille appels d'offres.
     ('veille_ao.avismarche', _spec_avis_marche),
+    # CAL27 — le module Calepinage (titre + client).
+    ('calepinage.calepinage', _spec_calepinage),
 ]
 
 

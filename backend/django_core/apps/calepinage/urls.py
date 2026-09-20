@@ -15,11 +15,29 @@ construction. Un test (``tests/test_structure_urls.py``) le vérifie.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .views.calepinages import CalepinageViewSet
+from .views.moteur import MoteurCalculerView, MoteurResultatView
+from .views.parametres import ParametresCalepinageView
+
 router = DefaultRouter()
-# Les enregistrements arrivent avec les viewsets (CAL16+) :
-#   router.register(r'calepinages', CalepinageViewSet, basename='calepinage')
-#   router.register(r'parametres', ParametresViewSet, basename='cal-parametres')
+router.register(r'calepinages', CalepinageViewSet, basename='calepinage')
 
 urlpatterns = [
+    # CAL22 — la porte NEUTRE du moteur. Ce n'est PAS une seconde famille
+    # d'URL pour l'objet métier (le calepinage reste servi sous
+    # ``calepinages/<pk>/…``) : c'est un CALCUL sans état, sans identifiant,
+    # qui n'appartient à aucun calepinage — le chemin est celui que le contrat
+    # `contract_samples/moteur_calculer.json` fige depuis le jour 1.
+    path('moteur/calculer/', MoteurCalculerView.as_view(),
+         name='calepinage-moteur-calculer'),
+    # CAL23 — le suivi d'un calcul lancé en tâche de fond (même famille
+    # ``moteur`` : un calcul, pas l'objet métier).
+    path('moteur/resultat/<int:job_id>/', MoteurResultatView.as_view(),
+         name='calepinage-moteur-resultat'),
+    # CAL45/CAL16 — les réglages société : UNE ressource unique par société,
+    # donc une vue GET/PUT à plat plutôt qu'une collection à identifiants (il
+    # n'y a jamais deux jeux de réglages pour une même société).
+    path('parametres/', ParametresCalepinageView.as_view(),
+         name='calepinage-parametres'),
     path('', include(router.urls)),
 ]

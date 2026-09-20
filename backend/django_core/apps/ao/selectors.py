@@ -865,3 +865,58 @@ def _points_de_l_item(item):
                 [float(rect.x1), float(rect.y1)],
                 [float(rect.x0), float(rect.y1)]]
     return []
+
+# ── CAL22 — LA PORTE NEUTRE DU MOTEUR PARTAGÉ (lecture pure) ───────────────
+#
+# Le moteur de calepinage est un NOYAU PUR (``core/calepinage``) partagé par
+# plusieurs consommateurs ; sa SÉRIALISATION publiée vit, elle, dans
+# ``apps/ao/calepinage_io.py`` et son orchestration dans
+# ``apps/ao/calepinage_service.py``. Un consommateur hors AO (le module
+# ``apps.calepinage``) ne doit importer ni l'un ni l'autre : la frontière du
+# dépôt dit qu'une app tierce lit ``ao`` par CE fichier. Ces trois fonctions
+# minces sont donc la porte — et surtout PAS une seconde sérialisation, qui
+# dériverait de celle-ci au premier champ ajouté.
+#
+# LECTURE PURE : aucune ligne AO n'est lue, aucune n'est écrite (le service
+# sous-jacent ne touche pas l'ORM).
+
+def erreurs_moteur_calepinage():
+    """``(EntreeInvalide, CalepinageIncoherent)`` — les deux refus du moteur.
+
+    Un appelant hors AO doit pouvoir les ATTRAPER pour répondre 400 avec le
+    motif FRANÇAIS du serveur, sans importer le service.
+    """
+    from core.calepinage.exceptions import CalepinageIncoherent
+
+    from .calepinage_service import EntreeInvalide
+
+    return EntreeInvalide, CalepinageIncoherent
+
+
+def cout_calepinage(document, *, budget=None, tiroirs=False,
+                    suggestions=False):
+    """Le coût ESTIMÉ d'un calcul — chiffré AVANT de le lancer.
+
+    C'est ce chiffre qui pilote la bascule synchrone/asynchrone : au-delà du
+    budget, l'appelant rend 202 et la consigne de suivi, plutôt que de faire
+    attendre l'utilisateur devant un écran gelé.
+    """
+    from .calepinage_service import cout_estime
+
+    return cout_estime(document, budget=budget, tiroirs=tiroirs,
+                       suggestions=suggestions)
+
+
+def calepinage_json(document, *, company, user=None, tiroirs=True,
+                    suggestions=True, budget=None):
+    """Calcule un calepinage et rend le JSON PUBLIÉ du moteur.
+
+    ``company`` est OBLIGATOIRE (le service refuse de tourner hors société) et
+    sert à estampiller la sortie : aucune ligne n'est lue ni écrite. La forme
+    est celle qu'AO publie déjà — une seule sérialisation pour tous les
+    consommateurs.
+    """
+    from .calepinage_service import calepiner
+
+    return calepiner(document, company=company, user=user, tiroirs=tiroirs,
+                     suggestions=suggestions, budget=budget)

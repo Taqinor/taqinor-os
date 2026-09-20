@@ -39,6 +39,8 @@ SOUS_MODULES = (
     'layout',         # CAL13 — enregistrer_layout (hash + version)
     'variantes',      # CAL9 + CAL14 — creer / retenir / dupliquer
     'versions',       # CAL8 — instantanés jamais réécrits, purge bornée
+    'devis',          # CAL24/CAL25 — générer / resynchroniser (via ventes)
+    'journal',        # CAL26 — chatter par la primitive records
 )
 
 __all__ = ['SOUS_MODULES']

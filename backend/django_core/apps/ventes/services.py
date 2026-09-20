@@ -298,6 +298,7 @@ _azimut_boussole_vers_aspect = _geometrie._azimut_boussole_vers_aspect
 _aspect_vers_azimut_boussole = _geometrie._aspect_vers_azimut_boussole
 extract_roof_config = _geometrie.extract_roof_config
 layout_hash = _geometrie.layout_hash
+poser_layout_hash = _geometrie.poser_layout_hash
 validate_composition_for_layout = _geometrie.validate_composition_for_layout
 DRAPEAU_MOTEUR_CALEPINAGE = _geometrie.DRAPEAU_MOTEUR_CALEPINAGE
 TOLERANCE_ARBITRAGE_MODULES = _geometrie.TOLERANCE_ARBITRAGE_MODULES
@@ -524,6 +525,21 @@ creer_facture_import = _imports.creer_facture_import
 ajouter_lignes_facture_import = _imports.ajouter_lignes_facture_import
 
 # ═════════════════════════════════════════════════════════════════════════
+# RÉ-EXPORTS — CAL19 : stockage du rendu de toiture
+#                      → ``domain/stockage_toiture.py``
+# ═════════════════════════════════════════════════════════════════════════
+# La porte publique du stockage EXISTANT (bucket PDF, clé scopée société, URL
+# présignée 1 h), pour que `apps.calepinage` réutilise ce chemin au lieu d'en
+# ouvrir un second. Règle QJR68 : ce fichier ne porte aucun corps — les corps
+# vivent dans `domain/stockage_toiture.py`.
+from apps.ventes.domain import stockage_toiture as _stockage_toiture  # noqa: E402
+SIGNATURES_IMAGE_TOITURE = _stockage_toiture.SIGNATURES_IMAGE_TOITURE
+type_image_toiture = _stockage_toiture.type_image_toiture
+stocker_image_toiture = _stockage_toiture.stocker_image_toiture
+url_image_toiture = _stockage_toiture.url_image_toiture
+
+
+# ═════════════════════════════════════════════════════════════════════════
 # LA SURFACE PUBLIQUE, EN CLAIR
 # ═════════════════════════════════════════════════════════════════════════
 # `__all__` n'est pas décoratif ici : il dit, en un seul endroit, ce que
@@ -574,6 +590,7 @@ __all__ = [
     'SCENARIO_AVEC_BATTERIE',
     'SCENARIO_LES_DEUX',
     'SCENARIO_SANS_BATTERIE',
+    'SIGNATURES_IMAGE_TOITURE',
     'SOCLES_PAR_PANNEAU',
     'STRUCTURES_PAR_PANNEAU',
     'SaleWarningError',
@@ -685,6 +702,7 @@ __all__ = [
     'plafond_physique_du_contour',
     'planifier_devis_automatique_pour_lead',
     'planifier_resynchronisation_produit',
+    'poser_layout_hash',
     'poser_puissance_kwc',
     'prix_applicable',
     'prix_forfait_ht',
@@ -711,7 +729,10 @@ __all__ = [
     'scenario_effectif',
     'send_devis_followup_nudges',
     'share_link_for_bcf',
+    'stocker_image_toiture',
     'sync_devis_from_layout',
+    'type_image_toiture',
+    'url_image_toiture',
     'validate_composition_for_layout',
     'validate_esign_otp',
     'validate_otp_lecture',
