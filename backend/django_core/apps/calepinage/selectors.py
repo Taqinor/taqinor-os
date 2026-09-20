@@ -114,6 +114,57 @@ def calepinage_du_devis(devis_id, company):
             .first())
 
 
+def calepinage_retenu_pour_devis(devis_id, company):
+    """CAL209 — le calepinage RETENU d'un devis : id, kWc, nb modules, lien.
+
+    Point d'entrée cross-app pour le chantier (``apps.installations``), qui ne
+    porte AUCUN champ calepinage — règle fondateur 12/09/2026 « le module
+    chantier ne garde QUE son cœur » : il se BRANCHE sur ce sélecteur, il
+    n'absorbe pas la donnée. Renvoie ``None`` quand le devis est absent, quand
+    aucun calepinage ne lui est rattaché, ou quand aucune variante n'y est
+    RETENUE (``CalepinageVariante.retenue``) — un calepinage sans option
+    choisie ne désigne rien de concret à renvoyer.
+
+    Le kWc et le nombre de modules sont lus, dans l'ordre : le résultat du
+    moteur (``variante.resultat['pose']`` — chaîné/simulé, CAL126+) puis, à
+    défaut, le résumé posé par l'atelier 3D (``variante.roof_layout['result']``
+    — présent dès qu'une pose a été dessinée, avant toute simulation). Aucune
+    valeur n'est recalculée ici : c'est une LECTURE pure, bornée société.
+    """
+    from .models import CalepinageVariante
+
+    calepinage = calepinage_du_devis(devis_id, company)
+    if calepinage is None:
+        return None
+    variante = (CalepinageVariante.objects
+                .filter(calepinage=calepinage, retenue=True)
+                .first())
+    if variante is None:
+        return None
+
+    kwc = None
+    nb_modules = None
+    resultat = variante.resultat if isinstance(variante.resultat, dict) else None
+    pose = resultat.get('pose') if resultat else None
+    if isinstance(pose, dict):
+        kwc = pose.get('kwc')
+        nb_modules = pose.get('total_modules')
+    if kwc is None and nb_modules is None:
+        roof_layout = (variante.roof_layout
+                       if isinstance(variante.roof_layout, dict) else None)
+        result = roof_layout.get('result') if roof_layout else None
+        if isinstance(result, dict):
+            kwc = result.get('kwc')
+            nb_modules = result.get('panels')
+
+    return {
+        'id': calepinage.id,
+        'kwc': kwc,
+        'nb_modules': nb_modules,
+        'planche_url': f'/calepinage/{calepinage.id}',
+    }
+
+
 def calepinage_de_l_affaire(appel_offre_id, company):
     """CAL10 — le calepinage rattaché à cette affaire d'AO, ou ``None``."""
     from .models import Calepinage

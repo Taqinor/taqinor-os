@@ -490,6 +490,10 @@ class InstallationSerializer(serializers.ModelSerializer):
     # équipements posés). Lecture seule : un repère pour la liste du parc, dérivé
     # du même calcul que sav.Equipement.garantie_etat. None si aucun équipement.
     parc_garantie_etat = serializers.SerializerMethodField()
+    # CAL245 — le calepinage RETENU du devis d'origine, ou None. Lu via le
+    # sélecteur cross-app (jamais un champ : règle fondateur « le chantier ne
+    # garde que son cœur », CAL209).
+    calepinage = serializers.SerializerMethodField()
 
     class Meta:
         model = Installation
@@ -577,6 +581,12 @@ class InstallationSerializer(serializers.ModelSerializer):
             if severity[etat] > severity[worst]:
                 worst = etat
         return worst
+
+    def get_calepinage(self, obj):
+        # CAL245 — import fonction-local (frontière inter-apps) : le
+        # sélecteur, jamais apps.calepinage.models.
+        from .selectors import calepinage_retenu_du_chantier
+        return calepinage_retenu_du_chantier(obj)
 
     def get_est_parc(self, obj):
         # Système installé = chantier réceptionné (ou clôturé) et toujours

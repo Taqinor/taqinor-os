@@ -22,6 +22,37 @@ def installation_for_devis(devis, company=None):
     return qs.first()
 
 
+def calepinage_retenu_du_chantier(installation):
+    """CAL209/CAL245 — le bloc « calepinage retenu » d'UN chantier, ou None.
+
+    Le chantier ne porte AUCUN champ calepinage (règle fondateur 12/09/2026
+    « le module chantier ne garde QUE son cœur ») : il se BRANCHE sur le
+    sélecteur ``apps.calepinage.selectors.calepinage_retenu_pour_devis``
+    (import fonction-local — frontière inter-apps) plutôt que de dupliquer sa
+    donnée ou d'importer ``apps.calepinage.models``. Ajoute le lien du plan de
+    pose 3D, déjà servi côté ventes pour le même devis
+    (``frontend/src/pages/ventes/RoofViewerPage.jsx``, route
+    ``/ventes/devis/<id>/3d``) — aucun recalcul, une simple composition de
+    deux routes déjà réelles.
+
+    Renvoie ``None`` quand le chantier n'a pas de devis, ou quand ce devis n'a
+    pas de calepinage avec une variante retenue."""
+    from apps.calepinage.selectors import calepinage_retenu_pour_devis
+
+    if installation is None or not installation.devis_id:
+        return None
+    bloc = calepinage_retenu_pour_devis(installation.devis_id, installation.company)
+    if bloc is None:
+        return None
+    return {
+        'calepinage_id': bloc['id'],
+        'kwc': bloc['kwc'],
+        'nb_modules': bloc['nb_modules'],
+        'planche_url': bloc['planche_url'],
+        'plan_pose_url': f'/ventes/devis/{installation.devis_id}/3d',
+    }
+
+
 def devis_id_du_chantier(company, chantier_id):
     """CHT12 — id du devis lié à un chantier, scopé société (ou None).
 

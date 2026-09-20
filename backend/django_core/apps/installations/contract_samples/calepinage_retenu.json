@@ -1,0 +1,21 @@
+{
+  "endpoint": "GET /api/django/installations/chantiers/<int:pk>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CAL245 (PACT10/PACT11) — CAL209 ne livre qu'un sélecteur (`apps.calepinage.selectors.calepinage_retenu_pour_devis`, `apps.installations.selectors.calepinage_retenu_du_chantier`) et CAL213 est l'encart qui l'affiche : rien ne SERT ces données à l'écran entre les deux. Ce contrat part SEUL sur `main`, avant la vue ET avant l'écran, pour que les deux moitiés file-disjointes (`backend/installations` puis `frontend/installations`) lisent la MÊME forme au lieu d'en inventer chacune une. `forme_serveur: partielle` — cette clé s'ajoute au `InstallationSerializer` existant (`fields = '__all__'`, des dizaines de clés) : ce fichier ne documente QUE la clé additive `calepinage`, pas la réponse complète du détail chantier. AUCUNE CLÉ INVENTÉE : `calepinage_id`/`kwc`/`nb_modules`/`planche_url` reprennent, à l'octet, ce que `apps.calepinage.selectors.calepinage_retenu_pour_devis` renvoie déjà (id/kwc/nb_modules/planche_url) ; `plan_pose_url` est la route DÉJÀ SERVIE côté ventes pour le même devis (`frontend/src/pages/ventes/RoofViewerPage.jsx`, route `/ventes/devis/<id>/3d`) — une composition, jamais un nouveau document. Règle fondateur 12/09/2026 « le module chantier ne garde QUE son cœur » : `calepinage` est un `SerializerMethodField` calculé à la lecture via le sélecteur, JAMAIS une colonne sur `Installation` — aucune migration chantier ne l'accompagne (test dédié `tests_cal245_bloc_calepinage.py`). `exemple_sans_calepinage` = un chantier dont le devis n'a pas de calepinage (ou pas de variante retenue) : la clé vaut `null`, jamais un objet à moitié rempli — c'est la discipline du null déjà tenue par `apps.calepinage.contract_samples.calepinage_resultat`.",
+  "exemple": {
+    "id": 42,
+    "reference": "CHT-2026-0042",
+    "calepinage": {
+      "calepinage_id": 7,
+      "kwc": 8.64,
+      "nb_modules": 12,
+      "planche_url": "/calepinage/7",
+      "plan_pose_url": "/ventes/devis/103/3d"
+    }
+  },
+  "exemple_sans_calepinage": {
+    "id": 43,
+    "reference": "CHT-2026-0043",
+    "calepinage": null
+  }
+}
