@@ -423,7 +423,7 @@ def fenetre_onduleur_pour_produit(produit):
 # FG246 — Calcul de chaînes (string design) & vérification du ratio DC/AC
 # ═════════════════════════════════════════════════════════════════════════════
 # PV83 (ARC6) — la PHYSIQUE de ce calcul ne vit plus ici : elle vit dans
-# ``core.electrique.chaines`` (PV34), d'où ``apps.ao`` la consomme aussi. Ce
+# ``core.electrique.chaines`` (PV34), la couche fondation. Ce
 # module n'en garde que l'ADAPTATEUR : il traduit les dicts historiques
 # (``module=`` / ``inverter=``) en ``EntreeElectrique``, appelle le noyau, et
 # reconstruit la charge utile historique clé pour clé.

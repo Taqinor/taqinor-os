@@ -1,9 +1,9 @@
 """PVMRQ — Réglages « offre à deux gammes » par société (fondateur 18/08/2026).
 
-Endpoint singleton (GET/PATCH), même patron que
-``apps.compta.views.ParametresTresorerieView`` : société scopée, posée côté
-serveur, créée avec ses valeurs par défaut à la première lecture (aucune
-régression sur la composition automatique tant que rien n'est réglé).
+Endpoint singleton (GET/PATCH), patron maison des réglages société : société
+scopée, posée côté serveur, créée avec ses valeurs par défaut à la première
+lecture (aucune régression sur la composition automatique tant que rien n'est
+réglé).
 """
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
