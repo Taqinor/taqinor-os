@@ -155,6 +155,10 @@ describe('CAL101 — le panneau de l’atelier le monte', () => {
           get: vi.fn().mockResolvedValue({ data: null }),
           genererDevis: vi.fn(), syncDevis: vi.fn(), importerContourAo: vi.fn(),
         },
+        // CAL70 — PanneauAllees (monté par AtelierPanneaux) lit les réglages
+        // société au montage.
+        parametres: { get: vi.fn().mockResolvedValue({ data: { degagements: {} } }) },
+        moteur: { calculer: vi.fn() },
       },
     }))
     vi.doMock('../../../api/aoApi', () => ({

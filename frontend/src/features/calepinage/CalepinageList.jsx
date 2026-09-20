@@ -10,6 +10,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../../ui'
 import { formatDate } from '../../lib/format'
+// CAL188 — le badge « calepinage périmé », lu du MÊME champ serveur que la
+// fiche devis et l'en-tête de l'atelier (CAL189), jamais recalculé ici.
+import BadgePerime from './BadgePerime'
 
 /* ============================================================================
    CAL35 — L'ÉCRAN LISTE `/calepinage` : la porte autonome, enfin.
@@ -108,9 +111,13 @@ export function VignetteCalepinage({ calepinage }) {
         <div className="space-y-1 p-3">
           <div className="flex items-start justify-between gap-2">
             <span className="truncate text-sm font-medium">{titre}</span>
-            {calepinage?.statut_libelle ? (
-              <Badge variant="outline">{calepinage.statut_libelle}</Badge>
-            ) : null}
+            <span className="flex shrink-0 items-center gap-1">
+              <BadgePerime layoutStale={calepinage?.layout_stale}
+                layoutNbPanneaux={calepinage?.layout_nb_panneaux} />
+              {calepinage?.statut_libelle ? (
+                <Badge variant="outline">{calepinage.statut_libelle}</Badge>
+              ) : null}
+            </span>
           </div>
           <div className="truncate text-xs text-muted-foreground">
             {calepinage?.reference || '—'}

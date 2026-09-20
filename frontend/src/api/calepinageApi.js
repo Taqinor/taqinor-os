@@ -63,6 +63,10 @@ const calepinageApi = {
   calepinages: {
     ...crud('calepinages'),
 
+    // CAL199/CAL246 — les calepinages marqués MODÈLE de la société (drapeau
+    // `records.Tag`, jamais un champ propre). Lecture pure.
+    modeles: () => api.get('/calepinage/calepinages/modeles/'),
+
     // CAL18 — le document `roof_layout` (contrat v2 : CAL232,
     // `contract_samples/roof_layout_v2.schema.json`). GET relit, POST
     // enregistre ; le serveur ne touche que `roof_layout`/`layout_hash` et ne
@@ -74,6 +78,16 @@ const calepinageApi = {
     // ventes (MinIO + URL présignée) ; aucun second chemin de stockage.
     // `corps` est un FormData : on laisse axios poser sa frontière multipart.
     envoyerImage: (id, corps) => api.post(`${pivot(id)}roof-image/`, corps),
+
+    // CAL52 — les photos de site (drone/oblique/sol), MÊME magasin que
+    // `roof-image`. `corps` est un FormData (photo, genre, prise_le, legende).
+    photos: (id) => api.get(`${pivot(id)}photos/`),
+    ajouterPhoto: (id, corps) => api.post(`${pivot(id)}photos/`, corps),
+    // CAL53 — le calage (4 coins [latitude, longitude]) d'UNE photo de site,
+    // rechargé tel quel à la réouverture. `null` efface le calage.
+    calerPhoto: (id, photoId, coins) =>
+      api.patch(`${pivot(id)}photos/${photoId}/calage/`,
+        { calage: coins ? { coins } : null }),
 
     // CAL20 — historique. La restauration REJOUE une version en en créant une
     // NOUVELLE : jamais une réécriture, jamais une suppression d'historique.

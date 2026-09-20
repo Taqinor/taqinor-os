@@ -122,6 +122,10 @@ describe('AtelierPanneaux monte la fiche sur UNE seule lecture de l’agrégat',
           get, genererDevis: vi.fn(), syncDevis: vi.fn(),
           importerContourAo: vi.fn(),
         },
+        // CAL70 — PanneauAllees (monté par AtelierPanneaux) lit les réglages
+        // société au montage.
+        parametres: { get: vi.fn().mockResolvedValue({ data: { degagements: {} } }) },
+        moteur: { calculer: vi.fn() },
       },
     }))
     vi.doMock('../../api/aoApi', () => ({
