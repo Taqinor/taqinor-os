@@ -40,7 +40,11 @@ class CalepinageConfig(AppConfig):
     }
 
     def ready(self):
-        # M6 — abonnements au bus d'événements ``core.events`` : le module
-        # s'abonnera à ``layout_finalise`` (parité CRM, CAL39). Rien pour
-        # l'instant — on ne déclare une surface QUE quand elle est câblée.
-        pass
+        # M6 / CAL39 — abonnement au bus ``core.events`` : chaque
+        # enregistrement de conception côté VENTES (``from-layout``,
+        # ``sync-layout``, action ``layout``) émet ``layout_finalise``, et le
+        # récepteur alimente le calepinage canonique. Sans lui, un calepinage
+        # créé depuis la fiche lead resterait gelé à sa création pendant que le
+        # devis continue d'être redessiné. Import ICI (et pas en tête de
+        # module) : ``ready()`` est le seul moment où les modèles sont chargés.
+        from . import receivers  # noqa: F401
