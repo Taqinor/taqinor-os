@@ -11,8 +11,14 @@ n'est enregistrée, l'interface affiche EXACTEMENT les catalogues statiques N93
 d'une clé existante — mais le serveur n'impose pas de liste blanche de clés (le
 catalogue vit côté frontend) : une clé inconnue est simplement ignorée à
 l'affichage.
+
+NTI18N51 — ``TraductionManquante`` complète ce fichier : là où
+``TranslationOverride`` enregistre une traduction VOULUE, ce second modèle
+enregistre une traduction ABSENTE que la production a réellement réclamée.
 """
 from django.db import models
+
+from core.models import TenantModel
 
 
 class TranslationOverride(models.Model):
@@ -68,3 +74,58 @@ class TranslationOverride(models.Model):
         for row in cls.objects.filter(company=company):
             out.setdefault(row.locale, {})[row.key] = row.value
         return out
+
+
+class TraductionManquante(TenantModel):
+    """NTI18N51 — compteur des replis FR par (société, langue, clé).
+
+    LE DÉFAUT QU'ELLE FERME : quand le glossaire n'a pas la variante demandée,
+    le résolveur replie sur le français et le document part — correctement, mais
+    SILENCIEUSEMENT. Personne n'apprend jamais qu'un client arabophone lit un
+    statut en français ; il faudrait qu'il le signale.
+
+    UN COMPTEUR, PAS UN JOURNAL : une ligne par (société, langue, clé), dont
+    ``occurrences`` s'incrémente. Aucune trace par requête (le repli est un
+    chemin chaud : une ligne de log par appel noierait le journal sans rien
+    apprendre de plus). ``occurrences_notifiees`` mémorise ce qui a DÉJÀ été
+    rapporté : la notification hebdomadaire ne parle donc que du DELTA de la
+    semaine, et ne re-sonne jamais pour une clé déjà signalée qui n'a pas
+    bougé.
+
+    ``created_at`` = première fois que la clé a manqué, ``updated_at`` = la plus
+    récente (tous deux hérités de ``TenantModel``).
+    """
+
+    #: Langue DEMANDÉE qui a manqué (jamais 'fr' — replier du FR sur le FR
+    #: n'est pas un manque).
+    langue = models.CharField('Langue demandée', max_length=5)
+    #: Clé de glossaire réclamée, préfixée de son domaine
+    #: (ex. ``statuts.devis.brouillon``). Chaîne opaque : aucune liste blanche
+    #: serveur, exactement comme ``TranslationOverride.key``.
+    cle = models.CharField('Clé', max_length=160)
+    occurrences = models.PositiveIntegerField('Occurrences', default=0)
+    occurrences_notifiees = models.PositiveIntegerField(
+        'Occurrences déjà notifiées', default=0)
+
+    class Meta:
+        app_label = 'parametres'
+        ordering = ['-occurrences', 'langue', 'cle']
+        verbose_name = 'Traduction manquante'
+        verbose_name_plural = 'Traductions manquantes'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'langue', 'cle'],
+                name='param_tradmanq_unique'),
+        ]
+        indexes = [
+            models.Index(fields=['company', '-occurrences'],
+                         name='param_tradmanq_occ_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.company_id}:{self.langue}:{self.cle}'
+
+    @property
+    def nouvelles_occurrences(self):
+        """Occurrences pas encore rapportées à l'équipe."""
+        return max(self.occurrences - self.occurrences_notifiees, 0)

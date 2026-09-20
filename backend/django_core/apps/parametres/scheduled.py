@@ -8,6 +8,7 @@ entrée ``beat_schedule`` et sa route ``scheduled`` — la garde
 ``core/tests/test_celery_task_routes.py`` refuse toute divergence.
 
 NTI18N38 — purge mensuelle des traductions de CONTENU orphelines.
+NTI18N51 — notification hebdomadaire groupée des traductions manquantes.
 
 ``core.models.ContentTranslation`` (YHARD4) désigne sa cible par
 ``content_type`` + ``object_id`` (contenttypes), PAS par une ForeignKey : la
@@ -151,3 +152,101 @@ def purger_traductions_orphelines():
         if supprimees:
             _journaliser(company, supprimees)
     return {'societes': societes, 'supprimees': total}
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# NTI18N51 — notification HEBDOMADAIRE groupée des traductions manquantes.
+#
+# ANTI-SPAM PAR CONSTRUCTION : la détection compte (``TraductionManquante``,
+# cf. ``traductions_manquantes``) et c'est CETTE tâche — une fois par semaine —
+# qui parle. Une clé réclamée 50 fois produit UNE ligne en tête d'UNE
+# notification, jamais 50 notifications. Une semaine sans nouveau manque ne
+# notifie personne (pas de « rien à signaler » hebdomadaire).
+# ───────────────────────────────────────────────────────────────────────────
+
+#: Nombre de clés listées dans la notification (les plus fréquentes d'abord).
+CLES_PAR_NOTIFICATION = 10
+
+
+def _destinataires_localisation(company):
+    """Porteurs de ``localisation_gerer`` (NTI18N40) de la société.
+
+    Repli sur les propriétaires/administrateurs de la société quand aucun rôle
+    fin ne porte le code — jamais un prénom en dur : la responsabilité par
+    défaut est la société.
+    """
+    from authentication.models import CustomUser
+
+    from .localisation import PERMISSION_LOCALISATION_GERER
+
+    try:
+        candidats = [
+            u for u in CustomUser.objects.filter(
+                company=company, is_active=True)
+            if u.role_id and u.has_erp_permission(
+                PERMISSION_LOCALISATION_GERER)
+        ]
+    except Exception:  # noqa: BLE001 — défensif
+        candidats = []
+    if candidats:
+        return candidats
+    try:
+        return list(CustomUser.admins_actifs_qs(company))
+    except Exception:  # noqa: BLE001 — défensif
+        return []
+
+
+def _corps_notification(lignes):
+    """Texte groupé : une ligne par clé, la plus réclamée en tête."""
+    return '\n'.join(
+        f'{ligne.cle} [{ligne.langue}] — {ligne.nouvelles_occurrences} fois'
+        for ligne in lignes)
+
+
+@shared_task(name='parametres.notifier_traductions_manquantes_hebdo')
+def notifier_traductions_manquantes_hebdo(limite=None):
+    """NTI18N51 — UNE notification groupée par société et par semaine.
+
+    Renvoie ``{'societes_notifiees': n, 'cles': m}``. Les clés rapportées sont
+    marquées comme notifiées : la semaine suivante ne parle que de ce qui a
+    bougé depuis.
+    """
+    from apps.notifications.models import EventType, NotificationReason
+    from apps.notifications.services import notify_many
+    from authentication.selectors import active_companies
+
+    from .traductions_manquantes import cles_a_notifier, marquer_notifiees
+
+    plafond = CLES_PAR_NOTIFICATION if limite is None else int(limite)
+    societes = 0
+    total_cles = 0
+    for company in active_companies():
+        try:
+            lignes = cles_a_notifier(company, limite=plafond)
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête rien
+            logger.warning(
+                'notifier_traductions_manquantes_hebdo: société %s ignorée',
+                getattr(company, 'id', None), exc_info=True)
+            continue
+        if not lignes:
+            continue
+        destinataires = _destinataires_localisation(company)
+        if not destinataires:
+            # Personne à prévenir : on NE marque pas comme notifié, sans quoi
+            # la lacune disparaîtrait sans que personne ne l'ait jamais lue.
+            continue
+        notify_many(
+            destinataires,
+            EventType.DIGEST,
+            f'{len(lignes)} traduction(s) manquante(s) cette semaine',
+            body=_corps_notification(lignes),
+            company=company,
+            # Raison FERMÉE (vocabulaire ``NotificationReason``) : le
+            # destinataire la reçoit parce qu'il gouverne la localisation de la
+            # société, pas parce qu'un enregistrement lui est assigné.
+            reason=NotificationReason.MANAGER,
+        )
+        marquer_notifiees(lignes)
+        societes += 1
+        total_cles += len(lignes)
+    return {'societes_notifiees': societes, 'cles': total_cles}
