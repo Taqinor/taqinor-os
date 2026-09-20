@@ -7,7 +7,11 @@ frontend (chaque clé pointée surcharge la valeur d'un catalogue statique).
   * Lecture (``list``, ``retrieve``, ``effective``) : tout rôle — le frontend
     la charge au login pour fusionner les surcharges par-dessus les catalogues.
   * Écriture (``create``, ``update``, ``partial_update``, ``destroy``,
-    ``bulk``) : Administrateur ou Responsable promu — jamais le palier limité.
+    ``bulk``) : Administrateur ou Responsable promu — jamais le palier limité —
+    ET porteur de ``localisation_gerer`` (NTI18N40, cf.
+    ``apps.parametres.localisation``). Les deux gardes sont ET-liées : le palier
+    reste la frontière d'écran, le code permet de RETIRER la seule localisation
+    à un rôle personnalisé sans toucher à ``parametres_modifier``.
 
 ``company`` est filtrée et forcée côté serveur (TenantMixin) — jamais lue du
 corps de la requête. Une clé i18n inconnue est simplement ignorée à l'affichage
@@ -21,6 +25,7 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 
+from .localisation import PeutGererLocalisation
 from .models import SettingsAuditLog
 from .models_translations import TranslationOverride
 from .serializers_translations import (
@@ -43,7 +48,7 @@ class TranslationOverrideViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsAdminOrResponsableTier()]
+        return [IsAdminOrResponsableTier(), PeutGererLocalisation()]
 
     def get_queryset(self):
         qs = super().get_queryset()

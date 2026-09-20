@@ -7,20 +7,22 @@ les étapes « Pays »/« Pack pays » persistées).
 
 Écriture d'un réglage de société : réservé Administrateur/Responsable promu,
 même patron de permission que le reste de l'app (``views_profile``,
-``views_config``)."""
+``views_config``), ET porteur de ``localisation_gerer`` (NTI18N40) — c'est un
+réglage de LOCALISATION, pas un réglage de société quelconque."""
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier
 
+from .localisation import PeutGererLocalisation
 from .onboarding_pays import SEEDERS_FERIES_PAR_PAYS, provisionner_localisation
 from .serializers_company import CompanyProfileSerializer
 from .views_common import _audit_company
 
 
 @api_view(['POST'])
-@permission_classes([IsAdminOrResponsableTier])
+@permission_classes([IsAdminOrResponsableTier, PeutGererLocalisation])
 def onboarding_localisation(request):
     """POST /parametres/onboarding-localisation/.
 
