@@ -27,43 +27,80 @@ export const PANEL2_TILT_DEG = 13; // inclinaison toit plat (plage densité 12�
 export const PERIMETER_SETBACK_M = 0.5; // retrait de rive (valeur par défaut des trois)
 
 /**
- * PV63 — RETRAITS DE RIVE, séparés en trois. Un seul chiffre pour tout le pourtour est
- * un raccourci : sur un toit réel, le recul n'est pas le même selon le bord.
+ * PV63 — RETRAITS DE RIVE. Un seul chiffre pour tout le pourtour est un raccourci :
+ * sur un toit réel, le recul n'est pas le même selon le bord.
  *  - `lateralM` : de part et d'autre des rangées (le long de leur axe) — passage de
  *    maintenance latéral ;
  *  - `extremityM` : en BOUT de rangée, dans le sens d'empilement (première et dernière
  *    rangée) — c'est là qu'on garde le chemin de circulation ;
  *  - `parapetM` : distance minimale à N'IMPORTE QUELLE rive du tracé (acrotère, garde-
  *    corps, bord de dalle) — la contrainte de sécurité, appliquée à chaque coin de panneau.
- * Les trois valent `PERIMETER_SETBACK_M` par défaut : le calepinage est alors IDENTIQUE
- * au comportement historique à un seul retrait.
+ *    Nommage aligné sur le moteur partagé (`core/calepinage/types.py Rives.acrotere_m`) :
+ *    « acrotère » est le mot AFFICHÉ, `parapetM` la clé conservée côté outil (renommer la
+ *    clé casserait tous les appelants existants sans rien changer pour l'utilisateur).
+ *  - `jointM` (CAL76) — 4ᵉ rive, alignée sur `Rives.joint_m` du moteur : un retrait
+ *    D'EXTRÉMITÉ SUPPLÉMENTAIRE (joint de dilatation / de construction en bout de
+ *    rangée), qui s'AJOUTE à `extremityM` — jamais ne le remplace, exactement comme le
+ *    moteur calcule `extremite_totale_m = extremite_m + joint_m`. Voir `extremityTotalM`.
+ * Les trois retraits historiques valent `PERIMETER_SETBACK_M` par défaut ; `jointM` vaut
+ * 0 par défaut (il n'existait pas avant CAL76) : le calepinage est alors IDENTIQUE au
+ * comportement historique.
  */
 export interface PerimeterSetbacks {
   lateralM: number;
   extremityM: number;
   parapetM: number;
+  /** CAL76 — 4ᵉ rive « joint » : défaut 0 (aucun effet tant qu'il n'est pas saisi). */
+  jointM: number;
 }
 
-/** Les trois retraits à une même valeur (défaut : la marge de design). */
+/** Les trois retraits historiques à une même valeur (défaut : la marge de design) ;
+ *  le joint (CAL76) démarre à 0 — il n'a jamais fait partie de ce défaut uniforme. */
 export function uniformSetbacks(m: number = PERIMETER_SETBACK_M): PerimeterSetbacks {
-  return { lateralM: m, extremityM: m, parapetM: m };
+  return { lateralM: m, extremityM: m, parapetM: m, jointM: 0 };
 }
 
 /**
  * Retraits utilisables par le calepinage. Une valeur SAISIE n'est jamais arrondie ni
  * « snappée » : on ne remplace que ce qui n'a aucun sens géométrique — non finie
  * (champ vide, texte) → la valeur de repli ; négative → 0 (pleine rive). L'interface,
- * elle, AVERTIT au lieu de rejeter la frappe.
+ * elle, AVERTIT au lieu de rejeter la frappe. `jointM` (CAL76) replie sur 0, jamais sur
+ * `fallbackM` : un document sans joint saisi doit rester identique au comportement
+ * d'avant CAL76, pas hériter silencieusement du retrait de rive par défaut.
  */
 export function resolveSetbacks(
   s: Partial<PerimeterSetbacks> | undefined,
   fallbackM: number = PERIMETER_SETBACK_M,
 ): PerimeterSetbacks {
-  const one = (v: number | undefined): number => {
-    if (typeof v !== 'number' || !Number.isFinite(v)) return fallbackM;
+  const one = (v: number | undefined, fallback: number): number => {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return fallback;
     return v < 0 ? 0 : v;
   };
-  return { lateralM: one(s?.lateralM), extremityM: one(s?.extremityM), parapetM: one(s?.parapetM) };
+  return {
+    lateralM: one(s?.lateralM, fallbackM),
+    extremityM: one(s?.extremityM, fallbackM),
+    parapetM: one(s?.parapetM, fallbackM),
+    jointM: one(s?.jointM, 0),
+  };
+}
+
+/**
+ * CAL76 — retrait LATÉRAL TOTAL (rive + acrotère), affiché à côté du champ pour que
+ * personne n'ait à additionner à la main. Miroir exact de
+ * `core/calepinage/types.py Rives.laterale_totale_m` (`laterale_m + acrotere_m`).
+ */
+export function lateralTotalM(s: PerimeterSetbacks): number {
+  return s.lateralM + s.parapetM;
+}
+
+/**
+ * CAL76 — retrait D'EXTRÉMITÉ TOTAL (rive d'extrémité + joint), affiché à côté du champ.
+ * Miroir exact de `core/calepinage/types.py Rives.extremite_totale_m`
+ * (`extremite_m + joint_m`) — c'est CE total, jamais `extremityM` seul, qui doit être
+ * appliqué au pavage pour que le joint ait un effet réel (voir estimatorBrainV2/V3).
+ */
+export function extremityTotalM(s: PerimeterSetbacks): number {
+  return s.extremityM + s.jointM;
 }
 
 /** PV63 — au-delà de ce retrait, on AVERTIT (sans jamais refuser) : c'est inhabituel. */

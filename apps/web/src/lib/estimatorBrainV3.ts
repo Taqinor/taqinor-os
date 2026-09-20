@@ -40,7 +40,7 @@
  * JAMAIS un devis : une fourchette indicative. Voir apps/web/BRAIN_V3_NOTES.md.
  */
 import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
-import { PANEL2_LONG_M, PANEL2_SHORT_M, PERIMETER_SETBACK_M, resolveSetbacks, type PerimeterSetbacks } from './roofPro2';
+import { PANEL2_LONG_M, PANEL2_SHORT_M, PERIMETER_SETBACK_M, resolveSetbacks, extremityTotalM, type PerimeterSetbacks } from './roofPro2';
 import {
   PANEL2_WATT,
   REGIE_TARIFF,
@@ -598,13 +598,16 @@ function packFlushCells(
       return sd >= setbacks.parapetM - overhangM - EDGE_EPS_M;
     });
 
-  const vStart = vMin + setbacks.extremityM - ohRows * p.rowPitchM;
+  // CAL76 — total extrémité+joint (défaut joint=0 → identique au retrait d'extrémité seul,
+  // même discipline que estimatorBrainV2.ts).
+  const extremityTotal = extremityTotalM(setbacks);
+  const vStart = vMin + extremityTotal - ohRows * p.rowPitchM;
   const uStart = uMin + setbacks.lateralM - ohCols * colPitch;
   const panels: { cx: number; cy: number }[] = [];
   for (let r = 0; r < rows; r++) {
     const v0 = vStart + r * p.rowPitchM;
     const v1 = v0 + p.panelPlanDepthM;
-    if (v1 > vMax - setbacks.extremityM + overhangM + EDGE_EPS_M) break;
+    if (v1 > vMax - extremityTotal + overhangM + EDGE_EPS_M) break;
     for (let c = 0; c < cols; c++) {
       const u0 = uStart + c * colPitch;
       const u1 = u0 + p.rowWidthM;

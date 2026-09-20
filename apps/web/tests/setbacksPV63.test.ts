@@ -12,6 +12,8 @@ import {
   resolveSetbacks,
   readSetbackInput,
   uniformSetbacks,
+  lateralTotalM,
+  extremityTotalM,
 } from '../src/lib/roofPro2';
 import { type LngLat } from '../src/lib/roof';
 
@@ -26,12 +28,13 @@ const countWith = (setbacksM?: Parameters<typeof packConfig>[2]['setbacksM']) =>
   packConfig(RING, LAT0, { family: 'south', tiltDeg: 13, setbacksM }).best.count;
 
 describe('PV63 — résolution des trois retraits', () => {
-  it('objet absent → les trois valent le retrait de design (comportement historique)', () => {
+  it('objet absent → les trois valent le retrait de design (comportement historique), joint à 0', () => {
     expect(resolveSetbacks(undefined)).toEqual(uniformSetbacks(PERIMETER_SETBACK_M));
     expect(uniformSetbacks()).toEqual({
       lateralM: PERIMETER_SETBACK_M,
       extremityM: PERIMETER_SETBACK_M,
       parapetM: PERIMETER_SETBACK_M,
+      jointM: 0,
     });
   });
 
@@ -40,8 +43,50 @@ describe('PV63 — résolution des trois retraits', () => {
       lateralM: 0,
       extremityM: PERIMETER_SETBACK_M,
       parapetM: 0.37, // ni arrondi ni « snappé »
+      jointM: 0,
     });
     expect(resolveSetbacks({}, 0.8)).toEqual(uniformSetbacks(0.8));
+  });
+});
+
+// ═══════════ CAL76 — 4ᵉ rive « joint » (extrémité+joint), totaux affichés ═══════════
+describe('CAL76 — le joint, 4ᵉ rive, s’ajoute au retrait d’extrémité', () => {
+  it('jointM absent d’un document/objet existant → 0, comportement inchangé', () => {
+    const s = resolveSetbacks({ lateralM: 0.5, extremityM: 0.5, parapetM: 0.5 });
+    expect(s.jointM).toBe(0);
+    expect(extremityTotalM(s)).toBe(0.5);
+    expect(lateralTotalM(s)).toBe(1.0); // lateralM + parapetM
+  });
+
+  it('jointM saisi négatif → 0 (même règle que les trois autres retraits)', () => {
+    expect(resolveSetbacks({ jointM: -1 }).jointM).toBe(0);
+  });
+
+  it('lateralTotalM/extremityTotalM sont les sommes brutes, jamais recalculées à la main', () => {
+    const s = { lateralM: 0.4, extremityM: 0.6, parapetM: 0.3, jointM: 0.2 };
+    expect(lateralTotalM(s)).toBeCloseTo(0.7, 10);
+    expect(extremityTotalM(s)).toBeCloseTo(0.8, 10);
+  });
+
+  it('à joint=0 (défaut), le calepinage est identique au comportement d’avant CAL76 (toit plat)', () => {
+    const withoutJoint = packConfig(RING, LAT0, {
+      family: 'south',
+      tiltDeg: 13,
+      setbacksM: uniformSetbacks(PERIMETER_SETBACK_M),
+    }).best;
+    const withJointZero = packConfig(RING, LAT0, {
+      family: 'south',
+      tiltDeg: 13,
+      setbacksM: { ...uniformSetbacks(PERIMETER_SETBACK_M), jointM: 0 },
+    }).best;
+    expect(withJointZero.count).toBe(withoutJoint.count);
+    expect(withJointZero.panels).toEqual(withoutJoint.panels);
+  });
+
+  it('un joint POSITIF réduit (ou laisse égal) le nombre de panneaux — même sens que le retrait d’extrémité', () => {
+    const base = countWith();
+    const withJoint = countWith({ lateralM: 0.5, extremityM: 0.5, parapetM: 0.5, jointM: 1.5 });
+    expect(withJoint).toBeLessThanOrEqual(base);
   });
 });
 

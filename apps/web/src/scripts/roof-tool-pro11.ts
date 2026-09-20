@@ -59,6 +59,8 @@ import {
   WINTER_SOLSTICE_DAY,
   uniformSetbacks,
   readSetbackInput,
+  lateralTotalM,
+  extremityTotalM,
   type PerimeterSetbacks,
 } from '../lib/roofPro2';
 import {
@@ -136,7 +138,7 @@ import { createMapDraw } from './roofPro11/mapDraw';
 import { createScene3d, projectPlanView, panelQuadsLngLat } from './roofPro11/scene3d';
 import { createOptimizer } from './roofPro11/optimizer';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout } from './roofPro11/prefill';
 
 let booted = false;
 
@@ -1678,6 +1680,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // compte (INTERDITE/RESERVEE retirent du posable, PREFEREE non).
     exclusionZones.length = 0;
     for (const z of deserializeExclusionZonesFromLayout(layout)) exclusionZones.push(z);
+    // CAL76 — les quatre retraits de rive RÉGLÉS voyagent avec le document ; absents
+    // (devis antérieur à CAL76), `setbacks` garde son défaut historique inchangé.
+    const savedSetbacks = deserializeSetbacksFromLayout(layout);
+    if (savedSetbacks) Object.assign(setbacks, savedSetbacks);
     const setIf = (id: string, v?: string) => {
       const el = $<HTMLInputElement>(id);
       if (el && v && !el.value.trim()) el.value = v;
@@ -2681,15 +2687,19 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   }
   ensureMixedOrientChip();
 
-  // PV63 — TROIS CHAMPS de retrait de rive (latéral / extrémité / acrotère), créés à côté
-  // du groupe « marge » si la page ne les fournit pas. Règle de saisie : `step="any"`,
-  // aucune borne HTML, et le commit se fait à la VALIDATION (`change`) — on n'arrondit
-  // jamais et on ne rejette jamais une frappe : une valeur douteuse est APPLIQUÉE (ou le
-  // retrait précédent conservé si elle est illisible) et AVERTIE dans la note.
+  // PV63/CAL76 — QUATRE CHAMPS de retrait de rive (latéral / extrémité / acrotère / joint),
+  // créés à côté du groupe « marge » si la page ne les fournit pas. Règle de saisie :
+  // `step="any"`, aucune borne HTML, et le commit se fait à la VALIDATION (`change`) — on
+  // n'arrondit jamais et on ne rejette jamais une frappe : une valeur douteuse est
+  // APPLIQUÉE (ou le retrait précédent conservé si elle est illisible) et AVERTIE dans la
+  // note. `jointM` (CAL76) est le 4ᵉ retrait du moteur (`core/calepinage/types.py
+  // Rives.joint_m`) : il s'AJOUTE au retrait d'extrémité (voir `extremityTotalM` dans
+  // roofPro2.ts), jamais ne le remplace.
   const SETBACK_FIELDS: { key: keyof PerimeterSetbacks; id: string; label: string }[] = [
     { key: 'lateralM', id: 'rp9-setback-lateral', label: 'Retrait latéral (m)' },
     { key: 'extremityM', id: 'rp9-setback-extremity', label: 'Retrait d’extrémité (m)' },
     { key: 'parapetM', id: 'rp9-setback-parapet', label: 'Retrait d’acrotère (m)' },
+    { key: 'jointM', id: 'rp9-setback-joint', label: 'Retrait de joint (m)' },
   ];
   const setbackNoteEl = (): HTMLElement | null => document.getElementById('rp9-setback-note');
   function ensureSetbackInputs() {
@@ -2728,9 +2738,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       setbacks[f.key] = valueM;
       const note = setbackNoteEl();
       if (note) {
+        // CAL76 — les DEUX totaux (rive+acrotère, rive+joint) affichés à côté des quatre
+        // valeurs saisies : personne ne les additionne à la main, et l'affichage suit
+        // exactement ce que le pavage applique réellement (`lateralTotalM`/`extremityTotalM`).
         note.textContent =
           warning ??
-          `Retraits appliqués : latéral ${setbacks.lateralM} m · extrémité ${setbacks.extremityM} m · acrotère ${setbacks.parapetM} m.`;
+          `Retraits appliqués : latéral ${setbacks.lateralM} m (total rive+acrotère ${lateralTotalM(setbacks)} m) · ` +
+            `extrémité ${setbacks.extremityM} m · acrotère ${setbacks.parapetM} m · joint ${setbacks.jointM} m ` +
+            `(total extrémité+joint ${extremityTotalM(setbacks)} m).`;
       }
       // On ne réécrit PAS le champ (la frappe de l'utilisateur reste la sienne) ; seul le
       // calepinage suit. Rien à recalculer si la valeur retenue n'a pas bougé.
@@ -3079,9 +3094,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
               // CAL248 — l'accès solaire par module du pan actif voyage avec le document
               // (l'appelant peut toujours l'écraser explicitement).
               ...(activeSolarAccessMeta() ?? {}),
+              // CAL76 — les quatre retraits de rive RÉGLÉS voyagent avec le document.
+              setbacksM: { ...setbacks },
               ...(meta ?? {}),
             }
-          : { ...(activeSolarAccessMeta() ?? {}), ...(meta ?? {}) },
+          : { ...(activeSolarAccessMeta() ?? {}), setbacksM: { ...setbacks }, ...(meta ?? {}) },
       ),
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.

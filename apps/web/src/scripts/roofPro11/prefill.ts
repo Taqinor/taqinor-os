@@ -24,6 +24,7 @@ import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 import { deduceEdgeTypes, type SerializedEdge, type EdgeDeductionZone } from './edges';
 import { type EnvironmentObject } from './environment';
 import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone } from './zones';
+import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -361,6 +362,10 @@ export interface SerializeMeta {
    * SANS accès solaire — jamais avec des valeurs par défaut.
    */
   solarAccessByZone?: Record<string, SerializedSolarAccess | null | undefined>;
+  /** CAL76 — les quatre retraits de rive RÉGLÉS dans l'atelier (PV63 + le joint CAL76),
+   *  à écrire à la racine du document. Fourni par l'appelant (l'outil les tient dans
+   *  `setbacks`, cf. roof-tool-pro11.ts) : `prefill.ts` reste pur et n'invente rien. */
+  setbacksM?: PerimeterSetbacks;
 }
 
 // ═══════════ PV71 — MATRICE D'OMBRAGE 12 × 24 (sérialisation) ═══════════
@@ -512,6 +517,13 @@ export interface SerializedLayout {
    *  tableau est `exclusionZones` (CAL232 : `zones` est PRIS par les pans depuis la v1).
    *  Omis ou vide = aucune zone (comportement historique, byte pour byte). */
   exclusionZones?: ReturnType<typeof serializeExclusionZones>;
+  /** CAL76 — les QUATRE retraits de rive (PV63 latéral/extrémité/acrotère + le joint
+   *  ajouté par CAL76) tels que RÉGLÉS dans l'atelier au moment de l'export. Champ RACINE
+   *  (un seul jeu de retraits pour tout le document, pas par zone). Omis ⇒ un lecteur
+   *  reprend `uniformSetbacks()` (comportement historique, byte pour byte) — voir
+   *  `deserializeSetbacksFromLayout`. Forme figée par `roof_layout_v2.schema.json`
+   *  (`$defs/perimeterSetbacks`). */
+  setbacksM?: PerimeterSetbacks;
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -686,7 +698,25 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     ...(ctx.exclusionZones && ctx.exclusionZones.length
       ? { exclusionZones: serializeExclusionZones(ctx.exclusionZones) }
       : {}),
+    // CAL76 — les quatre retraits de rive RÉGLÉS voyagent avec le document (jusqu'ici
+    // perdus au rechargement : `setbacks` ne vivait qu'en mémoire dans l'outil).
+    ...(meta?.setbacksM ? { setbacksM: { ...meta.setbacksM } } : {}),
   };
+}
+
+/**
+ * CAL76 — relit les quatre retraits de rive d'un layout sérialisé. Mêmes garde-fous que
+ * `deserializeShading`/`deserializeMeasurements` : un JSON douteux (clé manquante, valeur
+ * non finie, négative) ne casse jamais l'ouverture — `resolveSetbacks` renvoie des valeurs
+ * saines (repli sur `PERIMETER_SETBACK_M` pour les trois retraits historiques, 0 pour le
+ * joint). Renvoie `null` quand le document ne porte aucun `setbacksM` (documents
+ * antérieurs à CAL76) : l'appelant garde alors `uniformSetbacks()`, comportement
+ * strictement inchangé.
+ */
+export function deserializeSetbacksFromLayout(json: unknown): PerimeterSetbacks | null {
+  const raw = (json as { setbacksM?: Partial<PerimeterSetbacks> } | null | undefined)?.setbacksM;
+  if (!raw || typeof raw !== 'object') return null;
+  return resolveSetbacks(raw);
 }
 
 /**
