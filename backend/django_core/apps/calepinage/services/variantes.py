@@ -168,6 +168,10 @@ def retenir_variante(variante):
             "La variante n'est pas encore enregistrée : impossible de la "
             "retenir.", champ='variante')
 
+    ancienne = (CalepinageVariante.objects
+                .filter(calepinage_id=variante.calepinage_id, retenue=True)
+                .exclude(pk=variante.pk)
+                .first())
     with transaction.atomic():
         with bascule_autorisee():
             (CalepinageVariante.objects
@@ -177,6 +181,12 @@ def retenir_variante(variante):
              .update(retenue=False))
             variante.retenue = True
             variante.save(update_fields=['retenue', 'updated_at'])
+    # CAL26 — la bascule se journalise par les NOMS : « A » → « B » se lit,
+    # « 11 » → « 12 » ne se lit pas.
+    from .journal import journaliser_variante_retenue
+
+    journaliser_variante_retenue(variante.calepinage, ancienne=ancienne,
+                                 nouvelle=variante)
     return variante
 
 

@@ -176,7 +176,14 @@ def restaurer_version(version, *, user=None, libelle=''):
             "Cette version n'est rattachée à aucun calepinage.",
             champ='version')
 
-    return enregistrer_layout(
+    resultat = enregistrer_layout(
         calepinage, version.roof_layout, user=user,
         libelle=libelle or f'Restauration de la version #{version.pk}',
         resultat=version.resultat)
+    if not resultat['inchange']:
+        # CAL26 — l'ÉVÉNEMENT « version restaurée », en plus de son effet
+        # (l'enregistrement de conception se journalise de son côté).
+        from .journal import journaliser_restauration
+
+        journaliser_restauration(calepinage, version=version, user=user)
+    return resultat

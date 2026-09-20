@@ -67,6 +67,7 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
             "La conception doit être un objet "
             f"(reçu : {type(roof_layout).__name__}).", champ='roof_layout')
 
+    ancien_layout = calepinage.roof_layout
     ancienne = calepinage.layout_hash or ''
     nouvelle = layout_hash(roof_layout) or ''
     inchange = bool(ancienne) and ancienne == nouvelle
@@ -91,6 +92,13 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
             version = enregistrer_version(calepinage, user=user,
                                           libelle=libelle)
 
+    if not inchange:
+        # CAL26 — un enregistrement SIGNIFICATIF se journalise ; un renvoi à
+        # l'identique n'est pas un événement (il ne s'est rien passé).
+        from .journal import journaliser_layout
+
+        journaliser_layout(calepinage, ancien_layout=ancien_layout,
+                           nouveau_layout=roof_layout, user=user)
     return {
         'calepinage': calepinage,
         'version': version,

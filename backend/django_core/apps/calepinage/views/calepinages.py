@@ -40,6 +40,7 @@ from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from apps.records.views import ChatterViewSetMixin
 from core.idempotency import (
     IDEMPOTENCY_KEY_HEADER, IdempotencyConflict, IdempotencyRecord,
     _fingerprint,
@@ -132,8 +133,16 @@ class ActionIdempotenteMixin:
         return reponse
 
 
-class CalepinageViewSet(ActionIdempotenteMixin, CompanyScopedModelViewSet):
-    """CRUD du pivot ``Calepinage`` + ses sous-ressources en ``@action``."""
+class CalepinageViewSet(ChatterViewSetMixin, ActionIdempotenteMixin,
+                        CompanyScopedModelViewSet):
+    """CRUD du pivot ``Calepinage`` + ses sous-ressources en ``@action``.
+
+    CAL26 — le chatter est celui de la PLATEFORME (``records``) :
+    ``chatter/historique`` (GET) et ``chatter/noter`` (POST) sont hérités de
+    ``apps.records.views.ChatterViewSetMixin``. Aucune classe ``…Activity``
+    maison n'existe dans ce module, et aucune seconde API de chatter n'est
+    ouverte.
+    """
 
     queryset = Calepinage.objects.select_related('client', 'devis').all()
     serializer_class = CalepinageSerializer
