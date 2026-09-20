@@ -9,6 +9,7 @@ import {
   FileText, Images, History, FlaskConical, Route, Layers,
   SlidersHorizontal, MonitorPlay, BarChart3, MessagesSquare, Camera,
   Gauge, GitBranch, Table2, Scale, ShieldCheck, Palette, Binoculars,
+  TestTube,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 // PUB47 — enveloppe d'impression (bouton « Imprimer / PDF » + print.css
@@ -68,6 +69,8 @@ const BrandKitScreen = lazy(() => import('./BrandKitScreen'))
 const VeilleScreen = lazy(() => import('./VeilleScreen'))
 // PUB73 — import photo de chantier vers la créathèque.
 const ChantierImportScreen = lazy(() => import('./ChantierImportScreen'))
+// PUB128 — tests terrain (préflight d'autonomie, 7 tests FT1..FT7).
+const FieldTestsScreen = lazy(() => import('./FieldTestsScreen'))
 
 // PUB47 — cockpit imprimable A4 (bouton + print.css) sans éditer l'écran.
 // PUB52 — + lien « Comparer » vers le Comparateur, même patron non-intrusif.
@@ -124,6 +127,7 @@ const config = {
       { to: '/publicite/kit-marque', label: 'Kit de marque', icon: <Palette size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/veille', label: 'Veille concurrentielle', icon: <Binoculars size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/import-chantier', label: 'Import photo chantier', icon: <Camera size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/publicite/tests-terrain', label: 'Tests terrain', icon: <TestTube size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général.
@@ -151,6 +155,7 @@ const config = {
     ['/publicite/kit-marque', 'Publicité — Kit de marque'],
     ['/publicite/veille', 'Publicité — Veille concurrentielle'],
     ['/publicite/import-chantier', 'Publicité — Import photo chantier'],
+    ['/publicite/tests-terrain', 'Publicité — Tests terrain'],
     // PUB44 — fiche ad (préfixe fixe avant l'id dynamique).
     ['/publicite/ad/', 'Publicité — Fiche ad'],
     // PUB42 — le PLUS général (préfixe de tous les autres) : DERNIER, sinon
@@ -188,6 +193,7 @@ const config = {
     { path: '/publicite/kit-marque', component: BrandKitScreen, roles: ROLES },
     { path: '/publicite/veille', component: VeilleScreen, roles: ROLES },
     { path: '/publicite/import-chantier', component: ChantierImportScreen, roles: ROLES },
+    { path: '/publicite/tests-terrain', component: FieldTestsScreen, roles: ROLES },
   ],
 }
 

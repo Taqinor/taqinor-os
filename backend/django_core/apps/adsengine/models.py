@@ -2966,3 +2966,62 @@ class AdEngineActivity(TenantModel):
 
     def __str__(self):
         return f'Note {self.entity_type}:{self.entity_meta_id} #{self.pk}'
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PUB128 — Résultat d'un MICRO-TEST TERRAIN (les 7 inconnues ADSENG37)
+# ═════════════════════════════════════════════════════════════════════════════
+class FieldTestResult(TenantModel):
+    """PUB128 — Résultat MESURÉ d'un micro-test terrain (``FT1``..``FT7``).
+
+    ``field_tests.py`` portait les 7 inconnues en CONSTANTES et la porte de
+    préflight (``preflight.field_tests_complete``) restait rouge tant que TOUT
+    n'était pas tranché — mais seul un edit de code pouvait les basculer. Ce
+    modèle rend la bascule possible depuis la console : un résultat enregistré
+    pour un micro-test TRANCHE les constantes de ce test (``field_tests.
+    pending_keys`` lit la DB d'abord, les constantes restent le repli).
+
+    Une ligne par ``(société, micro-test)`` : ré-enregistrer MET À JOUR le
+    résultat (jamais deux verdicts concurrents pour le même test). La valeur
+    mesurée est stockée en TEXTE : les 7 inconnues sont hétérogènes (pourcentage,
+    budget, booléen, granularité) et un texte garde la mesure TELLE QU'OBSERVÉE
+    plutôt que de la contraindre à un type.
+    """
+
+    class Test(models.TextChoices):
+        FT1 = 'FT1', "FT1 — seuils de reset d'apprentissage"
+        FT2 = 'FT2', "FT2 — budget minimum d'un split-test"
+        FT3 = 'FT3', 'FT3 — défauts des enhancements Advantage+'
+        FT4 = 'FT4', 'FT4 — granularité du reporting DCO'
+        FT5 = 'FT5', 'FT5 — coûts BUC lecture / écriture'
+        FT6 = 'FT6', 'FT6 — rotation intra-ad-set réglable par API'
+        FT7 = 'FT7', "FT7 — gating par palier d'accès"
+
+    ft = models.CharField(
+        max_length=8, choices=Test.choices, verbose_name='Micro-test')
+    measured_value = models.CharField(
+        max_length=255, verbose_name='Valeur mesurée')
+    evidence = models.TextField(
+        blank=True, default='',
+        verbose_name='Preuve (capture, ID de campagne, extrait de réponse)')
+    measured_on = models.DateField(verbose_name='Mesuré le')
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='adsengine_field_test_results',
+        verbose_name='Enregistré par')
+
+    class Meta:
+        verbose_name = 'Résultat de test terrain'
+        verbose_name_plural = 'Résultats de tests terrain'
+        ordering = ['ft']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'ft'], name='uniq_adseng_field_test'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'ft'],
+                         name='adseng_fieldtest_co_ft_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.ft} = {self.measured_value}'

@@ -14,6 +14,7 @@ sont calculés sur la FENÊTRE de la semaine.
 from __future__ import annotations
 
 import datetime
+import logging
 from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
@@ -22,12 +23,18 @@ from django.db.models import Avg, Sum
 from . import metrics
 from .models import AdCampaignMirror, EngineAction, InsightSnapshot, WeeklyBrief
 
+logger = logging.getLogger(__name__)
+
 # Seuil de fatigue créative (fréquence moyenne). En dessous de 2.0 = sain ;
 # 2.0–2.5 = attention ; au-delà de 2.5 = fatigue forte (rotation conseillée).
 FATIGUE_THRESHOLD_LOW = Decimal('2.0')
 FATIGUE_THRESHOLD_HIGH = Decimal('2.5')
 
 MAX_PROPOSALS = 3
+
+# PUB130 — nombre d'entrées par section d'observation (top/flop/fatigue/junk).
+# Un brief se lit en 2 minutes : on montre la tête de liste, pas l'inventaire.
+OBSERVATION_TOP_N = 3
 
 
 def weekly_window(now=None):
@@ -148,6 +155,150 @@ def _window_aggregate(company, start, end):
     return total_spend, total_results, freq_avg, last_date, per_campaign
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# PUB130 — Brief en mode OBSERVATION (avant tout plan de vol)
+# ═════════════════════════════════════════════════════════════════════════════
+# Le brief ne savait parler que de campagnes agrégées : une société qui OBSERVE
+# (miroirs + instantanés synchronisés, mais aucune expérience ni plan de vol)
+# recevait un brief sans rien d'actionnable à lire. On ajoute des sections
+# d'OBSERVATION bâties UNIQUEMENT sur les données déjà synchronisées — et le
+# périmètre est dit HONNÊTEMENT : sans chiffres suffisants, le brief le déclare
+# et ne recommande rien. Les candidats à dupliquer / pauser sont en LECTURE
+# SEULE : aucune ``EngineAction`` n'est créée depuis eux.
+OBSERVATION_READ_ONLY_FR = (
+    "Ces candidats sont en LECTURE SEULE : le brief ne propose AUCUNE action à "
+    "partir d'eux — c'est vous qui décidez, depuis le cockpit.")
+
+
+def observation_mode(company):
+    """Vrai quand la société n'a NI expérience NI plan de vol.
+
+    Une société qui en possède garde le brief ENG11 **inchangé** (les sections
+    d'observation ne sont alors pas calculées ni rendues)."""
+    from .models import Experiment, FlightPlan
+    return not (
+        Experiment.objects.filter(company=company).exists()
+        or FlightPlan.objects.filter(company=company).exists())
+
+
+def _ad_window_rows(company, start, end):
+    """Agrégats PAR AD sur la fenêtre, lus sur les instantanés DÉJÀ synchronisés.
+
+    Renvoie ``[{meta_id, name, spend, results, impressions, frequence}]`` trié par
+    résultats puis impressions décroissants. Une ad sans instantané sur la fenêtre
+    est ABSENTE (jamais une ligne de zéros fabriquée)."""
+    from .models import AdMirror
+
+    ads = {a.pk: a for a in AdMirror.objects.filter(company=company)}
+    if not ads:
+        return []
+    ct = ContentType.objects.get_for_model(AdMirror)
+    rows = []
+    for agg in (InsightSnapshot.objects
+                .filter(company=company, content_type=ct,
+                        object_id__in=list(ads),
+                        date__gte=start, date__lte=end)
+                .values('object_id')
+                .annotate(spend=Sum('spend'), results=Sum('results'),
+                          impressions=Sum('impressions'),
+                          freq=Avg('frequency'))):
+        ad = ads.get(agg['object_id'])
+        if ad is None:
+            continue
+        rows.append({
+            'meta_id': ad.meta_id,
+            'name': ad.name or '',
+            'spend': str(agg['spend'] or Decimal('0')),
+            'results': int(agg['results'] or 0),
+            'impressions': int(agg['impressions'] or 0),
+            'frequence': (str(agg['freq']) if agg['freq'] is not None
+                          else None),
+        })
+    rows.sort(key=lambda r: (-r['results'], -r['impressions'], r['meta_id']))
+    return rows
+
+
+def _junk_rows(company):
+    """Signal qualité JUNK par ad (PUB28), lu sur l'attribution existante.
+
+    Dégrade à une liste VIDE si l'attribution n'est pas calculable (aucun lead
+    rattaché, jointure indisponible) — jamais un taux fabriqué, et jamais une
+    exception qui ferait perdre tout le brief."""
+    from . import attribution
+
+    try:
+        report = attribution.variant_attribution(company)
+    except Exception:  # noqa: BLE001 — section optionnelle, jamais bloquante
+        logger.warning('brief: attribution par ad indisponible société=%s',
+                       getattr(company, 'pk', company), exc_info=True)
+        return []
+    rows = [
+        {'meta_id': v.get('meta_id', ''), 'name': v.get('name', ''),
+         'leads': v.get('leads', 0), 'junk': v.get('junk', 0),
+         'junk_rate': v.get('junk_rate')}
+        for v in (report.get('variants') or []) if v.get('junk')
+    ]
+    rows.sort(key=lambda r: (-(r['junk_rate'] or 0), -r['junk'], r['meta_id']))
+    return rows[:OBSERVATION_TOP_N]
+
+
+def _observation_sections(company, start, end):
+    """PUB130 — Sections d'OBSERVATION du brief (lecture seule).
+
+    Tout vient des données DÉJÀ synchronisées : top/flop ads, fatigue par ad,
+    fréquence moyenne, junk par ad, et les candidats à dupliquer / pauser. Le
+    périmètre est DIT : ``donnees_suffisantes=False`` ⇒ aucune liste de candidats
+    n'est produite et le brief l'écrit noir sur blanc."""
+    rows = _ad_window_rows(company, start, end)
+    with_results = [r for r in rows if r['results'] > 0]
+    flop = sorted(
+        (r for r in rows
+         if Decimal(r['spend']) > 0 and r['results'] == 0),
+        key=lambda r: (-Decimal(r['spend']), r['meta_id']))
+    fatigue = sorted(
+        (r for r in rows if r['frequence'] is not None
+         and Decimal(r['frequence']) >= FATIGUE_THRESHOLD_LOW),
+        key=lambda r: (-Decimal(r['frequence']), r['meta_id']))
+    freqs = [Decimal(r['frequence']) for r in rows
+             if r['frequence'] is not None]
+    freq_avg = (sum(freqs) / len(freqs)) if freqs else None
+    enough = bool(rows)
+
+    if not enough:
+        perimetre = (
+            "Mode OBSERVATION : aucun instantané de performance sur la fenêtre. "
+            "Ce brief n'a donc RIEN à observer et ne formule aucune "
+            "recommandation — il le dit plutôt que de fabriquer un constat.")
+    else:
+        perimetre = (
+            f"Mode OBSERVATION (aucune expérience ni plan de vol en cours) : "
+            f"{len(rows)} ad(s) avec des chiffres sur la fenêtre, dont "
+            f"{len(with_results)} avec au moins un résultat.")
+        if not with_results:
+            perimetre += (
+                " Aucune ad n'a produit de résultat : impossible de désigner un "
+                "gagnant, ce brief ne le fait donc pas.")
+
+    return {
+        'perimetre_fr': perimetre,
+        'donnees_suffisantes': enough,
+        'lecture_seule_fr': OBSERVATION_READ_ONLY_FR,
+        'ads_observees': len(rows),
+        'ads_avec_resultat': len(with_results),
+        'top_ads': with_results[:OBSERVATION_TOP_N],
+        'flop_ads': flop[:OBSERVATION_TOP_N],
+        'fatigue_ads': fatigue[:OBSERVATION_TOP_N],
+        'frequence_moyenne': (str(freq_avg) if freq_avg is not None else None),
+        'seuil_fatigue': str(FATIGUE_THRESHOLD_LOW),
+        'junk_ads': _junk_rows(company),
+        # LECTURE SEULE — aucune action n'est proposée depuis ces listes.
+        'candidats_duplication': ([r['meta_id'] for r in with_results]
+                                  [:OBSERVATION_TOP_N] if enough else []),
+        'candidats_pause': ([r['meta_id'] for r in flop]
+                            [:OBSERVATION_TOP_N] if enough else []),
+    }
+
+
 def _existing_open_kinds(company):
     """Ensemble (kind, target_object_id) des propositions déjà OUVERTES, pour
     dédupliquer les propositions du brief (jamais deux fois la même)."""
@@ -159,15 +310,54 @@ def _existing_open_kinds(company):
     return seen
 
 
+def _rotation_payload_for_campaign(company, camp):
+    """PUB130-bis — Payload COMPLET d'une rotation pour une campagne fatiguée.
+
+    Le brief ciblait la CAMPAGNE et écrivait un payload purement DESCRIPTIF : le
+    vrai Graph rejette un ``create_ad`` sans ad set, sans nom et sans créatif,
+    même après approbation humaine (la classe de défaut fermée par PUB119). Une
+    rotation s'applique de toute façon à un AD SET : on descend donc sur les ad
+    sets de la campagne et on retient le PREMIER dont
+    ``services.resolve_rotation_payload`` résout les trois pièces.
+
+    Renvoie ``(payload, '')`` ou ``(None, raison_fr)`` — l'appelant alerte alors
+    explicitement et ne propose RIEN."""
+    from . import services
+
+    adsets = list(camp.adsets.exclude(meta_id='').order_by('meta_id'))
+    if not adsets:
+        return None, (
+            f"Rotation impossible sur la campagne {camp.meta_id} : aucun ad set "
+            f"miroité (resynchroniser les miroirs d'abord).")
+    reasons = []
+    for adset in adsets:
+        try:
+            payload = services.resolve_rotation_payload(
+                company, target_type='adset', target_meta_id=adset.meta_id)
+        except services.RotationCreativeUnavailable as exc:
+            reasons.append(f'{adset.meta_id} : {exc}')
+            continue
+        return payload, ''
+    return None, ' '.join(reasons)
+
+
 def _build_proposals(company, per_campaign):
     """Crée 0-3 ``EngineAction`` proposées à partir de règles déterministes.
 
     * fréquence de campagne ≥ 2.5 (fatigue forte) → rotation créative ;
     * dépense > 0 ET 0 résultat sur la fenêtre → mise en pause.
     Déduplique contre les propositions déjà ouvertes ; plafonne à 3.
-    """
-    from . import services
 
+    PUB130-bis — la rotation passe par ``services.resolve_rotation_payload`` : sa
+    proposition est donc APPLICABLE, ou honnêtement BLOQUÉE (alerte explicite
+    « aucun créatif prêt »), jamais une action creuse. La dépense est libellée
+    dans la devise RÉELLE du compte (PUB134), jamais « MAD » en dur — Meta
+    rapporte tous ses montants dans la devise DU COMPTE.
+    """
+    from . import guardrails, services
+    from .rules_engine import account_currency
+
+    currency = account_currency(company)
     seen = _existing_open_kinds(company)
     proposals = []
     for camp, spend, results, freq in per_campaign:
@@ -176,14 +366,33 @@ def _build_proposals(company, per_campaign):
         if freq is not None and freq >= FATIGUE_THRESHOLD_HIGH:
             key = (EngineAction.Kind.ROTATE_CREATIVE, camp.pk)
             if key not in seen:
+                payload, blocked_fr = _rotation_payload_for_campaign(
+                    company, camp)
+                if payload is None:
+                    # Aucun créatif prêt : ALERTE explicite, jamais une action
+                    # creuse que l'approbation humaine ferait échouer.
+                    guardrails.emit_alert(
+                        company, alert_type=guardrails.ALERT_ANOMALY,
+                        message=(
+                            f"Brief hebdomadaire : fréquence {freq:.1f} sur "
+                            f"{camp.meta_id} (≥ 2,5) mais aucune rotation "
+                            f"proposable — {blocked_fr}"),
+                        detail={'template_key': 'brief_rotation',
+                                'target_type': 'campaign',
+                                'target_meta_id': camp.meta_id})
+                    seen.add(key)
+                    continue
+                # La cible CAMPAGNE reste tracée (c'est elle qui a déclenché) ;
+                # l'ad set et le créatif résolus rendent l'action applicable.
+                payload['target_type'] = 'campaign'
+                payload['target_meta_id'] = camp.meta_id
+                payload['target_object_id'] = camp.pk
                 proposals.append(services.propose_action(
                     company, kind=EngineAction.Kind.ROTATE_CREATIVE,
                     reason_fr=(
                         f"Fréquence {freq:.1f} sur {camp.meta_id} (≥ 2,5) : "
                         f"roter le créatif pour combattre la fatigue."),
-                    payload={'target_type': 'campaign',
-                             'target_meta_id': camp.meta_id,
-                             'target_object_id': camp.pk}))
+                    payload=payload))
                 seen.add(key)
                 continue
         if spend > 0 and results == 0:
@@ -192,8 +401,8 @@ def _build_proposals(company, per_campaign):
                 proposals.append(services.propose_action(
                     company, kind=EngineAction.Kind.PAUSE,
                     reason_fr=(
-                        f"{camp.meta_id} a dépensé {spend} MAD pour 0 résultat "
-                        f"cette semaine : mise en pause conseillée."),
+                        f"{camp.meta_id} a dépensé {spend} {currency} pour 0 "
+                        f"résultat cette semaine : mise en pause conseillée."),
                     payload={'target_type': 'campaign',
                              'target_meta_id': camp.meta_id,
                              'target_object_id': camp.pk}))
@@ -206,6 +415,12 @@ def build_brief(company, *, now=None, create_proposals=True):
 
     Idempotent par ``(company, period_start)``. Renvoie l'instance
     ``WeeklyBrief`` persistée (avec ``data`` + ``markdown``).
+
+    PUB130 — une société en mode OBSERVATION (ni expérience ni plan de vol)
+    reçoit EN PLUS des sections d'observation bâties sur les données déjà
+    synchronisées (top/flop, fatigue, fréquence, junk, candidats en LECTURE
+    seule) avec son périmètre dit honnêtement. Une société qui a une expérience
+    ou un plan garde le brief INCHANGÉ (``data`` et ``markdown`` identiques).
     """
     start, end = weekly_window(now)
     spend, results, freq_avg, last_date, per_campaign = _window_aggregate(
@@ -239,6 +454,11 @@ def build_brief(company, *, now=None, create_proposals=True):
             for p in proposals
         ],
     }
+    # PUB130 — la clé ``observation`` n'est AJOUTÉE qu'en mode observation : une
+    # société avec expérience/plan garde donc un ``data`` (et un markdown)
+    # strictement identique à l'avant-PUB130.
+    if observation_mode(company):
+        data['observation'] = _observation_sections(company, start, end)
     markdown = render_markdown(data)
 
     brief, _ = WeeklyBrief.objects.update_or_create(
@@ -303,4 +523,65 @@ def render_markdown(data):
             lines.append(f"- {prop['reason_fr']}")
     else:
         lines.append('- Aucune action proposée cette semaine.')
+    # PUB130 — section OBSERVATION : rendue UNIQUEMENT si le brief en porte une
+    # (une société avec expérience/plan garde donc un markdown inchangé).
+    lines.extend(_render_observation(data.get('observation')))
     return '\n'.join(lines)
+
+
+def _render_observation(observation):
+    """PUB130 — Rend les sections d'observation en markdown FR (liste de lignes).
+
+    ``None`` (société avec expérience/plan) ⇒ liste VIDE : rien n'est ajouté au
+    brief historique. Données insuffisantes ⇒ le périmètre est écrit et AUCUNE
+    liste de candidats n'est rendue (le brief dit ce qu'il ne sait pas)."""
+    if not observation:
+        return []
+    lines = ['', '## Observation (lecture seule)',
+             f"- {observation['perimetre_fr']}"]
+    if not observation['donnees_suffisantes']:
+        return lines
+
+    def _ad_label(row):
+        return f"{row['name'] or row['meta_id']} ({row['meta_id']})"
+
+    if observation['top_ads']:
+        lines.append('- Meilleures ads de la semaine :')
+        for row in observation['top_ads']:
+            lines.append(
+                f"  - {_ad_label(row)} — {row['results']} résultat(s) pour "
+                f"{row['spend']} dépensé(s), {row['impressions']} impression(s).")
+    if observation['flop_ads']:
+        lines.append('- Ads qui dépensent sans résultat :')
+        for row in observation['flop_ads']:
+            lines.append(
+                f"  - {_ad_label(row)} — {row['spend']} dépensé(s), 0 résultat.")
+    if observation['frequence_moyenne'] is not None:
+        lines.append(
+            f"- Fréquence moyenne par ad : {observation['frequence_moyenne']} "
+            f"(seuil d'attention {observation['seuil_fatigue']}).")
+    if observation['fatigue_ads']:
+        lines.append('- Ads au-delà du seuil de fatigue :')
+        for row in observation['fatigue_ads']:
+            lines.append(
+                f"  - {_ad_label(row)} — fréquence {row['frequence']}.")
+    if observation['junk_ads']:
+        lines.append('- Qualité des leads (junk) par ad :')
+        for row in observation['junk_ads']:
+            rate = row['junk_rate']
+            rate_fr = (f"{rate * 100:.0f} %" if rate is not None
+                       else 'taux non calculable')
+            lines.append(
+                f"  - {_ad_label(row)} — {row['junk']} junk sur "
+                f"{row['leads']} lead(s) ({rate_fr}).")
+    if observation['candidats_duplication']:
+        lines.append(
+            "- Candidats à DUPLIQUER (lecture seule) : "
+            + ', '.join(observation['candidats_duplication']) + '.')
+    if observation['candidats_pause']:
+        lines.append(
+            "- Candidats à PAUSER (lecture seule) : "
+            + ', '.join(observation['candidats_pause']) + '.')
+    if observation['candidats_duplication'] or observation['candidats_pause']:
+        lines.append(f"- {observation['lecture_seule_fr']}")
+    return lines
