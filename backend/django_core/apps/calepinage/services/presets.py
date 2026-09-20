@@ -1,15 +1,15 @@
 """CAL197 — presets de conception PROPRES au module (section ``presets`` de
 ``ParametresCalepinage``, CAL45 — aucun nouveau modèle).
 
-DEUX SOURCES, JAMAIS UNE COPIE DE L'UNE VERS L'AUTRE
------------------------------------------------------
-``PresetCalepinage`` existe déjà côté AO (AOF27), et ``ToitureAO.
-parametres_calepinage`` gèle les paramètres à l'affaire — l'atelier autonome
-n'y a pas accès. Ce module rend les presets AO LISIBLES par le module
-(``apps.ao.selectors.presets_calepinage``) et range les presets PROPRES au
-module dans la section ``presets`` des réglages société — jamais une copie
-silencieuse d'un preset AO dans la section module : les deux sources restent
-lues côte à côte (``selectors.presets_de_societe``), chacune sa vérité.
+UNE SEULE SOURCE, JAMAIS UNE COPIE VENUE D'AILLEURS
+----------------------------------------------------
+Ce module range les presets PROPRES à l'atelier dans la section ``presets``
+des réglages société (``selectors.presets_de_societe``).
+
+SOLMVP15 — il y avait une SECONDE source, lue côte à côte : les presets de
+portee société du module d'appels d'offres, jamais copiés dans la section du
+module. Ce module-là sort du produit, sa table part avec lui : il n'en reste
+qu'une source. Les jeux maison sont intacts — rien n'a été perdu ni copié.
 
 Aucune valeur codée en dur : ce service ne pose AUCUN défaut, il range ce
 qu'on lui donne et refuse ce qui est incomplet, en NOMMANT le champ fautif.

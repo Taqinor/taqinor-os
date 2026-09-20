@@ -600,46 +600,36 @@ def releves_terrain(calepinage):
 def presets_de_societe(company):
     """CAL197 — les presets de conception disponibles pour l'atelier.
 
-    Joint DEUX sources, sans jamais copier l'une dans l'autre :
+    ``module`` porte les jeux PROPRES au module, section ``presets.jeux`` de
+    ``ParametresCalepinage`` (``services.presets.jeux_de_societe``).
 
-    * ``module`` — les jeux PROPRES au module, section ``presets.jeux`` de
-      ``ParametresCalepinage`` (``services.presets.jeux_de_societe``) ;
-    * ``societe_ao`` — les presets AO de portée société
-      (``apps.ao.selectors.presets_calepinage``), lus tels quels.
+    SOLMVP15 — il y avait une SECONDE source : les presets de portée société du
+    module d'appels d'offres, lus tels quels à côté des jeux maison (jamais
+    copiés dedans). Ce module-là sort du produit, sa table part avec lui : il
+    n'en reste donc qu'une source, celle du module. Les jeux maison, eux, sont
+    intacts — aucun preset de l'atelier n'a été perdu ni déplacé.
 
-    Lecture PURE, bornée société — ``None`` rend les deux listes vides.
+    Lecture PURE, bornée société — ``None`` rend une liste vide.
     """
-    from apps.ao.selectors import presets_calepinage
-
     from .services.presets import jeux_de_societe
 
-    module = jeux_de_societe(company)
-    ao = presets_calepinage(company, portee='societe') if company else []
-    return {
-        'module': module,
-        'societe_ao': [
-            {
-                'id': preset.pk,
-                'nom': preset.nom,
-                'parametres': preset.parametres,
-                'par_defaut': preset.par_defaut,
-                'description': preset.description,
-            }
-            for preset in ao
-        ],
-    }
+    return {'module': jeux_de_societe(company)}
 
 
 def kits_de_pose_disponibles(company):
-    """CAL198 — les kits de pose du catalogue AO, tels que le module les voit.
+    """CAL198 — les kits de pose du catalogue, tels que le module les voit.
 
-    Lecture PURE : point d'entrée unique pour l'atelier (``apps.ao.selectors.
-    kits_de_pose``) — aucune donnée n'est recopiée en base côté module."""
-    from apps.ao.selectors import kits_de_pose
+    Lecture PURE : point d'entrée unique pour l'atelier
+    (``services.kits_catalogue.kits_de_societe``). SOLMVP15 — le catalogue
+    vivait dans une table du module d'appels d'offres ; il vit désormais dans
+    la section ``presets.kits`` des réglages société du module, à forme
+    publiée IDENTIQUE (contrat ``contract_samples/
+    parametres_calepinage.json``). Aucune donnée n'est recopiée nulle part."""
+    from .services.kits_catalogue import kits_de_societe
 
     if company is None:
         return []
-    return kits_de_pose(company)
+    return kits_de_societe(company)
 
 
 def favoris_materiel_de_societe(company):
