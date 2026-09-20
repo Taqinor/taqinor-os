@@ -189,9 +189,16 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     recalc();
   }
 
-  /** Obstacle touché au point écran `pt`, ou null. */
+  /** Obstacle touché au point écran `pt`, ou null. CAL107 — boîte de tolérance autour du
+   *  point (doigt ⊃ trait fin), même principe que `vertexAtPoint` : au clic souris précis,
+   *  la boîte ne change rien (un rectangle d'obstacle est toujours plus grand que le doigt) ;
+   *  au doigt, elle évite de manquer un obstacle fin ou son bord. */
   function obstacleAtPoint(pt: maplibregl.Point): string | null {
-    const hits = map.queryRenderedFeatures(pt, { layers: ['rp9-obs'] });
+    const box: [maplibregl.Point, maplibregl.Point] = [
+      { x: pt.x - OBSTACLE_TAP_PX, y: pt.y - OBSTACLE_TAP_PX } as maplibregl.Point,
+      { x: pt.x + OBSTACLE_TAP_PX, y: pt.y + OBSTACLE_TAP_PX } as maplibregl.Point,
+    ];
+    const hits = map.queryRenderedFeatures(box, { layers: ['rp9-obs'] });
     const id = hits[0]?.properties?.id;
     return typeof id === 'string' ? id : null;
   }

@@ -2191,6 +2191,42 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     lastTapPt = pt;
   });
 
+  // CAL107 — filet de sécurité tactile/souris, parité avec le PV34 de layoutEditor.ts :
+  // `map.on('mouseup'/'touchend')` ne se déclenche que si le relâchement a lieu AU-DESSUS
+  // de la carte. Un tracé/sommet/obstacle glissé jusqu'au bord de l'écran — ou au doigt
+  // sorti du canvas — restait donc COLLÉ au geste (tracé fantôme, pan de carte encore
+  // désactivé) jusqu'au prochain clic. On termine le geste où qu'il se relâche, sur la
+  // DERNIÈRE position connue (aucune coordonnée carte fiable hors canvas).
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    const endStrayGesture = (clientX: number, clientY: number) => {
+      if (!drawing && !moveVertex && !moveObs) return;
+      const canvasEl = typeof map.getCanvas === 'function' ? map.getCanvas() : null;
+      const rect = canvasEl?.getBoundingClientRect?.();
+      const point = new maplibregl.Point(clientX - (rect?.left ?? 0), clientY - (rect?.top ?? 0));
+      if (drawing) {
+        const end = lastDraw ?? drawStart?.lngLat;
+        if (end) endDraw(end, point);
+      } else if (moveVertex) {
+        endVertexMove();
+      } else if (moveObs) {
+        endMove();
+      }
+    };
+    const insideCanvas = (target: EventTarget | null): boolean => {
+      const canvasEl = typeof map.getCanvas === 'function' ? map.getCanvas() : null;
+      return !!(canvasEl && target instanceof Node && canvasEl.contains(target));
+    };
+    window.addEventListener('mouseup', (ev: MouseEvent) => {
+      if (insideCanvas(ev.target)) return; // relâché SUR la carte : le chemin map.on() suffit
+      endStrayGesture(ev.clientX, ev.clientY);
+    });
+    window.addEventListener('touchend', (ev: TouchEvent) => {
+      if (insideCanvas(ev.target)) return;
+      const t = ev.changedTouches[0];
+      if (t) endStrayGesture(t.clientX, t.clientY);
+    });
+  }
+
   map.on('click', (e) => {
     if (suppressClick) {
       suppressClick = false;
