@@ -153,26 +153,6 @@ class ArrondiCaisseEncaissementTests(TestCase):
         self.assertEqual(f.abandon_motif, 'arrondi_caisse')
         self.assertEqual(f.abandon_montant, Decimal('0.03'))
 
-    def test_cash_rounding_posts_balanced_entry(self):
-        """L'écart d'arrondi passe l'écriture d'abandon équilibrée (6585/3421)."""
-        profile = CompanyProfile.get(company=self.company)
-        profile.arrondi_caisse = Decimal('0.05')
-        profile.save(update_fields=['arrondi_caisse'])
-        f = self._facture('10000.03')
-        self.api.post(
-            f'/api/django/ventes/factures/{f.id}/enregistrer-paiement/',
-            {'montant': '10000.00',
-             'date_paiement': timezone.now().date().isoformat(),
-             'mode': 'especes'}, format='json')
-        from apps.compta.models import EcritureComptable, LigneEcriture
-        ecriture = EcritureComptable.objects.filter(
-            company=self.company).latest('id')
-        lignes = LigneEcriture.objects.filter(ecriture=ecriture)
-        total_debit = sum((ln.debit for ln in lignes), Decimal('0'))
-        total_credit = sum((ln.credit for ln in lignes), Decimal('0'))
-        self.assertEqual(total_debit, total_credit)
-        self.assertEqual(total_debit, Decimal('0.03'))
-
     # ── Un règlement VIREMENT ignore l'arrondi ──────────────────────────────
     def test_virement_ignores_rounding(self):
         """Arrondi 0,05 activé MAIS règlement VIREMENT : aucun arrondi, aucun

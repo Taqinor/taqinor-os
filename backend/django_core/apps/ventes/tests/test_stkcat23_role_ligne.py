@@ -15,8 +15,8 @@ Le rôle est désormais FIGÉ à la création de la ligne et LU EN PREMIER. Les
 deux invariants que ce fichier verrouille :
 
   1. NON-RÉGRESSION ABSOLUE — une ligne SANS rôle (toutes celles d'hier, et
-     toutes celles écrites hors de ``apps.ventes`` comme celles d'``apps.cpq``)
-     se répartit et s'illustre EXACTEMENT comme avant. Les mots-clés ne sont pas
+     toutes celles écrites hors de ``apps.ventes``) se répartit et s'illustre
+     EXACTEMENT comme avant. Les mots-clés ne sont pas
      remplacés : ils sont un REPLI PERMANENT.
   2. UNE CONTRADICTION EST UN AVERTISSEMENT, JAMAIS UNE PERTE — quand le rôle
      stocké et la désignation ne disent pas la même chose, la ligne reste là où
@@ -305,11 +305,9 @@ class EcritureDuRoleTest(TestCase):
         self.assertIsNone(ligne.role_devis)
 
     def test_une_ligne_ecrite_hors_de_ventes_reste_sans_role(self):
-        """``apps.cpq.services`` écrit ses lignes en direct, PAR CONCEPTION.
-
-        Elles valent NULL, et NULL veut dire « les mots-clés décideront » — le
-        comportement historique exact. Rien ne doit leur poser un rôle dans le
-        dos.
+        """Une ligne écrite en direct (hors du constructeur de ventes) vaut
+        NULL, et NULL veut dire « les mots-clés décideront » — le comportement
+        historique exact. Rien ne doit leur poser un rôle dans le dos.
         """
         ligne = LigneDevis.objects.create(
             devis=self.devis, designation='Panneau Jinko 710W',

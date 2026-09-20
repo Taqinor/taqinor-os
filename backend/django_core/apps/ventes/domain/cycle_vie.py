@@ -1582,30 +1582,6 @@ def contexte_clauses_devis(devis):
     }
 
 
-def figer_clauses_devis(devis):
-    """NTCPQ11 — FIGE les clauses/CGV applicables sur le devis (snapshot).
-
-    Appelé au passage brouillon → envoyé. Idempotent et WRITE-ONCE : si
-    ``clauses_appliquees`` porte déjà une valeur (même une liste vide figée),
-    rien n'est recalculé — modifier une clause plus tard n'altère jamais un
-    devis déjà envoyé. Lecture cross-app cpq via import LOCAL (selectors).
-    Ne lève jamais : un incident de configuration ne doit pas bloquer un envoi.
-    Renvoie la liste figée."""
-    if devis.clauses_appliquees is not None:
-        return devis.clauses_appliquees
-    try:
-        from apps.cpq.selectors import clauses_applicables
-        clauses = clauses_applicables(
-            company=devis.company, context=contexte_clauses_devis(devis))
-    except Exception:  # noqa: BLE001 — un envoi ne casse jamais sur les CGV
-        logger.exception(
-            'NTCPQ11 : figeage des clauses ignoré (devis %s)', devis.pk)
-        return None
-    devis.clauses_appliquees = clauses
-    devis.save(update_fields=['clauses_appliquees'])
-    return clauses
-
-
 def configuration_devis_contenu(devis):
     """NTCPQ20 — Représentation JSON-safe de la configuration d'un devis.
 
@@ -1834,14 +1810,6 @@ def mark_devis_sent(*, devis, user=None):
     if devis.statut != Devis.Statut.BROUILLON:
         return devis
 
-    # NTCPQ7 — bloque l'envoi tant qu'une étape d'approbation de remise reste
-    # en attente (matrice à paliers, remplace/étend le seuil unique T17).
-    verifier_devis_envoyable(devis)
-
-    # NTCPQ11 — fige les clauses/CGV dynamiques AVANT le basculement (snapshot
-    # write-once ; jamais recalculé après envoi).
-    figer_clauses_devis(devis)
-
     ancien = devis.statut
     devis.statut = Devis.Statut.ENVOYE
     devis.date_envoi = timezone.now()
@@ -1854,10 +1822,9 @@ def mark_devis_sent(*, devis, user=None):
     return devis
 
 
-# ── QJR76 : la garde d'envoi et le courriel fournisseur ─────────────────────
-# `verifier_devis_envoyable` garde `mark_devis_sent` (plus haut) — ce module
-# l'importait par un pont. `log_supplier_email` est l'autre envoi de document
-# du domaine : il rejoint les e-mails d'acceptation et les OTP.
+# ── QJR76 : le courriel fournisseur ─────────────────────────────────────────
+# `log_supplier_email` est l'autre envoi de document du domaine : il rejoint
+# les e-mails d'acceptation et les OTP.
 def log_supplier_email(
         *, company, to_email, sujet, corps, attachment=None,
         attachment_name=None, reference='', user=None):
@@ -1890,21 +1857,6 @@ def log_supplier_email(
     log.erreur = err
     log.save()
     return ok, log
-
-
-def verifier_devis_envoyable(devis):
-    """NTCPQ7 — lève ``ValidationError`` si une étape d'approbation de remise
-    est encore ``en_attente`` (blocage envoi/génération PDF).
-
-    Lecture cross-app cpq via import LOCAL (aucun cycle au niveau module).
-    Aucune étape en attente ⇒ ne lève rien (comportement inchangé)."""
-    from rest_framework.exceptions import ValidationError
-    from apps.cpq.selectors import premiere_etape_en_attente
-    etape = premiere_etape_en_attente(devis)
-    if etape is not None:
-        raise ValidationError({'statut': (
-            f"Approbation de remise en attente (étape {etape.niveau}) : "
-            "l'envoi est bloqué tant qu'elle n'est pas approuvée.")})
 
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────

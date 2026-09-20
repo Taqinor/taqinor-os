@@ -9,7 +9,7 @@ un cycle de CI complet au lieu de quelques secondes.
 
 CE QUE LE PIN COUVRE — l'ensemble EXACT des noms exportés :
 
-* ``SURFACE_PUBLIQUE`` — les 178 noms PUBLICS définis au niveau module
+* ``SURFACE_PUBLIQUE`` — les noms PUBLICS définis au niveau module
   (177 après QJR107, qui a supprimé ``profil_reel_existe`` ; QJR144 ajoute
   ``verifier_empreinte_signature``). Ce compte de prose n'est vérifié par
   AUCUNE assertion — il était déjà périmé (« 175 ») avant ce lot ; seule la
@@ -17,7 +17,7 @@ CE QUE LE PIN COUVRE — l'ensemble EXACT des noms exportés :
   (fonctions, classes, constantes). La liste est vérifiée EXACTE : un nom
   retiré est rouge, un nom ajouté aussi (il faut le déclarer ici, ce qui rend
   tout élargissement de surface visible en revue).
-* ``PRIVES_IMPORTES_AILLEURS`` — les 43 noms PRIVÉS (préfixe ``_``) qu'un
+* ``PRIVES_IMPORTES_AILLEURS`` — les noms PRIVÉS (préfixe ``_``) qu'un
   AUTRE module importe réellement, avec le ou les modules importateurs. Le
   message d'échec nomme le nom manquant ET son importateur.
 
@@ -112,7 +112,6 @@ SURFACE_PUBLIQUE = (
     "activate_optional_line",
     "affecter_encaissement_groupe",
     "aire_contour_m2",
-    "ajouter_ligne_echeance_contrat",
     "ajouter_lignes_boq_electrique",
     "ajouter_lignes_devis_import",
     "ajouter_lignes_facture_import",
@@ -153,7 +152,6 @@ SURFACE_PUBLIQUE = (
     "create_draft_devis_from_ocr",
     "create_payment_link",
     "creer_devis_automatique_depuis_lead",
-    "creer_devis_depuis_bordereau",
     "creer_devis_import",
     "creer_facture_acompte_situation",
     "creer_facture_classique",
@@ -163,21 +161,17 @@ SURFACE_PUBLIQUE = (
     "creer_variante_gamme",
     "debiter_mandat_pour_facture",
     "diff_configurations_devis",
-    "dossier_contentieux_data",
     "dupliquer_devis",
     "emettre_facture",
     "enregistrer_avance",
-    "enregistrer_contestation_portail",
     "enregistrer_paiement",
     "enregistrer_paiement_avec_retenue",
-    "enregistrer_paiement_portail",
     "entrees_dimensionnement_du_devis",
     "expire_stale_devis",
     "expirer_liens_paiement_perimes",
     "extract_roof_config",
     "facturables_pour_devis",
     "facture_montant_du",
-    "figer_clauses_devis",
     "fusionner_kits",
     "gamme_envoi",
     "gamme_info",
@@ -206,7 +200,6 @@ SURFACE_PUBLIQUE = (
     "ordonner_par_role",
     "ordre_lignes_societe",
     "otp_lecture_verified",
-    "ouvrir_dossier_contentieux",
     "phase_client_pour_dimensionnement",
     "plafond_panneaux",
     "plafond_physique_du_contour",
@@ -242,7 +235,6 @@ SURFACE_PUBLIQUE = (
     "request_otp_lecture",
     "reserver_stock_devis_facture",
     "reset_relance_escalation",
-    "resume_devis_depuis_bordereau",
     "resynchroniser_devis_pour_produit",
     "revoquer_lien_paiement",
     "save_devis_as_preset",
@@ -258,7 +250,6 @@ SURFACE_PUBLIQUE = (
     "validate_otp_lecture",
     "ventiler_avance",
     "verifier_credit_hold",
-    "verifier_devis_envoyable",
     # QJR144 (30/08/2026) — AJOUT LÉGITIME : le vérificateur du sceau d'un
     # devis signé. ``DevisSignature.content_hash`` existait depuis QJ10 mais
     # aucun code ne savait le recomparer ; ce nom est la porte de lecture,
@@ -334,7 +325,6 @@ PRIVES_IMPORTES_AILLEURS = {
         "apps/ventes/tests/test_gammes_marques.py",
         "apps/ventes/tests/test_pvfullrange_5_50.py",
     ),
-    "_journaliser_relance_marketing": ("apps/ventes/tests/test_wir96_marketing_wiring.py",),
     "_lignes_produit": ("apps/ventes/management/commands/reparer_devis_deux_options.py",),
     "_notify_seller_accepted": ("apps/crm/tests_qj2_seller_notifications.py",),
     "_onduleur_complet": ("apps/ventes/tests/test_pvond_contrat_onduleur.py",),
