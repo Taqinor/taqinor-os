@@ -1365,6 +1365,51 @@ export default function ToitureDesign({ mode = 'lead' }) {
               </div>
               <p id="rp9-pitched-note" className="min-h-[1.25rem] text-xs text-lune-soft" aria-live="polite"></p>
             </div>
+
+            {/* CAL107 — bloc « Obstacles », porté de apps/web/src/pages/preview/
+                toiture-3d-pro-11.astro (mêmes ids : obstaclesUi.ts les cherche par id,
+                indépendamment de la page qui les héberge). Ce contrôle manquait dans
+                l'ERP — la pose d'obstacle n'était donc reachable QUE sur la page de
+                préview publique, jamais depuis le poste d'un commercial. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="tech-label mr-1 text-lune-faint">Obstacles</span>
+              <button type="button" id="rp9-obstacle" className={chipClass}>Ajouter un obstacle (cheminée…)</button>
+              <button type="button" id="rp9-obstacle-clear" className={chipClass}>Tout effacer</button>
+            </div>
+            <p className="text-xs leading-relaxed text-lune-faint">
+              Marquez les obstacles (climatiseur, cheminée, lanterneau, citerne…) — on
+              n'y posera pas de panneaux. Glissez sur le toit pour dessiner un
+              rectangle ; touchez-le pour le redimensionner.
+            </p>
+            <div id="rp9-obs-edit" hidden className="border border-white/15 bg-nuit-900/40 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="tech-label text-brass-300">Obstacle sélectionné</span>
+                <button type="button" id="rp9-obs-delete"
+                  className="border border-alert-300/60 px-3 py-2 text-sm font-semibold text-alert-300 transition-colors hover:bg-alert-300/10">
+                  × Supprimer
+                </button>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <label className="block text-sm text-lune-soft">
+                  Longueur (m)
+                  <input id="rp9-obs-length" type="text" inputMode="decimal" step="any"
+                    className="fig mt-1 h-9 w-full border border-white/20 bg-nuit-900 px-2 text-center text-base text-white outline-none focus:border-brass-400" />
+                </label>
+                <label className="block text-sm text-lune-soft">
+                  Largeur (m)
+                  <input id="rp9-obs-width" type="text" inputMode="decimal" step="any"
+                    className="fig mt-1 h-9 w-full border border-white/20 bg-nuit-900 px-2 text-center text-base text-white outline-none focus:border-brass-400" />
+                </label>
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <span className="tech-label text-lune-faint">Taille</span>
+                <button type="button" id="rp9-obs-minus" aria-label="Réduire l'obstacle"
+                  className="h-11 w-11 border border-white/25 text-xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">−</button>
+                <button type="button" id="rp9-obs-plus" aria-label="Agrandir l'obstacle"
+                  className="h-11 w-11 border border-white/25 text-xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">+</button>
+                <span id="rp9-obs-dims" className="fig text-sm text-lune-soft">—</span>
+              </div>
+            </div>
           </div>
 
           {/* W69 — « Personnaliser la disposition » : porté de apps/web/toiture-3d-pro-11.astro
