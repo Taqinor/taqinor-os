@@ -26,6 +26,11 @@ SECTIONS_PARAMETRES = (
     'norme_electrique',
 )
 
+#: CAL246 — clés DÉRIVÉES publiées par ``GET /parametres/`` mais JAMAIS écrites :
+#: elles ne sont pas des sections (aucune n'entre dans ``enregistrer_parametres``).
+#: Le contrat les porte ; les gardes de cohérence les retirent avant de comparer.
+SECTIONS_LECTURE_SEULE = ('kits',)
+
 
 def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
                       depuis=None, q=None, inclure_archives=False):

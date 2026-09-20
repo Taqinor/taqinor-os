@@ -96,7 +96,9 @@ class FormeEchantillonTest(SimpleTestCase):
         self.assertIn(SITE['section'], ParametresCalepinage.SECTIONS)
 
     def test_tous_les_etats_portent_les_memes_sections(self):
-        attendu = sorted(PARAMETRES['exemple'])
+        from apps.calepinage.selectors import SECTIONS_LECTURE_SEULE
+        attendu = sorted(k for k in PARAMETRES['exemple']
+                         if k not in SECTIONS_LECTURE_SEULE)
         for etat in ETATS:
             self.assertEqual(sorted(SITE[etat]), attendu, etat)
 

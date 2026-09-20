@@ -131,5 +131,7 @@ class ContratDesReglagesTest(SimpleTestCase):
         self.assertEqual(tuple(ParametresCalepinage.SECTIONS),
                          tuple(SECTIONS_PARAMETRES))
         self.assertIn('norme_electrique', SECTIONS_PARAMETRES)
-        self.assertEqual(sorted(CONTRAT['exemple']),
+        from apps.calepinage.selectors import SECTIONS_LECTURE_SEULE
+        self.assertEqual(sorted(k for k in CONTRAT['exemple']
+                                if k not in SECTIONS_LECTURE_SEULE),
                          sorted(SECTIONS_PARAMETRES))
