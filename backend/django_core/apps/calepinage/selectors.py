@@ -510,6 +510,8 @@ def releves_terrain(calepinage):
               .prefetch_related('photos__attachment', 'photos__ajoutee_par')
               .order_by('-releve_le', '-id'))
     return [releve_en_ligne(releve) for releve in lignes]
+
+
 def presets_de_societe(company):
     """CAL197 — les presets de conception disponibles pour l'atelier.
 
