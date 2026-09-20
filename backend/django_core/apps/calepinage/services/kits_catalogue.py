@@ -16,9 +16,17 @@ Dans la section ``presets`` des réglages société (``ParametresCalepinage``,
 CAL45), sous la clé ``kits`` — exactement comme les jeux MAISON de
 ``services/presets.py`` vivent sous ``presets.jeux``. C'est un document de
 réglage, pas une nouvelle table : **aucune migration**, aucun modèle, aucun
-champ. L'écriture passe par le SEUL chemin d'écriture du domaine
+champ (les sections SONT des colonnes : en ajouter une aurait été une
+migration). L'écriture passe par le SEUL chemin d'écriture du domaine
 (``PUT /calepinage/parametres/`` → ``services.parametres.enregistrer_parametres``
 sur la section ``presets``) ; il n'y a donc toujours qu'un chemin d'écriture.
+
+ATTENTION, UNE FOIS POUR TOUTES : ``enregistrer_parametres`` remplace la
+SECTION fournie, pas la clé. Un écrivain de la section ``presets`` doit donc
+RELIRE la section et n'en changer que sa clé — c'est ce que fait
+``services/presets._section`` pour ``jeux``, et ce que tout futur écrivain de
+``kits`` doit faire. Écrire ``{'presets': {'kits': …}}`` seul effacerait les
+jeux maison, et l'inverse effacerait le catalogue.
 
 LA FORME PUBLIÉE NE BOUGE PAS D'UN CHAMP
 ----------------------------------------
