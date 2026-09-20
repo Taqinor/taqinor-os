@@ -993,6 +993,7 @@ def kits_de_pose(company, *, actifs_seulement=True):
 #
 # LECTURE PURE : aucune toiture, aucun contour, aucun statut n'est écrit ici.
 
+
 def contour_ao_a_reprendre(company, *, toiture_id=None, appel_offre_id=None):
     """Le contour d'une toiture AO, en degrés, avec ses REFUS déjà nommés.
 

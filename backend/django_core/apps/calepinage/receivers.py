@@ -98,6 +98,7 @@ def reverrouiller_au_devis_sent(sender, devis, user=None, **kwargs):
             'CAL207 : reverrouillage en échec pour le devis %s',
             getattr(devis, 'pk', None))
 
+
 @receiver(lead_created, dispatch_uid='calepinage_reprise_trace_public')
 def reprise_du_trace_public(sender, lead=None, company=None, **kwargs):
     """CAL110 — un lead issu de « mon toit » ouvre un calepinage PRÉ-TRACÉ.
