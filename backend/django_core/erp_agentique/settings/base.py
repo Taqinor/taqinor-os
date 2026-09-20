@@ -1411,6 +1411,8 @@ CELERY_TASK_ROUTES = {
     'core.recalculer_sla_perimes': {'queue': 'scheduled'},
     # NTOBS34 — vérification quotidienne de la fraîcheur des TrustCenterEntry.
     'core.verifier_fraicheur_trust_center': {'queue': 'scheduled'},
+    # NTOBS31 — garantit quotidiennement les 2 KpiAlerte fiabilité par défaut.
+    'core.assurer_alertes_fiabilite_kpi': {'queue': 'scheduled'},
     # NTGRC21 — relance des attestations de conformité non signées (beat).
     'grc.rappels_grc': {'queue': 'scheduled'},
     # NTRH — rappels de parcours de formation + tâches d'intégration/sortie

@@ -1408,6 +1408,13 @@ app.conf.beat_schedule = {
         'task': 'core.recalculer_couverture_i18n',
         'schedule': crontab(day_of_week=1, hour=5, minute=20),
     },
+    # NTOBS31 — garantit, pour chaque société active, les 2 KpiAlerte par
+    # défaut (drill de restauration périmé > 35 j, quota saturé >= 100 %)
+    # AVANT le beat d'évaluation ci-dessus (6h30) qui les calcule/notifie.
+    'core-assurer-alertes-fiabilite-kpi': {
+        'task': 'core.assurer_alertes_fiabilite_kpi',
+        'schedule': crontab(hour=6, minute=0),
+    },
 }
 
 

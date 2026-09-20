@@ -998,6 +998,97 @@ class DossierActivity(TenantModel):
 
 
 # ---------------------------------------------------------------------------
+# NTWFL29 — Modèles de dossier préconfigurés (« case templates »).
+#
+# Même pattern que ``installations.ModeleProjet``/``ModeleProjetJalon``
+# (FG296, déjà éprouvé) : un PARENT (``DossierModele``) + une checklist
+# ENFANT ordonnée (``DossierModeleChecklistItem``) — jamais une seconde façon
+# de représenter une checklist, ``DossierChecklistItem`` ci-dessus reste le
+# modèle de l'INSTANCE réelle (``fait``/``fait_par``/``fait_le``), celui-ci
+# n'ajoute que le PATRON réutilisable.
+#
+# Le « workflow associé » n'est PAS un second moteur : instancier un modèle
+# crée un ``Dossier`` de son ``type_dossier``, et
+# ``core.dossiers.demarrer_processus_si_configure`` (NTWFL20, déjà bâti)
+# démarre alors le processus SI une ``WorkflowDefinition`` de code
+# ``dossier_<type_dossier>`` est active pour la société — EXACTEMENT la même
+# règle qu'un dossier créé à la main (``DossierViewSet.perform_create``,
+# ``core/views_dossiers.py``). Import de ``core.dossiers`` FONCTION-LOCAL
+# (celui-ci importe déjà ``core.models`` — un import statique en tête de
+# fichier créerait un cycle).
+
+class DossierModele(TenantModel):
+    """NTWFL29 — patron de dossier (« case template ») : instancié, il
+    pré-crée un ``Dossier`` de son ``type_dossier`` avec sa checklist par
+    défaut déjà présente, et démarre le processus associé au type SI
+    configuré."""
+
+    type_dossier = models.CharField(
+        'Type de dossier', max_length=32,
+        choices=Dossier.TYPE_CHOICES, default=Dossier.TYPE_AUTRE,
+        help_text='Même catalogue fermé que Dossier.type_dossier.')
+    nom = models.CharField(
+        'Nom du modèle', max_length=120,
+        help_text='Ex. « Réclamation complexe » — affiché dans le sélecteur.')
+    description = models.TextField('Description', blank=True, default='')
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = 'Modèle de dossier'
+        verbose_name_plural = 'Modèles de dossier'
+        ordering = ['nom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='core_dossiermodele_co_nom_uniq'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+    def instancier(self, *, titre=None, user=None, now=None):
+        """Crée un nouveau ``Dossier`` depuis ce modèle : sa checklist par
+        défaut (``self.checklist``) y est déjà présente, et le processus du
+        ``type_dossier`` démarre SI configuré (délègue entièrement à
+        ``core.dossiers.demarrer_processus_si_configure``, NTWFL20 — jamais
+        un second mécanisme de démarrage). Renvoie le ``Dossier`` créé."""
+        dossier = Dossier.objects.create(
+            company=self.company, type_dossier=self.type_dossier,
+            titre=titre or self.nom)
+        for item in self.checklist.all():
+            DossierChecklistItem.objects.create(
+                company=self.company, dossier=dossier,
+                libelle=item.libelle, ordre=item.ordre)
+        from . import dossiers as dossiers_service
+        dossiers_service.journaliser_creation(dossier, user=user)
+        dossiers_service.demarrer_processus_si_configure(
+            dossier, user=user, now=now)
+        return dossier
+
+
+class DossierModeleChecklistItem(TenantModel):
+    """NTWFL29 — étape TYPE de la checklist d'un ``DossierModele``. Reprend
+    le trio parent/libellé/ordre de ``installations.ModeleProjetJalon``
+    (FG296) : chaque étape type devient un ``DossierChecklistItem`` réel
+    (``fait=False``) à l'instanciation."""
+
+    modele = models.ForeignKey(
+        DossierModele,
+        on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='checklist', verbose_name='Modèle de dossier')
+    libelle = models.CharField('Libellé', max_length=200)
+    ordre = models.PositiveIntegerField('Ordre', default=0)
+
+    class Meta:
+        verbose_name = 'Étape type de modèle de dossier'
+        verbose_name_plural = 'Étapes type de modèle de dossier'
+        ordering = ['modele_id', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.modele_id} · {self.libelle}'
+
+
+# ---------------------------------------------------------------------------
 # NTWFL1 — Matrice d'approbation d'entreprise UNIFIÉE (objet × montant ×
 # département → chaîne de paliers).
 #
