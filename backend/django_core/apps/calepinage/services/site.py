@@ -106,6 +106,10 @@ _CALQUE = re.compile(r'^[a-z][a-z0-9_-]*$')
 __all__ = [
     'SECTION', 'FOURNISSEURS', 'FOURNISSEURS_GATES', 'CLES', 'CLES_LISTE',
     'normaliser_section_imagerie', 'section_vide', 'fournisseur_actif',
+    # CAL55 — altitude et fuseau SOURCÉS (jamais devinés, jamais dérivés de
+    # la longitude).
+    'SOURCE_PVGIS', 'SOURCE_SAISIE', 'altitude_pvgis', 'altitude_du_site',
+    'fuseau_du_site', 'decalage_utc_minutes',
 ]
 
 
@@ -340,3 +344,117 @@ def _controler_coherence(section):
             f"Le fournisseur « {actif} » ne couvre que le pays "
             f"« {pays_couvert} » : il ne peut pas servir un site en "
             f"« {section['pays']} ».", 'fournisseur_imagerie')
+
+
+# ── CAL55 — L'ALTITUDE ET LE FUSEAU DU SITE, SOURCÉS, JAMAIS DEVINÉS ───────
+#
+# L'altitude change l'irradiance et le fuseau décale toute la course du
+# soleil ; aucun des deux n'existait dans l'atelier (les seules « élévations »
+# y sont SOLAIRES). Les deux règles fondateur de la tâche :
+#
+# * l'ALTITUDE vient de la réponse PVGIS DÉJÀ appelée
+#   (``inputs.location.elevation``) et est stockée AVEC SA SOURCE ; PVGIS muet
+#   ⇒ champ VIDE et mention « non renseignée », jamais un nombre de repli ;
+# * le FUSEAU vient de la base de fuseaux (``zoneinfo``) ou est SAISI —
+#   **JAMAIS dérivé de la longitude**. Le Maroc est à UTC+1 toute l'année
+#   depuis 2018 : une dérivation par la longitude le placerait à UTC+0 et
+#   décalerait d'une heure toute la production horaire.
+#
+# Dans les deux cas, une valeur SAISIE par la société l'emporte sur la valeur
+# automatique : c'est elle qui connaît son site.
+
+#: La source publiée quand l'altitude vient de la réponse PVGIS.
+SOURCE_PVGIS = 'PVGIS'
+
+#: La source publiée quand la société a saisi la valeur elle-même.
+SOURCE_SAISIE = 'saisie'
+
+MENTION_ALTITUDE_INCONNUE = (
+    "Altitude non renseignée : PVGIS ne l'a pas fournie et personne ne l'a "
+    "saisie."
+)
+MENTION_FUSEAU_INCONNU = (
+    "Fuseau horaire non renseigné : il se SAISIT (identifiant IANA, par "
+    "exemple « Africa/Casablanca ») — il ne se déduit JAMAIS de la longitude."
+)
+
+
+def altitude_pvgis(charge):
+    """L'altitude que PVGIS publie avec sa réponse, ou ``None``.
+
+    PVGIS rend ``inputs.location.elevation`` (mètres). Une réponse sans
+    élévation, ou avec une élévation illisible, rend ``None`` — et l'appelant
+    ne publiera AUCUNE altitude.
+    """
+    entrees = (charge or {}).get('inputs') if isinstance(charge, dict) else None
+    lieu = (entrees or {}).get('location') if isinstance(entrees, dict) else None
+    valeur = (lieu or {}).get('elevation') if isinstance(lieu, dict) else None
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return None
+    return float(valeur)
+
+
+def altitude_du_site(section, *, charge_pvgis=None):
+    """``{'altitude_m', 'source', 'mention'}`` — la valeur SAISIE l'emporte.
+
+    Args:
+        section: la section ``imagerie`` des réglages société (CAL47), qui
+            porte ``altitude_m`` et ``source_altitude`` quand la société les
+            a saisis (une altitude sans source y est déjà refusée).
+        charge_pvgis: la réponse PVGIS déjà obtenue, s'il y en a une.
+
+    Returns:
+        ``altitude_m`` à ``None`` quand personne ne la connaît — jamais une
+        valeur de repli — et ``mention`` qui le DIT en français.
+    """
+    section = section or {}
+    saisie = section.get('altitude_m')
+    if isinstance(saisie, (int, float)) and not isinstance(saisie, bool):
+        return {
+            'altitude_m': float(saisie),
+            # La source saisie est republiée TELLE QUELLE (relevé GPS, plan
+            # topographique…) : c'est elle qui rend le chiffre défendable.
+            'source': section.get('source_altitude') or SOURCE_SAISIE,
+            'mention': '',
+        }
+    depuis_pvgis = altitude_pvgis(charge_pvgis)
+    if depuis_pvgis is None:
+        return {'altitude_m': None, 'source': None,
+                'mention': MENTION_ALTITUDE_INCONNUE}
+    return {'altitude_m': depuis_pvgis, 'source': SOURCE_PVGIS, 'mention': ''}
+
+
+def fuseau_du_site(section):
+    """``{'fuseau', 'source', 'mention'}`` — SAISI, jamais déduit.
+
+    Le fuseau est validé contre la base IANA (``zoneinfo``) à l'écriture
+    (``normaliser_section_imagerie``) ; ici on le SERT, ou on dit qu'il
+    manque. Aucune coordonnée n'entre dans cette fonction : c'est la garantie
+    structurelle qu'aucun fuseau ne peut être dérivé d'une longitude.
+    """
+    fuseau = (section or {}).get('fuseau')
+    if not fuseau:
+        return {'fuseau': None, 'source': None,
+                'mention': MENTION_FUSEAU_INCONNU}
+    return {'fuseau': fuseau, 'source': 'base IANA (zoneinfo)', 'mention': ''}
+
+
+def decalage_utc_minutes(fuseau, moment):
+    """Le décalage UTC d'un fuseau À UN INSTANT, lu dans ``zoneinfo``.
+
+    C'est la SEULE façon correcte d'obtenir un décalage : il dépend de la
+    date (heure d'été), et une formule sur la longitude se tromperait d'une
+    heure pleine au Maroc. Renvoie ``None`` si le fuseau est inconnu de la
+    base installée — un doute ne produit jamais un chiffre.
+    """
+    if not fuseau or moment is None:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+
+        decalage = moment.replace(tzinfo=ZoneInfo(fuseau)).utcoffset()
+    except Exception:       # pragma: no cover - dépend de la base installée
+        return None
+    if decalage is None:
+        return None
+    return int(decalage.total_seconds() // 60)
