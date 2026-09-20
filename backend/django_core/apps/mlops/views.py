@@ -4,6 +4,8 @@ Réservé Responsable/Admin (lecture d'un diagnostic technique des scorers).
 """
 from datetime import date
 
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -21,6 +23,34 @@ def _parse_date(valeur):
         return None
 
 
+# NTAI28 — forme réelle de ``backtester()`` (apps/mlops/backtest.py) : deux
+# branches ``disponible`` (True/False) qui ne portent pas les mêmes clés — les
+# champs propres à la branche « disponible=True » (métriques de confusion +
+# AUC) sont donc tous ``required=False``/``allow_null=True``, jamais un objet
+# vide qui ne dirait rien de la forme réellement renvoyée.
+BACKTESTS_RESPONSE = inline_serializer('MlopsBacktestResultat', {
+    'nom': serializers.CharField(),
+    'disponible': serializers.BooleanField(),
+    'motif': serializers.CharField(required=False, allow_null=True),
+    'taille_echantillon': serializers.IntegerField(
+        required=False, allow_null=True),
+    'seuil': serializers.FloatField(required=False, allow_null=True),
+    'auc': serializers.FloatField(required=False, allow_null=True),
+    'precision': serializers.FloatField(required=False, allow_null=True),
+    'rappel': serializers.FloatField(required=False, allow_null=True),
+    'exactitude': serializers.FloatField(required=False, allow_null=True),
+    'vrais_positifs': serializers.IntegerField(
+        required=False, allow_null=True),
+    'faux_positifs': serializers.IntegerField(
+        required=False, allow_null=True),
+    'vrais_negatifs': serializers.IntegerField(
+        required=False, allow_null=True),
+    'faux_negatifs': serializers.IntegerField(
+        required=False, allow_null=True),
+})
+
+
+@extend_schema(responses=BACKTESTS_RESPONSE)
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def backtests(request):

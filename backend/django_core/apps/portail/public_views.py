@@ -19,7 +19,8 @@ l'en-tête `Host` autant qu'il voulait, et (b) charger la base gratuitement. Le
 quota est par IP, donc indépendant du `Host` — faire varier le domaine ne
 réarme pas le compteur, ce qui est précisément l'abus visé.
 """
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes)
 from rest_framework.permissions import AllowAny
@@ -27,6 +28,18 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from .branding import MARQUE_VIDE, company_pour_hote, marque_portail
+
+# ── NTPRT6 — forme déclarée de l'acceptation d'invitation ───────────────────
+ACCEPTER_INVITATION_PORTAIL_REQUEST = inline_serializer(
+    'AccepterInvitationPortailRequest', {
+        'token': serializers.CharField(),
+        'mot_de_passe': serializers.CharField(),
+    })
+
+ACCEPTER_INVITATION_PORTAIL_RESPONSE = inline_serializer(
+    'AccepterInvitationPortailResponse', {
+        'detail': serializers.CharField(),
+    })
 
 
 class ThemePortailPublicThrottle(SimpleRateThrottle):
@@ -81,6 +94,8 @@ class AccepterInvitationPortailThrottle(SimpleRateThrottle):
         }
 
 
+@extend_schema(request=ACCEPTER_INVITATION_PORTAIL_REQUEST,
+               responses=ACCEPTER_INVITATION_PORTAIL_RESPONSE)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([AccepterInvitationPortailThrottle])

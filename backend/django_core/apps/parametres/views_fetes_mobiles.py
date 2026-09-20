@@ -4,7 +4,8 @@
 saisie de l'année demandée, POST valide + enregistre les 4 dates (voir
 ``fetes_mobiles.py`` pour les règles). Écriture réservée
 Administrateur/Responsable promu — même patron que le reste de l'app."""
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -17,7 +18,21 @@ from .fetes_mobiles import (
 )
 from .views_common import _audit_company
 
+# NTI18N33 — les 4 fêtes hégiriennes (voir ``FETES_MOBILES_CLES``) : chaque
+# clé porte soit ``None`` (pas encore saisie), soit une date ISO déjà
+# enregistrée — jamais une autre clé (``fetes_mobiles_saisies`` renvoie
+# EXACTEMENT ces 4 clés, ``fetes_mobiles_etat`` aussi quand la société est
+# introuvable). Même forme pour l'état (GET) et l'enregistrement (POST) —
+# déclarée une seule fois ici, jamais deux composants identiques.
+FETES_MOBILES_ETAT_RESPONSE = inline_serializer('FetesMobilesEtat', {
+    'aid_el_fitr': serializers.CharField(allow_null=True),
+    'aid_el_adha': serializers.CharField(allow_null=True),
+    '1er_moharram': serializers.CharField(allow_null=True),
+    'aid_el_mawlid': serializers.CharField(allow_null=True),
+})
 
+
+@extend_schema(responses=FETES_MOBILES_ETAT_RESPONSE)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def fetes_mobiles_etat(request):
@@ -34,6 +49,20 @@ def fetes_mobiles_etat(request):
     return Response(fetes_mobiles_saisies(company, annee))
 
 
+FETES_MOBILES_ENREGISTRER_REQUEST = inline_serializer(
+    'FetesMobilesEnregistrerRequest', {
+        'annee': serializers.IntegerField(),
+        'dates': inline_serializer('FetesMobilesEnregistrerDates', {
+            'aid_el_fitr': serializers.CharField(required=False),
+            'aid_el_adha': serializers.CharField(required=False),
+            '1er_moharram': serializers.CharField(required=False),
+            'aid_el_mawlid': serializers.CharField(required=False),
+        }),
+    })
+
+
+@extend_schema(request=FETES_MOBILES_ENREGISTRER_REQUEST,
+               responses=FETES_MOBILES_ETAT_RESPONSE)
 @api_view(['POST'])
 @permission_classes([IsAdminOrResponsableTier])
 def fetes_mobiles_enregistrer(request):

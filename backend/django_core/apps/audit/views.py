@@ -17,7 +17,8 @@ from zoneinfo import ZoneInfo
 
 from django.contrib.contenttypes.models import ContentType
 from django.utils.dateparse import parse_datetime
-from rest_framework import viewsets, filters
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, viewsets, filters
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
@@ -283,6 +284,13 @@ def security_events(request):
 # tout le reste du Journal (``CanViewActivityLog``, Directeur/admin interne
 # par défaut) : un compte portail externe n'atteint de toute façon jamais
 # ``/api/django/audit/*`` (exclu en amont, cf. ``roles.permissions``).
+PORTAL_ACCESS_EVENTS_RESPONSE = inline_serializer('AuditPortalAccessEvents', {
+    'count': serializers.IntegerField(),
+    'results': AuditLogSerializer(many=True),
+})
+
+
+@extend_schema(responses=PORTAL_ACCESS_EVENTS_RESPONSE)
 @api_view(['GET'])
 @permission_classes([CanViewActivityLog])
 def portal_access_events(request):

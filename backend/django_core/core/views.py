@@ -17,6 +17,7 @@ Découplage : aucune importation d'app domaine ici — seulement l'infra Celery
 via ``core.jobs`` (qui fait ``from celery import current_app``). ``core`` reste
 une couche de base (import-linter).
 """
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework import status, viewsets
@@ -1908,6 +1909,7 @@ def maintenance_toggle(request):
 # ── NTOBS17 — export PDF générique du trust center (dossier RFP) ───────────
 
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def trust_center_export_pdf(request):
@@ -1934,6 +1936,7 @@ def _est_directeur_ou_admin(user):
     return bool(role and role.nom in ('Directeur', 'Administrateur'))
 
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def registre_fiabilite_export_pdf(request):
@@ -2058,6 +2061,7 @@ def _sla_export_xlsx_response(snapshots, incidents):
     return resp
 
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def sla_export_csv(request):

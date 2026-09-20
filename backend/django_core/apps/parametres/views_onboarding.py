@@ -8,7 +8,8 @@ les étapes « Pays »/« Pack pays » persistées).
 Écriture d'un réglage de société : réservé Administrateur/Responsable promu,
 même patron de permission que le reste de l'app (``views_profile``,
 ``views_config``)."""
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -18,7 +19,52 @@ from .onboarding_pays import SEEDERS_FERIES_PAR_PAYS, provisionner_localisation
 from .serializers_company import CompanyProfileSerializer
 from .views_common import _audit_company
 
+# NTI18N31 — forme réelle du corps (tout optionnel, ``pays`` défaut ``'MA'``
+# côté vue) et de la réponse (miroir exact du dict renvoyé par
+# ``provisionner_localisation`` : profile/pays/feries_seedes/seeder_utilise).
+ONBOARDING_LOCALISATION_REQUEST = inline_serializer(
+    'OnboardingLocalisationRequest', {
+        'pays': serializers.CharField(required=False),
+        'devise': serializers.CharField(required=False, allow_null=True),
+        'fuseau_horaire': serializers.CharField(
+            required=False, allow_null=True),
+        'langue_repli': serializers.CharField(
+            required=False, allow_null=True),
+    })
 
+
+class _CompanyProfileSchema(CompanyProfileSerializer):
+    """Forme OpenAPI de ``CompanyProfileSerializer`` — DOCS UNIQUEMENT, jamais
+    instanciée pour sérialiser une vraie réponse (la vue continue d'appeler
+    ``CompanyProfileSerializer`` telle quelle, inchangée).
+
+    ``CompanyProfileSerializer`` (``apps/parametres/serializers_company.py``,
+    hors périmètre de ce lot) déclare 3 ``SerializerMethodField`` sans
+    annotation de type sur leurs ``get_*`` (``logo_url``, ``signature_url``,
+    ``benchmarking_opt_in``) : drf-spectacular ne peut deviner leur type et
+    échoue dès la première fois que ce sérialiseur est exposé à un
+    ``@extend_schema`` — ce que cette vue est la première à faire. Les 3
+    champs sont donc redéclarés ici avec leur type RÉEL (``str`` nullable
+    pour les deux URLs, ``bool`` pour le consentement) ; tous les 120+ autres
+    champs (``fields = '__all__'`` du modèle ``CompanyProfile``) restent
+    hérités tels quels.
+    """
+    logo_url = serializers.CharField(read_only=True, allow_null=True)
+    signature_url = serializers.CharField(read_only=True, allow_null=True)
+    benchmarking_opt_in = serializers.BooleanField(read_only=True)
+
+
+ONBOARDING_LOCALISATION_RESPONSE = inline_serializer(
+    'OnboardingLocalisationResponse', {
+        'profile': _CompanyProfileSchema(),
+        'pays': serializers.CharField(),
+        'feries_seedes': serializers.BooleanField(),
+        'seeder_utilise': serializers.CharField(allow_null=True),
+    })
+
+
+@extend_schema(request=ONBOARDING_LOCALISATION_REQUEST,
+               responses=ONBOARDING_LOCALISATION_RESPONSE)
 @api_view(['POST'])
 @permission_classes([IsAdminOrResponsableTier])
 def onboarding_localisation(request):

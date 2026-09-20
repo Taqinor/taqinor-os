@@ -5,6 +5,9 @@ import io
 import logging
 
 from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -22,6 +25,34 @@ from .holidays_import import exporter_feries_csv, importer_feries_csv
 from .translations_i18n import exporter_traductions_csv, importer_traductions_csv
 
 logger = logging.getLogger(__name__)
+
+# NTI18N29 — import de traductions : forme réelle du corps (multipart, un seul
+# champ ``file``) et de la réponse (résumé de l'``ImportJob`` créé).
+IMPORT_TRADUCTIONS_REQUEST = inline_serializer(
+    'ImporterTraductionsRequest', {'file': serializers.FileField()})
+IMPORT_TRADUCTIONS_RESPONSE = inline_serializer('ImporterTraductionsRapport', {
+    'job': serializers.IntegerField(),
+    'statut': serializers.CharField(),
+    'total_lignes': serializers.IntegerField(),
+    'created_count': serializers.IntegerField(),
+    'updated_count': serializers.IntegerField(),
+    'error_count': serializers.IntegerField(),
+})
+
+# NTI18N45 — import de fériés : même forme de corps/réponse que les
+# traductions ci-dessus, mais déclarée séparément (composants uniques par
+# usage — jamais la même instance de champ/serializer partagée entre deux
+# schémas).
+IMPORT_FERIES_REQUEST = inline_serializer(
+    'ImporterFeriesRequest', {'file': serializers.FileField()})
+IMPORT_FERIES_RESPONSE = inline_serializer('ImporterFeriesRapport', {
+    'job': serializers.IntegerField(),
+    'statut': serializers.CharField(),
+    'total_lignes': serializers.IntegerField(),
+    'created_count': serializers.IntegerField(),
+    'updated_count': serializers.IntegerField(),
+    'error_count': serializers.IntegerField(),
+})
 
 # QG4 — la CRÉATION de produits est restreinte partout (REST, import de
 # données, OCR) aux rôles Directeur et Commercial responsable. Le commit
@@ -218,6 +249,7 @@ def job_erreurs_csv(request, job_id):
     return resp
 
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def export_traductions(request):
@@ -230,6 +262,8 @@ def export_traductions(request):
     return resp
 
 
+@extend_schema(request={'multipart/form-data': IMPORT_TRADUCTIONS_REQUEST},
+               responses={200: IMPORT_TRADUCTIONS_RESPONSE})
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
 @parser_classes([MultiPartParser, FormParser])
@@ -262,6 +296,7 @@ def import_traductions(request):
     })
 
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def export_feries(request):
@@ -274,6 +309,8 @@ def export_feries(request):
     return resp
 
 
+@extend_schema(request={'multipart/form-data': IMPORT_FERIES_REQUEST},
+               responses={200: IMPORT_FERIES_RESPONSE})
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
 @parser_classes([MultiPartParser, FormParser])
