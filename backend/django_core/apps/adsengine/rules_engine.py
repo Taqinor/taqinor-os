@@ -362,6 +362,66 @@ def _eval_window_regression(company, policy, template, *, now, config):
     return findings
 
 
+def _eval_winner_duplicate(company, policy, template, *, now, config):
+    """PUB116 — Évaluateur « gagnant NET » : CPL en AMÉLIORATION (fenêtre courte
+    < longue × ``improve_factor``) **ET** plancher de VOLUME atteint
+    (``min_results`` résultats cumulés sur la fenêtre longue).
+
+    Le plancher de volume est la moitié honnête de la règle : dupliquer engage un
+    budget neuf, et un ad set à 1 lead chanceux n'est pas un gagnant (même raison
+    que le plancher de leads de ``anomaly.detect_cpl_band``). Sous le plancher
+    d'échantillons, ou CPL non calculable (0 résultat) → ``insufficient_data``
+    (jamais un faux déclenchement, jamais un skip muet).
+
+    L'action est portée par le hint ``v2['action']='duplicate'`` du template :
+    ``_act_on_finding`` route vers ``_propose_v2_action`` → ``propose_duplicate``
+    (PROPOSITION seule ; l'ad set et l'ad dupliqués naissent PAUSED côté client)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    params = rule_templates.resolve_params(policy.template_key, policy.params)
+    short_days = int(params.get('short_days', 3))
+    long_days = int(params.get('long_days', 7))
+    factor = float(params.get('improve_factor', 0.9))
+    min_results = float(params.get('min_results', 5))
+    min_samples = int(params.get('min_samples', 3))
+    scope = template['scope']
+    model, mirrors = _scoped_mirrors(company, policy, scope)
+    if model is None:
+        return []
+    ct = ContentType.objects.get_for_model(model)
+
+    findings = []
+    for m in mirrors:
+        short_snaps = _window_snaps(company, ct, m.pk, now=now, days=short_days)
+        long_snaps = _window_snaps(company, ct, m.pk, now=now, days=long_days)
+        short_val, _ = _derived_metric(short_snaps, 'cpl')
+        long_val, long_n = _derived_metric(long_snaps, 'cpl')
+        results = _sum_attr(long_snaps, 'results')
+        base = {'target_type': scope, 'target_meta_id': m.meta_id,
+                'target_object_id': m.pk, 'severity': template['severity']}
+        if (long_n < min_samples or short_val is None or long_val is None
+                or long_val <= 0):
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'computed': {'metric': 'cpl', 'short': short_val,
+                                          'long': long_val, 'samples': long_n,
+                                          'results': results}})
+            continue
+        boundary = long_val * factor
+        improving = short_val < boundary
+        volume_ok = results >= min_results
+        findings.append({
+            **base, 'fired': bool(improving and volume_ok),
+            'insufficient_data': False,
+            'computed': {'metric': 'cpl', 'short': round(short_val, 4),
+                         'long': round(long_val, 4), 'factor': factor,
+                         'boundary': round(boundary, 4), 'direction': 'down',
+                         'short_days': short_days, 'long_days': long_days,
+                         'samples': long_n, 'results': results,
+                         'min_results': min_results, 'improving': improving,
+                         'volume_ok': volume_ok}})
+    return findings
+
+
 def _eval_rank_low_result(company, policy, template, *, now, config):
     """ADSDEEP38 — Évaluateur GÉNÉRIQUE « classement top-N » : classe les objets
     du scope par dépense décroissante sur la fenêtre, prend les ``top_n``
@@ -544,6 +604,9 @@ _EVALUATORS = {
     'frequency_ratio_regression': _eval_window_regression,
     'surf_scale_budget': _eval_window_regression,
     'top_spend_low_result': _eval_rank_low_result,
+    # PUB116 — gagnant NET (CPL en amélioration ET plancher de volume) ⇒
+    # proposition de DUPLICATION via le hint ``v2['action']='duplicate'``.
+    'winner_duplicate': _eval_winner_duplicate,
 }
 
 

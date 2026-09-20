@@ -478,6 +478,65 @@ RULE_TEMPLATES = {
         'v2': {'evaluator': 'window_regression', 'metric': 'cpl',
                'direction': 'down', 'action': 'budget_scale_up'},
     },
+    # 16) PUB116 — Gagnant NET ⇒ candidat à la DUPLICATION (scaling horizontal).
+    #     Jusqu'ici la seule multiplication d'un gagnant était le duplicate
+    #     MANUEL en 3 clics : aucun template ne routait vers l'intention
+    #     ``duplicate`` de ``rules_engine._propose_v2_action``. Deux conditions
+    #     ET, volontairement CONSERVATRICES (dupliquer coûte un budget neuf) :
+    #       (a) le CPL s'AMÉLIORE (fenêtre courte < longue × facteur) — même
+    #           lecture que le surf-scaling ;
+    #       (b) PLANCHER DE VOLUME : au moins ``min_results`` résultats cumulés
+    #           sur la fenêtre longue. Sans ce plancher, un ad set à 1 lead
+    #           chanceux passerait pour un « gagnant » (même raison que le
+    #           plancher de 5 leads de la bande CPL, ``anomaly.detect_cpl_band``).
+    #     Alerte + PROPOSITION seulement : le hint ``v2['action']='duplicate'``
+    #     route vers ``services.propose_duplicate`` (nouvel ad set PAUSED + ad
+    #     réutilisant le créatif LIVE) — jamais une application automatique, et
+    #     aucun chemin de dé-pause (invariant permanent règle #3).
+    'winner_duplicate': {
+        'label_fr': 'Gagnant net — candidat à la duplication (scaling horizontal)',
+        'severity': SEVERITY_INFO,
+        'cadence': CADENCE_DAILY,
+        'scope': 'adset',
+        'detector': None,
+        'action': None,  # l'acteur duplication lit v2['action'].
+        'conditions': {
+            'logic': 'all',
+            'conditions': [
+                {
+                    'field': 'cost_per_lead_mad',
+                    'scope': 'adset',
+                    'operator': 'ratio_lt',
+                    'compare_window': {
+                        'short': {'type': 'trailing_days',
+                                  'param': 'short_days'},
+                        'long': {'type': 'trailing_days',
+                                 'param': 'long_days'},
+                        'factor_param': 'improve_factor',
+                    },
+                    'min_samples_param': 'min_samples',
+                    'on_insufficient_data': 'skip',
+                },
+                {
+                    'field': 'results',
+                    'scope': 'adset',
+                    'operator': 'gte',
+                    'value_param': 'min_results',
+                    'window': {'type': 'trailing_days', 'param': 'long_days'},
+                    'min_samples_param': 'min_samples',
+                    'on_insufficient_data': 'skip',
+                },
+            ],
+        },
+        'editable_params': [
+            'short_days', 'long_days', 'improve_factor', 'min_results',
+            'min_samples'],
+        'default_params': {
+            'short_days': 3, 'long_days': 7, 'improve_factor': 0.9,
+            'min_results': 5, 'min_samples': 3},
+        'v2': {'evaluator': 'winner_duplicate', 'metric': 'cpl',
+               'direction': 'down', 'action': 'duplicate'},
+    },
 }
 
 
