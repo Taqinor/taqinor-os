@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { MemoryRouter } from 'react-router-dom'
 import fs from 'node:fs'
 import path from 'node:path'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 /* `import.meta.url` est virtuel sous vitest : on part du dossier de travail
    (que la configuration vitest fixe à `frontend/`) et on remonte jusqu'à la
@@ -50,25 +51,16 @@ const {
   contourTerrain, demandeMoteur, documentTerrain,
 } = await import('../ModeTerrain')
 
-/** Une réponse de moteur à la forme EXACTE du contrat `pose.json`. */
-const REPONSE = {
-  schema_version: 1,
-  repere: 'TERRAIN',
-  hash_entree: 'abc',
-  version_moteur: '1.2.3',
-  total_modules: 16,
-  plans: [{
-    surface: 'TERRAIN',
-    modules: 16,
-    rangees: [{ y0: 0, modules: 8 }, { y0: 6, modules: 8 }],
-    tables: [
-      { x0: 0, x1: 4, y0: 0, y1: 2.3, kit: 'terrain' },
-      { x0: 4.5, x1: 8.5, y0: 0, y1: 2.3, kit: 'terrain' },
-      { x0: 0, x1: 4, y0: 6, y1: 8.3, kit: 'terrain' },
-      { x0: 4.5, x1: 8.5, y0: 6, y1: 8.3, kit: 'terrain' },
-    ],
-  }],
-}
+/** La VRAIE réponse du moteur — l'exemple committé du contrat `pose.json`
+ *  (PACT10/13 : un mock écrit à la main est une deuxième source de vérité,
+ *  `scripts/check_api_shapes.py` le refuse). */
+const REPONSE = exempleContrat('calepinage', 'pose')
+/** Le pas inter-rangées, MESURÉ sur les rangées de l'exemple — jamais retapé. */
+const PAS_REPONSE = REPONSE.plans[0].rangees[1].y0 - REPONSE.plans[0].rangees[0].y0
+/** L'emprise totale des tables de l'exemple, par la même formule que `empriseTablesM2`. */
+const EMPRISE_REPONSE = REPONSE.plans[0].tables.reduce(
+  (acc, t) => acc + Math.abs(t.x1 - t.x0) * Math.abs(t.y1 - t.y0), 0,
+)
 
 const SAISIE = {
   repere: 'TERRAIN',
@@ -100,8 +92,8 @@ const monter = (props = {}) => render(
 /* ── 1. LE PAS VIENT DU MOTEUR, JAMAIS D'UNE FORMULE LOCALE ────────────── */
 
 describe('CAL89 — le pas inter-rangées est MESURÉ sur le plan du moteur', () => {
-  it('deux rangées à 0 et 6 m ⇒ pas mesuré = 6 m', () => {
-    expect(pasMesure(REPONSE.plans[0].rangees)).toBeCloseTo(6, 9)
+  it('le pas mesuré = l’écart entre les deux `y0` de l’exemple de contrat', () => {
+    expect(pasMesure(REPONSE.plans[0].rangees)).toBeCloseTo(PAS_REPONSE, 9)
   })
 
   it('moins de deux rangées ⇒ null (non mesurable), jamais une valeur de repli', () => {
@@ -124,9 +116,8 @@ describe('CAL89 — le pas inter-rangées est MESURÉ sur le plan du moteur', ()
 
 describe('CAL89 — le taux d’occupation du sol est une SORTIE', () => {
   it('= emprises des tables du moteur ÷ surface du terrain saisie', () => {
-    const emprise = 4 * (4 * 2.3)
-    expect(empriseTablesM2(REPONSE.plans[0].tables)).toBeCloseTo(emprise, 9)
-    expect(tauxOccupation(REPONSE.plans[0].tables, 200)).toBeCloseTo(emprise / 200, 9)
+    expect(empriseTablesM2(REPONSE.plans[0].tables)).toBeCloseTo(EMPRISE_REPONSE, 9)
+    expect(tauxOccupation(REPONSE.plans[0].tables, 200)).toBeCloseTo(EMPRISE_REPONSE / 200, 9)
   })
 
   it('surface de terrain absente ⇒ null, jamais 0 « par défaut »', () => {
@@ -173,11 +164,11 @@ describe('CAL89 — la surface persistée recopie le moteur sans le refaire', ()
     expect(s.areaM2).toBe(200)
     expect(s.terrainSlopeDeg).toBe(3)
     expect(s.tiltDeg).toBe(25)
-    expect(s.engine.modules).toBe(16)
-    expect(s.engine.rowPitchM).toBeCloseTo(6, 9)
-    expect(s.engine.tables).toHaveLength(4)
-    expect(s.engine.groundCoverageRatio).toBeCloseTo((4 * 4 * 2.3) / 200, 9)
-    expect(s.engine.versionMoteur).toBe('1.2.3')
+    expect(s.engine.modules).toBe(REPONSE.plans[0].modules)
+    expect(s.engine.rowPitchM).toBeCloseTo(PAS_REPONSE, 9)
+    expect(s.engine.tables).toHaveLength(REPONSE.plans[0].tables.length)
+    expect(s.engine.groundCoverageRatio).toBeCloseTo(EMPRISE_REPONSE / 200, 9)
+    expect(s.engine.versionMoteur).toBe(REPONSE.version_moteur)
   })
 
   it('est VALIDE au regard du contrat v2 partagé (roof_layout_v2.schema.json)', () => {
@@ -213,9 +204,12 @@ describe('CAL89 — l’écran calcule, enregistre et recharge', () => {
     await waitFor(() => expect(pose).toHaveBeenCalled())
     expect(pose.mock.calls[0][0].demande.surfaces[0].contour).toHaveLength(4)
     await waitFor(() => {
-      expect(screen.getByTestId('cal-terrain-modules').textContent).toContain('16')
+      expect(screen.getByTestId('cal-terrain-modules').textContent)
+        .toContain(String(REPONSE.plans[0].modules))
     })
-    expect(screen.getByTestId('cal-terrain-pas').textContent).toContain('6')
+    // L'écran arrondit le pas au dixième (`auDixieme`), comme le composant.
+    expect(screen.getByTestId('cal-terrain-pas').textContent)
+      .toContain(String(Math.round(PAS_REPONSE * 10) / 10))
     expect(screen.getByTestId('cal-terrain-taux').textContent).toContain('%')
   })
 
@@ -251,7 +245,8 @@ describe('CAL89 — l’écran calcule, enregistre et recharge', () => {
       expect(screen.getByTestId('cal-terrain-largeurM').value).toBe('20')
     })
     expect(screen.getByTestId('cal-terrain-tiltDeg').value).toBe('25')
-    expect(screen.getByTestId('cal-terrain-modules').textContent).toContain('16')
+    expect(screen.getByTestId('cal-terrain-modules').textContent)
+      .toContain(String(REPONSE.plans[0].modules))
   })
 
   it('refuse de calculer sur une saisie incomplète, et le DIT', async () => {

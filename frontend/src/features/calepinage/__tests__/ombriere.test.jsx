@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { MemoryRouter } from 'react-router-dom'
 import fs from 'node:fs'
 import path from 'node:path'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 /* `import.meta.url` est virtuel sous vitest : on part du dossier de travail
    (fixé à `frontend/` par la configuration vitest) et on remonte jusqu'à la
@@ -49,22 +50,16 @@ const {
   default: Ombriere, documentOmbriere, totauxParBatiment,
 } = await import('../Ombriere')
 
-/** Une réponse de moteur à la forme EXACTE du contrat `pose.json`. */
-const REPONSE = {
-  schema_version: 1,
-  repere: 'OMBRIERE',
-  hash_entree: 'def',
-  version_moteur: '1.2.3',
-  plans: [{
-    surface: 'OMBRIERE',
-    modules: 24,
-    rangees: [{ y0: 0, modules: 12 }, { y0: 2.5, modules: 12 }],
-    tables: [
-      { x0: 0, x1: 6, y0: 0, y1: 2.3, kit: 'terrain' },
-      { x0: 0, x1: 6, y0: 2.5, y1: 4.8, kit: 'terrain' },
-    ],
-  }],
-}
+/** La VRAIE réponse du moteur — l'exemple committé du contrat `pose.json`
+ *  (PACT10/13 : un mock écrit à la main est une deuxième source de vérité,
+ *  `scripts/check_api_shapes.py` le refuse). */
+const REPONSE = exempleContrat('calepinage', 'pose')
+/** Le pas inter-rangées, MESURÉ sur les rangées de l'exemple — jamais retapé. */
+const PAS_REPONSE = REPONSE.plans[0].rangees[1].y0 - REPONSE.plans[0].rangees[0].y0
+/** L'emprise totale des tables de l'exemple, par la même formule que `empriseTablesM2`. */
+const EMPRISE_REPONSE = REPONSE.plans[0].tables.reduce(
+  (acc, t) => acc + Math.abs(t.x1 - t.x0) * Math.abs(t.y1 - t.y0), 0,
+)
 
 const SAISIE = {
   repere: 'OMB-1',
@@ -161,9 +156,9 @@ describe('CAL91 — la surface persistée est conforme au contrat v2 partagé', 
     expect(s.kind).toBe('ombriere')
     expect(s.buildingId).toBe('BAT-A')
     expect(s.flowAzimuthDeg).toBe(180)
-    expect(s.engine.modules).toBe(24)
-    expect(s.engine.rowPitchM).toBeCloseTo(2.5, 9) // MESURÉ sur les rangées
-    expect(s.engine.groundCoverageRatio).toBeCloseTo((2 * 6 * 2.3) / 60, 9)
+    expect(s.engine.modules).toBe(REPONSE.plans[0].modules)
+    expect(s.engine.rowPitchM).toBeCloseTo(PAS_REPONSE, 9) // MESURÉ sur les rangées
+    expect(s.engine.groundCoverageRatio).toBeCloseTo(EMPRISE_REPONSE / 60, 9)
   })
 
   it('chaque clé écrite est déclarée par `roof_layout_v2.schema.json`', () => {
@@ -236,9 +231,12 @@ describe('CAL91 — l’écran pose l’ombrière et la montre dans les totaux',
     await waitFor(() => expect(pose).toHaveBeenCalled())
     expect(pose.mock.calls[0][0].demande.surfaces[0].azimut_deg).toBe(180)
     await waitFor(() => {
-      expect(screen.getByTestId('cal-ombriere-modules').textContent).toContain('24')
+      expect(screen.getByTestId('cal-ombriere-modules').textContent)
+        .toContain(String(REPONSE.plans[0].modules))
     })
-    expect(screen.getByTestId('cal-ombriere-pas').textContent).toContain('2.5')
+    // L'écran arrondit le pas au dixième (`auDixieme`), comme le composant.
+    expect(screen.getByTestId('cal-ombriere-pas').textContent)
+      .toContain(String(Math.round(PAS_REPONSE * 10) / 10))
   })
 
   it('l’ombrière apparaît dans le total de SON bâtiment, à côté du pan', async () => {
@@ -247,8 +245,11 @@ describe('CAL91 — l’écran pose l’ombrière et la montre dans les totaux',
     remplir()
     fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
     await waitFor(() => expect(pose).toHaveBeenCalled())
+    // BAT-A porte déjà 30 modules de pan (mock `layout` du `beforeEach`) ;
+    // l'ombrière y ajoute les modules RENDUS PAR LE MOTEUR (exemple de contrat).
     await waitFor(() => {
-      expect(screen.getByTestId('cal-ombriere-total-BAT-A').textContent).toContain('54')
+      expect(screen.getByTestId('cal-ombriere-total-BAT-A').textContent)
+        .toContain(String(30 + REPONSE.plans[0].modules))
     })
     // Le bâtiment voisin n'a pas bougé.
     expect(screen.getByTestId('cal-ombriere-total-BAT-B').textContent).toContain('10')
@@ -283,7 +284,8 @@ describe('CAL91 — l’écran pose l’ombrière et la montre dans les totaux',
       expect(screen.getByTestId('cal-ombriere-clearHeightM').value).toBe('2.5')
     })
     expect(screen.getByTestId('cal-ombriere-largeurM').value).toBe('12')
-    expect(screen.getByTestId('cal-ombriere-modules').textContent).toContain('24')
+    expect(screen.getByTestId('cal-ombriere-modules').textContent)
+      .toContain(String(REPONSE.plans[0].modules))
   })
 
   it('refuse de calculer une emprise incomplète, et le DIT', async () => {
