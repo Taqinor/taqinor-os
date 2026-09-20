@@ -9,6 +9,7 @@ Throttlé par IP (best-effort, sans dépendance externe, même patron que
 from datetime import timedelta
 
 from django.core.cache import cache
+from django.db import models
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -208,7 +209,13 @@ class HistoriqueStatutComponentView(generics.ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        return ComponentStatusLog.objects.order_by('-created_at')[:30]
+        # Cloisonnement société : les logs du tenant + les composants SYSTÈME
+        # (company NULL, partagés par construction) — jamais ceux d'un autre
+        # tenant (check_tenant_isolation).
+        return ComponentStatusLog.objects.filter(
+            models.Q(company=self.request.user.company)
+            | models.Q(company__isnull=True)
+        ).order_by('-created_at')[:30]
 
 
 @extend_schema(responses=inline_serializer('PrefillIncidentDepuisLog', {
