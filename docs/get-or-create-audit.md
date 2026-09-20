@@ -16,8 +16,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/field_tests.py:316` | update_or_create | FieldTestResult.objects | company, ft |
 | `backend/django_core/apps/adsengine/flightrunner.py:136` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/flightrunner.py:222` | get_or_create | GuardrailConfig.objects | company |
-| `backend/django_core/apps/adsengine/flightrunner.py:512` | update_or_create | AdCampaignMirror.objects | company, meta_id |
-| `backend/django_core/apps/adsengine/flightrunner.py:522` | update_or_create | AdSetMirror.objects | company, meta_id |
+| `backend/django_core/apps/adsengine/flightrunner.py:518` | update_or_create | AdCampaignMirror.objects | company, meta_id |
+| `backend/django_core/apps/adsengine/flightrunner.py:528` | update_or_create | AdSetMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/instagram.py:55` | update_or_create | InstagramMediaMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/instagram.py:84` | update_or_create | InstagramCommentMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/management/commands/seed_adsengine.py:40` | get_or_create | GuardrailConfig.objects | company |
