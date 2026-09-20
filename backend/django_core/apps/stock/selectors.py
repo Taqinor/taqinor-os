@@ -1616,22 +1616,28 @@ def specs_for_produit(produit):
             # CAL114 — clés déjà présentes sur la fiche (AUD835/PV5) mais
             # jusqu'ici OMISES de ce bloc : le poids est indispensable au
             # lestage (g), les dimensions/épaisseur au kit de calepinage (h).
-            ('epaisseur_mm', fiche.epaisseur_mm),
-            ('poids_kg', fiche.poids_kg),
-            ('rendement_pct', fiche.rendement_pct),
-            ('techno_cellule', fiche.techno_cellule or None),
-            ('bifacial', fiche.bifacial),
+            # getattr : les doubles de test (_FausseFiche) ne portent pas
+            # forcément les champs récents — absent ≡ NULL (non évaluable).
+            ('epaisseur_mm', getattr(fiche, 'epaisseur_mm', None)),
+            ('poids_kg', getattr(fiche, 'poids_kg', None)),
+            ('rendement_pct', getattr(fiche, 'rendement_pct', None)),
+            ('techno_cellule', getattr(fiche, 'techno_cellule', None) or None),
+            ('bifacial', getattr(fiche, 'bifacial', None)),
             # CAL111 — modèle thermique NOCT / Uc-Uv (optionnel).
-            ('noct_c', fiche.noct_c),
-            ('uc_w_m2k', fiche.uc_w_m2k),
-            ('uv_w_m3sk', fiche.uv_w_m3sk),
+            ('noct_c', getattr(fiche, 'noct_c', None)),
+            ('uc_w_m2k', getattr(fiche, 'uc_w_m2k', None)),
+            ('uv_w_m3sk', getattr(fiche, 'uv_w_m3sk', None)),
             # CAL112 — facteur de bifacialité publié (optionnel).
-            ('bifacialite_pct', fiche.bifacialite_pct),
+            ('bifacialite_pct', getattr(fiche, 'bifacialite_pct', None)),
             # CAL113 — dégradation annuelle & paliers de garantie (optionnels).
-            ('degradation_annuelle_pct', fiche.degradation_annuelle_pct),
-            ('degradation_annee1_pct', fiche.degradation_annee1_pct),
-            ('garantie_pct_a_10_ans', fiche.garantie_pct_a_10_ans),
-            ('garantie_pct_a_25_ans', fiche.garantie_pct_a_25_ans),
+            ('degradation_annuelle_pct',
+             getattr(fiche, 'degradation_annuelle_pct', None)),
+            ('degradation_annee1_pct',
+             getattr(fiche, 'degradation_annee1_pct', None)),
+            ('garantie_pct_a_10_ans',
+             getattr(fiche, 'garantie_pct_a_10_ans', None)),
+            ('garantie_pct_a_25_ans',
+             getattr(fiche, 'garantie_pct_a_25_ans', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'onduleur':
@@ -1724,10 +1730,11 @@ def dimensions_de_pose(produit):
     ``core/calepinage`` travaillait sur des ``Kit`` aux dimensions écrites
     en dur (``core/calepinage/types.py``) et l'unique passerelle
     produit→kit vivait côté AO (``apps/ao/services.py``
-    ``kit_panneau_du_produit``), inaccessible à une autre app sans importer
-    ``apps.ao``. Ce sélecteur rend le même sous-ensemble, lu directement sur
-    ``FicheTechnique`` (PV5/CAL111-118), pour que ``apps.calepinage``
-    construise son kit SANS importer ``apps.ao`` ni ``apps.stock.models``.
+    ``kit_panneau_du_produit``), inaccessible à une autre app sans un lien
+    direct vers ce module. Ce sélecteur rend le même sous-ensemble, lu
+    directement sur ``FicheTechnique`` (PV5/CAL111-118), pour que
+    ``apps.calepinage`` construise son kit sans dépendre du module AO ni de
+    ``apps.stock.models``.
 
     Rend ``{longueur_mm, largeur_mm, epaisseur_mm, poids_kg, puissance_wc}``
     — clé ABSENTE (jamais ``None``) si non saisie sur la fiche. Produit sans

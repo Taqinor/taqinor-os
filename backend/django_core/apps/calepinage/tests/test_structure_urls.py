@@ -25,7 +25,13 @@ RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 
 #: Motifs engendrés par ``DefaultRouter`` à la racine (api-root + suffixe de
 #: format) : ils ne portent aucune ressource, donc ils sont hors contrat.
-_RACINE_ROUTEUR = ('', r'\.(?P<format>[a-z0-9]+)/?')
+#: DRF rend le suffixe de format soit en regex historique
+#: (``\.(?P<format>[a-z0-9]+)/?``), soit — versions récentes — via le
+#: convertisseur de chemin ``<drf_format_suffix:format>`` : les deux formes
+#: sont exemptées, jamais une ressource du module.
+_RACINE_ROUTEUR = (
+    '', r'\.(?P<format>[a-z0-9]+)/?', '<drf_format_suffix:format>',
+)
 
 
 def _routes(patterns, prefixe=''):

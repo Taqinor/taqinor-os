@@ -64,19 +64,34 @@ class FicheModeleThermiqueTests(TestCase):
         self.assertEqual(fiche.uc_w_m2k, Decimal('29.0'))
         self.assertEqual(fiche.uv_w_m3sk, Decimal('0.0'))
 
-    def test_champs_vides_naliment_aucun_calcul(self):
+    def test_champs_vides_omis_de_specs_for_produit(self):
         """``specs_for_produit`` (le seul point de lecture partagé entre
-        apps) n'expose PAS encore ces clés : un champ vide — ou même
-        rempli, avant CAL114 — n'alimente aucun calcul aval."""
+        apps) OMET ces trois clés tant qu'elles ne sont pas saisies —
+        « clé NULL -> clé OMISE » (CAL114 les a depuis ajoutées au bloc
+        module ; ce test ne couvre plus que le cas vide, cf.
+        ``test_saisie_est_exposee_par_specs_for_produit`` pour le cas
+        rempli)."""
+        FicheTechnique.objects.create(
+            company=self.co, produit=self.produit, type_fiche='module')
+        self.produit.refresh_from_db()
+        specs = specs_for_produit(self.produit)
+        self.assertNotIn('noct_c', specs)
+        self.assertNotIn('uc_w_m2k', specs)
+        self.assertNotIn('uv_w_m3sk', specs)
+
+    def test_saisie_est_exposee_par_specs_for_produit(self):
+        """CAL114 — une fois saisis, les trois champs du modèle thermique
+        sont exposés par ``specs_for_produit`` comme le reste du bloc
+        module."""
         FicheTechnique.objects.create(
             company=self.co, produit=self.produit, type_fiche='module',
             noct_c=Decimal('45.0'), uc_w_m2k=Decimal('29.0'),
             uv_w_m3sk=Decimal('1.2'))
         self.produit.refresh_from_db()
         specs = specs_for_produit(self.produit)
-        self.assertNotIn('noct_c', specs)
-        self.assertNotIn('uc_w_m2k', specs)
-        self.assertNotIn('uv_w_m3sk', specs)
+        self.assertEqual(specs['noct_c'], Decimal('45.0'))
+        self.assertEqual(specs['uc_w_m2k'], Decimal('29.00'))
+        self.assertEqual(specs['uv_w_m3sk'], Decimal('1.20'))
 
     def test_serializer_expose_les_champs(self):
         """L'API fiche existante sert les trois nouveaux champs."""

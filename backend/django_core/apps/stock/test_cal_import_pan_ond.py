@@ -25,7 +25,7 @@ from apps.stock.importers.fiche_pan_ond import (
     propose_mapping,
 )
 from apps.stock.models import FicheTechnique, Produit
-from authentication.models import Company, User
+from authentication.models import Company, CustomUser
 
 # ── Fixtures COMMITÉES — un .PAN et un .OND synthétiques (format PVsyst
 # clé=valeur, sections/en-têtes réels) exercés par le parseur pur. ──
@@ -165,7 +165,7 @@ class ImporterDatasheetEndpointTests(TestCase):
             slug='cal117-api-co', defaults={'nom': 'CAL117 API'})[0]
         self.autre_co = Company.objects.get_or_create(
             slug='cal117-autre-co', defaults={'nom': 'CAL117 Autre'})[0]
-        self.user = User.objects.create_user(
+        self.user = CustomUser.objects.create_user(
             username='cal117-user', password='x', company=self.co,
             is_superuser=True, is_staff=True)
         self.produit = Produit.objects.create(
