@@ -70,6 +70,11 @@ const VariantesCompare = lazy(() => import('./VariantesCompare'))
    calepinage (agrégat CAL243), donc une route de deep-link et non un item de
    nav — un menu permanent n'aurait aucun calepinage à désigner. */
 const FichesIncompletes = lazy(() => import('./equipements/FichesIncompletes'))
+/* CAL159 — l'écran POMPAGE du module : puits, besoin, réservoir, courbe de
+   pompe avec point de fonctionnement et 12 volumes mensuels. L'atelier
+   (`ToitureDesign`) est un atelier de TOITURE et n'a aucune surface pompage ;
+   celle-ci est contextuelle à UN calepinage, donc un deep-link. */
+const PompagePanel = lazy(() => import('./pompage/PompagePanel'))
 
 const config = {
   key: 'calepinage',
@@ -114,6 +119,8 @@ const config = {
     // CAL121 — contextuelle elle aussi : les fiches techniques trouées des
     // équipements de CE calepinage, avec le calcul que chaque champ débloque.
     { path: '/calepinage/:id/fiches', component: FichesIncompletes, roles: ROLES },
+    // CAL159 — le dimensionnement de pompage de CE calepinage.
+    { path: '/calepinage/:id/pompage', component: PompagePanel, roles: ROLES },
   ],
 }
 
