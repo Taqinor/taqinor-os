@@ -3,7 +3,9 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Workflow, CalendarClock, GitBranch, FlaskConical, FolderKanban } from 'lucide-react'
+import {
+  Workflow, CalendarClock, GitBranch, FlaskConical, FolderKanban, BarChart3,
+} from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -42,6 +44,11 @@ const MatriceSimulator = lazy(() => import('./MatriceSimulator'))
 // même s'il peut en porter un, NTWFL20) + fiche détail (liens/checklist/chatter).
 const DossierList = lazy(() => import('../../pages/dossiers/DossierList'))
 const DossierDetail = lazy(() => import('./DossierDetail'))
+// NTWFL24 -- analyse de process (durees observees par etape, goulot),
+// consomme NTWFL23 (core/workflows/{id}/analyse/). Route dediee
+// /workflow/analyse (avant /workflow generique) ; la definition se choisit
+// DANS l'ecran (pas de segment dynamique).
+const ProcessAnalytics = lazy(() => import('./ProcessAnalytics'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -81,6 +88,12 @@ const config = {
         icon: <FolderKanban size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      {
+        to: '/workflow/analyse',
+        label: 'Analyse de process',
+        icon: <BarChart3 size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
   // routes.meta — du plus spécifique au plus général (le préfixe /workflow en dernier).
@@ -94,6 +107,7 @@ const config = {
   titles: [
     ['/workflow/taches-planifiees', 'Tâches planifiées'],
     ['/workflow/matrice-simulateur', 'Simulateur matrice'],
+    ['/workflow/analyse', 'Analyse de process'],
     ['/workflow', 'Workflows'],
     ['/dossiers', 'Dossiers'],
   ],
@@ -104,6 +118,7 @@ const config = {
     { path: '/workflow/formulaires/:id', component: FormBuilder, roles: ROLES },
     { path: '/workflow/:id/designer', component: WorkflowDesigner, roles: ROLES },
     { path: '/workflow/matrice-simulateur', component: MatriceSimulator, roles: ROLES },
+    { path: '/workflow/analyse', component: ProcessAnalytics, roles: ROLES },
     { path: '/workflow', component: WorkflowsScreen, roles: ROLES },
     // NTWFL19 -- `/dossiers/:id` doit précéder `/dossiers` (plus spécifique en premier).
     { path: '/dossiers/:id', component: DossierDetail, roles: ROLES },

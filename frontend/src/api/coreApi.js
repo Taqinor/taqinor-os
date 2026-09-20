@@ -83,6 +83,17 @@ const coreApi = {
     remove: (id) => api.delete(`/core/workflow-definitions/${id}/`),
   },
 
+  // NTWFL23/24 — analyse de process (durées observées par étape, taux de
+  // rejet/escalade, étape goulot) : LECTURE SEULE, bornée à la société de
+  // l'appelant côté serveur (`core.selectors.analyse_goulots_workflow`).
+  // `periode` optionnelle, chaîne `'AAAA-MM'` (absente = tout l'historique).
+  workflowAnalyse: {
+    get: (definitionId, periode) => api.get(
+      `/core/workflows/${definitionId}/analyse/`,
+      { params: periode ? { periode } : {} },
+    ),
+  },
+
   // NTWFL1 — matrice d'approbation d'entreprise unifiée (CRUD admin dans les
   // Paramètres). Lecture ouverte à tout utilisateur authentifié côté serveur
   // (`GET` seul, `IsAuthenticated`) — NTWFL32 (simulateur) n'utilise QUE
