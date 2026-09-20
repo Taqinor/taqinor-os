@@ -494,8 +494,19 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         exigence_marche=donnees.get('exigence_marche'),
         parametres_societe=_parametres_electriques(calepinage))
 
+    # CAL130/CAL131 — la norme applicable commande ce qui peut être publié :
+    # sans elle, sections et chutes de tension sont OMISES (règle D5).
+    from .cables import cables_du_calepinage
+    from .norme import norme_applicable
+
+    norme = norme_applicable(parametres_societe(calepinage))
+    cables = cables_du_calepinage(
+        conception, cheminement=donnees.get('cheminement'), norme=norme,
+        layout=document)
+
     messages = list(avertissements) + list(messages_ratio)
     messages.extend(regle['bornes_non_verifiables'])
+    messages.extend(cables['omissions'])
     messages.extend(conception.manquantes)
     messages.extend(materiel['absents'])
     if conception.temperatures is not None and conception.temperatures.mention:
@@ -523,6 +534,11 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # CAL129 — QUELLE règle de chaîne s'applique, et quelle fiche
         # l'autorise. C'est la ligne que la note de calcul reprend.
         'regle_chaine': regle,
+        # CAL130 — la norme retenue (ou l'omission assumée, avec son motif).
+        'norme': norme,
+        # CAL131 — les câbles, avec la LONGUEUR et SON ORIGINE.
+        'cables': cables['cables'],
+        'longueurs': cables['longueurs'],
         'temperatures': (conception.temperatures.en_dict()
                          if conception.temperatures is not None else None),
         'production': {
@@ -758,12 +774,12 @@ def _regle_chaine_publiee(conception, optimiseur_specs, designation):
                            designation=designation)
 
 
-def _parametres_electriques(calepinage):
-    """La section « norme électrique » des réglages société (CAL130).
+def parametres_societe(calepinage):
+    """Les réglages société du module, ou ``{}`` (lecture PURE et tolérante).
 
-    Lecture PURE et tolérante : société absente (calcul hors base, test) ou
-    section jamais réglée ⇒ ``{}``, c'est-à-dire « comportement d'aujourd'hui,
-    strictement inchangé » — jamais une valeur par défaut inventée.
+    Société absente (calcul hors base, test) ou réglages illisibles ⇒ ``{}``,
+    c'est-à-dire « comportement d'aujourd'hui, strictement inchangé » — jamais
+    une valeur par défaut inventée.
     """
     company = getattr(calepinage, 'company', None)
     if company is None:
@@ -771,10 +787,15 @@ def _parametres_electriques(calepinage):
     try:
         from ..selectors import parametres_de_societe
 
-        return parametres_de_societe(company).get('norme_electrique') or {}
+        return parametres_de_societe(company) or {}
     except Exception:  # noqa: BLE001 — un réglage illisible ne casse pas un
         # calcul de tension ; il le laisse simplement sans borne société.
         return {}
+
+
+def _parametres_electriques(calepinage):
+    """La seule section « norme électrique » des réglages (CAL130)."""
+    return parametres_societe(calepinage).get('norme_electrique') or {}
 
 
 def _version_moteur():

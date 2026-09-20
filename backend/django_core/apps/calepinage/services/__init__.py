@@ -44,6 +44,7 @@ SOUS_MODULES = (
     'norme',          # CAL130 — norme électrique applicable (règle D5)
     'electrique',     # CAL123/125/127-130/170 — entrée et verdicts électriques
     'chaines',        # CAL124/125 — chaînes par pan et affectation nominative
+    'cables',         # CAL131 — sections et chutes sur les longueurs du plan
 )
 
 __all__ = ['SOUS_MODULES']
