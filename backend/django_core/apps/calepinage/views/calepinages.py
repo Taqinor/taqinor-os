@@ -36,6 +36,7 @@ from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DrfValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from core.permissions import ScopedPermission, declared_action_permissions
@@ -152,6 +153,48 @@ class CalepinageViewSet(CompanyScopedModelViewSet):
             'inchange': resultat['inchange'],
             'version': version.pk if version is not None else None,
         })
+
+    @action(detail=True, methods=['post'], url_path='roof-image',
+            permission_classes=[PeutGererCalepinage],
+            parser_classes=[MultiPartParser, FormParser])
+    def roof_image(self, request, pk=None):
+        """CAL19 — réceptionne le rendu (PNG/JPEG) et le range dans MinIO.
+
+        AUCUN second chemin de stockage : la validation magic-bytes, le bucket
+        et l'URL présignée 1 h sont ceux du chemin ventes, exposés par les
+        fonctions minces ``apps.ventes.services.type_image_toiture`` /
+        ``stocker_image_toiture`` / ``url_image_toiture`` (CAL19). Ce module
+        n'importe ni une vue ni un modèle ventes.
+
+        La clé est DÉRIVÉE côté serveur et porte la société
+        (``roofs/<company_id>/calepinage-<pk>.<ext>``) : rien n'est lu du corps
+        hors le fichier lui-même. Un fichier qui n'est pas une image est refusé
+        avec le motif du SERVEUR. Aucun statut ne bouge (règle #4).
+        """
+        from apps.ventes import services as ventes_services
+
+        fichier = request.FILES.get('image') or request.FILES.get('file')
+        if fichier is None:
+            return Response(
+                {'image': "Fichier image manquant (champ « image »)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        donnees = fichier.read()
+        extension, mime = ventes_services.type_image_toiture(donnees)
+        if extension is None:
+            return Response({'image': 'Image invalide (PNG ou JPEG attendu).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        cle = (f'roofs/{calepinage.company_id or 0}/'
+               f'calepinage-{calepinage.pk}.{extension}')
+        ventes_services.stocker_image_toiture(donnees, cle,
+                                              content_type=mime)
+        calepinage.roof_image = cle
+        calepinage.save(update_fields=['roof_image', 'updated_at'])
+        return Response(
+            {'roof_image': cle,
+             'url': ventes_services.url_image_toiture(cle)},
+            status=status.HTTP_201_CREATED)
 
 
 def _corps_de_layout(donnees):
