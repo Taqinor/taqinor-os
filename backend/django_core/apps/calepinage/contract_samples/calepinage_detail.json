@@ -37,6 +37,8 @@
     "layout_hash": "abababababababababababababababababababababababababababababababab",
     "layout_schema_version": 2,
     "version_moteur": "non-publie-dans-cet-exemple",
+    "layout_stale": false,
+    "layout_nb_panneaux": 12,
     "versions": {
       "total": 2,
       "courante_id": 2,
@@ -105,6 +107,8 @@
     "layout_hash": null,
     "layout_schema_version": null,
     "version_moteur": null,
+    "layout_stale": null,
+    "layout_nb_panneaux": null,
     "versions": {
       "total": null,
       "courante_id": null,

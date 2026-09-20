@@ -764,6 +764,7 @@ def detail_calepinage(calepinage, request=None):
 
     company = getattr(calepinage, 'company', None)
     layout = getattr(calepinage, 'roof_layout', None)
+    peremption = _peremption_calepinage(calepinage, company)
     return {
         'id': calepinage.pk,
         'reference': _reference(calepinage),
@@ -781,6 +782,11 @@ def detail_calepinage(calepinage, request=None):
         'layout_hash': _texte(getattr(calepinage, 'layout_hash', '')),
         'layout_schema_version': _schema_version(layout),
         'version_moteur': _texte(getattr(calepinage, 'version_moteur', '')),
+        # CAL188 — le MÊME champ serveur que la fiche devis (`apps.ventes.
+        # serializers`) et la liste calepinages (`CalepinageSerializer`) :
+        # l'en-tête de l'atelier n'a pas de troisième vérité.
+        'layout_stale': peremption['layout_stale'],
+        'layout_nb_panneaux': peremption['layout_nb_panneaux'],
         'versions': _compteur_versions(calepinage),
         'variantes': _compteur_variantes(calepinage),
         'image': _image(calepinage),
@@ -788,6 +794,24 @@ def detail_calepinage(calepinage, request=None):
             calepinage),
         'permissions': _permissions(calepinage, request),
     }
+
+
+def _peremption_calepinage(calepinage, company):
+    """``{layout_stale, layout_nb_panneaux}`` — CAL189, le MÊME helper que la
+    fiche devis (``apps.ventes.selectors.peremption_layout_devis``) et la
+    liste calepinages (``CalepinageSerializer._peremption``). Sans devis lié,
+    la péremption est INCONNUE (``None``), jamais ``False`` : il n'y a rien à
+    quoi comparer la conception (CAL188 — l'écran affiche « — »)."""
+    from apps.ventes.selectors import get_devis_by_pk, peremption_layout_devis
+
+    devis_id = getattr(calepinage, 'devis_id', None)
+    if not devis_id:
+        return {'layout_stale': None, 'layout_nb_panneaux': None}
+    devis = get_devis_by_pk(devis_id)
+    if devis is None or (company is not None
+                         and devis.company_id != company.pk):
+        return {'layout_stale': None, 'layout_nb_panneaux': None}
+    return peremption_layout_devis(devis)
 
 
 def _reference(calepinage):
