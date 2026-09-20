@@ -54,7 +54,7 @@ class SlaExportCsvTest(TestCase):
 
     def test_xlsx_format_returns_spreadsheet(self):
         generer_snapshot_societe(self.company, datetime.date(2026, 6, 1))
-        resp = self.client.get('/api/django/core/sla/export-csv/?format=xlsx')
+        resp = self.client.get('/api/django/core/sla/export-csv/?export=xlsx')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(
             resp['Content-Type'],

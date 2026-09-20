@@ -218,7 +218,7 @@ class RapportConformiteApiTests(RegistreSourcesMixin, TenantAPITestCase):
         mois = f'{step.decided_le:%Y-%m}'
 
         r = self.client_as(role=CustomUser.ROLE_ADMIN).get(
-            URL, {'periode': mois, 'format': 'xlsx'})
+            URL, {'periode': mois, 'export': 'xlsx'})
         self.assertEqual(r.status_code, 200, r.content)
         self.assertIn('spreadsheetml', r['Content-Type'])
         self.assertIn(f'decisions-approbation-{mois}.xlsx',

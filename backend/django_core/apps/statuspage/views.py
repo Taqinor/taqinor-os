@@ -234,7 +234,15 @@ def prefill_incident_depuis_log(request, pk):
     brut. La sévérité est une SUGGESTION dérivée du nouveau statut, jamais un
     texte narratif généré automatiquement (le titre reste à écrire par le
     fondateur — cf. règle checked-facts-only du module)."""
-    log = get_object_or_404(ComponentStatusLog, pk=pk)
+    # YRBAC11/object-scope-sweep — scopé société OU système (même patron que
+    # HistoriqueStatutComponentView ci-dessus) : sans ce filtre, un
+    # Directeur/Administrateur d'un tenant pouvait préremplir depuis
+    # l'historique brut d'un composant d'une AUTRE société.
+    log = get_object_or_404(
+        ComponentStatusLog.objects.filter(
+            models.Q(company=request.user.company)
+            | models.Q(company__isnull=True)),
+        pk=pk)
     severite = _SEVERITE_SUGGEREE.get(
         log.nouveau_statut, IncidentPublic.Severite.MINEURE)
     return Response({

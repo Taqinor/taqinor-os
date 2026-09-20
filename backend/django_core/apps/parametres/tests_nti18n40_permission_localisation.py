@@ -34,6 +34,7 @@ User = get_user_model()
 TRADUCTIONS = '/api/django/parametres/traductions/'
 ONBOARDING = '/api/django/parametres/onboarding-localisation/'
 FETES = '/api/django/parametres/fetes-mobiles/'
+FETES_ENREGISTRER = '/api/django/parametres/fetes-mobiles/enregistrer/'
 
 
 def _auth(user):
@@ -147,8 +148,11 @@ class EndpointsTests(TestCase):
         self.assertEqual(resp.status_code, 403, resp.content)
 
     def test_fetes_mobiles_ecriture_refusee_sans_le_code(self):
+        # L'écriture vit sur fetes-mobiles/enregistrer/ (POST) ; fetes-mobiles/
+        # ne route que le GET (fetes_mobiles_etat) — y POSTer répond 405, pas
+        # 403, et ne prouve rien sur la garde de permission.
         resp = _auth(self.sans).post(
-            FETES, {'annee': 2030, 'dates': {}}, format='json')
+            FETES_ENREGISTRER, {'annee': 2030, 'dates': {}}, format='json')
         self.assertEqual(resp.status_code, 403, resp.content)
 
     def test_fetes_mobiles_lecture_reste_ouverte_sans_le_code(self):

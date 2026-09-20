@@ -547,7 +547,8 @@ def rapport_conformite_view(request):
 
     Piste d'audit EXTERNE des DÉCISIONS d'approbation (pas de la conformité
     qualité) : source, objet, montant, approbateur, délai de décision et
-    délégation éventuelle, scopés société. ``?format=xlsx`` renvoie le
+    délégation éventuelle, scopés société. ``?export=xlsx`` (jamais
+    ``format=``, RÉSERVÉ par la négociation de contenu DRF) renvoie le
     classeur téléchargeable ; sans ``periode``, tout l'historique.
 
     Les sources hors ``core`` sont celles que les apps ont branchées via
@@ -559,7 +560,7 @@ def rapport_conformite_view(request):
     company = getattr(request.user, 'company', None)
     periode = request.query_params.get('periode')
     rapport = workflow_engine.decisions_conformite(company, periode=periode)
-    if request.query_params.get('format') == 'xlsx':
+    if request.query_params.get('export') == 'xlsx':
         return _conformite_xlsx_response(rapport)
     rapport['colonnes'] = [
         {'cle': cle, 'libelle': libelle}
@@ -2065,14 +2066,16 @@ def _sla_export_xlsx_response(snapshots, incidents):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def sla_export_csv(request):
-    """GET /api/django/core/sla/export-csv/?format=csv|xlsx — historique SLA
+    """GET /api/django/core/sla/export-csv/?export=csv|xlsx — historique SLA
     (une ligne par mois) + incidents (une ligne par incident), scopé société.
     Réutilise le patron d'export CSV/XLSX déjà en place ailleurs dans ce
     fichier (``RegistreTraitementViewSet.export_csv`` / ``_couts_xlsx_response``)
-    — jamais un nouveau moteur d'export."""
+    — jamais un nouveau moteur d'export. ``export=`` (jamais ``format=``,
+    RÉSERVÉ par la négociation de contenu DRF — cf. classe #3 des bugs CI) ;
+    sans ce paramètre, réponse CSV par défaut."""
     company = request.user.company
     snapshots = _sla_export_rows(company)
     incidents = _incidents_export_rows(company)
-    if request.query_params.get('format') == 'xlsx':
+    if request.query_params.get('export') == 'xlsx':
         return _sla_export_xlsx_response(snapshots, incidents)
     return _sla_export_csv_response(snapshots, incidents)

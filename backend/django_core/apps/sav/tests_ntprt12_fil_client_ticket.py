@@ -135,8 +135,11 @@ class FilClientTicketTests(TestCase):
 
         resp = self.api.get(f'{BASE}/tickets/{self.ticket.pk}/historique/')
         self.assertEqual(resp.status_code, 200, resp.content)
-        lignes = resp.data.get(
-            'results', resp.data if isinstance(resp.data, list) else [])
+        # L'action `historique` renvoie une liste PLATE (ReturnList), jamais
+        # une page paginée avec une clé 'results' — un .get() sur ce type
+        # lève AttributeError ('ReturnList' object has no attribute 'get').
+        lignes = (resp.data.get('results') if isinstance(resp.data, dict)
+                  else resp.data)
         cible = [ligne for ligne in lignes if ligne['id'] == interne.pk]
         self.assertEqual(len(cible), 1)
         self.assertFalse(cible[0]['visible_client'])

@@ -80,8 +80,11 @@ class ProvisionnerLocalisationTests(TestCase):
             Holiday.objects.filter(company=company).count(), 9)
 
     def test_unavailable_seeder_for_pays_never_raises_no_holidays_created(self):
+        # 'DE' n'a AUCUN seeder mappé dans SEEDERS_FERIES_PAR_PAYS (FR/SN/CI
+        # livrés depuis NTI18N13, cf. test_fr_sn_ci_available_since_nti18n13
+        # ci-dessus) : reste le cas vraiment indisponible que ce test couvre.
         company = _company('nti18n31-co-5', 'NTI18N31 Co 5')
-        resultat = provisionner_localisation(company, pays='FR')
+        resultat = provisionner_localisation(company, pays='DE')
         self.assertFalse(resultat['feries_seedes'])
         self.assertIsNone(resultat['seeder_utilise'])
         self.assertEqual(Holiday.objects.filter(company=company).count(), 0)
