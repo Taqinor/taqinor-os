@@ -10,10 +10,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adminops/config_package_service.py:138` | update_or_create | MessageTemplate.objects | cle, company |
 | `backend/django_core/apps/adminops/plan_seeds.py:46` | get_or_create | PlanLicence.objects | code |
 | `backend/django_core/apps/adminops/views_annonces.py:149` | get_or_create | LectureAnnonce.objects | annonce, utilisateur |
-| `backend/django_core/apps/adsengine/brief.py:464` | update_or_create | WeeklyBrief.objects | company, period_start |
+| `backend/django_core/apps/adsengine/brief.py:469` | update_or_create | WeeklyBrief.objects | company, period_start |
 | `backend/django_core/apps/adsengine/calendar.py:69` | get_or_create | CreativeCalendarEvent.objects | company, date_debut, tag |
 | `backend/django_core/apps/adsengine/comments.py:74` | update_or_create | CommentMirror.objects | company, meta_id |
-| `backend/django_core/apps/adsengine/field_tests.py:311` | update_or_create | FieldTestResult.objects | company, ft |
+| `backend/django_core/apps/adsengine/field_tests.py:316` | update_or_create | FieldTestResult.objects | company, ft |
 | `backend/django_core/apps/adsengine/flightrunner.py:136` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/flightrunner.py:222` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/flightrunner.py:512` | update_or_create | AdCampaignMirror.objects | company, meta_id |
@@ -44,10 +44,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/sync.py:181` | update_or_create | AdCreativeMirror.objects | ad, company |
 | `backend/django_core/apps/adsengine/sync.py:242` | update_or_create | PagePostMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/sync.py:326` | update_or_create | InsightSnapshot.objects | company, content_type, date, object_id |
-| `backend/django_core/apps/adsengine/tasks.py:2317` | update_or_create | InsightMonthlyRollup.objects | company_id, content_type_id, month, object_id, year |
-| `backend/django_core/apps/adsengine/views.py:2386` | get_or_create | MetaConnection.objects | company |
-| `backend/django_core/apps/adsengine/views.py:2599` | get_or_create | GuardrailConfig.objects | company |
-| `backend/django_core/apps/adsengine/views.py:2606` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/tasks.py:2327` | update_or_create | InsightMonthlyRollup.objects | company_id, content_type_id, month, object_id, year |
+| `backend/django_core/apps/adsengine/views.py:2390` | get_or_create | MetaConnection.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2603` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2610` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/whatsapp_webhook.py:221` | update_or_create | CtwaReferral.objects | company, wa_message_id |
 | `backend/django_core/apps/ai_governance/drift.py:118` | update_or_create | DriftSnapshot.objects | company, date, modele |
 | `backend/django_core/apps/ao/calepinage_service.py:781` | update_or_create | VarianteCalepinage.objects | company, nom, parent, role, toiture |
