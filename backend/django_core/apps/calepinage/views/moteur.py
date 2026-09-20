@@ -27,7 +27,8 @@ plutôt que de tenir un utilisateur devant un écran gelé.
 """
 from __future__ import annotations
 
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -57,6 +58,97 @@ def document_de_la_demande(donnees):
     return donnees
 
 
+# ---------------------------------------------------------------------------
+# YAPIC6/PACT7 — LES FORMES DÉCLARÉES DES TROIS PORTES DU MOTEUR
+# ---------------------------------------------------------------------------
+#
+# Ces vues sont des ``APIView`` : drf-spectacular ne peut pas DEVINER leur
+# sérialiseur, et le dépôt refuse à la fois de le laisser deviner
+# (``scripts/check_openapi_shapes.py``, cliquet R2) et de déclarer une forme
+# VIDE (``response=dict``, règle R1 — c'est littéralement ce que déclarait
+# l'écran qui a planté le 03/08/2026).
+#
+# Les formes ci-dessous sont RECOPIÉES des contrats committés
+# (``contract_samples/moteur_calculer.json``, ``pose.json``), déjà confrontés
+# au code par ``scripts/check_api_shapes.py``. Les sous-documents du moteur
+# (un plan, une preuve, des marges) gardent un ``DictField``/``ListField`` :
+# leur vocabulaire est celui du noyau ``core/calepinage``, versionné là-bas —
+# le figer ICI en créerait une seconde définition, la dérive que PACT10 ferme.
+
+#: Le tronc COMMUN à ``calculer`` et à ``pose`` : ce que le moteur MESURE.
+_POSE_MESUREE = {
+    'schema_version': serializers.IntegerField(),
+    'repere': serializers.CharField(allow_blank=True),
+    'hash_entree': serializers.CharField(allow_blank=True),
+    'version_moteur': serializers.CharField(allow_blank=True),
+    'total_modules': serializers.IntegerField(),
+    'kwc': serializers.FloatField(),
+    'engageable': serializers.BooleanField(),
+    'motifs_non_engageable': serializers.ListField(
+        child=serializers.CharField()),
+    'plans': serializers.ListField(child=serializers.DictField()),
+    'preuve': serializers.DictField(),
+    'marges': serializers.DictField(),
+}
+
+#: L'entrée du moteur : le document de relevé, dont le vocabulaire est celui
+#: de ``core/calepinage/serialisation.py`` (contour, surfaces, kits,
+#: paramètres, obstacles, zones) — décrit ici section par section.
+_DOCUMENT_MOTEUR = {
+    'schema_version': serializers.IntegerField(required=False),
+    'repere': serializers.CharField(required=False, allow_blank=True),
+    'contour': serializers.ListField(child=serializers.ListField(
+        child=serializers.FloatField()), required=False),
+    'surfaces': serializers.ListField(child=serializers.DictField(),
+                                      required=False),
+    'kits': serializers.ListField(child=serializers.DictField(),
+                                  required=False),
+    'parametres': serializers.DictField(required=False),
+    'obstacles': serializers.ListField(child=serializers.DictField(),
+                                       required=False),
+    'zones': serializers.ListField(child=serializers.DictField(),
+                                   required=False),
+    'engagements': serializers.ListField(child=serializers.DictField(),
+                                         required=False),
+}
+
+FORME_CALCULER = inline_serializer('CalepinageMoteurCalculerReponse', dict(
+    _POSE_MESUREE,
+    company_id=serializers.IntegerField(allow_null=True),
+    engagement_modules=serializers.IntegerField(allow_null=True),
+    depuis_cache=serializers.BooleanField(),
+    rangees=serializers.ListField(child=serializers.DictField()),
+    tiroirs=serializers.DictField(),
+    suggestions=serializers.ListField(child=serializers.DictField()),
+))
+
+FORME_ACCUSE = inline_serializer('CalepinageMoteurAccuseTravailLong', {
+    'job_id': serializers.IntegerField(),
+    'kind': serializers.CharField(),
+    'statut': serializers.CharField(),
+    'progress_pct': serializers.IntegerField(),
+    'message_erreur': serializers.CharField(allow_blank=True),
+    'resultat': serializers.DictField(allow_null=True),
+    'variante': serializers.DictField(allow_null=True),
+    'detail': serializers.CharField(),
+    'cout_estime': serializers.DictField(),
+})
+
+FORME_POSE = inline_serializer('CalepinageMoteurPoseReponse', dict(
+    _POSE_MESUREE, verdict=serializers.CharField()))
+
+FORME_SUIVI = inline_serializer('CalepinageMoteurResultatReponse', {
+    'job_id': serializers.IntegerField(),
+    'kind': serializers.CharField(),
+    'statut': serializers.CharField(),
+    'progress_pct': serializers.IntegerField(),
+    'message_erreur': serializers.CharField(allow_blank=True),
+    'resultat': serializers.DictField(allow_null=True),
+    'elements': serializers.ListField(child=serializers.DictField()),
+    'variante': serializers.DictField(allow_null=True),
+})
+
+
 class MoteurCalculerView(APIView):
     """``POST /api/django/calepinage/moteur/calculer/`` — calcul BORNÉ.
 
@@ -73,6 +165,10 @@ class MoteurCalculerView(APIView):
     #: temps serveur et produit un document de travail) : ``calepinage_gerer``.
     write_permission = CAL_GERER
 
+    @extend_schema(
+        request=inline_serializer('CalepinageMoteurCalculerRequete',
+                                  dict(_DOCUMENT_MOTEUR)),
+        responses={200: FORME_CALCULER, 202: FORME_ACCUSE})
     def post(self, request, *args, **kwargs):
         from apps.ao.selectors import (
             calepinage_json, cout_calepinage, erreurs_moteur_calepinage,
@@ -223,6 +319,12 @@ class MoteurPoseView(APIView):
     read_permission = CAL_VOIR
     write_permission = CAL_GERER
 
+    @extend_schema(
+        request=inline_serializer('CalepinageMoteurPoseRequete', {
+            'demande': inline_serializer('CalepinageMoteurPoseDemande',
+                                         dict(_DOCUMENT_MOTEUR)),
+        }),
+        responses={200: FORME_POSE})
     def post(self, request, *args, **kwargs):
         from apps.ao.selectors import calepinage_json, erreurs_moteur_calepinage
 
@@ -298,6 +400,7 @@ class MoteurResultatView(APIView):
     read_permission = CAL_VOIR
     write_permission = CAL_GERER
 
+    @extend_schema(responses={200: FORME_SUIVI})
     def get(self, request, job_id=None, *args, **kwargs):
         from core.models import BackgroundJob
 

@@ -16,7 +16,8 @@ ligne en base est un GET qui ment).
 """
 from __future__ import annotations
 
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -29,6 +30,27 @@ from ..services.parametres import ReglageInvalide, enregistrer_parametres
 __all__ = ['ParametresCalepinageView']
 
 
+def _forme_reglages(nom):
+    """YAPIC6/PACT7 — la forme DÉCLARÉE des réglages, tirée du contrat.
+
+    Les sept sections sont celles de `contract_samples/
+    parametres_calepinage.json` : ce sont des documents de réglage libres
+    (chaque section a son propre vocabulaire, versionné dans le contrat),
+    donc un `DictField` par section — pas un `dict` nu, que la garde
+    `scripts/check_openapi_shapes.py` interdit à juste titre : une forme qui
+    valide tout ne protège rien.
+    """
+    return inline_serializer(nom, {
+        'imagerie': serializers.DictField(),
+        'degagements': serializers.DictField(),
+        'zones_types': serializers.DictField(),
+        'gabarits_disposition': serializers.DictField(),
+        'presets': serializers.DictField(),
+        'favoris_materiel': serializers.DictField(),
+        'gabarits_dossier': serializers.DictField(),
+    })
+
+
 class ParametresCalepinageView(APIView):
     """Les réglages calepinage de la société de l'appelant."""
 
@@ -36,10 +58,15 @@ class ParametresCalepinageView(APIView):
     read_permission = CAL_VOIR
     write_permission = CAL_GERER
 
+    @extend_schema(responses={200: _forme_reglages(
+        'CalepinageParametresReponse')})
     def get(self, request, *args, **kwargs):
         return Response(parametres_de_societe(
             getattr(request.user, 'company', None)))
 
+    @extend_schema(request=_forme_reglages('CalepinageParametresRequete'),
+                   responses={200: _forme_reglages(
+                       'CalepinageParametresEcrite')})
     def put(self, request, *args, **kwargs):
         donnees = request.data if isinstance(request.data, dict) else None
         if donnees is None:

@@ -26,6 +26,8 @@ import json
 import pathlib
 from unittest import mock
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.views.moteur import MoteurPoseView, verdict_de_pose
 
 from .test_api_liste import BaseApiCalepinage
@@ -103,8 +105,13 @@ class PortePoseTest(BaseApiCalepinage):
         self.assertEqual(MoteurPoseView.read_permission, 'calepinage_voir')
 
 
-class VerdictTest(BaseApiCalepinage):
-    """Le verdict est GÉNÉRÉ des grandeurs mesurées — jamais rédigé."""
+class VerdictTest(SimpleTestCase):
+    """Le verdict est GÉNÉRÉ des grandeurs mesurées — jamais rédigé.
+
+    ``SimpleTestCase`` : ``verdict_de_pose`` est une fonction PURE (elle lit
+    un dictionnaire, elle n'ouvre aucune ligne) — lui donner une base serait
+    payer une base pour rien.
+    """
 
     def test_pose_optimale_dit_le_compte_et_l_optimum(self):
         verdict = verdict_de_pose(CONTRAT['exemple'])
