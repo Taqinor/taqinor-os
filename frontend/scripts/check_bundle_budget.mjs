@@ -196,7 +196,9 @@ const PER_CHUNK_BUDGET_KB = 350
 // fonctionnalité réelle (panneau coaching, planification, qualification,
 // modale d'accueil lazy, micro) — dépassement mesuré de 0,8 Ko, budget monté
 // d'un cran, jamais « élargi pour respirer ».
-const TOTAL_BUDGET_KB = 3710
+// 2026-09-20 : 3710 -> 3760 (mesure réelle 3730,7 Ko gzip, lot 2 du module Calepinage :
+// écrans liste/nouveau/comparaison/fiche + mode calepinage de l atelier).
+const TOTAL_BUDGET_KB = 3760
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
