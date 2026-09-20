@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `features/ao`). */
 import { lazy } from 'react'
-import { Grid3x3, LayoutGrid, PlusCircle } from 'lucide-react'
+import { BadgeCheck, Grid3x3, LayoutGrid, PlusCircle } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -105,6 +105,12 @@ const ModeTerrain = lazy(() => import('./ModeTerrain'))
    moteur), qui se totalise par bâtiment avec les pans de toiture. Aucune
    charge ni structure n'y est chiffrée. Contextuelle à UN calepinage. */
 const Ombriere = lazy(() => import('./Ombriere'))
+/* CAL165 — les SOURCES des paramètres normatifs de la société (coefficients de
+   norme électrique, paramètres de lestage, dégagements) : un paramètre sans
+   provenance déclarée y est marqué « non sourcée » et sa valeur n'est pas
+   affichée. Réglages SOCIÉTÉ, donc un item de nav permanent et non un
+   deep-link : il n'y a aucun calepinage à désigner. */
+const SourcesNormatives = lazy(() => import('./commun/Provenance'))
 
 const config = {
   key: 'calepinage',
@@ -127,11 +133,19 @@ const config = {
         icon: <PlusCircle size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      // CAL165 — la provenance des paramètres normatifs de la société.
+      {
+        to: '/calepinage/sources',
+        label: 'Sources des paramètres',
+        icon: <BadgeCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
   // `titles` — correspondance par PRÉFIXE, du plus spécifique au plus général.
   titles: [
     ['/calepinage/nouveau', 'Calepinage — Nouveau calepinage'],
+    ['/calepinage/sources', 'Calepinage — Sources des paramètres'],
     ['/calepinage/', 'Calepinage — Atelier'],
     ['/calepinage', 'Calepinage — Calepinages'],
   ],
@@ -140,6 +154,8 @@ const config = {
     { path: '/calepinage', component: CalepinageList, roles: ROLES },
     // AVANT `/calepinage/:id` — sinon « nouveau » est lu comme un identifiant.
     { path: '/calepinage/nouveau', component: CalepinageNouveau, roles: ROLES },
+    // CAL165 — AVANT `/calepinage/:id` : « sources » n'est pas un identifiant.
+    { path: '/calepinage/sources', component: SourcesNormatives, roles: ROLES },
     // Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
     // contextuel à un objet, comme `/ao/affaires/:id/design`. C'est la cible de
     // la redirection après création (CAL36).
