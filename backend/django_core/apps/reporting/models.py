@@ -476,6 +476,21 @@ class KpiAlerte(models.Model):
         BTP_PENALITES_CUMULEES_PERIODE = (
             'btp_penalites_cumulees_periode',
             'BTP — exposition cumulée aux pénalités de retard (MAD)')
+        # NTI18N52 — KPI i18n (``apps.reporting.i18n_kpi``, sélecteur dédié
+        # qui n'importe aucun modèle métier). `couverture_i18n_pct` lit le
+        # dernier ``core.I18nCoverageSnapshot`` (job Beat hebdo NTI18N39) —
+        # aucun recomptage, aucune lecture de devis, donc aucun N+1.
+        # `documents_non_fr_pct` rend TOUJOURS ``None`` aujourd'hui : aucune
+        # trace de la langue d'un PDF généré n'existe en base (`/proposal`
+        # résout la langue au rendu sans la journaliser, `DevisActivity` n'a
+        # pas d'évènement « document généré »). Le KPI est donc proposable
+        # dans le picker mais non évaluable — jamais un chiffre approché sous
+        # ce libellé. La moitié manquante (journaliser la langue à la
+        # génération) vit dans `apps/ventes` ; voir `i18n_kpi.py`.
+        COUVERTURE_I18N_PCT = (
+            'couverture_i18n_pct', 'i18n — couverture de l\'interface (%)')
+        DOCUMENTS_NON_FR_PCT = (
+            'documents_non_fr_pct', 'i18n — documents générés hors FR (%)')
 
     class Operateur(models.TextChoices):
         SUP = 'sup', '>'
