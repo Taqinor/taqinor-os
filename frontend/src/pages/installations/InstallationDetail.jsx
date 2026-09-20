@@ -37,6 +37,9 @@ import {
 import ProduitPicker from '../../components/ProduitPicker'
 import OwnerChain from '../../components/OwnerChain'
 import ChantierChecklist from './ChantierChecklist'
+// CAL213 — encart « Calepinage retenu » (lecture seule), alimenté par le
+// bloc `calepinage` du détail chantier (CAL245).
+import CalepinageRetenuCard from '../../features/installations/CalepinageRetenuCard'
 // APX26 — `ChantierTimeline` n'est plus monté ici : il est rendu par
 // `ChantierGateTimeline` (une seule timeline dans la fiche).
 import ChantierGateTimeline from './ChantierGateTimeline'
@@ -1033,6 +1036,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 )}
               </div>
             </Section>
+            {/* ── CAL213 — l'encart disparaît de lui-même (rend `null`) quand
+                le devis du chantier n'a pas de calepinage retenu (CAL209). ── */}
+            <CalepinageRetenuCard calepinage={current.calepinage} />
             {/* ── CHT20 — la passerelle vers les satellites : fin du parcours
                 « re-sélectionner le même chantier dans 4 menus ». Chaque lien
                 est un deep-link RÉEL déjà lu par l'écran cible (CHT19,
