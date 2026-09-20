@@ -511,10 +511,23 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     protections = checklist_protections(
         conception, decisions=donnees.get('protections'), norme=norme)
 
+    # CAL134 — la check-list de terre et sa justification exigée.
+    from .terre import checklist_terre
+
+    terre = checklist_terre(conception, decisions=donnees.get('terre'),
+                            norme=norme,
+                            company=getattr(calepinage, 'company', None))
+
     messages = list(avertissements) + list(messages_ratio)
     messages.extend(regle['bornes_non_verifiables'])
     messages.extend(cables['omissions'])
     messages.extend(protections['omissions'])
+    messages.extend(terre['omissions'])
+    if terre['justification_requise'] and not terre['justification_fournie']:
+        messages.append(
+            "prise de terre non fournie au marché : la justification de "
+            "continuité de la terre existante (NF C 15-100 §542) reste à "
+            "cocher avant publication")
     messages.extend(conception.manquantes)
     messages.extend(materiel['absents'])
     if conception.temperatures is not None and conception.temperatures.mention:
@@ -550,6 +563,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # CAL132 — la check-list d'organes (retenus / ajoutés / écartés).
         'protections': protections['organes'],
         'justifications': protections['justifications'],
+        # CAL134 — la check-list de terre (jamais une résistance inventée).
+        'terre': terre,
         'temperatures': (conception.temperatures.en_dict()
                          if conception.temperatures is not None else None),
         'production': {
@@ -731,6 +746,20 @@ def garde_publication(calepinage):
     """
     evaluation = evaluation_electrique(calepinage)
     if evaluation['publiable']:
+        # CAL134 — la terre est l'autre condition de publication : sans prise
+        # de terre vendue, la continuité de la terre EXISTANTE doit avoir été
+        # justifiée (NF C 15-100 §542). Le refus est levé tel quel : il nomme
+        # son champ.
+        from .terre import checklist_terre, garde_terre
+
+        conception, _materiel, donnees, _document = conception_du_calepinage(
+            calepinage)
+        from .norme import norme_applicable
+
+        garde_terre(checklist_terre(
+            conception, decisions=donnees.get('terre'),
+            norme=norme_applicable(parametres_societe(calepinage)),
+            company=getattr(calepinage, 'company', None)))
         return evaluation
     if evaluation['verdict'] == 'indetermine':
         raise PublicationBloquee(
