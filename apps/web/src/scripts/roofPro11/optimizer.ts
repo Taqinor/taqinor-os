@@ -354,6 +354,17 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const f = shadeFactor();
     return f < 1 ? ` · ombrage tracé −${Math.round((1 - f) * 100)} %` : '';
   };
+  // CAL93 — dérate d'HORIZON LOINTAIN, TOUJOURS un poste SÉPARÉ de l'ombrage proche
+  // ci-dessus (jamais fondu dans `shadeFactor`) : les deux facteurs se MULTIPLIENT.
+  // 1 = aucun profil d'horizon renseigné → chiffres strictement inchangés.
+  const horizonFactor = (): number =>
+    typeof ctx.horizonAnnualFactor === 'number' && ctx.horizonAnnualFactor > 0 && ctx.horizonAnnualFactor < 1
+      ? ctx.horizonAnnualFactor
+      : 1;
+  const horizonLabel = (): string => {
+    const f = horizonFactor();
+    return f < 1 ? ` · horizon PVGIS −${Math.round((1 - f) * 100)} %` : '';
+  };
 
   /** Rendu UNIFIÉ : pose min(besoin, ce qui tient), recalcule kWc/kWh/économies
    *  depuis ce nombre POSÉ (jamais la capacité max de la config). */
@@ -366,7 +377,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const tableAnnual = productionKwh(ctx.centroidLat, o.family, o.tiltDeg, kwc, aspect);
     // Affinage PVGIS : rendement par kWc × kWc POSÉ (suit le plafond/contrainte).
     // WJ19 — puis dérate d'ombrage tracé (1 = aucun → inchangé).
-    const annualKwh = (o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual) * shadeFactor();
+    const annualKwh =
+      (o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual) * shadeFactor() * horizonFactor();
     const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed);

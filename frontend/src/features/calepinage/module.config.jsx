@@ -85,6 +85,11 @@ const SaisiePente = lazy(() => import('./SaisiePente'))
 // CAL195 — le schéma unifilaire du calepinage, composé par le MÊME moteur que
 // le devis : l'écran l'affiche, il ne dessine rien.
 const SchemaUnifilairePanel = lazy(() => import('./SchemaUnifilairePanel'))
+/* CAL93 — l'horizon lointain (relief à distance qui masque le soleil aux heures
+   rasantes), tracé en fond de la course du soleil et appliqué à la production en
+   poste de perte séparé de l'ombrage proche. Contextuel à UN calepinage : deep-link,
+   jamais un item de menu (une entrée permanente n'aurait aucun calepinage à désigner). */
+const HorizonPanel = lazy(() => import('./HorizonPanel'))
 
 const config = {
   key: 'calepinage',
@@ -137,6 +142,8 @@ const config = {
     { path: '/calepinage/:id/pente', component: SaisiePente, roles: ROLES },
     // contextuelle: le schéma unifilaire d'UN calepinage, ouvert depuis son atelier (CAL195) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/schema', component: SchemaUnifilairePanel, roles: ROLES },
+    // CAL93 — contextuelle elle aussi : l'horizon lointain d'UN calepinage.
+    { path: '/calepinage/:id/horizon', component: HorizonPanel, roles: ROLES },
   ],
 }
 

@@ -36,6 +36,7 @@ import {
   type ShadeObstructionENU,
 } from '../../lib/shadingEngine';
 import { roofObstacleShadeEntries, type Obstacle } from '../../lib/obstacles';
+import { hourlyHorizonFactors, maskedHourCount, type HorizonProfile } from '../../lib/horizonEngine';
 import { environmentShadeEntries, type EnvironmentObject } from './environment';
 import { fallbackPerKwc, type PerKwcProduction } from '../../lib/productionEngine';
 import { type LngLat } from '../../lib/roof';
@@ -72,6 +73,13 @@ export interface ShadingUi {
   solarAccess: () => SolarAccessSummary | null;
   /** Efface toutes les ombres tracées (« Effacer » / nouveau tracé). */
   reset: () => void;
+  /** CAL93 — fixe (ou efface, `null`) le profil d'horizon lointain (CAL92 ou saisi),
+   *  recalcule son dérate PROPRE (jamais mélangé à l'ombrage proche) et re-rend. */
+  setHorizonProfile: (profile: import('../../lib/horizonEngine').HorizonProfile | null) => void;
+  /** CAL93 — état courant du dérate d'horizon (pour l'écran/les tests) : `hasProfile`
+   *  (au moins deux points exploitables), `maskedHours` (sur 12×24) et `annualFactor`
+   *  (1 = aucun effet). */
+  horizonStatus: () => { hasProfile: boolean; maskedHours: number; annualFactor: number };
 }
 
 const SHADE_SRC = 'rp9-shade-lines';
@@ -184,6 +192,9 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
           : `Hypothèse affichée : ${fmt1(FLOORS * FLOOR_HEIGHT_M)} m (${FLOORS} étages) — saisissez la hauteur réelle pour un ombrage exact.`;
     }
   }
+  // CAL93 — note du dérate d'horizon LOINTAIN (optionnelle, DOM créé par HorizonPanel/la
+  // page hôte ; absente en tests unitaires du builder — no-op).
+  const horizonNoteEl = $('rp9-horizon-note');
   // WJ21 — carte d'accès solaire (heatmap d'irradiance).
   const heatmapBtn = $<HTMLButtonElement>('rp9-heatmap-toggle');
   const heatmapNoteEl = $('rp9-heatmap-note');
@@ -290,6 +301,59 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     ctx.shadeAnnualFactor = annualShadeFactor(prod, ctx.shadeFactors);
   }
 
+  /**
+   * CAL93 — (re)calcule le dérate d'HORIZON LOINTAIN depuis `ctx.horizonProfile`, TOUJOURS
+   * un poste séparé de `recomputeFactors` (ombrage proche) ci-dessus : sa propre matrice
+   * (`ctx.horizonFactors`), son propre facteur annuel (`ctx.horizonAnnualFactor`), jamais
+   * fondus dans `shadeFactors`/`shadeAnnualFactor`. Profil absent ou < 2 points ⇒ 1 (aucun
+   * effet, chiffres inchangés — comportement d'avant CAL93).
+   */
+  function recomputeHorizonFactors() {
+    const points = ctx.horizonProfile?.points ?? null;
+    const factors = hourlyHorizonFactors(ctx.centroidLat, points);
+    ctx.horizonFactors = factors;
+    if (!factors) {
+      ctx.horizonAnnualFactor = 1;
+      return;
+    }
+    const prod = ctx.prodPerKwc ?? fallbackPerKwc();
+    ctx.horizonAnnualFactor = annualShadeFactor(prod, factors);
+  }
+
+  /** CAL93 — état publié du dérate d'horizon, lu par l'écran (HorizonPanel) et les tests. */
+  function horizonStatus(): { hasProfile: boolean; maskedHours: number; annualFactor: number } {
+    return {
+      hasProfile: !!ctx.horizonFactors,
+      maskedHours: maskedHourCount(ctx.horizonFactors ?? null),
+      annualFactor: typeof ctx.horizonAnnualFactor === 'number' ? ctx.horizonAnnualFactor : 1,
+    };
+  }
+
+  /** CAL93 — note dédiée à l'horizon, TOUJOURS distincte de la note d'ombrage proche
+   *  (`renderList`) — jamais la même phrase, jamais le même chiffre fondu. */
+  function renderHorizonNote() {
+    if (!horizonNoteEl) return;
+    const s = horizonStatus();
+    if (!s.hasProfile) {
+      horizonNoteEl.textContent = '';
+      return;
+    }
+    const lossPct = Math.round((1 - s.annualFactor) * 100);
+    horizonNoteEl.textContent =
+      s.maskedHours > 0
+        ? `Horizon PVGIS : ${s.maskedHours} heure(s) sur 288 (12 mois × 24 h) masquée(s) par le relief lointain — ` +
+          `−${lossPct} % de production annuelle (part diffuse conservée ~25 %). Poste séparé de l’ombrage proche.`
+        : 'Horizon PVGIS renseigné : aucune heure masquée pour ce champ.';
+  }
+
+  /** CAL93 — fixe (ou efface) le profil d'horizon et recalcule SON dérate propre. */
+  function setHorizonProfile(profile: HorizonProfile | null) {
+    ctx.horizonProfile = profile;
+    recomputeHorizonFactors();
+    renderHorizonNote();
+    recalcDisplays();
+  }
+
   /** Recalcule les hauteurs déduites (l'hypothèse de prise de vue a pu changer). */
   function recomputeHeights() {
     const elev = imagerySunElevation();
@@ -303,6 +367,8 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   function recomputeShading() {
     recomputeHeights();
     recomputeFactors();
+    recomputeHorizonFactors(); // CAL93 — poste séparé, recalculé au même rythme
+    renderHorizonNote();
     renderList();
     drawShadeLines();
     syncHeightUi(); // CAL60 — la zone active a pu changer (bâtiment différent)
@@ -618,7 +684,17 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     recomputeShading();
   });
 
+  recomputeHorizonFactors(); // CAL93 — état initial (document rechargé avec un profil)
+  renderHorizonNote();
   renderSolarAccess(); // CAL97 — état initial (dossier rechargé avec des obstructions)
 
-  return { handleMapClick, recomputeShading, refreshHeatmap, reset, solarAccess };
+  return {
+    handleMapClick,
+    recomputeShading,
+    refreshHeatmap,
+    reset,
+    solarAccess,
+    setHorizonProfile,
+    horizonStatus,
+  };
 }

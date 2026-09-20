@@ -131,6 +131,10 @@
     "setbacksM": {
       "description": "CAL76 — les quatre retraits de rive RÉGLÉS dans l'atelier (PV63 latéral/extrémité/acrotère + le joint ajouté par CAL76 : core/calepinage/types.py Rives.laterale_m/extremite_m/acrotere_m/joint_m). Champ RACINE (un seul jeu pour tout le document, pas par zone). OPTIONNEL et additif : absent = un lecteur reprend le retrait unique historique (PERIMETER_SETBACK_M pour les trois retraits historiques, 0 pour le joint) — comportement d'aujourd'hui, byte pour byte.",
       "$ref": "#/$defs/perimeterSetbacks"
+    },
+    "horizonProfile": {
+      "description": "CAL93 — le profil d'horizon lointain (CAL92, obtenu de PVGIS printhorizon, ou saisi à la main) RÉELLEMENT en vigueur au moment de l'export. Champ RACINE (une seule valeur pour tout le document, pas par zone). OPTIONNEL et additif : absent = aucun horizon lointain modélisé — comportement d'aujourd'hui, byte pour byte. Moins de deux points exploitables n'est jamais écrit.",
+      "$ref": "#/$defs/horizonProfile"
     }
   },
   "$defs": {
@@ -648,6 +652,54 @@
           "minimum": 0
         }
       }
+    },
+    "horizonPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "azimuthDeg",
+        "heightDeg"
+      ],
+      "properties": {
+        "azimuthDeg": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 360
+        },
+        "heightDeg": {
+          "type": "number"
+        }
+      }
+    },
+    "horizonProfile": {
+      "description": "CAL93 — miroir de apps/web/src/lib/horizonEngine.ts HorizonProfile. `source` : 'pvgis' (obtenu de PVGIS printhorizon, service CAL92) ou 'saisie' (relevé/corrigé à la main) — jamais mélangés dans la même liste de points. `hauteurMaxDeg` est TOUJOURS recalculée depuis `points` (horizonMaxHeightDeg), jamais recopiée indépendamment.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "points"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "pvgis",
+            "saisie"
+          ]
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/horizonPoint"
+          }
+        },
+        "hauteurMaxDeg": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
     }
   },
   "exemple": {
@@ -844,6 +896,20 @@
       "extremityM": 0.5,
       "parapetM": 0.5,
       "jointM": 0.0
+    },
+    "horizonProfile": {
+      "source": "saisie",
+      "points": [
+        {
+          "azimuthDeg": 90,
+          "heightDeg": 8.0
+        },
+        {
+          "azimuthDeg": 270,
+          "heightDeg": 12.5
+        }
+      ],
+      "hauteurMaxDeg": 12.5
     }
   }
 }

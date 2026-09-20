@@ -138,7 +138,7 @@ import { createMapDraw } from './roofPro11/mapDraw';
 import { createScene3d, projectPlanView, panelQuadsLngLat } from './roofPro11/scene3d';
 import { createOptimizer } from './roofPro11/optimizer';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
 
 let booted = false;
 
@@ -1684,6 +1684,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // (devis antérieur à CAL76), `setbacks` garde son défaut historique inchangé.
     const savedSetbacks = deserializeSetbacksFromLayout(layout);
     if (savedSetbacks) Object.assign(setbacks, savedSetbacks);
+    // CAL93 — le profil d'horizon lointain voyage avec le document ; absent (devis
+    // antérieur à CAL93, ou jamais renseigné), aucun horizon n'est modélisé (comportement
+    // historique). `shadingUi` a déjà été construit (ligne ~1327) : on passe par SON API
+    // pour que la matrice/le facteur/la note soient recalculés cohéremment.
+    shadingUi.setHorizonProfile(deserializeHorizonProfileFromLayout(layout));
     const setIf = (id: string, v?: string) => {
       const el = $<HTMLInputElement>(id);
       if (el && v && !el.value.trim()) el.value = v;
@@ -3096,9 +3101,16 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
               ...(activeSolarAccessMeta() ?? {}),
               // CAL76 — les quatre retraits de rive RÉGLÉS voyagent avec le document.
               setbacksM: { ...setbacks },
+              // CAL93 — le profil d'horizon lointain RÉGLÉ voyage avec le document.
+              ...(ctx.horizonProfile ? { horizonProfile: ctx.horizonProfile } : {}),
               ...(meta ?? {}),
             }
-          : { ...(activeSolarAccessMeta() ?? {}), setbacksM: { ...setbacks }, ...(meta ?? {}) },
+          : {
+              ...(activeSolarAccessMeta() ?? {}),
+              setbacksM: { ...setbacks },
+              ...(ctx.horizonProfile ? { horizonProfile: ctx.horizonProfile } : {}),
+              ...(meta ?? {}),
+            },
       ),
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.
@@ -3136,5 +3148,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // AP-F2 — « Recommencer depuis le tracé client », posée par ToitureDesign.jsx à
     // côté de la note « Calepinage automatique depuis le tracé client — à vérifier ».
     recommencerDepuisTraceClient: () => recommencerDepuisTraceClient(),
+    // CAL93 — horizon lointain : fixer le profil (HorizonPanel) et lire son état.
+    setHorizonProfile: (profile) => shadingUi.setHorizonProfile(profile),
+    horizonStatus: () => shadingUi.horizonStatus(),
   });
 }
