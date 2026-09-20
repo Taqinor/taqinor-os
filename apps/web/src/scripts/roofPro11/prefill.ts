@@ -15,12 +15,14 @@
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { type AreaRecord, type CardData, type LeadPayload, type ObstacleType } from './types';
+import { type AreaRecord, type CardData, type LeadPayload, type ObstacleType, type ObstacleProvenance } from './types';
 import { type LngLat } from '../../lib/roof';
 import { BILL_RANGES } from '../../lib/billRange';
 import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
 import { ROOF_TYPES } from '../../lib/lead';
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
+import { deduceEdgeTypes, type SerializedEdge, type EdgeDeductionZone } from './edges';
+import { type EnvironmentObject } from './environment';
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -212,8 +214,19 @@ export interface SerializedZone {
   vertices: LngLat[];
   /** Obstacles (zones d'exclusion) — objets plats {id,centerLng,centerLat,lengthM,widthM}.
    *  PV61 — `type` (optionnel) porte le dégagement de l'obstacle ; absent = comportement
-   *  historique (dégagement uniforme). Jamais émis pour un obstacle sans type. */
-  obstacles: Array<{ id: string; centerLng: number; centerLat: number; lengthM: number; widthM: number; type?: ObstacleType }>;
+   *  historique (dégagement uniforme). Jamais émis pour un obstacle sans type. CAL66 —
+   *  `heightM` (optionnel, SAISI) : absent = obstacle plan, aucune ombre. CAL72 —
+   *  `provenance` (optionnel) : absent = comportement historique (aucun blocage). */
+  obstacles: Array<{
+    id: string;
+    centerLng: number;
+    centerLat: number;
+    lengthM: number;
+    widthM: number;
+    type?: ObstacleType;
+    heightM?: number;
+    provenance?: ObstacleProvenance;
+  }>;
   /** F2 — OPTIONNELS : `serializeLayout` les écrit toujours, mais une zone posée
    *  par le SERVEUR depuis le tracé du client les OMET délibérément (personne n'a
    *  mesuré ce toit, et un champ écrit ici descend jusqu'à l'annexe « paramètres du
@@ -230,6 +243,12 @@ export interface SerializedZone {
    *  de rendu existe pour la zone. Le round-trip deserializeLayout l'ignore (dérivé,
    *  recalculé au boot) — il sert uniquement à l'export ERP (devis/PDF multi-plan). */
   geometry?: SerializedZoneGeometry;
+  /** CAL59 — bâtiment auquel ce pan appartient. Optionnel et additif : absent = bâtiment
+   *  unique, comportement historique. */
+  buildingId?: string;
+  /** CAL57 — type d'arête par segment de contour (déduit, corrigible à la main). Optionnel
+   *  et additif : absent = aucune arête typée, comportement historique. */
+  edges?: SerializedEdge[];
 }
 
 // ═══════════ PV13 — SÉRIALISATION v2 (additive, jamais destructive) ═══════════
@@ -355,6 +374,39 @@ export function deserializeMeasurements(json: unknown): Measurement[] {
   return serializeMeasurements(raw as readonly Measurement[] | null | undefined);
 }
 
+// ═══════════ CAL67 — ENVIRONNEMENT (arbres/bâtiments voisins, sérialisation) ═══════════
+// Même garantie que `measurements` : une entrée géométriquement invalide (id vide, genre
+// inconnu) est ÉCARTÉE individuellement — jamais silencieusement corrigée ni inventée.
+const ENV_KINDS = ['arbre', 'batiment'] as const;
+
+/** Normalise la liste d'objets d'environnement pour la sérialisation. */
+export function serializeEnvironment(list: readonly EnvironmentObject[] | null | undefined): EnvironmentObject[] {
+  if (!Array.isArray(list)) return [];
+  const out: EnvironmentObject[] = [];
+  for (const o of list) {
+    if (!o || typeof o.id !== 'string' || !o.id) continue;
+    if (!(ENV_KINDS as readonly string[]).includes(o.kind)) continue;
+    if (!Number.isFinite(o.centerLng) || !Number.isFinite(o.centerLat)) continue;
+    const clean: EnvironmentObject = { id: o.id, kind: o.kind, centerLng: o.centerLng, centerLat: o.centerLat };
+    if (o.label) clean.label = o.label;
+    if (typeof o.heightM === 'number' && Number.isFinite(o.heightM) && o.heightM > 0) clean.heightM = o.heightM;
+    if (typeof o.crownDiameterM === 'number' && Number.isFinite(o.crownDiameterM) && o.crownDiameterM > 0) clean.crownDiameterM = o.crownDiameterM;
+    if (typeof o.evergreen === 'boolean') clean.evergreen = o.evergreen;
+    if (Array.isArray(o.footprint) && o.footprint.length >= 3) clean.footprint = o.footprint.map((p) => [p[0], p[1]] as LngLat);
+    if (typeof o.lengthM === 'number' && Number.isFinite(o.lengthM) && o.lengthM > 0) clean.lengthM = o.lengthM;
+    if (typeof o.widthM === 'number' && Number.isFinite(o.widthM) && o.widthM > 0) clean.widthM = o.widthM;
+    out.push(clean);
+  }
+  return out;
+}
+
+/** Relit une liste d'environnement sérialisée — mêmes garde-fous que l'écriture. Accepte
+ *  soit le layout complet (lit `.environment`), soit déjà le tableau brut. */
+export function deserializeEnvironment(json: unknown): EnvironmentObject[] {
+  const raw = (json as { environment?: unknown } | null | undefined)?.environment ?? json;
+  return serializeEnvironment(raw as readonly EnvironmentObject[] | null | undefined);
+}
+
 /** Layout complet sérialisé : version + zones + repère léger (pin/outline). */
 export interface SerializedLayout {
   version: 1 | 2;
@@ -386,6 +438,9 @@ export interface SerializedLayout {
   /** CAL102 — mesures posées (distance/surface/angle), annotations du calepinage. Omis ou
    *  vide = aucune mesure (comportement historique, byte pour byte). */
   measurements?: Measurement[];
+  /** CAL67 — objets d'environnement (arbres/bâtiments voisins) posés HORS contour. Omis
+   *  ou vide = aucun objet (comportement historique, byte pour byte). */
+  environment?: EnvironmentObject[];
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -424,6 +479,8 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
         lengthM: o.lengthM,
         widthM: o.widthM,
         ...(o.type ? { type: o.type } : {}), // PV61 — additif, jamais émis si absent
+        ...(o.heightM != null ? { heightM: o.heightM } : {}), // CAL66 — additif
+        ...(o.provenance ? { provenance: o.provenance } : {}), // CAL72 — additif
       })),
       roofType: isActive ? ctx.roofType : a.roofType,
       pitchDeg: isActive ? ctx.pitchDeg : a.pitchDeg,
@@ -431,6 +488,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       facingManual: isActive ? ctx.facingManual : a.facingManual ?? false,
       neededPanels: isActive ? ctx.neededPanels : a.neededPanels,
       neededAuto: isActive ? ctx.neededAuto : a.neededAuto,
+      ...(a.buildingId ? { buildingId: a.buildingId } : {}), // CAL59 — additif
     };
     // WJ24 — géométrie pleine par pan (additif) : depuis le plan de rendu figé de la zone
     // (a.renderPlan) ou, pour la zone active, le plan gagnant vivant (ctx.layoutPlan). Les
@@ -492,6 +550,19 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     }
     return zone;
   });
+  // CAL57 — déduit le type de chaque arête de CHAQUE zone depuis sa géométrie + ses
+  // voisines (mêmes valeurs EFFECTIVES que ci-dessus : vertices/roofType/azimut déjà
+  // résolus sur `zone`). Additif : jamais émis pour une zone < 3 sommets.
+  const edgeZones: EdgeDeductionZone[] = zones.map((z) => ({
+    vertices: z.vertices,
+    roofType: z.roofType ?? 'flat',
+    facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
+  }));
+  zones.forEach((z, i) => {
+    const others = edgeZones.filter((_, j) => j !== i);
+    const edges = deduceEdgeTypes(edgeZones[i], others);
+    if (edges.length) z.edges = edges;
+  });
   const activeVerts = ctx.vertices.length >= 1 ? ctx.vertices : ctx.areas.find((a) => a.id === ctx.activeAreaId)?.vertices ?? [];
   const outline: Array<[number, number]> =
     activeVerts.length >= 3 ? activeVerts.map(([lng, lat]) => [lat, lng] as [number, number]) : [];
@@ -532,6 +603,9 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     // CAL102 — les mesures posées voyagent avec le design (sinon rouvrir le dossier les
     // perd, comme n'importe quelle autre annotation de l'atelier).
     ...(ctx.measurements && ctx.measurements.length ? { measurements: serializeMeasurements(ctx.measurements) } : {}),
+    // CAL67 — les objets d'environnement (arbres/bâtiments voisins) voyagent avec le
+    // design, comme les mesures et l'ombrage tracé ci-dessus.
+    ...(ctx.environment && ctx.environment.length ? { environment: serializeEnvironment(ctx.environment) } : {}),
   };
 }
 
@@ -554,6 +628,8 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       lengthM: o.lengthM,
       widthM: o.widthM,
       ...(o.type ? { type: o.type } : {}), // PV61 — le type survit au round-trip
+      ...(o.heightM != null ? { heightM: o.heightM } : {}), // CAL66 — round-trip verbatim
+      ...(o.provenance ? { provenance: o.provenance } : {}), // CAL72 — round-trip verbatim
     })),
     // F2 (fondateur 26/08/2026) — une zone posée par le SERVEUR depuis le tracé du
     // client n'écrit PAS ces trois champs : personne n'a mesuré ce toit, et un champ
@@ -571,6 +647,11 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
     neededAuto: z.neededAuto,
     result: null,
     renderPlan: null,
+    // CAL59 — round-trip verbatim (absent = bâtiment unique, comportement historique).
+    ...(z.buildingId ? { buildingId: z.buildingId } : {}),
+    // CAL57 — round-trip verbatim ; un document sans arêtes n'en gagne aucune ici (elles
+    // sont recalculées à la sérialisation SUIVANTE, pas devinées à la lecture).
+    ...(z.edges && z.edges.length ? { edges: z.edges } : {}),
   }));
 }
 

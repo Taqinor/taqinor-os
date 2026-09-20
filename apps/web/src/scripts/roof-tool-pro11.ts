@@ -387,6 +387,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const shadeObstructions: import('../lib/shadingEngine').ShadeObstruction[] = [];
   let shadeFactors: number[][] | null = null;
   let shadeAnnualFactor = 1;
+  // CAL67 — objets d'environnement (arbres/bâtiments voisins) posés HORS contour.
+  const environment: import('./roofPro11/environment').EnvironmentObject[] = [];
+  let envCounter = 0;
   let climateBandOn = false; // WJ22 — fourchette de pertes climatiques (opt-in, défaut OFF)
   let useRecommended = true;
   let sel: { family: ConfigFamily; tilt: TiltMode; orient: OrientMode; azimuth: AzimuthMode; margin: MarginMode } = {
@@ -830,6 +833,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       sunDay = v;
     },
     shadeObstructions,
+    environment,
+    get envCounter() {
+      return envCounter;
+    },
+    set envCounter(v) {
+      envCounter = v;
+    },
     get shadeFactors() {
       return shadeFactors;
     },
@@ -1009,6 +1019,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const snapshotActiveAreaGeometry = zones.snapshotActiveAreaGeometry;
   const syncAddAreaButton = zones.syncAddAreaButton;
   const renderAreasPanel = zones.renderAreasPanel;
+  const setAreaBuilding = zones.setAreaBuilding;
   // W68 — « Affiner ma consommation ». Les dépendances optimiseur/facture sont
   // injectées en wrappers paresseux (les bindings sont déclarés plus bas).
   const consumption = createConsumption(
@@ -2391,6 +2402,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     const del = t.closest<HTMLElement>('[data-area-del]');
     if (sel?.dataset.areaSelect) selectArea(sel.dataset.areaSelect);
     else if (del?.dataset.areaDel) deleteArea(del.dataset.areaDel);
+  });
+  // CAL59 — saisie du bâtiment d'une zone (`change` : blur/Entrée, jamais à chaque frappe).
+  areasListEl?.addEventListener('change', (e) => {
+    const t = e.target as HTMLElement;
+    const input = t.closest<HTMLInputElement>('[data-area-building]');
+    if (input?.dataset.areaBuilding) setAreaBuilding(input.dataset.areaBuilding, input.value);
   });
 
   // — Facture —

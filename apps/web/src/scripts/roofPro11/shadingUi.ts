@@ -59,6 +59,17 @@ export interface ShadingUi {
 
 const SHADE_SRC = 'rp9-shade-lines';
 
+/**
+ * CAL60 — hauteur de bâtiment EFFECTIVE (m) utilisée pour l'ombrage. `overrideM` est la
+ * valeur SAISIE par l'utilisateur (ou null si aucune saisie) : finie et positive → elle
+ * pilote le calcul ; sinon on retombe sur le repli HISTORIQUE (FLOORS × FLOOR_HEIGHT_M,
+ * deux étages), affiché comme une HYPOTHÈSE — jamais une mesure. Pure, testable sans DOM.
+ */
+export function effectiveBuildingHeightM(overrideM: number | null | undefined): number {
+  if (typeof overrideM === 'number' && Number.isFinite(overrideM) && overrideM > 0) return overrideM;
+  return FLOORS * FLOOR_HEIGHT_M;
+}
+
 export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const { map, setStatus, recalcDisplays, applyHeatmap } = deps;
 
@@ -68,6 +79,26 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const hourValueEl = $('rp9-shade-hour-value');
   const listEl = $('rp9-shade-list');
   const noteEl = $('rp9-shade-note');
+  // CAL60 — hauteur de bâtiment SAISISSABLE (par bâtiment CAL59 : la zone active porte son
+  // propre override) ; le repli FLOORS×FLOOR_HEIGHT_M reste affiché comme une HYPOTHÈSE tant
+  // qu'aucune valeur n'est saisie. Stocké par `buildingId` (clé '' = zone sans bâtiment).
+  const heightEl = $<HTMLInputElement>('rp9-shade-height');
+  const heightNoteEl = $('rp9-shade-height-note');
+  const buildingHeights = new Map<string, number>();
+  const buildingKey = (): string => ctx.activeArea()?.buildingId ?? '';
+  const activeHeightOverride = (): number | null => buildingHeights.get(buildingKey()) ?? null;
+  /** Hauteur EFFECTIVE (m) de la zone active — saisie si présente, sinon l'hypothèse. */
+  const roofHeightM = (): number => effectiveBuildingHeightM(activeHeightOverride());
+  function syncHeightUi() {
+    const override = activeHeightOverride();
+    if (heightEl && document.activeElement !== heightEl) heightEl.value = override != null ? fmt1(override) : '';
+    if (heightNoteEl) {
+      heightNoteEl.textContent =
+        override != null
+          ? `Hauteur saisie : ${fmt1(override)} m.`
+          : `Hypothèse affichée : ${fmt1(FLOORS * FLOOR_HEIGHT_M)} m (${FLOORS} étages) — saisissez la hauteur réelle pour un ombrage exact.`;
+    }
+  }
   // WJ21 — carte d'accès solaire (heatmap d'irradiance).
   const heatmapBtn = $<HTMLButtonElement>('rp9-heatmap-toggle');
   const heatmapNoteEl = $('rp9-heatmap-note');
@@ -101,7 +132,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       ctx.shadeAnnualFactor = 1;
       return;
     }
-    const roofH = FLOORS * FLOOR_HEIGHT_M;
+    const roofH = roofHeightM();
     const enu = shadeObstructionsENU(ctx.shadeObstructions, ctx.centroid, roofH);
     if (!enu.length) {
       ctx.shadeFactors = null;
@@ -130,6 +161,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     recomputeFactors();
     renderList();
     drawShadeLines();
+    syncHeightUi(); // CAL60 — la zone active a pu changer (bâtiment différent)
     recalcDisplays();
     // WJ21 — le re-rendu (recalcDisplays) a recréé les instances de panneaux : ré-applique
     // la teinte d'accès solaire si la heatmap est active.
@@ -143,7 +175,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   function buildHeatmapColorFn(): ((cellIndex: number) => { r: number; g: number; b: number }) | null {
     const plan = ctx.layoutPlan;
     if (!plan || !plan.grid.panels.length || ctx.vertices.length < 3) return null;
-    const roofH = FLOORS * FLOOR_HEIGHT_M;
+    const roofH = roofHeightM();
     const enu = shadeObstructionsENU(ctx.shadeObstructions, ctx.centroid, roofH);
     const prod = ctx.prodPerKwc ?? fallbackPerKwc();
     const panels = plan.grid.panels;
@@ -321,6 +353,23 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   });
   // WJ21 — bascule de la carte d'accès solaire (heatmap d'irradiance).
   heatmapBtn?.addEventListener('click', () => setHeatmap(!heatmapOn));
+
+  // CAL60 — hauteur de bâtiment saisie (`change` : blur/Entrée, jamais à chaque frappe,
+  // même règle que le reste de l'atelier — W81). Vide ou invalide → retour à l'hypothèse.
+  heightEl?.addEventListener('change', () => {
+    const raw = heightEl.value.replace(/\s/g, '').replace(',', '.').trim();
+    const key = buildingKey();
+    if (!raw) {
+      buildingHeights.delete(key);
+    } else {
+      const v = Number(raw);
+      if (Number.isFinite(v) && v > 0) buildingHeights.set(key, v);
+      else buildingHeights.delete(key);
+    }
+    syncHeightUi();
+    if (ctx.shadeObstructions.length) recomputeShading();
+  });
+  syncHeightUi();
 
   return { handleMapClick, recomputeShading, refreshHeatmap, reset };
 }

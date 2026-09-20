@@ -4,11 +4,12 @@
  */
 import { type RoofTypeSelect } from '../../lib/roofTypeSelect';
 import { type PackResult, type PanelGrid, type ConfigFamily, OBSTACLE_CLEARANCE_M } from '../../lib/estimatorBrainV2';
-import { type Obstacle, type ObstacleType } from '../../lib/obstacles';
+import { type Obstacle, type ObstacleType, type ObstacleProvenance } from '../../lib/obstacles';
 import { type SerializeMeta, type DevisPayload, type RawContourPoint } from './prefill';
 import { type AreaResult } from '../../lib/roofAreas';
 import { type LngLat } from '../../lib/roof';
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
+import { type SerializedEdge } from './edges';
 
 export interface InitOptions {
   maptilerKey: string;
@@ -121,7 +122,7 @@ export interface LeadPayload {
 }
 
 // ═══════════ PV61 — TYPES D'OBSTACLE & DÉGAGEMENT PAR TYPE ═══════════
-export type { ObstacleType };
+export type { ObstacleType, ObstacleProvenance };
 
 /** Choix du sélecteur « type d'obstacle » (libellés FR, ordre du menu). */
 export const OBSTACLE_TYPES: { id: ObstacleType; label: string }[] = [
@@ -243,6 +244,14 @@ export interface AreaRecord {
   neededAuto: boolean;
   result: AreaResult | null;
   renderPlan: ZoneRenderPlan | null;
+  /** CAL59 — bâtiment auquel ce pan appartient, pour totaliser un site multi-bâtiments.
+   *  Optionnel : absent = bâtiment unique (comportement historique). */
+  buildingId?: string;
+  /** CAL57 — type d'arête par segment de contour (déduit, corrigible à la main). Optionnel :
+   *  absent = aucune arête typée (comportement historique). Recalculé à chaque sérialisation
+   *  depuis `vertices`/`roofType`/`facingAzimuthDeg` (voir `edges.ts`) tant qu'aucune n'a été
+   *  corrigée à la main. */
+  edges?: SerializedEdge[];
 }
 
 // ═══════════ W50 — fenêtre « Production estimée » ═══════════

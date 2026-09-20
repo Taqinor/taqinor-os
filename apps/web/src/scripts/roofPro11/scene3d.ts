@@ -244,6 +244,85 @@ export function computeRidgeLifts(pans: RidgePan[]): number[] {
   return lifts;
 }
 
+// ═══════════ CAL61 — calage d'altitude MIXTE (pans plats + pans en pente) ═══════════
+// `computeRidgeLifts` ci-dessus ne recense QUE les pans en pente (leur calage réciproque,
+// W107) : un pan PLAT accolé (auvent) n'y participe jamais et reste posé à sa hauteur de
+// base — il flotte ou s'enfonce dès que son voisin en pente est relevé par le lift de
+// faîtière commune. `computeMixedAltitudeOffsets` étend le calage : les pans EN PENTE
+// gardent EXACTEMENT le lift que `computeRidgeLifts` leur donnerait (même composantes
+// connexes, même formule — preuve par test de non-régression), et un pan PLAT accolé à un
+// (ou plusieurs) pan(s) en pente reçoit un lift qui amène son dessus au niveau du DESSOUS
+// du toit en pente exactement à l'arête partagée (pas à la faîtière, pas ailleurs) — s'il
+// touche plusieurs pans en pente à des hauteurs différentes, on prend le plus HAUT (le toit
+// plat ne doit jamais transpercer un pan en pente qui passe au-dessus). Un pan plat sans
+// voisin en pente garde lift 0 (inchangé).
+
+/** Un pan mixte candidat au calage (plat OU en pente). */
+export interface MixedRidgePan extends RidgePan {
+  /** true pour un pan EN PENTE (flush) — false pour un pan plat. */
+  pitched: boolean;
+}
+
+/** Hauteur (m) du DESSOUS d'un pan EN PENTE (sans lift) à la coordonnée amont-aval `u` —
+ *  0 à l'égout (u = minUp), monte de tan(pente) par mètre vers l'amont. */
+function pitchedHeightAtU(pan: RidgePan, u: number): number {
+  let minUp = Infinity;
+  for (const [x, y] of pan.ringENU) {
+    const up = upSlopeCoord(x, y, pan.facingAzimuthDeg);
+    if (up < minUp) minUp = up;
+  }
+  if (!Number.isFinite(minUp)) return 0;
+  return pitchedRise(u - minUp, pan.tiltDeg);
+}
+
+/** Hauteur (m) du pan en pente `pan` au MILIEU du segment ENU (a→b) — utilisé pour évaluer
+ *  la hauteur de toit exactement là où un pan plat le touche. */
+function pitchedHeightAtEdgeMid(pan: RidgePan, a: [number, number], b: [number, number]): number {
+  const midX = (a[0] + b[0]) / 2;
+  const midY = (a[1] + b[1]) / 2;
+  const u = upSlopeCoord(midX, midY, pan.facingAzimuthDeg);
+  return pitchedHeightAtU(pan, u);
+}
+
+export function computeMixedAltitudeOffsets(pans: MixedRidgePan[]): number[] {
+  const n = pans.length;
+  const offsets = new Array<number>(n).fill(0);
+  if (n < 2) return offsets;
+
+  // 1) Pans en pente : EXACTEMENT le même lift que computeRidgeLifts sur le sous-ensemble
+  //    des pans en pente (les pans plats n'entrent jamais dans leurs composantes connexes —
+  //    non-régression garantie : même graphe, même formule).
+  const pitchedIdx: number[] = [];
+  for (let i = 0; i < n; i++) if (pans[i].pitched) pitchedIdx.push(i);
+  const pitchedLifts = computeRidgeLifts(pitchedIdx.map((i) => pans[i]));
+  pitchedIdx.forEach((i, k) => (offsets[i] = pitchedLifts[k]));
+
+  // 2) Pans plats : lift = hauteur MAX (dessous du toit en pente + son propre lift, déjà
+  //    connu depuis l'étape 1) parmi tous les pans en pente qui partagent une arête.
+  for (let i = 0; i < n; i++) {
+    if (pans[i].pitched) continue;
+    let best = 0;
+    const ra = pans[i].ringENU;
+    for (const j of pitchedIdx) {
+      const rb = pans[j].ringENU;
+      for (let x = 0; x < ra.length; x++) {
+        const a1 = ra[x];
+        const a2 = ra[(x + 1) % ra.length];
+        for (let y = 0; y < rb.length; y++) {
+          const b1 = rb[y];
+          const b2 = rb[(y + 1) % rb.length];
+          if (enuSharedEdgeOverlapM(a1, a2, b1, b2) > 0) {
+            const h = pitchedHeightAtEdgeMid(pans[j], b1, b2) + offsets[j];
+            if (h > best) best = h;
+          }
+        }
+      }
+    }
+    offsets[i] = Math.max(0, best);
+  }
+  return offsets;
+}
+
 // ═══════════ CAL56 — préréts de forme de toiture (2/4 pans, appentis, plat) ═══════════
 // L'atelier ne connaissait qu'un type binaire par zone (plat/pente saisi manuellement) —
 // aucun préré ne GÉNÉRAIT les pans depuis le contour tracé. Ci-dessous : géométrie PURE
@@ -1033,9 +1112,12 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const wallH = FLOORS * FLOOR_HEIGHT_M;
     const ring: [number, number][] = pack.ringENU.map(([x, y]) => [x + offX, y + offY]);
     // W107 — lift de faîtière commune : le pan incliné monte de `ridgeLiftM` (sans changer
-    // de pente) pour rejoindre la faîtière partagée d'un pan voisin. 0 (défaut / pan isolé /
-    // toit plat) → rendu inchangé, octet pour octet.
-    const ridgeLiftM = flush ? Math.max(0, plan.ridgeLiftM ?? 0) : 0;
+    // de pente) pour rejoindre la faîtière partagée d'un pan voisin. CAL61 — un pan PLAT
+    // accolé à un pan en pente reçoit le MÊME champ (`plan.ridgeLiftM`), calculé par
+    // `computeMixedAltitudeOffsets` pour amener son dessus au niveau du dessous du toit en
+    // pente voisin — 0 (défaut / pan isolé / aucun voisin en pente) → rendu inchangé, octet
+    // pour octet (même formule qu'avant pour les cas 100 % pente).
+    const ridgeLiftM = Math.max(0, plan.ridgeLiftM ?? 0);
 
     // Bâtiment
     const shape = new THREE.Shape();
@@ -1049,15 +1131,25 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       buildingMat.transparent = true;
       buildingMat.opacity = 0.55;
     }
+    // CAL61 — un pan PLAT (non flush) accolé à un pan en pente relevé par
+    // `computeMixedAltitudeOffsets` monte de `ridgeLiftM` : le mur s'étire d'autant pour
+    // qu'aucun vide ne reste sous la dalle relevée (le toit en pente, lui, ferme ce même
+    // vide avec sa jupe périmétrique, plus bas). 0 par défaut → wallH inchangé, octet pour
+    // octet.
     const building = new THREE.Mesh(
-      new THREE.ExtrudeGeometry(shape, { depth: wallH, bevelEnabled: false }),
+      new THREE.ExtrudeGeometry(shape, { depth: wallH + (flush ? 0 : ridgeLiftM), bevelEnabled: false }),
       buildingMat,
     );
     building.castShadow = true;
     building.receiveShadow = true;
     sceneRoot!.add(building);
 
-    const baseZ = wallH + DECK_THK;
+    // CAL61 — pan PLAT : `ridgeLiftM` est inclus ICI (dans baseZ), donc chaque usage plus
+    // bas (dalle, panneaux, rails, platines…) en hérite automatiquement. Pan EN PENTE :
+    // baseZ reste `wallH + DECK_THK` (inchangé) — son lift est ajouté séparément là où il
+    // l'était déjà (`baseZ + ridgeLiftM` pour flushPanelCenterAt), donc AUCUN changement
+    // pour les cas 100 % pente d'aujourd'hui.
+    const baseZ = wallH + DECK_THK + (flush ? 0 : ridgeLiftM);
     // FIX 1 (V6) — en pente (flush), réf. d'égout (le point le plus AVAL du tracé) :
     // la pente monte à partir de l'égout, rien ne passe sous le toit.
     const pitchEaveCoord = flush ? eaveUpSlopeCoord(ring, pack.azimuthDeg) : 0;
@@ -1082,7 +1174,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       deckGeo.computeVertexNormals();
     }
     const deck = new THREE.Mesh(deckGeo, deckMat);
-    deck.position.z = wallH + 0.02;
+    // CAL61 — pan plat relevé : la dalle suit le mur étiré ci-dessus (même `ridgeLiftM`).
+    // Pan en pente : inchangé (son relief est déjà porté par les sommets, pitchedDeckZ).
+    deck.position.z = wallH + 0.02 + (flush ? 0 : ridgeLiftM);
     deck.receiveShadow = true;
     sceneRoot!.add(deck);
 
@@ -1359,7 +1453,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const ox = (o.centerLng - pack.origin[0]) * DEG2M * cosLat + offX;
         const oy = (o.centerLat - pack.origin[1]) * DEG2M + offY;
         const tint = dim ? 0xc06464 : 0xff6b6b;
-        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, OBSTACLE_BOX_H_M);
+        // CAL66 — volume à la hauteur SAISIE quand elle existe, sinon le repli visuel
+        // historique (obstacle plan, OBSTACLE_BOX_H_M) — rendu inchangé sans saisie.
+        const boxH = o.heightM ?? OBSTACLE_BOX_H_M;
+        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, boxH);
         const mat = new THREE.MeshStandardMaterial({
           color: tint,
           metalness: 0.1,
@@ -1369,7 +1466,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
           depthWrite: false,
         });
         const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(ox, oy, wallH + OBSTACLE_BOX_H_M / 2 + 0.05);
+        mesh.position.set(ox, oy, wallH + boxH / 2 + 0.05);
         mesh.renderOrder = 3;
         const edges = new THREE.LineSegments(
           new THREE.EdgesGeometry(geo),
@@ -1416,35 +1513,45 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     return ring;
   }
 
-  /** W107 — (re)calcule le lift de faîtière commune de CHAQUE zone (id → m), recensant tous
-   *  les pans EN PENTE (active + autres avec renderPlan flush) dans la frame ENU de la zone
-   *  active, puis appariant les pans connectés (`computeRidgeLifts`). Pans isolés/non-pente →
-   *  0. Appelée une fois en tête de renderScene ; lue par buildZoneMeshes via `ridgeLifts`. */
+  /** W107/CAL61 — (re)calcule le lift d'altitude de CHAQUE zone (id → m), recensant TOUS les
+   *  pans (actif + autres avec renderPlan, plats ET en pente) dans la frame ENU de la zone
+   *  active, puis appariant les pans connectés (`computeMixedAltitudeOffsets` : les pans en
+   *  pente reçoivent EXACTEMENT le lift W107 d'avant, les pans plats accolés montent au niveau
+   *  du dessous du toit en pente voisin). Pans isolés → 0. Appelée une fois en tête de
+   *  renderScene ; lue par buildZoneMeshes via `ridgeLifts`. */
   function computeAllRidgeLifts(activeOrigin: LngLat, activePack: PackResult, activeTiltDeg: number, activeFlush: boolean) {
     ridgeLifts = new Map<string, number>();
     const cosLat = Math.cos(activeOrigin[1] * DEG2RAD);
-    const entries: { id: string; pan: RidgePan }[] = [];
-    // Zone ACTIVE (offset nul), seulement si en pente.
-    if (activeFlush) {
-      entries.push({
-        id: ctx.activeAreaId,
-        pan: { ringENU: activePack.ringENU.map(([x, y]) => [x, y]), facingAzimuthDeg: activePack.azimuthDeg, tiltDeg: activeTiltDeg },
-      });
-    }
-    // Autres zones EN PENTE avec un renderPlan, translatées dans la frame active.
+    const entries: { id: string; pan: MixedRidgePan }[] = [];
+    // Zone ACTIVE (offset nul) — plate ou en pente.
+    entries.push({
+      id: ctx.activeAreaId,
+      pan: {
+        ringENU: activePack.ringENU.map(([x, y]) => [x, y]),
+        facingAzimuthDeg: activePack.azimuthDeg,
+        tiltDeg: activeTiltDeg,
+        pitched: activeFlush,
+      },
+    });
+    // Autres zones avec un renderPlan (plates OU en pente), translatées dans la frame active.
     for (const a of ctx.areas) {
       if (a.id === ctx.activeAreaId) continue;
       const plan = a.renderPlan;
-      if (!plan || !plan.flush) continue;
+      if (!plan) continue;
       const offX = (plan.pack.origin[0] - activeOrigin[0]) * DEG2M * cosLat;
       const offY = (plan.pack.origin[1] - activeOrigin[1]) * DEG2M;
       entries.push({
         id: a.id,
-        pan: { ringENU: plan.pack.ringENU.map(([x, y]) => [x + offX, y + offY]), facingAzimuthDeg: plan.pack.azimuthDeg, tiltDeg: plan.tiltDeg },
+        pan: {
+          ringENU: plan.pack.ringENU.map(([x, y]) => [x + offX, y + offY]),
+          facingAzimuthDeg: plan.pack.azimuthDeg,
+          tiltDeg: plan.tiltDeg,
+          pitched: plan.flush,
+        },
       });
     }
     if (entries.length < 2) return; // pan isolé → aucun lift (rendu inchangé)
-    const lifts = computeRidgeLifts(entries.map((e) => e.pan));
+    const lifts = computeMixedAltitudeOffsets(entries.map((e) => e.pan));
     entries.forEach((e, i) => ridgeLifts.set(e.id, lifts[i]));
   }
 
@@ -1546,7 +1653,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const oy = (o.centerLat - pack.origin[1]) * DEG2M;
         const selected = o.id === ctx.selectedObsId;
         const tint = selected ? 0xf3cc66 : 0xff6b6b;
-        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, OBSTACLE_BOX_H_M);
+        // CAL66 — volume à la hauteur SAISIE quand elle existe, sinon le repli visuel
+        // historique (obstacle plan, OBSTACLE_BOX_H_M) — rendu inchangé sans saisie.
+        const boxH = o.heightM ?? OBSTACLE_BOX_H_M;
+        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, boxH);
         const mat = new THREE.MeshStandardMaterial({
           color: tint,
           metalness: 0.1,
@@ -1556,7 +1666,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
           depthWrite: false, // laisse la texture du toit transparaître
         });
         const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(ox, oy, wallH + OBSTACLE_BOX_H_M / 2 + 0.05);
+        mesh.position.set(ox, oy, wallH + boxH / 2 + 0.05);
         mesh.renderOrder = 3;
         const edges = new THREE.LineSegments(
           new THREE.EdgesGeometry(geo),
@@ -1569,7 +1679,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         // (l'obstacle lui-même reste visible, à sa vraie taille).
         if (!readOnly) {
           const label = makeDimSprite(dimsLabel(o));
-          label.position.set(0, 0, OBSTACLE_BOX_H_M / 2 + 0.6);
+          label.position.set(0, 0, boxH / 2 + 0.6);
           mesh.add(label);
         }
         sceneRoot.add(mesh);
@@ -1604,6 +1714,37 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
           new THREE.LineBasicMaterial({ color: 0x8f9bb8, transparent: true, opacity: 0.8 }),
         );
         mesh.add(edges);
+        sceneRoot.add(mesh);
+      }
+    }
+
+    // CAL67 — objets d'ENVIRONNEMENT (arbres/bâtiments voisins posés hors contour) : un
+    // arbre sans hauteur/diamètre saisi ne se dessine PAS (rien à montrer, jamais une
+    // taille inventée) ; posé au SOL comme les obstructions déduites d'ombre ci-dessus,
+    // il projette une vraie ombre Three.js. Liste vide/absente → rendu inchangé.
+    if (ctx.environment?.length) {
+      const cosLat = Math.cos(pack.origin[1] * DEG2RAD);
+      for (const o of ctx.environment) {
+        const diameterM = o.kind === 'arbre' ? o.crownDiameterM : (o.lengthM ?? o.widthM);
+        if (!diameterM || diameterM <= 0 || !o.heightM || o.heightM <= 0) continue; // rien de saisi → rien à dessiner
+        const ox = (o.centerLng - pack.origin[0]) * DEG2M * cosLat;
+        const oy = (o.centerLat - pack.origin[1]) * DEG2M;
+        const h = o.heightM;
+        const isTree = o.kind === 'arbre';
+        const geo = isTree
+          ? new THREE.CylinderGeometry(diameterM / 2, diameterM / 2, h, 12)
+          : new THREE.BoxGeometry(o.lengthM ?? diameterM, o.widthM ?? diameterM, h);
+        const mat = new THREE.MeshStandardMaterial({
+          color: isTree ? 0x3f7d4a : 0x8f9bb8,
+          metalness: 0,
+          roughness: 0.9,
+          transparent: true,
+          opacity: 0.55,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        if (isTree) mesh.rotation.x = Math.PI / 2; // cylindre THREE = axe Y, scène = axe Z « haut »
+        mesh.position.set(ox, oy, h / 2); // posé au sol
+        mesh.castShadow = true;
         sceneRoot.add(mesh);
       }
     }
