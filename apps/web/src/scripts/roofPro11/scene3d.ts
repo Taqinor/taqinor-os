@@ -2633,3 +2633,96 @@ export function construireOmbriere(
     ],
   };
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CAL106 — GRANDS CHAMPS : L'INSTANCIATION ET LE TRI DE VISIBILITÉ, MESURABLES.
+   ----------------------------------------------------------------------------
+   La borne de cette tâche porte sur le COÛT PUR — construire le plan, préparer
+   les matrices d'instances, trier ce qui est visible — et JAMAIS sur le rendu
+   WebGL, que vitest/jsdom ne mesure pas et qu'un seuil chiffré décrirait donc
+   en mentant.
+
+   Ces trois fonctions sont exactement cette part mesurable :
+     * `matricesInstanciees` remplit UN tableau typé de 16 flottants par table
+       (la matrice de transformation que `InstancedMesh.instanceMatrix` attend),
+       sans créer un seul objet Three ;
+     * `tablesVisibles` élague par emprise rectangulaire (culling) — la part
+       hors cadre n'a aucune raison d'être instanciée ;
+     * `plafonnerSelection` borne une sélection de masse.
+
+   ZÉRO CHIFFRE DE CALEPINAGE N'Y CHANGE : rien ici ne pave, ne compte ni ne
+   décide. Ce sont des transformations de présentation.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Emprise rectangulaire (mètres, repère du moteur) pour l'élagage. */
+export interface CadreVisible {
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+}
+
+/**
+ * CAL106 — les matrices d'instances des tables, en UN tableau typé (16 flottants
+ * par table, colonne-majeur, la convention de Three). Aucun objet intermédiaire
+ * n'est alloué : c'est la partie du coût qu'un grand champ fait exploser.
+ *
+ * Rotation autour de l'axe X (l'inclinaison de la table), mise à l'échelle par
+ * l'emprise de la table, translation au centre posé.
+ */
+export function matricesInstanciees(tables: readonly TablePlacee[]): Float32Array {
+  const out = new Float32Array(tables.length * 16);
+  for (let i = 0; i < tables.length; i++) {
+    const t = tables[i];
+    const c = Math.cos(t.inclinaisonRad);
+    const s = Math.sin(t.inclinaisonRad);
+    const o = i * 16;
+    // Colonne 0 : X mis à l'échelle de la largeur.
+    out[o] = t.largeurM; out[o + 1] = 0; out[o + 2] = 0; out[o + 3] = 0;
+    // Colonne 1 : Y tourné de l'inclinaison, à l'échelle de la profondeur.
+    out[o + 4] = 0; out[o + 5] = t.profondeurM * c; out[o + 6] = t.profondeurM * s; out[o + 7] = 0;
+    // Colonne 2 : Z tourné de l'inclinaison.
+    out[o + 8] = 0; out[o + 9] = -s; out[o + 10] = c; out[o + 11] = 0;
+    // Colonne 3 : translation au centre posé.
+    out[o + 12] = t.cx; out[o + 13] = t.cy; out[o + 14] = t.z; out[o + 15] = 1;
+  }
+  return out;
+}
+
+/**
+ * CAL106 — indices des tables dont l'emprise INTERSECTE le cadre (culling).
+ * Une table à cheval sur le bord est GARDÉE : élaguer ce qui se voit à moitié
+ * ferait clignoter le champ au moindre déplacement de caméra.
+ */
+export function tablesVisibles(
+  tables: readonly TablePlacee[],
+  cadre: CadreVisible,
+): Uint32Array {
+  const gardes = new Uint32Array(tables.length);
+  let n = 0;
+  for (let i = 0; i < tables.length; i++) {
+    const t = tables[i];
+    const demiX = t.largeurM / 2;
+    const demiY = t.profondeurM / 2;
+    if (t.cx + demiX < cadre.xMin || t.cx - demiX > cadre.xMax) continue;
+    if (t.cy + demiY < cadre.yMin || t.cy - demiY > cadre.yMax) continue;
+    gardes[n++] = i;
+  }
+  return gardes.subarray(0, n);
+}
+
+/**
+ * CAL106 — PLAFOND DE SÉLECTION : au-delà, une sélection de masse coûte plus
+ * cher à surligner qu'elle ne rend service. On garde les `plafond` premiers, et
+ * on RETOURNE le nombre écarté pour que l'appelant le DISE — jamais une
+ * sélection silencieusement tronquée.
+ */
+export function plafonnerSelection(
+  indices: readonly number[],
+  plafond: number,
+): { retenus: number[]; ecartes: number } {
+  if (!Number.isFinite(plafond) || plafond < 0 || indices.length <= plafond) {
+    return { retenus: indices.slice(), ecartes: 0 };
+  }
+  return { retenus: indices.slice(0, plafond), ecartes: indices.length - plafond };
+}
