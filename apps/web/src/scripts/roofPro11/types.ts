@@ -120,6 +120,11 @@ export interface RoofToolApi {
   renderImageHd: (
     scale: number,
   ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
+  /** CAL104 — projection PLAN orthographique (nord en haut, cotée) de la zone
+   *  ACTIVE, pour la vue 2D de l'écran hôte. Elle PROJETTE ce que la 3D a posé :
+   *  même contour, mêmes modules, donc même compte et mêmes cotes. `null` tant
+   *  qu'aucun contour fermé n'existe — jamais un plan inventé. */
+  planView: (widthPx: number, heightPx: number) => unknown | null;
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET

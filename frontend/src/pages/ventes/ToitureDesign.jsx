@@ -50,6 +50,9 @@ import PanneauCalques from '../../features/calepinage/PanneauCalques'
 // CAL180 — export « image HD » : rendu HORS ÉCRAN 2×/3× de la scène, rendu au
 // navigateur. L'affiche client (`roof-image`) n'est pas touchée.
 import { exporterImageHd, FACTEURS_HD } from '../../features/calepinage/exportImage'
+// CAL104 — vue 2D PLAN orthographique (cotée, nord en haut) + plein écran, montée en
+// ONGLET à côté de la 3D : le plan PROJETTE ce que la 3D a posé, il ne re-pave rien.
+import Vue2DPlan from '../../features/calepinage/Vue2DPlan'
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
@@ -395,6 +398,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
   }, [])
   // CAL180 — état de l'export image HD (message affiché SOUS le bouton : soit la taille
   // réellement obtenue, soit le motif du refus — jamais un « ça a marché » supposé).
+  // CAL104 — onglet vue 2D : le plan est DEMANDÉ au builder (`planView`), jamais
+  // reconstruit ici — sinon la 2D et la 3D divergeraient silencieusement.
+  const [vue2d, setVue2d] = useState(false)
+  const [plan2d, setPlan2d] = useState(null)
+  const ouvrirVue2d = () => {
+    setPlan2d(builderApi.current?.planView?.(900, 560) ?? null)
+    setVue2d(true)
+  }
   const [hdBusy, setHdBusy] = useState(false)
   const [hdMessage, setHdMessage] = useState(null)
   const exporterHd = async (scale) => {
@@ -2032,6 +2043,39 @@ export default function ToitureDesign({ mode = 'lead' }) {
               utilisateurId={utilisateurCourantId}
               onChange={(id, etat) => builderApi.current?.setLayerState?.(id, etat)}
             />
+          </div>
+        )}
+
+        {/* CAL104 — ONGLETS 3D / 2D PLAN. La 3D n'est JAMAIS démontée (elle reste
+            dans le DOM, simplement masquée) : basculer d'onglet ne re-boote pas le
+            builder, donc ni la sélection ni l'historique ne sont perdus. */}
+        {builderReady && (
+          <div className="mt-4" data-testid="cal-onglets-vue">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={chipClass}
+                aria-pressed={!vue2d}
+                data-testid="cal-onglet-3d"
+                onClick={() => setVue2d(false)}
+              >
+                Vue 3D
+              </button>
+              <button
+                type="button"
+                className={chipClass}
+                aria-pressed={vue2d}
+                data-testid="cal-onglet-2d"
+                onClick={ouvrirVue2d}
+              >
+                Vue 2D — plan
+              </button>
+            </div>
+            {vue2d && (
+              <div className="mt-2">
+                <Vue2DPlan plan={plan2d} compte3d={plan2d?.panelCount ?? null} />
+              </div>
+            )}
           </div>
         )}
 

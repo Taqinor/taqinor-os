@@ -133,7 +133,7 @@ import { createObstaclesUi } from './roofPro11/obstaclesUi';
 import { createMesureUi, formatMeasure, isMeasureValid, type Measurement, type MeasureKind } from './roofPro11/mesureUi';
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
-import { createScene3d } from './roofPro11/scene3d';
+import { createScene3d, projectPlanView, panelQuadsLngLat } from './roofPro11/scene3d';
 import { createOptimizer } from './roofPro11/optimizer';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout } from './roofPro11/prefill';
@@ -3086,6 +3086,29 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     snapshot: () => scene3d.snapshot(),
     // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.
     renderImageHd: (scale) => scene3d.renderOffscreen(scale),
+    // CAL104 — vue 2D plan : on PROJETTE la géométrie déjà posée (contour de la zone
+    // active + centres de modules du plan gagnant), on ne re-pave rien. Le compte et les
+    // cotes de la 2D sont donc ceux de la 3D, par construction.
+    planView: (widthPx: number, heightPx: number) => {
+      const ring = vertices.length >= 3 ? vertices : activeArea()?.vertices ?? [];
+      if (ring.length < 3) return null;
+      const plan = activeArea()?.renderPlan ?? null;
+      const grid = plan?.grid ?? layoutPlan?.grid ?? null;
+      const pack = plan?.pack ?? layoutPlan?.pack ?? null;
+      const tilt = plan?.tiltDeg ?? layoutPlan?.tiltDeg ?? 0;
+      const posed =
+        grid && pack
+          ? panelQuadsLngLat(
+              pack.origin,
+              grid.panels.slice(0, Math.max(0, Math.min(grid.panels.length, Math.round(plan?.count ?? layoutOptimalCount)))),
+              grid.slopeLenM,
+              grid.rowWidthM,
+              tilt,
+              pack.azimuthDeg,
+            )
+          : [];
+      return projectPlanView(ring, posed, { widthPx, heightPx, marginPx: 28 });
+    },
     // CAL103 — le panneau de calques de l'écran hôte pilote la carte par ici.
     setLayerState: (id, state) => mapDraw.setLayerState(id, state),
     // L-MAP — bascule du calque de référence géo-référencé (rp9-chip côté

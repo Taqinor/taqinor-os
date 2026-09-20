@@ -841,6 +841,175 @@ export function affectationColorFn(
   };
 }
 
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL104 — VUE 2D PLAN ORTHOGRAPHIQUE
+//
+// La scène est exclusivement une vue 3D sur carte : aucune projection PLAN cotée,
+// orientée nord, imprimable. `projectPlanView` produit cette projection — PURE
+// (aucun Three, aucun DOM) : un contour lng/lat et des rectangles de modules
+// entrent, des coordonnées écran ORTHOGRAPHIQUES sortent, avec l'échelle qui a
+// servi et les cotes mesurées.
+//
+// ORTHOGRAPHIQUE veut dire : pas de perspective, pas d'inclinaison. Les mètres
+// est-ouest et nord-sud sont projetés à la MÊME échelle, donc une longueur lue sur
+// le plan est la longueur réelle. NORD EN HAUT : l'axe Y écran descend quand la
+// latitude monte, la convention d'un plan imprimé.
+//
+// IDENTITÉ AVEC LA 3D : cette fonction ne compte rien et ne pave rien — elle
+// PROJETTE ce que la 3D a déjà posé. Le compte de modules de la vue 2D est donc
+// celui de la 3D par construction : c'est la MÊME liste de rectangles.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Un module posé, en lng/lat : les quatre coins tels que la 3D les a placés. */
+export type PlanQuad = LngLat[];
+
+export interface PlanViewOptions {
+  /** Zone de dessin (px). */
+  widthPx: number;
+  heightPx: number;
+  /** Marge intérieure (px) — laisse la place aux cotes. */
+  marginPx?: number;
+}
+
+export interface PlanViewCote {
+  /** Longueur RÉELLE mesurée (m) — jamais arrondie ici. */
+  lengthM: number;
+  /** Segment en coordonnées écran. */
+  from: [number, number];
+  to: [number, number];
+}
+
+export interface PlanView {
+  /** Contour projeté, dans l'ordre d'entrée. */
+  outline: Array<[number, number]>;
+  /** Modules projetés, dans l'ordre d'entrée — MÊME nombre qu'en 3D. */
+  panels: Array<Array<[number, number]>>;
+  /** Échelle appliquée (px par mètre), la MÊME sur les deux axes. */
+  pxPerM: number;
+  /** Envergures réelles de l'emprise (m). */
+  spanEastWestM: number;
+  spanNorthSouthM: number;
+  /** Cotes de chaque côté du contour, mesurées sur la géométrie réelle. */
+  cotes: PlanViewCote[];
+  /** Compte de modules — celui de la 3D, recopié, jamais recalculé. */
+  panelCount: number;
+}
+
+const PLAN_DEG2RAD = Math.PI / 180;
+const PLAN_DEG2M = PLAN_DEG2RAD * 6378137;
+
+/**
+ * Projette un contour et ses modules en vue PLAN orthographique, nord en haut,
+ * ajustée à la zone de dessin. `null` si le contour n'a pas au moins 3 sommets ou
+ * si la zone de dessin n'a pas de surface : rien à dessiner, jamais un plan inventé.
+ */
+export function projectPlanView(
+  outline: readonly LngLat[] | null | undefined,
+  panels: readonly PlanQuad[] | null | undefined,
+  opts: PlanViewOptions,
+): PlanView | null {
+  const ring = outline ?? [];
+  if (ring.length < 3) return null;
+  const w = opts.widthPx;
+  const h = opts.heightPx;
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  const margin = Math.max(0, Math.min(Math.min(w, h) / 2 - 1, opts.marginPx ?? 24));
+
+  // Repère métrique local (ENU), origine = premier sommet : est/nord en mètres.
+  const lat0 = ring[0][1];
+  const lng0 = ring[0][0];
+  const cosLat = Math.max(1e-6, Math.cos(lat0 * PLAN_DEG2RAD));
+  const toEN = (v: LngLat): [number, number] => [
+    (v[0] - lng0) * PLAN_DEG2M * cosLat,
+    (v[1] - lat0) * PLAN_DEG2M,
+  ];
+
+  const ringEN = ring.map(toEN);
+  const panelsEN = (panels ?? []).map((q) => q.map(toEN));
+  const all = [...ringEN, ...panelsEN.flat()];
+  let minE = Infinity;
+  let maxE = -Infinity;
+  let minN = Infinity;
+  let maxN = -Infinity;
+  for (const [e, n] of all) {
+    if (e < minE) minE = e;
+    if (e > maxE) maxE = e;
+    if (n < minN) minN = n;
+    if (n > maxN) maxN = n;
+  }
+  const spanE = Math.max(1e-6, maxE - minE);
+  const spanN = Math.max(1e-6, maxN - minN);
+  // MÊME échelle sur les deux axes : c'est ce qui rend une cote lisible à la règle.
+  const pxPerM = Math.min((w - 2 * margin) / spanE, (h - 2 * margin) / spanN);
+  const offX = (w - spanE * pxPerM) / 2;
+  const offY = (h - spanN * pxPerM) / 2;
+  // NORD EN HAUT : la latitude croît vers le HAUT de l'écran, donc y décroît.
+  const toPx = ([e, n]: [number, number]): [number, number] => [
+    offX + (e - minE) * pxPerM,
+    offY + (maxN - n) * pxPerM,
+  ];
+
+  const outlinePx = ringEN.map(toPx);
+  const cotes: PlanViewCote[] = ringEN.map((a, i) => {
+    const b = ringEN[(i + 1) % ringEN.length];
+    return {
+      lengthM: Math.hypot(b[0] - a[0], b[1] - a[1]),
+      from: toPx(a),
+      to: toPx(b),
+    };
+  });
+
+  return {
+    outline: outlinePx,
+    panels: panelsEN.map((q) => q.map(toPx)),
+    pxPerM,
+    spanEastWestM: spanE,
+    spanNorthSouthM: spanN,
+    cotes,
+    panelCount: panelsEN.length,
+  };
+}
+
+
+/**
+ * CAL104 — quads lng/lat des modules POSÉS, reconstruits depuis la géométrie que la 3D a
+ * déjà placée : centres ENU (`cx`, `cy`, repère `origin`), empreinte au sol du module
+ * (`slopeLenM × cos β` dans le sens de la pente, `rowWidthM` le long de la rangée) et
+ * azimut du pavage. AUCUN pavage n'est refait : on habille des centres existants, donc le
+ * COMPTE est exactement celui de la 3D.
+ */
+export function panelQuadsLngLat(
+  origin: LngLat,
+  centers: readonly { cx: number; cy: number }[],
+  slopeLenM: number,
+  rowWidthM: number,
+  tiltDeg: number,
+  azimuthDeg: number,
+): PlanQuad[] {
+  const cosLat = Math.max(1e-6, Math.cos(origin[1] * PLAN_DEG2RAD));
+  // Empreinte AU SOL dans le sens de la pente : la longueur du module vue de dessus.
+  const depth = Math.max(1e-6, slopeLenM * Math.cos((tiltDeg || 0) * PLAN_DEG2RAD));
+  const width = Math.max(1e-6, rowWidthM);
+  // L'azimut oriente les rangées : on tourne le rectangle du même angle.
+  const a = (azimuthDeg || 0) * PLAN_DEG2RAD;
+  const ca = Math.cos(a);
+  const sa = Math.sin(a);
+  const half: [number, number][] = [
+    [-width / 2, -depth / 2],
+    [width / 2, -depth / 2],
+    [width / 2, depth / 2],
+    [-width / 2, depth / 2],
+  ];
+  return centers.map((c) =>
+    half.map(([dx, dy]) => {
+      const e = c.cx + dx * ca + dy * sa;
+      const n = c.cy - dx * sa + dy * ca;
+      return [origin[0] + e / (PLAN_DEG2M * cosLat), origin[1] + n / PLAN_DEG2M] as LngLat;
+    }),
+  );
+}
+
 export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   const { map, lowEnd, shadowSize } = deps;
   // Absent (ERP) → false : toutes les branches gardées ci-dessous sont inertes.

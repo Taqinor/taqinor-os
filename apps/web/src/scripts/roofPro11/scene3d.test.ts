@@ -17,6 +17,7 @@ import {
   AFFECTATION_PALETTE,
   AFFECTATION_UNASSIGNED,
   type AffectationRow,
+  projectPlanView,
   type MixedRidgePan,
 } from './scene3d';
 import { buildAreasFromShape } from './zones';
@@ -315,5 +316,61 @@ describe('CAL126 — alimentation du canal de couleur existant', () => {
     const coloring = buildAffectationColoring(AFFECTATION, 'chaine');
     affectationColorFn(coloring, ['PAN-A#1', 'PAN-B#1', 'PAN-B#3']);
     expect([0, 1, 2].map(heat)).toEqual(avant);
+  });
+});
+
+// CAL104 — PROJECTION PLAN ORTHOGRAPHIQUE. Ce que ce bloc prouve : même échelle sur les
+// deux axes (une cote lue est la cote réelle), nord EN HAUT, et surtout — le compte de
+// modules est celui de la 3D RECOPIÉ, jamais recalculé.
+describe('CAL104 — projectPlanView', () => {
+  const ring = rectRing(20, 10); // 20 m E-O × 10 m N-S
+  const opts = { widthPx: 800, heightPx: 400, marginPx: 20 };
+
+  it('projette le contour, orthographique et nord en haut', () => {
+    const plan = projectPlanView(ring, [], opts)!;
+    expect(plan.outline).toHaveLength(4);
+    // rectRing : sommet 0 = sud-ouest, sommet 2 = nord-est. Nord en haut ⇒ y plus PETIT.
+    expect(plan.outline[2][1]).toBeLessThan(plan.outline[0][1]);
+    // Est à droite ⇒ x plus GRAND.
+    expect(plan.outline[1][0]).toBeGreaterThan(plan.outline[0][0]);
+  });
+
+  it('une SEULE échelle : la cote lue est la cote réelle', () => {
+    const plan = projectPlanView(ring, [], opts)!;
+    expect(plan.spanEastWestM).toBeCloseTo(20, 1);
+    expect(plan.spanNorthSouthM).toBeCloseTo(10, 1);
+    const [c0, c1] = plan.cotes;
+    // Le côté sud mesure ~20 m et le côté est ~10 m — mesurés sur la géométrie réelle.
+    expect(c0.lengthM).toBeCloseTo(20, 1);
+    expect(c1.lengthM).toBeCloseTo(10, 1);
+    // Rapport des longueurs À L'ÉCRAN = rapport des longueurs RÉELLES (pas d'anamorphose).
+    const l0 = Math.hypot(c0.to[0] - c0.from[0], c0.to[1] - c0.from[1]);
+    const l1 = Math.hypot(c1.to[0] - c1.from[0], c1.to[1] - c1.from[1]);
+    expect(l0 / l1).toBeCloseTo(c0.lengthM / c1.lengthM, 2);
+  });
+
+  it('le dessin tient dans la zone, marges comprises', () => {
+    const plan = projectPlanView(ring, [], opts)!;
+    for (const [x, y] of plan.outline) {
+      expect(x).toBeGreaterThanOrEqual(opts.marginPx - 1e-6);
+      expect(x).toBeLessThanOrEqual(opts.widthPx - opts.marginPx + 1e-6);
+      expect(y).toBeGreaterThanOrEqual(opts.marginPx - 1e-6);
+      expect(y).toBeLessThanOrEqual(opts.heightPx - opts.marginPx + 1e-6);
+    }
+  });
+
+  it('LE COMPTE EST CELUI DE LA 3D : autant de modules projetés qu’entrés, ni plus ni moins', () => {
+    const modules = [rectRing(2, 1), rectRing(2, 1, -7.5999), rectRing(2, 1, -7.5998)];
+    const plan = projectPlanView(ring, modules, opts)!;
+    expect(plan.panelCount).toBe(3);
+    expect(plan.panels).toHaveLength(3);
+    expect(projectPlanView(ring, [], opts)!.panelCount).toBe(0);
+  });
+
+  it('rien à dessiner ⇒ null, jamais un plan inventé', () => {
+    expect(projectPlanView([], [], opts)).toBeNull();
+    expect(projectPlanView(null, [], opts)).toBeNull();
+    expect(projectPlanView(ring.slice(0, 2), [], opts)).toBeNull();
+    expect(projectPlanView(ring, [], { widthPx: 0, heightPx: 400 })).toBeNull();
   });
 });
