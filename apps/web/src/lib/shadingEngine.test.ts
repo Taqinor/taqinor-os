@@ -12,6 +12,7 @@ import {
   shadeObstructionsENU,
   solarAccessSummary,
   combineSolarAccess,
+  proposeShadedRemoval,
   DIFFUSE_FRACTION_WHEN_SHADED,
   type ShadeObstructionENU,
   type SolarAccessSummary,
@@ -214,6 +215,50 @@ describe('CAL97 — solarAccessSummary : un chiffre reproductible, ou pas de chi
 
   it('aucun pan évaluable → null (jamais un total inventé)', () => {
     expect(combineSolarAccess([null, null])).toBeNull();
+  });
+});
+
+// CAL235 — proposer (jamais appliquer) le retrait des modules les plus ombragés.
+describe('CAL235 — proposeShadedRemoval : une proposition chiffrée, jamais une application', () => {
+  const PANEL_KWC = 0.72;
+
+  it('aucun module sous le seuil → aucune proposition', () => {
+    expect(proposeShadedRemoval([0.98, 0.95, 0.9], PANEL_KWC, 0.75)).toBeNull();
+  });
+
+  it('TOUS les modules sous le seuil → aucune proposition (on ne propose pas de tout retirer)', () => {
+    expect(proposeShadedRemoval([0.3, 0.4, 0.5], PANEL_KWC, 0.75)).toBeNull();
+  });
+
+  it('liste vide ou puissance unitaire inconnue → aucune proposition (rien n’est supposé)', () => {
+    expect(proposeShadedRemoval([], PANEL_KWC)).toBeNull();
+    expect(proposeShadedRemoval([0.9, 0.2], 0)).toBeNull();
+    expect(proposeShadedRemoval([0.9, 0.2], NaN)).toBeNull();
+  });
+
+  it('cible les bons modules et chiffre le gain depuis les calculs EXISTANTS', () => {
+    const p = proposeShadedRemoval([0.98, 0.4, 0.9, 0.5], PANEL_KWC, 0.75);
+    expect(p).not.toBeNull();
+    const prop = p as NonNullable<typeof p>;
+    expect(prop.indices).toEqual([1, 3]);
+    expect(prop.count).toBe(2);
+    expect(prop.remaining).toBe(2);
+    expect(prop.kwcLost).toBeCloseTo(2 * PANEL_KWC, 12);
+    expect(prop.averageBefore).toBeCloseTo((0.98 + 0.4 + 0.9 + 0.5) / 4, 12);
+    expect(prop.averageAfter).toBeCloseTo((0.98 + 0.9) / 2, 12);
+    expect(prop.averageAfter).toBeGreaterThan(prop.averageBefore);
+  });
+
+  it('la proposition ne MUTE rien : la liste d’entrée est intacte (refuser ne change rien)', () => {
+    const perModule = [0.98, 0.4, 0.9, 0.5];
+    const copie = [...perModule];
+    proposeShadedRemoval(perModule, PANEL_KWC, 0.75);
+    expect(perModule).toEqual(copie);
+  });
+
+  it('le seuil est paramétrable et pilote seul la sélection', () => {
+    expect(proposeShadedRemoval([0.98, 0.8, 0.5], PANEL_KWC, 0.6)?.indices).toEqual([2]);
+    expect(proposeShadedRemoval([0.98, 0.8, 0.5], PANEL_KWC, 0.9)?.indices).toEqual([1, 2]);
   });
 });
 

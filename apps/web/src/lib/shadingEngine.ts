@@ -491,6 +491,61 @@ export function combineSolarAccess(
   return { average: weighted / count, count, pans: usable.length };
 }
 
+// ═══════════ CAL235 — PROPOSER (jamais appliquer) le retrait des modules ombragés ═══════════
+// L'accès solaire par module est calculé (CAL97) mais rien n'en tire de décision. On
+// PROPOSE ici de retirer les modules les plus ombragés, avec le compte, le kWc perdu et
+// l'effet sur l'accès solaire moyen — chaque chiffre venant des calculs EXISTANTS, aucun
+// modèle de production nouveau. Cette fonction ne mute RIEN : elle décrit une option.
+
+/** CAL235 — proposition de retrait (description pure, aucune application). */
+export interface ShadeRemovalProposal {
+  /** Index des modules visés (dans l'ordre de la liste d'accès solaire), triés. */
+  indices: number[];
+  /** Nombre de modules visés. */
+  count: number;
+  /** Puissance crête perdue (kWc) = `count` × la puissance unitaire FOURNIE. */
+  kwcLost: number;
+  /** Accès solaire moyen AVANT retrait (0–1). */
+  averageBefore: number;
+  /** Accès solaire moyen des modules RESTANTS (0–1). */
+  averageAfter: number;
+  /** Seuil d'accès solaire retenu pour la proposition. */
+  threshold: number;
+  /** Nombre de modules restants après le retrait proposé. */
+  remaining: number;
+}
+
+/**
+ * CAL235 — propose de retirer les modules dont l'accès solaire est sous `threshold`.
+ * Renvoie `null` (donc AUCUNE proposition) quand :
+ *  - aucun module n'est sous le seuil (il n'y a rien à proposer) ;
+ *  - TOUS les modules sont sous le seuil (retirer l'installation entière n'est pas une
+ *    proposition : c'est un autre sujet, et l'outil ne le suggère pas).
+ * `panelKwc` est la puissance unitaire RÉELLE du panneau du plan — fournie par
+ * l'appelant, jamais supposée ici. PURE : rien n'est appliqué, rien n'est muté.
+ */
+export function proposeShadedRemoval(
+  perModule: readonly number[],
+  panelKwc: number,
+  threshold = SOLAR_ACCESS_LOW,
+): ShadeRemovalProposal | null {
+  if (!perModule.length || !Number.isFinite(panelKwc) || panelKwc <= 0) return null;
+  const indices: number[] = [];
+  for (let i = 0; i < perModule.length; i++) if (perModule[i] < threshold) indices.push(i);
+  if (!indices.length || indices.length === perModule.length) return null;
+  const kept = perModule.filter((_, i) => !indices.includes(i));
+  const mean = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  return {
+    indices,
+    count: indices.length,
+    kwcLost: indices.length * panelKwc,
+    averageBefore: mean(perModule),
+    averageAfter: mean(kept),
+    threshold,
+    remaining: kept.length,
+  };
+}
+
 /**
  * Couleur RVB (0–1 par canal) d'une valeur d'accès solaire (0–1) : dégradé continu
  * ROUGE (faible accès) → AMBRE → VERT (plein soleil). Le mapping est monotone et lié à

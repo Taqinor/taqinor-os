@@ -28,6 +28,7 @@ import {
   pointSolarAccess,
   pointSolarAccessMonth,
   solarAccessSummary,
+  proposeShadedRemoval,
   SOLAR_ACCESS_LOW,
   solarAccessColorRGB,
   type SolarAccessSummary,
@@ -50,6 +51,11 @@ export interface ShadingUiDeps {
   /** WJ21 — applique la teinte d'accès solaire aux panneaux 3D (scene3d), ou l'efface
    *  (colorFor null). Injecté en wrapper paresseux (scene3d est construit après). */
   applyHeatmap: (colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) => void;
+  /** CAL235 — RETIRE les modules proposés (geste EXPLICITE de l'utilisateur, annulable
+   *  par Ctrl+Z comme le reste de l'atelier). Renvoie le nombre réellement retiré — 0 si
+   *  le retrait n'est pas applicable, et alors RIEN ne change. Optionnel : absent, la
+   *  proposition est affichée mais non applicable (l'écran le dit). */
+  removePanels?: (cellIndexes: readonly number[]) => number;
 }
 
 export interface ShadingUi {
@@ -237,6 +243,9 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     return mins > 0 ? `${whole} h ${String(mins).padStart(2, '0')}` : `${whole} h`;
   };
   const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const fmt2 = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+  /** CAL235 — dernière proposition affichée (les modules visés), ou null. */
+  let lastProposal: { indices: number[] } | null = null;
 
   /** Élévation solaire de l'hypothèse courante à la latitude du toit. */
   const imagerySunElevation = (): number =>
@@ -355,6 +364,25 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     }
     const pct = (v: number) => `${(v * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
     const periode = s.month == null ? 'année entière' : HEATMAP_MONTH_LABELS[s.month];
+    // CAL235 — PROPOSITION (jamais appliquée d'office) de retirer les modules les plus
+    // ombragés. Chaque chiffre vient des calculs existants : compte, kWc perdu (puissance
+    // unitaire RÉELLE du plan), effet sur l'accès solaire moyen. Aucun modèle nouveau.
+    const proposal = proposeShadedRemoval(s.perModule, panelKwcOfPlan(), SOLAR_ACCESS_LOW);
+    lastProposal = proposal ? { indices: proposal.indices } : null;
+    const proposalHtml = proposal
+      ? `<div class="mt-2 border border-white/10 bg-nuit-900/40 p-2">` +
+        `<div><span class="font-semibold text-white">Proposition</span> — retirer les ` +
+        `<span class="fig">${proposal.count}</span> module(s) dont l’accès solaire est sous ` +
+        `${esc(pct(proposal.threshold))} : <span class="fig">−${esc(fmt2(proposal.kwcLost))}</span> kWc, ` +
+        `accès solaire moyen des ${proposal.remaining} restants ` +
+        `<span class="fig">${esc(pct(proposal.averageBefore))}</span> → <span class="fig">${esc(pct(proposal.averageAfter))}</span>.</div>` +
+        `<div class="mt-1 opacity-80">Modules visés : ${esc(proposal.indices.map((i) => `nº${i + 1}`).join(', '))}.</div>` +
+        (deps.removePanels
+          ? `<button type="button" id="rp9-solar-access-apply" class="mt-2 border border-white/20 px-2 py-1 font-semibold text-white hover:bg-white/10">Retirer ces modules</button>` +
+            `<span class="ml-2 opacity-80">Rien n’est retiré tant que vous ne cliquez pas ; Ctrl+Z annule.</span>`
+          : '<div class="mt-1 opacity-80">Retrait non applicable sur cet écran — la proposition reste informative.</div>')
+      + '</div>'
+      : '';
     el.innerHTML =
       `<div><span class="font-semibold text-white">Accès solaire (${esc(periode)})</span> — ` +
       `moyenne du pan <span class="fig">${esc(pct(s.average))}</span> sur ${s.count} module(s), ` +
@@ -362,7 +390,17 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       (s.lowCount ? `, dont ${s.lowCount} sous ${esc(pct(SOLAR_ACCESS_LOW))}` : '') +
       '.</div>' +
       `<div class="mt-1 opacity-80">${esc(s.method)}</div>` +
-      `<ul class="mt-1 list-disc pl-4 opacity-80">${s.assumptions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>`;
+      `<ul class="mt-1 list-disc pl-4 opacity-80">${s.assumptions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` +
+      proposalHtml;
+  }
+
+  /** CAL235 — puissance unitaire (kWc) du panneau du plan COURANT, jamais supposée : elle
+   *  vient du pavage lui-même (kWc total ÷ nombre de cellules). 0 si indisponible, ce qui
+   *  éteint simplement la proposition. */
+  function panelKwcOfPlan(): number {
+    const g = ctx.layoutPlan?.grid;
+    if (!g || !g.panels.length || !Number.isFinite(g.kwc) || g.kwc <= 0) return 0;
+    return g.kwc / g.panels.length;
   }
 
   function setHeatmap(on: boolean) {
@@ -565,6 +603,20 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     if (hasShadeSources()) recomputeShading();
   });
   syncHeightUi();
+
+  // CAL235 — l'application du retrait est un GESTE EXPLICITE : rien ne part sans ce clic,
+  // et ce qu'il fait est annulable (Ctrl+Z, CAL100). Refuser ne change rien au plan.
+  accessEl?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('#rp9-solar-access-apply');
+    if (!btn || !lastProposal || !deps.removePanels) return;
+    const removed = deps.removePanels(lastProposal.indices);
+    if (!removed) {
+      setStatus('Retrait impossible sur cette disposition — rien n’a changé.');
+      return;
+    }
+    setStatus(`${removed} module(s) retiré(s) — Ctrl+Z annule ce geste.`);
+    recomputeShading();
+  });
 
   renderSolarAccess(); // CAL97 — état initial (dossier rechargé avec des obstructions)
 

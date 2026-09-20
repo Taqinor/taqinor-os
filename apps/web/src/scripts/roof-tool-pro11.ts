@@ -1294,6 +1294,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // WJ21 — wrapper paresseux : scene3d est construit plus bas ; cette closure n'est
     // appelée qu'après le boot (jamais pendant la TDZ du const scene3d).
     applyHeatmap: (colorFor) => scene3d.setSolarAccessHeatmap(colorFor),
+    // CAL235 — application EXPLICITE de la proposition de retrait (annulable, CAL100).
+    // Wrapper paresseux : `layoutEditor` est construit plus bas.
+    removePanels: (cellIndexes) => layoutEditor.removeCells(cellIndexes),
   });
 
   // — Tracé du contour + recherche d'adresse (géocodage W75). Le module câble lui-même
