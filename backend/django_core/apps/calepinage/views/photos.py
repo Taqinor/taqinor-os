@@ -66,3 +66,34 @@ class PhotosSiteMixin:
         return Response({'photo': photo_en_ligne(photo),
                          'photos': photos_site(calepinage)},
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['patch'],
+            url_path=r'photos/(?P<photo_id>[^/.]+)/calage',
+            permission_classes=[PeutLireOuEcrireCalepinage])
+    def photo_calage(self, request, pk=None, photo_id=None):
+        """CAL53 — pose (ou efface) le calage des 4 coins d'UNE photo de site.
+
+        L'OBJET D'ABORD (CAL29) : le calepinage est résolu par
+        ``self.get_object()`` (borné société), PUIS la photo est cherchée
+        DANS ses photos — une photo d'un autre calepinage, ou d'une autre
+        société, rend 404 sans jamais dire si elle existe ailleurs. Aucun
+        statut ne bouge (règle #4) : caler une photo n'est pas un événement
+        commercial.
+        """
+        from ..selectors import photos_site
+        from ..services.photos import (
+            PhotoRefusee, calage_photo_site, photo_en_ligne,
+        )
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        photo = calepinage.photos_site.filter(pk=photo_id).first()
+        if photo is None:
+            return Response({'detail': 'Photo introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        try:
+            calage_photo_site(photo, request.data.get('calage'))
+        except PhotoRefusee as refus:
+            return Response({refus.champ or 'detail': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'photo': photo_en_ligne(photo),
+                         'photos': photos_site(calepinage)})

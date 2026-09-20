@@ -38,8 +38,8 @@ from uuid import uuid4
 #: la requête en 500.
 MAX_OCTETS = 15 * 1024 * 1024
 
-__all__ = ['PhotoRefusee', 'ajouter_photo_site', 'photo_en_ligne',
-           'MAX_OCTETS']
+__all__ = ['PhotoRefusee', 'ajouter_photo_site', 'calage_photo_site',
+           'photo_en_ligne', 'MAX_OCTETS']
 
 
 class PhotoRefusee(ValueError):
@@ -167,6 +167,55 @@ def ajouter_photo_site(calepinage, fichier, *, genre=None, prise_le=None,
         photo.full_clean(exclude=['company', 'calepinage', 'attachment',
                                   'ajoutee_par'])
         photo.save()
+    return photo
+
+
+def calage_photo_site(photo, calage):
+    """CAL53 — pose ou efface le calage (4 coins ``[lat, lng]``) d'une photo.
+
+    Même discipline que ``apps.visites.views.VisiteTerrainViewSet.calage``
+    (VT11) : ``calage`` vaut ``None`` pour EFFACER (photo non calée), ou un
+    objet ``{"coins": [[lat, lng] × 4]}`` — jamais un objet à trois ou cinq
+    coins, jamais une coordonnée hors amplitude GPS. Chaque refus NOMME le
+    champ ``calage``, jamais un « non enregistré » générique.
+
+    Args:
+        photo: la ``PhotoSite`` — sa société fait foi (bornée par l'appelant).
+        calage: ``None``, ou ``{"coins": [...]}``.
+
+    Raises:
+        PhotoRefusee: forme invalide — champ ``calage``.
+    """
+    if calage is None:
+        photo.calage = None
+        photo.save(update_fields=['calage'])
+        return photo
+
+    coins = calage.get('coins') if isinstance(calage, dict) else None
+    if not isinstance(coins, list) or len(coins) != 4:
+        raise PhotoRefusee(
+            'Le calage attend exactement 4 coins [latitude, longitude].',
+            champ='calage')
+
+    propres = []
+    for coin in coins:
+        if not isinstance(coin, (list, tuple)) or len(coin) != 2:
+            raise PhotoRefusee(
+                'Chaque coin doit être une paire [latitude, longitude].',
+                champ='calage')
+        try:
+            lat, lng = float(coin[0]), float(coin[1])
+        except (TypeError, ValueError):
+            raise PhotoRefusee(
+                'Coordonnée de calage invalide (latitude/longitude '
+                'attendues).', champ='calage') from None
+        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+            raise PhotoRefusee(
+                'Coordonnée de calage hors amplitude GPS.', champ='calage')
+        propres.append([lat, lng])
+
+    photo.calage = {'coins': propres}
+    photo.save(update_fields=['calage'])
     return photo
 
 

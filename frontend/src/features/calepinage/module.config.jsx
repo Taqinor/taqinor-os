@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `features/ao`). */
 import { lazy } from 'react'
-import { Grid3x3, LayoutGrid, PlusCircle } from 'lucide-react'
+import { Grid3x3, Library, LayoutGrid, PlusCircle } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -79,6 +79,14 @@ const PompagePanel = lazy(() => import('./pompage/PompagePanel'))
    une distance RÉELLE saisie, aimantation) puis sa conversion en tracé de toit.
    Contextuel à UN calepinage : deep-link, jamais un item de menu. */
 const PlanImporteCalage = lazy(() => import('./PlanImporteCalage'))
+/* CAL53 — le CALAGE d'une photo de site (CAL52 : drone/oblique/sol) sur la
+   carte, par ses 4 coins (réutilise `roofTextureWarp.js`, VT11). Contextuel à
+   UN calepinage : deep-link ouvert depuis l'atelier (CAL37), jamais un item
+   de menu permanent qui n'aurait aucun calepinage à désigner. */
+const PhotoSiteCalage = lazy(() => import('./PhotoSiteCalage'))
+// CAL201 — la bibliothèque du module (presets, kits, modèles, favoris) :
+// société active respectée, lecture seule sans `calepinage_gerer`.
+const Bibliotheque = lazy(() => import('./Bibliotheque'))
 /* CAL58 — la PENTE saisie de trois façons (degrés, pourcentage, cotes) qui
    convergent vers une seule valeur, laquelle affiche toujours sa provenance. */
 const SaisiePente = lazy(() => import('./SaisiePente'))
@@ -127,19 +135,30 @@ const config = {
         icon: <PlusCircle size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      {
+        // CAL201 — presets/kits/modèles/favoris : un item de nav PERMANENT,
+        // contrairement aux panneaux contextuels d'UN calepinage ci-dessous.
+        to: '/calepinage/bibliotheque',
+        label: 'Bibliothèque',
+        icon: <Library size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
   // `titles` — correspondance par PRÉFIXE, du plus spécifique au plus général.
   titles: [
     ['/calepinage/nouveau', 'Calepinage — Nouveau calepinage'],
+    ['/calepinage/bibliotheque', 'Calepinage — Bibliothèque'],
     ['/calepinage/', 'Calepinage — Atelier'],
     ['/calepinage', 'Calepinage — Calepinages'],
   ],
   sectionLabels: { calepinage: 'Calepinage' },
   routes: [
     { path: '/calepinage', component: CalepinageList, roles: ROLES },
-    // AVANT `/calepinage/:id` — sinon « nouveau » est lu comme un identifiant.
+    // AVANT `/calepinage/:id` — sinon « nouveau »/« bibliotheque » seraient lus
+    // comme un identifiant.
     { path: '/calepinage/nouveau', component: CalepinageNouveau, roles: ROLES },
+    { path: '/calepinage/bibliotheque', component: Bibliotheque, roles: ROLES },
     // Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
     // contextuel à un objet, comme `/ao/affaires/:id/design`. C'est la cible de
     // la redirection après création (CAL36).
@@ -153,6 +172,8 @@ const config = {
     { path: '/calepinage/:id/pompage', component: PompagePanel, roles: ROLES },
     // CAL63 — caler le plan importé de CE calepinage sur la carte.
     { path: '/calepinage/:id/plan', component: PlanImporteCalage, roles: ROLES },
+    // CAL53 — caler une photo de site (CAL52) de CE calepinage sur la carte.
+    { path: '/calepinage/:id/photos', component: PhotoSiteCalage, roles: ROLES },
     // CAL58 — la pente de CE calepinage, par l'un des trois modes de saisie.
     { path: '/calepinage/:id/pente', component: SaisiePente, roles: ROLES },
     // CAL89 — le champ au SOL de CE calepinage (mode terrain).

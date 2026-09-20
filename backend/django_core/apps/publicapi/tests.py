@@ -283,7 +283,12 @@ class ManagementEndpointTests(TestCase):
         # NTCON31 a ajouté 4 ressources BTP/EPC (montées de longue date mais
         # jamais documentées ici jusqu'à NTUX33 — comblé au passage) ; NTUX33
         # ajoute 2 ressources UX (vues sauvegardées, favoris) ; NTP2P39 ajoute
+<<<<<<< HEAD
         # 2 ressources Procure-to-Pay (demandes d'achat, RFQ) ; CAL214 ajoute /calepinages/ — 16 au total.
+=======
+        # 2 ressources Procure-to-Pay (demandes d'achat, RFQ) ; CAL214 ajoute
+        # /calepinages/ (les conceptions de toiture) — 16 au total.
+>>>>>>> worktree-agent-ad758ee560211d401
         self.assertEqual(len(data['endpoints']), 16)
         self.assertIn('authentification', data)
         self.assertIn('Api-Key', data['authentification']['entete'])

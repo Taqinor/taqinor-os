@@ -41,6 +41,14 @@ import RaccourcisAtelier from './RaccourcisAtelier'
    l'atelier ne les expose pas, le panneau le DIT (« dessinez d'abord un pan de
    toit ») au lieu de faire semblant. */
 import RemplissageProuve from './RemplissageProuve'
+/* CAL70 — les allées/passages de maintenance : le moteur sait DÉJÀ chercher
+   la plus grande allée à compte constant (`allee_gratuite.py`, AOF50) et la
+   publie dans `suggestions[]` de `moteur/calculer` ; ce panneau se pose ICI
+   (emplacement CAL37) plutôt que sur une route à lui, pour la même raison
+   que CAL79 : sans la géométrie de l'atelier, il n'y aurait rien à analyser. */
+import PanneauAllees from './PanneauAllees'
+// CAL188 — le badge « calepinage périmé », lu du MÊME champ serveur.
+import BadgePerime from './BadgePerime'
 
 /* ============================================================================
    CAL37 — L'UNIQUE EMPLACEMENT DES PANNEAUX DE L'ATELIER, mode `calepinage`.
@@ -97,7 +105,13 @@ export default function AtelierPanneaux({
   return (
     <div className="cine-card mt-6 p-6" data-testid="cal-atelier-panneaux">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-        <p className="tech-label rule-brass text-brass-300">Calepinage</p>
+        <span className="flex items-baseline gap-2">
+          <p className="tech-label rule-brass text-brass-300">Calepinage</p>
+          {/* CAL188 — l'en-tête de l'atelier, lu du MÊME champ serveur que la
+              fiche devis et la liste (CAL189), jamais recalculé ici. */}
+          <BadgePerime layoutStale={detail?.layout_stale}
+            layoutNbPanneaux={detail?.layout_nb_panneaux} />
+        </span>
         {/* Le comparatif des variantes est CONTEXTUEL à ce calepinage : il
             s'ouvre depuis son atelier, jamais depuis une entrée de menu
             permanente qui n'aurait aucun calepinage à désigner. */}
@@ -107,6 +121,15 @@ export default function AtelierPanneaux({
           className="text-sm font-semibold text-brass-300 underline"
         >
           Comparer les variantes
+        </Link>
+        {/* CAL53 — la photo de site (CAL52) se cale depuis ici : un item de
+            menu permanent n'aurait aucun calepinage à désigner. */}
+        <Link
+          to={`/calepinage/${calepinageId}/photos`}
+          data-testid="cal-lien-photos-calage"
+          className="text-sm font-semibold text-brass-300 underline"
+        >
+          Photos du site
         </Link>
       </div>
 
@@ -155,6 +178,9 @@ export default function AtelierPanneaux({
         onAppliquer={builderApi?.appliquerPlan ?? null}
         lectureSeule={lectureSeule}
       />
+
+      {/* CAL70 — les allées de maintenance et le plateau gratuit du moteur. */}
+      <PanneauAllees entree={builderApi?.entreeMoteur ?? null} lectureSeule={lectureSeule} />
 
       {/* CAL101 — l'aide-mémoire des raccourcis, à portée de « ? ». */}
       <div className="mt-4">

@@ -24,6 +24,11 @@ vi.mock('../../api/calepinageApi', () => ({
       syncDevis: vi.fn(),
       importerContourAo: vi.fn(),
     },
+    // CAL70 — PanneauAllees (monté ici, emplacement CAL37) lit les réglages
+    // société et interroge le moteur ; sans double par défaut, la promesse
+    // non résolue laisse `.get`/`.calculer` undefined et casse CE fichier.
+    parametres: { get: vi.fn().mockResolvedValue({ data: { degagements: {} } }) },
+    moteur: { calculer: vi.fn() },
   },
 }))
 vi.mock('../../api/aoApi', () => ({
