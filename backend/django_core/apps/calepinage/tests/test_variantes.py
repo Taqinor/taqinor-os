@@ -186,8 +186,7 @@ class GardeDeSurfaceTest(SimpleTestCase):
             'retenue = next((v for v in lignes if v.retenue), None)'))
         self.assertFalse(_ecritures_retenue(
             'qs.filter(calepinage=calepinage, retenue=True)'))
-        self.assertFalse(_ecritures_retenue('if v.retenue == True:
-    pass'))
+        self.assertFalse(_ecritures_retenue('if v.retenue == True:\n    pass'))
 
     def test_aucune_ecriture_ailleurs(self):
         coupables = []
