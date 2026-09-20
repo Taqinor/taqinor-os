@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10956, operations: 19298, components: 5846}
+counts: {paths: 10972, operations: 19314, components: 5856}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -169,6 +169,7 @@ operations:
 - post /api/django/adsengine/actions/{id}/reject/ -> django_adsengine_actions_reject_create
 - get /api/django/adsengine/ads/{ad_meta_id}/previews/ -> django_adsengine_ads_previews_retrieve
 - get /api/django/adsengine/ads/{meta_id}/histoire/ -> django_adsengine_ads_histoire_retrieve
+- post /api/django/adsengine/adsets/{adset_meta_id}/recombiner-dco/ -> django_adsengine_adsets_recombiner_dco_create
 - get /api/django/adsengine/alertes/ -> django_adsengine_alertes_list
 - get /api/django/adsengine/alertes/history/ -> django_adsengine_alertes_history_retrieve
 - post /api/django/adsengine/alertes/{alert_id}/snooze/ -> django_adsengine_alertes_snooze_create
@@ -342,6 +343,10 @@ operations:
 - put /api/django/adsengine/phases-vol/{id}/ -> django_adsengine_phases_vol_update
 - get /api/django/adsengine/plans-vol/ -> django_adsengine_plans_vol_list
 - post /api/django/adsengine/plans-vol/ -> django_adsengine_plans_vol_create
+- get /api/django/adsengine/plans-vol/autonomie/ -> django_adsengine_plans_vol_autonomie_retrieve
+- post /api/django/adsengine/plans-vol/autonomie/acquitter-simulation/ -> django_adsengine_plans_vol_autonomie_acquitter_simulation_create
+- post /api/django/adsengine/plans-vol/autonomie/activer/ -> django_adsengine_plans_vol_autonomie_activer_create
+- post /api/django/adsengine/plans-vol/autonomie/desactiver/ -> django_adsengine_plans_vol_autonomie_desactiver_create
 - get /api/django/adsengine/plans-vol/backlog-arms/ -> django_adsengine_plans_vol_backlog_arms_retrieve
 - get /api/django/adsengine/plans-vol/preflight/ -> django_adsengine_plans_vol_preflight_retrieve
 - post /api/django/adsengine/plans-vol/simulate/ -> django_adsengine_plans_vol_simulate_create
@@ -418,6 +423,9 @@ operations:
 - patch /api/django/adsengine/table-faits/{id}/ -> django_adsengine_table_faits_partial_update
 - put /api/django/adsengine/table-faits/{id}/ -> django_adsengine_table_faits_update
 - post /api/django/adsengine/table-faits/{id}/publish/ -> django_adsengine_table_faits_publish_create
+- get /api/django/adsengine/tests-terrain/ -> django_adsengine_tests_terrain_retrieve
+- post /api/django/adsengine/tests-terrain/{ft}/resultat/ -> django_adsengine_tests_terrain_resultat_create
+- post /api/django/adsengine/tests-terrain/{ft}/structures/ -> django_adsengine_tests_terrain_structures_create
 - get /api/django/adsengine/wiring-health/ -> django_adsengine_wiring_health_retrieve
 - get /api/django/agent/actions/ -> django_agent_actions_retrieve
 - post /api/django/agent/actions/automation-draft/ -> django_agent_actions_automation_draft_create
@@ -9870,6 +9878,7 @@ operations:
 - post /api/v1/adsengine/actions/{id}/reject/ -> v1_adsengine_actions_reject_create
 - get /api/v1/adsengine/ads/{ad_meta_id}/previews/ -> v1_adsengine_ads_previews_retrieve
 - get /api/v1/adsengine/ads/{meta_id}/histoire/ -> v1_adsengine_ads_histoire_retrieve
+- post /api/v1/adsengine/adsets/{adset_meta_id}/recombiner-dco/ -> v1_adsengine_adsets_recombiner_dco_create
 - get /api/v1/adsengine/alertes/ -> v1_adsengine_alertes_list
 - get /api/v1/adsengine/alertes/history/ -> v1_adsengine_alertes_history_retrieve
 - post /api/v1/adsengine/alertes/{alert_id}/snooze/ -> v1_adsengine_alertes_snooze_create
@@ -10043,6 +10052,10 @@ operations:
 - put /api/v1/adsengine/phases-vol/{id}/ -> v1_adsengine_phases_vol_update
 - get /api/v1/adsengine/plans-vol/ -> v1_adsengine_plans_vol_list
 - post /api/v1/adsengine/plans-vol/ -> v1_adsengine_plans_vol_create
+- get /api/v1/adsengine/plans-vol/autonomie/ -> v1_adsengine_plans_vol_autonomie_retrieve
+- post /api/v1/adsengine/plans-vol/autonomie/acquitter-simulation/ -> v1_adsengine_plans_vol_autonomie_acquitter_simulation_create
+- post /api/v1/adsengine/plans-vol/autonomie/activer/ -> v1_adsengine_plans_vol_autonomie_activer_create
+- post /api/v1/adsengine/plans-vol/autonomie/desactiver/ -> v1_adsengine_plans_vol_autonomie_desactiver_create
 - get /api/v1/adsengine/plans-vol/backlog-arms/ -> v1_adsengine_plans_vol_backlog_arms_retrieve
 - get /api/v1/adsengine/plans-vol/preflight/ -> v1_adsengine_plans_vol_preflight_retrieve
 - post /api/v1/adsengine/plans-vol/simulate/ -> v1_adsengine_plans_vol_simulate_create
@@ -10119,6 +10132,9 @@ operations:
 - patch /api/v1/adsengine/table-faits/{id}/ -> v1_adsengine_table_faits_partial_update
 - put /api/v1/adsengine/table-faits/{id}/ -> v1_adsengine_table_faits_update
 - post /api/v1/adsengine/table-faits/{id}/publish/ -> v1_adsengine_table_faits_publish_create
+- get /api/v1/adsengine/tests-terrain/ -> v1_adsengine_tests_terrain_retrieve
+- post /api/v1/adsengine/tests-terrain/{ft}/resultat/ -> v1_adsengine_tests_terrain_resultat_create
+- post /api/v1/adsengine/tests-terrain/{ft}/structures/ -> v1_adsengine_tests_terrain_structures_create
 - get /api/v1/adsengine/wiring-health/ -> v1_adsengine_wiring_health_retrieve
 - get /api/v1/agent/actions/ -> v1_agent_actions_retrieve
 - post /api/v1/agent/actions/automation-draft/ -> v1_agent_actions_automation_draft_create
@@ -19393,6 +19409,14 @@ components:
 - AdmissionRequest
 - AdmissionStatutEnum
 - AdmissionTypeEnum
+- AdsengineAutonomyActivation
+- AdsengineAutonomyCockpit
+- AdsengineAutonomyDeactivation
+- AdsengineAutonomySimulationAck
+- AdsengineDcoRecombinaison
+- AdsengineFieldTestList
+- AdsengineFieldTestResult
+- AdsengineFieldTestStructures
 - AffectationConducteur
 - AffectationConducteurRequest
 - AffectationRessource
@@ -20724,6 +20748,7 @@ components:
 - FieldRolePermission
 - FieldRolePermissionNiveauEnum
 - FieldRolePermissionRequest
+- FieldTestResultRequest
 - FinancingIntentEnum
 - FlightPhase
 - FlightPhaseRequest
@@ -20775,6 +20800,7 @@ components:
 - FraisImportCategorieEnum
 - FraisImportRequest
 - FrequenceReportingEnum
+- FtEnum
 - FusionReponse
 - FusionRequeteRequest
 - FusionnerPropositionRequeteRequest
