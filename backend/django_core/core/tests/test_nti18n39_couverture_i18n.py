@@ -43,7 +43,10 @@ def make_company(slug, nom, actif=True):
         slug=slug, defaults={'nom': nom})
     if company.actif != actif:
         company.actif = actif
-        company.save(update_fields=['actif'])
+        # SCA18 — `Company.save()` réconcilie le pont bool↔statut : on laisse
+        # `statut` dans `update_fields` pour que la suspension soit persistée
+        # entièrement, pas seulement le booléen.
+        company.save(update_fields=['actif', 'statut'])
     return company
 
 
