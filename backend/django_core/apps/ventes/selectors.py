@@ -447,6 +447,32 @@ def calepinage_du_devis(devis, company=None):
     }
 
 
+def lignes_produits_calepinage(devis):
+    """CAL243 — les lignes PRODUIT « retenues » d'un devis, pour l'équipement
+    d'un calepinage lié.
+
+    Point d'entrée cross-app LECTURE SEULE (``apps.calepinage`` n'importe
+    JAMAIS ``apps.ventes.models``) : un objet léger par ligne
+    (``produit``, ``designation``, ``quantite``), jamais le modèle
+    ``LigneDevis`` lui-même. Ne rend que les lignes de type ``'produit'``
+    dont le produit est renseigné, et EXCLUT la variante ``'avec'`` (option
+    « avec batterie ») : la disposition retient l'équipement de l'option PAR
+    DÉFAUT (commune + « sans »), jamais un mélange des deux options d'un
+    devis « Les deux ». Devis ``None`` -> liste vide.
+    """
+    if devis is None:
+        return []
+    return [
+        {'produit': ligne.produit, 'designation': ligne.designation,
+         'quantite': ligne.quantite}
+        for ligne in (devis.lignes
+                     .filter(type_ligne='produit', produit_id__isnull=False)
+                     .exclude(variante='avec')
+                     .select_related('produit')
+                     .order_by('id'))
+    ]
+
+
 def peremption_layout_devis(devis):
     """CAL189 — ``{layout_stale, layout_nb_panneaux}`` d'un devis.
 

@@ -29,6 +29,7 @@ SOUS_MODULES = (
     'moteur',         # appels au moteur pur core.calepinage
     'sorties',        # PDF / SVG
     'io_layout',      # import/export du document roof_layout
+    'equipements',    # CAL243 — @action equipements, rattachée depuis urls.py
 )
 
 #: Les seuls préfixes d'URL admis sous ``/api/django/calepinage/``.
