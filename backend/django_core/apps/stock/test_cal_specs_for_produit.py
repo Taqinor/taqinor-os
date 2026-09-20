@@ -93,12 +93,30 @@ class SpecsForProduitBlocModuleTests(TestCase):
         self.assertEqual(specs_for_produit(autre), {})
 
     def test_aucun_import_de_modele_stock_hors_de_lapp(self):
-        """Garde-fou de frontière (CLAUDE.md) : ``apps.calepinage`` n'existe
-        pas encore dans ce dépôt — ce test documente que le sélecteur ne
-        dépend que de ``apps.stock.models``, jamais d'une autre app."""
+        """Garde-fou de frontière (CLAUDE.md) : ce sélecteur ne dépend que de
+        ``apps.stock.models`` — aucun ``import`` réel d'une autre app
+        métier, en particulier ``apps.calepinage`` (qui, depuis CAL119, en
+        est justement un CONSOMMATEUR, cf. la docstring de
+        ``dimensions_de_pose``) ni ``apps.ventes.models``. Un import réel,
+        pas une simple mention en commentaire/docstring — d'où une lecture
+        de l'AST plutôt qu'un ``assertNotIn`` textuel sur tout le module."""
+        import ast
         import inspect
 
         import apps.stock.selectors as mod
-        source = inspect.getsource(mod)
-        self.assertNotIn('apps.calepinage', source)
-        self.assertNotIn('apps.ventes.models', source)
+        tree = ast.parse(inspect.getsource(mod))
+        modules_importes = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules_importes.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                modules_importes.add(node.module)
+        self.assertFalse(
+            any(m == 'apps.calepinage' or m.startswith('apps.calepinage.')
+                for m in modules_importes),
+            f'import apps.calepinage détecté : {modules_importes}')
+        self.assertFalse(
+            any(m == 'apps.ventes.models'
+                or m.startswith('apps.ventes.models.')
+                for m in modules_importes),
+            f'import apps.ventes.models détecté : {modules_importes}')

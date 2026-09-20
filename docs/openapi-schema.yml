@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10780, operations: 19082, components: 5738}
+counts: {paths: 10782, operations: 19084, components: 5738}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -8746,6 +8746,7 @@ operations:
 - post /api/django/stock/factures-fournisseur/{id}/resoudre-exception/ -> django_stock_factures_fournisseur_resoudre_exception_create
 - get /api/django/stock/fiches-techniques/ -> django_stock_fiches_techniques_list
 - post /api/django/stock/fiches-techniques/ -> django_stock_fiches_techniques_create
+- post /api/django/stock/fiches-techniques/importer-datasheet/ -> django_stock_fiches_techniques_importer_datasheet_create
 - delete /api/django/stock/fiches-techniques/{id}/ -> django_stock_fiches_techniques_destroy
 - get /api/django/stock/fiches-techniques/{id}/ -> django_stock_fiches_techniques_retrieve
 - patch /api/django/stock/fiches-techniques/{id}/ -> django_stock_fiches_techniques_partial_update
@@ -18288,6 +18289,7 @@ operations:
 - post /api/v1/stock/factures-fournisseur/{id}/resoudre-exception/ -> v1_stock_factures_fournisseur_resoudre_exception_create
 - get /api/v1/stock/fiches-techniques/ -> v1_stock_fiches_techniques_list
 - post /api/v1/stock/fiches-techniques/ -> v1_stock_fiches_techniques_create
+- post /api/v1/stock/fiches-techniques/importer-datasheet/ -> v1_stock_fiches_techniques_importer_datasheet_create
 - delete /api/v1/stock/fiches-techniques/{id}/ -> v1_stock_fiches_techniques_destroy
 - get /api/v1/stock/fiches-techniques/{id}/ -> v1_stock_fiches_techniques_retrieve
 - patch /api/v1/stock/fiches-techniques/{id}/ -> v1_stock_fiches_techniques_partial_update
