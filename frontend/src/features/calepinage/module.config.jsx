@@ -65,6 +65,23 @@ const CalepinageNouveau = lazy(() => import('./CalepinageNouveau'))
 // CAL42 — le comparatif des variantes (CAL105 fondue) : tableau une colonne par
 // variante + vue côte à côte, alimentés UNIQUEMENT par le contrat CAL3.
 const VariantesCompare = lazy(() => import('./VariantesCompare'))
+/* CAL121 — le panneau « fiches incomplètes » : pour les équipements RETENUS de
+   ce calepinage, le champ manquant et le calcul qu'il débloque. Contextuel à UN
+   calepinage (agrégat CAL243), donc une route de deep-link et non un item de
+   nav — un menu permanent n'aurait aucun calepinage à désigner. */
+const FichesIncompletes = lazy(() => import('./equipements/FichesIncompletes'))
+/* CAL159 — l'écran POMPAGE du module : puits, besoin, réservoir, courbe de
+   pompe avec point de fonctionnement et 12 volumes mensuels. L'atelier
+   (`ToitureDesign`) est un atelier de TOITURE et n'a aucune surface pompage ;
+   celle-ci est contextuelle à UN calepinage, donc un deep-link. */
+const PompagePanel = lazy(() => import('./pompage/PompagePanel'))
+/* CAL63 — le CALAGE d'un plan importé (translation, rotation, échelle prise sur
+   une distance RÉELLE saisie, aimantation) puis sa conversion en tracé de toit.
+   Contextuel à UN calepinage : deep-link, jamais un item de menu. */
+const PlanImporteCalage = lazy(() => import('./PlanImporteCalage'))
+/* CAL58 — la PENTE saisie de trois façons (degrés, pourcentage, cotes) qui
+   convergent vers une seule valeur, laquelle affiche toujours sa provenance. */
+const SaisiePente = lazy(() => import('./SaisiePente'))
 
 const config = {
   key: 'calepinage',
@@ -106,6 +123,15 @@ const config = {
     { path: '/calepinage/:id', component: AtelierCalepinage, roles: ROLES },
     // contextuelle: comparatif d'UN calepinage, ouvert depuis son atelier (CAL37) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/variantes', component: VariantesCompare, roles: ROLES },
+    // CAL121 — contextuelle elle aussi : les fiches techniques trouées des
+    // équipements de CE calepinage, avec le calcul que chaque champ débloque.
+    { path: '/calepinage/:id/fiches', component: FichesIncompletes, roles: ROLES },
+    // CAL159 — le dimensionnement de pompage de CE calepinage.
+    { path: '/calepinage/:id/pompage', component: PompagePanel, roles: ROLES },
+    // CAL63 — caler le plan importé de CE calepinage sur la carte.
+    { path: '/calepinage/:id/plan', component: PlanImporteCalage, roles: ROLES },
+    // CAL58 — la pente de CE calepinage, par l'un des trois modes de saisie.
+    { path: '/calepinage/:id/pente', component: SaisiePente, roles: ROLES },
   ],
 }
 

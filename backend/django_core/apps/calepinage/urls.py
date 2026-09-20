@@ -36,6 +36,10 @@ from .views import verrou as _verrou_action  # noqa: F401
 from .views import archivage as _archivage_action  # noqa: F401
 # CAL216 — même patron : rattache ``export-layout``/``import-layout``.
 from .views import io_layout as _io_layout_action  # noqa: F401
+# CAL159 — même discipline pour l'action ``pompage`` (dimensionnement du
+# pompage solaire, services CAL155-CAL158) : code dans son propre fichier,
+# rattachement par cet import, AVANT ``router.register``.
+from .views import pompage as _pompage_action  # noqa: F401
 
 router = DefaultRouter()
 router.register(r'calepinages', CalepinageViewSet, basename='calepinage')
