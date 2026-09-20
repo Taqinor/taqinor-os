@@ -1408,6 +1408,14 @@ app.conf.beat_schedule = {
         'task': 'core.recalculer_couverture_i18n',
         'schedule': crontab(day_of_week=1, hour=5, minute=20),
     },
+    # NTI18N38 — purge MENSUELLE des traductions de contenu orphelines
+    # (`core.ContentTranslation` désigne sa cible par contenttype+object_id,
+    # donc la suppression de l'objet source n'emporte rien). Le 1er du mois,
+    # heure creuse — voir apps/parametres/scheduled.py.
+    'parametres-purger-traductions-orphelines': {
+        'task': 'parametres.purger_traductions_orphelines',
+        'schedule': crontab(day_of_month=1, hour=4, minute=20),
+    },
 }
 
 
