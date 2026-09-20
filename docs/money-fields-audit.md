@@ -379,8 +379,8 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/stock/models.py:1865` | InventaireAnnuel.total_valeur | 16 | 2 |
 | `backend/django_core/apps/stock/models.py:1907` | RevalorisationStock.ancien_cout | 10 | 2 |
 | `backend/django_core/apps/stock/models.py:1910` | RevalorisationStock.nouveau_cout | 10 | 2 |
-| `backend/django_core/apps/stock/models.py:2522` | BudgetDepartement.montant_alloue | 14 | 2 |
-| `backend/django_core/apps/stock/models.py:2591` | EngagementBudget.montant | 14 | 2 |
+| `backend/django_core/apps/stock/models.py:2672` | BudgetDepartement.montant_alloue | 14 | 2 |
+| `backend/django_core/apps/stock/models.py:2741` | EngagementBudget.montant | 14 | 2 |
 | `backend/django_core/apps/stock/models_incident_fournisseur.py:57` | IncidentQualiteFournisseur.cout_impact_mad | 12 | 2 |
 | `backend/django_core/apps/stock/models_negoce_params.py:44` | ParametresNegoce.cout_rupture_jour_mad | 12 | 2 |
 | `backend/django_core/apps/stock/models_rfa.py:35` | AccordRFAFournisseur.montant_fixe | 14 | 2 |

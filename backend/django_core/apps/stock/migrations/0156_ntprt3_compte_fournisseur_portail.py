@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('authentication', '0001_initial'),
-        ('stock', '0148_stkcat27_recherche_unaccent_trgm'),
+        ('stock', '0154_cal118_fiche_batterie_cycles'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

@@ -96,6 +96,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/btp_chantier/models.py::AbonnementRapportPhoto.company` | backend/django_core/apps/btp_chantier/models.py:1044 | authentication.Company | CASCADE |
 | `backend/django_core/apps/btp_chantier/models.py::LotChecklistItem.company` | backend/django_core/apps/btp_chantier/models.py:1087 | authentication.Company | CASCADE |
 | `backend/django_core/apps/btp_chantier/models.py::ParametresBtpChantier.company` | backend/django_core/apps/btp_chantier/models.py:1152 | authentication.Company | CASCADE |
+| `backend/django_core/apps/calepinage/models.py::Calepinage.devis` | backend/django_core/apps/calepinage/models.py:66 | ventes.Devis | SET_NULL |
 | `backend/django_core/apps/chat/models.py::Conversation.company` | backend/django_core/apps/chat/models.py:36 | authentication.Company | CASCADE |
 | `backend/django_core/apps/chat/models.py::Message.company` | backend/django_core/apps/chat/models.py:137 | authentication.Company | CASCADE |
 | `backend/django_core/apps/chat/models.py::UserChatStatus.company` | backend/django_core/apps/chat/models.py:319 | authentication.Company | CASCADE |
@@ -958,7 +959,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/rh/models.py::HistoriqueCompetence.company` | backend/django_core/apps/rh/models.py:6251 | authentication.Company | CASCADE |
 | `backend/django_core/apps/rh/models.py::RetourFeedback360.company` | backend/django_core/apps/rh/models.py:6314 | authentication.Company | CASCADE |
 | `backend/django_core/apps/rh/models.py::PlanAppreciation.company` | backend/django_core/apps/rh/models.py:6386 | authentication.Company | CASCADE |
-| `backend/django_core/apps/roles/models.py::Role.company` | backend/django_core/apps/roles/models.py:1292 | authentication.Company | CASCADE |
+| `backend/django_core/apps/roles/models.py::Role.company` | backend/django_core/apps/roles/models.py:1316 | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py::SavSlaSettings.company` | backend/django_core/apps/sav/models.py:56 | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py::MaintenanceChecklistTemplate.company` | backend/django_core/apps/sav/models.py:268 | authentication.Company | CASCADE |
 | `backend/django_core/apps/sav/models.py::MaintenanceChecklistItem.company` | backend/django_core/apps/sav/models.py:286 | authentication.Company | CASCADE |
@@ -1055,9 +1056,9 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/stock/models.py::RevisionKit.company` | backend/django_core/apps/stock/models.py:2030 | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models.py::FicheTechnique.company` | backend/django_core/apps/stock/models.py:2085 | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models.py::FicheTechnique.produit` | backend/django_core/apps/stock/models.py:2089 | Produit | PROTECT |
-| `backend/django_core/apps/stock/models.py::ModeleBonCommandeFournisseur.company` | backend/django_core/apps/stock/models.py:2354 | authentication.Company | CASCADE |
-| `backend/django_core/apps/stock/models.py::ModeleBonCommandeFournisseurLigne.produit` | backend/django_core/apps/stock/models.py:2387 | Produit | CASCADE |
-| `backend/django_core/apps/stock/models.py::NomenclatureCodeBarres.company` | backend/django_core/apps/stock/models.py:2417 | authentication.Company | CASCADE |
+| `backend/django_core/apps/stock/models.py::ModeleBonCommandeFournisseur.company` | backend/django_core/apps/stock/models.py:2504 | authentication.Company | CASCADE |
+| `backend/django_core/apps/stock/models.py::ModeleBonCommandeFournisseurLigne.produit` | backend/django_core/apps/stock/models.py:2537 | Produit | CASCADE |
+| `backend/django_core/apps/stock/models.py::NomenclatureCodeBarres.company` | backend/django_core/apps/stock/models.py:2567 | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models_consignation.py::DepotConsignation.produit` | backend/django_core/apps/stock/models_consignation.py:32 | stock.Produit | PROTECT |
 | `backend/django_core/apps/stock/models_incident_fournisseur.py::IncidentQualiteFournisseur.produit` | backend/django_core/apps/stock/models_incident_fournisseur.py:40 | stock.Produit | SET_NULL |
 | `backend/django_core/apps/stock/models_negoce_params.py::ParametresNegoce.company` | backend/django_core/apps/stock/models_negoce_params.py:19 | authentication.Company | CASCADE |

@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('achats', '0005_aud208_montant_positif'),
         ('authentication', '0001_initial'),
-        ('stock', '0149_ntprt3_compte_fournisseur_portail'),
+        ('stock', '0156_ntprt3_compte_fournisseur_portail'),
     ]
 
     operations = [
