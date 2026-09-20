@@ -1785,14 +1785,23 @@ def _lint_and_route_variants(company, result, *, groundedness_scorer=None):
     asset qui montre un vrai client est structurellement interdit, quels que
     soient les verdicts.
 
-    Renvoie ``{'members', 'direct', 'audit', 'clean_templates'}``."""
+    Renvoie ``{'members', 'direct', 'audit', 'clean_templates'}``.
+    ``clean_templates`` n'est renseigné que si le lot est ENTIÈREMENT propre —
+    des assets produits, AUCUNE variante rejetée (PUB-P8/C8), lint policy OK et
+    routeur « tout vert » sur chacun."""
     from . import groundedness, policy_lint, tier_router
 
     entries = {e.get('asset_id'): e
                for e in (result.get('variants') or []) if e.get('asset_id')}
     assets = result.get('assets') or []
     members, direct, audit = [], [], []
-    clean = bool(assets)
+    # PUB-P8/C8 — « semaine propre » = le LOT ENTIER est propre : au moins un
+    # asset ET **aucune variante rejetée**. Un lot dont une variante a été
+    # barrée par le vérificateur de chiffres (``rejected``) créditait quand même
+    # la graduation du gabarit : un gabarit qui hallucine une fois sur trois
+    # gagnait des semaines propres. Les deux autres conditions restent le lint
+    # policy et le « tout vert » du routeur, évaluées asset par asset ci-dessous.
+    clean = bool(assets) and not (result.get('rejected') or [])
     templates = []
     for asset in assets:
         entry = entries.get(asset.pk) or {}
@@ -1866,8 +1875,9 @@ def _run_grounded_generation(company, seed_brief, *, components=None,
     INSÉRÉS ici, sur le chemin réel : une variante bloquée par le linter
     n'atteint jamais le backlog (elle n'est même pas membre du lot), une variante
     de Palier B est flaggée « revue humaine », une variante de Palier A file
-    directement en file, et un lot entièrement vert alimente la graduation du
-    gabarit (``record_clean_week``). Renvoie un dict de rapport."""
+    directement en file, et un lot entièrement vert — aucune variante rejetée
+    comprise (PUB-P8/C8) — alimente la graduation du gabarit
+    (``record_clean_week``). Renvoie un dict de rapport."""
     from . import generation, generation_audit
     from .models import CreativeBacklogItem, CreativeGenerationBatch
 

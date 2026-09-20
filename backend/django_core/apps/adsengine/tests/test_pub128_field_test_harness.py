@@ -196,6 +196,29 @@ class FieldTestScreenApiTests(FieldTestHarnessBase):
         self.assertTrue(body['toutes_tranchees'])
         self.assertEqual(body['constantes_en_attente'], [])
 
+    def test_recording_without_any_date_falls_back_to_today(self):
+        # PUB-P8/C4 — la clé ``measured_on`` est OMISE (case optionnelle laissée
+        # vide côté écran) : l'enregistrement PASSE et le serveur date au jour
+        # courant — jamais un 400 qui perdrait la mesure réelle.
+        response = auth(self.manager).post(
+            f'{LIST_URL}FT1/resultat/',
+            {'measured_value': '12 %', 'evidence': 'capture'}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['mesure_le'],
+                         datetime.date.today().isoformat())
+        self.assertEqual(FieldTestResult.objects.get(ft='FT1').measured_on,
+                         datetime.date.today())
+
+    def test_recording_with_an_empty_date_string_falls_back_to_today(self):
+        # PUB-P8/C4, seconde ceinture : un ``''`` (formulaire qui envoie la clé
+        # vide) vaut « omise », jamais « ce n'est pas une date ».
+        response = auth(self.manager).post(
+            f'{LIST_URL}FT2/resultat/',
+            {'measured_value': '9', 'measured_on': ''}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['mesure_le'],
+                         datetime.date.today().isoformat())
+
     def test_an_empty_measure_is_a_400(self):
         response = auth(self.manager).post(
             f'{LIST_URL}FT1/resultat/',
@@ -292,6 +315,42 @@ class MicroTestStructuresTests(FieldTestHarnessBase):
             f'{LIST_URL}FT1/structures/', {}, format='json')
         self.assertEqual(response.status_code, 403)
         self.assertFalse(EngineAction.objects.exists())
+
+
+class MicroTestBudgetCurrencyTests(FieldTestHarnessBase):
+    """PUB-P8/C5 — le plafond 30 MAD s'écrit en unités MINEURES de la devise DU
+    COMPTE : sur un compte non-MAD il ne veut RIEN dire (30 × 100 = 30 USD,
+    ≈ 10× le plafond). Refus fail-closed, raison FR, aucun taux inventé."""
+
+    def _connection(self, currency):
+        from apps.adsengine.models import MetaConnection
+        return MetaConnection.objects.create(
+            company=self.company, ad_account_id='act_1', currency=currency,
+            enabled=True, credentials={'access_token': 'tok'})
+
+    def test_a_usd_account_is_refused_with_the_reason(self):
+        self._connection('USD')
+        with self.assertRaises(ValueError) as ctx:
+            ft.propose_micro_test_structures(self.company, 'FT1')
+        message = str(ctx.exception)
+        self.assertIn('Devise du compte USD', message)
+        self.assertIn('décision fondateur', message)
+        self.assertIn(str(ft.MICRO_TEST_MAX_DAILY_BUDGET_MAD), message)
+        self.assertFalse(EngineAction.objects.exists())
+
+    def test_the_api_renders_that_refusal_as_a_400_in_french(self):
+        self._connection('EUR')
+        response = auth(self.manager).post(
+            f'{LIST_URL}FT1/structures/', {}, format='json')
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn('Devise du compte EUR', response.json()['detail'])
+        self.assertFalse(EngineAction.objects.exists())
+
+    def test_a_mad_account_still_proposes(self):
+        self._connection('MAD')
+        actions = ft.propose_micro_test_structures(self.company, 'FT1')
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0].kind, EngineAction.Kind.CREATE_CAMPAIGN)
 
 
 class ProtocolsAlignedWithTheRunbookTests(TestCase):

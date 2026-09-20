@@ -34,7 +34,7 @@ from apps.adsengine import dco, services
 from apps.adsengine import meta_client as mc
 from apps.adsengine.models import (
     AdCampaignMirror, AdCreativeMirror, AdMirror, AdSetMirror, EngineAction,
-    InsightSnapshot,
+    InsightSnapshot, MetaConnection,
 )
 
 User = get_user_model()
@@ -60,6 +60,13 @@ def auth(user):
 
 
 class DcoFixtureMixin:
+    def _page(self, page_id='page-42'):
+        """PUB-P8/C2 — la Page qui PUBLIE : un créatif dynamique ne peut pas
+        partir sans son acteur (même source que le pont PUB123)."""
+        return MetaConnection.objects.create(
+            company=self.company, ad_account_id='act_1', page_id=page_id,
+            enabled=True, credentials={'access_token': 'tok'})
+
     def _adset(self, meta_id='as-1', name='Toit Casa'):
         campaign = AdCampaignMirror.objects.create(
             company=self.company, meta_id=f'cmp-{meta_id}', name='Solaire',
@@ -222,6 +229,7 @@ class CapAndBuildSpecTests(TestCase):
 class ProposeDcoRecombinationTests(DcoFixtureMixin, TestCase):
     def setUp(self):
         self.company = make_company('pub118-propose', 'PUB118 Propose')
+        self._page()
         self.source_adset = self._adset('as-src', 'Gagnants')
         self._winner(self.source_adset, 1)
         self._winner(self.source_adset, 2)
@@ -305,12 +313,54 @@ class ProposeDcoRecombinationTests(DcoFixtureMixin, TestCase):
             services.propose_dco_recombination(
                 self.company, adset=adset, now=TODAY)
 
+    def test_payload_declares_the_page_that_publishes(self):
+        # PUB-P8/C2 — le créatif DCO partait SANS acteur : la spec dynamique
+        # porte désormais l'``object_story_spec.page_id`` de la connexion (même
+        # source que le pont PUB123).
+        action = services.propose_dco_recombination(
+            self.company, adset=self.target, now=TODAY)
+        self.assertEqual(action.payload['object_story_spec'],
+                         {'page_id': 'page-42'})
+
+
+class DcoWithoutPageTests(DcoFixtureMixin, TestCase):
+    """PUB-P8/C2 — aucune Page connectée ⇒ refus FR, jamais un créatif sans
+    acteur (que Graph rejetterait après l'approbation humaine)."""
+
+    def setUp(self):
+        self.company = make_company('pub118-sans-page', 'PUB118 Sans Page')
+        self.source_adset = self._adset('as-src', 'Gagnants')
+        self._winner(self.source_adset, 1)
+        self.target = self._adset('as-new', 'Nouveau')
+
+    def test_recombination_is_refused_in_french(self):
+        from apps.adsengine import creative_bridge
+
+        with self.assertRaises(creative_bridge.CreativeAssetNotReady) as ctx:
+            services.propose_dco_recombination(
+                self.company, adset=self.target, now=TODAY)
+        self.assertIn('aucune Page Facebook connectée', str(ctx.exception))
+        self.assertEqual(ctx.exception.key, creative_bridge.REFUS_PAGE)
+        self.assertEqual(
+            EngineAction.objects.filter(company=self.company).count(), 0)
+
+    def test_connection_without_page_id_is_the_same_refusal(self):
+        from apps.adsengine import creative_bridge
+
+        MetaConnection.objects.create(
+            company=self.company, ad_account_id='act_1', page_id='',
+            enabled=True, credentials={'access_token': 'tok'})
+        with self.assertRaises(creative_bridge.CreativeAssetNotReady):
+            services.propose_dco_recombination(
+                self.company, adset=self.target, now=TODAY)
+
 
 class DcoDispatchTests(DcoFixtureMixin, TestCase):
     """L'application route vers la méthode à spec INLINE et l'ad naît PAUSED."""
 
     def setUp(self):
         self.company = make_company('pub118-dispatch', 'PUB118 Dispatch')
+        self._page()
         self.source_adset = self._adset('as-src', 'Gagnants')
         self._winner(self.source_adset, 1)
         self.target = self._adset('as-new', 'Nouveau')
@@ -335,6 +385,8 @@ class DcoDispatchTests(DcoFixtureMixin, TestCase):
         self.assertEqual(kwargs['adset_id'], 'as-new')
         self.assertEqual(kwargs['asset_feed_spec'],
                          action.payload['asset_feed_spec'])
+        # PUB-P8/C2 — l'acteur est routé jusqu'au client.
+        self.assertEqual(kwargs['object_story_spec'], {'page_id': 'page-42'})
         self.assertNotIn('status', kwargs)
 
     def test_real_client_forces_paused_and_encodes_the_spec(self):
@@ -358,11 +410,13 @@ class DcoDispatchTests(DcoFixtureMixin, TestCase):
         creative = json.loads(body['creative'][0])
         self.assertEqual(creative['asset_feed_spec'],
                          action.payload['asset_feed_spec'])
+        self.assertEqual(creative['object_story_spec']['page_id'], 'page-42')
 
 
 class DcoRecombineEndpointTests(DcoFixtureMixin, TestCase):
     def setUp(self):
         self.company = make_company('pub118-api', 'PUB118 API')
+        self._page()
         self.source_adset = self._adset('as-src', 'Gagnants')
         self._winner(self.source_adset, 1)
         self.target = self._adset('as-new', 'Nouveau')

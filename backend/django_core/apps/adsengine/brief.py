@@ -393,6 +393,11 @@ def _build_proposals(company, per_campaign):
                         f"Fréquence {freq:.1f} sur {camp.meta_id} (≥ 2,5) : "
                         f"roter le créatif pour combattre la fatigue."),
                     payload=payload))
+                # PUB-P8/C6 — consommation SYMÉTRIQUE : l'item de backlog
+                # embarqué par CE payload quitte la file libre (comme sur le
+                # chemin cadencé PUB120), sinon le brief de la semaine suivante
+                # propose le MÊME créatif.
+                services.consume_backlog_item(company, payload)
                 seen.add(key)
                 continue
         if spend > 0 and results == 0:

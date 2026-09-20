@@ -879,6 +879,11 @@ def evaluate_creative_fatigue(company, *, now=None, window_days=7,
             action = services.propose_action(
                 company, kind=EngineAction.Kind.ROTATE_CREATIVE,
                 reason_fr=reason, payload=payload)
+            # PUB-P8/C6 — consommation SYMÉTRIQUE : l'item de backlog réellement
+            # embarqué quitte la file libre, exactement comme sur le chemin
+            # cadencé PUB120 — sans quoi la passe suivante ré-embarquait le MÊME
+            # créatif sur une autre ad.
+            services.consume_backlog_item(company, payload)
             entry['action'] = {
                 'id': action.pk, 'kind': action.kind,
                 'reason_fr': action.reason_fr}

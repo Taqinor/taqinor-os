@@ -55,11 +55,18 @@ export default function FieldTestsScreen() {
     setErr('')
     setMsg('')
     try {
-      await adsengineApi.fieldTests.recordResult(ft, {
+      /* PUB-P8/C4 — date de mesure VIDE : la clé est OMISE, jamais envoyée à ''
+         (le serveur retombe alors sur le jour courant). Envoyer '' faisait
+         refuser « ce n'est pas une date » et perdait une mesure RÉELLE pour
+         une case optionnelle laissée vide. */
+      const payload = {
         measured_value: draft.measured_value,
         evidence: draft.evidence,
-        measured_on: draft.measured_on,
-      })
+      }
+      if (draft.measured_on && draft.measured_on.trim()) {
+        payload.measured_on = draft.measured_on
+      }
+      await adsengineApi.fieldTests.recordResult(ft, payload)
       setMsg(`Résultat de ${ft} enregistré.`)
       setDrafts(d => ({ ...d, [ft]: emptyDraft() }))
       load()
@@ -81,8 +88,12 @@ export default function FieldTestsScreen() {
         `${n} proposition(s) de structure de test créée(s) pour ${ft} — `
         + `elles naissent PAUSED et attendent l'approbation humaine.`
       )
-    } catch {
-      setErr(`Proposition de structures impossible pour ${ft}.`)
+    } catch (e) {
+      /* PUB-P8/C5 — la RAISON FR du serveur est affichée telle quelle (ex. :
+         devise du compte ≠ MAD ⇒ plafond micro-test non convertible). Un refus
+         motivé ne doit jamais être remplacé par un « impossible » muet. */
+      const detail = e?.response?.data?.detail
+      setErr(detail || `Proposition de structures impossible pour ${ft}.`)
     } finally {
       setBusyFt('')
     }

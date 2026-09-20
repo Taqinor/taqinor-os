@@ -75,6 +75,38 @@ class BriefGeneratorTests(TestCase):
         self.assertEqual(action.payload['target_meta_id'], 'c1')
         self.assertEqual(action.payload['target_type'], 'campaign')
 
+    def test_the_brief_consumes_the_backlog_item_it_embarks(self):
+        # PUB-P8/C6 — consommation SYMÉTRIQUE : le brief embarquait un item de
+        # backlog SANS le sortir de la file libre, donc le brief de la semaine
+        # suivante reproposait le MÊME créatif.
+        from apps.adsengine.models import CreativeAsset, CreativeBacklogItem
+
+        adset = AdSetMirror.objects.create(
+            company=self.company, meta_id='as1', name='Ad set',
+            status='PAUSED', campaign=self.camp)
+        ad = AdMirror.objects.create(
+            company=self.company, meta_id='ad1', adset=adset, name='Ad')
+        AdCreativeMirror.objects.create(
+            company=self.company, ad=ad, creative_meta_id='cr1')
+        MetaConnection.objects.create(
+            company=self.company, ad_account_id='act_1', page_id='page-42')
+        asset = CreativeAsset.objects.create(
+            company=self.company, asset_type=CreativeAsset.AssetType.STATIC,
+            policy_stamp={'passed': True}, meta_image_hash='hash-b',
+            primary_text='Vos factures baissent.')
+        item = CreativeBacklogItem.objects.create(
+            company=self.company, asset=asset,
+            status=CreativeBacklogItem.Statut.EN_FILE)
+
+        self._snap(spend='120.00', results=6, freq='2.80')
+        brief_mod.build_brief(self.company, now=NOW)
+
+        action = EngineAction.objects.get(
+            company=self.company, kind=EngineAction.Kind.ROTATE_CREATIVE)
+        self.assertEqual(action.payload['backlog_item_id'], item.pk)
+        item.refresh_from_db()
+        self.assertEqual(item.status, CreativeBacklogItem.Statut.PROGRAMME)
+
     def test_high_frequency_without_any_creative_alerts_instead(self):
         # Aucun ad set miroité : le brief ALERTE explicitement et ne propose
         # RIEN (jamais une action creuse que l'approbation ferait échouer).

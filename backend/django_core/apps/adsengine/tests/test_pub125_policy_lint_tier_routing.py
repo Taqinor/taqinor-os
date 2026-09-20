@@ -44,6 +44,14 @@ SUPERLATIF = {
     'cta': 'LEARN_MORE',
     'hook_tag': 'MARQUE', 'angle_tag': 'AUTORITE', 'format_tag': 'STATIC',
 }
+# PUB-P8/C8 — variante dont le CHIFFRE est absent de la table publiée : elle est
+# REJETÉE (jamais un asset), et le lot qui la contient n'est pas « propre ».
+INVENTE = {
+    'hook_text': 'Économisez 99 999 MAD',
+    'primary_text': 'Offre exceptionnelle.',
+    'cta': 'LEARN_MORE',
+    'hook_tag': 'FACTURE', 'angle_tag': 'ROI', 'format_tag': 'STATIC',
+}
 
 
 def make_company(slug, nom=None):
@@ -185,6 +193,17 @@ class TierRoutingTests(PolicyRoutingBase):
     def test_a_blocked_variant_makes_the_lot_unclean(self):
         template_id = self._template_id(CLEAN)
         self._run([CLEAN, SUPERLATIF], scorer=grounded_scorer)
+        self.assertEqual(tier_router.clean_weeks(self.company, template_id), 0)
+
+    def test_a_rejected_variant_makes_the_lot_unclean(self):
+        # PUB-P8/C8 — une variante REJETÉE par le vérificateur de chiffres
+        # (« 99 999 MAD » absent de la table publiée) laissait quand même le lot
+        # « propre » : un gabarit qui hallucine une fois sur deux gagnait des
+        # semaines propres, donc la graduation B→A.
+        template_id = self._template_id(CLEAN)
+        report = self._run([CLEAN, INVENTE], scorer=grounded_scorer)
+        self.assertEqual(report['assets'], 1)      # seule CLEAN produit un asset
+        self.assertEqual(report['rejected'], 1)    # le chiffre inventé tombe
         self.assertEqual(tier_router.clean_weeks(self.company, template_id), 0)
 
     @mock.patch.dict('os.environ', NO_ENV)

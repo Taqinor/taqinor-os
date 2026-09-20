@@ -1043,6 +1043,20 @@ class BrandKitSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
 
 
+class _OptionalDateField(serializers.DateField):
+    """PUB-P8/C4 — Date d'entrée OPTIONNELLE qui accepte aussi la chaîne VIDE.
+
+    ``DateField(required=False)`` accepte la clé ABSENTE mais refuse ``''`` (un
+    champ ``<input type="date">`` vide) : l'appel partait en 400 « format de
+    date invalide » et la mesure réelle était perdue. ``''`` vaut donc ``None``
+    (l'appelant retombe sur le jour courant) — aucune date n'est inventée."""
+
+    def validate_empty_values(self, data):
+        if isinstance(data, str) and not data.strip():
+            return (True, None)
+        return super().validate_empty_values(data)
+
+
 class FieldTestResultSerializer(serializers.ModelSerializer):
     """PUB128 — Résultat MESURÉ d'un micro-test terrain (``FT1``..``FT7``).
 
@@ -1053,7 +1067,11 @@ class FieldTestResultSerializer(serializers.ModelSerializer):
 
     # Date de mesure OPTIONNELLE à l'entrée : ``record_result`` retombe sur le
     # jour courant — on ne refuse pas une mesure réelle pour une date omise.
-    measured_on = serializers.DateField(required=False)
+    # PUB-P8/C4, seconde ceinture : une chaîne VIDE (champ de date d'un
+    # formulaire laissé vide) vaut « omise » → ``None``, jamais un refus
+    # « ce n'est pas une date » qui perdrait la mesure. L'écran, lui, omet
+    # carrément la clé ; les deux bouts sont désormais tolérants.
+    measured_on = _OptionalDateField(required=False, allow_null=True)
 
     class Meta:
         model = FieldTestResult

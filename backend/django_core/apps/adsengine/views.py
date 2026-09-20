@@ -1507,6 +1507,10 @@ class FlightPlanViewSet(AdsengineViewSet):
         company = getattr(request.user, 'company', None)
         if company is None:
             return Response({'detail': 'Aucune société.'}, status=400)
+        # PUB-P8/OPT1 — l'état AVANT est LU avant la bascule : journaliser un
+        # ``active_before=False`` en dur mentait sur une ré-activation (l'audit
+        # ARC16 affichait « Non → Oui » alors que rien n'avait changé).
+        was_active = pf.is_active(company)
         try:
             pf.activate(company)
         except pf.AutonomyNotReady as exc:
@@ -1515,7 +1519,7 @@ class FlightPlanViewSet(AdsengineViewSet):
             return Response(payload, status=400)
         payload = _autonomy_cockpit(company)
         payload['detail'] = "Autonomie ACTIVÉE (toutes les portes sont vertes)."
-        _journal_autonomy(company, active_before=False, active_after=True,
+        _journal_autonomy(company, active_before=was_active, active_after=True,
                           detail="Autonomie ACTIVÉE depuis le cockpit "
                                  "(toutes les portes de préflight vertes).")
         return Response(payload)

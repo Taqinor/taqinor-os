@@ -49,10 +49,22 @@ CLAIM_CHECK_CONFIG = {
 # virgule ou point. Le fragment DOIT commencer et finir par un chiffre (la
 # ponctuation de fin de phrase n'est jamais capturée).
 _NUMBER_RE = re.compile(r'\d[\d  .,]*\d|\d')
-# Unité immédiatement collée/espacée après le nombre.
+# TÊTE d'unité (unité simple, ou première composante d'une unité composée).
+# L'ordre compte : les formes LONGUES d'abord (« kWh » AVANT « kW »), sinon
+# « kWh » se lirait « kW » — la frontière même que PUB-P8/C1 restaure.
+_UNIT_HEAD = (r'%|kWc|kWp|kWh|MWh|MAD|DHS?|dh|dhs|kW|MW|Wc|m³/[hj]|m3/[hj]|'
+              r'années?|ans?')
+# Composante qui SUIT un « / » dans une unité COMPOSÉE (« kWh/kWc/an »,
+# « MAD/mois », « kWh/kWc/jour »). Elle n'est lue qu'APRÈS un « / » : aucun mot
+# ordinaire de la phrase ne peut donc être avalé comme unité.
+_UNIT_TAIL = (r'kWc|kWp|kWh|MWh|MAD|kW|MW|Wc|m³|m3|années?|ans?|mois|'
+              r'jours?|h|j')
+# Unité immédiatement collée/espacée après le nombre — unité COMPOSÉE COMPRISE.
+# PUB-P8/C1 : lire l'unité « à moitié » (« kWh » pour un fait « kWh/kWc/an »)
+# était la CAUSE du trou de tolérance côté génération (« 1750 kW » passait pour
+# « 1750 kWh/kWc/an », « 500 MAD » pour « 500 MAD/mois »).
 _UNIT_RE = re.compile(
-    r'\s*(%|kWc|kWp|kWh|MWh|MAD|DHS?|dh|dhs|kW|MW|Wc|m³/[hj]|m3/[hj]|'
-    r'ans?|années?)',
+    rf'\s*((?:{_UNIT_HEAD})(?:/(?:{_UNIT_TAIL}))*)',
     re.IGNORECASE)
 
 
@@ -69,11 +81,31 @@ def parse_fr_number(fragment):
 
 
 def _canon_unit(raw):
-    """Forme canonique d'une unité (via ``unit_aliases``), '' si vide."""
+    """Forme canonique d'une unité (via ``unit_aliases``), '' si vide.
+
+    Unité COMPOSÉE comprise : un alias couvrant l'unité ENTIÈRE gagne
+    (« m3/h » → « m³/h ») ; sinon CHAQUE composante séparée par « / » est
+    canonisée à son tour (« kwh/kwp/année » → « kWh/kWc/an »). La comparaison
+    d'unités reste donc une ÉGALITÉ de composantes, jamais un préfixe."""
     if not raw:
         return ''
-    key = raw.strip().lower()
-    return CLAIM_CHECK_CONFIG['unit_aliases'].get(key, raw.strip())
+    text = str(raw).strip()
+    aliases = CLAIM_CHECK_CONFIG['unit_aliases']
+    whole = aliases.get(text.lower())
+    if whole is not None:
+        return whole
+    parts = [p.strip() for p in text.split('/')]
+    return '/'.join(aliases.get(p.lower(), p) for p in parts if p)
+
+
+def unit_components(raw):
+    """Composantes NORMALISÉES d'une unité : ``['kWh', 'kWc', 'an']``.
+
+    PUB-P8/C1 — c'est la primitive de comparaison À FRONTIÈRE que les appelants
+    utilisent au lieu d'un ``startswith`` : « kW » et « kWh » ne partagent AUCUNE
+    composante, et « MAD » ne vaut pas « MAD/mois »."""
+    canon = _canon_unit(raw)
+    return [p for p in canon.split('/') if p] if canon else []
 
 
 def extract_number_units(text):

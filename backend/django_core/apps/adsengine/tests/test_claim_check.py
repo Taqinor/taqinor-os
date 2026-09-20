@@ -32,6 +32,43 @@ class ExtractTests(TestCase):
         self.assertEqual(by_frag['82']['unit'], '%')
         self.assertEqual(by_frag['6,4']['unit'], 'kWc')
 
+    def test_extracts_compound_units_whole(self):
+        # PUB-P8/C1 — l'unité COMPOSÉE est lue EN ENTIER (elle ne l'était qu'à
+        # moitié : « kWh » pour « kWh/kWc/an »), sinon « 1750 kW » se comparait
+        # par préfixe au fait « 1750 kWh/kWc/an ».
+        claims = claim_check.extract_number_units(
+            'Production 1750 kWh/kWc/an, mensualité 500 MAD/mois, '
+            '4,5 kWh/kWc/jour.')
+        by_frag = {c['fragment']: c['unit'] for c in claims}
+        self.assertEqual(by_frag['1750'], 'kWh/kWc/an')
+        self.assertEqual(by_frag['500'], 'MAD/mois')
+        self.assertEqual(by_frag['4,5'], 'kWh/kWc/jour')
+
+    def test_bare_unit_stays_bare(self):
+        # « kW » reste « kW » (pas de composante inventée) et un mot ordinaire
+        # de la phrase n'est jamais avalé comme composante d'unité.
+        claims = claim_check.extract_number_units(
+            '1750 kW, 500 MAD par mois, 3 ans.')
+        by_frag = {c['fragment']: c['unit'] for c in claims}
+        self.assertEqual(by_frag['1750'], 'kW')
+        self.assertEqual(by_frag['500'], 'MAD')
+        self.assertEqual(by_frag['3'], 'an')
+
+    def test_unit_components_compare_at_the_boundary(self):
+        self.assertEqual(claim_check.unit_components('kWh/kWc/an'),
+                         ['kWh', 'kWc', 'an'])
+        self.assertEqual(claim_check.unit_components('kwh/kwp/année'),
+                         ['kWh', 'kWc', 'an'])
+        self.assertEqual(claim_check.unit_components('m3/h'), ['m³', 'h'])
+        self.assertEqual(claim_check.unit_components(''), [])
+        # kW ≠ kWh (ni sa composée) ; MAD ≠ MAD/mois.
+        self.assertNotEqual(claim_check.unit_components('kW'),
+                            claim_check.unit_components('kWh'))
+        self.assertNotEqual(claim_check.unit_components('kW'),
+                            claim_check.unit_components('kWh/kWc/an'))
+        self.assertNotEqual(claim_check.unit_components('MAD'),
+                            claim_check.unit_components('MAD/mois'))
+
 
 class VerifyTextTests(TestCase):
     def setUp(self):

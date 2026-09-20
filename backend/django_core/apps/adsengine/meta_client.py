@@ -839,7 +839,8 @@ class MetaClient:
             'POST', self._account_edge('adcreatives'), data=payload)
 
     def create_ad_with_asset_feed_spec(self, *, name, adset_id,
-                                       asset_feed_spec, extra_fields=None):
+                                       asset_feed_spec, object_story_spec=None,
+                                       extra_fields=None):
         """PUB117 — Crée une ad à spec créative DYNAMIQUE (``asset_feed_spec``
         INLINE dans ``creative``) : Meta recombine lui-même les visuels × titres ×
         textes fournis et auto-teste les combinaisons à l'impression (chemin DCO).
@@ -849,6 +850,11 @@ class MetaClient:
         ``status=PAUSED`` via ``_forced_status_payload`` (mot final) — un
         ``status=ACTIVE`` glissé dans ``extra_fields`` est retiré puis écrasé.
 
+        PUB-P8/C2 — l'ACTEUR est obligatoire : ``object_story_spec`` doit porter
+        le ``page_id`` de la Page qui publie (le créatif partait sans acteur, ce
+        que Graph refuse — et la proposition n'échouait qu'à l'application). Son
+        absence est un refus LOCAL en français, jamais un aller-retour réseau.
+
         La VALIDATION du contenu de la spec (plafonds 10 visuels × 5 titres ×
         5 textes, exclusion mutuelle DCO ↔ rotation) appartient à ``dco.py`` et
         se fait chez l'appelant : ici on borne seulement le cas vide (fail-fast,
@@ -856,10 +862,16 @@ class MetaClient:
         if not asset_feed_spec:
             raise MetaError(
                 "create_ad_with_asset_feed_spec exige un asset_feed_spec.")
+        story = dict(object_story_spec or {})
+        if not str(story.get('page_id') or '').strip():
+            raise MetaError(
+                "Créatif dynamique sans acteur : object_story_spec.page_id est "
+                "obligatoire (la Page qui publie) — rien n'est envoyé à Meta.")
         base = {
             'name': name,
             'adset_id': adset_id,
-            'creative': json.dumps({'asset_feed_spec': asset_feed_spec}),
+            'creative': json.dumps({'asset_feed_spec': asset_feed_spec,
+                                    'object_story_spec': story}),
         }
         payload = self._forced_status_payload(base, extra_fields)
         return self._request(

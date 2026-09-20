@@ -215,6 +215,35 @@ class ResolveRotationPayloadTests(TestCase):
         self.assertEqual(payload['creative_source'],
                          services.ROTATION_SOURCE_LIVE_MIRROR)
 
+    def test_future_dated_backlog_item_is_never_proposed(self):
+        # PUB-P8/C7 — la date-au-plus-tôt était ignorée par la rotation : un
+        # item programmé pour plus tard (lancement saisonnier) était proposé
+        # AUJOURD'HUI. On retombe sur le créatif LIVE, et l'item reste EN FILE.
+        self._ad_with_creative('ad-1', 'cr-1')
+        item = self._backlog(
+            self._asset(image_hash='hash-abc'),
+            earliest_date=TODAY + datetime.timedelta(days=30))
+        payload = services.resolve_rotation_payload(
+            self.company, target_type='adset', target_meta_id='as-1',
+            now=TODAY)
+        self.assertEqual(payload['creative_source'],
+                         services.ROTATION_SOURCE_LIVE_MIRROR)
+        self.assertNotIn('backlog_item_id', payload)
+        item.refresh_from_db()
+        self.assertEqual(item.status, CreativeBacklogItem.Statut.EN_FILE)
+
+    def test_item_dated_today_is_proposed(self):
+        # La FRONTIÈRE est inclusive : « au plus tôt aujourd'hui » = proposable.
+        self._ad_with_creative('ad-1', 'cr-1')
+        item = self._backlog(self._asset(image_hash='hash-abc'),
+                             earliest_date=TODAY)
+        payload = services.resolve_rotation_payload(
+            self.company, target_type='adset', target_meta_id='as-1',
+            now=TODAY)
+        self.assertEqual(payload['creative_source'],
+                         services.ROTATION_SOURCE_BACKLOG)
+        self.assertEqual(payload['backlog_item_id'], item.pk)
+
     def test_backlog_asset_without_uploaded_media_is_skipped(self):
         self._ad_with_creative('ad-1', 'cr-1')
         self._backlog(self._asset())  # aucun hash/video_id → inutilisable
@@ -437,6 +466,56 @@ class RotationFromCreativeFatigueTests(TestCase):
         self.assertIn('Aucun créatif prêt', findings[0]['blocked_fr'])
         self.assertEqual(
             EngineAction.objects.filter(company=self.company).count(), 0)
+
+    # ── PUB-P8/C6 — consommation SYMÉTRIQUE du backlog ───────────────────────
+    def _queued_item(self):
+        MetaConnection.objects.create(
+            company=self.company, ad_account_id='act_1', page_id='page-42')
+        asset = CreativeAsset.objects.create(
+            company=self.company, asset_type=CreativeAsset.AssetType.STATIC,
+            policy_stamp={'passed': True}, meta_image_hash='hash-f',
+            primary_text='Vos factures baissent.')
+        return CreativeBacklogItem.objects.create(
+            company=self.company, asset=asset,
+            status=CreativeBacklogItem.Statut.EN_FILE)
+
+    def test_consumed_backlog_item_leaves_the_free_queue(self):
+        # Le chemin « fatigue » laissait l'item EN FILE : la passe suivante
+        # ré-embarquait le MÊME créatif sur une autre ad (asymétrie avec le
+        # chemin cadencé PUB120, qui le programmait bien).
+        item = self._queued_item()
+        findings = rules_engine.evaluate_creative_fatigue(
+            self.company, now=TODAY)
+        action = EngineAction.objects.get(pk=findings[0]['action']['id'])
+        self.assertEqual(action.payload['backlog_item_id'], item.pk)
+        item.refresh_from_db()
+        self.assertEqual(item.status, CreativeBacklogItem.Statut.PROGRAMME)
+
+    def test_rejecting_the_proposal_gives_the_item_back_to_the_queue(self):
+        # Un « non » humain ne brûle jamais un créatif en silence.
+        item = self._queued_item()
+        findings = rules_engine.evaluate_creative_fatigue(
+            self.company, now=TODAY)
+        action = EngineAction.objects.get(pk=findings[0]['action']['id'])
+        item.refresh_from_db()
+        self.assertEqual(item.status, CreativeBacklogItem.Statut.PROGRAMME)
+
+        services.reject_action(action, user=None, commentaire='pas ce visuel')
+        action.refresh_from_db()
+        self.assertEqual(action.status, EngineAction.Statut.REJETEE)
+        item.refresh_from_db()
+        self.assertEqual(item.status, CreativeBacklogItem.Statut.EN_FILE)
+
+    def test_rejecting_an_action_without_backlog_item_is_a_no_op(self):
+        AdCreativeMirror.objects.create(
+            company=self.company, ad=self.ad, creative_meta_id='cr-f')
+        findings = rules_engine.evaluate_creative_fatigue(
+            self.company, now=TODAY)
+        action = EngineAction.objects.get(pk=findings[0]['action']['id'])
+        self.assertNotIn('backlog_item_id', action.payload)
+        services.reject_action(action, user=None)
+        action.refresh_from_db()
+        self.assertEqual(action.status, EngineAction.Statut.REJETEE)
 
 
 class RotationDispatchTests(TestCase):

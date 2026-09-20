@@ -376,11 +376,22 @@ def _hard_claim_violations(verdict, checked_claims):
     invérifiable (celles qui font rejeter la variante).
 
     ``claim_check`` exige que l'unité écrite dans le texte COÏNCIDE avec celle
-    du fait. Son extracteur d'unité ne lit toutefois que la tête d'une unité
-    COMPOSÉE (« 1750 kWh/kWc/an » → unité lue « kWh », fait « kWh/kWc/an ») :
-    la variante serait rejetée alors que son chiffre est bien celui du fait
-    CITÉ. On tolère donc — et UNIQUEMENT — ce cas : même suite de chiffres
-    qu'un fait CITÉ ET VÉRIFIÉ, et unité lue qui PRÉFIXE celle du fait.
+    du fait — unité COMPOSÉE COMPRISE depuis PUB-P8/C1 : son extracteur lit
+    « 1750 kWh/kWc/an » EN ENTIER, plus seulement sa tête. La tolérance qui
+    subsiste ici ne sert donc plus qu'un cas RÉEL : un fait dont la ``valeur``
+    porte plusieurs nombres (« 1500 à 1750 ») qu'aucune ``FactEntry`` ne peut
+    apparier numériquement, alors que la variante cite bien CE fait.
+
+    La comparaison d'unités est une ÉGALITÉ À FRONTIÈRE de composantes
+    (``claim_check.unit_components``), JAMAIS un préfixe :
+
+      * « kWh » vaut « kWh » ✓ ;
+      * « kW » ne vaut PAS « kWh » ni « kWh/kWc/an » ✗ — ce préfixe-là était le
+        trou : un fait « 1750 kWh/kWc/an » cité « 1750 kW » passait ;
+      * « MAD » ne vaut PAS « MAD/mois » ✗ — une mensualité vendue en prix flat
+        est un mensonge de prix, pas une notation : si le fait porte une unité
+        COMPOSÉE, le texte doit porter la composée ENTIÈRE, sinon la violation
+        RESTE.
 
     Tout le reste reste une violation DURE : un chiffre absent des faits, ou le
     bon chiffre avec une MAUVAISE unité (« 82 MAD » citant un fait « 82 % » est
@@ -390,14 +401,14 @@ def _hard_claim_violations(verdict, checked_claims):
     verified = [c for c in (checked_claims or []) if c.get('verified')]
     for violation in (verdict.get('violations') or []):
         digits = _digits(violation.get('fragment'))
-        unit = (violation.get('unit') or '').strip().lower()
+        unit = claim_check.unit_components(violation.get('unit'))
         tolerated = False
         for claim in verified:
             if digits not in {_digits(f)
                               for f in _extract_numbers(claim.get('valeur'))}:
                 continue
-            fact_unit = (claim.get('unite') or '').strip().lower()
-            if unit and fact_unit and fact_unit.startswith(unit):
+            fact_unit = claim_check.unit_components(claim.get('unite'))
+            if unit and fact_unit and unit == fact_unit:
                 tolerated = True
                 break
         if not tolerated:

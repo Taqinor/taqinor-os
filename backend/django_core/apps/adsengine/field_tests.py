@@ -34,6 +34,11 @@ SOURCE_FIELD_TEST = 'field_test'  # confirmée par un micro-test réel (runbook)
 # un seul facteur changé à la fois. Ce sont des CONSTANTES de config (lisibles par
 # le runbook / un futur lanceur de micro-test), jamais des littéraux en dur.
 MICRO_TEST_MAX_DAILY_BUDGET_MAD = 30   # plafond dur d'un micro-test terrain
+# PUB-P8/C5 — la devise DANS LAQUELLE ce plafond est libellé. Meta écrit un
+# ``daily_budget`` en unités MINEURES de la devise DU COMPTE : le plafond n'est
+# donc applicable QUE sur un compte en MAD. Toute autre devise ⇒ refus explicite
+# (la conversion est une décision du fondateur, jamais un taux inventé).
+MICRO_TEST_BUDGET_CURRENCY = 'MAD'
 MICRO_TEST_START_PAUSED = True         # toute structure de test naît PAUSED
 MICRO_TEST_ONE_FACTOR_AT_A_TIME = True  # un seul facteur changé par test
 
@@ -330,11 +335,20 @@ def propose_micro_test_structures(company, ft, *, city='', proposed_by=None,
     littéral) : un micro-test ne peut pas déraper en dépense.
 
     L'objectif de campagne est lu dans le catalogue de gabarits de lancement
-    (``launch_templates.LAUNCH_TEMPLATES``) — aucun objectif inventé. Lève
-    ``ValueError`` (FR) sur un ``ft`` inconnu ou un gabarit inconnu.
-    Renvoie ``[EngineAction, EngineAction]``."""
+    (``launch_templates.LAUNCH_TEMPLATES``) — aucun objectif inventé.
+
+    PUB-P8/C5 — le plafond est en MAD, mais Meta lit un ``daily_budget`` en
+    unités MINEURES de la devise DU COMPTE : sur un compte facturé en USD,
+    ``30 × 100`` vaut 30 USD (≈ 10× le plafond voulu), pas 30 MAD. La
+    proposition est donc REFUSÉE fail-closed dès que la devise du compte
+    (``rules_engine.account_currency``, PUB134) n'est pas MAD — AUCUN taux de
+    change n'est inventé, la conversion est une DÉCISION DU FONDATEUR.
+
+    Lève ``ValueError`` (FR) sur un ``ft`` inconnu, un gabarit inconnu ou une
+    devise de compte non MAD. Renvoie ``[EngineAction, EngineAction]``."""
     from . import launch_templates, services
     from .models import EngineAction
+    from .rules_engine import account_currency
 
     key = str(ft or '').strip().upper()
     if key not in FIELD_TESTS:
@@ -348,6 +362,13 @@ def propose_micro_test_structures(company, ft, *, city='', proposed_by=None,
             f"proposer un micro-test sans objectif de campagne connu.")
 
     cap = micro_test_budget_cap_mad()
+    currency = account_currency(company)
+    if currency != MICRO_TEST_BUDGET_CURRENCY:
+        raise ValueError(
+            f"Devise du compte {currency} ≠ {MICRO_TEST_BUDGET_CURRENCY} — "
+            f"plafond micro-test {cap} {MICRO_TEST_BUDGET_CURRENCY} non "
+            f"convertible sans décision fondateur : aucune structure de test "
+            f"n'est proposée (aucun taux de change n'est inventé).")
     label = (PROTOCOLS.get(key) or {}).get('label_fr', key)
     campaign_name = f'TEST-TERRAIN {key} {label}'.strip()
     adset_name = f'TEST-TERRAIN {key} ad set'
@@ -386,6 +407,8 @@ def propose_micro_test_structures(company, ft, *, city='', proposed_by=None,
             'name': adset_name,
             'campaign_id': campaign_mirror.meta_id,
             'field_test': key,
+            # Unités MINEURES de la devise du compte — garanti MAD par la garde
+            # de devise ci-dessus (PUB-P8/C5), donc des centimes de dirham.
             'extra_fields': {
                 'daily_budget': int(cap * services.CENTIMES_PER_MAD)},
         },

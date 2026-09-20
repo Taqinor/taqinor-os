@@ -494,7 +494,21 @@ def _best_live_creative_ad(company, adset, *, now=None, window_days=7):
     return max(candidates, key=_rank)
 
 
-def _rotation_backlog_head(company, adset, *, link_url=''):
+def _local_date(value=None):
+    """Date LOCALE d'un ``now`` injecté — ``datetime`` (aware ou naïf), ``date``,
+    ou ``None`` ⇒ aujourd'hui. PUB-P8/C7 : les filtres de date-au-plus-tôt
+    comparent des DATES, et aucun appelant n'a à connaître le fuseau."""
+    import datetime as _dt
+
+    if value is None:
+        return timezone.localdate()
+    if isinstance(value, _dt.datetime):
+        return (timezone.localtime(value).date()
+                if timezone.is_aware(value) else value.date())
+    return value
+
+
+def _rotation_backlog_head(company, adset, *, link_url='', today=None):
     """Tête du backlog APPROUVÉ utilisable pour une rotation sur ``adset``.
 
     « Approuvé » = l'item est EN FILE (son lot a passé l'approbation humaine,
@@ -509,18 +523,25 @@ def _rotation_backlog_head(company, adset, *, link_url=''):
     ``link_url`` (lien réel lu sur le miroir de créatif de l'ad set) sert de
     destination — jamais un lien fabriqué.
 
+    PUB-P8/C7 — la DATE-AU-PLUS-TÔT est respectée : un item programmé pour plus
+    tard (lancement saisonnier, embargo chantier) n'est JAMAIS proposé avant sa
+    date. Le filtre est celui du backlog lui-même (``backlog._earliest_le_q``),
+    jamais une condition réécrite ici.
+
     Renvoie ``(item, fragments)`` ou ``(None, None)``."""
     from django.db.models import Q
 
-    from . import creative_bridge
+    from . import backlog as backlog_mod, creative_bridge
     from .models import CreativeBacklogItem, MetaConnection
 
     campaign = getattr(adset, 'campaign', None)
+    day = today or timezone.localdate()
     qs = (CreativeBacklogItem.objects
           .filter(company=company,
                   status=CreativeBacklogItem.Statut.EN_FILE)
           .filter(Q(target_campaign__isnull=True)
                   | Q(target_campaign=campaign))
+          .filter(backlog_mod._earliest_le_q(day))
           .select_related('asset')
           .order_by('earliest_date', 'id'))
     items = list(qs)
@@ -609,7 +630,7 @@ def resolve_rotation_payload(company, *, target_type, target_meta_id,
         live_link = (live_ad.creative_mirror.link_url or '').strip()
 
     item, fragments = _rotation_backlog_head(
-        company, adset, link_url=live_link)
+        company, adset, link_url=live_link, today=_local_date(now))
     source_ad = None
     if fragments is not None:
         source = ROTATION_SOURCE_BACKLOG
@@ -645,6 +666,57 @@ def resolve_rotation_payload(company, *, target_type, target_meta_id,
     if source_ad is not None:
         payload['source_ad_id'] = source_ad.meta_id
     return payload
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PUB-P8/C6 — Consommation SYMÉTRIQUE d'un item de backlog
+# ═════════════════════════════════════════════════════════════════════════════
+# Un item RÉELLEMENT embarqué dans une proposition doit quitter la file libre
+# (``EN_FILE`` → ``PROGRAMME``), sinon la proposition suivante ré-embarque le
+# MÊME créatif (le chemin PUB120 le faisait, les chemins « fatigue » et « brief »
+# ne le faisaient pas : asymétrie). Et la symétrie est obligatoire dans l'autre
+# sens : une proposition REJETÉE REND son item à la file (``PROGRAMME`` →
+# ``EN_FILE``) — un créatif ne se brûle pas en silence parce qu'un humain a dit
+# non. Les deux sens sont des UPDATE CONDITIONNELS sur le statut attendu :
+# idempotents, jamais destructifs, jamais un statut écrasé au passage.
+
+
+def _backlog_item_id(payload):
+    return (payload or {}).get('backlog_item_id')
+
+
+def _move_backlog_item(company, payload, *, expected, target):
+    from .models import CreativeBacklogItem
+    item_id = _backlog_item_id(payload)
+    if not item_id:
+        return 0
+    return (CreativeBacklogItem.objects
+            .filter(company_id=getattr(company, 'pk', company), pk=item_id,
+                    status=expected)
+            .update(status=target))
+
+
+def consume_backlog_item(company, payload):
+    """Avance ``EN_FILE`` → ``PROGRAMME`` l'item embarqué par ``payload``.
+
+    NO-OP sans ``backlog_item_id`` (une proposition dont la source créative est
+    un créatif LIVE ne consomme rien). Renvoie le nombre de lignes avancées."""
+    from .models import CreativeBacklogItem
+    return _move_backlog_item(
+        company, payload,
+        expected=CreativeBacklogItem.Statut.EN_FILE,
+        target=CreativeBacklogItem.Statut.PROGRAMME)
+
+
+def release_backlog_item(company, payload):
+    """Rend ``PROGRAMME`` → ``EN_FILE`` l'item d'une proposition REJETÉE.
+
+    NO-OP sans ``backlog_item_id``. Renvoie le nombre de lignes rendues."""
+    from .models import CreativeBacklogItem
+    return _move_backlog_item(
+        company, payload,
+        expected=CreativeBacklogItem.Statut.PROGRAMME,
+        target=CreativeBacklogItem.Statut.EN_FILE)
 
 
 def validate_rotation_payload(payload):
@@ -704,10 +776,19 @@ def propose_dco_recombination(company, *, adset, now=None, proposed_by=None,
       4. une ``EngineAction`` CREATE_AD est PROPOSÉE, spec INLINE (PUB117) —
          approbation humaine requise, ad née PAUSED à l'application.
 
+    PUB-P8/C2 — l'ACTEUR voyage avec la spec : le créatif DCO portait un
+    ``asset_feed_spec`` seul, sans ``object_story_spec.page_id``. Or Meta exige
+    la Page qui publie sur TOUT créatif publicitaire (c'est la raison d'être du
+    refus ``page_absente`` du pont PUB123) : la proposition serait partie pour
+    échouer à l'application. Le ``page_id`` est lu à la MÊME source que le pont
+    (``creative_bridge.connection_page_id``) et, sans Page connectée, la
+    recombinaison est REFUSÉE en français — jamais un créatif sans acteur.
+
     Ne crée JAMAIS rien sur Meta. Lève ``dco.DcoModeConflict`` /
-    ``dco.DcoPoolEmpty`` (sous-classes de ``ValueError`` → 400 côté vue).
+    ``dco.DcoPoolEmpty`` / ``creative_bridge.CreativeAssetNotReady`` (toutes
+    sous-classes de ``ValueError`` → 400 côté vue).
     """
-    from . import dco, naming
+    from . import creative_bridge, dco, naming
 
     if not adset.meta_id:
         raise dco.DcoPoolEmpty(
@@ -723,6 +804,16 @@ def propose_dco_recombination(company, *, adset, now=None, proposed_by=None,
         harvest_kw['window_days'] = window_days
     pool = dco.harvest_winning_pool(company, **harvest_kw)
     spec = dco.build_asset_feed_spec(pool)
+
+    # PUB-P8/C2 — l'ACTEUR, contrôlé juste AVANT de composer le payload (l'ordre
+    # des refus existants — mode, pool, plafond — reste donc intact).
+    page_id = creative_bridge.connection_page_id(company)
+    if not page_id:
+        raise creative_bridge.CreativeAssetNotReady(
+            "Recombinaison DCO impossible : aucune Page Facebook connectée (ID "
+            "Page vide sur la connexion Meta) — un créatif dynamique doit "
+            "déclarer la Page qui publie.",
+            key=creative_bridge.REFUS_PAGE)
 
     now = now or timezone.now()
     name = naming.build_name({
@@ -743,6 +834,10 @@ def propose_dco_recombination(company, *, adset, now=None, proposed_by=None,
         'adset_id': adset.meta_id,
         'name': name,
         'asset_feed_spec': spec,
+        # PUB-P8/C2 — l'ACTEUR de la publication voyage avec la spec dynamique
+        # (même source que le pont PUB123) : un créatif DCO sans Page n'existe
+        # pas côté Graph.
+        'object_story_spec': {'page_id': page_id},
         'creative_source': DCO_CREATIVE_SOURCE,
         'dco_mode': decision.mode,
         'dco_cold_start': decision.is_cold_start,
@@ -814,9 +909,13 @@ def propose_adset_launch_ads(company, *, adset, now=None, proposed_by=None,
         try:
             action = propose_dco_recombination(
                 company, adset=adset, now=now, proposed_by=proposed_by)
-        except (dco.DcoPoolEmpty, dco.DcoCapExceeded) as exc:
+        except (dco.DcoPoolEmpty, dco.DcoCapExceeded,
+                creative_bridge.CreativeAssetNotReady) as exc:
             # Pool vide = compte neuf : on ne PEUT pas recombiner, on remplit
             # donc les slots par les chemins ordinaires (et on le dit).
+            # PUB-P8/C2 — société sans Page connectée : le créatif dynamique est
+            # refusé (aucun acteur), la raison FR est conservée et on retombe
+            # sur les chemins ordinaires — jamais un ad set muet.
             fallback_fr = str(exc)
         else:
             return {'mode': decision.mode, 'actions': [action],
@@ -845,10 +944,15 @@ def propose_adset_launch_ads(company, *, adset, now=None, proposed_by=None,
     # File de la CAMPAGNE d'abord (un item ciblé n'est jamais détourné vers une
     # autre campagne), puis les items SANS campagne cible — utilisables partout,
     # et sinon jamais consommés au lancement d'une campagne toute neuve.
-    queue = list(backlog_mod.queue_for_campaign(company, adset.campaign)
-                 if adset.campaign_id else [])
-    queue += [it for it in backlog_mod.queue_for_campaign(company, None)
-              if it.target_campaign_id is None]
+    # PUB-P8/C7 — ``ready_only`` : un item daté pour plus tard n'est JAMAIS
+    # proposé avant sa date-au-plus-tôt (le filtre vit dans ``backlog``).
+    today = _local_date(now)
+    queue = list(backlog_mod.queue_for_campaign(
+        company, adset.campaign, today=today, ready_only=True)
+        if adset.campaign_id else [])
+    queue += [it for it in backlog_mod.queue_for_campaign(
+        company, None, today=today, ready_only=True)
+        if it.target_campaign_id is None]
     for item in queue:
         if len(actions) >= slots:
             break
@@ -1766,6 +1870,10 @@ def reject_action(action, *, user, commentaire=''):
             locked.error = str(commentaire)
         locked.save(
             update_fields=['status', 'approved_by', 'error', 'updated_at'])
+        # PUB-P8/C6 — l'item de backlog embarqué par la proposition RETOURNE en
+        # file : un « non » humain ne brûle jamais un créatif en silence (il
+        # restait PROGRAMMÉ, donc invisible pour toute proposition suivante).
+        release_backlog_item(locked.company_id, locked.payload)
     action.status = EngineAction.Statut.REJETEE
     action.approved_by = user
     if commentaire:
@@ -1799,10 +1907,15 @@ def _dispatch(client, action):
         # création. Sans spec, chemin historique inchangé.
         asset_feed_spec = payload.get('asset_feed_spec')
         if asset_feed_spec:
+            # PUB-P8/C2 — l'``object_story_spec`` (Page qui publie) accompagne
+            # la spec dynamique : le client REFUSE localement une spec sans
+            # acteur, donc aucun aller-retour réseau pour un créatif voué au
+            # rejet de Graph.
             return client.create_ad_with_asset_feed_spec(
                 name=payload.get('name', ''),
                 adset_id=payload.get('adset_id', ''),
                 asset_feed_spec=asset_feed_spec,
+                object_story_spec=payload.get('object_story_spec'),
                 extra_fields=payload.get('extra_fields'))
         # PUB123 — ad créée depuis un asset PONTÉ : le fragment ``creative``
         # (object_story_spec) voyage encodé JSON, validé fail-fast comme la
@@ -2007,12 +2120,24 @@ def _guard_before_dispatch(action):
     * Toute transition de statut explicite (``payload['target_status']``) →
       ``enforce_paused_only`` + ``enforce_never_activate`` (PAUSED-only, jamais
       d'activation — invariant permanent règle #3).
+    * PUB-P8/OPT3 — toute action à CRÉATIF (``create_ad`` / ``rotate_creative``
+      référençant un ``creative_asset_id``) → ``assert_creative_ok_for_ad`` est
+      RE-JOUÉ ici. Le pass ``policy_stamp`` n'était vérifié qu'à la PROPOSITION :
+      un pass RÉVOQUÉ entre la proposition et l'application (consentement retiré,
+      asset re-linté, lot dé-approuvé) laissait partir chez Meta un créatif
+      redevenu non conforme.
 
     Lève ``GuardrailViolation`` / ``GuardrailInoperative`` (budget/courant manquant
-    → règle inopérante = blocage fail-safe, jamais un skip silencieux) ; l'appelant
-    ``apply_action`` marque alors l'action ``echouee`` et relance."""
+    → règle inopérante = blocage fail-safe, jamais un skip silencieux) /
+    ``CreativePolicyNotPassed`` (raison FR) ; l'appelant ``apply_action`` marque
+    alors l'action ``echouee`` et relance — aucune requête n'est envoyée."""
     from .models import GuardrailConfig
     payload = action.payload or {}
+
+    # Re-vérification du pass policy créatif À L'APPLY (PUB-P8/OPT3) : d'abord,
+    # AVANT tout autre garde-fou et avant tout appel réseau.
+    assert_creative_ok_for_ad(action.company, action.kind, payload)
+
     config = GuardrailConfig.objects.filter(company=action.company).first()
 
     if action.kind == EngineAction.Kind.REBALANCE_BUDGET:

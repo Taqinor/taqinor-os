@@ -613,6 +613,10 @@ class ChaineDcoRecombineeTests(ChainBase):
         self.assertLessEqual(len(spec['images']), dco.DCO_MAX_IMAGES)
         self.assertLessEqual(len(spec['bodies']), dco.DCO_MAX_BODIES)
         self.assertEqual(spec['ad_formats'], [dco.AD_FORMAT_IMAGE])
+        # PUB-P8/C2 — la chaîne (c) déclare la Page qui publie, exactement comme
+        # (a) et (b) : un créatif DCO sans acteur n'existe pas côté Graph.
+        self.assertEqual(action.payload['object_story_spec'],
+                         {'page_id': 'page-42'})
         self.assertEqual(self.requests, [])  # zéro réseau avant approbation
 
         services.apply_action(self._approve(action),
@@ -626,5 +630,22 @@ class ChaineDcoRecombineeTests(ChainBase):
         self.assertTrue(ads[0]['name'][0])
         creative = json.loads(ads[0]['creative'][0])
         self.assertEqual(creative['asset_feed_spec'], spec)
+        # Payload Graph FINAL : l'acteur est présent sur la chaîne (c) comme il
+        # l'est sur (a) et (b) — plus aucune ad sans Page.
+        self.assertEqual(creative['object_story_spec']['page_id'], 'page-42')
         self._assert_born_paused(ads[0])
         self._assert_no_request_ever_activates()
+
+    def test_dco_without_a_connected_page_is_refused_in_french(self):
+        # PUB-P8/C2 — la Page manquante est un refus À LA PROPOSITION (aucune
+        # EngineAction écrite), jamais un échec découvert à l'application.
+        from apps.adsengine import creative_bridge
+
+        MetaConnection.objects.filter(pk=self.connection.pk).update(page_id='')
+        with self.assertRaises(creative_bridge.CreativeAssetNotReady) as ctx:
+            services.propose_dco_recombination(
+                self.company, adset=self.target, now=MONDAY)
+        self.assertEqual(ctx.exception.key, creative_bridge.REFUS_PAGE)
+        self.assertEqual(
+            EngineAction.objects.filter(company=self.company).count(), 0)
+        self.assertEqual(self.requests, [])

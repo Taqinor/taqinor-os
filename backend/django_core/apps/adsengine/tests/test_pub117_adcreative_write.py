@@ -115,10 +115,15 @@ class CreateAdCreativeTests(SimpleTestCase):
 
 
 class CreateAdWithAssetFeedSpecTests(SimpleTestCase):
+    # PUB-P8/C2 — l'ACTEUR est obligatoire : toute ad à spec dynamique déclare
+    # la Page qui publie (``object_story_spec.page_id``).
+    ACTOR = {'page_id': '1000'}
+
     def test_ad_is_born_paused_and_carries_the_spec(self):
         client, reqs = capturing_client()
         result = client.create_ad_with_asset_feed_spec(
-            name='DCO-1', adset_id='as-1', asset_feed_spec=AFS)
+            name='DCO-1', adset_id='as-1', asset_feed_spec=AFS,
+            object_story_spec=self.ACTOR)
         self.assertEqual(result, {'id': 'obj-1'})
         self.assertIn('act_1/ads', str(reqs[0].url))
         form = body_of(reqs[0])
@@ -129,18 +134,21 @@ class CreateAdWithAssetFeedSpecTests(SimpleTestCase):
         creative = json.loads(form['creative'][0])
         self.assertEqual(creative['asset_feed_spec']['ad_formats'],
                          ['SINGLE_IMAGE'])
+        # L'acteur voyage AVEC la spec dynamique.
+        self.assertEqual(creative['object_story_spec'], {'page_id': '1000'})
 
     def test_status_kwarg_raises_typeerror(self):
         client, _ = capturing_client()
         with self.assertRaises(TypeError):
             client.create_ad_with_asset_feed_spec(
                 name='X', adset_id='as-1', asset_feed_spec=AFS,
-                status='ACTIVE')
+                object_story_spec=self.ACTOR, status='ACTIVE')
 
     def test_status_smuggled_via_extra_fields_is_forced_paused(self):
         client, reqs = capturing_client()
         client.create_ad_with_asset_feed_spec(
             name='X', adset_id='as-1', asset_feed_spec=AFS,
+            object_story_spec=self.ACTOR,
             extra_fields={'status': 'ACTIVE'})
         self.assertEqual(body_of(reqs[0])['status'], ['PAUSED'])
 
@@ -148,7 +156,20 @@ class CreateAdWithAssetFeedSpecTests(SimpleTestCase):
         client, reqs = capturing_client()
         with self.assertRaises(mc.MetaError):
             client.create_ad_with_asset_feed_spec(
-                name='X', adset_id='as-1', asset_feed_spec={})
+                name='X', adset_id='as-1', asset_feed_spec={},
+                object_story_spec=self.ACTOR)
+        self.assertEqual(reqs, [])
+
+    def test_missing_actor_is_refused_locally_without_any_network_call(self):
+        # PUB-P8/C2 — sans Page, Graph rejette le créatif : on le refuse ICI,
+        # avant tout aller-retour réseau (raison FR explicite).
+        client, reqs = capturing_client()
+        for actor in (None, {}, {'page_id': ''}, {'page_id': '   '}):
+            with self.assertRaises(mc.MetaError) as ctx:
+                client.create_ad_with_asset_feed_spec(
+                    name='X', adset_id='as-1', asset_feed_spec=AFS,
+                    object_story_spec=actor)
+            self.assertIn('object_story_spec.page_id', str(ctx.exception))
         self.assertEqual(reqs, [])
 
 

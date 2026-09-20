@@ -104,13 +104,19 @@ def meets_diversity_floor(company, *, floor=DIVERSITY_FLOOR_HOOKS,
         company, window_days=window_days, today=today) >= floor
 
 
-def queue_for_campaign(company, campaign, *, today=None):
+def queue_for_campaign(company, campaign, *, today=None, ready_only=False):
     """File ordonnée (date-au-plus-tôt puis tag saisonnier) pour une campagne
-    cible — TOUS les items EN FILE programmés (y compris datés dans le futur),
-    la file complète à visualiser/planifier. ``today`` est accepté pour une
-    signature cohérente mais n'exclut rien (le runway, lui, filtre le prêt-
-    maintenant)."""
+    cible — par défaut TOUS les items EN FILE programmés (y compris datés dans
+    le futur), la file complète à visualiser/planifier.
+
+    PUB-P8/C7 — ``ready_only=True`` restreint aux items PUBLIABLES ``today``
+    (date-au-plus-tôt nulle ou atteinte, même ``_earliest_le_q`` que le runway) :
+    c'est ce que doit demander tout appelant qui va PROPOSER une ad, un item
+    daté pour plus tard n'étant jamais proposable avant sa date. La lecture
+    d'écran, elle, garde la file entière."""
     qs = _base_queue(company, campaign=campaign)
+    if ready_only:
+        qs = _ready_now(qs, today or datetime.date.today())
     return list(qs.order_by('earliest_date', 'seasonal_tag', 'id'))
 
 

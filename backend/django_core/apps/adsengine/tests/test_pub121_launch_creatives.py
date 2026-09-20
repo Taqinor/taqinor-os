@@ -186,6 +186,23 @@ class SlotFillingTests(LaunchCreativesBase):
         self.assertEqual(foreign.status, CreativeBacklogItem.Statut.EN_FILE)
         self.assertEqual(result['sources'], [services.LAUNCH_SOURCE_WINNER])
 
+    def test_a_future_dated_item_is_never_proposed(self):
+        # PUB-P8/C7 — la file COMPLÈTE (``queue_for_campaign``) sert l'écran de
+        # planification ; un PROPOSEUR, lui, ne prend que les items publiables
+        # aujourd'hui. Un item daté dans 30 jours partait en proposition.
+        self._signal_on_adset()
+        later = self._backlog_item(hook='Plus tard', image_hash='h-late')
+        CreativeBacklogItem.objects.filter(pk=later.pk).update(
+            earliest_date=datetime.date.today() + datetime.timedelta(days=30))
+        self._winner_ad()
+
+        result = services.propose_adset_launch_ads(
+            self.company, adset=self.adset)
+
+        later.refresh_from_db()
+        self.assertEqual(later.status, CreativeBacklogItem.Statut.EN_FILE)
+        self.assertEqual(result['sources'], [services.LAUNCH_SOURCE_WINNER])
+
     def test_an_unbridgeable_item_is_skipped_never_proposed(self):
         self._signal_on_adset()
         # Asset SANS média uploadé au compte : le pont PUB123 le refuse.

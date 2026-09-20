@@ -95,6 +95,34 @@ describe('FieldTestsScreen', () => {
     expect(screen.getByTestId('ae-tests-terrain-msg').textContent).toContain('FT2')
   })
 
+  it("omet measured_on quand la date est vide (jamais '')", async () => {
+    // PUB-P8/C4 — la case date est OPTIONNELLE : la clé est absente du corps,
+    // le serveur date au jour courant. Envoyer '' faisait échouer la saisie.
+    renderScreen()
+    await waitFor(() => expect(screen.getByTestId('ae-tests-terrain-row-FT2')).toBeTruthy())
+    fireEvent.change(screen.getByTestId('ae-tests-terrain-valeur-FT2'), { target: { value: '25%' } })
+    fireEvent.click(screen.getByTestId('ae-tests-terrain-submit-FT2'))
+    await waitFor(() => expect(mocks.recordResult).toHaveBeenCalled())
+    expect(mocks.recordResult).toHaveBeenCalledWith('FT2', {
+      measured_value: '25%', evidence: '',
+    })
+    expect(Object.keys(mocks.recordResult.mock.calls[0][1])).not.toContain('measured_on')
+  })
+
+  it('affiche la raison FR du serveur quand les structures sont refusées', async () => {
+    // PUB-P8/C5 — devise du compte ≠ MAD : la raison motivée doit s'afficher,
+    // jamais un « impossible » muet.
+    mocks.proposeStructures.mockRejectedValueOnce({
+      response: { data: { detail: 'Devise du compte USD ≠ MAD — plafond micro-test 30 MAD non convertible sans décision fondateur.' } },
+    })
+    renderScreen()
+    await waitFor(() => expect(screen.getByTestId('ae-tests-terrain-structures-FT1')).toBeTruthy())
+    fireEvent.click(screen.getByTestId('ae-tests-terrain-structures-FT1'))
+    await waitFor(() => expect(screen.getByTestId('ae-tests-terrain-err')).toBeTruthy())
+    expect(screen.getByTestId('ae-tests-terrain-err').textContent).toContain('Devise du compte USD')
+    expect(screen.getByTestId('ae-tests-terrain-err').textContent).toContain('décision fondateur')
+  })
+
   it('ne soumet rien si la valeur mesurée est vide', async () => {
     renderScreen()
     await waitFor(() => expect(screen.getByTestId('ae-tests-terrain-row-FT3')).toBeTruthy())

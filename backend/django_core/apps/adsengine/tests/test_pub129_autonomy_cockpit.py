@@ -164,6 +164,31 @@ class AutonomyCockpitTests(TestCase):
         self.assertTrue(any('ACTIVÉE' in d for d in self._audit_details()),
                         self._audit_details())
 
+    def test_reactivation_journals_the_real_state_before(self):
+        # PUB-P8/OPT1 — ``active_before`` était écrit FAUX (``False`` en dur) :
+        # sur une RÉ-activation, le diff d'audit racontait « Non → Oui » alors
+        # que l'autonomie était DÉJÀ active. On lit l'état AVANT la bascule.
+        from apps.audit.models import AuditLog
+
+        with mock.patch.object(preflight.field_tests, 'pending_keys',
+                               return_value=[]):
+            self._all_green()
+            auth(self.admin).post(ACTIVER)      # 1re activation : Non → Oui
+            self.assertTrue(preflight.is_active(self.company))
+            auth(self.admin).post(ACTIVER)      # RÉ-activation : Oui → Oui
+
+        diffs = [row.changes for row in AuditLog.objects.filter(
+            company=self.company).order_by('id')
+            if any((c or {}).get('field') == 'autonomy_active'
+                   for c in (row.changes or []))]
+        self.assertEqual(len(diffs), 2)
+        firsts = [c for c in diffs[0] if c['field'] == 'autonomy_active']
+        seconds = [c for c in diffs[1] if c['field'] == 'autonomy_active']
+        self.assertEqual((firsts[0]['old'], firsts[0]['new']),
+                         ('False', 'True'))
+        self.assertEqual((seconds[0]['old'], seconds[0]['new']),
+                         ('True', 'True'))
+
     # ── Désactivation : toujours libre, aucune porte requise ─────────────────
     def test_deactivation_never_requires_a_single_green_gate(self):
         # Autonomie posée par le chemin bas-niveau, puis TOUTES les portes sont
