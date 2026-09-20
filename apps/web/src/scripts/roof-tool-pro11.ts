@@ -130,12 +130,13 @@ import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
 import { createLayoutEditor } from './roofPro11/layoutEditor';
 import { createObstaclesUi } from './roofPro11/obstaclesUi';
+import { createMesureUi, formatMeasure, isMeasureValid, type Measurement, type MeasureKind } from './roofPro11/mesureUi';
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createScene3d } from './roofPro11/scene3d';
 import { createOptimizer } from './roofPro11/optimizer';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements } from './roofPro11/prefill';
 
 let booted = false;
 
@@ -321,6 +322,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   let lastTapPt: maplibregl.Point | null = null;
   let obstacleMode = false;
   let obstacles: Obstacle[] = [];
+  // CAL102 — mesures posées sur le pan actif (distance/surface/angle), pont vers
+  // roofPro11/mesureUi.ts (même convention que `obstacles`/`vertices`).
+  let measurements: Measurement[] = [];
   let selectedObsId: string | null = null;
   let obsCounter = 0;
   // Glissé en cours pour dessiner un obstacle.
@@ -577,6 +581,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     },
     set obstacles(v) {
       obstacles = v;
+    },
+    get measurements() {
+      return measurements;
+    },
+    set measurements(v) {
+      measurements = v ?? [];
     },
     get selectedObsId() {
       return selectedObsId;
@@ -1190,6 +1200,75 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const doVertexMove = obstaclesUi.doVertexMove;
   const endVertexMove = obstaclesUi.endVertexMove;
 
+  // ═══════════ CAL102 — outil de MESURE (distance/surface/angle) ═══════════
+  // Le module porte la géométrie + la session ; l'entrée ne fait que router les clics
+  // carte vers `addPoint` quand une session est active (même esprit que `obstacleMode`)
+  // et redessiner un calque GeoJSON dédié (jamais mélangé au tracé/aux obstacles).
+  const mesureBtns: Record<MeasureKind, HTMLButtonElement | null> = {
+    distance: $<HTMLButtonElement>('rp9-mesure-distance'),
+    area: $<HTMLButtonElement>('rp9-mesure-area'),
+    angle: $<HTMLButtonElement>('rp9-mesure-angle'),
+  };
+  const mesureFinishBtn = $<HTMLButtonElement>('rp9-mesure-finish');
+  const mesureCancelBtn = $<HTMLButtonElement>('rp9-mesure-cancel');
+  const mesureNoteEl = $('rp9-mesure-note');
+  const mesureListEl = $('rp9-mesure-list');
+  const mesureUi = createMesureUi(ctx, { render: () => renderMeasurements() });
+  function mesureEmptyGeoJSON() {
+    return { type: 'FeatureCollection', features: [] } as const;
+  }
+  /** Un point milieu (session ou mesure posée), pour l'étiquette de valeur. */
+  function midOf(points: LngLat[]): LngLat {
+    let lng = 0;
+    let lat = 0;
+    for (const p of points) { lng += p[0]; lat += p[1]; }
+    return [lng / points.length, lat / points.length];
+  }
+  function renderMeasurements() {
+    const src = map.getSource?.('rp9-mesure') as maplibregl.GeoJSONSource | undefined;
+    if (src) {
+      const features: object[] = [];
+      const pushLine = (kind: MeasureKind, points: LngLat[], label: string) => {
+        if (points.length < 2) return;
+        const coords = kind === 'area' ? [...points, points[0]] : points;
+        features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: { label } });
+      };
+      for (const m of mesureUi.list()) pushLine(m.kind, m.points, `${m.label ? `${m.label} — ` : ''}${formatMeasure(m)}`);
+      const kind = mesureUi.activeKind();
+      if (kind) {
+        const pts = mesureUi.sessionPoints();
+        pushLine(kind, pts, isMeasureValid({ kind, points: pts }) ? formatMeasure({ kind, points: pts }) : '…');
+      }
+      src.setData({ type: 'FeatureCollection', features } as never);
+    }
+    for (const k of Object.keys(mesureBtns) as MeasureKind[]) mesureBtns[k]?.setAttribute('aria-pressed', String(mesureUi.activeKind() === k));
+    const active = mesureUi.isActive();
+    if (mesureFinishBtn) mesureFinishBtn.hidden = !active;
+    if (mesureCancelBtn) mesureCancelBtn.hidden = !active;
+    if (mesureNoteEl) {
+      mesureNoteEl.textContent = active
+        ? `Touchez la carte pour poser des points (${mesureUi.sessionPoints().length} posé${mesureUi.sessionPoints().length > 1 ? 's' : ''}).`
+        : '';
+    }
+    if (mesureListEl) {
+      const list = mesureUi.list();
+      mesureListEl.innerHTML = list.length
+        ? list.map((m) => `<li>${esc(m.label ?? m.kind)} — ${esc(formatMeasure(m))}</li>`).join('')
+        : '';
+    }
+  }
+  for (const k of Object.keys(mesureBtns) as MeasureKind[]) {
+    mesureBtns[k]?.addEventListener('click', () => {
+      mesureUi.begin(k);
+      setStatus('Touchez la carte pour poser vos points de mesure.');
+    });
+  }
+  mesureFinishBtn?.addEventListener('click', () => {
+    const m = mesureUi.finish();
+    setStatus(m ? `Mesure posée — ${formatMeasure(m)}.` : 'Encore un point ou deux avant de pouvoir terminer.');
+  });
+  mesureCancelBtn?.addEventListener('click', () => mesureUi.cancel());
+
   // WJ19 — « Ombres voisines » (shadow-tracing → dérate honnête). Le module câble
   // lui-même ses boutons/curseurs ; l'entrée route seulement le clic carte (plus bas)
   // et le reset. `renderActive` est déclaré plus bas → wrapper paresseux.
@@ -1338,6 +1417,27 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       type: 'line',
       source: 'rp9-obs-preview',
       paint: { 'line-color': GOLD, 'line-width': 2, 'line-dasharray': [1.5, 1] },
+    });
+    // CAL102 — calque des mesures (distance/surface/angle), distinct du tracé/obstacles.
+    map.addSource('rp9-mesure', { type: 'geojson', data: mesureEmptyGeoJSON() as never });
+    map.addLayer({
+      id: 'rp9-mesure-line',
+      type: 'line',
+      source: 'rp9-mesure',
+      paint: { 'line-color': '#7fb4e8', 'line-width': 2.5, 'line-dasharray': [1, 1] },
+    });
+    map.addLayer({
+      id: 'rp9-mesure-label',
+      type: 'symbol',
+      source: 'rp9-mesure',
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-size': 12,
+        'text-font': ['Open Sans Bold', 'Noto Sans Bold'],
+        'symbol-placement': 'line-center',
+        'text-allow-overlap': true,
+      },
+      paint: { 'text-color': '#ffffff', 'text-halo-color': '#070b1d', 'text-halo-width': 1.6 },
     });
     map.addLayer(customLayer);
     updateCompass();
@@ -1495,6 +1595,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     devisMode = true;
     const h = hydrateFromDevis(devis);
     const layout = devis.geometrie?.roof_layout ?? null;
+    // CAL102 — les mesures posées voyagent avec le design (même esprit que le repli
+    // `shading12x24` : un JSON douteux rend un tableau vide, jamais une exception).
+    measurements = deserializeMeasurements(layout);
     const setIf = (id: string, v?: string) => {
       const el = $<HTMLInputElement>(id);
       if (el && v && !el.value.trim()) el.value = v;
@@ -2234,6 +2337,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     }
     if (obstacleMode) return; // le glissé gère le dessin
     const lngLat: LngLat = [e.lngLat.lng, e.lngLat.lat];
+    // CAL102 — session de mesure active : le tap pose un point (souris ET tactile, le
+    // `click` de MapLibre est synthétisé après un tap sans glissé — même chemin que
+    // l'ajout d'un sommet de tracé ci-dessous, unification CAL107).
+    if (mesureUi.isActive()) {
+      mesureUi.addPoint(lngLat);
+      return;
+    }
     // WJ19 — tracé d'ombre actif : le module consomme le clic (pied puis bout).
     if (shadingUi.handleMapClick(lngLat)) return;
     if (closed) {

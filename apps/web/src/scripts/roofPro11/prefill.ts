@@ -20,6 +20,7 @@ import { type LngLat } from '../../lib/roof';
 import { BILL_RANGES } from '../../lib/billRange';
 import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
 import { ROOF_TYPES } from '../../lib/lead';
+import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -321,6 +322,39 @@ export function deserializeShading(json: unknown): number[][] | null {
   return serializeShading(raw as readonly (readonly number[])[] | null | undefined);
 }
 
+// ═══════════ CAL102 — MESURES (sérialisation) ═══════════
+// Mêmes garanties que `shading12x24` : un tableau de MAUVAISE forme est REFUSÉ EN BLOC
+// (mieux vaut aucune mesure au rechargement qu'une mesure à moitié fausse) — mais ici
+// chaque ENTRÉE est validée INDIVIDUELLEMENT (`isMeasureValid`), les entrées valides d'un
+// tableau par ailleurs correct sont donc conservées ; seule une entrée invalide (genre
+// inconnu, points manquants) est ÉCARTÉE, jamais silencieusement corrigée.
+const MEASURE_KINDS: readonly MeasureKind[] = ['distance', 'area', 'angle'];
+
+/** Normalise la liste de mesures pour la sérialisation : chaque mesure doit porter un id
+ *  non vide, un genre reconnu et des points géométriquement valides pour ce genre. */
+export function serializeMeasurements(list: readonly Measurement[] | null | undefined): Measurement[] {
+  if (!Array.isArray(list)) return [];
+  const out: Measurement[] = [];
+  for (const m of list) {
+    if (!m || typeof m.id !== 'string' || !m.id) continue;
+    if (!MEASURE_KINDS.includes(m.kind)) continue;
+    if (!Array.isArray(m.points) || !isMeasureValid(m)) continue;
+    const points = m.points.filter(
+      (p): p is LngLat => Array.isArray(p) && p.length === 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]),
+    );
+    if (points.length !== m.points.length || !isMeasureValid({ kind: m.kind, points })) continue;
+    out.push({ id: m.id, kind: m.kind, points: points.map((p) => [p[0], p[1]] as LngLat), ...(m.label ? { label: m.label } : {}) });
+  }
+  return out;
+}
+
+/** Relit une liste de mesures sérialisée — mêmes garde-fous que l'écriture. Accepte soit
+ *  le layout complet (lit `.measurements`), soit déjà le tableau brut. */
+export function deserializeMeasurements(json: unknown): Measurement[] {
+  const raw = (json as { measurements?: unknown } | null | undefined)?.measurements ?? json;
+  return serializeMeasurements(raw as readonly Measurement[] | null | undefined);
+}
+
 /** Layout complet sérialisé : version + zones + repère léger (pin/outline). */
 export interface SerializedLayout {
   version: 1 | 2;
@@ -349,6 +383,9 @@ export interface SerializedLayout {
   /** PV71 — matrice d'ombrage 12 mois × 24 heures (facteurs 0–1), ou null si aucune ombre
    *  n'a été tracée. Taille FIXE, donc charge utile bornée. */
   shading12x24?: number[][] | null;
+  /** CAL102 — mesures posées (distance/surface/angle), annotations du calepinage. Omis ou
+   *  vide = aucune mesure (comportement historique, byte pour byte). */
+  measurements?: Measurement[];
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -492,6 +529,9 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     // PV71 — les ombres tracées voyagent avec le design (sinon la production remonte
     // artificiellement au ré-import).
     shading12x24: serializeShading(ctx.shadeFactors),
+    // CAL102 — les mesures posées voyagent avec le design (sinon rouvrir le dossier les
+    // perd, comme n'importe quelle autre annotation de l'atelier).
+    ...(ctx.measurements && ctx.measurements.length ? { measurements: serializeMeasurements(ctx.measurements) } : {}),
   };
 }
 

@@ -122,6 +122,30 @@ export interface MesureUi {
   remove: (id: string) => boolean;
   /** Vide toutes les mesures du pan actif. */
   clear: () => void;
+
+  // — CAL102 — SESSION interactive : un point posé à la fois (même esprit que le tracé du
+  // toit ou le glissé-dessin d'obstacle), pour que l'appelant carte (roof-tool-pro11.ts)
+  // n'ait qu'à router ses clics/taps ici, sans connaître la mécanique de mesure. —
+  /** Une mesure est-elle en cours de pose ? */
+  isActive: () => boolean;
+  /** Genre de la mesure en cours, ou null hors session. */
+  activeKind: () => MeasureKind | null;
+  /** Démarre une session du genre donné (remplace une session en cours sans la poser —
+   *  parité avec « changer d'outil abandonne le tracé en cours »). */
+  begin: (kind: MeasureKind) => void;
+  /** Pose un point dans la session en cours. No-op hors session. Le genre « angle » se
+   *  plafonne à 3 points (les points au-delà sont ignorés — jamais un angle à 4 sommets). */
+  addPoint: (p: LngLat) => void;
+  /** Retire le DERNIER point posé (parité « annuler le dernier point » du tracé du toit). */
+  undoPoint: () => void;
+  /** Points de la session en cours (copie), pour l'aperçu vivant sur la carte. */
+  sessionPoints: () => LngLat[];
+  /** Termine la session : pose la mesure si géométriquement valide pour son genre (et vide
+   *  la session), sinon la GARDE ouverte et renvoie null (l'utilisateur peut ajouter les
+   *  points manquants). */
+  finish: (label?: string) => Measurement | null;
+  /** Abandonne la session en cours SANS rien poser. */
+  cancel: () => void;
 }
 
 let nextMeasureId = 0;
@@ -163,5 +187,45 @@ export function createMesureUi(ctx: Ctx, deps: MesureUiDeps = {}): MesureUi {
     ensure().length = 0;
     deps.render?.();
   }
-  return { list, add, remove, clear };
+
+  // — CAL102 — session interactive —
+  let session: { kind: MeasureKind; points: LngLat[] } | null = null;
+  const MAX_POINTS: Record<MeasureKind, number> = { distance: Infinity, area: Infinity, angle: 3 };
+  function isActive(): boolean {
+    return session != null;
+  }
+  function activeKind(): MeasureKind | null {
+    return session?.kind ?? null;
+  }
+  function begin(kind: MeasureKind) {
+    session = { kind, points: [] };
+    deps.render?.();
+  }
+  function addPoint(p: LngLat) {
+    if (!session) return;
+    if (session.points.length >= MAX_POINTS[session.kind]) return;
+    session.points.push([p[0], p[1]]);
+    deps.render?.();
+  }
+  function undoPoint() {
+    if (!session || !session.points.length) return;
+    session.points.pop();
+    deps.render?.();
+  }
+  function sessionPoints(): LngLat[] {
+    return session ? session.points.map((p) => [p[0], p[1]] as LngLat) : [];
+  }
+  function finish(label?: string): Measurement | null {
+    if (!session) return null;
+    const m = add(session.kind, session.points, label);
+    if (m) session = null; // pose réussie : la session se referme
+    return m; // invalide : session GARDÉE (l'utilisateur complète), deps.render déjà appelé par add() si posé
+  }
+  function cancel() {
+    if (!session) return;
+    session = null;
+    deps.render?.();
+  }
+
+  return { list, add, remove, clear, isActive, activeKind, begin, addPoint, undoPoint, sessionPoints, finish, cancel };
 }

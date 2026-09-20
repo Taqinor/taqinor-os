@@ -1410,6 +1410,21 @@ export default function ToitureDesign({ mode = 'lead' }) {
                 <span id="rp9-obs-dims" className="fig text-sm text-lune-soft">—</span>
               </div>
             </div>
+
+            {/* CAL102 — outil de MESURE (distance/surface/angle), annotation persistée avec
+                le calepinage (roofPro11/mesureUi.ts). Un genre choisi, des taps posent les
+                points, « Terminer la mesure » la pose (refusée tant qu'elle est
+                géométriquement invalide pour son genre), « Annuler » abandonne la session. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="tech-label mr-1 text-lune-faint">Mesurer</span>
+              <button type="button" data-mesure-kind="distance" id="rp9-mesure-distance" className={chipClass} aria-pressed="false">Distance</button>
+              <button type="button" data-mesure-kind="area" id="rp9-mesure-area" className={chipClass} aria-pressed="false">Surface</button>
+              <button type="button" data-mesure-kind="angle" id="rp9-mesure-angle" className={chipClass} aria-pressed="false">Angle</button>
+              <button type="button" id="rp9-mesure-finish" hidden className={chipClass}>Terminer la mesure</button>
+              <button type="button" id="rp9-mesure-cancel" hidden className={chipClass}>Annuler</button>
+            </div>
+            <p id="rp9-mesure-note" className="min-h-[1rem] text-xs text-lune-faint" aria-live="polite"></p>
+            <ul id="rp9-mesure-list" className="space-y-1 text-xs text-lune-soft"></ul>
           </div>
 
           {/* W69 — « Personnaliser la disposition » : porté de apps/web/toiture-3d-pro-11.astro

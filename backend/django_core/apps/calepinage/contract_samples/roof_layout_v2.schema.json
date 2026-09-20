@@ -74,6 +74,11 @@
       "description": "CAL68 — zones interdites / réservées / préférées, traduites vers `core.calepinage.types.Zone` (repere, nature, sommets, hauteur_m, retrait_m). OPTIONNEL et additif : absent = aucune zone, comportement d'aujourd'hui. NOMMAGE : la tâche CAL68 parle du « tableau `zones[]` », mais ce nom est PRIS depuis la v1 par les pans de toiture — réutiliser `zones` casserait tout document existant et les trois consommateurs backend d'un coup. Le tableau s'appelle donc `exclusionZones`, et c'est CE nom qui fait contrat.",
       "type": "array",
       "items": { "$ref": "#/$defs/exclusionZone" }
+    },
+    "measurements": {
+      "description": "CAL102 — mesures posées (distance/surface/angle), annotations du calepinage (`roofPro11/mesureUi.ts`). OPTIONNEL et additif : absent ou vide = aucune mesure, comportement d'aujourd'hui. `serializeMeasurements` refuse toute entrée géométriquement invalide pour son genre plutôt que d'en persister une à moitié.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/measurement" }
     }
   },
   "$defs": {
@@ -395,6 +400,27 @@
           "minimum": 0
         }
       }
+    },
+    "measurement": {
+      "description": "CAL102 — une mesure posée (distance cumulée, surface d'un polygone fermé, ou angle à 3 points).",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["distance", "area", "angle"]
+        },
+        "points": {
+          "description": "Points lng/lat de la mesure. Minimum selon le genre : 2 pour `distance`, 3 pour `area`, exactement 3 pour `angle`.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/couple" }
+        },
+        "label": {
+          "description": "Libellé posé par l'utilisateur (optionnel — « côté sud »…).",
+          "type": "string"
+        }
+      }
     }
   },
   "exemple": {
@@ -482,6 +508,9 @@
     "battery": null,
     "source": "lead",
     "devisId": null,
-    "shading12x24": null
+    "shading12x24": null,
+    "measurements": [
+      { "id": "mes1", "kind": "distance", "points": [[0, 0], [10, 0]], "label": "côté sud" }
+    ]
   }
 }
