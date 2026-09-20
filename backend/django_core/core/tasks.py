@@ -623,3 +623,78 @@ def purger_donnees_fiabilite_task():
 
     logger.info('core.purger_donnees_fiabilite: %s', resultat)
     return resultat
+
+
+# ── NTOBS31 — garde-fous par défaut des 3 KPI « Fiabilité » ─────────────────
+#
+# Le calcul + l'évaluation des KPI restent ENTIÈREMENT dans
+# ``apps.reporting.kpi_alertes`` (catalogue fermé ``KpiAlerte.Kpi``, beat
+# quotidien déjà planifié ``reporting-evaluate-kpi-alertes``) — jamais un
+# second moteur ici. ``core`` reste une couche de fondation (contrat
+# import-linter ``core-foundation-is-a-base-layer`` : aucun import STATIQUE
+# de ``apps.reporting``) : le modèle ``KpiAlerte`` est résolu par
+# ``django.apps.apps.get_model``, même patron que ``_purger_uptime_buckets_
+# perimes`` ci-dessus pour ``apps.statuspage``.
+#
+# Ce job GARANTIT seulement que le garde-fou « drill de restauration périmé »
+# et « quota saturé » existe pour CHAQUE société active, sans dépendre d'un
+# admin qui penserait à le configurer à la main — une alerte de fiabilité est
+# un filet de sécurité, pas une fonctionnalité opt-in. Idempotent
+# (``get_or_create`` sur le triplet société+KPI+seuil EXACT) : ne touche
+# jamais une alerte personnalisée existante sur le même KPI avec un autre
+# seuil, et ne duplique rien en cas de re-run quotidien.
+NTOBS31_SEUIL_DRILL_PERIME_JOURS = 35
+NTOBS31_SEUIL_QUOTA_SATURE_PCT = 100
+
+
+def _assurer_alerte_fiabilite_defaut(
+        kpi_alerte_model, company, *, kpi, operateur, seuil, nom):
+    _, cree = kpi_alerte_model.objects.get_or_create(
+        company=company, kpi=kpi, operateur=operateur, seuil=seuil,
+        defaults={'nom': nom, 'destinataire_role': 'admin', 'actif': True})
+    return cree
+
+
+@shared_task(name='core.assurer_alertes_fiabilite_kpi')
+def assurer_alertes_fiabilite_kpi_task():
+    """NTOBS31 — job beat quotidien : garantit, pour chaque société ACTIVE,
+    les deux ``KpiAlerte`` par défaut décrites par la tâche (drill périmé
+    > 35 j, quota saturé >= 100 %). Best-effort par société — une société en
+    échec n'empêche jamais les suivantes."""
+    from decimal import Decimal
+
+    from django.apps import apps as django_apps
+
+    from authentication.selectors import active_companies
+
+    try:
+        KpiAlerte = django_apps.get_model('reporting', 'KpiAlerte')
+    except LookupError:
+        # Migration reporting pas encore appliquée : dégradation propre,
+        # jamais une exception qui casserait le beat.
+        return {'crees': 0}
+
+    seuil_drill = Decimal(NTOBS31_SEUIL_DRILL_PERIME_JOURS)
+    seuil_quota = Decimal(NTOBS31_SEUIL_QUOTA_SATURE_PCT)
+    crees = 0
+    for company in active_companies():
+        try:
+            if _assurer_alerte_fiabilite_defaut(
+                    KpiAlerte, company,
+                    kpi=KpiAlerte.Kpi.JOURS_DEPUIS_DERNIER_DRILL_REUSSI,
+                    operateur=KpiAlerte.Operateur.SUP, seuil=seuil_drill,
+                    nom='Drill de restauration périmé'):
+                crees += 1
+            if _assurer_alerte_fiabilite_defaut(
+                    KpiAlerte, company,
+                    kpi=KpiAlerte.Kpi.QUOTA_LE_PLUS_CHARGE_PCT,
+                    operateur=KpiAlerte.Operateur.SUP_EGAL, seuil=seuil_quota,
+                    nom='Quota saturé'):
+                crees += 1
+        except Exception:  # noqa: BLE001 — best-effort, une société KO n'en bloque pas d'autres
+            logger.exception(
+                'core.assurer_alertes_fiabilite_kpi: échec société %s.',
+                company.pk)
+    logger.info(
+        'core.assurer_alertes_fiabilite_kpi: %d alerte(s) créée(s).', crees)
+    return {'crees': crees}

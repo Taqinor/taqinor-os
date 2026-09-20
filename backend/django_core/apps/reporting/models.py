@@ -491,6 +491,20 @@ class KpiAlerte(models.Model):
             'couverture_i18n_pct', 'i18n — couverture de l\'interface (%)')
         DOCUMENTS_NON_FR_PCT = (
             'documents_non_fr_pct', 'i18n — documents générés hors FR (%)')
+        # NTOBS31 — 3 KPI « Fiabilité » cross-module, calculés depuis des
+        # données déjà bâties par le groupe NTOBS (``core.sla.SlaSnapshot``,
+        # ``core.models.BackupRun``, ``core.usage_limits.usage_summary``) —
+        # aucun nouveau moteur, aucun nouveau modèle. Voir
+        # ``apps.reporting.kpi_alertes`` pour les trois calculateurs.
+        UPTIME_MOYEN_12_MOIS = (
+            'uptime_moyen_12_mois',
+            'Fiabilité — disponibilité moyenne 12 mois (%)')
+        JOURS_DEPUIS_DERNIER_DRILL_REUSSI = (
+            'jours_depuis_dernier_drill_reussi',
+            'Fiabilité — jours depuis le dernier drill de restauration réussi')
+        QUOTA_LE_PLUS_CHARGE_PCT = (
+            'quota_le_plus_charge_pct',
+            'Fiabilité — quota le plus chargé (%)')
 
     class Operateur(models.TextChoices):
         SUP = 'sup', '>'
