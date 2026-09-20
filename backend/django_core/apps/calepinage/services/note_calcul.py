@@ -43,17 +43,27 @@ from __future__ import annotations
 from html import escape
 
 __all__ = [
-    'CLES_INTERDITES', 'NoteRefusee', 'construire_note_calcul',
-    'html_de_note_calcul', 'rendre_note_calcul',
+    'CLES_INTERDITES', 'NoteRefusee', 'CLES_VERDICT', 'CLES_MARGES',
+    'construire_note_calcul', 'verdict_de_preuve', 'html_de_note_calcul',
+    'rendre_note_calcul',
 ]
 
 #: Clés dont la seule PRÉSENCE dans la donnée d'entrée est un défaut
-#: d'étanchéité (même liste qu'AOF129, volontairement en dur : c'est une règle,
-#: pas une donnée).
+#: d'étanchéité (même esprit qu'AOF129, volontairement en dur : c'est une
+#: règle, pas une donnée). L'appariement se fait sur des JETONS ENTIERS
+#: (``_prix_achat_`` dans ``_prix_achat_total_``), jamais sur une
+#: sous-chaîne — « marge » est un mot du MÉTIER GÉOMÉTRIQUE ici (``marges``,
+#: ``marge_troncon_min`` : les jeux mesurés entre rangées et obstacles), et un
+#: appariement par sous-chaîne refusait le régime de preuve du moteur
+#: lui-même. Le défaut a été vu par les essais de CAL177, pas deviné.
 CLES_INTERDITES = (
-    'prix_achat', 'cout_revient', 'cout_de_revient', 'marge', 'benefice',
-    'coefficient', 'prix_vente', 'remise',
+    'prix_achat', 'prix_vente', 'prix_unitaire', 'cout_revient',
+    'cout_de_revient', 'marge_brute', 'marge_nette', 'marge_commerciale',
+    'taux_marge', 'benefice', 'remise',
 )
+
+#: Clés interdites à l'IDENTIQUE — celles dont le nom nu est déjà un aveu.
+CLES_INTERDITES_EXACTES = ('marge', 'prix', 'cout', 'coefficient')
 
 #: Libellé lisible des sources publiées par le moteur.
 LIBELLE_SOURCE = {
@@ -74,12 +84,101 @@ GRANDEURS_INDISPENSABLES = (
 )
 
 
+# ── CAL177 — le RÉGIME DE PREUVE, reporté tel quel ─────────────────────────
+#
+# ``core/calepinage`` ne rend pas un simple verdict : il rend un RÉGIME DE
+# PREUVE (méthode, méthode exacte ou non, optimalité, borne supérieure, marges
+# mesurées, contrôles passés). Jusqu'ici il n'était consommé que par le studio
+# AO (``VerdictBar.jsx``) — AUCUNE sortie imprimable ne le portait. Or un compte
+# de modules SANS son régime n'est pas opposable : « 314 modules » ne dit pas
+# s'ils sont prouvés optimaux ou simplement posés par une heuristique.
+#
+# LA RÈGLE EST L'ÉGALITÉ. Le verdict imprimé est RECOPIÉ du résultat, clé par
+# clé, jamais recalculé à l'impression : c'est ce qui garantit qu'il est
+# identique à celui que l'API des variantes affiche pour le MÊME résultat. Un
+# écart entre l'écran et la pièce remise, c'est l'incident du 27/07/2026
+# (264 modules annoncés, 314 dans la donnée) sous un autre nom.
+
+#: Les clés du régime de preuve, dans l'ordre d'impression — celles que le
+#: moteur publie (``preuve``) et que le comparateur de variantes republie à
+#: plat : les deux graphies du MÊME régime.
+CLES_VERDICT = ('methode', 'methode_exacte', 'optimal', 'total_retenu',
+                'total_optimal', 'borne_superieure', 'libelle', 'pas_cm',
+                'nb_optima')
+
+#: Les marges MESURÉES. Discipline du null : une marge NON MESURÉE vaut
+#: ``None`` — jamais ``0``, qui se lirait « au ras ».
+CLES_MARGES = ('troncon_min_cm', 'bande_min_cm', 'rangee_critique',
+               'obstacle_critique')
+
+
+def verdict_de_preuve(resultat):
+    """Le régime de preuve du résultat, RECOPIÉ — aucune grandeur recalculée.
+
+    Deux graphies du même régime coexistent dans le dépôt, et les deux sont
+    lues : le moteur publié le range sous ``preuve`` (``pose.json``), le
+    comparateur de variantes le republie À PLAT (``methode``, ``optimal``,
+    ``marges``…). Refuser l'une des deux aurait fait mentir la pièce devant un
+    producteur réel. Le PLAT prime : c'est la forme que l'API des variantes
+    affiche, donc celle dont l'égalité est exigée.
+
+    Toutes les clés sont TOUJOURS présentes, à ``None`` quand la grandeur n'a
+    pas été mesurée : une clé absente ne se lit pas, un ``0`` inventé se lit
+    faux.
+    """
+    resultat = resultat if isinstance(resultat, dict) else {}
+    preuve = resultat.get('preuve')
+    preuve = preuve if isinstance(preuve, dict) else {}
+    marges = resultat.get('marges')
+    if not isinstance(marges, dict):
+        marges = preuve.get('marges') \
+            if isinstance(preuve.get('marges'), dict) else {}
+
+    regime = {}
+    for cle in CLES_VERDICT:
+        valeur = resultat.get(cle)
+        regime[cle] = preuve.get(cle) if valeur is None else valeur
+
+    def plat(cle):
+        valeur = resultat.get(cle)
+        return preuve.get(cle) if valeur is None else valeur
+
+    return {
+        'regime': regime,
+        'marges': {cle: marges.get(cle) for cle in CLES_MARGES},
+        'marge_troncon_min': plat('marge_troncon_min'),
+        'marge_bande_min': plat('marge_bande_min'),
+        'controles': list(preuve.get('controles') or []),
+        # Les hypothèses encore ouvertes : une cote À CONFIRMER qui ne
+        # remonterait pas ici serait une hypothèse INVISIBLE dans une pièce
+        # technique.
+        'cotes_a_confirmer': list(resultat.get('cotes_a_confirmer') or []),
+        'motifs_non_engageable': list(
+            resultat.get('motifs_non_engageable') or []),
+        'engageable': resultat.get('engageable'),
+    }
+
+
 class NoteRefusee(ValueError):
     """Le rendu refuse de sortir, et il NOMME la grandeur qui lui manque."""
 
     def __init__(self, message, *, champ=''):
         super().__init__(message)
         self.champ = champ
+
+
+def _cle_interdite(cle):
+    """Vrai si ``cle`` est une grandeur de coût — appariement par JETONS.
+
+    ``marges`` et ``marge_troncon_min`` (les jeux GÉOMÉTRIQUES mesurés par le
+    moteur) ne sont pas des grandeurs de coût et doivent passer ; ``marge``
+    tout court, si.
+    """
+    normalisee = ''.join(c if c.isalnum() else '_' for c in str(cle).lower())
+    if normalisee in CLES_INTERDITES_EXACTES:
+        return True
+    entoure = '_%s_' % normalisee.strip('_')
+    return any('_%s_' % interdite in entoure for interdite in CLES_INTERDITES)
 
 
 def _verifier_etancheite(donnees):
@@ -90,8 +189,7 @@ def _verifier_etancheite(donnees):
         if isinstance(noeud, dict):
             for cle, valeur in noeud.items():
                 complet = '.'.join(filter(None, [chemin, str(cle)]))
-                if any(interdite in str(cle).lower()
-                       for interdite in CLES_INTERDITES):
+                if _cle_interdite(cle):
                     trouves.append(complet)
                 descendre(valeur, complet)
         elif isinstance(noeud, (list, tuple)):
@@ -208,6 +306,9 @@ def construire_note_calcul(resultat, *, site=None, identite=None):
             'specific_yield_kwh_kwc': total.get('specific_yield_kwh_kwc'),
             'par_pan': list(_lire(resultat, 'production.par_pan') or []),
         },
+        # CAL177 — le régime de preuve, RECOPIÉ du résultat (jamais recalculé)
+        # : c'est ce qui le rend égal à celui de l'API des variantes.
+        'verdict': verdict_de_preuve(resultat),
         'avertissements': list(resultat.get('avertissements') or []),
         'provenance': {
             # Deux graphies coexistent dans le dépôt pour la MÊME empreinte
@@ -234,7 +335,11 @@ def _nombre_fr(valeur, decimales=2, unite=''):
         texte = ('%.*f' % (decimales, float(valeur))).replace('.', ',')
     except (TypeError, ValueError):
         return escape(str(valeur))
-    return texte + (' ' + unite if unite else '')
+    if not unite:
+        return texte
+    # Typographie française : pas d'espace devant le degré, une espace devant
+    # les autres unités (y compris « % », insécable à l'impression).
+    return texte + unite if unite == '°' else texte + ' ' + unite
 
 
 def _ligne(libelle, valeur):
@@ -252,6 +357,73 @@ def _pied_de_page(provenance):
     if provenance.get('calcule_le'):
         termes.append('calculé le %s' % provenance['calcule_le'])
     return ' · '.join(termes)
+
+
+#: Libellés d'impression du régime de preuve. La note NOMME les clés du
+#: moteur ; elle ne les REFORMULE pas en affirmation (« conforme », « optimal »
+#: rédigé à la main engagerait le soumissionnaire — c'est au métier, jamais au
+#: document, de l'écrire).
+LIBELLE_VERDICT = {
+    'methode': 'Méthode de pose',
+    'methode_exacte': 'Méthode exacte',
+    'optimal': 'Optimum prouvé',
+    'total_retenu': 'Modules retenus',
+    'total_optimal': 'Modules à l\'optimum',
+    'borne_superieure': 'Borne supérieure',
+    'libelle': 'Régime',
+    'pas_cm': 'Pas de recherche (cm)',
+    'nb_optima': 'Nombre d\'optima',
+}
+
+LIBELLE_MARGE = {
+    'troncon_min_cm': 'Marge minimale de tronçon (cm)',
+    'bande_min_cm': 'Marge minimale de bande (cm)',
+    'rangee_critique': 'Rangée critique',
+    'obstacle_critique': 'Obstacle critique',
+}
+
+
+def _valeur_verdict(valeur):
+    """Une valeur de régime, telle quelle. ``None`` = NON MESURÉ, pas zéro."""
+    if valeur is None:
+        return 'non mesuré'
+    if isinstance(valeur, bool):
+        return 'oui' if valeur else 'non'
+    return str(valeur)
+
+
+def _section_verdict(verdict):
+    """CAL177 — la section « verdict de preuve », RECOPIÉE du résultat."""
+    if not verdict:
+        return ''
+    lignes = [_ligne(LIBELLE_VERDICT[cle], _valeur_verdict(valeur))
+              for cle, valeur in (verdict.get('regime') or {}).items()
+              if cle in LIBELLE_VERDICT]
+    lignes += [_ligne(LIBELLE_MARGE[cle], _valeur_verdict(valeur))
+               for cle, valeur in (verdict.get('marges') or {}).items()
+               if cle in LIBELLE_MARGE]
+    if not lignes:
+        return ''
+    blocs = ['<h2>Verdict de preuve</h2>',
+             '<p class="note">Régime REPORTÉ du résultat du moteur, clé par '
+             'clé : il est identique à celui qu\'affiche la comparaison des '
+             'variantes pour ce même résultat.</p>',
+             '<table>%s</table>' % ''.join(lignes)]
+    controles = verdict.get('controles') or []
+    if controles:
+        blocs.append('<p class="note">Contrôles passés : %s</p>'
+                     % escape(', '.join(str(c) for c in controles)))
+    for titre, entrees in (
+            ('Cotes à confirmer', verdict.get('cotes_a_confirmer') or []),
+            ("Motifs de non-engageabilité",
+             verdict.get('motifs_non_engageable') or [])):
+        if not entrees:
+            continue
+        blocs.append('<p><strong>%s</strong></p><ul>%s</ul>'
+                     % (escape(titre),
+                        ''.join('<li>%s</li>' % escape(str(e))
+                                for e in entrees)))
+    return ''.join(blocs)
 
 
 def html_de_note_calcul(note):
@@ -297,6 +469,7 @@ def html_de_note_calcul(note):
 
     avertissements = ''.join(
         '<li>%s</li>' % escape(str(texte)) for texte in note['avertissements'])
+    verdict = _section_verdict(note.get('verdict') or {})
 
     return (
         '<!doctype html><html lang="fr"><head><meta charset="utf-8">'
@@ -328,6 +501,7 @@ def html_de_note_calcul(note):
         '<table><tr><th>Poste</th><th>Part</th><th>Source</th></tr>'
         '%(pertes)s</table>'
         '<h2>Production attendue</h2><table>%(production)s</table>'
+        '%(verdict)s'
         '%(avertissements)s'
         '</body></html>'
     ) % {
@@ -365,6 +539,7 @@ def html_de_note_calcul(note):
                    _nombre_fr(production['specific_yield_kwh_kwc'], 1,
                               'kWh/kWc')),
         ]),
+        'verdict': verdict,
         'avertissements': ('<h2>Avertissements du moteur</h2><ul>%s</ul>'
                            % avertissements) if avertissements else '',
     }

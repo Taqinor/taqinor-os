@@ -102,8 +102,11 @@ class EtancheiteTest(SimpleTestCase):
     def test_aucune_mention_de_prix_dans_la_note_rendue(self):
         html = html_de_note_calcul(construire_note_calcul(resultat(),
                                                           site=SITE))
-        for interdit in ('prix_achat', 'prix d\'achat', 'marge',
-                         'coût de revient', 'MAD'):
+        # « marge » tout court n'est PAS un mot interdit dans une pièce
+        # technique : les marges du moteur sont des jeux GÉOMÉTRIQUES mesurés
+        # (CAL177). Ce qui est interdit, c'est l'argent.
+        for interdit in ('prix_achat', 'prix d\'achat', 'marge brute',
+                         'coût de revient', 'MAD', 'DH HT'):
             self.assertNotIn(interdit, html)
 
 
