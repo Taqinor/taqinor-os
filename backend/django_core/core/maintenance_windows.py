@@ -18,11 +18,14 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, serializers, status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.permissions import (
+    SAFE_METHODS, BasePermission, IsAuthenticated,
+)
 from rest_framework.response import Response
 
 from .models import TimestampedModel
@@ -134,59 +137,154 @@ def notifier_fenetres_a_venir(now=None):
 # ── API ──────────────────────────────────────────────────────────────────
 
 class MaintenanceWindowSerializer(serializers.ModelSerializer):
+    # NTOBS23 — horodatages dans le fuseau d'affichage du VIEWER (pas de la
+    # fenêtre elle-même : une fenêtre système-wide, company=None, doit
+    # s'afficher à l'heure locale de CHAQUE tenant qui la consulte).
+    debute_le_local = serializers.SerializerMethodField()
+    termine_le_local = serializers.SerializerMethodField()
+
     class Meta:
         model = MaintenanceWindow
         fields = [
             'id', 'company', 'region', 'debute_le', 'termine_le', 'impact',
             'description', 'statut', 'created_at',
+            'debute_le_local', 'termine_le_local',
         ]
         read_only_fields = ['statut']
 
+    def _viewer_company(self):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        return getattr(user, 'company', None)
 
-class IsDirecteurOrAdmin(BasePermission):
-    """NTOBS9 — création/annulation réservée Directeur/Administrateur (même
-    patron local que les autres apps — jamais un import cross-app)."""
+    def get_debute_le_local(self, obj) -> str:
+        from .tz_display import to_company_tz
+        return to_company_tz(obj.debute_le, self._viewer_company()).isoformat()
+
+    def get_termine_le_local(self, obj) -> str:
+        from .tz_display import to_company_tz
+        return to_company_tz(obj.termine_le, self._viewer_company()).isoformat()
+
+
+class FiabilitePermission(BasePermission):
+    """NTOBS22 — lecture (``fiabilite_voir``) vs administration
+    (``fiabilite_administration``) sur les fenêtres de maintenance, au lieu
+    d'un garde ``IsDirecteurOrAdmin`` codé en dur. Un GET (liste) est accordé
+    à l'un OU l'autre code ; POST (création/annulation) exige
+    ``fiabilite_administration``. Le repli Directeur/Administrateur
+    (``_est_admin``) est conservé À L'IDENTIQUE : ce palier ne perd JAMAIS
+    son accès actuel, qu'il porte ou non explicitement les nouveaux codes."""
 
     def has_permission(self, request, view):
         u = request.user
-        return bool(u and u.is_authenticated and _est_admin(u))
+        if not (u and u.is_authenticated):
+            return False
+        if _est_admin(u):
+            return True
+        if request.method in SAFE_METHODS:
+            return (
+                u.has_erp_permission('fiabilite_voir')
+                or u.has_erp_permission('fiabilite_administration'))
+        return u.has_erp_permission('fiabilite_administration')
+
+
+def _emettre_maintenance_window_announced(fenetre, user):
+    """NTOBS26 — émission best-effort de ``core.events.
+    maintenance_window_announced`` à la création (webhook sortant côté
+    ``apps.publicapi``) ; ne doit JAMAIS empêcher la création de la fenêtre
+    elle-même."""
+    try:
+        from .events import maintenance_window_announced
+        maintenance_window_announced.send(
+            sender=MaintenanceWindow, fenetre=fenetre,
+            company=fenetre.company, user=user)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTOBS26 : émission maintenance_window_announced échouée (%s)',
+            getattr(fenetre, 'pk', '?'), exc_info=True)
+
+
+def _emettre_maintenance_window_created(fenetre, user):
+    """NTOBS30-reste — émission best-effort de ``core.events.
+    maintenance_window_created`` (audit trail interne, ``apps.audit``) — SIGNAL
+    DISTINCT de ``maintenance_window_announced`` ci-dessus (deux abonnés
+    différents : webhook externe vs journal d'audit interne)."""
+    try:
+        from .events import maintenance_window_created
+        maintenance_window_created.send(
+            sender=MaintenanceWindow, fenetre=fenetre,
+            company=fenetre.company, user=user)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTOBS30-reste : émission maintenance_window_created échouée (%s)',
+            getattr(fenetre, 'pk', '?'), exc_info=True)
 
 
 class MaintenanceWindowListCreateView(generics.ListCreateAPIView):
-    """GET/POST /api/django/core/maintenance-windows/ — Directeur/
-    Administrateur uniquement (cross-tenant : gestion souvent système-wide).
+    """GET/POST /api/django/core/maintenance-windows/ — lecture ouverte à
+    ``fiabilite_voir``/``fiabilite_administration``, création réservée à
+    ``fiabilite_administration`` (Directeur/Administrateur héritent des
+    deux — NTOBS22).
 
     Un Directeur/Administrateur d'UN tenant reste néanmoins BORNÉ à sa propre
     société : ``company`` est forcée côté serveur à la sienne, sauf pour un
     superutilisateur (le fondateur/opérateur plateforme), seul habilité à
-    poser ``company=None`` (annonce système large) ou une autre société."""
+    poser ``company=None`` (annonce système large) ou une autre société.
+
+    La LISTE (GET) suit le même patron que ``SlaCreditsDusListView``
+    (``core.sla``) : un Directeur/Administrateur voit TOUTES les sociétés
+    (pilotage cross-tenant, inchangé) ; un compte ``fiabilite_voir`` non-admin
+    reste BORNÉ à SA société + aux fenêtres SYSTÈME (``company__isnull``,
+    annonces larges — toujours visibles de tous)."""
 
     serializer_class = MaintenanceWindowSerializer
-    permission_classes = [IsAuthenticated, IsDirecteurOrAdmin]
+    permission_classes = [IsAuthenticated, FiabilitePermission]
     pagination_class = None
-    queryset = MaintenanceWindow.objects.all().order_by('-debute_le')
+
+    def get_queryset(self):
+        qs = MaintenanceWindow.objects.all().order_by('-debute_le')
+        if not _est_admin(self.request.user):
+            qs = qs.filter(
+                Q(company=self.request.user.company) | Q(company__isnull=True))
+        return qs
 
     def perform_create(self, serializer):
         if getattr(self.request.user, 'is_superuser', False):
             serializer.save()
         else:
             serializer.save(company=self.request.user.company)
+        _emettre_maintenance_window_announced(
+            serializer.instance, self.request.user)
+        _emettre_maintenance_window_created(
+            serializer.instance, self.request.user)
 
 
 @extend_schema(request=None, responses=MaintenanceWindowSerializer)
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, IsDirecteurOrAdmin])
+@permission_classes([IsAuthenticated, FiabilitePermission])
 def annuler_fenetre(request, pk):
     """POST /api/django/core/maintenance-windows/<pk>/annuler/ — annule une
-    fenêtre et notifie (retrait de la bannière + information des admins)."""
+    fenêtre et notifie (retrait de la bannière + information des admins).
+
+    Bornée à la société de l'appelant comme ``perform_create`` ci-dessus : un
+    Directeur/Administrateur d'UN tenant n'annule que SES fenêtres. Une
+    fenêtre SYSTÈME (``company__isnull=True``, annonce large) n'est annulable
+    que par un superutilisateur — sinon 404, jamais un 403 qui révélerait son
+    existence."""
+    qs = MaintenanceWindow.objects.all()
+    if not getattr(request.user, 'is_superuser', False):
+        qs = qs.filter(company=request.user.company)
     try:
-        fenetre = MaintenanceWindow.objects.get(pk=pk)
+        fenetre = qs.get(pk=pk)
     except MaintenanceWindow.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND)
     fenetre.statut = MaintenanceWindow.Statut.ANNULE
     fenetre.save(update_fields=['statut', 'updated_at'])
     _notifier_annulation(fenetre)
-    return Response(MaintenanceWindowSerializer(fenetre).data)
+    return Response(MaintenanceWindowSerializer(
+        fenetre, context={'request': request}).data)
 
 
 def _notifier_annulation(fenetre):
@@ -220,4 +318,5 @@ def fenetres_actives(request):
                     MaintenanceWindow.Statut.EN_COURS],
         debute_le__lte=horizon, termine_le__gte=now,
     ).order_by('debute_le')
-    return Response(MaintenanceWindowSerializer(qs, many=True).data)
+    return Response(MaintenanceWindowSerializer(
+        qs, many=True, context={'request': request}).data)

@@ -25,14 +25,40 @@ const inst = vi.hoisted(() => ({
   createGpsConsentement: vi.fn(() => Promise.resolve({ data: { id: 2 } })),
   revoquerGpsConsentement: vi.fn(() => Promise.resolve({ data: {} })),
   getCarteLivePositions: vi.fn(() => Promise.resolve({ data: [] })),
-  getGeofenceAlertes: vi.fn(() => Promise.resolve({
-    data: [{
-      id: 5, technicien: 10, technicien_nom: 'ahmed', distance_site_km: '3.20',
-      rayon_attendu_km: '1.00', created_at: '2026-07-18T10:00:00Z',
-      acquittee: false,
-    }],
-  })),
+  // NTMOB9 — un seul endpoint réel (`geofence-alertes/`) sert les deux
+  // onglets, chacun avec ses propres filtres serveur : l'onglet Alertes ne
+  // passe jamais `chantier` (il ne veut que les sorties « à traiter ») ;
+  // l'onglet Historique de présence passe toujours `chantier` (+ le type
+  // choisi). Le mock distingue les deux appels sur la présence de `chantier`.
+  getGeofenceAlertes: vi.fn((params) => {
+    if (params?.chantier) {
+      const tous = [
+        {
+          id: 1, technicien: 10, technicien_nom: 'ahmed',
+          type_franchissement: 'entree', created_at: '2026-07-18T08:00:00Z',
+        },
+        {
+          id: 2, technicien: 10, technicien_nom: 'ahmed',
+          type_franchissement: 'sortie', created_at: '2026-07-18T12:00:00Z',
+        },
+      ]
+      const filtres = params.type_franchissement
+        ? tous.filter((e) => e.type_franchissement === params.type_franchissement)
+        : tous
+      return Promise.resolve({ data: filtres })
+    }
+    return Promise.resolve({
+      data: [{
+        id: 5, technicien: 10, technicien_nom: 'ahmed', distance_site_km: '3.20',
+        rayon_attendu_km: '1.00', created_at: '2026-07-18T10:00:00Z',
+        acquittee: false, type_franchissement: 'sortie',
+      }],
+    })
+  }),
   acquitterGeofenceAlerte: vi.fn(() => Promise.resolve({ data: {} })),
+  getInstallations: vi.fn(() => Promise.resolve({
+    data: [{ id: 100, reference: 'CH-2026-001' }],
+  })),
 }))
 vi.mock('../../api/installationsApi', () => ({ default: inst }))
 vi.mock('../../api/crmApi', () => ({
@@ -102,11 +128,48 @@ describe('SuiviGpsPage (WIR113)', () => {
     await waitFor(() => expect(inst.getCarteLivePositions).toHaveBeenCalled())
 
     await user.click(screen.getByRole('tab', { name: /Alertes géofence/i }))
-    await waitFor(() => expect(inst.getGeofenceAlertes).toHaveBeenCalled())
+    await waitFor(() => expect(inst.getGeofenceAlertes).toHaveBeenCalledWith(
+      expect.objectContaining({ type_franchissement: 'sortie' })))
     const alerte = await screen.findByTestId('alerte-5')
     expect(alerte.textContent).toContain('À traiter')
 
     await user.click(screen.getByRole('button', { name: /Acquitter/i }))
     await waitFor(() => expect(inst.acquitterGeofenceAlerte).toHaveBeenCalledWith(5))
+  })
+
+  it('Historique de présence : choisir un chantier charge les franchissements réels du serveur (NTMOB9)', async () => {
+    const user = userEvent.setup()
+    render(<SuiviGpsPage />)
+    await screen.findByTestId('consentement-1')
+
+    await user.click(screen.getByRole('tab', { name: /Historique de présence/i }))
+    await waitFor(() => expect(inst.getInstallations).toHaveBeenCalled())
+
+    await user.selectOptions(screen.getByLabelText('Chantier'), '100')
+    await waitFor(() => expect(inst.getGeofenceAlertes)
+      .toHaveBeenCalledWith(expect.objectContaining({ chantier: '100' })))
+
+    // `type_franchissement` est un champ RÉEL journalisé serveur (NTMOB9),
+    // jamais dérivé côté écran à partir des positions brutes.
+    const entree = await screen.findByTestId('presence-1-entree')
+    expect(entree.textContent).toContain('ahmed')
+    expect(entree.textContent).toContain('Entrée')
+    const sortie = await screen.findByTestId('presence-2-sortie')
+    expect(sortie.textContent).toContain('Sortie')
+  })
+
+  it('Historique de présence : le filtre type de franchissement interroge le serveur', async () => {
+    const user = userEvent.setup()
+    render(<SuiviGpsPage />)
+    await screen.findByTestId('consentement-1')
+    await user.click(screen.getByRole('tab', { name: /Historique de présence/i }))
+    await user.selectOptions(screen.getByLabelText('Chantier'), '100')
+    await screen.findByTestId('presence-1-entree')
+
+    await user.selectOptions(screen.getByLabelText('Type de franchissement'), 'sortie')
+    await waitFor(() => expect(inst.getGeofenceAlertes).toHaveBeenCalledWith(
+      expect.objectContaining({ chantier: '100', type_franchissement: 'sortie' })))
+    expect(screen.queryByTestId('presence-1-entree')).not.toBeInTheDocument()
+    expect(screen.getByTestId('presence-2-sortie')).toBeInTheDocument()
   })
 })

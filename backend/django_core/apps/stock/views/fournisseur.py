@@ -87,6 +87,15 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             # `performance` ci-dessus — get_permissions prime sur le
             # permission_classes de l'@action, d'où ce cas explicite).
             return [HasPermissionOrLegacy('stock_voir')()]
+        elif self.action in ('provisionner_acces_portail',
+                             'revoquer_acces_portail'):
+            # NTPRT3 — ouvrir (ou fermer) un VRAI compte utilisateur au nom d'un
+            # tiers externe est une décision d'ADMINISTRATION, pas une écriture
+            # stock ordinaire : garde volontairement plus stricte que
+            # `stock_modifier`, comme `decider_candidature` ci-dessous.
+            # `get_permissions` prime sur le `permission_classes` de l'@action,
+            # d'où ce cas explicite (les deux déclarent la même garde).
+            return [IsAdminRole()]
         elif self.action == 'decider_candidature':
             # NTPRT25 — valider/rejeter une candidature d'auto-inscription au
             # portail fournisseur. RÉSERVÉ À L'ADMINISTRATEUR : faire entrer un
@@ -270,6 +279,60 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         return Response({
             'id': fournisseur.id,
             'statut_validation': fournisseur.statut_validation,
+        })
+
+    @action(detail=True, methods=['post'], url_path='provisionner-acces',
+            permission_classes=[IsAdminRole])
+    def provisionner_acces_portail(self, request, *args, **kwargs):
+        """NTPRT3 — ouvre le compte portail RÉEL de ce fournisseur.
+
+        Idempotent : un deuxième appel renvoie le compte existant sans
+        réinitialiser son mot de passe ni réactiver un accès révoqué
+        (``cree: false``). Le mot de passe temporaire ne figure JAMAIS dans la
+        réponse — il part par email au fournisseur.
+        """
+        from ..services import provisionner_compte_fournisseur
+        fournisseur = self.get_object()
+        user, cree = provisionner_compte_fournisseur(
+            request.user.company, fournisseur.pk)
+        if user is None:
+            return Response(
+                {'detail': "Ce fournisseur n'a pas pu être résolu."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'fournisseur_id': fournisseur.pk,
+                'utilisateur_id': user.pk,
+                'username': user.username,
+                'email': user.email or '',
+                'cree': cree,
+                'detail': (
+                    'Accès portail ouvert : les identifiants ont été envoyés '
+                    'par email.' if cree else
+                    'Ce fournisseur avait déjà un accès portail — rien n\'a '
+                    'été modifié.'),
+            },
+            status=(status.HTTP_201_CREATED if cree else status.HTTP_200_OK))
+
+    @action(detail=True, methods=['post'], url_path='revoquer-acces',
+            permission_classes=[IsAdminRole])
+    def revoquer_acces_portail(self, request, *args, **kwargs):
+        """NTPRT3 — ferme l'accès portail de ce fournisseur (rien n'est
+        supprimé : la ligne reste, l'accès cesse immédiatement)."""
+        from ..services import revoquer_acces_compte_fournisseur
+        fournisseur = self.get_object()
+        compte, nb = revoquer_acces_compte_fournisseur(
+            request.user.company, fournisseur.pk)
+        if compte is None:
+            return Response(
+                {'detail': "Ce fournisseur n'a aucun accès portail à "
+                           'révoquer.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            'fournisseur_id': fournisseur.pk,
+            'actif': compte.actif,
+            'comptes_desactives': nb,
+            'detail': "L'accès portail de ce fournisseur est fermé.",
         })
 
     @action(detail=True, methods=['get'], url_path='performance',

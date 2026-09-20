@@ -34,11 +34,13 @@ class CatalogueShapeTests(TestCase):
 
     def test_catalogue_has_the_prebuilt_models(self):
         codes = {t['code'] for t in workflow_templates.WORKFLOW_TEMPLATES}
-        # ARC10 a ajouté le pilote domaine « cloture_ncr » (clôture NCR qhse).
+        # ARC10 a ajouté le pilote domaine « cloture_ncr » (clôture NCR qhse) ;
+        # NTWFL31 les trois modèles verticaux solaire.
         self.assertEqual(
             codes,
             {'relance_devis', 'onboarding_chantier', 'rappel_garantie',
-             'cloture_ncr'},
+             'cloture_ncr', 'validation_devis_forte_remise',
+             'onboarding_chantier_grand_compte', 'reclamation_sav_complexe'},
         )
 
     def test_codes_are_unique(self):

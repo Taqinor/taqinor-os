@@ -827,6 +827,113 @@ class CompanyProfile(models.Model):
                   'automatisé. Vide = non communiqué.',
     )
 
+    # ── NTI18N20 — Pack pays Espagne, PRÉPARATION uniquement (squelette,
+    # non actif) ──────────────────────────────────────────────────────────
+    # Additifs, VIDES par défaut : aucune société existante n'est affectée.
+    # Pas de conformité fiscale espagnole (Veri*Factu/SII) — seulement le
+    # squelette de champs. `tax_id_validators.validate_nif_cif_es` (NTI18N19,
+    # déjà construit) sait valider `nif_cif` dès qu'un appelant le dispatche
+    # via `pack_pays` (NTI18N16 — GATED-founder, non construit) : ce champ-ci
+    # n'est branché à AUCUNE validation ni activation commerciale tant que ce
+    # jour n'est pas arrivé. GATED-founder avant toute vente commerciale en
+    # Espagne.
+    nif_cif = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='NIF/CIF',
+        help_text='Identifiant fiscal espagnol (NIF personne physique, CIF '
+                  'personne morale). Préparation pack pays ES — inactif.')
+    # `provincia`/`comunidad autónoma` sont des concepts propres à l'adresse
+    # espagnole, absents de la décomposition générique NTI18N22
+    # (adresse_rue/adresse_code_postal/adresse_ville/adresse_pays) : deux
+    # champs dédiés plutôt que de les forcer dans un schéma générique.
+    adresse_provincia = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Provincia (ES)',
+        help_text='Province espagnole. Préparation pack pays ES — inactif.')
+    adresse_comunidad_autonoma = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Comunidad autónoma (ES)',
+        help_text='Communauté autonome espagnole. Préparation pack pays ES '
+                  '— inactif.')
+
+    # ── NTI18N22 — Décomposition optionnelle de l'adresse libre, ADDITIVE ──
+    # `adresse` (TextField historique, ci-dessus) reste le champ d'affichage/
+    # repli : TOUJOURS conservé tel quel, jamais migré ni vidé. Ces quatre
+    # champs structurés sont facultatifs ; un document (PDF) qui les
+    # consomme doit retomber sur `adresse` s'ils sont vides — voir
+    # `selectors.adresse_affichage`. Une société existante sans ces champs
+    # continue de s'afficher IDENTIQUEMENT sur ses PDF (non-régression).
+    adresse_rue = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Rue',
+        help_text="Numéro et voie. Vide = utiliser l'adresse libre "
+                  "(`adresse`) telle quelle.")
+    adresse_code_postal = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Code postal')
+    adresse_ville = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Ville')
+    adresse_pays = models.CharField(
+        max_length=2, blank=True, default='',
+        verbose_name='Pays (adresse)',
+        help_text="Code pays ISO 3166-1 alpha-2 de CETTE adresse (ex. MA, "
+                  "FR, ES) — distinct de la langue/du pack pays de la "
+                  "société.")
+
+    # ── NTI18N34 — langue de secours (fallback), distincte du FR codé en dur
+    # ────────────────────────────────────────────────────────────────────
+    # Dernier niveau de repli de `apps.parametres.i18n_resolver.
+    # resolve_langue_sortie` (NTI18N4), lu défensivement AVANT cette tâche
+    # (`getattr`) — cette migration ne fait qu'ajouter la colonne, la
+    # fonction de résolution n'a besoin d'AUCUN changement. Défaut 'fr' =
+    # comportement historique inchangé pour toute société existante.
+    class LangueRepli(models.TextChoices):
+        FR = 'fr', 'Français'
+        EN = 'en', 'English'
+        AR = 'ar', 'العربية'
+
+    langue_repli = models.CharField(
+        max_length=2, choices=LangueRepli.choices,
+        default=LangueRepli.FR,
+        verbose_name='Langue de secours',
+        help_text="Langue de repli des documents générés (PDF) quand ni une "
+                  "langue explicite ni la langue du client ne sont connues. "
+                  "Défaut FR (comportement historique).")
+
+    # ── NTI18N35 — verrouillage de la langue d'INTERFACE par société ───────
+    # Défaut False = comportement historique inchangé : chaque utilisateur
+    # choisit librement sa langue d'interface (NTI18N3/NTI18N8). Actif :
+    # impose `langue_repli` (langue par défaut société, NTI18N34) à tous les
+    # utilisateurs de la société, masque/désactive le sélecteur individuel.
+    # Câblage du 403 réel sur `PATCH /auth/me/langue/`
+    # (``authentication.views.LangueInterfaceView``, dont le commentaire
+    # NTI18N3 annonce déjà cette tâche) : HORS PÉRIMÈTRE de cette lane
+    # (apps/parametres uniquement — `authentication` est une autre app) ;
+    # voir `selectors.langue_interface_verrouillee`, prêt à être consommé
+    # par cette vue.
+    langue_interface_verrouillee = models.BooleanField(
+        default=False,
+        verbose_name="Langue d'interface verrouillée",
+        help_text="Empêche les utilisateurs de la société de changer de "
+                  "langue d'interface individuellement ; impose la langue "
+                  "par défaut de la société (langue_repli) à tous. "
+                  "Désactivé par défaut.")
+
+    # ── NTOBS23 — fuseau horaire d'AFFICHAGE des horodatages du groupe
+    # Fiabilité (IncidentPublic/SlaSnapshot/MaintenanceWindow — NTOBS1/3/9),
+    # stockés en UTC (Django standard) mais affichés bruts aujourd'hui.
+    # Réglage GÉNÉRAL (Paramètres généraux, pas seulement Fiabilité) —
+    # défaut Africa/Casablanca = comportement historique inchangé pour toute
+    # société existante. Consommé par `core.tz_display.to_company_tz`.
+    timezone_affichage = models.CharField(
+        max_length=50, default='Africa/Casablanca',
+        verbose_name="Fuseau horaire d'affichage",
+        help_text="Nom de fuseau IANA (ex. Africa/Casablanca, Europe/Paris) "
+                  "utilisé pour afficher les horodatages générés côté "
+                  "serveur. Défaut Africa/Casablanca (comportement "
+                  "historique inchangé).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

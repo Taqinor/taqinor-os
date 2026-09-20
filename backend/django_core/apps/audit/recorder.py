@@ -77,7 +77,7 @@ def _company_of(instance):
 
 def record(action, *, instance=None, content_type=None, object_id=None,
            object_repr=None, detail='', company=None, user=_UNSET,
-           actor_username=None, changes=None):
+           actor_username=None, changes=None, via_portail=False):
     """Écrit une ligne d'audit. Best-effort : aucune exception ne remonte.
 
     Si ``instance`` est fourni, content_type/object_id/object_repr/company en
@@ -88,7 +88,13 @@ def record(action, *, instance=None, content_type=None, object_id=None,
     UPDATE : liste de ``{"field": ..., "old": ..., "new": ...}``. Purement
     additif ; ``None`` par défaut (comportement inchangé). Consommé par
     ``selectors.reconstruct_as_of`` pour rejouer l'état d'un objet à une date
-    passée."""
+    passée.
+
+    ``via_portail`` (NTPRT7, optionnel, additif) — ``True`` quand l'action est
+    déclenchée DEPUIS le portail externe (client/fournisseur/partenaire),
+    jamais un 2e système d'audit : la même table ``AuditLog``, juste un
+    drapeau. Défaut ``False`` — comportement inchangé pour tous les appelants
+    existants."""
     try:
         from django.contrib.contenttypes.models import ContentType
         from .models import AuditLog
@@ -128,6 +134,7 @@ def record(action, *, instance=None, content_type=None, object_id=None,
             object_repr=(object_repr or '')[:255],
             detail=detail or '',
             changes=changes,
+            via_portail=bool(via_portail),
         )
         _chain_entry(entry, company)
     except Exception:  # noqa: BLE001 — best-effort, ne jamais bloquer la requête

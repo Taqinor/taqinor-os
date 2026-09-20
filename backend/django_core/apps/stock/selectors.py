@@ -1441,10 +1441,12 @@ def resume_portail_fournisseur(company, fournisseur_id):
     absent renvoie des compteurs à zéro, JAMAIS les chiffres de la société
     entière — c'est la différence entre un tableau de bord vide et une fuite.
 
-    Ne contient QUE ce qui existe réellement aujourd'hui : les livraisons
-    annoncées (ASN, NTPRT22) et les documents légaux à expiration (NTPRT24)
-    ne sont pas encore modélisés — on ne fabrique pas un chiffre pour remplir
-    une carte.
+    Ne contient QUE ce qui existe réellement aujourd'hui : les documents légaux
+    à expiration (NTPRT24) ne sont pas encore modélisés — on ne fabrique pas un
+    chiffre pour remplir une carte. Les livraisons annoncées le sont désormais
+    (``AnnonceLivraisonFournisseur``, NTPRT22) : le compteur ci-dessous compte
+    celles qui n'ont pas encore été déclarées livrées, donc celles que le quai
+    attend.
     """
     from decimal import Decimal
 
@@ -1452,6 +1454,7 @@ def resume_portail_fournisseur(company, fournisseur_id):
         'fournisseur_nom': '',
         'bcf_a_confirmer': 0,
         'bcf_en_cours': 0,
+        'livraisons_annoncees': 0,
         'receptions_recentes': 0,
         'factures_a_payer': 0,
         'montant_a_payer': '0',
@@ -1460,8 +1463,8 @@ def resume_portail_fournisseur(company, fournisseur_id):
         return vide
 
     from .models import (
-        BonCommandeFournisseur, FactureFournisseur, Fournisseur,
-        ReceptionFournisseur,
+        AnnonceLivraisonFournisseur, BonCommandeFournisseur,
+        FactureFournisseur, Fournisseur, ReceptionFournisseur,
     )
 
     fournisseur = (Fournisseur.objects
@@ -1485,6 +1488,14 @@ def resume_portail_fournisseur(company, fournisseur_id):
             date_confirmee_fournisseur__isnull=True).count(),
         'bcf_en_cours': bcf.exclude(
             statut=BonCommandeFournisseur.Statut.RECU).count(),
+        # NTPRT22 — expéditions annoncées que le quai attend encore (une
+        # annonce déclarée livrée n'est plus une attente).
+        'livraisons_annoncees': (
+            AnnonceLivraisonFournisseur.objects
+            .filter(company=company,
+                    bon_commande_fournisseur__fournisseur=fournisseur)
+            .exclude(statut=AnnonceLivraisonFournisseur.Statut.LIVREE)
+            .count()),
         'receptions_recentes': (ReceptionFournisseur.objects
                                 .filter(company=company,
                                         bon_commande__fournisseur=fournisseur)
@@ -1553,6 +1564,294 @@ def bcf_portail_fournisseur(company, fournisseur_id):
             ],
         })
     return lignes
+
+
+def compte_fournisseur_portail_actif(company_id, fournisseur_id):
+    """NTPRT3 — l'accès portail de ce fournisseur est-il OUVERT ?
+
+    Trois réponses distinctes, et la distinction compte :
+
+    * ``True``  — un compte existe et son accès est ouvert ;
+    * ``False`` — un compte existe et son accès a été RÉVOQUÉ ;
+    * ``None``  — aucun compte enregistré. Ce n'est PAS une révocation : un
+      fournisseur qui n'a jamais eu de compte portail ne doit pas être traité
+      comme un accès retiré (le chemin tokenisé XPUR22 reste le sien).
+
+    Point d'entrée cross-app en LECTURE SEULE (``apps.roles``/``apps.portail``
+    n'importent jamais ``apps.stock.models``).
+    """
+    if not company_id or not fournisseur_id:
+        return None
+
+    from .models import CompteFournisseurPortail
+
+    etat = (CompteFournisseurPortail.objects
+            .filter(company_id=company_id, fournisseur_id=fournisseur_id)
+            .values_list('actif', flat=True)
+            .first())
+    return etat
+
+
+def _ligne_annonce_livraison(annonce, bon_commande=None):
+    """Charge utile d'UNE annonce de livraison — la MÊME des deux côtés.
+
+    Le portail fournisseur et l'écran interne du bon de commande lisent cette
+    fonction : deux mises en forme divergeraient dès la première évolution, et
+    « le fournisseur voit autre chose que nous » est exactement ce qu'une
+    annonce de livraison ne doit jamais produire. Aucun prix n'y figure.
+
+    ``bon_commande`` est passé par l'appelant qui l'a DÉJÀ en main (l'écran
+    interne part du bon de commande) : sans ça chaque annonce rouvrirait une
+    requête pour relire la référence qu'on tient déjà.
+    """
+    bc = bon_commande if bon_commande is not None else (
+        annonce.bon_commande_fournisseur
+        if annonce.bon_commande_fournisseur_id else None)
+    return {
+        'id': annonce.id,
+        'bon_commande_id': annonce.bon_commande_fournisseur_id,
+        'bon_commande_reference': (bc.reference if bc is not None else ''),
+        'date_expedition': annonce.date_expedition,
+        'date_livraison_prevue': annonce.date_livraison_prevue,
+        'transporteur': annonce.transporteur or '',
+        'numero_suivi': annonce.numero_suivi or '',
+        'statut': annonce.statut,
+        'statut_display': annonce.get_statut_display(),
+        'lignes': list(annonce.lignes or []),
+    }
+
+
+def annonces_livraison_portail_fournisseur(company, fournisseur_id):
+    """NTPRT22 — annonces de livraison déposées par CE fournisseur.
+
+    Bornée au couple (société, fournisseur) du COMPTE connecté : un
+    ``fournisseur_id`` absent — ou d'une autre société — renvoie une liste
+    VIDE, jamais les annonces de la société entière. LECTURE SEULE.
+    """
+    if company is None or not fournisseur_id:
+        return []
+
+    from .models import AnnonceLivraisonFournisseur
+
+    qs = (AnnonceLivraisonFournisseur.objects
+          .filter(company=company,
+                  bon_commande_fournisseur__fournisseur_id=fournisseur_id)
+          .select_related('bon_commande_fournisseur')
+          .order_by('-date_expedition', '-id'))
+    return [_ligne_annonce_livraison(annonce) for annonce in qs]
+
+
+def annonces_livraison_bon_commande(bon_commande):
+    """NTPRT22 — annonces portées par CE bon de commande, côté INTERNE.
+
+    C'est ce que l'écran des bons de commande affiche sous « livraison
+    annoncée » : une annonce déposée au portail y apparaît immédiatement, sans
+    aucune action manuelle (critère d'acceptation NTPRT22). Même charge utile
+    que celle servie au fournisseur — jamais une seconde mise en forme.
+    """
+    if bon_commande is None or not getattr(bon_commande, 'pk', None):
+        return []
+    return [
+        _ligne_annonce_livraison(annonce, bon_commande=bon_commande)
+        for annonce in bon_commande.annonces_livraison.order_by(
+            '-date_expedition', '-id')
+    ]
+
+
+#: NTPRT23 — les trois états de RÈGLEMENT que le portail fournisseur affiche.
+#: Ce sont des LIBELLÉS dérivés, jamais un second champ en base : le statut qui
+#: fait foi reste ``FactureFournisseur.statut`` (recalculé par
+#: ``services.recompute_facture_fournisseur_statut`` depuis les paiements
+#: réels). Un quatrième état stocké ailleurs finirait par le contredire.
+REGLEMENT_A_PAYER = 'a_payer'
+REGLEMENT_PAYEE = 'payee'
+REGLEMENT_EN_RETARD = 'en_retard'
+
+REGLEMENT_LIBELLES = {
+    REGLEMENT_A_PAYER: 'À payer',
+    REGLEMENT_PAYEE: 'Payée',
+    REGLEMENT_EN_RETARD: 'En retard',
+}
+
+
+def statut_reglement_facture_fournisseur(facture_ligne, a_la_date=None):
+    """NTPRT23 — état de règlement d'UNE facture, dérivé de l'interne.
+
+    ``facture_ligne`` est une ligne de
+    ``services.factures_sous_traitant_qs_generique`` (la charge utile que le
+    portail tokenisé XPUR22 sert DÉJÀ) : on ne relit pas la base, on ne
+    recalcule aucun montant, on QUALIFIE. Les règles, dans cet ordre :
+
+    * ``statut`` interne ``payee`` (ou solde dû nul) ⇒ **payée**. Le solde est
+      la seconde condition parce qu'un acompte ou un avoir peut solder une
+      facture dont le statut n'a pas encore été recalculé ; afficher « à payer »
+      sur une facture soldée serait une erreur visible par le fournisseur ;
+    * échéance dépassée et solde restant ⇒ **en retard** ;
+    * sinon ⇒ **à payer** (y compris ``partiellement_payee`` : il reste dû).
+
+    Une facture SANS date d'échéance n'est jamais « en retard » — on ne déclare
+    pas un retard sur une échéance qui n'a jamais été fixée.
+    """
+    from decimal import Decimal
+
+    from core.dates import aujourd_hui_local
+
+    from .models import FactureFournisseur
+
+    solde = facture_ligne.get('solde_du') or Decimal('0')
+    if not isinstance(solde, Decimal):
+        solde = Decimal(str(solde))
+    if (facture_ligne.get('statut') == FactureFournisseur.Statut.PAYEE
+            or solde <= 0):
+        return REGLEMENT_PAYEE, 0
+
+    echeance = facture_ligne.get('date_echeance')
+    if echeance is None:
+        return REGLEMENT_A_PAYER, 0
+
+    reference = a_la_date or aujourd_hui_local()
+    retard = (reference - echeance).days
+    if retard > 0:
+        return REGLEMENT_EN_RETARD, retard
+    return REGLEMENT_A_PAYER, 0
+
+
+def factures_portail_fournisseur(company, fournisseur_id, *, a_la_date=None):
+    """NTPRT23 — « Mes factures & statut de paiement », portail FOURNISSEUR.
+
+    LECTURE STRICTEMENT SEULE : aucun service d'écriture ne correspond à cette
+    liste, et il n'en existe pas — un fournisseur ne solde jamais sa propre
+    facture, il la CONSULTE.
+
+    Le statut affiché MATCHE l'interne par construction, pas par recopie : la
+    liste est celle que ``services.factures_sous_traitant_qs_generique`` sert
+    déjà au portail tokenisé (mêmes montants, même ``statut``, même
+    ``statut_display`` que l'écran comptable interne), enrichie du seul
+    ``statut_reglement`` dérivé (à payer / payée / en retard). Il n'y a donc
+    qu'UNE définition du statut de règlement dans le dépôt.
+
+    Bornée au couple (société, fournisseur) du COMPTE connecté : un
+    ``fournisseur_id`` absent — ou d'une autre société — renvoie une liste
+    VIDE, jamais les factures de la société entière.
+    """
+    if company is None or not fournisseur_id:
+        return []
+
+    from .models import Fournisseur
+    from .services import factures_sous_traitant_qs_generique
+
+    fournisseur = (Fournisseur.objects
+                   .filter(company=company, pk=fournisseur_id).first())
+    if fournisseur is None:
+        return []
+
+    lignes = []
+    for ligne in factures_sous_traitant_qs_generique(company, fournisseur):
+        reglement, retard = statut_reglement_facture_fournisseur(
+            ligne, a_la_date=a_la_date)
+        enrichie = dict(ligne)
+        enrichie['statut_reglement'] = reglement
+        enrichie['statut_reglement_display'] = REGLEMENT_LIBELLES[reglement]
+        enrichie['jours_de_retard'] = retard
+        lignes.append(enrichie)
+    return lignes
+
+
+def taux_conformite_reception_fournisseur(company, fournisseur_id):
+    """Part des réceptions CONTRÔLÉES de ce fournisseur jugées conformes.
+
+    Source : ``ControleReception`` (NTWMS34), le verdict qu'un plan
+    d'échantillonnage exige avant de confirmer une réception. Seules les
+    réceptions RÉELLEMENT contrôlées entrent au dénominateur : une société qui
+    ne contrôle rien n'a pas un taux de 0 %, elle n'a pas de taux — d'où
+    ``taux_conformite_pct = None`` plutôt que zéro, qui se lirait comme un
+    fournisseur catastrophique.
+
+    DÉFINITION UNIQUE du taux de conformité dans le dépôt, appelée par la carte
+    portail (NTPRT26) : deux calculs séparés finiraient par afficher deux
+    chiffres différents au fournisseur et à l'acheteur, sur la même relation.
+
+    Le scorecard interne (``services.supplier_performance``) ne l'expose pas
+    ENCORE : la réponse de ``fournisseurs/{id}/performance/`` est sous contrat
+    versionné dans ``docs/api-contracts.md``, un document GÉNÉRÉ ; y ajouter la
+    clé se fait avec sa régénération, pas en passant. Quand elle sera ajoutée,
+    elle appellera cette fonction — le chiffre ne peut donc pas diverger.
+    """
+    vide = {
+        'receptions_controlees': 0,
+        'receptions_conformes': 0,
+        'taux_conformite_pct': None,
+    }
+    if company is None or not fournisseur_id:
+        return vide
+
+    from .models import ControleReception
+
+    qs = ControleReception.objects.filter(
+        company=company,
+        reception__bon_commande__fournisseur_id=fournisseur_id)
+    total = qs.count()
+    if not total:
+        return vide
+    conformes = qs.filter(
+        resultat=ControleReception.Resultat.CONFORME).count()
+    return {
+        'receptions_controlees': total,
+        'receptions_conformes': conformes,
+        'taux_conformite_pct': round(conformes / total * 100, 1),
+    }
+
+
+def performance_portail_fournisseur(company, fournisseur_id):
+    """NTPRT26 — carte « Ma performance » du portail FOURNISSEUR.
+
+    LECTURE SEULE, et rien d'autre : il n'existe aucun service permettant à un
+    fournisseur de toucher sa propre note — ce serait la vider de son sens.
+
+    Les chiffres MATCHENT le calcul interne parce qu'ils SONT le calcul
+    interne : la ponctualité vient de ``services.otd_stats`` (XPUR7), la même
+    fonction que l'action interne ``fournisseurs/{id}/performance/`` ; la
+    conformité vient de ``taux_conformite_reception_fournisseur``, également
+    partagée. Aucune formule n'est réécrite ici.
+
+    Ce que la carte NE porte PAS, délibérément : aucun montant (ni dépenses, ni
+    prix d'achat), aucun score de risque interne, aucun détail d'incident. Un
+    fournisseur a droit de savoir comment il livre ; il n'a pas à lire notre
+    jugement commercial sur lui ni le volume d'affaires qu'on lui confie.
+
+    Un ``fournisseur_id`` absent — ou d'une autre société — renvoie une carte
+    VIDE, jamais les chiffres de la société entière.
+    """
+    vide = {
+        'fournisseur_nom': '',
+        'otd_ecart_moyen_jours': None,
+        'otd_a_lheure_pct': None,
+        'receptions_controlees': 0,
+        'receptions_conformes': 0,
+        'taux_conformite_reception_pct': None,
+    }
+    if company is None or not fournisseur_id:
+        return vide
+
+    from .models import Fournisseur
+    from .services import otd_stats
+
+    fournisseur = (Fournisseur.objects
+                   .filter(company=company, pk=fournisseur_id).first())
+    if fournisseur is None:
+        return vide
+
+    otd = otd_stats(company, fournisseur)
+    conformite = taux_conformite_reception_fournisseur(
+        company, fournisseur.pk)
+    return {
+        'fournisseur_nom': fournisseur.nom,
+        'otd_ecart_moyen_jours': otd['otd_ecart_moyen_jours'],
+        'otd_a_lheure_pct': otd['otd_a_lheure_pct'],
+        'receptions_controlees': conformite['receptions_controlees'],
+        'receptions_conformes': conformite['receptions_conformes'],
+        'taux_conformite_reception_pct': conformite['taux_conformite_pct'],
+    }
 
 
 # ── PV6 — Specs & Kit de calepinage DÉRIVÉS de FicheTechnique (PV5) ─────────
@@ -2279,6 +2578,31 @@ def plafond_notes_frais_actif(company):
     from .models import AchatsParametres
     params = AchatsParametres.objects.filter(company=company).first()
     return bool(params and params.plafond_notes_frais_actif)
+
+
+#: NTP2P35 — ancienneté par défaut, en jours, d'un brouillon de demande d'achat
+#: purgeable quand la société n'a rien configuré (``purge_brouillon_jours = 0``).
+PURGE_BROUILLON_JOURS_DEFAUT = 90
+
+
+def purge_brouillon_jours(company):
+    """NTP2P35 — ancienneté EFFECTIVE, en jours, d'un brouillon purgeable.
+
+    Résout le sens de ``0`` UNE fois, ici : ``0`` (défaut du champ, et défaut
+    de toute société qui n'a rien configuré) veut dire « utiliser le défaut de
+    90 jours », JAMAIS « zéro jour ». Un appelant qui lirait le champ brut
+    purgerait tous les brouillons du jour à la première exécution — c'est
+    exactement l'accident que ce sélecteur existe pour rendre impossible.
+
+    Point d'entrée cross-app en LECTURE SEULE : la tâche de purge lit ce
+    sélecteur, jamais ``stock.models`` ni le champ brut.
+    """
+    if company is None:
+        return PURGE_BROUILLON_JOURS_DEFAUT
+    from .models import AchatsParametres
+    params = AchatsParametres.objects.filter(company=company).first()
+    configure = getattr(params, 'purge_brouillon_jours', 0) or 0
+    return configure if configure > 0 else PURGE_BROUILLON_JOURS_DEFAUT
 
 
 def progression_onboarding(dossier):

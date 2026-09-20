@@ -69,10 +69,14 @@ class YSERV5GenerationAutoTest(TestCase):
         self.assertTrue(
             Ticket.objects.filter(
                 company=self.company, type=Ticket.Type.PREVENTIF).exists())
-        self.assertTrue(
-            Notification.objects.filter(
-                recipient=self.admin, event_type='sav_visites_auto_generees',
-            ).exists())
+        notif = Notification.objects.filter(
+            recipient=self.admin, event_type='sav_visites_auto_generees',
+        ).first()
+        self.assertIsNotNone(notif)
+        # SAV-LIEN-MORT — la route frontend réelle est `/sav/contrats`
+        # (`frontend/src/features/sav/module.config.jsx`), jamais
+        # `/sav/contrats-maintenance` (lien mort avant ce correctif).
+        self.assertEqual(notif.link, '/sav/contrats')
 
     def test_idempotent_pas_de_doublon_meme_jour(self):
         reglage = SavSlaSettings.get(self.company)

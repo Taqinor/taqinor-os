@@ -1002,6 +1002,11 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
     # dépendance d'ordre de classe vers AcompteFournisseurSerializer, défini
     # plus bas dans ce module).
     acomptes = serializers.SerializerMethodField()
+    # NTPRT22 — expéditions ANNONCÉES par le fournisseur depuis son portail.
+    # LECTURE SEULE de bout en bout : l'annonce se dépose au portail (jamais en
+    # écriture libre sur le document interne) et ne bouge AUCUN stock — la
+    # réception reste le seul acte qui fait entrer de la marchandise.
+    livraisons_annoncees = serializers.SerializerMethodField()
 
     class Meta:
         model = BonCommandeFournisseur
@@ -1017,6 +1022,8 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
             'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
             'lignes', 'total_achat', 'est_entierement_recu', 'acomptes',
+            # NTPRT22 — « livraison annoncée » (ASN entrant), lecture seule.
+            'livraisons_annoncees',
             # ZPUR8 — « Other Information » : acheteur (défaut = created_by),
             # réf. fournisseur, note de bas de page + report incoterm/
             # conditions de paiement (éditables au document).
@@ -1041,6 +1048,22 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
     def get_acomptes(self, obj):
         return AcompteFournisseurSerializer(
             obj.acomptes.all(), many=True).data
+
+    @extend_schema_field(inline_serializer('LivraisonAnnoncee', {
+        'id': serializers.IntegerField(),
+        'bon_commande_id': serializers.IntegerField(allow_null=True),
+        'bon_commande_reference': serializers.CharField(),
+        'date_expedition': serializers.DateField(allow_null=True),
+        'date_livraison_prevue': serializers.DateField(allow_null=True),
+        'transporteur': serializers.CharField(),
+        'numero_suivi': serializers.CharField(),
+        'statut': serializers.CharField(),
+        'statut_display': serializers.CharField(),
+        'lignes': serializers.ListField(child=serializers.JSONField()),
+    }, many=True))
+    def get_livraisons_annoncees(self, obj):
+        from .selectors import annonces_livraison_bon_commande
+        return annonces_livraison_bon_commande(obj)
 
     def validate_lignes(self, value):
         if not value:
@@ -1854,6 +1877,11 @@ class AchatsParametresSerializer(serializers.ModelSerializer):
             # inchangé).
             'budget_departement_actif', 'onboarding_fournisseur_obligatoire',
             'sod_stricte', 'plafond_notes_frais_actif',
+            # NTP2P35 — seuil de purge des demandes d'achat en brouillon.
+            # 0 = « utiliser le défaut (90 jours) », jamais « purger tout de
+            # suite » : l'écran Paramètres → Achats doit pouvoir le poser sans
+            # qu'un 0 laissé par défaut efface les brouillons du jour.
+            'purge_brouillon_jours',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']

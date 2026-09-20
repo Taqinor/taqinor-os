@@ -1,0 +1,31 @@
+{
+  "endpoint": "GET /api/django/portail/mes-contrats-maintenance/",
+  "pourquoi": "NTPRT16 — « Mes contrats » (maintenance) du portail CLIENT authentifié, servie par MesContratsMaintenancePortailViewSet.list via apps.sav.selectors.contrats_maintenance_portail_client. Pendant SAV de contrats.selectors.contrats_portail_client (XCTR14, portail public tokenisé, hors périmètre de cette tâche). Lecture minimisée (loi 09-08) : périodicité, dates, prix, droits inclus — JAMAIS un champ interne (sla_response_days/sla_resolution_days, tarif_usage, derniere_facturation, notes). L'écriture (action `demander`, POST .../{id}/demander/) n'appelle QUE apps.sav.services.demander_action_portail_maintenance : une demande de renouvellement/résiliation reste une DEMANDE traitée en interne, elle ne touche JAMAIS `actif` ni aucune date du contrat. Enveloppe NON paginée : {results: [...]}.",
+  "exemple": {
+    "results": [
+      {
+        "id": 7,
+        "periodicite": "annuel",
+        "periodicite_display": "Annuel",
+        "date_debut": "2026-01-01",
+        "date_renouvellement": "2027-01-01",
+        "duree_mois": 12,
+        "actif": true,
+        "prix": "3600.00",
+        "chantier": "CH-2026-0042 — Villa Bouskoura",
+        "visites_incluses_an": 2,
+        "deplacements_inclus_an": 1,
+        "pieces_couvertes_pct": 50
+      }
+    ]
+  },
+  "exemple_demande": {
+    "endpoint": "POST /api/django/portail/mes-contrats-maintenance/{id}/demander/",
+    "corps": {"type_demande": "renouvellement", "message": "Merci de me rappeler."},
+    "reponse": {"detail": "Votre demande a bien été enregistrée. Elle sera traitée par nos équipes."}
+  },
+  "notes": {
+    "demande_najamais_actif": "`demander` journalise une note (records.Activity) et notifie l'interne — `actif`/`date_renouvellement` ne changent QUE via un acte interne explicite.",
+    "type_demande_invalide": "Un `type_demande` hors {renouvellement, resiliation} renvoie 400 avec le champ `type_demande` nommé, jamais un « Non enregistré » générique."
+  }
+}

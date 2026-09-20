@@ -24,8 +24,21 @@ vi.mock('../../api/parametresApi', () => ({
   },
 }))
 
+vi.mock('../../api/coreApi', () => ({
+  default: {
+    datasetsExplorateur: { list: vi.fn() },
+  },
+}))
+
 import parametresApi from '../../api/parametresApi'
+import coreApi from '../../api/coreApi'
 import ExportReversibilitePage from './ExportReversibilitePage'
+
+const DATASETS = [
+  { name: 'crm_leads', label: 'Leads CRM' },
+  { name: 'ventes_devis', label: 'Devis' },
+  { name: 'sav_tickets', label: 'Tickets SAV' },
+]
 
 describe('ExportReversibilitePage (NTOBS7)', () => {
   it('affiche un état vide propre sans export lancé', async () => {
@@ -61,22 +74,57 @@ describe('ExportReversibilitePage (NTOBS7)', () => {
     expect(screen.queryByRole('link', { name: /Télécharger/ })).not.toBeInTheDocument()
   })
 
-  it('confirme puis lance un export', async () => {
+  it('assistant 2 étapes : tout coché par défaut → lance sans restreindre les datasets', async () => {
     const user = userEvent.setup()
     parametresApi.getHistoriqueExportReversibilite.mockResolvedValue({ data: [] })
     parametresApi.declencherExportReversibilite.mockResolvedValue({
       data: { id: 3, statut: 'en_cours' },
     })
+    coreApi.datasetsExplorateur.list.mockResolvedValue({ data: DATASETS })
     renderPage(<ExportReversibilitePage />)
     await waitFor(() =>
       expect(screen.getByText(/Aucun export lancé/)).toBeInTheDocument())
 
     await user.click(screen.getByRole('button', { name: /Exporter toutes mes données/ }))
     await waitFor(() =>
-      expect(screen.getByText(/Lancer un export complet/)).toBeInTheDocument())
+      expect(screen.getByText(/étape 1\/2/)).toBeInTheDocument())
+    expect(await screen.findByText('Leads CRM')).toBeInTheDocument()
+    // Tout coché par défaut.
+    for (const cb of screen.getAllByRole('checkbox')) expect(cb).toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: 'Suivant' }))
+    await waitFor(() => expect(screen.getByText(/étape 2\/2/)).toBeInTheDocument())
+    expect(screen.getByText(/3 jeux de données sélectionnés sur 3/)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Lancer l'export/ }))
     await waitFor(() =>
-      expect(parametresApi.declencherExportReversibilite).toHaveBeenCalled())
+      // Tout sélectionné → payload `undefined` (comportement par défaut inchangé).
+      expect(parametresApi.declencherExportReversibilite).toHaveBeenCalledWith(undefined))
+  })
+
+  it('décocher un jeu de données le retire du payload envoyé au serveur', async () => {
+    const user = userEvent.setup()
+    parametresApi.getHistoriqueExportReversibilite.mockResolvedValue({ data: [] })
+    parametresApi.declencherExportReversibilite.mockResolvedValue({
+      data: { id: 4, statut: 'en_cours' },
+    })
+    coreApi.datasetsExplorateur.list.mockResolvedValue({ data: DATASETS })
+    renderPage(<ExportReversibilitePage />)
+    await waitFor(() =>
+      expect(screen.getByText(/Aucun export lancé/)).toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /Exporter toutes mes données/ }))
+    const ticketsCb = await screen.findByLabelText('Tickets SAV')
+    await user.click(ticketsCb)
+    await user.click(screen.getByRole('button', { name: 'Suivant' }))
+    expect(await screen.findByText(/2 jeux de données sélectionnés sur 3/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Lancer l'export/ }))
+    await waitFor(() => expect(parametresApi.declencherExportReversibilite).toHaveBeenCalledWith(
+      expect.arrayContaining(['crm_leads', 'ventes_devis']),
+    ))
+    const appels = parametresApi.declencherExportReversibilite.mock.calls
+    const payload = appels[appels.length - 1][0]
+    expect(payload).not.toContain('sav_tickets')
   })
 })

@@ -130,7 +130,11 @@ def generer_visites_dues_quotidien():
             try:
                 notify(
                     user, _EVENT_TYPE, titre, body=corps,
-                    link='/sav/contrats-maintenance', company=company)
+                    # SAV-LIEN-MORT — la route frontend est `/sav/contrats`
+                    # (`frontend/src/features/sav/module.config.jsx`), jamais
+                    # `/sav/contrats-maintenance` (ça, c'est le préfixe API
+                    # `/api/django/sav/contrats-maintenance/…`, sans rapport).
+                    link='/sav/contrats', company=company)
             except Exception:  # pragma: no cover - défensif
                 logger.warning(
                     'sav.generer_visites_dues_quotidien: notification '

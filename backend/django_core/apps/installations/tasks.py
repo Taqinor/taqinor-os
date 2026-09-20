@@ -341,3 +341,93 @@ def relancer_rfq_en_attente_task():
                     exc_info=True)
         result[company.id] = count
     return result
+
+
+# ── NTP2P35 — purge (ARCHIVAGE) des brouillons de demande d'achat abandonnés ──
+
+#: Ancienneté par défaut (jours) au-delà de laquelle un brouillon de
+#: ``DemandeAchat`` jamais retouché est archivé. Surchargeable par société via
+#: ``stock.AchatsParametres`` (cf. ``_seuil_purge_brouillon_jours``).
+PURGE_BROUILLON_JOURS_DEFAUT = 90
+
+
+def _normaliser_seuil_purge(valeur):
+    """Normalise un seuil de purge lu d'un réglage société.
+
+    Toute valeur absente, non entière ou ≤ 0 retombe sur
+    ``PURGE_BROUILLON_JOURS_DEFAUT`` : un réglage vide ou aberrant ne doit
+    JAMAIS archiver des brouillons du jour."""
+    try:
+        valeur = int(valeur)
+    except (TypeError, ValueError):
+        return PURGE_BROUILLON_JOURS_DEFAUT
+    return valeur if valeur > 0 else PURGE_BROUILLON_JOURS_DEFAUT
+
+
+def _seuil_purge_brouillon_jours(company):
+    """Seuil d'ancienneté (jours) des brouillons à archiver, par société.
+
+    Lu sur ``stock.AchatsParametres`` — le porteur EXISTANT des réglages
+    Procure-to-Pay par société — via ``django.apps.apps.get_model`` : aucune
+    arête d'import vers ``stock`` au chargement (frontière cross-app
+    CLAUDE.md, même patron que ``selectors.py``). Tant que le réglage n'est pas
+    posé sur ce modèle, on retombe sur ``PURGE_BROUILLON_JOURS_DEFAUT`` — la
+    tâche n'a donc jamais besoin de son propre référentiel.
+    """
+    try:
+        from django.apps import apps as django_apps
+        modele = django_apps.get_model('stock', 'AchatsParametres')
+        params = modele.objects.filter(company=company).first()
+    except Exception:  # pragma: no cover - app stock absente/non migrée
+        return PURGE_BROUILLON_JOURS_DEFAUT
+    return _normaliser_seuil_purge(
+        getattr(params, 'purge_brouillon_jours', None))
+
+
+@shared_task(name='installations.purger_demandes_achat_brouillon')
+def purger_demandes_achat_brouillon_task():
+    """NTP2P35 — archive les brouillons de ``DemandeAchat`` abandonnés.
+
+    JAMAIS de suppression dure : on pose ``archivee=True`` (+
+    ``date_archivage``), donc la réquisition sort des listes actives par défaut
+    mais reste intégralement consultable via le filtre « archivées ». Trois
+    gardes :
+
+      * seul le statut ``brouillon`` est concerné (une demande soumise,
+        approuvée, refusée ou commandée n'est jamais touchée) ;
+      * ``date_modification`` doit être plus vieille que le seuil de la société
+        (``_seuil_purge_brouillon_jours``, défaut 90 jours) ;
+      * un brouillon ``epinglee`` est exclu, quel que soit son âge.
+
+    Idempotent : une demande déjà archivée est hors du filtre, donc une
+    ré-exécution ne réécrit rien. Best-effort par société. Renvoie
+    ``{company_id: nb_demandes_archivees}``.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from authentication.selectors import active_companies
+
+    from .models_demande_achat import DemandeAchat
+
+    maintenant = timezone.now()
+    result = {}
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        try:
+            seuil = maintenant - timedelta(
+                days=_seuil_purge_brouillon_jours(company))
+            nb = DemandeAchat.objects.filter(
+                company=company,
+                statut=DemandeAchat.Statut.BROUILLON,
+                archivee=False,
+                epinglee=False,
+                date_modification__lt=seuil,
+            ).update(archivee=True, date_archivage=maintenant)
+        except Exception:  # noqa: BLE001 — société suivante
+            logger.warning(
+                'installations.purger_demandes_achat_brouillon: échec société '
+                '%s', company.id, exc_info=True)
+            continue
+        result[company.id] = nb
+    return result

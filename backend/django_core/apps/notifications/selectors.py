@@ -115,6 +115,42 @@ def superior_contact_status(company, link):
     }
 
 
+def holidays_for_export(company):
+    """NTI18N45 — toutes les lignes ``Holiday`` d'une société, triées par
+    pays puis date, sous forme de dicts ``{pays, date, nom,
+    recurrent_annuel}``. Point d'entrée cross-app en LECTURE SEULE pour
+    l'export CSV (``apps.dataimport.holidays_import``) — jamais un import
+    direct de ``notifications.models`` ailleurs."""
+    if company is None:
+        return []
+    from .models import Holiday
+    return list(
+        Holiday.objects.filter(company=company)
+        .order_by('pays', 'date')
+        .values('pays', 'date', 'nom', 'recurrent_annuel'))
+
+
+def upsert_holiday(company, *, pays, date, nom, recurrent_annuel=False):
+    """NTI18N45 — upsert IDEMPOTENT d'un jour férié, clé ``(company, pays,
+    date)`` — jamais ``(company, date, nom)`` : rejouer un import ne doit
+    jamais créer de doublon même si le libellé a légèrement changé entre
+    deux imports (critère d'acceptation du plan). Point d'entrée cross-app
+    en ÉCRITURE pour l'import CSV (``apps.dataimport.holidays_import``) —
+    jamais un import direct de ``notifications.models`` ailleurs.
+
+    Peut lever ``django.db.IntegrityError`` si un AUTRE jour férié porte
+    déjà EXACTEMENT ce libellé à cette date (contrainte ``(company, date,
+    nom)`` antérieure à ce module, non couverte par la clé pays+date) —
+    laissé à l'appelant, qui journalise la ligne en erreur sans jamais
+    faire échouer l'import entier.
+
+    Renvoie ``(holiday, cree)``."""
+    from .models import Holiday
+    return Holiday.objects.update_or_create(
+        company=company, pays=pays, date=date,
+        defaults={'nom': nom, 'recurrent_annuel': bool(recurrent_annuel)})
+
+
 def est_hors_fenetre_silence(moment, company) -> bool:
     """Renvoie True si ``moment`` (datetime) tombe DANS la fenêtre de silence
     (nuit ou jour férié/non-ouvré) — c-à-d qu'un SMS/WhatsApp ne DOIT PAS

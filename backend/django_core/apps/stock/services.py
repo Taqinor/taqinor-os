@@ -6156,6 +6156,466 @@ def notify_bcf_confirmation_fournisseur(bc):
         pass
 
 
+# ── NTPRT3 — Compte fournisseur RÉEL (remplace le jeton comme voie primaire) ─
+#
+# Avant NTPRT3 le seul accès d'un fournisseur était ``PortailFournisseurToken``
+# (XPUR22) : un jeton opaque dans un lien email. NTPRT3 fait du compte
+# utilisateur RÉEL la voie PRIMAIRE — un ``CustomUser``
+# ``portee=portail_fournisseur`` qui se connecte par le login JWT STANDARD,
+# jamais un second système d'authentification. Le jeton reste EN PLACE, sans un
+# octet de changement, pour les liens ponctuels (« confirmez ce BCF par
+# email ») qui n'exigent pas de compte.
+#
+# Décisions de sécurité (délibérément strictes, alignées sur NTPRT2) :
+#   * Le mot de passe temporaire ne sort JAMAIS dans une réponse HTTP : il part
+#     par email (console en local, SendGrid gated en prod — no-op sans clé). Le
+#     compte naît ``must_change_password=True`` : la garde portail refuse tout
+#     écran tant qu'il n'est pas remplacé (AUD139).
+#   * Idempotent SANS effet de bord : re-provisionner ne réinitialise aucun mot
+#     de passe et ne RÉACTIVE JAMAIS un accès révoqué — réactiver en silence un
+#     accès retiré serait un élargissement d'accès que personne n'a demandé.
+#   * Le compte porte le rôle système « Portail fournisseur » (permissions
+#     ``portail_*`` uniquement, aucun code interne) : par construction il
+#     n'atteint aucun endpoint interne (NTPRT1 + NTPRT5).
+
+#: Longueur du mot de passe temporaire (jamais journalisé, jamais rendu).
+LONGUEUR_MOT_DE_PASSE_PORTAIL_FOURNISSEUR = 16
+
+
+def _username_portail_fournisseur_disponible(base):
+    """Renvoie un ``username`` LIBRE dérivé de ``base``.
+
+    ``CustomUser.username`` est unique GLOBALEMENT (toutes sociétés
+    confondues) : deux sociétés peuvent référencer le même fournisseur avec le
+    même email. On suffixe donc ``-2``, ``-3``… jusqu'à trouver un identifiant
+    libre, sans jamais voler celui d'un compte existant.
+    """
+    from authentication.models import CustomUser
+
+    base = (base or '').strip().lower()[:140] or 'portail-fournisseur'
+    candidat = base
+    suffixe = 1
+    while CustomUser.objects.filter(username=candidat).exists():
+        suffixe += 1
+        candidat = f'{base}-{suffixe}'[:150]
+    return candidat
+
+
+def _nom_affiche_societe(company):
+    """Nom de marque de la société pour un email sortant (NTPRT19).
+
+    Lit ``core.TenantTheme`` (couche de fondation, jamais une app métier) puis
+    retombe sur la raison sociale. Ne lève jamais : un thème absent ne doit pas
+    empêcher l'ouverture d'un accès.
+    """
+    try:
+        from core.models import TenantTheme
+        theme = TenantTheme.objects.filter(company=company).first()
+        if theme is not None and (theme.nom_affichage or '').strip():
+            return theme.nom_affichage.strip()
+    except Exception:  # noqa: BLE001 — la marque ne casse jamais un accès
+        pass
+    return (getattr(company, 'nom', '') or '').strip()
+
+
+def _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company):
+    """Envoie le mot de passe temporaire au fournisseur. Best-effort.
+
+    Sans ``SENDGRID_API_KEY`` le backend email est la console (local) ou un
+    no-op : le provisionnement RÉUSSIT quand même (le mot de passe est alors
+    redéfini par le flux « mot de passe oublié » standard). Le mot de passe
+    n'est jamais renvoyé à l'appelant HTTP.
+    """
+    if not user.email:
+        return False
+    try:
+        from django.conf import settings as dj_settings
+        from django.core.mail import send_mail
+
+        societe = _nom_affiche_societe(company) or 'votre client'
+        send_mail(
+            subject=f'Votre accès au portail fournisseur {societe}',
+            message=(
+                f'Bonjour,\n\n'
+                f'Votre accès au portail fournisseur de {societe} est '
+                f'ouvert.\n\n'
+                f'Identifiant : {user.username}\n'
+                f'Mot de passe temporaire : {mot_de_passe}\n\n'
+                f'Il vous sera demandé de le changer à la première '
+                f'connexion.\n'
+            ),
+            from_email=getattr(dj_settings, 'DEFAULT_FROM_EMAIL', None),
+            recipient_list=[user.email],
+            fail_silently=True,
+        )
+        return True
+    except Exception:  # noqa: BLE001 — un email KO ne casse jamais l'accès
+        return False
+
+
+def provisionner_compte_fournisseur(company, fournisseur_id):
+    """NTPRT3 — crée (ou renvoie) le compte portail RÉEL d'un fournisseur.
+
+    Renvoie ``(user, cree)`` où ``cree`` dit si un ``CustomUser`` a été créé par
+    CET appel. Un ``fournisseur_id`` absent, ou d'une AUTRE société, renvoie
+    ``(None, False)`` — jamais un compte croisé.
+
+    Le compte porte ``portail_fournisseur_id = fournisseur.id`` : c'est CE
+    champ que lisent les gardes (``roles.permissions.IsPortalFournisseurUser``)
+    et les sélecteurs, donc le compte ne voit jamais que SES documents.
+    """
+    from django.db import transaction
+    from django.utils.crypto import get_random_string
+
+    from apps.roles.models import (
+        PORTAIL_FOURNISSEUR_PERMISSIONS,
+        ROLE_PORTAIL_FOURNISSEUR,
+        Role,
+    )
+    from authentication.models import CustomUser
+
+    from .models import CompteFournisseurPortail, Fournisseur
+
+    if company is None or not fournisseur_id:
+        return None, False
+    fournisseur = (Fournisseur.objects
+                   .filter(company=company, pk=fournisseur_id).first())
+    if fournisseur is None:
+        return None, False
+
+    with transaction.atomic():
+        # Idempotence : un compte déjà rattaché à CE fournisseur dans CETTE
+        # société est renvoyé tel quel — ni mot de passe réinitialisé, ni
+        # réactivation silencieuse d'un accès révoqué.
+        existant = (CompteFournisseurPortail.objects
+                    .select_related('utilisateur')
+                    .filter(company=company, fournisseur=fournisseur)
+                    .first())
+        if existant is not None:
+            return existant.utilisateur, False
+
+        role, _ = Role.objects.get_or_create(
+            company=company,
+            nom=ROLE_PORTAIL_FOURNISSEUR,
+            defaults={
+                'permissions': list(PORTAIL_FOURNISSEUR_PERMISSIONS),
+                'est_systeme': True,
+            },
+        )
+
+        email = (fournisseur.email or '').strip()
+        mot_de_passe = get_random_string(
+            LONGUEUR_MOT_DE_PASSE_PORTAIL_FOURNISSEUR)
+        user = CustomUser(
+            username=_username_portail_fournisseur_disponible(
+                email or f'fournisseur-{fournisseur.id}'),
+            email=email,
+            company=company,
+            role=role,
+            portee=CustomUser.PORTEE_PORTAIL_FOURNISSEUR,
+            portail_fournisseur_id=fournisseur.id,
+            must_change_password=True,
+            is_staff=False,
+            is_superuser=False,
+        )
+        user.set_password(mot_de_passe)
+        user.save()
+        CompteFournisseurPortail.objects.create(
+            company=company, fournisseur=fournisseur, utilisateur=user)
+
+    _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company)
+    return user, True
+
+
+def _basculer_acces_compte_fournisseur(company, fournisseur_id, *, actif):
+    """Pose ``actif`` sur le compte portail ET ``is_active`` sur son compte
+    utilisateur, atomiquement. Renvoie ``(compte, nb_utilisateurs)``.
+
+    Les DEUX portes se ferment ensemble : ``actif`` est le drapeau métier
+    (« cet accès est-il ouvert ? ») et ``is_active`` est celui que SimpleJWT
+    refuse dès l'authentification, y compris sur un jeton déjà distribué. Un
+    seul des deux laisserait une porte ouverte.
+    """
+    from django.db import transaction
+
+    from authentication.models import CustomUser
+
+    from .models import CompteFournisseurPortail
+
+    if company is None or not fournisseur_id:
+        return None, 0
+
+    with transaction.atomic():
+        compte = (CompteFournisseurPortail.objects
+                  .select_for_update()
+                  .filter(company=company, fournisseur_id=fournisseur_id)
+                  .first())
+        if compte is None:
+            return None, 0
+        if compte.actif != actif:
+            compte.actif = actif
+            compte.save(update_fields=['actif', 'updated_at'])
+        nb = CustomUser.objects.filter(
+            company=company,
+            portee=CustomUser.PORTEE_PORTAIL_FOURNISSEUR,
+            portail_fournisseur_id=fournisseur_id,
+        ).update(is_active=actif)
+    return compte, nb
+
+
+def revoquer_acces_compte_fournisseur(company, fournisseur_id):
+    """NTPRT3 — ferme l'accès portail d'un fournisseur (les deux portes).
+
+    Rien n'est supprimé : la ligne reste pour la traçabilité, et
+    ``reactiver_acces_compte_fournisseur`` est l'action EXPLICITE et symétrique
+    qui rouvre l'accès — jamais un effet de bord d'un re-provisionnement.
+    """
+    return _basculer_acces_compte_fournisseur(
+        company, fournisseur_id, actif=False)
+
+
+def reactiver_acces_compte_fournisseur(company, fournisseur_id):
+    """NTPRT3 — rouvre un accès portail fournisseur révoqué (action
+    explicite)."""
+    return _basculer_acces_compte_fournisseur(
+        company, fournisseur_id, actif=True)
+
+
+# ── NTPRT22 — ASN : annonce de livraison déposée par le FOURNISSEUR ─────────
+#
+# L'annonce est INFORMATIVE, et c'est tout son intérêt : elle ne crée ni
+# ``MouvementStock``, ni ``ReceptionFournisseur``, ni ``quantite_recue``. La
+# seule chose qui fait entrer de la marchandise reste la réception CONFIRMÉE
+# côté interne (``confirm_reception_fournisseur``). Sinon un fournisseur
+# pourrait, depuis son portail, créditer notre stock d'une palette jamais
+# arrivée — et le stock cesserait d'être une MESURE pour devenir une
+# DÉCLARATION.
+#
+# Les fonctions ci-dessous sont les points d'entrée cross-app d'``apps.portail``
+# (jamais un import de ``apps.stock.models`` depuis portail). L'isolation est
+# celle du reste du portail fournisseur : un BCF d'un autre fournisseur — ou
+# d'une autre société — est INTROUVABLE (``ValueError``), jamais « trouvé puis
+# refusé ».
+
+
+def _bcf_visible_par_le_fournisseur(company, fournisseur_id, bcf_id):
+    """Le BCF que CE fournisseur a le droit de voir, ou ``ValueError``.
+
+    Mêmes exclusions que ``selectors.bcf_portail_fournisseur`` : un brouillon
+    n'a jamais été envoyé et un bon annulé n'attend plus rien — annoncer une
+    expédition sur l'un ou l'autre n'a pas de sens, et la réponse ne doit pas
+    révéler qu'il existe.
+    """
+    from .models import BonCommandeFournisseur
+
+    bc = (BonCommandeFournisseur.objects
+          .filter(pk=bcf_id, company=company, fournisseur_id=fournisseur_id)
+          .exclude(statut=BonCommandeFournisseur.Statut.BROUILLON)
+          .exclude(statut=BonCommandeFournisseur.Statut.ANNULE)
+          .first())
+    if bc is None:
+        raise ValueError(
+            "Ce bon de commande n'appartient pas à ce fournisseur.")
+    return bc
+
+
+def _normaliser_lignes_annonce(bon_commande, lignes):
+    """``(lignes_normalisees, erreurs)`` — quantités annoncées par article.
+
+    Chaque entrée doit désigner un article RÉELLEMENT commandé sur ce bon
+    (``produit_id``, ou ``designation`` pour une ligne libre/service) : sans
+    cela le fournisseur annoncerait l'arrivée d'un article qu'on ne lui a
+    jamais commandé, et le quai préparerait une place pour rien. Aucun prix
+    n'est lu ni stocké — l'annonce dit QUOI arrive, jamais combien ça coûte.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    par_produit = {}
+    par_designation = {}
+    for ligne in bon_commande.lignes.select_related('produit'):
+        if ligne.produit_id:
+            par_produit[ligne.produit_id] = ligne.produit.nom
+        else:
+            libelle = (ligne.designation or '').strip()
+            if libelle:
+                par_designation[libelle] = libelle
+
+    normalisees = []
+    for brute in (lignes or []):
+        if not isinstance(brute, dict):
+            return None, {'lignes': 'Chaque ligne annoncée doit être un objet '
+                                    '{produit_id, quantite}.'}
+        produit_id = brute.get('produit_id')
+        designation = str(brute.get('designation') or '').strip()
+
+        if produit_id not in (None, ''):
+            try:
+                produit_id = int(produit_id)
+            except (TypeError, ValueError):
+                return None, {'lignes': 'Identifiant d\'article illisible.'}
+            if produit_id not in par_produit:
+                return None, {'lignes': 'Un des articles annoncés ne figure '
+                                        'pas sur ce bon de commande.'}
+            nom = par_produit[produit_id]
+        elif designation:
+            if designation not in par_designation:
+                return None, {'lignes': 'Un des articles annoncés ne figure '
+                                        'pas sur ce bon de commande.'}
+            produit_id = None
+            nom = designation
+        else:
+            return None, {'lignes': 'Chaque ligne annoncée doit désigner un '
+                                    'article du bon de commande.'}
+
+        try:
+            quantite = Decimal(str(brute.get('quantite')))
+        except (InvalidOperation, TypeError, ValueError):
+            return None, {'lignes': 'Quantité annoncée illisible.'}
+        if quantite <= 0:
+            return None, {'lignes': 'Une quantité annoncée doit être '
+                                    'strictement positive.'}
+
+        normalisees.append({
+            'produit_id': produit_id,
+            'produit_nom': nom,
+            'quantite': str(quantite),
+        })
+    return normalisees, None
+
+
+def annoncer_livraison_fournisseur(
+        company, fournisseur_id, bcf_id, *, date_expedition=None,
+        date_livraison_prevue=None, transporteur='', numero_suivi='',
+        lignes=None):
+    """NTPRT22 — le fournisseur annonce une expédition sur un de SES BCF.
+
+    Renvoie ``(annonce, erreurs)`` : ``erreurs`` est un dict champ → message
+    quand la saisie est refusée (l'annonce n'est alors pas créée), ``None``
+    sinon. Lève ``ValueError`` si le bon de commande n'est pas celui de ce
+    fournisseur — le même « introuvable » que le reste du portail.
+
+    AUCUN effet sur le stock : ni mouvement, ni réception, ni ``quantite_recue``
+    (verrouillé par un test dédié). La seule chose qui change côté interne est
+    que le bon de commande AFFICHE désormais « livraison annoncée ».
+
+    ``date_livraison_prevue`` de l'ANNONCE est la date que le FOURNISSEUR
+    déclare ; celle du BCF (``BonCommandeFournisseur.date_livraison_prevue``,
+    XPUR7) reste la date DEMANDÉE et n'est jamais écrasée — c'est elle qui rend
+    l'OTD promis-vs-reçu mesurable.
+    """
+    from .models import AnnonceLivraisonFournisseur
+
+    bon_commande = _bcf_visible_par_le_fournisseur(
+        company, fournisseur_id, bcf_id)
+    lignes_normalisees, erreurs = _normaliser_lignes_annonce(
+        bon_commande, lignes)
+    if erreurs is not None:
+        return None, erreurs
+
+    annonce = AnnonceLivraisonFournisseur.objects.create(
+        company=company,
+        bon_commande_fournisseur=bon_commande,
+        date_expedition=date_expedition,
+        date_livraison_prevue=date_livraison_prevue,
+        transporteur=str(transporteur or '')[:120],
+        numero_suivi=str(numero_suivi or '')[:100],
+        lignes=lignes_normalisees,
+        statut=AnnonceLivraisonFournisseur.Statut.ANNONCEE,
+    )
+    notify_annonce_livraison_fournisseur(annonce)
+    return annonce, None
+
+
+#: Avancement autorisé d'une annonce : le fournisseur avance, il ne revient
+#: jamais en arrière (une livraison ne se « dé-livre » pas).
+_AVANCEMENT_ANNONCE = {'annoncee': 0, 'en_transit': 1, 'livree': 2}
+
+
+def mettre_a_jour_statut_annonce_livraison(
+        company, fournisseur_id, annonce_id, *, statut):
+    """NTPRT22 — le fournisseur avance le statut d'une de SES annonces.
+
+    Renvoie ``(annonce, erreurs)``. Lève ``ValueError`` si l'annonce n'est pas
+    celle de ce fournisseur. Le statut ne recule jamais, et « livrée » ici reste
+    une DÉCLARATION du fournisseur : elle ne confirme aucune réception et ne
+    touche aucun stock.
+    """
+    from .models import AnnonceLivraisonFournisseur, BonCommandeFournisseur
+
+    annonce = (AnnonceLivraisonFournisseur.objects
+               .filter(pk=annonce_id, company=company,
+                       bon_commande_fournisseur__fournisseur_id=fournisseur_id)
+               .exclude(bon_commande_fournisseur__statut=(
+                   BonCommandeFournisseur.Statut.ANNULE))
+               .first())
+    if annonce is None:
+        raise ValueError("Cette annonce n'appartient pas à ce fournisseur.")
+
+    demande = str(statut or '').strip()
+    if demande not in AnnonceLivraisonFournisseur.Statut.values:
+        return None, {'statut': 'Statut inconnu : attendu « annoncee », '
+                                '« en_transit » ou « livree ».'}
+    if _AVANCEMENT_ANNONCE[demande] < _AVANCEMENT_ANNONCE[annonce.statut]:
+        return None, {'statut': 'Une livraison déjà annoncée plus loin ne '
+                                'revient pas en arrière.'}
+    if demande != annonce.statut:
+        annonce.statut = demande
+        annonce.save(update_fields=['statut', 'updated_at'])
+    return annonce, None
+
+
+def notify_annonce_livraison_fournisseur(annonce):
+    """NTPRT22 — prévient l'interne qu'une livraison vient d'être annoncée.
+
+    Même mécanique que ``notify_bcf_confirmation_fournisseur`` (notification
+    in-app existante + trace dans le chatter du BCF), best-effort TOTAL : un
+    échec des deux canaux ne casse jamais l'annonce elle-même — le bon de
+    commande l'affiche de toute façon.
+    """
+    bc = annonce.bon_commande_fournisseur
+    if bc.created_by_id is not None:
+        try:
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify
+            notify(
+                bc.created_by, EventType.APPROVAL_DECIDED,
+                title='Livraison annoncée',
+                body=(
+                    f'{bc.fournisseur.nom} annonce une expédition sur le BCF '
+                    f'{bc.reference}'
+                    + (f' (arrivée prévue le {annonce.date_livraison_prevue})'
+                       if annonce.date_livraison_prevue else '')
+                    + '.'),
+                company=bc.company,
+            )
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.info(
+                'NTPRT22: notification annonce livraison BCF %s non envoyée',
+                bc.pk)
+    try:
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.records.models import Comment
+
+        from .models import BonCommandeFournisseur
+        Comment.objects.create(
+            company=bc.company,
+            content_type=ContentType.objects.get_for_model(
+                BonCommandeFournisseur),
+            object_id=bc.pk,
+            body=(
+                f'{bc.fournisseur.nom} a annoncé une expédition via le '
+                'portail fournisseur'
+                + (f' (transporteur {annonce.transporteur})'
+                   if annonce.transporteur else '')
+                + '. Aucun stock n\'a bougé : la réception reste à confirmer '
+                  'en interne.'),
+            author=None,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        pass
+
+
 # ── XPUR24 — Tableau de bord achats (analyse des dépenses) ──────────────────
 # FG59 note UN fournisseur (scorecard) et FG132 vieillit les dettes (balance
 # âgée), mais aucune vue TRANSVERSE des achats n'existait. Admin/responsable

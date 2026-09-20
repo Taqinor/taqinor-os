@@ -25,7 +25,8 @@
         "note": "",
         "overdue": false,
         "devis": null,
-        "devis_reference": "", "statut_libelle": "À faire"
+        "devis_reference": "", "statut_libelle": "À faire",
+        "message_ouvert_le": null
       },
       {
         "id": 418,
@@ -49,7 +50,8 @@
         "overdue": true,
         "devis": 903,
         "devis_reference": "DEV-2609-0042",
-        "statut_libelle": "À faire"
+        "statut_libelle": "À faire",
+        "message_ouvert_le": "2026-09-05T13:04:00Z"
       }
     ]
   },
@@ -62,6 +64,7 @@
     "statut_libelle": "CKP1 — libellé français du statut, servi par le serveur (« À faire », « Fait », « Sautée », « Annulée (moteur) ») : le badge n'a plus à réinventer la table des libellés, et une annulation MOTEUR ne peut plus s'afficher comme un saut humain.",
     "canal": "appel | whatsapp | email | visite — l'enum du GABARIT de cadence, jamais `crm.Canal` (qui décrit la SOURCE du lead).",
     "statut": "a_faire | fait | sautee (statuts existants de `RelanceEtape`).",
-    "pii": "lead_telephone / lead_whatsapp = chaîne vide (jamais null) quand la permission `client_pii_voir` manque."
+    "pii": "lead_telephone / lead_whatsapp = chaîne vide (jamais null) quand la permission `client_pii_voir` manque.",
+    "message_ouvert_le": "RLC3 — horodatage de l'activité « WhatsApp ouvert » de CETTE touche (le clic humain, jamais un envoi), sinon null. Servi UNIQUEMENT pour une touche de canal whatsapp/e-mail encore `a_faire` (le seul cas où le panneau « Fait » s'ouvre) : null partout ailleurs, sans requête. Le panneau « Fait » d'une touche message le rappelle et, à défaut, demande une confirmation explicite — jamais un blocage (Meryem peut avoir écrit depuis son téléphone)."
   }
 }

@@ -78,6 +78,15 @@ function formatDate(iso: string | null): string {
       Où vivent vos données, qui les traite, et sous quelles conditions.
     </p>
 
+    {/* NTOBS17 — dossier de confiance PDF générique, pour un dossier d'appel d'offres */}
+    <a
+      href={`${API_BASE.replace(/\/+$/, '')}/api/django/core/trust-center/export-pdf/`}
+      class="mt-6 inline-flex items-center rounded-lg border border-azur-900/15 bg-blanc px-4 py-2 text-sm font-medium text-encre hover:bg-azur-900/5"
+      rel="noopener"
+    >
+      Télécharger le dossier de confiance (PDF)
+    </a>
+
     {groupes.length === 0 ? (
       <p class="mt-8 text-encre-soft">Informations momentanément indisponibles.</p>
     ) : (

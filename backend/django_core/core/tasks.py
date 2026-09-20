@@ -238,6 +238,132 @@ def generer_sla_mensuel_task():
     return {'ok': True}
 
 
+# ── NTOBS34 — fraîcheur des TrustCenterEntry (alerte fondateur) ────────────
+#
+# ``TrustCenterEntry.alerte_expiration_envoyee`` (migration 0072, livrée) est
+# désormais le marqueur PERSISTÉ anti-spam : posé à True quand l'alerte part,
+# jamais réémis pour la MÊME valeur de ``dernier_audit_le`` — contrairement à
+# un cache par process, il survit un redémarrage worker/déploiement. Le champ
+# n'étant PAS keyé par date, une entrée ACTUALISÉE (nouvel audit, toujours
+# périmé) doit pouvoir alerter de nouveau : le cache Django ne retient plus
+# un booléen mais la DERNIÈRE valeur de ``dernier_audit_le`` vue pour cette
+# entrée, et réarme (remet à False) le champ persistant dès qu'elle change —
+# « flag remis à False si l'entrée est mise à jour », sans nouvelle colonne.
+
+TRUST_CENTER_AUDIT_MAX_MOIS = 12
+TRUST_CENTER_ALERTE_CACHE_TTL_SECONDS = 60 * 60 * 24 * 40  # ~40 jours
+
+
+def _trust_center_alerte_cache_key(entry):
+    return f'trust_center_dernier_audit_connu:{entry.pk}'
+
+
+def _trust_center_deja_alerte(entry):
+    """Vrai si l'alerte est déjà partie pour la valeur ACTUELLE de
+    ``dernier_audit_le``. Si cette valeur a changé depuis le dernier passage
+    (même en restant périmée), le champ persistant est réarmé à False AVANT
+    d'être lu, pour laisser repartir une alerte fraîche."""
+    from django.core.cache import cache
+
+    from .trust_center import TrustCenterEntry
+
+    cle = _trust_center_alerte_cache_key(entry)
+    derniere_valeur_connue = cache.get(cle)
+    cache.set(cle, entry.dernier_audit_le, TRUST_CENTER_ALERTE_CACHE_TTL_SECONDS)
+    if (derniere_valeur_connue != entry.dernier_audit_le
+            and entry.alerte_expiration_envoyee):
+        TrustCenterEntry.objects.filter(pk=entry.pk).update(
+            alerte_expiration_envoyee=False)
+        entry.alerte_expiration_envoyee = False
+    return bool(entry.alerte_expiration_envoyee)
+
+
+def _trust_center_marquer_alerte(entry):
+    from .trust_center import TrustCenterEntry
+
+    TrustCenterEntry.objects.filter(pk=entry.pk).update(
+        alerte_expiration_envoyee=True)
+
+
+@shared_task(name='core.verifier_fraicheur_trust_center')
+def verifier_fraicheur_trust_center_task():
+    """NTOBS34 — job beat quotidien : notifie le Directeur (``notify()``) si
+    un ``TrustCenterEntry`` a un ``dernier_audit_le`` de plus de 12 mois,
+    UNE SEULE FOIS par audit (jamais de spam quotidien tant que l'entrée
+    n'est pas mise à jour)."""
+    from django.utils import timezone as dj_timezone
+    from dateutil.relativedelta import relativedelta
+
+    from authentication.models import CustomUser
+
+    from . import notify_registry
+    from .trust_center import TrustCenterEntry
+
+    seuil = (
+        dj_timezone.now().date()
+        - relativedelta(months=TRUST_CENTER_AUDIT_MAX_MOIS))
+    # TrustCenterEntry est un contenu SYSTÈME (aucune société) : la cible est
+    # le fondateur/opérateur plateforme (superuser), jamais le Directeur de
+    # CHAQUE tenant (qui n'a aucun contrôle sur ce contenu partagé).
+    superusers = CustomUser.objects.filter(is_superuser=True, is_active=True)
+    notifies = 0
+    for entry in TrustCenterEntry.objects.filter(
+            dernier_audit_le__isnull=False, dernier_audit_le__lt=seuil):
+        if _trust_center_deja_alerte(entry):
+            continue
+        for admin in superusers:
+            notify_registry.notify(
+                admin, 'trust_center_audit_expire',
+                f'Audit expiré — {entry.titre}',
+                body=(
+                    f'Dernier audit le {entry.dernier_audit_le:%d/%m/%Y} '
+                    f'(plus de {TRUST_CENTER_AUDIT_MAX_MOIS} mois).'),
+            )
+        _trust_center_marquer_alerte(entry)
+        notifies += 1
+    logger.info(
+        'core.verifier_fraicheur_trust_center: %d entrée(s) alertée(s).',
+        notifies)
+    return {'notifies': notifies}
+
+
+@shared_task(name='core.notifier_dossiers_echeance_depassee')
+def notifier_dossiers_echeance_depassee_task():
+    """NTWFL17 — balayage beat QUOTIDIEN des échéances de dossier dépassées,
+    par société ACTIVE (SCA19 : une société suspendue/en fermeture ne doit
+    plus émettre de notifications). Enveloppe fine de ``core.dossiers`` —
+    la dédup anti-spam (``dernier_rappel_echeance_le``) vit déjà dans le
+    modèle, un re-run le même jour ne renvoie rien de plus."""
+    from authentication.selectors import active_companies
+
+    from . import dossiers
+    from .dates import aujourd_hui_local
+
+    jour = aujourd_hui_local()
+    total = 0
+    for company in active_companies():
+        alertes = dossiers.notifier_echeances_depassees(company, jour)
+        total += len(alertes)
+    logger.info(
+        'core.notifier_dossiers_echeance_depassee: %d dossier(s) alerté(s).',
+        total)
+    return {'alertes': total}
+
+
+@shared_task(name='core.recalculer_sla_perimes')
+def recalculer_sla_perimes_task():
+    """NTOBS25 — recalcul de rattrapage quotidien : régénère les
+    ``SlaSnapshot`` périmés par un ``IncidentPublic`` déclaré/modifié
+    tardivement (planifié quotidiennement). Enveloppe fine de ``core.sla``."""
+    from . import sla
+
+    regeneres = sla.recalculer_sla_perimes()
+    logger.info(
+        'core.recalculer_sla_perimes: %d snapshot(s) régénéré(s).',
+        len(regeneres))
+    return {'regeneres': len(regeneres)}
+
+
 REVERSIBILITE_BUCKET = 'erp-reversibilite'
 
 
@@ -390,3 +516,181 @@ def notifier_seuils_usage_task():
     n = usage_limits.notifier_seuils_usage()
     logger.info('core.notifier_seuils_usage: %d notification(s).', n)
     return {'notifies': n}
+
+
+# ── NTOBS24 — purge planifiée des vieilles données Fiabilité ───────────────
+#
+# Seuils VERSIONNÉS EN CONSTANTES, jamais en DB — même style que
+# ``core.degraded_mode.DEGRADED_MODE_MATRIX`` (NTOBS11) : les changer exige un
+# déploiement de code, jamais un réglage à chaud, cohérent avec des seuils qui
+# déclenchent une SUPPRESSION de données. Aucune de ces trois entités n'est un
+# document ``apps.ged`` couvert par une ``PolitiqueRetention`` (celle-ci
+# reste réservée aux documents GED : cabinet/dossier/type_document) — donc
+# TOUJOURS une suppression dure ici, jamais un archivage GED.
+RETENTION_INCIDENT_PUBLIC_JOURS = 365 * 2  # 2 ans après résolution
+RETENTION_EXPORT_REVERSIBILITE_JOURS = 30  # après expiration du lien signé
+RETENTION_UPTIME_DAY_BUCKET_JOURS = 400  # ~13 mois (garde la comparaison N-1)
+
+
+def _purger_incidents_resolus_perimes(now):
+    from datetime import timedelta
+
+    from django.apps import apps as django_apps
+
+    try:
+        incident_model = django_apps.get_model('statuspage', 'IncidentPublic')
+    except LookupError:
+        return 0
+    seuil = now - timedelta(days=RETENTION_INCIDENT_PUBLIC_JOURS)
+    deleted, _ = incident_model.objects.filter(
+        statut=incident_model.Statut.RESOLVED, resolu_le__lt=seuil).delete()
+    return deleted
+
+
+def _purger_exports_reversibilite_expires(now):
+    from datetime import timedelta
+
+    from .export_registry import ExportReversibiliteRun
+
+    seuil = now - timedelta(days=RETENTION_EXPORT_REVERSIBILITE_JOURS)
+    expires = ExportReversibiliteRun.objects.filter(expire_le__lt=seuil)
+
+    client = None
+    for run in expires.exclude(fichier_key=''):
+        try:
+            if client is None:
+                from .backup import _minio_client
+                client = _minio_client()
+            client.delete_object(
+                Bucket=REVERSIBILITE_BUCKET, Key=run.fichier_key)
+        except Exception:  # noqa: BLE001 — best-effort, une clé KO n'en bloque pas d'autres
+            logger.exception(
+                'core.purger_donnees_fiabilite: échec suppression MinIO '
+                '%s.', run.fichier_key)
+
+    deleted, _ = expires.delete()
+    return deleted
+
+
+def _purger_uptime_buckets_perimes(now):
+    from datetime import timedelta
+
+    from django.apps import apps as django_apps
+
+    try:
+        bucket_model = django_apps.get_model('statuspage', 'UptimeDayBucket')
+    except LookupError:
+        return 0
+    seuil_date = (now - timedelta(days=RETENTION_UPTIME_DAY_BUCKET_JOURS)).date()
+    deleted, _ = bucket_model.objects.filter(date__lt=seuil_date).delete()
+    return deleted
+
+
+@shared_task(name='core.purger_donnees_fiabilite')
+def purger_donnees_fiabilite_task():
+    """NTOBS24 — purge GFS mensuelle (planifiée le 1er du mois) des données
+    du groupe Fiabilité devenues trop anciennes : ``IncidentPublic`` résolus
+    depuis plus de 2 ans, ``ExportReversibiliteRun`` (fichier MinIO + ligne
+    DB) expirés depuis plus de 30 jours, ``UptimeDayBucket`` de plus de
+    400 jours. Idempotente (les lignes déjà purgées ne le sont plus)."""
+    from django.utils import timezone as dj_timezone
+
+    now = dj_timezone.now()
+    resultat = {
+        'incidents': 0, 'exports_reversibilite': 0, 'uptime_buckets': 0,
+    }
+    try:
+        resultat['incidents'] = _purger_incidents_resolus_perimes(now)
+    except Exception:  # noqa: BLE001 — best-effort, une source KO n'en bloque pas d'autres
+        logger.exception(
+            'core.purger_donnees_fiabilite: échec purge IncidentPublic.')
+    try:
+        resultat['exports_reversibilite'] = (
+            _purger_exports_reversibilite_expires(now))
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            'core.purger_donnees_fiabilite: échec purge '
+            'ExportReversibiliteRun.')
+    try:
+        resultat['uptime_buckets'] = _purger_uptime_buckets_perimes(now)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            'core.purger_donnees_fiabilite: échec purge UptimeDayBucket.')
+
+    logger.info('core.purger_donnees_fiabilite: %s', resultat)
+    return resultat
+
+
+# ── NTOBS31 — garde-fous par défaut des 3 KPI « Fiabilité » ─────────────────
+#
+# Le calcul + l'évaluation des KPI restent ENTIÈREMENT dans
+# ``apps.reporting.kpi_alertes`` (catalogue fermé ``KpiAlerte.Kpi``, beat
+# quotidien déjà planifié ``reporting-evaluate-kpi-alertes``) — jamais un
+# second moteur ici. ``core`` reste une couche de fondation (contrat
+# import-linter ``core-foundation-is-a-base-layer`` : aucun import STATIQUE
+# de ``apps.reporting``) : le modèle ``KpiAlerte`` est résolu par
+# ``django.apps.apps.get_model``, même patron que ``_purger_uptime_buckets_
+# perimes`` ci-dessus pour ``apps.statuspage``.
+#
+# Ce job GARANTIT seulement que le garde-fou « drill de restauration périmé »
+# et « quota saturé » existe pour CHAQUE société active, sans dépendre d'un
+# admin qui penserait à le configurer à la main — une alerte de fiabilité est
+# un filet de sécurité, pas une fonctionnalité opt-in. Idempotent
+# (``get_or_create`` sur le triplet société+KPI+seuil EXACT) : ne touche
+# jamais une alerte personnalisée existante sur le même KPI avec un autre
+# seuil, et ne duplique rien en cas de re-run quotidien.
+NTOBS31_SEUIL_DRILL_PERIME_JOURS = 35
+NTOBS31_SEUIL_QUOTA_SATURE_PCT = 100
+
+
+def _assurer_alerte_fiabilite_defaut(
+        kpi_alerte_model, company, *, kpi, operateur, seuil, nom):
+    _, cree = kpi_alerte_model.objects.get_or_create(
+        company=company, kpi=kpi, operateur=operateur, seuil=seuil,
+        defaults={'nom': nom, 'destinataire_role': 'admin', 'actif': True})
+    return cree
+
+
+@shared_task(name='core.assurer_alertes_fiabilite_kpi')
+def assurer_alertes_fiabilite_kpi_task():
+    """NTOBS31 — job beat quotidien : garantit, pour chaque société ACTIVE,
+    les deux ``KpiAlerte`` par défaut décrites par la tâche (drill périmé
+    > 35 j, quota saturé >= 100 %). Best-effort par société — une société en
+    échec n'empêche jamais les suivantes."""
+    from decimal import Decimal
+
+    from django.apps import apps as django_apps
+
+    from authentication.selectors import active_companies
+
+    try:
+        KpiAlerte = django_apps.get_model('reporting', 'KpiAlerte')
+    except LookupError:
+        # Migration reporting pas encore appliquée : dégradation propre,
+        # jamais une exception qui casserait le beat.
+        return {'crees': 0}
+
+    seuil_drill = Decimal(NTOBS31_SEUIL_DRILL_PERIME_JOURS)
+    seuil_quota = Decimal(NTOBS31_SEUIL_QUOTA_SATURE_PCT)
+    crees = 0
+    for company in active_companies():
+        try:
+            if _assurer_alerte_fiabilite_defaut(
+                    KpiAlerte, company,
+                    kpi=KpiAlerte.Kpi.JOURS_DEPUIS_DERNIER_DRILL_REUSSI,
+                    operateur=KpiAlerte.Operateur.SUP, seuil=seuil_drill,
+                    nom='Drill de restauration périmé'):
+                crees += 1
+            if _assurer_alerte_fiabilite_defaut(
+                    KpiAlerte, company,
+                    kpi=KpiAlerte.Kpi.QUOTA_LE_PLUS_CHARGE_PCT,
+                    operateur=KpiAlerte.Operateur.SUP_EGAL, seuil=seuil_quota,
+                    nom='Quota saturé'):
+                crees += 1
+        except Exception:  # noqa: BLE001 — best-effort, une société KO n'en bloque pas d'autres
+            logger.exception(
+                'core.assurer_alertes_fiabilite_kpi: échec société %s.',
+                company.pk)
+    logger.info(
+        'core.assurer_alertes_fiabilite_kpi: %d alerte(s) créée(s).', crees)
+    return {'crees': crees}

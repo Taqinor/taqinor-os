@@ -62,6 +62,30 @@ SCOPE_READ_VUES = 'read:vues'
 # JAMAIS la géométrie brute (`roof_layout`, plans/rangées du moteur) ni aucun
 # coût interne : voir `public_serializers.PublicCalepinageSerializer`.
 SCOPE_READ_CALEPINAGES = 'read:calepinages'
+# NTP2P39 — objets Procure-to-Pay (apps.installations : `DemandeAchat` FG310,
+# `RFQ` FG311) en LECTURE SEULE, pour un donneur d'ordre ou un outil d'achat
+# tiers qui suit l'avancement des réquisitions depuis son propre système.
+# Identifiant tel que nommé au plan (``lecture_achats``) — il ne suit pas le
+# préfixe ``read:`` des scopes historiques, c'est volontaire et figé ici (même
+# exception assumée que ``juridique:read``, NTJUR41).
+# CE SCOPE N'OUVRE AUCUN COÛT D'ACHAT : ni `prix_estime` de ligne, ni
+# `RFQOffre.montant_ht` (documenté « Montants INTERNES »), ni aucune marge —
+# voir `apps/publicapi/public_achats_views.py`, qui justifie chaque omission.
+SCOPE_READ_ACHATS = 'lecture_achats'
+
+# NTOBS27 — surface « Fiabilité » en LECTURE SEULE, pour qu'un client
+# grand-compte branche son propre dashboard de gouvernance fournisseur :
+# dernière sauvegarde + drill (NTOBS5), rapport SLA mensuel (NTOBS3) et résumé
+# « Limites & usage » (NTOBS8), toujours scopés à la société de la clé.
+# Identifiant tel que nommé au plan (``fiabilite:lecture``) — il ne suit pas le
+# préfixe ``read:`` des scopes historiques, c'est volontaire et figé ici (même
+# exception assumée que ``juridique:read``, NTJUR41, et ``lecture_achats``,
+# NTP2P39).
+# CE SCOPE N'OUVRE AUCUN INTERNE D'INFRASTRUCTURE : ni clé d'objet MinIO, ni
+# taille de dump, ni manifeste de bundle, ni la vue cross-tenant NTOBS4 des
+# crédits dus — voir `apps/publicapi/public_fiabilite_views.py`, qui justifie
+# chaque omission.
+SCOPE_READ_FIABILITE = 'fiabilite:lecture'
 
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
@@ -96,6 +120,10 @@ SCOPE_CHOICES = [
      "Lire les vues sauvegardées d'équipe, ou d'un utilisateur consentant (?owner=)"),
     (SCOPE_READ_CALEPINAGES,
      'Lire les calepinages (sans géométrie brute ni coût interne)'),
+    (SCOPE_READ_ACHATS,
+     "Lire les demandes d'achat et les demandes de prix (sans aucun prix d'achat)"),
+    (SCOPE_READ_FIABILITE,
+     'Lire la fiabilité (sauvegardes, rapport SLA mensuel, limites & usage)'),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
     (SCOPE_WRITE_DEVIS, 'Créer un devis brouillon (jamais envoyé/accepté)'),
@@ -164,6 +192,20 @@ EVENT_RECORD_RESTORED = 'record_restored'
 # `apps.calepinage` -> `apps.publicapi`. Charge utile sans géométrie brute ni
 # coût interne (mêmes limites que la ressource publique CAL214).
 EVENT_CALEPINAGE_VALIDE = 'calepinage.valide'
+# NTI18N43 — bascule de langue (document d'un client, ou défaut de la société),
+# consommée depuis `core.events.langue_changed` par
+# `apps/publicapi/i18n_event_receivers.py` (jamais un import direct
+# `crm`/`parametres` -> `publicapi`). Clé SOULIGNÉE : littéralement celle
+# nommée par le plan NTI18N43.
+EVENT_LANGUE_CHANGED = 'langue_changed'
+# NTOBS26 — évènements d'exploitation (apps.statuspage / core.maintenance_
+# windows), consommés depuis `core.events` par
+# `apps/publicapi/ops_event_receivers.py` (jamais un import direct
+# `statuspage` -> `publicapi`). Clés SOULIGNÉES : littéralement celles nommées
+# par le plan NTOBS26.
+EVENT_INCIDENT_OPENED = 'incident_opened'
+EVENT_INCIDENT_RESOLVED = 'incident_resolved'
+EVENT_MAINTENANCE_WINDOW_ANNOUNCED = 'maintenance_window_announced'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
@@ -191,6 +233,10 @@ EVENT_CHOICES = [
     (EVENT_SAVED_VIEW_SHARED, 'Vue partagée à l\'équipe'),
     (EVENT_RECORD_RESTORED, 'Élément restauré depuis la corbeille'),
     (EVENT_CALEPINAGE_VALIDE, 'Calepinage — variante retenue'),
+    (EVENT_LANGUE_CHANGED, 'Langue changée (client ou société)'),
+    (EVENT_INCIDENT_OPENED, 'Incident — ouvert'),
+    (EVENT_INCIDENT_RESOLVED, 'Incident — résolu'),
+    (EVENT_MAINTENANCE_WINDOW_ANNOUNCED, 'Fenêtre de maintenance — annoncée'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 

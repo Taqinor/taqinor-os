@@ -146,6 +146,32 @@ def demandes_achat_converties(company, *, debut=None, fin=None):
     ]
 
 
+def comptes_demandes_achat_par_statut(company, *, debut=None, fin=None):
+    """NTP2P47 — nombre de ``DemandeAchat`` par statut (``brouillon``/
+    ``soumise``/``approuvee``/``refusee``/``commandee``), optionnellement
+    borné sur ``date_creation``. Un statut sans aucune ligne renvoie 0 —
+    jamais une clé absente.
+
+    Point d'entrée cross-app en LECTURE SEULE pour
+    ``apps.reporting.p2p_kpi.dashboard_p2p`` (``taux_conversion_pct``) —
+    jamais un import direct de ``DemandeAchat`` hors de ce module."""
+    from django.db.models import Count
+    from .models import DemandeAchat
+
+    qs = DemandeAchat.objects.filter(company=company)
+    if debut is not None:
+        qs = qs.filter(date_creation__date__gte=debut)
+    if fin is not None:
+        qs = qs.filter(date_creation__date__lte=fin)
+    comptes = dict(
+        qs.values_list('statut').annotate(n=Count('id')).values_list(
+            'statut', 'n'))
+    return {
+        statut: comptes.get(statut, 0)
+        for statut, _label in DemandeAchat.Statut.choices
+    }
+
+
 def installation_summaries_for_devis(devis_qs):
     """Map {devis_id: {id, reference, statut}} des chantiers liés à un lot de
     devis — une seule requête (évite un N+1 sur la fiche lead)."""

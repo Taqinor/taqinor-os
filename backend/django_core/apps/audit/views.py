@@ -17,7 +17,8 @@ from zoneinfo import ZoneInfo
 
 from django.contrib.contenttypes.models import ContentType
 from django.utils.dateparse import parse_datetime
-from rest_framework import viewsets, filters
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, viewsets, filters
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
@@ -269,6 +270,38 @@ def security_events(request):
         qs = qs.filter(action__in=[a for a in requested if a in allowed])
     else:
         qs = qs.filter(action__in=list(allowed))
+    try:
+        limit = min(int(request.query_params.get('limit', 100)), 500)
+    except (TypeError, ValueError):
+        limit = 100
+    data = AuditLogSerializer(qs[:limit], many=True).data
+    return Response({'count': len(data), 'results': data})
+
+
+# NTPRT7 — onglet « Accès portail » : réutilise le Journal d'activité EXISTANT,
+# pré-filtré ``via_portail=True`` (même patron que ``security_events``
+# ci-dessus) — jamais un 2e système d'audit. Gardé par la MÊME permission que
+# tout le reste du Journal (``CanViewActivityLog``, Directeur/admin interne
+# par défaut) : un compte portail externe n'atteint de toute façon jamais
+# ``/api/django/audit/*`` (exclu en amont, cf. ``roles.permissions``).
+PORTAL_ACCESS_EVENTS_RESPONSE = inline_serializer('AuditPortalAccessEvents', {
+    'count': serializers.IntegerField(),
+    'results': AuditLogSerializer(many=True),
+})
+
+
+@extend_schema(responses=PORTAL_ACCESS_EVENTS_RESPONSE)
+@api_view(['GET'])
+@permission_classes([CanViewActivityLog])
+def portal_access_events(request):
+    """Accès portail (company-scopés, plus récent d'abord).
+
+    Filtres : ``?action=``, ``?user=``, ``?from=``/``?to=``, ``?search=``,
+    ``?limit=`` (défaut 100, max 500) — les mêmes que ``security_events``,
+    sur le sous-ensemble ``via_portail=True`` au lieu du sous-ensemble
+    sécurité."""
+    qs = _apply_filters(_company_qs(request), request.query_params)
+    qs = qs.filter(via_portail=True)
     try:
         limit = min(int(request.query_params.get('limit', 100)), 500)
     except (TypeError, ValueError):

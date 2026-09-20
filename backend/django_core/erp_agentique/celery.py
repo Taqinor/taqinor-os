@@ -24,7 +24,14 @@ app.autodiscover_tasks()
 # gardien core/tests/test_celery_task_routes.py (tâche planifiée ⇒ tâche
 # enregistrée) refuse toute nouvelle divergence.
 for _related_name in ('scheduled', 'beat_tasks', 'sweeps', 'digests',
-                      'scheduled_reports'):
+                      'scheduled_reports',
+                      # NTI18N39 — `core/tasks_i18n.py` : module de tâche dédié
+                      # (core/tasks.py appartient à une autre lane). Aucun des
+                      # cinq noms conventionnels ci-dessus ne le couvre, donc
+                      # sans cette entrée le worker ne l'importerait jamais et
+                      # `core.recalculer_couverture_i18n` serait « unregistered
+                      # task » — exactement l'incident du 14/09/2026.
+                      'tasks_i18n'):
     app.autodiscover_tasks(related_name=_related_name)
 
 # G9 — Celery Beat. Toute la logique de temps des jobs raisonne en
@@ -204,6 +211,13 @@ app.conf.beat_schedule = {
         'task': 'notifications.purge_notifications_anciennes',
         'schedule': crontab(hour=2, minute=45),
     },
+    # NTI18N37 — rappel quotidien (novembre-décembre uniquement) de saisie
+    # des 4 fêtes mobiles de l'année suivante ; s'arrête de lui-même dès que
+    # la saisie est complète (voir apps/notifications/tasks.py).
+    'notifications-rappel-fetes-mobiles': {
+        'task': 'notifications.rappel_fetes_mobiles',
+        'schedule': crontab(hour=7, minute=40, month_of_year='11,12'),
+    },
     # NTPLT10 — filet beat de l'outbox : livre les événements pending/failed
     # échus (en plus de l'enqueue on_commit immédiat) toutes les 5 minutes.
     'core-dispatch-outbox': {
@@ -359,6 +373,13 @@ app.conf.beat_schedule = {
     'dataquality-consolider-golden-records': {
         'task': 'dataquality.consolider_golden_records',
         'schedule': crontab(hour=4, minute=15, day_of_week=0),
+    },
+    # NTAI30 — matérialise le feature store léger (FeatureVector) de chaque
+    # société. Quotidien, tôt (avant les scorers/rapports du matin) ; lecture
+    # seule côté métier — ne fait qu'upserter une VUE dérivée.
+    'mlops-recompute-features': {
+        'task': 'mlops.recompute_features',
+        'schedule': crontab(hour=4, minute=30),
     },
     # YSERV13 — contrôle d'intégrité inter-documents hebdomadaire (états
     # orphelins entre apps) ; notifie seulement si ≥1 anomalie détectée.
@@ -555,6 +576,13 @@ app.conf.beat_schedule = {
     'installations-relancer-rfq-en-attente': {
         'task': 'installations.relancer_rfq_en_attente',
         'schedule': crontab(hour=7, minute=15),
+    },
+    # NTP2P35 — archivage MENSUEL des brouillons de demande d'achat abandonnés
+    # (> seuil société, défaut 90 j). Jamais de suppression dure, jamais un
+    # brouillon épinglé ; heure creuse du 1er du mois.
+    'installations-purger-demandes-achat-brouillon': {
+        'task': 'installations.purger_demandes_achat_brouillon',
+        'schedule': crontab(hour=3, minute=55, day_of_month=1),
     },
     # ZSTK1 — recompute réappro + alertes de rupture (« reordering rules
     # run » façon Odoo), quotidien, heure creuse matinale. Suggestion
@@ -1347,6 +1375,61 @@ app.conf.beat_schedule = {
     'core-notifier-seuils-usage': {
         'task': 'core.notifier_seuils_usage',
         'schedule': crontab(hour=7, minute=10),
+    },
+    # NTOBS24 — purge GFS mensuelle des vieilles données Fiabilité (incidents
+    # résolus >2 ans, exports de réversibilité expirés >30j, buckets d'uptime
+    # >400j).
+    'core-purger-donnees-fiabilite': {
+        'task': 'core.purger_donnees_fiabilite',
+        'schedule': crontab(day_of_month=1, hour=4, minute=0),
+    },
+    # NTWFL17 — balayage quotidien des échéances de dossier dépassées, par
+    # société active (dédup anti-spam déjà dans le modèle Dossier).
+    'core-notifier-dossiers-echeance-depassee': {
+        'task': 'core.notifier_dossiers_echeance_depassee',
+        'schedule': crontab(hour=7, minute=5),
+    },
+    # NTOBS25 — recalcul quotidien des SlaSnapshot périmés par un incident
+    # déclaré/modifié tardivement (chevauchant une période déjà générée).
+    'core-recalculer-sla-perimes': {
+        'task': 'core.recalculer_sla_perimes',
+        'schedule': crontab(hour=3, minute=45),
+    },
+    # NTOBS34 — alerte fondateur si un audit TrustCenterEntry a plus de 12 mois.
+    'core-verifier-fraicheur-trust-center': {
+        'task': 'core.verifier_fraicheur_trust_center',
+        'schedule': crontab(hour=6, minute=30),
+    },
+    # NTI18N39 — recalcul HEBDOMADAIRE de la couverture i18n (NTI18N28), le
+    # lundi tôt : l'instantané de la semaine est prêt avant la journée de
+    # travail, et la clé d'idempotence (société, lundi de la semaine) rend un
+    # rejeu inoffensif.
+    'core-recalculer-couverture-i18n': {
+        'task': 'core.recalculer_couverture_i18n',
+        'schedule': crontab(day_of_week=1, hour=5, minute=20),
+    },
+    # NTOBS31 — garantit, pour chaque société active, les 2 KpiAlerte par
+    # défaut (drill de restauration périmé > 35 j, quota saturé >= 100 %)
+    # AVANT le beat d'évaluation ci-dessus (6h30) qui les calcule/notifie.
+    'core-assurer-alertes-fiabilite-kpi': {
+        'task': 'core.assurer_alertes_fiabilite_kpi',
+        'schedule': crontab(hour=6, minute=0),
+    },
+    # NTI18N38 — purge MENSUELLE des traductions de contenu orphelines
+    # (`core.ContentTranslation` désigne sa cible par contenttype+object_id,
+    # donc la suppression de l'objet source n'emporte rien). Le 1er du mois,
+    # heure creuse — voir apps/parametres/scheduled.py.
+    'parametres-purger-traductions-orphelines': {
+        'task': 'parametres.purger_traductions_orphelines',
+        'schedule': crontab(day_of_month=1, hour=4, minute=20),
+    },
+    # NTI18N51 — UNE notification groupée par société des clés de glossaire qui
+    # ont replié sur le français en production. Le lundi matin : la lacune est
+    # lue avant la semaine de travail, et l'hebdomadaire est ce qui rend
+    # l'alerte anti-spam (le compteur, lui, tourne en continu).
+    'parametres-notifier-traductions-manquantes-hebdo': {
+        'task': 'parametres.notifier_traductions_manquantes_hebdo',
+        'schedule': crontab(day_of_week=1, hour=7, minute=35),
     },
 }
 

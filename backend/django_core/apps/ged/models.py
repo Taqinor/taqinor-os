@@ -1074,6 +1074,19 @@ class AclGed(models.Model):
         'roles.Role', on_delete=models.CASCADE,
         null=True, blank=True, related_name='ged_acls',
         verbose_name='rôle')
+    # NTPRT13 — Principal PORTAIL CLIENT : partage un dossier/document avec un
+    # ``crm.Client`` (donc avec TOUS ses comptes portail — NTPRT6 peut en
+    # multiplier plusieurs pour un même client) plutôt qu'avec un compte
+    # utilisateur individuel. String-FK ('crm.Client', db_constraint=False) :
+    # jamais un import de ``apps.crm.models`` (contrat CI
+    # ``ged-models-decoupled`` — string FKs seulement).
+    client = models.ForeignKey(
+        'crm.Client',
+        # on_delete: une entrée ACL est un droit accordé À ce client — sans
+        # lui elle ne désigne plus personne ; la ligne suit son principal.
+        on_delete=models.CASCADE,
+        null=True, blank=True, db_constraint=False,
+        related_name='ged_acls', verbose_name='client (portail)')
     niveau = models.CharField(
         max_length=8, choices=ACL_CHOICES, default=ACL_LECTURE,
         verbose_name="niveau d'accès")
@@ -1097,6 +1110,7 @@ class AclGed(models.Model):
                          name='ged_acl_co_doc_idx'),
             models.Index(fields=['utilisateur'], name='ged_acl_user_idx'),
             models.Index(fields=['role'], name='ged_acl_role_idx'),
+            models.Index(fields=['client'], name='ged_acl_client_idx'),
         ]
         constraints = [
             models.CheckConstraint(
@@ -1106,18 +1120,22 @@ class AclGed(models.Model):
                 ),
                 name='ged_acl_exactly_one_target',
             ),
+            # NTPRT13 — le principal requis est désormais utilisateur OU rôle
+            # OU client (portail). Contrainte REMPLACÉE (jamais élargie sans
+            # borne : toujours AU MOINS un des trois, jamais aucun).
             models.CheckConstraint(
                 condition=(
                     models.Q(utilisateur__isnull=False)
                     | models.Q(role__isnull=False)
+                    | models.Q(client__isnull=False)
                 ),
-                name='ged_acl_principal_required',
+                name='ged_acl_principal_required_v2',
             ),
         ]
 
     def __str__(self):
         cible = self.document or self.folder
-        principal = self.utilisateur or self.role
+        principal = self.utilisateur or self.role or self.client
         return f'ACL {cible} → {principal} ({self.niveau})'
 
     @property
@@ -1129,15 +1147,17 @@ class AclGed(models.Model):
         """Garantit cible exactement-une + principal au moins-un.
 
         - EXACTEMENT un de (`folder`, `document`) est renseigné.
-        - AU MOINS un de (`utilisateur`, `role`) est renseigné.
+        - AU MOINS un de (`utilisateur`, `role`, `client`) est renseigné
+          (NTPRT13 — le `client` désigne un partage portail).
         """
         from django.core.exceptions import ValidationError
         if bool(self.folder_id) == bool(self.document_id):
             raise ValidationError(
                 "Une entrée ACL cible exactement un dossier OU un document.")
-        if not self.utilisateur_id and not self.role_id:
+        if not self.utilisateur_id and not self.role_id and not self.client_id:
             raise ValidationError(
-                "Une entrée ACL désigne au moins un utilisateur ou un rôle.")
+                "Une entrée ACL désigne au moins un utilisateur, un rôle ou "
+                "un client (portail).")
 
 
 def _default_partage_token():
