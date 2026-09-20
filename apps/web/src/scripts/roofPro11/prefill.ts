@@ -204,6 +204,65 @@ export interface SerializedZoneGeometry {
    * (les re-snapper sur la lattice détruirait le gain de place qu'ils enregistrent).
    */
   mode?: 'free';
+  /**
+   * CAL248 — ACCÈS SOLAIRE PAR MODULE, persisté avec le document. `pointSolarAccess` /
+   * `cellsSolarAccess` vivaient côté client et ne sortaient jamais de l'écran : aucune
+   * tâche backend ne pouvait les consommer. Champ ADDITIF et OPTIONNEL — absent =
+   * comportement d'aujourd'hui, JAMAIS une valeur par défaut (un module sans accès
+   * solaire calculé n'est pas un module à 100 %). Forme figée par le schéma v2
+   * (`roof_layout_v2.schema.json`, `$defs/solarAccess`).
+   */
+  solarAccess?: SerializedSolarAccess;
+}
+
+/**
+ * CAL248 — accès solaire par module tel qu'il voyage DANS le document. Forme exactement
+ * celle du contrat v2 (`$defs/solarAccess`) : `values` aligné sur `panels`, la méthode
+ * nommée, les hypothèses en objet libre, et la DATE de calcul (sans elle on ne sait pas
+ * si ces valeurs précèdent la dernière édition du toit).
+ */
+export interface SerializedSolarAccess {
+  /** Un facteur (0–1) par module, MÊME ORDRE et MÊME LONGUEUR que `panels`. `null` =
+   *  module non calculé — jamais 1, qui se lirait « aucun ombrage mesuré ». */
+  values: Array<number | null>;
+  method: string;
+  assumptions: Record<string, unknown>;
+  /** ISO 8601. */
+  computedAt: string;
+}
+
+/**
+ * CAL248 — normalise un accès solaire avant écriture. Il n'est écrit QUE s'il est
+ * exploitable : autant de valeurs que de modules posés (sinon les valeurs seraient
+ * décalées d'un module à l'autre au rechargement), méthode non vide, date lisible.
+ * Toute valeur hors [0;1] ou non finie devient `null` — non calculée, jamais corrigée
+ * en silence. Renvoie `null` si rien n'est écrivable.
+ */
+export function serializeSolarAccess(
+  raw: SerializedSolarAccess | null | undefined,
+  panelCount: number,
+): SerializedSolarAccess | null {
+  if (!raw || !Array.isArray(raw.values) || raw.values.length !== panelCount || panelCount <= 0) return null;
+  if (typeof raw.method !== 'string' || !raw.method.trim()) return null;
+  const values = raw.values.map((v) =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null,
+  );
+  if (values.every((v) => v === null)) return null; // rien de calculé : on n'écrit rien
+  const computedAt =
+    typeof raw.computedAt === 'string' && raw.computedAt ? raw.computedAt : new Date().toISOString();
+  const assumptions =
+    raw.assumptions && typeof raw.assumptions === 'object' && !Array.isArray(raw.assumptions)
+      ? { ...raw.assumptions }
+      : {};
+  return { values, method: raw.method, assumptions, computedAt };
+}
+
+/** CAL248 — relit l'accès solaire d'une géométrie de zone sérialisée. Absent, mal formé
+ *  ou décalé ⇒ `null` : un document sans accès solaire se relit SANS erreur, et aucune
+ *  valeur n'est reconstituée. */
+export function deserializeSolarAccess(geometry: unknown, panelCount: number): SerializedSolarAccess | null {
+  const raw = (geometry as { solarAccess?: SerializedSolarAccess } | null | undefined)?.solarAccess;
+  return serializeSolarAccess(raw, panelCount);
 }
 
 /** Une zone sérialisée (sous-ensemble plat et JSON-sûr d'AreaRecord). */
@@ -294,6 +353,13 @@ export interface SerializeMeta {
   devisId?: string | number | null;
   /** Économies annuelles (MAD) affichées. Ni recalculées ni inventées ici. */
   savingsMad?: number | null;
+  /**
+   * CAL248 — accès solaire par module, PAR ZONE (clé = id de zone). Fourni par
+   * l'appelant (l'atelier le tient via `shadingUi.solarAccess()`) : `prefill.ts` reste
+   * pur et ne calcule aucun ombrage. Une zone absente de cette table sort simplement
+   * SANS accès solaire — jamais avec des valeurs par défaut.
+   */
+  solarAccessByZone?: Record<string, SerializedSolarAccess | null | undefined>;
 }
 
 // ═══════════ PV71 — MATRICE D'OMBRAGE 12 × 24 (sérialisation) ═══════════
@@ -547,6 +613,11 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
         // PV30 — jamais émis hors placement libre (additif, rétro-compatible).
         ...(freePosed ? { mode: 'free' as const } : {}),
       };
+      // CAL248 — l'accès solaire par module voyage AVEC la géométrie du pan : mêmes
+      // modules, même ordre. Écrit seulement s'il est exploitable (autant de valeurs que
+      // de modules posés) ; sinon omis, jamais complété.
+      const access = serializeSolarAccess(meta?.solarAccessByZone?.[a.id], posed);
+      if (access) zone.geometry.solarAccess = access;
     }
     return zone;
   });
