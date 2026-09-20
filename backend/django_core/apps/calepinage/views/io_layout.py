@@ -24,17 +24,17 @@ from ..services.io_layout import (
 )
 from ..services.layout import LayoutRefuse
 
-__all__ = ['export_layout_action', 'import_layout_action']
+__all__ = ['export_layout', 'import_layout']
 
 
 def _attacher(viewset_classe):
-    viewset_classe.export_layout = export_layout_action
-    viewset_classe.import_layout = import_layout_action
+    viewset_classe.export_layout = export_layout
+    viewset_classe.import_layout = import_layout
 
 
 @action(detail=True, methods=['get'], url_path='export-layout',
         permission_classes=[PeutLireOuEcrireCalepinage])
-def export_layout_action(self, request, pk=None):
+def export_layout(self, request, pk=None):
     """CAL216 — exporte ``roof_layout`` TEL QUEL."""
     calepinage = self.get_object()
     return Response(exporter_layout(calepinage))
@@ -42,7 +42,7 @@ def export_layout_action(self, request, pk=None):
 
 @action(detail=True, methods=['post'], url_path='import-layout',
         permission_classes=[PeutLireOuEcrireCalepinage])
-def import_layout_action(self, request, pk=None):
+def import_layout(self, request, pk=None):
     """CAL216 — importe un document ``roof_layout``, validé STRICTEMENT
     contre le schéma v2 avant écriture — refus 400 champ par champ."""
     calepinage = self.get_object()

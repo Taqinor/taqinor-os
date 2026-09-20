@@ -30,14 +30,15 @@ from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage
 from ..selectors import calepinage_detail
-from ..services.archivage import ArchivageInvalide, archiver, restaurer
+from ..services.archivage import ArchivageInvalide, restaurer
+from ..services.archivage import archiver as archiver_service
 
-__all__ = ['archiver_action', 'restaurer_action']
+__all__ = ['archiver', 'restaurer_corbeille']
 
 
 def _attacher(viewset_classe):
-    viewset_classe.archiver = archiver_action
-    viewset_classe.restaurer_corbeille = restaurer_action
+    viewset_classe.archiver = archiver
+    viewset_classe.restaurer_corbeille = restaurer_corbeille
 
 
 def _cible(request, pk):
@@ -47,14 +48,14 @@ def _cible(request, pk):
 
 @action(detail=True, methods=['post'], url_path='archiver',
         permission_classes=[PeutGererCalepinage])
-def archiver_action(self, request, pk=None):
+def archiver(self, request, pk=None):
     """CAL208 — archive le calepinage (corbeille, réversible)."""
     calepinage = _cible(request, pk)
     if calepinage is None:
         return Response({'detail': 'Calepinage introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
     try:
-        archiver(calepinage, user=request.user)
+        archiver_service(calepinage, user=request.user)
     except ArchivageInvalide as refus:
         return Response({refus.champ or 'detail': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)
@@ -63,7 +64,7 @@ def archiver_action(self, request, pk=None):
 
 @action(detail=True, methods=['post'], url_path='restaurer-corbeille',
         permission_classes=[PeutGererCalepinage])
-def restaurer_action(self, request, pk=None):
+def restaurer_corbeille(self, request, pk=None):
     """CAL208 — restaure le calepinage DEPUIS la corbeille, à l'identique."""
     calepinage = _cible(request, pk)
     if calepinage is None:
