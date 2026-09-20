@@ -27,7 +27,8 @@ from authentication.models import Company
 from apps.adsengine import naming, rules_engine, services
 from apps.adsengine.models import (
     AdCampaignMirror, AdCreativeMirror, AdMirror, AdSetMirror, CreativeAsset,
-    CreativeBacklogItem, EngineAction, EngineAlert, InsightSnapshot, RulePolicy,
+    CreativeBacklogItem, EngineAction, EngineAlert, InsightSnapshot,
+    MetaConnection, RulePolicy,
 )
 
 TODAY = datetime.date(2026, 7, 16)
@@ -80,13 +81,18 @@ class ResolveRotationPayloadTests(TestCase):
         self.adset = AdSetMirror.objects.create(
             company=self.company, meta_id='as-1', name='Toit Casa',
             status='PAUSED', campaign=self.campaign)
+        # PUB123 — le pont exige une Page connectée : un ``object_story_spec``
+        # n'existe pas sans ``page_id`` (Meta veut l'acteur qui publie).
+        self.connection = MetaConnection.objects.create(
+            company=self.company, ad_account_id='act_1', page_id='page-42')
 
-    def _ad_with_creative(self, meta_id, creative_id, *, name=''):
+    def _ad_with_creative(self, meta_id, creative_id, *, name='', link_url=''):
         ad = AdMirror.objects.create(
             company=self.company, meta_id=meta_id, adset=self.adset,
             name=name or meta_id)
         AdCreativeMirror.objects.create(
-            company=self.company, ad=ad, creative_meta_id=creative_id)
+            company=self.company, ad=ad, creative_meta_id=creative_id,
+            link_url=link_url)
         return ad
 
     def _asset(self, *, passed=True, image_hash='', video_id='', **kw):
@@ -134,9 +140,10 @@ class ResolveRotationPayloadTests(TestCase):
             now=TODAY)
         self.assertEqual(payload['creative'], {'creative_id': 'cr-strong'})
 
-    # ── Source (a) : tête du backlog approuvé ────────────────────────────────
+    # ── Source (a) : tête du backlog approuvé, pontée par PUB123 ─────────────
     def test_approved_backlog_head_wins_over_live_mirror(self):
-        self._ad_with_creative('ad-1', 'cr-1')
+        self._ad_with_creative('ad-1', 'cr-1',
+                               link_url='https://taqinor.ma/devis')
         asset = self._asset(image_hash='hash-abc', hook_text='Facture divisée',
                             primary_text='Vos factures baissent.', cta='LEARN_MORE',
                             hook_tag='FACTURE', angle_tag='ROI',
@@ -149,24 +156,64 @@ class ResolveRotationPayloadTests(TestCase):
                          services.ROTATION_SOURCE_BACKLOG)
         self.assertEqual(payload['creative_asset_id'], asset.pk)
         self.assertEqual(payload['backlog_item_id'], item.pk)
-        self.assertEqual(payload['creative']['image_hash'], 'hash-abc')
-        self.assertEqual(payload['creative']['message'], 'Vos factures baissent.')
-        self.assertEqual(payload['creative']['call_to_action_type'],
-                         'LEARN_MORE')
+        # PUB123 — le fragment est un ``object_story_spec`` complet (Page +
+        # média de COMPTE + textes), pas un média nu que Graph refuserait.
+        oss = payload['creative']['object_story_spec']
+        self.assertEqual(oss['page_id'], 'page-42')
+        # Le lien vient du miroir de l'ad set (donnée RÉELLE, jamais fabriquée).
+        self.assertEqual(oss['link_data']['link'], 'https://taqinor.ma/devis')
+        self.assertEqual(oss['link_data']['image_hash'], 'hash-abc')
+        self.assertEqual(oss['link_data']['message'], 'Vos factures baissent.')
+        self.assertEqual(oss['link_data']['name'], 'Facture divisée')
+        self.assertEqual(oss['link_data']['call_to_action'],
+                         {'type': 'LEARN_MORE',
+                          'value': {'link': 'https://taqinor.ma/devis'}})
+        # Étiquette IA + provenance voyagent avec la proposition.
+        self.assertIn('ai_generated', payload)
+        self.assertEqual(payload['generation_audit']['asset_id'], asset.pk)
         # Le nom hérite des tags de l'asset via la convention de nommage.
         self.assertEqual(naming.tags_from_name(payload['name']), {
             'hook_tag': 'FACTURE', 'angle_tag': 'ROI',
             'format_tag': 'STATIC'})
 
-    def test_video_asset_uses_video_id(self):
+    def test_image_asset_without_link_uses_photo_data(self):
+        self._ad_with_creative('ad-1', 'cr-1')  # miroir sans link_url
+        self._backlog(self._asset(image_hash='hash-abc',
+                                  primary_text='Sans lien.'))
+        payload = services.resolve_rotation_payload(
+            self.company, target_type='adset', target_meta_id='as-1',
+            now=TODAY)
+        oss = payload['creative']['object_story_spec']
+        self.assertEqual(oss['photo_data'],
+                         {'image_hash': 'hash-abc', 'caption': 'Sans lien.'})
+        self.assertNotIn('link_data', oss)
+
+    def test_video_asset_uses_video_data(self):
         self._ad_with_creative('ad-1', 'cr-1')
         asset = self._asset(asset_type=CreativeAsset.AssetType.REEL,
-                            video_id='vid-9')
+                            video_id='vid-9', hook_text='Accroche',
+                            primary_text='Corps')
         self._backlog(asset)
         payload = services.resolve_rotation_payload(
             self.company, target_type='adset', target_meta_id='as-1',
             now=TODAY)
-        self.assertEqual(payload['creative'], {'video_id': 'vid-9'})
+        oss = payload['creative']['object_story_spec']
+        self.assertEqual(oss['video_data']['video_id'], 'vid-9')
+        self.assertEqual(oss['video_data']['title'], 'Accroche')
+        self.assertEqual(oss['video_data']['message'], 'Corps')
+        self.assertNotIn('image_hash', oss['video_data'])
+
+    def test_backlog_is_skipped_when_no_page_is_connected(self):
+        # Sans Page, le pont refuse : la rotation retombe sur le créatif LIVE
+        # (jamais un object_story_spec sans acteur).
+        MetaConnection.objects.filter(company=self.company).update(page_id='')
+        self._ad_with_creative('ad-1', 'cr-1')
+        self._backlog(self._asset(image_hash='hash-abc'))
+        payload = services.resolve_rotation_payload(
+            self.company, target_type='adset', target_meta_id='as-1',
+            now=TODAY)
+        self.assertEqual(payload['creative_source'],
+                         services.ROTATION_SOURCE_LIVE_MIRROR)
 
     def test_backlog_asset_without_uploaded_media_is_skipped(self):
         self._ad_with_creative('ad-1', 'cr-1')
@@ -265,7 +312,7 @@ class ValidateRotationPayloadTests(SimpleTestCase):
                 {'adset_id': 'as-1', 'creative': {'creative_id': 'c'}})
 
     def test_extra_fields_never_carry_a_status(self):
-        extra = services.rotation_ad_extra_fields({
+        extra = services.ad_extra_fields_with_creative({
             'adset_id': 'as-1', 'name': 'Ad',
             'creative': {'creative_id': 'cr-1'},
             'extra_fields': {'status': 'ACTIVE', 'bid_amount': 300}})

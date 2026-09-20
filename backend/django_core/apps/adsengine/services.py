@@ -494,45 +494,26 @@ def _best_live_creative_ad(company, adset, *, now=None, window_days=7):
     return max(candidates, key=_rank)
 
 
-def _rotation_creative_from_asset(asset):
-    """Fragment ``creative`` Graph d'un ``CreativeAsset`` déjà uploadé au compte.
-
-    Constructeur MINIMAL de PUB119 : il ne référence que les identifiants de
-    compte (``image_hash`` / ``video_id``, posés par PUB122) — un asset sans
-    média uploadé renvoie ``None`` (jamais un créatif qui citerait une clé
-    MinIO que Graph ne sait pas lire). PUB123 le REMPLACE par le pont complet
-    (``creative_bridge``) : ``object_story_spec`` bâti sur le ``page_id`` de la
-    connexion, étiquette IA, refus consentement/policy, provenance."""
-    if asset is None:
-        return None
-    if asset.meta_video_id:
-        media = {'video_id': asset.meta_video_id}
-    elif asset.meta_image_hash:
-        media = {'image_hash': asset.meta_image_hash}
-    else:
-        return None
-    spec = dict(media)
-    if asset.primary_text:
-        spec['message'] = asset.primary_text
-    if asset.hook_text:
-        spec['name'] = asset.hook_text
-    if asset.cta:
-        spec['call_to_action_type'] = asset.cta
-    return spec
-
-
-def _rotation_backlog_head(company, adset):
+def _rotation_backlog_head(company, adset, *, link_url=''):
     """Tête du backlog APPROUVÉ utilisable pour une rotation sur ``adset``.
 
     « Approuvé » = l'item est EN FILE (son lot a passé l'approbation humaine,
-    ``recombine.approve_lot``) et son asset a passé la check-list policy ET le
-    consentement — exactement les deux garde-fous qu'``assert_creative_ok_for_ad``
-    et PUB75 imposent en aval. On privilégie la file de la CAMPAGNE de l'ad set
-    (un item ciblé n'est jamais détourné vers une autre campagne), puis les items
-    sans campagne cible. Renvoie ``(item, creative_spec)`` ou ``(None, None)``."""
+    ``recombine.approve_lot``) et son asset passe le PONT PUB123
+    (``creative_bridge.build_creative_payload``) — c'est-à-dire : check-list
+    policy, étiquette IA, consentement PUB75, média uploadé au compte, et une
+    Page connectée. Un asset refusé par le pont est SAUTÉ (la raison FR reste
+    lisible sur la créathèque ; la rotation, elle, retombe sur le créatif LIVE).
+
+    On privilégie la file de la CAMPAGNE de l'ad set (un item ciblé n'est jamais
+    détourné vers une autre campagne), puis les items sans campagne cible.
+    ``link_url`` (lien réel lu sur le miroir de créatif de l'ad set) sert de
+    destination — jamais un lien fabriqué.
+
+    Renvoie ``(item, fragments)`` ou ``(None, None)``."""
     from django.db.models import Q
 
-    from .models import CreativeBacklogItem
+    from . import creative_bridge
+    from .models import CreativeBacklogItem, MetaConnection
 
     campaign = getattr(adset, 'campaign', None)
     qs = (CreativeBacklogItem.objects
@@ -542,15 +523,22 @@ def _rotation_backlog_head(company, adset):
                   | Q(target_campaign=campaign))
           .select_related('asset')
           .order_by('earliest_date', 'id'))
-    for item in qs:
-        asset = item.asset
-        if asset is None or not asset.is_policy_passed:
+    items = list(qs)
+    if not items:
+        return None, None
+    # UNE lecture de connexion pour toute la boucle (le pont la réutilise).
+    connection = MetaConnection.objects.filter(company=company).first()
+    for item in items:
+        try:
+            fragments = creative_bridge.build_creative_payload(
+                item.asset, company=company, connection=connection,
+                link_url=link_url)
+        except creative_bridge.CreativeAssetNotReady as exc:
+            logger.info(
+                'adsengine rotation: item de backlog %s écarté — %s',
+                item.pk, exc.reason_fr)
             continue
-        if not asset.has_valid_consent:
-            continue
-        spec = _rotation_creative_from_asset(asset)
-        if spec is not None:
-            return item, spec
+        return item, fragments
     return None, None
 
 
@@ -565,8 +553,9 @@ def resolve_rotation_payload(company, *, target_type, target_meta_id,
       * ``adset_id`` — l'ad set cible (``_rotation_adset``) ;
       * ``name`` — construit par la convention de nommage (``naming.build_name``),
         avec repli sur le nom du miroir source (jamais un nom vide) ;
-      * la source CRÉATIVE, dans cet ordre : **(a)** tête du backlog approuvé
-        portant un média uploadé au compte → ``creative`` inline + traçabilité
+      * la source CRÉATIVE, dans cet ordre : **(a)** tête du backlog approuvé,
+        passée au PONT PUB123 (``creative_bridge``) → ``creative`` inline
+        (``object_story_spec``) + étiquette IA + provenance + traçabilité
         (``creative_asset_id`` / ``backlog_item_id``) ; sinon **(b)** meilleur
         créatif LIVE de l'ad set (``AdCreativeMirror.creative_meta_id``) →
         ``creative = {'creative_id': …}``.
@@ -586,18 +575,29 @@ def resolve_rotation_payload(company, *, target_type, target_meta_id,
             f"pour {target_type or 'cible'} « {target_meta_id or '?'} » — "
             "resynchroniser les miroirs d'abord.")
 
-    item, spec = _rotation_backlog_head(company, adset)
+    # Le meilleur créatif LIVE est résolu D'ABORD : il sert de repli (source b)
+    # ET sa DESTINATION réelle (``link_url`` du miroir) est le lien que le pont
+    # PUB123 donne à l'asset du backlog — jamais un lien fabriqué.
+    live_ad = _best_live_creative_ad(company, adset, now=now)
+    live_link = ''
+    if live_ad is not None:
+        live_link = (live_ad.creative_mirror.link_url or '').strip()
+
+    item, fragments = _rotation_backlog_head(
+        company, adset, link_url=live_link)
     source_ad = None
-    if spec is not None:
+    if fragments is not None:
         source = ROTATION_SOURCE_BACKLOG
-        creative = spec
-    else:
-        source_ad = _best_live_creative_ad(company, adset, now=now)
-        if source_ad is None:
-            raise RotationCreativeUnavailable(ROTATION_NO_CREATIVE_FR)
+        extra_payload = dict(fragments)
+        creative = extra_payload.pop('creative')
+    elif live_ad is not None:
+        source_ad = live_ad
         source = ROTATION_SOURCE_LIVE_MIRROR
+        extra_payload = {}
         creative = {
             'creative_id': source_ad.creative_mirror.creative_meta_id}
+    else:
+        raise RotationCreativeUnavailable(ROTATION_NO_CREATIVE_FR)
 
     now = now or timezone.now()
     values = dict(name_values or {})
@@ -623,8 +623,10 @@ def resolve_rotation_payload(company, *, target_type, target_meta_id,
         'creative_source': source,
         'source_adset_id': adset.meta_id,
     }
+    # PUB123 — étiquette IA + provenance (``generation_audit``) + garde policy
+    # (``creative_asset_id``) voyagent avec la proposition jusqu'à l'ad.
+    payload.update(extra_payload)
     if item is not None:
-        payload['creative_asset_id'] = item.asset_id
         payload['backlog_item_id'] = item.pk
     if source_ad is not None:
         payload['source_ad_id'] = source_ad.meta_id
@@ -650,12 +652,14 @@ def validate_rotation_payload(payload):
     return creative
 
 
-def rotation_ad_extra_fields(payload):
-    """PUB119 — ``extra_fields`` d'un ``create_ad`` de rotation : les extras du
-    payload + le ``creative`` encodé JSON (les objets imbriqués ne voyagent
-    autrement pas dans un corps de formulaire Meta — même mécanique que
-    ``duplicate_adset_with_ad``). Un ``status`` éventuel est retiré ici ET
-    réécrit PAUSED par le client (défense en profondeur, règle #3)."""
+def ad_extra_fields_with_creative(payload):
+    """PUB119/PUB123 — ``extra_fields`` d'un ``create_ad`` portant un créatif
+    INLINE : les extras du payload + le ``creative`` encodé JSON (les objets
+    imbriqués ne voyagent autrement pas dans un corps de formulaire Meta — même
+    mécanique que ``duplicate_adset_with_ad``). Sert aux DEUX chemins : rotation
+    créative (PUB119) et création d'ad depuis un asset ponté (PUB123). Un
+    ``status`` éventuel est retiré ici ET réécrit PAUSED par le client (défense
+    en profondeur, règle #3)."""
     creative = validate_rotation_payload(payload)
     extra = dict((payload or {}).get('extra_fields') or {})
     extra.pop('status', None)
@@ -1608,6 +1612,14 @@ def _dispatch(client, action):
                 adset_id=payload.get('adset_id', ''),
                 asset_feed_spec=asset_feed_spec,
                 extra_fields=payload.get('extra_fields'))
+        # PUB123 — ad créée depuis un asset PONTÉ : le fragment ``creative``
+        # (object_story_spec) voyage encodé JSON, validé fail-fast comme la
+        # rotation (un payload incomplet n'atteint jamais le réseau).
+        if payload.get('creative'):
+            return client.create_ad(
+                name=payload.get('name', ''),
+                adset_id=payload.get('adset_id', ''),
+                extra_fields=ad_extra_fields_with_creative(payload))
         return client.create_ad(
             name=payload.get('name', ''),
             adset_id=payload.get('adset_id', ''),
@@ -1618,7 +1630,7 @@ def _dispatch(client, action):
         # PUB119 — complétude VALIDÉE fail-fast AVANT tout appel réseau : un
         # payload creux (name/adset_id/creative manquant) lève ICI, donc l'action
         # passe « echouee » avec sa raison FR et le client n'est jamais atteint.
-        extra = rotation_ad_extra_fields(payload)
+        extra = ad_extra_fields_with_creative(payload)
         return client.create_ad(
             name=payload.get('name', ''),
             adset_id=payload.get('adset_id', ''),
