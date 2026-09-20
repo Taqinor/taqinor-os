@@ -11,6 +11,12 @@ import {
   hdTargetSize,
   HD_MAX_SIDE_PX,
   HD_SCALES,
+  buildAffectationColoring,
+  affectationColorFn,
+  affectationGroupKey,
+  AFFECTATION_PALETTE,
+  AFFECTATION_UNASSIGNED,
+  type AffectationRow,
   type MixedRidgePan,
 } from './scene3d';
 import { buildAreasFromShape } from './zones';
@@ -209,5 +215,105 @@ describe('CAL180 — hdTargetSize', () => {
     expect(hdTargetSize(1280, 0, 2)).toBeNull();
     expect(hdTargetSize(Number.NaN, 720, 2)).toBeNull();
     expect(hdTargetSize(1280, 720, 0)).toBeNull();
+  });
+});
+
+// CAL126 — TEINTE PAR CHAÎNE / PAR MPPT. Les couleurs viennent EXCLUSIVEMENT de la table
+// `electrique.affectation` du serveur (CAL125) : aucun calcul de partition côté écran.
+// Un module non affecté est GRIS et COMPTÉ dans la légende. Les lignes ci-dessous sont
+// exactement celles de `contract_samples/calepinage_resultat.json`.
+const AFFECTATION: AffectationRow[] = [
+  { module: 'PAN-A#1', pan: 'PAN-A', chaine: 1, onduleur: 1, mppt: 1 },
+  { module: 'PAN-A#2', pan: 'PAN-A', chaine: 1, onduleur: 1, mppt: 1 },
+  { module: 'PAN-B#1', pan: 'PAN-B', chaine: 2, onduleur: 1, mppt: 2 },
+  { module: 'PAN-B#2', pan: 'PAN-B', chaine: 2, onduleur: 1, mppt: 2 },
+  { module: 'PAN-B#3', pan: 'PAN-B', chaine: null, onduleur: null, mppt: null },
+];
+
+describe('CAL126 — la couleur vient de la table, jamais d’un calcul d’écran', () => {
+  it('deux modules de la MÊME chaîne ont la MÊME couleur, deux chaînes en ont deux', () => {
+    const { colorByModule } = buildAffectationColoring(AFFECTATION, 'chaine');
+    expect(colorByModule.get('PAN-A#1')).toEqual(colorByModule.get('PAN-A#2'));
+    expect(colorByModule.get('PAN-B#1')).toEqual(colorByModule.get('PAN-B#2'));
+    expect(colorByModule.get('PAN-A#1')).not.toEqual(colorByModule.get('PAN-B#1'));
+  });
+
+  it('les couleurs sortent de la palette déclarée — aucune couleur improvisée', () => {
+    const { colorByModule } = buildAffectationColoring(AFFECTATION, 'chaine');
+    for (const [module, c] of colorByModule) {
+      if (module === 'PAN-B#3') continue; // non affecté : gris
+      expect(AFFECTATION_PALETTE).toContainEqual(c);
+    }
+  });
+
+  it('un module NON affecté est gris et COMPTÉ dans la légende (il ne disparaît pas)', () => {
+    const { colorByModule, legend } = buildAffectationColoring(AFFECTATION, 'chaine');
+    expect(colorByModule.get('PAN-B#3')).toEqual(AFFECTATION_UNASSIGNED);
+    const nonAffecte = legend.find((e) => e.key === null)!;
+    expect(nonAffecte.label).toBe('Non affecté');
+    expect(nonAffecte.count).toBe(1);
+    expect(legend.at(-1)).toBe(nonAffecte); // toujours en fin de légende
+    expect(legend.reduce((n, e) => n + e.count, 0)).toBe(AFFECTATION.length); // rien de perdu
+  });
+
+  it('la légende nomme les chaînes et compte leurs modules', () => {
+    const { legend } = buildAffectationColoring(AFFECTATION, 'chaine');
+    expect(legend.filter((e) => e.key !== null).map((e) => [e.label, e.count])).toEqual([
+      ['Chaîne 1', 2],
+      ['Chaîne 2', 2],
+    ]);
+  });
+});
+
+describe('CAL126 — bascule chaîne / MPPT', () => {
+  it('le mode MPPT regroupe par entrée, onduleur compris', () => {
+    expect(affectationGroupKey(AFFECTATION[0], 'mppt')).toBe('o1m1');
+    expect(affectationGroupKey(AFFECTATION[2], 'mppt')).toBe('o1m2');
+    // Deux onduleurs ont chacun leur entrée 1 : ce ne sont PAS le même groupe.
+    expect(affectationGroupKey({ module: 'x', chaine: 9, onduleur: 2, mppt: 1 }, 'mppt')).toBe('o2m1');
+    const { legend } = buildAffectationColoring(AFFECTATION, 'mppt');
+    expect(legend.filter((e) => e.key !== null).map((e) => e.label)).toEqual([
+      'Onduleur 1 — MPPT 1',
+      'Onduleur 1 — MPPT 2',
+    ]);
+  });
+
+  it('une chaîne nulle / un MPPT nul est « non affecté » dans les deux modes', () => {
+    expect(affectationGroupKey(AFFECTATION[4], 'chaine')).toBeNull();
+    expect(affectationGroupKey(AFFECTATION[4], 'mppt')).toBeNull();
+  });
+});
+
+describe('CAL126 — alimentation du canal de couleur existant', () => {
+  it('la fonction rend la couleur du module de CETTE cellule', () => {
+    const coloring = buildAffectationColoring(AFFECTATION, 'chaine');
+    const fn = affectationColorFn(coloring, ['PAN-A#1', 'PAN-B#1', 'PAN-B#3'])!;
+    expect(fn(0)).toEqual(coloring.colorByModule.get('PAN-A#1'));
+    expect(fn(1)).toEqual(coloring.colorByModule.get('PAN-B#1'));
+    expect(fn(2)).toEqual(AFFECTATION_UNASSIGNED);
+  });
+
+  it('une cellule sans module connu est grise, jamais d’une couleur de groupe au hasard', () => {
+    const coloring = buildAffectationColoring(AFFECTATION, 'chaine');
+    const fn = affectationColorFn(coloring, [null, 'INCONNU'])!;
+    expect(fn(0)).toEqual(AFFECTATION_UNASSIGNED);
+    expect(fn(1)).toEqual(AFFECTATION_UNASSIGNED);
+  });
+
+  it('table vide ⇒ aucune coloration (comportement d’avant CAL126, heatmap intacte)', () => {
+    expect(buildAffectationColoring([], 'chaine').legend).toEqual([]);
+    expect(buildAffectationColoring(null, 'chaine').colorByModule.size).toBe(0);
+    expect(affectationColorFn(buildAffectationColoring([], 'chaine'), [])).toBeNull();
+    expect(affectationColorFn(buildAffectationColoring(undefined, 'mppt'), ['a'])).toBeNull();
+  });
+
+  it('NON-RÉGRESSION : la coloration électrique ne touche pas la carte d’accès solaire', () => {
+    // Les deux sources sont indépendantes : construire l'une ne modifie pas l'autre.
+    // Une fonction d'accès solaire (verte/rouge) reste exactement ce qu'elle était.
+    const heat = (i: number) => ({ r: i / 10, g: 1 - i / 10, b: 0 });
+    const avant = [0, 1, 2].map(heat);
+    const coloring = buildAffectationColoring(AFFECTATION, 'chaine');
+    affectationColorFn(coloring, ['PAN-A#1', 'PAN-B#1', 'PAN-B#3']);
+    expect([0, 1, 2].map(heat)).toEqual(avant);
   });
 });

@@ -100,6 +100,12 @@ export interface Scene3d {
    *  `colorFor(cellIndex)` (rouge=faible → vert=plein soleil), ou remet tout à blanc si
    *  `colorFor` est null (heatmap désactivée). Réutilise le buffer instanceColor. */
   setSolarAccessHeatmap: (colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) => void;
+  /** CAL126 — teinte les modules PAR CHAÎNE / PAR MPPT. Même canal que la carte
+   *  d'accès solaire (buffer `instanceColor`), source DIFFÉRENTE : la table
+   *  `electrique.affectation` du serveur, traduite par `affectationColorFn`.
+   *  `null` remet la teinte d'origine. Les deux colorations partagent le canal :
+   *  la dernière appelée gagne, exactement comme deux réglages d'un même bouton. */
+  setStringColoring: (colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) => void;
   /** W115 — instantané PNG (data URL) de la 3D rendue, ou null si le renderer/canvas
    *  est indisponible. Le renderer partage le canvas MapLibre (map.getCanvas()). */
   snapshot: () => string | null;
@@ -693,6 +699,146 @@ export function hdTargetSize(
   const maxScale = Math.min(scale, HD_MAX_SIDE_PX / w, HD_MAX_SIDE_PX / h);
   const eff = Math.max(1, maxScale);
   return { width: Math.max(1, Math.round(w * eff)), height: Math.max(1, Math.round(h * eff)), scale: eff };
+}
+
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL126 — TEINTER LES MODULES PAR CHAÎNE / PAR MPPT
+//
+// La coloration PAR MODULE existe déjà dans la scène (`setSolarAccessHeatmap` et le
+// buffer `instanceColor` de l'InstancedMesh des panneaux) : ce qui manquait, c'était
+// une source ÉLECTRIQUE pour l'alimenter. Elle arrive telle quelle du serveur :
+// `electrique.affectation` (contrat `calepinage_resultat.json`, CAL125) donne, module
+// par module, sa chaîne ET son entrée MPPT.
+//
+// RÈGLE ABSOLUE : les couleurs viennent EXCLUSIVEMENT de cette table. Rien n'est
+// recalculé ici — un écran qui re-partitionnerait produirait une AUTRE partition que
+// celle qui a été dimensionnée. Un module non affecté (`chaine: null`) est GRIS et il
+// est COMPTÉ dans la légende : il ne disparaît pas.
+//
+// AUCUN nouveau mécanisme de rendu n'est introduit : la scène reçoit une fonction
+// cellIndex → couleur, exactement comme la carte d'accès solaire, et écrit dans le
+// MÊME buffer.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Une ligne de `electrique.affectation`, telle que le serveur l'envoie. */
+export interface AffectationRow {
+  module: string;
+  pan?: string | null;
+  chaine: number | null;
+  onduleur?: number | null;
+  mppt: number | null;
+}
+
+export type AffectationMode = 'chaine' | 'mppt';
+
+/** Couleur RVB 0–1, la forme que le buffer `instanceColor` attend déjà. */
+export interface Rgb01 {
+  r: number;
+  g: number;
+  b: number;
+}
+
+/**
+ * Palette des groupes. Teintes de LUMINOSITÉ MOYENNE, choisies pour rester lisibles
+ * sur fond clair comme sur fond sombre (une palette pastel disparaît sur le blanc,
+ * une palette saturée sombre disparaît sur la nuit de l'atelier). Elle boucle si le
+ * dossier compte plus de groupes que de couleurs — deux groupes de même couleur restent
+ * distingués par la légende, qui les nomme.
+ */
+export const AFFECTATION_PALETTE: readonly Rgb01[] = [
+  { r: 0.14, g: 0.51, b: 0.84 }, // bleu
+  { r: 0.91, g: 0.49, b: 0.13 }, // orange
+  { r: 0.18, g: 0.64, b: 0.35 }, // vert
+  { r: 0.72, g: 0.25, b: 0.62 }, // magenta
+  { r: 0.0, g: 0.6, b: 0.62 }, // sarcelle
+  { r: 0.83, g: 0.24, b: 0.28 }, // rouge
+  { r: 0.45, g: 0.4, b: 0.78 }, // violet
+  { r: 0.6, g: 0.52, b: 0.1 }, // ocre
+];
+
+/** GRIS des modules NON affectés — jamais une couleur de groupe, jamais l'invisible. */
+export const AFFECTATION_UNASSIGNED: Rgb01 = { r: 0.55, g: 0.56, b: 0.58 };
+
+/** Clé de groupe d'une ligne, selon le mode. `null` = module NON affecté.
+ *  En mode MPPT la clé porte l'onduleur : deux onduleurs ont chacun leur entrée 1. */
+export function affectationGroupKey(row: AffectationRow, mode: AffectationMode): string | null {
+  if (mode === 'chaine') {
+    return row.chaine == null ? null : `c${row.chaine}`;
+  }
+  if (row.mppt == null) return null;
+  return `o${row.onduleur ?? 1}m${row.mppt}`;
+}
+
+/** Libellé lisible d'un groupe, pour la légende. */
+export function affectationGroupLabel(row: AffectationRow, mode: AffectationMode): string {
+  if (mode === 'chaine') return row.chaine == null ? 'Non affecté' : `Chaîne ${row.chaine}`;
+  if (row.mppt == null) return 'Non affecté';
+  return row.onduleur == null ? `MPPT ${row.mppt}` : `Onduleur ${row.onduleur} — MPPT ${row.mppt}`;
+}
+
+export interface AffectationLegendEntry {
+  key: string | null;
+  label: string;
+  color: Rgb01;
+  count: number;
+}
+
+export interface AffectationColoring {
+  /** Couleur de CHAQUE module nommé par la table (non affecté inclus : gris). */
+  colorByModule: Map<string, Rgb01>;
+  /** Légende, groupes dans l'ordre de PREMIÈRE apparition, « Non affecté » en dernier. */
+  legend: AffectationLegendEntry[];
+}
+
+/**
+ * Construit la coloration à partir de la SEULE table d'affectation. Table vide ⇒ aucune
+ * couleur et aucune légende (rien à teinter, comportement d'avant CAL126).
+ */
+export function buildAffectationColoring(
+  rows: readonly AffectationRow[] | null | undefined,
+  mode: AffectationMode,
+): AffectationColoring {
+  const colorByModule = new Map<string, Rgb01>();
+  const order: (string | null)[] = [];
+  const parKey = new Map<string | null, AffectationLegendEntry>();
+  let nextColor = 0;
+  for (const row of rows ?? []) {
+    if (!row || typeof row.module !== 'string') continue;
+    const key = affectationGroupKey(row, mode);
+    let entry = parKey.get(key);
+    if (!entry) {
+      const color = key == null ? AFFECTATION_UNASSIGNED : AFFECTATION_PALETTE[nextColor++ % AFFECTATION_PALETTE.length];
+      entry = { key, label: affectationGroupLabel(row, mode), color, count: 0 };
+      parKey.set(key, entry);
+      order.push(key);
+    }
+    entry.count += 1;
+    colorByModule.set(row.module, entry.color);
+  }
+  const legend = order
+    .map((k) => parKey.get(k)!)
+    .sort((a, b) => (a.key === null ? 1 : 0) - (b.key === null ? 1 : 0));
+  return { colorByModule, legend };
+}
+
+/**
+ * Fonction cellIndex → couleur, prête pour le canal `instanceColor` de la scène.
+ * `moduleIdByCell` est fourni par l'appelant (il détient à la fois le document et le
+ * résultat) : la scène ne devine JAMAIS quel module est quelle instance. Une cellule
+ * dont le module est absent de la table est GRISE, comme un module non affecté.
+ * Table vide ⇒ `null` : la coloration est simplement éteinte.
+ */
+export function affectationColorFn(
+  coloring: AffectationColoring,
+  moduleIdByCell: readonly (string | null | undefined)[],
+): ((cellIndex: number) => Rgb01) | null {
+  if (coloring.colorByModule.size === 0) return null;
+  return (cellIndex: number) => {
+    const id = moduleIdByCell[cellIndex];
+    const c = id == null ? undefined : coloring.colorByModule.get(id);
+    return c ?? AFFECTATION_UNASSIGNED;
+  };
 }
 
 export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
@@ -2028,6 +2174,13 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     map3dRepaint();
   }
 
+  /** CAL126 — MÊME écriture de buffer que `setSolarAccessHeatmap`, alimentée par la
+   *  table d'affectation du serveur. Aucun nouveau mécanisme de rendu : on repasse par
+   *  le canal existant, avec une autre source de vérité. */
+  function setStringColoring(colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) {
+    setSolarAccessHeatmap(colorFor);
+  }
+
   /** Repeint la scène 3D (déclenché après un changement de couleur d'instance). */
   function map3dRepaint() {
     map.triggerRepaint();
@@ -2092,5 +2245,5 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, snapshot, renderOffscreen };
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, snapshot, renderOffscreen };
 }
