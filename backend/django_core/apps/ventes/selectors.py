@@ -466,10 +466,10 @@ def lignes_produits_calepinage(devis):
         {'produit': ligne.produit, 'designation': ligne.designation,
          'quantite': ligne.quantite}
         for ligne in (devis.lignes
-                     .filter(type_ligne='produit', produit_id__isnull=False)
-                     .exclude(variante='avec')
-                     .select_related('produit')
-                     .order_by('id'))
+                      .filter(type_ligne='produit', produit_id__isnull=False)
+                      .exclude(variante='avec')
+                      .select_related('produit')
+                      .order_by('id'))
     ]
 
 
