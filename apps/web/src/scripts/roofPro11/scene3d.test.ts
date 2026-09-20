@@ -2,7 +2,14 @@
 // GÉNÈRE les pans depuis un contour fermé + une pente saisie, au lieu du choix binaire
 // plat/pente par zone. Testé hors DOM/Three (pure geometry in, geometry out).
 import { describe, expect, it } from 'vitest';
-import { generateRoofShapePans, type RoofShapePan } from './scene3d';
+import {
+  generateRoofShapePans,
+  computeRidgeLifts,
+  computeMixedAltitudeOffsets,
+  type RoofShapePan,
+  type RidgePan,
+  type MixedRidgePan,
+} from './scene3d';
 import { buildAreasFromShape } from './zones';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
 
@@ -95,5 +102,74 @@ describe('CAL56 — buildAreasFromShape (zones.ts)', () => {
     const areas = buildAreasFromShape(pans, 'flat', 0, () => 'z0');
     expect(areas).toHaveLength(1);
     expect(areas[0].roofType).toBe('flat');
+  });
+});
+
+// ═══════════ CAL61 — calage d'altitude MIXTE (pans plats + pans en pente) ═══════════
+/** Rectangle ENU (m), x ∈ [x0, x0+w], y ∈ [y0, y0+h] — anneau ouvert. */
+function enuRect(x0: number, y0: number, w: number, h: number): [number, number][] {
+  return [
+    [x0, y0],
+    [x0 + w, y0],
+    [x0 + w, y0 + h],
+    [x0, y0 + h],
+  ];
+}
+
+describe('CAL61 — computeMixedAltitudeOffsets', () => {
+  it('NON-RÉGRESSION : un ensemble 100 % pente donne EXACTEMENT computeRidgeLifts (au mm près)', () => {
+    // Deux pans en pente accolés sur leur côté est/ouest, faces opposées (même géométrie
+    // que le test W107 existant côté scene3d).
+    const a: RidgePan = { ringENU: enuRect(0, 0, 10, 6), facingAzimuthDeg: 90, tiltDeg: 20 };
+    const b: RidgePan = { ringENU: enuRect(10, 0, 10, 6), facingAzimuthDeg: 270, tiltDeg: 20 };
+    const expected = computeRidgeLifts([a, b]);
+    const mixed: MixedRidgePan[] = [
+      { ...a, pitched: true },
+      { ...b, pitched: true },
+    ];
+    const got = computeMixedAltitudeOffsets(mixed);
+    expect(got[0]).toBeCloseTo(expected[0], 9);
+    expect(got[1]).toBeCloseTo(expected[1], 9);
+  });
+
+  it('un pan plat ISOLÉ (aucun voisin en pente) garde un offset de 0 (rendu inchangé)', () => {
+    const flat: MixedRidgePan = { ringENU: enuRect(0, 0, 8, 6), facingAzimuthDeg: 180, tiltDeg: 0, pitched: false };
+    const other: MixedRidgePan = { ringENU: enuRect(100, 100, 8, 6), facingAzimuthDeg: 180, tiltDeg: 0, pitched: false };
+    expect(computeMixedAltitudeOffsets([flat, other])).toEqual([0, 0]);
+  });
+
+  it('un pan plat accolé à l’ÉGOUT d’un pan en pente (le point le plus bas) reste au niveau 0', () => {
+    // Face sud (180°) : l'égout est le côté SUD (y minimal). Pan en pente y∈[0,6], pan
+    // plat accolé juste au sud, y∈[-6,0] — arête partagée exactement à l'égout.
+    const pitched: MixedRidgePan = { ringENU: enuRect(0, 0, 10, 6), facingAzimuthDeg: 180, tiltDeg: 30, pitched: true };
+    const flat: MixedRidgePan = { ringENU: enuRect(0, -6, 10, 6), facingAzimuthDeg: 180, tiltDeg: 0, pitched: false };
+    const offsets = computeMixedAltitudeOffsets([pitched, flat]);
+    expect(offsets[0]).toBeCloseTo(0, 9); // pan en pente isolé → aucun lift
+    expect(offsets[1]).toBeCloseTo(0, 6); // accolé à l'égout → aucune marche
+  });
+
+  it('un pan plat accolé au FAÎTAGE d’un pan en pente monte à sa hauteur exacte (tan(pente)×profondeur)', () => {
+    // Même pan en pente, mais le pan plat est accolé au NORD (côté haut de pente).
+    const pitched: MixedRidgePan = { ringENU: enuRect(0, 0, 10, 6), facingAzimuthDeg: 180, tiltDeg: 30, pitched: true };
+    const flat: MixedRidgePan = { ringENU: enuRect(0, 6, 10, 6), facingAzimuthDeg: 180, tiltDeg: 0, pitched: false };
+    const offsets = computeMixedAltitudeOffsets([pitched, flat]);
+    const expectedH = 6 * Math.tan((30 * Math.PI) / 180);
+    expect(offsets[1]).toBeCloseTo(expectedH, 6);
+  });
+
+  it('un pan plat touchant DEUX pans en pente de hauteurs différentes monte au niveau du PLUS HAUT (jamais transpercé)', () => {
+    const low: MixedRidgePan = { ringENU: enuRect(0, 0, 10, 3), facingAzimuthDeg: 180, tiltDeg: 15, pitched: true };
+    const high: MixedRidgePan = { ringENU: enuRect(10, 0, 10, 3), facingAzimuthDeg: 180, tiltDeg: 45, pitched: true };
+    // Pan plat qui longe l'égout (y=0) des deux pans en pente, sur toute leur largeur.
+    const flat: MixedRidgePan = { ringENU: enuRect(0, -6, 20, 6), facingAzimuthDeg: 180, tiltDeg: 0, pitched: false };
+    const offsets = computeMixedAltitudeOffsets([low, high, flat]);
+    // Les deux pans en pente touchent l'égout du plat exactement à leur propre hauteur 0
+    // (aucun lift, isolés l'un de l'autre — pas de faîtière commune) : le plat reste à 0.
+    expect(offsets[2]).toBeCloseTo(0, 6);
+  });
+
+  it('moins de 2 pans → aucun offset (garde-fou)', () => {
+    const solo: MixedRidgePan = { ringENU: enuRect(0, 0, 8, 6), facingAzimuthDeg: 180, tiltDeg: 20, pitched: true };
+    expect(computeMixedAltitudeOffsets([solo])).toEqual([0]);
   });
 });
