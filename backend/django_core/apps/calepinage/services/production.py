@@ -31,6 +31,7 @@ La forme rendue est celle du contrat committé
 """
 from __future__ import annotations
 
+from .p50p90 import bankable
 from .pvgis_serie import BASE_PAR_DEFAUT, EntreeInvalide, azimut_pvgis
 
 __all__ = ['PanSansOrientation', 'pans_du_layout', 'production_du_layout']
@@ -106,6 +107,9 @@ def _agreger(points):
     total_wh = 0.0
     irradiation_wh_m2 = 0.0
     mensuel_wh = {mois: 0.0 for mois in range(1, 13)}
+    # CAL142 — le total de CHAQUE année, gardé séparément : c'est la seule
+    # façon de MESURER la variabilité interannuelle plutôt que de la supposer.
+    annuel_wh = {}
     for point in points:
         puissance = point.get('p_w')
         if puissance is not None:
@@ -113,6 +117,9 @@ def _agreger(points):
             mois = point.get('mois')
             if mois in mensuel_wh:
                 mensuel_wh[mois] += puissance
+            annee = point.get('annee')
+            if annee is not None:
+                annuel_wh[annee] = annuel_wh.get(annee, 0.0) + puissance
         irradiance = point.get('gi_w_m2')
         if irradiance is not None:
             irradiation_wh_m2 += irradiance
@@ -122,6 +129,8 @@ def _agreger(points):
         'mensuel_kwh_par_kwc': {
             mois: valeur / 1000.0 / nombre_annees
             for mois, valeur in mensuel_wh.items()},
+        'annuel_kwh_par_kwc': {annee: valeur / 1000.0
+                               for annee, valeur in annuel_wh.items()},
         'irradiation_kwh_m2': irradiation_wh_m2 / 1000.0 / nombre_annees,
     }
 
@@ -150,6 +159,7 @@ def production_du_layout(layout, *, lat, lon, politique, client,
     avertissements = []
     par_pan = []
     mensuel_total = {mois: 0.0 for mois in range(1, 13)}
+    annuel_total = {}
     total_kwh = 0.0
     total_kwc = 0.0
     irradiation_ponderee = 0.0
@@ -202,6 +212,10 @@ def production_du_layout(layout, *, lat, lon, politique, client,
         kwh = agrege['kwh_par_kwc'] * kwc
         total_kwh += kwh
         total_kwc += kwc
+        # CAL142 — la production de CHAQUE année, au prorata des modules du
+        # pan : σ se mesurera sur ces totaux, jamais sur une hypothèse.
+        for annee, valeur in agrege['annuel_kwh_par_kwc'].items():
+            annuel_total[annee] = annuel_total.get(annee, 0.0) + valeur * kwc
         for mois, valeur in agrege['mensuel_kwh_par_kwc'].items():
             mensuel_total[mois] += valeur * kwc
         irradiation = agrege['irradiation_kwh_m2']
@@ -210,6 +224,14 @@ def production_du_layout(layout, *, lat, lon, politique, client,
         ligne['p50_kwh'] = round(kwh, DECIMALES_KWH)
         ligne['specific_yield_kwh_kwc'] = round(agrege['kwh_par_kwc'],
                                                 DECIMALES_KWH)
+        # CAL142 — les quantiles du PAN, sur sa propre variabilité mesurée.
+        quantiles_pan = bankable(
+            kwh,
+            totaux_par_annee={annee: valeur * kwc for annee, valeur
+                              in agrege['annuel_kwh_par_kwc'].items()},
+            kwc=kwc)
+        ligne['p75_kwh'] = quantiles_pan['p75_kwh']
+        ligne['p90_kwh'] = quantiles_pan['p90_kwh']
         if irradiation > 0:
             # PR = énergie livrée / (kWc × irradiation sur le PLAN du pan) —
             # calculé sur la série reçue, jamais recopié d'une table.
@@ -227,9 +249,14 @@ def production_du_layout(layout, *, lat, lon, politique, client,
     if total_kwc > 0 and irradiation_ponderee > 0:
         performance_totale = round(
             total_kwh / (irradiation_ponderee), 3)
-    avertissements.append(
-        'P75, P90 et la variabilité inter-annuelle ne sont pas calculés par '
-        'ce service (CAL142) : ils restent « non calculés », jamais 0.')
+    # CAL142 — P50/P75/P90 du TOTAL, avec σ mesuré sur les années réellement
+    # présentes dans la fenêtre (ou annoncé comme hypothèse s'il n'y en a
+    # qu'une). Le moteur de statistiques est celui de ``ventes``, appelé avec
+    # des pertes neutralisées : elles sont déjà dans la production PVGIS.
+    quantiles = bankable(total_kwh if provenance else None,
+                         totaux_par_annee=annuel_total,
+                         kwc=total_kwc or None)
+    avertissements.append(quantiles['commentaire'])
 
     return {
         'production': {
@@ -244,13 +271,15 @@ def production_du_layout(layout, *, lat, lon, politique, client,
                 'kwc': round(total_kwc, 3),
                 'p50_kwh': (round(total_kwh, DECIMALES_KWH)
                             if provenance else None),
-                'p75_kwh': None,
-                'p90_kwh': None,
+                'p75_kwh': quantiles['p75_kwh'],
+                'p90_kwh': quantiles['p90_kwh'],
                 'performance_ratio': performance_totale,
                 'specific_yield_kwh_kwc': (
                     round(total_kwh / total_kwc, DECIMALES_KWH)
                     if total_kwc > 0 else None),
-                'annual_variability': None,
+                'annual_variability': quantiles['annual_variability'],
+                'annual_variability_source': quantiles['sigma_source'],
+                'annual_variability_annees': quantiles['sigma_annees'],
                 'total_loss_pct': publication['loss_passee_pct'],
             },
             'mensuel': [
