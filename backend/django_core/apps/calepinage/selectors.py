@@ -21,6 +21,9 @@ SECTIONS_PARAMETRES = (
     'presets',
     'favoris_materiel',
     'gabarits_dossier',
+    # CAL130 — norme électrique applicable + coefficients SAISIS. Section
+    # vide = aucune norme choisie (règle D5 : rien n'est supposé au Maroc).
+    'norme_electrique',
 )
 
 

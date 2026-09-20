@@ -41,6 +41,7 @@ SOUS_MODULES = (
     'versions',       # CAL8 — instantanés jamais réécrits, purge bornée
     'devis',          # CAL24/CAL25 — générer / resynchroniser (via ventes)
     'journal',        # CAL26 — chatter par la primitive records
+    'norme',          # CAL130 — norme électrique applicable (règle D5)
     'electrique',     # CAL123/125/127-130/170 — entrée et verdicts électriques
     'chaines',        # CAL124/125 — chaînes par pan et affectation nominative
 )
