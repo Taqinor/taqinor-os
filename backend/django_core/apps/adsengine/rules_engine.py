@@ -594,12 +594,24 @@ def evaluate_creative_fatigue(company, *, now=None, window_days=7,
             anomaly.record_anomaly(
                 company, det, entity_type='ad', entity_meta_id=ad.meta_id)
             reason = f'[Fatigue créative] {det.message_fr} (ad {ad.meta_id}).'
+            payload = {'template_key': 'creative_fatigue_combo',
+                       'target_type': 'ad', 'target_meta_id': ad.meta_id,
+                       'target_object_id': ad.pk, 'computed': det.computed}
+            # PUB119 — même exigence que le chemin cadencé : une rotation n'est
+            # proposée qu'avec son ad set cible, son nom et sa source créative.
+            # Aucune source prête ⇒ le finding porte la raison FR (audit) et
+            # AUCUNE action creuse n'est écrite.
+            try:
+                payload.update(services.resolve_rotation_payload(
+                    company, target_type='ad', target_meta_id=ad.meta_id,
+                    target_object_id=ad.pk, now=now))
+            except services.RotationCreativeUnavailable as exc:
+                entry['blocked_fr'] = str(exc)
+                findings.append(entry)
+                continue
             action = services.propose_action(
                 company, kind=EngineAction.Kind.ROTATE_CREATIVE,
-                reason_fr=reason,
-                payload={'template_key': 'creative_fatigue_combo',
-                         'target_type': 'ad', 'target_meta_id': ad.meta_id,
-                         'target_object_id': ad.pk, 'computed': det.computed})
+                reason_fr=reason, payload=payload)
             entry['action'] = {
                 'id': action.pk, 'kind': action.kind,
                 'reason_fr': action.reason_fr}
@@ -783,6 +795,7 @@ def _act_on_finding(company, policy, template, finding, *, config, client):
     from django.utils import timezone
 
     from . import services
+    from .models import EngineAction
 
     template_key = policy.template_key
     target_meta_id = finding.get('target_meta_id', '')
@@ -820,6 +833,26 @@ def _act_on_finding(company, policy, template, finding, *, config, client):
         'target_object_id': finding.get('target_object_id'),
         'computed': finding.get('computed', {}),
     }
+
+    # PUB119 — une rotation créative n'est PROPOSÉE que si ses trois pièces
+    # existent (ad set cible, nom, source créative) : le payload purement
+    # descriptif ci-dessus faisait échouer ``create_ad(name='', adset_id='')``
+    # sur le vrai Graph, même après approbation humaine. Aucune source prête ⇒
+    # ALERTE explicite + raison consignée dans le journal de la règle, JAMAIS
+    # une action creuse.
+    if kind == EngineAction.Kind.ROTATE_CREATIVE:
+        try:
+            payload.update(services.resolve_rotation_payload(
+                company,
+                target_type=finding.get('target_type', ''),
+                target_meta_id=target_meta_id,
+                target_object_id=finding.get('target_object_id')))
+        except services.RotationCreativeUnavailable as exc:
+            finding['blocked_fr'] = str(exc)
+            _emit_alert(company, template_key=template_key, finding=finding,
+                        message=f'{reason} {exc}', action=None,
+                        dry_run=policy.dry_run, insufficient=True)
+            return None
 
     action = None
     if kind:
@@ -1001,6 +1034,11 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
                                          config=config, client=client)
                 if action is not None:
                     entry['action'] = _action_summary(action)
+                elif finding.get('blocked_fr'):
+                    # PUB119 — rien n'a été proposé ET la raison est EXPLICITE
+                    # (aucun créatif prêt / ad set cible introuvable) : elle est
+                    # consignée au journal de la règle, jamais un skip muet.
+                    entry['blocked_fr'] = finding['blocked_fr']
             summaries.append(entry)
 
         _record_last_result(policy, {

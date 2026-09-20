@@ -11,6 +11,7 @@ côté serveur), pas le registre stateless ``apps/agent``.
 """
 from __future__ import annotations
 
+import json
 import logging
 
 from django.utils import timezone
@@ -381,6 +382,285 @@ def propose_duplicate(company, *, adset, name_suffix=' (copie)', reason_fr=None)
     }
     return propose_action(
         company, kind=KIND_DUPLICATE, reason_fr=reason_fr, payload=payload)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PUB119 — Fin du payload ROTATE_CREATIVE CREUX
+# ═════════════════════════════════════════════════════════════════════════════
+# Le proposeur de rotation (``rules_engine._act_on_finding``) écrivait un payload
+# purement DESCRIPTIF (template_key / target_* / computed) et ``_dispatch``
+# appelait ``create_ad(name='', adset_id='')`` : le vrai Graph REJETTE cet appel,
+# y compris après approbation humaine — une action approuvée de bonne foi
+# échouait donc systématiquement. On résout donc les trois pièces manquantes
+# (ad set cible, nom, source créative) À LA PROPOSITION, et ``_dispatch`` valide
+# la complétude AVANT tout appel réseau (raison FR → action « echouee »).
+ROTATION_NO_CREATIVE_FR = (
+    "Aucun créatif prêt pour la rotation : ni item de backlog approuvé portant "
+    "un média uploadé au compte publicitaire, ni créatif LIVE sur l'ad set "
+    "cible — aucune action n'est proposée (jamais une action creuse).")
+
+# Source créative retenue (tracée dans le payload → visible à l'approbation).
+ROTATION_SOURCE_BACKLOG = 'backlog'
+ROTATION_SOURCE_LIVE_MIRROR = 'live_mirror'
+
+
+class RotationCreativeUnavailable(ValueError):
+    """PUB119 — Aucune source créative exploitable pour une rotation.
+
+    Levée par ``resolve_rotation_payload`` : l'appelant émet une ALERTE
+    explicite et ne propose RIEN (sous-classe de ``ValueError`` — un appel
+    depuis une vue rend donc un 400, jamais une 500)."""
+
+
+def _rotation_adset(company, *, target_type, target_meta_id,
+                    target_object_id=None):
+    """Ad set CIBLE d'une rotation depuis la cible d'un finding.
+
+    ``target_type='adset'`` (fatigue de fréquence, ADSENG15) → l'ad set lui-même ;
+    ``target_type='ad'`` (fatigue créative combinée, ADSDEEP45) → l'ad set de
+    l'ad. Renvoie ``None`` si la cible est introuvable ou si l'ad set n'a pas
+    d'``meta_id`` (un id vide ne peut pas voyager vers Graph)."""
+    from .models import AdMirror, AdSetMirror
+
+    adset = None
+    if target_type == 'ad':
+        ad = None
+        if target_meta_id:
+            ad = AdMirror.objects.filter(
+                company=company, meta_id=target_meta_id).first()
+        if ad is None and target_object_id:
+            ad = AdMirror.objects.filter(
+                company=company, pk=target_object_id).first()
+        adset = ad.adset if ad is not None else None
+    else:
+        if target_meta_id:
+            adset = AdSetMirror.objects.filter(
+                company=company, meta_id=target_meta_id).first()
+        if adset is None and target_object_id:
+            adset = AdSetMirror.objects.filter(
+                company=company, pk=target_object_id).first()
+    if adset is None or not adset.meta_id:
+        return None
+    return adset
+
+
+def _best_live_creative_ad(company, adset, *, now=None, window_days=7):
+    """Ad de ``adset`` portant le MEILLEUR créatif LIVE, ou ``None``.
+
+    « Meilleur » se lit sur les chiffres RÉELS des miroirs d'insights de la
+    fenêtre (résultats décroissants, puis impressions) — jamais un classement
+    inventé. Sans aucun instantané, on retombe sur la première ad porteuse d'un
+    ``AdCreativeMirror.creative_meta_id`` non vide (ordre de miroir stable) :
+    dégradation explicite, jamais un refus alors qu'un créatif existe."""
+    import datetime
+
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Count, Sum
+
+    from .models import AdMirror, InsightSnapshot
+
+    candidates = list(
+        adset.ads
+        .filter(creative_mirror__isnull=False)
+        .exclude(creative_mirror__creative_meta_id='')
+        .order_by('pk'))
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    now = now or timezone.now()
+    # ``now`` peut être un ``date`` (évaluateurs cadencés) ou un ``datetime``.
+    today = now.date() if hasattr(now, 'date') else now
+    start = today - datetime.timedelta(days=max(1, window_days) - 1)
+    ct = ContentType.objects.get_for_model(AdMirror)
+    stats = {
+        row['object_id']: row
+        for row in InsightSnapshot.objects
+        .filter(company=company, content_type=ct,
+                object_id__in=[a.pk for a in candidates],
+                date__gte=start, date__lte=today)
+        .values('object_id')
+        .annotate(results=Sum('results'), impressions=Sum('impressions'),
+                  n=Count('id'))
+    }
+
+    def _rank(ad):
+        row = stats.get(ad.pk) or {}
+        return (float(row.get('results') or 0),
+                float(row.get('impressions') or 0),
+                -ad.pk)
+
+    return max(candidates, key=_rank)
+
+
+def _rotation_creative_from_asset(asset):
+    """Fragment ``creative`` Graph d'un ``CreativeAsset`` déjà uploadé au compte.
+
+    Constructeur MINIMAL de PUB119 : il ne référence que les identifiants de
+    compte (``image_hash`` / ``video_id``, posés par PUB122) — un asset sans
+    média uploadé renvoie ``None`` (jamais un créatif qui citerait une clé
+    MinIO que Graph ne sait pas lire). PUB123 le REMPLACE par le pont complet
+    (``creative_bridge``) : ``object_story_spec`` bâti sur le ``page_id`` de la
+    connexion, étiquette IA, refus consentement/policy, provenance."""
+    if asset is None:
+        return None
+    if asset.meta_video_id:
+        media = {'video_id': asset.meta_video_id}
+    elif asset.meta_image_hash:
+        media = {'image_hash': asset.meta_image_hash}
+    else:
+        return None
+    spec = dict(media)
+    if asset.primary_text:
+        spec['message'] = asset.primary_text
+    if asset.hook_text:
+        spec['name'] = asset.hook_text
+    if asset.cta:
+        spec['call_to_action_type'] = asset.cta
+    return spec
+
+
+def _rotation_backlog_head(company, adset):
+    """Tête du backlog APPROUVÉ utilisable pour une rotation sur ``adset``.
+
+    « Approuvé » = l'item est EN FILE (son lot a passé l'approbation humaine,
+    ``recombine.approve_lot``) et son asset a passé la check-list policy ET le
+    consentement — exactement les deux garde-fous qu'``assert_creative_ok_for_ad``
+    et PUB75 imposent en aval. On privilégie la file de la CAMPAGNE de l'ad set
+    (un item ciblé n'est jamais détourné vers une autre campagne), puis les items
+    sans campagne cible. Renvoie ``(item, creative_spec)`` ou ``(None, None)``."""
+    from django.db.models import Q
+
+    from .models import CreativeBacklogItem
+
+    campaign = getattr(adset, 'campaign', None)
+    qs = (CreativeBacklogItem.objects
+          .filter(company=company,
+                  status=CreativeBacklogItem.Statut.EN_FILE)
+          .filter(Q(target_campaign__isnull=True)
+                  | Q(target_campaign=campaign))
+          .select_related('asset')
+          .order_by('earliest_date', 'id'))
+    for item in qs:
+        asset = item.asset
+        if asset is None or not asset.is_policy_passed:
+            continue
+        if not asset.has_valid_consent:
+            continue
+        spec = _rotation_creative_from_asset(asset)
+        if spec is not None:
+            return item, spec
+    return None, None
+
+
+def resolve_rotation_payload(company, *, target_type, target_meta_id,
+                             target_object_id=None, now=None,
+                             name_values=None):
+    """PUB119 — Payload COMPLET d'une rotation créative, résolu À LA PROPOSITION.
+
+    Résout les trois pièces qu'un payload de rotation doit porter pour être
+    applicable sur le vrai Graph :
+
+      * ``adset_id`` — l'ad set cible (``_rotation_adset``) ;
+      * ``name`` — construit par la convention de nommage (``naming.build_name``),
+        avec repli sur le nom du miroir source (jamais un nom vide) ;
+      * la source CRÉATIVE, dans cet ordre : **(a)** tête du backlog approuvé
+        portant un média uploadé au compte → ``creative`` inline + traçabilité
+        (``creative_asset_id`` / ``backlog_item_id``) ; sinon **(b)** meilleur
+        créatif LIVE de l'ad set (``AdCreativeMirror.creative_meta_id``) →
+        ``creative = {'creative_id': …}``.
+
+    Lève ``RotationCreativeUnavailable`` (raison FR) si l'ad set est introuvable
+    ou si AUCUNE source créative n'est prête — l'appelant alerte alors
+    explicitement et ne propose RIEN (jamais une action creuse).
+    """
+    from . import naming
+
+    adset = _rotation_adset(
+        company, target_type=target_type, target_meta_id=target_meta_id,
+        target_object_id=target_object_id)
+    if adset is None:
+        raise RotationCreativeUnavailable(
+            "Rotation impossible : ad set cible introuvable (ou sans ID Meta) "
+            f"pour {target_type or 'cible'} « {target_meta_id or '?'} » — "
+            "resynchroniser les miroirs d'abord.")
+
+    item, spec = _rotation_backlog_head(company, adset)
+    source_ad = None
+    if spec is not None:
+        source = ROTATION_SOURCE_BACKLOG
+        creative = spec
+    else:
+        source_ad = _best_live_creative_ad(company, adset, now=now)
+        if source_ad is None:
+            raise RotationCreativeUnavailable(ROTATION_NO_CREATIVE_FR)
+        source = ROTATION_SOURCE_LIVE_MIRROR
+        creative = {
+            'creative_id': source_ad.creative_mirror.creative_meta_id}
+
+    now = now or timezone.now()
+    values = dict(name_values or {})
+    values.setdefault('date', now.strftime('%Y%m%d'))
+    tag_holder = (item.asset if item is not None else source_ad)
+    # Tags STOCKÉS d'abord (ADSDEEP46) ; à défaut, relecture du nom de la source
+    # par le MÊME parseur (une ad jamais retaguée porte souvent la convention
+    # dans son nom Meta) — jamais un tag inventé.
+    parsed = naming.tags_from_name(getattr(tag_holder, 'name', '') or '')
+    for field, attr in (('format', 'format_tag'), ('hook', 'hook_tag'),
+                        ('angle', 'angle_tag')):
+        values.setdefault(
+            field, (getattr(tag_holder, attr, '') or '') or parsed[attr])
+    name = naming.build_name(values)
+    if not name:  # convention vide / aucun segment → repli explicite, jamais ''
+        base = adset.name or adset.meta_id
+        name = f'{base} (rotation)'
+
+    payload = {
+        'adset_id': adset.meta_id,
+        'name': name,
+        'creative': creative,
+        'creative_source': source,
+        'source_adset_id': adset.meta_id,
+    }
+    if item is not None:
+        payload['creative_asset_id'] = item.asset_id
+        payload['backlog_item_id'] = item.pk
+    if source_ad is not None:
+        payload['source_ad_id'] = source_ad.meta_id
+    return payload
+
+
+def validate_rotation_payload(payload):
+    """PUB119 — Complétude d'un payload ROTATE_CREATIVE, validée FAIL-FAST.
+
+    Appelée par ``_dispatch`` AVANT tout appel réseau : un payload creux
+    (``name`` / ``adset_id`` / ``creative`` manquant — les payloads de rotation
+    d'avant PUB119, ou un POST brut) lève ``ActionPayloadInvalid`` avec une
+    raison FR et l'action passe « echouee » SANS qu'aucune requête ne soit
+    envoyée à Meta. Renvoie le fragment ``creative`` validé."""
+    payload = payload or {}
+    _require_nonempty(payload, 'adset_id', "l'id de l'ad set de la rotation")
+    _require_nonempty(payload, 'name', "le nom de la nouvelle ad")
+    creative = payload.get('creative')
+    if not creative or not isinstance(creative, dict):
+        raise ActionPayloadInvalid(
+            "Champ requis manquant : le créatif de la rotation (aucun créatif "
+            "prêt n'a été résolu à la proposition — rien n'est envoyé à Meta).")
+    return creative
+
+
+def rotation_ad_extra_fields(payload):
+    """PUB119 — ``extra_fields`` d'un ``create_ad`` de rotation : les extras du
+    payload + le ``creative`` encodé JSON (les objets imbriqués ne voyagent
+    autrement pas dans un corps de formulaire Meta — même mécanique que
+    ``duplicate_adset_with_ad``). Un ``status`` éventuel est retiré ici ET
+    réécrit PAUSED par le client (défense en profondeur, règle #3)."""
+    creative = validate_rotation_payload(payload)
+    extra = dict((payload or {}).get('extra_fields') or {})
+    extra.pop('status', None)
+    extra['creative'] = json.dumps(creative)
+    return extra
 
 
 # ── ADSDEEP40 — Action de règle « montée de budget » LEARNING-SAFE (≤20 %) ────
@@ -1252,10 +1532,14 @@ def _dispatch(client, action):
     if kind == EngineAction.Kind.ROTATE_CREATIVE:
         # Roter le créatif = créer une NOUVELLE ad (toujours PAUSED) portant le
         # nouveau créatif ; le client garantit le statut PAUSED (jamais d'activ.).
+        # PUB119 — complétude VALIDÉE fail-fast AVANT tout appel réseau : un
+        # payload creux (name/adset_id/creative manquant) lève ICI, donc l'action
+        # passe « echouee » avec sa raison FR et le client n'est jamais atteint.
+        extra = rotation_ad_extra_fields(payload)
         return client.create_ad(
             name=payload.get('name', ''),
             adset_id=payload.get('adset_id', ''),
-            extra_fields=payload.get('extra_fields'))
+            extra_fields=extra)
     if kind == EngineAction.Kind.REBALANCE_BUDGET:
         # Rééquilibrage de budget dans la bande. La méthode concrète de mise à
         # jour de budget du client atterrit avec le groupe budget (ADSENG) ; ici
