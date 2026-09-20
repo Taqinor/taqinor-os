@@ -103,6 +103,29 @@ class Calepinage(TenantModel):
         verbose_name='Créé par',
     )
 
+    #: CAL139 — LES POSTES DE PERTES du calepinage, EXPLICITES et SOURCÉS.
+    #:
+    #: Trois jeux de constantes se contredisaient dans le dépôt
+    #: (``DEFAULT_LOSS_FACTORS`` côté ventes, la perte système et la perte
+    #: « intégrée » du site public, les constantes de l'écran devis). Ici la
+    #: perte n'est plus une constante : c'est une LISTE de postes, chacun avec
+    #: sa valeur et sa SOURCE, éditable calepinage par calepinage. La SOMME de
+    #: ces postes est exactement la valeur ``loss`` passée à PVGIS (CAL238) —
+    #: un double comptage devient impossible par construction, parce qu'il n'y
+    #: a qu'UNE addition et qu'elle est publiée.
+    #:
+    #: Forme : ``[{poste, libelle, pct, source, reference, mensuel}]``.
+    #: ``mensuel`` (12 valeurs) n'existe que pour les postes saisonniers (la
+    #: salissure) et la ``pct`` d'un poste mensuel est la MOYENNE de ses douze
+    #: mois — le calcul vit dans ``services/pertes.py``, jamais ici.
+    #:
+    #: Liste VIDE = aucune perte renseignée, donc AUCUNE simulation possible
+    #: (``politique_de_pertes`` refuse) : c'est voulu — un « 14 % au cas où »
+    #: serait exactement le chiffre inventé que la règle fondateur interdit.
+    #: Champ AJOUTÉ EN FIN DE CLASSE (migration ``0005``) : aucune société
+    #: existante ne change de comportement en le recevant.
+    pertes = models.JSONField('Postes de pertes', default=list, blank=True)
+
     class Meta:
         verbose_name = 'Calepinage'
         verbose_name_plural = 'Calepinages'
@@ -136,6 +159,14 @@ class Calepinage(TenantModel):
             erreurs['client'] = (
                 "Un calepinage doit être rattaché à un lead ou à un client : "
                 "renseignez « Client » ou « Lead (identifiant) »."
+            )
+        if self.pertes is not None and not isinstance(self.pertes, list):
+            # CAL139 — les postes se donnent en LISTE ORDONNÉE : un objet
+            # indexé par nom de poste perdrait l'ordre d'affichage et
+            # laisserait croire qu'un poste peut être écrit deux fois.
+            erreurs['pertes'] = (
+                "Les postes de pertes se donnent en liste ordonnée "
+                f"(reçu : {type(self.pertes).__name__})."
             )
         if self.layout_hash and len(self.layout_hash) != 64:
             erreurs['layout_hash'] = (

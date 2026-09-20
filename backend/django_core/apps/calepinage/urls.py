@@ -36,6 +36,8 @@ from .views import verrou as _verrou_action  # noqa: F401
 from .views import archivage as _archivage_action  # noqa: F401
 # CAL216 — même patron : rattache ``export-layout``/``import-layout``.
 from .views import io_layout as _io_layout_action  # noqa: F401
+# CAL139 — même patron : rattache ``pertes``/``enregistrer-pertes``.
+from .views import simulation as _simulation_actions  # noqa: F401
 
 router = DefaultRouter()
 router.register(r'calepinages', CalepinageViewSet, basename='calepinage')
