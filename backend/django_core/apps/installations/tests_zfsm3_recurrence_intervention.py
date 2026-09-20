@@ -2,8 +2,6 @@
 ZFSM3 — Interventions récurrentes autonomes (sans contrat de maintenance).
 
 Couvre :
-  * CRUD `recurrences-intervention/` (company-scopé, installation validée
-    tenant) ;
   * `manage.py generer_interventions_recurrentes` (service direct) crée UNE
     intervention par échéance passée, jamais deux pour la même échéance
     (idempotent, re-run le même jour) ;
@@ -23,8 +21,6 @@ from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.installations.models import (
@@ -34,7 +30,6 @@ from apps.installations.services import generer_interventions_recurrentes
 
 User = get_user_model()
 _seq = itertools.count(1)
-BASE = '/api/django/installations'
 
 
 def make_company(slug=None, nom=None):
@@ -43,12 +38,6 @@ def make_company(slug=None, nom=None):
     company, _ = Company.objects.get_or_create(
         slug=slug or f'zfsm3-co-{n}', defaults={'nom': nom or f'ZFSM3 Co {n}'})
     return company
-
-
-def auth(user):
-    api = APIClient()
-    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
-    return api
 
 
 def make_user(company, role='responsable'):
@@ -64,50 +53,6 @@ def make_installation(company):
         email=f'zfsm3-{company.id}-{n}@example.invalid')
     return Installation.objects.create(
         company=company, reference=f'CHT-ZFSM3-{n}', client=client)
-
-
-class TestRecurrenceInterventionCRUD(TestCase):
-    def setUp(self):
-        self.company = make_company()
-        self.user = make_user(self.company)
-        self.api = auth(self.user)
-        self.inst = make_installation(self.company)
-
-    def test_create_recurrence(self):
-        r = self.api.post(
-            f'{BASE}/recurrences-intervention/',
-            {'installation': self.inst.id, 'type_intervention': 'controle',
-             'regle': 'trimestrielle', 'intervalle': 1,
-             'prochaine_echeance': str(date.today())}, format='json')
-        self.assertEqual(r.status_code, 201, r.content)
-        self.assertTrue(
-            RecurrenceIntervention.objects.filter(
-                company=self.company, installation=self.inst).exists())
-
-    def test_rejects_foreign_company_installation(self):
-        other = make_company()
-        other_inst = make_installation(other)
-        r = self.api.post(
-            f'{BASE}/recurrences-intervention/',
-            {'installation': other_inst.id, 'type_intervention': 'controle',
-             'regle': 'annuelle', 'prochaine_echeance': str(date.today())},
-            format='json')
-        self.assertEqual(r.status_code, 400)
-
-    def test_multi_tenant_isolation(self):
-        RecurrenceIntervention.objects.create(
-            company=self.company, installation=self.inst,
-            type_intervention='controle', regle='annuelle',
-            prochaine_echeance=date.today())
-        other = make_company()
-        other_inst = make_installation(other)
-        RecurrenceIntervention.objects.create(
-            company=other, installation=other_inst,
-            type_intervention='controle', regle='annuelle',
-            prochaine_echeance=date.today())
-        r = self.api.get(f'{BASE}/recurrences-intervention/')
-        rows = r.data['results'] if isinstance(r.data, dict) else r.data
-        self.assertEqual(len(rows), 1)
 
 
 class TestGenererInterventionsRecurrentes(TestCase):

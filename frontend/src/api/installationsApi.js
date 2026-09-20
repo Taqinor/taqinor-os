@@ -595,24 +595,6 @@ const installationsApi = {
   getReceptionsNonFacturees: (params) =>
     api.get('/installations/receptions-non-facturees/', { params }),
 
-  // WIR114 — astreintes (FG302), indisponibilités ressource (FG302) et
-  // récurrences d'intervention (ZFSM3). Société/created_by posés serveur.
-  getAstreintes: (params) => api.get('/installations/astreintes/', { params }),
-  createAstreinte: (data) => api.post('/installations/astreintes/', data),
-  deleteAstreinte: (id) => api.delete(`/installations/astreintes/${id}/`),
-  getIndisponibilites: (params) =>
-    api.get('/installations/indisponibilites-ressource/', { params }),
-  createIndisponibilite: (data) =>
-    api.post('/installations/indisponibilites-ressource/', data),
-  deleteIndisponibilite: (id) =>
-    api.delete(`/installations/indisponibilites-ressource/${id}/`),
-  getRecurrencesIntervention: (params) =>
-    api.get('/installations/recurrences-intervention/', { params }),
-  createRecurrenceIntervention: (data) =>
-    api.post('/installations/recurrences-intervention/', data),
-  deleteRecurrenceIntervention: (id) =>
-    api.delete(`/installations/recurrences-intervention/${id}/`),
-
   // WIR114 — ZFSM3 : modèles de fiche d'intervention + leurs champs (Paramètres).
   getFicheTemplates: (params) =>
     api.get('/installations/fiche-intervention-templates/', { params }),
@@ -670,66 +652,13 @@ const installationsApi = {
   acquitterGeofenceAlerte: (id) =>
     api.post(`/installations/geofence-alertes/${id}/acquitter/`, {}),
 
-  // ── PACT55 — Sous-traitance chantier : annuaire (FG304), ordres de travaux
-  // (FG305), factures/paiements en façade sur la chaîne AP standard (DC34,
-  // FG306), attestations obligatoires (FG307), évaluations (FG308) et
-  // retenues de garantie (FG309). Montants sous-traitant INTERNES uniquement.
+  // DC34 — annuaire des sous-traitants (référentiel UNIFIÉ FG304), consommé
+  // aussi par btp_chantier (NouveauChantierBtpWizard) et gestion_projet
+  // (RisquesPage — via ses propres appels `/installations/sous-traitants/`).
   getSousTraitants: (params) => api.get('/installations/sous-traitants/', { params }),
   getSousTraitant: (id) => api.get(`/installations/sous-traitants/${id}/`),
   createSousTraitant: (data) => api.post('/installations/sous-traitants/', data),
   updateSousTraitant: (id, data) => api.patch(`/installations/sous-traitants/${id}/`, data),
-
-  getOrdresSousTraitance: (params) =>
-    api.get('/installations/ordres-sous-traitance/', { params }),
-  createOrdreSousTraitance: (data) =>
-    api.post('/installations/ordres-sous-traitance/', data),
-  emettreOrdreSousTraitance: (id) =>
-    api.post(`/installations/ordres-sous-traitance/${id}/emettre/`, {}),
-  receptionnerOrdreSousTraitance: (id, montantRealise) =>
-    api.post(`/installations/ordres-sous-traitance/${id}/receptionner/`,
-      montantRealise != null && montantRealise !== ''
-        ? { montant_realise: montantRealise } : {}),
-  cloturerOrdreSousTraitance: (id) =>
-    api.post(`/installations/ordres-sous-traitance/${id}/cloturer/`, {}),
-
-  getFacturesSousTraitant: (params) =>
-    api.get('/installations/factures-sous-traitant/', { params }),
-  createFactureSousTraitant: (data) =>
-    api.post('/installations/factures-sous-traitant/', data),
-  annulerFactureSousTraitant: (id) =>
-    api.post(`/installations/factures-sous-traitant/${id}/annuler/`, {}),
-
-  getPaiementsSousTraitant: (params) =>
-    api.get('/installations/paiements-sous-traitant/', { params }),
-  createPaiementSousTraitant: (data) =>
-    api.post('/installations/paiements-sous-traitant/', data),
-  deletePaiementSousTraitant: (id) =>
-    api.delete(`/installations/paiements-sous-traitant/${id}/`),
-
-  getAttestationsSousTraitant: (params) =>
-    api.get('/installations/attestations-sous-traitant/', { params }),
-  createAttestationSousTraitant: (data) =>
-    api.post('/installations/attestations-sous-traitant/', data),
-  getAffectabiliteSousTraitant: (sousTraitantId, dateStr) =>
-    api.get('/installations/attestations-sous-traitant/affectabilite/',
-      { params: dateStr
-        ? { sous_traitant: sousTraitantId, date: dateStr }
-        : { sous_traitant: sousTraitantId } }),
-
-  getEvaluationsSousTraitant: (params) =>
-    api.get('/installations/evaluations-sous-traitant/', { params }),
-  createEvaluationSousTraitant: (data) =>
-    api.post('/installations/evaluations-sous-traitant/', data),
-  getScorecardSousTraitant: (sousTraitantId) =>
-    api.get('/installations/evaluations-sous-traitant/scorecard/',
-      { params: { sous_traitant: sousTraitantId } }),
-
-  getRetenuesGarantieSousTraitant: (params) =>
-    api.get('/installations/retenues-garantie-sous-traitant/', { params }),
-  createRetenueGarantieSousTraitant: (data) =>
-    api.post('/installations/retenues-garantie-sous-traitant/', data),
-  leverRetenueGarantieSousTraitant: (id) =>
-    api.post(`/installations/retenues-garantie-sous-traitant/${id}/lever/`, {}),
 
   // ── PACT56 — Import et douane : dossiers d'import (FG315), frais et coût de
   // revient débarqué (FG316). Donnée interne, jamais montrée au client. ──
@@ -752,87 +681,6 @@ const installationsApi = {
   getLandedCostLignes: (params) => api.get('/installations/landed-cost-lignes/', { params }),
   createLandedCostLigne: (data) => api.post('/installations/landed-cost-lignes/', data),
   deleteLandedCostLigne: (id) => api.delete(`/installations/landed-cost-lignes/${id}/`),
-
-  // ── PACT57 — Prix négociés fournisseurs : écriture des commandes-cadres
-  // (FG314) et contrats de prix (FG318) + leurs lignes. `getCommandesCadre`/
-  // `getContratsPrixFournisseur` (lecture) existent déjà (WIR110). ──
-  createCommandeCadre: (data) => api.post('/installations/commandes-cadre/', data),
-  updateCommandeCadre: (id, data) => api.patch(`/installations/commandes-cadre/${id}/`, data),
-  activerCommandeCadre: (id) => api.post(`/installations/commandes-cadre/${id}/activer/`, {}),
-  cloturerCommandeCadre: (id) => api.post(`/installations/commandes-cadre/${id}/cloturer/`, {}),
-  getCommandeCadreLignes: (params) =>
-    api.get('/installations/commandes-cadre-lignes/', { params }),
-  createCommandeCadreLigne: (data) =>
-    api.post('/installations/commandes-cadre-lignes/', data),
-  updateCommandeCadreLigne: (id, data) =>
-    api.patch(`/installations/commandes-cadre-lignes/${id}/`, data),
-  deleteCommandeCadreLigne: (id) =>
-    api.delete(`/installations/commandes-cadre-lignes/${id}/`),
-
-  createContratPrixFournisseur: (data) =>
-    api.post('/installations/contrats-prix-fournisseur/', data),
-  updateContratPrixFournisseur: (id, data) =>
-    api.patch(`/installations/contrats-prix-fournisseur/${id}/`, data),
-  activerContratPrixFournisseur: (id) =>
-    api.post(`/installations/contrats-prix-fournisseur/${id}/activer/`, {}),
-  expirerContratPrixFournisseur: (id) =>
-    api.post(`/installations/contrats-prix-fournisseur/${id}/expirer/`, {}),
-  getContratPrixLignes: (params) =>
-    api.get('/installations/contrats-prix-lignes/', { params }),
-  createContratPrixLigne: (data) =>
-    api.post('/installations/contrats-prix-lignes/', data),
-  updateContratPrixLigne: (id, data) =>
-    api.patch(`/installations/contrats-prix-lignes/${id}/`, data),
-  deleteContratPrixLigne: (id) =>
-    api.delete(`/installations/contrats-prix-lignes/${id}/`),
-
-  // ── PACT58 — Contrôle documentaire de projet : registre (FG297) et
-  // révisions (indice/date/auteur/fichier) d'un document technique. ──
-  getDocumentsProjet: (params) => api.get('/installations/documents-projet/', { params }),
-  createDocumentProjet: (data) => api.post('/installations/documents-projet/', data),
-  updateDocumentProjet: (id, data) => api.patch(`/installations/documents-projet/${id}/`, data),
-  deleteDocumentProjet: (id) => api.delete(`/installations/documents-projet/${id}/`),
-
-  getRevisionsDocument: (params) => api.get('/installations/revisions-document/', { params }),
-  createRevisionDocument: (data) => api.post('/installations/revisions-document/', data),
-
-  // ── PACT59 — Suivi projet du chantier : jalons (FG293), modèles de projet
-  // (FG296) et comptes-rendus de réunion de chantier (FG298). ──
-  getJalonsProjet: (params) => api.get('/installations/jalons-projet/', { params }),
-  createJalonProjet: (data) => api.post('/installations/jalons-projet/', data),
-  updateJalonProjet: (id, data) => api.patch(`/installations/jalons-projet/${id}/`, data),
-  deleteJalonProjet: (id) => api.delete(`/installations/jalons-projet/${id}/`),
-
-  getModelesProjet: (params) => api.get('/installations/modeles-projet/', { params }),
-  createModeleProjet: (data) => api.post('/installations/modeles-projet/', data),
-  instancierModeleProjet: (id, installationId) =>
-    api.post(`/installations/modeles-projet/${id}/instancier/`,
-      { installation: installationId }),
-
-  getReunionsChantier: (params) => api.get('/installations/reunions-chantier/', { params }),
-  createReunionChantier: (data) => api.post('/installations/reunions-chantier/', data),
-
-  // ── PACT60 — Consultation fournisseurs et comparatif d'offres (FG311,
-  // XPUR20/21). `offres`/`consultations`/`comparatif` sont imbriqués en
-  // lecture dans chaque RFQ (aucun fetch séparé nécessaire pour comparer). ──
-  getRFQs: (params) => api.get('/installations/rfq/', { params }),
-  getRFQ: (id) => api.get(`/installations/rfq/${id}/`),
-  createRFQ: (data) => api.post('/installations/rfq/', data),
-  envoyerRFQ: (id) => api.post(`/installations/rfq/${id}/envoyer/`, {}),
-  cloturerRFQ: (id) => api.post(`/installations/rfq/${id}/cloturer/`, {}),
-  retenirOffreRFQ: (id, offreId) =>
-    api.post(`/installations/rfq/${id}/retenir/`, { offre: offreId }),
-  consulterFournisseurRFQ: (id, fournisseurId) =>
-    api.post(`/installations/rfq/${id}/consulter/`, { fournisseur: fournisseurId }),
-  envoyerConsultationsRFQ: (id, consultationIds) =>
-    api.post(`/installations/rfq/${id}/envoyer-consultations/`,
-      consultationIds ? { consultations: consultationIds } : {}),
-  relancerNonRepondantsRFQ: (id) =>
-    api.post(`/installations/rfq/${id}/relancer-non-repondants/`, {}),
-
-  createRFQOffre: (data) => api.post('/installations/rfq-offres/', data),
-
-  getRFQConsultations: (params) => api.get('/installations/rfq-consultations/', { params }),
 
   // ── PACT61 — Paramétrage des kits d'assemblage : le kit lui-même (FG328),
   // sa nomenclature (composants), sa gamme d'étapes (XMFG14) et son modèle

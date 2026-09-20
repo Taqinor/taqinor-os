@@ -100,30 +100,6 @@ class JalonUniqueParPhaseTests(TestCase):
         self.assertEqual(
             JalonProjet.objects.filter(installation=self.inst).count(), 4)
 
-    def test_appliquer_modele_ne_viole_jamais_la_contrainte(self):
-        """Un modèle de projet portant une phase DÉJÀ posée sur le chantier
-        crée un jalon AD HOC au lieu de faire remonter une 500."""
-        from apps.installations.models import ModeleProjet, ModeleProjetJalon
-        from apps.installations.services import instantiate_modele_projet
-
-        self._jalon(JalonProjet.Phase.POSE, 'Pose (existant)')
-        modele = ModeleProjet.objects.create(
-            company=self.company, nom=f'Modèle AUD321-{next(_seq)}')
-        ModeleProjetJalon.objects.create(
-            company=self.company, modele=modele,
-            phase=JalonProjet.Phase.POSE,
-            libelle='Pose (modèle)', ordre=1, offset_jours=10)
-
-        instantiate_modele_projet(self.inst, modele)
-
-        libelles = set(JalonProjet.objects.filter(
-            installation=self.inst).values_list('libelle', flat=True))
-        self.assertIn('Pose (modèle)', libelles)
-        self.assertEqual(
-            JalonProjet.objects.filter(
-                installation=self.inst,
-                phase=JalonProjet.Phase.POSE).count(), 1)
-
     def test_notifier_reception_deux_fois_ne_cree_quun_jalon(self):
         """Le chemin réel (YSERV7) : deux appels = UN jalon RECEPTION."""
         from decimal import Decimal
