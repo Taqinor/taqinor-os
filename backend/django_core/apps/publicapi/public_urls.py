@@ -16,6 +16,7 @@ from rest_framework.routers import DefaultRouter
 from .public_views import (
     PublicLeadViewSet, PublicDevisViewSet,
     PublicFactureViewSet, PublicChantierViewSet, PublicProduitViewSet,
+    PublicCalepinageViewSet,
 )
 from .public_write_views import (
     PublicLeadCreateView, PublicLeadUpdateView, PublicActivityCreateView,
@@ -47,6 +48,11 @@ router.register(r'devis', PublicDevisViewSet, basename='public-devis')
 router.register(r'factures', PublicFactureViewSet, basename='public-facture')
 router.register(r'chantiers', PublicChantierViewSet, basename='public-chantier')
 router.register(r'produits', PublicProduitViewSet, basename='public-produit')
+# CAL214 — calepinages (apps.calepinage), scope `read:calepinages`. Racine des
+# ressources historiques (leads/devis/…) : c'est un objet métier de première
+# classe du module autonome, pas un sous-domaine technique.
+router.register(r'calepinages', PublicCalepinageViewSet,
+                basename='public-calepinage')
 # NTAPI16/43 — suivi + reprise des jobs bulk (list/retrieve + action `relancer`).
 router.register(r'jobs', PublicJobViewSet, basename='public-job')
 # NTSCM38 — planification supply chain (apps.scm), scope `read:scm`. Sous-préfixe
