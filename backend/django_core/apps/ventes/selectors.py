@@ -412,6 +412,41 @@ def paiements_totaux_par_mode(facture_ids):
         .annotate(total=Sum('montant'), nb=Count('id')))
 
 
+def calepinage_du_devis(devis, company=None):
+    """CAL28 — le calepinage qui PILOTE ce devis, ou ``None``.
+
+    Le lien inverse n'existait pas : la fiche devis ne savait pas qu'un
+    calepinage la pilote, alors que c'est lui qui porte les versions, les
+    variantes et la planche. Cette fonction est le pont — MINCE, en lecture
+    seule, et passant par ``apps.calepinage.selectors`` (import FONCTION-LOCAL
+    pour éviter le cycle au chargement) : ``ventes`` n'importe JAMAIS
+    ``apps.calepinage.models``.
+
+    ``a_jour`` est une COMPARAISON DES DEUX EMPREINTES, jamais un recalcul de
+    géométrie : le devis et son calepinage portent la même empreinte tant que
+    la conception n'a pas divergé. Empreinte manquante d'un côté ⇒ ``None``
+    (inconnu), jamais ``False`` — on ne déclare pas « périmé » ce qu'on n'a pas
+    mesuré.
+    """
+    from apps.calepinage.selectors import calepinage_du_devis as _lire
+
+    if devis is None:
+        return None
+    company = company or getattr(devis, 'company', None)
+    calepinage = _lire(getattr(devis, 'pk', None), company)
+    if calepinage is None:
+        return None
+    empreinte_devis = getattr(devis, 'layout_hash', '') or ''
+    empreinte_cal = calepinage.layout_hash or ''
+    return {
+        'id': calepinage.pk,
+        'titre': calepinage.titre or '',
+        'layout_hash': empreinte_cal or None,
+        'a_jour': (empreinte_devis == empreinte_cal
+                   if empreinte_devis and empreinte_cal else None),
+    }
+
+
 def peremption_layout_devis(devis):
     """CAL189 — ``{layout_stale, layout_nb_panneaux}`` d'un devis.
 
