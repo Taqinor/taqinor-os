@@ -3,8 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `features/ao`). */
 import { lazy } from 'react'
-import { Grid3x3, Library, LayoutGrid, PlusCircle } from 'lucide-react'
-import { BadgeCheck, Grid3x3, LayoutGrid, PlusCircle } from 'lucide-react'
+import { BadgeCheck, Grid3x3, Library, LayoutGrid, PlusCircle } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -168,8 +167,9 @@ const config = {
         to: '/calepinage/bibliotheque',
         label: 'Bibliothèque',
         icon: <Library size={17} strokeWidth={1.75} aria-hidden="true" />,
-      // CAL165 — la provenance des paramètres normatifs de la société.
+      },
       {
+        // CAL165 — la provenance des paramètres normatifs de la société.
         to: '/calepinage/sources',
         label: 'Sources des paramètres',
         icon: <BadgeCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
