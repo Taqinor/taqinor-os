@@ -52,6 +52,7 @@ __all__ = [
     'svg_de_planche', 'html_de_planche', 'rendre_planche_svg',
     'rendre_planche_pdf', 'nom_de_fichier', 'entrees_de_legende',
     'texte_d_orientation', 'lignes_d_orientation', 'longueur_de_barre',
+    'hash_court', 'texte_d_empreinte', 'empreinte_du_calepinage',
 ]
 
 #: A3 PAYSAGE, en millimètres — le format des planches remises (même choix que
@@ -610,7 +611,76 @@ def _legende_svg(x, y, entrees):
     return morceaux, courant
 
 
-def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=()):
+# ── CAL173 — l'empreinte, sur la planche elle-même ──────────────────────────
+#
+# ``PlancheAO`` incrémente son indice SUR CHANGEMENT D'EMPREINTE et la fabrique
+# AO reporte un SHA-256 de contexte sur chaque pièce ; le calepinage ventes a
+# bien un ``layout_hash``, mais il ne l'imprimait NULLE PART. Une planche sans
+# provenance n'est pas rejouable : devant deux tirages du même toit, personne ne
+# peut dire lequel correspond à la conception d'aujourd'hui.
+#
+# La mention est un PIED DE PLANCHE. Chaque terme est OMIS quand sa donnée
+# manque (une version de moteur inventée serait pire que pas de version) ; la
+# date, elle, est toujours là — c'est le minimum d'un document remis.
+
+#: Longueur du hash COURT imprimé. 12 caractères hexadécimaux : assez pour
+#: distinguer deux conceptions d'un même dossier, assez court pour être recopié
+#: à la main au téléphone depuis un chantier.
+TAILLE_HASH_COURT = 12
+
+
+def hash_court(empreinte):
+    """Les ``TAILLE_HASH_COURT`` premiers caractères d'une empreinte, ou ``''``."""
+    texte = (empreinte or '').strip()
+    return texte[:TAILLE_HASH_COURT] if texte else ''
+
+
+def texte_d_empreinte(layout_hash, version_moteur, moment):
+    """« calepinage <hash court> · moteur <version> · <date> » — termes ABSENTS omis.
+
+    ``moment`` est fourni par l'appelant (jamais lu d'une horloge cachée) :
+    c'est ce qui rend deux rendus de la même conception reproductibles au
+    caractère près, donc comparables.
+    """
+    termes = []
+    court = hash_court(layout_hash)
+    if court:
+        termes.append('calepinage %s' % court)
+    version = (version_moteur or '').strip()
+    if version:
+        termes.append('moteur %s' % version)
+    if moment is not None:
+        termes.append(moment.strftime('%d/%m/%Y'))
+    return ' · '.join(termes)
+
+
+def empreinte_du_calepinage(calepinage, *, moment=None):
+    """Le pied de planche d'un ``Calepinage``, depuis SES champs stockés.
+
+    L'empreinte n'est jamais RECALCULÉE ici : c'est
+    ``services.layout.enregistrer_layout`` (CAL13) qui la pose, par le
+    ré-export ``apps.ventes.services.layout_hash`` — une seconde façon de
+    calculer la même empreinte est une seconde vérité.
+    """
+    if moment is None:
+        from django.utils import timezone
+
+        moment = timezone.localtime(timezone.now())
+    return texte_d_empreinte(getattr(calepinage, 'layout_hash', ''),
+                             getattr(calepinage, 'version_moteur', ''),
+                             moment)
+
+
+def _pied_svg(texte):
+    """Le pied de planche, en bas de feuille, sous la zone de dessin."""
+    if not texte:
+        return ''
+    return ('<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
+            % (_n(MARGE_MM), _n(FORMAT_A3_MM[1] - 3.5), GRIS_TEXTE,
+               escape(texte)))
+
+
+def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=(), pied=''):
     """Compose le SVG A3 paysage de la planche. Ne recalcule aucune grandeur.
 
     ``bandeau`` est une suite de lignes de texte DÉJÀ composées par l'appelant
@@ -670,6 +740,7 @@ def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=()):
                                        cadre[1] + cadre[3] - 8.0, echelle))
 
     morceaux.extend(_bandeau_svg(titre, sous_titre, bandeau, geometrie))
+    morceaux.append(_pied_svg(pied))
     morceaux.append('</svg>')
     return '\n'.join(m for m in morceaux if m)
 
@@ -752,14 +823,21 @@ def nom_de_fichier(calepinage, extension):
     return '%s%s.%s' % (base, '-' + assaini[:60] if assaini else '', extension)
 
 
-def rendre_planche_svg(calepinage, **options):
-    """SVG de la planche d'un ``Calepinage``. Lève ``PlancheRefusee`` si besoin."""
+def rendre_planche_svg(calepinage, *, moment=None, **options):
+    """SVG de la planche d'un ``Calepinage``. Lève ``PlancheRefusee`` si besoin.
+
+    CAL173 — le pied de planche porte TOUJOURS l'empreinte du layout et la
+    version du moteur telles qu'elles sont STOCKÉES : deux rendus de la même
+    conception portent la même, une conception modifiée en change.
+    """
     geometrie = geometrie_de_planche(getattr(calepinage, 'roof_layout', None))
     return svg_de_planche(
         geometrie,
         titre=options.pop('titre', None) or str(calepinage),
         sous_titre=options.pop('sous_titre', ''),
-        bandeau=options.pop('bandeau', ()))
+        bandeau=options.pop('bandeau', ()),
+        pied=options.pop('pied', None)
+        or empreinte_du_calepinage(calepinage, moment=moment))
 
 
 def rendre_planche_pdf(calepinage, *, company=None, **options):
