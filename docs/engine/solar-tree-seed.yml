@@ -1,0 +1,232 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# PUB127 — Arbre d'hypothèses SOLAIRE v1 (brouillon de semis jour 0)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# À QUOI SERT CE FICHIER
+# ----------------------
+# C'est le point de contact IA « au début » (dd-assumption-engine §4) : au jour 0,
+# on écrit ICI ce que l'on CROIT sans l'avoir prouvé. Le moteur ordonnance ensuite
+# les tests, apprend, et oublie tout seul — sans IA (§7). Format et règles :
+# `docs/engine/seed-format.md` ; import :
+#
+#     manage.py seed_assumption_tree --file docs/engine/solar-tree-seed.yml --dry-run
+#     manage.py seed_assumption_tree --file docs/engine/solar-tree-seed.yml
+#
+# ⚠️  À VALIDER PAR LE FONDATEUR AVANT TOUT IMPORT EN PRODUCTION.
+# Chaque énoncé ci-dessous est une CROYANCE à contester, pas un fait. Reda doit
+# relire, corriger les formulations, ajuster S et R, et SUPPRIMER ce qu'il ne
+# croit pas. Un arbre semé avec des hypothèses auxquelles personne ne croit fait
+# dépenser du budget pour rien.
+#
+# CE QUI EST SOURCÉ, ET CE QUI NE L'EST PAS
+# -----------------------------------------
+# * Chaque nœud porte un commentaire `SOURCE:` qui dit D'OÙ vient l'hypothèse
+#   dans ce dépôt (copie réellement diffusée, audit du compte, dossier de
+#   recherche, seed de la table de faits, calendrier créatif). Aucune hypothèse
+#   n'a été inventée pour remplir l'arbre.
+# * `enjeux_s` (part du budget que la réponse pilote) et `pertinence_r` (une
+#   réponse changerait-elle une action ?) sont des JUGEMENTS de départ, pas des
+#   mesures — ce sont les deux molettes du fondateur.
+# * TOUS les priors sont UNIFORMES `Beta(1, 1)`, délibérément. L'audit du compte
+#   réel (docs/engine/audit-2026-07.md) a constaté 5 annonces qui portaient UNE
+#   SEULE vraie créa (titre/corps/CTA identiques) et « aucune rotation créative
+#   réelle depuis 3 mois » : AUCUN test comparatif n'a donc jamais tourné ici. Se
+#   donner un prior informatif reviendrait à fabriquer une évidence qui n'existe
+#   pas. Tous les nœuds naissent `statut: assumed`.
+# * Ce qui N'EST PAS dans l'arbre, faute de la moindre trace dans le dépôt :
+#   aucune hypothèse darija-vs-français, aucune hypothèse placement
+#   feed-vs-Reels. Le fondateur peut les ajouter — mais elles seront alors
+#   nouvelles, pas « retrouvées ».
+#
+# RAPPEL DE CONTRAINTE (docs/engine/ctwa-decision.md, §2 « VÉRIFIÉ »)
+# ------------------------------------------------------------------
+# L'attribution par-annonce des conversations WhatsApp est CATÉGORIQUEMENT
+# indisponible sans la WhatsApp Cloud API : aujourd'hui le seul signal CTWA est
+# le tag manuel `canal='whatsapp_ctwa'`. Le nœud `canal_ctwa_vs_formulaire`
+# ci-dessous se teste donc AU NIVEAU CAMPAGNE (deux campagnes comparées), jamais
+# par annonce, tant que cette porte n'est pas franchie.
+#
+# Identité idempotente = (société, classe, enonce_fr) : réécrire un énoncé crée
+# une hypothèse NEUVE. Ne reformulez un énoncé que si vous voulez vraiment
+# repartir de zéro sur cette croyance.
+# ═══════════════════════════════════════════════════════════════════════════
+version: 1
+
+nodes:
+
+  # ── CRÉATIF (demi-vie 8 semaines) ────────────────────────────────────────
+  - key: hook_facture
+    classe: creatif
+    # SOURCE: annonce V1 réellement créée sur le compte — « L'été fait grimper
+    # la facture ? Produisez votre électricité. » (docs/engine/actions-log.md) ;
+    # la copie DÉJÀ en ligne à l'audit tournait sur le même registre (« STOP
+    # Payer +1000 DH/Mois d'Électricité ! », docs/engine/audit-2026-07.md) ;
+    # c'est aussi l'exemple de référence du contrat de semis
+    # (docs/engine/seed-format.md).
+    enonce_fr: "Le hook « facture » (la facture d'électricité qui grimpe) convertit mieux que le hook « économies »."
+    enjeux_s: 0.8
+    pertinence_r: 0.9
+    tags_saison: [canicule]
+    prior:
+      alpha0: 1
+      beta0: 1
+    statut: assumed
+
+  - key: hook_facture_reel
+    classe: creatif
+    # SOURCE: les trois formats de la créathèque sont reel / static / explainer
+    # (CreativeAsset.AssetType) et le gabarit résidentiel de dd-treasury exige
+    # « ≥1 reel (real install footage), ≥1 static, ≥1 explainer ». Nœud ENFANT :
+    # si le hook « facture » tombe, cette précision tombe avec lui.
+    enonce_fr: "Le hook « facture » gagne SURTOUT en format reel (vidéo verticale), pas en statique."
+    enjeux_s: 0.4
+    pertinence_r: 0.6
+    parent: hook_facture
+    invalidation_links: [hook_facture]
+    prior:
+      alpha0: 1
+      beta0: 1
+    statut: assumed
+
+  - key: hook_preuve_ingenieurs
+    classe: creatif
+    # SOURCE: annonce V2 réellement créée — « Dimensionné par des ingénieurs.
+    # Chiffré ligne par ligne. » (docs/engine/actions-log.md). Registre PREUVE,
+    # jamais un témoignage : la policy créative interdit en dur les faux
+    # témoignages et les faux chantiers (apps/adsengine/policy.py).
+    enonce_fr: "Le hook « preuve d'ingénierie » (dimensionné par des ingénieurs, chiffré ligne par ligne) convertit mieux que le hook « facture »."
+    enjeux_s: 0.6
+    pertinence_r: 0.8
+    prior:
+      alpha0: 1
+      beta0: 1
+    statut: assumed
+
+  - key: hook_etude_3d
+    classe: creatif
+    # SOURCE: annonce V3 réellement créée — « Vos panneaux sur VOTRE toit, en
+    # 3D — avant de décider », adossée à l'outil RÉEL /devis/mon-toit
+    # (docs/engine/actions-log.md). Le hook promet un outil qui existe.
+    enonce_fr: "Le hook « étude 3D sur votre propre toit » convertit mieux que le hook « facture »."
+    enjeux_s: 0.6
+    pertinence_r: 0.8
+    prior:
+      alpha0: 1
+      beta0: 1
+    statut: assumed
+
+  - key: rotation_creative_utile
+    classe: creatif
+    # SOURCE: audit du compte réel — « Aucune rotation créative réelle depuis
+    # 3 mois » avec une fréquence mesurée de 2,20 sur 30 jours
+    # (docs/engine/audit-2026-07.md). La question n'est donc pas théorique :
+    # c'est l'état actuel du compte qu'on met en doute.
+    enonce_fr: "Faire tourner la création (au moins une nouvelle annonce par mois) bat une création unique laissée en place plusieurs mois."
+    enjeux_s: 0.7
+    pertinence_r: 0.9
+    prior:
+      alpha0: 1
+      beta0: 1
+    statut: assumed
+
+  # ── ANGLE (demi-vie 13 semaines) ─────────────────────────────────────────
+  - key: angle_canicule
+    classe: angle
+    # SOURCE: calendrier créatif seedé — fenêtre « Canicule (été) », commentée
+    # « pic de chaleur — argument climatisation solaire »
+    # (apps/adsengine/calendar.py). Si cet angle saisonnier tombe, la version
+    # « facture d'été » du hook facture devient suspecte.
+    enonce_fr: "L'angle saisonnier « canicule / climatisation » relève la performance pendant la fenêtre d'été."
+    enjeux_s: 0.5
+    pertinence_r: 0.7
+    tags_saison: [canicule]
+    invalidation_links: [hook_facture]
+    prior:
+      alpha0: 1
+      beta0: 1
+    statut: assumed
+
+  - key: angle_pompage_fda
+    classe: angle
+    # SOURCE: fait publié seedé `fda_taux_subvention_pompage_pct` = 30 %, source
+    # « FDA — subvention pompage solaire agricole, SANS plafond »
+    # (management/commands/seed_fact_table.py) + gabarit AGRICOLE de dd-treasury
+    # (campagne concentrée 4-6 semaines avant la saison d'irrigation).
+    # Le chiffre 30 % est CITABLE parce qu'il est dans la table de faits.
+    enonce_fr: "Pour l'agricole, l'angle « subvention FDA » porte mieux qu'un angle générique d'économies."
+    enjeux_s: 0.5
+    pertinence_r: 0.8
+    tags_saison: [agricole_post_recolte]
+    prior:
+      alpha0: 1
+      beta0: 1
+    statut: assumed
+
+  - key: angle_autoconsommation_b2b
+    classe: angle
+    # SOURCE: gabarit INDUSTRIEL/COMMERCIAL de dd-treasury — créas prévues :
+    # « explainer (autoconsommation economics) », « static (payback chart) ».
+    enonce_fr: "Pour l'industriel et le commercial, l'angle « autoconsommation chiffrée (temps de retour) » porte mieux qu'un angle de prix."
+    enjeux_s: 0.4
+    pertinence_r: 0.7
+    prior:
+      alpha0: 1
+      beta0: 1
+    statut: assumed
+
+  # ── AUDIENCE / STRUCTURE (demi-vie 26 semaines) ──────────────────────────
+  - key: audience_broad_vs_ville
+    classe: audience_structure
+    # SOURCE: gabarit RÉSIDENTIEL de dd-treasury — « 2–3 ad sets: broad +
+    # city-narrowed ». Le gabarit pose les deux côte à côte sans trancher.
+    enonce_fr: "Un ad set large (broad) bat un ad set restreint à une ville, à budget égal."
+    enjeux_s: 0.7
+    pertinence_r: 0.8
+    prior:
+      alpha0: 1
+      beta0: 1
+    statut: assumed
+
+  - key: structure_abo_vs_cbo
+    classe: audience_structure
+    # SOURCE: gabarits de dd-treasury — « 1 campaign, ABO (below the 8-ad-set
+    # CBO floor) » ; plafond de budget par défaut 100 MAD/jour
+    # (GuardrailConfig.daily_budget_ceiling_mad).
+    enonce_fr: "À l'échelle de budget actuelle, répartir le budget par ad set (ABO) bat la répartition par campagne (CBO)."
+    enjeux_s: 0.6
+    pertinence_r: 0.7
+    prior:
+      alpha0: 1
+      beta0: 1
+    statut: assumed
+
+  - key: canal_ctwa_vs_formulaire
+    classe: audience_structure
+    # SOURCE: les gabarits de dd-treasury envoient le résidentiel et l'agricole
+    # en Click-to-WhatsApp et l'industriel en formulaire natif ; le compte réel,
+    # lui, tourne AUJOURD'HUI en formulaires à leads (docs/engine/audit-2026-07.md).
+    # CONTRAINTE VÉRIFIÉE (docs/engine/ctwa-decision.md §2) : sans la WhatsApp
+    # Cloud API, aucune attribution par annonce n'est possible côté WhatsApp —
+    # ce nœud se tranche donc campagne contre campagne, jamais annonce contre
+    # annonce, tant que la porte Cloud API n'est pas franchie.
+    enonce_fr: "Le canal Click-to-WhatsApp produit des leads moins chers que le formulaire natif Meta."
+    enjeux_s: 0.8
+    pertinence_r: 0.9
+    prior:
+      alpha0: 1
+      beta0: 1
+    statut: assumed
+
+  - key: question_qualifiante_facture
+    classe: audience_structure
+    # SOURCE: les deux formulaires réellement en ligne posent déjà « facture
+    # moyenne d'électricité par mois ? », « où installer ? », « quand
+    # commencer ? » (docs/engine/audit-2026-07.md). L'hypothèse porte sur leur
+    # EFFET, pas sur leur existence.
+    enonce_fr: "Demander la facture mensuelle dans le formulaire améliore la qualité du lead sans écraser le volume."
+    enjeux_s: 0.5
+    pertinence_r: 0.7
+    prior:
+      alpha0: 1
+      beta0: 1
+    statut: assumed

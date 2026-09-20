@@ -56,7 +56,11 @@ class OrchestrationTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='Gen Co', slug='gen-co')
 
+    @patch.dict(os.environ, {'ADSENGINE_GEN_API_KEY': '',
+                             'GROQ_API_KEY': ''}, clear=False)
     def test_noop_without_generator_or_key(self):
+        # PUB124 — les DEUX clés sont neutralisées : le repli GROQ_API_KEY
+        # rendrait ce NO-OP dépendant de l'environnement de la machine.
         _publish_table(self.company)
         result = tasks._run_grounded_generation(
             self.company, 'panneaux solaires économies maison sud')
@@ -108,9 +112,10 @@ class EndpointTests(TestCase):
         resp = self.api.post(BASE, {}, format='json')
         self.assertEqual(resp.status_code, 400)
 
-    @patch.dict(os.environ, {}, clear=False)
+    @patch.dict(os.environ, {'ADSENGINE_GEN_API_KEY': '',
+                             'GROQ_API_KEY': ''}, clear=False)
     def test_keygated_message_without_key(self):
-        os.environ.pop('ADSENGINE_GEN_API_KEY', None)
+        # PUB124 — la porte lit la clé dédiée ET son repli GROQ_API_KEY.
         resp = self.api.post(BASE, {'seed_brief': 'solaire maison'},
                              format='json')
         self.assertEqual(resp.status_code, 200)

@@ -305,13 +305,19 @@ class GroundedGenerationView(APIView):
             return Response({'detail': 'seed_brief requis.'}, status=400)
         components = (request.data or {}).get('components') or []
         # Key-gated : message clair AVANT dispatch (pas de tâche inutile ni de
-        # lot créé sans clé — zéro crash).
-        from .generation import GEN_ENV_KEY
-        if not os.environ.get(GEN_ENV_KEY):
+        # lot créé sans clé — zéro crash). PUB124 — la porte lit la MÊME
+        # résolution que le générateur (clé dédiée puis repli GROQ_API_KEY) :
+        # l'écran ne peut plus annoncer « désactivée » alors que la tâche, elle,
+        # générerait.
+        from .generation import (
+            GEN_ENV_KEY, GEN_FALLBACK_ENV_KEY, resolve_api_key,
+        )
+        if not resolve_api_key()[0]:
             return Response({
                 'enabled': False,
-                'detail': ('Génération IA désactivée : la clé '
-                           f"{GEN_ENV_KEY} n'est pas configurée. Aucun lot créé."),
+                'detail': ('Génération IA désactivée : aucune clé configurée '
+                           f'({GEN_ENV_KEY}, ou son repli '
+                           f'{GEN_FALLBACK_ENV_KEY}). Aucun lot créé.'),
             }, status=200)
         from .tasks import generate_grounded_variants
         generate_grounded_variants.delay(
@@ -3337,6 +3343,47 @@ class AdsCockpitView(APIView):
         fin = _adseng_parse_date(request.query_params.get('fin'))
         return Response(
             ads_cockpit_rows(company, as_of=fin, start_date=debut))
+
+
+class AdSetDcoRecombineView(APIView):
+    """PUB118 — Bouton « Recombiner (DCO) » du cockpit : PROPOSE une ad DCO
+    recombinée depuis les créatifs mirorés GAGNANTS de la société.
+
+    ``POST /api/django/adsengine/adsets/<adset_meta_id>/recombiner-dco/`` —
+    company-scopé, gaté ``adsengine_manage`` (fabriquer une ad est un geste de
+    gestion, jamais de lecture). Vue MINCE : toute la logique vit dans
+    ``services.propose_dco_recombination`` (arbitre ``dco`` + moisson + spec
+    plafonnée). AUCUN automatisme : rien ne part sans ce clic, puis sans
+    l'approbation de la proposition — et l'ad née à l'application est PAUSED.
+
+    Refus métier (ad set déjà signalé, exclusion mutuelle DCO ↔ rotation, pool
+    vide) → 400 avec la raison FR telle quelle (jamais un 500)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    @extend_schema(request=None, responses=inline_serializer(
+        'AdsengineDcoRecombinaison', {
+            'action': drf_serializers.DictField(required=False),
+            'detail': drf_serializers.CharField(required=False),
+        }))
+    def post(self, request, adset_meta_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        from .models import AdSetMirror
+        from .services import propose_dco_recombination
+
+        adset = AdSetMirror.objects.filter(
+            company=company, meta_id=adset_meta_id).first()
+        if adset is None:
+            return Response({'detail': "Ad set introuvable."}, status=404)
+        try:
+            action = propose_dco_recombination(
+                company, adset=adset, proposed_by=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(
+            {'action': EngineActionSerializer(action).data}, status=201)
 
 
 # ══ ADSDEEP53/54 — Boîte de réception des commentaires (câblage front↔back) ═══

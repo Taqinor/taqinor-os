@@ -111,6 +111,44 @@ def tags_from_name(
     }
 
 
+# ── PUB119 — CONSTRUCTION d'un nom (inverse de :func:`parse_name`) ───────────
+# Le module ne savait que LIRE un nom : un chemin de création (rotation créative,
+# recombinaison) devait donc bricoler son propre nom, hors convention. Cette
+# fonction est le PENDANT exact de ``parse_name`` — même convention, même
+# délimiteur — pour qu'un nom PRODUIT par le moteur se re-parse en les tags
+# d'origine (propriété vérifiée par test).
+def build_name(values, *, convention=DEFAULT_CONVENTION,
+               delimiter=DEFAULT_DELIMITER):
+    """Compose un nom depuis ``values`` (``{champ: segment}``) selon
+    ``convention``.
+
+    Les champs sont émis DANS L'ORDRE de la convention. Un segment absent/vide
+    est remplacé par ``'NA'`` **uniquement s'il précède un segment renseigné**
+    (sinon la position des suivants glisserait et le nom se re-parserait faux) ;
+    la queue non renseignée est simplement OMISE (jamais un segment fabriqué
+    pour combler). Chaque segment est nettoyé : espaces → ``-``, le délimiteur
+    lui-même → ``-`` (il ne peut pas apparaître DANS un segment sans casser le
+    parsing). ``values`` vide ou convention vide → chaîne vide (jamais une
+    erreur — le chemin appelant retombe alors sur son propre nom de repli).
+    """
+    fields = parse_convention(convention)
+    if not fields:
+        return ''
+    segments = []
+    for field in fields:
+        raw = str((values or {}).get(field) or '').strip()
+        cleaned = raw.replace(delimiter, '-') if raw else ''
+        if cleaned:
+            cleaned = '-'.join(cleaned.split())
+        segments.append(cleaned)
+    # Tronque la queue non renseignée (aucun 'NA' de remplissage en fin de nom).
+    while segments and not segments[-1]:
+        segments.pop()
+    if not segments:
+        return ''
+    return delimiter.join(seg or 'NA' for seg in segments)
+
+
 def _basename_without_extension(path):
     """Nom de fichier SANS chemin ni extension (ex.
     ``'societe/2026_UGC_PAIN_ROI.mp4'`` → ``'2026_UGC_PAIN_ROI'``). Chemin

@@ -979,6 +979,11 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
             'nom': ad.name,
             'statut': ad.status,
             'statut_display': _META_STATUT_FR.get(ad.status, ad.status or '—'),
+            # PUB118 — l'ad set PARENT (identité Meta + nom), additif : le
+            # bouton « Recombiner (DCO) » du détail cockpit cible l'AD SET, pas
+            # l'ad. Vide quand l'ad n'a pas encore de miroir d'ad set.
+            'adset_meta_id': getattr(adset, 'meta_id', '') or '',
+            'adset_nom': getattr(adset, 'name', '') or '',
             'learning_badge': {
                 'status': learning_status,
                 'label': learning_meta['label'],

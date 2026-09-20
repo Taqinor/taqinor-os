@@ -14,7 +14,8 @@ from django.test import TestCase
 from authentication.models import Company
 from apps.adsengine import rules_engine
 from apps.adsengine.models import (
-    AdSetMirror, EngineAction, InsightSnapshot, RulePolicy,
+    AdCreativeMirror, AdMirror, AdSetMirror, EngineAction, InsightSnapshot,
+    RulePolicy,
 )
 
 TODAY = datetime.date(2026, 7, 16)
@@ -27,6 +28,18 @@ def _seed_freq(company, adset, *, freq=4.0, days=4):
             company=company, content_type=ct, object_id=adset.pk,
             date=TODAY - datetime.timedelta(days=i),
             spend='10.00', results=1, frequency=str(freq))
+
+
+def _live_creative(company, adset):
+    """PUB119 — Donne à ``adset`` une ad portant un créatif LIVE mirroré : sans
+    source créative, le moteur alerte « aucun créatif prêt » et ne PROPOSE rien
+    (le sujet de CE fichier est le Selection Filter, pas cette garde)."""
+    ad = AdMirror.objects.create(
+        company=company, meta_id=f'ad-{adset.meta_id}',
+        name=f'Ad {adset.meta_id}', adset=adset)
+    AdCreativeMirror.objects.create(
+        company=company, ad=ad, creative_meta_id=f'cr-{adset.meta_id}')
+    return ad
 
 
 class NamePatternMatchTests(TestCase):
@@ -61,6 +74,8 @@ class SelectionFilterTests(TestCase):
             status='PAUSED')
         _seed_freq(self.company, match)
         _seed_freq(self.company, other)
+        _live_creative(self.company, match)
+        _live_creative(self.company, other)
         self._rule(name_pattern='PROSPECTION*')
         rules_engine.evaluate_company(self.company, now=TODAY)
         # Seul l'objet matchant produit une proposition ; l'autre est ignoré.
@@ -77,6 +92,8 @@ class SelectionFilterTests(TestCase):
             status='PAUSED')
         _seed_freq(self.company, a)
         _seed_freq(self.company, b)
+        _live_creative(self.company, a)
+        _live_creative(self.company, b)
         self._rule(name_pattern='')
         rules_engine.evaluate_company(self.company, now=TODAY)
         self.assertEqual(self._actions().count(), 2)
@@ -92,6 +109,7 @@ class SelectionFilterTests(TestCase):
             company=self.company, meta_id='future1',
             name='PROSPECTION-NOUVEAU', status='PAUSED')
         _seed_freq(self.company, future)
+        _live_creative(self.company, future)
         # Cooldown écoulé côté test : on relance sur une évaluation neuve.
         rule.refresh_from_db()
         rules_engine.evaluate_company(self.company, now=TODAY)

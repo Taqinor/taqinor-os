@@ -6,6 +6,8 @@ import { formatMoney, formatNumber, formatPercent, formatRatio, sortCockpitRows 
 import DataWindowNotice from './DataWindowNotice'
 import AdCreativePanel from './AdCreativePanel'
 import ManualActionMenu from './ManualActionMenu'
+// PUB118 — bouton « Recombiner (DCO) » (proposition seule, jamais un write).
+import DcoRecombineButton from './DcoRecombineButton'
 // PUB3 — panneau démographie/placement/région/heure, construit+testé mais
 // jamais monté nulle part avant cette tâche (breakdowns/ est synchronisé
 // chaque semaine côté back mais restait invisible).
@@ -497,6 +499,14 @@ export default function AdsCockpitScreen() {
               chaque soumission passe par la boîte d'approbation. */}
           <ManualActionMenu
             target={{ metaId: openRow.meta_id, scope: 'ad', name: openRow.nom }}
+            onProposed={load} />
+
+          {/* PUB118 — recombiner les créatifs GAGNANTS de la société en une ad
+              DCO sur l'AD SET parent de cette ad. Jamais d'automatisme : ce
+              clic ne fait que PROPOSER (l'ad naîtra PAUSED). */}
+          <DcoRecombineButton
+            adsetMetaId={openRow.adset_meta_id}
+            adsetName={openRow.adset_nom}
             onProposed={load} />
 
           {/* PUB8 — courbe de rétention (ad vidéo uniquement). */}

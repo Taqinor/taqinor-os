@@ -84,6 +84,19 @@ const adsengineApi = {
     adsCockpit: (params) => api.get('/adsengine/metrics/ads-cockpit/', { params }),
   },
 
+  // ── PUB118 — Recombinaison DCO : PROPOSE une ad à spec dynamique bâtie
+  // UNIQUEMENT sur les assets des créatifs mirorés gagnants (zéro clé, zéro
+  // dépense). Rien n'est publié : la proposition part en approbation et l'ad
+  // naît PAUSED.
+  dco: {
+    // ``config`` permet à l'appelant de gérer l'erreur LOCALEMENT
+    // (``{ suppressErrorToast: true }``) : la raison métier FR du backend est
+    // alors affichée à côté du bouton au lieu d'un toast générique.
+    recombine: (adsetMetaId, config) =>
+      api.post(`/adsengine/adsets/${adsetMetaId}/recombiner-dco/`, undefined,
+        config),
+  },
+
   // ── ENG31/ENG42 — Réconciliation Meta-vs-ERP (écart + statut) ──
   reconciliation: {
     list: (params) => api.get('/adsengine/reconciliation/', { params }),
