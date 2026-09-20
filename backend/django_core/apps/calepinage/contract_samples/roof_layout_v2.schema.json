@@ -428,14 +428,14 @@
       }
     },
     "poseSurface": {
-      "description": "CAL89 — une SURFACE DE POSE au sol. Tout ce qui est SAISI vit à la racine (contour, pente du terrain, inclinaison des tables, orientation des rangées) ; tout ce que le MOTEUR rend vit sous `engine` et n'est jamais recalculé par un écran — en particulier le pas inter-rangées, qui vient de CAL88 (`core/calepinage/surfaces/sol.py`) et n'a AUCUNE seconde formule côté client.",
+      "description": "CAL89/CAL91 — une SURFACE DE POSE qui n'est pas un pan de toiture : un champ au SOL, ou une OMBRIÈRE (carport). AUCUNE charge ni structure n'est calculée ici : une ombrière est une surface de pose, pas un ouvrage chiffré. Tout ce qui est SAISI vit à la racine (contour, pente du terrain, inclinaison des tables, orientation des rangées) ; tout ce que le MOTEUR rend vit sous `engine` et n'est jamais recalculé par un écran — en particulier le pas inter-rangées, qui vient de CAL88 (`core/calepinage/surfaces/sol.py`) et n'a AUCUNE seconde formule côté client.",
       "type": "object",
       "additionalProperties": true,
       "properties": {
         "kind": {
-          "description": "Genre de surface de pose. `sol` = centrale au sol (CAL89).",
+          "description": "Genre de surface de pose. `sol` = centrale au sol (CAL89) ; `ombriere` = ombrière / carport (CAL91), qui pave comme un toit incliné et se totalise avec le reste du site.",
           "type": "string",
-          "enum": ["sol"]
+          "enum": ["sol", "ombriere"]
         },
         "id": { "type": "string" },
         "label": { "type": "string" },
@@ -463,8 +463,21 @@
           "type": ["number", "null"]
         },
         "tiltDeg": {
-          "description": "Inclinaison des TABLES (degrés), SAISIE.",
+          "description": "Inclinaison des TABLES (degrés), SAISIE. Pour une ombrière, c'est l'inclinaison de la couverture.",
           "type": ["number", "null"]
+        },
+        "clearHeightM": {
+          "description": "CAL91 — HAUTEUR LIBRE sous l'ombrière (m), SAISIE. `null` = non renseignée : la couverture n'est alors PAS posée à une hauteur supposée, elle reste au sol et l'écran le dit. Ne concerne pas `kind: \"sol\"`.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "flowAzimuthDeg": {
+          "description": "CAL91 — SENS D'ÉCOULEMENT de la couverture (degrés, 0=N, 90=E, 180=S, 270=O), SAISI. C'est aussi l'azimut d'empilement envoyé au moteur pour cette ombrière.",
+          "type": ["number", "null"]
+        },
+        "buildingId": {
+          "description": "CAL91 — bâtiment auquel cette surface de pose est rattachée, MÊME clé que `zones[].buildingId` (CAL59) : c'est elle qui fait apparaître l'ombrière dans les totaux PAR BÂTIMENT à côté des pans de toiture. Absente = bâtiment unique.",
+          "type": "string"
         },
         "engine": { "$ref": "#/$defs/posePlanMoteur" }
       }

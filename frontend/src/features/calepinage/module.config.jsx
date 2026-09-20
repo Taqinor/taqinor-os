@@ -91,6 +91,11 @@ const SchemaUnifilairePanel = lazy(() => import('./SchemaUnifilairePanel'))
    dans SON document `roof_layout`), donc un deep-link comme la pente ou le
    pompage — et le mode toiture n'est touché nulle part. */
 const ModeTerrain = lazy(() => import('./ModeTerrain'))
+/* CAL91 — l'OMBRIÈRE / carport : une surface de pose comme une autre (emprise,
+   hauteur libre, inclinaison, sens d'écoulement SAISIS ; pose rendue par le
+   moteur), qui se totalise par bâtiment avec les pans de toiture. Aucune
+   charge ni structure n'y est chiffrée. Contextuelle à UN calepinage. */
+const Ombriere = lazy(() => import('./Ombriere'))
 
 const config = {
   key: 'calepinage',
@@ -143,6 +148,8 @@ const config = {
     { path: '/calepinage/:id/pente', component: SaisiePente, roles: ROLES },
     // CAL89 — le champ au SOL de CE calepinage (mode terrain).
     { path: '/calepinage/:id/terrain', component: ModeTerrain, roles: ROLES },
+    // CAL91 — l'ombrière / carport de CE calepinage.
+    { path: '/calepinage/:id/ombriere', component: Ombriere, roles: ROLES },
     // contextuelle: le schéma unifilaire d'UN calepinage, ouvert depuis son atelier (CAL195) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/schema', component: SchemaUnifilairePanel, roles: ROLES },
   ],

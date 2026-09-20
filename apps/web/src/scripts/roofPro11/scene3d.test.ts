@@ -20,6 +20,7 @@ import {
   projectPlanView,
   type MixedRidgePan,
   construireChampPose,
+  construireOmbriere,
   pasInterRangeeMesure,
   type PlanMoteurSurface,
 } from './scene3d';
@@ -471,6 +472,50 @@ describe('CAL89 — champ au sol : placer le plan du moteur, ne rien recalculer'
       expect(t.kit).toBe('portrait');
       expect(t.largeurM).toBeCloseTo(4, 9);
       expect(t.profondeurM).toBeCloseTo(2.3, 9);
+    }
+  });
+});
+
+// CAL91 — l'OMBRIÈRE réutilise la construction de CAL89 ; la SEULE différence
+// est la hauteur libre, qui n'est jamais supposée. Aucune charge, aucune
+// structure n'est produite par cette construction : elle place des tables.
+describe('CAL91 — ombrière : posée à la hauteur SAISIE, jamais à une hauteur supposée', () => {
+  const PLAN: PlanMoteurSurface = {
+    surface: 'OMBRIERE',
+    modules: 24,
+    rangees: [{ y0: 0 }, { y0: 2.5 }],
+    tables: [
+      { x0: 0, x1: 6, y0: 0, y1: 2.3, kit: 'terrain' },
+      { x0: 0, x1: 6, y0: 2.5, y1: 4.8, kit: 'terrain' },
+    ],
+  };
+
+  it('hauteur libre saisie → toutes les travées sont levées d’autant', () => {
+    const champ = construireOmbriere(PLAN, { tiltDeg: 7, hauteurLibreM: 2.5, aireTerrainM2: 60 });
+    expect(champ.tables).toHaveLength(2);
+    const bas = champ.tables.find((t) => t.cy < 2) as { z: number };
+    expect(bas.z).toBeCloseTo(2.5, 9);
+    expect(champ.nonMesure.join(' ')).not.toMatch(/hauteur libre/i);
+  });
+
+  it('hauteur libre absente → la couverture n’est PAS levée, et le manque est dit', () => {
+    const champ = construireOmbriere(PLAN, { tiltDeg: 7, aireTerrainM2: 60 });
+    expect(champ.tables.every((t) => t.z === 0)).toBe(true);
+    expect(champ.nonMesure.join(' ')).toMatch(/hauteur libre/i);
+  });
+
+  it('elle pave comme un toit incliné : compte, pas et taux viennent du moteur', () => {
+    const champ = construireOmbriere(PLAN, { tiltDeg: 7, hauteurLibreM: 2.5, aireTerrainM2: 60 });
+    expect(champ.modules).toBe(24); // le compte du moteur, pas les 2 travées
+    expect(champ.pasInterRangeeM).toBeCloseTo(2.5, 9);
+    expect(champ.tauxOccupation).toBeCloseTo((2 * 6 * 2.3) / 60, 9);
+  });
+
+  it('aucune charge, aucune masse, aucune structure n’est produite', () => {
+    const champ = construireOmbriere(PLAN, { tiltDeg: 7, hauteurLibreM: 2.5, aireTerrainM2: 60 });
+    const cles = [...Object.keys(champ), ...Object.keys(champ.tables[0])].join(' ').toLowerCase();
+    for (const interdit of ['charge', 'masse', 'poteau', 'structure', 'prix']) {
+      expect(cles).not.toContain(interdit);
     }
   });
 });

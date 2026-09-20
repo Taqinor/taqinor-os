@@ -2586,3 +2586,50 @@ export function construireChampPose(
     nonMesure,
   };
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CAL91 — L'OMBRIÈRE (CARPORT) EST UNE SURFACE DE POSE, PAS UN OUVRAGE CHIFFRÉ.
+   ----------------------------------------------------------------------------
+   Constat : rien dans le dépôt ne traitait l'ombrière (grep `carport|ombrière` :
+   zéro) alors que c'est une demande courante des clients tertiaires. Elle pave
+   comme un toit incliné et se totalise avec le reste du site — donc elle
+   réutilise TELLE QUELLE la construction de CAL89 : le plan vient du moteur,
+   l'atelier le place.
+
+   CE QUI CHANGE PAR RAPPORT AU SOL, ET RIEN D'AUTRE : la HAUTEUR LIBRE. Au sol,
+   une hauteur absente vaut 0 — c'est le sol, et c'est juste. Sous une ombrière,
+   une hauteur absente ne vaut RIEN : on ne pose pas une couverture à une
+   hauteur supposée. `construireOmbriere` refuse donc de deviner : la couverture
+   reste à 0 et le manque est DIT (`nonMesure`), jamais comblé.
+
+   AUCUNE CHARGE, AUCUNE STRUCTURE : ni descente de charges, ni section de
+   poteau, ni masse. Ce bloc place des tables ; il ne dimensionne aucun ouvrage
+   (la tâche l'exige explicitement, et un test relit la source pour le tenir).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * CAL91 — le champ d'une OMBRIÈRE, posé à sa hauteur libre SAISIE.
+ *
+ * Hauteur libre absente ⇒ la couverture n'est pas levée (z = pente du terrain
+ * seule) et `nonMesure` le dit : une ombrière sans hauteur mesurée n'est pas
+ * une ombrière à 2,50 m « par défaut ».
+ */
+export function construireOmbriere(
+  plan: PlanMoteurSurface | null | undefined,
+  opts: OptionsChampPose,
+): ChampPose {
+  const hauteurConnue = Number.isFinite(opts.hauteurLibreM as number)
+    && (opts.hauteurLibreM as number) > 0;
+  const champ = construireChampPose(plan, {
+    ...opts,
+    hauteurLibreM: hauteurConnue ? opts.hauteurLibreM : 0,
+  });
+  if (hauteurConnue) return champ;
+  return {
+    ...champ,
+    nonMesure: [
+      ...champ.nonMesure,
+      'hauteur libre non renseignée : la couverture n’est pas levée (aucune hauteur supposée)',
+    ],
+  };
+}
