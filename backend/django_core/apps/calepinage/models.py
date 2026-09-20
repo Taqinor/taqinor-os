@@ -522,6 +522,7 @@ class ParametresCalepinage(TenantModel):
         'presets',             # CAL197 — presets de conception
         'favoris_materiel',    # CAL200 — matériel épinglé
         'gabarits_dossier',    # CAL190 — gabarits de dossier réglementaire
+        'norme_electrique',    # CAL130 — norme applicable + coefficients
     )
 
     imagerie = models.JSONField('Imagerie et pays', default=dict, blank=True)
@@ -552,6 +553,27 @@ class ParametresCalepinage(TenantModel):
     def sections_inconnues(cls, donnees):
         """Les clés de ``donnees`` qui ne sont pas des sections admises."""
         return sorted(set(donnees or {}) - set(cls.SECTIONS))
+
+    #: CAL130 — LA NORME ÉLECTRIQUE APPLICABLE et ses coefficients SAISIS.
+    #:
+    #: ``core/electrique`` cite des sources françaises en dur (ampacité
+    #: « IEC 60364-5-52 tableau B.52.4, reprise NF C 15-100 », chute DC cible
+    #: 1,5 % / max 3 % « UTE C 15-712-1 », parafoudre au-delà de 10 m, DDR
+    #: 300 mA en régime TT) et le moteur rappelle lui-même qu'« aucun texte
+    #: normatif marocain n'est présent dans ce dépôt ».
+    #:
+    #: RÈGLE D5 (fondateur) : pour ``pays=ma``, AUCUNE norme n'est supposée.
+    #: Tant que la société n'en a pas choisi une, le calcul concerné est OMIS
+    #: avec sa mention — jamais « NF C 15-100 » imprimée sur un chantier
+    #: casablancais. Le jeu français ne s'applique que s'il est explicitement
+    #: sélectionné (naturellement pour ``pays=fr``).
+    #:
+    #: Le champ est AJOUTÉ EN FIN DE CLASSE (migration ``0002``) : la section
+    #: vide ``{}`` veut dire « aucune norme choisie », ce qui est exactement
+    #: le comportement d'aujourd'hui — aucune société existante ne change de
+    #: comportement en recevant ce champ.
+    norme_electrique = models.JSONField('Norme électrique applicable',
+                                        default=dict, blank=True)
 
     def clean(self):
         """Chaque section est un OBJET — jamais une liste ni un scalaire."""

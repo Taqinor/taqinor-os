@@ -29,6 +29,7 @@ SOUS_MODULES = (
     'moteur',         # appels au moteur pur core.calepinage
     'photos',         # CAL52 — photos de site (sous-ressource du pivot)
     'releve',         # CAL64 — relevé terrain mobile (sous-ressource)
+    'electrique',     # CAL125/CAL128 — sous-ressources électriques (@action)
     'sorties',        # PDF / SVG
     'io_layout',      # import/export du document roof_layout
     'equipements',    # CAL243 — @action equipements, rattachée depuis urls.py
