@@ -16,7 +16,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('installations', '0105_cht23_stagemodele_photos_checklist_min'),
+        ('installations', '0107_ntmob9_geofence_type_franchissement'),
     ]
 
     operations = [
