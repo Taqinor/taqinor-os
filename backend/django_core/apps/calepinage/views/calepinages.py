@@ -54,7 +54,9 @@ from ..permissions import (
     PeutVoirCalepinage,
 )
 from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
-from ..services.devis import DevisRefuse, generer_devis
+from ..services.devis import (
+    DevisRefuse, generer_devis, resynchroniser_devis,
+)
 from ..services.layout import LayoutRefuse, enregistrer_layout
 from ..services.variantes import (
     VarianteRefusee, creer_variante, modifier_variante, retenir_variante,
@@ -258,6 +260,25 @@ class CalepinageViewSet(ActionIdempotenteMixin, CompanyScopedModelViewSet):
              'statut': devis.statut, 'layout_hash': devis.layout_hash or None,
              'deduplique': not cree},
             status=(status.HTTP_201_CREATED if cree else status.HTTP_200_OK))
+
+    @action(detail=True, methods=['post'], url_path='sync-devis',
+            permission_classes=[PeutGererCalepinage])
+    def sync_devis(self, request, pk=None):
+        """CAL25 — resynchronise le devis lié sur la conception COURANTE.
+
+        ``apps.ventes.services.sync_devis_from_layout`` fait le travail
+        CHIRURGICAL (quantités, batterie, onduleur accordé au scénario) et
+        préserve prix négociés, remises, sections et notes. Son 409 sur un
+        devis émis — avec ``revision_possible`` — se propage TEL QUEL : ni
+        traduit, ni adouci. Sans devis lié, le refus NOMME le geste à faire
+        (« Générer le devis »).
+        """
+        calepinage = self.get_object()
+        try:
+            resultat = resynchroniser_devis(calepinage, user=request.user)
+        except DevisRefuse as refus:
+            return Response(_refus_devis(refus), status=refus.statut)
+        return Response(resultat)
 
     # ── Les variantes : CRUD, bascule idempotente, comparatif ──────────────
     @action(detail=True, methods=['get', 'post'], url_path='variantes',
