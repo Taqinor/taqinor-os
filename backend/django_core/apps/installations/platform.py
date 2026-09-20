@@ -13,7 +13,9 @@ Déclare ce que Installations expose aux surfaces transverses (voir
   historique (``installations.installation``) ; SCA34 ajoute
   ``installations.ordresoustraitance`` et SCA36 ``installations.demandeachat``
   (pilotes du kit ``core.documents`` — chatter câblé sur leurs viewsets via
-  ``ChatterViewSetMixin``).
+  ``ChatterViewSetMixin``) ; NTP2P44 ajoute ``installations.rfq`` (chatter
+  générique + notes manuelles sur ``RFQViewSet``, même mixin, sans passer par
+  un modèle ``*Activity`` maison — voir ``apps/records/services.py``).
 """
 from __future__ import annotations
 
@@ -23,11 +25,14 @@ PLATFORM = {
     'searchable_models': ['installations.installation'],
     # ARC30 — cibles chatter/records (records.ALLOWED_TARGETS). SCA34 ajoute
     # ordresoustraitance, SCA36 demandeachat (pilotes kit core.documents,
-    # chatter câblé sur leurs viewsets).
+    # chatter câblé sur leurs viewsets). NTP2P44 ajoute rfq (même patron :
+    # ChatterViewSetMixin sur RFQViewSet, auto-log ancien→nouveau statut posé
+    # dans les actions de vue existantes — aucun modèle *Activity maison).
     'record_targets': [
         'installations.installation',
         'installations.ordresoustraitance',
         'installations.demandeachat',
+        'installations.rfq',
     ],
     'customfield_models': [],
     'import_specs': [],
