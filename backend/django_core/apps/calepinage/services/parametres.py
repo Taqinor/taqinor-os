@@ -108,8 +108,14 @@ def _normaliseurs():
     de ce module ; le résoudre au chargement ferait un cycle.
     """
     from .site import SECTION as SECTION_IMAGERIE, normaliser_section_imagerie
+    from .zones_reglementaires import (
+        SECTION as SECTION_ZONES, normaliser_section_zones_types,
+    )
 
-    return {SECTION_IMAGERIE: normaliser_section_imagerie}
+    return {
+        SECTION_IMAGERIE: normaliser_section_imagerie,
+        SECTION_ZONES: normaliser_section_zones_types,
+    }
 
 
 def _normaliser(donnees):
