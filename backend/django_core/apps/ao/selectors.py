@@ -921,3 +921,65 @@ def calepinage_json(document, *, company, user=None, tiroirs=True,
 
     return calepiner(document, company=company, user=user, tiroirs=tiroirs,
                      suggestions=suggestions, budget=budget)
+
+
+def presets_calepinage(company, *, portee=None):
+    """CAL197 — les presets de calepinage AO de ``company``, lecture pure.
+
+    Point d'entrée cross-app pour ``apps.calepinage`` : lire les presets
+    (``PresetCalepinage``, AOF27) sans jamais importer ``apps.ao.models``.
+    Bornée société — ``None`` rend un queryset VIDE, jamais « tous les
+    presets ». ``portee`` filtre optionnellement (``villa``/``ao``/
+    ``societe``, ``PresetCalepinage.Portee``).
+    """
+    from .models import PresetCalepinage
+
+    if company is None:
+        return PresetCalepinage.objects.none()
+    qs = PresetCalepinage.objects.filter(company=company)
+    if portee:
+        qs = qs.filter(portee=portee)
+    return qs.order_by('-par_defaut', 'nom')
+
+
+def kits_de_pose(company, *, actifs_seulement=True):
+    """CAL198 — le catalogue des kits de pose AO (``KitCalepinage``, AOF26),
+    lecture pure, bornée société.
+
+    Point d'entrée cross-app pour ``apps.calepinage`` : le module construit
+    SON kit de pose (structures + fixations du catalogue, cotes réelles du
+    module posé) à partir de ces lignes, jamais en important
+    ``apps.ao.models``. Chaque ligne porte ``produit_id`` (``None`` si le kit
+    n'a plus de produit lié) et ``produit_archive`` (le produit existe mais
+    est archivé — signalé, jamais tu). ``None`` rend une liste VIDE.
+    """
+    from .models import KitCalepinage
+
+    if company is None:
+        return []
+    qs = (KitCalepinage.objects
+          .filter(company=company)
+          .select_related('produit'))
+    if actifs_seulement:
+        qs = qs.filter(actif=True)
+    lignes = []
+    for kit in qs.order_by('code'):
+        produit = kit.produit
+        lignes.append({
+            'id': kit.pk,
+            'code': kit.code,
+            'libelle': kit.libelle,
+            'mode': kit.mode,
+            'modules_par_kit': kit.modules_par_kit,
+            'pas_rangee_m': float(kit.pas_rangee_m),
+            'longueur_pente_m': float(kit.longueur_pente_m),
+            'faitage_m': float(kit.faitage_m),
+            'emprise_transversale_m': float(kit.emprise_transversale_m),
+            'puissance_module_w': kit.puissance_module_w,
+            'inclinaison_deg': float(kit.inclinaison_deg),
+            'orientation_modules': kit.orientation_modules,
+            'actif': kit.actif,
+            'produit_id': produit.pk if produit is not None else None,
+            'produit_archive': bool(produit and produit.is_archived),
+        })
+    return lignes

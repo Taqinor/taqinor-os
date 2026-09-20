@@ -432,3 +432,88 @@ def parametres_de_societe(company):
         section: (getattr(reglages, section, None) or {})
         for section in SECTIONS_PARAMETRES
     }
+
+
+def presets_de_societe(company):
+    """CAL197 — les presets de conception disponibles pour l'atelier.
+
+    Joint DEUX sources, sans jamais copier l'une dans l'autre :
+
+    * ``module`` — les jeux PROPRES au module, section ``presets.jeux`` de
+      ``ParametresCalepinage`` (``services.presets.jeux_de_societe``) ;
+    * ``societe_ao`` — les presets AO de portée société
+      (``apps.ao.selectors.presets_calepinage``), lus tels quels.
+
+    Lecture PURE, bornée société — ``None`` rend les deux listes vides.
+    """
+    from apps.ao.selectors import presets_calepinage
+
+    from .services.presets import jeux_de_societe
+
+    module = jeux_de_societe(company)
+    ao = presets_calepinage(company, portee='societe') if company else []
+    return {
+        'module': module,
+        'societe_ao': [
+            {
+                'id': preset.pk,
+                'nom': preset.nom,
+                'parametres': preset.parametres,
+                'par_defaut': preset.par_defaut,
+                'description': preset.description,
+            }
+            for preset in ao
+        ],
+    }
+
+
+def kits_de_pose_disponibles(company):
+    """CAL198 — les kits de pose du catalogue AO, tels que le module les voit.
+
+    Lecture PURE : point d'entrée unique pour l'atelier (``apps.ao.selectors.
+    kits_de_pose``) — aucune donnée n'est recopiée en base côté module."""
+    from apps.ao.selectors import kits_de_pose
+
+    if company is None:
+        return []
+    return kits_de_pose(company)
+
+
+def favoris_materiel_de_societe(company):
+    """CAL200 — le matériel « favori conception » de la société, résolu.
+
+    La section ``favoris_materiel`` de ``ParametresCalepinage`` (CAL45) ne
+    porte que des identifiants produit (``{'modules': [...], 'onduleurs':
+    [...]}``) — ce sélecteur les résout sur le catalogue stock
+    (``apps.stock.selectors``) pour rendre marque/puissance/dimensions,
+    JAMAIS une fiche technique inventée. Un produit favori dont l'id est
+    devenu introuvable est simplement OMIS (le favori pointe dans le vide) ;
+    un produit trouvé mais SANS dimensions reste dans la liste, signalé
+    ``dimensions_renseignees: False`` — jamais une taille par défaut.
+    """
+    from apps.stock.selectors import dimensions_de_pose, get_produit_scoped
+
+    favoris = (parametres_de_societe(company).get('favoris_materiel') or {})
+    resultat = {}
+    for categorie, ids in favoris.items():
+        if not isinstance(ids, list):
+            continue
+        lignes = []
+        for produit_id in ids:
+            produit = get_produit_scoped(company, produit_id)
+            if produit is None:
+                continue
+            dims = dimensions_de_pose(produit)
+            lignes.append({
+                'id': produit.pk,
+                'nom': produit.nom,
+                'marque': getattr(produit, 'marque', '') or '',
+                'puissance_wc': dims.get('puissance_wc'),
+                'longueur_mm': dims.get('longueur_mm'),
+                'largeur_mm': dims.get('largeur_mm'),
+                'dimensions_renseignees': bool(
+                    dims.get('longueur_mm') and dims.get('largeur_mm')),
+                'archive': bool(getattr(produit, 'is_archived', False)),
+            })
+        resultat[categorie] = lignes
+    return resultat
