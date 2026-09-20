@@ -29,7 +29,7 @@ jamais la vue cross-tenant NTOBS4 des crédits dus de toutes les sociétés.
 ``latence_p95_ms`` et ``credit_du_montant`` peuvent valoir ``null`` : c'est
 « non mesuré / inconnu » — jamais un chiffre de remplissage.
 """
-from datetime import datetime
+from datetime import date
 
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
@@ -86,7 +86,11 @@ class PublicFiabiliteSlaView(PublicFiabiliteBaseView):
     def get(self, request, periode):
         try:
             annee_str, mois_str = str(periode).split('-')
-            periode_date = datetime(int(annee_str), int(mois_str), 1).date()
+            # `date(...)` et non `datetime(...).date()` : une DATE civile n'a
+            # pas de fuseau, donc rien à rendre « aware » — et la garde
+            # `scripts/check_naive_datetime.py` refuse à juste titre toute
+            # construction de `datetime` naïf.
+            periode_date = date(int(annee_str), int(mois_str), 1)
         except (ValueError, TypeError):
             return Response(
                 {'detail': 'Format de période invalide (attendu YYYY-MM).'},
