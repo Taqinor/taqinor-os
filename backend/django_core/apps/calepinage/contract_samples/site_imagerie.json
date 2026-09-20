@@ -29,7 +29,9 @@
     "gabarits_disposition": {},
     "presets": {},
     "favoris_materiel": {},
-    "gabarits_dossier": {}
+    "gabarits_dossier": {},
+    "norme_electrique": {},
+    "lestage": {}
   },
   "exemple_vide": {
     "imagerie": {},
@@ -38,7 +40,9 @@
     "gabarits_disposition": {},
     "presets": {},
     "favoris_materiel": {},
-    "gabarits_dossier": {}
+    "gabarits_dossier": {},
+    "norme_electrique": {},
+    "lestage": {}
   },
   "exemple_section_declaree_sans_valeur": {
     "imagerie": {
@@ -56,6 +60,8 @@
     "gabarits_disposition": {},
     "presets": {},
     "favoris_materiel": {},
-    "gabarits_dossier": {}
+    "gabarits_dossier": {},
+    "norme_electrique": {},
+    "lestage": {}
   }
 }

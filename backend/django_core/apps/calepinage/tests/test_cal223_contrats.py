@@ -62,6 +62,8 @@ SANS_PRODUCTEUR_PUR = {
         'sérialiseur DRF sur une instance en base (test dédié CAL1)',
     'calepinage_design_context.json':
         'contexte lu sur le devis et la société en base (CAL231)',
+    'calepinage_horizon.json':
+        'profil PVGIS lu sur le calepinage en base (CAL92/93)',
     'calepinage_pompage.json':
         'dimensionnement qui lit le catalogue produits en base (CAL155-159)',
     'calepinage_resultat.json':

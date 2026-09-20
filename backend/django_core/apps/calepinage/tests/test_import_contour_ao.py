@@ -156,9 +156,15 @@ class LesRefusDeLImportContourAo(BaseImportContourAo):
 
     def test_une_affaire_deposee_rend_409_avec_le_motif_du_serveur(self):
         from apps.ao import selectors as selectors_ao
+        from apps.ao.services import changer_statut_ao
 
-        self.affaire.statut = AppelOffre.Statut.DEPOSE
-        self.affaire.save(update_fields=['statut'])
+        # AOF13 : le statut d'un AO ne s'écrit QUE par son service
+        # (la table des transitions et les événements de dépôt en
+        # dépendent) — un ``save(update_fields=['statut'])`` lève.
+        changer_statut_ao(self.affaire, AppelOffre.Statut.EN_PREPARATION,
+                          user=self.user)
+        changer_statut_ao(self.affaire, AppelOffre.Statut.DEPOSE,
+                          user=self.user)
         reponse = self.api.post(url_import(self.calepinage.pk),
                                 {'toiture': self.toiture.pk}, format='json')
         self.assertEqual(reponse.status_code, 409, reponse.data)

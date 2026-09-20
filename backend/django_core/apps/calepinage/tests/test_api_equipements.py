@@ -99,7 +99,11 @@ class ActionEquipementsTest(BaseApiCalepinage):
         self.assertEqual(bloc_panneau['specs']['pmax_wc'], Decimal('550'))
         self.assertIn('pmax_wc', bloc_panneau['champs_renseignes'])
         self.assertNotIn('pmax_wc', bloc_panneau['champs_manquants'])
-        self.assertIn('bifacial', bloc_panneau['champs_manquants'])
+        # ``bifacial`` est un BooleanField à défaut (jamais NULL) : il est
+        # TOUJOURS renseigné dès qu'il y a une fiche. Le champ qui prouve
+        # la complétude est donc un champ réellement optionnel.
+        self.assertIn('noct_c', bloc_panneau['champs_manquants'])
+        self.assertIn('bifacial', bloc_panneau['champs_renseignes'])
         self.assertEqual(bloc_panneau['sources']['pmax_wc'], 'fiche')
         self.assertEqual(bloc_panneau['sources']['quantite'], 'saisie')
 
@@ -120,10 +124,15 @@ class ActionEquipementsTest(BaseApiCalepinage):
 
         reponse = self.api.get(url_equipements(self.calepinage.pk))
         bloc = reponse.data['panneau']
-        self.assertEqual(bloc['specs'], {})
-        self.assertEqual(bloc['champs_renseignes'], [])
+        # Une fiche NUE ne publie AUCUNE mesure : les seules clés qui
+        # subsistent sont les booléens à défaut (jamais NULL en base),
+        # ici ``bifacial`` — tout le reste est omis, donc manquant.
+        self.assertEqual(bloc['specs'], {'bifacial': False})
+        self.assertEqual(bloc['champs_renseignes'], ['bifacial'])
+        self.assertNotIn('bifacial', bloc['champs_manquants'])
         self.assertGreater(len(bloc['champs_manquants']), 0)
-        self.assertEqual(bloc['sources'], {'quantite': 'saisie'})
+        self.assertEqual(bloc['sources'],
+                         {'quantite': 'saisie', 'bifacial': 'fiche'})
 
     # ── Une ligne « avec batterie » n'est jamais retenue par défaut ─────
     def test_ligne_variante_avec_exclue(self):
