@@ -10,12 +10,16 @@ import SunDiagram, { COURBES_REPERE } from './SunDiagram'
    ----------------------------------------------------------------------------
    Constat de la tâche : l'atelier ne connaît que l'ombrage PROCHE tracé à la
    main — une montagne à l'ouest n'existe pas pour lui. Le service CAL92
-   (`apps/calepinage/services/horizon.py`) sait obtenir un profil PVGIS
-   (`printhorizon`) mais N'EST PAS ENCORE exposé par une route HTTP — cet écran
-   fonctionne donc pour l'instant sur le SECOND chemin explicitement autorisé
-   par la tâche : « depuis l'endpoint CAL92, OU le profil saisi par
-   l'utilisateur ». Un relevé terrain (jumelles + boussole, ou une carte IGN)
-   bat de toute façon un modèle numérique de terrain sur un site encaissé.
+   (`apps/calepinage/services/horizon.py`) obtient un profil PVGIS
+   (`printhorizon`), désormais exposé par `GET
+   .../calepinages/<pk>/horizon/` (contrat
+   `apps/calepinage/contract_samples/calepinage_horizon.json`) : le bouton
+   « Récupérer depuis PVGIS » l'appelle et remplit le profil ; la saisie
+   manuelle reste toujours possible ensuite — un relevé terrain (jumelles +
+   boussole, ou une carte IGN) bat de toute façon un modèle numérique de
+   terrain sur un site encaissé. Sans épingle posée ou PVGIS injoignable, le
+   serveur rend `points: []` et un `detail` explicite (CAL92) : affiché tel
+   quel, jamais un horizon plat inventé.
 
    PERSISTANCE : le profil voyage dans le MÊME document que la pose (CAL18
    `roof_layout`, endpoint déjà réel — `layout`/`enregistrerLayoutCalepinage`),
@@ -49,6 +53,7 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
   const [saisie, setSaisie] = useState({ azimut: '', hauteur: '' })
   const [message, setMessage] = useState(null)
   const [chargement, setChargement] = useState(!!calepinageId)
+  const [recuperation, setRecuperation] = useState(false)
 
   useEffect(() => {
     if (!calepinageId) return undefined
@@ -91,6 +96,26 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
     setPoints((prev) => sortedHorizonPoints(prev).filter((_, i) => i !== index))
   }
 
+  function recupererDepuisPvgis() {
+    if (!calepinageId) return
+    setRecuperation(true)
+    setMessage(null)
+    Promise.resolve(calepinageApi.calepinages.horizon(calepinageId))
+      .then((res) => {
+        const donnees = res?.data ?? {}
+        const profil = Array.isArray(donnees.points) ? donnees.points : []
+        if (!profil.length) {
+          setMessage(donnees.detail || 'PVGIS n’a rendu aucun point d’horizon exploitable.')
+          return
+        }
+        setPoints(sortedHorizonPoints(profil))
+        setSource('pvgis')
+        setMessage(`Profil PVGIS récupéré (${profil.length} points) — à enregistrer pour l’appliquer.`)
+      })
+      .catch(() => setMessage('Le profil d’horizon n’a pas pu être récupéré depuis PVGIS.'))
+      .finally(() => setRecuperation(false))
+  }
+
   function enregistrer() {
     const propres = sortedHorizonPoints(points)
     const document = { ...(layout ?? {}) }
@@ -124,6 +149,17 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
         Saisissez au moins deux points (azimut, hauteur angulaire) pour l’activer ; sans
         eux, rien ne change.
       </p>
+
+      <div className="mt-3">
+        <button
+          type="button"
+          onClick={recupererDepuisPvgis}
+          disabled={recuperation || !calepinageId}
+          className="rounded border border-white/20 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50"
+        >
+          {recuperation ? 'Récupération…' : 'Récupérer depuis PVGIS'}
+        </button>
+      </div>
 
       <div className="mt-4">
         <SunDiagram

@@ -111,6 +111,12 @@ const calepinageApi = {
     // clé de prix d'achat ni de marge n'y transite (gardé par CAL122).
     equipements: (id) => api.get(`${pivot(id)}equipements/`),
 
+    // CAL92/93 — le profil d'horizon PVGIS du site (`printhorizon`),
+    // contrat `contract_samples/calepinage_horizon.json`. Lecture PURE :
+    // n'enregistre rien — `HorizonPanel.jsx` persiste ensuite le profil
+    // choisi via `layout`/`enregistrerLayoutCalepinage` (CAL18).
+    horizon: (id) => api.get(`${pivot(id)}horizon/`),
+
     // CAL159 — le dimensionnement du pompage (puits, besoin, réservoir,
     // courbe + point de fonctionnement, 12 volumes mensuels, pompe/variateur),
     // contrat `contract_samples/calepinage_pompage.json`. POST parce que

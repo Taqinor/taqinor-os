@@ -1,0 +1,31 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/horizon/",
+  "pourquoi": "CONTRAT D'ABORD (PACT10 / PACT11). CAL92 (`apps/calepinage/services/horizon.py`, `ClientHorizon`) sait déjà obtenir le profil d'horizon PVGIS (`printhorizon`) mais n'était exposé par AUCUNE route HTTP ; CAL93 (`frontend/src/features/calepinage/HorizonPanel.jsx`) ne connaît que la saisie manuelle en attendant cette route — deux lanes file-disjointes qui inventeraient mécaniquement deux formes sans ce fichier posé seul en premier (incident du 03/08/2026). L'action lit l'épingle du site (`pin.lat`/`pin.lng`, la même que `contexte_geographique`/`roof_layout`), interroge PVGIS `printhorizon` et republie chaque point dans le repère de FACE de l'écran (`azimuthDeg`, 0=Nord — jamais le repère PVGIS 0=Sud consommé tel quel, cf. `azimut_de_face`), avec `heightDeg` en degrés au-dessus de l'horizontale. `source` vaut `pvgis` (jamais `saisie` : cette route ne sert QUE l'appel réseau, la correction manuelle reste locale à l'écran jusqu'à l'enregistrement dans `roof_layout.horizonProfile`). `source_url` est l'URL PVGIS exacte appelée (traçabilité, comme les autres clients PVGIS du module) et `obtenu_le` l'horodatage ISO 8601 de l'appel. AUCUN horizon plat n'est jamais inventé (CAL92) : sans épingle posée, ou PVGIS injoignable/incohérent, `points` reste `[]`, `source` vaut `null` et `detail` NOMME la raison en français — jamais une erreur HTTP pour un état attendu de l'atelier (un calepinage sans pin est un état normal, pas une panne).",
+  "exemple": {
+    "calepinage": 1,
+    "source": "pvgis",
+    "points": [
+      {"azimuthDeg": 0.0, "heightDeg": 2.3},
+      {"azimuthDeg": 90.0, "heightDeg": 1.9},
+      {"azimuthDeg": 180.0, "heightDeg": 1.5},
+      {"azimuthDeg": 270.0, "heightDeg": 0.8}
+    ],
+    "hauteurMaxDeg": 2.3,
+    "baseHorizon": "DEM-calculated",
+    "altitudeM": 44.0,
+    "source_url": "https://re.jrc.ec.europa.eu/api/v5_3/printhorizon?lat=33.5731&lon=-7.5898&outputformat=json",
+    "obtenu_le": "2026-09-20T10:15:00Z",
+    "detail": null
+  },
+  "exemple_vide": {
+    "calepinage": 2,
+    "source": null,
+    "points": [],
+    "hauteurMaxDeg": null,
+    "baseHorizon": null,
+    "altitudeM": null,
+    "source_url": null,
+    "obtenu_le": null,
+    "detail": "Aucune épingle n'est posée sur ce calepinage : impossible d'interroger PVGIS sans coordonnées."
+  }
+}

@@ -1,19 +1,28 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { reponseContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
    CAL93 — L'HORIZON LOINTAIN : au moins deux points pour s'activer, jamais un
    horizon inventé, TOUJOURS un poste séparé de l'ombrage proche.
+
+   CAL92 — le bouton « Récupérer depuis PVGIS » consomme
+   `calepinageApi.calepinages.horizon(id)` (contrat
+   `apps/calepinage/contract_samples/calepinage_horizon.json`, PACT13 : la
+   charge utile vient de l'exemple COMMITTÉ, jamais d'un mock écrit à la
+   main). La saisie manuelle reste possible ensuite.
    ========================================================================== */
 
 const layout = vi.fn()
 const enregistrerLayoutCalepinage = vi.fn()
+const horizon = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       layout: (...a) => layout(...a),
       enregistrerLayoutCalepinage: (...a) => enregistrerLayoutCalepinage(...a),
+      horizon: (...a) => horizon(...a),
     },
   },
 }))
@@ -31,6 +40,8 @@ beforeEach(() => {
   layout.mockResolvedValue({ data: { roof_layout: {} } })
 })
 afterEach(() => { cleanup() })
+
+const CONTRAT = 'calepinage_horizon'
 
 /* ── 1. Le moteur pur (mêmes garanties que apps/web/tests/horizonEngine.test.ts) ── */
 
@@ -156,6 +167,51 @@ describe('CAL93 — l’écran', () => {
     await screen.findByTestId('cal-horizon')
     expect(screen.getByLabelText(/Azimut/)).toHaveAttribute('step', 'any')
     expect(screen.getByLabelText(/Hauteur angulaire/)).toHaveAttribute('step', 'any')
+  })
+})
+
+describe('CAL92 — bouton « Récupérer depuis PVGIS »', () => {
+  it('remplit le profil depuis l’exemple de contrat et affiche sa source', async () => {
+    layout.mockResolvedValue({
+      data: { roof_layout: { pin: { lat: 33.5731, lng: -7.5898 } } },
+    })
+    horizon.mockResolvedValue(reponseContrat('calepinage', CONTRAT))
+    rendre()
+    await screen.findByTestId('cal-horizon')
+
+    fireEvent.click(screen.getByText('Récupérer depuis PVGIS'))
+    await waitFor(() => expect(horizon).toHaveBeenCalledWith(7))
+
+    const exemple = exempleContrat('calepinage', CONTRAT)
+    await waitFor(() =>
+      expect(screen.getByTestId('cal-horizon-points').children).toHaveLength(exemple.points.length))
+    expect(screen.getByText(/Profil PVGIS récupéré/)).toBeInTheDocument()
+  })
+
+  it('sans épingle posée, le serveur rend `points: []` et le dit — rien n’est ajouté', async () => {
+    horizon.mockResolvedValue(reponseContrat('calepinage', CONTRAT, 'exemple_vide'))
+    rendre()
+    await screen.findByTestId('cal-horizon')
+
+    fireEvent.click(screen.getByText('Récupérer depuis PVGIS'))
+    await waitFor(() => expect(horizon).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('Aucun point saisi.')).toBeInTheDocument()
+    expect(screen.getByText(
+      /Aucune épingle n'est posée sur ce calepinage/,
+    )).toBeInTheDocument()
+  })
+
+  it('la saisie manuelle reste possible après un appel PVGIS', async () => {
+    horizon.mockResolvedValue(reponseContrat('calepinage', CONTRAT, 'exemple_vide'))
+    rendre()
+    await screen.findByTestId('cal-horizon')
+    fireEvent.click(screen.getByText('Récupérer depuis PVGIS'))
+    await waitFor(() => expect(horizon).toHaveBeenCalledTimes(1))
+
+    fireEvent.change(screen.getByLabelText(/Azimut/), { target: { value: '90' } })
+    fireEvent.change(screen.getByLabelText(/Hauteur angulaire/), { target: { value: '20' } })
+    fireEvent.click(screen.getByText('Ajouter le point'))
+    expect(screen.getByTestId('cal-horizon-points').children).toHaveLength(1)
   })
 })
 
