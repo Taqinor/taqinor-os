@@ -47,10 +47,11 @@ from __future__ import annotations
 from html import escape
 
 __all__ = [
-    'FORMAT_A3_MM', 'MARGE_MM', 'LARGEUR_BANDEAU_MM',
+    'FORMAT_A3_MM', 'MARGE_MM', 'LARGEUR_BANDEAU_MM', 'PAS_D_ECHELLE_M',
     'PlancheRefusee', 'dimensions_module', 'geometrie_de_planche',
     'svg_de_planche', 'html_de_planche', 'rendre_planche_svg',
-    'rendre_planche_pdf', 'nom_de_fichier',
+    'rendre_planche_pdf', 'nom_de_fichier', 'entrees_de_legende',
+    'texte_d_orientation', 'lignes_d_orientation', 'longueur_de_barre',
 ]
 
 #: A3 PAYSAGE, en millimètres — le format des planches remises (même choix que
@@ -459,6 +460,156 @@ def _dessin_des_modules(pan, vers_feuille, module_m):
     return morceaux
 
 
+# ── CAL172 — légende, nord, échelle, orientation ────────────────────────────
+#
+# Le viewer client porte une légende (``apps/web`` — « Légende de la vue 3D »),
+# mais AUCUNE sortie imprimable n'avait ni nord ni échelle, et le cartouche AO
+# est une DONNÉE (``donnees_cartouche``) que personne ne dessinait. Un plan sans
+# nord ni échelle n'est pas exploitable sur un chantier.
+#
+# Trois règles tiennent tout ce bloc :
+#   1. la légende ne liste QUE ce qui est réellement présent sur la planche —
+#      une entrée « zones interdites » sur un plan qui n'en porte aucune apprend
+#      au lecteur une chose fausse ;
+#   2. l'échelle est GRAPHIQUE (barre métrique), jamais une fraction « 1/200 » :
+#      un tirage A3->A4 la rendrait fausse dès la première photocopie ;
+#   3. une grandeur absente est OMISE, jamais remplacée par « 0° » — un pan sans
+#      azimut connu n'est pas un pan plein nord.
+
+#: Longueurs de barre d'échelle admises (m) — des nombres ronds, lisibles à la
+#: règle. On choisit la plus grande qui tienne dans la largeur allouée.
+PAS_D_ECHELLE_M = (1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0)
+
+#: Largeur allouée à la barre d'échelle, en mm de feuille.
+LARGEUR_BARRE_MM = 45.0
+
+
+def longueur_de_barre(echelle, largeur_mm=LARGEUR_BARRE_MM):
+    """``(longueur_m, longueur_mm)`` de la barre d'échelle — un nombre ROND.
+
+    ``echelle`` est en mm de feuille par mètre de terrain. On ne rend jamais
+    une barre plus large que l'espace alloué : une barre débordante se lirait
+    tronquée, donc fausse.
+    """
+    for metres in reversed(PAS_D_ECHELLE_M):
+        if metres * echelle <= largeur_mm:
+            return (metres, metres * echelle)
+    plus_petit = PAS_D_ECHELLE_M[0]
+    return (plus_petit, plus_petit * echelle)
+
+
+def entrees_de_legende(geometrie):
+    """Les entrées de légende des éléments RÉELLEMENT dessinés, et d'eux seuls."""
+    entrees = []
+    if geometrie.get('contour'):
+        entrees.append((NOIR, 'none', 'Contour relevé'))
+    if geometrie.get('pans'):
+        entrees.append((NOIR, GRIS_PAN, 'Pan de toiture'))
+    if any(pan['modules'] for pan in geometrie.get('pans') or ()):
+        entrees.append((VERT_MODULE, VERT_MODULE_FOND, 'Module posé'))
+    obstacles = geometrie.get('obstacles') or ()
+    if obstacles:
+        entrees.append((NOIR, '#ffffff', 'Obstacle relevé'))
+    if any(o['provenance'] not in ('RELEVE', 'MESURE', '') for o in obstacles):
+        entrees.append((ORANGE, '#ffffff', 'Obstacle à confirmer'))
+    if geometrie.get('zones_interdites'):
+        entrees.append((ORANGE, 'none', 'Zone interdite ou réservée'))
+    return tuple(entrees)
+
+
+def _degres(valeur):
+    """« 180° » / « 15,5° » — jamais un entier forcé sur une mesure décimale."""
+    nombre = float(valeur)
+    if abs(nombre - round(nombre)) < 0.05:
+        return '%d°' % int(round(nombre))
+    return ('%.1f' % nombre).replace('.', ',') + '°'
+
+
+def texte_d_orientation(pan):
+    """« Pan Sud — azimut 180° · inclinaison 15° », les absences OMISES.
+
+    Un pan dont l'azimut n'est pas connu n'affiche PAS « 0° » : il n'affiche
+    pas d'azimut. Le zéro d'une mesure absente est un mensonge lisible.
+    """
+    mentions = []
+    if pan.get('azimut_deg') is not None:
+        mentions.append('azimut %s' % _degres(pan['azimut_deg']))
+    if pan.get('pente_deg') is not None:
+        mentions.append('inclinaison %s' % _degres(pan['pente_deg']))
+    if not mentions:
+        return ''
+    nom = pan.get('libelle') or pan.get('repere') or ''
+    return '%s — %s' % (nom, ' · '.join(mentions)) if nom \
+        else ' · '.join(mentions)
+
+
+def lignes_d_orientation(geometrie):
+    """Une ligne par pan DOCUMENTÉ ; un pan sans mesure n'en produit aucune."""
+    lignes = []
+    for pan in geometrie.get('pans') or ():
+        texte = texte_d_orientation(pan)
+        if texte:
+            lignes.append(texte)
+    return tuple(lignes)
+
+
+def _fleche_nord_svg(x, y):
+    """La flèche du nord — le +Y du repère ENU de projection, pas un décor.
+
+    La planche est dessinée dans le repère ENU local : l'est croît vers la
+    droite et le NORD vers le haut. La flèche DÉCOULE donc de la projection
+    (``Projection.vers_local``), elle n'est pas posée par habitude ; si un jour
+    la planche était tournée, ce serait ici — et nulle part ailleurs — que
+    l'angle se calculerait.
+    """
+    return (
+        '<g>'
+        '<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s" />'
+        '<polygon points="%s,%s %s,%s %s,%s" fill="%s" />'
+        '<text x="%s" y="%s" font-size="4" font-weight="bold" '
+        'text-anchor="middle" fill="%s">N</text>'
+        '</g>'
+    ) % (_n(x), _n(y + 12.0), _n(x), _n(y + 3.0), NOIR, _n(TRAIT_COTE * 2),
+         _n(x), _n(y), _n(x - 2.0), _n(y + 4.5), _n(x + 2.0), _n(y + 4.5),
+         NOIR, _n(x), _n(y + 17.0), NOIR)
+
+
+def _barre_echelle_svg(x, y, echelle):
+    """La barre d'échelle MÉTRIQUE — jamais une fraction « 1/200 »."""
+    metres, longueur_mm = longueur_de_barre(echelle)
+    moitie = longueur_mm / 2.0
+    return (
+        '<g>'
+        '<rect x="%s" y="%s" width="%s" height="1.6" fill="%s" />'
+        '<rect x="%s" y="%s" width="%s" height="1.6" fill="#ffffff" '
+        'stroke="%s" stroke-width="0.15" />'
+        '<text x="%s" y="%s" font-size="3" fill="%s">0</text>'
+        '<text x="%s" y="%s" font-size="3" text-anchor="end" fill="%s">%s'
+        '</text>'
+        '</g>'
+    ) % (_n(x), _n(y), _n(moitie), NOIR,
+         _n(x + moitie), _n(y), _n(moitie), NOIR,
+         _n(x), _n(y + 5.0), GRIS_TEXTE,
+         _n(x + longueur_mm), _n(y + 5.0), GRIS_TEXTE,
+         escape(texte_de_longueur(metres)))
+
+
+def _legende_svg(x, y, entrees):
+    """La légende, en bandeau : un carré de style + son libellé."""
+    morceaux = ['<text x="%s" y="%s" font-size="3.6" font-weight="bold" '
+                'fill="%s">LÉGENDE</text>' % (_n(x), _n(y), NOIR)]
+    courant = y + 5.0
+    for contour, remplissage, libelle in entrees:
+        morceaux.append(
+            '<rect x="%s" y="%s" width="4" height="3" fill="%s" stroke="%s" '
+            'stroke-width="0.2" />'
+            '<text x="%s" y="%s" font-size="3.2" fill="%s">%s</text>'
+            % (_n(x), _n(courant - 2.4), remplissage, contour,
+               _n(x + 6.0), _n(courant), NOIR, escape(libelle)))
+        courant += 4.6
+    return morceaux, courant
+
+
 def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=()):
     """Compose le SVG A3 paysage de la planche. Ne recalcule aucune grandeur.
 
@@ -511,14 +662,25 @@ def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=()):
     morceaux.append(_cote_horizontale(x0, x1, y0, vers_feuille))
     morceaux.append(_cote_verticale(y0, y1, x0, vers_feuille))
 
-    morceaux.extend(_bandeau_svg(titre, sous_titre, bandeau, echelle,
-                                 vers_feuille, etendue))
+    # CAL172 — le nord (haut de la zone de dessin) et l'échelle métrique (bas).
+    cadre = _cadre_de_dessin()
+    morceaux.append(_fleche_nord_svg(cadre[0] + cadre[2] - 6.0,
+                                     cadre[1] + 2.0))
+    morceaux.append(_barre_echelle_svg(cadre[0] + 2.0,
+                                       cadre[1] + cadre[3] - 8.0, echelle))
+
+    morceaux.extend(_bandeau_svg(titre, sous_titre, bandeau, geometrie))
     morceaux.append('</svg>')
     return '\n'.join(m for m in morceaux if m)
 
 
-def _bandeau_svg(titre, sous_titre, lignes, echelle, vers_feuille, etendue):
-    """Le bandeau latéral : titre, sous-titre et les lignes de l'appelant."""
+def _bandeau_svg(titre, sous_titre, lignes, geometrie):
+    """Le bandeau latéral : titre, sous-titre, légende, orientations, lignes.
+
+    ``lignes`` est ce que l'appelant apporte (CAL173 : empreinte et version du
+    moteur). Le bandeau ne RÉDIGE rien d'autre : légende et orientations sont
+    ENGENDRÉES depuis la géométrie, jamais retapées.
+    """
     x = FORMAT_A3_MM[0] - MARGE_MM - LARGEUR_BANDEAU_MM + 3.0
     morceaux = [
         '<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s" />'
@@ -536,6 +698,25 @@ def _bandeau_svg(titre, sous_titre, lignes, echelle, vers_feuille, etendue):
                         '</text>' % (_n(x), _n(y), GRIS_TEXTE,
                                      escape(sous_titre)))
         y += 6.0
+
+    entrees = entrees_de_legende(geometrie)
+    if entrees:
+        blocs, y = _legende_svg(x, y, entrees)
+        morceaux.extend(blocs)
+        y += 3.0
+
+    orientations = lignes_d_orientation(geometrie)
+    if orientations:
+        morceaux.append('<text x="%s" y="%s" font-size="3.6" '
+                        'font-weight="bold" fill="%s">ORIENTATION DES PANS'
+                        '</text>' % (_n(x), _n(y), NOIR))
+        y += 5.0
+        for ligne in orientations:
+            morceaux.append('<text x="%s" y="%s" font-size="3.2" fill="%s">%s'
+                            '</text>' % (_n(x), _n(y), NOIR, escape(ligne)))
+            y += 4.4
+        y += 3.0
+
     for ligne in lignes:
         morceaux.append('<text x="%s" y="%s" font-size="3.4" fill="%s">%s'
                         '</text>' % (_n(x), _n(y), NOIR, escape(str(ligne))))
