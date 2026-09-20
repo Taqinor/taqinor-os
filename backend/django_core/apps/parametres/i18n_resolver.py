@@ -6,7 +6,10 @@ francophone génère très bien un devis arabe pour un client arabophone.
 Ordre de priorité (le premier trouvé gagne) :
     1. langue EXPLICITE du document (ex. ``?langue=`` de ``/proposal`` — un
        choix ponctuel, écrase tout) ;
-    2. ``Client.langue_document`` (préférence du CLIENT, apps.crm) ;
+    2. ``Client.langue_document`` (préférence du CLIENT, apps.crm) — seulement
+       quand elle DIFFÈRE du défaut déclaré par le modèle : ce champ est NON
+       NULL et pré-rempli à la création, donc une valeur égale au défaut ne
+       prouve aucun choix et ne doit pas masquer le repli société (3) ;
     3. langue par défaut de la SOCIÉTÉ (``CompanyProfile.langue_repli``,
        NTI18N34 — lu défensivement via ``getattr``/import tardif, y compris
        pour une société créée avant l'arrivée de ce champ : le défaut FR du
@@ -47,6 +50,51 @@ def _valide(langue):
     return langue if langue in LANGUES_SUPPORTEES else None
 
 
+def _defaut_du_champ(client, nom_champ='langue_document'):
+    """Valeur par DÉFAUT déclarée par le modèle pour ``nom_champ``, ou ``None``.
+
+    Lue par introspection du modèle (jamais un ``'fr'`` recodé ici) : le jour
+    où ``crm.Client`` change ce défaut, cette fonction suit. Défensive comme le
+    reste du module : un objet sans ``_meta`` ni ce champ (duck-typing des
+    appelants historiques, objets de test) rend ``None``, et AUCUNE valeur
+    n'est alors considérée comme « le défaut ».
+    """
+    try:
+        champ = client._meta.get_field(nom_champ)
+    except Exception:  # noqa: BLE001 — jamais bloquant pour un rendu PDF
+        return None
+    defaut = getattr(champ, 'default', None)
+    # ``TextChoices`` : le défaut est un membre d'énum (sous-classe de ``str``)
+    # — on compare sur sa VALEUR, comme celle lue en base.
+    return _valide(getattr(defaut, 'value', defaut))
+
+
+def _preference_client(client):
+    """Langue VOULUE par le client, ou ``None`` s'il n'en exprime aucune.
+
+    ``crm.Client.langue_document`` est NON NULL et vaut son défaut modèle
+    (``'fr'``) dès la création : la valeur stockée ne distingue donc pas « ce
+    client a demandé le français » de « personne n'a jamais touché ce
+    réglage ». La lire telle quelle faisait court-circuiter l'étape SUIVANTE de
+    la chaîne — le repli de la SOCIÉTÉ (NTI18N34) — pour tout client créé sans
+    préférence : une société qui avait choisi l'arabe regénérait quand même des
+    documents français.
+
+    Une valeur ÉGALE au défaut du modèle est donc traitée comme ABSENTE et la
+    chaîne continue. Sans société, ou avec une société restée au défaut, elle
+    aboutit de toute façon à ``LANGUE_PAR_DEFAUT`` : le résultat d'hier, à
+    l'identique. Une préférence RÉELLEMENT différente (``'ar'``) reste, elle,
+    prioritaire sur le repli société.
+    """
+    langue = _valide(getattr(client, 'langue_document', None))
+    if not langue:
+        return None
+    defaut = _defaut_du_champ(client)
+    if defaut is not None and langue == defaut:
+        return None
+    return langue
+
+
 def resolve_langue_sortie(*, langue_explicite=None, client=None, company=None) -> str:
     """Résout la langue de sortie d'un document.
 
@@ -60,7 +108,7 @@ def resolve_langue_sortie(*, langue_explicite=None, client=None, company=None) -
     if explicite:
         return explicite
 
-    client_langue = _valide(getattr(client, 'langue_document', None))
+    client_langue = _preference_client(client)
     if client_langue:
         return client_langue
 

@@ -3727,6 +3727,10 @@ def page_onepage(items, tronquees=0):
     # NTI18N5 — SEULS LES MOTS changent avec la langue : chaque montant reste
     # produit par `_fmt2` et la ponctuation des pourcentages (espace fine
     # `&#8201;`) est celle du document français, dans les trois langues.
+    # Le COMMENTAIRE HTML qui annonce ce bloc plus bas dérive lui aussi de
+    # `_L(...)` : écrit en dur, il laissait « Sous-total HT » dans le document
+    # anglais et arabe (un littéral français voyage dans le HTML livré, même
+    # invisible à l'impression). Aucun libellé de ce bloc ne s'écrit en dur.
     totals_html = _tot_line(_L("sous_total_ht"), _fmt2(total_ht) + "&nbsp;MAD")
     if DISCOUNT_PCT > 0:
         _pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
@@ -3848,7 +3852,7 @@ def page_onepage(items, tronquees=0):
     </table>
   </div>
 
-  <!-- TOTALS: Sous-total HT → Remise visible → Total HT → TVA → Total TTC -->
+  <!-- TOTALS: {_L("sous_total_ht")} → {_L("remise")} visible → {_L("total_ht")} → {_L("tva")} → {_L("total_ttc")} -->
   <div style="background:{CAL};border-top:2px solid {CA};padding:10px 14px;margin:12px 24px 0;text-align:right;">
     {totals_html}
   </div>

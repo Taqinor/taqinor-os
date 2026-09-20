@@ -362,6 +362,19 @@ NO_STATIC_EMITTER = {
     "btp_rfi_repondu",
     "btp_visa_approuve",
     "btp_dgd_finalise",
+    # NTI18N43 — ``langue_changed`` : émetteur RÉEL et unique, mais il vit DANS
+    # ``core/events.py`` lui-même (l'aide ``emettre_langue_changed``, qui porte
+    # la garde « la valeur a-t-elle réellement changé ? » et le try/except
+    # best-effort, pour qu'aucun point d'écriture ne les ré-implante). Le
+    # scanner de parité ne résout que ``<signal_importé>.send(...)`` ou
+    # ``events.<nom>.send(...)`` : dans son propre module le signal est un
+    # simple global, donc l'appel lui est invisible et il verrait « zéro clé ».
+    # Réservation explicite plutôt que de déformer le bus (se ré-importer
+    # lui-même juste pour plaire à un scanner statique). Les clés cataloguées
+    # restent le contrat — ``company``, ``portee``, ``client_id``,
+    # ``ancienne_langue``, ``nouvelle_langue``, ``user`` : exactement les
+    # kwargs du ``send`` unique, et la docstring du signal dit la même chose.
+    "langue_changed",
 }
 
 

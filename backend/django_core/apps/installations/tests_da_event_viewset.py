@@ -56,9 +56,15 @@ class DirectApprovalEmitsEventTests(TestCase):
     def _connect(self):
         from core.events import demande_achat_approuvee
         recus = []
+        # `weak=False` : ce lambda n'a AUCUNE autre référence forte (seul
+        # `recus` est rendu) — avec le `weak=True` par défaut de Django il est
+        # garbage-collecté dès la fin de cette ligne, le récepteur ne se
+        # déclenche JAMAIS et l'espion reste vide quoi que fasse la vue (même
+        # patron que core/tests/test_aud806_capture_rafraichir.py et
+        # apps/ao/tests/test_statuts_ao.py).
         demande_achat_approuvee.connect(
             lambda sender, **kw: recus.append(kw),
-            dispatch_uid='test_da_event_viewset')
+            dispatch_uid='test_da_event_viewset', weak=False)
         return recus
 
     def _disconnect(self):

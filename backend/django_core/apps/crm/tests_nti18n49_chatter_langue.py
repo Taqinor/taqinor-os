@@ -147,9 +147,14 @@ class ClientLangueDocumentDomainEventTests(TestCase):
         from core.events import langue_changed
 
         recus = []
+        # `weak=False` : ce lambda n'a aucune autre référence forte — avec le
+        # `weak=True` par défaut de Django il est garbage-collecté dès la fin
+        # de cette ligne et le récepteur ne se déclenche jamais, quoi
+        # qu'émette la vue (même patron que core/tests/
+        # test_aud806_capture_rafraichir.py).
         langue_changed.connect(
             lambda sender, **kw: recus.append(kw),
-            dispatch_uid='test_ntl43_recepteur')
+            dispatch_uid='test_ntl43_recepteur', weak=False)
         try:
             resp = self.api.patch(
                 f'/api/django/crm/clients/{self.client_obj.id}/',
@@ -170,9 +175,11 @@ class ClientLangueDocumentDomainEventTests(TestCase):
         from core.events import langue_changed
 
         recus = []
+        # `weak=False` — même raison que ci-dessus : sans lui, ce test-ci
+        # passerait pour la MAUVAISE raison (récepteur mort, jamais appelé).
         langue_changed.connect(
             lambda sender, **kw: recus.append(kw),
-            dispatch_uid='test_ntl43_recepteur_noop')
+            dispatch_uid='test_ntl43_recepteur_noop', weak=False)
         try:
             resp = self.api.patch(
                 f'/api/django/crm/clients/{self.client_obj.id}/',
