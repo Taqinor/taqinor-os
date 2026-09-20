@@ -17,7 +17,10 @@ from rest_framework.routers import DefaultRouter
 
 from .views.calepinages import CalepinageViewSet
 from .views.moteur import MoteurCalculerView, MoteurResultatView
-from .views.parametres import ParametresCalepinageView
+from .views.parametres import (
+    ParametresCalepinageView,
+    SuggestionPenteIGNView,
+)
 # CAL243 — rattache l'action ``equipements`` au ``CalepinageViewSet`` par
 # import (affectation d'attribut de classe, voir la docstring du module) ;
 # doit s'exécuter AVANT ``router.register`` pour que le routeur la découvre.
@@ -43,5 +46,12 @@ urlpatterns = [
     # n'y a jamais deux jeux de réglages pour une même société).
     path('parametres/', ParametresCalepinageView.as_view(),
          name='calepinage-parametres'),
+    # CAL237 — la suggestion de pente/azimut IGN (France seule). Elle vit sous
+    # le préfixe ``parametres`` parce que c'est un RÉGLAGE société qui la
+    # commande (``imagerie.pays == 'fr'``, CAL47) : elle ne sert aucun objet
+    # métier, aucun identifiant de calepinage n'y entre, et elle ne persiste
+    # rien — elle PROPOSE.
+    path('parametres/suggestion-pente/', SuggestionPenteIGNView.as_view(),
+         name='calepinage-parametres-suggestion-pente'),
     path('', include(router.urls)),
 ]

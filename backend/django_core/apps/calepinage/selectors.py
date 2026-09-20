@@ -432,3 +432,63 @@ def parametres_de_societe(company):
         section: (getattr(reglages, section, None) or {})
         for section in SECTIONS_PARAMETRES
     }
+
+
+def imagerie_site(company):
+    """CAL47 — la section « imagerie & pays » RÉSOLUE, toujours complète.
+
+    ``parametres_de_societe`` rend la section BRUTE (``{}`` tant que la
+    société n'a rien réglé) : c'est ce qui garantit l'équivalence stricte de
+    CAL45 sur l'endpoint. Un CONSOMMATEUR, lui, a besoin des huit clés du
+    contrat CAL46 (``contract_samples/site_imagerie.json``) pour ne jamais
+    tester l'absence de clé au lieu de l'absence de donnée : cette fonction
+    les lui donne, valeurs à ``null`` (ou ``[]``) quand rien n'est réglé.
+
+    Huit valeurs nulles veulent dire « comportement d'aujourd'hui » — pas
+    « pas de carte ». Aucun pays, aucun fournisseur, aucune altitude n'est
+    inventé ici : ce que la société n'a pas saisi reste inconnu.
+
+    Lecture PURE, bornée société (``company=None`` ⇒ tout inconnu).
+    """
+    from .services.site import section_vide
+
+    section = section_vide()
+    if company is None:
+        return section
+    section.update(parametres_de_societe(company).get('imagerie') or {})
+    return section
+
+
+def photos_site(calepinage):
+    """CAL52 — les photos de site d'un calepinage, prêtes à l'affichage.
+
+    Ordre : la plus récemment PRISE d'abord (jamais la plus récemment
+    importée — c'est la date de prise de vue qui situe le toit). Lecture
+    PURE ; un calepinage sans photo rend ``[]`` et jamais ``null``.
+    """
+    from .services.photos import photo_en_ligne
+
+    if calepinage is None or calepinage.pk is None:
+        return []
+    lignes = (calepinage.photos_site
+              .select_related('attachment', 'ajoutee_par')
+              .order_by('-prise_le', '-id'))
+    return [photo_en_ligne(photo) for photo in lignes]
+
+
+def releves_terrain(calepinage):
+    """CAL64 — les relevés terrain d'un calepinage, du plus récent au plus
+    ancien (par date de RELEVÉ, jamais par date d'envoi : le terrain et le
+    réseau ne coïncident pas).
+
+    Lecture PURE ; un calepinage sans relevé rend ``[]`` et jamais ``null``.
+    """
+    from .services.releve import releve_en_ligne
+
+    if calepinage is None or calepinage.pk is None:
+        return []
+    lignes = (calepinage.releves_terrain
+              .select_related('releve_par')
+              .prefetch_related('photos__attachment', 'photos__ajoutee_par')
+              .order_by('-releve_le', '-id'))
+    return [releve_en_ligne(releve) for releve in lignes]

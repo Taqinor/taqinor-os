@@ -68,6 +68,13 @@ def enregistrer_parametres(company, donnees, *, remplacer=False):
                 f"La section « {section} » doit être un objet "
                 f"(reçu : {type(valeur).__name__}).", champ=section)
 
+    # CAL47 — une section peut avoir son PROPRE domaine de validité (contrat
+    # CAL46 pour « imagerie »). Le crochet est ici, une fois : chaque section
+    # qui se dote d'un normaliseur l'enregistre dans ``_normaliseurs()`` au lieu
+    # d'ouvrir un second chemin d'écriture. Une section sans normaliseur passe
+    # inchangée — comportement d'aujourd'hui, strictement préservé.
+    donnees = _normaliser(donnees)
+
     with transaction.atomic():
         # `UniqueConstraint(['company'])` fait foi : on LIT d'abord, et si deux
         # requêtes concurrentes créent en même temps, la base tranche
@@ -92,3 +99,36 @@ def enregistrer_parametres(company, donnees, *, remplacer=False):
         reglages.save()
 
     return parametres_de_societe(company)
+
+
+def _normaliseurs():
+    """``{section: normaliseur}`` — les sections qui ont leur propre domaine.
+
+    Import FONCTION-LOCAL : ``services/site.py`` importe ``ReglageInvalide``
+    de ce module ; le résoudre au chargement ferait un cycle.
+    """
+    from .site import SECTION as SECTION_IMAGERIE, normaliser_section_imagerie
+    from .zones_reglementaires import (
+        SECTION as SECTION_ZONES, normaliser_section_zones_types,
+    )
+
+    return {
+        SECTION_IMAGERIE: normaliser_section_imagerie,
+        SECTION_ZONES: normaliser_section_zones_types,
+    }
+
+
+def _normaliser(donnees):
+    """Applique le normaliseur de chaque section fournie qui en a un.
+
+    Une section SANS normaliseur traverse inchangée : ajouter un domaine de
+    validité à une section ne change RIEN aux six autres.
+    """
+    normaliseurs = _normaliseurs()
+    concernees = [s for s in donnees if s in normaliseurs]
+    if not concernees:
+        return donnees
+    donnees = dict(donnees)
+    for section in concernees:
+        donnees[section] = normaliseurs[section](donnees[section])
+    return donnees
