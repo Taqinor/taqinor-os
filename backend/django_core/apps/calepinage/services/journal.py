@@ -30,7 +30,8 @@ logger = logging.getLogger(__name__)
 __all__ = [
     'journaliser_creation', 'journaliser_lien_devis',
     'journaliser_lien_appel_offre', 'journaliser_layout',
-    'journaliser_variante_retenue', 'journaliser_restauration', 'noter',
+    'journaliser_variante_retenue', 'journaliser_restauration',
+    'journaliser_verrou', 'noter',
 ]
 
 
@@ -120,6 +121,47 @@ def journaliser_restauration(calepinage, *, version=None, user=None):
     return _ecrire(calepinage, 'MODIFICATION', user=user, field='version',
                    field_label='Version restaurée', old_value='',
                    new_value=str(getattr(version, 'pk', '') or ''))
+
+
+#: CAL207 — champ + valeurs du VERROU dans le chatter (source unique lue par
+#: ``services.verrou`` — jamais un second champ, jamais un littéral ailleurs).
+CHAMP_VERROU = 'verrou'
+VERROU_OUVERT = 'ouvert'
+VERROU_FERME = 'ferme'
+
+
+def journaliser_verrou(calepinage, *, ouvert, user=None):
+    """Bascule du verrou (devis envoyé) — l'entrée que ``services.verrou``
+    relit pour savoir si un déverrouillage explicite a eu lieu."""
+    nouvelle = VERROU_OUVERT if ouvert else VERROU_FERME
+    ancienne = VERROU_FERME if ouvert else VERROU_OUVERT
+    return _ecrire(calepinage, 'MODIFICATION', user=user, field=CHAMP_VERROU,
+                   field_label='Verrou', old_value=ancienne,
+                   new_value=nouvelle)
+
+
+def dernier_etat_verrou(calepinage):
+    """La dernière valeur du champ ``verrou`` déposée au chatter, ou ``None``
+    si aucune bascule n'a encore eu lieu."""
+    if calepinage is None or not getattr(calepinage, 'pk', None):
+        return None
+    try:
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.records.models import Activity
+
+        ct = ContentType.objects.get_for_model(type(calepinage))
+        entree = (Activity.objects
+                  .filter(content_type=ct, object_id=calepinage.pk,
+                          field=CHAMP_VERROU)
+                  .order_by('-created_at', '-id')
+                  .first())
+        return entree.new_value if entree is not None else None
+    except Exception:  # noqa: BLE001 — une lecture de journal ne casse rien
+        logger.exception(
+            'CAL207 : lecture du dernier état de verrou en échec '
+            '(calepinage %s)', getattr(calepinage, 'pk', None))
+        return None
 
 
 def noter(calepinage, texte, *, user=None):

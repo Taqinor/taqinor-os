@@ -48,3 +48,15 @@ class CalepinageConfig(AppConfig):
         # devis continue d'être redessiné. Import ICI (et pas en tête de
         # module) : ``ready()`` est le seul moment où les modèles sont chargés.
         from . import receivers  # noqa: F401
+
+        # CAL208 — enregistre le restaurateur dédié de la corbeille
+        # transverse (``apps.trash.registry``) : ``Calepinage`` ne porte
+        # aucun drapeau de soft-delete, donc le repli GÉNÉRIQUE de
+        # ``apps.trash`` échouerait (``RestaurationImpossible``). Restaurer
+        # ne modifie rien sur l'objet : l'état archivé/actif est
+        # entièrement porté par la corbeille elle-même.
+        from apps.trash.registry import enregistrer_restaurateur
+
+        from .services.archivage import CLE_MODELE, restaurateur_calepinage
+
+        enregistrer_restaurateur(CLE_MODELE, restaurateur_calepinage)

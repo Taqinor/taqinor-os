@@ -28,7 +28,7 @@ SECTIONS_PARAMETRES = (
 
 
 def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
-                      depuis=None, q=None):
+                      depuis=None, q=None, inclure_archives=False):
     """CAL10 — les calepinages de ``company``, filtrés, en lecture pure.
 
     Args:
@@ -40,6 +40,10 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
         depuis: date/heure — ne rend que ce qui a été créé à partir d'elle.
         q: recherche libre sur le TITRE (rien d'autre : on n'énumère pas
             l'annuaire client depuis ce module).
+        inclure_archives: CAL208 — ``False`` (défaut) exclut les calepinages
+            ARCHIVÉS (corbeille, ``apps.trash``) de la liste — un calepinage
+            archivé n'est jamais soft-supprimé, il sort juste de la vue par
+            défaut. ``True`` les inclut (écran corbeille).
 
     Returns:
         Un ``QuerySet`` ordonné du plus récent au plus ancien.
@@ -51,11 +55,12 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
     return appliquer_filtres_liste(
         Calepinage.objects.filter(company=company),
         lead_id=lead_id, client_id=client_id, statut=statut, depuis=depuis,
-        q=q)
+        q=q, inclure_archives=inclure_archives)
 
 
 def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
-                            statut=None, depuis=None, q=None):
+                            statut=None, depuis=None, q=None,
+                            inclure_archives=False):
     """CAL16 — LES filtres de la liste, écrits UNE fois.
 
     Le viewset (``views/calepinages.py``) et ce sélecteur servent la même
@@ -63,6 +68,11 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     divergeraient au premier ajout — et la leçon PV22 est qu'un filtre IGNORÉ
     (``?statut=`` servi à l'identique) fait ouvrir le mauvais objet. Un filtre
     absent ne filtre rien ; un filtre présent filtre RÉELLEMENT.
+
+    CAL208 — ``inclure_archives=False`` (le défaut, y compris pour le
+    viewset qui n'appelle PAS cet argument) exclut les calepinages archivés
+    (corbeille, ``apps.trash.selectors.ids_dans_corbeille`` — jamais un
+    import direct de ``ElementSupprime``, frontière inter-apps).
 
     L'ordre est celui du plus récent au plus ancien, dans les deux chemins.
     """
@@ -77,6 +87,11 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     terme = (q or '').strip()
     if terme:
         lignes = lignes.filter(titre__icontains=terme)
+    if not inclure_archives:
+        from apps.trash.selectors import ids_dans_corbeille
+
+        lignes = lignes.exclude(
+            pk__in=list(ids_dans_corbeille('calepinage.calepinage')))
     return lignes.order_by('-created_at', '-id')
 
 
@@ -495,3 +510,86 @@ def releves_terrain(calepinage):
               .prefetch_related('photos__attachment', 'photos__ajoutee_par')
               .order_by('-releve_le', '-id'))
     return [releve_en_ligne(releve) for releve in lignes]
+def presets_de_societe(company):
+    """CAL197 — les presets de conception disponibles pour l'atelier.
+
+    Joint DEUX sources, sans jamais copier l'une dans l'autre :
+
+    * ``module`` — les jeux PROPRES au module, section ``presets.jeux`` de
+      ``ParametresCalepinage`` (``services.presets.jeux_de_societe``) ;
+    * ``societe_ao`` — les presets AO de portée société
+      (``apps.ao.selectors.presets_calepinage``), lus tels quels.
+
+    Lecture PURE, bornée société — ``None`` rend les deux listes vides.
+    """
+    from apps.ao.selectors import presets_calepinage
+
+    from .services.presets import jeux_de_societe
+
+    module = jeux_de_societe(company)
+    ao = presets_calepinage(company, portee='societe') if company else []
+    return {
+        'module': module,
+        'societe_ao': [
+            {
+                'id': preset.pk,
+                'nom': preset.nom,
+                'parametres': preset.parametres,
+                'par_defaut': preset.par_defaut,
+                'description': preset.description,
+            }
+            for preset in ao
+        ],
+    }
+
+
+def kits_de_pose_disponibles(company):
+    """CAL198 — les kits de pose du catalogue AO, tels que le module les voit.
+
+    Lecture PURE : point d'entrée unique pour l'atelier (``apps.ao.selectors.
+    kits_de_pose``) — aucune donnée n'est recopiée en base côté module."""
+    from apps.ao.selectors import kits_de_pose
+
+    if company is None:
+        return []
+    return kits_de_pose(company)
+
+
+def favoris_materiel_de_societe(company):
+    """CAL200 — le matériel « favori conception » de la société, résolu.
+
+    La section ``favoris_materiel`` de ``ParametresCalepinage`` (CAL45) ne
+    porte que des identifiants produit (``{'modules': [...], 'onduleurs':
+    [...]}``) — ce sélecteur les résout sur le catalogue stock
+    (``apps.stock.selectors``) pour rendre marque/puissance/dimensions,
+    JAMAIS une fiche technique inventée. Un produit favori dont l'id est
+    devenu introuvable est simplement OMIS (le favori pointe dans le vide) ;
+    un produit trouvé mais SANS dimensions reste dans la liste, signalé
+    ``dimensions_renseignees: False`` — jamais une taille par défaut.
+    """
+    from apps.stock.selectors import dimensions_de_pose, get_produit_scoped
+
+    favoris = (parametres_de_societe(company).get('favoris_materiel') or {})
+    resultat = {}
+    for categorie, ids in favoris.items():
+        if not isinstance(ids, list):
+            continue
+        lignes = []
+        for produit_id in ids:
+            produit = get_produit_scoped(company, produit_id)
+            if produit is None:
+                continue
+            dims = dimensions_de_pose(produit)
+            lignes.append({
+                'id': produit.pk,
+                'nom': produit.nom,
+                'marque': getattr(produit, 'marque', '') or '',
+                'puissance_wc': dims.get('puissance_wc'),
+                'longueur_mm': dims.get('longueur_mm'),
+                'largeur_mm': dims.get('largeur_mm'),
+                'dimensions_renseignees': bool(
+                    dims.get('longueur_mm') and dims.get('largeur_mm')),
+                'archive': bool(getattr(produit, 'is_archived', False)),
+            })
+        resultat[categorie] = lignes
+    return resultat
