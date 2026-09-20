@@ -64,6 +64,7 @@ from ..services.variantes import (
     supprimer_variante,
 )
 from ..services.versions import VersionInvalide, restaurer_version
+from .electrique import ElectriqueActionsMixin
 
 __all__ = ['CalepinageViewSet', 'contexte_conception', 'detail_calepinage']
 
@@ -134,7 +135,7 @@ class ActionIdempotenteMixin:
 
 
 class CalepinageViewSet(ChatterViewSetMixin, ActionIdempotenteMixin,
-                        CompanyScopedModelViewSet):
+                        ElectriqueActionsMixin, CompanyScopedModelViewSet):
     """CRUD du pivot ``Calepinage`` + ses sous-ressources en ``@action``.
 
     CAL26 — le chatter est celui de la PLATEFORME (``records``) :

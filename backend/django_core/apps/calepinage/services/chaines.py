@@ -50,6 +50,7 @@ __all__ = [
     'PanPose', 'Conception', 'REGLE_UNE_ORIENTATION_PAR_CHAINE',
     'pans_poses', 'groupes_electriques', 'specs_module', 'specs_onduleur',
     'entree_electrique', 'concevoir_par_pan',
+    'affectation', 'empreinte_entree', 'bloc_electrique', 'bloc_pose',
 ]
 
 #: La règle de physique, citée telle quelle dans les verdicts publiés.
@@ -399,3 +400,204 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
         bloquants=tuple(resultat.bloquants),
         alertes=tuple(resultat.alertes) + messages,
         regle_mppt=regle, partage_mppt=partage, temperatures=temperatures)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CAL125 — L'AFFECTATION NOMINATIVE : module → chaîne → MPPT → onduleur
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Le layout décrit des panneaux POSÉS sans aucune identité électrique, et le
+# noyau calepinage dit lui-même que « le stringing détaillé reste HORS moteur »
+# (``core/calepinage/electrique.py``) : rien ne relie un panneau dessiné à sa
+# chaîne. Sans cette table, l'écran qui teinte les modules par chaîne (CAL126)
+# recalculerait SA partition — donc une AUTRE partition que celle qui a été
+# dimensionnée.
+#
+# La forme est celle du contrat committé
+# ``contract_samples/calepinage_resultat.json`` (CAL244, parti SEUL sur
+# ``main`` avant cette tâche — PACT10) : ``{module, pan, chaine, onduleur,
+# mppt}``, et un module NON affecté garde ses quatre clés à ``null`` (il est
+# gris à l'écran et compté dans la légende, il ne DISPARAÎT pas).
+#
+# REPRODUCTIBILITÉ : à entrée identique, affectation identique. L'ordre est
+# celui des pans du document puis celui des chaînes du noyau — aucun ensemble
+# non ordonné, aucun identifiant d'objet, aucune horloge.
+
+def affectation(conception):
+    """La table module → chaîne → MPPT → onduleur, dans l'ordre du document.
+
+    Un module au-delà des chaînes de son pan (la « réserve d'appoint » du
+    noyau) est publié avec ``chaine``/``mppt``/``onduleur`` à ``null`` : il est
+    posé, il n'est simplement câblé à rien.
+
+    ``onduleur`` vaut ``1`` quand un seul onduleur est retenu. Dès qu'il y en a
+    plusieurs, le noyau ne dit PAS lequel reçoit quelle chaîne (il dimensionne
+    un MODÈLE d'onduleur, pas des exemplaires) : la clé vaut alors ``null``
+    plutôt qu'un numéro inventé, et ``bloc_electrique`` publie l'avertissement
+    correspondant.
+    """
+    chaines_par_pan = {}
+    for chaine in conception.chaines:
+        chaines_par_pan.setdefault(chaine.pan, []).append(chaine)
+
+    evaluation = evaluer_onduleurs(conception)
+    nombre = evaluation.nombre if evaluation is not None else 0
+    numero_onduleur = 1 if nombre == 1 else None
+
+    lignes = []
+    for pan in conception.pans:
+        rang_module = 0
+        for chaine in chaines_par_pan.get(pan.label, ()):
+            for _ in range(chaine.nb_modules):
+                rang_module += 1
+                lignes.append({
+                    'module': '%s#%d' % (pan.label, rang_module),
+                    'pan': pan.label,
+                    'chaine': _numero_chaine(chaine),
+                    'onduleur': numero_onduleur,
+                    'mppt': chaine.mppt,
+                })
+        while rang_module < pan.modules:
+            rang_module += 1
+            lignes.append({
+                'module': '%s#%d' % (pan.label, rang_module),
+                'pan': pan.label,
+                'chaine': None, 'onduleur': None, 'mppt': None,
+            })
+    return tuple(lignes)
+
+
+def _numero_chaine(chaine):
+    """« CH7 » → 7. Le repère du noyau reste la source, jamais un compteur."""
+    repere = getattr(chaine, 'repere', '') or ''
+    chiffres = ''.join(c for c in repere if c.isdigit())
+    return int(chiffres) if chiffres else None
+
+
+def evaluer_onduleurs(conception):
+    """L'``EvaluationOnduleurs`` du noyau pour cette conception, ou ``None``."""
+    from core.electrique.onduleurs import dimensionner_onduleurs
+
+    entree = conception.entree
+    if entree is None or conception.resultat is None:
+        return None
+    puissance_dc = (conception.resultat.puissance_kwc
+                    if conception.chaines else entree.puissance_kwc)
+    return dimensionner_onduleurs(entree, puissance_dc)
+
+
+def empreinte_entree(layout, *, module_specs, onduleur_specs, temperatures,
+                     options=None):
+    """SHA-256 de TOUT ce qui décide de l'affectation — rien d'autre.
+
+    Deux calculs de la même toiture avec les mêmes fiches et les mêmes
+    températures portent la MÊME empreinte, donc la même affectation : c'est
+    ce qui rend le résultat rejouable (et ce que le test de reproductibilité
+    vérifie). L'empreinte ne contient ni horodatage, ni identifiant d'objet,
+    ni prix.
+    """
+    import hashlib
+    import json
+
+    charge = {
+        'pans': [[p.label, p.modules, p.azimut_deg, p.inclinaison_deg]
+                 for p in pans_poses(layout)],
+        'module': {cle: _nombre((module_specs or {}).get(cle))
+                   for cle, _ in CHAMPS_MODULE},
+        'onduleur': {cle: _nombre((onduleur_specs or {}).get(cle))
+                     for cle, _ in CHAMPS_ONDULEUR},
+        'temperatures': [getattr(temperatures, 'froid_c', None),
+                         getattr(temperatures, 'chaud_c', None),
+                         getattr(temperatures, 'source', None)],
+        'options': {cle: valeur for cle, valeur
+                    in sorted((options or {}).items())
+                    if isinstance(valeur, (int, float, str, bool,
+                                           type(None)))},
+    }
+    brut = json.dumps(charge, sort_keys=True, ensure_ascii=False,
+                      separators=(',', ':'))
+    return hashlib.sha256(brut.encode('utf-8')).hexdigest()
+
+
+def bloc_pose(conception):
+    """Le bloc ``pose`` du contrat : la pose est un FAIT, toujours chiffrée.
+
+    Même sans simulation électrique, les modules et les kWc sont connus — ils
+    restent donc des nombres, jamais ``null`` (discipline du null, CAL244).
+    """
+    module = getattr(conception.entree, 'module', None)
+    puissance_module = module.pmax_wc if module is not None else None
+    pans = [{
+        'pan': pan.label,
+        'modules': pan.modules,
+        'kwc': (round(pan.modules * puissance_module / 1000.0, 3)
+                if puissance_module else None),
+        'azimut_deg': pan.azimut_deg,
+        'inclinaison_deg': pan.inclinaison_deg,
+    } for pan in conception.pans]
+    total = sum(pan.modules for pan in conception.pans)
+    return {
+        'total_modules': total,
+        'kwc': (round(total * puissance_module / 1000.0, 3)
+                if puissance_module else None),
+        'puissance_module_wc': puissance_module,
+        'pans': pans,
+    }
+
+
+def _chainage(conception):
+    """Le bloc ``chainage`` — ``null`` tant que rien n'a été chaîné."""
+    if conception.resultat is None or not conception.chaines:
+        return None
+    longueurs = {r.longueur_chaine for r in conception.repartitions}
+    return {
+        'modules': sum(pan.modules for pan in conception.pans),
+        # Longueurs différentes d'un pan à l'autre : aucun nombre unique
+        # n'est vrai, donc ``null`` (le détail par pan vit dans les
+        # répartitions du noyau).
+        'modules_par_chaine': (longueurs.pop() if len(longueurs) == 1
+                               else None),
+        'chaines': conception.resultat.nb_chaines,
+        'reste': conception.resultat.reste_total,
+        'puissance_module_wc': conception.entree.module.pmax_wc,
+    }
+
+
+def bloc_electrique(conception, *, verdicts=()):
+    """Le bloc ``electrique`` du contrat CAL244, affectation comprise.
+
+    Rend ``(bloc, avertissements)``. Les quatre clés du bloc sont TOUJOURS
+    présentes : ``chainage`` vaut ``null`` et les trois listes sont vides
+    quand rien n'a été chaîné — ce qui se distingue sans ambiguïté d'une liste
+    de zéros.
+    """
+    evaluation = evaluer_onduleurs(conception)
+    onduleurs = []
+    avertissements = []
+    if evaluation is not None and evaluation.nombre:
+        onduleur = conception.entree.onduleur
+        ratio = evaluation.ratio_dc_ac
+        onduleurs.append({
+            'reference': onduleur.designation or '',
+            'taille_kw': evaluation.ac_kw_unitaire,
+            'nombre': evaluation.nombre,
+            'puissance_dc_kwc': round(evaluation.puissance_dc_kwc, 3),
+            'ratio_dc_ac': (round(ratio.valeur, 3)
+                            if ratio is not None and ratio.valeur is not None
+                            else None),
+            'n_mppt': onduleur.n_mppt,
+            'conforme': not evaluation.bloquants,
+            'motif': (evaluation.bloquants[0] if evaluation.bloquants else ''),
+        })
+        if evaluation.nombre > 1:
+            avertissements.append(
+                "%d onduleurs retenus : l'affectation nomme la chaîne et "
+                "l'entrée MPPT, jamais l'exemplaire d'onduleur (le noyau "
+                "dimensionne un MODÈLE) — clé « onduleur » laissée vide"
+                % evaluation.nombre)
+    return ({
+        'chainage': _chainage(conception),
+        'onduleurs': onduleurs,
+        'affectation': list(affectation(conception)),
+        'verdicts': list(verdicts),
+    }, tuple(avertissements))
