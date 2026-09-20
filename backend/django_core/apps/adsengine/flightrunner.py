@@ -90,6 +90,9 @@ ROTATION_TEMPLATE_REVIEW = 'rotation_review'
 # doit SURVIVRE aux semaines pour que la règle des deux coups ait un sens.
 WEAK_STREAK_TTL = 60 * 60 * 24 * 90
 
+# PUB121 — clé de gabarit des alertes « ad set sans créatif » au lancement.
+LAUNCH_TEMPLATE_CREATIVE = 'launch_adset_creative'
+
 
 # ── Drapeau d'autonomie PAR société (DB = source de vérité, cache = accélérateur)
 # L'activation est OFF PAR DÉFAUT et ne peut être posée QUE via ``preflight.
@@ -362,13 +365,70 @@ class FlightRunner:
                 client, name=adset['name'], campaign_id=camp_id)
             adset_ids.append(adset_id)
 
+        # PUB121 — les slots créatifs des ad sets sont remplis par des
+        # PROPOSITIONS d'ads : un plan lancé sans aucune ad ne peut pas diffuser,
+        # même entièrement approuvé.
+        creatives = self._propose_phase_creatives(phase, adset_ids)
+
         return {
             'template': template_key,
             'campaign_id': camp_id,
             'campaign_reused': camp_reused,
             'adset_ids': adset_ids,
             'status': launch_templates.PAUSED_STATUS,
+            'creatives': creatives,
         }
+
+    # ── PUB121 — Slots créatifs remplis au lancement (propose-only) ───────────
+    def _propose_phase_creatives(self, phase, adset_ids):
+        """PUB121 — Pour chaque ad set créé, PROPOSE les ads de ses slots.
+
+        Délègue à ``services.propose_adset_launch_ads`` (arbitrage DCO au
+        cold-start, file de backlog de la campagne, puis créatif du gagnant) :
+        chaque ad est une PROPOSITION née PAUSED à l'application — aucune
+        création directe, aucun unpause.
+
+        Un ad set sans aucun candidat produit une ALERTE explicite (jamais une
+        coquille silencieuse). Renvoie
+        ``{'proposed': n, 'alerts': n, 'by_adset': {meta_id: [action_ids]}}``."""
+        from . import guardrails, services
+        from .models import AdSetMirror
+
+        summary = {'proposed': 0, 'alerts': 0, 'by_adset': {}}
+        context_fr = (f"Lancement de la phase {phase.order} "
+                      f"« {phase.name} » : ") if phase is not None else ''
+        for meta_id in adset_ids:
+            if not meta_id:
+                continue
+            adset = AdSetMirror.objects.filter(
+                company=self.company, meta_id=meta_id).first()
+            if adset is None:
+                continue
+            try:
+                result = services.propose_adset_launch_ads(
+                    self.company, adset=adset, context_fr=context_fr)
+            except ValueError as exc:
+                # ``AdsetWithoutCreative`` (aucun candidat) et ``DcoModeConflict``
+                # (exclusion mutuelle) portent tous deux leur raison FR.
+                guardrails.emit_alert(
+                    self.company, alert_type=guardrails.ALERT_ANOMALY,
+                    message=f'{context_fr}{exc}',
+                    detail={'template_key': LAUNCH_TEMPLATE_CREATIVE,
+                            'plan_id': self.plan.pk,
+                            'target_type': 'adset',
+                            'target_meta_id': meta_id})
+                summary['alerts'] += 1
+                summary['by_adset'][meta_id] = []
+                continue
+            actions = result.get('actions') or []
+            summary['proposed'] += len(actions)
+            summary['by_adset'][meta_id] = [a.pk for a in actions]
+            if result.get('fallback_fr'):
+                logger.info(
+                    'flightrunner: ad set %s — bootstrap DCO impossible (%s), '
+                    'slots remplis par les chemins ordinaires',
+                    meta_id, result['fallback_fr'])
+        return summary
 
     # ── Création idempotente (G3 : dédup par nom contre l'inventaire vivant) ──
     @staticmethod
