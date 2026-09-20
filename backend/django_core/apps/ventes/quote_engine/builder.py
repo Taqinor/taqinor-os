@@ -958,6 +958,17 @@ def clean_pdf_options(raw) -> dict:
         # opt-out déguisé ; seul un booléen tranche pour de bon.
         opts['include_annexe_technique'] = (
             None if _annexe is None else bool(_annexe))
+    # CAL183 — page « Calepinage » : MÊME tri-état que l'annexe. ``None``
+    # EXPLICITE vaut « auto » (le défaut), jamais un opt-out déguisé ; seul un
+    # booléen tranche pour de bon, et cette valeur explicite est SOUVERAINE sur
+    # l'AUTO. La whitelister est sans risque : l'option ne peut QUE choisir
+    # entre montrer et cacher une pièce technique du devis courant — elle ne
+    # révèle rien qu'un autre appel ne puisse déjà obtenir, et n'ouvre l'accès
+    # à aucune donnée d'un autre dossier. Le drapeau de RENDU
+    # ``_embed_calepinage_planche``, lui, reste SERVEUR et hors whitelist.
+    if 'include_calepinage' in raw:
+        _cal = raw['include_calepinage']
+        opts['include_calepinage'] = None if _cal is None else bool(_cal)
     if raw.get('payment_mode') in ('standard', 'custom'):
         opts['payment_mode'] = raw['payment_mode']
     # NTI18N4 — langue de sortie déjà résolue par l'appelant (whitelist

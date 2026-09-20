@@ -2270,6 +2270,42 @@ class TestPageCalepinage(TestCase):
         self.assertNotIn('_embed_calepinage_planche',
                          clean_pdf_options({'_embed_calepinage_planche': True}))
 
+    # ── CAL183 — la whitelist d'options ──────────────────────────────────
+    def test_cal183_l_option_est_whitelistee_en_tri_etat(self):
+        """La whitelist est la SEULE porte autorisée côté client : sans elle
+        l'option reste hors de portée de `generer-pdf` et de `/proposal`."""
+        from apps.ventes.quote_engine.builder import clean_pdf_options
+
+        self.assertIsNone(clean_pdf_options({})['include_calepinage'])
+        self.assertIsNone(
+            clean_pdf_options({'include_calepinage': None})
+            ['include_calepinage'])
+        self.assertIs(
+            clean_pdf_options({'include_calepinage': True})
+            ['include_calepinage'], True)
+        self.assertIs(
+            clean_pdf_options({'include_calepinage': False})
+            ['include_calepinage'], False)
+
+    def test_cal183_une_cle_inconnue_reste_rejetee(self):
+        from apps.ventes.quote_engine.builder import (
+            DEFAULT_PDF_OPTIONS, clean_pdf_options)
+
+        opts = clean_pdf_options({'include_calepinage': True,
+                                  'include_calepinaje': True,
+                                  'montrer_prix_achat': True})
+        self.assertNotIn('include_calepinaje', opts)
+        self.assertNotIn('montrer_prix_achat', opts)
+        self.assertEqual(set(opts), set(DEFAULT_PDF_OPTIONS))
+
+    def test_cal183_la_valeur_explicite_prime_sur_l_auto(self):
+        """AUTO n'est pas un verrou : un `False` explicite retire la page
+        d'un devis qui PORTE pourtant un calepinage."""
+        self._creer_calepinage()
+        _, avec = self._render(self._options())                       # AUTO
+        _, sans = self._render(self._options(include_calepinage=False))
+        self.assertEqual(len(avec.pages), len(sans.pages) + 1)
+
     # ── contenu de la page ───────────────────────────────────────────────
     def _page_calepinage(self, html):
         debut = html.index('>Calepinage</div>')

@@ -3166,6 +3166,15 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # si le devis n'a pas de données d'étude (géré par le moteur).
             if 'include_etude' in request.query_params:
                 raw['include_etude'] = request.query_params['include_etude'] in ('1', 'true')
+            # CAL183 — page « Calepinage » (planche cotée). Le défaut est AUTO
+            # (présente dès que le devis porte un calepinage dessinable) : le
+            # paramètre n'existe donc QUE pour trancher explicitement, et son
+            # absence laisse l'AUTO décider. `?include_calepinage=0` est
+            # l'opt-out ; toute autre valeur vaut « oui » — même lecture que
+            # `include_etude` juste au-dessus, jamais une seconde convention.
+            if 'include_calepinage' in request.query_params:
+                raw['include_calepinage'] = (
+                    request.query_params['include_calepinage'] in ('1', 'true'))
             # NTI18N4 — langue de sortie du document, INDÉPENDANTE de la
             # langue d'interface de qui génère le PDF. `?langue=` écrase la
             # résolution auto (priorité : explicite > Client.langue_document
