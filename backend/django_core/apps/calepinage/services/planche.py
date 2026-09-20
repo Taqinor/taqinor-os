@@ -53,6 +53,9 @@ __all__ = [
     'rendre_planche_pdf', 'nom_de_fichier', 'entrees_de_legende',
     'texte_d_orientation', 'lignes_d_orientation', 'longueur_de_barre',
     'hash_court', 'texte_d_empreinte', 'empreinte_du_calepinage',
+    'CONTENU_IMPLANTATION', 'CONTENU_TOITURE', 'CONTENU_MASSE', 'CONTENUS',
+    'echelle_nommee', 'mention_d_echelle', 'rendre_plan_svg',
+    'rendre_plan_pdf',
 ]
 
 #: A3 PAYSAGE, en millimètres — le format des planches remises (même choix que
@@ -78,6 +81,24 @@ VERT_MODULE_FOND = '#c8e6c9'
 GRIS_PAN = '#f4f4f4'
 ORANGE = '#ef6c00'
 GRIS_TEXTE = '#444444'
+
+
+# ── CAL194 — trois plans, une seule géométrie ───────────────────────────────
+#
+# La planche CAL171 est une vue d'IMPLANTATION. Le pack réglementaire exige en
+# plus un PLAN DE TOITURE (la toiture seule, normalisée, sans modules) et un
+# PLAN DE MASSE (le bâtiment dans sa parcelle). Les trois sont des VUES de la
+# même géométrie projetée : ils ne peuvent donc pas se contredire, et c'est
+# tout l'intérêt de ne pas les produire séparément.
+CONTENU_IMPLANTATION = 'implantation'
+CONTENU_TOITURE = 'toiture'
+CONTENU_MASSE = 'masse'
+CONTENUS = (CONTENU_IMPLANTATION, CONTENU_TOITURE, CONTENU_MASSE)
+
+#: Les clés sous lesquelles une PARCELLE SAISIE peut voyager dans le document
+#: de conception. Extension additive et optionnelle : absente, le plan de masse
+#: est REFUSÉ — jamais dessiné avec une limite devinée.
+CLES_PARCELLE = ('parcelle', 'parcel', 'parcelleCadastrale')
 
 
 class PlancheRefusee(ValueError):
@@ -254,6 +275,10 @@ def geometrie_de_planche(roof_layout):
         'obstacles': obstacles,
         'zones_interdites': zones_interdites,
         'module_m': module_m,
+        # CAL194 — la parcelle SAISIE, ou une liste vide. Jamais un contour
+        # déduit du bâtiment : une limite de parcelle est une affirmation
+        # juridique, pas une estimation.
+        'parcelle': _parcelle_du_layout(roof_layout, local),
     }
     geometrie['etendue'] = _etendue(geometrie)
     if geometrie['etendue'] is None:
@@ -263,6 +288,33 @@ def geometrie_de_planche(roof_layout):
             "partir d'une géométrie vide.",
             champ='roof_layout')
     return geometrie
+
+
+def _parcelle_du_layout(roof_layout, local):
+    """La parcelle SAISIE, projetée en mètres — ``[]`` si elle n'existe pas.
+
+    Aucune des trois graphies admises n'est obligatoire, et aucune n'est
+    déduite : sans parcelle saisie, le plan de masse est refusé (CAL194), il
+    n'est pas dessiné avec une limite plausible.
+    """
+    for cle in CLES_PARCELLE:
+        brut = (roof_layout or {}).get(cle)
+        if isinstance(brut, dict):
+            brut = brut.get('vertices')
+        points = _points_geo(brut, 'lnglat')
+        if len(points) >= 3:
+            return [local(lat, lng) for lat, lng in points]
+    return []
+
+
+def _etendue_avec_parcelle(geometrie, etendue):
+    """L'étendue élargie à la parcelle — un plan de masse la montre ENTIÈRE."""
+    parcelle = geometrie.get('parcelle') or ()
+    if not parcelle:
+        return etendue
+    xs = [p[0] for p in parcelle] + [etendue[0], etendue[2]]
+    ys = [p[1] for p in parcelle] + [etendue[1], etendue[3]]
+    return (min(xs), min(ys), max(xs), max(ys))
 
 
 def _modules_du_pan(geometrie, local):
@@ -499,14 +551,57 @@ def longueur_de_barre(echelle, largeur_mm=LARGEUR_BARRE_MM):
     return (plus_petit, plus_petit * echelle)
 
 
-def entrees_de_legende(geometrie):
-    """Les entrées de légende des éléments RÉELLEMENT dessinés, et d'eux seuls."""
+def echelle_nommee(echelle):
+    """``1/200`` — le DÉNOMINATEUR de l'échelle du tracé, arrondi au rang lisible.
+
+    L'échelle nommée est CALCULÉE du tracé (millimètres de feuille par mètre de
+    terrain), jamais choisie : ``1 m`` de terrain occupe ``echelle`` mm, donc le
+    rapport vaut ``1000 / echelle``. Elle ne remplace pas la barre graphique —
+    elle la complète, et sa condition de validité est écrite à côté
+    (``mention_d_echelle``), parce qu'un tirage réduit la rend fausse.
+    """
+    if not echelle or echelle <= 0:
+        return None
+    denominateur = 1000.0 / float(echelle)
+    for rang in (1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000,
+                 5000):
+        if denominateur <= rang:
+            return rang
+    return int(round(denominateur / 1000.0) * 1000)
+
+
+def mention_d_echelle(echelle):
+    """« Échelle du tracé 1/200 — valable sur un tirage A3 non réduit. »"""
+    denominateur = echelle_nommee(echelle)
+    if denominateur is None:
+        return ''
+    return ('Échelle du tracé 1/%d — valable sur un tirage A3 non réduit ; '
+            'se reporter à la barre d\'échelle.' % denominateur)
+
+
+def entrees_de_legende(geometrie, contenu=CONTENU_IMPLANTATION):
+    """Les entrées de légende des éléments RÉELLEMENT dessinés, et d'eux seuls.
+
+    ``contenu`` compte autant que la géométrie : un plan de toiture ne DESSINE
+    pas les modules, donc il ne les met pas en légende. Une entrée pour un
+    élément absent du tracé apprend au lecteur une chose fausse — c'est la
+    règle de CAL172, et c'est CAL194 qui l'a mise en défaut la première fois.
+    """
+    if contenu == CONTENU_MASSE:
+        entrees = []
+        if geometrie.get('parcelle'):
+            entrees.append((ORANGE, 'none', 'Limite de parcelle (saisie)'))
+        if geometrie.get('contour'):
+            entrees.append((NOIR, GRIS_PAN, 'Emprise du bâtiment'))
+        return tuple(entrees)
+
     entrees = []
     if geometrie.get('contour'):
         entrees.append((NOIR, 'none', 'Contour relevé'))
     if geometrie.get('pans'):
         entrees.append((NOIR, GRIS_PAN, 'Pan de toiture'))
-    if any(pan['modules'] for pan in geometrie.get('pans') or ()):
+    if contenu == CONTENU_IMPLANTATION \
+            and any(pan['modules'] for pan in geometrie.get('pans') or ()):
         entrees.append((VERT_MODULE, VERT_MODULE_FOND, 'Module posé'))
     obstacles = geometrie.get('obstacles') or ()
     if obstacles:
@@ -680,17 +775,29 @@ def _pied_svg(texte):
                escape(texte)))
 
 
-def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=(), pied=''):
+def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=(), pied='',
+                   contenu=CONTENU_IMPLANTATION):
     """Compose le SVG A3 paysage de la planche. Ne recalcule aucune grandeur.
 
     ``bandeau`` est une suite de lignes de texte DÉJÀ composées par l'appelant
     (CAL172/CAL173 : légende, nord, échelle, empreinte). Ce module ne rédige
     aucune affirmation — il met en page.
+
+    ``contenu`` (CAL194) choisit CE QUI EST DESSINÉ, jamais ce qui est calculé :
+    ``implantation`` (tout), ``toiture`` (la toiture seule, sans modules),
+    ``masse`` (la parcelle SAISIE et l'emprise du bâtiment). Les trois plans
+    partagent la même géométrie projetée — ils ne peuvent donc pas diverger.
     """
+    if contenu not in CONTENUS:
+        raise PlancheRefusee(
+            "Contenu de planche inconnu : %r — contenus connus : %s."
+            % (contenu, ', '.join(CONTENUS)), champ='contenu')
     etendue = geometrie.get('etendue')
     if not etendue:
         raise PlancheRefusee(
             "Géométrie de planche vide : rien à dessiner.", champ='roof_layout')
+    if contenu == CONTENU_MASSE:
+        etendue = _etendue_avec_parcelle(geometrie, etendue)
     vers_feuille, echelle = _transformation(etendue)
     largeur, hauteur = FORMAT_A3_MM
     morceaux = [
@@ -703,29 +810,41 @@ def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=(), pied=''):
         % (_n(largeur), _n(hauteur)),
     ]
 
-    for zone in geometrie['zones_interdites']:
-        morceaux.append(_polygone(zone['points'], vers_feuille, contour=ORANGE,
-                                  remplissage='none', tirets='1.5 1'))
-    for pan in geometrie['pans']:
-        morceaux.append(_polygone(pan['points'], vers_feuille, contour=NOIR,
-                                  remplissage=GRIS_PAN))
-    morceaux.append(_polygone(geometrie['contour'], vers_feuille, contour=NOIR,
-                              trait=TRAIT_CONTOUR))
-    for pan in geometrie['pans']:
-        morceaux.extend(_dessin_des_modules(pan, vers_feuille,
-                                            geometrie.get('module_m')))
-    for obstacle in geometrie['obstacles']:
-        coins = ((obstacle['x'], obstacle['y']),
-                 (obstacle['x'] + obstacle['largeur'], obstacle['y']),
-                 (obstacle['x'] + obstacle['largeur'],
-                  obstacle['y'] + obstacle['hauteur']),
-                 (obstacle['x'], obstacle['y'] + obstacle['hauteur']))
-        # Un obstacle dont la provenance N'EST PAS un relevé est tireté : il
-        # ne se présente pas avec l'aplomb d'un obstacle mesuré.
-        releve = obstacle['provenance'] in ('RELEVE', 'MESURE', '')
-        morceaux.append(_polygone(
-            coins, vers_feuille, contour=NOIR if releve else ORANGE,
-            remplissage='#ffffff', tirets='' if releve else '1.2 0.8'))
+    if contenu == CONTENU_MASSE:
+        # La parcelle n'est dessinée QUE si elle a été SAISIE : une limite de
+        # parcelle inventée est une affirmation juridique fausse.
+        morceaux.append(_polygone(geometrie.get('parcelle') or (),
+                                  vers_feuille, contour=ORANGE,
+                                  trait=TRAIT_CONTOUR, tirets='2 1'))
+        morceaux.append(_polygone(geometrie['contour'], vers_feuille,
+                                  contour=NOIR, remplissage=GRIS_PAN,
+                                  trait=TRAIT_CONTOUR))
+    else:
+        for zone in geometrie['zones_interdites']:
+            morceaux.append(_polygone(zone['points'], vers_feuille,
+                                      contour=ORANGE, remplissage='none',
+                                      tirets='1.5 1'))
+        for pan in geometrie['pans']:
+            morceaux.append(_polygone(pan['points'], vers_feuille,
+                                      contour=NOIR, remplissage=GRIS_PAN))
+        morceaux.append(_polygone(geometrie['contour'], vers_feuille,
+                                  contour=NOIR, trait=TRAIT_CONTOUR))
+        if contenu == CONTENU_IMPLANTATION:
+            for pan in geometrie['pans']:
+                morceaux.extend(_dessin_des_modules(
+                    pan, vers_feuille, geometrie.get('module_m')))
+        for obstacle in geometrie['obstacles']:
+            coins = ((obstacle['x'], obstacle['y']),
+                     (obstacle['x'] + obstacle['largeur'], obstacle['y']),
+                     (obstacle['x'] + obstacle['largeur'],
+                      obstacle['y'] + obstacle['hauteur']),
+                     (obstacle['x'], obstacle['y'] + obstacle['hauteur']))
+            # Un obstacle dont la provenance N'EST PAS un relevé est tireté :
+            # il ne se présente pas avec l'aplomb d'un obstacle mesuré.
+            releve = obstacle['provenance'] in ('RELEVE', 'MESURE', '')
+            morceaux.append(_polygone(
+                coins, vers_feuille, contour=NOIR if releve else ORANGE,
+                remplissage='#ffffff', tirets='' if releve else '1.2 0.8'))
 
     # Les cotes d'ENCOMBREMENT, mesurées sur la géométrie projetée.
     x0, y0, x1, y1 = etendue
@@ -738,14 +857,22 @@ def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=(), pied=''):
                                      cadre[1] + 2.0))
     morceaux.append(_barre_echelle_svg(cadre[0] + 2.0,
                                        cadre[1] + cadre[3] - 8.0, echelle))
+    # CAL194 — l'échelle NOMMÉE, avec sa condition de validité. Elle ne
+    # remplace jamais la barre : elle la complète.
+    morceaux.append(
+        '<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
+        % (_n(cadre[0] + 2.0), _n(cadre[1] + cadre[3] - 1.0), GRIS_TEXTE,
+           escape(mention_d_echelle(echelle))))
 
-    morceaux.extend(_bandeau_svg(titre, sous_titre, bandeau, geometrie))
+    morceaux.extend(_bandeau_svg(titre, sous_titre, bandeau, geometrie,
+                                 contenu))
     morceaux.append(_pied_svg(pied))
     morceaux.append('</svg>')
     return '\n'.join(m for m in morceaux if m)
 
 
-def _bandeau_svg(titre, sous_titre, lignes, geometrie):
+def _bandeau_svg(titre, sous_titre, lignes, geometrie,
+                 contenu=CONTENU_IMPLANTATION):
     """Le bandeau latéral : titre, sous-titre, légende, orientations, lignes.
 
     ``lignes`` est ce que l'appelant apporte (CAL173 : empreinte et version du
@@ -770,13 +897,16 @@ def _bandeau_svg(titre, sous_titre, lignes, geometrie):
                                      escape(sous_titre)))
         y += 6.0
 
-    entrees = entrees_de_legende(geometrie)
+    entrees = entrees_de_legende(geometrie, contenu)
     if entrees:
         blocs, y = _legende_svg(x, y, entrees)
         morceaux.extend(blocs)
         y += 3.0
 
-    orientations = lignes_d_orientation(geometrie)
+    # Un plan de MASSE ne dessine pas les pans : leur orientation n'y a rien
+    # à dire.
+    orientations = () if contenu == CONTENU_MASSE \
+        else lignes_d_orientation(geometrie)
     if orientations:
         morceaux.append('<text x="%s" y="%s" font-size="3.6" '
                         'font-weight="bold" fill="%s">ORIENTATION DES PANS'
@@ -838,6 +968,52 @@ def rendre_planche_svg(calepinage, *, moment=None, **options):
         bandeau=options.pop('bandeau', ()),
         pied=options.pop('pied', None)
         or empreinte_du_calepinage(calepinage, moment=moment))
+
+
+#: Le titre de chaque plan. Le rendu NOMME la vue ; il n'en rédige pas la
+#: portée (« conforme », « définitif » engageraient le soumissionnaire).
+TITRE_DE_CONTENU = {
+    CONTENU_IMPLANTATION: "Plan d'implantation",
+    CONTENU_TOITURE: 'Plan de toiture',
+    CONTENU_MASSE: 'Plan de masse',
+}
+
+
+def rendre_plan_svg(calepinage, *, contenu=CONTENU_IMPLANTATION, moment=None,
+                    **options):
+    """CAL194 — le SVG d'un des trois plans, depuis la MÊME géométrie.
+
+    Le plan de masse est REFUSÉ quand aucune parcelle n'a été saisie, en
+    nommant la saisie manquante : il ne se dessine JAMAIS avec une limite de
+    parcelle devinée.
+    """
+    geometrie = geometrie_de_planche(getattr(calepinage, 'roof_layout', None))
+    if contenu == CONTENU_MASSE and not geometrie.get('parcelle'):
+        raise PlancheRefusee(
+            "Plan de masse impossible : aucune parcelle n'a été saisie sur "
+            "cette conception. Le plan de masse ne dessine jamais une limite "
+            "de parcelle qui n'a pas été fournie — renseignez le contour de "
+            "la parcelle, puis redemandez le plan.",
+            champ='parcelle')
+    titre = options.pop('titre', None) or '%s — %s' % (
+        TITRE_DE_CONTENU.get(contenu, 'Plan'), calepinage)
+    return svg_de_planche(
+        geometrie, titre=titre,
+        sous_titre=options.pop('sous_titre', ''),
+        bandeau=options.pop('bandeau', ()),
+        pied=options.pop('pied', None)
+        or empreinte_du_calepinage(calepinage, moment=moment),
+        contenu=contenu)
+
+
+def rendre_plan_pdf(calepinage, *, contenu=CONTENU_IMPLANTATION, company=None,
+                    **options):
+    """Octets PDF d'un des trois plans, par ``core.pdf.render_pdf`` (ARC11)."""
+    from core.pdf import render_pdf
+
+    svg = rendre_plan_svg(calepinage, contenu=contenu, **options)
+    return render_pdf(html=html_de_planche(svg),
+                      company=company or getattr(calepinage, 'company', None))
 
 
 def rendre_planche_pdf(calepinage, *, company=None, **options):

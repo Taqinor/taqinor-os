@@ -89,7 +89,13 @@ class PlancheCompleteTest(SimpleTestCase):
         self.assertIn('LÉGENDE', self.svg)
         self.assertIn('ORIENTATION DES PANS', self.svg)
 
-    def test_l_echelle_reste_graphique_jamais_une_fraction(self):
-        # « 1/200 » serait faux dès la première photocopie A3 -> A4.
-        self.assertNotIn('1/', self.svg)
-        self.assertNotIn('Échelle 1', self.svg)
+    def test_la_barre_graphique_reste_la_reference(self):
+        # CAL194 a ajouté une échelle NOMMÉE (le pack réglementaire l'exige),
+        # mais elle ne REMPLACE pas la barre : « 1/200 » devient faux dès la
+        # première photocopie A3 -> A4. La barre est donc toujours là, et la
+        # fraction porte sa condition de validité.
+        self.assertIn('<rect x="14" y="', self.svg)  # la barre d'échelle
+        # L'apostrophe est échappée dans le SVG (`&#x27;`) : on cherche donc
+        # le texte tel qu'il est RÉELLEMENT écrit dans le document.
+        self.assertIn('barre d&#x27;échelle', self.svg)
+        self.assertIn('non réduit', self.svg)
