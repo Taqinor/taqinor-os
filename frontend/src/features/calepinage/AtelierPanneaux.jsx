@@ -33,6 +33,14 @@ import { BoutonReprendreContourAffaire } from './BoutonsContourAO'
    au fur et à mesure que l'atelier les expose : tant qu'un geste n'existe pas,
    son raccourci ne mange PAS la frappe (comportement déclaré du composant). */
 import RaccourcisAtelier from './RaccourcisAtelier'
+/* CAL79 — le remplissage branché sur la porte moteur CAL22/CAL23, avec son
+   RÉGIME DE PREUVE affiché honnêtement. Il se pose ICI plutôt que sur une
+   route à lui : un panneau de remplissage sans la géométrie de l'atelier
+   n'aurait aucune surface à remplir — ce serait un écran mort. L'entrée du
+   moteur et l'application du plan viennent de `builderApi` ; tant que
+   l'atelier ne les expose pas, le panneau le DIT (« dessinez d'abord un pan de
+   toit ») au lieu de faire semblant. */
+import RemplissageProuve from './RemplissageProuve'
 
 /* ============================================================================
    CAL37 — L'UNIQUE EMPLACEMENT DES PANNEAUX DE L'ATELIER, mode `calepinage`.
@@ -141,6 +149,13 @@ export default function AtelierPanneaux({
       {/* L'EMPLACEMENT des panneaux des tâches suivantes. `builderApi`,
           `onRecharger` et `lectureSeule` leur sont passés par l'atelier, pour
           qu'aucune n'ait à aller les rechercher elle-même. */}
+      {/* CAL79 — le remplissage prouvé, et son régime annoncé sans flatterie. */}
+      <RemplissageProuve
+        entree={builderApi?.entreeMoteur ?? null}
+        onAppliquer={builderApi?.appliquerPlan ?? null}
+        lectureSeule={lectureSeule}
+      />
+
       {/* CAL101 — l'aide-mémoire des raccourcis, à portée de « ? ». */}
       <div className="mt-4">
         <RaccourcisAtelier actions={builderApi?.raccourcis ?? {}} />
