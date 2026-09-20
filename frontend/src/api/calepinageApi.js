@@ -107,6 +107,20 @@ const calepinageApi = {
     // (`contract_samples/calepinage_resultat.json`).
     resultat: (id) => api.get(`${pivot(id)}resultat/`),
 
+    /* CAL125 — l'ENTRÉE du calcul électrique. Le matériel est DÉSIGNÉ et les
+       longueurs/températures sont SAISIES ; la réponse est le `resultat`
+       recalculé. CAL234 y fait voyager `affectation_manuelle` : c'est LÀ, et
+       là seulement, qu'une affectation faite à la main est ENREGISTRÉE. */
+    enregistrerEntreeElectrique: (id, corps) =>
+      api.post(`${pivot(id)}entree-electrique/`, corps),
+
+    /* CAL128 — le VERDICT à chaud, sans rien persister (garde en lecture).
+       CAL234 : l'atelier y envoie l'affectation PROPOSÉE sous la MÊME clé
+       `affectation_manuelle`, et lit les bloquants NOMMÉS (contrainte, pan,
+       chaîne) avant de décider d'enregistrer. */
+    evaluerElectrique: (id, corps) =>
+      api.post(`${pivot(id)}evaluer-electrique/`, corps),
+
     // CAL195 — le schéma unifilaire du calepinage, en SVG inline. Le SVG est
     // composé PAR LE SERVEUR (même moteur que le devis, `core.electrique`) :
     // l'écran l'affiche, il ne dessine rien. `svg: null` + `bloquants` quand

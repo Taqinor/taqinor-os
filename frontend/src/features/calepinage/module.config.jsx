@@ -116,6 +116,11 @@ const SourcesNormatives = lazy(() => import('./commun/Provenance'))
    (agrégat CAL247), donc un deep-link — un menu permanent n'aurait aucun
    calepinage à désigner. */
 const DossiersReglementaires = lazy(() => import('./DossiersReglementaires'))
+/* CAL234 — l'AFFECTATION MANUELLE des chaînes : on glisse sur les modules,
+   le serveur verdicte la proposition (`evaluer-electrique/`, qui ne persiste
+   rien) et la validation part sur `entree-electrique/`. Contextuelle à UN
+   calepinage — elle corrige SON affectation, pas celle d'un autre. */
+const AffectationChaines = lazy(() => import('./plan/AffectationChaines'))
 
 const config = {
   key: 'calepinage',
@@ -188,6 +193,8 @@ const config = {
     { path: '/calepinage/:id/pertes', component: DiagrammePertes, roles: ROLES },
     // contextuelle: les dossiers réglementaires d'UN calepinage, ouverts depuis son atelier (CAL196) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/dossiers', component: DossiersReglementaires, roles: ROLES },
+    // contextuelle: l'affectation des chaînes d'UN calepinage, corrigée à la main depuis son atelier (CAL234) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
+    { path: '/calepinage/:id/affectation', component: AffectationChaines, roles: ROLES },
   ],
 }
 
