@@ -75,6 +75,10 @@ const FichesIncompletes = lazy(() => import('./equipements/FichesIncompletes'))
    (`ToitureDesign`) est un atelier de TOITURE et n'a aucune surface pompage ;
    celle-ci est contextuelle à UN calepinage, donc un deep-link. */
 const PompagePanel = lazy(() => import('./pompage/PompagePanel'))
+/* CAL63 — le CALAGE d'un plan importé (translation, rotation, échelle prise sur
+   une distance RÉELLE saisie, aimantation) puis sa conversion en tracé de toit.
+   Contextuel à UN calepinage : deep-link, jamais un item de menu. */
+const PlanImporteCalage = lazy(() => import('./PlanImporteCalage'))
 
 const config = {
   key: 'calepinage',
@@ -121,6 +125,8 @@ const config = {
     { path: '/calepinage/:id/fiches', component: FichesIncompletes, roles: ROLES },
     // CAL159 — le dimensionnement de pompage de CE calepinage.
     { path: '/calepinage/:id/pompage', component: PompagePanel, roles: ROLES },
+    // CAL63 — caler le plan importé de CE calepinage sur la carte.
+    { path: '/calepinage/:id/plan', component: PlanImporteCalage, roles: ROLES },
   ],
 }
 
