@@ -2105,7 +2105,6 @@ class QJR163FinitionsTests(SimpleTestCase):
                 self.assertIn('concurrent', doc.lower())
 
 
-<<<<<<< HEAD
 #: CAL182 — une conception RÉELLE, minimale : contour en ``[lat, lng]``, un pan
 #: en ``[lng, lat]`` (convention GeoJSON du lecteur de cartes) et deux modules
 #: posés en mètres ENU. Même document que ``test_cal171_planche`` : la planche
@@ -2156,8 +2155,6 @@ class TestPageCalepinage(TestCase):
                  'spec': '1000 V'}],
     }
 
-=======
->>>>>>> worktree-agent-ad758ee560211d401
 # ── NTI18N5 — langue de sortie du document (fr/en/ar) ────────────────────────
 
 class NTI18N5CatalogueLibellesTests(SimpleTestCase):
@@ -2258,162 +2255,6 @@ class NTI18N5DocumentMultilingueTests(TestCase):
         self.company = make_company()
         self.user = make_user(self.company)
         self.client_obj = make_client(self.company)
-<<<<<<< HEAD
-=======
-        self.devis = make_devis(self.company, self.user, self.client_obj,
-                                self.LIGNES, etude_params=DEUX_OPTIONS)
-
-    def _html(self, langue=None):
-        """HTML EXACT du une-page dans ``langue`` (``None`` = appelant
-        historique, qui ne passe aucune langue)."""
-        from apps.ventes.quote_engine.builder import build_quote_data
-        from apps.ventes.quote_engine import generate_devis_premium as G
-
-        options = {'pdf_mode': 'onepage'}
-        if langue is not None:
-            options['langue_sortie'] = langue
-        return G.render_html_for(build_quote_data(self.devis, options))
-
-    def _pages(self, langue=None):
-        """Pages composées par WeasyPrint pour ce même HTML."""
-        from weasyprint import HTML
-        return HTML(string=self._html(langue)).render().pages
-
-    def test_le_builder_route_la_table_de_libelles(self):
-        from apps.ventes.quote_engine.builder import build_quote_data
-        from apps.ventes.quote_engine import i18n_labels as L
-        for demande, attendue in (('fr', 'fr'), ('en', 'en'), ('ar', 'ar'),
-                                  ('de', 'fr'), (None, 'fr')):
-            with self.subTest(langue=demande):
-                data = build_quote_data(
-                    self.devis,
-                    {'pdf_mode': 'onepage', 'langue_sortie': demande})
-                self.assertEqual(data['langue_sortie'], attendue)
-                self.assertEqual(data['libelles_document'],
-                                 L.libelles(attendue))
-
-    def test_chaque_langue_rend_exactement_une_page(self):
-        for langue in (None, 'fr', 'en', 'ar'):
-            with self.subTest(langue=langue):
-                pages = self._pages(langue)
-                self.assertEqual(
-                    len(pages), 1,
-                    f'le une-page en {langue} doit faire 1 page, '
-                    f'il en fait {len(pages)}')
-
-    def test_le_document_francais_est_celui_d_hier(self):
-        # Amorce : le premier rendu fait naître (et PERSISTE) le ShareLink du
-        # QR de la page 1 — son jeton est tiré au hasard, donc seuls les rendus
-        # SUIVANTS, qui réutilisent ce même lien, sont comparables octet à
-        # octet.
-        self._html('fr')
-        html_defaut = self._html(None)
-        html_fr = self._html('fr')
-        self.assertEqual(html_defaut, html_fr)
-        self.assertIn('<html lang="fr"', html_fr)
-        self.assertNotIn('dir="rtl"', html_fr)
-        for litteral in ('Sous-total HT', 'Total TTC', 'D&#233;signation',
-                         'Qt&#233;', 'P.U. HT (MAD)', 'Total HT (MAD)',
-                         'Acompte', 'R&#233;f.'):
-            with self.subTest(litteral=litteral):
-                self.assertIn(litteral, html_fr)
-
-    def test_le_document_anglais_traduit_ses_libelles_structurels(self):
-        html = self._html('en')
-        self.assertIn('<html lang="en"', html)
-        self.assertNotIn('dir="rtl"', html)
-        for attendu in ('Subtotal excl. VAT', 'Total incl. VAT', 'Description',
-                        'Qty', 'Unit price excl. VAT (MAD)', 'Brand',
-                        'Down payment', 'after commissioning', 'Ref.'):
-            with self.subTest(attendu=attendu):
-                self.assertIn(attendu, html)
-        for francais in ('Sous-total HT', 'D&#233;signation', 'Qt&#233;'):
-            with self.subTest(francais=francais):
-                self.assertNotIn(francais, html)
-
-    def test_le_document_arabe_est_rtl_et_traduit(self):
-        from apps.ventes.quote_engine import i18n_labels as L
-        html = self._html('ar')
-        self.assertIn('<html lang="ar" dir="rtl"', html)
-        for cle in ('sous_total_ht', 'total_ttc', 'designation', 'qte',
-                    'client', 'reference'):
-            with self.subTest(cle=cle):
-                self.assertIn(L.libelle(cle, 'ar'), html)
-        self.assertNotIn('Sous-total HT', html)
-
-    def test_le_document_arabe_embarque_sa_police_arabe(self):
-        """Sans @font-face arabe, WeasyPrint imprime des carrés (tofu)."""
-        html = self._html('ar')
-        self.assertIn('Noto Sans Arabic', html)
-        self.assertIn('data:font/woff2;base64,', html)
-
-    def test_aucune_langue_ne_change_les_montants(self):
-        """Zéro chiffre inventé : traduire les MOTS ne touche aucun total."""
-        import re as _re
-        montants = {}
-        for langue in ('fr', 'en', 'ar'):
-            html = self._html(langue)
-            montants[langue] = _re.findall(r'>([^<>]*?)&nbsp;MAD<', html)
-        self.assertTrue(montants['fr'], 'aucun montant lu dans le une-page')
-        self.assertEqual(montants['en'], montants['fr'])
-        self.assertEqual(montants['ar'], montants['fr'])
-
-
-#: CAL182 — une conception RÉELLE, minimale : contour en ``[lat, lng]``, un pan
-#: en ``[lng, lat]`` (convention GeoJSON du lecteur de cartes) et deux modules
-#: posés en mètres ENU. Même document que ``test_cal171_planche`` : la planche
-#: du PDF est la planche du module, pas une seconde géométrie de test.
-LAYOUT_CAL182 = {
-    'version': 2,
-    'outline': [[33.5, -7.6], [33.5, -7.5999], [33.5001, -7.5999],
-                [33.5001, -7.6]],
-    'panelWatt': 720,
-    'zones': [{
-        'id': 'z1',
-        'label': 'Pan Sud',
-        'vertices': [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001],
-                     [-7.6, 33.5001]],
-        'geometry': {
-            'azimuthDeg': 180.0, 'tiltDeg': 15.0, 'count': 2,
-            'origin': [-7.6, 33.5],
-            'panels': [{'cx': 1.0, 'cy': 1.0}, {'cx': 3.5, 'cy': 1.0}],
-        },
-    }],
-}
-
-
-@tag('pdf')  # rendu WeasyPrint complet — palier release-verify
-class TestPageCalepinage(TestCase):
-    """CAL182 — la page « Calepinage » du moteur vendorisé (règle #4).
-
-    Ce qui est prouvé ici :
-
-    * la page vaut EXACTEMENT une page de plus, quel que soit l'état de
-      ``include_etude`` et ``include_annexe_technique`` ;
-    * l'AUTO n'ajoute rien à un devis SANS calepinage (les comptes existants
-      ne bougent pas) et l'opt-out explicite la retire ;
-    * elle dégrade gracieusement quand la conception n'est pas dessinable —
-      jamais une feuille blanche ;
-    * ``'onepage'`` reste à UNE page ;
-    * la planche ne voyage PAS dans la charge utile publique (leçon
-      CALEPDF/A8 : coût + anticopie) ;
-    * elle ne porte AUCUN montant, et le PDF reste déterministe.
-    """
-
-    FULL_LINES = TestPdfFormats.FULL_LINES
-
-    _ELECTRICAL_DESIGN = {
-        'parametres': {'phases': 3, 'regime': 'TT'},
-        'chaines': [{'modules': 7}, {'modules': 7}],
-        'bom': [{'designation': 'Parafoudre DC', 'quantite': 1,
-                 'spec': '1000 V'}],
-    }
-
-    def setUp(self):
-        self.company = make_company()
-        self.user = make_user(self.company)
-        self.client_obj = make_client(self.company)
->>>>>>> worktree-agent-ad758ee560211d401
         self.devis = make_devis(
             self.company, self.user, self.client_obj, self.FULL_LINES,
             etude_params=DEUX_OPTIONS)
@@ -2622,7 +2463,6 @@ class TestPageCalepinage(TestCase):
         for clef in ('totaux_sans', 'totaux_avec', 'totaux_all',
                      'display_total', 'total_sans', 'total_avec'):
             self.assertEqual(sans.get(clef), avec.get(clef), clef)
-<<<<<<< HEAD
 
         self.devis = make_devis(self.company, self.user, self.client_obj,
                                 self.LIGNES, etude_params=DEUX_OPTIONS)
@@ -2721,5 +2561,3 @@ class TestPageCalepinage(TestCase):
         self.assertTrue(montants['fr'], 'aucun montant lu dans le une-page')
         self.assertEqual(montants['en'], montants['fr'])
         self.assertEqual(montants['ar'], montants['fr'])
-=======
->>>>>>> worktree-agent-ad758ee560211d401
