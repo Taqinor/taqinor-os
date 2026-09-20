@@ -85,6 +85,11 @@ const SaisiePente = lazy(() => import('./SaisiePente'))
 // CAL195 — le schéma unifilaire du calepinage, composé par le MÊME moteur que
 // le devis : l'écran l'affiche, il ne dessine rien.
 const SchemaUnifilairePanel = lazy(() => import('./SchemaUnifilairePanel'))
+/* CAL236 — le panneau « Production » (kWh, PR, kWh/kWc, P50/P90, par pan et au
+   total), alimenté par le contrat `calepinage_resultat.json` (CAL244) : rien
+   n'y est calculé, une grandeur absente s'affiche « non calculée ».
+   Contextuel à UN calepinage : deep-link, comme le schéma unifilaire. */
+const PanneauProduction = lazy(() => import('./production/PanneauProduction'))
 
 const config = {
   key: 'calepinage',
@@ -137,6 +142,8 @@ const config = {
     { path: '/calepinage/:id/pente', component: SaisiePente, roles: ROLES },
     // contextuelle: le schéma unifilaire d'UN calepinage, ouvert depuis son atelier (CAL195) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/schema', component: SchemaUnifilairePanel, roles: ROLES },
+    // CAL236 — contextuelle : le panneau Production de CE calepinage.
+    { path: '/calepinage/:id/production', component: PanneauProduction, roles: ROLES },
   ],
 }
 
