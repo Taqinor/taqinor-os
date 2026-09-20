@@ -25,6 +25,14 @@ import BoutonDevis from './BoutonDevis'
    autre chantier. Le serveur résout donc la source depuis le calepinage
    lui-même — c'est lui qui tranche. */
 import { BoutonReprendreContourAffaire } from './BoutonsContourAO'
+/* CAL101 — les raccourcis clavier de l'atelier et leur aide-mémoire (« ? »).
+   Ils se posent ICI, dans l'emplacement enregistré par CAL37 : un composant de
+   raccourcis monté nulle part serait exactement l'oubli du 03/08/2026 — et un
+   raccourci qui n'est branché sur aucun écran ne rend jamais personne rapide.
+   Les gestes concrets (outil tracé, obstacle, zone…) viendront de `builderApi`
+   au fur et à mesure que l'atelier les expose : tant qu'un geste n'existe pas,
+   son raccourci ne mange PAS la frappe (comportement déclaré du composant). */
+import RaccourcisAtelier from './RaccourcisAtelier'
 
 /* ============================================================================
    CAL37 — L'UNIQUE EMPLACEMENT DES PANNEAUX DE L'ATELIER, mode `calepinage`.
@@ -133,6 +141,11 @@ export default function AtelierPanneaux({
       {/* L'EMPLACEMENT des panneaux des tâches suivantes. `builderApi`,
           `onRecharger` et `lectureSeule` leur sont passés par l'atelier, pour
           qu'aucune n'ait à aller les rechercher elle-même. */}
+      {/* CAL101 — l'aide-mémoire des raccourcis, à portée de « ? ». */}
+      <div className="mt-4">
+        <RaccourcisAtelier actions={builderApi?.raccourcis ?? {}} />
+      </div>
+
       <div className="mt-5 flex flex-wrap items-start gap-4" data-testid="cal-atelier-actions">
         <BoutonDevis
           calepinageId={calepinageId}
