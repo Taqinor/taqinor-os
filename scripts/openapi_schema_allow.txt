@@ -111,6 +111,10 @@ Error|MetricsDashboardV2View|unable to guess serializer. This is graceful fallba
 Error|MetricsDashboardView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|MetricsLeadsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|MetricsPacingView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MoteurCalculerView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MoteurPoseView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MoteurResultatView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ParametresCalepinageView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|MobileHomeRouteView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ModuleCatalogViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|NotificationPreferenceViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -1050,3 +1054,10 @@ Warning|<global>|operationId "v#_contrats_contrats_deviations_retrieve" has coll
 # (nom de composant -> jours) : inexprimable en composant OpenAPI nomme, forme
 # reelle documentee dans la vue ; signature collee depuis la sortie du checker.
 Warning|public_uptime_90j|could not resolve "DictField(child=ListField(child=PublicUptimeJour():
+# Lot CAL (calepinage) — MEME classe que les 11 collisions deja acceptees
+# ci-dessus : deux chemins qui ne different QUE par un parametre final
+# (`variantes/` et `variantes/{variante_id}/`) donnent le meme operationId ;
+# drf-spectacular les desambiguise lui-meme (suffixe `_#`). Signatures
+# collees depuis la sortie du checker (job backend-openapi du run 35482534497).
+Warning|<global>|operationId "django_calepinage_calepinages_variantes_retrieve" has collisions [('/api/django/calepinage/calepinages/{id}
+Warning|<global>|operationId "v#_calepinage_calepinages_variantes_retrieve" has collisions [('/api/v#/calepinage/calepinages/{id}/variant

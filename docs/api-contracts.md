@@ -108,6 +108,8 @@
     calcule_le:inconnu, chantier_id:inconnu, date_reference:inconnu, lots:inconnu, source:texte, total_exposition:inconnu
 - frontend/src/api/btpChantierApi.js :: prerequis -> /api/django/btp-chantier/chantiers/<>/cloture-btp
     blocages:inconnu, pret:booleen
+- frontend/src/api/calepinageApi.js :: pose -> /api/django/calepinage/moteur/pose
+    engageable:inconnu, hash_entree:inconnu, kwc:inconnu, marges:inconnu, motifs_non_engageable:inconnu, plans:inconnu, preuve:inconnu, repere:inconnu, schema_version:inconnu, total_modules:inconnu, verdict:inconnu, version_moteur:inconnu
 - frontend/src/api/calepinageApi.js :: resultat -> /api/django/calepinage/moteur/resultat/<>
     detail:texte, elements:liste, job_id:inconnu, kind:inconnu, message_erreur:texte, progress_pct:inconnu, resultat:inconnu, statut:inconnu, variante:inconnu
 - frontend/src/api/comptaApi.js :: accepterSuggestions -> /api/django/compta/rapprochements/<>/accepter-suggestions

@@ -28,6 +28,7 @@ plutôt que de tenir un utilisateur devant un écran gelé.
 from __future__ import annotations
 
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -35,8 +36,8 @@ from core.permissions import ScopedPermission
 
 from ..permissions import CAL_GERER, CAL_VOIR
 
-__all__ = ['MoteurCalculerView', 'MoteurResultatView',
-           'document_de_la_demande']
+__all__ = ['MoteurCalculerView', 'MoteurPoseView', 'MoteurResultatView',
+           'document_de_la_demande', 'verdict_de_pose']
 
 
 def document_de_la_demande(donnees):
@@ -165,6 +166,122 @@ def accuse_de_travail_long(cout, job):
             'motif': cout.motif,
         },
     }
+
+
+def verdict_de_pose(resultat):
+    """CAL78 — la phrase de verdict, GÉNÉRÉE des grandeurs MESURÉES.
+
+    Règle du dépôt (``core/calepinage/sensibilites.py``) : une phrase de
+    verdict est GÉNÉRÉE, jamais rédigée. Elle ne dit donc rien que la preuve
+    ne porte déjà — compte posé, régime de preuve, borne supérieure — et
+    reprend mot pour mot le libellé du moteur quand il n'y a rien à poser :
+    inventer une raison que le moteur n'a pas donnée serait un chiffre de
+    plus, pas une explication.
+    """
+    preuve = resultat.get('preuve') or {}
+    modules = resultat.get('total_modules') or 0
+    if not modules:
+        return (preuve.get('libelle')
+                or "Aucun module posable sur ce relevé.")
+    if preuve.get('optimal') and preuve.get('methode_exacte'):
+        return "Pose complète : %d modules posés, optimum prouvé." % modules
+    borne = preuve.get('borne_superieure')
+    if borne is None:
+        return ("Pose retenue : %d modules posés, optimum NON prouvé."
+                % modules)
+    return ("Pose retenue : %d modules posés, optimum NON prouvé "
+            "(borne supérieure : %d)." % (modules, borne))
+
+
+class MoteurPoseView(APIView):
+    """``POST /api/django/calepinage/moteur/pose/`` — LA POSE, avec sa preuve.
+
+    Contrat committé : ``contract_samples/pose.json`` (PACT10). On soumet un
+    relevé sous la clé ``demande`` et le moteur rend les panneaux POSÉS **avec
+    le régime de preuve sous lequel il les a posés** — un compte sans son
+    régime n'est pas opposable.
+
+    CE QUI LA DISTINGUE DE ``calculer``. Rien dans le moteur : c'est LE MÊME
+    point d'entrée neutre (``apps.ao.selectors.calepinage_json``), donc aucune
+    seconde sérialisation qui dériverait de la première. La différence est la
+    RÉPONSE : ``calculer`` publie la carte complète de l'atelier (tiroirs,
+    suggestions, cache, engagement) ; ``pose`` publie la POSE et sa preuve, et
+    rien d'autre. Les charges utiles d'atelier ne sont donc même pas calculées
+    (``tiroirs=False``, ``suggestions=False``) : on ne paye pas un travail que
+    la réponse ne publie pas.
+
+    Elle n'écrit RIEN — aucun calepinage, aucune variante, aucun statut.
+
+    * **200** — la pose, à la forme figée par le contrat ;
+    * **400** — document invalide ou plan incohérent, motif FRANÇAIS du
+      serveur, champ fautif nommé ;
+    * **403** — sans ``calepinage_gerer`` (le calcul est une écriture au sens
+      des permissions, comme pour ``calculer``).
+    """
+
+    permission_classes = [ScopedPermission]
+    read_permission = CAL_VOIR
+    write_permission = CAL_GERER
+
+    def post(self, request, *args, **kwargs):
+        from apps.ao.selectors import calepinage_json, erreurs_moteur_calepinage
+
+        entree_invalide, incoherent = erreurs_moteur_calepinage()
+        donnees = request.data
+        # La demande voyage sous ``demande`` (la clé que le contrat fige).
+        # L'enveloppe ``entree`` et le document NU sont acceptés en plus, par
+        # le MÊME lecteur que ``calculer`` : un appelant qui connaît déjà la
+        # porte du moteur n'a pas à apprendre une seconde grammaire.
+        if isinstance(donnees, dict) and isinstance(donnees.get('demande'),
+                                                    dict):
+            donnees = donnees['demande']
+        document = document_de_la_demande(donnees)
+        # LES REFUS SONT LEVÉS, PAS RENVOYÉS. DRF rend exactement le même 400
+        # (même corps, même champ fautif nommé) et, surtout,
+        # `scripts/check_api_shapes.py` lit la vue en UNION de tous ses
+        # `return Response(...)` : un 400 renvoyé ferait entrer `demande`,
+        # `calepinage` et `controle` dans la FORME de la réponse 200 et
+        # ferait diverger le contrat committé `contract_samples/pose.json`.
+        if document is None:
+            raise ValidationError(
+                {'demande': "Relevé de pose manquant ou invalide : le corps "
+                            "attendu porte le document du moteur sous "
+                            "« demande »."})
+
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            raise ValidationError(
+                {'demande': 'Une pose se calcule toujours dans une société.'})
+
+        try:
+            resultat = calepinage_json(document, company=company,
+                                       user=request.user, tiroirs=False,
+                                       suggestions=False)
+        except entree_invalide as erreur:
+            raise ValidationError({'demande': [str(erreur)]}) from erreur
+        except incoherent as erreur:
+            raise ValidationError({'calepinage': [str(erreur)],
+                                   'controle': erreur.controle,
+                                   'repere': erreur.repere}) from erreur
+
+        # Dictionnaire LITTÉRAL : c'est lui que `scripts/check_api_shapes.py`
+        # lit statiquement pour le confronter à `contract_samples/pose.json`.
+        # Le construire par compréhension rendrait la vue illisible à la garde
+        # — et un contrat qu'aucune garde ne relit pourrit en silence.
+        return Response({
+            'schema_version': resultat['schema_version'],
+            'repere': resultat['repere'],
+            'hash_entree': resultat['hash_entree'],
+            'version_moteur': resultat['version_moteur'],
+            'total_modules': resultat['total_modules'],
+            'kwc': resultat['kwc'],
+            'engageable': resultat['engageable'],
+            'motifs_non_engageable': resultat['motifs_non_engageable'],
+            'verdict': verdict_de_pose(resultat),
+            'plans': resultat['plans'],
+            'preuve': resultat['preuve'],
+            'marges': resultat['marges'],
+        })
 
 
 class MoteurResultatView(APIView):

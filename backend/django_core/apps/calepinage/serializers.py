@@ -20,6 +20,7 @@ Les lectures cross-app passent par les ``selectors.py`` des apps cibles
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -65,6 +66,10 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             'created_at', 'updated_at',
         ]
 
+    # YAPIC6 — la nature est DÉCLARÉE (même patron que le jumeau côté ventes,
+    # `apps/ventes/serializers.py`) : sans cela drf-spectacular ne sait pas
+    # typer un SerializerMethodField et publie un contrat muet.
+    @extend_schema_field(serializers.BooleanField(allow_null=True))
     def get_layout_stale(self, calepinage):
         """``True``/``False`` d'après le DEVIS lié — ``None`` sans devis.
 
@@ -75,6 +80,7 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         """
         return self._peremption(calepinage)['layout_stale']
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_layout_nb_panneaux(self, calepinage):
         return self._peremption(calepinage)['layout_nb_panneaux']
 

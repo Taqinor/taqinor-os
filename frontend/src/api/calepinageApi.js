@@ -124,7 +124,9 @@ const calepinageApi = {
      file, un seul `kind` — jamais une seconde. */
   moteur: {
     calculer: (corps) => api.post('/calepinage/moteur/calculer/', corps),
-    // `pose` (contrat `pose.json`) : route servie par CAL78 — appel ajouté avec elle.
+    // `pose` (contrat `pose.json`) : le relevé voyage sous `demande`, la
+    // réponse porte la pose ET son régime de preuve.
+    pose: (corps) => api.post('/calepinage/moteur/pose/', corps),
     resultat: (jobId) => api.get(`/calepinage/moteur/resultat/${jobId}/`),
   },
 

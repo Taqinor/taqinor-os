@@ -16,7 +16,11 @@ from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
 from .views.calepinages import CalepinageViewSet
-from .views.moteur import MoteurCalculerView, MoteurResultatView
+from .views.moteur import (
+    MoteurCalculerView,
+    MoteurPoseView,
+    MoteurResultatView,
+)
 from .views.parametres import ParametresCalepinageView
 
 # ``SimpleRouter`` et non ``DefaultRouter`` (même choix qu'``apps/ai_governance``)
@@ -35,6 +39,11 @@ urlpatterns = [
     # `contract_samples/moteur_calculer.json` fige depuis le jour 1.
     path('moteur/calculer/', MoteurCalculerView.as_view(),
          name='calepinage-moteur-calculer'),
+    # CAL78 — LA POSE et son régime de preuve, même famille ``moteur`` (un
+    # calcul sans état, sans identifiant) ; chemin figé depuis le jour 1 par
+    # ``contract_samples/pose.json``.
+    path('moteur/pose/', MoteurPoseView.as_view(),
+         name='calepinage-moteur-pose'),
     # CAL23 — le suivi d'un calcul lancé en tâche de fond (même famille
     # ``moteur`` : un calcul, pas l'objet métier).
     path('moteur/resultat/<int:job_id>/', MoteurResultatView.as_view(),
