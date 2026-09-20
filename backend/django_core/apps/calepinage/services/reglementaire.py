@@ -66,6 +66,9 @@ __all__ = [
     'ETAT_FOURNIE', 'ETAT_A_COMPLETER', 'ETAT_MANQUANTE',
     'MESSAGE_AUCUN_GABARIT', 'composer_dossiers', 'infos_du_calepinage',
     'dossiers_du_calepinage',
+    # CAL192 / CAL193 — les packs pays (Maroc, France).
+    'DossierRefuse', 'construire_pack_dossier', 'GENRES_FRANCE',
+    'avancement_du_dossier', 'packs_france',
 ]
 
 
@@ -477,4 +480,93 @@ def construire_pack_dossier(dossier, *, created_by=None, rendus=None):
         'pieces': [(code, libelle) for code, libelle, _o in pieces],
         'signalements': signalements,
         'dossier': dossier.pk,
+    }
+
+
+# ── CAL193 — LES TROIS DOSSIERS FRANÇAIS (DP mairie, Enedis, Consuel) ──────
+#
+# La mémoire fondateur du 20/08 désigne les rails DP/Enedis/Consuel comme un
+# gap produit ; aucun code correspondant n'existait (grep
+# ``consuel|cerfa|enedis`` sans résultat côté backend). Ce qui est écrit ici
+# se limite aux trois CLÉS de genre et à leurs libellés d'écran : la LISTE des
+# pièces de chaque dossier, leurs intitulés et leurs RÉFÉRENCES (numéro de
+# CERFA, notice Consuel, documentation Enedis) viennent du gabarit DÉPOSÉ par
+# la société (CAL190, qui refuse une pièce sans source). Aucune donnée
+# réglementaire chiffrée n'est écrite en dur — un test de surface le vérifie.
+
+#: Les trois genres de dossier français, et ce qu'ils nomment à l'écran.
+GENRES_FRANCE = (
+    ('dp_mairie', "Déclaration préalable en mairie"),
+    ('enedis', "Raccordement Enedis"),
+    ('consuel', "Attestation de conformité (Consuel)"),
+)
+
+MESSAGE_GENRE_SANS_GABARIT = (
+    "Aucun gabarit « %s » n'a été déposé pour la France : déposez le "
+    "formulaire officiel et la liste de ses pièces (avec leur référence) "
+    "dans les réglages du module. L'ERP ne reproduit aucun formulaire de "
+    "mémoire."
+)
+
+
+def avancement_du_dossier(dossier):
+    """L'état d'avancement PIÈCE PAR PIÈCE d'un dossier composé.
+
+    Compte ce qui est réellement fourni ; ``pourcentage`` vaut ``None`` quand
+    le dossier n'attend AUCUNE pièce (un pourcentage sur zéro pièce serait un
+    chiffre inventé).
+    """
+    pieces = dossier.get('pieces') or []
+    fournies = [p for p in pieces if p['etat'] == ETAT_FOURNIE]
+    a_completer = [p for p in pieces if p['etat'] == ETAT_A_COMPLETER]
+    manquantes = [p for p in pieces if p['etat'] == ETAT_MANQUANTE]
+    total = len(pieces)
+    return {
+        'pieces_total': total,
+        'pieces_fournies': len(fournies),
+        'pieces_a_completer': len(a_completer),
+        'pieces_manquantes': len(manquantes),
+        'champs_a_completer': len(dossier.get('champs_a_completer') or []),
+        'pourcentage': (round(len(fournies) * 100 / total)
+                        if total else None),
+    }
+
+
+def packs_france(calepinage):
+    """CAL193 — les trois dossiers FR, chacun avec son avancement.
+
+    Un genre dont la société n'a déposé AUCUN gabarit sort avec
+    ``gabarit_depose = False`` et le message qui dit quoi déposer : il n'est
+    ni masqué (on saurait alors rien) ni inventé (on mentirait).
+    """
+    from ..models import GabaritDossierReglementaire
+
+    agregat = dossiers_du_calepinage(calepinage, pays='fr')
+    # Le GENRE vit sur le gabarit, pas dans le dossier composé : y ajouter une
+    # clé ferait diverger la forme du contrat CAL247, que l'écran consomme.
+    genre_par_gabarit = dict(
+        GabaritDossierReglementaire.objects
+        .filter(company=getattr(calepinage, 'company', None), pays='fr')
+        .values_list('id', 'genre'))
+    par_genre = {}
+    for dossier in agregat['dossiers']:
+        genre = genre_par_gabarit.get(dossier.get('gabarit_id')) or ''
+        par_genre.setdefault(genre, []).append(dossier)
+    packs = []
+    for genre, libelle in GENRES_FRANCE:
+        dossiers = par_genre.get(genre) or []
+        packs.append({
+            'genre': genre,
+            'libelle': libelle,
+            'gabarit_depose': bool(dossiers),
+            'message': ('' if dossiers
+                        else MESSAGE_GENRE_SANS_GABARIT % libelle),
+            'dossiers': [dict(dossier,
+                              avancement=avancement_du_dossier(dossier))
+                         for dossier in dossiers],
+        })
+    return {
+        'calepinage': agregat['calepinage'],
+        'pays': agregat['pays'],
+        'packs': packs,
     }
