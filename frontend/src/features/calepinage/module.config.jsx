@@ -90,6 +90,10 @@ const SchemaUnifilairePanel = lazy(() => import('./SchemaUnifilairePanel'))
    n'y est calculé, une grandeur absente s'affiche « non calculée ».
    Contextuel à UN calepinage : deep-link, comme le schéma unifilaire. */
 const PanneauProduction = lazy(() => import('./production/PanneauProduction'))
+/* CAL143 — le diagramme de pertes (cascade), même échantillon serveur que
+   CAL236 : aucune perte n'y est recalculée, un poste non sourcé reste nommé
+   et hachuré. Contextuel à UN calepinage : deep-link. */
+const DiagrammePertes = lazy(() => import('./production/DiagrammePertes'))
 
 const config = {
   key: 'calepinage',
@@ -144,6 +148,8 @@ const config = {
     { path: '/calepinage/:id/schema', component: SchemaUnifilairePanel, roles: ROLES },
     // CAL236 — contextuelle : le panneau Production de CE calepinage.
     { path: '/calepinage/:id/production', component: PanneauProduction, roles: ROLES },
+    // CAL143 — contextuelle : le diagramme de pertes de CE calepinage.
+    { path: '/calepinage/:id/pertes', component: DiagrammePertes, roles: ROLES },
   ],
 }
 
