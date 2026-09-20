@@ -154,6 +154,9 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
         panel_watt: CTX.cible.panel_watt,
         scenario: CTX.cible.scenario,
       },
+      // Ce calepinage-là porte un devis lié : sa cible EST une cible vendue,
+      // et l'atelier se comporte alors exactement comme en mode devis.
+      cibleVendue: true,
       fullName: CTX.calepinage.titre,
     })
 
@@ -258,6 +261,46 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     })
     // `outline: []` n'est pas un polygone : on ne l'envoie pas.
     expect(options.hydrate.devis.geometrie.roof_outline).toBeNull()
+  })
+
+  /* ──────────────────────────────────────────────────────────────────────
+     RÉGRESSION (constat en production, 20/09/2026) — `/calepinage/<id>` né
+     d'un LEAD restait figé : « Surface : — », recommandation « — », aucune
+     requête de rendement, alors que `/ventes/devis/<id>/design` ouvrait le
+     MÊME toit du MÊME lead en quelques secondes. Deux causes, l'une ici :
+     l'écran envoyait au builder une cible entièrement nulle SANS dire qu'il
+     n'y a aucune vente derrière ce document — et le builder lit alors
+     « cible vendue de ZÉRO panneau » (L2, incident DEV-202608-0016) et
+     refuse de poser quoi que ce soit. Le contrat dit pourtant l'inverse :
+     « LA CIBLE N'EST JAMAIS INVENTÉE », `cible: null` = pas de cible.
+     ────────────────────────────────────────────────────────────────────── */
+  it('calepinage né d’un lead : le builder reçoit un centre, le tracé client et AUCUNE cible vendue', async () => {
+    const CTX_LEAD = exempleContrat('calepinage', 'calepinage_design_context',
+      'exemple_sans_devis')
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context',
+        'exemple_sans_devis'))
+
+    rendreCalepinage(CTX_LEAD.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const options = initRoofToolPro8.mock.calls[0][0]
+    // Le CENTRE : sans l'épingle du lead, la carte démarre au niveau Maroc et
+    // rien ne s'affiche jamais.
+    expect(options.hydrate.devis.geometrie.roof_point)
+      .toEqual(CTX_LEAD.geometrie.pin)
+    // LE PAN VIENT DU TRACÉ CLIENT : c'est ce contour, et lui seul, que
+    // `hydrateFromDevis` referme en zone active (aucun re-tracé manuel).
+    expect(options.hydrate.devis.geometrie.roof_outline)
+      .toEqual(CTX_LEAD.geometrie.outline)
+    expect(options.referenceContour).toEqual(CTX_LEAD.geometrie.contour_client)
+    // AUCUN chiffre inventé…
+    expect(options.hydrate.devis.cible).toEqual({
+      panneaux: null, panel_watt: null, scenario: null,
+    })
+    // …mais le silence est QUALIFIÉ : rien n'a été vendu, donc l'optimiseur
+    // travaille librement au lieu de se figer sur une cible de zéro.
+    expect(options.hydrate.devis.cibleVendue).toBe(false)
   })
 
   it('lecture seule : la raison du serveur s’affiche et le bouton disparaît', async () => {

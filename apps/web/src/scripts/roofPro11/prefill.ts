@@ -831,6 +831,17 @@ export interface DevisPayload {
     panel_watt?: number | null;
     scenario?: LayoutScenario | null;
   } | null;
+  /**
+   * CAL37 — ce document porte-t-il une cible VENDUE ? `false` UNIQUEMENT pour un
+   * document qui n'a aucun devis derrière lui (un calepinage autonome, contrat
+   * `calepinage_design_context.json` : « LA CIBLE N'EST JAMAIS INVENTÉE », `cible`
+   * vaut alors `null`). ABSENT ⇒ `true` ⇒ comportement devis/AO strictement
+   * inchangé : là, une cible vide est une CIBLE VENDUE DE ZÉRO (L2, incident
+   * DEV-202608-0016) et l'optimiseur ne pose RIEN. Sur un calepinage sans devis,
+   * il n'y a rien de vendu du tout : l'optimiseur doit travailler librement,
+   * exactement comme pour un lead sans facture.
+   */
+  cibleVendue?: boolean;
   fullName?: string;
   phone?: string;
   city?: string;
@@ -852,6 +863,8 @@ export interface DevisHydration {
   neededPanels: number | null;
   /** false dès qu'une cible est imposée : le devis pilote, pas la facture. */
   neededAuto: boolean;
+  /** CAL37 — le document porte-t-il une cible VENDUE ? (voir `DevisPayload.cibleVendue`) */
+  cibleVendue: boolean;
   /** Puissance unitaire vendue (W), ou null. */
   panelWatt: number | null;
   scenario: LayoutScenario | null;
@@ -887,6 +900,7 @@ export function hydrateFromDevis(devis: DevisPayload | null | undefined): DevisH
     panelWatt: null,
     scenario: null,
     devisId: null,
+    cibleVendue: true,
   };
   if (!devis) return empty;
 
@@ -933,6 +947,9 @@ export function hydrateFromDevis(devis: DevisPayload | null | undefined): DevisH
     panelWatt,
     scenario,
     devisId: devis.id ?? null,
+    // ABSENT ⇒ true : un appelant qui ne connaît pas ce drapeau (devis, AO) garde
+    // EXACTEMENT le comportement d'avant.
+    cibleVendue: devis.cibleVendue !== false,
   };
 }
 

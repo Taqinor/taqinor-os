@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/design-context/",
   "forme_serveur": "complete",
-  "pourquoi": "CAL231 — LE JUMEAU NEUTRE du contexte de conception. Côté ventes, l'atelier reçoit TOUT ce qu'il doit savoir en un seul appel (`apps/ventes/views/devis.py::design_context`, PV17 : `{devis, geometrie, cible, carte, modifiable, raison_lecture_seule, avertissements}`) et l'AO a son jumeau (`apps/ao/views.py::design_context`) ; en mode `calepinage`, RIEN n'existait — CAL37 aurait inventé sa forme, et c'est exactement le mode de panne que PACT10 ferme (écran « AO — Tableau de bord », 03/08/2026, zéro clé sur six concordante). Le contrat part donc AVANT l'écran, et l'endpoint le sert mot pour mot. LES SEPT CLÉS SONT TOUJOURS PRÉSENTES : un panier vide vaut `[]`, une valeur inconnue vaut `null` ou `\"\"`, jamais une clé absente — un écran qui reçoit parfois six clés et parfois sept finit par tester l'absence de clé au lieu de l'absence de données. LA CIBLE N'EST JAMAIS INVENTÉE : `cible` vaut celle du devis lié quand il y en a un (lue par `apps.ventes.selectors.contexte_conception_devis`, la MÊME que l'atelier devis — jamais un second calcul), sinon celle déduite des factures du lead (CAL147, quand elle existera), sinon `null` — et l'écran affiche « non renseignée ». JAMAIS une puissance devinée : une cible fausse fait dessiner un toit qui ne correspond à aucun devis. LA GÉOMÉTRIE VIENT DE CE QUI A ÉTÉ RÉELLEMENT POSÉ : `source` vaut `calepinage` (le calepinage porte déjà un `roof_layout`), `lead` (repli sur l'épingle/le contour du diagnostic, via `selectors.contexte_geographique`, CAL15) ou `none` ; `pin`, `outline` et `contour_client` sont nuls/vides quand la source manque, jamais un centre du Maroc inventé. LA RAISON DE LECTURE SEULE SE PROPAGE TELLE QUELLE : quand un devis est lié et que l'atelier devis le déclare non modifiable, la phrase FRANÇAISE du serveur ventes est reprise mot pour mot — ni traduite, ni adoucie, sans quoi l'écran dirait autre chose que la porte d'écriture. `carte` est de la CONFIGURATION (mêmes variables d'environnement que `apps/ventes/views/roof_config.py`, même forme `{available, maptilerKey, mapboxToken}` que les deux autres contextes) : aucune donnée société, aucune écriture. `exemple_vide` = un calepinage SANS devis ET SANS facture : toutes les clés restent là, `cible` vaut `null` et `geometrie.source` vaut `none`. Valeurs : des PLACEHOLDERS assumés (identifiants à un chiffre, libellés « d'essai ») — aucun chiffre client, aucun prix d'achat, aucune marge.",
+  "pourquoi": "CAL231 — LE JUMEAU NEUTRE du contexte de conception. Côté ventes, l'atelier reçoit TOUT ce qu'il doit savoir en un seul appel (`apps/ventes/views/devis.py::design_context`, PV17 : `{devis, geometrie, cible, carte, modifiable, raison_lecture_seule, avertissements}`) et l'AO a son jumeau (`apps/ao/views.py::design_context`) ; en mode `calepinage`, RIEN n'existait — CAL37 aurait inventé sa forme, et c'est exactement le mode de panne que PACT10 ferme (écran « AO — Tableau de bord », 03/08/2026, zéro clé sur six concordante). Le contrat part donc AVANT l'écran, et l'endpoint le sert mot pour mot. LES SEPT CLÉS SONT TOUJOURS PRÉSENTES : un panier vide vaut `[]`, une valeur inconnue vaut `null` ou `\"\"`, jamais une clé absente — un écran qui reçoit parfois six clés et parfois sept finit par tester l'absence de clé au lieu de l'absence de données. LA CIBLE N'EST JAMAIS INVENTÉE : `cible` vaut celle du devis lié quand il y en a un (lue par `apps.ventes.selectors.contexte_conception_devis`, la MÊME que l'atelier devis — jamais un second calcul), sinon celle déduite des factures du lead (CAL147, quand elle existera), sinon `null` — et l'écran affiche « non renseignée ». JAMAIS une puissance devinée : une cible fausse fait dessiner un toit qui ne correspond à aucun devis. LA GÉOMÉTRIE VIENT DE CE QUI A ÉTÉ RÉELLEMENT POSÉ : `source` vaut `calepinage` (le calepinage porte déjà un `roof_layout`), `lead` (repli sur l'épingle/le contour du diagnostic, via `selectors.contexte_geographique`, CAL15) ou `none` ; `pin`, `outline` et `contour_client` sont nuls/vides quand la source manque, jamais un centre du Maroc inventé. LA RAISON DE LECTURE SEULE SE PROPAGE TELLE QUELLE : quand un devis est lié et que l'atelier devis le déclare non modifiable, la phrase FRANÇAISE du serveur ventes est reprise mot pour mot — ni traduite, ni adoucie, sans quoi l'écran dirait autre chose que la porte d'écriture. `carte` est de la CONFIGURATION (mêmes variables d'environnement que `apps/ventes/views/roof_config.py`, même forme `{available, maptilerKey, mapboxToken}` que les deux autres contextes) : aucune donnée société, aucune écriture. `exemple_sans_devis` = L'ÉTAT LE PLUS COURANT de la porte autonome (CAL34) : un calepinage né d'un LEAD, donc SANS devis — la géométrie vient du diagnostic (`source: \"lead\"`, l'épingle et le contour que le client a posés) et `cible` vaut `null`. Cet état-là a une conséquence que l'écran DOIT respecter : `cible: null` veut dire « aucune vente derrière ce document », et JAMAIS « cible vendue de zéro panneau » (ce que signifie un devis sans ligne panneau, incident DEV-202608-0016). L'atelier ouvre donc le pan depuis le contour du client et laisse l'optimiseur poser ce qui tient, comme pour un lead sans facture. `exemple_vide` = un calepinage SANS devis ET SANS facture ET sans aucune géométrie : toutes les clés restent là, `cible` vaut `null` et `geometrie.source` vaut `none`. Valeurs : des PLACEHOLDERS assumés (identifiants à un chiffre, libellés « d'essai ») — aucun chiffre client, aucun prix d'achat, aucune marge.",
   "exemple": {
     "calepinage": {
       "id": 1,
@@ -38,6 +38,34 @@
     "modifiable": true,
     "raison_lecture_seule": "",
     "avertissements": []
+  },
+  "exemple_sans_devis": {
+    "calepinage": {
+      "id": 3,
+      "titre": "Toiture — maison d'essai",
+      "statut": "brouillon",
+      "lead": 3,
+      "client": null,
+      "devis": null
+    },
+    "geometrie": {
+      "source": "lead",
+      "roof_layout": null,
+      "pin": { "lat": 33.5731, "lng": -7.5898 },
+      "outline": [[33.5731, -7.5898], [33.5732, -7.5898], [33.5732, -7.5897]],
+      "contour_client": [[33.5731, -7.5898], [33.5732, -7.5898], [33.5732, -7.5897]]
+    },
+    "cible": null,
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-d-essai",
+      "mapboxToken": null
+    },
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "avertissements": [
+      "Aucune cible de puissance connue : renseignez-la, ou rattachez un devis."
+    ]
   },
   "exemple_vide": {
     "calepinage": {

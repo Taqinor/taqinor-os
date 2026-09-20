@@ -165,6 +165,13 @@ export interface Ctx {
    * garde le comportement historique (remplir ce qui tient). Read-only depuis les modules
    * consommateurs : seul roof-tool-pro11.ts (l'hydratation) l'écrit. */
   readonly devisMode: boolean;
+  /**
+   * CAL37 — en mode document (`devisMode`), ce document porte-t-il une cible VENDUE ?
+   * Vrai pour un devis/une affaire AO (comportement L2 inchangé : besoin nul = zéro
+   * vendu, on ne pose rien). Faux pour un CALEPINAGE sans devis lié : il n'y a aucune
+   * vente derrière, donc un besoin nul veut dire « aucune cible », et l'optimiseur pose
+   * ce qui tient. Read-only : seul roof-tool-pro11.ts (l'hydratation) l'écrit. */
+  readonly cibleVendue: boolean;
 
   // — Recommandation/optimum courant + flag « caler sur la reco » (mutable) —
   rec: Recommendation | null;

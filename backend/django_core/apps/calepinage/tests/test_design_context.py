@@ -118,6 +118,43 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertEqual(contexte['raison_lecture_seule'], phrase)
         self.assertFalse(contexte['modifiable'])
 
+    def test_layout_sans_geometrie_retombe_sur_le_trace_du_client(self):
+        """Le tracé du client ne se perd pas derrière un layout sans géométrie.
+
+        C'est le cas RÉEL d'un calepinage né d'un devis automatique (son
+        ``roof_layout`` ne porte que ``result``/``panelWatt``) ou d'un premier
+        enregistrement fait avant qu'un pan n'ait été dessiné : ``outline``
+        valait ``[]`` et l'atelier n'avait AUCUN pan à ouvrir, alors que le
+        contour du client était là. Miroir du repli déjà posé côté ventes.
+        """
+        contour = [[33.5731, -7.5898], [33.5732, -7.5898], [33.5732, -7.5897]]
+        self.lead_lie.roof_outline = contour
+        self.lead_lie.save(update_fields=['roof_outline'])
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_lie.pk,
+            titre='Repris du devis automatique',
+            roof_layout={'version': 2, 'outline': [],
+                         'result': {'kwc': 4.4}, 'panelWatt': 550})
+        geometrie = self._contexte(calepinage)['geometrie']
+        self.assertEqual(geometrie['outline'], contour)
+        self.assertEqual(geometrie['pin'], {'lat': 33.5731, 'lng': -7.5898})
+        self.assertEqual(geometrie['contour_client'], contour)
+
+    def test_layout_deja_dessine_garde_son_contour(self):
+        """Le repli ci-dessus ne touche JAMAIS un calepinage déjà dessiné."""
+        contour_client = [[33.5731, -7.5898], [33.5732, -7.5898],
+                          [33.5732, -7.5897]]
+        self.lead_lie.roof_outline = contour_client
+        self.lead_lie.save(update_fields=['roof_outline'])
+        dessine = [[33.6, -7.6], [33.61, -7.6], [33.61, -7.59]]
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_lie.pk, titre='Dessiné',
+            roof_layout={'version': 2, 'outline': dessine,
+                         'zones': [{'id': 'z1', 'vertices': dessine}]})
+        geometrie = self._contexte(calepinage)['geometrie']
+        self.assertEqual(geometrie['outline'], dessine)
+        self.assertEqual(geometrie['contour_client'], contour_client)
+
     def test_autre_societe_introuvable(self):
         reponse = self.api.get(url_contexte(self.etranger.pk))
         self.assertEqual(reponse.status_code, 404)
