@@ -63,15 +63,24 @@ class ManifesteModuleTest(SimpleTestCase):
 
 
 class ManifestePlateformeTest(SimpleTestCase):
-    """ARC28 — ``platform.py`` existe et ne déclare aucune surface non câblée."""
+    """ARC28 — ``platform.py`` ne déclare aucune surface NON CÂBLÉE.
 
-    def test_surfaces_vides_au_jour_1(self):
+    Ce garde disait « toutes les surfaces sont vides », ce qui était vrai au
+    jour 1 et ne l'est plus : la recherche globale, le chatter et les champs
+    personnalisés ont été RÉELLEMENT câblés depuis, et
+    ``tests/test_platform.py`` le vérifie en détail. Le garder tel quel
+    faisait échouer l'un des deux tests QUOI QU'IL ARRIVE. Ce qui reste vrai
+    et utile est vérifié ici : les surfaces encore non câblées restent vides
+    — un identifiant déclaré sans câblage promet une fonction qui n'existe
+    pas.
+    """
+
+    def test_les_surfaces_non_cablees_restent_vides(self):
         from apps.calepinage.platform import PLATFORM
 
         self.assertEqual(PLATFORM['module'], 'calepinage')
-        for surface in ('searchable_models', 'record_targets',
-                        'customfield_models', 'import_specs',
-                        'automation_state_fields', 'kpi_providers'):
+        for surface in ('import_specs', 'automation_state_fields',
+                        'kpi_providers'):
             self.assertEqual(PLATFORM[surface], [], surface)
         self.assertEqual(PLATFORM['agent_actions_module'], '')
 

@@ -30,14 +30,22 @@ from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage
 from ..selectors import calepinage_detail
-from ..services.archivage import ArchivageInvalide, archiver, restaurer
+# Renommés à l'import : les ACTIONS doivent s'appeler ``archiver`` et
+# ``restaurer_corbeille`` — le routeur DRF fige le nom de la méthode AU MOMENT
+# de la décoration (``MethodMapper``) et ``get_extra_actions()`` REFUSE une
+# fonction dont le ``__name__`` ne correspond pas à son attribut de classe
+# (l'import d'``urls.py`` échouait entièrement). Même patron que
+# ``views/export_csv.py``.
+from ..services.archivage import ArchivageInvalide
+from ..services.archivage import archiver as archiver_le_calepinage
+from ..services.archivage import restaurer as restaurer_le_calepinage
 
-__all__ = ['archiver_action', 'restaurer_action']
+__all__ = ['archiver', 'restaurer_corbeille']
 
 
 def _attacher(viewset_classe):
-    viewset_classe.archiver = archiver_action
-    viewset_classe.restaurer_corbeille = restaurer_action
+    viewset_classe.archiver = archiver
+    viewset_classe.restaurer_corbeille = restaurer_corbeille
 
 
 def _cible(request, pk):
@@ -47,14 +55,14 @@ def _cible(request, pk):
 
 @action(detail=True, methods=['post'], url_path='archiver',
         permission_classes=[PeutGererCalepinage])
-def archiver_action(self, request, pk=None):
+def archiver(self, request, pk=None):
     """CAL208 — archive le calepinage (corbeille, réversible)."""
     calepinage = _cible(request, pk)
     if calepinage is None:
         return Response({'detail': 'Calepinage introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
     try:
-        archiver(calepinage, user=request.user)
+        archiver_le_calepinage(calepinage, user=request.user)
     except ArchivageInvalide as refus:
         return Response({refus.champ or 'detail': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)
@@ -63,14 +71,14 @@ def archiver_action(self, request, pk=None):
 
 @action(detail=True, methods=['post'], url_path='restaurer-corbeille',
         permission_classes=[PeutGererCalepinage])
-def restaurer_action(self, request, pk=None):
+def restaurer_corbeille(self, request, pk=None):
     """CAL208 — restaure le calepinage DEPUIS la corbeille, à l'identique."""
     calepinage = _cible(request, pk)
     if calepinage is None:
         return Response({'detail': 'Calepinage introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
     try:
-        restaurer(calepinage, user=request.user)
+        restaurer_le_calepinage(calepinage, user=request.user)
     except ArchivageInvalide as refus:
         return Response({refus.champ or 'detail': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)

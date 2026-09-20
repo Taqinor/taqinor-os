@@ -41,6 +41,12 @@ from .views import io_layout as _io_layout_action  # noqa: F401
 from .views import simulation as _simulation_actions  # noqa: F401
 
 router = DefaultRouter()
+# CAL233 — PAS de routes à suffixe de format (``calepinages.json``) : le
+# routeur DRF en ajoute une famille entière par défaut, ce qui est
+# exactement la « seconde forme d'URL pour un même objet » que la règle
+# interdit (et que ``tests/test_structure_urls.py`` refuse). Le contenu se
+# négocie par en-tête, comme partout ailleurs dans l'ERP.
+router.include_format_suffixes = False
 router.register(r'calepinages', CalepinageViewSet, basename='calepinage')
 
 urlpatterns = [
