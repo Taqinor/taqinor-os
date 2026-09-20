@@ -241,6 +241,17 @@ const adsengineApi = {
     backlogArms: () => api.get('/adsengine/plans-vol/backlog-arms/'),
     // ADSENG38 — préflight d'autonomie (toutes les portes go-live).
     preflight: () => api.get('/adsengine/plans-vol/preflight/'),
+    // PUB129 — cockpit d'autonomie : les MÊMES portes que `preflight`, plus la
+    // remédiation FR de chacune (écran / commande / acquittement en place) et
+    // l'état RÉEL de l'autonomie (`actif`). La cérémonie d'activation refuse
+    // côté serveur (`AutonomyNotReady`) tant qu'une porte est rouge ; la
+    // désactivation n'exige AUCUNE porte (sécurité).
+    autonomie: () => api.get('/adsengine/plans-vol/autonomie/'),
+    activerAutonomie: () => api.post('/adsengine/plans-vol/autonomie/activer/'),
+    desactiverAutonomie: () =>
+      api.post('/adsengine/plans-vol/autonomie/desactiver/'),
+    acquitterSimulation: () =>
+      api.post('/adsengine/plans-vol/autonomie/acquitter-simulation/'),
     // Valide un plan composé (refus structuré avec raisons FR).
     validate: (payload) => api.post('/adsengine/plans-vol/validate/', payload),
     // Lance une simulation depuis le plan composé.
