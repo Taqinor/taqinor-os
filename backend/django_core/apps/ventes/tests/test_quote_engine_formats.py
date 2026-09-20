@@ -2156,6 +2156,7 @@ class TestPageCalepinage(TestCase):
     }
 
 # ── NTI18N5 — langue de sortie du document (fr/en/ar) ────────────────────────
+
 class NTI18N5CatalogueLibellesTests(SimpleTestCase):
     """Le CATALOGUE seul (aucun rendu) : trois langues par clé, repli toujours
     français, clé inconnue bruyante, et libellés français identiques aux
