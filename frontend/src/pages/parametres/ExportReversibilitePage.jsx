@@ -1,19 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, HardDriveDownload } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
+import coreApi from '../../api/coreApi'
 import { formatDateTime } from '../../lib/format'
 import {
-  Badge, Button, Card, CardContent, Spinner, toast,
-  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel,
-  AlertDialogAction,
+  Badge, Button, Card, CardContent, Spinner, toast, Checkbox,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  DialogFooter,
 } from '../../ui'
 
 /* ============================================================================
-   NTOBS7 — Paramètres → Fiabilité → Export de réversibilité. Complète NTOBS6
-   (POST /core/export-reversibilite/, GET .../historique/) : bouton « Exporter
-   toutes mes données » (confirm dialog), liste des exports précédents avec
-   statut/taille/lien, toast quand un export bascule `pret`.
+   NTOBS7/NTOBS20 — Paramètres → Fiabilité → Export de réversibilité. Complète
+   NTOBS6 (POST /core/export-reversibilite/, GET .../historique/) : le bouton
+   « Exporter toutes mes données » ouvre un assistant 2 étapes — étape 1
+   sélection des jeux de données (catalogue `core.export_registry`, exposé au
+   front via `core/saved-queries/datasets/`, tout coché par défaut), étape 2
+   récapitulatif puis lancement. `datasets` reste OPTIONNEL côté serveur :
+   tout coché envoie `undefined` (comportement par défaut inchangé, jamais un
+   tableau qui dupliquerait silencieusement « tout »). Liste des exports
+   précédents avec statut/taille/lien, toast quand un export bascule `pret`.
    ========================================================================== */
 
 const POLL_INTERVAL_MS = 5000
@@ -47,9 +52,37 @@ function formatTaille(octets) {
 export default function ExportReversibilitePage() {
   const [historique, setHistorique] = useState([])
   const [loading, setLoading] = useState(true)
-  const [confirmOpen, setConfirmOpen] = useState(false)
   const [lancement, setLancement] = useState(false)
   const previousStatuts = useRef({})
+
+  // NTOBS20 — assistant 2 étapes. `datasets` : catalogue chargé à la première
+  // ouverture (jamais rechargé ensuite, un aller-retour au clavier ne doit
+  // pas réinitialiser une sélection en cours) ; `selectionnes` : tout coché
+  // par défaut dès que le catalogue arrive.
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [etape, setEtape] = useState(1)
+  const [datasets, setDatasets] = useState(null)
+  const [selectionnes, setSelectionnes] = useState(new Set())
+
+  const ouvrirAssistant = () => {
+    setWizardOpen(true)
+    setEtape(1)
+    if (datasets === null) {
+      coreApi.datasetsExplorateur.list()
+        .then((r) => {
+          const liste = Array.isArray(r.data) ? r.data : []
+          setDatasets(liste)
+          setSelectionnes(new Set(liste.map((d) => d.name)))
+        })
+        .catch(() => setDatasets([]))
+    }
+  }
+
+  const basculerDataset = (name) => setSelectionnes((prev) => {
+    const next = new Set(prev)
+    if (next.has(name)) next.delete(name); else next.add(name)
+    return next
+  })
 
   const charger = useCallback(() => {
     return parametresApi.getHistoriqueExportReversibilite()
@@ -76,11 +109,15 @@ export default function ExportReversibilitePage() {
   }, [charger])
 
   const lancerExport = () => {
+    // Tout coché → `undefined` (comportement par défaut inchangé côté
+    // serveur) plutôt qu'un tableau qui listerait « tout » explicitement.
+    const toutCoche = datasets && selectionnes.size === datasets.length
+    const payload = toutCoche ? undefined : Array.from(selectionnes)
     setLancement(true)
-    parametresApi.declencherExportReversibilite()
+    parametresApi.declencherExportReversibilite(payload)
       .then(() => {
         toast.success("Export lancé — vous serez notifié quand il sera prêt.")
-        setConfirmOpen(false)
+        setWizardOpen(false)
         charger()
       })
       .catch((err) => {
@@ -99,31 +136,75 @@ export default function ExportReversibilitePage() {
         dans une archive ZIP téléchargeable pendant 7 jours.
       </p>
 
-      <Button onClick={() => setConfirmOpen(true)} disabled={lancement}>
+      <Button onClick={ouvrirAssistant} disabled={lancement}>
         <HardDriveDownload className="mr-2 h-4 w-4" aria-hidden="true" />
         Exporter toutes mes données
       </Button>
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Lancer un export complet ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Un fichier ZIP contenant un CSV par entité (leads, clients, devis, factures,
-              chantiers, tickets, employés, documents) et les fichiers déjà stockés sera
-              préparé en arrière-plan. Vous serez notifié dès qu'il sera prêt ; le lien de
-              téléchargement expire au bout de 7 jours.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={lancerExport} disabled={lancement}>
-              {lancement ? <Spinner className="mr-2 h-4 w-4" /> : null}
-              Lancer l'export
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
+        <DialogContent>
+          {etape === 1 ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Exporter mes données — étape 1/2</DialogTitle>
+                <DialogDescription>
+                  Choisissez les jeux de données à inclure dans l’archive ZIP. Tout est
+                  coché par défaut ; décocher un jeu réduit la taille du fichier (ex.
+                  exclure les documents volumineux pour ne garder que les CSV).
+                </DialogDescription>
+              </DialogHeader>
+              {datasets === null ? (
+                <div className="flex justify-center py-6"><Spinner /></div>
+              ) : (
+                <ul className="flex max-h-72 flex-col gap-2 overflow-y-auto py-2">
+                  {datasets.map((d) => (
+                    <li key={d.name}>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={selectionnes.has(d.name)}
+                          onCheckedChange={() => basculerDataset(d.name)}
+                        />
+                        {d.label || d.name}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setWizardOpen(false)}>Annuler</Button>
+                <Button
+                  onClick={() => setEtape(2)}
+                  disabled={!datasets || selectionnes.size === 0}
+                >
+                  Suivant
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Exporter mes données — étape 2/2</DialogTitle>
+                <DialogDescription>
+                  {selectionnes.size} jeu{selectionnes.size > 1 ? 'x' : ''} de données
+                  sélectionné{selectionnes.size > 1 ? 's' : ''} sur {datasets?.length ?? 0}.
+                  L’archive ZIP sera préparée en arrière-plan (le délai dépend du nombre de
+                  jeux de données et du volume de votre société) ; vous serez notifié dès
+                  qu’elle sera prête, le lien de téléchargement expire au bout de 7 jours.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEtape(1)} disabled={lancement}>
+                  Retour
+                </Button>
+                <Button onClick={lancerExport} disabled={lancement}>
+                  {lancement ? <Spinner className="mr-2 h-4 w-4" /> : null}
+                  Lancer l'export
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <h2 className="mt-8 text-lg font-medium">Exports précédents</h2>
       {loading ? (
