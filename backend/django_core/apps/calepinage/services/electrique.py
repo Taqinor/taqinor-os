@@ -322,6 +322,7 @@ CHAMPS_ENTREE = (
     'protections',          # CAL132 — décisions société sur la check-list
     'terre',                # CAL134 — check-list de mise à la terre
     'exigence_marche',      # CAL127 — bornes imposées par le CPS du dossier
+    'affectation_manuelle',  # CAL234 — affectation IMPOSÉE module par module
 )
 
 
@@ -481,7 +482,10 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     PRÉSENTES et valent ``null`` (jamais ``0`` — un « 0 kWh » se lirait « cette
     toiture ne produit rien »), et l'avertissement le dit.
     """
-    from .chaines import bloc_electrique, bloc_pose, empreinte_entree
+    from .chaines import (
+        AffectationInvalide, bloc_electrique, bloc_pose, empreinte_entree,
+        normaliser_affectation_imposee,
+    )
 
     conception, materiel, donnees, document = conception_du_calepinage(
         calepinage, entree=entree, layout=layout, materiel=materiel)
@@ -489,8 +493,19 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     nom_optimiseur = materiel['designations'].get('optimiseur', '')
     verdicts = verdicts_electriques(conception, optimiseur, nom_optimiseur)
     regle = _regle_chaine_publiee(conception, optimiseur, nom_optimiseur)
+    try:
+        # CAL234 — l'affectation MANUELLE enregistrée (si elle existe) écrase
+        # l'automatique et est marquée comme telle dans la table CAL125.
+        imposee = normaliser_affectation_imposee(
+            donnees.get('affectation_manuelle'))
+    except AffectationInvalide:
+        # Une affectation enregistrée devenue illisible ne fait pas tomber le
+        # résultat : la table repart de l'automatique (et l'évaluation, elle,
+        # NOMME le refus).
+        imposee = ()
     electrique, avertissements = bloc_electrique(conception,
-                                                 verdicts=verdicts)
+                                                 verdicts=verdicts,
+                                                 imposee=imposee)
     pose = bloc_pose(conception)
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
@@ -718,7 +733,20 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     anti-rebond) et ce que le service de layout rejoue à chaque
     enregistrement. Fiche incomplète ⇒ ``verdict: 'indetermine'`` et AUCUN
     bloquant : le silence, jamais un faux vert.
+
+    CAL234 — l'atelier peut y joindre une affectation PROPOSÉE
+    (``entree['affectation_manuelle']``) : elle est VERDICTÉE (Isc, longueur
+    de chaîne, chaînes par entrée MPPT, chaîne qui traverse deux pans) et
+    RIEN n'est persisté — la garde de cette action est en LECTURE, et cette
+    fonction n'écrit pas. Le jour où l'utilisateur valide, le MÊME champ part
+    sur ``entree-electrique`` et c'est là, et là seulement, qu'il est
+    enregistré.
     """
+    from .chaines import (
+        AffectationInvalide, normaliser_affectation_imposee,
+        verdict_affectation,
+    )
+
     conception, materiel_resolu, donnees, _document = conception_du_calepinage(
         calepinage, entree=entree, layout=layout, materiel=materiel)
     manquantes = tuple(conception.manquantes) + tuple(
@@ -737,7 +765,18 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
             'temperatures': (conception.temperatures.en_dict()
                              if conception.temperatures is not None else None),
         }
-    bloquants = bloquants_nommes(conception)
+    bloquants = list(bloquants_nommes(conception))
+    try:
+        imposee = normaliser_affectation_imposee(
+            donnees.get('affectation_manuelle'))
+    except AffectationInvalide as refus:
+        # Une proposition MALFORMÉE est un bloquant NOMMÉ, pas une erreur 500 :
+        # l'atelier envoie sa proposition à chaud, il doit lire pourquoi elle
+        # ne tient pas.
+        imposee, bloquants = (), bloquants + [str(refus)]
+    bloquants.extend(verdict_affectation(
+        conception, imposee,
+        specs_onduleur=materiel_resolu.get('onduleur')))
     regle = _regle_chaine_publiee(
         conception, materiel_resolu.get('optimiseur'),
         materiel_resolu['designations'].get('optimiseur', ''))
