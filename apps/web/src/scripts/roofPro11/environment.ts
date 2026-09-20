@@ -112,18 +112,32 @@ export function environmentRing(o: EnvironmentObject): LngLat[] | null {
  * tracées et les obstacles de toiture, WJ19/CAL66). Un objet SANS `heightM` (ou ≤ 0) est
  * écarté : sans hauteur saisie, il ne porte aucune ombre — comportement identique à son
  * absence.
+ *
+ * `roofHeightM` (CAL66/CAL67, branchement de l'ombrage vivant) : un arbre ou un bâtiment
+ * voisin est posé au SOL, alors que les modules sont sur le TOIT — seule la part qui
+ * DÉPASSE le plan du champ peut masquer le soleil, exactement la règle déjà appliquée
+ * aux ombres tracées (`shadeObstructionsENU`). Un objet entièrement sous le niveau du
+ * toit est donc écarté. La valeur par défaut 0 garde la géométrie brute (référentiel
+ * sol), pour les appelants qui raisonnent au niveau du sol.
  */
-export function environmentShadeEntries(list: readonly EnvironmentObject[], origin: LngLat): ShadeObstructionENU[] {
+export function environmentShadeEntries(
+  list: readonly EnvironmentObject[],
+  origin: LngLat,
+  roofHeightM = 0,
+): ShadeObstructionENU[] {
   const cosLat = Math.max(1e-6, Math.cos(origin[1] * DEG2RAD));
+  const roofH = Number.isFinite(roofHeightM) && roofHeightM > 0 ? roofHeightM : 0;
   const out: ShadeObstructionENU[] = [];
   for (const o of list) {
     if (!Number.isFinite(o.heightM) || (o.heightM as number) <= 0) continue;
+    const eff = (o.heightM as number) - roofH;
+    if (eff <= 0) continue;
     const diameterM = o.kind === 'arbre' ? o.crownDiameterM : (o.lengthM ?? o.widthM ?? o.crownDiameterM);
     const halfWidthM = diameterM && diameterM > 0 ? diameterM / 2 : 1.5;
     out.push({
       x: (o.centerLng - origin[0]) * DEG2M * cosLat,
       y: (o.centerLat - origin[1]) * DEG2M,
-      effHeightM: o.heightM as number,
+      effHeightM: eff,
       halfWidthM,
     });
   }

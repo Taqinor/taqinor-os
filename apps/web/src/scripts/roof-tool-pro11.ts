@@ -1193,6 +1193,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // W92 — wrapper paresseux : `redrawTrace` (du module mapDraw) est assigné plus bas ;
     // référencé seulement à l'exécution d'un glissé-sommet, donc pas de TDZ.
     redrawTrace: () => redrawTrace(),
+    // CAL66/CAL67 — wrapper paresseux vers `shadingUi` (construit plus bas) : un obstacle
+    // à hauteur saisie ou un objet d'environnement OMBRE réellement, donc toute
+    // modification doit recalculer la matrice de dérate + la carte d'accès solaire.
+    recomputeShading: () => shadingUi.recomputeShading(),
   });
   const redrawObstacles = obstaclesUi.redrawObstacles;
   const clearPreview = obstaclesUi.clearPreview;

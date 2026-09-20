@@ -28,7 +28,10 @@ import {
   pointSolarAccess,
   solarAccessColorRGB,
   type ShadeObstruction,
+  type ShadeObstructionENU,
 } from '../../lib/shadingEngine';
+import { roofObstacleShadeEntries, type Obstacle } from '../../lib/obstacles';
+import { environmentShadeEntries, type EnvironmentObject } from './environment';
 import { fallbackPerKwc } from '../../lib/productionEngine';
 import { type LngLat } from '../../lib/roof';
 import { FLOORS, FLOOR_HEIGHT_M, GOLD } from './constants';
@@ -68,6 +71,37 @@ const SHADE_SRC = 'rp9-shade-lines';
 export function effectiveBuildingHeightM(overrideM: number | null | undefined): number {
   if (typeof overrideM === 'number' && Number.isFinite(overrideM) && overrideM > 0) return overrideM;
   return FLOORS * FLOOR_HEIGHT_M;
+}
+
+/**
+ * CAL66 + CAL67 — SOURCE UNIFIÉE des obstructions d'ombrage. Jusqu'ici le dérate ne
+ * lisait QUE les ombres tracées (WJ19) : une cheminée dessinée sur le toit avec sa
+ * hauteur saisie (CAL66) et un arbre posé hors contour (CAL67) n'ombraient RIEN. Les
+ * trois sources produisent désormais la MÊME forme (`ShadeObstructionENU`) et sont
+ * concaténées ici, une fois pour toutes — `recomputeFactors` (production) comme
+ * `buildHeatmapColorFn` (carte d'accès solaire) lisent cette unique liste.
+ *
+ * Référentiels (règle d'honnêteté, jamais un mélange silencieux) :
+ *  - ombres tracées et objets d'environnement sont référencés au SOL → on leur retranche
+ *    la hauteur du bâtiment (`roofHeightM`, saisie CAL60 ou hypothèse affichée) ;
+ *  - un obstacle de TOITURE est déjà mesuré au-dessus du plan du champ → sa hauteur est
+ *    prise telle quelle.
+ *
+ * Aucune source renseignée ⇒ liste vide ⇒ matrice d'ombrage inchangée (comportement
+ * strictement identique à avant CAL66/CAL67). PURE : testable sans DOM ni carte.
+ */
+export function unifiedShadeEntries(
+  shadeObstructions: readonly ShadeObstruction[] | null | undefined,
+  obstacles: readonly Obstacle[] | null | undefined,
+  environment: readonly EnvironmentObject[] | null | undefined,
+  origin: LngLat,
+  roofHeightM: number,
+): ShadeObstructionENU[] {
+  return [
+    ...shadeObstructionsENU(shadeObstructions ?? [], origin, roofHeightM),
+    ...roofObstacleShadeEntries(obstacles, origin),
+    ...environmentShadeEntries(environment ?? [], origin, roofHeightM),
+  ];
 }
 
 export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
@@ -124,16 +158,33 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const imagerySunElevation = (): number =>
     sunDirection(ctx.centroidLat, imageryDay, imageryHour).elevationDeg;
 
-  /** (Re)calcule la matrice de dérate + le facteur annuel depuis les ombres tracées.
+  /** CAL66/CAL67 — les obstructions vues de la zone active, TOUTES sources confondues
+   *  (ombres tracées + obstacles de toiture à hauteur saisie + objets d'environnement). */
+  const activeShadeEntries = (): ShadeObstructionENU[] =>
+    unifiedShadeEntries(ctx.shadeObstructions, ctx.obstacles, ctx.environment, ctx.centroid, roofHeightM());
+
+  /** CAL66/CAL67 — y a-t-il seulement quelque chose à ombrer ? (au moins une ombre tracée,
+   *  un obstacle à hauteur saisie ou un objet d'environnement à hauteur saisie). */
+  const hasShadeSources = (): boolean =>
+    ctx.shadeObstructions.length > 0 ||
+    ctx.obstacles.some((o) => typeof o.heightM === 'number' && o.heightM > 0) ||
+    (ctx.environment ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0);
+
+  /** Nombre d'obstructions RETENUES au dernier calcul (après retrait de la hauteur de
+   *  toit) — pilote le libellé honnête de la note, cf. `renderList`. */
+  let lastEntryCount = 0;
+
+  /** (Re)calcule la matrice de dérate + le facteur annuel depuis la source unifiée.
    *  Horizon évalué au CENTROÏDE du tracé (documenté) ; hauteur de champ = toit 3D. */
   function recomputeFactors() {
-    if (!ctx.shadeObstructions.length || ctx.vertices.length < 3) {
+    if (!hasShadeSources() || ctx.vertices.length < 3) {
+      lastEntryCount = 0;
       ctx.shadeFactors = null;
       ctx.shadeAnnualFactor = 1;
       return;
     }
-    const roofH = roofHeightM();
-    const enu = shadeObstructionsENU(ctx.shadeObstructions, ctx.centroid, roofH);
+    const enu = activeShadeEntries();
+    lastEntryCount = enu.length;
     if (!enu.length) {
       ctx.shadeFactors = null;
       ctx.shadeAnnualFactor = 1;
@@ -175,8 +226,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   function buildHeatmapColorFn(): ((cellIndex: number) => { r: number; g: number; b: number }) | null {
     const plan = ctx.layoutPlan;
     if (!plan || !plan.grid.panels.length || ctx.vertices.length < 3) return null;
-    const roofH = roofHeightM();
-    const enu = shadeObstructionsENU(ctx.shadeObstructions, ctx.centroid, roofH);
+    const enu = activeShadeEntries(); // CAL66/CAL67 — toutes les sources, pas seulement les ombres tracées
     const prod = ctx.prodPerKwc ?? fallbackPerKwc();
     const panels = plan.grid.panels;
     // Accès solaire pré-calculé par cellule (0–1). Sans obstruction → tout à 1 (plein
@@ -242,14 +292,18 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
 
   function renderList() {
     if (noteEl) {
-      if (!ctx.shadeObstructions.length) {
+      // CAL66/CAL67 — la note porte sur TOUTES les sources d'ombre, pas seulement les
+      // ombres tracées : une cheminée à hauteur saisie ou un arbre voisin comptent autant.
+      if (!hasShadeSources()) {
         noteEl.textContent = '';
+      } else if (!lastEntryCount) {
+        noteEl.textContent = 'Obstruction(s) renseignée(s) sous le niveau du toit : aucune heure masquée pour ce champ.';
       } else {
         const lossPct = Math.round((1 - ctx.shadeAnnualFactor) * 100);
         noteEl.textContent =
           lossPct > 0
-            ? `Ombrage tracé : −${lossPct} % de production annuelle (heures masquées ramenées à la part diffuse ~25 %). Hypothèse de prise de vue affichée ci-dessus — pas une mesure.`
-            : `Obstacle(s) tracé(s) sous le niveau du toit : aucune heure masquée pour ce champ.`;
+            ? `Ombrage (ombres tracées, obstacles de toiture à hauteur saisie, objets d’environnement) : −${lossPct} % de production annuelle (heures masquées ramenées à la part diffuse ~25 %). Hypothèse de prise de vue affichée ci-dessus — pas une mesure.`
+            : 'Obstruction(s) renseignée(s) : aucune heure masquée pour ce champ.';
       }
     }
     if (!listEl) return;
@@ -328,7 +382,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       if (!Number.isFinite(v)) return;
       imageryHour = v;
       if (hourValueEl) hourValueEl.textContent = fmtH(v);
-      if (ctx.shadeObstructions.length) recomputeShading();
+      if (hasShadeSources()) recomputeShading();
     });
   }
   document.querySelectorAll<HTMLButtonElement>('[data-shade-season]').forEach((b) => {
@@ -339,7 +393,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       document.querySelectorAll<HTMLButtonElement>('[data-shade-season]').forEach((o) =>
         o.setAttribute('aria-pressed', String(o === b)),
       );
-      if (ctx.shadeObstructions.length) recomputeShading();
+      if (hasShadeSources()) recomputeShading();
     });
   });
   listEl?.addEventListener('click', (e) => {
@@ -367,7 +421,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       else buildingHeights.delete(key);
     }
     syncHeightUi();
-    if (ctx.shadeObstructions.length) recomputeShading();
+    if (hasShadeSources()) recomputeShading();
   });
   syncHeightUi();
 
