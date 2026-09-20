@@ -37,6 +37,7 @@ from apps.calepinage.selectors import photos_site
 from apps.calepinage.services.photos import (
     PhotoRefusee,
     ajouter_photo_site,
+    calage_photo_site,
 )
 from apps.crm.models import Lead
 from apps.records.models import Attachment
@@ -287,3 +288,95 @@ class EndpointTest(BasePhoto):
             format='multipart')
         self.assertEqual(reponse.status_code, 404)
         self.assertEqual(PhotoSite.objects.count(), 0)
+
+
+COINS = [[33.5731, -7.5898], [33.5732, -7.5898],
+         [33.5732, -7.5897], [33.5731, -7.5897]]
+
+
+class CalageServiceTest(BasePhoto):
+    """CAL53 — persister/effacer les 4 coins de calage d'une photo."""
+
+    def _photo(self):
+        return ajouter_photo_site(self.calepinage, _fichier(), prise_le=HIER)
+
+    def test_pose_les_quatre_coins(self):
+        photo = self._photo()
+        calage_photo_site(photo, {'coins': COINS})
+        photo.refresh_from_db()
+        self.assertEqual(photo.calage, {'coins': COINS})
+
+    def test_none_efface_le_calage(self):
+        photo = self._photo()
+        calage_photo_site(photo, {'coins': COINS})
+        calage_photo_site(photo, None)
+        photo.refresh_from_db()
+        self.assertIsNone(photo.calage)
+
+    def test_moins_de_quatre_coins_refuse(self):
+        photo = self._photo()
+        with self.assertRaises(PhotoRefusee) as capture:
+            calage_photo_site(photo, {'coins': COINS[:3]})
+        self.assertEqual(capture.exception.champ, 'calage')
+
+    def test_coordonnee_hors_amplitude_refusee(self):
+        photo = self._photo()
+        hors_bornes = [[999, -7.5898], *COINS[1:]]
+        with self.assertRaises(PhotoRefusee):
+            calage_photo_site(photo, {'coins': hors_bornes})
+
+    def test_coin_non_pair_refuse(self):
+        photo = self._photo()
+        with self.assertRaises(PhotoRefusee):
+            calage_photo_site(photo, {'coins': [[1], *COINS[1:]]})
+
+
+class CalageEndpointTest(BasePhoto):
+    """``calepinages/<pk>/photos/<id>/calage/`` — l'objet ET la photo d'abord."""
+
+    def setUp(self):
+        super().setUp()
+        self.api = self._api()
+        self.photo = ajouter_photo_site(self.calepinage, _fichier(),
+                                        prise_le=HIER)
+        self.url = ('/api/django/calepinage/calepinages/'
+                    f'{self.calepinage.pk}/photos/{self.photo.pk}/calage/')
+
+    def test_patch_pose_le_calage_et_le_relit(self):
+        reponse = self.api.patch(self.url, {'calage': {'coins': COINS}},
+                                 format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['photo']['calage'], {'coins': COINS})
+        self.photo.refresh_from_db()
+        self.assertEqual(self.photo.calage, {'coins': COINS})
+
+    def test_patch_calage_null_efface(self):
+        calage_photo_site(self.photo, {'coins': COINS})
+        reponse = self.api.patch(self.url, {'calage': None}, format='json')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertIsNone(reponse.data['photo']['calage'])
+
+    def test_patch_forme_invalide_400_nomme_le_champ(self):
+        reponse = self.api.patch(self.url, {'calage': {'coins': COINS[:2]}},
+                                 format='json')
+        self.assertEqual(reponse.status_code, 400)
+        self.assertIn('calage', reponse.data)
+
+    def test_photo_d_un_autre_calepinage_introuvable(self):
+        autre_calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Autre toit')
+        url = ('/api/django/calepinage/calepinages/'
+               f'{autre_calepinage.pk}/photos/{self.photo.pk}/calage/')
+        reponse = self.api.patch(url, {'calage': {'coins': COINS}},
+                                 format='json')
+        self.assertEqual(reponse.status_code, 404)
+
+    def test_calepinage_d_une_autre_societe_introuvable(self):
+        role = Role.objects.create(company=self.autre, nom='Directeur',
+                                   permissions=list(DIRECTEUR_PERMISSIONS))
+        voisin = User.objects.create_user(username='cal53_voisin',
+                                          password='x', company=self.autre,
+                                          role=role)
+        reponse = self._api(voisin).patch(
+            self.url, {'calage': {'coins': COINS}}, format='json')
+        self.assertEqual(reponse.status_code, 404)
