@@ -1453,7 +1453,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const ox = (o.centerLng - pack.origin[0]) * DEG2M * cosLat + offX;
         const oy = (o.centerLat - pack.origin[1]) * DEG2M + offY;
         const tint = dim ? 0xc06464 : 0xff6b6b;
-        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, OBSTACLE_BOX_H_M);
+        // CAL66 — volume à la hauteur SAISIE quand elle existe, sinon le repli visuel
+        // historique (obstacle plan, OBSTACLE_BOX_H_M) — rendu inchangé sans saisie.
+        const boxH = o.heightM ?? OBSTACLE_BOX_H_M;
+        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, boxH);
         const mat = new THREE.MeshStandardMaterial({
           color: tint,
           metalness: 0.1,
@@ -1463,7 +1466,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
           depthWrite: false,
         });
         const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(ox, oy, wallH + OBSTACLE_BOX_H_M / 2 + 0.05);
+        mesh.position.set(ox, oy, wallH + boxH / 2 + 0.05);
         mesh.renderOrder = 3;
         const edges = new THREE.LineSegments(
           new THREE.EdgesGeometry(geo),
@@ -1650,7 +1653,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const oy = (o.centerLat - pack.origin[1]) * DEG2M;
         const selected = o.id === ctx.selectedObsId;
         const tint = selected ? 0xf3cc66 : 0xff6b6b;
-        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, OBSTACLE_BOX_H_M);
+        // CAL66 — volume à la hauteur SAISIE quand elle existe, sinon le repli visuel
+        // historique (obstacle plan, OBSTACLE_BOX_H_M) — rendu inchangé sans saisie.
+        const boxH = o.heightM ?? OBSTACLE_BOX_H_M;
+        const geo = new THREE.BoxGeometry(o.widthM, o.lengthM, boxH);
         const mat = new THREE.MeshStandardMaterial({
           color: tint,
           metalness: 0.1,
@@ -1660,7 +1666,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
           depthWrite: false, // laisse la texture du toit transparaître
         });
         const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(ox, oy, wallH + OBSTACLE_BOX_H_M / 2 + 0.05);
+        mesh.position.set(ox, oy, wallH + boxH / 2 + 0.05);
         mesh.renderOrder = 3;
         const edges = new THREE.LineSegments(
           new THREE.EdgesGeometry(geo),
@@ -1673,7 +1679,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         // (l'obstacle lui-même reste visible, à sa vraie taille).
         if (!readOnly) {
           const label = makeDimSprite(dimsLabel(o));
-          label.position.set(0, 0, OBSTACLE_BOX_H_M / 2 + 0.6);
+          label.position.set(0, 0, boxH / 2 + 0.6);
           mesh.add(label);
         }
         sceneRoot.add(mesh);

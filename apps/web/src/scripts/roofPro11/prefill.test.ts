@@ -140,6 +140,29 @@ describe('CAL57 — arêtes typées, sérialisées', () => {
   });
 });
 
+describe('CAL66/CAL72 — hauteur d’obstacle + provenance, sérialisées', () => {
+  it('heightM et provenance survivent au round-trip quand renseignés', () => {
+    const areas = [
+      zone('z1', {
+        obstacles: [{ id: 'o1', centerLng: -7.5995, centerLat: 33.5905, lengthM: 1, widthM: 1, heightM: 1.2, provenance: 'MESURE' }],
+      }),
+    ];
+    const layout = serializeLayout(makeCtx(areas));
+    expect(layout.zones[0].obstacles[0].heightM).toBe(1.2);
+    expect(layout.zones[0].obstacles[0].provenance).toBe('MESURE');
+    const back = deserializeLayout(layout);
+    expect(back[0].obstacles[0].heightM).toBe(1.2);
+    expect(back[0].obstacles[0].provenance).toBe('MESURE');
+  });
+
+  it('absents par défaut (comportement historique)', () => {
+    const areas = [zone('z1', { obstacles: [{ id: 'o1', centerLng: -7.5995, centerLat: 33.5905, lengthM: 1, widthM: 1 }] })];
+    const layout = serializeLayout(makeCtx(areas));
+    expect('heightM' in layout.zones[0].obstacles[0]).toBe(false);
+    expect('provenance' in layout.zones[0].obstacles[0]).toBe(false);
+  });
+});
+
 describe('CAL59 — buildingId (multi-bâtiments)', () => {
   it('absent par défaut (bâtiment unique, comportement historique)', () => {
     const areas = [zone('z1')];

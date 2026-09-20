@@ -15,7 +15,7 @@
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { type AreaRecord, type CardData, type LeadPayload, type ObstacleType } from './types';
+import { type AreaRecord, type CardData, type LeadPayload, type ObstacleType, type ObstacleProvenance } from './types';
 import { type LngLat } from '../../lib/roof';
 import { BILL_RANGES } from '../../lib/billRange';
 import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
@@ -213,8 +213,19 @@ export interface SerializedZone {
   vertices: LngLat[];
   /** Obstacles (zones d'exclusion) — objets plats {id,centerLng,centerLat,lengthM,widthM}.
    *  PV61 — `type` (optionnel) porte le dégagement de l'obstacle ; absent = comportement
-   *  historique (dégagement uniforme). Jamais émis pour un obstacle sans type. */
-  obstacles: Array<{ id: string; centerLng: number; centerLat: number; lengthM: number; widthM: number; type?: ObstacleType }>;
+   *  historique (dégagement uniforme). Jamais émis pour un obstacle sans type. CAL66 —
+   *  `heightM` (optionnel, SAISI) : absent = obstacle plan, aucune ombre. CAL72 —
+   *  `provenance` (optionnel) : absent = comportement historique (aucun blocage). */
+  obstacles: Array<{
+    id: string;
+    centerLng: number;
+    centerLat: number;
+    lengthM: number;
+    widthM: number;
+    type?: ObstacleType;
+    heightM?: number;
+    provenance?: ObstacleProvenance;
+  }>;
   /** F2 — OPTIONNELS : `serializeLayout` les écrit toujours, mais une zone posée
    *  par le SERVEUR depuis le tracé du client les OMET délibérément (personne n'a
    *  mesuré ce toit, et un champ écrit ici descend jusqu'à l'annexe « paramètres du
@@ -431,6 +442,8 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
         lengthM: o.lengthM,
         widthM: o.widthM,
         ...(o.type ? { type: o.type } : {}), // PV61 — additif, jamais émis si absent
+        ...(o.heightM != null ? { heightM: o.heightM } : {}), // CAL66 — additif
+        ...(o.provenance ? { provenance: o.provenance } : {}), // CAL72 — additif
       })),
       roofType: isActive ? ctx.roofType : a.roofType,
       pitchDeg: isActive ? ctx.pitchDeg : a.pitchDeg,
@@ -575,6 +588,8 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       lengthM: o.lengthM,
       widthM: o.widthM,
       ...(o.type ? { type: o.type } : {}), // PV61 — le type survit au round-trip
+      ...(o.heightM != null ? { heightM: o.heightM } : {}), // CAL66 — round-trip verbatim
+      ...(o.provenance ? { provenance: o.provenance } : {}), // CAL72 — round-trip verbatim
     })),
     // F2 (fondateur 26/08/2026) — une zone posée par le SERVEUR depuis le tracé du
     // client n'écrit PAS ces trois champs : personne n'a mesuré ce toit, et un champ

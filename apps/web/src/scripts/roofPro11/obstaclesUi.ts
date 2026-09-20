@@ -18,15 +18,32 @@ import {
   defaultObstacle,
   scaledObstacle,
   resizedObstacle,
+  withHeight,
+  withProvenance,
+  duplicatedObstacle,
+  gridPositions,
+  isNonEngageable,
   OBSTACLE_STEP_FACTOR,
   type Obstacle,
   type ObstacleType,
+  type ObstacleProvenance,
 } from '../../lib/obstacles';
 import { type LngLat } from '../../lib/roof';
 import { OBSTACLE_TAP_PX, VERTEX_GRAB_PX, DEG2RAD, DEG2M } from './constants';
-import { $ } from './dom';
+import { $, esc } from './dom';
 import { type Ctx } from './context';
 import { OBSTACLE_TYPES, clearanceForType } from './types';
+
+/** CAL72 — provenances proposées (vocabulaire `core.calepinage.types.Provenance`), avec
+ *  libellé FR + note « bloque le compte » pour PLAN/DEVINE. */
+const OBSTACLE_PROVENANCES: { id: ObstacleProvenance; label: string }[] = [
+  { id: 'RELEVE', label: 'Relevé sur place' },
+  { id: 'RELEVE_DOUTEUX', label: 'Relevé douteux' },
+  { id: 'DECLARE_CLIENT', label: 'Déclaré par le client' },
+  { id: 'PLAN', label: 'Depuis un plan (bloque le compte)' },
+  { id: 'DEVINE', label: 'Deviné (bloque le compte)' },
+  { id: 'ECARTE', label: 'Écarté' },
+];
 
 /** Dépendances injectées (carte + recalcul complet + bandeau de statut). */
 export interface ObstaclesUiDeps {
@@ -86,6 +103,16 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   const obsDeleteBtn = $<HTMLButtonElement>('rp9-obs-delete');
   const obsPlusBtn = $<HTMLButtonElement>('rp9-obs-plus');
   const obsMinusBtn = $<HTMLButtonElement>('rp9-obs-minus');
+  // CAL66 — hauteur saisie.
+  const obsHeightEl = $<HTMLInputElement>('rp9-obs-height');
+  // CAL72 — provenance + bandeau de non-engageabilité.
+  const obsEngageEl = $('rp9-obs-engage');
+  // CAL73 — duplication + pose en trame.
+  const obsDuplicateBtn = $<HTMLButtonElement>('rp9-obs-duplicate');
+  const obsGridSpacingEl = $<HTMLInputElement>('rp9-obs-grid-spacing');
+  const obsGridColsEl = $<HTMLInputElement>('rp9-obs-grid-cols');
+  const obsGridRowsEl = $<HTMLInputElement>('rp9-obs-grid-rows');
+  const obsGridPlaceBtn = $<HTMLButtonElement>('rp9-obs-grid-place');
 
   // PV61 — SÉLECTEUR « type d'obstacle ». Le type ne change pas la géométrie du
   // rectangle : il fixe le DÉGAGEMENT laissé autour (cheminée 0,50 m ↔ antenne 0,30 m).
@@ -118,6 +145,35 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   const clearanceLabel = (o: Obstacle): string =>
     `Dégagement autour : ${fmt1(clearanceForType(o.type))} m`;
 
+  // CAL72 — SÉLECTEUR « provenance ». Même pattern que le sélecteur de type (PV61) : créé
+  // ICI s'il n'existe pas déjà (aucune page n'a à être modifiée).
+  const obsProvenanceEl = ensureProvenancePicker();
+  function ensureProvenancePicker(): HTMLSelectElement | null {
+    const existing = $<HTMLSelectElement>('rp9-obs-provenance');
+    if (existing) return existing;
+    if (!obsEditPanel || typeof document.createElement !== 'function') return null;
+    const label = document.createElement('label');
+    label.className = 'rp9-obs-provenance-row';
+    label.setAttribute('for', 'rp9-obs-provenance');
+    label.textContent = 'Provenance ';
+    const select = document.createElement('select');
+    select.id = 'rp9-obs-provenance';
+    select.className = 'rp9-input';
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = 'Non renseignée';
+    select.appendChild(noneOpt);
+    for (const p of OBSTACLE_PROVENANCES) {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.label;
+      select.appendChild(opt);
+    }
+    label.appendChild(select);
+    obsEditPanel.insertBefore(label, obsEditPanel.firstChild);
+    return select;
+  }
+
   function redrawObstacles() {
     srcOf('rp9-obs')?.setData({
       type: 'FeatureCollection',
@@ -144,6 +200,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   function syncObsEdit() {
     const o = ctx.obstacles.find((x) => x.id === ctx.selectedObsId) ?? null;
     if (obsEditPanel) obsEditPanel.hidden = !o;
+    syncEngageBanner(); // CAL72 — visible même sans sélection (porte sur TOUS les obstacles)
     if (!o) return;
     if (obsLengthEl && document.activeElement !== obsLengthEl) obsLengthEl.value = fmt1(o.lengthM);
     if (obsWidthEl && document.activeElement !== obsWidthEl) obsWidthEl.value = fmt1(o.widthM);
@@ -151,6 +208,29 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     // dimensions annonce le dégagement que ce type impose au calepinage.
     if (obsTypeEl && document.activeElement !== obsTypeEl) obsTypeEl.value = o.type ?? 'autre';
     if (obsDimsEl) obsDimsEl.textContent = `${dimsLabel(o)} · ${clearanceLabel(o)}`;
+    // CAL66 — hauteur saisie (vide = obstacle plan, jamais un 0 inventé).
+    if (obsHeightEl && document.activeElement !== obsHeightEl) obsHeightEl.value = o.heightM != null ? fmt1(o.heightM) : '';
+    // CAL72 — provenance courante.
+    if (obsProvenanceEl && document.activeElement !== obsProvenanceEl) obsProvenanceEl.value = o.provenance ?? '';
+  }
+
+  /** CAL72 — bandeau « compte non engageable » : visible dès qu'AU MOINS un obstacle de la
+   *  zone porte une provenance PLAN/DEVINE (le moteur refuse d'engager un compte reposant
+   *  sur un plan ou une supposition), avec la RAISON en clair. Passer l'obstacle en MESURÉ
+   *  (ou toute autre provenance) lève le blocage. */
+  function syncEngageBanner() {
+    if (!obsEngageEl) return;
+    const blockers = ctx.obstacles.filter((o) => isNonEngageable(o.provenance));
+    if (!blockers.length) {
+      obsEngageEl.textContent = '';
+      obsEngageEl.hidden = true;
+      return;
+    }
+    const labelFor = (p?: Obstacle['provenance']) => OBSTACLE_PROVENANCES.find((x) => x.id === p)?.label ?? p;
+    const names = blockers.map((o) => `${esc(o.type ? OBSTACLE_TYPES.find((t) => t.id === o.type)?.label ?? o.type : 'obstacle')} (${esc(String(labelFor(o.provenance)))})`);
+    obsEngageEl.hidden = false;
+    obsEngageEl.textContent =
+      `Compte NON engageable : ${blockers.length} obstacle(s) reposent sur une provenance non mesurée — ${names.join(', ')}. Passez-les en « Relevé sur place » (ou toute provenance mesurée) pour lever le blocage.`;
   }
 
   function selectObstacle(id: string | null) {
@@ -417,6 +497,75 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   obsPlusBtn?.addEventListener('click', () => updateSelected((o) => scaledObstacle(o, OBSTACLE_STEP_FACTOR)));
   obsMinusBtn?.addEventListener('click', () => updateSelected((o) => scaledObstacle(o, 1 / OBSTACLE_STEP_FACTOR)));
   obsDeleteBtn?.addEventListener('click', deleteSelected);
+
+  // CAL66 — hauteur saisie (même règle W81 : au `change`, jamais à chaque frappe ; vide ⇒
+  // efface la hauteur, retour à « obstacle plan », jamais un 0 inventé).
+  obsHeightEl?.addEventListener('change', () => {
+    if (!ctx.selectedObsId) return;
+    const raw = obsHeightEl.value.trim();
+    const h = raw ? parseNum(raw) : null;
+    updateSelected((o) => withHeight(o, h));
+  });
+  obsHeightEl?.addEventListener('blur', syncObsEdit);
+
+  // CAL72 — provenance : ne change ni géométrie ni dégagement, mais peut lever/poser le
+  // blocage « compte non engageable » (syncEngageBanner, via updateSelected → syncObsEdit).
+  obsProvenanceEl?.addEventListener('change', () => {
+    if (!ctx.selectedObsId) return;
+    const v = obsProvenanceEl.value as ObstacleProvenance | '';
+    updateSelected((o) => withProvenance(o, v || null));
+  });
+
+  // CAL73 — duplication d'un clic : copie l'obstacle sélectionné (dimensions/type/hauteur/
+  // provenance), posée juste à côté (est), sélectionnée pour ajustement immédiat.
+  obsDuplicateBtn?.addEventListener('click', () => {
+    const o = ctx.obstacles.find((x) => x.id === ctx.selectedObsId);
+    if (!o) {
+      setStatus('Sélectionnez d’abord un obstacle à dupliquer.');
+      return;
+    }
+    ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
+    const cosLat = Math.max(1e-6, Math.cos(o.centerLat * DEG2RAD));
+    const dLng = (o.widthM + 1) / (DEG2M * cosLat);
+    const dup = duplicatedObstacle(o, `obs-${++ctx.obsCounter}`, [o.centerLng + dLng, o.centerLat]);
+    ctx.obstacles.push(dup);
+    ctx.selectedObsId = dup.id;
+    redrawObstacles();
+    syncObsEdit();
+    recalc();
+    setStatus('Obstacle dupliqué — ajustez sa position, ou posez une trame régulière.');
+  });
+
+  // CAL73 — pose en trame régulière : N×M copies de l'obstacle sélectionné, au pas SAISI
+  // (aucune détection automatique par vision — hors périmètre). Le premier point de la
+  // trame REMPLACE l'original (même id) ; les suivants sont de NOUVEAUX obstacles — le tout
+  // est UNE seule photo d'historique (un seul Ctrl+Z annule toute la trame).
+  obsGridPlaceBtn?.addEventListener('click', () => {
+    const o = ctx.obstacles.find((x) => x.id === ctx.selectedObsId);
+    if (!o) {
+      setStatus('Sélectionnez d’abord l’obstacle à poser en trame.');
+      return;
+    }
+    const spacing = parseNum(obsGridSpacingEl?.value ?? '');
+    const cols = Math.round(parseNum(obsGridColsEl?.value ?? ''));
+    const rows = Math.round(parseNum(obsGridRowsEl?.value ?? ''));
+    const positions = gridPositions([o.centerLng, o.centerLat], spacing, cols, rows);
+    if (!positions.length) {
+      setStatus('Pas ou nombre de trame invalide (saisissez un pas > 0 et des colonnes/lignes ≥ 1).');
+      return;
+    }
+    ctx.pushWorkshopHistory?.(); // CAL100 — UNE SEULE photo pour toute la trame
+    const [first, ...rest] = positions;
+    const idx = ctx.obstacles.findIndex((x) => x.id === o.id);
+    if (idx >= 0) ctx.obstacles[idx] = { ...o, centerLng: first[0], centerLat: first[1] };
+    for (const p of rest) ctx.obstacles.push(duplicatedObstacle(o, `obs-${++ctx.obsCounter}`, p));
+    redrawObstacles();
+    syncObsEdit();
+    recalc();
+    setStatus(`${positions.length} obstacles posés en trame (${cols} × ${rows}, pas ${fmt1(spacing)} m).`);
+  });
+
+  syncEngageBanner(); // CAL72 — état initial (dossier rechargé avec des obstacles PLAN/DEVINE)
 
   return {
     redrawObstacles,
