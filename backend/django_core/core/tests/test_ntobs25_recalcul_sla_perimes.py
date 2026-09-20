@@ -13,7 +13,10 @@ from unittest import mock
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.statuspage.models import IncidentPublic
+from django.apps import apps as django_apps
+
+# Pas d'import statique d'une app domaine sous core (contrat import-linter M3)
+IncidentPublic = django_apps.get_model('statuspage', 'IncidentPublic')
 from authentication.models import Company
 from core.sla import (
     SlaSnapshot, generer_snapshot_societe, recalculer_sla_perimes,

@@ -9,7 +9,10 @@ from django.utils import timezone as dj_timezone
 from rest_framework.test import APIClient
 
 from apps.parametres.models_company import CompanyProfile
-from apps.statuspage.models import IncidentPublic
+from django.apps import apps as django_apps
+
+# Pas d'import statique d'une app domaine sous core (contrat import-linter M3)
+IncidentPublic = django_apps.get_model('statuspage', 'IncidentPublic')
 from authentication.models import Company
 from core.maintenance_windows import MaintenanceWindow
 from core.sla import generer_snapshot_societe
