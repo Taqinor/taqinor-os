@@ -17,8 +17,17 @@ vi.mock('../../api/coreApi', () => ({
   default: { dossiers: { list: mocks.list, create: mocks.create } },
 }))
 
+// Le toast est la seule surface où « liste tronquée » / l'erreur de création
+// apparaissent ; on le mocke pour l'affirmer directement (même patron que
+// FactureList.wir183.test.jsx — le barrel `ui` réexporte Toaster).
+vi.mock('../../ui/Toaster', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, toast: { success: vi.fn(), error: vi.fn(), message: vi.fn(), info: vi.fn() } }
+})
+
 import DossierList from './DossierList'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { toast } from '../../ui/Toaster'
 
 // Patron de test de tout écran à <DataTable> (cf. features/ao/AffairesList.test.jsx).
 const renderScreen = () => render(
@@ -139,5 +148,65 @@ describe('DossierList (NTWFL19)', () => {
     const { container: container2 } = renderScreen()
     await waitFor(() => container2.querySelector('[data-dt-table]'))
     expect(screen.getByText('Mes réclamations en retard')).toBeInTheDocument()
+  })
+
+  it('suit `next` jusqu\'au bout : « en retard uniquement » ne perd pas un dossier de la page 2', async () => {
+    const page1Item = {
+      id: 1, titre: 'Dossier récent', type_dossier: 'autre', type_dossier_label: 'Autre',
+      statut: 'ouvert', statut_label: 'Ouvert', priorite: 'critique', priorite_label: 'Critique',
+      proprietaire_username: 'reda', echeance: '2099-01-01', liens: [], checklist: [],
+    }
+    const page2Item = {
+      id: 2, titre: 'Dossier en retard (page 2)', type_dossier: 'litige', type_dossier_label: 'Litige',
+      statut: 'ouvert', statut_label: 'Ouvert', priorite: 'critique', priorite_label: 'Critique',
+      proprietaire_username: 'meryem', echeance: '2020-01-01', liens: [], checklist: [],
+    }
+    mocks.list.mockImplementation((params) => (params.page === 1
+      ? Promise.resolve({ data: { results: [page1Item], next: 'http://x/?page=2', count: 2 } })
+      : Promise.resolve({ data: { results: [page2Item], next: null, count: 2 } })))
+
+    const { container } = renderScreen()
+    const table = await waitFor(() => container.querySelector('[data-dt-table]'))
+    expect(within(table).getByText('Dossier en retard (page 2)')).toBeInTheDocument()
+    expect(mocks.list).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }))
+
+    // Sans suivre `next`, ce dossier (seule page 2) disparaîtrait à tort de
+    // « en retard uniquement » (NTWFL22) au lieu d'y rester.
+    fireEvent.click(screen.getByText('En retard uniquement'))
+    expect(within(table).getByText('Dossier en retard (page 2)')).toBeInTheDocument()
+    expect(within(table).queryByText('Dossier récent')).toBeNull()
+  })
+
+  it('borne la pagination à 20 pages et avertit par toast si `next` ne se termine jamais', async () => {
+    mocks.list.mockImplementation((params) => Promise.resolve({
+      data: {
+        results: [{
+          id: params.page, titre: `Dossier ${params.page}`, type_dossier: 'autre',
+          type_dossier_label: 'Autre', statut: 'ouvert', statut_label: 'Ouvert',
+          priorite: 'normale', priorite_label: 'Normale', proprietaire_username: 'x',
+          echeance: null, liens: [], checklist: [],
+        }],
+        next: `http://x/?page=${params.page + 1}`, count: 9999,
+      },
+    }))
+    const { container } = renderScreen()
+    await waitFor(() => container.querySelector('[data-dt-table]'))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining('20')))
+    expect(mocks.list).toHaveBeenCalledTimes(20)
+  })
+
+  it('normalise en une phrase lisible un message d\'erreur DRF renvoyé en liste', async () => {
+    mocks.create.mockRejectedValueOnce({
+      response: { data: { titre: ['Ce champ est obligatoire.', 'Autre souci.'] } },
+    })
+    renderScreen()
+    await screen.findByText('Nouveau dossier')
+    fireEvent.click(screen.getByText('Nouveau dossier'))
+    const titre = await screen.findByLabelText(/^Titre/)
+    fireEvent.change(titre, { target: { value: 'Nouveau litige' } })
+    fireEvent.click(screen.getByText('Créer le dossier'))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      'Ce champ est obligatoire. Autre souci.'))
   })
 })

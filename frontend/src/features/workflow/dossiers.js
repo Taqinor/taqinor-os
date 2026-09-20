@@ -72,9 +72,12 @@ export function estEnRetard(dossier, aujourdHui) {
 
 // NTWFL22 — filtre combiné appliqué CÔTÉ ÉCRAN : le serveur ne filtre que
 // `statut`/`type_dossier` (`DossierViewSet.get_queryset`) ; priorité et
-// « en retard uniquement » se recoupent ici sur la liste déjà chargée. La
-// recherche libre (propriétaire/titre) reste déléguée au `searchable` du
-// `<DataTable>`, jamais dupliquée ici.
+// « en retard uniquement » se recoupent ici. `dossiers` doit être la liste
+// COMPLÈTE (toutes les pages DRF, cf. `fetchTousLesDossiers` dans
+// `DossierList.jsx`) — un appelant qui ne passerait qu'une page tronquée
+// ferait remonter « Aucun dossier » à tort dès que le vrai résultat vit sur
+// une page suivante. La recherche libre (propriétaire/titre) reste déléguée
+// au `searchable` du `<DataTable>`, jamais dupliquée ici.
 export function filtrerDossiers(dossiers, filtres, aujourdHui) {
   const liste = Array.isArray(dossiers) ? dossiers : []
   return liste.filter((d) => {

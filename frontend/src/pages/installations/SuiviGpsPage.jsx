@@ -246,8 +246,14 @@ function CarteLiveTab() {
 }
 
 // ── Alertes de géofence ─────────────────────────────────────────────────────
+// Filtre serveur `type_franchissement=sortie` (NTMOB9/GeofenceAlertViewSet) :
+// seules les SORTIES sont actionnables (« À traiter » / Acquitter) — les
+// ENTRÉES sont informatives et vivent dans l'onglet Historique de présence,
+// jamais dans cette file d'attente.
 function AlertesTab() {
-  const { rows, loading, error, reload } = useList(installationsApi.getGeofenceAlertes)
+  const { rows, loading, error, reload } = useList(
+    () => installationsApi.getGeofenceAlertes({ type_franchissement: 'sortie' }),
+  )
 
   const acquitter = async (id) => {
     await installationsApi.acquitterGeofenceAlerte(id).catch(() => {})
@@ -290,11 +296,12 @@ function AlertesTab() {
 }
 
 // ── Historique de présence (NTMOB9) ─────────────────────────────────────────
-// Entrée/sortie de périmètre PAR CHANTIER, DÉRIVÉES des transitions
-// `hors_perimetre` des positions déjà remontées (`positions-techniciens/`) —
-// le backend ne porte pas encore un champ `type entree|sortie` dédié (GARDE
-// 2026-07-18, WIR80/XFSM23) : jamais une donnée inventée, une dérivation
-// tracée à partir de faits réels (checked-facts-only). « Chantier » =
+// Entrée/sortie de périmètre PAR CHANTIER : `GeofenceAlert.type_franchissement`
+// (NTMOB9) est un champ RÉEL journalisé côté serveur à chaque franchissement
+// détecté par `gps_tracking_service.enregistrer_position` — jamais une
+// dérivation côté écran à partir des positions brutes. Le serveur filtre déjà
+// par `chantier` et `type_franchissement` (`GeofenceAlertViewSet.get_queryset`) ;
+// l'écran ne fait que transmettre les filtres choisis. « Chantier » =
 // `installations.Installation` (`chantiers/`), déjà le sens du mot dans tout
 // le reste de l'app (`InterventionSerializer.installation_reference`).
 const TYPE_FRANCHISSEMENT = [
@@ -303,41 +310,11 @@ const TYPE_FRANCHISSEMENT = [
   { value: 'sortie', label: 'Sorties' },
 ]
 
-function deriverEvenementsPresence(positions) {
-  const parGroupe = new Map()
-  for (const p of positions) {
-    const cle = `${p.technicien}-${p.intervention}`
-    if (!parGroupe.has(cle)) parGroupe.set(cle, [])
-    parGroupe.get(cle).push(p)
-  }
-  const evenements = []
-  for (const groupe of parGroupe.values()) {
-    const tries = [...groupe].sort(
-      (a, b) => new Date(a.captured_at) - new Date(b.captured_at))
-    let precedent = null
-    tries.forEach((p) => {
-      let type = null
-      if (precedent === null) {
-        // Première position connue dans le rayon = une entrée observée.
-        type = p.hors_perimetre ? null : 'entree'
-      } else if (precedent.hors_perimetre && !p.hors_perimetre) {
-        type = 'entree'
-      } else if (!precedent.hors_perimetre && p.hors_perimetre) {
-        type = 'sortie'
-      }
-      if (type) evenements.push({ ...p, type })
-      precedent = p
-    })
-  }
-  evenements.sort((a, b) => new Date(b.captured_at) - new Date(a.captured_at))
-  return evenements
-}
-
 function HistoriquePresenceTab() {
   const [chantiers, setChantiers] = useState([])
   const [chantierId, setChantierId] = useState('')
   const [typeFiltre, setTypeFiltre] = useState('tous')
-  const [positions, setPositions] = useState([])
+  const [evenements, setEvenements] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -350,38 +327,28 @@ function HistoriquePresenceTab() {
   // Enveloppé dans `useCallback` (même patron que `useList` ci-dessus dans
   // ce fichier) : l'effet se contente d'APPELER la fonction, aucun
   // `setState` synchrone dans le corps de l'effet lui-même.
-  const chargerPositions = useCallback(() => {
+  const chargerEvenements = useCallback(() => {
     if (!chantierId) return
     setLoading(true)
     setError(null)
-    installationsApi.getInterventions({ installation: chantierId, page_size: 200 })
-      .then((r) => {
-        const interventions = r.data?.results ?? r.data ?? []
-        return Promise.all(interventions.map((iv) => installationsApi
-          .getPositionsTechniciens({ intervention: iv.id })
-          .then((rr) => rr.data?.results ?? rr.data ?? [])
-          .catch(() => [])))
-      })
-      .then((parIntervention) => setPositions(parIntervention.flat()))
+    installationsApi.getGeofenceAlertes({
+      chantier: chantierId,
+      page_size: 200,
+      ...(typeFiltre !== 'tous' ? { type_franchissement: typeFiltre } : {}),
+    })
+      .then((r) => setEvenements(r.data?.results ?? r.data ?? []))
       .catch(() => setError('Chargement impossible.'))
       .finally(() => setLoading(false))
-  }, [chantierId])
+  }, [chantierId, typeFiltre])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au chantier choisi (même patron que `useList` ci-dessus)
-  useEffect(() => { chargerPositions() }, [chargerPositions])
-
-  const evenements = useMemo(() => deriverEvenementsPresence(positions), [positions])
-  const filtres = useMemo(
-    () => (typeFiltre === 'tous' ? evenements : evenements.filter((e) => e.type === typeFiltre)),
-    [evenements, typeFiltre],
-  )
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au chantier/type choisi (même patron que `useList` ci-dessus)
+  useEffect(() => { chargerEvenements() }, [chargerEvenements])
 
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Entrées/sorties de périmètre par chantier, DÉRIVÉES des positions déjà
-        remontées (aucun champ « type de franchissement » enregistré côté
-        serveur pour l&apos;instant).
+        Entrées/sorties de périmètre par chantier, journalisées par le serveur
+        à chaque franchissement détecté (NTMOB9).
       </p>
       <div className="flex flex-wrap gap-3">
         <select
@@ -408,16 +375,16 @@ function HistoriquePresenceTab() {
       </div>
       <ListShell loading={loading} error={error} icon={History}
         empty={chantierId ? 'Aucun évènement pour ce chantier' : 'Choisissez un chantier'}>
-        {!!chantierId && filtres.length > 0 && filtres.map((e) => (
-          <div key={`${e.id}-${e.type}`} data-testid={`presence-${e.id}-${e.type}`}
+        {!!chantierId && evenements.length > 0 && evenements.map((e) => (
+          <div key={e.id} data-testid={`presence-${e.id}-${e.type_franchissement}`}
             className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
             <span className="font-medium text-sm">{e.technicien_nom || `#${e.technicien}`}</span>
-            <Badge tone={e.type === 'entree' ? 'success' : 'neutral'}>
-              {e.type === 'entree'
+            <Badge tone={e.type_franchissement === 'entree' ? 'success' : 'neutral'}>
+              {e.type_franchissement === 'entree'
                 ? <><LogIn className="size-3.5" aria-hidden="true" /> Entrée</>
                 : <><LogOut className="size-3.5" aria-hidden="true" /> Sortie</>}
             </Badge>
-            <span className="text-sm text-muted-foreground">{formatDateTime(e.captured_at)}</span>
+            <span className="text-sm text-muted-foreground">{formatDateTime(e.created_at)}</span>
           </div>
         ))}
       </ListShell>

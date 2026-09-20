@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, List, LayoutGrid } from 'lucide-react'
 import coreApi from '../../api/coreApi'
 import useResource from '../../hooks/useResource'
-import { unwrapList } from '../../api/resource'
 import {
   DataTable, Button, Badge, StatusPill, Segmented, Checkbox, toast,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -51,6 +50,36 @@ function dossierVide() {
   return { titre: '', type_dossier: 'autre', priorite: 'normale', echeance: '' }
 }
 
+// La liste ne lisait que la première page (paginée DRF, 50 par défaut) : le
+// kanban et le filtre « en retard uniquement » (NTWFL22, côté écran) ne
+// voyaient qu'un sous-ensemble, ce qui pouvait afficher « Aucun dossier » à
+// tort dès que le vrai résultat vivait sur une page suivante. On suit `next`
+// jusqu'au bout, borné à `DOSSIERS_MAX_PAGES` — au-delà, l'écran prévient
+// plutôt que de continuer en silence avec une liste incomplète.
+const DOSSIERS_MAX_PAGES = 20
+
+async function fetchTousLesDossiers(params) {
+  const first = await coreApi.dossiers.list({ ...params, page: 1 })
+  const firstData = first.data
+  if (Array.isArray(firstData)) return firstData
+  let rows = firstData?.results ?? []
+  let next = firstData?.next
+  let page = 2
+  while (next && page <= DOSSIERS_MAX_PAGES) {
+    const r = await coreApi.dossiers.list({ ...params, page })
+    const d = r.data
+    rows = rows.concat(Array.isArray(d) ? d : (d?.results ?? []))
+    next = Array.isArray(d) ? null : d?.next
+    page += 1
+  }
+  if (next) {
+    toast.error(
+      `Liste des dossiers tronquée (plus de ${DOSSIERS_MAX_PAGES} pages) — affinez les filtres.`,
+    )
+  }
+  return rows
+}
+
 function NouveauDossierDialog({ open, onOpenChange, onCreated }) {
   const [form, setForm] = useState(dossierVide)
   const [busy, setBusy] = useState(false)
@@ -72,7 +101,12 @@ function NouveauDossierDialog({ open, onOpenChange, onCreated }) {
       setForm(dossierVide())
       onCreated(r.data)
     } catch (err) {
-      toast.error(err?.response?.data?.titre || 'Création du dossier impossible.')
+      // DRF renvoie les erreurs de champ sous forme de LISTE (`{titre: [...]}`),
+      // jamais une chaîne brute : afficher le tableau tel quel rendrait
+      // `[object Object]`/une virgule illisible dans le toast.
+      const titre = err?.response?.data?.titre
+      const message = Array.isArray(titre) ? titre.join(' ') : titre
+      toast.error(message || 'Création du dossier impossible.')
     } finally {
       setBusy(false)
     }
@@ -168,9 +202,9 @@ export default function DossierList() {
   }), [filtreType, filtreStatut])
 
   const { data: brutes, loading, error, refetch } = useResource(
-    (p) => coreApi.dossiers.list(p),
+    fetchTousLesDossiers,
     params,
-    { initialData: [], select: unwrapList, errorMessage: 'Impossible de charger les dossiers.' },
+    { initialData: [], errorMessage: 'Impossible de charger les dossiers.' },
   )
 
   // NTWFL22 — priorité et « en retard uniquement » filtrent côté écran (le

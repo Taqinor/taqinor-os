@@ -658,6 +658,13 @@ const installationsApi = {
     api.post('/installations/positions-techniciens/ping/', data),
   getCarteLivePositions: () =>
     api.get('/installations/positions-techniciens/carte-live/'),
+  // NTMOB9 — franchissements du rayon chantier, journalisés SERVEUR
+  // (`GeofenceAlertViewSet`, jamais dérivés côté écran) ; filtrable par
+  // `intervention`, `chantier` et `type_franchissement` (`entree`/`sortie`).
+  // Deux écrans le consomment avec des filtres différents : l'onglet Alertes
+  // (`type_franchissement: 'sortie'` — seules les sorties sont actionnables)
+  // et l'onglet Historique de présence (`chantier` + `type_franchissement`
+  // optionnel — entrées ET sorties, informatives).
   getGeofenceAlertes: (params) =>
     api.get('/installations/geofence-alertes/', { params }),
   acquitterGeofenceAlerte: (id) =>
