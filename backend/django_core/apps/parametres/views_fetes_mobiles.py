@@ -3,7 +3,10 @@
 Écran Paramètres → Localisation → Fêtes mobiles : GET pré-remplit l'état de
 saisie de l'année demandée, POST valide + enregistre les 4 dates (voir
 ``fetes_mobiles.py`` pour les règles). Écriture réservée
-Administrateur/Responsable promu — même patron que le reste de l'app."""
+Administrateur/Responsable promu — même patron que le reste de l'app — ET
+porteur de ``localisation_gerer`` (NTI18N40). La LECTURE reste ouverte à tout
+rôle interne : le calendrier des fériés sert à tout le monde (planification
+chantier/RH), la borner masquerait des jours non ouvrés à ceux qui les subissent."""
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
@@ -16,6 +19,7 @@ from .fetes_mobiles import (
     enregistrer_fetes_mobiles,
     fetes_mobiles_saisies,
 )
+from .localisation import PeutGererLocalisation
 from .views_common import _audit_company
 
 # NTI18N33 — les 4 fêtes hégiriennes (voir ``FETES_MOBILES_CLES``) : chaque
@@ -64,7 +68,7 @@ FETES_MOBILES_ENREGISTRER_REQUEST = inline_serializer(
 @extend_schema(request=FETES_MOBILES_ENREGISTRER_REQUEST,
                responses=FETES_MOBILES_ETAT_RESPONSE)
 @api_view(['POST'])
-@permission_classes([IsAdminOrResponsableTier])
+@permission_classes([IsAdminOrResponsableTier, PeutGererLocalisation])
 def fetes_mobiles_enregistrer(request):
     """POST /parametres/fetes-mobiles/ — ``{"annee": 2027, "dates":
     {"aid_el_fitr": "2027-03-09", ...}}``. Bloque (400) tant qu'au moins

@@ -562,6 +562,22 @@ ALL_PERMISSIONS = [
     # catalogue.
     'fiabilite_voir',
     'fiabilite_administration',
+    # ── NTI18N40 — gérer la localisation et les traductions ─────────────────
+    # Droit DISTINCT de ``parametres_modifier`` : celui-ci ouvre AUSSI la
+    # tarification, les modèles de documents et les référentiels, si bien
+    # qu'une société ne pouvait pas confier la relecture linguistique (écran
+    # Localisation : langue de repli, verrou de langue d'interface, fuseau
+    # d'affichage, assistant pays, fêtes mobiles ; écran Traductions) sans
+    # ouvrir au passage tous les réglages de la société.
+    #
+    # Distribution : Directeur + Administrateur par héritage d'``ALL_PERMISSIONS``,
+    # et AJOUTÉ à ``RESPONSABLE_PERMISSIONS`` ci-dessous — le palier Responsable
+    # écrivait déjà ces écrans (``IsAdminOrResponsableTier``), il garde donc
+    # exactement son accès. Aucun accès existant n'est retiré ; ce qui devient
+    # possible, c'est de DÉCOCHER la localisation sur un rôle personnalisé.
+    # Consommé par ``apps.parametres.localisation`` (garde serveur) et par le
+    # masquage de l'onglet côté interface (``state.auth.permissions``).
+    'localisation_gerer',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -719,6 +735,10 @@ RESPONSABLE_PERMISSIONS = [
     # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
     'sav_repondre_client_externe',
     'parametres_voir',
+    # NTI18N40 — le palier Responsable écrivait déjà les écrans Localisation et
+    # Traductions (``IsAdminOrResponsableTier``) : il porte donc le nouveau code
+    # pour garder EXACTEMENT son accès une fois la garde posée.
+    'localisation_gerer',
     'users_voir',
     'reporting_voir',
     # COMPTA40 — le Responsable peut saisir ET valider des écritures (mais la

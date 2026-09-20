@@ -113,8 +113,14 @@ def statut_libelle(company, domaine: str, cle: str, langue: str = 'fr') -> str:
 
     Ne renomme ni ne réordonne jamais la clé canonique elle-même — ceci ne
     calcule qu'un LIBELLÉ, jamais une transition d'état.
+
+    NTI18N51 — quand la langue demandée oblige à replier sur le français, le
+    repli est COMPTÉ (``traductions_manquantes.enregistrer_repli``) pour que la
+    lacune remonte d'elle-même à l'équipe une fois par semaine, au lieu
+    d'attendre qu'un client la signale. Aucune écriture quand la traduction
+    existe, et l'échec du compteur n'empêche jamais le libellé de sortir.
     """
-    from .i18n_labels import statut_label
+    from .i18n_labels import statut_label, variante_absente
     from .models_statuses import StatutConfig
 
     if langue == 'fr' and company is not None:
@@ -122,6 +128,9 @@ def statut_libelle(company, domaine: str, cle: str, langue: str = 'fr') -> str:
             company=company, domaine=domaine, cle=cle).first()
         if override is not None and override.libelle:
             return override.libelle
+    if company is not None and variante_absente(domaine, cle, langue):
+        from .traductions_manquantes import cle_statut, enregistrer_repli
+        enregistrer_repli(company, langue, cle_statut(domaine, cle))
     return statut_label(domaine, cle, langue)
 
 

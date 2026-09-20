@@ -1423,6 +1423,11 @@ CELERY_TASK_ROUTES = {
     'rh.notifier_taches_integration_sortie': {'queue': 'scheduled'},
     # NTI18N39 — recalcul hebdomadaire de la couverture i18n (beat du lundi).
     'core.recalculer_couverture_i18n': {'queue': 'scheduled'},
+    # NTI18N38 — purge mensuelle des traductions de contenu orphelines.
+    'parametres.purger_traductions_orphelines': {'queue': 'scheduled'},
+    # NTI18N51 — notification hebdomadaire des traductions manquantes.
+    'parametres.notifier_traductions_manquantes_hebdo': {
+        'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en

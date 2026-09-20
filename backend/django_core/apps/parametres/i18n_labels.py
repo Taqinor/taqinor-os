@@ -92,3 +92,22 @@ def statut_label(domaine: str, cle: str, langue: str = 'fr') -> str:
     if not entree:
         return cle
     return entree.get(langue) or entree.get('fr') or cle
+
+
+def variante_absente(domaine: str, cle: str, langue: str) -> bool:
+    """NTI18N51 — le catalogue va-t-il devoir REPLIER pour cette demande ?
+
+    Vrai quand `langue` est une langue supportée AUTRE que le français et que
+    le couple (domaine, cle) n'a pas de valeur dans cette langue — soit parce
+    que le couple est absent du catalogue, soit parce que son entrée ne porte
+    pas cette langue. Prédicat pur : ne compte rien, n'écrit rien (le compteur
+    vit dans `traductions_manquantes`), et ne juge JAMAIS une langue non
+    supportée comme un manque (elle est traitée comme du français, ce qui est
+    le comportement voulu, pas une lacune de traduction).
+    """
+    if langue == 'fr' or langue not in LANGUES_SUPPORTEES:
+        return False
+    entree = STATUT_LABELS.get(domaine, {}).get(cle)
+    if not entree:
+        return True
+    return not entree.get(langue)
