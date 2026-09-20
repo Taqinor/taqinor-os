@@ -131,7 +131,7 @@ class CalepinageValideWebhookTests(TestCase):
         from .docs import public_api_reference
 
         self.assertIn(EVENT_CALEPINAGE_VALIDE, ALL_EVENTS)
-        codes = {e['code'] for e in public_api_reference()['evenements']}
+        codes = {e['code'] for e in public_api_reference()['webhooks']['evenements']}
         self.assertIn(EVENT_CALEPINAGE_VALIDE, codes)
 
     def test_le_flux_exige_le_scope_de_lecture_de_sa_famille(self):

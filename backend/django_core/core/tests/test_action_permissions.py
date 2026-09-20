@@ -68,7 +68,13 @@ UNGUARDED_ACTION_BASELINE = {
     # creer-devis — trois @action neuves gardées par le ScopedPermission de
     # CLASSE de leurs viewsets ; coller un permission_classes= par action
     # tairait le scanner sans rien resserrer (règle du dépôt, cf. #25).
-    "ao": 25,
+    # 25 → 26 (CAL241, lot calepinage) : ``ToitureAOViewSet.
+    # reprendre_contour_3d`` — POST sur un viewset qui hérite d'
+    # ``AoBaseViewSet`` (donc ``ScopedPermission`` écriture ``ao_gerer``,
+    # queryset company-scopé) et qui refuse en plus 409 sur une affaire figée
+    # (``selectors.raison_conception_figee``). Même régime que les 25 autres :
+    # le cran monte honnêtement plutôt qu'un permission_classes= décoratif.
+    "ao": 26,
     # NTASS — les viewsets assurances héritent de ``_AssurancesBaseViewSet``
     # (WriteScopedPermissionMixin + CompanyScopedModelViewSet) : gardés au
     # niveau CLASSE (read/write assurances_voir/gerer, company-scopé, zéro fuite

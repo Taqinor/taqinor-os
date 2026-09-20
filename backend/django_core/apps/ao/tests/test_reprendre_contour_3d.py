@@ -146,8 +146,13 @@ class LAllerRetourEstStable(BaseCal241):
 class UneAffaireFigeeRendLeMeme409(BaseCal241):
     def test_le_motif_est_celui_du_selecteur_mot_pour_mot(self):
         self._calepinage()
-        self.ao.statut = AppelOffre.Statut.DEPOSE
-        self.ao.save(update_fields=['statut'])
+        # AOF13 — le statut d'un AO ne s'écrit pas par `save()` (le garde
+        # de `AppelOffre.save` l'exige) : on FIGE la ligne par
+        # `queryset.update()`, l'échappatoire documentée du garde, comme
+        # le fait déjà `test_aud605_resultat_et_creer_devis._forcer_statut`.
+        AppelOffre.objects.filter(pk=self.ao.pk).update(
+            statut=AppelOffre.Statut.DEPOSE)
+        self.ao.refresh_from_db()
         # La phrase est lue à SA source, jamais recopiée dans le test.
         attendu = selectors.raison_conception_figee(self.ao)
 
@@ -159,8 +164,13 @@ class UneAffaireFigeeRendLeMeme409(BaseCal241):
     def test_le_contour_de_la_toiture_n_a_pas_bouge(self):
         self._calepinage(outline=[[34.0, -6.0], [34.001, -6.0],
                                   [34.001, -6.001]])
-        self.ao.statut = AppelOffre.Statut.DEPOSE
-        self.ao.save(update_fields=['statut'])
+        # AOF13 — le statut d'un AO ne s'écrit pas par `save()` (le garde
+        # de `AppelOffre.save` l'exige) : on FIGE la ligne par
+        # `queryset.update()`, l'échappatoire documentée du garde, comme
+        # le fait déjà `test_aud605_resultat_et_creer_devis._forcer_statut`.
+        AppelOffre.objects.filter(pk=self.ao.pk).update(
+            statut=AppelOffre.Statut.DEPOSE)
+        self.ao.refresh_from_db()
 
         self.api.post(_url(self.toiture), {}, format='json')
 

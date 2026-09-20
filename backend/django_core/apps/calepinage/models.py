@@ -273,7 +273,16 @@ class CalepinageVariante(TenantModel):
             refuser_ecriture_directe,
         )
 
-        if self.retenue and not bascule_en_cours():
+        # Le garde vise l'ÉCRITURE de ``retenue``, pas la simple existence
+        # d'une variante retenue : un ``save(update_fields=[…])`` qui ne nomme
+        # PAS ``retenue`` (renommer une variante déjà retenue, l'horodater)
+        # n'écrit pas ce champ et n'a donc rien à contourner. Sans cette
+        # lecture d'``update_fields``, le garde refusait toute retouche
+        # partielle d'une variante retenue — un refus qu'aucune règle ne
+        # demande et que le service lui-même ne pouvait pas lever.
+        champs = kwargs.get('update_fields')
+        ecrit_retenue = champs is None or 'retenue' in champs
+        if ecrit_retenue and self.retenue and not bascule_en_cours():
             raise ValidationError({'retenue': refuser_ecriture_directe()})
         return super().save(*args, **kwargs)
 
