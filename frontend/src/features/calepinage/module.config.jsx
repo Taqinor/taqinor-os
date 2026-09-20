@@ -94,6 +94,17 @@ const PanneauProduction = lazy(() => import('./production/PanneauProduction'))
    CAL236 : aucune perte n'y est recalculée, un poste non sourcé reste nommé
    et hachuré. Contextuel à UN calepinage : deep-link. */
 const DiagrammePertes = lazy(() => import('./production/DiagrammePertes'))
+/* CAL89 — le MODE TERRAIN : une centrale au SOL. Dimensions et pente SAISIES,
+   tables/compte/pas inter-rangées RENDUS par le moteur (CAL88), taux
+   d'occupation affiché comme une SORTIE. Contextuel à UN calepinage (il écrit
+   dans SON document `roof_layout`), donc un deep-link comme la pente ou le
+   pompage — et le mode toiture n'est touché nulle part. */
+const ModeTerrain = lazy(() => import('./ModeTerrain'))
+/* CAL91 — l'OMBRIÈRE / carport : une surface de pose comme une autre (emprise,
+   hauteur libre, inclinaison, sens d'écoulement SAISIS ; pose rendue par le
+   moteur), qui se totalise par bâtiment avec les pans de toiture. Aucune
+   charge ni structure n'y est chiffrée. Contextuelle à UN calepinage. */
+const Ombriere = lazy(() => import('./Ombriere'))
 
 const config = {
   key: 'calepinage',
@@ -144,6 +155,10 @@ const config = {
     { path: '/calepinage/:id/plan', component: PlanImporteCalage, roles: ROLES },
     // CAL58 — la pente de CE calepinage, par l'un des trois modes de saisie.
     { path: '/calepinage/:id/pente', component: SaisiePente, roles: ROLES },
+    // CAL89 — le champ au SOL de CE calepinage (mode terrain).
+    { path: '/calepinage/:id/terrain', component: ModeTerrain, roles: ROLES },
+    // CAL91 — l'ombrière / carport de CE calepinage.
+    { path: '/calepinage/:id/ombriere', component: Ombriere, roles: ROLES },
     // contextuelle: le schéma unifilaire d'UN calepinage, ouvert depuis son atelier (CAL195) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/schema', component: SchemaUnifilairePanel, roles: ROLES },
     // CAL236 — contextuelle : le panneau Production de CE calepinage.

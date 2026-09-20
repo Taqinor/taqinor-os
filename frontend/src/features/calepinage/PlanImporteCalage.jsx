@@ -245,7 +245,7 @@ export default function PlanImporteCalage({
         contour_cale: cale,
       },
     }
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayout(calepinageId, document))
+    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document))
       .then(() => {
         setLayout(document)
         setMessage('Calage enregistré : il sera rechargé tel quel.')
@@ -262,7 +262,7 @@ export default function PlanImporteCalage({
     }
     setRefus(null)
     const document = { ...(layout ?? {}), outline: cale }
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayout(calepinageId, document))
+    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document))
       .then(() => {
         setLayout(document)
         setMessage('Plan converti en tracé de toit.')

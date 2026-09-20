@@ -2416,3 +2416,313 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
 
   return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, snapshot, renderOffscreen };
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CAL89 — LE CHAMP AU SOL DANS L'ATELIER, POSÉ PAR LE MOTEUR ET PAR PERSONNE
+   D'AUTRE.
+   ----------------------------------------------------------------------------
+   Constat : tout le tracé de l'atelier suppose un TOIT ; aucun mode terrain
+   n'existe. Ce bloc ajoute le mode terrain SANS toucher une ligne du chemin
+   toiture : c'est une construction géométrique PURE (plan du moteur en entrée,
+   placements 3D en sortie), montée par la même scène, avec les mêmes boîtes.
+
+   LA RÈGLE QUI GOUVERNE TOUT CE BLOC : le PAS INTER-RANGÉES N'EST PAS CALCULÉ
+   ICI. Il est MESURÉ sur les rangées que le moteur a réellement posées
+   (`plans[].rangees[].y0` consécutifs) — le moteur, lui, le tire de CAL88
+   (`core/calepinage/surfaces/sol.py`, politique anti-ombrage à la latitude).
+   Une seconde formule de pas côté client, c'est la garantie mathématique de
+   deux champs qui divergent ; il n'y en a donc aucune. Moins de deux rangées
+   ⇒ le pas n'est PAS mesurable, et on rend `null` plutôt qu'un chiffre.
+
+   LE TAUX D'OCCUPATION (GCR) EST UNE SORTIE : emprises des tables RENDUES par
+   le moteur ÷ surface du terrain TRACÉE. Jamais une saisie, jamais un objectif.
+
+   LA PENTE DU TERRAIN EST SAISIE : l'altitude d'une table s'en déduit
+   (z = hauteur libre + avancée × tan(pente)). Pente non renseignée ⇒ terrain
+   horizontal, jamais une pente supposée.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** CAL89 — une TABLE posée par le moteur (`plans[].tables[]`), en mètres. */
+export interface TableMoteur {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+  kit?: string;
+}
+
+/** CAL89 — une RANGÉE posée par le moteur (`plans[].rangees[]`). */
+export interface RangeeMoteur {
+  y0: number;
+  modules?: number;
+}
+
+/** CAL89 — le plan d'UNE surface, tel que `POST /calepinage/moteur/pose/` le rend. */
+export interface PlanMoteurSurface {
+  surface?: string;
+  modules?: number;
+  tables?: readonly TableMoteur[];
+  rangees?: readonly RangeeMoteur[];
+}
+
+export interface OptionsChampPose {
+  /** Inclinaison des tables (degrés), SAISIE. */
+  tiltDeg: number;
+  /** Pente du terrain (degrés), SAISIE. Absente/nulle → terrain horizontal. */
+  penteTerrainDeg?: number | null;
+  /** Hauteur libre sous la structure (m), SAISIE. Absente → tables au sol. */
+  hauteurLibreM?: number | null;
+  /** Surface du terrain tracée (m²) — dénominateur du taux d'occupation. */
+  aireTerrainM2?: number | null;
+}
+
+/** CAL89 — une table placée dans la scène (repère local du moteur, mètres). */
+export interface TablePlacee {
+  cx: number;
+  cy: number;
+  largeurM: number;
+  profondeurM: number;
+  /** Altitude du pied de la table (m) : hauteur libre + pente du terrain. */
+  z: number;
+  inclinaisonRad: number;
+  kit: string | null;
+}
+
+export interface ChampPose {
+  tables: TablePlacee[];
+  /** Modules POSÉS, tels que le moteur les compte (jamais recomptés ici). */
+  modules: number | null;
+  /** Pas inter-rangées MESURÉ sur le plan du moteur (m), `null` si non mesurable. */
+  pasInterRangeeM: number | null;
+  /** Emprise totale des tables rendues par le moteur (m²). */
+  empriseTablesM2: number;
+  /** Taux d'occupation du sol — SORTIE. `null` si la surface du terrain manque. */
+  tauxOccupation: number | null;
+  /** Ce qui n'a pas pu être mesuré, dit plutôt que comblé. */
+  nonMesure: string[];
+}
+
+const POSE_DEG2RAD = Math.PI / 180;
+
+/**
+ * CAL89 — le pas inter-rangées MESURÉ sur les rangées du moteur (m).
+ *
+ * On prend le plus petit écart entre deux `y0` consécutifs DISTINCTS : c'est
+ * l'entraxe appliqué par le moteur. Moins de deux rangées distinctes ⇒ `null`
+ * (non mesurable), jamais une valeur de remplacement.
+ */
+export function pasInterRangeeMesure(rangees: readonly RangeeMoteur[] | undefined): number | null {
+  const y = Array.from(
+    new Set((rangees ?? []).map((r) => r?.y0).filter((v): v is number => Number.isFinite(v))),
+  ).sort((a, b) => a - b);
+  if (y.length < 2) return null;
+  let min = Infinity;
+  for (let i = 1; i < y.length; i++) min = Math.min(min, y[i] - y[i - 1]);
+  return Number.isFinite(min) && min > 0 ? min : null;
+}
+
+/**
+ * CAL89 — construit le champ (tables placées + chiffres de sortie) À PARTIR du
+ * plan rendu par le moteur. Aucun pavage, aucun pas, aucun compte n'est
+ * (re)calculé ici : cette fonction PLACE, elle ne décide pas.
+ */
+export function construireChampPose(
+  plan: PlanMoteurSurface | null | undefined,
+  opts: OptionsChampPose,
+): ChampPose {
+  const nonMesure: string[] = [];
+  const tablesMoteur = plan?.tables ?? [];
+  const inclinaisonRad = (Number.isFinite(opts.tiltDeg) ? opts.tiltDeg : 0) * POSE_DEG2RAD;
+  const penteDeg = Number.isFinite(opts.penteTerrainDeg as number)
+    ? (opts.penteTerrainDeg as number)
+    : null;
+  if (penteDeg === null) nonMesure.push('pente du terrain non renseignée : terrain rendu horizontal');
+  const tanPente = penteDeg === null ? 0 : Math.tan(penteDeg * POSE_DEG2RAD);
+  const hauteurLibre = Number.isFinite(opts.hauteurLibreM as number)
+    ? (opts.hauteurLibreM as number)
+    : 0;
+
+  // Le pied du terrain : la rangée la plus « basse » du plan sert d'altitude 0.
+  let yRef = Infinity;
+  for (const t of tablesMoteur) if (Number.isFinite(t?.y0)) yRef = Math.min(yRef, t.y0);
+  if (!Number.isFinite(yRef)) yRef = 0;
+
+  let empriseTablesM2 = 0;
+  const tables: TablePlacee[] = [];
+  for (const t of tablesMoteur) {
+    if (!t || ![t.x0, t.x1, t.y0, t.y1].every((v) => Number.isFinite(v))) continue;
+    const largeurM = Math.abs(t.x1 - t.x0);
+    const profondeurM = Math.abs(t.y1 - t.y0);
+    empriseTablesM2 += largeurM * profondeurM;
+    const cy = (t.y0 + t.y1) / 2;
+    tables.push({
+      cx: (t.x0 + t.x1) / 2,
+      cy,
+      largeurM,
+      profondeurM,
+      z: hauteurLibre + (cy - yRef) * tanPente,
+      inclinaisonRad,
+      kit: typeof t.kit === 'string' ? t.kit : null,
+    });
+  }
+  if (!tables.length) nonMesure.push('aucune table rendue par le moteur');
+
+  const pasInterRangeeM = pasInterRangeeMesure(plan?.rangees);
+  if (pasInterRangeeM === null) {
+    nonMesure.push('pas inter-rangées non mesurable (moins de deux rangées posées)');
+  }
+
+  const aire = Number.isFinite(opts.aireTerrainM2 as number) ? (opts.aireTerrainM2 as number) : null;
+  let tauxOccupation: number | null = null;
+  if (aire !== null && aire > 0 && tables.length) tauxOccupation = empriseTablesM2 / aire;
+  else nonMesure.push('taux d’occupation non calculable (surface du terrain manquante)');
+
+  return {
+    tables,
+    modules: Number.isFinite(plan?.modules as number) ? (plan?.modules as number) : null,
+    pasInterRangeeM,
+    empriseTablesM2,
+    tauxOccupation,
+    nonMesure,
+  };
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CAL91 — L'OMBRIÈRE (CARPORT) EST UNE SURFACE DE POSE, PAS UN OUVRAGE CHIFFRÉ.
+   ----------------------------------------------------------------------------
+   Constat : rien dans le dépôt ne traitait l'ombrière (grep `carport|ombrière` :
+   zéro) alors que c'est une demande courante des clients tertiaires. Elle pave
+   comme un toit incliné et se totalise avec le reste du site — donc elle
+   réutilise TELLE QUELLE la construction de CAL89 : le plan vient du moteur,
+   l'atelier le place.
+
+   CE QUI CHANGE PAR RAPPORT AU SOL, ET RIEN D'AUTRE : la HAUTEUR LIBRE. Au sol,
+   une hauteur absente vaut 0 — c'est le sol, et c'est juste. Sous une ombrière,
+   une hauteur absente ne vaut RIEN : on ne pose pas une couverture à une
+   hauteur supposée. `construireOmbriere` refuse donc de deviner : la couverture
+   reste à 0 et le manque est DIT (`nonMesure`), jamais comblé.
+
+   AUCUNE CHARGE, AUCUNE STRUCTURE : ni descente de charges, ni section de
+   poteau, ni masse. Ce bloc place des tables ; il ne dimensionne aucun ouvrage
+   (la tâche l'exige explicitement, et un test relit la source pour le tenir).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * CAL91 — le champ d'une OMBRIÈRE, posé à sa hauteur libre SAISIE.
+ *
+ * Hauteur libre absente ⇒ la couverture n'est pas levée (z = pente du terrain
+ * seule) et `nonMesure` le dit : une ombrière sans hauteur mesurée n'est pas
+ * une ombrière à 2,50 m « par défaut ».
+ */
+export function construireOmbriere(
+  plan: PlanMoteurSurface | null | undefined,
+  opts: OptionsChampPose,
+): ChampPose {
+  const hauteurConnue = Number.isFinite(opts.hauteurLibreM as number)
+    && (opts.hauteurLibreM as number) > 0;
+  const champ = construireChampPose(plan, {
+    ...opts,
+    hauteurLibreM: hauteurConnue ? opts.hauteurLibreM : 0,
+  });
+  if (hauteurConnue) return champ;
+  return {
+    ...champ,
+    nonMesure: [
+      ...champ.nonMesure,
+      'hauteur libre non renseignée : la couverture n’est pas levée (aucune hauteur supposée)',
+    ],
+  };
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CAL106 — GRANDS CHAMPS : L'INSTANCIATION ET LE TRI DE VISIBILITÉ, MESURABLES.
+   ----------------------------------------------------------------------------
+   La borne de cette tâche porte sur le COÛT PUR — construire le plan, préparer
+   les matrices d'instances, trier ce qui est visible — et JAMAIS sur le rendu
+   WebGL, que vitest/jsdom ne mesure pas et qu'un seuil chiffré décrirait donc
+   en mentant.
+
+   Ces trois fonctions sont exactement cette part mesurable :
+     * `matricesInstanciees` remplit UN tableau typé de 16 flottants par table
+       (la matrice de transformation que `InstancedMesh.instanceMatrix` attend),
+       sans créer un seul objet Three ;
+     * `tablesVisibles` élague par emprise rectangulaire (culling) — la part
+       hors cadre n'a aucune raison d'être instanciée ;
+     * `plafonnerSelection` borne une sélection de masse.
+
+   ZÉRO CHIFFRE DE CALEPINAGE N'Y CHANGE : rien ici ne pave, ne compte ni ne
+   décide. Ce sont des transformations de présentation.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Emprise rectangulaire (mètres, repère du moteur) pour l'élagage. */
+export interface CadreVisible {
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+}
+
+/**
+ * CAL106 — les matrices d'instances des tables, en UN tableau typé (16 flottants
+ * par table, colonne-majeur, la convention de Three). Aucun objet intermédiaire
+ * n'est alloué : c'est la partie du coût qu'un grand champ fait exploser.
+ *
+ * Rotation autour de l'axe X (l'inclinaison de la table), mise à l'échelle par
+ * l'emprise de la table, translation au centre posé.
+ */
+export function matricesInstanciees(tables: readonly TablePlacee[]): Float32Array {
+  const out = new Float32Array(tables.length * 16);
+  for (let i = 0; i < tables.length; i++) {
+    const t = tables[i];
+    const c = Math.cos(t.inclinaisonRad);
+    const s = Math.sin(t.inclinaisonRad);
+    const o = i * 16;
+    // Colonne 0 : X mis à l'échelle de la largeur.
+    out[o] = t.largeurM; out[o + 1] = 0; out[o + 2] = 0; out[o + 3] = 0;
+    // Colonne 1 : Y tourné de l'inclinaison, à l'échelle de la profondeur.
+    out[o + 4] = 0; out[o + 5] = t.profondeurM * c; out[o + 6] = t.profondeurM * s; out[o + 7] = 0;
+    // Colonne 2 : Z tourné de l'inclinaison.
+    out[o + 8] = 0; out[o + 9] = -s; out[o + 10] = c; out[o + 11] = 0;
+    // Colonne 3 : translation au centre posé.
+    out[o + 12] = t.cx; out[o + 13] = t.cy; out[o + 14] = t.z; out[o + 15] = 1;
+  }
+  return out;
+}
+
+/**
+ * CAL106 — indices des tables dont l'emprise INTERSECTE le cadre (culling).
+ * Une table à cheval sur le bord est GARDÉE : élaguer ce qui se voit à moitié
+ * ferait clignoter le champ au moindre déplacement de caméra.
+ */
+export function tablesVisibles(
+  tables: readonly TablePlacee[],
+  cadre: CadreVisible,
+): Uint32Array {
+  const gardes = new Uint32Array(tables.length);
+  let n = 0;
+  for (let i = 0; i < tables.length; i++) {
+    const t = tables[i];
+    const demiX = t.largeurM / 2;
+    const demiY = t.profondeurM / 2;
+    if (t.cx + demiX < cadre.xMin || t.cx - demiX > cadre.xMax) continue;
+    if (t.cy + demiY < cadre.yMin || t.cy - demiY > cadre.yMax) continue;
+    gardes[n++] = i;
+  }
+  return gardes.subarray(0, n);
+}
+
+/**
+ * CAL106 — PLAFOND DE SÉLECTION : au-delà, une sélection de masse coûte plus
+ * cher à surligner qu'elle ne rend service. On garde les `plafond` premiers, et
+ * on RETOURNE le nombre écarté pour que l'appelant le DISE — jamais une
+ * sélection silencieusement tronquée.
+ */
+export function plafonnerSelection(
+  indices: readonly number[],
+  plafond: number,
+): { retenus: number[]; ecartes: number } {
+  if (!Number.isFinite(plafond) || plafond < 0 || indices.length <= plafond) {
+    return { retenus: indices.slice(), ecartes: 0 };
+  }
+  return { retenus: indices.slice(0, plafond), ecartes: indices.length - plafond };
+}

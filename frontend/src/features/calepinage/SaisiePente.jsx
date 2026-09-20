@@ -180,7 +180,7 @@ export default function SaisiePente({
       penteDeg: retenue.degres,
       penteSource: retenue.source,
     }
-    Promise.resolve(calepinageApi.calepinages.enregistrerLayout(calepinageId, document))
+    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document))
       .then(() => {
         setLayout(document)
         setMessage('Pente enregistrée dans la conception.')

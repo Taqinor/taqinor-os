@@ -79,6 +79,11 @@
       "description": "CAL102 — mesures posées (distance/surface/angle), annotations du calepinage (`roofPro11/mesureUi.ts`). OPTIONNEL et additif : absent ou vide = aucune mesure, comportement d'aujourd'hui. `serializeMeasurements` refuse toute entrée géométriquement invalide pour son genre plutôt que d'en persister une à moitié.",
       "type": "array",
       "items": { "$ref": "#/$defs/measurement" }
+    },
+    "poseSurfaces": {
+      "description": "CAL89 — surfaces de pose qui ne sont PAS des pans de toiture : un champ au SOL. OPTIONNEL et additif : clé absente ou tableau vide = document d'aujourd'hui, et le mode TOITURE reste strictement inchangé (`zones` reste la toiture, cette clé ne la touche jamais). Le document et la 3D sont les mêmes ; seul le genre de surface change.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/poseSurface" }
     }
   },
   "$defs": {
@@ -420,6 +425,108 @@
           "description": "Libellé posé par l'utilisateur (optionnel — « côté sud »…).",
           "type": "string"
         }
+      }
+    },
+    "poseSurface": {
+      "description": "CAL89/CAL91 — une SURFACE DE POSE qui n'est pas un pan de toiture : un champ au SOL, ou une OMBRIÈRE (carport). AUCUNE charge ni structure n'est calculée ici : une ombrière est une surface de pose, pas un ouvrage chiffré. Tout ce qui est SAISI vit à la racine (contour, pente du terrain, inclinaison des tables, orientation des rangées) ; tout ce que le MOTEUR rend vit sous `engine` et n'est jamais recalculé par un écran — en particulier le pas inter-rangées, qui vient de CAL88 (`core/calepinage/surfaces/sol.py`) et n'a AUCUNE seconde formule côté client.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "description": "Genre de surface de pose. `sol` = centrale au sol (CAL89) ; `ombriere` = ombrière / carport (CAL91), qui pave comme un toit incliné et se totalise avec le reste du site.",
+          "type": "string",
+          "enum": ["sol", "ombriere"]
+        },
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "vertices": {
+          "description": "Contour du terrain en [[lng, lat], …] — même convention que `zones[].vertices`. OPTIONNEL : présent quand le terrain a été tracé sur la carte.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/couple" }
+        },
+        "contourM": {
+          "description": "Contour du terrain en MÈTRES [[x, y], …], exactement tel qu'il a été envoyé au moteur (`demande.contour` du contrat `pose.json`). C'est la SAISIE qui fait foi pour le calcul : le plan rendu est dans ce repère.",
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "number" } }
+        },
+        "areaM2": {
+          "description": "Surface du terrain (m²), MESURÉE sur le contour tracé. `null` = contour incomplet ; jamais une surface supposée.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "terrainSlopeDeg": {
+          "description": "Pente du TERRAIN (degrés), SAISIE. `null` = non renseignée — le terrain est alors rendu horizontal, jamais incliné au jugé.",
+          "type": ["number", "null"]
+        },
+        "rowAzimuthDeg": {
+          "description": "Orientation des RANGÉES (degrés, 0=N, 90=E, 180=S, 270=O), SAISIE.",
+          "type": ["number", "null"]
+        },
+        "tiltDeg": {
+          "description": "Inclinaison des TABLES (degrés), SAISIE. Pour une ombrière, c'est l'inclinaison de la couverture.",
+          "type": ["number", "null"]
+        },
+        "clearHeightM": {
+          "description": "CAL91 — HAUTEUR LIBRE sous l'ombrière (m), SAISIE. `null` = non renseignée : la couverture n'est alors PAS posée à une hauteur supposée, elle reste au sol et l'écran le dit. Ne concerne pas `kind: \"sol\"`.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "flowAzimuthDeg": {
+          "description": "CAL91 — SENS D'ÉCOULEMENT de la couverture (degrés, 0=N, 90=E, 180=S, 270=O), SAISI. C'est aussi l'azimut d'empilement envoyé au moteur pour cette ombrière.",
+          "type": ["number", "null"]
+        },
+        "buildingId": {
+          "description": "CAL91 — bâtiment auquel cette surface de pose est rattachée, MÊME clé que `zones[].buildingId` (CAL59) : c'est elle qui fait apparaître l'ombrière dans les totaux PAR BÂTIMENT à côté des pans de toiture. Absente = bâtiment unique.",
+          "type": "string"
+        },
+        "engine": { "$ref": "#/$defs/posePlanMoteur" }
+      }
+    },
+    "posePlanMoteur": {
+      "description": "CAL89 — ce que le MOTEUR a rendu pour cette surface, recopié de la réponse `POST /calepinage/moteur/pose/` (contrat `pose.json`). Aucune de ces valeurs n'est calculée par un écran ; une valeur non publiée vaut `null`, jamais `0`.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "modules": {
+          "description": "`plans[].modules` du moteur : modules POSÉS.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "rowPitchM": {
+          "description": "Pas INTER-RANGÉES (m), MESURÉ sur les rangées que le moteur a posées (`plans[].rangees[].y0` consécutifs). `null` quand le plan compte moins de deux rangées : le pas n'est alors pas mesurable, et on ne l'invente pas.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "tables": {
+          "description": "`plans[].tables` du moteur : les rectangles d'emprise posés.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/poseTable" }
+        },
+        "groundCoverageRatio": {
+          "description": "Taux d'occupation du sol (GCR) — une SORTIE, jamais une saisie ni un objectif : somme des emprises de `tables` (rendues par le moteur) divisée par `areaM2` (le contour tracé). `null` tant que l'un des deux termes manque.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "versionMoteur": {
+          "description": "`version_moteur` de la réponse.",
+          "type": ["string", "null"]
+        },
+        "hashEntree": {
+          "description": "`hash_entree` de la réponse : dit à quelle entrée ce plan répond.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "poseTable": {
+      "description": "CAL89 — une TABLE posée par le moteur (`plans[].tables[]`), en mètres dans le repère du moteur.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "x0": { "type": "number" },
+        "x1": { "type": "number" },
+        "y0": { "type": "number" },
+        "y1": { "type": "number" },
+        "kit": { "type": "string" }
       }
     }
   },
