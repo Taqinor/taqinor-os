@@ -412,6 +412,29 @@ def paiements_totaux_par_mode(facture_ids):
         .annotate(total=Sum('montant'), nb=Count('id')))
 
 
+def devis_brouillon_pour_layout(company, lead_id, empreinte):
+    """CAL24 — le BROUILLON déjà né de ce calepinage, ou ``None``.
+
+    C'est la dédup de QJ17 (``lead`` + ``layout_hash``), rendue lisible aux
+    autres apps : re-cliquer « Générer le devis » doit redonner le brouillon
+    EXISTANT, jamais un doublon. Elle vivait inline dans la vue ``from-layout``
+    de ventes ; tout autre créateur (le module Calepinage) l'aurait recopiée,
+    donc fait dériver.
+
+    Scopée société, et seulement les BROUILLONS : un devis déjà envoyé ne se
+    « réutilise » pas — il se révise.
+    """
+    from .models import Devis
+
+    if company is None or not lead_id or not empreinte:
+        return None
+    return (Devis.objects
+            .filter(company=company, lead_id=lead_id,
+                    statut=Devis.Statut.BROUILLON, layout_hash=empreinte)
+            .order_by('-date_creation')
+            .first())
+
+
 def devis_card(devis_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un devis pour le partage dans la
     messagerie. Scopée société : None si le devis n'appartient pas à la société.

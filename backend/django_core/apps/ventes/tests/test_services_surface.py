@@ -214,6 +214,7 @@ SURFACE_PUBLIQUE = (
     # QJR63 — l'UNIQUE propriétaire du kWc d'un devis : son écriture
     # (``poser_puissance_kwc``, un cache estampillé) et sa lecture
     # (``puissance_kwc_du_devis``, registre sinon dérivation PVUNI, plus bas).
+    "poser_layout_hash",
     "poser_puissance_kwc",
     "poser_validite_devis",
     "prix_applicable",

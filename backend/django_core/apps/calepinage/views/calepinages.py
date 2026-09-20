@@ -54,6 +54,7 @@ from ..permissions import (
     PeutVoirCalepinage,
 )
 from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
+from ..services.devis import DevisRefuse, generer_devis
 from ..services.layout import LayoutRefuse, enregistrer_layout
 from ..services.variantes import (
     VarianteRefusee, creer_variante, modifier_variante, retenir_variante,
@@ -226,6 +227,37 @@ class CalepinageViewSet(ActionIdempotenteMixin, CompanyScopedModelViewSet):
             'inchange': resultat['inchange'],
             'version': version.pk if version is not None else None,
         })
+
+    # ── Le pont vers le devis : appeler, jamais refaire ────────────────────
+    @action(detail=True, methods=['post'], url_path='generer-devis',
+            permission_classes=[PeutGererCalepinage])
+    def generer_devis(self, request, pk=None):
+        """CAL24 — crée (ou RETROUVE) le devis de ce calepinage.
+
+        Le chemin canonique existe déjà et n'est pas doublé :
+        ``apps.ventes.services.build_devis_from_layout``, appelé par
+        ``services.devis.generer_devis`` avec le lead/client DU CALEPINAGE et
+        l'auteur côté serveur. Aucune ligne de devis n'est fabriquée ici,
+        aucun PDF n'est produit (règle #4).
+
+        Un second appel rend le MÊME devis (dédup ``lead`` + ``layout_hash``)
+        et un catalogue invalide remonte le 422 du serveur ventes, mot pour
+        mot.
+        """
+        calepinage = self.get_object()
+        corps = request.data if isinstance(request.data, dict) else {}
+        try:
+            devis, cree = generer_devis(
+                calepinage, user=request.user,
+                taux_tva=corps.get('taux_tva'),
+                remise_globale=corps.get('remise_globale'))
+        except DevisRefuse as refus:
+            return Response(_refus_devis(refus), status=refus.statut)
+        return Response(
+            {'devis': devis.pk, 'reference': devis.reference,
+             'statut': devis.statut, 'layout_hash': devis.layout_hash or None,
+             'deduplique': not cree},
+            status=(status.HTTP_201_CREATED if cree else status.HTTP_200_OK))
 
     # ── Les variantes : CRUD, bascule idempotente, comparatif ──────────────
     @action(detail=True, methods=['get', 'post'], url_path='variantes',
@@ -436,6 +468,16 @@ def _corps_de_layout(donnees):
     if not isinstance(donnees, dict) or not donnees:
         return None
     return donnees
+
+
+def _refus_devis(refus):
+    """Le corps d'un refus du pont devis — la charge VENTES telle quelle.
+
+    Quand le serveur ventes a parlé (pré-vol 422, conflit 409), on rend SON
+    dictionnaire : ni traduit, ni adouci, ni renuméroté. Sinon on nomme le
+    champ fautif, en français.
+    """
+    return refus.donnees or {refus.champ or 'detail': str(refus)}
 
 
 def _version_en_ligne(version):

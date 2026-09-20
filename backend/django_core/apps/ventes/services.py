@@ -298,6 +298,7 @@ _azimut_boussole_vers_aspect = _geometrie._azimut_boussole_vers_aspect
 _aspect_vers_azimut_boussole = _geometrie._aspect_vers_azimut_boussole
 extract_roof_config = _geometrie.extract_roof_config
 layout_hash = _geometrie.layout_hash
+poser_layout_hash = _geometrie.poser_layout_hash
 validate_composition_for_layout = _geometrie.validate_composition_for_layout
 DRAPEAU_MOTEUR_CALEPINAGE = _geometrie.DRAPEAU_MOTEUR_CALEPINAGE
 TOLERANCE_ARBITRAGE_MODULES = _geometrie.TOLERANCE_ARBITRAGE_MODULES
@@ -701,6 +702,7 @@ __all__ = [
     'plafond_physique_du_contour',
     'planifier_devis_automatique_pour_lead',
     'planifier_resynchronisation_produit',
+    'poser_layout_hash',
     'poser_puissance_kwc',
     'prix_applicable',
     'prix_forfait_ht',
