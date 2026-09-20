@@ -201,9 +201,9 @@ const PER_CHUNK_BUDGET_KB = 350
 // historique statut, monitoring API, simulateur matrice, GPS, règles achat).
 // Gras prouvé absent : diff package.json vide, zéro `import * as` dans les
 // fichiers touchés. Budget monté au juste-dessus de la mesure.
-// 20/09/2026 : + lot 2 du module Calepinage (mesure 3730,7 Ko seul) — budget à re-mesurer
+// 20/09/2026 : + lot 2 du module Calepinage — mesure RÉELLE 3752,6 Ko sur l arbre fusionné
 // sur l'arbre fusionné (voir commit).
-const TOTAL_BUDGET_KB = 3735
+const TOTAL_BUDGET_KB = 3760
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
