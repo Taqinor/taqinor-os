@@ -701,6 +701,7 @@ class ParametresCalepinage(TenantModel):
         'favoris_materiel',    # CAL200 — matériel épinglé
         'gabarits_dossier',    # CAL190 — gabarits de dossier réglementaire
         'norme_electrique',    # CAL130 — norme applicable + coefficients
+        'lestage',             # CAL163 — paramètres de lestage SAISIS
     )
 
     imagerie = models.JSONField('Imagerie et pays', default=dict, blank=True)
@@ -753,6 +754,25 @@ class ParametresCalepinage(TenantModel):
     norme_electrique = models.JSONField('Norme électrique applicable',
                                         default=dict, blank=True)
 
+    #: CAL163 — LES PARAMÈTRES DE LESTAGE, tous SAISIS avec leur source.
+    #:
+    #: Le moteur ne fait « aucune vérification de tenue mécanique » et « aucun
+    #: texte normatif marocain n'est présent dans ce dépôt » : publier ici un
+    #: coefficient de vent ou de neige « par défaut » serait exactement le
+    #: chiffre inventé que la règle fondateur interdit. La société saisit donc
+    #: vitesse de vent de référence, catégorie et coefficient de terrain,
+    #: coefficients de pression, charge de neige, frottement — et jusqu'à la
+    #: masse volumique de l'air et l'accélération de la pesanteur — CHACUN
+    #: avec la référence du texte dont il sort (``{valeur, source}``).
+    #:
+    #: Section VIDE = aucun paramètre saisi, donc AUCUN résultat calculé : la
+    #: feuille dit « paramètres à saisir » et ne publie rien. C'est le
+    #: comportement d'aujourd'hui (aucun lestage n'existait), donc aucune
+    #: société existante ne change de comportement en recevant ce champ
+    #: (AJOUTÉ EN FIN DE CLASSE, migration ``0007``).
+    lestage = models.JSONField('Paramètres de lestage', default=dict,
+                               blank=True)
+
     def clean(self):
         """Chaque section est un OBJET — jamais une liste ni un scalaire."""
         erreurs = {}
@@ -765,5 +785,347 @@ class ParametresCalepinage(TenantModel):
                     f"La section « {section} » doit être un objet "
                     f"(reçu : {type(valeur).__name__})."
                 )
+        if erreurs:
+            raise ValidationError(erreurs)
+
+
+class GabaritDossierReglementaire(TenantModel):
+    """CAL190 — LE GABARIT d'un dossier réglementaire, FOURNI par la société.
+
+    LE CONSTAT
+    ----------
+    La fabrique documentaire AO ne connaît que les pièces d'un appel d'offres
+    (``apps/ao/fabrique/gabarits.py``) ; aucun rail réglementaire n'existe
+    dans ce dépôt, alors que la mémoire fondateur du 20/08/2026 désigne les
+    rails FR (DP mairie, Enedis, Consuel) comme un GAP produit prioritaire.
+
+    LA RÈGLE QUI GOUVERNE CE MODÈLE — AUCUNE PIÈCE INVENTÉE
+    -------------------------------------------------------
+    L'ERP ne fabrique AUCUN formulaire officiel qu'il n'a pas reçu. Le
+    gabarit, l'intitulé du dossier, la liste de ses pièces et la référence de
+    chaque pièce (numéro de CERFA, notice Consuel, documentation Enedis,
+    circulaire marocaine…) sont **SAISIS ou DÉPOSÉS par la société** ; rien
+    n'est reproduit de mémoire, et une société sans gabarit déposé ne voit
+    **aucun dossier proposé** — pas de gabarit fictif en base.
+
+    * ``fichier`` est une ``records.Attachment`` (primitive plateforme, ARC26
+      — ``check_platform`` refuse tout nouveau champ fichier) : le fichier de
+      gabarit vit dans le magasin générique, jamais dans un second magasin.
+      Vide = gabarit DÉCLARÉ mais NON DÉPOSÉ : le dossier reste VISIBLE, avec
+      « gabarit manquant » en clair (le masquer ferait croire que le dossier
+      n'existe pas, alors que c'est le fichier qui manque — contrat CAL247).
+    * ``pieces_attendues`` et ``champs`` sont des LISTES ORDONNÉES de
+      descripteurs saisis ; chaque pièce porte sa ``source_reference``, et
+      une pièce sans référence est refusée en la nommant.
+    * ``pays`` est le code ISO 3166-1 alpha-2 (``ma``, ``fr``) : un gabarit
+      appartient à un pays, parce qu'un dossier de raccordement n'a de sens
+      que dans le sien.
+    """
+
+    #: Les CLÉS du calepinage qu'un champ de gabarit peut demander au serveur
+    #: de préremplir (CAL191). Une clé hors de cette liste est refusée : un
+    #: champ qui demande une donnée que le serveur ne sait pas produire
+    #: resterait « à compléter » sans que personne ne sache pourquoi.
+    CLES_PREREMPLISSAGE = (
+        'societe_nom', 'client_nom', 'adresse', 'puissance_kwc',
+        'nombre_modules', 'orientation_deg', 'inclinaison_deg',
+    )
+
+    #: Les types de champ admis (ils décrivent la SAISIE, pas une valeur).
+    TYPES_CHAMP = ('texte', 'nombre', 'date')
+
+    pays = models.CharField('Pays', max_length=2, db_index=True)
+    code = models.SlugField('Code', max_length=60)
+    genre = models.SlugField('Genre', max_length=40, blank=True, default='')
+    intitule = models.CharField('Intitulé', max_length=200)
+    #: ``[{code, intitule, obligatoire, source_reference}]`` — SAISIE.
+    pieces_attendues = models.JSONField('Pièces attendues', default=list,
+                                        blank=True)
+    #: ``[{code, libelle, type, obligatoire, cle_calepinage}]`` — SAISIE.
+    champs = models.JSONField('Champs du gabarit', default=list, blank=True)
+    #: Le FICHIER de gabarit déposé par la société (``records``, ARC26).
+    fichier = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL,  # on_delete: le gabarit survit au retrait de son fichier (il devient « à redéposer »)
+        null=True, blank=True,
+        related_name='gabarits_dossier_calepinage',
+        verbose_name='Fichier de gabarit',
+    )
+    version = models.CharField('Version', max_length=20, blank=True,
+                               default='')
+    actif = models.BooleanField('Actif', default=True)
+    depose_le = models.DateTimeField('Déposé le', null=True, blank=True)
+    depose_par = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,  # on_delete: le gabarit survit au départ de son auteur
+        null=True, blank=True,
+        related_name='calepinage_gabarits_dossier',
+        verbose_name='Déposé par',
+    )
+
+    class Meta:
+        verbose_name = 'Gabarit de dossier réglementaire'
+        verbose_name_plural = 'Gabarits de dossier réglementaire'
+        ordering = ['pays', 'intitule', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'pays', 'code'],
+                name='uniq_gabarit_dossier_par_societe_pays'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'pays', 'actif'],
+                         name='cal_gab_co_pays_idx'),
+        ]
+
+    def __str__(self):
+        return self.intitule or self.code
+
+    @property
+    def fichier_present(self):
+        """Le fichier de gabarit a-t-il été déposé ? (jamais deviné)."""
+        return self.fichier_id is not None
+
+    def clean(self):
+        """Refuse, EN FRANÇAIS et en NOMMANT le champ, un gabarit indéfendable."""
+        erreurs = {}
+        pays = (self.pays or '').strip().lower()
+        if len(pays) != 2 or not pays.isalpha():
+            erreurs['pays'] = (
+                "Le pays est un code à deux lettres (ISO 3166-1 alpha-2), "
+                f"par exemple « ma » ou « fr » (reçu : « {self.pays} »)."
+            )
+        else:
+            self.pays = pays
+        if not (self.intitule or '').strip():
+            erreurs['intitule'] = (
+                "L'intitulé du dossier est obligatoire : il est PORTÉ par le "
+                "gabarit de la société, jamais inventé par l'ERP."
+            )
+        erreur_pieces = self._erreur_pieces()
+        if erreur_pieces:
+            erreurs['pieces_attendues'] = erreur_pieces
+        erreur_champs = self._erreur_champs()
+        if erreur_champs:
+            erreurs['champs'] = erreur_champs
+        if erreurs:
+            raise ValidationError(erreurs)
+
+    def _erreur_pieces(self):
+        if not isinstance(self.pieces_attendues, list):
+            return ("Les pièces attendues se donnent en liste ordonnée "
+                    f"(reçu : {type(self.pieces_attendues).__name__}).")
+        codes = set()
+        for rang, piece in enumerate(self.pieces_attendues, start=1):
+            if not isinstance(piece, dict):
+                return (f"La pièce n°{rang} doit être un objet "
+                        f"(reçu : {type(piece).__name__}).")
+            code = str(piece.get('code') or '').strip()
+            if not code:
+                return f"La pièce n°{rang} doit porter un code."
+            if code in codes:
+                return f"Deux pièces portent le même code : « {code} »."
+            codes.add(code)
+            if not str(piece.get('intitule') or '').strip():
+                return (f"La pièce « {code} » doit porter son intitulé, tel "
+                        "que le gabarit déposé le nomme.")
+            if not str(piece.get('source_reference') or '').strip():
+                return (
+                    f"La pièce « {code} » doit porter sa SOURCE (référence "
+                    "CERFA, notice Consuel, documentation Enedis, texte "
+                    "marocain…) : aucune liste de pièces n'est reproduite de "
+                    "mémoire."
+                )
+        return ''
+
+    def _erreur_champs(self):
+        if not isinstance(self.champs, list):
+            return ("Les champs du gabarit se donnent en liste ordonnée "
+                    f"(reçu : {type(self.champs).__name__}).")
+        codes = set()
+        for rang, champ in enumerate(self.champs, start=1):
+            if not isinstance(champ, dict):
+                return (f"Le champ n°{rang} doit être un objet "
+                        f"(reçu : {type(champ).__name__}).")
+            code = str(champ.get('code') or '').strip()
+            if not code:
+                return f"Le champ n°{rang} doit porter un code."
+            if code in codes:
+                return f"Deux champs portent le même code : « {code} »."
+            codes.add(code)
+            if not str(champ.get('libelle') or '').strip():
+                return f"Le champ « {code} » doit porter son libellé."
+            type_champ = str(champ.get('type') or 'texte').strip()
+            if type_champ not in self.TYPES_CHAMP:
+                return (f"Type de champ inconnu pour « {code} » : "
+                        f"« {type_champ} ». Types admis : "
+                        f"{', '.join(self.TYPES_CHAMP)}.")
+            cle = champ.get('cle_calepinage')
+            if cle and cle not in self.CLES_PREREMPLISSAGE:
+                return (
+                    f"Le champ « {code} » demande un préremplissage inconnu : "
+                    f"« {cle} ». Clés admises : "
+                    f"{', '.join(self.CLES_PREREMPLISSAGE)}."
+                )
+        return ''
+
+
+class DossierReglementaire(TenantModel):
+    """CAL190 — UN dossier réglementaire d'UN calepinage, sur SON gabarit.
+
+    L'état du dossier (champs saisis, pièces jointes, génération) vit ici ;
+    la FORME du dossier vit sur le gabarit de la société. Un dossier par
+    (calepinage, gabarit) : deux dossiers sur le même gabarit seraient deux
+    vérités pour une même démarche.
+
+    ``document_id`` est OPAQUE (``PositiveIntegerField``) — le document GED
+    produit est atteint par les SERVICES de la GED
+    (``apps.ged.services``), jamais par une FK vers ses modèles : c'est ce
+    que le contrat import-linter du module verrouille.
+    """
+
+    calepinage = models.ForeignKey(
+        Calepinage,
+        on_delete=models.CASCADE,  # on_delete: un dossier n'existe pas hors de son calepinage
+        related_name='dossiers_reglementaires',
+        verbose_name='Calepinage',
+    )
+    gabarit = models.ForeignKey(
+        GabaritDossierReglementaire,
+        on_delete=models.PROTECT,  # on_delete: un gabarit utilisé par un dossier ne disparaît jamais sous lui
+        related_name='dossiers',
+        verbose_name='Gabarit',
+    )
+    #: ``{code_champ: valeur}`` — la SAISIE de l'utilisateur, jamais un
+    #: préremplissage : le prérempli est recalculé à la lecture (CAL191).
+    champs_saisis = models.JSONField('Champs saisis', default=dict,
+                                     blank=True)
+    #: ``{code_piece: {attachment_id, depose_le}}`` — les pièces JOINTES.
+    pieces_jointes = models.JSONField('Pièces jointes', default=dict,
+                                      blank=True)
+    genere_le = models.DateTimeField('Généré le', null=True, blank=True)
+    #: Identifiant OPAQUE du document GED produit (jamais une FK ``ged``).
+    document_id = models.PositiveIntegerField('Document (identifiant)',
+                                              null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Dossier réglementaire'
+        verbose_name_plural = 'Dossiers réglementaires'
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['calepinage', 'gabarit'],
+                name='uniq_dossier_reglementaire_par_gabarit'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'calepinage'],
+                         name='cal_dos_co_cal_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.gabarit} — {self.calepinage}'
+
+    def clean(self):
+        """Refuse, en français, un dossier incohérent avec son gabarit."""
+        erreurs = {}
+        if not isinstance(self.champs_saisis, dict):
+            erreurs['champs_saisis'] = (
+                "Les champs saisis se donnent en objet "
+                f"(reçu : {type(self.champs_saisis).__name__})."
+            )
+        if not isinstance(self.pieces_jointes, dict):
+            erreurs['pieces_jointes'] = (
+                "Les pièces jointes se donnent en objet "
+                f"(reçu : {type(self.pieces_jointes).__name__})."
+            )
+        if erreurs:
+            raise ValidationError(erreurs)
+
+
+class PoseReelle(TenantModel):
+    """CAL212 — LE POSÉ RÉEL d'un pan, SAISI sur le chantier.
+
+    LE CONSTAT
+    ----------
+    La capture terrain existe (``apps/installations/field_capture.py``,
+    ``models_field.py``) mais ne porte AUCUNE notion de modules posés vs
+    prévus : personne ne pouvait dire, après la pose, si le chantier avait
+    suivi la variante retenue.
+
+    LES DEUX DÉCISIONS GRAVÉES ICI
+    ------------------------------
+    * **L'ÉCART EST UNE SOUSTRACTION DE DEUX SAISIES RÉELLES**, jamais une
+      estimation : le PRÉVU vient de la variante RETENUE du calepinage
+      (CAL9/CAL209) et le POSÉ de cette table. Un pan sans saisie n'affiche
+      AUCUN écart — pas un zéro rassurant (``services/asbuilt.py``).
+    * **``releve_le`` est SAISIE**, jamais la date de synchronisation : le
+      terrain et le réseau ne coïncident pas (même règle que ``PhotoSite`` et
+      ``ReleveTerrain``), et une pose synchronisée le lendemain daterait du
+      mauvais jour.
+
+    ``ecarts_position`` est un TEXTE LIBRE : personne ne mesure au chantier
+    des décalages au millimètre, et un champ numérique inviterait à inventer
+    une précision que la saisie n'a pas.
+    """
+
+    calepinage = models.ForeignKey(
+        Calepinage,
+        on_delete=models.CASCADE,  # on_delete: un relevé de pose n'existe pas hors de son calepinage
+        related_name='poses_reelles',
+        verbose_name='Calepinage',
+    )
+    #: Le LIBELLÉ du pan, tel que le document le nomme (``label`` ou ``id``) —
+    #: jamais un index de tableau, qui changerait au premier pan redessiné.
+    pan = models.CharField('Pan', max_length=120)
+    modules_poses = models.PositiveIntegerField('Modules réellement posés')
+    ecarts_position = models.TextField("Écarts de position (texte libre)",
+                                       blank=True, default='')
+    releve_le = models.DateField('Relevé le')
+    releve_par = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,  # on_delete: le relevé survit au départ de son auteur
+        null=True, blank=True,
+        related_name='calepinage_poses_reelles',
+        verbose_name='Relevé par',
+    )
+
+    class Meta:
+        verbose_name = 'Pose réelle (as-built)'
+        verbose_name_plural = 'Poses réelles (as-built)'
+        ordering = ['pan', 'id']
+        constraints = [
+            # Un seul relevé par pan : deux comptes posés pour un même pan,
+            # c'est un écart qui dépend de la ligne qu'on regarde.
+            models.UniqueConstraint(
+                fields=['calepinage', 'pan'],
+                name='uniq_pose_reelle_par_pan'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'calepinage'],
+                         name='cal_pos_co_cal_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.pan} — {self.modules_poses} module(s)'
+
+    def clean(self):
+        """Refuse, EN FRANÇAIS et en NOMMANT le champ, une saisie indatable."""
+        from django.utils import timezone
+
+        erreurs = {}
+        if not (self.pan or '').strip():
+            erreurs['pan'] = (
+                "Le pan est obligatoire : un compte posé qui ne dit pas SUR "
+                "QUEL PAN il porte ne se compare à rien."
+            )
+        if self.releve_le is None:
+            erreurs['releve_le'] = (
+                "La date du relevé est obligatoire : elle est SAISIE, jamais "
+                "déduite de la date de synchronisation."
+            )
+        elif self.releve_le > timezone.localdate():
+            erreurs['releve_le'] = (
+                "La date du relevé ne peut pas être dans le futur "
+                f"(reçu : {self.releve_le:%d/%m/%Y})."
+            )
         if erreurs:
             raise ValidationError(erreurs)

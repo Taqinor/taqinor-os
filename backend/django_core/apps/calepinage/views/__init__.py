@@ -38,6 +38,7 @@ SOUS_MODULES = (
     'archivage',      # CAL208 — @actions archiver/restaurer-corbeille
     'simulation',     # CAL139 — @actions pertes/enregistrer-pertes
     'consommation',   # CAL149 — profils types de consommation (réglage)
+    'reglementaire',  # CAL191 — @action dossiers-reglementaires (CAL247)
     # 'io_layout' (CAL216 — @actions export-layout/import-layout) déjà listé
     # ci-dessus (documenté dès le jour 1 du paquet, CAL233).
 )

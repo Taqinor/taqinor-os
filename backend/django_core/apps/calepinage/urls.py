@@ -47,6 +47,8 @@ from .views import io_layout as _io_layout_action  # noqa: F401
 from .views import pompage as _pompage_action  # noqa: F401
 # CAL139 — même patron : rattache ``pertes``/``enregistrer-pertes``.
 from .views import simulation as _simulation_actions  # noqa: F401
+# CAL191 — même patron : rattache ``dossiers-reglementaires`` (contrat CAL247).
+from .views import reglementaire as _reglementaire_action  # noqa: F401
 
 # ``SimpleRouter`` et non ``DefaultRouter`` (même choix qu'``apps/ai_governance``)
 # : ``DefaultRouter`` ajoute une vue « api-root » que personne n'appelle ET un

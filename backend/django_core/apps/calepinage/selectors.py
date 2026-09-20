@@ -24,6 +24,9 @@ SECTIONS_PARAMETRES = (
     # CAL130 — norme électrique applicable + coefficients SAISIS. Section
     # vide = aucune norme choisie (règle D5 : rien n'est supposé au Maroc).
     'norme_electrique',
+    # CAL163 — paramètres de lestage SAISIS avec leur source. Section vide =
+    # aucun coefficient connu, donc aucune feuille calculée.
+    'lestage',
 )
 
 #: CAL246 — clés DÉRIVÉES publiées par ``GET /parametres/`` mais JAMAIS écrites :

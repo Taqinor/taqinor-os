@@ -51,6 +51,9 @@ __all__ = [
     'pans_poses', 'groupes_electriques', 'specs_module', 'specs_onduleur',
     'entree_electrique', 'concevoir_par_pan',
     'affectation', 'empreinte_entree', 'bloc_electrique', 'bloc_pose',
+    # CAL234 — affectation IMPOSÉE (manuelle) et son verdict.
+    'SOURCE_AUTO', 'SOURCE_MANUELLE', 'AffectationInvalide',
+    'normaliser_affectation_imposee', 'verdict_affectation',
 ]
 
 #: La règle de physique, citée telle quelle dans les verdicts publiés.
@@ -423,8 +426,15 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
 # celui des pans du document puis celui des chaînes du noyau — aucun ensemble
 # non ordonné, aucun identifiant d'objet, aucune horloge.
 
-def affectation(conception):
+def affectation(conception, *, imposee=None):
     """La table module → chaîne → MPPT → onduleur, dans l'ordre du document.
+
+    CAL234 — ``imposee`` est une affectation MANUELLE (déjà normalisée par
+    ``normaliser_affectation_imposee``) : elle ÉCRASE l'automatique, ligne par
+    ligne, et chaque ligne touchée porte ``source = « affectation manuelle »``
+    (les autres restent ``« automatique »``). Un module imposé qui n'existe
+    pas dans le document est IGNORÉ ici — c'est ``verdict_affectation`` qui le
+    REFUSE en le nommant, et une table ne refuse pas, elle décrit.
 
     Un module au-delà des chaînes de son pan (la « réserve d'appoint » du
     noyau) est publié avec ``chaine``/``mppt``/``onduleur`` à ``null`` : il est
@@ -456,6 +466,7 @@ def affectation(conception):
                     'chaine': _numero_chaine(chaine),
                     'onduleur': numero_onduleur,
                     'mppt': chaine.mppt,
+                    'source': SOURCE_AUTO,
                 })
         while rang_module < pan.modules:
             rang_module += 1
@@ -463,8 +474,25 @@ def affectation(conception):
                 'module': '%s#%d' % (pan.label, rang_module),
                 'pan': pan.label,
                 'chaine': None, 'onduleur': None, 'mppt': None,
+                'source': SOURCE_AUTO,
             })
-    return tuple(lignes)
+    return tuple(_appliquer_imposee(lignes, imposee))
+
+
+def _appliquer_imposee(lignes, imposee):
+    """CAL234 — l'affectation manuelle ÉCRASE l'automatique, et se voit."""
+    par_module = {ligne['module']: ligne for ligne in (imposee or ())}
+    if not par_module:
+        return lignes
+    for ligne in lignes:
+        impose = par_module.get(ligne['module'])
+        if impose is None:
+            continue
+        ligne['chaine'] = impose['chaine']
+        ligne['mppt'] = impose['mppt']
+        ligne['onduleur'] = impose['onduleur']
+        ligne['source'] = SOURCE_MANUELLE
+    return lignes
 
 
 def _numero_chaine(chaine):
@@ -563,7 +591,7 @@ def _chainage(conception):
     }
 
 
-def bloc_electrique(conception, *, verdicts=()):
+def bloc_electrique(conception, *, verdicts=(), imposee=None):
     """Le bloc ``electrique`` du contrat CAL244, affectation comprise.
 
     Rend ``(bloc, avertissements)``. Les quatre clés du bloc sont TOUJOURS
@@ -598,6 +626,203 @@ def bloc_electrique(conception, *, verdicts=()):
     return ({
         'chainage': _chainage(conception),
         'onduleurs': onduleurs,
-        'affectation': list(affectation(conception)),
+        'affectation': list(affectation(conception, imposee=imposee)),
         'verdicts': list(verdicts),
     }, tuple(avertissements))
+
+
+# ── CAL234 (moitié backend) — L'AFFECTATION IMPOSÉE, ET SON VERDICT ────────
+#
+# CAL124 affecte AUTOMATIQUEMENT et CAL126 dessine le résultat, mais rien ne
+# permettait à un installateur de CORRIGER l'affectation — or choisir une
+# suite de modules pour en faire une chaîne est le geste de base des outils
+# comparés. Cette moitié-ci pose les deux briques SERVEUR dont l'atelier a
+# besoin :
+#
+# * ``affectation(conception, imposee=…)`` accepte une affectation IMPOSÉE
+#   module par module : elle ÉCRASE l'automatique et chaque ligne touchée est
+#   MARQUÉE ``source = « affectation manuelle »`` dans la table CAL125 (les
+#   autres restent ``« automatique »``) ;
+# * ``verdict_affectation`` REFUSE une proposition invalide EN NOMMANT la
+#   contrainte, le pan et la chaîne — jamais un « non enregistré » générique.
+#
+# Le verdict se rend SANS RIEN PERSISTER : l'atelier envoie sa proposition à
+# ``POST calepinages/<pk>/evaluer-electrique/`` (garde en LECTURE, rien n'est
+# écrit) dans ``entree_electrique.affectation_manuelle`` ; le jour où
+# l'utilisateur valide, le MÊME champ part sur ``entree-electrique`` et là,
+# il est enregistré. Une seule forme de donnée pour les deux chemins.
+
+#: Les deux origines possibles d'une ligne de la table d'affectation.
+SOURCE_AUTO = 'automatique'
+SOURCE_MANUELLE = 'affectation manuelle'
+
+#: Les clés admises dans une ligne d'affectation imposée.
+CLES_IMPOSEE = ('module', 'chaine', 'mppt', 'onduleur')
+
+
+class AffectationInvalide(ValueError):
+    """Proposition d'affectation refusée — message français, champ nommé."""
+
+    def __init__(self, message, *, champ='affectation_manuelle'):
+        super().__init__(message)
+        self.champ = champ
+
+
+def normaliser_affectation_imposee(brut):
+    """``[{module, chaine, mppt, onduleur}]`` VALIDÉ, ou ``()``.
+
+    Refuse EN FRANÇAIS, en nommant le champ : une ligne qui n'est pas un
+    objet, un module vide, une clé inconnue, un numéro de chaîne qui n'est pas
+    un entier positif, ou deux lignes pour le même module (deux chaînes pour
+    un seul panneau, c'est un court-circuit sur le papier).
+    """
+    if brut is None:
+        return ()
+    if not isinstance(brut, (list, tuple)):
+        raise AffectationInvalide(
+            "L'affectation manuelle se donne en liste de lignes "
+            f"(reçu : {type(brut).__name__}).")
+    lignes, vus = [], set()
+    for rang, ligne in enumerate(brut, start=1):
+        if not isinstance(ligne, dict):
+            raise AffectationInvalide(
+                f"La ligne n°{rang} de l'affectation manuelle doit être un "
+                f"objet (reçu : {type(ligne).__name__}).")
+        inconnues = sorted(set(ligne) - set(CLES_IMPOSEE))
+        if inconnues:
+            raise AffectationInvalide(
+                f"Clé inconnue dans l'affectation manuelle : "
+                f"« {', '.join(inconnues)} ». Clés admises : "
+                f"{', '.join(CLES_IMPOSEE)}.")
+        module = str(ligne.get('module') or '').strip()
+        if not module:
+            raise AffectationInvalide(
+                f"La ligne n°{rang} de l'affectation manuelle ne nomme aucun "
+                "module.")
+        if module in vus:
+            raise AffectationInvalide(
+                f"Le module « {module} » est affecté deux fois : un panneau "
+                "n'appartient qu'à une seule chaîne.")
+        vus.add(module)
+        lignes.append({
+            'module': module,
+            'chaine': _numero_impose(ligne.get('chaine'), module, 'chaîne'),
+            'mppt': _numero_impose(ligne.get('mppt'), module, 'entrée MPPT'),
+            'onduleur': _numero_impose(ligne.get('onduleur'), module,
+                                       'onduleur'),
+        })
+    return tuple(lignes)
+
+
+def _numero_impose(valeur, module, quoi):
+    """Un entier strictement positif, ou ``None`` (module DÉCÂBLÉ à la main)."""
+    if valeur is None:
+        return None
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        raise AffectationInvalide(
+            f"Le numéro de {quoi} du module « {module} » doit être un entier "
+            f"(reçu : {type(valeur).__name__}).")
+    entier = int(valeur)
+    if entier != valeur or entier <= 0:
+        raise AffectationInvalide(
+            f"Le numéro de {quoi} du module « {module} » doit être un entier "
+            f"strictement positif (reçu : {valeur}).")
+    return entier
+
+
+def verdict_affectation(conception, imposee, *, specs_onduleur=None):
+    """Les REFUS d'une affectation proposée, chacun NOMMANT sa contrainte.
+
+    Ne persiste RIEN et ne modifie RIEN : c'est un verdict. Les contrôles
+    portent sur ce que le SERVEUR peut vérifier sans supposer quoi que ce
+    soit :
+
+    * un module inconnu du document (personne ne câble un panneau qui n'est
+      pas posé) ;
+    * une chaîne qui saute d'un pan à l'autre (le document dessine deux
+      surfaces, une chaîne ne les traverse pas) ;
+    * une chaîne plus longue ou plus courte que la règle de chaîne retenue
+      par le dimensionnement (V_max à froid / MPPT) ;
+    * plus de chaînes sur une entrée MPPT que la fiche onduleur n'en publie.
+
+    Une donnée NON PUBLIÉE (règle de chaîne inconnue, ``chaines_max_par_mppt``
+    absent) ne produit AUCUN refus : le silence, jamais un faux rouge.
+    """
+    imposee = tuple(imposee or ())
+    if not imposee:
+        return ()
+
+    auto = affectation(conception)
+    pan_par_module = {ligne['module']: ligne['pan'] for ligne in auto}
+    refus = []
+
+    modules_par_chaine, pans_par_chaine, chaines_par_mppt = {}, {}, {}
+    for ligne in imposee:
+        module = ligne['module']
+        pan = pan_par_module.get(module)
+        if pan is None:
+            refus.append(
+                "Module inconnu du document : « %s » n'est pas posé sur cette "
+                "conception." % module)
+            continue
+        numero = ligne['chaine']
+        if numero is None:
+            continue
+        modules_par_chaine[numero] = modules_par_chaine.get(numero, 0) + 1
+        pans_par_chaine.setdefault(numero, set()).add(pan)
+        if ligne['mppt'] is not None:
+            chaines_par_mppt.setdefault(
+                (ligne['onduleur'], ligne['mppt']), set()).add(numero)
+
+    for numero, pans in sorted(pans_par_chaine.items()):
+        if len(pans) > 1:
+            refus.append(
+                "Chaîne %d : elle traverse les pans %s — une chaîne reste sur "
+                "UN pan." % (numero, ', '.join(sorted(pans))))
+
+    bornes = _bornes_de_chaine(conception)
+    if bornes is not None:
+        mini, maxi = bornes
+        for numero, nombre in sorted(modules_par_chaine.items()):
+            pan = ', '.join(sorted(pans_par_chaine.get(numero, ())))
+            if maxi is not None and nombre > maxi:
+                refus.append(
+                    "Chaîne %d (pan %s) : %d modules, maximum %d — au-delà, "
+                    "la tension à froid dépasse la limite de l'onduleur."
+                    % (numero, pan, nombre, maxi))
+            elif mini is not None and nombre < mini:
+                refus.append(
+                    "Chaîne %d (pan %s) : %d modules, minimum %d — en deçà, "
+                    "la chaîne ne démarre pas sur la plage MPPT."
+                    % (numero, pan, nombre, mini))
+
+    maximum = chaines_max_par_mppt(specs_onduleur)
+    if maximum:
+        for (onduleur, mppt), chaines in sorted(
+                chaines_par_mppt.items(),
+                key=lambda couple: (couple[0][0] or 0, couple[0][1] or 0)):
+            if len(chaines) > maximum:
+                refus.append(
+                    "Entrée MPPT %s : %d chaînes affectées, maximum %d publié "
+                    "par la fiche onduleur."
+                    % (_libelle_mppt(onduleur, mppt), len(chaines), maximum))
+    return tuple(refus)
+
+
+def _libelle_mppt(onduleur, mppt):
+    return ('%d (onduleur %d)' % (mppt, onduleur) if onduleur
+            else str(mppt))
+
+
+def _bornes_de_chaine(conception):
+    """``(min, max)`` de modules par chaîne, ou ``None`` si non publié.
+
+    Les bornes sont celles que le DIMENSIONNEMENT a retenues : la longueur des
+    chaînes réellement conçues. Aucune borne n'est inventée — sans chaîne
+    conçue, il n'y a rien à comparer et le contrôle s'abstient.
+    """
+    longueurs = [chaine.nb_modules for chaine in conception.chaines
+                 if getattr(chaine, 'nb_modules', None)]
+    if not longueurs:
+        return None
+    return (min(longueurs), max(longueurs))
