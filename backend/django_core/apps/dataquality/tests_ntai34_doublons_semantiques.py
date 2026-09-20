@@ -124,10 +124,10 @@ class DoublonsClientsSemantiquesTests(TestCase):
         self._chunk(a.id, 'STE ALPHA', VEC_A)
         self._chunk(b.id, 'Alpha S.A.R.L', VEC_PROCHE)
 
-        nouvelles = services.scanner_propositions(self.company, 'clients',
+        nouvelles = services.scanner_propositions(self.company, 'client',
                                                   self.user)
         self.assertEqual(len(nouvelles), 1)
         proposition = PropositionFusion.objects.get(
-            company=self.company, entite='clients')
+            company=self.company, entite='client')
         self.assertEqual(proposition.ids_groupe, sorted([a.id, b.id]))
         self.assertEqual(proposition.motifs, ['semantique'])

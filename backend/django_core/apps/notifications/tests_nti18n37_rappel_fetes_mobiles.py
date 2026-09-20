@@ -65,11 +65,18 @@ class SaisieIncompleteTests(TestCase):
             event_type=EventType.FETES_MOBILES_A_SAISIR).exists())
 
     def test_saisie_partielle_notifie_encore(self):
-        from apps.parametres.fetes_mobiles import enregistrer_fetes_mobiles
-        enregistrer_fetes_mobiles(self.company, 2027, {
-            'aid_el_fitr': '2027-03-20',
-            'aid_el_adha': '2027-05-27',
-        })
+        # État PARTIEL construit directement en base (2 fêtes sur 4 pour 2027,
+        # comme des données saisies avant l'assistant) : l'assistant
+        # `enregistrer_fetes_mobiles` refuse par CONSTRUCTION une saisie
+        # partielle (invariant NTI18N33, tout-ou-rien) — il ne peut pas
+        # fabriquer cet état, et le rappel doit quand même le détecter.
+        from apps.notifications.models import Holiday
+        Holiday.objects.create(
+            company=self.company, nom='Aïd el-Fitr',
+            date=datetime.date(2027, 3, 20), recurrent_annuel=False)
+        Holiday.objects.create(
+            company=self.company, nom='Aïd el-Adha',
+            date=datetime.date(2027, 5, 27), recurrent_annuel=False)
         count = rappel_fetes_mobiles(now=NOVEMBRE)
         self.assertEqual(count, 1)
         self.assertTrue(Notification.objects.filter(
@@ -80,7 +87,10 @@ class SaisieIncompleteTests(TestCase):
         company = _company('nti18n37-repli')
         manager = _manager_legacy(company, 'nti18n37-repli-manager')
         count = rappel_fetes_mobiles(now=NOVEMBRE)
-        self.assertEqual(count, 1)
+        # DEUX sociétés incomplètes existent (celle du setUp + celle-ci) : le
+        # rappel notifie UNE fois par société — le repli managers se prouve
+        # sur les destinataires, pas sur un total qui masquerait l'autre.
+        self.assertEqual(count, 2)
         self.assertTrue(Notification.objects.filter(
             recipient=manager,
             event_type=EventType.FETES_MOBILES_A_SAISIR).exists())

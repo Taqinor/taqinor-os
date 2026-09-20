@@ -198,7 +198,15 @@ def cosine_similarite(vecteur_a, vecteur_b):
     """Similarité cosinus entre deux vecteurs de même dimension, dans
     ``[-1, 1]``. ``0.0`` si l'un des deux est vide/nul ou de dimension
     différente (jamais une exception)."""
-    if not vecteur_a or not vecteur_b or len(vecteur_a) != len(vecteur_b):
+    # `len()`/comparaisons explicites plutôt que `not vecteur_a` : un
+    # embedding relu depuis `pgvector` (VectorField) revient en tableau
+    # NumPy, dont la valeur de vérité est ambiguë (`ValueError`) dès qu'il
+    # a plus d'un élément — jamais de `bool()` implicite sur un vecteur ici.
+    if vecteur_a is None or vecteur_b is None:
+        return 0.0
+    if len(vecteur_a) == 0 or len(vecteur_b) == 0:
+        return 0.0
+    if len(vecteur_a) != len(vecteur_b):
         return 0.0
     produit_scalaire = sum(a * b for a, b in zip(vecteur_a, vecteur_b))
     norme_a = sum(a * a for a in vecteur_a) ** 0.5
@@ -220,7 +228,11 @@ def grouper_par_embeddings(chunks, *, seuil=SEUIL_SEMANTIQUE,
     groupe (arrondie), jamais une valeur de :data:`POIDS_CRITERES`.
     """
     libelles = dict(libelles or {})
-    elements = [(i, v) for i, v in chunks if v][:LIMITE_CHUNKS_SEMANTIQUE]
+    # `v is not None and len(v) > 0` plutôt que `if v` : un embedding
+    # `pgvector` revient en tableau NumPy, dont la valeur de vérité est
+    # ambiguë (`ValueError`) dès qu'il a plus d'un élément.
+    elements = [(i, v) for i, v in chunks
+                if v is not None and len(v) > 0][:LIMITE_CHUNKS_SEMANTIQUE]
     unions = _Unions()
     meilleure_similarite = {}
 

@@ -95,6 +95,13 @@ def enregistrer(company_id, event, payload, *, event_id=''):
 
     if not company_id or not event:
         return None
+    # `event_id` est déjà porté par son propre champ (dédup NTAPI17/NTAPI8) ;
+    # `dispatch_event`/`ensure_event_id` l'injecte DANS le dict transmis pour
+    # le partager avec la livraison webhook, mais le laisser AUSSI dans
+    # `payload` polluerait « la charge complète » que le connecteur no-code
+    # (NTAPI32) promet de rendre TELLE QUE reçue par l'appelant métier.
+    charge = dict(payload) if isinstance(payload, dict) else {}
+    charge.pop('event_id', None)
     derniere_erreur = None
     for _ in range(MAX_TENTATIVES_SEQUENCE):
         sequence = prochaine_sequence(company_id)
@@ -104,7 +111,7 @@ def enregistrer(company_id, event, payload, *, event_id=''):
                     company_id=company_id,
                     sequence=sequence,
                     type=event,
-                    payload=payload if isinstance(payload, dict) else {},
+                    payload=charge,
                     event_id=event_id or '',
                 )
         except IntegrityError as exc:

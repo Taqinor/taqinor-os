@@ -240,53 +240,49 @@ def generer_sla_mensuel_task():
 
 # ── NTOBS34 — fraîcheur des TrustCenterEntry (alerte fondateur) ────────────
 #
-# LIMITE ASSUMÉE DE CE LOT (lane isolée, ``core/models.py``/``core/
-# migrations`` appartiennent à une autre lane en ce moment) : le champ
-# ``TrustCenterEntry.alerte_expiration_envoyee`` nommé par le plan n'est PAS
-# posé ici. En ATTENDANT cette migration, l'anti-spam (« pas de spam
-# quotidien ») repose sur le cache Django, clé par (entrée, date d'audit) —
-# une entrée MISE À JOUR (nouvelle ``dernier_audit_le``) change la clé et
-# redevient donc notifiable, exactement le comportement « flag remis à False
-# si l'entrée est mise à jour » demandé par le plan, SANS nouveau champ. Dès
-# que la migration réelle existe, ``_marquer_alerte_envoyee``/``_a_deja_
-# alerte`` basculent AUTOMATIQUEMENT sur le vrai champ (voir ``try/except``
-# ci-dessous) — aucun code à changer. Migration exacte à poser par
-# l'orchestrateur :
-#
-#     alerte_expiration_envoyee = models.BooleanField(default=False)
+# ``TrustCenterEntry.alerte_expiration_envoyee`` (migration 0072, livrée) est
+# désormais le marqueur PERSISTÉ anti-spam : posé à True quand l'alerte part,
+# jamais réémis pour la MÊME valeur de ``dernier_audit_le`` — contrairement à
+# un cache par process, il survit un redémarrage worker/déploiement. Le champ
+# n'étant PAS keyé par date, une entrée ACTUALISÉE (nouvel audit, toujours
+# périmé) doit pouvoir alerter de nouveau : le cache Django ne retient plus
+# un booléen mais la DERNIÈRE valeur de ``dernier_audit_le`` vue pour cette
+# entrée, et réarme (remet à False) le champ persistant dès qu'elle change —
+# « flag remis à False si l'entrée est mise à jour », sans nouvelle colonne.
 
 TRUST_CENTER_AUDIT_MAX_MOIS = 12
 TRUST_CENTER_ALERTE_CACHE_TTL_SECONDS = 60 * 60 * 24 * 40  # ~40 jours
 
 
 def _trust_center_alerte_cache_key(entry):
-    return (
-        f'trust_center_expiration_notifie:{entry.pk}:{entry.dernier_audit_le}')
+    return f'trust_center_dernier_audit_connu:{entry.pk}'
 
 
 def _trust_center_deja_alerte(entry):
-    try:
-        return bool(entry.alerte_expiration_envoyee)
-    except AttributeError:
-        from django.core.cache import cache
-
-        return bool(cache.get(_trust_center_alerte_cache_key(entry)))
-
-
-def _trust_center_marquer_alerte(entry):
-    from django.core.exceptions import FieldError
+    """Vrai si l'alerte est déjà partie pour la valeur ACTUELLE de
+    ``dernier_audit_le``. Si cette valeur a changé depuis le dernier passage
+    (même en restant périmée), le champ persistant est réarmé à False AVANT
+    d'être lu, pour laisser repartir une alerte fraîche."""
+    from django.core.cache import cache
 
     from .trust_center import TrustCenterEntry
 
-    try:
+    cle = _trust_center_alerte_cache_key(entry)
+    derniere_valeur_connue = cache.get(cle)
+    cache.set(cle, entry.dernier_audit_le, TRUST_CENTER_ALERTE_CACHE_TTL_SECONDS)
+    if (derniere_valeur_connue != entry.dernier_audit_le
+            and entry.alerte_expiration_envoyee):
         TrustCenterEntry.objects.filter(pk=entry.pk).update(
-            alerte_expiration_envoyee=True)
-    except FieldError:
-        from django.core.cache import cache
+            alerte_expiration_envoyee=False)
+        entry.alerte_expiration_envoyee = False
+    return bool(entry.alerte_expiration_envoyee)
 
-        cache.set(
-            _trust_center_alerte_cache_key(entry), True,
-            TRUST_CENTER_ALERTE_CACHE_TTL_SECONDS)
+
+def _trust_center_marquer_alerte(entry):
+    from .trust_center import TrustCenterEntry
+
+    TrustCenterEntry.objects.filter(pk=entry.pk).update(
+        alerte_expiration_envoyee=True)
 
 
 @shared_task(name='core.verifier_fraicheur_trust_center')

@@ -234,11 +234,21 @@ def _compute_uptime_moyen_12_mois(company):
     snapshot n'existe pour la période."""
     from django.db.models import Avg
 
-    from core.sla import SlaSnapshot, mois_precedent, premier_du_mois
+    from core.sla import SlaSnapshot, premier_du_mois
 
+    # Arithmétique directe plutôt que 12 appels chaînés à `mois_precedent` :
+    # celui-ci relit son résultat via `premier_du_mois`, qui appelle `.date()`
+    # en supposant TOUJOURS un `datetime` — or `premier_du_mois()` renvoie déjà
+    # un `datetime.date` (sans `.date()`), donc le chaînage lève
+    # ``AttributeError: 'datetime.date' object has no attribute 'date'`` dès
+    # le premier tour. Un seul appel non chaîné à `premier_du_mois()` évite le
+    # problème.
     borne = premier_du_mois()
-    for _ in range(12):
-        borne = mois_precedent(borne)
+    annee, mois = borne.year, borne.month - 12
+    while mois <= 0:
+        mois += 12
+        annee -= 1
+    borne = borne.replace(year=annee, month=mois)
     moyenne = SlaSnapshot.objects.filter(
         company=company, periode__gte=borne,
     ).aggregate(m=Avg('uptime_pct'))['m']

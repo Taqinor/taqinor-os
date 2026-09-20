@@ -80,12 +80,15 @@ class Ntapi20OpenApiSchemaTests(TestCase):
         # POST/PATCH, activités POST, devis-write POST, tickets-write POST) +
         # 6 bulk (NTAPI14/15/16/43/30 : exports, imports, jobs list/detail,
         # jobs/<id>/relancer, exports/<entite>.csv) + 2 lectures simples
-        # (NTADM42 statut de licence, NTSCM38 tableau de bord réappro) = 45
-        # opérations, sur autant de chemins distincts (aucun chemin ne cumule
-        # 2 méthodes ici) — jamais un chemin fantôme ajouté par erreur.
+        # (NTADM42 statut de licence, NTSCM38 tableau de bord réappro) = 45,
+        # + 3 (2026-09-20, NTOBS27 — surface « Fiabilité » en lecture seule :
+        # fiabilite/sauvegardes/, fiabilite/sla/<periode>/, fiabilite/usage/,
+        # chacune un objet unique en GET) = 48 opérations, sur autant de
+        # chemins distincts (aucun chemin ne cumule 2 méthodes ici) — jamais
+        # un chemin fantôme ajouté par erreur.
         schema = build_openapi_schema()
         nb_operations = sum(len(ops) for ops in schema['paths'].values())
-        self.assertEqual(nb_operations, 45)
+        self.assertEqual(nb_operations, 48)
 
     def test_covers_licence_statut_ntadm42(self):
         schema = build_openapi_schema()
