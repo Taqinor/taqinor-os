@@ -59,6 +59,9 @@ __all__ = [
     'REGLE_CHAINE_MODULE', 'REGLE_CHAINE_OPTIMISEUR', 'regle_de_chaine',
     'PublicationBloquee', 'bloquants_nommes', 'alertes_nommees',
     'evaluation_electrique', 'garde_publication', 'rejouer_apres_layout',
+    'ORIGINE_LONGUEUR_FICHE', 'ORIGINE_LONGUEUR_DOSSIER',
+    'longueur_chaine_retenue', 'plafond_modules',
+    'journaliser_ecart_longueur', 'parametres_societe',
 ]
 
 #: Les deux SOURCES possibles d'une température de dimensionnement. Une
@@ -518,11 +521,25 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
                             norme=norme,
                             company=getattr(calepinage, 'company', None))
 
+    # CAL170 — quelle longueur de chaîne a été retenue, et d'où elle vient.
+    reconciliation = longueur_chaine_retenue(conception)
+    reconciliation = dict(reconciliation, plafond_modules=plafond_modules(
+        donnees.get('plafond_kwc_par_onduleur'),
+        pose.get('puissance_module_wc')))
+
     messages = list(avertissements) + list(messages_ratio)
     messages.extend(regle['bornes_non_verifiables'])
     messages.extend(cables['omissions'])
     messages.extend(protections['omissions'])
     messages.extend(terre['omissions'])
+    if reconciliation['origine'] == ORIGINE_LONGUEUR_DOSSIER:
+        messages.append(reconciliation['detail'])
+    elif reconciliation['hors_tolerance']:
+        messages.append(
+            "longueur de chaîne calculée %s contre %s au dossier (écart %s) — "
+            "écart au-delà de la tolérance, journalisé"
+            % (reconciliation['longueur'], reconciliation['longueur_dossier'],
+               reconciliation['ecart']))
     if terre['justification_requise'] and not terre['justification_fournie']:
         messages.append(
             "prise de terre non fournie au marché : la justification de "
@@ -565,6 +582,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'justifications': protections['justifications'],
         # CAL134 — la check-list de terre (jamais une résistance inventée).
         'terre': terre,
+        # CAL170 — la longueur de chaîne retenue et SON origine (fiche
+        # calculée, ou longueur de dossier en repli assumé).
+        'longueur_chaine': reconciliation,
         'temperatures': (conception.temperatures.en_dict()
                          if conception.temperatures is not None else None),
         'production': {
@@ -802,6 +822,18 @@ def rejouer_apres_layout(calepinage, *, user=None):
         # brouillon qui reste brouillon, jamais une rétrogradation surprise
         # déclenchée par un simple enregistrement de dessin.
         calepinage.save(update_fields=['resultat', 'updated_at'])
+
+    # CAL170 — un écart moteur↔fiche au-delà de la tolérance est JOURNALISÉ
+    # (jamais un remplacement silencieux), et son historique est conservé.
+    try:
+        conception, _materiel, _donnees, _doc = conception_du_calepinage(
+            calepinage)
+        journaliser_ecart_longueur(calepinage,
+                                   longueur_chaine_retenue(conception))
+    except Exception:  # noqa: BLE001 — cf. docstring
+        logging.getLogger(__name__).exception(
+            'CAL170 : réconciliation de longueur en échec (calepinage %s)',
+            getattr(calepinage, 'pk', None))
     return evaluation
 
 
@@ -812,6 +844,162 @@ def _regle_chaine_publiee(conception, optimiseur_specs, designation):
               'pmax_wc': module.pmax_wc} if module is not None else {})
     return regle_de_chaine(specs, None, optimiseur_specs,
                            designation=designation)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CAL170 — RÉCONCILIER LES DEUX VÉRITÉS ÉLECTRIQUES DU DÉPÔT
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Deux noyaux disent la longueur de chaîne, et ils ne disent pas la même
+# chose :
+#
+# * ``core.calepinage.electrique`` fixe ``MODULES_PAR_CHAINE = 16`` — la
+#   longueur RETENUE AU DOSSIER, posée pour que le moteur de calepinage sache
+#   combien de modules partent ensemble ; il ne fait « pas un calcul
+#   MPPT/Voc/température » (non-objectif n°16 du moteur) ;
+# * ``core.electrique.chaines`` CALCULE la longueur admissible depuis les
+#   fiches (Voc à froid, plage MPPT, démarrage) — la vraie physique.
+#
+# Les deux noyaux ont INTERDICTION de s'importer (contrat import-linter) :
+# l'arbitrage ne peut donc pas vivre dans l'un d'eux. Il vit ICI, dans l'app,
+# qui a le droit de lire les deux — et c'est la seule place possible.
+#
+# LA RÈGLE D'ARBITRAGE : la longueur CALCULÉE l'emporte dès que la fiche
+# permet de la calculer ; sinon, et seulement sinon, le repli est la longueur
+# de dossier (16). La longueur retenue et SON ORIGINE figurent dans la note de
+# calcul — une longueur sans origine ne se relit pas.
+#
+# ET LE REBOUCLAGE : le plafond kWc par onduleur est une ENTRÉE du calepinage
+# (cas FRDISI : 24 modules déportés en DC parce qu'aucun onduleur ne pouvait
+# dépasser 60 kWc). On le retraduit donc en NOMBRE DE MODULES, qui est ce que
+# le calepinage sait consommer.
+#
+# JOURNALISATION (même discipline que PVG2) : un écart moteur↔fiche au-delà de
+# la tolérance ne remplace rien en silence — il part en ``logger.warning`` et
+# l'historique est conservé sur le calepinage.
+
+ORIGINE_LONGUEUR_FICHE = 'fiche'
+ORIGINE_LONGUEUR_DOSSIER = 'dossier'
+
+#: Tolérance de l'écart moteur↔fiche, en MODULES puis en %. Reprise de la
+#: discipline PVG2 (``apps/ventes/domain/geometrie.py``) : un petit écart est
+#: une correction (la fiche est plus fine que la longueur de dossier, c'est le
+#: but), un GRAND écart est une anomalie qu'on journalise.
+TOLERANCE_LONGUEUR_MODULES = 2
+TOLERANCE_LONGUEUR_PCT = 5.0
+
+#: Nombre d'entrées conservées dans l'historique d'écarts (borné : un journal
+#: qui grossit sans fin finit par ne plus être lu).
+JOURNAL_ECARTS_MAX = 20
+
+
+def _dans_la_tolerance(reference, ecart):
+    """L'écart tient-il dans l'une des deux tolérances (modules OU %) ?"""
+    ecart = abs(int(ecart))
+    if ecart <= TOLERANCE_LONGUEUR_MODULES:
+        return True
+    if reference > 0:
+        return (ecart * 100.0 / reference) <= TOLERANCE_LONGUEUR_PCT
+    return False
+
+
+def longueur_chaine_retenue(conception):
+    """CAL170 — la longueur de chaîne retenue, SON origine, et l'écart.
+
+    Rend ``{longueur, origine, detail, longueur_dossier, ecart,
+    hors_tolerance, par_pan}``. ``longueur`` vaut ``None`` quand les pans
+    n'ont pas la même longueur : aucun nombre unique ne serait vrai, et le
+    détail par pan est publié à sa place.
+    """
+    from core.calepinage.electrique import MODULES_PAR_CHAINE
+
+    dossier = MODULES_PAR_CHAINE
+    par_pan = {r.pan: r.longueur_chaine for r in conception.repartitions}
+
+    if conception.fiche_incomplete or not par_pan:
+        return {
+            'longueur': dossier,
+            'origine': ORIGINE_LONGUEUR_DOSSIER,
+            'detail': "longueur de dossier (core.calepinage.electrique, "
+                      "MODULES_PAR_CHAINE = %d) : les fiches ne permettent "
+                      "pas de calculer la fenêtre de tension — repli assumé, "
+                      "jamais présenté comme un calcul" % dossier,
+            'longueur_dossier': dossier,
+            'ecart': None,
+            'hors_tolerance': False,
+            'par_pan': {},
+        }
+
+    longueurs = set(par_pan.values())
+    longueur = longueurs.pop() if len(longueurs) == 1 else None
+    reference = longueur if longueur is not None else max(par_pan.values())
+    ecart = reference - dossier
+    return {
+        'longueur': longueur,
+        'origine': ORIGINE_LONGUEUR_FICHE,
+        'detail': "longueur CALCULÉE sur les fiches par core.electrique "
+                  "(Voc à froid, plage MPPT, démarrage) — elle l'emporte sur "
+                  "la longueur de dossier de %d modules" % dossier,
+        'longueur_dossier': dossier,
+        'ecart': ecart,
+        'hors_tolerance': not _dans_la_tolerance(dossier, ecart),
+        'par_pan': par_pan,
+    }
+
+
+def plafond_modules(plafond_kwc, puissance_module_wc):
+    """Le plafond kWc par onduleur, retraduit en NOMBRE DE MODULES.
+
+    C'est le rebouclage du dossier FRDISI : le calepinage ne sait pas
+    consommer des kWc, il sait consommer un nombre de modules par sous-champ.
+    Le calcul est celui du noyau calepinage (``plafond_modules_pour_kwc``),
+    jamais refait ici.
+    """
+    from core.calepinage.electrique import plafond_modules_pour_kwc
+
+    puissance = _nombre(puissance_module_wc)
+    if plafond_kwc in (None, '') or not puissance or puissance <= 0:
+        return None
+    return plafond_modules_pour_kwc(float(plafond_kwc), puissance)
+
+
+def journaliser_ecart_longueur(calepinage, reconciliation):
+    """Journalise un écart moteur↔fiche HORS TOLÉRANCE, historique conservé.
+
+    Discipline PVG2 : on ne remplace jamais une valeur en silence. L'écart
+    part en ``logger.warning`` (pour l'exploitation) ET s'ajoute à un journal
+    BORNÉ sur le calepinage (pour la relecture du dossier). Ne lève jamais.
+    """
+    import logging
+
+    if not reconciliation or not reconciliation.get('hors_tolerance'):
+        return None
+    logging.getLogger(__name__).warning(
+        'CAL170: longueur de chaîne calculée %s vs longueur de dossier %s '
+        '(écart %s) — calepinage %s',
+        reconciliation.get('longueur'), reconciliation.get('longueur_dossier'),
+        reconciliation.get('ecart'), getattr(calepinage, 'pk', None))
+
+    resultat = getattr(calepinage, 'resultat', None)
+    resultat = dict(resultat) if isinstance(resultat, dict) else {}
+    journal = resultat.get('journal_longueur_chaine')
+    journal = list(journal) if isinstance(journal, list) else []
+    journal.append({
+        'longueur': reconciliation.get('longueur'),
+        'longueur_dossier': reconciliation.get('longueur_dossier'),
+        'ecart': reconciliation.get('ecart'),
+        'par_pan': reconciliation.get('par_pan') or {},
+    })
+    resultat['journal_longueur_chaine'] = journal[-JOURNAL_ECARTS_MAX:]
+    calepinage.resultat = resultat
+    if getattr(calepinage, 'pk', None):
+        try:
+            calepinage.save(update_fields=['resultat', 'updated_at'])
+        except Exception:  # noqa: BLE001 — un journal ne casse jamais un geste
+            logging.getLogger(__name__).exception(
+                'CAL170 : journal d écart non enregistré (calepinage %s)',
+                getattr(calepinage, 'pk', None))
+    return resultat['journal_longueur_chaine']
 
 
 def parametres_societe(calepinage):
