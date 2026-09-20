@@ -156,9 +156,6 @@ class InventaireDesActionsPubliquesTests(TestCase):
         'pay_webhook':
             'Webhook PSP, PAS une action cliente : authentifié par le jeton '
             'PaymentLink et la signature du prestataire, aucun ShareLink.',
-        'ecatalogue_demander_devis':
-            'E-catalogue public (XPOS14) : aucun ShareLink, donc aucun OTP de '
-            'lecture à consulter — gardé par honeypot + throttle.',
     }
 
     def test_l_inventaire_couvre_toutes_les_actions_publiques(self):

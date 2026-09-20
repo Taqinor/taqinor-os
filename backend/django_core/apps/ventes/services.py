@@ -109,16 +109,11 @@ CreditHoldError = _recouvrement.CreditHoldError
 verifier_credit_hold = _recouvrement.verifier_credit_hold
 SaleWarningError = _recouvrement.SaleWarningError
 verifier_sale_warnings = _recouvrement.verifier_sale_warnings
-_s2 = _recouvrement._s2
-dossier_contentieux_data = _recouvrement.dossier_contentieux_data
-ouvrir_dossier_contentieux = _recouvrement.ouvrir_dossier_contentieux
-enregistrer_contestation_portail = _recouvrement.enregistrer_contestation_portail
 _NUDGE_MSG_FR = _recouvrement._NUDGE_MSG_FR
 _NUDGE_MSG_AR = _recouvrement._NUDGE_MSG_AR
 _build_wa_draft_url = _recouvrement._build_wa_draft_url
 _get_nudge_days = _recouvrement._get_nudge_days
 _nudge_suppressed = _recouvrement._nudge_suppressed
-_journaliser_relance_marketing = _recouvrement._journaliser_relance_marketing
 send_devis_followup_nudges = _recouvrement.send_devis_followup_nudges
 _send_nudge_email = _recouvrement._send_nudge_email
 expire_stale_devis = _recouvrement.expire_stale_devis
@@ -131,7 +126,6 @@ _advance_lead_on_expiry = _recouvrement._advance_lead_on_expiry
 # ═══════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import encaissements as _encaissements  # noqa: E402
 marquer_facture_soldee = _encaissements.marquer_facture_soldee
-enregistrer_paiement_portail = _encaissements.enregistrer_paiement_portail
 enregistrer_paiement = _encaissements.enregistrer_paiement
 facture_montant_du = _encaissements.facture_montant_du
 affecter_encaissement_groupe = _encaissements.affecter_encaissement_groupe
@@ -176,7 +170,6 @@ facturables_pour_devis = _facturation_ops.facturables_pour_devis
 _main_oeuvre_produit = _facturation_ops._main_oeuvre_produit
 # AUD184 — porte d'entrée de `contrats` pour poser la ligne d'une facture
 # d'échéance (les factures header-only étaient invisibles des exports).
-ajouter_ligne_echeance_contrat = _facturation_ops.ajouter_ligne_echeance_contrat
 generer_facture_ticket_sav = _facturation_ops.generer_facture_ticket_sav
 generer_facture_intervention = _facturation_ops.generer_facture_intervention
 
@@ -611,7 +604,6 @@ __all__ = [
     'activate_optional_line',
     'affecter_encaissement_groupe',
     'aire_contour_m2',
-    'ajouter_ligne_echeance_contrat',
     'ajouter_lignes_boq_electrique',
     'ajouter_lignes_devis_import',
     'ajouter_lignes_facture_import',
@@ -662,10 +654,8 @@ __all__ = [
     'creer_variante_gamme',
     'debiter_mandat_pour_facture',
     'diff_configurations_devis',
-    'dossier_contentieux_data',
     'dupliquer_devis',
     'enregistrer_avance',
-    'enregistrer_contestation_portail',
     'enregistrer_paiement',
     'enregistrer_paiement_avec_retenue',
     'entrees_dimensionnement_du_devis',
@@ -702,7 +692,6 @@ __all__ = [
     'ordonner_par_role',
     'ordre_lignes_societe',
     'otp_lecture_verified',
-    'ouvrir_dossier_contentieux',
     'phase_client_pour_dimensionnement',
     'plafond_panneaux',
     'plafond_physique_du_contour',

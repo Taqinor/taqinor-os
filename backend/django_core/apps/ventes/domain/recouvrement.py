@@ -166,25 +166,15 @@ def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
     """XFAC13 — abandonne le résiduel dû sur une facture (write-off).
 
     Passe la facture ``payee``, trace l'abandon (motif + montant + auteur +
-    auto/manuel), délègue l'écriture comptable (6585/créance + reprise de
-    provision FG152 le cas échéant) à ``apps.compta.services`` (jamais
-    d'import direct de ses modèles) et consigne le chatter. Idempotent : ne
-    fait rien si le résiduel est déjà nul. Renvoie le montant abandonné
-    (``Decimal('0')`` si rien à faire)."""
+    auto/manuel) et consigne le chatter. Idempotent : ne fait rien si le
+    résiduel est déjà nul. Renvoie le montant abandonné (``Decimal('0')`` si
+    rien à faire)."""
     from decimal import Decimal
     from django.utils import timezone
     from ..models import Facture
     reste = facture.montant_du
     if reste <= 0:
         return Decimal('0')
-    from apps.compta import services as compta_services
-    compta_services.abandonner_creance(
-        facture.company, montant=reste, date_abandon=date_abandon,
-        tiers_type='client', tiers_id=facture.client_id,
-        tiers_nom=getattr(facture.client, 'nom', '') or '',
-        libelle=f'Abandon créance facture {facture.reference}',
-        user=user,
-    )
     facture.abandon_motif = motif
     facture.abandon_montant = reste
     facture.abandon_date = timezone.now()
@@ -198,8 +188,7 @@ def abandonner_solde_facture(facture, *, motif, user=None, auto=False,
     # AUD102 (P7) — la bascule PAYÉE passe par LE service unique. ``force`` :
     # un abandon de créance SOLDE sans encaisser (le résiduel reste dû au sens
     # de ``montant_du``), c'est l'un des deux seuls gestes délibérés autorisés
-    # à sauter la garde centime-près. Ce chemin n'émettait que ``facture_paid``
-    # via ses appelants, jamais ``facture_payee`` — donc aucun lettrage compta.
+    # à sauter la garde centime-près.
     from .encaissements import marquer_facture_soldee
     marquer_facture_soldee(
         facture, montant=reste, user=user, source='abandon_solde', force=True)
@@ -297,17 +286,8 @@ def verifier_credit_hold(client, *, override=False, user=None,
     journalisé (chatter du devis si fourni + audit) mais laisse passer
     l'action. Ne renvoie rien ; lève ou passe silencieusement.
 
-    WIR93 — COEXISTENCE AVEC ``apps.credit`` (décision consignée en tête de
-    ``apps/credit/services.py``). Ce moteur (FG41/XFAC28) reste le SEUL branché
-    en production ; ``apps.credit.services.verifier_hold_credit`` (NTCRD6)
-    n'a aucun appelant tant que NTCRD7/NTCRD8 ne sont pas livrés. Les deux
-    consomment la MÊME assiette de factures, à un écart près, volontaire et
-    unique : ce chemin ne compte que les factures ``emise``/``en_retard``,
-    quand ``apps.credit`` inclut aussi les ``brouillon``. Cet écart est
-    verrouillé par ``apps/credit/tests/test_wir93_encours_non_divergence.py``
-    (via ``apps.credit.services.ecart_encours_moteurs``) : élargir ou
-    rétrécir l'assiette d'un seul côté rend ce test rouge. Ne JAMAIS
-    dupliquer ici un troisième calcul d'encours."""
+    Assiette : les factures ``emise``/``en_retard`` du client. Ne JAMAIS
+    dupliquer ici un second calcul d'encours."""
     from apps.parametres.models import CompanyProfile
     profile = CompanyProfile.get(company=client.company)
     if not getattr(profile, 'credit_hold_actif', False):
@@ -389,136 +369,6 @@ def verifier_sale_warnings(devis, *, override=False, user=None,
     if chatter_target is not None:
         from .. import activity
         activity.log_devis_sale_warning_override(chatter_target, user, motif)
-
-
-def _s2(x):
-    from decimal import Decimal
-    return str(Decimal(x or 0).quantize(Decimal('0.01')))
-
-
-def dossier_contentieux_data(factures):
-    """XFAC21 — assemble les données du pack contentieux pour un jeu de
-    factures en souffrance (toutes du MÊME client — vérifié par l'appelant).
-
-    Renvoie un dict prêt pour le template ``dossier_contentieux.html`` :
-    factures concernées, total réclamé, historique des relances (RelanceLog) +
-    emails (EmailLog), promesses de paiement ROMPUES (PromessePaiement).
-    Lecture seule."""
-    from django.utils import timezone
-    from ..models import PromessePaiement
-
-    factures = list(factures)
-    client = factures[0].client if factures else None
-
-    lignes_factures = []
-    total_du = 0
-    relances = []
-    emails = []
-    promesses_rompues = []
-
-    for f in factures:
-        total_du += f.montant_du
-        lignes_factures.append({
-            'reference': f.reference,
-            'date_echeance': (
-                f.date_echeance.isoformat() if f.date_echeance else ''),
-            'jours_retard': f.jours_retard,
-            'total_ttc': _s2(f.total_ttc),
-            'du': _s2(f.montant_du),
-        })
-        for r in f.relances.all().order_by('-date', '-id'):
-            relances.append({
-                'date': r.date.isoformat() if r.date else '',
-                'facture_reference': f.reference,
-                'niveau_nom': r.niveau_nom or '',
-                'note': r.note or '',
-            })
-        for e in f.email_logs.all().order_by('-created_at'):
-            emails.append({
-                'date': e.created_at.isoformat() if e.created_at else '',
-                'direction': e.get_direction_display(),
-                'sujet': e.sujet or '',
-            })
-        for p in f.promesses_paiement.filter(
-                statut=PromessePaiement.Statut.ROMPUE):
-            promesses_rompues.append({
-                'facture_reference': f.reference,
-                'date_promise': p.date_promise.isoformat(),
-                'montant_promis': _s2(p.montant_promis),
-            })
-
-    return {
-        'client': {
-            'nom': f'{client.nom} {client.prenom or ""}'.strip() if client else '',
-            'email': getattr(client, 'email', '') or '',
-            'telephone': getattr(client, 'telephone', '') or '',
-            'adresse': getattr(client, 'adresse', '') or '',
-        },
-        'factures': lignes_factures,
-        'total_du': _s2(total_du),
-        'relances': relances,
-        'emails': emails,
-        'promesses_rompues': promesses_rompues,
-        'date_creation': timezone.now().date().isoformat(),
-    }
-
-
-def ouvrir_dossier_contentieux(*, factures, user=None):
-    """XFAC21 — passage en recouvrement externe pour un jeu de factures.
-
-    (a) assemble les données du pack (voir ``dossier_contentieux_data``) ;
-    (b) ouvre une ``litiges.Reclamation`` de type recouvrement via
-        ``apps.litiges.services.creer_dossier_recouvrement`` (jamais un import
-        de son modèle) ;
-    (c) marque les factures ``exclu_relances`` (comms ordinaires gelées) avec
-        trace chatter « passé au contentieux le … ».
-
-    Toutes les factures DOIVENT appartenir au même client + à la même société
-    (vérifié par l'appelant — la vue scope déjà par client). Renvoie
-    ``(dossier_data, reclamation)``."""
-    from django.utils import timezone
-    from ..models import Facture
-
-    factures = list(factures)
-    if not factures:
-        raise ValueError('Aucune facture sélectionnée.')
-    client = factures[0].client
-    company = factures[0].company
-
-    dossier = dossier_contentieux_data(factures)
-
-    from apps.litiges.services import creer_dossier_recouvrement
-    references = ', '.join(f.reference for f in factures)
-    reclamation = creer_dossier_recouvrement(
-        company=company, source_type='client', source_id=client.id,
-        objet=f'Recouvrement externe — {client.nom} ({references})',
-        montant_conteste=sum((f.montant_du for f in factures), 0),
-        description=f'Factures concernées : {references}.',
-        user=user,
-    )
-
-    from .. import activity
-    qui = getattr(user, 'username', '?') if user else 'automatique'
-    today = timezone.now().date().isoformat()
-    for f in factures:
-        if f.statut == Facture.Statut.ANNULEE:
-            continue
-        f.exclu_relances = True
-        f.save(update_fields=['exclu_relances'])
-        activity.log_facture_activity_contentieux(f, user, qui, today)
-
-    return dossier, reclamation
-
-
-def enregistrer_contestation_portail(facture, *, motif_label, commentaire=''):
-    """XFAC27 — Trace côté ventes la contestation d'une facture ouverte par
-    le client depuis le portail self-service (``apps.compta`` appelle CETTE
-    fonction, jamais un import direct de ``apps.ventes.models``/``activity``).
-    Ne change AUCUN statut de la facture — seule la réclamation créée côté
-    ``apps.litiges`` suspend les relances (LITIGE3)."""
-    from .. import activity
-    return activity.log_facture_contestation_portail(
-        facture, motif_label, commentaire=commentaire)
 
 
 # ── QJ4 — Relance automatique cadencée des devis envoyés ─────────────────────
@@ -631,39 +481,6 @@ def _nudge_suppressed(devis, today, engagement_days=3):
     except Exception:  # noqa: BLE001
         pass
     return False
-
-
-def _journaliser_relance_marketing(devis, *, jours, canal, niveau):
-    """WIR96 — miroir marketing d'une relance de devis abandonné.
-
-    ``marketing.RelanceDevisAbandonne`` + son service
-    ``enregistrer_relance_devis_abandonne`` existaient sans AUCUN appelant :
-    aucune relance n'était jamais journalisée côté marketing (le calendrier
-    marketing lisait une table toujours vide). On les alimente ici, au moment
-    exact où la relance part réellement (après création du ``DevisNudgeLog``,
-    qui reste la source de vérité anti-doublon côté ventes).
-
-    Écriture via la frontière ``apps.marketing.services`` uniquement (jamais un
-    import des modèles marketing) ; ``devis_id`` reste une référence OPAQUE
-    côté marketing. Best-effort : une erreur ne doit jamais faire échouer la
-    relance elle-même."""
-    if not getattr(devis, 'company_id', None):
-        return
-    try:
-        from apps.marketing.services import (
-            enregistrer_relance_devis_abandonne)
-        enregistrer_relance_devis_abandonne(
-            devis.company,
-            devis_id=devis.pk,
-            devis_reference=devis.reference or '',
-            jours_sans_reponse=jours or 0,
-            canal=str(canal or ''),
-            note=f'Relance automatique niveau {niveau + 1} (QJ4).',
-        )
-    except Exception as exc:  # noqa: BLE001 — miroir best-effort
-        logger.warning(
-            'WIR96: journalisation marketing de la relance échouée '
-            'pour devis %s : %s', getattr(devis, 'reference', '?'), exc)
 
 
 def send_devis_followup_nudges():
@@ -829,8 +646,6 @@ def send_devis_followup_nudges():
                 logger.info(
                     'QJ4: nudge N%d déclenché pour devis %s (j+%d, canal=%s)',
                     idx, devis.reference, jours, canal)
-                _journaliser_relance_marketing(
-                    devis, jours=jours, canal=canal, niveau=idx)
             except Exception as exc:
                 # IntegrityError → already fired concurrently — safe to ignore.
                 logger.warning(

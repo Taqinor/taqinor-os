@@ -51,12 +51,9 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
     (test de parité : ``apps/ventes/tests/test_aud102_bascule_payee.py``).
     Avant ce service, NEUF chemins basculaient la facture et seuls TROIS
     émettaient ``facture_payee`` — or c'est ``facture_payee``, pas
-    ``facture_paid``, qui est LE signal à consommer (``core/events.py``) et
-    auquel ``apps/compta/receivers.py`` branche le lettrage. Six soldes
-    n'étaient donc jamais lettrés en comptabilité, et deux chemins d'argent
-    encaissé ne soldaient rien du tout (débit de mandat, rapprochement
-    portail — voir ``debiter_mandat_pour_facture`` et
-    ``enregistrer_paiement_portail``).
+    ``facture_paid``, qui est LE signal à consommer (``core/events.py``). Un
+    chemin d'argent encaissé ne soldait rien du tout (débit de mandat — voir
+    ``debiter_mandat_pour_facture``).
 
     Le service :
 
@@ -111,68 +108,6 @@ def marquer_facture_soldee(facture, *, montant=None, user=None, source='',
     if facture.pk == locked.pk:
         facture.statut = Facture.Statut.PAYEE
     return True
-
-
-def enregistrer_paiement_portail(*, facture, montant, reference,
-                                 date_paiement=None, mode=None, company=None):
-    """AUD102 / PORT-3 — reporte sur la chaîne VENTES un règlement encaissé au
-    PORTAIL client.
-
-    ``compta.services.rapprocher_paiement_facture`` marquait l'intention
-    portail ``paye`` et déléguait le report « à la charge de la chaîne
-    ventes » — sauf qu'AUCUN appelant ne le faisait : l'argent réellement
-    encaissé au portail n'entrait dans le ``montant_paye`` d'aucune facture,
-    et l'ERP relançait un client déjà réglé. Cette fonction est la porte
-    d'entrée cross-app manquante (jamais d'import de ``apps.compta.models``
-    ici, ni de ``apps.ventes.models`` là-bas).
-
-    IDEMPOTENT sur le couple (facture, référence de transaction) : un webhook
-    rejoué ne crée jamais un second ``Paiement``. Le montant est BORNÉ au
-    reste à payer (jamais de sur-paiement) et la bascule « payée » passe par
-    ``marquer_facture_soldee``. Renvoie le ``Paiement`` créé, ou ``None`` si
-    rien n'était à encaisser (facture annulée, déjà soldée, doublon).
-    """
-    from decimal import Decimal
-
-    from django.db import transaction
-    from django.utils import timezone
-
-    from apps.ventes.models import Facture, Paiement
-
-    if facture is None:
-        return None
-    reference = (reference or '')[:120]
-    montant = Decimal(str(montant or 0))
-    if montant <= Decimal('0'):
-        return None
-
-    with transaction.atomic():
-        locked = Facture.objects.select_for_update().get(pk=facture.pk)
-        if locked.statut == Facture.Statut.ANNULEE:
-            return None
-        if reference and Paiement.objects.filter(
-                facture=locked, reference=reference).exists():
-            return None
-        reste = locked.montant_du
-        if montant > reste:
-            montant = reste
-        if montant <= Decimal('0'):
-            return None
-        paiement = Paiement.objects.create(
-            company=company or locked.company,
-            facture=locked,
-            montant=montant,
-            date_paiement=date_paiement or timezone.localdate(),
-            mode=mode or Paiement.Mode.VIREMENT,
-            reference=reference,
-            note='Paiement encaissé au portail client.',
-        )
-        from core.events import paiement_enregistre
-        paiement_enregistre.send(
-            sender=Paiement, instance=paiement, company=paiement.company)
-        marquer_facture_soldee(
-            locked, montant=montant, source='portail_client')
-    return paiement
 
 
 def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
