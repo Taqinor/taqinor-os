@@ -16,12 +16,20 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views.calepinages import CalepinageViewSet
+from .views.moteur import MoteurCalculerView
 from .views.parametres import ParametresCalepinageView
 
 router = DefaultRouter()
 router.register(r'calepinages', CalepinageViewSet, basename='calepinage')
 
 urlpatterns = [
+    # CAL22 — la porte NEUTRE du moteur. Ce n'est PAS une seconde famille
+    # d'URL pour l'objet métier (le calepinage reste servi sous
+    # ``calepinages/<pk>/…``) : c'est un CALCUL sans état, sans identifiant,
+    # qui n'appartient à aucun calepinage — le chemin est celui que le contrat
+    # `contract_samples/moteur_calculer.json` fige depuis le jour 1.
+    path('moteur/calculer/', MoteurCalculerView.as_view(),
+         name='calepinage-moteur-calculer'),
     # CAL45/CAL16 — les réglages société : UNE ressource unique par société,
     # donc une vue GET/PUT à plat plutôt qu'une collection à identifiants (il
     # n'y a jamais deux jeux de réglages pour une même société).

@@ -102,8 +102,19 @@ class FormeUrlUniqueTest(SimpleTestCase):
             "Une sous-ressource s'expose en @action du viewset pivot, jamais "
             "en nouvelle famille d'URL (CAL233).")
 
-    def test_les_deux_prefixes_sont_les_bons(self):
+    def test_les_prefixes_sont_les_bons(self):
+        """L'objet métier a UNE forme d'URL ; le moteur n'est pas l'objet.
+
+        CAL22 — ``moteur`` rejoint la liste : c'est un CALCUL SANS ÉTAT (sans
+        identifiant, n'appartenant à aucun calepinage), dont le chemin est figé
+        depuis le jour 1 par ``contract_samples/moteur_calculer.json``. La
+        règle protège le calepinage lui-même, qui reste servi sous
+        ``calepinages/<pk>/…`` et nulle part ailleurs.
+        """
         from apps.calepinage.views import PREFIXES_URL_AUTORISES
 
         self.assertEqual(PREFIXES_URL_AUTORISES,
-                         ('calepinages', 'parametres'))
+                         ('calepinages', 'moteur', 'parametres'))
+        self.assertNotIn(
+            'calepinage', PREFIXES_URL_AUTORISES,
+            "Aucun second préfixe ne doit servir l'objet métier lui-même.")
