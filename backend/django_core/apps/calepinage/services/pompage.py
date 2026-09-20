@@ -268,3 +268,75 @@ def hmt_puits_iteree(*, courbe_pompe=None, hmt_saisie=None,
         'composantes': composantes, 'debit_convergence_m3h': round(debit, 2),
         'iterations': max_iterations,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CAL157 — m³/jour PAR MOIS depuis l'irradiance PVGIS RÉELLE du site.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def pompage_mensuel_pvgis(*, debit_hmt_m3h, pumping_hours=None, ville=None,
+                          lat=None, lon=None, jours_par_mois=None):
+    """CAL157 — 12 volumes mensuels pondérés par l'irradiation PVGIS RÉELLE
+    du site (au lieu du m³/jour PLAT × jours du mois), en ALIMENTANT
+    ``apps.ventes.solar_design.pumping_cycle_yield`` (jamais un second
+    calcul de volume) via son paramètre ``monthly_irradiation_factor``.
+
+    Source d'irradiation : ``apps.parametres.pvgis_profils.productible_mensuel``
+    — le client PVGIS EXISTANT (live au point GPS, sinon table de la ville
+    reconnue, sinon ancre la plus proche ; JAMAIS une saisonnalité inventée).
+    Les facteurs mensuels sont l'``E_m`` de chaque mois RAPPORTÉ À LA MOYENNE
+    annuelle (un mois deux fois plus ensoleillé que la moyenne pompe deux fois
+    plus, à débit nominal égal).
+
+    LE CALCUL PLAT HISTORIQUE RESTE PUBLIÉ, JAMAIS REMPLACÉ EN SILENCE
+    (CLAUDE.md) — ``m3_mois_plat`` ET ``m3_mois_pvgis`` sortent tous les
+    deux, avec l'écart mois par mois.
+
+    PVGIS indisponible pour ce site (pas de coordonnées ET ville non
+    reconnue) ⇒ ``m3_mois_pvgis``/``source_irradiation`` valent ``None``,
+    warning explicite ; le m³/jour plat reste calculé et publié (jamais un
+    résultat vide faute d'irradiation).
+    """
+    from apps.parametres.pvgis_profils import productible_mensuel
+    from apps.ventes.solar_design import pumping_cycle_yield
+
+    plat = pumping_cycle_yield(debit_hmt_m3h=debit_hmt_m3h,
+                               pumping_hours=pumping_hours,
+                               days_in_month=jours_par_mois)
+
+    resultat_pvgis = productible_mensuel(ville=ville, lat=lat, lon=lon)
+    if resultat_pvgis is None:
+        return {
+            'm3_jour_plat': plat['daily_m3'],
+            'm3_mois_plat': plat['monthly_m3'],
+            'm3_mois_pvgis': None,
+            'source_irradiation': None,
+            'ecart_m3_mois': None,
+            'warnings': plat['warnings'] + [
+                "irradiation PVGIS indisponible pour ce site (ni coordonnées "
+                "ni ville reconnue) — m³/jour reste le calcul plat (débit × "
+                "heures), aucune pondération mensuelle publiée"],
+        }
+    valeurs_e_m, source = resultat_pvgis
+    moyenne = sum(valeurs_e_m) / len(valeurs_e_m) if valeurs_e_m else 0.0
+    facteurs = ([v / moyenne for v in valeurs_e_m] if moyenne
+                else [1.0] * 12)
+
+    pondere = pumping_cycle_yield(debit_hmt_m3h=debit_hmt_m3h,
+                                  pumping_hours=pumping_hours,
+                                  days_in_month=jours_par_mois,
+                                  monthly_irradiation_factor=facteurs)
+
+    ecarts = None
+    if plat['monthly_m3'] is not None and pondere['monthly_m3'] is not None:
+        ecarts = [round(pondere['monthly_m3'][i] - plat['monthly_m3'][i], 1)
+                  for i in range(12)]
+
+    return {
+        'm3_jour_plat': plat['daily_m3'],
+        'm3_mois_plat': plat['monthly_m3'],
+        'm3_mois_pvgis': pondere['monthly_m3'],
+        'source_irradiation': source,
+        'ecart_m3_mois': ecarts,
+        'warnings': plat['warnings'] + pondere['warnings'],
+    }
