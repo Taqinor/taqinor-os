@@ -899,107 +899,6 @@ def consommer_reservation_bc(bon_commande, user):
     return consume_reservations(installation, user)
 
 
-# ── FG296 — Instanciation d'un modèle de projet sur un chantier ───────────────
-# Un modèle de projet (« chantier-type ») pré-crée à la demande/signature les
-# jalons standard (FG293) et complète la nomenclature gelée du chantier
-# (`Installation.bom`) avec ses lignes de BoM type. IDEMPOTENT et ADDITIF :
-# on ne recrée jamais un jalon de même libellé déjà présent et on n'écrase
-# jamais une ligne de BoM déjà gelée pour le même produit.
-
-def _bom_existing_keys(installation):
-    """Clés produit déjà présentes dans la nomenclature gelée du chantier
-    (`produit_id` non nul), pour ne jamais dupliquer une ligne."""
-    keys = set()
-    for ligne in (installation.bom or []):
-        if isinstance(ligne, dict) and ligne.get('produit_id'):
-            keys.add(ligne['produit_id'])
-    return keys
-
-
-def instantiate_modele_projet(installation, modele, user=None):
-    """FG296 — applique un modèle de projet à un chantier.
-
-    Crée les `JalonProjet` du modèle (date cible pré-remplie = date de base
-    décalée de `offset_jours` ; base = `date_signature` du chantier, à défaut
-    aujourd'hui) sans dupliquer un jalon de même libellé déjà présent, et ajoute
-    les lignes de BoM type à `Installation.bom` sans écraser une ligne déjà gelée
-    pour le même produit. Renvoie un dict {jalons_crees, bom_lignes_ajoutees}.
-
-    Idempotent : ré-appliquer le même modèle ne crée aucun doublon."""
-    from datetime import timedelta
-    from django.utils import timezone
-    from .models import JalonProjet
-
-    company = installation.company
-    base_date = installation.date_signature or timezone.localdate()
-
-    # ── Jalons ───────────────────────────────────────────────────────────────
-    existing_libelles = {
-        j.libelle for j in installation.jalons.all()
-    }
-    # AUD321 — `JalonProjet(installation, phase)` est désormais UNIQUE en base.
-    # Ce chemin dédoublonne par LIBELLÉ : appliquer deux modèles portant chacun
-    # un jalon de la même PHASE (libellés différents) violerait la contrainte
-    # et remonterait en 500. On garde le premier jalon de chaque phase et les
-    # suivants deviennent AD HOC (`phase=None`) : le jalon existe toujours,
-    # sous son libellé, sans phase en double.
-    phases_prises = {
-        j.phase for j in installation.jalons.all() if j.phase
-    }
-    jalons_crees = 0
-    for mj in modele.jalons.all():
-        if mj.libelle in existing_libelles:
-            continue
-        date_cible = None
-        try:
-            date_cible = base_date + timedelta(days=mj.offset_jours)
-        except (TypeError, OverflowError):
-            date_cible = None
-        phase = mj.phase or None
-        if phase and phase in phases_prises:
-            phase = None
-        JalonProjet.objects.create(
-            company=company, installation=installation,
-            phase=phase, libelle=mj.libelle, ordre=mj.ordre,
-            date_cible=date_cible)
-        if phase:
-            phases_prises.add(phase)
-        existing_libelles.add(mj.libelle)
-        jalons_crees += 1
-
-    # ── BoM type → nomenclature gelée du chantier ───────────────────────────
-    bom = list(installation.bom or [])
-    existing_keys = _bom_existing_keys(installation)
-    bom_ajoutees = 0
-    for ml in modele.bom_lignes.all():
-        produit_id = ml.produit_id
-        # On déduplique sur le produit catalogue ; une ligne sans produit
-        # (designation libre) est toujours ajoutée.
-        if produit_id and produit_id in existing_keys:
-            continue
-        try:
-            qte = float(ml.quantite)
-        except (TypeError, ValueError):
-            qte = None
-        bom.append({
-            'produit_id': produit_id,
-            'designation': ml.designation or '',
-            'quantite': qte,
-            'marque': None,
-        })
-        if produit_id:
-            existing_keys.add(produit_id)
-        bom_ajoutees += 1
-
-    if bom_ajoutees:
-        installation.bom = bom
-        installation.save(update_fields=['bom'])
-        # Réaligne les réservations de stock sur la nomenclature enrichie.
-        seed_reservations(installation)
-
-    return {'jalons_crees': jalons_crees, 'bom_lignes_ajoutees': bom_ajoutees}
-
-
 # ── FG71 — Synthèse de coût / marge par chantier (INTERNE, jamais client) ─────
 # Assemble la main-d'œuvre (jours estimés/réels), le coût matériel prévu (BoM
 # gelé) vs réel (consommation terrain F11), et le total du devis, en une vue de
@@ -1406,11 +1305,9 @@ def compute_chantier_readiness(installation):
 # ── CH2 — Gates BLOQUANTS : application des exigences d'étape ────────────────
 # Le contrôle consultatif FG77 devient APPLIQUÉ : une étape marquée `bloquant`
 # ne peut pas être franchie tant que ses éléments requis (`exige_*`) ne sont
-# pas réunis ET que les points d'arrêt QHSE du chantier ne sont pas levés
-# (lus via `apps.qhse.selectors` — référence lâche par chantier_id, jamais
-# d'import de modèle). Les étapes non bloquantes restent PUREMENT
-# consultatives. INTERRUPTEUR : une société sans étape configurée
-# (`stages_configures` False) garde EXACTEMENT le comportement historique.
+# pas réunis. Les étapes non bloquantes restent PUREMENT consultatives.
+# INTERRUPTEUR : une société sans étape configurée (`stages_configures` False)
+# garde EXACTEMENT le comportement historique.
 
 def _gate_check_checklist(installation, stage=None):
     """Toutes les étapes de checklist du chantier sont faites.
@@ -1547,76 +1444,16 @@ _GATE_CHECKS = [
 ]
 
 
-def _gate_check_qhse(installation):
-    """Points d'arrêt QHSE du chantier levés (lecture via les selectors QHSE —
-    référence lâche par chantier_id, aucun import de modèle cross-app)."""
-    from apps.qhse.selectors import hold_points_bloquants_pour_chantier
-    points = hold_points_bloquants_pour_chantier(
-        installation.company, installation.id)
-    if points:
-        libelles = [p['intitule'] for p in points]
-        return ("Point(s) d'arrêt QHSE non levé(s) : "
-                + ", ".join(libelles[:5])
-                + (" …" if len(libelles) > 5 else "") + ".")
-    return None
-
-
-# ── QHSE22 — Gate « document unique (DUERP) requis avant la pose » ────────────
-# Gate LÉGAL de sécurité : un chantier ne peut ENTRER en pose (montage physique)
-# sans document unique d'évaluation des risques validé. L'exigence est appliquée
-# via la FRONTIÈRE SERVICES de qhse (`services.exiger_document_unique`,
-# référence lâche par chantier_id) — jamais d'import de modèle cross-app. Comme
-# la porte QHSE des points d'arrêt, elle est soumise à l'interrupteur historique
-# `stages_configures` (une société sans étapes configurées garde EXACTEMENT le
-# comportement d'avant).
-
-def _pose_stage_index(stages):
-    """Index (dans `stages` ordonné et actif) de l'étape de POSE — le premier
-    montage physique, mappé au statut hérité EN_COURS (`montage_mecanique` par
-    défaut, ou son équivalent renommé/réordonné par le Directeur).
-
-    Renvoie None si aucune étape active ne porte ce statut (gate DUERP alors
-    inopérant — dégradation propre, aucun blocage inattendu)."""
-    for k, stage in enumerate(stages):
-        if (Installation.canonical_statut(stage.statut_legacy)
-                == Installation.Statut.EN_COURS):
-            return k
-    return None
-
-
-def _gate_check_duerp(installation):
-    """QHSE22 — document unique (DUERP) validé requis AVANT la pose.
-
-    Appel via la frontière services de qhse (`exiger_document_unique`, qui lève
-    une ``ValidationError`` au message clair quand le DUERP manque). Renvoie la
-    raison FRANÇAISE de blocage, ou None si le document unique lève l'exigence.
-    Référence LÂCHE au chantier par son id — aucun import cross-app de modèle."""
-    from django.core.exceptions import ValidationError
-    from apps.qhse.services import exiger_document_unique
-    try:
-        exiger_document_unique(installation.company, installation.id)
-    except ValidationError as exc:
-        messages = getattr(exc, 'messages', None)
-        return messages[0] if messages else str(exc)
-    return None
-
-
 def stage_gate_status(installation, stage):
     """État du gate d'une étape pour un chantier : exigences réunies ou non.
 
     Renvoie {cle, libelle, ordre, bloquant, satisfait, raisons[]} — les
-    `raisons` sont des phrases FRANÇAISES prêtes à afficher. Les points
-    d'arrêt QHSE ne sont vérifiés que pour une étape BLOQUANTE (une étape
-    consultative n'interroge pas la porte QHSE)."""
+    `raisons` sont des phrases FRANÇAISES prêtes à afficher."""
     raisons = []
     for flag, check in _GATE_CHECKS:
         if not getattr(stage, flag, False):
             continue
         raison = check(installation, stage)
-        if raison:
-            raisons.append(raison)
-    if stage.bloquant:
-        raison = _gate_check_qhse(installation)
         if raison:
             raisons.append(raison)
     return {
@@ -1637,15 +1474,6 @@ def _gates_non_satisfaits(installation, stages, i, j):
     qu'une fois son pack assemblé). Les étapes non bloquantes ne bloquent
     jamais (consultatives)."""
     raisons = []
-    # QHSE22 — GATE DUERP : franchir VERS la pose (entrer dans l'étape de
-    # montage physique) exige un document unique validé. Ne se déclenche qu'au
-    # PASSAGE dans l'étape de pose (i < pose ≤ j) : jamais une fois la pose déjà
-    # entamée, jamais un recul. Appliqué via la frontière services qhse.
-    pose_index = _pose_stage_index(stages)
-    if pose_index is not None and i < pose_index <= j:
-        raison = _gate_check_duerp(installation)
-        if raison:
-            raisons.append(raison)
     for stage in stages[i:j + 1]:
         if not stage.bloquant:
             continue
@@ -2407,9 +2235,7 @@ def enregistrer_controle_qualite(ordre, item_modele_id, *, resultat,
                                  valeur_mesuree=None, photo=None, user):
     """XMFG13 — enregistre le résultat d'un item QC pour cet ordre. Si une
     tolérance (valeur_min/max) est définie sur l'item ET qu'une valeur mesurée
-    est fournie SANS résultat explicite, le pass/fail est déduit automatiquement.
-    Un item en échec ouvre une NCR liée (`qhse.services`, écriture cross-app
-    fine) — best-effort, ne bloque jamais l'enregistrement."""
+    est fournie SANS résultat explicite, le pass/fail est déduit automatiquement."""
     from decimal import Decimal, InvalidOperation
     from django.utils import timezone
     from .models import ControleQualiteOrdre
@@ -2443,18 +2269,6 @@ def enregistrer_controle_qualite(ordre, item_modele_id, *, resultat,
     controle.save(update_fields=[
         'resultat', 'valeur_mesuree', 'photo', 'controle_par', 'date_controle'])
 
-    if controle.resultat == ControleQualiteOrdre.Resultat.FAIL:
-        try:
-            from apps.qhse.services import creer_ncr_depuis_controle_assemblage
-            creer_ncr_depuis_controle_assemblage(
-                company=ordre.company, ordre_id=ordre.id,
-                titre=f'QC échec — {ordre.reference} · {item.libelle}',
-                description=(
-                    f'Item « {item.libelle} » en échec sur l\'ordre '
-                    f'{ordre.reference} (kit {ordre.kit.nom}).'),
-                signale_par=user)
-        except Exception:  # pragma: no cover - défensif
-            pass
     return controle
 
 
@@ -2640,28 +2454,6 @@ def emettre_demande_achat_approuvee(demande, *, user=None):
             getattr(demande, 'pk', '?'), exc_info=True)
 
 
-def marquer_rfq_attribuee(rfq, offre, *, user=None, bon_commande_id=None):
-    """Émet ``core.events.rfq_attribuee`` pour une RFQ ADJUGÉE (NTP2P38).
-
-    À appeler uniquement après la création du bon de commande du fournisseur
-    gagnant : retenir une offre nom-libre n'est pas une attribution.
-    """
-    try:
-        from core.events import rfq_attribuee
-        rfq_attribuee.send(
-            sender='apps.installations.services',
-            rfq=rfq,
-            offre=offre,
-            company=rfq.company,
-            user=user,
-            bon_commande_id=bon_commande_id or rfq.bon_commande_id)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        import logging
-        logging.getLogger(__name__).warning(
-            'NTP2P38 : émission rfq_attribuee échouée (rfq %s)',
-            getattr(rfq, 'pk', '?'), exc_info=True)
-
-
 # ── XKB1 — boîte d'approbations centralisée (écriture cross-app) ─────────────
 class DecisionError(Exception):
     """Décision invalide sur une réquisition d'achat (statut non éligible)."""
@@ -2676,17 +2468,13 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
     et la date de décision sont posés côté serveur). Lève ``DecisionError`` si
     la demande n'est pas au statut attendu.
 
-    AUD312 — ce point d'entrée portait DEUX écarts avec le chemin normal, qui
-    n'étaient PAS un franchissement de rôle (le rôle exigé est identique des
-    deux côtés) mais une perte d'intégrité :
-
-    * il ne consultait pas ``workflow_approbation_achat_actif`` : une demande
-      sous plan d'approbation NTP2P2 (N approbateurs séquentiels) était
-      approuvée EN UN COUP depuis l'écran d'approbations générique, laissant
-      des ``EtapeApprobationAchat`` ``en_attente`` orphelines et perdant la
-      séparation des tâches (``sod_stricte``) ;
-    * il n'appelait pas ``liberer_budget_demande_achat`` au refus : l'enveloppe
-      budgétaire départementale engagée (NTP2P4) n'était JAMAIS rendue.
+    AUD312 — ce point d'entrée ne consultait pas
+    ``workflow_approbation_achat_actif`` : une demande sous plan d'approbation
+    NTP2P2 (N approbateurs séquentiels) était approuvée EN UN COUP depuis
+    l'écran d'approbations générique, laissant des ``EtapeApprobationAchat``
+    ``en_attente`` orphelines et perdant la séparation des tâches
+    (``sod_stricte``) — ce n'était PAS un franchissement de rôle (le rôle
+    exigé est identique des deux côtés) mais une perte d'intégrité.
     """
     from django.utils import timezone
 
@@ -2721,13 +2509,11 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
     except TransitionRefusee as exc:
         raise DecisionError(str(exc))
     if not approuver:
-        # AUD312 — miroir exact du refus par la vue : plus d'étape orpheline,
-        # et l'enveloppe budgétaire engagée est rendue (NTP2P4).
+        # AUD312 — miroir exact du refus par la vue : plus d'étape orpheline.
         demande_achat.etapes_approbation.filter(
             statut=EtapeApprobationAchat.Statut.EN_ATTENTE
         ).update(statut=EtapeApprobationAchat.Statut.REJETE,
                  decision_le=timezone.now())
-        liberer_budget_demande_achat(demande_achat)
     else:
         # NTP2P38 — la réquisition est approuvée : le bus l'annonce.
         emettre_demande_achat_approuvee(demande_achat, user=user)
@@ -4098,66 +3884,6 @@ def valider_retour_livraison(retour, user):
     return applied
 
 
-# ── YHIRE9 — garde d'habilitation à l'affectation d'intervention ───────────
-# Mapping type d'intervention → habilitation requise partagé avec XFSM2
-# (``selectors._TYPE_VERS_HABILITATION``) : garde le SEUL référentiel, importé
-# ici plutôt que dupliqué (les deux modules restent dans la même app).
-
-def verifier_habilitation_affectation(company, technicien, type_intervention):
-    """YHIRE9 — vérifie l'habilitation d'un technicien pour le type
-    d'intervention qu'on s'apprête à lui affecter (contrôle à l'ÉCRITURE,
-    complète XFSM2 qui ne fait QUE suggérer).
-
-    Renvoie ``(bloquant, avertissements)`` :
-      * ``bloquant`` — True seulement si le réglage société est 'block' ET
-        l'habilitation requise n'est pas valide ;
-      * ``avertissements`` — liste de messages FRANÇAIS (vide = rien à
-        signaler). Toujours peuplée quand l'habilitation manque/expire,
-        indépendamment du mode (le mode ne change que si ça bloque).
-
-    Un type d'intervention sans mapping connu, un technicien sans fiche RH
-    liée, ou aucun technicien : jamais bloquant (garde SOFT par défaut,
-    cohérent avec FG176/XFSM2 — on ne bloque jamais faute de donnée)."""
-    from .selectors import _TYPE_VERS_HABILITATION
-
-    if technicien is None or company is None:
-        return False, []
-    cle_habilitation = _TYPE_VERS_HABILITATION.get(type_intervention)
-    if not cle_habilitation:
-        return False, []
-
-    from apps.rh.selectors import (
-        dossier_employe_for_user, habilitations_requises_pour_intervention,
-        verifier_habilitation_requise,
-    )
-    # Traduit la clé intermédiaire (ex. 'pose_pv_bt') en codes RÉELS
-    # `Habilitation.TypeHabilitation` (ex. ['b1v', 'br']) via
-    # `INTERVENTION_HABILITATIONS` — jamais la clé intermédiaire directement
-    # (celle-ci ne correspond à aucun titre réel).
-    titres_requis = habilitations_requises_pour_intervention(cle_habilitation)
-    if not titres_requis:
-        return False, []
-    dossier = dossier_employe_for_user(company, technicien.id)
-    if dossier is None:
-        return False, []
-    rapport = verifier_habilitation_requise(
-        company, dossier, titres_requis)
-    if rapport['autorise']:
-        return False, []
-
-    avertissements = [rapport['message']] if rapport.get('message') else [
-        'Habilitation requise manquante ou expirée : '
-        f'{", ".join(titres_requis)}.'
-    ]
-    try:
-        from apps.parametres.models import CompanyProfile
-        profil = CompanyProfile.get(company)
-        mode = getattr(profil, 'mode_garde_habilitation', 'warn')
-    except Exception:  # pragma: no cover - défensif
-        mode = 'warn'
-    return (mode == 'block'), avertissements
-
-
 # ── ZSTK10 — regroupement de prélèvements en lot (batch transfer) ─────────
 # Les pick-lists (FG321) sont générées par chantier ; Odoo permet de grouper
 # plusieurs pickings en un « Batch Transfer » qu'un magasinier traite en une
@@ -4552,22 +4278,6 @@ def remplacer_composant_kits(company, *, produit_ancien_id, produit_nouveau_id,
     return modifies
 
 
-def chantier_peut_cloturer(chantier_id, company):
-    """WIR125 — pont ADVISORY vers la gate QHSE de fin de chantier.
-
-    Expose côté ``installations`` le gate advisory ``NotationFinChantier``
-    (score de fin de chantier calculé par qhse) EN PASSANT PAR la frontière
-    ``selectors`` de qhse — lecture seule, jamais d'import de modèle qhse
-    (référence lâche par ``chantier_id``). Advisory (comme WIR2) : renvoie
-    ``True`` s'il n'existe aucune notation ou si son verdict n'est pas un échec
-    ; ``False`` seulement si la notation la plus récente a un verdict
-    ``echec``. À utiliser pour AVERTIR avant une clôture — la décision de
-    BLOQUER reste un choix produit explicite (non câblé ici, gate non bloquant).
-    """
-    from apps.qhse.selectors import chantier_peut_cloturer as _qhse_gate
-    return _qhse_gate(chantier_id, company)
-
-
 # ══════════════════════════════════════════════════════════════════════════
 # NTP2P2 — Plan d'approbation générique des demandes d'achat (FG310)
 # ══════════════════════════════════════════════════════════════════════════
@@ -4650,82 +4360,6 @@ def prochaine_etape_approbation_achat(demande):
     return demande.etapes_approbation.filter(
         statut=EtapeApprobationAchat.Statut.EN_ATTENTE
     ).order_by('niveau', 'id').first()
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# NTP2P4 — Contrôle budgétaire départemental à la soumission
-# ══════════════════════════════════════════════════════════════════════════
-# Cross-app STRICT : le budget est lu via ``stock.selectors`` et l'engagement
-# écrit via ``stock.services`` ; le département du demandeur est lu via
-# ``rh.selectors``. Aucun import de ``models`` d'une autre app.
-
-
-class BudgetAchatError(Exception):
-    """Budget départemental dépassé à la soumission (mappé en 400)."""
-
-
-def departement_du_demandeur(company, user_id):
-    """Département RH du demandeur, ou None (lecture via ``rh.selectors``)."""
-    if company is None or not user_id:
-        return None
-    from apps.rh import selectors as rh_selectors
-    dossier = rh_selectors.dossier_employe_for_user(company, user_id)
-    if dossier is None:
-        return None
-    mapping = rh_selectors.departements_par_employe(company, [dossier.id])
-    return (mapping.get(dossier.id) or {}).get('departement_id')
-
-
-def controler_budget_demande_achat(demande, *, regle=None):
-    """NTP2P4 — engage le budget du département du demandeur, ou refuse.
-
-    No-op total quand le contrôle est désactivé (défaut) ou qu'aucun budget
-    n'est configuré pour le département : la soumission reste ce qu'elle était.
-    Une ``RegleApprobationAchat`` avec ``autorise_depassement_budget`` (NTP2P2)
-    laisse passer le dépassement — la dérogation est alors tranchée par les
-    étapes d'approbation, pas par un blocage muet.
-    """
-    from apps.stock import selectors as stock_selectors
-    from apps.stock import services as stock_services
-
-    company = demande.company
-    if not stock_selectors.budget_departement_actif(company):
-        return None
-    departement_id = departement_du_demandeur(
-        company, getattr(demande, 'created_by_id', None))
-    if not departement_id:
-        return None
-    regle = regle if regle is not None else resoudre_regle_approbation_achat(
-        demande)
-    autoriser = bool(regle and regle.autorise_depassement_budget)
-    try:
-        return stock_services.engager_budget(
-            company, departement_id=departement_id,
-            montant=demande.montant_estime,
-            periode=getattr(demande, 'date_besoin', None),
-            demande_achat_id=demande.pk,
-            autoriser_depassement=autoriser,
-            note=f'Demande {demande.reference}')
-    except stock_services.BudgetDepasseError as exc:
-        raise BudgetAchatError(
-            'Budget départemental dépassé : il reste '
-            f'{exc.restant} MAD, il manque {exc.manquant} MAD. '
-            "Une règle d'approbation autorisant le dépassement est requise."
-        ) from exc
-
-
-def liberer_budget_demande_achat(demande):
-    """NTP2P4 — rend l'enveloppe engagée (demande refusée/annulée)."""
-    from apps.stock import services as stock_services
-    return stock_services.liberer_engagements_demande(
-        demande.company, demande.pk)
-
-
-def consommer_budget_demande_achat(demande, bon_commande_id=None):
-    """NTP2P4 — l'engagement devient RÉALISÉ (le BCF est émis)."""
-    from apps.stock import services as stock_services
-    return stock_services.consommer_engagements_demande(
-        demande.company, demande.pk, bon_commande_id=bon_commande_id)
 
 
 def verifier_separation_taches_achat(etape, approbateur):
@@ -4872,9 +4506,8 @@ def rejeter_etape_achat(etape, *, approbateur, commentaire=''):
     """Rejette une étape : la demande bascule ``refusee`` immédiatement et les
     étapes restantes sont annulées (rejetées sans approbateur).
 
-    CHT4 — tout-ou-rien : si la libération du budget échoue, la décision de
-    l'étape et la transition de la demande sont annulées (l'étape reste
-    EN_ATTENTE).
+    CHT4 — tout-ou-rien : si la transition de la demande échoue, la décision
+    de l'étape est annulée (l'étape reste EN_ATTENTE).
     """
     from django.db import transaction
     from django.utils import timezone
@@ -4901,8 +4534,6 @@ def rejeter_etape_achat(etape, *, approbateur, commentaire=''):
                         'motif_refus': (commentaire or '').strip() or None})
         except TransitionRefusee as exc:
             raise ApprobationAchatError(str(exc))
-        # NTP2P4 — une demande refusée rend son enveloppe budgétaire.
-        liberer_budget_demande_achat(demande)
     return etape
 
 
