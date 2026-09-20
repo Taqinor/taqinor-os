@@ -8465,7 +8465,7 @@ def plan_ohada_actif(company) -> bool:
         company=company, actif=True).exists()
 
 
-class PlanComptableOHADA(models.Model):
+class PlanComptableOHADA(TenantModel):
     """Un compte du plan SYSCOHADA révisé d'une société (NTI18N18).
 
     UNE LIGNE = UN COMPTE du plan OHADA (le modèle porte le nom du plan tel
@@ -8477,6 +8477,11 @@ class PlanComptableOHADA(models.Model):
     Alternative AU CHOIX du plan CGNC existant, jamais un remplacement
     silencieux : ``actif`` vaut False par défaut et ``clean()`` refuse
     l'activation hors pack pays ``SN_CI``.
+
+    ``company`` (obligatoire, imposée côté serveur) et ``created_at`` /
+    ``updated_at`` viennent de ``core.models.TenantModel`` (socle ARC1/SCA4) —
+    les modèles compta historiques posent leur FK ``company`` à la main, mais
+    un modèle NEUF hérite du socle plutôt que de la ré-écrire.
     """
 
     class Classe(models.IntegerChoices):
@@ -8492,12 +8497,6 @@ class PlanComptableOHADA(models.Model):
         AUTRES_CHARGES_ET_PRODUITS = (
             8, '8 — Autres charges et autres produits')
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: purge tenant
-        related_name='comptes_ohada',
-        verbose_name='Société',
-    )
     numero = models.CharField(max_length=20, verbose_name='Numéro de compte')
     intitule = models.CharField(max_length=200, verbose_name='Intitulé')
     classe = models.IntegerField(
@@ -8519,8 +8518,6 @@ class PlanComptableOHADA(models.Model):
         default=False, verbose_name='Actif',
         help_text='Défaut False : activer le plan OHADA est une décision '
                   "d'expansion, jamais un effet de bord d'une migration.")
-    date_creation = models.DateTimeField(
-        auto_now_add=True, verbose_name='Créé le')
 
     class Meta:
         verbose_name = 'Compte du plan OHADA'

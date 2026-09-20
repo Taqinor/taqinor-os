@@ -12,6 +12,14 @@ d'expansion (règle DECISION de la tâche), jamais un effet de bord d'une
 migration. La correspondance compte CGNC ↔ compte OHADA n'est PAS semée ici :
 elle attend la validation fondateur (voir ``docs/ohada-mapping.md``).
 
+``company`` vient de ``core.models.TenantModel`` (socle ARC1/SCA4 — un modèle
+NEUF n'a plus le droit de ré-écrire la paire multi-société à la main, garde
+``scripts/check_platform.py``) : son ``related_name`` est le TEMPLATE
+``'%(app_label)s_%(class)s_set'``, écrit ici TEL QUEL (jamais résolu en
+``compta_plancomptableohada_set``) — sinon le modèle et l'état de migration
+divergent et ``makemigrations --check`` rougit en CI. ``created_at`` /
+``updated_at`` viennent de ``TimestampedModel``.
+
 Entièrement revertable (suppression d'une table neuve et vide).
 """
 import django.db.models.deletion
@@ -32,6 +40,8 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(
                     auto_created=True, primary_key=True, serialize=False,
                     verbose_name='ID')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('numero', models.CharField(
                     max_length=20, verbose_name='Numéro de compte')),
                 ('intitule', models.CharField(
@@ -64,11 +74,9 @@ class Migration(migrations.Migration):
                               "décision d'expansion, jamais un effet de bord "
                               "d'une migration.",
                     verbose_name='Actif')),
-                ('date_creation', models.DateTimeField(
-                    auto_now_add=True, verbose_name='Créé le')),
                 ('company', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='comptes_ohada',
+                    related_name='%(app_label)s_%(class)s_set',
                     to='authentication.company', verbose_name='Société')),
             ],
             options={
