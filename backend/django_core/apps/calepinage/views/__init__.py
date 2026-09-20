@@ -32,6 +32,7 @@ SOUS_MODULES = (
     'equipements',    # CAL243 — @action equipements, rattachée depuis urls.py
     'bibliotheque',   # CAL246 — @action modeles, rattachée depuis urls.py
     'verrou',         # CAL207 — @action deverrouiller, rattachée depuis urls.py
+    'archivage',      # CAL208 — @actions archiver/restaurer-corbeille
 )
 
 #: Les seuls préfixes d'URL admis sous ``/api/django/calepinage/``.

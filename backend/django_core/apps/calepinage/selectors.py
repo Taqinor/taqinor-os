@@ -25,7 +25,7 @@ SECTIONS_PARAMETRES = (
 
 
 def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
-                      depuis=None, q=None):
+                      depuis=None, q=None, inclure_archives=False):
     """CAL10 — les calepinages de ``company``, filtrés, en lecture pure.
 
     Args:
@@ -37,6 +37,10 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
         depuis: date/heure — ne rend que ce qui a été créé à partir d'elle.
         q: recherche libre sur le TITRE (rien d'autre : on n'énumère pas
             l'annuaire client depuis ce module).
+        inclure_archives: CAL208 — ``False`` (défaut) exclut les calepinages
+            ARCHIVÉS (corbeille, ``apps.trash``) de la liste — un calepinage
+            archivé n'est jamais soft-supprimé, il sort juste de la vue par
+            défaut. ``True`` les inclut (écran corbeille).
 
     Returns:
         Un ``QuerySet`` ordonné du plus récent au plus ancien.
@@ -48,11 +52,12 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
     return appliquer_filtres_liste(
         Calepinage.objects.filter(company=company),
         lead_id=lead_id, client_id=client_id, statut=statut, depuis=depuis,
-        q=q)
+        q=q, inclure_archives=inclure_archives)
 
 
 def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
-                            statut=None, depuis=None, q=None):
+                            statut=None, depuis=None, q=None,
+                            inclure_archives=False):
     """CAL16 — LES filtres de la liste, écrits UNE fois.
 
     Le viewset (``views/calepinages.py``) et ce sélecteur servent la même
@@ -60,6 +65,11 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     divergeraient au premier ajout — et la leçon PV22 est qu'un filtre IGNORÉ
     (``?statut=`` servi à l'identique) fait ouvrir le mauvais objet. Un filtre
     absent ne filtre rien ; un filtre présent filtre RÉELLEMENT.
+
+    CAL208 — ``inclure_archives=False`` (le défaut, y compris pour le
+    viewset qui n'appelle PAS cet argument) exclut les calepinages archivés
+    (corbeille, ``apps.trash.selectors.ids_dans_corbeille`` — jamais un
+    import direct de ``ElementSupprime``, frontière inter-apps).
 
     L'ordre est celui du plus récent au plus ancien, dans les deux chemins.
     """
@@ -74,6 +84,11 @@ def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
     terme = (q or '').strip()
     if terme:
         lignes = lignes.filter(titre__icontains=terme)
+    if not inclure_archives:
+        from apps.trash.selectors import ids_dans_corbeille
+
+        lignes = lignes.exclude(
+            pk__in=list(ids_dans_corbeille('calepinage.calepinage')))
     return lignes.order_by('-created_at', '-id')
 
 
