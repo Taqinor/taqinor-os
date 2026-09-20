@@ -2,6 +2,24 @@ import { Link } from 'react-router-dom'
 // CAL38 — la SORTIE vers le devis (générer / resynchroniser). Elle se pose ici,
 // dans l'emplacement enregistré par CAL37 : l'atelier n'est pas rouvert.
 import BoutonDevis from './BoutonDevis'
+/* CAL242 — le sens AO → calepinage de l'import de contour (CAL240). Son jumeau
+   (« Reprendre le tracé 3D », CAL241) est DÉJÀ monté sur l'écran de toiture
+   d'une affaire ; celui-ci restait écrit, testé, et monté NULLE PART — c'est-à-
+   dire exactement l'oubli du 03/08/2026 que sa propre docstring dit combattre.
+   Sa place est ici : son en-tête déclare « Posé dans l'atelier en mode
+   calepinage ».
+
+   CE QU'IL NE PEUT PAS ENCORE FAIRE, et qu'il faut dire : l'endpoint
+   `importer-contour-ao` (CAL240) n'est pas encore servi par
+   `apps/calepinage/urls.py`. Tant qu'il ne l'est pas, le bouton remonte le
+   refus du serveur SOUS lui (c'est son comportement déclaré) au lieu d'importer
+   quoi que ce soit ; il devient vivant le jour où CAL240 atterrit, sans qu'une
+   ligne d'écran ne change. Ni `affaireId` ni `toitureId` ne lui sont passés :
+   l'atelier ne connaît AUCUNE des deux (le contexte de conception ne publie pas
+   l'affaire du calepinage) et les INVENTER ferait importer le contour d'un
+   autre chantier. Le serveur résout donc la source depuis le calepinage
+   lui-même — c'est lui qui tranche. */
+import { BoutonReprendreContourAffaire } from './BoutonsContourAO'
 
 /* ============================================================================
    CAL37 — L'UNIQUE EMPLACEMENT DES PANNEAUX DE L'ATELIER, mode `calepinage`.
@@ -92,6 +110,14 @@ export default function AtelierPanneaux({
           lectureSeule={lectureSeule}
           onRecharger={onRecharger}
         />
+        {/* Une conception FIGÉE ne reçoit aucun contour : l'import est une
+            écriture, il disparaît en lecture seule comme toutes les autres. */}
+        {!lectureSeule && (
+          <BoutonReprendreContourAffaire
+            calepinageId={calepinageId}
+            onImporte={onRecharger}
+          />
+        )}
         {typeof children === 'function'
           ? children({ calepinageId, contexte, builderApi, lectureSeule, onRecharger })
           : children}
