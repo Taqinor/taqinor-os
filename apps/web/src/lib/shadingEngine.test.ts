@@ -13,11 +13,14 @@ import {
   solarAccessSummary,
   combineSolarAccess,
   proposeShadedRemoval,
+  rowSelfShading,
+  isRowSelfShadedAt,
   DIFFUSE_FRACTION_WHEN_SHADED,
   type ShadeObstructionENU,
   type SolarAccessSummary,
 } from './shadingEngine';
 import { fallbackPerKwc } from './productionEngine';
+import { layoutProRows2, PANEL2_SHORT_M, PANEL2_TILT_DEG, WINTER_SOLSTICE_DAY } from './roofPro2';
 
 /** Rectangle ENU centré en (cx, cy), demi-largeur E-O `hw`, demi-longueur N-S `hl`. */
 function rect(cx: number, cy: number, hw: number, hl: number): [number, number][] {
@@ -259,6 +262,69 @@ describe('CAL235 — proposeShadedRemoval : une proposition chiffrée, jamais un
   it('le seuil est paramétrable et pilote seul la sélection', () => {
     expect(proposeShadedRemoval([0.98, 0.8, 0.5], PANEL_KWC, 0.6)?.indices).toEqual([2]);
     expect(proposeShadedRemoval([0.98, 0.8, 0.5], PANEL_KWC, 0.9)?.indices).toEqual([1, 2]);
+  });
+});
+
+// CAL99 — l'espacement anti-ombrage était CALCULÉ par formule analytique, mais jamais
+// VÉRIFIÉ sur la pose réelle. On le mesure ici avec le même lancer de rayons que CAL94.
+describe('CAL99 — auto-ombrage rangée à rangée de la pose lestée', () => {
+  const LAT = 33.5;
+  const TILT = PANEL2_TILT_DEG;
+  /** La pose TELLE QU'ELLE EST POSÉE par le pavage, à cette latitude et cette inclinaison. */
+  const pose = layoutProRows2(
+    [
+      [-7.6005, 33.4995],
+      [-7.5995, 33.4995],
+      [-7.5995, 33.5005],
+      [-7.6005, 33.5005],
+    ],
+    'sud',
+    LAT,
+  );
+  const geo = { rowPitchM: pose.rowPitchM, panelSlopeLenM: PANEL2_SHORT_M, tiltDeg: TILT };
+
+  it('le pas appliqué laisse un jeu strictement positif entre rangées', () => {
+    const r = rowSelfShading(LAT, geo);
+    expect(r.gapM).toBeGreaterThan(0);
+    expect(r.riseM).toBeCloseTo(PANEL2_SHORT_M * Math.sin((TILT * Math.PI) / 180), 9);
+  });
+
+  it('AU MOMENT D’HYPOTHÈSE (midi du solstice d’hiver), le pas appliqué ne s’auto-ombre PAS', () => {
+    // C'est exactement l'instant sur lequel `rowPitchM` est dimensionné : la vérification
+    // sur la pose réelle doit donc le confirmer, sinon la formule mentirait.
+    expect(isRowSelfShadedAt(LAT, geo, WINTER_SOLSTICE_DAY, 12)).toBe(false);
+  });
+
+  it('un pas VOLONTAIREMENT trop court s’auto-ombre, et l’écran peut dire QUAND', () => {
+    const serre = { ...geo, rowPitchM: PANEL2_SHORT_M * Math.cos((TILT * Math.PI) / 180) + 0.05 };
+    const r = rowSelfShading(LAT, serre);
+    expect(r.shadedHours).toBeGreaterThan(0);
+    expect(r.firstShaded).not.toBeNull();
+    expect(r.firstShaded!.sunElevationDeg).toBeGreaterThan(0);
+  });
+
+  it('AUGMENTER le pas repousse (puis supprime) le premier moment d’auto-ombrage', () => {
+    const serre = { ...geo, rowPitchM: PANEL2_SHORT_M * Math.cos((TILT * Math.PI) / 180) + 0.05 };
+    const moyen = { ...geo, rowPitchM: serre.rowPitchM + 0.3 };
+    const large = { ...geo, rowPitchM: serre.rowPitchM + 5 };
+    const hs = rowSelfShading(LAT, serre).shadedHours;
+    const hm = rowSelfShading(LAT, moyen).shadedHours;
+    const hl = rowSelfShading(LAT, large).shadedHours;
+    expect(hm).toBeLessThan(hs);
+    expect(hl).toBeLessThan(hm);
+  });
+
+  it('rangées jointives (pas = empreinte) : aucun jeu, l’auto-ombrage est immédiat', () => {
+    const jointif = { ...geo, rowPitchM: PANEL2_SHORT_M * Math.cos((TILT * Math.PI) / 180) };
+    const r = rowSelfShading(LAT, jointif);
+    expect(r.gapM).toBeCloseTo(0, 9);
+    expect(r.shadedHours).toBeGreaterThan(0);
+  });
+
+  it('pose AFFLEURANTE (0°) : aucune arête haute, donc aucun auto-ombrage', () => {
+    const plat = { rowPitchM: PANEL2_SHORT_M, panelSlopeLenM: PANEL2_SHORT_M, tiltDeg: 0 };
+    expect(rowSelfShading(LAT, plat).shadedHours).toBe(0);
+    expect(rowSelfShading(LAT, plat).firstShaded).toBeNull();
   });
 });
 

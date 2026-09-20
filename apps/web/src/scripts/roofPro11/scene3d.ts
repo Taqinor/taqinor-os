@@ -20,6 +20,7 @@
 import maplibregl from 'maplibre-gl';
 import * as THREE from 'three';
 import { PANEL2_THICK_M, sunDirection, describeRowPitch } from '../../lib/roofPro2';
+import { rowSelfShading } from '../../lib/shadingEngine';
 import {
   type PackResult,
   type PanelGrid,
@@ -1591,6 +1592,12 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     return rings;
   }
 
+  /** CAL99 — mois en toutes lettres pour dire QUAND l'auto-ombrage commence. */
+  const MONTHS_FR = [
+    'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+  ];
+
   /**
    * CAL86 — publie le pas inter-rangées APPLIQUÉ et la famille de pose. Le bloc est créé
    * s'il n'existe pas dans la page (aucune page à modifier) ; absent de tout DOM (harness
@@ -1598,7 +1605,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
    * qui a produit les rangées : changer l'inclinaison met donc à jour pas, compte et 3D
    * ensemble, parce qu'ils viennent du MÊME plan.
    */
-  function publishRowPitch(grid: PanelGrid, tiltDeg: number, family: ConfigFamily, flush: boolean) {
+  function publishRowPitch(grid: PanelGrid, tiltDeg: number, family: ConfigFamily, flush: boolean, azimuthDeg: number) {
     if (typeof document === 'undefined' || typeof document.createElement !== 'function') return;
     let el = document.getElementById('rp9-row-pitch');
     if (!el) {
@@ -1615,7 +1622,25 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       flush,
       configFamily: family,
     });
-    el.textContent = `${d.label} Inclinaison appliquée : ${tiltDeg.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}°.`;
+    let texte = `${d.label} Inclinaison appliquée : ${tiltDeg.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}°.`;
+    // CAL99 — VÉRIFICATION de l'auto-ombrage sur la pose réellement posée (le pas est
+    // calculé par formule ; ici on le MESURE, au même lancer de rayons que CAL94). Seule
+    // la pose lestée inclinée plein sud est concernée : affleurante = rangées jointives,
+    // est-ouest = chevrons dos à dos (autre géométrie, CAL167/CAL87).
+    if (!flush && family === 'south' && grid.slopeLenM > 0 && tiltDeg > 0) {
+      const r = rowSelfShading(ctx.centroidLat, {
+        rowPitchM: grid.rowPitchM,
+        panelSlopeLenM: grid.slopeLenM,
+        tiltDeg,
+        facingAzimuthDeg: azimuthDeg,
+      });
+      texte += r.firstShaded
+        ? ` Auto-ombrage entre rangées : première occurrence vers ${MONTHS_FR[r.firstShaded.monthIndex]}, ` +
+          `${Math.floor(r.firstShaded.hour)} h (soleil à ${r.firstShaded.sunElevationDeg.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}°) — ` +
+          `${r.shadedHours} heure(s) concernée(s) dans l’année. Augmentez le pas pour repousser ce moment.`
+        : ' Auto-ombrage entre rangées : aucun sur l’année échantillonnée, au pas appliqué.';
+    }
+    el.textContent = texte;
   }
 
   // — Rendu d'une config (Sud sur châssis OU Est-Ouest en chevrons). `flush` (V3,
@@ -1639,7 +1664,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // n'était simplement jamais affiché, et la famille de pose jamais nommée. On PUBLIE
     // ici le pas RÉELLEMENT appliqué par ce plan (`grid.rowPitchM`, la source unique) —
     // aucun second calcul de pas n'est introduit.
-    publishRowPitch(grid, tiltDeg, family, flush);
+    publishRowPitch(grid, tiltDeg, family, flush, pack.azimuthDeg);
     setOrigin(pack.origin);
     ctx.sceneOrigin = pack.origin;
     ctx.obstacleMeshes.clear();
