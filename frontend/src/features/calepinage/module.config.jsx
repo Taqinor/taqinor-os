@@ -65,6 +65,9 @@ const CalepinageNouveau = lazy(() => import('./CalepinageNouveau'))
 // CAL42 — le comparatif des variantes (CAL105 fondue) : tableau une colonne par
 // variante + vue côte à côte, alimentés UNIQUEMENT par le contrat CAL3.
 const VariantesCompare = lazy(() => import('./VariantesCompare'))
+// CAL195 — le schéma unifilaire du calepinage, composé par le MÊME moteur que
+// le devis : l'écran l'affiche, il ne dessine rien.
+const SchemaUnifilairePanel = lazy(() => import('./SchemaUnifilairePanel'))
 
 const config = {
   key: 'calepinage',
@@ -106,6 +109,8 @@ const config = {
     { path: '/calepinage/:id', component: AtelierCalepinage, roles: ROLES },
     // contextuelle: comparatif d'UN calepinage, ouvert depuis son atelier (CAL37) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/variantes', component: VariantesCompare, roles: ROLES },
+    // contextuelle: le schéma unifilaire d'UN calepinage, ouvert depuis son atelier (CAL195) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
+    { path: '/calepinage/:id/schema', component: SchemaUnifilairePanel, roles: ROLES },
   ],
 }
 

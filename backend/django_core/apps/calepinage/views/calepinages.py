@@ -74,6 +74,7 @@ from ..services.variantes import (
 )
 from ..services.versions import VersionInvalide, restaurer_version
 from .electrique import ElectriqueActionsMixin
+from .schema import SchemaUnifilaireMixin  # CAL195
 
 __all__ = ['CalepinageViewSet', 'contexte_conception', 'detail_calepinage']
 
@@ -146,7 +147,7 @@ class ActionIdempotenteMixin:
 class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                         ChatterViewSetMixin, ActionIdempotenteMixin,
                         ElectriqueActionsMixin, SortiesMixin,
-                        CompanyScopedModelViewSet):
+                        SchemaUnifilaireMixin, CompanyScopedModelViewSet):
     """CRUD du pivot ``Calepinage`` + ses sous-ressources en ``@action``.
 
     CAL26 — le chatter est celui de la PLATEFORME (``records``) :
