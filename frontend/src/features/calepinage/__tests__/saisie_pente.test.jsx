@@ -17,7 +17,7 @@ vi.mock('../../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       layout: (...a) => layout(...a),
-      enregistrerLayout: (...a) => enregistrerLayout(...a),
+      enregistrerLayoutCalepinage: (...a) => enregistrerLayout(...a),
     },
   },
 }))
