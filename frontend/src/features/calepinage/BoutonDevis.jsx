@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import ventesApi from '../../api/ventesApi'
@@ -73,31 +73,18 @@ function refusServeur(erreur) {
   }
 }
 
-export default function BoutonDevis({ calepinageId, lectureSeule = false, onRecharger }) {
+export default function BoutonDevis({
+  calepinageId, detail = null, lectureSeule = false, onRecharger, onRelire,
+}) {
   const navigate = useNavigate()
-  const [detail, setDetail] = useState(null)
   const [enCours, setEnCours] = useState(false)
   const [refus, setRefus] = useState(null)
   const [conflit, setConflit] = useState(null)
 
-  // `relecture` — une relecture DEMANDÉE (après une resynchronisation) passe
-  // par l'effet, jamais par un `setState` posé dans le corps de l'effet
-  // (react-hooks v7 : cascade de rendus).
-  const [relecture, setRelecture] = useState(0)
-
-  // L'ÉTAT VIENT DU SERVEUR : l'agrégat de détail (CAL17) porte le devis lié et
-  // le compte des variantes. L'écran ne déduit ni l'un ni l'autre.
-  useEffect(() => {
-    let annule = false
-    // `Promise.resolve` : un client qui ne rendrait pas de promesse ne doit
-    // pas faire exploser l'effet — l'écran se contente alors de ne rien
-    // afficher, plutôt qu'un bouton qui prétendrait connaître l'état du devis.
-    Promise.resolve(calepinageApi.calepinages.get(calepinageId))
-      .then((res) => { if (!annule) setDetail(res?.data ?? null) })
-      .catch(() => { if (!annule) setDetail(null) })
-    return () => { annule = true }
-  }, [calepinageId, relecture])
-
+  // L'ÉTAT VIENT DU SERVEUR, et d'UNE SEULE lecture : l'agrégat de détail
+  // (CAL17) est chargé par `AtelierPanneaux` et descendu ici en prop. Le
+  // charger une seconde fois ferait deux appels pour la même vérité — et deux
+  // vérités le jour où l'une des deux serait périmée.
   if (!detail || lectureSeule) return null
 
   const devisLie = detail.devis ?? null
@@ -149,7 +136,8 @@ export default function BoutonDevis({ calepinageId, lectureSeule = false, onRech
     const res = await executer(
       () => calepinageApi.calepinages.syncDevis(calepinageId, {}))
     if (!res) return
-    setRelecture((n) => n + 1)
+    // On RELIT l'agrégat plutôt que de deviner le nouvel état du devis.
+    await onRelire?.()
     await onRecharger?.()
   }
 

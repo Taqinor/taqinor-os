@@ -13,13 +13,7 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
    objet tapé à la main. */
 
 vi.mock('../../api/calepinageApi', () => ({
-  default: {
-    calepinages: {
-      get: vi.fn(),
-      genererDevis: vi.fn(),
-      syncDevis: vi.fn(),
-    },
-  },
+  default: { calepinages: { genererDevis: vi.fn(), syncDevis: vi.fn() } },
 }))
 vi.mock('../../api/ventesApi', () => ({
   default: { reviserDevis: vi.fn() },
@@ -38,10 +32,12 @@ const DETAIL = exempleContrat('calepinage', 'calepinage_detail')
 const DETAIL_VIDE = exempleContrat('calepinage', 'calepinage_detail',
   'exemple_vide')
 
+/* L'agrégat de détail arrive en PROP : il est lu UNE fois par
+   `AtelierPanneaux` et descendu ici (une seule lecture, une seule vérité). */
 function rendre(props = {}) {
   return render(
     <MemoryRouter>
-      <BoutonDevis calepinageId={DETAIL.id} {...props} />
+      <BoutonDevis calepinageId={DETAIL.id} detail={DETAIL} {...props} />
     </MemoryRouter>,
   )
 }
@@ -50,14 +46,18 @@ beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('BoutonDevis (CAL38)', () => {
+  it('détail absent (agrégat pas encore lu) : aucun bouton deviné', async () => {
+    rendre({ detail: null })
+    expect(screen.queryByTestId('cal-bouton-devis')).toBeNull()
+  })
+
   it('sans devis lié : génère, puis rouvre la conception SUR le devis créé', async () => {
     // `exemple_vide` du contrat : aucun devis, aucune variante.
-    calepinageApi.calepinages.get.mockResolvedValue({ data: DETAIL_VIDE })
     calepinageApi.calepinages.genererDevis.mockResolvedValue({
       data: { devis: 42, reference: 'DEV-2609-0042', deduplique: false },
     })
 
-    rendre({ calepinageId: DETAIL_VIDE.id })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
     await userEvent.click(await screen.findByTestId('cal-generer-devis'))
 
     await waitFor(() => expect(calepinageApi.calepinages.genererDevis)
@@ -68,14 +68,13 @@ describe('BoutonDevis (CAL38)', () => {
   })
 
   it('refus 422 : le message du SERVEUR s’affiche, sous le champ qu’il nomme', async () => {
-    calepinageApi.calepinages.get.mockResolvedValue({ data: DETAIL_VIDE })
     const MESSAGE = 'Le catalogue ne porte aucun panneau avec un prix : '
       + 'complétez-le avant de chiffrer.'
     calepinageApi.calepinages.genererDevis.mockRejectedValue({
       response: { status: 422, data: { detail: MESSAGE, errors: [MESSAGE] } },
     })
 
-    rendre({ calepinageId: DETAIL_VIDE.id })
+    rendre({ calepinageId: DETAIL_VIDE.id, detail: DETAIL_VIDE })
     await userEvent.click(await screen.findByTestId('cal-generer-devis'))
 
     const bloc = await screen.findByTestId('cal-devis-refus')
@@ -86,7 +85,6 @@ describe('BoutonDevis (CAL38)', () => {
   })
 
   it('devis lié : resynchronise, et le 409 offre la révision sans rien inventer', async () => {
-    calepinageApi.calepinages.get.mockResolvedValue({ data: DETAIL })
     const DETAIL_409 = 'Ce devis est déjà parti chez le client : créez une '
       + 'révision pour le modifier.'
     calepinageApi.calepinages.syncDevis.mockRejectedValue({
@@ -112,7 +110,6 @@ describe('BoutonDevis (CAL38)', () => {
   })
 
   it('409 sans révision possible : le motif s’affiche, aucun bouton « Réviser »', async () => {
-    calepinageApi.calepinages.get.mockResolvedValue({ data: DETAIL })
     calepinageApi.calepinages.syncDevis.mockRejectedValue({
       response: {
         status: 409,
@@ -129,14 +126,13 @@ describe('BoutonDevis (CAL38)', () => {
   })
 
   it('variantes présentes mais aucune retenue : bouton désactivé ET expliqué', async () => {
-    calepinageApi.calepinages.get.mockResolvedValue({
-      data: {
+    rendre({
+      calepinageId: DETAIL_VIDE.id,
+      detail: {
         ...DETAIL_VIDE,
         variantes: { total: 3, retenue_id: null, non_simulees: 0 },
       },
     })
-
-    rendre({ calepinageId: DETAIL_VIDE.id })
 
     const bouton = await screen.findByTestId('cal-generer-devis')
     expect(bouton).toBeDisabled()
@@ -147,7 +143,6 @@ describe('BoutonDevis (CAL38)', () => {
   })
 
   it('une variante EST retenue : le bouton est actif', async () => {
-    calepinageApi.calepinages.get.mockResolvedValue({ data: DETAIL })
     expect(DETAIL.variantes.retenue_id).toBeTruthy()
 
     rendre()
@@ -157,11 +152,8 @@ describe('BoutonDevis (CAL38)', () => {
   })
 
   it('lecture seule : aucun bouton d’écriture n’est rendu', async () => {
-    calepinageApi.calepinages.get.mockResolvedValue({ data: DETAIL })
-
     rendre({ lectureSeule: true })
 
-    await waitFor(() => expect(calepinageApi.calepinages.get).toHaveBeenCalled())
     expect(screen.queryByTestId('cal-bouton-devis')).toBeNull()
   })
 })

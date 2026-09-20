@@ -1,4 +1,9 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import calepinageApi from '../../api/calepinageApi'
+/* CAL17 (moitié écran) — la FICHE de l'agrégat de détail. Le serveur publiait
+   vingt et une clés que personne ne lisait. */
+import FicheCalepinage from './FicheCalepinage'
 // CAL38 — la SORTIE vers le devis (générer / resynchroniser). Elle se pose ici,
 // dans l'emplacement enregistré par CAL37 : l'atelier n'est pas rouvert.
 import BoutonDevis from './BoutonDevis'
@@ -54,6 +59,25 @@ export default function AtelierPanneaux({
   const cible = contexte?.cible ?? null
   const calepinage = contexte?.calepinage ?? null
 
+  /* UNE SEULE LECTURE DE L'AGRÉGAT (CAL17), partagée. La fiche et le bouton
+     devis parlent de la MÊME vérité : deux lectures, ce serait deux états le
+     jour où l'un des deux serait périmé. `relecture` est incrémentée par les
+     gestes qui changent cet état (resynchronisation, import de contour) —
+     jamais un `setState` posé dans le corps de l'effet (react-hooks v7). */
+  const [detail, setDetail] = useState(null)
+  const [relecture, setRelecture] = useState(0)
+  useEffect(() => {
+    if (!calepinageId) return undefined
+    let annule = false
+    // `Promise.resolve` : un client qui ne rendrait pas de promesse ne doit pas
+    // faire exploser l'effet — l'écran n'affiche alors simplement pas la fiche.
+    Promise.resolve(calepinageApi.calepinages.get(calepinageId))
+      .then((res) => { if (!annule) setDetail(res?.data ?? null) })
+      .catch(() => { if (!annule) setDetail(null) })
+    return () => { annule = true }
+  }, [calepinageId, relecture])
+  const relire = () => setRelecture((n) => n + 1)
+
   return (
     <div className="cine-card mt-6 p-6" data-testid="cal-atelier-panneaux">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
@@ -94,6 +118,11 @@ export default function AtelierPanneaux({
         </div>
       </dl>
 
+      {/* CAL17 — TOUT ce que le serveur publie sur ce calepinage, lu et rendu.
+          Silencieuse tant que l'agrégat n'est pas arrivé : jamais une fiche de
+          tirets qui aurait l'air de dire « rien à afficher ». */}
+      <FicheCalepinage detail={detail} />
+
       {!cible && (
         <p className="mt-2 text-xs text-lune-faint" role="status">
           Aucune cible de puissance connue pour ce calepinage : rattachez un
@@ -107,8 +136,10 @@ export default function AtelierPanneaux({
       <div className="mt-5 flex flex-wrap items-start gap-4" data-testid="cal-atelier-actions">
         <BoutonDevis
           calepinageId={calepinageId}
+          detail={detail}
           lectureSeule={lectureSeule}
           onRecharger={onRecharger}
+          onRelire={relire}
         />
         {/* Une conception FIGÉE ne reçoit aucun contour : l'import est une
             écriture, il disparaît en lecture seule comme toutes les autres. */}
