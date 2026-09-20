@@ -169,15 +169,11 @@ class AUD502ExpirationContratMaintenanceTest(TestCase):
     # ── ROUGE #3 — facturation récurrente sans fin ──────────────────────────
 
     def test_facturation_recurrente_sarrete_apres_grace(self):
-        from apps.sav.services import contrats_maintenance_dus_facturation
-
         contrat = self._contrat(
             duree_mois=12, expire_depuis_jours=90, facturation_active=True,
             prix=Decimal('1200'),
             periodicite=ContratMaintenance.Periodicite.MENSUEL)
         self.assertFalse(contrat.facturation_due())
-        self.assertEqual(
-            contrats_maintenance_dus_facturation(self.company), [])
 
     # ── Non-régression : un contrat SANS duree_mois n'expire jamais ─────────
 

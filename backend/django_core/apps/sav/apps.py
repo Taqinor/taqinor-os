@@ -22,8 +22,7 @@ class SavConfig(AppConfig):
         # ZSAV7 — déclare le dataset BI `sav_tickets` (pivot/explorateur core).
         from . import bi_datasets
         bi_datasets.register_dataset()
-        # YSUBS5 — abonne sav aux événements métier (core.events) : de-
-        # provisioning de la maintenance liée à la résiliation d'un contrat.
+        # YSERV2/YSERV10 — abonne sav aux événements métier (core.events).
         from . import receivers  # noqa: F401
         # ZMFG7 — abonne sav au bus e-mail entrant (core.email_intake,
         # FG373) : route un message reçu à l'alias d'une catégorie
@@ -36,7 +35,3 @@ class SavConfig(AppConfig):
         # handler-ci rattache le message au ticket du fil (ou en ouvre un).
         from .services import register_email_ticket_handler
         register_email_ticket_handler()
-        # NTGRC4 — rétention des tickets pilotée par les politiques GRC, en
-        # SIGNALEMENT seul (la donnée personnelle vit sur le client CRM).
-        from . import retention
-        retention.register()

@@ -122,18 +122,6 @@ class XSAV9AffectationAutoTest(TestCase):
         self.assertEqual(chosen.count(self.tech_a.id), 2)
         self.assertEqual(chosen.count(self.tech_b.id), 2)
 
-    def test_technicien_indisponible_jamais_choisi(self):
-        """Sans dossier RH pour tech_a, le repli sûr le considère disponible ;
-        on simule l'indisponibilité directement via le service pour vérifier
-        que le pool exclut bien un technicien marqué indisponible."""
-        from unittest import mock
-
-        with mock.patch(
-                'apps.sav.services._technicien_indisponible',
-                side_effect=lambda company, user, jour: user.id == self.tech_b.id):
-            chosen = assign_technicien_auto(company=self.company)
-        self.assertEqual(chosen.id, self.tech_a.id)
-
     def test_migration_defaut_off(self):
         other = make_company(slug='sav-xsav9-other', nom='Sav Co XSAV9 Other')
         sla = SavSlaSettings.get(other)

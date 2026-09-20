@@ -1,8 +1,7 @@
-"""Récepteurs d'événements métier (M6) — YSUBS5, YSERV2, YSERV10.
+"""Récepteurs d'événements métier (M6) — YSERV2, YSERV10.
 
-Abonne ``sav`` aux événements du cœur métier exposés par ``core.events``, pour
-réagir à la résiliation d'un contrat (``apps.contrats``) SANS que ``contrats``
-importe ``sav`` ni l'inverse. Câblé au démarrage par ``SavConfig.ready``.
+Abonne ``sav`` aux événements du cœur métier exposés par ``core.events``.
+Câblé au démarrage par ``SavConfig.ready``.
 
 Contient aussi (XSAV24) le récepteur intra-app qui journalise la CRÉATION
 d'un ``Ticket`` dans son ``TicketActivity`` (chatter) — quel que soit le
@@ -18,8 +17,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from core.events import (
-    chantier_receptionne, contrat_resilie, devis_accepted,
-    intervention_completed,
+    chantier_receptionne, devis_accepted, intervention_completed,
 )
 from .models import Ticket
 
@@ -45,36 +43,6 @@ def _log_creation_on_ticket_created(sender, instance, created, **kwargs):
         logger.warning(
             'sav: échec journalisation création ticket #%s',
             getattr(instance, 'pk', None), exc_info=True)
-
-
-@receiver(contrat_resilie, dispatch_uid="sav_deprovision_on_contrat_resilie")
-def _deprovisionner_maintenance_on_contrat_resilie(
-        sender, contrat_id, company, date_effet, **kwargs):
-    """YSUBS5 — à la résiliation d'un contrat, stoppe la facturation
-    récurrente et les visites préventives futures du ``ContratMaintenance``
-    lié (résolu via ``contrats.selectors.contrat_id_maintenance_lie`` —
-    JAMAIS un import du modèle ``contrats``, frontière cross-app).
-
-    Un contrat sans maintenance liée ne déclenche RIEN (no-op silencieux) —
-    la très grande majorité des contrats (vente, PPA, garantie...) n'a pas
-    de ``ContratMaintenance`` associé. Best-effort : une erreur ne doit
-    jamais remonter (la résiliation, côté ``contrats``, est déjà actée)."""
-    try:
-        from apps.contrats.selectors import contrat_maintenance_lie_id
-
-        maintenance_id = contrat_maintenance_lie_id(company, contrat_id)
-        if not maintenance_id:
-            return
-
-        from .models import ContratMaintenance
-
-        ContratMaintenance.objects.filter(
-            id=maintenance_id, company=company,
-        ).update(actif=False, facturation_active=False)
-    except Exception:  # pragma: no cover - défensif (best-effort)
-        logger.warning(
-            'sav: échec de-provisioning maintenance sur résiliation du '
-            'contrat #%s', contrat_id, exc_info=True)
 
 
 @receiver(intervention_completed, dispatch_uid="sav_advance_ticket_on_intervention_completed")

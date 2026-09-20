@@ -10,7 +10,6 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.sav.models import ContratMaintenance
-from apps.ventes.models import Facture
 
 User = get_user_model()
 BASE_URL = '/api/django/sav/contrats-maintenance/'
@@ -177,50 +176,16 @@ class TestFG40Service(TestCase):
         self.assertIn(str(c.pk), f.libelle)
 
 
-class TestFG40Endpoint(TestCase):
-    """Tests de l'action POST /sav/contrats-maintenance/{id}/facturer/."""
+class TestFG40SerializerFields(TestCase):
+    """Le serializer expose toujours les champs de facturation du contrat
+    (l'action HTTP de facturation récurrente a été retirée — module externe
+    de journalisation des cycles détaché — mais les champs modèle restent)."""
 
     def setUp(self):
         self.co = _company(slug='fg40-ep', nom='FG40 EP')
         self.user = _user(self.co, username='fg40_ep_user')
         self.cli = _client(self.co)
         self.api = _auth(self.user)
-
-    def test_facturer_creates_201(self):
-        c = _contrat(self.co, self.cli)
-        r = self.api.post(f'{BASE_URL}{c.pk}/facturer/')
-        self.assertEqual(r.status_code, 201, r.data)
-        self.assertTrue(r.data['ok'])
-        self.assertIn('facture_reference', r.data)
-
-    def test_facturer_facture_visible(self):
-        c = _contrat(self.co, self.cli)
-        r = self.api.post(f'{BASE_URL}{c.pk}/facturer/')
-        self.assertEqual(r.status_code, 201, r.data)
-        fac = Facture.objects.filter(
-            company=self.co, reference=r.data['facture_reference']).first()
-        self.assertIsNotNone(fac)
-        self.assertEqual(fac.montant_ttc, Decimal('3000'))
-
-    def test_facturer_inactive_contrat_returns_400(self):
-        c = _contrat(self.co, self.cli, facturation_active=False)
-        r = self.api.post(f'{BASE_URL}{c.pk}/facturer/')
-        self.assertEqual(r.status_code, 400)
-        self.assertFalse(r.data['ok'])
-
-    def test_facturer_no_prix_returns_400(self):
-        c = _contrat(self.co, self.cli, prix=None)
-        r = self.api.post(f'{BASE_URL}{c.pk}/facturer/')
-        self.assertEqual(r.status_code, 400)
-
-    def test_facturer_cross_company_404(self):
-        other_co = _company(slug='fg40-other', nom='FG40 Other')
-        other_cli = Client.objects.create(
-            company=other_co, nom='OtherFG40', email='ofg40@example.com',
-            telephone='+212600000054')
-        c = _contrat(other_co, other_cli)
-        r = self.api.post(f'{BASE_URL}{c.pk}/facturer/')
-        self.assertEqual(r.status_code, 404)
 
     def test_serializer_exposes_facturation_fields(self):
         c = _contrat(self.co, self.cli)

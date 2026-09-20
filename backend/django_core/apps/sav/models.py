@@ -98,15 +98,6 @@ class SavSlaSettings(models.Model):
     # équilibrage de charge). Défaut OFF : comportement actuel inchangé (tout
     # ticket reste affecté à la main tant que la société ne l'active pas).
     affectation_auto_sav = models.BooleanField(default=False)
-    # NTSRV7 — restreint l'affectation auto (XSAV9) aux techniciens QUALIFIÉS
-    # quand la catégorie du ticket exige des compétences (NTSRV6). Défaut OFF
-    # = comportement XSAV9 strictement inchangé (round-robin par charge).
-    affectation_par_competence = models.BooleanField(
-        default=False,
-        verbose_name='Affectation auto par compétence',
-        help_text="Ne propose que des techniciens possédant les compétences "
-                  'exigées par la catégorie du ticket (repli sur la charge '
-                  'seule si aucun technicien qualifié).')
     # XSAV24 — auto-clôture des tickets RÉSOLU dormants (sans activité depuis
     # N jours). 0 (défaut) = OFF, comportement actuel inchangé : un ticket
     # résolu reste RÉSOLU indéfiniment tant que la société n'active pas ce
@@ -714,9 +705,8 @@ class Ticket(models.Model):
     # ── ZMFG5 — Instructions structurées (mode opératoire de l'intervention) ─
     # Distinct de `description` (le problème signalé) et des notes chatter
     # `TicketActivity` : le MODE OPÉRATOIRE à suivre pour réaliser
-    # l'intervention, éditable et pré-remplissable depuis un article KB lié
-    # au type de panne (apps.kb.selectors, lecture seule). Blank/null par
-    # défaut = comportement actuel inchangé (aucune instruction requise).
+    # l'intervention, éditable manuellement. Blank/null par défaut =
+    # comportement actuel inchangé (aucune instruction requise).
     instructions = models.TextField(blank=True, default='')
     technicien_responsable = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -859,16 +849,15 @@ class Ticket(models.Model):
         null=True, blank=True,
         help_text='ID de la Facture ventes générée depuis ce ticket (XFSM1).')
 
-    # ── AUD529 — Escalade SAV → réclamation formelle (apps.litiges) ─────────
-    # Lien de RETOUR vers la ``litiges.Reclamation`` ouverte depuis ce ticket,
-    # en LOOSE FK entier (même patron que ``facture_id_ext``/``lead_id`` :
-    # jamais un import cross-app des modèles litiges). NULL = ticket jamais
-    # escaladé — comportement historique inchangé. Sert aussi de garde
-    # d'idempotence : un second appel renvoie la réclamation existante.
+    # ── AUD529 — Ancien lien de retour d'escalade en réclamation externe ────
+    # LOOSE FK entier (même patron que ``facture_id_ext``/``lead_id`` : jamais
+    # un import cross-app d'un modèle externe). Champ conservé pour
+    # l'historique déjà écrit ; l'action d'escalade qui l'écrivait a été
+    # retirée (module externe détaché) — NULL = ticket jamais escaladé.
     reclamation_id_ext = models.IntegerField(
         null=True, blank=True,
-        help_text='ID de la litiges.Reclamation ouverte depuis ce ticket '
-                  '(escalade AUD529).')
+        help_text="ID d'une réclamation externe ouverte depuis ce ticket "
+                  '(champ historique — action d\'escalade retirée).')
 
     # ── XFSM15 — Suivi des récidives (callbacks / retour sur panne) ─────────
     # Un ticket causé par une intervention ratée récente sur le MÊME chantier.
@@ -2325,24 +2314,6 @@ class CategorieTicket(models.Model):
     ordre = models.PositiveIntegerField(default=0)
     actif = models.BooleanField(default=True)
 
-    # ── NTSRV6 — Compétences RH exigées par cette catégorie ─────────────────
-    # ADDITIF et OPTIONNEL : une catégorie SANS compétence définie garde
-    # exactement le comportement actuel (aucun filtre d'affectation). Le lien
-    # est un string-FK vers `rh.Competence` — `apps.sav.models` n'importe
-    # JAMAIS `apps.rh.models` ; la lecture du niveau des employés passe par
-    # `apps.rh.selectors` (règle de modularité CLAUDE.md).
-    competences_requises = models.ManyToManyField(
-        'rh.Competence', blank=True, related_name='categories_ticket_sav',
-        verbose_name='Compétences requises',
-        help_text='Compétences exigées pour traiter un ticket de cette '
-                  'catégorie (vide = aucune exigence, comportement actuel).')
-    niveau_competence_min = models.PositiveSmallIntegerField(
-        default=1,
-        verbose_name='Niveau minimum requis',
-        help_text='Niveau minimum attendu sur chaque compétence requise '
-                  '(échelle rh.CompetenceEmploye : 0 non acquis → 4 expert). '
-                  "Sans compétence requise, ce niveau n'est jamais consulté.")
-
     class Meta:
         ordering = ['ordre', 'libelle']
         unique_together = [('company', 'libelle')]
@@ -2351,11 +2322,6 @@ class CategorieTicket(models.Model):
 
     def __str__(self):
         return self.libelle
-
-    def competences_requises_ids(self):
-        """NTSRV6 — ids des compétences exigées (liste vide = aucune
-        exigence → comportement d'affectation actuel strictement inchangé)."""
-        return list(self.competences_requises.values_list('id', flat=True))
 
 
 # ── ZMFG6 — Feuilles de maintenance (worksheets) ─────────────────────────────

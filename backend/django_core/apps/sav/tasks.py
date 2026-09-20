@@ -11,7 +11,7 @@ humaine — réutilise EXACTEMENT ``maintenance.generer_visites_dues`` (aucune
 logique dupliquée), étendue pour accepter un horizon d'avance.
 
 Autodécouvert par ``erp_agentique.celery`` (``autodiscover_tasks()``), comme
-``apps.rh.tasks``/``apps.contrats.scheduled``.
+les autres tâches planifiées de l'ERP.
 
 Multi-tenant : boucle par société active, OFF par défaut = no-op total. Une
 société qui échoue n'empêche jamais les suivantes (best-effort, journalisé).
@@ -68,7 +68,7 @@ def _verrou_scan(nom):
 def _responsables(company):
     """Responsables/admins actifs de la société (destinataires de la
     notification). Repli sur tous les actifs si aucun palier trouvé — même
-    logique que ``apps.rh.tasks._recipients``."""
+    logique que les autres tâches de notification par défaut de l'ERP."""
     try:
         from authentication.models import CustomUser
         base = list(CustomUser.objects.filter(company=company, is_active=True))
