@@ -35,7 +35,8 @@ from core.permissions import ScopedPermission
 
 from ..permissions import CAL_GERER, CAL_VOIR
 
-__all__ = ['MoteurCalculerView', 'document_de_la_demande']
+__all__ = ['MoteurCalculerView', 'MoteurResultatView',
+           'document_de_la_demande']
 
 
 def document_de_la_demande(donnees):
@@ -97,8 +98,11 @@ class MoteurCalculerView(APIView):
             return Response({'entree': [str(erreur)]},
                             status=status.HTTP_400_BAD_REQUEST)
         if not cout.synchrone:
-            return Response(accuse_de_travail_long(cout),
-                            status=status.HTTP_202_ACCEPTED)
+            return Response(
+                accuse_de_travail_long(
+                    cout, _lancer_en_tache_de_fond(request, company,
+                                                   document)),
+                status=status.HTTP_202_ACCEPTED)
 
         try:
             resultat = calepinage_json(document, company=company,
@@ -115,16 +119,44 @@ class MoteurCalculerView(APIView):
         return Response(resultat)
 
 
-def accuse_de_travail_long(cout):
-    """Le 202 : ce que coûte le calcul, et OÙ le suivre.
+def _lancer_en_tache_de_fond(request, company, document):
+    """CAL23 — dispatch par ``core.jobs.submit`` : jamais une file maison.
 
-    Forme ``exemple_vide`` du contrat CAL2. CAL23 y branche la tâche de fond ;
-    tant qu'elle n'est pas là, la route DIT que le travail est trop lourd au
-    lieu de le lancer quand même.
+    Une soumission de PLUSIEURS documents emprunte le MÊME kind
+    (``calepinage``) : l'appelant passe une liste, la tâche traite chaque
+    élément séparément. Société et utilisateur sont posés côté serveur par la
+    primitive elle-même.
+    """
+    from core.jobs import submit
+
+    from ..tasks import KIND_CALEPINAGE, calculer_calepinage
+
+    documents = document.get('entrees') if isinstance(
+        document.get('entrees'), list) else None
+    return submit(KIND_CALEPINAGE, calculer_calepinage, company=company,
+                  user=request.user,
+                  entree=None if documents else document,
+                  entrees=documents)
+
+
+def accuse_de_travail_long(cout, job):
+    """Le 202 : le job à suivre, et ce que le calcul coûte.
+
+    Forme ``exemple_vide`` du contrat CAL2 : l'identifiant est nommé
+    ``job_id`` (et pas ``id``) pour qu'aucun écran ne le confonde avec l'id
+    d'un calepinage.
     """
     return {
+        'job_id': job.pk,
+        'kind': job.kind,
+        'statut': job.statut,
+        'progress_pct': job.progress_pct,
+        'message_erreur': job.message_erreur or '',
+        'resultat': None,
+        'variante': None,
         'detail': ("Ce calepinage dépasse le budget de calcul synchrone : "
-                   "lancez-le en tâche de fond."),
+                   "suivez-le sur /api/django/calepinage/moteur/resultat/"
+                   f"{job.pk}/."),
         'cout_estime': {
             'positions': cout.positions,
             'kits': cout.kits,
@@ -133,3 +165,41 @@ def accuse_de_travail_long(cout):
             'motif': cout.motif,
         },
     }
+
+
+class MoteurResultatView(APIView):
+    """``GET /api/django/calepinage/moteur/resultat/<job_id>/`` — l'état + le
+    résultat d'un calcul lancé en tâche de fond.
+
+    Le job d'une AUTRE société est INTROUVABLE (404), jamais « interdit » : un
+    403 confirmerait son existence. Mêmes clés que l'accusé 202, plus le
+    résultat quand il est là — ``resultat: null`` veut dire « pas encore », et
+    la liste ``elements`` dit l'issue de CHAQUE document d'un lot.
+    """
+
+    permission_classes = [ScopedPermission]
+    read_permission = CAL_VOIR
+    write_permission = CAL_GERER
+
+    def get(self, request, job_id=None, *args, **kwargs):
+        from core.models import BackgroundJob
+
+        from ..tasks import KIND_CALEPINAGE, resultat_du_job
+
+        company = getattr(request.user, 'company', None)
+        job = BackgroundJob.objects.filter(
+            pk=job_id, company=company, kind=KIND_CALEPINAGE).first()
+        if job is None:
+            return Response({'detail': 'Calcul de calepinage introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        charge = resultat_du_job(job) or {}
+        return Response({
+            'job_id': job.pk,
+            'kind': job.kind,
+            'statut': job.statut,
+            'progress_pct': job.progress_pct,
+            'message_erreur': job.message_erreur or '',
+            'resultat': charge.get('resultat'),
+            'elements': charge.get('elements') or [],
+            'variante': None,
+        })
