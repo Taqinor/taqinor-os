@@ -319,3 +319,162 @@ def dossiers_du_calepinage(calepinage, *, pays=None):
                for gabarit in gabarits]
     return composer_dossiers(calepinage_id=calepinage.pk, pays=pays,
                              entrees=entrees, infos=infos)
+
+
+# ── CAL192 — LE PACK DE RACCORDEMENT AUTOPRODUCTION (MAROC) ────────────────
+#
+# Aucun rail marocain n'existe dans ce dépôt et le tarif BT de l'ANRE reste
+# non publié : la règle « checked facts » impose donc que toute pièce ou
+# valeur réglementaire soit SOURCÉE ou OMISE. Ce pack n'invente donc AUCUN
+# formulaire : il assemble ce que le module PRODUIT vraiment (planche, note de
+# calcul, schéma unifilaire) et ce que la SOCIÉTÉ a DÉPOSÉ (son gabarit, sa
+# fiche société). En l'absence de gabarit société, il REFUSE en expliquant en
+# français quoi déposer — jamais un gabarit inventé.
+#
+# La fusion est celle de la GED (``apps.ged.services.fusionner_pdf``, XGED10),
+# exactement comme ``services/pack_technique.py`` : aucune seconde plomberie
+# PDF n'est créée ici.
+
+#: Où le pack se range dans la GED.
+CABINET_GED = 'Calepinage'
+DOSSIER_GED = 'Dossiers réglementaires'
+
+#: Les pièces que le MODULE produit lui-même, dans l'ordre d'impression :
+#: ``(code, libellé, obligatoire)``. Ce ne sont PAS des formulaires officiels
+#: — ce sont les sorties du calepinage, produites depuis ses données réelles.
+PIECES_PRODUITES = (
+    ('planche', 'Planche de calepinage', True),
+    ('note_calcul', 'Note de calcul', True),
+    ('schema_unifilaire', 'Schéma unifilaire', False),
+)
+
+
+class DossierRefuse(ValueError):
+    """Le dossier refuse de sortir, en NOMMANT ce qui manque."""
+
+    def __init__(self, message, *, piece=''):
+        super().__init__(message)
+        self.piece = piece
+
+
+def _rendus_du_module(calepinage, company):
+    """``code -> fonction de rendu`` (octets PDF). Imports FONCTION-LOCAUX."""
+    from .note_calcul import rendre_note_calcul
+    from .planche import html_de_planche, rendre_planche_pdf
+
+    def _schema():
+        from apps.ventes.selectors import schema_unifilaire_svg
+        from core.pdf import render_pdf
+
+        svg = schema_unifilaire_svg(calepinage.devis) \
+            if getattr(calepinage, 'devis_id', None) else ''
+        if not svg:
+            raise DossierRefuse(
+                "Aucun schéma unifilaire n'est disponible pour ce "
+                "calepinage : il se produit depuis le devis lié.",
+                piece='schema_unifilaire')
+        return render_pdf(html=html_de_planche(svg), company=company)
+
+    return {
+        'planche': lambda: rendre_planche_pdf(calepinage, company=company),
+        'note_calcul': lambda: rendre_note_calcul(calepinage,
+                                                  company=company),
+        'schema_unifilaire': _schema,
+    }
+
+
+def _rendre_pieces_produites(rendus):
+    """``([(code, libelle, octets)], [signalements])`` — rien n'est sauté."""
+    pieces, signalements = [], []
+    for code, libelle, obligatoire in PIECES_PRODUITES:
+        rendu = rendus.get(code)
+        try:
+            octets = rendu() if rendu is not None else None
+        except Exception as erreur:            # noqa: BLE001 - motif reporté
+            if obligatoire:
+                raise DossierRefuse(
+                    "Dossier réglementaire : la pièce « %s » ne se rend pas "
+                    "— %s. Un dossier amputé ne se dépose pas."
+                    % (libelle, erreur), piece=code)
+            signalements.append('« %s » : %s' % (libelle, erreur))
+            continue
+        if not octets:
+            if obligatoire:
+                raise DossierRefuse(
+                    "Dossier réglementaire : la pièce « %s » est vide."
+                    % libelle, piece=code)
+            signalements.append('« %s » : rendu vide.' % libelle)
+            continue
+        pieces.append((code, libelle, octets))
+    return pieces, signalements
+
+
+def _ancre(calepinage, dossier, code):
+    """L'ancre d'idempotence : dossier + EMPREINTE du layout + pièce."""
+    empreinte = getattr(calepinage, 'layout_hash', '') or 'sans-empreinte'
+    return '%s:%s:%s' % (getattr(dossier, 'pk', ''), empreinte[:12], code)
+
+
+def construire_pack_dossier(dossier, *, created_by=None, rendus=None):
+    """Produit et FUSIONNE le dossier réglementaire d'un calepinage.
+
+    Le gabarit de la société FAIT FOI : sans son fichier, rien n'est produit
+    et le message dit quoi déposer. Les pièces PRODUITES par le module
+    (planche, note de calcul, schéma unifilaire) sont déposées en GED puis
+    fusionnées avec le gabarit déposé — jamais avec un formulaire fabriqué.
+
+    Returns:
+        ``{'document', 'pieces', 'signalements', 'dossier'}``.
+
+    Raises:
+        DossierRefuse: gabarit non déposé, société absente, pièce
+            obligatoire non rendue.
+    """
+    calepinage = dossier.calepinage
+    company = getattr(dossier, 'company', None) or getattr(
+        calepinage, 'company', None)
+    if company is None:
+        raise DossierRefuse(
+            "Un dossier réglementaire se produit toujours dans une société.",
+            piece='company')
+    gabarit = dossier.gabarit
+    if not gabarit.fichier_present:
+        raise DossierRefuse(
+            "Le gabarit « %s » n'a pas de fichier déposé : déposez le "
+            "document fourni par l'administration dans les réglages du "
+            "module, l'ERP ne fabrique aucun formulaire officiel qu'il n'a "
+            "pas reçu." % gabarit.intitule, piece='gabarit')
+
+    # La GED n'est importée QU'APRÈS les refus : un refus doit être immédiat,
+    # et il ne coûte pas le chargement d'un module lourd (patron
+    # ``services/pack_technique.py``).
+    from apps.ged.services import deposit_document, fusionner_pdf
+
+    rendus = rendus if rendus is not None else _rendus_du_module(calepinage,
+                                                                 company)
+    pieces, signalements = _rendre_pieces_produites(rendus)
+    documents = []
+    for code, libelle, octets in pieces:
+        document, _cree = deposit_document(
+            company=company,
+            nom='%s — %s' % (libelle, calepinage),
+            source_type='calepinage.dossier.%s' % code,
+            source_id=_ancre(calepinage, dossier, code),
+            contenu_bytes=octets, mime='application/pdf',
+            filename='%s.pdf' % code,
+            cabinet_nom=CABINET_GED, folder_nom=DOSSIER_GED,
+            created_by=created_by)
+        documents.append(document)
+    if not documents:
+        raise DossierRefuse(
+            "Dossier réglementaire refusé : aucune pièce à fusionner.",
+            piece='pieces')
+
+    pack = fusionner_pdf(documents, company=company, created_by=created_by,
+                         nom='%s — %s' % (gabarit.intitule, calepinage))
+    return {
+        'document': pack,
+        'pieces': [(code, libelle) for code, libelle, _o in pieces],
+        'signalements': signalements,
+        'dossier': dossier.pk,
+    }
