@@ -400,6 +400,97 @@ export function cellsSolarAccess(
   return points.map((p) => pointSolarAccess(latitudeDeg, obstructions, prod, p.x, p.y, diffuseFraction));
 }
 
+// ═══════════ CAL97 — ACCÈS SOLAIRE CHIFFRÉ ET PUBLIÉ (TSRF) ═══════════
+// L'accès solaire par point était calculé UNIQUEMENT pour colorer la heatmap : aucun
+// chiffre n'en sortait. On l'agrège ici par module, par pan et pour l'installation, avec
+// la MÉTHODE et ses HYPOTHÈSES nommées à côté du chiffre. Règle d'honnêteté absolue :
+// sans obstruction renseignée ET sans horizon, il n'y a RIEN à publier — la fonction
+// renvoie `null` (le chiffre est ABSENT), jamais un « 100 % » qui ferait croire à une
+// vérification qui n'a pas eu lieu.
+
+/** CAL97 — accès solaire agrégé d'un ensemble de modules. */
+export interface SolarAccessSummary {
+  /** Accès solaire (0–1) de chaque module, aligné sur les points fournis. */
+  perModule: number[];
+  /** Nombre de modules évalués. */
+  count: number;
+  /** Moyenne des modules (0–1) — chaque module pèse pareil (même puissance crête). */
+  average: number;
+  min: number;
+  max: number;
+  /** Nombre de modules sous le seuil `SOLAR_ACCESS_LOW`. */
+  lowCount: number;
+  /** Période évaluée : null = année entière, 0–11 = mois. */
+  month: number | null;
+  /** Méthode, en une phrase, à afficher À CÔTÉ du chiffre. */
+  method: string;
+  /** Hypothèses explicites du chiffre (jamais implicites). */
+  assumptions: string[];
+}
+
+/** CAL97 — en dessous de ce taux d'accès solaire, un module est dit « fortement
+ *  ombragé ». Seuil d'AFFICHAGE (il ne change aucun calcul) : il correspond à la perte
+ *  d'un quart de l'irradiation annuelle reçue. */
+export const SOLAR_ACCESS_LOW = 0.75;
+
+/**
+ * CAL97 — agrège l'accès solaire d'une liste de modules. Renvoie `null` — donc un chiffre
+ * ABSENT, jamais estimé — quand il n'y a aucun module à évaluer OU quand aucune
+ * obstruction n'a été renseignée (rien n'a été vérifié : publier « 100 % » serait
+ * affirmer une vérification qui n'a pas eu lieu). PUR.
+ */
+export function solarAccessSummary(
+  latitudeDeg: number,
+  obstructions: readonly ShadeObstructionENU[],
+  prod: PerKwcProduction,
+  points: readonly SolarAccessPoint[],
+  month: number | null = null,
+  diffuseFraction = DIFFUSE_FRACTION_WHEN_SHADED,
+): SolarAccessSummary | null {
+  if (!points.length || !obstructions.length) return null;
+  const perModule = points.map((p) =>
+    month == null
+      ? pointSolarAccess(latitudeDeg, obstructions, prod, p.x, p.y, diffuseFraction)
+      : pointSolarAccessMonth(latitudeDeg, obstructions, prod, p.x, p.y, month, diffuseFraction),
+  );
+  const count = perModule.length;
+  const sum = perModule.reduce((a, b) => a + b, 0);
+  return {
+    perModule,
+    count,
+    average: sum / count,
+    min: Math.min(...perModule),
+    max: Math.max(...perModule),
+    lowCount: perModule.filter((a) => a < SOLAR_ACCESS_LOW).length,
+    month,
+    method:
+      'Part de l’irradiation qui atteint réellement chaque module : position du soleil calculée heure par heure ' +
+      '(astronomie standard), occultation par lancer de rayon sur les obstructions renseignées, ' +
+      'pondération par le profil horaire réel du lieu.',
+    assumptions: [
+      `Heure masquée : le rayonnement DIRECT est perdu, la part DIFFUSE (${Math.round(diffuseFraction * 100)} %) est conservée.`,
+      'Ne comptent que les obstructions RENSEIGNÉES (obstacles de toiture à hauteur saisie, objets d’environnement, ombres tracées) — l’horizon lointain n’est pas modélisé.',
+      month == null ? 'Période : année entière (12 jours-types mensuels × 24 h).' : 'Période : le mois sélectionné (jour-type × 24 h).',
+    ],
+  };
+}
+
+/**
+ * CAL97 — agrégat d'INSTALLATION : moyenne des pans, pondérée par leur nombre de modules.
+ * Les pans dont l'accès solaire n'est pas calculable (aucun module, aucune obstruction
+ * renseignée) sont simplement ABSENTS du total — jamais comptés à 100 %. `null` si aucun
+ * pan n'est évaluable. PUR.
+ */
+export function combineSolarAccess(
+  summaries: readonly (SolarAccessSummary | null)[],
+): { average: number; count: number; pans: number } | null {
+  const usable = summaries.filter((s): s is SolarAccessSummary => !!s && s.count > 0);
+  if (!usable.length) return null;
+  const count = usable.reduce((a, s) => a + s.count, 0);
+  const weighted = usable.reduce((a, s) => a + s.average * s.count, 0);
+  return { average: weighted / count, count, pans: usable.length };
+}
+
 /**
  * Couleur RVB (0–1 par canal) d'une valeur d'accès solaire (0–1) : dégradé continu
  * ROUGE (faible accès) → AMBRE → VERT (plein soleil). Le mapping est monotone et lié à

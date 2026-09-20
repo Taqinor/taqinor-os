@@ -10,8 +10,11 @@ import {
   hourlyShadeFactors,
   cellsSolarAccess,
   shadeObstructionsENU,
+  solarAccessSummary,
+  combineSolarAccess,
   DIFFUSE_FRACTION_WHEN_SHADED,
   type ShadeObstructionENU,
+  type SolarAccessSummary,
 } from './shadingEngine';
 import { fallbackPerKwc } from './productionEngine';
 
@@ -137,6 +140,80 @@ describe('CAL94 — la matrice d’ombrage : rien sans obstruction, du rouge der
     // vient d'une VRAIE géométrie, pas d'un facteur d'ombrage forfaitaire.
     expect(access[1]).toBeGreaterThan(0.99);
     expect(access[1]).toBeGreaterThan(access[0]);
+  });
+});
+
+// CAL97 — l'accès solaire n'était utilisé que pour COLORER : aucun chiffre n'était publié.
+// Il est désormais agrégé par module, par pan et pour l'installation, avec sa méthode et
+// ses hypothèses — et il est ABSENT (jamais estimé) quand rien n'a été renseigné.
+describe('CAL97 — solarAccessSummary : un chiffre reproductible, ou pas de chiffre du tout', () => {
+  const LAT = 33.5;
+  const prod = fallbackPerKwc();
+  const cheminee: ShadeObstructionENU = {
+    x: 0,
+    y: -3,
+    effHeightM: 5,
+    halfWidthM: Math.hypot(3, 3) / 2,
+    footprint: rect(0, -3, 1.5, 1.5),
+  };
+  const modules = [
+    { x: 0, y: 0 },
+    { x: 0, y: 2 },
+    { x: 40, y: 0 },
+  ];
+
+  it('AUCUNE obstruction renseignée → null : le chiffre est ABSENT, pas estimé à 100 %', () => {
+    expect(solarAccessSummary(LAT, [], prod, modules)).toBeNull();
+  });
+
+  it('AUCUN module → null (rien à agréger)', () => {
+    expect(solarAccessSummary(LAT, [cheminee], prod, [])).toBeNull();
+  });
+
+  it('cas d’or : le chiffre est reproductible et cohérent avec les valeurs par module', () => {
+    const s = solarAccessSummary(LAT, [cheminee], prod, modules);
+    expect(s).not.toBeNull();
+    const sum = s as SolarAccessSummary;
+    expect(sum.count).toBe(3);
+    expect(sum.perModule).toHaveLength(3);
+    // Reproductible : deux appels identiques donnent EXACTEMENT le même chiffre.
+    expect(solarAccessSummary(LAT, [cheminee], prod, modules)?.average).toBe(sum.average);
+    // Cohérence interne : moyenne = moyenne arithmétique des modules, bornes justes.
+    expect(sum.average).toBeCloseTo(sum.perModule.reduce((a, b) => a + b, 0) / 3, 12);
+    expect(sum.min).toBe(Math.min(...sum.perModule));
+    expect(sum.max).toBe(Math.max(...sum.perModule));
+    expect(sum.min).toBeLessThan(sum.max);
+    // Le module le plus proche de la cheminée est le plus ombragé des trois.
+    expect(sum.perModule[0]).toBe(sum.min);
+  });
+
+  it('la méthode et les hypothèses accompagnent TOUJOURS le chiffre', () => {
+    const s = solarAccessSummary(LAT, [cheminee], prod, modules) as SolarAccessSummary;
+    expect(s.method.length).toBeGreaterThan(40);
+    expect(s.assumptions.length).toBeGreaterThanOrEqual(3);
+    expect(s.assumptions.join(' ')).toContain(String(Math.round(DIFFUSE_FRACTION_WHEN_SHADED * 100)));
+    expect(s.assumptions.join(' ').toLowerCase()).toContain('horizon');
+  });
+
+  it('la lecture mensuelle est portée par le résumé (décembre < juin)', () => {
+    const dec = solarAccessSummary(LAT, [cheminee], prod, modules, 11) as SolarAccessSummary;
+    const jun = solarAccessSummary(LAT, [cheminee], prod, modules, 5) as SolarAccessSummary;
+    expect(dec.month).toBe(11);
+    expect(dec.average).toBeLessThan(jun.average);
+  });
+
+  it('combineSolarAccess pondère par le nombre de modules et IGNORE les pans non évaluables', () => {
+    const a = solarAccessSummary(LAT, [cheminee], prod, [{ x: 0, y: 0 }]) as SolarAccessSummary;
+    const b = solarAccessSummary(LAT, [cheminee], prod, [{ x: 40, y: 0 }, { x: 42, y: 0 }]) as SolarAccessSummary;
+    const total = combineSolarAccess([a, b, null]);
+    expect(total).not.toBeNull();
+    expect((total as { pans: number }).pans).toBe(2); // le pan null n'est PAS compté à 100 %
+    expect((total as { count: number }).count).toBe(3);
+    expect((total as { average: number }).average).toBeCloseTo((a.average * 1 + b.average * 2) / 3, 12);
+  });
+
+  it('aucun pan évaluable → null (jamais un total inventé)', () => {
+    expect(combineSolarAccess([null, null])).toBeNull();
   });
 });
 

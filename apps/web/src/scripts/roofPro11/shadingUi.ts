@@ -27,7 +27,10 @@ import {
   shadowVector,
   pointSolarAccess,
   pointSolarAccessMonth,
+  solarAccessSummary,
+  SOLAR_ACCESS_LOW,
   solarAccessColorRGB,
+  type SolarAccessSummary,
   type ShadeObstruction,
   type ShadeObstructionENU,
 } from '../../lib/shadingEngine';
@@ -57,6 +60,10 @@ export interface ShadingUi {
   /** WJ21 — ré-applique la heatmap d'accès solaire si elle est active (après un re-rendu
    *  qui a recréé les instances de panneaux). No-op si la heatmap est OFF. */
   refreshHeatmap: () => void;
+  /** CAL97 — accès solaire CHIFFRÉ du pan actif (par module + agrégat), ou null quand
+   *  aucune obstruction n'est renseignée : le chiffre est alors ABSENT, jamais estimé.
+   *  Lu par les consommateurs (affichage, sérialisation CAL248). */
+  solarAccess: () => SolarAccessSummary | null;
   /** Efface toutes les ombres tracées (« Effacer » / nouveau tracé). */
   reset: () => void;
 }
@@ -174,6 +181,19 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   // WJ21 — carte d'accès solaire (heatmap d'irradiance).
   const heatmapBtn = $<HTMLButtonElement>('rp9-heatmap-toggle');
   const heatmapNoteEl = $('rp9-heatmap-note');
+  // CAL97 — bloc où l'accès solaire CHIFFRÉ est publié (créé s'il manque dans la page).
+  const accessEl = ensureAccessBlock();
+  function ensureAccessBlock(): HTMLElement | null {
+    const existing = $('rp9-solar-access');
+    if (existing) return existing;
+    const anchor = heatmapNoteEl?.parentElement ?? heatmapBtn?.parentElement;
+    if (!anchor || typeof document.createElement !== 'function') return null;
+    const box = document.createElement('div');
+    box.id = 'rp9-solar-access';
+    box.className = 'mt-2 text-xs text-lune-soft';
+    anchor.appendChild(box);
+    return box;
+  }
   let heatmapOn = false;
   // CAL95 — LECTURE SAISONNIÈRE de la carte : null = annuel (le défaut historique),
   // 0–11 = un mois. Le sélecteur est créé ici s'il n'existe pas déjà dans la page (même
@@ -281,6 +301,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     // WJ21 — le re-rendu (recalcDisplays) a recréé les instances de panneaux : ré-applique
     // la teinte d'accès solaire si la heatmap est active.
     refreshHeatmap();
+    renderSolarAccess(); // CAL97 — le chiffre publié suit les obstructions
   }
 
   // WJ21 — CARTE D'ACCÈS SOLAIRE : teinte chaque panneau par sa part RÉELLE d'irradiation
@@ -305,6 +326,43 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   function refreshHeatmap() {
     if (!heatmapOn) return;
     applyHeatmap(buildHeatmapColorFn());
+  }
+
+  /**
+   * CAL97 — accès solaire CHIFFRÉ du pan actif. `null` = le chiffre est ABSENT (aucun
+   * module posé, ou aucune obstruction renseignée : rien n'a été vérifié, on ne publie
+   * donc pas un « 100 % » qui ferait croire à une vérification d'ombrage).
+   */
+  function solarAccess(): SolarAccessSummary | null {
+    const plan = ctx.layoutPlan;
+    if (!plan || !plan.grid.panels.length || ctx.vertices.length < 3) return null;
+    const prod = ctx.prodPerKwc ?? fallbackPerKwc();
+    const points = plan.grid.panels.map((p) => ({ x: p.cx, y: p.cy }));
+    return solarAccessSummary(ctx.centroidLat, activeShadeEntries(), prod, points, heatmapMonth);
+  }
+
+  /** CAL97 — publie le chiffre (et sa méthode) à côté de la carte, ou dit clairement
+   *  POURQUOI il est absent — jamais une estimation de remplacement. */
+  function renderSolarAccess() {
+    const el = accessEl;
+    if (!el) return;
+    const s = solarAccess();
+    if (!s) {
+      el.textContent = hasShadeSources()
+        ? 'Accès solaire : non calculé (aucun module posé sur ce pan).'
+        : 'Accès solaire : non renseigné — aucune obstruction n’a été saisie et l’horizon lointain n’est pas modélisé. Le chiffre est volontairement ABSENT plutôt qu’estimé.';
+      return;
+    }
+    const pct = (v: number) => `${(v * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
+    const periode = s.month == null ? 'année entière' : HEATMAP_MONTH_LABELS[s.month];
+    el.innerHTML =
+      `<div><span class="font-semibold text-white">Accès solaire (${esc(periode)})</span> — ` +
+      `moyenne du pan <span class="fig">${esc(pct(s.average))}</span> sur ${s.count} module(s), ` +
+      `du plus ombragé <span class="fig">${esc(pct(s.min))}</span> au plus dégagé <span class="fig">${esc(pct(s.max))}</span>` +
+      (s.lowCount ? `, dont ${s.lowCount} sous ${esc(pct(SOLAR_ACCESS_LOW))}` : '') +
+      '.</div>' +
+      `<div class="mt-1 opacity-80">${esc(s.method)}</div>` +
+      `<ul class="mt-1 list-disc pl-4 opacity-80">${s.assumptions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>`;
   }
 
   function setHeatmap(on: boolean) {
@@ -488,6 +546,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     heatmapMonth = v != null && Number.isInteger(v) && v >= 0 && v <= 11 ? v : null;
     syncHeatmapNote();
     if (heatmapOn) applyHeatmap(buildHeatmapColorFn());
+    renderSolarAccess(); // CAL97 — le chiffre publié porte la période choisie
   });
 
   // CAL60 — hauteur de bâtiment saisie (`change` : blur/Entrée, jamais à chaque frappe,
@@ -507,5 +566,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   });
   syncHeightUi();
 
-  return { handleMapClick, recomputeShading, refreshHeatmap, reset };
+  renderSolarAccess(); // CAL97 — état initial (dossier rechargé avec des obstructions)
+
+  return { handleMapClick, recomputeShading, refreshHeatmap, reset, solarAccess };
 }
