@@ -1,4 +1,7 @@
 import { Link } from 'react-router-dom'
+// CAL38 — la SORTIE vers le devis (générer / resynchroniser). Elle se pose ici,
+// dans l'emplacement enregistré par CAL37 : l'atelier n'est pas rouvert.
+import BoutonDevis from './BoutonDevis'
 
 /* ============================================================================
    CAL37 — L'UNIQUE EMPLACEMENT DES PANNEAUX DE L'ATELIER, mode `calepinage`.
@@ -83,13 +86,16 @@ export default function AtelierPanneaux({
       {/* L'EMPLACEMENT des panneaux des tâches suivantes. `builderApi`,
           `onRecharger` et `lectureSeule` leur sont passés par l'atelier, pour
           qu'aucune n'ait à aller les rechercher elle-même. */}
-      {children ? (
-        <div className="mt-5 flex flex-wrap items-start gap-4" data-testid="cal-atelier-actions">
-          {typeof children === 'function'
-            ? children({ calepinageId, contexte, builderApi, lectureSeule, onRecharger })
-            : children}
-        </div>
-      ) : null}
+      <div className="mt-5 flex flex-wrap items-start gap-4" data-testid="cal-atelier-actions">
+        <BoutonDevis
+          calepinageId={calepinageId}
+          lectureSeule={lectureSeule}
+          onRecharger={onRecharger}
+        />
+        {typeof children === 'function'
+          ? children({ calepinageId, contexte, builderApi, lectureSeule, onRecharger })
+          : children}
+      </div>
     </div>
   )
 }
