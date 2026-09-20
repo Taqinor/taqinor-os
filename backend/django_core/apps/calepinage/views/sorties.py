@@ -342,10 +342,11 @@ class SortiesMixin:
             url_name='pack-technique',
             permission_classes=[PeutGererCalepinage])
     def pack_technique(self, request, pk=None):
-        """CAL181 — produit le dossier technique et le RANGE dans la GED.
+        """CAL181 — produit le dossier technique et le RANGE en pièce jointe.
 
         En ÉCRITURE (POST) et gardée par ``calepinage_gerer`` : l'appel CRÉE
-        des documents GED. Une lecture n'a pas à écrire dans le référentiel.
+        des pièces jointes (``records``, SOLMVP15 — le référentiel documentaire
+        sort du produit). Une lecture n'a pas à écrire.
         """
         from ..services.pack_technique import PackRefuse, construire_pack
 
@@ -360,7 +361,9 @@ class SortiesMixin:
         document = resultat['document']
         return Response({
             'document': getattr(document, 'pk', None),
-            'nom': getattr(document, 'nom', ''),
+            # Le nom MÉTIER vient du service (la pièce jointe générique n'a pas
+            # de champ « nom ») — la clé et sa valeur sont celles d'avant.
+            'nom': resultat.get('nom', ''),
             'pieces': [{'code': code, 'libelle': libelle, 'pages': pages}
                        for code, libelle, pages in resultat['pieces']],
             'pages_attendues': resultat['pages_attendues'],

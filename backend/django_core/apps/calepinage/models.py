@@ -30,8 +30,7 @@ LES DÉCISIONS D'ARCHITECTURE GRAVÉES ICI
   ``apps.ventes.services.layout_hash`` — JAMAIS recodée ici (CAL13).
 
 Les lectures cross-app passent EXCLUSIVEMENT par ``apps.crm.selectors`` /
-``apps.ventes.selectors`` / ``apps.ao.selectors`` : ce fichier n'importe aucun
-modèle étranger.
+``apps.ventes.selectors`` : ce fichier n'importe aucun modèle étranger.
 """
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -298,7 +297,7 @@ class CalepinageVariante(TenantModel):
         """
         # Import du VERROU seul (``garde_retenue``, stdlib pure) et jamais du
         # service : ``models -> services.variantes -> apps.ventes.services ->
-        # … -> apps.ao.models`` ferait rougir le contrat CAL5 (mesuré).
+        # … -> les modèles d'une autre app`` ferait rougir CAL5 (mesuré).
         from .garde_retenue import (
             bascule_en_cours,
             refuser_ecriture_directe,
@@ -977,10 +976,11 @@ class DossierReglementaire(TenantModel):
     (calepinage, gabarit) : deux dossiers sur le même gabarit seraient deux
     vérités pour une même démarche.
 
-    ``document_id`` est OPAQUE (``PositiveIntegerField``) — le document GED
-    produit est atteint par les SERVICES de la GED
-    (``apps.ged.services``), jamais par une FK vers ses modèles : c'est ce
-    que le contrat import-linter du module verrouille.
+    ``document_id`` est OPAQUE (``PositiveIntegerField``) — il porte le ``pk``
+    de la PIÈCE JOINTE produite (``records.Attachment``, SOLMVP15 ; c'était un
+    document du référentiel documentaire, qui sort du produit), atteinte par
+    les services du module, jamais par une FK : c'est ce que le contrat
+    import-linter du module verrouille.
     """
 
     calepinage = models.ForeignKey(
