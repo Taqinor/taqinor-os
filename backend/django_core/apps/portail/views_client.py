@@ -647,6 +647,14 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
             facture_du_client_portail, facture_est_payable_portail,
         )
 
+        # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS créer
+        # d'intention de paiement (consultation uniquement).
+        if not services.peut_ecrire_portail_client(request.user):
+            return Response(
+                {'detail': "Votre accès est en lecture seule : vous ne "
+                           "pouvez pas payer de facture."},
+                status=status.HTTP_403_FORBIDDEN)
+
         company, client_id = _scope(request)
         facture = facture_du_client_portail(company, client_id, pk)
         if facture is None:
@@ -1137,6 +1145,14 @@ class SatisfactionPortailViewSet(viewsets.ViewSet):
         from apps.marketing.services import (
             repondre_enquete_satisfaction_client,
         )
+
+        # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS répondre
+        # à une enquête de satisfaction (consultation uniquement).
+        if not services.peut_ecrire_portail_client(request.user):
+            return Response(
+                {'detail': "Votre accès est en lecture seule : vous ne "
+                           "pouvez pas répondre à cette enquête."},
+                status=status.HTTP_403_FORBIDDEN)
 
         company, client_id = _scope(request)
         enquete, erreur = repondre_enquete_satisfaction_client(

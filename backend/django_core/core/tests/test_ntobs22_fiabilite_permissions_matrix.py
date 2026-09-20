@@ -128,6 +128,65 @@ class Ntobs22PermissionsMatrixTest(TestCase):
             f'/api/django/core/maintenance-windows/{fenetre.pk}/annuler/')
         self.assertEqual(resp.status_code, 200)
 
+    # ── cross-tenant — un compte fiabilite_administration du tenant A ne
+    # touche JAMAIS les fenêtres/crédits du tenant B (même Directeur) ────
+
+    def test_maintenance_list_non_admin_excludes_other_company(self):
+        MaintenanceWindow.objects.create(
+            company=self.autre,
+            debute_le=timezone.now() + timezone.timedelta(hours=1),
+            termine_le=timezone.now() + timezone.timedelta(hours=2),
+            description='Autre société')
+        systeme = MaintenanceWindow.objects.create(
+            company=None,
+            debute_le=timezone.now() + timezone.timedelta(hours=1),
+            termine_le=timezone.now() + timezone.timedelta(hours=2),
+            description='Annonce système')
+        resp = self._client(self.u_voir).get(
+            '/api/django/core/maintenance-windows/')
+        self.assertEqual(resp.status_code, 200)
+        ids = [row['id'] for row in resp.data]
+        self.assertNotIn(
+            MaintenanceWindow.objects.get(company=self.autre).id, ids)
+        self.assertIn(systeme.id, ids)
+
+    def test_annuler_fenetre_dune_autre_societe_est_404(self):
+        fenetre_autre = MaintenanceWindow.objects.create(
+            company=self.autre,
+            debute_le=timezone.now() + timezone.timedelta(hours=1),
+            termine_le=timezone.now() + timezone.timedelta(hours=2),
+            description='Autre société')
+        resp = self._client(self.u_admin_fiab).post(
+            f'/api/django/core/maintenance-windows/{fenetre_autre.pk}/'
+            'annuler/')
+        self.assertEqual(resp.status_code, 404)
+        fenetre_autre.refresh_from_db()
+        self.assertNotEqual(
+            fenetre_autre.statut, MaintenanceWindow.Statut.ANNULE)
+
+    def test_annuler_fenetre_systeme_par_non_superuser_est_404(self):
+        systeme = MaintenanceWindow.objects.create(
+            company=None,
+            debute_le=timezone.now() + timezone.timedelta(hours=1),
+            termine_le=timezone.now() + timezone.timedelta(hours=2),
+            description='Annonce système')
+        resp = self._client(self.u_admin_fiab).post(
+            f'/api/django/core/maintenance-windows/{systeme.pk}/annuler/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_annuler_fenetre_systeme_par_superuser_est_200(self):
+        systeme = MaintenanceWindow.objects.create(
+            company=None,
+            debute_le=timezone.now() + timezone.timedelta(hours=1),
+            termine_le=timezone.now() + timezone.timedelta(hours=2),
+            description='Annonce système')
+        superuser = User.objects.create_user(
+            'super22', password='x', company=self.company,
+            role=self.role_admin_fiabilite, is_superuser=True)
+        resp = self._client(superuser).post(
+            f'/api/django/core/maintenance-windows/{systeme.pk}/annuler/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
     # ── 4/5 — SLA (crédits cross-tenant + statut de crédit) ─────────────
 
     def test_sla_credits_forbidden_without_any_grant(self):
@@ -182,6 +241,31 @@ class Ntobs22PermissionsMatrixTest(TestCase):
             f'/api/django/core/sla/credits/{snapshot.pk}/statut/',
             {'statut': 'emis'})
         self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_sla_credit_statut_dune_autre_societe_est_404(self):
+        """Un crédit SLA est par-tenant : même un compte fiabilite_
+        administration (ou un Directeur) du tenant A ne peut PAS trancher un
+        crédit du tenant B — 404 introuvable, jamais un 403 qui révélerait
+        son existence."""
+        snapshot_autre = generer_snapshot_societe(
+            self.autre, timezone.now().date().replace(day=1))
+        resp = self._client(self.u_admin_fiab).post(
+            f'/api/django/core/sla/credits/{snapshot_autre.pk}/statut/',
+            {'statut': 'emis'})
+        self.assertEqual(resp.status_code, 404)
+        snapshot_autre.refresh_from_db()
+        self.assertNotEqual(
+            snapshot_autre.credit_statut, SlaSnapshot.CreditStatut.EMIS)
+
+    def test_sla_credit_statut_directeur_dune_autre_societe_est_404(self):
+        """Même le Directeur — pas d'exception admin sur cette écriture,
+        contrairement à la LISTE cross-tenant (SlaCreditsDusListView)."""
+        snapshot_autre = generer_snapshot_societe(
+            self.autre, timezone.now().date().replace(day=1))
+        resp = self._client(self.u_directeur).post(
+            f'/api/django/core/sla/credits/{snapshot_autre.pk}/statut/',
+            {'statut': 'emis'})
+        self.assertEqual(resp.status_code, 404)
 
     # ── 6 — Sauvegardes (BackupRunViewSet) ───────────────────────────────
 

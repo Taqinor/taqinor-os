@@ -156,21 +156,43 @@ class TotalPerDiemParDestinationTests(TestCase):
         IndemniteChantier.objects.create(
             company=self.company, employe=self.employe, bareme=self.bareme,
             date_deplacement=date(2026, 2, 10), libelle_chantier='Rabat',
-            montant_per_diem=Decimal('300'), montant_total=Decimal('300'))
+            montant_per_diem=Decimal('300'), montant_total=Decimal('300'),
+            statut=IndemniteChantier.Statut.REMBOURSEE)
         IndemniteChantier.objects.create(
             company=self.company, employe=self.employe, bareme=self.bareme,
             date_deplacement=date(2026, 2, 12), libelle_chantier='Rabat',
-            montant_per_diem=Decimal('150'), montant_total=Decimal('150'))
+            montant_per_diem=Decimal('150'), montant_total=Decimal('150'),
+            statut=IndemniteChantier.Statut.REMBOURSEE)
         IndemniteChantier.objects.create(
             company=self.company, employe=self.employe, bareme=self.bareme,
             date_deplacement=date(2026, 2, 14), libelle_chantier='Marrakech',
-            montant_per_diem=Decimal('450'), montant_total=Decimal('450'))
+            montant_per_diem=Decimal('450'), montant_total=Decimal('450'),
+            statut=IndemniteChantier.Statut.REMBOURSEE)
 
         lignes = total_per_diem_par_destination(self.company)
         par_destination = {ligne['destination']: ligne['montant_total']
                            for ligne in lignes}
         self.assertEqual(par_destination['Rabat'], Decimal('450'))
         self.assertEqual(par_destination['Marrakech'], Decimal('450'))
+
+    def test_per_diem_non_remboursee_ne_compte_plus(self):
+        """ROUGE avant correctif : une per-diem rejetée/brouillon comptait
+        quand même (même filtre de statut que ``total_rembourse_par_
+        categorie``, NTP2P47)."""
+        IndemniteChantier.objects.create(
+            company=self.company, employe=self.employe, bareme=self.bareme,
+            date_deplacement=date(2026, 2, 10), libelle_chantier='Fes',
+            montant_per_diem=Decimal('300'), montant_total=Decimal('300'),
+            statut=IndemniteChantier.Statut.REJETEE)
+        IndemniteChantier.objects.create(
+            company=self.company, employe=self.employe, bareme=self.bareme,
+            date_deplacement=date(2026, 2, 11), libelle_chantier='Fes',
+            montant_per_diem=Decimal('150'), montant_total=Decimal('150'),
+            statut=IndemniteChantier.Statut.BROUILLON)
+
+        lignes = total_per_diem_par_destination(self.company)
+        self.assertEqual(
+            [ligne for ligne in lignes if ligne['destination'] == 'Fes'], [])
 
     def test_sans_societe_renvoie_liste_vide(self):
         self.assertEqual(total_per_diem_par_destination(None), [])

@@ -561,10 +561,10 @@ ALL_PERMISSIONS = [
     #     lance un export de réversibilité, édite ``SlaCreditPolicy``/
     #     ``ReliabilitySettings``. Réservé Directeur (hérité via
     #     ``ALL_PERMISSIONS``/``DIRECTEUR_PERMISSIONS`` ci-dessous).
-    # Le câblage des 6 vues ``core.{maintenance_windows,sla,views}`` (encore
-    # sur ``IsDirecteurOrAdmin``/``IsAdminOrResponsableTier`` codé en dur) est
-    # HORS du périmètre roles-only de cette tâche — ces deux codes ne sont
-    # pour l'instant consommés par AUCUN viewset routé. Aucun rôle « Comptable »
+    # Le câblage des 6 vues ``core.{maintenance_windows,sla,views}`` (alors
+    # sur ``IsDirecteurOrAdmin``/``IsAdminOrResponsableTier`` codé en dur) était
+    # hors du périmètre roles-only de cette tâche — depuis le 20/09 ces deux
+    # codes sont consommés par les 6 vues Fiabilité de core (``FiabilitePermission``, NTOBS22-câblage). Aucun rôle « Comptable »
     # n'existe dans ce dépôt (les rôles système sont Directeur/Administrateur/
     # Commercial responsable/Commercial/Commercial terrain/Technicien
     # responsable/Technicien/Viewer/Admin RH/Admin Ventes + les 3 rôles

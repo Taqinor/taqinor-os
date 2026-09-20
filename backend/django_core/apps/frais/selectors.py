@@ -166,16 +166,20 @@ def delai_moyen_depense_remboursement_jours(company, *, debut=None,
 
 def total_per_diem_par_destination(company, *, debut=None, fin=None):
     """NTP2P47 — total ``montant_per_diem`` des ``IndemniteChantier``
-    (NTP2P12) par destination (``libelle_chantier``), borné sur
-    ``date_deplacement``. Une destination vide (``''``) regroupe les
-    missions sans chantier renseigné. Triée par montant décroissant."""
+    (NTP2P12) REMBOURSÉES par destination (``libelle_chantier``), borné sur
+    ``date_deplacement`` — même filtre de statut que son jumeau
+    ``total_rembourse_par_categorie`` ci-dessus (une per-diem brouillon,
+    soumise, validée ou rejetée n'est pas encore un coût réel remboursé).
+    Une destination vide (``''``) regroupe les missions sans chantier
+    renseigné. Triée par montant décroissant."""
     from decimal import Decimal
     from django.db.models import Sum
     from apps.frais.models import IndemniteChantier
 
     if company is None:
         return []
-    qs = IndemniteChantier.objects.filter(company=company)
+    qs = IndemniteChantier.objects.filter(
+        company=company, statut=IndemniteChantier.Statut.REMBOURSEE)
     if debut is not None:
         qs = qs.filter(date_deplacement__gte=debut)
     if fin is not None:

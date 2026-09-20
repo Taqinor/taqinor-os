@@ -18,6 +18,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, serializers, status
@@ -230,12 +231,24 @@ class MaintenanceWindowListCreateView(generics.ListCreateAPIView):
     Un Directeur/Administrateur d'UN tenant reste néanmoins BORNÉ à sa propre
     société : ``company`` est forcée côté serveur à la sienne, sauf pour un
     superutilisateur (le fondateur/opérateur plateforme), seul habilité à
-    poser ``company=None`` (annonce système large) ou une autre société."""
+    poser ``company=None`` (annonce système large) ou une autre société.
+
+    La LISTE (GET) suit le même patron que ``SlaCreditsDusListView``
+    (``core.sla``) : un Directeur/Administrateur voit TOUTES les sociétés
+    (pilotage cross-tenant, inchangé) ; un compte ``fiabilite_voir`` non-admin
+    reste BORNÉ à SA société + aux fenêtres SYSTÈME (``company__isnull``,
+    annonces larges — toujours visibles de tous)."""
 
     serializer_class = MaintenanceWindowSerializer
     permission_classes = [IsAuthenticated, FiabilitePermission]
     pagination_class = None
-    queryset = MaintenanceWindow.objects.all().order_by('-debute_le')
+
+    def get_queryset(self):
+        qs = MaintenanceWindow.objects.all().order_by('-debute_le')
+        if not _est_admin(self.request.user):
+            qs = qs.filter(
+                Q(company=self.request.user.company) | Q(company__isnull=True))
+        return qs
 
     def perform_create(self, serializer):
         if getattr(self.request.user, 'is_superuser', False):
@@ -253,9 +266,18 @@ class MaintenanceWindowListCreateView(generics.ListCreateAPIView):
 @permission_classes([IsAuthenticated, FiabilitePermission])
 def annuler_fenetre(request, pk):
     """POST /api/django/core/maintenance-windows/<pk>/annuler/ — annule une
-    fenêtre et notifie (retrait de la bannière + information des admins)."""
+    fenêtre et notifie (retrait de la bannière + information des admins).
+
+    Bornée à la société de l'appelant comme ``perform_create`` ci-dessus : un
+    Directeur/Administrateur d'UN tenant n'annule que SES fenêtres. Une
+    fenêtre SYSTÈME (``company__isnull=True``, annonce large) n'est annulable
+    que par un superutilisateur — sinon 404, jamais un 403 qui révélerait son
+    existence."""
+    qs = MaintenanceWindow.objects.all()
+    if not getattr(request.user, 'is_superuser', False):
+        qs = qs.filter(company=request.user.company)
     try:
-        fenetre = MaintenanceWindow.objects.get(pk=pk)
+        fenetre = qs.get(pk=pk)
     except MaintenanceWindow.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND)
     fenetre.statut = MaintenanceWindow.Statut.ANNULE

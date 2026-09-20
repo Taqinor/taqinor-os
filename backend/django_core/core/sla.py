@@ -596,7 +596,14 @@ def sla_credit_statut(request, pk):
     """POST /api/django/core/sla/credits/<pk>/statut/ — trace la décision
     humaine sur un crédit (``emis``/``refuse``). N'ÉMET JAMAIS d'avoir : cette
     action enregistre seulement qu'un humain l'a fait (ou refusé) via le flux
-    Avoir existant, ailleurs."""
+    Avoir existant, ailleurs.
+
+    Bornée à LA SOCIÉTÉ de l'appelant, SANS exception admin : un crédit SLA
+    est par-tenant, et personne — même Directeur — n'édite légitimement celui
+    d'un autre tenant (contrairement à ``SlaCreditsDusListView`` ci-dessus,
+    une LECTURE de pilotage cross-tenant, inchangée). Un pk d'une autre
+    société est 404 (introuvable), jamais un 403 qui révélerait son
+    existence."""
     nouveau_statut = request.data.get('statut')
     valides = (SlaSnapshot.CreditStatut.EMIS, SlaSnapshot.CreditStatut.REFUSE)
     if nouveau_statut not in valides:
@@ -605,7 +612,8 @@ def sla_credit_statut(request, pk):
             status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        snapshot = SlaSnapshot.objects.get(pk=pk)
+        snapshot = SlaSnapshot.objects.get(
+            pk=pk, company=request.user.company)
     except SlaSnapshot.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND)
 

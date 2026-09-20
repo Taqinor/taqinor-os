@@ -22,12 +22,14 @@ Run :
 import itertools
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from testkit.time import frozen
 
 from apps.crm.models import Client
+from apps.facturation.models import Facture
+from apps.marketing.models import EnqueteNPS
 from apps.portail.models import InvitationPortail
 from apps.portail.services import (
     accepter_invitation_portail,
@@ -210,6 +212,14 @@ class EndpointDevisEtTicketGatingTests(TestCase):
             company=self.company, reference='DEV-NTPRT6-1',
             client=self.client_crm, statut=Devis.Statut.ENVOYE,
             taux_tva=Decimal('20'))
+        self.facture = Facture.objects.create(
+            company=self.company, reference='FAC-NTPRT6-1',
+            client=self.client_crm, statut=Facture.Statut.EMISE,
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'), taux_tva=Decimal('20'))
+        self.enquete = EnqueteNPS.objects.create(
+            company=self.company, client_id=self.client_crm.id,
+            chantier_id=1)
         invitation = inviter_membre_portail(
             self.company, self.client_crm.id, 'lecteur2@example.invalid',
             'lecture')
@@ -246,6 +256,38 @@ class EndpointDevisEtTicketGatingTests(TestCase):
             '/api/django/portail/mes-demandes-sav/',
             {'sujet': 'Onduleur en défaut'}, format='json')
         self.assertEqual(res.status_code, 201, res.data)
+
+    @override_settings(CMI_ENABLED=False, CMI_MERCHANT_KEY='')
+    def test_lecture_refuse_le_paiement_de_facture(self):
+        self.api.force_authenticate(user=self.lecteur)
+        res = self.api.post(
+            f'/api/django/portail/mes-factures/{self.facture.id}/payer/',
+            {}, format='json')
+        self.assertEqual(res.status_code, 403)
+
+    @override_settings(CMI_ENABLED=False, CMI_MERCHANT_KEY='')
+    def test_admin_paie_toujours_une_facture(self):
+        self.api.force_authenticate(user=self.admin)
+        res = self.api.post(
+            f'/api/django/portail/mes-factures/{self.facture.id}/payer/',
+            {}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+
+    def test_lecture_refuse_de_repondre_a_l_enquete(self):
+        self.api.force_authenticate(user=self.lecteur)
+        res = self.api.post(
+            '/api/django/portail/satisfaction/repondre/',
+            {'enquete_id': self.enquete.id, 'score': 9}, format='json')
+        self.assertEqual(res.status_code, 403)
+        self.enquete.refresh_from_db()
+        self.assertEqual(self.enquete.statut, EnqueteNPS.Statut.ENVOYEE)
+
+    def test_admin_repond_toujours_a_l_enquete(self):
+        self.api.force_authenticate(user=self.admin)
+        res = self.api.post(
+            '/api/django/portail/satisfaction/repondre/',
+            {'enquete_id': self.enquete.id, 'score': 9}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
 
 
 class MonEquipeEndpointTests(TestCase):
