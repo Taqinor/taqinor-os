@@ -14,7 +14,8 @@ from authentication.models import Company
 
 from apps.adsengine import brief as brief_mod
 from apps.adsengine.models import (
-    AdCampaignMirror, EngineAction, InsightSnapshot, WeeklyBrief,
+    AdCampaignMirror, AdCreativeMirror, AdMirror, AdSetMirror, EngineAction,
+    EngineAlert, InsightSnapshot, MetaConnection, WeeklyBrief,
 )
 from apps.adsengine.tasks import generate_weekly_brief
 
@@ -44,15 +45,72 @@ class BriefGeneratorTests(TestCase):
         self.assertTrue(data['sla_ok'])
         self.assertIn('# Brief hebdomadaire', brief.markdown)
 
-    def test_high_frequency_flags_fatigue_and_proposes_rotation(self):
+    def test_high_frequency_proposes_an_applicable_rotation(self):
+        # PUB130-bis — la rotation du brief passe par
+        # ``services.resolve_rotation_payload`` : il lui faut donc un ad set
+        # miroité ET un créatif LIVE, sinon rien n'est proposable.
+        adset = AdSetMirror.objects.create(
+            company=self.company, meta_id='as1', name='Ad set',
+            status='PAUSED', campaign=self.camp)
+        ad = AdMirror.objects.create(
+            company=self.company, meta_id='ad1', adset=adset, name='Ad')
+        AdCreativeMirror.objects.create(
+            company=self.company, ad=ad, creative_meta_id='cr1')
+
         self._snap(spend='120.00', results=6, freq='2.80')
         brief = brief_mod.build_brief(self.company, now=NOW)
+
         self.assertEqual(brief.data['fatigue']['niveau'], 'forte')
-        # Une proposition de rotation créative est créée et liée.
         props = brief.data['propositions']
         self.assertTrue(any(
             p['kind'] == EngineAction.Kind.ROTATE_CREATIVE for p in props))
         self.assertTrue(all(p['reason_fr'] for p in props))
+        # Payload APPLICABLE (les trois pièces de PUB119), jamais creux.
+        action = EngineAction.objects.get(
+            company=self.company, kind=EngineAction.Kind.ROTATE_CREATIVE)
+        self.assertEqual(action.payload['adset_id'], 'as1')
+        self.assertTrue(action.payload['name'])
+        self.assertEqual(action.payload['creative'], {'creative_id': 'cr1'})
+        # La cible CAMPAGNE (celle qui a déclenché) reste tracée.
+        self.assertEqual(action.payload['target_meta_id'], 'c1')
+        self.assertEqual(action.payload['target_type'], 'campaign')
+
+    def test_high_frequency_without_any_creative_alerts_instead(self):
+        # Aucun ad set miroité : le brief ALERTE explicitement et ne propose
+        # RIEN (jamais une action creuse que l'approbation ferait échouer).
+        self._snap(spend='120.00', results=6, freq='2.80')
+        brief = brief_mod.build_brief(self.company, now=NOW)
+
+        kinds = {p['kind'] for p in brief.data['propositions']}
+        self.assertNotIn(EngineAction.Kind.ROTATE_CREATIVE, kinds)
+        self.assertFalse(EngineAction.objects.filter(
+            company=self.company,
+            kind=EngineAction.Kind.ROTATE_CREATIVE).exists())
+        alert = EngineAlert.objects.filter(
+            company=self.company,
+            detail__template_key='brief_rotation').first()
+        self.assertIsNotNone(alert)
+        self.assertIn('aucune rotation proposable', alert.message)
+
+    def test_the_pause_reason_uses_the_real_account_currency(self):
+        # PUB134 — Meta rapporte les montants dans la devise DU COMPTE.
+        MetaConnection.objects.create(
+            company=self.company, ad_account_id='act_1', currency='USD')
+        self._snap(spend='80.00', results=0, freq='1.10')
+
+        brief_mod.build_brief(self.company, now=NOW)
+
+        action = EngineAction.objects.get(
+            company=self.company, kind=EngineAction.Kind.PAUSE)
+        self.assertIn('80.00 USD', action.reason_fr)
+        self.assertNotIn('MAD', action.reason_fr)
+
+    def test_the_pause_reason_falls_back_to_mad_without_a_connection(self):
+        self._snap(spend='80.00', results=0, freq='1.10')
+        brief_mod.build_brief(self.company, now=NOW)
+        action = EngineAction.objects.get(
+            company=self.company, kind=EngineAction.Kind.PAUSE)
+        self.assertIn('80.00 MAD', action.reason_fr)
 
     def test_spend_without_results_proposes_pause(self):
         self._snap(spend='80.00', results=0, freq='1.10')

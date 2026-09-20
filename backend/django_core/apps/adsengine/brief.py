@@ -310,15 +310,54 @@ def _existing_open_kinds(company):
     return seen
 
 
+def _rotation_payload_for_campaign(company, camp):
+    """PUB130-bis — Payload COMPLET d'une rotation pour une campagne fatiguée.
+
+    Le brief ciblait la CAMPAGNE et écrivait un payload purement DESCRIPTIF : le
+    vrai Graph rejette un ``create_ad`` sans ad set, sans nom et sans créatif,
+    même après approbation humaine (la classe de défaut fermée par PUB119). Une
+    rotation s'applique de toute façon à un AD SET : on descend donc sur les ad
+    sets de la campagne et on retient le PREMIER dont
+    ``services.resolve_rotation_payload`` résout les trois pièces.
+
+    Renvoie ``(payload, '')`` ou ``(None, raison_fr)`` — l'appelant alerte alors
+    explicitement et ne propose RIEN."""
+    from . import services
+
+    adsets = list(camp.adsets.exclude(meta_id='').order_by('meta_id'))
+    if not adsets:
+        return None, (
+            f"Rotation impossible sur la campagne {camp.meta_id} : aucun ad set "
+            f"miroité (resynchroniser les miroirs d'abord).")
+    reasons = []
+    for adset in adsets:
+        try:
+            payload = services.resolve_rotation_payload(
+                company, target_type='adset', target_meta_id=adset.meta_id)
+        except services.RotationCreativeUnavailable as exc:
+            reasons.append(f'{adset.meta_id} : {exc}')
+            continue
+        return payload, ''
+    return None, ' '.join(reasons)
+
+
 def _build_proposals(company, per_campaign):
     """Crée 0-3 ``EngineAction`` proposées à partir de règles déterministes.
 
     * fréquence de campagne ≥ 2.5 (fatigue forte) → rotation créative ;
     * dépense > 0 ET 0 résultat sur la fenêtre → mise en pause.
     Déduplique contre les propositions déjà ouvertes ; plafonne à 3.
-    """
-    from . import services
 
+    PUB130-bis — la rotation passe par ``services.resolve_rotation_payload`` : sa
+    proposition est donc APPLICABLE, ou honnêtement BLOQUÉE (alerte explicite
+    « aucun créatif prêt »), jamais une action creuse. La dépense est libellée
+    dans la devise RÉELLE du compte (PUB134), jamais « MAD » en dur — Meta
+    rapporte tous ses montants dans la devise DU COMPTE.
+    """
+    from . import guardrails, services
+    from .rules_engine import account_currency
+
+    currency = account_currency(company)
     seen = _existing_open_kinds(company)
     proposals = []
     for camp, spend, results, freq in per_campaign:
@@ -327,14 +366,33 @@ def _build_proposals(company, per_campaign):
         if freq is not None and freq >= FATIGUE_THRESHOLD_HIGH:
             key = (EngineAction.Kind.ROTATE_CREATIVE, camp.pk)
             if key not in seen:
+                payload, blocked_fr = _rotation_payload_for_campaign(
+                    company, camp)
+                if payload is None:
+                    # Aucun créatif prêt : ALERTE explicite, jamais une action
+                    # creuse que l'approbation humaine ferait échouer.
+                    guardrails.emit_alert(
+                        company, alert_type=guardrails.ALERT_ANOMALY,
+                        message=(
+                            f"Brief hebdomadaire : fréquence {freq:.1f} sur "
+                            f"{camp.meta_id} (≥ 2,5) mais aucune rotation "
+                            f"proposable — {blocked_fr}"),
+                        detail={'template_key': 'brief_rotation',
+                                'target_type': 'campaign',
+                                'target_meta_id': camp.meta_id})
+                    seen.add(key)
+                    continue
+                # La cible CAMPAGNE reste tracée (c'est elle qui a déclenché) ;
+                # l'ad set et le créatif résolus rendent l'action applicable.
+                payload['target_type'] = 'campaign'
+                payload['target_meta_id'] = camp.meta_id
+                payload['target_object_id'] = camp.pk
                 proposals.append(services.propose_action(
                     company, kind=EngineAction.Kind.ROTATE_CREATIVE,
                     reason_fr=(
                         f"Fréquence {freq:.1f} sur {camp.meta_id} (≥ 2,5) : "
                         f"roter le créatif pour combattre la fatigue."),
-                    payload={'target_type': 'campaign',
-                             'target_meta_id': camp.meta_id,
-                             'target_object_id': camp.pk}))
+                    payload=payload))
                 seen.add(key)
                 continue
         if spend > 0 and results == 0:
@@ -343,8 +401,8 @@ def _build_proposals(company, per_campaign):
                 proposals.append(services.propose_action(
                     company, kind=EngineAction.Kind.PAUSE,
                     reason_fr=(
-                        f"{camp.meta_id} a dépensé {spend} MAD pour 0 résultat "
-                        f"cette semaine : mise en pause conseillée."),
+                        f"{camp.meta_id} a dépensé {spend} {currency} pour 0 "
+                        f"résultat cette semaine : mise en pause conseillée."),
                     payload={'target_type': 'campaign',
                              'target_meta_id': camp.meta_id,
                              'target_object_id': camp.pk}))
