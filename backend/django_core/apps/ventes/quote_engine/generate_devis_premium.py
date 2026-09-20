@@ -375,6 +375,11 @@ PAGE3_NUM = 3                  # numéro de la page de signature
 INCLUDE_ANNEXE = False
 ELECTRICAL_DESIGN = {}
 SLD_SVG = ""
+# CAL182 — page « Calepinage » (planche cotée CAL171) : mêmes défauts INERTES.
+# Sans les clés du builder, la page n'existe pas et le PDF est byte-identique.
+INCLUDE_CALEPINAGE = False
+CALEPINAGE_SVG = ""
+CALEPINAGE_EMPREINTE = ""
 TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
@@ -3344,6 +3349,59 @@ def page_annexe_technique():
 """
 
 
+def page_calepinage():
+    """CAL182 — page « Calepinage » : la PLANCHE COTÉE, telle que le serveur la rend.
+
+    Le document client n'emportait que l'AFFICHE du calepinage (une image sans
+    cotes ni cartouche). La planche CAL171, elle, porte l'échelle, le nord, la
+    légende et le cartouche : c'est la pièce qu'un client, un bureau de
+    contrôle ou une équipe de pose peut lire.
+
+    Ce que cette page fait : elle MET EN PAGE le SVG que le builder lui donne.
+    Elle ne dessine rien, ne mesure rien, ne convertit rien — une seconde
+    géométrie serait une seconde vérité. **AUCUN MONTANT** n'y figure : la
+    planche ne porte que des longueurs et des repères, et ``Produit.prix_achat``
+    n'y entre par aucun chemin.
+    """
+    empreinte_html = (
+        f'<div style="margin-top:8px;font-size:6.5pt;color:{CG4};">'
+        f'{_esc(CALEPINAGE_EMPREINTE)}</div>') if CALEPINAGE_EMPREINTE else ""
+
+    return f"""
+<div class="page">
+  <div style="background:{CN};padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <div>
+      <div style="color:white;font-size:10pt;font-weight:700;">Calepinage</div>
+      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">Devis N° {REF} — {CLIENT_NAME} — {DATE_STR}</div>
+    </div>
+    {logo_html("42px")}
+  </div>
+  <div style="height:3px;background:{CA};flex-shrink:0;"></div>
+
+  <div style="padding:14px 24px;flex:1;min-height:0;">
+    <div style="font-size:8pt;color:{CG4};margin-bottom:10px;">
+      Implantation des modules relevée sur la toiture, à l'échelle portée par
+      la planche. Les cotes sont mesurées sur la géométrie de la conception.
+    </div>
+    <div style="background:white;border:1px solid {CG2};border-radius:7px;
+                padding:6px;text-align:center;">{CALEPINAGE_SVG}</div>
+    <div style="margin-top:10px;font-size:6.5pt;color:{CG4};font-style:italic;">
+      Pièce technique jointe à la proposition. L'implantation définitive est
+      confirmée à la visite technique ; seule la liste d'équipements du devis
+      fait foi commercialement.
+    </div>
+    {empreinte_html}
+  </div>
+
+  <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
+    <div style="font-size:7pt;color:#888;">{ENT_ETUDE_CONTACT}</div>
+    <div style="font-size:7pt;color:#888;">Calepinage — Réf. {REF}</div>
+  </div>
+</div>
+"""
+
+
 def build_html():
     print("  Generating charts...")
     # M5 — la GARDE MOYENNE TENSION s'étend à la page 2. Un dossier MT n'a
@@ -3365,6 +3423,10 @@ def build_html():
     etude_html = page_etude() if (INCLUDE_ETUDE and ETUDE) else ""
     annexe_html = (page_annexe_technique()
                    if (INCLUDE_ANNEXE and ELECTRICAL_DESIGN) else "")
+    # CAL182 — la planche s'intercale APRÈS l'annexe, avant la signature :
+    # l'ordre du document va du commercial au technique, puis à l'engagement.
+    calepinage_html = (page_calepinage()
+                       if (INCLUDE_CALEPINAGE and CALEPINAGE_SVG) else "")
     return f"""<!DOCTYPE html>
 <html lang="fr" style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
 <title>Devis TAQINOR N\u00b0 {REF}</title>
@@ -3374,6 +3436,7 @@ def build_html():
 {page2(SANS_ITEMS, img_roi, img_mon)}
 {etude_html}
 {annexe_html}
+{calepinage_html}
 {page3()}
 </body></html>"""
 
@@ -4120,6 +4183,9 @@ def apply_quote_data(data: dict) -> None:
     # de global que INCLUDE_ETUDE, mêmes défauts inertes : sans les clés du
     # builder, la page n'existe pas et le PDF est byte-identique.
     global INCLUDE_ANNEXE, ELECTRICAL_DESIGN, SLD_SVG
+    # CAL182 — page « Calepinage » (planche cotée). Même patron, mêmes défauts
+    # inertes : sans les clés du builder, la page n'existe pas.
+    global INCLUDE_CALEPINAGE, CALEPINAGE_SVG, CALEPINAGE_EMPREINTE
     global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE, LIBELLE_AVEC
     global LINKS  # QRP1 — liens client (proposition tokenisée)
@@ -4195,6 +4261,12 @@ def apply_quote_data(data: dict) -> None:
     INCLUDE_ANNEXE = bool(data.get("include_annexe_technique", False))
     ELECTRICAL_DESIGN = data.get("electrical_design") or {}
     SLD_SVG        = data.get("sld_svg") or ""
+    INCLUDE_CALEPINAGE = bool(data.get("include_calepinage", False))
+    # Le SVG de la planche est un fragment composé PAR LE SERVEUR (CAL171),
+    # jamais un texte saisi : il est inséré tel quel, comme ``SLD_SVG``.
+    # L'empreinte, elle, est un TEXTE — donc échappée à l'usage.
+    CALEPINAGE_SVG = data.get("calepinage_svg") or ""
+    CALEPINAGE_EMPREINTE = data.get("calepinage_empreinte") or ""
     _tva_lbl = int(TVA_PCT) if TVA_PCT == int(TVA_PCT) else TVA_PCT
     TVA_NOTE       = data.get("tva_note") or (
         f"TVA {_tva_lbl} % appliquée sur l'ensemble des équipements et travaux.")
@@ -4366,7 +4438,11 @@ def apply_quote_data(data: dict) -> None:
     # Sans conception électrique, elle DISPARAÎT (même dégradation gracieuse
     # que l'étude : la page n'est ni rendue ni comptée).
     _with_annexe = bool(INCLUDE_ANNEXE and ELECTRICAL_DESIGN) and _full
-    PAGES_TOTAL = 3 + (1 if _with_etude else 0) + (1 if _with_annexe else 0)
+    # CAL182 — la planche suit la même dégradation : sans SVG rendu, la page
+    # n'est ni rendue ni comptée. Le format 'onepage' reste à UNE page.
+    _with_calepinage = bool(INCLUDE_CALEPINAGE and CALEPINAGE_SVG) and _full
+    PAGES_TOTAL = (3 + (1 if _with_etude else 0) + (1 if _with_annexe else 0)
+                   + (1 if _with_calepinage else 0))
     PAGE3_NUM = PAGES_TOTAL
     # ERR37 — escape user text in line items at the ingestion boundary so every
     # downstream renderer (full + one-page) emits safe HTML.

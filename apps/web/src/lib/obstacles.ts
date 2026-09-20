@@ -36,6 +36,34 @@ export const OBSTACLE_STEP_FACTOR = 1.2;
  */
 export type ObstacleType = 'cheminee' | 'ventilation' | 'chien_assis' | 'edicule' | 'antenne' | 'autre';
 
+/**
+ * CAL72 — d'où vient cet obstacle. DEUX vocabulaires coexistent dans le dépôt et les DEUX
+ * sont valides ici : `core.calepinage.types.Provenance` dit RELEVE/RELEVE_DOUTEUX,
+ * `apps.ao.models.ObstacleAO.Provenance` dit MESURE/MESURE_DOUTEUX — ce sont les MÊMES
+ * états (RELEVE ≡ MESURE, RELEVE_DOUTEUX ≡ MESURE_DOUTEUX). Le moteur (`core/calepinage/
+ * obstacles.py`) refuse d'engager un compte reposant sur PLAN ou DEVINE.
+ */
+export type ObstacleProvenance =
+  | 'RELEVE'
+  | 'MESURE'
+  | 'RELEVE_DOUTEUX'
+  | 'MESURE_DOUTEUX'
+  | 'PLAN'
+  | 'DEVINE'
+  | 'DECLARE_CLIENT'
+  | 'ECARTE';
+
+/** CAL72 — provenances qui rendent un compte NON engageable (miroir de
+ *  `core/calepinage/obstacles.py`, cf. NON_ENGAGEABLE_PROVENANCES ci-dessous). */
+export const NON_ENGAGEABLE_PROVENANCES: readonly ObstacleProvenance[] = ['PLAN', 'DEVINE'];
+
+/** true si la provenance rend le compte NON engageable (PLAN/DEVINE). Une provenance
+ *  absente n'est PAS bloquante (comportement historique — aucune provenance saisie ne
+ *  doit jamais bloquer un devis qui passait hier). */
+export function isNonEngageable(provenance?: ObstacleProvenance | null): boolean {
+  return !!provenance && NON_ENGAGEABLE_PROVENANCES.includes(provenance);
+}
+
 export interface Obstacle {
   id: string;
   centerLng: number;
@@ -46,6 +74,12 @@ export interface Obstacle {
   widthM: number;
   /** PV61 — type d'obstacle (dégagement associé). Absent → dégagement par défaut. */
   type?: ObstacleType;
+  /** CAL66 — hauteur SAISIE (m) de l'obstacle. Absent = obstacle PLAN, qui ne porte
+   *  aucune ombre (comportement historique). Aucun défaut n'est inventé. */
+  heightM?: number;
+  /** CAL72 — d'où vient cet obstacle. Absent = comportement historique (aucun motif de
+   *  non-engageabilité tiré de la provenance). */
+  provenance?: ObstacleProvenance;
 }
 
 /** Borne une dimension dans [MIN, MAX] ; toute valeur non finie → MIN. */
@@ -125,4 +159,129 @@ export function scaledObstacle(o: Obstacle, factor: number): Obstacle {
 /** Redimensionne un obstacle aux longueur/largeur saisies (centre conservé, bornées). */
 export function resizedObstacle(o: Obstacle, lengthM: number, widthM: number): Obstacle {
   return { ...o, lengthM: clampDim(lengthM), widthM: clampDim(widthM) };
+}
+
+/** Bornes plancher/plafond d'une hauteur d'obstacle SAISIE (m) — mêmes ordres de grandeur
+ *  que les dimensions au sol (OBSTACLE_MIN_DIM_M / OBSTACLE_MAX_DIM_M). */
+export const OBSTACLE_MIN_HEIGHT_M = 0.1;
+export const OBSTACLE_MAX_HEIGHT_M = 30;
+
+/**
+ * CAL66 — applique une hauteur SAISIE (m), bornée. `null`/`undefined`/non fini ⇒ EFFACE la
+ * hauteur (retour à « obstacle plan », comportement historique) : contrairement à
+ * `clampDim`, on ne remplace jamais une saisie vide par un plancher — une hauteur non
+ * renseignée reste NON renseignée, jamais une valeur inventée.
+ */
+export function withHeight(o: Obstacle, heightM: number | null | undefined): Obstacle {
+  if (heightM == null || !Number.isFinite(heightM) || heightM <= 0) {
+    const { heightM: _drop, ...rest } = o;
+    return rest;
+  }
+  return { ...o, heightM: Math.max(OBSTACLE_MIN_HEIGHT_M, Math.min(OBSTACLE_MAX_HEIGHT_M, heightM)) };
+}
+
+/** CAL72 — applique (ou efface, `null`) la provenance d'un obstacle. */
+export function withProvenance(o: Obstacle, provenance: ObstacleProvenance | null | undefined): Obstacle {
+  if (!provenance) {
+    const { provenance: _drop, ...rest } = o;
+    return rest;
+  }
+  return { ...o, provenance };
+}
+
+/**
+ * CAL73 — duplique un obstacle : copie dimensions + type + hauteur + provenance de
+ * l'original (« insupportable de tout redessiner sur une halle à 40 lanterneaux
+ * identiques »), posée à un NOUVEAU centre avec un NOUVEL id (jamais deux obstacles avec
+ * le même id). La provenance survit — un lanterneau dupliqué depuis un original MESURÉ
+ * est lui-même MESURÉ, pas une supposition nouvelle.
+ */
+export function duplicatedObstacle(o: Obstacle, id: string, center: LngLat): Obstacle {
+  return { ...o, id, centerLng: center[0], centerLat: center[1] };
+}
+
+/**
+ * CAL73 — positions (lng/lat) d'une TRAME régulière de `cols` × `rows` copies, au pas
+ * SAISI par l'utilisateur (`spacingM`, mètres, appliqué EST-OUEST et NORD-SUD), centrée
+ * sur `origin`. `cols`/`rows` ≤ 0 ou `spacingM` non fini/≤ 0 ⇒ []. Aucune détection
+ * automatique par vision (explicitement hors périmètre) : le pas est TOUJOURS une saisie.
+ */
+export function gridPositions(origin: LngLat, spacingM: number, cols: number, rows: number): LngLat[] {
+  if (!Number.isFinite(spacingM) || spacingM <= 0) return [];
+  if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols <= 0 || rows <= 0) return [];
+  const cosLat = Math.max(1e-6, Math.cos(origin[1] * DEG2RAD));
+  const dLng = spacingM / (DEG2M * cosLat);
+  const dLat = spacingM / DEG2M;
+  const out: LngLat[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      out.push([origin[0] + (c - (cols - 1) / 2) * dLng, origin[1] + (r - (rows - 1) / 2) * dLat]);
+    }
+  }
+  return out;
+}
+
+/** CAL66 — obstruction d'ombrage en ENU (mètres autour d'une origine). Forme IDENTIQUE à
+ *  `ShadeObstructionENU` de `shadingEngine.ts` ; redéclarée ici pour que la lib PURE des
+ *  obstacles reste sans dépendance de module (seule sa FORME est partagée). */
+export interface ObstacleShadeEntry {
+  x: number;
+  y: number;
+  effHeightM: number;
+  halfWidthM: number;
+  /** CAL94 — empreinte au sol RÉELLE en ENU (le rectangle SAISI), pour que l'occultation
+   *  soit calculée par lancer de rayon sur la vraie forme et non sur un cône. */
+  footprint: [number, number][];
+}
+
+/**
+ * CAL66 — convertit les obstacles de TOITURE en obstructions ENU prêtes pour le moteur
+ * d'ombrage (`isSunBlocked` / `hourlyShadeFactors` / `pointSolarAccess`), exactement
+ * comme `shadeObstructionsENU` le fait pour les ombres tracées et
+ * `environmentShadeEntries` pour les objets d'environnement.
+ *
+ * DEUX règles d'honnêteté :
+ *  - un obstacle SANS `heightM` saisie est ÉCARTÉ : sans hauteur il reste un obstacle
+ *    PLAN (simple zone d'exclusion) et ne porte AUCUNE ombre — comportement strictement
+ *    identique à celui d'avant CAL66, jamais une hauteur inventée ;
+ *  - la hauteur d'un obstacle de toiture est DÉJÀ mesurée au-dessus du plan du toit (une
+ *    cheminée de 1,2 m dépasse de 1,2 m la dalle où sont posés les modules) : on ne lui
+ *    retranche donc PAS la hauteur du bâtiment, contrairement aux obstructions
+ *    extérieures qui, elles, sont référencées au SOL.
+ *
+ * La demi-largeur du cône d'occultation est la demi-diagonale du rectangle SAISI
+ * (√(L² + l²) / 2) : elle ne vient que des dimensions renseignées par l'utilisateur,
+ * aucune valeur par défaut n'est introduite.
+ */
+export function roofObstacleShadeEntries(
+  list: readonly Obstacle[] | null | undefined,
+  origin: LngLat,
+): ObstacleShadeEntry[] {
+  if (!Array.isArray(list) || !list.length) return [];
+  const cosLat = Math.max(1e-6, Math.cos(origin[1] * DEG2RAD));
+  const out: ObstacleShadeEntry[] = [];
+  for (const o of list) {
+    const h = o.heightM;
+    if (typeof h !== 'number' || !Number.isFinite(h) || h <= 0) continue;
+    const halfWidthM = Math.hypot(o.lengthM, o.widthM) / 2;
+    const x = (o.centerLng - origin[0]) * DEG2M * cosLat;
+    const y = (o.centerLat - origin[1]) * DEG2M;
+    // CAL94 — le rectangle SAISI en ENU : demi-largeur EST-OUEST = widthM/2, demi-longueur
+    // NORD-SUD = lengthM/2 (mêmes conventions que `obstacleRing`).
+    const hw = o.widthM / 2;
+    const hl = o.lengthM / 2;
+    out.push({
+      x,
+      y,
+      effHeightM: h,
+      halfWidthM: halfWidthM > 0 ? halfWidthM : OBSTACLE_MIN_DIM_M / 2,
+      footprint: [
+        [x - hw, y - hl],
+        [x + hw, y - hl],
+        [x + hw, y + hl],
+        [x - hw, y + hl],
+      ],
+    });
+  }
+  return out;
 }

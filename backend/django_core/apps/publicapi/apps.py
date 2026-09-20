@@ -49,6 +49,12 @@ class PublicApiConfig(AppConfig):
         # -> `apps.publicapi`.
         from . import ops_event_receivers
         ops_event_receivers.connect()
+        # CAL215 — abonné à la VALIDATION d'un calepinage (une variante passe
+        # à « retenue ») : webhook `calepinage.valide`. Le modèle écouté est
+        # résolu par le REGISTRE, jamais un import direct `apps.calepinage`
+        # -> `apps.publicapi` (et rien n'est branché sans le module).
+        from . import calepinage_event_receivers
+        calepinage_event_receivers.connect()
         # YOPSB11 — archivage par lots du journal WebhookDelivery (registre
         # partagé YOPSB10). Fenêtre founder-configurable via
         # WEBHOOK_DELIVERY_ARCHIVE_DAYS (défaut 0 = OFF, comportement inchangé).

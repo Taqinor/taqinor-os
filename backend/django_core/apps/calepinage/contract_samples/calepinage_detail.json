@@ -1,6 +1,7 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/",
-  "pourquoi": "Le détail d'UN calepinage du module autonome, en un seul appel : identité, rattachement (lead et/ou client, devis lié), statut, empreinte du layout, compteurs de versions et de variantes, et l'URL signée de l'image d'aperçu. PACT10 : ce contrat part SEUL sur `main` avant toute lane — l'écran de détail et le viewset naissent dans deux lanes file-disjointes qui, sans ce fichier, inventeraient mécaniquement deux formes (incident du 03/08/2026, « Appels d'offres — Tableau de bord », zéro clé sur six concordante). DÉCISIONS DE STRUCTURE TENUES ICI : une seule forme d'URL `/api/django/calepinage/calepinages/<pk>/…` ; le client est `crm.Client` et le lead `crm.Lead` (`ventes.Client` n'existe pas, `Devis.client` pointe déjà `'crm.Client'`) ; un calepinage SANS devis est un objet de première classe, donc `devis` est nullable et jamais omis. `exemple_vide` couvre le calepinage NEUF (créé, aucun layout dessiné, aucun calcul joué) : toutes les clés restent présentes, les grandeurs non mesurées valent `null` et JAMAIS `0` — publier un zéro ferait lire « aucune version » là où rien n'a encore été enregistré, exactement l'erreur que `marges_vers_json` évite déjà côté AO. Les valeurs de cet exemple sont des PLACEHOLDERS assumés (identifiants à un chiffre, empreinte visiblement factice, libellés « d'essai ») : aucun chiffre client, aucun prix d'achat, aucune marge.",
+  "forme_serveur": "complete",
+  "pourquoi": "Le détail d'UN calepinage du module autonome, en un seul appel : identité, rattachement (lead et/ou client, devis lié), statut, empreinte du layout, compteurs de versions et de variantes, et l'URL signée de l'image d'aperçu. PACT10 : ce contrat part SEUL sur `main` avant toute lane — l'écran de détail et le viewset naissent dans deux lanes file-disjointes qui, sans ce fichier, inventeraient mécaniquement deux formes (incident du 03/08/2026, « Appels d'offres — Tableau de bord », zéro clé sur six concordante). DÉCISIONS DE STRUCTURE TENUES ICI : une seule forme d'URL `/api/django/calepinage/calepinages/<pk>/…` ; le client est `crm.Client` et le lead `crm.Lead` (`ventes.Client` n'existe pas, `Devis.client` pointe déjà `'crm.Client'`) ; un calepinage SANS devis est un objet de première classe, donc `devis` est nullable et jamais omis. `exemple_vide` couvre le calepinage NEUF (créé, aucun layout dessiné, aucun calcul joué) : toutes les clés restent présentes, les grandeurs non mesurées valent `null` et JAMAIS `0` — publier un zéro ferait lire « aucune version » là où rien n'a encore été enregistré, exactement l'erreur que `marges_vers_json` évite déjà côté AO. Les valeurs de cet exemple sont des PLACEHOLDERS assumés (identifiants à un chiffre, empreinte visiblement factice, libellés « d'essai ») : aucun chiffre client, aucun prix d'achat, aucune marge. CAL17 — `contexte_geographique` (les cinq clés de `selectors.contexte_geographique` : pin, outline, adresse, ville, source) fait partie de l'agrégat : l'écran ouvre la carte pré-remplie sans un second appel, et une coordonnée inconnue vaut `null` — JAMAIS un centre du Maroc inventé. CAL17 — `forme_serveur: complete` (vocabulaire QJR228) : cet échantillon AFFIRME porter la carte complète de sa route, donc `scripts/check_api_shapes.py` lit la vue (`views/calepinages.py::detail_calepinage`, écrite en dictionnaire littéral pour être lisible statiquement) et rougit sur toute clé en trop ou en moins — sans attendre qu'un écran consomme la route.",
   "exemple": {
     "id": 1,
     "reference": "CAL-2609-0001",
@@ -9,11 +10,29 @@
     "statut_libelle": "En cours",
     "cree_le": "2026-09-19T09:00:00Z",
     "modifie_le": "2026-09-19T11:30:00Z",
-    "cree_par": { "id": 1, "nom_complet": "Utilisateur d'essai" },
-    "responsable": { "id": 1, "nom_complet": "Utilisateur d'essai" },
-    "lead": { "id": 1, "nom": "Lead d'essai", "ville": "Casablanca" },
-    "client": { "id": 1, "nom": "Client d'essai", "ville": "Casablanca" },
-    "devis": { "id": 1, "reference": "DEV-2609-0001", "statut": "brouillon" },
+    "cree_par": {
+      "id": 1,
+      "nom_complet": "Utilisateur d'essai"
+    },
+    "responsable": {
+      "id": 1,
+      "nom_complet": "Utilisateur d'essai"
+    },
+    "lead": {
+      "id": 1,
+      "nom": "Lead d'essai",
+      "ville": "Casablanca"
+    },
+    "client": {
+      "id": 1,
+      "nom": "Client d'essai",
+      "ville": "Casablanca"
+    },
+    "devis": {
+      "id": 1,
+      "reference": "DEV-2609-0001",
+      "statut": "brouillon"
+    },
     "layout_present": true,
     "layout_hash": "abababababababababababababababababababababababababababababababab",
     "layout_schema_version": 2,
@@ -33,6 +52,29 @@
       "genere_le": "2026-09-19T11:30:00Z",
       "expire_le": "2026-09-19T12:30:00Z"
     },
+    "contexte_geographique": {
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "outline": [
+        [
+          33.5731,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5898
+        ],
+        [
+          33.5732,
+          -7.5897
+        ]
+      ],
+      "adresse": "12 rue d'essai",
+      "ville": "Casablanca",
+      "source": "lead_roof_point"
+    },
     "permissions": {
       "peut_modifier": true,
       "peut_supprimer": false,
@@ -47,9 +89,16 @@
     "statut_libelle": "Brouillon",
     "cree_le": "2026-09-19T14:00:00Z",
     "modifie_le": "2026-09-19T14:00:00Z",
-    "cree_par": { "id": 1, "nom_complet": "Utilisateur d'essai" },
+    "cree_par": {
+      "id": 1,
+      "nom_complet": "Utilisateur d'essai"
+    },
     "responsable": null,
-    "lead": { "id": 1, "nom": "Lead d'essai", "ville": "Casablanca" },
+    "lead": {
+      "id": 1,
+      "nom": "Lead d'essai",
+      "ville": "Casablanca"
+    },
     "client": null,
     "devis": null,
     "layout_present": false,
@@ -70,6 +119,13 @@
       "url": null,
       "genere_le": null,
       "expire_le": null
+    },
+    "contexte_geographique": {
+      "pin": null,
+      "outline": null,
+      "adresse": null,
+      "ville": null,
+      "source": null
     },
     "permissions": {
       "peut_modifier": true,

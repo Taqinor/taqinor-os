@@ -80,6 +80,12 @@ SCOPE_READ_ACHATS = 'lecture_achats'
 # crédits dus — voir `apps/publicapi/public_fiabilite_views.py`, qui justifie
 # chaque omission.
 SCOPE_READ_FIABILITE = 'fiabilite:lecture'
+# CAL214 — calepinages (apps.calepinage) en LECTURE SEULE : identité,
+# rattachement lead/client/devis, statut, empreinte du layout, puissance et
+# nombre de modules RÉELLEMENT calculés, liens de sorties. Ce scope n'ouvre
+# JAMAIS la géométrie brute (`roof_layout`, plans/rangées du moteur) ni aucun
+# coût interne : voir `public_serializers.PublicCalepinageSerializer`.
+SCOPE_READ_CALEPINAGES = 'read:calepinages'
 
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
@@ -116,6 +122,8 @@ SCOPE_CHOICES = [
      "Lire les demandes d'achat et les demandes de prix (sans aucun prix d'achat)"),
     (SCOPE_READ_FIABILITE,
      'Lire la fiabilité (sauvegardes, rapport SLA mensuel, limites & usage)'),
+    (SCOPE_READ_CALEPINAGES,
+     'Lire les calepinages (sans géométrie brute ni coût interne)'),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
     (SCOPE_WRITE_DEVIS, 'Créer un devis brouillon (jamais envoyé/accepté)'),
@@ -192,6 +200,12 @@ EVENT_LANGUE_CHANGED = 'langue_changed'
 EVENT_INCIDENT_OPENED = 'incident_opened'
 EVENT_INCIDENT_RESOLVED = 'incident_resolved'
 EVENT_MAINTENANCE_WINDOW_ANNOUNCED = 'maintenance_window_announced'
+# CAL215 — calepinage VALIDÉ : une variante vient d'être RETENUE (le geste
+# « c'est celle-là »). Émis par `apps/publicapi/calepinage_event_receivers.py`,
+# qui écoute le modèle via le registre — jamais un import direct
+# `apps.calepinage` -> `apps.publicapi`. Charge utile sans géométrie brute ni
+# coût interne (mêmes limites que la ressource publique CAL214).
+EVENT_CALEPINAGE_VALIDE = 'calepinage.valide'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
@@ -222,6 +236,7 @@ EVENT_CHOICES = [
     (EVENT_INCIDENT_OPENED, 'Incident — ouvert'),
     (EVENT_INCIDENT_RESOLVED, 'Incident — résolu'),
     (EVENT_MAINTENANCE_WINDOW_ANNOUNCED, 'Fenêtre de maintenance — annoncée'),
+    (EVENT_CALEPINAGE_VALIDE, 'Calepinage — variante retenue'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 

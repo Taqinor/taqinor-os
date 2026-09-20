@@ -842,6 +842,7 @@ operations:
 - post /api/django/ao/toitures/{id}/appliquer-preset/ -> django_ao_toitures_appliquer_preset_create
 - get /api/django/ao/toitures/{id}/chatter/historique/ -> django_ao_toitures_chatter_historique_retrieve
 - post /api/django/ao/toitures/{id}/chatter/noter/ -> django_ao_toitures_chatter_noter_create
+- post /api/django/ao/toitures/{id}/reprendre-contour-3d/ -> django_ao_toitures_reprendre_contour_3d_create
 - get /api/django/ao/variantes-calepinage/ -> django_ao_variantes_calepinage_list
 - post /api/django/ao/variantes-calepinage/ -> django_ao_variantes_calepinage_create
 - delete /api/django/ao/variantes-calepinage/{id}/ -> django_ao_variantes_calepinage_destroy
@@ -1127,6 +1128,63 @@ operations:
 - post /api/django/btp-chantier/visas/{id}/noter/ -> django_btp_chantier_visas_noter_create
 - post /api/django/btp-chantier/visas/{id}/refuser/ -> django_btp_chantier_visas_refuser_create
 - post /api/django/btp-chantier/visas/{id}/soumettre-observations/ -> django_btp_chantier_visas_soumettre_observations_create
+- get /api/django/calepinage/calepinages/ -> django_calepinage_calepinages_list
+- post /api/django/calepinage/calepinages/ -> django_calepinage_calepinages_create
+- get /api/django/calepinage/calepinages/modeles/ -> django_calepinage_calepinages_modeles_retrieve
+- delete /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_destroy
+- get /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_retrieve
+- patch /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_partial_update
+- put /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_update
+- post /api/django/calepinage/calepinages/{id}/archiver/ -> django_calepinage_calepinages_archiver_create
+- get /api/django/calepinage/calepinages/{id}/chatter/historique/ -> django_calepinage_calepinages_chatter_historique_retrieve
+- post /api/django/calepinage/calepinages/{id}/chatter/noter/ -> django_calepinage_calepinages_chatter_noter_create
+- get /api/django/calepinage/calepinages/{id}/comparer/ -> django_calepinage_calepinages_comparer_retrieve
+- get /api/django/calepinage/calepinages/{id}/design-context/ -> django_calepinage_calepinages_design_context_retrieve
+- post /api/django/calepinage/calepinages/{id}/deverrouiller/ -> django_calepinage_calepinages_deverrouiller_create
+- post /api/django/calepinage/calepinages/{id}/entree-electrique/ -> django_calepinage_calepinages_entree_electrique_create
+- get /api/django/calepinage/calepinages/{id}/equipements/ -> django_calepinage_calepinages_equipements_retrieve
+- post /api/django/calepinage/calepinages/{id}/evaluer-electrique/ -> django_calepinage_calepinages_evaluer_electrique_create
+- get /api/django/calepinage/calepinages/{id}/export-csv/ -> django_calepinage_calepinages_export_csv_retrieve
+- get /api/django/calepinage/calepinages/{id}/export-layout/ -> django_calepinage_calepinages_export_layout_retrieve
+- get /api/django/calepinage/calepinages/{id}/export.dxf/ -> django_calepinage_calepinages_export.dxf_retrieve
+- get /api/django/calepinage/calepinages/{id}/export.xlsx/ -> django_calepinage_calepinages_export.xlsx_retrieve
+- post /api/django/calepinage/calepinages/{id}/generer-devis/ -> django_calepinage_calepinages_generer_devis_create
+- post /api/django/calepinage/calepinages/{id}/import-layout/ -> django_calepinage_calepinages_import_layout_create
+- post /api/django/calepinage/calepinages/{id}/importer-contour-ao/ -> django_calepinage_calepinages_importer_contour_ao_create
+- get /api/django/calepinage/calepinages/{id}/layout/ -> django_calepinage_calepinages_layout_retrieve
+- post /api/django/calepinage/calepinages/{id}/layout/ -> django_calepinage_calepinages_layout_create
+- get /api/django/calepinage/calepinages/{id}/note-calcul.pdf/ -> django_calepinage_calepinages_note_calcul.pdf_retrieve
+- post /api/django/calepinage/calepinages/{id}/pack-technique/ -> django_calepinage_calepinages_pack_technique_create
+- get /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_retrieve
+- post /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_create
+- get /api/django/calepinage/calepinages/{id}/plan-masse.pdf/ -> django_calepinage_calepinages_plan_masse.pdf_retrieve
+- get /api/django/calepinage/calepinages/{id}/plan-pose.pdf/ -> django_calepinage_calepinages_plan_pose.pdf_retrieve
+- get /api/django/calepinage/calepinages/{id}/plan-toiture.pdf/ -> django_calepinage_calepinages_plan_toiture.pdf_retrieve
+- get /api/django/calepinage/calepinages/{id}/planche.pdf/ -> django_calepinage_calepinages_planche.pdf_retrieve
+- get /api/django/calepinage/calepinages/{id}/planche.svg/ -> django_calepinage_calepinages_planche.svg_retrieve
+- post /api/django/calepinage/calepinages/{id}/pompage/ -> django_calepinage_calepinages_pompage_create
+- get /api/django/calepinage/calepinages/{id}/releve/ -> django_calepinage_calepinages_releve_retrieve
+- post /api/django/calepinage/calepinages/{id}/releve/ -> django_calepinage_calepinages_releve_create
+- post /api/django/calepinage/calepinages/{id}/restaurer-corbeille/ -> django_calepinage_calepinages_restaurer_corbeille_create
+- get /api/django/calepinage/calepinages/{id}/resultat/ -> django_calepinage_calepinages_resultat_retrieve
+- post /api/django/calepinage/calepinages/{id}/roof-image/ -> django_calepinage_calepinages_roof_image_create
+- get /api/django/calepinage/calepinages/{id}/sorties/ -> django_calepinage_calepinages_sorties_retrieve
+- post /api/django/calepinage/calepinages/{id}/sync-devis/ -> django_calepinage_calepinages_sync_devis_create
+- get /api/django/calepinage/calepinages/{id}/variantes/ -> django_calepinage_calepinages_variantes_retrieve
+- post /api/django/calepinage/calepinages/{id}/variantes/ -> django_calepinage_calepinages_variantes_create
+- delete /api/django/calepinage/calepinages/{id}/variantes/{variante_id}/ -> django_calepinage_calepinages_variantes_destroy
+- get /api/django/calepinage/calepinages/{id}/variantes/{variante_id}/ -> django_calepinage_calepinages_variantes_retrieve_2
+- patch /api/django/calepinage/calepinages/{id}/variantes/{variante_id}/ -> django_calepinage_calepinages_variantes_partial_update
+- post /api/django/calepinage/calepinages/{id}/variantes/{variante_id}/retenir/ -> django_calepinage_calepinages_variantes_retenir_create
+- get /api/django/calepinage/calepinages/{id}/versions/ -> django_calepinage_calepinages_versions_retrieve
+- post /api/django/calepinage/calepinages/{id}/versions/{version_id}/restaurer/ -> django_calepinage_calepinages_versions_restaurer_create
+- post /api/django/calepinage/moteur/calculer/ -> django_calepinage_moteur_calculer_create
+- post /api/django/calepinage/moteur/pose/ -> django_calepinage_moteur_pose_create
+- get /api/django/calepinage/moteur/resultat/{job_id}/ -> django_calepinage_moteur_resultat_retrieve
+- get /api/django/calepinage/parametres/ -> django_calepinage_parametres_retrieve
+- put /api/django/calepinage/parametres/ -> django_calepinage_parametres_update
+- get /api/django/calepinage/parametres/suggestion-pente/ -> django_calepinage_parametres_suggestion_pente_retrieve
+- post /api/django/calepinage/parametres/suggestion-pente/ -> django_calepinage_parametres_suggestion_pente_create
 - get /api/django/chat/canned-responses/ -> django_chat_canned_responses_list
 - post /api/django/chat/canned-responses/ -> django_chat_canned_responses_create
 - delete /api/django/chat/canned-responses/{id}/ -> django_chat_canned_responses_destroy
@@ -9646,6 +9704,8 @@ operations:
 - get /api/public/v1/btp/rfi/{id}/ -> public_v1_btp_rfi_retrieve
 - get /api/public/v1/btp/visas/ -> public_v1_btp_visas_list
 - get /api/public/v1/btp/visas/{id}/ -> public_v1_btp_visas_retrieve
+- get /api/public/v1/calepinages/ -> public_v1_calepinages_list
+- get /api/public/v1/calepinages/{id}/ -> public_v1_calepinages_retrieve
 - get /api/public/v1/changelog/ -> public_v1_changelog_retrieve
 - get /api/public/v1/chantiers/ -> public_v1_chantiers_list
 - get /api/public/v1/chantiers/{id}/ -> public_v1_chantiers_retrieve
@@ -10512,6 +10572,7 @@ operations:
 - post /api/v1/ao/toitures/{id}/appliquer-preset/ -> v1_ao_toitures_appliquer_preset_create
 - get /api/v1/ao/toitures/{id}/chatter/historique/ -> v1_ao_toitures_chatter_historique_retrieve
 - post /api/v1/ao/toitures/{id}/chatter/noter/ -> v1_ao_toitures_chatter_noter_create
+- post /api/v1/ao/toitures/{id}/reprendre-contour-3d/ -> v1_ao_toitures_reprendre_contour_3d_create
 - get /api/v1/ao/variantes-calepinage/ -> v1_ao_variantes_calepinage_list
 - post /api/v1/ao/variantes-calepinage/ -> v1_ao_variantes_calepinage_create
 - delete /api/v1/ao/variantes-calepinage/{id}/ -> v1_ao_variantes_calepinage_destroy
@@ -10797,6 +10858,63 @@ operations:
 - post /api/v1/btp-chantier/visas/{id}/noter/ -> v1_btp_chantier_visas_noter_create
 - post /api/v1/btp-chantier/visas/{id}/refuser/ -> v1_btp_chantier_visas_refuser_create
 - post /api/v1/btp-chantier/visas/{id}/soumettre-observations/ -> v1_btp_chantier_visas_soumettre_observations_create
+- get /api/v1/calepinage/calepinages/ -> v1_calepinage_calepinages_list
+- post /api/v1/calepinage/calepinages/ -> v1_calepinage_calepinages_create
+- get /api/v1/calepinage/calepinages/modeles/ -> v1_calepinage_calepinages_modeles_retrieve
+- delete /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_destroy
+- get /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_retrieve
+- patch /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_partial_update
+- put /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_update
+- post /api/v1/calepinage/calepinages/{id}/archiver/ -> v1_calepinage_calepinages_archiver_create
+- get /api/v1/calepinage/calepinages/{id}/chatter/historique/ -> v1_calepinage_calepinages_chatter_historique_retrieve
+- post /api/v1/calepinage/calepinages/{id}/chatter/noter/ -> v1_calepinage_calepinages_chatter_noter_create
+- get /api/v1/calepinage/calepinages/{id}/comparer/ -> v1_calepinage_calepinages_comparer_retrieve
+- get /api/v1/calepinage/calepinages/{id}/design-context/ -> v1_calepinage_calepinages_design_context_retrieve
+- post /api/v1/calepinage/calepinages/{id}/deverrouiller/ -> v1_calepinage_calepinages_deverrouiller_create
+- post /api/v1/calepinage/calepinages/{id}/entree-electrique/ -> v1_calepinage_calepinages_entree_electrique_create
+- get /api/v1/calepinage/calepinages/{id}/equipements/ -> v1_calepinage_calepinages_equipements_retrieve
+- post /api/v1/calepinage/calepinages/{id}/evaluer-electrique/ -> v1_calepinage_calepinages_evaluer_electrique_create
+- get /api/v1/calepinage/calepinages/{id}/export-csv/ -> v1_calepinage_calepinages_export_csv_retrieve
+- get /api/v1/calepinage/calepinages/{id}/export-layout/ -> v1_calepinage_calepinages_export_layout_retrieve
+- get /api/v1/calepinage/calepinages/{id}/export.dxf/ -> v1_calepinage_calepinages_export.dxf_retrieve
+- get /api/v1/calepinage/calepinages/{id}/export.xlsx/ -> v1_calepinage_calepinages_export.xlsx_retrieve
+- post /api/v1/calepinage/calepinages/{id}/generer-devis/ -> v1_calepinage_calepinages_generer_devis_create
+- post /api/v1/calepinage/calepinages/{id}/import-layout/ -> v1_calepinage_calepinages_import_layout_create
+- post /api/v1/calepinage/calepinages/{id}/importer-contour-ao/ -> v1_calepinage_calepinages_importer_contour_ao_create
+- get /api/v1/calepinage/calepinages/{id}/layout/ -> v1_calepinage_calepinages_layout_retrieve
+- post /api/v1/calepinage/calepinages/{id}/layout/ -> v1_calepinage_calepinages_layout_create
+- get /api/v1/calepinage/calepinages/{id}/note-calcul.pdf/ -> v1_calepinage_calepinages_note_calcul.pdf_retrieve
+- post /api/v1/calepinage/calepinages/{id}/pack-technique/ -> v1_calepinage_calepinages_pack_technique_create
+- get /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_retrieve
+- post /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_create
+- get /api/v1/calepinage/calepinages/{id}/plan-masse.pdf/ -> v1_calepinage_calepinages_plan_masse.pdf_retrieve
+- get /api/v1/calepinage/calepinages/{id}/plan-pose.pdf/ -> v1_calepinage_calepinages_plan_pose.pdf_retrieve
+- get /api/v1/calepinage/calepinages/{id}/plan-toiture.pdf/ -> v1_calepinage_calepinages_plan_toiture.pdf_retrieve
+- get /api/v1/calepinage/calepinages/{id}/planche.pdf/ -> v1_calepinage_calepinages_planche.pdf_retrieve
+- get /api/v1/calepinage/calepinages/{id}/planche.svg/ -> v1_calepinage_calepinages_planche.svg_retrieve
+- post /api/v1/calepinage/calepinages/{id}/pompage/ -> v1_calepinage_calepinages_pompage_create
+- get /api/v1/calepinage/calepinages/{id}/releve/ -> v1_calepinage_calepinages_releve_retrieve
+- post /api/v1/calepinage/calepinages/{id}/releve/ -> v1_calepinage_calepinages_releve_create
+- post /api/v1/calepinage/calepinages/{id}/restaurer-corbeille/ -> v1_calepinage_calepinages_restaurer_corbeille_create
+- get /api/v1/calepinage/calepinages/{id}/resultat/ -> v1_calepinage_calepinages_resultat_retrieve
+- post /api/v1/calepinage/calepinages/{id}/roof-image/ -> v1_calepinage_calepinages_roof_image_create
+- get /api/v1/calepinage/calepinages/{id}/sorties/ -> v1_calepinage_calepinages_sorties_retrieve
+- post /api/v1/calepinage/calepinages/{id}/sync-devis/ -> v1_calepinage_calepinages_sync_devis_create
+- get /api/v1/calepinage/calepinages/{id}/variantes/ -> v1_calepinage_calepinages_variantes_retrieve
+- post /api/v1/calepinage/calepinages/{id}/variantes/ -> v1_calepinage_calepinages_variantes_create
+- delete /api/v1/calepinage/calepinages/{id}/variantes/{variante_id}/ -> v1_calepinage_calepinages_variantes_destroy
+- get /api/v1/calepinage/calepinages/{id}/variantes/{variante_id}/ -> v1_calepinage_calepinages_variantes_retrieve_2
+- patch /api/v1/calepinage/calepinages/{id}/variantes/{variante_id}/ -> v1_calepinage_calepinages_variantes_partial_update
+- post /api/v1/calepinage/calepinages/{id}/variantes/{variante_id}/retenir/ -> v1_calepinage_calepinages_variantes_retenir_create
+- get /api/v1/calepinage/calepinages/{id}/versions/ -> v1_calepinage_calepinages_versions_retrieve
+- post /api/v1/calepinage/calepinages/{id}/versions/{version_id}/restaurer/ -> v1_calepinage_calepinages_versions_restaurer_create
+- post /api/v1/calepinage/moteur/calculer/ -> v1_calepinage_moteur_calculer_create
+- post /api/v1/calepinage/moteur/pose/ -> v1_calepinage_moteur_pose_create
+- get /api/v1/calepinage/moteur/resultat/{job_id}/ -> v1_calepinage_moteur_resultat_retrieve
+- get /api/v1/calepinage/parametres/ -> v1_calepinage_parametres_retrieve
+- put /api/v1/calepinage/parametres/ -> v1_calepinage_parametres_update
+- get /api/v1/calepinage/parametres/suggestion-pente/ -> v1_calepinage_parametres_suggestion_pente_retrieve
+- post /api/v1/calepinage/parametres/suggestion-pente/ -> v1_calepinage_parametres_suggestion_pente_create
 - get /api/v1/chat/canned-responses/ -> v1_chat_canned_responses_list
 - post /api/v1/chat/canned-responses/ -> v1_chat_canned_responses_create
 - delete /api/v1/chat/canned-responses/{id}/ -> v1_chat_canned_responses_destroy
@@ -19685,6 +19803,19 @@ components:
 - CalendrierHegirienReponse
 - CalendrierProjet
 - CalendrierProjetRequest
+- Calepinage
+- CalepinageMoteurAccuseTravailLong
+- CalepinageMoteurCalculerReponse
+- CalepinageMoteurCalculerRequeteRequest
+- CalepinageMoteurPoseDemandeRequest
+- CalepinageMoteurPoseReponse
+- CalepinageMoteurPoseRequeteRequest
+- CalepinageMoteurResultatReponse
+- CalepinageParametresEcrite
+- CalepinageParametresReponse
+- CalepinageParametresRequeteRequest
+- CalepinageRequest
+- CalepinageStatutEnum
 - CalqueDxf
 - Campagne
 - CampagneCulturale
@@ -21649,6 +21780,7 @@ components:
 - PaginatedCadreConformiteList
 - PaginatedCaisseList
 - PaginatedCalendrierProjetList
+- PaginatedCalepinageList
 - PaginatedCampagneCulturaleList
 - PaginatedCampagneEvaluationList
 - PaginatedCampagneInnovationList
@@ -22336,6 +22468,7 @@ components:
 - PaginatedPropositionRevisionList
 - PaginatedProvisionCreanceList
 - PaginatedProvisionList
+- PaginatedPublicCalepinageList
 - PaginatedPublicChantierList
 - PaginatedPublicDecompteGeneralList
 - PaginatedPublicDemandeAchatList
@@ -22798,6 +22931,7 @@ components:
 - PatchedCaisseRequest
 - PatchedCalendrierHegirienRequeteRequest
 - PatchedCalendrierProjetRequest
+- PatchedCalepinageRequest
 - PatchedCampagneCulturaleRequest
 - PatchedCampagneEvaluationRequest
 - PatchedCampagneInnovationRequest
@@ -24001,6 +24135,7 @@ components:
 - PublicApiMonitoringWebhooks
 - PublicApporteurDeal
 - PublicApporteurMesDeals
+- PublicCalepinage
 - PublicChantier
 - PublicConfirmerAbonnementReponse
 - PublicDecompteGeneral

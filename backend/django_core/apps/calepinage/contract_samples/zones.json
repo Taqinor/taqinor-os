@@ -1,0 +1,189 @@
+{
+  "endpoint": "POST /api/django/calepinage/moteur/calculer/",
+  "forme_serveur": "partielle",
+  "document": "roof_layout v2 — clé `exclusionZones` (voir roof_layout_v2.schema.json)",
+  "pourquoi": "CAL68 — LES ZONES INTERDITES / RÉSERVÉES / PRÉFÉRÉES, DE L'ATELIER JUSQU'AU MOTEUR. Le moteur PUR traite les quatre natures de contour depuis AOF57 (`core/calepinage/types.py::NatureZone` ENVELOPPE / INTERDITE / RESERVEE / PREFEREE ; retrait et aire retirée dans `core/calepinage/zones.py`) et l'AO les persiste (`apps/ao/models.py::ZoneAO`), mais le document de l'atelier ne connaissait que `obstacles[]` : une servitude ou une bande coupe-feu tracée par le dessinateur ne changeait RIEN au compte publié — silencieusement. Ce fichier fige la forme des DEUX côtés du pont : `exemple` porte le fragment de l'ENTRÉE MOTEUR (clé `zones`, telle que `core.calepinage.serialisation` la sérialise) que la traduction produit, et `exemple_layout` porte le fragment du document d'atelier (clé `exclusionZones`) dont elle part. PORTÉE : `forme_serveur: partielle` (vocabulaire QJR228) — cet échantillon documente un FRAGMENT de la charge utile, pas la carte complète d'une réponse ; la réponse du moteur reste figée par `moteur_calculer.json`. NOMMAGE (décision CAL232) : la tâche parle du « tableau `zones[]` », mais ce nom est PRIS depuis la v1 par les PANS de toiture ; le réutiliser casserait tout document existant et les trois consommateurs backend d'un coup. Côté ATELIER le tableau s'appelle donc `exclusionZones`, côté MOTEUR il reste `zones` — c'est le contrat du noyau, et la traduction est le seul endroit où les deux noms se rencontrent. LES DEUX GARANTIES QUI FONT LA TÂCHE : (1) une zone INTERDITE retire sa surface du posable, et une RESERVEE la retire AUSSI mais est chiffrée À PART (c'est un argument de négociation : « voilà ce que votre réserve d'usage futur coûte ») ; (2) une zone PRÉFÉRÉE ne change JAMAIS un compte — c'est un bonus DOUX de départage entre plans déjà optimaux (`core/calepinage/zones.py::bonus_preference`), et son aire retirée vaut 0. LE REPÈRE DES SOMMETS N'EST PAS DEVINÉ : les sommets sortent dans le MÊME repère que ceux des pans du document ; la traduction ne projette jamais à l'aveugle (projeter un document déjà métrique, ou l'inverse, produirait des aires fausses présentées comme justes), et l'appelant en lng/lat passe son projeteur. ÉQUIVALENCE : un document SANS `exclusionZones` laisse l'entrée moteur strictement inchangée. Les valeurs sont des PLACEHOLDERS assumés (repères courts, coordonnées métriques rondes) : aucun chiffre client. LES CHIFFRES DE `exemple_chiffrage` SONT CALCULÉS, PAS ÉCRITS : ils sortent de `core.calepinage.zones` appliqué à `exemple_layout` — l'INTERDITE fait 4 × 3 m mais RETIRE 17,28 m² parce que son retrait SAISI de 0,50 m dilate le contour (`sommets_decales`), et la PRÉFÉRÉE de 16 m² retire 0. Un test les recalcule à chaque exécution : aucun de ces nombres n'a été écrit à la main.",
+  "exemple": {
+    "zones": [
+      {
+        "repere": "SERVITUDE-EST",
+        "nature": "INTERDITE",
+        "sommets": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            4.0,
+            0.0
+          ],
+          [
+            4.0,
+            3.0
+          ],
+          [
+            0.0,
+            3.0
+          ]
+        ],
+        "hauteur_m": null,
+        "retrait_m": 0.5
+      },
+      {
+        "repere": "RESERVE-GROUPE-FROID",
+        "nature": "RESERVEE",
+        "sommets": [
+          [
+            10.0,
+            0.0
+          ],
+          [
+            13.0,
+            0.0
+          ],
+          [
+            13.0,
+            2.0
+          ],
+          [
+            10.0,
+            2.0
+          ]
+        ],
+        "hauteur_m": 1.2,
+        "retrait_m": 0.0
+      },
+      {
+        "repere": "ACCES-FACILE",
+        "nature": "PREFEREE",
+        "sommets": [
+          [
+            20.0,
+            0.0
+          ],
+          [
+            24.0,
+            0.0
+          ],
+          [
+            24.0,
+            4.0
+          ],
+          [
+            20.0,
+            4.0
+          ]
+        ],
+        "hauteur_m": null,
+        "retrait_m": 0.0
+      }
+    ]
+  },
+  "exemple_layout": {
+    "exclusionZones": [
+      {
+        "id": "SERVITUDE-EST",
+        "label": "Servitude ERDF est",
+        "nature": "INTERDITE",
+        "vertices": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            4.0,
+            0.0
+          ],
+          [
+            4.0,
+            3.0
+          ],
+          [
+            0.0,
+            3.0
+          ]
+        ],
+        "setbackM": 0.5,
+        "heightM": null
+      },
+      {
+        "id": "RESERVE-GROUPE-FROID",
+        "label": "Réserve groupe froid",
+        "nature": "RESERVEE",
+        "vertices": [
+          [
+            10.0,
+            0.0
+          ],
+          [
+            13.0,
+            0.0
+          ],
+          [
+            13.0,
+            2.0
+          ],
+          [
+            10.0,
+            2.0
+          ]
+        ],
+        "setbackM": 0.0,
+        "heightM": 1.2
+      },
+      {
+        "id": "ACCES-FACILE",
+        "label": "Accès facile (préférée)",
+        "nature": "PREFEREE",
+        "vertices": [
+          [
+            20.0,
+            0.0
+          ],
+          [
+            24.0,
+            0.0
+          ],
+          [
+            24.0,
+            4.0
+          ],
+          [
+            20.0,
+            4.0
+          ]
+        ],
+        "setbackM": 0.0,
+        "heightM": null
+      }
+    ]
+  },
+  "exemple_vide": {
+    "zones": []
+  },
+  "exemple_chiffrage": {
+    "aire_retiree_m2": 23.28,
+    "par_nature": {
+      "ENVELOPPE": {
+        "nombre": 0,
+        "aire_m2": 0,
+        "aire_retiree_m2": 0.0
+      },
+      "INTERDITE": {
+        "nombre": 1,
+        "aire_m2": 17.28,
+        "aire_retiree_m2": 17.28
+      },
+      "RESERVEE": {
+        "nombre": 1,
+        "aire_m2": 6.0,
+        "aire_retiree_m2": 6.0
+      },
+      "PREFEREE": {
+        "nombre": 1,
+        "aire_m2": 16.0,
+        "aire_retiree_m2": 0.0
+      }
+    }
+  }
+}

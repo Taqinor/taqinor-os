@@ -226,6 +226,27 @@ def layout_hash(layout):
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
+def poser_layout_hash(devis, empreinte):
+    """CAL24 — pose l'empreinte du calepinage sur un devis, et RIEN d'autre.
+
+    ``build_devis_from_layout`` ne l'écrit pas : le chemin 3D des ventes la
+    posait lui-même juste après la création (``Devis.objects.filter(pk=…)
+    .update(layout_hash=…)``), inline dans sa vue. Tout autre créateur — le
+    module Calepinage en premier — aurait dû recopier cette écriture, donc la
+    faire dériver. Elle vit maintenant ICI, en un seul endroit.
+
+    C'est une écriture MINIMALE et sans effet de bord : `update()` ciblé, aucun
+    statut touché (règle #4), aucun signal de sauvegarde déclenché.
+    """
+    from apps.ventes.models import Devis
+
+    if devis is None or not getattr(devis, 'pk', None) or not empreinte:
+        return devis
+    Devis.objects.filter(pk=devis.pk).update(layout_hash=empreinte)
+    devis.layout_hash = empreinte
+    return devis
+
+
 def scenario_du_layout(layout):
     """QJR82 — le scénario du pipeline (``'sans'``/``'avec'``/``'les_deux'``)
     lu dans un layout 3D.

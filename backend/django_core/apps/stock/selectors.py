@@ -1860,6 +1860,16 @@ def performance_portail_fournisseur(company, fournisseur_id):
 # produit à travers ces deux fonctions plutôt qu'en touchant
 # `apps.stock.models.FicheTechnique` directement.
 
+def type_fiche_produit(produit):
+    """CAL243 — la famille ``FicheTechnique.type_fiche`` du produit
+    (``'module'``/``'onduleur'``/``'batterie'``/``'optimiseur'``/``'autre'``),
+    ou ``''`` sans fiche. Lecture seule ; c'est le sélecteur MINCE qui
+    permet à ``apps.calepinage`` de ranger un produit dans la bonne famille
+    d'équipement sans importer ``apps.stock.models``."""
+    fiche = getattr(produit, 'fiche_technique', None)
+    return fiche.type_fiche if fiche is not None else ''
+
+
 def specs_for_produit(produit):
     """PV6 — sous-ensemble de spécifications électriques/dimensions d'un
     produit, lues sur sa FicheTechnique (PV5) et scopées par son

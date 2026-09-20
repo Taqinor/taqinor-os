@@ -62,7 +62,11 @@ class ContratTest(TestCase):
         enregistrer_parametres(self.company, {'imagerie': {'pays': 'ma'}})
         rendu = parametres_de_societe(self.company)
         self.assertEqual(sorted(rendu), sorted(CONTRAT['exemple']))
-        self.assertEqual(rendu['imagerie'], {'pays': 'ma'})
+        # CAL47 — la section « imagerie » a désormais son propre domaine de
+        # validité (contrat `site_imagerie.json`) : elle est NORMALISÉE à
+        # l'écriture, donc elle porte ses huit clés. Ce qui compte ici reste
+        # la forme des SEPT sections, pas le contenu de l'une d'elles.
+        self.assertEqual(rendu['imagerie']['pays'], 'ma')
 
     def test_toutes_les_sections_du_contrat_sont_des_objets(self):
         for section, valeur in CONTRAT['exemple'].items():
@@ -141,7 +145,7 @@ class EcritureTest(TestCase):
         })
         enregistrer_parametres(self.company, {'presets': {'villa': {}}})
         rendu = parametres_de_societe(self.company)
-        self.assertEqual(rendu['imagerie'], {'pays': 'ma'})
+        self.assertEqual(rendu['imagerie']['pays'], 'ma')   # CAL47 : normalisée
         self.assertEqual(rendu['degagements'], {'retrait_rive_m': 0.5})
         self.assertEqual(rendu['presets'], {'villa': {}})
 
@@ -151,7 +155,7 @@ class EcritureTest(TestCase):
         enregistrer_parametres(self.company, {'imagerie': {'pays': 'fr'}},
                                remplacer=True)
         rendu = parametres_de_societe(self.company)
-        self.assertEqual(rendu['imagerie'], {'pays': 'fr'})
+        self.assertEqual(rendu['imagerie']['pays'], 'fr')   # CAL47 : normalisée
         self.assertEqual(rendu['presets'], {})
 
     def test_un_seul_enregistrement_par_societe(self):

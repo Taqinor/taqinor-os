@@ -2718,3 +2718,126 @@ def pieces_du_pack_en_flux(dossier, *, empreinte=None):
             'flux': _flux,
         })
     return entrees
+
+
+# ── CAL31 — Le contour voyage entre l'AO et le calepinage 3D ───────────────
+#
+# D4. Une toiture AO vit en repère LOCAL MÉTRIQUE (AOF18) avec son ancre
+# géographique (``origine_lat``/``origine_lng``, PV57) ; le document de
+# calepinage 3D, lui, porte des DEGRÉS (``outline`` en ``[lat, lng]``, contrat
+# ``roof_layout_v2``). Sans conversion NOMMÉE, les deux systèmes ne se parlent
+# pas — et une inversion d'axes entre eux serait SILENCIEUSE (les nombres
+# restent plausibles, le bâtiment atterrit à des centaines de kilomètres).
+#
+# CES SERVICES NE RECODENT AUCUNE GÉOMÉTRIE. Ils enchaînent les helpers de la
+# frontière AOF19 (``apps/ao/geometrie.py`` : ``local_m_vers_lnglat`` /
+# ``lnglat_vers_local_m`` — projection ENU plane tangente — et les adaptateurs
+# d'axes ``lnglat_vers_latlng`` / ``latlng_vers_lnglat``, les SEULES fonctions
+# du dépôt autorisées à échanger les deux axes). Ce sont EXACTEMENT les
+# helpers que ``selectors._contour_en_degres`` utilise déjà pour hydrater
+# l'atelier : une seule projection dans tout le domaine AO.
+#
+# SEUL LE CONTOUR VOYAGE. Ces deux fonctions sont PURES : elles rendent une
+# liste et n'écrivent rien. Aucune géométrie OPPOSABLE du dossier (obstacles,
+# chaînes de cotes, zones) n'est lue ni réécrite ici — c'est la garantie que
+# l'import d'un tracé 3D ne peut pas effacer un relevé.
+#
+# L'ORDRE DES AXES EST DANS LE NOM de chaque fonction : une fonction nommée
+# ``convertir_contour`` rendrait l'inversion indétectable.
+
+#: Tolérance d'aller-retour DÉCLARÉE, en mètres. La projection ENU est
+#: analytiquement exacte à l'inverse ; ce qui reste est l'arrondi des
+#: flottants (de l'ordre du nanomètre à l'échelle d'un site). 1 mm est donc
+#: une borne très large, choisie pour rester vraie même si la précision de
+#: stockage change.
+TOLERANCE_ALLER_RETOUR_M = 0.001
+
+#: Les deux champs d'ancre, et comment les NOMMER à l'utilisateur.
+LIBELLE_ANCRE = {
+    'origine_lat': "« Latitude de l'origine du repère local »",
+    'origine_lng': "« Longitude de l'origine du repère local »",
+}
+
+
+class ContourSansAncre(ValidationError):
+    """La toiture n'a pas d'ancre géographique : rien ne peut être reprojeté.
+
+    Message FRANÇAIS qui NOMME le champ manquant — sans lui, l'utilisateur lit
+    « conversion impossible » et ne sait pas quoi corriger. On ne devine JAMAIS
+    une origine : reprojeter depuis le GPS du SITE placerait le bâtiment à côté
+    de lui-même, ce qui est pire qu'un contour absent.
+    """
+
+    def __init__(self, message, *, champ=''):
+        super().__init__(message)
+        self.champ = champ
+
+
+def _ancre_lnglat(toiture):
+    """``[lng, lat]`` de l'ancre de la toiture, ou refus NOMMANT le champ."""
+    if toiture is None:
+        raise ContourSansAncre(
+            "Aucune toiture n'a été indiquée : impossible de convertir un "
+            "contour.", champ='toiture')
+    manquants = [nom for nom in ('origine_lat', 'origine_lng')
+                 if getattr(toiture, nom, None) is None]
+    if manquants:
+        raise ContourSansAncre(
+            "Cette toiture n'a pas d'ancre géographique : renseignez "
+            + ' et '.join(LIBELLE_ANCRE[nom] for nom in manquants)
+            + " sur la toiture avant de convertir un contour.",
+            champ=manquants[0])
+    return [float(toiture.origine_lng), float(toiture.origine_lat)]
+
+
+def contour_ao_vers_outline_latlng(toiture):
+    """EXPORT — ``ToitureAO.contour_local_m`` → ``outline`` du layout 3D.
+
+    Args:
+        toiture: la ``ToitureAO`` dont on exporte l'enveloppe.
+
+    Returns:
+        ``[[lat, lng], …]`` — l'ordre d'axes du champ ``outline`` du document
+        ``roof_layout`` (l'INVERSE de ``zones[].vertices``, qui est en
+        ``[lng, lat]`` : c'est écrit dans le contrat v2, et c'est exactement le
+        piège que ce nom de fonction ferme). Liste VIDE quand la toiture n'a
+        aucun contour relevé — une toiture sans tracé n'est pas une erreur.
+
+    Raises:
+        ContourSansAncre: la toiture n'a pas d'origine géographique, et le
+            message nomme le champ à renseigner.
+    """
+    from .geometrie import lnglat_vers_latlng, local_m_vers_lnglat
+
+    ancre = _ancre_lnglat(toiture)
+    contour = getattr(toiture, 'contour_local_m', None) or []
+    if not contour:
+        return []
+    return lnglat_vers_latlng(local_m_vers_lnglat(contour, ancre))
+
+
+def outline_latlng_vers_contour_ao(outline_latlng, toiture):
+    """IMPORT — ``outline`` du layout 3D → contour LOCAL MÉTRIQUE de la toiture.
+
+    La fonction est PURE : elle RETOURNE le contour converti et n'écrit rien.
+    C'est l'appelant (CAL241) qui décide d'enregistrer, et il n'enregistre que
+    ``contour_local_m`` — aucun obstacle, aucune cote, aucune zone opposable
+    n'est touché par une reprise de contour.
+
+    Args:
+        outline_latlng: ``[[lat, lng], …]`` tel que le porte le document 3D.
+        toiture: la ``ToitureAO`` dont l'ancre sert d'origine du repère.
+
+    Returns:
+        ``[[x, y], …]`` en MÈTRES (x vers l'est, y vers le nord). Liste vide
+        quand ``outline_latlng`` est vide.
+
+    Raises:
+        ContourSansAncre: la toiture n'a pas d'origine géographique.
+    """
+    from .geometrie import latlng_vers_lnglat, lnglat_vers_local_m
+
+    ancre = _ancre_lnglat(toiture)
+    if not outline_latlng:
+        return []
+    return lnglat_vers_local_m(latlng_vers_lnglat(outline_latlng), ancre)

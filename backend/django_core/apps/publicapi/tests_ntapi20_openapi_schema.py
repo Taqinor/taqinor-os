@@ -40,9 +40,10 @@ class Ntapi20OpenApiSchemaTests(TestCase):
         # `docs.py`, comblé au passage NTUX33 puisque les deux ajouts
         # partagent le même routeur) ; NTUX33 ajoute 2 ressources UX
         # (`read:vues`/`read:favoris`) ; NTP2P39 ajoute 2 ressources
-        # Procure-to-Pay (`lecture_achats`), pour 16 au total : on fige
-        # l'ENSEMBLE exact (plus fort qu'un simple compte), donc un 17e
-        # enregistrement resterait un choix délibéré, pas un accident.
+        # Procure-to-Pay (`lecture_achats`) ; CAL214 ajoute `public-calepinage`
+        # (les conceptions de toiture, `read:calepinages`), pour 17 au total :
+        # on fige l'ENSEMBLE exact (plus fort qu'un simple compte), donc un
+        # 18ᵉ enregistrement resterait un choix délibéré, pas un accident.
         registered_basenames = {r[2] for r in public_router.registry}
         self.assertEqual(registered_basenames, {
             'public-lead', 'public-devis', 'public-facture',
@@ -53,6 +54,7 @@ class Ntapi20OpenApiSchemaTests(TestCase):
             # NTP2P39 — 2 ressources Procure-to-Pay (`lecture_achats` :
             # demandes d'achat FG310 et RFQ FG311, sans aucun prix d'achat).
             'public-achats-demande', 'public-achats-rfq',
+            'public-calepinage',
         })
         for prefix, _viewset, _basename in public_router.registry:
             list_path = f'/api/public/v1/{prefix}/'
@@ -74,21 +76,22 @@ class Ntapi20OpenApiSchemaTests(TestCase):
             self.assertIn(method, schema['paths'][path])
 
     def test_no_undocumented_paths_beyond_mounted_surface(self):
-        # 16 ressources en lecture seule × 2 (list+detail) = 32 (5 métier +
+        # 17 ressources en lecture seule × 2 (list+detail) = 34 (5 métier +
         # `public-job` + 2 supply chain NTSCM38 + 4 BTP/EPC NTCON31 + 2 UX
-        # NTUX33 + 2 Procure-to-Pay NTP2P39) + 5 écritures (leads-write
-        # POST/PATCH, activités POST, devis-write POST, tickets-write POST) +
-        # 6 bulk (NTAPI14/15/16/43/30 : exports, imports, jobs list/detail,
-        # jobs/<id>/relancer, exports/<entite>.csv) + 2 lectures simples
-        # (NTADM42 statut de licence, NTSCM38 tableau de bord réappro) = 45,
+        # NTUX33 + 2 Procure-to-Pay NTP2P39 + `public-calepinage` CAL214) +
+        # 5 écritures (leads-write POST/PATCH, activités POST, devis-write
+        # POST, tickets-write POST) + 6 bulk (NTAPI14/15/16/43/30 : exports,
+        # imports, jobs list/detail, jobs/<id>/relancer,
+        # exports/<entite>.csv) + 2 lectures simples (NTADM42 statut de
+        # licence, NTSCM38 tableau de bord réappro) = 47,
         # + 3 (2026-09-20, NTOBS27 — surface « Fiabilité » en lecture seule :
         # fiabilite/sauvegardes/, fiabilite/sla/<periode>/, fiabilite/usage/,
-        # chacune un objet unique en GET) = 48 opérations, sur autant de
+        # chacune un objet unique en GET) = 50 opérations, sur autant de
         # chemins distincts (aucun chemin ne cumule 2 méthodes ici) — jamais
         # un chemin fantôme ajouté par erreur.
         schema = build_openapi_schema()
         nb_operations = sum(len(ops) for ops in schema['paths'].values())
-        self.assertEqual(nb_operations, 48)
+        self.assertEqual(nb_operations, 50)
 
     def test_covers_licence_statut_ntadm42(self):
         schema = build_openapi_schema()

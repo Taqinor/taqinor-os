@@ -24,6 +24,8 @@ CE QUE CE MODULE NE FAIT JAMAIS
 """
 from __future__ import annotations
 
+from .journal import journaliser_creation
+
 
 class CreationRefusee(ValueError):
     """Refus métier de création, message français, champ fautif nommé."""
@@ -90,6 +92,8 @@ def obtenir_ou_creer_pour_devis(devis_id, company, *, user=None, titre=''):
             roof_image=getattr(devis, 'roof_image', None) or '',
             cree_par=user,
         )
+    # CAL26 — la première ligne du chatter, par la primitive `records`.
+    journaliser_creation(calepinage, user=user)
     return calepinage, True
 
 
@@ -120,13 +124,15 @@ def creer_pour_lead(lead_id, company, *, user=None, titre=''):
         raise CreationRefusee(
             f"Lead introuvable (#{lead_id}).", champ='lead')
 
-    return Calepinage.objects.create(
+    calepinage = Calepinage.objects.create(
         company=company,
         lead_id=lead.pk,
         client_id=getattr(lead, 'client_id', None),
         titre=titre or _titre_depuis(getattr(lead, 'nom', '')),
         cree_par=user,
     )
+    journaliser_creation(calepinage, user=user)  # CAL26
+    return calepinage
 
 
 def creer_pour_client(client_id, company, *, user=None, titre=''):
@@ -151,12 +157,14 @@ def creer_pour_client(client_id, company, *, user=None, titre=''):
         raise CreationRefusee(
             f"Client introuvable (#{client_id}).", champ='client')
 
-    return Calepinage.objects.create(
+    calepinage = Calepinage.objects.create(
         company=company,
         client_id=client.pk,
         titre=titre or _titre_depuis(getattr(client, 'nom', '')),
         cree_par=user,
     )
+    journaliser_creation(calepinage, user=user)  # CAL26
+    return calepinage
 
 
 def _titre_depuis(nom):

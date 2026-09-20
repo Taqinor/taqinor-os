@@ -708,3 +708,347 @@ def contexte_conception_affaire(appel_offre, company):
         'raison_lecture_seule': raison,
         'avertissements': avertissements,
     }
+
+
+# ── CAL62 — UNE seule porte d'analyse de plan pour tout le dépôt ───────────
+#
+# L'analyseur DXF existe déjà, il est testé, et il est en production
+# (``apps/ao/dxf.py`` ``analyser_dxf``, ezdxf, 5 Mo max, exposé par
+# ``POST /api/django/ao/toitures/dxf/analyser/``). Le module Calepinage n'y
+# avait AUCUN accès : la pente naturelle était d'en écrire un second, donc
+# d'avoir deux façons de lire le même fichier — et un jour deux contours
+# différents pour un même plan.
+#
+# Ce sélecteur est la porte FINE que ``apps.calepinage.services.import_plan``
+# appelle (jamais ``apps.ao.models`` ni ``apps.ao.views`` — contrat
+# import-linter). Il ne recode rien : il AIGUILLE selon le format réel du
+# fichier et délègue.
+
+#: Signature d'en-tête d'un PDF — on regarde le CONTENU, jamais l'extension
+#: (un « .dxf » renommé depuis un PDF est un cas réel d'atelier).
+_ENTETE_PDF = b'%PDF-'
+
+
+def analyser_plan_importe(contenu, *, nom_fichier=''):
+    """CAL62 — analyse un plan déposé (DXF ou PDF VECTORIEL) EN MÉMOIRE.
+
+    Rend la MÊME forme que ``dxf.analyser_dxf``, plus la clé ``format`` :
+
+        ``{'format': 'dxf'|'pdf', 'unite': …, 'calques': [{'nom', 'entites',
+        'sommets'}]}``
+
+    Une seule forme pour les deux formats : l'atelier choisit un « calque »
+    d'enveloppe de la même façon, qu'il vienne d'un DXF ou d'un PDF.
+
+    **``unite`` n'est JAMAIS devinée.** Le DXF la déclare (``$INSUNITS``) ou
+    vaut ``'inconnu'`` ; un PDF n'a que des points typographiques, donc
+    ``'inconnu'`` — c'est la calibration de l'atelier qui donne l'échelle,
+    jamais une conversion supposée ici.
+
+    Args:
+        contenu: les octets du fichier déposé.
+        nom_fichier: purement INDICATIF (messages) — le format est déduit du
+            contenu.
+
+    Raises:
+        dxf.DxfInvalide: fichier vide, trop lourd, illisible, ou PDF sans
+            aucun tracé vectoriel — message FRANÇAIS nommant la cause.
+    """
+    from . import dxf
+
+    if not contenu:
+        raise dxf.DxfInvalide(
+            'Le fichier déposé est vide : aucun plan à analyser.')
+    if len(contenu) > dxf.TAILLE_MAX_OCTETS:
+        raise dxf.DxfInvalide(
+            'Ce fichier dépasse 5 Mo : simplifiez-le (purge des calques '
+            'inutiles) puis réessayez.')
+
+    if contenu[:len(_ENTETE_PDF)] == _ENTETE_PDF:
+        return _analyser_pdf_vectoriel(contenu, nom_fichier=nom_fichier)
+
+    resultat = dict(dxf.analyser_dxf(contenu))
+    resultat['format'] = 'dxf'
+    return resultat
+
+
+def _analyser_pdf_vectoriel(contenu, *, nom_fichier=''):
+    """Tracés vectoriels d'un PDF → la forme « calques » de l'analyseur DXF.
+
+    PyMuPDF est DÉJÀ en production et DÉJÀ utilisé par ``apps.ao``
+    (``fabrique/metadonnees_pdf.py``, ``ingestion_service.rasteriser_pdf``) :
+    aucune dépendance n'est ajoutée, et ce n'est pas une seconde plomberie
+    PDF — c'est la même.
+
+    Un plan SCANNÉ ne contient aucun tracé : il est REFUSÉ en nommant la
+    cause. Le rasteriser pour en deviner un contour produirait une géométrie
+    inventée ; l'atelier a déjà la voie honnête pour ce cas (calibration
+    manuelle sur image, ``ingestion_service``).
+    """
+    from . import dxf
+
+    try:
+        import fitz  # PyMuPDF — déjà en production, jamais une seconde plomberie
+    except ImportError as erreur:  # pragma: no cover — dépendance présente
+        raise dxf.DxfInvalide(
+            "La bibliothèque de lecture PDF (PyMuPDF) n'est pas installée "
+            'sur ce serveur : ce plan ne peut pas être analysé.') from erreur
+
+    try:
+        document = fitz.open(stream=contenu, filetype='pdf')
+    except Exception as erreur:  # noqa: BLE001 — fichier hostile : jamais un 500
+        raise dxf.DxfInvalide(
+            "Ce fichier n'a pas pu être lu comme un PDF (export corrompu ou "
+            'protégé par mot de passe).') from erreur
+
+    calques = []
+    try:
+        for numero in range(document.page_count):
+            page = document.load_page(numero)
+            try:
+                traces = page.get_drawings()
+            except Exception:  # noqa: BLE001 — page corrompue : pas un 500
+                traces = []
+            sommets, entites = _sommets_des_traces(traces)
+            if entites:
+                calques.append({'nom': f'Page {numero + 1}',
+                                'entites': entites,
+                                'sommets': sommets})
+    finally:
+        document.close()
+
+    if not calques:
+        raise dxf.DxfInvalide(
+            'Ce PDF ne contient aucun tracé vectoriel : c\'est un plan '
+            'SCANNÉ (une image). Réimportez-le en DXF, ou en PDF vectoriel '
+            'exporté depuis le logiciel de dessin.')
+
+    return {'format': 'pdf', 'unite': 'inconnu', 'calques': calques}
+
+
+def _sommets_des_traces(traces):
+    """``(sommets de la PLUS GRANDE polyligne, nombre de tracés)``.
+
+    MÊME règle que l'analyseur DXF : on propose les sommets de la plus grande
+    entité, jamais un mélange de plusieurs tracés — un contour composite
+    n'existerait nulle part dans le fichier.
+    """
+    meilleure = []
+    entites = 0
+    for trace in traces or []:
+        for item in trace.get('items') or []:
+            points = _points_de_l_item(item)
+            if not points:
+                continue
+            entites += 1
+            if len(points) > len(meilleure):
+                meilleure = points
+    return meilleure, entites
+
+
+def _points_de_l_item(item):
+    """Points ``[x, y]`` d'un item de dessin PyMuPDF (ligne, rectangle).
+
+    Les courbes (``'c'``) sont IGNORÉES : approcher une Bézier par ses points
+    de contrôle produirait un contour qui n'est pas celui du plan.
+    """
+    if not item:
+        return []
+    operateur = item[0]
+    if operateur == 'l' and len(item) >= 3:
+        return [[float(item[1].x), float(item[1].y)],
+                [float(item[2].x), float(item[2].y)]]
+    if operateur == 're' and len(item) >= 2:
+        rect = item[1]
+        return [[float(rect.x0), float(rect.y0)],
+                [float(rect.x1), float(rect.y0)],
+                [float(rect.x1), float(rect.y1)],
+                [float(rect.x0), float(rect.y1)]]
+    return []
+
+# ── CAL22 — LA PORTE NEUTRE DU MOTEUR PARTAGÉ (lecture pure) ───────────────
+#
+# Le moteur de calepinage est un NOYAU PUR (``core/calepinage``) partagé par
+# plusieurs consommateurs ; sa SÉRIALISATION publiée vit, elle, dans
+# ``apps/ao/calepinage_io.py`` et son orchestration dans
+# ``apps/ao/calepinage_service.py``. Un consommateur hors AO (le module
+# ``apps.calepinage``) ne doit importer ni l'un ni l'autre : la frontière du
+# dépôt dit qu'une app tierce lit ``ao`` par CE fichier. Ces trois fonctions
+# minces sont donc la porte — et surtout PAS une seconde sérialisation, qui
+# dériverait de celle-ci au premier champ ajouté.
+#
+# LECTURE PURE : aucune ligne AO n'est lue, aucune n'est écrite (le service
+# sous-jacent ne touche pas l'ORM).
+
+
+def erreurs_moteur_calepinage():
+    """``(EntreeInvalide, CalepinageIncoherent)`` — les deux refus du moteur.
+
+    Un appelant hors AO doit pouvoir les ATTRAPER pour répondre 400 avec le
+    motif FRANÇAIS du serveur, sans importer le service.
+    """
+    from core.calepinage.exceptions import CalepinageIncoherent
+
+    from .calepinage_service import EntreeInvalide
+
+    return EntreeInvalide, CalepinageIncoherent
+
+
+def cout_calepinage(document, *, budget=None, tiroirs=False,
+                    suggestions=False):
+    """Le coût ESTIMÉ d'un calcul — chiffré AVANT de le lancer.
+
+    C'est ce chiffre qui pilote la bascule synchrone/asynchrone : au-delà du
+    budget, l'appelant rend 202 et la consigne de suivi, plutôt que de faire
+    attendre l'utilisateur devant un écran gelé.
+    """
+    from .calepinage_service import cout_estime
+
+    return cout_estime(document, budget=budget, tiroirs=tiroirs,
+                       suggestions=suggestions)
+
+
+def calepinage_json(document, *, company, user=None, tiroirs=True,
+                    suggestions=True, budget=None):
+    """Calcule un calepinage et rend le JSON PUBLIÉ du moteur.
+
+    ``company`` est OBLIGATOIRE (le service refuse de tourner hors société) et
+    sert à estampiller la sortie : aucune ligne n'est lue ni écrite. La forme
+    est celle qu'AO publie déjà — une seule sérialisation pour tous les
+    consommateurs.
+    """
+    from .calepinage_service import calepiner
+
+    return calepiner(document, company=company, user=user, tiroirs=tiroirs,
+                     suggestions=suggestions, budget=budget)
+
+
+def presets_calepinage(company, *, portee=None):
+    """CAL197 — les presets de calepinage AO de ``company``, lecture pure.
+
+    Point d'entrée cross-app pour ``apps.calepinage`` : lire les presets
+    (``PresetCalepinage``, AOF27) sans jamais importer ``apps.ao.models``.
+    Bornée société — ``None`` rend un queryset VIDE, jamais « tous les
+    presets ». ``portee`` filtre optionnellement (``villa``/``ao``/
+    ``societe``, ``PresetCalepinage.Portee``).
+    """
+    from .models import PresetCalepinage
+
+    if company is None:
+        return PresetCalepinage.objects.none()
+    qs = PresetCalepinage.objects.filter(company=company)
+    if portee:
+        qs = qs.filter(portee=portee)
+    return qs.order_by('-par_defaut', 'nom')
+
+
+def kits_de_pose(company, *, actifs_seulement=True):
+    """CAL198 — le catalogue des kits de pose AO (``KitCalepinage``, AOF26),
+    lecture pure, bornée société.
+
+    Point d'entrée cross-app pour ``apps.calepinage`` : le module construit
+    SON kit de pose (structures + fixations du catalogue, cotes réelles du
+    module posé) à partir de ces lignes, jamais en important
+    ``apps.ao.models``. Chaque ligne porte ``produit_id`` (``None`` si le kit
+    n'a plus de produit lié) et ``produit_archive`` (le produit existe mais
+    est archivé — signalé, jamais tu). ``None`` rend une liste VIDE.
+    """
+    from .models import KitCalepinage
+
+    if company is None:
+        return []
+    qs = (KitCalepinage.objects
+          .filter(company=company)
+          .select_related('produit'))
+    if actifs_seulement:
+        qs = qs.filter(actif=True)
+    lignes = []
+    for kit in qs.order_by('code'):
+        produit = kit.produit
+        lignes.append({
+            'id': kit.pk,
+            'code': kit.code,
+            'libelle': kit.libelle,
+            'mode': kit.mode,
+            'modules_par_kit': kit.modules_par_kit,
+            'pas_rangee_m': float(kit.pas_rangee_m),
+            'longueur_pente_m': float(kit.longueur_pente_m),
+            'faitage_m': float(kit.faitage_m),
+            'emprise_transversale_m': float(kit.emprise_transversale_m),
+            'puissance_module_w': kit.puissance_module_w,
+            'inclinaison_deg': float(kit.inclinaison_deg),
+            'orientation_modules': kit.orientation_modules,
+            'actif': kit.actif,
+            'produit_id': produit.pk if produit is not None else None,
+            'produit_archive': bool(produit and produit.is_archived),
+        })
+    return lignes
+
+# ── CAL240 — le CONTOUR d'une toiture AO, lu par le module Calepinage ──────
+#
+# Le sens AO → calepinage de l'import bidirectionnel (D4). Le sens inverse
+# (CAL241) vit dans ``apps/ao/views.py`` et lit le module par SON sélecteur ;
+# celui-ci est sa symétrie : ``apps.calepinage`` lit AO par CE fichier, jamais
+# par ``apps.ao.models`` (frontière inter-apps, contrats import-linter).
+#
+# LECTURE PURE : aucune toiture, aucun contour, aucun statut n'est écrit ici.
+
+
+def contour_ao_a_reprendre(company, *, toiture_id=None, appel_offre_id=None):
+    """Le contour d'une toiture AO, en degrés, avec ses REFUS déjà nommés.
+
+    Rend TOUJOURS le même dictionnaire — aucune clé absente, jamais un
+    ``None`` là où une liste est attendue :
+
+        {trouve, toiture, appel_offre, code_document, designation,
+         outline, raison_lecture_seule, refus, champ}
+
+    * ``trouve`` est faux quand la toiture (ou l'affaire) n'existe pas DANS
+      ``company`` : l'appelant répond 404 et n'apprend rien de son existence ;
+    * ``outline`` est ``[[lat, lng], …]`` — l'ordre d'axes du champ
+      ``outline`` du document ``roof_layout``, converti par la SEULE
+      conversion du domaine (``services.contour_ao_vers_outline_latlng``,
+      CAL31) ;
+    * ``raison_lecture_seule`` porte le motif FRANÇAIS d'une affaire déposée
+      ou close (``raison_conception_figee``, source unique de la phrase) ;
+    * ``refus`` / ``champ`` portent le refus d'une toiture SANS ancre
+      géographique, avec le champ à renseigner — on ne devine jamais une
+      origine (reprojeter depuis le GPS du SITE placerait le bâtiment à côté
+      de lui-même).
+
+    ``toiture_id`` désigne la toiture ; à défaut, ``appel_offre_id`` prend la
+    toiture de référence de l'affaire (choix DÉTERMINISTE, le même que
+    l'atelier 3D).
+    """
+    from .models import ToitureAO
+    from .services import ContourSansAncre, contour_ao_vers_outline_latlng
+
+    vide = {'trouve': False, 'toiture': None, 'appel_offre': None,
+            'code_document': '', 'designation': '', 'outline': [],
+            'raison_lecture_seule': '', 'refus': '', 'champ': ''}
+    if company is None:
+        return dict(vide)
+
+    if toiture_id:
+        toiture = (ToitureAO.objects
+                   .filter(pk=toiture_id, company=company)
+                   .select_related('batiment__appel_offre').first())
+    elif appel_offre_id:
+        toiture = _toiture_de_reference(company, appel_offre_id)
+    else:
+        toiture = None
+    if toiture is None:
+        return dict(vide)
+
+    affaire = toiture.batiment.appel_offre
+    lu = dict(vide, trouve=True, toiture=toiture.pk, appel_offre=affaire.pk,
+              code_document=toiture.code_document or '',
+              designation=toiture.designation or '',
+              raison_lecture_seule=raison_conception_figee(affaire))
+    try:
+        lu['outline'] = contour_ao_vers_outline_latlng(toiture)
+    except ContourSansAncre as erreur:
+        lu['refus'] = ' '.join(getattr(erreur, 'messages', None)
+                               or [str(erreur)])
+        lu['champ'] = getattr(erreur, 'champ', '') or 'origine_lat'
+    return lu

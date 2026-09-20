@@ -27,12 +27,32 @@ SOUS_MODULES = (
     'calepinages',    # le pivot + ses @action (sous-ressources)
     'parametres',     # réglages société (CAL45)
     'moteur',         # appels au moteur pur core.calepinage
+    'photos',         # CAL52 — photos de site (sous-ressource du pivot)
+    'releve',         # CAL64 — relevé terrain mobile (sous-ressource)
+    'electrique',     # CAL125/CAL128 — sous-ressources électriques (@action)
     'sorties',        # PDF / SVG
     'io_layout',      # import/export du document roof_layout
+    'equipements',    # CAL243 — @action equipements, rattachée depuis urls.py
+    'bibliotheque',   # CAL246 — @action modeles, rattachée depuis urls.py
+    'verrou',         # CAL207 — @action deverrouiller, rattachée depuis urls.py
+    'archivage',      # CAL208 — @actions archiver/restaurer-corbeille
+    # 'io_layout' (CAL216 — @actions export-layout/import-layout) déjà listé
+    # ci-dessus (documenté dès le jour 1 du paquet, CAL233).
 )
 
-#: Les DEUX seuls préfixes d'URL admis sous ``/api/django/calepinage/``.
-PREFIXES_URL_AUTORISES = ('calepinages', 'parametres')
+#: Les seuls préfixes d'URL admis sous ``/api/django/calepinage/``.
+#:
+#: CAL22 — ``moteur`` REJOINT les deux premiers, et c'est une exception
+#: BORNÉE, pas un relâchement : la règle « une seule forme d'URL » protège
+#: l'OBJET MÉTIER (un calepinage se sert sous ``calepinages/<pk>/…``, ses
+#: sous-ressources en ``@action``, jamais sous une seconde famille). Le moteur
+#: n'est pas cet objet : c'est un CALCUL SANS ÉTAT, sans identifiant, qui
+#: n'appartient à aucun calepinage — et son chemin
+#: (``/api/django/calepinage/moteur/calculer/``) est figé depuis le jour 1 par
+#: le contrat committé ``contract_samples/moteur_calculer.json`` (PACT10), que
+#: la lane d'en face consomme déjà. Le servir ailleurs aurait donc cassé le
+#: contrat pour sauver la lettre d'une règle qui ne le visait pas.
+PREFIXES_URL_AUTORISES = ('calepinages', 'moteur', 'parametres')
 
 __all__ = ['SOUS_MODULES', 'PREFIXES_URL_AUTORISES']
 

@@ -15,11 +15,15 @@
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { type AreaRecord, type CardData, type LeadPayload, type ObstacleType } from './types';
+import { type AreaRecord, type CardData, type LeadPayload, type ObstacleType, type ObstacleProvenance } from './types';
 import { type LngLat } from '../../lib/roof';
 import { BILL_RANGES } from '../../lib/billRange';
 import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
 import { ROOF_TYPES } from '../../lib/lead';
+import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
+import { deduceEdgeTypes, type SerializedEdge, type EdgeDeductionZone } from './edges';
+import { type EnvironmentObject } from './environment';
+import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone } from './zones';
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -201,6 +205,65 @@ export interface SerializedZoneGeometry {
    * (les re-snapper sur la lattice détruirait le gain de place qu'ils enregistrent).
    */
   mode?: 'free';
+  /**
+   * CAL248 — ACCÈS SOLAIRE PAR MODULE, persisté avec le document. `pointSolarAccess` /
+   * `cellsSolarAccess` vivaient côté client et ne sortaient jamais de l'écran : aucune
+   * tâche backend ne pouvait les consommer. Champ ADDITIF et OPTIONNEL — absent =
+   * comportement d'aujourd'hui, JAMAIS une valeur par défaut (un module sans accès
+   * solaire calculé n'est pas un module à 100 %). Forme figée par le schéma v2
+   * (`roof_layout_v2.schema.json`, `$defs/solarAccess`).
+   */
+  solarAccess?: SerializedSolarAccess;
+}
+
+/**
+ * CAL248 — accès solaire par module tel qu'il voyage DANS le document. Forme exactement
+ * celle du contrat v2 (`$defs/solarAccess`) : `values` aligné sur `panels`, la méthode
+ * nommée, les hypothèses en objet libre, et la DATE de calcul (sans elle on ne sait pas
+ * si ces valeurs précèdent la dernière édition du toit).
+ */
+export interface SerializedSolarAccess {
+  /** Un facteur (0–1) par module, MÊME ORDRE et MÊME LONGUEUR que `panels`. `null` =
+   *  module non calculé — jamais 1, qui se lirait « aucun ombrage mesuré ». */
+  values: Array<number | null>;
+  method: string;
+  assumptions: Record<string, unknown>;
+  /** ISO 8601. */
+  computedAt: string;
+}
+
+/**
+ * CAL248 — normalise un accès solaire avant écriture. Il n'est écrit QUE s'il est
+ * exploitable : autant de valeurs que de modules posés (sinon les valeurs seraient
+ * décalées d'un module à l'autre au rechargement), méthode non vide, date lisible.
+ * Toute valeur hors [0;1] ou non finie devient `null` — non calculée, jamais corrigée
+ * en silence. Renvoie `null` si rien n'est écrivable.
+ */
+export function serializeSolarAccess(
+  raw: SerializedSolarAccess | null | undefined,
+  panelCount: number,
+): SerializedSolarAccess | null {
+  if (!raw || !Array.isArray(raw.values) || raw.values.length !== panelCount || panelCount <= 0) return null;
+  if (typeof raw.method !== 'string' || !raw.method.trim()) return null;
+  const values = raw.values.map((v) =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null,
+  );
+  if (values.every((v) => v === null)) return null; // rien de calculé : on n'écrit rien
+  const computedAt =
+    typeof raw.computedAt === 'string' && raw.computedAt ? raw.computedAt : new Date().toISOString();
+  const assumptions =
+    raw.assumptions && typeof raw.assumptions === 'object' && !Array.isArray(raw.assumptions)
+      ? { ...raw.assumptions }
+      : {};
+  return { values, method: raw.method, assumptions, computedAt };
+}
+
+/** CAL248 — relit l'accès solaire d'une géométrie de zone sérialisée. Absent, mal formé
+ *  ou décalé ⇒ `null` : un document sans accès solaire se relit SANS erreur, et aucune
+ *  valeur n'est reconstituée. */
+export function deserializeSolarAccess(geometry: unknown, panelCount: number): SerializedSolarAccess | null {
+  const raw = (geometry as { solarAccess?: SerializedSolarAccess } | null | undefined)?.solarAccess;
+  return serializeSolarAccess(raw, panelCount);
 }
 
 /** Une zone sérialisée (sous-ensemble plat et JSON-sûr d'AreaRecord). */
@@ -211,8 +274,19 @@ export interface SerializedZone {
   vertices: LngLat[];
   /** Obstacles (zones d'exclusion) — objets plats {id,centerLng,centerLat,lengthM,widthM}.
    *  PV61 — `type` (optionnel) porte le dégagement de l'obstacle ; absent = comportement
-   *  historique (dégagement uniforme). Jamais émis pour un obstacle sans type. */
-  obstacles: Array<{ id: string; centerLng: number; centerLat: number; lengthM: number; widthM: number; type?: ObstacleType }>;
+   *  historique (dégagement uniforme). Jamais émis pour un obstacle sans type. CAL66 —
+   *  `heightM` (optionnel, SAISI) : absent = obstacle plan, aucune ombre. CAL72 —
+   *  `provenance` (optionnel) : absent = comportement historique (aucun blocage). */
+  obstacles: Array<{
+    id: string;
+    centerLng: number;
+    centerLat: number;
+    lengthM: number;
+    widthM: number;
+    type?: ObstacleType;
+    heightM?: number;
+    provenance?: ObstacleProvenance;
+  }>;
   /** F2 — OPTIONNELS : `serializeLayout` les écrit toujours, mais une zone posée
    *  par le SERVEUR depuis le tracé du client les OMET délibérément (personne n'a
    *  mesuré ce toit, et un champ écrit ici descend jusqu'à l'annexe « paramètres du
@@ -229,6 +303,12 @@ export interface SerializedZone {
    *  de rendu existe pour la zone. Le round-trip deserializeLayout l'ignore (dérivé,
    *  recalculé au boot) — il sert uniquement à l'export ERP (devis/PDF multi-plan). */
   geometry?: SerializedZoneGeometry;
+  /** CAL59 — bâtiment auquel ce pan appartient. Optionnel et additif : absent = bâtiment
+   *  unique, comportement historique. */
+  buildingId?: string;
+  /** CAL57 — type d'arête par segment de contour (déduit, corrigible à la main). Optionnel
+   *  et additif : absent = aucune arête typée, comportement historique. */
+  edges?: SerializedEdge[];
 }
 
 // ═══════════ PV13 — SÉRIALISATION v2 (additive, jamais destructive) ═══════════
@@ -274,6 +354,13 @@ export interface SerializeMeta {
   devisId?: string | number | null;
   /** Économies annuelles (MAD) affichées. Ni recalculées ni inventées ici. */
   savingsMad?: number | null;
+  /**
+   * CAL248 — accès solaire par module, PAR ZONE (clé = id de zone). Fourni par
+   * l'appelant (l'atelier le tient via `shadingUi.solarAccess()`) : `prefill.ts` reste
+   * pur et ne calcule aucun ombrage. Une zone absente de cette table sort simplement
+   * SANS accès solaire — jamais avec des valeurs par défaut.
+   */
+  solarAccessByZone?: Record<string, SerializedSolarAccess | null | undefined>;
 }
 
 // ═══════════ PV71 — MATRICE D'OMBRAGE 12 × 24 (sérialisation) ═══════════
@@ -321,6 +408,72 @@ export function deserializeShading(json: unknown): number[][] | null {
   return serializeShading(raw as readonly (readonly number[])[] | null | undefined);
 }
 
+// ═══════════ CAL102 — MESURES (sérialisation) ═══════════
+// Mêmes garanties que `shading12x24` : un tableau de MAUVAISE forme est REFUSÉ EN BLOC
+// (mieux vaut aucune mesure au rechargement qu'une mesure à moitié fausse) — mais ici
+// chaque ENTRÉE est validée INDIVIDUELLEMENT (`isMeasureValid`), les entrées valides d'un
+// tableau par ailleurs correct sont donc conservées ; seule une entrée invalide (genre
+// inconnu, points manquants) est ÉCARTÉE, jamais silencieusement corrigée.
+const MEASURE_KINDS: readonly MeasureKind[] = ['distance', 'area', 'angle'];
+
+/** Normalise la liste de mesures pour la sérialisation : chaque mesure doit porter un id
+ *  non vide, un genre reconnu et des points géométriquement valides pour ce genre. */
+export function serializeMeasurements(list: readonly Measurement[] | null | undefined): Measurement[] {
+  if (!Array.isArray(list)) return [];
+  const out: Measurement[] = [];
+  for (const m of list) {
+    if (!m || typeof m.id !== 'string' || !m.id) continue;
+    if (!MEASURE_KINDS.includes(m.kind)) continue;
+    if (!Array.isArray(m.points) || !isMeasureValid(m)) continue;
+    const points = m.points.filter(
+      (p): p is LngLat => Array.isArray(p) && p.length === 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]),
+    );
+    if (points.length !== m.points.length || !isMeasureValid({ kind: m.kind, points })) continue;
+    out.push({ id: m.id, kind: m.kind, points: points.map((p) => [p[0], p[1]] as LngLat), ...(m.label ? { label: m.label } : {}) });
+  }
+  return out;
+}
+
+/** Relit une liste de mesures sérialisée — mêmes garde-fous que l'écriture. Accepte soit
+ *  le layout complet (lit `.measurements`), soit déjà le tableau brut. */
+export function deserializeMeasurements(json: unknown): Measurement[] {
+  const raw = (json as { measurements?: unknown } | null | undefined)?.measurements ?? json;
+  return serializeMeasurements(raw as readonly Measurement[] | null | undefined);
+}
+
+// ═══════════ CAL67 — ENVIRONNEMENT (arbres/bâtiments voisins, sérialisation) ═══════════
+// Même garantie que `measurements` : une entrée géométriquement invalide (id vide, genre
+// inconnu) est ÉCARTÉE individuellement — jamais silencieusement corrigée ni inventée.
+const ENV_KINDS = ['arbre', 'batiment'] as const;
+
+/** Normalise la liste d'objets d'environnement pour la sérialisation. */
+export function serializeEnvironment(list: readonly EnvironmentObject[] | null | undefined): EnvironmentObject[] {
+  if (!Array.isArray(list)) return [];
+  const out: EnvironmentObject[] = [];
+  for (const o of list) {
+    if (!o || typeof o.id !== 'string' || !o.id) continue;
+    if (!(ENV_KINDS as readonly string[]).includes(o.kind)) continue;
+    if (!Number.isFinite(o.centerLng) || !Number.isFinite(o.centerLat)) continue;
+    const clean: EnvironmentObject = { id: o.id, kind: o.kind, centerLng: o.centerLng, centerLat: o.centerLat };
+    if (o.label) clean.label = o.label;
+    if (typeof o.heightM === 'number' && Number.isFinite(o.heightM) && o.heightM > 0) clean.heightM = o.heightM;
+    if (typeof o.crownDiameterM === 'number' && Number.isFinite(o.crownDiameterM) && o.crownDiameterM > 0) clean.crownDiameterM = o.crownDiameterM;
+    if (typeof o.evergreen === 'boolean') clean.evergreen = o.evergreen;
+    if (Array.isArray(o.footprint) && o.footprint.length >= 3) clean.footprint = o.footprint.map((p) => [p[0], p[1]] as LngLat);
+    if (typeof o.lengthM === 'number' && Number.isFinite(o.lengthM) && o.lengthM > 0) clean.lengthM = o.lengthM;
+    if (typeof o.widthM === 'number' && Number.isFinite(o.widthM) && o.widthM > 0) clean.widthM = o.widthM;
+    out.push(clean);
+  }
+  return out;
+}
+
+/** Relit une liste d'environnement sérialisée — mêmes garde-fous que l'écriture. Accepte
+ *  soit le layout complet (lit `.environment`), soit déjà le tableau brut. */
+export function deserializeEnvironment(json: unknown): EnvironmentObject[] {
+  const raw = (json as { environment?: unknown } | null | undefined)?.environment ?? json;
+  return serializeEnvironment(raw as readonly EnvironmentObject[] | null | undefined);
+}
+
 /** Layout complet sérialisé : version + zones + repère léger (pin/outline). */
 export interface SerializedLayout {
   version: 1 | 2;
@@ -349,6 +502,16 @@ export interface SerializedLayout {
   /** PV71 — matrice d'ombrage 12 mois × 24 heures (facteurs 0–1), ou null si aucune ombre
    *  n'a été tracée. Taille FIXE, donc charge utile bornée. */
   shading12x24?: number[][] | null;
+  /** CAL102 — mesures posées (distance/surface/angle), annotations du calepinage. Omis ou
+   *  vide = aucune mesure (comportement historique, byte pour byte). */
+  measurements?: Measurement[];
+  /** CAL67 — objets d'environnement (arbres/bâtiments voisins) posés HORS contour. Omis
+   *  ou vide = aucun objet (comportement historique, byte pour byte). */
+  environment?: EnvironmentObject[];
+  /** CAL68/CAL69 — zones INTERDITE/RESERVEE/PREFEREE tracées dans l'atelier. Le nom du
+   *  tableau est `exclusionZones` (CAL232 : `zones` est PRIS par les pans depuis la v1).
+   *  Omis ou vide = aucune zone (comportement historique, byte pour byte). */
+  exclusionZones?: ReturnType<typeof serializeExclusionZones>;
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -387,6 +550,8 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
         lengthM: o.lengthM,
         widthM: o.widthM,
         ...(o.type ? { type: o.type } : {}), // PV61 — additif, jamais émis si absent
+        ...(o.heightM != null ? { heightM: o.heightM } : {}), // CAL66 — additif
+        ...(o.provenance ? { provenance: o.provenance } : {}), // CAL72 — additif
       })),
       roofType: isActive ? ctx.roofType : a.roofType,
       pitchDeg: isActive ? ctx.pitchDeg : a.pitchDeg,
@@ -394,6 +559,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       facingManual: isActive ? ctx.facingManual : a.facingManual ?? false,
       neededPanels: isActive ? ctx.neededPanels : a.neededPanels,
       neededAuto: isActive ? ctx.neededAuto : a.neededAuto,
+      ...(a.buildingId ? { buildingId: a.buildingId } : {}), // CAL59 — additif
     };
     // WJ24 — géométrie pleine par pan (additif) : depuis le plan de rendu figé de la zone
     // (a.renderPlan) ou, pour la zone active, le plan gagnant vivant (ctx.layoutPlan). Les
@@ -452,8 +618,26 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
         // PV30 — jamais émis hors placement libre (additif, rétro-compatible).
         ...(freePosed ? { mode: 'free' as const } : {}),
       };
+      // CAL248 — l'accès solaire par module voyage AVEC la géométrie du pan : mêmes
+      // modules, même ordre. Écrit seulement s'il est exploitable (autant de valeurs que
+      // de modules posés) ; sinon omis, jamais complété.
+      const access = serializeSolarAccess(meta?.solarAccessByZone?.[a.id], posed);
+      if (access) zone.geometry.solarAccess = access;
     }
     return zone;
+  });
+  // CAL57 — déduit le type de chaque arête de CHAQUE zone depuis sa géométrie + ses
+  // voisines (mêmes valeurs EFFECTIVES que ci-dessus : vertices/roofType/azimut déjà
+  // résolus sur `zone`). Additif : jamais émis pour une zone < 3 sommets.
+  const edgeZones: EdgeDeductionZone[] = zones.map((z) => ({
+    vertices: z.vertices,
+    roofType: z.roofType ?? 'flat',
+    facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
+  }));
+  zones.forEach((z, i) => {
+    const others = edgeZones.filter((_, j) => j !== i);
+    const edges = deduceEdgeTypes(edgeZones[i], others);
+    if (edges.length) z.edges = edges;
   });
   const activeVerts = ctx.vertices.length >= 1 ? ctx.vertices : ctx.areas.find((a) => a.id === ctx.activeAreaId)?.vertices ?? [];
   const outline: Array<[number, number]> =
@@ -492,6 +676,16 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     // PV71 — les ombres tracées voyagent avec le design (sinon la production remonte
     // artificiellement au ré-import).
     shading12x24: serializeShading(ctx.shadeFactors),
+    // CAL102 — les mesures posées voyagent avec le design (sinon rouvrir le dossier les
+    // perd, comme n'importe quelle autre annotation de l'atelier).
+    ...(ctx.measurements && ctx.measurements.length ? { measurements: serializeMeasurements(ctx.measurements) } : {}),
+    // CAL67 — les objets d'environnement (arbres/bâtiments voisins) voyagent avec le
+    // design, comme les mesures et l'ombrage tracé ci-dessus.
+    ...(ctx.environment && ctx.environment.length ? { environment: serializeEnvironment(ctx.environment) } : {}),
+    // CAL69 — additif : rien n'est émis tant qu'aucune zone n'est tracée.
+    ...(ctx.exclusionZones && ctx.exclusionZones.length
+      ? { exclusionZones: serializeExclusionZones(ctx.exclusionZones) }
+      : {}),
   };
 }
 
@@ -514,6 +708,8 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       lengthM: o.lengthM,
       widthM: o.widthM,
       ...(o.type ? { type: o.type } : {}), // PV61 — le type survit au round-trip
+      ...(o.heightM != null ? { heightM: o.heightM } : {}), // CAL66 — round-trip verbatim
+      ...(o.provenance ? { provenance: o.provenance } : {}), // CAL72 — round-trip verbatim
     })),
     // F2 (fondateur 26/08/2026) — une zone posée par le SERVEUR depuis le tracé du
     // client n'écrit PAS ces trois champs : personne n'a mesuré ce toit, et un champ
@@ -531,6 +727,11 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
     neededAuto: z.neededAuto,
     result: null,
     renderPlan: null,
+    // CAL59 — round-trip verbatim (absent = bâtiment unique, comportement historique).
+    ...(z.buildingId ? { buildingId: z.buildingId } : {}),
+    // CAL57 — round-trip verbatim ; un document sans arêtes n'en gagne aucune ici (elles
+    // sont recalculées à la sérialisation SUIVANTE, pas devinées à la lecture).
+    ...(z.edges && z.edges.length ? { edges: z.edges } : {}),
   }));
 }
 
@@ -749,4 +950,12 @@ export function referenceContourRing(brut: RawContourPoint[] | null | undefined)
     if (coordonneeValide(lat, lng)) ring.push([lng, lat]);
   }
   return ring.length >= 3 ? ring : null;
+}
+
+/** CAL69 — relit les zones d'exclusion d'un document d'atelier. Accepte soit le layout
+ *  complet (lit `.exclusionZones`), soit déjà le tableau brut. JSON douteux ⇒ tableau
+ *  vide, jamais une exception — même esprit que `deserializeMeasurements`. */
+export function deserializeExclusionZonesFromLayout(json: unknown): ExclusionZone[] {
+  const raw = (json as { exclusionZones?: unknown } | null | undefined)?.exclusionZones ?? json;
+  return deserializeExclusionZones(raw);
 }

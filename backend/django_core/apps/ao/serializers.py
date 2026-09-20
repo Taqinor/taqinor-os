@@ -102,9 +102,14 @@ class AppelOffreSerializer(serializers.ModelSerializer):
             'engagement_modules_batiments', 'surface_toitures_m2',
             'montant_estime', 'montant_offre_ht', 'montant_offre_ttc',
             'caution_provisoire', 'statut', 'statut_display', 'lead_id',
-            'date_creation', 'synthese_calepinage',
+            'date_creation', 'synthese_calepinage', 'calepinage_id',
         ]
-        read_only_fields = ['date_creation']
+        # CAL32 — ``calepinage_id`` est SERVI, jamais accepté : le
+        # rattachement se fait côté serveur (action ``layout``, ou reprise
+        # CAL30). Le laisser en écriture permettrait à un client de pointer le
+        # calepinage d'une AUTRE société — l'identifiant est opaque, donc rien
+        # dans le sérialiseur ne pourrait le rattraper.
+        read_only_fields = ['date_creation', 'calepinage_id']
 
     @extend_schema_field(SyntheseCalepinageAffaireSerializer)
     def get_synthese_calepinage(self, obj):

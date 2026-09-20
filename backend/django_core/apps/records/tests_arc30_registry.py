@@ -110,6 +110,10 @@ HISTORICAL_TARGETS = {
     # ``apps/installations/platform.py`` — jamais un modèle ``RFQActivity``
     # maison.
     ('installations', 'rfq'),
+    # CAL26 — chatter GÉNÉRIQUE (journal ancien→nouveau + notes manuelles) sur
+    # le calepinage, ciblé par ``apps/calepinage/platform.py``
+    # (``record_targets``). Le module n'a qu'UN objet chatté : la conception.
+    ('calepinage', 'calepinage'),
 }
 
 
@@ -127,8 +131,9 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
         # 33 historiques +2 supply/retail (vague 1) +1 PV45 (regulatorydossier)
         # +1 douane.dossierexport (NTLOG49, vague 2 supply)
         # +4 chatter BTP NTCON32 (rfi/visadocument/avenantchantier/
-        # decomptegeneral) +1 installations.rfq (NTP2P44).
-        self.assertEqual(len(ALLOWED_TARGETS), 44)
+        # decomptegeneral) +1 installations.rfq (NTP2P44)
+        # +1 calepinage.calepinage (CAL26).
+        self.assertEqual(len(ALLOWED_TARGETS), 45)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:

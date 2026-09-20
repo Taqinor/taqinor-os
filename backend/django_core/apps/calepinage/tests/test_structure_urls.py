@@ -25,13 +25,13 @@ RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 
 #: Motifs engendrés par ``DefaultRouter`` à la racine (api-root + suffixe de
 #: format) : ils ne portent aucune ressource, donc ils sont hors contrat.
-#: DRF rend le suffixe de format soit en regex historique
-#: (``\.(?P<format>[a-z0-9]+)/?``), soit — versions récentes — via le
-#: convertisseur de chemin ``<drf_format_suffix:format>`` : les deux formes
-#: sont exemptées, jamais une ressource du module.
-_RACINE_ROUTEUR = (
-    '', r'\.(?P<format>[a-z0-9]+)/?', '<drf_format_suffix:format>',
-)
+#: CAL16 — la troisième forme (``<drf_format_suffix:format>``) est celle que
+#: DRF engendre RÉELLEMENT pour l'api-root dès qu'un viewset est enregistré :
+#: elle est apparue au premier ``router.register`` (le routeur était vide quand
+#: cette liste a été écrite). C'est la même route sans ressource que les deux
+#: autres — jamais une seconde famille d'URL.
+_RACINE_ROUTEUR = ('', r'\.(?P<format>[a-z0-9]+)/?',
+                   '<drf_format_suffix:format>')
 
 
 def _routes(patterns, prefixe=''):
@@ -102,8 +102,19 @@ class FormeUrlUniqueTest(SimpleTestCase):
             "Une sous-ressource s'expose en @action du viewset pivot, jamais "
             "en nouvelle famille d'URL (CAL233).")
 
-    def test_les_deux_prefixes_sont_les_bons(self):
+    def test_les_prefixes_sont_les_bons(self):
+        """L'objet métier a UNE forme d'URL ; le moteur n'est pas l'objet.
+
+        CAL22 — ``moteur`` rejoint la liste : c'est un CALCUL SANS ÉTAT (sans
+        identifiant, n'appartenant à aucun calepinage), dont le chemin est figé
+        depuis le jour 1 par ``contract_samples/moteur_calculer.json``. La
+        règle protège le calepinage lui-même, qui reste servi sous
+        ``calepinages/<pk>/…`` et nulle part ailleurs.
+        """
         from apps.calepinage.views import PREFIXES_URL_AUTORISES
 
         self.assertEqual(PREFIXES_URL_AUTORISES,
-                         ('calepinages', 'parametres'))
+                         ('calepinages', 'moteur', 'parametres'))
+        self.assertNotIn(
+            'calepinage', PREFIXES_URL_AUTORISES,
+            "Aucun second préfixe ne doit servir l'objet métier lui-même.")

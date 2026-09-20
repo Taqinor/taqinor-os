@@ -51,8 +51,9 @@ import {
 } from './constants';
 import { $, fmt } from './dom';
 import { type Ctx } from './context';
+import { type LngLat } from '../../lib/roof';
 import { type ProdConfig } from './types';
-import { createLayoutHistory, createValueHistory } from './layoutHistory';
+import { createLayoutHistory, createValueHistory, createWorkshopHistory, type WorkshopSnapshot } from './layoutHistory';
 // PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
 import {
   moveFreePanels,
@@ -62,6 +63,12 @@ import {
   checkPanelAt,
   findFreeSpot,
   copyFreeState,
+  rotateFreePanels,
+  snapCandidateForPanel,
+  alignPanels,
+  distributePanels,
+  toUV,
+  toENU,
   type FreeGeom,
   type FreeCheck,
   type FreeLayoutState,
@@ -132,6 +139,11 @@ export interface LayoutEditor {
   selection: () => number[];
   /** PV25 — remplace la sélection multiple (indices non occupés ignorés). */
   setSelection: (indices: readonly number[]) => void;
+  /** CAL235 — RETIRE des modules de la disposition lattice (geste explicite venu d'une
+   *  proposition d'ombrage). Photographie l'atelier AVANT (donc Ctrl+Z l'annule, CAL100),
+   *  puis re-rend. Renvoie le nombre RÉELLEMENT retiré ; 0 = rien n'a changé (pas d'état
+   *  de disposition, placement libre actif, ou aucun index occupé visé). */
+  removeCells: (indices: readonly number[]) => number;
   /** PV26 — annule / rétablit la dernière action de disposition (true si effectué). */
   undo: () => boolean;
   redo: () => boolean;
@@ -159,6 +171,16 @@ export interface LayoutEditor {
    *  centre sur la lattice courante et rend la 3D avec CETTE occupation. Renvoie true si
    *  la disposition a été appliquée. */
   hydrateLayout: (centers: readonly { cx: number; cy: number }[], origin?: readonly [number, number], mode?: 'lattice' | 'free') => boolean;
+  /** CAL80 — tourne la sélection libre donnée (angle ABSOLU, °). Tout ou rien ; refusée
+   *  SEULEMENT sur une contrainte DURE réelle (chevauchement, sortie de contour, obstacle). */
+  freeRotateSelection: (angleDeg: number, members: readonly number[]) => boolean;
+  /** CAL81 — position AIMANTÉE (bord de toit / autre panneau) pour un glissé en cours ; ne
+   *  modifie rien, l'appelant applique ensuite le déplacement normalement. */
+  freeSnapCandidate: (idx: number, cx: number, cy: number) => { cx: number; cy: number; snapped: boolean };
+  /** CAL81 — « aligner » la sélection libre (rangée ou colonne droite). Tout ou rien. */
+  freeAlignSelection: (axis: 'row' | 'col', members: readonly number[]) => boolean;
+  /** CAL81 — « distribuer » la sélection libre à écart égal. Tout ou rien. */
+  freeDistributeSelection: (members: readonly number[]) => boolean;
 }
 
 /**
@@ -455,6 +477,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  mécanique que le nudge clavier bloqué. */
   function dropHistoryPhoto() {
     history.drop();
+    workshopHistory.drop(); // CAL100 — même geste refusé, même photo à jeter
   }
 
   /** PV29 — REFUS VISIBLE : les panneaux concernés virent au rouge un court instant, puis
@@ -518,6 +541,13 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   }
   function recordFreeHistory() {
     if (ctx.freeState) freeHistory.push(ctx.freeState);
+    pushWorkshopHistory(); // CAL100 — même geste, historique généralisé EN PARALLÈLE
+  }
+  /** CAL100 — jette la photo libre ET sa contrepartie généralisée (même geste refusé) —
+   *  sans ça `workshopHistory` garderait une photo qu'il n'y a rien à annuler. */
+  function dropFreeHistory() {
+    freeHistory.drop();
+    workshopHistory.drop();
   }
 
   /** Libellé FR d'une contrainte violée — on NOMME ce qui bloque, jamais « impossible ». */
@@ -650,7 +680,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     recordFreeHistory();
     const res = moveFreePanels(st, g, members, quantizeFree(dx), quantizeFree(dy), margins());
     if (!res.ok) {
-      freeHistory.drop();
+      dropFreeHistory();
       flashRefusal(members);
       if (res.blocked) showMeasure(res.blocked);
       if (layoutNoteEl) {
@@ -675,7 +705,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     const res = addFreePanel(st, g, quantizeFree(cx), quantizeFree(cy), margins());
     showMeasure(res.check);
     if (!res.ok) {
-      freeHistory.drop();
+      dropFreeHistory();
       if (layoutNoteEl) {
         layoutNoteEl.textContent = `Impossible de poser un panneau ici : ${res.check.violations.map(violationLabel).join(', ')}.`;
       }
@@ -697,13 +727,92 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (!st) return false;
     recordFreeHistory();
     if (!removeFreePanel(st, idx)) {
-      freeHistory.drop();
+      dropFreeHistory();
       return false;
     }
     setSelection([]);
     if (layoutNoteEl) {
       layoutNoteEl.textContent = `Panneau retiré — ${fmt(st.panels.length)} posés. Le devis suivra ce nombre à l’enregistrement.`;
     }
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /** CAL80 — tourne la sélection libre (angle ABSOLU, ° ; chaque membre autour de SON propre
+   *  centre) — tout ou rien, refusée SEULEMENT sur une contrainte DURE réelle (chevauchement,
+   *  sortie de contour, obstacle). */
+  function freeRotateSelection(angleDeg: number, members: readonly number[]): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g || !members.length) return false;
+    recordFreeHistory();
+    const res = rotateFreePanels(st, g, members, angleDeg, margins());
+    if (!res.ok) {
+      dropFreeHistory();
+      flashRefusal(members);
+      if (layoutNoteEl) {
+        const why = res.blocked ? res.blocked.violations.map(violationLabel).join(', ') : 'rotation invalide';
+        layoutNoteEl.textContent = `Rotation refusée : ${why} — rien n’a bougé.`;
+      }
+      renderLayoutPanel();
+      return false;
+    }
+    if (layoutNoteEl) layoutNoteEl.textContent = `Tourné — ${fmt(members.length)} panneaux (placement libre).`;
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /** CAL81 — position AIMANTÉE (bord de toit / autre panneau) pour un glissé libre en cours,
+   *  dans le seuil `LAYOUT_GRAB_PX`-équivalent (même pas que `FREE_STEP_M`, ×10 = 10 cm). Ne
+   *  MODIFIE rien : c'est une proposition que l'appelant valide ensuite normalement. */
+  const FREE_SNAP_THRESHOLD_M = 0.1;
+  function freeSnapCandidate(idx: number, cx: number, cy: number): { cx: number; cy: number; snapped: boolean } {
+    const g = freeGeom();
+    const st = freeState();
+    if (!st || !g) return { cx, cy, snapped: false };
+    const [u, v] = toUV(g, cx, cy);
+    const snap = snapCandidateForPanel(st, g, idx, u, v, FREE_SNAP_THRESHOLD_M);
+    const [scx, scy] = toENU(g, snap.cu, snap.cv);
+    return { cx: snap.snapped ? scx : cx, cy: snap.snapped ? scy : cy, snapped: snap.snapped };
+  }
+
+  /** CAL81 — « aligner » la sélection libre (rangée ou colonne droite) — tout ou rien. */
+  function freeAlignSelection(axis: 'row' | 'col', members: readonly number[]): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g || members.length < 2) return false;
+    recordFreeHistory();
+    const res = alignPanels(st, g, members, axis, margins());
+    if (!res.ok) {
+      dropFreeHistory();
+      flashRefusal(members);
+      if (layoutNoteEl) layoutNoteEl.textContent = `Alignement refusé — rien n’a bougé.`;
+      renderLayoutPanel();
+      return false;
+    }
+    if (layoutNoteEl) layoutNoteEl.textContent = `Aligné — ${fmt(members.length)} panneaux (placement libre).`;
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /** CAL81 — « distribuer » la sélection libre à écart égal — tout ou rien. */
+  function freeDistributeSelection(members: readonly number[]): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g || members.length < 3) return false;
+    recordFreeHistory();
+    const res = distributePanels(st, g, members, margins());
+    if (!res.ok) {
+      dropFreeHistory();
+      flashRefusal(members);
+      if (layoutNoteEl) layoutNoteEl.textContent = `Distribution refusée — rien n’a bougé.`;
+      renderLayoutPanel();
+      return false;
+    }
+    if (layoutNoteEl) layoutNoteEl.textContent = `Distribué — ${fmt(members.length)} panneaux (placement libre).`;
     renderCustomLayout();
     renderLayoutPanel();
     return true;
@@ -729,59 +838,123 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   /** Photographie l'occupation AVANT de la muter (no-op sans état de disposition). */
   function recordHistory() {
     if (ctx.layoutState) history.push(ctx.layoutState.occupied);
+    pushWorkshopHistory(); // CAL100 — même geste, historique généralisé EN PARALLÈLE
   }
-  /** Ré-applique une occupation photographiée + re-rend (3D, chiffres, plan). */
-  function applySnapshot(snapshot: number[]) {
+  // CAL100 — `applySnapshot`/`applyFreeSnapshot` (restauration occupation-seule / état-libre-
+  // seul) sont remplacées par `applyWorkshopSnapshot` ci-dessus : `undo()`/`redo()`
+  // restaurent désormais TOUJOURS l'atelier ENTIER (dont l'occupation/l'état libre) en un
+  // seul geste cohérent — cf. bloc CAL100 plus haut dans ce fichier.
+  /** CAL100 — `workshopHistory` est la SEULE source de vérité de la restauration (elle est
+   *  TOUJOURS poussée au moins autant que `history`/`freeHistory`, cf. `recordHistory`/
+   *  `recordFreeHistory` ci-dessus) : un `undo()` restaure tracé/obstacles/zones/pose ET
+   *  l'occupation lattice/l'état libre courants, en un seul geste cohérent. */
+  /**
+   * CAL235 — retire des modules de la disposition lattice, sur geste EXPLICITE (la
+   * proposition d'ombrage ne s'applique jamais d'elle-même). L'atelier est photographié
+   * AVANT (recordHistory → workshopHistory), donc Ctrl+Z restaure les modules retirés.
+   * Renvoie le nombre réellement retiré ; 0 ⇒ rien n'a bougé.
+   */
+  function removeCells(indices: readonly number[]): number {
+    if (ctx.freeMode) return 0; // placement libre : autre modèle, on ne devine pas
+    ensureLayoutState();
     const st = ctx.layoutState;
-    if (!st) return;
-    st.occupied.clear();
-    for (const i of snapshot) if (i >= 0 && i < st.cells.length) st.occupied.add(i);
+    if (!st) return 0;
+    const cibles = [...new Set(indices)].filter((i) => Number.isInteger(i) && st.occupied.has(i));
+    if (!cibles.length) return 0;
+    if (cibles.length >= st.occupied.size) return 0; // jamais vider le pan entier
+    recordHistory(); // PV26 + CAL100 — annulable comme n'importe quelle édition
+    for (const i of cibles) st.occupied.delete(i);
     ctx.layoutSel = null;
-    pruneSelection();
     renderCustomLayout();
-    renderLayoutPanel();
+    return cibles.length;
   }
-  /** PV30 — ré-applique une photo de PLACEMENT LIBRE (positions continues). */
-  function applyFreeSnapshot(snap: FreeLayoutState) {
-    ctx.freeState = snap;
-    ctx.layoutSel = null;
-    pruneSelection();
-    renderCustomLayout();
-    renderLayoutPanel();
-  }
+
   function undo(): boolean {
-    // PV30 — chaque mode a sa pile ; on annule TOUJOURS dans le mode où l'on se trouve.
-    if (freeActive()) {
-      const prev = freeHistory.undo(ctx.freeState!);
-      if (!prev) return false;
-      applyFreeSnapshot(prev);
-      if (layoutNoteEl) layoutNoteEl.textContent = `Action annulée — ${fmt(ctx.freeState!.panels.length)} panneaux posés.`;
-      return true;
-    }
-    const st = ctx.layoutState;
-    if (!st) return false;
-    const prev = history.undo(st.occupied);
+    if (!workshopHistory.canUndo()) return false;
+    const prev = workshopHistory.undo(snapshotWorkshop());
     if (!prev) return false;
-    applySnapshot(prev);
-    if (layoutNoteEl) layoutNoteEl.textContent = `Action annulée — ${fmt(st.occupied.size)} panneaux posés.`;
+    applyWorkshopSnapshot(prev);
+    renderCustomLayout();
+    renderLayoutPanel();
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = freeActive()
+        ? `Action annulée — ${fmt(ctx.freeState?.panels.length ?? 0)} panneaux posés.`
+        : `Action annulée — ${fmt(ctx.layoutState?.occupied.size ?? 0)} panneaux posés.`;
+    }
     return true;
   }
   function redo(): boolean {
-    if (freeActive()) {
-      const next = freeHistory.redo(ctx.freeState!);
-      if (!next) return false;
-      applyFreeSnapshot(next);
-      if (layoutNoteEl) layoutNoteEl.textContent = `Action rétablie — ${fmt(ctx.freeState!.panels.length)} panneaux posés.`;
-      return true;
-    }
-    const st = ctx.layoutState;
-    if (!st) return false;
-    const next = history.redo(st.occupied);
+    if (!workshopHistory.canRedo()) return false;
+    const next = workshopHistory.redo(snapshotWorkshop());
     if (!next) return false;
-    applySnapshot(next);
-    if (layoutNoteEl) layoutNoteEl.textContent = `Action rétablie — ${fmt(st.occupied.size)} panneaux posés.`;
+    applyWorkshopSnapshot(next);
+    renderCustomLayout();
+    renderLayoutPanel();
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = freeActive()
+        ? `Action rétablie — ${fmt(ctx.freeState?.panels.length ?? 0)} panneaux posés.`
+        : `Action rétablie — ${fmt(ctx.layoutState?.occupied.size ?? 0)} panneaux posés.`;
+    }
     return true;
   }
+
+  // ═══════════ CAL100 — historique GÉNÉRALISÉ (tracé + obstacles + zones + pose) ═══════════
+  // `history`/`freeHistory` ci-dessus ne couvraient que l'occupation de la disposition —
+  // supprimer un obstacle ou une zone restait irréversible. `workshopHistory` (même mécanique,
+  // `createWorkshopHistory`) photographie TOUT l'atelier — tracé/obstacles/zones/pose ET
+  // l'occupation lattice/l'état libre courants — donc elle reste TOUJOURS un sur-ensemble de
+  // ce que `history`/`freeHistory` couvrent seules : `undo()`/`redo()` ci-dessous s'appuient
+  // désormais sur `workshopHistory` comme SEULE source de vérité (plus de risque de
+  // désynchronisation entre deux piles poussées séparément). `history`/`freeHistory` restent
+  // poussées pour leurs propres tests unitaires (layoutHistoryPV26/freePlacementPV30) mais ne
+  // pilotent plus la restauration. `ctx.pushWorkshopHistory` s'auto-enregistre pour que les
+  // modules qui mutent obstacles/tracé (obstaclesUi.ts) rendent, eux aussi, leur geste
+  // annulable — AUCUN câblage supplémentaire requis côté entrée : `undo()`/`redo()` sont déjà
+  // les fonctions branchées sur Ctrl+Z/Ctrl+Y et les boutons ↶/↷ (plus bas dans ce fichier).
+  const workshopHistory = createWorkshopHistory();
+  // CAL100 — un `ctx` de test/hôte antérieur peut ne PAS porter vertices/obstacles/areas
+  // (fixtures allégées qui ne peuplent que ce dont le mode libre a besoin) : jamais lu en
+  // aveugle, même garde que `margins()` pour `freeMargins` un peu plus haut dans ce fichier.
+  function snapshotWorkshop(): WorkshopSnapshot {
+    return {
+      vertices: Array.isArray(ctx.vertices) ? ctx.vertices.map((v) => [v[0], v[1]]) : [],
+      obstacles: Array.isArray(ctx.obstacles) ? ctx.obstacles.map((o) => ({ ...o })) : [],
+      areas: Array.isArray(ctx.areas)
+        ? ctx.areas.map((a) => ({ ...a, vertices: a.vertices.map((v) => [v[0], v[1]]), obstacles: a.obstacles.map((o) => ({ ...o })) }))
+        : [],
+      roofType: ctx.roofType,
+      pitchDeg: ctx.pitchDeg,
+      facingAzimuthDeg: ctx.facingAzimuthDeg,
+      layoutOccupied: ctx.layoutState ? [...ctx.layoutState.occupied].sort((a, b) => a - b) : undefined,
+      freeState: ctx.freeState ? { panels: ctx.freeState.panels.map((p) => ({ ...p })) } : undefined,
+    };
+  }
+  function applyWorkshopSnapshot(s: WorkshopSnapshot) {
+    if (Array.isArray(ctx.vertices)) ctx.vertices = s.vertices.map((v) => [v[0], v[1]]);
+    if (Array.isArray(ctx.obstacles)) ctx.obstacles = s.obstacles.map((o) => ({ ...o }));
+    // `ctx.areas` est `readonly` (référence stable, mutée EN PLACE partout ailleurs) —
+    // jamais réassignée, toujours vidée + repeuplée.
+    if (Array.isArray(ctx.areas)) {
+      ctx.areas.length = 0;
+      ctx.areas.push(...s.areas.map((a) => ({ ...a, vertices: a.vertices.map((v) => [v[0], v[1]] as LngLat), obstacles: a.obstacles.map((o) => ({ ...o })) })));
+    }
+    ctx.roofType = s.roofType;
+    ctx.pitchDeg = s.pitchDeg;
+    ctx.facingAzimuthDeg = s.facingAzimuthDeg;
+    if (s.layoutOccupied && ctx.layoutState) {
+      ctx.layoutState.occupied = new Set(s.layoutOccupied.filter((i) => i >= 0 && i < ctx.layoutState!.cells.length));
+    }
+    if (s.freeState) ctx.freeState = { panels: s.freeState.panels.map((p) => ({ ...p })) };
+    ctx.layoutSel = null;
+    pruneSelection();
+  }
+  /** Photographie TOUT l'atelier AVANT une mutation — à appeler par n'importe quel module
+   *  (via `ctx.pushWorkshopHistory`) juste avant de retirer/ajouter/déplacer un obstacle,
+   *  éditer le tracé, ou changer la pose du pan actif. */
+  function pushWorkshopHistory() {
+    workshopHistory.push(snapshotWorkshop());
+  }
+  ctx.pushWorkshopHistory = pushWorkshopHistory; // auto-enregistrement — cf. commentaire ci-dessus
 
   function layoutCap(): number {
     const fit = ctx.layoutPlan ? ctx.layoutPlan.grid.panels.length : 0;
@@ -1008,10 +1181,10 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       layoutSelCountEl.textContent =
         n === 0 ? 'Aucun panneau sélectionné' : n === 1 ? '1 panneau sélectionné' : `${fmt(n)} panneaux sélectionnés`;
     }
-    // PV26/PV30 — l'historique reflété est celui du MODE courant.
-    const hist = freeActive() ? freeHistory : history;
-    if (layoutUndoBtn) layoutUndoBtn.disabled = !hist.canUndo();
-    if (layoutRedoBtn) layoutRedoBtn.disabled = !hist.canRedo();
+    // CAL100 — `workshopHistory` pilote désormais `undo()`/`redo()` (sur-ensemble de
+    // `history`/`freeHistory` — cf. bloc CAL100).
+    if (layoutUndoBtn) layoutUndoBtn.disabled = !workshopHistory.canUndo();
+    if (layoutRedoBtn) layoutRedoBtn.disabled = !workshopHistory.canRedo();
     // L'azimut n'est nudgeable que sur un toit en PENTE (face imposée par la toiture) ;
     // sur toit plat, l'azimut est un AXE de l'optimiseur, pas un réglage de disposition.
     if (layoutAzWrapEl) layoutAzWrapEl.hidden = ctx.roofType !== 'pitched';
@@ -1260,6 +1433,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     ctx.layoutSel = null;
     setSelection([]);
     history.clear(); // une hydratation est un POINT DE DÉPART, pas une action annulable
+    workshopHistory.clear(); // CAL100 — idem pour l'historique généralisé
     hydrated = true; // PV27 — entrer en mode disposition ne doit plus l'écraser
     renderCustomLayout();
     renderLayoutPanel();
@@ -1313,7 +1487,10 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       // manuel dès qu'on rouvrait le panneau. Repartir de l'optimum reste possible — c'est
       // le bouton « Réinitialiser la disposition optimale », explicite.
       if (!ctx.layoutState) ensureLayoutState();
-      if (!hydrated) history.clear(); // PV26 — historique propre pour une nouvelle session
+      if (!hydrated) {
+        history.clear(); // PV26 — historique propre pour une nouvelle session
+        workshopHistory.clear(); // CAL100 — idem pour l'historique généralisé
+      }
       setSelection([]);
       renderCustomLayout();
     } else {
@@ -1519,6 +1696,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       res.ok && res.targets.length === members.length && [...res.targets].sort((a, b) => a - b).join() === [...members].sort((a, b) => a - b).join();
     if (!res.ok || sameAsBefore) {
       history.drop(); // PV29 — jeter la photo, sans allumer « rétablir » pour rien
+      workshopHistory.drop(); // CAL100 — idem pour l'historique généralisé
       if (layoutNoteEl) layoutNoteEl.textContent = 'Pas de place dans cette direction — rien n’a bougé.';
       renderLayoutPanel();
       return false;
@@ -2013,7 +2191,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     // PV31 — un geste LIBRE qui n'a pas bougé (simple clic, Alt + clic) n'est pas un
     // déplacement : on retire la photo prise à la saisie, sinon « annuler » consommerait un
     // pas pour ne rien changer. Les actions qui suivent reprennent leur propre photo.
-    if (!moved && layoutDrag.freeOrigin) freeHistory.drop();
+    if (!moved && layoutDrag.freeOrigin) dropFreeHistory();
     if (moved && freeActive()) {
       // PV31 — commit d'un glissé LIBRE. L'APERÇU VIVANT a déjà posé les panneaux à leur
       // dernière position VALIDE : il n'y a plus rien à recalculer ici, seulement à
@@ -2028,7 +2206,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
         }
         renderCustomLayout(); // recompute des chiffres + repeint la sélection
       } else {
-        freeHistory.drop();
+        dropFreeHistory();
         flashRefusal(members); // refus VISIBLE (rouge), rien n'a bougé
         if (d?.freeBlocked) showMeasure(d.freeBlocked);
         if (layoutNoteEl) {
@@ -2248,7 +2426,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
           map.getCanvas().style.cursor = '';
           // PV31 — la photo prise à la saisie n'a servi à rien (le doigt n'a pas bougé) :
           // on la retire, la suppression reprend la sienne.
-          if (wasFreeGrab) freeHistory.drop();
+          if (wasFreeGrab) dropFreeHistory();
           // PV31 — en placement LIBRE, l'index saisi indexe la LISTE des panneaux libres,
           // pas une cellule de lattice : l'appui long doit retirer le panneau LIBRE (le
           // chemin lattice mutait silencieusement une occupation qui ne gouverne plus rien).
@@ -2284,6 +2462,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     reenterCustomLayout,
     selection: () => [...selection],
     setSelection,
+    removeCells,
     undo,
     redo,
     hydrateLayout,
@@ -2302,5 +2481,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       };
       syncFreeInputs();
     },
+    freeRotateSelection,
+    freeSnapCandidate,
+    freeAlignSelection,
+    freeDistributeSelection,
   };
 }

@@ -412,6 +412,180 @@ def paiements_totaux_par_mode(facture_ids):
         .annotate(total=Sum('montant'), nb=Count('id')))
 
 
+def calepinage_du_devis(devis, company=None):
+    """CAL28 — le calepinage qui PILOTE ce devis, ou ``None``.
+
+    Le lien inverse n'existait pas : la fiche devis ne savait pas qu'un
+    calepinage la pilote, alors que c'est lui qui porte les versions, les
+    variantes et la planche. Cette fonction est le pont — MINCE, en lecture
+    seule, et passant par ``apps.calepinage.selectors`` (import FONCTION-LOCAL
+    pour éviter le cycle au chargement) : ``ventes`` n'importe JAMAIS
+    ``apps.calepinage.models``.
+
+    ``a_jour`` est une COMPARAISON DES DEUX EMPREINTES, jamais un recalcul de
+    géométrie : le devis et son calepinage portent la même empreinte tant que
+    la conception n'a pas divergé. Empreinte manquante d'un côté ⇒ ``None``
+    (inconnu), jamais ``False`` — on ne déclare pas « périmé » ce qu'on n'a pas
+    mesuré.
+    """
+    from apps.calepinage.selectors import calepinage_du_devis as _lire
+
+    if devis is None:
+        return None
+    company = company or getattr(devis, 'company', None)
+    calepinage = _lire(getattr(devis, 'pk', None), company)
+    if calepinage is None:
+        return None
+    empreinte_devis = getattr(devis, 'layout_hash', '') or ''
+    empreinte_cal = calepinage.layout_hash or ''
+    return {
+        'id': calepinage.pk,
+        'titre': calepinage.titre or '',
+        'layout_hash': empreinte_cal or None,
+        'a_jour': (empreinte_devis == empreinte_cal
+                   if empreinte_devis and empreinte_cal else None),
+    }
+
+
+def schema_unifilaire_svg(*, devis=None, entree=None, resultat=None,
+                          cartouche=None, standard=False):
+    """CAL195 — LE producteur de schéma unifilaire, par SA porte cross-app.
+
+    Le schéma existe depuis PV46, mais il était enfermé : il part d'un DEVIS,
+    et le seul chemin vers lui traverse le moteur vendorisé
+    (``quote_engine.builder._sld_svg``). Or ce moteur REND — il ne s'importe
+    pas (règle #4), et aucune autre app n'a le droit d'atteindre un de ses
+    modules internes. Un calepinage sans devis n'avait donc aucun schéma, alors
+    que le dessin lui-même est produit par un module PUR
+    (``core.electrique.schema``) qui ne connaît ni devis, ni prix, ni statut.
+
+    Cette fonction est la porte, et elle ne DESSINE rien :
+
+    * ``devis=`` — délégation stricte à ``electrical_service.
+      rendre_schema_du_devis``, l'appel que ``_sld_svg`` fait déjà. Le SVG
+      d'un devis reste donc BYTE-IDENTIQUE : aucun paramètre n'est ajouté,
+      aucun repli n'est introduit, et les trois portails (étude présente,
+      fiches complètes, conception conforme) restent les siens.
+    * ``entree=``/``resultat=`` — un appelant qui porte DÉJÀ les objets du
+      moteur électrique (``core.electrique.types``) : c'est le cas d'
+      ``apps.calepinage``, dont la ``Conception`` (CAL124) est bâtie sur ces
+      mêmes types, chaînes par MPPT (CAL125), câbles dimensionnés (CAL131) et
+      check-list d'organes (CAL132) comprises. Le dessin est alors celui du
+      MÊME moteur, jamais une seconde planche.
+
+    ``None`` dès qu'il manque de quoi dessiner — même discipline que
+    PVFCH-ANNEXE : une fiche incomplète n'obtient PAS un schéma approximatif,
+    elle n'en obtient aucun.
+    """
+    if devis is not None:
+        from .electrical_service import rendre_schema_du_devis
+        return rendre_schema_du_devis(devis, standard=standard)
+    if entree is None or resultat is None:
+        return None
+    from core.electrique.schema import rendre_schema
+    return rendre_schema(entree, resultat, cartouche=cartouche or {},
+                         standard=standard)
+
+
+def lignes_produits_calepinage(devis):
+    """CAL243 — les lignes PRODUIT « retenues » d'un devis, pour l'équipement
+    d'un calepinage lié.
+
+    Point d'entrée cross-app LECTURE SEULE (``apps.calepinage`` n'importe
+    JAMAIS ``apps.ventes.models``) : un objet léger par ligne
+    (``produit``, ``designation``, ``quantite``), jamais le modèle
+    ``LigneDevis`` lui-même. Ne rend que les lignes de type ``'produit'``
+    dont le produit est renseigné, et EXCLUT la variante ``'avec'`` (option
+    « avec batterie ») : la disposition retient l'équipement de l'option PAR
+    DÉFAUT (commune + « sans »), jamais un mélange des deux options d'un
+    devis « Les deux ». Devis ``None`` -> liste vide.
+    """
+    if devis is None:
+        return []
+    return [
+        {'produit': ligne.produit, 'designation': ligne.designation,
+         'quantite': ligne.quantite}
+        for ligne in (devis.lignes
+                      .filter(type_ligne='produit', produit_id__isnull=False)
+                      .exclude(variante='avec')
+                      .select_related('produit')
+                      .order_by('id'))
+    ]
+
+
+def peremption_layout_devis(devis):
+    """CAL189 — ``{layout_stale, layout_nb_panneaux}`` d'un devis.
+
+    LE MÊME CALCUL QUE LA PAGE PUBLIQUE, pas un second. ``layout_stale``
+    n'était publié que dans la charge utile de la proposition
+    (``public_views.py`` ← ``quote_engine/builder.py``) : l'API interne ne
+    l'exposait nulle part, donc l'écran ERP ne pouvait pas dire au commercial
+    que sa 3D ne décrit plus ce que le devis vend. Le compte de modules du
+    layout est lu par le HELPER du moteur PDF (``_panneaux_du_layout``), et les
+    comptes des LIGNES par les mêmes primitives que le reste du domaine.
+
+    Un document à DEUX OPTIONS a DEUX comptes valides (LAYSTALE) : le
+    calepinage n'est périmé que s'il ne correspond à AUCUNE des deux — sinon on
+    afficherait au client un avertissement FAUX.
+
+    ``layout_stale`` vaut ``False`` quand le devis ne porte AUCUNE ligne de
+    panneau : il n'y a alors rien à comparer, et un « périmé » là-dessus serait
+    une alerte inventée.
+    """
+    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.quote_engine.builder import _panneaux_du_layout
+    from apps.ventes.services import _is_panel
+
+    if devis is None:
+        return {'layout_stale': None, 'layout_nb_panneaux': None}
+    layout_nb_panneaux = _panneaux_du_layout(
+        getattr(devis, 'roof_layout', None))
+
+    comptes = {}
+    for ligne in _lignes_produit_du_devis(devis):
+        if not _is_panel(getattr(ligne, 'designation', '') or ''):
+            continue
+        variante = (getattr(ligne, 'variante', '') or '')
+        cle = 'avec' if variante == 'avec' else 'sans'
+        try:
+            quantite = int(float(getattr(ligne, 'quantite', 0) or 0))
+        except (TypeError, ValueError):
+            continue
+        comptes[cle] = comptes.get(cle, 0) + quantite
+        if variante == '':
+            # Une ligne COMMUNE compte dans les deux options.
+            comptes['avec'] = comptes.get('avec', 0) + quantite
+    valides = {n for n in comptes.values() if n}
+    return {
+        'layout_stale': bool(layout_nb_panneaux and valides
+                             and layout_nb_panneaux not in valides),
+        'layout_nb_panneaux': layout_nb_panneaux,
+    }
+
+
+def devis_brouillon_pour_layout(company, lead_id, empreinte):
+    """CAL24 — le BROUILLON déjà né de ce calepinage, ou ``None``.
+
+    C'est la dédup de QJ17 (``lead`` + ``layout_hash``), rendue lisible aux
+    autres apps : re-cliquer « Générer le devis » doit redonner le brouillon
+    EXISTANT, jamais un doublon. Elle vivait inline dans la vue ``from-layout``
+    de ventes ; tout autre créateur (le module Calepinage) l'aurait recopiée,
+    donc fait dériver.
+
+    Scopée société, et seulement les BROUILLONS : un devis déjà envoyé ne se
+    « réutilise » pas — il se révise.
+    """
+    from .models import Devis
+
+    if company is None or not lead_id or not empreinte:
+        return None
+    return (Devis.objects
+            .filter(company=company, lead_id=lead_id,
+                    statut=Devis.Statut.BROUILLON, layout_hash=empreinte)
+            .order_by('-date_creation')
+            .first())
+
+
 def devis_card(devis_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un devis pour le partage dans la
     messagerie. Scopée société : None si le devis n'appartient pas à la société.

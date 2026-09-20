@@ -24,6 +24,9 @@ import { type Appliance, type HourlyCurve } from '../../lib/applianceConsumption
 import { type LayoutState } from '../../lib/layoutVariability';
 import { type FreeLayoutState, type FreeMargins } from '../../lib/freeLayout';
 import { type ShadeObstruction } from '../../lib/shadingEngine';
+import { type Measurement } from './mesureUi';
+import { type EnvironmentObject } from './environment';
+import { type ExclusionZone, type ExclusionNature } from './zones';
 import {
   type InitOptions,
   type RoofType,
@@ -129,6 +132,26 @@ export interface Ctx {
   /** W109 — débord panneaux autorisé au-delà de la rive (m), saisi par l'utilisateur. 0 par
    *  défaut → calepinage/solve inchangés. Change la CAPACITÉ géométrique, jamais le cap besoin. */
   overhangM: number;
+  /** CAL102 — mesures posées sur le pan actif (distance/surface/angle), persistables avec le
+   *  calepinage. Optionnel : un `ctx` antérieur à CAL102 n'en porte pas — `createMesureUi`
+   *  l'initialise à la première pose (`ensure()`), jamais lu en aveugle. */
+  measurements?: Measurement[];
+  /** CAL100 — photographie TOUT l'atelier (tracé/obstacles/zones/pose) pour l'annuler/
+   *  rétablir GÉNÉRALISÉ. `createLayoutEditor` s'auto-enregistre ici à sa construction (le
+   *  seul module qui possède l'historique) ; `obstaclesUi.ts`/toute autre mutation l'appelle
+   *  AVANT de muter `ctx` pour que le geste devienne annulable. Optionnel : absent (layout
+   *  editor pas encore monté, ou tests unitaires isolés) → no-op, comportement inchangé. */
+  pushWorkshopHistory?: () => void;
+  /** CAL75 — écart LATÉRAL entre panneaux d'une même rangée EN POSE OPTIMISÉE (m), saisi par
+   *  la société. Optionnel : absent/non fini → PANEL_SIDE_GAP_M (2 cm, valeur d'étude),
+   *  calepinage identique à aujourd'hui. Un `ctx` antérieur à CAL75 ne porte pas ce champ —
+   *  jamais lu en aveugle (même garde que `freeMargins`, cf. layoutEditor.ts `margins()`).
+   *  Jusqu'ici réglable SEULEMENT en placement libre (freeMargins). */
+  colGapM?: number;
+  /** CAL75 — écart SUPPLÉMENTAIRE entre rangées EN POSE OPTIMISÉE (m), AU-DESSUS du pas
+   *  minimal anti-ombrage (jamais réduit — la physique reste tenue). Optionnel : absent/0 →
+   *  calepinage identique à aujourd'hui. */
+  rowGapExtraM?: number;
 
   // — Besoin « panneaux nécessaires » de la zone active (mutable) —
   neededPanels: number;
@@ -221,6 +244,19 @@ export interface Ctx {
   // — WJ19 « Ombres voisines » (shadow-tracing → dérate honnête de la production) —
   /** Obstructions déduites d'ombres tracées — ref STABLE (tableau muté en place). */
   readonly shadeObstructions: ShadeObstruction[];
+  /** CAL67 — objets d'environnement (arbres/bâtiments voisins) posés HORS contour —
+   *  ref STABLE (tableau muté en place, comme `shadeObstructions`). Optionnel : absent
+   *  sur un `ctx` antérieur à CAL67 (tests unitaires isolés) → traité comme vide. */
+  environment?: EnvironmentObject[];
+  // CAL69 — zones INTERDITE/RESERVEE/PREFEREE tracées dans l'atelier, persistées telles
+  // quelles sous `exclusionZones` (contrat CAL68). Absentes = aucune zone.
+  exclusionZones?: ExclusionZone[];
+  zoneCounter?: number;
+  /** Nature en attente de tracé : posée par le panneau, lue par `endDraw`. */
+  pendingZoneNature?: ExclusionNature | null;
+  /** CAL67 — compteur d'identifiants d'objet d'environnement (env-N). Optionnel : absent
+   *  sur un `ctx` antérieur à CAL67 → `obstaclesUi.ts` l'initialise à 0 au premier ajout. */
+  envCounter?: number;
   /** Matrice 12×24 des facteurs d'ombrage horaires, ou null = aucun ombrage tracé. */
   shadeFactors: number[][] | null;
   /** Facteur d'ombrage ANNUEL (0–1], 1 = aucun dérate — appliqué aux chiffres annuels. */

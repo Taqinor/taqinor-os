@@ -488,17 +488,32 @@ def seed_reservations(installation):
     Idempotent et additif : une réservation par (chantier, produit), créée ou
     mise à jour à la quantité du BOM. Ne touche JAMAIS une réservation déjà
     CONSOMMÉE (le stock a déjà été décrémenté). Robuste au BOM vide (ne crée
-    rien). Renvoie la liste des réservations actives du chantier."""
+    rien). Renvoie la liste des réservations actives du chantier.
+
+    CAL210 — chaque réservation posée porte `origine_calepinage_id` : l'id du
+    calepinage (module autonome) qui a dimensionné le devis du chantier, quand
+    il en a un retenu (lu UNE fois via le sélecteur cross-app, jamais un
+    import de `apps.calepinage.models`). Aucune nouvelle mécanique de
+    réservation — juste sa provenance, pour qu'un magasinier sache quelle
+    étude a engagé le stock. `None` pour un chantier sans calepinage
+    (comportement quantitatif strictement inchangé)."""
+    from .selectors import calepinage_retenu_du_chantier
     from apps.stock.selectors import valid_produit_ids
     company = installation.company
     besoins = _bom_quantities(installation)
     valid_ids = valid_produit_ids(company, list(besoins)) if besoins else set()
+    bloc_calepinage = calepinage_retenu_du_chantier(installation)
+    origine_calepinage_id = (
+        bloc_calepinage['calepinage_id'] if bloc_calepinage else None)
     for produit_id, qte in besoins.items():
         if produit_id not in valid_ids:
             continue
         resa, created = StockReservation.objects.get_or_create(
             installation=installation, produit_id=produit_id,
-            defaults={'company': company, 'quantite': qte})
+            defaults={
+                'company': company, 'quantite': qte,
+                'origine_calepinage_id': origine_calepinage_id,
+            })
         if not created and not resa.consomme:
             # Réaligne la quantité réservée sur le BOM (réservation non encore
             # consommée). Une réservation consommée reste figée.
@@ -512,6 +527,10 @@ def seed_reservations(installation):
             if resa.company_id is None:
                 resa.company = company
                 changed.append('company')
+            if (resa.origine_calepinage_id is None
+                    and origine_calepinage_id is not None):
+                resa.origine_calepinage_id = origine_calepinage_id
+                changed.append('origine_calepinage_id')
             if changed:
                 resa.save(update_fields=changed)
     return list(installation.reservations.filter(active=True))

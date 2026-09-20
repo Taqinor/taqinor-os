@@ -65,13 +65,26 @@ class ManifesteModuleTest(SimpleTestCase):
 class ManifestePlateformeTest(SimpleTestCase):
     """ARC28 — ``platform.py`` existe et ne déclare aucune surface non câblée."""
 
-    def test_surfaces_vides_au_jour_1(self):
+    def test_chaque_surface_declaree_est_cablee(self):
+        """L'invariant est « déclaré = câblé », pas « tout est vide ».
+
+        Les trois surfaces ci-dessous ont été câblées DANS LE MÊME LOT
+        (CAL27 recherche globale, CAL26 chatter ``records``, ARC31 champs
+        perso) : les exiger vides revenait à interdire le câblage que la
+        tâche demandait. On fige donc leur contenu EXACT — plus fort qu'un
+        « non vide » —, et on garde vides celles que ``platform.py`` déclare
+        délibérément non câblées.
+        """
         from apps.calepinage.platform import PLATFORM
 
         self.assertEqual(PLATFORM['module'], 'calepinage')
-        for surface in ('searchable_models', 'record_targets',
-                        'customfield_models', 'import_specs',
-                        'automation_state_fields', 'kpi_providers'):
+        self.assertEqual(PLATFORM['searchable_models'],
+                         ['calepinage.calepinage'])
+        self.assertEqual(PLATFORM['record_targets'],
+                         ['calepinage.calepinage'])
+        self.assertEqual(PLATFORM['customfield_models'], ['calepinage'])
+        for surface in ('import_specs', 'automation_state_fields',
+                        'kpi_providers'):
             self.assertEqual(PLATFORM[surface], [], surface)
         self.assertEqual(PLATFORM['agent_actions_module'], '')
 

@@ -201,7 +201,11 @@ const PER_CHUNK_BUDGET_KB = 350
 // historique statut, monitoring API, simulateur matrice, GPS, règles achat).
 // Gras prouvé absent : diff package.json vide, zéro `import * as` dans les
 // fichiers touchés. Budget monté au juste-dessus de la mesure.
-const TOTAL_BUDGET_KB = 3735
+// 2026-09-20 : 3710 -> 3760 (mesure réelle 3730,7 Ko gzip, lot 2 du module
+// Calepinage : écrans liste/nouveau/comparaison/fiche + mode calepinage de
+// l'atelier) — fusionné avec le drain NT ci-dessus, recalé à la prochaine
+// mesure réelle (CAL224) plutôt qu'une simple addition non mesurée.
+const TOTAL_BUDGET_KB = 3760
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

@@ -41,6 +41,12 @@ export const MANIFESTES = {
   authentication: { sku: 'generic', libelle: 'Authentification', installable: false },
   automation: { sku: 'generic', libelle: 'Automatisations', installable: true },
   btp_chantier: { sku: 'solar_core', libelle: 'BTP Chantier', installable: true },
+  // CAL34 — miroir du `module_manifest` de `apps/calepinage/apps.py` (CAL4) :
+  // `sku: 'solar_core'` (le métier d'un installateur, comme crm/ventes/ao).
+  // Ajout append-only d'UNE entrée : sans elle, la grille « Applications »
+  // classerait le module en `generic` et `appSkus.test.jsx` le signalerait
+  // comme clé inconnue du registre.
+  calepinage: { sku: 'solar_core', libelle: 'Calepinage', installable: true },
   chat: { sku: 'generic', libelle: 'Messagerie', installable: true },
   compta: { sku: 'generic', libelle: 'Comptabilité', installable: true },
   contacts: { sku: 'generic', libelle: 'Contacts multi-rôles', installable: true },

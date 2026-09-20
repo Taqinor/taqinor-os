@@ -21,11 +21,14 @@ SECTIONS_PARAMETRES = (
     'presets',
     'favoris_materiel',
     'gabarits_dossier',
+    # CAL130 — norme électrique applicable + coefficients SAISIS. Section
+    # vide = aucune norme choisie (règle D5 : rien n'est supposé au Maroc).
+    'norme_electrique',
 )
 
 
 def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
-                      depuis=None, q=None):
+                      depuis=None, q=None, inclure_archives=False):
     """CAL10 — les calepinages de ``company``, filtrés, en lecture pure.
 
     Args:
@@ -37,6 +40,10 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
         depuis: date/heure — ne rend que ce qui a été créé à partir d'elle.
         q: recherche libre sur le TITRE (rien d'autre : on n'énumère pas
             l'annuaire client depuis ce module).
+        inclure_archives: CAL208 — ``False`` (défaut) exclut les calepinages
+            ARCHIVÉS (corbeille, ``apps.trash``) de la liste — un calepinage
+            archivé n'est jamais soft-supprimé, il sort juste de la vue par
+            défaut. ``True`` les inclut (écran corbeille).
 
     Returns:
         Un ``QuerySet`` ordonné du plus récent au plus ancien.
@@ -45,7 +52,30 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
 
     if company is None:
         return Calepinage.objects.none()
-    lignes = Calepinage.objects.filter(company=company)
+    return appliquer_filtres_liste(
+        Calepinage.objects.filter(company=company),
+        lead_id=lead_id, client_id=client_id, statut=statut, depuis=depuis,
+        q=q, inclure_archives=inclure_archives)
+
+
+def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
+                            statut=None, depuis=None, q=None,
+                            inclure_archives=False):
+    """CAL16 — LES filtres de la liste, écrits UNE fois.
+
+    Le viewset (``views/calepinages.py``) et ce sélecteur servent la même
+    liste : sans cette fonction, ils auraient deux jeux de filtres qui
+    divergeraient au premier ajout — et la leçon PV22 est qu'un filtre IGNORÉ
+    (``?statut=`` servi à l'identique) fait ouvrir le mauvais objet. Un filtre
+    absent ne filtre rien ; un filtre présent filtre RÉELLEMENT.
+
+    CAL208 — ``inclure_archives=False`` (le défaut, y compris pour le
+    viewset qui n'appelle PAS cet argument) exclut les calepinages archivés
+    (corbeille, ``apps.trash.selectors.ids_dans_corbeille`` — jamais un
+    import direct de ``ElementSupprime``, frontière inter-apps).
+
+    L'ordre est celui du plus récent au plus ancien, dans les deux chemins.
+    """
     if lead_id:
         lignes = lignes.filter(lead_id=lead_id)
     if client_id:
@@ -57,6 +87,11 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
     terme = (q or '').strip()
     if terme:
         lignes = lignes.filter(titre__icontains=terme)
+    if not inclure_archives:
+        from apps.trash.selectors import ids_dans_corbeille
+
+        lignes = lignes.exclude(
+            pk__in=list(ids_dans_corbeille('calepinage.calepinage')))
     return lignes.order_by('-created_at', '-id')
 
 
@@ -98,6 +133,111 @@ def variantes(calepinage):
             .order_by('-retenue', 'id'))
 
 
+#: CAL21 — les postes de production du comparatif. TOUJOURS présents, à
+#: ``None`` quand la variante n'a pas été simulée : une variante non simulée
+#: n'est pas une variante à « zéro kWh ».
+CLES_PRODUCTION = ('p50_kwh', 'p75_kwh', 'p90_kwh', 'performance_ratio',
+                   'specific_yield_kwh_kwc', 'self_consumption_rate')
+
+
+def comparer_variantes(calepinage):
+    """CAL21 — le comparatif des variantes, à la forme du contrat CAL3.
+
+    Forme : ``{calepinage, retenue_id, reference_modules, introuvables,
+    lignes}`` (``contract_samples/variantes_comparer.json``).
+
+    TROIS DISCIPLINES, tenues ici et pas dans l'écran :
+
+    * une variante NON SIMULÉE le DIT (``simulee: false``) et TOUTES ses
+      grandeurs de production valent ``None`` — jamais ``0``, qui se lirait
+      « zéro kWh » là où personne n'a lancé de simulation ;
+    * l'écart est TOUJOURS relatif à la RETENUE : elle porte donc ``0`` (un
+      écart MESURÉ, nul par construction), et sans point de comparaison (une
+      seule variante, ou aucune retenue) les écarts valent ``None`` — il n'y a
+      rien à quoi se comparer, ce n'est pas un écart nul ;
+    * aucune grandeur n'est recalculée ici : tout est LU dans le ``resultat``
+      déposé par le moteur. Ce comparatif compare, il ne calcule pas.
+    """
+    lignes = list(variantes(calepinage))
+    retenue = next((v for v in lignes if v.retenue), None)
+    reference = _mesures_variante(retenue) if retenue is not None else {}
+    return {
+        'calepinage': getattr(calepinage, 'pk', None),
+        'retenue_id': retenue.pk if retenue is not None else None,
+        'reference_modules': reference.get('total_modules'),
+        'introuvables': [],
+        'lignes': [_ligne_comparaison(v, reference, len(lignes))
+                   for v in lignes],
+    }
+
+
+def _mesures_variante(variante):
+    """Les grandeurs LUES dans le ``resultat`` du moteur, jamais recalculées."""
+    resultat = getattr(variante, 'resultat', None)
+    return resultat if isinstance(resultat, dict) else {}
+
+
+def _ligne_comparaison(variante, reference, nombre_de_lignes):
+    mesures = _mesures_variante(variante)
+    production = (mesures.get('production')
+                  if isinstance(mesures.get('production'), dict) else {})
+    simulee = bool(production)
+    comparable = nombre_de_lignes > 1 and bool(reference)
+    return {
+        'id': variante.pk,
+        'nom': variante.nom,
+        'role': mesures.get('role') or '',
+        'statut': mesures.get('statut') or '',
+        'est_retenue': bool(variante.retenue),
+        'simulee': simulee,
+        'total_modules': mesures.get('total_modules'),
+        'kwc': mesures.get('kwc'),
+        'total_optimal': mesures.get('total_optimal'),
+        'optimal': mesures.get('optimal'),
+        'methode': mesures.get('methode'),
+        'orientation': mesures.get('orientation'),
+        'marge_troncon_min': mesures.get('marge_troncon_min'),
+        'marge_bande_min': mesures.get('marge_bande_min'),
+        'marges': mesures.get('marges'),
+        'production': dict(
+            {cle: (production.get(cle) if simulee else None)
+             for cle in CLES_PRODUCTION},
+            # Variante SIMULÉE : une liste vide, jamais ``None`` — « aucun
+            # poste de perte dominant » se lit, « pas de liste » ne se lit
+            # pas. Variante NON simulée : ``None`` comme toutes les autres
+            # grandeurs de production — une liste vide y ferait lire « nous
+            # avons cherché et n'avons rien trouvé » là où rien n'a été
+            # calculé (discipline du null, jamais le zéro).
+            pertes_dominantes=(
+                list(production.get('pertes_dominantes') or [])
+                if simulee else None)),
+        'ecart_modules': _ecart(mesures.get('total_modules'),
+                                reference.get('total_modules'), comparable),
+        'ecart_kwc': _ecart(mesures.get('kwc'), reference.get('kwc'),
+                            comparable),
+        'ecart_p50_kwh': _ecart(
+            production.get('p50_kwh') if simulee else None,
+            ((reference.get('production') or {}).get('p50_kwh')
+             if isinstance(reference.get('production'), dict) else None),
+            comparable),
+        'version_moteur': mesures.get('version_moteur') or '',
+        'entree_hash': mesures.get('entree_hash') or '',
+    }
+
+
+def _ecart(valeur, reference, comparable):
+    """L'écart MESURÉ, ou ``None`` quand il n'y a rien à quoi se comparer."""
+    if not comparable or valeur is None or reference is None:
+        return None
+    try:
+        if isinstance(valeur, int) and isinstance(reference, int) \
+                and not isinstance(valeur, bool):
+            return valeur - reference
+        return round(float(valeur) - float(reference), 3)
+    except (TypeError, ValueError):
+        return None
+
+
 def calepinage_du_devis(devis_id, company):
     """CAL10 — le calepinage rattaché à ce devis, ou ``None``.
 
@@ -112,6 +252,106 @@ def calepinage_du_devis(devis_id, company):
             .filter(company=company, devis_id=devis_id)
             .order_by('-created_at', '-id')
             .first())
+
+
+def calepinage_retenu_pour_devis(devis_id, company):
+    """CAL209 — le calepinage RETENU d'un devis : id, kWc, nb modules, lien.
+
+    Point d'entrée cross-app pour le chantier (``apps.installations``), qui ne
+    porte AUCUN champ calepinage — règle fondateur 12/09/2026 « le module
+    chantier ne garde QUE son cœur » : il se BRANCHE sur ce sélecteur, il
+    n'absorbe pas la donnée. Renvoie ``None`` quand le devis est absent, quand
+    aucun calepinage ne lui est rattaché, ou quand aucune variante n'y est
+    RETENUE (``CalepinageVariante.retenue``) — un calepinage sans option
+    choisie ne désigne rien de concret à renvoyer.
+
+    Le kWc et le nombre de modules sont lus, dans l'ordre : le résultat du
+    moteur (``variante.resultat['pose']`` — chaîné/simulé, CAL126+) puis, à
+    défaut, le résumé posé par l'atelier 3D (``variante.roof_layout['result']``
+    — présent dès qu'une pose a été dessinée, avant toute simulation). Aucune
+    valeur n'est recalculée ici : c'est une LECTURE pure, bornée société.
+    """
+    from .models import CalepinageVariante
+
+    calepinage = calepinage_du_devis(devis_id, company)
+    if calepinage is None:
+        return None
+    variante = (CalepinageVariante.objects
+                .filter(calepinage=calepinage, retenue=True)
+                .first())
+    if variante is None:
+        return None
+
+    kwc = None
+    nb_modules = None
+    resultat = variante.resultat if isinstance(variante.resultat, dict) else None
+    pose = resultat.get('pose') if resultat else None
+    if isinstance(pose, dict):
+        kwc = pose.get('kwc')
+        nb_modules = pose.get('total_modules')
+    if kwc is None and nb_modules is None:
+        roof_layout = (variante.roof_layout
+                       if isinstance(variante.roof_layout, dict) else None)
+        result = roof_layout.get('result') if roof_layout else None
+        if isinstance(result, dict):
+            kwc = result.get('kwc')
+            nb_modules = result.get('panels')
+
+    return {
+        'id': calepinage.id,
+        'kwc': kwc,
+        'nb_modules': nb_modules,
+        'planche_url': f'/calepinage/{calepinage.id}',
+    }
+
+
+#: CAL185 — les clés de la nomenclature d'une variante retenue. TOUJOURS
+#: toutes présentes : un appelant n'a jamais à deviner si une clé existe.
+CLES_NOMENCLATURE_RETENUE = ('calepinage', 'variante', 'nom', 'layout',
+                             'layout_hash')
+
+
+def nomenclature_variante_retenue(calepinage_id, company):
+    """CAL185 — la conception de la variante RETENUE, prête à être CHIFFRÉE.
+
+    Point d'entrée cross-app : ``apps.ventes`` chiffre la variante choisie
+    sans jamais importer ``apps.calepinage.models``. Ce que rend cette
+    fonction est la CONCEPTION (le document ``roof_layout`` de la variante) et
+    son empreinte — pas une liste de produits : le schéma v2 ne porte aucune
+    référence catalogue (cf. ``services.equipements``), et c'est la
+    composition ventes qui résout les produits. Une deuxième façon de choisir
+    un produit serait une deuxième vérité de chiffrage.
+
+    ``None`` quand le calepinage n'existe pas dans cette société, quand
+    AUCUNE variante n'y est retenue, ou quand la variante retenue ne porte
+    pas de conception — une variante sans dessin n'a rien à chiffrer, et on
+    ne retombe JAMAIS en silence sur la conception du calepinage parent (ce
+    serait chiffrer autre chose que ce que le commercial a retenu).
+    """
+    from .models import Calepinage, CalepinageVariante
+
+    if company is None or not calepinage_id:
+        return None
+    calepinage = (Calepinage.objects
+                  .filter(company=company, pk=calepinage_id)
+                  .first())
+    if calepinage is None:
+        return None
+    variante = (CalepinageVariante.objects
+                .filter(calepinage=calepinage, retenue=True)
+                .first())
+    if variante is None:
+        return None
+    layout = variante.roof_layout
+    if not isinstance(layout, dict) or not layout:
+        return None
+    return {
+        'calepinage': calepinage.pk,
+        'variante': variante.pk,
+        'nom': variante.nom or '',
+        'layout': layout,
+        'layout_hash': variante.layout_hash or '',
+    }
 
 
 def calepinage_de_l_affaire(appel_offre_id, company):
@@ -265,3 +505,148 @@ def parametres_de_societe(company):
         section: (getattr(reglages, section, None) or {})
         for section in SECTIONS_PARAMETRES
     }
+
+
+def imagerie_site(company):
+    """CAL47 — la section « imagerie & pays » RÉSOLUE, toujours complète.
+
+    ``parametres_de_societe`` rend la section BRUTE (``{}`` tant que la
+    société n'a rien réglé) : c'est ce qui garantit l'équivalence stricte de
+    CAL45 sur l'endpoint. Un CONSOMMATEUR, lui, a besoin des huit clés du
+    contrat CAL46 (``contract_samples/site_imagerie.json``) pour ne jamais
+    tester l'absence de clé au lieu de l'absence de donnée : cette fonction
+    les lui donne, valeurs à ``null`` (ou ``[]``) quand rien n'est réglé.
+
+    Huit valeurs nulles veulent dire « comportement d'aujourd'hui » — pas
+    « pas de carte ». Aucun pays, aucun fournisseur, aucune altitude n'est
+    inventé ici : ce que la société n'a pas saisi reste inconnu.
+
+    Lecture PURE, bornée société (``company=None`` ⇒ tout inconnu).
+    """
+    from .services.site import section_vide
+
+    section = section_vide()
+    if company is None:
+        return section
+    section.update(parametres_de_societe(company).get('imagerie') or {})
+    return section
+
+
+def photos_site(calepinage):
+    """CAL52 — les photos de site d'un calepinage, prêtes à l'affichage.
+
+    Ordre : la plus récemment PRISE d'abord (jamais la plus récemment
+    importée — c'est la date de prise de vue qui situe le toit). Lecture
+    PURE ; un calepinage sans photo rend ``[]`` et jamais ``null``.
+    """
+    from .services.photos import photo_en_ligne
+
+    if calepinage is None or calepinage.pk is None:
+        return []
+    lignes = (calepinage.photos_site
+              .select_related('attachment', 'ajoutee_par')
+              .order_by('-prise_le', '-id'))
+    return [photo_en_ligne(photo) for photo in lignes]
+
+
+def releves_terrain(calepinage):
+    """CAL64 — les relevés terrain d'un calepinage, du plus récent au plus
+    ancien (par date de RELEVÉ, jamais par date d'envoi : le terrain et le
+    réseau ne coïncident pas).
+
+    Lecture PURE ; un calepinage sans relevé rend ``[]`` et jamais ``null``.
+    """
+    from .services.releve import releve_en_ligne
+
+    if calepinage is None or calepinage.pk is None:
+        return []
+    lignes = (calepinage.releves_terrain
+              .select_related('releve_par')
+              .prefetch_related('photos__attachment', 'photos__ajoutee_par')
+              .order_by('-releve_le', '-id'))
+    return [releve_en_ligne(releve) for releve in lignes]
+
+
+def presets_de_societe(company):
+    """CAL197 — les presets de conception disponibles pour l'atelier.
+
+    Joint DEUX sources, sans jamais copier l'une dans l'autre :
+
+    * ``module`` — les jeux PROPRES au module, section ``presets.jeux`` de
+      ``ParametresCalepinage`` (``services.presets.jeux_de_societe``) ;
+    * ``societe_ao`` — les presets AO de portée société
+      (``apps.ao.selectors.presets_calepinage``), lus tels quels.
+
+    Lecture PURE, bornée société — ``None`` rend les deux listes vides.
+    """
+    from apps.ao.selectors import presets_calepinage
+
+    from .services.presets import jeux_de_societe
+
+    module = jeux_de_societe(company)
+    ao = presets_calepinage(company, portee='societe') if company else []
+    return {
+        'module': module,
+        'societe_ao': [
+            {
+                'id': preset.pk,
+                'nom': preset.nom,
+                'parametres': preset.parametres,
+                'par_defaut': preset.par_defaut,
+                'description': preset.description,
+            }
+            for preset in ao
+        ],
+    }
+
+
+def kits_de_pose_disponibles(company):
+    """CAL198 — les kits de pose du catalogue AO, tels que le module les voit.
+
+    Lecture PURE : point d'entrée unique pour l'atelier (``apps.ao.selectors.
+    kits_de_pose``) — aucune donnée n'est recopiée en base côté module."""
+    from apps.ao.selectors import kits_de_pose
+
+    if company is None:
+        return []
+    return kits_de_pose(company)
+
+
+def favoris_materiel_de_societe(company):
+    """CAL200 — le matériel « favori conception » de la société, résolu.
+
+    La section ``favoris_materiel`` de ``ParametresCalepinage`` (CAL45) ne
+    porte que des identifiants produit (``{'modules': [...], 'onduleurs':
+    [...]}``) — ce sélecteur les résout sur le catalogue stock
+    (``apps.stock.selectors``) pour rendre marque/puissance/dimensions,
+    JAMAIS une fiche technique inventée. Un produit favori dont l'id est
+    devenu introuvable est simplement OMIS (le favori pointe dans le vide) ;
+    un produit trouvé mais SANS dimensions reste dans la liste, signalé
+    ``dimensions_renseignees: False`` — jamais une taille par défaut.
+    """
+    from apps.stock.selectors import dimensions_de_pose, get_produit_scoped
+
+    favoris = (parametres_de_societe(company).get('favoris_materiel') or {})
+    resultat = {}
+    for categorie, ids in favoris.items():
+        if not isinstance(ids, list):
+            continue
+        lignes = []
+        for produit_id in ids:
+            produit = get_produit_scoped(company, produit_id)
+            if produit is None:
+                continue
+            dims = dimensions_de_pose(produit)
+            lignes.append({
+                'id': produit.pk,
+                'nom': produit.nom,
+                'marque': getattr(produit, 'marque', '') or '',
+                'puissance_wc': dims.get('puissance_wc'),
+                'longueur_mm': dims.get('longueur_mm'),
+                'largeur_mm': dims.get('largeur_mm'),
+                'dimensions_renseignees': bool(
+                    dims.get('longueur_mm') and dims.get('largeur_mm')),
+                'archive': bool(getattr(produit, 'is_archived', False)),
+            })
+        resultat[categorie] = lignes
+    return resultat

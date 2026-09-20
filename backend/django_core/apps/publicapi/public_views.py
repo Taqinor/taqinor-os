@@ -26,14 +26,14 @@ from apps.stock.models import Produit
 
 from .auth import PUBLIC_AUTHENTICATION_CLASSES, HasApiScope, ApiKeyRateThrottle
 from .constants import (
-    SCOPE_READ_LEADS, SCOPE_READ_DEVIS,
+    SCOPE_READ_CALEPINAGES, SCOPE_READ_LEADS, SCOPE_READ_DEVIS,
     SCOPE_READ_FACTURES, SCOPE_READ_CHANTIERS, SCOPE_READ_STOCK,
 )
 from .public_response import PublicApiResponseMixin
 from .public_serializers import (
     PublicLeadSerializer, PublicDevisSerializer,
     PublicFactureSerializer, PublicChantierSerializer,
-    PublicProduitSerializer,
+    PublicProduitSerializer, PublicCalepinageSerializer,
 )
 
 # Paramètres de requête réservés à la pagination / au tri : jamais traités comme
@@ -150,6 +150,43 @@ class PublicChantierViewSet(PublicReadOnlyViewSet):
     )
     ordering_fields = ('date_creation', 'date_modification', 'id')
     sync_field = 'date_modification'
+
+
+class PublicCalepinageViewSet(PublicReadOnlyViewSet):
+    """CAL214 — calepinages (apps.calepinage) en LECTURE SEULE, scope
+    `read:calepinages`.
+
+    FRONTIÈRE INTER-APPS TENUE ICI : le queryset vient de
+    ``apps.calepinage.selectors.liste_calepinages`` — jamais
+    ``apps.calepinage.models``. C'est le selector qui borne la société (il
+    renvoie un queryset VIDE pour ``company=None``, donc un filtre absent ne
+    peut pas se muer en absence de filtre), et la société vient TOUJOURS de la
+    clé d'API, jamais d'un paramètre client.
+
+    Ni géométrie brute ni coût interne ne sortent d'ici : la liste des clés
+    publiées est celle, explicite, de ``PublicCalepinageSerializer``.
+    """
+    required_scope = SCOPE_READ_CALEPINAGES
+    serializer_class = PublicCalepinageSerializer
+    filter_whitelist = ('statut', 'lead_id', 'client_id', 'devis_id')
+    ordering_fields = ('created_at', 'updated_at', 'id')
+    sync_field = 'updated_at'
+
+    def get_queryset(self):
+        from apps.calepinage.selectors import liste_calepinages
+        return liste_calepinages(self._company())
+
+    def _company(self):
+        """La société DE LA CLÉ — jamais lue d'un paramètre de requête.
+
+        ``None`` hors contexte de requête (génération du schéma OpenAPI, qui
+        introspecte ``get_queryset()`` sans requête) : le selector rend alors
+        un queryset VIDE mais typé, donc le schéma sait dériver le type de
+        ``{id}`` et rien ne fuite — l'absence de clé ne peut pas se muer en
+        absence de filtre.
+        """
+        requete = getattr(self, 'request', None)
+        return getattr(getattr(requete, 'auth', None), 'company', None)
 
 
 class PublicProduitViewSet(PublicReadOnlyViewSet):

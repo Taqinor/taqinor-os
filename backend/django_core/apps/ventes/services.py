@@ -298,6 +298,7 @@ _azimut_boussole_vers_aspect = _geometrie._azimut_boussole_vers_aspect
 _aspect_vers_azimut_boussole = _geometrie._aspect_vers_azimut_boussole
 extract_roof_config = _geometrie.extract_roof_config
 layout_hash = _geometrie.layout_hash
+poser_layout_hash = _geometrie.poser_layout_hash
 validate_composition_for_layout = _geometrie.validate_composition_for_layout
 DRAPEAU_MOTEUR_CALEPINAGE = _geometrie.DRAPEAU_MOTEUR_CALEPINAGE
 TOLERANCE_ARBITRAGE_MODULES = _geometrie.TOLERANCE_ARBITRAGE_MODULES
@@ -498,6 +499,11 @@ from apps.ventes.domain import creation as _creation  # noqa: E402
 create_draft_devis_from_ocr = _creation.create_draft_devis_from_ocr
 dupliquer_devis = _creation.dupliquer_devis
 build_devis_from_layout = _creation.build_devis_from_layout
+# CAL185 — chiffrer la VARIANTE RETENUE d'un calepinage, par LE chemin
+# de création de lignes (jamais un second).
+build_devis_depuis_calepinage_retenu = (
+    _creation.build_devis_depuis_calepinage_retenu)
+produits_a_renseigner = _creation.produits_a_renseigner
 SCENARIOS_DEMANDABLES = _creation.SCENARIOS_DEMANDABLES
 composer_devis_residentiel = _creation.composer_devis_residentiel
 build_devis_auto = _creation.build_devis_auto
@@ -522,6 +528,21 @@ creer_devis_import = _imports.creer_devis_import
 ajouter_lignes_devis_import = _imports.ajouter_lignes_devis_import
 creer_facture_import = _imports.creer_facture_import
 ajouter_lignes_facture_import = _imports.ajouter_lignes_facture_import
+
+# ═════════════════════════════════════════════════════════════════════════
+# RÉ-EXPORTS — CAL19 : stockage du rendu de toiture
+#                      → ``domain/stockage_toiture.py``
+# ═════════════════════════════════════════════════════════════════════════
+# La porte publique du stockage EXISTANT (bucket PDF, clé scopée société, URL
+# présignée 1 h), pour que `apps.calepinage` réutilise ce chemin au lieu d'en
+# ouvrir un second. Règle QJR68 : ce fichier ne porte aucun corps — les corps
+# vivent dans `domain/stockage_toiture.py`.
+from apps.ventes.domain import stockage_toiture as _stockage_toiture  # noqa: E402
+SIGNATURES_IMAGE_TOITURE = _stockage_toiture.SIGNATURES_IMAGE_TOITURE
+type_image_toiture = _stockage_toiture.type_image_toiture
+stocker_image_toiture = _stockage_toiture.stocker_image_toiture
+url_image_toiture = _stockage_toiture.url_image_toiture
+
 
 # ═════════════════════════════════════════════════════════════════════════
 # LA SURFACE PUBLIQUE, EN CLAIR
@@ -574,6 +595,7 @@ __all__ = [
     'SCENARIO_AVEC_BATTERIE',
     'SCENARIO_LES_DEUX',
     'SCENARIO_SANS_BATTERIE',
+    'SIGNATURES_IMAGE_TOITURE',
     'SOCLES_PAR_PANNEAU',
     'STRUCTURES_PAR_PANNEAU',
     'SaleWarningError',
@@ -605,6 +627,7 @@ __all__ = [
     'avertissement_vivier_batterie_vide',
     'bcf_share_url',
     'build_devis_auto',
+    'build_devis_depuis_calepinage_retenu',
     'build_devis_from_layout',
     'calculer_date_echeance',
     'capturer_configuration_devis',
@@ -685,7 +708,9 @@ __all__ = [
     'plafond_physique_du_contour',
     'planifier_devis_automatique_pour_lead',
     'planifier_resynchronisation_produit',
+    'poser_layout_hash',
     'poser_puissance_kwc',
+    'produits_a_renseigner',
     'prix_applicable',
     'prix_forfait_ht',
     'puissance_kwc_du_devis',
@@ -711,7 +736,10 @@ __all__ = [
     'scenario_effectif',
     'send_devis_followup_nudges',
     'share_link_for_bcf',
+    'stocker_image_toiture',
     'sync_devis_from_layout',
+    'type_image_toiture',
+    'url_image_toiture',
     'validate_composition_for_layout',
     'validate_esign_otp',
     'validate_otp_lecture',

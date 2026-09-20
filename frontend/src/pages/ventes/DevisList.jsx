@@ -280,6 +280,7 @@ function DevisPdfDialog({
   pdfMode, setPdfMode, pdfModeAutoOnepage, targetIsAgricole,
   showMonthly, setShowMonthly,
   targetHasEtude, includeEtude, setIncludeEtude,
+  includeCalepinage, setIncludeCalepinage,
   devisFinal, setDevisFinal,
   paymentMode, setPaymentMode,
   customAcompte, setCustomAcompte,
@@ -356,6 +357,38 @@ function DevisPdfDialog({
                 )}
               </span>
             </label>
+          )}
+
+          {/* CAL184 — page « Calepinage » (planche cotée). TRI-ÉTAT : l'écran
+              n'invente aucune valeur par défaut, parce qu'il ne sait pas si ce
+              devis porte un calepinage dessinable — le serveur, lui, le sait.
+              « Automatique » lui laisse la main ; « Oui »/« Non » tranchent et
+              priment sur l'auto (whitelist `include_calepinage`, CAL183). */}
+          {pdfMode === 'full' && (
+            <div className="grid gap-2" data-testid="cal184-calepinage">
+              <Label>Calepinage</Label>
+              <RadioGroup
+                value={includeCalepinage}
+                onValueChange={setIncludeCalepinage}
+                className="flex flex-col gap-2"
+              >
+                <label className="flex items-start gap-2 text-sm">
+                  <RadioGroupItem value="auto" className="mt-0.5" />
+                  <span>
+                    Automatique
+                    <span className="text-muted-foreground"> (page ajoutée si ce devis porte un calepinage)</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <RadioGroupItem value="oui" className="mt-0.5" />
+                  <span>Inclure la planche cotée</span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <RadioGroupItem value="non" className="mt-0.5" />
+                  <span>Ne pas inclure</span>
+                </label>
+              </RadioGroup>
+            </div>
           )}
 
           <label className="flex items-start gap-2 text-sm">
@@ -1669,6 +1702,13 @@ export default function DevisList() {
   const [paymentMode, setPaymentMode] = useState('standard')
   const [customAcompte, setCustomAcompte] = useState('')
   const [includeEtude, setIncludeEtude] = useState(false)
+  // CAL184 — page « Calepinage » (planche cotée, CAL182). TRI-ÉTAT, et le
+  // défaut est 'auto' : l'écran n'invente AUCUNE valeur. C'est le serveur qui
+  // sait si ce devis porte un calepinage dessinable — la liste, elle, ne le
+  // sait pas (la clé `calepinage` de la fiche devis n'est calculée qu'en
+  // DÉTAIL, pour ne pas faire de la liste un N+1). Dire « oui » ou « non » ici
+  // serait donc une supposition ; 'auto' laisse décider celui qui sait.
+  const [includeCalepinage, setIncludeCalepinage] = useState('auto')
   // Incident fondateur 01/09 round 2 — préselection gracieuse (voir import
   // solar.js ci-dessus) : posé UNIQUEMENT quand l'ouverture de la modale a dû
   // rabattre 'full' sur 'onepage' faute d'onduleur classifié sur les lignes.
@@ -1755,6 +1795,7 @@ export default function DevisList() {
     // données d'étude ; sinon décochée (et désactivée plus bas si absente).
     const hasEtude = !!(d?.etude_params && Object.keys(d.etude_params).length > 0)
     setIncludeEtude(d?.mode_installation === 'industriel' && hasEtude)
+    setIncludeCalepinage('auto')
   }
 
   // VX248 — « a » génère le PDF du devis FOCALISÉ (le deep-link ?devis=<pk>
@@ -1779,6 +1820,7 @@ export default function DevisList() {
     setPaymentMode('standard')
     setCustomAcompte('')
     setIncludeEtude(false)
+    setIncludeCalepinage('auto')
   }
 
   const openAcceptModal = (d) => {
@@ -2371,6 +2413,11 @@ export default function DevisList() {
     // T12/T13 — étude uniquement si premium ET données d'étude présentes.
     include_etude: pdfMode === 'full' && includeEtude
       && !!(d?.etude_params && Object.keys(d.etude_params).length > 0),
+    // CAL184 — tri-état envoyé TEL QUEL à la whitelist `clean_pdf_options` :
+    // `null` = auto (le serveur ajoute la planche si le devis en porte une),
+    // `true`/`false` = le commercial tranche et sa valeur prime sur l'auto.
+    include_calepinage: includeCalepinage === 'auto'
+      ? null : includeCalepinage === 'oui',
   })
 
   // QG1 — Lance la génération d'un PDF + polling silencieux jusqu'à fichier
@@ -2927,6 +2974,8 @@ export default function DevisList() {
         targetHasEtude={targetHasEtude}
         includeEtude={includeEtude}
         setIncludeEtude={setIncludeEtude}
+        includeCalepinage={includeCalepinage}
+        setIncludeCalepinage={setIncludeCalepinage}
         devisFinal={devisFinal}
         setDevisFinal={setDevisFinal}
         paymentMode={paymentMode}
