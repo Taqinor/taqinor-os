@@ -1020,7 +1020,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
       let resultat
       try {
         const res = await calepinageApi.calepinages
-          .enregistrerLayout(calepinageId, layout)
+          .enregistrerLayoutCalepinage(calepinageId, layout)
         resultat = res?.data ?? {}
       } catch (err) {
         const code = err?.response?.status

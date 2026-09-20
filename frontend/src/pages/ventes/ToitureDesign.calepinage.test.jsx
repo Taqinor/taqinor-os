@@ -41,7 +41,7 @@ vi.mock('../../api/calepinageApi', () => ({
   default: {
     calepinages: {
       designContext: vi.fn(),
-      enregistrerLayout: vi.fn(),
+      enregistrerLayoutCalepinage: vi.fn(),
       envoyerImage: vi.fn(),
       genererDevis: vi.fn(),
       syncDevis: vi.fn(),
@@ -156,7 +156,7 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
   it('enregistre la conception par POST layout, puis envoie l’aperçu', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
-    calepinageApi.calepinages.enregistrerLayout.mockResolvedValue(
+    calepinageApi.calepinages.enregistrerLayoutCalepinage.mockResolvedValue(
       { data: { inchange: false, version: 3 } })
     calepinageApi.calepinages.envoyerImage.mockResolvedValue({ data: {} })
     snapshot.mockReturnValue('data:image/png;base64,aGk=')
@@ -166,7 +166,7 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
       { name: /Enregistrer le calepinage/ })
     await userEvent.click(bouton)
 
-    await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayout)
+    await waitFor(() => expect(calepinageApi.calepinages.enregistrerLayoutCalepinage)
       .toHaveBeenCalledWith(String(CTX.calepinage.id), LAYOUT))
     await waitFor(() => expect(calepinageApi.calepinages.envoyerImage)
       .toHaveBeenCalledTimes(1))
@@ -181,7 +181,7 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
   it('conception inchangée : on le DIT, et aucune image n’est envoyée', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
-    calepinageApi.calepinages.enregistrerLayout.mockResolvedValue(
+    calepinageApi.calepinages.enregistrerLayoutCalepinage.mockResolvedValue(
       { data: { inchange: true, version: null } })
     snapshot.mockReturnValue('data:image/png;base64,aGk=')
 
@@ -196,7 +196,7 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
   it('refus 400 : le message du SERVEUR s’affiche, jamais un texte fabriqué', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue(
       reponseContrat('calepinage', 'calepinage_design_context'))
-    calepinageApi.calepinages.enregistrerLayout.mockRejectedValue({
+    calepinageApi.calepinages.enregistrerLayoutCalepinage.mockRejectedValue({
       response: {
         status: 400,
         data: { roof_layout: 'Conception manquante ou invalide : le corps attendu est le document de conception.' },

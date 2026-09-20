@@ -68,7 +68,7 @@ const calepinageApi = {
     // enregistre ; le serveur ne touche que `roof_layout`/`layout_hash` et ne
     // change AUCUN statut.
     layout: (id) => api.get(`${pivot(id)}layout/`),
-    enregistrerLayout: (id, corps) => api.post(`${pivot(id)}layout/`, corps),
+    enregistrerLayoutCalepinage: (id, corps) => api.post(`${pivot(id)}layout/`, corps),
 
     // CAL19 — l'image d'aperçu de toiture, stockée par le MÊME chemin que les
     // ventes (MinIO + URL présignée) ; aucun second chemin de stockage.
