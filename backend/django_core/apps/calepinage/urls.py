@@ -22,6 +22,9 @@ from .views.parametres import ParametresCalepinageView
 # import (affectation d'attribut de classe, voir la docstring du module) ;
 # doit s'exécuter AVANT ``router.register`` pour que le routeur la découvre.
 from .views import equipements as _equipements_action  # noqa: F401
+# CAL144 — même forme pour l'export CSV (``calepinages/<pk>/export-csv/``) :
+# code dans un fichier neuf, enregistrement en une ligne additive.
+from .views import sorties as _sorties_actions  # noqa: F401
 
 router = DefaultRouter()
 router.register(r'calepinages', CalepinageViewSet, basename='calepinage')
