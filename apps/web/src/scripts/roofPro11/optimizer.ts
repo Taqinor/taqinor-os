@@ -69,6 +69,7 @@ import {
   type PitchedLayoutAxis,
   type PitchedMarginAxis,
 } from '../../lib/estimatorBrainV8';
+import { defaultEastWestGeometry, type EastWestGeometry } from '../../lib/estimatorBrainV2';
 import { type LngLat } from '../../lib/roof';
 import { $, fmt, fmtMad } from './dom';
 import { type CardData, type RenderConfigOpts } from './types';
@@ -83,6 +84,11 @@ import { type Ctx } from './context';
 //  3. le meilleur azimut ALIGNÉ sur les arêtes du toit.
 // Cliquer une carte ne fait que poser les VERROUS d'axes correspondants et relancer le
 // solveur vivant existant — aucun second moteur, aucun chiffre inventé.
+
+/** CAL87 — inclinaison est-ouest de RÉFÉRENCE pour calculer les valeurs par défaut à
+ *  AFFICHER tant qu'aucun gagnant n'est connu (les cartes de variante est-ouest du
+ *  balayage V6 sont évaluées à 10° et 15°). N'entre dans AUCUN pavage. */
+const EW_DEFAULT_TILT_DEG = 10;
 
 export type VariantCardId = 'south-max' | 'eastwest' | 'aligned';
 
@@ -545,6 +551,85 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     }
   }
 
+  // ═══════ CAL87 — GÉOMÉTRIE EST-OUEST PARAMÉTRABLE (faîtage + écart inter-chevrons) ═══════
+  // L'est-ouest dos à dos existait comme variante CALCULÉE, mais son faîtage et son écart
+  // entre chevrons étaient FIGÉS dans le pavage. On les expose : deux champs SAISIS, dont
+  // les valeurs par défaut sont EXACTEMENT celles appliquées aujourd'hui (affichées comme
+  // telles). Laisser les champs à leur défaut ⇒ variante est-ouest IDENTIQUE. La politique
+  // d'espacement du NOYAU (ombre de faîte est-ouest) reste à CAL167 : rien ici ne touche
+  // `core/calepinage`.
+
+  /** Saisie utilisateur (m) ou null = « valeur par défaut affichée ». */
+  let ewRidgeGapM: number | null = null;
+  let ewInterTentGapM: number | null = null;
+
+  /** CAL87 — l'inclinaison est-ouest courante, pour calculer les valeurs par défaut à
+   *  AFFICHER (et elles seules : le pavage, lui, les recalcule à chaque inclinaison). */
+  const ewTiltDeg = (): number => {
+    const t = ctx.liveResult?.winner?.tiltDeg;
+    return typeof t === 'number' && Number.isFinite(t) && t > 0 ? t : EW_DEFAULT_TILT_DEG;
+  };
+
+  /** CAL87 — valeurs par défaut affichées dans les champs : celles du pavage d'aujourd'hui. */
+  function ewDefaults(): { ridgeGapM: number; interTentGapM: number } {
+    return defaultEastWestGeometry(ctx.centroidLat, ewTiltDeg(), PANEL2_SHORT_M);
+  }
+
+  /** CAL87 — ce qui part au solveur : `undefined` tant que RIEN n'a été saisi (le pavage
+   *  garde alors son comportement d'aujourd'hui, au byte près). */
+  function eastWestGeometryInput(): EastWestGeometry | undefined {
+    if (ewRidgeGapM == null && ewInterTentGapM == null) return undefined;
+    return {
+      ...(ewRidgeGapM != null ? { ridgeGapM: ewRidgeGapM } : {}),
+      ...(ewInterTentGapM != null ? { interTentGapM: ewInterTentGapM } : {}),
+    };
+  }
+
+  const ewRidgeEl = $<HTMLInputElement>('rp9-ew-ridge');
+  const ewGapEl = $<HTMLInputElement>('rp9-ew-gap');
+  const ewNoteEl = $('rp9-ew-note');
+
+  /** CAL87 — remet les libellés à jour : une valeur SAISIE est annoncée comme saisie, un
+   *  champ vide affiche la valeur appliquée par défaut, annoncée comme telle. */
+  function syncEwUi() {
+    const d = ewDefaults();
+    const m = (n: number) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} m`;
+    if (ewRidgeEl && document.activeElement !== ewRidgeEl) {
+      ewRidgeEl.placeholder = m(d.ridgeGapM);
+      if (ewRidgeGapM == null) ewRidgeEl.value = '';
+    }
+    if (ewGapEl && document.activeElement !== ewGapEl) {
+      ewGapEl.placeholder = m(d.interTentGapM);
+      if (ewInterTentGapM == null) ewGapEl.value = '';
+    }
+    if (ewNoteEl) {
+      ewNoteEl.textContent =
+        `Est-Ouest dos à dos — faîtage ${ewRidgeGapM != null ? `${m(ewRidgeGapM)} (saisi)` : `${m(d.ridgeGapM)} (valeur appliquée aujourd’hui)`}, ` +
+        `écart entre chevrons ${ewInterTentGapM != null ? `${m(ewInterTentGapM)} (saisi)` : `${m(d.interTentGapM)} (ombre de faîte résiduelle + passage de maintenance, valeur appliquée aujourd’hui)`}.`;
+    }
+  }
+
+  /** CAL87 — lecture d'un champ : vide ⇒ retour au défaut ; négatif ⇒ 0 ; sinon la valeur
+   *  telle quelle (on n'arrondit ni ne rejette une frappe — règle de la maison). */
+  function readEwInput(raw: string): number | null {
+    const cleaned = String(raw ?? '').replace(/\s/g, '').replace(',', '.').trim();
+    if (!cleaned) return null;
+    const v = Number(cleaned);
+    if (!Number.isFinite(v)) return null;
+    return v < 0 ? 0 : v;
+  }
+
+  ewRidgeEl?.addEventListener('change', () => {
+    ewRidgeGapM = readEwInput(ewRidgeEl.value);
+    syncEwUi();
+    liveResolveFlat();
+  });
+  ewGapEl?.addEventListener('change', () => {
+    ewInterTentGapM = readEwInput(ewGapEl.value);
+    syncEwUi();
+    liveResolveFlat();
+  });
+
   /** Cœur W34 : re-résolution CONTRAINTE vivante (verrous courants) + rendu + badges. */
   function liveResolveFlat() {
     if (!ctx.closed || ctx.vertices.length < 3 || ctx.roofType !== 'flat') return;
@@ -560,6 +645,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       overhangM: ctx.overhangM,
       obstructionClearancesM: obstructionClearances(), // PV61
       setbacksM: keepSetbacks(), // PV63
+      eastWestGeometry: eastWestGeometryInput(), // CAL87 — faîtage + écart inter-chevrons saisis
     });
     ctx.liveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
