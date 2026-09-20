@@ -1,11 +1,13 @@
-"""CAL62 — importer un plan en réutilisant l'analyseur de l'AO, jamais un second.
+"""CAL62 — importer un plan avec l'analyseur du module, jamais un second.
 
 Ce que ce module VERROUILLE :
 
-  1. **Un même DXF donne le MÊME contour** via la porte AO
-     (``apps.ao.selectors.analyser_plan_importe``) et via le module
-     (``apps.calepinage.services.import_plan``) — c'est la preuve qu'il n'y a
-     qu'un analyseur, pas deux.
+  1. **Un même DXF donne le MÊME contour** par la porte de l'analyseur
+     (``apps.calepinage.analyse_plan.analyser_plan_importe``) et par le
+     service du module (``apps.calepinage.services.import_plan``) — c'est la
+     preuve qu'il n'y a qu'un analyseur, pas deux. SOLMVP15 : l'analyseur
+     vivait chez le module d'appels d'offres, il a été rapatrié ici à la
+     ligne près — ce test compare donc les deux MÊMES portes qu'avant.
   2. **Un PDF sans vectoriel est REFUSÉ** avec un message français qui nomme
      la cause (plan scanné), jamais un contour deviné depuis une image.
   3. **L'unité n'est jamais inventée** : celle que le DXF déclare, sinon
@@ -22,7 +24,7 @@ import io
 
 from django.test import SimpleTestCase
 
-from apps.ao.selectors import analyser_plan_importe
+from apps.calepinage.analyse_plan import analyser_plan_importe
 from apps.calepinage.services import import_plan
 
 #: Une enveloppe plausible de bâtiment, en MÈTRES dans le fichier.
@@ -60,16 +62,18 @@ def _pdf(*, vectoriel):
 
 
 class UnMemeDxfDonneUnMemeContour(SimpleTestCase):
-    def test_la_porte_ao_et_le_module_rendent_le_meme_contour(self):
+    def test_la_porte_analyseur_et_le_module_rendent_le_meme_contour(self):
         octets = _dxf()
 
-        par_ao = analyser_plan_importe(octets, nom_fichier='plan.dxf')
+        par_analyseur = analyser_plan_importe(
+            octets, nom_fichier='plan.dxf')
         par_module = import_plan.analyser_plan(octets, nom_fichier='plan.dxf')
 
-        self.assertEqual(par_module, par_ao)
+        self.assertEqual(par_module, par_analyseur)
         self.assertEqual(
             import_plan.contour_du_calque(par_module, CALQUE_ENVELOPPE),
-            import_plan.contour_du_calque(par_ao, CALQUE_ENVELOPPE))
+            import_plan.contour_du_calque(par_analyseur,
+                                          CALQUE_ENVELOPPE))
 
     def test_le_contour_est_celui_du_fichier(self):
         analyse = import_plan.analyser_plan(_dxf())

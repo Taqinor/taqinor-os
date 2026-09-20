@@ -6,11 +6,12 @@ Deux niveaux d'essais, et ce qu'ils prouvent :
    VRAIS PDF construits par PyMuPDF, la somme des pages des pièces est celle
    qu'annonce le pack, une pièce obligatoire qui ne se rend pas fait ÉCHOUER
    le pack en la nommant, et une pièce facultative absente sort en SIGNALEMENT.
-2. ORCHESTRATION (base) — le pack dépose chaque pièce en GED puis appelle
-   ``fusionner_pdf`` avec TOUTES les pièces, dans l'ordre : aucune n'est
-   silencieusement perdue en chemin. La fusion elle-même est la primitive
-   plateforme XGED10, qui a ses propres essais ; on ne la re-teste pas, on
-   vérifie qu'on l'appelle correctement.
+2. ORCHESTRATION — le pack dépose chaque pièce puis appelle la fusion avec
+   TOUTES les pièces, dans l'ordre : aucune n'est silencieusement perdue en
+   chemin. La fusion elle-même a ses propres essais ; on ne la re-teste pas,
+   on vérifie qu'on l'appelle correctement. SOLMVP15 — le dépôt et la fusion
+   étaient ceux de la GED, qui sort du produit ; ils sont ceux du module
+   (``services/depot_pdf.py``), et ce qui est prouvé ici est inchangé.
 
 Run :
     python manage.py test apps.calepinage.tests.test_cal181_pack -v2
@@ -110,7 +111,7 @@ class RenduDesPiecesTest(SimpleTestCase):
 
 @skipUnless(_FITZ, 'PyMuPDF absent de cet environnement')
 class OrchestrationDuPackTest(SimpleTestCase):
-    """Le pack appelle la GED — il ne fusionne rien lui-même."""
+    """Le pack appelle le dépôt du module — il ne fusionne rien lui-même."""
 
     def setUp(self):
         self.calepinage = FauxCalepinage()
@@ -120,14 +121,14 @@ class OrchestrationDuPackTest(SimpleTestCase):
     def _construire(self):
         self.deposes = []
 
-        def deposer(**kwargs):
-            self.deposes.append(kwargs)
-            return ('document-%s' % kwargs['source_type'], True)
+        def deposer(cible, octets, **kwargs):
+            self.deposes.append(dict(kwargs, cible=cible, octets=octets))
+            return ('piece-%s' % kwargs['filename'], True)
 
-        with mock.patch('apps.ged.services.deposit_document',
+        with mock.patch('apps.calepinage.services.depot_pdf.deposer_pdf',
                         side_effect=deposer), \
-                mock.patch('apps.ged.services.fusionner_pdf',
-                           return_value='pack') as fusion:
+                mock.patch('apps.calepinage.services.depot_pdf.fusionner_pdf',
+                           return_value=b'%PDF-pack') as fusion:
             resultat = construire_pack(self.calepinage,
                                        company='societe-essai',
                                        rendus=self.rendus)
@@ -136,11 +137,11 @@ class OrchestrationDuPackTest(SimpleTestCase):
 
     def test_toutes_les_pieces_entrent_dans_la_fusion_dans_l_ordre(self):
         resultat = self._construire()
-        self.assertEqual(resultat['document'], 'pack')
+        self.assertEqual(resultat['document'],
+                         'piece-41-aaaaaaaaaaaa-pack.pdf')
         self.assertEqual(
-            self.fusion.call_args.args[0],
-            ['document-calepinage.planche',
-             'document-calepinage.note_calcul'])
+            [libelle for libelle, _octets in self.fusion.call_args.args[0]],
+            ['Planche de calepinage', 'Note de calcul'])
 
     def test_le_nombre_de_pages_annonce_est_la_somme_des_pieces(self):
         resultat = self._construire()
@@ -151,19 +152,21 @@ class OrchestrationDuPackTest(SimpleTestCase):
 
     def test_l_idempotence_est_ancree_sur_l_empreinte_du_layout(self):
         # Ancrer sur le seul identifiant du calepinage aurait rendu un pack
-        # PÉRIMÉ en silence après modification de la conception.
+        # PÉRIMÉ en silence après modification de la conception. L'ancre voyage
+        # désormais dans le nom de fichier (SOLMVP15) : même ancre, même rôle.
         self._construire()
-        ancres = [depose['source_id'] for depose in self.deposes]
+        ancres = [depose['filename'] for depose in self.deposes]
+        self.assertTrue(ancres)
         for ancre in ancres:
             self.assertIn('aaaaaaaaaaaa', ancre)
-            self.assertTrue(ancre.startswith('41:'))
+            self.assertTrue(ancre.startswith('41-'))
 
-    def test_la_societe_est_celle_du_serveur_et_le_rangement_est_dedie(self):
-        self._construire()
+    def test_la_societe_est_celle_du_serveur_et_le_pack_est_nomme(self):
+        resultat = self._construire()
         for depose in self.deposes:
             self.assertEqual(depose['company'], 'societe-essai')
-            self.assertEqual(depose['cabinet_nom'], 'Calepinage')
-            self.assertEqual(depose['folder_nom'], 'Dossiers techniques')
+        self.assertEqual(resultat['nom'],
+                         'Dossier technique — Toiture atelier')
 
     def test_sans_societe_le_pack_refuse(self):
         calepinage = FauxCalepinage()

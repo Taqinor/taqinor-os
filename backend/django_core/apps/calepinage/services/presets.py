@@ -76,7 +76,7 @@ def enregistrer_jeu(company, jeu):
     existants = jeux_de_societe(company)
     restants = [ligne for ligne in existants if ligne.get('id') != identifiant]
     restants.append(dict(jeu, id=identifiant, nom=nom))
-    enregistrer_parametres(company, {'presets': {CLE_JEUX: restants}})
+    enregistrer_parametres(company, {'presets': _section(company, restants)})
     return restants
 
 
@@ -91,5 +91,21 @@ def retirer_jeu(company, preset_id):
         raise PresetInvalide(
             f'Preset de conception introuvable : « {preset_id} ».',
             champ='id')
-    enregistrer_parametres(company, {'presets': {CLE_JEUX: restants}})
+    enregistrer_parametres(company, {'presets': _section(company, restants)})
     return restants
+
+
+def _section(company, jeux):
+    """La section ``presets`` ENTIÈRE, avec ``jeux`` remplacé — jamais réduite.
+
+    ``enregistrer_parametres`` REMPLACE la section fournie (mise à jour
+    partielle au niveau SECTION, pas au niveau clé). Écrire ``{'jeux': …}``
+    seul effacerait donc TOUTES les autres clés de la section — dont le
+    catalogue de kits de pose (``presets.kits``, SOLMVP15). On relit la section
+    et on n'en change QUE ``jeux``.
+    """
+    from ..selectors import parametres_de_societe
+
+    section = dict(parametres_de_societe(company).get('presets') or {})
+    section[CLE_JEUX] = jeux
+    return section

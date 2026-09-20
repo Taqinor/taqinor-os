@@ -35,7 +35,7 @@ def url_resultat(job_id):
 class TacheDeFondTest(BaseApiCalepinage):
     def _lancer(self):
         """Force la bascule asynchrone et renvoie la réponse 202."""
-        with mock.patch('apps.ao.selectors.cout_calepinage',
+        with mock.patch('apps.calepinage.moteur_service.cout_calepinage',
                         return_value=CoutFactice(synchrone=False)), \
                 mock.patch('core.jobs.current_app.send_task'), \
                 mock.patch('apps.calepinage.tasks.calculer_calepinage.delay'):
@@ -55,7 +55,7 @@ class TacheDeFondTest(BaseApiCalepinage):
         from apps.calepinage.tasks import calculer_calepinage
 
         job_id = self._lancer().data['job_id']
-        with mock.patch('apps.ao.selectors.calepinage_json',
+        with mock.patch('apps.calepinage.moteur_service.calepinage_json',
                         return_value=dict(RESULTAT)):
             calculer_calepinage(job_id=job_id, entree=DOCUMENT)
         reponse = self.api.get(url_resultat(job_id))
@@ -67,7 +67,7 @@ class TacheDeFondTest(BaseApiCalepinage):
         from apps.calepinage.tasks import calculer_calepinage, cle_resultat
 
         job_id = self._lancer().data['job_id']
-        with mock.patch('apps.ao.selectors.calepinage_json',
+        with mock.patch('apps.calepinage.moteur_service.calepinage_json',
                         return_value=dict(RESULTAT)):
             calculer_calepinage(job_id=job_id, entree=DOCUMENT)
             calculer_calepinage(job_id=job_id, entree=DOCUMENT)
@@ -82,7 +82,9 @@ class TacheDeFondTest(BaseApiCalepinage):
         self.assertEqual(len(elements), 1)
 
     def test_soumission_multiple_meme_kind_issues_separees(self):
-        from apps.ao.selectors import erreurs_moteur_calepinage
+        from apps.calepinage.moteur_service import (
+            erreurs_moteur_calepinage,
+        )
         from apps.calepinage.tasks import calculer_calepinage
 
         entree_invalide, _ = erreurs_moteur_calepinage()
@@ -96,7 +98,7 @@ class TacheDeFondTest(BaseApiCalepinage):
                 raise entree_invalide('Surface absente.')
             return dict(RESULTAT)
 
-        with mock.patch('apps.ao.selectors.calepinage_json',
+        with mock.patch('apps.calepinage.moteur_service.calepinage_json',
                         side_effect=calcul):
             calculer_calepinage(job_id=job.pk, entrees=[bon, mauvais])
         reponse = self.api.get(url_resultat(job.pk))

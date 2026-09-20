@@ -1,13 +1,16 @@
 """CAL192 — le pack de raccordement autoproduction (Maroc).
 
-Le « Done » : « le pack se produit et se fusionne en GED ; en l'absence de
-gabarit société, un message FR explique quoi déposer (jamais un gabarit
-inventé) ».
+Le « Done » : « le pack se produit et se fusionne ; en l'absence de gabarit
+société, un message FR explique quoi déposer (jamais un gabarit inventé) ».
 
-Tests PURS : la GED et les rendus PDF sont passés en DOUBLURES (le service les
-importe en FONCTION-LOCAL et accepte ses rendus par argument), donc aucun
-Postgres, aucun MinIO, aucun WeasyPrint n'est nécessaire — et ce qui est
-mesuré est la RÈGLE, pas la plomberie déjà éprouvée d'XGED10.
+Tests PURS : le DÉPÔT et les rendus PDF sont passés en DOUBLURES (le service
+importe le dépôt en FONCTION-LOCAL et accepte ses rendus par argument), donc
+aucun Postgres, aucun MinIO, aucun WeasyPrint n'est nécessaire — et ce qui est
+mesuré est la RÈGLE, pas la plomberie déjà éprouvée.
+
+SOLMVP15 — le dépôt et la fusion étaient ceux de la GED, qui sort du produit ;
+ils sont ceux du module (``services/depot_pdf.py``). Ce qui est prouvé ici est
+inchangé, y compris l'ancre d'idempotence.
 """
 from __future__ import annotations
 
@@ -45,20 +48,26 @@ def _dossier(*, fichier_present=True):
                  gabarit=gabarit)
 
 
-def _ged_double(journal):
-    """Un faux ``apps.ged.services`` : enregistre, ne stocke rien."""
+def _depot_double(journal):
+    """Un faux ``services.depot_pdf`` : enregistre, ne stocke rien."""
 
-    def deposit_document(**kwargs):
-        journal.setdefault('deposes', []).append(kwargs)
-        return _Faux(pk=len(journal['deposes']), nom=kwargs['nom']), True
+    def deposer_pdf(cible, octets, **kwargs):
+        journal.setdefault('deposes', []).append(
+            dict(kwargs, cible=cible, octets=octets))
+        return _Faux(pk=len(journal['deposes']),
+                     nom=kwargs['filename']), True
 
-    def fusionner_pdf(documents, **kwargs):
-        journal['fusion'] = {'documents': list(documents), **kwargs}
-        return _Faux(pk=99, nom=kwargs.get('nom', ''))
+    def fusionner_pdf(parties):
+        journal['fusion'] = {'parties': list(parties)}
+        return b'%PDF-pack'
 
-    module = types.ModuleType('apps.ged.services')
-    module.deposit_document = deposit_document
+    class DepotRefuse(ValueError):
+        pass
+
+    module = types.ModuleType('apps.calepinage.services.depot_pdf')
+    module.deposer_pdf = deposer_pdf
     module.fusionner_pdf = fusionner_pdf
+    module.DepotRefuse = DepotRefuse
     return module
 
 
@@ -67,7 +76,9 @@ class PackMarocTest(unittest.TestCase):
     def setUp(self):
         self.journal = {}
         self.patch = mock.patch.dict(
-            sys.modules, {'apps.ged.services': _ged_double(self.journal)})
+            sys.modules,
+            {'apps.calepinage.services.depot_pdf':
+             _depot_double(self.journal)})
         self.patch.start()
         self.addCleanup(self.patch.stop)
         self.rendus = {
@@ -80,22 +91,26 @@ class PackMarocTest(unittest.TestCase):
         resultat = construire_pack_dossier(_dossier(), rendus=self.rendus)
         codes = [code for code, _libelle in resultat['pieces']]
         self.assertEqual(codes, [code for code, _l, _o in PIECES_PRODUITES])
-        self.assertEqual(resultat['document'].pk, 99)
+        # Le pack est la DERNIÈRE pièce déposée (les pièces, puis le pack).
+        self.assertEqual(resultat['document'].pk,
+                         len(self.journal['deposes']))
         self.assertEqual(resultat['signalements'], [])
-        self.assertEqual(len(self.journal['fusion']['documents']), len(codes))
+        self.assertEqual(len(self.journal['fusion']['parties']), len(codes))
 
-    def test_pieces_rangees_dans_leur_cabinet_ged(self):
+    def test_le_pack_garde_son_nom_de_rangement(self):
+        """Les deux libellés de rangement restent PUBLIÉS : la recette de
+        retour du référentiel documentaire (PHASE 2) en a besoin."""
+        self.assertEqual(CABINET_GED, 'Calepinage')
+        self.assertEqual(DOSSIER_GED, 'Dossiers réglementaires')
         construire_pack_dossier(_dossier(), rendus=self.rendus)
         for depose in self.journal['deposes']:
-            self.assertEqual(depose['cabinet_nom'], CABINET_GED)
-            self.assertEqual(depose['folder_nom'], DOSSIER_GED)
-            self.assertEqual(depose['mime'], 'application/pdf')
+            self.assertTrue(depose['filename'].endswith('.pdf'))
 
     def test_idempotence_ancree_sur_l_empreinte_du_layout(self):
         construire_pack_dossier(_dossier(), rendus=self.rendus)
         for depose in self.journal['deposes']:
-            self.assertIn('11:', depose['source_id'])
-            self.assertIn('a' * 12, depose['source_id'])
+            self.assertIn('dossier-11-', depose['filename'])
+            self.assertIn('a' * 12, depose['filename'])
 
     def test_piece_facultative_absente_est_signalee_jamais_sautee(self):
         rendus = dict(self.rendus)

@@ -10,7 +10,7 @@ Ce qui est prouvé ici :
   (PACT10, incident AO du 03/08/2026) ;
 * le relevé voyage sous ``demande`` ;
 * elle ne REFAIT aucune sérialisation : elle appelle la MÊME porte neutre du
-  moteur que ``calculer`` (``apps.ao.selectors.calepinage_json``), et ne
+  moteur que ``calculer`` (``moteur_service.calepinage_json``), et ne
   demande ni tiroirs ni suggestions — on ne paye pas ce qu'on ne publie pas ;
 * le ``verdict`` est GÉNÉRÉ des grandeurs mesurées, jamais rédigé ;
 * un relevé invalide rend 400 en NOMMANT le champ fautif, jamais un 500 ;
@@ -49,7 +49,7 @@ SORTIE_MOTEUR.pop('verdict')
 
 class PortePoseTest(BaseApiCalepinage):
     def _appeler(self, api, corps, *, sortie=None, erreur=None):
-        with mock.patch('apps.ao.selectors.calepinage_json',
+        with mock.patch('apps.calepinage.moteur_service.calepinage_json',
                         side_effect=erreur,
                         return_value=dict(sortie or SORTIE_MOTEUR)) as porte:
             reponse = api.post(URL, corps, format='json')
@@ -85,7 +85,9 @@ class PortePoseTest(BaseApiCalepinage):
         self.assertIn('demande', reponse.data)
 
     def test_releve_invalide_rend_400_avec_le_motif_serveur(self):
-        from apps.ao.selectors import erreurs_moteur_calepinage
+        from apps.calepinage.moteur_service import (
+            erreurs_moteur_calepinage,
+        )
 
         entree_invalide, _ = erreurs_moteur_calepinage()
         reponse = self._appeler(self.api, {'demande': CONTRAT['demande']},

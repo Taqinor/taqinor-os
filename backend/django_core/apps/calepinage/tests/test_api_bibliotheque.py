@@ -2,8 +2,9 @@
 
 Ce qui est prouvé ici :
 
-* ``GET /api/django/calepinage/parametres/`` porte AUSSI ``kits`` (catalogue
-  AO lu, jamais stocké) en plus des sept sections ;
+* ``GET /api/django/calepinage/parametres/`` porte AUSSI ``kits`` (le
+  catalogue RÉSOLU à la lecture, section ``presets.kits`` depuis SOLMVP15)
+  en plus des sections ;
 * ``PUT`` refuse ``kits`` comme toute section inconnue (catalogue en
   LECTURE SEULE depuis cet endpoint) ;
 * ``GET /api/django/calepinage/calepinages/modeles/`` rend UNIQUEMENT les
@@ -14,11 +15,9 @@ Ce qui est prouvé ici :
 Run :
     python manage.py test apps.calepinage.tests.test_api_bibliotheque -v2
 """
-from decimal import Decimal
-
-from apps.ao.models import KitCalepinage
 from apps.calepinage.models import Calepinage
 from apps.calepinage.services.modeles import marquer_modele
+from apps.calepinage.services.parametres import enregistrer_parametres
 
 from .test_api_liste import URL, BaseApiCalepinage
 
@@ -26,12 +25,23 @@ URL_PARAMETRES = '/api/django/calepinage/parametres/'
 URL_MODELES = f'{URL}modeles/'
 
 
+def _poser_kits(company, kits):
+    """Le catalogue de kits de pose DU MODULE (``presets.kits``, SOLMVP15).
+
+    Aucune table, aucune migration : c'est un document de réglage, écrit par
+    le SEUL chemin d'écriture du domaine.
+    """
+    enregistrer_parametres(company, {'presets': {'kits': kits}})
+
+
 class BibliothequeParametresTest(BaseApiCalepinage):
     def test_get_porte_les_kits_en_plus_des_sept_sections(self):
-        KitCalepinage.objects.create(
-            company=self.company, code='VILLA-720-EW', libelle='Chevron 720',
-            modules_par_kit=2, pas_rangee_m=Decimal('1.134'),
-            longueur_pente_m=Decimal('1.303'), puissance_module_w=720)
+        _poser_kits(self.company, [{
+            'id': 1, 'code': 'VILLA-720-EW', 'libelle': 'Chevron 720',
+            'modules_par_kit': 2, 'pas_rangee_m': 1.134,
+            'longueur_pente_m': 1.303, 'puissance_module_w': 720,
+            'actif': True,
+        }])
         reponse = self.api.get(URL_PARAMETRES)
         self.assertEqual(reponse.status_code, 200)
         self.assertIn('kits', reponse.data)
@@ -51,10 +61,12 @@ class BibliothequeParametresTest(BaseApiCalepinage):
         self.assertIn('kits', reponse.data)
 
     def test_kit_d_une_autre_societe_jamais_vu(self):
-        KitCalepinage.objects.create(
-            company=self.autre, code='AUTRE', libelle='Autre société',
-            modules_par_kit=2, pas_rangee_m=Decimal('1.0'),
-            longueur_pente_m=Decimal('1.0'), puissance_module_w=500)
+        _poser_kits(self.autre, [{
+            'id': 1, 'code': 'AUTRE', 'libelle': 'Autre société',
+            'modules_par_kit': 2, 'pas_rangee_m': 1.0,
+            'longueur_pente_m': 1.0, 'puissance_module_w': 500,
+            'actif': True,
+        }])
         reponse = self.api.get(URL_PARAMETRES)
         self.assertEqual(reponse.data['kits'], [])
 
