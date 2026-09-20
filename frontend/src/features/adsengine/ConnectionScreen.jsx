@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { ShieldCheck, ShieldAlert, PlugZap, ExternalLink, CircleHelp, RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ShieldCheck, ShieldAlert, PlugZap, ExternalLink, CircleHelp, RefreshCw, Check, X, Bot, Power } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { normalizeWiringStatuses, formatMAD } from './adsengine'
 import { WIZARD_STEPS, HEALTH_REMEDIATIONS, stepStatus } from './connectionWizard'
@@ -59,6 +60,38 @@ function slugifyRuleKey(label) {
     .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
   return base || `regle_${Date.now()}`
 }
+
+/* PUB129 — Cockpit d'autonomie : normalise la charge utile de
+   `flightplan.autonomie()` SANS rien fabriquer. Une porte sans remédiation
+   serveur reste sans remédiation à l'écran (jamais une consigne inventée), et
+   `pret`/`actif` ne sont vrais que si le serveur le dit. */
+function normalizeAutonomy(raw) {
+  const p = raw && typeof raw === 'object' ? raw : {}
+  const portes = (Array.isArray(p.portes) ? p.portes : []).filter(Boolean).map((g, i) => {
+    const rem = g.remediation && typeof g.remediation === 'object' ? g.remediation : {}
+    return {
+      key: g.key ?? String(i),
+      label: g.label || g.key || `Porte ${i + 1}`,
+      ok: !!g.ok,
+      detail: g.detail || '',
+      remediation: {
+        texte: rem.texte || '',
+        route: rem.route || '',
+        cta: rem.cta || '',
+        commande: rem.commande || '',
+        action: rem.action || '',
+      },
+    }
+  })
+  return {
+    pret: p.pret === true,
+    actif: p.actif === true,
+    portes,
+    manquantes: (Array.isArray(p.manquantes) ? p.manquantes : []).filter(Boolean).map(String),
+  }
+}
+
+const EMPTY_AUTONOMY = { pret: false, actif: false, portes: [], manquantes: [] }
 
 // Champs d'identifiants (write-only). `secret: true` → saisie masquée.
 const CRED_FIELDS = [
@@ -159,6 +192,12 @@ export default function ConnectionScreen() {
   const [newForbidden, setNewForbidden] = useState('')
   const [newAllowed, setNewAllowed] = useState('')
 
+  // PUB129 — cockpit d'autonomie (8 portes + cérémonie d'activation).
+  const [autonomy, setAutonomy] = useState(EMPTY_AUTONOMY)
+  const [autonomyBusy, setAutonomyBusy] = useState('')
+  const [autonomyMsg, setAutonomyMsg] = useState('')
+  const [autonomyErr, setAutonomyErr] = useState('')
+
   const load = useCallback(() => {
     // Statut de connexion : jamais de secret relu — seulement l'état affichable.
     adsengineApi.connection.get()
@@ -170,6 +209,36 @@ export default function ConnectionScreen() {
     adsengineApi.guardrail.get()
       .then(r => setGuard(r.data || {}))
       .catch(() => setGuard({}))
+    // PUB129 — les portes d'autonomie EN DIRECT (état + remédiation serveur).
+    adsengineApi.flightplan.autonomie()
+      .then(r => setAutonomy(normalizeAutonomy(r.data)))
+      .catch(() => setAutonomy(EMPTY_AUTONOMY))
+  }, [])
+
+  /* PUB129 — Cérémonie d'autonomie. Trois gestes, un seul chemin serveur :
+     - « Activer » n'est JAMAIS pré-désactivé par une porte rouge : c'est le
+       serveur (`preflight.activate` → `AutonomyNotReady`) qui refuse, et son
+       message est affiché TEL QUEL — un bouton grisé priverait le fondateur de
+       la raison exacte du refus ;
+     - « Désactiver » n'exige AUCUNE porte et n'est jamais grisé (sécurité :
+       couper l'autonomie est un coupe-circuit, pas une négociation) ;
+     - « Acquitter la simulation » est la remédiation EN PLACE de sa porte. */
+  const runAutonomy = useCallback((key, call, okMsg) => {
+    setAutonomyBusy(key)
+    setAutonomyMsg('')
+    setAutonomyErr('')
+    return call()
+      .then(r => {
+        setAutonomy(normalizeAutonomy(r.data))
+        setAutonomyMsg(r?.data?.detail || okMsg)
+      })
+      .catch(e => {
+        // Refus serveur (AutonomyNotReady, 403…) : le message part TEL QUEL.
+        const data = e?.response?.data
+        setAutonomyErr(data?.detail || "L'opération d'autonomie a échoué.")
+        if (data && Array.isArray(data.portes)) setAutonomy(normalizeAutonomy(data))
+      })
+      .finally(() => setAutonomyBusy(''))
   }, [])
 
   // MRY0 — répare la cause n° 2 du webhook muet (Page non abonnée à l'app).
@@ -579,6 +648,117 @@ export default function ConnectionScreen() {
           </button>
         </div>
       </form>
+
+      {/* PUB129 — Cockpit d'autonomie : les 8 portes de préflight AVEC leur
+          remédiation FR cliquable, et la cérémonie d'activation. */}
+      <section className="card ae-conn-autonomy" data-testid="ae-conn-autonomy"
+        style={{ padding: '1rem', marginTop: '1rem' }}>
+        <h3 style={{ margin: '0 0 0.25rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <Bot size={18} aria-hidden="true" /> Autonomie du moteur
+        </h3>
+        <p style={{ margin: '0 0 0.75rem', color: '#64748b', fontSize: '0.85rem' }}>
+          Le moteur ne peut agir seul que si les {autonomy.portes.length || 8} portes ci-dessous
+          sont vertes. Couper l&apos;autonomie reste toujours possible en un clic, quelles que
+          soient les portes.
+        </p>
+
+        <p data-testid="ae-conn-autonomy-etat"
+          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap',
+            background: autonomy.actif ? '#dcfce7' : '#f1f5f9',
+            color: autonomy.actif ? '#166534' : '#475569',
+            padding: '0.5rem 0.7rem', borderRadius: 8, margin: '0 0 0.75rem' }}>
+          <Power size={16} aria-hidden="true" />
+          {autonomy.actif
+            ? 'Autonomie ACTIVE.'
+            : 'Autonomie désactivée (état par défaut).'}
+          <span className="badge" data-testid="ae-conn-autonomy-pret"
+            style={{ background: autonomy.pret ? '#dcfce7' : '#fee2e2',
+              color: autonomy.pret ? '#166534' : '#991b1b' }}>
+            {autonomy.pret
+              ? 'Toutes les portes vertes'
+              : `${autonomy.manquantes.length} porte(s) à ouvrir`}
+          </span>
+        </p>
+
+        <ul style={{ listStyle: 'none', margin: '0 0 0.9rem', padding: 0, display: 'grid', gap: '0.55rem' }}>
+          {autonomy.portes.length === 0
+            ? <li data-testid="ae-conn-autonomy-vide" style={{ color: '#64748b' }}>
+              Portes d&apos;autonomie indisponibles.
+            </li>
+            : autonomy.portes.map(g => (
+              <li key={g.key} data-testid={`ae-conn-autonomy-gate-${g.key}`}
+                style={{ padding: '0.6rem 0.75rem', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span aria-hidden="true" style={{ color: g.ok ? '#16a34a' : '#dc2626' }}>
+                    {g.ok ? <Check size={16} /> : <X size={16} />}
+                  </span>
+                  <span style={{ fontWeight: 600 }}>{g.label}</span>
+                  <span className="badge"
+                    data-testid={g.ok ? `ae-conn-autonomy-ok-${g.key}` : `ae-conn-autonomy-ko-${g.key}`}
+                    style={{ background: g.ok ? '#dcfce7' : '#fee2e2',
+                      color: g.ok ? '#166534' : '#991b1b' }}>
+                    {g.ok ? 'Vert' : 'Rouge'}
+                  </span>
+                </div>
+                {!g.ok && g.detail && (
+                  <p style={{ margin: '0.35rem 0 0', color: '#64748b', fontSize: '0.85rem' }}>{g.detail}</p>
+                )}
+                {!g.ok && g.remediation.texte && (
+                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.85rem' }}>{g.remediation.texte}</p>
+                )}
+                {!g.ok && (g.remediation.route || g.remediation.action || g.remediation.commande) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+                    {g.remediation.route && (
+                      <Link className="btn btn-light" to={g.remediation.route}
+                        data-testid={`ae-conn-autonomy-fix-${g.key}`}>
+                        {g.remediation.cta || 'Ouvrir l’écran'}
+                      </Link>
+                    )}
+                    {g.remediation.action === 'acquitter_simulation' && (
+                      <button type="button" className="btn btn-light"
+                        data-testid={`ae-conn-autonomy-ack-${g.key}`}
+                        disabled={autonomyBusy === 'ack'}
+                        onClick={() => runAutonomy('ack', adsengineApi.flightplan.acquitterSimulation,
+                          'Simulation acquittée.')}>
+                        Acquitter la simulation
+                      </button>
+                    )}
+                    {g.remediation.commande && (
+                      <code data-testid={`ae-conn-autonomy-cmd-${g.key}`}
+                        style={{ background: '#f1f5f9', padding: '0.15rem 0.4rem', borderRadius: 4,
+                          fontSize: '0.8rem' }}>
+                        {g.remediation.commande}
+                      </code>
+                    )}
+                  </div>
+                )}
+              </li>
+            ))}
+        </ul>
+
+        {autonomyMsg && <p data-testid="ae-conn-autonomy-msg" style={{ color: '#16a34a', margin: '0 0 0.5rem' }}>{autonomyMsg}</p>}
+        {autonomyErr && <p data-testid="ae-conn-autonomy-err" style={{ color: '#dc2626', margin: '0 0 0.5rem' }}>{autonomyErr}</p>}
+
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn-primary"
+            data-testid="ae-conn-autonomy-activer"
+            disabled={autonomyBusy === 'activer'}
+            onClick={() => runAutonomy('activer', adsengineApi.flightplan.activerAutonomie,
+              'Autonomie activée.')}>
+            Activer l&apos;autonomie
+          </button>
+          <button type="button" className="btn btn-light"
+            data-testid="ae-conn-autonomy-desactiver"
+            onClick={() => runAutonomy('desactiver', adsengineApi.flightplan.desactiverAutonomie,
+              'Autonomie désactivée.')}>
+            Désactiver l&apos;autonomie
+          </button>
+        </div>
+        <p style={{ margin: '0.5rem 0 0', color: '#64748b', fontSize: '0.8rem' }}>
+          Activer exige que TOUTES les portes soient vertes — le refus du serveur est affiché
+          tel quel. Désactiver n&apos;exige aucune porte et n&apos;est jamais bloqué.
+        </p>
+      </section>
     </div>
   )
 }

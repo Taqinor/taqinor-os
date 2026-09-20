@@ -1285,6 +1285,113 @@ class CreativeBacklogItemViewSet(AdsengineViewSet):
     serializer_class = CreativeBacklogItemSerializer
 
 
+# ── PUB129 — Cockpit d'autonomie : la remédiation FR de CHAQUE porte ─────────
+# ``preflight.gates`` (ADSENG38) dit CE QUI manque ; il ne dit pas OÙ le réparer.
+# Cette carte — présentation pure, donc côté vue (``preflight.py`` reste de la
+# logique d'agrégation sans HTTP) — donne à chaque porte sa remédiation :
+#   * ``route``    → un écran de la console (lien cliquable) ;
+#   * ``commande`` → une commande serveur jour-0 (affichée à copier, jamais
+#                    déclenchée depuis le navigateur) ;
+#   * ``action``   → une remédiation EN PLACE (clé d'endpoint POST du cockpit).
+# Les clés sont exactement celles de ``preflight.gates`` : une porte inconnue
+# (future) est rendue SANS remédiation plutôt qu'avec une consigne inventée.
+AUTONOMY_GATE_REMEDIATIONS = {
+    'loop': {
+        'texte': "Connecter le compte Meta (jeton System User + ID de compte "
+                 "publicitaire) — l'assistant guidé de l'écran Connexion "
+                 "déroule les étapes.",
+        'route': '/publicite/connexion',
+        'cta': 'Ouvrir Connexion & garde-fous',
+    },
+    'guardrails': {
+        'texte': "Poser les garde-fous de la société (plafonds, bascules). Le "
+                 "semis crée la configuration par défaut ; l'écran Connexion "
+                 "l'ajuste.",
+        'route': '/publicite/connexion',
+        'cta': 'Régler les garde-fous',
+        'commande': 'python manage.py seed_adsengine',
+    },
+    'alerts': {
+        'texte': "Armer au moins une règle de garde-fou. Le semis crée le "
+                 "catalogue en simulation ; l'armement reste un geste humain.",
+        'route': '/publicite/regles',
+        'cta': 'Ouvrir les règles',
+        'commande': 'python manage.py seed_adsengine',
+    },
+    'backlog_volume': {
+        'texte': "Approuver assez de créatifs en file : le volume de backlog "
+                 "est ce qui alimente les rotations à venir.",
+        'route': '/publicite/backlog',
+        'cta': 'Ouvrir le backlog créatif',
+    },
+    'backlog_diversity': {
+        'texte': "Diversifier les accroches du backlog (plusieurs angles "
+                 "distincts, pas des variantes d'une même accroche).",
+        'route': '/publicite/backlog',
+        'cta': 'Ouvrir le backlog créatif',
+    },
+    'plan': {
+        'texte': "Composer, valider puis activer un plan de vol : l'autonomie "
+                 "exécute un plan, elle n'en improvise jamais un.",
+        'route': '/publicite/plan-de-vol',
+        'cta': 'Composer un plan de vol',
+    },
+    'simulation': {
+        'texte': "Revoir le rapport de simulation, puis l'acquitter ici — "
+                 "l'acquittement est un geste humain, jamais automatique.",
+        'route': '/publicite/simulation',
+        'cta': 'Ouvrir la simulation',
+        'action': 'acquitter_simulation',
+    },
+    'field_tests': {
+        'texte': "Consigner le résultat MESURÉ des 7 micro-tests terrain "
+                 "(écran Tests terrain).",
+        'route': '/publicite/tests-terrain',
+        'cta': 'Ouvrir les tests terrain',
+    },
+}
+
+
+def _autonomy_cockpit(company):
+    """PUB129 — Charge utile du cockpit d'autonomie (vue MINCE sur
+    ``preflight.status``) : les portes telles qu'elles sont, chacune avec sa
+    remédiation FR, plus l'état RÉEL de l'autonomie. Aucun calcul de porte ici."""
+    from . import preflight as pf
+
+    st = pf.status(company)
+    portes = [
+        {'key': g['key'], 'label': g['label_fr'], 'ok': g['ok'],
+         'detail': g['detail_fr'],
+         'remediation': AUTONOMY_GATE_REMEDIATIONS.get(g['key'], {})}
+        for g in st['gates']
+    ]
+    return {
+        'pret': st['ready'],
+        'actif': st['active'],
+        'portes': portes,
+        'manquantes': list(st['missing_fr']),
+    }
+
+
+def _journal_autonomy(company, *, active_before, active_after, detail):
+    """PUB129 — Journalise une bascule d'autonomie dans le journal UNIFIÉ de
+    l'ERP (``audit.recorder``, même entonnoir ARC16 que l'armement des règles
+    PUB23 — jamais un second système). Best-effort : le journal ne fait jamais
+    échouer la bascule (elle est déjà appliquée et déjà loguée par
+    ``preflight``)."""
+    from .models import GuardrailConfig
+
+    config = GuardrailConfig.objects.filter(company=company).first()
+    if config is None:
+        return
+    from apps.audit.recorder import record_field_change
+    record_field_change(
+        config, 'autonomy_active', active_before, active_after,
+        field_label=("Autonomie activée" if active_after
+                     else "Autonomie désactivée"),
+        detail=detail)
+
+
 class FlightPlanViewSet(AdsengineViewSet):
     """ADSENG5 — CRUD des plans de vol (feuille de route 3-6 mois comme data)."""
 
@@ -1351,6 +1458,137 @@ class FlightPlanViewSet(AdsengineViewSet):
             for g in st['gates']
         ]
         return Response({'pret': st['ready'], 'portes': portes})
+
+    # ── PUB129 — Cockpit d'autonomie (les 8 portes + cérémonie d'activation) ──
+    @extend_schema(responses=inline_serializer(
+        name='AdsengineAutonomyCockpit',
+        fields={
+            'pret': drf_serializers.BooleanField(),
+            'actif': drf_serializers.BooleanField(),
+            'portes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+            'manquantes': drf_serializers.ListField(
+                child=drf_serializers.CharField()),
+        }))
+    @action(detail=False, methods=['get'], url_path='autonomie',
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def autonomie(self, request):
+        """PUB129 — Cockpit d'autonomie : les 8 portes de ``preflight.status``
+        AVEC leur remédiation FR (écran / commande / acquittement en place) et
+        l'état RÉEL de l'autonomie (``actif``). Lecture seule ; company-scopé ;
+        ``adsengine_view``."""
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        return Response(_autonomy_cockpit(company))
+
+    @extend_schema(request=None, responses=inline_serializer(
+        name='AdsengineAutonomyActivation',
+        fields={
+            'pret': drf_serializers.BooleanField(),
+            'actif': drf_serializers.BooleanField(),
+            'portes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+            'manquantes': drf_serializers.ListField(
+                child=drf_serializers.CharField()),
+            'detail': drf_serializers.CharField(required=False),
+        }))
+    @action(detail=False, methods=['post'], url_path='autonomie/activer',
+            permission_classes=[
+                HasPermissionOrLegacy('adsengine_autonomy_toggle')])
+    def autonomie_activer(self, request):
+        """PUB129 — ACTIVE l'autonomie (``preflight.activate``) — la garantie
+        structurelle reste côté ``preflight`` : une seule porte rouge et
+        ``AutonomyNotReady`` est levée. Son message est renvoyé TEL QUEL (400)
+        avec la liste FR de ce qui manque, jamais reformulé. Journalisé.
+        ``adsengine_autonomy_toggle`` (admin-seul, ADSENG47)."""
+        from . import preflight as pf
+
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        try:
+            pf.activate(company)
+        except pf.AutonomyNotReady as exc:
+            payload = _autonomy_cockpit(company)
+            payload['detail'] = str(exc)  # message du refus, TEL QUEL
+            return Response(payload, status=400)
+        payload = _autonomy_cockpit(company)
+        payload['detail'] = "Autonomie ACTIVÉE (toutes les portes sont vertes)."
+        _journal_autonomy(company, active_before=False, active_after=True,
+                          detail="Autonomie ACTIVÉE depuis le cockpit "
+                                 "(toutes les portes de préflight vertes).")
+        return Response(payload)
+
+    @extend_schema(request=None, responses=inline_serializer(
+        name='AdsengineAutonomyDeactivation',
+        fields={
+            'pret': drf_serializers.BooleanField(),
+            'actif': drf_serializers.BooleanField(),
+            'portes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+            'manquantes': drf_serializers.ListField(
+                child=drf_serializers.CharField()),
+            'detail': drf_serializers.CharField(required=False),
+        }))
+    @action(detail=False, methods=['post'], url_path='autonomie/desactiver',
+            permission_classes=[
+                HasPermissionOrLegacy('adsengine_autonomy_toggle')])
+    def autonomie_desactiver(self, request):
+        """PUB129 — DÉSACTIVE l'autonomie. TOUJOURS autorisé : couper n'exige
+        AUCUNE porte verte (sécurité — un coupe-circuit ne se négocie pas), et
+        rester déjà désactivé n'est pas une erreur (idempotent). Journalisé."""
+        from . import preflight as pf
+
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        was_active = pf.is_active(company)
+        pf.deactivate(company)
+        payload = _autonomy_cockpit(company)
+        payload['detail'] = "Autonomie DÉSACTIVÉE."
+        if was_active:
+            _journal_autonomy(company, active_before=True, active_after=False,
+                              detail="Autonomie DÉSACTIVÉE depuis le cockpit "
+                                     "(coupure libre, aucune porte requise).")
+        return Response(payload)
+
+    @extend_schema(request=None, responses=inline_serializer(
+        name='AdsengineAutonomySimulationAck',
+        fields={
+            'pret': drf_serializers.BooleanField(),
+            'actif': drf_serializers.BooleanField(),
+            'portes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+            'manquantes': drf_serializers.ListField(
+                child=drf_serializers.CharField()),
+            'detail': drf_serializers.CharField(required=False),
+        }))
+    @action(detail=False, methods=['post'],
+            url_path='autonomie/acquitter-simulation',
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def autonomie_acquitter_simulation(self, request):
+        """PUB129 — Remédiation EN PLACE de la porte ``simulation`` :
+        ``preflight.acknowledge_simulation`` (revue humaine du run ADSENG36)
+        n'avait AUCUNE route — la porte ne pouvait donc pas s'ouvrir depuis la
+        console. Journalisé. ``adsengine_manage``."""
+        from . import preflight as pf
+        from .models import GuardrailConfig
+
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        pf.acknowledge_simulation(company)
+        config = GuardrailConfig.objects.filter(company=company).first()
+        if config is not None:
+            from apps.audit.recorder import record
+            from apps.audit.models import AuditLog
+            record(AuditLog.Action.UPDATE, instance=config,
+                   detail="Simulation ADSENG36 acquittée (porte de préflight "
+                          "d'autonomie).")
+        payload = _autonomy_cockpit(company)
+        payload['detail'] = "Simulation acquittée."
+        return Response(payload)
 
     @action(detail=False, methods=['post'], url_path='validate',
             permission_classes=[HasPermissionOrLegacy('adsengine_manage')])

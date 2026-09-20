@@ -82,6 +82,261 @@ def account_currency(company):
     return (conn.currency if conn else '') or 'MAD'
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# PUB135 — Rationale de décision à DEUX FENÊTRES + signal leads RÉEL.
+#
+# La première proposition de production jugeait « 0 résultat cette semaine » sur
+# le seul champ ``results`` de Meta : aveugle aux leads Odoo/WhatsApp (la vérité
+# du fondateur) et sans aucun contexte historique. Toute décision pause /
+# rotation / rééquilibrage cite désormais DEUX fenêtres (récente + vie entière)
+# × DEUX signaux (results Meta + ``leads_odoo``). Tous les chiffres viennent des
+# snapshots et de l'attribution Odoo EXISTANTE — jamais un agrégat inventé, et
+# une donnée absente est DITE (checked-facts-only).
+# ══════════════════════════════════════════════════════════════════════════
+DEFAULT_EVIDENCE_WINDOW_DAYS = 7
+
+# Kinds d'action (et intentions v2) qui ENGAGENT une décision de dépense ou de
+# diffusion : ce sont ceux qui doivent porter la rationale à deux fenêtres.
+DECISION_KINDS = frozenset({'pause', 'rotate_creative', 'rebalance_budget'})
+DECISION_V2_INTENTS = frozenset({'budget_scale_up'})
+
+
+def _is_decision_action(kind, v2_intent=None):
+    """Vrai si l'action est une décision pause / rotation / rééquilibrage (le
+    périmètre PUB135). Une alerte seule (``kind`` None) n'engage rien."""
+    if v2_intent and v2_intent in DECISION_V2_INTENTS:
+        return True
+    return bool(kind) and kind in DECISION_KINDS
+
+
+def _plural(count, singular, plural=None):
+    """« 1 résultat » / « 3 résultats » (accord FR sur un entier)."""
+    word = singular if abs(count) < 2 else (plural or singular + 's')
+    return f'{count} {word}'
+
+
+def _recent_window_days(policy, finding):
+    """Fenêtre RÉCENTE à citer : celle que la règle a réellement évaluée
+    (``computed`` d'abord, params de la règle ensuite), jamais une fenêtre
+    inventée. Repli ``DEFAULT_EVIDENCE_WINDOW_DAYS`` quand la règle n'en déclare
+    aucune (cas de la fréquence historique)."""
+    computed = finding.get('computed') or {}
+    for source in (computed,
+                   rule_templates.resolve_params(policy.template_key,
+                                                 policy.params)):
+        for key in ('window_days', 'long_days'):
+            value = source.get(key)
+            if value:
+                try:
+                    return max(1, int(value))
+                except (TypeError, ValueError):
+                    continue
+    return DEFAULT_EVIDENCE_WINDOW_DAYS
+
+
+def _meta_signal(company, *, target_type, target_object_id, now, window_days):
+    """Signal META de la cible sur les DEUX fenêtres, lu sur ``InsightSnapshot``.
+
+    Renvoie ``None`` quand la cible n'a pas de miroir exploitable (scope compte :
+    aucun snapshot par objet — le texte le dira au lieu d'inventer un total).
+    La vie entière est bornée en haut par ``_as_of_date`` (anti-fuite backtest)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from .models import InsightSnapshot
+
+    model = _mirror_model_for_scope(target_type)
+    if model is None or not target_object_id:
+        return None
+    ct = ContentType.objects.get_for_model(model)
+    end = _as_of_date(now)
+    start = _window_start_date(now, window_days)
+    snaps = list(InsightSnapshot.objects
+                 .filter(company=company, content_type=ct,
+                         object_id=target_object_id, date__lte=end)
+                 .order_by('date'))
+    recent = [s for s in snaps if s.date >= start]
+
+    def _block(rows):
+        return {'days': len(rows),
+                'spend': round(_sum_attr(rows, 'spend'), 2),
+                'results': int(round(_sum_attr(rows, 'results')))}
+
+    return {
+        'recent': {**_block(recent), 'start': start.isoformat(),
+                   'end': end.isoformat()},
+        'lifetime': {**_block(snaps),
+                     'first': snaps[0].date.isoformat() if snaps else None,
+                     'last': snaps[-1].date.isoformat() if snaps else None},
+    }
+
+
+def _lead_scope(company, *, target_type, target_meta_id):
+    """Périmètre du signal leads d'une cible : ``(ad_meta_ids, campaign_meta_ids)``.
+
+    ``odoo_leads`` attribue au niveau ANNONCE (et au niveau CAMPAGNE pour le
+    palier ``formulaire_campagne``) : une cible ad set/campagne est donc résolue
+    en ses annonces miroir, et une campagne porte EN PLUS son propre palier
+    campagne. Un scope sans résolution possible renvoie deux listes vides (le
+    texte dira que le signal n'est pas résolvable à ce niveau)."""
+    from .models import AdMirror
+
+    if not target_meta_id:
+        return [], []
+    if target_type == 'ad':
+        return [target_meta_id], []
+    if target_type == 'adset':
+        filters = {'adset__meta_id': target_meta_id}
+    elif target_type == 'campaign':
+        filters = {'adset__campaign__meta_id': target_meta_id}
+    else:
+        return [], []
+    ad_ids = list(AdMirror.objects
+                  .filter(company=company, **filters)
+                  .exclude(meta_id='')
+                  .values_list('meta_id', flat=True))
+    campaign_ids = [target_meta_id] if target_type == 'campaign' else []
+    return ad_ids, campaign_ids
+
+
+def _leads_signal(company, *, target_type, target_meta_id, now, window_days,
+                  leads_cache=None):
+    """Signal LEADS ODOO de la cible sur les DEUX fenêtres (via ``odoo_leads``).
+
+    UNE lecture Odoo par passe d'évaluation (mémorisée dans ``leads_cache``, un
+    dict fourni par l'appelant), puis un comptage PUR par fenêtre. Renvoie
+    ``{'available': False, 'reason_fr': ...}`` quand le signal n'existe pas
+    (Odoo non configuré, lecture en erreur, scope non résolvable) — jamais un
+    zéro qui ressemblerait à une mesure."""
+    from . import odoo_leads
+
+    ad_ids, campaign_ids = _lead_scope(
+        company, target_type=target_type, target_meta_id=target_meta_id)
+    if not ad_ids and not campaign_ids:
+        return {'available': False,
+                'reason_fr': "signal leads Odoo non résolvable à ce niveau "
+                             "(aucune annonce miroir sous la cible)"}
+    index = leads_cache.get('index') if leads_cache is not None else None
+    if index is None:
+        try:
+            index = odoo_leads.leads_days_index(company)
+        except Exception as exc:  # noqa: BLE001 — jamais un moteur cassé par Odoo
+            logger.warning('adsengine PUB135: index leads indisponible: %s', exc)
+            # ``configured`` INCONNU (la lecture n'a pas abouti) : on ne prétend
+            # ni configuré ni non configuré — l'erreur elle-même est le motif.
+            index = {'configured': None, 'by_ad': {}, 'by_campaign': {},
+                     'odoo_error': f'{type(exc).__name__}: {exc}'[:200]}
+        if leads_cache is not None:
+            leads_cache['index'] = index
+    # L'erreur de lecture passe AVANT l'état de configuration : un Odoo configuré
+    # mais injoignable ne doit jamais être annoncé « non configuré ».
+    if index.get('odoo_error'):
+        return {'available': False,
+                'reason_fr': f"leads Odoo illisibles ({index['odoo_error']}) — "
+                             f"signal non estimé"}
+    if not index.get('configured'):
+        return {'available': False,
+                'reason_fr': "leads Odoo non disponibles (connexion Odoo non "
+                             "configurée) — signal non estimé"}
+    counts = odoo_leads.count_leads_in_windows(
+        index, ad_meta_ids=ad_ids, campaign_meta_ids=campaign_ids,
+        window_start=_window_start_date(now, window_days),
+        as_of=_as_of_date(now))
+    return {'available': True, 'ads': len(ad_ids), **counts}
+
+
+def decision_evidence(company, *, target_type, target_meta_id,
+                      target_object_id=None, now=None,
+                      window_days=DEFAULT_EVIDENCE_WINDOW_DAYS,
+                      leads_cache=None):
+    """PUB135 — Faits d'une décision : DEUX fenêtres × DEUX signaux, plus le
+    verdict de DIVERGENCE.
+
+    ``{'window_days', 'meta': {...}|None, 'leads': {...},
+       'divergence': bool, 'divergence_fr': str}``. Divergence = sur la fenêtre
+    récente, l'UN des deux signaux est à zéro et l'AUTRE non (le cas exact de
+    l'incident de production : « 0 résultat » côté Meta alors que des leads
+    Odoo étaient bien arrivés). Aucun chiffre n'est dérivé d'un autre : results
+    vient des snapshots, leads de l'attribution Odoo."""
+    from django.utils import timezone
+
+    now = now or timezone.now()
+    window_days = max(1, int(window_days))
+    meta = _meta_signal(company, target_type=target_type,
+                        target_object_id=target_object_id, now=now,
+                        window_days=window_days)
+    leads = _leads_signal(company, target_type=target_type,
+                          target_meta_id=target_meta_id, now=now,
+                          window_days=window_days, leads_cache=leads_cache)
+
+    divergence = False
+    divergence_fr = ''
+    if meta is not None and leads.get('available') and meta['recent']['days']:
+        meta_recent = meta['recent']['results']
+        leads_recent = leads['recent']
+        if (meta_recent == 0) != (leads_recent == 0):
+            divergence = True
+            divergence_fr = (
+                f"Signaux DIVERGENTS sur la fenêtre {window_days} j : "
+                f"{_plural(meta_recent, 'résultat')} côté Meta contre "
+                f"{_plural(leads_recent, 'lead')} attribué(s) côté Odoo — "
+                f"l'un des deux signaux est incomplet : décision à confirmer à "
+                f"la main avant toute application.")
+    return {'window_days': window_days, 'meta': meta, 'leads': leads,
+            'divergence': divergence, 'divergence_fr': divergence_fr}
+
+
+def evidence_fr(evidence, *, currency='MAD'):
+    """PUB135 — Phrase(s) FR des faits d'une décision (toujours non vide).
+
+    Cite la fenêtre récente ET la vie entière, les results Meta ET les leads
+    Odoo, et NOMME ce qui manque plutôt que de le remplacer par un zéro. La
+    mention de divergence est ajoutée telle quelle quand les deux signaux ne
+    racontent pas la même histoire."""
+    window_days = evidence.get('window_days', DEFAULT_EVIDENCE_WINDOW_DAYS)
+    meta = evidence.get('meta')
+    leads = evidence.get('leads') or {}
+    parts = []
+
+    if meta is None:
+        parts.append(
+            f"Aucun snapshot Meta rattaché à cette cible : ni fenêtre "
+            f"{window_days} j ni vie entière chiffrables (aucune estimation).")
+    else:
+        rec, life = meta['recent'], meta['lifetime']
+        if rec['days']:
+            parts.append(
+                f"Fenêtre {window_days} j ({rec['start']}→{rec['end']}, "
+                f"{_plural(rec['days'], 'jour')} de données) : "
+                f"{rec['spend']:g} {currency} dépensés, "
+                f"{_plural(rec['results'], 'résultat')} Meta.")
+        else:
+            parts.append(
+                f"Fenêtre {window_days} j ({rec['start']}→{rec['end']}) : aucun "
+                f"snapshot Meta — rien à citer sur la période.")
+        if life['days']:
+            parts.append(
+                f"Vie entière ({life['first']}→{life['last']}, "
+                f"{_plural(life['days'], 'jour')}) : {life['spend']:g} "
+                f"{currency}, {_plural(life['results'], 'résultat')} Meta.")
+        else:
+            parts.append("Vie entière : aucun snapshot Meta enregistré.")
+
+    if leads.get('available'):
+        detail = (f"Leads Odoo : {_plural(leads['recent'], 'lead')} sur la "
+                  f"fenêtre, {_plural(leads['lifetime'], 'lead')} en vie "
+                  f"entière")
+        if leads.get('undated'):
+            detail += (f" (dont {_plural(leads['undated'], 'lead')} sans date "
+                       f"lisible, hors fenêtre datée)")
+        parts.append(detail + '.')
+    else:
+        parts.append(f"Leads Odoo : {leads.get('reason_fr', 'signal absent')}.")
+
+    if evidence.get('divergence') and evidence.get('divergence_fr'):
+        parts.append('⚠ ' + evidence['divergence_fr'])
+    return ' '.join(parts)
+
+
 # ── Évaluateurs par template (registre ; d'autres lanes/tasks en câblent plus) ─
 def _eval_frequency_high(company, policy, template, *, now, config):
     """Fatigue créative : fréquence glissante d'un ad set > seuil.
@@ -566,6 +821,9 @@ def evaluate_creative_fatigue(company, *, now=None, window_days=7,
         days=max(1, baseline_days) - 1)
 
     findings = []
+    # PUB135 — une lecture Odoo par passe, partagée par toutes les ads.
+    leads_cache = {}
+    currency = account_currency(company)
     for ad in AdMirror.objects.filter(company=company):
         recent = _window_snaps(company, ct, ad.pk, now=now, days=window_days)
         baseline = list(InsightSnapshot.objects.filter(
@@ -593,10 +851,19 @@ def evaluate_creative_fatigue(company, *, now=None, window_days=7,
         if det.fired:
             anomaly.record_anomaly(
                 company, det, entity_type='ad', entity_meta_id=ad.meta_id)
-            reason = f'[Fatigue créative] {det.message_fr} (ad {ad.meta_id}).'
+            # PUB135 — la rotation proposée cite ses DEUX fenêtres et ses DEUX
+            # signaux (results Meta + leads Odoo), divergence dite explicitement.
+            evidence = decision_evidence(
+                company, target_type='ad', target_meta_id=ad.meta_id,
+                target_object_id=ad.pk, now=now, window_days=window_days,
+                leads_cache=leads_cache)
+            entry['evidence'] = evidence
+            reason = (f'[Fatigue créative] {det.message_fr} (ad {ad.meta_id}). '
+                      f'{evidence_fr(evidence, currency=currency)}')
             payload = {'template_key': 'creative_fatigue_combo',
                        'target_type': 'ad', 'target_meta_id': ad.meta_id,
-                       'target_object_id': ad.pk, 'computed': det.computed}
+                       'target_object_id': ad.pk, 'computed': det.computed,
+                       'evidence': evidence}
             # PUB119 — même exigence que le chemin cadencé : une rotation n'est
             # proposée qu'avec son ad set cible, son nom et sa source créative.
             # Aucune source prête ⇒ le finding porte la raison FR (audit) et
@@ -722,7 +989,8 @@ def _emit_alert(company, *, template_key, finding, message, action=None,
 
 
 # ── ADSDEEP40 — Actions de règle v2 (montée de budget learning-safe / duplication)
-def _propose_v2_action(company, policy, template, finding, *, config, dry_run):
+def _propose_v2_action(company, policy, template, finding, *, config, dry_run,
+                       evidence_text=''):
     """ADSDEEP40 — Matérialise l'ACTION de règle v2 d'un finding DÉCLENCHÉ,
     TOUJOURS propose-first (jamais ``execute_auto_action`` : la seule auto-application
     bornée reste ENG8, réservée à rotate/rebalance). L'intention est lue dans
@@ -738,7 +1006,11 @@ def _propose_v2_action(company, policy, template, finding, *, config, dry_run):
     Renvoie l'``EngineAction`` PROPOSÉE, ou ``None`` si rien n'est proposable
     (ad set introuvable, budget courant inconnu, pas de créatif LIVE). Une pause /
     dé-pause n'est JAMAIS produite par ce chemin (invariant permanent règle #3).
-    En simulation, la raison est préfixée « [Simulation] »."""
+    En simulation, la raison est préfixée « [Simulation] ».
+
+    PUB135 — ``evidence_text`` (déjà composé par l'appelant, donc lu UNE fois par
+    finding) est collé à la raison d'un rééquilibrage de budget : la décision cite
+    ses deux fenêtres et ses deux signaux, jamais un seul chiffre hors contexte."""
     from . import services
     from .models import AdSetMirror
 
@@ -765,6 +1037,8 @@ def _propose_v2_action(company, policy, template, finding, *, config, dry_run):
             f"(fenêtre courte < longue) — montée de budget learning-safe "
             f"(≤{services.LEARNING_SAFE_MAX_PCT} %) proposée depuis "
             f"{current_mad:g} {currency}/j.")
+        if evidence_text:
+            reason = f'{reason} {evidence_text}'
         return services.propose_learning_safe_scale_up(
             company, adset_meta_id=target_id,
             current_daily_budget_mad=current_mad, scale_pct=scale_pct,
@@ -788,7 +1062,8 @@ def _propose_v2_action(company, policy, template, finding, *, config, dry_run):
     return None
 
 
-def _act_on_finding(company, policy, template, finding, *, config, client):
+def _act_on_finding(company, policy, template, finding, *, config, client,
+                    now=None, leads_cache=None):
     """Matérialise l'action/alerte d'un finding DÉCLENCHÉ (jamais d'action
     directe : toujours via ``services``). Déduplique par cooldown. Renvoie
     l'``EngineAction`` créée (ou ``None`` si dédupliquée / alerte seule)."""
@@ -805,27 +1080,49 @@ def _act_on_finding(company, policy, template, finding, *, config, client):
 
     reason = _reason_fr({**template, '_key': template_key}, finding)
 
+    kind = rule_templates.action_kind(template_key)
+    v2_intent = (template.get('v2') or {}).get('action')
+
+    # PUB135 — une décision pause / rotation / rééquilibrage porte ses FAITS :
+    # fenêtre récente ET vie entière, results Meta ET leads Odoo. Les faits sont
+    # aussi consignés dans le finding (journal de la règle) et dans le payload de
+    # l'action (l'approbateur voit sur quoi il tranche). Une divergence des deux
+    # signaux est DITE explicitement dans le texte.
+    evidence = None
+    evidence_text = ''
+    if _is_decision_action(kind, v2_intent):
+        evidence = decision_evidence(
+            company, target_type=finding.get('target_type', ''),
+            target_meta_id=target_meta_id,
+            target_object_id=finding.get('target_object_id'),
+            now=now, window_days=_recent_window_days(policy, finding),
+            leads_cache=leads_cache)
+        evidence_text = evidence_fr(
+            evidence, currency=account_currency(company))
+        reason = f'{reason} {evidence_text}'
+        finding['evidence'] = evidence
+
     # ADSDEEP40 — action de règle v2 (montée de budget / duplication) : TOUJOURS
     # propose-first, prend le pas sur le chemin kind-based dès que le template
     # porte un hint ``v2['action']``. On estampille (template_key, target) dans le
     # payload pour que la dédup cooldown (``_recently_acted``) couvre aussi ces
     # actions (leurs payloads budget/duplication ne les portent pas nativement).
-    v2_intent = (template.get('v2') or {}).get('action')
     if v2_intent:
         action = _propose_v2_action(
             company, policy, template, finding, config=config,
-            dry_run=policy.dry_run)
+            dry_run=policy.dry_run, evidence_text=evidence_text)
         if action is not None:
             payload = dict(action.payload or {})
             payload.setdefault('template_key', template_key)
             payload.setdefault('target_meta_id', target_meta_id)
+            if evidence is not None:
+                payload['evidence'] = evidence
             action.payload = payload
             action.save(update_fields=['payload', 'updated_at'])
         _emit_alert(company, template_key=template_key, finding=finding,
                     message=reason, action=action, dry_run=policy.dry_run)
         return action
 
-    kind = rule_templates.action_kind(template_key)
     payload = {
         'template_key': template_key,
         'target_type': finding.get('target_type', ''),
@@ -833,6 +1130,8 @@ def _act_on_finding(company, policy, template, finding, *, config, client):
         'target_object_id': finding.get('target_object_id'),
         'computed': finding.get('computed', {}),
     }
+    if evidence is not None:
+        payload['evidence'] = evidence  # PUB135 — les faits suivent l'action
 
     # PUB119 — une rotation créative n'est PROPOSÉE que si ses trois pièces
     # existent (ad set cible, nom, source créative) : le payload purement
@@ -973,6 +1272,10 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
 
     from . import watchdog
 
+    # PUB135 — UNE seule lecture de l'attribution Odoo par passe, partagée par
+    # toutes les règles/cibles (lazy : rien n'est lu si aucune décision ne se
+    # déclenche).
+    leads_cache = {}
     evaluated = 0
     for policy in RulePolicy.objects.filter(company=company, enabled=True):
         template = rule_templates.get_template(policy.template_key)
@@ -1031,7 +1334,12 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
             elif finding.get('fired'):
                 fired_any = True
                 action = _act_on_finding(company, policy, template, finding,
-                                         config=config, client=client)
+                                         config=config, client=client,
+                                         now=now, leads_cache=leads_cache)
+                if finding.get('evidence') is not None:
+                    # PUB135 — les faits de la décision restent lisibles au
+                    # journal de la règle, même si l'action a été bloquée.
+                    entry['evidence'] = finding['evidence']
                 if action is not None:
                     entry['action'] = _action_summary(action)
                 elif finding.get('blocked_fr'):
