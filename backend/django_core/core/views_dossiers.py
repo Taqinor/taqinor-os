@@ -22,6 +22,7 @@ résolution passe par ``ContentType``, qui est de la fondation Django.
 """
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -65,7 +66,12 @@ class DossierLienSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class DossierChecklistItemSerializer(serializers.ModelSerializer):
+# YAPIC6 — nommé `...Workflow...` (pas juste `DossierChecklistItemSerializer`) :
+# apps.ventes.serializers_regulatory porte DÉJÀ un ``DossierChecklistItemSerializer``
+# distinct (FG268, un AUTRE modèle ``DossierChecklistItem``) ; deux classes de
+# même nom auraient produit le même composant OpenAPI "DossierChecklistItem"
+# pour deux formes différentes — collision de nom, jamais de comportement.
+class DossierWorkflowChecklistItemSerializer(serializers.ModelSerializer):
     fait_par_username = serializers.CharField(
         source='fait_par.username', read_only=True, default='')
 
@@ -87,7 +93,7 @@ class DossierSerializer(serializers.ModelSerializer):
     proprietaire_username = serializers.CharField(
         source='proprietaire.username', read_only=True, default='')
     liens = DossierLienSerializer(many=True, read_only=True)
-    checklist = DossierChecklistItemSerializer(many=True, read_only=True)
+    checklist = DossierWorkflowChecklistItemSerializer(many=True, read_only=True)
     # NTWFL20 — l'étape courante du processus attaché, telle que l'écran
     # dossier l'affiche. ``None`` si le dossier n'a pas de processus (cas par
     # défaut) ou si celui-ci est terminé.
@@ -108,6 +114,14 @@ class DossierSerializer(serializers.ModelSerializer):
                             'liens', 'checklist', 'workflow_instance',
                             'etape_courante', 'created_at', 'updated_at']
 
+    @extend_schema_field(inline_serializer('DossierEtapeCourante', {
+        'id': serializers.IntegerField(),
+        'ordre': serializers.IntegerField(),
+        'nom': serializers.CharField(),
+        'statut': serializers.CharField(),
+        'statut_label': serializers.CharField(),
+        'sla_echeance': serializers.DateTimeField(allow_null=True),
+    }, required=False, allow_null=True))
     def get_etape_courante(self, obj):
         etape = dossiers_service.etape_courante_du_dossier(obj)
         if etape is None:
@@ -264,7 +278,7 @@ class DossierViewSet(CompanyScopedModelViewSet):
         dossier = self.get_object()
         if request.method.lower() == 'get':
             items = dossier.checklist.all()
-            return Response(DossierChecklistItemSerializer(
+            return Response(DossierWorkflowChecklistItemSerializer(
                 items, many=True).data)
 
         item_id = request.data.get('item_id')
@@ -280,7 +294,7 @@ class DossierViewSet(CompanyScopedModelViewSet):
             item.fait_le = timezone.now() if item.fait else None
             item.save(update_fields=['fait', 'fait_par', 'fait_le',
                                      'updated_at'])
-            return Response(DossierChecklistItemSerializer(item).data)
+            return Response(DossierWorkflowChecklistItemSerializer(item).data)
 
         libelle = (request.data.get('libelle') or '').strip()
         if not libelle:
@@ -294,5 +308,5 @@ class DossierViewSet(CompanyScopedModelViewSet):
         item = DossierChecklistItem.objects.create(
             company=dossier.company, dossier=dossier,
             libelle=libelle[:200], ordre=max(ordre, 0))
-        return Response(DossierChecklistItemSerializer(item).data,
+        return Response(DossierWorkflowChecklistItemSerializer(item).data,
                         status=status.HTTP_201_CREATED)

@@ -1049,6 +1049,18 @@ class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
         return AcompteFournisseurSerializer(
             obj.acomptes.all(), many=True).data
 
+    @extend_schema_field(inline_serializer('LivraisonAnnoncee', {
+        'id': serializers.IntegerField(),
+        'bon_commande_id': serializers.IntegerField(allow_null=True),
+        'bon_commande_reference': serializers.CharField(),
+        'date_expedition': serializers.DateField(allow_null=True),
+        'date_livraison_prevue': serializers.DateField(allow_null=True),
+        'transporteur': serializers.CharField(),
+        'numero_suivi': serializers.CharField(),
+        'statut': serializers.CharField(),
+        'statut_display': serializers.CharField(),
+        'lignes': serializers.ListField(child=serializers.JSONField()),
+    }, many=True))
     def get_livraisons_annoncees(self, obj):
         from .selectors import annonces_livraison_bon_commande
         return annonces_livraison_bon_commande(obj)

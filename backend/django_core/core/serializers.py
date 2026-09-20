@@ -410,7 +410,7 @@ class MatriceApprobationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
-    def get_avertissements(self, obj):
+    def get_avertissements(self, obj) -> list[str]:
         """NTWFL33 — avertissements de conflit de portée (jamais bloquants)."""
         return obj.avertissements_de_conflit()
 

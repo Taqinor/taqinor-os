@@ -61,7 +61,7 @@ class IncidentPublicSerializer(serializers.ModelSerializer):
         from core.tz_display import to_company_tz
         return to_company_tz(obj.debute_le, self._viewer_company(obj)).isoformat()
 
-    def get_resolu_le_local(self, obj):
+    def get_resolu_le_local(self, obj) -> str | None:
         from core.tz_display import to_company_tz
         local = to_company_tz(obj.resolu_le, self._viewer_company(obj))
         return local.isoformat() if local is not None else None

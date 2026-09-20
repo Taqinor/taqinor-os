@@ -27,6 +27,7 @@ CE QUI N'EST JAMAIS EXPOSÉ — et pourquoi, ligne par ligne :
 * ``fournisseur_suggere`` sur une demande d'achat : un arbitrage de sourcing
   interne, hors du périmètre demandé.
 """
+from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
 
 from apps.installations.models_demande_achat import DemandeAchat
@@ -74,6 +75,12 @@ class PublicRFQSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(inline_serializer('RFQFournisseurConsulte', {
+        'fournisseur': serializers.IntegerField(allow_null=True),
+        'nom': serializers.CharField(),
+        'a_repondu': serializers.BooleanField(),
+        'revoque': serializers.BooleanField(),
+    }, many=True))
     def get_fournisseurs_consultes(self, obj):
         """Fournisseurs INVITÉS à répondre (``RFQConsultation``), et s'ils ont
         répondu. Le ``token`` de consultation n'est JAMAIS servi : il ouvre la
@@ -89,6 +96,12 @@ class PublicRFQSerializer(serializers.ModelSerializer):
                 'fournisseur').all()
         ]
 
+    @extend_schema_field(inline_serializer('RFQOffreRetenue', {
+        'id': serializers.IntegerField(),
+        'fournisseur': serializers.IntegerField(allow_null=True),
+        'nom': serializers.CharField(),
+        'delai_jours': serializers.IntegerField(allow_null=True),
+    }, required=False, allow_null=True))
     def get_offre_retenue(self, obj):
         """L'offre choisie, par son IDENTITÉ seule — jamais son ``montant_ht``
         (le prix d'achat que la règle transverse interdit d'exposer).

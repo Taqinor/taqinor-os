@@ -1332,6 +1332,16 @@ class MonEquipePortailLigneSerializer(serializers.Serializer):
     date_acceptation = serializers.DateTimeField(allow_null=True)
 
 
+#: YAPIC6 — même remarque que ``_ID_LIVRAISON`` plus haut : un ``ViewSet`` nu
+#: (sans ``queryset``) laisse drf-spectacular incapable de deviner le type de
+#: la PK entière de l'invitation. Déclaré UNE fois et partagé par TOUTES les
+#: actions `detail=True`.
+_ID_INVITATION = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description="Identifiant de l'invitation/membre d'équipe portail.",
+)
+
+
 class MonEquipePortailViewSet(viewsets.ViewSet):
     """NTPRT6 — « Mon équipe » : invitations/membres du portail client.
 
@@ -1404,6 +1414,7 @@ class MonEquipePortailViewSet(viewsets.ViewSet):
         return Response(self._ligne(invitation),
                         status=status.HTTP_201_CREATED)
 
+    @extend_schema(parameters=[_ID_INVITATION])
     @action(detail=True, methods=['post'], url_path='revoquer')
     def revoquer(self, request, pk=None):
         """Révoque une invitation (et ferme l'accès si déjà acceptée).
@@ -1434,6 +1445,13 @@ class MesDocumentsPortailLigneSerializer(serializers.Serializer):
     taille = serializers.IntegerField(allow_null=True)
     mime = serializers.CharField(allow_null=True)
     date_creation = serializers.DateTimeField(allow_null=True)
+
+
+#: YAPIC6 — même remarque que ``_ID_LIVRAISON`` plus haut.
+_ID_DOCUMENT_PORTAIL = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description='Identifiant du document GED partagé avec ce client.',
+)
 
 
 class MesDocumentsPortailViewSet(viewsets.ViewSet):
@@ -1486,6 +1504,7 @@ class MesDocumentsPortailViewSet(viewsets.ViewSet):
         docs = documents_partages_client_portail(company, client_id)
         return Response({'results': [self._ligne(d) for d in docs]})
 
+    @extend_schema(parameters=[_ID_DOCUMENT_PORTAIL])
     def retrieve(self, request, pk=None):
         from apps.ged.selectors import document_partage_client_portail
         company, client_id = _scope(request)
@@ -1495,6 +1514,7 @@ class MesDocumentsPortailViewSet(viewsets.ViewSet):
                             status=status.HTTP_404_NOT_FOUND)
         return Response(self._ligne(doc))
 
+    @extend_schema(parameters=[_ID_DOCUMENT_PORTAIL])
     @action(detail=True, methods=['get'], url_path='telecharger')
     def telecharger(self, request, pk=None):
         """Sert le contenu de la VERSION COURANTE du document partagé.

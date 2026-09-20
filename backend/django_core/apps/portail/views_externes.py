@@ -680,6 +680,15 @@ class RessourcesPartenairePortailLigneSerializer(serializers.Serializer):
     date_creation = serializers.DateTimeField(allow_null=True)
 
 
+#: YAPIC6 — un ``ViewSet`` nu (sans ``queryset``) laisse drf-spectacular
+#: incapable de deviner le type de la PK entière de la ressource ; même
+#: patron que ``_ID_LIVRAISON``/``_ID_BCF`` dans ``views_client.py``.
+_ID_RESSOURCE_PARTENAIRE = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description="Identifiant de la ressource partagée avec les partenaires.",
+)
+
+
 class RessourcesPartenairePortailViewSet(viewsets.ViewSet):
     """NTPRT31 — « Ressources » : documents GED partagés GLOBALEMENT avec
     TOUS les partenaires (logos, fiches produit, argumentaires).
@@ -720,6 +729,7 @@ class RessourcesPartenairePortailViewSet(viewsets.ViewSet):
         return Response(
             {'results': [self._ligne(d) for d in documents]})
 
+    @extend_schema(parameters=[_ID_RESSOURCE_PARTENAIRE])
     def retrieve(self, request, pk=None):
         from apps.ged.selectors import ressource_partenaire_portail
         document = ressource_partenaire_portail(request.user.company, pk)
@@ -728,6 +738,7 @@ class RessourcesPartenairePortailViewSet(viewsets.ViewSet):
                             status=status.HTTP_404_NOT_FOUND)
         return Response(self._ligne(document))
 
+    @extend_schema(parameters=[_ID_RESSOURCE_PARTENAIRE])
     @action(detail=True, methods=['get'], url_path='telecharger')
     def telecharger(self, request, pk=None):
         """Sert le contenu de la VERSION COURANTE de la ressource partagée."""

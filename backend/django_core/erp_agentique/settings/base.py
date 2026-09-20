@@ -899,6 +899,23 @@ SPECTACULAR_SETTINGS = {
         # donc le nom sur le jeu de `transport`, comme les entrées voisines.
         'ModeAcheminementPhysiqueEnum':
             'apps.transport.models.OrdreTransport.ModeAcheminementPhysique',
+        # operational/degraded/partial_outage/major_outage —
+        # statuspage.ComponentStatus.statut est le jeu D'ORIGINE ;
+        # ComponentStatusLog (journal d'historique) reprend LA MÊME liste de
+        # choix sous deux autres noms de champ (`ancien_statut`/
+        # `nouveau_statut`) : sans cette entrée, trois noms se disputent un
+        # seul jeu de valeurs (« multiple names for the same choice set »).
+        'StatutComposantPublicEnum':
+            'apps.statuspage.models.ComponentStatus.Statut',
+        # entree/sortie — compta.MouvementCaisse.Sens (FG124, jeu D'ORIGINE) ;
+        # immobilier.EtatLieuxImmo (champ `moment`) ET
+        # installations.GeofenceAlert (champ `type_franchissement`, NTMOB9)
+        # portent LE MÊME jeu sous un nom de champ différent. Fige aussi, en
+        # retirant immobilier de la résolution automatique du nom de champ
+        # « moment », sa collision avec flotte.EtatDesLieuxVehicule (jeu de
+        # valeurs DISTINCT sous le même nom de champ).
+        'MouvementEntreeSortieEnum':
+            'apps.compta.models.MouvementCaisse.Sens',
     },
 }
 
