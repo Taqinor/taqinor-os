@@ -45,6 +45,7 @@ SOUS_MODULES = (
     'electrique',     # CAL123/125/127-130/170 — entrée et verdicts électriques
     'chaines',        # CAL124/125 — chaînes par pan et affectation nominative
     'cables',         # CAL131 — sections et chutes sur les longueurs du plan
+    'protections',    # CAL132 — check-list d'organes paramétrable
 )
 
 __all__ = ['SOUS_MODULES']

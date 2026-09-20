@@ -504,9 +504,17 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         conception, cheminement=donnees.get('cheminement'), norme=norme,
         layout=document)
 
+    # CAL132 — la check-list de protections, éditable, chaque ligne gardant
+    # sa source. C'est ELLE que la nomenclature et le schéma lisent.
+    from .protections import checklist_protections
+
+    protections = checklist_protections(
+        conception, decisions=donnees.get('protections'), norme=norme)
+
     messages = list(avertissements) + list(messages_ratio)
     messages.extend(regle['bornes_non_verifiables'])
     messages.extend(cables['omissions'])
+    messages.extend(protections['omissions'])
     messages.extend(conception.manquantes)
     messages.extend(materiel['absents'])
     if conception.temperatures is not None and conception.temperatures.mention:
@@ -539,6 +547,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # CAL131 — les câbles, avec la LONGUEUR et SON ORIGINE.
         'cables': cables['cables'],
         'longueurs': cables['longueurs'],
+        # CAL132 — la check-list d'organes (retenus / ajoutés / écartés).
+        'protections': protections['organes'],
+        'justifications': protections['justifications'],
         'temperatures': (conception.temperatures.en_dict()
                          if conception.temperatures is not None else None),
         'production': {
