@@ -10,6 +10,9 @@ import CadenceFrise from './CadenceFrise'
 // QJ-ARBRE — l'historique condensé du client, colonne droite du Suivi
 // commercial (données déjà chargées par le shell — aucun appel réseau ici).
 import ArbreHistorique from './ArbreHistorique'
+// RLC2 — le journal « ce qui s'est passé » du PLAN DE RELANCE (avec la cause de
+// chaque ligne) + l'état courant en une phrase. Lecture serveur dédiée.
+import JournalRelance from './JournalRelance'
 
 // Les trois cadences nommées du gabarit (MRY4) — jamais un libellé inventé.
 const CADENCE_CHOICES = [
@@ -211,6 +214,13 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
             <ArbreHistorique
               historique={refData.historique}
               chatterRecent={state.server?.chatter_recent}
+            />
+            {/* RLC2 — sous l'arbre du client, l'histoire du PLAN : chaque
+                ligne dit sa cause. Même jeton de rechargement que la frise
+                (un geste de relance change les deux). */}
+            <JournalRelance
+              leadId={state.leadId}
+              reloadToken={friseReload + relanceVersion}
             />
           </div>
         </div>

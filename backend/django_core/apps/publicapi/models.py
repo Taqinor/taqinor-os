@@ -924,3 +924,69 @@ class PartenaireEdi(TenantModel):
 
 
 __all__ += ['PartenaireEdi']
+
+
+class ApiCallLog(TenantModel):
+    """NTAPI38 — journal PAR APPEL de l'API publique (``/api/public/``).
+
+    POURQUOI UN JOURNAL SÉPARÉ DES COMPTEURS D'USAGE. ``core.ApiUsageRecord``
+    (FG398) compte des APPELS AGRÉGÉS par jour/mois pour appliquer le quota :
+    il répond « combien », jamais « lequel ». Un admin tenant qui diagnostique
+    une intégration a besoin de l'inverse — QUEL chemin, QUEL statut, COMBIEN de
+    temps, et QUEL ``request_id`` pour recouper avec les logs serveur. Les deux
+    surfaces ont des durées de vie opposées (un compteur de quota doit survivre
+    au mois en cours ; une ligne de diagnostic se purge vite), d'où deux tables.
+
+    APPEND-ONLY : aucun champ n'est modifié après création. La purge se fait par
+    RÉTENTION (politique ``publicapi_api_call_log_retention``, bornée PAR
+    SOCIÉTÉ par son plan NTAPI7 — même borne que les livraisons webhook et le
+    flux d'évènements, jamais une troisième notion de rétention à régler).
+
+    ``api_key`` est nullable (``SET_NULL``) : révoquer une clé ne doit pas
+    effacer la trace de ce qu'elle a fait — et un appel REJETÉ en 401 n'a par
+    définition aucune clé résolue, tout en méritant sa ligne (c'est exactement
+    ce qu'on regarde quand une intégration « ne marche plus »).
+    """
+
+    api_key = models.ForeignKey(
+        ApiKey,
+        on_delete=models.SET_NULL,  # on_delete: une clé révoquée ne doit pas effacer sa trace
+        null=True, blank=True,
+        related_name='call_logs',
+    )
+    methode = models.CharField(max_length=10)
+    # Chemin SANS query string : un `?token=` (pull CSV NTAPI30) est une CLÉ en
+    # clair — la journaliser serait recopier un secret dans une table lisible
+    # depuis l'écran Paramètres.
+    chemin = models.CharField(max_length=512)
+    statut = models.PositiveSmallIntegerField()
+    latence_ms = models.PositiveIntegerField(default=0)
+    # Même identifiant que l'en-tête `X-Request-Id` (YAPIC4) : c'est le seul
+    # point de recoupement entre une plainte client et les logs serveur.
+    request_id = models.CharField(max_length=64, blank=True, default='',
+                                  db_index=True)
+    taille_payload = models.PositiveIntegerField(
+        default=0, help_text='Taille du corps de RÉPONSE en octets.')
+    # created_at / updated_at hérités de core.TenantModel.
+
+    class Meta:
+        verbose_name = "Appel d'API publique"
+        verbose_name_plural = "Appels d'API publique"
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'created_at'],
+                         name='publicapi_acl_co_cree_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='publicapi_acl_co_statut_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.methode} {self.chemin} → {self.statut} ({self.latence_ms} ms)'
+
+    @property
+    def est_erreur(self):
+        """4xx/5xx — la base du taux d'erreur du tableau de bord NTAPI39."""
+        return self.statut >= 400
+
+
+__all__ += ['ApiCallLog']

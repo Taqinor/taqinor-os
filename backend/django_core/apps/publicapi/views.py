@@ -4,8 +4,10 @@ Montées sous /api/django/publicapi/. Authentifiées par la session/JWT normaux
 (auth DRF par défaut du projet), réservées au palier admin/responsable. La
 société vient TOUJOURS de l'utilisateur connecté, jamais du corps de requête.
 """
-from rest_framework import viewsets, status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers, viewsets, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -133,6 +135,86 @@ class ApiUsagePlanView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()  # `company` déjà posée sur `plan` — jamais du corps.
         return Response(serializer.data)
+
+
+@extend_schema(
+    summary=(
+        "NTAPI39 — tableau de bord de monitoring des intégrations de la société."),
+    responses=inline_serializer('PublicApiMonitoring', {
+        'fenetre_jours': drf_serializers.IntegerField(),
+        'depuis': drf_serializers.CharField(),
+        'appels': inline_serializer('PublicApiMonitoringAppels', {
+            'total': drf_serializers.IntegerField(),
+            'erreurs': drf_serializers.IntegerField(),
+            'erreurs_4xx': drf_serializers.IntegerField(),
+            'erreurs_5xx': drf_serializers.IntegerField(),
+            'taux_erreur_pct': drf_serializers.FloatField(),
+            'latence_moyenne_ms': drf_serializers.IntegerField(allow_null=True),
+            'latence_p50_ms': drf_serializers.IntegerField(allow_null=True),
+            'latence_p95_ms': drf_serializers.IntegerField(allow_null=True),
+        }),
+        'top_endpoints': inline_serializer('PublicApiMonitoringEndpoint', {
+            'chemin': drf_serializers.CharField(),
+            'appels': drf_serializers.IntegerField(),
+            'erreurs': drf_serializers.IntegerField(),
+            'taux_erreur_pct': drf_serializers.FloatField(),
+            'latence_moyenne_ms': drf_serializers.IntegerField(allow_null=True),
+        }, many=True),
+        'webhooks': inline_serializer('PublicApiMonitoringWebhooks', {
+            'livraisons_24h': drf_serializers.IntegerField(),
+            'succes_24h': drf_serializers.IntegerField(),
+            'echecs_24h': drf_serializers.IntegerField(),
+            'echecs_definitifs_24h': drf_serializers.IntegerField(),
+            'taux_echec_pct': drf_serializers.FloatField(),
+            'webhooks_actifs': drf_serializers.IntegerField(),
+            'webhooks_desactives': drf_serializers.IntegerField(),
+        }),
+        'jobs': inline_serializer('PublicApiMonitoringJobs', {
+            'en_cours': drf_serializers.IntegerField(),
+            'en_echec': drf_serializers.IntegerField(),
+            'derniers': inline_serializer('PublicApiMonitoringJob', {
+                'id': drf_serializers.IntegerField(),
+                'type': drf_serializers.CharField(),
+                'entite': drf_serializers.CharField(),
+                'statut': drf_serializers.CharField(),
+                'progression_pct': drf_serializers.IntegerField(),
+                'traites': drf_serializers.IntegerField(),
+                'erreurs': drf_serializers.IntegerField(),
+                'created_at': drf_serializers.CharField(),
+            }, many=True),
+        }),
+    }),
+)
+class MonitoringView(APIView):
+    """NTAPI39 — ``GET /api/django/publicapi/monitoring/?jours=<n>``.
+
+    Recoupe les trois journaux déjà tenus par l'app (appels NTAPI38, livraisons
+    webhook, jobs bulk) en un seul objet : volume, taux d'erreur, latences
+    p50/p95, top endpoints, santé des webhooks sur 24 h, jobs récents. La
+    société vient TOUJOURS de l'utilisateur connecté, jamais d'un paramètre —
+    un admin ne peut pas lire le monitoring d'une autre société. Réservé au
+    palier admin/responsable, comme le reste de l'écran Paramètres → API.
+    """
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get(self, request):
+        from .monitoring import (
+            FENETRE_JOURS_DEFAUT, FENETRE_JOURS_MAX, tableau_de_bord,
+        )
+
+        brut = request.query_params.get('jours')
+        if brut in (None, ''):
+            jours = FENETRE_JOURS_DEFAUT
+        else:
+            try:
+                jours = int(brut)
+            except (TypeError, ValueError):
+                raise ValidationError(
+                    {'jours': 'Entier attendu pour « jours ».'})
+            if jours < 1 or jours > FENETRE_JOURS_MAX:
+                raise ValidationError({'jours': (
+                    f'Fenêtre hors bornes (1 à {FENETRE_JOURS_MAX} jours).')})
+        return Response(tableau_de_bord(request.user.company, jours=jours))
 
 
 class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):

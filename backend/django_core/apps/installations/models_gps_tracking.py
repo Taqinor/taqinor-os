@@ -143,10 +143,31 @@ class PositionTechnicien(models.Model):
 
 
 class GeofenceAlert(models.Model):
-    """Alerte/journal quand une position live sort du rayon attendu du
-    chantier pendant une intervention active (géofencing). Une ligne par
-    dépassement détecté — pas de déduplication : l'historique complet sert de
-    preuve d'audit. Additif, company-scopée."""
+    """Journal des FRANCHISSEMENTS du rayon attendu du chantier pendant une
+    intervention active (géofencing). Additif, company-scopée.
+
+    Deux types de lignes (``type_franchissement``) :
+
+      * ``sortie`` — la position live est HORS du rayon. Une ligne par
+        dépassement détecté, pas de déduplication : l'historique complet sert
+        de preuve d'audit (comportement XFSM23 d'origine, inchangé).
+      * ``entree`` — NTMOB9 : la position live vient de RENTRER dans le rayon
+        alors que la précédente était dehors. C'est le point de présence
+        « check-in géofencé » du technicien, posé SANS action de sa part. Une
+        seule ligne par franchissement entrant (pas une par ping à l'intérieur)
+        puisqu'il faut une position précédente hors périmètre pour le
+        déclencher.
+
+    NTMOB9 se construit ici plutôt que sur une table de pointage dédiée : le
+    consentement vit déjà dans ``GpsConsentRecord``, la position dans
+    ``PositionTechnicien`` et le franchissement ici — une deuxième table
+    dupliquerait la même donnée (arbitrage WIR113, ``docs/module-map.md``).
+    """
+
+    class TypeFranchissement(models.TextChoices):
+        ENTREE = 'entree', 'Entrée'
+        SORTIE = 'sortie', 'Sortie'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='geofence_alerts')
@@ -160,6 +181,13 @@ class GeofenceAlert(models.Model):
         related_name='geofence_alerts')
     distance_site_km = models.DecimalField(max_digits=8, decimal_places=3)
     rayon_attendu_km = models.DecimalField(max_digits=8, decimal_places=3)
+    # NTMOB9 — défaut ``sortie`` : toute ligne antérieure à ce champ était un
+    # dépassement de rayon, la reprise de l'historique est donc exacte sans
+    # migration de données.
+    type_franchissement = models.CharField(
+        max_length=10, choices=TypeFranchissement.choices,
+        default=TypeFranchissement.SORTIE,
+        verbose_name='Type de franchissement')
     created_at = models.DateTimeField(auto_now_add=True)
     acquittee = models.BooleanField(default=False)
     acquittee_par = models.ForeignKey(
@@ -176,5 +204,6 @@ class GeofenceAlert(models.Model):
         ]
 
     def __str__(self):
-        return (f'Géofence · intervention {self.intervention_id} '
+        return (f'Géofence {self.get_type_franchissement_display()} · '
+                f'intervention {self.intervention_id} '
                 f'({self.distance_site_km} km)')

@@ -1,0 +1,23 @@
+{
+  "endpoint": "GET /api/django/portail/ma-performance/",
+  "pourquoi": "NTPRT26 — carte « Ma performance » du portail FOURNISSEUR connecté (apps.portail.views_externes.ma_performance_fournisseur), lecture directe de apps.stock.selectors.performance_portail_fournisseur. LECTURE SEULE, et rien d'autre : aucun service ne permet à un fournisseur de toucher sa propre note. Les chiffres MATCHENT le calcul interne parce qu'ils SONT le calcul interne (stock.services.otd_stats + stock.selectors.taux_conformite_reception_fournisseur, les mêmes fonctions que l'action interne fournisseurs/{id}/performance/). Aucun montant (dépenses/prix d'achat), aucun score de risque interne, aucun détail d'incident n'y figure jamais — un fournisseur a droit de savoir comment il livre, pas de lire le jugement commercial porté sur lui.",
+  "exemple": {
+    "fournisseur_nom": "Solar Import SARL",
+    "otd_ecart_moyen_jours": 1.5,
+    "otd_a_lheure_pct": 82.0,
+    "receptions_controlees": 14,
+    "receptions_conformes": 13,
+    "taux_conformite_reception_pct": 92.9
+  },
+  "exemple_sans_reception_controlee": {
+    "fournisseur_nom": "Nouveau Fournisseur",
+    "otd_ecart_moyen_jours": null,
+    "otd_a_lheure_pct": null,
+    "receptions_controlees": 0,
+    "receptions_conformes": 0,
+    "taux_conformite_reception_pct": null
+  },
+  "notes": {
+    "taux_conformite_reception_pct_null": "Un fournisseur sans réception CONTRÔLÉE n'a pas un taux de 0 % — il n'a pas de taux : null, jamais un faux zéro qui se lirait comme un fournisseur catastrophique."
+  }
+}

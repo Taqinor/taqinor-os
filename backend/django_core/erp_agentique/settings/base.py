@@ -388,6 +388,10 @@ INSTALLED_APPS = [
     # incidents + post-mortems + historique 90j). Aucun modèle métier
     # importé : lit `core.health.check_services()` via un job beat.
     'apps.statuspage',
+    # Groupe NTAI (P3) — MLOps par tenant : versionne les hyperparamètres/
+    # seuils des scorers purs `core/*.py` par société (registre + feature
+    # store léger). N'importe aucune app métier.
+    'apps.mlops',
 ]
 
 # SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables
@@ -406,6 +410,12 @@ MIDDLEWARE = [
     # core.exceptions.taqinor_exception_handler (YAPIC3) et
     # core.observability.RequestObservabilityMiddleware le lisent tous deux.
     'core.middleware.RequestIdMiddleware',
+    # NTAPI38-middleware — journalise chaque appel public (`/api/public/…`,
+    # `publicapi.ApiCallLog` : latence, statut, request_id) ; APRÈS
+    # RequestIdMiddleware dont il lit `request.request_id`. Test de préfixe
+    # de chaîne pour tout le reste de l'ERP (aucune requête SQL ajoutée
+    # hors `/api/public/`) — voir `apps/publicapi/middleware.py`.
+    'apps.publicapi.middleware.PublicApiCallLogMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -893,6 +903,23 @@ SPECTACULAR_SETTINGS = {
         # donc le nom sur le jeu de `transport`, comme les entrées voisines.
         'ModeAcheminementPhysiqueEnum':
             'apps.transport.models.OrdreTransport.ModeAcheminementPhysique',
+        # operational/degraded/partial_outage/major_outage —
+        # statuspage.ComponentStatus.statut est le jeu D'ORIGINE ;
+        # ComponentStatusLog (journal d'historique) reprend LA MÊME liste de
+        # choix sous deux autres noms de champ (`ancien_statut`/
+        # `nouveau_statut`) : sans cette entrée, trois noms se disputent un
+        # seul jeu de valeurs (« multiple names for the same choice set »).
+        'StatutComposantPublicEnum':
+            'apps.statuspage.models.ComponentStatus.Statut',
+        # entree/sortie — compta.MouvementCaisse.Sens (FG124, jeu D'ORIGINE) ;
+        # immobilier.EtatLieuxImmo (champ `moment`) ET
+        # installations.GeofenceAlert (champ `type_franchissement`, NTMOB9)
+        # portent LE MÊME jeu sous un nom de champ différent. Fige aussi, en
+        # retirant immobilier de la résolution automatique du nom de champ
+        # « moment », sa collision avec flotte.EtatDesLieuxVehicule (jeu de
+        # valeurs DISTINCT sous le même nom de champ).
+        'MouvementEntreeSortieEnum':
+            'apps.compta.models.MouvementCaisse.Sens',
     },
 }
 
@@ -1107,6 +1134,8 @@ CELERY_TASK_ROUTES = {
     'notifications.sweep_daily': {'queue': 'scheduled'},
     'notifications.reveiller_snoozes': {'queue': 'scheduled'},
     'notifications.purge_notifications_anciennes': {'queue': 'scheduled'},
+    # NTI18N37 — rappel de saisie des fêtes mobiles N+1 (novembre-décembre).
+    'notifications.rappel_fetes_mobiles': {'queue': 'scheduled'},
     'automation.time_triggers_daily': {'queue': 'scheduled'},
     # NTEXT7 — reprise des séquences d'automatisation suspendues (beat */5min).
     'automation.process_due_automation_steps': {'queue': 'scheduled'},
@@ -1117,6 +1146,8 @@ CELERY_TASK_ROUTES = {
     'dataquality.evaluer_qualite_donnees': {'queue': 'scheduled'},
     # NTDATA24 — consolidation hebdomadaire des golden records.
     'dataquality.consolider_golden_records': {'queue': 'scheduled'},
+    # NTAI30 — matérialisation quotidienne du feature store léger (mlops).
+    'mlops.recompute_features': {'queue': 'scheduled'},
     # NTDATA42 — détection hebdomadaire d'anomalies sur les métriques nommées.
     'semantic.detecter_anomalies_metriques': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.
@@ -1124,6 +1155,8 @@ CELERY_TASK_ROUTES = {
     'core.dispatch_outbox': {'queue': 'scheduled'},
     'core.ensure_partitions': {'queue': 'scheduled'},
     'core.scan_live_isolation': {'queue': 'scheduled'},
+    # NTWFL17 — balayage quotidien des échéances de dossier dépassées.
+    'core.notifier_dossiers_echeance_depassee': {'queue': 'scheduled'},
     'ged.purge_corbeille_echue': {'queue': 'scheduled'},
     'ged.signature_relances_expiration': {'queue': 'scheduled'},
     'ged.verifier_integrite_archives': {'queue': 'scheduled'},
@@ -1141,6 +1174,8 @@ CELERY_TASK_ROUTES = {
     'installations.meteo_planning_j3': {'queue': 'scheduled'},
     # NTP2P33 — relance RFQ non répondue à J-2 de la date limite de réponse.
     'installations.relancer_rfq_en_attente': {'queue': 'scheduled'},
+    # NTP2P35 — archivage mensuel des brouillons de demande d'achat abandonnés.
+    'installations.purger_demandes_achat_brouillon': {'queue': 'scheduled'},
     'rh.alertes_expiration': {'queue': 'scheduled'},
     'rh.alertes_cdd': {'queue': 'scheduled'},
     'sav.generer_visites_dues_quotidien': {'queue': 'scheduled'},
@@ -1390,6 +1425,15 @@ CELERY_TASK_ROUTES = {
     'core.notifier_fenetres_maintenance': {'queue': 'scheduled'},
     # NTOBS13 — notification de seuil de quota (80%/100%), beat quotidien.
     'core.notifier_seuils_usage': {'queue': 'scheduled'},
+    # NTOBS24 — purge mensuelle des vieilles données Fiabilité.
+    'core.purger_donnees_fiabilite': {'queue': 'scheduled'},
+    # NTOBS25 — recalcul quotidien des SlaSnapshot périmés par un incident
+    # déclaré/modifié tardivement.
+    'core.recalculer_sla_perimes': {'queue': 'scheduled'},
+    # NTOBS34 — vérification quotidienne de la fraîcheur des TrustCenterEntry.
+    'core.verifier_fraicheur_trust_center': {'queue': 'scheduled'},
+    # NTOBS31 — garantit quotidiennement les 2 KpiAlerte fiabilité par défaut.
+    'core.assurer_alertes_fiabilite_kpi': {'queue': 'scheduled'},
     # NTGRC21 — relance des attestations de conformité non signées (beat).
     'grc.rappels_grc': {'queue': 'scheduled'},
     # NTRH — rappels de parcours de formation + tâches d'intégration/sortie
@@ -1398,6 +1442,13 @@ CELERY_TASK_ROUTES = {
     # sinon elle retombe sur `default` et partage la file interactive.
     'rh.rappels_parcours_formation': {'queue': 'scheduled'},
     'rh.notifier_taches_integration_sortie': {'queue': 'scheduled'},
+    # NTI18N39 — recalcul hebdomadaire de la couverture i18n (beat du lundi).
+    'core.recalculer_couverture_i18n': {'queue': 'scheduled'},
+    # NTI18N38 — purge mensuelle des traductions de contenu orphelines.
+    'parametres.purger_traductions_orphelines': {'queue': 'scheduled'},
+    # NTI18N51 — notification hebdomadaire des traductions manquantes.
+    'parametres.notifier_traductions_manquantes_hebdo': {
+        'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en

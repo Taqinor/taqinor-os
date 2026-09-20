@@ -229,6 +229,65 @@ def client_environmental_dashboard(company, client_id, *,
     }
 
 
+# ── NTPRT15 — "Ma consommation" (portail CLIENT) ────────────────────────────
+#
+# Lecture SEULE (readings + UnderperformanceFlag), scopée au(x) système(s)
+# installé(s) du client connecté (``installation__client_id``, même jointure
+# string-FK que ``client_environmental_dashboard`` ci-dessus). No-op gracieux
+# PARTOUT : sans installation/config/relevé — le défaut ``NoOpProvider``
+# ('noop') laisse la saisie manuelle absente — chaque fonction renvoie une
+# structure VIDE explicite, jamais une exception (critère d'acceptation :
+# jamais de 500 sans provider configuré).
+
+def production_kwh_series_client_portail(company, client_id, *,
+                                         window_days=90, today=None):
+    """Série temporelle (une entrée par jour AYANT un relevé, triée par
+    date) de la production kWh cumulée des systèmes du client — alimente le
+    graphique portail (Recharts, écran frontend). ``provider_configure``
+    indique si au moins un système du client a une supervision AUTOMATIQUE
+    active (utile pour distinguer « pas encore de relevé » de « pas de
+    connecteur » côté écran)."""
+    today = today or timezone.localdate()
+    since = today - timedelta(days=window_days)
+    if company is None or not client_id:
+        return {
+            'window_days': window_days, 'points': [],
+            'provider_configure': False,
+        }
+
+    lignes = (ProductionReading.objects
+              .filter(company=company, installation__client_id=client_id,
+                      date__gte=since, date__lte=today)
+              .values('date')
+              .annotate(total=Sum('energy_kwh'))
+              .order_by('date'))
+    points = [
+        {'date': ligne['date'].isoformat(), 'energy_kwh': _q(ligne['total'])}
+        for ligne in lignes
+    ]
+    provider_configure = MonitoringConfig.objects.filter(
+        company=company, installation__client_id=client_id, enabled=True,
+    ).exclude(provider='noop').exists()
+
+    return {
+        'window_days': window_days,
+        'points': points,
+        'provider_configure': provider_configure,
+    }
+
+
+def underperformance_flags_client_portail(company, client_id):
+    """Drapeaux de sous-performance OUVERTS des systèmes du client (QuerySet,
+    plus récent d'abord) — lecture seule, jamais d'écriture depuis le
+    portail. ``company``/``client_id`` absents → queryset vide."""
+    if company is None or not client_id:
+        return UnderperformanceFlag.objects.none()
+    return (UnderperformanceFlag.objects
+            .filter(company=company, installation__client_id=client_id,
+                    is_open=True)
+            .order_by('-date_creation'))
+
+
 def disponibilite_vs_garantie(installation, *, window_days=365, today=None):
     """NTNRG14 — disponibilité MESURÉE (``analytics.om_metrics``) vs
     disponibilité contractuelle GARANTIE (``SlaDisponibilite``) d'un système.

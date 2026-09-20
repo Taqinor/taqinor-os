@@ -55,6 +55,9 @@ class AuditLog(models.Model):
         NOTIFY = 'notify', 'Notification envoyée'
         # XPLT19 — bascule de société active (utilisateur multi-sociétés).
         SWITCH_COMPANY = 'switch_company', 'Changement de société active'
+        # NTPRT7 — intention de paiement posée depuis le portail (jamais de
+        # transaction financière réelle ici — voir compta.PaiementFacturePortail).
+        PAYMENT = 'payment', 'Paiement'
 
     # Société forcée côté serveur (jamais depuis le corps de requête). Nullable
     # pour les évènements sans société connue (échec de connexion avant auth).
@@ -101,6 +104,12 @@ class AuditLog(models.Model):
     prev_hash = models.CharField(max_length=64, blank=True, default='')
     entry_hash = models.CharField(
         max_length=64, blank=True, default='', db_index=True)
+    # NTPRT7 — additif : distingue une action déclenchée DEPUIS le portail
+    # externe (client/fournisseur/partenaire) d'une action interne, SANS
+    # dupliquer le modèle d'audit ni créer un second journal parallèle. Faux
+    # pour tout le legacy (comportement inchangé pour les lignes existantes).
+    via_portail = models.BooleanField(
+        default=False, db_index=True, verbose_name='Via portail')
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -111,6 +120,9 @@ class AuditLog(models.Model):
             models.Index(fields=['company', '-timestamp']),
             models.Index(fields=['company', 'action', '-timestamp']),
             models.Index(fields=['content_type', 'object_id']),
+            models.Index(
+                fields=['company', 'via_portail', '-timestamp'],
+                name='audit_via_portail_idx'),
         ]
 
     def __str__(self):

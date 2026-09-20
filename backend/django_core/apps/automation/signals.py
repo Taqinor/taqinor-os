@@ -38,7 +38,10 @@ import logging
 from django.db.models.signals import post_save, pre_save
 from django.utils import timezone
 
-from core.events import devis_accepted
+from core.events import (
+    demande_achat_approuvee, devis_accepted, dossier_echeance_depassee,
+    langue_changed, rfq_attribuee,
+)
 
 from .engine import evaluate
 from .models import TriggerType
@@ -191,6 +194,60 @@ def _custom_record_saved(sender, instance, created, **kwargs):
 _custom_record_saved = _safe(_custom_record_saved)
 
 
+# ── AUTOMATION-TRIGGERS — abonnés BUS (NTP2P38, NTI18N43, NTWFL18) ─────────
+# Même patron que ``_on_devis_accepted`` (AUD823) : abonné au bus
+# ``core.events``, jamais à un post_save brut — l'émission est déjà gardée
+# par le service propriétaire (transition validée / dernière étape / valeur
+# réellement changée).
+
+def _on_demande_achat_approuvee(sender, demande, company, user=None,
+                                montant_estime=None, **kwargs):
+    if company is None:
+        return
+    evaluate(TriggerType.DEMANDE_ACHAT_APPROUVEE, demande, company, user=user,
+             context={'montant_estime': montant_estime})
+
+
+_on_demande_achat_approuvee = _safe(_on_demande_achat_approuvee)
+
+
+def _on_rfq_attribuee(sender, rfq, offre, company, user=None,
+                      bon_commande_id=None, **kwargs):
+    if company is None:
+        return
+    evaluate(TriggerType.RFQ_ATTRIBUEE, rfq, company, user=user,
+             context={'offre_id': getattr(offre, 'pk', None),
+                      'bon_commande_id': bon_commande_id})
+
+
+_on_rfq_attribuee = _safe(_on_rfq_attribuee)
+
+
+def _on_langue_changed(sender, company, portee=None, client_id=None,
+                       ancienne_langue=None, nouvelle_langue=None,
+                       user=None, **kwargs):
+    if company is None:
+        return
+    evaluate(TriggerType.LANGUE_CHANGED, company, company, user=user,
+             context={'portee': portee, 'client_id': client_id,
+                      'ancienne_langue': ancienne_langue,
+                      'nouvelle_langue': nouvelle_langue})
+
+
+_on_langue_changed = _safe(_on_langue_changed)
+
+
+def _on_dossier_echeance_depassee(sender, dossier, company,
+                                  proprietaire=None, **kwargs):
+    if company is None:
+        return
+    evaluate(TriggerType.DOSSIER_ECHEANCE_DEPASSEE, dossier, company,
+             context={'proprietaire_id': getattr(proprietaire, 'pk', None)})
+
+
+_on_dossier_echeance_depassee = _safe(_on_dossier_echeance_depassee)
+
+
 def connect():
     """Branche tous les signaux (appelé par AutomationConfig.ready())."""
     from django.apps import apps as django_apps
@@ -248,3 +305,16 @@ def connect():
     if CustomRecord is not None:
         post_save.connect(_custom_record_saved, sender=CustomRecord,
                           dispatch_uid='automation_post_customrecord')
+
+    # AUTOMATION-TRIGGERS — quatre abonnés BUS de plus (NTP2P38, NTI18N43,
+    # NTWFL18), même patron que `devis_accepted` ci-dessus.
+    demande_achat_approuvee.connect(
+        _on_demande_achat_approuvee,
+        dispatch_uid='automation_on_demande_achat_approuvee')
+    rfq_attribuee.connect(
+        _on_rfq_attribuee, dispatch_uid='automation_on_rfq_attribuee')
+    langue_changed.connect(
+        _on_langue_changed, dispatch_uid='automation_on_langue_changed')
+    dossier_echeance_depassee.connect(
+        _on_dossier_echeance_depassee,
+        dispatch_uid='automation_on_dossier_echeance_depassee')

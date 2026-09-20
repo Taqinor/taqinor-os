@@ -232,6 +232,22 @@ class ExportReversibiliteRunSerializer(serializers.ModelSerializer):
         ]
 
 
+def _emettre_export_reversibilite_declenche(run, user):
+    """NTOBS30-reste — émission best-effort de ``core.events.
+    export_reversibilite_declenche`` (audit trail interne, ``apps.audit``) ;
+    ne doit JAMAIS empêcher le déclenchement de l'export lui-même."""
+    try:
+        from .events import export_reversibilite_declenche
+        export_reversibilite_declenche.send(
+            sender=ExportReversibiliteRun, run=run, company=run.company,
+            user=user)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTOBS30-reste : émission export_reversibilite_declenche '
+            'échouée (run %s)', getattr(run, 'pk', '?'), exc_info=True)
+
+
 @extend_schema(request=None, responses={202: ExportReversibiliteRunSerializer})
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -252,6 +268,7 @@ def declencher_export_reversibilite(request):
     core_tasks.export_reversibilite_tenant.delay(
         request.user.company_id, demande_par_id=request.user.id,
         datasets=datasets, run_id=run.id)
+    _emettre_export_reversibilite_declenche(run, request.user)
     return Response(
         ExportReversibiliteRunSerializer(run).data,
         status=status.HTTP_202_ACCEPTED)

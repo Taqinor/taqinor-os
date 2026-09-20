@@ -91,3 +91,7 @@ backend/django_core/core/migrations/0038_ntsec23_fieldpermissionrule.py
 # REVUE 03/09/2026 — ck_paiement_montant_positif posée par 0005 puis RETIRÉE par 0006
 # (FG50 : contre-passation négative VOULUE) ; nom absent de Meta par construction.
 backend/django_core/apps/facturation/migrations/0005_aud188_contraintes_argent.py
+# REVUE 20/09/2026 — ged_acl_principal_required posée par 0013 puis REMPLACÉE par
+# 0049 (NTPRT13 : ged_acl_principal_required_v2 inclut le principal client) ;
+# l'ancien nom est absent de Meta par construction, la v2 y est déclarée.
+backend/django_core/apps/ged/migrations/0013_aclged.py

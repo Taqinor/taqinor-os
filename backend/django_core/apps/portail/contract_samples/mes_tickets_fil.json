@@ -1,0 +1,26 @@
+{
+  "endpoint": "GET /api/django/portail/mes-demandes-sav/{id}/fil/",
+  "pourquoi": "NTPRT12 — fil de commentaires CLIENT-VISIBLE du ticket SAV créé à partir d'une demande portail (« Mes tickets »), servi par l'action `fil` de MesDemandesSavPortailViewSet via apps.sav.selectors.fil_client_du_ticket. Ne renvoie QUE les entrées explicitement marquées visible_client=True — une note technicien, un journal de changement de statut, un e-mail ou un WhatsApp interne n'y apparaît JAMAIS. Une demande PAS ENCORE prise en charge (aucun ticket SAV créé, `ticket_id` vide) renvoie un fil VIDE, jamais une erreur. Une demande d'un autre client (ou d'une autre société) est INTROUVABLE (404).",
+  "exemple": {
+    "results": [
+      {
+        "id": 12,
+        "body": "Votre pièce est commandée, intervention prévue lundi matin.",
+        "created_at": "2026-09-10T09:15:00Z",
+        "auteur": "sav.karim"
+      },
+      {
+        "id": 15,
+        "body": "Intervention terminée, onduleur remplacé.",
+        "created_at": "2026-09-15T16:40:00Z",
+        "auteur": "sav.karim"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "results": []
+  },
+  "notes": {
+    "payload_pauvre": "Le body, l'horodatage et l'auteur seulement — jamais un champ interne (coût, technicien assigné, SLA)."
+  }
+}

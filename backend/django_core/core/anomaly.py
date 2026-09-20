@@ -30,6 +30,19 @@ from dataclasses import dataclass, field
 from statistics import mean, pstdev
 from typing import Any, Iterable
 
+from .score_params import NOM_ANOMALIE, resoudre
+
+# Seuil de z-score au-delà duquel un point est jugé aberrant, et nombre
+# minimal de points exploitables avant de signaler quoi que ce soit.
+DEFAULT_Z_THRESHOLD = 3.0
+DEFAULT_MIN_POINTS = 4
+
+# NTAI27 — hyperparamètres VERSIONNABLES par société (liste blanche).
+DEFAUTS_PARAMS = {
+    'DEFAULT_Z_THRESHOLD': DEFAULT_Z_THRESHOLD,
+    'DEFAULT_MIN_POINTS': DEFAULT_MIN_POINTS,
+}
+
 
 @dataclass
 class OutlierCandidate:
@@ -50,8 +63,9 @@ def scan_for_outliers(
     value_key: str = 'value',
     id_key: str = 'id',
     label_key: str = 'label',
-    z_threshold: float = 3.0,
-    min_points: int = 4,
+    z_threshold: float | None = None,
+    min_points: int | None = None,
+    company=None,
 ) -> list[OutlierCandidate]:
     """Repère les valeurs aberrantes d'une série par z-score.
 
@@ -63,8 +77,22 @@ def scan_for_outliers(
     — pas de faux positif sur un échantillon trop petit.
 
     Renvoie la liste des :class:`OutlierCandidate`, triée du plus aberrant au
-    moins aberrant. Pur, déterministe, sans appel réseau ni base de données.
+    moins aberrant.
+
+    NTAI27 — ``company`` (optionnel) fait lire ``z_threshold`` et
+    ``min_points`` dans la version d'hyperparamètres ACTIVE de cette société,
+    avec repli sur les défauts du code. Un argument passé EXPLICITEMENT
+    l'emporte toujours. Sans ``company`` ni argument, les défauts historiques
+    (3,0 et 4) s'appliquent — résultat identique à celui d'avant NTAI27, et la
+    fonction reste PURE.
     """
+    if z_threshold is None or min_points is None:
+        params = resoudre(company, NOM_ANOMALIE, DEFAUTS_PARAMS)
+        if z_threshold is None:
+            z_threshold = params['DEFAULT_Z_THRESHOLD']
+        if min_points is None:
+            min_points = params['DEFAULT_MIN_POINTS']
+
     rows: list[tuple[Any, float, str, dict]] = []
     for p in points or []:
         raw = p.get(value_key)

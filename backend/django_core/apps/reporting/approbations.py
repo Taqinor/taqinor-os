@@ -231,7 +231,67 @@ def _enrichir_urgence(items, company):
 _TRI_URGENCE = 'urgence'
 _TRI_ANCIENNETE = 'anciennete'
 _TRI_MONTANT = 'montant'
-_TRIS_VALIDES = {_TRI_URGENCE, _TRI_ANCIENNETE, _TRI_MONTANT}
+_TRI_IA = 'ia'
+_TRIS_VALIDES = {_TRI_URGENCE, _TRI_ANCIENNETE, _TRI_MONTANT, _TRI_IA}
+
+# NTAI37 — poids du score de priorisation « ia ». PUR (aucun appel LLM) :
+# une combinaison DÉTERMINISTE de trois signaux déjà présents sur chaque item
+# — jamais un chiffre inventé. Plafonds explicites pour qu'un seul signal
+# extrême (une ancienneté de plusieurs années, un montant à 7 chiffres) ne
+# domine pas tout le score.
+_IA_POIDS_RETARD = 5.0
+_IA_POIDS_ESCALADE = 3.0
+_IA_POIDS_RELANCE = 1.5
+_IA_ANCIENNETE_PLAFOND_JOURS = 30
+_IA_MONTANT_PLAFOND = 1_000_000
+
+
+def _score_ia(item):
+    """NTAI37 — score de priorisation DÉTERMINISTE + une raison courte en
+    clair, à partir des SEULS signaux déjà portés par l'item (urgence/SLA
+    ZCTR9, montant réel VX100, escalade VX218) — jamais un signal fabriqué
+    pour l'occasion. Renvoie ``(score, raison)``."""
+    raisons = []
+    score = 0.0
+
+    if item.get('en_retard'):
+        score += _IA_POIDS_RETARD
+        raisons.append(
+            'en retard (%s j ouvrés)' % item.get('anciennete_jours', 0))
+
+    niveau = item.get('niveau_escalade')
+    if niveau == 'escalade':
+        score += _IA_POIDS_ESCALADE
+        raisons.append('escaladée')
+    elif niveau == 'relance':
+        score += _IA_POIDS_RELANCE
+        raisons.append('déjà relancée')
+
+    anciennete = min(item.get('anciennete_jours', 0) or 0,
+                     _IA_ANCIENNETE_PLAFOND_JOURS)
+    score += anciennete / _IA_ANCIENNETE_PLAFOND_JOURS
+
+    montant = item.get('montant')
+    if montant:
+        score += min(float(montant), _IA_MONTANT_PLAFOND) / _IA_MONTANT_PLAFOND
+        if not item.get('en_retard'):
+            raisons.append('montant élevé (%s MAD)' % montant)
+
+    if not raisons:
+        raisons.append(
+            'ancienneté %s j ouvrés' % item.get('anciennete_jours', 0))
+    return round(score, 4), ', '.join(raisons)
+
+
+def _enrichir_score_ia(items):
+    """NTAI37 — ajoute ``score_ia``/``raison_ia`` à chaque item, en place.
+    Suppose ``_enrichir_urgence`` déjà appliqué (lit ``en_retard``/
+    ``anciennete_jours``)."""
+    for it in items:
+        score, raison = _score_ia(it)
+        it['score_ia'] = score
+        it['raison_ia'] = raison
+    return items
 
 
 def _trier_items(items, trier):
@@ -242,6 +302,8 @@ def _trier_items(items, trier):
     - ``montant`` : demandes avec un montant connu d'abord (décroissant),
       celles sans montant (aucune source homogène ne l'expose aujourd'hui)
       en dernier, triées par ancienneté à défaut.
+    - ``ia`` (NTAI37) : ``score_ia`` décroissant (urgence/impact combinés) —
+      voir :func:`_score_ia`.
     Tri stable : conserve l'ordre source/id existant à valeur égale."""
     if trier == _TRI_URGENCE:
         items.sort(key=lambda it: (
@@ -253,6 +315,9 @@ def _trier_items(items, trier):
             it.get('montant') is None,
             -(it.get('montant') or 0),
             -it.get('anciennete_jours', 0)))
+    elif trier == _TRI_IA:
+        _enrichir_score_ia(items)
+        items.sort(key=lambda it: -it.get('score_ia', 0))
     return items
 
 
@@ -422,6 +487,77 @@ def decider_approbation(request):
     return Response(body, status=status_code)
 
 
+def _approuver_en_masse_workflow(company, user, workflow_items, motif):
+    """WFL16-INBOX — route les items ``source='workflow'`` d'une approbation
+    groupée via ``core.workflow.approuver_en_masse`` (NTWFL16, livré) au lieu
+    de les décider un par un via ``_decider_approbation_core`` : ce dernier
+    n'appliquait AUCUNE garde de cohorte — un lot mélangeant deux types
+    d'objet ou deux paliers différents « passait » silencieusement, alors que
+    ``approuver_en_masse`` l'exige explicitement (même type d'objet + même
+    palier pour tout le lot, sinon ``ValueError``).
+
+    Renvoie une liste d'entrées ``{source, id, ok, detail}`` — même forme que
+    la boucle historique, pour ne rien changer côté frontend."""
+    from core import workflow as core_workflow
+
+    resultats = []
+    ids_par_item = {}
+    for item in workflow_items:
+        try:
+            ids_par_item[item.get('id')] = int(item.get('id'))
+        except (TypeError, ValueError):
+            resultats.append({
+                'source': 'workflow', 'id': item.get('id'), 'ok': False,
+                'detail': 'Identifiant invalide.',
+            })
+
+    voulus = set(ids_par_item.values())
+    steps = [
+        s for s in core_workflow.pending_steps_for_company(company)
+        if s.id in voulus
+    ]
+    trouves = {s.id for s in steps}
+    for raw_id, step_id in ids_par_item.items():
+        if step_id not in trouves:
+            resultats.append({
+                'source': 'workflow', 'id': raw_id, 'ok': False,
+                'detail': 'Introuvable.',
+            })
+
+    if not steps:
+        return resultats
+
+    try:
+        rapport = core_workflow.approuver_en_masse(
+            steps, user=user, commentaire=motif)
+    except ValueError as exc:
+        # Sélection vide ou cohortes mélangées (types/paliers différents) :
+        # AUCUNE étape de ce sous-lot n'a été décidée — un motif explicite,
+        # jamais un succès partiel silencieux.
+        for step in steps:
+            resultats.append({
+                'source': 'workflow', 'id': step.id, 'ok': False,
+                'detail': str(exc),
+            })
+        return resultats
+
+    decides = {d.pk for d in rapport['decisions']}
+    exclus = {e['step_id']: e['motif'] for e in rapport['exclusions']}
+    for step in steps:
+        if step.id in decides:
+            resultats.append({
+                'source': 'workflow', 'id': step.id, 'ok': True,
+                'detail': 'Décision enregistrée.',
+            })
+        else:
+            resultats.append({
+                'source': 'workflow', 'id': step.id, 'ok': False,
+                'detail': exclus.get(
+                    step.id, 'Exclu de l\'approbation groupée.'),
+            })
+    return resultats
+
+
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 def decider_en_masse(request):
@@ -430,7 +566,13 @@ def decider_en_masse(request):
     Applique la même décision à chaque item via ``_decider_approbation_core``
     (réutilise sa logique un par un, sans passer par un ``Request`` DRF
     factice) ; renvoie le détail des réussites/échecs sans jamais laisser un
-    échec interrompre les suivants."""
+    échec interrompre les suivants.
+
+    WFL16-INBOX — EXCEPTION pour ``decision='approuver'`` : les items
+    ``source='workflow'`` ne sont PLUS décidés un par un, ils passent par
+    ``core.workflow.approuver_en_masse`` (garde de cohorte, voir
+    ``_approuver_en_masse_workflow``). Un refus (``'refuser'``) garde le
+    chemin historique — ``approuver_en_masse`` ne couvre que l'approbation."""
     company = _co(request.user)
     if company is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
@@ -439,8 +581,18 @@ def decider_en_masse(request):
     decision = request.data.get('decision')
     motif = (request.data.get('motif') or '').strip()
 
+    if decision == 'approuver':
+        workflow_items = [it for it in items if it.get('source') == 'workflow']
+        autres_items = [it for it in items if it.get('source') != 'workflow']
+    else:
+        workflow_items, autres_items = [], items
+
     resultats = []
-    for item in items:
+    if workflow_items:
+        resultats.extend(_approuver_en_masse_workflow(
+            company, request.user, workflow_items, motif))
+
+    for item in autres_items:
         status_code, body = _decider_approbation_core(
             company, request.user, item.get('source'), item.get('id'),
             decision, motif)

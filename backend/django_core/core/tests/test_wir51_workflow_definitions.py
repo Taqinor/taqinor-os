@@ -8,6 +8,7 @@ ni ne peut modifier les définitions (ni les étapes) d'un autre tenant.
 from authentication.models import CustomUser
 from testkit.base import TenantAPITestCase
 
+from core import workflow as core_workflow
 from core.models import WorkflowDefinition, WorkflowStepDefinition
 
 BASE = '/api/django/core/workflow-definitions/'
@@ -77,6 +78,36 @@ class WorkflowDefinitionCrudTests(TenantAPITestCase):
         self.assertEqual(
             WorkflowStepDefinition.objects.filter(
                 definition_id=cr['id']).count(), 2)
+
+    def test_update_with_active_instances_forks_instead_of_deleting_steps(self):
+        """WFL25-SERIALIZER — l'update ne fait plus `steps.all().delete()`
+        aveuglément : quand une instance a déjà matérialisé les étapes,
+        `core.workflow.editer_etapes_definition` FORKE une v2 et laisse la
+        v1 (donc les étapes exécutées par l'instance en cours) intactes."""
+        cr = self._admin().post(BASE, _payload(n=3), format='json').json()
+        definition = WorkflowDefinition.objects.get(id=cr['id'])
+        etapes_v1_avant = list(
+            definition.steps.order_by('ordre').values_list('id', flat=True))
+        instance = core_workflow.demarrer_workflow(
+            definition, self.company, self.company)
+
+        r = self._admin().put(
+            f"{BASE}{cr['id']}/", _payload(nom='Validation devis', n=2),
+            format='json')
+
+        self.assertEqual(r.status_code, 200, r.content)
+        body = r.json()
+        self.assertNotEqual(body['id'], cr['id'])  # v2 forkée, nouvel id
+        self.assertEqual(len(body['steps']), 2)
+
+        definition.refresh_from_db()
+        self.assertEqual(definition.steps.count(), 3)  # v1 INTACTE
+        self.assertEqual(
+            list(definition.steps.order_by('ordre').values_list(
+                'id', flat=True)),
+            etapes_v1_avant)
+        instance.refresh_from_db()
+        self.assertEqual(instance.definition_id, definition.pk)  # non déplacée
 
     def test_tenant_isolation_list_and_retrieve(self):
         other_def = WorkflowDefinition.objects.create(

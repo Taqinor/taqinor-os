@@ -25,6 +25,10 @@ from apps.ventes.utils.anticopie import agreger_lignes_kit
 # bas). ``solar_design`` est du stdlib pur : cet import ne tire ni Django, ni
 # modèle, ni I/O, et ne peut donc pas boucler.
 from apps.ventes import solar_design as _sd
+# NTI18N5 — catalogue des libellés structurels du document (fr/en/ar). Données
+# pures, aucun import Django : c'est ICI que la langue déjà résolue choisit sa
+# table de libellés, une fois, pour que le gabarit n'ait plus à la résoudre.
+from . import i18n_labels as _i18n
 
 logger = logging.getLogger(__name__)
 
@@ -3333,6 +3337,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "_company_id": getattr(devis, "company_id", None),
         # D2/N60/N67/N59 — surcharges de texte éditables (vide → littéral moteur).
         "doc_texts": doc_texts,
+        # NTI18N5 — LANGUE DU DOCUMENT + sa table de libellés structurels, déjà
+        # ROUTÉE ici. ``opts['langue_sortie']`` vaut ``None`` pour tout appelant
+        # historique (Celery, generer-pdf) : la table est alors la française, et
+        # le document sort octet pour octet celui d'hier. Aucun chiffre ne passe
+        # par ces clés — seulement les mots du gabarit.
+        "langue_sortie": _i18n.normaliser(opts['langue_sortie']),
+        "libelles_document": _i18n.libelles(opts['langue_sortie']),
         # DC1 — identité société (multi-tenant). Champs vides → le moteur premium
         # applique ses littéraux historiques (aucune fuite d'un autre tenant).
         "entreprise": entreprise,

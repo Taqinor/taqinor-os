@@ -7,13 +7,19 @@ frontend (chaque clé pointée surcharge la valeur d'un catalogue statique).
   * Lecture (``list``, ``retrieve``, ``effective``) : tout rôle — le frontend
     la charge au login pour fusionner les surcharges par-dessus les catalogues.
   * Écriture (``create``, ``update``, ``partial_update``, ``destroy``,
-    ``bulk``) : Administrateur ou Responsable promu — jamais le palier limité.
+    ``bulk``) : Administrateur ou Responsable promu — jamais le palier limité —
+    ET porteur de ``localisation_gerer`` (NTI18N40, cf.
+    ``apps.parametres.localisation``). Les deux gardes sont ET-liées : le palier
+    reste la frontière d'écran, le code permet de RETIRER la seule localisation
+    à un rôle personnalisé sans toucher à ``parametres_modifier``.
 
 ``company`` est filtrée et forcée côté serveur (TenantMixin) — jamais lue du
 corps de la requête. Une clé i18n inconnue est simplement ignorée à l'affichage
 côté frontend (le catalogue vit là-bas) ; le serveur n'impose pas de liste
 blanche de clés.
 """
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -21,6 +27,7 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 
+from .localisation import PeutGererLocalisation
 from .models import SettingsAuditLog
 from .models_translations import TranslationOverride
 from .serializers_translations import (
@@ -43,7 +50,7 @@ class TranslationOverrideViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        return [IsAdminOrResponsableTier()]
+        return [IsAdminOrResponsableTier(), PeutGererLocalisation()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -136,3 +143,18 @@ class TranslationOverrideViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({
             'overrides': TranslationOverride.overrides_for_company(company),
         })
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @action(detail=False, methods=['get'], url_path='glossaire-export')
+    def glossaire_export(self, request):
+        """NTI18N46 — classeur XLSX du glossaire, pour relecture hors ligne.
+
+        Un onglet par domaine (statuts / unités / mentions légales) ; une case
+        de traduction EN ou AR absente est peinte en rouge. Action d'écriture au
+        sens des permissions (hors ``READ_ACTIONS``) : le fichier porte les
+        textes contractuels de la société, et la relecture linguistique est
+        précisément ce que ``localisation_gerer`` gouverne (NTI18N40).
+        """
+        from .glossaire_export import reponse_export
+
+        return reponse_export(self._company())

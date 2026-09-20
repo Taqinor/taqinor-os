@@ -35,17 +35,51 @@ def _capturer_ancien_statut(sender, instance, **kwargs):
 
 @receiver(post_save, sender=IncidentPublic)
 def _notifier_abonnes_incident(sender, instance, created, **kwargs):
+    ancien = getattr(instance, '_ancien_statut', None)
+    vient_de_se_resoudre = (
+        not created and ancien != IncidentPublic.Statut.RESOLVED
+        and instance.statut == IncidentPublic.Statut.RESOLVED)
+
+    # NTOBS26 — bus core.events (consommé par apps.publicapi pour le webhook
+    # sortant), pour TOUT incident (système OU société) — distinct de la
+    # notification email ci-dessous, réservée aux incidents SYSTÈME.
+    if created:
+        _emettre_incident_opened(instance)
+    elif vient_de_se_resoudre:
+        _emettre_incident_resolved(instance)
+
     if instance.company_id is not None:
         return  # jamais un incident société-spécifique aux abonnés publics
 
     if created:
         _envoyer_notification_abonnes(instance, 'ouvert')
-        return
-
-    ancien = getattr(instance, '_ancien_statut', None)
-    if (ancien != IncidentPublic.Statut.RESOLVED
-            and instance.statut == IncidentPublic.Statut.RESOLVED):
+    elif vient_de_se_resoudre:
         _envoyer_notification_abonnes(instance, 'resolu')
+
+
+def _emettre_incident_opened(incident):
+    """NTOBS26 — best-effort : un abonné cassé sur le bus ne doit jamais
+    empêcher la création de l'incident lui-même."""
+    try:
+        from core.events import incident_opened
+        incident_opened.send(
+            sender=IncidentPublic, incident=incident, company=incident.company)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.exception(
+            'NTOBS26 : émission incident_opened échouée (incident %s)',
+            incident.pk)
+
+
+def _emettre_incident_resolved(incident):
+    """NTOBS26 — best-effort, même garde que ``_emettre_incident_opened``."""
+    try:
+        from core.events import incident_resolved
+        incident_resolved.send(
+            sender=IncidentPublic, incident=incident, company=incident.company)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.exception(
+            'NTOBS26 : émission incident_resolved échouée (incident %s)',
+            incident.pk)
 
 
 def _abonnes_de_la_region(region):

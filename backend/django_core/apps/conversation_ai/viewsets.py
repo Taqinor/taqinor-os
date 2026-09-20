@@ -12,7 +12,8 @@ l'enregistrement de l'appel.
 import logging
 
 from django.db import transaction
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -25,6 +26,29 @@ from .serializers import AppelCommercialSerializer
 from .services import AnalyseIndisponible, AppelUploadError
 
 logger = logging.getLogger(__name__)
+
+# NTAI23 — la synthèse agrège des listes imbriquées : chaque liste déclare sa
+# forme via un `inline_serializer` à NOM UNIQUE (jamais la même instance
+# réutilisée en `child=`), même patron que `apps/ao/calepinage_views.py`. Sans
+# cette déclaration le schéma publierait « type: object » sans propriété — la
+# classe d'endpoint qui a plante le 03/08/2026 (PACT7).
+SYNTHESE_APPELS_RESPONSE = inline_serializer('ConversationAiSyntheseAppels', {
+    'nb_appels_analyses': serializers.IntegerField(),
+    'top_objections': inline_serializer('ConversationAiSyntheseObjection', {
+        'objection': serializers.CharField(),
+        'nb': serializers.IntegerField(),
+    }, many=True),
+    'sentiment_moyen_global': serializers.FloatField(allow_null=True),
+    'produits_cites': inline_serializer('ConversationAiSyntheseProduit', {
+        'produit': serializers.CharField(),
+        'nb': serializers.IntegerField(),
+    }, many=True),
+    'par_commercial': inline_serializer('ConversationAiSyntheseCommercial', {
+        'commercial': serializers.CharField(),
+        'nb_appels': serializers.IntegerField(),
+        'sentiment_positif_pct': serializers.FloatField(),
+    }, many=True),
+})
 
 
 def _enfiler_transcription(appel_id):
@@ -84,6 +108,35 @@ class AppelCommercialViewSet(CompanyScopedModelViewSet):
         appel = serializer.save(company=company, **extra)
         if appel.fichier_key:
             transaction.on_commit(lambda: _enfiler_transcription(appel.id))
+
+    @extend_schema(responses=SYNTHESE_APPELS_RESPONSE)
+    @action(detail=False, methods=['get'], url_path='synthese')
+    def synthese(self, request):
+        """NTAI23 — ``GET appels/synthese/?debut=&fin=``.
+
+        Coaching commercial agrégé (objections fréquentes, sentiment moyen,
+        produits cités, découpage par commercial) sur les appels déjà
+        analysés (NTAI22) de la société — LECTURE SEULE, scopé société.
+        ``debut``/``fin`` (``AAAA-MM-JJ``) filtrent sur la date d'analyse.
+        """
+        from datetime import date
+
+        from .selectors import synthese_appels
+
+        def _parse(valeur):
+            if not valeur:
+                return None
+            try:
+                return date.fromisoformat(valeur)
+            except ValueError:
+                return None
+
+        periode = (
+            _parse(request.query_params.get('debut')),
+            _parse(request.query_params.get('fin')),
+        )
+        company = self.request.user.company
+        return Response(synthese_appels(company, periode=periode))
 
     @action(detail=True, methods=['post'], url_path='analyser')
     def analyser(self, request, pk=None):

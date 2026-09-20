@@ -214,15 +214,37 @@ def _notifier_seuil_quota(company, ressource, seuil, pct):
         )
 
 
+def _reliability_settings(company):
+    """NTOBS21 — lit ``core.ReliabilitySettings`` (OneToOne société, posé par
+    une autre lane sur ``core/models.py`` — voir cette lane pour le champ
+    exact) de façon DÉFENSIVE : le modèle peut ne pas encore exister
+    (``LookupError``, migration pas encore appliquée) — dans ce cas ``None``
+    est traité comme « notifications activées » (comportement historique
+    inchangé), jamais une régression silencieuse tant que le modèle n'est
+    pas là."""
+    try:
+        model = django_apps.get_model('core', 'ReliabilitySettings')
+    except LookupError:
+        return None
+    return model.objects.filter(company=company).first()
+
+
 def notifier_seuils_usage(now=None):
     """NTOBS13 — job beat quotidien : notifie chaque société active dont une
-    ressource mesurée franchit 80% ou 100% de sa limite."""
+    ressource mesurée franchit 80% ou 100% de sa limite.
+
+    NTOBS21 — une société dont ``ReliabilitySettings.notifier_quota_email``
+    est explicitement ``False`` n'est jamais notifiée (sans affecter les
+    autres sociétés) ; absence de réglage = comportement par défaut inchangé."""
     from django.core.cache import cache
 
     from authentication.models import Company
 
     notifies = 0
     for company in Company.objects.filter(actif=True):
+        reglages = _reliability_settings(company)
+        if reglages is not None and not reglages.notifier_quota_email:
+            continue
         summary = usage_summary(company)
         for ressource in summary['ressources']:
             limite = ressource.get('limite')

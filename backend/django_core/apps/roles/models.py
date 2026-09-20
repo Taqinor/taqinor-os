@@ -521,6 +521,76 @@ ALL_PERMISSIONS = [
     'ux_corbeille_consulter',
     'ux_corbeille_restaurer',
     'ux_edition_masse_executer',
+    # ── NTP2P36 — permissions fines par rôle sur l'approbation d'achats et
+    # notes de frais ──────────────────────────────────────────────────────
+    # Quatre gestes d'approbation/validation distincts, DISJOINTS de
+    # ``stock_gerer``/``installation_gerer`` : un compte peut créer une
+    # demande d'achat sans pouvoir l'approuver. Aucune de ces vérifications
+    # n'est câblée ici — le catalogue rend seulement les codes octroyables
+    # (Paramètres → grille rôles) et prêts à être exigés côté vue quand les
+    # actions correspondantes appliquent la garde (apps/installations,
+    # apps/stock, apps/frais — hors du présent périmètre roles-only).
+    #   * ``approuver_demande_achat``        — décide une étape de
+    #     ``EtapeApprobationAchat`` (NTP2P2, action ``approuver-etape``).
+    #   * ``approuver_note_frais_direction`` — valide l'escalade direction
+    #     d'une ``NoteFrais`` (NTP2P11).
+    #   * ``valider_dossier_fournisseur``    — valide/rejette un dossier
+    #     fournisseur en attente (NTP2P7, action ``valider-dossier``).
+    #   * ``emettre_carte_achat``            — émet une carte d'achat
+    #     virtuelle (NTP2P15, GATED-founder/COST, non construit sur main).
+    # Non-terminées par ``_voir``/``_gerer`` : ce sont des gestes d'ÉCRITURE
+    # au sens de ``CustomUser._role_grants_write`` (même patron que
+    # ``douane_responsable``/``btp_visa_approuver``), pas des codes élevés
+    # (pas d'exposition de donnée sensible — cf. ``ELEVATED_PERMISSIONS``).
+    'approuver_demande_achat',
+    'approuver_note_frais_direction',
+    'valider_dossier_fournisseur',
+    'emettre_carte_achat',
+    # ── NTOBS22 — permissions fines par rôle sur les écrans Fiabilité
+    # (Paramètres → Fiabilité : Sauvegardes/Limites & usage/SLA/fenêtres de
+    # maintenance/export de réversibilité) ───────────────────────────────
+    #   * ``fiabilite_voir``           — lecture seule des écrans du groupe
+    #     (remplace le ``fiabilite_lecture`` du plan : le suffixe ``_voir``
+    #     est OBLIGATOIRE pour tout code de LECTURE — ``CustomUser.
+    #     _role_grants_write`` ne reconnaît que ``_voir``/``_view`` comme
+    #     lecture ; un code ``fiabilite_lecture`` isolé aurait rendu
+    #     « responsable » — et donc capable d'ouvrir tout endpoint interne
+    #     gardé ``IsResponsableOrAdmin`` — le premier rôle qui l'aurait porté
+    #     seul, à l'exact inverse du besoin lecture-seule).
+    #   * ``fiabilite_administration`` — crée une fenêtre de maintenance,
+    #     lance un export de réversibilité, édite ``SlaCreditPolicy``/
+    #     ``ReliabilitySettings``. Réservé Directeur (hérité via
+    #     ``ALL_PERMISSIONS``/``DIRECTEUR_PERMISSIONS`` ci-dessous).
+    # Le câblage des 6 vues ``core.{maintenance_windows,sla,views}`` (alors
+    # sur ``IsDirecteurOrAdmin``/``IsAdminOrResponsableTier`` codé en dur) était
+    # hors du périmètre roles-only de cette tâche — depuis le 20/09 ces deux
+    # codes sont consommés par les 6 vues Fiabilité de core (``FiabilitePermission``, NTOBS22-câblage). Aucun rôle « Comptable »
+    # n'existe dans ce dépôt (les rôles système sont Directeur/Administrateur/
+    # Commercial responsable/Commercial/Commercial terrain/Technicien
+    # responsable/Technicien/Viewer/Admin RH/Admin Ventes + les 3 rôles
+    # portail) : ``fiabilite_voir`` n'est donc octroyé à AUCUN rôle par défaut
+    # ici (jamais d'invention d'un rôle système non demandé) — un
+    # Administrateur peut le cocher manuellement sur le rôle de son choix
+    # (Viewer, par ex.) via l'éditeur de rôles existant, comme tout code de ce
+    # catalogue.
+    'fiabilite_voir',
+    'fiabilite_administration',
+    # ── NTI18N40 — gérer la localisation et les traductions ─────────────────
+    # Droit DISTINCT de ``parametres_modifier`` : celui-ci ouvre AUSSI la
+    # tarification, les modèles de documents et les référentiels, si bien
+    # qu'une société ne pouvait pas confier la relecture linguistique (écran
+    # Localisation : langue de repli, verrou de langue d'interface, fuseau
+    # d'affichage, assistant pays, fêtes mobiles ; écran Traductions) sans
+    # ouvrir au passage tous les réglages de la société.
+    #
+    # Distribution : Directeur + Administrateur par héritage d'``ALL_PERMISSIONS``,
+    # et AJOUTÉ à ``RESPONSABLE_PERMISSIONS`` ci-dessous — le palier Responsable
+    # écrivait déjà ces écrans (``IsAdminOrResponsableTier``), il garde donc
+    # exactement son accès. Aucun accès existant n'est retiré ; ce qui devient
+    # possible, c'est de DÉCOCHER la localisation sur un rôle personnalisé.
+    # Consommé par ``apps.parametres.localisation`` (garde serveur) et par le
+    # masquage de l'onglet côté interface (``state.auth.permissions``).
+    'localisation_gerer',
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -591,6 +661,20 @@ PERMISSION_MODULE = {
     **{c: 'assurances' for c in ALL_PERMISSIONS if c.startswith('assurances_')},
     'douane_responsable': 'douane',
     'transport_responsable': 'transport',
+    # NTP2P36 — gestes d'approbation achats/notes de frais, groupés sous
+    # l'app Django propriétaire du modèle concerné (jamais la page frontend
+    # qui les affiche, qui peut différer — cf. ``compta``/``rh`` pour
+    # NoteFrais alors que le modèle vit dans ``apps.frais``).
+    'approuver_demande_achat': 'installations',
+    'valider_dossier_fournisseur': 'stock',
+    'emettre_carte_achat': 'stock',
+    'approuver_note_frais_direction': 'frais',
+    # NTOBS22 — ``fiabilite_voir``/``fiabilite_administration`` sont
+    # VOLONTAIREMENT absents d'ici : les écrans Fiabilité vivent sous
+    # ``apps.parametres`` (``module_manifest.installable = False`` — jamais
+    # togglable), même statut fondation que ``parametres_voir`` ci-dessus
+    # (cf. ``test_fondation_et_donnees_sensibles_sans_module``) : les
+    # mapper masquerait leur case sur un toggle qui n'existe pas.
 }
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
@@ -669,6 +753,10 @@ RESPONSABLE_PERMISSIONS = [
     # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
     'sav_repondre_client_externe',
     'parametres_voir',
+    # NTI18N40 — le palier Responsable écrivait déjà les écrans Localisation et
+    # Traductions (``IsAdminOrResponsableTier``) : il porte donc le nouveau code
+    # pour garder EXACTEMENT son accès une fois la garde posée.
+    'localisation_gerer',
     'users_voir',
     'reporting_voir',
     # COMPTA40 — le Responsable peut saisir ET valider des écritures (mais la

@@ -2155,6 +2155,101 @@ class TestPageCalepinage(TestCase):
                  'spec': '1000 V'}],
     }
 
+# ── NTI18N5 — langue de sortie du document (fr/en/ar) ────────────────────────
+class NTI18N5CatalogueLibellesTests(SimpleTestCase):
+    """Le CATALOGUE seul (aucun rendu) : trois langues par clé, repli toujours
+    français, clé inconnue bruyante, et libellés français identiques aux
+    littéraux que le gabarit écrivait avant cette tâche."""
+
+    def test_chaque_cle_porte_les_trois_langues(self):
+        from apps.ventes.quote_engine import i18n_labels as L
+        for cle, traductions in L.LIBELLES.items():
+            for langue in L.LANGUES:
+                with self.subTest(cle=cle, langue=langue):
+                    self.assertTrue(
+                        (traductions.get(langue) or '').strip(),
+                        f'{cle}/{langue} vide : un document {langue} '
+                        f'imprimerait un blanc ou du français par accident')
+
+    def test_une_langue_inconnue_rend_le_document_francais(self):
+        from apps.ventes.quote_engine import i18n_labels as L
+        for langue in (None, '', 'de', 'ar-MA', 42):
+            with self.subTest(langue=langue):
+                self.assertEqual(L.normaliser(langue), 'fr')
+                self.assertEqual(L.libelles(langue), L.libelles('fr'))
+                self.assertFalse(L.est_rtl(langue))
+
+    def test_une_cle_inconnue_leve_plutot_que_d_imprimer_son_nom(self):
+        from apps.ventes.quote_engine import i18n_labels as L
+        with self.assertRaises(KeyError):
+            L.libelle('cette_cle_n_existe_pas', 'fr')
+
+    def test_les_libelles_francais_sont_les_litteraux_historiques(self):
+        """Un devis français doit rester CELUI D'HIER, entités comprises."""
+        from apps.ventes.quote_engine import i18n_labels as L
+        attendus = {
+            'client': 'Client',
+            'designation': 'D&#233;signation',
+            'marque': 'Marque',
+            'qte': 'Qt&#233;',
+            'pu_ht': 'P.U. HT',
+            'tva': 'TVA',
+            'total_ht': 'Total HT',
+            'sous_total_ht': 'Sous-total HT',
+            'remise': 'Remise',
+            'total_ttc': 'Total TTC',
+            'acompte': 'Acompte',
+            'a_la_reception_materiel':
+                '&#224; la r&#233;ception du mat&#233;riel',
+            'apres_mise_en_marche': 'apr&#232;s mise en marche',
+            'reference': 'R&#233;f.',
+        }
+        for cle, attendu in attendus.items():
+            with self.subTest(cle=cle):
+                self.assertEqual(L.libelle(cle, 'fr'), attendu)
+
+    def test_seul_l_arabe_est_de_droite_a_gauche(self):
+        from apps.ventes.quote_engine import i18n_labels as L
+        self.assertTrue(L.est_rtl('ar'))
+        self.assertEqual(L.direction('ar'), 'rtl')
+        for langue in ('fr', 'en'):
+            with self.subTest(langue=langue):
+                self.assertFalse(L.est_rtl(langue))
+                self.assertEqual(L.direction(langue), 'ltr')
+
+    def test_la_garde_de_debordement_suit_la_langue_du_document(self):
+        """QJR161 — la mesure repère le bas des totaux par le LIBELLÉ : en
+        anglais comme en arabe elle doit encore le trouver, sinon la garde se
+        tait et un devis dense peut reperdre son Total TTC dans la zone
+        ``overflow:hidden`` sans qu'aucun compteur de pages ne bouge."""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine import i18n_labels as L
+        for langue in L.LANGUES:
+            with self.subTest(langue=langue):
+                with patch.object(G, 'LANGUE_SORTIE', langue), \
+                        patch.object(G, 'LIBELLES_DOC', L.libelles(langue)):
+                    formes = G._formes_total_ttc()
+                self.assertIn(L.libelle('total_ttc', langue), formes)
+                self.assertIn(L.libelle('total_ttc', langue).upper(), formes)
+                # filet : les formes françaises restent reconnues
+                self.assertIn('Total TTC', formes)
+                self.assertIn('TOTAL TTC', formes)
+
+
+# Volontairement SANS `@tag('pdf')` : la CI passe `--exclude-tag=pdf`, et ce
+# sont justement les comptes de pages par langue qu'il faut faire tourner à
+# chaque run — comme ceux de `TestPdfFormats`, non taguée pour la même raison.
+class NTI18N5DocumentMultilingueTests(TestCase):
+    """Le une-page RENDU en fr / en / ar : même nombre de pages, libellés
+    structurels traduits, arabe en RTL — et le français inchangé."""
+
+    LIGNES = [
+        ('Panneau mono 550W', '14', '1100'),
+        ('Onduleur hybride 5kW', '1', '24000'),
+        ('Structures acier', '14', '375'),
+        ('Installation', '1', '4000'),
+    ]
+
     def setUp(self):
         self.company = make_company()
         self.user = make_user(self.company)
@@ -2367,3 +2462,101 @@ class TestPageCalepinage(TestCase):
         for clef in ('totaux_sans', 'totaux_avec', 'totaux_all',
                      'display_total', 'total_sans', 'total_avec'):
             self.assertEqual(sans.get(clef), avec.get(clef), clef)
+
+        self.devis = make_devis(self.company, self.user, self.client_obj,
+                                self.LIGNES, etude_params=DEUX_OPTIONS)
+
+    def _html(self, langue=None):
+        """HTML EXACT du une-page dans ``langue`` (``None`` = appelant
+        historique, qui ne passe aucune langue)."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        options = {'pdf_mode': 'onepage'}
+        if langue is not None:
+            options['langue_sortie'] = langue
+        return G.render_html_for(build_quote_data(self.devis, options))
+
+    def _pages(self, langue=None):
+        """Pages composées par WeasyPrint pour ce même HTML."""
+        from weasyprint import HTML
+        return HTML(string=self._html(langue)).render().pages
+
+    def test_le_builder_route_la_table_de_libelles(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import i18n_labels as L
+        for demande, attendue in (('fr', 'fr'), ('en', 'en'), ('ar', 'ar'),
+                                  ('de', 'fr'), (None, 'fr')):
+            with self.subTest(langue=demande):
+                data = build_quote_data(
+                    self.devis,
+                    {'pdf_mode': 'onepage', 'langue_sortie': demande})
+                self.assertEqual(data['langue_sortie'], attendue)
+                self.assertEqual(data['libelles_document'],
+                                 L.libelles(attendue))
+
+    def test_chaque_langue_rend_exactement_une_page(self):
+        for langue in (None, 'fr', 'en', 'ar'):
+            with self.subTest(langue=langue):
+                pages = self._pages(langue)
+                self.assertEqual(
+                    len(pages), 1,
+                    f'le une-page en {langue} doit faire 1 page, '
+                    f'il en fait {len(pages)}')
+
+    def test_le_document_francais_est_celui_d_hier(self):
+        # Amorce : le premier rendu fait naître (et PERSISTE) le ShareLink du
+        # QR de la page 1 — son jeton est tiré au hasard, donc seuls les rendus
+        # SUIVANTS, qui réutilisent ce même lien, sont comparables octet à
+        # octet.
+        self._html('fr')
+        html_defaut = self._html(None)
+        html_fr = self._html('fr')
+        self.assertEqual(html_defaut, html_fr)
+        self.assertIn('<html lang="fr"', html_fr)
+        self.assertNotIn('dir="rtl"', html_fr)
+        for litteral in ('Sous-total HT', 'Total TTC', 'D&#233;signation',
+                         'Qt&#233;', 'P.U. HT (MAD)', 'Total HT (MAD)',
+                         'Acompte', 'R&#233;f.'):
+            with self.subTest(litteral=litteral):
+                self.assertIn(litteral, html_fr)
+
+    def test_le_document_anglais_traduit_ses_libelles_structurels(self):
+        html = self._html('en')
+        self.assertIn('<html lang="en"', html)
+        self.assertNotIn('dir="rtl"', html)
+        for attendu in ('Subtotal excl. VAT', 'Total incl. VAT', 'Description',
+                        'Qty', 'Unit price excl. VAT (MAD)', 'Brand',
+                        'Down payment', 'after commissioning', 'Ref.'):
+            with self.subTest(attendu=attendu):
+                self.assertIn(attendu, html)
+        for francais in ('Sous-total HT', 'D&#233;signation', 'Qt&#233;'):
+            with self.subTest(francais=francais):
+                self.assertNotIn(francais, html)
+
+    def test_le_document_arabe_est_rtl_et_traduit(self):
+        from apps.ventes.quote_engine import i18n_labels as L
+        html = self._html('ar')
+        self.assertIn('<html lang="ar" dir="rtl"', html)
+        for cle in ('sous_total_ht', 'total_ttc', 'designation', 'qte',
+                    'client', 'reference'):
+            with self.subTest(cle=cle):
+                self.assertIn(L.libelle(cle, 'ar'), html)
+        self.assertNotIn('Sous-total HT', html)
+
+    def test_le_document_arabe_embarque_sa_police_arabe(self):
+        """Sans @font-face arabe, WeasyPrint imprime des carrés (tofu)."""
+        html = self._html('ar')
+        self.assertIn('Noto Sans Arabic', html)
+        self.assertIn('data:font/woff2;base64,', html)
+
+    def test_aucune_langue_ne_change_les_montants(self):
+        """Zéro chiffre inventé : traduire les MOTS ne touche aucun total."""
+        import re as _re
+        montants = {}
+        for langue in ('fr', 'en', 'ar'):
+            html = self._html(langue)
+            montants[langue] = _re.findall(r'>([^<>]*?)&nbsp;MAD<', html)
+        self.assertTrue(montants['fr'], 'aucun montant lu dans le une-page')
+        self.assertEqual(montants['en'], montants['fr'])
+        self.assertEqual(montants['ar'], montants['fr'])

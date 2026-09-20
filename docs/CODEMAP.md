@@ -1,8 +1,8 @@
 ﻿# CODEMAP ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â TAQINOR OS
 
 Generated from commit `dev` on 2026-06-29, refreshed for the functional-domain expansion wave (5 parallel worktree lanes: apps/compta clÃƒÆ’Ã‚Â´ture de pÃƒÆ’Ã‚Â©riode + OD manuelles + ÃƒÆ’Ã‚Â -nouveaux FG115ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“117; apps/ventes solar string-design + inverter match + tilt/azimut FG246/247/249; apps/installations jalons/modÃƒÆ’Ã‚Â¨les-de-projet/rÃƒÆ’Ã‚Â©unions FG293/296/298; **NEW app apps/flotte** Vehicule+EnginRoulant FLOTTE1/2/4; **NEW app apps/ged** Cabinet/Folder/Document/Version GED1/2/3 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, company-scoped, tested), on top of the prior `dev-uiwave-20260621` world-class UI wave (34 frontend UI/UX tasks: premium DataTable, calm chrome, foundation hooks/primitives, page redesigns) (PLAN2 priority-queue run ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Group Q DevisÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬ÂToiture-3D pipeline backend (Q1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“Q7: Devis.roof_layout/roof_image + layout endpoints, Lead roof_point/roof_outline/bill_kwh + per-lead token, build_devis_from_layout() service, MinIO roof-image, layout-aware quote data with byte-identical no-layout path, tokenized /proposal data endpoint + e-sign accept); Group R agentic layer ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â NEW APP `apps/agent` (in-code action registry + `/api/django/agent/` catalogue, AG1), FastAPI registry-driven tools with proposeÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢confirm (`/sql-agent/confirm`, AG2) surfaced on /query, assistant confirm/result cards (AG3), domain agent actions in ventes/crm/stock/sav/installations `agent_actions.py` (AG4ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“AG9), Groq-Whisper assistant voice `/sql-agent/transcribe` (AG10) + voice/hands-free chat (AG11/AG12); Group S internal team chat ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â NEW APP `apps/chat` (Conversation/Member/Message/Attachment/Reaction/Mention, company+membership scoped, `/api/django/chat/`, S1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“S9), self-hosted faster-whisper `/chat/transcribe` (NEW dep, `CHAT_TRANSCRIPTION_ENABLED`, S10) + Celery transcription pipeline (S11), full React `features/messaging` UI + `/messages` route (S12ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“S20); design/UI/reporting polish (F120ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“F123 OKLCH tokens, G124ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“G128 primitives, K147/N161/K148/K149/J146/P167 chart kit + dashboard + table unification); P171 DataTableÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢@tanstack engine swap (API-compatible, full parity). ADDITIVE migrations: ventes/0024, crm/0024, chat/0001, notifications/0007. Founder standing consent recorded in CLAUDE.md lifting the ARCH/AUTH/COST/DECISION/GALLERY/DEP gate. + 2026-06-22 greenfield-foundations run: 7 NEW apps stood up (apps/rh DossierEmploye master FG154/DC29, apps/paie ParametrePaie/BaremeIR PAIE1/2/4, apps/gestion_projet Projet/ProjetChantier PROJ1, apps/contrats Contrat CONTRAT1/2, apps/qhse NCR/CAPA QHSE1/9/10, apps/kb KbArticle KB1, apps/litiges Reclamation LITIGE1) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â additive, multi-tenant, admin-gated, tested; INSTALLED_APPS+urls wired; 13 tasks ticked. BLOCKED: S21 WebSocket/Channels (needs provisioned ASGI/nginx-WS infra), I134/I138 ÃƒÂ¢Ã…â€™Ã‹Å“K palette (reconcile with existing providers).) + 2026-06-22 `claude/serene-ptolemy-dj5cs0` wave-1 run: 8 parallel worktree lanes ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â FG122 (compta consolidated treasury position + AR/AP/payroll/TVA projection, GL-only selector + read endpoint), M4 (last `ventes ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ audit` back-edge removed ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â PDF audit capture now flows through the `core.events.document_pdf_generated` bus with an `audit` receiver; new import-linter contract pins it), FG157 (apps/rh `Remuneration` gated by the new `salaires_voir` permission), PAIE3 (apps/paie 2026 Moroccan legal payroll defaults seeded editable + `valide_par_fondateur` flag), PROJ5 (apps/gestion_projet `Tache` WBS with self-FK sub-tasks), QHSE5 (apps/qhse auto-conformity min/max on `PointControleModele`/`ReleveControle`), FG350 (frontend global `CopilotPanel` drawer reusing the FastAPI agent), GED5 (frontend `/ged` arborescent navigator over existing ged endpoints) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations rh/0004, paie/0002, qhse/0004, gestion_projet/0005. + wave-2 (same run): FG123 (compta `RapprochementBancaire`/`LigneReleve`/`PointageReleve` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â statementÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬ÂGL pointing, ÃƒÆ’Ã‚Â©cart-zero close, no ÃƒÆ’Ã‚Â©criture), FG49 (ventes account-coded grand-livre export CGNC 3421/7111/4455, xlsx+csv, configurable codes), FG351 (apps/agent registry guarded write actions `ventes.devis.create`/`crm.client.create`/`crm.lead.create` via proposeÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢confirm + FastAPI dynamic action_tools), FG158 (rh `DossierEmploye` emergency-contact + extended coordinates fields), PAIE5 (paie family-charge deduction params + `compute_ir` helper), GED6 (ged `DocumentLien` generic-target link via `records.ALLOWED_TARGETS` +ventes.boncommande), PROJ6 (gestion_projet `DependanceTache` FS/SS/FF/SF + lag with cycle guards), QHSE6 (qhse hold-point gating selector/endpoint) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations compta/0006, rh/0005, paie/0003, ged/0002, gestion_projet/0006 (FG49/FG351/QHSE6 need none); import-linter stays 4/4. + wave-3 (same run, 7 lanes): FG124 (compta `Caisse`/`MouvementCaisse`/`ClotureCaisse` petty-cash with optional GL posting honouring the FG115 period lock), FG50 (ventes acompte transfer/refund on facture cancel ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â re-point Paiement or reversing negative Paiement, chatter, no migration), FG159 (rh `DocumentEmploye` vault reusing `records.Attachment` MinIO storage + optional expiry), PAIE6 (paie `Rubrique` configurable payslip-line catalogue + idempotent seed), GED7 (ged `migrate_attachments_to_ged` command importing records.Attachment into Documents reusing file_key + DocumentLien), PROJ7 (gestion_projet `Jalon` milestones + `facturation_pct`), QHSE7 (qhse `ReleveCourbeIV` PV string I-V curve + fill factor) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations compta/0007, rh/0006, paie/0004, gestion_projet/0007, qhse/0005 (FG50/GED7 need none); import-linter stays 4/4. FG352 (RAG/pgvector, DEP:langchain-textsplitters) intentionally left [ ] for a focused run. + 2026-06-22 `claude/plan-md-completion-ysbchz` drain: 8 parallel worktree lanes off PLAN.md (compta FG125ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“130, ventes FG51/53/248/250/251, core FG355ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“359 NoOp-AI, rh FG160ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“165, paie PAIE7ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“12, ged GED8ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“13, gestion_projet PROJ8ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“13, qhse QHSE8/11ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“15 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â 46 tasks; ADDITIVE migrations across those apps + customfields/0003; new NoOp scaffolds add no external dependency; GED12 semantic embedding OFF by default). + 2026-06-23 PLAN2 **Group U** drain (U1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“U14, 10 parallel worktree lanes, one self-merge): lead-modal stays-open UX (U1), mouse-wheel + mobile-header CSS regressions (U2/U3), WhatsApp-send flips devisÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢envoyÃƒÆ’Ã‚Â© via a NEW `core.events.devis_sent` event (U4), surface generated factures/BC in the devis list + BC-state warning (U5/U8), hide/badge superseded devis revisions (U7), auto-create chantier on devis acceptance via the `devis_accepted` bus (U6), stock reservation on the direct generer-facture path (U9), relance-escalation reset on full payment (U10), phantom-signÃƒÆ’Ã‚Â© flag on post-acceptance refusal (U11, flag-only), direct nullable lead FK on Facture/BonCommande (U12), avatar same-origin proxy fix (U13), GED Ãƒâ€šÃ‚Â« Documents Ãƒâ€šÃ‚Â» write UI + `documents/televerser/` upload (U14) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â additive, multi-tenant, tested; ADDITIVE migrations ventes/0027_devis_date_envoi + 0028_boncommande_lead_facture_lead. + 2026-06-24 PLAN.md batch-1 drain (8 parallel worktree lanes off the FG/module wave plan, adversarial review + local CI incl. makemigrations-check & full affected test run, one self-merge): 7 shipped ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â FG52 (ventes multi-currency `devise`/`taux_change` + CompanyProfile default), FG166 (rh `Pointage` clock-in/out), CONTRAT6 (contrats `confidentialite` gated on `menu_tier`), FLOTTE5 (flotte `ActifFlotte` unified asset ref), PAIE13 (paie multi-profile base-salary + proration), GED14 (ged inline `apercu` preview), PROJ14 (gestion_projet delay detection). ADDITIVE migrations ventes/0029 + parametres/0025, rh/0008, contrats/0005, flotte/0005, paie/0006. **FG131 (compta 3-way match) DEFERRED/backed-out** ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the build duplicated stock's BonCommandeFournisseur/FactureFournisseur (reverse-accessor clash); needs a rebuild reusing stock procurement via selectors/services (left `[ ]`). + 2026-06-27 `claude/lucid-banzai-33af1c` PLAN.md wave-1 drain (5 parallel worktree lanes, one self-merge): PAIE14 (paie heures-sup majorÃƒÆ’Ã‚Â©es 25/50/100 %), FG167 (rh `FeuilleTemps` timesheets + labour-hours selector), CONTRAT7 (contrats `ModeleContrat` + `/instancier/`), FLOTTE7 (flotte `Conducteur` + permis), QHSE16 (qhse `Audit`/`ReponseCritere` + score ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ NCR) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations paie/0007, rh/0009, contrats/0006, flotte/0006, qhse/0010. No new external/paid dependency, no auth change. Validated on the docker CI harness (511 affected-app tests green, makemigrations --check clean). + 2026-06-27 same run waves 2+3 (9 more file-disjoint lanes): GED15 (ged document version history + restore, `restored_from` audit), PROJ15 (gestion_projet `RessourceProfil`/`Equipe`, internal cout_horaire), FG39 (crm `ObjectifCommercial` + attainment selector, backend), FG5 (notifications `WorkingHoursConfig`/`Holiday` + calendar helpers + `seed_ma_holidays`, opt-in), FG86 (sav `Ticket.share_token` + public read-only tracking endpoint, allowlist no cout/chatter), KB5 (kb `seed_kb_templates` 5 SOP/ONEE/82-21 gabarits), FG96 (reporting `DashboardConfig` per-user/role, backend), FG102 (publicapi webhook deliveries history + replay + test, backend), FG297 (installations `DocumentProjet`/`RevisionDocument` versioned project-doc register) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations ged/0008, gestion_projet/0010, crm/0028, notifications/0010, sav/0009, reporting/0003, installations/0014 (KB5/FG102 need none); import-linter stays 4/4. No new external/paid dependency, no auth change. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-1 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI, one self-merge): FG135 (compta `NoteFrais` notes de frais + remboursements, justificatif photo, ÃƒÆ’Ã‚Â©critures ÃƒÆ’Ã‚Â©quilibrÃƒÆ’Ã‚Â©es, verrou de pÃƒÆ’Ã‚Â©riode, rÃƒÆ’Ã‚Â©f NDF race-safe), FG291 (installations `Projet` programme multi-chantiers regroupant chantiers/devis/tickets par FK chaÃƒÆ’Ã‚Â®nes, machine d'ÃƒÆ’Ã‚Â©tats propre ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â NEW arch component), FG255 (ventes `ev_charger_sizing` borne VE couplÃƒÆ’Ã‚Â©e au PV, math pure), FG361 (core `forecast.py` prÃƒÆ’Ã‚Â©vision CA/devis mensuels, Holt-Winters statsmodels + repli pur Python), FG172 (rh `Competence`/`CompetenceEmploye` matrice de compÃƒÆ’Ã‚Â©tences), CONTRAT13 (contrats `RegleApprobation` par montant/type + rÃƒÆ’Ã‚Â©solveur), FLOTTE13 (flotte conso L/100 km & kWh/100 km depuis pleins+odomÃƒÆ’Ã‚Â¨tre, endpoint scopÃƒÆ’Ã‚Â©), GED17 (ged `Document.statut` cycle de vie brouillonÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢obsolÃƒÆ’Ã‚Â¨te, machine d'ÃƒÆ’Ã‚Â©tats gardÃƒÆ’Ã‚Â©e, distinct de STAGES.py) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations compta/0011, installations/0016, rh/0014, contrats/0010, ged/0011 (FG255/FG361/FLOTTE13 need none). **NEW external dependency `statsmodels==0.14.4`** (FG361, import dÃƒÆ’Ã‚Â©fensif + repli si absente). Adversarial review fixed 2 CI-red issues pre-merge (FG361 garde NaN avant clamp, FLOTTE13 action `consommation` en lecture tout rÃƒÆ’Ã‚Â´le) + an FG135 reference race; core stays a foundation layer (import-linter 4/4). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-2 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI): FG136 (compta `BaremeIndemnite`+`IndemniteChantier` indemnitÃƒÆ’Ã‚Â©s km/per-diem, haversine, ÃƒÆ’Ã‚Â©critures ÃƒÆ’Ã‚Â©quilibrÃƒÆ’Ã‚Â©es + verrou de pÃƒÆ’Ã‚Â©riode), FG292 (installations `ProjetTache` tÃƒÆ’Ã‚Â¢ches/sous-tÃƒÆ’Ã‚Â¢ches + prÃƒÆ’Ã‚Â©dÃƒÆ’Ã‚Â©cesseur avec gardes anti-cycle ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ÃƒÆ’Ã‚Â©tend l'ARCH Projet FG291), FG256 (ventes `battery_storage_sizing` autoconso-max vs backup-heures, math pure), FG362 (core `win_probability.py` scorer pur fondation + `reporting/pipeline.py` pondÃƒÆ’Ã‚Â©rÃƒÆ’Ã‚Â© par lead, repli statique), FG173 (rh `Habilitation` ÃƒÆ’Ã‚Â©lectriques NF C 18-510 + expiry), CONTRAT14 (contrats `EtapeApprobation` workflow depuis `RegleApprobation`, ne touche pas `Contrat.statut`), FLOTTE14 (flotte `CarteCarburant` + dÃƒÆ’Ã‚Â©tecteur d'anomalies pleins), QHSE19 (qhse `RetourClientQualite` satisfaction 1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“5) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations compta/0012, installations/0017, rh/0015, contrats/0011, flotte/0012, qhse/0013 (FG256/FG362 need none). No new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). Fixed an FG136 constraint Q-order migration drift pre-merge (makemigrations --check clean). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-3 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI incl. the 8 wave-3 test modules run green before push): FG137 (compta `DeclarationTVA` prÃƒÆ’Ã‚Â©paration TVA collectÃƒÆ’Ã‚Â©eÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢dÃƒÆ’Ã‚Â©ductible par rÃƒÆ’Ã‚Â©gime/mÃƒÆ’Ã‚Â©thode + export), FG294 (installations `BudgetProjet`/`BudgetEngagement` budget vs rÃƒÆ’Ã‚Â©el agrÃƒÆ’Ã‚Â©gÃƒÆ’Ã‚Â© cross-app via get_model/selectors, alerte dÃƒÆ’Ã‚Â©passement ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ARCH), FG257 (ventes `simulate_bankable_yield` P50/P90 + Performance Ratio, math pure), FG363 (core `churn_risk.py` scorer pur fondation), FG174 (rh `Certification` non-ÃƒÆ’Ã‚Â©lectriques + expiry), CONTRAT15 (contrats `ContratActivity` chatter/journal des transitions), FLOTTE15 (flotte `PlanEntretien` entretien prÃƒÆ’Ã‚Â©ventif km/date/heures via ActifFlotte), GED18 (ged `DemandeApprobation` workflow rÃƒÆ’Ã‚Â©utilisant la machine d'ÃƒÆ’Ã‚Â©tats GED17) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations compta/0013, installations/0018, rh/0016, contrats/0012, flotte/0013, ged/0012 (FG257/FG363 need none). No new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation, FG363 stdlib-only). No migration drift. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-4 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-4 test modules before push ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â **ZERO migrations this wave**, all aggregation/pure-math/helper tasks): FG138 (compta `releve_deductions_tva` annexe TVA dÃƒÆ’Ã‚Â©ductible depuis le GL, rÃƒÆ’Ã‚Â©concilie FG137), FG295 (installations `projet_pnl` P&L consolidÃƒÆ’Ã‚Â© revenuÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢coÃƒÆ’Ã‚Â»ts par Projet, rÃƒÆ’Ã‚Â©utilise les agrÃƒÆ’Ã‚Â©gats cross-app FG294), FG258 (ventes `hourly_self_consumption` profil autoconso 8760 h + parser xlsx openpyxl dÃƒÆ’Ã‚Â©jÃƒÆ’Ã‚Â  prÃƒÆ’Ã‚Â©sent), FG364 (core `stock_reorder.py` prÃƒÆ’Ã‚Â©vision rupture/rÃƒÆ’Ã‚Â©appro, stdlib seul), FG175 (rh `echeances_rh` moteur d'alertes d'expiration unifiÃƒÆ’Ã‚Â© + commande notifiant via `notifications.notify`), PROJ18 (gestion_projet `plan_de_charge` capacitÃƒÆ’Ã‚Â© vs affectÃƒÆ’Ã‚Â©), PAIE20 (paie helper `cimr_salariale` CIMR optionnelle par employÃƒÆ’Ã‚Â©, champs prÃƒÆ’Ã‚Â©existants), QHSE20 (qhse `iso9001_readiness` tableau de bord) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; NO migrations; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). No migration drift. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-5 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-5 test modules before push): FG139 (compta `RetenueSource` RAS retenue ÃƒÆ’Ã‚Â  la source + bordereau de versement, export `?export=csv`), FG299 (installations `plan_de_charge_equipes` capacitÃƒÆ’Ã‚Â© vs affectÃƒÆ’Ã‚Â© des techniciens/ÃƒÆ’Ã‚Â©quipes sur interventions), FG259 (ventes `net_metering_savings` valorisation surplus injectÃƒÆ’Ã‚Â© par tranche loi 13-09), FG365 (core `payment_delay.py` prÃƒÆ’Ã‚Â©diction de retard de paiement, stdlib seul), FG176 (rh `verifier_habilitation_requise` garde d'affectation par habilitation, blocage doux), CONTRAT16 (contrats `SignatureContrat` e-sign in-app loi 53-05, preuve serveur, bascule statut signÃƒÆ’Ã‚Â©), FLOTTE16 (flotte `EcheanceEntretien` gÃƒÆ’Ã‚Â©nÃƒÆ’Ã‚Â©ration idempotente d'ÃƒÆ’Ã‚Â©chÃƒÆ’Ã‚Â©ances dues + alertes), GED19 (ged `AclGed` ACL par dossier/document hÃƒÆ’Ã‚Â©ritage+override, rÃƒÆ’Ã‚Â©trocompatible) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations compta/0014, contrats/0013, flotte/0014, ged/0013 (FG299/FG259/FG365/FG176 need none). No new external/paid dependency, no auth change; import-linter 4/4. Fixed a GED19 CheckConstraint `condition=` migration drift pre-merge (Django 5.1 deconstruction; Meta.constraints aligned with the migration, makemigrations --check clean). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-6 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-6 test modules before push): FG140 (compta aide au calcul de l'IS ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â barÃƒÆ’Ã‚Â¨me progressif + cotisation minimale + 4 acomptes + rÃƒÆ’Ã‚Â©gularisation, selectors-only), FG300 (installations `conflits_affectation` double-booking technicien/camionnette mÃƒÆ’Ã‚Âªme jour), FG260 (ventes `tariff_escalation_projection` escalade ONEE 20-25 ans + VAN/TRI stdlib), **FG366 (core moteur de workflow BPM gÃƒÆ’Ã‚Â©nÃƒÆ’Ã‚Â©rique `WorkflowDefinition/StepDefinition/Instance/StepInstance` cible gÃƒÆ’Ã‚Â©nÃƒÆ’Ã‚Â©rique contenttypes + SLA/escalades ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â NEW ARCH component dans la fondation, import-linter 4/4)**, FG177 (rh `VisiteMedicale` du travail + aptitude + expiry, alimente FG175), PROJ19 (gestion_projet `conflits_affectation` ressources chevauchantes), PAIE21 (paie frais professionnels ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â dÃƒÆ’Ã‚Â©jÃƒÆ’Ã‚Â  prÃƒÆ’Ã‚Â©sent, tests ajoutÃƒÆ’Ã‚Â©s), QHSE21 (qhse `EvaluationRisque`/`LigneEvaluationRisque` document unique, criticitÃƒÆ’Ã‚Â©=gravitÃƒÆ’Ã‚Â©ÃƒÆ’Ã¢â‚¬â€probabilitÃƒÆ’Ã‚Â©) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations core/0002 (BPM), rh/0017, qhse/0014 (FG140/FG300/FG260/PROJ19/PAIE21 need none). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-7 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of 9 wave-7 test modules before push): FG141 (compta `export_fec` export FEC DGI 18 colonnes, `?export=fec`), FG301 (installations `nivellement_charge` rÃƒÆ’Ã‚Â©ÃƒÆ’Ã‚Â©quilibrage des interventions surchargÃƒÆ’Ã‚Â©es sans conflit, lecture seule), FG261 (ventes `optimize_subscribed_power` rÃƒÆ’Ã‚Â©duction puissance souscrite post-PV C&I), FG367 (core `rules.py` ÃƒÆ’Ã‚Â©valuateur de conditions ET/OU/NON + actions sÃƒÆ’Ã‚Â©quentielles, pur fondation), FG178 (rh `EpiCatalogue`/`DotationEpi` dotation EPI nominative), CONTRAT17 (contrats auto signÃƒÆ’Ã‚Â©ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢actif sur signature), FLOTTE17 (flotte `Garage`/`OrdreReparation` ordres de rÃƒÆ’Ã‚Â©paration + coÃƒÆ’Ã‚Â»ts), GED20 (ged `PartageGed` partage tokenisÃƒÆ’Ã‚Â© public expiry/password/quota) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations rh/0018, flotte/0015, ged/0014 (FG141/FG301/FG261/FG367/CONTRAT17 need none). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). GED20 introduces a PUBLIC AllowAny tokenized document endpoint (token-only resolution, expiry/quota/password-hash, no cross-tenant leak ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â security model calquÃƒÆ’Ã‚Â© sur ventes.ShareLink). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-8 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of 8 wave-8 test modules before push): FG142 (compta `liasse_fiscale` trousse liasse fiscale bilan+CPC+balance+annexe-TVA, rÃƒÆ’Ã‚Â©utilise les sÃƒÆ’Ã‚Â©lecteurs), FG302 (installations `IndisponibiliteRessource` calendrier de disponibilitÃƒÆ’Ã‚Â© technicien/camionnette + sÃƒÆ’Ã‚Â©lecteur d'exclusion), FG262 (ventes `module_degradation_curve` dÃƒÆ’Ã‚Â©gradation modules + planchers de garantie), FG368 (core `core/jobs.py` + `ScheduledJobViewSet` liste/exÃƒÆ’Ã‚Â©cution des jobs Celery Beat, admin, cÃƒÆ’Ã‚Â¢blÃƒÆ’Ã‚Â© `/api/django/core/`), FG179 (rh pÃƒÆ’Ã‚Â©remption/contrÃƒÆ’Ã‚Â´le EPI dÃƒÆ’Ã‚Â©rivÃƒÆ’Ã‚Â©s + alertes, alimente FG175), PROJ20 (gestion_projet `nivellement_charge` rÃƒÆ’Ã‚Â©ÃƒÆ’Ã‚Â©quilibrage ressources projet), PAIE22 (paie calcul IR ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â dÃƒÆ’Ã‚Â©jÃƒÆ’Ã‚Â  prÃƒÆ’Ã‚Â©sent PAIE5, 30 tests ajoutÃƒÆ’Ã‚Â©s), QHSE22 (qhse `document_unique_valide`/`exiger_document_unique` gate document unique avant pose) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations installations/0019, rh/0019 (FG142/FG262/FG368/PROJ20/PAIE22/QHSE22 need none). FG368 added a root-URLConf line (`api/django/core/` ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ `core.urls`, orchestrator wiring step). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation, jobs via celery infra). Wave-9 PLAN.md drain (2026-06-29, 8 parallel file-disjoint worktree lanes): rh `EmargementEpi` (FG180), contrats `VersionContrat` (CONTRAT18), flotte `Pneumatique`/`PieceFlotte` (FLOTTE18), ged watermarking flags `Document.watermark_diffusion`/`PartageGed.watermark` (GED21, lazy PyMuPDF/Pillow ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no hard dep), core workflow-template library + `/api/django/core/` workflow-templates route (FG369), plus selector/endpoint-only FG143 (compta ÃƒÆ’Ã‚Â©tat 9421), FG303 (installations van planning), FG263 (ventes PPA model) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive & company-scoped, 4 additive migrations (rh 0020, contrats 0014, flotte 0016, ged 0015). Wave-10 PLAN.md drain (2026-06-29, 7 parallel file-disjoint worktree lanes in apps disjoint from wave 9): crm `ConcurrentPerte` (lost-deal competitor capture FG242), gestion_projet `BudgetProjet`/`LigneBudgetProjet` (PROJ21), qhse `PermisTravail` (QHSE23), kb `KbArticleAcl`/`KbLecture` (role ACL + read tracking KB7), sav `AlarmeOnduleur` (inverter alarms FG280), plus paie allocations-familiales employer charge (PAIE23, fields on ParametrePaie/BulletinPaie) and selector-only LITIGE6 (disputes dashboard) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive & company-scoped, 6 additive migrations (crm 0029, gestion_projet 0013, kb 0005, paie 0011, qhse 0015, sav 0011). Wave-11 PLAN.md drain (2026-06-29, 6 parallel file-disjoint worktree lanes resuming wave-9 app lanes off the merged base): compta `TimbreFiscal` (droit de timbre cash FG144), rh `AccidentTravail` (HSE/accidents register FG181), installations `SousTraitant` (subcontractor registry FG304), ged `PolitiqueRetention` (non-destructive retention policies GED22), flotte `EcheanceReglementaire` (regulatory deadlines FLOTTE19), plus pure-math FG264 (ventes pumping-cycle water yield) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive & company-scoped, 5 additive migrations (compta 0015, rh 0021, installations 0020, ged 0016, flotte 0017). Wave-12 PLAN.md drain (2026-06-29, 3 parallel file-disjoint lanes resuming wave-10 app lanes): qhse `ConsignationLoto` (LOTO on a work permit QHSE24), crm `PointContact` (multi-touch attribution journal FG204), plus paie taxe de formation professionnelle employer charge (PAIE24, BulletinPaie snapshot) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive & company-scoped, 3 additive migrations (paie 0012, qhse 0016, crm 0030). Wave-13 PLAN.md drain (2026-06-30, 6 parallel file-disjoint worktree lanes resuming wave-9 app lanes): compta `RetenueGarantie`/`CautionBancaire` (FG145), rh `PresquAccident` (near-miss FG182), installations `OrdreSousTraitance` (subcontractor work orders FG305), ged `ArchivageLegal` (legal write-once GED23), flotte `BaremeVignette` + `Vehicule.puissance_fiscale` (TSAV FLOTTE20), plus selector-only PROJ22 (committed-vs-actual project cost) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive & company-scoped, 5 additive migrations (compta 0016, rh 0022, installations 0021, ged 0017, flotte 0018).
-Structure fingerprint: be88e304caf660fbbd25941a0161271ee055f1e9a3d6292a572f9f9b4987456b
-Plan fingerprint: f9cccea8d0c307e228ad768a086d94ef2edb9e7e850c1650a1c42b771493d0a8
+Structure fingerprint: 232b946ecbd5138635f8faa89780080fe9eafd79b4a9eb7c72deac034b23e70d
+Plan fingerprint: 2f94584188c7051d715c9e542e9c11eb1993eb497da3877b469ae4d077ef9430
 
 
 
@@ -578,12 +578,20 @@ The Odoo `res.partner` equivalent: one identity record instead of the same name/
 - `configs/` (+ `providers/`, `{id}/sync-now/`), `readings/` (list + manual entry), `settings/`. Under-performance auto-creates an idempotent SAV ticket when enabled.
 - **Groupe NTNRG.** **SlaDisponibilite** (NTNRG14) + **CertificatCarbone** (NTNRG27) models (migrations monitoring/0005-0006). **NTNRG32** adds `ProductionReading.motif_limitation` (curtailment reason). Endpoints `configs/benchmark/` (NTNRG33, classement RELATIF du parc par PR — percentile, jamais un seuil absolu), `configs/{id}/rapport-garantie-pdf/` (NTNRG11, rapport contractuel mensuel de garantie de performance), `configs/{id}/attestation-carbone-pdf/` + `configs/attestation-carbone-client-pdf/` (attestation CO2 imprimable).
 
+- **Dossiers transverses (NTWFL17-22/29, 20/09/2026)** — `core.Dossier` (type libre par société + statut + échéance + propriétaire) avec `DossierLien` (cible générique contenttype+object_id — jamais une FK métier), `DossierChecklistItem`, `DossierActivity` (chatter dédié + rappel d'échéance dédupliqué `dernier_rappel_echeance_le`, événement `dossier_echeance_depassee` sur le bus), lien `workflow_instance` (NTWFL20) et **DossierModele** instanciable (NTWFL29, copie checklist + démarrage workflow configuré). Vues dans `core/views_dossiers.py` (routes `core/urls_dossiers.py`, montées par include), écrans frontend liste/détail/kanban/vues sauvegardées.
+
 ### statuspage — page de statut publique multi-région (Groupe NTOBS, new app)  *( `/api/django/statuspage/` )*
 Modèles PUBLICS, majoritairement SYSTÈME (`company` nullable — la quasi-totalité des lignes ont `company=None`, visibles de tous les tenants). Statuts des composants dérivés de `core.health.check_services()` par un job Celery beat toutes les 5 min (`tasks.py`) — jamais un appel synchrone côté public. Texte narratif des incidents (titre/updates/post-mortem) TOUJOURS rédigé par un humain, jamais généré depuis `core.health` (règle checked-facts-only).
 - **ComponentStatus** (**NTOBS1**) — `nom`, `region` (libre, ex. « EU-West/Hetzner »), `statut` (`operational`/`degraded`/`partial_outage`/`major_outage`), `derniere_verification`. **IncidentPublic** — `titre`, `composants` (M2M), `severite` (`mineure`/`majeure`/`critique`), `statut` (`investigating`/`identified`/`monitoring`/`resolved`), `region`, `debute_le`/`resolu_le`, plus **NTOBS2** `postmortem_markdown` + `postmortem_publie_le` (publication séparée de la clôture, réservée Directeur/Administrateur via `publier-postmortem/`, uniquement sur un incident `resolved`). **IncidentUpdate** — mise à jour horodatée liée à un incident (`statut`, `message`, `horodatage`).
 - **UptimeDayBucket** (**NTOBS14**) — agrégat quotidien PRÉ-CALCULÉ par composant/région (`statut_pire_du_jour`, `echantillons_total`/`echantillons_operationnels`, `pct_disponible_jour` mesuré par échantillonnage, jamais recalculé depuis des logs bruts), peuplé incrémentalement par le même beat 5 min ; alimente la frise 90 jours.
 - **StatusSubscriber** (**NTOBS15**) — abonnement public par e-mail (double opt-in : `confirme=False` jusqu'au clic sur le lien envoyé), `region_filtre`, `token_desabonnement` unique servant AUX DEUX usages (confirmer et se désabonner).
 - Endpoints public (AllowAny, throttled 60/min lecture ou 5/h écriture) — `public/` (statut agrégé, cache mémoire 60 s), `public/incidents/` (historique 90 jours), `public/incidents/<pk>/` (détail + post-mortem si publié), `public/uptime-90j/` (frise pré-calculée), `public/abonner/`, `public/confirmer/<token>/`, `public/desabonner/<token>/`. Interne (`IsAuthenticated` + Directeur/Administrateur) — `incidents/<pk>/publier-postmortem/`.
+
+### mlops — versions de modèles de scoring + paramètres par société (NTAI27/28/30, new app 20/09/2026)  *( `/api/django/mlops/` )*
+Petite app Technique (`installable=False`) : elle ne PRÉDIT rien elle-même — elle gouverne les scorers heuristiques de `core/` (win_probability, churn_risk, payment_delay, stock_reorder, anomaly).
+- **ModeleML** — versions nommées par scorer (une seule version `actif` par (company, scorer), contrainte base) avec `params_json` ; `selectors.params_actifs(company, nom)` (repli défauts du scorer) est enregistré au boot comme resolver de `core.score_params` (`apps.py ready()`), donc chaque scorer core lit ses seuils PAR SOCIÉTÉ sans que core importe mlops. **FeatureVector** (NTAI30) — matérialisation quotidienne (beat `mlops.recompute_features`, queue scheduled) de features par lead (canal/priorité/issue/ancienneté).
+- `backtest.py` (NTAI28) — rejoue `core.win_probability` sur les leads signés/perdus (précision/rappel/AUC, implémentation pure) ; `retard_paiement` s'abstient (`disponible=False`) tant qu'aucune date de paiement réelle n'est accessible depuis ce périmètre.
+- Endpoints : `modeles/` (+ `activer/`), `backtests/`.
 
 ### notifications ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â unified notification engine (N75)  *( `/api/django/notifications/` )*
 - **Canaux MRY (06/09/2026, migrations notifications 0050-0052)** — activité WHATSAPP typée par touche de cadence, `lead_new` email par défaut, digest/escalade premier-contact en minutes ouvrées.
@@ -1294,7 +1302,7 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 
 ## 10. Plan status
 
-**Done (1263)**
+**Done (1206)**
 
 - `ERR114` — [ventes/quote_engine]
 - `AUD101` — Service unique d'émission de Facture : les 5 chemins qui posent EMISE en silence…
@@ -1823,6 +1831,9 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 - `PACT185` — XGED3 : le PDF signé final aplati n'a aucune route
 - `PACT186` — XSAL6 : le résolveur de plan de commission cross-app n'est jamais consommé
 - `PACT187` — Onglet « Amortissement » d'un véhicule : 3 lignes sur 4 muettes
+- `RLC1` — Annuler une touche « Fait »/« Sautée » par erreur (retour arrière)
+- `RLC2` — Journal « ce qui s'est passé » du plan de relance + état client lisible d'un coup d'œil
+- `RLC3` — « Fait » conditionné à l'action réelle sur une touche message
 - `SOL1` — Registre d'éditions + tags de manifeste
 - `SOL2` — Découpler les arêtes gardé→parqué (vérifiées le 02/09)
 - `SOL3` — Profil d'édition backend
@@ -1996,53 +2007,7 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 - `CAL13` — Écrire `enregistrer_layout` (hash + instantané de version)
 - `CAL14` — Écrire les services de variantes : `creer_variante`, `retenir_variante`, `dupliquer`
 - `CAL15` — Écrire le sélecteur de pré-remplissage géographique (lead ou client)
-- `CAL16` — Monter le viewset CRUD + les filtres de liste
-- `CAL17` — Servir le détail agrégé conforme au contrat CAL1
-- `CAL18` — Exposer l'action `layout` (GET/POST) du calepinage
-- `CAL19` — Exposer l'action `roof-image` en réutilisant le stockage ventes
-- `CAL20` — Exposer les versions (liste + restauration)
-- `CAL21` — Exposer les variantes, `retenir` et `comparer`
-- `CAL22` — Ouvrir la porte HTTP NEUTRE du moteur : `POST /calepinage/moteur/calculer/`
-- `CAL23` — Basculer le calcul long en tâche de fond via `core.jobs` (kind `calepinage`)
-- `CAL24` — Exposer « Générer le devis » depuis un calepinage
-- `CAL25` — Exposer « Resynchroniser le devis » depuis un calepinage
-- `CAL26` — Brancher le chatter sur la primitive plateforme (jamais un `*Activity` maison)
-- `CAL27` — Remplir `platform.py` (surfaces réellement câblées)
-- `CAL28` — Exposer côté ventes le calepinage d'un devis (lecture seule)
-- `CAL29` — Verrouiller l'isolation multi-société de bout en bout
-- `CAL30` — Migrer `AppelOffre.roof_layout` vers `calepinage_id` (avec reprise des données)
-- `CAL31` — Écrire la conversion de contour AO ↔ calepinage (ENU ↔ repère local métrique)
-- `CAL32` — Servir `calepinage_id` sur l'API AO et déléguer l'action `layout`
-- `CAL33` — Créer le client API `calepinageApi.js`
-- `CAL34` — Déclarer `module.config.jsx` (nav, routes, permissions)
-- `CAL35` — Construire l'écran liste `/calepinage`
-- `CAL36` — Construire l'écran `/calepinage/nouveau` (choisir un lead OU un client)
-- `CAL39` — Miroir événementiel : tout enregistrement de layout côté ventes alimente le calepinage…
-- `CAL42` — Construire l'écran de comparaison de variantes
 - `CAL45` — Réglages société du calepinage : UNE base, sept extensions
-- `CAL56` — Proposer des préréts de forme de toiture (2 pans, 4 pans/croupe, appentis, plat)
-- `CAL57` — Déclarer les arêtes typées : faîtage, noue, arêtier, égout, rive
-- `CAL59` — Gérer plusieurs bâtiments dans un même calepinage
-- `CAL60` — Saisir la hauteur réelle du bâtiment au lieu de supposer deux étages
-- `CAL61` — Mêler pans plats et pans en pente dans la même scène 3D cohérente
-- `CAL62` — Importer un plan DXF/PDF en réutilisant l'analyseur de l'AO, jamais un second
-- `CAL66` — Donner une hauteur de première classe aux obstacles de toiture et en tirer l'ombre…
-- `CAL67` — Placer des arbres et bâtiments voisins HORS toiture avec leurs dimensions
-- `CAL72` — Porter la provenance de chaque obstacle et en tirer l'honnêteté de l'engagement
-- `CAL73` — Dupliquer un obstacle identique d'un clic sur toute la toiture
-- `CAL75` — Rendre l'espacement rangée/colonne réglable en pose sur emplacements validés
-- `CAL80` — Permettre la rotation libre d'un panneau ou d'une sélection
-- `CAL81` — Aimanter et aligner : arêtes de toit, faîtage, autres panneaux, distribution régulière
-- `CAL84` — Afficher les statistiques par pan et par zone, pas seulement le total
-- `CAL86` — Afficher le pas inter-rangées déjà calculé et nommer la famille de pose « bac lesté »
-- `CAL87` — Rendre la pose est-ouest dos à dos paramétrable au lieu d'une variante figée
-- `CAL94` — Calculer l'ombrage proche par lancer de rayons depuis TOUS les obstacles à hauteur
-- `CAL95` — Étendre la carte de chaleur d'ombre par module : toutes les obstructions, et par mois
-- `CAL97` — Chiffrer et publier l'accès solaire (TSRF) par module et par pan
-- `CAL99` — Mesurer l'ombrage inter-rangées réel de la pose lestée dans la scène 3D
-- `CAL100` — Étendre annuler/rétablir à TOUT l'atelier, pas au seul panneau de disposition
-- `CAL102` — Ajouter un outil de mesure de distances et de surfaces
-- `CAL107` — Rendre l'atelier réellement utilisable au doigt sur tablette
 - `CAL111` — Ajouter le modèle thermique du module à la fiche technique (NOCT / Uc-Uv)
 - `CAL112` — Remplacer le booléen bifacial par un facteur de bifacialité + albédo de site
 - `CAL113` — Porter la dégradation annuelle et les paliers de garantie sur la fiche module
@@ -2054,24 +2019,10 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 - `CAL119` — Sélecteur stock « dimensions de pose » pour construire un kit de calepinage depuis un…
 - `CAL166` — Réparer la divergence `schema.json` ↔ code sur le mode de pose
 - `CAL167` — Anti-ombrage à la LATITUDE RÉELLE du site, et empreinte du chevron est-ouest — une…
-- `CAL189` — Servir `layout_stale` du calepinage dans l'API ERP
-- `CAL209` — Le chantier lit le calepinage retenu via selectors (et rien de plus)
-- `CAL210` — Tracer la réservation de stock jusqu'au calepinage qui l'a dimensionnée
-- `CAL213` — Écran chantier : bloc « Calepinage retenu » (lecture seule)
-- `CAL214` — Ressource publique `calepinages` en lecture seule
-- `CAL215` — Événement + webhook « calepinage validé »
-- `CAL218` — Un selector d'indicateurs calepinage pour le reporting existant (aucun tableau de bord…
-- `CAL231` — `GET /calepinages/<pk>/design-context/` : le jumeau neutre du contexte de conception du…
 - `CAL232` — CONTRAT D'ABORD : publier le schéma JSON v2 du document `roof_layout`
 - `CAL233` — Poser la structure du module UNE fois : paquets `services/` et `views/`, forme d'URL…
-- `CAL235` — Proposer de retirer les modules les plus ombragés, et chiffrer le gain
-- `CAL239` — Écrire la règle de préséance entre le calepinage 3D et la variante AO 2D opposable
-- `CAL241` — Reprendre un contour 3D dans la toiture AO (endpoint côté `apps/ao`)
-- `CAL242` — Les deux boutons d'import de contour, sur les deux écrans
 - `CAL244` — CONTRAT D'ABORD : `contract_samples/calepinage_resultat.json`
-- `CAL245` — Exposer le bloc « calepinage retenu » sur le détail chantier (endpoint)
 - `CAL247` — CONTRAT D'ABORD : `contract_samples/dossiers_reglementaires.json`
-- `CAL248` — Persister l'accès solaire par module dans le document, pour que le backend puisse le…
 - `CKP0` — CONTRAT D'ABORD (PACT10) : `apps/crm/contract_samples/kpi_adherence.json` +
 - `CKP1` — Vérité des sautées : nouveau statut `RelanceEtape.Statut.ANNULEE` (« annulée par le
 - `CKP2` — Cadence RÉACTIVE : `initialiser_plan_relance` ne matérialise que la PREMIÈRE touche
@@ -2560,23 +2511,43 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 - `VTA16` — Administration légère DANS l'app (perm visites_valider) : planifier une visite…
 - `VTA17` — Doc courte `docs/visites-app.md` : le rôle Commercial terrain (voit/ne voit pas), le…
 
-**Open — to build (194)**
+**Open — to build (251)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `ODX14` — Rapatrier la config de vente dans ventes
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `ODX20` — App Achats — étape 2 (vues/urls/flux stock/frontend)
 - `ODX22` — Étendre les contrats import-linter au graphe post-découpage
-- `RLC1` — Annuler une touche « Fait »/« Sautée » par erreur (retour arrière)
-- `RLC2` — Journal « ce qui s'est passé » du plan de relance + état client lisible d'un coup d'œil
-- `RLC3` — « Fait » conditionné à l'action réelle sur une touche message
 - `XACC12` — Position fiscale des tiers (exonérations avec attestation)
 - `XPOS19` — E-commerce transactionnel : checkout direct des petits articles (panier → paiement CMI…
 - `YCASH5` — Annulation d'une facture après acompte : réversion de l'acompte tracée mais AUCUNE…
+- `CAL16` — Monter le viewset CRUD + les filtres de liste
+- `CAL17` — Servir le détail agrégé conforme au contrat CAL1
+- `CAL18` — Exposer l'action `layout` (GET/POST) du calepinage
+- `CAL19` — Exposer l'action `roof-image` en réutilisant le stockage ventes
+- `CAL20` — Exposer les versions (liste + restauration)
+- `CAL21` — Exposer les variantes, `retenir` et `comparer`
+- `CAL22` — Ouvrir la porte HTTP NEUTRE du moteur : `POST /calepinage/moteur/calculer/`
+- `CAL23` — Basculer le calcul long en tâche de fond via `core.jobs` (kind `calepinage`)
+- `CAL24` — Exposer « Générer le devis » depuis un calepinage
+- `CAL25` — Exposer « Resynchroniser le devis » depuis un calepinage
+- `CAL26` — Brancher le chatter sur la primitive plateforme (jamais un `*Activity` maison)
+- `CAL27` — Remplir `platform.py` (surfaces réellement câblées)
+- `CAL28` — Exposer côté ventes le calepinage d'un devis (lecture seule)
+- `CAL29` — Verrouiller l'isolation multi-société de bout en bout
+- `CAL30` — Migrer `AppelOffre.roof_layout` vers `calepinage_id` (avec reprise des données)
+- `CAL31` — Écrire la conversion de contour AO ↔ calepinage (ENU ↔ repère local métrique)
+- `CAL32` — Servir `calepinage_id` sur l'API AO et déléguer l'action `layout`
+- `CAL33` — Créer le client API `calepinageApi.js`
+- `CAL34` — Déclarer `module.config.jsx` (nav, routes, permissions)
+- `CAL35` — Construire l'écran liste `/calepinage`
+- `CAL36` — Construire l'écran `/calepinage/nouveau` (choisir un lead OU un client)
 - `CAL37` — Ajouter le mode `calepinage` à l'atelier 3D
 - `CAL38` — Poser le bouton « Générer le devis » dans le mode calepinage
+- `CAL39` — Miroir événementiel : tout enregistrement de layout côté ventes alimente le calepinage…
 - `CAL40` — Afficher sur la fiche devis le calepinage qui le pilote
 - `CAL41` — Ouvrir le calepinage depuis l'écran d'affaire AO
+- `CAL42` — Construire l'écran de comparaison de variantes
 - `CAL43` — Inscrire le module dans `docs/CODEMAP.md` (§4 backend, §5 frontend)
 - `CAL44` — Écrire la section « Calepinage » du guide utilisateur
 - `CAL46` — Geler le contrat « site & imagerie » AVANT toute moitié d'écran
@@ -2588,30 +2559,53 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 - `CAL53` — Caler la photo drone sur la carte par ses 4 coins et la draper sous le tracé
 - `CAL54` — Offrir le parcellaire cadastral comme calque optionnel France
 - `CAL55` — Porter l'altitude et le fuseau horaire du site, sourcés, jamais devinés
+- `CAL56` — Proposer des préréts de forme de toiture (2 pans, 4 pans/croupe, appentis, plat)
+- `CAL57` — Déclarer les arêtes typées : faîtage, noue, arêtier, égout, rive
 - `CAL58` — Saisir la pente en degrés, en pourcentage, par cotes ou au rapporteur sur photo
+- `CAL59` — Gérer plusieurs bâtiments dans un même calepinage
+- `CAL60` — Saisir la hauteur réelle du bâtiment au lieu de supposer deux étages
+- `CAL61` — Mêler pans plats et pans en pente dans la même scène 3D cohérente
+- `CAL62` — Importer un plan DXF/PDF en réutilisant l'analyseur de l'AO, jamais un second
 - `CAL63` — Caler le plan importé sur la carte : rotation, échelle, aimantation
 - `CAL64` — Accepter un relevé terrain mobile : photos, cotes, orientation boussole
+- `CAL66` — Donner une hauteur de première classe aux obstacles de toiture et en tirer l'ombre…
+- `CAL67` — Placer des arbres et bâtiments voisins HORS toiture avec leurs dimensions
 - `CAL68` — Porter les zones interdites / réservées / préférées dans le document de calepinage
 - `CAL69` — Tracer les zones interdites/réservées/préférées dans l'atelier
 - `CAL70` — Déclarer les allées et passages de maintenance dans l'atelier
 - `CAL71` — Rendre les dégagements d'obstacle paramétrables par la société, avec leur justification
+- `CAL72` — Porter la provenance de chaque obstacle et en tirer l'honnêteté de l'engagement
+- `CAL73` — Dupliquer un obstacle identique d'un clic sur toute la toiture
 - `CAL74` — Déclarer les servitudes et bandes coupe-feu comme zones sourcées, jamais comme norme…
+- `CAL75` — Rendre l'espacement rangée/colonne réglable en pose sur emplacements validés
 - `CAL76` — Compléter les rives de l'atelier (4ᵉ rive « joint ») et les rendre éditables
 - `CAL78` — Traduire un document `roof_layout` en entrée du moteur pur (`EntreeCalepinage`)
 - `CAL79` — Afficher le remplissage prouvé et dire honnêtement quand il ne l'est pas
+- `CAL80` — Permettre la rotation libre d'un panneau ou d'une sélection
+- `CAL81` — Aimanter et aligner : arêtes de toit, faîtage, autres panneaux, distribution régulière
 - `CAL82` — Enregistrer et réappliquer des gabarits de disposition
 - `CAL83` — Choisir la priorité de remplissage d'une zone
+- `CAL84` — Afficher les statistiques par pan et par zone, pas seulement le total
+- `CAL86` — Afficher le pas inter-rangées déjà calculé et nommer la famille de pose « bac lesté »
+- `CAL87` — Rendre la pose est-ouest dos à dos paramétrable au lieu d'une variante figée
 - `CAL88` — Ouvrir le moteur aux centrales au sol : tables, pas inter-rangées, taux d'occupation
 - `CAL89` — Dessiner une centrale au sol dans l'atelier
 - `CAL91` — Traiter l'ombrière / carport comme une surface de pose à part entière
 - `CAL92` — Récupérer et servir le profil d'horizon PVGIS du site
 - `CAL93` — Afficher l'horizon lointain et l'appliquer à la production
+- `CAL94` — Calculer l'ombrage proche par lancer de rayons depuis TOUS les obstacles à hauteur
+- `CAL95` — Étendre la carte de chaleur d'ombre par module : toutes les obstructions, et par mois
 - `CAL96` — Tracer la course du soleil par pan
+- `CAL97` — Chiffrer et publier l'accès solaire (TSRF) par module et par pan
 - `CAL98` — Faire remonter l'ombrage au niveau de la chaîne électrique
+- `CAL99` — Mesurer l'ombrage inter-rangées réel de la pose lestée dans la scène 3D
+- `CAL100` — Étendre annuler/rétablir à TOUT l'atelier, pas au seul panneau de disposition
 - `CAL101` — Donner des raccourcis clavier et leur aide-mémoire
+- `CAL102` — Ajouter un outil de mesure de distances et de surfaces
 - `CAL103` — Organiser l'affichage en calques explicites
 - `CAL104` — Offrir une vue 2D plan orthographique et un mode plein écran
 - `CAL106` — Tenir la charge des grands champs sans figer l'écran
+- `CAL107` — Rendre l'atelier réellement utilisable au doigt sur tablette
 - `CAL110` — Reprendre le tracé public « mon-toit » dans un calepinage, à la création du lead
 - `CAL120` — CONTRAT D'ABORD : `contract_samples/calepinage_equipements.json`
 - `CAL121` — Panneau « fiches incomplètes » dans le module de calepinage
@@ -2671,6 +2665,7 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 - `CAL184` — Case « Calepinage » dans le dialogue PDF de la liste des devis
 - `CAL185` — Reprendre la nomenclature du calepinage retenu en lignes de devis, depuis le catalogue…
 - `CAL188` — Badge « calepinage périmé » dans l'ERP (parité du bandeau client PVUNI)
+- `CAL189` — Servir `layout_stale` du calepinage dans l'API ERP
 - `CAL190` — Modèle de gabarit de dossier réglementaire (aucune pièce inventée)
 - `CAL191` — Pré-remplissage d'un dossier depuis le calepinage, champs vides marqués « à compléter »
 - `CAL192` — Dossier de raccordement autoproduction (Maroc) — pack de pièces
@@ -2687,20 +2682,33 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 - `CAL206` — Feu vert bureau d'études réutilisant VT3
 - `CAL207` — Verrouiller le calepinage après envoi du devis
 - `CAL208` — Archiver un calepinage, de façon réversible, par la corbeille plateforme
+- `CAL209` — Le chantier lit le calepinage retenu via selectors (et rien de plus)
+- `CAL210` — Tracer la réservation de stock jusqu'au calepinage qui l'a dimensionnée
 - `CAL211` — Plan de pose pour l'équipe terrain
 - `CAL212` — As-built : saisir le posé réel et calculer l'écart
+- `CAL213` — Écran chantier : bloc « Calepinage retenu » (lecture seule)
+- `CAL214` — Ressource publique `calepinages` en lecture seule
+- `CAL215` — Événement + webhook « calepinage validé »
 - `CAL216` — Import/export JSON du `roof_layout`
+- `CAL218` — Un selector d'indicateurs calepinage pour le reporting existant (aucun tableau de bord…
 - `CAL221` — Spec e2e du parcours autonome
 - `CAL222` — Spec e2e de parité CRM (le geste existant ne bouge pas)
 - `CAL223` — Tests de contrat sur toutes les sorties
 - `CAL224` — Budget de performance du module (chunk et rendus)
+- `CAL231` — `GET /calepinages/<pk>/design-context/` : le jumeau neutre du contexte de conception du…
 - `CAL234` — Affecter les chaînes À LA MAIN dans l'atelier, avec le verdict en direct
+- `CAL235` — Proposer de retirer les modules les plus ombragés, et chiffrer le gain
 - `CAL236` — Panneau « Production » du module : kWh, PR, kWh/kWc, P50/P90, par pan et au total
 - `CAL237` — France seulement : suggérer pente et azimut par pan depuis le LiDAR HD / RGE ALTI de…
 - `CAL238` — Politique de pertes PVGIS : `loss` est une ENTRÉE d'appel, jamais un 14 % caché
+- `CAL239` — Écrire la règle de préséance entre le calepinage 3D et la variante AO 2D opposable
 - `CAL240` — Importer un contour AO dans un calepinage (endpoint + garde)
+- `CAL241` — Reprendre un contour 3D dans la toiture AO (endpoint côté `apps/ao`)
+- `CAL242` — Les deux boutons d'import de contour, sur les deux écrans
 - `CAL243` — Servir `GET /calepinages/<pk>/equipements/` conforme au contrat CAL120
+- `CAL245` — Exposer le bloc « calepinage retenu » sur le détail chantier (endpoint)
 - `CAL246` — Exposer la bibliothèque (presets, kits, modèles, favoris) en lecture/écriture
+- `CAL248` — Persister l'accès solaire par module dans le document, pour que le backend puisse le…
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
 - `CRXB1` — [GATED: mot fondateur « lance CRXB »] Contrat d'abord (PACT10)
 - `CRXB2` — [GATED] Scission models.py [VAGUE EXCLUSIVE]

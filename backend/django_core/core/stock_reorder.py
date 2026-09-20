@@ -34,6 +34,8 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Iterable, Optional
 
+from .score_params import NOM_REAPPRO, resoudre
+
 # Fenêtre de réapprovisionnement par défaut (jours) ajoutée au délai
 # fournisseur quand on calcule la quantité suggérée : on couvre le délai PLUS un
 # cycle de commande, pour ne pas recommander à chaque mouvement.
@@ -43,6 +45,13 @@ DEFAULT_REVIEW_PERIOD_DAYS = 30.0
 # consommation moyenne journalière (les très vieux mouvements ne reflètent plus
 # la demande courante). 0 ou négatif = pas de filtre.
 DEFAULT_LOOKBACK_DAYS = 90
+
+
+# NTAI27 — hyperparamètres VERSIONNABLES par société (liste blanche).
+DEFAUTS_PARAMS = {
+    'DEFAULT_REVIEW_PERIOD_DAYS': DEFAULT_REVIEW_PERIOD_DAYS,
+    'DEFAULT_LOOKBACK_DAYS': DEFAULT_LOOKBACK_DAYS,
+}
 
 
 @dataclass
@@ -159,8 +168,9 @@ def predict_reorder(
     movements: Optional[Iterable] = None,
     lead_time_days=0,
     safety_stock=0,
-    review_period_days: float = DEFAULT_REVIEW_PERIOD_DAYS,
-    lookback_days: int = DEFAULT_LOOKBACK_DAYS,
+    review_period_days: Optional[float] = None,
+    lookback_days: Optional[int] = None,
+    company=None,
 ) -> ReorderResult:
     """Prévoit la rupture de stock et suggère un réappro pour un produit.
 
@@ -191,8 +201,21 @@ def predict_reorder(
     (``rupture_date = None``), aucune suggestion de réappro et
     ``reorder_now = False`` ; ``used_fallback`` vaut alors ``True``.
 
-    Pur, déterministe, sans base de données ni réseau.
+    NTAI27 — ``company`` (optionnel) fait lire ``review_period_days`` et
+    ``lookback_days`` dans la version d'hyperparamètres ACTIVE de cette
+    société, avec repli sur les défauts du code. Un argument passé
+    EXPLICITEMENT l'emporte toujours : c'est le choix délibéré de l'appelant,
+    pas une configuration à écraser. Sans ``company`` ni argument, les défauts
+    du code s'appliquent — résultat identique à celui d'avant NTAI27, et la
+    fonction reste PURE.
     """
+    if review_period_days is None or lookback_days is None:
+        params = resoudre(company, NOM_REAPPRO, DEFAUTS_PARAMS)
+        if review_period_days is None:
+            review_period_days = params['DEFAULT_REVIEW_PERIOD_DAYS']
+        if lookback_days is None:
+            lookback_days = params['DEFAULT_LOOKBACK_DAYS']
+
     on_hand = _coerce_float(current_stock, 0.0) or 0.0
     lead_time = _coerce_float(lead_time_days, 0.0) or 0.0
     if lead_time < 0:

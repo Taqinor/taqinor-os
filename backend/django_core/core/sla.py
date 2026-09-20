@@ -16,6 +16,7 @@ inventé — quand aucune mesure n'est disponible pour la période).
 from __future__ import annotations
 
 import calendar
+import logging
 from datetime import datetime, timedelta
 
 from django.apps import apps as django_apps
@@ -28,11 +29,13 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import (
-    BasePermission, IsAuthenticated,
+    SAFE_METHODS, BasePermission, IsAuthenticated,
 )
 from rest_framework.response import Response
 
 from .models import TenantModel
+
+logger = logging.getLogger(__name__)
 
 # Pondération de la sévérité d'un incident dans le calcul de disponibilité —
 # méthodologie DOCUMENTÉE et dérivée d'horodatages réels (jamais un chiffre
@@ -78,6 +81,20 @@ class SlaSnapshot(TenantModel):
     credit_statut = models.CharField(
         'Statut du crédit', max_length=15, choices=CreditStatut.choices,
         default=CreditStatut.NON_APPLICABLE)
+    # NTOBS25 — TRAÇABILITÉ D'UN RECALCUL. Un rapport SLA déjà publié peut
+    # devoir être refait (une sonde qui remontait faux, une fenêtre de
+    # maintenance requalifiée après coup). Sans ces deux champs, le client voit
+    # un chiffre changer sans explication ; avec eux, l'écran peut dire QUAND et
+    # POURQUOI. ``genere_le`` garde la date de la PREMIÈRE génération : c'est
+    # ``recalcule_le`` qui bouge, jamais lui.
+    # Vides = snapshot jamais recalculé (cas de tous les rapports existants).
+    recalcule_le = models.DateTimeField(
+        'Recalculé le', null=True, blank=True,
+        help_text='Vide = jamais recalculé depuis sa génération.')
+    raison_recalcul = models.CharField(
+        'Raison du recalcul', max_length=255, blank=True, default='',
+        help_text='Motif lisible du recalcul, affiché à côté du chiffre '
+                  'corrigé (jamais un recalcul silencieux).')
 
     class Meta:
         verbose_name = 'Rapport SLA mensuel'
@@ -333,15 +350,113 @@ def generer_sla_mensuel(periode=None):
     ]
 
 
+# ── NTOBS25 — recalcul de rattrapage si un incident est déclaré tardivement ─
+#
+# Si le fondateur crée/modifie un ``IncidentPublic`` (NTOBS1) dont la période
+# chevauche un ``SlaSnapshot`` déjà généré, ce dernier devient PÉRIMÉ (l'uptime
+# calculé ne reflète plus l'incident tardif). ``generer_snapshot_societe``
+# sait déjà régénérer un snapshot existant SANS écraser une décision humaine
+# déjà prise sur le crédit (``emis``/``refuse``) — ce module ne fait que
+# DÉTECTER quels snapshots sont périmés et les régénérer.
+#
+# LIMITE ASSUMÉE DE CE LOT (lane isolée ``core/{sla.py,tasks.py}`` — le
+# schéma ``core/models.py``/``core/migrations`` appartient à une autre lane en
+# ce moment) : le plan nommait deux nouveaux champs de traçabilité
+# (``SlaSnapshot.recalcule_le``, ``SlaSnapshot.raison_recalcul``), non posés
+# ici — le recalcul est journalisé via le logger applicatif (voir
+# ``logger.info`` ci-dessous) plutôt que persistés en base. Migration exacte
+# à poser par l'orchestrateur :
+#
+#     recalcule_le = models.DateTimeField(null=True, blank=True)
+#     raison_recalcul = models.CharField(max_length=255, blank=True, default='')
+
+def _snapshots_perimes_par_incident_tardif(company):
+    """``SlaSnapshot`` de ``company`` dont ``genere_le`` précède la dernière
+    modification (``updated_at``) d'un ``IncidentPublic`` touchant sa
+    période — système (``company=None``) ou propre à elle."""
+    try:
+        incident_model = django_apps.get_model('statuspage', 'IncidentPublic')
+    except LookupError:
+        return []
+
+    perimes = []
+    for snapshot in SlaSnapshot.objects.filter(company=company):
+        debut, fin = _mois_bounds(snapshot.periode)
+        touche_tardivement = incident_model.objects.filter(
+            Q(company__isnull=True) | Q(company=company),
+            debute_le__lt=fin,
+        ).filter(
+            Q(resolu_le__gte=debut) | Q(resolu_le__isnull=True),
+        ).filter(updated_at__gt=snapshot.genere_le).exists()
+        if touche_tardivement:
+            perimes.append(snapshot)
+    return perimes
+
+
+def _notifier_recalcul_credit(company, snapshot, ancien_montant):
+    """Notifie le Directeur qu'un recalcul a fait bouger le crédit SLA dû.
+
+    ``'sla_credit_recalcule'`` (string littéral, jamais un import
+    ``apps.notifications`` — contrat import-linter
+    ``core-foundation-is-a-base-layer``) reflète un ``EventType.
+    SLA_CREDIT_RECALCULE`` PAS ENCORE catalogué (migration ``apps.
+    notifications`` hors périmètre de cette lane) : le stockage fonctionne
+    (``Notification.event_type`` n'est pas contraint en base par les
+    ``choices`` Django), seul l'affichage libellé attend cette migration
+    future."""
+    from . import notify_registry
+    from .maintenance_windows import admins_cibles
+
+    titre = f'Crédit SLA recalculé — {snapshot.periode:%B %Y}'
+    body = (
+        f'Ancien montant : {ancien_montant}. '
+        f'Nouveau montant : {snapshot.credit_du_montant}.')
+    for admin in admins_cibles(company):
+        notify_registry.notify(
+            admin, 'sla_credit_recalcule', titre, body=body, company=company)
+
+
+def recalculer_sla_perimes():
+    """NTOBS25 — job beat quotidien : régénère chaque ``SlaSnapshot`` périmé
+    par un incident déclaré/modifié tardivement, notifie le Directeur si le
+    crédit dû change de montant. Renvoie la liste des snapshots régénérés."""
+    from authentication.models import Company
+
+    regeneres = []
+    for company in Company.objects.filter(actif=True):
+        for snapshot in _snapshots_perimes_par_incident_tardif(company):
+            ancien_montant = snapshot.credit_du_montant
+            nouveau = generer_snapshot_societe(company, snapshot.periode)
+            regeneres.append(nouveau)
+            logger.info(
+                'core.recalculer_sla_perimes: société=%s périodeMoi=%s '
+                'ancien_credit=%s nouveau_credit=%s',
+                company.id, snapshot.periode, ancien_montant,
+                nouveau.credit_du_montant)
+            if nouveau.credit_du_montant != ancien_montant:
+                _notifier_recalcul_credit(company, nouveau, ancien_montant)
+    return regeneres
+
+
 # ── API ──────────────────────────────────────────────────────────────────
 
 class SlaSnapshotSerializer(serializers.ModelSerializer):
+    # NTOBS23 — ``genere_le`` dans le fuseau d'affichage DE LA SOCIÉTÉ DU
+    # SNAPSHOT (``SlaSnapshot.company`` est toujours renseignée, contrairement
+    # à une fenêtre de maintenance système-wide).
+    genere_le_local = serializers.SerializerMethodField()
+
     class Meta:
         model = SlaSnapshot
         fields = [
             'id', 'periode', 'uptime_pct', 'latence_p95_ms', 'genere_le',
             'credit_du_pct', 'credit_du_montant', 'credit_statut',
+            'genere_le_local',
         ]
+
+    def get_genere_le_local(self, obj) -> str:
+        from .tz_display import to_company_tz
+        return to_company_tz(obj.genere_le, obj.company).isoformat()
 
 
 class SlaCreditDuSerializer(serializers.ModelSerializer):
@@ -419,37 +534,55 @@ def sla_export_pdf(request, periode):
     return response
 
 
-class IsDirecteurOrAdmin(BasePermission):
-    """NTOBS4 — action réservée Directeur/Administrateur (même patron local
-    que ``apps.credit.views.IsDirecteurOrAdmin`` / ``apps.statuspage.views``,
-    dupliqué exprès : jamais un import cross-app d'une classe de permission)."""
+def _est_admin(user):
+    if getattr(user, 'is_superuser', False) or getattr(user, 'is_admin_role', False):
+        return True
+    role = getattr(user, 'role', None)
+    return bool(role and role.nom in ('Directeur', 'Administrateur'))
+
+
+class FiabilitePermission(BasePermission):
+    """NTOBS22 — lecture (``fiabilite_voir``) vs administration
+    (``fiabilite_administration``) sur les écrans SLA, au lieu d'un garde
+    ``IsDirecteurOrAdmin`` codé en dur. Un GET est accordé à l'un OU l'autre
+    code ; toute autre méthode exige ``fiabilite_administration``. Le repli
+    Directeur/Administrateur (``_est_admin``) est conservé À L'IDENTIQUE :
+    ce palier ne perd JAMAIS son accès actuel."""
 
     def has_permission(self, request, view):
         u = request.user
         if not (u and u.is_authenticated):
             return False
-        if getattr(u, 'is_superuser', False) or getattr(u, 'is_admin_role', False):
+        if _est_admin(u):
             return True
-        role = getattr(u, 'role', None)
-        return bool(role and role.nom in ('Directeur', 'Administrateur'))
+        if request.method in SAFE_METHODS:
+            return (
+                u.has_erp_permission('fiabilite_voir')
+                or u.has_erp_permission('fiabilite_administration'))
+        return u.has_erp_permission('fiabilite_administration')
 
 
 class SlaCreditsDusListView(generics.ListAPIView):
-    """GET /api/django/core/sla/credits/ — crédits SLA dus, TOUTES sociétés
-    (Directeur/Administrateur uniquement — vue de pilotage cross-tenant,
-    jamais accessible à un compte société-scopé normal)."""
+    """GET /api/django/core/sla/credits/ — Directeur/Administrateur : crédits
+    SLA dus TOUTES sociétés (pilotage cross-tenant, inchangé — NTOBS22). Un
+    compte ``fiabilite_voir`` non-admin reste BORNÉ à SA société : une
+    permission de lecture pensée pour consulter SES PROPRES données
+    Fiabilité n'élargit jamais l'accès à une vue cross-tenant."""
 
     serializer_class = SlaCreditDuSerializer
-    permission_classes = [IsAuthenticated, IsDirecteurOrAdmin]
+    permission_classes = [IsAuthenticated, FiabilitePermission]
     pagination_class = None
 
     def get_queryset(self):
-        return (
+        qs = (
             SlaSnapshot.objects
             .exclude(credit_statut=SlaSnapshot.CreditStatut.NON_APPLICABLE)
             .select_related('company')
             .order_by('-periode')
         )
+        if not _est_admin(self.request.user):
+            qs = qs.filter(company=self.request.user.company)
+        return qs
 
 
 @extend_schema(
@@ -458,12 +591,19 @@ class SlaCreditsDusListView(generics.ListAPIView):
     }),
     responses=SlaSnapshotSerializer)
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, IsDirecteurOrAdmin])
+@permission_classes([IsAuthenticated, FiabilitePermission])
 def sla_credit_statut(request, pk):
     """POST /api/django/core/sla/credits/<pk>/statut/ — trace la décision
     humaine sur un crédit (``emis``/``refuse``). N'ÉMET JAMAIS d'avoir : cette
     action enregistre seulement qu'un humain l'a fait (ou refusé) via le flux
-    Avoir existant, ailleurs."""
+    Avoir existant, ailleurs.
+
+    Bornée à LA SOCIÉTÉ de l'appelant, SANS exception admin : un crédit SLA
+    est par-tenant, et personne — même Directeur — n'édite légitimement celui
+    d'un autre tenant (contrairement à ``SlaCreditsDusListView`` ci-dessus,
+    une LECTURE de pilotage cross-tenant, inchangée). Un pk d'une autre
+    société est 404 (introuvable), jamais un 403 qui révélerait son
+    existence."""
     nouveau_statut = request.data.get('statut')
     valides = (SlaSnapshot.CreditStatut.EMIS, SlaSnapshot.CreditStatut.REFUSE)
     if nouveau_statut not in valides:
@@ -472,10 +612,32 @@ def sla_credit_statut(request, pk):
             status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        snapshot = SlaSnapshot.objects.get(pk=pk)
+        snapshot = SlaSnapshot.objects.get(
+            pk=pk, company=request.user.company)
     except SlaSnapshot.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND)
 
+    ancien_statut = snapshot.credit_statut
     snapshot.credit_statut = nouveau_statut
     snapshot.save(update_fields=['credit_statut', 'updated_at'])
+    _emettre_sla_credit_statut_change(
+        snapshot, ancien_statut, nouveau_statut, request.user)
     return Response(SlaSnapshotSerializer(snapshot).data)
+
+
+def _emettre_sla_credit_statut_change(snapshot, ancien_statut, nouveau_statut,
+                                      user):
+    """NTOBS30-reste — émission best-effort de ``core.events.
+    sla_credit_statut_change`` (audit trail interne, ``apps.audit``) ; ne
+    doit JAMAIS empêcher l'enregistrement de la décision elle-même."""
+    try:
+        from .events import sla_credit_statut_change
+        sla_credit_statut_change.send(
+            sender=SlaSnapshot, snapshot=snapshot, company=snapshot.company,
+            ancien_statut=ancien_statut, nouveau_statut=nouveau_statut,
+            user=user)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTOBS30-reste : émission sla_credit_statut_change échouée '
+            '(snapshot %s)', getattr(snapshot, 'pk', '?'), exc_info=True)

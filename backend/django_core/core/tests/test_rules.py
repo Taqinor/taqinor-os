@@ -15,6 +15,7 @@ from core.rules import (
     ActionOutcome,
     evaluate_condition_group,
     iter_actions,
+    palier_franchi,
     sequential_actions,
     validate_condition_group,
 )
@@ -293,3 +294,38 @@ class SequentialActionsTests(SimpleTestCase):
         self.assertIsNone(run.stopped_at)
         # ok reflète qu'une étape a échoué même si on n'a pas stoppé.
         self.assertFalse(run.outcomes[1].ok)
+
+
+class PalierFranchiTests(SimpleTestCase):
+    """NTAPI41 — franchissement de palier générique (quota, taux d'erreur...).
+
+    Motif : une notification par palier franchi, jamais deux fois, ré-armé
+    en redescendant sous le plus bas palier."""
+
+    def test_sous_le_plus_bas_palier_ne_notifie_rien(self):
+        self.assertIsNone(palier_franchi(50, (80, 100)))
+
+    def test_atteint_le_premier_palier(self):
+        self.assertEqual(palier_franchi(80, (80, 100)), 80)
+
+    def test_saut_direct_ne_notifie_que_le_plus_haut(self):
+        # 0% -> 150% d'un coup : une SEULE notification, celle du palier
+        # le plus haut (100), jamais deux notifications empilées.
+        self.assertEqual(palier_franchi(150, (80, 100)), 100)
+
+    def test_palier_deja_notifie_ne_renotifie_pas(self):
+        self.assertIsNone(palier_franchi(85, (80, 100), dernier_palier=80))
+
+    def test_palier_superieur_franchi_notifie_a_nouveau(self):
+        self.assertEqual(
+            palier_franchi(100, (80, 100), dernier_palier=80), 100)
+
+    def test_valeur_absente_ne_notifie_rien(self):
+        self.assertIsNone(palier_franchi(None, (80, 100)))
+
+    def test_aucun_palier_configure_ne_notifie_rien(self):
+        self.assertIsNone(palier_franchi(999, ()))
+
+    def test_seuil_simple_taux_erreur(self):
+        self.assertIsNone(palier_franchi(5, (10,)))
+        self.assertEqual(palier_franchi(12, (10,)), 10)

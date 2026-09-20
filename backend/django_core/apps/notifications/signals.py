@@ -605,6 +605,31 @@ def contrat_signe_receiver(sender, contrat, user, company, **kwargs):
             'notify CONTRAT_SIGNE failed (contrat %s)', getattr(contrat, 'pk', '?'))
 
 
+# ── Dossier transverse en retard → DOSSIER_ECHEANCE_DEPASSEE (NTWFL18) ─────
+# S'abonne à ``core.events.dossier_echeance_depassee`` (émis par le balayage
+# quotidien ``core.dossiers.notifier_echeances_depassees``, dédupliqué à la
+# source par ``Dossier.dernier_rappel_echeance_le`` — un re-run le même jour
+# ne réémet rien). Notifie le PROPRIÉTAIRE du dossier ; un dossier sans
+# propriétaire désigné n'a personne à notifier (pas de repli manager, le
+# signal documente ``proprietaire`` comme pouvant être ``None``).
+def dossier_echeance_depassee_receiver(
+        sender, dossier, company, proprietaire, **kwargs):
+    if proprietaire is None:
+        return
+    try:
+        notify(
+            proprietaire, EventType.DOSSIER_ECHEANCE_DEPASSEE,
+            'Dossier en retard',
+            body=(f'Le dossier « {dossier.titre} » a dépassé son échéance '
+                  f'du {dossier.echeance:%d/%m/%Y}.'),
+            company=company,
+        )
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.exception(
+            'notify DOSSIER_ECHEANCE_DEPASSEE failed (dossier %s)',
+            getattr(dossier, 'pk', '?'))
+
+
 def connect():
     """Branche les récepteurs. Appelé depuis ``AppConfig.ready()``."""
     from apps.automation.models import AutomationApproval
@@ -615,9 +640,9 @@ def connect():
     from apps.sav.models import Ticket
     from apps.ventes.models import Devis
     from core.events import (
-        bon_commande_cree, contrat_signe, devis_expired, equipement_remplace,
-        facture_payee, projet_status_change, ticket_resolu,
-        workflow_etape_activee,
+        bon_commande_cree, contrat_signe, devis_expired,
+        dossier_echeance_depassee, equipement_remplace, facture_payee,
+        projet_status_change, ticket_resolu, workflow_etape_activee,
     )
 
     pre_save.connect(lead_pre_save, sender=Lead,
@@ -641,6 +666,10 @@ def connect():
         dispatch_uid='notifications_workflow_etape_activee')
     contrat_signe.connect(contrat_signe_receiver,
                           dispatch_uid='notifications_contrat_signe')
+    # NTWFL18 — dossier transverse en retard (core.dossiers, balayage beat).
+    dossier_echeance_depassee.connect(
+        dossier_echeance_depassee_receiver,
+        dispatch_uid='notifications_dossier_echeance_depassee')
     ticket_resolu.connect(ticket_resolu_receiver,
                           dispatch_uid='notifications_ticket_resolu')
     equipement_remplace.connect(

@@ -55,6 +55,22 @@ function heureDueAt(dueAt) {
   }).format(t)
 }
 
+// RLC1 — fenêtre d'annulation d'une touche traitée, la MÊME que le serveur
+// (`crm.services.ANNULATION_TOUCHE_HEURES`). L'écran ne fait que CACHER un
+// bouton hors fenêtre ; c'est le serveur qui refuse, avec son motif.
+const ANNULATION_HEURES = 24
+
+/** RLC1 — cette touche porte-t-elle « Annuler » ? Traitée par quelqu'un
+ *  (fait/sautée — jamais une annulation MOTEUR, qui n'est le geste de
+ *  personne) et depuis moins de 24 h. Sans `traite_le` (lignes d'avant MRY30),
+ *  pas de bouton : on n'invente pas une date de traitement. */
+function annulable(etape) {
+  if (etape.statut !== 'fait' && etape.statut !== 'sautee') return false
+  const t = etape.traite_le ? new Date(etape.traite_le).getTime() : NaN
+  if (Number.isNaN(t)) return false
+  return Date.now() - t < ANNULATION_HEURES * 3600 * 1000
+}
+
 /**
  * @param {number|string|null} leadId
  * @param {number} [reloadToken]  Incrémenté par le parent (Relancer/Arrêter
@@ -83,6 +99,10 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
   // que `RelancesDuJourWidget.jsx`/`RelancesSuiviPage.jsx`).
   const [busyId, setBusyId] = useState(null)
   const [messageEtape, setMessageEtape] = useState(null)
+  // RLC1 — refus SERVEUR de l'annulation, par touche : affiché SOUS la ligne
+  // concernée (règle fondateur « le champ fautif, le message exact »), jamais
+  // un toast générique qui masquerait le motif du refus.
+  const [erreurAnnulation, setErreurAnnulation] = useState({})
 
   useEffect(() => {
     if (!leadId) return undefined
@@ -131,6 +151,27 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
       if (!champOutcome) toastError('Action impossible pour le moment.')
       if (action === 'fait') throw err
       return undefined
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // RLC1 — le retour arrière d'une touche traitée par erreur. Le serveur
+  // tranche seul (fenêtre 24 h, effets encore défaisables) : ici on relaie son
+  // motif de refus sous la ligne, et on recharge la frise + la fiche en cas de
+  // succès (l'annulation peut rouvrir des touches et ramener l'étape du lead).
+  const annuler = async (id) => {
+    setBusyId(id)
+    try {
+      await crmApi.annulerRelanceEtape(id)
+      setErreurAnnulation((etat) => ({ ...etat, [id]: '' }))
+      onChanged?.()
+    } catch (err) {
+      const erreurs = err?.response?.status === 400
+        ? err?.response?.data?.erreurs : null
+      const motif = erreurs ? Object.values(erreurs)[0] : null
+      if (motif) setErreurAnnulation((etat) => ({ ...etat, [id]: motif }))
+      else toastError('Annulation impossible pour le moment.')
     } finally {
       setBusyId(null)
     }
@@ -186,8 +227,15 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
   // les entrées PASSÉES (touches faites/sautées, visites terminées/validées)
   // sont repliées par défaut : la frise montre ce qui RESTE à faire/venir,
   // l'historique s'ouvre à la demande.
-  const passees = items.filter((it) => it.passee)
-  const visibles = montrerPassees ? items : items.filter((it) => !it.passee)
+  // RLC1 — une touche traitée depuis moins de 24 h reste VISIBLE même quand
+  // l'historique est replié : c'est précisément celle qu'on vient de cocher par
+  // erreur, et son « Annuler » ne servirait à rien caché derrière un clic. Le
+  // compteur du dépliant ne compte donc que ce qui est réellement masqué.
+  const annulableItem = (it) => it.kind === 'etape' && annulable(it.data)
+  const passees = items.filter((it) => it.passee && !annulableItem(it))
+  const visibles = montrerPassees
+    ? items
+    : items.filter((it) => !it.passee || annulableItem(it))
 
   return (
     <>
@@ -276,7 +324,29 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
                 )}
                 {etape.statut === 'annulee' && <span>Annulée (moteur)</span>}
                 {etape.note && <span className="text-muted-foreground">— {etape.note}</span>}
+                {/* RLC1 — le retour arrière : une touche traitée par erreur se
+                    défait pendant 24 h, ICI, sur la frise. Jamais sur une
+                    annulation MOTEUR (ce n'est le geste de personne). */}
+                {annulable(etape) && (
+                  <button
+                    type="button"
+                    className="text-xs underline underline-offset-2"
+                    data-testid="frise-annuler"
+                    disabled={busyId === etape.id}
+                    onClick={() => annuler(etape.id)}
+                  >
+                    Annuler
+                  </button>
+                )}
               </li>
+              {erreurAnnulation[etape.id] && (
+                <li
+                  className="text-xs text-danger" role="alert"
+                  data-testid="frise-annuler-erreur"
+                >
+                  {erreurAnnulation[etape.id]}
+                </li>
+              )}
               {/* MRY32 — Appeler/WhatsApp/Fait/Sauter/Reporter directement
                   depuis la fiche, sans quitter la frise. Mode compact : pas
                   de nom de lead ni de badges de score/priorité (déjà sous les

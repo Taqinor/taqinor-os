@@ -23,6 +23,7 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .. import selectors
 from ..models import DocumentFournisseur, DossierOnboardingFournisseur
+from ..permissions import PeutValiderDossierFournisseur
 
 
 class DocumentFournisseurSerializer(serializers.ModelSerializer):
@@ -83,6 +84,13 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
     serializer_class = DossierOnboardingFournisseurSerializer
 
     def get_permissions(self):
+        # NTP2P36 — `valider-dossier` exige EN PLUS le code fin
+        # `valider_dossier_fournisseur` (ce viewset a son propre
+        # `get_permissions` branché sur `self.action` : un `permission_classes=`
+        # posé sur le décorateur `@action` serait écrasé par ce branchement,
+        # d'où la garde DEDANS plutôt que sur `@action`).
+        if self.action == 'valider_dossier':
+            return [IsResponsableOrAdmin(), PeutValiderDossierFournisseur()]
         if self.action in ('list', 'retrieve'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]

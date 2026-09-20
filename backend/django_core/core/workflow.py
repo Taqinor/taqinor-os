@@ -92,6 +92,17 @@ __all__ = [
     'etapes_a_mi_sla',
     'marquer_rappel_envoye',
     'valider_definition_steps',
+    'cohorte_approbation',
+    'approuver_en_masse',
+    'register_source_conformite',
+    'decisions_conformite',
+    # NTWFL25 — versionnement des définitions.
+    'derniere_version_active',
+    'instances_actives',
+    'a_des_instances_actives',
+    'forker_definition',
+    'editer_etapes_definition',
+    'migrer_instance_vers_version',
 ]
 
 
@@ -158,6 +169,9 @@ def demarrer_workflow(definition, target, company, user=None, now=None):
     instance = WorkflowInstance.objects.create(
         company=company,
         definition=definition,
+        # NTWFL25 — épinglage : l'instance retient la version sur laquelle
+        # elle démarre, et n'en bouge plus (sauf migration MANUELLE).
+        definition_version=getattr(definition, 'version', 1) or 1,
         content_type=ct,
         object_id=target.pk,
         statut=WorkflowInstance.STATUT_EN_COURS,
@@ -663,6 +677,130 @@ def decide_step(
         step=step)
 
 
+# ── NTWFL16 — approbation groupée « identique » depuis l'inbox XKB1 ──────────
+#
+# L'inbox laisse cocher PLUSIEURS lignes. Une approbation groupée n'est
+# légitime que si les lignes cochées sont réellement INTERCHANGEABLES : même
+# type d'objet (``WorkflowInstance.content_type``) ET même palier
+# (``WorkflowStepInstance.ordre``). Sinon un seul clic décide des choses de
+# natures différentes — exactement ce que la traçabilité doit interdire.
+#
+# TRAÇABILITÉ : chaque ligne retenue est décidée SÉPARÉMENT via
+# ``decide_step`` — N décisions journalisées (une ``WorkflowStepInstance``
+# avec son ``assignee``/``decided_le``/``commentaire`` par item), JAMAIS une
+# seule écriture globale pour N objets. Le commentaire unique saisi par
+# l'approbateur est recopié sur chacune.
+
+
+def cohorte_approbation(step):
+    """Clé d'interchangeabilité d'une étape : (type d'objet, palier).
+
+    Deux étapes ne sont approuvables en un seul geste que si cette clé est
+    IDENTIQUE — même ``content_type`` de cible et même ``ordre`` d'étape
+    (le palier de la chaîne). Lecture pure, aucune écriture."""
+    return (step.instance.content_type_id, step.ordre)
+
+
+def _signature_formulaire(step):
+    """Signature comparable du formulaire d'une étape (NTWFL16).
+
+    ``(formulaire_id, réponses canoniques)`` — ``(None, '{}')`` pour une
+    étape sans formulaire rattaché. Sert à n'accepter dans un même geste que
+    des lignes « sans formulaire requis » OU « avec formulaire identique
+    pré-rempli »."""
+    try:
+        donnees = json.dumps(
+            step.donnees_formulaire or {}, sort_keys=True, default=str)
+    except (TypeError, ValueError):  # pragma: no cover - défensif
+        donnees = repr(step.donnees_formulaire)
+    return (step.step_def.formulaire_id, donnees)
+
+
+@transaction.atomic
+def approuver_en_masse(steps, *, user=None, commentaire='', now=None):
+    """NTWFL16 — approuve d'un seul geste N étapes INTERCHANGEABLES.
+
+    ``steps`` est un itérable de ``WorkflowStepInstance`` DÉJÀ bornées à la
+    société de l'appelant (la vue les résout via
+    ``pending_steps_for_company``) ; ``commentaire`` est le commentaire UNIQUE
+    saisi pour le lot ; ``now`` est passé explicitement (déterminisme).
+
+    Retourne ``{'cohorte': (content_type_id, ordre), 'decisions': [étapes
+    décidées], 'exclusions': [{'step_id', 'motif'}]}`` — une ligne écartée
+    porte TOUJOURS un motif explicite en français, jamais un silence.
+
+    Sont écartées : une étape qui n'est plus en attente, une étape dont le
+    processus n'est plus en cours, une étape dont un formulaire requis
+    (NTWFL12) n'est pas complété, et une étape dont le formulaire diverge de
+    celui des autres lignes retenues.
+
+    Lève ``ValueError`` si la sélection est vide ou mélange plusieurs
+    cohortes (types d'objet ou paliers différents) — aucune approbation
+    « à peu près identique » n'est acceptée."""
+    moment = _resolve_now(now)
+    selection = list(steps)
+    if not selection:
+        raise ValueError("Aucune étape sélectionnée.")
+
+    cohortes = {cohorte_approbation(s) for s in selection}
+    if len(cohortes) > 1:
+        raise ValueError(
+            "L'approbation groupée exige le MÊME type d'objet et le MÊME "
+            f"palier pour toutes les lignes : {len(cohortes)} combinaisons "
+            "distinctes ont été sélectionnées.")
+    cohorte = next(iter(cohortes))
+
+    exclusions = []
+    candidats = []
+    for step in selection:
+        if step.statut != WorkflowStepInstance.STATUT_EN_ATTENTE:
+            exclusions.append({
+                'step_id': step.pk,
+                'motif': "Cette étape n'est plus en attente de décision.",
+            })
+            continue
+        if step.instance.statut != WorkflowInstance.STATUT_EN_COURS:
+            exclusions.append({
+                'step_id': step.pk,
+                'motif': "Le processus de cet élément n'est plus en cours.",
+            })
+            continue
+        if _formulaire_incomplet(step):
+            exclusions.append({
+                'step_id': step.pk,
+                'motif': (
+                    "Formulaire requis non complété : cet élément est exclu "
+                    "de l'approbation groupée, décidez-le individuellement."),
+            })
+            continue
+        candidats.append(step)
+
+    reference = _signature_formulaire(candidats[0]) if candidats else None
+    retenus = []
+    for step in candidats:
+        if _signature_formulaire(step) != reference:
+            exclusions.append({
+                'step_id': step.pk,
+                'motif': (
+                    "Formulaire différent de celui des autres lignes "
+                    "sélectionnées : cet élément est exclu de l'approbation "
+                    "groupée."),
+            })
+            continue
+        retenus.append(step)
+
+    decisions = [
+        decide_step(step, approve=True, user=user, commentaire=commentaire,
+                    now=moment)
+        for step in retenus
+    ]
+    return {
+        'cohorte': cohorte,
+        'decisions': decisions,
+        'exclusions': exclusions,
+    }
+
+
 # ── NTWFL3 — délégation de vacances (XKB3) branchée sur le moteur BPM ───────
 #
 # ``core`` reste FONDATION (contrat import-linter
@@ -696,6 +834,145 @@ def delegants_actifs_pour(suppleant, company, at=None):
         return list(_delegation_resolver(suppleant, company, at=at) or [])
     except Exception:  # pragma: no cover - défensif
         return []
+
+
+# ── NTWFL34 — piste d'audit EXTERNE des décisions d'approbation ──────────────
+#
+# Un auditeur externe demande « montrez-moi toutes les décisions d'approbation
+# du mois de mars, qui a décidé, en combien de temps, et au nom de qui ». Cette
+# piste doit couvrir TOUTES les sources d'approbation de la maison, or ``core``
+# est une couche de FONDATION : il ne peut pas importer ``apps.automation``,
+# ``apps.contrats`` ni ``apps.ged`` pour aller lire leurs décisions.
+#
+# Même patron que ``register_delegation_resolver`` / le registre de calendrier
+# ouvré : chaque app BRANCHE sa source dans son ``apps.py ready()``, ``core``
+# n'en connaît que la signature. La source native FG366 (ce moteur) est
+# toujours présente, sans registre. Chaque source est appelée en BEST-EFFORT :
+# une app qui casse ne fait jamais tomber le rapport entier, elle disparaît
+# simplement de la ligne — et le rapport DIT lesquelles ont échoué plutôt que
+# de laisser croire à une piste complète.
+
+SOURCE_CONFORMITE_BPM = 'workflow'
+
+#: ``{nom: fn(company, periode) -> [ligne, ...]}`` — branché par les apps.
+_sources_conformite = {}
+
+#: Motif posé par ``decide_step`` quand la décision est prise « au nom de ».
+_MOTIF_DELEGATION = re.compile(
+    r'^\[Décidé par .+? au nom de (?P<delegant>.+?)\]')
+
+
+def register_source_conformite(nom, fn):
+    """Enregistre une source de décisions pour la piste d'audit (NTWFL34).
+
+    ``fn(company, periode) -> [{'source', 'objet', 'montant', 'approbateur',
+    'decide_le', 'delai_heures', 'delegation'}, ...]``. Appelée par le
+    ``ready()`` de l'app propriétaire des décisions. Un second appel du même
+    ``nom`` REMPLACE la source (jamais d'accumulation silencieuse)."""
+    _sources_conformite[nom] = fn
+
+
+def _delegation_depuis_commentaire(commentaire):
+    """Nom du délégant si la décision a été prise « au nom de », sinon ''."""
+    trouve = _MOTIF_DELEGATION.match(commentaire or '')
+    return trouve.group('delegant') if trouve else ''
+
+
+def _decisions_conformite_bpm(company, periode=None):
+    """Décisions du moteur BPM FG366 (source NATIVE de ``core``).
+
+    ``montant`` reste VIDE : une ``WorkflowInstance`` ne porte aucun montant
+    (sa cible générique n'est pas introspectée pour en devenir un) — mieux
+    vaut une colonne vide qu'un chiffre déduit. Les sources branchées par les
+    apps, qui connaissent leurs objets, la remplissent."""
+    qs = (
+        WorkflowStepInstance.objects
+        .filter(company=company, decided_le__isnull=False)
+        .exclude(statut=WorkflowStepInstance.STATUT_EN_ATTENTE)
+        .select_related('instance', 'instance__definition',
+                        'instance__content_type', 'assignee')
+    )
+    if periode:
+        try:
+            annee, mois = (int(p) for p in str(periode).split('-')[:2])
+        except (TypeError, ValueError):
+            pass
+        else:
+            qs = qs.filter(decided_le__year=annee, decided_le__month=mois)
+
+    lignes = []
+    for step in qs.order_by('decided_le', 'id'):
+        ct = step.instance.content_type
+        cible = (f'{ct.app_label}.{ct.model} #{step.instance.object_id}'
+                 if ct else f'#{step.instance.object_id}')
+        delai = None
+        if step.created_at and step.decided_le:
+            delai = round(
+                (step.decided_le - step.created_at).total_seconds() / 3600.0, 4)
+        lignes.append({
+            'source': SOURCE_CONFORMITE_BPM,
+            'objet': (f'{step.instance.definition.code} '
+                      f'#{step.instance_id} → {cible}'),
+            'etape': step.step_def.nom if step.step_def_id else '',
+            'decision': step.get_statut_display(),
+            'montant': None,
+            'approbateur': (str(step.assignee) if step.assignee_id else ''),
+            'decide_le': step.decided_le,
+            'delai_heures': delai,
+            'delegation': _delegation_depuis_commentaire(step.commentaire),
+        })
+    return lignes
+
+
+def decisions_conformite(company, periode=None):
+    """NTWFL34 — TOUTES les décisions d'approbation d'une société.
+
+    ``periode`` : chaîne ``'AAAA-MM'`` (un mois) ou ``None`` (tout
+    l'historique). Renvoie ``{'periode', 'decisions', 'sources',
+    'sources_en_erreur'}`` : ``decisions`` est trié par date de décision (les
+    lignes sans date en dernier), ``sources`` liste les sources réellement
+    interrogées et ``sources_en_erreur`` celles qui ont échoué — un rapport
+    d'audit ne prétend JAMAIS être complet quand il ne l'est pas.
+
+    Toujours borné à ``company`` ; ``None`` renvoie un rapport vide."""
+    rapport = {'periode': periode or None, 'decisions': [],
+               'sources': [], 'sources_en_erreur': []}
+    if company is None:
+        return rapport
+
+    fournisseurs = [(SOURCE_CONFORMITE_BPM, _decisions_conformite_bpm)]
+    fournisseurs += sorted(_sources_conformite.items())
+
+    lignes = []
+    for nom, fn in fournisseurs:
+        try:
+            produites = list(fn(company, periode) or [])
+        except Exception:  # noqa: BLE001 — une source cassée n'emporte pas tout
+            rapport['sources_en_erreur'].append(nom)
+            continue
+        rapport['sources'].append(nom)
+        for ligne in produites:
+            ligne.setdefault('source', nom)
+            lignes.append(ligne)
+
+    lignes.sort(key=_cle_tri_conformite)
+    rapport['decisions'] = lignes
+    return rapport
+
+
+def _cle_tri_conformite(ligne):
+    """Clé de tri d'une ligne d'audit : date de décision, puis source, objet.
+
+    Trie sur l'HORODATAGE (float) plutôt que sur le ``datetime`` lui-même :
+    une source branchée par une app pourrait renvoyer un datetime naïf, et
+    comparer un naïf à un aware lèverait ``TypeError`` en plein rapport."""
+    moment = ligne.get('decide_le')
+    try:
+        horodatage = moment.timestamp()
+    except (AttributeError, ValueError, OSError, OverflowError):
+        horodatage = 0.0
+    return (moment is None, horodatage,
+            str(ligne.get('source') or ''), str(ligne.get('objet') or ''))
 
 
 # ── NTWFL9 — validation d'une définition AVANT sauvegarde ───────────────────
@@ -807,8 +1084,15 @@ def _definition_depuis_matrice(company, matrice):
         return None
 
     code = _signature_definition_matrice(matrice.type_objet, paliers)
-    definition = WorkflowDefinition.objects.filter(
-        company=company, code=code).first()
+    # NTWFL25 — la lignée ``code`` peut porter plusieurs versions : on réutilise
+    # la DERNIÈRE version active ; à défaut, la plus récente quelle qu'elle
+    # soit (comportement historique préservé — sans ce repli, une lignée
+    # entièrement désactivée referait naître une v1 et collisionnerait sur
+    # l'unicité (société, code, version)).
+    lignee = WorkflowDefinition.objects.filter(company=company, code=code)
+    definition = lignee.filter(actif=True).order_by('-version', '-id').first()
+    if definition is None:
+        definition = lignee.order_by('-version', '-id').first()
     if definition is not None:
         return definition
 
@@ -859,3 +1143,298 @@ def demarrer_depuis_matrice(
     if definition is None:
         return None
     return demarrer_workflow(definition, target, company, user=user, now=now)
+
+
+# ── NTWFL25 — versionnement des définitions et migration MANUELLE d'instance ─
+#
+# Le problème que cela règle : jusqu'ici, éditer les étapes d'une définition
+# changeait la structure SOUS LES PIEDS des instances déjà en cours — une
+# approbation démarrée sur 3 paliers pouvait se retrouver, au milieu du
+# parcours, avec 5 paliers dont deux qu'on n'avait jamais vus, ou pire, sans
+# l'étape où elle attendait. Désormais un ``code`` désigne une LIGNÉE :
+#
+#   * une édition STRUCTURELLE alors que des instances tournent FORKE la
+#     version suivante (``version + 1``, ``definition_precedente`` chaînée) et
+#     désactive l'ancienne — les instances en cours ne bougent PAS, les
+#     nouvelles démarrent sur la dernière version active ;
+#   * sans instance, la mutation EN PLACE reste autorisée (compat rétroactive :
+#     un brouillon qu'on retouche ne fabrique pas une v2 pour rien) ;
+#   * faire AVANCER une instance bloquée vers la nouvelle structure reste un
+#     geste MANUEL et explicite (``migrer_instance_vers_version``), jamais un
+#     effet de bord : l'administrateur déclare lui-même la correspondance
+#     ancien→nouvel index d'étape. Deviner ce mapping serait exactement le
+#     risque que le versionnement existe pour supprimer.
+#
+# Le patron « historique en lecture seule » est celui de
+# ``contrats.VersionContrat`` / ``kb.KbArticleVersion`` (cités comme référence,
+# jamais modifiés par cette tâche).
+
+#: Champs d'une étape recopiés/appliqués lors d'un fork ou d'une édition.
+CHAMPS_ETAPE = (
+    'nom', 'type_approbation', 'sla_heures', 'role_requis', 'escalade_vers',
+    'calendrier_ouvre', 'condition_transition', 'etape_alternative_si_echec',
+    'groupe_parallele', 'formulaire',
+)
+
+
+def derniere_version_active(company, code):
+    """La définition ACTIVE la plus récente de la lignée ``code``.
+
+    C'est elle que démarrent les nouvelles instances. ``None`` si la lignée
+    n'existe pas ou n'a plus de version active."""
+    from core.models import WorkflowDefinition
+    return (WorkflowDefinition.objects
+            .filter(company=company, code=code, actif=True)
+            .order_by('-version', '-id')
+            .first())
+
+
+def instances_actives(definition):
+    """Les instances de ``definition`` encore EN COURS."""
+    return definition.instances.filter(statut=WorkflowInstance.STATUT_EN_COURS)
+
+
+def a_des_instances_actives(definition):
+    """Vrai si au moins une instance de ``definition`` tourne encore."""
+    return instances_actives(definition).exists()
+
+
+def _etapes_jamais_instanciees(definition):
+    """Vrai si AUCUNE instance (même terminée) ne référence ces étapes.
+
+    ``WorkflowStepInstance.step_def`` est en PROTECT : une étape déjà jouée ne
+    peut pas être supprimée. C'est aussi la bonne règle métier — l'historique
+    d'une instance terminée ne se réécrit pas."""
+    return not WorkflowStepInstance.objects.filter(
+        step_def__definition=definition).exists()
+
+
+def _valeurs_etape(source):
+    """Extrait les champs d'étape d'un ``dict`` ou d'un objet étape."""
+    if isinstance(source, dict):
+        return {champ: source[champ] for champ in CHAMPS_ETAPE
+                if champ in source}
+    return {champ: getattr(source, champ) for champ in CHAMPS_ETAPE}
+
+
+def _materialiser_etapes(definition, etapes):
+    """Crée les ``WorkflowStepDefinition`` de ``definition``, renumérotées 1..n.
+
+    ``etapes`` est une liste de ``dict`` (ou d'étapes existantes à recopier) :
+    l'ordre de la liste FAIT l'ordre, ce qui garantit l'unicité
+    (definition, ordre) sans faire confiance à un index envoyé par un client.
+    """
+    from core.models import WorkflowStepDefinition
+    creees = []
+    for index, source in enumerate(etapes, start=1):
+        valeurs = _valeurs_etape(source)
+        valeurs.setdefault('nom', f'Étape {index}')
+        creees.append(WorkflowStepDefinition.objects.create(
+            definition=definition, ordre=index, **valeurs))
+    return creees
+
+
+@transaction.atomic
+def forker_definition(definition, etapes=None):
+    """Crée la version SUIVANTE de ``definition`` (NTWFL25).
+
+    ``etapes`` décrit la nouvelle structure ; ``None`` recopie la structure
+    actuelle (simple montée de version). L'ancienne version passe
+    ``actif=False`` — elle devient de l'historique en lecture seule, que les
+    instances déjà démarrées continuent d'exécuter sans être touchées.
+    """
+    from core.models import WorkflowDefinition
+
+    if etapes is None:
+        etapes = list(definition.steps.order_by('ordre', 'id'))
+
+    version_max = (WorkflowDefinition.objects
+                   .filter(company=definition.company, code=definition.code)
+                   .order_by('-version')
+                   .values_list('version', flat=True)
+                   .first()) or definition.version
+
+    nouvelle = WorkflowDefinition.objects.create(
+        company=definition.company,
+        code=definition.code,
+        nom=definition.nom,
+        description=definition.description,
+        actif=True,
+        version=version_max + 1,
+        definition_precedente=definition,
+    )
+    _materialiser_etapes(nouvelle, etapes)
+
+    if definition.actif:
+        definition.actif = False
+        definition.save(update_fields=['actif', 'updated_at'])
+    return nouvelle
+
+
+@transaction.atomic
+def editer_etapes_definition(definition, etapes):
+    """Applique une édition STRUCTURELLE — en place, ou en forkant (NTWFL25).
+
+    Retourne ``(definition_cible, forkee)``. ``forkee=True`` signifie qu'une
+    NOUVELLE version porte les étapes demandées et que ``definition`` est
+    restée intacte pour les instances qui l'exécutent.
+
+    Le fork s'impose dès qu'une instance a matérialisé ces étapes — en cours
+    (elle attendrait une étape disparue) comme terminée (son historique ne se
+    réécrit pas, et ``step_def`` est en PROTECT). Une définition jamais
+    instanciée mute EN PLACE : c'est la compatibilité rétroactive attendue.
+    """
+    if a_des_instances_actives(definition) or not _etapes_jamais_instanciees(
+            definition):
+        return forker_definition(definition, etapes), True
+
+    definition.steps.all().delete()
+    _materialiser_etapes(definition, etapes)
+    return definition, False
+
+
+def _valider_mapping(instance, nouvelle_definition, mapping_etapes):
+    """Contrôle le mapping ancien→nouvel index avant toute écriture.
+
+    Lève ``ValueError`` (message FR, actionnable) au premier défaut. Le
+    mapping est EXIGÉ exhaustif sur les étapes déjà DÉCIDÉES : abandonner
+    silencieusement une décision prise serait perdre de l'audit.
+    """
+    if instance.statut != WorkflowInstance.STATUT_EN_COURS:
+        raise ValueError(
+            'Seule une instance EN COURS peut être migrée vers une autre '
+            'version.')
+    if nouvelle_definition.pk == instance.definition_id:
+        raise ValueError(
+            "L'instance exécute déjà cette version de la définition.")
+    if nouvelle_definition.company_id != instance.company_id:
+        raise ValueError(
+            'La définition cible appartient à une autre société.')
+    if nouvelle_definition.code != instance.definition.code:
+        raise ValueError(
+            'La définition cible appartient à une autre lignée de processus '
+            f'(« {nouvelle_definition.code} » au lieu de '
+            f'« {instance.definition.code} »).')
+    if not isinstance(mapping_etapes, dict) or not mapping_etapes:
+        raise ValueError(
+            "Le mapping ancien→nouvel index d'étape est obligatoire : la "
+            'migration est un geste manuel, jamais une déduction.')
+
+    try:
+        mapping = {int(ancien): int(nouveau)
+                   for ancien, nouveau in mapping_etapes.items()}
+    except (TypeError, ValueError):
+        raise ValueError(
+            "Le mapping d'étapes doit associer des index entiers.")
+
+    ordres_cibles = set(
+        nouvelle_definition.steps.values_list('ordre', flat=True))
+    inconnus = sorted(set(mapping.values()) - ordres_cibles)
+    if inconnus:
+        raise ValueError(
+            'Étapes inexistantes dans la version cible : '
+            f"{', '.join(str(o) for o in inconnus)}.")
+
+    if len(set(mapping.values())) != len(mapping):
+        raise ValueError(
+            "Deux étapes d'origine ne peuvent pas viser la même étape "
+            'cible.')
+
+    steps = {step.ordre: step for step in instance.step_instances.all()}
+    orphelins = sorted(set(mapping) - set(steps))
+    if orphelins:
+        raise ValueError(
+            "Étapes inexistantes dans l'instance à migrer : "
+            f"{', '.join(str(o) for o in orphelins)}.")
+
+    decidees_non_mappees = sorted(
+        ordre for ordre, step in steps.items()
+        if step.statut != WorkflowStepInstance.STATUT_EN_ATTENTE
+        and ordre not in mapping)
+    if decidees_non_mappees:
+        raise ValueError(
+            'Étapes déjà décidées sans correspondance dans le mapping : '
+            f"{', '.join(str(o) for o in decidees_non_mappees)}. Le mapping "
+            'doit être exhaustif sur les décisions prises.')
+
+    if instance.etape_courante not in mapping:
+        raise ValueError(
+            f"L'étape courante ({instance.etape_courante}) doit figurer dans "
+            "le mapping : c'est elle qui décide où l'instance reprend.")
+
+    return mapping, steps
+
+
+@transaction.atomic
+def migrer_instance_vers_version(instance, nouvelle_definition,
+                                 mapping_etapes, now=None):
+    """Déplace MANUELLEMENT une instance en cours vers une autre version.
+
+    ``mapping_etapes`` — ``{ancien_ordre: nouvel_ordre}`` — est fourni par
+    l'administrateur : jamais deviné, jamais automatique (une correspondance
+    devinée ferait sauter ou rejouer une approbation). Il doit couvrir toutes
+    les étapes DÉJÀ DÉCIDÉES ainsi que l'étape courante.
+
+    Effet, sans rien perdre :
+      * chaque étape mappée est RE-POINTÉE sur l'étape correspondante de la
+        version cible (sa décision, son décideur, sa date et son commentaire
+        sont conservés tels quels) ;
+      * les étapes EN ATTENTE non mappées sont supprimées (il n'y a rien à
+        perdre) et remplacées par les étapes de la version cible qu'aucune
+        étape mappée ne couvre déjà ;
+      * l'instance est ré-épinglée (``definition`` + ``definition_version``) et
+        reprend à ``mapping_etapes[etape_courante]``.
+
+    Lève ``ValueError`` (message FR) si le mapping n'est pas recevable —
+    AVANT toute écriture.
+    """
+    moment = _resolve_now(now)
+    mapping, steps = _valider_mapping(
+        instance, nouvelle_definition, mapping_etapes)
+
+    etapes_cibles = {
+        step.ordre: step
+        for step in nouvelle_definition.steps.order_by('ordre', 'id')
+    }
+
+    # Les étapes EN ATTENTE que l'administrateur n'a pas mappées disparaissent.
+    for ordre, step in list(steps.items()):
+        if (ordre not in mapping
+                and step.statut == WorkflowStepInstance.STATUT_EN_ATTENTE):
+            step.delete()
+            steps.pop(ordre)
+
+    for ancien_ordre, nouvel_ordre in sorted(mapping.items()):
+        step = steps[ancien_ordre]
+        cible = etapes_cibles[nouvel_ordre]
+        step.step_def = cible
+        step.ordre = nouvel_ordre
+        step.sla_echeance = _sla_echeance(
+            step.created_at or moment, cible.sla_heures,
+            calendrier_ouvre=cible.calendrier_ouvre,
+            company=instance.company)
+        step.save(update_fields=['step_def', 'ordre', 'sla_echeance',
+                                 'updated_at'])
+
+    couverts = set(mapping.values())
+    for ordre, cible in etapes_cibles.items():
+        if ordre in couverts:
+            continue
+        WorkflowStepInstance.objects.create(
+            company=instance.company,
+            instance=instance,
+            step_def=cible,
+            ordre=ordre,
+            statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
+            sla_echeance=_sla_echeance(
+                moment, cible.sla_heures,
+                calendrier_ouvre=cible.calendrier_ouvre,
+                company=instance.company),
+        )
+
+    instance.definition = nouvelle_definition
+    instance.definition_version = nouvelle_definition.version
+    instance.etape_courante = mapping[instance.etape_courante]
+    instance.save(update_fields=['definition', 'definition_version',
+                                 'etape_courante', 'updated_at'])
+    return instance

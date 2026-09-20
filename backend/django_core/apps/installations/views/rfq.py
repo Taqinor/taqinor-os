@@ -7,6 +7,14 @@ des réponses fournisseur. Lecture tout rôle, écriture responsable/admin.
 Multi-tenant via ``TenantMixin`` : référence/société/created_by posés côté
 serveur ; les FK liées sont validées tenant. Cross-app : ``stock.Fournisseur``
 en string-FK.
+
+NTP2P44 — le viewset gagne le chatter générique ARC8 (``ChatterViewSetMixin`` :
+``chatter/historique`` GET tout rôle + ``chatter/noter`` POST
+responsable/admin), même patron que SCA34/SCA36 (``OrdreSousTraitance``/
+``DemandeAchat``) — jamais un modèle ``RFQActivity`` maison. Chaque transition
+de statut RÉELLE (``envoyer``/``cloturer``/adjudication via ``retenir``) pose
+une entrée ancien→nouveau sur ce chatter, best-effort (ne bloque jamais
+l'action métier) — voir ``_log_rfq_transition``/``_log_rfq_attribution``.
 """
 from django.db.models import F
 from django.http import HttpResponse
@@ -20,6 +28,7 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
+from apps.records.views import ChatterViewSetMixin
 from apps.ventes.utils.references import create_with_reference
 
 from ..models import RFQ, RFQOffre, RFQConsultation
@@ -27,13 +36,58 @@ from ..serializers import (
     RFQSerializer, RFQOffreSerializer, RFQConsultationSerializer,
 )
 
-READ_ACTIONS = ['list', 'retrieve']
+# NTP2P44 — 'chatter_historique' est une lecture (même patron que
+# DemandeAchatViewSet/READ_ACTIONS : le get_permissions maison du viewset
+# prime sur les permission_classes posés sur l'@action du mixin).
+READ_ACTIONS = ['list', 'retrieve', 'chatter_historique']
 
 
-class RFQViewSet(CompanyScopedModelViewSet):
+def _log_rfq_transition(rfq, ancien, nouveau, *, user):
+    """NTP2P44 — journalise ancien→nouveau sur le chatter générique
+    (``records.Activity``) à chaque changement de statut RÉEL de la RFQ (une
+    ré-application idempotente du même statut n'est pas une transition et ne
+    journalise rien). Best-effort strict : ne doit JAMAIS faire échouer
+    l'action métier qui l'appelle (même contrat que les émetteurs
+    d'événement ``core.events`` de ``apps.installations.services``)."""
+    if ancien == nouveau:
+        return
+    try:
+        from apps.records.services import log_field_change
+        log_field_change(
+            rfq, 'statut', ancien, nouveau, user=user, field_label='Statut')
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTP2P44 : journal chatter de transition RFQ échoué (rfq %s)',
+            getattr(rfq, 'pk', '?'), exc_info=True)
+
+
+def _log_rfq_attribution(rfq, offre, bon, *, user):
+    """NTP2P44 — note manuelle de chatter au moment de l'ADJUDICATION (offre
+    à fournisseur catalogue retenue, BCF créé) : au-delà du simple changement
+    de statut (déjà journalisé par ``_log_rfq_transition``), elle nomme le
+    fournisseur gagnant et le BCF émis. Best-effort strict."""
+    try:
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+        nom = offre.fournisseur_nom_libre or (
+            offre.fournisseur.nom if offre.fournisseur_id else '')
+        log_activity(
+            rfq, Activity.Kind.NOTE, user=user,
+            body=f"RFQ attribuée à {nom} — BCF {bon.reference}.")
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTP2P44 : note chatter attribution RFQ échouée (rfq %s)',
+            getattr(rfq, 'pk', '?'), exc_info=True)
+
+
+class RFQViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     """FG311 — RFQ. Lecture tout rôle, écriture responsable/admin. Référence
     anti-collision + société + `created_by` posés serveur ; `demande` validée
-    tenant. Filtrable par `statut`, `demande`. Cycle de vie + `retenir`."""
+    tenant. Filtrable par `statut`, `demande`. Cycle de vie + `retenir`.
+    NTP2P44 — chatter générique (`chatter/historique`, `chatter/noter`) via
+    le mixin ; le cycle de vie propre de la RFQ reste inchangé."""
     queryset = RFQ.objects.select_related(
         'demande', 'created_by').prefetch_related('offres').all()
     serializer_class = RFQSerializer
@@ -85,16 +139,20 @@ class RFQViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': "Seule une RFQ brouillon peut être envoyée."},
                 status=status.HTTP_400_BAD_REQUEST)
+        ancien = rfq.statut
         rfq.statut = RFQ.Statut.ENVOYEE
         rfq.save(update_fields=['statut', 'date_modification'])
+        _log_rfq_transition(rfq, ancien, rfq.statut, user=request.user)
         return Response(self.get_serializer(rfq).data)
 
     @action(detail=True, methods=['post'])
     def cloturer(self, request, pk=None):
         """FG311 — clôt la RFQ (le choix est fait)."""
         rfq = self.get_object()
+        ancien = rfq.statut
         rfq.statut = RFQ.Statut.CLOTUREE
         rfq.save(update_fields=['statut', 'date_modification'])
+        _log_rfq_transition(rfq, ancien, rfq.statut, user=request.user)
         return Response(self.get_serializer(rfq).data)
 
     @action(detail=True, methods=['post'])
@@ -155,10 +213,14 @@ class RFQViewSet(CompanyScopedModelViewSet):
                 company=company, user=request.user,
                 fournisseur=offre.fournisseur, lignes=lignes,
                 note=f'Adjugé depuis {rfq.reference}')
+            ancien_statut_rfq = rfq.statut
             rfq.bon_commande = bon
             rfq.statut = RFQ.Statut.CLOTUREE
             rfq.save(update_fields=[
                 'bon_commande', 'statut', 'date_modification'])
+            _log_rfq_transition(
+                rfq, ancien_statut_rfq, rfq.statut, user=request.user)
+            _log_rfq_attribution(rfq, offre, bon, user=request.user)
 
             if (demande is not None
                     and demande.statut == demande.Statut.APPROUVEE):
@@ -180,6 +242,15 @@ class RFQViewSet(CompanyScopedModelViewSet):
                             company=company, produit=produit,
                             fournisseur=offre.fournisseur, prix_achat=prix,
                             date=_tz.now().date())
+
+            # NTP2P38 — l'adjudication est faite (BCF du gagnant créé) : le bus
+            # ``core.events`` l'annonce, pour qu'une ``AutomationRule`` puisse
+            # notifier ou déclencher un webhook sortant configuré. Retenir une
+            # offre nom-libre n'arrive jamais ici : ce n'est pas une
+            # attribution, et rien n'est émis.
+            from apps.installations.services import marquer_rfq_attribuee
+            marquer_rfq_attribuee(
+                rfq, offre, user=request.user, bon_commande_id=bon.id)
 
         return Response(self.get_serializer(rfq).data)
 

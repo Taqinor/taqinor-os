@@ -56,14 +56,43 @@ def revoke_consent(company, technicien, reason=None):
     ).update(revoked_at=timezone.now(), revoked_reason=reason)
 
 
+def _position_precedente(position):
+    """Position live précédente du même technicien sur la même intervention,
+    parmi celles dont la distance au chantier a pu être calculée.
+
+    Sert à distinguer un FRANCHISSEMENT (NTMOB9) d'un simple ping : sans
+    position précédente évaluée, on ne sait pas si le technicien vient
+    d'entrer — on ne journalise donc aucune entrée."""
+    return (PositionTechnicien.objects
+            .filter(company_id=position.company_id,
+                    technicien_id=position.technicien_id,
+                    intervention_id=position.intervention_id,
+                    distance_site_km__isnull=False)
+            .exclude(pk=position.pk)
+            .order_by('-captured_at', '-id')
+            .first())
+
+
 def enregistrer_position(
         company, technicien, lat, lng, intervention=None,
         accuracy_m=None, captured_at=None,
         radius_km=DEFAULT_GEOFENCE_RADIUS_KM):
     """Persiste une position live et, si une intervention est liée avec un GPS
-    de chantier connu, calcule la distance et lève une ``GeofenceAlert`` quand
-    elle dépasse ``radius_km``. Ne bloque JAMAIS l'enregistrement de la
-    position elle-même — le géofencing est un signal, pas une garde."""
+    de chantier connu, calcule la distance et journalise le franchissement du
+    rayon dans ``GeofenceAlert``. Ne bloque JAMAIS l'enregistrement de la
+    position elle-même — le géofencing est un signal, pas une garde.
+
+    Deux journaux, un seul modèle :
+
+      * ``sortie`` — la position est hors du rayon (XFSM23, comportement
+        d'origine : une ligne par dépassement, sans déduplication) ;
+      * ``entree`` — NTMOB9 : la position est DANS le rayon alors que la
+        précédente était dehors. Le point de présence est donc posé tout seul
+        quand le technicien arrive sur le chantier, sans action de sa part.
+        Sans position précédente évaluée, aucune entrée n'est journalisée :
+        un ping isolé à l'intérieur n'est pas un franchissement.
+
+    Renvoie ``(position, franchissement_ou_None)``."""
     position = PositionTechnicien.objects.create(
         company=company, technicien=technicien, intervention=intervention,
         lat=lat, lng=lng, accuracy_m=accuracy_m,
@@ -79,18 +108,46 @@ def enregistrer_position(
     if distance is None:
         return position, None
 
+    precedente = _position_precedente(position)
+
     hors_perimetre = distance > float(radius_km)
     position.distance_site_km = distance
     position.hors_perimetre = hors_perimetre
     position.save(update_fields=['distance_site_km', 'hors_perimetre'])
 
-    alert = None
+    type_franchissement = None
     if hors_perimetre:
+        type_franchissement = GeofenceAlert.TypeFranchissement.SORTIE
+    elif precedente is not None and precedente.hors_perimetre:
+        type_franchissement = GeofenceAlert.TypeFranchissement.ENTREE
+
+    alert = None
+    if type_franchissement is not None:
         alert = GeofenceAlert.objects.create(
             company=company, intervention=intervention, technicien=technicien,
             position=position, distance_site_km=distance,
-            rayon_attendu_km=radius_km)
+            rayon_attendu_km=radius_km,
+            type_franchissement=type_franchissement)
     return position, alert
+
+
+def franchissements_geofence(company, intervention=None, chantier=None,
+                             type_franchissement=None):
+    """NTMOB9 — historique de présence géofencée, en lecture seule.
+
+    Journal des entrées/sorties du rayon, scopé société, filtrable par
+    intervention, par chantier (``Intervention.installation``) et par type.
+    Alimente l'écran « Historique de présence » du responsable : les entrées
+    sont les arrivées sur site, les sorties les départs/écarts."""
+    qs = GeofenceAlert.objects.filter(company=company)
+    if intervention is not None:
+        qs = qs.filter(intervention=intervention)
+    if chantier is not None:
+        qs = qs.filter(intervention__installation=chantier)
+    if type_franchissement:
+        qs = qs.filter(type_franchissement=type_franchissement)
+    return qs.select_related(
+        'intervention', 'technicien', 'position').order_by('-created_at')
 
 
 def positions_live(company, technicien=None, intervention=None):

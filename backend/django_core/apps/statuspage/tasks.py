@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from core.health import STATUS_DEGRADED, STATUS_DOWN, STATUS_OK, check_services
 
-from .models import ComponentStatus, UptimeDayBucket
+from .models import ComponentStatus, ComponentStatusLog, UptimeDayBucket
 
 # Composants PUBLICS vendus au client (jamais les noms de sonde internes bruts
 # tels que « database »/« broker », qui exposeraient l'architecture). Chaque
@@ -48,6 +48,17 @@ def _pire_statut_public(statuts):
         if _ORDRE_GRAVITE.index(statut) > _ORDRE_GRAVITE.index(pire):
             pire = statut
     return pire
+
+
+def _logger_changement_statut(nom, region, ancien, nouveau):
+    """NTOBS33 — journalise un changement RÉELLEMENT détecté (jamais un tick
+    inchangé, jamais bloquant si l'écriture échoue)."""
+    try:
+        ComponentStatusLog.objects.create(
+            company=None, composant=nom, region=region,
+            ancien_statut=ancien or '', nouveau_statut=nouveau)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        pass
 
 
 def _accumuler_uptime_jour(nom, region, statut, now):
@@ -119,22 +130,36 @@ def rafraichir_composants():
         ]
         statut = _pire_statut_public(statuts_public)
         try:
+            ancien = (
+                ComponentStatus.objects
+                .filter(nom=nom, region=PUBLIC_REGION_DEFAUT, company=None)
+                .values_list('statut', flat=True).first())
             ComponentStatus.objects.update_or_create(
                 nom=nom, region=PUBLIC_REGION_DEFAUT, company=None,
                 defaults={'statut': statut, 'derniere_verification': now},
             )
             maj += 1
+            if ancien != statut:
+                _logger_changement_statut(
+                    nom, PUBLIC_REGION_DEFAUT, ancien, statut)
         except Exception:  # noqa: BLE001 — un composant en échec n'affecte pas les autres
             continue
         _accumuler_uptime_jour(nom, PUBLIC_REGION_DEFAUT, statut, now)
 
     statut_ia = _statut_ia_public()
     try:
+        ancien_ia = (
+            ComponentStatus.objects
+            .filter(nom='IA', region=PUBLIC_REGION_DEFAUT, company=None)
+            .values_list('statut', flat=True).first())
         ComponentStatus.objects.update_or_create(
             nom='IA', region=PUBLIC_REGION_DEFAUT, company=None,
             defaults={'statut': statut_ia, 'derniere_verification': now},
         )
         maj += 1
+        if ancien_ia != statut_ia:
+            _logger_changement_statut(
+                'IA', PUBLIC_REGION_DEFAUT, ancien_ia, statut_ia)
     except Exception:  # noqa: BLE001
         pass
     _accumuler_uptime_jour('IA', PUBLIC_REGION_DEFAUT, statut_ia, now)

@@ -473,6 +473,18 @@ const installationsApi = {
   deleteDemandeAchatLigne: (id) =>
     api.delete(`/installations/demandes-achat-lignes/${id}/`),
 
+  // NTP2P2/NTP2P32 — règles d'approbation des demandes d'achat (seuil de
+  // montant + périmètre chantier optionnel + nombre d'approbateurs). Lecture
+  // tout rôle, écriture responsable/admin (reflète `IsAnyRole`/
+  // `IsResponsableOrAdmin` côté serveur, `RegleApprobationAchatViewSet`).
+  getReglesApprobationAchat: (params) =>
+    api.get('/installations/regles-approbation-achat/', { params }),
+  saveRegleApprobationAchat: (id, data) => id
+    ? api.patch(`/installations/regles-approbation-achat/${id}/`, data)
+    : api.post('/installations/regles-approbation-achat/', data),
+  deleteRegleApprobationAchat: (id) =>
+    api.delete(`/installations/regles-approbation-achat/${id}/`),
+
   // ── XMFG1-16 — Atelier MRP-lite : ordres d'assemblage / démontage (kitting) ──
 
   // FG328 — ordres d'assemblage (kits → composite). Référence/société posées
@@ -637,8 +649,22 @@ const installationsApi = {
       reason ? { reason } : {}),
   getPositionsTechniciens: (params) =>
     api.get('/installations/positions-techniciens/', { params }),
+  // NTMOB9 — remontée périodique de position (watchPosition « Ma journée »,
+  // limitée à la session d'intervention ouverte) : distance/géofencing
+  // calculés SERVEUR (jamais fournis ici) ; 403 si consentement absent —
+  // le client doit alors basculer sur le pointage manuel, jamais réessayer
+  // en boucle.
+  pingPosition: (data) =>
+    api.post('/installations/positions-techniciens/ping/', data),
   getCarteLivePositions: () =>
     api.get('/installations/positions-techniciens/carte-live/'),
+  // NTMOB9 — franchissements du rayon chantier, journalisés SERVEUR
+  // (`GeofenceAlertViewSet`, jamais dérivés côté écran) ; filtrable par
+  // `intervention`, `chantier` et `type_franchissement` (`entree`/`sortie`).
+  // Deux écrans le consomment avec des filtres différents : l'onglet Alertes
+  // (`type_franchissement: 'sortie'` — seules les sorties sont actionnables)
+  // et l'onglet Historique de présence (`chantier` + `type_franchissement`
+  // optionnel — entrées ET sorties, informatives).
   getGeofenceAlertes: (params) =>
     api.get('/installations/geofence-alertes/', { params }),
   acquitterGeofenceAlerte: (id) =>

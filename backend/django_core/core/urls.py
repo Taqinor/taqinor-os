@@ -16,7 +16,7 @@ fichier, donc non modifié par cette tâche « core-only ») :
 
     path('api/django/core/', include('core.urls')),
 """
-from django.urls import path
+from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .dashboard_partage import (
@@ -78,12 +78,20 @@ from .views import (
     WorkflowDefinitionViewSet,
     WorkflowStepDefinitionViewSet,
     WorkflowTemplateViewSet,
+    analyse_goulots_workflow_view,
+    approuver_etapes_en_masse,
+    charge_approbateurs_view,
     db_stats_view,
     health_live,
     health_ready,
     maintenance_toggle,
+    mes_processus_view,
     metrics_view,
+    rapport_conformite_view,
+    registre_fiabilite_export_pdf,
     secrets_rotation_due,
+    sla_export_csv,
+    trust_center_export_pdf,
 )
 
 router = DefaultRouter()
@@ -170,6 +178,26 @@ router.register(r'ui-boutons', UiActionBoutonViewSet, basename='ui-bouton')
 router.register(r'ui-onglets', UiOngletCustomViewSet, basename='ui-onglet')
 
 urlpatterns = router.urls + [
+    # NTWFL16 — approbation groupée « identique » (même type d'objet + même
+    # palier), un commentaire unique, N décisions journalisées séparément.
+    path('workflows/approuver-en-masse/', approuver_etapes_en_masse,
+         name='workflows-approuver-en-masse'),
+    # NTWFL23 — audit de processus : durée observée par étape (moyenne /
+    # médiane / p90), taux de rejet, taux d'escalade SLA, étape goulot.
+    # NTWFL28 — widget « Mes processus » : les étapes BPM de l'utilisateur
+    # COURANT groupées par échéance (en retard / aujourd'hui / à venir).
+    path('workflows/mes-processus/', mes_processus_view,
+         name='workflows-mes-processus'),
+    # NTWFL30 — rapport admin de charge d'approbateur (surcharge signalée,
+    # jamais redistribuée automatiquement).
+    path('workflows/charge-approbateurs/', charge_approbateurs_view,
+         name='workflows-charge-approbateurs'),
+    # NTWFL34 — piste d'audit EXTERNE des décisions d'approbation (JSON ou
+    # classeur .xlsx via ?format=xlsx).
+    path('workflows/rapport-conformite/', rapport_conformite_view,
+         name='workflows-rapport-conformite'),
+    path('workflows/<int:pk>/analyse/', analyse_goulots_workflow_view,
+         name='workflows-analyse-goulots'),
     # XPLT10 — accès public lecture seule (aucune identité de confiance,
     # résolu depuis le seul jeton) + mode TV (rotation des dashboards partagés).
     path('dashboards-partages/public/<str:token>/', dashboard_public,
@@ -222,6 +250,8 @@ urlpatterns = router.urls + [
     path('sla/', SlaSnapshotListView.as_view(), name='sla-list'),
     path('sla/<str:periode>/export-pdf/', sla_export_pdf,
          name='sla-export-pdf'),
+    # NTOBS28 — export CSV/XLSX de l'historique SLA + incidents.
+    path('sla/export-csv/', sla_export_csv, name='sla-export-csv'),
     # NTOBS4 — crédits SLA dus (Directeur/Administrateur, cross-tenant).
     path('sla/credits/', SlaCreditsDusListView.as_view(),
          name='sla-credits-dus'),
@@ -257,8 +287,18 @@ urlpatterns = router.urls + [
          name='maintenance-windows-annuler'),
     # NTOBS10 — page « Confiance » (trust center), publique.
     path('trust-center/', trust_center_public, name='trust-center-public'),
+    # NTOBS17 — dossier de confiance PDF générique (RFP), public.
+    path('trust-center/export-pdf/', trust_center_export_pdf,
+         name='trust-center-export-pdf'),
+    # NTOBS18 — registre de fiabilité PDF consolidé (Directeur/Administrateur).
+    path('registre-fiabilite/export-pdf/', registre_fiabilite_export_pdf,
+         name='registre-fiabilite-export-pdf'),
     # NTOBS11 — mode dégradé par dépendance externe, publique (aucune donnée
     # société, même politique que health/live|ready ci-dessus).
     path('degraded-mode-status/', degraded_mode_status_view,
          name='degraded-mode-status'),
 ]
+
+# NTWFL17 — routes du dossier transverse (core.Dossier), définies dans leur
+# propre URLConf pour ne pas toucher ce fichier lors de leur construction.
+urlpatterns += [path('', include('core.urls_dossiers'))]

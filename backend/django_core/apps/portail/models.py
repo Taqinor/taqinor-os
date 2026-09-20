@@ -42,6 +42,7 @@ que ``apps/crm/tiers_bridge.py``). Ce module ne garde donc que le champ
 ``portail-models-decoupled``).
 """
 from django.db import models
+from django.utils import timezone
 
 from core.models import TenantModel
 
@@ -538,3 +539,79 @@ class DemandeTicketPortail(models.Model):
 
     def __str__(self):
         return f'Demande SAV #{self.client_id} — {self.sujet}'
+
+
+# ── NTPRT6 — Invitation & gestion de l'équipe du portail client ────────────
+
+class InvitationPortail(TenantModel):
+    """Invitation d'un collègue à rejoindre l'équipe du portail client
+    (NTPRT6).
+
+    L'admin client du portail (le PREMIER compte provisionné par NTPRT2 —
+    aucune ligne ``InvitationPortail`` ne le concerne, ce qui EST sa marque
+    d'admin par défaut) invite des collègues depuis ``/portail/client/equipe``
+    avec un rôle ``lecture`` (consultation seule) ou ``ecriture`` (mêmes
+    droits que l'admin). L'invité reçoit un email avec un lien tokenisé, pose
+    son propre mot de passe, et devient un 2ᵉ ``CustomUser``
+    ``portee=portail_client`` lié au MÊME ``client_id`` que l'admin. Le rôle
+    accordé reste posé ICI (colonne additive côté ``portail`` — jamais un
+    champ ajouté sur ``authentication.CustomUser``, une app de fondation) ;
+    la garde d'écriture (``services.peut_ecrire_portail_client``) le relit via
+    ``utilisateur_cree``.
+    """
+
+    class Role(models.TextChoices):
+        LECTURE = 'lecture', 'Lecture seule'
+        ECRITURE = 'ecriture', 'Lecture et écriture'
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        ACCEPTEE = 'acceptee', 'Acceptée'
+        REVOQUEE = 'revoquee', 'Révoquée'
+
+    # STRING-FK interne à ``portail`` (pas de frontière cross-app ici) : le
+    # compte portail cible de l'invitation.
+    compte_portail_client = models.ForeignKey(
+        'ComptePortailClient',
+        # on_delete: l'invitation n'existe que pour rejoindre CE compte
+        # portail — compte supprimé = invitation sans objet, elle suit.
+        on_delete=models.CASCADE,
+        related_name='invitations',
+        verbose_name='Compte portail client',
+    )
+    email = models.EmailField(verbose_name='Email invité')
+    role = models.CharField(
+        max_length=10, choices=Role.choices, default=Role.LECTURE,
+        verbose_name='Rôle portail')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE,
+        verbose_name='Statut')
+    token_invitation = models.CharField(
+        max_length=64, unique=True, db_index=True,
+        verbose_name="Token d'invitation")
+    expire_le = models.DateTimeField(verbose_name='Expire le')
+    # Posé UNIQUEMENT à l'acceptation : le compte utilisateur réel créé pour
+    # l'invité. ``SET_NULL`` — supprimer le compte ne doit jamais faire
+    # disparaître la trace de qui a été invité, quand, avec quel rôle.
+    utilisateur_cree = models.OneToOneField(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='invitation_portail_acceptee',
+        verbose_name='Compte utilisateur créé',
+    )
+    date_acceptation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Acceptée le')
+
+    class Meta:
+        verbose_name = 'Invitation portail (équipe client)'
+        verbose_name_plural = 'Invitations portail (équipe client)'
+        ordering = ['-created_at']
+
+    @property
+    def expiree(self):
+        return timezone.now() >= self.expire_le
+
+    def __str__(self):
+        return f'Invitation {self.email} ({self.get_statut_display()})'

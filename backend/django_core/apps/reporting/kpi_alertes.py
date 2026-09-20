@@ -30,6 +30,13 @@ Catalogue fermé (``KpiAlerte.Kpi``) :
                                 confidentiels des agrégats visibles à un rôle
                                 non autorisé — le filtrage vit dans le
                                 sélecteur, jamais chez l'appelant.
+  * ``uptime_moyen_12_mois`` / ``jours_depuis_dernier_drill_reussi`` /
+    ``quota_le_plus_charge_pct`` (NTOBS31) — les trois KPI « Fiabilité »
+                                cross-module, dérivés de ``core.sla.
+                                SlaSnapshot``, ``core.models.BackupRun`` et
+                                ``core.usage_limits.usage_summary`` (rien de
+                                neuf : ce module se contente de les brancher
+                                au catalogue fermé, comme les autres).
 """
 from decimal import Decimal
 
@@ -196,6 +203,100 @@ def _compute_btp(company, cle):
     return Decimal(str(valeur))
 
 
+def _compute_i18n(company, cle):
+    """NTI18N52 — une des deux valeurs du sélecteur dédié
+    ``apps.reporting.i18n_kpi`` (import paresseux, même patron que les autres).
+
+    ``None`` = non mesurable (KPI ignoré, tuile masquée), jamais un 0 trompeur :
+    ``couverture_i18n_pct`` vaut ``None`` tant qu'aucun instantané NTI18N39
+    n'existe, et ``documents_non_fr_pct`` vaut ``None`` tant que la langue d'un
+    PDF généré n'est journalisée nulle part (voir ``i18n_kpi.py``).
+    """
+    from .i18n_kpi import kpis_i18n
+    valeur = kpis_i18n(company).get(cle)
+    if valeur is None:
+        return None
+    return Decimal(str(valeur))
+
+
+# ── NTOBS31 — 3 KPI « Fiabilité » cross-module ──────────────────────────────
+#
+# Chacun délègue à une source DÉJÀ BÂTIE par le groupe NTOBS (aucun nouveau
+# moteur) : ``core.sla.SlaSnapshot`` (NTOBS3, rapport SLA mensuel),
+# ``core.models.BackupRun`` (YOPSB1/2, dump + drill de restauration réels),
+# ``core.usage_limits.usage_summary`` (NTOBS8, quotas par ressource). ``core``
+# reste importable depuis ``reporting`` (couche de fondation, cf. CLAUDE.md) —
+# import FONCTION-LOCAL, même patron que les autres calculateurs de ce fichier.
+
+def _compute_uptime_moyen_12_mois(company):
+    """Moyenne (%) des ``SlaSnapshot.uptime_pct`` de la société sur les 12
+    derniers mois. ``None`` (jamais un chiffre inventé) tant qu'aucun
+    snapshot n'existe pour la période."""
+    from django.db.models import Avg
+
+    from core.sla import SlaSnapshot, premier_du_mois
+
+    # Arithmétique directe plutôt que 12 appels chaînés à `mois_precedent` :
+    # celui-ci relit son résultat via `premier_du_mois`, qui appelle `.date()`
+    # en supposant TOUJOURS un `datetime` — or `premier_du_mois()` renvoie déjà
+    # un `datetime.date` (sans `.date()`), donc le chaînage lève
+    # ``AttributeError: 'datetime.date' object has no attribute 'date'`` dès
+    # le premier tour. Un seul appel non chaîné à `premier_du_mois()` évite le
+    # problème.
+    borne = premier_du_mois()
+    annee, mois = borne.year, borne.month - 12
+    while mois <= 0:
+        mois += 12
+        annee -= 1
+    borne = borne.replace(year=annee, month=mois)
+    moyenne = SlaSnapshot.objects.filter(
+        company=company, periode__gte=borne,
+    ).aggregate(m=Avg('uptime_pct'))['m']
+    return Decimal(str(moyenne)) if moyenne is not None else None
+
+
+def _compute_jours_depuis_dernier_drill_reussi(company):
+    """Jours écoulés depuis le dernier ``BackupRun`` de type
+    ``restore_drill`` TERMINÉ. Le drill (YOPSB2) est un contrôle SYSTÈME
+    (``company`` nul — toute l'instance, pas une société), donc la valeur est
+    la même pour toutes les sociétés — cohérent avec le reste du catalogue où
+    un KPI transverse n'a pas besoin d'être différencié par société pour être
+    surveillable par société. ``None`` tant qu'aucun drill réussi n'a jamais
+    été enregistré (jamais un 0 trompeur)."""
+    from django.utils import timezone
+
+    from core.models import BackupRun
+
+    dernier = (
+        BackupRun.objects.filter(
+            kind=BackupRun.KIND_RESTORE_DRILL,
+            statut=BackupRun.STATUT_TERMINE,
+            purge_is_deleted=False,
+        )
+        .exclude(termine_le__isnull=True)
+        .order_by('-termine_le')
+        .first()
+    )
+    if dernier is None:
+        return None
+    return Decimal((timezone.now() - dernier.termine_le).days)
+
+
+def _compute_quota_le_plus_charge_pct(company):
+    """Le ratio (%) le plus élevé parmi les ressources à limite CONNUE de
+    ``usage_summary`` (NTOBS8) — une ressource illimitée (``limite`` vide ou
+    nulle) n'entre jamais dans le calcul. ``None`` s'il n'existe aucune
+    ressource limitée pour cette société (jamais un 0 trompeur)."""
+    from core.usage_limits import usage_summary
+
+    ratios = [
+        Decimal(str(ressource['utilise'])) * 100 / Decimal(str(ressource['limite']))
+        for ressource in usage_summary(company).get('ressources', [])
+        if ressource.get('limite')
+    ]
+    return max(ratios) if ratios else None
+
+
 def _kpis_juridiques(company, user):
     """NTJUR48 — les quatre KPI juridiques en UN seul appel au sélecteur de
     ``apps.juridique`` (import paresseux — ``reporting`` reste un satellite,
@@ -291,6 +392,24 @@ _KPI_COMPUTERS = {
         _compute_btp(company, 'btp_visas_en_attente'),
     KpiAlerte.Kpi.BTP_PENALITES_CUMULEES_PERIODE: lambda company, user:
         _compute_btp(company, 'btp_penalites_cumulees_periode'),
+    # NTI18N52 — KPI i18n : mesures du PRODUIT (couverture de l'interface) et
+    # des documents produits, indépendantes du `user` et d'un module métier
+    # (aucune entrée dans KPI_MODULE : ils ne sont jamais masqués par une
+    # édition, ils dégradent d'eux-mêmes en `None` quand la mesure manque).
+    KpiAlerte.Kpi.COUVERTURE_I18N_PCT: lambda company, user:
+        _compute_i18n(company, 'couverture_i18n_pct'),
+    KpiAlerte.Kpi.DOCUMENTS_NON_FR_PCT: lambda company, user:
+        _compute_i18n(company, 'documents_non_fr_pct'),
+    # NTOBS31 — 3 KPI « Fiabilité » (aucun des trois ne dépend du `user` : ce
+    # sont des agrégats système/société, jamais des données à confidentialité
+    # variable comme le juridique). Aucune entrée dans `KPI_MODULE` : ces KPI
+    # ne sont jamais masqués par un module métier éteint.
+    KpiAlerte.Kpi.UPTIME_MOYEN_12_MOIS: lambda company, user:
+        _compute_uptime_moyen_12_mois(company),
+    KpiAlerte.Kpi.JOURS_DEPUIS_DERNIER_DRILL_REUSSI: lambda company, user:
+        _compute_jours_depuis_dernier_drill_reussi(company),
+    KpiAlerte.Kpi.QUOTA_LE_PLUS_CHARGE_PCT: lambda company, user:
+        _compute_quota_le_plus_charge_pct(company),
 }
 
 

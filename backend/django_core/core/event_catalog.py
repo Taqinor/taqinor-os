@@ -337,6 +337,78 @@ CATALOG = {
     'record_restored': _e(
         'Une entrée de corbeille est restaurée avec succès.',
         ['element', 'obj', 'company', 'user']),
+    # NTP2P38 — les deux gestes du domaine Procure-to-Pay. Producteur unique :
+    # ``apps.installations.services`` (``emettre_demande_achat_approuvee``,
+    # appelée par le guichet unique ``decider_demande_achat``, par la dernière
+    # étape de ``approuver_etape_achat`` et par la vue ``views/demande_achat.
+    # approuver`` ; ``marquer_rfq_attribuee``, appelée par ``views/rfq.py``).
+    # Consommateur : ``apps.automation.signals`` (règle sur ces TriggerType) —
+    # aucun appel HTTP automatique par défaut.
+    'demande_achat_approuvee': _e(
+        "Une demande d'achat (installations.DemandeAchat) atteint le statut "
+        "« approuvée » — jamais sur une étape intermédiaire ni sur un refus.",
+        ['demande', 'company', 'user', 'montant_estime']),
+    'rfq_attribuee': _e(
+        "Une consultation fournisseurs (installations.RFQ) est ADJUGÉE : une "
+        "offre catalogue est retenue et son bon de commande fournisseur créé.",
+        ['rfq', 'offre', 'company', 'user', 'bon_commande_id']),
+    # NTWFL18 — émis par le balayage quotidien ``core.dossiers
+    # .notifier_echeances_depassees`` pour chaque dossier transverse encore
+    # ouvert dont l'échéance est dépassée (dédupliqué à la source : une fois
+    # par jour et par dossier). Consommateurs : ``apps.notifications.signals``
+    # (notification au propriétaire) et ``apps.automation.signals``.
+    'dossier_echeance_depassee': _e(
+        "Un dossier transverse (core.Dossier) encore ouvert dépasse son "
+        "échéance — rappel quotidien unique.",
+        ['dossier', 'company', 'proprietaire']),
+    # NTI18N43 — émis par l'aide ``core.events.emettre_langue_changed`` (le
+    # SEUL point d'émission : elle porte la garde « la valeur a-t-elle
+    # réellement changé ? » et le try/except best-effort), appelée par les apps
+    # qui ÉCRIVENT une langue — ``apps.crm.views.ClientViewSet`` pour la langue
+    # de document d'un client. Consommateurs : ``apps.publicapi
+    # .i18n_event_receivers`` (webhook sortant) et ``apps.automation.signals``.
+    'langue_changed': _e(
+        "La langue de document d'un client, ou la langue par défaut d'une "
+        "société, change (jamais sur un ré-enregistrement sans changement).",
+        ['company', 'portee', 'client_id', 'ancienne_langue',
+         'nouvelle_langue', 'user']),
+    # NTOBS26 — émis par ``apps.statuspage.receivers`` (le seul point
+    # d'écriture du statut d'un ``IncidentPublic``) ; ``company=None`` pour un
+    # incident SYSTÈME visible de tous les tenants. Consommateur :
+    # ``apps.publicapi.ops_event_receivers`` (webhook sortant).
+    'incident_opened': _e(
+        'Un incident public (statuspage.IncidentPublic) est ouvert — société '
+        'ou système (company=None).',
+        ['incident', 'company']),
+    'incident_resolved': _e(
+        'Un incident public est résolu — émis une seule fois.',
+        ['incident', 'company']),
+    # NTOBS26 / NTOBS30-reste — DEUX signaux distincts émis au MÊME site
+    # (``core.maintenance_windows.MaintenanceWindowListCreateView
+    # .perform_create``) pour DEUX abonnés distincts : ``apps.publicapi
+    # .ops_event_receivers`` (webhook sortant d'annonce) et
+    # ``apps.audit.receivers`` (piste d'audit interne).
+    'maintenance_window_announced': _e(
+        'Une fenêtre de maintenance est annoncée à sa création (distinct du '
+        'rappel in-app 24 h/1 h avant l’échéance).',
+        ['fenetre', 'company', 'user']),
+    'maintenance_window_created': _e(
+        'Une fenêtre de maintenance est créée (action Fiabilité auditée).',
+        ['fenetre', 'company', 'user']),
+    # NTOBS30-reste — émis par ``core.export_registry
+    # .declencher_export_reversibilite`` au DÉCLENCHEMENT (l'action auditée est
+    # la DEMANDE, pas son aboutissement). Consommateur :
+    # ``apps.audit.receivers``.
+    'export_reversibilite_declenche': _e(
+        'Un export de réversibilité est déclenché (action Fiabilité auditée).',
+        ['run', 'company', 'user']),
+    # NTOBS30-reste — émis par ``core.sla.sla_credit_statut`` quand un humain
+    # trace la décision « émis »/« refusé » sur un crédit SLA. N'émet JAMAIS
+    # l'avoir lui-même. Consommateur : ``apps.audit.receivers``.
+    'sla_credit_statut_change': _e(
+        "Le statut de crédit SLA d'un SlaSnapshot est décidé par un humain "
+        "(émis ou refusé) — aucun avoir n'est créé par cet événement.",
+        ['snapshot', 'company', 'ancien_statut', 'nouveau_statut', 'user']),
 }
 
 

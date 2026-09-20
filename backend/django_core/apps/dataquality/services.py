@@ -270,7 +270,7 @@ def doublons_clients(company, user=None):
              'limit': LIMITE_LECTURE})
     except data_explorer.DatasetInconnu:
         return []
-    return grouper_doublons(
+    groupes = grouper_doublons(
         lignes,
         criteres=('ice', 'telephone', 'email', 'nom'),
         normaliseurs={
@@ -280,6 +280,51 @@ def doublons_clients(company, user=None):
             'nom': lambda v: normalize_name_key(v),
         },
     )
+    # NTAI34 — couche EN PLUS du détecteur ci-dessus : deux fiches dont les
+    # NOMS sont sémantiquement proches mais textuellement éloignés (« STE
+    # ALPHA » / « Alpha S.A.R.L » — la distance de chaînes de
+    # `grouper_doublons` ne les rapproche pas). Jamais une seconde UI : ces
+    # groupes alimentent la MÊME file `PropositionFusion` (NTDATA20).
+    connus = {frozenset(g['ids']) for g in groupes}
+    for semantique in doublons_clients_semantiques(company):
+        empreinte = frozenset(semantique['ids'])
+        if empreinte in connus:
+            continue
+        groupes.append(semantique)
+        connus.add(empreinte)
+    groupes.sort(key=lambda g: (-g['score'], g['ids'][0]))
+    return groupes
+
+
+def doublons_clients_semantiques(company):
+    """NTAI34 — Groupes de clients dont la fiche INDEXÉE (``core.SearchChunk``,
+    NTAI24) est sémantiquement proche (embedding cosinus), en PLUS du
+    détecteur par identifiants/distance de chaînes de :func:`doublons_clients`.
+
+    NE RECALCULE AUCUN embedding : relit l'index déjà peuplé de façon
+    asynchrone (``core.ai.search.indexer``, ``post_save`` sur ``crm.Client``).
+    Sans fournisseur d'embedding configuré, ``SearchChunk.embedding`` reste
+    NULL pour toutes les fiches : cette fonction renvoie alors ``[]`` — repli
+    complet et SANS appel réseau sur le seul détecteur par distance de
+    chaînes (comportement inchangé)."""
+    from core.ai.search import embedding_enabled
+    from core.models import SearchChunk
+
+    from .dedoublonnage import grouper_par_embeddings
+
+    if not embedding_enabled():
+        return []
+    chunks = list(
+        SearchChunk.objects.filter(
+            company=company, content_type='crm.client',
+            embedding__isnull=False)
+        .order_by('object_id')
+        .values_list('object_id', 'embedding', 'titre'))
+    if not chunks:
+        return []
+    libelles = {object_id: titre for object_id, _vecteur, titre in chunks}
+    paires = [(object_id, vecteur) for object_id, vecteur, _titre in chunks]
+    return grouper_par_embeddings(paires, libelles=libelles)
 
 
 # ── NTDATA19 — DÉDOUBLONNAGE FOURNISSEURS & PRODUITS ────────────────────────
