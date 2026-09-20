@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { AlertCircle, Check } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
+import { formatNumber } from '../../lib/format'
 import {
   Badge, Button, Card, Spinner,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -42,16 +43,15 @@ const errMsg = (e, repli) => e?.response?.data?.detail || repli
 /** Une grandeur non mesurée s'écrit « — », jamais `0`. */
 const ou = (valeur, rendu) => (valeur === null || valeur === undefined ? '—' : rendu(valeur))
 
-const nombre = (v, decimales = 0) => ou(v, (x) => Number(x).toLocaleString('fr-FR', {
-  minimumFractionDigits: decimales, maximumFractionDigits: decimales,
-}))
+/* VX75 — le formatage des nombres vit dans `lib/format.js`, JAMAIS un
+   `.toLocaleString` natif ici : une locale recopiée dans un écran est une
+   seconde décision de rendu qui dérive au premier changement. */
+const nombre = (v, decimales = 0) => ou(v, (x) => formatNumber(x, { decimals: decimales }))
 
 /** Un écart signé — `0` est une vraie valeur (la retenue), `null` ne l'est pas. */
 const ecart = (v, decimales = 0) => ou(v, (x) => {
   const n = Number(x)
-  const texte = Math.abs(n).toLocaleString('fr-FR', {
-    minimumFractionDigits: decimales, maximumFractionDigits: decimales,
-  })
+  const texte = formatNumber(Math.abs(n), { decimals: decimales })
   if (n === 0) return '0'
   return `${n > 0 ? '+' : '−'}${texte}`
 })
