@@ -220,7 +220,7 @@ def ajouter_heures_ouvrees(
 
 def feries_entre(
         company, date_debut: datetime.date,
-        date_fin: datetime.date) -> list[datetime.date]:
+        date_fin: datetime.date, pays: str | None = None) -> list[datetime.date]:
     """ZRH1 — liste les dates FÉRIÉES de la société dans ``[date_debut,
     date_fin]`` (inclusif), fixes ET mobiles (Aïd, Mawlid, 1er Moharram…)
     saisies dans `Holiday`.
@@ -230,12 +230,21 @@ def feries_entre(
     exacte. Renvoie une liste de ``date`` triée, sans doublon. Sans
     `Holiday` configuré pour la société : liste vide (comportement sûr,
     n'affecte aucun décompte existant).
+
+    HOLIDAY-PAYS (complément NTI18N13) : ``pays`` (ISO 3166-1 alpha-2,
+    ex. ``'FR'``) filtre sur ``Holiday.pays`` QUAND il est fourni — l'appel
+    historique (``pays=None``, défaut) ignore ce champ et renvoie TOUS les
+    jours fériés de la société quel que soit leur pays, exactement comme
+    avant l'ajout du champ (zéro régression pour l'appelant existant,
+    ``apps.rh.services``, qui ne passe pas ce paramètre).
     """
     if date_debut is None or date_fin is None or date_debut > date_fin:
         return []
     try:
         from .models import Holiday
         qs = Holiday.objects.filter(company=company)
+        if pays:
+            qs = qs.filter(pays=pays)
         resultats: set[datetime.date] = set()
         for h in qs:
             if h.recurrent_annuel:

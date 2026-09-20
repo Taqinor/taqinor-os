@@ -55,6 +55,16 @@ EVENT_DEFAULT_OVERRIDES = {
     # doit les recevoir aussi par e-mail, pas seulement en in-app.
     'relance_due': {'email': True},
     'premier_contact_depasse': {'email': True},
+    # NTPRT18 — un compte portail (client/fournisseur/partenaire) ne vit pas
+    # connecté à l'ERP toute la journée comme un collaborateur interne : la
+    # cloche in-app seule passerait inaperçue. Email ON par défaut pour les
+    # 4 événements portail (SendGrid/Brevo-gated : no-op sans clé, comme le
+    # canal interne — voir `_is_email_configured`), surchargeable comme
+    # toujours par une ligne `NotificationPreference` explicite.
+    'portail_devis_pret': {'email': True},
+    'portail_facture_echue': {'email': True},
+    'portail_jalon_chantier_atteint': {'email': True},
+    'portail_ticket_maj': {'email': True},
 }
 
 # ERR91 — Bornes cohérentes pour la ligne in-app. `title` (255) et `link` (512)
@@ -1076,9 +1086,15 @@ def _approval_reminder_state(company, instance):
 
 def _sweep_one_pending_approval(company, instance, *, approver, requester,
                                 link, description, relance_days,
-                                escalade_days, today):
+                                escalade_days, today, approval_action=None):
     """Traite UNE approbation en attente : relance au palier 1, escalade au
     palier 2 — jamais deux fois pour le même palier (état persisté).
+
+    `approval_action` (NTWFL15) : dict optionnel ``{'source', 'id'}``
+    transmis tel quel à ``notify()`` — quand fourni, le push mobile porte le
+    deep-link « un clic » ``/approbations/:source/:id`` vers la carte de
+    décision (au lieu de rouvrir la liste générique) et les actions
+    Approuver/Refuser natives (NTMOB7).
 
     Renvoie 1 si une notification a été émise, 0 sinon."""
     from .calendar_utils import ajouter_jours_ouvres
@@ -1100,7 +1116,7 @@ def _sweep_one_pending_approval(company, instance, *, approver, requester,
         body = f'{description} reste en attente depuis {escalade_days}+ jours ouvrés.'
         for admin in _managers(company):
             notify(admin, EventType.APPROVAL_ESCALATED, title, body=body,
-                   link=link, company=company)
+                   link=link, company=company, approval_action=approval_action)
         state.palier = 2
         state.derniere_action_le = timezone.now()
         state.save(update_fields=['palier', 'derniere_action_le'])
@@ -1111,7 +1127,7 @@ def _sweep_one_pending_approval(company, instance, *, approver, requester,
             title = "Relance d'approbation"
             body = f'{description} attend toujours votre validation.'
             notify(approver, EventType.APPROVAL_REMINDER, title, body=body,
-                   link=link, company=company)
+                   link=link, company=company, approval_action=approval_action)
         state.palier = 1
         state.derniere_action_le = timezone.now()
         state.save(update_fields=['palier', 'derniere_action_le'])
@@ -1141,10 +1157,11 @@ def sweep_approval_reminders(company, *, today=None):
                 count += _sweep_one_pending_approval(
                     company, approval, approver=approver,
                     requester=approval.requested_by,
-                    link='/approbations?source=automation',
+                    link=f'/approbations/automation/{approval.pk}',
                     description=approval.description or 'Une action',
                     relance_days=relance_days, escalade_days=escalade_days,
-                    today=today)
+                    today=today,
+                    approval_action={'source': 'automation', 'id': approval.pk})
             except Exception:  # pragma: no cover - défensif
                 logger.warning(
                     'sweep_approval_reminders: automation approval %s échouée',
@@ -1209,11 +1226,14 @@ def sweep_workflow_step_reminders(company, *, now=None):
             title = "Relance d'approbation"
             body = (f'L\'étape « {step.step_def.nom} » attend toujours une '
                     'décision (plus de la moitié du délai SLA écoulé).')
-            link = '/approbations?source=workflow'
+            # NTWFL15 — deep-link « un clic » : /approbations/:source/:id
+            # (le push mobile ouvre directement la carte de décision).
+            link = f'/approbations/workflow/{step.pk}'
             for approver in _managers(company):
                 notify(
                     approver, EventType.APPROVAL_REMINDER, title, body=body,
-                    link=link, company=company, reason='manager')
+                    link=link, company=company, reason='manager',
+                    approval_action={'source': 'workflow', 'id': step.pk})
             core_workflow.marquer_rappel_envoye(step, now=moment)
             count += 1
         except Exception:  # pragma: no cover - défensif
@@ -1277,3 +1297,42 @@ def notify_security_change(user, title, body='', *, link=None, company=None):
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('Email notification sécurité échoué : %s', exc)
     return created
+
+
+# =============================================================================
+# NTAPI41 — alertes de santé d'intégration à seuils configurables (quota
+# proche de sa limite, pic de taux d'erreur). Le troisième cas de la même
+# famille — un webhook auto-désactivé après trop d'échecs consécutifs — est
+# DÉJÀ couvert de bout en bout par NTAPI11 (`apps.publicapi.webhook_health`,
+# `EventType.API_WEBHOOK_DESACTIVE`) : rien à reconstruire ici.
+# =============================================================================
+
+def notify_integration_health(company, recipients, *, title, valeur, paliers,
+                              dernier_palier=None, body='', link='',
+                              event_type=EventType.API_TAUX_ERREUR_ELEVE,
+                              reason=''):
+    """Notifie `recipients` quand `valeur` franchit un nouveau palier.
+
+    Réutilise `core.rules.palier_franchi` (FG367-adjacent, motif générique
+    « une notification par palier franchi, jamais deux fois, ré-armement
+    sous le plus bas palier ») pour la décision, et `notify_many()` pour
+    l'émission — cette fonction ne fait AUCUNE requête métier : l'appelant
+    (ex. un job `apps.publicapi` calculant le taux d'erreur 5xx d'un webhook
+    sur une fenêtre glissante, ou une vérification de quota) fournit
+    `valeur` déjà calculée et `dernier_palier` (persisté où il veut — cache,
+    champ modèle — cette fonction ne persiste rien elle-même).
+
+    `paliers` : seuils numériques (ex. ``(80, 100)`` pour un quota en %,
+    ``(10,)`` pour un taux d'erreur simple en %). `event_type` par défaut
+    `API_TAUX_ERREUR_ELEVE` ; passer `EventType.USAGE_QUOTA_SEUIL_FRANCHI`
+    pour une alerte de quota.
+
+    Renvoie le nouveau palier notifié (à persister par l'appelant), ou
+    `None` si rien de neuf à notifier."""
+    from core.rules import palier_franchi
+    palier = palier_franchi(valeur, paliers, dernier_palier)
+    if palier is None:
+        return None
+    notify_many(recipients, event_type, title, body=body, link=link,
+                company=company, reason=reason)
+    return palier

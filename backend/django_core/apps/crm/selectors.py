@@ -2665,6 +2665,283 @@ def relance_etapes_periode(company, user, *, date_debut, date_fin, owner=None,
     return etapes, resume
 
 
+# ── RLC2 — LE JOURNAL « CE QUI S'EST PASSÉ » DU PLAN DE RELANCE ─────────────
+#
+# Relevé fondateur du 08/09/2026 : « on ne voit pas d'un coup d'œil ce qui s'est
+# passé dans le plan de relance ». La réponse n'est PAS un nouveau journal —
+# ``LeadActivity`` et ``RelanceEtape`` portent déjà tout — c'est une LECTURE qui
+# les fusionne en UNE histoire où chaque ligne dit sa CAUSE.
+#
+# Deux règles de construction :
+#   * la colonne vertébrale, ce sont les TOUCHES traitées (``RelanceEtape``) :
+#     la ligne de chatter qu'une clôture écrit n'est donc jamais rendue comme
+#     une ligne de plus — elle sert à retrouver l'ISSUE saisie, et rien d'autre ;
+#   * tout le reste (message ouvert, rappel reporté, arrêt/redémarrage de
+#     cadence avec son motif, filet posé, changement d'étape du funnel,
+#     annulation RLC1) vient du chatter, reconnu par des PRÉFIXES écrits dans
+#     ``services`` — jamais devinés depuis un texte libre.
+
+#: Les natures de ligne du journal. NOMMÉES côté serveur pour que l'écran ne
+#: déduise jamais la nature d'une ligne de son texte.
+JOURNAL_TYPES = (
+    'touche_faite', 'touche_sautee', 'touche_annulee', 'annulation',
+    'message_ouvert', 'rappel_reporte', 'cadence_demarree', 'cadence_arretee',
+    'filet_pose', 'devis_suivi', 'etape_funnel',
+)
+
+#: Fenêtre d'appariement entre une touche close et la ligne de chatter écrite
+#: par la MÊME requête (voir ``services._ANNULATION_FENETRE_EFFETS`` : même
+#: raisonnement, même ordre de grandeur — une requête HTTP, pas une journée).
+_JOURNAL_FENETRE = datetime.timedelta(minutes=2)
+
+#: Préfixes de chatter → nature de ligne. L'ORDRE compte : le premier préfixe
+#: qui correspond gagne (« Cadence de relance non initialisée » est un refus de
+#: démarrage, pas un arrêt).
+_JOURNAL_PREFIXES = (
+    ('WhatsApp ouvert — touche', 'message_ouvert'),
+    ('Rappel demandé le', 'rappel_reporte'),
+    ('Plan de relance initialisé', 'cadence_demarree'),
+    ('Cadence de relance non initialisée', 'cadence_demarree'),
+    ('Cadence après devis déjà en cours', 'cadence_demarree'),
+    ('Cadence ', 'cadence_arretee'),
+    ('Étape « ', 'filet_pose'),
+    ('Annulation par ', 'annulation'),
+)
+
+
+def _journal_cause_apres_deux_points(body):
+    """Le motif d'une note de chatter — ce qui suit le dernier « : ».
+
+    ``arreter_cadence`` écrit « Cadence contact arrêtée (3 touche(s)) : lead
+    signé. » : la CAUSE est « lead signé ». Sans « : », la note entière fait
+    office de cause plutôt qu'un vide."""
+    texte = (body or '').strip()
+    if ' : ' in texte:
+        return texte.split(' : ', 1)[1].strip().rstrip('.')
+    return texte.rstrip('.')
+
+
+def journal_relance(company, user, lead_id):
+    """RLC2 — « ce qui s'est passé » dans le plan de relance d'UN lead, et son
+    ÉTAT courant en une phrase. LECTURE PURE : aucune écriture, aucun effet.
+
+    Renvoie ``{'lead', 'etat', 'lignes'}`` — ``lignes`` en ordre
+    CHRONOLOGIQUE (du plus ancien au plus récent : le plan se lit comme une
+    histoire, et l'état du moment est servi à part, en tête). ``None`` quand le
+    lead n'existe pas OU sort de la portée de visibilité du demandeur : les deux
+    cas sont indistinguables exprès (un 404 ne doit jamais confirmer
+    l'existence d'un lead qu'on n'a pas le droit de voir).
+
+    Chaque ligne porte ``{quand, type, titre, cause, par}`` : ``type`` est une
+    valeur de ``JOURNAL_TYPES``, ``par`` est vide quand le geste est celui du
+    MOTEUR (arrêt de cadence, filet, annulation moteur — CKP1 : jamais un nom
+    d'humain sur un geste automatique).
+
+    Coût : trois requêtes (le lead, ses touches, la tranche PERTINENTE de son
+    chatter), quel que soit le nombre de lignes rendues."""
+    from django.db.models import Q
+
+    from authentication.scoping import scope_queryset
+    from core.dates import aujourd_hui_local
+
+    from . import stages
+    from .models import Lead, LeadActivity, RelanceEtape
+    from .services import prefixe_activite_touche
+
+    lead = scope_queryset(
+        Lead.objects.filter(company=company, pk=lead_id), user,
+        ['owner']).first()
+    if lead is None:
+        return None
+
+    etapes = list(lead.relance_etapes
+                  .select_related('traite_par', 'devis')
+                  .order_by('created_at', 'pk'))
+    pertinentes = Q(kind=LeadActivity.Kind.MODIFICATION, field='stage')
+    pertinentes |= Q(body__startswith='Touche « ')
+    for prefixe, _type in _JOURNAL_PREFIXES:
+        pertinentes |= Q(body__startswith=prefixe)
+    activites = list(lead.activites.filter(pertinentes)
+                     .select_related('user').order_by('created_at', 'pk'))
+    outcome_labels = dict(LeadActivity.OUTCOMES)
+
+    def _issue_de(etape):
+        """L'issue SAISIE à la clôture de cette touche, lue sur la ligne de
+        chatter écrite au même instant (appariement par préfixe + fenêtre —
+        deux touches de même libellé ne se confondent donc pas)."""
+        prefixe = prefixe_activite_touche(etape)
+        borne = etape.traite_le + _JOURNAL_FENETRE
+        for activite in activites:
+            if (activite.created_at is not None
+                    and etape.traite_le <= activite.created_at <= borne
+                    and (activite.body or '').startswith(prefixe)):
+                return activite.outcome or ''
+        return ''
+
+    lignes = []
+    statut_type = {
+        RelanceEtape.Statut.FAIT: 'touche_faite',
+        RelanceEtape.Statut.SAUTEE: 'touche_sautee',
+        RelanceEtape.Statut.ANNULEE: 'touche_annulee',
+    }
+    devis_vus = set()
+    for etape in etapes:
+        libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+        # Le DÉMARRAGE d'un suivi de proposition : la première touche créée
+        # pour ce devis dit, à sa date, que le devis est parti.
+        reference = getattr(etape.devis, 'reference', '') or ''
+        if (etape.cadence == 'apres_devis' and etape.devis_id
+                and etape.devis_id not in devis_vus):
+            devis_vus.add(etape.devis_id)
+            lignes.append({
+                'quand': etape.created_at,
+                'type': 'devis_suivi',
+                'titre': ('Suivi de proposition démarré'
+                          + (f' — devis {reference}' if reference else '')),
+                'cause': 'devis envoyé',
+                'par': '',
+            })
+        nature = statut_type.get(etape.statut)
+        if nature is None or etape.traite_le is None:
+            continue
+        if etape.statut == RelanceEtape.Statut.FAIT:
+            issue = _issue_de(etape)
+            cause = outcome_labels.get(issue, issue) if issue else ''
+            if etape.note:
+                cause = f'{cause} — {etape.note}' if cause else etape.note
+        else:
+            # Sautée (décision humaine) comme annulée (retrait moteur) : le
+            # POURQUOI est la note — c'est là qu'``arreter_cadence`` écrit son
+            # motif (« joint », « lead signé »…).
+            cause = etape.note or ''
+        lignes.append({
+            'quand': etape.traite_le,
+            'type': nature,
+            'titre': (f'Touche « {libelle} » ({etape.get_canal_display()}, '
+                      f'cadence {etape.cadence}) '
+                      + ('faite' if nature == 'touche_faite'
+                         else 'sautée' if nature == 'touche_sautee'
+                         else 'retirée du plan')),
+            'cause': cause,
+            # CKP1 — un retrait MOTEUR ne porte aucun nom d'humain.
+            'par': getattr(etape.traite_par, 'username', '') or '',
+        })
+
+    for activite in activites:
+        corps = (activite.body or '').strip()
+        if corps.startswith('Touche « '):
+            continue  # l'écho d'une touche : déjà rendue ci-dessus.
+        if (activite.kind == LeadActivity.Kind.MODIFICATION
+                and activite.field == 'stage'):
+            lignes.append({
+                'quand': activite.created_at,
+                'type': 'etape_funnel',
+                'titre': ('Étape du lead : '
+                          f'{activite.old_value or "—"} → '
+                          f'{activite.new_value or "—"}'),
+                'cause': corps,
+                'par': getattr(activite.user, 'username', '') or '',
+            })
+            continue
+        nature = next((t for prefixe, t in _JOURNAL_PREFIXES
+                       if corps.startswith(prefixe)), None)
+        if nature is None:
+            continue
+        lignes.append({
+            'quand': activite.created_at,
+            'type': nature,
+            'titre': corps,
+            'cause': (_journal_cause_apres_deux_points(corps)
+                      if nature in ('cadence_arretee', 'cadence_demarree')
+                      else ''),
+            'par': getattr(activite.user, 'username', '') or '',
+        })
+
+    lignes.sort(key=lambda ligne: (ligne['quand'], ligne['type']))
+
+    # ── L'ÉTAT COURANT, en une phrase ────────────────────────────────────────
+    aujourdhui = aujourd_hui_local()
+    ouvertes = [e for e in etapes
+                if e.statut == RelanceEtape.Statut.A_FAIRE]
+    # La PROCHAINE touche = la plus proche dans le temps, les lignes sans heure
+    # (d'avant MRY5) en DERNIER — la même règle que `_prochaine_touche_a_faire`
+    # côté services et que le cockpit, jamais une troisième.
+    prochaine = min(
+        ouvertes,
+        key=lambda e: (e.due_at is None, e.due_at or aujourdhui, e.ordre),
+        default=None)
+    dernier = next(
+        (a for a in reversed(activites)
+         if a.kind in (LeadActivity.Kind.APPEL, LeadActivity.Kind.WHATSAPP,
+                       LeadActivity.Kind.EMAIL)), None)
+    devis = next((e.devis for e in reversed(etapes) if e.devis_id), None)
+
+    etat = {
+        'stage': lead.stage,
+        'stage_libelle': stages.STAGE_LABELS.get(lead.stage, lead.stage),
+        'cadence_active': prochaine.cadence if prochaine is not None else '',
+        'prochaine_touche': None if prochaine is None else {
+            'id': prochaine.pk,
+            'libelle': ((prochaine.libelle or '').strip()
+                        or prochaine.get_canal_display()),
+            'canal': prochaine.canal,
+            'cadence': prochaine.cadence,
+            'due_at': prochaine.due_at,
+            'due_date': prochaine.due_date,
+            'en_retard': prochaine.due_date < aujourdhui,
+        },
+        'dernier_echange': None if dernier is None else {
+            'quand': dernier.created_at,
+            'quoi': dernier.get_kind_display(),
+            'issue': (outcome_labels.get(dernier.outcome, dernier.outcome)
+                      if dernier.outcome else ''),
+            'par': getattr(dernier.user, 'username', '') or '',
+        },
+        'devis_en_cours': None if devis is None else {
+            'id': devis.pk,
+            'reference': getattr(devis, 'reference', '') or '',
+            'statut': getattr(devis, 'statut', '') or '',
+        },
+    }
+    etat['phrase'] = _journal_phrase(etat)
+    return {'lead': lead.pk, 'etat': etat, 'lignes': lignes}
+
+
+def _journal_phrase(etat):
+    """RLC2 — l'état courant en UNE phrase lisible.
+
+    Règle des faits VÉRIFIÉS : un morceau inconnu est OMIS — jamais un « — »
+    ni un « 0 » qui laisserait croire à une information."""
+    from . import horaires
+
+    morceaux = [f'Étape {etat["stage_libelle"]}']
+    if etat['cadence_active']:
+        morceaux.append(f'cadence « {etat["cadence_active"]} » active')
+    prochaine = etat['prochaine_touche']
+    if prochaine:
+        quand = prochaine['due_at']
+        moment = (f'{quand.astimezone(horaires.CASABLANCA):%d/%m à %H:%M}'
+                  if quand else f'{prochaine["due_date"]:%d/%m}')
+        morceaux.append(
+            f'prochaine touche « {prochaine["libelle"]} » le {moment}'
+            + (' (en retard)' if prochaine['en_retard'] else ''))
+    else:
+        morceaux.append('aucune touche ouverte')
+    echange = etat['dernier_echange']
+    if echange:
+        quand = echange['quand'].astimezone(horaires.CASABLANCA)
+        morceaux.append(
+            f'dernier échange : {echange["quoi"].lower()} du '
+            f'{quand:%d/%m}'
+            + (f' ({echange["issue"]})' if echange['issue'] else ''))
+    devis = etat['devis_en_cours']
+    if devis and devis['reference']:
+        morceaux.append(
+            f'devis {devis["reference"]}'
+            + (f' ({devis["statut"]})' if devis['statut'] else ''))
+    return ' · '.join(morceaux) + '.'
+
+
 def prochaine_touche_par_lead(company, lead_ids):
     """MRY5 — ``{lead_id: (due_at, due_date, cadence, canal)}`` de la prochaine
     touche À FAIRE de chaque lead demandé.

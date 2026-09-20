@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react'
-import { MapPin, ShieldCheck, TriangleAlert, PlusCircle, Ban, Check } from 'lucide-react'
+import {
+  MapPin, ShieldCheck, TriangleAlert, PlusCircle, Ban, Check, History,
+  LogIn, LogOut,
+} from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader'
 import {
   Badge, Button, Spinner, EmptyState,
@@ -243,8 +246,14 @@ function CarteLiveTab() {
 }
 
 // ── Alertes de géofence ─────────────────────────────────────────────────────
+// Filtre serveur `type_franchissement=sortie` (NTMOB9/GeofenceAlertViewSet) :
+// seules les SORTIES sont actionnables (« À traiter » / Acquitter) — les
+// ENTRÉES sont informatives et vivent dans l'onglet Historique de présence,
+// jamais dans cette file d'attente.
 function AlertesTab() {
-  const { rows, loading, error, reload } = useList(installationsApi.getGeofenceAlertes)
+  const { rows, loading, error, reload } = useList(
+    () => installationsApi.getGeofenceAlertes({ type_franchissement: 'sortie' }),
+  )
 
   const acquitter = async (id) => {
     await installationsApi.acquitterGeofenceAlerte(id).catch(() => {})
@@ -286,6 +295,103 @@ function AlertesTab() {
   )
 }
 
+// ── Historique de présence (NTMOB9) ─────────────────────────────────────────
+// Entrée/sortie de périmètre PAR CHANTIER : `GeofenceAlert.type_franchissement`
+// (NTMOB9) est un champ RÉEL journalisé côté serveur à chaque franchissement
+// détecté par `gps_tracking_service.enregistrer_position` — jamais une
+// dérivation côté écran à partir des positions brutes. Le serveur filtre déjà
+// par `chantier` et `type_franchissement` (`GeofenceAlertViewSet.get_queryset`) ;
+// l'écran ne fait que transmettre les filtres choisis. « Chantier » =
+// `installations.Installation` (`chantiers/`), déjà le sens du mot dans tout
+// le reste de l'app (`InterventionSerializer.installation_reference`).
+const TYPE_FRANCHISSEMENT = [
+  { value: 'tous', label: 'Tous types' },
+  { value: 'entree', label: 'Entrées' },
+  { value: 'sortie', label: 'Sorties' },
+]
+
+function HistoriquePresenceTab() {
+  const [chantiers, setChantiers] = useState([])
+  const [chantierId, setChantierId] = useState('')
+  const [typeFiltre, setTypeFiltre] = useState('tous')
+  const [evenements, setEvenements] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    installationsApi.getInstallations({ page_size: 200 })
+      .catch(() => ({ data: [] }))
+      .then((r) => setChantiers(r.data?.results ?? r.data ?? []))
+  }, [])
+
+  // Enveloppé dans `useCallback` (même patron que `useList` ci-dessus dans
+  // ce fichier) : l'effet se contente d'APPELER la fonction, aucun
+  // `setState` synchrone dans le corps de l'effet lui-même.
+  const chargerEvenements = useCallback(() => {
+    if (!chantierId) return
+    setLoading(true)
+    setError(null)
+    installationsApi.getGeofenceAlertes({
+      chantier: chantierId,
+      page_size: 200,
+      ...(typeFiltre !== 'tous' ? { type_franchissement: typeFiltre } : {}),
+    })
+      .then((r) => setEvenements(r.data?.results ?? r.data ?? []))
+      .catch(() => setError('Chargement impossible.'))
+      .finally(() => setLoading(false))
+  }, [chantierId, typeFiltre])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au chantier/type choisi (même patron que `useList` ci-dessus)
+  useEffect(() => { chargerEvenements() }, [chargerEvenements])
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Entrées/sorties de périmètre par chantier, journalisées par le serveur
+        à chaque franchissement détecté (NTMOB9).
+      </p>
+      <div className="flex flex-wrap gap-3">
+        <select
+          value={chantierId}
+          onChange={(e) => setChantierId(e.target.value)}
+          aria-label="Chantier"
+          className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+        >
+          <option value="">— Choisir un chantier —</option>
+          {chantiers.map((c) => (
+            <option key={c.id} value={c.id}>{c.reference || `Chantier #${c.id}`}</option>
+          ))}
+        </select>
+        <select
+          value={typeFiltre}
+          onChange={(e) => setTypeFiltre(e.target.value)}
+          aria-label="Type de franchissement"
+          className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+        >
+          {TYPE_FRANCHISSEMENT.map((t) => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </select>
+      </div>
+      <ListShell loading={loading} error={error} icon={History}
+        empty={chantierId ? 'Aucun évènement pour ce chantier' : 'Choisissez un chantier'}>
+        {!!chantierId && evenements.length > 0 && evenements.map((e) => (
+          <div key={e.id} data-testid={`presence-${e.id}-${e.type_franchissement}`}
+            className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
+            <span className="font-medium text-sm">{e.technicien_nom || `#${e.technicien}`}</span>
+            <Badge tone={e.type_franchissement === 'entree' ? 'success' : 'neutral'}>
+              {e.type_franchissement === 'entree'
+                ? <><LogIn className="size-3.5" aria-hidden="true" /> Entrée</>
+                : <><LogOut className="size-3.5" aria-hidden="true" /> Sortie</>}
+            </Badge>
+            <span className="text-sm text-muted-foreground">{formatDateTime(e.created_at)}</span>
+          </div>
+        ))}
+      </ListShell>
+    </div>
+  )
+}
+
 export default function SuiviGpsPage() {
   const [techniciens, setTechniciens] = useState([])
 
@@ -311,6 +417,7 @@ export default function SuiviGpsPage() {
           <TabsTrigger value="consentements">Consentements</TabsTrigger>
           <TabsTrigger value="carte">Carte live</TabsTrigger>
           <TabsTrigger value="alertes">Alertes géofence</TabsTrigger>
+          <TabsTrigger value="historique">Historique de présence</TabsTrigger>
         </TabsList>
         <TabsContent value="consentements">
           <ConsentementsTab techniciens={techniciens} />
@@ -320,6 +427,9 @@ export default function SuiviGpsPage() {
         </TabsContent>
         <TabsContent value="alertes">
           <AlertesTab />
+        </TabsContent>
+        <TabsContent value="historique">
+          <HistoriquePresenceTab />
         </TabsContent>
       </Tabs>
     </div>

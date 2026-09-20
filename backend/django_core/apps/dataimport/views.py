@@ -5,6 +5,9 @@ import io
 import logging
 
 from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -18,8 +21,38 @@ from core.selectors import get_company_object
 
 from . import services
 from .models import ImportJob
+from .holidays_import import exporter_feries_csv, importer_feries_csv
+from .translations_i18n import exporter_traductions_csv, importer_traductions_csv
 
 logger = logging.getLogger(__name__)
+
+# NTI18N29 — import de traductions : forme réelle du corps (multipart, un seul
+# champ ``file``) et de la réponse (résumé de l'``ImportJob`` créé).
+IMPORT_TRADUCTIONS_REQUEST = inline_serializer(
+    'ImporterTraductionsRequest', {'file': serializers.FileField()})
+IMPORT_TRADUCTIONS_RESPONSE = inline_serializer('ImporterTraductionsRapport', {
+    'job': serializers.IntegerField(),
+    'statut': serializers.CharField(),
+    'total_lignes': serializers.IntegerField(),
+    'created_count': serializers.IntegerField(),
+    'updated_count': serializers.IntegerField(),
+    'error_count': serializers.IntegerField(),
+})
+
+# NTI18N45 — import de fériés : même forme de corps/réponse que les
+# traductions ci-dessus, mais déclarée séparément (composants uniques par
+# usage — jamais la même instance de champ/serializer partagée entre deux
+# schémas).
+IMPORT_FERIES_REQUEST = inline_serializer(
+    'ImporterFeriesRequest', {'file': serializers.FileField()})
+IMPORT_FERIES_RESPONSE = inline_serializer('ImporterFeriesRapport', {
+    'job': serializers.IntegerField(),
+    'statut': serializers.CharField(),
+    'total_lignes': serializers.IntegerField(),
+    'created_count': serializers.IntegerField(),
+    'updated_count': serializers.IntegerField(),
+    'error_count': serializers.IntegerField(),
+})
 
 # QG4 — la CRÉATION de produits est restreinte partout (REST, import de
 # données, OCR) aux rôles Directeur et Commercial responsable. Le commit
@@ -214,3 +247,97 @@ def job_erreurs_csv(request, job_id):
     resp = HttpResponse(buf.getvalue(), content_type='text/csv; charset=utf-8')
     resp['Content-Disposition'] = f'attachment; filename="import_{job.pk}_erreurs.csv"'
     return resp
+
+
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def export_traductions(request):
+    """NTI18N29 — ``GET traductions/export.csv`` : CSV des surcharges de
+    traduction de la société (colonnes ``cle|fr|en|ar|statut_traduction``),
+    pour relecture par un traducteur externe hors-ligne."""
+    contenu = exporter_traductions_csv(request.user.company)
+    resp = HttpResponse(contenu, content_type='text/csv; charset=utf-8')
+    resp['Content-Disposition'] = 'attachment; filename="traductions.csv"'
+    return resp
+
+
+@extend_schema(request={'multipart/form-data': IMPORT_TRADUCTIONS_REQUEST},
+               responses={200: IMPORT_TRADUCTIONS_RESPONSE})
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+@parser_classes([MultiPartParser, FormParser])
+def import_traductions(request):
+    """NTI18N29 — ``POST traductions/import/`` (multipart ``file``) : réimporte
+    un CSV corrigé, upsert des seules colonnes de locale FOURNIES et non
+    vides (jamais un effacement silencieux). Journalisé via
+    ``dataimport.ImportJob`` (``target='traductions'``)."""
+    f = request.FILES.get('file')
+    if f is None:
+        return Response({'detail': 'Aucun fichier fourni.'}, status=400)
+    size = getattr(f, 'size', None)
+    if size is not None and size > MAX_UPLOAD_BYTES:
+        return Response(
+            {'detail': 'Fichier trop volumineux : '
+                       f'{size} octets (max {MAX_UPLOAD_BYTES}).'},
+            status=400)
+    try:
+        job = importer_traductions_csv(
+            f.read(), f.name, request.user.company, user=request.user)
+    except Exception:
+        logger.warning('Import de traductions échoué', exc_info=True)
+        return Response(
+            {'detail': 'Lecture du fichier impossible (format invalide ?).'},
+            status=400)
+    return Response({
+        'job': job.pk, 'statut': job.statut, 'total_lignes': job.total_lignes,
+        'created_count': job.created_count, 'updated_count': job.updated_count,
+        'error_count': job.error_count,
+    })
+
+
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def export_feries(request):
+    """NTI18N45 — ``GET feries/export.csv`` : CSV du calendrier de jours
+    fériés de la société (colonnes ``pays|date|libelle|recurrent_annuel``),
+    pour préparation hors-ligne dans un tableur."""
+    contenu = exporter_feries_csv(request.user.company)
+    resp = HttpResponse(contenu, content_type='text/csv; charset=utf-8')
+    resp['Content-Disposition'] = 'attachment; filename="feries.csv"'
+    return resp
+
+
+@extend_schema(request={'multipart/form-data': IMPORT_FERIES_REQUEST},
+               responses={200: IMPORT_FERIES_RESPONSE})
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+@parser_classes([MultiPartParser, FormParser])
+def import_feries(request):
+    """NTI18N45 — ``POST feries/import/`` (multipart ``file``) : importe en
+    masse un calendrier de jours fériés, upsert IDEMPOTENT par
+    ``(pays, date)``. Journalisé via ``dataimport.ImportJob``
+    (``target='feries'``)."""
+    f = request.FILES.get('file')
+    if f is None:
+        return Response({'detail': 'Aucun fichier fourni.'}, status=400)
+    size = getattr(f, 'size', None)
+    if size is not None and size > MAX_UPLOAD_BYTES:
+        return Response(
+            {'detail': 'Fichier trop volumineux : '
+                       f'{size} octets (max {MAX_UPLOAD_BYTES}).'},
+            status=400)
+    try:
+        job = importer_feries_csv(
+            f.read(), f.name, request.user.company, user=request.user)
+    except Exception:
+        logger.warning('Import de fériés échoué', exc_info=True)
+        return Response(
+            {'detail': 'Lecture du fichier impossible (format invalide ?).'},
+            status=400)
+    return Response({
+        'job': job.pk, 'statut': job.statut, 'total_lignes': job.total_lignes,
+        'created_count': job.created_count, 'updated_count': job.updated_count,
+        'error_count': job.error_count,
+    })

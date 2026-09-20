@@ -75,6 +75,90 @@ def company_identity(company) -> dict:
     }
 
 
+def adresse_affichage(company) -> str:
+    """NTI18N22 — adresse « effective » d'une société pour un document (PDF).
+
+    Priorité : si AU MOINS UN des champs structurés (`adresse_rue`,
+    `adresse_code_postal`, `adresse_ville`, `adresse_pays`) est renseigné, on
+    reconstruit une ligne d'adresse à partir d'eux ; sinon on retombe sur le
+    TextField libre historique `adresse`, tel quel — NON-RÉGRESSION totale
+    pour une société qui n'a jamais rempli les champs structurés (NTI18N22).
+    Aucune exception : une société sans profil renvoie une chaîne vide.
+    """
+    p = _profile(company)
+    if p is None:
+        return ""
+    parties_structurees = [
+        (getattr(p, "adresse_rue", "") or "").strip(),
+        (getattr(p, "adresse_code_postal", "") or "").strip(),
+        (getattr(p, "adresse_ville", "") or "").strip(),
+        (getattr(p, "adresse_pays", "") or "").strip(),
+    ]
+    if any(parties_structurees):
+        rue, code_postal, ville, pays = parties_structurees
+        ligne_ville = " ".join(x for x in (code_postal, ville) if x)
+        return ", ".join(x for x in (rue, ligne_ville, pays) if x)
+    return (p.adresse or "").strip()
+
+
+def statut_libelle(company, domaine: str, cle: str, langue: str = 'fr') -> str:
+    """NTI18N25 — libellé d'affichage d'un statut métier, langue-consciente.
+
+    Ordre de priorité :
+      1. surcharge société `StatutConfig` (N58) — TOUJOURS en français (un
+         override manuel est un texte FR saisi par le tenant) : ne s'applique
+         que si `langue == 'fr'`, jamais utilisée comme traduction EN/AR ;
+      2. `i18n_labels.STATUT_LABELS` (NTI18N25) ;
+      3. la clé canonique brute (jamais d'exception).
+
+    Ne renomme ni ne réordonne jamais la clé canonique elle-même — ceci ne
+    calcule qu'un LIBELLÉ, jamais une transition d'état.
+
+    NTI18N51 — quand la langue demandée oblige à replier sur le français, le
+    repli est COMPTÉ (``traductions_manquantes.enregistrer_repli``) pour que la
+    lacune remonte d'elle-même à l'équipe une fois par semaine, au lieu
+    d'attendre qu'un client la signale. Aucune écriture quand la traduction
+    existe, et l'échec du compteur n'empêche jamais le libellé de sortir.
+    """
+    from .i18n_labels import statut_label, variante_absente
+    from .models_statuses import StatutConfig
+
+    if langue == 'fr' and company is not None:
+        override = StatutConfig.objects.filter(
+            company=company, domaine=domaine, cle=cle).first()
+        if override is not None and override.libelle:
+            return override.libelle
+    if company is not None and variante_absente(domaine, cle, langue):
+        from .traductions_manquantes import cle_statut, enregistrer_repli
+        enregistrer_repli(company, langue, cle_statut(domaine, cle))
+    return statut_label(domaine, cle, langue)
+
+
+def langue_interface_verrouillee(company) -> bool:
+    """NTI18N35 — société avec la langue d'interface verrouillée ?
+
+    Point d'entrée cross-app PRÊT pour ``authentication.views.
+    LangueInterfaceView`` (PATCH /auth/me/langue/, hors périmètre de cette
+    lane) : cet endpoint devra appeler cette fonction et renvoyer 403 quand
+    elle est vraie. Jamais d'exception — une société sans profil (ou hors
+    requête) n'est jamais verrouillée."""
+    p = _profile(company)
+    return bool(p is not None and p.langue_interface_verrouillee)
+
+
+def langue_par_defaut_effective(company) -> str | None:
+    """NTI18N35 — langue à imposer si l'interface est verrouillée.
+
+    Renvoie ``CompanyProfile.langue_repli`` quand
+    ``langue_interface_verrouillee`` est vrai, sinon ``None`` (« pas
+    d'imposition » — l'utilisateur garde sa préférence individuelle,
+    comportement historique)."""
+    p = _profile(company)
+    if p is None or not p.langue_interface_verrouillee:
+        return None
+    return p.langue_repli
+
+
 def tariff_for(company) -> dict:
     """Repères ROI/tarifaires CANONIQUES d'une société (source unique — DC5).
 

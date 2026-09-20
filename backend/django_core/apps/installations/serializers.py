@@ -1591,11 +1591,15 @@ class DemandeAchatSerializer(serializers.ModelSerializer):
             'approuvee_par', 'date_decision', 'note', 'lignes',
             'montant_estime',
             'created_by', 'date_creation', 'date_modification',
+            # NTP2P35 — `epinglee` est le SEUL des trois que le terrain écrit
+            # (protéger un brouillon de l'archivage automatique) ; `archivee`
+            # et `date_archivage` sont posés par la tâche planifiée.
+            'archivee', 'epinglee', 'date_archivage',
         ]
         read_only_fields = [
             'reference', 'statut', 'bon_commande', 'approuvee_par',
             'date_decision', 'motif_refus', 'created_by', 'date_creation',
-            'date_modification',
+            'date_modification', 'archivee', 'date_archivage',
         ]
 
     def validate_objet(self, value):
@@ -2994,20 +2998,24 @@ class PositionTechnicienSerializer(serializers.ModelSerializer):
 
 
 class GeofenceAlertSerializer(serializers.ModelSerializer):
-    """XFSM23 — alerte géofence (position hors du rayon attendu du chantier
-    pendant une intervention active). Lecture seule côté API — générée
-    uniquement par le service ``enregistrer_position``."""
+    """XFSM23/NTMOB9 — franchissement du rayon attendu du chantier pendant une
+    intervention active : ``sortie`` (position hors rayon) ou ``entree``
+    (arrivée sur site, NTMOB9). Lecture seule côté API — généré uniquement par
+    le service ``enregistrer_position``."""
     technicien_nom = serializers.CharField(
         source='technicien.username', read_only=True, default=None)
+    type_franchissement_display = serializers.CharField(
+        source='get_type_franchissement_display', read_only=True, default=None)
 
     class Meta:
         model = GeofenceAlert
         fields = [
             'id', 'intervention', 'technicien', 'technicien_nom', 'position',
             'distance_site_km', 'rayon_attendu_km', 'created_at',
+            'type_franchissement', 'type_franchissement_display',
             'acquittee', 'acquittee_par', 'acquittee_le',
         ]
         read_only_fields = [
             'intervention', 'technicien', 'position', 'distance_site_km',
-            'rayon_attendu_km', 'created_at',
+            'rayon_attendu_km', 'created_at', 'type_franchissement',
         ]

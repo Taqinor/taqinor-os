@@ -1,0 +1,109 @@
+{
+  "endpoint": "GET /api/django/crm/relance-etapes/journal/?lead=1489",
+  "pourquoi": "RLC2 (relevé fondateur du 08/09/2026, lead test1 aa : « on ne voit pas d'un coup d'œil ce qui s'est passé dans le plan de relance ») — le panneau chronologique UNIQUE du Suivi commercial et son état courant en une phrase. Deux moitiés sans fichier commun (`selectors.journal_relance` + `RelanceEtapeViewSet.journal` côté serveur, `JournalRelance.jsx` côté écran) : cet exemple est le contrat partagé (PACT10). AUCUN nouveau journal — les lignes sont la FUSION des touches traitées (`crm.RelanceEtape`) et de la tranche utile du chatter (`crm.LeadActivity`), en LECTURE PURE. Chaque ligne dit sa CAUSE ; `par` est vide quand le geste est celui du MOTEUR (retrait de touche, filet, arrêt de cadence — CKP1 : jamais un nom d'humain sur un geste automatique).",
+  "exemple": {
+    "lead": 1489,
+    "etat": {
+      "stage": "CONTACTED",
+      "stage_libelle": "Contacté",
+      "cadence_active": "contact",
+      "prochaine_touche": {
+        "id": 418,
+        "libelle": "Appel 2 (répondeur)",
+        "canal": "appel",
+        "cadence": "contact",
+        "due_at": "2026-09-09T08:00:00Z",
+        "due_date": "2026-09-09",
+        "en_retard": false
+      },
+      "dernier_echange": {
+        "quand": "2026-09-08T07:31:00Z",
+        "quoi": "Appel",
+        "issue": "Joint",
+        "par": "meryem"
+      },
+      "devis_en_cours": null,
+      "phrase": "Étape Contacté · cadence « contact » active · prochaine touche « Appel 2 (répondeur) » le 09/09 à 09:00 · dernier échange : appel du 08/09 (Joint)."
+    },
+    "lignes": [
+      {
+        "quand": "2026-09-06T07:30:00Z",
+        "type": "cadence_demarree",
+        "titre": "Plan de relance initialisé — cadence « contact » (11 touche(s) prévue(s), première le 06/09/2026 à 08:30).",
+        "cause": "11 touche(s) prévue(s), première le 06/09/2026 à 08:30)",
+        "par": ""
+      },
+      {
+        "quand": "2026-09-06T07:33:00Z",
+        "type": "message_ouvert",
+        "titre": "WhatsApp ouvert — touche « Message d'identité » (cadence contact) : message préparé ; la touche reste à faire jusqu'à la réponse du client.",
+        "cause": "",
+        "par": "meryem"
+      },
+      {
+        "quand": "2026-09-06T07:40:00Z",
+        "type": "touche_faite",
+        "titre": "Touche « Message d'identité » (WhatsApp, cadence contact) faite",
+        "cause": "Non joint",
+        "par": "meryem"
+      },
+      {
+        "quand": "2026-09-08T07:31:00Z",
+        "type": "touche_faite",
+        "titre": "Touche « Appel d'ouverture » (Appel, cadence contact) faite",
+        "cause": "Joint",
+        "par": "meryem"
+      },
+      {
+        "quand": "2026-09-08T07:31:01Z",
+        "type": "touche_annulee",
+        "titre": "Touche « Preuve — installation comparable » (WhatsApp, cadence contact) retirée du plan",
+        "cause": "joint",
+        "par": ""
+      },
+      {
+        "quand": "2026-09-08T07:31:02Z",
+        "type": "cadence_arretee",
+        "titre": "Cadence contact, reveil arrêtée (8 touche(s)) : joint.",
+        "cause": "joint",
+        "par": ""
+      },
+      {
+        "quand": "2026-09-08T07:31:03Z",
+        "type": "etape_funnel",
+        "titre": "Étape du lead : Nouveau → Contacté",
+        "cause": "auto — premier contact",
+        "par": "meryem"
+      },
+      {
+        "quand": "2026-09-08T07:31:04Z",
+        "type": "filet_pose",
+        "titre": "Étape « Préparer et envoyer le devis (ou fixer un rappel) » posée automatiquement pour le 09/09/2026 à 09:00 — aucune autre relance ouverte.",
+        "cause": "",
+        "par": ""
+      }
+    ]
+  },
+  "exemple_vide": {
+    "lead": 1490,
+    "etat": {
+      "stage": "NEW",
+      "stage_libelle": "Nouveau",
+      "cadence_active": "",
+      "prochaine_touche": null,
+      "dernier_echange": null,
+      "devis_en_cours": null,
+      "phrase": "Étape Nouveau · aucune touche ouverte."
+    },
+    "lignes": []
+  },
+  "notes": {
+    "ordre": "CHRONOLOGIQUE — du plus ancien au plus récent : le plan se lit comme une histoire. L'état du moment n'est pas dans la liste, il est servi à part dans `etat`.",
+    "type": "touche_faite | touche_sautee | touche_annulee | annulation | message_ouvert | rappel_reporte | cadence_demarree | cadence_arretee | filet_pose | devis_suivi | etape_funnel (constante serveur `selectors.JOURNAL_TYPES` — l'écran ne déduit JAMAIS la nature d'une ligne de son texte).",
+    "par": "Nom de l'humain, ou chaîne VIDE quand c'est le moteur (CKP1). Jamais null.",
+    "cause": "Le POURQUOI de la ligne, quand il est connu : issue saisie pour une touche faite, motif pour une touche sautée/retirée ou un arrêt de cadence, texte du log automatique pour un changement d'étape. Chaîne vide — jamais un « — » — quand la cause n'est pas connue (règle des faits vérifiés).",
+    "etat.cadence_active": "Cadence de la PROCHAINE touche ouverte, chaîne vide s'il n'y en a aucune.",
+    "404": "« Lead inconnu. » couvre à la fois le lead inexistant et le lead hors portée de visibilité — indistinguables exprès (aucun oracle d'existence).",
+    "lecture_pure": "Aucune écriture : ni activité, ni touche, ni champ du lead. Trois requêtes quel que soit le nombre de lignes."
+  }
+}

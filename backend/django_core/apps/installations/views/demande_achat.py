@@ -37,6 +37,7 @@ from ..models import (
     DemandeAchat, DemandeAchatLigne, EtapeApprobationAchat,
     RegleApprobationAchat,
 )
+from ..permissions import PeutApprouverDemandeAchat
 from ..serializers import (
     DemandeAchatSerializer, DemandeAchatLigneSerializer,
     EtapeApprobationAchatSerializer, RegleApprobationAchatSerializer,
@@ -103,6 +104,13 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     serializer_class = DemandeAchatSerializer
 
     def get_permissions(self):
+        # NTP2P36 — `approuver-etape` exige EN PLUS le code fin
+        # `approuver_demande_achat` (le viewset a son propre `get_permissions`
+        # branché sur `self.action` : un `permission_classes=` posé sur le
+        # décorateur `@action` serait écrasé par ce branchement, d'où la garde
+        # DEDANS plutôt que sur `@action`).
+        if self.action == 'approuver_etape':
+            return [IsResponsableOrAdmin(), PeutApprouverDemandeAchat()]
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
@@ -116,6 +124,13 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             val = params.get(key)
             if val:
                 qs = qs.filter(**{col: val})
+        # NTP2P35 — la liste ACTIVE masque les brouillons archivés par la tâche
+        # planifiée ; `?archivees=1` les montre (et eux SEULS) sans que rien
+        # n'ait été supprimé. Les vues de détail (`retrieve`) et les actions
+        # gardent l'accès à une demande archivée : elle reste consultable.
+        if self.action == 'list':
+            voulu = params.get('archivees') in ('1', 'true', 'True')
+            qs = qs.filter(archivee=voulu)
         return qs
 
     def _check_all_tenant(self, serializer):
@@ -260,6 +275,11 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         except TransitionRefusee as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
+        # DA-EVENT-VIEWSET (NTP2P38) — ce chemin direct (sans plan
+        # d'approbation) contourne `services.approuver_etape_achat`, qui émet
+        # déjà l'événement à la dernière étape : sans cet appel, une demande
+        # approuvée SANS étapes n'émettait jamais `demande_achat_approuvee`.
+        services.emettre_demande_achat_approuvee(da, user=request.user)
         _notifier_demandeur_decision(da, approuvee=True)
         return Response(self.get_serializer(da).data)
 

@@ -7,7 +7,7 @@ import {
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
   Ship, Route, Layers, Repeat, Trash2,
-  Leaf, DatabaseBackup, HardDriveDownload, Gauge, Cable, Sun,
+  Leaf, DatabaseBackup, HardDriveDownload, Gauge, Cable, Sun, History,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -121,6 +121,13 @@ const EtatDependancesPage = lazy(() => import('../../pages/parametres/EtatDepend
 // NTOBS16 — Paramètres → Fiabilité → SLA (destination du badge Dashboard).
 // Nav ET route ensemble (motif PACT150).
 const SlaReportPage = lazy(() => import('../../pages/parametres/SlaReportPage'))
+// NTOBS19 — Paramètres → Fiabilité → Assistant « Créer une fenêtre de
+// maintenance » (wizard 3 étapes au-dessus de core.MaintenanceWindow, NTOBS9,
+// tel quel — aucun nouveau modèle). Nav ET route ensemble (motif PACT150).
+const MaintenanceWizard = lazy(() => import('../../pages/parametres/MaintenanceWizard'))
+// NTOBS33 — Paramètres → Fiabilité → « Historique brut » (admin interne,
+// core.ComponentStatusLog). Nav ET route ensemble (motif PACT150).
+const HistoriqueStatutPage = lazy(() => import('../../pages/parametres/HistoriqueStatutPage'))
 // WIR26 — Paramètres → Achats (`stock.AchatsParametres`, singleton par
 // société) : conformité (XPUR1), RAS-TVA (XPUR2), tolérances 3-voies
 // (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
@@ -273,8 +280,15 @@ const config = {
       { to: '/parametres/etat-dependances', label: 'État des dépendances', icon: <Cable size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTOBS16 — nav ET route ensemble (motif PACT150).
       { to: '/parametres/sla', label: 'SLA', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS19 — création réservée Directeur/Administrateur côté serveur
+      // (`IsDirecteurOrAdmin`, core/maintenance_windows.py) — nav ET route
+      // ensemble (motif PACT150).
+      { to: '/parametres/maintenance', label: 'Fenêtre de maintenance', icon: <AlertTriangle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // MSGACC1 — nav ET route ensemble (motif PACT150).
       { to: '/parametres/messages-accueil', label: 'Messages d’accueil', icon: <Sun size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTOBS33 — nav ET route ensemble (motif PACT150). Réservé admin (le
+      // serveur exige Directeur/Administrateur, IsDirecteurOrAdmin).
+      { to: '/parametres/historique-statut', label: 'Historique brut (statuts)', icon: <History size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
     ],
   },
   routes: [
@@ -307,8 +321,11 @@ const config = {
     { path: '/parametres/limites-usage', component: LimitesUsagePage, roles: ['responsable', 'admin'] },
     { path: '/parametres/etat-dependances', component: EtatDependancesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/sla', component: SlaReportPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/maintenance', component: MaintenanceWizard, roles: ['admin'] },
     // MSGACC1 — nav ET route ensemble (motif PACT150).
     { path: '/parametres/messages-accueil', component: MessagesAccueilPage, roles: ['responsable', 'admin'] },
+    // NTOBS33 — nav ET route ensemble (motif PACT150).
+    { path: '/parametres/historique-statut', component: HistoriqueStatutPage, roles: ['admin'] },
     // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint
     // depuis /parametres/objets-personnalises (un lien « Enregistrements » par
     // objet) — la lecture d'un enregistrement reste ouverte aux rôles autorisés

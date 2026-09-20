@@ -10,7 +10,7 @@ HMAC `X-Taqinor-Signature`.
 La source de vérité des scopes/évènements reste `constants.py` : on lit
 `SCOPE_CHOICES`/`EVENT_CHOICES` pour ne jamais diverger de l'implémentation.
 """
-from .constants import SCOPE_CHOICES, EVENT_CHOICES
+from .constants import SCOPE_CHOICES, EVENT_CHOICES, SCOPE_READ_FIABILITE
 from .auth import AUTH_KEYWORD
 from .delivery import (
     SIGNATURE_HEADER, SIGNATURE_HEADER_V2, EVENT_HEADER, TIMESTAMP_HEADER,
@@ -254,6 +254,37 @@ def public_api_reference():
                 'tri': ['id', 'ordre'],
                 'updated_since': 'updated_at',
             },
+            {
+                'chemin': '/api/public/v1/achats/demandes-achat/',
+                'scope': 'lecture_achats',
+                'description': (
+                    "NTP2P39 — demandes d'achat (réquisitions, FG310) : "
+                    "référence, objet, statut, priorité, date de besoin, "
+                    "chantier/programme et montant ESTIMÉ (ordre de grandeur "
+                    "d'engagement). Les LIGNES ne sont pas exposées : leur "
+                    "prix unitaire estimé est un prix d'achat interne."
+                ),
+                'filtres': [
+                    'statut', 'priorite', 'chantier', 'programme', 'reference',
+                ],
+                'tri': ['date_creation', 'date_modification', 'id'],
+                'updated_since': 'date_modification',
+            },
+            {
+                'chemin': '/api/public/v1/achats/rfq/',
+                'scope': 'lecture_achats',
+                'description': (
+                    "NTP2P39 — demandes de prix (RFQ, FG311) : référence, "
+                    "objet, statut, date limite, fournisseurs CONSULTÉS (avec "
+                    "« a répondu ») et offre RETENUE par son identité "
+                    "(fournisseur + délai). Jamais le montant d'une offre "
+                    "(prix d'achat interne), jamais le jeton de consultation "
+                    "(il ouvre la page de réponse sans login)."
+                ),
+                'filtres': ['statut', 'demande', 'reference'],
+                'tri': ['date_creation', 'date_modification', 'id'],
+                'updated_since': 'date_modification',
+            },
         ],
         'endpoints_ecriture': {
             'description': (
@@ -393,7 +424,13 @@ def public_api_reference():
                     'description': (
                         "NTAPI17 — flux d'évènements consommable par CURSEUR "
                         "(`?after=<sequence>&limit=<n>`), alimenté par les "
-                        "mêmes signaux que les webhooks. Pendant PULL du push : "
+                        "mêmes signaux que les webhooks. NTAPI32 — "
+                        "`?type=facture.paid` (plusieurs codes séparés par une "
+                        "virgule) restreint le flux à ces évènements, pour un "
+                        "trigger no-code abonné à UN évènement ; un code inconnu "
+                        "du vocabulaire renvoie 400, un code non couvert par les "
+                        "scopes de la clé reste simplement absent. "
+                        "Pendant PULL du push : "
                         "pour une intégration qui ne peut pas exposer d'URL "
                         "publique, et comme filet de rattrapage. Scope "
                         "`read:events` pour ouvrir le canal ; chaque évènement "
@@ -448,6 +485,44 @@ def public_api_reference():
                         "Tableau de bord réappro consolidé (NTSCM7) — "
                         "``{'lignes': [...]}``. Le coût d'achat interne "
                         "est toujours retiré avant sérialisation."
+                    ),
+                },
+                # NTOBS27 — gouvernance fournisseur : les trois ressources
+                # Fiabilité, chacune scopée à la société de la clé.
+                {
+                    'chemin': '/api/public/v1/fiabilite/sauvegardes/',
+                    'scope': SCOPE_READ_FIABILITE,
+                    'description': (
+                        "Dernière sauvegarde et dernier drill de restauration "
+                        "(NTOBS5) — ``{derniere_sauvegarde, dernier_drill, "
+                        "rpo_planifie, rto_annonce_heures}``, chaque champ "
+                        "``null`` quand la donnée n'existe pas encore. Les "
+                        "runs système-wide ne rendent que date + statut : "
+                        "jamais l'artefact, la clé d'objet de stockage, la "
+                        "taille ou le manifeste interne."
+                    ),
+                },
+                {
+                    'chemin': '/api/public/v1/fiabilite/sla/{periode}/',
+                    'scope': SCOPE_READ_FIABILITE,
+                    'description': (
+                        "Rapport SLA mensuel (NTOBS3) de la période "
+                        "``{periode}`` au format ``YYYY-MM`` — disponibilité, "
+                        "latence P95, crédit dû et son statut. Format de "
+                        "période invalide → 400 ; aucun rapport pour ce mois "
+                        "→ 404 (jamais un objet vide). ``latence_p95_ms`` et "
+                        "``credit_du_montant`` valent ``null`` quand la "
+                        "mesure ou le montant facturé est inconnu."
+                    ),
+                },
+                {
+                    'chemin': '/api/public/v1/fiabilite/usage/',
+                    'scope': SCOPE_READ_FIABILITE,
+                    'description': (
+                        "Limites & usage (NTOBS8) — ``{ressources: [...], "
+                        "genere_le}``. Une ressource dont la source est "
+                        "indisponible est simplement OMISE, jamais remplie "
+                        "d'une valeur inventée."
                     ),
                 },
             ],

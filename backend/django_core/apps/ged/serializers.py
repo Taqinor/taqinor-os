@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, Cabinet, CertificatDestruction,
     ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
@@ -1122,7 +1124,7 @@ class RegleApprobationGedSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
 
-class AclGedSerializer(serializers.ModelSerializer):
+class AclGedSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """WIR163 — Droit d'accès GED19 par dossier/document (héritage + override).
 
     ``company``/``created_by`` posés côté serveur (TenantMixin/ViewSet) —
@@ -1136,16 +1138,25 @@ class AclGedSerializer(serializers.ModelSerializer):
         source='utilisateur.username', read_only=True, default=None)
     role_nom = serializers.CharField(
         source='role.nom', read_only=True, default=None)
+    # NTPRT13 — principal PORTAIL CLIENT (voir ``AclGed.client``) : exposé ici
+    # pour que l'écran interne puisse effectivement poser un partage client
+    # (sans ce champ, le modèle le permettait mais aucune API ne l'atteignait).
+    client_nom = serializers.CharField(
+        source='client.nom', read_only=True, default=None)
     folder_nom = serializers.CharField(
         source='folder.nom', read_only=True, default=None)
     document_nom = serializers.CharField(
         source='document.nom', read_only=True, default=None)
+    # Un id de client d'une AUTRE société ne doit jamais devenir un partage :
+    # validation même-société du FK écrivable (check_fk_scoping).
+    same_company_fields = ('client',)
 
     class Meta:
         model = AclGed
         fields = [
             'id', 'folder', 'folder_nom', 'document', 'document_nom',
-            'utilisateur', 'utilisateur_nom', 'role', 'role_nom', 'niveau',
+            'utilisateur', 'utilisateur_nom', 'role', 'role_nom',
+            'client', 'client_nom', 'niveau',
             'herite', 'created_by', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
@@ -1160,9 +1171,14 @@ class AclGedSerializer(serializers.ModelSerializer):
         utilisateur = attrs.get(
             'utilisateur', getattr(self.instance, 'utilisateur', None))
         role = attrs.get('role', getattr(self.instance, 'role', None))
-        if not utilisateur and not role:
+        # NTPRT13 — un partage PORTAIL CLIENT est un principal valide au même
+        # titre qu'un utilisateur ou un rôle (``AclGed.clean()``/contrainte
+        # base ``ged_acl_principal_required_v2``).
+        client = attrs.get('client', getattr(self.instance, 'client', None))
+        if not utilisateur and not role and not client:
             raise serializers.ValidationError(
-                "Une entrée ACL désigne au moins un utilisateur ou un rôle.")
+                "Une entrée ACL désigne au moins un utilisateur, un rôle ou "
+                "un client (portail).")
         request = self.context.get('request')
         user = getattr(request, 'user', None) if request else None
         company_id = getattr(user, 'company_id', None) if user else None
@@ -1171,6 +1187,11 @@ class AclGedSerializer(serializers.ModelSerializer):
             if getattr(cible, 'company_id', None) != company_id:
                 raise serializers.ValidationError(
                     "Le dossier/document ciblé doit appartenir à votre société.")
+            # NTPRT13 — un ``client`` d'une AUTRE société ne peut jamais
+            # devenir principal (même garde que folder/document ci-dessus).
+            if client is not None and client.company_id != company_id:
+                raise serializers.ValidationError(
+                    "Le client désigné doit appartenir à votre société.")
         return attrs
 
 

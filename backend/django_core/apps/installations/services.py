@@ -2514,6 +2514,30 @@ def totaux_temps_ordre(ordre):
 # route CHAQUE écriture par ``core.documents.changer_statut``.
 
 
+def _log_transition_statut_chatter(instance, ancien, nouveau, *, user=None):
+    """NTP2P44 — journalise ancien→nouveau sur le chatter générique
+    (``records.Activity``) pour CHAQUE document du kit passant par
+    ``appliquer_statut_document`` (``DemandeAchat``/``OrdreSousTraitance`` à
+    ce jour — toutes deux déjà cibles ARC30 dans
+    ``apps/installations/platform.py``, chatter câblé sur leur viewset via
+    ``ChatterViewSetMixin``). Réutilise ``apps.records.services`` (fondation) :
+    aucun modèle ``*Activity`` maison, exactement le patron ``crm.LeadActivity``/
+    ``innovation.idee``. Best-effort strict — ne doit JAMAIS faire échouer la
+    transition métier elle-même (même contrat que les émetteurs d'événement
+    ``core.events`` de ce module)."""
+    try:
+        from apps.records.services import log_field_change
+        log_field_change(
+            instance, 'statut', ancien, nouveau, user=user,
+            field_label='Statut')
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTP2P44 : journal chatter de transition échoué (%s %s)',
+            type(instance).__name__, getattr(instance, 'pk', '?'),
+            exc_info=True)
+
+
 def appliquer_statut_document(instance, cible, *, user=None, champs=None):
     """AUD819 — applique une transition de statut GARDÉE sur un document du kit.
 
@@ -2532,6 +2556,10 @@ def appliquer_statut_document(instance, cible, *, user=None, champs=None):
     soumise, re-clôturer un ordre déjà clos) et les tables ``TRANSITIONS`` ne la
     déclarent PAS — un document ne « transite » pas vers lui-même (cf. la
     docstring de ``changer_statut``), et rien n'a changé d'état à annoncer.
+
+    NTP2P44 — une transition RÉELLE (pas la ré-application idempotente
+    ci-dessus) pose EN OUTRE une entrée ancien→nouveau sur le chatter
+    générique de l'instance (``_log_transition_statut_chatter``), best-effort.
 
     Retourne l'instance mutée.
     """
@@ -2554,8 +2582,65 @@ def appliquer_statut_document(instance, cible, *, user=None, champs=None):
             return instance
         if noms:
             instance.save(update_fields=noms)
+        ancien = instance.statut
         changer_statut(instance, cible, user=user)
+    _log_transition_statut_chatter(instance, ancien, cible, user=user)
     return instance
+
+
+# ── NTP2P38 — Événements Procure-to-Pay émis sur le bus ``core.events`` ──────
+# Deux gestes d'achat, deux émetteurs. Ils vivent ici (dans le service, jamais
+# dans une vue) pour que TOUS les chemins de décision passent par le même
+# point : ``apps.automation`` peut alors s'abonner une fois et voir chaque
+# approbation, d'où qu'elle vienne.
+#
+# Best-effort, TOUJOURS : un abonné cassé (notification, webhook sortant) ne
+# doit jamais faire échouer l'approbation elle-même — l'achat est le geste
+# métier, la notification n'en est que la conséquence.
+
+
+def emettre_demande_achat_approuvee(demande, *, user=None):
+    """Émet ``core.events.demande_achat_approuvee`` pour ``demande`` (NTP2P38).
+
+    À appeler UNIQUEMENT quand la réquisition vient d'atteindre ``approuvee``.
+    Tout chemin d'approbation doit passer par ici — y compris
+    ``views/demande_achat.py``, qui décide hors de ce module.
+    """
+    try:
+        from core.events import demande_achat_approuvee
+        demande_achat_approuvee.send(
+            sender='apps.installations.services',
+            demande=demande,
+            company=demande.company,
+            user=user,
+            montant_estime=getattr(demande, 'montant_estime', None))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTP2P38 : émission demande_achat_approuvee échouée (demande %s)',
+            getattr(demande, 'pk', '?'), exc_info=True)
+
+
+def marquer_rfq_attribuee(rfq, offre, *, user=None, bon_commande_id=None):
+    """Émet ``core.events.rfq_attribuee`` pour une RFQ ADJUGÉE (NTP2P38).
+
+    À appeler uniquement après la création du bon de commande du fournisseur
+    gagnant : retenir une offre nom-libre n'est pas une attribution.
+    """
+    try:
+        from core.events import rfq_attribuee
+        rfq_attribuee.send(
+            sender='apps.installations.services',
+            rfq=rfq,
+            offre=offre,
+            company=rfq.company,
+            user=user,
+            bon_commande_id=bon_commande_id or rfq.bon_commande_id)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTP2P38 : émission rfq_attribuee échouée (rfq %s)',
+            getattr(rfq, 'pk', '?'), exc_info=True)
 
 
 # ── XKB1 — boîte d'approbations centralisée (écriture cross-app) ─────────────
@@ -2624,6 +2709,9 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
         ).update(statut=EtapeApprobationAchat.Statut.REJETE,
                  decision_le=timezone.now())
         liberer_budget_demande_achat(demande_achat)
+    else:
+        # NTP2P38 — la réquisition est approuvée : le bus l'annonce.
+        emettre_demande_achat_approuvee(demande_achat, user=user)
     return demande_achat
 
 
@@ -4730,6 +4818,7 @@ def approuver_etape_achat(etape, *, approbateur, commentaire=''):
 
     from .models import DemandeAchat, EtapeApprobationAchat
 
+    approuvee_maintenant = False
     with transaction.atomic():
         etape = _decider_etape_approbation_achat(
             etape, statut_cible=EtapeApprobationAchat.Statut.APPROUVE,
@@ -4745,11 +4834,18 @@ def approuver_etape_achat(etape, *, approbateur, commentaire=''):
                             'motif_refus': None})
             except TransitionRefusee as exc:
                 raise ApprobationAchatError(str(exc))
+            approuvee_maintenant = True
         else:
             # NTP2P45 — la demande reste en attente : notifie IMMÉDIATEMENT
             # l'étape suivante devenue active (cf. docstring de
             # ``_notifier_prochaine_etape_approbation_achat``).
             _notifier_prochaine_etape_approbation_achat(demande)
+    # NTP2P38 — émis APRÈS la transaction, et seulement si CETTE étape était la
+    # dernière : un abonné ne doit jamais voir une approbation qu'un rollback
+    # aurait finalement annulée, ni une étape intermédiaire prise pour une
+    # décision finale.
+    if approuvee_maintenant:
+        emettre_demande_achat_approuvee(demande, user=approbateur)
     return etape
 
 

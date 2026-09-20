@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .auth import PUBLIC_AUTHENTICATION_CLASSES, ApiKeyRateThrottle, HasApiScope
-from .constants import SCOPE_READ_EVENTS
+from .constants import ALL_EVENTS, SCOPE_READ_EVENTS
 from .events_feed import LIMITE_MAX, LIMITE_PAR_DEFAUT, lire, serialiser
 from .public_response import PublicApiResponseMixin
 
@@ -28,6 +28,28 @@ def _entier(params, nom, defaut):
     except (TypeError, ValueError):
         raise ValidationError(
             {nom: f'Entier attendu pour « {nom} ».'})
+
+
+def _types(params):
+    """NTAPI32 — ``?type=facture.paid`` (ou plusieurs, séparés par une virgule).
+
+    Un code INCONNU du vocabulaire est un 400 explicite plutôt qu'un flux
+    silencieusement vide : une faute de frappe dans un Zap doit se voir tout de
+    suite, pas se traduire par « aucun évènement » pendant des semaines. Un code
+    connu mais non autorisé par les scopes de la clé n'est PAS une erreur ici —
+    c'est `events_feed.lire` qui l'écarte (même politique que le flux sans
+    filtre : aucune indication sur ce que la clé ne peut pas voir).
+    """
+    brut = params.get('type')
+    if not brut:
+        return None
+    codes = [code.strip() for code in brut.split(',') if code.strip()]
+    inconnus = sorted({code for code in codes if code not in ALL_EVENTS})
+    if inconnus:
+        raise ValidationError({
+            'type': "Code(s) d'évènement inconnu(s) : "
+                    f"{', '.join(inconnus)}."})
+    return codes or None
 
 
 @extend_schema(
@@ -61,12 +83,14 @@ class PublicEventFeedView(PublicApiResponseMixin, APIView):
     def get(self, request):
         after = _entier(request.query_params, 'after', 0)
         limit = _entier(request.query_params, 'limit', LIMITE_PAR_DEFAUT)
+        types = _types(request.query_params)
         if after < 0:
             raise ValidationError({'after': '« after » ne peut pas être négatif.'})
         if limit < 1:
             raise ValidationError({'limit': '« limit » doit valoir au moins 1.'})
         evenements, limite_effective = lire(
-            request.auth, after=after, limit=min(limit, LIMITE_MAX))
+            request.auth, after=after, limit=min(limit, LIMITE_MAX),
+            types=types)
         resultats = [serialiser(e) for e in evenements]
         return Response({
             'results': resultats,

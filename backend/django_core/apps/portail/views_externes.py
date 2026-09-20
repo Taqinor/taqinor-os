@@ -565,3 +565,228 @@ def candidature_fournisseur(request):
         {'detail': 'Votre candidature a bien été enregistrée. Elle sera '
                    'examinée par nos équipes.'},
         status=status.HTTP_201_CREATED)
+
+
+#: NTPRT23 — carte factures fournisseur : reflet EXACT de
+#: ``apps.stock.selectors.factures_portail_fournisseur``. Même remarque que
+#: ``_ID_BCF`` : ``ViewSet`` nu ⇒ type explicite (YAPIC6).
+_ID_FACTURE_FOURNISSEUR = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description='Identifiant de la facture du fournisseur connecté.',
+)
+
+
+class MesFacturesPortailFournisseurLigneSerializer(serializers.Serializer):
+    """Une facture telle que le portail la montre au fournisseur.
+
+    Reflet EXACT de ``apps.stock.selectors.factures_portail_fournisseur`` :
+    LECTURE STRICTEMENT SEULE (aucun service d'écriture ne correspond — un
+    fournisseur consulte le statut de règlement, il ne le solde jamais
+    lui-même). ``statut_reglement`` est la dérivation UNIQUE du dépôt
+    (``stock.selectors.statut_reglement_facture_fournisseur``) : le même
+    calcul que l'écran comptable interne, jamais un second calcul qui
+    pourrait diverger.
+    """
+    id = serializers.IntegerField()
+    reference = serializers.CharField()
+    date_facture = serializers.DateField(allow_null=True)
+    date_echeance = serializers.DateField(allow_null=True)
+    montant_ttc = serializers.DecimalField(max_digits=14, decimal_places=2)
+    statut = serializers.CharField()
+    statut_display = serializers.CharField()
+    solde_du = serializers.DecimalField(max_digits=14, decimal_places=2)
+    statut_reglement = serializers.CharField()
+    statut_reglement_display = serializers.CharField()
+    jours_de_retard = serializers.IntegerField()
+
+
+class MesFacturesPortailFournisseurViewSet(viewsets.ViewSet):
+    """NTPRT23 — « Mes factures & statut de paiement » du portail FOURNISSEUR
+    authentifié.
+
+    LECTURE STRICTEMENT SEULE : il n'existe, et il n'existera jamais, aucun
+    service permettant à un fournisseur de solder sa propre facture — il la
+    CONSULTE. Le fournisseur est résolu depuis le compte connecté
+    (``portal_scope_id``), jamais d'un paramètre. La lecture passe par
+    ``apps.stock.selectors`` — jamais un import de ``apps.stock.models``/
+    ``apps.achats.models`` depuis portail (frontière cross-app CLAUDE.md), et
+    le statut affiché MATCHE, par construction, le module comptabilité
+    interne (même sélecteur, même fonction de dérivation).
+    """
+
+    permission_classes = [IsPortalFournisseurUser]
+    serializer_class = MesFacturesPortailFournisseurLigneSerializer
+
+    @extend_schema(responses=inline_serializer(
+        name='MesFacturesPortailFournisseur',
+        fields={
+            'results': serializers.ListField(
+                child=MesFacturesPortailFournisseurLigneSerializer()),
+        }))
+    def list(self, request):
+        from apps.stock.selectors import factures_portail_fournisseur
+        return Response({'results': factures_portail_fournisseur(
+            request.user.company, portal_scope_id(request.user))})
+
+    @extend_schema(parameters=[_ID_FACTURE_FOURNISSEUR],
+                   responses=MesFacturesPortailFournisseurLigneSerializer)
+    def retrieve(self, request, pk=None):
+        from apps.stock.selectors import factures_portail_fournisseur
+        for ligne in factures_portail_fournisseur(
+                request.user.company, portal_scope_id(request.user)):
+            if str(ligne['id']) == str(pk):
+                return Response(ligne)
+        return Response({'detail': 'Introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+
+class MaPerformanceFournisseurSerializer(serializers.Serializer):
+    """NTPRT26 — carte « Ma performance », reflet EXACT de
+    ``apps.stock.selectors.performance_portail_fournisseur``."""
+    fournisseur_nom = serializers.CharField(allow_blank=True)
+    otd_ecart_moyen_jours = serializers.FloatField(allow_null=True)
+    otd_a_lheure_pct = serializers.FloatField(allow_null=True)
+    receptions_controlees = serializers.IntegerField()
+    receptions_conformes = serializers.IntegerField()
+    taux_conformite_reception_pct = serializers.FloatField(allow_null=True)
+
+
+@extend_schema(responses=MaPerformanceFournisseurSerializer)
+@api_view(['GET'])
+@permission_classes([IsPortalFournisseurUser])
+def ma_performance_fournisseur(request):
+    """NTPRT26 — carte « Ma performance » du portail FOURNISSEUR connecté.
+
+    LECTURE SEULE, et rien d'autre : aucun service ne permet à un
+    fournisseur de toucher sa propre note. Les chiffres MATCHENT le calcul
+    interne parce qu'ils SONT le calcul interne (``stock.services.otd_stats``
+    + ``stock.selectors.taux_conformite_reception_fournisseur``, les mêmes
+    fonctions que l'action interne ``fournisseurs/{id}/performance/``) — le
+    fournisseur est résolu du compte connecté, jamais d'un paramètre.
+    """
+    from apps.stock.selectors import performance_portail_fournisseur
+    return Response(performance_portail_fournisseur(
+        request.user.company, portal_scope_id(request.user)))
+
+
+class RessourcesPartenairePortailLigneSerializer(serializers.Serializer):
+    """Une ressource marketing telle que le portail la montre au partenaire —
+    payload volontairement pauvre : jamais de métadonnée interne."""
+    id = serializers.IntegerField()
+    nom = serializers.CharField()
+    reference = serializers.CharField(allow_blank=True)
+    taille = serializers.IntegerField(allow_null=True)
+    mime = serializers.CharField(allow_null=True)
+    date_creation = serializers.DateTimeField(allow_null=True)
+
+
+#: YAPIC6 — un ``ViewSet`` nu (sans ``queryset``) laisse drf-spectacular
+#: incapable de deviner le type de la PK entière de la ressource ; même
+#: patron que ``_ID_LIVRAISON``/``_ID_BCF`` dans ``views_client.py``.
+_ID_RESSOURCE_PARTENAIRE = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description="Identifiant de la ressource partagée avec les partenaires.",
+)
+
+
+class RessourcesPartenairePortailViewSet(viewsets.ViewSet):
+    """NTPRT31 — « Ressources » : documents GED partagés GLOBALEMENT avec
+    TOUS les partenaires (logos, fiches produit, argumentaires).
+
+    Réutilise ``ged.AclGed``/ACL par RÔLE portail (jamais un nouveau modèle
+    de partage, jamais une ACL à dupliquer par partenaire) :
+    ``ged.selectors.ressources_partenaire_portail`` ne renvoie QUE les
+    documents portant une ``AclGed`` EXPLICITE sur le rôle système « Portail
+    partenaire » — un document marqué « interne uniquement » (c'est-à-dire
+    SANS cette ACL) n'apparaît JAMAIS ici (critère d'acceptation NTPRT31).
+    Lecture seule ; le dépôt/gestion des ressources reste un écran GED
+    interne (l'ACL par rôle existant, ``AclGedViewSet``)."""
+
+    permission_classes = [IsPortalPartenaireUser]
+    serializer_class = RessourcesPartenairePortailLigneSerializer
+
+    @staticmethod
+    def _ligne(document):
+        from apps.ged.selectors import latest_version
+        version = latest_version(document)
+        return {
+            'id': document.id,
+            'nom': document.nom,
+            'reference': document.reference or '',
+            'taille': version.size if version else None,
+            'mime': version.mime if version else None,
+            'date_creation': (document.created_at.isoformat()
+                              if document.created_at else None),
+        }
+
+    @extend_schema(responses=inline_serializer(
+        name='RessourcesPartenairePortail',
+        fields={'results': serializers.ListField(
+            child=RessourcesPartenairePortailLigneSerializer())}))
+    def list(self, request):
+        from apps.ged.selectors import ressources_partenaire_portail
+        documents = ressources_partenaire_portail(request.user.company)
+        return Response(
+            {'results': [self._ligne(d) for d in documents]})
+
+    @extend_schema(parameters=[_ID_RESSOURCE_PARTENAIRE])
+    def retrieve(self, request, pk=None):
+        from apps.ged.selectors import ressource_partenaire_portail
+        document = ressource_partenaire_portail(request.user.company, pk)
+        if document is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(self._ligne(document))
+
+    @extend_schema(parameters=[_ID_RESSOURCE_PARTENAIRE])
+    @action(detail=True, methods=['get'], url_path='telecharger')
+    def telecharger(self, request, pk=None):
+        """Sert le contenu de la VERSION COURANTE de la ressource partagée."""
+        from django.http import HttpResponse
+
+        from apps.ged.selectors import (
+            latest_version, ressource_partenaire_portail,
+        )
+        from apps.records.storage import fetch_attachment
+
+        company = request.user.company
+        document = ressource_partenaire_portail(company, pk)
+        if document is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        version = latest_version(document)
+        if version is None:
+            return Response({'detail': 'Aucun fichier disponible.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        data, err = fetch_attachment(version.file_key)
+        if err:
+            return Response({'detail': err},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        mime = version.mime or 'application/octet-stream'
+        if getattr(document, 'watermark_diffusion', False):
+            try:
+                from apps.ged import services as ged_services
+                label = ged_services.watermark_label(company=company)
+                data, _marque = ged_services.apply_watermark(
+                    data, mime, label)
+            except Exception:  # noqa: BLE001 - dégrade à l'original, jamais 500
+                pass
+
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        try:
+            from apps.audit.models import AuditLog
+            from apps.audit.recorder import record
+            record(
+                AuditLog.Action.EXPORT, instance=document, company=company,
+                user=request.user, via_portail=True,
+                detail='Ressource partenaire téléchargée depuis le portail')
+        except Exception:  # noqa: BLE001 - l'audit ne casse jamais le téléchargement
+            pass
+
+        nom = (version.filename or document.nom
+               or 'ressource').replace('"', '')
+        resp = HttpResponse(data, content_type=mime)
+        resp['Content-Disposition'] = f'attachment; filename="{nom}"'
+        resp['X-Content-Type-Options'] = 'nosniff'
+        return resp

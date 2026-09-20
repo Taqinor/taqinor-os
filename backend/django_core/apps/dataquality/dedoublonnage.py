@@ -171,3 +171,95 @@ def grouper_doublons(lignes, *, criteres, normaliseurs, champs=None,
         })
     groupes.sort(key=lambda g: (-g['score'], g['ids'][0]))
     return groupes
+
+
+# ── NTAI34 — doublons par SIMILARITÉ SÉMANTIQUE (embeddings NTAI24) ─────────
+#
+# EN PLUS du détecteur ci-dessus (identifiants exacts + distance de chaînes
+# sur le nom, ``_paires_de_noms``), une seconde couche : deux fiches dont la
+# fiche INDEXÉE (``core.SearchChunk``, NTAI24) est sémantiquement PROCHE —
+# « STE ALPHA » / « Alpha S.A.R.L » ne partagent presque aucun caractère
+# commun (la distance de chaînes rate), mais leurs embeddings, eux, se
+# ressemblent. AUCUN appel au fournisseur d'embedding n'est fait ICI : cette
+# fonction relit l'index DÉJÀ peuplé de façon asynchrone par NTAI24
+# (post_save) — sans fournisseur configuré, ``embedding`` reste NULL pour
+# toutes les fiches et la fonction renvoie ``[]`` (repli complet et SANS coût
+# sur le seul détecteur historique ci-dessus, comportement inchangé).
+
+#: Similarité cosinus minimale pour proposer un doublon sémantique.
+SEUIL_SEMANTIQUE = 0.85
+
+#: Borne défensive : le coût est O(n²) (comparaison de chaque paire d'un
+#: bloc) — une société avec un très gros catalogue ne bloque jamais un scan.
+LIMITE_CHUNKS_SEMANTIQUE = 500
+
+
+def cosine_similarite(vecteur_a, vecteur_b):
+    """Similarité cosinus entre deux vecteurs de même dimension, dans
+    ``[-1, 1]``. ``0.0`` si l'un des deux est vide/nul ou de dimension
+    différente (jamais une exception)."""
+    # `len()`/comparaisons explicites plutôt que `not vecteur_a` : un
+    # embedding relu depuis `pgvector` (VectorField) revient en tableau
+    # NumPy, dont la valeur de vérité est ambiguë (`ValueError`) dès qu'il
+    # a plus d'un élément — jamais de `bool()` implicite sur un vecteur ici.
+    if vecteur_a is None or vecteur_b is None:
+        return 0.0
+    if len(vecteur_a) == 0 or len(vecteur_b) == 0:
+        return 0.0
+    if len(vecteur_a) != len(vecteur_b):
+        return 0.0
+    produit_scalaire = sum(a * b for a, b in zip(vecteur_a, vecteur_b))
+    norme_a = sum(a * a for a in vecteur_a) ** 0.5
+    norme_b = sum(b * b for b in vecteur_b) ** 0.5
+    if norme_a == 0.0 or norme_b == 0.0:
+        return 0.0
+    return produit_scalaire / (norme_a * norme_b)
+
+
+def grouper_par_embeddings(chunks, *, seuil=SEUIL_SEMANTIQUE,
+                           libelles=None):
+    """Groupes candidats à partir de fiches INDEXÉES ``(id, embedding)``.
+
+    ``chunks`` — itérable de ``(id, embedding)`` (``embedding`` une liste de
+    floats déjà calculée — RIEN n'est calculé ici). ``libelles`` — dict
+    optionnel ``{id: libellé affiché}``. Renvoie le MÊME format que
+    :func:`grouper_doublons` (``{ids, score, motifs, libelles}``), motif
+    ``'semantique'`` et score = la similarité cosinus la plus élevée du
+    groupe (arrondie), jamais une valeur de :data:`POIDS_CRITERES`.
+    """
+    libelles = dict(libelles or {})
+    # `v is not None and len(v) > 0` plutôt que `if v` : un embedding
+    # `pgvector` revient en tableau NumPy, dont la valeur de vérité est
+    # ambiguë (`ValueError`) dès qu'il a plus d'un élément.
+    elements = [(i, v) for i, v in chunks
+                if v is not None and len(v) > 0][:LIMITE_CHUNKS_SEMANTIQUE]
+    unions = _Unions()
+    meilleure_similarite = {}
+
+    for i in range(len(elements)):
+        id_a, vec_a = elements[i]
+        for j in range(i + 1, len(elements)):
+            id_b, vec_b = elements[j]
+            similarite = cosine_similarite(vec_a, vec_b)
+            if similarite < seuil:
+                continue
+            unions.unir(id_a, id_b)
+            paire = tuple(sorted((id_a, id_b)))
+            meilleure_similarite[paire] = max(
+                meilleure_similarite.get(paire, 0.0), similarite)
+
+    groupes = []
+    for membres in unions.groupes():
+        meilleure = 0.0
+        for i in range(len(membres)):
+            for j in range(i + 1, len(membres)):
+                paire = tuple(sorted((membres[i], membres[j])))
+                meilleure = max(meilleure, meilleure_similarite.get(paire, 0.0))
+        groupes.append({
+            'ids': membres,
+            'score': round(meilleure, 2),
+            'motifs': ['semantique'],
+            'libelles': [str(libelles.get(i, '')) for i in membres],
+        })
+    groupes.sort(key=lambda g: (-g['score'], g['ids'][0]))
+    return groupes

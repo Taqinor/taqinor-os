@@ -3989,13 +3989,21 @@ def _est_type_maladie(type_absence):
     return any(mot in texte for mot in MOTS_CLES_MALADIE)
 
 
-def _jours_absence_dans_fenetre(demande, debut, fin):
+def _jours_absence_dans_fenetre(demande, debut, fin, company=None):
     """Jours décomptés d'une demande, BORNÉS à la fenêtre demandée.
 
     On ne prend jamais ``demande.jours`` tel quel : une demande à cheval sur
     la fenêtre gonflerait le taux du mois. On recompte l'intersection avec la
     MÊME règle que la demande (jours ouvrés si son type le requiert, sinon
     jours calendaires) — jamais un prorata approximatif.
+
+    NTI18N15 — ``company`` optionnel (défaut ``None`` : comportement
+    inchangé, table fixe ``holidays.JOURS_FERIES_FIXES_MA`` seule) permet de
+    faire aussi compter les fériés RÉELS de la société (fixes additionnels et
+    mobiles saisis dans ``notifications.Holiday``) via
+    ``services.feries_periode`` — la même surface de lecture cross-app-safe
+    déjà utilisée par ``services.calculer_jours_demande`` (ZRH1), jamais un
+    import direct de ``notifications.models``.
     """
     from . import holidays
 
@@ -4003,9 +4011,13 @@ def _jours_absence_dans_fenetre(demande, debut, fin):
     d_fin = min(demande.date_fin, fin)
     if d_debut > d_fin:
         return 0
+    extra = None
+    if company is not None:
+        from . import services
+        extra = services.feries_periode(company, d_debut, d_fin)
     type_absence = demande.type_absence
     if type_absence is not None and type_absence.decompte_jours_ouvres:
-        return holidays.working_days(d_debut, d_fin)
+        return holidays.working_days(d_debut, d_fin, extra_holidays=extra)
     return holidays.calendar_days(d_debut, d_fin)
 
 
@@ -4031,8 +4043,16 @@ def taux_absenteisme(company, debut, fin, departement_id=None):
     La ventilation par motif SOMME exactement au total (un test le prouve), et
     le découpage MENSUEL est calculé sur les mêmes règles. Aucune migration :
     c'est une lecture pure.
+
+    NTI18N15 — le dénominateur ``jours_ouvres`` et le numérateur (jours de
+    congé bornés à la fenêtre) consomment désormais aussi les fériés RÉELS de
+    la société (``services.feries_periode``, fixes additionnels ET mobiles
+    saisis dans ``notifications.Holiday``), en plus de la table fixe
+    ``holidays.JOURS_FERIES_FIXES_MA`` gardée comme repli automatique — une
+    société sans aucune ``Holiday`` configurée obtient exactement le même
+    résultat qu'avant (``feries_periode`` renvoie une liste vide).
     """
-    from . import holidays
+    from . import holidays, services
 
     if departement_id:
         employes = DossierEmploye.objects.filter(
@@ -4046,7 +4066,8 @@ def taux_absenteisme(company, debut, fin, departement_id=None):
         date_sortie__lt=debut)
     ids_presents = list(presents.values_list('id', flat=True))
     effectif = len(ids_presents)
-    jours_ouvres = holidays.working_days(debut, fin)
+    jours_ouvres = holidays.working_days(
+        debut, fin, extra_holidays=services.feries_periode(company, debut, fin))
 
     motifs = {'conge': 0.0, 'maladie': 0.0,
               'accident_travail': 0.0, 'non_justifie': 0.0}
@@ -4069,7 +4090,8 @@ def taux_absenteisme(company, debut, fin, departement_id=None):
         date_debut__lte=fin, date_fin__gte=debut,
     ).select_related('type_absence')
     for demande in demandes:
-        jours = float(_jours_absence_dans_fenetre(demande, debut, fin))
+        jours = float(
+            _jours_absence_dans_fenetre(demande, debut, fin, company=company))
         motif = 'maladie' if _est_type_maladie(demande.type_absence) \
             else 'conge'
         _ajouter(max(demande.date_debut, debut).strftime('%Y-%m'),

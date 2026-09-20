@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .score_factors import facteurs_ponderes, nombre
+
 # ── Bandes de risque (libellés FR, ordre du moins au plus à risque) ──────────
 BAND_FAIBLE = 'faible'
 BAND_MOYEN = 'moyen'
@@ -83,6 +85,11 @@ class AttritionRiskResult:
     band: str
     used_fallback: bool = False
     factors: dict = field(default_factory=dict)
+    # NTAI31 — les TROIS signaux les plus determinants, en langage clair, avec
+    # leur contribution SIGNEE au score rendu (echelle [0, 100] comme le score
+    # lui-meme). ``factors`` garde le detail normalise de TOUTES les
+    # composantes.
+    facteurs: list = field(default_factory=list)
 
 
 def _clamp(x: float, lo: float = 0.0, hi: float = 100.0) -> float:
@@ -173,39 +180,52 @@ def attrition_risk(features) -> AttritionRiskResult:
         feats = {}
 
     factors: dict = {}
+    # NTAI31 — ``(cle, libelle clair, valeur normalisee, poids)`` par composante
+    # PRESENTE ; la contribution se calcule une fois ``weight_total`` connu.
+    composantes: list = []
     weighted_sum = 0.0
     weight_total = 0.0
     used_any = False
 
     # ── Ancienneté ───────────────────────────────────────────────────────────
-    seniority = _seniority_component(
-        _coerce_float(feats.get('seniority_months')))
+    mois_anciennete = _coerce_float(feats.get('seniority_months'))
+    seniority = _seniority_component(mois_anciennete)
     if seniority is not None:
         weighted_sum += seniority * WEIGHT_SENIORITY
         weight_total += WEIGHT_SENIORITY
         factors['seniority'] = round(seniority, 4)
+        composantes.append((
+            'seniority',
+            f'Ancienneté de {nombre(mois_anciennete)} mois',
+            seniority, WEIGHT_SENIORITY))
         used_any = True
 
     # ── Incidents de présence récents ───────────────────────────────────────
-    incidents = _ramp(
-        _coerce_float(feats.get('recent_attendance_incidents')),
-        INCIDENTS_SATURATION,
-    )
+    nb_incidents = _coerce_float(feats.get('recent_attendance_incidents'))
+    incidents = _ramp(nb_incidents, INCIDENTS_SATURATION)
     if incidents is not None:
         weighted_sum += incidents * WEIGHT_INCIDENTS
         weight_total += WEIGHT_INCIDENTS
         factors['incidents'] = round(incidents, 4)
+        composantes.append((
+            'incidents',
+            ('Aucun incident de présence récent' if not nb_incidents
+             else f'{nombre(nb_incidents)} incident(s) de présence récent(s)'),
+            incidents, WEIGHT_INCIDENTS))
         used_any = True
 
     # ── Absences non planifiées ─────────────────────────────────────────────
-    absences = _ramp(
-        _coerce_float(feats.get('unplanned_absences')),
-        ABSENCES_SATURATION,
-    )
+    nb_absences = _coerce_float(feats.get('unplanned_absences'))
+    absences = _ramp(nb_absences, ABSENCES_SATURATION)
     if absences is not None:
         weighted_sum += absences * WEIGHT_ABSENCES
         weight_total += WEIGHT_ABSENCES
         factors['absences'] = round(absences, 4)
+        composantes.append((
+            'absences',
+            ('Aucune absence non planifiée' if not nb_absences
+             else f'{nombre(nb_absences)} absence(s) non planifiée(s)'),
+            absences, WEIGHT_ABSENCES))
         used_any = True
 
     # ── Dernière note d'évaluation (basse = risque élevé, donc INVERSÉE) ────
@@ -216,30 +236,42 @@ def attrition_risk(features) -> AttritionRiskResult:
         weighted_sum += evaluation_component * WEIGHT_EVALUATION
         weight_total += WEIGHT_EVALUATION
         factors['evaluation'] = round(evaluation_component, 4)
+        composantes.append((
+            'evaluation',
+            f'Dernière évaluation : {nombre(eval_score)}/'
+            f'{nombre(EVALUATION_SCALE_MAX)}',
+            evaluation_component, WEIGHT_EVALUATION))
         used_any = True
 
     # ── Temps depuis la dernière augmentation ───────────────────────────────
+    mois_sans_augmentation = _coerce_float(
+        feats.get('months_since_last_raise'))
     tenure_sans_augmentation = _ramp(
-        _coerce_float(feats.get('months_since_last_raise')),
-        TENURE_SATURATION_MONTHS,
-    )
+        mois_sans_augmentation, TENURE_SATURATION_MONTHS)
     if tenure_sans_augmentation is not None:
         weighted_sum += (
             tenure_sans_augmentation * WEIGHT_TENURE_SANS_AUGMENTATION)
         weight_total += WEIGHT_TENURE_SANS_AUGMENTATION
         factors['tenure_sans_augmentation'] = round(
             tenure_sans_augmentation, 4)
+        composantes.append((
+            'tenure_sans_augmentation',
+            f'{nombre(mois_sans_augmentation)} mois sans augmentation',
+            tenure_sans_augmentation, WEIGHT_TENURE_SANS_AUGMENTATION))
         used_any = True
 
     # ── Sanctions ────────────────────────────────────────────────────────────
-    sanctions = _ramp(
-        _coerce_float(feats.get('sanctions_count')),
-        SANCTIONS_SATURATION,
-    )
+    nb_sanctions = _coerce_float(feats.get('sanctions_count'))
+    sanctions = _ramp(nb_sanctions, SANCTIONS_SATURATION)
     if sanctions is not None:
         weighted_sum += sanctions * WEIGHT_SANCTIONS
         weight_total += WEIGHT_SANCTIONS
         factors['sanctions'] = round(sanctions, 4)
+        composantes.append((
+            'sanctions',
+            ('Aucune sanction' if not nb_sanctions
+             else f'{nombre(nb_sanctions)} sanction(s)'),
+            sanctions, WEIGHT_SANCTIONS))
         used_any = True
 
     # ── Repli propre : aucune feature exploitable ───────────────────────────
@@ -250,6 +282,7 @@ def attrition_risk(features) -> AttritionRiskResult:
             band=band_for_score(score),
             used_fallback=True,
             factors={'default': round(DEFAULT_RISK, 2)},
+            facteurs=[],
         )
 
     # Moyenne pondérée sur les SEULES composantes présentes, mise à l'échelle
@@ -262,4 +295,10 @@ def attrition_risk(features) -> AttritionRiskResult:
         band=band_for_score(score),
         used_fallback=False,
         factors=factors,
+        # NTAI31 — contributions reelles, remises a l'echelle [0, 100] du score
+        # (leur somme redonne le score avant bornage).
+        facteurs=facteurs_ponderes(
+            [(cle, libelle, valeur * 100.0, poids)
+             for cle, libelle, valeur, poids in composantes],
+            weight_total),
     )

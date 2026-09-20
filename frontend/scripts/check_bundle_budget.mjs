@@ -196,7 +196,12 @@ const PER_CHUNK_BUDGET_KB = 350
 // fonctionnalité réelle (panneau coaching, planification, qualification,
 // modale d'accueil lazy, micro) — dépassement mesuré de 0,8 Ko, budget monté
 // d'un cran, jamais « élargi pour respirer ».
-const TOTAL_BUDGET_KB = 3710
+// 20/09/2026 (drain NT ~110 tâches) : mesure réelle 3729 Ko pour ~10 écrans
+// lazy neufs (Dossiers liste/détail/kanban, ProcessAnalytics, wizard export,
+// historique statut, monitoring API, simulateur matrice, GPS, règles achat).
+// Gras prouvé absent : diff package.json vide, zéro `import * as` dans les
+// fichiers touchés. Budget monté au juste-dessus de la mesure.
+const TOTAL_BUDGET_KB = 3735
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -309,7 +314,9 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // les vrais garde-fous de poids.
 // 2026-09-12 : 815 -> 835 (mesure réelle 826, batch 3 du drain NT sur l'arbre
 // intégré, run 34705188854). Croissance une-route-un-chunk (classe #85).
-export const MAX_CHUNK_COUNT = 835
+// 2026-09-20 : 835 -> 845 (mesure réelle 839, drain NT ~110 tâches, ~10
+// routes lazy neuves — même classe #85, croissance une-route-un-chunk).
+export const MAX_CHUNK_COUNT = 845
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

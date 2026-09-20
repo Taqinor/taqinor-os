@@ -8397,3 +8397,167 @@ class AcompteIS(TenantModel):
 
     def __str__(self):
         return f'Acompte IS {self.rang}/4 ({self.montant})'
+
+
+# ── NTI18N18 — Plan comptable OHADA / SYSCOHADA révisé (pack pays SN_CI) ────
+#
+# Table NEUVE, entièrement ADDITIVE : aucune écriture existante n'est touchée
+# (ni ``EcritureComptable``, ni ``LigneEcriture``, qui gardent leur FK vers
+# ``CompteComptable``/``PlanComptable`` CGNC à l'identique). Une société
+# marocaine ne voit AUCUN changement : sans ligne dans cette table, tout se
+# comporte exactement comme avant.
+#
+# POURQUOI UNE TABLE À PART plutôt qu'un ``PlanComptable`` de code
+# « SYSCOHADA » : le plan OHADA n'a pas les mêmes CLASSES que le CGNC
+# marocain (classe 3 = stocks en OHADA, actif circulant en CGNC ; classe 4 =
+# tiers en OHADA, passif circulant en CGNC…). Réutiliser
+# ``CompteComptable.Classe`` aurait imposé un libellé de classe FAUX à l'une
+# des deux normes. Les deux référentiels coexistent donc côte à côte, chacun
+# avec ses propres classes.
+#
+# GATE : ce plan n'est activable que sur une société dont le pack pays vaut
+# ``SN_CI``. Le champ ``CompanyProfile.pack_pays`` est posé par NTI18N16
+# (GATED-founder, PAS ENCORE CONSTRUIT) : ``pack_pays_societe`` le lit donc
+# défensivement (``getattr``), de la même façon que
+# ``apps/ventes/quote_engine/facturx.pack_pays_de``. Tant que le champ
+# n'existe pas, la lecture rend `''` et AUCUNE société ne peut activer le
+# plan OHADA — l'état voulu pour une décision d'expansion commerciale.
+#
+# CORRESPONDANCE CGNC ↔ OHADA : le champ ``compte_cgnc_equivalent`` est
+# volontairement VIDE à la création et n'est renseigné qu'après validation
+# fondateur (règle DECISION de la tâche). Aucune correspondance de compte
+# n'est semée ni codée en dur ici : une équivalence comptable inventée
+# produirait un grand livre faux. Voir ``docs/ohada-mapping.md``.
+
+PACK_PAYS_OHADA = 'SN_CI'
+
+
+def pack_pays_societe(company) -> str:
+    """Pack pays de la société, en MAJUSCULES, `''` si indéterminé.
+
+    Lecture DÉFENSIVE : ``CompanyProfile.pack_pays`` est le champ de NTI18N16
+    (GATED-founder, non construit). Tant qu'il n'existe pas, cette fonction
+    rend `''` — jamais une exception, jamais une valeur supposée.
+    """
+    if company is None:
+        return ''
+    try:
+        from apps.parametres.models import CompanyProfile
+        profil = CompanyProfile.objects.filter(company=company).first()
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return ''
+    if profil is None:
+        return ''
+    return str(getattr(profil, 'pack_pays', '') or '').upper()
+
+
+def plan_ohada_actif(company) -> bool:
+    """Vrai si le plan OHADA est le référentiel actif de cette société.
+
+    Deux conditions CUMULATIVES : le pack pays vaut ``SN_CI`` ET la société a
+    au moins un compte OHADA actif. Faux (donc CGNC, comportement historique)
+    pour toute société marocaine et pour toute société dont le pack pays n'est
+    pas encore posé.
+    """
+    if pack_pays_societe(company) != PACK_PAYS_OHADA:
+        return False
+    return PlanComptableOHADA.objects.filter(
+        company=company, actif=True).exists()
+
+
+class PlanComptableOHADA(TenantModel):
+    """Un compte du plan SYSCOHADA révisé d'une société (NTI18N18).
+
+    UNE LIGNE = UN COMPTE du plan OHADA (le modèle porte le nom du plan tel
+    que nommé à la tâche ; sa granularité est le compte, comme
+    ``CompteComptable`` pour le CGNC). ``classe`` porte les huit classes du
+    SYSCOHADA révisé — cadre de l'OHADA, distinct du CGNC marocain classe par
+    classe.
+
+    Alternative AU CHOIX du plan CGNC existant, jamais un remplacement
+    silencieux : ``actif`` vaut False par défaut et ``clean()`` refuse
+    l'activation hors pack pays ``SN_CI``.
+
+    ``company`` (obligatoire, imposée côté serveur) et ``created_at`` /
+    ``updated_at`` viennent de ``core.models.TenantModel`` (socle ARC1/SCA4) —
+    les modèles compta historiques posent leur FK ``company`` à la main, mais
+    un modèle NEUF hérite du socle plutôt que de la ré-écrire.
+    """
+
+    class Classe(models.IntegerChoices):
+        RESSOURCES_DURABLES = 1, '1 — Ressources durables'
+        ACTIF_IMMOBILISE = 2, '2 — Actif immobilisé'
+        STOCKS = 3, '3 — Stocks'
+        TIERS = 4, '4 — Tiers'
+        TRESORERIE = 5, '5 — Trésorerie'
+        CHARGES_ACTIVITES_ORDINAIRES = (
+            6, '6 — Charges des activités ordinaires')
+        PRODUITS_ACTIVITES_ORDINAIRES = (
+            7, '7 — Produits des activités ordinaires')
+        AUTRES_CHARGES_ET_PRODUITS = (
+            8, '8 — Autres charges et autres produits')
+
+    numero = models.CharField(max_length=20, verbose_name='Numéro de compte')
+    intitule = models.CharField(max_length=200, verbose_name='Intitulé')
+    classe = models.IntegerField(
+        choices=Classe.choices, verbose_name='Classe SYSCOHADA')
+    # Correspondance CGNC ↔ OHADA : VIDE tant que le fondateur n'a pas validé
+    # l'équivalence (règle DECISION). Un simple numéro de compte CGNC en
+    # texte — jamais une FK qui laisserait croire que la table est déjà
+    # peuplée et validée.
+    compte_cgnc_equivalent = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Compte CGNC équivalent',
+        help_text='Vide = correspondance NON validée par le fondateur '
+                  '(voir docs/ohada-mapping.md). Jamais une équivalence '
+                  'supposée.')
+    est_tiers = models.BooleanField(
+        default=False, verbose_name='Compte de tiers')
+    lettrable = models.BooleanField(default=False, verbose_name='Lettrable')
+    actif = models.BooleanField(
+        default=False, verbose_name='Actif',
+        help_text='Défaut False : activer le plan OHADA est une décision '
+                  "d'expansion, jamais un effet de bord d'une migration.")
+
+    class Meta:
+        verbose_name = 'Compte du plan OHADA'
+        verbose_name_plural = 'Plan comptable OHADA'
+        ordering = ['numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'numero'],
+                name='uniq_compte_ohada_par_societe'),
+        ]
+
+    def __str__(self):
+        return f'{self.numero} — {self.intitule}'
+
+    def clean(self):
+        """Erreurs portées par LE CHAMP fautif, jamais un refus générique."""
+        super().clean()
+        erreurs = {}
+        numero = (self.numero or '').strip()
+        if numero and not numero.isdigit():
+            erreurs['numero'] = (
+                'Un numéro de compte OHADA ne contient que des chiffres.')
+        elif numero and self.classe and int(numero[0]) != int(self.classe):
+            erreurs['classe'] = (
+                f'La classe {self.classe} ne correspond pas au premier '
+                f'chiffre du numéro « {numero} ».')
+        if self.actif:
+            pack = pack_pays_societe(
+                self.company if self.company_id else None)
+            if pack != PACK_PAYS_OHADA:
+                erreurs['actif'] = (
+                    'Le plan comptable OHADA ne peut être activé que sur une '
+                    f'société dont le pack pays vaut {PACK_PAYS_OHADA} '
+                    "(Sénégal / Côte d'Ivoire).")
+        if erreurs:
+            raise ValidationError(erreurs)
+
+    def save(self, *args, **kwargs):
+        # Déduit la classe du premier chiffre du numéro si non fournie (même
+        # commodité que ``CompteComptable.save``).
+        if not self.classe and (self.numero or '')[:1].isdigit():
+            self.classe = int(self.numero[0])
+        super().save(*args, **kwargs)

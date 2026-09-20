@@ -476,6 +476,35 @@ class KpiAlerte(models.Model):
         BTP_PENALITES_CUMULEES_PERIODE = (
             'btp_penalites_cumulees_periode',
             'BTP — exposition cumulée aux pénalités de retard (MAD)')
+        # NTI18N52 — KPI i18n (``apps.reporting.i18n_kpi``, sélecteur dédié
+        # qui n'importe aucun modèle métier). `couverture_i18n_pct` lit le
+        # dernier ``core.I18nCoverageSnapshot`` (job Beat hebdo NTI18N39) —
+        # aucun recomptage, aucune lecture de devis, donc aucun N+1.
+        # `documents_non_fr_pct` rend TOUJOURS ``None`` aujourd'hui : aucune
+        # trace de la langue d'un PDF généré n'existe en base (`/proposal`
+        # résout la langue au rendu sans la journaliser, `DevisActivity` n'a
+        # pas d'évènement « document généré »). Le KPI est donc proposable
+        # dans le picker mais non évaluable — jamais un chiffre approché sous
+        # ce libellé. La moitié manquante (journaliser la langue à la
+        # génération) vit dans `apps/ventes` ; voir `i18n_kpi.py`.
+        COUVERTURE_I18N_PCT = (
+            'couverture_i18n_pct', 'i18n — couverture de l\'interface (%)')
+        DOCUMENTS_NON_FR_PCT = (
+            'documents_non_fr_pct', 'i18n — documents générés hors FR (%)')
+        # NTOBS31 — 3 KPI « Fiabilité » cross-module, calculés depuis des
+        # données déjà bâties par le groupe NTOBS (``core.sla.SlaSnapshot``,
+        # ``core.models.BackupRun``, ``core.usage_limits.usage_summary``) —
+        # aucun nouveau moteur, aucun nouveau modèle. Voir
+        # ``apps.reporting.kpi_alertes`` pour les trois calculateurs.
+        UPTIME_MOYEN_12_MOIS = (
+            'uptime_moyen_12_mois',
+            'Fiabilité — disponibilité moyenne 12 mois (%)')
+        JOURS_DEPUIS_DERNIER_DRILL_REUSSI = (
+            'jours_depuis_dernier_drill_reussi',
+            'Fiabilité — jours depuis le dernier drill de restauration réussi')
+        QUOTA_LE_PLUS_CHARGE_PCT = (
+            'quota_le_plus_charge_pct',
+            'Fiabilité — quota le plus chargé (%)')
 
     class Operateur(models.TextChoices):
         SUP = 'sup', '>'

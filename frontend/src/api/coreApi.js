@@ -83,6 +83,25 @@ const coreApi = {
     remove: (id) => api.delete(`/core/workflow-definitions/${id}/`),
   },
 
+  // NTWFL23/24 — analyse de process (durées observées par étape, taux de
+  // rejet/escalade, étape goulot) : LECTURE SEULE, bornée à la société de
+  // l'appelant côté serveur (`core.selectors.analyse_goulots_workflow`).
+  // `periode` optionnelle, chaîne `'AAAA-MM'` (absente = tout l'historique).
+  workflowAnalyse: {
+    get: (definitionId, periode) => api.get(
+      `/core/workflows/${definitionId}/analyse/`,
+      { params: periode ? { periode } : {} },
+    ),
+  },
+
+  // NTWFL1 — matrice d'approbation d'entreprise unifiée (CRUD admin dans les
+  // Paramètres). Lecture ouverte à tout utilisateur authentifié côté serveur
+  // (`GET` seul, `IsAuthenticated`) — NTWFL32 (simulateur) n'utilise QUE
+  // `list()`, jamais d'écriture.
+  matricesApprobation: {
+    list: () => api.get('/core/matrices-approbation/'),
+  },
+
   // NTWFL12/13/14 — formulaires dynamiques rattachables aux étapes de
   // workflow (FormBuilder.jsx) + bibliothèque de champs réutilisables.
   formulaires: {
@@ -245,6 +264,37 @@ const coreApi = {
   // société — même endpoint que la page de statut publique).
   degradedMode: {
     getStatus: () => api.get('/core/degraded-mode-status/'),
+  },
+
+  // NTWFL17/18/19 — dossier transverse : CRUD scopé société (`company`
+  // forcée côté serveur, jamais lue du corps) + rattachement d'objets
+  // métier, checklist interactive et chatter. `list(params)` transmet
+  // `statut`/`type_dossier` en query string (seuls filtres serveur exposés
+  // par `DossierViewSet.get_queryset` — priorité/propriétaire/échéance se
+  // filtrent côté écran sur la liste déjà chargée).
+  dossiers: {
+    list: (params) => api.get('/core/dossiers/', { params }),
+    get: (id) => api.get(`/core/dossiers/${id}/`),
+    create: (payload) => api.post('/core/dossiers/', payload),
+    update: (id, payload) => api.patch(`/core/dossiers/${id}/`, payload),
+    remove: (id) => api.delete(`/core/dossiers/${id}/`),
+    lier: (id, cleModele, objectId, libelle) =>
+      api.post(`/core/dossiers/${id}/lier/`, {
+        cle_modele: cleModele, object_id: objectId, libelle,
+      }),
+    delier: (id, cleModele, objectId) =>
+      api.post(`/core/dossiers/${id}/delier/`, {
+        cle_modele: cleModele, object_id: objectId,
+      }),
+    checklist: {
+      list: (id) => api.get(`/core/dossiers/${id}/checklist/`),
+      ajouter: (id, libelle, ordre) =>
+        api.post(`/core/dossiers/${id}/checklist/`, { libelle, ordre }),
+      cocher: (id, itemId, fait) =>
+        api.post(`/core/dossiers/${id}/checklist/`, { item_id: itemId, fait }),
+    },
+    historique: (id) => api.get(`/core/dossiers/${id}/historique/`),
+    noter: (id, body) => api.post(`/core/dossiers/${id}/noter/`, { body }),
   },
 }
 

@@ -69,10 +69,15 @@ def log_changes(old: Ticket, new: Ticket, user):
         )
 
 
-def log_note(ticket: Ticket, user, body: str) -> TicketActivity:
+def log_note(ticket: Ticket, user, body: str,
+             *, visible_client=False) -> TicketActivity:
+    """Note manuelle du chatter. ``visible_client`` (NTPRT12) est un OPT-IN
+    explicite de l'auteur : sans lui, la note reste INTERNE et n'apparaît
+    jamais dans le fil du portail client."""
     return TicketActivity.objects.create(
         company=ticket.company, ticket=ticket, user=user,
         kind=TicketActivity.Kind.NOTE, body=body,
+        visible_client=bool(visible_client),
     )
 
 

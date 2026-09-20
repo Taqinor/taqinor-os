@@ -259,6 +259,338 @@ def wrap_email_html(
         return corps_texte or ''
 
 
+# ── NTWFL23 — audit de processus : temps par étape et goulot d'étranglement ──
+#
+# La question « où mon processus perd-il du temps ? » n'a jamais de réponse
+# tant qu'on ne mesure pas les étapes RÉELLEMENT clôturées. Ce sélecteur ne
+# lit que des ``WorkflowStepInstance`` décidées (``decided_le`` renseigné) et
+# en tire, par étape du MODÈLE (``WorkflowStepDefinition``), la durée observée
+# ``decided_le - created_at`` (moyenne / médiane / p90), le taux de rejet et le
+# taux d'escalade SLA. Lecture seule, aucune écriture, bornée à la société.
+
+
+def _percentile_rang_proche(valeurs_triees, fraction):
+    """Percentile par RANG LE PLUS PROCHE (pas d'interpolation).
+
+    ``valeurs_triees`` est une liste NON VIDE déjà triée croissante ;
+    ``fraction`` ∈ ]0, 1]. Choix du rang le plus proche (et non une
+    interpolation linéaire) pour que la valeur renvoyée soit TOUJOURS une
+    durée réellement observée — un p90 « interpolé » n'existe dans aucun
+    dossier et ne se justifie pas devant un auditeur."""
+    import math
+    n = len(valeurs_triees)
+    rang = math.ceil(fraction * n)
+    rang = min(max(rang, 1), n)
+    return valeurs_triees[rang - 1]
+
+
+def _mediane(valeurs_triees):
+    """Médiane d'une liste NON VIDE déjà triée croissante."""
+    n = len(valeurs_triees)
+    milieu = n // 2
+    if n % 2:
+        return valeurs_triees[milieu]
+    return (valeurs_triees[milieu - 1] + valeurs_triees[milieu]) / 2
+
+
+def analyse_goulots_workflow(company, definition_id, periode=None):
+    """NTWFL23 — durées observées par étape + goulot d'une définition BPM.
+
+    ``periode`` : chaîne ``'AAAA-MM'`` (restreint aux décisions de ce mois) ou
+    ``None`` (tout l'historique). Renvoie ``None`` si la définition n'existe
+    pas POUR CETTE SOCIÉTÉ — la définition d'un autre tenant est donc
+    indistinguable d'une définition inexistante (jamais de fuite).
+
+    Structure renvoyée::
+
+        {'definition_id', 'definition_code', 'definition_nom', 'periode',
+         'nb_instances', 'etapes': [{'step_def_id', 'ordre', 'nom',
+         'nb_decisions', 'duree_moyenne_h', 'duree_mediane_h', 'duree_p90_h',
+         'taux_rejet', 'taux_escalade', 'goulot'}, ...],
+         'goulot_ordre': int|None}
+
+    Une étape sans AUCUNE décision clôturée sur la période porte des durées
+    ``None`` (jamais 0 : « pas mesuré » et « instantané » ne sont pas la même
+    information) et ne peut pas être élue goulot. Le goulot est l'étape à la
+    durée MOYENNE la plus élevée parmi celles réellement mesurées."""
+    from .models import (
+        WorkflowDefinition, WorkflowInstance, WorkflowStepInstance,
+    )
+
+    if company is None or not definition_id:
+        return None
+    definition = WorkflowDefinition.objects.filter(
+        company=company, pk=definition_id).first()
+    if definition is None:
+        return None
+
+    decidees = WorkflowStepInstance.objects.filter(
+        company=company,
+        instance__definition=definition,
+        decided_le__isnull=False,
+    )
+    if periode:
+        try:
+            annee, mois = (int(p) for p in str(periode).split('-')[:2])
+        except (TypeError, ValueError):
+            pass
+        else:
+            decidees = decidees.filter(
+                decided_le__year=annee, decided_le__month=mois)
+
+    par_step_def = {}
+    for step in decidees.values(
+            'step_def_id', 'statut', 'created_at', 'decided_le'):
+        seau = par_step_def.setdefault(
+            step['step_def_id'],
+            {'durees': [], 'rejets': 0, 'escalades': 0, 'total': 0})
+        seau['total'] += 1
+        if step['statut'] == WorkflowStepInstance.STATUT_REJETE:
+            seau['rejets'] += 1
+        elif step['statut'] == WorkflowStepInstance.STATUT_ESCALADE:
+            seau['escalades'] += 1
+        ecart = step['decided_le'] - step['created_at']
+        seau['durees'].append(ecart.total_seconds() / 3600.0)
+
+    etapes = []
+    for step_def in definition.steps.order_by('ordre', 'id'):
+        seau = par_step_def.get(step_def.pk)
+        if not seau or not seau['durees']:
+            etapes.append({
+                'step_def_id': step_def.pk,
+                'ordre': step_def.ordre,
+                'nom': step_def.nom,
+                'nb_decisions': 0,
+                'duree_moyenne_h': None,
+                'duree_mediane_h': None,
+                'duree_p90_h': None,
+                'taux_rejet': None,
+                'taux_escalade': None,
+                'goulot': False,
+            })
+            continue
+        durees = sorted(seau['durees'])
+        total = seau['total']
+        etapes.append({
+            'step_def_id': step_def.pk,
+            'ordre': step_def.ordre,
+            'nom': step_def.nom,
+            'nb_decisions': total,
+            'duree_moyenne_h': round(sum(durees) / len(durees), 4),
+            'duree_mediane_h': round(_mediane(durees), 4),
+            'duree_p90_h': round(_percentile_rang_proche(durees, 0.9), 4),
+            'taux_rejet': round(seau['rejets'] / total, 4),
+            'taux_escalade': round(seau['escalades'] / total, 4),
+            'goulot': False,
+        })
+
+    mesurees = [e for e in etapes if e['duree_moyenne_h'] is not None]
+    goulot_ordre = None
+    if mesurees:
+        goulot = max(mesurees, key=lambda e: (e['duree_moyenne_h'], -e['ordre']))
+        goulot['goulot'] = True
+        goulot_ordre = goulot['ordre']
+
+    return {
+        'definition_id': definition.pk,
+        'definition_code': definition.code,
+        'definition_nom': definition.nom,
+        'periode': periode or None,
+        'nb_instances': WorkflowInstance.objects.filter(
+            company=company, definition=definition).count(),
+        'etapes': etapes,
+        'goulot_ordre': goulot_ordre,
+    }
+
+
+# ── NTWFL28 — « Mes processus » : ce que l'utilisateur courant porte ─────────
+#
+# Un approbateur n'a aucune vue de CE QU'IL doit faire : ses étapes en attente
+# sont noyées dans l'inbox globale. Ce sélecteur renvoie les processus dont
+# l'utilisateur courant porte une étape, GROUPÉS par échéance.
+#
+# ``today`` est TOUJOURS passé par l'appelant (aucun ``aujourd'hui`` calculé au
+# fond d'un helper) : le bucket d'une étape dépend de la date MÉTIER de
+# Casablanca, que la vue résout une fois via ``core.dates.aujourd_hui_local``.
+#
+# PÉRIMÈTRE LIVRÉ : la moitié « instances de workflow FG366 ». La moitié
+# « dossiers transverses » attend le modèle ``core.Dossier`` (NTWFL17) ; ce
+# sélecteur est conçu pour l'accueillir sans changer sa forme de sortie (mêmes
+# quatre seaux, une clé ``dossiers`` viendra à côté de ``instances``).
+
+BUCKET_EN_RETARD = 'en_retard'
+BUCKET_AUJOURD_HUI = 'aujourd_hui'
+BUCKET_A_VENIR = 'a_venir'
+BUCKET_SANS_ECHEANCE = 'sans_echeance'
+
+
+def _bucket_echeance(echeance_date, today):
+    """Seau d'échéance d'une date : retard / aujourd'hui / à venir / sans.
+
+    Une étape SANS échéance tombe dans son propre seau — on ne lui invente
+    jamais une date pour la ranger de force dans « à venir »."""
+    if echeance_date is None:
+        return BUCKET_SANS_ECHEANCE
+    if echeance_date < today:
+        return BUCKET_EN_RETARD
+    if echeance_date == today:
+        return BUCKET_AUJOURD_HUI
+    return BUCKET_A_VENIR
+
+
+def mes_processus(company, utilisateur, today):
+    """NTWFL28 — processus BPM portés par ``utilisateur``, par échéance.
+
+    Une instance est « à moi » si j'y porte une étape ENCORE EN ATTENTE dont
+    je suis l'assigné (``WorkflowStepInstance.assignee``) et dont le processus
+    est toujours en cours. ``today`` (date métier) est OBLIGATOIRE — le seau
+    d'une ligne en dépend, et un helper ne doit jamais décider du « jour ».
+
+    Renvoie ``{'en_retard': [...], 'aujourd_hui': [...], 'a_venir': [...],
+    'sans_echeance': [...]}`` où chaque entrée décrit une étape à traiter ::
+
+        {'instance_id', 'step_id', 'definition_code', 'definition_nom',
+         'etape_nom', 'ordre', 'echeance', 'content_type_id', 'object_id'}
+
+    ``echeance`` est la DATE métier de ``sla_echeance`` (ou ``None``).
+    Lecture seule, bornée à la société ; jamais les étapes d'autrui."""
+    from .dates import maintenant_local
+    from .models import WorkflowInstance, WorkflowStepInstance
+
+    seaux = {
+        BUCKET_EN_RETARD: [],
+        BUCKET_AUJOURD_HUI: [],
+        BUCKET_A_VENIR: [],
+        BUCKET_SANS_ECHEANCE: [],
+    }
+    if company is None or utilisateur is None or today is None:
+        return seaux
+    if not getattr(utilisateur, 'pk', None):
+        return seaux
+
+    steps = (
+        WorkflowStepInstance.objects
+        .filter(company=company,
+                assignee=utilisateur,
+                statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
+                instance__statut=WorkflowInstance.STATUT_EN_COURS)
+        .select_related('instance', 'instance__definition', 'step_def')
+        .order_by('sla_echeance', 'id')
+    )
+    for step in steps:
+        echeance = (maintenant_local(step.sla_echeance).date()
+                    if step.sla_echeance else None)
+        seaux[_bucket_echeance(echeance, today)].append({
+            'instance_id': step.instance_id,
+            'step_id': step.pk,
+            'definition_code': step.instance.definition.code,
+            'definition_nom': step.instance.definition.nom,
+            'etape_nom': step.step_def.nom,
+            'ordre': step.ordre,
+            'echeance': echeance,
+            'content_type_id': step.instance.content_type_id,
+            'object_id': step.instance.object_id,
+        })
+    return seaux
+
+
+# ── NTWFL30 — alerte de charge d'approbateur (surcharge) ────────────────────
+#
+# Une chaîne d'approbation ne tombe pas en panne : elle s'engorge sur UNE
+# personne. Ce sélecteur compte les items EN ATTENTE par assigné pour qu'un
+# rapport admin puisse le SIGNALER. Il ne redistribue JAMAIS et ne délègue
+# jamais tout seul — la redistribution ou la délégation temporaire (NTWFL3)
+# reste une décision humaine.
+
+#: Seuil par défaut au-delà duquel un approbateur est signalé en surcharge.
+#: Configurable par l'appelant (``seuil=``) — jamais codé en dur ailleurs.
+SEUIL_SURCHARGE_APPROBATEUR = 20
+
+
+def charge_approbateur(company, utilisateur, periode=None):
+    """NTWFL30 — nombre d'items d'approbation EN ATTENTE pour ``utilisateur``.
+
+    ``periode`` : chaîne ``'AAAA-MM'`` restreignant le comptage aux étapes
+    CRÉÉES ce mois-là, ou ``None`` (toute la charge en cours — le cas utile
+    pour détecter une surcharge vivante). Renvoie un entier.
+
+    Compte les ``WorkflowStepInstance`` encore en attente dont ``utilisateur``
+    est l'assigné, sur un processus toujours en cours. Lecture seule."""
+    from .models import WorkflowInstance, WorkflowStepInstance
+
+    if company is None or not getattr(utilisateur, 'pk', None):
+        return 0
+    qs = WorkflowStepInstance.objects.filter(
+        company=company,
+        assignee=utilisateur,
+        statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
+        instance__statut=WorkflowInstance.STATUT_EN_COURS,
+    )
+    if periode:
+        try:
+            annee, mois = (int(p) for p in str(periode).split('-')[:2])
+        except (TypeError, ValueError):
+            pass
+        else:
+            qs = qs.filter(created_at__year=annee, created_at__month=mois)
+    return qs.count()
+
+
+def rapport_charge_approbateurs(company, periode=None,
+                                seuil=SEUIL_SURCHARGE_APPROBATEUR):
+    """NTWFL30 — charge de TOUS les approbateurs d'une société, triée.
+
+    Renvoie ``{'seuil': int, 'periode': str|None, 'approbateurs': [
+    {'utilisateur_id', 'username', 'nb_en_attente', 'surcharge',
+    'suggestion'}, ...]}`` trié par charge décroissante.
+
+    ``surcharge`` est vrai STRICTEMENT au-delà du seuil (« >20 items »), et
+    ``suggestion`` porte alors une phrase d'aide — une SUGGESTION de
+    redistribution ou de délégation temporaire (NTWFL3), jamais une action
+    automatique."""
+    from django.db.models import Count
+
+    from .models import WorkflowInstance, WorkflowStepInstance
+
+    resultat = {'seuil': seuil, 'periode': periode or None,
+                'approbateurs': []}
+    if company is None:
+        return resultat
+
+    qs = WorkflowStepInstance.objects.filter(
+        company=company,
+        assignee__isnull=False,
+        statut=WorkflowStepInstance.STATUT_EN_ATTENTE,
+        instance__statut=WorkflowInstance.STATUT_EN_COURS,
+    )
+    if periode:
+        try:
+            annee, mois = (int(p) for p in str(periode).split('-')[:2])
+        except (TypeError, ValueError):
+            pass
+        else:
+            qs = qs.filter(created_at__year=annee, created_at__month=mois)
+
+    lignes = (
+        qs.values('assignee_id', 'assignee__username')
+        .annotate(nb_en_attente=Count('id'))
+        .order_by('-nb_en_attente', 'assignee_id')
+    )
+    for ligne in lignes:
+        surcharge = ligne['nb_en_attente'] > seuil
+        resultat['approbateurs'].append({
+            'utilisateur_id': ligne['assignee_id'],
+            'username': ligne['assignee__username'],
+            'nb_en_attente': ligne['nb_en_attente'],
+            'surcharge': surcharge,
+            'suggestion': (
+                "Approbateur en surcharge : envisagez de redistribuer une "
+                "partie de ses approbations ou de poser une délégation "
+                "temporaire." if surcharge else ''),
+        })
+    return resultat
+
+
 def traitements_haut_risque(company, actifs_seuls=True):
     """NTGRC27 — traitements CNDP marqués « données sensibles / haut risque ».
 

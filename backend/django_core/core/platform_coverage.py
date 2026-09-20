@@ -193,6 +193,12 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # entrées ``transport.*``/``douane.*`` ci-dessus. Dérive ASSUMÉE, à retirer
     # le jour où mrp entrera dans ``apps/reporting/search.py``.
     ('mrp.ordrefabrication', 'chatter_sans_recherche'),
+    # NTP2P44 — la RFQ gagne le chatter générique (``ChatterViewSetMixin`` sur
+    # ``RFQViewSet``) mais n'entre pas dans ``apps/reporting/search.py`` dans
+    # ce lot (hors périmètre de la tâche) — même dérive assumée que
+    # ``installations.demandeachat``/``installations.ordresoustraitance``
+    # ci-dessus, à retirer le jour où la RFQ deviendra cherchable.
+    ('installations.rfq', 'chatter_sans_recherche'),
 }
 
 

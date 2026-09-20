@@ -315,6 +315,27 @@ export function normalizeMaPhone(value) {
 }
 
 /**
+ * NTI18N23 — Nom complet localisé (ordre prénom/nom selon la locale
+ * d'affichage). Défaut ('fr'/'ar'/`locale` omise) : « Prénom Nom » — IDENTIQUE
+ * caractère pour caractère à la concaténation historique déjà utilisée par
+ * les en-têtes de documents et fiches contact (aucune régression visuelle).
+ * `NAME_ORDER` reste le SEUL point d'extension pour un futur cas « Nom
+ * Prénom » (locales hors scope immédiat) : ajouter une entrée y suffira,
+ * jamais un nouveau paramètre d'appel.
+ */
+const NAME_ORDER = { fr: 'prenom-nom', en: 'prenom-nom', ar: 'prenom-nom' }
+
+export function formatPersonName(prenom, nom, { locale } = {}) {
+  const p = (prenom || '').trim()
+  const n = (nom || '').trim()
+  if (!p && !n) return ''
+  if (!p) return n
+  if (!n) return p
+  const ordre = (locale && NAME_ORDER[locale]) || 'prenom-nom'
+  return ordre === 'nom-prenom' ? `${n} ${p}` : `${p} ${n}`
+}
+
+/**
  * VX122 — Finesse française : pose une espace fine insécable (U+202F) devant
  * `: ; ! ?`, au lieu de l'espace normale (ou de rien) que 116 libellés FR
  * laissent aujourd'hui. Idempotent : une espace normale/insécable/déjà-fine
@@ -329,5 +350,5 @@ export function nbsp(str) {
 export default {
   toNumber, formatMAD, formatNumber, formatPercent,
   formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA,
-  normalizeMaPhone, normalizePhoneE164, nbsp,
+  normalizeMaPhone, normalizePhoneE164, formatPersonName, nbsp,
 }

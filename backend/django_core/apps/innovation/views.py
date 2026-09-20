@@ -327,6 +327,25 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         qs = chatter_qs(idee, company=idee.company)
         return Response(ChatterActivitySerializer(qs, many=True).data)
 
+    # ── NTIDE3 — note manuelle de chatter sur une idée ───────────────────────
+    @action(detail=True, methods=['post'], url_path='noter',
+            permission_classes=[IdeasVote])
+    def noter(self, request, pk=None):
+        """Note manuelle au chatter générique (utilisateur réel, société
+        posée serveur — même patron que ``CampagneInnovationViewSet.noter``,
+        NTIDE33)."""
+        idee = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response({'body': 'Note requise.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        services.noter_idee(idee, request.user, body)
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+        qs = chatter_qs(idee, company=idee.company)
+        return Response(ChatterActivitySerializer(qs, many=True).data,
+                        status=status.HTTP_201_CREATED)
+
     # ── NTIDE53 — timeline des changements de statut (minigraph détail) ──────
     @action(detail=True, methods=['get'], url_path='timeline',
             permission_classes=[IdeasVote])

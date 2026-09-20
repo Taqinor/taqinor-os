@@ -51,6 +51,11 @@ const publicapiApi = {
   // (session admin, scopé au bac à sable NTAPI27 côté serveur).
   getOpenApiSchema: () => api.get('/api/public/v1/openapi.json'),
   sandboxTry: (resource) => api.post('/publicapi/sandbox/try/', { resource }),
+
+  // NTAPI39/40 — tableau de bord de monitoring des intégrations (appels,
+  // top endpoints, santé des webhooks sur 24 h, jobs bulk récents), scopé
+  // société côté serveur. `jours` optionnelle (défaut 7, plafond 90).
+  getMonitoring: (jours) => api.get('/publicapi/monitoring/', jours ? { params: { jours } } : undefined),
 }
 
 export default publicapiApi

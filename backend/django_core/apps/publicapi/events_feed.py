@@ -95,6 +95,13 @@ def enregistrer(company_id, event, payload, *, event_id=''):
 
     if not company_id or not event:
         return None
+    # `event_id` est déjà porté par son propre champ (dédup NTAPI17/NTAPI8) ;
+    # `dispatch_event`/`ensure_event_id` l'injecte DANS le dict transmis pour
+    # le partager avec la livraison webhook, mais le laisser AUSSI dans
+    # `payload` polluerait « la charge complète » que le connecteur no-code
+    # (NTAPI32) promet de rendre TELLE QUE reçue par l'appelant métier.
+    charge = dict(payload) if isinstance(payload, dict) else {}
+    charge.pop('event_id', None)
     derniere_erreur = None
     for _ in range(MAX_TENTATIVES_SEQUENCE):
         sequence = prochaine_sequence(company_id)
@@ -104,7 +111,7 @@ def enregistrer(company_id, event, payload, *, event_id=''):
                     company_id=company_id,
                     sequence=sequence,
                     type=event,
-                    payload=payload if isinstance(payload, dict) else {},
+                    payload=charge,
                     event_id=event_id or '',
                 )
         except IntegrityError as exc:
@@ -127,16 +134,26 @@ def scopes_lisibles(api_key):
     ]
 
 
-def lire(api_key, *, after=0, limit=LIMITE_PAR_DEFAUT):
+def lire(api_key, *, after=0, limit=LIMITE_PAR_DEFAUT, types=None):
     """Page d'évènements strictement APRÈS ``after``, par ordre de séquence.
 
     Toujours scopé à la société de la clé, et restreint aux familles
     d'évènements dont la clé porte le scope de lecture.
+
+    ``types`` (NTAPI32) restreint EN PLUS à une liste de codes demandés — un
+    trigger no-code (Zapier/Make) s'abonne à UN évènement et ne veut pas
+    filtrer tout le flux chez lui. Le filtre est une INTERSECTION avec les
+    familles déjà autorisées : demander un code dont la clé n'a pas le scope
+    de lecture ne l'ouvre jamais, la page revient simplement vide (aucune
+    escalade, et aucun signal sur l'existence d'évènements non autorisés).
     """
     from .models import ApiEvent
 
     limit = max(1, min(int(limit or LIMITE_PAR_DEFAUT), LIMITE_MAX))
     autorises = scopes_lisibles(api_key)
+    if types:
+        demandes = set(types)
+        autorises = [event for event in autorises if event in demandes]
     if not autorises:
         return [], limit
     qs = (ApiEvent.objects

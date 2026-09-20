@@ -111,6 +111,17 @@ const crmApi = {
   },
   marquerRelanceEtapeSautee: (id, note) =>
     api.post(`/crm/relance-etapes/${id}/sauter/`, note ? { note } : {}),
+  // RLC2 — le journal « ce qui s'est passé » du plan de relance d'un lead +
+  // son état courant en une phrase. LECTURE PURE (le sélecteur serveur n'écrit
+  // rien). Forme : `contract_samples/journal_relance.json` (PACT10).
+  getJournalRelance: (leadId) =>
+    api.get('/crm/relance-etapes/journal/', { params: { lead: leadId } }),
+  // RLC1 — annule une touche traitée par erreur (< 24 h) : elle redevient à
+  // faire à son échéance d'origine et les effets encore défaisables de son
+  // issue sont retirés. Refus motivé en 400 `{erreurs: {champ: message}}` —
+  // la fenêtre de 24 h, comme toutes les règles, est tranchée SERVEUR.
+  annulerRelanceEtape: (id) =>
+    api.post(`/crm/relance-etapes/${id}/annuler/`),
   // MRY13 — message rendu côté serveur (forme `relance_etape_message`) : lu
   // AVANT ouverture de WhatsApp (aperçu), jamais un envoi.
   getRelanceEtapeMessage: (id) => api.get(`/crm/relance-etapes/${id}/message/`),
