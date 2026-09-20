@@ -53,9 +53,11 @@ __all__ = [
     'rendre_planche_pdf', 'nom_de_fichier', 'entrees_de_legende',
     'texte_d_orientation', 'lignes_d_orientation', 'longueur_de_barre',
     'hash_court', 'texte_d_empreinte', 'empreinte_du_calepinage',
-    'CONTENU_IMPLANTATION', 'CONTENU_TOITURE', 'CONTENU_MASSE', 'CONTENUS',
-    'echelle_nommee', 'mention_d_echelle', 'rendre_plan_svg',
-    'rendre_plan_pdf',
+    'CONTENU_IMPLANTATION', 'CONTENU_TOITURE', 'CONTENU_MASSE',
+    'CONTENU_POSE', 'CONTENUS', 'echelle_nommee', 'mention_d_echelle',
+    'rendre_plan_svg', 'rendre_plan_pdf', 'PlanDePoseRefuse',
+    'verifier_absence_d_argent', 'lignes_de_chaines', 'rendre_plan_pose_svg',
+    'rendre_plan_pose_pdf',
 ]
 
 #: A3 PAYSAGE, en millimètres — le format des planches remises (même choix que
@@ -93,7 +95,10 @@ GRIS_TEXTE = '#444444'
 CONTENU_IMPLANTATION = 'implantation'
 CONTENU_TOITURE = 'toiture'
 CONTENU_MASSE = 'masse'
-CONTENUS = (CONTENU_IMPLANTATION, CONTENU_TOITURE, CONTENU_MASSE)
+#: CAL211 — la variante POSE : ce que l'équipe terrain emporte.
+CONTENU_POSE = 'pose'
+CONTENUS = (CONTENU_IMPLANTATION, CONTENU_TOITURE, CONTENU_MASSE,
+            CONTENU_POSE)
 
 #: Les clés sous lesquelles une PARCELLE SAISIE peut voyager dans le document
 #: de conception. Extension additive et optionnelle : absente, le plan de masse
@@ -829,10 +834,15 @@ def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=(), pied='',
                                       contour=NOIR, remplissage=GRIS_PAN))
         morceaux.append(_polygone(geometrie['contour'], vers_feuille,
                                   contour=NOIR, trait=TRAIT_CONTOUR))
-        if contenu == CONTENU_IMPLANTATION:
+        if contenu in (CONTENU_IMPLANTATION, CONTENU_POSE):
             for pan in geometrie['pans']:
                 morceaux.extend(_dessin_des_modules(
                     pan, vers_feuille, geometrie.get('module_m')))
+        if contenu == CONTENU_POSE:
+            # CAL211 — les repères de RANGÉE et le SENS DE POSE, déduits des
+            # centres relevés : l'équipe doit pouvoir se repérer sur le toit.
+            for pan in geometrie['pans']:
+                morceaux.extend(_reperes_de_pose(pan, vers_feuille))
         for obstacle in geometrie['obstacles']:
             coins = ((obstacle['x'], obstacle['y']),
                      (obstacle['x'] + obstacle['largeur'], obstacle['y']),
@@ -970,13 +980,143 @@ def rendre_planche_svg(calepinage, *, moment=None, **options):
         or empreinte_du_calepinage(calepinage, moment=moment))
 
 
+# ── CAL211 — le PLAN DE POSE de l'équipe terrain ────────────────────────────
+#
+# L'app terrain a ses PDF (bons d'assemblage, de livraison) mais aucun plan
+# d'implantation : l'équipe travaille aujourd'hui SANS la planche. Parité :
+# l'info-pack installateur est une pièce DISTINCTE de la proposition client.
+#
+# Ce que la variante ajoute : les repères de RANGÉE, le SENS DE POSE et la
+# LISTE DES CHAÎNES (modules par chaîne, MPPT, onduleur). Ce qu'elle
+# n'inventera jamais : la POSITION des onduleurs. Le document de conception ne
+# la porte pas, et le résultat du moteur non plus — un onduleur dessiné à un
+# emplacement plausible enverrait une équipe percer le mauvais mur. Les
+# onduleurs sont donc LISTÉS (référence, nombre, entrées MPPT), pas placés, et
+# le bandeau le dit.
+#
+# AUCUN MONTANT : c'est une pièce de chantier. Le rendu est VÉRIFIÉ avant
+# d'être rendu (``verifier_absence_d_argent``), pas seulement écrit avec soin.
+
+#: Les mots d'argent qui n'ont rien à faire sur un plan de pose.
+MOTS_D_ARGENT_POSE = ('prix', 'prix_achat', 'montant', 'mad', 'dh ht',
+                      'coût', 'tarif', 'remise', 'facture', 'marge brute')
+
+
+class PlanDePoseRefuse(PlancheRefusee):
+    """Le plan de pose refuse de sortir — il porterait un montant."""
+
+
+def verifier_absence_d_argent(document):
+    """Refuse un plan de pose qui porte un mot d'argent.
+
+    La règle est ARMÉE et pas seulement respectée : un montant glissé dans un
+    libellé de produit passerait autrement sans bruit jusqu'au chantier — et
+    ``Produit.prix_achat`` ne doit paraître dans AUCUNE sortie.
+    """
+    texte = (document or '').lower()
+    trouves = sorted({mot for mot in MOTS_D_ARGENT_POSE if mot in texte})
+    if trouves:
+        raise PlanDePoseRefuse(
+            "Plan de pose refusé : une pièce de chantier ne porte aucun "
+            "montant. Trouvé — %s." % ', '.join(trouves), champ='pose')
+    return document
+
+
+def _reperes_de_pose(pan, vers_feuille):
+    """Repère de rangée (« R1 ») et flèche de SENS DE POSE, par rangée.
+
+    La RANGÉE a UNE seule définition dans ce module — le groupement des
+    centres relevés sur leur ordonnée (CAL179) : on l'appelle, on ne la
+    réécrit pas. Le SENS est celui dans lequel les modules d'une rangée se
+    suivent : il est MESURÉ sur les centres, jamais choisi. Une rangée d'un
+    seul module ne porte aucune flèche — il n'y a pas de sens à déduire.
+    """
+    from .export_tableur import rangees_du_pan
+
+    if not pan['modules']:
+        return []
+    rangees = rangees_du_pan(pan['modules'])
+    par_rangee = {}
+    for centre in pan['modules']:
+        par_rangee.setdefault(rangees[centre], []).append(centre)
+
+    morceaux = []
+    for numero, centres in sorted(par_rangee.items()):
+        centres = sorted(centres, key=lambda point: point[0])
+        depart = vers_feuille(centres[0])
+        morceaux.append(
+            '<text x="%s" y="%s" font-size="3" font-weight="bold" '
+            'text-anchor="end" fill="%s">R%d</text>'
+            % (_n(depart[0] - 1.5), _n(depart[1] + 1.0), VERT_MODULE, numero))
+        if len(centres) < 2:
+            continue
+        arrivee = vers_feuille(centres[-1])
+        morceaux.append(
+            '<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" '
+            'stroke-width="%s" stroke-dasharray="1 0.8" />'
+            % (_n(depart[0]), _n(depart[1]), _n(arrivee[0]), _n(arrivee[1]),
+               VERT_MODULE, _n(TRAIT_COTE)))
+    return morceaux
+
+
+def lignes_de_chaines(resultat):
+    """La LISTE DES CHAÎNES pour le bandeau — recopiée du moteur.
+
+    Rien n'est recomposé : le chaînage et l'affectation sont ceux que le
+    moteur publie. Les onduleurs sont LISTÉS, jamais positionnés.
+    """
+    electrique = ((resultat or {}).get('electrique') or {}) \
+        if isinstance(resultat, dict) else {}
+    chainage = electrique.get('chainage') or {}
+    lignes = []
+    if chainage.get('chaines') is not None:
+        lignes.append('Chaînes : %s' % chainage['chaines'])
+    if chainage.get('modules_par_chaine') is not None:
+        lignes.append('Modules par chaîne : %s'
+                      % chainage['modules_par_chaine'])
+    if chainage.get('reste'):
+        lignes.append('Modules hors chaîne : %s' % chainage['reste'])
+    for onduleur in electrique.get('onduleurs') or []:
+        if not isinstance(onduleur, dict):
+            continue
+        mentions = ['Onduleur %s' % (onduleur.get('reference') or '')]
+        if onduleur.get('nombre') is not None:
+            mentions.append('×%s' % onduleur['nombre'])
+        if onduleur.get('n_mppt') is not None:
+            mentions.append('%s MPPT' % onduleur['n_mppt'])
+        lignes.append(' '.join(mentions))
+    if lignes:
+        lignes.append('Emplacement des onduleurs non relevé — à définir sur '
+                      'site.')
+    return tuple(lignes)
+
+
 #: Le titre de chaque plan. Le rendu NOMME la vue ; il n'en rédige pas la
 #: portée (« conforme », « définitif » engageraient le soumissionnaire).
 TITRE_DE_CONTENU = {
     CONTENU_IMPLANTATION: "Plan d'implantation",
     CONTENU_TOITURE: 'Plan de toiture',
     CONTENU_MASSE: 'Plan de masse',
+    CONTENU_POSE: 'Plan de pose',
 }
+
+
+def rendre_plan_pose_svg(calepinage, *, moment=None, **options):
+    """CAL211 — le plan de POSE, VÉRIFIÉ sans montant, portant l'empreinte."""
+    bandeau = tuple(options.pop('bandeau', ()))
+    bandeau += lignes_de_chaines(getattr(calepinage, 'resultat', None))
+    return verifier_absence_d_argent(
+        rendre_plan_svg(calepinage, contenu=CONTENU_POSE, moment=moment,
+                        bandeau=bandeau, **options))
+
+
+def rendre_plan_pose_pdf(calepinage, *, company=None, **options):
+    """Octets PDF du plan de pose, par ``core.pdf.render_pdf`` (ARC11)."""
+    from core.pdf import render_pdf
+
+    svg = rendre_plan_pose_svg(calepinage, **options)
+    return render_pdf(html=html_de_planche(svg),
+                      company=company or getattr(calepinage, 'company', None))
 
 
 def rendre_plan_svg(calepinage, *, contenu=CONTENU_IMPLANTATION, moment=None,

@@ -37,7 +37,8 @@ from __future__ import annotations
 
 __all__ = [
     'FEUILLES', 'MOTS_D_ARGENT', 'ExportRefuse', 'verifier_absence_de_prix',
-    'table_modules', 'table_chaines', 'table_nomenclature', 'tables_du_resultat',
+    'rangees_du_pan', 'table_modules', 'table_chaines', 'table_nomenclature',
+    'tables_du_resultat',
     'classeur_octets', 'csv_octets', 'exporter_xlsx', 'exporter_csv',
 ]
 
@@ -85,8 +86,15 @@ def verifier_absence_de_prix(entetes, lignes):
             champ='colonnes')
 
 
-def _rangees_du_pan(modules):
-    """``centre -> numéro de rangée`` par GROUPEMENT sur l'ordonnée relevée."""
+def rangees_du_pan(modules):
+    """``centre -> numéro de rangée`` par GROUPEMENT sur l'ordonnée relevée.
+
+    PUBLIQUE parce qu'elle est la SEULE définition de « rangée » du module :
+    le plan de pose (CAL211) l'appelle pour numéroter ses repères. Deux
+    définitions de la rangée feraient diverger le plan remis à l'équipe et le
+    tableau remis au bureau d'études — la duplication de la donnée est la
+    seule source d'incohérence observée le 27/07/2026.
+    """
     ordonnees = sorted({round(y / PAS_DE_RANGEE_M) for _x, y in modules})
     rang_par_ordonnee = {valeur: rang
                          for rang, valeur in enumerate(ordonnees, start=1)}
@@ -112,7 +120,7 @@ def table_modules(geometrie, resultat=None):
     par_pan = _affectation_par_pan(resultat)
     lignes = []
     for pan in geometrie.get('pans') or ():
-        rangees = _rangees_du_pan(pan['modules'])
+        rangees = rangees_du_pan(pan['modules'])
         affectations = par_pan.get(pan['repere'], [])
         for rang, centre in enumerate(pan['modules'], start=1):
             affectation = affectations[rang - 1] \
