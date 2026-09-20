@@ -7,15 +7,14 @@ import { Badge, Card, Spinner } from '../../ui'
    CAL201 — L'ÉCRAN « BIBLIOTHÈQUE » DU MODULE (presets, kits, modèles,
    favoris), SOCIÉTÉ ACTIVE RESPECTÉE.
    ----------------------------------------------------------------------------
-   Constat : aucune surface frontend n'exposait ces réglages hors du studio AO
-   (`features/ao/calepinage/CalepinageStudio.jsx`) — le module autonome
-   n'avait nulle part où les consulter.
+   Constat : aucune surface frontend n'exposait ces réglages hors du studio
+   d'appels d'offres — le module autonome n'avait nulle part où les consulter.
 
    LES QUATRE LISTES VIENNENT DE DEUX ENDPOINTS, JAMAIS D'UNE TROISIÈME
    FORME (CAL233/CAL246) :
      * `GET /calepinage/parametres/` sert `presets`, `favoris_materiel` (les
        deux sections de `ParametresCalepinage`, CAL197/CAL200) et `kits` (le
-       catalogue AO LU, jamais stocké, CAL198) ;
+       catalogue du module, résolu à la lecture, CAL198/SOLMVP15) ;
      * `GET /calepinage/calepinages/modeles/` sert les calepinages marqués
        MODÈLE (drapeau `records.Tag`, CAL199).
 
