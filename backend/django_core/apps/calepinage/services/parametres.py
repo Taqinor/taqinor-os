@@ -114,6 +114,9 @@ def _normaliseurs():
         SECTION as SECTION_GABARITS,
         normaliser_section_gabarits_disposition,
     )
+    from .lestage import (
+        SECTION as SECTION_LESTAGE, normaliser_section_lestage,
+    )
     from .site import SECTION as SECTION_IMAGERIE, normaliser_section_imagerie
     from .zones_reglementaires import (
         SECTION as SECTION_ZONES, normaliser_section_zones_types,
@@ -124,6 +127,7 @@ def _normaliseurs():
         SECTION_ZONES: normaliser_section_zones_types,
         SECTION_DEGAGEMENTS: normaliser_section_degagements,
         SECTION_GABARITS: normaliser_section_gabarits_disposition,
+        SECTION_LESTAGE: normaliser_section_lestage,
     }
 
 

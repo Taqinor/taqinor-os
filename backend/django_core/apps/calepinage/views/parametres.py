@@ -54,6 +54,8 @@ def _forme_reglages(nom):
         'presets': serializers.DictField(),
         'favoris_materiel': serializers.DictField(),
         'gabarits_dossier': serializers.DictField(),
+        'norme_electrique': serializers.DictField(),
+        'lestage': serializers.DictField(),
     })
 
 

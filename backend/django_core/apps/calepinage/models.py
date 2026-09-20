@@ -701,6 +701,7 @@ class ParametresCalepinage(TenantModel):
         'favoris_materiel',    # CAL200 — matériel épinglé
         'gabarits_dossier',    # CAL190 — gabarits de dossier réglementaire
         'norme_electrique',    # CAL130 — norme applicable + coefficients
+        'lestage',             # CAL163 — paramètres de lestage SAISIS
     )
 
     imagerie = models.JSONField('Imagerie et pays', default=dict, blank=True)
@@ -752,6 +753,25 @@ class ParametresCalepinage(TenantModel):
     #: comportement en recevant ce champ.
     norme_electrique = models.JSONField('Norme électrique applicable',
                                         default=dict, blank=True)
+
+    #: CAL163 — LES PARAMÈTRES DE LESTAGE, tous SAISIS avec leur source.
+    #:
+    #: Le moteur ne fait « aucune vérification de tenue mécanique » et « aucun
+    #: texte normatif marocain n'est présent dans ce dépôt » : publier ici un
+    #: coefficient de vent ou de neige « par défaut » serait exactement le
+    #: chiffre inventé que la règle fondateur interdit. La société saisit donc
+    #: vitesse de vent de référence, catégorie et coefficient de terrain,
+    #: coefficients de pression, charge de neige, frottement — et jusqu'à la
+    #: masse volumique de l'air et l'accélération de la pesanteur — CHACUN
+    #: avec la référence du texte dont il sort (``{valeur, source}``).
+    #:
+    #: Section VIDE = aucun paramètre saisi, donc AUCUN résultat calculé : la
+    #: feuille dit « paramètres à saisir » et ne publie rien. C'est le
+    #: comportement d'aujourd'hui (aucun lestage n'existait), donc aucune
+    #: société existante ne change de comportement en recevant ce champ
+    #: (AJOUTÉ EN FIN DE CLASSE, migration ``0007``).
+    lestage = models.JSONField('Paramètres de lestage', default=dict,
+                               blank=True)
 
     def clean(self):
         """Chaque section est un OBJET — jamais une liste ni un scalaire."""
