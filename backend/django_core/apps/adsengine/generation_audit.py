@@ -127,6 +127,18 @@ def record_audit(batch, *, fact_table_version=None, claim_verdicts=None):
     return batch
 
 
+def record_policy_routing(batch, entries):
+    """PUB125 — Consigne le verdict du PRÉ-LINTER policy (AGEN5) et le PALIER de
+    routage (AGEN6) de chaque variante d'un lot.
+
+    Fusionné dans ``claim_verdicts`` sous la clé ``policy_routing`` (via
+    ``record_audit`` — jamais un écrasement du reste de l'audit) : un lot dont
+    une variante a été BLOQUÉE reste imputable, raison par raison, même si
+    l'asset n'entre jamais au backlog."""
+    return record_audit(
+        batch, claim_verdicts={'policy_routing': list(entries or [])})
+
+
 def _batch_assets(batch):
     """Assets rattachés à un lot : ses items de backlog + l'asset accroche
     source (dédupliqués). Lecture seule."""

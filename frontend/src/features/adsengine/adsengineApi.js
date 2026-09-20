@@ -84,6 +84,19 @@ const adsengineApi = {
     adsCockpit: (params) => api.get('/adsengine/metrics/ads-cockpit/', { params }),
   },
 
+  // ── PUB118 — Recombinaison DCO : PROPOSE une ad à spec dynamique bâtie
+  // UNIQUEMENT sur les assets des créatifs mirorés gagnants (zéro clé, zéro
+  // dépense). Rien n'est publié : la proposition part en approbation et l'ad
+  // naît PAUSED.
+  dco: {
+    // ``config`` permet à l'appelant de gérer l'erreur LOCALEMENT
+    // (``{ suppressErrorToast: true }``) : la raison métier FR du backend est
+    // alors affichée à côté du bouton au lieu d'un toast générique.
+    recombine: (adsetMetaId, config) =>
+      api.post(`/adsengine/adsets/${adsetMetaId}/recombiner-dco/`, undefined,
+        config),
+  },
+
   // ── ENG31/ENG42 — Réconciliation Meta-vs-ERP (écart + statut) ──
   reconciliation: {
     list: (params) => api.get('/adsengine/reconciliation/', { params }),
@@ -228,6 +241,17 @@ const adsengineApi = {
     backlogArms: () => api.get('/adsengine/plans-vol/backlog-arms/'),
     // ADSENG38 — préflight d'autonomie (toutes les portes go-live).
     preflight: () => api.get('/adsengine/plans-vol/preflight/'),
+    // PUB129 — cockpit d'autonomie : les MÊMES portes que `preflight`, plus la
+    // remédiation FR de chacune (écran / commande / acquittement en place) et
+    // l'état RÉEL de l'autonomie (`actif`). La cérémonie d'activation refuse
+    // côté serveur (`AutonomyNotReady`) tant qu'une porte est rouge ; la
+    // désactivation n'exige AUCUNE porte (sécurité).
+    autonomie: () => api.get('/adsengine/plans-vol/autonomie/'),
+    activerAutonomie: () => api.post('/adsengine/plans-vol/autonomie/activer/'),
+    desactiverAutonomie: () =>
+      api.post('/adsengine/plans-vol/autonomie/desactiver/'),
+    acquitterSimulation: () =>
+      api.post('/adsengine/plans-vol/autonomie/acquitter-simulation/'),
     // Valide un plan composé (refus structuré avec raisons FR).
     validate: (payload) => api.post('/adsengine/plans-vol/validate/', payload),
     // Lance une simulation depuis le plan composé.
@@ -532,6 +556,16 @@ const adsengineApi = {
       api.get('/adsengine/chatter/', { params: { entity_type: entityType, entity_id: entityId } }),
     postNote: (entityType, entityId, body) =>
       api.post('/adsengine/chatter/', { entity_type: entityType, entity_id: entityId, body }),
+  },
+
+  // ── PUB128 — Tests terrain (préflight d'autonomie, 7 tests FT1..FT7) ──
+  // Lecture-seule des tests + de leurs constantes en attente ; consigner un
+  // résultat mesuré (`recordResult`) ou proposer des structures de test — qui
+  // naissent PAUSED et attendent une approbation humaine (`proposeStructures`).
+  fieldTests: {
+    list: () => api.get('/adsengine/tests-terrain/'),
+    recordResult: (ft, payload) => api.post(`/adsengine/tests-terrain/${ft}/resultat/`, payload),
+    proposeStructures: (ft, payload) => api.post(`/adsengine/tests-terrain/${ft}/structures/`, payload),
   },
 }
 

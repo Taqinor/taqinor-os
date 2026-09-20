@@ -34,6 +34,11 @@ SOURCE_FIELD_TEST = 'field_test'  # confirmée par un micro-test réel (runbook)
 # un seul facteur changé à la fois. Ce sont des CONSTANTES de config (lisibles par
 # le runbook / un futur lanceur de micro-test), jamais des littéraux en dur.
 MICRO_TEST_MAX_DAILY_BUDGET_MAD = 30   # plafond dur d'un micro-test terrain
+# PUB-P8/C5 — la devise DANS LAQUELLE ce plafond est libellé. Meta écrit un
+# ``daily_budget`` en unités MINEURES de la devise DU COMPTE : le plafond n'est
+# donc applicable QUE sur un compte en MAD. Toute autre devise ⇒ refus explicite
+# (la conversion est une décision du fondateur, jamais un taux inventé).
+MICRO_TEST_BUDGET_CURRENCY = 'MAD'
 MICRO_TEST_START_PAUSED = True         # toute structure de test naît PAUSED
 MICRO_TEST_ONE_FACTOR_AT_A_TIME = True  # un seul facteur changé par test
 
@@ -108,6 +113,122 @@ CONSTANTS = {
 FIELD_TESTS = ('FT1', 'FT2', 'FT3', 'FT4', 'FT5', 'FT6', 'FT7')
 
 
+# ── PUB128 — PROTOCOLE de chaque micro-test (config servie à l'écran) ─────────
+# Condensé FIDÈLE du runbook ``docs/engine/field-tests.md`` (qui reste le document
+# de référence, avec ses bornes de recherche) : l'écran « Tests terrain » sert
+# CETTE table, un écran n'ayant pas à parser du markdown. Rien n'est inventé ici —
+# chaque étape est celle du runbook, et aucune mécanique Meta n'est AFFIRMÉE (c'est
+# précisément ce que le test mesure). Modifier un protocole = éditer les DEUX
+# (cette table et le runbook), jamais un littéral dans une vue ou un écran.
+PROTOCOLS = {
+    'FT1': {
+        'label_fr': "Seuils exacts de reset d'apprentissage",
+        'question_fr': (
+            "Quel % de variation de budget, et combien de conversions sur 7 j, "
+            "(re)déclenchent la phase d'apprentissage ?"),
+        'protocol_fr': [
+            "Créer 1 campagne + 1 ad set PAUSED, budget sous le plafond de "
+            "micro-test, une seule ad.",
+            "Unpause à la main ; laisser l'ad set SORTIR de l'apprentissage.",
+            "Appliquer UNE hausse de budget de +10 % ; observer le label "
+            "« Apprentissage » avant / après.",
+            "Répéter à +15 % puis +25 % (un seul facteur à la fois) pour "
+            "encadrer le vrai seuil.",
+            "Repauser à la main.",
+        ],
+        'measure_fr': (
+            "Le plus petit % de hausse qui fait réapparaître le label "
+            "« Apprentissage » (et le nombre de conversions/7 j observé à la "
+            "sortie d'apprentissage)."),
+    },
+    'FT2': {
+        'label_fr': "Viabilité d'un split-test à petit budget",
+        'question_fr': (
+            "Quel budget minimum réel faut-il pour qu'un split-test natif rende "
+            "un résultat NON dégénéré ?"),
+        'protocol_fr': [
+            "Lancer UN split-test natif au budget réel (structures PAUSED puis "
+            "unpause humain) sur 2 semaines.",
+            "Lire les chiffres de puissance / confiance que Meta rapporte "
+            "lui-même.",
+        ],
+        'measure_fr': (
+            "Le budget quotidien par variante au-dessus duquel Meta rend un "
+            "résultat exploitable — donc « l'outil est-il utilisable à notre "
+            "échelle ? »."),
+    },
+    'FT3': {
+        'label_fr': 'Défauts des enhancements créatifs Advantage+',
+        'question_fr': (
+            "Quel est l'état par défaut de chaque enhancement créatif quand on "
+            "ne le déclare pas (politique no-fake-footage : tout enhancement "
+            "doit être forcé OFF) ?"),
+        'protocol_fr': [
+            "Créer UN créatif PAUSED en OMETTANT la spec d'enhancements.",
+            "Relire l'objet créé et inspecter ce que Meta a supposé "
+            "(statut d'enrôlement par drapeau).",
+        ],
+        'measure_fr': (
+            "Les défauts réels par drapeau : au moins un enhancement revient-il "
+            "activé sans l'avoir demandé ? (liste collée en preuve)"),
+    },
+    'FT4': {
+        'label_fr': 'Granularité du reporting DCO',
+        'question_fr': (
+            "Le reporting DCO remonte-t-il par ASSET ou seulement par AD (donc "
+            "l'attribution par variante reste-t-elle fiable sous DCO) ?"),
+        'protocol_fr': [
+            "Activer le créatif dynamique sur UNE ad de test (PAUSED puis "
+            "unpause humain, budget sous le plafond).",
+            "Lire les insights et vérifier la présence d'une ventilation par "
+            "asset.",
+        ],
+        'measure_fr': "« par_asset » ou « par_ad ».",
+    },
+    'FT5': {
+        'label_fr': 'Coûts réels du Business-Use-Case (rate limiting)',
+        'question_fr': (
+            "Quel est le vrai barème de points BUC : combien coûte un appel de "
+            "LECTURE, combien un appel d'ÉCRITURE ?"),
+        'protocol_fr': [
+            "Relever l'en-tête d'usage BUC après UN appel de lecture réel.",
+            "Recommencer après UN appel d'écriture réel (une création PAUSED "
+            "suffit).",
+        ],
+        'measure_fr': (
+            "Les deux coûts en points observés, en-têtes collés en preuve."),
+    },
+    'FT6': {
+        'label_fr': "Rotation intra-ad-set (« Even Rotation »)",
+        'question_fr': (
+            "La rotation égale entre plusieurs ads d'un même ad set est-elle "
+            "encore un réglage accessible par API ?"),
+        'protocol_fr': [
+            "Créer 2 ads dans UN ad set SANS toucher au réglage de rotation "
+            "(PAUSED puis unpause humain, budget sous le plafond).",
+            "Observer sur quelques jours si la dépense se répartit également ou "
+            "se concentre sur une seule ad.",
+        ],
+        'measure_fr': (
+            "Vrai/faux, avec la répartition observée (ou le message d'erreur "
+            "exact) en preuve."),
+    },
+    'FT7': {
+        'label_fr': "Gating par palier d'accès (vérification business)",
+        'question_fr': (
+            "Le palier de vérification business gate-t-il spécifiquement la "
+            "bibliothèque de règles ou les études A/B natives ?"),
+        'protocol_fr': [
+            "Tenter UN appel sur l'edge de la bibliothèque de règles du compte.",
+            "Tenter UN appel sur l'edge des études A/B natives.",
+            "Consigner, pour chacun, s'il réussit au palier courant.",
+        ],
+        'measure_fr': (
+            "Vrai/faux par edge, code d'erreur exact collé en preuve."),
+    },
+}
+
+
 def value(key):
     """Valeur courante d'une constante terrain (``KeyError`` si inconnue)."""
     return CONSTANTS[key]['value']
@@ -123,11 +244,33 @@ def is_field_tested(key):
     return CONSTANTS[key]['source'] == SOURCE_FIELD_TEST
 
 
-def pending_keys():
-    """Constantes encore NON vérifiées terrain (source = recherche) — la liste
-    des inconnues qu'un futur passage sur le compte réel doit trancher."""
+def settled_tests(company=None):
+    """PUB128 — Micro-tests TRANCHÉS pour une société (lecture DB).
+
+    Un ``FieldTestResult`` enregistré pour ``FT<n>`` tranche ce micro-test — donc
+    toutes les constantes qu'il résout. Sans société (appel pur, hors requête),
+    renvoie un ensemble VIDE : les constantes restent alors la seule source."""
+    if company is None:
+        return frozenset()
+    from .models import FieldTestResult
+    return frozenset(
+        FieldTestResult.objects
+        .filter(company=company)
+        .values_list('ft', flat=True))
+
+
+def pending_keys(company=None):
+    """Constantes encore NON tranchées — la liste des inconnues qu'un passage sur
+    le compte réel doit trancher.
+
+    PUB128 — la DB est consultée D'ABORD : une constante dont le micro-test porte
+    un ``FieldTestResult`` pour cette société est tranchée, même si la valeur en
+    dur est encore marquée ``SOURCE_RESEARCH`` (l'edit de code n'est plus le seul
+    chemin). Les constantes restent le REPLI : sans société, ou pour un test sans
+    résultat enregistré, c'est leur ``source`` qui décide."""
+    settled = settled_tests(company)
     return sorted(k for k, c in CONSTANTS.items()
-                  if c['source'] == SOURCE_RESEARCH)
+                  if c['source'] == SOURCE_RESEARCH and c['ft'] not in settled)
 
 
 def constants_for(ft):
@@ -139,3 +282,154 @@ def micro_test_budget_cap_mad():
     """Plafond de budget d'un micro-test terrain — lu depuis la config (jamais un
     littéral en dur chez l'appelant)."""
     return MICRO_TEST_MAX_DAILY_BUDGET_MAD
+
+
+def protocol_for(ft):
+    """PUB128 — Protocole d'un micro-test (``{label_fr, question_fr,
+    protocol_fr, measure_fr}``), ou ``None`` si le test est inconnu. C'est la
+    source que sert l'écran « Tests terrain » et depuis laquelle le runbook
+    ``docs/engine/field-tests.md`` est rédigé."""
+    return PROTOCOLS.get(ft)
+
+
+def record_result(company, ft, *, measured_value, evidence='',
+                  measured_on=None, user=None):
+    """PUB128 — Enregistre (ou met à jour) le résultat MESURÉ d'un micro-test.
+
+    Un seul verdict par ``(société, micro-test)`` : ré-enregistrer MET À JOUR.
+    Lève ``ValueError`` (raison FR) sur un ``ft`` hors des 7 ou une valeur vide —
+    une porte de préflight ne se ferme jamais sur une mesure fantôme."""
+    import datetime as _datetime
+
+    from .models import FieldTestResult
+
+    key = str(ft or '').strip().upper()
+    if key not in FIELD_TESTS:
+        raise ValueError(
+            f"Micro-test inconnu « {ft} » : attendu l'un de "
+            f"{', '.join(FIELD_TESTS)}.")
+    value = str(measured_value or '').strip()
+    if not value:
+        raise ValueError(
+            "La valeur mesurée est obligatoire : la porte de préflight ne se "
+            "ferme jamais sur une mesure vide.")
+    result, _created = FieldTestResult.objects.update_or_create(
+        company=company, ft=key,
+        defaults={
+            'measured_value': value,
+            'evidence': str(evidence or '').strip(),
+            'measured_on': measured_on or _datetime.date.today(),
+            'recorded_by': user if getattr(user, 'pk', None) else None,
+        })
+    return result
+
+
+def propose_micro_test_structures(company, ft, *, city='', proposed_by=None,
+                                  template_key='resid_ctwa'):
+    """PUB128 — PROPOSE les structures d'un micro-test terrain.
+
+    Circuit propose→approve NORMAL : deux ``EngineAction`` PROPOSÉES (une
+    campagne + un ad set) — l'approbation humaine reste requise et la création
+    naît PAUSED (le client force PAUSED, règle #3). Le budget quotidien de l'ad
+    set est PLAFONNÉ à ``MICRO_TEST_MAX_DAILY_BUDGET_MAD`` (lu ici, jamais un
+    littéral) : un micro-test ne peut pas déraper en dépense.
+
+    L'objectif de campagne est lu dans le catalogue de gabarits de lancement
+    (``launch_templates.LAUNCH_TEMPLATES``) — aucun objectif inventé.
+
+    PUB-P8/C5 — le plafond est en MAD, mais Meta lit un ``daily_budget`` en
+    unités MINEURES de la devise DU COMPTE : sur un compte facturé en USD,
+    ``30 × 100`` vaut 30 USD (≈ 10× le plafond voulu), pas 30 MAD. La
+    proposition est donc REFUSÉE fail-closed dès que la devise du compte
+    (``rules_engine.account_currency``, PUB134) n'est pas MAD — AUCUN taux de
+    change n'est inventé, la conversion est une DÉCISION DU FONDATEUR.
+
+    Lève ``ValueError`` (FR) sur un ``ft`` inconnu, un gabarit inconnu ou une
+    devise de compte non MAD. Renvoie ``[EngineAction, EngineAction]``."""
+    from . import launch_templates, services
+    from .models import EngineAction
+    from .rules_engine import account_currency
+
+    key = str(ft or '').strip().upper()
+    if key not in FIELD_TESTS:
+        raise ValueError(
+            f"Micro-test inconnu « {ft} » : attendu l'un de "
+            f"{', '.join(FIELD_TESTS)}.")
+    template = launch_templates.LAUNCH_TEMPLATES.get(template_key)
+    if template is None:
+        raise ValueError(
+            f"Gabarit de lancement inconnu « {template_key} » : impossible de "
+            f"proposer un micro-test sans objectif de campagne connu.")
+
+    cap = micro_test_budget_cap_mad()
+    currency = account_currency(company)
+    if currency != MICRO_TEST_BUDGET_CURRENCY:
+        raise ValueError(
+            f"Devise du compte {currency} ≠ {MICRO_TEST_BUDGET_CURRENCY} — "
+            f"plafond micro-test {cap} {MICRO_TEST_BUDGET_CURRENCY} non "
+            f"convertible sans décision fondateur : aucune structure de test "
+            f"n'est proposée (aucun taux de change n'est inventé).")
+    label = (PROTOCOLS.get(key) or {}).get('label_fr', key)
+    campaign_name = f'TEST-TERRAIN {key} {label}'.strip()
+    adset_name = f'TEST-TERRAIN {key} ad set'
+
+    campaign_mirror = _field_test_campaign(company, campaign_name)
+    if campaign_mirror is None:
+        # La campagne n'existe pas encore : on ne propose QUE la campagne. Un ad
+        # set sans ``campaign_id`` réel serait un payload CREUX que le vrai Graph
+        # rejetterait même après approbation (classe de défaut PUB119).
+        existing = _open_field_test_action(
+            company, key, EngineAction.Kind.CREATE_CAMPAIGN)
+        if existing is not None:
+            return [existing]
+        return [services.propose_action(
+            company, kind=EngineAction.Kind.CREATE_CAMPAIGN,
+            reason_fr=(
+                f"Micro-test terrain {key} ({label}) : campagne de test "
+                f"proposée — née PAUSED à l'application. Son ad set (budget "
+                f"plafonné à {cap} MAD/jour) sera proposé dès que la campagne "
+                f"existera."),
+            payload={'name': campaign_name, 'objective': template['objective'],
+                     'field_test': key, 'city': str(city or '').strip()},
+            proposed_by=proposed_by)]
+
+    existing = _open_field_test_action(
+        company, key, EngineAction.Kind.CREATE_ADSET)
+    if existing is not None:
+        return [existing]
+    return [services.propose_action(
+        company, kind=EngineAction.Kind.CREATE_ADSET,
+        reason_fr=(
+            f"Micro-test terrain {key} : ad set de test proposé sur la campagne "
+            f"« {campaign_name} », budget quotidien plafonné à {cap} MAD "
+            f"(plafond dur des micro-tests) — né PAUSED à l'application."),
+        payload={
+            'name': adset_name,
+            'campaign_id': campaign_mirror.meta_id,
+            'field_test': key,
+            # Unités MINEURES de la devise du compte — garanti MAD par la garde
+            # de devise ci-dessus (PUB-P8/C5), donc des centimes de dirham.
+            'extra_fields': {
+                'daily_budget': int(cap * services.CENTIMES_PER_MAD)},
+        },
+        proposed_by=proposed_by)]
+
+
+def _field_test_campaign(company, campaign_name):
+    """Miroir de la campagne de micro-test déjà créée (``None`` sinon) — jamais un
+    ``campaign_id`` fabriqué."""
+    from .models import AdCampaignMirror
+    return (AdCampaignMirror.objects
+            .filter(company=company, name=campaign_name)
+            .exclude(meta_id='').first())
+
+
+def _open_field_test_action(company, ft, kind):
+    """Proposition de micro-test DÉJÀ ouverte pour ce (test, kind) — re-cliquer
+    ne double jamais une proposition."""
+    from .models import EngineAction
+    return (EngineAction.objects
+            .filter(company=company, kind=kind,
+                    status=EngineAction.Statut.PROPOSEE,
+                    payload__field_test=ft)
+            .order_by('-id').first())

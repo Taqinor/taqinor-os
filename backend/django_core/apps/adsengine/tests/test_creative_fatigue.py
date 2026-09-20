@@ -18,7 +18,9 @@ from authentication.models import Company
 
 from apps.adsengine import anomaly, rules_engine
 from apps.adsengine.rules import SEVERITY_CRITICAL, SEVERITY_WARNING
-from apps.adsengine.models import AdMirror, EngineAction, InsightSnapshot
+from apps.adsengine.models import (
+    AdCreativeMirror, AdMirror, AdSetMirror, EngineAction, InsightSnapshot,
+)
 
 TODAY = datetime.date(2026, 7, 16)
 
@@ -100,8 +102,19 @@ class EvaluateCreativeFatigueEngineTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Fatigue Co', slug='fatigue-co')
+        # PUB119 — une rotation n'est proposée qu'avec ses TROIS pièces (ad set
+        # cible, nom, source créative) : l'ad fatiguée doit donc vivre dans un ad
+        # set porteur d'un ID Meta et porter un créatif LIVE. Sans cela le moteur
+        # consigne « ad set cible introuvable » et ne propose RIEN — c'est
+        # exactement l'anti-action-creuse, pas le cas testé ici.
+        self.adset = AdSetMirror.objects.create(
+            company=self.company, meta_id='as-fat-1', name='Toit Casa',
+            status='PAUSED')
         self.ad = AdMirror.objects.create(
-            company=self.company, meta_id='ad-fat-1', name='Reel v3')
+            company=self.company, meta_id='ad-fat-1', name='Reel v3',
+            adset=self.adset)
+        AdCreativeMirror.objects.create(
+            company=self.company, ad=self.ad, creative_meta_id='cr-fat-1')
         self.ct = ContentType.objects.get_for_model(AdMirror)
 
     def _snap(self, day, *, spend, clicks, impressions, results, frequency):

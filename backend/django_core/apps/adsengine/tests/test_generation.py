@@ -8,6 +8,7 @@ Prouve (dd-assumption-engine §10.2 point 1) :
   * une citation vers une clé inexistante → échec.
 """
 from datetime import date
+from unittest import mock
 
 from django.test import TestCase
 
@@ -32,7 +33,11 @@ class GenerationNoKeyTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='Gen Co', slug='gen-co')
 
+    @mock.patch.dict('os.environ', {'ADSENGINE_GEN_API_KEY': '',
+                                    'GROQ_API_KEY': ''})
     def test_no_key_no_generator_is_noop(self):
+        # PUB124 — les DEUX clés sont neutralisées (le repli GROQ_API_KEY
+        # rendrait sinon ce NO-OP dépendant de l'environnement de la machine).
         _publish_table(self.company)
         result = generation.generate_grounded_variants(
             self.company, 'panneaux solaires économies maison sud')

@@ -17,8 +17,8 @@ from authentication.models import Company
 from apps.adsengine import rules_engine
 from apps.adsengine.rule_templates import CADENCE_CRITICAL, CADENCE_DAILY
 from apps.adsengine.models import (
-    AdSetMirror, EngineAction, EngineAlert, GuardrailConfig, InsightSnapshot,
-    RulePolicy,
+    AdCreativeMirror, AdMirror, AdSetMirror, EngineAction, EngineAlert,
+    GuardrailConfig, InsightSnapshot, RulePolicy,
 )
 
 TODAY = datetime.date(2026, 7, 16)
@@ -60,6 +60,15 @@ class FrequencyRuleTests(TestCase):
         self.company = Company.objects.create(nom='RE Co', slug='re-co')
         self.adset = AdSetMirror.objects.create(
             company=self.company, meta_id='as1', name='AS', status='PAUSED')
+        # PUB119 — une rotation n'est PROPOSABLE que si une source créative
+        # existe : l'ad set porte donc une ad avec son créatif LIVE mirroré
+        # (sans quoi le moteur alerte « aucun créatif prêt » et ne propose RIEN —
+        # cas couvert par ``RotationWithoutCreativeTests``).
+        self.ad = AdMirror.objects.create(
+            company=self.company, meta_id='ad1', name='Ad 1',
+            adset=self.adset)
+        AdCreativeMirror.objects.create(
+            company=self.company, ad=self.ad, creative_meta_id='cr1')
 
     def _rule(self, **kw):
         defaults = dict(company=self.company, template_key='frequency_high',

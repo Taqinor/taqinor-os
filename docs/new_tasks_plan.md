@@ -87,6 +87,8 @@ plans existants (PLAN/PLAN2/FRONTEND_GAP/DONE : 1 982 tâches déjà connues —
 
 ## DONE LOG (les runs de build ajoutent une ligne datée par tâche terminée)
 
+- 2026-09-20 — **Passe Fable (critique finale du drain PR #689)** : 2 défauts HAUTS attrapés qu'aucun gate ne voyait — écriture cross-tenant sur les écrans Fiabilité via les nouveaux codes octroyables, et historique de présence GPS en double contrat (#96) — + 3 moyens (per-diem, pagination dossiers, garde portail paiement). Coût largement rentabilisé.
+
 - 2026-09-20 — **DRAIN PLATEFORME 19-20/09 (PR #689, 114 tâches NT : 104 livrées + 10 déjà présentes vérifiées)** — 21 lanes worktree file-disjointes, commit par tâche, un seul lot :
   - publicapi (NTAPI32/35/38/39/41, NTP2P39, NTOBS27) : connecteur no-code, EDI X12 850/810, journal d'appels API (+ middleware inscrit), monitoring webhooks/quotas, lecture achats, statut/uptime public ; NTAPI14/15/16/30/37/40/42/43 déjà présents (preuves fichier:ligne au rapport de lane).
   - core workflow/dossiers (NTWFL15-25, 27-34 sauf 26) : approbation groupée à cohorte, analyse goulots, duplication, mes-processus, charge approbateurs, 3 modèles verticaux solaire, conflits matrice, rapport conformité, **modèle core.Dossier complet** (17/18/20 + modèles instanciables 29), versionnage WorkflowDefinition (25) + serializer délégué, écrans liste/détail/kanban/vues/analytics (19/21/22/24/32), deep-links notification (15).

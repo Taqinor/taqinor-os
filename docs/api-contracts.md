@@ -1270,6 +1270,10 @@
     custom_fields:inconnu, detail:texte, message_templates:inconnu, playbooks:inconnu, roles_custom:inconnu
 - frontend/src/features/adminops/adminopsApi.js :: previsualiserPackage -> /api/django/adminops/config-packages/previsualiser
     custom_fields:inconnu, detail:texte, message_templates:inconnu, playbooks:inconnu, roles_custom:inconnu
+- frontend/src/features/adsengine/adsengineApi.js :: acquitterSimulation -> /api/django/adsengine/plans-vol/autonomie/acquitter-simulation
+    actif:inconnu, detail:texte, manquantes:liste, portes:inconnu, pret:inconnu
+- frontend/src/features/adsengine/adsengineApi.js :: autonomie -> /api/django/adsengine/plans-vol/autonomie
+    actif:inconnu, detail:texte, manquantes:liste, portes:inconnu, pret:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: backtest -> /api/django/adsengine/regles/<>/backtest
     label_fr:inconnu, proposals:inconnu, range:objet, reason:texte, summary:objet, supported:booleen, template_key:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: checklist -> /api/django/adsengine/creatifs/checklist
@@ -1280,6 +1284,8 @@
     audience_id:texte, detail:texte, error:inconnu, preset:inconnu, retention_days:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: deliveryEstimate -> /api/django/adsengine/audiences/delivery-estimate
     detail:texte, error:inconnu, estimate:inconnu
+- frontend/src/features/adsengine/adsengineApi.js :: desactiverAutonomie -> /api/django/adsengine/plans-vol/autonomie/desactiver
+    actif:inconnu, detail:texte, manquantes:liste, portes:inconnu, pret:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: detectors -> /api/django/adsengine/anomalies/detecteurs
     detecteurs:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: dryRun -> /api/django/adsengine/regles/dry-run

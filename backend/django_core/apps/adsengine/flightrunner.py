@@ -75,6 +75,24 @@ KILL_SWITCH_TTL = 60 * 60 * 24 * 30
 # Durée de vie (secondes) du drapeau « autonomie activée » en cache (30 j).
 AUTONOMY_TTL = 60 * 60 * 24 * 30
 
+# ── PUB120 — Clés de gabarit des propositions issues de la rotation hebdo ──────
+# ``plan_rotation`` (ADSENG25) CALCULAIT déjà sorties/revues/entrées et
+# ``run_weekly`` ne faisait que les COMPTER : le backlog ne devenait jamais des
+# ads. Chaque décision est désormais MATÉRIALISÉE en PROPOSITION (jamais une
+# application, jamais un unpause). Ces clés estampillent ``payload['template_key']``
+# pour que la dédup au niveau proposeur (``rules_engine._recently_acted``) couvre
+# la rotation : un re-run la MÊME semaine ne duplique rien.
+ROTATION_TEMPLATE_EXIT = 'rotation_exit'
+ROTATION_TEMPLATE_ENTRY = 'rotation_entry'
+ROTATION_TEMPLATE_REVIEW = 'rotation_review'
+
+# Durée de vie (secondes) de la série de semaines faibles par bras (90 j) : elle
+# doit SURVIVRE aux semaines pour que la règle des deux coups ait un sens.
+WEAK_STREAK_TTL = 60 * 60 * 24 * 90
+
+# PUB121 — clé de gabarit des alertes « ad set sans créatif » au lancement.
+LAUNCH_TEMPLATE_CREATIVE = 'launch_adset_creative'
+
 
 # ── Drapeau d'autonomie PAR société (DB = source de vérité, cache = accélérateur)
 # L'activation est OFF PAR DÉFAUT et ne peut être posée QUE via ``preflight.
@@ -347,13 +365,76 @@ class FlightRunner:
                 client, name=adset['name'], campaign_id=camp_id)
             adset_ids.append(adset_id)
 
+        # PUB121 — les slots créatifs des ad sets sont remplis par des
+        # PROPOSITIONS d'ads : un plan lancé sans aucune ad ne peut pas diffuser,
+        # même entièrement approuvé.
+        creatives = self._propose_phase_creatives(phase, adset_ids)
+
         return {
             'template': template_key,
             'campaign_id': camp_id,
             'campaign_reused': camp_reused,
             'adset_ids': adset_ids,
             'status': launch_templates.PAUSED_STATUS,
+            'creatives': creatives,
         }
+
+    # ── PUB121 — Slots créatifs remplis au lancement (propose-only) ───────────
+    def _propose_phase_creatives(self, phase, adset_ids):
+        """PUB121 — Pour chaque ad set créé, PROPOSE les ads de ses slots.
+
+        Délègue à ``services.propose_adset_launch_ads`` (arbitrage DCO au
+        cold-start, file de backlog de la campagne, puis créatif du gagnant) :
+        chaque ad est une PROPOSITION née PAUSED à l'application — aucune
+        création directe, aucun unpause.
+
+        Un ad set sans aucun candidat produit une ALERTE explicite (jamais une
+        coquille silencieuse). Renvoie
+        ``{'proposed': n, 'alerts': n, 'by_adset': {meta_id: [action_ids]}}``."""
+        from . import guardrails, services
+        from .models import AdSetMirror
+
+        summary = {'proposed': 0, 'alerts': 0, 'by_adset': {}}
+        context_fr = (f"Lancement de la phase {phase.order} "
+                      f"« {phase.name} » : ") if phase is not None else ''
+        for meta_id in adset_ids:
+            if not meta_id:
+                continue
+            adset = AdSetMirror.objects.filter(
+                company=self.company, meta_id=meta_id).first()
+            if adset is None:
+                continue
+            try:
+                # L'horloge du RUNNER est la date de référence du lancement
+                # (``_launch_phase`` datant déjà son gabarit sur ``self.today()``) :
+                # c'est elle qui borne la moisson du pool gagnant et la
+                # date-au-plus-tôt des items de backlog (PUB-P8/C7), jamais
+                # l'heure murale du serveur.
+                result = services.propose_adset_launch_ads(
+                    self.company, adset=adset, now=self.today(),
+                    context_fr=context_fr)
+            except ValueError as exc:
+                # ``AdsetWithoutCreative`` (aucun candidat) et ``DcoModeConflict``
+                # (exclusion mutuelle) portent tous deux leur raison FR.
+                guardrails.emit_alert(
+                    self.company, alert_type=guardrails.ALERT_ANOMALY,
+                    message=f'{context_fr}{exc}',
+                    detail={'template_key': LAUNCH_TEMPLATE_CREATIVE,
+                            'plan_id': self.plan.pk,
+                            'target_type': 'adset',
+                            'target_meta_id': meta_id})
+                summary['alerts'] += 1
+                summary['by_adset'][meta_id] = []
+                continue
+            actions = result.get('actions') or []
+            summary['proposed'] += len(actions)
+            summary['by_adset'][meta_id] = [a.pk for a in actions]
+            if result.get('fallback_fr'):
+                logger.info(
+                    'flightrunner: ad set %s — bootstrap DCO impossible (%s), '
+                    'slots remplis par les chemins ordinaires',
+                    meta_id, result['fallback_fr'])
+        return summary
 
     # ── Création idempotente (G3 : dédup par nom contre l'inventaire vivant) ──
     @staticmethod
@@ -527,34 +608,58 @@ class FlightRunner:
         """Boucle hebdomadaire : rotation (ADSENG25, propose-only), puis brief
         (ENG11). NO-OP propre si l'interrupteur global est engagé. Toutes les
         décisions de rotation sont des PROPOSITIONS (sorties/revues/entrées) —
-        aucune activation, aucun unpause programmatique."""
+        aucune activation, aucun unpause programmatique.
+
+        PUB120 — chaque décision est MATÉRIALISÉE (``_materialize_rotation``) :
+        sorties → PAUSE, revues → alerte, entrées → ROTATE_CREATIVE à payload
+        complet depuis l'item de backlog. Le retour ``rotations`` (compteurs de
+        décisions par expérience) reste INCHANGÉ ; le compte-rendu de
+        matérialisation vit dans la clé ``rotation_proposals``."""
         if self.is_killed():
             return {'skipped': 'kill_switch'}
 
         today = today or self.today()
         rotations = []
+        materialized = {'pauses': 0, 'reviews': 0, 'rotations': 0, 'alerts': 0}
         for experiment in Experiment.objects.filter(
                 company=self.company,
                 status=Experiment.Statut.EN_COURS):
-            snapshots = [
-                rotation.snapshot_from_arm(arm, today=today)
-                for arm in ExperimentArm.objects.filter(
-                    company=self.company, experiment=experiment,
-                    is_active=True)
-            ]
+            snapshots = self._rotation_snapshots(experiment, today=today)
             if not snapshots:
                 continue
-            queue = backlog_mod.queue_for_campaign(
-                self.company, experiment.campaign, today=today) \
-                if experiment.campaign_id else []
+            # Cette file DÉCIDE des entrées proposées : elle doit donc voir
+            # EXACTEMENT ce que ``services._rotation_backlog_head`` acceptera au
+            # moment du payload (et ce que demande ``propose_adset_launch_ads``).
+            #   * File de la CAMPAGNE, PUIS les items SANS campagne cible : un
+            #     item CIBLÉ n'est jamais détourné vers une autre campagne, mais
+            #     un item sans cible est utilisable partout. Sans ce second
+            #     passage, la décision comptait ZÉRO candidat alors que le
+            #     résolveur en acceptait un — et tout item né de la chaîne
+            #     génération → ``recombine.approve_lot`` (qui ne pose AUCUNE
+            #     campagne cible) restait invisible à la rotation hebdo.
+            #   * PUB-P8/C7 ``ready_only`` : la file COMPLÈTE sert l'écran de
+            #     planification, pas un proposeur. Compter un item daté pour plus
+            #     tard rendait le nombre d'entrées OPTIMISTE (entrée décidée, puis
+            #     repli sur le créatif LIVE au payload).
+            queue = list(backlog_mod.queue_for_campaign(
+                self.company, experiment.campaign, today=today,
+                ready_only=True)
+                if experiment.campaign_id else [])
+            queue += [it for it in backlog_mod.queue_for_campaign(
+                self.company, None, today=today, ready_only=True)
+                if it.target_campaign_id is None]
             decision = rotation.plan_rotation(
-                snapshots, backlog=list(queue), today=today)
+                snapshots, backlog=queue, today=today)
             rotations.append({
                 'experiment_id': experiment.pk,
                 'exits': len(decision.exits),
                 'reviews': len(decision.reviews),
                 'entries': decision.added_count,
             })
+            report = self._materialize_rotation(
+                experiment, decision, today=today)
+            for key, value in report.items():
+                materialized[key] += value
 
         # Brief hebdomadaire déterministe (ENG11) — best-effort.
         brief_generated = False
@@ -565,13 +670,285 @@ class FlightRunner:
             logger.warning('flightrunner: build_brief a échoué société=%s',
                            self.company.pk, exc_info=True)
 
-        logger.info('flightrunner: run_weekly société=%s rotations=%s brief=%s',
-                    self.company.pk, len(rotations), brief_generated)
+        logger.info('flightrunner: run_weekly société=%s rotations=%s '
+                    'propositions=%s brief=%s', self.company.pk, len(rotations),
+                    materialized, brief_generated)
         return {
             'state': self.state(),
             'rotations': rotations,
+            'rotation_proposals': materialized,
             'brief_generated': brief_generated,
         }
+
+    # ── PUB120 — Instantanés de rotation ALIMENTÉS par le bandit ──────────────
+    def _rotation_snapshots(self, experiment, *, today):
+        """``ArmSnapshot`` des bras ACTIFS, avec leur ``p_best`` et leur série
+        faible RÉELS.
+
+        ``plan_rotation`` exige ces deux valeurs « injectées, jamais recalculées
+        ici » (contrat de ``rotation.py``) : avec les défauts (0.0 / 0), la règle
+        des deux coups ne pouvait structurellement JAMAIS sortir un bras — la
+        boucle hebdo ne calculait donc que des revues. On les alimente :
+
+          * ``p_best`` = dernière repondération JOURNALISÉE de l'expérience
+            (``DecisionLog.allocations['prob_best']``, par libellé de bras —
+            écrite par ``run_daily``) ; aucun bras journalisé ⇒ 0.0, jamais un
+            chiffre fabriqué ;
+          * ``weak_streak`` = série de semaines FAIBLES consécutives, avancée par
+            ``rotation.next_weak_streak`` UNE SEULE FOIS par semaine évaluée
+            (re-jouer la boucle la même semaine ne la fait pas avancer deux
+            fois — l'idempotence vaut aussi pour l'état de la rotation)."""
+        prob_map = self._last_prob_best(experiment)
+        week = self._rotation_week_key(today)
+        snapshots = []
+        for arm in ExperimentArm.objects.filter(
+                company=self.company, experiment=experiment, is_active=True):
+            label = arm.label or f'arm-{arm.pk}'
+            try:
+                p_best = float(prob_map.get(label) or 0.0)
+            except (TypeError, ValueError):
+                p_best = 0.0
+            streak = self._advance_weak_streak(arm, p_best, week=week)
+            snapshots.append(rotation.snapshot_from_arm(
+                arm, p_best=p_best, weak_streak=streak, today=today))
+        return snapshots
+
+    def _last_prob_best(self, experiment):
+        """``{libellé: P(meilleur)}`` de la DERNIÈRE décision journalisée de
+        l'expérience (dict vide si aucune — jamais une croyance inventée)."""
+        last = (DecisionLog.objects
+                .filter(company=self.company, experiment=experiment)
+                .order_by('-created_at', '-id').first())
+        allocations = getattr(last, 'allocations', None)
+        if not isinstance(allocations, dict):
+            return {}
+        prob = allocations.get('prob_best')
+        return prob if isinstance(prob, dict) else {}
+
+    @staticmethod
+    def _rotation_week_key(today):
+        """Clé ISO de la SEMAINE de ``today`` (``2026-W29``) — l'unité de la
+        rotation hebdo, et le garde-fou anti-double-avancement de la série."""
+        year, week, _ = today.isocalendar()
+        return f'{year}-W{week:02d}'
+
+    def _advance_weak_streak(self, arm, p_best, *, week):
+        """Série de semaines FAIBLES du bras, avancée d'un cran pour ``week``.
+
+        Persistée en cache (même parti que la graduation de ``tier_router`` :
+        aucun champ modèle, donc aucune migration). Déjà avancée pour cette
+        semaine ⇒ on RELIT la valeur au lieu de la faire progresser (un re-run le
+        même lundi ne change ni la décision ni les propositions)."""
+        key = f'adsengine:rotation_weak_streak:{self.company.pk}:{arm.pk}'
+        stored = cache.get(key)
+        if not isinstance(stored, dict):
+            stored = {}
+        previous = int(stored.get('streak') or 0)
+        if stored.get('week') == week:
+            return previous
+        streak = rotation.next_weak_streak(previous, p_best)
+        cache.set(key, {'week': week, 'streak': streak}, WEAK_STREAK_TTL)
+        return streak
+
+    # ── PUB120 — Matérialisation des décisions de rotation (propose-only) ─────
+    @staticmethod
+    def _rotation_dedup_since(today):
+        """Début (datetime) de la SEMAINE calendaire de ``today`` — la fenêtre de
+        dédup des propositions de rotation. La rotation s'évalue le lundi
+        (``rotation.is_rotation_day``) : re-jouer la boucle le même lundi (ou
+        n'importe quel jour de cette semaine) retombe donc sur les propositions
+        déjà écrites au lieu d'en créer de nouvelles."""
+        monday = today - datetime.timedelta(days=today.weekday())
+        since = datetime.datetime.combine(monday, datetime.time.min)
+        if timezone.is_naive(since):
+            since = timezone.make_aware(
+                since, timezone.get_default_timezone())
+        return since
+
+    def _materialize_rotation(self, experiment, decision, *, today):
+        """PUB120 — Transforme UNE ``RotationDecision`` en PROPOSITIONS.
+
+        Rien n'est appliqué ni activé ici : on écrit des ``EngineAction``
+        PROPOSÉES (l'approbation humaine reste requise) et des alertes.
+
+          * **sorties** → ``PAUSE`` sur l'ad du bras, précédée de la garde
+            ``guardrails.enforce_paused_only`` (la seule transition de statut que
+            le moteur propose — jamais une activation) ;
+          * **revues** → ALERTE (une revue est un jugement humain : aucune action
+            n'est proposée à sa place) ;
+          * **entrées** → ``ROTATE_CREATIVE`` à payload COMPLET
+            (``services.resolve_rotation_payload``, PUB119) ; l'item de backlog
+            réellement consommé avance ``EN_FILE`` → ``PROGRAMME`` (il quitte la
+            file libre, donc une seconde entrée prend l'item SUIVANT).
+
+        Un bras sans ad miroir, ou une entrée sans aucun créatif prêt, produit une
+        ALERTE explicite — jamais une proposition creuse. Renvoie les compteurs
+        ``{pauses, reviews, rotations, alerts}``."""
+        from . import guardrails, rules_engine, services
+        from .models import CreativeBacklogItem, EngineAction, ExperimentArm
+
+        since = self._rotation_dedup_since(today)
+        report = {'pauses': 0, 'reviews': 0, 'rotations': 0, 'alerts': 0}
+        arms = {a.pk: a for a in ExperimentArm.objects.filter(
+            company=self.company, experiment=experiment)}
+
+        def _label(arm, arm_id):
+            return (getattr(arm, 'label', '') or '') or f'bras #{arm_id}'
+
+        def _alert(message, *, template_key, arm_id=None, ad_id=''):
+            guardrails.emit_alert(
+                self.company, alert_type=guardrails.ALERT_ANOMALY,
+                message=message,
+                detail={'template_key': template_key,
+                        'experiment_id': experiment.pk,
+                        'rotation_arm_id': arm_id,
+                        'target_meta_id': ad_id})
+
+        # (1) SORTIES — pause propose-only du bras sortant.
+        for arm_id in decision.exits:
+            arm = arms.get(arm_id)
+            ad_id = (getattr(arm, 'ad_id', '') or '').strip()
+            if not ad_id:
+                _alert(
+                    f"Rotation hebdomadaire de « {experiment.name} » : le bras "
+                    f"{_label(arm, arm_id)} sort du test mais ne porte aucune ad "
+                    f"miroir Meta — impossible de proposer sa mise en pause "
+                    f"(resynchroniser les miroirs).",
+                    template_key=ROTATION_TEMPLATE_EXIT, arm_id=arm_id)
+                report['alerts'] += 1
+                continue
+            if rules_engine._recently_acted(
+                    self.company, ROTATION_TEMPLATE_EXIT, ad_id, since=since):
+                continue
+            # Garde PAUSED-only AVANT d'écrire la proposition : le moteur ne
+            # propose que des transitions vers PAUSED (invariant règle #3).
+            guardrails.enforce_paused_only('PAUSED', company=self.company)
+            services.propose_action(
+                self.company, kind=EngineAction.Kind.PAUSE,
+                reason_fr=(
+                    f"Rotation hebdomadaire de « {experiment.name} » : le bras "
+                    f"{_label(arm, arm_id)} sort du test (P(best) sous "
+                    f"{rotation.EXIT_P_BEST_THRESHOLD:.0%} sur "
+                    f"{rotation.EXIT_CONSECUTIVE_WEAK_WEEKS} semaines "
+                    f"consécutives, un bras strictement meilleur existe) — mise "
+                    f"en pause de l'ad {ad_id} proposée."),
+                payload={
+                    'template_key': ROTATION_TEMPLATE_EXIT,
+                    'target_type': 'ad',
+                    'target_meta_id': ad_id,
+                    'target_object_id': self._ad_mirror_pk(ad_id),
+                    'experiment_id': experiment.pk,
+                    'rotation_arm_id': arm_id,
+                })
+            report['pauses'] += 1
+
+        # (2) REVUES — alerte/annotation, jamais une action à la place de l'humain.
+        for arm_id in decision.reviews:
+            arm = arms.get(arm_id)
+            ad_id = (getattr(arm, 'ad_id', '') or '').strip()
+            if self._rotation_review_alerted(arm_id, since=since):
+                continue
+            _alert(
+                f"Rotation hebdomadaire de « {experiment.name} » : le bras "
+                f"{_label(arm, arm_id)} demande une REVUE humaine (fin de vie "
+                f"au-delà de {rotation.MAX_LIFESPAN_WEEKS} semaines, ou "
+                f"fréquence au-delà de {rotation.FATIGUE_FREQUENCY}) — aucune "
+                f"action n'est proposée à votre place.",
+                template_key=ROTATION_TEMPLATE_REVIEW, arm_id=arm_id,
+                ad_id=ad_id)
+            report['reviews'] += 1
+
+        # (3) ENTRÉES — rotation créative à payload COMPLET depuis le backlog.
+        anchor_ad_id = self._rotation_anchor_ad_id(arms, decision)
+        for entry in decision.entries:
+            if not anchor_ad_id:
+                _alert(
+                    f"Rotation hebdomadaire de « {experiment.name} » : un item de "
+                    f"backlog est prêt à entrer mais aucun bras ne porte d'ad "
+                    f"miroir Meta — l'ad set cible est introuvable, aucune "
+                    f"rotation n'est proposée.",
+                    template_key=ROTATION_TEMPLATE_ENTRY)
+                report['alerts'] += 1
+                continue
+            if rules_engine._recently_acted(
+                    self.company, ROTATION_TEMPLATE_ENTRY, anchor_ad_id,
+                    since=since):
+                continue
+            try:
+                payload = services.resolve_rotation_payload(
+                    self.company, target_type='ad',
+                    target_meta_id=anchor_ad_id)
+            except services.RotationCreativeUnavailable as exc:
+                _alert(
+                    f"Rotation hebdomadaire de « {experiment.name} » : {exc}",
+                    template_key=ROTATION_TEMPLATE_ENTRY, ad_id=anchor_ad_id)
+                report['alerts'] += 1
+                continue
+            payload.update({
+                'template_key': ROTATION_TEMPLATE_ENTRY,
+                'target_type': 'ad',
+                'target_meta_id': anchor_ad_id,
+                'experiment_id': experiment.pk,
+                # Lignée de la décision de rotation (ADSENG23) : l'item PLANIFIÉ
+                # et le nom de lancement calculé restent lisibles à l'approbation,
+                # même quand la source créative résolue est un créatif LIVE.
+                'rotation_backlog_item_id': entry.source_ref,
+                'rotation_launch_name': entry.launch_name,
+            })
+            services.propose_action(
+                self.company, kind=EngineAction.Kind.ROTATE_CREATIVE,
+                reason_fr=(
+                    f"Rotation hebdomadaire de « {experiment.name} » : entrée "
+                    f"d'une nouvelle ad sur l'ad set {payload['adset_id']} "
+                    f"(un seul ajout par rotation) — {entry.reason_fr}"),
+                payload=payload)
+            report['rotations'] += 1
+            # L'item RÉELLEMENT consommé par le payload quitte la file libre.
+            consumed = payload.get('backlog_item_id')
+            if consumed:
+                CreativeBacklogItem.objects.filter(
+                    company=self.company, pk=consumed,
+                    status=CreativeBacklogItem.Statut.EN_FILE,
+                ).update(status=CreativeBacklogItem.Statut.PROGRAMME)
+        return report
+
+    def _ad_mirror_pk(self, ad_meta_id):
+        """PK du miroir d'ad pour ``ad_meta_id`` (``None`` si non miroité) —
+        renseigne ``payload['target_object_id']`` comme le fait le proposeur de
+        règles, sans jamais inventer d'identifiant."""
+        from .models import AdMirror
+        return (AdMirror.objects
+                .filter(company=self.company, meta_id=ad_meta_id)
+                .values_list('pk', flat=True).first())
+
+    def _rotation_review_alerted(self, arm_id, *, since):
+        """Vrai si la revue de CE bras a déjà été signalée cette semaine (dédup
+        des alertes de revue : un re-run n'en écrit pas une seconde)."""
+        from .models import EngineAlert
+        return EngineAlert.objects.filter(
+            company=self.company,
+            detail__template_key=ROTATION_TEMPLATE_REVIEW,
+            detail__rotation_arm_id=arm_id,
+            created_at__gte=since,
+        ).exists()
+
+    @staticmethod
+    def _rotation_anchor_ad_id(arms, decision):
+        """Ad miroir servant d'ANCRE pour résoudre l'ad set cible d'une entrée.
+
+        On privilégie un bras qui RESTE en place (une ad sortante peut disparaître
+        de l'ad set) ; à défaut, n'importe quel bras porteur d'un ``ad_id``.
+        Renvoie ``''`` quand aucun bras n'est miroité — l'appelant alerte alors."""
+        exiting = set(decision.exits)
+        fallback = ''
+        for arm_id, arm in sorted(arms.items()):
+            ad_id = (getattr(arm, 'ad_id', '') or '').strip()
+            if not ad_id:
+                continue
+            if arm_id not in exiting:
+                return ad_id
+            fallback = fallback or ad_id
+        return fallback
 
     # ── Transition 4 : avancement de phase / fin de plan ─────────────────────
     def advance_phase(self, *, today=None, voi_params=None,

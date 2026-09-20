@@ -14,7 +14,9 @@ from django.test import TestCase
 from authentication.models import Company
 
 from apps.adsengine import guardrails, services
-from apps.adsengine.models import EngineAction, GuardrailConfig
+from apps.adsengine.models import (
+    CreativeAsset, EngineAction, GuardrailConfig,
+)
 
 
 class RebalanceGuardrailApplyTests(TestCase):
@@ -78,3 +80,77 @@ class RebalanceGuardrailApplyTests(TestCase):
         client.update_adset_budget.assert_not_called()
         action.refresh_from_db()
         self.assertEqual(action.status, EngineAction.Statut.ECHOUEE)
+
+
+class CreativePassRecheckedAtApplyTests(TestCase):
+    """PUB-P8/OPT3 — le pass policy créatif est RE-VÉRIFIÉ à l'APPLY.
+
+    Il n'était contrôlé qu'à la PROPOSITION (``assert_creative_ok_for_ad``) :
+    un pass RÉVOQUÉ entre la proposition et l'application (consentement retiré,
+    asset re-linté, lot dé-approuvé) laissait partir chez Meta un créatif
+    redevenu non conforme."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Pass Co', slug='pass-co')
+        self.asset = CreativeAsset.objects.create(
+            company=self.company, asset_type=CreativeAsset.AssetType.STATIC,
+            meta_image_hash='hash-ok', primary_text='Corps',
+            policy_stamp={'passed': True})
+
+    def _approved_rotation(self):
+        return EngineAction.objects.create(
+            company=self.company, kind=EngineAction.Kind.ROTATE_CREATIVE,
+            reason_fr='Roter le créatif fatigué.',
+            payload={'adset_id': 'as1', 'name': '20260716_STATIC',
+                     'creative': {'creative_id': 'cr-1'},
+                     'creative_asset_id': self.asset.pk},
+            status=EngineAction.Statut.APPROUVEE)
+
+    def test_a_pass_revoked_after_approval_fails_the_action(self):
+        action = self._approved_rotation()
+        # Le pass tombe APRÈS l'approbation (le scénario réel).
+        self.asset.policy_stamp = {}
+        self.asset.save(update_fields=['policy_stamp'])
+
+        client = Mock()
+        with self.assertRaises(services.CreativePolicyNotPassed):
+            services.apply_action(action, client=client)
+        client.create_ad.assert_not_called()
+        action.refresh_from_db()
+        self.assertEqual(action.status, EngineAction.Statut.ECHOUEE)
+        self.assertIn('Créatif non validé', action.error)
+
+    def test_a_still_valid_pass_dispatches_normally(self):
+        action = self._approved_rotation()
+        client = Mock()
+        client.create_ad.return_value = {'id': 'ad-1'}
+        services.apply_action(action, client=client)
+        client.create_ad.assert_called_once()
+        action.refresh_from_db()
+        self.assertEqual(action.status, EngineAction.Statut.APPLIQUEE)
+
+    def test_an_asset_deleted_after_approval_fails_the_action(self):
+        action = self._approved_rotation()
+        self.asset.delete()
+        client = Mock()
+        with self.assertRaises(services.CreativePolicyNotPassed):
+            services.apply_action(action, client=client)
+        client.create_ad.assert_not_called()
+        action.refresh_from_db()
+        self.assertEqual(action.status, EngineAction.Statut.ECHOUEE)
+
+    def test_an_action_without_creative_asset_is_untouched(self):
+        # Aucun ``creative_asset_id`` (créatif LIVE réutilisé) : la garde est un
+        # NO-OP, le chemin historique reste byte-identique.
+        action = EngineAction.objects.create(
+            company=self.company, kind=EngineAction.Kind.ROTATE_CREATIVE,
+            reason_fr='Roter sur le créatif LIVE.',
+            payload={'adset_id': 'as1', 'name': '20260716_STATIC',
+                     'creative': {'creative_id': 'cr-live'}},
+            status=EngineAction.Statut.APPROUVEE)
+        client = Mock()
+        client.create_ad.return_value = {'id': 'ad-2'}
+        services.apply_action(action, client=client)
+        client.create_ad.assert_called_once()
+        action.refresh_from_db()
+        self.assertEqual(action.status, EngineAction.Statut.APPLIQUEE)

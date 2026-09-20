@@ -81,10 +81,15 @@ def simulation_acknowledged(company):
     return bool(cache.get(_sim_ack_key(company)))
 
 
-def field_tests_complete():
+def field_tests_complete(company=None):
     """Vrai UNIQUEMENT si les 7 inconnues terrain (ADSENG37) sont toutes
-    tranchées (aucune constante ne reste en source=recherche)."""
-    return not field_tests.pending_keys()
+    tranchées.
+
+    PUB128 — une inconnue est tranchée soit par sa constante (``source=
+    field_test``), soit par un ``FieldTestResult`` enregistré pour son micro-test
+    (la DB est consultée d'abord). Sans société, seules les constantes comptent :
+    le comportement historique est donc préservé pour un appel pur."""
+    return not field_tests.pending_keys(company)
 
 
 # ── Agrégation des portes ─────────────────────────────────────────────────────
@@ -105,7 +110,10 @@ def gates(company, *, today=None):
     plan_ok = FlightPlan.objects.filter(
         company=company, status=FlightPlan.Statut.ACTIF).exists()
     sim_ok = simulation_acknowledged(company)
-    ft_ok = field_tests_complete()
+    # PUB128 — la porte lit les résultats terrain ENREGISTRÉS de la société
+    # (écran « Tests terrain »), plus seulement les constantes du code.
+    ft_pending = field_tests.pending_keys(company)
+    ft_ok = not ft_pending
 
     return [
         Gate('loop', loop_ok, "Boucle ENG12 verte (connexion Meta active)",
@@ -130,7 +138,7 @@ def gates(company, *, today=None):
         Gate('field_tests', ft_ok, "Tests terrain (7 inconnues) tranchés",
              '' if ft_ok else
              (f"Inconnues terrain non tranchées : "
-              f"{', '.join(field_tests.pending_keys())}.")),
+              f"{', '.join(ft_pending)}.")),
     ]
 
 

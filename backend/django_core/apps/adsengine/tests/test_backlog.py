@@ -93,6 +93,24 @@ class BacklogTests(TestCase):
         # Le plus tôt (2026-07-01) d'abord.
         self.assertEqual(queue[0].earliest_date, datetime.date(2026, 7, 1))
 
+    def test_queue_for_campaign_ready_only_excludes_future_dated(self):
+        # PUB-P8/C7 — la file COMPLÈTE reste la vue de planification ;
+        # ``ready_only`` est ce que doit demander tout appelant qui PROPOSE.
+        camp = AdCampaignMirror.objects.create(
+            company=self.company, meta_id='c9')
+        self._item(hook_id='MAINTENANT', campaign=camp)
+        self._item(hook_id='AUJOURDHUI', campaign=camp, earliest=TODAY)
+        self._item(hook_id='PLUS_TARD', campaign=camp,
+                   earliest=TODAY + datetime.timedelta(days=30))
+
+        full = backlog.queue_for_campaign(self.company, camp, today=TODAY)
+        ready = backlog.queue_for_campaign(
+            self.company, camp, today=TODAY, ready_only=True)
+
+        self.assertEqual(len(full), 3)
+        self.assertEqual(
+            {i.asset.hook_id for i in ready}, {'MAINTENANT', 'AUJOURDHUI'})
+
     def test_ready_count_ready_only_excludes_unvalidated(self):
         self._item(hook_id='H1', passed=True)
         self._item(hook_id='H2', passed=False)

@@ -21,7 +21,8 @@ User = get_user_model()
 CAT = '/api/django/adsengine/regles/catalogue/'
 SEED = '/api/django/adsengine/regles/seed/'
 
-# 8 gabarits d'origine + 7 gabarits « vocabulaire v2 » (ADSDEEP38).
+# 8 gabarits d'origine + 7 gabarits « vocabulaire v2 » (ADSDEEP38) + 1 gabarit
+# « gagnant net ⇒ duplication » (PUB116).
 EXPECTED_KEYS = {
     'stop_loss_cpl', 'revive', 'frequency_high', 'zero_delivery',
     'budget_pacing_breach', 'cpl_band', 'low_backlog', 'recon_divergence',
@@ -29,6 +30,8 @@ EXPECTED_KEYS = {
     'cpa_window_regression', 'cost_per_conversation_high', 'link_ctr_low',
     'hold_rate_low', 'top_spend_low_result', 'frequency_ratio_regression',
     'surf_scale_budget',
+    # PUB116 — multiplication du gagnant (intention d'action ``duplicate``).
+    'winner_duplicate',
 }
 EXPECTED_COUNT = len(EXPECTED_KEYS)
 

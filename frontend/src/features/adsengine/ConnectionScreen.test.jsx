@@ -15,6 +15,11 @@ const mocks = vi.hoisted(() => ({
   policyList: vi.fn(),
   policyCreate: vi.fn(),
   policyUpdate: vi.fn(),
+  // PUB129 — cockpit d'autonomie (portes + cérémonie).
+  autonomie: vi.fn(),
+  activerAutonomie: vi.fn(),
+  desactiverAutonomie: vi.fn(),
+  acquitterSimulation: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -22,8 +27,43 @@ vi.mock('./adsengineApi', () => ({
     connection: { get: mocks.get, save: mocks.save, health: mocks.health },
     guardrail: { get: mocks.guardGet, update: mocks.guardUpdate },
     creativePolicy: { list: mocks.policyList, create: mocks.policyCreate, update: mocks.policyUpdate },
+    flightplan: {
+      autonomie: mocks.autonomie,
+      activerAutonomie: mocks.activerAutonomie,
+      desactiverAutonomie: mocks.desactiverAutonomie,
+      acquitterSimulation: mocks.acquitterSimulation,
+    },
   },
 }))
+
+// PUB129 — forme RÉELLE de `GET /adsengine/plans-vol/autonomie/` (vue mince sur
+// `preflight.status` + la remédiation FR par porte).
+const autonomyPayload = (over = {}) => ({
+  pret: false,
+  actif: false,
+  portes: [
+    { key: 'loop', label: 'Boucle ENG12 verte (connexion Meta active)', ok: true, detail: '',
+      remediation: { texte: 'Connecter le compte Meta.', route: '/publicite/connexion',
+        cta: 'Ouvrir Connexion & garde-fous' } },
+    { key: 'simulation', label: 'Simulation ADSENG36 revue OK', ok: false,
+      detail: 'Simulation non revue/acquittée (voir la visionneuse P7).',
+      remediation: { texte: "Revoir le rapport puis l'acquitter ici.",
+        route: '/publicite/simulation', cta: 'Ouvrir la simulation',
+        action: 'acquitter_simulation' } },
+    { key: 'field_tests', label: 'Tests terrain (7 inconnues) tranchés', ok: false,
+      detail: 'Inconnues terrain non tranchées : FT1.',
+      remediation: { texte: 'Consigner le résultat mesuré des 7 micro-tests.',
+        route: '/publicite/tests-terrain', cta: 'Ouvrir les tests terrain' } },
+    { key: 'alerts', label: 'Alertes câblées', ok: false,
+      detail: 'Aucune règle de garde-fou activée.',
+      remediation: { texte: 'Armer au moins une règle.', route: '/publicite/regles',
+        cta: 'Ouvrir les règles', commande: 'python manage.py seed_adsengine' } },
+  ],
+  manquantes: ['Simulation non revue/acquittée (voir la visionneuse P7).',
+    'Inconnues terrain non tranchées : FT1.',
+    'Aucune règle de garde-fou activée.'],
+  ...over,
+})
 
 import ConnectionScreen from './ConnectionScreen'
 
@@ -63,6 +103,12 @@ beforeEach(() => {
   mocks.policyList.mockResolvedValue({ data: [] })
   mocks.policyCreate.mockResolvedValue({ data: { id: 77, forbidden_rules: [], allowed_rules: [] } })
   mocks.policyUpdate.mockResolvedValue({ data: {} })
+  // PUB129 — par défaut : autonomie OFF, 3 portes rouges (état réel d'une
+  // société qui n'a encore rien tranché).
+  mocks.autonomie.mockResolvedValue({ data: autonomyPayload() })
+  mocks.activerAutonomie.mockResolvedValue({ data: autonomyPayload() })
+  mocks.desactiverAutonomie.mockResolvedValue({ data: autonomyPayload() })
+  mocks.acquitterSimulation.mockResolvedValue({ data: autonomyPayload() })
 })
 
 describe('ConnectionScreen (ENG22)', () => {
@@ -284,6 +330,109 @@ describe('ConnectionScreen (ENG22)', () => {
         allowed_rules: [{ key: 'explainers_animes', label: 'Explainers animés' }],
       }))
       expect(mocks.policyUpdate).not.toHaveBeenCalled()
+    })
+  })
+
+  /* PUB129 — Cockpit d'autonomie : les portes de préflight AVEC leur
+     remédiation cliquable, et la cérémonie d'activation/désactivation. */
+  describe('cockpit d\'autonomie (PUB129)', () => {
+    it('montre chaque porte avec son état et sa remédiation FR', async () => {
+      renderScreen()
+      await screen.findByTestId('ae-conn-autonomy')
+      // Porte verte : badge Vert, aucune remédiation affichée.
+      expect(await screen.findByTestId('ae-conn-autonomy-ok-loop')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-conn-autonomy-fix-loop')).toBeNull()
+      // Portes rouges : badge Rouge + détail serveur + lien de remédiation.
+      expect(screen.getByTestId('ae-conn-autonomy-ko-field_tests')).toBeInTheDocument()
+      expect(screen.getByText('Inconnues terrain non tranchées : FT1.')).toBeInTheDocument()
+      expect(screen.getByTestId('ae-conn-autonomy-fix-field_tests'))
+        .toHaveAttribute('href', '/publicite/tests-terrain')
+      expect(screen.getByTestId('ae-conn-autonomy-fix-alerts'))
+        .toHaveAttribute('href', '/publicite/regles')
+      // Une remédiation par COMMANDE serveur est affichée, jamais déclenchée.
+      expect(screen.getByTestId('ae-conn-autonomy-cmd-alerts'))
+        .toHaveTextContent('python manage.py seed_adsengine')
+      // État : autonomie OFF + nombre de portes à ouvrir (depuis le serveur).
+      expect(screen.getByTestId('ae-conn-autonomy-etat'))
+        .toHaveTextContent('Autonomie désactivée')
+      expect(screen.getByTestId('ae-conn-autonomy-pret'))
+        .toHaveTextContent('3 porte(s) à ouvrir')
+    })
+
+    it('activation refusée : le message du serveur est affiché TEL QUEL', async () => {
+      const refus = "Autonomie non activable : Inconnues terrain non tranchées : FT1."
+      mocks.activerAutonomie.mockRejectedValue({
+        response: { data: { ...autonomyPayload(), detail: refus } },
+      })
+      renderScreen()
+      await screen.findByTestId('ae-conn-autonomy')
+      fireEvent.click(screen.getByTestId('ae-conn-autonomy-activer'))
+      expect(await screen.findByTestId('ae-conn-autonomy-err')).toHaveTextContent(refus)
+      expect(screen.getByTestId('ae-conn-autonomy-etat'))
+        .toHaveTextContent('Autonomie désactivée')
+    })
+
+    it('le bouton Activer n\'est jamais pré-grisé par une porte rouge', async () => {
+      renderScreen()
+      await screen.findByTestId('ae-conn-autonomy')
+      // Portes rouges au chargement : le bouton reste cliquable — c'est le
+      // serveur qui refuse et DIT pourquoi.
+      expect(screen.getByTestId('ae-conn-autonomy-activer')).not.toBeDisabled()
+    })
+
+    it('toutes les portes vertes : l\'activation passe et l\'état devient ACTIVE', async () => {
+      mocks.activerAutonomie.mockResolvedValue({ data: {
+        ...autonomyPayload({ pret: true, actif: true, manquantes: [] }),
+        detail: 'Autonomie ACTIVÉE (toutes les portes sont vertes).',
+      } })
+      renderScreen()
+      await screen.findByTestId('ae-conn-autonomy')
+      fireEvent.click(screen.getByTestId('ae-conn-autonomy-activer'))
+      await waitFor(() => expect(mocks.activerAutonomie).toHaveBeenCalled())
+      expect(await screen.findByTestId('ae-conn-autonomy-msg'))
+        .toHaveTextContent('Autonomie ACTIVÉE')
+      expect(screen.getByTestId('ae-conn-autonomy-etat'))
+        .toHaveTextContent('Autonomie ACTIVE.')
+    })
+
+    it('la désactivation est libre : un clic, aucune porte requise', async () => {
+      mocks.autonomie.mockResolvedValue({ data: autonomyPayload({ actif: true }) })
+      mocks.desactiverAutonomie.mockResolvedValue({ data: {
+        ...autonomyPayload({ actif: false }), detail: 'Autonomie DÉSACTIVÉE.',
+      } })
+      renderScreen()
+      await waitFor(() => expect(screen.getByTestId('ae-conn-autonomy-etat'))
+        .toHaveTextContent('Autonomie ACTIVE.'))
+      const bouton = screen.getByTestId('ae-conn-autonomy-desactiver')
+      expect(bouton).not.toBeDisabled()
+      fireEvent.click(bouton)
+      await waitFor(() => expect(mocks.desactiverAutonomie).toHaveBeenCalledTimes(1))
+      expect(await screen.findByTestId('ae-conn-autonomy-msg'))
+        .toHaveTextContent('Autonomie DÉSACTIVÉE.')
+    })
+
+    it('la porte simulation s\'acquitte EN PLACE (remédiation cliquable)', async () => {
+      mocks.acquitterSimulation.mockResolvedValue({ data: {
+        ...autonomyPayload(), detail: 'Simulation acquittée.',
+      } })
+      renderScreen()
+      await screen.findByTestId('ae-conn-autonomy')
+      fireEvent.click(screen.getByTestId('ae-conn-autonomy-ack-simulation'))
+      await waitFor(() => expect(mocks.acquitterSimulation).toHaveBeenCalledTimes(1))
+      expect(await screen.findByTestId('ae-conn-autonomy-msg'))
+        .toHaveTextContent('Simulation acquittée.')
+      // Seule la porte qui porte l'action l'expose.
+      expect(screen.queryByTestId('ae-conn-autonomy-ack-field_tests')).toBeNull()
+    })
+
+    it('cockpit indisponible : rien n\'est fabriqué à l\'écran', async () => {
+      mocks.autonomie.mockRejectedValue(new Error('boom'))
+      renderScreen()
+      expect(await screen.findByTestId('ae-conn-autonomy-vide')).toBeInTheDocument()
+      expect(screen.getByTestId('ae-conn-autonomy-etat'))
+        .toHaveTextContent('Autonomie désactivée')
+      // La coupure reste offerte même sans portes chargées (sécurité).
+      expect(screen.getByTestId('ae-conn-autonomy-desactiver')).not.toBeDisabled()
     })
   })
 })

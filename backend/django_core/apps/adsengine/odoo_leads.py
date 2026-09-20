@@ -510,3 +510,93 @@ def leads_by_day(company, since=None, client=None, ad_meta_id=None):
     if odoo_error is not None:
         out['odoo_error'] = odoo_error
     return out
+
+
+# ── PUB135 — Signal leads pour les textes de décision (deux fenêtres) ─────────
+# Une décision du moteur (pause / rotation / rééquilibrage) doit citer le signal
+# LEADS ODOO — la vérité du fondateur — à côté du champ ``results`` de Meta, sur
+# DEUX fenêtres (récente + vie entière). L'index ci-dessous fait la lecture Odoo
+# UNE fois par évaluation ; le comptage par fenêtre est ensuite PUR (aucune
+# seconde lecture, aucune seconde attribution — la MÊME que le cockpit).
+def leads_days_index(company, *, client=None):
+    """PUB135 — Index ``{cible → jours des leads attribués}`` en UNE lecture Odoo.
+
+    Renvoie ::
+
+        {'configured': bool,
+         'by_ad':       {ad_meta_id: ['YYYY-MM-DD'|None, ...]},
+         'by_campaign': {campaign_meta_id: [...]},   # palier formulaire_campagne
+         'odoo_error': str}   # seulement si la lecture Odoo échoue
+
+    Un lead sans date lisible est conservé comme ``None`` (il compte dans la vie
+    entière, JAMAIS dans une fenêtre datée — et son nombre est exposé par
+    ``count_leads_in_windows`` plutôt qu'avalé en silence). Réutilise
+    ``_resolve_attributions`` : jamais une deuxième attribution. Ne lève JAMAIS
+    (dégradation propre — un moteur ne casse pas parce qu'Odoo tousse)."""
+    configured, odoo_error, results = _resolve_attributions(
+        company, since=None, client=client)
+    by_ad = {}
+    by_campaign = {}
+    for res in results:
+        tier = res['tier']
+        if tier is None:
+            continue  # lead non attribué : compté ailleurs (bilan), pas ici
+        day = _lead_day(res['lead'].get('date'))
+        if tier == 'formulaire_campagne':
+            if res['campaign_id']:
+                by_campaign.setdefault(res['campaign_id'], []).append(day)
+        elif res['ad_id']:
+            by_ad.setdefault(res['ad_id'], []).append(day)
+    out = {'configured': configured, 'by_ad': by_ad, 'by_campaign': by_campaign}
+    if odoo_error is not None:
+        out['odoo_error'] = odoo_error
+    return out
+
+
+def _iso_day(value):
+    """``date``/``datetime``/chaîne → ``'YYYY-MM-DD'`` ou None (jamais une
+    exception : une borne illisible = pas de borne)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        return value.date().isoformat()
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    return _lead_day(value)
+
+
+def count_leads_in_windows(index, *, ad_meta_ids=(), campaign_meta_ids=(),
+                           window_start=None, as_of=None):
+    """PUB135 — Compte PUR des leads d'un index (``leads_days_index``) sur les
+    deux fenêtres, pour un ensemble d'annonces et/ou de campagnes.
+
+    Renvoie ``{'lifetime', 'recent', 'undated', 'first_day', 'last_day'}`` :
+    ``lifetime`` = tous les leads attribués à ces cibles (datés ou non),
+    ``recent`` = ceux dont la date tombe dans ``[window_start, as_of]``,
+    ``undated`` = ceux sans date lisible (hors de TOUTE fenêtre datée — le
+    chiffre est exposé pour que le texte de décision puisse le dire).
+    Comparaison sur chaînes ISO (ordre lexicographique = ordre chronologique).
+    Les bornes absentes ne bornent rien de ce côté."""
+    days = []
+    for ad_id in set(ad_meta_ids or ()):
+        days.extend(index.get('by_ad', {}).get(ad_id, ()))
+    for camp_id in set(campaign_meta_ids or ()):
+        days.extend(index.get('by_campaign', {}).get(camp_id, ()))
+
+    start = _iso_day(window_start)
+    end = _iso_day(as_of)
+    dated = sorted(d for d in days if d)
+    recent = 0
+    for day in dated:
+        if start is not None and day < start:
+            continue
+        if end is not None and day > end:
+            continue
+        recent += 1
+    return {
+        'lifetime': len(days),
+        'recent': recent,
+        'undated': len(days) - len(dated),
+        'first_day': dated[0] if dated else None,
+        'last_day': dated[-1] if dated else None,
+    }

@@ -42,7 +42,7 @@ from .serializers import (
     CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
     CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
     EngineAlertSerializer, ExperimentArmSerializer, ExperimentSerializer,
-    FactEntrySerializer, FactTableSerializer,
+    FactEntrySerializer, FactTableSerializer, FieldTestResultSerializer,
     FlightPhaseSerializer, FlightPlanSerializer, GuardrailConfigSerializer,
     InstagramCommentMirrorSerializer, InstagramMediaMirrorSerializer,
     MetaConnectionSerializer, ProposalTemplateSerializer,
@@ -305,13 +305,19 @@ class GroundedGenerationView(APIView):
             return Response({'detail': 'seed_brief requis.'}, status=400)
         components = (request.data or {}).get('components') or []
         # Key-gated : message clair AVANT dispatch (pas de tâche inutile ni de
-        # lot créé sans clé — zéro crash).
-        from .generation import GEN_ENV_KEY
-        if not os.environ.get(GEN_ENV_KEY):
+        # lot créé sans clé — zéro crash). PUB124 — la porte lit la MÊME
+        # résolution que le générateur (clé dédiée puis repli GROQ_API_KEY) :
+        # l'écran ne peut plus annoncer « désactivée » alors que la tâche, elle,
+        # générerait.
+        from .generation import (
+            GEN_ENV_KEY, GEN_FALLBACK_ENV_KEY, resolve_api_key,
+        )
+        if not resolve_api_key()[0]:
             return Response({
                 'enabled': False,
-                'detail': ('Génération IA désactivée : la clé '
-                           f"{GEN_ENV_KEY} n'est pas configurée. Aucun lot créé."),
+                'detail': ('Génération IA désactivée : aucune clé configurée '
+                           f'({GEN_ENV_KEY}, ou son repli '
+                           f'{GEN_FALLBACK_ENV_KEY}). Aucun lot créé.'),
             }, status=200)
         from .tasks import generate_grounded_variants
         generate_grounded_variants.delay(
@@ -1279,6 +1285,113 @@ class CreativeBacklogItemViewSet(AdsengineViewSet):
     serializer_class = CreativeBacklogItemSerializer
 
 
+# ── PUB129 — Cockpit d'autonomie : la remédiation FR de CHAQUE porte ─────────
+# ``preflight.gates`` (ADSENG38) dit CE QUI manque ; il ne dit pas OÙ le réparer.
+# Cette carte — présentation pure, donc côté vue (``preflight.py`` reste de la
+# logique d'agrégation sans HTTP) — donne à chaque porte sa remédiation :
+#   * ``route``    → un écran de la console (lien cliquable) ;
+#   * ``commande`` → une commande serveur jour-0 (affichée à copier, jamais
+#                    déclenchée depuis le navigateur) ;
+#   * ``action``   → une remédiation EN PLACE (clé d'endpoint POST du cockpit).
+# Les clés sont exactement celles de ``preflight.gates`` : une porte inconnue
+# (future) est rendue SANS remédiation plutôt qu'avec une consigne inventée.
+AUTONOMY_GATE_REMEDIATIONS = {
+    'loop': {
+        'texte': "Connecter le compte Meta (jeton System User + ID de compte "
+                 "publicitaire) — l'assistant guidé de l'écran Connexion "
+                 "déroule les étapes.",
+        'route': '/publicite/connexion',
+        'cta': 'Ouvrir Connexion & garde-fous',
+    },
+    'guardrails': {
+        'texte': "Poser les garde-fous de la société (plafonds, bascules). Le "
+                 "semis crée la configuration par défaut ; l'écran Connexion "
+                 "l'ajuste.",
+        'route': '/publicite/connexion',
+        'cta': 'Régler les garde-fous',
+        'commande': 'python manage.py seed_adsengine',
+    },
+    'alerts': {
+        'texte': "Armer au moins une règle de garde-fou. Le semis crée le "
+                 "catalogue en simulation ; l'armement reste un geste humain.",
+        'route': '/publicite/regles',
+        'cta': 'Ouvrir les règles',
+        'commande': 'python manage.py seed_adsengine',
+    },
+    'backlog_volume': {
+        'texte': "Approuver assez de créatifs en file : le volume de backlog "
+                 "est ce qui alimente les rotations à venir.",
+        'route': '/publicite/backlog',
+        'cta': 'Ouvrir le backlog créatif',
+    },
+    'backlog_diversity': {
+        'texte': "Diversifier les accroches du backlog (plusieurs angles "
+                 "distincts, pas des variantes d'une même accroche).",
+        'route': '/publicite/backlog',
+        'cta': 'Ouvrir le backlog créatif',
+    },
+    'plan': {
+        'texte': "Composer, valider puis activer un plan de vol : l'autonomie "
+                 "exécute un plan, elle n'en improvise jamais un.",
+        'route': '/publicite/plan-de-vol',
+        'cta': 'Composer un plan de vol',
+    },
+    'simulation': {
+        'texte': "Revoir le rapport de simulation, puis l'acquitter ici — "
+                 "l'acquittement est un geste humain, jamais automatique.",
+        'route': '/publicite/simulation',
+        'cta': 'Ouvrir la simulation',
+        'action': 'acquitter_simulation',
+    },
+    'field_tests': {
+        'texte': "Consigner le résultat MESURÉ des 7 micro-tests terrain "
+                 "(écran Tests terrain).",
+        'route': '/publicite/tests-terrain',
+        'cta': 'Ouvrir les tests terrain',
+    },
+}
+
+
+def _autonomy_cockpit(company):
+    """PUB129 — Charge utile du cockpit d'autonomie (vue MINCE sur
+    ``preflight.status``) : les portes telles qu'elles sont, chacune avec sa
+    remédiation FR, plus l'état RÉEL de l'autonomie. Aucun calcul de porte ici."""
+    from . import preflight as pf
+
+    st = pf.status(company)
+    portes = [
+        {'key': g['key'], 'label': g['label_fr'], 'ok': g['ok'],
+         'detail': g['detail_fr'],
+         'remediation': AUTONOMY_GATE_REMEDIATIONS.get(g['key'], {})}
+        for g in st['gates']
+    ]
+    return {
+        'pret': st['ready'],
+        'actif': st['active'],
+        'portes': portes,
+        'manquantes': list(st['missing_fr']),
+    }
+
+
+def _journal_autonomy(company, *, active_before, active_after, detail):
+    """PUB129 — Journalise une bascule d'autonomie dans le journal UNIFIÉ de
+    l'ERP (``audit.recorder``, même entonnoir ARC16 que l'armement des règles
+    PUB23 — jamais un second système). Best-effort : le journal ne fait jamais
+    échouer la bascule (elle est déjà appliquée et déjà loguée par
+    ``preflight``)."""
+    from .models import GuardrailConfig
+
+    config = GuardrailConfig.objects.filter(company=company).first()
+    if config is None:
+        return
+    from apps.audit.recorder import record_field_change
+    record_field_change(
+        config, 'autonomy_active', active_before, active_after,
+        field_label=("Autonomie activée" if active_after
+                     else "Autonomie désactivée"),
+        detail=detail)
+
+
 class FlightPlanViewSet(AdsengineViewSet):
     """ADSENG5 — CRUD des plans de vol (feuille de route 3-6 mois comme data)."""
 
@@ -1345,6 +1458,141 @@ class FlightPlanViewSet(AdsengineViewSet):
             for g in st['gates']
         ]
         return Response({'pret': st['ready'], 'portes': portes})
+
+    # ── PUB129 — Cockpit d'autonomie (les 8 portes + cérémonie d'activation) ──
+    @extend_schema(responses=inline_serializer(
+        name='AdsengineAutonomyCockpit',
+        fields={
+            'pret': drf_serializers.BooleanField(),
+            'actif': drf_serializers.BooleanField(),
+            'portes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+            'manquantes': drf_serializers.ListField(
+                child=drf_serializers.CharField()),
+        }))
+    @action(detail=False, methods=['get'], url_path='autonomie',
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def autonomie(self, request):
+        """PUB129 — Cockpit d'autonomie : les 8 portes de ``preflight.status``
+        AVEC leur remédiation FR (écran / commande / acquittement en place) et
+        l'état RÉEL de l'autonomie (``actif``). Lecture seule ; company-scopé ;
+        ``adsengine_view``."""
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        return Response(_autonomy_cockpit(company))
+
+    @extend_schema(request=None, responses=inline_serializer(
+        name='AdsengineAutonomyActivation',
+        fields={
+            'pret': drf_serializers.BooleanField(),
+            'actif': drf_serializers.BooleanField(),
+            'portes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+            'manquantes': drf_serializers.ListField(
+                child=drf_serializers.CharField()),
+            'detail': drf_serializers.CharField(required=False),
+        }))
+    @action(detail=False, methods=['post'], url_path='autonomie/activer',
+            permission_classes=[
+                HasPermissionOrLegacy('adsengine_autonomy_toggle')])
+    def autonomie_activer(self, request):
+        """PUB129 — ACTIVE l'autonomie (``preflight.activate``) — la garantie
+        structurelle reste côté ``preflight`` : une seule porte rouge et
+        ``AutonomyNotReady`` est levée. Son message est renvoyé TEL QUEL (400)
+        avec la liste FR de ce qui manque, jamais reformulé. Journalisé.
+        ``adsengine_autonomy_toggle`` (admin-seul, ADSENG47)."""
+        from . import preflight as pf
+
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        # PUB-P8/OPT1 — l'état AVANT est LU avant la bascule : journaliser un
+        # ``active_before=False`` en dur mentait sur une ré-activation (l'audit
+        # ARC16 affichait « Non → Oui » alors que rien n'avait changé).
+        was_active = pf.is_active(company)
+        try:
+            pf.activate(company)
+        except pf.AutonomyNotReady as exc:
+            payload = _autonomy_cockpit(company)
+            payload['detail'] = str(exc)  # message du refus, TEL QUEL
+            return Response(payload, status=400)
+        payload = _autonomy_cockpit(company)
+        payload['detail'] = "Autonomie ACTIVÉE (toutes les portes sont vertes)."
+        _journal_autonomy(company, active_before=was_active, active_after=True,
+                          detail="Autonomie ACTIVÉE depuis le cockpit "
+                                 "(toutes les portes de préflight vertes).")
+        return Response(payload)
+
+    @extend_schema(request=None, responses=inline_serializer(
+        name='AdsengineAutonomyDeactivation',
+        fields={
+            'pret': drf_serializers.BooleanField(),
+            'actif': drf_serializers.BooleanField(),
+            'portes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+            'manquantes': drf_serializers.ListField(
+                child=drf_serializers.CharField()),
+            'detail': drf_serializers.CharField(required=False),
+        }))
+    @action(detail=False, methods=['post'], url_path='autonomie/desactiver',
+            permission_classes=[
+                HasPermissionOrLegacy('adsengine_autonomy_toggle')])
+    def autonomie_desactiver(self, request):
+        """PUB129 — DÉSACTIVE l'autonomie. TOUJOURS autorisé : couper n'exige
+        AUCUNE porte verte (sécurité — un coupe-circuit ne se négocie pas), et
+        rester déjà désactivé n'est pas une erreur (idempotent). Journalisé."""
+        from . import preflight as pf
+
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        was_active = pf.is_active(company)
+        pf.deactivate(company)
+        payload = _autonomy_cockpit(company)
+        payload['detail'] = "Autonomie DÉSACTIVÉE."
+        if was_active:
+            _journal_autonomy(company, active_before=True, active_after=False,
+                              detail="Autonomie DÉSACTIVÉE depuis le cockpit "
+                                     "(coupure libre, aucune porte requise).")
+        return Response(payload)
+
+    @extend_schema(request=None, responses=inline_serializer(
+        name='AdsengineAutonomySimulationAck',
+        fields={
+            'pret': drf_serializers.BooleanField(),
+            'actif': drf_serializers.BooleanField(),
+            'portes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+            'manquantes': drf_serializers.ListField(
+                child=drf_serializers.CharField()),
+            'detail': drf_serializers.CharField(required=False),
+        }))
+    @action(detail=False, methods=['post'],
+            url_path='autonomie/acquitter-simulation',
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def autonomie_acquitter_simulation(self, request):
+        """PUB129 — Remédiation EN PLACE de la porte ``simulation`` :
+        ``preflight.acknowledge_simulation`` (revue humaine du run ADSENG36)
+        n'avait AUCUNE route — la porte ne pouvait donc pas s'ouvrir depuis la
+        console. Journalisé. ``adsengine_manage``."""
+        from . import preflight as pf
+        from .models import GuardrailConfig
+
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        pf.acknowledge_simulation(company)
+        config = GuardrailConfig.objects.filter(company=company).first()
+        if config is not None:
+            from apps.audit.recorder import record
+            from apps.audit.models import AuditLog
+            record(AuditLog.Action.UPDATE, instance=config,
+                   detail="Simulation ADSENG36 acquittée (porte de préflight "
+                          "d'autonomie).")
+        payload = _autonomy_cockpit(company)
+        payload['detail'] = "Simulation acquittée."
+        return Response(payload)
 
     @action(detail=False, methods=['post'], url_path='validate',
             permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
@@ -3339,6 +3587,47 @@ class AdsCockpitView(APIView):
             ads_cockpit_rows(company, as_of=fin, start_date=debut))
 
 
+class AdSetDcoRecombineView(APIView):
+    """PUB118 — Bouton « Recombiner (DCO) » du cockpit : PROPOSE une ad DCO
+    recombinée depuis les créatifs mirorés GAGNANTS de la société.
+
+    ``POST /api/django/adsengine/adsets/<adset_meta_id>/recombiner-dco/`` —
+    company-scopé, gaté ``adsengine_manage`` (fabriquer une ad est un geste de
+    gestion, jamais de lecture). Vue MINCE : toute la logique vit dans
+    ``services.propose_dco_recombination`` (arbitre ``dco`` + moisson + spec
+    plafonnée). AUCUN automatisme : rien ne part sans ce clic, puis sans
+    l'approbation de la proposition — et l'ad née à l'application est PAUSED.
+
+    Refus métier (ad set déjà signalé, exclusion mutuelle DCO ↔ rotation, pool
+    vide) → 400 avec la raison FR telle quelle (jamais un 500)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    @extend_schema(request=None, responses=inline_serializer(
+        'AdsengineDcoRecombinaison', {
+            'action': drf_serializers.DictField(required=False),
+            'detail': drf_serializers.CharField(required=False),
+        }))
+    def post(self, request, adset_meta_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        from .models import AdSetMirror
+        from .services import propose_dco_recombination
+
+        adset = AdSetMirror.objects.filter(
+            company=company, meta_id=adset_meta_id).first()
+        if adset is None:
+            return Response({'detail': "Ad set introuvable."}, status=404)
+        try:
+            action = propose_dco_recombination(
+                company, adset=adset, proposed_by=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(
+            {'action': EngineActionSerializer(action).data}, status=201)
+
+
 # ══ ADSDEEP53/54 — Boîte de réception des commentaires (câblage front↔back) ═══
 # Vues MINCES : lecture des miroirs company-scopée + chaque action inline ne
 # fait que PROPOSER une ``EngineAction`` via les fonctions ``propose_*`` DÉJÀ
@@ -4012,3 +4301,186 @@ class SignalCohortView(APIView):
                                      else int(maturation)),
             })
         return Response(rows)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PUB128 — Écran « Tests terrain » : les 7 inconnues, leur protocole, la saisie
+# ═════════════════════════════════════════════════════════════════════════════
+# La porte de préflight ``field_tests`` restait rouge tant que les 7 inconnues
+# n'étaient pas tranchées — et seul un edit de CODE pouvait les basculer. Ces
+# vues exposent le protocole (source : ``field_tests.PROTOCOLS``, d'où le runbook
+# ``docs/engine/field-tests.md`` est rédigé), le plafond de budget des
+# micro-tests, la proposition des structures de test (circuit propose→approve
+# NORMAL, naissance PAUSED) et la saisie du résultat mesuré.
+def _field_test_rows(company):
+    """Les 7 micro-tests avec leur protocole, leur statut et leur résultat."""
+    from . import field_tests as ft_mod
+    from .models import FieldTestResult
+
+    results = {r.ft: r for r in FieldTestResult.objects.filter(
+        company=company)}
+    pending = ft_mod.pending_keys(company)
+    cap = ft_mod.micro_test_budget_cap_mad()
+    rows = []
+    for ft in ft_mod.FIELD_TESTS:
+        protocol = ft_mod.protocol_for(ft) or {}
+        result = results.get(ft)
+        rows.append({
+            'ft': ft,
+            'label_fr': protocol.get('label_fr', ft),
+            'question_fr': protocol.get('question_fr', ''),
+            'protocole_fr': list(protocol.get('protocol_fr') or []),
+            'mesure_fr': protocol.get('measure_fr', ''),
+            'plafond_mad': cap,
+            'tranche': result is not None,
+            'valeur_mesuree': (result.measured_value if result else ''),
+            'preuve': (result.evidence if result else ''),
+            'mesure_le': (result.measured_on.isoformat() if result else ''),
+            'constantes': [
+                {
+                    'cle': key,
+                    'label_fr': ft_mod.CONSTANTS[key]['label_fr'],
+                    'valeur': ft_mod.CONSTANTS[key]['value'],
+                    'unite': ft_mod.CONSTANTS[key]['unit'],
+                    'source': ft_mod.CONSTANTS[key]['source'],
+                    'consumer': ft_mod.CONSTANTS[key]['consumer'],
+                    'tranche': key not in pending,
+                }
+                for key in ft_mod.constants_for(ft)
+            ],
+        })
+    return rows, pending, cap
+
+
+class FieldTestListView(APIView):
+    """PUB128 — Les 7 micro-tests terrain : protocole, plafond de budget, statut.
+
+    Lecture ``adsengine_view`` ; company-scopée ; aucun effet de bord. Le
+    protocole vient de ``field_tests.PROTOCOLS`` (source unique dont le runbook
+    ``docs/engine/field-tests.md`` est tiré) — jamais du texte d'écran."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    @extend_schema(responses=inline_serializer(
+        name='AdsengineFieldTestList',
+        fields={
+            'plafond_mad': drf_serializers.IntegerField(),
+            'runbook': drf_serializers.CharField(),
+            'toutes_tranchees': drf_serializers.BooleanField(),
+            'constantes_en_attente': drf_serializers.ListField(
+                child=drf_serializers.CharField()),
+            'tests': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+        },
+    ))
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        rows, pending, cap = _field_test_rows(company)
+        return Response({
+            'plafond_mad': cap,
+            'runbook': 'docs/engine/field-tests.md',
+            'toutes_tranchees': not pending,
+            'constantes_en_attente': list(pending),
+            'tests': rows,
+        })
+
+
+class FieldTestResultView(APIView):
+    """PUB128 — Saisie du RÉSULTAT mesuré d'un micro-test terrain.
+
+    Écriture ``adsengine_manage`` ; ``company`` posée côté serveur. Enregistrer
+    les 7 résultats fait passer la porte de préflight ``field_tests`` au vert
+    (aucune valeur en dur n'est modifiée ailleurs : la DB est simplement lue en
+    premier par ``field_tests.pending_keys``)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    @extend_schema(
+        request=FieldTestResultSerializer,
+        responses=inline_serializer(
+            name='AdsengineFieldTestResult',
+            fields={
+                'ft': drf_serializers.CharField(),
+                'tranche': drf_serializers.BooleanField(),
+                'valeur_mesuree': drf_serializers.CharField(),
+                'preuve': drf_serializers.CharField(allow_blank=True),
+                'mesure_le': drf_serializers.CharField(),
+                'toutes_tranchees': drf_serializers.BooleanField(),
+                'constantes_en_attente': drf_serializers.ListField(
+                    child=drf_serializers.CharField()),
+            },
+        ))
+    def post(self, request, ft):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        from . import field_tests as ft_mod
+
+        payload = dict(request.data or {})
+        payload['ft'] = ft
+        serializer = FieldTestResultSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            result = ft_mod.record_result(
+                company, ft,
+                measured_value=data['measured_value'],
+                evidence=data.get('evidence', ''),
+                measured_on=data.get('measured_on'),
+                user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        pending = ft_mod.pending_keys(company)
+        return Response({
+            'ft': result.ft,
+            'tranche': True,
+            'valeur_mesuree': result.measured_value,
+            'preuve': result.evidence,
+            'mesure_le': result.measured_on.isoformat(),
+            'toutes_tranchees': not pending,
+            'constantes_en_attente': list(pending),
+        })
+
+
+class FieldTestStructuresView(APIView):
+    """PUB128 — PROPOSE les structures d'un micro-test terrain.
+
+    Écriture ``adsengine_manage``. Circuit propose→approve NORMAL : des
+    ``EngineAction`` PROPOSÉES (approbation humaine requise), naissance PAUSED à
+    l'application, budget quotidien plafonné à
+    ``field_tests.MICRO_TEST_MAX_DAILY_BUDGET_MAD``. Les RUNS réels restent une
+    décision du fondateur — cette vue ne dépense rien."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    @extend_schema(request=None, responses=inline_serializer(
+        name='AdsengineFieldTestStructures',
+        fields={
+            'ft': drf_serializers.CharField(),
+            'plafond_mad': drf_serializers.IntegerField(),
+            'actions': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+        },
+    ))
+    def post(self, request, ft):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        from . import field_tests as ft_mod
+
+        try:
+            actions = ft_mod.propose_micro_test_structures(
+                company, ft, city=str(request.data.get('city') or '').strip(),
+                proposed_by=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response({
+            'ft': str(ft).upper(),
+            'plafond_mad': ft_mod.micro_test_budget_cap_mad(),
+            'actions': [
+                {'id': a.pk, 'kind': a.kind, 'reason_fr': a.reason_fr}
+                for a in actions
+            ],
+        })

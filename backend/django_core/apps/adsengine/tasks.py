@@ -1211,7 +1211,14 @@ def generate_weekly_brief():
 
     Best-effort par société ; ne génère un brief que pour les sociétés ayant au
     moins un miroir de campagne (rien à résumer sinon). Idempotent : le brief est
-    upserté par ``(company, period_start)``. Renvoie le nombre de briefs générés.
+    upserté par ``(company, period_start)``.
+
+    PUB130 — DIAGNOSTIC : le retour ne comptait que les succès, si bien qu'un
+    ``briefs_generated: 0`` ne disait pas POURQUOI (société sautée faute de
+    campagne miroitée ? échec silencieusement avalé par le ``except`` ?). Il porte
+    désormais les trois compteurs — ``generated`` / ``skipped_no_campaign`` /
+    ``failed`` — et chaque saut est journalisé : le prochain déclenchement du beat
+    répond de lui-même à « pourquoi WeeklyBrief = 0 ? ».
     """
     from authentication.selectors import active_companies
 
@@ -1219,21 +1226,34 @@ def generate_weekly_brief():
     from .models import AdCampaignMirror
 
     generated = 0
+    skipped = 0
+    failed = 0
     for company in active_companies():
         if not AdCampaignMirror.objects.filter(company=company).exists():
-            continue  # rien à résumer tant qu'aucune campagne n'est synchronisée
+            # Rien à résumer tant qu'aucune campagne n'est synchronisée — dit,
+            # plus jamais un saut muet.
+            skipped += 1
+            logger.info(
+                'adsengine.generate_weekly_brief: société %s sautée (aucune '
+                'campagne miroitée)', company.pk)
+            continue
         try:
             brief_mod.build_brief(company)
             generated += 1
         except Exception:  # pragma: no cover - défensif, isolation société
+            failed += 1
             logger.warning(
                 'adsengine.generate_weekly_brief: échec société %s',
                 company.pk, exc_info=True)
             continue
 
     logger.info(
-        'adsengine.generate_weekly_brief: %s brief(s) généré(s)', generated)
-    return {'briefs_generated': generated}
+        'adsengine.generate_weekly_brief: %s brief(s) généré(s), %s société(s) '
+        'sautée(s) sans campagne, %s en échec',
+        generated, skipped, failed)
+    return {'briefs_generated': generated,
+            'skipped_no_campaign': skipped,
+            'failed': failed}
 
 
 @shared_task(name='adsengine.daily_ads_digest')
@@ -1671,8 +1691,175 @@ def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
     return {'variants_created': len(variants)}
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# PUB125 — ``policy_lint`` + ``tier_router`` INSÉRÉS dans le chemin RÉEL
+# ═════════════════════════════════════════════════════════════════════════════
+# Le chemin de production sautait les deux : ``policy_lint`` n'avait aucun
+# appelant (sa config le disait noir sur blanc) et ``tier_router`` n'était
+# consommé que par le simulateur. Une variante à superlatif interdit pouvait donc
+# atteindre le backlog, et la graduation Palier B→A ne se produisait jamais.
+#
+# Durée de vie (secondes) du marqueur « semaine propre déjà comptée » (90 j) :
+# plusieurs lots validés la MÊME semaine ISO ne comptent que pour UNE semaine
+# propre — sans quoi trois lots lancés le même jour graduraient un gabarit.
+CLEAN_WEEK_TTL = 60 * 60 * 24 * 90
+
+
+def _generation_template_id(asset):
+    """Identité de GABARIT d'une variante générée (clé de graduation
+    ``tier_router``).
+
+    Les tags de convention DÉCLARÉS (format / accroche / angle, ADSDEEP46) sont
+    la seule recette stable que porte une variante ; à défaut, son type d'asset.
+    Jamais un identifiant fabriqué."""
+    tags = [(getattr(asset, attr, '') or '').strip()
+            for attr in ('format_tag', 'hook_tag', 'angle_tag')]
+    tags = [tag for tag in tags if tag]
+    if tags:
+        return '/'.join(tags)
+    return f'asset_type:{getattr(asset, "asset_type", "") or "inconnu"}'
+
+
+def _stamp_policy_lint(asset, lint, *, tier, needs_review, blocked=False):
+    """Estampille le verdict du pré-linter (AGEN5) et le palier sur l'asset.
+
+    FRONTIÈRE VOLONTAIRE : ce tampon ne touche JAMAIS ``passed``. La check-list
+    policy reste un jugement HUMAIN (``policy.record_policy_check``, avec ses
+    gardes consentement PUB75 et divulgation IA PUB126) ; le routage de palier,
+    lui, décide seulement de la FILE. Un FAIL pose en revanche ``passed=False``
+    explicitement : la variante ne peut plus être référencée par une création
+    d'ad (garde ENG15), en plus de ne jamais entrer au backlog."""
+    stamp = dict(asset.policy_stamp or {})
+    stamp['policy_lint'] = {
+        'ok': lint['ok'],
+        'flags': lint['flags'],
+        'special_categories': lint['special_categories'],
+    }
+    stamp['tier'] = tier
+    stamp['revue_humaine'] = bool(needs_review)
+    if blocked:
+        stamp['passed'] = False
+        stamp['policy_lint_block'] = [f['reason'] for f in lint['blocking']]
+    asset.policy_stamp = stamp
+    asset.save(update_fields=['policy_stamp', 'updated_at'])
+    return asset
+
+
+def _record_clean_week_once(company, template_id, *, now=None):
+    """Enregistre UNE semaine propre pour le gabarit — au plus une par semaine
+    ISO. Renvoie le compteur courant (la graduation se déclenche au seuil du
+    routeur)."""
+    from django.core.cache import cache
+    from django.utils import timezone as dj_tz
+
+    from . import tier_router
+
+    now = now or dj_tz.now()
+    year, week, _ = now.isocalendar()
+    stamp = f'{year}-W{week:02d}'
+    key = (f'adsengine:gen_clean_week:'
+           f'{getattr(company, "pk", company)}:{template_id}')
+    if cache.get(key) == stamp:
+        return tier_router.clean_weeks(company, template_id)
+    cache.set(key, stamp, CLEAN_WEEK_TTL)
+    return tier_router.record_clean_week(company, template_id)
+
+
+def _lint_and_route_variants(company, result, *, groundedness_scorer=None):
+    """PUB125 — Lint policy + routage de palier de CHAQUE variante générée.
+
+    Pour chaque asset ancré produit par la génération :
+
+      * ``policy_lint.lint_asset`` (AGEN5) — un flag ``block`` (superlatif,
+        attribut personnel, avant/après, vocabulaire marque proscrit) EXCLUT la
+        variante : ni membre du lot, ni item de backlog, ``passed=False`` posé ;
+      * sinon ``tier_router.route_tier`` (AGEN6) arbitre le palier à partir des
+        verdicts EXISTANTS — chiffres (AGEN3), ancrage non-numérique
+        (``groundedness``, key-gated : sans clé ET sans scoreur injecté, tout
+        reste Palier B par prudence) et policy. Palier **A** (tout vert ET
+        gabarit gradué) ⇒ file directe ; Palier **B** ⇒ membre du lot, flaggé
+        « revue humaine ».
+
+    Le ``content_type`` soumis au routeur n'est PAS le type de média : c'est la
+    catégorie de CONTENU des paliers C (``tier_router.FORBIDDEN_C_TYPES``) — un
+    asset qui montre un vrai client est structurellement interdit, quels que
+    soient les verdicts.
+
+    Renvoie ``{'members', 'direct', 'audit', 'clean_templates'}``.
+    ``clean_templates`` n'est renseigné que si le lot est ENTIÈREMENT propre —
+    des assets produits, AUCUNE variante rejetée (PUB-P8/C8), lint policy OK et
+    routeur « tout vert » sur chacun."""
+    from . import groundedness, policy_lint, tier_router
+
+    entries = {e.get('asset_id'): e
+               for e in (result.get('variants') or []) if e.get('asset_id')}
+    assets = result.get('assets') or []
+    members, direct, audit = [], [], []
+    # PUB-P8/C8 — « semaine propre » = le LOT ENTIER est propre : au moins un
+    # asset ET **aucune variante rejetée**. Un lot dont une variante a été
+    # barrée par le vérificateur de chiffres (``rejected``) créditait quand même
+    # la graduation du gabarit : un gabarit qui hallucine une fois sur trois
+    # gagnait des semaines propres. Les deux autres conditions restent le lint
+    # policy et le « tout vert » du routeur, évaluées asset par asset ci-dessous.
+    clean = bool(assets) and not (result.get('rejected') or [])
+    templates = []
+    for asset in assets:
+        entry = entries.get(asset.pk) or {}
+        lint = policy_lint.lint_asset(asset)
+        template_id = _generation_template_id(asset)
+        if template_id not in templates:
+            templates.append(template_id)
+        record = {'asset_id': asset.pk, 'template_id': template_id,
+                  'policy_lint': lint}
+        if not lint['ok']:
+            clean = False
+            record.update({'tier': None, 'blocked': True,
+                           'tier_reason': (
+                               "Pré-linter policy : variante BLOQUÉE — "
+                               "elle n'entre pas au backlog.")})
+            _stamp_policy_lint(asset, lint, tier=None, needs_review=False,
+                               blocked=True)
+            audit.append(record)
+            continue
+
+        text = ' '.join(filter(None, [
+            asset.hook_text, asset.primary_text, asset.cta]))
+        grounded = groundedness.score_groundedness(
+            company, text, scorer=groundedness_scorer)
+        content_type = ('client_reel'
+                        if getattr(asset, 'depicts_real_client', False)
+                        else None)
+        routed = tier_router.route_tier(
+            company, content_type=content_type,
+            claim_result={'ok': bool(entry.get('grounded'))},
+            groundedness_result=grounded, policy_result=lint,
+            template_id=template_id)
+        record.update({
+            'tier': routed['tier'],
+            'tier_reason': routed['reason'],
+            'all_green': routed['all_green'],
+            'graduated': routed['graduated'],
+            'groundedness': {key: grounded.get(key)
+                             for key in ('enabled', 'score', 'tier', 'reason')},
+        })
+        if not routed['all_green']:
+            clean = False
+        if routed['tier'] == tier_router.TIER_A:
+            direct.append(asset)
+            _stamp_policy_lint(asset, lint, tier=routed['tier'],
+                               needs_review=False)
+        else:
+            members.append(asset)
+            _stamp_policy_lint(asset, lint, tier=routed['tier'],
+                               needs_review=True)
+        audit.append(record)
+    return {'members': members, 'direct': direct, 'audit': audit,
+            'clean_templates': templates if clean else []}
+
+
 def _run_grounded_generation(company, seed_brief, *, components=None,
-                             max_variants=3, generator=None):
+                             max_variants=3, generator=None,
+                             groundedness_scorer=None):
     """PUB16 — Orchestration du pipeline de génération IA ANCRÉE (AGEN2).
 
     Produit des variantes dont CHAQUE chiffre cite une ``FactEntry`` publiée
@@ -1682,9 +1869,17 @@ def _run_grounded_generation(company, seed_brief, *, components=None,
     via ``generation_audit.record_audit``). L'IA produit des ASSETS, jamais des
     décisions : le lot attend une approbation HUMAINE par lot avant d'entrer au
     backlog (``recombine.approve_lot``). NO-OP propre (``enabled=False``, aucun
-    lot) sans clé/générateur. Renvoie un dict de rapport."""
+    lot) sans clé/générateur.
+
+    PUB125 — le pré-linter policy (AGEN5) et le routeur de paliers (AGEN6) sont
+    INSÉRÉS ici, sur le chemin réel : une variante bloquée par le linter
+    n'atteint jamais le backlog (elle n'est même pas membre du lot), une variante
+    de Palier B est flaggée « revue humaine », une variante de Palier A file
+    directement en file, et un lot entièrement vert — aucune variante rejetée
+    comprise (PUB-P8/C8) — alimente la graduation du gabarit
+    (``record_clean_week``). Renvoie un dict de rapport."""
     from . import generation, generation_audit
-    from .models import CreativeGenerationBatch
+    from .models import CreativeBacklogItem, CreativeGenerationBatch
 
     result = generation.generate_grounded_variants(
         company, seed_brief, components=components, max_variants=max_variants,
@@ -1694,10 +1889,20 @@ def _run_grounded_generation(company, seed_brief, *, components=None,
                 'reason': result.get('reason', 'génération désactivée')}
 
     assets = result.get('assets') or []
+    routing = _lint_and_route_variants(
+        company, result, groundedness_scorer=groundedness_scorer)
     batch = CreativeGenerationBatch.objects.create(
         company=company,
         status=CreativeGenerationBatch.Statut.EN_ATTENTE,
-        visual_ids=[a.pk for a in assets])
+        # Seules les variantes EN ATTENTE DE REVUE sont membres du lot : une
+        # variante bloquée par le linter ne peut donc pas entrer au backlog par
+        # ``approve_lot``, et une variante de Palier A y est déjà.
+        visual_ids=[a.pk for a in routing['members']])
+    for asset in routing['direct']:
+        CreativeBacklogItem.objects.create(
+            company=company, asset=asset, batch=batch,
+            source=CreativeBacklogItem.Source.RECOMBINAISON,
+            status=CreativeBacklogItem.Statut.EN_FILE)
     generation_audit.record_audit(
         batch,
         fact_table_version=result.get('table_version'),
@@ -1705,12 +1910,30 @@ def _run_grounded_generation(company, seed_brief, *, components=None,
             'seed_brief': (seed_brief or '').strip()[:200],
             'variants': result.get('variants', []),
             'rejected': result.get('rejected', []),
+            # PUB124 — quel backend a produit ce lot (modèle + variable de clé
+            # utilisée, JAMAIS la clé) : un lot douteux doit être imputable à
+            # son modèle. ``enabled=False`` quand un générateur a été INJECTÉ
+            # (tests / simulation) plutôt que résolu par clé.
+            'backend': generation.backend_status(),
         })
+    generation_audit.record_policy_routing(batch, routing['audit'])
+
+    # Lot ENTIÈREMENT vert ⇒ une semaine propre par gabarit : la graduation
+    # Palier B→A devient réelle (elle ne se déclenchait jamais).
+    for template_id in routing['clean_templates']:
+        _record_clean_week_once(company, template_id)
+
+    blocked = sum(1 for rec in routing['audit'] if rec.get('blocked'))
     logger.info(
         'adsengine._run_grounded_generation: lot %s, %s asset(s) ancré(s), '
-        '%s rejeté(s)', batch.pk, len(assets), len(result.get('rejected', [])))
+        '%s rejeté(s), %s bloqué(s) par le linter policy, %s en Palier A',
+        batch.pk, len(assets), len(result.get('rejected', [])), blocked,
+        len(routing['direct']))
     return {'enabled': True, 'batch_id': batch.pk, 'assets': len(assets),
             'rejected': len(result.get('rejected', [])),
+            'policy_blocked': blocked,
+            'tier_a': len(routing['direct']),
+            'tier_b': len(routing['members']),
             'table_version': result.get('table_version')}
 
 
@@ -1719,10 +1942,11 @@ def generate_grounded_variants(company_id, seed_brief, components=None,
                                max_variants=3):
     """PUB16 — Tâche async : câble le pipeline de génération IA ANCRÉE (AGEN2 :
     ``generation→claim_check→groundedness→generation_audit``) resté sans point
-    d'entrée production. Key-gated : sans ``ADSENGINE_GEN_API_KEY`` (et sans
-    générateur), NO-OP propre (``enabled=False``, aucun lot, zéro crash) ; sinon
-    crée un ``CreativeGenerationBatch`` EN_ATTENTE de variantes ancrées FactTable
-    + audit ``claim_verdicts`` persisté. NO-OP propre si société introuvable."""
+    d'entrée production. Key-gated : sans ``ADSENGINE_GEN_API_KEY``, sans son
+    repli ``GROQ_API_KEY`` (PUB124) et sans générateur, NO-OP propre
+    (``enabled=False``, aucun lot, zéro crash) ; sinon crée un
+    ``CreativeGenerationBatch`` EN_ATTENTE de variantes ancrées FactTable +
+    audit ``claim_verdicts`` persisté. NO-OP propre si société introuvable."""
     from authentication.models import Company
 
     company = Company.objects.filter(pk=company_id).first()

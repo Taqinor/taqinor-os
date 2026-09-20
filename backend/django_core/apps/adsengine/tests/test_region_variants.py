@@ -87,3 +87,73 @@ class RegionVariantTests(TestCase):
         report = res['variants'][0]
         self.assertFalse(report['grounded'])
         self.assertIn('1750', report['uncited_numbers'])
+
+
+class UnitBoundaryTests(TestCase):
+    """PUB-P8/C1 — l'unité se compare à la FRONTIÈRE, jamais par préfixe.
+
+    La tolérance ``_hard_claim_violations`` acceptait ``fact_unit.startswith
+    (unit)`` : un fait « 1750 kWh/kWc/an » cité « 1750 kW » (une PUISSANCE
+    vendue pour une PRODUCTION annuelle) et un fait « 500 MAD/mois » cité
+    « 500 MAD » (une mensualité vendue en prix flat) passaient tous deux. Les
+    deux sont désormais REJETÉS, et le cas PUB85 légitime — le texte porte
+    l'unité composée ENTIÈRE — reste accepté.
+    """
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Unit Co', slug='unit-co')
+        self.table = FactTable.create_draft(self.company)
+        self.table.publish()
+        FactEntry.objects.create(
+            table=self.table, cle='production_kwh_kwc_an', valeur='1750',
+            unite='kWh/kWc/an', source='mesure',
+            verifie_le=datetime.date(2026, 1, 1))
+        FactEntry.objects.create(
+            table=self.table, cle='mensualite', valeur='500',
+            unite='MAD/mois', source='offre financement',
+            verifie_le=datetime.date(2026, 1, 1))
+
+    def _report(self, hook_text, fact_key):
+        res = generation.generate_grounded_variants(
+            self.company, 'x', create_assets=False,
+            generator=_generator([{
+                'hook_text': hook_text,
+                'claims': [{'fact_key': fact_key}]}]))
+        return res['variants'][0]
+
+    def test_full_compound_unit_is_accepted(self):
+        # PUB85 — le texte porte « kWh/kWc/an » EN ENTIER : aucune violation.
+        report = self._report('1750 kWh/kWc/an chez vous',
+                              'production_kwh_kwc_an')
+        self.assertTrue(report['grounded'])
+        self.assertEqual(report['claim_violations_dures'], [])
+        self.assertTrue(report['claim_verdicts']['ok'])
+
+    def test_kw_cited_against_kwh_per_kwc_per_year_is_rejected(self):
+        # « kW » (puissance) n'est PAS la tête tolérable de « kWh/kWc/an ».
+        report = self._report('1750 kW garantis', 'production_kwh_kwc_an')
+        self.assertFalse(report['grounded'])
+        self.assertEqual(
+            [v['unit'] for v in report['claim_violations_dures']], ['kW'])
+
+    def test_bare_kwh_cited_against_compound_fact_is_rejected(self):
+        # Le fait porte une unité COMPOSÉE : le texte doit la porter ENTIÈRE.
+        # « 1750 kWh » (une énergie) n'est pas « 1750 kWh/kWc/an » (un
+        # rendement) — choix documenté : PUB85 écrit l'unité complète, la
+        # tolérance n'a donc plus à couvrir la tête nue.
+        report = self._report('1750 kWh par an', 'production_kwh_kwc_an')
+        self.assertFalse(report['grounded'])
+        self.assertEqual(
+            [v['unit'] for v in report['claim_violations_dures']], ['kWh'])
+
+    def test_bare_mad_cited_against_mad_per_month_is_rejected(self):
+        # Mensualité vendue en prix flat : mensonge de prix, jamais une notation.
+        report = self._report('Seulement 500 MAD', 'mensualite')
+        self.assertFalse(report['grounded'])
+        self.assertEqual(
+            [v['unit'] for v in report['claim_violations_dures']], ['MAD'])
+
+    def test_full_mad_per_month_is_accepted(self):
+        report = self._report('Seulement 500 MAD/mois', 'mensualite')
+        self.assertTrue(report['grounded'])
+        self.assertEqual(report['claim_violations_dures'], [])

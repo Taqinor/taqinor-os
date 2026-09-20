@@ -13,7 +13,7 @@ from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AccountAuditView,
     AdCampaignMirrorViewSet, AdFullStoryView, AdObjectionsView,
-    AdPreviewsView, AdsCockpitView,
+    AdPreviewsView, AdsCockpitView, AdSetDcoRecombineView,
     AlertSnoozeView, AnnotationViewSet, AnomalyEventViewSet,
     ArmDailyStatViewSet, AssumptionNodeViewSet,
     FactEntryViewSet, FactTableViewSet,
@@ -36,7 +36,8 @@ from .views import (
     ExplorationLedgerView,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
     GroundedGenerationView,
-    ExperimentViewSet, FactoryLaneRoiView, FlightPhaseViewSet,
+    ExperimentViewSet, FactoryLaneRoiView, FieldTestListView,
+    FieldTestResultView, FieldTestStructuresView, FlightPhaseViewSet,
     FlightPlanViewSet,
     GuardrailConfigViewSet, GuardrailSingletonView,
     InstagramCommentDeleteView, InstagramCommentHideView,
@@ -257,6 +258,10 @@ urlpatterns = [
     # metrics/conversations-per-ad/, sans consommateur, était redondant → retiré).
     path('metrics/ads-cockpit/', AdsCockpitView.as_view(),
          name='adsengine-ads-cockpit'),
+    # PUB118 — bouton « Recombiner (DCO) » du cockpit : PROPOSE une ad à spec
+    # dynamique bâtie UNIQUEMENT sur les assets des créatifs mirorés gagnants.
+    path('adsets/<str:adset_meta_id>/recombiner-dco/',
+         AdSetDcoRecombineView.as_view(), name='adsengine-dco-recombine'),
     # ADSDEEP12 — résolveur de médias frais (URL jouable non persistée).
     path('media/<str:ref>/', MediaResolveView.as_view(),
          name='adsengine-media-resolve'),
@@ -324,5 +329,15 @@ urlpatterns = [
     path('audiences/delivery-estimate/',
          AudienceDeliveryEstimateView.as_view(),
          name='adsengine-audiences-delivery-estimate'),
+    # PUB128 — écran « Tests terrain » : les 7 inconnues (ADSENG37) avec leur
+    # protocole, le plafond de budget des micro-tests, la proposition des
+    # structures (propose→approve, PAUSED) et la saisie du résultat mesuré.
+    path('tests-terrain/', FieldTestListView.as_view(),
+         name='adsengine-tests-terrain'),
+    path('tests-terrain/<str:ft>/resultat/', FieldTestResultView.as_view(),
+         name='adsengine-tests-terrain-resultat'),
+    path('tests-terrain/<str:ft>/structures/',
+         FieldTestStructuresView.as_view(),
+         name='adsengine-tests-terrain-structures'),
     path('', include(router.urls)),
 ]

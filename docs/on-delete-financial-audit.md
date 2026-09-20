@@ -20,8 +20,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/adminops/models.py::AdminOpsSettings.company` | backend/django_core/apps/adminops/models.py:421 | authentication.Company | CASCADE |
 | `backend/django_core/apps/adsengine/models.py::MetaConnection.company` | backend/django_core/apps/adsengine/models.py:47 | authentication.Company | CASCADE |
 | `backend/django_core/apps/adsengine/models.py::GuardrailConfig.company` | backend/django_core/apps/adsengine/models.py:147 | authentication.Company | CASCADE |
-| `backend/django_core/apps/adsengine/models.py::CreativePolicy.company` | backend/django_core/apps/adsengine/models.py:1127 | authentication.Company | CASCADE |
-| `backend/django_core/apps/adsengine/models.py::BrandKit.company` | backend/django_core/apps/adsengine/models.py:2743 | authentication.Company | CASCADE |
+| `backend/django_core/apps/adsengine/models.py::CreativePolicy.company` | backend/django_core/apps/adsengine/models.py:1156 | authentication.Company | CASCADE |
+| `backend/django_core/apps/adsengine/models.py::BrandKit.company` | backend/django_core/apps/adsengine/models.py:2772 | authentication.Company | CASCADE |
 | `backend/django_core/apps/agent/models.py::AgentActionLog.company` | backend/django_core/apps/agent/models.py:28 | authentication.Company | CASCADE |
 | `backend/django_core/apps/agriculture/models.py::Exploitation.company` | backend/django_core/apps/agriculture/models.py:25 | authentication.Company | CASCADE |
 | `backend/django_core/apps/agriculture/models.py::Parcelle.company` | backend/django_core/apps/agriculture/models.py:53 | authentication.Company | CASCADE |

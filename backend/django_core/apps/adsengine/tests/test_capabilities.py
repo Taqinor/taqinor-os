@@ -68,13 +68,20 @@ class ExecuteAutoActionTests(TestCase):
         action = services.execute_auto_action(
             self.company, kind=EngineAction.Kind.ROTATE_CREATIVE,
             reason_fr="Roter le créatif fatigué de l'ad set A.",
-            payload={'name': 'Ad v2', 'adset_id': 'as1'}, client=client)
+            # PUB119 — un payload de rotation porte name + adset_id + creative
+            # (un payload creux est refusé fail-fast par ``_dispatch``).
+            payload={'name': 'Ad v2', 'adset_id': 'as1',
+                     'creative': {'creative_id': 'cr-1'}}, client=client)
         # Auto-appliqué SANS approbation humaine, mais ligne auto=True écrite.
         self.assertEqual(action.status, EngineAction.Statut.APPLIQUEE)
         self.assertTrue(action.auto)
         self.assertIsNone(action.approved_by)
         self.assertEqual(action.result, {'id': 'ad-77'})
         client.create_ad.assert_called_once()
+        # Le créatif voyage encodé JSON dans ``extra_fields['creative']``.
+        kwargs = client.create_ad.call_args.kwargs
+        self.assertEqual(kwargs['extra_fields']['creative'],
+                         '{"creative_id": "cr-1"}')
 
     def test_rebalance_capability_on_auto_applies(self):
         # ENGFIX1 — un rééquilibrage porte désormais current_budget + daily_budget
