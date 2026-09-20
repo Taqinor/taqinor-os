@@ -74,6 +74,62 @@ CONSENT_BLOCK_LABELS = {
 }
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# PUB126 — Divulgation « généré par IA » : garde DURE de la check-list.
+# Un asset produit par une lane de fabrique IA (``creative_factory.
+# AI_GENERATED_LANES``) et dont l'étiquette ``ai_generated`` n'est PAS posée ne
+# passe JAMAIS la check-list — même si l'humain a coché toutes les règles (même
+# mécanique que la garde consentement PUB75).
+#
+# CHAMP GRAPH DE DIVULGATION — VÉRIFIÉ, NON CONFIRMÉ (20/09/2026).
+# La référence publique de l'objet AdCreative
+# (https://developers.facebook.com/docs/marketing-api/reference/ad-creative/)
+# n'expose AUCUN champ de divulgation IA documenté. Le seul candidat listé,
+# ``generative_asset_spec`` (type ``AdCreativeGenerativeAssetSpec``), y est
+# sans description : rien ne permet d'affirmer qu'il PORTE la divulgation.
+# On ne devine donc PAS un nom de champ Graph (envoyer un paramètre inconnu =
+# créatif rejeté, et écrire une divulgation dans le vide = pire qu'aucune) :
+# ``GRAPH_AI_DISCLOSURE_FIELD`` reste VIDE tant que le champ n'est pas confirmé
+# dans la doc, et les constructeurs de payload (PUB118/PUB123) n'ajoutent rien
+# à la spec Graph pendant ce temps. La divulgation voyage en INTERNE dans le
+# payload (clé ``ai_generated``), prête à être mappée le jour où le champ est
+# confirmé — un seul endroit à changer.
+# ══════════════════════════════════════════════════════════════════════════
+AI_DISCLOSURE_BLOCK = 'etiquette_ia_manquante'
+AI_DISCLOSURE_BLOCK_LABEL = (
+    "Étiquette « généré par IA » manquante : cet asset vient d'une lane de "
+    "génération — la divulgation est exigée par Meta avant toute diffusion.")
+GRAPH_AI_DISCLOSURE_FIELD = ''
+
+
+def ai_disclosure_block_reason(asset):
+    """PUB126 — ``AI_DISCLOSURE_BLOCK`` si l'asset DEVRAIT porter l'étiquette IA
+    (sa lane génère de l'IA, ou il dérive d'un asset IA) et ne la porte pas ;
+    sinon ``None``. Un asset non-IA (chantier, UGC réel, upload) n'a aucune
+    contrainte — et n'est jamais sur-étiqueté."""
+    from . import creative_factory
+
+    should_disclose = creative_factory.asset_is_ai_generated(
+        asset.source_lane, asset.parent)
+    if should_disclose and not asset.ai_generated:
+        return AI_DISCLOSURE_BLOCK
+    return None
+
+
+def ai_disclosure_payload(asset):
+    """PUB126 — Fragment de divulgation à PROPAGER dans un payload de création de
+    créatif (PUB118 recombinaison DCO / PUB123 pont CreativeAsset→créatif).
+
+    Renvoie toujours la clé INTERNE ``ai_generated`` (bool) — la divulgation
+    suit l'asset de bout en bout, jusqu'à l'ad. Quand (et seulement quand) le
+    champ Graph de divulgation sera confirmé, ``GRAPH_AI_DISCLOSURE_FIELD``
+    portera son nom et le fragment l'ajoutera : aucun appelant à modifier."""
+    disclosure = {'ai_generated': bool(asset.ai_generated)}
+    if GRAPH_AI_DISCLOSURE_FIELD:
+        disclosure[GRAPH_AI_DISCLOSURE_FIELD] = bool(asset.ai_generated)
+    return disclosure
+
+
 def asset_warnings(asset):
     """PUB83 — Avertissements NON BLOQUANTS de la check-list policy d'un asset.
 
@@ -108,7 +164,10 @@ def record_policy_check(asset, *, confirmed_keys, checked_by=None, now=None):
     (``depicts_real_client``) ne passe JAMAIS sans un ``ConsentRecord`` actif
     couvrant ses portées requises — même si l'humain a coché toutes les règles.
     La raison de blocage est consignée dans le tampon (``consent_block``).
-    Renvoie l'asset.
+
+    PUB126 — GARDE DIVULGATION IA : un asset issu d'une lane de génération dont
+    l'étiquette ``ai_generated`` n'est pas posée ne passe JAMAIS non plus
+    (``ai_disclosure_block`` dans le tampon). Renvoie l'asset.
     """
     forbidden, _allowed = _policy_rules(asset.company)
     required = {r['key'] for r in forbidden}
@@ -117,6 +176,10 @@ def record_policy_check(asset, *, confirmed_keys, checked_by=None, now=None):
     # Garde consentement : bloque un asset client-réel sans consentement valable.
     consent_block = asset.consent_block_reason(now=now)
     if consent_block is not None:
+        passed = False
+    # PUB126 — garde divulgation IA : bloque un asset IA sans son étiquette.
+    ai_block = ai_disclosure_block_reason(asset)
+    if ai_block is not None:
         passed = False
     stamp_time = now or timezone.now()
     checked_at = (stamp_time.isoformat() if hasattr(stamp_time, 'isoformat')
@@ -132,6 +195,9 @@ def record_policy_check(asset, *, confirmed_keys, checked_by=None, now=None):
         stamp['consent_block'] = consent_block
         stamp['consent_block_label'] = CONSENT_BLOCK_LABELS.get(
             consent_block, consent_block)
+    if ai_block is not None:
+        stamp['ai_disclosure_block'] = ai_block
+        stamp['ai_disclosure_block_label'] = AI_DISCLOSURE_BLOCK_LABEL
     # PUB83 — avertissements NON BLOQUANTS (ex. vignette manquante) : consignés
     # dans le tampon sans jamais faire échouer la validation.
     warnings = asset_warnings(asset)
