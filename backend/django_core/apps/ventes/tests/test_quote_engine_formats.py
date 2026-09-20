@@ -2103,3 +2103,231 @@ class QJR163FinitionsTests(SimpleTestCase):
             with self.subTest(fonction=fonction.__name__):
                 self.assertIn('_RENDER_LOCK', doc)
                 self.assertIn('concurrent', doc.lower())
+
+
+#: CAL182 — une conception RÉELLE, minimale : contour en ``[lat, lng]``, un pan
+#: en ``[lng, lat]`` (convention GeoJSON du lecteur de cartes) et deux modules
+#: posés en mètres ENU. Même document que ``test_cal171_planche`` : la planche
+#: du PDF est la planche du module, pas une seconde géométrie de test.
+LAYOUT_CAL182 = {
+    'version': 2,
+    'outline': [[33.5, -7.6], [33.5, -7.5999], [33.5001, -7.5999],
+                [33.5001, -7.6]],
+    'panelWatt': 720,
+    'zones': [{
+        'id': 'z1',
+        'label': 'Pan Sud',
+        'vertices': [[-7.6, 33.5], [-7.5999, 33.5], [-7.5999, 33.5001],
+                     [-7.6, 33.5001]],
+        'geometry': {
+            'azimuthDeg': 180.0, 'tiltDeg': 15.0, 'count': 2,
+            'origin': [-7.6, 33.5],
+            'panels': [{'cx': 1.0, 'cy': 1.0}, {'cx': 3.5, 'cy': 1.0}],
+        },
+    }],
+}
+
+
+@tag('pdf')  # rendu WeasyPrint complet — palier release-verify
+class TestPageCalepinage(TestCase):
+    """CAL182 — la page « Calepinage » du moteur vendorisé (règle #4).
+
+    Ce qui est prouvé ici :
+
+    * la page vaut EXACTEMENT une page de plus, quel que soit l'état de
+      ``include_etude`` et ``include_annexe_technique`` ;
+    * l'AUTO n'ajoute rien à un devis SANS calepinage (les comptes existants
+      ne bougent pas) et l'opt-out explicite la retire ;
+    * elle dégrade gracieusement quand la conception n'est pas dessinable —
+      jamais une feuille blanche ;
+    * ``'onepage'`` reste à UNE page ;
+    * la planche ne voyage PAS dans la charge utile publique (leçon
+      CALEPDF/A8 : coût + anticopie) ;
+    * elle ne porte AUCUN montant, et le PDF reste déterministe.
+    """
+
+    FULL_LINES = TestPdfFormats.FULL_LINES
+
+    _ELECTRICAL_DESIGN = {
+        'parametres': {'phases': 3, 'regime': 'TT'},
+        'chaines': [{'modules': 7}, {'modules': 7}],
+        'bom': [{'designation': 'Parafoudre DC', 'quantite': 1,
+                 'spec': '1000 V'}],
+    }
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj, self.FULL_LINES,
+            etude_params=DEUX_OPTIONS)
+
+    # ── fabriques ────────────────────────────────────────────────────────
+    def _creer_calepinage(self, roof_layout=LAYOUT_CAL182):
+        from apps.calepinage.models import Calepinage
+        return Calepinage.objects.create(
+            company=self.company, client=self.client_obj, devis=self.devis,
+            titre='Villa Anfa', roof_layout=roof_layout,
+            layout_hash='ab12cd34' * 8, version_moteur='2.1.0')
+
+    def _options(self, **kwargs):
+        """Les options du CHEMIN DE RENDU.
+
+        ``_embed_calepinage_planche`` est le drapeau SERVEUR posé par
+        ``generate_premium_devis_pdf`` — ``clean_pdf_options`` ne le
+        whiteliste pas (un corps client ne peut pas l'allumer). Les essais le
+        posent donc eux-mêmes, exactement comme le fait le chemin de rendu.
+        """
+        opts = {'_embed_calepinage_planche': True}
+        opts.update(kwargs)
+        return opts
+
+    def _render(self, pdf_options=None):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = build_quote_data(self.devis, pdf_options)
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_cal182_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return cap['html'], HTML(string=cap['html']).render()
+
+    # ── comptes de pages ─────────────────────────────────────────────────
+    def test_sans_calepinage_l_auto_n_ajoute_rien(self):
+        """Le défaut AUTO laisse les comptes existants EXACTEMENT où ils sont
+        tant qu'aucun calepinage n'a été dessiné."""
+        from apps.ventes.quote_engine.builder import DEFAULT_PDF_OPTIONS
+
+        self.assertIsNone(DEFAULT_PDF_OPTIONS['include_calepinage'])
+        html, doc = self._render(self._options())
+        self.assertEqual(len(doc.pages), 3)
+        self.assertNotIn('>Calepinage</div>', html)
+
+    def test_avec_calepinage_l_auto_ajoute_exactement_une_page(self):
+        self._creer_calepinage()
+        html, doc = self._render(self._options())
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('>Calepinage</div>', html)
+
+    def test_opt_out_explicite_retire_la_page(self):
+        self._creer_calepinage()
+        html, doc = self._render(self._options(include_calepinage=False))
+        self.assertEqual(len(doc.pages), 3)
+        self.assertNotIn('>Calepinage</div>', html)
+
+    def test_exactement_une_page_d_ecart_sur_toute_la_matrice(self):
+        """Le MÊME devis rendu avec et sans la page diffère d'EXACTEMENT une
+        page, quel que soit l'état de l'étude et de l'annexe."""
+        self._creer_calepinage()
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        for etude in (False, True):
+            for annexe in (False, True):
+                with self.subTest(etude=etude, annexe=annexe):
+                    base = {'include_etude': etude,
+                            'include_annexe_technique': annexe}
+                    _, sans = self._render(
+                        self._options(include_calepinage=False, **base))
+                    _, avec = self._render(
+                        self._options(include_calepinage=True, **base))
+                    self.assertEqual(len(avec.pages), len(sans.pages) + 1)
+
+    def test_onepage_reste_a_une_page(self):
+        self._creer_calepinage()
+        html, doc = self._render(
+            self._options(pdf_mode='onepage', include_calepinage=True))
+        self.assertEqual(len(doc.pages), 1)
+        self.assertNotIn('>Calepinage</div>', html)
+
+    def test_degrade_sans_conception_dessinable(self):
+        """Une conception vide REFUSE de se dessiner : la page est omise, pas
+        rendue blanche (même dégradation que l'étude et l'annexe)."""
+        self._creer_calepinage(roof_layout={})
+        html, doc = self._render(self._options(include_calepinage=True))
+        self.assertEqual(len(doc.pages), 3)
+        self.assertNotIn('>Calepinage</div>', html)
+
+    # ── la planche est un artefact de RENDU ──────────────────────────────
+    def test_la_planche_ne_voyage_pas_dans_la_charge_utile_publique(self):
+        """Sans le drapeau serveur, AUCUNE clé de planche n'est produite —
+        ni le coût du dessin, ni la géométrie cotée (anticopie)."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self._creer_calepinage()
+        data = build_quote_data(self.devis, {})
+        for clef in ('include_calepinage', 'calepinage_svg',
+                     'calepinage_empreinte'):
+            self.assertNotIn(clef, data)
+
+    def test_le_drapeau_serveur_n_est_pas_whitelist(self):
+        from apps.ventes.quote_engine.builder import clean_pdf_options
+        self.assertNotIn('_embed_calepinage_planche',
+                         clean_pdf_options({'_embed_calepinage_planche': True}))
+
+    # ── contenu de la page ───────────────────────────────────────────────
+    def _page_calepinage(self, html):
+        debut = html.index('>Calepinage</div>')
+        fin = html.index('Calepinage — Réf.', debut)
+        return html[debut:fin]
+
+    def test_la_page_porte_l_empreinte_et_la_version_du_moteur(self):
+        self._creer_calepinage()
+        html, _doc = self._render(self._options())
+        page = self._page_calepinage(html)
+        self.assertIn('calepinage ab12cd34ab12', page)   # hash COURT (12)
+        self.assertIn('moteur 2.1.0', page)
+
+    def test_la_page_ne_porte_aucun_montant(self):
+        self._creer_calepinage()
+        html, _doc = self._render(self._options())
+        page = self._page_calepinage(html)
+        for interdit in ('prix_achat', 'marge', 'MAD', 'Total TTC',
+                         'Sous-total', 'Remise'):
+            self.assertNotIn(interdit, page)
+
+    def test_le_svg_est_embarque_sans_prologue_xml(self):
+        """Un ``<?xml …?>`` au milieu d'un document HTML est une erreur de
+        syntaxe, et ``width="420mm"`` déborderait la page A4."""
+        from apps.ventes.quote_engine.builder import (
+            CALEPINAGE_HAUTEUR_PX, CALEPINAGE_LARGEUR_PX)
+
+        self._creer_calepinage()
+        html, _doc = self._render(self._options())
+        page = self._page_calepinage(html)
+        self.assertNotIn('<?xml', page)
+        self.assertNotIn('420mm', page)
+        self.assertIn('width="%d"' % CALEPINAGE_LARGEUR_PX, page)
+        self.assertIn('height="%d"' % CALEPINAGE_HAUTEUR_PX, page)
+        # Le viewBox de la planche n'est PAS touché : même dessin, à
+        # l'échelle près.
+        self.assertIn('viewBox="0 0 420 297"', page)
+
+    def test_le_document_est_deterministe(self):
+        """Deux rendus de la même conception produisent le même document :
+        l'empreinte est composée SANS date de rendu."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self._creer_calepinage()
+        un = build_quote_data(self.devis, self._options())
+        deux = build_quote_data(self.devis, self._options())
+        self.assertEqual(un['calepinage_svg'], deux['calepinage_svg'])
+        self.assertEqual(un['calepinage_empreinte'],
+                         deux['calepinage_empreinte'])
+
+    def test_les_totaux_sont_inchanges(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self._creer_calepinage()
+        sans = build_quote_data(self.devis,
+                                self._options(include_calepinage=False))
+        avec = build_quote_data(self.devis,
+                                self._options(include_calepinage=True))
+        for clef in ('totaux_sans', 'totaux_avec', 'totaux_all',
+                     'display_total', 'total_sans', 'total_avec'):
+            self.assertEqual(sans.get(clef), avec.get(clef), clef)
