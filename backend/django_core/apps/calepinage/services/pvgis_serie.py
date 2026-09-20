@@ -372,6 +372,87 @@ class ClientPvgis:
         resultat.update(_provenance(charge, base, politique))
         return resultat
 
+    # ── l'année météo type (TMY) ────────────────────────────────────────
+    def tmy(self, *, lat, lon, base=BASE_PAR_DEFAUT, utiliser_horizon=True):
+        """CAL136 — année météo TYPE (``tmy``) en v5_3, base CHOISIE.
+
+        ``apps/ventes/weather_feed.py`` appelle encore ``tmy`` en v5_2 et
+        AUCUN appelant du dépôt ne choisit sa base. Ici le choix est explicite
+        à chaque appel (vérifié en direct le 20/09/2026 : ``tmy`` honore bien
+        ``raddatabase``, la réponse renvoie la base demandée), et la base
+        RÉELLEMENT utilisée est republiée avec la fenêtre d'années.
+
+        Pas de ``loss`` ici, et ce n'est pas une entorse à CAL238 : le TMY est
+        une série MÉTÉO (irradiance, température), pas un calcul PV — PVGIS
+        n'expose aucun paramètre de pertes sur ce service.
+
+        Returns:
+            dict — ``base``, ``base_meteo``, ``fenetre_annees``,
+            ``mois_retenus`` (l'année retenue pour chaque mois),
+            ``temperature_min_c`` / ``temperature_max_c`` (pour le
+            dimensionnement des tensions, CAL123) et ``points``.
+        """
+        if base not in BASES_RAYONNEMENT:
+            raise EntreeInvalide(
+                f'Base de rayonnement inconnue : « {base} ». Bases admises : '
+                f'{", ".join(BASES_RAYONNEMENT)}.', champ='base')
+        params = {
+            'lat': _coordonnee(lat, champ='lat', maxi=90.0),
+            'lon': _coordonnee(lon, champ='lon', maxi=180.0),
+            'raddatabase': base,
+            'usehorizon': 1 if utiliser_horizon else 0,
+            'outputformat': 'json',
+        }
+        charge, depuis_cache = self._appeler('tmy', params)
+        lignes = (((charge or {}).get('outputs') or {}).get('tmy_hourly'))
+        if not isinstance(lignes, list) or not lignes:
+            raise PvgisIndisponible(
+                'La réponse de PVGIS ne porte aucune année météo type : les '
+                'températures de dimensionnement ne sont pas publiées.')
+
+        points = []
+        temperatures = []
+        for ligne in lignes:
+            horodatage = _horodatage(ligne.get('time(UTC)')
+                                     or ligne.get('time'))
+            if horodatage is None:
+                continue
+            _annee, mois, jour, heure = horodatage
+            t2m = _flottant(ligne.get('T2m'))
+            if t2m is not None:
+                temperatures.append(t2m)
+            points.append({
+                'mois': mois, 'jour': jour, 'heure': heure, 't2m_c': t2m,
+                'gh_w_m2': _flottant(ligne.get('G(h)')),
+                'ws10m': _flottant(ligne.get('WS10m')),
+            })
+        if not points:
+            raise PvgisIndisponible(
+                "L'année météo type de PVGIS est inexploitable (aucun "
+                'horodatage lisible).')
+
+        meteo = (((charge or {}).get('inputs') or {}).get('meteo_data') or {})
+        an_min, an_max = meteo.get('year_min'), meteo.get('year_max')
+        return {
+            'service': 'tmy',
+            'points': points,
+            'mois_retenus': list(
+                ((charge or {}).get('outputs') or {}).get('months_selected')
+                or []),
+            # Les extrêmes sont ceux de la série REÇUE — sourcés, jamais des
+            # températures de catalogue (CAL123 les reprend telles quelles).
+            'temperature_min_c': min(temperatures) if temperatures else None,
+            'temperature_max_c': max(temperatures) if temperatures else None,
+            'base': meteo.get('radiation_db') or base,
+            'base_demandee': base,
+            'base_meteo': meteo.get('meteo_db'),
+            'fenetre_annees': (f'{an_min}-{an_max}'
+                               if an_min is not None and an_max is not None
+                               else None),
+            'url': self.construire_url('tmy', params),
+            'depuis_cache': depuis_cache,
+        }
+
     # ── briques communes ────────────────────────────────────────────────
     def _params_communs(self, *, lat, lon, base, politique):
         if base not in BASES_RAYONNEMENT:
