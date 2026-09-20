@@ -50,6 +50,7 @@ from ..permissions import (
 )
 from ..serializers import CalepinageSerializer
 from ..services.layout import LayoutRefuse, enregistrer_layout
+from ..services.versions import VersionInvalide, restaurer_version
 
 __all__ = ['CalepinageViewSet', 'contexte_conception', 'detail_calepinage']
 
@@ -155,6 +156,52 @@ class CalepinageViewSet(CompanyScopedModelViewSet):
             'version': version.pk if version is not None else None,
         })
 
+    # ── L'historique : visible, et REJOUABLE sans être réécrit ─────────────
+    @action(detail=True, methods=['get'], url_path='versions',
+            permission_classes=[PeutVoirCalepinage])
+    def versions(self, request, pk=None):
+        """CAL20 — l'historique, du plus récent au plus ancien.
+
+        CAL8 fait vivre l'historique ; sans cette route il reste invisible.
+        Borné société par ``get_queryset`` (le calepinage), donc une version
+        d'une autre société n'apparaît jamais.
+        """
+        calepinage = self.get_object()
+        return Response([
+            _version_en_ligne(version)
+            for version in selectors.versions(calepinage)
+        ])
+
+    @action(detail=True, methods=['post'],
+            url_path=r'versions/(?P<version_id>[^/.]+)/restaurer',
+            permission_classes=[PeutGererCalepinage])
+    def restaurer(self, request, pk=None, version_id=None):
+        """CAL20 — REJOUE une version : une version de PLUS, jamais une de moins.
+
+        Aucun instantané n'est réécrit et aucun n'est supprimé : l'état
+        restauré redevient courant ET s'ajoute en tête de l'historique
+        (``services.versions.restaurer_version``, qui passe par le chemin
+        d'écriture commun). Une version d'une AUTRE société — ou d'un autre
+        calepinage — est introuvable (404).
+        """
+        calepinage = self.get_object()  # borné société par get_queryset
+        version = selectors.versions(calepinage).filter(pk=version_id).first()
+        if version is None:
+            return Response({'detail': 'Version introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        try:
+            resultat = restaurer_version(version, user=request.user)
+        except VersionInvalide as refus:
+            return Response({refus.champ or 'version': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        neuve = resultat['version']
+        return Response({
+            'restauree': version.pk,
+            'version': neuve.pk if neuve is not None else None,
+            'layout_hash': resultat['layout_hash'] or None,
+            'inchange': resultat['inchange'],
+        })
+
     @action(detail=True, methods=['get'], url_path='design-context',
             permission_classes=[PeutVoirCalepinage])
     def design_context(self, request, pk=None):
@@ -226,6 +273,18 @@ def _corps_de_layout(donnees):
     if not isinstance(donnees, dict) or not donnees:
         return None
     return donnees
+
+
+def _version_en_ligne(version):
+    """Une version d'historique, telle que la liste l'affiche."""
+    return {
+        'id': version.pk,
+        'libelle': version.libelle or '',
+        'layout_hash': _texte(version.layout_hash),
+        'cree_le': _horodatage(version.created_at),
+        'cree_par': _personne(getattr(version, 'cree_par', None)),
+        'a_un_resultat': bool(version.resultat),
+    }
 
 
 # ── CAL231 — LE CONTEXTE DE CONCEPTION (jumeau neutre de PV17) ────────────
