@@ -117,7 +117,7 @@
         "kits": {"type": "array", "items": {"type": "string"}, "minItems": 1},
         "rives": {"$ref": "#/$defs/rives"},
         "axe_rangee": {"enum": ["NORD_SUD", "EST_OUEST"]},
-        "mode_pose": {"enum": ["rangees_explicites_dp", "rangees_uniformes_phase"]},
+        "mode_pose": {"enum": ["rangees_explicites_dp", "rangees_uniformes_phase", "rangees_imposees_utilisateur"]},
         "allee_m": {"type": "number", "minimum": 0},
         "degagement_defaut_m": {"type": "number", "minimum": 0},
         "degagement_nature_inconnue_m": {"type": "number", "minimum": 0},
@@ -126,6 +126,20 @@
         "plafond_kwc": {"type": ["number", "null"], "minimum": 0},
         "marge_troncon_min_m": {"type": "number", "minimum": 0},
         "marge_bande_min_m": {"type": "number", "minimum": 0},
+        "rangees_imposees": {
+          "description": "Plan IMPOSE (PV29), lu par le seul mode rangees_imposees_utilisateur : couples (position y0 en metres, code de kit). ABSENT ou null signifie « aucun plan impose » — le champ est OMIS des documents qui n'en portent pas, sinon l'empreinte d'entree de releves jamais touches bougerait.",
+          "type": ["array", "null"],
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "prefixItems": [{"type": "number"}, {"type": "string"}]
+          }
+        },
+        "phase_forcee_m": {
+          "description": "Phase FORCEE du mode uniforme (PV52), en metres : le moteur n'evalue que ce decalage au lieu de balayer. ABSENT ou null = balayage historique.",
+          "type": ["number", "null"]
+        },
         "graine": {"type": "integer"}
       }
     }

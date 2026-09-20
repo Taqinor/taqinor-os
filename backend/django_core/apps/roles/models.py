@@ -356,6 +356,19 @@ ALL_PERMISSIONS = [
     'ao_voir',
     'ao_gerer',
     'ao_rentabilite_voir',
+    # ── CAL6 — Calepinage (apps/calepinage). Deux codes DISJOINTS, source
+    # unique dans ``apps/calepinage/permissions.py`` :
+    #   * ``calepinage_voir``  — lecture d'un calepinage ;
+    #   * ``calepinage_gerer`` — écriture + actions métier (enregistrer un
+    #     layout, créer/retenir une variante, dupliquer).
+    # PALIER ``ventes`` : concevoir une toiture est un geste commercial
+    # courant — partout où un rôle porte ``ventes_voir`` il gagne
+    # ``calepinage_voir``, et partout où il porte ``ventes_creer`` il gagne
+    # ``calepinage_gerer``. AUCUNE permission ÉLEVÉE n'est touchée (le module
+    # n'expose ni prix d'achat, ni marge), et aucun accès existant n'est
+    # retiré : l'app n'existait pas avant ce groupe.
+    'calepinage_voir',
+    'calepinage_gerer',
     # ── NTADM39 — permissions fines de apps.adminops. Toutes gardées DERRIÈRE
     # ``IsAdministrateur`` (palier admin déjà requis) — ces codes RESSERRENT
     # encore l'accès au sein de ce palier : un rôle admin-tier CUSTOM
@@ -635,6 +648,8 @@ PERMISSION_MODULE = {
     **{c: 'fpa' for c in ALL_PERMISSIONS if c.startswith('fpa_')},
     **{c: 'ged' for c in ALL_PERMISSIONS if c.startswith('ged_')},
     **{c: 'ao' for c in ALL_PERMISSIONS if c.startswith('ao_')},
+    # CAL6 — le préfixe des codes EST la clé de manifeste (``calepinage``).
+    **{c: 'calepinage' for c in ALL_PERMISSIONS if c.startswith('calepinage_')},
     **{c: 'adminops' for c in ALL_PERMISSIONS if c.startswith('adminops_')},
     **{c: 'veille_ao' for c in ALL_PERMISSIONS if c.startswith('veille_ao_')},
     **{c: 'cpq' for c in ALL_PERMISSIONS if c.startswith('cpq_')},
@@ -718,6 +733,9 @@ RESPONSABLE_PERMISSIONS = [
     'ventes_modifier',
     'ventes_valider',
     'ventes_pdf',
+    # CAL6 — calepinage au palier ventes (il porte déjà `ventes_creer`).
+    'calepinage_voir',
+    'calepinage_gerer',
     # La Commerciale gère le flux chantier (création depuis devis, suivi,
     # interventions). L'admin garde le contrôle total (suppression).
     'installation_voir',
@@ -813,6 +831,8 @@ UTILISATEUR_PERMISSIONS = [
     'stock_voir',
     'crm_voir',
     'ventes_voir',
+    # CAL6 — lecture seule du calepinage, comme pour les devis.
+    'calepinage_voir',
     'installation_voir',
     'equipement_voir',
     'sav_voir',
@@ -863,6 +883,7 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'visites_valider',
     'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_supprimer',
     'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
+    'calepinage_voir', 'calepinage_gerer',  # CAL6 — palier ventes.
     'stock_voir', 'stock_creer',  # QG4 — création de produits autorisée.
     'equipement_voir', 'sav_voir', 'sav_gerer', 'sav_export', 'sav_reassign',
     # NTSRV40 — repondait deja au client (il portait `sav_gerer`).
@@ -910,6 +931,7 @@ COMMERCIAL_PERMISSIONS = [
     'visites_voir', 'visites_creer', 'visites_modifier',
     'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_valider',
     'ventes_pdf', 'ventes_export',
+    'calepinage_voir', 'calepinage_gerer',  # CAL6 — palier ventes.
     'stock_voir', 'equipement_voir', 'sav_voir',
     'parametres_voir', 'reporting_voir',
     'client_pii_voir',  # FG20 — coordonnées client (besoin commercial).
@@ -1062,6 +1084,7 @@ TECHNICIEN_PERMISSIONS = [
 # suppression/export ; pas de prix d'achat. Portée = sa position dans l'arbre.
 VIEWER_PERMISSIONS = [
     'stock_voir', 'crm_voir', 'ventes_voir', 'installation_voir',
+    'calepinage_voir',  # CAL6 — lecture seule, jamais `calepinage_gerer`.
     'equipement_voir', 'sav_voir', 'parametres_voir', 'reporting_voir',
     'client_pii_voir',  # FG20 — préserve l'accès historique aux coordonnées.
     # YRBAC3 — nouvel accès en LECTURE SEULE (le Viewer n'avait aucun accès à
@@ -1137,6 +1160,7 @@ ADMIN_VENTES_PERMISSIONS = [
     'crm_reassign',
     'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_supprimer',
     'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
+    'calepinage_voir', 'calepinage_gerer',  # CAL6 — palier ventes.
     'stock_voir', 'stock_modifier', 'stock_supprimer', 'stock_mouvement',
     'stock_export',
     'client_pii_voir',

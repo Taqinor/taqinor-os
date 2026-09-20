@@ -1,0 +1,80 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/",
+  "pourquoi": "Le détail d'UN calepinage du module autonome, en un seul appel : identité, rattachement (lead et/ou client, devis lié), statut, empreinte du layout, compteurs de versions et de variantes, et l'URL signée de l'image d'aperçu. PACT10 : ce contrat part SEUL sur `main` avant toute lane — l'écran de détail et le viewset naissent dans deux lanes file-disjointes qui, sans ce fichier, inventeraient mécaniquement deux formes (incident du 03/08/2026, « Appels d'offres — Tableau de bord », zéro clé sur six concordante). DÉCISIONS DE STRUCTURE TENUES ICI : une seule forme d'URL `/api/django/calepinage/calepinages/<pk>/…` ; le client est `crm.Client` et le lead `crm.Lead` (`ventes.Client` n'existe pas, `Devis.client` pointe déjà `'crm.Client'`) ; un calepinage SANS devis est un objet de première classe, donc `devis` est nullable et jamais omis. `exemple_vide` couvre le calepinage NEUF (créé, aucun layout dessiné, aucun calcul joué) : toutes les clés restent présentes, les grandeurs non mesurées valent `null` et JAMAIS `0` — publier un zéro ferait lire « aucune version » là où rien n'a encore été enregistré, exactement l'erreur que `marges_vers_json` évite déjà côté AO. Les valeurs de cet exemple sont des PLACEHOLDERS assumés (identifiants à un chiffre, empreinte visiblement factice, libellés « d'essai ») : aucun chiffre client, aucun prix d'achat, aucune marge.",
+  "exemple": {
+    "id": 1,
+    "reference": "CAL-2609-0001",
+    "nom": "Toiture — bâtiment principal",
+    "statut": "en_cours",
+    "statut_libelle": "En cours",
+    "cree_le": "2026-09-19T09:00:00Z",
+    "modifie_le": "2026-09-19T11:30:00Z",
+    "cree_par": { "id": 1, "nom_complet": "Utilisateur d'essai" },
+    "responsable": { "id": 1, "nom_complet": "Utilisateur d'essai" },
+    "lead": { "id": 1, "nom": "Lead d'essai", "ville": "Casablanca" },
+    "client": { "id": 1, "nom": "Client d'essai", "ville": "Casablanca" },
+    "devis": { "id": 1, "reference": "DEV-2609-0001", "statut": "brouillon" },
+    "layout_present": true,
+    "layout_hash": "abababababababababababababababababababababababababababababababab",
+    "layout_schema_version": 2,
+    "version_moteur": "non-publie-dans-cet-exemple",
+    "versions": {
+      "total": 2,
+      "courante_id": 2,
+      "derniere_le": "2026-09-19T11:30:00Z"
+    },
+    "variantes": {
+      "total": 3,
+      "retenue_id": 7,
+      "non_simulees": 1
+    },
+    "image": {
+      "url": "https://exemple.invalid/calepinage/1/apercu.png?signature=exemple",
+      "genere_le": "2026-09-19T11:30:00Z",
+      "expire_le": "2026-09-19T12:30:00Z"
+    },
+    "permissions": {
+      "peut_modifier": true,
+      "peut_supprimer": false,
+      "peut_retenir_variante": true
+    }
+  },
+  "exemple_vide": {
+    "id": 2,
+    "reference": "CAL-2609-0002",
+    "nom": "Calepinage sans titre",
+    "statut": "brouillon",
+    "statut_libelle": "Brouillon",
+    "cree_le": "2026-09-19T14:00:00Z",
+    "modifie_le": "2026-09-19T14:00:00Z",
+    "cree_par": { "id": 1, "nom_complet": "Utilisateur d'essai" },
+    "responsable": null,
+    "lead": { "id": 1, "nom": "Lead d'essai", "ville": "Casablanca" },
+    "client": null,
+    "devis": null,
+    "layout_present": false,
+    "layout_hash": null,
+    "layout_schema_version": null,
+    "version_moteur": null,
+    "versions": {
+      "total": null,
+      "courante_id": null,
+      "derniere_le": null
+    },
+    "variantes": {
+      "total": null,
+      "retenue_id": null,
+      "non_simulees": null
+    },
+    "image": {
+      "url": null,
+      "genere_le": null,
+      "expire_le": null
+    },
+    "permissions": {
+      "peut_modifier": true,
+      "peut_supprimer": true,
+      "peut_retenir_variante": false
+    }
+  }
+}

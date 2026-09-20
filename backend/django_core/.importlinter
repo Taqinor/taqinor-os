@@ -299,6 +299,33 @@ forbidden_modules =
     apps.installations.models
     apps.compta.models
 
+# CAL5 — `apps.calepinage` est un module NEUF : son découplage de modèles est
+# donc posé le JOUR 1, avant qu'un import de commodité ne s'installe. Ses
+# rattachements sont des FK-STRING ('crm.Client', 'ventes.Devis') et des
+# identifiants OPAQUES (`lead_id`, `appel_offre_id`, patron `AppelOffre.lead_id`)
+# — jamais une FK dure vers crm/ao. `apps.ao.models` est AJOUTÉ aux interdits
+# (au-delà des six domaines cœur) : les DEUX systèmes de calepinage restent
+# séparés, chaîne de migrations `apps.ao` mono-écrivain comprise.
+#
+# Le MOTEUR pur `core.calepinage` reste partagé : `apps.calepinage` en est un
+# consommateur LÉGITIME, exactement comme `apps.ao` et `apps.ventes`. Aucun
+# ajout n'est nécessaire au contrat `calepinage-est-un-noyau-pur` (il est
+# `forbidden` DEPUIS `core.calepinage`, pas vers lui) et ce contrat n'est pas
+# touché : le noyau reste stdlib + numpy, sans Django.
+[importlinter:contract:calepinage-models-decoupled]
+name = Calepinage models never import a business-core domain's models (string FKs only — CAL5)
+type = forbidden
+source_modules =
+    apps.calepinage.models
+forbidden_modules =
+    apps.crm.models
+    apps.ventes.models
+    apps.stock.models
+    apps.sav.models
+    apps.installations.models
+    apps.compta.models
+    apps.ao.models
+
 [importlinter:contract:frais-models-decoupled]
 name = Frais models never import a business-core domain's models (string FKs only — ODX15)
 type = forbidden

@@ -1784,6 +1784,8 @@ class FicheTechniqueSerializer(AttachmentSerializerMixin,
             'longueur_mm', 'largeur_mm', 'epaisseur_mm', 'poids_kg',
             'techno_cellule', 'bifacial',
             'temp_coeff_voc_pct_c', 'temp_coeff_pmax_pct_c',
+            # CAL111 — modèle thermique NOCT / Uc-Uv (optionnels).
+            'noct_c', 'uc_w_m2k', 'uv_w_m3sk',
             'ond_n_mppt', 'ond_mppt_v_min', 'ond_mppt_v_max', 'ond_v_max_abs',
             'ond_i_max_mppt_a', 'ond_ac_kw', 'ond_phases',
             'ond_rendement_euro_pct',
