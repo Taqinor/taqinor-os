@@ -79,6 +79,9 @@ const PompagePanel = lazy(() => import('./pompage/PompagePanel'))
    une distance RÉELLE saisie, aimantation) puis sa conversion en tracé de toit.
    Contextuel à UN calepinage : deep-link, jamais un item de menu. */
 const PlanImporteCalage = lazy(() => import('./PlanImporteCalage'))
+/* CAL58 — la PENTE saisie de trois façons (degrés, pourcentage, cotes) qui
+   convergent vers une seule valeur, laquelle affiche toujours sa provenance. */
+const SaisiePente = lazy(() => import('./SaisiePente'))
 
 const config = {
   key: 'calepinage',
@@ -127,6 +130,8 @@ const config = {
     { path: '/calepinage/:id/pompage', component: PompagePanel, roles: ROLES },
     // CAL63 — caler le plan importé de CE calepinage sur la carte.
     { path: '/calepinage/:id/plan', component: PlanImporteCalage, roles: ROLES },
+    // CAL58 — la pente de CE calepinage, par l'un des trois modes de saisie.
+    { path: '/calepinage/:id/pente', component: SaisiePente, roles: ROLES },
   ],
 }
 
