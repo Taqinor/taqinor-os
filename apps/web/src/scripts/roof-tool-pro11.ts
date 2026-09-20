@@ -3084,6 +3084,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
           : { ...(activeSolarAccessMeta() ?? {}), ...(meta ?? {}) },
       ),
     snapshot: () => scene3d.snapshot(),
+    // CAL103 — le panneau de calques de l'écran hôte pilote la carte par ici.
+    setLayerState: (id, state) => mapDraw.setLayerState(id, state),
     // L-MAP — bascule du calque de référence géo-référencé (rp9-chip côté
     // ToitureDesign.jsx). Guardé dans la fonction elle-même contre un appel
     // avant map.on('load') (map.getLayer(...) renvoie undefined tant que

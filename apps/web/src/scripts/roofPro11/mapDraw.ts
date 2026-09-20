@@ -103,6 +103,71 @@ export function geocodeCountryNote(pays?: string | null): string {
   return `Recherche limitée au pays : ${geocodeCountry(pays).toUpperCase()}`;
 }
 
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL103 — CALQUES EXPLICITES, ORDRE DE SUPERPOSITION DÉTERMINÉ
+//
+// Les couches s'allumaient par des bascules dispersées et l'ordre de rendu n'était
+// que l'ordre d'ajout. `ORDRE_RENDU_CALQUES` fige la superposition, du FOND vers le
+// DESSUS, et `MAPLIBRE_LAYERS_PAR_CALQUE` dit quelles couches MapLibre chaque calque
+// pilote. Un calque dont aucune couche n'existe sur la carte est un no-op silencieux
+// (mode capture, aperçu…), jamais une exception.
+//
+// Le panneau d'écran (`features/calepinage/PanneauCalques.jsx`) est la SEULE source
+// d'intention ; ici on ne fait qu'appliquer. Les bascules historiques (tracé client,
+// photo calée, carte d'accès solaire) continuent de fonctionner : elles pilotent les
+// mêmes couches par leurs propres chemins.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Identifiants de calques, DU FOND VERS LE DESSUS. Ordre = contrat, testé. */
+export const ORDRE_RENDU_CALQUES: readonly string[] = [
+  'imagerie',
+  'cadastre',
+  'photo',
+  'plan',
+  'trace_client',
+  'obstacles',
+  'zones',
+  'panneaux',
+  'ombres',
+  'mesures',
+];
+
+/** Couches MapLibre pilotées par chaque calque. Les calques rendus hors MapLibre
+ *  (panneaux et ombres vivent dans la couche WebGL de la scène 3D) n'en listent
+ *  aucune : l'hôte les pilote par la scène, pas par la carte. */
+export const MAPLIBRE_LAYERS_PAR_CALQUE: Readonly<Record<string, readonly string[]>> = {
+  imagerie: [],
+  cadastre: ['rp9-opt-cadastre'],
+  photo: [],
+  plan: [],
+  trace_client: ['rp9-ref-contour-fill', 'rp9-ref-contour-line'],
+  obstacles: ['rp9-obs', 'rp9-obs-outline', 'rp9-obs-label'],
+  zones: ['rp9-zones', 'rp9-zones-outline', 'rp9-zones-label'],
+  panneaux: [],
+  ombres: [],
+  mesures: ['rp9-mesure-line', 'rp9-mesure-label'],
+};
+
+/** Propriété d'opacité MapLibre selon le type de couche — `fill-opacity` sur un
+ *  remplissage, `line-opacity` sur une ligne, etc. `null` = pas d'opacité pilotable. */
+export function opacityPropFor(type: string | undefined): string | null {
+  switch (type) {
+    case 'fill':
+      return 'fill-opacity';
+    case 'line':
+      return 'line-opacity';
+    case 'symbol':
+      return 'text-opacity';
+    case 'raster':
+      return 'raster-opacity';
+    case 'circle':
+      return 'circle-opacity';
+    default:
+      return null;
+  }
+}
+
 /** Dépendances injectées (carte + bandeau de statut + re-lecture d'aire + bouton finir). */
 export interface MapDrawDeps {
   /** La carte MapLibre (sources GeoJSON du tracé + flyTo/jumpTo de la recherche). */
@@ -121,6 +186,9 @@ export interface MapDraw {
   setOptionalLayer: (id: string, visible: boolean) => boolean;
   /** CAL54 — identifiants des calques optionnels actuellement proposables. */
   optionalLayerIds: () => string[];
+  /** CAL103 — applique visibilité + opacité d'un calque. Renvoie false si le calque
+   *  n'existe pas dans l'ordre de rendu. Un calque sans couche MapLibre est un no-op. */
+  setLayerState: (id: string, state: { visible: boolean; opacite?: number }) => boolean;
   addVertex: (v: LngLat) => void;
   /** W92 — retire le dernier sommet posé (pendant le tracé, avant fermeture). */
   undoLastPoint: () => void;
@@ -188,6 +256,24 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     }
     if (!map.getSource?.(key)) map.addSource(key, optionalLayerSourceSpec(layer) as never);
     if (!map.getLayer?.(key)) map.addLayer({ id: key, type: 'raster', source: key } as never);
+    return true;
+  }
+
+  // CAL103 — application de l'état d'un calque sur la carte. Tout est défensif : une
+  // couche absente (mode capture, style pas encore chargé) ne fait rien.
+  function setLayerState(id: string, state: { visible: boolean; opacite?: number }): boolean {
+    if (!ORDRE_RENDU_CALQUES.includes(id)) return false;
+    for (const layerId of MAPLIBRE_LAYERS_PAR_CALQUE[id] ?? []) {
+      const layer = map.getLayer?.(layerId) as { type?: string } | undefined;
+      if (!layer) continue;
+      try {
+        map.setLayoutProperty(layerId, 'visibility', state.visible ? 'visible' : 'none');
+        const prop = opacityPropFor(layer.type);
+        if (prop && typeof state.opacite === 'number') map.setPaintProperty(layerId, prop, state.opacite);
+      } catch {
+        /* couche pas encore prête : rien à faire, l'appel suivant la trouvera */
+      }
+    }
     return true;
   }
 
@@ -438,5 +524,5 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     void geocode(q, true);
   });
 
-  return { redrawTrace, setOptionalLayer, optionalLayerIds, addVertex, undoLastPoint, geocode, reverseGeocode };
+  return { redrawTrace, setOptionalLayer, optionalLayerIds, setLayerState, addVertex, undoLastPoint, geocode, reverseGeocode };
 }

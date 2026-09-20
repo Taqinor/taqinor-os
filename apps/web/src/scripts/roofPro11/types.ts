@@ -107,6 +107,11 @@ export interface RoofToolApi {
    *  RIEN changer si aucun contour exploitable n'a été fourni au boot
    *  (`referenceContourRing` renvoie `null`) — jamais un contour deviné. */
   recommencerDepuisTraceClient: () => boolean;
+  /** CAL103 — applique la visibilité + l'opacité d'UN calque de l'atelier
+   *  (identifiants et ordre : `ORDRE_RENDU_CALQUES` de `mapDraw.ts`). Le panneau
+   *  de calques de l'écran hôte est la seule source d'intention. Renvoie false
+   *  pour un identifiant inconnu ; un calque sans couche carte est un no-op. */
+  setLayerState: (id: string, state: { visible: boolean; opacite?: number }) => boolean;
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET

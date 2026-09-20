@@ -31,6 +31,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import api from '../../api/axios'
+import { store } from '../../store'
 import ventesApi from '../../api/ventesApi'
 import aoApi from '../../api/aoApi'
 import crmApi from '../../api/crmApi'
@@ -42,6 +43,10 @@ import calepinageApi from '../../api/calepinageApi'
 // CAL180 l'export image, CAL242 la reprise de contour AO) posent leurs
 // panneaux : aucune d'elles n'a donc à rouvrir ce fichier.
 import AtelierPanneaux from '../../features/calepinage/AtelierPanneaux'
+// CAL103 — le panneau de CALQUES de l'atelier (visibilité + opacité, ordre de rendu
+// déterminé, état persisté par utilisateur). Additif : les bascules historiques
+// (tracé client, photo réelle) restent en place et continuent de fonctionner.
+import PanneauCalques from '../../features/calepinage/PanneauCalques'
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
@@ -378,6 +383,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // pendant le boot) et ne JAMAIS rattraper l'état voulu. Cet état, lui,
   // déclenche un re-rendu à l'arrivée de l'API — voir l'effet plus bas.
   const [builderReady, setBuilderReady] = useState(false)
+  // CAL103 — clé de persistance des calques : l'utilisateur connecté. Lu sur le store
+  // (et non par `useSelector`) pour que cet écran reste montable SANS Provider, comme
+  // le font déjà ses tests ; store indisponible ⇒ null ⇒ clé « anonyme », jamais une
+  // exception.
+  const utilisateurCourantId = useMemo(() => {
+    try { return store.getState()?.auth?.user?.id ?? null } catch { return null }
+  }, [])
   // WIR227/QJ25 — contour OSM du bâtiment épinglé (mode lead uniquement) :
   // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
   // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
@@ -1994,6 +2006,20 @@ export default function ToitureDesign({ mode = 'lead' }) {
             les boutons que les tâches suivantes y accrochent). Rendu AUSSI en
             lecture seule : consulter une conception figée reste utile, seule
             l'écriture disparaît. */}
+        {/* CAL103 — PANNEAU DE CALQUES : une seule liste pour imagerie, cadastre,
+            photo calée, plan importé, tracé client, obstacles, zones, panneaux,
+            ombres et mesures — visibilité + opacité, dans un ordre de rendu
+            déterminé. Monté dès que le builder expose son API (sans elle, il n'y
+            aurait rien à piloter). */}
+        {builderReady && (
+          <div className="mt-4" data-testid="cal-panneau-calques">
+            <PanneauCalques
+              utilisateurId={utilisateurCourantId}
+              onChange={(id, etat) => builderApi.current?.setLayerState?.(id, etat)}
+            />
+          </div>
+        )}
+
         {estCalepinage && contexte && (
           <AtelierPanneaux
             calepinageId={calepinageId}
