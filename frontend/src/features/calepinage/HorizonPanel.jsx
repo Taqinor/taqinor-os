@@ -1,16 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
-import {
-  sortedHorizonPoints,
-  horizonHeightAtAzimuth,
-  horizonMaxHeightDeg,
-  heuresMasqueesEstimation,
-  sunPathForDay,
-  JOUR_EQUINOXE,
-  JOUR_SOLSTICE_ETE,
-  JOUR_SOLSTICE_HIVER,
-} from './horizonMath'
+import { sortedHorizonPoints, horizonMaxHeightDeg, heuresMasqueesEstimation } from './horizonMath'
+import SunDiagram, { COURBES_REPERE } from './SunDiagram'
 
 /* ============================================================================
    CAL93 — L'HORIZON LOINTAIN, tracé en fond de la course du soleil, et appliqué
@@ -39,77 +31,6 @@ import {
    compte d'heures masquées affichés ici sont TOUJOURS recalculés depuis les
    points actuels, jamais mémorisés indépendamment.
    ========================================================================== */
-
-const LARGEUR = 640
-const HAUTEUR = 260
-const MARGE_G = 40
-const MARGE_B = 24
-const HAUT_UTILE = HAUTEUR - MARGE_B - 10
-
-/** Azimut [0,360) → x écran. */
-function xDe(azimuthDeg) {
-  return MARGE_G + (azimuthDeg / 360) * (LARGEUR - MARGE_G - 10)
-}
-/** Élévation [0,90] → y écran (0° = ligne de base, 90° = haut). */
-function yDe(elevationDeg) {
-  const clamped = Math.max(0, Math.min(90, elevationDeg))
-  return HAUT_UTILE - (clamped / 90) * HAUT_UTILE
-}
-
-const COURBES_REPERE = [
-  { jour: JOUR_SOLSTICE_ETE, label: 'Solstice d’été', couleur: '#e0b25c' },
-  { jour: JOUR_EQUINOXE, label: 'Équinoxe', couleur: '#8f9bb8' },
-  { jour: JOUR_SOLSTICE_HIVER, label: 'Solstice d’hiver', couleur: '#5c7ce0' },
-]
-
-/** Le diagramme SVG : la course du soleil (trois jours de repère) EN FOND, l'horizon
- *  saisi TRACÉ PAR-DESSUS (aire pleine, pour bien lire ce qui est masqué). Pur — reçoit
- *  tout ce dont il a besoin en props, ne fait aucun calcul de données. */
-function DiagrammeHorizon({ latitudeDeg, points }) {
-  const sorted = sortedHorizonPoints(points)
-  const horizonPath = useMemo(() => {
-    if (sorted.length < 2) return null
-    const pas = 2
-    let d = `M ${xDe(0)} ${yDe(0)}`
-    for (let az = 0; az <= 360; az += pas) {
-      const h = horizonHeightAtAzimuth(sorted, az) ?? 0
-      d += ` L ${xDe(az)} ${yDe(h)}`
-    }
-    d += ` L ${xDe(360)} ${yDe(0)} Z`
-    return d
-  }, [sorted])
-
-  return (
-    <svg
-      viewBox={`0 0 ${LARGEUR} ${HAUTEUR}`}
-      role="img"
-      aria-label="Course du soleil et horizon lointain, par azimut"
-      className="w-full"
-      data-testid="cal-horizon-diagramme"
-    >
-      {/* Axe azimut (N/E/S/O/N) */}
-      {[0, 90, 180, 270, 360].map((az, i) => (
-        <text key={az} x={xDe(az)} y={HAUTEUR - 6} fontSize="11" fill="#8f9bb8" textAnchor="middle">
-          {['N', 'E', 'S', 'O', 'N'][i]}
-        </text>
-      ))}
-      <line x1={MARGE_G} y1={yDe(0)} x2={LARGEUR - 10} y2={yDe(0)} stroke="#3a4258" strokeWidth="1" />
-
-      {/* CAL96/CAL93 — course du soleil EN FOND, trois jours de repère */}
-      {typeof latitudeDeg === 'number' &&
-        COURBES_REPERE.map((c) => {
-          const path = sunPathForDay(latitudeDeg, c.jour, 0.5)
-          if (!path.length) return null
-          const d = path.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xDe(p.azimuthDeg)} ${yDe(p.elevationDeg)}`).join(' ')
-          return <path key={c.jour} d={d} fill="none" stroke={c.couleur} strokeWidth="1.5" opacity="0.85" />
-        })}
-
-      {/* L'horizon lointain, en aire pleine par-dessus la course du soleil : ce qui est
-          sous l'aire est masqué. */}
-      {horizonPath && <path d={horizonPath} fill="rgba(90,60,30,0.55)" stroke="#a06a2a" strokeWidth="1.5" />}
-    </svg>
-  )
-}
 
 function nombre(brut) {
   if (brut === null || brut === undefined || brut === '') return null
@@ -191,7 +112,7 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
   }
 
   if (chargement) {
-    return <div className="cine-card mt-6 p-6" data-testid="cal-horizon">Chargement…</div>
+    return <div className="cine-card mt-6 p-6" data-testid="cal-horizon-loading">Chargement…</div>
   }
 
   return (
@@ -205,7 +126,12 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
       </p>
 
       <div className="mt-4">
-        <DiagrammeHorizon latitudeDeg={latitudeDeg} points={points} />
+        <SunDiagram
+          latitudeDeg={latitudeDeg}
+          horizonPoints={points}
+          ariaLabel="Course du soleil et horizon lointain, par azimut"
+          testId="cal-horizon-diagramme"
+        />
         <div className="mt-1 flex flex-wrap gap-3 text-xs text-lune-faint">
           {COURBES_REPERE.map((c) => (
             <span key={c.jour} className="inline-flex items-center gap-1">

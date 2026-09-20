@@ -90,6 +90,11 @@ const SchemaUnifilairePanel = lazy(() => import('./SchemaUnifilairePanel'))
    poste de perte séparé de l'ombrage proche. Contextuel à UN calepinage : deep-link,
    jamais un item de menu (une entrée permanente n'aurait aucun calepinage à désigner). */
 const HorizonPanel = lazy(() => import('./HorizonPanel'))
+/* CAL96 — la course du soleil par pan (azimut/hauteur, solstices+équinoxe), avec
+   l'horizon CAL92/CAL93 et les obstructions proches CAL94 surimprimés. Contextuelle à
+   UN calepinage : deep-link, jamais un item de menu (un pan n'existe que dans un
+   calepinage donné). */
+const CourseSoleil = lazy(() => import('./CourseSoleil'))
 
 const config = {
   key: 'calepinage',
@@ -144,6 +149,8 @@ const config = {
     { path: '/calepinage/:id/schema', component: SchemaUnifilairePanel, roles: ROLES },
     // CAL93 — contextuelle elle aussi : l'horizon lointain d'UN calepinage.
     { path: '/calepinage/:id/horizon', component: HorizonPanel, roles: ROLES },
+    // CAL96 — contextuelle : la course du soleil par pan d'UN calepinage.
+    { path: '/calepinage/:id/course-soleil', component: CourseSoleil, roles: ROLES },
   ],
 }
 
