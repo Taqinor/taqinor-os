@@ -155,6 +155,47 @@ class ContexteConceptionTest(BaseApiCalepinage):
         self.assertEqual(geometrie['outline'], dessine)
         self.assertEqual(geometrie['contour_client'], contour_client)
 
+    def test_zones_sans_sommets_ne_comptent_pas_pour_une_geometrie(self):
+        """Un premier enregistrement AVANT tout dessin garde le tracé client.
+
+        Constat production (20/09/2026) : ``/calepinage/<id>`` restait figé
+        (« Devis chargé — tracez le contour du toit », zéro pan, zéro requête
+        de rendement) là où ``/ventes/devis/<id>/design`` ouvrait le toit du
+        MÊME lead. Le sérialiseur de l'atelier émet TOUJOURS une zone (il
+        projette la zone par défaut) : « Enregistrer » avant tout dessin écrit
+        ``{outline: [], zones: [{vertices: []}]}``. L'ancien test (« ``zones``
+        présent ? ») lisait ce layout comme un calepinage déjà dessiné et
+        jetait le contour du client.
+        """
+        contour = [[33.5731, -7.5898], [33.5732, -7.5898], [33.5732, -7.5897]]
+        self.lead_lie.roof_outline = contour
+        self.lead_lie.save(update_fields=['roof_outline'])
+        calepinage = Calepinage.objects.create(
+            company=self.company, lead_id=self.lead_lie.pk,
+            titre='Enregistré avant tout dessin',
+            roof_layout={'version': 2, 'pin': None, 'outline': [],
+                         'zones': [{'id': 'z1', 'label': 'Zone 1',
+                                    'vertices': []}],
+                         'activeAreaId': 'z1'})
+        geometrie = self._contexte(calepinage)['geometrie']
+        self.assertEqual(geometrie['outline'], contour)
+        self.assertEqual(geometrie['pin'], {'lat': 33.5731, 'lng': -7.5898})
+        self.assertEqual(geometrie['contour_client'], contour)
+
+    def test_adresse_du_client_servie_comme_en_mode_devis(self):
+        """L'atelier pré-remplit sa barre d'adresse : le serveur la fournit."""
+        self.lead_lie.adresse = 'Cour Golf, 17000 Nouaceur'
+        self.lead_lie.save(update_fields=['adresse'])
+        bloc = self._contexte(self.avec_devis)['calepinage']
+        self.assertEqual(bloc['client_adresse'], 'Cour Golf, 17000 Nouaceur')
+        self.assertEqual(bloc['client_ville'], 'Casablanca')
+
+    def test_adresse_inconnue_vaut_une_chaine_vide(self):
+        """Jamais une clé absente, jamais une adresse inventée."""
+        bloc = self._contexte(self.nu)['calepinage']
+        self.assertEqual(bloc['client_adresse'], '')
+        self.assertEqual(bloc['client_ville'], '')
+
     def test_autre_societe_introuvable(self):
         reponse = self.api.get(url_contexte(self.etranger.pk))
         self.assertEqual(reponse.status_code, 404)

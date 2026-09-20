@@ -303,6 +303,41 @@ describe('ToitureDesign — mode calepinage (CAL37)', () => {
     expect(options.hydrate.devis.cibleVendue).toBe(false)
   })
 
+  /* RÉGRESSION (même constat du 20/09/2026, seconde moitié) — la barre de
+     recherche d'adresse restait VIDE en mode calepinage, alors que le mode
+     devis l'ouvre pré-remplie depuis le contexte (`bootDevis`, PV23bis) : le
+     commercial devait retaper une adresse que le serveur connaît déjà. */
+  it('la barre d’adresse part pré-remplie depuis le contexte, comme en mode devis', async () => {
+    const CTX_LEAD = exempleContrat('calepinage', 'calepinage_design_context',
+      'exemple_sans_devis')
+    calepinageApi.calepinages.designContext.mockResolvedValue(
+      reponseContrat('calepinage', 'calepinage_design_context',
+        'exemple_sans_devis'))
+
+    rendreCalepinage(CTX_LEAD.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const attendue = [CTX_LEAD.calepinage.client_adresse,
+      CTX_LEAD.calepinage.client_ville].filter(Boolean).join(', ')
+    expect(attendue).not.toBe('')
+    await waitFor(() => expect(document.getElementById('rp9-address').value)
+      .toBe(attendue))
+  })
+
+  it('adresse inconnue : la barre reste vide (aucune adresse inventée)', async () => {
+    // L'exemple vide sert `carte.available: false` (le builder ne booterait
+    // pas) : on lui rend la carte du premier exemple pour n'observer QUE
+    // l'adresse.
+    calepinageApi.calepinages.designContext.mockResolvedValue({
+      data: { ...CTX_VIDE, carte: CTX.carte },
+    })
+
+    rendreCalepinage(CTX_VIDE.calepinage.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(document.getElementById('rp9-address').value).toBe('')
+  })
+
   it('lecture seule : la raison du serveur s’affiche et le bouton disparaît', async () => {
     calepinageApi.calepinages.designContext.mockResolvedValue({
       data: {
