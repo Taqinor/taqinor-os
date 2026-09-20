@@ -41,6 +41,10 @@ from .public_btp_views import (
 )
 from .public_uxviews_views import PublicFavoriViewSet, PublicSavedViewViewSet
 from .public_achats_views import PublicDemandeAchatViewSet, PublicRFQViewSet
+from .public_fiabilite_views import (
+    PublicFiabiliteSauvegardesView, PublicFiabiliteSlaView,
+    PublicFiabiliteUsageView,
+)
 
 router = DefaultRouter()
 router.register(r'leads', PublicLeadViewSet, basename='public-lead')
@@ -135,5 +139,14 @@ urlpatterns = [
     # NTSCM38 — tableau de bord réappro consolidé (NTSCM7), objet unique.
     path('scm/tableau-bord-reappro/', PublicScmTableauBordReapproView.as_view(),
          name='public-scm-tableau-bord-reappro'),
+    # NTOBS27 — surface « Fiabilité » en lecture seule (scope `fiabilite:lecture`),
+    # trois objets uniques scopés société : sauvegardes (NTOBS5), rapport SLA
+    # mensuel (NTOBS3) et limites & usage (NTOBS8).
+    path('fiabilite/sauvegardes/', PublicFiabiliteSauvegardesView.as_view(),
+         name='public-fiabilite-sauvegardes'),
+    path('fiabilite/sla/<str:periode>/', PublicFiabiliteSlaView.as_view(),
+         name='public-fiabilite-sla'),
+    path('fiabilite/usage/', PublicFiabiliteUsageView.as_view(),
+         name='public-fiabilite-usage'),
     path('', include(router.urls)),
 ]

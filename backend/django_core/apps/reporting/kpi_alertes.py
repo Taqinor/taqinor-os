@@ -196,6 +196,22 @@ def _compute_btp(company, cle):
     return Decimal(str(valeur))
 
 
+def _compute_i18n(company, cle):
+    """NTI18N52 — une des deux valeurs du sélecteur dédié
+    ``apps.reporting.i18n_kpi`` (import paresseux, même patron que les autres).
+
+    ``None`` = non mesurable (KPI ignoré, tuile masquée), jamais un 0 trompeur :
+    ``couverture_i18n_pct`` vaut ``None`` tant qu'aucun instantané NTI18N39
+    n'existe, et ``documents_non_fr_pct`` vaut ``None`` tant que la langue d'un
+    PDF généré n'est journalisée nulle part (voir ``i18n_kpi.py``).
+    """
+    from .i18n_kpi import kpis_i18n
+    valeur = kpis_i18n(company).get(cle)
+    if valeur is None:
+        return None
+    return Decimal(str(valeur))
+
+
 def _kpis_juridiques(company, user):
     """NTJUR48 — les quatre KPI juridiques en UN seul appel au sélecteur de
     ``apps.juridique`` (import paresseux — ``reporting`` reste un satellite,
@@ -291,6 +307,14 @@ _KPI_COMPUTERS = {
         _compute_btp(company, 'btp_visas_en_attente'),
     KpiAlerte.Kpi.BTP_PENALITES_CUMULEES_PERIODE: lambda company, user:
         _compute_btp(company, 'btp_penalites_cumulees_periode'),
+    # NTI18N52 — KPI i18n : mesures du PRODUIT (couverture de l'interface) et
+    # des documents produits, indépendantes du `user` et d'un module métier
+    # (aucune entrée dans KPI_MODULE : ils ne sont jamais masqués par une
+    # édition, ils dégradent d'eux-mêmes en `None` quand la mesure manque).
+    KpiAlerte.Kpi.COUVERTURE_I18N_PCT: lambda company, user:
+        _compute_i18n(company, 'couverture_i18n_pct'),
+    KpiAlerte.Kpi.DOCUMENTS_NON_FR_PCT: lambda company, user:
+        _compute_i18n(company, 'documents_non_fr_pct'),
 }
 
 

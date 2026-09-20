@@ -24,7 +24,14 @@ app.autodiscover_tasks()
 # gardien core/tests/test_celery_task_routes.py (tâche planifiée ⇒ tâche
 # enregistrée) refuse toute nouvelle divergence.
 for _related_name in ('scheduled', 'beat_tasks', 'sweeps', 'digests',
-                      'scheduled_reports'):
+                      'scheduled_reports',
+                      # NTI18N39 — `core/tasks_i18n.py` : module de tâche dédié
+                      # (core/tasks.py appartient à une autre lane). Aucun des
+                      # cinq noms conventionnels ci-dessus ne le couvre, donc
+                      # sans cette entrée le worker ne l'importerait jamais et
+                      # `core.recalculer_couverture_i18n` serait « unregistered
+                      # task » — exactement l'incident du 14/09/2026.
+                      'tasks_i18n'):
     app.autodiscover_tasks(related_name=_related_name)
 
 # G9 — Celery Beat. Toute la logique de temps des jobs raisonne en
@@ -1392,6 +1399,14 @@ app.conf.beat_schedule = {
     'core-verifier-fraicheur-trust-center': {
         'task': 'core.verifier_fraicheur_trust_center',
         'schedule': crontab(hour=6, minute=30),
+    },
+    # NTI18N39 — recalcul HEBDOMADAIRE de la couverture i18n (NTI18N28), le
+    # lundi tôt : l'instantané de la semaine est prêt avant la journée de
+    # travail, et la clé d'idempotence (société, lundi de la semaine) rend un
+    # rejeu inoffensif.
+    'core-recalculer-couverture-i18n': {
+        'task': 'core.recalculer_couverture_i18n',
+        'schedule': crontab(day_of_week=1, hour=5, minute=20),
     },
 }
 

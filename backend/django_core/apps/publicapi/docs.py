@@ -10,7 +10,7 @@ HMAC `X-Taqinor-Signature`.
 La source de vérité des scopes/évènements reste `constants.py` : on lit
 `SCOPE_CHOICES`/`EVENT_CHOICES` pour ne jamais diverger de l'implémentation.
 """
-from .constants import SCOPE_CHOICES, EVENT_CHOICES
+from .constants import SCOPE_CHOICES, EVENT_CHOICES, SCOPE_READ_FIABILITE
 from .auth import AUTH_KEYWORD
 from .delivery import (
     SIGNATURE_HEADER, SIGNATURE_HEADER_V2, EVENT_HEADER, TIMESTAMP_HEADER,
@@ -485,6 +485,44 @@ def public_api_reference():
                         "Tableau de bord réappro consolidé (NTSCM7) — "
                         "``{'lignes': [...]}``. Le coût d'achat interne "
                         "est toujours retiré avant sérialisation."
+                    ),
+                },
+                # NTOBS27 — gouvernance fournisseur : les trois ressources
+                # Fiabilité, chacune scopée à la société de la clé.
+                {
+                    'chemin': '/api/public/v1/fiabilite/sauvegardes/',
+                    'scope': SCOPE_READ_FIABILITE,
+                    'description': (
+                        "Dernière sauvegarde et dernier drill de restauration "
+                        "(NTOBS5) — ``{derniere_sauvegarde, dernier_drill, "
+                        "rpo_planifie, rto_annonce_heures}``, chaque champ "
+                        "``null`` quand la donnée n'existe pas encore. Les "
+                        "runs système-wide ne rendent que date + statut : "
+                        "jamais l'artefact, la clé d'objet de stockage, la "
+                        "taille ou le manifeste interne."
+                    ),
+                },
+                {
+                    'chemin': '/api/public/v1/fiabilite/sla/{periode}/',
+                    'scope': SCOPE_READ_FIABILITE,
+                    'description': (
+                        "Rapport SLA mensuel (NTOBS3) de la période "
+                        "``{periode}`` au format ``YYYY-MM`` — disponibilité, "
+                        "latence P95, crédit dû et son statut. Format de "
+                        "période invalide → 400 ; aucun rapport pour ce mois "
+                        "→ 404 (jamais un objet vide). ``latence_p95_ms`` et "
+                        "``credit_du_montant`` valent ``null`` quand la "
+                        "mesure ou le montant facturé est inconnu."
+                    ),
+                },
+                {
+                    'chemin': '/api/public/v1/fiabilite/usage/',
+                    'scope': SCOPE_READ_FIABILITE,
+                    'description': (
+                        "Limites & usage (NTOBS8) — ``{ressources: [...], "
+                        "genere_le}``. Une ressource dont la source est "
+                        "indisponible est simplement OMISE, jamais remplie "
+                        "d'une valeur inventée."
                     ),
                 },
             ],

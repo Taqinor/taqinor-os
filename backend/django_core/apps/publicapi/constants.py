@@ -67,6 +67,20 @@ SCOPE_READ_VUES = 'read:vues'
 # voir `apps/publicapi/public_achats_views.py`, qui justifie chaque omission.
 SCOPE_READ_ACHATS = 'lecture_achats'
 
+# NTOBS27 — surface « Fiabilité » en LECTURE SEULE, pour qu'un client
+# grand-compte branche son propre dashboard de gouvernance fournisseur :
+# dernière sauvegarde + drill (NTOBS5), rapport SLA mensuel (NTOBS3) et résumé
+# « Limites & usage » (NTOBS8), toujours scopés à la société de la clé.
+# Identifiant tel que nommé au plan (``fiabilite:lecture``) — il ne suit pas le
+# préfixe ``read:`` des scopes historiques, c'est volontaire et figé ici (même
+# exception assumée que ``juridique:read``, NTJUR41, et ``lecture_achats``,
+# NTP2P39).
+# CE SCOPE N'OUVRE AUCUN INTERNE D'INFRASTRUCTURE : ni clé d'objet MinIO, ni
+# taille de dump, ni manifeste de bundle, ni la vue cross-tenant NTOBS4 des
+# crédits dus — voir `apps/publicapi/public_fiabilite_views.py`, qui justifie
+# chaque omission.
+SCOPE_READ_FIABILITE = 'fiabilite:lecture'
+
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
 # viennent de STAGES.py (jamais hardcodés).
@@ -100,6 +114,8 @@ SCOPE_CHOICES = [
      "Lire les vues sauvegardées d'équipe, ou d'un utilisateur consentant (?owner=)"),
     (SCOPE_READ_ACHATS,
      "Lire les demandes d'achat et les demandes de prix (sans aucun prix d'achat)"),
+    (SCOPE_READ_FIABILITE,
+     'Lire la fiabilité (sauvegardes, rapport SLA mensuel, limites & usage)'),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
     (SCOPE_WRITE_DEVIS, 'Créer un devis brouillon (jamais envoyé/accepté)'),
