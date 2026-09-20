@@ -31,11 +31,11 @@ import logging
 
 from django.dispatch import receiver
 
-from core.events import layout_finalise
+from core.events import devis_sent, layout_finalise, lead_created
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['miroir_layout_du_devis']
+__all__ = ['miroir_layout_du_devis', 'reverrouiller_au_devis_sent', 'reprise_du_trace_public']
 
 
 @receiver(layout_finalise, dispatch_uid='calepinage_miroir_layout_finalise')
@@ -68,3 +68,64 @@ def miroir_layout_du_devis(sender, devis, user=None, **kwargs):
         logger.exception(
             'CAL39 : miroir de conception en échec pour le devis %s',
             getattr(devis, 'pk', None))
+
+
+@receiver(devis_sent, dispatch_uid='calepinage_reverrouiller_devis_sent')
+def reverrouiller_au_devis_sent(sender, devis, user=None, **kwargs):
+    """CAL207 — RE-FERME le calepinage lié à chaque nouvel envoi du devis.
+
+    Un déverrouillage explicite (``services.verrou.deverrouiller``) ne
+    survit donc jamais à un cycle brouillon → renvoyé : le geste
+    « Réviser » de ventes remet le devis en brouillon (débloquant déjà
+    ``enregistrer_layout`` via ``est_verrouille``), et le RE-envoi referme
+    le calepinage comme le premier envoi l'avait fait.
+
+    Best-effort, TOUJOURS : ne fait jamais échouer l'envoi du devis déjà
+    réussi.
+    """
+    company = getattr(devis, 'company', None)
+    if devis is None or company is None:
+        return
+    try:
+        from .selectors import calepinage_du_devis
+        from .services.verrou import reverrouiller
+
+        calepinage = calepinage_du_devis(devis.pk, company)
+        if calepinage is not None:
+            reverrouiller(calepinage, user=user)
+    except Exception:  # noqa: BLE001 — un verrou ne casse jamais l'envoi
+        logger.exception(
+            'CAL207 : reverrouillage en échec pour le devis %s',
+            getattr(devis, 'pk', None))
+
+
+@receiver(lead_created, dispatch_uid='calepinage_reprise_trace_public')
+def reprise_du_trace_public(sender, lead=None, company=None, **kwargs):
+    """CAL110 — un lead issu de « mon toit » ouvre un calepinage PRÉ-TRACÉ.
+
+    PATRON M6 : c'est l'app CONSOMMATRICE qui s'abonne. ``apps.crm`` n'a
+    aucune connaissance du module Calepinage, et ce module ne touche jamais
+    les modèles crm — il lit le lead par ``apps.crm.selectors`` (dans le
+    service) et n'écrit rien chez crm : ``roof_outline`` et ``roof_point`` du
+    lead restent exactement ce qu'ils sont.
+
+    ZÉRO CRÉATION SILENCIEUSE : un lead sans tracé exploitable, ou déjà doté
+    d'un calepinage, n'en reçoit AUCUN (le service tranche, pas ce récepteur).
+
+    BEST-EFFORT, TOUJOURS : une reprise en échec ne doit JAMAIS faire échouer
+    la création du lead — un lead perdu coûte infiniment plus cher qu'un
+    calepinage à recréer à la main. L'erreur est journalisée, pas propagée.
+    """
+    societe = company if company is not None else getattr(lead, 'company',
+                                                          None)
+    lead_id = getattr(lead, 'pk', None)
+    if societe is None or not lead_id:
+        return
+    try:
+        from .services.reprise_public import reprendre_trace_public
+
+        reprendre_trace_public(lead_id, societe)
+    except Exception:  # noqa: BLE001 — une reprise ne casse jamais un lead
+        logger.exception(
+            'CAL110 : reprise du tracé public en échec pour le lead %s',
+            lead_id)

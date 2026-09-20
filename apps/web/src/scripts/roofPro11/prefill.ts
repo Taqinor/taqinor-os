@@ -23,6 +23,7 @@ import { ROOF_TYPES } from '../../lib/lead';
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 import { deduceEdgeTypes, type SerializedEdge, type EdgeDeductionZone } from './edges';
 import { type EnvironmentObject } from './environment';
+import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone } from './zones';
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -507,6 +508,10 @@ export interface SerializedLayout {
   /** CAL67 — objets d'environnement (arbres/bâtiments voisins) posés HORS contour. Omis
    *  ou vide = aucun objet (comportement historique, byte pour byte). */
   environment?: EnvironmentObject[];
+  /** CAL68/CAL69 — zones INTERDITE/RESERVEE/PREFEREE tracées dans l'atelier. Le nom du
+   *  tableau est `exclusionZones` (CAL232 : `zones` est PRIS par les pans depuis la v1).
+   *  Omis ou vide = aucune zone (comportement historique, byte pour byte). */
+  exclusionZones?: ReturnType<typeof serializeExclusionZones>;
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -677,6 +682,10 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     // CAL67 — les objets d'environnement (arbres/bâtiments voisins) voyagent avec le
     // design, comme les mesures et l'ombrage tracé ci-dessus.
     ...(ctx.environment && ctx.environment.length ? { environment: serializeEnvironment(ctx.environment) } : {}),
+    // CAL69 — additif : rien n'est émis tant qu'aucune zone n'est tracée.
+    ...(ctx.exclusionZones && ctx.exclusionZones.length
+      ? { exclusionZones: serializeExclusionZones(ctx.exclusionZones) }
+      : {}),
   };
 }
 
@@ -941,4 +950,12 @@ export function referenceContourRing(brut: RawContourPoint[] | null | undefined)
     if (coordonneeValide(lat, lng)) ring.push([lng, lat]);
   }
   return ring.length >= 3 ? ring : null;
+}
+
+/** CAL69 — relit les zones d'exclusion d'un document d'atelier. Accepte soit le layout
+ *  complet (lit `.exclusionZones`), soit déjà le tableau brut. JSON douteux ⇒ tableau
+ *  vide, jamais une exception — même esprit que `deserializeMeasurements`. */
+export function deserializeExclusionZonesFromLayout(json: unknown): ExclusionZone[] {
+  const raw = (json as { exclusionZones?: unknown } | null | undefined)?.exclusionZones ?? json;
+  return deserializeExclusionZones(raw);
 }

@@ -460,6 +460,44 @@ function SyntheseCalepinage({ synthese }) {
    `aoApi.affaires.get(id)` qui a déjà chargé `affaire` (parent), jamais un
    second fetch : ce composant ne fait qu'AFFICHER ce qu'`AffaireDetail` lui
    passe. */
+/* ── CAL41 — Ouvrir le calepinage 3D de l'affaire ─────────────────────────
+   Après CAL32, l'affaire PORTE un `calepinage_id` (servi, jamais accepté :
+   `AppelOffreSerializer.read_only_fields`) — mais AUCUN écran ne le montrait,
+   donc le module autonome restait injoignable depuis l'affaire qui l'a fait
+   naître.
+
+   NULL-SAFE HIDDEN : pas d'identifiant ⇒ RIEN. Jamais un lien mort vers
+   `/calepinage/undefined`, jamais un bouton grisé qui laisserait croire qu'un
+   calepinage existe.
+
+   LA PHRASE DE PRÉSÉANCE EST CITÉE MOT POUR MOT depuis
+   `docs/calepinage-module.md` (CAL239, section « À citer sur l'écran d'affaire
+   (CAL41) ») : c'est la règle qui empêche un chargé d'affaires de croire que
+   ce qu'il ajuste en 3D change le bordereau qu'il va remettre. La route
+   `design` (studio 2D opposable, `mode="ao"`) n'est pas touchée. */
+function LienCalepinage3D({ calepinageId }) {
+  if (!calepinageId) return null
+  return (
+    <Card className="flex flex-col gap-2 p-4" data-ao-lien-calepinage="">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-medium text-foreground">
+          Calepinage 3D de cette affaire
+        </span>
+        <Link
+          to={`/calepinage/${calepinageId}`}
+          className="text-sm font-medium underline-offset-4 hover:underline"
+        >
+          Ouvrir le calepinage 3D
+        </Link>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Le bordereau est servi par la variante 2D retenue. Le calepinage 3D est
+        un document de travail.
+      </p>
+    </Card>
+  )
+}
+
 function OngletCalepinages({ affaireId, synthese }) {
   const params = useMemo(() => ({ appel_offre: affaireId }), [affaireId])
   const [choisie, setChoisie] = useState(null)
@@ -724,7 +762,15 @@ export default function AffaireDetail() {
         {
           value: 'calepinages',
           label: 'Calepinages',
-          content: <OngletCalepinages affaireId={id} synthese={affaire.synthese_calepinage} />,
+          content: (
+            <div className="flex flex-col gap-3">
+              {/* CAL41 — la porte vers le module autonome, AU-DESSUS du studio
+                  2D opposable : le lien n'est rendu que si l'affaire porte
+                  vraiment un `calepinage_id`. */}
+              <LienCalepinage3D calepinageId={affaire.calepinage_id} />
+              <OngletCalepinages affaireId={id} synthese={affaire.synthese_calepinage} />
+            </div>
+          ),
         },
         {
           value: 'bordereau',

@@ -26,6 +26,7 @@ import { type FreeLayoutState, type FreeMargins } from '../../lib/freeLayout';
 import { type ShadeObstruction } from '../../lib/shadingEngine';
 import { type Measurement } from './mesureUi';
 import { type EnvironmentObject } from './environment';
+import { type ExclusionZone, type ExclusionNature } from './zones';
 import {
   type InitOptions,
   type RoofType,
@@ -247,6 +248,12 @@ export interface Ctx {
    *  ref STABLE (tableau muté en place, comme `shadeObstructions`). Optionnel : absent
    *  sur un `ctx` antérieur à CAL67 (tests unitaires isolés) → traité comme vide. */
   environment?: EnvironmentObject[];
+  // CAL69 — zones INTERDITE/RESERVEE/PREFEREE tracées dans l'atelier, persistées telles
+  // quelles sous `exclusionZones` (contrat CAL68). Absentes = aucune zone.
+  exclusionZones?: ExclusionZone[];
+  zoneCounter?: number;
+  /** Nature en attente de tracé : posée par le panneau, lue par `endDraw`. */
+  pendingZoneNature?: ExclusionNature | null;
   /** CAL67 — compteur d'identifiants d'objet d'environnement (env-N). Optionnel : absent
    *  sur un `ctx` antérieur à CAL67 → `obstaclesUi.ts` l'initialise à 0 au premier ajout. */
   envCounter?: number;

@@ -12,6 +12,7 @@ import { fmt, fmtMad, esc } from './dom';
 import { type Ctx } from './context';
 import { type AreaRecord } from './types';
 import { type RoofShapePan, type RoofShapePreset } from './scene3d';
+import { type LngLat } from '../../lib/roof';
 import { computePanStats, hasMultipleBuildings, type PanStat } from './panStats';
 
 /**
@@ -268,4 +269,196 @@ export function createZones(ctx: Ctx): Zones {
     renderAreasPanel,
     setAreaBuilding,
   };
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL69 — ZONES INTERDITES / RÉSERVÉES / PRÉFÉRÉES TRACÉES DANS L'ATELIER
+//
+// L'atelier ne proposait que « + Ajouter une zone » au sens PAN DE TOIT : une
+// servitude ou une bande coupe-feu tracée par le dessinateur ne changeait RIEN au
+// compte publié. Ce bloc porte la zone d'EXCLUSION au sens CAL68, écrivant EXACTEMENT
+// le contrat `exclusionZones` du document v2 (`contract_samples/zones.json`,
+// `roof_layout_v2.schema.json` `$defs/exclusionZone`) : `id`, `label`, `nature`,
+// `vertices` [[lng, lat], …], `setbackM`, `heightM`.
+//
+// LES DEUX GARANTIES DE CAL68, TENUES CÔTÉ ÉCRAN :
+//  - INTERDITE et RESERVEE retirent leur surface du posable ⇒ le compte de modules
+//    bouge IMMÉDIATEMENT (leurs anneaux rejoignent les obstructions du pavage) ;
+//  - PREFEREE ne change JAMAIS un compte (bonus doux de départage côté moteur) ⇒
+//    elle ne rejoint AUCUNE obstruction.
+// ENVELOPPE existe dans le vocabulaire du moteur mais ne se trace pas ici : c'est le
+// contour lui-même.
+//
+// GÉOMÉTRIE PURE : aucun Three, aucun DOM, aucune carte — testable seule.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Natures traçables dans l'atelier (sous-ensemble de `core.calepinage.types.NatureZone` :
+ *  ENVELOPPE est le contour, il ne se dessine pas comme une zone). */
+export type ExclusionNature = 'INTERDITE' | 'RESERVEE' | 'PREFEREE';
+
+export const EXCLUSION_NATURES: readonly { id: ExclusionNature; label: string; note: string }[] = [
+  { id: 'INTERDITE', label: 'Interdite', note: 'retirée du posable — le compte baisse' },
+  { id: 'RESERVEE', label: 'Réservée', note: 'retirée du posable, chiffrée à part' },
+  { id: 'PREFEREE', label: 'Préférée', note: 'ne change jamais le compte' },
+];
+
+/** Code couleur DISTINCT de celui des obstacles (`#ff6b6b`) : une zone n'est pas un
+ *  obstacle physique, on ne doit pas les confondre à l'œil. */
+export const EXCLUSION_COLORS: Record<ExclusionNature, string> = {
+  INTERDITE: '#8b5cf6',
+  RESERVEE: '#38bdf8',
+  PREFEREE: '#22c55e',
+};
+
+export function exclusionColor(nature: ExclusionNature): string {
+  return EXCLUSION_COLORS[nature] ?? EXCLUSION_COLORS.INTERDITE;
+}
+
+/** Une zone d'exclusion du document d'atelier — MÊMES noms de clés que le contrat. */
+export interface ExclusionZone {
+  id: string;
+  label?: string;
+  nature: ExclusionNature;
+  /** Contour [[lng, lat], …], même repère que `zones[].vertices` (les pans). */
+  vertices: LngLat[];
+  /** Retrait SAISI (m) autour de la zone. Jamais deviné : 0 tant que rien n'est saisi. */
+  setbackM: number;
+  /** Hauteur (m). `null`/absente = non renseignée — jamais un repli. */
+  heightM?: number | null;
+}
+
+/** Retrait PLANCHER/PLAFOND (m) — mêmes ordres de grandeur que les obstacles. */
+export const ZONE_MAX_SETBACK_M = 10;
+export const ZONE_MAX_HEIGHT_M = 60;
+
+const ZONE_DEG2RAD = Math.PI / 180;
+const ZONE_WGS84_RADIUS = 6378137;
+const ZONE_DEG2M = ZONE_DEG2RAD * ZONE_WGS84_RADIUS;
+
+function clampNum(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+/** Zone rectangulaire née d'un glissé (deux coins), retrait 0 et hauteur non renseignée :
+ *  RIEN n'est inventé tant que l'utilisateur n'a pas saisi. */
+export function exclusionZoneFromDrag(id: string, nature: ExclusionNature, a: LngLat, b: LngLat): ExclusionZone {
+  return {
+    id,
+    nature,
+    vertices: [a, [b[0], a[1]], b, [a[0], b[1]]],
+    setbackM: 0,
+  };
+}
+
+export function withZoneNature(z: ExclusionZone, nature: ExclusionNature): ExclusionZone {
+  return { ...z, nature };
+}
+
+export function withZoneSetback(z: ExclusionZone, setbackM: number | null | undefined): ExclusionZone {
+  if (setbackM == null || !Number.isFinite(setbackM) || setbackM <= 0) return { ...z, setbackM: 0 };
+  return { ...z, setbackM: clampNum(setbackM, 0, ZONE_MAX_SETBACK_M) };
+}
+
+export function withZoneHeight(z: ExclusionZone, heightM: number | null | undefined): ExclusionZone {
+  if (heightM == null || !Number.isFinite(heightM) || heightM <= 0) {
+    const { heightM: _drop, ...rest } = z;
+    return rest;
+  }
+  return { ...z, heightM: clampNum(heightM, 0, ZONE_MAX_HEIGHT_M) };
+}
+
+export function withZoneLabel(z: ExclusionZone, label: string | null | undefined): ExclusionZone {
+  const v = (label ?? '').trim();
+  if (!v) {
+    const { label: _drop, ...rest } = z;
+    return rest;
+  }
+  return { ...z, label: v };
+}
+
+/**
+ * Anneau AFFICHÉ/OPPOSÉ AU PAVAGE : le contour saisi, DILATÉ du retrait saisi (le
+ * retrait d'une zone dilate son emprise, exactement comme `sommets_decales` côté
+ * moteur). Retrait 0 ⇒ le contour tel quel. Moins de 3 sommets ⇒ rien à dessiner.
+ */
+export function exclusionZoneRing(z: ExclusionZone): LngLat[] | null {
+  if (!z.vertices || z.vertices.length < 3) return null;
+  if (!(z.setbackM > 0)) return z.vertices.map((v) => [v[0], v[1]] as LngLat);
+  let sumLng = 0;
+  let sumLat = 0;
+  for (const [lng, lat] of z.vertices) {
+    sumLng += lng;
+    sumLat += lat;
+  }
+  const cLng = sumLng / z.vertices.length;
+  const cLat = sumLat / z.vertices.length;
+  const cosLat = Math.max(1e-6, Math.cos(cLat * ZONE_DEG2RAD));
+  return z.vertices.map(([lng, lat]) => {
+    const dx = (lng - cLng) * ZONE_DEG2M * cosLat;
+    const dy = (lat - cLat) * ZONE_DEG2M;
+    const d = Math.hypot(dx, dy);
+    if (d < 1e-9) return [lng, lat] as LngLat;
+    const k = (d + z.setbackM) / d;
+    return [cLng + (dx * k) / (ZONE_DEG2M * cosLat), cLat + (dy * k) / ZONE_DEG2M] as LngLat;
+  });
+}
+
+/** Zones qui RETIRENT de la surface posable : INTERDITE et RESERVEE. PREFEREE jamais. */
+export function blockingExclusionZones(list: readonly ExclusionZone[] | null | undefined): ExclusionZone[] {
+  return (list ?? []).filter((z) => z.nature === 'INTERDITE' || z.nature === 'RESERVEE');
+}
+
+/** Anneaux d'obstruction apportés par les zones — à concaténer aux obstacles du pavage.
+ *  Une PRÉFÉRÉE n'en produit AUCUN : c'est ce qui garantit que le compte ne bouge pas. */
+export function exclusionObstructionRings(list: readonly ExclusionZone[] | null | undefined): LngLat[][] {
+  const out: LngLat[][] = [];
+  for (const z of blockingExclusionZones(list)) {
+    const ring = exclusionZoneRing(z);
+    if (ring) out.push(ring);
+  }
+  return out;
+}
+
+/** Sérialisation vers le document v2 (`exclusionZones`) : clés du contrat, rien de plus,
+ *  et aucune zone invalide (< 3 sommets) n'est écrite. */
+export function serializeExclusionZones(
+  list: readonly ExclusionZone[] | null | undefined,
+): Array<{ id: string; label?: string; nature: ExclusionNature; vertices: LngLat[]; setbackM: number; heightM: number | null }> {
+  const out: Array<{ id: string; label?: string; nature: ExclusionNature; vertices: LngLat[]; setbackM: number; heightM: number | null }> = [];
+  for (const z of list ?? []) {
+    if (!z || !Array.isArray(z.vertices) || z.vertices.length < 3) continue;
+    if (z.nature !== 'INTERDITE' && z.nature !== 'RESERVEE' && z.nature !== 'PREFEREE') continue;
+    out.push({
+      id: String(z.id),
+      ...(z.label ? { label: z.label } : {}),
+      nature: z.nature,
+      vertices: z.vertices.map((v) => [v[0], v[1]] as LngLat),
+      setbackM: Number.isFinite(z.setbackM) && z.setbackM > 0 ? z.setbackM : 0,
+      heightM: Number.isFinite(z.heightM as number) && (z.heightM as number) > 0 ? (z.heightM as number) : null,
+    });
+  }
+  return out;
+}
+
+/** Relecture d'un document : tolérante aux formes bancales, ne fabrique jamais de zone. */
+export function deserializeExclusionZones(json: unknown): ExclusionZone[] {
+  if (!Array.isArray(json)) return [];
+  const out: ExclusionZone[] = [];
+  for (const raw of json) {
+    const z = raw as Partial<ExclusionZone> | null;
+    if (!z || typeof z.id !== 'string') continue;
+    if (z.nature !== 'INTERDITE' && z.nature !== 'RESERVEE' && z.nature !== 'PREFEREE') continue;
+    const verts = Array.isArray(z.vertices)
+      ? z.vertices
+          .filter((v): v is LngLat => Array.isArray(v) && v.length === 2 && Number.isFinite(v[0]) && Number.isFinite(v[1]))
+          .map((v) => [v[0], v[1]] as LngLat)
+      : [];
+    if (verts.length < 3) continue;
+    let zone: ExclusionZone = { id: z.id, nature: z.nature, vertices: verts, setbackM: 0 };
+    zone = withZoneSetback(zone, typeof z.setbackM === 'number' ? z.setbackM : null);
+    zone = withZoneHeight(zone, typeof z.heightM === 'number' ? z.heightM : null);
+    zone = withZoneLabel(zone, typeof z.label === 'string' ? z.label : null);
+    out.push(zone);
+  }
+  return out;
 }

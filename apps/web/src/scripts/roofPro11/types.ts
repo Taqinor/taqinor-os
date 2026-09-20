@@ -3,6 +3,7 @@
  * Extraits de roof-tool-pro11.ts (split modulaire 2026-06-20) — INCHANGÉS.
  */
 import { type RoofTypeSelect } from '../../lib/roofTypeSelect';
+import { type ImagerySettings } from '../../lib/roofConfig';
 import { type PackResult, type PanelGrid, type ConfigFamily, OBSTACLE_CLEARANCE_M } from '../../lib/estimatorBrainV2';
 import { type Obstacle, type ObstacleType, type ObstacleProvenance } from '../../lib/obstacles';
 import { type SerializeMeta, type DevisPayload, type RawContourPoint } from './prefill';
@@ -68,6 +69,11 @@ export interface InitOptions {
   // ne la passent jamais : absente → calque vide, boot octet pour octet
   // inchangé.
   referenceContour?: RawContourPoint[] | null;
+  // CAL47/CAL48 — section `imagerie` des réglages société (pays, fournisseur actif,
+  // fournisseurs autorisés, calques optionnels, attribution saisie), lue par la page
+  // HÔTE sur `GET /api/django/calepinage/parametres/` et transmise telle quelle.
+  // Absente/vide ⇒ imagerie et géocodage strictement inchangés (Maroc, MapTiler/Mapbox).
+  imagery?: ImagerySettings | null;
 }
 
 /** PV75 — sous-ensemble bancable de `simulation.pr` (P50/P90/PR/cascade des pertes),
@@ -101,6 +107,24 @@ export interface RoofToolApi {
    *  RIEN changer si aucun contour exploitable n'a été fourni au boot
    *  (`referenceContourRing` renvoie `null`) — jamais un contour deviné. */
   recommencerDepuisTraceClient: () => boolean;
+  /** CAL103 — applique la visibilité + l'opacité d'UN calque de l'atelier
+   *  (identifiants et ordre : `ORDRE_RENDU_CALQUES` de `mapDraw.ts`). Le panneau
+   *  de calques de l'écran hôte est la seule source d'intention. Renvoie false
+   *  pour un identifiant inconnu ; un calque sans couche carte est un no-op. */
+  setLayerState: (id: string, state: { visible: boolean; opacite?: number }) => boolean;
+  /** CAL180 — rend la scène HORS ÉCRAN à `scale` fois la résolution d'écran et
+   *  renvoie un blob PNG avec ses dimensions RÉELLES (le facteur est rabaissé si
+   *  le plafond de taille l'impose). Côté navigateur : aucune image n'est postée
+   *  ici, et l'affiche client existante (`roof-image`) reste inchangée. `null`
+   *  quand la scène n'est pas rendable. */
+  renderImageHd: (
+    scale: number,
+  ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
+  /** CAL104 — projection PLAN orthographique (nord en haut, cotée) de la zone
+   *  ACTIVE, pour la vue 2D de l'écran hôte. Elle PROJETTE ce que la 3D a posé :
+   *  même contour, mêmes modules, donc même compte et mêmes cotes. `null` tant
+   *  qu'aucun contour fermé n'existe — jamais un plan inventé. */
+  planView: (widthPx: number, heightPx: number) => unknown | null;
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET

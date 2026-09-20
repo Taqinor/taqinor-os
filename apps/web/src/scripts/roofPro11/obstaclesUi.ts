@@ -35,6 +35,7 @@ import { type Ctx } from './context';
 import { OBSTACLE_TYPES, clearanceForType } from './types';
 import {
   newEnvironmentObject,
+  environmentNeedsFootprint,
   withEnvHeight,
   withCrownDiameter,
   withFootprintDims,
@@ -42,6 +43,18 @@ import {
   type EnvironmentObject,
   type EnvironmentKind,
 } from './environment';
+import {
+  EXCLUSION_NATURES,
+  exclusionColor,
+  exclusionZoneFromDrag,
+  exclusionZoneRing,
+  withZoneNature,
+  withZoneSetback,
+  withZoneHeight,
+  withZoneLabel,
+  type ExclusionZone,
+  type ExclusionNature,
+} from './zones';
 
 /** CAL72 — provenances proposées (vocabulaire `core.calepinage.types.Provenance`), avec
  *  libellé FR + note « bloque le compte » pour PLAN/DEVINE. */
@@ -73,6 +86,10 @@ export interface ObstaclesUiDeps {
 
 export interface ObstaclesUi {
   redrawObstacles: () => void;
+  /** CAL69 — re-dessine le calque des zones d'exclusion. */
+  redrawExclusionZones: () => void;
+  /** CAL69 — arme le tracé d'une zone de cette nature (le glissé suivant la crée). */
+  beginZone: (nature: ExclusionNature) => void;
   setPreviewRect: (a: LngLat, b: LngLat) => void;
   clearPreview: () => void;
   syncObsEdit: () => void;
@@ -281,10 +298,16 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
                <label class="flex items-center gap-1"><input type="checkbox" data-env-evergreen="${o.id}" ${o.evergreen ? 'checked' : ''} /> persistant</label>`
             : `<input type="text" data-env-length="${o.id}" value="${o.lengthM != null ? fmt1(o.lengthM) : ''}" placeholder="longueur m" class="rp9-input w-24" />
                <input type="text" data-env-width="${o.id}" value="${o.widthM != null ? fmt1(o.widthM) : ''}" placeholder="largeur m" class="rp9-input w-24" />`;
+        // CORRECTIF — hauteur saisie mais AUCUNE emprise : l'objet ne porte aucune ombre
+        // (aucune demi-largeur de repli n'est inventée) et l'écran le dit explicitement.
+        const emprise = environmentNeedsFootprint(o)
+          ? `<span data-env-emprise="${o.id}" class="text-alert-300">emprise à saisir — aucune ombre calculée</span>`
+          : '';
         return `<li data-env-row="${o.id}" class="flex flex-wrap items-center gap-2 border border-white/10 p-2">
           <span class="font-semibold">${esc(kindLabel)}</span>
           <input type="text" data-env-height="${o.id}" value="${o.heightM != null ? fmt1(o.heightM) : ''}" placeholder="hauteur m" class="rp9-input w-24" />
           ${dimsInputs}
+          ${emprise}
           <button type="button" data-env-del="${o.id}" class="ml-auto border border-alert-300/60 px-2 py-1 text-alert-300">× Supprimer</button>
         </li>`;
       })
@@ -311,6 +334,133 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     if (del?.dataset.envDel) deleteEnvironment(del.dataset.envDel);
   });
   renderEnvList(); // état initial (dossier rechargé avec des objets d'environnement)
+
+  // ————————————————————————————————————————————————————————————————————
+  // CAL69 — TRACÉ DES ZONES INTERDITE / RÉSERVÉE / PRÉFÉRÉE
+  // Trois boutons arment le tracé (le glissé rectangulaire déjà en place sert de geste,
+  // exactement comme pour un obstacle), puis chaque zone est rééditable : nature,
+  // retrait SAISI, hauteur, repère. Écrit le contrat CAL68 (`exclusionZones`), relu tel
+  // quel au rechargement du dossier.
+  // ————————————————————————————————————————————————————————————————————
+  ensureZonePanel();
+  function ensureZonePanel(): HTMLElement | null {
+    const existing = $('rp9-zone-panel');
+    if (existing) return existing;
+    const anchorEl = obstacleBtn?.parentElement ?? obsEditPanel?.parentElement ?? null;
+    if (!anchorEl || typeof document.createElement !== 'function') return null;
+    const panel = document.createElement('div');
+    panel.id = 'rp9-zone-panel';
+    panel.className = 'rp9-zone-panel mt-2';
+    panel.innerHTML =
+      `<div class="flex flex-wrap gap-2">` +
+      EXCLUSION_NATURES.map(
+        (n) =>
+          `<button type="button" data-zone-add="${n.id}" class="rp9-btn" title="${esc(n.note)}" ` +
+          `style="border-color:${exclusionColor(n.id)}">Zone ${esc(n.label.toLowerCase())}</button>`,
+      ).join('') +
+      `</div><ul id="rp9-zone-list" class="mt-2 flex flex-col gap-1 text-xs"></ul>`;
+    anchorEl.appendChild(panel);
+    return panel;
+  }
+  const zoneListEl = $('rp9-zone-list');
+
+  function zoneList(): ExclusionZone[] {
+    if (!ctx.exclusionZones) ctx.exclusionZones = [];
+    return ctx.exclusionZones;
+  }
+
+  function beginZone(nature: ExclusionNature) {
+    ctx.pendingZoneNature = nature;
+    setObstacleMode(true);
+    setStatus(`Tracez la zone ${nature.toLowerCase()} : glissez un rectangle sur la carte.`);
+  }
+
+  function updateZone(id: string, transform: (z: ExclusionZone) => ExclusionZone) {
+    const list = zoneList();
+    const idx = list.findIndex((z) => z.id === id);
+    if (idx < 0) return;
+    ctx.pushWorkshopHistory?.();
+    list[idx] = transform(list[idx]);
+    renderZoneList();
+    redrawExclusionZones();
+    recalcWithShading();
+  }
+
+  function deleteZone(id: string) {
+    const list = zoneList();
+    const idx = list.findIndex((z) => z.id === id);
+    if (idx < 0) return;
+    ctx.pushWorkshopHistory?.();
+    list.splice(idx, 1);
+    renderZoneList();
+    redrawExclusionZones();
+    recalcWithShading();
+  }
+
+  function renderZoneList() {
+    if (!zoneListEl) return;
+    const list = zoneList();
+    if (!list.length) {
+      zoneListEl.innerHTML = '';
+      return;
+    }
+    zoneListEl.innerHTML = list
+      .map((z) => {
+        const opts = EXCLUSION_NATURES.map(
+          (n) => `<option value="${n.id}" ${n.id === z.nature ? 'selected' : ''}>${esc(n.label)} — ${esc(n.note)}</option>`,
+        ).join('');
+        return `<li data-zone-row="${z.id}" class="flex flex-wrap items-center gap-2 border p-2" style="border-color:${exclusionColor(z.nature)}">
+          <select data-zone-nature="${z.id}" class="rp9-input">${opts}</select>
+          <input type="text" data-zone-label="${z.id}" value="${esc(z.label ?? '')}" placeholder="repère" class="rp9-input w-28" />
+          <input type="text" data-zone-setback="${z.id}" value="${z.setbackM > 0 ? fmt1(z.setbackM) : ''}" placeholder="retrait m" class="rp9-input w-24" />
+          <input type="text" data-zone-height="${z.id}" value="${z.heightM != null ? fmt1(z.heightM) : ''}" placeholder="hauteur m" class="rp9-input w-24" />
+          <button type="button" data-zone-del="${z.id}" class="ml-auto border border-alert-300/60 px-2 py-1 text-alert-300">× Supprimer</button>
+        </li>`;
+      })
+      .join('');
+  }
+
+  /** CAL69 — calque des zones : anneau DILATÉ du retrait saisi, couleur par nature. */
+  function redrawExclusionZones() {
+    srcOf('rp9-zones')?.setData({
+      type: 'FeatureCollection',
+      features: zoneList()
+        .map((z) => {
+          const ring = exclusionZoneRing(z);
+          if (!ring) return null;
+          return {
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: [[...ring, ring[0]]] },
+            properties: {
+              id: z.id,
+              color: exclusionColor(z.nature),
+              title: z.label ? `${z.label} — ${z.nature}` : z.nature,
+            },
+          };
+        })
+        .filter(Boolean),
+    } as never);
+  }
+
+  const zonePanelEl = $('rp9-zone-panel');
+  zonePanelEl?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-zone-add]');
+    const nature = btn?.dataset.zoneAdd as ExclusionNature | undefined;
+    if (nature) beginZone(nature);
+  });
+  zoneListEl?.addEventListener('change', (e) => {
+    const t = e.target as HTMLInputElement & HTMLSelectElement;
+    if (t.dataset.zoneNature) updateZone(t.dataset.zoneNature, (z) => withZoneNature(z, t.value as ExclusionNature));
+    else if (t.dataset.zoneLabel) updateZone(t.dataset.zoneLabel, (z) => withZoneLabel(z, t.value));
+    else if (t.dataset.zoneSetback) updateZone(t.dataset.zoneSetback, (z) => withZoneSetback(z, t.value.trim() ? parseNum(t.value) : null));
+    else if (t.dataset.zoneHeight) updateZone(t.dataset.zoneHeight, (z) => withZoneHeight(z, t.value.trim() ? parseNum(t.value) : null));
+  });
+  zoneListEl?.addEventListener('click', (e) => {
+    const del = (e.target as HTMLElement).closest<HTMLElement>('[data-zone-del]');
+    if (del?.dataset.zoneDel) deleteZone(del.dataset.zoneDel);
+  });
+  renderZoneList(); // état initial (dossier rechargé avec des zones)
+
 
   function redrawObstacles() {
     srcOf('rp9-obs')?.setData({
@@ -458,6 +608,29 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     const end = lngLat ?? ctx.lastDraw ?? start.lngLat;
     const dx = Math.abs(point.x - start.point.x);
     const dy = Math.abs(point.y - start.point.y);
+    // CAL69 — une nature armée détourne le glissé vers une ZONE d'exclusion. Un simple
+    // tap n'en crée AUCUNE : une zone sans surface n'a pas de sens (on désarme et on le dit).
+    if (ctx.pendingZoneNature) {
+      const nature = ctx.pendingZoneNature;
+      ctx.pendingZoneNature = null;
+      setObstacleMode(false);
+      if (dx < OBSTACLE_TAP_PX && dy < OBSTACLE_TAP_PX) {
+        setStatus('Zone non créée : glissez pour lui donner une surface.');
+        return;
+      }
+      ctx.pushWorkshopHistory?.();
+      ctx.zoneCounter = (ctx.zoneCounter ?? 0) + 1;
+      zoneList().push(exclusionZoneFromDrag(`zone-${ctx.zoneCounter}`, nature, start.lngLat, end));
+      renderZoneList();
+      redrawExclusionZones();
+      recalcWithShading();
+      setStatus(
+        nature === 'PREFEREE'
+          ? 'Zone préférée ajoutée — elle ne change jamais le compte de modules.'
+          : `Zone ${nature.toLowerCase()} ajoutée — sa surface est retirée du posable.`,
+      );
+      return;
+    }
     const id = `obs-${++ctx.obsCounter}`;
     if (dx < OBSTACLE_TAP_PX && dy < OBSTACLE_TAP_PX) {
       // simple tap : sélectionne un obstacle existant, sinon en crée un par défaut
@@ -707,6 +880,8 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
 
   return {
     redrawObstacles,
+    redrawExclusionZones,
+    beginZone,
     setPreviewRect,
     clearPreview,
     syncObsEdit,

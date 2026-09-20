@@ -100,9 +100,23 @@ export interface Scene3d {
    *  `colorFor(cellIndex)` (rouge=faible → vert=plein soleil), ou remet tout à blanc si
    *  `colorFor` est null (heatmap désactivée). Réutilise le buffer instanceColor. */
   setSolarAccessHeatmap: (colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) => void;
+  /** CAL126 — teinte les modules PAR CHAÎNE / PAR MPPT. Même canal que la carte
+   *  d'accès solaire (buffer `instanceColor`), source DIFFÉRENTE : la table
+   *  `electrique.affectation` du serveur, traduite par `affectationColorFn`.
+   *  `null` remet la teinte d'origine. Les deux colorations partagent le canal :
+   *  la dernière appelée gagne, exactement comme deux réglages d'un même bouton. */
+  setStringColoring: (colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) => void;
   /** W115 — instantané PNG (data URL) de la 3D rendue, ou null si le renderer/canvas
    *  est indisponible. Le renderer partage le canvas MapLibre (map.getCanvas()). */
   snapshot: () => string | null;
+  /** CAL180 — rend la SCÈNE dans une cible HORS ÉCRAN à `scale` fois la taille du
+   *  canvas et renvoie un blob PNG, avec les dimensions RÉELLEMENT obtenues (le
+   *  facteur est rabaissé si le plafond `HD_MAX_SIDE_PX` l'impose). `null` si la
+   *  scène n'est pas rendable (pas de WebGL, contexte perdu, canvas sans surface).
+   *  N'altère NI le canvas à l'écran, NI l'affiche client existante. */
+  renderOffscreen: (
+    scale: number,
+  ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
 }
 
 // ════════════════════════ W107 — faîtière commune (pans connectés) ════════════════════════
@@ -644,6 +658,356 @@ function stretchProfileUVs(geo: THREE.BoxGeometry, lengthM: number) {
     for (let i = face * 4; i < face * 4 + 4; i++) uv.setY(i, uv.getY(i) * reps);
   }
   uv.needsUpdate = true;
+}
+
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL180 — RENDU HORS ÉCRAN HAUTE RÉSOLUTION
+//
+// L'affiche client est postée par le navigateur à la RÉSOLUTION D'ÉCRAN
+// (`snapshot()` lit le canvas partagé avec MapLibre) : aucune sortie haute
+// définition n'existait. `renderOffscreen(scale)` rend la SCÈNE dans une cible
+// HORS ÉCRAN à 2× ou 3× et renvoie un blob PNG — côté navigateur, sans second
+// magasin d'images et sans toucher l'affiche existante.
+//
+// PLAFOND DE TAILLE : un contexte WebGL refuse une cible au-delà de sa taille
+// maximale de tampon ; `HD_MAX_SIDE_PX` borne chaque côté et le facteur est
+// RABAISSÉ en conséquence (jamais une cible qu'on ne sait pas rendre). Le
+// facteur effectif est renvoyé avec l'image : l'appelant sait ce qu'il a obtenu
+// au lieu de le supposer.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Plafond assumé par côté (px) pour la cible hors écran. */
+export const HD_MAX_SIDE_PX = 8192;
+
+/** Facteurs d'agrandissement proposés par l'atelier. */
+export const HD_SCALES = [2, 3] as const;
+export type HdScale = (typeof HD_SCALES)[number];
+
+/**
+ * Dimensions de la cible hors écran pour un canvas `w × h` agrandi `scale` fois,
+ * RABAISSÉES si un côté dépassait le plafond. `null` si le canvas n'a pas de
+ * surface (rien à rendre) — jamais une taille inventée.
+ */
+export function hdTargetSize(
+  w: number,
+  h: number,
+  scale: number,
+): { width: number; height: number; scale: number } | null {
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  const maxScale = Math.min(scale, HD_MAX_SIDE_PX / w, HD_MAX_SIDE_PX / h);
+  const eff = Math.max(1, maxScale);
+  return { width: Math.max(1, Math.round(w * eff)), height: Math.max(1, Math.round(h * eff)), scale: eff };
+}
+
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL126 — TEINTER LES MODULES PAR CHAÎNE / PAR MPPT
+//
+// La coloration PAR MODULE existe déjà dans la scène (`setSolarAccessHeatmap` et le
+// buffer `instanceColor` de l'InstancedMesh des panneaux) : ce qui manquait, c'était
+// une source ÉLECTRIQUE pour l'alimenter. Elle arrive telle quelle du serveur :
+// `electrique.affectation` (contrat `calepinage_resultat.json`, CAL125) donne, module
+// par module, sa chaîne ET son entrée MPPT.
+//
+// RÈGLE ABSOLUE : les couleurs viennent EXCLUSIVEMENT de cette table. Rien n'est
+// recalculé ici — un écran qui re-partitionnerait produirait une AUTRE partition que
+// celle qui a été dimensionnée. Un module non affecté (`chaine: null`) est GRIS et il
+// est COMPTÉ dans la légende : il ne disparaît pas.
+//
+// AUCUN nouveau mécanisme de rendu n'est introduit : la scène reçoit une fonction
+// cellIndex → couleur, exactement comme la carte d'accès solaire, et écrit dans le
+// MÊME buffer.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Une ligne de `electrique.affectation`, telle que le serveur l'envoie. */
+export interface AffectationRow {
+  module: string;
+  pan?: string | null;
+  chaine: number | null;
+  onduleur?: number | null;
+  mppt: number | null;
+}
+
+export type AffectationMode = 'chaine' | 'mppt';
+
+/** Couleur RVB 0–1, la forme que le buffer `instanceColor` attend déjà. */
+export interface Rgb01 {
+  r: number;
+  g: number;
+  b: number;
+}
+
+/**
+ * Palette des groupes. Teintes de LUMINOSITÉ MOYENNE, choisies pour rester lisibles
+ * sur fond clair comme sur fond sombre (une palette pastel disparaît sur le blanc,
+ * une palette saturée sombre disparaît sur la nuit de l'atelier). Elle boucle si le
+ * dossier compte plus de groupes que de couleurs — deux groupes de même couleur restent
+ * distingués par la légende, qui les nomme.
+ */
+export const AFFECTATION_PALETTE: readonly Rgb01[] = [
+  { r: 0.14, g: 0.51, b: 0.84 }, // bleu
+  { r: 0.91, g: 0.49, b: 0.13 }, // orange
+  { r: 0.18, g: 0.64, b: 0.35 }, // vert
+  { r: 0.72, g: 0.25, b: 0.62 }, // magenta
+  { r: 0.0, g: 0.6, b: 0.62 }, // sarcelle
+  { r: 0.83, g: 0.24, b: 0.28 }, // rouge
+  { r: 0.45, g: 0.4, b: 0.78 }, // violet
+  { r: 0.6, g: 0.52, b: 0.1 }, // ocre
+];
+
+/** GRIS des modules NON affectés — jamais une couleur de groupe, jamais l'invisible. */
+export const AFFECTATION_UNASSIGNED: Rgb01 = { r: 0.55, g: 0.56, b: 0.58 };
+
+/** Clé de groupe d'une ligne, selon le mode. `null` = module NON affecté.
+ *  En mode MPPT la clé porte l'onduleur : deux onduleurs ont chacun leur entrée 1. */
+export function affectationGroupKey(row: AffectationRow, mode: AffectationMode): string | null {
+  if (mode === 'chaine') {
+    return row.chaine == null ? null : `c${row.chaine}`;
+  }
+  if (row.mppt == null) return null;
+  return `o${row.onduleur ?? 1}m${row.mppt}`;
+}
+
+/** Libellé lisible d'un groupe, pour la légende. */
+export function affectationGroupLabel(row: AffectationRow, mode: AffectationMode): string {
+  if (mode === 'chaine') return row.chaine == null ? 'Non affecté' : `Chaîne ${row.chaine}`;
+  if (row.mppt == null) return 'Non affecté';
+  return row.onduleur == null ? `MPPT ${row.mppt}` : `Onduleur ${row.onduleur} — MPPT ${row.mppt}`;
+}
+
+export interface AffectationLegendEntry {
+  key: string | null;
+  label: string;
+  color: Rgb01;
+  count: number;
+}
+
+export interface AffectationColoring {
+  /** Couleur de CHAQUE module nommé par la table (non affecté inclus : gris). */
+  colorByModule: Map<string, Rgb01>;
+  /** Légende, groupes dans l'ordre de PREMIÈRE apparition, « Non affecté » en dernier. */
+  legend: AffectationLegendEntry[];
+}
+
+/**
+ * Construit la coloration à partir de la SEULE table d'affectation. Table vide ⇒ aucune
+ * couleur et aucune légende (rien à teinter, comportement d'avant CAL126).
+ */
+export function buildAffectationColoring(
+  rows: readonly AffectationRow[] | null | undefined,
+  mode: AffectationMode,
+): AffectationColoring {
+  const colorByModule = new Map<string, Rgb01>();
+  const order: (string | null)[] = [];
+  const parKey = new Map<string | null, AffectationLegendEntry>();
+  let nextColor = 0;
+  for (const row of rows ?? []) {
+    if (!row || typeof row.module !== 'string') continue;
+    const key = affectationGroupKey(row, mode);
+    let entry = parKey.get(key);
+    if (!entry) {
+      const color = key == null ? AFFECTATION_UNASSIGNED : AFFECTATION_PALETTE[nextColor++ % AFFECTATION_PALETTE.length];
+      entry = { key, label: affectationGroupLabel(row, mode), color, count: 0 };
+      parKey.set(key, entry);
+      order.push(key);
+    }
+    entry.count += 1;
+    colorByModule.set(row.module, entry.color);
+  }
+  const legend = order
+    .map((k) => parKey.get(k)!)
+    .sort((a, b) => (a.key === null ? 1 : 0) - (b.key === null ? 1 : 0));
+  return { colorByModule, legend };
+}
+
+/**
+ * Fonction cellIndex → couleur, prête pour le canal `instanceColor` de la scène.
+ * `moduleIdByCell` est fourni par l'appelant (il détient à la fois le document et le
+ * résultat) : la scène ne devine JAMAIS quel module est quelle instance. Une cellule
+ * dont le module est absent de la table est GRISE, comme un module non affecté.
+ * Table vide ⇒ `null` : la coloration est simplement éteinte.
+ */
+export function affectationColorFn(
+  coloring: AffectationColoring,
+  moduleIdByCell: readonly (string | null | undefined)[],
+): ((cellIndex: number) => Rgb01) | null {
+  if (coloring.colorByModule.size === 0) return null;
+  return (cellIndex: number) => {
+    const id = moduleIdByCell[cellIndex];
+    const c = id == null ? undefined : coloring.colorByModule.get(id);
+    return c ?? AFFECTATION_UNASSIGNED;
+  };
+}
+
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL104 — VUE 2D PLAN ORTHOGRAPHIQUE
+//
+// La scène est exclusivement une vue 3D sur carte : aucune projection PLAN cotée,
+// orientée nord, imprimable. `projectPlanView` produit cette projection — PURE
+// (aucun Three, aucun DOM) : un contour lng/lat et des rectangles de modules
+// entrent, des coordonnées écran ORTHOGRAPHIQUES sortent, avec l'échelle qui a
+// servi et les cotes mesurées.
+//
+// ORTHOGRAPHIQUE veut dire : pas de perspective, pas d'inclinaison. Les mètres
+// est-ouest et nord-sud sont projetés à la MÊME échelle, donc une longueur lue sur
+// le plan est la longueur réelle. NORD EN HAUT : l'axe Y écran descend quand la
+// latitude monte, la convention d'un plan imprimé.
+//
+// IDENTITÉ AVEC LA 3D : cette fonction ne compte rien et ne pave rien — elle
+// PROJETTE ce que la 3D a déjà posé. Le compte de modules de la vue 2D est donc
+// celui de la 3D par construction : c'est la MÊME liste de rectangles.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Un module posé, en lng/lat : les quatre coins tels que la 3D les a placés. */
+export type PlanQuad = LngLat[];
+
+export interface PlanViewOptions {
+  /** Zone de dessin (px). */
+  widthPx: number;
+  heightPx: number;
+  /** Marge intérieure (px) — laisse la place aux cotes. */
+  marginPx?: number;
+}
+
+export interface PlanViewCote {
+  /** Longueur RÉELLE mesurée (m) — jamais arrondie ici. */
+  lengthM: number;
+  /** Segment en coordonnées écran. */
+  from: [number, number];
+  to: [number, number];
+}
+
+export interface PlanView {
+  /** Contour projeté, dans l'ordre d'entrée. */
+  outline: Array<[number, number]>;
+  /** Modules projetés, dans l'ordre d'entrée — MÊME nombre qu'en 3D. */
+  panels: Array<Array<[number, number]>>;
+  /** Échelle appliquée (px par mètre), la MÊME sur les deux axes. */
+  pxPerM: number;
+  /** Envergures réelles de l'emprise (m). */
+  spanEastWestM: number;
+  spanNorthSouthM: number;
+  /** Cotes de chaque côté du contour, mesurées sur la géométrie réelle. */
+  cotes: PlanViewCote[];
+  /** Compte de modules — celui de la 3D, recopié, jamais recalculé. */
+  panelCount: number;
+}
+
+const PLAN_DEG2RAD = Math.PI / 180;
+const PLAN_DEG2M = PLAN_DEG2RAD * 6378137;
+
+/**
+ * Projette un contour et ses modules en vue PLAN orthographique, nord en haut,
+ * ajustée à la zone de dessin. `null` si le contour n'a pas au moins 3 sommets ou
+ * si la zone de dessin n'a pas de surface : rien à dessiner, jamais un plan inventé.
+ */
+export function projectPlanView(
+  outline: readonly LngLat[] | null | undefined,
+  panels: readonly PlanQuad[] | null | undefined,
+  opts: PlanViewOptions,
+): PlanView | null {
+  const ring = outline ?? [];
+  if (ring.length < 3) return null;
+  const w = opts.widthPx;
+  const h = opts.heightPx;
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  const margin = Math.max(0, Math.min(Math.min(w, h) / 2 - 1, opts.marginPx ?? 24));
+
+  // Repère métrique local (ENU), origine = premier sommet : est/nord en mètres.
+  const lat0 = ring[0][1];
+  const lng0 = ring[0][0];
+  const cosLat = Math.max(1e-6, Math.cos(lat0 * PLAN_DEG2RAD));
+  const toEN = (v: LngLat): [number, number] => [
+    (v[0] - lng0) * PLAN_DEG2M * cosLat,
+    (v[1] - lat0) * PLAN_DEG2M,
+  ];
+
+  const ringEN = ring.map(toEN);
+  const panelsEN = (panels ?? []).map((q) => q.map(toEN));
+  const all = [...ringEN, ...panelsEN.flat()];
+  let minE = Infinity;
+  let maxE = -Infinity;
+  let minN = Infinity;
+  let maxN = -Infinity;
+  for (const [e, n] of all) {
+    if (e < minE) minE = e;
+    if (e > maxE) maxE = e;
+    if (n < minN) minN = n;
+    if (n > maxN) maxN = n;
+  }
+  const spanE = Math.max(1e-6, maxE - minE);
+  const spanN = Math.max(1e-6, maxN - minN);
+  // MÊME échelle sur les deux axes : c'est ce qui rend une cote lisible à la règle.
+  const pxPerM = Math.min((w - 2 * margin) / spanE, (h - 2 * margin) / spanN);
+  const offX = (w - spanE * pxPerM) / 2;
+  const offY = (h - spanN * pxPerM) / 2;
+  // NORD EN HAUT : la latitude croît vers le HAUT de l'écran, donc y décroît.
+  const toPx = ([e, n]: [number, number]): [number, number] => [
+    offX + (e - minE) * pxPerM,
+    offY + (maxN - n) * pxPerM,
+  ];
+
+  const outlinePx = ringEN.map(toPx);
+  const cotes: PlanViewCote[] = ringEN.map((a, i) => {
+    const b = ringEN[(i + 1) % ringEN.length];
+    return {
+      lengthM: Math.hypot(b[0] - a[0], b[1] - a[1]),
+      from: toPx(a),
+      to: toPx(b),
+    };
+  });
+
+  return {
+    outline: outlinePx,
+    panels: panelsEN.map((q) => q.map(toPx)),
+    pxPerM,
+    spanEastWestM: spanE,
+    spanNorthSouthM: spanN,
+    cotes,
+    panelCount: panelsEN.length,
+  };
+}
+
+
+/**
+ * CAL104 — quads lng/lat des modules POSÉS, reconstruits depuis la géométrie que la 3D a
+ * déjà placée : centres ENU (`cx`, `cy`, repère `origin`), empreinte au sol du module
+ * (`slopeLenM × cos β` dans le sens de la pente, `rowWidthM` le long de la rangée) et
+ * azimut du pavage. AUCUN pavage n'est refait : on habille des centres existants, donc le
+ * COMPTE est exactement celui de la 3D.
+ */
+export function panelQuadsLngLat(
+  origin: LngLat,
+  centers: readonly { cx: number; cy: number }[],
+  slopeLenM: number,
+  rowWidthM: number,
+  tiltDeg: number,
+  azimuthDeg: number,
+): PlanQuad[] {
+  const cosLat = Math.max(1e-6, Math.cos(origin[1] * PLAN_DEG2RAD));
+  // Empreinte AU SOL dans le sens de la pente : la longueur du module vue de dessus.
+  const depth = Math.max(1e-6, slopeLenM * Math.cos((tiltDeg || 0) * PLAN_DEG2RAD));
+  const width = Math.max(1e-6, rowWidthM);
+  // L'azimut oriente les rangées : on tourne le rectangle du même angle.
+  const a = (azimuthDeg || 0) * PLAN_DEG2RAD;
+  const ca = Math.cos(a);
+  const sa = Math.sin(a);
+  const half: [number, number][] = [
+    [-width / 2, -depth / 2],
+    [width / 2, -depth / 2],
+    [width / 2, depth / 2],
+    [-width / 2, depth / 2],
+  ];
+  return centers.map((c) =>
+    half.map(([dx, dy]) => {
+      const e = c.cx + dx * ca + dy * sa;
+      const n = c.cy - dx * sa + dy * ca;
+      return [origin[0] + e / (PLAN_DEG2M * cosLat), origin[1] + n / PLAN_DEG2M] as LngLat;
+    }),
+  );
 }
 
 export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
@@ -1979,6 +2343,13 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     map3dRepaint();
   }
 
+  /** CAL126 — MÊME écriture de buffer que `setSolarAccessHeatmap`, alimentée par la
+   *  table d'affectation du serveur. Aucun nouveau mécanisme de rendu : on repasse par
+   *  le canal existant, avec une autre source de vérité. */
+  function setStringColoring(colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) {
+    setSolarAccessHeatmap(colorFor);
+  }
+
   /** Repeint la scène 3D (déclenché après un changement de couleur d'instance). */
   function map3dRepaint() {
     map.triggerRepaint();
@@ -1999,5 +2370,49 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, snapshot };
+  /**
+   * CAL180 — rendu HORS ÉCRAN. On construit un renderer JETABLE sur son propre canvas
+   * (jamais celui de MapLibre : le toucher ferait clignoter l'atelier), on rend la MÊME
+   * scène avec la MÊME caméra — la matrice de projection de MapLibre ne dépend pas de la
+   * résolution, donc le cadrage est identique, seulement plus fin — puis on dispose tout.
+   * Le fond reste transparent : c'est la scène, pas une capture d'écran maquillée.
+   */
+  async function renderOffscreen(
+    scale: number,
+  ): Promise<{ blob: Blob; width: number; height: number; scale: number } | null> {
+    if (glLost || !scene || !threeCamera) return null;
+    const src = (renderer?.domElement ?? (glCanvas as HTMLCanvasElement | null)) ?? null;
+    const target = hdTargetSize(src?.width ?? 0, src?.height ?? 0, scale);
+    if (!target) return null;
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = target.width;
+    canvas.height = target.height;
+    let off: THREE.WebGLRenderer | null = null;
+    try {
+      off = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+      off.setSize(target.width, target.height, false);
+      off.outputColorSpace = THREE.SRGBColorSpace;
+      off.toneMapping = THREE.ACESFilmicToneMapping;
+      off.toneMappingExposure = 1.05;
+      off.shadowMap.enabled = true;
+      off.shadowMap.type = THREE.PCFSoftShadowMap;
+      off.render(scene, threeCamera);
+      const blob = await new Promise<Blob | null>((resolve) => {
+        if (typeof canvas.toBlob !== 'function') {
+          resolve(null);
+          return;
+        }
+        canvas.toBlob((b) => resolve(b), 'image/png');
+      });
+      if (!blob) return null;
+      return { blob, width: target.width, height: target.height, scale: target.scale };
+    } catch {
+      return null; // WebGL refusé/saturé : pas d'image, jamais une exception qui casse l'atelier
+    } finally {
+      off?.dispose();
+    }
+  }
+
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, snapshot, renderOffscreen };
 }

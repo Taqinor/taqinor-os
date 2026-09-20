@@ -34,6 +34,12 @@ from __future__ import annotations
 #: qu'aucune lane n'invente un second foyer pour un domaine existant.
 SOUS_MODULES = (
     'parametres',     # CAL45 — réglages société (une base, sept extensions)
+    'site',           # CAL47 — section « imagerie & pays » (contrat CAL46)
+    'lidar_ign',      # CAL237 — suggestion pente/azimut IGN (France seule)
+    'photos',         # CAL52 — photos de site (records.Attachment + MinIO)
+    'releve',         # CAL64 — relevé terrain (solveur de cotes du noyau)
+    'zones',          # CAL68 — exclusionZones -> zones du moteur
+    'zones_reglementaires',  # CAL74 — gabarits de zone SOURCÉS (CAL45)
     'creation',       # CAL11 — obtenir_ou_creer_pour_devis / lead / client
     'liens',          # CAL12 — lier_devis / lier_appel_offre
     'layout',         # CAL13 — enregistrer_layout (hash + version)
@@ -41,6 +47,13 @@ SOUS_MODULES = (
     'versions',       # CAL8 — instantanés jamais réécrits, purge bornée
     'devis',          # CAL24/CAL25 — générer / resynchroniser (via ventes)
     'journal',        # CAL26 — chatter par la primitive records
+    'norme',          # CAL130 — norme électrique applicable (règle D5)
+    'electrique',     # CAL123/125/127-130/170 — entrée et verdicts électriques
+    'chaines',        # CAL124/125 — chaînes par pan et affectation nominative
+    'cables',         # CAL131 — sections et chutes sur les longueurs du plan
+    'protections',    # CAL132 — check-list d'organes paramétrable
+    'terre',          # CAL134 — check-list de mise à la terre
+    'planche',        # CAL171/CAL173 — planche A3 cotée (SVG + PDF, empreinte)
 )
 
 __all__ = ['SOUS_MODULES']

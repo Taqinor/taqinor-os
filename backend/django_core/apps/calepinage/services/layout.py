@@ -67,6 +67,14 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
             "La conception doit être un objet "
             f"(reçu : {type(roof_layout).__name__}).", champ='roof_layout')
 
+    # CAL207 — miroir de la règle ventes/sync-layout : un calepinage dont le
+    # devis lié a été envoyé est en lecture seule (409), sauf déverrouillage
+    # explicite. La restauration de version (CAL20) passe par ICI, donc elle
+    # hérite du même refus sans code dupliqué (CAL203).
+    from .verrou import verifier_ecriture_autorisee
+
+    verifier_ecriture_autorisee(calepinage)
+
     ancien_layout = calepinage.roof_layout
     ancienne = calepinage.layout_hash or ''
     nouvelle = layout_hash(roof_layout) or ''
@@ -99,6 +107,16 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
 
         journaliser_layout(calepinage, ancien_layout=ancien_layout,
                            nouveau_layout=roof_layout, user=user)
+
+    # CAL128 — le verdict onduleur est REJOUÉ à chaque enregistrement de
+    # conception : sans cela, on pourrait dessiner un champ que l'onduleur ne
+    # peut pas recevoir en sautant simplement l'écran qui avertit. Le rejeu
+    # n'écrit AUCUN statut (le blocage vit dans ``garde_publication``) et ne
+    # lève jamais — une conception enregistrée ne se perd pas parce que son
+    # verdict a bronché.
+    from .electrique import rejouer_apres_layout
+
+    rejouer_apres_layout(calepinage, user=user)
     return {
         'calepinage': calepinage,
         'version': version,

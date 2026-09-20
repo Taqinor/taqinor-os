@@ -1,0 +1,103 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/pompage/",
+  "pourquoi": "CONTRAT D'ABORD (PACT10/PACT11). CAL159 est l'écran de pompage du module (puits, besoin, réservoir, courbe de pompe avec point de fonctionnement, 12 volumes mensuels, pompe et variateur retenus) ; CAL155-CAL158 ont posé le dimensionnement dans `services/pompage.py` mais AUCUNE porte HTTP ne l'exposait — l'écran n'aurait eu d'autre choix que d'interpoler la courbe lui-même, ce que la tâche interdit explicitement (« toutes les valeurs viennent du backend, aucune interpolation de courbe côté écran »). Cet échantillon fige la forme AVANT les deux moitiés. POST et non GET : le calcul dépend entièrement d'une SAISIE (puits, besoin, réservoir, débit souhaité) qui n'a pas sa place dans une query-string, et il n'écrit RIEN — aucun statut, aucune version, aucune ligne de devis. Chaque grandeur porte sa SOURCE (`saisie` pour ce que l'utilisateur a tapé, `fiche` pour le catalogue, `calculee` pour une HMT itérée, `pvgis` pour l'irradiation réelle) — jamais une valeur par défaut inventée. Une donnée manquante fait tomber le bloc concerné à `null` (la carte disparaît côté écran) et NOMME le champ fautif dans `erreurs`, jamais un message générique ni un zéro de remplacement. `volumes` vaut `null` quand aucune pompe À COURBE n'est retenue : la règle fondateur « jamais de m³/jour pour une pompe sans courbe » est tenue côté serveur, l'écran écrit alors « non calculé — pompe sans courbe ». AUCUNE clé de prix d'achat ni de marge.",
+  "exemple": {
+    "calepinage": 1,
+    "entrees": {
+      "hmt_saisie": null,
+      "debit_souhaite_m3h": 8.0,
+      "type_pompe": "immerge",
+      "alim": "tri",
+      "heures_pompage": 7.0,
+      "volume_reservoir_m3": 60.0,
+      "besoin_m3_jour": 45.0
+    },
+    "hmt": {
+      "hmt_m": 62.4,
+      "source": "calculee",
+      "composantes": {
+        "niveau_statique_m": 40.0,
+        "rabattement_m": 9.6,
+        "pertes_charge_m": 4.8,
+        "hauteur_refoulement_m": 8.0
+      },
+      "debit_convergence_m3h": 8.2,
+      "iterations": 4
+    },
+    "pompe": {
+      "produit": 314,
+      "nom": "Pompe immergée OSP 30-8 · 380V",
+      "pompe_kw": 4.0,
+      "tension_v": 380,
+      "debit_hmt_m3h": 8.2,
+      "courbe": {
+        "debits_m3h": [12.0, 10.5, 8.2, 5.4, 2.1],
+        "hmt_m": [30.0, 45.0, 62.4, 80.0, 100.0]
+      },
+      "point_fonctionnement": {
+        "debit_m3h": 8.2,
+        "hmt_m": 62.4
+      },
+      "sans_prix": [],
+      "ecart_phase": false
+    },
+    "variateur": {
+      "produit": 402,
+      "nom": "Variateur VEICHI 5,5 kW 380V",
+      "pompe_kw": 5.5,
+      "tension_v": 380,
+      "insuffisant": false
+    },
+    "volumes": {
+      "m3_jour_plat": 57.4,
+      "m3_mois_plat": [1779.4, 1607.2, 1779.4, 1722.0, 1779.4, 1722.0, 1779.4, 1779.4, 1722.0, 1779.4, 1722.0, 1779.4],
+      "m3_mois_pvgis": [1441.3, 1447.0, 1779.4, 1860.0, 1957.3, 1928.6, 1975.1, 1904.9, 1756.4, 1619.2, 1394.8, 1330.1],
+      "source_irradiation": "pvgis_live",
+      "ecart_m3_mois": [-338.1, -160.2, 0.0, 138.0, 177.9, 206.6, 195.7, 125.5, 34.4, -160.2, -327.2, -449.3],
+      "warnings": []
+    },
+    "besoin": {
+      "besoin_m3_mois": [1395.0, 1260.0, 1395.0, 1350.0, 1395.0, 1350.0, 1395.0, 1395.0, 1350.0, 1395.0, 1350.0, 1395.0],
+      "couverture_pct_mois": [103.3, 114.8, 127.6, 137.8, 140.3, 142.9, 141.6, 136.6, 130.1, 116.1, 103.3, 95.3],
+      "autonomie_jours": 1.3,
+      "besoin_source": "saisie"
+    },
+    "erreurs": {},
+    "avertissements": []
+  },
+  "exemple_vide": {
+    "calepinage": 2,
+    "entrees": {
+      "hmt_saisie": null,
+      "debit_souhaite_m3h": null,
+      "type_pompe": "immerge",
+      "alim": "tri",
+      "heures_pompage": 7.0,
+      "volume_reservoir_m3": null,
+      "besoin_m3_jour": null
+    },
+    "hmt": {
+      "hmt_m": null,
+      "source": "saisie",
+      "composantes": null,
+      "debit_convergence_m3h": null,
+      "iterations": 0
+    },
+    "pompe": null,
+    "variateur": null,
+    "volumes": null,
+    "besoin": {
+      "besoin_m3_mois": null,
+      "couverture_pct_mois": null,
+      "autonomie_jours": null,
+      "besoin_source": null
+    },
+    "erreurs": {
+      "hmt_saisie": "Renseignez la HMT, ou les cinq données de puits (niveau statique, rabattement spécifique, longueur de tuyauterie, coefficient de frottement, hauteur de refoulement) pour qu'elle soit calculée.",
+      "debit_souhaite_m3h": "Le débit souhaité (m³/h) est obligatoire : sans lui, aucune pompe ne peut être choisie sur sa courbe."
+    },
+    "avertissements": [
+      "aucune pompe à courbe ne délivre le débit demandé à cette HMT — aucun m³/jour n'est publié (une pompe sans courbe ne produit jamais de volume chiffré)"
+    ]
+  }
+}
