@@ -23,10 +23,10 @@ export function routeForLien(cleModele, objectId) {
   return fabrique ? fabrique(objectId) : null
 }
 
-// Catalogue FERMÉ, miroir de `core.models.Dossier.TYPE_CHOICES` /
-// `STATUT_CHOICES` / `PRIORITE_CHOICES` (jamais une valeur inventée côté
-// écran — le serializer renvoie déjà les libellés via `*_label`, ces
-// catalogues ne servent qu'aux SÉLECTEURS de filtre/création).
+// source-choix: core.Dossier.type_dossier
+// Catalogue FERMÉ (jamais une valeur inventée côté écran — le serializer
+// renvoie déjà les libellés via `*_label`, ces catalogues ne servent
+// qu'aux SÉLECTEURS de filtre/création).
 export const TYPE_DOSSIER_OPTIONS = [
   { value: 'reclamation_complexe', label: 'Réclamation complexe' },
   { value: 'onboarding_grand_compte', label: 'Onboarding grand compte' },
