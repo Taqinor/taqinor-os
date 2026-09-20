@@ -64,6 +64,11 @@ export interface ObstaclesUiDeps {
   setStatus: (msg: string) => void;
   /** W92 — re-dessine la ligne + les pastilles de sommets après un glissé/undo. */
   redrawTrace: () => void;
+  /** CAL66/CAL67 — recalcule l'ombrage VIVANT (matrice de dérate + facteur annuel +
+   *  carte d'accès solaire) après un changement de hauteur d'obstacle ou d'objet
+   *  d'environnement : ces deux-là ombrent désormais réellement. Optionnel — absent,
+   *  seul le re-pavage (`recalc`) a lieu, comportement d'avant CAL66. */
+  recomputeShading?: () => void;
 }
 
 export interface ObstaclesUi {
@@ -92,6 +97,13 @@ export interface ObstaclesUi {
 
 export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi {
   const { map, recalc, setStatus, redrawTrace } = deps;
+
+  /** CAL66/CAL67 — re-pavage PUIS recalcul de l'ombrage vivant : une hauteur d'obstacle
+   *  ou un objet d'environnement change à la fois la surface utile ET les ombres. */
+  function recalcWithShading() {
+    deps.recalc();
+    deps.recomputeShading?.();
+  }
 
   // FeatureCollection vide réutilisable (efface une source) — identique à l'entrée.
   const empty = { type: 'FeatureCollection', features: [] } as const;
@@ -229,7 +241,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     const id = `env-${ctx.envCounter}`;
     envList().push(newEnvironmentObject(id, kind, defaultEnvPosition()));
     renderEnvList();
-    recalc();
+    recalcWithShading();
     setStatus(`${kind === 'arbre' ? 'Arbre' : 'Bâtiment voisin'} posé au sud du toit — saisissez sa hauteur et ses dimensions.`);
   }
 
@@ -240,7 +252,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     ctx.pushWorkshopHistory?.();
     list[idx] = transform(list[idx]);
     renderEnvList();
-    recalc();
+    recalcWithShading();
   }
 
   function deleteEnvironment(id: string) {
@@ -250,7 +262,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     ctx.pushWorkshopHistory?.();
     list.splice(idx, 1);
     renderEnvList();
-    recalc();
+    recalcWithShading();
   }
 
   function renderEnvList() {
@@ -373,7 +385,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     ctx.obstacles[idx] = transform(ctx.obstacles[idx]);
     redrawObstacles();
     syncObsEdit();
-    recalc();
+    recalcWithShading();
   }
 
   function deleteSelected() {
@@ -383,7 +395,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     ctx.selectedObsId = null;
     redrawObstacles();
     syncObsEdit();
-    recalc();
+    recalcWithShading();
   }
 
   function addObstacle(o: Obstacle) {
@@ -392,7 +404,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     ctx.selectedObsId = o.id;
     redrawObstacles();
     syncObsEdit();
-    recalc();
+    recalcWithShading();
   }
 
   /** Obstacle touché au point écran `pt`, ou null. CAL107 — boîte de tolérance autour du
@@ -658,7 +670,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     ctx.selectedObsId = dup.id;
     redrawObstacles();
     syncObsEdit();
-    recalc();
+    recalcWithShading();
     setStatus('Obstacle dupliqué — ajustez sa position, ou posez une trame régulière.');
   });
 
@@ -687,7 +699,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     for (const p of rest) ctx.obstacles.push(duplicatedObstacle(o, `obs-${++ctx.obsCounter}`, p));
     redrawObstacles();
     syncObsEdit();
-    recalc();
+    recalcWithShading();
     setStatus(`${positions.length} obstacles posés en trame (${cols} × ${rows}, pas ${fmt1(spacing)} m).`);
   });
 

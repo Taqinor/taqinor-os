@@ -139,6 +139,11 @@ export interface LayoutEditor {
   selection: () => number[];
   /** PV25 — remplace la sélection multiple (indices non occupés ignorés). */
   setSelection: (indices: readonly number[]) => void;
+  /** CAL235 — RETIRE des modules de la disposition lattice (geste explicite venu d'une
+   *  proposition d'ombrage). Photographie l'atelier AVANT (donc Ctrl+Z l'annule, CAL100),
+   *  puis re-rend. Renvoie le nombre RÉELLEMENT retiré ; 0 = rien n'a changé (pas d'état
+   *  de disposition, placement libre actif, ou aucun index occupé visé). */
+  removeCells: (indices: readonly number[]) => number;
   /** PV26 — annule / rétablit la dernière action de disposition (true si effectué). */
   undo: () => boolean;
   redo: () => boolean;
@@ -843,6 +848,27 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  TOUJOURS poussée au moins autant que `history`/`freeHistory`, cf. `recordHistory`/
    *  `recordFreeHistory` ci-dessus) : un `undo()` restaure tracé/obstacles/zones/pose ET
    *  l'occupation lattice/l'état libre courants, en un seul geste cohérent. */
+  /**
+   * CAL235 — retire des modules de la disposition lattice, sur geste EXPLICITE (la
+   * proposition d'ombrage ne s'applique jamais d'elle-même). L'atelier est photographié
+   * AVANT (recordHistory → workshopHistory), donc Ctrl+Z restaure les modules retirés.
+   * Renvoie le nombre réellement retiré ; 0 ⇒ rien n'a bougé.
+   */
+  function removeCells(indices: readonly number[]): number {
+    if (ctx.freeMode) return 0; // placement libre : autre modèle, on ne devine pas
+    ensureLayoutState();
+    const st = ctx.layoutState;
+    if (!st) return 0;
+    const cibles = [...new Set(indices)].filter((i) => Number.isInteger(i) && st.occupied.has(i));
+    if (!cibles.length) return 0;
+    if (cibles.length >= st.occupied.size) return 0; // jamais vider le pan entier
+    recordHistory(); // PV26 + CAL100 — annulable comme n'importe quelle édition
+    for (const i of cibles) st.occupied.delete(i);
+    ctx.layoutSel = null;
+    renderCustomLayout();
+    return cibles.length;
+  }
+
   function undo(): boolean {
     if (!workshopHistory.canUndo()) return false;
     const prev = workshopHistory.undo(snapshotWorkshop());
@@ -2436,6 +2462,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     reenterCustomLayout,
     selection: () => [...selection],
     setSelection,
+    removeCells,
     undo,
     redo,
     hydrateLayout,

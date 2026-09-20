@@ -220,3 +220,68 @@ export function gridPositions(origin: LngLat, spacingM: number, cols: number, ro
   }
   return out;
 }
+
+/** CAL66 — obstruction d'ombrage en ENU (mètres autour d'une origine). Forme IDENTIQUE à
+ *  `ShadeObstructionENU` de `shadingEngine.ts` ; redéclarée ici pour que la lib PURE des
+ *  obstacles reste sans dépendance de module (seule sa FORME est partagée). */
+export interface ObstacleShadeEntry {
+  x: number;
+  y: number;
+  effHeightM: number;
+  halfWidthM: number;
+  /** CAL94 — empreinte au sol RÉELLE en ENU (le rectangle SAISI), pour que l'occultation
+   *  soit calculée par lancer de rayon sur la vraie forme et non sur un cône. */
+  footprint: [number, number][];
+}
+
+/**
+ * CAL66 — convertit les obstacles de TOITURE en obstructions ENU prêtes pour le moteur
+ * d'ombrage (`isSunBlocked` / `hourlyShadeFactors` / `pointSolarAccess`), exactement
+ * comme `shadeObstructionsENU` le fait pour les ombres tracées et
+ * `environmentShadeEntries` pour les objets d'environnement.
+ *
+ * DEUX règles d'honnêteté :
+ *  - un obstacle SANS `heightM` saisie est ÉCARTÉ : sans hauteur il reste un obstacle
+ *    PLAN (simple zone d'exclusion) et ne porte AUCUNE ombre — comportement strictement
+ *    identique à celui d'avant CAL66, jamais une hauteur inventée ;
+ *  - la hauteur d'un obstacle de toiture est DÉJÀ mesurée au-dessus du plan du toit (une
+ *    cheminée de 1,2 m dépasse de 1,2 m la dalle où sont posés les modules) : on ne lui
+ *    retranche donc PAS la hauteur du bâtiment, contrairement aux obstructions
+ *    extérieures qui, elles, sont référencées au SOL.
+ *
+ * La demi-largeur du cône d'occultation est la demi-diagonale du rectangle SAISI
+ * (√(L² + l²) / 2) : elle ne vient que des dimensions renseignées par l'utilisateur,
+ * aucune valeur par défaut n'est introduite.
+ */
+export function roofObstacleShadeEntries(
+  list: readonly Obstacle[] | null | undefined,
+  origin: LngLat,
+): ObstacleShadeEntry[] {
+  if (!Array.isArray(list) || !list.length) return [];
+  const cosLat = Math.max(1e-6, Math.cos(origin[1] * DEG2RAD));
+  const out: ObstacleShadeEntry[] = [];
+  for (const o of list) {
+    const h = o.heightM;
+    if (typeof h !== 'number' || !Number.isFinite(h) || h <= 0) continue;
+    const halfWidthM = Math.hypot(o.lengthM, o.widthM) / 2;
+    const x = (o.centerLng - origin[0]) * DEG2M * cosLat;
+    const y = (o.centerLat - origin[1]) * DEG2M;
+    // CAL94 — le rectangle SAISI en ENU : demi-largeur EST-OUEST = widthM/2, demi-longueur
+    // NORD-SUD = lengthM/2 (mêmes conventions que `obstacleRing`).
+    const hw = o.widthM / 2;
+    const hl = o.lengthM / 2;
+    out.push({
+      x,
+      y,
+      effHeightM: h,
+      halfWidthM: halfWidthM > 0 ? halfWidthM : OBSTACLE_MIN_DIM_M / 2,
+      footprint: [
+        [x - hw, y - hl],
+        [x + hw, y - hl],
+        [x + hw, y + hl],
+        [x - hw, y + hl],
+      ],
+    });
+  }
+  return out;
+}

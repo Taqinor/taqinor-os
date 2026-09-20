@@ -1193,6 +1193,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // W92 — wrapper paresseux : `redrawTrace` (du module mapDraw) est assigné plus bas ;
     // référencé seulement à l'exécution d'un glissé-sommet, donc pas de TDZ.
     redrawTrace: () => redrawTrace(),
+    // CAL66/CAL67 — wrapper paresseux vers `shadingUi` (construit plus bas) : un obstacle
+    // à hauteur saisie ou un objet d'environnement OMBRE réellement, donc toute
+    // modification doit recalculer la matrice de dérate + la carte d'accès solaire.
+    recomputeShading: () => shadingUi.recomputeShading(),
   });
   const redrawObstacles = obstaclesUi.redrawObstacles;
   const clearPreview = obstaclesUi.clearPreview;
@@ -1290,6 +1294,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // WJ21 — wrapper paresseux : scene3d est construit plus bas ; cette closure n'est
     // appelée qu'après le boot (jamais pendant la TDZ du const scene3d).
     applyHeatmap: (colorFor) => scene3d.setSolarAccessHeatmap(colorFor),
+    // CAL235 — application EXPLICITE de la proposition de retrait (annulable, CAL100).
+    // Wrapper paresseux : `layoutEditor` est construit plus bas.
+    removePanels: (cellIndexes) => layoutEditor.removeCells(cellIndexes),
   });
 
   // — Tracé du contour + recherche d'adresse (géocodage W75). Le module câble lui-même
@@ -2958,6 +2965,35 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   // — Recherche d'adresse (géocodage W75) : voir roofPro11/mapDraw.ts —
 
+  /**
+   * CAL248 — accès solaire par module du pan ACTIF, dans la forme du contrat v2
+   * (`$defs/solarAccess`), prêt pour `serializeLayout`. `null` quand rien n'est
+   * calculable (aucune obstruction renseignée, aucun module posé) : le document sort
+   * alors SANS accès solaire, jamais avec des valeurs par défaut.
+   */
+  function activeSolarAccessMeta():
+    | { solarAccessByZone: Record<string, import('./roofPro11/prefill').SerializedSolarAccess> }
+    | null {
+    const s = shadingUi.solarAccess();
+    if (!s) return null;
+    return {
+      solarAccessByZone: {
+        [ctx.activeAreaId]: {
+          values: s.perModule,
+          method: s.method,
+          assumptions: {
+            periode: s.month == null ? 'annee-entiere' : `mois-${s.month + 1}`,
+            hypotheses: s.assumptions,
+            moduleLePlusOmbrage: s.min,
+            moduleLePlusDegage: s.max,
+            moyennePan: s.average,
+          },
+          computedAt: new Date().toISOString(),
+        },
+      },
+    };
+  }
+
   // W114/W115 — expose une petite API à la page de design (étude Meriem) : sérialiser
   // le layout finalisé (W113) + instantané PNG de la 3D (W115). Boot complet seulement
   // (jamais en capture). Absent → aucun effet.
@@ -2974,9 +3010,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
               devisId: devisOrigin.devisId,
               ...(devisOrigin.panelWatt != null ? { panelWatt: devisOrigin.panelWatt } : {}),
               ...(devisOrigin.scenario ? { scenario: devisOrigin.scenario } : {}),
+              // CAL248 — l'accès solaire par module du pan actif voyage avec le document
+              // (l'appelant peut toujours l'écraser explicitement).
+              ...(activeSolarAccessMeta() ?? {}),
               ...(meta ?? {}),
             }
-          : meta,
+          : { ...(activeSolarAccessMeta() ?? {}), ...(meta ?? {}) },
       ),
     snapshot: () => scene3d.snapshot(),
     // L-MAP — bascule du calque de référence géo-référencé (rp9-chip côté
