@@ -469,6 +469,46 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         """
         return Response(contexte_conception(self.get_object(), request))
 
+    # ── L'import bidirectionnel de contour (D4) : le sens AO → calepinage ──
+    @action(detail=True, methods=['post'], url_path='importer-contour-ao',
+            permission_classes=[PeutGererCalepinage])
+    def importer_contour_ao(self, request, pk=None):
+        """CAL240 — reprend dans ce calepinage le contour d'une toiture d'AO.
+
+        Symétrie exacte de ``apps/ao/views.py::ToitureAOViewSet.
+        reprendre_contour_3d`` (CAL241). Le corps désigne la source —
+        ``{"toiture": <id>}`` ou ``{"appel_offre": <id>}``, et à défaut
+        l'affaire déjà rattachée au calepinage ; le SERVEUR tranche.
+
+        SEUL LE CONTOUR VOYAGE : l'action écrit ``roof_layout['outline']`` et
+        rien d'autre. Aucune géométrie opposable ne bouge — ni obstacle, ni
+        chaîne de cotes, ni zone AO, ni variante retenue — et côté AO rien
+        n'est écrit du tout (lecture par ``apps.ao.selectors``, jamais ses
+        modèles : contrats import-linter).
+
+        Les refus viennent du service et portent leur statut : 404 pour une
+        toiture d'une autre société (introuvable, jamais « interdite »), 409
+        pour une affaire déposée ou close avec le motif EXACT du serveur AO,
+        400 pour une toiture sans ancre géographique — le champ à renseigner
+        est nommé. Le calepinage d'une autre société est, lui, introuvable par
+        ``get_queryset``.
+        """
+        from ..services.contour_ao import ContourAoRefuse, importer_contour_ao
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        try:
+            resultat = importer_contour_ao(
+                calepinage,
+                toiture_id=request.data.get('toiture'),
+                appel_offre_id=request.data.get('appel_offre'),
+                user=request.user)
+        except ContourAoRefuse as refus:
+            corps = {'detail': str(refus)}
+            if refus.champ:
+                corps[refus.champ] = [str(refus)]
+            return Response(corps, status=refus.statut)
+        return Response(resultat)
+
     @action(detail=True, methods=['post'], url_path='roof-image',
             permission_classes=[PeutGererCalepinage],
             parser_classes=[MultiPartParser, FormParser])

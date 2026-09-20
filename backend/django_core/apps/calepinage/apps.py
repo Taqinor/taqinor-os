@@ -47,6 +47,11 @@ class CalepinageConfig(AppConfig):
         # créé depuis la fiche lead resterait gelé à sa création pendant que le
         # devis continue d'être redessiné. Import ICI (et pas en tête de
         # module) : ``ready()`` est le seul moment où les modèles sont chargés.
+        #
+        # CAL110 — le MÊME module porte l'abonnement à ``lead_created`` : un
+        # lead issu du parcours public « mon toit » ouvre un calepinage
+        # pré-tracé. C'est l'app CONSOMMATRICE qui s'abonne (patron M6) :
+        # ``apps/crm/receivers.py`` n'a aucune connaissance de ce module.
         from . import receivers  # noqa: F401
 
         # CAL208 — enregistre le restaurateur dédié de la corbeille

@@ -983,3 +983,71 @@ def kits_de_pose(company, *, actifs_seulement=True):
             'produit_archive': bool(produit and produit.is_archived),
         })
     return lignes
+
+# ── CAL240 — le CONTOUR d'une toiture AO, lu par le module Calepinage ──────
+#
+# Le sens AO → calepinage de l'import bidirectionnel (D4). Le sens inverse
+# (CAL241) vit dans ``apps/ao/views.py`` et lit le module par SON sélecteur ;
+# celui-ci est sa symétrie : ``apps.calepinage`` lit AO par CE fichier, jamais
+# par ``apps.ao.models`` (frontière inter-apps, contrats import-linter).
+#
+# LECTURE PURE : aucune toiture, aucun contour, aucun statut n'est écrit ici.
+
+def contour_ao_a_reprendre(company, *, toiture_id=None, appel_offre_id=None):
+    """Le contour d'une toiture AO, en degrés, avec ses REFUS déjà nommés.
+
+    Rend TOUJOURS le même dictionnaire — aucune clé absente, jamais un
+    ``None`` là où une liste est attendue :
+
+        {trouve, toiture, appel_offre, code_document, designation,
+         outline, raison_lecture_seule, refus, champ}
+
+    * ``trouve`` est faux quand la toiture (ou l'affaire) n'existe pas DANS
+      ``company`` : l'appelant répond 404 et n'apprend rien de son existence ;
+    * ``outline`` est ``[[lat, lng], …]`` — l'ordre d'axes du champ
+      ``outline`` du document ``roof_layout``, converti par la SEULE
+      conversion du domaine (``services.contour_ao_vers_outline_latlng``,
+      CAL31) ;
+    * ``raison_lecture_seule`` porte le motif FRANÇAIS d'une affaire déposée
+      ou close (``raison_conception_figee``, source unique de la phrase) ;
+    * ``refus`` / ``champ`` portent le refus d'une toiture SANS ancre
+      géographique, avec le champ à renseigner — on ne devine jamais une
+      origine (reprojeter depuis le GPS du SITE placerait le bâtiment à côté
+      de lui-même).
+
+    ``toiture_id`` désigne la toiture ; à défaut, ``appel_offre_id`` prend la
+    toiture de référence de l'affaire (choix DÉTERMINISTE, le même que
+    l'atelier 3D).
+    """
+    from .models import ToitureAO
+    from .services import ContourSansAncre, contour_ao_vers_outline_latlng
+
+    vide = {'trouve': False, 'toiture': None, 'appel_offre': None,
+            'code_document': '', 'designation': '', 'outline': [],
+            'raison_lecture_seule': '', 'refus': '', 'champ': ''}
+    if company is None:
+        return dict(vide)
+
+    if toiture_id:
+        toiture = (ToitureAO.objects
+                   .filter(pk=toiture_id, company=company)
+                   .select_related('batiment__appel_offre').first())
+    elif appel_offre_id:
+        toiture = _toiture_de_reference(company, appel_offre_id)
+    else:
+        toiture = None
+    if toiture is None:
+        return dict(vide)
+
+    affaire = toiture.batiment.appel_offre
+    lu = dict(vide, trouve=True, toiture=toiture.pk, appel_offre=affaire.pk,
+              code_document=toiture.code_document or '',
+              designation=toiture.designation or '',
+              raison_lecture_seule=raison_conception_figee(affaire))
+    try:
+        lu['outline'] = contour_ao_vers_outline_latlng(toiture)
+    except ContourSansAncre as erreur:
+        lu['refus'] = ' '.join(getattr(erreur, 'messages', None)
+                               or [str(erreur)])
+        lu['champ'] = getattr(erreur, 'champ', '') or 'origine_lat'
+    return lu
