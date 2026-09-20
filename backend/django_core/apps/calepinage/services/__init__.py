@@ -23,9 +23,8 @@ LA RÈGLE
 
 FRONTIÈRE INTER-APPS (import-linter) — une AUTRE app qui écrit dans ce module
 passe par une fonction ré-exportée ici, jamais par ``apps.calepinage.models``
-ou ``.views``. Symétriquement, ce module ne lit crm / ventes / ao QUE par leurs
-``selectors.py`` (``apps.crm.selectors``, ``apps.ventes.selectors``,
-``apps.ao.selectors``).
+ou ``.views``. Symétriquement, ce module ne lit crm / ventes QUE par leurs
+``selectors.py`` (``apps.crm.selectors``, ``apps.ventes.selectors``).
 """
 from __future__ import annotations
 
@@ -41,7 +40,7 @@ SOUS_MODULES = (
     'zones',          # CAL68 — exclusionZones -> zones du moteur
     'zones_reglementaires',  # CAL74 — gabarits de zone SOURCÉS (CAL45)
     'creation',       # CAL11 — obtenir_ou_creer_pour_devis / lead / client
-    'liens',          # CAL12 — lier_devis / lier_appel_offre
+    'liens',          # CAL12 — lier_devis
     'layout',         # CAL13 — enregistrer_layout (hash + version)
     'variantes',      # CAL9 + CAL14 — creer / retenir / dupliquer
     'versions',       # CAL8 — instantanés jamais réécrits, purge bornée

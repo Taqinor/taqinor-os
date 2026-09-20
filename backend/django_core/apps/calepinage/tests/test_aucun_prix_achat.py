@@ -52,8 +52,8 @@ MOTIFS_INTERDITS = ('prix_achat', 'marge', 'cout_achat')
 #: ``apps/calepinage/selectors.py`` (``marge_troncon_min``/``marge_bande_min``
 #: /``marges``) mesure le DÉGAGEMENT restant entre deux rangées de modules
 #: posés — exactement la « Marges » géométrique que
-#: ``apps.ao.calepinage_io.marges_vers_json`` publie déjà côté AO (patron
-#: cité par ``contract_samples/README.md``, règle 3). Une garde qui rougirait
+#: ``moteur_io.marges_vers_json`` publie déjà (patron cité par
+#: ``contract_samples/README.md``, règle 3). Une garde qui rougirait
 #: dessus serait un faux positif garanti sur du code correct — on l'exempte
 #: donc PAR NOM EXACT, jamais par préfixe (une future clé ``marge_xxx``
 #: inconnue de cette liste reste interdite).

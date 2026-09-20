@@ -23,7 +23,7 @@ import {
   ORDRE_LATLNG, aireM2, contourVersSommetsM, creerRepere, lngLatVersMetres,
 // Extension EXPLICITE : ce module est chargé tel quel par `node --test`
 // (`src/**/*.test.mjs`), qui ne résout pas les imports sans extension.
-} from '../../ao/toiture/repere.js'
+} from '../../calepinage/repere.js'
 
 /** Côté maximal du dessin, en unités de viewBox SVG (le rendu est responsive). */
 export const COTE_DESSIN = 200

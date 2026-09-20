@@ -7,7 +7,7 @@ Ce qui est prouvé ici :
 * une entrée INVALIDE rend 400 avec le champ fautif NOMMÉ et le motif français
   du serveur — jamais un 500 ;
 * le corps accepte l'enveloppe ``{"entree": …}`` et le document nu ;
-* la sortie est celle du moteur du dépôt (``apps.ao.selectors.calepinage_json``,
+* la sortie est celle du moteur du dépôt (``moteur_service.calepinage_json``,
   la MÊME sérialisation que la porte AO), plus ``depuis_cache`` ;
 * au-delà du budget synchrone, la route rend 202 avec le coût estimé — elle ne
   fait jamais attendre devant un écran gelé.
@@ -47,9 +47,9 @@ class CoutFactice:
 class PorteMoteurTest(BaseApiCalepinage):
     def _appeler(self, api, corps, *, cout=None, sortie=None, erreur=None):
         """Appelle la PORTE — le moteur lui-même est simulé (il a ses tests)."""
-        with mock.patch('apps.ao.selectors.cout_calepinage',
+        with mock.patch('apps.calepinage.moteur_service.cout_calepinage',
                         return_value=cout or CoutFactice()), \
-                mock.patch('apps.ao.selectors.calepinage_json',
+                mock.patch('apps.calepinage.moteur_service.calepinage_json',
                            side_effect=erreur,
                            return_value=dict(sortie or SORTIE)):
             return api.post(URL, corps, format='json')
@@ -68,10 +68,12 @@ class PorteMoteurTest(BaseApiCalepinage):
         self.assertIn('entree', reponse.data)
 
     def test_entree_invalide_rend_400_avec_le_motif_serveur(self):
-        from apps.ao.selectors import erreurs_moteur_calepinage
+        from apps.calepinage.moteur_service import (
+            erreurs_moteur_calepinage,
+        )
 
         entree_invalide, _ = erreurs_moteur_calepinage()
-        with mock.patch('apps.ao.selectors.cout_calepinage',
+        with mock.patch('apps.calepinage.moteur_service.cout_calepinage',
                         side_effect=entree_invalide('Surface absente.')):
             reponse = self.api.post(URL, DOCUMENT, format='json')
         self.assertEqual(reponse.status_code, 400)

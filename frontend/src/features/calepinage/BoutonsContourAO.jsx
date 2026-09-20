@@ -1,11 +1,19 @@
 import { useState } from 'react'
 import { ArrowLeftRight, Info } from 'lucide-react'
-import calepinageApi from '../../api/calepinageApi'
-import aoApi from '../../api/aoApi'
+import api from '../../api/axios'
 import { Button } from '../../ui'
 
 /* ============================================================================
-   CAL242 — LES DEUX BOUTONS DE L'IMPORT DE CONTOUR, un par sens.
+   CAL242 — LE BOUTON D'IMPORT DE CONTOUR côté affaire d'appel d'offres.
+   ----------------------------------------------------------------------------
+   SOLMVP15 — ce fichier portait LES DEUX SENS. Le sens affaire → atelier
+   (CAL240) est parti avec son endpoint : l'app d'appels d'offres sort du
+   produit, il n'y a plus d'affaire dont reprendre le contour, et l'atelier
+   garde son contour canonique (`roof_layout.outline`, v2) et le tracé sur
+   carte pour le poser. Le sens inverse (CAL241), lui, est monté sur l'écran de
+   TOITURE d'une affaire : il vit donc jusqu'au retrait de cet écran, et part
+   avec lui. Il n'appelle plus le client d'API de cette app (qui s'en va) mais
+   la même route, par le client HTTP commun — aucun comportement ne change.
    ----------------------------------------------------------------------------
    CONSTAT : sans bouton, CAL240 et CAL241 restent des ENDPOINTS MORTS — le même
    oubli qu'au 03/08/2026, où 61 écrans livrés sur 68 n'étaient atteignables
@@ -89,26 +97,6 @@ const RAPPEL = 'Seule la géométrie de contour est reprise : obstacles, cotes, 
   + 'zones et variante retenue ne sont pas touchés.'
 
 /**
- * Sens AO → calepinage (CAL240). Posé dans l'atelier en mode calepinage.
- * `calepinageId` : le calepinage qui REÇOIT. `affaireId`/`toitureId` désignent
- * la source AO, transmises telles quelles au serveur, qui tranche.
- */
-export function BoutonReprendreContourAffaire({ calepinageId, toitureId, affaireId, onImporte }) {
-  return (
-    <BoutonImport
-      testid="cal-bouton-contour-affaire"
-      libelle="Reprendre le contour de l’affaire"
-      rappel={RAPPEL}
-      onImporte={onImporte}
-      action={() => calepinageApi.calepinages.importerContourAo(calepinageId, {
-        ...(toitureId ? { toiture: toitureId } : {}),
-        ...(affaireId ? { appel_offre: affaireId } : {}),
-      })}
-    />
-  )
-}
-
-/**
  * Sens calepinage → AO (CAL241). Posé sur l'écran de toiture d'une affaire.
  * `toitureId` : la toiture AO qui REÇOIT ; `calepinageId` la source, quand
  * l'écran la connaît — sinon le serveur résout le calepinage de l'affaire.
@@ -120,10 +108,11 @@ export function BoutonReprendreTrace3D({ toitureId, calepinageId, onImporte }) {
       libelle="Reprendre le tracé 3D"
       rappel={RAPPEL}
       onImporte={onImporte}
-      action={() => aoApi.toitures.reprendreContour3d(
-        toitureId, calepinageId ? { calepinage: calepinageId } : {})}
+      action={() => api.post(
+        `/ao/toitures/${toitureId}/reprendre-contour-3d/`,
+        calepinageId ? { calepinage: calepinageId } : {})}
     />
   )
 }
 
-export default BoutonReprendreContourAffaire
+export default BoutonReprendreTrace3D

@@ -334,11 +334,16 @@ def dossiers_du_calepinage(calepinage, *, pays=None):
 # fiche société). En l'absence de gabarit société, il REFUSE en expliquant en
 # français quoi déposer — jamais un gabarit inventé.
 #
-# La fusion est celle de la GED (``apps.ged.services.fusionner_pdf``, XGED10),
-# exactement comme ``services/pack_technique.py`` : aucune seconde plomberie
-# PDF n'est créée ici.
+# Le dépôt et la fusion sont ceux de ``services/depot_pdf.py``, exactement
+# comme ``services/pack_technique.py`` : aucune seconde plomberie PDF n'est
+# créée ici. SOLMVP15 — ils passaient par le référentiel documentaire, qui sort
+# du produit (il revient en PHASE 2) ; les pièces se rangent désormais dans
+# ``records``, où vivent déjà les photos de site et le FICHIER de gabarit de ce
+# même dossier. Mêmes pièces, même ordre, mêmes refus.
 
-#: Où le pack se range dans la GED.
+#: Comment le pack se NOMME (ces deux libellés désignaient son emplacement dans
+#: le référentiel documentaire ; ils restent publiés — voir
+#: ``services/pack_technique.py``).
 CABINET_GED = 'Calepinage'
 DOSSIER_GED = 'Dossiers réglementaires'
 
@@ -413,9 +418,14 @@ def _rendre_pieces_produites(rendus):
 
 
 def _ancre(calepinage, dossier, code):
-    """L'ancre d'idempotence : dossier + EMPREINTE du layout + pièce."""
+    """L'ancre d'idempotence : dossier + EMPREINTE du layout + pièce.
+
+    Elle voyage dans le NOM DE FICHIER de la pièce déposée (SOLMVP15), donc
+    elle ne porte que des caractères sûrs pour un nom de fichier.
+    """
     empreinte = getattr(calepinage, 'layout_hash', '') or 'sans-empreinte'
-    return '%s:%s:%s' % (getattr(dossier, 'pk', ''), empreinte[:12], code)
+    return 'dossier-%s-%s-%s' % (getattr(dossier, 'pk', ''), empreinte[:12],
+                                 code)
 
 
 def construire_pack_dossier(dossier, *, created_by=None, rendus=None):
@@ -423,8 +433,8 @@ def construire_pack_dossier(dossier, *, created_by=None, rendus=None):
 
     Le gabarit de la société FAIT FOI : sans son fichier, rien n'est produit
     et le message dit quoi déposer. Les pièces PRODUITES par le module
-    (planche, note de calcul, schéma unifilaire) sont déposées en GED puis
-    fusionnées avec le gabarit déposé — jamais avec un formulaire fabriqué.
+    (planche, note de calcul, schéma unifilaire) sont déposées en pièces
+    jointes puis fusionnées — jamais avec un formulaire fabriqué.
 
     Returns:
         ``{'document', 'pieces', 'signalements', 'dossier'}``.
@@ -448,35 +458,39 @@ def construire_pack_dossier(dossier, *, created_by=None, rendus=None):
             "module, l'ERP ne fabrique aucun formulaire officiel qu'il n'a "
             "pas reçu." % gabarit.intitule, piece='gabarit')
 
-    # La GED n'est importée QU'APRÈS les refus : un refus doit être immédiat,
+    # Le dépôt n'est importé QU'APRÈS les refus : un refus doit être immédiat,
     # et il ne coûte pas le chargement d'un module lourd (patron
     # ``services/pack_technique.py``).
-    from apps.ged.services import deposit_document, fusionner_pdf
+    from .depot_pdf import DepotRefuse, deposer_pdf, fusionner_pdf
 
     rendus = rendus if rendus is not None else _rendus_du_module(calepinage,
                                                                  company)
     pieces, signalements = _rendre_pieces_produites(rendus)
-    documents = []
-    for code, libelle, octets in pieces:
-        document, _cree = deposit_document(
-            company=company,
-            nom='%s — %s' % (libelle, calepinage),
-            source_type='calepinage.dossier.%s' % code,
-            source_id=_ancre(calepinage, dossier, code),
-            contenu_bytes=octets, mime='application/pdf',
-            filename='%s.pdf' % code,
-            cabinet_nom=CABINET_GED, folder_nom=DOSSIER_GED,
-            created_by=created_by)
-        documents.append(document)
-    if not documents:
+    if not pieces:
         raise DossierRefuse(
             "Dossier réglementaire refusé : aucune pièce à fusionner.",
             piece='pieces')
 
-    pack = fusionner_pdf(documents, company=company, created_by=created_by,
-                         nom='%s — %s' % (gabarit.intitule, calepinage))
+    nom_pack = '%s — %s' % (gabarit.intitule, calepinage)
+    try:
+        for code, libelle, octets in pieces:
+            deposer_pdf(
+                calepinage, octets, company=company,
+                filename='%s.pdf' % _ancre(calepinage, dossier, code),
+                user=created_by)
+        fusionne = fusionner_pdf(
+            [(libelle, octets) for _c, libelle, octets in pieces])
+        pack, _cree = deposer_pdf(
+            calepinage, fusionne, company=company,
+            filename='%s.pdf' % _ancre(calepinage, dossier, 'pack'),
+            user=created_by)
+    except DepotRefuse as refus:
+        # Le motif du dépôt/de la fusion est rendu TEL QUEL.
+        raise DossierRefuse(str(refus), piece='pieces') from refus
+
     return {
         'document': pack,
+        'nom': nom_pack,
         'pieces': [(code, libelle) for code, libelle, _o in pieces],
         'signalements': signalements,
         'dossier': dossier.pk,

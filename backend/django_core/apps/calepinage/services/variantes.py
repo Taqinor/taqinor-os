@@ -21,7 +21,8 @@ from __future__ import annotations
 
 # Le verrou lui-même vit dans ``apps/calepinage/garde_retenue.py`` (stdlib
 # pure) : le MODÈLE doit l'interroger, et s'il importait ce service la chaîne
-# ``models -> services.variantes -> apps.ventes.services -> … -> apps.ao.models``
+# ``models -> services.variantes -> apps.ventes.services -> … -> les modèles
+# d'une autre app``
 # ferait rougir le contrat import-linter CAL5 (mesuré). On le RÉ-EXPORTE ici :
 # le chemin d'écriture unique reste le service.
 from ..garde_retenue import (  # noqa: F401

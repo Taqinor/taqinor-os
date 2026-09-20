@@ -1,15 +1,15 @@
 """CAL197 — presets de conception PROPRES au module (section ``presets`` de
 ``ParametresCalepinage``, CAL45 — aucun nouveau modèle).
 
-DEUX SOURCES, JAMAIS UNE COPIE DE L'UNE VERS L'AUTRE
------------------------------------------------------
-``PresetCalepinage`` existe déjà côté AO (AOF27), et ``ToitureAO.
-parametres_calepinage`` gèle les paramètres à l'affaire — l'atelier autonome
-n'y a pas accès. Ce module rend les presets AO LISIBLES par le module
-(``apps.ao.selectors.presets_calepinage``) et range les presets PROPRES au
-module dans la section ``presets`` des réglages société — jamais une copie
-silencieuse d'un preset AO dans la section module : les deux sources restent
-lues côte à côte (``selectors.presets_de_societe``), chacune sa vérité.
+UNE SEULE SOURCE, JAMAIS UNE COPIE VENUE D'AILLEURS
+----------------------------------------------------
+Ce module range les presets PROPRES à l'atelier dans la section ``presets``
+des réglages société (``selectors.presets_de_societe``).
+
+SOLMVP15 — il y avait une SECONDE source, lue côte à côte : les presets de
+portee société du module d'appels d'offres, jamais copiés dans la section du
+module. Ce module-là sort du produit, sa table part avec lui : il n'en reste
+qu'une source. Les jeux maison sont intacts — rien n'a été perdu ni copié.
 
 Aucune valeur codée en dur : ce service ne pose AUCUN défaut, il range ce
 qu'on lui donne et refuse ce qui est incomplet, en NOMMANT le champ fautif.
@@ -76,7 +76,7 @@ def enregistrer_jeu(company, jeu):
     existants = jeux_de_societe(company)
     restants = [ligne for ligne in existants if ligne.get('id') != identifiant]
     restants.append(dict(jeu, id=identifiant, nom=nom))
-    enregistrer_parametres(company, {'presets': {CLE_JEUX: restants}})
+    enregistrer_parametres(company, {'presets': _section(company, restants)})
     return restants
 
 
@@ -91,5 +91,21 @@ def retirer_jeu(company, preset_id):
         raise PresetInvalide(
             f'Preset de conception introuvable : « {preset_id} ».',
             champ='id')
-    enregistrer_parametres(company, {'presets': {CLE_JEUX: restants}})
+    enregistrer_parametres(company, {'presets': _section(company, restants)})
     return restants
+
+
+def _section(company, jeux):
+    """La section ``presets`` ENTIÈRE, avec ``jeux`` remplacé — jamais réduite.
+
+    ``enregistrer_parametres`` REMPLACE la section fournie (mise à jour
+    partielle au niveau SECTION, pas au niveau clé). Écrire ``{'jeux': …}``
+    seul effacerait donc TOUTES les autres clés de la section — dont le
+    catalogue de kits de pose (``presets.kits``, SOLMVP15). On relit la section
+    et on n'en change QUE ``jeux``.
+    """
+    from ..selectors import parametres_de_societe
+
+    section = dict(parametres_de_societe(company).get('presets') or {})
+    section[CLE_JEUX] = jeux
+    return section

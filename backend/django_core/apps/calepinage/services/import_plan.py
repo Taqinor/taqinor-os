@@ -2,17 +2,17 @@
 
 L'ANALYSEUR N'EST PAS RECODÉ
 ---------------------------
-Il existe déjà, testé et en production : ``apps/ao/dxf.py`` ``analyser_dxf``
-(ezdxf, 5 Mo max), exposé côté AO par ``POST /api/django/ao/toitures/dxf/
-analyser/``. CAL62 lui ajoute une porte FINE — ``apps.ao.selectors.
-analyser_plan_importe`` — et ce module l'APPELLE. Un second analyseur
-donnerait, tôt ou tard, deux contours différents pour un même plan.
+Il existe, testé et en production : ``analyse_plan.analyser_plan_importe``
+(ezdxf pour le DXF, PyMuPDF pour le PDF vectoriel, 5 Mo max), et ce module
+l'APPELLE. Un second analyseur donnerait, tôt ou tard, deux contours
+différents pour un même plan.
 
-FRONTIÈRE
----------
-On lit ``apps.ao`` par son SEUL ``selectors.py`` (import fonction-local) :
-jamais ``apps.ao.models``, jamais ``apps.ao.views`` — contrats import-linter
-``ao-models-decoupled`` / ``calepinage-models-decoupled``.
+OÙ IL VIT (SOLMVP15)
+--------------------
+Il vivait chez le module d'appels d'offres, lu par son seul ``selectors.py``.
+Ce module-là sort du produit : l'analyseur est rapatrié dans
+``apps/calepinage/analyse_plan.py``, à la ligne près — même forme publiée,
+mêmes refus, même unité jamais devinée.
 
 CE QUE CE MODULE PRODUIT
 ------------------------
@@ -30,8 +30,8 @@ from __future__ import annotations
 class PlanIllisible(ValueError):
     """Refus d'import, message FRANÇAIS nommant la cause, champ fautif nommé.
 
-    Enveloppe le refus de l'analyseur AO (``dxf.DxfInvalide``) pour que
-    l'appelant du module n'ait pas à connaître les exceptions d'une autre app.
+    Enveloppe le refus de l'analyseur (``analyse_plan.DxfInvalide``) pour que
+    l'appelant n'ait pas à connaître les exceptions de l'analyseur.
     """
 
     def __init__(self, message, *, champ='fichier'):
@@ -40,7 +40,7 @@ class PlanIllisible(ValueError):
 
 
 def analyser_plan(contenu, *, nom_fichier=''):
-    """Analyse un plan déposé, par l'analyseur de l'AO — jamais un second.
+    """Analyse un plan déposé, par l'analyseur du module — jamais un second.
 
     Args:
         contenu: les octets du fichier (DXF, ou PDF vectoriel).
@@ -48,17 +48,17 @@ def analyser_plan(contenu, *, nom_fichier=''):
 
     Returns:
         ``{'format', 'unite', 'calques': [{'nom', 'entites', 'sommets'}]}`` —
-        exactement la forme que sert déjà l'écran d'import DXF de l'AO.
+        exactement la forme que servait déjà l'écran d'import DXF.
 
     Raises:
         PlanIllisible: fichier vide, trop lourd, illisible, ou PDF SANS aucun
             tracé vectoriel (plan scanné) — la cause est nommée en français.
     """
-    from apps.ao.selectors import analyser_plan_importe
+    from ..analyse_plan import analyser_plan_importe
 
     try:
         return analyser_plan_importe(contenu, nom_fichier=nom_fichier)
-    except ValueError as refus:  # ``dxf.DxfInvalide`` est un ``ValueError``
+    except ValueError as refus:  # ``DxfInvalide`` est un ``ValueError``
         raise PlanIllisible(str(refus)) from refus
 
 

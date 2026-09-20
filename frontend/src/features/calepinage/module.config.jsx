@@ -15,10 +15,10 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    pick whatever client or lead and make its calpinage. »
 
    D3 — cette porte N'EXISTE PAS aujourd'hui : le seul accès au calepinage passe
-   par un devis (`router/index.jsx`) ou par une affaire AO
-   (`features/ao/module.config.jsx`). Ce module est une porte SUPPLÉMENTAIRE,
-   jamais un remplacement : aucune ligne de `LeadWorkspace.jsx` ni du mode
-   `devis` de `ToitureDesign.jsx` n'est touchée par cette lane.
+   par un devis (`router/index.jsx`) ou par une affaire d'appel d'offres (le
+   manifeste de ce module-là). Ce module est une porte SUPPLÉMENTAIRE, jamais un
+   remplacement : aucune ligne de `LeadWorkspace.jsx` ni du mode `devis` de
+   `ToitureDesign.jsx` n'est touchée par cette lane.
 
    `key: 'calepinage'` — IDENTIQUE au `module_manifest` backend posé par CAL4
    (`apps/calepinage/apps.py`). C'est l'ancrage de corrélation vérifié par
