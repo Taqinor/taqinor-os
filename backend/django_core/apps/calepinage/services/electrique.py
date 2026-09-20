@@ -53,6 +53,11 @@ __all__ = [
     'CLE_ENTREE', 'CHAMPS_ENTREE', 'EntreeInvalide',
     'entree_stockee', 'enregistrer_entree', 'resoudre_materiel',
     'conception_du_calepinage', 'resultat_calepinage',
+    'verdicts_electriques', 'bornes_ratio', 'bloc_ratio_dc_ac',
+    'ecretage_depuis_serie', 'SOURCE_BORNE_MARCHE', 'SOURCE_BORNE_SOCIETE',
+    'SOURCE_BORNE_NOYAU',
+    'PublicationBloquee', 'bloquants_nommes', 'alertes_nommees',
+    'evaluation_electrique', 'garde_publication', 'rejouer_apres_layout',
 ]
 
 #: Les deux SOURCES possibles d'une température de dimensionnement. Une
@@ -532,6 +537,199 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'pertes': [],
         'avertissements': messages,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CAL128 — LES CONTRAINTES ONDULEUR BLOQUANTES, REMONTÉES JUSQU'AU PLAN DE POSE
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``apps/ventes/solar_design.py`` et ``apps/ventes/compatibilites.py`` traitent
+# déjà le dépassement d'Isc d'entrée comme BLOQUANT (incident DEV-202608-0016)
+# — mais ce verdict n'existe qu'à la composition du devis. On peut donc
+# aujourd'hui DESSINER un champ que l'onduleur retenu ne peut pas recevoir, et
+# ne l'apprendre qu'au chiffrage.
+#
+# Trois garanties ici :
+#   * le verdict est appelable À CHAUD pendant la conception (l'écran
+#     l'interroge après anti-rebond) — un avertissement PENDANT, pas après ;
+#   * il est REJOUÉ à chaque enregistrement de layout, donc il ne peut pas
+#     être contourné en sautant l'écran ;
+#   * tant qu'un bloquant subsiste, la publication est REFUSÉE et le statut
+#     ``brouillon`` est conservé.
+#
+# Et la règle qui prime sur les trois : une FICHE INCOMPLÈTE ne produit AUCUN
+# verdict. Pas un faux vert, pas un faux rouge — le silence, avec la liste de
+# ce qui manque.
+
+class PublicationBloquee(ValueError):
+    """Refus de publier un calepinage électriquement bloqué.
+
+    ``bloquants`` porte les messages NOMMÉS (contrainte, pan, chaîne) pour que
+    l'écran pointe le défaut au lieu d'afficher un refus générique.
+    """
+
+    def __init__(self, message, *, bloquants=(), champ='electrique'):
+        super().__init__(message)
+        self.bloquants = tuple(bloquants)
+        self.champ = champ
+
+
+def bloquants_nommes(conception):
+    """Les bloquants de CETTE conception, chacun nommant pan et chaîne.
+
+    Le noyau prononce déjà ses bloquants en français (fenêtre de tension vide,
+    Isc publié dépassé) ; on ne les réécrit pas — on AJOUTE le repérage
+    « chaîne CHn (pan …) » que le noyau ne peut pas donner, puisqu'il ne sait
+    pas ce que l'utilisateur a dessiné.
+    """
+    from core.electrique.types import fr_a, fr_v
+
+    if conception.fiche_incomplete or conception.resultat is None:
+        return ()
+    onduleur = conception.entree.onduleur
+    messages = []
+
+    for chaine in conception.chaines:
+        if chaine.voc_froid_v > float(onduleur.v_max_abs) + 1e-9:
+            messages.append(
+                "V_max : chaîne %s (pan « %s ») — Voc à froid %s au-dessus de "
+                "la tension maximale absolue %s de %s : l'onduleur serait "
+                "DÉTRUIT. Retirer des modules de cette chaîne."
+                % (chaine.repere, chaine.pan, fr_v(chaine.voc_froid_v),
+                   fr_v(onduleur.v_max_abs),
+                   onduleur.designation or "l'onduleur retenu"))
+
+    isc_publie = getattr(onduleur, 'isc_max_mppt_a', None)
+    if isc_publie is not None:
+        cumul = {}
+        for chaine in conception.chaines:
+            cumul.setdefault(chaine.mppt, []).append(chaine)
+        for mppt, chaines in sorted(cumul.items()):
+            total = sum(c.isc_a for c in chaines)
+            if total > float(isc_publie) + 1e-9:
+                messages.append(
+                    "Isc : entrée MPPT %d — %s cumulés par les chaînes %s "
+                    "(pan(s) « %s ») au-dessus du courant de court-circuit "
+                    "admissible %s publié par la fiche de %s."
+                    % (mppt, fr_a(total),
+                       ', '.join(c.repere for c in chaines),
+                       ', '.join(sorted({c.pan for c in chaines})),
+                       fr_a(float(isc_publie)),
+                       onduleur.designation or "l'onduleur retenu"))
+
+    # Les bloquants du noyau (fenêtre de tension vide, longueur imposée
+    # refusée…) sont repris MOT POUR MOT : les réécrire ferait une seconde
+    # source de vérité, exactement ce que PACT10 interdit.
+    for message in conception.bloquants:
+        if message not in messages:
+            messages.append(message)
+    return tuple(messages)
+
+
+def alertes_nommees(conception):
+    """Les ALERTES (production dégradée) — jamais confondues avec un bloquant.
+
+    Écrêtage sur l'Imp d'entrée, MPPT hors plage en été, pans qui partagent
+    une entrée : ça s'installe, ça produit moins. Le bandeau ne doit pas
+    mélanger « ça casse » et « ça produit moins ».
+    """
+    if conception.fiche_incomplete or conception.resultat is None:
+        return ()
+    bloquants = set(bloquants_nommes(conception))
+    return tuple(message for message in conception.alertes
+                 if message not in bloquants)
+
+
+def evaluation_electrique(calepinage, *, entree=None, layout=None,
+                          materiel=None):
+    """CAL128 — le verdict électrique COMPLET, sans rien écrire.
+
+    C'est ce que l'écran appelle à chaud pendant la conception (après
+    anti-rebond) et ce que le service de layout rejoue à chaque
+    enregistrement. Fiche incomplète ⇒ ``verdict: 'indetermine'`` et AUCUN
+    bloquant : le silence, jamais un faux vert.
+    """
+    conception, materiel_resolu, donnees, _document = conception_du_calepinage(
+        calepinage, entree=entree, layout=layout, materiel=materiel)
+    manquantes = tuple(conception.manquantes) + tuple(
+        materiel_resolu['absents'])
+    if manquantes:
+        return {
+            'verdict': 'indetermine',
+            'publiable': False,
+            'bloquants': [],
+            'alertes': [],
+            'manquantes': list(manquantes),
+            'regle_mppt': conception.regle_mppt,
+            'temperatures': (conception.temperatures.en_dict()
+                             if conception.temperatures is not None else None),
+        }
+    bloquants = bloquants_nommes(conception)
+    return {
+        'verdict': 'bloquant' if bloquants else (
+            'alerte' if alertes_nommees(conception) else 'conforme'),
+        'publiable': not bloquants,
+        'bloquants': list(bloquants),
+        'alertes': list(alertes_nommees(conception)),
+        'manquantes': [],
+        'regle_mppt': conception.regle_mppt,
+        'temperatures': (conception.temperatures.en_dict()
+                         if conception.temperatures is not None else None),
+    }
+
+
+def garde_publication(calepinage):
+    """Refuse la publication tant qu'un bloquant subsiste (statut conservé).
+
+    N'écrit RIEN : c'est une garde, pas une transition. Un calepinage dont la
+    fiche est incomplète n'est pas publiable non plus — mais le refus le dit
+    autrement (on ne peut pas certifier ce qu'on n'a pas pu vérifier).
+    """
+    evaluation = evaluation_electrique(calepinage)
+    if evaluation['publiable']:
+        return evaluation
+    if evaluation['verdict'] == 'indetermine':
+        raise PublicationBloquee(
+            "Publication impossible : le verdict électrique n'a pas pu être "
+            "rendu (%s). Complétez les fiches techniques du matériel retenu."
+            % '; '.join(evaluation['manquantes']),
+            bloquants=evaluation['manquantes'])
+    raise PublicationBloquee(
+        "Publication refusée : %d contrainte(s) onduleur bloquante(s). %s"
+        % (len(evaluation['bloquants']), ' '.join(evaluation['bloquants'])),
+        bloquants=evaluation['bloquants'])
+
+
+def rejouer_apres_layout(calepinage, *, user=None):
+    """Rejoue le verdict après un enregistrement de conception (CAL128).
+
+    Le verdict est DÉPOSÉ dans ``resultat['verdict_electrique']`` pour que la
+    fiche l'affiche sans recalculer, et le statut ``brouillon`` est CONSERVÉ
+    quand un bloquant subsiste — un calepinage ne se publie jamais tout seul.
+    Ne lève jamais : un verdict en échec ne doit pas faire perdre une
+    conception déjà enregistrée.
+    """
+    import logging
+
+    try:
+        evaluation = evaluation_electrique(calepinage)
+    except Exception:  # noqa: BLE001 — cf. docstring
+        logging.getLogger(__name__).exception(
+            'CAL128 : verdict électrique en échec (calepinage %s)',
+            getattr(calepinage, 'pk', None))
+        return None
+    resultat = getattr(calepinage, 'resultat', None)
+    resultat = dict(resultat) if isinstance(resultat, dict) else {}
+    resultat['verdict_electrique'] = evaluation
+    calepinage.resultat = resultat
+    if getattr(calepinage, 'pk', None):
+        # AUCUN statut n'est écrit ici — c'est l'invariant du module (le
+        # chemin de layout n'écrit jamais de statut). Le blocage vit dans
+        # ``garde_publication``, que le geste de publication appelle : un
+        # brouillon qui reste brouillon, jamais une rétrogradation surprise
+        # déclenchée par un simple enregistrement de dessin.
+        calepinage.save(update_fields=['resultat', 'updated_at'])
+    return evaluation
 
 
 def _parametres_electriques(calepinage):

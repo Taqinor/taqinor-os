@@ -29,7 +29,7 @@ from rest_framework.response import Response
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..services.electrique import (
     EntreeInvalide, TemperaturesInvalides, enregistrer_entree,
-    resultat_calepinage,
+    evaluation_electrique, resultat_calepinage,
 )
 
 __all__ = ['ElectriqueActionsMixin']
@@ -78,6 +78,43 @@ class ElectriqueActionsMixin:
         try:
             enregistrer_entree(calepinage, corps)
             return Response(resultat_calepinage(calepinage))
+        except (EntreeInvalide, TemperaturesInvalides) as refus:
+            return Response({refus.champ or 'entree_electrique': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], url_path='evaluer-electrique',
+            permission_classes=[PeutVoirCalepinage])
+    def evaluer_electrique(self, request, pk=None):
+        """CAL128 — le verdict onduleur À CHAUD, pendant la conception.
+
+        L'atelier l'appelle après anti-rebond avec le dessin EN COURS
+        (``layout`` dans le corps) : l'utilisateur est averti PENDANT qu'il
+        dessine, pas au moment de chiffrer. Rien n'est écrit — ni conception,
+        ni statut, ni résultat : c'est une évaluation, pas un enregistrement
+        (d'où la garde en LECTURE).
+
+        Le message NOMME la contrainte (Isc / MPPT / V_max), le pan et la
+        chaîne fautifs. Une fiche technique incomplète rend
+        ``verdict: 'indetermine'`` et AUCUN bloquant : le silence, jamais un
+        faux vert.
+        """
+        calepinage = self.get_object()
+        corps = request.data if isinstance(request.data, dict) else {}
+        layout = corps.get('layout')
+        if layout is not None and not isinstance(layout, dict):
+            return Response(
+                {'layout': "La conception envoyée doit être un objet "
+                           "(reçu : %s)." % type(layout).__name__},
+                status=status.HTTP_400_BAD_REQUEST)
+        entree = corps.get('entree_electrique')
+        if entree is not None and not isinstance(entree, dict):
+            return Response(
+                {'entree_electrique': "L'entrée électrique doit être un "
+                                      "objet."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            return Response(evaluation_electrique(
+                calepinage, entree=entree, layout=layout))
         except (EntreeInvalide, TemperaturesInvalides) as refus:
             return Response({refus.champ or 'entree_electrique': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
