@@ -2155,103 +2155,6 @@ class TestPageCalepinage(TestCase):
                  'spec': '1000 V'}],
     }
 
-# ── NTI18N5 — langue de sortie du document (fr/en/ar) ────────────────────────
-
-
-class NTI18N5CatalogueLibellesTests(SimpleTestCase):
-    """Le CATALOGUE seul (aucun rendu) : trois langues par clé, repli toujours
-    français, clé inconnue bruyante, et libellés français identiques aux
-    littéraux que le gabarit écrivait avant cette tâche."""
-
-    def test_chaque_cle_porte_les_trois_langues(self):
-        from apps.ventes.quote_engine import i18n_labels as L
-        for cle, traductions in L.LIBELLES.items():
-            for langue in L.LANGUES:
-                with self.subTest(cle=cle, langue=langue):
-                    self.assertTrue(
-                        (traductions.get(langue) or '').strip(),
-                        f'{cle}/{langue} vide : un document {langue} '
-                        f'imprimerait un blanc ou du français par accident')
-
-    def test_une_langue_inconnue_rend_le_document_francais(self):
-        from apps.ventes.quote_engine import i18n_labels as L
-        for langue in (None, '', 'de', 'ar-MA', 42):
-            with self.subTest(langue=langue):
-                self.assertEqual(L.normaliser(langue), 'fr')
-                self.assertEqual(L.libelles(langue), L.libelles('fr'))
-                self.assertFalse(L.est_rtl(langue))
-
-    def test_une_cle_inconnue_leve_plutot_que_d_imprimer_son_nom(self):
-        from apps.ventes.quote_engine import i18n_labels as L
-        with self.assertRaises(KeyError):
-            L.libelle('cette_cle_n_existe_pas', 'fr')
-
-    def test_les_libelles_francais_sont_les_litteraux_historiques(self):
-        """Un devis français doit rester CELUI D'HIER, entités comprises."""
-        from apps.ventes.quote_engine import i18n_labels as L
-        attendus = {
-            'client': 'Client',
-            'designation': 'D&#233;signation',
-            'marque': 'Marque',
-            'qte': 'Qt&#233;',
-            'pu_ht': 'P.U. HT',
-            'tva': 'TVA',
-            'total_ht': 'Total HT',
-            'sous_total_ht': 'Sous-total HT',
-            'remise': 'Remise',
-            'total_ttc': 'Total TTC',
-            'acompte': 'Acompte',
-            'a_la_reception_materiel':
-                '&#224; la r&#233;ception du mat&#233;riel',
-            'apres_mise_en_marche': 'apr&#232;s mise en marche',
-            'reference': 'R&#233;f.',
-        }
-        for cle, attendu in attendus.items():
-            with self.subTest(cle=cle):
-                self.assertEqual(L.libelle(cle, 'fr'), attendu)
-
-    def test_seul_l_arabe_est_de_droite_a_gauche(self):
-        from apps.ventes.quote_engine import i18n_labels as L
-        self.assertTrue(L.est_rtl('ar'))
-        self.assertEqual(L.direction('ar'), 'rtl')
-        for langue in ('fr', 'en'):
-            with self.subTest(langue=langue):
-                self.assertFalse(L.est_rtl(langue))
-                self.assertEqual(L.direction(langue), 'ltr')
-
-    def test_la_garde_de_debordement_suit_la_langue_du_document(self):
-        """QJR161 — la mesure repère le bas des totaux par le LIBELLÉ : en
-        anglais comme en arabe elle doit encore le trouver, sinon la garde se
-        tait et un devis dense peut reperdre son Total TTC dans la zone
-        ``overflow:hidden`` sans qu'aucun compteur de pages ne bouge."""
-        from apps.ventes.quote_engine import generate_devis_premium as G
-        from apps.ventes.quote_engine import i18n_labels as L
-        for langue in L.LANGUES:
-            with self.subTest(langue=langue):
-                with patch.object(G, 'LANGUE_SORTIE', langue), \
-                        patch.object(G, 'LIBELLES_DOC', L.libelles(langue)):
-                    formes = G._formes_total_ttc()
-                self.assertIn(L.libelle('total_ttc', langue), formes)
-                self.assertIn(L.libelle('total_ttc', langue).upper(), formes)
-                # filet : les formes françaises restent reconnues
-                self.assertIn('Total TTC', formes)
-                self.assertIn('TOTAL TTC', formes)
-
-
-# Volontairement SANS `@tag('pdf')` : la CI passe `--exclude-tag=pdf`, et ce
-# sont justement les comptes de pages par langue qu'il faut faire tourner à
-# chaque run — comme ceux de `TestPdfFormats`, non taguée pour la même raison.
-class NTI18N5DocumentMultilingueTests(TestCase):
-    """Le une-page RENDU en fr / en / ar : même nombre de pages, libellés
-    structurels traduits, arabe en RTL — et le français inchangé."""
-
-    LIGNES = [
-        ('Panneau mono 550W', '14', '1100'),
-        ('Onduleur hybride 5kW', '1', '24000'),
-        ('Structures acier', '14', '375'),
-        ('Installation', '1', '4000'),
-    ]
-
     def setUp(self):
         self.company = make_company()
         self.user = make_user(self.company)
@@ -2465,6 +2368,108 @@ class NTI18N5DocumentMultilingueTests(TestCase):
                      'display_total', 'total_sans', 'total_avec'):
             self.assertEqual(sans.get(clef), avec.get(clef), clef)
 
+
+# ── NTI18N5 — langue de sortie du document (fr/en/ar) ────────────────────────
+
+
+class NTI18N5CatalogueLibellesTests(SimpleTestCase):
+    """Le CATALOGUE seul (aucun rendu) : trois langues par clé, repli toujours
+    français, clé inconnue bruyante, et libellés français identiques aux
+    littéraux que le gabarit écrivait avant cette tâche."""
+
+    def test_chaque_cle_porte_les_trois_langues(self):
+        from apps.ventes.quote_engine import i18n_labels as L
+        for cle, traductions in L.LIBELLES.items():
+            for langue in L.LANGUES:
+                with self.subTest(cle=cle, langue=langue):
+                    self.assertTrue(
+                        (traductions.get(langue) or '').strip(),
+                        f'{cle}/{langue} vide : un document {langue} '
+                        f'imprimerait un blanc ou du français par accident')
+
+    def test_une_langue_inconnue_rend_le_document_francais(self):
+        from apps.ventes.quote_engine import i18n_labels as L
+        for langue in (None, '', 'de', 'ar-MA', 42):
+            with self.subTest(langue=langue):
+                self.assertEqual(L.normaliser(langue), 'fr')
+                self.assertEqual(L.libelles(langue), L.libelles('fr'))
+                self.assertFalse(L.est_rtl(langue))
+
+    def test_une_cle_inconnue_leve_plutot_que_d_imprimer_son_nom(self):
+        from apps.ventes.quote_engine import i18n_labels as L
+        with self.assertRaises(KeyError):
+            L.libelle('cette_cle_n_existe_pas', 'fr')
+
+    def test_les_libelles_francais_sont_les_litteraux_historiques(self):
+        """Un devis français doit rester CELUI D'HIER, entités comprises."""
+        from apps.ventes.quote_engine import i18n_labels as L
+        attendus = {
+            'client': 'Client',
+            'designation': 'D&#233;signation',
+            'marque': 'Marque',
+            'qte': 'Qt&#233;',
+            'pu_ht': 'P.U. HT',
+            'tva': 'TVA',
+            'total_ht': 'Total HT',
+            'sous_total_ht': 'Sous-total HT',
+            'remise': 'Remise',
+            'total_ttc': 'Total TTC',
+            'acompte': 'Acompte',
+            'a_la_reception_materiel':
+                '&#224; la r&#233;ception du mat&#233;riel',
+            'apres_mise_en_marche': 'apr&#232;s mise en marche',
+            'reference': 'R&#233;f.',
+        }
+        for cle, attendu in attendus.items():
+            with self.subTest(cle=cle):
+                self.assertEqual(L.libelle(cle, 'fr'), attendu)
+
+    def test_seul_l_arabe_est_de_droite_a_gauche(self):
+        from apps.ventes.quote_engine import i18n_labels as L
+        self.assertTrue(L.est_rtl('ar'))
+        self.assertEqual(L.direction('ar'), 'rtl')
+        for langue in ('fr', 'en'):
+            with self.subTest(langue=langue):
+                self.assertFalse(L.est_rtl(langue))
+                self.assertEqual(L.direction(langue), 'ltr')
+
+    def test_la_garde_de_debordement_suit_la_langue_du_document(self):
+        """QJR161 — la mesure repère le bas des totaux par le LIBELLÉ : en
+        anglais comme en arabe elle doit encore le trouver, sinon la garde se
+        tait et un devis dense peut reperdre son Total TTC dans la zone
+        ``overflow:hidden`` sans qu'aucun compteur de pages ne bouge."""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine import i18n_labels as L
+        for langue in L.LANGUES:
+            with self.subTest(langue=langue):
+                with patch.object(G, 'LANGUE_SORTIE', langue), \
+                        patch.object(G, 'LIBELLES_DOC', L.libelles(langue)):
+                    formes = G._formes_total_ttc()
+                self.assertIn(L.libelle('total_ttc', langue), formes)
+                self.assertIn(L.libelle('total_ttc', langue).upper(), formes)
+                # filet : les formes françaises restent reconnues
+                self.assertIn('Total TTC', formes)
+                self.assertIn('TOTAL TTC', formes)
+
+
+# Volontairement SANS `@tag('pdf')` : la CI passe `--exclude-tag=pdf`, et ce
+# sont justement les comptes de pages par langue qu'il faut faire tourner à
+# chaque run — comme ceux de `TestPdfFormats`, non taguée pour la même raison.
+class NTI18N5DocumentMultilingueTests(TestCase):
+    """Le une-page RENDU en fr / en / ar : même nombre de pages, libellés
+    structurels traduits, arabe en RTL — et le français inchangé."""
+
+    LIGNES = [
+        ('Panneau mono 550W', '14', '1100'),
+        ('Onduleur hybride 5kW', '1', '24000'),
+        ('Structures acier', '14', '375'),
+        ('Installation', '1', '4000'),
+    ]
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
         self.devis = make_devis(self.company, self.user, self.client_obj,
                                 self.LIGNES, etude_params=DEUX_OPTIONS)
 

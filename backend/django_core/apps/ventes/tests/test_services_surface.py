@@ -218,9 +218,9 @@ SURFACE_PUBLIQUE = (
     "poser_layout_hash",
     "poser_puissance_kwc",
     "poser_validite_devis",
-    "produits_a_renseigner",
     "prix_applicable",
     "prix_forfait_ht",
+    "produits_a_renseigner",
     # QJR107 (30/08/2026) — ``profil_reel_existe`` RETIRÉE de la surface :
     # la fonction est supprimée (aucun appelant dans tout le dépôt), voir la
     # note de suppression en tête de ``domain/etudes.py``.

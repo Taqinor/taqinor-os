@@ -18,13 +18,17 @@ Ce qui est prouvé ici :
 Run :
     python manage.py test apps.ventes.tests.test_cal185_bom_vers_devis -v2
 """
+import ast
 import inspect
+import textwrap
 from decimal import Decimal
 
 from django.test import TestCase
 
-from apps.calepinage.models import Calepinage, CalepinageVariante
+from apps.calepinage.models import Calepinage
+from apps.calepinage.services.variantes import creer_variante
 from apps.crm.models import Client
+from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
 from apps.stock.models import Produit
 from apps.ventes.services import (
     build_devis_depuis_calepinage_retenu, produits_a_renseigner,
@@ -56,6 +60,21 @@ LAYOUT_RETENU = {
 LAYOUT_PARENT = dict(
     LAYOUT_RETENU,
     result={'panels': 4, 'kwc': 2.2, 'annualKwh': 3400, 'savings': 3000})
+
+
+def _source_sans_docstring(fonction):
+    """Le source de ``fonction`` PRIVÉ de sa docstring.
+
+    Les gardes « aucun second chemin » lisent du CODE ; une docstring qui
+    NOMME ce qu'elle s'interdit ne doit pas les faire rougir.
+    """
+    arbre = ast.parse(textwrap.dedent(inspect.getsource(fonction)))
+    noeud = arbre.body[0]
+    if (noeud.body and isinstance(noeud.body[0], ast.Expr)
+            and isinstance(noeud.body[0].value, ast.Constant)
+            and isinstance(noeud.body[0].value.value, str)):
+        noeud.body = noeud.body[1:]
+    return ast.unparse(arbre)
 
 
 class Cal185BomVersDevisTest(TestCase):
@@ -90,9 +109,10 @@ class Cal185BomVersDevisTest(TestCase):
         self._produit('Transport', '1000')
 
     def _retenir(self, layout=LAYOUT_RETENU, nom='Option A'):
-        return CalepinageVariante.objects.create(
-            calepinage=self.calepinage, nom=nom, roof_layout=layout,
-            layout_hash='cal185cal185cal1' * 4, retenue=True)
+        # CAL9 : ``retenue`` n'a qu'UN chemin d'écriture (le service de
+        # variantes) — et ``company`` vient du calepinage, jamais du test.
+        return creer_variante(self.calepinage, nom=nom, roof_layout=layout,
+                              retenir=True)
 
     # ── le chiffrage ──────────────────────────────────────────────────────
     def test_chaque_ligne_pointe_un_produit_du_catalogue(self):
@@ -132,9 +152,8 @@ class Cal185BomVersDevisTest(TestCase):
         self.assertEqual(rapport['layout_hash'], variante.layout_hash)
 
     def test_aucune_variante_retenue_refus_nomme(self):
-        CalepinageVariante.objects.create(
-            calepinage=self.calepinage, nom='Option A',
-            roof_layout=LAYOUT_RETENU, retenue=False)
+        creer_variante(self.calepinage, nom='Option A',
+                       roof_layout=LAYOUT_RETENU)
         with self.assertRaises(ValueError) as capture:
             build_devis_depuis_calepinage_retenu(
                 calepinage_id=self.calepinage.pk, user=self.user,
@@ -142,9 +161,8 @@ class Cal185BomVersDevisTest(TestCase):
         self.assertIn('retenue', str(capture.exception).lower())
 
     def test_variante_sans_conception_ne_chiffre_rien(self):
-        CalepinageVariante.objects.create(
-            calepinage=self.calepinage, nom='Esquisse', roof_layout=None,
-            retenue=True)
+        creer_variante(self.calepinage, nom='Esquisse', roof_layout=None,
+                       retenir=True)
         with self.assertRaises(ValueError):
             build_devis_depuis_calepinage_retenu(
                 calepinage_id=self.calepinage.pk, user=self.user,
@@ -208,7 +226,10 @@ class Cal185BomVersDevisTest(TestCase):
             self.assertNotIn(interdit, source)
 
     def test_la_lecture_cross_app_passe_par_les_selecteurs(self):
-        source = inspect.getsource(build_devis_depuis_calepinage_retenu)
+        # Le garde vise le CODE, pas la prose : la docstring de la fonction
+        # cite justement ``apps.calepinage.models`` pour dire qu'elle ne
+        # l'importe pas — la compter serait un faux rouge.
+        source = _source_sans_docstring(build_devis_depuis_calepinage_retenu)
         self.assertIn('apps.calepinage.selectors', source)
         self.assertNotIn('apps.calepinage.models', source)
 
@@ -226,9 +247,14 @@ class Cal185FromLayoutTest(TestCase):
 
         self.company = Company.objects.create(nom='Cal185 API',
                                               slug='cal185-api')
+        # ``CustomUser.role`` est une FK vers ``roles.Role`` : un littéral
+        # 'admin' n'est pas un rôle, il lève à la création.
+        self.role = Role.objects.create(
+            company=self.company, nom='Directeur',
+            permissions=list(DIRECTEUR_PERMISSIONS))
         self.user = CustomUser.objects.create_user(
             username='cal185api', password='x', company=self.company,
-            role='admin')
+            role=self.role)
         self.client_obj = Client.objects.create(company=self.company,
                                                 nom='Atlas API')
         for nom, prix in (('Panneau mono 550W', '1100'),
@@ -261,10 +287,8 @@ class Cal185FromLayoutTest(TestCase):
         self.assertEqual(reponse.data['champ'], 'calepinage')
 
     def test_la_variante_retenue_produit_un_devis_et_la_liste_a_renseigner(self):
-        variante = CalepinageVariante.objects.create(
-            calepinage=self.calepinage, nom='Option A',
-            roof_layout=LAYOUT_RETENU, layout_hash='cal185cal185cal1' * 4,
-            retenue=True)
+        variante = creer_variante(self.calepinage, nom='Option A',
+                                  roof_layout=LAYOUT_RETENU, retenir=True)
         reponse = self._poster({'calepinage': self.calepinage.pk,
                                 'client': self.client_obj.pk})
         self.assertEqual(reponse.status_code, 201, reponse.data)
