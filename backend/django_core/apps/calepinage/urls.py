@@ -16,6 +16,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views.calepinages import CalepinageViewSet
+from .views.consommation import ProfilsTypesView
 from .views.moteur import MoteurCalculerView, MoteurResultatView
 from .views.parametres import (
     ParametresCalepinageView,
@@ -66,5 +67,11 @@ urlpatterns = [
     # rien — elle PROPOSE.
     path('parametres/suggestion-pente/', SuggestionPenteIGNView.as_view(),
          name='calepinage-parametres-suggestion-pente'),
+    # CAL149 — les PROFILS TYPES de consommation de la société. Même raison
+    # que ci-dessus : c'est un RÉGLAGE société (aucun identifiant de
+    # calepinage n'y entre), donc il vit sous le préfixe ``parametres`` et
+    # n'ouvre aucune seconde famille d'URL pour l'objet métier.
+    path('parametres/profils-types/', ProfilsTypesView.as_view(),
+         name='calepinage-parametres-profils-types'),
     path('', include(router.urls)),
 ]

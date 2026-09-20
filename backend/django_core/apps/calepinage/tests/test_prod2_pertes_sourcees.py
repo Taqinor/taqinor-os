@@ -13,10 +13,8 @@ Tests PURS : aucune base, aucun réseau (le transport PVGIS est injecté).
 """
 from __future__ import annotations
 
-import ast
 import json
 import pathlib
-import re
 import unittest
 import urllib.parse
 
@@ -203,57 +201,25 @@ class LossEnvoyeeAPvgisTest(unittest.TestCase):
 
 
 class SurfaceAucunForfaitCacheTest(unittest.TestCase):
-    """CAL139 — ni 14 %, ni 20 %, ni aucun forfait de perte dans le module."""
+    """CAL139 — aucun forfait caché ne subsiste dans le module.
 
-    #: Les deux noms du site public sont INTERDITS de séjour ici (déjà refusés
-    #: par CAL238) ; on y ajoute les constantes de l'écran devis.
-    NOMS_INTERDITS = ('SYSTEM_LOSS_TOTAL', 'PVGIS_BUILTIN_LOSS',
-                      'DEFAULT_LOSS_FACTORS', 'PERTE_SYSTEME')
+    LE SCANNER DE SURFACE EST CELUI DE CAL238, PAS UN SECOND.
+    ``tests/test_politique_pertes_pvgis.py`` scanne DÉJÀ tous les fichiers du
+    paquet (constantes du site public, littéraux posés comme une perte) et il
+    est le SEUL à citer les valeurs interdites — un second scanner qui les
+    citerait aussi ferait rougir le premier, et deux scanners finiraient par
+    diverger. Ce qui est vérifié ICI, c'est que la couverture de ce scanner
+    atteint bien les fichiers neufs de CAL139 : personne ne peut sortir un
+    service du champ du test sans que celui-ci le dise.
+    """
 
-    #: Un NOM de constante de perte. Une constante nommée ainsi et affectée à
-    #: un nombre EN DUR est exactement ce que CAL139 supprime. On refuse par
-    #: MOTIF de nom, pas par liste de valeurs : un 0,14 dans un tout autre
-    #: calcul (un coefficient géométrique, par exemple) est légitime.
-    NOM_DE_PERTE = re.compile(r'(PERTE|LOSS|SALISSURE|SOILING)')
+    def test_le_scanner_de_surface_couvre_les_fichiers_neufs(self):
+        from .test_politique_pertes_pvgis import _fichiers_du_module
 
-    def fichiers(self):
-        for chemin in RACINE_MODULE.rglob('*.py'):
-            if 'tests' in chemin.parts or 'migrations' in chemin.parts:
-                continue
-            yield chemin
-
-    def test_aucune_constante_de_perte_en_dur(self):
-        """La surface est lue par l'AST — un NOM cité en prose n'est pas un
-        forfait ; seul un identifiant réellement employé en est un."""
-        fautifs = []
-        for chemin in self.fichiers():
-            arbre = ast.parse(chemin.read_text(encoding='utf-8'),
-                              filename=str(chemin))
-            identifiants = set()
-            for noeud in ast.walk(arbre):
-                if isinstance(noeud, ast.Name):
-                    identifiants.add(noeud.id)
-                elif isinstance(noeud, ast.Attribute):
-                    identifiants.add(noeud.attr)
-                elif isinstance(noeud, ast.alias):
-                    identifiants.add(noeud.name.split('.')[-1])
-                    if noeud.asname:
-                        identifiants.add(noeud.asname)
-                elif isinstance(noeud, ast.Assign):
-                    for cible in noeud.targets:
-                        if (isinstance(cible, ast.Name)
-                                and cible.id.isupper()
-                                and self.NOM_DE_PERTE.search(cible.id)
-                                and isinstance(noeud.value, ast.Constant)
-                                and isinstance(noeud.value.value,
-                                               (int, float))):
-                            fautifs.append(
-                                f'{chemin.name} : {cible.id} = '
-                                f'{noeud.value.value}')
-            for nom in self.NOMS_INTERDITS:
-                if nom in identifiants:
-                    fautifs.append(f'{chemin.name} : {nom}')
-        self.assertEqual(fautifs, [], '; '.join(fautifs))
+        couverts = {chemin.name for chemin in _fichiers_du_module()}
+        for neuf in ('pertes.py', 'thermique.py', 'bifacial.py',
+                     'p50p90.py', 'horizon.py'):
+            self.assertIn(neuf, couverts, neuf)
 
     def test_le_module_ne_fabrique_aucune_politique_par_defaut(self):
         """Le SEUL chemin vers ``loss`` est la liste persistée du calepinage."""

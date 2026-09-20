@@ -35,8 +35,17 @@ from authentication.models import Company
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 
-#: Une écriture du champ : ``retenue=...`` ou ``.retenue = ...``.
-ECRITURE_RETENUE = re.compile(r'(\bretenue\s*=(?!=)|\.retenue\s*=(?!=))')
+#: Une écriture du CHAMP : ``objet.retenue = …``.
+#:
+#: Le motif ne vise que l'écriture d'ATTRIBUT, et c'est volontaire : la forme
+#: ``\bretenue\s*=`` attrapait aussi une variable locale
+#: (``retenue = next(v for v in lignes if v.retenue)``, ``selectors.py``) et
+#: un filtre de requête (``.filter(calepinage=…, retenue=True)``) — deux
+#: LECTURES, jamais une écriture. Un garde qui rougit sur des lectures finit
+#: par être désactivé ; celui-ci ne doit rougir que sur ce qu'il interdit,
+#: c'est-à-dire ``variante.retenue = True`` hors du chemin unique — cas que
+#: ``test_le_motif_attrape_une_vraie_ecriture`` vérifie.
+ECRITURE_RETENUE = re.compile(r'\.retenue\s*=(?!=)')
 
 #: Les seuls fichiers autorisés à écrire ``retenue`` : le chemin d'écriture
 #: unique, et la déclaration du champ dans le modèle.
@@ -135,6 +144,17 @@ class GardeParThreadTest(SimpleTestCase):
 
 class GardeDeSurfaceTest(SimpleTestCase):
     """Aucun AUTRE fichier du module n'écrit ``retenue``."""
+
+    def test_le_motif_attrape_une_vraie_ecriture(self):
+        """Le garde reste un garde : il voit l'écriture qu'il interdit."""
+        self.assertTrue(ECRITURE_RETENUE.search('variante.retenue = True'))
+        self.assertTrue(ECRITURE_RETENUE.search('    obj.retenue=False'))
+        # …et il ne voit PAS une lecture (variable locale, filtre de requête).
+        self.assertIsNone(ECRITURE_RETENUE.search(
+            'retenue = next((v for v in lignes if v.retenue), None)'))
+        self.assertIsNone(ECRITURE_RETENUE.search(
+            '.filter(calepinage=calepinage, retenue=True)'))
+        self.assertIsNone(ECRITURE_RETENUE.search('if v.retenue == True:'))
 
     def test_aucune_ecriture_ailleurs(self):
         coupables = []
