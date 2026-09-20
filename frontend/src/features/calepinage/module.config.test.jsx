@@ -17,6 +17,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 beforeEach(() => vi.clearAllMocks())
 
+/* `router/moduleRoutes` importe le registre ENTIER (glob eager sur tous les
+   `module.config.jsx` du produit) : sa premiere resolution coute des dizaines
+   de secondes sous charge, au-dela des 20 s par defaut de Vitest. Les deux
+   tests qui en dependent portent donc leur propre delai — on n'ampute aucune
+   assertion pour tenir dans un budget de temps. */
+const DELAI_REGISTRE = 120_000
+
 describe('calepinage — module.config (CAL34)', () => {
   it("déclare la clé 'calepinage' — ancrage de corrélation avec le manifest backend", async () => {
     const { default: config } = await import('./module.config.jsx')
@@ -39,12 +46,12 @@ describe('calepinage — module.config (CAL34)', () => {
     expect(moduleConfigs.length, 'registre vide : le glob n’a rien collecté').toBeGreaterThan(0)
     const surLOrdre98 = moduleConfigs.filter((c) => c?.order === 98).map((c) => c?.key)
     expect(surLOrdre98, `ordre 98 partagé : ${surLOrdre98.join(', ')}`).toEqual(['calepinage'])
-  })
+  }, DELAI_REGISTRE)
 
   it('le module est bien collecté par le registre, avec sa clé', async () => {
     const { moduleConfigs } = await import('../../router/moduleRoutes')
     expect(moduleConfigs.map((c) => c?.key)).toContain('calepinage')
-  })
+  }, DELAI_REGISTRE)
 
   it('aucune entrée de nav orpheline : chaque `to` correspond à une route déclarée', async () => {
     const { default: config } = await import('./module.config.jsx')
