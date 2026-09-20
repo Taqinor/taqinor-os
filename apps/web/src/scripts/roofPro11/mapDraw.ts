@@ -60,6 +60,48 @@ export const CAPTURE_STRINGS_FR: CaptureStrings = {
   searchUnavailable: 'Recherche indisponible. Déplacez la carte à la main pour trouver votre toit.',
 };
 
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL49 — GÉOCODAGE DANS LE PAYS DU PROJET
+//
+// Les deux appels MapTiler forçaient `&country=ma` : une adresse française était
+// mécaniquement introuvable. Le pays vient désormais du contexte (CAL47, section
+// `imagerie` des réglages société) ; `ma` reste le REPLI quand le contexte est muet,
+// donc le comportement marocain d'aujourd'hui est byte-identique. Le pays filtré est
+// affiché à côté du champ de recherche, pour qu'un « adresse introuvable » soit
+// compréhensible. Les gardes anti-course W75 (jeton + AbortController) sont intacts.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Pays de géocodage par DÉFAUT, historique du builder (contexte muet). */
+export const GEOCODE_DEFAULT_COUNTRY = 'ma';
+
+/** Code pays ISO 3166-1 alpha-2 normalisé (minuscules), ou le repli `ma`. */
+export function geocodeCountry(pays?: string | null): string {
+  const c = (pays ?? '').trim().toLowerCase();
+  return /^[a-z]{2}$/.test(c) ? c : GEOCODE_DEFAULT_COUNTRY;
+}
+
+/** URL de RECHERCHE d'adresse MapTiler, bornée au pays du projet. */
+export function geocodeSearchUrl(query: string, key: string, pays?: string | null): string {
+  return (
+    `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json` +
+    `?key=${encodeURIComponent(key)}&country=${geocodeCountry(pays)}&limit=5&language=fr`
+  );
+}
+
+/** URL de géocodage INVERSE MapTiler, bornée au même pays. */
+export function geocodeReverseUrl(lng: number, lat: number, key: string, pays?: string | null): string {
+  return (
+    `https://api.maptiler.com/geocoding/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json` +
+    `?key=${encodeURIComponent(key)}&language=fr&country=${geocodeCountry(pays)}`
+  );
+}
+
+/** Mention affichée à côté du champ de recherche : « Recherche limitée au pays : FR ». */
+export function geocodeCountryNote(pays?: string | null): string {
+  return `Recherche limitée au pays : ${geocodeCountry(pays).toUpperCase()}`;
+}
+
 /** Dépendances injectées (carte + bandeau de statut + re-lecture d'aire + bouton finir). */
 export interface MapDrawDeps {
   /** La carte MapLibre (sources GeoJSON du tracé + flyTo/jumpTo de la recherche). */
@@ -102,6 +144,23 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
   const addressEl = $<HTMLInputElement>('rp9-address');
   // W93 — liste de suggestions (combobox). Peut être null (harness jsdom partiel).
   const suggestionsEl = $<HTMLUListElement>('rp9-suggestions');
+
+  // CAL49 — pays du projet (réglages société CAL47) ; muet ⇒ repli `ma` historique.
+  const projectCountry = (): string => geocodeCountry(opts.imagery?.pays);
+  // CAL49 — le pays filtré est AFFICHÉ à côté du champ : « adresse introuvable » devient
+  // lisible. La note est créée à côté du champ si l'hôte n'en fournit pas déjà une.
+  ensureCountryNote();
+  function ensureCountryNote() {
+    if (!addressEl || typeof document.createElement !== 'function') return;
+    let note = $('rp9-geocode-country');
+    if (!note) {
+      note = document.createElement('span');
+      note.id = 'rp9-geocode-country';
+      note.className = 'rp9-geocode-country text-xs opacity-70';
+      addressEl.parentElement?.appendChild(note);
+    }
+    note.textContent = geocodeCountryNote(opts.imagery?.pays);
+  }
 
   function redrawTrace() {
     srcOf('rp9-line')?.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: ctx.vertices }, properties: {} } as never);
@@ -231,7 +290,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
       // addresses are indexed best in French in MapTiler/OSM, and changing the
       // returned address TEXT is a data-quality decision outside WJ41's scope
       // (system messages + placeholders), not a hardcoded UI string.
-      const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json?key=${encodeURIComponent(opts.maptilerKey)}&country=ma&limit=5&language=fr`;
+      const url = geocodeSearchUrl(query, opts.maptilerKey, projectCountry());
       const res = await fetch(url, { signal: ctrl.signal });
       if (!res.ok) throw new Error('geocode');
       const data = (await res.json()) as {
@@ -279,7 +338,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     // Si l'appelant fournit un signal, on relaie son abort vers notre contrôleur.
     opts2.signal?.addEventListener('abort', () => ctrl.abort(), { once: true });
     try {
-      const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json?key=${encodeURIComponent(opts.maptilerKey)}&language=fr&country=ma`;
+      const url = geocodeReverseUrl(lng, lat, opts.maptilerKey, projectCountry());
       const res = await fetch(url, { signal: ctrl.signal });
       if (!res.ok) throw new Error('reverse-geocode');
       const data = (await res.json()) as { features?: Array<{ place_name?: string; text?: string }> };
