@@ -158,6 +158,12 @@ EVENT_BTP_DGD_FINALISE = 'dgd.finalise'
 # pointées) : littéralement celles nommées par le plan NTUX32.
 EVENT_SAVED_VIEW_SHARED = 'saved_view_shared'
 EVENT_RECORD_RESTORED = 'record_restored'
+# CAL215 — calepinage VALIDÉ : une variante vient d'être RETENUE (le geste
+# « c'est celle-là »). Émis par `apps/publicapi/calepinage_event_receivers.py`,
+# qui écoute le modèle via le registre — jamais un import direct
+# `apps.calepinage` -> `apps.publicapi`. Charge utile sans géométrie brute ni
+# coût interne (mêmes limites que la ressource publique CAL214).
+EVENT_CALEPINAGE_VALIDE = 'calepinage.valide'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
@@ -184,6 +190,7 @@ EVENT_CHOICES = [
     (EVENT_BTP_DGD_FINALISE, 'BTP — décompte général finalisé'),
     (EVENT_SAVED_VIEW_SHARED, 'Vue partagée à l\'équipe'),
     (EVENT_RECORD_RESTORED, 'Élément restauré depuis la corbeille'),
+    (EVENT_CALEPINAGE_VALIDE, 'Calepinage — variante retenue'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 
