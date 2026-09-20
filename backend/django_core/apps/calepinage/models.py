@@ -1039,3 +1039,93 @@ class DossierReglementaire(TenantModel):
             )
         if erreurs:
             raise ValidationError(erreurs)
+
+
+class PoseReelle(TenantModel):
+    """CAL212 — LE POSÉ RÉEL d'un pan, SAISI sur le chantier.
+
+    LE CONSTAT
+    ----------
+    La capture terrain existe (``apps/installations/field_capture.py``,
+    ``models_field.py``) mais ne porte AUCUNE notion de modules posés vs
+    prévus : personne ne pouvait dire, après la pose, si le chantier avait
+    suivi la variante retenue.
+
+    LES DEUX DÉCISIONS GRAVÉES ICI
+    ------------------------------
+    * **L'ÉCART EST UNE SOUSTRACTION DE DEUX SAISIES RÉELLES**, jamais une
+      estimation : le PRÉVU vient de la variante RETENUE du calepinage
+      (CAL9/CAL209) et le POSÉ de cette table. Un pan sans saisie n'affiche
+      AUCUN écart — pas un zéro rassurant (``services/asbuilt.py``).
+    * **``releve_le`` est SAISIE**, jamais la date de synchronisation : le
+      terrain et le réseau ne coïncident pas (même règle que ``PhotoSite`` et
+      ``ReleveTerrain``), et une pose synchronisée le lendemain daterait du
+      mauvais jour.
+
+    ``ecarts_position`` est un TEXTE LIBRE : personne ne mesure au chantier
+    des décalages au millimètre, et un champ numérique inviterait à inventer
+    une précision que la saisie n'a pas.
+    """
+
+    calepinage = models.ForeignKey(
+        Calepinage,
+        on_delete=models.CASCADE,  # on_delete: un relevé de pose n'existe pas hors de son calepinage
+        related_name='poses_reelles',
+        verbose_name='Calepinage',
+    )
+    #: Le LIBELLÉ du pan, tel que le document le nomme (``label`` ou ``id``) —
+    #: jamais un index de tableau, qui changerait au premier pan redessiné.
+    pan = models.CharField('Pan', max_length=120)
+    modules_poses = models.PositiveIntegerField('Modules réellement posés')
+    ecarts_position = models.TextField("Écarts de position (texte libre)",
+                                       blank=True, default='')
+    releve_le = models.DateField('Relevé le')
+    releve_par = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,  # on_delete: le relevé survit au départ de son auteur
+        null=True, blank=True,
+        related_name='calepinage_poses_reelles',
+        verbose_name='Relevé par',
+    )
+
+    class Meta:
+        verbose_name = 'Pose réelle (as-built)'
+        verbose_name_plural = 'Poses réelles (as-built)'
+        ordering = ['pan', 'id']
+        constraints = [
+            # Un seul relevé par pan : deux comptes posés pour un même pan,
+            # c'est un écart qui dépend de la ligne qu'on regarde.
+            models.UniqueConstraint(
+                fields=['calepinage', 'pan'],
+                name='uniq_pose_reelle_par_pan'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'calepinage'],
+                         name='cal_pos_co_cal_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.pan} — {self.modules_poses} module(s)'
+
+    def clean(self):
+        """Refuse, EN FRANÇAIS et en NOMMANT le champ, une saisie indatable."""
+        from django.utils import timezone
+
+        erreurs = {}
+        if not (self.pan or '').strip():
+            erreurs['pan'] = (
+                "Le pan est obligatoire : un compte posé qui ne dit pas SUR "
+                "QUEL PAN il porte ne se compare à rien."
+            )
+        if self.releve_le is None:
+            erreurs['releve_le'] = (
+                "La date du relevé est obligatoire : elle est SAISIE, jamais "
+                "déduite de la date de synchronisation."
+            )
+        elif self.releve_le > timezone.localdate():
+            erreurs['releve_le'] = (
+                "La date du relevé ne peut pas être dans le futur "
+                f"(reçu : {self.releve_le:%d/%m/%Y})."
+            )
+        if erreurs:
+            raise ValidationError(erreurs)
