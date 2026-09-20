@@ -62,6 +62,9 @@ const CalepinageList = lazy(() => import('./CalepinageList'))
 // CAL36 — l'écran de CRÉATION : choisir un lead OU un client, recherche bornée
 // société côté serveur, contexte géographique lu et jamais deviné.
 const CalepinageNouveau = lazy(() => import('./CalepinageNouveau'))
+// CAL42 — le comparatif des variantes (CAL105 fondue) : tableau une colonne par
+// variante + vue côte à côte, alimentés UNIQUEMENT par le contrat CAL3.
+const VariantesCompare = lazy(() => import('./VariantesCompare'))
 
 const config = {
   key: 'calepinage',
@@ -101,6 +104,8 @@ const config = {
     // contextuel à un objet, comme `/ao/affaires/:id/design`. C'est la cible de
     // la redirection après création (CAL36).
     { path: '/calepinage/:id', component: AtelierCalepinage, roles: ROLES },
+    // contextuelle: comparatif d'UN calepinage, ouvert depuis son atelier (CAL37) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
+    { path: '/calepinage/:id/variantes', component: VariantesCompare, roles: ROLES },
   ],
 }
 
