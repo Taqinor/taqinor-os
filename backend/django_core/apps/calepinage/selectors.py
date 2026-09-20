@@ -45,7 +45,24 @@ def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
 
     if company is None:
         return Calepinage.objects.none()
-    lignes = Calepinage.objects.filter(company=company)
+    return appliquer_filtres_liste(
+        Calepinage.objects.filter(company=company),
+        lead_id=lead_id, client_id=client_id, statut=statut, depuis=depuis,
+        q=q)
+
+
+def appliquer_filtres_liste(lignes, *, lead_id=None, client_id=None,
+                            statut=None, depuis=None, q=None):
+    """CAL16 — LES filtres de la liste, écrits UNE fois.
+
+    Le viewset (``views/calepinages.py``) et ce sélecteur servent la même
+    liste : sans cette fonction, ils auraient deux jeux de filtres qui
+    divergeraient au premier ajout — et la leçon PV22 est qu'un filtre IGNORÉ
+    (``?statut=`` servi à l'identique) fait ouvrir le mauvais objet. Un filtre
+    absent ne filtre rien ; un filtre présent filtre RÉELLEMENT.
+
+    L'ordre est celui du plus récent au plus ancien, dans les deux chemins.
+    """
     if lead_id:
         lignes = lignes.filter(lead_id=lead_id)
     if client_id:

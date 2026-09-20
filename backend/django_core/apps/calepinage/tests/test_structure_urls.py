@@ -25,7 +25,13 @@ RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 
 #: Motifs engendrés par ``DefaultRouter`` à la racine (api-root + suffixe de
 #: format) : ils ne portent aucune ressource, donc ils sont hors contrat.
-_RACINE_ROUTEUR = ('', r'\.(?P<format>[a-z0-9]+)/?')
+#: CAL16 — la troisième forme (``<drf_format_suffix:format>``) est celle que
+#: DRF engendre RÉELLEMENT pour l'api-root dès qu'un viewset est enregistré :
+#: elle est apparue au premier ``router.register`` (le routeur était vide quand
+#: cette liste a été écrite). C'est la même route sans ressource que les deux
+#: autres — jamais une seconde famille d'URL.
+_RACINE_ROUTEUR = ('', r'\.(?P<format>[a-z0-9]+)/?',
+                   '<drf_format_suffix:format>')
 
 
 def _routes(patterns, prefixe=''):

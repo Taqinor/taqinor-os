@@ -27,3 +27,48 @@ CAL_GERER = 'calepinage_gerer'
 
 #: Les deux codes du domaine, pour les gardes et les tests.
 CODES = (CAL_VOIR, CAL_GERER)
+
+
+# ── CAL16 — les DEUX gardes DRF par action (jamais un littéral en viewset) ──
+#
+# Le cliquet ``core.tests.test_action_permissions`` refuse toute ``@action``
+# neuve gardée seulement au niveau CLASSE : le module Calepinage est neuf, donc
+# sa dette admise est ZÉRO et chaque action déclare sa garde. Ces deux classes
+# sont ce que les actions déclarent — elles portent le CODE du domaine, pas un
+# palier de rôle, pour qu'une action de lecture ne puisse jamais se retrouver
+# gardée en écriture (ni l'inverse) par distraction.
+
+from rest_framework.permissions import BasePermission  # noqa: E402
+
+from core.permissions import _user_has_or_legacy  # noqa: E402
+
+
+class _PermissionCalepinage(BasePermission):
+    """Socle commun : compte INTERNE authentifié + un code de permission.
+
+    Le refus des comptes PORTAIL (``portee != 'interne'``) reprend mot pour
+    mot celui de ``core.permissions.ScopedPermission`` : un client du portail
+    n'a aucune raison d'atteindre une route interne, même en lecture.
+    """
+
+    code = ''
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not (user and user.is_authenticated):
+            return False
+        if getattr(user, 'portee', 'interne') != 'interne':
+            return False
+        return _user_has_or_legacy(user, self.code)
+
+
+class PeutVoirCalepinage(_PermissionCalepinage):
+    """Lecture d'un calepinage (``calepinage_voir``)."""
+
+    code = CAL_VOIR
+
+
+class PeutGererCalepinage(_PermissionCalepinage):
+    """Écriture / action métier sur un calepinage (``calepinage_gerer``)."""
+
+    code = CAL_GERER
