@@ -14,13 +14,13 @@ from django.test import TestCase
 from django.utils import timezone
 
 from django.apps import apps as django_apps
-
-# Pas d'import statique d'une app domaine sous core (contrat import-linter M3)
-IncidentPublic = django_apps.get_model('statuspage', 'IncidentPublic')
 from authentication.models import Company
 from core.sla import (
     SlaSnapshot, generer_snapshot_societe, recalculer_sla_perimes,
 )
+
+# Pas d'import statique d'une app domaine sous core (contrat import-linter M3)
+IncidentPublic = django_apps.get_model('statuspage', 'IncidentPublic')
 
 PERIODE = datetime.date(2026, 6, 1)
 

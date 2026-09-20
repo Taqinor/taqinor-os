@@ -9,13 +9,13 @@ from rest_framework.test import APIClient
 
 from apps.roles.models import Role
 from django.apps import apps as django_apps
-
-# Pas d'import statique d'une app domaine sous core (contrat import-linter M3)
-IncidentPublic = django_apps.get_model('statuspage', 'IncidentPublic')
 from authentication.models import Company
 from core.models import BackupRun
 from core.pdf_registre_fiabilite import _incidents, _snapshots
 from core.sla import generer_snapshot_societe
+
+# Pas d'import statique d'une app domaine sous core (contrat import-linter M3)
+IncidentPublic = django_apps.get_model('statuspage', 'IncidentPublic')
 
 User = get_user_model()
 

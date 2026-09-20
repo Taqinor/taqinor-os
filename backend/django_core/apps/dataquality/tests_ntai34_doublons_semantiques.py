@@ -28,7 +28,11 @@ from core.models import SearchChunk
 User = get_user_model()
 
 VEC_A = [1.0] + [0.0] * 1023
-VEC_PROCHE = [0.95] + [0.05] * 1023
+# GÉOMÉTRIE VÉRIFIÉE (pas « à l'œil ») : cos(A, PROCHE) = 0.99/√(0.99²+0.14²)
+# ≈ 0.990 ≥ SEUIL_SEMANTIQUE (0.85). L'ancien [0.95] + [0.05]*1023 donnait
+# cos ≈ 0.51 — 1023 petites composantes gonflent la norme, le vecteur n'était
+# PROCHE qu'en apparence et le groupe ne se formait jamais.
+VEC_PROCHE = [0.99, 0.14] + [0.0] * 1022
 VEC_ORTHOGONAL = [0.0] * 500 + [1.0] + [0.0] * 523
 
 

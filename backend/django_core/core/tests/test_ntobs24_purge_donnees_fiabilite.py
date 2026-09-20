@@ -6,13 +6,13 @@ from django.test import TestCase
 from django.utils import timezone
 
 from django.apps import apps as django_apps
+from authentication.models import Company
+from core.export_registry import ExportReversibiliteRun
+from core.tasks import purger_donnees_fiabilite_task
 
 # Pas d'import statique d'une app domaine sous core (contrat import-linter M3)
 IncidentPublic = django_apps.get_model('statuspage', 'IncidentPublic')
 UptimeDayBucket = django_apps.get_model('statuspage', 'UptimeDayBucket')
-from authentication.models import Company
-from core.export_registry import ExportReversibiliteRun
-from core.tasks import purger_donnees_fiabilite_task
 
 
 class PurgerIncidentsResolusTest(TestCase):
