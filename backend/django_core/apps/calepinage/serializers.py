@@ -44,6 +44,9 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
                                            required=False, allow_null=True)
     statut_libelle = serializers.CharField(source='get_statut_display',
                                            read_only=True)
+    #: CAL189 — le calepinage décrit-il encore ce que le devis vend ?
+    layout_stale = serializers.SerializerMethodField()
+    layout_nb_panneaux = serializers.SerializerMethodField()
 
     #: AUD601 — une FK cross-app ne pointe jamais la ligne d'une autre société.
     same_company_fields = ('client', 'devis')
@@ -54,12 +57,42 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             'id', 'titre', 'statut', 'statut_libelle',
             'lead', 'client', 'devis', 'appel_offre',
             'layout_hash', 'roof_image', 'version_moteur',
+            'layout_stale', 'layout_nb_panneaux',
             'cree_par', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'layout_hash', 'roof_image', 'version_moteur', 'cree_par',
             'created_at', 'updated_at',
         ]
+
+    def get_layout_stale(self, calepinage):
+        """``True``/``False`` d'après le DEVIS lié — ``None`` sans devis.
+
+        SANS devis, la péremption est INCONNUE, pas fausse : il n'y a rien à
+        quoi comparer la conception. Publier ``False`` ferait afficher « à
+        jour » sur un calepinage dont personne ne peut le dire (l'écran affiche
+        « — », CAL188).
+        """
+        return self._peremption(calepinage)['layout_stale']
+
+    def get_layout_nb_panneaux(self, calepinage):
+        return self._peremption(calepinage)['layout_nb_panneaux']
+
+    def _peremption(self, calepinage):
+        """Le MÊME helper serveur que le détail devis et la page publique."""
+        from apps.ventes.selectors import (
+            get_devis_by_pk, peremption_layout_devis,
+        )
+
+        devis_id = getattr(calepinage, 'devis_id', None)
+        if not devis_id:
+            return {'layout_stale': None, 'layout_nb_panneaux': None}
+        devis = get_devis_by_pk(devis_id)
+        company = getattr(calepinage, 'company', None)
+        if devis is None or (company is not None
+                             and devis.company_id != company.pk):
+            return {'layout_stale': None, 'layout_nb_panneaux': None}
+        return peremption_layout_devis(devis)
 
     def validate(self, attrs):
         """Lead XOR client, et un lead qui existe VRAIMENT dans la société."""

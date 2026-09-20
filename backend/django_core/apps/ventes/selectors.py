@@ -412,6 +412,56 @@ def paiements_totaux_par_mode(facture_ids):
         .annotate(total=Sum('montant'), nb=Count('id')))
 
 
+def peremption_layout_devis(devis):
+    """CAL189 — ``{layout_stale, layout_nb_panneaux}`` d'un devis.
+
+    LE MÊME CALCUL QUE LA PAGE PUBLIQUE, pas un second. ``layout_stale``
+    n'était publié que dans la charge utile de la proposition
+    (``public_views.py`` ← ``quote_engine/builder.py``) : l'API interne ne
+    l'exposait nulle part, donc l'écran ERP ne pouvait pas dire au commercial
+    que sa 3D ne décrit plus ce que le devis vend. Le compte de modules du
+    layout est lu par le HELPER du moteur PDF (``_panneaux_du_layout``), et les
+    comptes des LIGNES par les mêmes primitives que le reste du domaine.
+
+    Un document à DEUX OPTIONS a DEUX comptes valides (LAYSTALE) : le
+    calepinage n'est périmé que s'il ne correspond à AUCUNE des deux — sinon on
+    afficherait au client un avertissement FAUX.
+
+    ``layout_stale`` vaut ``False`` quand le devis ne porte AUCUNE ligne de
+    panneau : il n'y a alors rien à comparer, et un « périmé » là-dessus serait
+    une alerte inventée.
+    """
+    from apps.ventes.dimensionnement import _lignes_produit_du_devis
+    from apps.ventes.quote_engine.builder import _panneaux_du_layout
+    from apps.ventes.services import _is_panel
+
+    if devis is None:
+        return {'layout_stale': None, 'layout_nb_panneaux': None}
+    layout_nb_panneaux = _panneaux_du_layout(
+        getattr(devis, 'roof_layout', None))
+
+    comptes = {}
+    for ligne in _lignes_produit_du_devis(devis):
+        if not _is_panel(getattr(ligne, 'designation', '') or ''):
+            continue
+        variante = (getattr(ligne, 'variante', '') or '')
+        cle = 'avec' if variante == 'avec' else 'sans'
+        try:
+            quantite = int(float(getattr(ligne, 'quantite', 0) or 0))
+        except (TypeError, ValueError):
+            continue
+        comptes[cle] = comptes.get(cle, 0) + quantite
+        if variante == '':
+            # Une ligne COMMUNE compte dans les deux options.
+            comptes['avec'] = comptes.get('avec', 0) + quantite
+    valides = {n for n in comptes.values() if n}
+    return {
+        'layout_stale': bool(layout_nb_panneaux and valides
+                             and layout_nb_panneaux not in valides),
+        'layout_nb_panneaux': layout_nb_panneaux,
+    }
+
+
 def devis_brouillon_pour_layout(company, lead_id, empreinte):
     """CAL24 — le BROUILLON déjà né de ce calepinage, ou ``None``.
 
