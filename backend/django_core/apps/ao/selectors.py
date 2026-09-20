@@ -880,6 +880,7 @@ def _points_de_l_item(item):
 # LECTURE PURE : aucune ligne AO n'est lue, aucune n'est écrite (le service
 # sous-jacent ne touche pas l'ORM).
 
+
 def erreurs_moteur_calepinage():
     """``(EntreeInvalide, CalepinageIncoherent)`` — les deux refus du moteur.
 
