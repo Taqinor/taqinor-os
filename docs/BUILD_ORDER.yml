@@ -100,6 +100,10 @@ waves:
     # NTSAN/NTEDU/NTHOT/NTPRO/NTAGR/NTSVC : taches [ ] parquees dans docs/backlog/FULL_SAAS_PLAN.md
     # (specialisation ERP solaire, 2026-09-02). plan_progress.py lit donc NTSAN/NTEDU a 100 %% depuis
     # le ledger seul — ne PAS ajouter d'arete after: les nommant tant qu'elles ne sont pas de-parquees.
+    # NTAI (apps/ai_governance) / NTMIG (apps/migration) : taches [ ] parquees dans
+    # docs/backlog/PHASE2_PLAN.md (SOLMVP50, Groupe SOLMVP, sortie MVP solaire 2026-09-20) — meme
+    # traitement que NTSAN/NTEDU ci-dessus : ne PAS ajouter d'arete after: les nommant tant qu'elles
+    # ne sont pas de-parquees.
     groups: [NTFIN, NTAGR, NTAI, NTASS, NTCOL, NTCON, NTCPQ, NTCRD, NTCRM, NTDATA, NTDMO, NTDOC, NTDST, NTEDU, NTESG, NTEXT, NTFPA, NTFSM, NTHCM, NTHOT, NTIDE, NTJUR, NTLOG, NTMFG, NTMIG, NTMKT, NTMOB, NTNRG, NTPAY, NTPRJ, NTPRO, NTPRT, NTRET, NTSAN, NTSCM, NTSRV, NTSUB, NTSVC, NTTRE, NTUX, NTWFL, NTWMS]
 
 # Aliases resolve a prerequisite name in `after:` to one-or-more real wave
@@ -477,20 +481,22 @@ unmapped_ok:
   - DC      # data-consolidation follow-ups (DC34 open; DECISION founder-gated)
   - FG      # legacy "feature gap" numbering predating ARC/NT (FG386 open)
   - N       # N100/N101/N102 SaaS-console envelopes, deferred by annotation
-  - ODX     # Odoo-parity split remnants
+  - ODX     # Odoo-parity split remnants (ODX14/20/22 parquees dans docs/backlog/PHASE2_PLAN.md,
+            # SOLMVP50 2026-09-20 — ODX18 reste actif dans docs/PLAN.md)
   - QPERF   # single perf task, landed by SCA43 (annotated, not re-run here)
-  - XACC
-  - XKB
+  - XACC    # position fiscale des tiers (XACC12) parquee dans docs/backlog/PHASE2_PLAN.md (SOLMVP50)
+  - XKB     # huddles audio/video (XKB35) parquee dans docs/backlog/PHASE2_PLAN.md (SOLMVP50)
   - XMFG
   - XMKT
   - XPLT
-  - XPOS
+  - XPOS    # checkout e-commerce comptoir (XPOS19) parquee dans docs/backlog/PHASE2_PLAN.md (SOLMVP50)
   - ADSENGINT  # front<->back console integration follow-ups (ADSENGINT1-3, discovered at ENG/ADSENG fold)
   - XSAL
   - XSAV
   - XSTK
   - YAPIC
-  - YCASH
+  - YCASH   # YCASH5 (annulation facture apres acompte, compta-dependante) parquee dans
+            # docs/backlog/PHASE2_PLAN.md (SOLMVP50) — le groupe YCASH reste dans docs/PLAN.md
   - YDATA
   - YHARD
   - YOPSB
@@ -526,6 +532,10 @@ unmapped_ok:
   # n'écrit dans apps/ao que par UNE fonction de services.py — aucun prérequis
   # de vague noyau -> floods. La collecte automatique est gatée par la règle #5
   # (tos_risk/ + accord fondateur), pas par l'ordre des vagues.
+  # PARQUEE 2026-09-20 (SOLMVP50, sortie MVP solaire) : le groupe entier a été déplacé
+  # verbatim dans docs/backlog/PHASE2_PLAN.md (PUB reste dans docs/PLAN2.md — Publicité
+  # est dans le MVP). L'entrée reste ici, inoffensive tant qu'aucune tâche VAO n'existe
+  # plus dans docs/PLAN2.md.
   - VAO
   - QW
   - QX      # UI round-6 backlog (PR #350, landed after the SCA1 inventory) —
