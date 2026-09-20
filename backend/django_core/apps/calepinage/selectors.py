@@ -161,12 +161,22 @@ def comparer_variantes(calepinage):
     lignes = list(variantes(calepinage))
     retenue = next((v for v in lignes if v.retenue), None)
     reference = _mesures_variante(retenue) if retenue is not None else {}
+    # CAL145 — la RÉFÉRENCE de production est calculée par le même chemin de
+    # lecture que les autres lignes : une retenue périmée ne sert donc pas de
+    # référence, et l'écart des autres vaut ``None`` plutôt qu'un écart
+    # mesuré contre un chiffre qui ne décrit plus ce toit.
+    reference_p50 = None
+    if retenue is not None:
+        simulee_ref, production_ref, _ = _production_comparee(retenue)
+        if simulee_ref:
+            reference_p50 = production_ref.get('p50_kwh')
     return {
         'calepinage': getattr(calepinage, 'pk', None),
         'retenue_id': retenue.pk if retenue is not None else None,
         'reference_modules': reference.get('total_modules'),
         'introuvables': [],
-        'lignes': [_ligne_comparaison(v, reference, len(lignes))
+        'lignes': [_ligne_comparaison(v, reference, len(lignes),
+                                      reference_p50=reference_p50)
                    for v in lignes],
     }
 
@@ -177,11 +187,26 @@ def _mesures_variante(variante):
     return resultat if isinstance(resultat, dict) else {}
 
 
-def _ligne_comparaison(variante, reference, nombre_de_lignes):
+def _production_comparee(variante):
+    """CAL145 — les colonnes de production, CALCULÉES À LA LECTURE.
+
+    Le service de comparaison lit le résultat déposé par le moteur (forme
+    imbriquée du module ou forme plate du parcours devis) et déclare « non
+    simulée » toute variante sans production — ou dont la production a été
+    calculée sur une AUTRE empreinte de layout que celle d'aujourd'hui. Rien
+    n'est stocké : le comparatif suit l'empreinte sans invalidation.
+    """
+    from .services.comparaison import colonnes_production
+
+    return colonnes_production(_mesures_variante(variante),
+                               layout_hash=getattr(variante, 'layout_hash',
+                                                   '') or None)
+
+
+def _ligne_comparaison(variante, reference, nombre_de_lignes,
+                       reference_p50=None):
     mesures = _mesures_variante(variante)
-    production = (mesures.get('production')
-                  if isinstance(mesures.get('production'), dict) else {})
-    simulee = bool(production)
+    simulee, production, _motif = _production_comparee(variante)
     comparable = nombre_de_lignes > 1 and bool(reference)
     return {
         'id': variante.pk,
@@ -211,9 +236,7 @@ def _ligne_comparaison(variante, reference, nombre_de_lignes):
                             comparable),
         'ecart_p50_kwh': _ecart(
             production.get('p50_kwh') if simulee else None,
-            ((reference.get('production') or {}).get('p50_kwh')
-             if isinstance(reference.get('production'), dict) else None),
-            comparable),
+            reference_p50, comparable),
         'version_moteur': mesures.get('version_moteur') or '',
         'entree_hash': mesures.get('entree_hash') or '',
     }
