@@ -22,6 +22,10 @@ from .views.parametres import ParametresCalepinageView
 # import (affectation d'attribut de classe, voir la docstring du module) ;
 # doit s'exécuter AVANT ``router.register`` pour que le routeur la découvre.
 from .views import equipements as _equipements_action  # noqa: F401
+# CAL159 — même discipline pour l'action ``pompage`` (dimensionnement du
+# pompage solaire, services CAL155-CAL158) : code dans son propre fichier,
+# rattachement par cet import, AVANT ``router.register``.
+from .views import pompage as _pompage_action  # noqa: F401
 
 router = DefaultRouter()
 router.register(r'calepinages', CalepinageViewSet, basename='calepinage')
