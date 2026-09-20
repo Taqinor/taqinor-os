@@ -92,14 +92,18 @@ class BriefTaskTests(TestCase):
     def test_task_noop_without_campaigns(self):
         Company.objects.create(nom='Empty', slug='empty')
         result = generate_weekly_brief()
-        self.assertEqual(result, {'briefs_generated': 0})
+        # PUB130 — le retour DIT pourquoi il n'a rien produit (société sautée
+        # faute de campagne miroitée), au lieu d'un 0 muet indiagnosticable.
+        self.assertEqual(result, {'briefs_generated': 0,
+                                  'skipped_no_campaign': 1, 'failed': 0})
 
     def test_task_generates_for_company_with_campaign(self):
         company = Company.objects.create(nom='Has', slug='has')
         AdCampaignMirror.objects.create(
             company=company, meta_id='c1', name='C', status='PAUSED')
         result = generate_weekly_brief()
-        self.assertEqual(result, {'briefs_generated': 1})
+        self.assertEqual(result, {'briefs_generated': 1,
+                                  'skipped_no_campaign': 0, 'failed': 0})
         self.assertTrue(WeeklyBrief.objects.filter(company=company).exists())
 
 

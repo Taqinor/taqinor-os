@@ -1211,7 +1211,14 @@ def generate_weekly_brief():
 
     Best-effort par société ; ne génère un brief que pour les sociétés ayant au
     moins un miroir de campagne (rien à résumer sinon). Idempotent : le brief est
-    upserté par ``(company, period_start)``. Renvoie le nombre de briefs générés.
+    upserté par ``(company, period_start)``.
+
+    PUB130 — DIAGNOSTIC : le retour ne comptait que les succès, si bien qu'un
+    ``briefs_generated: 0`` ne disait pas POURQUOI (société sautée faute de
+    campagne miroitée ? échec silencieusement avalé par le ``except`` ?). Il porte
+    désormais les trois compteurs — ``generated`` / ``skipped_no_campaign`` /
+    ``failed`` — et chaque saut est journalisé : le prochain déclenchement du beat
+    répond de lui-même à « pourquoi WeeklyBrief = 0 ? ».
     """
     from authentication.selectors import active_companies
 
@@ -1219,21 +1226,34 @@ def generate_weekly_brief():
     from .models import AdCampaignMirror
 
     generated = 0
+    skipped = 0
+    failed = 0
     for company in active_companies():
         if not AdCampaignMirror.objects.filter(company=company).exists():
-            continue  # rien à résumer tant qu'aucune campagne n'est synchronisée
+            # Rien à résumer tant qu'aucune campagne n'est synchronisée — dit,
+            # plus jamais un saut muet.
+            skipped += 1
+            logger.info(
+                'adsengine.generate_weekly_brief: société %s sautée (aucune '
+                'campagne miroitée)', company.pk)
+            continue
         try:
             brief_mod.build_brief(company)
             generated += 1
         except Exception:  # pragma: no cover - défensif, isolation société
+            failed += 1
             logger.warning(
                 'adsengine.generate_weekly_brief: échec société %s',
                 company.pk, exc_info=True)
             continue
 
     logger.info(
-        'adsengine.generate_weekly_brief: %s brief(s) généré(s)', generated)
-    return {'briefs_generated': generated}
+        'adsengine.generate_weekly_brief: %s brief(s) généré(s), %s société(s) '
+        'sautée(s) sans campagne, %s en échec',
+        generated, skipped, failed)
+    return {'briefs_generated': generated,
+            'skipped_no_campaign': skipped,
+            'failed': failed}
 
 
 @shared_task(name='adsengine.daily_ads_digest')
