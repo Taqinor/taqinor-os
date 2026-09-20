@@ -72,3 +72,21 @@ class PeutGererCalepinage(_PermissionCalepinage):
     """Écriture / action métier sur un calepinage (``calepinage_gerer``)."""
 
     code = CAL_GERER
+
+
+class PeutLireOuEcrireCalepinage(_PermissionCalepinage):
+    """CAL18 — la garde d'une ``@action`` qui sert GET **et** POST.
+
+    Une action à deux méthodes ne peut pas déclarer une garde unique sans
+    mentir d'un côté : gardée en lecture, elle laisserait écrire à un simple
+    lecteur ; gardée en écriture, elle fermerait la lecture à qui a le droit
+    de lire. Le code est donc choisi par la MÉTHODE, exactement comme
+    ``ScopedPermission`` le fait au niveau de la classe.
+    """
+
+    def has_permission(self, request, view):
+        from rest_framework.permissions import SAFE_METHODS
+
+        garde = (PeutVoirCalepinage() if request.method in SAFE_METHODS
+                 else PeutGererCalepinage())
+        return garde.has_permission(request, view)

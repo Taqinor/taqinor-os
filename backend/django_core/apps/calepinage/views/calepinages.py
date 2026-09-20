@@ -33,7 +33,8 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.utils.dateparse import parse_date, parse_datetime
-from rest_framework import filters
+from rest_framework import filters, status
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.response import Response
 
@@ -42,8 +43,11 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .. import selectors
 from ..models import Calepinage
-from ..permissions import CAL_GERER, CAL_VOIR, PeutGererCalepinage
+from ..permissions import (
+    CAL_GERER, CAL_VOIR, PeutGererCalepinage, PeutLireOuEcrireCalepinage,
+)
 from ..serializers import CalepinageSerializer
+from ..services.layout import LayoutRefuse, enregistrer_layout
 
 __all__ = ['CalepinageViewSet', 'detail_calepinage']
 
@@ -103,6 +107,68 @@ class CalepinageViewSet(CompanyScopedModelViewSet):
         calepinage d'une autre société est introuvable (404, get_queryset).
         """
         return Response(detail_calepinage(self.get_object(), request))
+
+    # ── La conception elle-même ────────────────────────────────────────────
+    @action(detail=True, methods=['get', 'post'], url_path='layout',
+            permission_classes=[PeutLireOuEcrireCalepinage])
+    def layout(self, request, pk=None):
+        """CAL18 — lit (GET) ou enregistre (POST) la conception du calepinage.
+
+        Patron exact de ``apps/ao/views.py::AppelOffreViewSet.layout`` : le
+        corps POST EST le layout sérialisé, et les enveloppes
+        ``{"layout": …}`` / ``{"roof_layout": …}`` sont acceptées telles
+        quelles. SEULS ``roof_layout`` / ``layout_hash`` sont touchés — aucun
+        statut n'est écrit (règle #4).
+
+        L'écriture passe par ``services.enregistrer_layout`` (CAL13), jamais
+        par une écriture directe de vue : c'est lui qui calcule l'empreinte
+        (``apps.ventes.services.layout_hash``, jamais recodée) et qui dépose
+        une VERSION quand — et seulement quand — la conception a changé. Un
+        renvoi à l'identique répond donc ``{"inchange": true}`` sans créer de
+        version. Un corps vide est refusé en français ; un calepinage d'une
+        autre société est introuvable (404, ``get_queryset``).
+        """
+        calepinage = self.get_object()  # borné société par get_queryset
+        if request.method.lower() == 'get':
+            return Response({'roof_layout': calepinage.roof_layout,
+                             'layout_hash': calepinage.layout_hash or None})
+
+        payload = _corps_de_layout(request.data)
+        if payload is None:
+            return Response(
+                {'roof_layout': "Conception manquante ou invalide : le corps "
+                                "attendu est le document de conception."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = enregistrer_layout(calepinage, payload,
+                                          user=request.user)
+        except LayoutRefuse as refus:
+            return Response({refus.champ or 'roof_layout': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        version = resultat['version']
+        return Response({
+            'roof_layout': calepinage.roof_layout,
+            'layout_hash': resultat['layout_hash'] or None,
+            'inchange': resultat['inchange'],
+            'version': version.pk if version is not None else None,
+        })
+
+
+def _corps_de_layout(donnees):
+    """Le document de conception d'un corps de requête, ou ``None``.
+
+    Accepte le layout NU et les deux enveloppes historiques (``layout`` /
+    ``roof_layout``) — les mêmes que côté ventes et côté AO, pour qu'un même
+    client puisse parler aux trois portes sans se reformater.
+    """
+    if isinstance(donnees, dict):
+        for enveloppe in ('layout', 'roof_layout'):
+            if set(donnees.keys()) == {enveloppe}:
+                donnees = donnees[enveloppe]
+                break
+    if not isinstance(donnees, dict) or not donnees:
+        return None
+    return donnees
 
 
 # ── CAL17 — L'AGRÉGAT DE DÉTAIL (la forme est le contrat) ──────────────────
