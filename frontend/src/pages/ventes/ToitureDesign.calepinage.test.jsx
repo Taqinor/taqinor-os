@@ -37,19 +37,31 @@ vi.mock('../../api/ventesApi', () => ({
 vi.mock('../../api/aoApi', () => ({
   default: { affaires: { designContext: vi.fn(), enregistrerLayout: vi.fn() } },
 }))
-vi.mock('../../api/calepinageApi', () => ({
-  default: {
-    calepinages: {
-      designContext: vi.fn(),
-      enregistrerLayoutCalepinage: vi.fn(),
-      envoyerImage: vi.fn(),
-      genererDevis: vi.fn(),
-      syncDevis: vi.fn(),
-      get: vi.fn(),
-      importerContourAo: vi.fn(),
-    },
-  },
-}))
+// Le double SUIT la surface RÉELLE de `calepinageApi` : chaque méthode du
+// module est remplacée par un espion qui résout `{ data: null }`. Une
+// liste écrite à la main laissait `calepinageApi.parametres` indéfini —
+// et le panneau « allées » de l'atelier (CAL71) faisait alors planter tout
+// l'écran (`Cannot read properties of undefined`), ce qui rendait les
+// assertions illisibles.
+vi.mock('../../api/calepinageApi', async (importOriginal) => {
+  const actual = await importOriginal()
+  const espionner = (groupe) => Object.fromEntries(
+    Object.entries(groupe).map(([cle, valeur]) => [
+      cle,
+      typeof valeur === 'function'
+        ? vi.fn(() => Promise.resolve({ data: null }))
+        : valeur,
+    ]),
+  )
+  return {
+    default: Object.fromEntries(
+      Object.entries(actual.default).map(([nom, groupe]) => [
+        nom,
+        (groupe && typeof groupe === 'object') ? espionner(groupe) : groupe,
+      ]),
+    ),
+  }
+})
 vi.mock('../../api/crmApi', async (importOriginal) => {
   const actual = await importOriginal()
   return {

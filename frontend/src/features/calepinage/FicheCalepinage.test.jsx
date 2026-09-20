@@ -41,10 +41,10 @@ beforeEach(() => { vi.clearAllMocks() })
 afterEach(() => { cleanup() })
 
 describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
-  it('rend une clé du contrat, et le contrat en publie bien vingt et une', () => {
+  it('rend une clé du contrat, et le contrat en publie bien vingt-trois', () => {
     // Garde de dérive : si le contrat grossit, la liste ci-dessous grossit avec
     // lui et le test suivant exigera le rendu de la nouvelle clé.
-    expect(CLES.length).toBe(21)
+    expect(CLES.length).toBe(23)
   })
 
   it.each(CLES)('affiche la clé publiée « %s »', (cle) => {

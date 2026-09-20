@@ -117,6 +117,20 @@ export default function FicheCalepinage({ detail }) {
         {texte(detail.version_moteur)}
       </Champ>
 
+      {/* CAL188/CAL189 — la péremption vient du MÊME helper serveur que la
+          fiche devis et que la liste : sans devis lié elle est INCONNUE
+          (`null`), et « — » se lit là où un « à jour » inventé mentirait. */}
+      <Champ cle="layout_stale" label="Conception à jour">
+        {detail.layout_stale == null
+          ? '—'
+          : (detail.layout_stale ? 'Non — le devis a changé' : 'Oui')}
+      </Champ>
+      <Champ cle="layout_nb_panneaux" label="Panneaux posés">
+        {detail.layout_nb_panneaux == null
+          ? '—'
+          : <span className="fig">{detail.layout_nb_panneaux}</span>}
+      </Champ>
+
       <Champ cle="versions" label="Versions">
         {versions.total == null ? '—' : (
           <>

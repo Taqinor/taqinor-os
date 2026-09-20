@@ -167,6 +167,7 @@ const config = {
         to: '/calepinage/bibliotheque',
         label: 'Bibliothèque',
         icon: <Library size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
       },
       {
         // CAL165 — la provenance des paramètres normatifs de la société.
