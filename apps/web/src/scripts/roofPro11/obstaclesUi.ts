@@ -189,9 +189,16 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     recalc();
   }
 
-  /** Obstacle touché au point écran `pt`, ou null. */
+  /** Obstacle touché au point écran `pt`, ou null. CAL107 — boîte de tolérance autour du
+   *  point (doigt ⊃ trait fin), même principe que `vertexAtPoint` : au clic souris précis,
+   *  la boîte ne change rien (un rectangle d'obstacle est toujours plus grand que le doigt) ;
+   *  au doigt, elle évite de manquer un obstacle fin ou son bord. */
   function obstacleAtPoint(pt: maplibregl.Point): string | null {
-    const hits = map.queryRenderedFeatures(pt, { layers: ['rp9-obs'] });
+    const box: [maplibregl.Point, maplibregl.Point] = [
+      { x: pt.x - OBSTACLE_TAP_PX, y: pt.y - OBSTACLE_TAP_PX } as maplibregl.Point,
+      { x: pt.x + OBSTACLE_TAP_PX, y: pt.y + OBSTACLE_TAP_PX } as maplibregl.Point,
+    ];
+    const hits = map.queryRenderedFeatures(box, { layers: ['rp9-obs'] });
     const id = hits[0]?.properties?.id;
     return typeof id === 'string' ? id : null;
   }
@@ -274,6 +281,9 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     if (!moveObs) return;
     const idx = ctx.obstacles.findIndex((x) => x.id === moveObs.id);
     if (idx < 0) return;
+    // CAL100 — UNE SEULE photo pour tout le glissé, juste avant le PREMIER mouvement réel
+    // (un simple tap de sélection, sans glissé, ne pousse donc rien à annuler).
+    if (!moveObs.moved) ctx.pushWorkshopHistory?.();
     // Delta lng/lat : annule le parallaxe absolu de la vue inclinée.
     const centerLng = moveObs.centerLng + (lngLat[0] - moveObs.startLng);
     const centerLat = moveObs.centerLat + (lngLat[1] - moveObs.startLat);
@@ -330,6 +340,8 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     const mv = ctx.moveVertex;
     if (!mv) return;
     if (mv.idx < 0 || mv.idx >= ctx.vertices.length) return;
+    // CAL100 — même photo unique que le glissé d'obstacle, juste avant le premier mouvement.
+    if (!mv.moved) ctx.pushWorkshopHistory?.();
     // Delta lng/lat (annule le parallaxe de la vue inclinée), comme le glissé d'obstacle.
     const lng = mv.vLng + (lngLat[0] - mv.startLng);
     const lat = mv.vLat + (lngLat[1] - mv.startLat);

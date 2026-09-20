@@ -163,3 +163,95 @@ describe('CAL102 — createMesureUi (persistance)', () => {
     expect(ui.list()[0].points).toHaveLength(2);
   });
 });
+
+describe('CAL102 — session interactive (begin/addPoint/undoPoint/finish/cancel)', () => {
+  function minimalCtx(): Ctx {
+    return {} as Ctx;
+  }
+
+  it('hors session : isActive() faux, activeKind() null, addPoint()/undoPoint() sont des no-op', () => {
+    const ui = createMesureUi(minimalCtx());
+    expect(ui.isActive()).toBe(false);
+    expect(ui.activeKind()).toBeNull();
+    ui.addPoint([0, 0]); // ne doit rien lever ni rien poser
+    ui.undoPoint();
+    expect(ui.sessionPoints()).toEqual([]);
+    expect(ui.list()).toHaveLength(0);
+  });
+
+  it('begin() ouvre une session, addPoint() l’alimente, sessionPoints() la reflète', () => {
+    const ui = createMesureUi(minimalCtx());
+    ui.begin('distance');
+    expect(ui.isActive()).toBe(true);
+    expect(ui.activeKind()).toBe('distance');
+    ui.addPoint([-7.6, 33.5]);
+    ui.addPoint([-7.601, 33.5]);
+    expect(ui.sessionPoints()).toEqual([[-7.6, 33.5], [-7.601, 33.5]]);
+    expect(ui.list()).toHaveLength(0); // pas encore posée
+  });
+
+  it('finish() pose la mesure et referme la session quand elle est géométriquement valide', () => {
+    const ui = createMesureUi(minimalCtx());
+    ui.begin('distance');
+    ui.addPoint([0, 0]);
+    ui.addPoint([0, 1]);
+    const m = ui.finish('côté test');
+    expect(m).not.toBeNull();
+    expect(ui.list()).toHaveLength(1);
+    expect(ui.isActive()).toBe(false); // session refermée
+    expect(ui.sessionPoints()).toEqual([]);
+  });
+
+  it('finish() sur une session encore invalide GARDE la session ouverte (renvoie null, pose rien)', () => {
+    const ui = createMesureUi(minimalCtx());
+    ui.begin('area'); // il faut ≥ 3 points
+    ui.addPoint([0, 0]);
+    ui.addPoint([0, 1]);
+    const m = ui.finish();
+    expect(m).toBeNull();
+    expect(ui.isActive()).toBe(true); // toujours ouverte : l'utilisateur peut compléter
+    expect(ui.sessionPoints()).toHaveLength(2);
+    expect(ui.list()).toHaveLength(0);
+  });
+
+  it('un genre « angle » se plafonne à 3 points : un 4ᵉ point est ignoré', () => {
+    const ui = createMesureUi(minimalCtx());
+    ui.begin('angle');
+    ui.addPoint([0, 0]);
+    ui.addPoint([1, 1]);
+    ui.addPoint([1, 0]);
+    ui.addPoint([9, 9]); // ignoré : déjà 3 points pour un angle
+    expect(ui.sessionPoints()).toHaveLength(3);
+  });
+
+  it('undoPoint() retire le dernier point posé', () => {
+    const ui = createMesureUi(minimalCtx());
+    ui.begin('distance');
+    ui.addPoint([0, 0]);
+    ui.addPoint([0, 1]);
+    ui.undoPoint();
+    expect(ui.sessionPoints()).toEqual([[0, 0]]);
+  });
+
+  it('begin() pendant une session en cours ABANDONNE la précédente sans rien poser (parité changement d’outil)', () => {
+    const ui = createMesureUi(minimalCtx());
+    ui.begin('distance');
+    ui.addPoint([0, 0]);
+    ui.addPoint([0, 1]);
+    ui.begin('area'); // change de genre avant de finir la distance
+    expect(ui.activeKind()).toBe('area');
+    expect(ui.sessionPoints()).toEqual([]);
+    expect(ui.list()).toHaveLength(0);
+  });
+
+  it('cancel() abandonne la session en cours sans rien poser', () => {
+    const ui = createMesureUi(minimalCtx());
+    ui.begin('distance');
+    ui.addPoint([0, 0]);
+    ui.addPoint([0, 1]);
+    ui.cancel();
+    expect(ui.isActive()).toBe(false);
+    expect(ui.sessionPoints()).toEqual([]);
+    expect(ui.list()).toHaveLength(0);
+  });
+});
