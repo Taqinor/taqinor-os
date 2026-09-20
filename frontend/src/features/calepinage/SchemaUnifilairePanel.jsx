@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
+import { renderTrustedSvg } from '../../lib/trustedSvg'
 import { Card, Spinner } from '../../ui'
 
 /* ============================================================================
@@ -63,6 +64,8 @@ export default function SchemaUnifilairePanel({ calepinageId }) {
     { select: (r) => r.data, errorMessage: 'Schéma unifilaire indisponible.' },
   )
 
+  const balisage = renderTrustedSvg(data?.svg)
+
   if (loading) return <Spinner />
   if (error) {
     return (
@@ -73,13 +76,15 @@ export default function SchemaUnifilairePanel({ calepinageId }) {
   return (
     <Card className="flex flex-col gap-3 p-4" data-testid="cal195-panneau">
       <h2 className="text-base font-semibold">Schéma unifilaire</h2>
-      {data?.svg
+      {balisage
         ? (
           <div
             data-testid="cal195-svg"
-            /* Le SVG vient du serveur, jamais d'une saisie : il est inséré tel
-               quel, comme l'annexe technique du devis le fait déjà. */
-            dangerouslySetInnerHTML={{ __html: data.svg }}
+            /* Le SVG vient du serveur, jamais d'une saisie. Il passe malgré
+               tout par `renderTrustedSvg` (VX120, défense en profondeur) :
+               un balisage capable d'exécuter du code n'est PAS inséré — on
+               montre alors les motifs plutôt qu'un cadre piégé. */
+            dangerouslySetInnerHTML={balisage}
           />
         )
         : <Motifs donnees={data} />}
