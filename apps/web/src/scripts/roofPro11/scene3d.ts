@@ -19,7 +19,7 @@
  */
 import maplibregl from 'maplibre-gl';
 import * as THREE from 'three';
-import { PANEL2_THICK_M, sunDirection } from '../../lib/roofPro2';
+import { PANEL2_THICK_M, sunDirection, describeRowPitch } from '../../lib/roofPro2';
 import {
   type PackResult,
   type PanelGrid,
@@ -1591,6 +1591,33 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     return rings;
   }
 
+  /**
+   * CAL86 — publie le pas inter-rangées APPLIQUÉ et la famille de pose. Le bloc est créé
+   * s'il n'existe pas dans la page (aucune page à modifier) ; absent de tout DOM (harness
+   * jsdom minimal), c'est un no-op. Le pas AFFICHÉ est exactement `grid.rowPitchM`, celui
+   * qui a produit les rangées : changer l'inclinaison met donc à jour pas, compte et 3D
+   * ensemble, parce qu'ils viennent du MÊME plan.
+   */
+  function publishRowPitch(grid: PanelGrid, tiltDeg: number, family: ConfigFamily, flush: boolean) {
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return;
+    let el = document.getElementById('rp9-row-pitch');
+    if (!el) {
+      const host = document.getElementById('rp9-setback-note')?.parentElement ?? document.getElementById('rp9-3d');
+      if (!host) return;
+      el = document.createElement('p');
+      el.id = 'rp9-row-pitch';
+      el.className = 'rp9-note';
+      host.appendChild(el);
+    }
+    const d = describeRowPitch({
+      rowPitchM: grid.rowPitchM,
+      latitudeDeg: ctx.centroidLat,
+      flush,
+      configFamily: family,
+    });
+    el.textContent = `${d.label} Inclinaison appliquée : ${tiltDeg.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}°.`;
+  }
+
   // — Rendu d'une config (Sud sur châssis OU Est-Ouest en chevrons). `flush` (V3,
   //   toit en pente) pose les panneaux AFFLEURANTS sur la pente : pas de châssis ni
   //   de lest, panneau couché à l'inclinaison du toit. flush=false ⇒ rendu toit plat
@@ -1608,6 +1635,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       ctx.layoutState = null;
       ctx.layoutSel = null;
     }
+    // CAL86 — le pas inter-rangées EXISTE depuis toujours et pilote les rangées ; il
+    // n'était simplement jamais affiché, et la famille de pose jamais nommée. On PUBLIE
+    // ici le pas RÉELLEMENT appliqué par ce plan (`grid.rowPitchM`, la source unique) —
+    // aucun second calcul de pas n'est introduit.
+    publishRowPitch(grid, tiltDeg, family, flush);
     setOrigin(pack.origin);
     ctx.sceneOrigin = pack.origin;
     ctx.obstacleMeshes.clear();

@@ -155,6 +155,61 @@ export function orientationToAzimuthDeg(orientation: string): number {
   }
 }
 
+// ═══════════ CAL86 — AFFICHER le pas inter-rangées, et NOMMER la famille de pose ═══════════
+// Le pas EXISTE et alimente déjà les rangées (`rowPitchM` ci-dessous, consommé par le
+// pavage) : ce qui manquait, c'est son AFFICHAGE et le nom de la famille de pose. Rien
+// n'est recalculé ici — `describeRowPitch` REÇOIT le pas réellement appliqué et se
+// contente de l'habiller de l'hypothèse qui l'a produit. Aucun second calcul de pas
+// n'est introduit (le pavage reste la source unique, harmonisée avec le moteur par CAL167).
+
+/** CAL86 — famille de pose d'un toit PLAT : châssis inclinés posés dans des bacs lestés
+ *  (aucun perçage de l'étanchéité). C'est la famille que l'atelier pose aujourd'hui ; elle
+ *  n'était simplement jamais nommée à l'écran. */
+export const MOUNTING_FAMILY_BALLASTED = 'Bacs lestés inclinés';
+/** CAL86 — famille de pose d'un toit EN PENTE : modules affleurants sur la couverture. */
+export const MOUNTING_FAMILY_FLUSH = 'Pose affleurante sur pente';
+
+/** CAL86 — ce qui est AFFICHÉ à propos du pas inter-rangées : le pas appliqué, la famille
+ *  de pose, et l'hypothèse d'élévation solaire qui a produit ce pas. */
+export interface RowPitchDisclosure {
+  /** Pas RÉELLEMENT appliqué par le pavage (m, centre à centre). */
+  rowPitchM: number;
+  /** Famille de pose, nommée. */
+  family: string;
+  /** Pose affleurante (pente) : il n'y a alors PAS d'espacement solaire. */
+  flush: boolean;
+  /** Élévation solaire de design (°) ayant produit le pas — null en pose affleurante
+   *  (aucune hypothèse solaire n'intervient : les rangées sont jointives). */
+  designElevDeg: number | null;
+  /** Phrase prête à afficher, hypothèse comprise. */
+  label: string;
+}
+
+/**
+ * CAL86 — habille le pas inter-rangées DÉJÀ calculé par le pavage. `rowPitchM` est la
+ * valeur appliquée (lue du plan), `latitudeDeg` la latitude du site (source de
+ * l'hypothèse d'élévation, CAL167). AUCUN pas n'est recalculé ici.
+ */
+export function describeRowPitch(opts: {
+  rowPitchM: number;
+  latitudeDeg: number;
+  flush?: boolean;
+  configFamily?: 'south' | 'eastwest';
+}): RowPitchDisclosure {
+  const flush = !!opts.flush;
+  const rowPitchM = Number.isFinite(opts.rowPitchM) && opts.rowPitchM > 0 ? opts.rowPitchM : 0;
+  const family = flush ? MOUNTING_FAMILY_FLUSH : MOUNTING_FAMILY_BALLASTED;
+  const designElevDeg = flush ? null : designSunElevationDeg(opts.latitudeDeg);
+  const pas = rowPitchM.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const ew = opts.configFamily === 'eastwest' ? ' (pas entre chevrons est-ouest)' : '';
+  const label = flush
+    ? `${family} — rangées jointives : pas de ${pas} m${ew}, aucun espacement anti-ombrage (la pente porte les modules).`
+    : `${family} — pas entre rangées ${pas} m${ew}, calé sur une élévation solaire de ` +
+      `${(designElevDeg as number).toLocaleString('fr-FR', { maximumFractionDigits: 1 })}° ` +
+      `(midi au solstice d’hiver à la latitude du site, ${opts.latitudeDeg.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}°).`;
+  return { rowPitchM, family, flush, designElevDeg, label };
+}
+
 /** Élévation solaire de design (midi solstice d'hiver) pour l'espacement anti-ombrage. */
 export function designSunElevationDeg(latitudeDeg: number): number {
   return Math.max(8, 90 - Math.abs(latitudeDeg) - SOLAR_DECLINATION_DEG);
