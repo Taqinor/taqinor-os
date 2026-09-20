@@ -82,6 +82,9 @@ const PlanImporteCalage = lazy(() => import('./PlanImporteCalage'))
 /* CAL58 — la PENTE saisie de trois façons (degrés, pourcentage, cotes) qui
    convergent vers une seule valeur, laquelle affiche toujours sa provenance. */
 const SaisiePente = lazy(() => import('./SaisiePente'))
+// CAL195 — le schéma unifilaire du calepinage, composé par le MÊME moteur que
+// le devis : l'écran l'affiche, il ne dessine rien.
+const SchemaUnifilairePanel = lazy(() => import('./SchemaUnifilairePanel'))
 
 const config = {
   key: 'calepinage',
@@ -132,6 +135,8 @@ const config = {
     { path: '/calepinage/:id/plan', component: PlanImporteCalage, roles: ROLES },
     // CAL58 — la pente de CE calepinage, par l'un des trois modes de saisie.
     { path: '/calepinage/:id/pente', component: SaisiePente, roles: ROLES },
+    // contextuelle: le schéma unifilaire d'UN calepinage, ouvert depuis son atelier (CAL195) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
+    { path: '/calepinage/:id/schema', component: SchemaUnifilairePanel, roles: ROLES },
   ],
 }
 

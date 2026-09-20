@@ -107,6 +107,12 @@ const calepinageApi = {
     // (`contract_samples/calepinage_resultat.json`).
     resultat: (id) => api.get(`${pivot(id)}resultat/`),
 
+    // CAL195 — le schéma unifilaire du calepinage, en SVG inline. Le SVG est
+    // composé PAR LE SERVEUR (même moteur que le devis, `core.electrique`) :
+    // l'écran l'affiche, il ne dessine rien. `svg: null` + `bloquants` quand
+    // la conception ne permet pas de dessiner — jamais un schéma approximatif.
+    schemaUnifilaire: (id) => api.get(`${pivot(id)}schema-unifilaire/`),
+
     // CAL247 — les dossiers réglementaires
     // (`contract_samples/dossiers_reglementaires.json`).
     dossiersReglementaires: (id) => api.get(`${pivot(id)}dossiers-reglementaires/`),

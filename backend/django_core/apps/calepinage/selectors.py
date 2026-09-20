@@ -305,6 +305,55 @@ def calepinage_retenu_pour_devis(devis_id, company):
     }
 
 
+#: CAL185 — les clés de la nomenclature d'une variante retenue. TOUJOURS
+#: toutes présentes : un appelant n'a jamais à deviner si une clé existe.
+CLES_NOMENCLATURE_RETENUE = ('calepinage', 'variante', 'nom', 'layout',
+                             'layout_hash')
+
+
+def nomenclature_variante_retenue(calepinage_id, company):
+    """CAL185 — la conception de la variante RETENUE, prête à être CHIFFRÉE.
+
+    Point d'entrée cross-app : ``apps.ventes`` chiffre la variante choisie
+    sans jamais importer ``apps.calepinage.models``. Ce que rend cette
+    fonction est la CONCEPTION (le document ``roof_layout`` de la variante) et
+    son empreinte — pas une liste de produits : le schéma v2 ne porte aucune
+    référence catalogue (cf. ``services.equipements``), et c'est la
+    composition ventes qui résout les produits. Une deuxième façon de choisir
+    un produit serait une deuxième vérité de chiffrage.
+
+    ``None`` quand le calepinage n'existe pas dans cette société, quand
+    AUCUNE variante n'y est retenue, ou quand la variante retenue ne porte
+    pas de conception — une variante sans dessin n'a rien à chiffrer, et on
+    ne retombe JAMAIS en silence sur la conception du calepinage parent (ce
+    serait chiffrer autre chose que ce que le commercial a retenu).
+    """
+    from .models import Calepinage, CalepinageVariante
+
+    if company is None or not calepinage_id:
+        return None
+    calepinage = (Calepinage.objects
+                  .filter(company=company, pk=calepinage_id)
+                  .first())
+    if calepinage is None:
+        return None
+    variante = (CalepinageVariante.objects
+                .filter(calepinage=calepinage, retenue=True)
+                .first())
+    if variante is None:
+        return None
+    layout = variante.roof_layout
+    if not isinstance(layout, dict) or not layout:
+        return None
+    return {
+        'calepinage': calepinage.pk,
+        'variante': variante.pk,
+        'nom': variante.nom or '',
+        'layout': layout,
+        'layout_hash': variante.layout_hash or '',
+    }
+
+
 def calepinage_de_l_affaire(appel_offre_id, company):
     """CAL10 — le calepinage rattaché à cette affaire d'AO, ou ``None``."""
     from .models import Calepinage

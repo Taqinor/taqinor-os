@@ -81,3 +81,49 @@ class SelectorCalepinageTest(TestCase):
                 motif.search(fichier.read_text(encoding='utf-8')),
                 f'{fichier.name} importe apps.calepinage.models : la lecture '
                 'cross-app passe par son selectors.py.')
+
+
+class SerializerCalepinageTest(TestCase):
+    """CAL28/CAL40 — la clé ``calepinage`` est PUBLIÉE par la fiche devis.
+
+    Le sélecteur existait déjà ; aucun sérialiseur ne le publiait, donc le
+    bloc ``BlocCalepinageDevis`` (CAL40) ne recevait jamais sa donnée. La
+    forme rendue est EXACTEMENT celle que le bloc lit
+    (``{id, titre, layout_hash, a_jour}``) — pas une seconde forme.
+    """
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Cal40 Co', slug='cal40-co')
+        self.client_a = Client.objects.create(company=self.company,
+                                              nom='Atlas 40')
+        self.devis = Devis.objects.create(
+            company=self.company, client=self.client_a,
+            reference='DEV-202609-4000', layout_hash='a' * 64)
+
+    def _serialiser(self):
+        from apps.ventes.serializers import DevisSerializer
+        return DevisSerializer(self.devis).data
+
+    def test_fiche_devis_publie_le_bloc(self):
+        Calepinage.objects.create(
+            company=self.company, client=self.client_a, devis=self.devis,
+            titre='Villa Anfa', layout_hash='a' * 64)
+        bloc = self._serialiser()['calepinage']
+        self.assertEqual(set(bloc), {'id', 'titre', 'layout_hash', 'a_jour'})
+        self.assertEqual(bloc['titre'], 'Villa Anfa')
+        self.assertTrue(bloc['a_jour'])
+
+    def test_devis_sans_calepinage_publie_none(self):
+        self.assertIsNone(self._serialiser()['calepinage'])
+
+    def test_en_liste_la_cle_vaut_none_pas_une_requete_par_devis(self):
+        from apps.ventes.serializers import DevisSerializer
+        Calepinage.objects.create(
+            company=self.company, client=self.client_a, devis=self.devis,
+            titre='Villa Anfa', layout_hash='a' * 64)
+        lignes = DevisSerializer([self.devis], many=True).data
+        self.assertIsNone(lignes[0]['calepinage'])
+
+    def test_le_champ_est_en_lecture_seule(self):
+        from apps.ventes.serializers import DevisSerializer
+        self.assertTrue(DevisSerializer().fields['calepinage'].read_only)

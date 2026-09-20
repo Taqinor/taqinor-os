@@ -447,6 +447,46 @@ def calepinage_du_devis(devis, company=None):
     }
 
 
+def schema_unifilaire_svg(*, devis=None, entree=None, resultat=None,
+                          cartouche=None, standard=False):
+    """CAL195 — LE producteur de schéma unifilaire, par SA porte cross-app.
+
+    Le schéma existe depuis PV46, mais il était enfermé : il part d'un DEVIS,
+    et le seul chemin vers lui traverse le moteur vendorisé
+    (``quote_engine.builder._sld_svg``). Or ce moteur REND — il ne s'importe
+    pas (règle #4), et aucune autre app n'a le droit d'atteindre un de ses
+    modules internes. Un calepinage sans devis n'avait donc aucun schéma, alors
+    que le dessin lui-même est produit par un module PUR
+    (``core.electrique.schema``) qui ne connaît ni devis, ni prix, ni statut.
+
+    Cette fonction est la porte, et elle ne DESSINE rien :
+
+    * ``devis=`` — délégation stricte à ``electrical_service.
+      rendre_schema_du_devis``, l'appel que ``_sld_svg`` fait déjà. Le SVG
+      d'un devis reste donc BYTE-IDENTIQUE : aucun paramètre n'est ajouté,
+      aucun repli n'est introduit, et les trois portails (étude présente,
+      fiches complètes, conception conforme) restent les siens.
+    * ``entree=``/``resultat=`` — un appelant qui porte DÉJÀ les objets du
+      moteur électrique (``core.electrique.types``) : c'est le cas d'
+      ``apps.calepinage``, dont la ``Conception`` (CAL124) est bâtie sur ces
+      mêmes types, chaînes par MPPT (CAL125), câbles dimensionnés (CAL131) et
+      check-list d'organes (CAL132) comprises. Le dessin est alors celui du
+      MÊME moteur, jamais une seconde planche.
+
+    ``None`` dès qu'il manque de quoi dessiner — même discipline que
+    PVFCH-ANNEXE : une fiche incomplète n'obtient PAS un schéma approximatif,
+    elle n'en obtient aucun.
+    """
+    if devis is not None:
+        from .electrical_service import rendre_schema_du_devis
+        return rendre_schema_du_devis(devis, standard=standard)
+    if entree is None or resultat is None:
+        return None
+    from core.electrique.schema import rendre_schema
+    return rendre_schema(entree, resultat, cartouche=cartouche or {},
+                         standard=standard)
+
+
 def lignes_produits_calepinage(devis):
     """CAL243 — les lignes PRODUIT « retenues » d'un devis, pour l'équipement
     d'un calepinage lié.
@@ -466,10 +506,10 @@ def lignes_produits_calepinage(devis):
         {'produit': ligne.produit, 'designation': ligne.designation,
          'quantite': ligne.quantite}
         for ligne in (devis.lignes
-                     .filter(type_ligne='produit', produit_id__isnull=False)
-                     .exclude(variante='avec')
-                     .select_related('produit')
-                     .order_by('id'))
+                      .filter(type_ligne='produit', produit_id__isnull=False)
+                      .exclude(variante='avec')
+                      .select_related('produit')
+                      .order_by('id'))
     ]
 
 
