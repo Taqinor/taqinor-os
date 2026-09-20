@@ -26,6 +26,7 @@ import { type FreeLayoutState, type FreeMargins } from '../../lib/freeLayout';
 import { type ShadeObstruction } from '../../lib/shadingEngine';
 import { type Measurement } from './mesureUi';
 import { type EnvironmentObject } from './environment';
+import { type ExclusionZone, type ExclusionNature } from './zones';
 import {
   type InitOptions,
   type RoofType,
@@ -164,6 +165,13 @@ export interface Ctx {
    * garde le comportement historique (remplir ce qui tient). Read-only depuis les modules
    * consommateurs : seul roof-tool-pro11.ts (l'hydratation) l'écrit. */
   readonly devisMode: boolean;
+  /**
+   * CAL37 — en mode document (`devisMode`), ce document porte-t-il une cible VENDUE ?
+   * Vrai pour un devis/une affaire AO (comportement L2 inchangé : besoin nul = zéro
+   * vendu, on ne pose rien). Faux pour un CALEPINAGE sans devis lié : il n'y a aucune
+   * vente derrière, donc un besoin nul veut dire « aucune cible », et l'optimiseur pose
+   * ce qui tient. Read-only : seul roof-tool-pro11.ts (l'hydratation) l'écrit. */
+  readonly cibleVendue: boolean;
 
   // — Recommandation/optimum courant + flag « caler sur la reco » (mutable) —
   rec: Recommendation | null;
@@ -247,6 +255,12 @@ export interface Ctx {
    *  ref STABLE (tableau muté en place, comme `shadeObstructions`). Optionnel : absent
    *  sur un `ctx` antérieur à CAL67 (tests unitaires isolés) → traité comme vide. */
   environment?: EnvironmentObject[];
+  // CAL69 — zones INTERDITE/RESERVEE/PREFEREE tracées dans l'atelier, persistées telles
+  // quelles sous `exclusionZones` (contrat CAL68). Absentes = aucune zone.
+  exclusionZones?: ExclusionZone[];
+  zoneCounter?: number;
+  /** Nature en attente de tracé : posée par le panneau, lue par `endDraw`. */
+  pendingZoneNature?: ExclusionNature | null;
   /** CAL67 — compteur d'identifiants d'objet d'environnement (env-N). Optionnel : absent
    *  sur un `ctx` antérieur à CAL67 → `obstaclesUi.ts` l'initialise à 0 au premier ajout. */
   envCounter?: number;
@@ -254,6 +268,18 @@ export interface Ctx {
   shadeFactors: number[][] | null;
   /** Facteur d'ombrage ANNUEL (0–1], 1 = aucun dérate — appliqué aux chiffres annuels. */
   shadeAnnualFactor: number;
+  /** CAL93 — profil d'horizon LOINTAIN (CAL92, PVGIS, ou saisi à la main), ou null/absent
+   *  si aucun n'est renseigné. Optionnel : un `ctx` antérieur à CAL93 n'en porte pas —
+   *  `createShadingUi` l'initialise à null au premier calcul, jamais lu en aveugle. TOUJOURS
+   *  un POSTE DE PERTE SÉPARÉ de `shadeFactors`/`shadeAnnualFactor` (l'ombrage PROCHE) —
+   *  les deux ne se mélangent jamais dans la même matrice. */
+  horizonProfile?: import('../../lib/horizonEngine').HorizonPoint[] | null;
+  /** CAL93 — matrice 12×24 du dérate d'horizon LOINTAIN, calculée depuis `horizonProfile`
+   *  (null tant qu'aucun profil n'est renseigné → chiffres inchangés). */
+  horizonFactors?: number[][] | null;
+  /** CAL93 — facteur d'horizon ANNUEL (0–1], 1 = aucun profil renseigné. Appliqué EN PLUS
+   *  de `shadeAnnualFactor` (les deux se multiplient, jamais l'un à la place de l'autre). */
+  horizonAnnualFactor?: number;
 
   // — WJ22 « Pertes climatiques honnêtes » (fourchette de confiance, opt-in) —
   /** La couche de pertes climatiques (dérate thermique/salissure/brume → fourchette)

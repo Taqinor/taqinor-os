@@ -5,7 +5,12 @@
 // panneaux tiennent (le compte baisse), jamais l'inverse.
 import { describe, expect, it } from 'vitest';
 import { packConfig, defaultEastWestGeometry, type PackOptions } from '../../lib/estimatorBrainV2';
-import { PANEL2_SHORT_M } from '../../lib/roofPro2';
+import { PANEL2_SHORT_M, PERIMETER_SETBACK_M } from '../../lib/roofPro2';
+import {
+  departagerRemplissage,
+  PRIORITES_REMPLISSAGE,
+  type EntreeDepartage,
+} from './optimizer';
 import { type LngLat } from '../../lib/roof';
 
 /** Contour RECTANGULAIRE large (assez pour plusieurs rangées/colonnes de panneaux). */
@@ -114,5 +119,133 @@ describe('CAL87 — géométrie Est-Ouest paramétrable (faîtage + écart inter
     const apres = packConfig(ring, 33.5, { ...baseOpts, eastWestGeometry: { ridgeGapM: 2, interTentGapM: 2 } });
     expect(apres.best.count).toBe(avant.best.count);
     expect(apres.best.rowPitchM).toBeCloseTo(avant.best.rowPitchM, 9);
+  });
+});
+
+// CAL83 — la PRIORITÉ DE REMPLISSAGE d'une zone ne fait que DÉPARTAGER.
+// Le cas d'essai est à optima multiples : un tracé plus profond que ce que les rangées
+// occupent réellement, donc un MÊME compte de panneaux tient à plusieurs positions.
+// Ce que ces tests interdisent : qu'une priorité fasse perdre un module, et qu'elle
+// prétende départager ce qu'elle ne sait pas (ensoleillement sans ombre déclarée) —
+// la règle « zéro chiffre inventé » appliquée à un classement.
+describe('CAL83 — priorité de remplissage : un DÉPARTAGE, jamais un arbitrage du compte', () => {
+  const grandToit = rectRing(30, 26);
+
+  /** Le pavage RÉEL d'un toit large et profond : le cas à optima multiples. */
+  function entreeReelle(): EntreeDepartage {
+    const pack = packConfig(grandToit, 33.5, baseOpts);
+    return {
+      ringENU: pack.ringENU,
+      panels: pack.best.panels,
+      azimuthDeg: pack.azimuthDeg,
+      rowWidthM: pack.best.rowWidthM,
+      footprintPerPanelM2: pack.best.footprintPerPanelM2,
+      setbackM: PERIMETER_SETBACK_M,
+    };
+  }
+
+  /** Moyenne du pavage sur l'axe de progression des rangées (v), en mètres. */
+  function moyenneV(panels: { cx: number; cy: number }[], azimuthDeg: number): number {
+    const az = (azimuthDeg * Math.PI) / 180;
+    const f = [Math.sin(az), Math.cos(az)];
+    return panels.reduce((acc, p) => acc + p.cx * f[0] + p.cy * f[1], 0) / (panels.length || 1);
+  }
+
+  /** Moyenne du pavage sur l'axe long des rangées (u), en mètres. */
+  function moyenneU(panels: { cx: number; cy: number }[], azimuthDeg: number): number {
+    const az = (azimuthDeg * Math.PI) / 180;
+    const u = [-Math.cos(az), Math.sin(az)];
+    return panels.reduce((acc, p) => acc + p.cx * u[0] + p.cy * u[1], 0) / (panels.length || 1);
+  }
+
+  it('le cas d’essai a bien du MOU : plusieurs positions pour le même compte', () => {
+    const e = entreeReelle();
+    expect(e.panels.length).toBeGreaterThan(10); // un vrai champ, pas deux panneaux
+    const colle = departagerRemplissage(e, 'egout');
+    expect(colle.departage).toBe(true);
+    expect(colle.decalageV_m).toBeGreaterThan(0);
+  });
+
+  it('CHAQUE priorité garde le compte EXACT du pavage de départ', () => {
+    const e = entreeReelle();
+    for (const { id } of PRIORITES_REMPLISSAGE) {
+      const r = departagerRemplissage(e, id);
+      expect(r.count, `priorité ${id}`).toBe(e.panels.length);
+      expect(r.panels.length, `priorité ${id}`).toBe(e.panels.length);
+    }
+  });
+
+  it('changer la priorité REDISTRIBUE les panneaux (faîtage ≠ égout) sans changer le compte', () => {
+    const e = entreeReelle();
+    const faitage = departagerRemplissage(e, 'faitage');
+    const egout = departagerRemplissage(e, 'egout');
+    expect(faitage.count).toBe(e.panels.length);
+    expect(egout.count).toBe(e.panels.length);
+    // v croît du faîtage vers l'égout : coller à l'égout pousse le pavage vers les v hauts.
+    expect(moyenneV(egout.panels, e.azimuthDeg)).toBeGreaterThan(moyenneV(faitage.panels, e.azimuthDeg));
+    expect(egout.panels).not.toEqual(faitage.panels);
+  });
+
+  it('les deux rives départagent sur l’axe des rangées, toujours à compte égal', () => {
+    const e = entreeReelle();
+    const debut = departagerRemplissage(e, 'rive-debut');
+    const fin = departagerRemplissage(e, 'rive-fin');
+    expect(debut.count).toBe(e.panels.length);
+    expect(fin.count).toBe(e.panels.length);
+    expect(moyenneU(fin.panels, e.azimuthDeg)).toBeGreaterThan(moyenneU(debut.panels, e.azimuthDeg));
+  });
+
+  it('le décalage reste borné par le tracé (jamais une translation folle)', () => {
+    const e = entreeReelle();
+    for (const id of ['faitage', 'egout', 'rive-debut', 'rive-fin'] as const) {
+      const r = departagerRemplissage(e, id);
+      expect(Math.abs(r.decalageU_m) + Math.abs(r.decalageV_m)).toBeLessThan(30);
+      expect(r.count).toBe(e.panels.length);
+    }
+  });
+
+  it('« aucune » ne touche à rien : c’est le pavage d’aujourd’hui, à l’identique', () => {
+    const e = entreeReelle();
+    const r = departagerRemplissage(e, 'aucune');
+    expect(r.departage).toBe(false);
+    expect(r.decalageU_m).toBe(0);
+    expect(r.decalageV_m).toBe(0);
+    expect(r.panels).toEqual(e.panels);
+  });
+
+  it('« meilleur ensoleillement » sans source d’ombre déclarée : il le DIT, il n’invente pas', () => {
+    const e = entreeReelle();
+    const r = departagerRemplissage(e, 'ensoleillement');
+    expect(r.departage).toBe(false);
+    expect(r.count).toBe(e.panels.length);
+    expect(r.motif).toMatch(/ombre/i);
+  });
+
+  it('« meilleur ensoleillement » avec une ombre relevée s’en éloigne, à compte égal', () => {
+    const e = entreeReelle();
+    const az = (e.azimuthDeg * Math.PI) / 180;
+    const f = [Math.sin(az), Math.cos(az)];
+    // Une ombre posée juste avant la première rangée (côté v petit) : le départage
+    // doit pousser le pavage dans l'autre sens — sans perdre un seul panneau.
+    const vMin = Math.min(...e.panels.map((p) => p.cx * f[0] + p.cy * f[1]));
+    const proche = e.panels.find((p) => p.cx * f[0] + p.cy * f[1] <= vMin + 1e-6) ?? e.panels[0];
+    const source: [number, number] = [proche.cx - f[0] * 3, proche.cy - f[1] * 3];
+    const avec = departagerRemplissage({ ...e, sourcesOmbreENU: [source] }, 'ensoleillement');
+    expect(avec.count).toBe(e.panels.length);
+    if (avec.departage) {
+      expect(moyenneV(avec.panels, e.azimuthDeg)).toBeGreaterThan(moyenneV(e.panels, e.azimuthDeg));
+    } else {
+      expect(avec.motif).toBeTruthy(); // aucun mou disponible → il le dit
+    }
+  });
+
+  it('un pavage vide ou un tracé incomplet ne bougent pas, et disent pourquoi', () => {
+    const e = entreeReelle();
+    const vide = departagerRemplissage({ ...e, panels: [] }, 'egout');
+    expect(vide.count).toBe(0);
+    expect(vide.motif).toBeTruthy();
+    const sansTrace = departagerRemplissage({ ...e, ringENU: [] }, 'egout');
+    expect(sansTrace.count).toBe(e.panels.length);
+    expect(sansTrace.motif).toBeTruthy();
   });
 });

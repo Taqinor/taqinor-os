@@ -373,3 +373,65 @@ export function parseClockHour(raw: unknown): number {
   if (h < 0 || h > 23 || min < 0 || min > 59) return NaN;
   return h + min / 60;
 }
+
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL55 — ALTITUDE DU SITE, SOURCÉE, JAMAIS DEVINÉE
+//
+// L'atelier ne portait aucune altitude (seules des élévations SOLAIRES existaient).
+// Or PVGIS renvoie DÉJÀ l'altitude du point interrogé dans `inputs.location.elevation` :
+// on la LIT dans la réponse qu'on reçoit de toute façon, on ne l'invente pas, et on la
+// stocke AVEC SA SOURCE. PVGIS muet (champ absent, non numérique, réponse en échec) ⇒
+// `null` : l'écran affiche « non renseignée », JAMAIS un nombre de repli.
+//
+// Aucun appel réseau supplémentaire n'est introduit ici : `pvgisElevationM` est une
+// lecture PURE d'un corps de réponse déjà en main.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Altitude d'un site avec sa PROVENANCE. Une altitude sans source n'est pas
+ *  défendable devant un client : les deux champs voyagent ensemble. */
+export interface SiteAltitude {
+  altitudeM: number;
+  /** Texte libre affiché tel quel (« source PVGIS », « relevé GPS du … »). */
+  source: string;
+}
+
+/** Libellé de source pour une altitude LUE dans la réponse PVGIS. */
+export const PVGIS_ALTITUDE_SOURCE = 'source PVGIS';
+
+/**
+ * Altitude (m) portée par un corps de réponse PVGIS, avec sa source. `null` dès que
+ * le champ est absent, non numérique ou non fini — jamais 0, jamais une estimation.
+ */
+export function pvgisElevationM(data: unknown): SiteAltitude | null {
+  const elevation = (data as { inputs?: { location?: { elevation?: unknown } } } | null | undefined)
+    ?.inputs?.location?.elevation;
+  if (typeof elevation !== 'number' || !Number.isFinite(elevation)) return null;
+  return { altitudeM: elevation, source: PVGIS_ALTITUDE_SOURCE };
+}
+
+/**
+ * Altitude RETENUE pour le site : la valeur SAISIE par la société (réglages CAL47,
+ * `altitude_m` + `source_altitude`) prime toujours sur la lecture PVGIS — c'est un
+ * relevé terrain. Aucune des deux ⇒ `null` (« non renseignée »).
+ *
+ * Une altitude saisie SANS source reste retenue, mais sa source est explicitement
+ * « saisie, source non renseignée » : on ne fabrique pas une provenance.
+ */
+export function resolveSiteAltitude(
+  settings: { altitude_m?: number | null; source_altitude?: string | null } | null | undefined,
+  fromPvgis: SiteAltitude | null,
+): SiteAltitude | null {
+  const saisie = settings?.altitude_m;
+  if (typeof saisie === 'number' && Number.isFinite(saisie)) {
+    const src = (settings?.source_altitude ?? '').trim();
+    return { altitudeM: saisie, source: src || 'saisie, source non renseignée' };
+  }
+  return fromPvgis;
+}
+
+/** Libellé d'affichage : « 145 m (source PVGIS) », ou la mention d'absence. */
+export function siteAltitudeLabel(a: SiteAltitude | null): string {
+  if (!a) return 'Altitude non renseignée';
+  return `${a.altitudeM} m (${a.source})`;
+}

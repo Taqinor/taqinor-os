@@ -34,7 +34,7 @@
  * (yieldTable.ts). JAMAIS un devis. Voir apps/web/ESTIMATOR_BRAIN_NOTES.md.
  */
 import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
-import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_WATT, PERIMETER_SETBACK_M, resolveSetbacks, type PerimeterSetbacks } from './roofPro2';
+import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_WATT, PERIMETER_SETBACK_M, resolveSetbacks, extremityTotalM, type PerimeterSetbacks } from './roofPro2';
 import { YIELD_TABLE } from './yieldTable';
 import { PRODUCTION_NET_FACTOR } from './systemLoss';
 
@@ -1196,13 +1196,17 @@ function packCells(
 
   // Départ décalé de ohRows/ohCols pas entiers vers l'extérieur ; borne haute
   // étendue du débord. overhangM=0 : vStart=vMin+extrémité, séquence et borne identiques.
-  const vStart = vMin + setbacks.extremityM - ohRows * p.pitchM;
+  // CAL76 — c'est le TOTAL extrémité+joint (`extremityTotalM`) qui borne l'empilement,
+  // exactement comme le moteur (`Rives.extremite_totale_m`) ; joint=0 (défaut) → identique
+  // à l'extrémité seule, donc comportement historique inchangé.
+  const extremityTotal = extremityTotalM(setbacks);
+  const vStart = vMin + extremityTotal - ohRows * p.pitchM;
   const uStart = uMin + setbacks.lateralM - ohCols * colPitch;
   const panels: PackedPanel[] = [];
   for (let r = 0; r < rows; r++) {
     const v0 = vStart + r * p.pitchM;
     const v1 = v0 + p.cellDepthM;
-    if (v1 > vMax - setbacks.extremityM + overhangM + EDGE_EPS_M) break;
+    if (v1 > vMax - extremityTotal + overhangM + EDGE_EPS_M) break;
     for (let c = 0; c < cols; c++) {
       const u0 = uStart + c * colPitch;
       const u1 = u0 + p.rowWidthM;
@@ -1335,8 +1339,10 @@ function packMixedCells(
 
   const uStart = uMin + setbacks.lateralM - overhangM; // PV63 — retrait latéral
   const uEnd = uMax - setbacks.lateralM + overhangM;
-  const vStart = vMin + setbacks.extremityM - overhangM; // PV63 — retrait d'extrémité
-  const vEnd = vMax - setbacks.extremityM + overhangM;
+  // CAL76 — total extrémité+joint (défaut joint=0 → identique au retrait d'extrémité seul).
+  const extremityTotalMix = extremityTotalM(setbacks);
+  const vStart = vMin + extremityTotalMix - overhangM; // PV63 — retrait d'extrémité
+  const vEnd = vMax - extremityTotalMix + overhangM;
 
   /** Panneaux posables dans la rangée qui commence en `v0` avec la pose `cp`. */
   const rowFor = (v0: number, cp: CellParams, orient: PanelLayoutOrient): PackedPanel[] => {

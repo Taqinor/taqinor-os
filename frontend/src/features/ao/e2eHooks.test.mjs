@@ -233,6 +233,8 @@ export const ALL_HOOKS = [
 
   // ── Fiche affaire : frontière de chargement d'un panneau — 03/08/2026 ────
   'data-ao-panneau-differe',
+  // ── Fiche affaire : lien vers le calepinage 3D — CAL41 (20/09/2026) ──────
+  'data-ao-lien-calepinage',
 ]
 
 function readDoc() {

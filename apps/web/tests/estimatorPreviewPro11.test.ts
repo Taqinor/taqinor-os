@@ -742,7 +742,7 @@ describe('pro-11 — W79 : la disposition personnalisée survit à une édition 
     );
   });
 
-  it('reenterCustomLayout re-snappe via nearestEmptyCell (re-snap, pas wipe) et re-rend tout', () => {
+  it('reenterCustomLayout re-snappe en masse (re-snap, pas wipe) et re-rend tout', () => {
     expect(editor).toContain('function reenterCustomLayout(');
     const fn = editor.slice(editor.indexOf('function reenterCustomLayout'));
     // garde-fou : no-op hors mode disposition ou sans plan.
@@ -750,7 +750,12 @@ describe('pro-11 — W79 : la disposition personnalisée survit à une édition 
     // reconstruit l'état sur la NOUVELLE lattice puis remplace l'occupation par les re-snaps.
     expect(fn).toContain('ensureLayoutState()');
     expect(fn).toContain('st.occupied.clear()');
-    expect(fn).toContain('nearestEmptyCell(st, c.cx, c.cy)');
+    // CAL106 — le balayage centre-par-centre est devenu un re-snap INDEXÉ
+    // (`resnapEnMasse`), dont l'équivalence stricte avec la version naïve
+    // est prouvée dans `src/scripts/roofPro11/perf.test.ts`. Ce qui compte
+    // ici reste : l'occupation est REMPLACÉE par des re-snaps, jamais vidée.
+    expect(fn).toContain('resnapEnMasse(st.cells, prevCenters)');
+    expect(fn).toContain('st.occupied.add(idx)');
     // readouts à jour : re-rendu de la 3D (panneaux) + de la grille/note.
     expect(fn).toContain('renderCustomLayout()');
     expect(fn).toContain('renderLayoutPanel()');

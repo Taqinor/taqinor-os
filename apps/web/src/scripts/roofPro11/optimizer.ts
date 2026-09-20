@@ -37,6 +37,7 @@ import {
   climateDerateFactor,
   productionConfidenceBand,
   type PackResult,
+  type PackedPanel,
   type PanelGrid,
   type ConfigFamily,
 } from '../../lib/estimatorBrainV2';
@@ -70,7 +71,7 @@ import {
   type PitchedMarginAxis,
 } from '../../lib/estimatorBrainV8';
 import { defaultEastWestGeometry, type EastWestGeometry } from '../../lib/estimatorBrainV2';
-import { type LngLat } from '../../lib/roof';
+import { pointInPolygon, type LngLat } from '../../lib/roof';
 import { $, fmt, fmtMad } from './dom';
 import { type CardData, type RenderConfigOpts } from './types';
 import { type Ctx } from './context';
@@ -297,11 +298,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
    *  estimateur) il n'y a pas de besoin à plafonner → on montre ce qui tient (comportement
    *  historique). L2 — EN DEVIS (`ctx.devisMode`), un besoin nul est une CIBLE VENDUE DE
    *  ZÉRO (devis sans ligne panneau, incident DEV-202608-0016) : on ne pose RIEN tant que
-   *  personne (facture/saisie manuelle) n'a fixé un nombre — jamais un remplissage inventé. */
+   *  personne (facture/saisie manuelle) n'a fixé un nombre — jamais un remplissage inventé.
+   *  CAL37 — un document SANS cible vendue (`ctx.cibleVendue` faux : un calepinage sans
+   *  devis lié) n'a rien vendu du tout : le besoin nul y redevient « aucune cible », et on
+   *  montre ce qui tient, comme en mode lead. Devis/AO ne passent jamais ce drapeau. */
   const placedFor = (grid: PanelGrid): number =>
     ctx.neededPanels > 0
       ? Math.max(0, Math.min(ctx.neededPanels, grid.count))
-      : ctx.devisMode
+      : ctx.devisMode && ctx.cibleVendue
         ? 0
         : grid.count;
 
@@ -326,9 +330,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (needPlusEl) needPlusEl.disabled = !editable || ctx.neededPanels >= 400;
     if (!needNoteEl) return;
     if (!active) {
-      needNoteEl.textContent = ctx.devisMode
+      // CAL37 — trois situations DISTINCTES, jamais la phrase d'une autre : un devis
+      // sans ligne panneau (cible vendue de zéro), un calepinage sans cible du tout
+      // (on pose ce qui tient), et le mode lead (la facture dimensionne).
+      needNoteEl.textContent = ctx.devisMode && ctx.cibleVendue
         ? 'Ce devis ne porte aucun panneau — fixez le nombre (facture ou saisie) pour poser des modules.'
-        : 'Indiquez votre facture pour dimensionner le nombre de panneaux.';
+        : ctx.devisMode
+          ? `Aucune cible de puissance sur ce calepinage — on pose ce qui tient (${fmt(fitCount)}). Saisissez un nombre pour le plafonner.`
+          : 'Indiquez votre facture pour dimensionner le nombre de panneaux.';
       return;
     }
     const placed = Math.min(ctx.neededPanels, fitCount);
@@ -354,6 +363,17 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const f = shadeFactor();
     return f < 1 ? ` · ombrage tracé −${Math.round((1 - f) * 100)} %` : '';
   };
+  // CAL93 — dérate d'HORIZON LOINTAIN, TOUJOURS un poste SÉPARÉ de l'ombrage proche
+  // ci-dessus (jamais fondu dans `shadeFactor`) : les deux facteurs se MULTIPLIENT.
+  // 1 = aucun profil d'horizon renseigné → chiffres strictement inchangés.
+  const horizonFactor = (): number =>
+    typeof ctx.horizonAnnualFactor === 'number' && ctx.horizonAnnualFactor > 0 && ctx.horizonAnnualFactor < 1
+      ? ctx.horizonAnnualFactor
+      : 1;
+  const horizonLabel = (): string => {
+    const f = horizonFactor();
+    return f < 1 ? ` · horizon PVGIS −${Math.round((1 - f) * 100)} %` : '';
+  };
 
   /** Rendu UNIFIÉ : pose min(besoin, ce qui tient), recalcule kWc/kWh/économies
    *  depuis ce nombre POSÉ (jamais la capacité max de la config). */
@@ -366,7 +386,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const tableAnnual = productionKwh(ctx.centroidLat, o.family, o.tiltDeg, kwc, aspect);
     // Affinage PVGIS : rendement par kWc × kWc POSÉ (suit le plafond/contrainte).
     // WJ19 — puis dérate d'ombrage tracé (1 = aucun → inchangé).
-    const annualKwh = (o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual) * shadeFactor();
+    const annualKwh =
+      (o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual) * shadeFactor() * horizonFactor();
     const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed);
@@ -429,7 +450,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (ctx.pinned.has('orient') && ctx.sel.orient !== 'auto') locks.layout = ctx.sel.orient as LayoutAxis;
     if (ctx.pinned.has('margin')) locks.margin = ctx.sel.margin;
     if (!ctx.neededAuto && ctx.neededPanels > 0) locks.need = ctx.neededPanels;
-    if (ctx.devisMode && ctx.neededPanels <= 0) locks.needImposedZero = true;
+    if (ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0) locks.needImposedZero = true;
     return locks;
   }
 
@@ -518,7 +539,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // « facture » (absente en devis) — jamais un calepinage inventé sur un toit viable.
     const why = res.noViableConfig
       ? `Configuration non viable sur ce toit : aucun panneau ne tient (tracé trop petit ou entièrement occupé par des obstacles). Agrandissez la zone ou retirez des obstacles.`
-      : ctx.devisMode && ctx.neededPanels <= 0
+      : ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0
         ? `Ce devis ne porte aucun panneau — aucune pose proposée. Fixez un nombre (facture ou saisie) pour calepiner.`
         : isReco
           ? `Meilleure combinaison pour votre facture : ${liveOrientationLabel(w)} à ${w.tiltDeg}°, ${placedCount} panneaux ≈ ${cov} % de la facture. Touchez une option pour la verrouiller — le reste se re-résout.`
@@ -981,7 +1002,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (ctx.pitchedLocks.layout) locks.layout = ctx.pitchedLocks.layout;
     if (ctx.pitchedLocks.margin) locks.margin = ctx.pitchedLocks.margin;
     if (!ctx.neededAuto && ctx.neededPanels > 0) locks.need = ctx.neededPanels;
-    if (ctx.devisMode && ctx.neededPanels <= 0) locks.needImposedZero = true;
+    if (ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0) locks.needImposedZero = true;
     return locks;
   }
 
@@ -1024,7 +1045,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       ? `Ce pan est orienté nord (face ${facingLabel(ctx.facingAzimuthDeg)}) : production quasi nulle, aucune pose rentable proposée. Indiquez la vraie face descendante du pan.`
       : res.noViableConfig
         ? `Configuration non viable sur ce toit : aucun panneau ne tient sur ce pan (trop petit ou entièrement occupé par des obstacles). Agrandissez le pan ou retirez des obstacles.`
-        : ctx.devisMode && ctx.neededPanels <= 0
+        : ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0
           ? `Ce devis ne porte aucun panneau — aucune pose proposée sur ce pan. Fixez un nombre (facture ou saisie) pour calepiner.`
           : isReco
             ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel}) ≈ ${cov} % de la facture. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`
@@ -1336,5 +1357,257 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     buildMatrix,
     computeMatrixPvgis,
     clampNeeded,
+  };
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CAL83 — LA PRIORITÉ DE REMPLISSAGE D'UNE ZONE, ET RIEN QUE LE DÉPARTAGE.
+   ----------------------------------------------------------------------------
+   Constat : l'ordre de remplissage est IMPLICITE dans le pavage
+   (`lib/roofPro2.ts`, balayage des rangées depuis `vMin`, colonnes depuis
+   `uMin`). La grille est donc ancrée au coin « bas-gauche » de la boîte
+   englobante du tracé dans le repère (u, v) ; tout le mou — ce qui reste entre
+   la dernière rangée posée et la rive opposée — se retrouve TOUJOURS du même
+   côté. L'utilisateur ne peut pas dire « commence par le sud », « colle au
+   faîtage », ni « éloigne-toi de la cheminée ».
+
+   LA RÈGLE, NON NÉGOCIABLE : une priorité DÉPARTAGE, elle n'arbitre JAMAIS le
+   compte. On ne re-pave rien et on ne relâche aucune contrainte : on TRANSLATE
+   le pavage déjà posé à l'intérieur de son mou, et on n'accepte une translation
+   que si les N panneaux restent TOUS valides (empreinte dans le tracé, retrait
+   de rive tenu). Un décalage qui ferait tomber ne serait-ce qu'un panneau est
+   refusé — à compte égal la priorité choisit, elle ne fait jamais perdre un
+   module. Le décalage 0 (le comportement d'aujourd'hui) est toujours candidat,
+   donc le pire cas est l'identité.
+
+   LES AXES (u, v) SONT CEUX DU PAVAGE, pas une seconde convention :
+   `azimuthDeg` est l'azimut d'empilement des rangées, `f = (sin az, cos az)` le
+   vecteur de visée (E, N), `v` la progression des rangées le long de `f`, `u`
+   l'axe long des rangées. Sur un pan incliné, l'azimut d'empilement est celui
+   de la PENTE DESCENDANTE : `v` croît donc du FAÎTAGE (v petit) vers l'ÉGOUT
+   (v grand). C'est une lecture de la géométrie existante, pas une convention
+   inventée pour l'occasion.
+
+   « MEILLEUR ENSOLEILLEMENT » n'est pas une intuition : il départage sur la
+   distance aux sources d'ombre DÉCLARÉES (obstacles relevés). Aucune source
+   déclarée ⇒ aucun départage possible, et on le DIT (`motif`) au lieu
+   d'inventer un classement.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** CAL83 — priorité de remplissage d'une zone. `aucune` = comportement historique. */
+export type PrioriteRemplissage =
+  | 'aucune'
+  | 'faitage'
+  | 'egout'
+  | 'rive-debut'
+  | 'rive-fin'
+  | 'ensoleillement';
+
+/** Libellés FR des priorités (l'écran ne les réinvente pas). */
+export const PRIORITES_REMPLISSAGE: ReadonlyArray<{ id: PrioriteRemplissage; label: string }> = [
+  { id: 'aucune', label: 'Aucune (ordre du pavage)' },
+  { id: 'faitage', label: 'Coller au faîtage' },
+  { id: 'egout', label: 'Coller à l’égout' },
+  { id: 'rive-debut', label: 'Coller à la rive de départ' },
+  { id: 'rive-fin', label: 'Coller à la rive opposée' },
+  { id: 'ensoleillement', label: 'Meilleur ensoleillement (loin des ombres)' },
+];
+
+export interface EntreeDepartage {
+  /** Contour du pan en MÈTRES, repère local ENU du pavage (`PackResult.ringENU`). */
+  ringENU: [number, number][];
+  /** Le pavage DÉJÀ posé : son compte est acquis et ne sera jamais réduit. */
+  panels: PackedPanel[];
+  /** Azimut d'empilement des rangées (degrés, 0=N, 90=E, 180=S, 270=O). */
+  azimuthDeg: number;
+  /** Largeur d'un panneau le long de la rangée (m) — `PanelGrid.rowWidthM`. */
+  rowWidthM: number;
+  /** Empreinte au sol d'UN panneau (m²) — `PanelGrid.footprintPerPanelM2`. */
+  footprintPerPanelM2: number;
+  /** Retrait de rive à tenir (m). Absent → `PERIMETER_SETBACK_M`. */
+  setbackM?: number;
+  /** Centres des sources d'ombre relevées (m, même repère). Sert à `ensoleillement`. */
+  sourcesOmbreENU?: [number, number][];
+}
+
+export interface ResultatDepartage {
+  /** Le pavage retenu — MÊME compte, positions éventuellement décalées. */
+  panels: PackedPanel[];
+  count: number;
+  /** Décalage appliqué le long des rangées (m). */
+  decalageU_m: number;
+  /** Décalage appliqué dans le sens de progression des rangées (m). */
+  decalageV_m: number;
+  /** Un décalage a-t-il réellement été appliqué ? */
+  departage: boolean;
+  /** Pourquoi rien n'a bougé, quand rien n'a bougé (jamais un silence). */
+  motif: string | null;
+}
+
+/** Pas d'exploration du mou (m) : 1 cm, sous la tolérance de pose. */
+const PAS_DEPARTAGE_M = 0.01;
+/** Mou maximal exploré (m) — au-delà, il y aurait une rangée de plus, pas du mou. */
+const MOU_MAX_M = 20;
+
+/** Repère (u, v) du pavage à partir de l'azimut d'empilement. */
+function axesDepartage(azimuthDeg: number): { u: [number, number]; v: [number, number] } {
+  const az = (azimuthDeg * Math.PI) / 180;
+  const f: [number, number] = [Math.sin(az), Math.cos(az)]; // visée (E, N) = progression
+  return { u: [-f[1], f[0]], v: f };
+}
+
+/** Distance d'un point au bord du tracé (m) — même mesure que le pavage. */
+function distanceAuBord(p: [number, number], ring: [number, number][]): number {
+  let min = Infinity;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const ax = ring[j][0];
+    const ay = ring[j][1];
+    const dx = ring[i][0] - ax;
+    const dy = ring[i][1] - ay;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 === 0 ? 0 : ((p[0] - ax) * dx + (p[1] - ay) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    min = Math.min(min, Math.hypot(p[0] - (ax + t * dx), p[1] - (ay + t * dy)));
+  }
+  return min;
+}
+
+/**
+ * CAL83 — le pavage translaté de (du, dv) tient-il ENCORE, panneau par panneau ?
+ * Les 4 coins de chaque empreinte doivent rester dans le tracé et à `setback` de
+ * la rive : exactement le test du pavage (`roofPro2.layoutProRows2`), pas un
+ * critère plus doux inventé pour faire passer un décalage.
+ */
+function pavageValide(e: EntreeDepartage, du: number, dv: number): boolean {
+  const { u, v } = axesDepartage(e.azimuthDeg);
+  const setback = Number.isFinite(e.setbackM as number) ? (e.setbackM as number) : PERIMETER_SETBACK_M;
+  const demiU = e.rowWidthM / 2;
+  const demiV = (e.rowWidthM > 0 ? e.footprintPerPanelM2 / e.rowWidthM : 0) / 2;
+  const dx = du * u[0] + dv * v[0];
+  const dy = du * u[1] + dv * v[1];
+  for (const p of e.panels) {
+    const cx = p.cx + dx;
+    const cy = p.cy + dy;
+    for (const su of [-demiU, demiU]) {
+      for (const sv of [-demiV, demiV]) {
+        const coin: [number, number] = [cx + su * u[0] + sv * v[0], cy + su * u[1] + sv * v[1]];
+        if (!pointInPolygon(coin, e.ringENU)) return false;
+        if (distanceAuBord(coin, e.ringENU) < setback - 1e-9) return false;
+      }
+    }
+  }
+  return true;
+}
+
+/** Le plus grand décalage VALIDE dans une direction donnée (m), 0 si le mou est nul. */
+function mouDisponible(e: EntreeDepartage, sensU: number, sensV: number): number {
+  let retenu = 0;
+  for (let d = PAS_DEPARTAGE_M; d <= MOU_MAX_M + 1e-9; d += PAS_DEPARTAGE_M) {
+    if (!pavageValide(e, sensU * d, sensV * d)) break;
+    retenu = d;
+  }
+  return retenu;
+}
+
+/** Distance minimale entre un pavage décalé et les sources d'ombre déclarées (m). */
+function degagementOmbre(e: EntreeDepartage, du: number, dv: number): number {
+  const sources = e.sourcesOmbreENU ?? [];
+  if (!sources.length || !e.panels.length) return 0;
+  const { u, v } = axesDepartage(e.azimuthDeg);
+  const dx = du * u[0] + dv * v[0];
+  const dy = du * u[1] + dv * v[1];
+  let min = Infinity;
+  for (const p of e.panels) {
+    for (const s of sources) {
+      min = Math.min(min, Math.hypot(p.cx + dx - s[0], p.cy + dy - s[1]));
+    }
+  }
+  return min;
+}
+
+/** Applique un décalage (u, v) à un pavage — translation pure, compte inchangé. */
+function translater(e: EntreeDepartage, du: number, dv: number): PackedPanel[] {
+  const { u, v } = axesDepartage(e.azimuthDeg);
+  const dx = du * u[0] + dv * v[0];
+  const dy = du * u[1] + dv * v[1];
+  return e.panels.map((p) => ({ ...p, cx: p.cx + dx, cy: p.cy + dy }));
+}
+
+/**
+ * CAL83 — DÉPARTAGE un pavage déjà posé selon la priorité de remplissage.
+ *
+ * Le compte est un invariant : `resultat.count === entree.panels.length`, quelle
+ * que soit la priorité. Seules les POSITIONS bougent, et seulement là où le mou
+ * du tracé le permet sans faire sortir un seul panneau.
+ */
+export function departagerRemplissage(
+  entree: EntreeDepartage,
+  priorite: PrioriteRemplissage,
+): ResultatDepartage {
+  const immobile = (motif: string | null): ResultatDepartage => ({
+    panels: entree.panels.map((p) => ({ ...p })),
+    count: entree.panels.length,
+    decalageU_m: 0,
+    decalageV_m: 0,
+    departage: false,
+    motif,
+  });
+
+  if (!entree.panels.length) return immobile('Aucun panneau posé : rien à départager.');
+  if (!Array.isArray(entree.ringENU) || entree.ringENU.length < 3) {
+    return immobile('Tracé incomplet : le départage ne peut pas vérifier les rives.');
+  }
+  if (priorite === 'aucune') return immobile(null);
+
+  if (priorite === 'ensoleillement') {
+    const sources = entree.sourcesOmbreENU ?? [];
+    if (!sources.length) {
+      return immobile(
+        'Aucune source d’ombre déclarée : le meilleur ensoleillement ne peut pas être départagé.',
+      );
+    }
+    // On explore les quatre sens du mou et on garde le dégagement le plus grand.
+    let meilleur = { du: 0, dv: 0, score: degagementOmbre(entree, 0, 0) };
+    const sensOmbre: Array<[number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [su, sv] of sensOmbre) {
+      const mou = mouDisponible(entree, su, sv);
+      for (let d = PAS_DEPARTAGE_M; d <= mou + 1e-9; d += PAS_DEPARTAGE_M) {
+        const score = degagementOmbre(entree, su * d, sv * d);
+        if (score > meilleur.score + 1e-9) meilleur = { du: su * d, dv: sv * d, score };
+      }
+    }
+    if (Math.abs(meilleur.du) < 1e-9 && Math.abs(meilleur.dv) < 1e-9) {
+      return immobile('Le pavage est déjà le plus éloigné possible des ombres déclarées.');
+    }
+    return {
+      panels: translater(entree, meilleur.du, meilleur.dv),
+      count: entree.panels.length,
+      decalageU_m: meilleur.du,
+      decalageV_m: meilleur.dv,
+      departage: true,
+      motif: null,
+    };
+  }
+
+  // v croît du faîtage vers l'égout ; u croît de la rive de départ vers l'opposée.
+  const sensPriorite: Record<
+    Exclude<PrioriteRemplissage, 'aucune' | 'ensoleillement'>,
+    [number, number]
+  > = {
+    faitage: [0, -1],
+    egout: [0, 1],
+    'rive-debut': [-1, 0],
+    'rive-fin': [1, 0],
+  };
+  const [su, sv] = sensPriorite[priorite];
+  const mou = mouDisponible(entree, su, sv);
+  if (mou <= 0) return immobile('Le pavage est déjà collé de ce côté : aucun mou à reprendre.');
+  return {
+    panels: translater(entree, su * mou, sv * mou),
+    count: entree.panels.length,
+    decalageU_m: su * mou,
+    decalageV_m: sv * mou,
+    departage: true,
+    motif: null,
   };
 }

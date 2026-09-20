@@ -25,6 +25,7 @@ from django.test import TestCase
 
 from apps.calepinage.models import ParametresCalepinage
 from apps.calepinage.selectors import (
+    SECTIONS_LECTURE_SEULE,
     SECTIONS_PARAMETRES,
     parametres_de_societe,
 )
@@ -39,6 +40,18 @@ CONTRAT = json.loads(
      / 'parametres_calepinage.json').read_text(encoding='utf-8'))
 
 
+def _sections_ecrivables(exemple):
+    """Le contrat PRIVÉ de ses clés en LECTURE SEULE.
+
+    CAL246 a ajouté ``kits`` à la charge utile de l'endpoint : c'est un
+    catalogue LU chez ``apps.ao`` (``SECTIONS_LECTURE_SEULE``), pas une
+    section de réglages — ``parametres_de_societe`` ne le rend donc pas, et
+    un PUT le refuse comme toute clé inconnue.
+    """
+    return {cle: valeur for cle, valeur in exemple.items()
+            if cle not in SECTIONS_LECTURE_SEULE}
+
+
 class ContratTest(TestCase):
     """La forme rendue EST celle du contrat publié (PACT10)."""
 
@@ -48,7 +61,7 @@ class ContratTest(TestCase):
 
     def test_contrat_et_selecteur_ont_les_memes_cles(self):
         self.assertEqual(sorted(CONTRAT['exemple']),
-                         sorted(SECTIONS_PARAMETRES))
+                         sorted(SECTIONS_PARAMETRES + SECTIONS_LECTURE_SEULE))
 
     def test_les_deux_etats_ont_les_memes_cles(self):
         self.assertEqual(sorted(CONTRAT['exemple']),
@@ -56,16 +69,21 @@ class ContratTest(TestCase):
 
     def test_societe_jamais_reglee_rend_le_contrat_vide(self):
         rendu = parametres_de_societe(self.company)
-        self.assertEqual(rendu, CONTRAT['exemple_vide'])
+        self.assertEqual(rendu, _sections_ecrivables(CONTRAT['exemple_vide']))
 
     def test_societe_reglee_rend_les_memes_cles(self):
         enregistrer_parametres(self.company, {'imagerie': {'pays': 'ma'}})
         rendu = parametres_de_societe(self.company)
-        self.assertEqual(sorted(rendu), sorted(CONTRAT['exemple']))
-        self.assertEqual(rendu['imagerie'], {'pays': 'ma'})
+        self.assertEqual(sorted(rendu),
+                         sorted(_sections_ecrivables(CONTRAT['exemple'])))
+        # CAL47 — la section « imagerie » a désormais son propre domaine de
+        # validité (contrat `site_imagerie.json`) : elle est NORMALISÉE à
+        # l'écriture, donc elle porte ses huit clés. Ce qui compte ici reste
+        # la forme des SEPT sections, pas le contenu de l'une d'elles.
+        self.assertEqual(rendu['imagerie']['pays'], 'ma')
 
     def test_toutes_les_sections_du_contrat_sont_des_objets(self):
-        for section, valeur in CONTRAT['exemple'].items():
+        for section, valeur in _sections_ecrivables(CONTRAT['exemple']).items():
             self.assertIsInstance(valeur, dict, section)
 
 
@@ -83,14 +101,18 @@ class EquivalenceTest(TestCase):
             ParametresCalepinage.objects.filter(company=self.company).count(),
             0)
 
-    def test_sept_sections_vides(self):
+    def test_toutes_les_sections_vides(self):
         rendu = parametres_de_societe(self.company)
-        self.assertEqual(len(rendu), 7)
+        # Le compte suit ``SECTIONS_PARAMETRES`` : les sections ajoutées
+        # depuis CAL45 (norme_electrique, lestage) sont des sections, pas des
+        # exceptions — un nombre épinglé ici ne prouvait que sa propre date.
+        self.assertEqual(sorted(rendu), sorted(SECTIONS_PARAMETRES))
         for section in SECTIONS_PARAMETRES:
             self.assertEqual(rendu[section], {}, section)
 
     def test_sans_societe_rend_le_contrat_vide(self):
-        self.assertEqual(parametres_de_societe(None), CONTRAT['exemple_vide'])
+        self.assertEqual(parametres_de_societe(None),
+                         _sections_ecrivables(CONTRAT['exemple_vide']))
 
 
 class RefusTest(TestCase):
@@ -141,7 +163,7 @@ class EcritureTest(TestCase):
         })
         enregistrer_parametres(self.company, {'presets': {'villa': {}}})
         rendu = parametres_de_societe(self.company)
-        self.assertEqual(rendu['imagerie'], {'pays': 'ma'})
+        self.assertEqual(rendu['imagerie']['pays'], 'ma')   # CAL47 : normalisée
         self.assertEqual(rendu['degagements'], {'retrait_rive_m': 0.5})
         self.assertEqual(rendu['presets'], {'villa': {}})
 
@@ -151,7 +173,7 @@ class EcritureTest(TestCase):
         enregistrer_parametres(self.company, {'imagerie': {'pays': 'fr'}},
                                remplacer=True)
         rendu = parametres_de_societe(self.company)
-        self.assertEqual(rendu['imagerie'], {'pays': 'fr'})
+        self.assertEqual(rendu['imagerie']['pays'], 'fr')   # CAL47 : normalisée
         self.assertEqual(rendu['presets'], {})
 
     def test_un_seul_enregistrement_par_societe(self):
@@ -164,4 +186,4 @@ class EcritureTest(TestCase):
     def test_isolation_societe(self):
         enregistrer_parametres(self.company, {'imagerie': {'pays': 'ma'}})
         self.assertEqual(parametres_de_societe(self.autre),
-                         CONTRAT['exemple_vide'])
+                         _sections_ecrivables(CONTRAT['exemple_vide']))

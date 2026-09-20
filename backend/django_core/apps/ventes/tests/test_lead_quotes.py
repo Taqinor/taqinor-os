@@ -233,3 +233,36 @@ class TestProposalRealRender(TestCase):
     def test_premium_with_etude_renders_valid_pdf(self):
         self._assert_valid_pdf(
             self._get_proposal('?pdf_mode=full&include_etude=1'))
+
+    def test_cal183_proposal_respecte_l_opt_out_calepinage(self):
+        """CAL183 — `/proposal?include_calepinage=0` est un VRAI opt-out.
+
+        On capture les options REMISES au moteur plutôt que de compter les
+        pages d'un PDF : ce qui est en cause ici est le passage du paramètre
+        de requête à la whitelist, pas le rendu (couvert par CAL182).
+        """
+        from unittest import mock
+
+        captures = []
+
+        def faux_moteur(devis_id, options=None, persist=True):
+            captures.append(options)
+            return 'devis/fake.pdf'
+
+        base = f'/api/django/ventes/devis/{self.devis.id}/proposal/'
+        with mock.patch(
+            'apps.ventes.quote_engine.generate_premium_devis_pdf',
+            side_effect=faux_moteur,
+        ), mock.patch(
+            'apps.ventes.utils.pdf.download_pdf', return_value=b'%PDF-1.4 x',
+        ):
+            for requete in ('?include_calepinage=0', '',
+                            '?include_calepinage=1'):
+                reponse = self.api.get(base + requete)
+                self.assertEqual(reponse.status_code, 200,
+                                 getattr(reponse, 'data', reponse))
+
+        self.assertIs(captures[0]['include_calepinage'], False)
+        # Paramètre absent ⇒ AUTO (None), jamais un opt-out déguisé.
+        self.assertIsNone(captures[1]['include_calepinage'])
+        self.assertIs(captures[2]['include_calepinage'], True)

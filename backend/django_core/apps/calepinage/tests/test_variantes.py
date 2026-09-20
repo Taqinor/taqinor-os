@@ -19,6 +19,7 @@ Run :
 """
 import ast
 import pathlib
+import textwrap
 import threading
 
 from django.core.exceptions import ValidationError
@@ -64,7 +65,11 @@ def _ecritures_retenue(source):
     * tout le reste (filtres, variables locales homonymes) — pas une écriture.
     """
     lignes = set()
-    for noeud in ast.walk(ast.parse(source)):
+    # ``textwrap.dedent`` : le garde s'applique aussi bien à un FICHIER
+    # entier qu'à un fragment indenté (le corps d'une méthode) — sans
+    # lui, un fragment indenté lève ``IndentationError`` au lieu d'être
+    # jugé.
+    for noeud in ast.walk(ast.parse(textwrap.dedent(source))):
         cibles = ()
         if isinstance(noeud, ast.Assign):
             cibles = noeud.targets
@@ -176,6 +181,17 @@ class GardeParThreadTest(SimpleTestCase):
 
 class GardeDeSurfaceTest(SimpleTestCase):
     """Aucun AUTRE fichier du module n'écrit ``retenue``."""
+
+    def test_le_motif_attrape_une_vraie_ecriture(self):
+        """Le garde reste un garde : il voit l'écriture qu'il interdit."""
+        self.assertTrue(_ecritures_retenue('variante.retenue = True'))
+        self.assertTrue(_ecritures_retenue('    obj.retenue = False'))
+        # …et il ne voit PAS une lecture (variable locale, filtre de requête).
+        self.assertFalse(_ecritures_retenue(
+            'retenue = next((v for v in lignes if v.retenue), None)'))
+        self.assertFalse(_ecritures_retenue(
+            'qs.filter(calepinage=calepinage, retenue=True)'))
+        self.assertFalse(_ecritures_retenue('if v.retenue == True:\n    pass'))
 
     def test_aucune_ecriture_ailleurs(self):
         coupables = []

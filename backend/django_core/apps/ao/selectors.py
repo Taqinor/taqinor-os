@@ -921,3 +921,134 @@ def calepinage_json(document, *, company, user=None, tiroirs=True,
 
     return calepiner(document, company=company, user=user, tiroirs=tiroirs,
                      suggestions=suggestions, budget=budget)
+
+
+def presets_calepinage(company, *, portee=None):
+    """CAL197 — les presets de calepinage AO de ``company``, lecture pure.
+
+    Point d'entrée cross-app pour ``apps.calepinage`` : lire les presets
+    (``PresetCalepinage``, AOF27) sans jamais importer ``apps.ao.models``.
+    Bornée société — ``None`` rend un queryset VIDE, jamais « tous les
+    presets ». ``portee`` filtre optionnellement (``villa``/``ao``/
+    ``societe``, ``PresetCalepinage.Portee``).
+    """
+    from .models import PresetCalepinage
+
+    if company is None:
+        return PresetCalepinage.objects.none()
+    qs = PresetCalepinage.objects.filter(company=company)
+    if portee:
+        qs = qs.filter(portee=portee)
+    return qs.order_by('-par_defaut', 'nom')
+
+
+def kits_de_pose(company, *, actifs_seulement=True):
+    """CAL198 — le catalogue des kits de pose AO (``KitCalepinage``, AOF26),
+    lecture pure, bornée société.
+
+    Point d'entrée cross-app pour ``apps.calepinage`` : le module construit
+    SON kit de pose (structures + fixations du catalogue, cotes réelles du
+    module posé) à partir de ces lignes, jamais en important
+    ``apps.ao.models``. Chaque ligne porte ``produit_id`` (``None`` si le kit
+    n'a plus de produit lié) et ``produit_archive`` (le produit existe mais
+    est archivé — signalé, jamais tu). ``None`` rend une liste VIDE.
+    """
+    from .models import KitCalepinage
+
+    if company is None:
+        return []
+    qs = (KitCalepinage.objects
+          .filter(company=company)
+          .select_related('produit'))
+    if actifs_seulement:
+        qs = qs.filter(actif=True)
+    lignes = []
+    for kit in qs.order_by('code'):
+        produit = kit.produit
+        lignes.append({
+            'id': kit.pk,
+            'code': kit.code,
+            'libelle': kit.libelle,
+            'mode': kit.mode,
+            'modules_par_kit': kit.modules_par_kit,
+            'pas_rangee_m': float(kit.pas_rangee_m),
+            'longueur_pente_m': float(kit.longueur_pente_m),
+            'faitage_m': float(kit.faitage_m),
+            'emprise_transversale_m': float(kit.emprise_transversale_m),
+            'puissance_module_w': kit.puissance_module_w,
+            'inclinaison_deg': float(kit.inclinaison_deg),
+            'orientation_modules': kit.orientation_modules,
+            'actif': kit.actif,
+            'produit_id': produit.pk if produit is not None else None,
+            'produit_archive': bool(produit and produit.is_archived),
+        })
+    return lignes
+
+# ── CAL240 — le CONTOUR d'une toiture AO, lu par le module Calepinage ──────
+#
+# Le sens AO → calepinage de l'import bidirectionnel (D4). Le sens inverse
+# (CAL241) vit dans ``apps/ao/views.py`` et lit le module par SON sélecteur ;
+# celui-ci est sa symétrie : ``apps.calepinage`` lit AO par CE fichier, jamais
+# par ``apps.ao.models`` (frontière inter-apps, contrats import-linter).
+#
+# LECTURE PURE : aucune toiture, aucun contour, aucun statut n'est écrit ici.
+
+
+def contour_ao_a_reprendre(company, *, toiture_id=None, appel_offre_id=None):
+    """Le contour d'une toiture AO, en degrés, avec ses REFUS déjà nommés.
+
+    Rend TOUJOURS le même dictionnaire — aucune clé absente, jamais un
+    ``None`` là où une liste est attendue :
+
+        {trouve, toiture, appel_offre, code_document, designation,
+         outline, raison_lecture_seule, refus, champ}
+
+    * ``trouve`` est faux quand la toiture (ou l'affaire) n'existe pas DANS
+      ``company`` : l'appelant répond 404 et n'apprend rien de son existence ;
+    * ``outline`` est ``[[lat, lng], …]`` — l'ordre d'axes du champ
+      ``outline`` du document ``roof_layout``, converti par la SEULE
+      conversion du domaine (``services.contour_ao_vers_outline_latlng``,
+      CAL31) ;
+    * ``raison_lecture_seule`` porte le motif FRANÇAIS d'une affaire déposée
+      ou close (``raison_conception_figee``, source unique de la phrase) ;
+    * ``refus`` / ``champ`` portent le refus d'une toiture SANS ancre
+      géographique, avec le champ à renseigner — on ne devine jamais une
+      origine (reprojeter depuis le GPS du SITE placerait le bâtiment à côté
+      de lui-même).
+
+    ``toiture_id`` désigne la toiture ; à défaut, ``appel_offre_id`` prend la
+    toiture de référence de l'affaire (choix DÉTERMINISTE, le même que
+    l'atelier 3D).
+    """
+    from .models import ToitureAO
+    from .services import ContourSansAncre, contour_ao_vers_outline_latlng
+
+    vide = {'trouve': False, 'toiture': None, 'appel_offre': None,
+            'code_document': '', 'designation': '', 'outline': [],
+            'raison_lecture_seule': '', 'refus': '', 'champ': ''}
+    if company is None:
+        return dict(vide)
+
+    if toiture_id:
+        toiture = (ToitureAO.objects
+                   .filter(pk=toiture_id, company=company)
+                   .select_related('batiment__appel_offre').first())
+    elif appel_offre_id:
+        toiture = _toiture_de_reference(company, appel_offre_id)
+    else:
+        toiture = None
+    if toiture is None:
+        return dict(vide)
+
+    affaire = toiture.batiment.appel_offre
+    lu = dict(vide, trouve=True, toiture=toiture.pk, appel_offre=affaire.pk,
+              code_document=toiture.code_document or '',
+              designation=toiture.designation or '',
+              raison_lecture_seule=raison_conception_figee(affaire))
+    try:
+        lu['outline'] = contour_ao_vers_outline_latlng(toiture)
+    except ContourSansAncre as erreur:
+        lu['refus'] = ' '.join(getattr(erreur, 'messages', None)
+                               or [str(erreur)])
+        lu['champ'] = getattr(erreur, 'champ', '') or 'origine_lat'
+    return lu

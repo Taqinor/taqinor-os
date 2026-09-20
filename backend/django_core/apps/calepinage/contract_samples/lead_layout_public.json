@@ -1,0 +1,48 @@
+{
+  "endpoint": "POST /api/django/crm/leads/",
+  "pourquoi": "CONTRAT D'ABORD (PACT10) pour CAL110. Constat : les deux pages publiques du parcours (`apps/web/src/pages/devis/mon-toit.astro` et `apps/web/src/pages/en/devis/mon-toit.astro`) font tourner le MÊME moteur 3D et créent un lead, mais le TRACÉ du visiteur n'atterrit nulle part côté ERP : le lead ne stocke qu'un point et un contour UNIQUE (`apps/crm/models.py` `roof_point` / `roof_outline`). Un visiteur qui dessine TROIS pans voit deux d'entre eux disparaître, en silence. Les deux moitiés de la correction sont deux lanes file-disjointes — la page publique (`apps/web`) d'un côté, la reprise ERP (`apps/calepinage`) de l'autre — donc, sans ce fichier, elles inventent mécaniquement deux formes. CE QUI EST AJOUTÉ, ET RIEN D'AUTRE : UN champ, `roof_layout`, qui porte le document `roof_layout` v2 du visiteur, tel que `serializeLayout` le produit et tel que `contract_samples/roof_layout_v2.schema.json` (CAL232) le décrit. La charge utile publique est INCHANGÉE par ailleurs : `roof_point` et `roof_outline` restent émis et renseignés à l'identique (CAL217 est fondue ici), de sorte qu'aucun consommateur existant ne change de comportement. LE TRANSPORT CÔTÉ ERP : le webhook public range les réponses sans colonne dédiée dans `Lead.web_questionnaire` (champ JSON existant, additif) — `roof_layout` y voyage donc sous la clé `roof_layout`, SANS nouvelle colonne ni migration. LA REPRISE : `apps/calepinage/receivers.py` s'abonne à `core.events.lead_created` (patron M6 — c'est l'app CONSOMMATRICE qui s'abonne, jamais `apps/crm/receivers.py`) et crée UN calepinage brouillon rattaché au lead, pré-tracé, plusieurs zones comprises. Lecture du lead par `apps.crm.selectors` uniquement, aucune écriture vers les modèles crm. ZÉRO CRÉATION SILENCIEUSE : un lead SANS tracé exploitable ne crée AUCUN calepinage — un calepinage vide ferait croire à une conception commencée. REPLI EXPLICITE, JAMAIS INVENTÉ : quand `roof_layout` est absent mais que le lead porte un `roof_outline` (le cas des leads d'aujourd'hui), la reprise construit un document à UNE zone à partir de ce contour — c'est une TRADUCTION de ce que le visiteur a réellement tracé, pas une géométrie supposée. ZÉRO CHIFFRE INVENTÉ : aucune puissance, aucune cote de module, aucune estimation n'est ajoutée au document ; ce que le visiteur n'a pas dit reste absent.",
+  "champ_ajoute": {
+    "nom": "roof_layout",
+    "type": "object",
+    "obligatoire": false,
+    "schema": "apps/calepinage/contract_samples/roof_layout_v2.schema.json",
+    "porteur_erp": "crm.Lead.web_questionnaire['roof_layout']",
+    "note": "Absent = comportement d'aujourd'hui, strictement inchangé."
+  },
+  "exemple": {
+    "roof_point": { "lat": 33.5, "lng": -7.6 },
+    "roof_outline": [[33.4999, -7.6001], [33.4999, -7.5999], [33.5001, -7.5999], [33.5001, -7.6001]],
+    "roof_layout": {
+      "version": 2,
+      "pin": { "lat": 33.5, "lng": -7.6 },
+      "outline": [[33.4999, -7.6001], [33.4999, -7.5999], [33.5001, -7.5999], [33.5001, -7.6001]],
+      "activeAreaId": "z1",
+      "zones": [
+        {
+          "id": "z1",
+          "label": "Pan sud",
+          "roofType": "flat",
+          "vertices": [[-7.6001, 33.4999], [-7.5999, 33.4999], [-7.5999, 33.5001], [-7.6001, 33.5001]]
+        },
+        {
+          "id": "z2",
+          "label": "Pan annexe",
+          "roofType": "pitched",
+          "pitchDeg": 15.0,
+          "vertices": [[-7.5998, 33.4999], [-7.5997, 33.4999], [-7.5997, 33.5], [-7.5998, 33.5]]
+        }
+      ],
+      "source": "lead"
+    }
+  },
+  "exemple_sans_trace": {
+    "roof_point": { "lat": 33.5, "lng": -7.6 },
+    "roof_outline": null,
+    "roof_layout": null
+  },
+  "exemple_repli_contour_seul": {
+    "roof_point": { "lat": 33.5, "lng": -7.6 },
+    "roof_outline": [[33.4999, -7.6001], [33.4999, -7.5999], [33.5001, -7.5999], [33.5001, -7.6001]],
+    "roof_layout": null
+  }
+}

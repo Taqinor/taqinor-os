@@ -138,6 +138,8 @@ describe('PV19 — garde-fous', () => {
       panelWatt: null,
       scenario: null,
       devisId: null,
+      // CAL37 — absent du document ⇒ « cible vendue » (comportement devis/AO inchangé).
+      cibleVendue: true,
     });
     const empty = hydrateFromDevis({});
     expect(empty.zones).toBeNull();
