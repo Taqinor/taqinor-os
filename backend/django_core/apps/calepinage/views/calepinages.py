@@ -55,6 +55,10 @@ from ..permissions import (
     PeutVoirCalepinage,
 )
 from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
+# CAL174 — les SOUS-RESSOURCES de sortie (planche PDF/SVG) vivent dans leur
+# propre module de vues ; elles sont greffées ICI, sur le viewset pivot, pour
+# rester des ``@action`` de la SEULE forme d'URL du module (CAL233).
+from .sorties import SortiesMixin
 from ..services.devis import (
     DevisRefuse, generer_devis, resynchroniser_devis,
 )
@@ -134,7 +138,7 @@ class ActionIdempotenteMixin:
 
 
 class CalepinageViewSet(ChatterViewSetMixin, ActionIdempotenteMixin,
-                        CompanyScopedModelViewSet):
+                        SortiesMixin, CompanyScopedModelViewSet):
     """CRUD du pivot ``Calepinage`` + ses sous-ressources en ``@action``.
 
     CAL26 — le chatter est celui de la PLATEFORME (``records``) :

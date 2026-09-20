@@ -11,7 +11,7 @@
         "code": "planche_pdf",
         "libelle": "Planche de calepinage cotée (A3)",
         "format": "pdf",
-        "endpoint": "/api/django/calepinage/calepinages/41/planche.pdf",
+        "endpoint": "/api/django/calepinage/calepinages/41/planche.pdf/",
         "produit_par": "serveur",
         "disponible": true,
         "motif_indisponible": null
@@ -20,7 +20,7 @@
         "code": "planche_svg",
         "libelle": "Planche de calepinage cotée (source vectorielle)",
         "format": "svg",
-        "endpoint": "/api/django/calepinage/calepinages/41/planche.svg",
+        "endpoint": "/api/django/calepinage/calepinages/41/planche.svg/",
         "produit_par": "serveur",
         "disponible": true,
         "motif_indisponible": null
@@ -29,7 +29,7 @@
         "code": "planche_png",
         "libelle": "Planche de calepinage cotée (image)",
         "format": "png",
-        "endpoint": "/api/django/calepinage/calepinages/41/planche.svg",
+        "endpoint": "/api/django/calepinage/calepinages/41/planche.svg/",
         "produit_par": "navigateur",
         "disponible": true,
         "motif_indisponible": null
@@ -38,7 +38,7 @@
         "code": "plan_pose_pdf",
         "libelle": "Plan de pose (équipe terrain)",
         "format": "pdf",
-        "endpoint": "/api/django/calepinage/calepinages/41/plan-pose.pdf",
+        "endpoint": "/api/django/calepinage/calepinages/41/plan-pose.pdf/",
         "produit_par": "serveur",
         "disponible": true,
         "motif_indisponible": null
@@ -47,7 +47,7 @@
         "code": "plan_toiture_pdf",
         "libelle": "Plan de toiture",
         "format": "pdf",
-        "endpoint": "/api/django/calepinage/calepinages/41/plan-toiture.pdf",
+        "endpoint": "/api/django/calepinage/calepinages/41/plan-toiture.pdf/",
         "produit_par": "serveur",
         "disponible": true,
         "motif_indisponible": null
@@ -56,7 +56,7 @@
         "code": "plan_masse_pdf",
         "libelle": "Plan de masse (bâtiment dans sa parcelle)",
         "format": "pdf",
-        "endpoint": "/api/django/calepinage/calepinages/41/plan-masse.pdf",
+        "endpoint": "/api/django/calepinage/calepinages/41/plan-masse.pdf/",
         "produit_par": "serveur",
         "disponible": false,
         "motif_indisponible": "Aucune parcelle saisie : le plan de masse ne dessine jamais une limite de parcelle qui n'a pas été fournie."
@@ -65,7 +65,7 @@
         "code": "note_calcul_pdf",
         "libelle": "Note de calcul",
         "format": "pdf",
-        "endpoint": "/api/django/calepinage/calepinages/41/note-calcul.pdf",
+        "endpoint": "/api/django/calepinage/calepinages/41/note-calcul.pdf/",
         "produit_par": "serveur",
         "disponible": true,
         "motif_indisponible": null
@@ -74,7 +74,7 @@
         "code": "dxf",
         "libelle": "Export DXF (calques TOITURE / OBSTACLES / MODULES / COTES)",
         "format": "dxf",
-        "endpoint": "/api/django/calepinage/calepinages/41/export.dxf",
+        "endpoint": "/api/django/calepinage/calepinages/41/export.dxf/",
         "produit_par": "serveur",
         "disponible": true,
         "motif_indisponible": null
@@ -83,7 +83,7 @@
         "code": "tableur_xlsx",
         "libelle": "Modules, chaînes et nomenclature (classeur)",
         "format": "xlsx",
-        "endpoint": "/api/django/calepinage/calepinages/41/export.xlsx",
+        "endpoint": "/api/django/calepinage/calepinages/41/export.xlsx/",
         "produit_par": "serveur",
         "disponible": true,
         "motif_indisponible": null
@@ -92,7 +92,7 @@
         "code": "tableur_csv",
         "libelle": "Modules, chaînes et nomenclature (CSV)",
         "format": "csv",
-        "endpoint": "/api/django/calepinage/calepinages/41/export.csv",
+        "endpoint": "/api/django/calepinage/calepinages/41/export.csv/",
         "produit_par": "serveur",
         "disponible": true,
         "motif_indisponible": null
@@ -127,7 +127,7 @@
         "code": "planche_pdf",
         "libelle": "Planche de calepinage cotée (A3)",
         "format": "pdf",
-        "endpoint": "/api/django/calepinage/calepinages/42/planche.pdf",
+        "endpoint": "/api/django/calepinage/calepinages/42/planche.pdf/",
         "produit_par": "serveur",
         "disponible": false,
         "motif_indisponible": "Aucune conception enregistrée : la planche se compose de la géométrie stockée, jamais d'un tracé reconstitué."
@@ -136,7 +136,7 @@
         "code": "planche_svg",
         "libelle": "Planche de calepinage cotée (source vectorielle)",
         "format": "svg",
-        "endpoint": "/api/django/calepinage/calepinages/42/planche.svg",
+        "endpoint": "/api/django/calepinage/calepinages/42/planche.svg/",
         "produit_par": "serveur",
         "disponible": false,
         "motif_indisponible": "Aucune conception enregistrée : la planche se compose de la géométrie stockée, jamais d'un tracé reconstitué."
@@ -145,7 +145,7 @@
         "code": "planche_png",
         "libelle": "Planche de calepinage cotée (image)",
         "format": "png",
-        "endpoint": "/api/django/calepinage/calepinages/42/planche.svg",
+        "endpoint": "/api/django/calepinage/calepinages/42/planche.svg/",
         "produit_par": "navigateur",
         "disponible": false,
         "motif_indisponible": "Aucune conception enregistrée : la planche se compose de la géométrie stockée, jamais d'un tracé reconstitué."
@@ -154,7 +154,7 @@
         "code": "plan_pose_pdf",
         "libelle": "Plan de pose (équipe terrain)",
         "format": "pdf",
-        "endpoint": "/api/django/calepinage/calepinages/42/plan-pose.pdf",
+        "endpoint": "/api/django/calepinage/calepinages/42/plan-pose.pdf/",
         "produit_par": "serveur",
         "disponible": false,
         "motif_indisponible": "Aucune conception enregistrée : la planche se compose de la géométrie stockée, jamais d'un tracé reconstitué."
@@ -163,7 +163,7 @@
         "code": "plan_toiture_pdf",
         "libelle": "Plan de toiture",
         "format": "pdf",
-        "endpoint": "/api/django/calepinage/calepinages/42/plan-toiture.pdf",
+        "endpoint": "/api/django/calepinage/calepinages/42/plan-toiture.pdf/",
         "produit_par": "serveur",
         "disponible": false,
         "motif_indisponible": "Aucune conception enregistrée : la planche se compose de la géométrie stockée, jamais d'un tracé reconstitué."
@@ -172,7 +172,7 @@
         "code": "plan_masse_pdf",
         "libelle": "Plan de masse (bâtiment dans sa parcelle)",
         "format": "pdf",
-        "endpoint": "/api/django/calepinage/calepinages/42/plan-masse.pdf",
+        "endpoint": "/api/django/calepinage/calepinages/42/plan-masse.pdf/",
         "produit_par": "serveur",
         "disponible": false,
         "motif_indisponible": "Aucune parcelle saisie : le plan de masse ne dessine jamais une limite de parcelle qui n'a pas été fournie."
@@ -181,7 +181,7 @@
         "code": "note_calcul_pdf",
         "libelle": "Note de calcul",
         "format": "pdf",
-        "endpoint": "/api/django/calepinage/calepinages/42/note-calcul.pdf",
+        "endpoint": "/api/django/calepinage/calepinages/42/note-calcul.pdf/",
         "produit_par": "serveur",
         "disponible": false,
         "motif_indisponible": "Aucune conception enregistrée : la note de calcul ne se rend pas à partir de grandeurs absentes."
@@ -190,7 +190,7 @@
         "code": "dxf",
         "libelle": "Export DXF (calques TOITURE / OBSTACLES / MODULES / COTES)",
         "format": "dxf",
-        "endpoint": "/api/django/calepinage/calepinages/42/export.dxf",
+        "endpoint": "/api/django/calepinage/calepinages/42/export.dxf/",
         "produit_par": "serveur",
         "disponible": false,
         "motif_indisponible": "Aucune conception enregistrée : la géométrie exportée serait vide."
@@ -199,7 +199,7 @@
         "code": "tableur_xlsx",
         "libelle": "Modules, chaînes et nomenclature (classeur)",
         "format": "xlsx",
-        "endpoint": "/api/django/calepinage/calepinages/42/export.xlsx",
+        "endpoint": "/api/django/calepinage/calepinages/42/export.xlsx/",
         "produit_par": "serveur",
         "disponible": false,
         "motif_indisponible": "Aucune conception enregistrée : la géométrie exportée serait vide."
@@ -208,7 +208,7 @@
         "code": "tableur_csv",
         "libelle": "Modules, chaînes et nomenclature (CSV)",
         "format": "csv",
-        "endpoint": "/api/django/calepinage/calepinages/42/export.csv",
+        "endpoint": "/api/django/calepinage/calepinages/42/export.csv/",
         "produit_par": "serveur",
         "disponible": false,
         "motif_indisponible": "Aucune conception enregistrée : la géométrie exportée serait vide."
