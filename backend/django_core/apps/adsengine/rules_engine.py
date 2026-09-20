@@ -64,6 +64,24 @@ def _as_of_date(now):
     return datetime.date.today()
 
 
+def account_currency(company):
+    """PUB134 — Devise RÉELLE du compte publicitaire de ``company`` (ISO-4217,
+    ex. ``USD``), lue sur sa ``MetaConnection``.
+
+    Meta rapporte TOUS les montants (dépense, budgets, insights) dans la devise
+    DU COMPTE — pas en MAD. Les textes de décision du moteur écrivaient « MAD »
+    en dur : sur un compte facturé en USD, la première proposition affichait
+    « a dépensé 17.60 MAD », un chiffre juste avec une unité fausse.
+
+    Repli ``MAD`` quand la connexion est absente ou sa devise encore inconnue —
+    même convention que ``metrics.py``/``views.py`` (la devise de la société),
+    jamais une devise inventée pour un compte donné."""
+    from .models import MetaConnection
+
+    conn = MetaConnection.objects.filter(company=company).first()
+    return (conn.currency if conn else '') or 'MAD'
+
+
 # ── Évaluateurs par template (registre ; d'autres lanes/tasks en câblent plus) ─
 def _eval_frequency_high(company, policy, template, *, now, config):
     """Fatigue créative : fréquence glissante d'un ad set > seuil.
@@ -133,6 +151,7 @@ def _eval_cpl_band(company, policy, template, *, now, config):
     ct = ContentType.objects.get_for_model(AdCampaignMirror)
 
     findings = []
+    currency = account_currency(company)  # PUB134 — une lecture par évaluation
     # ADSDEEP39 — restreint au motif de nom de la règle (Selection Filter).
     _, campaigns = _scoped_mirrors(company, policy, 'campaign')
     for camp in campaigns:
@@ -147,7 +166,9 @@ def _eval_cpl_band(company, policy, template, *, now, config):
         det = anomaly.detect_cpl_band(
             daily_cpls, cpl_today, n_leads,
             band_low_mult=low_mult, band_high_mult=high_mult,
-            min_samples=min_samples)
+            min_samples=min_samples,
+            # PUB134 — devise RÉELLE du compte (jamais « MAD » en dur).
+            currency=currency)
         if det.fired:
             anomaly.record_anomaly(
                 company, det, entity_type='campaign',
@@ -362,6 +383,66 @@ def _eval_window_regression(company, policy, template, *, now, config):
     return findings
 
 
+def _eval_winner_duplicate(company, policy, template, *, now, config):
+    """PUB116 — Évaluateur « gagnant NET » : CPL en AMÉLIORATION (fenêtre courte
+    < longue × ``improve_factor``) **ET** plancher de VOLUME atteint
+    (``min_results`` résultats cumulés sur la fenêtre longue).
+
+    Le plancher de volume est la moitié honnête de la règle : dupliquer engage un
+    budget neuf, et un ad set à 1 lead chanceux n'est pas un gagnant (même raison
+    que le plancher de leads de ``anomaly.detect_cpl_band``). Sous le plancher
+    d'échantillons, ou CPL non calculable (0 résultat) → ``insufficient_data``
+    (jamais un faux déclenchement, jamais un skip muet).
+
+    L'action est portée par le hint ``v2['action']='duplicate'`` du template :
+    ``_act_on_finding`` route vers ``_propose_v2_action`` → ``propose_duplicate``
+    (PROPOSITION seule ; l'ad set et l'ad dupliqués naissent PAUSED côté client)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    params = rule_templates.resolve_params(policy.template_key, policy.params)
+    short_days = int(params.get('short_days', 3))
+    long_days = int(params.get('long_days', 7))
+    factor = float(params.get('improve_factor', 0.9))
+    min_results = float(params.get('min_results', 5))
+    min_samples = int(params.get('min_samples', 3))
+    scope = template['scope']
+    model, mirrors = _scoped_mirrors(company, policy, scope)
+    if model is None:
+        return []
+    ct = ContentType.objects.get_for_model(model)
+
+    findings = []
+    for m in mirrors:
+        short_snaps = _window_snaps(company, ct, m.pk, now=now, days=short_days)
+        long_snaps = _window_snaps(company, ct, m.pk, now=now, days=long_days)
+        short_val, _ = _derived_metric(short_snaps, 'cpl')
+        long_val, long_n = _derived_metric(long_snaps, 'cpl')
+        results = _sum_attr(long_snaps, 'results')
+        base = {'target_type': scope, 'target_meta_id': m.meta_id,
+                'target_object_id': m.pk, 'severity': template['severity']}
+        if (long_n < min_samples or short_val is None or long_val is None
+                or long_val <= 0):
+            findings.append({**base, 'fired': False, 'insufficient_data': True,
+                             'computed': {'metric': 'cpl', 'short': short_val,
+                                          'long': long_val, 'samples': long_n,
+                                          'results': results}})
+            continue
+        boundary = long_val * factor
+        improving = short_val < boundary
+        volume_ok = results >= min_results
+        findings.append({
+            **base, 'fired': bool(improving and volume_ok),
+            'insufficient_data': False,
+            'computed': {'metric': 'cpl', 'short': round(short_val, 4),
+                         'long': round(long_val, 4), 'factor': factor,
+                         'boundary': round(boundary, 4), 'direction': 'down',
+                         'short_days': short_days, 'long_days': long_days,
+                         'samples': long_n, 'results': results,
+                         'min_results': min_results, 'improving': improving,
+                         'volume_ok': volume_ok}})
+    return findings
+
+
 def _eval_rank_low_result(company, policy, template, *, now, config):
     """ADSDEEP38 — Évaluateur GÉNÉRIQUE « classement top-N » : classe les objets
     du scope par dépense décroissante sur la fenêtre, prend les ``top_n``
@@ -544,6 +625,9 @@ _EVALUATORS = {
     'frequency_ratio_regression': _eval_window_regression,
     'surf_scale_budget': _eval_window_regression,
     'top_spend_low_result': _eval_rank_low_result,
+    # PUB116 — gagnant NET (CPL en amélioration ET plancher de volume) ⇒
+    # proposition de DUPLICATION via le hint ``v2['action']='duplicate'``.
+    'winner_duplicate': _eval_winner_duplicate,
 }
 
 
@@ -661,10 +745,14 @@ def _propose_v2_action(company, policy, template, finding, *, config, dry_run):
         params = rule_templates.resolve_params(policy.template_key, policy.params)
         scale_pct = float(params.get(
             'scale_pct', services.LEARNING_SAFE_MAX_PCT))
+        # PUB134 — le budget courant est libellé dans la devise RÉELLE du compte
+        # (le miroir stocke des unités mineures de CETTE devise, pas des MAD).
+        currency = account_currency(company)
         reason = (
             f"{prefix}Surf-scaling : le CPL de l'ad set {target_id} s'améliore "
             f"(fenêtre courte < longue) — montée de budget learning-safe "
-            f"(≤{services.LEARNING_SAFE_MAX_PCT} %) proposée.")
+            f"(≤{services.LEARNING_SAFE_MAX_PCT} %) proposée depuis "
+            f"{current_mad:g} {currency}/j.")
         return services.propose_learning_safe_scale_up(
             company, adset_meta_id=target_id,
             current_daily_budget_mad=current_mad, scale_pct=scale_pct,

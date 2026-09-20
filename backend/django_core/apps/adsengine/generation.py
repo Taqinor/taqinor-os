@@ -30,6 +30,7 @@ import logging
 import os
 import re
 
+from . import creative_factory
 from .models import CreativeAsset, FactTable
 
 logger = logging.getLogger(__name__)
@@ -227,6 +228,10 @@ def generate_grounded_variants(company, seed_brief, *, components=None,
                 # PUB76 — trace la version de faits citée (fraîcheur/conformité).
                 facts_version=(table.version if table else None),
                 policy_stamp={},  # PENDING — jamais auto-validé
+                # PUB126 — divulgation IA posée PAR LA LANE de fabrique : la
+                # génération ancrée produit du texte IA, elle s'étiquette donc
+                # toujours (et la check-list policy bloque un asset IA nu).
+                ai_generated=creative_factory.lane_is_ai_generated(source_lane),
             )
             entry['asset_id'] = asset.id
             assets.append(asset)

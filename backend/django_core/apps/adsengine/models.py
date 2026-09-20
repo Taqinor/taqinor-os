@@ -1069,6 +1069,35 @@ class CreativeAsset(TenantModel):
     script_beats = models.JSONField(
         default=list, blank=True, verbose_name='Beats du script')
 
+    # ── PUB122 — Identifiants du média UPLOADÉ AU COMPTE publicitaire ─────────
+    # ``file_key`` est une clé MinIO : Meta ne sait pas la lire. Un créatif
+    # publicitaire ne référence QUE des identifiants de compte — ``image_hash``
+    # pour une image, ``video_id`` pour une vidéo. Ces deux champs portent le
+    # résultat de l'upload (``meta_client.upload_ad_image``/``upload_ad_video``)
+    # et rendent le service d'upload IDEMPOTENT : déjà renseigné ⇒ jamais de
+    # second upload. Vide = pas encore uploadé (jamais un identifiant fabriqué).
+    # Un média uploadé ne diffuse RIEN par lui-même (aucun statut n'existe sur
+    # ces edges) — invariant permanent règle #3.
+    meta_image_hash = models.CharField(
+        max_length=128, blank=True, default='',
+        verbose_name='Hash image Meta (compte)')
+    meta_video_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID vidéo Meta (compte)')
+
+    # ── PUB126 — Divulgation « généré par IA » PAR ASSET ─────────────────────
+    # Meta exige la divulgation du contenu généré par IA ; aucun champ ne la
+    # portait. Posé PAR LA LANE de fabrique (``creative_factory.
+    # lane_is_ai_generated`` : génération / recombinaison / fal ⇒ vrai ; chantier
+    # et UGC réel ⇒ faux — jamais de sur-étiquetage d'une photo de chantier).
+    # La check-list policy BLOQUE un asset produit par une lane IA qui n'aurait
+    # pas son étiquette. Défaut ``False`` : les lignes existantes (uploads
+    # manuels, photos de chantier) restent non étiquetées, ce qui est la vérité.
+    ai_generated = models.BooleanField(
+        default=False, verbose_name='Généré par IA',
+        help_text="Vrai si tout ou partie de l'asset est généré par IA "
+                  "(divulgation exigée par Meta).")
+
     class Meta:
         verbose_name = 'Asset créatif'
         verbose_name_plural = 'Assets créatifs'

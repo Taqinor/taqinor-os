@@ -29,6 +29,43 @@ from .models import CreativeAsset
 logger = logging.getLogger(__name__)
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# PUB126 — Étiquette « généré par IA » PAR LANE de fabrique.
+# Meta exige la divulgation du contenu généré par IA. La lane de production est
+# la source de vérité la plus fiable : la génération de copie (``gen``), la
+# recombinaison (``recombine``) et les visuels génératifs (``fal``) produisent
+# du contenu IA ; une photo de chantier ou un UGC réel n'en produit PAS et ne
+# doit JAMAIS être sur-étiqueté (une fausse divulgation est aussi un mensonge).
+# Toute lane ABSENTE de cet ensemble est traitée comme NON-IA : on n'étiquette
+# jamais par défaut — une lane qui produit de l'IA s'y déclare explicitement
+# (c'est ce que feront les lanes gated ``fal``/template-vidéo à leur arrivée).
+#
+# L'ÉTIQUETTE S'HÉRITE DU PARENT. Les lanes de recombinaison du repo
+# (``zapcap``/``templated``, pilotées par ``recombine.py``) sont
+# SUBSTITUTION-ONLY — ``_assert_substitution_only`` interdit tout champ
+# génératif : coller une accroche RÉELLE sur une photo de chantier RÉELLE ne
+# fabrique aucun contenu IA, et l'étiqueter le serait une divulgation FAUSSE
+# (Reda : jamais de sur-étiquetage d'un asset chantier réel). En revanche, une
+# variante DÉRIVÉE d'un asset IA reste de l'IA : ``asset_is_ai_generated``
+# hérite donc du ``parent``. La divulgation suit le CONTENU, pas la plomberie.
+# ══════════════════════════════════════════════════════════════════════════
+AI_GENERATED_LANES = frozenset({'gen', 'recombine', 'fal'})
+
+
+def lane_is_ai_generated(source_lane):
+    """PUB126 — Vrai si la lane de fabrique ``source_lane`` produit du contenu
+    généré par IA (donc à divulguer). Lane inconnue / vide ⇒ ``False``."""
+    return str(source_lane or '') in AI_GENERATED_LANES
+
+
+def asset_is_ai_generated(source_lane, parent=None):
+    """PUB126 — Étiquette IA d'un asset en PRODUCTION : sa lane génère de l'IA,
+    OU il dérive d'un parent déjà étiqueté (une variante d'un asset IA reste de
+    l'IA). Jamais vrai pour une substitution d'assets réels."""
+    return (lane_is_ai_generated(source_lane)
+            or bool(getattr(parent, 'ai_generated', False)))
+
+
 def _store_bytes(company, data, *, ext, content_type):
     """Dépose des octets dans MinIO sous une clé préfixée société et renvoie la
     clé (``adsengine/{company_id}/{uuid}.ext``). Réutilise le client MinIO
@@ -112,6 +149,9 @@ class CreativeFactoryAdapter:
             file_key=file_key, source_lane=self.source_lane,
             cost_cents=int(payload.get('cost_cents') or 0),
             policy_stamp={},  # PENDING — jamais validé automatiquement
+            # PUB126 — divulgation IA posée PAR LA LANE, héritée du parent
+            # (jamais par l'appelant : le payload ne peut pas la contredire).
+            ai_generated=asset_is_ai_generated(self.source_lane, parent),
             parent=parent)
 
 
@@ -168,6 +208,94 @@ class FalAdapter(CreativeFactoryAdapter):
         images = resp.json().get('images') or []
         url = images[0].get('url') if images else None
         return client.get(url).content if url else None
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PUB122 — Upload d'un asset de la créathèque VERS LE COMPTE publicitaire.
+# ``CreativeAsset.file_key`` est une clé MinIO : Meta ne sait pas la lire. Tant
+# qu'un asset n'a pas d'``image_hash``/``video_id`` de COMPTE, aucun créatif
+# publicitaire ne peut le référencer. Ce service fait le pont, une seule fois
+# par asset (IDEMPOTENT), et n'écrit JAMAIS de statut : un média uploadé ne
+# diffuse rien (invariant permanent règle #3).
+# ══════════════════════════════════════════════════════════════════════════
+VIDEO_ASSET_TYPES = (
+    CreativeAsset.AssetType.REEL, CreativeAsset.AssetType.EXPLAINER)
+
+
+def upload_asset_to_account(company, asset, *, client, media_url='',
+                            image_bytes=None):
+    """PUB122 — Upload le média d'``asset`` au compte publicitaire et PERSISTE
+    l'identifiant rendu (``meta_image_hash`` ou ``meta_video_id``).
+
+    Routage par type : un statique part sur ``adimages`` (octets ou URL), un
+    reel / explainer sur ``advideos`` (``file_url`` — une URL présignée MinIO
+    suffit, Meta va chercher le fichier).
+
+    IDEMPOTENT : un asset qui porte déjà son identifiant est renvoyé tel quel,
+    SANS le moindre appel réseau (``skipped``). Une erreur Graph laisse l'asset
+    INTACT (aucune écriture) et remonte une raison FR — jamais un identifiant
+    partiel en base.
+
+    Renvoie ``{'uploaded', 'skipped', 'image_hash', 'video_id', 'error',
+    'message'}``."""
+    from .meta_client import MetaClient, MetaError
+
+    def _result(**kwargs):
+        base = {'uploaded': False, 'skipped': False, 'image_hash': '',
+                'video_id': '', 'error': None, 'message': ''}
+        base.update(kwargs)
+        return base
+
+    if asset.company_id != getattr(company, 'id', company):
+        return _result(
+            error='autre_societe',
+            message="Cet asset appartient à une autre société — upload refusé.")
+
+    is_video = asset.asset_type in VIDEO_ASSET_TYPES
+    existing = asset.meta_video_id if is_video else asset.meta_image_hash
+    if existing:
+        return _result(
+            skipped=True,
+            image_hash='' if is_video else existing,
+            video_id=existing if is_video else '',
+            message="Média déjà présent sur le compte — aucun ré-upload.")
+
+    try:
+        if is_video:
+            payload = client.upload_ad_video(file_url=media_url)
+            new_id = str((payload or {}).get('id') or '')
+            if not new_id:
+                return _result(
+                    error='sans_identifiant',
+                    message=("Upload vidéo : Meta n'a renvoyé aucun "
+                             "identifiant — asset inchangé."))
+            asset.meta_video_id = new_id
+            asset.save(update_fields=['meta_video_id', 'updated_at'])
+            return _result(
+                uploaded=True, video_id=new_id,
+                message='Vidéo uploadée sur le compte publicitaire.')
+
+        payload = client.upload_ad_image(
+            image_bytes=image_bytes, image_url=media_url,
+            name=asset.file_key or '')
+        new_hash = MetaClient.image_hash_from_payload(payload)
+        if not new_hash:
+            return _result(
+                error='sans_hash',
+                message=("Upload image : Meta n'a renvoyé aucun hash — asset "
+                         "inchangé."))
+        asset.meta_image_hash = new_hash
+        asset.save(update_fields=['meta_image_hash', 'updated_at'])
+        return _result(
+            uploaded=True, image_hash=new_hash,
+            message='Image uploadée sur le compte publicitaire.')
+    except MetaError as exc:
+        logger.warning(
+            'upload_asset_to_account: asset %s — erreur Meta: %s',
+            asset.pk, exc)
+        return _result(
+            error='erreur_meta',
+            message=f"Upload refusé par Meta : {exc}")
 
 
 def _active_photo_consent(company, client_id, *, now=None):
@@ -240,6 +368,9 @@ def import_chantier_photo(company, *, chantier_id, attachment_id, client_id,
         hook_text=hook,
         primary_text=note or '',
         policy_stamp={},  # PENDING — check-list humaine (ENG16) requise
+        # PUB126 — photo de chantier RÉELLE : aucune divulgation IA (jamais de
+        # sur-étiquetage — la lane ``chantier`` ne génère rien).
+        ai_generated=lane_is_ai_generated('chantier'),
     )
     return {'imported': True, 'asset': asset, 'blocked_reason': None,
             'auto_flagged': bool(auto_flagged),

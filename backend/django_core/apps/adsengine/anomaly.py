@@ -120,13 +120,19 @@ def _insufficient(detector, kind, message, computed=None):
 # ── B1 — Dépense vs médiane 7 j (pic / chute) ────────────────────────────────
 def detect_spend_anomaly(daily_spends, spend_today, *, spike_mult=3.0,
                          collapse_mult=0.2, spend_floor_mad=20.0,
-                         min_samples=3):
+                         min_samples=3, currency=''):
     """Pic (ratio > 3,0×) ou chute (ratio < 0,2×) de dépense vs la médiane des
     7 jours précédents. Un plancher ``spend_floor_mad`` évite les faux positifs
     près de zéro (4 MAD→1 MAD = « 4× » opérationnellement insignifiant).
 
     Chute = plus urgente (paiement échoué / suspension) ⇒ CRITICAL ; pic ⇒
-    WARNING (dd-guardian §B1)."""
+    WARNING (dd-guardian §B1).
+
+    PUB134 — ``currency`` (ISO-4217 de la ``MetaConnection``, ex. ``USD``) est le
+    libellé de devise des montants. Meta rapporte TOUT dans la devise DU COMPTE :
+    écrire « MAD » en dur mentait dès que le compte facture en USD. Devise
+    inconnue (``''``) ⇒ le montant est écrit SANS unité — jamais une devise
+    devinée (même patron que ``detect_low_balance``, PUB97)."""
     clean = _floats(daily_spends)
     if len(clean) < min_samples:
         return _insufficient(
@@ -142,21 +148,24 @@ def detect_spend_anomaly(daily_spends, spend_today, *, spike_mult=3.0,
     median_7d = statistics.median(clean)
     ref = median_7d if median_7d > 0 else spend_floor_mad
     ratio = today / ref if ref else 0.0
+    unit = f' {currency}' if currency else ''
     computed = {'spend_today': today, 'median_7d': median_7d,
-                'ratio': round(ratio, 3), 'floor': spend_floor_mad}
+                'ratio': round(ratio, 3), 'floor': spend_floor_mad,
+                'currency': currency}
     # Chute (CRITICAL) — n'a de sens que si la médiane était non triviale.
     if ratio < collapse_mult and median_7d > spend_floor_mad:
         return Detection(
             'spend_vs_median', True, False, SEVERITY_CRITICAL, KIND_OTHER,
-            (f"Dépense {today:g} MAD quasi nulle vs médiane {median_7d:g} "
-             f"MAD/j — chute anormale (paiement échoué ou compte suspendu ?)."),
+            (f"Dépense {today:g}{unit} quasi nulle vs médiane {median_7d:g}"
+             f"{unit}/j — chute anormale (paiement échoué ou compte "
+             f"suspendu ?)."),
             computed)
     # Pic (WARNING) — seulement au-dessus du plancher (bruit sinon).
     if ratio > spike_mult and today > spend_floor_mad:
         return Detection(
             'spend_vs_median', True, False, SEVERITY_WARNING, KIND_COST_SPIKE,
-            (f"Dépense {today:g} MAD = {ratio:.1f}× la médiane des 7 derniers "
-             f"jours ({median_7d:g} MAD/j) — pic de dépense anormal."),
+            (f"Dépense {today:g}{unit} = {ratio:.1f}× la médiane des 7 derniers "
+             f"jours ({median_7d:g}{unit}/j) — pic de dépense anormal."),
             computed)
     return Detection('spend_vs_median', False, False, SEVERITY_WARNING,
                      KIND_COST_SPIKE, '', computed)
@@ -164,10 +173,13 @@ def detect_spend_anomaly(daily_spends, spend_today, *, spike_mult=3.0,
 
 # ── B2 — CPL vs bande trainante ±2× (ratio, PAS d'écart-type) ────────────────
 def detect_cpl_band(daily_cpls, cpl_today, n_leads, *, band_low_mult=0.5,
-                    band_high_mult=2.0, min_samples=5):
+                    band_high_mult=2.0, min_samples=5, currency=''):
     """Coût par lead hors de sa bande ``[0,5× ; 2,0×]`` de la médiane trainante
     (14 j). Sous ``min_samples`` leads cumulés → ``insufficient_data`` (bande
-    non fiable à ce volume) — dd-guardian §B2."""
+    non fiable à ce volume) — dd-guardian §B2.
+
+    PUB134 — ``currency`` : libellé de devise RÉEL du compte (voir
+    ``detect_spend_anomaly``). Vide ⇒ aucun libellé, jamais un « MAD » deviné."""
     clean = _floats(daily_cpls)
     try:
         leads = int(n_leads or 0)
@@ -187,14 +199,15 @@ def detect_cpl_band(daily_cpls, cpl_today, n_leads, *, band_low_mult=0.5,
     median_cpl = statistics.median(clean)
     low = band_low_mult * median_cpl
     high = band_high_mult * median_cpl
+    unit = f' {currency}' if currency else ''
     computed = {'cpl_today': today, 'median_cpl': median_cpl,
                 'band_low': round(low, 2), 'band_high': round(high, 2),
-                'n_leads': leads}
+                'n_leads': leads, 'currency': currency}
     if today < low or today > high:
         return Detection(
             'cpl_band', True, False, SEVERITY_WARNING, KIND_COST_SPIKE,
-            (f"Coût par lead {today:g} MAD hors de sa bande "
-             f"[{low:.0f} ; {high:.0f}] MAD (médiane 14 j {median_cpl:g})."),
+            (f"Coût par lead {today:g}{unit} hors de sa bande "
+             f"[{low:.0f} ; {high:.0f}]{unit} (médiane 14 j {median_cpl:g})."),
             computed)
     return Detection('cpl_band', False, False, SEVERITY_WARNING,
                      KIND_COST_SPIKE, '', computed)
@@ -202,7 +215,7 @@ def detect_cpl_band(daily_cpls, cpl_today, n_leads, *, band_low_mult=0.5,
 
 # ── B3 — Zéro-delivery à deux niveaux ────────────────────────────────────────
 def detect_zero_delivery(*, spend, impressions, clicks, leads,
-                         hours_since_launch, min_spend_mad=0.0):
+                         hours_since_launch, min_spend_mad=0.0, currency=''):
     """Deux niveaux (dd-guardian §B3) :
 
     * Tier 1 (CRITICAL) — dépense > 0 ET 0 impression : l'ad ne tourne
@@ -210,7 +223,10 @@ def detect_zero_delivery(*, spend, impressions, clicks, leads,
     * Tier 2 (WARNING) — diffuse + clics mais 0 résultat, campagne lancée
       depuis > 24 h : souci création / ciblage / offre.
 
-    Dépense ou diffusion inconnue → ``insufficient_data`` (jamais un skip muet)."""
+    Dépense ou diffusion inconnue → ``insufficient_data`` (jamais un skip muet).
+
+    PUB134 — ``currency`` : libellé de devise RÉEL du compte (voir
+    ``detect_spend_anomaly``). Vide ⇒ aucun libellé, jamais un « MAD » deviné."""
     if spend is None:
         return _insufficient(
             'zero_delivery', KIND_ZERO_DELIVERY,
@@ -225,15 +241,17 @@ def detect_zero_delivery(*, spend, impressions, clicks, leads,
     clicks_i = int(clicks or 0)
     leads_i = int(leads or 0)
     hours = float(hours_since_launch or 0)
+    unit = f' {currency}' if currency else ''
     computed = {'spend': spend_f, 'impressions': impressions,
-                'clicks': clicks_i, 'leads': leads_i, 'hours': hours}
+                'clicks': clicks_i, 'leads': leads_i, 'hours': hours,
+                'currency': currency}
     # Tier 1 — dépense sans aucune diffusion.
     if spend_f > min_spend_mad and impressions == 0:
         return Detection(
             'zero_delivery', True, False, SEVERITY_CRITICAL,
             KIND_ZERO_DELIVERY,
-            (f"Dépense {spend_f:g} MAD mais 0 diffusion — souci Meta probable "
-             f"(paiement / révision / compte)."),
+            (f"Dépense {spend_f:g}{unit} mais 0 diffusion — souci Meta "
+             f"probable (paiement / révision / compte)."),
             computed)
     # Tier 2 — diffuse + clics mais 0 résultat après la phase de ramp-up.
     if (impressions > 0 and clicks_i > 0 and leads_i == 0 and hours > 24):
