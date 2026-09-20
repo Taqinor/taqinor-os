@@ -57,13 +57,13 @@
 - frontend/src/api/aoApi.js :: deverrouiller -> /api/django/ao/economie/<>/deverrouiller
     verrouillee:booleen
 - frontend/src/api/aoApi.js :: enregistrerLayout -> /api/django/ao/appels-offres/<>/layout
-    detail:inconnu, roof_layout:inconnu
+    calepinage_id:inconnu, champ:inconnu, detail:inconnu, roof_layout:inconnu
 - frontend/src/api/aoApi.js :: initialiserChecklist -> /api/django/ao/dossiers-ao/<>/initialiser-checklist
     crees:inconnu, deja_presents:inconnu
 - frontend/src/api/aoApi.js :: lancer -> /api/django/ao/calepinage/lancer
     id:inconnu, kind:inconnu, message_erreur:texte, progress_pct:inconnu, resultat:inconnu, statut:inconnu, variante:inconnu
 - frontend/src/api/aoApi.js :: layout -> /api/django/ao/appels-offres/<>/layout
-    detail:inconnu, roof_layout:inconnu
+    calepinage_id:inconnu, champ:inconnu, detail:inconnu, roof_layout:inconnu
 - frontend/src/api/aoApi.js :: lead -> /api/django/ao/appels-offres/<>/lead
     fiche:inconnu, lead_id:inconnu
 - frontend/src/api/aoApi.js :: marches -> /api/django/ao/calepinage/variantes/<>/marches

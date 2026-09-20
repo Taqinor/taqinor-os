@@ -20,6 +20,8 @@ héritée de ``_ComptaBaseViewSet`` est ABANDONNÉE : elle ouvrait tout le dossi
 d'appel d'offres au palier Responsable (cf. AOF2).
 """
 
+from decimal import Decimal, InvalidOperation
+
 from django.core.exceptions import (
     FieldDoesNotExist, ValidationError as DjangoValidationError,
 )
@@ -271,6 +273,54 @@ class AnalyserDxfView(APIView):
         return Response(resultat)
 
 
+def _calepinage_pour_ecriture(appel_offre, user):
+    """CAL32 — LE calepinage du module où écrire la conception de l'affaire.
+
+    Le module est atteint par ses SEULES portes publiques
+    (``apps.calepinage.selectors`` / ``apps.calepinage.services``, imports
+    fonction-locaux) : jamais ses modèles — contrats import-linter
+    ``ao-models-decoupled`` / ``calepinage-models-decoupled``.
+
+    Ordre, et il n'y en a pas d'autre :
+
+    1. le calepinage DÉJÀ rattaché à l'affaire (le geste est idempotent) ;
+    2. sinon, un calepinage neuf créé sur le LEAD de l'affaire, puis rattaché.
+
+    Rend ``None`` — sans lever — quand l'affaire n'a pas de lead RÉSOLVABLE
+    dans sa société (aucun ``lead_id``, ou un identifiant devenu orphelin) :
+    la base REFUSE un calepinage qui n'a ni lead ni client (contrainte
+    ``calepinage_lead_ou_client``, CAL7) et ``AppelOffre`` ne porte AUCUN
+    client. Inventer un rattachement serait un lien faux, et refuser
+    l'enregistrement casserait un atelier qui fonctionne aujourd'hui :
+    l'affaire écrit alors ``roof_layout`` seul, exactement comme avant CAL32.
+    Le cas est couvert par un test.
+
+    Raises:
+        ValueError: refus métier du module sur le RATTACHEMENT (l'affaire est
+            déjà liée à un AUTRE calepinage) — message français, champ nommé.
+    """
+    from apps.calepinage import selectors as selectors_calepinage
+    from apps.calepinage import services as services_calepinage
+
+    company = getattr(appel_offre, 'company', None)
+    existant = selectors_calepinage.calepinage_de_l_affaire(
+        appel_offre.pk, company)
+    if existant is not None:
+        return existant
+    if not appel_offre.lead_id:
+        return None
+
+    try:
+        calepinage = services_calepinage.creer_pour_lead(
+            appel_offre.lead_id, company, user=user,
+            titre=f'Calepinage {appel_offre.reference}'.strip())
+    except ValueError:
+        # Lead orphelin ou d'une autre société : MÊME cas que « pas de lead ».
+        return None
+    return services_calepinage.lier_appel_offre(
+        calepinage, appel_offre.pk, user=user)
+
+
 # ── FG222 — Gestion des appels d'offres ────────────────────────────────────
 
 class AppelOffreViewSet(AoBaseViewSet):
@@ -476,6 +526,15 @@ class AppelOffreViewSet(AoBaseViewSet):
         (``ToitureAO``/``ZoneAO``/``ChaineCotes``) n'est pas réécrite — le
         layout est un document de TRAVAIL, pas un relevé.
 
+        CAL32 — LE DOCUMENT EST DÉSORMAIS CELUI DU MODULE. Le POST délègue à
+        ``apps.calepinage.services.enregistrer_layout`` (import fonction-local,
+        jamais ses modèles) : c'est lui qui pose l'empreinte et historise une
+        VERSION quand la géométrie a changé. ``AppelOffre.roof_layout`` reste
+        écrit en miroir — c'est ce que lisent encore le GET ci-dessous et
+        ``selectors.contexte_conception_affaire``, et CAL30 l'a délibérément
+        CONSERVÉ : tant que ces lecteurs ne sont pas rebranchés, cesser de
+        l'écrire ferait régresser l'atelier.
+
         Une affaire déposée ou close répond 409 avec le motif FRANÇAIS du
         serveur (le même que ``design-context``) : l'écran n'a rien à deviner.
         Affaire d'une autre société → 404 (get_queryset).
@@ -484,7 +543,8 @@ class AppelOffreViewSet(AoBaseViewSet):
 
         appel_offre = self.get_object()  # borné société par get_queryset
         if request.method.lower() == 'get':
-            return Response({'roof_layout': appel_offre.roof_layout})
+            return Response({'roof_layout': appel_offre.roof_layout,
+                             'calepinage_id': appel_offre.calepinage_id})
 
         # Le motif est celui du SELECTOR (source unique) : l'écran affiche au
         # chargement EXACTEMENT la phrase que le refus d'écriture renvoie.
@@ -502,9 +562,29 @@ class AppelOffreViewSet(AoBaseViewSet):
         if not isinstance(payload, dict) or not payload:
             return Response({'detail': 'Layout manquant ou invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.calepinage import services as services_calepinage
+
+        champs = ['roof_layout', 'updated_at']
         appel_offre.roof_layout = payload
-        appel_offre.save(update_fields=['roof_layout', 'updated_at'])
-        return Response({'roof_layout': appel_offre.roof_layout})
+        try:
+            calepinage = _calepinage_pour_ecriture(appel_offre, request.user)
+            if calepinage is not None:
+                services_calepinage.enregistrer_layout(
+                    calepinage, payload, user=request.user,
+                    libelle=f'Atelier 3D — affaire {appel_offre.reference}')
+                if appel_offre.calepinage_id != calepinage.pk:
+                    appel_offre.calepinage_id = calepinage.pk
+                    champs.insert(1, 'calepinage_id')
+        except ValueError as refus:
+            # ``CreationRefusee`` / ``LiaisonRefusee`` / ``LayoutRefuse`` —
+            # tous porteurs d'un message FRANÇAIS nommant le champ fautif.
+            return Response({'detail': str(refus),
+                             'champ': getattr(refus, 'champ', '')},
+                            status=status.HTTP_400_BAD_REQUEST)
+        appel_offre.save(update_fields=champs)
+        return Response({'roof_layout': appel_offre.roof_layout,
+                         'calepinage_id': appel_offre.calepinage_id})
 
     @action(detail=True, methods=['get'], url_path='transitions')
     def transitions(self, request, pk=None):
@@ -585,6 +665,132 @@ class ToitureAOViewSet(AoBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         services.appliquer_preset(preset, toiture, user=request.user)
         return Response(self.get_serializer(toiture).data)
+
+    @action(detail=True, methods=['post'], url_path='reprendre-contour-3d')
+    def reprendre_contour_3d(self, request, pk=None):
+        """CAL241 — reprend dans la toiture le contour DESSINÉ en 3D.
+
+        L'autre sens de l'import bidirectionnel (D4). Le contour tracé dans le
+        module Calepinage redescend dans le relevé AO, converti des DEGRÉS
+        (``outline``, ``[lat, lng]``) vers le repère LOCAL MÉTRIQUE de la
+        toiture par ``services.outline_latlng_vers_contour_ao`` (CAL31) — une
+        seule projection dans tout le domaine, jamais recodée ici.
+
+        SEUL LE CONTOUR VOYAGE. Cette action écrit ``contour_local_m``, son
+        ancre géographique et la surface qui en DÉRIVE — rien d'autre : aucun
+        obstacle, aucune chaîne de cotes, aucune zone, et aucune variante 2D
+        retenue n'est touchée. C'est ce qui rend la reprise sans danger pour
+        un dossier déjà relevé.
+
+        Le module est lu par son SEUL sélecteur (``apps.calepinage.selectors``,
+        import fonction-local) : jamais ses modèles — contrats import-linter
+        ``ao-models-decoupled`` / ``calepinage-models-decoupled``.
+
+        Une affaire déposée ou close répond 409 avec EXACTEMENT le motif du
+        serveur (``selectors.raison_conception_figee``, source unique de la
+        phrase), comme l'action ``layout``. Toiture d'une autre société → 404
+        (``get_queryset``).
+        """
+        from apps.calepinage import selectors as selectors_calepinage
+
+        from . import selectors
+
+        toiture = self.get_object()  # borné société par get_queryset
+        affaire = toiture.batiment.appel_offre
+
+        raison = selectors.raison_conception_figee(affaire)
+        if raison:
+            return Response({'detail': raison},
+                            status=status.HTTP_409_CONFLICT)
+
+        calepinage = selectors_calepinage.calepinage_de_l_affaire(
+            affaire.pk, request.user.company)
+        if calepinage is None:
+            return Response(
+                {'detail': "Cette affaire n'a aucun calepinage 3D : "
+                           'concevez la toiture en 3D avant de reprendre '
+                           'son contour.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        layout = calepinage.roof_layout \
+            if isinstance(calepinage.roof_layout, dict) else {}
+        outline = layout.get('outline') or []
+        if not isinstance(outline, list) or len(outline) < 3:
+            return Response(
+                {'detail': 'Le calepinage 3D ne porte aucun contour fermé '
+                           '(« outline ») : tracez la toiture avant de la '
+                           'reprendre.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        ancre = _ancre_de_reprise(toiture, layout, outline)
+        if ancre is None:
+            return Response(
+                {'detail': "Impossible de situer ce contour : ni la toiture "
+                           "ni le calepinage 3D ne portent de coordonnées "
+                           "géographiques exploitables."},
+                status=status.HTTP_400_BAD_REQUEST)
+        toiture.origine_lat, toiture.origine_lng = ancre
+
+        try:
+            contour = services.outline_latlng_vers_contour_ao(outline, toiture)
+        except DjangoValidationError as erreur:
+            return Response({'detail': ' '.join(erreur.messages)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except (TypeError, ValueError, InvalidOperation):
+            return Response(
+                {'detail': 'Le contour du calepinage 3D contient une '
+                           'coordonnée illisible : il n\'a pas été repris.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        toiture.contour_local_m = [[round(x, 3), round(y, 3)]
+                                   for x, y in contour]
+        try:
+            toiture.clean()
+        except DjangoValidationError as erreur:
+            return Response(erreur.message_dict
+                            if hasattr(erreur, 'message_dict')
+                            else {'detail': str(erreur)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        toiture.recalculer_surface()
+        toiture.save(update_fields=['contour_local_m', 'origine_lat',
+                                    'origine_lng', 'surface_m2',
+                                    'updated_at'])
+        return Response(self.get_serializer(toiture).data)
+
+
+def _ancre_de_reprise(toiture, layout, outline):
+    """L'origine du repère local pour une reprise de contour 3D.
+
+    ORDRE DE REPLI, et il n'y en a pas d'autre :
+
+    1. **l'ancre DÉJÀ posée sur la toiture** — c'est le relevé qui fait foi,
+       et la garder rend la reprise idempotente (le contour retombe au même
+       endroit du plan) ;
+    2. le repère ``pin`` du document 3D ;
+    3. le premier sommet du contour tracé.
+
+    Rend ``None`` quand aucune des trois n'est exploitable : on ne devine
+    JAMAIS une coordonnée (un ``0, 0`` inventé désignerait le golfe de
+    Guinée).
+    """
+    if toiture.origine_lat is not None and toiture.origine_lng is not None:
+        return toiture.origine_lat, toiture.origine_lng
+
+    pin = layout.get('pin')
+    candidats = []
+    if isinstance(pin, dict):
+        candidats.append((pin.get('lat'), pin.get('lng')))
+    premier = outline[0] if outline else None
+    if isinstance(premier, (list, tuple)) and len(premier) >= 2:
+        candidats.append((premier[0], premier[1]))
+
+    for lat, lng in candidats:
+        try:
+            return (Decimal(str(float(lat))).quantize(Decimal('0.0000001')),
+                    Decimal(str(float(lng))).quantize(Decimal('0.0000001')))
+        except (TypeError, ValueError, InvalidOperation):
+            continue
+    return None
 
 
 class SerieQuestionsViewSet(AoBaseViewSet):
