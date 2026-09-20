@@ -410,6 +410,10 @@ unmapped_ok:
   # auto-ordonne par ses propres @after (SOL1 -> SOL2 -> SOL3 -> ...), aucun
   # prerequis de vague plateforme.
   - SOL
+  # SOLMVP — Sortie physique des 49 apps hors-MVP solaire (Groupe SOLMVP de PLAN.md,
+  # 2026-09-20, priorité 0) : transversal par nature (touche core + toutes les apps),
+  # hors vagues comme SOL.
+  - SOLMVP
   # RLC — Relances : retour arriere, journal & etat client (Groupe RLC de
   # PLAN.md, releves fondateur du 08/09/2026) : correctifs/complements du
   # moteur de relances existant (apps/crm), aucun prerequis de vague plateforme.
