@@ -52,9 +52,16 @@ test('CAL107 : tracer un toit, poser un obstacle et déplacer un panneau au DOIG
     { x: cx + 80, y: cy - 60 },
     { x: cx, y: cy + 70 },
   ]
+  // Le tracé tactile pose un sommet par tap ; entre deux taps le délai anti-dblclick
+  // (W77, 240 ms) doit s'écouler. On attend une CONDITION observable (le bouton
+  // « annuler le dernier point » reflète le sommet posé) plutôt qu'un sommeil fixe.
+  const undoPoint = page.locator('#rp9-undo-point')
   for (const pt of corners) {
     await page.touchscreen.tap(pt.x, pt.y)
-    await page.waitForTimeout(150) // laisse le délai anti-dblclick (W77, 240 ms) s'écouler
+    await expect(undoPoint).toBeEnabled({ timeout: 10_000 })
+    await page.waitForFunction(
+      (since) => Date.now() - since >= 260, Date.now(), { polling: 50 },
+    )
   }
   const finishBtn = page.locator('#rp9-finish')
   await expect(finishBtn).toBeEnabled({ timeout: 10_000 })
