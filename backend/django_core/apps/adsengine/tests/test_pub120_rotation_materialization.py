@@ -27,7 +27,7 @@ from apps.adsengine.flightrunner import FlightRunner
 from apps.adsengine.models import (
     AdCampaignMirror, AdCreativeMirror, AdMirror, AdSetMirror, ArmDailyStat,
     CreativeAsset, CreativeBacklogItem, DecisionLog, EngineAction, EngineAlert,
-    Experiment, ExperimentArm, FlightPlan, GuardrailConfig,
+    Experiment, ExperimentArm, FlightPlan, GuardrailConfig, MetaConnection,
 )
 
 # Lundi (jour d'évaluation de la rotation — ``rotation.is_rotation_day``).
@@ -98,26 +98,50 @@ class RotationMaterializationBase(TestCase):
             allocations={'prob_best': mapping},
             summary_fr='Repondération de test.')
 
-    def _backlog_item(self, **kw):
+    def _backlog_item(self, *, image_hash='', **kw):
+        """Item EN FILE de la campagne.
+
+        Par DÉFAUT son asset ne porte AUCUN média de compte : le pont PUB123 le
+        refuse donc (``media_non_uploade``) et la rotation retombe sur le créatif
+        LIVE — c'est l'état d'un item tout juste approuvé, et le cas exigé par
+        ``test_entry_without_any_ready_creative_alerts_and_proposes_nothing``.
+        ``image_hash`` (avec ``_connect_page``) le rend PONTABLE, donc réellement
+        embarquable — et donc consommable — par une proposition."""
         asset = CreativeAsset.objects.create(
             company=self.company,
             asset_type=CreativeAsset.AssetType.STATIC,
             hook_text='Accroche', primary_text='Corps', cta='LEARN_MORE',
-            policy_stamp={'passed': True})
+            meta_image_hash=image_hash, policy_stamp={'passed': True})
         return CreativeBacklogItem.objects.create(
             company=self.company, asset=asset,
             target_campaign=kw.pop('target_campaign', self.campaign),
             status=CreativeBacklogItem.Statut.EN_FILE, **kw)
 
+    def _connect_page(self, page_id='page-42'):
+        """PUB123/PUB-P8/C2 — la Page qui PUBLIE : sans elle le pont refuse TOUT
+        asset (``page_absente``), donc aucun item n'est jamais pontable."""
+        return MetaConnection.objects.create(
+            company=self.company, ad_account_id='act_1', page_id=page_id)
+
     def _runner(self, *, today=MONDAY):
         return FlightRunner(self.plan, clock=lambda: today)
 
     def _make_weak_two_weeks(self):
-        """Amène le bras faible à 2 semaines FAIBLES consécutives : la boucle
-        avance la série d'un cran par semaine évaluée (jamais deux fois la même
-        semaine), il faut donc bien DEUX semaines."""
+        """Amène le bras faible à 2 semaines FAIBLES consécutives : la série
+        avance d'un cran par semaine ÉVALUÉE (jamais deux fois la même semaine),
+        il faut donc bien DEUX semaines.
+
+        On évalue la semaine précédente par ``_rotation_snapshots`` — le seul
+        geste dont la série a besoin — et NON par un ``run_weekly`` complet : une
+        boucle entière MATÉRIALISE aussi ses propres propositions (2 bras vivants
+        sur ``ADS_PER_ADSET``=3 laissent un slot libre, donc une ENTRÉE est
+        légitimement proposée dès cette semaine-là, et l'item de backlog est
+        consommé une semaine trop tôt). Cette fixture ne doit préparer QUE la
+        série ; la semaine testée reste celle du test."""
         self._log_prob_best({'faible': 0.05, 'fort': 0.95})
-        self._runner(today=MONDAY - datetime.timedelta(days=7)).run_weekly()
+        previous = MONDAY - datetime.timedelta(days=7)
+        self._runner(today=previous)._rotation_snapshots(
+            self.experiment, today=previous)
 
 
 class SnapshotFeedTests(RotationMaterializationBase):
@@ -197,7 +221,12 @@ class ExitAndEntryTests(RotationMaterializationBase):
         self.assertTrue(rotate.payload['rotation_launch_name'])
 
     def test_the_consumed_backlog_item_leaves_the_free_queue(self):
-        item = self._backlog_item()
+        # Pour qu'un item soit CONSOMMÉ il faut d'abord qu'il soit EMBARQUÉ : le
+        # pont PUB123 exige un média déjà uploadé au COMPTE et la Page qui publie.
+        # Sans les deux, la rotation retombe sur le créatif LIVE et ne consomme
+        # rien — ce qui est correct, mais n'est pas ce que ce test prouve.
+        self._connect_page()
+        item = self._backlog_item(image_hash='hash-abc')
         self._make_weak_two_weeks()
 
         self._runner().run_weekly()

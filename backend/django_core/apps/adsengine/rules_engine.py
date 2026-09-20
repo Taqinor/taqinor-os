@@ -1146,11 +1146,19 @@ def _act_on_finding(company, policy, template, finding, *, config, client,
     # une action creuse.
     if kind == EngineAction.Kind.ROTATE_CREATIVE:
         try:
+            # L'horloge de la PASSE gouverne la résolution, comme pour tous les
+            # autres lecteurs de date de cette fonction (``decision_evidence``,
+            # fenêtres d'instantanés) et comme sur le chemin « fatigue »
+            # (``evaluate_creative_fatigue``) : la date du nom de la nouvelle ad
+            # est celle de l'évaluation, et la date-au-plus-tôt d'un item de
+            # backlog (PUB-P8/C7) se compare au jour ÉVALUÉ — jamais à l'heure
+            # murale du serveur.
             payload.update(services.resolve_rotation_payload(
                 company,
                 target_type=finding.get('target_type', ''),
                 target_meta_id=target_meta_id,
-                target_object_id=finding.get('target_object_id')))
+                target_object_id=finding.get('target_object_id'),
+                now=now))
         except services.RotationCreativeUnavailable as exc:
             finding['blocked_fr'] = str(exc)
             _emit_alert(company, template_key=template_key, finding=finding,
@@ -1175,6 +1183,20 @@ def _act_on_finding(company, policy, template, finding, *, config, client,
             action = services.propose_action(
                 company, kind=kind, reason_fr=reason, payload=payload,
                 auto=False)
+
+    # PUB-P8/C6 — consommation SYMÉTRIQUE : l'item de backlog RÉELLEMENT embarqué
+    # par la proposition quitte la file libre (``EN_FILE`` → ``PROGRAMME``),
+    # exactement comme sur les chemins « fatigue » (``evaluate_creative_fatigue``)
+    # et « cadencé PUB120 » (``FlightRunner._materialize_rotation``). Sans cela, la
+    # cible SUIVANTE de la MÊME passe (un autre ad set qui déclenche aussi)
+    # ré-embarquait le MÊME créatif. NO-OP pour tout kind dont le payload ne porte
+    # pas de ``backlog_item_id`` (aucune requête émise). La SIMULATION
+    # (``dry_run``, retour anticipé ci-dessus) ne consomme jamais : un « et si »
+    # ne déplace pas un item réel — et un rejet le rendrait
+    # (``services.release_backlog_item``), ce qui n'a de sens que pour une
+    # proposition réelle.
+    if action is not None:
+        services.consume_backlog_item(company, payload)
 
     # Alerte (hors simulation) ; liée à l'action si une a été créée.
     _emit_alert(company, template_key=template_key, finding=finding,

@@ -24,6 +24,7 @@ import httpx
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -75,7 +76,15 @@ class DcoFixtureMixin:
             company=self.company, meta_id=meta_id, name=name, status='PAUSED',
             campaign=campaign)
 
-    def _winner(self, adset, idx, *, results=5, impressions=1000, **creative):
+    def _winner(self, adset, idx, *, results=5, impressions=1000, date=None,
+                **creative):
+        """Ad GAGNANTE mirorée + son instantané de performance.
+
+        ``date`` : le JOUR de l'instantané, à aligner sur l'horloge que verra la
+        moisson (``dco.HARVEST_WINDOW_DAYS`` = 30 j). Par défaut ``TODAY``, ce qui
+        va de pair avec un appel passant ``now=TODAY`` ; un appelant qui tourne sur
+        l'horloge RÉELLE (une requête HTTP, par exemple) doit dater son gagnant
+        sur cette horloge-là, sinon le pool est vide."""
         ad = AdMirror.objects.create(
             company=self.company, meta_id=f'ad-{idx}', name=f'Ad {idx}',
             adset=adset)
@@ -95,7 +104,7 @@ class DcoFixtureMixin:
             ct = ContentType.objects.get_for_model(AdMirror)
             InsightSnapshot.objects.create(
                 company=self.company, content_type=ct, object_id=ad.pk,
-                date=TODAY, spend='30.00', results=results,
+                date=date or TODAY, spend='30.00', results=results,
                 impressions=impressions)
         return ad
 
@@ -418,7 +427,10 @@ class DcoRecombineEndpointTests(DcoFixtureMixin, TestCase):
         self.company = make_company('pub118-api', 'PUB118 API')
         self._page()
         self.source_adset = self._adset('as-src', 'Gagnants')
-        self._winner(self.source_adset, 1)
+        # Une requête HTTP n'a pas d'horloge injectable : la vue propose « pour
+        # aujourd'hui ». Le gagnant est donc daté sur l'horloge RÉELLE, sinon il
+        # tombe hors de la fenêtre de moisson (30 j) et le pool est vide.
+        self._winner(self.source_adset, 1, date=timezone.now().date())
         self.target = self._adset('as-new', 'Nouveau')
         self.manager = make_user(
             self.company, 'pub118-manager',

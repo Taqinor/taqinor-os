@@ -17,7 +17,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.roles.models import Role
 
-from apps.adsengine import tasks
+from apps.adsengine import tasks, tier_router
 from apps.adsengine.models import (
     CreativeAsset, CreativeGenerationBatch, FactEntry, FactTable,
 )
@@ -85,9 +85,18 @@ class OrchestrationTests(TestCase):
         self.assertIn('variants', batch.claim_verdicts)
         self.assertTrue(batch.claim_verdicts['variants'][0]['grounded'])
         self.assertIsNotNone(batch.fact_table_version)
-        # L'asset ancré est né PENDING (jamais auto-validé).
+        # L'asset ancré est né PENDING (jamais auto-validé). PUB125 — le tampon
+        # n'est plus VIDE : le pré-linter policy et le routeur de paliers sont
+        # désormais sur le chemin réel et y écrivent leur verdict de ROUTAGE. La
+        # FRONTIÈRE, elle, tient : le routage décide de la FILE, jamais de la
+        # check-list policy — ``passed`` n'est donc JAMAIS posé par ce chemin, et
+        # l'asset reste non validé jusqu'au jugement HUMAIN.
         asset = CreativeAsset.objects.get(pk=batch.visual_ids[0])
-        self.assertEqual(asset.policy_stamp, {})
+        self.assertNotIn('passed', asset.policy_stamp)
+        self.assertFalse(asset.is_policy_passed)
+        self.assertEqual(asset.policy_stamp['tier'], tier_router.TIER_B)
+        self.assertTrue(asset.policy_stamp['revue_humaine'])
+        self.assertTrue(asset.policy_stamp['policy_lint']['ok'])
 
     def test_task_noop_when_company_missing(self):
         result = tasks.generate_grounded_variants(999999, 'x')

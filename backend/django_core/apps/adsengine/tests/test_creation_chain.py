@@ -449,8 +449,18 @@ class ChaineRotationBacklogTests(ChainBase):
         return FlightRunner(self.plan, clock=lambda: today)
 
     def _make_weak_two_weeks(self):
+        """Amène le bras faible à 2 semaines FAIBLES consécutives (la série
+        avance d'un cran par semaine ÉVALUÉE).
+
+        On évalue la semaine précédente par ``_rotation_snapshots`` — le seul
+        geste dont la série a besoin — et NON par un ``run_weekly`` complet : une
+        boucle entière matérialiserait déjà une ENTRÉE cette semaine-là (2 bras
+        vivants sur ``ADS_PER_ADSET``=3 laissent un slot libre), consommant l'item
+        de backlog une semaine AVANT la rotation que ce test observe."""
         self._log_prob_best({'faible': 0.05, 'fort': 0.95})
-        self._runner(today=MONDAY - datetime.timedelta(days=7)).run_weekly()
+        previous = MONDAY - datetime.timedelta(days=7)
+        self._runner(today=previous)._rotation_snapshots(
+            self.experiment, today=previous)
 
     # ── Maillon 1 : un FAIT publié ──────────────────────────────────────────
     def _publish_facts(self):

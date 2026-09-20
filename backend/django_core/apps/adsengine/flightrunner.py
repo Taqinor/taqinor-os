@@ -405,8 +405,14 @@ class FlightRunner:
             if adset is None:
                 continue
             try:
+                # L'horloge du RUNNER est la date de référence du lancement
+                # (``_launch_phase`` datant déjà son gabarit sur ``self.today()``) :
+                # c'est elle qui borne la moisson du pool gagnant et la
+                # date-au-plus-tôt des items de backlog (PUB-P8/C7), jamais
+                # l'heure murale du serveur.
                 result = services.propose_adset_launch_ads(
-                    self.company, adset=adset, context_fr=context_fr)
+                    self.company, adset=adset, now=self.today(),
+                    context_fr=context_fr)
             except ValueError as exc:
                 # ``AdsetWithoutCreative`` (aucun candidat) et ``DcoModeConflict``
                 # (exclusion mutuelle) portent tous deux leur raison FR.
@@ -621,11 +627,29 @@ class FlightRunner:
             snapshots = self._rotation_snapshots(experiment, today=today)
             if not snapshots:
                 continue
-            queue = backlog_mod.queue_for_campaign(
-                self.company, experiment.campaign, today=today) \
-                if experiment.campaign_id else []
+            # Cette file DÉCIDE des entrées proposées : elle doit donc voir
+            # EXACTEMENT ce que ``services._rotation_backlog_head`` acceptera au
+            # moment du payload (et ce que demande ``propose_adset_launch_ads``).
+            #   * File de la CAMPAGNE, PUIS les items SANS campagne cible : un
+            #     item CIBLÉ n'est jamais détourné vers une autre campagne, mais
+            #     un item sans cible est utilisable partout. Sans ce second
+            #     passage, la décision comptait ZÉRO candidat alors que le
+            #     résolveur en acceptait un — et tout item né de la chaîne
+            #     génération → ``recombine.approve_lot`` (qui ne pose AUCUNE
+            #     campagne cible) restait invisible à la rotation hebdo.
+            #   * PUB-P8/C7 ``ready_only`` : la file COMPLÈTE sert l'écran de
+            #     planification, pas un proposeur. Compter un item daté pour plus
+            #     tard rendait le nombre d'entrées OPTIMISTE (entrée décidée, puis
+            #     repli sur le créatif LIVE au payload).
+            queue = list(backlog_mod.queue_for_campaign(
+                self.company, experiment.campaign, today=today,
+                ready_only=True)
+                if experiment.campaign_id else [])
+            queue += [it for it in backlog_mod.queue_for_campaign(
+                self.company, None, today=today, ready_only=True)
+                if it.target_campaign_id is None]
             decision = rotation.plan_rotation(
-                snapshots, backlog=list(queue), today=today)
+                snapshots, backlog=queue, today=today)
             rotations.append({
                 'experiment_id': experiment.pk,
                 'exits': len(decision.exits),

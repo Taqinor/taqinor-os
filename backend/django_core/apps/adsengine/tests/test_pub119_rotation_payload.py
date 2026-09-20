@@ -377,6 +377,40 @@ class RotationProposalFromRuleTests(TestCase):
             company=self.company, ad=ad, creative_meta_id='cr-9')
         return ad
 
+    def _second_fatigued_adset(self):
+        """Un SECOND ad set qui déclenche dans la MÊME passe, avec son PROPRE
+        créatif LIVE de repli : c'est la cible qui ré-embarquait le créatif du
+        premier avant PUB-P8/C6."""
+        adset = AdSetMirror.objects.create(
+            company=self.company, meta_id='as-10', name='Toit Fès',
+            status='PAUSED')
+        ct = ContentType.objects.get_for_model(AdSetMirror)
+        for i in range(4):
+            InsightSnapshot.objects.create(
+                company=self.company, content_type=ct, object_id=adset.pk,
+                date=TODAY - datetime.timedelta(days=i),
+                spend='10.00', results=1, frequency='4.0')
+        ad = AdMirror.objects.create(
+            company=self.company, meta_id='ad-10', adset=adset,
+            name='20260101_REEL_FACTURE_ROI')
+        AdCreativeMirror.objects.create(
+            company=self.company, ad=ad, creative_meta_id='cr-10')
+        return adset
+
+    def _queued_item(self):
+        """Item EN FILE réellement PONTABLE : média uploadé au COMPTE + Page
+        connectée. Sans les deux, le pont PUB123 le refuse et rien n'est jamais
+        embarqué (donc rien à consommer)."""
+        MetaConnection.objects.create(
+            company=self.company, ad_account_id='act_1', page_id='page-42')
+        asset = CreativeAsset.objects.create(
+            company=self.company, asset_type=CreativeAsset.AssetType.STATIC,
+            policy_stamp={'passed': True}, meta_image_hash='hash-r9',
+            primary_text='Vos factures baissent.')
+        return CreativeBacklogItem.objects.create(
+            company=self.company, asset=asset,
+            status=CreativeBacklogItem.Statut.EN_FILE)
+
     def test_fired_finding_proposes_a_complete_payload(self):
         self._live_creative()
         rules_engine.evaluate_company(self.company, now=TODAY)
@@ -407,6 +441,60 @@ class RotationProposalFromRuleTests(TestCase):
         self.assertEqual(len(findings), 1)
         self.assertIn('Aucun créatif prêt', findings[0]['blocked_fr'])
         self.assertNotIn('action', findings[0])
+
+    # ── PUB-P8/C6 — consommation SYMÉTRIQUE sur le chemin CADENCÉ ────────────
+    def test_the_embarked_backlog_item_leaves_the_free_queue(self):
+        self._live_creative()
+        item = self._queued_item()
+
+        rules_engine.evaluate_company(self.company, now=TODAY)
+
+        action = EngineAction.objects.get(company=self.company)
+        self.assertEqual(action.payload['creative_source'],
+                         services.ROTATION_SOURCE_BACKLOG)
+        self.assertEqual(action.payload['backlog_item_id'], item.pk)
+        item.refresh_from_db()
+        self.assertEqual(item.status, CreativeBacklogItem.Statut.PROGRAMME)
+
+    def test_a_second_fatigued_adset_never_re_embarks_the_same_creative(self):
+        # Le chemin cadencé laissait l'item EN FILE : l'ad set SUIVANT de la même
+        # passe ré-embarquait le MÊME créatif (asymétrie avec les chemins
+        # « fatigue » et PUB120, qui le programmaient bien).
+        self._live_creative()
+        self._second_fatigued_adset()
+        item = self._queued_item()
+
+        rules_engine.evaluate_company(self.company, now=TODAY)
+
+        actions = list(EngineAction.objects.filter(
+            company=self.company,
+            kind=EngineAction.Kind.ROTATE_CREATIVE).order_by('pk'))
+        self.assertEqual(len(actions), 2)
+        embarked = [a for a in actions
+                    if a.payload.get('backlog_item_id') == item.pk]
+        self.assertEqual(len(embarked), 1)  # UN seul, jamais les deux
+        other = [a for a in actions if a.pk != embarked[0].pk][0]
+        self.assertNotIn('backlog_item_id', other.payload)
+        # Le second ad set repart sur SON propre créatif LIVE — jamais celui de
+        # l'autre, et jamais une action creuse.
+        self.assertEqual(other.payload['creative_source'],
+                         services.ROTATION_SOURCE_LIVE_MIRROR)
+        item.refresh_from_db()
+        self.assertEqual(item.status, CreativeBacklogItem.Statut.PROGRAMME)
+
+    def test_simulation_never_consumes_a_real_backlog_item(self):
+        # Un « et si » ne déplace pas un item réel : la file reste intacte.
+        self.policy.dry_run = True
+        self.policy.save(update_fields=['dry_run'])
+        self._live_creative()
+        item = self._queued_item()
+
+        rules_engine.evaluate_company(self.company, now=TODAY)
+
+        action = EngineAction.objects.get(company=self.company)
+        self.assertIn('[Simulation]', action.reason_fr)
+        item.refresh_from_db()
+        self.assertEqual(item.status, CreativeBacklogItem.Statut.EN_FILE)
 
     def test_simulation_without_creative_proposes_nothing(self):
         self.policy.dry_run = True
@@ -534,8 +622,23 @@ class RotationDispatchTests(TestCase):
         return action
 
     def test_hollow_payload_fails_without_any_network_call(self):
+        # Le payload purement DESCRIPTIF d'avant PUB119 : aucune des trois pièces.
         action = self._approved({'template_key': 'frequency_high',
                                  'target_meta_id': 'as-1'})
+        client = Mock()
+        with self.assertRaises(services.ActionPayloadInvalid):
+            services.apply_action(action, client=client)
+        client.create_ad.assert_not_called()
+        action.refresh_from_db()
+        self.assertEqual(action.status, EngineAction.Statut.ECHOUEE)
+        # La validation NOMME le premier champ manquant dans son ordre propre
+        # (ad set → nom → créatif) : le lecteur de l'erreur sait quoi regarder.
+        self.assertIn("l'id de l'ad set", action.error)
+
+    def test_payload_without_a_creative_names_the_creative_and_calls_nothing(self):
+        # Les deux premières pièces présentes : la raison FR nomme alors le
+        # CRÉATIF — la pièce que PUB119 résout à la proposition.
+        action = self._approved({'adset_id': 'as-1', 'name': 'Ad'})
         client = Mock()
         with self.assertRaises(services.ActionPayloadInvalid):
             services.apply_action(action, client=client)

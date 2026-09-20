@@ -24,7 +24,7 @@ from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
 
-from apps.adsengine import generation, tasks
+from apps.adsengine import generation, tasks, tier_router
 from apps.adsengine.models import (
     CreativeAsset, CreativeGenerationBatch, EngineAction, FactEntry, FactTable,
 )
@@ -285,7 +285,14 @@ class ClaimCheckArbitratesTests(TestCase):
         self.assertEqual(result['rejected'], 0)
 
         asset = CreativeAsset.objects.get(company=self.company)
-        self.assertEqual(asset.policy_stamp, {})   # PENDING
+        # PENDING. PUB125 — le tampon porte désormais le verdict de ROUTAGE
+        # (pré-linter policy + palier), écrit sur le chemin réel ; la FRONTIÈRE
+        # tient : ce routage ne pose JAMAIS ``passed`` (la check-list policy reste
+        # un jugement HUMAIN), donc l'asset n'est toujours pas validé.
+        self.assertNotIn('passed', asset.policy_stamp)
+        self.assertEqual(asset.policy_stamp['tier'], tier_router.TIER_B)
+        self.assertTrue(asset.policy_stamp['revue_humaine'])
+        self.assertTrue(asset.policy_stamp['policy_lint']['ok'])
         self.assertFalse(asset.is_policy_passed)
         self.assertTrue(asset.ai_generated)        # PUB126 — lane « gen »
         self.assertEqual(asset.facts_version, 1)

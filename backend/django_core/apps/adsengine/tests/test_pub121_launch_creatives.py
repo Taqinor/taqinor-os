@@ -101,8 +101,12 @@ class ColdStartArbitrationTests(LaunchCreativesBase):
     def test_cold_start_with_a_winning_pool_bootstraps_dco_only(self):
         self._winner_ad()
 
+        # ``now=TODAY`` : les chiffres GAGNANTS de la fixture sont datés de TODAY
+        # et la moisson du pool (``dco.HARVEST_WINDOW_DAYS`` = 30 j) se lit depuis
+        # ce jour-là. Sans horloge injectée, la fenêtre part de l'heure murale et
+        # ne voit AUCUN gagnant — l'ad set n'aurait donc rien à recombiner.
         result = services.propose_adset_launch_ads(
-            self.company, adset=self.adset)
+            self.company, adset=self.adset, now=TODAY)
 
         self.assertEqual(result['mode'], dco.MODE_DCO_BOOTSTRAP)
         # Exclusion mutuelle : UN seul ad pour un ad set DCO.
@@ -179,8 +183,10 @@ class SlotFillingTests(LaunchCreativesBase):
         foreign = self._backlog_item(target_campaign=other_campaign)
         self._winner_ad()
 
+        # ``now=TODAY`` : le gagnant de repli n'est dans la fenêtre de moisson que
+        # depuis le jour où la fixture le date.
         result = services.propose_adset_launch_ads(
-            self.company, adset=self.adset)
+            self.company, adset=self.adset, now=TODAY)
 
         foreign.refresh_from_db()
         self.assertEqual(foreign.status, CreativeBacklogItem.Statut.EN_FILE)
@@ -193,11 +199,12 @@ class SlotFillingTests(LaunchCreativesBase):
         self._signal_on_adset()
         later = self._backlog_item(hook='Plus tard', image_hash='h-late')
         CreativeBacklogItem.objects.filter(pk=later.pk).update(
-            earliest_date=datetime.date.today() + datetime.timedelta(days=30))
+            earliest_date=TODAY + datetime.timedelta(days=30))
         self._winner_ad()
 
+        # Une seule horloge pour la date-au-plus-tôt ET pour la moisson du pool.
         result = services.propose_adset_launch_ads(
-            self.company, adset=self.adset)
+            self.company, adset=self.adset, now=TODAY)
 
         later.refresh_from_db()
         self.assertEqual(later.status, CreativeBacklogItem.Statut.EN_FILE)
@@ -229,8 +236,10 @@ class WinnerFallbackTests(LaunchCreativesBase):
         self._signal_on_adset()
         self._winner_ad(creative_id='cr-win')
 
+        # ``now=TODAY`` : sans elle, la fenêtre de moisson (30 j depuis l'heure
+        # murale) ne voit pas le gagnant daté par la fixture.
         result = services.propose_adset_launch_ads(
-            self.company, adset=self.adset)
+            self.company, adset=self.adset, now=TODAY)
 
         self.assertEqual(len(result['actions']), 1)
         payload = result['actions'][0].payload
