@@ -25,10 +25,44 @@ Lecture seule, réservé Responsable/Admin (pilotage achats), multi-tenant.
 """
 from datetime import date
 
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+
+# NTP2P46 — la forme RÉELLE de `dashboard_p2p()`, jamais `OpenApiTypes.OBJECT`
+# (incident du 03/08/2026, PACT7). Même patron que
+# `apps/ao/calepinage_views.py` : chaque liste imbriquée est un
+# `inline_serializer(..., many=True)` à nom unique.
+KPI_P2P_RESPONSE = inline_serializer('ReportingKpiP2p', {
+    'debut': serializers.CharField(allow_null=True),
+    'fin': serializers.CharField(allow_null=True),
+    'delai_demande_bcf_jours': serializers.FloatField(allow_null=True),
+    'budgets_departement': inline_serializer(
+        'ReportingP2pBudgetDepartement', {
+            'budget_id': serializers.IntegerField(),
+            'departement_id': serializers.IntegerField(),
+            'periodicite': serializers.CharField(),
+            'annee': serializers.IntegerField(),
+            'mois': serializers.IntegerField(),
+            'montant_alloue': serializers.DecimalField(
+                max_digits=14, decimal_places=2),
+            'engage': serializers.DecimalField(
+                max_digits=14, decimal_places=2),
+            'realise': serializers.DecimalField(
+                max_digits=14, decimal_places=2),
+            'consomme_total': serializers.DecimalField(
+                max_digits=14, decimal_places=2),
+            'restant': serializers.DecimalField(
+                max_digits=14, decimal_places=2),
+            'taux_consommation_pct': serializers.FloatField(),
+        }, many=True),
+    'conformite_fournisseur_moyenne': serializers.FloatField(
+        allow_null=True),
+    'taux_conversion_pct': serializers.FloatField(allow_null=True),
+})
 
 
 def _qdate(value):
@@ -84,6 +118,7 @@ def dashboard_p2p(company, *, debut=None, fin=None):
     }
 
 
+@extend_schema(responses=KPI_P2P_RESPONSE)
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def kpi_p2p(request):

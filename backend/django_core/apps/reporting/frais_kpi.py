@@ -18,10 +18,42 @@ Lecture seule, réservé Responsable/Admin (pilotage RH/dépenses), multi-tenant
 """
 from datetime import date
 
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+
+# NTP2P47 — la forme RÉELLE de `dashboard_frais_kpi()`, jamais
+# `OpenApiTypes.OBJECT` (incident du 03/08/2026, PACT7). Même patron que
+# `apps/ao/calepinage_views.py` : chaque liste imbriquée est un
+# `inline_serializer(..., many=True)` à nom unique.
+KPI_FRAIS_RESPONSE = inline_serializer('ReportingKpiFrais', {
+    'debut': serializers.DateField(allow_null=True),
+    'fin': serializers.DateField(allow_null=True),
+    'total_rembourse_par_categorie': inline_serializer(
+        'ReportingFraisCategorie', {
+            'categorie': serializers.CharField(),
+            'categorie_display': serializers.CharField(),
+            'montant_total': serializers.DecimalField(
+                max_digits=14, decimal_places=2),
+        }, many=True),
+    'top_employes': inline_serializer('ReportingFraisTopEmploye', {
+        'employe_id': serializers.IntegerField(),
+        'employe_nom': serializers.CharField(),
+        'montant_total': serializers.DecimalField(
+            max_digits=14, decimal_places=2),
+    }, many=True),
+    'delai_moyen_depense_remboursement_jours': serializers.FloatField(
+        allow_null=True),
+    'total_per_diem_par_destination': inline_serializer(
+        'ReportingFraisPerDiemDestination', {
+            'destination': serializers.CharField(allow_blank=True),
+            'montant_total': serializers.DecimalField(
+                max_digits=14, decimal_places=2),
+        }, many=True),
+})
 
 
 def _qdate(value):
@@ -57,6 +89,7 @@ def dashboard_frais_kpi(company, *, debut=None, fin=None):
     }
 
 
+@extend_schema(responses=KPI_FRAIS_RESPONSE)
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def kpi_frais(request):

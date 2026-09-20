@@ -37,10 +37,11 @@ MOIS_ACTIFS = (11, 12)
 
 
 def _societes_actives():
-    """Toutes les sociétés actives. Vide si erreur (best-effort)."""
+    """Toutes les sociétés actives (source unique SCA19/AUD415 — jamais un
+    filtre recopié à la main). Vide si erreur (best-effort)."""
     try:
-        from authentication.models import Company
-        return list(Company.objects.filter(actif=True))
+        from authentication.selectors import active_companies
+        return list(active_companies())
     except Exception:  # pragma: no cover - défensif
         logger.warning(
             'rappel_fetes_mobiles: chargement des sociétés impossible',
