@@ -34,6 +34,8 @@ import json
 from datetime import timedelta
 
 from django.utils.dateparse import parse_date, parse_datetime
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DrfValidationError
@@ -141,6 +143,15 @@ class ActionIdempotenteMixin:
             # ne fait jamais échouer une action qui a déjà réussi.
             pass
         return reponse
+
+
+#: YAPIC6 — les identifiants de SOUS-RESSOURCE (une variante, une version)
+#: ne sont pas des champs du modèle pivot : sans cette déclaration,
+#: drf-spectacular ne sait pas les typer et publie un paramètre muet.
+def _param_chemin(nom, description):
+    return OpenApiParameter(name=nom, type=OpenApiTypes.INT,
+                            location=OpenApiParameter.PATH,
+                            description=description)
 
 
 class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
@@ -328,6 +339,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         return Response(CalepinageVarianteSerializer(variante).data,
                         status=status.HTTP_201_CREATED)
 
+    @extend_schema(parameters=[_param_chemin(
+        'variante_id', "L'identifiant de la variante de ce calepinage.")])
     @action(detail=True, methods=['get', 'patch', 'delete'],
             url_path=r'variantes/(?P<variante_id>[^/.]+)',
             permission_classes=[PeutLireOuEcrireCalepinage])
@@ -360,6 +373,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(CalepinageVarianteSerializer(variante).data)
 
+    @extend_schema(parameters=[_param_chemin(
+        'variante_id', "L'identifiant de la variante à retenir.")])
     @action(detail=True, methods=['post'],
             url_path=r'variantes/(?P<variante_id>[^/.]+)/retenir',
             permission_classes=[PeutGererCalepinage])
@@ -409,6 +424,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
             for version in selectors.versions(calepinage)
         ])
 
+    @extend_schema(parameters=[_param_chemin(
+        'version_id', "L'identifiant de la version à rejouer.")])
     @action(detail=True, methods=['post'],
             url_path=r'versions/(?P<version_id>[^/.]+)/restaurer',
             permission_classes=[PeutGererCalepinage])

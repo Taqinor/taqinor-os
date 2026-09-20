@@ -17,8 +17,8 @@ Ce qui est prouvé ici :
 Run :
     python manage.py test apps.calepinage.tests.test_variantes -v2
 """
+import ast
 import pathlib
-import re
 import threading
 
 from django.core.exceptions import ValidationError
@@ -35,12 +35,53 @@ from authentication.models import Company
 
 RACINE_APP = pathlib.Path(__file__).resolve().parents[1]
 
-#: Une écriture du champ : ``retenue=...`` ou ``.retenue = ...``.
-ECRITURE_RETENUE = re.compile(r'(\bretenue\s*=(?!=)|\.retenue\s*=(?!=))')
+#: Les appels de queryset qui LISENT : un ``retenue=`` posé là est un critère
+#: de recherche, jamais une écriture. Tout AUTRE appel portant ``retenue=`` en
+#: mot-clé (``create``, ``update``, ``update_or_create``…) écrit le champ.
+LECTURES_QUERYSET = frozenset({
+    'filter', 'exclude', 'get', 'count', 'exists', 'annotate', 'aggregate',
+    'values', 'values_list', 'order_by', 'distinct', 'first', 'last',
+})
 
 #: Les seuls fichiers autorisés à écrire ``retenue`` : le chemin d'écriture
 #: unique, et la déclaration du champ dans le modèle.
 FICHIERS_AUTORISES = {'services/variantes.py', 'models.py'}
+
+
+def _ecritures_retenue(source):
+    """Les lignes qui ÉCRIVENT ``retenue``, lues en AST — jamais en regex.
+
+    Une expression régulière sur « retenue suivi de = » ne distingue pas une
+    ÉCRITURE d'une LECTURE : elle rougissait sur ``.filter(retenue=True)``
+    (un critère de recherche) et sur la variable locale homonyme
+    ``retenue = next(...)`` (qui ne touche aucun champ), tout en ratant une
+    écriture répartie sur deux lignes. L'AST tranche exactement :
+
+    * affectation d'ATTRIBUT (``variante.retenue = True``) — une écriture ;
+    * mot-clé ``retenue=`` d'un appel qui n'est PAS une lecture de queryset
+      (``create``, ``update``, ``update_or_create``…) — une écriture, même
+      écrite sur plusieurs lignes ;
+    * tout le reste (filtres, variables locales homonymes) — pas une écriture.
+    """
+    lignes = set()
+    for noeud in ast.walk(ast.parse(source)):
+        cibles = ()
+        if isinstance(noeud, ast.Assign):
+            cibles = noeud.targets
+        elif isinstance(noeud, (ast.AnnAssign, ast.AugAssign)):
+            cibles = (noeud.target,)
+        for cible in cibles:
+            if isinstance(cible, ast.Attribute) and cible.attr == 'retenue':
+                lignes.add(cible.lineno)
+        if isinstance(noeud, ast.Call):
+            appele = (noeud.func.attr
+                      if isinstance(noeud.func, ast.Attribute) else '')
+            if appele in LECTURES_QUERYSET:
+                continue
+            for mot in noeud.keywords:
+                if mot.arg == 'retenue':
+                    lignes.add(mot.value.lineno)
+    return sorted(lignes)
 
 
 class BaseVariantes(TestCase):
@@ -144,10 +185,9 @@ class GardeDeSurfaceTest(SimpleTestCase):
                 continue
             if relatif.startswith('tests/') or relatif.startswith('migrations/'):
                 continue
-            for numero, ligne in enumerate(
-                    fichier.read_text(encoding='utf-8').splitlines(), 1):
-                if ECRITURE_RETENUE.search(ligne):
-                    coupables.append(f'{relatif}:{numero}')
+            for numero in _ecritures_retenue(
+                    fichier.read_text(encoding='utf-8')):
+                coupables.append(f'{relatif}:{numero}')
         self.assertEqual(
             coupables, [],
             "Écriture directe du champ « retenue » hors du chemin unique "

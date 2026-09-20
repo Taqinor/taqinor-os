@@ -158,9 +158,15 @@ class BalayageIsolationTest(BaseApiCalepinage):
         }
         chemin = reste.lstrip('^').replace('$', '')
         for nom, valeur in valeurs.items():
+            # ORDRE CRUCIAL : la forme REGEX du routeur DRF
+            # (``(?P<pk>[^/.]+)``) contient ``<pk>`` comme sous-chaîne. La
+            # remplacer en dernier laissait ``<pk>`` être mangé d'abord, ce
+            # qui produisait le segment mort ``(?P7[^/.]+)`` — une URL qui
+            # part en 301 au lieu du 404/403 que ce balayage exige, sans que
+            # les deux gardes ci-dessous ne le voient (``(?P<`` avait disparu).
+            chemin = chemin.replace(f'(?P<{nom}>[^/.]+)', str(valeur))
             chemin = chemin.replace(f'<int:{nom}>', str(valeur))
             chemin = chemin.replace(f'<{nom}>', str(valeur))
-            chemin = chemin.replace(f'(?P<{nom}>[^/.]+)', str(valeur))
         self.assertNotIn('(?P<', chemin,
                          f'paramètre non couvert par le balayage : {reste}')
         self.assertNotIn('<', chemin,

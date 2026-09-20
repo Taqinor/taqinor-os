@@ -88,6 +88,12 @@ ON_DEMAND_ALLOWLIST = {
     # demande, ``visibilite='directeur'`` (exclu de tout manifeste de dépôt),
     # distribué par URL signée courte. Jamais périodique.
     'ao.produire_rentabilite_xlsx',
+    # CAL23 — calcul de calepinage HORS budget synchrone : soumis à la demande
+    # par ``core.jobs.submit(KIND_CALEPINAGE, …)`` depuis
+    # ``apps/calepinage/views/moteur.py`` quand le coût estimé dépasse le
+    # budget. Un job n'existe que si quelqu'un a envoyé un relevé : périodiser
+    # recalculerait des toitures que personne n'a demandées.
+    'calepinage.calculer',
     # NTAI17 — traitement IA d'une pièce GED (classification + extraction) :
     # déclenché À LA DEMANDE au dépôt du document (``.delay()`` depuis le
     # receiver ``ai_governance.receivers``, après commit), jamais périodique —

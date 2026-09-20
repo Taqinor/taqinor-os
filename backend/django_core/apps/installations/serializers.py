@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -582,6 +583,9 @@ class InstallationSerializer(serializers.ModelSerializer):
                 worst = etat
         return worst
 
+    # YAPIC6 — nature DÉCLARÉE : le bloc « calepinage retenu » est un objet,
+    # ou `null` quand le chantier n'a ni devis ni variante retenue.
+    @extend_schema_field(serializers.DictField(allow_null=True))
     def get_calepinage(self, obj):
         # CAL245 — import fonction-local (frontière inter-apps) : le
         # sélecteur, jamais apps.calepinage.models.

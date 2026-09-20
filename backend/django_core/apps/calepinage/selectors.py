@@ -202,9 +202,15 @@ def _ligne_comparaison(variante, reference, nombre_de_lignes):
         'production': dict(
             {cle: (production.get(cle) if simulee else None)
              for cle in CLES_PRODUCTION},
-            # Une liste vide, jamais ``None`` : « aucun poste de perte
-            # dominant » se lit, « pas de liste » ne se lit pas.
-            pertes_dominantes=list(production.get('pertes_dominantes') or [])),
+            # Variante SIMULÉE : une liste vide, jamais ``None`` — « aucun
+            # poste de perte dominant » se lit, « pas de liste » ne se lit
+            # pas. Variante NON simulée : ``None`` comme toutes les autres
+            # grandeurs de production — une liste vide y ferait lire « nous
+            # avons cherché et n'avons rien trouvé » là où rien n'a été
+            # calculé (discipline du null, jamais le zéro).
+            pertes_dominantes=(
+                list(production.get('pertes_dominantes') or [])
+                if simulee else None)),
         'ecart_modules': _ecart(mesures.get('total_modules'),
                                 reference.get('total_modules'), comparable),
         'ecart_kwc': _ecart(mesures.get('kwc'), reference.get('kwc'),

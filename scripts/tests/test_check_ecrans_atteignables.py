@@ -724,7 +724,9 @@ class DepotReelTests(unittest.TestCase):
         # 52 -> 53 : VTA8 (12/09/2026) — l'app visites gagne son module.config.
         # 53 -> 54 : batch 2 drain NT (12/09/2026) — l'app juridique gagne son
         # module.config (/juridique/*).
-        self.assertEqual(stats["configs"], 54)
+        # 54 -> 55 : lot CAL — le module « calepinage » gagne le sien
+        # (features/calepinage/module.config.jsx, segment /calepinage/*).
+        self.assertEqual(stats["configs"], 55)
 
     def test_parametres_achats_est_desormais_navigable(self):
         """PACT150 : cas vivant du 07/08/2026 — `AchatsParametresPage` (182

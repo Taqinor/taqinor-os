@@ -282,8 +282,9 @@ class ManagementEndpointTests(TestCase):
         # (prévisions de demande, politiques de stock) — 7 au total.
         # NTCON31 a ajouté 4 ressources BTP/EPC (montées de longue date mais
         # jamais documentées ici jusqu'à NTUX33 — comblé au passage) ; NTUX33
-        # ajoute 2 ressources UX (vues sauvegardées, favoris) — 13 au total.
-        self.assertEqual(len(data['endpoints']), 13)
+        # ajoute 2 ressources UX (vues sauvegardées, favoris) ; CAL214 ajoute
+        # /calepinages/ (les conceptions de toiture) — 14 au total.
+        self.assertEqual(len(data['endpoints']), 14)
         self.assertIn('authentification', data)
         self.assertIn('Api-Key', data['authentification']['entete'])
         self.assertIn('scopes', data)

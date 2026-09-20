@@ -144,8 +144,13 @@ class LePostAlimenteLeModule(BaseCal32):
 
 class LeRefus409EstInchange(BaseCal32):
     def test_le_motif_est_celui_du_selecteur_mot_pour_mot(self):
-        self.ao.statut = AppelOffre.Statut.DEPOSE
-        self.ao.save(update_fields=['statut'])
+        # AOF13 — le statut d'un AO ne s'écrit pas par `save()` (le garde
+        # de `AppelOffre.save` l'exige) : on FIGE la ligne par
+        # `queryset.update()`, l'échappatoire documentée du garde, comme
+        # le fait déjà `test_aud605_resultat_et_creer_devis._forcer_statut`.
+        AppelOffre.objects.filter(pk=self.ao.pk).update(
+            statut=AppelOffre.Statut.DEPOSE)
+        self.ao.refresh_from_db()
         attendu = selectors.raison_conception_figee(self.ao)
 
         reponse = self.api.post(self.url, LAYOUT, format='json')
@@ -154,8 +159,13 @@ class LeRefus409EstInchange(BaseCal32):
         self.assertEqual(reponse.data['detail'], attendu)
 
     def test_rien_n_est_ecrit_ni_cote_affaire_ni_cote_module(self):
-        self.ao.statut = AppelOffre.Statut.DEPOSE
-        self.ao.save(update_fields=['statut'])
+        # AOF13 — le statut d'un AO ne s'écrit pas par `save()` (le garde
+        # de `AppelOffre.save` l'exige) : on FIGE la ligne par
+        # `queryset.update()`, l'échappatoire documentée du garde, comme
+        # le fait déjà `test_aud605_resultat_et_creer_devis._forcer_statut`.
+        AppelOffre.objects.filter(pk=self.ao.pk).update(
+            statut=AppelOffre.Statut.DEPOSE)
+        self.ao.refresh_from_db()
 
         self.api.post(self.url, LAYOUT, format='json')
 
@@ -166,8 +176,13 @@ class LeRefus409EstInchange(BaseCal32):
 
     def test_le_get_reste_ouvert_sur_une_affaire_figee(self):
         """Lecture seule = LECTURE autorisée : seule l'écriture est fermée."""
-        self.ao.statut = AppelOffre.Statut.DEPOSE
-        self.ao.save(update_fields=['statut'])
+        # AOF13 — le statut d'un AO ne s'écrit pas par `save()` (le garde
+        # de `AppelOffre.save` l'exige) : on FIGE la ligne par
+        # `queryset.update()`, l'échappatoire documentée du garde, comme
+        # le fait déjà `test_aud605_resultat_et_creer_devis._forcer_statut`.
+        AppelOffre.objects.filter(pk=self.ao.pk).update(
+            statut=AppelOffre.Statut.DEPOSE)
+        self.ao.refresh_from_db()
 
         self.assertEqual(self.api.get(self.url).status_code, 200)
 

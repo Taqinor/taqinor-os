@@ -50,7 +50,11 @@ class MiroirLayoutTest(BaseApiCalepinage):
 
         config = registre.get_app_config('calepinage')
         self.assertTrue(hasattr(config, 'ready'))
-        recepteurs = [r for _, r in events.layout_finalise.receivers]
+        # Django ≥ 5.0 range des triplets ``(cle, recepteur, is_async)`` dans
+        # ``Signal.receivers`` (dispatcher.py) : dépaqueter en paire lève
+        # ValueError. On prend le récepteur par son RANG, seul élément dont
+        # la position est stable d'une version à l'autre.
+        recepteurs = [entree[1] for entree in events.layout_finalise.receivers]
         self.assertTrue(recepteurs, "aucun abonné à layout_finalise")
 
     def test_evenement_alimente_le_calepinage(self):
