@@ -12,6 +12,9 @@ import {
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
+// CAL40 — le calepinage qui pilote ce devis, en LECTURE SEULE (badge « à jour »
+// / « à rejouer » calculé SERVEUR par CAL28, jamais recalculé à l'écran).
+import BlocCalepinageDevis from '../../features/ventes/BlocCalepinageDevis'
 import cpqApi from '../../api/cpqApi'
 import { resilientMutation } from '../../lib/resilientMutation'
 import { useStaleGuard } from '../../hooks/useStaleGuard'
@@ -863,6 +866,9 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             </div>
           )}
 
+          {/* CAL40 — le calepinage qui PILOTE ce devis (lien inverse CAL28).
+              Silencieux quand le devis n'en a aucun : jamais un bloc vide. */}
+          {isEdit && devis?.id && <BlocCalepinageDevis devisId={devis.id} />}
           {isEdit && devis?.id && <ConfigurationBadge devisId={devis.id} />}
           {isEdit && devis?.id && <EscaladeApprobationPanel devisId={devis.id} />}
           {isEdit && devis?.id && <ApprobationPanel devisId={devis.id} />}
