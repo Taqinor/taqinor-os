@@ -546,6 +546,16 @@ const adsengineApi = {
     postNote: (entityType, entityId, body) =>
       api.post('/adsengine/chatter/', { entity_type: entityType, entity_id: entityId, body }),
   },
+
+  // ── PUB128 — Tests terrain (préflight d'autonomie, 7 tests FT1..FT7) ──
+  // Lecture-seule des tests + de leurs constantes en attente ; consigner un
+  // résultat mesuré (`recordResult`) ou proposer des structures de test — qui
+  // naissent PAUSED et attendent une approbation humaine (`proposeStructures`).
+  fieldTests: {
+    list: () => api.get('/adsengine/tests-terrain/'),
+    recordResult: (ft, payload) => api.post(`/adsengine/tests-terrain/${ft}/resultat/`, payload),
+    proposeStructures: (ft, payload) => api.post(`/adsengine/tests-terrain/${ft}/structures/`, payload),
+  },
 }
 
 export default adsengineApi

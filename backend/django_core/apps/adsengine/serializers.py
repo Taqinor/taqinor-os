@@ -13,7 +13,7 @@ from .models import (
     CreativeBacklogItem,
     CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
     EngineAlert, Experiment, ExperimentArm, FactEntry, FactTable,
-    FlightPhase, FlightPlan, ProposalTemplate,
+    FieldTestResult, FlightPhase, FlightPlan, ProposalTemplate,
     GuardrailConfig, InsightBreakdown, InsightSnapshot,
     InstagramCommentMirror, InstagramMediaMirror, MetaConnection,
     PacingState, ReconciliationSnapshot, RulePolicy,
@@ -1041,3 +1041,31 @@ class BrandKitSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+
+class FieldTestResultSerializer(serializers.ModelSerializer):
+    """PUB128 — Résultat MESURÉ d'un micro-test terrain (``FT1``..``FT7``).
+
+    ``company`` est posée côté serveur (jamais acceptée du corps de requête) ;
+    l'écriture passe par ``field_tests.record_result`` (validation FR + unicité
+    par micro-test), ce sérialiseur ne fait que VALIDER l'entrée et RENDRE la
+    ligne."""
+
+    # Date de mesure OPTIONNELLE à l'entrée : ``record_result`` retombe sur le
+    # jour courant — on ne refuse pas une mesure réelle pour une date omise.
+    measured_on = serializers.DateField(required=False)
+
+    class Meta:
+        model = FieldTestResult
+        fields = [
+            'id', 'ft', 'measured_value', 'evidence', 'measured_on',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_measured_value(self, value):
+        if not value or not str(value).strip():
+            raise serializers.ValidationError(
+                "La valeur mesurée est obligatoire : une porte de préflight ne "
+                "se ferme jamais sur une mesure vide.")
+        return str(value).strip()

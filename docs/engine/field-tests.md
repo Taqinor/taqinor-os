@@ -27,7 +27,34 @@ constante porte `source='research'` (borne documentaire non vérifiée). Une foi
 fait, on met à jour **la valeur + `source='field_test'` dans cette table** — jamais un
 littéral en dur ailleurs. Le reste du moteur lit `field_tests.value(<clé>)`.
 
-`field_tests.pending_keys()` liste à tout instant les inconnues encore ouvertes.
+`field_tests.pending_keys(company)` liste à tout instant les inconnues encore ouvertes.
+
+### PUB128 — la console suffit désormais à fermer la porte
+
+Avant PUB128, seul un **edit de code** pouvait basculer une inconnue : la porte de
+préflight `field_tests` (`preflight.gates`) restait donc rouge pour toujours en pratique.
+Deux choses ont changé, **sans toucher une seule valeur en dur** :
+
+| Quoi | Où |
+|------|-----|
+| Écran **« Tests terrain »** (protocole, plafond affiché, saisie du résultat) | `/publicite/tests-terrain` |
+| Résultat mesuré **persisté par société** (valeur, preuve, date) | modèle `FieldTestResult` |
+| Lecture **DB d'abord**, constantes en repli | `field_tests.pending_keys(company)` |
+| Protocole servi à l'écran (condensé fidèle de CE document) | `field_tests.PROTOCOLS` |
+| Structures de test proposées (propose→approve, **PAUSED**) | `field_tests.propose_micro_test_structures` |
+
+Un `FieldTestResult` enregistré pour `FT<n>` **tranche ce micro-test**, donc toutes les
+constantes qu'il résout : enregistrer les 7 résultats fait passer la porte au **vert**.
+Une ligne par `(société, micro-test)` — ré-enregistrer **met à jour**, jamais deux verdicts
+concurrents.
+
+**Les RUNS réels restent une décision du fondateur** (micro-budgets autorisés, ≤ 30 MAD/j
+par test) : l'écran propose les structures, l'approbation humaine reste requise, la
+création naît PAUSED et le unpause reste manuel.
+
+> Le protocole de chaque test existe donc en DEUX endroits volontairement : ce document
+> (référence, avec ses bornes de recherche) et `field_tests.PROTOCOLS` (ce que l'écran
+> sert — un écran n'a pas à parser du markdown). Modifier un protocole = éditer les deux.
 
 ---
 
@@ -122,9 +149,13 @@ réel ; consigner s'ils réussissent au palier courant.
 
 ## Après un test
 
-1. Mettre à jour la (les) constante(s) dans `apps/adsengine/field_tests.py` : nouvelle
-   `value` + `source='field_test'`.
-2. Vérifier que `field_tests.is_field_tested(<clé>)` est vrai et que la clé sort de
-   `pending_keys()`.
-3. Ne **jamais** dupliquer la valeur en dur dans un autre module — les consommateurs lisent
+1. **Saisir le résultat dans l'écran « Tests terrain »** (`/publicite/tests-terrain`) :
+   valeur mesurée + preuve + date. C'est ce qui fait sortir le test de
+   `pending_keys(company)` et ferme la porte de préflight — aucun déploiement requis.
+2. Mettre à jour la (les) constante(s) dans `apps/adsengine/field_tests.py` : nouvelle
+   `value` + `source='field_test'`. C'est cette table que LIT le moteur : sans cette
+   étape, la porte est verte mais le moteur continue d'utiliser la borne documentaire.
+3. Vérifier que `field_tests.is_field_tested(<clé>)` est vrai et que la clé sort de
+   `pending_keys(company)`.
+4. Ne **jamais** dupliquer la valeur en dur dans un autre module — les consommateurs lisent
    `field_tests.value(<clé>)`.

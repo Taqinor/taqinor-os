@@ -42,7 +42,7 @@ from .serializers import (
     CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
     CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
     EngineAlertSerializer, ExperimentArmSerializer, ExperimentSerializer,
-    FactEntrySerializer, FactTableSerializer,
+    FactEntrySerializer, FactTableSerializer, FieldTestResultSerializer,
     FlightPhaseSerializer, FlightPlanSerializer, GuardrailConfigSerializer,
     InstagramCommentMirrorSerializer, InstagramMediaMirrorSerializer,
     MetaConnectionSerializer, ProposalTemplateSerializer,
@@ -4059,3 +4059,186 @@ class SignalCohortView(APIView):
                                      else int(maturation)),
             })
         return Response(rows)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PUB128 — Écran « Tests terrain » : les 7 inconnues, leur protocole, la saisie
+# ═════════════════════════════════════════════════════════════════════════════
+# La porte de préflight ``field_tests`` restait rouge tant que les 7 inconnues
+# n'étaient pas tranchées — et seul un edit de CODE pouvait les basculer. Ces
+# vues exposent le protocole (source : ``field_tests.PROTOCOLS``, d'où le runbook
+# ``docs/engine/field-tests.md`` est rédigé), le plafond de budget des
+# micro-tests, la proposition des structures de test (circuit propose→approve
+# NORMAL, naissance PAUSED) et la saisie du résultat mesuré.
+def _field_test_rows(company):
+    """Les 7 micro-tests avec leur protocole, leur statut et leur résultat."""
+    from . import field_tests as ft_mod
+    from .models import FieldTestResult
+
+    results = {r.ft: r for r in FieldTestResult.objects.filter(
+        company=company)}
+    pending = ft_mod.pending_keys(company)
+    cap = ft_mod.micro_test_budget_cap_mad()
+    rows = []
+    for ft in ft_mod.FIELD_TESTS:
+        protocol = ft_mod.protocol_for(ft) or {}
+        result = results.get(ft)
+        rows.append({
+            'ft': ft,
+            'label_fr': protocol.get('label_fr', ft),
+            'question_fr': protocol.get('question_fr', ''),
+            'protocole_fr': list(protocol.get('protocol_fr') or []),
+            'mesure_fr': protocol.get('measure_fr', ''),
+            'plafond_mad': cap,
+            'tranche': result is not None,
+            'valeur_mesuree': (result.measured_value if result else ''),
+            'preuve': (result.evidence if result else ''),
+            'mesure_le': (result.measured_on.isoformat() if result else ''),
+            'constantes': [
+                {
+                    'cle': key,
+                    'label_fr': ft_mod.CONSTANTS[key]['label_fr'],
+                    'valeur': ft_mod.CONSTANTS[key]['value'],
+                    'unite': ft_mod.CONSTANTS[key]['unit'],
+                    'source': ft_mod.CONSTANTS[key]['source'],
+                    'consumer': ft_mod.CONSTANTS[key]['consumer'],
+                    'tranche': key not in pending,
+                }
+                for key in ft_mod.constants_for(ft)
+            ],
+        })
+    return rows, pending, cap
+
+
+class FieldTestListView(APIView):
+    """PUB128 — Les 7 micro-tests terrain : protocole, plafond de budget, statut.
+
+    Lecture ``adsengine_view`` ; company-scopée ; aucun effet de bord. Le
+    protocole vient de ``field_tests.PROTOCOLS`` (source unique dont le runbook
+    ``docs/engine/field-tests.md`` est tiré) — jamais du texte d'écran."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    @extend_schema(responses=inline_serializer(
+        name='AdsengineFieldTestList',
+        fields={
+            'plafond_mad': drf_serializers.IntegerField(),
+            'runbook': drf_serializers.CharField(),
+            'toutes_tranchees': drf_serializers.BooleanField(),
+            'constantes_en_attente': drf_serializers.ListField(
+                child=drf_serializers.CharField()),
+            'tests': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+        },
+    ))
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        rows, pending, cap = _field_test_rows(company)
+        return Response({
+            'plafond_mad': cap,
+            'runbook': 'docs/engine/field-tests.md',
+            'toutes_tranchees': not pending,
+            'constantes_en_attente': list(pending),
+            'tests': rows,
+        })
+
+
+class FieldTestResultView(APIView):
+    """PUB128 — Saisie du RÉSULTAT mesuré d'un micro-test terrain.
+
+    Écriture ``adsengine_manage`` ; ``company`` posée côté serveur. Enregistrer
+    les 7 résultats fait passer la porte de préflight ``field_tests`` au vert
+    (aucune valeur en dur n'est modifiée ailleurs : la DB est simplement lue en
+    premier par ``field_tests.pending_keys``)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    @extend_schema(
+        request=FieldTestResultSerializer,
+        responses=inline_serializer(
+            name='AdsengineFieldTestResult',
+            fields={
+                'ft': drf_serializers.CharField(),
+                'tranche': drf_serializers.BooleanField(),
+                'valeur_mesuree': drf_serializers.CharField(),
+                'preuve': drf_serializers.CharField(allow_blank=True),
+                'mesure_le': drf_serializers.CharField(),
+                'toutes_tranchees': drf_serializers.BooleanField(),
+                'constantes_en_attente': drf_serializers.ListField(
+                    child=drf_serializers.CharField()),
+            },
+        ))
+    def post(self, request, ft):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        from . import field_tests as ft_mod
+
+        payload = dict(request.data or {})
+        payload['ft'] = ft
+        serializer = FieldTestResultSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            result = ft_mod.record_result(
+                company, ft,
+                measured_value=data['measured_value'],
+                evidence=data.get('evidence', ''),
+                measured_on=data.get('measured_on'),
+                user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        pending = ft_mod.pending_keys(company)
+        return Response({
+            'ft': result.ft,
+            'tranche': True,
+            'valeur_mesuree': result.measured_value,
+            'preuve': result.evidence,
+            'mesure_le': result.measured_on.isoformat(),
+            'toutes_tranchees': not pending,
+            'constantes_en_attente': list(pending),
+        })
+
+
+class FieldTestStructuresView(APIView):
+    """PUB128 — PROPOSE les structures d'un micro-test terrain.
+
+    Écriture ``adsengine_manage``. Circuit propose→approve NORMAL : des
+    ``EngineAction`` PROPOSÉES (approbation humaine requise), naissance PAUSED à
+    l'application, budget quotidien plafonné à
+    ``field_tests.MICRO_TEST_MAX_DAILY_BUDGET_MAD``. Les RUNS réels restent une
+    décision du fondateur — cette vue ne dépense rien."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    @extend_schema(request=None, responses=inline_serializer(
+        name='AdsengineFieldTestStructures',
+        fields={
+            'ft': drf_serializers.CharField(),
+            'plafond_mad': drf_serializers.IntegerField(),
+            'actions': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+        },
+    ))
+    def post(self, request, ft):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        from . import field_tests as ft_mod
+
+        try:
+            actions = ft_mod.propose_micro_test_structures(
+                company, ft, city=str(request.data.get('city') or '').strip(),
+                proposed_by=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response({
+            'ft': str(ft).upper(),
+            'plafond_mad': ft_mod.micro_test_budget_cap_mad(),
+            'actions': [
+                {'id': a.pk, 'kind': a.kind, 'reason_fr': a.reason_fr}
+                for a in actions
+            ],
+        })

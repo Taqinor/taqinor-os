@@ -36,7 +36,8 @@ from .views import (
     ExplorationLedgerView,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
     GroundedGenerationView,
-    ExperimentViewSet, FactoryLaneRoiView, FlightPhaseViewSet,
+    ExperimentViewSet, FactoryLaneRoiView, FieldTestListView,
+    FieldTestResultView, FieldTestStructuresView, FlightPhaseViewSet,
     FlightPlanViewSet,
     GuardrailConfigViewSet, GuardrailSingletonView,
     InstagramCommentDeleteView, InstagramCommentHideView,
@@ -328,5 +329,15 @@ urlpatterns = [
     path('audiences/delivery-estimate/',
          AudienceDeliveryEstimateView.as_view(),
          name='adsengine-audiences-delivery-estimate'),
+    # PUB128 — écran « Tests terrain » : les 7 inconnues (ADSENG37) avec leur
+    # protocole, le plafond de budget des micro-tests, la proposition des
+    # structures (propose→approve, PAUSED) et la saisie du résultat mesuré.
+    path('tests-terrain/', FieldTestListView.as_view(),
+         name='adsengine-tests-terrain'),
+    path('tests-terrain/<str:ft>/resultat/', FieldTestResultView.as_view(),
+         name='adsengine-tests-terrain-resultat'),
+    path('tests-terrain/<str:ft>/structures/',
+         FieldTestStructuresView.as_view(),
+         name='adsengine-tests-terrain-structures'),
     path('', include(router.urls)),
 ]
