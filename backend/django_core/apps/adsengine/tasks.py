@@ -1705,6 +1705,11 @@ def _run_grounded_generation(company, seed_brief, *, components=None,
             'seed_brief': (seed_brief or '').strip()[:200],
             'variants': result.get('variants', []),
             'rejected': result.get('rejected', []),
+            # PUB124 — quel backend a produit ce lot (modèle + variable de clé
+            # utilisée, JAMAIS la clé) : un lot douteux doit être imputable à
+            # son modèle. ``enabled=False`` quand un générateur a été INJECTÉ
+            # (tests / simulation) plutôt que résolu par clé.
+            'backend': generation.backend_status(),
         })
     logger.info(
         'adsengine._run_grounded_generation: lot %s, %s asset(s) ancré(s), '
@@ -1719,10 +1724,11 @@ def generate_grounded_variants(company_id, seed_brief, components=None,
                                max_variants=3):
     """PUB16 — Tâche async : câble le pipeline de génération IA ANCRÉE (AGEN2 :
     ``generation→claim_check→groundedness→generation_audit``) resté sans point
-    d'entrée production. Key-gated : sans ``ADSENGINE_GEN_API_KEY`` (et sans
-    générateur), NO-OP propre (``enabled=False``, aucun lot, zéro crash) ; sinon
-    crée un ``CreativeGenerationBatch`` EN_ATTENTE de variantes ancrées FactTable
-    + audit ``claim_verdicts`` persisté. NO-OP propre si société introuvable."""
+    d'entrée production. Key-gated : sans ``ADSENGINE_GEN_API_KEY``, sans son
+    repli ``GROQ_API_KEY`` (PUB124) et sans générateur, NO-OP propre
+    (``enabled=False``, aucun lot, zéro crash) ; sinon crée un
+    ``CreativeGenerationBatch`` EN_ATTENTE de variantes ancrées FactTable +
+    audit ``claim_verdicts`` persisté. NO-OP propre si société introuvable."""
     from authentication.models import Company
 
     company = Company.objects.filter(pk=company_id).first()

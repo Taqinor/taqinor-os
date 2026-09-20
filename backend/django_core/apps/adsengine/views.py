@@ -305,13 +305,19 @@ class GroundedGenerationView(APIView):
             return Response({'detail': 'seed_brief requis.'}, status=400)
         components = (request.data or {}).get('components') or []
         # Key-gated : message clair AVANT dispatch (pas de tâche inutile ni de
-        # lot créé sans clé — zéro crash).
-        from .generation import GEN_ENV_KEY
-        if not os.environ.get(GEN_ENV_KEY):
+        # lot créé sans clé — zéro crash). PUB124 — la porte lit la MÊME
+        # résolution que le générateur (clé dédiée puis repli GROQ_API_KEY) :
+        # l'écran ne peut plus annoncer « désactivée » alors que la tâche, elle,
+        # générerait.
+        from .generation import (
+            GEN_ENV_KEY, GEN_FALLBACK_ENV_KEY, resolve_api_key,
+        )
+        if not resolve_api_key()[0]:
             return Response({
                 'enabled': False,
-                'detail': ('Génération IA désactivée : la clé '
-                           f"{GEN_ENV_KEY} n'est pas configurée. Aucun lot créé."),
+                'detail': ('Génération IA désactivée : aucune clé configurée '
+                           f'({GEN_ENV_KEY}, ou son repli '
+                           f'{GEN_FALLBACK_ENV_KEY}). Aucun lot créé.'),
             }, status=200)
         from .tasks import generate_grounded_variants
         generate_grounded_variants.delay(
