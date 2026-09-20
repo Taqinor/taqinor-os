@@ -400,3 +400,56 @@ export function buildProviderStyle(
   const url = provider.styleUrl?.(keys) ?? null;
   return url ?? null;
 }
+
+/**
+ * CAL50 — ORTHOPHOTO IGN BD ORTHO® (France), fournisseur OPTIONNEL du registre CAL48.
+ *
+ * Service : Géoplateforme de l'IGN, protocole WMTS, couche
+ * `ORTHOIMAGERY.ORTHOPHOTOS`, matrice `PM` (Web Mercator, mêmes tuiles {z}/{x}/{y}
+ * que les autres fournisseurs raster). AUCUNE clé, AUCUN abonnement payant : le
+ * point d'accès est public.
+ *
+ * ATTRIBUTION OBLIGATOIRE : l'IGN impose la mention de la BD ORTHO®. Elle est
+ * portée par le fournisseur, donc par la source raster, donc AFFICHÉE par le
+ * contrôle d'attribution de la carte — il n'est pas possible d'activer ce
+ * fournisseur sans afficher sa mention.
+ *
+ * QUOTAS / CONDITIONS : la Géoplateforme est un service public soumis aux
+ * conditions générales d'utilisation et à une limitation de débit publiées par
+ * l'IGN (https://geoservices.ign.fr/). Aucun chiffre de quota n'est recopié ici :
+ * ce dépôt n'en détient pas de source vérifiée, et un quota inventé serait pire
+ * qu'un quota absent. Un dépassement se traduit par des tuiles manquantes — la
+ * carte reste utilisable avec un autre fournisseur du registre.
+ *
+ * RÉSOLUTION : `null` — la résolution annoncée de la BD ORTHO® n'est pas sourcée
+ * dans ce dépôt ; elle n'est donc pas affirmée (règle « zéro chiffre inventé »).
+ *
+ * ACTIVATION : `countries: ['fr']` ⇒ le fournisseur n'apparaît QUE si le pays du
+ * projet est la France, et jamais par défaut ailleurs. Il n'est pas non plus
+ * actif d'office en France : la société doit le nommer (`fournisseur_imagerie`)
+ * ou l'admettre en tête de `fournisseurs_autorises`.
+ */
+export const IGN_BD_ORTHO_ID = 'ign_bd_ortho';
+
+export function ignBdOrthoTileUrl(): string {
+  return (
+    'https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile' +
+    '&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM' +
+    '&FORMAT=image/jpeg&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}'
+  );
+}
+
+registerImageryProvider({
+  id: IGN_BD_ORTHO_ID,
+  label: 'IGN BD ORTHO® (France)',
+  attribution:
+    '© <a href="https://www.ign.fr/" target="_blank" rel="noopener">IGN</a> — BD ORTHO®',
+  resolutionM: null,
+  countries: ['fr'],
+  tiles: () => [ignBdOrthoTileUrl()],
+  tileSize: 256,
+  quotas:
+    'Géoplateforme IGN — service public sans clé, soumis aux conditions générales et ' +
+    'à la limitation de débit publiées sur geoservices.ign.fr (aucun quota chiffré ' +
+    'n’est repris ici, faute de source vérifiée).',
+});

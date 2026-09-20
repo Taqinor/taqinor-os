@@ -15,6 +15,8 @@ import {
   resolveImageryProvider,
   imageryAttribution,
   buildProviderStyle,
+  IGN_BD_ORTHO_ID,
+  ignBdOrthoTileUrl,
   type ImageryProvider,
 } from './roofConfig';
 
@@ -127,5 +129,57 @@ describe('CAL48 — sans contexte d’imagerie, le style est celui d’avant (no
       imagery: { fournisseur_imagerie: 'maptiler', fournisseurs_autorises: ['maptiler', 'mapbox'] },
     });
     expect(style).toBe(maptilerHybridStyleUrl('K'));
+  });
+});
+
+describe('CAL50 — IGN BD ORTHO® : fournisseur France optionnel, attribution obligatoire', () => {
+  it('avec pays=fr le fournisseur apparaît dans la liste proposable', () => {
+    const ids = availableImageryProviders({ pays: 'fr' }, KEYS).map((p) => p.id);
+    expect(ids).toContain(IGN_BD_ORTHO_ID);
+  });
+
+  it('avec pays=ma il est ABSENT de la liste', () => {
+    const ids = availableImageryProviders({ pays: 'ma' }, KEYS).map((p) => p.id);
+    expect(ids).not.toContain(IGN_BD_ORTHO_ID);
+  });
+
+  it('sans pays réglé il est ABSENT (jamais actif par défaut hors France)', () => {
+    expect(availableImageryProviders({}, KEYS).map((p) => p.id)).not.toContain(IGN_BD_ORTHO_ID);
+    expect(availableImageryProviders(null, KEYS).map((p) => p.id)).not.toContain(IGN_BD_ORTHO_ID);
+  });
+
+  it('il n’est pas actif d’office en France : il faut le nommer ou l’autoriser en tête', () => {
+    // Liste autorisée classique, IGN non mentionné → ce n’est pas lui qui gagne.
+    const p1 = resolveImageryProvider({ pays: 'fr', fournisseurs_autorises: ['mapbox', 'maptiler'] }, KEYS);
+    expect(p1?.id).toBe('mapbox');
+    // Nommé explicitement → il gagne.
+    const p2 = resolveImageryProvider(
+      { pays: 'fr', fournisseur_imagerie: IGN_BD_ORTHO_ID, fournisseurs_autorises: [IGN_BD_ORTHO_ID, 'maptiler'] },
+      KEYS,
+    );
+    expect(p2?.id).toBe(IGN_BD_ORTHO_ID);
+  });
+
+  it('l’attribution IGN est obligatoire et portée par le style (donc affichée)', () => {
+    const p = getImageryProvider(IGN_BD_ORTHO_ID)!;
+    expect(p.attribution).toContain('IGN');
+    expect(p.attribution).toContain('BD ORTHO');
+    const style = buildProviderStyle(p, KEYS) as { sources: Record<string, { attribution: string; tiles: string[] }> };
+    expect(style.sources[IGN_BD_ORTHO_ID].attribution).toContain('BD ORTHO');
+    expect(style.sources[IGN_BD_ORTHO_ID].tiles).toEqual([ignBdOrthoTileUrl()]);
+  });
+
+  it('aucune clé ni jeton n’est requis : il est servable sans clés du tout', () => {
+    expect(availableImageryProviders({ pays: 'fr', fournisseurs_autorises: [IGN_BD_ORTHO_ID] }, {}).map((p) => p.id)).toEqual([
+      IGN_BD_ORTHO_ID,
+    ]);
+    expect(ignBdOrthoTileUrl()).not.toContain('key=');
+    expect(ignBdOrthoTileUrl()).not.toContain('access_token');
+  });
+
+  it('les quotas/conditions sont documentés et la résolution n’est pas inventée', () => {
+    const p = getImageryProvider(IGN_BD_ORTHO_ID)!;
+    expect(p.quotas && p.quotas.length > 0).toBe(true);
+    expect(p.resolutionM).toBeNull();
   });
 });
