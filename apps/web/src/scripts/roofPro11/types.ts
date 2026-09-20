@@ -9,6 +9,7 @@ import { type SerializeMeta, type DevisPayload, type RawContourPoint } from './p
 import { type AreaResult } from '../../lib/roofAreas';
 import { type LngLat } from '../../lib/roof';
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
+import { type SerializedEdge } from './edges';
 
 export interface InitOptions {
   maptilerKey: string;
@@ -243,6 +244,14 @@ export interface AreaRecord {
   neededAuto: boolean;
   result: AreaResult | null;
   renderPlan: ZoneRenderPlan | null;
+  /** CAL59 — bâtiment auquel ce pan appartient, pour totaliser un site multi-bâtiments.
+   *  Optionnel : absent = bâtiment unique (comportement historique). */
+  buildingId?: string;
+  /** CAL57 — type d'arête par segment de contour (déduit, corrigible à la main). Optionnel :
+   *  absent = aucune arête typée (comportement historique). Recalculé à chaque sérialisation
+   *  depuis `vertices`/`roofType`/`facingAzimuthDeg` (voir `edges.ts`) tant qu'aucune n'a été
+   *  corrigée à la main. */
+  edges?: SerializedEdge[];
 }
 
 // ═══════════ W50 — fenêtre « Production estimée » ═══════════

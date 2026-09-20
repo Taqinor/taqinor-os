@@ -21,6 +21,7 @@ import { BILL_RANGES } from '../../lib/billRange';
 import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
 import { ROOF_TYPES } from '../../lib/lead';
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
+import { deduceEdgeTypes, type SerializedEdge, type EdgeDeductionZone } from './edges';
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -230,6 +231,12 @@ export interface SerializedZone {
    *  de rendu existe pour la zone. Le round-trip deserializeLayout l'ignore (dérivé,
    *  recalculé au boot) — il sert uniquement à l'export ERP (devis/PDF multi-plan). */
   geometry?: SerializedZoneGeometry;
+  /** CAL59 — bâtiment auquel ce pan appartient. Optionnel et additif : absent = bâtiment
+   *  unique, comportement historique. */
+  buildingId?: string;
+  /** CAL57 — type d'arête par segment de contour (déduit, corrigible à la main). Optionnel
+   *  et additif : absent = aucune arête typée, comportement historique. */
+  edges?: SerializedEdge[];
 }
 
 // ═══════════ PV13 — SÉRIALISATION v2 (additive, jamais destructive) ═══════════
@@ -431,6 +438,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       facingManual: isActive ? ctx.facingManual : a.facingManual ?? false,
       neededPanels: isActive ? ctx.neededPanels : a.neededPanels,
       neededAuto: isActive ? ctx.neededAuto : a.neededAuto,
+      ...(a.buildingId ? { buildingId: a.buildingId } : {}), // CAL59 — additif
     };
     // WJ24 — géométrie pleine par pan (additif) : depuis le plan de rendu figé de la zone
     // (a.renderPlan) ou, pour la zone active, le plan gagnant vivant (ctx.layoutPlan). Les
@@ -491,6 +499,19 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       };
     }
     return zone;
+  });
+  // CAL57 — déduit le type de chaque arête de CHAQUE zone depuis sa géométrie + ses
+  // voisines (mêmes valeurs EFFECTIVES que ci-dessus : vertices/roofType/azimut déjà
+  // résolus sur `zone`). Additif : jamais émis pour une zone < 3 sommets.
+  const edgeZones: EdgeDeductionZone[] = zones.map((z) => ({
+    vertices: z.vertices,
+    roofType: z.roofType ?? 'flat',
+    facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
+  }));
+  zones.forEach((z, i) => {
+    const others = edgeZones.filter((_, j) => j !== i);
+    const edges = deduceEdgeTypes(edgeZones[i], others);
+    if (edges.length) z.edges = edges;
   });
   const activeVerts = ctx.vertices.length >= 1 ? ctx.vertices : ctx.areas.find((a) => a.id === ctx.activeAreaId)?.vertices ?? [];
   const outline: Array<[number, number]> =
@@ -571,6 +592,11 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
     neededAuto: z.neededAuto,
     result: null,
     renderPlan: null,
+    // CAL59 — round-trip verbatim (absent = bâtiment unique, comportement historique).
+    ...(z.buildingId ? { buildingId: z.buildingId } : {}),
+    // CAL57 — round-trip verbatim ; un document sans arêtes n'en gagne aucune ici (elles
+    // sont recalculées à la sérialisation SUIVANTE, pas devinées à la lecture).
+    ...(z.edges && z.edges.length ? { edges: z.edges } : {}),
   }));
 }
 

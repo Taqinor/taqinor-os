@@ -1,9 +1,54 @@
-// Tests ciblés de prefill.ts — pour l'instant, la sérialisation CAL102 (mesures). D'autres
-// extensions v2 (CAL57/CAL59/CAL66/CAL67/CAL72…) ajouteront leurs propres describe() ici au
-// lieu d'un fichier par tâche (même contrat v2, même fichier source).
+// Tests ciblés de prefill.ts — la sérialisation CAL102 (mesures) + CAL57/CAL59 (arêtes
+// typées, bâtiment). D'autres extensions v2 (CAL66/CAL67/CAL72…) ajouteront leurs propres
+// describe() ici au lieu d'un fichier par tâche (même contrat v2, même fichier source).
 import { describe, expect, it } from 'vitest';
-import { serializeMeasurements, deserializeMeasurements } from './prefill';
+import { serializeMeasurements, deserializeMeasurements, serializeLayout, deserializeLayout } from './prefill';
 import { type Measurement } from './mesureUi';
+import { type Ctx } from './context';
+import { type AreaRecord } from './types';
+
+const VERTS: [number, number][] = [
+  [-7.6, 33.59],
+  [-7.599, 33.59],
+  [-7.599, 33.591],
+  [-7.6, 33.591],
+];
+
+function zone(id: string, opts: Partial<AreaRecord> = {}): AreaRecord {
+  return {
+    id,
+    label: `Zone ${id}`,
+    vertices: VERTS.map(([lng, lat]) => [lng, lat] as [number, number]),
+    obstacles: [],
+    roofType: 'pitched',
+    pitchDeg: 22,
+    facingAzimuthDeg: 180,
+    facingManual: false,
+    neededPanels: 12,
+    neededAuto: true,
+    result: null,
+    renderPlan: null,
+    ...opts,
+  };
+}
+
+function makeCtx(areas: AreaRecord[], activeId = areas[0].id): Ctx {
+  const active = areas.find((a) => a.id === activeId)!;
+  return {
+    areas,
+    activeAreaId: activeId,
+    vertices: active.vertices,
+    obstacles: active.obstacles,
+    roofType: active.roofType,
+    pitchDeg: active.pitchDeg,
+    facingAzimuthDeg: active.facingAzimuthDeg,
+    facingManual: active.facingManual ?? false,
+    neededPanels: active.neededPanels,
+    neededAuto: active.neededAuto,
+    layoutPlan: null,
+    layoutOptimalCount: 0,
+  } as unknown as Ctx;
+}
 
 describe('CAL102 — serializeMeasurements', () => {
   it('conserve les mesures géométriquement valides, intactes', () => {
@@ -65,5 +110,50 @@ describe('CAL102 — deserializeMeasurements', () => {
     expect(deserializeMeasurements(null)).toEqual([]);
     expect(deserializeMeasurements({})).toEqual([]);
     expect(deserializeMeasurements({ measurements: 'nope' })).toEqual([]);
+  });
+});
+
+describe('CAL57 — arêtes typées, sérialisées', () => {
+  it('une zone seule (pas d’adjacence) porte un égout + des arêtes inconnues, jamais de faîtière', () => {
+    const areas = [zone('z1')];
+    const layout = serializeLayout(makeCtx(areas));
+    const z = layout.zones[0];
+    expect(z.edges).toBeTruthy();
+    expect(z.edges!.length).toBe(4);
+    expect(z.edges!.some((e) => e.type === 'egout')).toBe(true);
+    expect(z.edges!.some((e) => e.type === 'faitage')).toBe(false);
+  });
+
+  it('un document ancien SANS edges se relit sans en gagner (round-trip verbatim, pas de déduction à la lecture)', () => {
+    const areas = [zone('z1')];
+    const layout = serializeLayout(makeCtx(areas));
+    delete (layout.zones[0] as { edges?: unknown }).edges;
+    const back = deserializeLayout(layout);
+    expect(back[0].edges).toBeUndefined();
+  });
+
+  it('les arêtes survivent à un aller-retour de sérialisation (round-trip)', () => {
+    const areas = [zone('z1')];
+    const layout = serializeLayout(makeCtx(areas));
+    const back = deserializeLayout(layout);
+    expect(back[0].edges).toEqual(layout.zones[0].edges);
+  });
+});
+
+describe('CAL59 — buildingId (multi-bâtiments)', () => {
+  it('absent par défaut (bâtiment unique, comportement historique)', () => {
+    const areas = [zone('z1')];
+    const layout = serializeLayout(makeCtx(areas));
+    expect('buildingId' in layout.zones[0]).toBe(false);
+  });
+
+  it('porté par zone quand renseigné, et survit au round-trip', () => {
+    const areas = [zone('z1', { buildingId: 'bat-1' }), zone('z2', { buildingId: 'bat-2' })];
+    const layout = serializeLayout(makeCtx(areas, 'z2'));
+    expect(layout.zones.find((z) => z.id === 'z1')!.buildingId).toBe('bat-1');
+    expect(layout.zones.find((z) => z.id === 'z2')!.buildingId).toBe('bat-2');
+    const back = deserializeLayout(layout);
+    expect(back.find((a) => a.id === 'z1')!.buildingId).toBe('bat-1');
+    expect(back.find((a) => a.id === 'z2')!.buildingId).toBe('bat-2');
   });
 });
