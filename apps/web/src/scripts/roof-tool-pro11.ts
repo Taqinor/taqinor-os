@@ -124,7 +124,7 @@ import { $, fmt, fmtMad, esc } from './roofPro11/dom';
 import { type Ctx } from './roofPro11/context';
 import { createGraphs } from './roofPro11/graphs';
 import { createPrefill } from './roofPro11/prefill';
-import { createZones } from './roofPro11/zones';
+import { createZones, exclusionObstructionRings, exclusionColor, exclusionZoneRing } from './roofPro11/zones';
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
@@ -136,7 +136,7 @@ import { createMapDraw } from './roofPro11/mapDraw';
 import { createScene3d } from './roofPro11/scene3d';
 import { createOptimizer } from './roofPro11/optimizer';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout } from './roofPro11/prefill';
 
 let booted = false;
 
@@ -369,10 +369,23 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   // Les obstacles sont stockés par centre + dimensions ; le cerveau reçoit leurs
   // rectangles lng/lat comme obstructions (zones d'exclusion).
-  const obstructionRings = (): LngLat[][] => obstacles.map(obstacleRing);
+  // CAL69 — les zones INTERDITE/RESERVEE retirent leur surface du posable : leurs anneaux
+  // (dilatés de leur retrait SAISI) rejoignent les obstructions du pavage, donc le compte
+  // de modules bouge IMMÉDIATEMENT. Une zone PRÉFÉRÉE n'en produit aucun : elle ne change
+  // JAMAIS un compte (garantie CAL68).
+  const obstructionRings = (): LngLat[][] => [
+    ...obstacles.map(obstacleRing),
+    ...exclusionObstructionRings(ctx.exclusionZones),
+  ];
   // PV61 — dégagement (m) de CHAQUE obstacle selon son TYPE (cheminée > antenne), dans le
   // MÊME ordre que `obstructionRings()`. Obstacle sans type → dégagement historique.
-  const obstructionClearances = (): number[] => obstructionClearancesFor(obstacles);
+  // CAL69 — MÊME ordre que `obstructionRings()` : les dégagements des obstacles, puis un
+  // dégagement NUL par zone bloquante (le retrait de la zone est déjà dans son anneau —
+  // l'ajouter deux fois inventerait une marge).
+  const obstructionClearances = (): number[] => [
+    ...obstructionClearancesFor(obstacles),
+    ...exclusionObstructionRings(ctx.exclusionZones).map(() => 0),
+  ];
   const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const dimsLabel = (o: Obstacle) => `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
   let centroid: LngLat = [0, 0];
@@ -389,6 +402,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   let shadeAnnualFactor = 1;
   // CAL67 — objets d'environnement (arbres/bâtiments voisins) posés HORS contour.
   const environment: import('./roofPro11/environment').EnvironmentObject[] = [];
+  // CAL69 — zones INTERDITE/RESERVEE/PREFEREE tracées dans l'atelier (contrat CAL68).
+  // Partagées via ctx : obstaclesUi les écrit, `obstructionRings` les lit.
+  const exclusionZones: import('./roofPro11/zones').ExclusionZone[] = [];
   let envCounter = 0;
   let climateBandOn = false; // WJ22 — fourchette de pertes climatiques (opt-in, défaut OFF)
   let useRecommended = true;
@@ -834,6 +850,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     },
     shadeObstructions,
     environment,
+    exclusionZones,
     get envCounter() {
       return envCounter;
     },
@@ -1215,6 +1232,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     recomputeShading: () => shadingUi.recomputeShading(),
   });
   const redrawObstacles = obstaclesUi.redrawObstacles;
+  // CAL69 — redessine le calque des zones d'exclusion (même cadence que les obstacles).
+  const redrawExclusionZones = obstaclesUi.redrawExclusionZones;
   const clearPreview = obstaclesUi.clearPreview;
   const syncObsEdit = obstaclesUi.syncObsEdit;
   const selectObstacle = obstaclesUi.selectObstacle;
@@ -1446,6 +1465,28 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       layout: { 'text-field': ['get', 'dims'], 'text-size': 13, 'text-font': ['Open Sans Bold', 'Noto Sans Bold'], 'text-allow-overlap': true, 'symbol-placement': 'point' },
       paint: { 'text-color': '#ffffff', 'text-halo-color': '#070b1d', 'text-halo-width': 1.6 },
     });
+    // CAL69 — calque des ZONES (interdite/réservée/préférée), code couleur DISTINCT des
+    // obstacles : la couleur vient de la nature, portée par la feature.
+    map.addSource('rp9-zones', { type: 'geojson', data: empty as never });
+    map.addLayer({
+      id: 'rp9-zones',
+      type: 'fill',
+      source: 'rp9-zones',
+      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.28 },
+    });
+    map.addLayer({
+      id: 'rp9-zones-outline',
+      type: 'line',
+      source: 'rp9-zones',
+      paint: { 'line-color': ['get', 'color'], 'line-width': 2 },
+    });
+    map.addLayer({
+      id: 'rp9-zones-label',
+      type: 'symbol',
+      source: 'rp9-zones',
+      layout: { 'text-field': ['get', 'title'], 'text-size': 12, 'text-allow-overlap': true, 'symbol-placement': 'point' },
+      paint: { 'text-color': '#ffffff', 'text-halo-color': '#070b1d', 'text-halo-width': 1.6 },
+    });
     map.addLayer({
       id: 'rp9-obs-preview',
       type: 'line',
@@ -1632,6 +1673,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // CAL102 — les mesures posées voyagent avec le design (même esprit que le repli
     // `shading12x24` : un JSON douteux rend un tableau vide, jamais une exception).
     measurements = deserializeMeasurements(layout);
+    // CAL69 — les zones d'exclusion voyagent avec le design, comme les mesures : on les
+    // relit telles qu'écrites, puis on les redessine et on laisse le recalcul en tenir
+    // compte (INTERDITE/RESERVEE retirent du posable, PREFEREE non).
+    exclusionZones.length = 0;
+    for (const z of deserializeExclusionZonesFromLayout(layout)) exclusionZones.push(z);
     const setIf = (id: string, v?: string) => {
       const el = $<HTMLInputElement>(id);
       if (el && v && !el.value.trim()) el.value = v;
@@ -1672,6 +1718,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       neededAuto = a.neededAuto;
       imposeTarget();
       redrawObstacles();
+      redrawExclusionZones();
       if (vertices.length >= 3) {
         landCameraOnRoof(vertices); // W120 — cadre le contour ENTIER avant la bascule 3D
         close(); // referme le tracé du devis → optimiseur + rendu
@@ -1743,6 +1790,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     obstacles = [];
     if (a) a.obstacles = [];
     redrawObstacles();
+    redrawExclusionZones();
     landCameraOnRoof(vertices); // W120 — cadre le contour ENTIER avant la bascule 3D
     closed = false;
     close();
@@ -2043,6 +2091,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     srcOf('rp9-pts')?.setData(empty as never);
     clearPreview();
     redrawObstacles();
+    redrawExclusionZones();
     syncObsEdit();
     disposeScene();
     scene3d.resetTextures(); // photo de toit + matrice modèle (scene3d en est propriétaire)
@@ -2154,6 +2203,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     if (consPanelEl) consPanelEl.hidden = true;
     redrawTrace();
     redrawObstacles();
+    redrawExclusionZones();
     syncObsEdit();
     syncRoofTypeChips();
     // Sens de pente PROPRE à la zone restaurée : aligne boutons cardinaux + curseur fin
