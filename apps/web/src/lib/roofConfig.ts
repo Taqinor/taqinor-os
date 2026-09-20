@@ -585,14 +585,14 @@ export function isIanaTimeZone(tz: string): boolean {
  * Fuseau du site tel que RÉGLÉ (tz database). `null` = non réglé, ou valeur qui n'est
  * pas un identifiant de fuseau : on n'en fabrique jamais un à partir de la longitude.
  */
-export function siteTimeZone(settings: { fuseau?: string | null } | null | undefined): string | null {
+export function siteTimeZone(settings: Pick<ImagerySettings, 'fuseau'> | ImagerySettings | null | undefined): string | null {
   const tz = (settings?.fuseau ?? '').trim();
   if (!tz || !isIanaTimeZone(tz)) return null;
   return tz;
 }
 
 /** Libellé d'affichage du fuseau, ou la mention d'absence. */
-export function siteTimeZoneLabel(settings: { fuseau?: string | null } | null | undefined): string {
+export function siteTimeZoneLabel(settings: Pick<ImagerySettings, 'fuseau'> | ImagerySettings | null | undefined): string {
   const tz = siteTimeZone(settings);
   return tz ? `Fuseau : ${tz} (base de fuseaux IANA)` : 'Fuseau non renseigné';
 }
