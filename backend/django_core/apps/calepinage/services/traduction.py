@@ -86,30 +86,6 @@ SYNONYMES_PROVENANCE = {
     'MESURE_DOUTEUX': 'RELEVE_DOUTEUX',
 }
 
-#: PV61 — dégagement (m) du TYPE d'obstacle tel que l'atelier l'applique
-#: aujourd'hui (``apps/web/src/scripts/roofPro11/types.ts``
-#: ``CLEARANCE_BY_TYPE``). CES VALEURS N'ONT AUCUNE SOURCE NORMATIVE DANS LE
-#: DÉPÔT : elles sont la « valeur atelier actuelle, non sourcée » (CAL71), et
-#: elles sont ici pour que le moteur calcule EXACTEMENT ce que l'écran montre
-#: — pas parce qu'une norme les impose.
-DEGAGEMENT_ATELIER_M = {
-    'cheminee': 0.50,
-    'chien_assis': 0.50,
-    'edicule': 0.50,
-    'ventilation': 0.30,
-    'antenne': 0.30,
-    'autre': 0.30,
-}
-
-#: Dégagement de l'atelier pour un obstacle SANS type — le comportement
-#: historique du site (``OBSTACLE_CLEARANCE_M``).
-DEGAGEMENT_ATELIER_DEFAUT_M = 0.30
-
-#: Retrait de rive appliqué par l'atelier (``PERIMETER_SETBACK_M``,
-#: ``apps/web/src/lib/roofPro2.ts``). Même statut que ci-dessus : valeur
-#: atelier actuelle, NON SOURCÉE. CAL71 la rend paramétrable par société.
-RETRAIT_ATELIER_M = 0.50
-
 #: Types de l'atelier qui ont un ÉQUIVALENT EXACT dans l'énuméré du moteur.
 #: Les autres restent ``NATURE_INCONNUE`` : inventer une correspondance
 #: approximative ferait porter à l'obstacle le dégagement par défaut d'un
@@ -122,8 +98,7 @@ TYPES_MOTEUR = {
 
 __all__ = [
     'TraductionRefusee', 'Traduction', 'entree_depuis_layout',
-    'DEGAGEMENT_ATELIER_M', 'DEGAGEMENT_ATELIER_DEFAUT_M',
-    'RETRAIT_ATELIER_M', 'SYNONYMES_PROVENANCE', 'TYPES_MOTEUR',
+    'SYNONYMES_PROVENANCE', 'TYPES_MOTEUR',
 ]
 
 
@@ -166,6 +141,9 @@ class Traduction:
     motifs_non_engageable: Tuple[str, ...] = ()
     kit: object = None
     axe_rangee: str = ''
+    #: CAL71 — la phrase de règle du RETRAIT de rive appliqué. Celle de chaque
+    #: obstacle voyage sur l'obstacle lui-même (``regle_appliquee``).
+    regle_retrait: str = ''
     avertissements: Tuple[str, ...] = field(default=())
 
 
@@ -331,8 +309,13 @@ def _provenance(brut, champ):
             + ', MESURE, MESURE_DOUTEUX.', f'{champ}.provenance')
 
 
-def _degagement(brut, provenance):
-    """``(dégagement, phrase)`` — l'atelier, RELEVÉ au plancher de provenance.
+def _degagement(brut, provenance, section):
+    """``(dégagement, phrase)`` — la règle société, RELEVÉE au plancher de provenance.
+
+    CAL71 : la valeur et sa justification viennent de ``services/degagements``
+    — réglage de la société s'il existe, sinon la valeur de l'atelier annoncée
+    « non sourcée ». Ce module ne porte plus aucune table de dégagement : deux
+    tables seraient deux règles.
 
     Le dégagement transmis est EXPLICITE (le moteur le traite comme une
     surcharge), donc il court-circuiterait le plancher que la provenance
@@ -342,25 +325,18 @@ def _degagement(brut, provenance):
     """
     from core.calepinage.obstacles import degagement_par_provenance
 
-    type_atelier = brut.get('type')
-    if type_atelier is None:
-        atelier = DEGAGEMENT_ATELIER_DEFAUT_M
-        origine = "obstacle sans type : dégagement de base de l'atelier"
-    else:
-        atelier = DEGAGEMENT_ATELIER_M.get(str(type_atelier),
-                                           DEGAGEMENT_ATELIER_DEFAUT_M)
-        origine = "type « %s » de l'atelier" % (type_atelier,)
+    from .degagements import degagement_du_type
+
+    regle, phrase = degagement_du_type(brut.get('type'), section)
     plancher = degagement_par_provenance(provenance)
-    valeur = max(atelier, plancher)
-    phrase = ("%s : %.2f m (valeur atelier actuelle, non sourcée)"
-              % (origine, atelier))
-    if plancher > atelier:
-        phrase = ("provenance %s impose %.2f m, au-delà du %s"
-                  % (provenance.value, plancher, phrase))
-    return (valeur, phrase)
+    if plancher > regle:
+        return (plancher,
+                "provenance %s impose %.2f m, au-delà de la règle appliquée "
+                "— %s" % (provenance.value, plancher, phrase))
+    return (regle, phrase)
 
 
-def _obstacles(pans, vers_repere):
+def _obstacles(pans, vers_repere, section=None):
     from core.calepinage.types import Obstacle, TypeObstacle
 
     sortie = []
@@ -399,7 +375,7 @@ def _obstacles(pans, vers_repere):
                     "« widthM » (est-ouest) sont attendus, strictement "
                     "positifs.", f'{champ}.lengthM')
             provenance = _provenance(brut, champ)
-            degagement, regle = _degagement(brut, provenance)
+            degagement, regle = _degagement(brut, provenance, section)
             x, y = vers_repere((lon, lat))
             demi_x, demi_y = vers_repere.demi(est_ouest / 2.0,
                                               nord_sud / 2.0)
@@ -546,15 +522,23 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
     origine = _origine(roof_layout, pans)
     vers_repere = _VersRepere(projeteur_local(origine), axe)
 
+    from .degagements import (
+        SECTION as SECTION_DEGAGEMENTS, allee_technique, retrait_perimetre,
+    )
+
     sections = parametres or {}
-    degagements = sections.get('degagements') or {}
-    retrait = (_nombre(retrait_m)
-               if retrait_m is not None
-               else _nombre(degagements.get('retrait_perimetre_m')))
-    if retrait is None:
-        retrait = RETRAIT_ATELIER_M
-    allee = (_nombre(allee_m) if allee_m is not None
-             else _nombre(degagements.get('allee_m')))
+    degagements = sections.get(SECTION_DEGAGEMENTS) or {}
+    # CAL71 — le retrait de rive de la société, sinon celui de l'atelier
+    # annoncé « non sourcé ». La phrase de règle voyage avec l'entrée.
+    retrait, regle_retrait = retrait_perimetre(degagements)
+    force = _nombre(retrait_m) if retrait_m is not None else None
+    if force is not None:
+        retrait, regle_retrait = force, (
+            "Retrait de rive : %.2f m (valeur transmise par l'appelant)"
+            % (force,))
+    allee = _nombre(allee_m) if allee_m is not None else None
+    if allee is None:
+        allee, _regle_allee = allee_technique(degagements)
     rives = Rives(laterale_m=retrait, extremite_m=retrait)
 
     surfaces = []
@@ -578,7 +562,7 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         # retraduire ici produirait deux formulations de la même règle.
         raise TraductionRefusee(str(refus), refus.champ)
 
-    obstacles = _obstacles(pans, vers_repere)
+    obstacles = _obstacles(pans, vers_repere, degagements)
     parametres_moteur = Parametres(
         kits=(kit,), rives=rives, axe_rangee=axe,
         pas_recherche_m=pas_recherche_m,
@@ -599,4 +583,5 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         engageable=ok,
         motifs_non_engageable=tuple(motifs),
         kit=kit,
-        axe_rangee=axe.value)
+        axe_rangee=axe.value,
+        regle_retrait=regle_retrait)

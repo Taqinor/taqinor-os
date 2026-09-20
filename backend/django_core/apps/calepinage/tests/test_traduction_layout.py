@@ -29,8 +29,9 @@ import os
 
 from django.test import SimpleTestCase
 
+from apps.calepinage.services.degagements import RETRAIT_ATELIER_M
 from apps.calepinage.services.traduction import (
-    RETRAIT_ATELIER_M, TraductionRefusee, entree_depuis_layout,
+    TraductionRefusee, entree_depuis_layout,
 )
 
 CHEMIN_SCHEMA = os.path.join(
