@@ -107,7 +107,7 @@ def ai_disclosure_block_reason(asset):
     (sa lane génère de l'IA, ou il dérive d'un asset IA) et ne la porte pas ;
     sinon ``None``. Un asset non-IA (chantier, UGC réel, upload) n'a aucune
     contrainte — et n'est jamais sur-étiqueté."""
-    from . import creative_factory
+    from . import ai_lanes as creative_factory  # module feuille (contrat ENG20)
 
     should_disclose = creative_factory.asset_is_ai_generated(
         asset.source_lane, asset.parent)

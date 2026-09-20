@@ -49,21 +49,12 @@ logger = logging.getLogger(__name__)
 # variante DÉRIVÉE d'un asset IA reste de l'IA : ``asset_is_ai_generated``
 # hérite donc du ``parent``. La divulgation suit le CONTENU, pas la plomberie.
 # ══════════════════════════════════════════════════════════════════════════
-AI_GENERATED_LANES = frozenset({'gen', 'recombine', 'fal'})
-
-
-def lane_is_ai_generated(source_lane):
-    """PUB126 — Vrai si la lane de fabrique ``source_lane`` produit du contenu
-    généré par IA (donc à divulguer). Lane inconnue / vide ⇒ ``False``."""
-    return str(source_lane or '') in AI_GENERATED_LANES
-
-
-def asset_is_ai_generated(source_lane, parent=None):
-    """PUB126 — Étiquette IA d'un asset en PRODUCTION : sa lane génère de l'IA,
-    OU il dérive d'un parent déjà étiqueté (une variante d'un asset IA reste de
-    l'IA). Jamais vrai pour une substitution d'assets réels."""
-    return (lane_is_ai_generated(source_lane)
-            or bool(getattr(parent, 'ai_generated', False)))
+# Vocabulaire déplacé dans ``ai_lanes`` (module feuille — contrat ENG20 :
+# ``policy`` le consomme sans tirer la fabrique) ; ré-exporté ici pour les
+# appelants historiques.
+from .ai_lanes import (  # noqa: F401
+    AI_GENERATED_LANES, asset_is_ai_generated, lane_is_ai_generated,
+)
 
 
 def _store_bytes(company, data, *, ext, content_type):
