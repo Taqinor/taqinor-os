@@ -3,10 +3,8 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `features/ao`). */
 import { lazy } from 'react'
-import { Link } from 'react-router-dom'
 import { Grid3x3, LayoutGrid, PlusCircle } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
-import { Button, EmptyState } from '../../ui'
 
 /* ============================================================================
    CAL34 — LA PORTE AUTONOME du module Calepinage.
@@ -61,30 +59,9 @@ const AtelierCalepinage = lazy(async () => {
 // CAL35 — la LISTE réelle : vignettes, filtres RÉELLEMENT servis par CAL16,
 // pagination et état vide qui explique le geste de création.
 const CalepinageList = lazy(() => import('./CalepinageList'))
-
-/* ── Écrans de CETTE lane, en attente de leur tâche ────────────────────────
-   CAL36 (création) arrive dans le commit suivant de cette même lane et REMPLACE
-   cette enveloppe par l'écran réel. Elle n'est pas un « écran en construction »
-   qui s'installe : elle existe pour qu'aucune entrée de nav ne mène nulle part
-   entre deux commits, ce que la garde `check_ecrans_atteignables.py` interdit
-   à juste titre. */
-function RouteEnPreparation({ titre, description, icon }) {
-  return (
-    <EmptyState
-      icon={icon}
-      title={titre}
-      description={description}
-      action={(
-        <Button asChild size="sm" variant="outline">
-          <Link to="/calepinage">Revenir aux calepinages</Link>
-        </Button>
-      )}
-    />
-  )
-}
-const enPreparation = (props) => lazy(() => Promise.resolve({
-  default: () => <RouteEnPreparation {...props} />,
-}))
+// CAL36 — l'écran de CRÉATION : choisir un lead OU un client, recherche bornée
+// société côté serveur, contexte géographique lu et jamais deviné.
+const CalepinageNouveau = lazy(() => import('./CalepinageNouveau'))
 
 const config = {
   key: 'calepinage',
@@ -119,11 +96,7 @@ const config = {
   routes: [
     { path: '/calepinage', component: CalepinageList, roles: ROLES },
     // AVANT `/calepinage/:id` — sinon « nouveau » est lu comme un identifiant.
-    { path: '/calepinage/nouveau', component: enPreparation({
-      titre: 'Nouveau calepinage',
-      icon: PlusCircle,
-      description: "L’écran de création (choisir un lead ou un client) arrive avec CAL36.",
-    }), roles: ROLES },
+    { path: '/calepinage/nouveau', component: CalepinageNouveau, roles: ROLES },
     // Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
     // contextuel à un objet, comme `/ao/affaires/:id/design`. C'est la cible de
     // la redirection après création (CAL36).
