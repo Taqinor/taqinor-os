@@ -67,6 +67,14 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
             "La conception doit être un objet "
             f"(reçu : {type(roof_layout).__name__}).", champ='roof_layout')
 
+    # CAL207 — miroir de la règle ventes/sync-layout : un calepinage dont le
+    # devis lié a été envoyé est en lecture seule (409), sauf déverrouillage
+    # explicite. La restauration de version (CAL20) passe par ICI, donc elle
+    # hérite du même refus sans code dupliqué (CAL203).
+    from .verrou import verifier_ecriture_autorisee
+
+    verifier_ecriture_autorisee(calepinage)
+
     ancien_layout = calepinage.roof_layout
     ancienne = calepinage.layout_hash or ''
     nouvelle = layout_hash(roof_layout) or ''

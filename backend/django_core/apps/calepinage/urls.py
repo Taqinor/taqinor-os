@@ -24,6 +24,8 @@ from .views.parametres import ParametresCalepinageView
 from .views import equipements as _equipements_action  # noqa: F401
 # CAL246 — même patron : rattache l'action ``modeles`` (bibliothèque).
 from .views import bibliotheque as _bibliotheque_action  # noqa: F401
+# CAL207 — même patron : rattache l'action ``deverrouiller``.
+from .views import verrou as _verrou_action  # noqa: F401
 
 router = DefaultRouter()
 router.register(r'calepinages', CalepinageViewSet, basename='calepinage')
