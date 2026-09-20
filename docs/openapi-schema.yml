@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 10782, operations: 19084, components: 5738}
+counts: {paths: 10784, operations: 19086, components: 5740}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -9568,6 +9568,8 @@ operations:
 - get /api/public/v1/btp/rfi/{id}/ -> public_v1_btp_rfi_retrieve
 - get /api/public/v1/btp/visas/ -> public_v1_btp_visas_list
 - get /api/public/v1/btp/visas/{id}/ -> public_v1_btp_visas_retrieve
+- get /api/public/v1/calepinages/ -> public_v1_calepinages_list
+- get /api/public/v1/calepinages/{id}/ -> public_v1_calepinages_retrieve
 - get /api/public/v1/changelog/ -> public_v1_changelog_retrieve
 - get /api/public/v1/chantiers/ -> public_v1_chantiers_list
 - get /api/public/v1/chantiers/{id}/ -> public_v1_chantiers_retrieve
@@ -22125,6 +22127,7 @@ components:
 - PaginatedPropositionRevisionList
 - PaginatedProvisionCreanceList
 - PaginatedProvisionList
+- PaginatedPublicCalepinageList
 - PaginatedPublicChantierList
 - PaginatedPublicDecompteGeneralList
 - PaginatedPublicDevisList
@@ -23777,6 +23780,7 @@ components:
 - PublicAbonnerRequeteRequest
 - PublicApporteurDeal
 - PublicApporteurMesDeals
+- PublicCalepinage
 - PublicChantier
 - PublicConfirmerAbonnementReponse
 - PublicDecompteGeneral

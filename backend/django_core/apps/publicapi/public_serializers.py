@@ -231,3 +231,101 @@ class PublicFavoriSerializer(serializers.ModelSerializer):
     def get_libelle(self, obj) -> str | None:
         cible = obj.cible
         return str(cible) if cible is not None else None
+
+
+class PublicCalepinageSerializer(serializers.Serializer):
+    """CAL214 — un calepinage du module autonome, en LECTURE SEULE publique.
+
+    **Serializer PLAT (pas un ``ModelSerializer``), volontairement.** La
+    frontière inter-apps veut que toute lecture de ``apps.calepinage`` passe
+    par son ``selectors.py`` ; un ``ModelSerializer`` exigerait
+    ``model = Calepinage``, c'est-à-dire exactement l'import de modèle que
+    cette frontière interdit. Les champs sont donc déclarés un par un — ce qui
+    a un second effet utile : la liste ci-dessous EST le contrat, et rien ne
+    peut s'y ajouter par inadvertance parce qu'un champ est apparu au modèle.
+
+    CE QUI N'EST JAMAIS PUBLIÉ (gardes testées, `tests_cal214_calepinage.py`) :
+
+    * la GÉOMÉTRIE brute — ni ``roof_layout``, ni les plans/rangées/tables du
+      ``resultat`` du moteur : l'empreinte ``layout_hash`` suffit à une
+      intégration pour savoir qu'une conception a changé, le dessin lui-même
+      reste dans l'atelier ;
+    * tout COÛT interne — ``Produit.prix_achat`` n'entre dans aucune de ces
+      clés, même règle que ``PublicProduitSerializer`` (XSTK23) ;
+    * le contrat publié du détail interne
+      (``apps/calepinage/contract_samples/calepinage_detail.json``) reste le
+      plafond : cette vue publique en expose un SOUS-ENSEMBLE, jamais une clé
+      de plus.
+
+    ``kwc`` et ``modules`` sont LUS du résultat réellement calculé par le
+    moteur (clés ``kwc`` / ``total_modules`` de
+    ``contract_samples/moteur_calculer.json``). Tant qu'aucun calcul n'a été
+    joué ils valent ``null``, JAMAIS ``0`` : publier un zéro ferait lire
+    « toiture vide » là où rien n'a encore été calculé.
+    """
+    id = serializers.IntegerField(read_only=True)
+    titre = serializers.CharField(read_only=True)
+    statut = serializers.CharField(read_only=True)
+    statut_libelle = serializers.SerializerMethodField()
+    lead_id = serializers.IntegerField(read_only=True, allow_null=True)
+    client_id = serializers.IntegerField(read_only=True, allow_null=True)
+    devis_id = serializers.IntegerField(read_only=True, allow_null=True)
+    appel_offre_id = serializers.IntegerField(read_only=True, allow_null=True)
+    layout_hash = serializers.CharField(read_only=True, allow_blank=True)
+    version_moteur = serializers.CharField(read_only=True, allow_blank=True)
+    kwc = serializers.SerializerMethodField()
+    modules = serializers.SerializerMethodField()
+    liens = serializers.SerializerMethodField()
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+    def get_statut_libelle(self, obj) -> str:
+        libelle = getattr(obj, 'get_statut_display', None)
+        if callable(libelle):
+            return libelle()
+        return str(getattr(obj, 'statut', '') or '')
+
+    def get_kwc(self, obj) -> float | None:
+        return _nombre_calepinage(_resultat_calepinage(obj).get('kwc'))
+
+    def get_modules(self, obj) -> int | None:
+        valeur = _nombre_calepinage(
+            _resultat_calepinage(obj).get('total_modules'))
+        return int(valeur) if valeur is not None else None
+
+    def get_liens(self, obj) -> dict:
+        """Les SORTIES du calepinage : aujourd'hui l'aperçu rendu.
+
+        Lien présigné COURTE durée (1 h), comme les autres liens d'image du
+        dépôt — jamais la clé de stockage brute. Sans rendu enregistré, ou si
+        le stockage ne répond pas, la clé reste PRÉSENTE à ``null`` : une
+        intégration ne doit jamais avoir à deviner si une clé manque parce
+        qu'il n'y a pas d'image ou parce que le serveur l'a omise.
+        """
+        return {'apercu': _url_apercu_calepinage(obj)}
+
+
+def _resultat_calepinage(obj):
+    """Le résultat du moteur, TOUJOURS un dict (jamais ``None`` à lire)."""
+    valeur = getattr(obj, 'resultat', None)
+    return valeur if isinstance(valeur, dict) else {}
+
+
+def _nombre_calepinage(valeur):
+    """Un nombre RÉEL, ou ``None`` — jamais une valeur inventée, jamais 0."""
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    if isinstance(valeur, (int, float)):
+        return float(valeur)
+    return None
+
+
+def _url_apercu_calepinage(obj):
+    cle = (getattr(obj, 'roof_image', None) or '').strip()
+    if not cle:
+        return None
+    try:
+        from apps.ventes.utils.pdf import roof_image_signed_url
+        return roof_image_signed_url(cle)
+    except Exception:  # noqa: BLE001 — best-effort : jamais un 500 sur un lien
+        return None

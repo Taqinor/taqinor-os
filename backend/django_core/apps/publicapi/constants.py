@@ -56,6 +56,13 @@ SCOPE_READ_BTP = 'read:btp'
 SCOPE_READ_FAVORIS = 'read:favoris'
 SCOPE_READ_VUES = 'read:vues'
 
+# CAL214 — calepinages (apps.calepinage) en LECTURE SEULE : identité,
+# rattachement lead/client/devis, statut, empreinte du layout, puissance et
+# nombre de modules RÉELLEMENT calculés, liens de sorties. Ce scope n'ouvre
+# JAMAIS la géométrie brute (`roof_layout`, plans/rangées du moteur) ni aucun
+# coût interne : voir `public_serializers.PublicCalepinageSerializer`.
+SCOPE_READ_CALEPINAGES = 'read:calepinages'
+
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
 # viennent de STAGES.py (jamais hardcodés).
@@ -87,6 +94,8 @@ SCOPE_CHOICES = [
      "Lire les favoris épinglés d'un utilisateur consentant (?owner=)"),
     (SCOPE_READ_VUES,
      "Lire les vues sauvegardées d'équipe, ou d'un utilisateur consentant (?owner=)"),
+    (SCOPE_READ_CALEPINAGES,
+     'Lire les calepinages (sans géométrie brute ni coût interne)'),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
     (SCOPE_WRITE_DEVIS, 'Créer un devis brouillon (jamais envoyé/accepté)'),
