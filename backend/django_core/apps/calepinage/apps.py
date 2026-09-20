@@ -47,4 +47,21 @@ class CalepinageConfig(AppConfig):
         # créé depuis la fiche lead resterait gelé à sa création pendant que le
         # devis continue d'être redessiné. Import ICI (et pas en tête de
         # module) : ``ready()`` est le seul moment où les modèles sont chargés.
+        #
+        # CAL110 — le MÊME module porte l'abonnement à ``lead_created`` : un
+        # lead issu du parcours public « mon toit » ouvre un calepinage
+        # pré-tracé. C'est l'app CONSOMMATRICE qui s'abonne (patron M6) :
+        # ``apps/crm/receivers.py`` n'a aucune connaissance de ce module.
         from . import receivers  # noqa: F401
+
+        # CAL208 — enregistre le restaurateur dédié de la corbeille
+        # transverse (``apps.trash.registry``) : ``Calepinage`` ne porte
+        # aucun drapeau de soft-delete, donc le repli GÉNÉRIQUE de
+        # ``apps.trash`` échouerait (``RestaurationImpossible``). Restaurer
+        # ne modifie rien sur l'objet : l'état archivé/actif est
+        # entièrement porté par la corbeille elle-même.
+        from apps.trash.registry import enregistrer_restaurateur
+
+        from .services.archivage import CLE_MODELE, restaurateur_calepinage
+
+        enregistrer_restaurateur(CLE_MODELE, restaurateur_calepinage)

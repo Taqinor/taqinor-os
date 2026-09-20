@@ -42,13 +42,32 @@ MIGRATIONS = pathlib.Path(__file__).resolve().parents[1] / 'migrations'
 
 
 class UneSeuleMigrationTest(SimpleTestCase):
-    """Les quatre modèles arrivent ENSEMBLE, dans ``0001_initial``."""
+    """Les quatre modèles du JOUR 1 arrivent ENSEMBLE, dans ``0001_initial``.
 
-    def test_une_seule_migration(self):
+    LE GARDE A ÉTÉ RECALIBRÉ, PAS AFFAIBLI. Sa version d'origine exigeait UN
+    SEUL fichier dans ``migrations/`` — ce qui était vrai au jour 1 et ne
+    l'est plus depuis que des tâches du plan ajoutent explicitement leur
+    colonne (CAL52 photos, CAL64 relevé, CAL130 norme, CAL139 pertes,
+    CAL149 profils types). Ce qu'il protégeait réellement — « les quatre
+    modèles fondateurs ne se dispersent pas en quatre migrations » — est
+    tenu par ``test_les_quatre_modeles_y_sont`` ci-dessous. Ce qui est
+    vérifié ICI est ce qui reste vrai et utile : la chaîne est LINÉAIRE
+    (chaque migration dépend de la précédente), donc rejouable, et
+    ``0001_initial`` reste la racine.
+    """
+
+    def test_la_chaine_de_migrations_est_lineaire(self):
         fichiers = sorted(
             p.name for p in MIGRATIONS.glob('*.py')
             if p.name != '__init__.py')
-        self.assertEqual(fichiers, ['0001_initial.py'], fichiers)
+        self.assertEqual(fichiers[0], '0001_initial.py', fichiers)
+        for precedent, suivant in zip(fichiers, fichiers[1:]):
+            texte = (MIGRATIONS / suivant).read_text(encoding='utf-8')
+            self.assertIn(
+                f"('calepinage', '{precedent[:-3]}')", texte,
+                f'{suivant} ne dépend pas de {precedent} : la chaîne de '
+                'migrations du module doit rester linéaire pour être '
+                'rejouable.')
 
     def test_les_quatre_modeles_y_sont(self):
         texte = (MIGRATIONS / '0001_initial.py').read_text(encoding='utf-8')

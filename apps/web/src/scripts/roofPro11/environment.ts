@@ -107,11 +107,43 @@ export function environmentRing(o: EnvironmentObject): LngLat[] | null {
 }
 
 /**
+ * CORRECTIF (lane web/roofpro, 20/09) — un objet d'environnement n'a d'EMPRISE que si
+ * l'utilisateur l'a saisie : emprise polygonale explicite, houppier (arbre) ou
+ * longueur/largeur (bâtiment). Sans elle, la demi-largeur d'occultation est INCONNUE —
+ * elle n'est JAMAIS remplacée par un nombre de repli (l'ancien 1,5 m n'avait aucune
+ * source). Un tel objet ne porte donc AUCUNE ombre et l'écran le signale
+ * « emprise à saisir ».
+ */
+export function environmentFootprintHalfWidthM(o: EnvironmentObject): number | null {
+  if (o.footprint && o.footprint.length >= 3) {
+    const cosLat = Math.max(1e-6, Math.cos(o.centerLat * DEG2RAD));
+    let maxR = 0;
+    for (const [lng, lat] of o.footprint) {
+      const dx = (lng - o.centerLng) * DEG2M * cosLat;
+      const dy = (lat - o.centerLat) * DEG2M;
+      const r = Math.hypot(dx, dy);
+      if (r > maxR) maxR = r;
+    }
+    if (maxR > 0) return maxR;
+  }
+  const diameterM = o.kind === 'arbre' ? o.crownDiameterM : (o.lengthM ?? o.widthM ?? o.crownDiameterM);
+  return diameterM && diameterM > 0 ? diameterM / 2 : null;
+}
+
+/** Vrai quand l'objet a une HAUTEUR saisie mais AUCUNE emprise : il ne peut pas porter
+ *  d'ombre tant que l'emprise n'est pas saisie — l'écran doit le dire. */
+export function environmentNeedsFootprint(o: EnvironmentObject): boolean {
+  if (!Number.isFinite(o.heightM) || (o.heightM as number) <= 0) return false;
+  return environmentFootprintHalfWidthM(o) == null;
+}
+
+/**
  * CAL67 — convertit les objets d'environnement en obstructions ENU prêtes pour
  * `isSunBlocked`/`hourlyShadeFactors`/`pointSolarAccess` (même pipeline que les ombres
  * tracées et les obstacles de toiture, WJ19/CAL66). Un objet SANS `heightM` (ou ≤ 0) est
  * écarté : sans hauteur saisie, il ne porte aucune ombre — comportement identique à son
- * absence.
+ * absence. Idem sans EMPRISE saisie (houppier, longueur/largeur ou polygone) : la
+ * demi-largeur d'occultation est inconnue et n'est jamais remplacée par un repli.
  *
  * `roofHeightM` (CAL66/CAL67, branchement de l'ombrage vivant) : un arbre ou un bâtiment
  * voisin est posé au SOL, alors que les modules sont sur le TOIT — seule la part qui
@@ -132,13 +164,14 @@ export function environmentShadeEntries(
     if (!Number.isFinite(o.heightM) || (o.heightM as number) <= 0) continue;
     const eff = (o.heightM as number) - roofH;
     if (eff <= 0) continue;
-    const diameterM = o.kind === 'arbre' ? o.crownDiameterM : (o.lengthM ?? o.widthM ?? o.crownDiameterM);
-    const halfWidthM = diameterM && diameterM > 0 ? diameterM / 2 : 1.5;
+    // CORRECTIF — aucune emprise saisie ⇒ aucune ombre (jamais une demi-largeur inventée).
+    const halfWidthM = environmentFootprintHalfWidthM(o);
+    if (halfWidthM == null) continue;
     const x = (o.centerLng - origin[0]) * DEG2M * cosLat;
     const y = (o.centerLat - origin[1]) * DEG2M;
     // CAL94 — empreinte RÉELLE en ENU (emprise saisie du bâtiment, houppier de l'arbre)
-    // pour le lancer de rayon. Aucune dimension saisie ⇒ pas d'empreinte : l'obstruction
-    // retombe sur le cône angulaire historique, jamais sur une forme inventée.
+    // pour le lancer de rayon. L'emprise étant désormais obligatoire pour porter une
+    // ombre, elle est toujours connue ici — jamais une forme inventée.
     const ring = environmentRing(o);
     const footprint = ring
       ? ring.map(([lng, lat]) => [(lng - origin[0]) * DEG2M * cosLat, (lat - origin[1]) * DEG2M] as [number, number])

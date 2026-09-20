@@ -499,6 +499,11 @@ from apps.ventes.domain import creation as _creation  # noqa: E402
 create_draft_devis_from_ocr = _creation.create_draft_devis_from_ocr
 dupliquer_devis = _creation.dupliquer_devis
 build_devis_from_layout = _creation.build_devis_from_layout
+# CAL185 — chiffrer la VARIANTE RETENUE d'un calepinage, par LE chemin
+# de création de lignes (jamais un second).
+build_devis_depuis_calepinage_retenu = (
+    _creation.build_devis_depuis_calepinage_retenu)
+produits_a_renseigner = _creation.produits_a_renseigner
 SCENARIOS_DEMANDABLES = _creation.SCENARIOS_DEMANDABLES
 composer_devis_residentiel = _creation.composer_devis_residentiel
 build_devis_auto = _creation.build_devis_auto
@@ -622,6 +627,7 @@ __all__ = [
     'avertissement_vivier_batterie_vide',
     'bcf_share_url',
     'build_devis_auto',
+    'build_devis_depuis_calepinage_retenu',
     'build_devis_from_layout',
     'calculer_date_echeance',
     'capturer_configuration_devis',
@@ -704,6 +710,7 @@ __all__ = [
     'planifier_resynchronisation_produit',
     'poser_layout_hash',
     'poser_puissance_kwc',
+    'produits_a_renseigner',
     'prix_applicable',
     'prix_forfait_ht',
     'puissance_kwc_du_devis',

@@ -161,6 +161,12 @@ répond à des questions de géométrie.
    pas cartésienne (c'est le cas de l'arc, où `x` est curviligne).
 4. Ajouter la sérialisation dans `serialisation.surface_vers_dict` /
    `surface_depuis_dict` — le TYPE est explicite dans le JSON, jamais deviné.
+   Tant qu'une forme n'est pas dans le contrat d'échange, la sérialisation la
+   REFUSE (`SchemaIncompatible`) : c'est le cas de `SurfaceSol` (CAL88), qui
+   calcule mais ne se persiste pas encore. Un refus explicite vaut toujours
+   mieux qu'une dégradation silencieuse vers un type voisin — un terrain
+   sérialisé en « polygone » perdrait son entraxe sans que personne ne le
+   voie.
 5. Faire passer la **suite de conformité** : les 6 méthodes de
    `CONFORMITE_METHODES` (`axe_progression`, `bande`, `longueur_utile`,
    `pas_de_pose`, `vers_feuille`, `coupures`).
@@ -186,9 +192,17 @@ pensé.
 - **Pas d'export bancable tant qu'AOF59 n'est pas tranché.** Tant que la
   décision n'est pas prise, produire un export qui RESSEMBLE à un livrable
   bancable créerait exactement l'ambiguïté qu'on veut éviter.
-- **Pas de terrain-following DEM/LIDAR.** Le périmètre v1 est la TOITURE, dont
-  le plan de pose est plan ou réglé par segments. Suivre un terrain naturel
-  est un autre métier (centrales au sol), avec ses propres données d'entrée.
+- **Pas de terrain-following DEM/LIDAR.** Le plan de pose est plan ou réglé par
+  segments. Suivre le relief d'un terrain naturel demande ses propres données
+  d'entrée (modèle numérique de terrain), et rien ici ne les porte.
+  *Depuis CAL88, la CENTRALE AU SOL n'est plus un non-objectif :*
+  `surfaces/sol.py` pose un terrain PLAN avec son entraxe de rangée — saisi
+  par l'exploitant, ou calculé à la latitude du site par la politique
+  anti-ombrage (CAL167) — et MESURE le taux d'occupation du sol (GCR) sur le
+  plan réellement posé. Ce qui reste hors périmètre est le relief, pas le
+  champ au sol. Le tracker (suivi du soleil) reste, lui, un non-objectif
+  entier : il change la géométrie posée heure par heure, ce qui n'est plus du
+  calepinage de positions fixes.
 - **Pas d'import/export DWG ni shapefile.** Les portes d'entrée v1 sont le
   plan calibré à 2 points, le tracé au clavier/souris et la reprise de contour
   du lecteur de cartes. Le DXF est `[GATED]` sur une dépendance (`ezdxf`) non

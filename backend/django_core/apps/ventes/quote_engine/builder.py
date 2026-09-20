@@ -183,6 +183,79 @@ def _sld_svg(devis) -> str:
         return ""
 
 
+#: CAL182 — largeur/hauteur (px) sous lesquelles la planche A3 PAYSAGE est
+#: réduite pour tenir dans la colonne de contenu d'une page A4 PORTRAIT du
+#: devis. Le ``viewBox`` du SVG n'est PAS touché : c'est la même planche,
+#: à l'échelle près — jamais un second dessin recomposé pour le PDF.
+CALEPINAGE_LARGEUR_PX = 640
+CALEPINAGE_HAUTEUR_PX = 453  # 640 × 297/420, le ratio A3 paysage exact
+
+#: Le prologue XML et les dimensions physiques de la planche autonome. Un
+#: ``<?xml …?>`` au milieu d'un document HTML est une erreur de syntaxe, et
+#: ``width="420mm"`` déborderait la page : les deux sont réécrits À LA VOLÉE,
+#: sans toucher le module qui compose la planche.
+_SVG_PROLOGUE_RE = re.compile(r'^\s*<\?xml[^>]*\?>\s*')
+_SVG_TAILLE_RE = re.compile(
+    r'(<svg\b[^>]*?)\s+width="[^"]*"\s+height="[^"]*"')
+
+
+def _svg_planche_inline(svg: str) -> str:
+    """La planche autonome, rendue embarquable telle quelle dans la page."""
+    if not svg:
+        return ""
+    svg = _SVG_PROLOGUE_RE.sub('', svg)
+    return _SVG_TAILLE_RE.sub(
+        r'\1 width="%d" height="%d"'
+        % (CALEPINAGE_LARGEUR_PX, CALEPINAGE_HAUTEUR_PX), svg, count=1)
+
+
+def _planche_calepinage(devis):
+    """CAL182 — la PLANCHE COTÉE du calepinage de ce devis : (svg, empreinte).
+
+    Le PDF client n'emportait que l'AFFICHE du calepinage
+    (``_roof_render_data_uri`` — une image sans cotes et sans cartouche) : le
+    client n'avait donc aucune pièce cotée, alors que le serveur sait RENDRE
+    cette planche depuis CAL171. Cette fonction est le pont, et elle ne
+    DESSINE rien : elle demande à ``apps.calepinage`` sa planche.
+
+    FRONTIÈRE — lecture par ``apps.calepinage.selectors`` (l'instance) puis par
+    le ré-export ``apps.calepinage.services`` (le rendu) ; JAMAIS
+    ``apps.calepinage.models``, JAMAIS un module interne du paquet de services.
+    Imports FONCTION-LOCAUX, comme ``_sld_svg`` : le moteur vendorisé ne charge
+    aucune app tierce au démarrage.
+
+    L'empreinte est composée SANS date (``moment=None``) : deux rendus de la
+    même conception produisent le même document, au caractère près. Le hash
+    court et la version du moteur sont ceux qui sont STOCKÉS sur le
+    calepinage — jamais recalculés ici (une seconde façon de calculer la même
+    empreinte serait une seconde vérité).
+
+    ``('', '')`` dès que le devis n'a pas de calepinage, que la conception est
+    trop pauvre pour être dessinée (``PlancheRefusee``) ou que le rendu échoue :
+    la page est alors OMISE, jamais rendue blanche.
+    """
+    try:
+        from apps.calepinage import services as _calepinage_services
+        from apps.calepinage.selectors import (
+            calepinage_du_devis as _lire_calepinage)
+
+        calepinage = _lire_calepinage(getattr(devis, 'pk', None),
+                                      getattr(devis, 'company', None))
+        if calepinage is None:
+            return "", ""
+        empreinte = _calepinage_services.texte_d_empreinte(
+            getattr(calepinage, 'layout_hash', ''),
+            getattr(calepinage, 'version_moteur', ''),
+            None)
+        svg = _calepinage_services.rendre_planche_svg(
+            calepinage, pied=empreinte) or ""
+        return _svg_planche_inline(svg), empreinte
+    except Exception:  # noqa: BLE001 — une planche absente ne casse pas un PDF
+        logger.warning("CAL182: planche de calepinage indisponible pour le "
+                       "devis %s", getattr(devis, "pk", None))
+        return "", ""
+
+
 def _parse_marque(*texts) -> str:
     """Extract the product brand from designation/product name (one-page badge)."""
     blob = " ".join(t for t in texts if t).lower()
@@ -793,6 +866,19 @@ DEFAULT_PDF_OPTIONS = {
     # l'agent qui cochait la case. Un `True`/`False` EXPLICITE (dialogue PDF,
     # paramètre de requête) reste souverain — l'opt-out marche toujours.
     'include_annexe_technique': None,
+    # CAL182 — page « Calepinage » (la PLANCHE COTÉE de CAL171, avec son
+    # cartouche, son échelle, son nord et son empreinte). DÉFAUT ``None`` =
+    # AUTO : la page est ajoutée dès que le devis PORTE un calepinage
+    # dessinable, et omise sinon.
+    #
+    # Pourquoi l'AUTO est LÉGITIME ici, là où L-1V l'a RETIRÉ à l'annexe :
+    # ``electrical_design`` est posé sur CHAQUE devis à sa création
+    # (``rafraichir_etudes_du_devis``), donc « l'étude existe » est vrai
+    # partout et l'auto ajoutait une page à TOUS les PDF. Un calepinage, lui,
+    # n'existe que si quelqu'un l'a DESSINÉ : l'auto ne peut donc ajouter la
+    # page qu'aux devis qui en ont vraiment un. Un ``True``/``False``
+    # EXPLICITE (dialogue PDF, paramètre de requête) reste souverain.
+    'include_calepinage': None,
     # ── Agricole (pompage) — toggleable persuasion sections (default on) ──
     'show_subsidy': True,          # FDA 30% subsidy block
     'show_fuel_comparison': True,  # solaire vs butane vs diesel + payback
@@ -876,6 +962,17 @@ def clean_pdf_options(raw) -> dict:
         # opt-out déguisé ; seul un booléen tranche pour de bon.
         opts['include_annexe_technique'] = (
             None if _annexe is None else bool(_annexe))
+    # CAL183 — page « Calepinage » : MÊME tri-état que l'annexe. ``None``
+    # EXPLICITE vaut « auto » (le défaut), jamais un opt-out déguisé ; seul un
+    # booléen tranche pour de bon, et cette valeur explicite est SOUVERAINE sur
+    # l'AUTO. La whitelister est sans risque : l'option ne peut QUE choisir
+    # entre montrer et cacher une pièce technique du devis courant — elle ne
+    # révèle rien qu'un autre appel ne puisse déjà obtenir, et n'ouvre l'accès
+    # à aucune donnée d'un autre dossier. Le drapeau de RENDU
+    # ``_embed_calepinage_planche``, lui, reste SERVEUR et hors whitelist.
+    if 'include_calepinage' in raw:
+        _cal = raw['include_calepinage']
+        opts['include_calepinage'] = None if _cal is None else bool(_cal)
     if raw.get('payment_mode') in ('standard', 'custom'):
         opts['payment_mode'] = raw['payment_mode']
     # NTI18N4 — langue de sortie déjà résolue par l'appelant (whitelist
@@ -3329,6 +3426,32 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         data["include_annexe_technique"] = True
         data["electrical_design"] = _design
         data["sld_svg"] = _sld_svg(devis)
+    # ── CAL182 — LA PLANCHE EST UN ARTEFACT DE RENDU (leçon CALEPDF/A8) ──────
+    # Même discipline que l'affiche : ``build_quote_data`` alimente AUSSI la
+    # charge utile JSON de la proposition publique, et deux raisons interdisent
+    # d'y faire voyager la planche. (1) COÛT : la composer demande une lecture
+    # du calepinage et un dessin complet à CHAQUE affichage de page — et à
+    # chaque appel du sérialiseur de devis, qui appelle ce builder par devis.
+    # (2) ANTICOPIE : la planche est COTÉE ; elle porte les longueurs et
+    # l'implantation, c'est-à-dire exactement la géométrie machine que
+    # ``_safe_roof_layout`` retient côté web, là où l'AFFICHE, elle, est
+    # servie sans condition. On ne la compose donc QUE lorsque le chemin de
+    # RENDU la demande : ``generate_premium_devis_pdf`` pose ce drapeau
+    # SERVEUR, que ``clean_pdf_options`` ne whiteliste pas — un corps client ne
+    # peut pas l'allumer.
+    #
+    # Un ``include_calepinage`` ``False`` explicite coupe court AVANT même
+    # d'interroger ``apps.calepinage`` (l'opt-out ne doit rien coûter) ; sous
+    # ``None`` (AUTO) et sous ``True`` on demande la planche, et son absence
+    # dégrade gracieusement — exactement comme l'étude et l'annexe : la page
+    # n'est ni rendue ni comptée, jamais rendue blanche.
+    if (opts['include_calepinage'] is not False
+            and (pdf_options or {}).get("_embed_calepinage_planche")):
+        _planche_svg, _planche_empreinte = _planche_calepinage(devis)
+        if _planche_svg:
+            data["include_calepinage"] = True
+            data["calepinage_svg"] = _planche_svg
+            data["calepinage_empreinte"] = _planche_empreinte
     # QJ12 — financing block (indicatif / à confirmer). Added additively after
     # all other keys so omitting it never changes any existing key's value.
     # Degrades to None when display_total is unavailable — callers omit the block.
@@ -3826,6 +3949,9 @@ def generate_premium_devis_pdf(devis_id, pdf_options=None, persist=True) -> str:
     # whiteliste pas, un corps client ne peut pas l'allumer.
     _opts_rendu = dict(pdf_options or {})
     _opts_rendu["_embed_roof_render"] = True
+    # CAL182 — idem pour la PLANCHE cotée : composée ici, jamais dans la
+    # charge utile publique (coût + anticopie, cf. le bloc CAL182 plus haut).
+    _opts_rendu["_embed_calepinage_planche"] = True
     data = build_quote_data(devis, _opts_rendu)
 
     # L-NIV (24/08/2026) — filigrane PDF DISCRET, posé UNIQUEMENT sur le PDF
@@ -3997,6 +4123,7 @@ def cle_pdf_a_jour(devis, pdf_options=None) -> str:
             # calepinage périmé ne peut pas être servi.
             _opts_empreinte = dict(options)
             _opts_empreinte["_embed_roof_render"] = True
+            _opts_empreinte["_embed_calepinage_planche"] = True
             attendue = empreinte_donnees_pdf(
                 build_quote_data(devis, _opts_empreinte))
         except Exception:  # noqa: BLE001 — un devis illisible se re-rend

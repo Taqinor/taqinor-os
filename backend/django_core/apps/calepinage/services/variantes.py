@@ -168,6 +168,14 @@ def retenir_variante(variante):
             "La variante n'est pas encore enregistrée : impossible de la "
             "retenir.", champ='variante')
 
+    # CAL206 — feu vert bureau d'études : no-op si la société ne l'exige
+    # pas, ou si le calepinage n'a ni lead ni devis (la règle ne s'applique
+    # alors pas). C'est ICI, et nulle part ailleurs, que le refus doit
+    # vivre : c'est le SEUL chemin d'écriture de « retenue » (CAL9).
+    from .feu_vert import verifier_avant_retenue
+
+    verifier_avant_retenue(variante.calepinage)
+
     ancienne = (CalepinageVariante.objects
                 .filter(calepinage_id=variante.calepinage_id, retenue=True)
                 .exclude(pk=variante.pk)
