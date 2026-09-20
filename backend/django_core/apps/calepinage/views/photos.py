@@ -22,6 +22,8 @@ CE QUE L'ACTION GARANTIT
 """
 from __future__ import annotations
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -67,6 +69,11 @@ class PhotosSiteMixin:
                          'photos': photos_site(calepinage)},
                         status=status.HTTP_201_CREATED)
 
+    #: YAPIC6 — ``photo_id`` n'est pas un champ du pivot : sans cette déclaration,
+    #: drf-spectacular publie un paramètre de chemin sans type.
+    @extend_schema(parameters=[OpenApiParameter(
+        name='photo_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+        description="Identifiant de la photo de site (sous-ressource du calepinage).")])
     @action(detail=True, methods=['patch'],
             url_path=r'photos/(?P<photo_id>[^/.]+)/calage',
             permission_classes=[PeutLireOuEcrireCalepinage])
