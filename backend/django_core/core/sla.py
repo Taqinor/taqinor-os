@@ -609,6 +609,27 @@ def sla_credit_statut(request, pk):
     except SlaSnapshot.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND)
 
+    ancien_statut = snapshot.credit_statut
     snapshot.credit_statut = nouveau_statut
     snapshot.save(update_fields=['credit_statut', 'updated_at'])
+    _emettre_sla_credit_statut_change(
+        snapshot, ancien_statut, nouveau_statut, request.user)
     return Response(SlaSnapshotSerializer(snapshot).data)
+
+
+def _emettre_sla_credit_statut_change(snapshot, ancien_statut, nouveau_statut,
+                                      user):
+    """NTOBS30-reste — émission best-effort de ``core.events.
+    sla_credit_statut_change`` (audit trail interne, ``apps.audit``) ; ne
+    doit JAMAIS empêcher l'enregistrement de la décision elle-même."""
+    try:
+        from .events import sla_credit_statut_change
+        sla_credit_statut_change.send(
+            sender=SlaSnapshot, snapshot=snapshot, company=snapshot.company,
+            ancien_statut=ancien_statut, nouveau_statut=nouveau_statut,
+            user=user)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTOBS30-reste : émission sla_credit_statut_change échouée '
+            '(snapshot %s)', getattr(snapshot, 'pk', '?'), exc_info=True)

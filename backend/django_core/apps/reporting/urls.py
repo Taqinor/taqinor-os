@@ -34,6 +34,7 @@ from .sav_pivot import sav_tickets_pivot, sav_tickets_cout_moyen, sav_taux_attac
 from .reports_field import field_service_report
 from .reports_chantier import pilotage_chantiers_report
 from .p2p_kpi import kpi_p2p
+from .frais_kpi import kpi_frais
 from .technicien_scorecard import technicien_scorecard
 from .vitals import collect_vital, vitals_p75
 
@@ -153,6 +154,10 @@ urlpatterns = [
     # NTP2P46 — dashboard KPI Procure-to-Pay (cycle time, budgets
     # département, conformité fournisseur moyenne).
     path('p2p/kpi/', kpi_p2p, name='reporting-p2p-kpi'),
+    # NTP2P47 — dashboard KPI notes de frais & per-diem (total remboursé par
+    # catégorie, top employés, délai moyen dépense→remboursement, per-diem
+    # par destination).
+    path('frais/kpi/', kpi_frais, name='reporting-frais-kpi'),
     # VX61 — beacon Web Vitals RÉELS (POST, une ligne/métrique) + agrégat p75.
     path('vitals/', collect_vital, name='reporting-vitals'),
     path('vitals/p75/', vitals_p75, name='reporting-vitals-p75'),

@@ -17,6 +17,9 @@ from core.events import (
     bulk_edit_applied,
     devis_expired,
     document_pdf_generated,
+    export_reversibilite_declenche,
+    maintenance_window_created,
+    sla_credit_statut_change,
 )
 
 from . import recorder
@@ -96,4 +99,63 @@ def _record_bulk_edit(sender, target, label, fields, count, company=None,
         user=user,
         changes=[{'field': f, 'old': '', 'new': '(édition en masse)'}
                  for f in (fields or [])],
+    )
+
+
+# ── NTOBS30-reste — Actions Fiabilité de `core` auditées ────────────────────
+# `core` ne peut jamais appeler `apps.audit` directement (contrat
+# import-linter core-foundation-is-a-base-layer) : il émet sur le bus, ce
+# satellite écrit. Voir la docstring de ``core.events`` (section NTOBS30-reste)
+# pour la carte complète des 5 actions Fiabilité et la limite assumée sur
+# l'édition de ``SlaCreditPolicy`` (aucune vue d'écriture existante, donc
+# aucun signal ni abonné pour cette 5ᵉ action).
+
+@receiver(maintenance_window_created,
+          dispatch_uid='audit_record_on_maintenance_window_created')
+def _record_maintenance_window_created(sender, fenetre, company=None,
+                                       user=None, **kwargs):
+    """Journalise la CRÉATION d'une fenêtre de maintenance (Directeur/
+    Administrateur, ``core.maintenance_windows.MaintenanceWindowListCreateView
+    .perform_create``). Best-effort : ``record`` n'élève jamais."""
+    recorder.record(
+        AuditLog.Action.CREATE,
+        instance=fenetre,
+        detail=(f'Fenêtre de maintenance créée '
+                f'({fenetre.debute_le:%d/%m/%Y %H:%M} → '
+                f'{fenetre.termine_le:%d/%m/%Y %H:%M}, impact '
+                f'{fenetre.get_impact_display()}).'),
+        company=company,
+        user=user,
+    )
+
+
+@receiver(export_reversibilite_declenche,
+          dispatch_uid='audit_record_on_export_reversibilite_declenche')
+def _record_export_reversibilite_declenche(sender, run, company=None,
+                                           user=None, **kwargs):
+    """Journalise le DÉCLENCHEMENT d'un export de réversibilité (l'action
+    auditée est la DEMANDE — ``core.export_registry.
+    declencher_export_reversibilite``, pas l'aboutissement de la tâche
+    Celery). Best-effort : ``record`` n'élève jamais."""
+    recorder.record(
+        AuditLog.Action.EXPORT,
+        instance=run,
+        detail="Export de réversibilité déclenché.",
+        company=company,
+        user=user,
+    )
+
+
+@receiver(sla_credit_statut_change,
+          dispatch_uid='audit_record_on_sla_credit_statut_change')
+def _record_sla_credit_statut_change(sender, snapshot, ancien_statut=None,
+                                     nouveau_statut=None, company=None,
+                                     user=None, **kwargs):
+    """Journalise la décision humaine ``emis``/``refuse`` sur un crédit SLA
+    (``core.sla.sla_credit_statut``), avec le diff structuré ancien→nouveau
+    (ARC16). Best-effort : ``record_field_change`` n'élève jamais."""
+    recorder.record_field_change(
+        snapshot, 'credit_statut', ancien_statut, nouveau_statut, user=user,
+        field_label='Statut du crédit SLA', company=company,
+        action=AuditLog.Action.STATUS, chatter=False,
     )

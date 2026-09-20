@@ -187,6 +187,40 @@ class FiabilitePermission(BasePermission):
         return u.has_erp_permission('fiabilite_administration')
 
 
+def _emettre_maintenance_window_announced(fenetre, user):
+    """NTOBS26 — émission best-effort de ``core.events.
+    maintenance_window_announced`` à la création (webhook sortant côté
+    ``apps.publicapi``) ; ne doit JAMAIS empêcher la création de la fenêtre
+    elle-même."""
+    try:
+        from .events import maintenance_window_announced
+        maintenance_window_announced.send(
+            sender=MaintenanceWindow, fenetre=fenetre,
+            company=fenetre.company, user=user)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTOBS26 : émission maintenance_window_announced échouée (%s)',
+            getattr(fenetre, 'pk', '?'), exc_info=True)
+
+
+def _emettre_maintenance_window_created(fenetre, user):
+    """NTOBS30-reste — émission best-effort de ``core.events.
+    maintenance_window_created`` (audit trail interne, ``apps.audit``) — SIGNAL
+    DISTINCT de ``maintenance_window_announced`` ci-dessus (deux abonnés
+    différents : webhook externe vs journal d'audit interne)."""
+    try:
+        from .events import maintenance_window_created
+        maintenance_window_created.send(
+            sender=MaintenanceWindow, fenetre=fenetre,
+            company=fenetre.company, user=user)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTOBS30-reste : émission maintenance_window_created échouée (%s)',
+            getattr(fenetre, 'pk', '?'), exc_info=True)
+
+
 class MaintenanceWindowListCreateView(generics.ListCreateAPIView):
     """GET/POST /api/django/core/maintenance-windows/ — lecture ouverte à
     ``fiabilite_voir``/``fiabilite_administration``, création réservée à
@@ -208,6 +242,10 @@ class MaintenanceWindowListCreateView(generics.ListCreateAPIView):
             serializer.save()
         else:
             serializer.save(company=self.request.user.company)
+        _emettre_maintenance_window_announced(
+            serializer.instance, self.request.user)
+        _emettre_maintenance_window_created(
+            serializer.instance, self.request.user)
 
 
 @extend_schema(request=None, responses=MaintenanceWindowSerializer)

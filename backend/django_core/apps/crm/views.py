@@ -236,6 +236,20 @@ class ClientViewSet(CompanyScopedModelViewSet):
                 new_client, self.request.user,
                 old_value=old_langue, new_value=new_client.langue_document,
             )
+            # CRM-LANGUE-EVENT — comble le seam NTI18N43 (jusqu'ici sans
+            # émetteur) : une intégration tierce (webhook publicapi
+            # `langue_changed`) doit savoir que ce client a changé de langue
+            # documentaire. `emettre_langue_changed` porte déjà sa propre
+            # garde « ça a vraiment changé » — le if ci-dessus la double,
+            # sans risque (idempotent).
+            from core.events import emettre_langue_changed
+            emettre_langue_changed(
+                new_client.company,
+                ancienne_langue=old_langue,
+                nouvelle_langue=new_client.langue_document,
+                client_id=new_client.pk,
+                user=self.request.user,
+            )
 
     def get_permissions(self):
         # QC1 — `search` est une LECTURE scopée société (autocomplete des

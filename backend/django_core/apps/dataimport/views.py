@@ -18,6 +18,7 @@ from core.selectors import get_company_object
 
 from . import services
 from .models import ImportJob
+from .holidays_import import exporter_feries_csv, importer_feries_csv
 from .translations_i18n import exporter_traductions_csv, importer_traductions_csv
 
 logger = logging.getLogger(__name__)
@@ -251,6 +252,50 @@ def import_traductions(request):
             f.read(), f.name, request.user.company, user=request.user)
     except Exception:
         logger.warning('Import de traductions échoué', exc_info=True)
+        return Response(
+            {'detail': 'Lecture du fichier impossible (format invalide ?).'},
+            status=400)
+    return Response({
+        'job': job.pk, 'statut': job.statut, 'total_lignes': job.total_lignes,
+        'created_count': job.created_count, 'updated_count': job.updated_count,
+        'error_count': job.error_count,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def export_feries(request):
+    """NTI18N45 — ``GET feries/export.csv`` : CSV du calendrier de jours
+    fériés de la société (colonnes ``pays|date|libelle|recurrent_annuel``),
+    pour préparation hors-ligne dans un tableur."""
+    contenu = exporter_feries_csv(request.user.company)
+    resp = HttpResponse(contenu, content_type='text/csv; charset=utf-8')
+    resp['Content-Disposition'] = 'attachment; filename="feries.csv"'
+    return resp
+
+
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+@parser_classes([MultiPartParser, FormParser])
+def import_feries(request):
+    """NTI18N45 — ``POST feries/import/`` (multipart ``file``) : importe en
+    masse un calendrier de jours fériés, upsert IDEMPOTENT par
+    ``(pays, date)``. Journalisé via ``dataimport.ImportJob``
+    (``target='feries'``)."""
+    f = request.FILES.get('file')
+    if f is None:
+        return Response({'detail': 'Aucun fichier fourni.'}, status=400)
+    size = getattr(f, 'size', None)
+    if size is not None and size > MAX_UPLOAD_BYTES:
+        return Response(
+            {'detail': 'Fichier trop volumineux : '
+                       f'{size} octets (max {MAX_UPLOAD_BYTES}).'},
+            status=400)
+    try:
+        job = importer_feries_csv(
+            f.read(), f.name, request.user.company, user=request.user)
+    except Exception:
+        logger.warning('Import de fériés échoué', exc_info=True)
         return Response(
             {'detail': 'Lecture du fichier impossible (format invalide ?).'},
             status=400)

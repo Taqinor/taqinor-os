@@ -13,13 +13,13 @@ métier, appelle exclusivement des sélecteurs déjà en place) :
     (NTP2P8) des fournisseurs qui EN portent un,
     ``apps.stock.selectors.conformite_fournisseurs``.
 
-``taux_conversion_pct`` (% de demandes converties vs rejetées) est
-VOLONTAIREMENT ``None`` : aucun sélecteur cross-app en LECTURE
-n'expose aujourd'hui un compte par statut (soumise/approuvée/refusée) de
-``apps.installations.DemandeAchat`` — seul le compte des demandes
-CONVERTIES existe (``demandes_achat_converties``). Ajouter un tel sélecteur
-vit dans ``apps/installations`` (hors périmètre de cette lane) ; jamais un
-taux inventé ou une ``KeyError`` à la place.
+``taux_conversion_pct`` (NTP2P47) — % de demandes ``commandee`` (converties)
+parmi les demandes DÉCIDÉES (``commandee`` + ``refusee``, en excluant les
+demandes encore en cours — ``brouillon``/``soumise``/``approuvee`` non
+commandée — qui n'ont pas encore d'issue) : ``apps.installations.selectors.
+comptes_demandes_achat_par_statut`` (NOUVEAU sélecteur cross-app en LECTURE
+SEULE). ``None`` (jamais 0/``KeyError``) si aucune demande n'a encore été
+décidée sur la période.
 
 Lecture seule, réservé Responsable/Admin (pilotage achats), multi-tenant.
 """
@@ -52,6 +52,21 @@ def _conformite_fournisseur_moyenne(company, *, debut=None, fin=None):
     return round(sum(scores) / len(scores), 1)
 
 
+def _taux_conversion_pct(company, *, debut=None, fin=None):
+    """NTP2P47 — % de demandes d'achat ``commandee`` parmi les demandes
+    DÉCIDÉES (``commandee`` + ``refusee``). ``None`` (jamais 0) si aucune
+    demande n'a encore été décidée sur la période."""
+    from apps.installations.selectors import comptes_demandes_achat_par_statut
+
+    comptes = comptes_demandes_achat_par_statut(company, debut=debut, fin=fin)
+    commandees = comptes.get('commandee', 0)
+    refusees = comptes.get('refusee', 0)
+    decidees = commandees + refusees
+    if not decidees:
+        return None
+    return round(commandees / decidees * 100, 1)
+
+
 def dashboard_p2p(company, *, debut=None, fin=None):
     """NTP2P46 — KPI Procure-to-Pay agrégés d'une société sur la période."""
     from apps.stock.selectors import tableau_bord_achats
@@ -64,7 +79,8 @@ def dashboard_p2p(company, *, debut=None, fin=None):
         'budgets_departement': achats.get('budgets_departement'),
         'conformite_fournisseur_moyenne': _conformite_fournisseur_moyenne(
             company, debut=debut, fin=fin),
-        'taux_conversion_pct': None,
+        'taux_conversion_pct': _taux_conversion_pct(
+            company, debut=debut, fin=fin),
     }
 
 

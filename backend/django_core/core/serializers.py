@@ -352,9 +352,15 @@ class WorkflowDefinitionSerializer(serializers.ModelSerializer):
                 setattr(instance, attr, validated_data[attr])
         instance.save()
         # Remplacement intégral des étapes UNIQUEMENT si `steps` est fourni.
+        # NTWFL25 — délègue à `core.workflow.editer_etapes_definition` :
+        # mute en place une définition jamais instanciée, sinon FORKE une
+        # nouvelle version (les instances en cours/terminées gardent la
+        # structure qu'elles ont réellement exécutée). L'appelant reçoit
+        # donc la définition CIBLE, potentiellement pas `instance`.
         if steps_data is not None:
-            instance.steps.all().delete()
-            self._sync_steps(instance, steps_data)
+            from core import workflow as core_workflow
+            instance, _forkee = core_workflow.editer_etapes_definition(
+                instance, steps_data)
         return instance
 
     @staticmethod

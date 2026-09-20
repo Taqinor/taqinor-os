@@ -331,6 +331,29 @@ def verifier_fraicheur_trust_center_task():
     return {'notifies': notifies}
 
 
+@shared_task(name='core.notifier_dossiers_echeance_depassee')
+def notifier_dossiers_echeance_depassee_task():
+    """NTWFL17 — balayage beat QUOTIDIEN des échéances de dossier dépassées,
+    par société ACTIVE (SCA19 : une société suspendue/en fermeture ne doit
+    plus émettre de notifications). Enveloppe fine de ``core.dossiers`` —
+    la dédup anti-spam (``dernier_rappel_echeance_le``) vit déjà dans le
+    modèle, un re-run le même jour ne renvoie rien de plus."""
+    from authentication.selectors import active_companies
+
+    from . import dossiers
+    from .dates import aujourd_hui_local
+
+    jour = aujourd_hui_local()
+    total = 0
+    for company in active_companies():
+        alertes = dossiers.notifier_echeances_depassees(company, jour)
+        total += len(alertes)
+    logger.info(
+        'core.notifier_dossiers_echeance_depassee: %d dossier(s) alerté(s).',
+        total)
+    return {'alertes': total}
+
+
 @shared_task(name='core.recalculer_sla_perimes')
 def recalculer_sla_perimes_task():
     """NTOBS25 — recalcul de rattrapage quotidien : régénère les

@@ -43,6 +43,12 @@ class PublicApiConfig(AppConfig):
         # `apps.parametres` -> `apps.publicapi`.
         from . import i18n_event_receivers
         i18n_event_receivers.connect()
+        # NTOBS26 — abonnés aux évènements d'exploitation du bus `core.events`
+        # (`incident_opened`/`incident_resolved`/`maintenance_window_
+        # announced`), jamais un import direct `apps.statuspage`/`core`
+        # -> `apps.publicapi`.
+        from . import ops_event_receivers
+        ops_event_receivers.connect()
         # YOPSB11 — archivage par lots du journal WebhookDelivery (registre
         # partagé YOPSB10). Fenêtre founder-configurable via
         # WEBHOOK_DELIVERY_ARCHIVE_DAYS (défaut 0 = OFF, comportement inchangé).

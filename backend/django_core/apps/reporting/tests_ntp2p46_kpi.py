@@ -12,8 +12,11 @@ Couvre :
   * ``conformite_fournisseur_moyenne`` est la moyenne des scores CONNUS
     (ignore les fournisseurs sans score) et ``None`` sans aucun score
     (jamais un 0 trompeur) ;
-  * ``taux_conversion_pct`` est explicitement ``None`` (jamais fabriqué —
-    voir docstring de tête du module) ;
+  * ``taux_conversion_pct`` (NTP2P47) — % de demandes ``commandee`` parmi
+    les demandes DÉCIDÉES (``commandee`` + ``refusee``), via le nouveau
+    sélecteur ``apps.installations.selectors.
+    comptes_demandes_achat_par_statut`` ; ``None`` (jamais 0/fabriqué) sans
+    aucune demande décidée sur la période ;
   * l'endpoint ``GET reporting/p2p/kpi/`` (réservé Responsable/Admin).
 """
 from unittest.mock import patch
@@ -23,6 +26,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
+from apps.installations.models import DemandeAchat
 from apps.reporting.p2p_kpi import dashboard_p2p
 from authentication.models import Company
 
@@ -72,10 +76,39 @@ class DashboardP2pTests(TestCase):
     @patch('apps.stock.selectors.tableau_bord_achats',
            return_value=FAUX_TABLEAU_BORD)
     @patch('apps.stock.selectors.conformite_fournisseurs', return_value=[])
-    def test_taux_conversion_jamais_fabrique(
+    def test_taux_conversion_none_sans_aucune_decision(
             self, _mock_conformite, _mock_tableau):
         resultat = dashboard_p2p(self.company)
         self.assertIsNone(resultat['taux_conversion_pct'])
+
+    @patch('apps.stock.selectors.tableau_bord_achats',
+           return_value=FAUX_TABLEAU_BORD)
+    @patch('apps.stock.selectors.conformite_fournisseurs', return_value=[])
+    def test_taux_conversion_ignore_les_demandes_encore_en_cours(
+            self, _mock_conformite, _mock_tableau):
+        # NTP2P47 — 3 commandées, 1 refusée, 2 encore en cours (brouillon +
+        # soumise) : le taux ne compte QUE les décidées → 3 / (3+1) = 75%.
+        DemandeAchat.objects.create(
+            company=self.company, reference='DA-C1', objet='x',
+            statut=DemandeAchat.Statut.COMMANDEE)
+        DemandeAchat.objects.create(
+            company=self.company, reference='DA-C2', objet='x',
+            statut=DemandeAchat.Statut.COMMANDEE)
+        DemandeAchat.objects.create(
+            company=self.company, reference='DA-C3', objet='x',
+            statut=DemandeAchat.Statut.COMMANDEE)
+        DemandeAchat.objects.create(
+            company=self.company, reference='DA-R1', objet='x',
+            statut=DemandeAchat.Statut.REFUSEE)
+        DemandeAchat.objects.create(
+            company=self.company, reference='DA-B1', objet='x',
+            statut=DemandeAchat.Statut.BROUILLON)
+        DemandeAchat.objects.create(
+            company=self.company, reference='DA-S1', objet='x',
+            statut=DemandeAchat.Statut.SOUMISE)
+
+        resultat = dashboard_p2p(self.company)
+        self.assertEqual(resultat['taux_conversion_pct'], 75.0)
 
 
 class KpiP2pEndpointTests(TestCase):

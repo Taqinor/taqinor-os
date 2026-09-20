@@ -168,6 +168,14 @@ EVENT_RECORD_RESTORED = 'record_restored'
 # `crm`/`parametres` -> `publicapi`). Clé SOULIGNÉE : littéralement celle
 # nommée par le plan NTI18N43.
 EVENT_LANGUE_CHANGED = 'langue_changed'
+# NTOBS26 — évènements d'exploitation (apps.statuspage / core.maintenance_
+# windows), consommés depuis `core.events` par
+# `apps/publicapi/ops_event_receivers.py` (jamais un import direct
+# `statuspage` -> `publicapi`). Clés SOULIGNÉES : littéralement celles nommées
+# par le plan NTOBS26.
+EVENT_INCIDENT_OPENED = 'incident_opened'
+EVENT_INCIDENT_RESOLVED = 'incident_resolved'
+EVENT_MAINTENANCE_WINDOW_ANNOUNCED = 'maintenance_window_announced'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
@@ -195,6 +203,9 @@ EVENT_CHOICES = [
     (EVENT_SAVED_VIEW_SHARED, 'Vue partagée à l\'équipe'),
     (EVENT_RECORD_RESTORED, 'Élément restauré depuis la corbeille'),
     (EVENT_LANGUE_CHANGED, 'Langue changée (client ou société)'),
+    (EVENT_INCIDENT_OPENED, 'Incident — ouvert'),
+    (EVENT_INCIDENT_RESOLVED, 'Incident — résolu'),
+    (EVENT_MAINTENANCE_WINDOW_ANNOUNCED, 'Fenêtre de maintenance — annoncée'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 
