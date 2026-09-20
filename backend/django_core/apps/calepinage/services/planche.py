@@ -1,0 +1,1171 @@
+"""CAL171 — la PLANCHE de calepinage cotée, rendue par le SERVEUR.
+
+Le constat
+==========
+``PlancheAO`` existe, mais son PDF est un fichier **téléversé**
+(``apps/ao/services.py`` ``store_attachment(fichier)``) : l'ERP ne RENDAIT
+aucune planche. La seule image de calepinage qu'il produisait est l'affiche
+client ``Devis.roof_image`` (``apps/ventes/quote_engine/builder.py``) — sans
+cotes et sans cartouche. Une équipe de pose n'a donc jamais eu de plan.
+
+Ce que fait ce module, et ce qu'il ne fait pas
+===============================================
+* il COMPOSE un SVG A3 paysage depuis ``Calepinage.roof_layout`` (contour,
+  pans, obstacles, modules posés) — la géométrie STOCKÉE, jamais un tracé
+  reconstitué ;
+* le PDF est obtenu en encapsulant ce SVG dans un HTML rendu par
+  ``core.pdf.render_pdf`` (ARC11) : jamais un ``import weasyprint`` ici, jamais
+  une seconde plomberie PDF ;
+* **le PNG n'est pas produit ici.** Aucun rasteriseur SVG n'est installé
+  (WeasyPrint 62.3 n'a plus de sortie PNG ; ni ``cairosvg`` ni ``svglib`` ne
+  sont des dépendances). Le PNG est la conversion NAVIGATEUR du SVG, par
+  ``frontend/src/features/ao/studio/svgToPng.js``. Aucun accès réseau n'a lieu
+  au rendu : le SVG est autonome, sans police distante ni image externe ;
+* il ne RECALCULE rien. Aucune arithmétique métier (compter des modules,
+  convertir des kWc) : les longueurs cotées sont MESURÉES sur la géométrie
+  projetée, ce qui est le propos même d'une cote, et rien d'autre n'est dérivé.
+
+Le refus plutôt que le blanc
+=============================
+Un calepinage sans conception ne rend pas une feuille vide : il lève
+``PlancheRefusee`` en NOMMANT la donnée manquante (``champ``). Une planche
+blanche remise à une équipe est un défaut invisible ; un refus ne l'est pas
+(même doctrine qu'``AOF134``).
+
+La projection
+=============
+``roof_layout`` mélange trois repères — ``outline`` en ``[lat, lng]``,
+``zones[].vertices`` en ``[lng, lat]`` (convention GeoJSON du lecteur de
+cartes) et ``zones[].geometry.panels`` en mètres ENU autour d'une ``origin``
+``[lng, lat]``. Le piège est traité une fois pour toutes par
+``core.calepinage.adaptateurs.villa.Projection`` (moteur pur, partagé) :
+l'ordre des couples est un ARGUMENT EXPLICITE, jamais deviné — un contour
+retourné est plausible à l'œil et faux au mètre près.
+"""
+from __future__ import annotations
+
+from html import escape
+
+__all__ = [
+    'FORMAT_A3_MM', 'MARGE_MM', 'LARGEUR_BANDEAU_MM', 'PAS_D_ECHELLE_M',
+    'PlancheRefusee', 'dimensions_module', 'geometrie_de_planche',
+    'svg_de_planche', 'html_de_planche', 'rendre_planche_svg',
+    'rendre_planche_pdf', 'nom_de_fichier', 'entrees_de_legende',
+    'texte_d_orientation', 'lignes_d_orientation', 'longueur_de_barre',
+    'hash_court', 'texte_d_empreinte', 'empreinte_du_calepinage',
+    'CONTENU_IMPLANTATION', 'CONTENU_TOITURE', 'CONTENU_MASSE',
+    'CONTENU_POSE', 'CONTENUS', 'echelle_nommee', 'mention_d_echelle',
+    'rendre_plan_svg', 'rendre_plan_pdf', 'PlanDePoseRefuse',
+    'verifier_absence_d_argent', 'lignes_de_chaines', 'rendre_plan_pose_svg',
+    'rendre_plan_pose_pdf',
+]
+
+#: A3 PAYSAGE, en millimètres — le format des planches remises (même choix que
+#: ``core.calepinage.rendu.feuille.FORMAT_DEFAUT``).
+FORMAT_A3_MM = (420.0, 297.0)
+
+#: Marge de feuille et largeur du bandeau latéral (cartouche + légende CAL172).
+MARGE_MM = 12.0
+LARGEUR_BANDEAU_MM = 84.0
+
+#: Épaisseurs de trait (mm) — le contour relevé est le trait fort.
+TRAIT_CONTOUR = 0.7
+TRAIT_PAN = 0.4
+TRAIT_MODULE = 0.15
+TRAIT_COTE = 0.25
+
+#: Palette SOBRE, reprise de la planche du moteur (``rendu/couleurs.py``) :
+#: noir pour la géométrie relevée, vert pour les modules posés, orange pour ce
+#: qui reste à confirmer.
+NOIR = '#111111'
+VERT_MODULE = '#2e7d32'
+VERT_MODULE_FOND = '#c8e6c9'
+GRIS_PAN = '#f4f4f4'
+ORANGE = '#ef6c00'
+GRIS_TEXTE = '#444444'
+
+
+# ── CAL194 — trois plans, une seule géométrie ───────────────────────────────
+#
+# La planche CAL171 est une vue d'IMPLANTATION. Le pack réglementaire exige en
+# plus un PLAN DE TOITURE (la toiture seule, normalisée, sans modules) et un
+# PLAN DE MASSE (le bâtiment dans sa parcelle). Les trois sont des VUES de la
+# même géométrie projetée : ils ne peuvent donc pas se contredire, et c'est
+# tout l'intérêt de ne pas les produire séparément.
+CONTENU_IMPLANTATION = 'implantation'
+CONTENU_TOITURE = 'toiture'
+CONTENU_MASSE = 'masse'
+#: CAL211 — la variante POSE : ce que l'équipe terrain emporte.
+CONTENU_POSE = 'pose'
+CONTENUS = (CONTENU_IMPLANTATION, CONTENU_TOITURE, CONTENU_MASSE,
+            CONTENU_POSE)
+
+#: Les clés sous lesquelles une PARCELLE SAISIE peut voyager dans le document
+#: de conception. Extension additive et optionnelle : absente, le plan de masse
+#: est REFUSÉ — jamais dessiné avec une limite devinée.
+CLES_PARCELLE = ('parcelle', 'parcel', 'parcelleCadastrale')
+
+
+class PlancheRefusee(ValueError):
+    """Le rendu refuse de sortir, et il dit QUELLE donnée lui manque.
+
+    ``champ`` nomme la saisie fautive pour que l'appelant HTTP la reporte telle
+    quelle (règle fondateur « l'erreur pointe le champ », 08/09).
+    """
+
+    def __init__(self, message, *, champ=''):
+        super().__init__(message)
+        self.champ = champ
+
+
+# ── Lecture TOLÉRANTE du document de conception ─────────────────────────────
+#
+# Les documents réellement en base sont hétérogènes (le schéma v2 le dit et
+# l'assume) : certains ne portent que ``{zones: […]}``, d'autres un
+# ``_pans_geometry`` interne. On lit donc ce qu'on reconnaît et on IGNORE le
+# reste — mais on ne DEVINE jamais une valeur absente.
+
+def _nombre(valeur):
+    """``valeur`` en float, ou ``None`` — jamais un défaut inventé."""
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return nombre if nombre == nombre and abs(nombre) != float('inf') else None
+
+
+def _couple(point, ordre):
+    """``point`` -> ``(lat, lng)`` selon l'ORDRE déclaré. Jamais deviné."""
+    if not isinstance(point, (list, tuple)) or len(point) < 2:
+        return None
+    a, b = _nombre(point[0]), _nombre(point[1])
+    if a is None or b is None:
+        return None
+    return (a, b) if ordre == 'latlng' else (b, a)
+
+
+def _points_geo(brut, ordre):
+    """Liste de couples -> ``[(lat, lng)]``, les points illisibles retirés."""
+    if not isinstance(brut, (list, tuple)):
+        return []
+    lus = [_couple(point, ordre) for point in brut]
+    return [point for point in lus if point is not None]
+
+
+def _zones(roof_layout):
+    zones = (roof_layout or {}).get('zones')
+    return [z for z in zones if isinstance(z, dict)] \
+        if isinstance(zones, (list, tuple)) else []
+
+
+def _projection(roof_layout):
+    """Ancre la projection ENU sur le barycentre de la géométrie relevée.
+
+    Priorité au CONTOUR (``outline``, en ``[lat, lng]``), puis aux sommets des
+    pans (``[lng, lat]``) : le repère doit être stable d'un rendu à l'autre
+    pour deux documents identiques, sinon deux planches du même toit ne se
+    superposeraient pas.
+    """
+    from core.calepinage.adaptateurs.villa import Projection
+
+    points = _points_geo((roof_layout or {}).get('outline'), 'latlng')
+    if not points:
+        for zone in _zones(roof_layout):
+            points.extend(_points_geo(zone.get('vertices'), 'lnglat'))
+    if not points:
+        return None
+    lat0 = sum(p[0] for p in points) / len(points)
+    lng0 = sum(p[1] for p in points) / len(points)
+    return Projection(lat0_deg=lat0, lng0_deg=lng0)
+
+
+# ── Les dimensions du module : SOURCÉES, ou absentes ────────────────────────
+
+def dimensions_module(roof_layout):
+    """``(long_m, court_m)`` du module, ou ``None`` si rien ne les SOURCE.
+
+    Le document de conception ne porte PAS les dimensions physiques du module :
+    il ne porte que sa puissance (``panelWatt``) et les CENTRES des modules
+    posés. On ne les invente donc pas — on les retrouve dans les kits DÉCLARÉS
+    du moteur (``core.calepinage.types``) quand la puissance correspond, et on
+    rend ``None`` sinon. Un module sans dimension connue est figuré par son
+    centre (voir ``svg_de_planche``), jamais par un rectangle de taille
+    plausible : une emprise fausse au demi-mètre se lit comme une emprise
+    vraie.
+    """
+    from core.calepinage.types import (
+        KIT_AO_PAYSAGE, KIT_AO_PORTRAIT, KIT_VILLA_720,
+    )
+
+    watt = _nombre((roof_layout or {}).get('panelWatt'))
+    if watt is None:
+        return None
+    for kit in (KIT_VILLA_720, KIT_AO_PORTRAIT, KIT_AO_PAYSAGE):
+        if abs(float(kit.puissance_module_wc) - watt) < 0.5:
+            return (float(kit.module_long_m), float(kit.module_court_m))
+    return None
+
+
+# ── La GÉOMÉTRIE de planche : une projection en lecture seule ───────────────
+
+def geometrie_de_planche(roof_layout):
+    """``roof_layout`` -> géométrie PLANE en mètres, prête à dessiner.
+
+    Rend ``{'contour', 'pans', 'obstacles', 'zones_interdites', 'etendue',
+    'module_m'}``. Lève ``PlancheRefusee`` si le document ne porte AUCUNE
+    géométrie exploitable — jamais une feuille blanche.
+    """
+    projection = _projection(roof_layout)
+    if projection is None:
+        raise PlancheRefusee(
+            "Aucune géométrie enregistrée : la planche se compose du contour "
+            "et des pans STOCKÉS, jamais d'un tracé reconstitué. Enregistrez "
+            "la conception avant de demander la planche.",
+            champ='roof_layout')
+
+    def local(lat, lng):
+        return projection.vers_local(lat, lng)
+
+    contour = [local(lat, lng) for lat, lng
+               in _points_geo((roof_layout or {}).get('outline'), 'latlng')]
+
+    module_m = dimensions_module(roof_layout)
+    pans, obstacles = [], []
+    for rang, zone in enumerate(_zones(roof_layout), start=1):
+        points = [local(lat, lng)
+                  for lat, lng in _points_geo(zone.get('vertices'), 'lnglat')]
+        geometrie = zone.get('geometry') \
+            if isinstance(zone.get('geometry'), dict) else {}
+        modules = _modules_du_pan(geometrie, local)
+        pan = {
+            'repere': str(zone.get('id') or 'PAN-%d' % rang),
+            'libelle': str(zone.get('label') or ''),
+            'points': points,
+            # Chaque grandeur d'orientation est OMISE quand elle est absente :
+            # un pan sans azimut connu n'affiche pas « 0° » (CAL172).
+            'azimut_deg': _nombre(geometrie.get('azimuthDeg')
+                                  if 'azimuthDeg' in geometrie
+                                  else zone.get('facingAzimuthDeg')),
+            'pente_deg': _nombre(geometrie.get('tiltDeg')
+                                 if 'tiltDeg' in geometrie
+                                 else zone.get('pitchDeg')),
+            'modules': modules,
+            'batiment': str(zone.get('buildingId') or ''),
+        }
+        pans.append(pan)
+        obstacles.extend(_obstacles_du_pan(zone, local, rang))
+
+    zones_interdites = []
+    brutes = (roof_layout or {}).get('exclusionZones')
+    for rang, zone in enumerate(brutes if isinstance(brutes, (list, tuple))
+                                else [], start=1):
+        if not isinstance(zone, dict):
+            continue
+        points = [local(lat, lng)
+                  for lat, lng in _points_geo(zone.get('vertices'), 'lnglat')]
+        if len(points) < 3:
+            continue
+        zones_interdites.append({
+            'repere': str(zone.get('id') or 'ZONE-%d' % rang),
+            'libelle': str(zone.get('label') or ''),
+            'nature': str(zone.get('nature') or ''),
+            'points': points,
+        })
+
+    geometrie = {
+        'contour': contour,
+        'pans': pans,
+        'obstacles': obstacles,
+        'zones_interdites': zones_interdites,
+        'module_m': module_m,
+        # CAL194 — la parcelle SAISIE, ou une liste vide. Jamais un contour
+        # déduit du bâtiment : une limite de parcelle est une affirmation
+        # juridique, pas une estimation.
+        'parcelle': _parcelle_du_layout(roof_layout, local),
+    }
+    geometrie['etendue'] = _etendue(geometrie)
+    if geometrie['etendue'] is None:
+        raise PlancheRefusee(
+            "La conception enregistrée ne porte aucun point exploitable : ni "
+            "contour, ni pan, ni module posé. La planche ne se rend pas à "
+            "partir d'une géométrie vide.",
+            champ='roof_layout')
+    return geometrie
+
+
+def _parcelle_du_layout(roof_layout, local):
+    """La parcelle SAISIE, projetée en mètres — ``[]`` si elle n'existe pas.
+
+    Aucune des trois graphies admises n'est obligatoire, et aucune n'est
+    déduite : sans parcelle saisie, le plan de masse est refusé (CAL194), il
+    n'est pas dessiné avec une limite plausible.
+    """
+    for cle in CLES_PARCELLE:
+        brut = (roof_layout or {}).get(cle)
+        if isinstance(brut, dict):
+            brut = brut.get('vertices')
+        points = _points_geo(brut, 'lnglat')
+        if len(points) >= 3:
+            return [local(lat, lng) for lat, lng in points]
+    return []
+
+
+def _etendue_avec_parcelle(geometrie, etendue):
+    """L'étendue élargie à la parcelle — un plan de masse la montre ENTIÈRE."""
+    parcelle = geometrie.get('parcelle') or ()
+    if not parcelle:
+        return etendue
+    xs = [p[0] for p in parcelle] + [etendue[0], etendue[2]]
+    ys = [p[1] for p in parcelle] + [etendue[1], etendue[3]]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _modules_du_pan(geometrie, local):
+    """Centres des modules POSÉS, en mètres dans le repère de la planche.
+
+    ``panels`` porte des centres ENU relatifs à ``origin`` (``[lng, lat]``) :
+    on replace donc l'origine dans le repère commun avant d'y ajouter les
+    décalages. Ce sont les cellules RÉELLEMENT OCCUPÉES (PV27) — jamais les
+    ``count`` premières d'un pavage, qui effaceraient une édition manuelle.
+    """
+    panneaux = geometrie.get('panels')
+    if not isinstance(panneaux, (list, tuple)):
+        return []
+    origine = _couple(geometrie.get('origin'), 'lnglat')
+    if origine is None:
+        return []
+    est0, nord0 = local(origine[0], origine[1])
+    centres = []
+    for panneau in panneaux:
+        if not isinstance(panneau, dict):
+            continue
+        cx, cy = _nombre(panneau.get('cx')), _nombre(panneau.get('cy'))
+        if cx is None or cy is None:
+            continue
+        centres.append((est0 + cx, nord0 + cy))
+    return centres
+
+
+def _obstacles_du_pan(zone, local, rang_pan):
+    """Obstacles relevés DANS un pan -> rectangles centrés, en mètres."""
+    brut = zone.get('obstacles')
+    obstacles = []
+    for rang, obstacle in enumerate(
+            brut if isinstance(brut, (list, tuple)) else [], start=1):
+        if not isinstance(obstacle, dict):
+            continue
+        lat = _nombre(obstacle.get('centerLat'))
+        lng = _nombre(obstacle.get('centerLng'))
+        # ``lengthM`` est l'étendue NORD-SUD, ``widthM`` l'étendue EST-OUEST
+        # (schéma v2) : les confondre pivote l'obstacle de 90°.
+        nord_sud = _nombre(obstacle.get('lengthM'))
+        est_ouest = _nombre(obstacle.get('widthM'))
+        if None in (lat, lng, nord_sud, est_ouest):
+            continue
+        est, nord = local(lat, lng)
+        obstacles.append({
+            'repere': str(obstacle.get('id') or 'OBS-%d-%d' % (rang_pan, rang)),
+            'type': str(obstacle.get('type') or ''),
+            'x': est - est_ouest / 2.0,
+            'y': nord - nord_sud / 2.0,
+            'largeur': est_ouest,
+            'hauteur': nord_sud,
+            'hauteur_m': _nombre(obstacle.get('heightM')),
+            'provenance': str(obstacle.get('provenance') or ''),
+        })
+    return obstacles
+
+
+def _etendue(geometrie):
+    """``(xmin, ymin, xmax, ymax)`` de tout ce qui sera dessiné, ou ``None``."""
+    xs, ys = [], []
+
+    def ajouter(points):
+        for x, y in points:
+            xs.append(x)
+            ys.append(y)
+
+    ajouter(geometrie['contour'])
+    for pan in geometrie['pans']:
+        ajouter(pan['points'])
+        ajouter(pan['modules'])
+    for zone in geometrie['zones_interdites']:
+        ajouter(zone['points'])
+    for obstacle in geometrie['obstacles']:
+        ajouter([(obstacle['x'], obstacle['y']),
+                 (obstacle['x'] + obstacle['largeur'],
+                  obstacle['y'] + obstacle['hauteur'])])
+    if not xs or not ys:
+        return None
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+# ── Mise en page SVG ────────────────────────────────────────────────────────
+
+def _cadre_de_dessin():
+    """``(x, y, largeur, hauteur)`` en mm de la zone de dessin (hors bandeau)."""
+    largeur = FORMAT_A3_MM[0] - 2 * MARGE_MM - LARGEUR_BANDEAU_MM
+    hauteur = FORMAT_A3_MM[1] - 2 * MARGE_MM
+    return (MARGE_MM, MARGE_MM, largeur, hauteur)
+
+
+def echelle_de_dessin(etendue, cadre=None):
+    """Millimètres de feuille par mètre de terrain — la plus grande qui tienne.
+
+    L'échelle n'est jamais ANNONCÉE en fraction (« 1/200 ») : un dossier
+    imprimé n'est pas garanti à l'échelle (photocopie, réduction A3->A4), une
+    mention chiffrée y devient fausse au premier tirage. C'est une BARRE
+    d'échelle métrique qui est dessinée (CAL172).
+    """
+    x0, y0, x1, y1 = etendue
+    cadre = cadre or _cadre_de_dessin()
+    largeur_m = max(x1 - x0, 0.001)
+    hauteur_m = max(y1 - y0, 0.001)
+    return min(cadre[2] / largeur_m, cadre[3] / hauteur_m)
+
+
+def _transformation(etendue, cadre=None):
+    """``(x_m, y_m) -> (x_mm, y_mm)`` — le Y du SVG descend, celui du terrain monte."""
+    cadre = cadre or _cadre_de_dessin()
+    echelle = echelle_de_dessin(etendue, cadre)
+    x0, y0, x1, y1 = etendue
+    largeur_mm = (x1 - x0) * echelle
+    hauteur_mm = (y1 - y0) * echelle
+    # Le dessin est CENTRÉ dans son cadre ; le Y du SVG descend quand celui du
+    # terrain monte, donc ``y0`` (le sud) se pose EN BAS.
+    ox = cadre[0] + (cadre[2] - largeur_mm) / 2.0
+    oy = cadre[1] + (cadre[3] - hauteur_mm) / 2.0
+
+    def vers_feuille(point):
+        x, y = point
+        return (ox + (x - x0) * echelle,
+                oy + hauteur_mm - (y - y0) * echelle)
+
+    return vers_feuille, echelle
+
+
+def _n(valeur):
+    """Un nombre SVG court et stable (jamais de notation scientifique)."""
+    return ('%.3f' % float(valeur)).rstrip('0').rstrip('.') or '0'
+
+
+def _polygone(points, vers_feuille, *, contour, remplissage='none',
+              trait=TRAIT_PAN, tirets=''):
+    if len(points) < 2:
+        return ''
+    chaine = ' '.join('%s,%s' % tuple(_n(c) for c in vers_feuille(p))
+                      for p in points)
+    style = ('fill="%s" stroke="%s" stroke-width="%s"'
+             % (remplissage, contour, _n(trait)))
+    if tirets:
+        style += ' stroke-dasharray="%s"' % tirets
+    return '<polygon points="%s" %s />' % (chaine, style)
+
+
+def texte_de_longueur(metres):
+    """« 12,34 m » — la cote, écrite à la française, JAMAIS arrondie à l'entier."""
+    return ('%.2f' % float(metres)).replace('.', ',') + ' m'
+
+
+def _cote_horizontale(x0, x1, y, vers_feuille, *, couleur=NOIR):
+    """Une cote MESURÉE sur la géométrie projetée (m), tracée sous l'objet."""
+    a, b = vers_feuille((x0, y)), vers_feuille((x1, y))
+    milieu = ((a[0] + b[0]) / 2.0, a[1] + 4.0)
+    return (
+        '<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s" />'
+        '<text x="%s" y="%s" font-size="3.2" text-anchor="middle" fill="%s">'
+        '%s</text>'
+    ) % (_n(a[0]), _n(a[1] + 6.0), _n(b[0]), _n(b[1] + 6.0), couleur,
+         _n(TRAIT_COTE), _n(milieu[0]), _n(a[1] + 5.2), couleur,
+         escape(texte_de_longueur(abs(x1 - x0))))
+
+
+def _cote_verticale(y0, y1, x, vers_feuille, *, couleur=NOIR):
+    a, b = vers_feuille((x, y0)), vers_feuille((x, y1))
+    milieu_y = (a[1] + b[1]) / 2.0
+    return (
+        '<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s" />'
+        '<text x="%s" y="%s" font-size="3.2" text-anchor="middle" fill="%s" '
+        'transform="rotate(-90 %s %s)">%s</text>'
+    ) % (_n(a[0] - 6.0), _n(a[1]), _n(b[0] - 6.0), _n(b[1]), couleur,
+         _n(TRAIT_COTE), _n(a[0] - 7.2), _n(milieu_y), couleur,
+         _n(a[0] - 7.2), _n(milieu_y), escape(texte_de_longueur(abs(y1 - y0))))
+
+
+def _dessin_des_modules(pan, vers_feuille, module_m):
+    """Les modules POSÉS : rectangle quand l'emprise est SOURCÉE, sinon croix."""
+    morceaux = []
+    for centre in pan['modules']:
+        if module_m is None:
+            # Emprise inconnue -> le module est figuré par son CENTRE. On ne
+            # dessine pas un rectangle de taille plausible : il se lirait comme
+            # une emprise mesurée.
+            x, y = vers_feuille(centre)
+            morceaux.append(
+                '<circle cx="%s" cy="%s" r="0.7" fill="%s" />'
+                % (_n(x), _n(y), VERT_MODULE))
+            continue
+        demi_l, demi_c = module_m[0] / 2.0, module_m[1] / 2.0
+        coins = ((centre[0] - demi_l, centre[1] - demi_c),
+                 (centre[0] + demi_l, centre[1] - demi_c),
+                 (centre[0] + demi_l, centre[1] + demi_c),
+                 (centre[0] - demi_l, centre[1] + demi_c))
+        morceaux.append(_polygone(coins, vers_feuille, contour=VERT_MODULE,
+                                  remplissage=VERT_MODULE_FOND,
+                                  trait=TRAIT_MODULE))
+    return morceaux
+
+
+# ── CAL172 — légende, nord, échelle, orientation ────────────────────────────
+#
+# Le viewer client porte une légende (``apps/web`` — « Légende de la vue 3D »),
+# mais AUCUNE sortie imprimable n'avait ni nord ni échelle, et le cartouche AO
+# est une DONNÉE (``donnees_cartouche``) que personne ne dessinait. Un plan sans
+# nord ni échelle n'est pas exploitable sur un chantier.
+#
+# Trois règles tiennent tout ce bloc :
+#   1. la légende ne liste QUE ce qui est réellement présent sur la planche —
+#      une entrée « zones interdites » sur un plan qui n'en porte aucune apprend
+#      au lecteur une chose fausse ;
+#   2. l'échelle est GRAPHIQUE (barre métrique), jamais une fraction « 1/200 » :
+#      un tirage A3->A4 la rendrait fausse dès la première photocopie ;
+#   3. une grandeur absente est OMISE, jamais remplacée par « 0° » — un pan sans
+#      azimut connu n'est pas un pan plein nord.
+
+#: Longueurs de barre d'échelle admises (m) — des nombres ronds, lisibles à la
+#: règle. On choisit la plus grande qui tienne dans la largeur allouée.
+PAS_D_ECHELLE_M = (1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0)
+
+#: Largeur allouée à la barre d'échelle, en mm de feuille.
+LARGEUR_BARRE_MM = 45.0
+
+
+def longueur_de_barre(echelle, largeur_mm=LARGEUR_BARRE_MM):
+    """``(longueur_m, longueur_mm)`` de la barre d'échelle — un nombre ROND.
+
+    ``echelle`` est en mm de feuille par mètre de terrain. On ne rend jamais
+    une barre plus large que l'espace alloué : une barre débordante se lirait
+    tronquée, donc fausse.
+    """
+    for metres in reversed(PAS_D_ECHELLE_M):
+        if metres * echelle <= largeur_mm:
+            return (metres, metres * echelle)
+    plus_petit = PAS_D_ECHELLE_M[0]
+    return (plus_petit, plus_petit * echelle)
+
+
+def echelle_nommee(echelle):
+    """``1/200`` — le DÉNOMINATEUR de l'échelle du tracé, arrondi au rang lisible.
+
+    L'échelle nommée est CALCULÉE du tracé (millimètres de feuille par mètre de
+    terrain), jamais choisie : ``1 m`` de terrain occupe ``echelle`` mm, donc le
+    rapport vaut ``1000 / echelle``. Elle ne remplace pas la barre graphique —
+    elle la complète, et sa condition de validité est écrite à côté
+    (``mention_d_echelle``), parce qu'un tirage réduit la rend fausse.
+    """
+    if not echelle or echelle <= 0:
+        return None
+    denominateur = 1000.0 / float(echelle)
+    for rang in (1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000,
+                 5000):
+        if denominateur <= rang:
+            return rang
+    return int(round(denominateur / 1000.0) * 1000)
+
+
+def mention_d_echelle(echelle):
+    """« Échelle du tracé 1/200 — valable sur un tirage A3 non réduit. »"""
+    denominateur = echelle_nommee(echelle)
+    if denominateur is None:
+        return ''
+    return ('Échelle du tracé 1/%d — valable sur un tirage A3 non réduit ; '
+            'se reporter à la barre d\'échelle.' % denominateur)
+
+
+def entrees_de_legende(geometrie, contenu=CONTENU_IMPLANTATION):
+    """Les entrées de légende des éléments RÉELLEMENT dessinés, et d'eux seuls.
+
+    ``contenu`` compte autant que la géométrie : un plan de toiture ne DESSINE
+    pas les modules, donc il ne les met pas en légende. Une entrée pour un
+    élément absent du tracé apprend au lecteur une chose fausse — c'est la
+    règle de CAL172, et c'est CAL194 qui l'a mise en défaut la première fois.
+    """
+    if contenu == CONTENU_MASSE:
+        entrees = []
+        if geometrie.get('parcelle'):
+            entrees.append((ORANGE, 'none', 'Limite de parcelle (saisie)'))
+        if geometrie.get('contour'):
+            entrees.append((NOIR, GRIS_PAN, 'Emprise du bâtiment'))
+        return tuple(entrees)
+
+    entrees = []
+    if geometrie.get('contour'):
+        entrees.append((NOIR, 'none', 'Contour relevé'))
+    if geometrie.get('pans'):
+        entrees.append((NOIR, GRIS_PAN, 'Pan de toiture'))
+    if contenu == CONTENU_IMPLANTATION \
+            and any(pan['modules'] for pan in geometrie.get('pans') or ()):
+        entrees.append((VERT_MODULE, VERT_MODULE_FOND, 'Module posé'))
+    obstacles = geometrie.get('obstacles') or ()
+    if obstacles:
+        entrees.append((NOIR, '#ffffff', 'Obstacle relevé'))
+    if any(o['provenance'] not in ('RELEVE', 'MESURE', '') for o in obstacles):
+        entrees.append((ORANGE, '#ffffff', 'Obstacle à confirmer'))
+    if geometrie.get('zones_interdites'):
+        entrees.append((ORANGE, 'none', 'Zone interdite ou réservée'))
+    return tuple(entrees)
+
+
+def _degres(valeur):
+    """« 180° » / « 15,5° » — jamais un entier forcé sur une mesure décimale."""
+    nombre = float(valeur)
+    if abs(nombre - round(nombre)) < 0.05:
+        return '%d°' % int(round(nombre))
+    return ('%.1f' % nombre).replace('.', ',') + '°'
+
+
+def texte_d_orientation(pan):
+    """« Pan Sud — azimut 180° · inclinaison 15° », les absences OMISES.
+
+    Un pan dont l'azimut n'est pas connu n'affiche PAS « 0° » : il n'affiche
+    pas d'azimut. Le zéro d'une mesure absente est un mensonge lisible.
+    """
+    mentions = []
+    if pan.get('azimut_deg') is not None:
+        mentions.append('azimut %s' % _degres(pan['azimut_deg']))
+    if pan.get('pente_deg') is not None:
+        mentions.append('inclinaison %s' % _degres(pan['pente_deg']))
+    if not mentions:
+        return ''
+    nom = pan.get('libelle') or pan.get('repere') or ''
+    return '%s — %s' % (nom, ' · '.join(mentions)) if nom \
+        else ' · '.join(mentions)
+
+
+def lignes_d_orientation(geometrie):
+    """Une ligne par pan DOCUMENTÉ ; un pan sans mesure n'en produit aucune."""
+    lignes = []
+    for pan in geometrie.get('pans') or ():
+        texte = texte_d_orientation(pan)
+        if texte:
+            lignes.append(texte)
+    return tuple(lignes)
+
+
+def _fleche_nord_svg(x, y):
+    """La flèche du nord — le +Y du repère ENU de projection, pas un décor.
+
+    La planche est dessinée dans le repère ENU local : l'est croît vers la
+    droite et le NORD vers le haut. La flèche DÉCOULE donc de la projection
+    (``Projection.vers_local``), elle n'est pas posée par habitude ; si un jour
+    la planche était tournée, ce serait ici — et nulle part ailleurs — que
+    l'angle se calculerait.
+    """
+    return (
+        '<g>'
+        '<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s" />'
+        '<polygon points="%s,%s %s,%s %s,%s" fill="%s" />'
+        '<text x="%s" y="%s" font-size="4" font-weight="bold" '
+        'text-anchor="middle" fill="%s">N</text>'
+        '</g>'
+    ) % (_n(x), _n(y + 12.0), _n(x), _n(y + 3.0), NOIR, _n(TRAIT_COTE * 2),
+         _n(x), _n(y), _n(x - 2.0), _n(y + 4.5), _n(x + 2.0), _n(y + 4.5),
+         NOIR, _n(x), _n(y + 17.0), NOIR)
+
+
+def _barre_echelle_svg(x, y, echelle):
+    """La barre d'échelle MÉTRIQUE — jamais une fraction « 1/200 »."""
+    metres, longueur_mm = longueur_de_barre(echelle)
+    moitie = longueur_mm / 2.0
+    return (
+        '<g>'
+        '<rect x="%s" y="%s" width="%s" height="1.6" fill="%s" />'
+        '<rect x="%s" y="%s" width="%s" height="1.6" fill="#ffffff" '
+        'stroke="%s" stroke-width="0.15" />'
+        '<text x="%s" y="%s" font-size="3" fill="%s">0</text>'
+        '<text x="%s" y="%s" font-size="3" text-anchor="end" fill="%s">%s'
+        '</text>'
+        '</g>'
+    ) % (_n(x), _n(y), _n(moitie), NOIR,
+         _n(x + moitie), _n(y), _n(moitie), NOIR,
+         _n(x), _n(y + 5.0), GRIS_TEXTE,
+         _n(x + longueur_mm), _n(y + 5.0), GRIS_TEXTE,
+         escape(texte_de_longueur(metres)))
+
+
+def _legende_svg(x, y, entrees):
+    """La légende, en bandeau : un carré de style + son libellé."""
+    morceaux = ['<text x="%s" y="%s" font-size="3.6" font-weight="bold" '
+                'fill="%s">LÉGENDE</text>' % (_n(x), _n(y), NOIR)]
+    courant = y + 5.0
+    for contour, remplissage, libelle in entrees:
+        morceaux.append(
+            '<rect x="%s" y="%s" width="4" height="3" fill="%s" stroke="%s" '
+            'stroke-width="0.2" />'
+            '<text x="%s" y="%s" font-size="3.2" fill="%s">%s</text>'
+            % (_n(x), _n(courant - 2.4), remplissage, contour,
+               _n(x + 6.0), _n(courant), NOIR, escape(libelle)))
+        courant += 4.6
+    return morceaux, courant
+
+
+# ── CAL173 — l'empreinte, sur la planche elle-même ──────────────────────────
+#
+# ``PlancheAO`` incrémente son indice SUR CHANGEMENT D'EMPREINTE et la fabrique
+# AO reporte un SHA-256 de contexte sur chaque pièce ; le calepinage ventes a
+# bien un ``layout_hash``, mais il ne l'imprimait NULLE PART. Une planche sans
+# provenance n'est pas rejouable : devant deux tirages du même toit, personne ne
+# peut dire lequel correspond à la conception d'aujourd'hui.
+#
+# La mention est un PIED DE PLANCHE. Chaque terme est OMIS quand sa donnée
+# manque (une version de moteur inventée serait pire que pas de version) ; la
+# date, elle, est toujours là — c'est le minimum d'un document remis.
+
+#: Longueur du hash COURT imprimé. 12 caractères hexadécimaux : assez pour
+#: distinguer deux conceptions d'un même dossier, assez court pour être recopié
+#: à la main au téléphone depuis un chantier.
+TAILLE_HASH_COURT = 12
+
+
+def hash_court(empreinte):
+    """Les ``TAILLE_HASH_COURT`` premiers caractères d'une empreinte, ou ``''``."""
+    texte = (empreinte or '').strip()
+    return texte[:TAILLE_HASH_COURT] if texte else ''
+
+
+def texte_d_empreinte(layout_hash, version_moteur, moment):
+    """« calepinage <hash court> · moteur <version> · <date> » — termes ABSENTS omis.
+
+    ``moment`` est fourni par l'appelant (jamais lu d'une horloge cachée) :
+    c'est ce qui rend deux rendus de la même conception reproductibles au
+    caractère près, donc comparables.
+    """
+    termes = []
+    court = hash_court(layout_hash)
+    if court:
+        termes.append('calepinage %s' % court)
+    version = (version_moteur or '').strip()
+    if version:
+        termes.append('moteur %s' % version)
+    if moment is not None:
+        termes.append(moment.strftime('%d/%m/%Y'))
+    return ' · '.join(termes)
+
+
+def empreinte_du_calepinage(calepinage, *, moment=None):
+    """Le pied de planche d'un ``Calepinage``, depuis SES champs stockés.
+
+    L'empreinte n'est jamais RECALCULÉE ici : c'est
+    ``services.layout.enregistrer_layout`` (CAL13) qui la pose, par le
+    ré-export ``apps.ventes.services.layout_hash`` — une seconde façon de
+    calculer la même empreinte est une seconde vérité.
+    """
+    if moment is None:
+        from django.utils import timezone
+
+        moment = timezone.localtime(timezone.now())
+    return texte_d_empreinte(getattr(calepinage, 'layout_hash', ''),
+                             getattr(calepinage, 'version_moteur', ''),
+                             moment)
+
+
+def _pied_svg(texte):
+    """Le pied de planche, en bas de feuille, sous la zone de dessin."""
+    if not texte:
+        return ''
+    return ('<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
+            % (_n(MARGE_MM), _n(FORMAT_A3_MM[1] - 3.5), GRIS_TEXTE,
+               escape(texte)))
+
+
+def svg_de_planche(geometrie, *, titre='', sous_titre='', bandeau=(), pied='',
+                   contenu=CONTENU_IMPLANTATION):
+    """Compose le SVG A3 paysage de la planche. Ne recalcule aucune grandeur.
+
+    ``bandeau`` est une suite de lignes de texte DÉJÀ composées par l'appelant
+    (CAL172/CAL173 : légende, nord, échelle, empreinte). Ce module ne rédige
+    aucune affirmation — il met en page.
+
+    ``contenu`` (CAL194) choisit CE QUI EST DESSINÉ, jamais ce qui est calculé :
+    ``implantation`` (tout), ``toiture`` (la toiture seule, sans modules),
+    ``masse`` (la parcelle SAISIE et l'emprise du bâtiment). Les trois plans
+    partagent la même géométrie projetée — ils ne peuvent donc pas diverger.
+    """
+    if contenu not in CONTENUS:
+        raise PlancheRefusee(
+            "Contenu de planche inconnu : %r — contenus connus : %s."
+            % (contenu, ', '.join(CONTENUS)), champ='contenu')
+    etendue = geometrie.get('etendue')
+    if not etendue:
+        raise PlancheRefusee(
+            "Géométrie de planche vide : rien à dessiner.", champ='roof_layout')
+    if contenu == CONTENU_MASSE:
+        etendue = _etendue_avec_parcelle(geometrie, etendue)
+    vers_feuille, echelle = _transformation(etendue)
+    largeur, hauteur = FORMAT_A3_MM
+    morceaux = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<svg xmlns="http://www.w3.org/2000/svg" version="1.1" '
+        'width="%smm" height="%smm" viewBox="0 0 %s %s">'
+        % (_n(largeur), _n(hauteur), _n(largeur), _n(hauteur)),
+        '<title>%s</title>' % escape(titre or 'Planche de calepinage'),
+        '<rect x="0" y="0" width="%s" height="%s" fill="#ffffff" />'
+        % (_n(largeur), _n(hauteur)),
+    ]
+
+    if contenu == CONTENU_MASSE:
+        # La parcelle n'est dessinée QUE si elle a été SAISIE : une limite de
+        # parcelle inventée est une affirmation juridique fausse.
+        morceaux.append(_polygone(geometrie.get('parcelle') or (),
+                                  vers_feuille, contour=ORANGE,
+                                  trait=TRAIT_CONTOUR, tirets='2 1'))
+        morceaux.append(_polygone(geometrie['contour'], vers_feuille,
+                                  contour=NOIR, remplissage=GRIS_PAN,
+                                  trait=TRAIT_CONTOUR))
+    else:
+        for zone in geometrie['zones_interdites']:
+            morceaux.append(_polygone(zone['points'], vers_feuille,
+                                      contour=ORANGE, remplissage='none',
+                                      tirets='1.5 1'))
+        for pan in geometrie['pans']:
+            morceaux.append(_polygone(pan['points'], vers_feuille,
+                                      contour=NOIR, remplissage=GRIS_PAN))
+        morceaux.append(_polygone(geometrie['contour'], vers_feuille,
+                                  contour=NOIR, trait=TRAIT_CONTOUR))
+        if contenu in (CONTENU_IMPLANTATION, CONTENU_POSE):
+            for pan in geometrie['pans']:
+                morceaux.extend(_dessin_des_modules(
+                    pan, vers_feuille, geometrie.get('module_m')))
+        if contenu == CONTENU_POSE:
+            # CAL211 — les repères de RANGÉE et le SENS DE POSE, déduits des
+            # centres relevés : l'équipe doit pouvoir se repérer sur le toit.
+            for pan in geometrie['pans']:
+                morceaux.extend(_reperes_de_pose(pan, vers_feuille))
+        for obstacle in geometrie['obstacles']:
+            coins = ((obstacle['x'], obstacle['y']),
+                     (obstacle['x'] + obstacle['largeur'], obstacle['y']),
+                     (obstacle['x'] + obstacle['largeur'],
+                      obstacle['y'] + obstacle['hauteur']),
+                     (obstacle['x'], obstacle['y'] + obstacle['hauteur']))
+            # Un obstacle dont la provenance N'EST PAS un relevé est tireté :
+            # il ne se présente pas avec l'aplomb d'un obstacle mesuré.
+            releve = obstacle['provenance'] in ('RELEVE', 'MESURE', '')
+            morceaux.append(_polygone(
+                coins, vers_feuille, contour=NOIR if releve else ORANGE,
+                remplissage='#ffffff', tirets='' if releve else '1.2 0.8'))
+
+    # Les cotes d'ENCOMBREMENT, mesurées sur la géométrie projetée.
+    x0, y0, x1, y1 = etendue
+    morceaux.append(_cote_horizontale(x0, x1, y0, vers_feuille))
+    morceaux.append(_cote_verticale(y0, y1, x0, vers_feuille))
+
+    # CAL172 — le nord (haut de la zone de dessin) et l'échelle métrique (bas).
+    cadre = _cadre_de_dessin()
+    morceaux.append(_fleche_nord_svg(cadre[0] + cadre[2] - 6.0,
+                                     cadre[1] + 2.0))
+    morceaux.append(_barre_echelle_svg(cadre[0] + 2.0,
+                                       cadre[1] + cadre[3] - 8.0, echelle))
+    # CAL194 — l'échelle NOMMÉE, avec sa condition de validité. Elle ne
+    # remplace jamais la barre : elle la complète.
+    morceaux.append(
+        '<text x="%s" y="%s" font-size="3" fill="%s">%s</text>'
+        % (_n(cadre[0] + 2.0), _n(cadre[1] + cadre[3] - 1.0), GRIS_TEXTE,
+           escape(mention_d_echelle(echelle))))
+
+    morceaux.extend(_bandeau_svg(titre, sous_titre, bandeau, geometrie,
+                                 contenu))
+    morceaux.append(_pied_svg(pied))
+    morceaux.append('</svg>')
+    return '\n'.join(m for m in morceaux if m)
+
+
+def _bandeau_svg(titre, sous_titre, lignes, geometrie,
+                 contenu=CONTENU_IMPLANTATION):
+    """Le bandeau latéral : titre, sous-titre, légende, orientations, lignes.
+
+    ``lignes`` est ce que l'appelant apporte (CAL173 : empreinte et version du
+    moteur). Le bandeau ne RÉDIGE rien d'autre : légende et orientations sont
+    ENGENDRÉES depuis la géométrie, jamais retapées.
+    """
+    x = FORMAT_A3_MM[0] - MARGE_MM - LARGEUR_BANDEAU_MM + 3.0
+    morceaux = [
+        '<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" stroke-width="%s" />'
+        % (_n(x - 3.0), _n(MARGE_MM), _n(x - 3.0),
+           _n(FORMAT_A3_MM[1] - MARGE_MM), GRIS_TEXTE, _n(TRAIT_COTE)),
+    ]
+    y = MARGE_MM + 6.0
+    if titre:
+        morceaux.append(
+            '<text x="%s" y="%s" font-size="5" font-weight="bold" fill="%s">'
+            '%s</text>' % (_n(x), _n(y), NOIR, escape(titre)))
+        y += 5.5
+    if sous_titre:
+        morceaux.append('<text x="%s" y="%s" font-size="3.4" fill="%s">%s'
+                        '</text>' % (_n(x), _n(y), GRIS_TEXTE,
+                                     escape(sous_titre)))
+        y += 6.0
+
+    entrees = entrees_de_legende(geometrie, contenu)
+    if entrees:
+        blocs, y = _legende_svg(x, y, entrees)
+        morceaux.extend(blocs)
+        y += 3.0
+
+    # Un plan de MASSE ne dessine pas les pans : leur orientation n'y a rien
+    # à dire.
+    orientations = () if contenu == CONTENU_MASSE \
+        else lignes_d_orientation(geometrie)
+    if orientations:
+        morceaux.append('<text x="%s" y="%s" font-size="3.6" '
+                        'font-weight="bold" fill="%s">ORIENTATION DES PANS'
+                        '</text>' % (_n(x), _n(y), NOIR))
+        y += 5.0
+        for ligne in orientations:
+            morceaux.append('<text x="%s" y="%s" font-size="3.2" fill="%s">%s'
+                            '</text>' % (_n(x), _n(y), NOIR, escape(ligne)))
+            y += 4.4
+        y += 3.0
+
+    for ligne in lignes:
+        morceaux.append('<text x="%s" y="%s" font-size="3.4" fill="%s">%s'
+                        '</text>' % (_n(x), _n(y), NOIR, escape(str(ligne))))
+        y += 4.6
+    return morceaux
+
+
+# ── Les sorties : SVG, puis PDF par la plomberie PARTAGÉE ───────────────────
+
+def html_de_planche(svg):
+    """Encapsule le SVG dans un HTML A3 paysage — le chemin éprouvé du dépôt.
+
+    Aucune police distante, aucune image externe : le document est autonome,
+    donc le rendu ne fait AUCUN accès réseau.
+    """
+    return (
+        '<!doctype html><html lang="fr"><head><meta charset="utf-8">'
+        '<title>Planche de calepinage</title><style>'
+        '@page{size:A3 landscape;margin:0;}'
+        'html,body{margin:0;padding:0;background:#fff;}'
+        'svg{display:block;width:100%;height:auto;}'
+        '</style></head><body>' + svg + '</body></html>'
+    )
+
+
+def nom_de_fichier(calepinage, extension):
+    """``calepinage-<pk>-<titre assaini>.<ext>`` — jamais un nom d'utilisateur brut."""
+    titre = (getattr(calepinage, 'titre', '') or '').strip().lower()
+    assaini = ''.join(c if c.isalnum() else '-' for c in titre).strip('-')
+    while '--' in assaini:
+        assaini = assaini.replace('--', '-')
+    base = 'calepinage-%s' % (getattr(calepinage, 'pk', '') or 'sans-numero')
+    return '%s%s.%s' % (base, '-' + assaini[:60] if assaini else '', extension)
+
+
+def rendre_planche_svg(calepinage, *, moment=None, **options):
+    """SVG de la planche d'un ``Calepinage``. Lève ``PlancheRefusee`` si besoin.
+
+    CAL173 — le pied de planche porte TOUJOURS l'empreinte du layout et la
+    version du moteur telles qu'elles sont STOCKÉES : deux rendus de la même
+    conception portent la même, une conception modifiée en change.
+    """
+    geometrie = geometrie_de_planche(getattr(calepinage, 'roof_layout', None))
+    return svg_de_planche(
+        geometrie,
+        titre=options.pop('titre', None) or str(calepinage),
+        sous_titre=options.pop('sous_titre', ''),
+        bandeau=options.pop('bandeau', ()),
+        pied=options.pop('pied', None)
+        or empreinte_du_calepinage(calepinage, moment=moment))
+
+
+# ── CAL211 — le PLAN DE POSE de l'équipe terrain ────────────────────────────
+#
+# L'app terrain a ses PDF (bons d'assemblage, de livraison) mais aucun plan
+# d'implantation : l'équipe travaille aujourd'hui SANS la planche. Parité :
+# l'info-pack installateur est une pièce DISTINCTE de la proposition client.
+#
+# Ce que la variante ajoute : les repères de RANGÉE, le SENS DE POSE et la
+# LISTE DES CHAÎNES (modules par chaîne, MPPT, onduleur). Ce qu'elle
+# n'inventera jamais : la POSITION des onduleurs. Le document de conception ne
+# la porte pas, et le résultat du moteur non plus — un onduleur dessiné à un
+# emplacement plausible enverrait une équipe percer le mauvais mur. Les
+# onduleurs sont donc LISTÉS (référence, nombre, entrées MPPT), pas placés, et
+# le bandeau le dit.
+#
+# AUCUN MONTANT : c'est une pièce de chantier. Le rendu est VÉRIFIÉ avant
+# d'être rendu (``verifier_absence_d_argent``), pas seulement écrit avec soin.
+
+#: Les mots d'argent qui n'ont rien à faire sur un plan de pose.
+MOTS_D_ARGENT_POSE = ('prix', 'prix_achat', 'montant', 'mad', 'dh ht',
+                      'coût', 'tarif', 'remise', 'facture', 'marge brute')
+
+
+class PlanDePoseRefuse(PlancheRefusee):
+    """Le plan de pose refuse de sortir — il porterait un montant."""
+
+
+def verifier_absence_d_argent(document):
+    """Refuse un plan de pose qui porte un mot d'argent.
+
+    La règle est ARMÉE et pas seulement respectée : un montant glissé dans un
+    libellé de produit passerait autrement sans bruit jusqu'au chantier — et
+    ``Produit.prix_achat`` ne doit paraître dans AUCUNE sortie.
+    """
+    texte = (document or '').lower()
+    trouves = sorted({mot for mot in MOTS_D_ARGENT_POSE if mot in texte})
+    if trouves:
+        raise PlanDePoseRefuse(
+            "Plan de pose refusé : une pièce de chantier ne porte aucun "
+            "montant. Trouvé — %s." % ', '.join(trouves), champ='pose')
+    return document
+
+
+def _reperes_de_pose(pan, vers_feuille):
+    """Repère de rangée (« R1 ») et flèche de SENS DE POSE, par rangée.
+
+    La RANGÉE a UNE seule définition dans ce module — le groupement des
+    centres relevés sur leur ordonnée (CAL179) : on l'appelle, on ne la
+    réécrit pas. Le SENS est celui dans lequel les modules d'une rangée se
+    suivent : il est MESURÉ sur les centres, jamais choisi. Une rangée d'un
+    seul module ne porte aucune flèche — il n'y a pas de sens à déduire.
+    """
+    from .export_tableur import rangees_du_pan
+
+    if not pan['modules']:
+        return []
+    rangees = rangees_du_pan(pan['modules'])
+    par_rangee = {}
+    for centre in pan['modules']:
+        par_rangee.setdefault(rangees[centre], []).append(centre)
+
+    morceaux = []
+    for numero, centres in sorted(par_rangee.items()):
+        centres = sorted(centres, key=lambda point: point[0])
+        depart = vers_feuille(centres[0])
+        morceaux.append(
+            '<text x="%s" y="%s" font-size="3" font-weight="bold" '
+            'text-anchor="end" fill="%s">R%d</text>'
+            % (_n(depart[0] - 1.5), _n(depart[1] + 1.0), VERT_MODULE, numero))
+        if len(centres) < 2:
+            continue
+        arrivee = vers_feuille(centres[-1])
+        morceaux.append(
+            '<line x1="%s" y1="%s" x2="%s" y2="%s" stroke="%s" '
+            'stroke-width="%s" stroke-dasharray="1 0.8" />'
+            % (_n(depart[0]), _n(depart[1]), _n(arrivee[0]), _n(arrivee[1]),
+               VERT_MODULE, _n(TRAIT_COTE)))
+    return morceaux
+
+
+def lignes_de_chaines(resultat):
+    """La LISTE DES CHAÎNES pour le bandeau — recopiée du moteur.
+
+    Rien n'est recomposé : le chaînage et l'affectation sont ceux que le
+    moteur publie. Les onduleurs sont LISTÉS, jamais positionnés.
+    """
+    electrique = ((resultat or {}).get('electrique') or {}) \
+        if isinstance(resultat, dict) else {}
+    chainage = electrique.get('chainage') or {}
+    lignes = []
+    if chainage.get('chaines') is not None:
+        lignes.append('Chaînes : %s' % chainage['chaines'])
+    if chainage.get('modules_par_chaine') is not None:
+        lignes.append('Modules par chaîne : %s'
+                      % chainage['modules_par_chaine'])
+    if chainage.get('reste'):
+        lignes.append('Modules hors chaîne : %s' % chainage['reste'])
+    for onduleur in electrique.get('onduleurs') or []:
+        if not isinstance(onduleur, dict):
+            continue
+        mentions = ['Onduleur %s' % (onduleur.get('reference') or '')]
+        if onduleur.get('nombre') is not None:
+            mentions.append('×%s' % onduleur['nombre'])
+        if onduleur.get('n_mppt') is not None:
+            mentions.append('%s MPPT' % onduleur['n_mppt'])
+        lignes.append(' '.join(mentions))
+    if lignes:
+        lignes.append('Emplacement des onduleurs non relevé — à définir sur '
+                      'site.')
+    return tuple(lignes)
+
+
+#: Le titre de chaque plan. Le rendu NOMME la vue ; il n'en rédige pas la
+#: portée (« conforme », « définitif » engageraient le soumissionnaire).
+TITRE_DE_CONTENU = {
+    CONTENU_IMPLANTATION: "Plan d'implantation",
+    CONTENU_TOITURE: 'Plan de toiture',
+    CONTENU_MASSE: 'Plan de masse',
+    CONTENU_POSE: 'Plan de pose',
+}
+
+
+def rendre_plan_pose_svg(calepinage, *, moment=None, **options):
+    """CAL211 — le plan de POSE, VÉRIFIÉ sans montant, portant l'empreinte."""
+    bandeau = tuple(options.pop('bandeau', ()))
+    bandeau += lignes_de_chaines(getattr(calepinage, 'resultat', None))
+    return verifier_absence_d_argent(
+        rendre_plan_svg(calepinage, contenu=CONTENU_POSE, moment=moment,
+                        bandeau=bandeau, **options))
+
+
+def rendre_plan_pose_pdf(calepinage, *, company=None, **options):
+    """Octets PDF du plan de pose, par ``core.pdf.render_pdf`` (ARC11)."""
+    from core.pdf import render_pdf
+
+    svg = rendre_plan_pose_svg(calepinage, **options)
+    return render_pdf(html=html_de_planche(svg),
+                      company=company or getattr(calepinage, 'company', None))
+
+
+def rendre_plan_svg(calepinage, *, contenu=CONTENU_IMPLANTATION, moment=None,
+                    **options):
+    """CAL194 — le SVG d'un des trois plans, depuis la MÊME géométrie.
+
+    Le plan de masse est REFUSÉ quand aucune parcelle n'a été saisie, en
+    nommant la saisie manquante : il ne se dessine JAMAIS avec une limite de
+    parcelle devinée.
+    """
+    geometrie = geometrie_de_planche(getattr(calepinage, 'roof_layout', None))
+    if contenu == CONTENU_MASSE and not geometrie.get('parcelle'):
+        raise PlancheRefusee(
+            "Plan de masse impossible : aucune parcelle n'a été saisie sur "
+            "cette conception. Le plan de masse ne dessine jamais une limite "
+            "de parcelle qui n'a pas été fournie — renseignez le contour de "
+            "la parcelle, puis redemandez le plan.",
+            champ='parcelle')
+    titre = options.pop('titre', None) or '%s — %s' % (
+        TITRE_DE_CONTENU.get(contenu, 'Plan'), calepinage)
+    return svg_de_planche(
+        geometrie, titre=titre,
+        sous_titre=options.pop('sous_titre', ''),
+        bandeau=options.pop('bandeau', ()),
+        pied=options.pop('pied', None)
+        or empreinte_du_calepinage(calepinage, moment=moment),
+        contenu=contenu)
+
+
+def rendre_plan_pdf(calepinage, *, contenu=CONTENU_IMPLANTATION, company=None,
+                    **options):
+    """Octets PDF d'un des trois plans, par ``core.pdf.render_pdf`` (ARC11)."""
+    from core.pdf import render_pdf
+
+    svg = rendre_plan_svg(calepinage, contenu=contenu, **options)
+    return render_pdf(html=html_de_planche(svg),
+                      company=company or getattr(calepinage, 'company', None))
+
+
+def rendre_planche_pdf(calepinage, *, company=None, **options):
+    """Octets PDF de la planche, via ``core.pdf.render_pdf`` (ARC11).
+
+    JAMAIS un import direct de WeasyPrint : ``check_platform.py`` refuserait le
+    fichier, et la plomberie PDF n'a pas à être re-codée par pièce. L'import
+    est FONCTION-LOCAL — la bibliothèque est lourde et absente de certains
+    postes de développement.
+    """
+    from core.pdf import render_pdf
+
+    svg = rendre_planche_svg(calepinage, **options)
+    return render_pdf(html=html_de_planche(svg),
+                      company=company or getattr(calepinage, 'company', None))

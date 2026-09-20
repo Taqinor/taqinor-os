@@ -60,6 +60,10 @@ from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
 from .photos import PhotosSiteMixin
 # CAL64 — idem pour le relevé terrain mobile (``views/releve.py``).
 from .releve import ReleveTerrainMixin
+# CAL174 — les SOUS-RESSOURCES de sortie (planche PDF/SVG) vivent dans leur
+# propre module de vues ; elles sont greffées ICI, sur le viewset pivot, pour
+# rester des ``@action`` de la SEULE forme d'URL du module (CAL233).
+from .sorties import SortiesMixin
 from ..services.devis import (
     DevisRefuse, generer_devis, resynchroniser_devis,
 )
@@ -141,7 +145,8 @@ class ActionIdempotenteMixin:
 
 class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                         ChatterViewSetMixin, ActionIdempotenteMixin,
-                        ElectriqueActionsMixin, CompanyScopedModelViewSet):
+                        ElectriqueActionsMixin, SortiesMixin,
+                        CompanyScopedModelViewSet):
     """CRUD du pivot ``Calepinage`` + ses sous-ressources en ``@action``.
 
     CAL26 — le chatter est celui de la PLATEFORME (``records``) :
