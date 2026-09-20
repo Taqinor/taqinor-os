@@ -27,6 +27,7 @@ SOUS_MODULES = (
     'calepinages',    # le pivot + ses @action (sous-ressources)
     'parametres',     # réglages société (CAL45)
     'moteur',         # appels au moteur pur core.calepinage
+    'photos',         # CAL52 — photos de site (sous-ressource du pivot)
     'sorties',        # PDF / SVG
     'io_layout',      # import/export du document roof_layout
 )

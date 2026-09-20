@@ -55,6 +55,9 @@ from ..permissions import (
     PeutVoirCalepinage,
 )
 from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
+# CAL52 — la sous-ressource « photos de site » vit dans SON fichier
+# (``views/photos.py``) : une base de plus, zéro logique ajoutée ici.
+from .photos import PhotosSiteMixin
 from ..services.devis import (
     DevisRefuse, generer_devis, resynchroniser_devis,
 )
@@ -133,8 +136,8 @@ class ActionIdempotenteMixin:
         return reponse
 
 
-class CalepinageViewSet(ChatterViewSetMixin, ActionIdempotenteMixin,
-                        CompanyScopedModelViewSet):
+class CalepinageViewSet(PhotosSiteMixin, ChatterViewSetMixin,
+                        ActionIdempotenteMixin, CompanyScopedModelViewSet):
     """CRUD du pivot ``Calepinage`` + ses sous-ressources en ``@action``.
 
     CAL26 — le chatter est celui de la PLATEFORME (``records``) :

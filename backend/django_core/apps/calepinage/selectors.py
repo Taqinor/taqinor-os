@@ -457,3 +457,20 @@ def imagerie_site(company):
         return section
     section.update(parametres_de_societe(company).get('imagerie') or {})
     return section
+
+
+def photos_site(calepinage):
+    """CAL52 — les photos de site d'un calepinage, prêtes à l'affichage.
+
+    Ordre : la plus récemment PRISE d'abord (jamais la plus récemment
+    importée — c'est la date de prise de vue qui situe le toit). Lecture
+    PURE ; un calepinage sans photo rend ``[]`` et jamais ``null``.
+    """
+    from .services.photos import photo_en_ligne
+
+    if calepinage is None or calepinage.pk is None:
+        return []
+    lignes = (calepinage.photos_site
+              .select_related('attachment', 'ajoutee_par')
+              .order_by('-prise_le', '-id'))
+    return [photo_en_ligne(photo) for photo in lignes]

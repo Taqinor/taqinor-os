@@ -278,6 +278,105 @@ class CalepinageVariante(TenantModel):
         return super().save(*args, **kwargs)
 
 
+class PhotoSite(TenantModel):
+    """CAL52 — une photo drone / oblique / sol du SITE, rattachée au pivot.
+
+    LE CONSTAT
+    ----------
+    La seule photo réelle acceptée jusqu'ici était celle de la visite terrain
+    (``VisiteTerrain.photo_toit_key``, bascule ``rp9-photo-toit-toggle``) :
+    rien ne permettait d'importer une photo drone dans un calepinage SANS
+    devis. Parité marché : la mesure de toiture depuis imagerie oblique/drone.
+
+    LES TROIS DÉCISIONS GRAVÉES ICI
+    -------------------------------
+    * **AUCUN ``FileField``.** Le fichier vit dans ``records.Attachment``
+      (primitive plateforme, ARC26 — ``check_platform`` refuse tout nouveau
+      champ fichier), stocké dans le MÊME magasin MinIO que ``roof-image``
+      (CAL19) par les fonctions minces d'``apps.ventes.services``. Ce modèle
+      ne porte que ce que la pièce jointe générique ne sait pas dire d'une
+      photo de site.
+    * **``prise_le`` est SAISIE, jamais devinée.** La date de dépôt d'un
+      fichier n'est pas la date de prise de vue : une photo versée six mois
+      après le vol daterait le toit du mauvais jour. Le champ est donc
+      OBLIGATOIRE, et une date future est refusée en la nommant.
+    * **``calage`` attend CAL53.** Le calage (géoréférencement de la photo)
+      arrive dans une tâche suivante ; la colonne est posée ICI, vide, pour
+      que CAL53 n'ait pas à rouvrir une migration sur ce modèle. Vide veut
+      dire « photo non calée », jamais « calage nul ».
+
+    AUCUNE PHOTOGRAMMÉTRIE SERVEUR : ce module range une photo, il ne la
+    mesure pas.
+    """
+
+    class Genre(models.TextChoices):
+        DRONE = 'drone', 'Drone'
+        OBLIQUE = 'oblique', 'Oblique (aérienne)'
+        SOL = 'sol', 'Depuis le sol'
+
+    calepinage = models.ForeignKey(
+        Calepinage,
+        on_delete=models.CASCADE,  # on_delete: une photo de site n'existe pas hors de son calepinage
+        related_name='photos_site',
+        verbose_name='Calepinage',
+    )
+    #: La pièce jointe GÉNÉRIQUE (``records``, app de fondation) qui porte le
+    #: fichier : clé MinIO, nom, taille, mime. Jamais un second magasin.
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.CASCADE,  # on_delete: sans son fichier, la fiche photo ne décrit plus rien
+        related_name='photos_site_calepinage',
+        verbose_name='Pièce jointe',
+    )
+    genre = models.CharField('Genre', max_length=10, choices=Genre.choices,
+                             default=Genre.DRONE)
+    #: SAISIE — jamais la date de dépôt (voir la docstring).
+    prise_le = models.DateField('Prise de vue le')
+    legende = models.CharField('Légende', max_length=200, blank=True,
+                               default='')
+    #: CAL53 — calage/géoréférencement, posé plus tard. Vide = non calée.
+    calage = models.JSONField('Calage', null=True, blank=True)
+    ajoutee_par = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.SET_NULL,  # on_delete: la photo survit au départ de son auteur
+        null=True, blank=True,
+        related_name='calepinage_photos_site',
+        verbose_name='Ajoutée par',
+    )
+
+    class Meta:
+        verbose_name = 'Photo de site'
+        verbose_name_plural = 'Photos de site'
+        ordering = ['-prise_le', '-id']
+        indexes = [
+            models.Index(fields=['calepinage', '-prise_le'],
+                         name='cal_pho_cal_prise_idx'),
+            models.Index(fields=['company', '-created_at'],
+                         name='cal_pho_co_cree_idx'),
+        ]
+
+    def __str__(self):
+        return self.legende or f'Photo de site #{self.pk}'
+
+    def clean(self):
+        """Refuse, en français et en NOMMANT le champ, une photo indatable."""
+        from django.utils import timezone
+
+        erreurs = {}
+        if self.prise_le is None:
+            erreurs['prise_le'] = (
+                "La date de prise de vue est obligatoire : elle est SAISIE, "
+                "jamais déduite de la date d'import."
+            )
+        elif self.prise_le > timezone.localdate():
+            erreurs['prise_le'] = (
+                "La date de prise de vue ne peut pas être dans le futur "
+                f"(reçu : {self.prise_le:%d/%m/%Y})."
+            )
+        if erreurs:
+            raise ValidationError(erreurs)
+
+
 class ParametresCalepinage(TenantModel):
     """CAL45 — LES réglages société du module : UNE base, sept extensions.
 
