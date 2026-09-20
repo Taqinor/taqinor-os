@@ -47,6 +47,9 @@ import AtelierPanneaux from '../../features/calepinage/AtelierPanneaux'
 // déterminé, état persisté par utilisateur). Additif : les bascules historiques
 // (tracé client, photo réelle) restent en place et continuent de fonctionner.
 import PanneauCalques from '../../features/calepinage/PanneauCalques'
+// CAL180 — export « image HD » : rendu HORS ÉCRAN 2×/3× de la scène, rendu au
+// navigateur. L'affiche client (`roof-image`) n'est pas touchée.
+import { exporterImageHd, FACTEURS_HD } from '../../features/calepinage/exportImage'
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
@@ -390,6 +393,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const utilisateurCourantId = useMemo(() => {
     try { return store.getState()?.auth?.user?.id ?? null } catch { return null }
   }, [])
+  // CAL180 — état de l'export image HD (message affiché SOUS le bouton : soit la taille
+  // réellement obtenue, soit le motif du refus — jamais un « ça a marché » supposé).
+  const [hdBusy, setHdBusy] = useState(false)
+  const [hdMessage, setHdMessage] = useState(null)
+  const exporterHd = async (scale) => {
+    if (hdBusy) return
+    setHdBusy(true)
+    setHdMessage(null)
+    const res = await exporterImageHd(builderApi, { scale, reference: calepinageId ?? devisId ?? 'calepinage' })
+    setHdMessage(res.ok ? `Image HD exportée : ${res.width} × ${res.height} px (${res.nom}).` : res.motif)
+    setHdBusy(false)
+  }
   // WIR227/QJ25 — contour OSM du bâtiment épinglé (mode lead uniquement) :
   // message serveur (« Aucun bâtiment trouvé… ») quand Overpass ne renvoie
   // rien, jamais rédigé ici. Le tracé manuel reste toujours disponible.
@@ -2017,6 +2032,28 @@ export default function ToitureDesign({ mode = 'lead' }) {
               utilisateurId={utilisateurCourantId}
               onChange={(id, etat) => builderApi.current?.setLayerState?.(id, etat)}
             />
+          </div>
+        )}
+
+        {/* CAL180 — EXPORT IMAGE HD : la scène rendue hors écran à 2× ou 3×, remise
+            au navigateur. Aucun PNG n'est posté ici et l'affiche client existante
+            reste strictement inchangée. */}
+        {builderReady && (
+          <div className="mt-4 flex flex-wrap items-center gap-2" data-testid="cal-export-hd">
+            <span className="tech-label text-lune-faint">Image HD</span>
+            {FACTEURS_HD.map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={chipClass}
+                disabled={hdBusy}
+                data-testid={`cal-export-hd-${f}`}
+                onClick={() => exporterHd(f)}
+              >
+                {`Exporter ${f}×`}
+              </button>
+            ))}
+            {hdMessage && <span className="text-xs text-lune-faint" data-testid="cal-export-hd-message">{hdMessage}</span>}
           </div>
         )}
 

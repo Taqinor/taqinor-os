@@ -103,6 +103,14 @@ export interface Scene3d {
   /** W115 — instantané PNG (data URL) de la 3D rendue, ou null si le renderer/canvas
    *  est indisponible. Le renderer partage le canvas MapLibre (map.getCanvas()). */
   snapshot: () => string | null;
+  /** CAL180 — rend la SCÈNE dans une cible HORS ÉCRAN à `scale` fois la taille du
+   *  canvas et renvoie un blob PNG, avec les dimensions RÉELLEMENT obtenues (le
+   *  facteur est rabaissé si le plafond `HD_MAX_SIDE_PX` l'impose). `null` si la
+   *  scène n'est pas rendable (pas de WebGL, contexte perdu, canvas sans surface).
+   *  N'altère NI le canvas à l'écran, NI l'affiche client existante. */
+  renderOffscreen: (
+    scale: number,
+  ) => Promise<{ blob: Blob; width: number; height: number; scale: number } | null>;
 }
 
 // ════════════════════════ W107 — faîtière commune (pans connectés) ════════════════════════
@@ -644,6 +652,47 @@ function stretchProfileUVs(geo: THREE.BoxGeometry, lengthM: number) {
     for (let i = face * 4; i < face * 4 + 4; i++) uv.setY(i, uv.getY(i) * reps);
   }
   uv.needsUpdate = true;
+}
+
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL180 — RENDU HORS ÉCRAN HAUTE RÉSOLUTION
+//
+// L'affiche client est postée par le navigateur à la RÉSOLUTION D'ÉCRAN
+// (`snapshot()` lit le canvas partagé avec MapLibre) : aucune sortie haute
+// définition n'existait. `renderOffscreen(scale)` rend la SCÈNE dans une cible
+// HORS ÉCRAN à 2× ou 3× et renvoie un blob PNG — côté navigateur, sans second
+// magasin d'images et sans toucher l'affiche existante.
+//
+// PLAFOND DE TAILLE : un contexte WebGL refuse une cible au-delà de sa taille
+// maximale de tampon ; `HD_MAX_SIDE_PX` borne chaque côté et le facteur est
+// RABAISSÉ en conséquence (jamais une cible qu'on ne sait pas rendre). Le
+// facteur effectif est renvoyé avec l'image : l'appelant sait ce qu'il a obtenu
+// au lieu de le supposer.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Plafond assumé par côté (px) pour la cible hors écran. */
+export const HD_MAX_SIDE_PX = 8192;
+
+/** Facteurs d'agrandissement proposés par l'atelier. */
+export const HD_SCALES = [2, 3] as const;
+export type HdScale = (typeof HD_SCALES)[number];
+
+/**
+ * Dimensions de la cible hors écran pour un canvas `w × h` agrandi `scale` fois,
+ * RABAISSÉES si un côté dépassait le plafond. `null` si le canvas n'a pas de
+ * surface (rien à rendre) — jamais une taille inventée.
+ */
+export function hdTargetSize(
+  w: number,
+  h: number,
+  scale: number,
+): { width: number; height: number; scale: number } | null {
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  const maxScale = Math.min(scale, HD_MAX_SIDE_PX / w, HD_MAX_SIDE_PX / h);
+  const eff = Math.max(1, maxScale);
+  return { width: Math.max(1, Math.round(w * eff)), height: Math.max(1, Math.round(h * eff)), scale: eff };
 }
 
 export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
@@ -1999,5 +2048,49 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, snapshot };
+  /**
+   * CAL180 — rendu HORS ÉCRAN. On construit un renderer JETABLE sur son propre canvas
+   * (jamais celui de MapLibre : le toucher ferait clignoter l'atelier), on rend la MÊME
+   * scène avec la MÊME caméra — la matrice de projection de MapLibre ne dépend pas de la
+   * résolution, donc le cadrage est identique, seulement plus fin — puis on dispose tout.
+   * Le fond reste transparent : c'est la scène, pas une capture d'écran maquillée.
+   */
+  async function renderOffscreen(
+    scale: number,
+  ): Promise<{ blob: Blob; width: number; height: number; scale: number } | null> {
+    if (glLost || !scene || !threeCamera) return null;
+    const src = (renderer?.domElement ?? (glCanvas as HTMLCanvasElement | null)) ?? null;
+    const target = hdTargetSize(src?.width ?? 0, src?.height ?? 0, scale);
+    if (!target) return null;
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = target.width;
+    canvas.height = target.height;
+    let off: THREE.WebGLRenderer | null = null;
+    try {
+      off = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+      off.setSize(target.width, target.height, false);
+      off.outputColorSpace = THREE.SRGBColorSpace;
+      off.toneMapping = THREE.ACESFilmicToneMapping;
+      off.toneMappingExposure = 1.05;
+      off.shadowMap.enabled = true;
+      off.shadowMap.type = THREE.PCFSoftShadowMap;
+      off.render(scene, threeCamera);
+      const blob = await new Promise<Blob | null>((resolve) => {
+        if (typeof canvas.toBlob !== 'function') {
+          resolve(null);
+          return;
+        }
+        canvas.toBlob((b) => resolve(b), 'image/png');
+      });
+      if (!blob) return null;
+      return { blob, width: target.width, height: target.height, scale: target.scale };
+    } catch {
+      return null; // WebGL refusé/saturé : pas d'image, jamais une exception qui casse l'atelier
+    } finally {
+      off?.dispose();
+    }
+  }
+
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, snapshot, renderOffscreen };
 }

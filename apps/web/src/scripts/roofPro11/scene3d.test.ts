@@ -8,6 +8,9 @@ import {
   computeMixedAltitudeOffsets,
   type RoofShapePan,
   type RidgePan,
+  hdTargetSize,
+  HD_MAX_SIDE_PX,
+  HD_SCALES,
   type MixedRidgePan,
 } from './scene3d';
 import { buildAreasFromShape } from './zones';
@@ -171,5 +174,40 @@ describe('CAL61 — computeMixedAltitudeOffsets', () => {
   it('moins de 2 pans → aucun offset (garde-fou)', () => {
     const solo: MixedRidgePan = { ringENU: enuRect(0, 0, 8, 6), facingAzimuthDeg: 180, tiltDeg: 20, pitched: true };
     expect(computeMixedAltitudeOffsets([solo])).toEqual([0]);
+  });
+});
+
+// CAL180 — dimensions de la cible HORS ÉCRAN. Partie PURE du rendu haute résolution :
+// le facteur est RABAISSÉ quand le plafond l'impose, et le facteur effectif est rendu
+// à l'appelant (il ne le suppose jamais).
+describe('CAL180 — hdTargetSize', () => {
+  it('2× et 3× sont les facteurs proposés', () => {
+    expect([...HD_SCALES]).toEqual([2, 3]);
+  });
+
+  it('agrandit exactement du facteur demandé quand le plafond le permet', () => {
+    expect(hdTargetSize(1280, 720, 2)).toEqual({ width: 2560, height: 1440, scale: 2 });
+    expect(hdTargetSize(1280, 720, 3)).toEqual({ width: 3840, height: 2160, scale: 3 });
+  });
+
+  it('rabaisse le facteur plutôt que de dépasser le plafond', () => {
+    const t = hdTargetSize(4000, 2000, 3)!;
+    expect(t.width).toBeLessThanOrEqual(HD_MAX_SIDE_PX);
+    expect(t.height).toBeLessThanOrEqual(HD_MAX_SIDE_PX);
+    expect(t.scale).toBeLessThan(3);
+    expect(t.width).toBe(HD_MAX_SIDE_PX);
+  });
+
+  it('un canvas déjà plus grand que le plafond n’est jamais réduit sous 1×', () => {
+    const t = hdTargetSize(10000, 800, 2)!;
+    expect(t.scale).toBe(1);
+    expect(t.width).toBe(10000);
+  });
+
+  it('un canvas sans surface ne produit aucune cible (jamais une taille inventée)', () => {
+    expect(hdTargetSize(0, 720, 2)).toBeNull();
+    expect(hdTargetSize(1280, 0, 2)).toBeNull();
+    expect(hdTargetSize(Number.NaN, 720, 2)).toBeNull();
+    expect(hdTargetSize(1280, 720, 0)).toBeNull();
   });
 });

@@ -3084,6 +3084,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
           : { ...(activeSolarAccessMeta() ?? {}), ...(meta ?? {}) },
       ),
     snapshot: () => scene3d.snapshot(),
+    // CAL180 — export « image HD » : rendu hors écran 2×/3×, blob PNG rendu à la page.
+    renderImageHd: (scale) => scene3d.renderOffscreen(scale),
     // CAL103 — le panneau de calques de l'écran hôte pilote la carte par ici.
     setLayerState: (id, state) => mapDraw.setLayerState(id, state),
     // L-MAP — bascule du calque de référence géo-référencé (rp9-chip côté
