@@ -111,6 +111,11 @@ const Ombriere = lazy(() => import('./Ombriere'))
    affichée. Réglages SOCIÉTÉ, donc un item de nav permanent et non un
    deep-link : il n'y a aucun calepinage à désigner. */
 const SourcesNormatives = lazy(() => import('./commun/Provenance'))
+/* CAL196 — les DOSSIERS RÉGLEMENTAIRES de CE calepinage : pièces, état,
+   champs « à compléter » servis par le serveur. Contextuel à UN calepinage
+   (agrégat CAL247), donc un deep-link — un menu permanent n'aurait aucun
+   calepinage à désigner. */
+const DossiersReglementaires = lazy(() => import('./DossiersReglementaires'))
 
 const config = {
   key: 'calepinage',
@@ -181,6 +186,8 @@ const config = {
     { path: '/calepinage/:id/production', component: PanneauProduction, roles: ROLES },
     // CAL143 — contextuelle : le diagramme de pertes de CE calepinage.
     { path: '/calepinage/:id/pertes', component: DiagrammePertes, roles: ROLES },
+    // contextuelle: les dossiers réglementaires d'UN calepinage, ouverts depuis son atelier (CAL196) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
+    { path: '/calepinage/:id/dossiers', component: DossiersReglementaires, roles: ROLES },
   ],
 }
 
