@@ -104,4 +104,40 @@ describe('DossierList (NTWFL19)', () => {
     expect(await screen.findByText('Ouvert', { selector: '.kb-col-title' })).toBeInTheDocument()
     expect(screen.getByText('Réclamation client X')).toBeInTheDocument()
   })
+
+  it('filtre par priorité et « en retard uniquement » côté écran (NTWFL22)', async () => {
+    const { container } = renderScreen()
+    const table = await waitFor(() => container.querySelector('[data-dt-table]'))
+    expect(within(table).getByText('Réclamation client X')).toBeInTheDocument()
+    expect(within(table).getByText('Onboarding Acme')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Filtrer par priorité'))
+    fireEvent.click(await screen.findByRole('option', { name: 'Critique' }))
+    expect(within(table).getByText('Réclamation client X')).toBeInTheDocument()
+    expect(within(table).queryByText('Onboarding Acme')).toBeNull()
+
+    fireEvent.click(screen.getByText('En retard uniquement'))
+    // Toujours vrai : la seule dossier « Critique » est aussi en retard.
+    expect(within(table).getByText('Réclamation client X')).toBeInTheDocument()
+  })
+
+  it('enregistre une vue « Mes réclamations en retard » et la retrouve après re-rendu (NTWFL22)', async () => {
+    localStorage.clear()
+    vi.spyOn(window, 'prompt').mockReturnValue('Mes réclamations en retard')
+    const { container, unmount } = renderScreen()
+    await waitFor(() => container.querySelector('[data-dt-table]'))
+
+    fireEvent.click(screen.getByLabelText('Filtrer par priorité'))
+    fireEvent.click(await screen.findByRole('option', { name: 'Critique' }))
+    fireEvent.click(screen.getByText('En retard uniquement'))
+    fireEvent.click(screen.getByText('⭐ Enregistrer cette vue'))
+
+    expect(screen.getByText('Mes réclamations en retard')).toBeInTheDocument()
+
+    // Vue PRIVÉE (localStorage) : elle survit à un remontage de l'écran.
+    unmount()
+    const { container: container2 } = renderScreen()
+    await waitFor(() => container2.querySelector('[data-dt-table]'))
+    expect(screen.getByText('Mes réclamations en retard')).toBeInTheDocument()
+  })
 })

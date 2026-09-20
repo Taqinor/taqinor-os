@@ -5,18 +5,25 @@ import coreApi from '../../api/coreApi'
 import useResource from '../../hooks/useResource'
 import { unwrapList } from '../../api/resource'
 import {
-  DataTable, Button, Badge, StatusPill, Segmented, toast,
+  DataTable, Button, Badge, StatusPill, Segmented, Checkbox, toast,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Input, Label,
 } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
+import SavedViewsBar, { SaveViewButton } from '../../components/SavedViewsBar'
+import { useSavedViews } from '../../hooks/useSavedViews'
 import { formatDate } from '../../lib/format'
 import {
   TYPE_DOSSIER_OPTIONS, STATUT_DOSSIER_OPTIONS, PRIORITE_DOSSIER_OPTIONS,
-  prioriteTone, estEnRetard,
+  prioriteTone, estEnRetard, filtrerDossiers,
 } from '../../features/workflow/dossiers'
 import DossierKanbanView from './views/DossierKanbanView'
+
+// NTWFL22 — vues sauvegardées : même mécanisme que ClientList/DevisList
+// (`useSavedViews`, localStorage PAR NAVIGATEUR donc PAR UTILISATEUR — jamais
+// partagé entre postes), aucun nouveau composant.
+const DOSSIERS_SAVED_VIEWS_KEY = 'taqinor.core.dossiers.savedViews'
 
 // NTWFL21 — bascule liste/kanban (patron déjà éprouvé : chantiers/leads).
 // `Segmented` instancie `opt.icon` lui-même (`<Icon .../>`) : passer le
@@ -133,19 +140,46 @@ export default function DossierList() {
   const navigate = useNavigate()
   const [filtreType, setFiltreType] = useState(TOUS)
   const [filtreStatut, setFiltreStatut] = useState(TOUS)
+  const [filtrePriorite, setFiltrePriorite] = useState(TOUS)
+  const [enRetardSeulement, setEnRetardSeulement] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const [vue, setVue] = useState('liste')
+
+  // NTWFL22 — vues sauvegardées PRIVÉES par utilisateur : le combiné
+  // type/statut/priorité/« en retard uniquement »/vue, retrouvé après
+  // rafraîchissement (localStorage, jamais envoyé au serveur).
+  const { savedViews, saveView, deleteView } = useSavedViews(DOSSIERS_SAVED_VIEWS_KEY)
+  const enregistrerVue = () => {
+    const nom = window.prompt('Nom de la vue enregistrée :')
+    saveView(nom, { filtreType, filtreStatut, filtrePriorite, enRetardSeulement, vue })
+  }
+  const appliquerVue = (v) => {
+    const etat = v.state || {}
+    if (etat.filtreType) setFiltreType(etat.filtreType)
+    if (etat.filtreStatut) setFiltreStatut(etat.filtreStatut)
+    if (etat.filtrePriorite) setFiltrePriorite(etat.filtrePriorite)
+    setEnRetardSeulement(!!etat.enRetardSeulement)
+    if (etat.vue) setVue(etat.vue)
+  }
 
   const params = useMemo(() => ({
     type_dossier: filtreType === TOUS ? undefined : filtreType,
     statut: filtreStatut === TOUS ? undefined : filtreStatut,
   }), [filtreType, filtreStatut])
 
-  const { data: rows, loading, error, refetch } = useResource(
+  const { data: brutes, loading, error, refetch } = useResource(
     (p) => coreApi.dossiers.list(p),
     params,
     { initialData: [], select: unwrapList, errorMessage: 'Impossible de charger les dossiers.' },
   )
+
+  // NTWFL22 — priorité et « en retard uniquement » filtrent côté écran (le
+  // serveur ne filtre que type/statut, cf. DossierViewSet.get_queryset).
+  const rows = useMemo(() => filtrerDossiers(
+    brutes,
+    { priorite: filtrePriorite === TOUS ? '' : filtrePriorite, enRetardSeulement },
+    AUJOURD_HUI(),
+  ), [brutes, filtrePriorite, enRetardSeulement])
 
   const aujourdHui = AUJOURD_HUI()
 
@@ -278,7 +312,24 @@ export default function DossierList() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={filtrePriorite} onValueChange={setFiltrePriorite}>
+          <SelectTrigger className="h-9 w-36 text-sm" aria-label="Filtrer par priorité">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={TOUS}>Toutes priorités</SelectItem>
+            {PRIORITE_DOSSIER_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={enRetardSeulement} onCheckedChange={setEnRetardSeulement} />
+          En retard uniquement
+        </label>
         <Segmented options={VUE_OPTIONS} value={vue} onChange={setVue} size="sm" />
+        <SaveViewButton onSave={enregistrerVue} />
+        <SavedViewsBar savedViews={savedViews} onApply={appliquerVue} onDelete={deleteView} />
       </div>
 
       {vue === 'kanban' ? (
