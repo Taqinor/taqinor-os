@@ -7,7 +7,6 @@ Helpers SAV — arithmétique de garantie (sans dépendance externe).
 """
 import logging
 
-from django.db import transaction
 from django.utils import timezone
 
 from .dateutils import add_months  # noqa: F401  (ré-export rétrocompat)
@@ -172,84 +171,21 @@ def sweep_bom_to_parc(*, installation, company, date_pose, created_by,
     return {'crees': crees, 'existants': existants, 'lignes': lignes}
 
 
-def _technicien_indisponible(company, user, jour):
-    """XSAV9 — Vrai si `user` a un dossier RH avec une absence VALIDÉE ce
-    jour-là (lu via les selectors rh — jamais un import direct des modèles
-    rh). Sans dossier RH rattaché à l'utilisateur, ou si le module rh est
-    indisponible/erreur, on considère l'utilisateur DISPONIBLE (repli sûr —
-    l'affectation auto ne doit jamais bloquer faute de données RH)."""
-    try:
-        from apps.rh.selectors import employe_absent_le
-        from apps.rh.models import DossierEmploye
-        dossier = DossierEmploye.objects.filter(
-            company=company, user=user).first()
-        if dossier is None:
-            return False
-        return employe_absent_le(company, dossier.id, jour)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        return False
-
-
-def competences_exigees_ticket(ticket):
-    """NTSRV7 — ``(ids de compétences, niveau_min)`` exigés par la CATÉGORIE
-    du ticket, ou ``([], 0)`` quand aucune exigence n'est configurée.
-
-    ``([], 0)`` est le cas normal (aucune catégorie, ou catégorie sans
-    compétence) : l'appelant doit alors garder EXACTEMENT le comportement
-    XSAV9 (aucun filtre)."""
-    categorie = getattr(ticket, 'categorie', None) if ticket is not None else None
-    if categorie is None:
-        return ([], 0)
-    ids = categorie.competences_requises_ids()
-    if not ids:
-        return ([], 0)
-    return (ids, categorie.niveau_competence_min or 0)
-
-
-def techniciens_qualifies(company, ticket):
-    """NTSRV7 — ids des utilisateurs qualifiés pour ``ticket``, ou ``None``
-    quand aucune exigence n'existe (``None`` = « ne filtre rien », à ne JAMAIS
-    confondre avec ``set()`` = « personne n'est qualifié »).
-
-    Lecture cross-app par le sélecteur de l'app cible
-    (``apps.rh.selectors.employes_avec_competence``) — jamais un import de
-    ``apps.rh.models``."""
-    ids, niveau_min = competences_exigees_ticket(ticket)
-    if not ids:
-        return None
-    try:
-        from apps.rh.selectors import employes_avec_competence
-    except Exception:  # noqa: BLE001 — RH absent/désactivé : aucun filtre.
-        return None
-    return employes_avec_competence(company, ids, niveau_min)
-
-
-def assign_technicien_auto(*, company, jour=None, ticket=None):
+def assign_technicien_auto(*, company):
     """XSAV9 — Choisit le technicien actif le MOINS chargé (nb de tickets
-    ouverts assignés) pour une affectation automatique, en excluant les
-    indisponibilités RH (lues via les selectors rh — jamais un import direct
-    des modèles rh) quand elles sont disponibles.
+    ouverts assignés) pour une affectation automatique.
 
     Renvoie l'utilisateur choisi, ou None si aucun technicien actif éligible
     (repli : le ticket reste sans affectation — comportement OFF inchangé).
     Un technicien = tout utilisateur ACTIF de la société ayant déjà été
     assigné à au moins un ticket (participe au pool de charge) — ce périmètre
     évite d'affecter un compte administratif jamais destiné au terrain.
-
-    NTSRV7 — quand ``SavSlaSettings.affectation_par_competence`` est ON ET
-    que la catégorie de ``ticket`` exige des compétences (NTSRV6), le pool
-    est d'abord RESTREINT aux techniciens qualifiés
-    (``rh.selectors.employes_avec_competence``) ; le moins chargé de ce
-    sous-groupe est choisi. Si le sous-groupe filtré est VIDE, on retombe sur
-    le comportement XSAV9 d'origine (jamais de ticket laissé sans
-    affectation à cause du filtre). Flag OFF (défaut) = XSAV9 byte-identique.
     """
     from django.contrib.auth import get_user_model
     from django.db.models import Count, Q
-    from .models import SavSlaSettings, Ticket
+    from .models import Ticket
 
     User = get_user_model()
-    jour = jour or timezone.localdate()
 
     candidats = list(
         User.objects.filter(
@@ -266,25 +202,7 @@ def assign_technicien_auto(*, company, jour=None, ticket=None):
         )
         .order_by('nb_ouverts', 'id'))
 
-    # NTSRV7 — sous-groupe QUALIFIÉ d'abord ; repli XSAV9 SEULEMENT si ce
-    # sous-groupe est VIDE (aucun technicien de la société ne possède les
-    # compétences exigées). Tant qu'au moins un qualifié existe, un
-    # technicien NON qualifié n'est jamais choisi — même si le qualifié est
-    # indisponible ce jour-là (le ticket reste alors à affecter à la main).
-    if ticket is not None and SavSlaSettings.get(company).affectation_par_competence:
-        qualifies = techniciens_qualifies(company, ticket)
-        if qualifies is not None:
-            filtres = [u for u in candidats if u.pk in qualifies]
-            if filtres:
-                for user in filtres:
-                    if not _technicien_indisponible(company, user, jour):
-                        return user
-                return None
-
-    for user in candidats:
-        if not _technicien_indisponible(company, user, jour):
-            return user
-    return None
+    return candidats[0] if candidats else None
 
 
 # ── AUD519 — Échéance SLA posée par TOUS les producteurs de tickets ─────────
@@ -608,182 +526,6 @@ def _generer_ticket_preventif_compteur(company, equipement, type_releve,
         create_with_reference(Ticket, 'SAV', company, _create))
 
 
-# ── YSUBS1 — Sélection des contrats de maintenance dus à facturation ────────
-# (helper de sélection pour le beat quotidien de facturation récurrente de
-# ``apps.contrats.scheduled`` — jamais l'inverse, ``sav`` ne dépend PAS de
-# ``contrats``.)
-
-def contrats_maintenance_dus_facturation(company, today=None):
-    """Contrats de maintenance ACTIFS dont la facturation récurrente est due
-    aujourd'hui (ou en retard) — YSUBS1. Lecture seule, scopée société.
-
-    Réutilise ``ContratMaintenance.facturation_due`` (FG40, déjà idempotent :
-    vrai seulement si ``facturation_active`` et la prochaine échéance calculée
-    depuis ``derniere_facturation``/``date_debut`` est atteinte)."""
-    from .models import ContratMaintenance
-
-    return [
-        c for c in ContratMaintenance.objects.filter(
-            company=company, actif=True, facturation_active=True)
-        if c.facturation_due(today=today)
-    ]
-
-
-class FacturationContratError(Exception):
-    """AUD149 — la facturation récurrente d'un contrat de maintenance est
-    refusée (contrat introuvable, hors société, ou non dû)."""
-
-
-class FacturationContratDoublonError(FacturationContratError):
-    """AUD149 — cette période est DÉJÀ facturée pour ce contrat.
-
-    Traduite en 409 par l'action ``facturer`` du viewset : c'est le signal
-    d'un double-clic ou d'une collision avec le beat quotidien, jamais une
-    erreur à avaler."""
-
-
-@transaction.atomic
-def facturer_contrat_maintenance(contrat, *, user=None, company=None,
-                                 today=None, periode=None):
-    """AUD149/AUD151 — CHEMIN UNIQUE de facturation d'un ``ContratMaintenance``,
-    partagé par l'action manuelle ``facturer`` et par le beat quotidien.
-
-    AUD149 — l'ordre des opérations est le correctif : la période est
-    RÉSERVÉE d'abord (``contrats.services.enregistrer_cycle`` en statut
-    ``genere``, qui lève ``RejeuError`` si un cycle ``genere`` existe déjà
-    pour ``(sav_maintenance, contrat, periode)``), DANS LA MÊME TRANSACTION
-    ATOMIQUE, et la ``Facture`` n'est créée QUE si la réservation a réussi —
-    jamais l'inverse. Avant, les deux appelants créaient la facture PUIS
-    journalisaient, la journalisation étant de surcroît enveloppée dans un
-    ``except Exception: pass`` qui avalait précisément le signal de doublon :
-    deux clics sur « Facturer », ou un clic le jour du passage du beat,
-    produisaient DEUX factures d'abonnement pour le même mois sans qu'aucune
-    trace ne le signale. S'y ajoutent un ``select_for_update()`` sur le
-    contrat (deux requêtes simultanées sérialisées) et le contrôle explicite
-    ``contrat.facturation_due(today)``.
-
-    AUD151 — la ligne de facturation à l'usage (XCTR16) est ajoutée ICI, donc
-    SYSTÉMATIQUEMENT : elle n'était appelée que par le chemin beat, si bien
-    qu'un contrat à tarif d'usage facturé à la main (rattrapage, beat en
-    panne) partait au client sans sa ligne d'usage — le revenu variable de la
-    période était perdu, définitivement et en silence.
-
-    Renvoie la ``Facture`` créée. Lève ``FacturationContratDoublonError``
-    (période DÉJÀ facturée : échéance non encore atteinte, ou cycle ``genere``
-    existant → 409), ``FacturationContratError`` (contrat introuvable pour la
-    société, ou facturation récurrente désactivée → 400) ou ``ValueError``
-    (autres pré-conditions FG40, dont le prix absent → 400).
-    """
-    from django.utils import timezone as _timezone
-
-    from apps.contrats import services as contrats_services
-    from apps.contrats.models import CycleFacturationLog
-    from apps.ventes.services import creer_facture_contrat
-
-    from .models import ContratMaintenance
-
-    company = company or contrat.company
-    today = today or _timezone.localdate()
-    periode = periode or today.strftime('%Y-%m')
-
-    # Verrou de ligne : deux « Facturer » simultanés (ou un clic pendant le
-    # beat) sont sérialisés, jamais évalués en parallèle sur le même contrat.
-    verrouille = (ContratMaintenance.objects
-                  .select_for_update()
-                  .filter(pk=contrat.pk, company=company)
-                  .first())
-    if verrouille is None:
-        raise FacturationContratError(
-            "Contrat de maintenance introuvable pour cette société.")
-    contrat = verrouille
-
-    # `facturation_due()` est fausse pour DEUX raisons très différentes, à ne
-    # jamais confondre (FG40 vs AUD149) :
-    #   * la facturation récurrente du contrat est ÉTEINTE (ou le contrat est
-    #     inactif) — une pré-condition métier FG40, refusée en 400 comme un
-    #     prix absent. Ce n'est pas un doublon : rien n'a jamais été facturé.
-    #   * l'échéance n'est pas encore atteinte — c'est LE signal de la période
-    #     déjà facturée (double-clic, collision avec le beat) : 409.
-    if not contrat.facturation_active or not contrat.actif:
-        raise FacturationContratError(
-            "La facturation récurrente de ce contrat est désactivée.")
-    if not contrat.facturation_due(today=today):
-        raise FacturationContratDoublonError(
-            "La facturation de ce contrat n'est pas due "
-            f'({contrat.prochaine_facturation()} au plus tôt) — refus de '
-            'double-facturation.')
-
-    # GARDE D'ABORD : la période est réservée AVANT toute création.
-    try:
-        cycle = contrats_services.enregistrer_cycle(
-            company,
-            source_type=CycleFacturationLog.SourceType.SAV_MAINTENANCE,
-            source_id=contrat.pk,
-            periode=periode,
-            statut=CycleFacturationLog.Statut.GENERE,
-        )
-    except contrats_services.RejeuError as exc:
-        raise FacturationContratDoublonError(str(exc))
-
-    facture = creer_facture_contrat(
-        contrat=contrat, user=user, company=company)
-
-    # AUD151 — ligne d'usage systématique (les deux appelants la reçoivent).
-    motif_usage = ''
-    if contrat.tarif_usage is not None:
-        motif_usage = _ajouter_ligne_usage_contrat(contrat, facture)
-
-    contrats_services.attacher_facture_au_cycle(
-        cycle, facture_id=facture.id, motif=motif_usage)
-
-    # XCTR22 (AUDV18) — branchement ADDITIF : tente le débit du mandat de
-    # prélèvement actif du client, ICI et seulement ICI (jamais dans
-    # `creer_facture_contrat` — voir son docstring) : c'est SEULEMENT à ce
-    # point que le montant de la facture est DÉFINITIF, ligne d'usage XCTR16
-    # comprise (AUD151, `_ajouter_ligne_usage_contrat` recalcule les totaux
-    # depuis les lignes) — débiter plus tôt sous-facturerait tout contrat à
-    # tarif d'usage. Frontière cross-app : porte publique de `ventes`, jamais
-    # ses modèles. Best-effort : sans mandat actif (comportement d'aujourd'hui
-    # pour l'immense majorité des contrats), no-op strict ; un échec provider
-    # ne remet JAMAIS en cause la facture déjà créée et émise ci-dessus.
-    try:
-        from apps.ventes.services import debiter_mandat_pour_facture
-        debiter_mandat_pour_facture(facture=facture, periode=periode)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        logger.warning(
-            'XCTR22 : débit mandat indisponible pour la facture %s',
-            facture.reference, exc_info=True)
-
-    return facture
-
-
-def facturer_contrat_maintenance_beat(contrat, *, user=None):
-    """Facture UN ``ContratMaintenance`` dû, pour le beat quotidien — YSUBS1.
-
-    Enveloppe fine du chemin unique ``facturer_contrat_maintenance``
-    (AUD149) : même garde anti-doublon, même verrou, même ligne d'usage
-    XCTR16 que l'action manuelle. Ne subsiste ici que la journalisation de
-    l'ÉCHEC, qui doit survivre au rollback de la transaction annulée.
-    Renvoie la ``Facture`` créée ; re-lève ``ValueError`` (prix manquant…) et
-    ``FacturationContratError`` — l'appelant (le beat) capture l'exception
-    PAR contrat pour ne jamais bloquer les suivants."""
-    from django.utils import timezone as _timezone
-
-    periode = _timezone.localdate().strftime('%Y-%m')
-    try:
-        return facturer_contrat_maintenance(
-            contrat, user=user, company=contrat.company, periode=periode)
-    except FacturationContratDoublonError:
-        # Doublon réel : plus jamais avalé, et surtout pas re-journalisé en
-        # échec (le cycle « genere » de la période existe déjà).
-        raise
-    except ValueError as exc:
-        _journaliser_cycle_maintenance_beat(
-            contrat.company, contrat.pk, periode, statut_echec=True,
-            motif=str(exc))
-        raise
-
-
 # ── XCTR16 — Facturation à l'usage depuis le monitoring ─────────────────────
 
 def calculer_ligne_usage_contrat(contrat, periode_debut, periode_fin):
@@ -821,86 +563,6 @@ def calculer_ligne_usage_contrat(contrat, periode_debut, periode_fin):
         f'franchise {franchise} {unite}, {facturable} {unite} facturés '
         f'à {contrat.tarif_usage} MAD/{unite}.')
     return montant, description
-
-
-def _ajouter_ligne_usage_contrat(contrat, facture):
-    """Ajoute (best-effort) la ligne d'usage calculée sur la ``Facture``
-    récurrente déjà émise, via le hook cross-app générique déjà exposé par
-    ``ventes`` (``ajouter_lignes_frais_refactures`` — même mécanisme que
-    ``apps.compta`` pour les frais refacturés, aucun nouveau couplage).
-    Renvoie le motif (chaîne vide si une ligne a bien été ajoutée) destiné au
-    journal XCTR5.
-
-    AUD151 — le FORFAIT est matérialisé en ligne AVANT l'usage lorsqu'il n'en
-    a pas. ``creer_facture_contrat`` fabrique une facture à montants FIGÉS et
-    SANS aucune ``LigneFacture`` ; or ``ajouter_lignes_frais_refactures``
-    recalcule les totaux DEPUIS LES LIGNES. Ajouter la seule ligne d'usage
-    aurait donc écrasé le forfait de la période (une facture de 3 000 MAD
-    serait retombée au montant de l'usage seul). Les deux lignes sont donc
-    posées d'un même geste : forfait (libellé de la facture, montant HT figé)
-    puis usage — le total recalculé vaut exactement forfait + usage."""
-    periode_debut = facture.periode_service_debut
-    periode_fin = facture.periode_service_fin
-    if periode_debut is None or periode_fin is None:
-        return 'Période de service absente sur la facture — usage non calculé.'
-
-    montant, description = calculer_ligne_usage_contrat(
-        contrat, periode_debut, periode_fin)
-    if montant is None:
-        return description
-
-    from apps.ventes.services import ajouter_lignes_frais_refactures
-
-    lignes = []
-    forfait_ht = facture.montant_ht
-    if not facture.lignes.exists() and forfait_ht:
-        lignes.append({
-            'designation': facture.libelle or 'Forfait de maintenance',
-            'montant_ht': forfait_ht,
-        })
-    lignes.append({'designation': description, 'montant_ht': montant})
-    ajouter_lignes_frais_refactures(facture=facture, lignes=lignes)
-    return ''
-
-
-def _journaliser_cycle_maintenance_beat(company, contrat_id, periode, *,
-                                        statut_echec, facture_id=None,
-                                        motif=''):
-    """Journalise un cycle de facturation SAV dans le journal contrats —
-    XCTR5/YSUBS1. Même patron que
-    ``maintenance.ContratMaintenanceViewSet._journaliser_cycle_best_effort``
-    (frontière cross-app : import fonction-local, best-effort).
-
-    XCTR16 — ``motif`` trace la ligne d'usage omise (aucune lecture
-    disponible) même quand la facture forfaitaire, elle, a bien été générée
-    (le statut reste ``GENERE`` — seule la ligne d'usage est absente).
-
-    AUD149 — ``RejeuError`` n'est PLUS avalée : elle signale un doublon réel
-    (deux factures pour la même période) et doit remonter. Le reste demeure
-    best-effort — une panne de journalisation ne doit pas masquer l'erreur
-    métier que l'appelant est en train de propager."""
-    from apps.contrats.services import RejeuError
-
-    try:
-        from apps.contrats import services as contrats_services
-        from apps.contrats.models import CycleFacturationLog
-
-        statut = (
-            CycleFacturationLog.Statut.ECHEC if statut_echec
-            else CycleFacturationLog.Statut.GENERE)
-        contrats_services.enregistrer_cycle(
-            company,
-            source_type=CycleFacturationLog.SourceType.SAV_MAINTENANCE,
-            source_id=contrat_id,
-            periode=periode,
-            statut=statut,
-            facture_id=facture_id,
-            motif=motif or '',
-        )
-    except RejeuError:
-        raise
-    except Exception:  # pragma: no cover - défensif (best-effort)
-        pass
 
 
 def creer_intervention_depuis_installation(
@@ -1070,10 +732,10 @@ def creer_equipement_depuis_vente_pos(*, company, produit, client,
     `client_vente=client`), garantie courant depuis `date_vente`.
 
     No-op côté appelant si `produit.suivi_serie` est faux ou `numero_serie`
-    est vide — c'est à l'appelant (`apps.pos.services`) de ne PAS invoquer
-    cette fonction dans ce cas (flag additif, comportement inchangé par
-    défaut). Lève `SerieDejaEnregistreeError` si la série existe déjà dans la
-    société (contrainte `uniq_equipement_serie_par_societe`).
+    est vide — c'est à l'appelant de ne PAS invoquer cette fonction dans ce
+    cas (flag additif, comportement inchangé par défaut). Lève
+    `SerieDejaEnregistreeError` si la série existe déjà dans la société
+    (contrainte `uniq_equipement_serie_par_societe`).
 
     Si la série est déjà enregistrée au registre entrepôt (`SerieEntrepot`,
     FG323), la marque SORTI (best-effort, jamais bloquant) via
@@ -1189,91 +851,6 @@ def router_whatsapp_entrant_vers_ticket(*, company, expediteur, texte):
     # le récepteur `post_save` de `receivers.py` (voir
     # `_log_creation_on_ticket_created`), plus besoin de l'appel explicite ici.
     return 'ticket_cree', ticket
-
-
-# ── AUD529 — Escalade d'un ticket SAV en réclamation formelle (litiges) ────
-# `docs/module-map.md` documente `apps.litiges` comme l'équivalent « escalade
-# Helpdesk » de SAV, mais AUCUNE référence n'existait entre les deux apps : un
-# ticket grave ne pouvait devenir une réclamation qu'à la re-saisie manuelle.
-# Ce service est le pont, dans le sens sav → litiges, via la frontière
-# `apps.litiges.services` (jamais un import de ses models).
-
-class TicketNonEscaladableError(Exception):
-    """Le ticket ne peut pas être escaladé en réclamation (ticket annulé)."""
-
-
-def escalader_ticket_en_reclamation(*, ticket, user=None,
-                                    type_reclamation=None, gravite=None,
-                                    objet=None, description=None,
-                                    montant_conteste=None):
-    """AUD529 — ouvre une ``litiges.Reclamation`` liée à CE ticket SAV.
-
-    IDEMPOTENT : un ticket déjà escaladé (``reclamation_id_ext`` posé) renvoie
-    ``(reclamation_existante, False)`` sans rien créer — un double clic
-    n'ouvre jamais deux dossiers.
-
-    Statuts éligibles : tous SAUF un ticket ANNULÉ (il n'y a plus de grief à
-    formaliser). Un ticket résolu/clôturé reste escaladable : une réclamation
-    formelle arrive très souvent APRÈS la clôture de l'intervention.
-
-    Le lien est posé des deux côtés — ``Reclamation.source_type='ticket'`` +
-    ``source_id`` côté litiges, ``Ticket.reclamation_id_ext`` côté SAV — et
-    l'événement est tracé dans LES DEUX chatters. ``bloque_relances=False``
-    par défaut : une réclamation qualité issue du SAV ne doit pas suspendre
-    les relances de facturation (contrairement à un litige financier).
-
-    Renvoie ``(reclamation, cree)``."""
-    from apps.litiges import services as litiges_services
-    from . import activity
-
-    if ticket.annule:
-        raise TicketNonEscaladableError(
-            "Ticket annulé : rien à escalader en réclamation.")
-
-    if ticket.reclamation_id_ext:
-        from apps.litiges.selectors import reclamation_scoped
-        existante = reclamation_scoped(
-            ticket.company, ticket.reclamation_id_ext)
-        if existante is not None:
-            return existante, False
-
-    gravites = {'urgente': 'elevee', 'haute': 'elevee', 'normale': 'moyenne',
-                'basse': 'faible'}
-    objet_final = (objet or '').strip() or (
-        f'Réclamation issue du ticket SAV {ticket.reference}')
-    description_finale = (description or '').strip() or (
-        f'Escalade du ticket SAV {ticket.reference} '
-        f'(statut « {ticket.get_statut_display()} »).\n\n'
-        f'{ticket.description or ""}').strip()
-
-    reclamation = litiges_services.creer_reclamation(
-        company=ticket.company,
-        type_reclamation=type_reclamation or 'qualite',
-        source_type='ticket',
-        source_id=ticket.pk,
-        objet=objet_final[:255],
-        description=description_finale,
-        montant_conteste=montant_conteste,
-        gravite=gravite or gravites.get(ticket.priorite, 'moyenne'),
-        # Une réclamation qualité issue du SAV ne suspend PAS les relances de
-        # facturation (contrairement à un litige financier, LITIGE3).
-        bloque_relances=False,
-        user=user,
-    )
-
-    ticket.reclamation_id_ext = reclamation.pk
-    ticket.save(update_fields=['reclamation_id_ext'])
-
-    activity.log_note(
-        ticket, user,
-        f'Escaladé en réclamation #{reclamation.pk} — '
-        f'« {reclamation.objet} ».')
-    litiges_services.journaliser_note(
-        reclamation,
-        f'Ouverte par escalade du ticket SAV {ticket.reference} '
-        f'(#{ticket.pk}).',
-        user=user)
-    return reclamation, True
 
 
 # ── XSAV27 — Prêt / échange anticipé d'équipement (loaner) ─────────────────

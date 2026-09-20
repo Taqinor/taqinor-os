@@ -622,16 +622,16 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # Une garde déclarée par l'@action elle-même (permission_classes= sur
         # le décorateur @action) PRIME sur le tiering ci-dessous — sinon le
         # kwarg du décorateur devient du code mort et l'action retombe sur
-        # IsAdminRole (bug corrigé : escalader_reclamation). Le reste de cette
-        # surcharge NE lit PAS self.permission_classes ; le tier de chaque
-        # @action SANS garde déclarée doit donc être listé EXPLICITEMENT
-        # ci-dessous — tenu par apps/sav/tests_ticket_action_permissions.py.
+        # IsAdminRole. Le reste de cette surcharge NE lit PAS
+        # self.permission_classes ; le tier de chaque @action SANS garde
+        # déclarée doit donc être listé EXPLICITEMENT ci-dessous — tenu par
+        # apps/sav/tests_ticket_action_permissions.py.
         declared = declared_action_permissions(self)
         if declared is not None:
             return declared
         if self.action in READ_ACTIONS + [
                 'historique', 'rapport_pdf', 'lien_client', 'similaires',
-                'triage_ia', 'instructions_suggestions',
+                'triage_ia',
                 # ZSAV9 — suivre/ne plus suivre est ouvert à tout rôle voyant
                 # le ticket (pas seulement sav_gerer).
                 'suivre', 'ne_plus_suivre']:
@@ -753,12 +753,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             sla = SavSlaSettings.get(company)
             if sla.affectation_auto_sav:
                 from .services import assign_technicien_auto
-                # NTSRV7 — le ticket est passé pour que le filtrage par
-                # COMPÉTENCE (flag `affectation_par_competence`, OFF par
-                # défaut) puisse lire sa catégorie. Sans le flag, le ticket
-                # est ignoré : comportement XSAV9 inchangé.
-                technicien = assign_technicien_auto(
-                    company=company, jour=date_ouverture, ticket=inst)
+                technicien = assign_technicien_auto(company=company)
                 if technicien is not None:
                     inst.technicien_responsable = technicien
                     inst.save(update_fields=['technicien_responsable'])
@@ -1114,24 +1109,6 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ticket = self.get_object()
         return Response(
             TicketActivitySerializer(ticket.activites.all(), many=True).data)
-
-    @action(detail=True, methods=['get'], url_path='instructions-suggestions',
-            permission_classes=[HasPermissionOrLegacy('sav_voir')])
-    def instructions_suggestions(self, request, pk=None):
-        """ZMFG5 — Suggestions d'articles KB pour pré-remplir l'onglet
-        « Instructions », à partir du type de panne (cause) du ticket, ou du
-        libellé de la catégorie/description si aucune cause n'est codifiée.
-        Lecture seule (aucune écriture) — l'utilisateur applique lui-même la
-        suggestion via un PATCH `instructions` explicite."""
-        from apps.kb.selectors import article_pour_mot_cle
-        ticket = self.get_object()
-        texte = (
-            getattr(ticket.cause, 'nom', None)
-            or getattr(ticket.categorie, 'libelle', None)
-            or ticket.description or '')
-        data = article_pour_mot_cle(
-            ticket.company, request.user, texte, limit=3)
-        return Response({'results': data})
 
     @action(detail=True, methods=['get'], url_path='similaires',
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
@@ -1793,44 +1770,6 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'intervention_id': interv.id,
             'ticket_statut': ticket.statut,
         }, status=201)
-
-    @action(detail=True, methods=['post'], url_path='escalader-reclamation',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
-    def escalader_reclamation(self, request, pk=None):
-        """AUD529 — escalade CE ticket en réclamation formelle (litiges).
-
-        POST /sav/tickets/{id}/escalader-reclamation/
-        body optionnel : {type_reclamation, gravite, objet, description,
-                          montant_conteste}
-
-        Ouvre une ``litiges.Reclamation`` liée (source_type='ticket'), pose le
-        lien de retour sur le ticket et trace l'événement dans LES DEUX
-        chatters. IDEMPOTENT : un ticket déjà escaladé renvoie 200 avec la
-        réclamation existante (jamais un second dossier). Un ticket annulé
-        est refusé (400). La société n'est jamais lue du corps."""
-        ticket = self.get_object()
-        from .services import (
-            TicketNonEscaladableError, escalader_ticket_en_reclamation,
-        )
-        try:
-            reclamation, cree = escalader_ticket_en_reclamation(
-                ticket=ticket, user=request.user,
-                type_reclamation=request.data.get('type_reclamation'),
-                gravite=request.data.get('gravite'),
-                objet=request.data.get('objet'),
-                description=request.data.get('description'),
-                montant_conteste=request.data.get('montant_conteste'))
-        except TicketNonEscaladableError as exc:
-            return Response({'detail': str(exc)}, status=400)
-        return Response({
-            'reclamation_id': reclamation.pk,
-            'reference': reclamation.reference,
-            'objet': reclamation.objet,
-            'statut': reclamation.statut,
-            'type_reclamation': reclamation.type_reclamation,
-            'gravite': reclamation.gravite,
-            'cree': cree,
-        }, status=201 if cree else 200)
 
     @action(detail=True, methods=['get', 'post'], url_path='prets-equipement',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2615,47 +2554,6 @@ class CategorieTicketViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
-
-    @extend_schema(
-        responses=inline_serializer('SavImportCategorieCompetence', {
-            'cible': drf_serializers.CharField(),
-            'total_lignes': drf_serializers.IntegerField(),
-            'valides': drf_serializers.IntegerField(),
-            'rejetees': drf_serializers.IntegerField(),
-            'appliquees': drf_serializers.IntegerField(),
-            'lignes': drf_serializers.ListField(
-                child=drf_serializers.DictField()),
-        }))
-    @action(detail=False, methods=['post'],
-            url_path='importer-competences')
-    def importer_competences(self, request):
-        """NTSRV43 — Import CSV/XLSX des compétences requises par catégorie.
-
-        ``file`` (multipart, même nom de champ que l'import générique
-        ``apps/dataimport``) + ``apercu=1`` pour un APERÇU qui ne touche
-        jamais la base. Sans ``apercu``, les lignes VALIDES sont appliquées et
-        les lignes fautives rapportées une par une avec leur motif — jamais un
-        échec global silencieux (critère d'acceptation NTSRV43).
-
-        Écriture = permission d'écriture du référentiel (``get_permissions``
-        du viewset : responsable/admin), aucune garde déclarée sur l'action
-        pour ne pas court-circuiter cet override."""
-        from .imports import importer, previsualiser
-
-        fichier = request.FILES.get('file')
-        if fichier is None:
-            return Response(
-                {'file': 'Aucun fichier reçu (champ « file », CSV ou XLSX).'},
-                status=400)
-        octets = fichier.read()
-        apercu = str(request.query_params.get('apercu')
-                     or request.data.get('apercu') or '') in ('1', 'true')
-        fonction = previsualiser if apercu else importer
-        try:
-            recap = fonction(request.user.company, octets, fichier.name)
-        except ValueError as exc:
-            return Response({'file': str(exc)}, status=400)
-        return Response(recap)
 
 
 # ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
