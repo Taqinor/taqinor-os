@@ -34,6 +34,7 @@ from __future__ import annotations
 #: qu'aucune lane n'invente un second foyer pour un domaine existant.
 SOUS_MODULES = (
     'parametres',     # CAL45 — réglages société (une base, sept extensions)
+    'site',           # CAL47 — section « imagerie & pays » (contrat CAL46)
     'creation',       # CAL11 — obtenir_ou_creer_pour_devis / lead / client
     'liens',          # CAL12 — lier_devis / lier_appel_offre
     'layout',         # CAL13 — enregistrer_layout (hash + version)

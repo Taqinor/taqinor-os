@@ -432,3 +432,28 @@ def parametres_de_societe(company):
         section: (getattr(reglages, section, None) or {})
         for section in SECTIONS_PARAMETRES
     }
+
+
+def imagerie_site(company):
+    """CAL47 — la section « imagerie & pays » RÉSOLUE, toujours complète.
+
+    ``parametres_de_societe`` rend la section BRUTE (``{}`` tant que la
+    société n'a rien réglé) : c'est ce qui garantit l'équivalence stricte de
+    CAL45 sur l'endpoint. Un CONSOMMATEUR, lui, a besoin des huit clés du
+    contrat CAL46 (``contract_samples/site_imagerie.json``) pour ne jamais
+    tester l'absence de clé au lieu de l'absence de donnée : cette fonction
+    les lui donne, valeurs à ``null`` (ou ``[]``) quand rien n'est réglé.
+
+    Huit valeurs nulles veulent dire « comportement d'aujourd'hui » — pas
+    « pas de carte ». Aucun pays, aucun fournisseur, aucune altitude n'est
+    inventé ici : ce que la société n'a pas saisi reste inconnu.
+
+    Lecture PURE, bornée société (``company=None`` ⇒ tout inconnu).
+    """
+    from .services.site import section_vide
+
+    section = section_vide()
+    if company is None:
+        return section
+    section.update(parametres_de_societe(company).get('imagerie') or {})
+    return section
