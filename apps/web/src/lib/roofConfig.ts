@@ -323,6 +323,11 @@ export interface ImagerySettings {
   fournisseurs_autorises?: readonly string[] | null;
   calques_optionnels?: readonly string[] | null;
   attribution?: string | null;
+  /** CAL55 — altitude SAISIE (m) et sa provenance. `null` = inconnue, jamais 0. */
+  altitude_m?: number | null;
+  source_altitude?: string | null;
+  /** CAL55 — identifiant de fuseau IANA SAISI. `null` = non réglé. */
+  fuseau?: string | null;
 }
 
 /** Fournisseurs PROPOSABLES : ceux admis par la société (dans SON ordre), déclarés
@@ -558,3 +563,36 @@ registerOptionalLayer({
     'à la limitation de débit publiées sur geoservices.ign.fr (aucun quota chiffré ' +
     'n’est repris ici, faute de source vérifiée).',
 });
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL55 — FUSEAU HORAIRE DU SITE
+//
+// Le fuseau décale toute la course du soleil. Il vient de la BASE DE FUSEAUX (IANA
+// / tz database, identifiants du genre `Africa/Casablanca`) et il est SAISI dans les
+// réglages société — il n'est JAMAIS dérivé de la longitude : le Maroc est à UTC+1
+// toute l'année depuis 2018, une dérivation longitudinale le placerait à UTC+0.
+//
+// Non réglé ⇒ `null` : l'appelant garde le fuseau du serveur/navigateur, comportement
+// d'aujourd'hui — jamais un fuseau inventé.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Identifiant IANA plausible : `Zone/Ville`, éventuellement `Zone/Sous/Ville`. */
+export function isIanaTimeZone(tz: string): boolean {
+  return /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)+$/.test(tz.trim());
+}
+
+/**
+ * Fuseau du site tel que RÉGLÉ (tz database). `null` = non réglé, ou valeur qui n'est
+ * pas un identifiant de fuseau : on n'en fabrique jamais un à partir de la longitude.
+ */
+export function siteTimeZone(settings: { fuseau?: string | null } | null | undefined): string | null {
+  const tz = (settings?.fuseau ?? '').trim();
+  if (!tz || !isIanaTimeZone(tz)) return null;
+  return tz;
+}
+
+/** Libellé d'affichage du fuseau, ou la mention d'absence. */
+export function siteTimeZoneLabel(settings: { fuseau?: string | null } | null | undefined): string {
+  const tz = siteTimeZone(settings);
+  return tz ? `Fuseau : ${tz} (base de fuseaux IANA)` : 'Fuseau non renseigné';
+}
