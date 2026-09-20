@@ -6,6 +6,12 @@ une société qui n'a jamais rien réglé reçoit sept objets vides, ce qui veut
 dire « comportement d'aujourd'hui, strictement inchangé » — jamais une clé
 absente que l'écran devrait deviner.
 
+CAL246 — la même réponse porte AUSSI ``kits`` : le catalogue de kits de pose
+AO (``apps.ao.selectors.kits_de_pose``, CAL198), LU, jamais STOCKÉ — ce n'est
+donc pas une huitième section de ``ParametresCalepinage`` (aucune migration),
+et ``PUT`` la refuse comme toute clé inconnue (catalogue en LECTURE SEULE
+depuis cet endpoint).
+
 ``PUT`` pose les sections fournies (mise à jour PARTIELLE) par le SEUL chemin
 d'écriture du domaine, ``services.parametres.enregistrer_parametres`` : une
 section inconnue est refusée en la NOMMANT, en français. La société vient
@@ -23,7 +29,7 @@ from rest_framework.views import APIView
 from core.permissions import ScopedPermission
 
 from ..permissions import CAL_GERER, CAL_VOIR
-from ..selectors import parametres_de_societe
+from ..selectors import kits_de_pose_disponibles, parametres_de_societe
 from ..services.parametres import ReglageInvalide, enregistrer_parametres
 
 __all__ = ['ParametresCalepinageView']
@@ -37,8 +43,12 @@ class ParametresCalepinageView(APIView):
     write_permission = CAL_GERER
 
     def get(self, request, *args, **kwargs):
-        return Response(parametres_de_societe(
-            getattr(request.user, 'company', None)))
+        company = getattr(request.user, 'company', None)
+        reponse = parametres_de_societe(company)
+        # CAL246 — catalogue LU (AO), jamais stocké : ajouté à la réponse,
+        # jamais accepté en écriture (PUT ne connaît que les 7 sections).
+        reponse['kits'] = kits_de_pose_disponibles(company)
+        return Response(reponse)
 
     def put(self, request, *args, **kwargs):
         donnees = request.data if isinstance(request.data, dict) else None
