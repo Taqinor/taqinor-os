@@ -229,6 +229,9 @@ export interface ObstacleShadeEntry {
   y: number;
   effHeightM: number;
   halfWidthM: number;
+  /** CAL94 — empreinte au sol RÉELLE en ENU (le rectangle SAISI), pour que l'occultation
+   *  soit calculée par lancer de rayon sur la vraie forme et non sur un cône. */
+  footprint: [number, number][];
 }
 
 /**
@@ -261,11 +264,23 @@ export function roofObstacleShadeEntries(
     const h = o.heightM;
     if (typeof h !== 'number' || !Number.isFinite(h) || h <= 0) continue;
     const halfWidthM = Math.hypot(o.lengthM, o.widthM) / 2;
+    const x = (o.centerLng - origin[0]) * DEG2M * cosLat;
+    const y = (o.centerLat - origin[1]) * DEG2M;
+    // CAL94 — le rectangle SAISI en ENU : demi-largeur EST-OUEST = widthM/2, demi-longueur
+    // NORD-SUD = lengthM/2 (mêmes conventions que `obstacleRing`).
+    const hw = o.widthM / 2;
+    const hl = o.lengthM / 2;
     out.push({
-      x: (o.centerLng - origin[0]) * DEG2M * cosLat,
-      y: (o.centerLat - origin[1]) * DEG2M,
+      x,
+      y,
       effHeightM: h,
       halfWidthM: halfWidthM > 0 ? halfWidthM : OBSTACLE_MIN_DIM_M / 2,
+      footprint: [
+        [x - hw, y - hl],
+        [x + hw, y - hl],
+        [x + hw, y + hl],
+        [x - hw, y + hl],
+      ],
     });
   }
   return out;

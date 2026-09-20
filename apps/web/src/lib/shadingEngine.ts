@@ -29,7 +29,7 @@
  * (PerKwcProduction / ScaledProduction du moteur de production).
  */
 import { sunDirection } from './roofPro2';
-import { type LngLat } from './roof';
+import { pointInPolygon, type LngLat } from './roof';
 import { DAYS_IN_MONTH, type PerKwcProduction } from './productionEngine';
 
 const DEG2RAD = Math.PI / 180;
@@ -80,6 +80,77 @@ export interface ShadeObstructionENU {
   /** Hauteur EFFECTIVE au-dessus du plan du champ (déjà réduite de la hauteur de toit). */
   effHeightM: number;
   halfWidthM: number;
+  /**
+   * CAL94 — EMPREINTE AU SOL réelle (ENU, mètres ; ≥ 3 sommets). Quand elle est
+   * renseignée, l'occultation est calculée par LANCER DE RAYON contre le prisme vertical
+   * (empreinte × `effHeightM`) : c'est la géométrie EXACTE de l'obstacle saisi, et non
+   * le cône angulaire — un rectangle de 4 × 1 m n'ombre pas comme un disque de 4 m.
+   *
+   * ABSENTE (ombres tracées WJ19 : l'utilisateur ne trace qu'une LIGNE, il n'y a pas
+   * d'empreinte à connaître) ⇒ on retombe EXACTEMENT sur le test angulaire historique.
+   * C'est ce qui garantit la non-régression : aucune obstruction sans empreinte ne
+   * change de comportement.
+   */
+  footprint?: readonly (readonly [number, number])[];
+}
+
+/**
+ * CAL94 — distance horizontale (m) à laquelle un rayon parti de (px, py) dans la
+ * direction unitaire (dx, dy) ENTRE dans le polygone `poly`, ou null s'il ne le
+ * rencontre jamais. Point DANS le polygone ⇒ 0. PUR (aucune dépendance 3D : c'est
+ * la même intersection rayon/segment que ferait un raycaster three.js, faite ici sur
+ * l'empreinte extrudée — donc testable et mesurable sans WebGL).
+ */
+export function rayEntryDistance(
+  px: number,
+  py: number,
+  dx: number,
+  dy: number,
+  poly: readonly (readonly [number, number])[],
+): number | null {
+  if (!poly || poly.length < 3) return null;
+  if (pointInPolygon([px, py], poly as [number, number][])) return 0;
+  let best = Infinity;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const ax = poly[j][0];
+    const ay = poly[j][1];
+    const sx = poly[i][0] - ax;
+    const sy = poly[i][1] - ay;
+    const denom = dx * sy - dy * sx;
+    if (Math.abs(denom) < 1e-12) continue; // rayon parallèle à l'arête
+    const qx = ax - px;
+    const qy = ay - py;
+    const t = (qx * sy - qy * sx) / denom;
+    if (t < 0) continue; // l'arête est DERRIÈRE le point
+    const u = (qx * dy - qy * dx) / denom;
+    if (u < 0 || u > 1) continue; // le rayon passe à côté du segment
+    if (t < best) best = t;
+  }
+  return best === Infinity ? null : best;
+}
+
+/**
+ * CAL94 — le rayon solaire parti de (px, py) est-il intercepté par le PRISME vertical
+ * (empreinte `o.footprint`, hauteur `o.effHeightM`) ? Le rayon monte de
+ * `tan(élévation)` par mètre parcouru horizontalement : il est bloqué si, à l'entrée
+ * dans l'empreinte, il est encore SOUS le sommet du prisme. PUR.
+ */
+function isSunBlockedByFootprint(
+  px: number,
+  py: number,
+  o: ShadeObstructionENU,
+  sunElevationDeg: number,
+  sunAzimuthDeg: number,
+): boolean {
+  // Direction HORIZONTALE vers le soleil (azimut 0 = Nord, 90 = Est) — mêmes
+  // conventions que `sunDirection`.
+  const az = sunAzimuthDeg * DEG2RAD;
+  const dx = Math.sin(az);
+  const dy = Math.cos(az);
+  const t = rayEntryDistance(px, py, dx, dy, o.footprint as readonly (readonly [number, number])[]);
+  if (t == null) return false;
+  if (t === 0) return sunElevationDeg < 89; // point sous l'obstacle lui-même
+  return t * Math.tan(sunElevationDeg * DEG2RAD) < o.effHeightM;
 }
 
 /** Longueur (m) et azimut (°, 0=N, 90=E — direction base→bout) d'une ombre tracée.
@@ -135,9 +206,17 @@ function azimuthDiffDeg(a: number, b: number): number {
 
 /**
  * Le soleil (élévation/azimut) est-il masqué, vu du point (px, py) du champ, par au
- * moins une obstruction ? Test angulaire : l'obstruction sous-tend une élévation
- * atan(hEff/d) et une demi-largeur atan(r/d) autour de son azimut — le soleil est
- * masqué s'il est PLUS BAS que le sommet ET dans le cône azimutal. PUR (testé).
+ * moins une obstruction ?
+ *
+ *  - CAL94 — obstruction avec EMPREINTE (`footprint`) : LANCER DE RAYON contre le
+ *    prisme vertical (empreinte extrudée à `effHeightM`). Géométrie exacte de l'objet
+ *    saisi : seuls les points réellement derrière l'obstacle sont masqués.
+ *  - Sans empreinte (ombres tracées WJ19, qui ne sont qu'une ligne) : test ANGULAIRE
+ *    historique — l'obstruction sous-tend une élévation atan(hEff/d) et une demi-largeur
+ *    atan(r/d) autour de son azimut ; le soleil est masqué s'il est PLUS BAS que le
+ *    sommet ET dans le cône azimutal.
+ *
+ * PUR (testé) : aucun WebGL, aucune scène — le coût est donc mesurable en test.
  */
 export function isSunBlocked(
   px: number,
@@ -148,6 +227,16 @@ export function isSunBlocked(
 ): boolean {
   if (sunElevationDeg <= 0) return false; // nuit : rien à masquer
   for (const o of obstructions) {
+    // CAL94 — empreinte connue ⇒ lancer de rayon sur la géométrie EXACTE de l'obstacle.
+    if (o.footprint && o.footprint.length >= 3) {
+      // Rejet bon marché par rayon englobant AVANT le test d'arêtes (budget de perf).
+      const ddx = o.x - px;
+      const ddy = o.y - py;
+      const d = Math.hypot(ddx, ddy);
+      if (d > 0.5 && sunElevationDeg >= Math.atan2(o.effHeightM, Math.max(1e-6, d - o.halfWidthM)) / DEG2RAD) continue;
+      if (isSunBlockedByFootprint(px, py, o, sunElevationDeg, sunAzimuthDeg)) return true;
+      continue;
+    }
     const dx = o.x - px;
     const dy = o.y - py;
     const dist = Math.hypot(dx, dy);

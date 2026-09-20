@@ -134,11 +134,21 @@ export function environmentShadeEntries(
     if (eff <= 0) continue;
     const diameterM = o.kind === 'arbre' ? o.crownDiameterM : (o.lengthM ?? o.widthM ?? o.crownDiameterM);
     const halfWidthM = diameterM && diameterM > 0 ? diameterM / 2 : 1.5;
+    const x = (o.centerLng - origin[0]) * DEG2M * cosLat;
+    const y = (o.centerLat - origin[1]) * DEG2M;
+    // CAL94 — empreinte RÉELLE en ENU (emprise saisie du bâtiment, houppier de l'arbre)
+    // pour le lancer de rayon. Aucune dimension saisie ⇒ pas d'empreinte : l'obstruction
+    // retombe sur le cône angulaire historique, jamais sur une forme inventée.
+    const ring = environmentRing(o);
+    const footprint = ring
+      ? ring.map(([lng, lat]) => [(lng - origin[0]) * DEG2M * cosLat, (lat - origin[1]) * DEG2M] as [number, number])
+      : undefined;
     out.push({
-      x: (o.centerLng - origin[0]) * DEG2M * cosLat,
-      y: (o.centerLat - origin[1]) * DEG2M,
+      x,
+      y,
       effHeightM: eff,
       halfWidthM,
+      ...(footprint ? { footprint } : {}),
     });
   }
   return out;
