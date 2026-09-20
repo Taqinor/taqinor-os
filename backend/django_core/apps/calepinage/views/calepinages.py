@@ -30,6 +30,7 @@ mauvais objet (``LeadWorkspace.jsx`` l'a montré).
 """
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 
 from django.utils.dateparse import parse_date, parse_datetime
@@ -39,6 +40,10 @@ from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from core.idempotency import (
+    IDEMPOTENCY_KEY_HEADER, IdempotencyConflict, IdempotencyRecord,
+    _fingerprint,
+)
 from core.permissions import ScopedPermission, declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -48,8 +53,12 @@ from ..permissions import (
     CAL_GERER, CAL_VOIR, PeutGererCalepinage, PeutLireOuEcrireCalepinage,
     PeutVoirCalepinage,
 )
-from ..serializers import CalepinageSerializer
+from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
 from ..services.layout import LayoutRefuse, enregistrer_layout
+from ..services.variantes import (
+    VarianteRefusee, creer_variante, modifier_variante, retenir_variante,
+    supprimer_variante,
+)
 from ..services.versions import VersionInvalide, restaurer_version
 
 __all__ = ['CalepinageViewSet', 'contexte_conception', 'detail_calepinage']
@@ -58,7 +67,69 @@ __all__ = ['CalepinageViewSet', 'contexte_conception', 'detail_calepinage']
 DUREE_URL_IMAGE = timedelta(hours=1)
 
 
-class CalepinageViewSet(CompanyScopedModelViewSet):
+class ActionIdempotenteMixin:
+    """CAL21 — le contrat ``Idempotency-Key`` de ``core.idempotency``, pour une
+    ``@action``.
+
+    ``IdempotentCreateMixin`` ne couvre que ``create`` ; une action métier en a
+    autant besoin — un double-clic ou un rejeu réseau ne doit pas basculer deux
+    fois la variante retenue d'un dossier.
+
+    L'EMPREINTE inclut la CIBLE et le nom de l'action, pas seulement le corps :
+    sans cela, deux ``retenir`` sur DEUX variantes, envoyés avec la même clé et
+    un corps vide, auraient la même empreinte et le second rejouerait la
+    réponse du premier — il aurait retenu la mauvaise variante EN SILENCE.
+    (Le module ``apps.ao`` porte le même mixin ; on ne l'importe pas — une app
+    n'importe jamais les vues d'une autre.)
+    """
+
+    def _cle_idempotence(self, request):
+        brut = (request.META.get(IDEMPOTENCY_KEY_HEADER)
+                or request.headers.get('Idempotency-Key'))
+        return brut.strip()[:255] if brut else None
+
+    def _empreinte_idempotence(self, request):
+        return _fingerprint({
+            'action': getattr(self, 'action', ''),
+            'cible': str(self.kwargs.get('pk', '')),
+            'sous_cible': str(self.kwargs.get('variante_id', '')),
+            'corps': json.loads(json.dumps(request.data, default=str)),
+        })
+
+    def executer_idempotent(self, request, calcul):
+        cle = self._cle_idempotence(request)
+        if not cle:
+            return calcul()
+        company = getattr(request.user, 'company', None)
+        endpoint = '%s.%s' % (type(self).__qualname__,
+                              getattr(self, 'action', ''))
+        empreinte = self._empreinte_idempotence(request)
+        memorise = IdempotencyRecord.objects.filter(
+            company=company, endpoint=endpoint, key=cle).first()
+        if memorise is not None:
+            if memorise.request_fingerprint != empreinte:
+                raise IdempotencyConflict()
+            return Response(memorise.response_body,
+                            status=memorise.response_status)
+        reponse = calcul()
+        try:
+            IdempotencyRecord.objects.get_or_create(
+                company=company, endpoint=endpoint, key=cle,
+                defaults={'request_fingerprint': empreinte,
+                          'response_status': reponse.status_code,
+                          # NORMALISÉ avant écriture : un `Decimal` ou un
+                          # `datetime` resté dans le corps ferait échouer le
+                          # `json.dumps` du JSONField, et l'idempotence
+                          # deviendrait un no-op SILENCIEUX.
+                          'response_body': json.loads(
+                              json.dumps(reponse.data, default=str))})
+        except Exception:  # noqa: BLE001 — l'idempotence est un CONFORT : elle
+            # ne fait jamais échouer une action qui a déjà réussi.
+            pass
+        return reponse
+
+
+class CalepinageViewSet(ActionIdempotenteMixin, CompanyScopedModelViewSet):
     """CRUD du pivot ``Calepinage`` + ses sous-ressources en ``@action``."""
 
     queryset = Calepinage.objects.select_related('client', 'devis').all()
@@ -155,6 +226,98 @@ class CalepinageViewSet(CompanyScopedModelViewSet):
             'inchange': resultat['inchange'],
             'version': version.pk if version is not None else None,
         })
+
+    # ── Les variantes : CRUD, bascule idempotente, comparatif ──────────────
+    @action(detail=True, methods=['get', 'post'], url_path='variantes',
+            permission_classes=[PeutLireOuEcrireCalepinage])
+    def variantes(self, request, pk=None):
+        """CAL21 — liste (GET) ou crée (POST) une variante, la RETENUE en tête.
+
+        La création passe par ``services.creer_variante`` : ``retenue`` n'a
+        qu'un seul chemin d'écriture, et ``?retenir=1`` dans le corps emprunte
+        la bascule ATOMIQUE (jamais deux retenues, jamais zéro).
+        """
+        calepinage = self.get_object()
+        if request.method.lower() == 'get':
+            return Response(CalepinageVarianteSerializer(
+                selectors.variantes(calepinage), many=True).data)
+        corps = request.data if isinstance(request.data, dict) else {}
+        try:
+            variante = creer_variante(
+                calepinage, nom=corps.get('nom'),
+                roof_layout=corps.get('roof_layout'),
+                resultat=corps.get('resultat'), user=request.user,
+                retenir=_booleen(corps.get('retenir')))
+        except VarianteRefusee as refus:
+            return Response({refus.champ or 'variante': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(CalepinageVarianteSerializer(variante).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get', 'patch', 'delete'],
+            url_path=r'variantes/(?P<variante_id>[^/.]+)',
+            permission_classes=[PeutLireOuEcrireCalepinage])
+    def variante(self, request, pk=None, variante_id=None):
+        """CAL21 — lit, édite ou retire UNE variante (jamais ``retenue``).
+
+        La variante RETENUE ne se supprime pas : la retirer laisserait le
+        calepinage sans option choisie (le refus le dit et nomme le geste).
+        """
+        calepinage = self.get_object()
+        variante = selectors.variantes(calepinage).filter(
+            pk=variante_id).first()
+        if variante is None:
+            return Response({'detail': 'Variante introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        methode = request.method.lower()
+        if methode == 'get':
+            return Response(CalepinageVarianteSerializer(variante).data)
+        corps = request.data if isinstance(request.data, dict) else {}
+        try:
+            if methode == 'delete':
+                supprimer_variante(variante)
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            variante = modifier_variante(
+                variante, nom=corps.get('nom'),
+                roof_layout=corps.get('roof_layout', ...),
+                resultat=corps.get('resultat', ...))
+        except VarianteRefusee as refus:
+            return Response({refus.champ or 'variante': str(refus)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(CalepinageVarianteSerializer(variante).data)
+
+    @action(detail=True, methods=['post'],
+            url_path=r'variantes/(?P<variante_id>[^/.]+)/retenir',
+            permission_classes=[PeutGererCalepinage])
+    def retenir(self, request, pk=None, variante_id=None):
+        """CAL21 — bascule la variante retenue, IDEMPOTEMMENT.
+
+        Deux appels portant la MÊME ``Idempotency-Key`` ne basculent qu'une
+        fois : un double-clic ou un rejeu réseau ne doit pas faire valser
+        l'option retenue d'un dossier.
+        """
+        calepinage = self.get_object()
+        variante = selectors.variantes(calepinage).filter(
+            pk=variante_id).first()
+        if variante is None:
+            return Response({'detail': 'Variante introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        def basculer():
+            retenir_variante(variante)
+            return Response(CalepinageVarianteSerializer(variante).data)
+
+        return self.executer_idempotent(request, basculer)
+
+    @action(detail=True, methods=['get'], url_path='comparer',
+            permission_classes=[PeutVoirCalepinage])
+    def comparer(self, request, pk=None):
+        """CAL21 — le comparatif des variantes (contrat CAL3).
+
+        Le calcul est celui du sélecteur : une variante non simulée le DIT et
+        ses grandeurs valent ``null`` ; les écarts sont relatifs à la retenue.
+        """
+        return Response(selectors.comparer_variantes(self.get_object()))
 
     # ── L'historique : visible, et REJOUABLE sans être réécrit ─────────────
     @action(detail=True, methods=['get'], url_path='versions',
@@ -714,6 +877,13 @@ def _statut(valeur):
                        f"{', '.join(admis)}."),
         })
     return valeur
+
+
+def _booleen(valeur):
+    """Un drapeau de corps de requête lu SANS deviner (défaut : faux)."""
+    if isinstance(valeur, bool):
+        return valeur
+    return str(valeur or '').strip().lower() in ('1', 'true', 'vrai', 'oui')
 
 
 def _moment(valeur):

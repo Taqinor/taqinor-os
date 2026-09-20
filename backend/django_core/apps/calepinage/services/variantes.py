@@ -86,6 +86,69 @@ def creer_variante(calepinage, *, nom, roof_layout=None, resultat=None,
     return variante
 
 
+def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...):
+    """CAL21 — édite une variante SANS jamais toucher ``retenue``.
+
+    ``retenue`` n'a qu'un seul chemin d'écriture (``retenir_variante``, garde
+    ``garde_retenue``) : une édition qui pourrait la basculer ouvrirait une
+    seconde porte, et c'est comme ça qu'on se retrouve avec deux retenues ou
+    zéro. L'empreinte suit la conception — jamais recodée ici.
+
+    ``roof_layout`` / ``resultat`` valent ``...`` (Ellipsis) quand l'appelant
+    ne les touche pas : ``None`` est une VALEUR (« efface »), pas une absence.
+    """
+    from apps.ventes.services import layout_hash
+
+    if variante is None or not getattr(variante, 'pk', None):
+        raise VarianteRefusee(
+            "Cette variante n'existe pas : impossible de la modifier.",
+            champ='variante')
+
+    champs = []
+    if nom is not None:
+        libelle = (nom or '').strip()
+        if not libelle:
+            raise VarianteRefusee(
+                "Donnez un nom à la variante : c'est lui qui permet de la "
+                "reconnaître dans la comparaison.", champ='nom')
+        variante.nom = libelle
+        champs.append('nom')
+    if roof_layout is not ...:
+        if roof_layout is not None and not isinstance(roof_layout, dict):
+            raise VarianteRefusee(
+                "La conception de la variante doit être un objet "
+                f"(reçu : {type(roof_layout).__name__}).", champ='roof_layout')
+        variante.roof_layout = roof_layout
+        variante.layout_hash = layout_hash(roof_layout) or ''
+        champs.extend(['roof_layout', 'layout_hash'])
+    if resultat is not ...:
+        variante.resultat = resultat
+        champs.append('resultat')
+
+    if champs:
+        variante.save(update_fields=champs + ['updated_at'])
+    return variante
+
+
+def supprimer_variante(variante):
+    """CAL21 — retire une variante ; JAMAIS celle qui est retenue.
+
+    Supprimer la retenue laisserait le calepinage sans option choisie — la
+    moitié du bug que la contrainte de base ne couvre pas (elle interdit DEUX
+    retenues, pas ZÉRO). Le refus nomme le geste à faire d'abord.
+    """
+    if variante is None or not getattr(variante, 'pk', None):
+        raise VarianteRefusee(
+            "Cette variante n'existe pas : impossible de la supprimer.",
+            champ='variante')
+    if variante.retenue:
+        raise VarianteRefusee(
+            f"« {variante.nom} » est la variante RETENUE : retenez-en une "
+            "autre avant de la supprimer.", champ='retenue')
+    variante.delete()
+    return True
+
+
 def retenir_variante(variante):
     """Bascule ``variante`` en RETENUE, atomiquement.
 

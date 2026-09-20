@@ -24,7 +24,7 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 
-from .models import Calepinage
+from .models import Calepinage, CalepinageVariante
 
 
 class CalepinageSerializer(SameCompanyFKSerializerMixin,
@@ -102,3 +102,20 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             raise serializers.ValidationError({
                 'lead': f"Lead introuvable (#{lead_id}).",
             })
+
+
+class CalepinageVarianteSerializer(serializers.ModelSerializer):
+    """CAL21 — une variante en lecture et en écriture, SAUF ``retenue``.
+
+    ``retenue`` est en LECTURE SEULE ici : elle n'a qu'un seul chemin
+    d'écriture (``services.variantes.retenir_variante``, bascule atomique
+    gardée par ``garde_retenue``). Un sérialiseur qui l'écrirait ouvrirait la
+    seconde porte par laquelle on se retrouve avec deux retenues, ou zéro.
+    """
+
+    class Meta:
+        model = CalepinageVariante
+        fields = ['id', 'nom', 'roof_layout', 'resultat', 'retenue',
+                  'layout_hash', 'cree_par', 'created_at', 'updated_at']
+        read_only_fields = ['retenue', 'layout_hash', 'cree_par',
+                            'created_at', 'updated_at']
