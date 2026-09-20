@@ -461,7 +461,7 @@ class ContratCompatibilitesProduitTest(TestCase):
                 prix_vente=Decimal(str(prix)), quantite_stock=5,
                 garantie=garantie)
 
-        cls.panneau = produit('Panneau Canadien Solar 710W', 'PVC-PAN', 1500)
+        cls.panneau = produit('Panneau Canadien Solar 710W', 'PVC-PAN', 73951)
         FicheTechnique.objects.create(
             company=cls.company, produit=cls.panneau,
             type_fiche=FicheTechnique.TypeFiche.MODULE,
@@ -473,7 +473,7 @@ class ContratCompatibilitesProduitTest(TestCase):
             longueur_mm=2384, largeur_mm=1303)
 
         cls.onduleur = produit(
-            'Onduleur hybride Deye 10kW Triphasé', 'PVC-OND', 30000)
+            'Onduleur hybride Deye 10kW Triphasé', 'PVC-OND', 86213)
         FicheTechnique.objects.create(
             company=cls.company, produit=cls.onduleur,
             type_fiche=FicheTechnique.TypeFiche.ONDULEUR,
@@ -543,7 +543,7 @@ class ContratCompatibilitesProduitTest(TestCase):
 
     def test_aucun_prix_dans_la_reponse(self):
         blob = repr(sv_compat(self.onduleur, self.company)).lower()
-        for interdit in ('prix', 'marge', 'prix_achat', '30000', '1500'):
+        for interdit in ('prix', 'marge', 'prix_achat', '86213', '73951'):
             self.assertNotIn(interdit, blob)
 
 
