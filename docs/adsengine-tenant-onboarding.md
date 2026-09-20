@@ -76,3 +76,40 @@ couvrant :
 - Passer `MetaConnection.enabled=False` et vider `credentials` (le moteur no-ope).
 - Conserver l'historique (miroirs, actions, briefs) scopé à la société pour
   l'audit, ou le supprimer sur demande du client (droit à l'effacement).
+
+## 6. Activation pour un client (MVP solaire, 20/09/2026)
+
+Décision fondateur 5 (20/09/2026, Groupe SOLMVP) : **Publicité est un module
+VENDU aux clients**, au même titre que CRM/Ventes/Chantiers — pas un outil
+interne. SOLMVP17 a corrigé un trou constaté ce jour-là : le manifeste du
+module (`apps/adsengine/apps.py`) portait `installable=False`, ce qui faisait
+que `core.permissions.DisabledModuleMiddleware` IGNORAIT complètement ce
+module — désactiver « Publicité » (`ModuleToggle.actif=False`) masquait bien
+l'écran côté frontend mais **ne coupait rien côté API**. Le manifeste porte
+maintenant `installable=True` : le toggle gate désormais l'API exactement
+comme les autres modules vendus (vérifié par
+`apps/adsengine/tests/test_module_toggle_gate.py` sur un endpoint réel,
+`GET /api/django/adsengine/connexions/`).
+
+- **Activé par défaut.** Une société NEUVE n'a AUCUNE ligne `ModuleToggle`
+  pour `adsengine` — `core.feature_flags.module_actif` renvoie alors son
+  défaut (`actif=True`, comme tout module non explicitement désactivé) : le
+  module est donc actif dès la création du tenant, sans étape manuelle.
+- **Étape 1 — brancher le client.** Créer la `MetaConnection` de la société
+  dans la console Publicité (routeur `router.register(r'connexions', …)` de
+  `apps/adsengine/urls.py`, servi sous
+  `POST/GET /api/django/adsengine/connexions/`) en suivant les sections 1 et 2
+  ci-dessus (Business Portfolio, Partner access, token write-only,
+  `ad_account_id`/`page_id`/`pixel_id` propres au client).
+- **Étape 2 — invariant permanent.** Toute campagne créée par le moteur naît
+  TOUJOURS `PAUSED` (règle #3 du CLAUDE.md, codée en dur côté `meta_client`) —
+  ceci ne dépend d'aucun toggle et n'est jamais désactivable, y compris pour un
+  client Publicité payant.
+- **Bascule marche/arrêt.** Un admin (Directeur) désactive ou réactive
+  « Publicité » pour SA société depuis **Paramètres → Applications**
+  (`frontend/src/pages/parametres/ApplicationsSection.jsx`, onglet ADMIN-GATED
+  branché sur `GET/POST /api/django/core/modules/…`). Depuis SOLMVP17, ce
+  même interrupteur ferme aussi l'API : société désactivée → toute route
+  `/api/django/adsengine/…` (et son miroir `/api/v1/adsengine/…`) répond `404`
+  pour ses utilisateurs, sans affecter les autres sociétés (isolation
+  multi-tenant, `DisabledModuleMiddleware`).

@@ -1,10 +1,10 @@
 """PUB63 — Pipeline témoignage → brief créatif.
 
-Prouve : un projet éligible (deal signé + satisfaction ≥ 4/5 + photos) AVEC
-consentement PUB75 actif → brief structuré (faits vérifiés) mis en file
-``CreativeBacklogItem`` ; sans consentement → BLOQUÉ (rien créé). Les lectures
-cross-app (ventes / qhse / installations) sont simulées : on teste la logique du
-pipeline + la garde consentement, pas les sélecteurs eux-mêmes.
+Prouve : un projet éligible (deal signé + photos) AVEC consentement PUB75
+actif → brief structuré (faits vérifiés) mis en file ``CreativeBacklogItem`` ;
+sans consentement → BLOQUÉ (rien créé). Les lectures cross-app (ventes /
+installations) sont simulées : on teste la logique du pipeline + la garde
+consentement, pas les sélecteurs eux-mêmes.
 """
 import datetime
 from unittest import mock
@@ -35,9 +35,9 @@ def make_consent(company, client_id=77, **kw):
     return ConsentRecord.objects.create(**defaults)
 
 
-def patch_selectors(*, facts=FACTS, satisfaction=4.5, has_photos=True,
+def patch_selectors(*, facts=FACTS, has_photos=True,
                     ville='Marrakech', avant=1, apres=1):
-    """Contexte de patch des trois sélecteurs cross-app."""
+    """Contexte de patch des sélecteurs cross-app."""
     class _QS:
         def __init__(self, n):
             self._n = n
@@ -58,8 +58,6 @@ def patch_selectors(*, facts=FACTS, satisfaction=4.5, has_photos=True,
     return [
         mock.patch('apps.ventes.selectors.faits_temoignage_devis',
                    return_value=facts),
-        mock.patch('apps.qhse.selectors.satisfaction_moyenne',
-                   return_value=satisfaction),
         mock.patch('apps.installations.selectors.chantier_a_photos',
                    return_value=has_photos),
         mock.patch('apps.installations.selectors.chantier_photos',
@@ -113,12 +111,6 @@ class TestimonialBriefTests(TestCase):
         self.assertFalse(res['queued'])
         self.assertEqual(res['blocked_reason'], 'deal_non_signe')
         self.assertEqual(CreativeBacklogItem.objects.count(), 0)
-
-    def test_blocked_on_low_satisfaction(self):
-        make_consent(self.company)
-        res = self._run(satisfaction=3.0)
-        self.assertFalse(res['queued'])
-        self.assertEqual(res['blocked_reason'], 'satisfaction_insuffisante')
 
     def test_blocked_without_photos(self):
         make_consent(self.company)
