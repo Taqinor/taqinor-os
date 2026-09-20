@@ -93,6 +93,21 @@ class ParametresCalepinageView(APIView):
         return Response(reglages)
 
 
+#: YAPIC6 — une APIView doit DÉCLARER sa forme (drf-spectacular ne la devine
+#: pas) : c'est la réponse réelle de ``get``/``post`` ci-dessous, ni plus ni moins.
+FORME_SUGGESTION_PENTE = inline_serializer('CalepinageSuggestionPenteReponse', dict(
+    disponible=serializers.BooleanField(),
+    pays_couvert=serializers.CharField(),
+    source=serializers.CharField(),
+    source_url=serializers.CharField(),
+    suggestions=serializers.ListField(child=serializers.DictField()),
+    detail=serializers.CharField(allow_blank=True),
+))
+FORME_SUGGESTION_PENTE_DEMANDE = inline_serializer('CalepinageSuggestionPenteDemande', dict(
+    roof_layout=serializers.DictField(required=False),
+))
+
+
 class SuggestionPenteIGNView(APIView):
     """CAL237 — pente et azimut SUGGÉRÉS par pan, depuis l'IGN. France seule.
 
@@ -117,6 +132,7 @@ class SuggestionPenteIGNView(APIView):
     #: écriture au sens des permissions, comme le moteur (CAL22).
     write_permission = CAL_GERER
 
+    @extend_schema(responses={200: FORME_SUGGESTION_PENTE})
     def get(self, request, *args, **kwargs):
         from ..services.lidar_ign import (
             PAYS_COUVERT, SOURCE, URL_SOURCE, service_disponible,
@@ -132,6 +148,8 @@ class SuggestionPenteIGNView(APIView):
             'detail': '',
         })
 
+    @extend_schema(request=FORME_SUGGESTION_PENTE_DEMANDE,
+                   responses={200: FORME_SUGGESTION_PENTE})
     def post(self, request, *args, **kwargs):
         from ..services.lidar_ign import (
             PAYS_COUVERT, SOURCE, URL_SOURCE, ServiceIndisponible,
