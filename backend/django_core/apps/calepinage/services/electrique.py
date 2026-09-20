@@ -56,6 +56,7 @@ __all__ = [
     'verdicts_electriques', 'bornes_ratio', 'bloc_ratio_dc_ac',
     'ecretage_depuis_serie', 'SOURCE_BORNE_MARCHE', 'SOURCE_BORNE_SOCIETE',
     'SOURCE_BORNE_NOYAU',
+    'REGLE_CHAINE_MODULE', 'REGLE_CHAINE_OPTIMISEUR', 'regle_de_chaine',
     'PublicationBloquee', 'bloquants_nommes', 'alertes_nommees',
     'evaluation_electrique', 'garde_publication', 'rejouer_apres_layout',
 ]
@@ -481,7 +482,10 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
 
     conception, materiel, donnees, document = conception_du_calepinage(
         calepinage, entree=entree, layout=layout, materiel=materiel)
-    verdicts = verdicts_electriques(conception)
+    optimiseur = materiel.get('optimiseur')
+    nom_optimiseur = materiel['designations'].get('optimiseur', '')
+    verdicts = verdicts_electriques(conception, optimiseur, nom_optimiseur)
+    regle = _regle_chaine_publiee(conception, optimiseur, nom_optimiseur)
     electrique, avertissements = bloc_electrique(conception,
                                                  verdicts=verdicts)
     pose = bloc_pose(conception)
@@ -491,6 +495,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         parametres_societe=_parametres_electriques(calepinage))
 
     messages = list(avertissements) + list(messages_ratio)
+    messages.extend(regle['bornes_non_verifiables'])
     messages.extend(conception.manquantes)
     messages.extend(materiel['absents'])
     if conception.temperatures is not None and conception.temperatures.mention:
@@ -515,6 +520,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # CAL127 — le ratio n'est PAS publié nu : sa borne et la SOURCE de sa
         # borne voyagent avec lui, sinon « 1,28 » ne se relit pas.
         'ratio_dc_ac': ratio,
+        # CAL129 — QUELLE règle de chaîne s'applique, et quelle fiche
+        # l'autorise. C'est la ligne que la note de calcul reprend.
+        'regle_chaine': regle,
         'temperatures': (conception.temperatures.en_dict()
                          if conception.temperatures is not None else None),
         'production': {
@@ -661,18 +669,27 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
             'alertes': [],
             'manquantes': list(manquantes),
             'regle_mppt': conception.regle_mppt,
+            # La clé reste PRÉSENTE (à ``null``) : l'écran ne doit jamais
+            # avoir à deviner si elle manque ou si elle est vide.
+            'regle_chaine': None,
             'temperatures': (conception.temperatures.en_dict()
                              if conception.temperatures is not None else None),
         }
     bloquants = bloquants_nommes(conception)
+    regle = _regle_chaine_publiee(
+        conception, materiel_resolu.get('optimiseur'),
+        materiel_resolu['designations'].get('optimiseur', ''))
+    alertes = list(alertes_nommees(conception))
+    alertes.extend(regle['bornes_non_verifiables'])
     return {
         'verdict': 'bloquant' if bloquants else (
-            'alerte' if alertes_nommees(conception) else 'conforme'),
+            'alerte' if alertes else 'conforme'),
         'publiable': not bloquants,
         'bloquants': list(bloquants),
-        'alertes': list(alertes_nommees(conception)),
+        'alertes': alertes,
         'manquantes': [],
         'regle_mppt': conception.regle_mppt,
+        'regle_chaine': regle,
         'temperatures': (conception.temperatures.en_dict()
                          if conception.temperatures is not None else None),
     }
@@ -732,6 +749,15 @@ def rejouer_apres_layout(calepinage, *, user=None):
     return evaluation
 
 
+def _regle_chaine_publiee(conception, optimiseur_specs, designation):
+    """La règle de chaîne appliquée — fiche module lue sur la conception."""
+    module = getattr(conception.entree, 'module', None)
+    specs = ({'voc_v': module.voc_v, 'isc_a': module.isc_a,
+              'pmax_wc': module.pmax_wc} if module is not None else {})
+    return regle_de_chaine(specs, None, optimiseur_specs,
+                           designation=designation)
+
+
 def _parametres_electriques(calepinage):
     """La section « norme électrique » des réglages société (CAL130).
 
@@ -758,7 +784,107 @@ def _version_moteur():
     return VERSION_MOTEUR
 
 
-def verdicts_electriques(conception):
+# ═══════════════════════════════════════════════════════════════════════════
+# CAL129 — OPTIMISEURS ET MICRO-ONDULEURS : LA RÈGLE DE CHAÎNE CHANGE DE NATURE
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Sans optimiseur, la chaîne est fermée par le Voc À FROID du module : N
+# modules en série, N × Voc(froid) sous la tension maximale absolue de
+# l'onduleur. Avec optimiseurs, la tension de sortie est RÉGULÉE par
+# l'électronique : appliquer la borne Voc du module refuserait un champ
+# pourtant conforme.
+#
+# CE QUI EST SUBSTITUÉ, ET CE QUI NE L'EST PAS. La fiche « optimiseur »
+# (CAL116) publie ses bornes d'ENTRÉE (``v_in_min``/``v_in_max``,
+# ``i_in_max_a``, ``pmax_in_w``, ``modules_par_optimiseur``) — celles-là sont
+# vérifiées, module par module. Elle ne publie PAS la tension de sortie
+# régulée ni la longueur de chaîne admissible du système : cette borne-là est
+# donc déclarée NON VÉRIFIABLE et NOMMÉE, jamais remplacée par un chiffre
+# inventé. La longueur retenue reste alors celle du repli prudent (la fenêtre
+# module/onduleur), ce que la note de calcul DIT.
+
+REGLE_CHAINE_MODULE = 'voc_module'
+REGLE_CHAINE_OPTIMISEUR = 'sortie_regulee_optimiseur'
+
+
+def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
+                    designation=''):
+    """Quelle règle de chaîne s'applique ICI, et QUELLE fiche l'autorise.
+
+    Rend un dict ``{regle, libelle, source, verdicts_entree,
+    bornes_non_verifiables}``. Sans fiche optimiseur déclarée, la règle reste
+    celle du module (comportement d'aujourd'hui, strictement inchangé).
+    """
+    from core.electrique.types import fr, fr_a, fr_v
+
+    if not optimiseur_specs:
+        return {
+            'regle': REGLE_CHAINE_MODULE,
+            'libelle': "longueur de chaîne fermée par le Voc À FROID du "
+                       "module sous la tension maximale absolue de "
+                       "l'onduleur",
+            'source': 'fiches module et onduleur',
+            'verdicts_entree': [],
+            'bornes_non_verifiables': [],
+        }
+
+    nom = designation or 'optimiseur déclaré'
+    verdicts = []
+    module = module_specs if isinstance(module_specs, dict) else {}
+    for cle_module, cle_optimiseur, libelle, unite, formateur in (
+            ('voc_v', 'v_in_max', "tension à vide du module sous la tension "
+                                  "d'entrée maximale de l'optimiseur", 'V',
+             fr_v),
+            ('isc_a', 'i_in_max_a', "courant de court-circuit du module sous "
+                                    "le courant d'entrée maximal de "
+                                    "l'optimiseur", 'A', fr_a),
+            ('pmax_wc', 'pmax_in_w', "puissance du module sous la puissance "
+                                     "d'entrée maximale de l'optimiseur",
+             'Wc', None)):
+        valeur = _nombre(module.get(cle_module))
+        borne = _nombre((optimiseur_specs or {}).get(cle_optimiseur))
+        if valeur is None or borne is None or borne <= 0:
+            verdicts.append({
+                'code': 'optimiseur_%s' % cle_optimiseur,
+                'libelle': libelle, 'conforme': None, 'bloquant': True,
+                'source': None,
+                'detail': "borne non publiée sur la fiche — contrôle NON "
+                          "vérifiable",
+            })
+            continue
+        conforme = valeur <= borne + 1e-9
+        texte = (formateur(valeur) if formateur
+                 else '%s %s' % (fr(valeur, 0), unite))
+        texte_borne = (formateur(borne) if formateur
+                       else '%s %s' % (fr(borne, 0), unite))
+        verdicts.append({
+            'code': 'optimiseur_%s' % cle_optimiseur,
+            'libelle': libelle, 'conforme': conforme, 'bloquant': True,
+            'source': 'fiche',
+            'detail': '%s %s %s (%s)' % (
+                texte, 'sous' if conforme else 'AU-DESSUS DE', texte_borne,
+                nom),
+        })
+
+    return {
+        'regle': REGLE_CHAINE_OPTIMISEUR,
+        'libelle': "tension de chaîne RÉGULÉE par l'optimiseur : la borne Voc "
+                   "à froid du MODULE ne ferme plus la chaîne — ce sont les "
+                   "bornes d'ENTRÉE de l'optimiseur qui s'appliquent, module "
+                   "par module",
+        'source': "fiche « %s » (type optimiseur)" % nom,
+        'verdicts_entree': verdicts,
+        'bornes_non_verifiables': [
+            "longueur de chaîne admissible du système à optimiseurs : la "
+            "fiche ne publie ni tension de sortie régulée ni nombre maximal "
+            "de modules par chaîne — la longueur retenue reste celle du repli "
+            "PRUDENT (fenêtre module/onduleur), aucune borne n'est supposée à "
+            "sa place"],
+    }
+
+
+def verdicts_electriques(conception, optimiseur_specs=None,
+                         optimiseur_designation=''):
     """Les verdicts du contrat CAL244, dérivés des chiffres de FICHE.
 
     Les cinq codes sont ceux du contrat (``voc_cold_under_vmax``,
@@ -794,11 +920,33 @@ def verdicts_electriques(conception):
     imp_cumule = max(imp_par_mppt.values())
     isc_cumule = max(isc_par_mppt.values())
 
+    # CAL129 — avec optimiseurs, la borne Voc du MODULE ne ferme plus la
+    # chaîne : le verdict correspondant est SUBSTITUÉ (jamais supprimé — le
+    # lecteur doit voir que la règle a changé et QUELLE fiche l'autorise).
+    module = conception.entree.module
+    regle = regle_de_chaine(
+        {'voc_v': module.voc_v, 'isc_a': module.isc_a,
+         'pmax_wc': module.pmax_wc},
+        None, optimiseur_specs, designation=optimiseur_designation)
+    if regle['regle'] == REGLE_CHAINE_OPTIMISEUR:
+        verdict_voc = {
+            'code': 'voc_cold_under_vmax',
+            'libelle': "Voc à froid sous la tension maximale admissible de "
+                       "l'onduleur",
+            'conforme': None,
+            'bloquant': False,
+            'source': 'fiche',
+            'detail': "règle SUBSTITUÉE — %s (%s)" % (regle['libelle'],
+                                                      regle['source']),
+        }
+    else:
+        verdict_voc = _verdict(
+            'voc_cold_under_vmax',
+            "Voc à froid sous la tension maximale admissible de l'onduleur",
+            voc_max, onduleur.v_max_abs, 'sous', bloquant=True, unite='V')
+
     verdicts = [
-        _verdict('voc_cold_under_vmax',
-                 "Voc à froid sous la tension maximale admissible de "
-                 "l'onduleur", voc_max, onduleur.v_max_abs, 'sous',
-                 bloquant=True, unite='V'),
+        verdict_voc,
         _verdict('vmp_cold_under_mppt_max',
                  'Vmp à froid dans le haut de la plage MPPT',
                  vmp_froid_max, onduleur.mppt_v_max, 'sous',
@@ -837,6 +985,9 @@ def verdicts_electriques(conception):
         'detail': ('' if ratio is None or ratio.valeur is None
                    else '%s (%s)' % (ratio.texte, ratio.fourchette_texte)),
     })
+    # CAL129 — les contrôles d'ENTRÉE de l'optimiseur viennent APRÈS les cinq
+    # codes du contrat : ils s'ajoutent, ils ne remplacent aucune clé.
+    verdicts.extend(regle['verdicts_entree'])
     return tuple(verdicts)
 
 
