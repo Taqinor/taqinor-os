@@ -298,11 +298,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
    *  estimateur) il n'y a pas de besoin à plafonner → on montre ce qui tient (comportement
    *  historique). L2 — EN DEVIS (`ctx.devisMode`), un besoin nul est une CIBLE VENDUE DE
    *  ZÉRO (devis sans ligne panneau, incident DEV-202608-0016) : on ne pose RIEN tant que
-   *  personne (facture/saisie manuelle) n'a fixé un nombre — jamais un remplissage inventé. */
+   *  personne (facture/saisie manuelle) n'a fixé un nombre — jamais un remplissage inventé.
+   *  CAL37 — un document SANS cible vendue (`ctx.cibleVendue` faux : un calepinage sans
+   *  devis lié) n'a rien vendu du tout : le besoin nul y redevient « aucune cible », et on
+   *  montre ce qui tient, comme en mode lead. Devis/AO ne passent jamais ce drapeau. */
   const placedFor = (grid: PanelGrid): number =>
     ctx.neededPanels > 0
       ? Math.max(0, Math.min(ctx.neededPanels, grid.count))
-      : ctx.devisMode
+      : ctx.devisMode && ctx.cibleVendue
         ? 0
         : grid.count;
 
@@ -327,9 +330,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (needPlusEl) needPlusEl.disabled = !editable || ctx.neededPanels >= 400;
     if (!needNoteEl) return;
     if (!active) {
-      needNoteEl.textContent = ctx.devisMode
+      // CAL37 — trois situations DISTINCTES, jamais la phrase d'une autre : un devis
+      // sans ligne panneau (cible vendue de zéro), un calepinage sans cible du tout
+      // (on pose ce qui tient), et le mode lead (la facture dimensionne).
+      needNoteEl.textContent = ctx.devisMode && ctx.cibleVendue
         ? 'Ce devis ne porte aucun panneau — fixez le nombre (facture ou saisie) pour poser des modules.'
-        : 'Indiquez votre facture pour dimensionner le nombre de panneaux.';
+        : ctx.devisMode
+          ? `Aucune cible de puissance sur ce calepinage — on pose ce qui tient (${fmt(fitCount)}). Saisissez un nombre pour le plafonner.`
+          : 'Indiquez votre facture pour dimensionner le nombre de panneaux.';
       return;
     }
     const placed = Math.min(ctx.neededPanels, fitCount);
@@ -442,7 +450,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (ctx.pinned.has('orient') && ctx.sel.orient !== 'auto') locks.layout = ctx.sel.orient as LayoutAxis;
     if (ctx.pinned.has('margin')) locks.margin = ctx.sel.margin;
     if (!ctx.neededAuto && ctx.neededPanels > 0) locks.need = ctx.neededPanels;
-    if (ctx.devisMode && ctx.neededPanels <= 0) locks.needImposedZero = true;
+    if (ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0) locks.needImposedZero = true;
     return locks;
   }
 
@@ -531,7 +539,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // « facture » (absente en devis) — jamais un calepinage inventé sur un toit viable.
     const why = res.noViableConfig
       ? `Configuration non viable sur ce toit : aucun panneau ne tient (tracé trop petit ou entièrement occupé par des obstacles). Agrandissez la zone ou retirez des obstacles.`
-      : ctx.devisMode && ctx.neededPanels <= 0
+      : ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0
         ? `Ce devis ne porte aucun panneau — aucune pose proposée. Fixez un nombre (facture ou saisie) pour calepiner.`
         : isReco
           ? `Meilleure combinaison pour votre facture : ${liveOrientationLabel(w)} à ${w.tiltDeg}°, ${placedCount} panneaux ≈ ${cov} % de la facture. Touchez une option pour la verrouiller — le reste se re-résout.`
@@ -994,7 +1002,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     if (ctx.pitchedLocks.layout) locks.layout = ctx.pitchedLocks.layout;
     if (ctx.pitchedLocks.margin) locks.margin = ctx.pitchedLocks.margin;
     if (!ctx.neededAuto && ctx.neededPanels > 0) locks.need = ctx.neededPanels;
-    if (ctx.devisMode && ctx.neededPanels <= 0) locks.needImposedZero = true;
+    if (ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0) locks.needImposedZero = true;
     return locks;
   }
 
@@ -1037,7 +1045,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       ? `Ce pan est orienté nord (face ${facingLabel(ctx.facingAzimuthDeg)}) : production quasi nulle, aucune pose rentable proposée. Indiquez la vraie face descendante du pan.`
       : res.noViableConfig
         ? `Configuration non viable sur ce toit : aucun panneau ne tient sur ce pan (trop petit ou entièrement occupé par des obstacles). Agrandissez le pan ou retirez des obstacles.`
-        : ctx.devisMode && ctx.neededPanels <= 0
+        : ctx.devisMode && ctx.cibleVendue && ctx.neededPanels <= 0
           ? `Ce devis ne porte aucun panneau — aucune pose proposée sur ce pan. Fixez un nombre (facture ou saisie) pour calepiner.`
           : isReco
             ? `Pose affleurante optimale : ${w.placedCount} panneaux (${w.layoutLabel}, ${w.marginLabel}) ≈ ${cov} % de la facture. Inclinaison ${tiltTxt} = pente, azimut = face — imposés par la toiture, non optimisés.`

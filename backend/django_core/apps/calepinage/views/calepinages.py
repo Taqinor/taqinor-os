@@ -662,14 +662,37 @@ def _geometrie(calepinage, contexte_devis):
                           .get('contour_client') or contour_client)
     layout = getattr(calepinage, 'roof_layout', None)
     if isinstance(layout, dict) and layout:
-        pin = layout.get('pin')
-        outline = layout.get('outline')
+        pin_brut = layout.get('pin')
+        contour = layout.get('outline')
+        pin = pin_brut if isinstance(pin_brut, dict) else geo['pin']
+        outline = contour if isinstance(contour, list) else (
+            geo['outline'] or [])
+        # AUTO-PIPELINE — LE TRACÉ DU CLIENT NE DOIT JAMAIS SE PERDRE DERRIÈRE
+        # UN LAYOUT SANS GÉOMÉTRIE. Miroir EXACT du repli déjà posé côté ventes
+        # (``apps.ventes.selectors.contexte_conception_devis``, ordre fondateur
+        # 26/08/2026), qui manquait ici : un calepinage peut parfaitement porter
+        # un ``roof_layout`` qui ne décrit AUCUNE géométrie — celui d'un devis
+        # automatique repris par ``services.creation.creer_pour_devis`` (que
+        # ``result``/``panelWatt``/``scenario``), ou un premier enregistrement
+        # fait avant qu'un pan n'ait été dessiné : ``outline`` vaut alors ``[]``
+        # et il n'y a aucune zone. L'atelier n'y trouvait ni zone ni contour,
+        # retombait sur l'épingle seule, et le commercial devait RE-DESSINER le
+        # toit alors que le tracé du client était là, juste à côté, en calque
+        # passif — c'est LA cause de « le calepinage ne se fait pas tout seul ».
+        # Repli STRICTEMENT non destructif : il ne s'applique que si le layout
+        # ne dit RIEN de la géométrie (ni contour exploitable, ni zones), donc
+        # un calepinage déjà dessiné garde son dessin, intact, en toutes
+        # circonstances. Le contour rendu reste celui du CLIENT, jamais une
+        # géométrie inventée.
+        if not outline and not (layout.get('zones') or layout.get('areas')):
+            outline = contour_client or []
+            if pin is None:
+                pin = geo['pin']
         return {
             'source': 'calepinage',
             'roof_layout': layout,
-            'pin': pin if isinstance(pin, dict) else geo['pin'],
-            'outline': outline if isinstance(outline, list) else (
-                geo['outline'] or []),
+            'pin': pin,
+            'outline': outline,
             'contour_client': contour_client,
         }
     if geo['pin'] is not None or geo['outline']:

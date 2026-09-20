@@ -13,6 +13,7 @@ import {
   deserializeSolarAccess,
   deserializeSetbacksFromLayout,
   deserializeHorizonProfileFromLayout,
+  hydrateFromDevis,
 } from './prefill';
 import { uniformSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { type HorizonProfile } from '../../lib/horizonEngine';
@@ -432,5 +433,47 @@ describe('CAL93 — le profil d’horizon lointain (horizonProfile) persisté da
     const avec = serializeLayout(makeCtx(areas), null, { horizonProfile: profil });
     expect(avec.result).toEqual(sans.result);
     expect(avec.zones).toEqual(sans.zones);
+  });
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+   CAL37 — `cibleVendue` : la différence entre « rien de vendu » et « zéro vendu ».
+   Un DEVIS sans ligne panneau est une cible vendue de ZÉRO (incident
+   DEV-202608-0016) : l'optimiseur ne doit RIEN poser. Un CALEPINAGE sans devis
+   lié (contrat `calepinage_design_context.json` : `cible: null`) n'a aucune
+   vente derrière lui : l'optimiseur doit poser ce qui tient, comme pour un lead
+   sans facture. Le drapeau est ce qui distingue les deux — absent, le
+   comportement devis/AO est strictement celui d'avant.
+   ──────────────────────────────────────────────────────────────────────────── */
+describe('hydrateFromDevis — cible vendue vs cible absente (CAL37)', () => {
+  const geometrie = {
+    roof_layout: null,
+    roof_point: { lat: 33.5731, lng: -7.5898 },
+    roof_outline: [
+      [33.5731, -7.5898],
+      [33.5732, -7.5898],
+      [33.5732, -7.5897],
+    ] as Array<[number, number]>,
+  };
+
+  it('drapeau ABSENT (devis, AO) : cible vendue — comportement inchangé', () => {
+    const h = hydrateFromDevis({ id: 412, geometrie, cible: { panneaux: null } });
+    expect(h.cibleVendue).toBe(true);
+    expect(h.neededPanels).toBeNull();
+  });
+
+  it('cibleVendue: false (calepinage sans devis) : aucune cible vendue', () => {
+    const h = hydrateFromDevis({ id: null, geometrie, cible: { panneaux: null }, cibleVendue: false });
+    expect(h.cibleVendue).toBe(false);
+    // Le pan vient quand même du tracé client, et la carte a son centre.
+    expect(h.vertices.length).toBe(3);
+    expect(h.center).toEqual([-7.5898, 33.5731]);
+  });
+
+  it('un calepinage avec devis lié garde la cible VENDUE et son imposition', () => {
+    const h = hydrateFromDevis({ id: null, geometrie, cible: { panneaux: 12 }, cibleVendue: true });
+    expect(h.cibleVendue).toBe(true);
+    expect(h.neededPanels).toBe(12);
+    expect(h.neededAuto).toBe(false);
   });
 });

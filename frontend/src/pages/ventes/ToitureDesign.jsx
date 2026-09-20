@@ -236,6 +236,16 @@ function contexteCalepinageVersPayload(contexte) {
       panel_watt: cible.panel_watt ?? null,
       scenario: cible.scenario || null,
     },
+    // CAL37 — LE drapeau qui empêche l'atelier de lire « aucune cible » comme
+    // « cible vendue de ZÉRO ». Côté devis, un devis sans ligne panneau EST une
+    // vente de zéro panneau et l'optimiseur doit refuser de remplir (L2, incident
+    // DEV-202608-0016) ; un calepinage sans devis lié, lui, n'a AUCUNE vente
+    // derrière lui — le même silence n'y veut pas dire la même chose. Sans ce
+    // drapeau, l'atelier ouvert sur un calepinage restait figé : zéro panneau
+    // posé, aucune recommandation, aucune production demandée. `true` dès qu'un
+    // devis (ou une facture, CAL147) fournit la cible : on retrouve alors
+    // EXACTEMENT le comportement du mode devis.
+    cibleVendue: contexte.cible != null,
     fullName: titre || undefined,
   }
 }

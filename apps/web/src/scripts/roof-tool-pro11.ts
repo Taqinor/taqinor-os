@@ -531,6 +531,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // pour distinguer « besoin nul, mode lead » (remplir ce qui tient, historique) de
   // « besoin nul, mode devis » (cible vendue = 0 panneau, on ne pose RIEN).
   let devisMode = false;
+  // CAL37 — le document hydraté porte-t-il une cible VENDUE ? Vrai par défaut (devis,
+  // affaire AO) ; faux UNIQUEMENT quand l'appelant DIT que son document n'a aucun devis
+  // derrière lui (`hydrate.devis.cibleVendue === false`, mode calepinage). Un besoin nul
+  // n'est alors pas « zéro vendu » mais « rien de vendu » : l'optimiseur pose ce qui
+  // tient, comme pour un lead sans facture. Figé pour la session, comme `devisMode`.
+  let cibleVendue = true;
 
   // ═══════════ « PLUSIEURS ZONES » — modèle additif « zone sélectionnée » ═══════════
   // L'utilisateur trace la zone 1 (flux existant), puis peut en AJOUTER d'autres ; le
@@ -728,6 +734,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     },
     get devisMode() {
       return devisMode;
+    },
+    get cibleVendue() {
+      return cibleVendue;
     },
     get rec() {
       return rec;
@@ -1671,6 +1680,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   function applyDevisHydration(devis: import('./roofPro11/prefill').DevisPayload): boolean {
     devisMode = true;
     const h = hydrateFromDevis(devis);
+    // CAL37 — figé pour la session, comme `devisMode` : un calepinage autonome
+    // (`cibleVendue: false`) n'a AUCUNE vente derrière lui.
+    cibleVendue = h.cibleVendue;
     const layout = devis.geometrie?.roof_layout ?? null;
     // CAL102 — les mesures posées voyagent avec le design (même esprit que le repli
     // `shading12x24` : un JSON douteux rend un tableau vide, jamais une exception).
@@ -1703,6 +1715,22 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
      *  `h.neededPanels == null` = devis SANS ligne panneau : cible vendue de ZÉRO,
      *  jamais un remplissage-au-mieux (L2, voir docstring de la fonction). */
     const imposeTarget = () => {
+      // CAL37 — RIEN à imposer quand le document ne porte aucune cible VENDUE et
+      // qu'aucun nombre n'a été repris d'une zone enregistrée : imposer 0 ici
+      // gèlerait l'optimiseur d'un calepinage qui n'a pourtant aucun devis à
+      // respecter (aucun panneau posé, aucune recommandation, aucun rendement
+      // demandé). On laisse alors l'état vivant décider — `neededAuto` reste vrai,
+      // exactement comme pour un lead sans facture. Un calepinage DÉJÀ enregistré
+      // avec un nombre choisi (`a.neededPanels > 0`, repris juste au-dessus) garde
+      // ce nombre : le travail du commercial n'est jamais effacé.
+      if (!h.cibleVendue && h.neededPanels == null) {
+        if (!(neededPanels > 0)) {
+          neededAuto = true;
+          const zone = activeArea();
+          if (zone) zone.neededAuto = true;
+        }
+        return;
+      }
       const n = h.neededPanels == null ? 0 : clampNeeded(h.neededPanels);
       neededPanels = n;
       neededAuto = false;
