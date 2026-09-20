@@ -604,9 +604,13 @@ def contexte_conception(calepinage, request=None):
     Dictionnaire LITTÉRAL (comme ``detail_calepinage``) pour que la garde de
     contrat lise la forme réellement renvoyée.
     """
+    from .. import selectors as cal_selectors
+
     company = getattr(calepinage, 'company', None)
     contexte_devis = _contexte_devis_lie(calepinage, company)
-    geometrie = _geometrie(calepinage, contexte_devis)
+    # Lu UNE seule fois et partagé : la géométrie ET l'adresse en sortent.
+    geo = cal_selectors.contexte_geographique(calepinage)
+    geometrie = _geometrie(calepinage, contexte_devis, geo)
     cible = _cible(calepinage, contexte_devis)
     return {
         'calepinage': {
@@ -616,6 +620,19 @@ def contexte_conception(calepinage, request=None):
             'lead': getattr(calepinage, 'lead_id', None),
             'client': getattr(calepinage, 'client_id', None),
             'devis': getattr(calepinage, 'devis_id', None),
+            # L'ADRESSE DU CLIENT, à la MÊME place et sous les MÊMES noms que
+            # dans le contexte devis (``devis.client_adresse`` /
+            # ``client_ville``, contrat `devis_design_context.json`) : c'est ce
+            # que l'atelier pré-remplit dans sa barre de recherche
+            # (`#rp9-address`) pour donner un point de départ à la carte.
+            # Sans elles, le mode calepinage ouvrait une barre d'adresse VIDE
+            # là où le mode devis affiche l'adresse du client — la divergence
+            # laissée ouverte par le correctif du 20/09/2026. Valeurs LUES
+            # (lead d'abord, client en repli, ``contexte_geographique``,
+            # CAL15) : aucune adresse n'est composée ici, et l'inconnu vaut
+            # ``''`` — jamais une clé absente.
+            'client_adresse': geo.get('adresse') or '',
+            'client_ville': geo.get('ville') or '',
         },
         'geometrie': geometrie,
         'cible': cible,
@@ -646,16 +663,53 @@ def _contexte_devis_lie(calepinage, company):
     return contexte_conception_devis(devis, company)
 
 
-def _geometrie(calepinage, contexte_devis):
+def _layout_decrit_une_geometrie(layout):
+    """Ce ``roof_layout`` décrit-il une géométrie RÉELLEMENT exploitable ?
+
+    Pas « contient-il une clé ``zones`` », mais « un pan y porte-t-il au moins
+    trois sommets ». La nuance est TOUT le correctif du 20/09/2026 : le
+    sérialiseur de l'atelier (``apps/web/src/scripts/roofPro11/prefill.ts``,
+    ``serializeLayout``) émet TOUJOURS une zone — il projette ``ctx.areas``,
+    qui contient la zone par défaut même quand personne n'a encore tracé quoi
+    que ce soit. Un premier « Enregistrer le calepinage » fait avant tout
+    dessin écrit donc ``{outline: [], zones: [{vertices: []}]}`` : un layout
+    qui ne dit RIEN de la géométrie, mais que l'ancien test (« ``zones``
+    présent ? ») lisait comme un calepinage déjà dessiné. Le tracé du client
+    était alors jeté (``outline: []``), l'atelier ne trouvait ni pan ni
+    contour, retombait sur l'épingle seule et affichait « tracez le contour du
+    toit pour lancer le calcul » — aucun pan, aucune recommandation, aucune
+    requête de rendement.
+    """
+    if not isinstance(layout, dict):
+        return False
+    contour = layout.get('outline')
+    if isinstance(contour, list) and len(contour) >= 3:
+        return True
+    for cle in ('zones', 'areas'):
+        zones = layout.get(cle)
+        if not isinstance(zones, list):
+            continue
+        for zone in zones:
+            sommets = zone.get('vertices') if isinstance(zone, dict) else None
+            if isinstance(sommets, list) and len(sommets) >= 3:
+                return True
+    return False
+
+
+def _geometrie(calepinage, contexte_devis, geo=None):
     """``{source, roof_layout, pin, outline, contour_client}``.
 
     Le layout du CALEPINAGE prime ; à défaut, l'épingle et le contour posés
     au diagnostic (CAL15). Sans aucune source, ``source`` vaut ``'none'`` et
     rien n'est deviné — pas de centre du Maroc inventé.
+
+    ``geo`` (``selectors.contexte_geographique``) est passé par l'appelant
+    quand il l'a déjà lu ; absent, il est lu ici — même résultat.
     """
     from .. import selectors as cal_selectors
 
-    geo = cal_selectors.contexte_geographique(calepinage)
+    if geo is None:
+        geo = cal_selectors.contexte_geographique(calepinage)
     contour_client = geo['outline'] or []
     if contexte_devis is not None:
         contour_client = (contexte_devis.get('geometrie', {})
@@ -684,7 +738,13 @@ def _geometrie(calepinage, contexte_devis):
         # un calepinage déjà dessiné garde son dessin, intact, en toutes
         # circonstances. Le contour rendu reste celui du CLIENT, jamais une
         # géométrie inventée.
-        if not outline and not (layout.get('zones') or layout.get('areas')):
+        #
+        # 20/09/2026 — « ne dit RIEN de la géométrie » se DÉCIDE désormais sur
+        # les sommets, pas sur la présence d'une clé : voir
+        # ``_layout_decrit_une_geometrie`` (une zone SANS sommet ne décrit
+        # aucun toit, et c'est exactement ce qu'écrit un premier
+        # enregistrement fait avant tout dessin).
+        if not _layout_decrit_une_geometrie(layout):
             outline = contour_client or []
             if pin is None:
                 pin = geo['pin']

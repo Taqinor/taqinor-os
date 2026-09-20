@@ -751,6 +751,20 @@ export default function ToitureDesign({ mode = 'lead' }) {
           ? ctx.geometrie.contour_client : null,
         onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
       })
+      // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en
+      // mode devis (`bootDevis` ci-dessus, PV23bis) et en mode lead (`boot()`).
+      // C'était la dernière divergence connue du mode calepinage : le commercial
+      // ouvrait l'atelier sur une barre VIDE et devait retaper l'adresse que le
+      // serveur connaît déjà. Le contexte la porte sous les MÊMES noms que le
+      // contrat devis (`client_adresse`/`client_ville`) — aucune clé devinée,
+      // aucune adresse composée ici au-delà de la jointure des deux morceaux.
+      const addrEl = document.getElementById('rp9-address')
+      const adresse = [ctx?.calepinage?.client_adresse,
+        ctx?.calepinage?.client_ville]
+        .map((v) => (v ?? '').trim())
+        .filter(Boolean)
+        .join(', ')
+      if (addrEl && adresse) addrEl.value = adresse
       const titre = (ctx?.calepinage?.titre ?? '').trim()
       setStatus(
         ctx?.modifiable
