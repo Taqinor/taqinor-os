@@ -65,6 +65,11 @@ const CalepinageNouveau = lazy(() => import('./CalepinageNouveau'))
 // CAL42 — le comparatif des variantes (CAL105 fondue) : tableau une colonne par
 // variante + vue côte à côte, alimentés UNIQUEMENT par le contrat CAL3.
 const VariantesCompare = lazy(() => import('./VariantesCompare'))
+/* CAL121 — le panneau « fiches incomplètes » : pour les équipements RETENUS de
+   ce calepinage, le champ manquant et le calcul qu'il débloque. Contextuel à UN
+   calepinage (agrégat CAL243), donc une route de deep-link et non un item de
+   nav — un menu permanent n'aurait aucun calepinage à désigner. */
+const FichesIncompletes = lazy(() => import('./equipements/FichesIncompletes'))
 
 const config = {
   key: 'calepinage',
@@ -106,6 +111,9 @@ const config = {
     { path: '/calepinage/:id', component: AtelierCalepinage, roles: ROLES },
     // contextuelle: comparatif d'UN calepinage, ouvert depuis son atelier (CAL37) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/variantes', component: VariantesCompare, roles: ROLES },
+    // CAL121 — contextuelle elle aussi : les fiches techniques trouées des
+    // équipements de CE calepinage, avec le calcul que chaque champ débloque.
+    { path: '/calepinage/:id/fiches', component: FichesIncompletes, roles: ROLES },
   ],
 }
 

@@ -92,6 +92,11 @@ const calepinageApi = {
     // serveur : un écran ne les recalcule jamais.
     comparer: (id) => api.get(`${pivot(id)}comparer/`),
 
+    // CAL243 — les équipements RETENUS et leur complétude de fiche
+    // (`contract_samples/calepinage_equipements.json`). Lecture PURE : aucune
+    // clé de prix d'achat ni de marge n'y transite (gardé par CAL122).
+    equipements: (id) => api.get(`${pivot(id)}equipements/`),
+
     // CAL244 — le résultat retenu du calepinage
     // (`contract_samples/calepinage_resultat.json`).
     resultat: (id) => api.get(`${pivot(id)}resultat/`),
