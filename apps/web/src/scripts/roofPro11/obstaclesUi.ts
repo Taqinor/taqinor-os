@@ -35,6 +35,7 @@ import { type Ctx } from './context';
 import { OBSTACLE_TYPES, clearanceForType } from './types';
 import {
   newEnvironmentObject,
+  environmentNeedsFootprint,
   withEnvHeight,
   withCrownDiameter,
   withFootprintDims,
@@ -281,10 +282,16 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
                <label class="flex items-center gap-1"><input type="checkbox" data-env-evergreen="${o.id}" ${o.evergreen ? 'checked' : ''} /> persistant</label>`
             : `<input type="text" data-env-length="${o.id}" value="${o.lengthM != null ? fmt1(o.lengthM) : ''}" placeholder="longueur m" class="rp9-input w-24" />
                <input type="text" data-env-width="${o.id}" value="${o.widthM != null ? fmt1(o.widthM) : ''}" placeholder="largeur m" class="rp9-input w-24" />`;
+        // CORRECTIF — hauteur saisie mais AUCUNE emprise : l'objet ne porte aucune ombre
+        // (aucune demi-largeur de repli n'est inventée) et l'écran le dit explicitement.
+        const emprise = environmentNeedsFootprint(o)
+          ? `<span data-env-emprise="${o.id}" class="text-alert-300">emprise à saisir — aucune ombre calculée</span>`
+          : '';
         return `<li data-env-row="${o.id}" class="flex flex-wrap items-center gap-2 border border-white/10 p-2">
           <span class="font-semibold">${esc(kindLabel)}</span>
           <input type="text" data-env-height="${o.id}" value="${o.heightM != null ? fmt1(o.heightM) : ''}" placeholder="hauteur m" class="rp9-input w-24" />
           ${dimsInputs}
+          ${emprise}
           <button type="button" data-env-del="${o.id}" class="ml-auto border border-alert-300/60 px-2 py-1 text-alert-300">× Supprimer</button>
         </li>`;
       })
