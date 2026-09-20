@@ -1,0 +1,61 @@
+{
+  "endpoint": "GET /api/django/calepinage/parametres/",
+  "section": "imagerie",
+  "forme_serveur": "partielle",
+  "pourquoi": "CAL46 — LE CONTRAT « SITE & IMAGERIE », POSÉ SEUL AVANT LES DEUX MOITIÉS (PACT10). Aujourd'hui, RIEN dans le dépôt ne décrit ce que le serveur dit à l'atelier sur le site : l'atelier lit des constantes codées en dur (`apps/web/src/lib/roofConfig.ts:31-43` MapTiler/Mapbox et `:190` `buildSatelliteStyle` ; `apps/web/src/scripts/roofPro11/mapDraw.ts:234,282` `&country=ma`). Un calepinage hors Maroc géocode donc faux, et le fournisseur d'imagerie n'est choisissable nulle part. Sans ce fichier, la lane écran et la lane serveur inventeraient mécaniquement deux formes — l'incident du 03/08/2026 (« AO — Tableau de bord », zéro clé sur six concordante). Ce document est donc la SECTION `imagerie` des réglages société (CAL45 : UNE base, sept extensions — AUCUN nouveau modèle), servie par `GET/PUT /api/django/calepinage/parametres/`, et CAL47 la sert mot pour mot. PORTÉE DE CE FICHIER : il fige la FORME DE LA SECTION, pas la carte complète de la route — celle-ci vit dans `parametres_calepinage.json` (les sept sections). D'où `forme_serveur: partielle` (vocabulaire QJR228) : `scripts/check_api_shapes.py` ne confronte pas ce fichier à la carte complète de la vue, il n'y aurait sinon que des faux rouges pour deux échantillons légitimes d'une même route. LES HUIT CLÉS DE LA SECTION SONT TOUJOURS PRÉSENTES DÈS QUE LA SECTION EXISTE : une valeur inconnue vaut `null` (ou `[]` pour une liste), JAMAIS une clé absente — un écran qui reçoit parfois six clés et parfois huit finit par tester l'absence de clé au lieu de l'absence de données. ÉQUIVALENCE, ET C'EST LA GARANTIE CENTRALE : une société qui n'a JAMAIS rien réglé reçoit `imagerie: {}` (voir `exemple_vide`), ce qui veut dire « comportement d'aujourd'hui, strictement inchangé » — aucune valeur par défaut n'est inventée, ni pays, ni fournisseur, ni altitude. AUCUN CHIFFRE INVENTÉ : `altitude_m` n'est JAMAIS déduite d'un service tiers muet — elle est SAISIE, et `source_altitude` dit d'où elle vient (une altitude sans source est une altitude qu'on ne peut pas défendre devant un client). `attribution` est la mention légale SAISIE exigée par le fournisseur (l'IGN impose la sienne sur la BD ORTHO®) : elle est stockée telle quelle et affichée telle quelle, jamais reconstruite par le serveur. `fournisseurs_autorises` est la liste ORDONNÉE des fournisseurs admis par la société (le premier est l'actif quand `fournisseur_imagerie` est nul) ; `google_solar` n'en fait PAS partie — il est gaté par CAL51 et refusé en nommant le champ. Les valeurs de cet exemple sont des PLACEHOLDERS assumés : aucun chiffre client, aucun prix.",
+  "cles": {
+    "pays": "code pays ISO 3166-1 alpha-2 en minuscules, utilisé pour BORNER le géocodage (aujourd'hui figé à `ma` dans `mapDraw.ts:234`). `null` = non réglé ⇒ comportement actuel inchangé.",
+    "fournisseur_imagerie": "identifiant du fournisseur ACTIF. `null` = non réglé ⇒ le premier de `fournisseurs_autorises`, et si la liste est vide, le comportement actuel (MapTiler, ou Mapbox si son jeton est présent).",
+    "fournisseurs_autorises": "liste ORDONNÉE des fournisseurs admis pour cette société. `[]` = aucun réglage. CAL47 : c'est cette liste que l'écran propose ; il n'en invente aucune.",
+    "calques_optionnels": "liste des calques additionnels activés par la société (cadastre, PCI…). `[]` = aucun.",
+    "attribution": "mention légale SAISIE, imposée par le fournisseur (obligatoire pour l'IGN BD ORTHO®). `null` = non saisie. Jamais reconstruite par le serveur.",
+    "altitude_m": "altitude du site en mètres, SAISIE. `null` = inconnue — jamais devinée, jamais 0.",
+    "source_altitude": "texte libre SAISI disant d'où vient `altitude_m`. `null` = inconnue. Une altitude sans source n'est pas défendable.",
+    "fuseau": "identifiant de fuseau IANA (ex. `Africa/Casablanca`). `null` = non réglé ⇒ fuseau du serveur, comportement actuel."
+  },
+  "exemple": {
+    "imagerie": {
+      "pays": "fr",
+      "fournisseur_imagerie": "ign_bd_ortho",
+      "fournisseurs_autorises": ["ign_bd_ortho", "maptiler", "mapbox"],
+      "calques_optionnels": ["cadastre"],
+      "attribution": "© IGN — BD ORTHO®",
+      "altitude_m": 145.0,
+      "source_altitude": "relevé GPS terrain du 12/03/2026",
+      "fuseau": "Europe/Paris"
+    },
+    "degagements": {},
+    "zones_types": {},
+    "gabarits_disposition": {},
+    "presets": {},
+    "favoris_materiel": {},
+    "gabarits_dossier": {}
+  },
+  "exemple_vide": {
+    "imagerie": {},
+    "degagements": {},
+    "zones_types": {},
+    "gabarits_disposition": {},
+    "presets": {},
+    "favoris_materiel": {},
+    "gabarits_dossier": {}
+  },
+  "exemple_section_declaree_sans_valeur": {
+    "imagerie": {
+      "pays": null,
+      "fournisseur_imagerie": null,
+      "fournisseurs_autorises": [],
+      "calques_optionnels": [],
+      "attribution": null,
+      "altitude_m": null,
+      "source_altitude": null,
+      "fuseau": null
+    },
+    "degagements": {},
+    "zones_types": {},
+    "gabarits_disposition": {},
+    "presets": {},
+    "favoris_materiel": {},
+    "gabarits_dossier": {}
+  }
+}
