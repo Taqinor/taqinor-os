@@ -387,6 +387,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const shadeObstructions: import('../lib/shadingEngine').ShadeObstruction[] = [];
   let shadeFactors: number[][] | null = null;
   let shadeAnnualFactor = 1;
+  // CAL67 — objets d'environnement (arbres/bâtiments voisins) posés HORS contour.
+  const environment: import('./roofPro11/environment').EnvironmentObject[] = [];
+  let envCounter = 0;
   let climateBandOn = false; // WJ22 — fourchette de pertes climatiques (opt-in, défaut OFF)
   let useRecommended = true;
   let sel: { family: ConfigFamily; tilt: TiltMode; orient: OrientMode; azimuth: AzimuthMode; margin: MarginMode } = {
@@ -830,6 +833,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       sunDay = v;
     },
     shadeObstructions,
+    environment,
+    get envCounter() {
+      return envCounter;
+    },
+    set envCounter(v) {
+      envCounter = v;
+    },
     get shadeFactors() {
       return shadeFactors;
     },

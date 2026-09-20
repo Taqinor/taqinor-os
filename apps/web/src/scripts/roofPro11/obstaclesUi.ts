@@ -33,6 +33,15 @@ import { OBSTACLE_TAP_PX, VERTEX_GRAB_PX, DEG2RAD, DEG2M } from './constants';
 import { $, esc } from './dom';
 import { type Ctx } from './context';
 import { OBSTACLE_TYPES, clearanceForType } from './types';
+import {
+  newEnvironmentObject,
+  withEnvHeight,
+  withCrownDiameter,
+  withFootprintDims,
+  withEvergreen,
+  type EnvironmentObject,
+  type EnvironmentKind,
+} from './environment';
 
 /** CAL72 — provenances proposées (vocabulaire `core.calepinage.types.Provenance`), avec
  *  libellé FR + note « bloque le compte » pour PLAN/DEVINE. */
@@ -173,6 +182,123 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     obsEditPanel.insertBefore(label, obsEditPanel.firstChild);
     return select;
   }
+
+  // ═══════════ CAL67 — objets d'ENVIRONNEMENT (arbres/bâtiments voisins, HORS contour) ═══
+  // Panneau créé UNE fois si l'hôte ne le fournit pas déjà (même pattern que le sélecteur
+  // de type d'obstacle) : deux boutons « Ajouter » + une liste éditable (hauteur/diamètre
+  // ou longueur×largeur/feuillage + suppression). Position de pose : décalée au SUD du
+  // centroïde du tracé (hors contour, sans détection automatique — l'utilisateur ajuste
+  // ensuite la position via les coordonnées affichées).
+  ensureEnvPanel();
+  function ensureEnvPanel(): HTMLElement | null {
+    const existing = $('rp9-env-panel');
+    if (existing) return existing;
+    const anchor = obstacleBtn?.parentElement ?? obsEditPanel?.parentElement ?? null;
+    if (!anchor || typeof document.createElement !== 'function') return null;
+    const panel = document.createElement('div');
+    panel.id = 'rp9-env-panel';
+    panel.className = 'rp9-env-panel mt-2';
+    panel.innerHTML =
+      `<div class="flex gap-2">` +
+      `<button type="button" id="rp9-env-add-tree" class="rp9-btn">🌳 Ajouter un arbre</button>` +
+      `<button type="button" id="rp9-env-add-building" class="rp9-btn">🏢 Ajouter un bâtiment voisin</button>` +
+      `</div><ul id="rp9-env-list" class="mt-2 flex flex-col gap-1 text-xs"></ul>`;
+    anchor.appendChild(panel);
+    return panel;
+  }
+  const envAddTreeBtn = $<HTMLButtonElement>('rp9-env-add-tree');
+  const envAddBuildingBtn = $<HTMLButtonElement>('rp9-env-add-building');
+  const envListEl = $('rp9-env-list');
+
+  function envList(): EnvironmentObject[] {
+    if (!ctx.environment) ctx.environment = [];
+    return ctx.environment;
+  }
+
+  /** Position de pose par défaut : décalée au SUD du centroïde du tracé (hors contour),
+   *  ou de l'origine [0,0] si aucun tracé n'existe encore. */
+  function defaultEnvPosition(): LngLat {
+    const c = ctx.centroid ?? ([0, 0] as LngLat);
+    const dLat = 10 / DEG2M; // 10 m au sud, hors du contour dans la quasi-totalité des cas
+    return [c[0], c[1] - dLat] as LngLat;
+  }
+
+  function addEnvironment(kind: EnvironmentKind) {
+    ctx.pushWorkshopHistory?.();
+    ctx.envCounter = (ctx.envCounter ?? 0) + 1;
+    const id = `env-${ctx.envCounter}`;
+    envList().push(newEnvironmentObject(id, kind, defaultEnvPosition()));
+    renderEnvList();
+    recalc();
+    setStatus(`${kind === 'arbre' ? 'Arbre' : 'Bâtiment voisin'} posé au sud du toit — saisissez sa hauteur et ses dimensions.`);
+  }
+
+  function updateEnvironment(id: string, transform: (o: EnvironmentObject) => EnvironmentObject) {
+    const list = envList();
+    const idx = list.findIndex((x) => x.id === id);
+    if (idx < 0) return;
+    ctx.pushWorkshopHistory?.();
+    list[idx] = transform(list[idx]);
+    renderEnvList();
+    recalc();
+  }
+
+  function deleteEnvironment(id: string) {
+    const list = envList();
+    const idx = list.findIndex((x) => x.id === id);
+    if (idx < 0) return;
+    ctx.pushWorkshopHistory?.();
+    list.splice(idx, 1);
+    renderEnvList();
+    recalc();
+  }
+
+  function renderEnvList() {
+    if (!envListEl) return;
+    const list = envList();
+    if (!list.length) {
+      envListEl.innerHTML = '';
+      return;
+    }
+    envListEl.innerHTML = list
+      .map((o) => {
+        const kindLabel = o.kind === 'arbre' ? 'Arbre' : 'Bâtiment voisin';
+        const dimsInputs =
+          o.kind === 'arbre'
+            ? `<input type="text" data-env-crown="${o.id}" value="${o.crownDiameterM != null ? fmt1(o.crownDiameterM) : ''}" placeholder="Ø houppier m" class="rp9-input w-24" />
+               <label class="flex items-center gap-1"><input type="checkbox" data-env-evergreen="${o.id}" ${o.evergreen ? 'checked' : ''} /> persistant</label>`
+            : `<input type="text" data-env-length="${o.id}" value="${o.lengthM != null ? fmt1(o.lengthM) : ''}" placeholder="longueur m" class="rp9-input w-24" />
+               <input type="text" data-env-width="${o.id}" value="${o.widthM != null ? fmt1(o.widthM) : ''}" placeholder="largeur m" class="rp9-input w-24" />`;
+        return `<li data-env-row="${o.id}" class="flex flex-wrap items-center gap-2 border border-white/10 p-2">
+          <span class="font-semibold">${esc(kindLabel)}</span>
+          <input type="text" data-env-height="${o.id}" value="${o.heightM != null ? fmt1(o.heightM) : ''}" placeholder="hauteur m" class="rp9-input w-24" />
+          ${dimsInputs}
+          <button type="button" data-env-del="${o.id}" class="ml-auto border border-alert-300/60 px-2 py-1 text-alert-300">× Supprimer</button>
+        </li>`;
+      })
+      .join('');
+  }
+
+  envAddTreeBtn?.addEventListener('click', () => addEnvironment('arbre'));
+  envAddBuildingBtn?.addEventListener('click', () => addEnvironment('batiment'));
+  envListEl?.addEventListener('change', (e) => {
+    const t = e.target as HTMLInputElement;
+    const heightId = t.dataset.envHeight;
+    const crownId = t.dataset.envCrown;
+    const lengthId = t.dataset.envLength;
+    const widthId = t.dataset.envWidth;
+    const evergreenId = t.dataset.envEvergreen;
+    if (heightId) updateEnvironment(heightId, (o) => withEnvHeight(o, t.value.trim() ? parseNum(t.value) : null));
+    else if (crownId) updateEnvironment(crownId, (o) => withCrownDiameter(o, t.value.trim() ? parseNum(t.value) : null));
+    else if (lengthId) updateEnvironment(lengthId, (o) => withFootprintDims(o, t.value.trim() ? parseNum(t.value) : null, o.widthM ?? null));
+    else if (widthId) updateEnvironment(widthId, (o) => withFootprintDims(o, o.lengthM ?? null, t.value.trim() ? parseNum(t.value) : null));
+    else if (evergreenId) updateEnvironment(evergreenId, (o) => withEvergreen(o, t.checked));
+  });
+  envListEl?.addEventListener('click', (e) => {
+    const del = (e.target as HTMLElement).closest<HTMLElement>('[data-env-del]');
+    if (del?.dataset.envDel) deleteEnvironment(del.dataset.envDel);
+  });
+  renderEnvList(); // état initial (dossier rechargé avec des objets d'environnement)
 
   function redrawObstacles() {
     srcOf('rp9-obs')?.setData({

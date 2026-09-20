@@ -25,6 +25,7 @@ import { type LayoutState } from '../../lib/layoutVariability';
 import { type FreeLayoutState, type FreeMargins } from '../../lib/freeLayout';
 import { type ShadeObstruction } from '../../lib/shadingEngine';
 import { type Measurement } from './mesureUi';
+import { type EnvironmentObject } from './environment';
 import {
   type InitOptions,
   type RoofType,
@@ -242,6 +243,13 @@ export interface Ctx {
   // — WJ19 « Ombres voisines » (shadow-tracing → dérate honnête de la production) —
   /** Obstructions déduites d'ombres tracées — ref STABLE (tableau muté en place). */
   readonly shadeObstructions: ShadeObstruction[];
+  /** CAL67 — objets d'environnement (arbres/bâtiments voisins) posés HORS contour —
+   *  ref STABLE (tableau muté en place, comme `shadeObstructions`). Optionnel : absent
+   *  sur un `ctx` antérieur à CAL67 (tests unitaires isolés) → traité comme vide. */
+  environment?: EnvironmentObject[];
+  /** CAL67 — compteur d'identifiants d'objet d'environnement (env-N). Optionnel : absent
+   *  sur un `ctx` antérieur à CAL67 → `obstaclesUi.ts` l'initialise à 0 au premier ajout. */
+  envCounter?: number;
   /** Matrice 12×24 des facteurs d'ombrage horaires, ou null = aucun ombrage tracé. */
   shadeFactors: number[][] | null;
   /** Facteur d'ombrage ANNUEL (0–1], 1 = aucun dérate — appliqué aux chiffres annuels. */

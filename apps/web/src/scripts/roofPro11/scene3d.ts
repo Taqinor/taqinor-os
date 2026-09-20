@@ -1718,6 +1718,37 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       }
     }
 
+    // CAL67 — objets d'ENVIRONNEMENT (arbres/bâtiments voisins posés hors contour) : un
+    // arbre sans hauteur/diamètre saisi ne se dessine PAS (rien à montrer, jamais une
+    // taille inventée) ; posé au SOL comme les obstructions déduites d'ombre ci-dessus,
+    // il projette une vraie ombre Three.js. Liste vide/absente → rendu inchangé.
+    if (ctx.environment?.length) {
+      const cosLat = Math.cos(pack.origin[1] * DEG2RAD);
+      for (const o of ctx.environment) {
+        const diameterM = o.kind === 'arbre' ? o.crownDiameterM : (o.lengthM ?? o.widthM);
+        if (!diameterM || diameterM <= 0 || !o.heightM || o.heightM <= 0) continue; // rien de saisi → rien à dessiner
+        const ox = (o.centerLng - pack.origin[0]) * DEG2M * cosLat;
+        const oy = (o.centerLat - pack.origin[1]) * DEG2M;
+        const h = o.heightM;
+        const isTree = o.kind === 'arbre';
+        const geo = isTree
+          ? new THREE.CylinderGeometry(diameterM / 2, diameterM / 2, h, 12)
+          : new THREE.BoxGeometry(o.lengthM ?? diameterM, o.widthM ?? diameterM, h);
+        const mat = new THREE.MeshStandardMaterial({
+          color: isTree ? 0x3f7d4a : 0x8f9bb8,
+          metalness: 0,
+          roughness: 0.9,
+          transparent: true,
+          opacity: 0.55,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        if (isTree) mesh.rotation.x = Math.PI / 2; // cylindre THREE = axe Y, scène = axe Z « haut »
+        mesh.position.set(ox, oy, h / 2); // posé au sol
+        mesh.castShadow = true;
+        sceneRoot.add(mesh);
+      }
+    }
+
     // W-MULTI : mémorise le plan de re-rendu de la zone ACTIVE pour que les AUTRES
     // zones puissent être re-dessinées (subduées) à leur vraie position relative.
     const aRec = ctx.activeArea();

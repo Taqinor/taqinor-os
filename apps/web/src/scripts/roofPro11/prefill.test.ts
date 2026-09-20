@@ -2,8 +2,16 @@
 // typées, bâtiment). D'autres extensions v2 (CAL66/CAL67/CAL72…) ajouteront leurs propres
 // describe() ici au lieu d'un fichier par tâche (même contrat v2, même fichier source).
 import { describe, expect, it } from 'vitest';
-import { serializeMeasurements, deserializeMeasurements, serializeLayout, deserializeLayout } from './prefill';
+import {
+  serializeMeasurements,
+  deserializeMeasurements,
+  serializeEnvironment,
+  deserializeEnvironment,
+  serializeLayout,
+  deserializeLayout,
+} from './prefill';
 import { type Measurement } from './mesureUi';
+import { type EnvironmentObject } from './environment';
 import { type Ctx } from './context';
 import { type AreaRecord } from './types';
 
@@ -110,6 +118,66 @@ describe('CAL102 — deserializeMeasurements', () => {
     expect(deserializeMeasurements(null)).toEqual([]);
     expect(deserializeMeasurements({})).toEqual([]);
     expect(deserializeMeasurements({ measurements: 'nope' })).toEqual([]);
+  });
+});
+
+describe('CAL67 — serializeEnvironment / deserializeEnvironment', () => {
+  it('conserve un objet valide, intact', () => {
+    const list: EnvironmentObject[] = [
+      { id: 'e1', kind: 'arbre', centerLng: -7.6, centerLat: 33.5, heightM: 6, crownDiameterM: 4, evergreen: true },
+    ];
+    expect(serializeEnvironment(list)).toEqual(list);
+  });
+
+  it('écarte un objet sans id, de genre inconnu, ou aux coordonnées non finies', () => {
+    const list = [
+      { id: '', kind: 'arbre', centerLng: -7.6, centerLat: 33.5 },
+      { id: 'e2', kind: 'ovni', centerLng: -7.6, centerLat: 33.5 },
+      { id: 'e3', kind: 'arbre', centerLng: NaN, centerLat: 33.5 },
+      { id: 'e4', kind: 'batiment', centerLng: -7.6, centerLat: 33.5 },
+    ] as unknown as EnvironmentObject[];
+    const out = serializeEnvironment(list);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe('e4');
+  });
+
+  it('n’écrit heightM/crownDiameterM que s’ils sont finis et positifs (jamais 0 ou négatif)', () => {
+    const out = serializeEnvironment([
+      { id: 'e1', kind: 'arbre', centerLng: -7.6, centerLat: 33.5, heightM: 0, crownDiameterM: -2 } as EnvironmentObject,
+    ]);
+    expect('heightM' in out[0]).toBe(false);
+    expect('crownDiameterM' in out[0]).toBe(false);
+  });
+
+  it('round-trip : serialize → deserialize = identité pour un objet valide', () => {
+    const list: EnvironmentObject[] = [{ id: 'e1', kind: 'batiment', centerLng: -7.6, centerLat: 33.5, heightM: 5, lengthM: 8, widthM: 6 }];
+    const written = { environment: serializeEnvironment(list) };
+    expect(deserializeEnvironment(written)).toEqual(list);
+  });
+
+  it('null/undefined/mal formé → tableau vide, jamais une exception', () => {
+    expect(deserializeEnvironment(null)).toEqual([]);
+    expect(deserializeEnvironment({})).toEqual([]);
+    expect(deserializeEnvironment({ environment: 'nope' })).toEqual([]);
+  });
+});
+
+describe('CAL67 — serializeLayout porte l’environnement (additif)', () => {
+  it('absent du layout quand ctx.environment est vide/undefined', () => {
+    const areas = [zone('z1')];
+    const layout = serializeLayout(makeCtx(areas));
+    expect('environment' in layout).toBe(false);
+  });
+
+  it('présent et round-trippable quand renseigné', () => {
+    const areas = [zone('z1')];
+    const ctx = makeCtx(areas);
+    (ctx as unknown as { environment: EnvironmentObject[] }).environment = [
+      { id: 'e1', kind: 'arbre', centerLng: -7.6002, centerLat: 33.4998, heightM: 6, crownDiameterM: 4 },
+    ];
+    const layout = serializeLayout(ctx);
+    expect(layout.environment).toHaveLength(1);
+    expect(deserializeEnvironment(layout)).toEqual(ctx.environment);
   });
 });
 

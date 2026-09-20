@@ -22,6 +22,7 @@ import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
 import { ROOF_TYPES } from '../../lib/lead';
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 import { deduceEdgeTypes, type SerializedEdge, type EdgeDeductionZone } from './edges';
+import { type EnvironmentObject } from './environment';
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -373,6 +374,39 @@ export function deserializeMeasurements(json: unknown): Measurement[] {
   return serializeMeasurements(raw as readonly Measurement[] | null | undefined);
 }
 
+// ═══════════ CAL67 — ENVIRONNEMENT (arbres/bâtiments voisins, sérialisation) ═══════════
+// Même garantie que `measurements` : une entrée géométriquement invalide (id vide, genre
+// inconnu) est ÉCARTÉE individuellement — jamais silencieusement corrigée ni inventée.
+const ENV_KINDS = ['arbre', 'batiment'] as const;
+
+/** Normalise la liste d'objets d'environnement pour la sérialisation. */
+export function serializeEnvironment(list: readonly EnvironmentObject[] | null | undefined): EnvironmentObject[] {
+  if (!Array.isArray(list)) return [];
+  const out: EnvironmentObject[] = [];
+  for (const o of list) {
+    if (!o || typeof o.id !== 'string' || !o.id) continue;
+    if (!(ENV_KINDS as readonly string[]).includes(o.kind)) continue;
+    if (!Number.isFinite(o.centerLng) || !Number.isFinite(o.centerLat)) continue;
+    const clean: EnvironmentObject = { id: o.id, kind: o.kind, centerLng: o.centerLng, centerLat: o.centerLat };
+    if (o.label) clean.label = o.label;
+    if (typeof o.heightM === 'number' && Number.isFinite(o.heightM) && o.heightM > 0) clean.heightM = o.heightM;
+    if (typeof o.crownDiameterM === 'number' && Number.isFinite(o.crownDiameterM) && o.crownDiameterM > 0) clean.crownDiameterM = o.crownDiameterM;
+    if (typeof o.evergreen === 'boolean') clean.evergreen = o.evergreen;
+    if (Array.isArray(o.footprint) && o.footprint.length >= 3) clean.footprint = o.footprint.map((p) => [p[0], p[1]] as LngLat);
+    if (typeof o.lengthM === 'number' && Number.isFinite(o.lengthM) && o.lengthM > 0) clean.lengthM = o.lengthM;
+    if (typeof o.widthM === 'number' && Number.isFinite(o.widthM) && o.widthM > 0) clean.widthM = o.widthM;
+    out.push(clean);
+  }
+  return out;
+}
+
+/** Relit une liste d'environnement sérialisée — mêmes garde-fous que l'écriture. Accepte
+ *  soit le layout complet (lit `.environment`), soit déjà le tableau brut. */
+export function deserializeEnvironment(json: unknown): EnvironmentObject[] {
+  const raw = (json as { environment?: unknown } | null | undefined)?.environment ?? json;
+  return serializeEnvironment(raw as readonly EnvironmentObject[] | null | undefined);
+}
+
 /** Layout complet sérialisé : version + zones + repère léger (pin/outline). */
 export interface SerializedLayout {
   version: 1 | 2;
@@ -404,6 +438,9 @@ export interface SerializedLayout {
   /** CAL102 — mesures posées (distance/surface/angle), annotations du calepinage. Omis ou
    *  vide = aucune mesure (comportement historique, byte pour byte). */
   measurements?: Measurement[];
+  /** CAL67 — objets d'environnement (arbres/bâtiments voisins) posés HORS contour. Omis
+   *  ou vide = aucun objet (comportement historique, byte pour byte). */
+  environment?: EnvironmentObject[];
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -566,6 +603,9 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     // CAL102 — les mesures posées voyagent avec le design (sinon rouvrir le dossier les
     // perd, comme n'importe quelle autre annotation de l'atelier).
     ...(ctx.measurements && ctx.measurements.length ? { measurements: serializeMeasurements(ctx.measurements) } : {}),
+    // CAL67 — les objets d'environnement (arbres/bâtiments voisins) voyagent avec le
+    // design, comme les mesures et l'ombrage tracé ci-dessus.
+    ...(ctx.environment && ctx.environment.length ? { environment: serializeEnvironment(ctx.environment) } : {}),
   };
 }
 
