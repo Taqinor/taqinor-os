@@ -4,6 +4,7 @@
    fast-refresh ne s'y applique pas (même dérogation que `features/ao`). */
 import { lazy } from 'react'
 import { Grid3x3, Library, LayoutGrid, PlusCircle } from 'lucide-react'
+import { BadgeCheck, Grid3x3, LayoutGrid, PlusCircle } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -123,6 +124,22 @@ const HorizonPanel = lazy(() => import('./HorizonPanel'))
    UN calepinage : deep-link, jamais un item de menu (un pan n'existe que dans un
    calepinage donné). */
 const CourseSoleil = lazy(() => import('./CourseSoleil'))
+/* CAL165 — les SOURCES des paramètres normatifs de la société (coefficients de
+   norme électrique, paramètres de lestage, dégagements) : un paramètre sans
+   provenance déclarée y est marqué « non sourcée » et sa valeur n'est pas
+   affichée. Réglages SOCIÉTÉ, donc un item de nav permanent et non un
+   deep-link : il n'y a aucun calepinage à désigner. */
+const SourcesNormatives = lazy(() => import('./commun/Provenance'))
+/* CAL196 — les DOSSIERS RÉGLEMENTAIRES de CE calepinage : pièces, état,
+   champs « à compléter » servis par le serveur. Contextuel à UN calepinage
+   (agrégat CAL247), donc un deep-link — un menu permanent n'aurait aucun
+   calepinage à désigner. */
+const DossiersReglementaires = lazy(() => import('./DossiersReglementaires'))
+/* CAL234 — l'AFFECTATION MANUELLE des chaînes : on glisse sur les modules,
+   le serveur verdicte la proposition (`evaluer-electrique/`, qui ne persiste
+   rien) et la validation part sur `entree-electrique/`. Contextuelle à UN
+   calepinage — elle corrige SON affectation, pas celle d'un autre. */
+const AffectationChaines = lazy(() => import('./plan/AffectationChaines'))
 
 const config = {
   key: 'calepinage',
@@ -151,6 +168,11 @@ const config = {
         to: '/calepinage/bibliotheque',
         label: 'Bibliothèque',
         icon: <Library size={17} strokeWidth={1.75} aria-hidden="true" />,
+      // CAL165 — la provenance des paramètres normatifs de la société.
+      {
+        to: '/calepinage/sources',
+        label: 'Sources des paramètres',
+        icon: <BadgeCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
     ],
@@ -159,6 +181,7 @@ const config = {
   titles: [
     ['/calepinage/nouveau', 'Calepinage — Nouveau calepinage'],
     ['/calepinage/bibliotheque', 'Calepinage — Bibliothèque'],
+    ['/calepinage/sources', 'Calepinage — Sources des paramètres'],
     ['/calepinage/', 'Calepinage — Atelier'],
     ['/calepinage', 'Calepinage — Calepinages'],
   ],
@@ -169,6 +192,8 @@ const config = {
     // comme un identifiant.
     { path: '/calepinage/nouveau', component: CalepinageNouveau, roles: ROLES },
     { path: '/calepinage/bibliotheque', component: Bibliotheque, roles: ROLES },
+    // CAL165 — AVANT `/calepinage/:id` : « sources » n'est pas un identifiant.
+    { path: '/calepinage/sources', component: SourcesNormatives, roles: ROLES },
     // Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
     // contextuel à un objet, comme `/ao/affaires/:id/design`. C'est la cible de
     // la redirection après création (CAL36).
@@ -200,6 +225,10 @@ const config = {
     { path: '/calepinage/:id/horizon', component: HorizonPanel, roles: ROLES },
     // CAL96 — contextuelle : la course du soleil par pan d'UN calepinage.
     { path: '/calepinage/:id/course-soleil', component: CourseSoleil, roles: ROLES },
+    // contextuelle: les dossiers réglementaires d'UN calepinage, ouverts depuis son atelier (CAL196) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
+    { path: '/calepinage/:id/dossiers', component: DossiersReglementaires, roles: ROLES },
+    // contextuelle: l'affectation des chaînes d'UN calepinage, corrigée à la main depuis son atelier (CAL234) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
+    { path: '/calepinage/:id/affectation', component: AffectationChaines, roles: ROLES },
   ],
 }
 
