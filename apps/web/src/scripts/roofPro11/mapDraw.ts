@@ -11,6 +11,7 @@
  */
 import maplibregl from 'maplibre-gl';
 import { isSimplePolygon, type LngLat } from '../../lib/roof';
+import { availableOptionalLayers, getOptionalLayer, optionalLayerSourceSpec } from '../../lib/roofConfig';
 import { $ } from './dom';
 import { type Ctx } from './context';
 
@@ -114,6 +115,12 @@ export interface MapDrawDeps {
 
 export interface MapDraw {
   redrawTrace: () => void;
+  /** CAL54 — allume/éteint un calque optionnel (cadastre…). PUREMENT VISUEL : aucune
+   *  entrée de calcul n'est touchée. Renvoie false si le calque n'est pas proposable
+   *  (non déclaré, ou hors de son pays). */
+  setOptionalLayer: (id: string, visible: boolean) => boolean;
+  /** CAL54 — identifiants des calques optionnels actuellement proposables. */
+  optionalLayerIds: () => string[];
   addVertex: (v: LngLat) => void;
   /** W92 — retire le dernier sommet posé (pendant le tracé, avant fermeture). */
   undoLastPoint: () => void;
@@ -160,6 +167,28 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
       addressEl.parentElement?.appendChild(note);
     }
     note.textContent = geocodeCountryNote(opts.imagery?.pays);
+  }
+
+  // CAL54 — CALQUES OPTIONNELS. Superposition raster PURE : on ajoute une source et une
+  // couche raster au-dessus du fond, et rien d'autre. Aucun `ctx` n'est lu ni écrit, donc
+  // ni le compte de modules ni la production ne peuvent bouger.
+  const OPTIONAL_LAYER_PREFIX = 'rp9-opt-';
+  function optionalLayerIds(): string[] {
+    return availableOptionalLayers(opts.imagery).map((l) => l.id);
+  }
+  function setOptionalLayer(id: string, visible: boolean): boolean {
+    const layer = getOptionalLayer(id);
+    if (!layer) return false;
+    if (!optionalLayerIds().includes(id)) return false;
+    const key = `${OPTIONAL_LAYER_PREFIX}${id}`;
+    if (!visible) {
+      if (map.getLayer?.(key)) map.removeLayer(key);
+      if (map.getSource?.(key)) map.removeSource(key);
+      return true;
+    }
+    if (!map.getSource?.(key)) map.addSource(key, optionalLayerSourceSpec(layer) as never);
+    if (!map.getLayer?.(key)) map.addLayer({ id: key, type: 'raster', source: key } as never);
+    return true;
   }
 
   function redrawTrace() {
@@ -409,5 +438,5 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     void geocode(q, true);
   });
 
-  return { redrawTrace, addVertex, undoLastPoint, geocode, reverseGeocode };
+  return { redrawTrace, setOptionalLayer, optionalLayerIds, addVertex, undoLastPoint, geocode, reverseGeocode };
 }

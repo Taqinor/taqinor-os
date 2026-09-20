@@ -17,6 +17,12 @@ import {
   buildProviderStyle,
   IGN_BD_ORTHO_ID,
   ignBdOrthoTileUrl,
+  CADASTRE_FR_ID,
+  cadastreFrTileUrl,
+  optionalLayers,
+  getOptionalLayer,
+  availableOptionalLayers,
+  optionalLayerSourceSpec,
   type ImageryProvider,
 } from './roofConfig';
 
@@ -181,5 +187,54 @@ describe('CAL50 — IGN BD ORTHO® : fournisseur France optionnel, attribution o
     const p = getImageryProvider(IGN_BD_ORTHO_ID)!;
     expect(p.quotas && p.quotas.length > 0).toBe(true);
     expect(p.resolutionM).toBeNull();
+  });
+});
+
+describe('CAL54 — parcellaire cadastral : calque optionnel France, purement visuel', () => {
+  it('activé par la société ET pays=fr → proposable', () => {
+    const ids = availableOptionalLayers({ pays: 'fr', calques_optionnels: [CADASTRE_FR_ID] }).map((l) => l.id);
+    expect(ids).toEqual([CADASTRE_FR_ID]);
+  });
+
+  it('activé mais pays=ma → non proposable (le parcellaire français n’existe pas là-bas)', () => {
+    expect(availableOptionalLayers({ pays: 'ma', calques_optionnels: [CADASTRE_FR_ID] })).toEqual([]);
+  });
+
+  it('société muette → AUCUN calque optionnel (comportement d’aujourd’hui)', () => {
+    expect(availableOptionalLayers({})).toEqual([]);
+    expect(availableOptionalLayers(null)).toEqual([]);
+    expect(availableOptionalLayers({ pays: 'fr' })).toEqual([]);
+  });
+
+  it('un identifiant de calque inconnu est ignoré, jamais inventé', () => {
+    expect(availableOptionalLayers({ pays: 'fr', calques_optionnels: ['inconnu'] })).toEqual([]);
+    expect(getOptionalLayer('inconnu')).toBeNull();
+  });
+
+  it('attribution obligatoire, aucune clé payante, quotas documentés', () => {
+    const l = getOptionalLayer(CADASTRE_FR_ID)!;
+    expect(l.attribution).toContain('IGN');
+    expect(l.quotas && l.quotas.length > 0).toBe(true);
+    expect(cadastreFrTileUrl()).not.toContain('key=');
+    expect(cadastreFrTileUrl()).not.toContain('access_token');
+    const src = optionalLayerSourceSpec(l) as { type: string; attribution: string; tiles: string[] };
+    expect(src.type).toBe('raster');
+    expect(src.attribution).toContain('IGN');
+    expect(src.tiles).toEqual([cadastreFrTileUrl()]);
+  });
+
+  it('PUREMENT VISUEL : le calque ne change ni le fond, ni le fournisseur, ni aucune entrée de calcul', () => {
+    const sans = { pays: 'fr', fournisseurs_autorises: ['maptiler'] };
+    const avec = { ...sans, calques_optionnels: [CADASTRE_FR_ID] };
+    // Même style de fond, à l’octet près.
+    expect(buildSatelliteStyle({ maptilerKey: 'K', mapboxToken: 'T', imagery: avec })).toEqual(
+      buildSatelliteStyle({ maptilerKey: 'K', mapboxToken: 'T', imagery: sans }),
+    );
+    // Même fournisseur actif.
+    expect(resolveImageryProvider(avec, KEYS)?.id).toBe(resolveImageryProvider(sans, KEYS)?.id);
+    // Un calque optionnel n’est JAMAIS un fournisseur d’imagerie : il ne peut donc pas
+    // devenir le fond, ni porter la moindre donnée de calcul.
+    expect(imageryProviders().map((p) => p.id)).not.toContain(CADASTRE_FR_ID);
+    expect(optionalLayers().every((l) => l.visualOnly === true)).toBe(true);
   });
 });

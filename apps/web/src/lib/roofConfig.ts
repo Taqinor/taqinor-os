@@ -453,3 +453,108 @@ registerImageryProvider({
     'à la limitation de débit publiées sur geoservices.ign.fr (aucun quota chiffré ' +
     'n’est repris ici, faute de source vérifiée).',
 });
+
+// ————————————————————————————————————————————————————————————————————————
+// CAL54 — CALQUES OPTIONNELS (parcellaire cadastral France)
+//
+// Un CALQUE OPTIONNEL n'est pas un fournisseur d'imagerie : il se superpose au
+// fond actif, il est PUREMENT VISUEL, et il ne contraint AUCUN calcul. Le
+// parcellaire cadastral aide à situer les limites de propriété à l'œil ; il
+// n'ajoute AUCUNE règle d'urbanisme (aucun texte normatif n'est dans ce dépôt,
+// et le moteur pur documente le parcellaire comme non-objectif).
+//
+// La société l'active par `calques_optionnels` (CAL47) ; `countries` borne les
+// calques qui n'existent que dans un pays. Aucune clé payante : le parcellaire
+// est servi par la Géoplateforme publique de l'IGN, attribution obligatoire.
+// ————————————————————————————————————————————————————————————————————————
+
+export interface OptionalMapLayer {
+  id: string;
+  label: string;
+  /** Mention légale du service, OBLIGATOIRE et affichée avec le calque. */
+  attribution: string;
+  /** Pays (ISO-2) où le calque est proposé. `null` = partout. */
+  countries: readonly string[] | null;
+  tiles: () => string[];
+  tileSize?: number;
+  /** Quotas/conditions d'usage documentés. */
+  quotas?: string;
+  /** Toujours `true` : un calque optionnel ne nourrit AUCUN calcul (ni compte de
+   *  panneaux, ni production, ni ombrage). Le type l'impose. */
+  visualOnly: true;
+}
+
+const OPTIONAL_LAYERS = new Map<string, OptionalMapLayer>();
+
+export function registerOptionalLayer(l: OptionalMapLayer): void {
+  OPTIONAL_LAYERS.set(l.id, l);
+}
+
+export function getOptionalLayer(id: string | null | undefined): OptionalMapLayer | null {
+  if (!id) return null;
+  return OPTIONAL_LAYERS.get(id) ?? null;
+}
+
+export function optionalLayers(): OptionalMapLayer[] {
+  return [...OPTIONAL_LAYERS.values()];
+}
+
+/** Calques optionnels RÉELLEMENT proposables : ceux activés par la société, déclarés
+ *  au registre, et admis dans le pays du projet. Société muette ⇒ aucun calque. */
+export function availableOptionalLayers(settings: ImagerySettings | null | undefined): OptionalMapLayer[] {
+  const country = (settings?.pays ?? '').trim().toLowerCase() || null;
+  const wanted = settings?.calques_optionnels ?? [];
+  return wanted
+    .map((id) => getOptionalLayer(id))
+    .filter((l): l is OptionalMapLayer => !!l)
+    .filter((l) => !l.countries || (!!country && l.countries.includes(country)));
+}
+
+/** Spécification de SOURCE MapLibre d'un calque optionnel (raster transparent,
+ *  attribution incluse). Aucune couche de calcul n'en dérive. */
+export function optionalLayerSourceSpec(layer: OptionalMapLayer): object {
+  return {
+    type: 'raster',
+    tiles: layer.tiles(),
+    tileSize: layer.tileSize ?? 256,
+    attribution: layer.attribution,
+  };
+}
+
+/**
+ * CAL54 — parcellaire cadastral français (Géoplateforme IGN, couche
+ * `CADASTRALPARCELS.PARCELLAIRE_EXPRESS`, matrice `PM`, tuiles PNG transparentes).
+ *
+ * SANS CLÉ, SANS ABONNEMENT : point d'accès public.
+ * ATTRIBUTION OBLIGATOIRE : mention IGN / parcellaire cadastral, portée par la
+ * source donc affichée par le contrôle d'attribution de la carte.
+ * QUOTAS : conditions générales et limitation de débit de la Géoplateforme,
+ * publiées sur geoservices.ign.fr — aucun chiffre n'est recopié ici faute de
+ * source vérifiée dans ce dépôt.
+ * PORTÉE : purement VISUEL. Il ne modifie ni le compte de modules, ni la
+ * production, ni l'ombrage, et n'introduit aucune règle d'urbanisme.
+ */
+export const CADASTRE_FR_ID = 'cadastre';
+
+export function cadastreFrTileUrl(): string {
+  return (
+    'https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile' +
+    '&LAYER=CADASTRALPARCELS.PARCELLAIRE_EXPRESS&STYLE=normal&TILEMATRIXSET=PM' +
+    '&FORMAT=image/png&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}'
+  );
+}
+
+registerOptionalLayer({
+  id: CADASTRE_FR_ID,
+  label: 'Parcellaire cadastral (France)',
+  attribution:
+    '© <a href="https://www.ign.fr/" target="_blank" rel="noopener">IGN</a> — Parcellaire Express (PCI)',
+  countries: ['fr'],
+  tiles: () => [cadastreFrTileUrl()],
+  tileSize: 256,
+  visualOnly: true,
+  quotas:
+    'Géoplateforme IGN — service public sans clé, soumis aux conditions générales et ' +
+    'à la limitation de débit publiées sur geoservices.ign.fr (aucun quota chiffré ' +
+    'n’est repris ici, faute de source vérifiée).',
+});
