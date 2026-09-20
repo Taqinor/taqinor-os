@@ -11,6 +11,9 @@ import {
   sunDirection,
   WINTER_SOLSTICE_DAY,
   PANEL2_WATT,
+  describeRowPitch,
+  MOUNTING_FAMILY_BALLASTED,
+  MOUNTING_FAMILY_FLUSH,
 } from '../src/lib/roofPro2';
 import { pointInPolygon, geodesicAreaM2, type LngLat } from '../src/lib/roof';
 
@@ -124,5 +127,51 @@ describe('layoutProRows2 — vrais panneaux 720 W, espacés par le soleil', () =
   it('un tracé trop petit ou invalide → zéro panneau', () => {
     expect(layoutProRows2(squareRing(2), 'sud', 33.5).count).toBe(0);
     expect(layoutProRows2([[0, 0], [1, 1]] as LngLat[], 'sud', 33.5).count).toBe(0);
+  });
+});
+
+// CAL86 — le pas inter-rangées était calculé et consommé par le pavage, mais jamais
+// AFFICHÉ, et la famille de pose (bacs lestés inclinés) jamais nommée. `describeRowPitch`
+// ne fait qu'HABILLER le pas appliqué : aucun second calcul de pas n'est introduit.
+describe('CAL86 — affichage du pas inter-rangées et nom de la famille de pose', () => {
+  it('le pas affiché est EXACTEMENT celui utilisé par le pavage', () => {
+    const layout = layoutProRows2(squareRing(28), 'sud', 33.5);
+    const d = describeRowPitch({ rowPitchM: layout.rowPitchM, latitudeDeg: 33.5 });
+    expect(d.rowPitchM).toBe(layout.rowPitchM);
+  });
+
+  it('l’hypothèse affichée est l’élévation de design du LIEU (aucune valeur figée)', () => {
+    const d = describeRowPitch({ rowPitchM: 2, latitudeDeg: 33.5 });
+    expect(d.designElevDeg).toBe(designSunElevationDeg(33.5));
+    const nord = describeRowPitch({ rowPitchM: 2, latitudeDeg: 45 });
+    expect(nord.designElevDeg).toBe(designSunElevationDeg(45));
+    expect(nord.designElevDeg).not.toBe(d.designElevDeg);
+  });
+
+  it('la famille de pose est nommée : bacs lestés à plat, affleurante en pente', () => {
+    expect(describeRowPitch({ rowPitchM: 2, latitudeDeg: 33.5 }).family).toBe(MOUNTING_FAMILY_BALLASTED);
+    expect(describeRowPitch({ rowPitchM: 1.2, latitudeDeg: 33.5, flush: true }).family).toBe(MOUNTING_FAMILY_FLUSH);
+  });
+
+  it('en pose affleurante, AUCUNE hypothèse solaire n’est affichée (rangées jointives)', () => {
+    const d = describeRowPitch({ rowPitchM: 1.2, latitudeDeg: 33.5, flush: true });
+    expect(d.designElevDeg).toBeNull();
+    expect(d.label).toContain('aucun espacement anti-ombrage');
+  });
+
+  it('changer l’inclinaison change le pas affiché, parce qu’il vient du pavage', () => {
+    const ring = squareRing(28);
+    const doux = layoutProRows2(ring, 'sud', 33.5, { tiltDeg: 10 });
+    const raide = layoutProRows2(ring, 'sud', 33.5, { tiltDeg: 25 });
+    const dDoux = describeRowPitch({ rowPitchM: doux.rowPitchM, latitudeDeg: 33.5 });
+    const dRaide = describeRowPitch({ rowPitchM: raide.rowPitchM, latitudeDeg: 33.5 });
+    expect(dRaide.rowPitchM).toBeGreaterThan(dDoux.rowPitchM);
+    expect(raide.count).toBeLessThanOrEqual(doux.count); // moins de rangées, donc moins de modules
+    expect(dRaide.label).not.toBe(dDoux.label);
+  });
+
+  it('un pas absent ou aberrant n’invente rien (0, jamais une valeur de remplacement)', () => {
+    expect(describeRowPitch({ rowPitchM: NaN, latitudeDeg: 33.5 }).rowPitchM).toBe(0);
+    expect(describeRowPitch({ rowPitchM: -1, latitudeDeg: 33.5 }).rowPitchM).toBe(0);
   });
 });

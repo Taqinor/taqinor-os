@@ -857,6 +857,20 @@ export type PanelFace = 'E' | 'W';
  */
 export type ObstacleRule = 'footprint' | 'center';
 
+/**
+ * CAL87 — géométrie SAISISSABLE d'un chevron est-ouest dos à dos. Les deux valeurs sont
+ * des SAISIES ; absentes, le pavage retombe sur exactement ce qu'il faisait avant
+ * (faîtage jointif, écart = ombre de faîte résiduelle + passage de maintenance).
+ */
+export interface EastWestGeometry {
+  /** Jeu au FAÎTAGE (m) entre les deux faces du chevron (E et O). Absent ⇒ 0, c.-à-d. les
+   *  deux faces se rejoignent, le comportement historique. */
+  ridgeGapM?: number;
+  /** Écart (m) entre deux chevrons, bord à bord. Absent ⇒ la valeur CALCULÉE d'aujourd'hui
+   *  (ombre de faîte résiduelle + passage de maintenance), jamais une constante nouvelle. */
+  interTentGapM?: number;
+}
+
 export interface PackOptions {
   family: ConfigFamily;
   tiltDeg: number;
@@ -883,6 +897,14 @@ export interface PackOptions {
   overhangM?: number;
   /** PV60 — règle d'exclusion obstacle. Défaut `footprint` (empreinte complète). */
   obstacleRule?: ObstacleRule;
+  /**
+   * CAL87 — géométrie EST-OUEST dos à dos, rendue PARAMÉTRABLE. Le faîtage et l'écart
+   * entre chevrons étaient figés dans le pavage ; le moteur, lui, expose un kit est-ouest
+   * avec faîtage explicite (`core/calepinage/types.py`, KIT_VILLA_EW). Champs ABSENTS ⇒
+   * valeurs d'aujourd'hui, pavage IDENTIQUE au byte près. Aucune politique d'espacement
+   * du noyau n'est touchée ici (elle reste à CAL167).
+   */
+  eastWestGeometry?: EastWestGeometry;
   /**
    * PV63 — retraits de rive SÉPARÉS (latéral / extrémité / acrotère). Un champ absent
    * retombe sur `setbackM` (donc PERIMETER_SETBACK_M) : objet absent → calepinage
@@ -1405,6 +1427,39 @@ function packMixedCells(
 }
 
 /** Pave le toit pour une config donnée, en portrait ET paysage, garde le meilleur. */
+/**
+ * CAL87 — lecture d'une valeur d'écart SAISIE (m). Non fournie / non finie ⇒ la valeur
+ * par défaut (celle d'aujourd'hui) ; négative ⇒ 0 (un écart négatif n'existe pas). Une
+ * valeur valide, même inhabituelle, est ACCEPTÉE telle quelle : l'écran avertit, il ne
+ * rejette pas (même règle de la maison que `readSetbackInput`).
+ */
+function ewGapM(saisie: number | undefined, defaut: number): number {
+  if (typeof saisie !== 'number' || !Number.isFinite(saisie)) return defaut;
+  return saisie < 0 ? 0 : saisie;
+}
+
+/**
+ * CAL87 — valeurs PAR DÉFAUT de la géométrie est-ouest à afficher comme telles dans les
+ * champs de saisie : ce sont EXACTEMENT celles que le pavage applique aujourd'hui, donc
+ * laisser les champs à ces valeurs rend la variante est-ouest identique. Le calcul de
+ * l'écart reprend la formule du pavage (ombre de faîte résiduelle + passage), il n'en
+ * introduit pas une seconde.
+ */
+export function defaultEastWestGeometry(
+  latitudeDeg: number,
+  tiltDeg: number,
+  panelSlopeLenM: number,
+): Required<EastWestGeometry> {
+  const beta = tiltDeg * DEG2RAD;
+  const panelDepthM = panelSlopeLenM * Math.cos(beta);
+  const rise = panelSlopeLenM * Math.sin(beta);
+  const ridgeShade = shadeLengthM(rise, latitudeDeg, DESIGN_SOLAR_HOUR, true);
+  return {
+    ridgeGapM: 0,
+    interTentGapM: Math.max(0, ridgeShade - panelDepthM) + EW_MAINTENANCE_GAP_M,
+  };
+}
+
 export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOptions): PackResult {
   const areaM2 = geodesicAreaM2(ring);
   const azimuthDeg = opts.azimuthDeg ?? familyAzimuthDeg(opts.family);
@@ -1466,11 +1521,17 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
       // RÉSIDUELLE qui déborde (≈0 ici) + un passage de maintenance — JAMAIS un pas
       // de rangée sud, sinon on gaspillerait du toit entre les chevrons.
       const ridgeShade = shadeLengthM(rise, latitudeDeg, DESIGN_SOLAR_HOUR, true);
-      const interTentGap = Math.max(0, ridgeShade - panelDepthM) + EW_MAINTENANCE_GAP_M;
+      // CAL87 — faîtage et écart inter-chevrons SAISISSABLES. Absents : exactement les
+      // valeurs d'aujourd'hui (faîtage jointif, écart = ombre résiduelle + maintenance).
+      const ewRidgeGapM = ewGapM(opts.eastWestGeometry?.ridgeGapM, 0);
+      const interTentGap = ewGapM(
+        opts.eastWestGeometry?.interTentGapM,
+        Math.max(0, ridgeShade - panelDepthM) + EW_MAINTENANCE_GAP_M,
+      );
       return {
         panelDepthM,
-        cellDepthM: 2 * panelDepthM,
-        pitchM: 2 * panelDepthM + interTentGap + rowGapExtraM,
+        cellDepthM: 2 * panelDepthM + ewRidgeGapM,
+        pitchM: 2 * panelDepthM + ewRidgeGapM + interTentGap + rowGapExtraM,
         rowWidthM,
         panelsPerCell: 2,
         colGapM,

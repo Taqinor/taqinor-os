@@ -9,6 +9,8 @@ import {
   deserializeEnvironment,
   serializeLayout,
   deserializeLayout,
+  serializeSolarAccess,
+  deserializeSolarAccess,
 } from './prefill';
 import { type Measurement } from './mesureUi';
 import { type EnvironmentObject } from './environment';
@@ -246,5 +248,90 @@ describe('CAL59 — buildingId (multi-bâtiments)', () => {
     const back = deserializeLayout(layout);
     expect(back.find((a) => a.id === 'z1')!.buildingId).toBe('bat-1');
     expect(back.find((a) => a.id === 'z2')!.buildingId).toBe('bat-2');
+  });
+});
+
+// CAL248 — l'accès solaire par module vivait côté client et ne sortait jamais de l'écran.
+// Il voyage désormais DANS le document, dans la forme figée par le contrat v2
+// (`$defs/solarAccess` de roof_layout_v2.schema.json).
+describe('CAL248 — accès solaire par module persisté dans le document', () => {
+  /** Plan de rendu minimal : seuls les champs lus par `serializeLayout` sont fournis. */
+  function planWith(panelCount: number) {
+    const panels = Array.from({ length: panelCount }, (_, i) => ({ cx: i * 1.2, cy: 0 }));
+    return {
+      pack: { origin: [-7.6, 33.59] as [number, number], azimuthDeg: 180 },
+      grid: { panels, kwc: panelCount * 0.72 },
+      tiltDeg: 15,
+      family: 'south',
+      flush: false,
+      count: panelCount,
+    } as unknown as AreaRecord['renderPlan'];
+  }
+  const access = (values: Array<number | null>) => ({
+    values,
+    method: 'Astronomie + lancer de rayon sur les obstructions renseignées, pondéré par le profil horaire du lieu.',
+    assumptions: { periode: 'annee-entiere' },
+    computedAt: '2026-09-20T10:00:00.000Z',
+  });
+
+  it('absent par défaut : un document SANS accès solaire reste identique à aujourd’hui', () => {
+    const areas = [zone('z1', { renderPlan: planWith(3) })];
+    const layout = serializeLayout(makeCtx(areas));
+    expect(layout.zones[0].geometry).toBeTruthy();
+    expect('solarAccess' in (layout.zones[0].geometry as object)).toBe(false);
+  });
+
+  it('écrit par zone, avec valeurs / méthode / hypothèses / date de calcul', () => {
+    const areas = [zone('z1', { renderPlan: planWith(3) })];
+    const layout = serializeLayout(makeCtx(areas), null, {
+      solarAccessByZone: { z1: access([0.98, 0.6, 0.42]) },
+    });
+    const sa = layout.zones[0].geometry!.solarAccess!;
+    expect(sa.values).toEqual([0.98, 0.6, 0.42]);
+    expect(sa.method.length).toBeGreaterThan(10);
+    expect(sa.assumptions).toEqual({ periode: 'annee-entiere' });
+    expect(sa.computedAt).toBe('2026-09-20T10:00:00.000Z');
+  });
+
+  it('aller-retour JSON : les valeurs sont conservées à l’identique', () => {
+    const areas = [zone('z1', { renderPlan: planWith(3) })];
+    const layout = serializeLayout(makeCtx(areas), null, {
+      solarAccessByZone: { z1: access([0.98, 0.6, 0.42]) },
+    });
+    const round = JSON.parse(JSON.stringify(layout));
+    expect(deserializeSolarAccess(round.zones[0].geometry, 3)).toEqual(layout.zones[0].geometry!.solarAccess);
+  });
+
+  it('un document SANS accès solaire se relit sans erreur (jamais une valeur reconstituée)', () => {
+    expect(deserializeSolarAccess(undefined, 3)).toBeNull();
+    expect(deserializeSolarAccess({}, 3)).toBeNull();
+    expect(deserializeSolarAccess({ solarAccess: { values: [] } }, 3)).toBeNull();
+  });
+
+  it('valeurs DÉCALÉES (longueur ≠ nombre de modules) : rien n’est écrit, jamais complété', () => {
+    const areas = [zone('z1', { renderPlan: planWith(3) })];
+    const layout = serializeLayout(makeCtx(areas), null, {
+      solarAccessByZone: { z1: access([0.9, 0.8]) },
+    });
+    expect('solarAccess' in (layout.zones[0].geometry as object)).toBe(false);
+  });
+
+  it('une valeur aberrante devient null (non calculé), jamais corrigée en silence', () => {
+    const sa = serializeSolarAccess(access([1.4, -0.2, 0.5]), 3);
+    expect(sa!.values).toEqual([null, null, 0.5]);
+  });
+
+  it('rien de calculé du tout → rien d’écrit (aucun module à 100 % par défaut)', () => {
+    expect(serializeSolarAccess(access([null, null, null]), 3)).toBeNull();
+  });
+
+  it('NON-RÉGRESSION : les autres chiffres du document ne bougent pas', () => {
+    const areas = [zone('z1', { renderPlan: planWith(3) })];
+    const sans = serializeLayout(makeCtx(areas));
+    const avec = serializeLayout(makeCtx(areas), null, { solarAccessByZone: { z1: access([1, 0.5, 0.5]) } });
+    expect(avec.result).toEqual(sans.result);
+    expect(avec.zones[0].geometry!.count).toBe(sans.zones[0].geometry!.count);
+    expect(avec.zones[0].geometry!.kwc).toBe(sans.zones[0].geometry!.kwc);
+    expect(avec.zones[0].geometry!.panels).toEqual(sans.zones[0].geometry!.panels);
   });
 });
