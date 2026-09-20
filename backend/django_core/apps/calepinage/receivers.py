@@ -31,11 +31,11 @@ import logging
 
 from django.dispatch import receiver
 
-from core.events import layout_finalise
+from core.events import layout_finalise, lead_created
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['miroir_layout_du_devis']
+__all__ = ['miroir_layout_du_devis', 'reprise_du_trace_public']
 
 
 @receiver(layout_finalise, dispatch_uid='calepinage_miroir_layout_finalise')
@@ -68,3 +68,35 @@ def miroir_layout_du_devis(sender, devis, user=None, **kwargs):
         logger.exception(
             'CAL39 : miroir de conception en échec pour le devis %s',
             getattr(devis, 'pk', None))
+
+
+@receiver(lead_created, dispatch_uid='calepinage_reprise_trace_public')
+def reprise_du_trace_public(sender, lead=None, company=None, **kwargs):
+    """CAL110 — un lead issu de « mon toit » ouvre un calepinage PRÉ-TRACÉ.
+
+    PATRON M6 : c'est l'app CONSOMMATRICE qui s'abonne. ``apps.crm`` n'a
+    aucune connaissance du module Calepinage, et ce module ne touche jamais
+    les modèles crm — il lit le lead par ``apps.crm.selectors`` (dans le
+    service) et n'écrit rien chez crm : ``roof_outline`` et ``roof_point`` du
+    lead restent exactement ce qu'ils sont.
+
+    ZÉRO CRÉATION SILENCIEUSE : un lead sans tracé exploitable, ou déjà doté
+    d'un calepinage, n'en reçoit AUCUN (le service tranche, pas ce récepteur).
+
+    BEST-EFFORT, TOUJOURS : une reprise en échec ne doit JAMAIS faire échouer
+    la création du lead — un lead perdu coûte infiniment plus cher qu'un
+    calepinage à recréer à la main. L'erreur est journalisée, pas propagée.
+    """
+    societe = company if company is not None else getattr(lead, 'company',
+                                                          None)
+    lead_id = getattr(lead, 'pk', None)
+    if societe is None or not lead_id:
+        return
+    try:
+        from .services.reprise_public import reprendre_trace_public
+
+        reprendre_trace_public(lead_id, societe)
+    except Exception:  # noqa: BLE001 — une reprise ne casse jamais un lead
+        logger.exception(
+            'CAL110 : reprise du tracé public en échec pour le lead %s',
+            lead_id)
