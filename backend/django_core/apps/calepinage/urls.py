@@ -13,13 +13,18 @@ admise : deux familles pour un même objet, c'est l'incident PACT10 par
 construction. Un test (``tests/test_structure_urls.py``) le vérifie.
 """
 from django.urls import include, path
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 
 from .views.calepinages import CalepinageViewSet
 from .views.moteur import MoteurCalculerView, MoteurResultatView
 from .views.parametres import ParametresCalepinageView
 
-router = DefaultRouter()
+# ``SimpleRouter`` et non ``DefaultRouter`` (même choix qu'``apps/ai_governance``)
+# : ``DefaultRouter`` ajoute une vue « api-root » que personne n'appelle ET un
+# suffixe de format par ressource (``calepinages.json``) — soit une SECONDE
+# forme d'URL pour le même objet, exactement ce que CAL233 interdit et ce que
+# ``tests/test_structure_urls.py`` mesure.
+router = SimpleRouter()
 router.register(r'calepinages', CalepinageViewSet, basename='calepinage')
 
 urlpatterns = [

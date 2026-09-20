@@ -7,9 +7,10 @@ le collecte GÉNÉRIQUEMENT (aucun import de ``core`` vers l'app).
 
 RÈGLE D'HONNÊTETÉ : ne déclarer une surface QUE si elle est réellement câblée.
 Un identifiant listé ici sans le câblage réel est un « mensonge » que la
-matrice de couverture (``core.platform_coverage``) détecte à l'envers. Les
-surfaces sont donc VIDES au jour 1 (CAL4) et se remplissent par CAL27 quand
-recherche / chatter / champs perso / import / agent / KPI seront branchés.
+matrice de couverture (``core.platform_coverage``) détecte à l'envers. Trois
+surfaces ont été câblées dans le lot (CAL27 recherche, CAL26 chatter, ARC31
+champs perso) et sont donc déclarées ; les quatre autres restent VIDES tant
+que leur câblage n'existe pas — voir le commentaire qui les accompagne.
 """
 from __future__ import annotations
 
