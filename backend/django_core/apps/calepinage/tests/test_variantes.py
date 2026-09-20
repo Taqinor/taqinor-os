@@ -179,14 +179,15 @@ class GardeDeSurfaceTest(SimpleTestCase):
 
     def test_le_motif_attrape_une_vraie_ecriture(self):
         """Le garde reste un garde : il voit l'écriture qu'il interdit."""
-        self.assertTrue(ECRITURE_RETENUE.search('variante.retenue = True'))
-        self.assertTrue(ECRITURE_RETENUE.search('    obj.retenue=False'))
+        self.assertTrue(_ecritures_retenue('variante.retenue = True'))
+        self.assertTrue(_ecritures_retenue('    obj.retenue = False'))
         # …et il ne voit PAS une lecture (variable locale, filtre de requête).
-        self.assertIsNone(ECRITURE_RETENUE.search(
+        self.assertFalse(_ecritures_retenue(
             'retenue = next((v for v in lignes if v.retenue), None)'))
-        self.assertIsNone(ECRITURE_RETENUE.search(
-            '.filter(calepinage=calepinage, retenue=True)'))
-        self.assertIsNone(ECRITURE_RETENUE.search('if v.retenue == True:'))
+        self.assertFalse(_ecritures_retenue(
+            'qs.filter(calepinage=calepinage, retenue=True)'))
+        self.assertFalse(_ecritures_retenue('if v.retenue == True:
+    pass'))
 
     def test_aucune_ecriture_ailleurs(self):
         coupables = []
