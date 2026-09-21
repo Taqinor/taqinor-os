@@ -136,9 +136,13 @@ class ExclusiviteTest(unittest.TestCase):
         etape = cascade(
             {'meteo': {'horizon': {'origine': 'dem_pvgis'}}})['horizon']
         self.assertIn('PVGIS', etape['motif_omission'])
+        self.assertIn('modèle de terrain', etape['motif_omission'])
         autre = cascade(
             {'meteo': {'horizon': {'origine': 'profil_mesure'}}})['horizon']
-        self.assertIn('Étape non livrée', autre['motif_omission'])
+        # CALX156 : un profil MESURÉ n'est pas le modèle de terrain de PVGIS.
+        # L'exclusivité de l'ordonnanceur ne le vise donc pas — c'est l'étape
+        # elle-même qui publie alors son propre motif.
+        self.assertNotIn('modèle de terrain', autre['motif_omission'])
 
 
 class ToujoursOmisesTest(unittest.TestCase):
