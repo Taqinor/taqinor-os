@@ -823,34 +823,10 @@ SPECTACULAR_SETTINGS = {
         'CreneauEquipementEnum': 'apps.crm.models.Lead.CreneauClim',
         # particulier / entreprise
         'TypeTiersParticulierEntrepriseEnum': 'apps.tiers.models.Tiers.TypeTiers',
-        # mensuel / trimestriel / semestriel / annuel — même jeu sous `unite`
-        # (contrats.PlanRecurrent) et sous `periodicite` (sav.ContratMaintenance).
-        #
-        # SOLMVP-sweep (2026-09-21) — NON retiré malgré apps.contrats sorti du
-        # MVP solaire (en cours de mise en coquille par la lane SOLMVP30b) :
-        # sav.ContratMaintenance (KEPT) porte encore aujourd'hui le MÊME jeu de
-        # valeurs sous `periodicite`, et contrats.PlanRecurrent.Unite existe
-        # toujours dans CE checkout (label en cours, pas encore coquille). Une
-        # suppression prématurée régénère « multiple names for the same choice
-        # set (UniteEnum) » — vérifié en régénérant le schéma OpenAPI en
-        # docker. À retirer par la lane qui coquille effectivement contrats
-        # (le conflit disparaît alors avec le second modèle).
-        'PeriodiciteMensuelAnnuelEnum':
-            'apps.contrats.models.PlanRecurrent.Unite',
-        # mensuelle / trimestrielle — même jeu sous `periodicite`
-        # (compta.AllocationRecurrente) et sous `frequence`
-        # (compta.AbonnementEcriture, XACC8).
-        #
-        # SOLMVP-sweep (2026-09-21) — NON retiré malgré apps.compta sorti du
-        # MVP solaire (en cours de mise en coquille par la lane SOLMVP30b) :
-        # les DEUX modèles en collision vivent dans compta lui-même et
-        # existent toujours dans CE checkout — la suppression prématurée
-        # régénère « multiple names for the same choice set » (vérifié en
-        # régénérant le schéma OpenAPI en docker). Cette entrée disparaîtra
-        # d'elle-même (les deux côtés du conflit partent ensemble) quand la
-        # lane qui coquille compta l'aura fait.
-        'PeriodiciteMensuelleTrimestrielleEnum':
-            'apps.compta.models.AllocationRecurrente.Periodicite',
+        # SOLMVP (21/09/2026) — les surcharges PeriodiciteMensuelAnnuelEnum /
+        # PeriodiciteMensuelleTrimestrielleEnum visaient contrats.PlanRecurrent et
+        # compta.AllocationRecurrente : les deux apps sont des coquilles, le conflit
+        # de nommage a disparu avec elles.
         # en_cours / conforme / non_conforme / reserves — jeu identique dans
         # installations.CommissioningRecord et ventes.CommissioningTest.
         'ResultatCommissioningEnum':
