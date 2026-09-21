@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 34a320a3eb5731c0045eb467f3648034c1a051823dd8c429a8e9181af5218628
-Plan fingerprint: 6c0faf2be8aa1feff0f1f1a309e7ec531d6f22f9a55109dd02c7fd77130262ea
+Structure fingerprint: 4db621b256989d0291f17a02995458ee3cace61487f6a5d74c103193a3494e97
+Plan fingerprint: 80d84654b19279a3fafb9c666795e7180a05939bb7cd0f22e5a3f46773326593
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -532,8 +532,15 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (195)**
+**Done (202)**
 
+- `CAD95` — Joindre une courte vidéo à la preuve chantier J4
+- `CAD96` — Trois graphies de la marque dans la même conversation WhatsApp
+- `CAD139` — Du code mort laisse croire que l'ouverture d'un devis fait avancer le funnel
+- `CAD141` — Le rafraîchissement nocturne des scores balaie les dossiers clos
+- `CAD143` — L'éditeur n'a pas d'onglet pour la cadence « Générique », pourtant encore active sur de…
+- `CAD145` — Le type d'installation est stocké à deux endroits
+- `CAD146` — Un prospect de la diaspora reçoit ses touches à l'heure de Casablanca
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
 - `SOLMVP3` — Fin du mécanisme d'édition (un seul produit)
@@ -730,7 +737,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (411)**
+**Open — to build (404)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -827,8 +834,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD92` — Une durée de conservation est déclarée et n'est appliquée nulle part
 - `CAD93` — Deux leads du même foyer reçoivent deux cadences parallèles
 - `CAD94` — [TRANCHÉ 21/09/2026 — rien sur le score avant la mesure de CAD87.]
-- `CAD95` — Joindre une courte vidéo à la preuve chantier J4
-- `CAD96` — Trois graphies de la marque dans la même conversation WhatsApp
 - `CAD97` — Sur la cadence générique, « Fait — passer à la suite » annonce « demain » à tort
 - `CAD98` — Les trois « Appel de suivi » du suivi après-devis n'ont aucun script
 - `CAD99` — Afficher la liste des cadences échues (moitié écran de CAD75)
@@ -871,14 +876,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD136` — Questionnaire rempli, photo de facture reçue : silence complet
 - `CAD137` — « Rouvert 3 fois » se déclenche sur une seule visite
 - `CAD138` — Le panier « relance d'engagement » ne se vide jamais et masque les devis qui expirent
-- `CAD139` — Du code mort laisse croire que l'ouverture d'un devis fait avancer le funnel
 - `CAD140` — Le « score d'engagement client » a abandonné le seul signal comportemental qu'il devait…
-- `CAD141` — Le rafraîchissement nocturne des scores balaie les dossiers clos
 - `CAD142` — Le Journal du plan de relance ne mentionne jamais les visites, que la Frise affiche…
-- `CAD143` — L'éditeur n'a pas d'onglet pour la cadence « Générique », pourtant encore active sur de…
 - `CAD144` — Un achat de coopérative ou un comité industriel n'a qu'UN seul contact dans le CRM
-- `CAD145` — Le type d'installation est stocké à deux endroits
-- `CAD146` — Un prospect de la diaspora reçoit ses touches à l'heure de Casablanca
 - `CAD147` — T0 — Le contrat du panneau d'appel, livré SEUL et en premier (PACT10)
 - `CAD148` — T1 — L'endpoint « questions à poser sur cet appel »
 - `CAD149` — T2 — Migration « vague 1 » : les champs qui manquent, et les SIX endroits à tenir
