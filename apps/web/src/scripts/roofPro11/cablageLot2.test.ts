@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createZones } from './zones';
+import { couleursAretes, EDGE_COLOR_BY_TYPE, type EdgeDeductionZone } from './edges';
 import { type Ctx } from './context';
 import { type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
@@ -114,5 +115,49 @@ describe('CALX97/98 câblage — la carte se redessine après une transformation
     ]) {
       expect(SOURCE_ENTREE).toContain(crochet);
     }
+  });
+});
+
+describe('CALX94 câblage — le type d’arête corrigé se voit en 3D et le clic lui est routé', () => {
+  const carre = (): EdgeDeductionZone => ({
+    vertices: [...CARRE],
+    roofType: 'flat',
+    facingAzimuthDeg: 180,
+  });
+
+  it('une arête corrigée à la main prend SA couleur, les autres celle du type déduit', () => {
+    const sans = couleursAretes(carre(), [], undefined);
+    expect(sans).toHaveLength(4);
+
+    const avec = couleursAretes(carre(), [], [{ index: 1, type: 'faitage', manuel: true }]);
+    expect(avec[1]).toBe(EDGE_COLOR_BY_TYPE.faitage);
+    // Les trois autres segments n'ont pas bougé : la correction n'en déborde pas.
+    expect([avec[0], avec[2], avec[3]]).toEqual([sans[0], sans[2], sans[3]]);
+  });
+
+  it('une saisie NON marquée `manuel` ne repeint rien (elle n’a pas été corrigée)', () => {
+    const sans = couleursAretes(carre(), [], undefined);
+    const avec = couleursAretes(carre(), [], [{ index: 1, type: 'faitage' }]);
+    expect(avec).toEqual(sans);
+  });
+
+  it('un contour de moins de trois sommets ne produit AUCUNE couleur', () => {
+    expect(couleursAretes({ ...carre(), vertices: CARRE.slice(0, 2) }, [], undefined)).toEqual([]);
+  });
+
+  it('l’entrée route le clic carte vers `edgesUi` quand le mode arêtes est armé', () => {
+    expect(SOURCE_ENTREE).toContain('if (edgesUi.isEdgeMode()) {');
+    expect(SOURCE_ENTREE).toContain('edgesUi.handleMapClick(lngLat); // CALX94 câblage');
+    // Le module ne reçoit PAS la carte : sans cela il s'abonnerait aussi et le clic serait
+    // traité deux fois.
+    expect(SOURCE_ENTREE).toContain('const edgesUi = createEdgesUi(ctx, {');
+    expect(SOURCE_ENTREE).not.toContain('createEdgesUi(ctx, { map');
+  });
+
+  it('la scène colore chaque segment du contour via `couleursAretes`', () => {
+    const scene = readFileSync(resolve(process.cwd(), 'src/scripts/roofPro11/scene3d.ts'), 'utf8');
+    expect(scene).toContain('if (!isOtherZone) { // CALX94 câblage');
+    expect(scene).toContain('const couleurs = couleursAretes(');
+    expect(scene).toContain('new THREE.LineBasicMaterial({ color: couleur, transparent: true, opacity: 0.95 }),');
   });
 });

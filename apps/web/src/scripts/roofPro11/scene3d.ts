@@ -45,10 +45,16 @@ import {
   DEG2RAD,
   DEG2M,
 } from './constants';
-import { type ZoneRenderPlan } from './types';
+import { type AreaRecord, type ZoneRenderPlan } from './types';
 import { makeCanadianPanelTexture } from './panelTexture';
 import { type Ctx } from './context';
 import { poserEtiquettesNumeros } from './numerotation'; // CALX111
+// CALX94 câblage — couleur d'arête RETENUE (correction manuelle prioritaire), PURE.
+import { couleursAretes, type EdgeDeductionZone } from './edges';
+
+/** CALX94 — convention de dessin : le trait de contour est posé 6 cm au-dessus de la
+ *  dalle pour ne pas z-fighter avec elle. Aucune portée d'ingénierie. */
+const EDGE_LINE_LIFT_M = 0.06;
 
 import {
   HAUTEUR_DESSIN_M,
@@ -1653,6 +1659,54 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       skirt.castShadow = true;
       skirt.receiveShadow = true;
       sceneRoot!.add(skirt);
+    }
+
+    // CALX94 câblage — le CONTOUR du pan actif, peint segment par segment à la couleur de
+    // son type d'arête RETENU : une arête corrigée à la main dans l'atelier (`manuel`)
+    // l'emporte sur la déduction, exactement comme dans le document. Sans ce trait, la
+    // correction n'était visible nulle part en 3D. La décision est PURE (`couleursAretes`,
+    // edges.ts) : rien n'est re-déduit ici. Pan non actif, ou anneau ENU et contour
+    // lng/lat désaccordés (aucun appariement à deviner) ⇒ rien n'est ajouté, rendu
+    // inchangé. Le trait est posé à ras de la dalle (convention de dessin).
+    if (!isOtherZone) { // CALX94 câblage
+      const actif = ctx.activeArea();
+      const contour = ctx.vertices.length >= 3 ? ctx.vertices : (actif?.vertices ?? []);
+      if (actif && contour.length === ring.length) {
+        const pourDeduction = (a: AreaRecord, v: LngLat[]): EdgeDeductionZone => ({
+          vertices: v,
+          roofType: a.roofType,
+          facingAzimuthDeg: a.facingAzimuthDeg,
+          ...(Number.isFinite(a.pitchDeg) ? { pitchDeg: a.pitchDeg } : {}),
+        });
+        const couleurs = couleursAretes(
+          pourDeduction(actif, contour),
+          ctx.areas.filter((a) => a.id !== actif.id).map((a) => pourDeduction(a, a.vertices)),
+          actif.edges,
+        );
+        /** z monde du dessus de dalle au point (x, y) — plan incliné en pente, plat sinon. */
+        const zDalle = (x: number, y: number) =>
+          (flush
+            ? wallH + 0.02 + pitchedDeckZ(x, y, pitchEaveCoord, ridgeLiftM, tiltDeg, pack.azimuthDeg)
+            : deck.position.z) + EDGE_LINE_LIFT_M;
+        couleurs.forEach((couleur, i) => {
+          const [ax, ay] = ring[i];
+          const [bx, by] = ring[(i + 1) % ring.length];
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute(
+            'position',
+            new THREE.BufferAttribute(
+              new Float32Array([ax, ay, zDalle(ax, ay), bx, by, zDalle(bx, by)]),
+              3,
+            ),
+          );
+          const ligne = new THREE.Line(
+            geo,
+            new THREE.LineBasicMaterial({ color: couleur, transparent: true, opacity: 0.95 }),
+          );
+          ligne.renderOrder = 4;
+          sceneRoot!.add(ligne);
+        });
+      }
     }
 
     // Axes de visée à partir de l'azimut de la famille.
