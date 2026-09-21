@@ -32,11 +32,38 @@ fiche lead.
 #: l'identique de ``mesure_cadence.ISSUES_JOINT``.
 ISSUES_JOINT = ('joint', 'interesse')
 
+#: Marqueur « ce lead ne porte PAS l'annotation » — distinct d'une annotation
+#: présente qui vaut ``None`` (le fait existe, il est simplement vide).
+_ABSENT = object()
+
+
+def _annotation(lead, nom):
+    """Valeur d'une annotation de :func:`annotations_signaux`, ou ``_ABSENT``.
+
+    Un lead servi par ``LeadViewSet`` porte ces attributs (posés en SQL avec
+    la ligne elle-même) ; un lead construit ailleurs (service, import, test)
+    ne les porte pas et chaque fait est alors relu par sa propre requête —
+    comportement d'avant, inchangé.
+    """
+    return getattr(lead, nom, _ABSENT)
+
 
 def _engagement_proposition(lead):
     """L'engagement du client sur sa proposition, via ``ventes.selectors``."""
     vide = {'ouverte': False, 'vues': 0, 'lue_en_detail': False,
             'derniere_vue': None}
+    vues = _annotation(lead, 'sig_vues_proposition')
+    if vues is not _ABSENT:
+        premiere = getattr(lead, 'sig_premiere_vue_proposition', None)
+        profond = getattr(lead, 'sig_lecture_profonde_at', None)
+        vues = int(vues or 0)
+        instants = [i for i in (premiere, profond) if i is not None]
+        return {
+            'ouverte': premiere is not None or vues > 0,
+            'vues': vues,
+            'lue_en_detail': profond is not None,
+            'derniere_vue': max(instants) if instants else None,
+        }
     try:
         from apps.ventes.selectors import engagement_proposition_du_lead
         return engagement_proposition_du_lead(
@@ -47,6 +74,9 @@ def _engagement_proposition(lead):
 
 def _questionnaire_repondu_le(lead):
     """Instant de la dernière réponse au questionnaire, ou ``None``."""
+    depuis_annotation = _annotation(lead, 'sig_questionnaire_repondu_le')
+    if depuis_annotation is not _ABSENT:
+        return depuis_annotation
     try:
         from django.db.models import Max
 
@@ -61,6 +91,11 @@ def _questionnaire_repondu_le(lead):
 
 def _derniere_activite_le(lead, *, issues=None):
     """Instant de la dernière ligne de chatter, éventuellement filtrée."""
+    depuis_annotation = _annotation(
+        lead,
+        'sig_derniere_activite_jointe' if issues else 'sig_derniere_activite')
+    if depuis_annotation is not _ABSENT:
+        return depuis_annotation
     try:
         from django.db.models import Max
 
@@ -122,3 +157,55 @@ def derniere_interaction(lead):
     ]
     instants = [i for i in instants if i is not None]
     return max(instants) if instants else None
+
+
+# ── CAD-K ── CAD133 (budget de requêtes) ────────────────────────────────────
+def annotations_signaux():
+    """Les cinq faits de ce module, posés en ANNOTATIONS sur un queryset.
+
+    LE BUG QUE CECI CORRIGE. Les signaux ci-dessus sont lus PAR LEAD par
+    ``scoring`` (fraîcheur + comportement), lui-même appelé par
+    ``LeadSerializer`` pour chaque ligne : la liste des leads exécutait 16
+    requêtes PAR LIGNE (415 requêtes pour 25 leads au lieu d'un budget fixe),
+    et la fiche 16 de plus. Rien de ce que ces signaux LISENT n'a changé —
+    seulement le nombre d'allers-retours : les agrégats deviennent des
+    sous-requêtes corrélées, calculées avec la ligne du lead.
+
+    Les faits ``ShareLink`` viennent de ``apps.ventes.selectors`` (frontière
+    M3 : jamais ``ventes.models`` depuis ``apps.crm``). Un lead qui ne porte
+    pas ces attributs retombe sur la lecture requête-par-requête d'avant.
+    """
+    from django.db.models import DateTimeField, Max, OuterRef, Q, Subquery
+
+    from .models import LeadActivity, QuestionnaireLien
+
+    activites = (LeadActivity.objects
+                 .filter(lead=OuterRef('pk'))
+                 .order_by()
+                 .values('lead'))
+    questionnaires = (QuestionnaireLien.objects
+                      .filter(lead=OuterRef('pk'))
+                      .order_by()
+                      .values('lead'))
+    annotations = {
+        'sig_derniere_activite': Subquery(
+            activites.annotate(
+                valeur=Max('created_at')).values('valeur')[:1],
+            output_field=DateTimeField()),
+        'sig_derniere_activite_jointe': Subquery(
+            activites.annotate(
+                valeur=Max('created_at',
+                           filter=Q(outcome__in=ISSUES_JOINT))
+            ).values('valeur')[:1],
+            output_field=DateTimeField()),
+        'sig_questionnaire_repondu_le': Subquery(
+            questionnaires.annotate(
+                valeur=Max('derniere_reponse_at')).values('valeur')[:1],
+            output_field=DateTimeField()),
+    }
+    try:
+        from apps.ventes.selectors import annotations_engagement_proposition
+        annotations.update(annotations_engagement_proposition())
+    except Exception:  # noqa: BLE001 — un score ne fait jamais tomber une liste
+        pass
+    return annotations
