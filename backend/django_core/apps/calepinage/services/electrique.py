@@ -67,6 +67,10 @@ __all__ = [
     'journaliser_ecart_longueur', 'parametres_societe',
     'CLE_POLYSTRING',  # CALX206
     'CLE_MICRO_ONDULEURS',  # CALX209
+    'CHAMP_OPT_V_OUT', 'CHAMP_OPT_MODULES_MAX', 'CLE_OPT_V_OUT',
+    'CLE_OPT_MODULES_MAX', 'REFERENCE_SOLAREDGE_DESIGNER',  # CALX211
+    'CLE_OPTIMISEURS', 'MOTIF_RATIO_NON_PUBLIE',
+    'MENTION_RATIO_NON_RECOUPE', 'REFERENCE_OPENSOLAR_RATIO',  # CALX212
 ]
 
 #: Les deux SOURCES possibles d'une température de dimensionnement. Une
@@ -722,6 +726,11 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
                                            nom_optimiseur)
     if micro['bloc'] is not None:
         electrique[CLE_MICRO_ONDULEURS] = micro['bloc']
+    # CALX212 — la carte module → optimiseur, et sa quantité (ou son motif).
+    optimiseurs = _optimiseurs_du_calepinage(conception, optimiseur,
+                                             nom_optimiseur)
+    if optimiseurs is not None:
+        electrique[CLE_OPTIMISEURS] = optimiseurs
     pose = bloc_pose(conception)
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
@@ -762,6 +771,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     messages.extend(poly['bloquants'])
     messages.extend(poly['alertes'])
     messages.extend(micro['omissions'])
+    if optimiseurs is not None and optimiseurs['motif']:
+        messages.append(optimiseurs['motif'])
     if motif_faible:
         messages.append(motif_faible)
     messages.extend(regle['bornes_non_verifiables'])
@@ -1449,6 +1460,106 @@ def _micro_onduleurs_du_calepinage(conception, specs, designation=''):
     bloc['cables'] = equipement['cables']
     return {'bloc': bloc, 'protections': equipement['protections'],
             'omissions': list(bloc['motifs']) + equipement['omissions']}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX212 — COMPTER ET PLACER LES OPTIMISEURS, MODULE PAR MODULE
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``apps/stock/selectors.py`` publie ``modules_par_optimiseur`` depuis CAL116
+# et AUCUN service ne le consommait : il n'existait ni quantité d'optimiseurs,
+# ni carte module → optimiseur. Un bordereau ne pouvait donc pas dire combien
+# d'unités poser, et l'atelier ne pouvait pas dire laquelle va où.
+#
+# LE RATIO VIENT DE LA FICHE, ET DE NULLE PART AILLEURS (D-CALX 7). Fiche
+# muette ⇒ quantité ``null`` et motif nommé — jamais un 1:1 supposé, qui
+# serait le pire des défauts possibles (il a l'air juste).
+#
+# ET NOUS NE PRÉTENDONS PAS L'AVOIR RECOUPÉ. OpenSolar calcule le ratio
+# optimiseur/module à partir de la tension, du courant et de la puissance
+# d'entrée ; nous le LISONS sur la fiche. La mention « ratio publié par la
+# fiche, non recoupé » voyage donc avec lui, et la liste des grandeurs
+# réellement publiées dit ce qui aurait permis le recoupement.
+#
+# AUCUNE SECONDE PARTITION : l'affectation suit l'ordre des modules que
+# ``services/chaines.py::affectation`` produit déjà (CAL125). Deux ordres de
+# modules dans le dépôt, ce serait deux cartes possibles pour une toiture.
+
+#: La clé du bloc « optimiseurs » dans ``resultat['electrique']``.
+CLE_OPTIMISEURS = 'optimiseurs'
+
+#: La clé de fiche qui porte le ratio, et les trois grandeurs d'ENTRÉE qui
+#: auraient permis de le recouper (libellés FRANÇAIS : ce sont eux que
+#: l'écran affiche).
+CLE_MODULES_PAR_OPTIMISEUR = 'modules_par_optimiseur'
+GRANDEURS_RECOUPEMENT = (
+    ('v_in_max', "tension d'entrée maximale"),
+    ('i_in_max_a', "courant d'entrée maximal"),
+    ('pmax_in_w', "puissance d'entrée maximale"),
+)
+
+MOTIF_RATIO_NON_PUBLIE = (
+    "ratio module/optimiseur non publié : la fiche « %s » ne renseigne pas "
+    "« FicheTechnique.opt_modules_par_optimiseur ». La quantité "
+    "d'optimiseurs n'est PAS déduite — aucun 1:1 n'est supposé.")
+
+MENTION_RATIO_NON_RECOUPE = 'ratio publié par la fiche, non recoupé'
+
+REFERENCE_OPENSOLAR_RATIO = (
+    'OpenSolar — Stringing Micro-Inverters and Power Optimizers : '
+    '« OpenSolar calculates the optimizer-to-panel ratio (e.g., 1:1 or 2:1) '
+    'based on voltage, current, and power constraints » '
+    '(https://support.opensolar.com/hc/en-us/articles/'
+    '4406931180313-Stringing-Micro-Inverters-and-Power-Optimizers)')
+
+
+def _optimiseurs_du_calepinage(conception, specs, designation=''):
+    """CALX212 — combien d'optimiseurs, et lequel porte quel module.
+
+    Rend ``{ratio, quantite, affectation, motif, recoupement, reference}``,
+    ou ``None`` quand aucun optimiseur n'est déclaré (le résultat est alors
+    exactement celui d'aujourd'hui, sans clé de plus).
+
+    Fonction PRIVÉE du module : son unique consommateur est le bloc
+    ``resultat['electrique']['optimiseurs']`` publié juste en dessous, et la
+    garde CALX57 refuse une fonction de service publique sans appelant
+    extérieur.
+    """
+    from .chaines import affectation
+
+    if not specs:
+        return None
+    nom = designation or 'optimiseur déclaré'
+    publiees = [libelle for cle, libelle in GRANDEURS_RECOUPEMENT
+                if _nombre(_champ_de_fiche(specs, cle)) is not None]
+    recoupement = {
+        'grandeurs_publiees': publiees,
+        'mention': MENTION_RATIO_NON_RECOUPE,
+        'reference': REFERENCE_OPENSOLAR_RATIO,
+    }
+
+    ratio = _nombre(_champ_de_fiche(specs, CLE_MODULES_PAR_OPTIMISEUR))
+    if ratio is None or ratio < 1:
+        return {
+            'ratio': None, 'quantite': None, 'affectation': [],
+            'motif': MOTIF_RATIO_NON_PUBLIE % nom,
+            'recoupement': recoupement, 'designation': nom,
+        }
+
+    ratio = int(ratio)
+    lignes = []
+    for rang, ligne in enumerate(affectation(conception)):
+        lignes.append({'module': ligne['module'],
+                       'optimiseur': rang // ratio + 1})
+    quantite = lignes[-1]['optimiseur'] if lignes else 0
+    return {
+        'ratio': ratio,
+        'quantite': quantite,
+        'affectation': lignes,
+        'motif': '',
+        'recoupement': recoupement,
+        'designation': nom,
+    }
 
 
 def _reglages_electrique_societe(calepinage):
