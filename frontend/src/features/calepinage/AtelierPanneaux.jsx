@@ -31,6 +31,13 @@ import RemplissageProuve from './RemplissageProuve'
 import PanneauAllees from './PanneauAllees'
 // CAL188 — le badge « calepinage périmé », lu du MÊME champ serveur.
 import BadgePerime from './BadgePerime'
+/* CALX1 — LE RAIL D'ONGLETS. Treize écrans du module étaient servis par le
+   routeur (`module.config.jsx`) sans qu'aucun lien du dépôt n'y mène : livrés
+   et introuvables. Ils se parcourent désormais depuis ICI, par `?onglet=<cle>`,
+   et leurs routes profondes restent servies comme liens profonds. Ajouter un
+   panneau = UNE ligne en fin de `atelier/onglets.js` ; ce fichier-ci n'est plus
+   rouvert (décision D-CALX 3 et 13). */
+import Rail from './atelier/Rail'
 
 /* ============================================================================
    CAL37 — L'UNIQUE EMPLACEMENT DES PANNEAUX DE L'ATELIER, mode `calepinage`.
@@ -150,6 +157,11 @@ export default function AtelierPanneaux({
           devis, ou dessinez librement — rien n'est deviné à votre place.
         </p>
       )}
+
+      {/* CALX1 — LE RAIL D'ONGLETS, sous la fiche : les treize panneaux
+          contextuels de ce calepinage, à un clic. Sans `?onglet=` aucun
+          panneau n'est ouvert — l'atelier rend ce qu'il rendait hier. */}
+      <Rail calepinageId={calepinageId} />
 
       {/* L'EMPLACEMENT des panneaux des tâches suivantes. `builderApi`,
           `onRecharger` et `lectureSeule` leur sont passés par l'atelier, pour
