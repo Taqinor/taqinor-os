@@ -80,6 +80,17 @@ export interface ShadingUi {
    *  (au moins deux points exploitables), `maskedHours` (sur 12×24) et `annualFactor`
    *  (1 = aucun effet). */
   horizonStatus: () => { hasProfile: boolean; maskedHours: number; annualFactor: number };
+  /** CALX122 — lecture géométrique d'ombrage PAR MODULE du pan actif, alignée sur
+   *  `ctx.layoutPlan.grid.panels` : nombre d'heures représentatives masquées (sur les 288
+   *  = 12 mois × 24 h de la matrice déjà calculée) et le premier mois concerné — jamais un
+   *  kWh. `null` = ABSENT (aucune source d'ombrage saisie — jamais un « 0 heure » qui
+   *  ferait croire à un calcul qui n'a pas eu lieu). */
+  moduleShadeReadings: () => ModuleShadeReading[] | null;
+  /** CALX122 — texte d'info-bulle prêt à afficher au survol d'UN module (`cellIndex`,
+   *  même indexation que la heatmap WJ21/`buildHeatmapColorFn`). `null` si non calculable
+   *  pour ce module (pan sans modules posés, indice hors plan). Le CÂBLAGE réel au survol
+   *  3D reste un crochet attendu côté `scene3d.ts`/`roof-tool-pro11.ts` (hors périmètre). */
+  moduleShadeTooltip: (cellIndex: number) => string | null;
 }
 
 const SHADE_SRC = 'rp9-shade-lines';
@@ -163,6 +174,70 @@ export function heatmapAccessValues(
   );
 }
 
+// ═══════════ CALX122 — LECTURE GÉOMÉTRIQUE D'OMBRAGE PAR MODULE ═══════════
+// Jusqu'ici la matrice 12 × 24 (`hourlyShadeFactors`/`ctx.shadeFactors`, prefill.ts:
+// 375-408) ne disait QUE de combien la production était rabotée (`heatmapAccessValues`,
+// `solarAccessSummary`) — jamais COMBIEN d'heures représentatives une obstruction couvre
+// réellement un module donné, ni depuis quel mois. Cette lecture réutilise la MÊME
+// matrice, évaluée à la position du module plutôt qu'au centroïde, et se contente de
+// COMPTER les cellules masquées : aucun kWh n'est lu ni produit ici.
+
+/** CALX122 — lecture géométrique d'un module : heures masquées + premier mois concerné. */
+export interface ModuleShadeReading {
+  /** Nombre d'heures représentatives masquées, sur les 288 (12 mois × 24 h) de la
+   *  matrice — même unité que le dérate d'horizon lointain (CAL93, « heure(s) sur 288 »). */
+  maskedHours: number;
+  /** Premier mois (0 = janvier) où au moins une heure est masquée, ou `null` si aucune
+   *  (obstruction(s) saisie(s) mais hors de la trajectoire solaire de ce module — un vrai
+   *  zéro géométrique, jamais une absence de lecture). */
+  firstMonthIndex: number | null;
+}
+
+/**
+ * CALX122 — lecture géométrique PURE d'un point (cx, cy) : recalcule SA PROPRE matrice
+ * 12 × 24 (`hourlyShadeFactors`, évaluée à sa position) et compte les cellules masquées
+ * (facteur < 1). Aucune obstruction ⇒ matrice inchangée ⇒ 0 heure, aucun mois — un vrai
+ * zéro, distinct de l'ABSENCE de lecture publiée par `moduleShadeReadingsForPanels`
+ * quand aucune source n'a été saisie du tout. PURE : testable sans DOM ni carte.
+ */
+export function moduleShadeReading(
+  latitudeDeg: number,
+  obstructions: readonly ShadeObstructionENU[],
+  cx: number,
+  cy: number,
+): ModuleShadeReading {
+  const matrix = hourlyShadeFactors(latitudeDeg, obstructions, cx, cy);
+  let maskedHours = 0;
+  let firstMonthIndex: number | null = null;
+  matrix.forEach((row, m) => {
+    let maskedInMonth = 0;
+    for (const v of row) if (v < 1) maskedInMonth++;
+    if (maskedInMonth > 0) {
+      maskedHours += maskedInMonth;
+      if (firstMonthIndex == null) firstMonthIndex = m;
+    }
+  });
+  return { maskedHours, firstMonthIndex };
+}
+
+/**
+ * CALX122 — lecture géométrique de CHAQUE module d'un pan. `hasSource` distingue « rien à
+ * publier » d'un « vrai zéro » : sans AUCUNE source d'ombrage saisie (`false`), le
+ * résultat est `null` — le compte est ABSENT, jamais un « 0 heure » qui ferait croire à
+ * un calcul qui n'a pas eu lieu. Une source saisie (`true`) publie systématiquement un
+ * compte par module, même à 0 (obstruction sous le niveau du toit ou hors trajectoire
+ * solaire — cf. `moduleShadeReading`). PURE : testable sans DOM ni carte.
+ */
+export function moduleShadeReadingsForPanels(
+  latitudeDeg: number,
+  obstructions: readonly ShadeObstructionENU[],
+  panels: readonly HeatmapPoint[],
+  hasSource: boolean,
+): ModuleShadeReading[] | null {
+  if (!hasSource) return null;
+  return panels.map((p) => moduleShadeReading(latitudeDeg, obstructions, p.cx, p.cy));
+}
+
 export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const { map, setStatus, recalcDisplays, applyHeatmap } = deps;
 
@@ -207,6 +282,21 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     if (!anchor || typeof document.createElement !== 'function') return null;
     const box = document.createElement('div');
     box.id = 'rp9-solar-access';
+    box.className = 'mt-2 text-xs text-lune-soft';
+    anchor.appendChild(box);
+    return box;
+  }
+  // CALX122 — bloc où la lecture géométrique d'ombrage PAR MODULE (heures masquées +
+  // premier mois) est publiée, juste sous l'accès solaire chiffré (CAL97) — créé s'il
+  // manque dans la page (même patron que `ensureAccessBlock`).
+  const shadeHoursEl = ensureShadeHoursBlock();
+  function ensureShadeHoursBlock(): HTMLElement | null {
+    const existing = $('rp9-shade-hours');
+    if (existing) return existing;
+    const anchor = accessEl?.parentElement ?? heatmapNoteEl?.parentElement ?? heatmapBtn?.parentElement;
+    if (!anchor || typeof document.createElement !== 'function') return null;
+    const box = document.createElement('div');
+    box.id = 'rp9-shade-hours';
     box.className = 'mt-2 text-xs text-lune-soft';
     anchor.appendChild(box);
     return box;
@@ -377,6 +467,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     // la teinte d'accès solaire si la heatmap est active.
     refreshHeatmap();
     renderSolarAccess(); // CAL97 — le chiffre publié suit les obstructions
+    renderModuleShadeReadings(); // CALX122 — la lecture par module suit les obstructions
   }
 
   // WJ21 — CARTE D'ACCÈS SOLAIRE : teinte chaque panneau par sa part RÉELLE d'irradiation
@@ -467,6 +558,65 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     const g = ctx.layoutPlan?.grid;
     if (!g || !g.panels.length || !Number.isFinite(g.kwc) || g.kwc <= 0) return 0;
     return g.kwc / g.panels.length;
+  }
+
+  /** CALX122 — lecture géométrique par module du pan actif (cf. `moduleShadeReadingsForPanels`
+   *  ci-dessus) : `null` tant qu'aucune source d'ombrage n'est saisie, ou tant qu'aucun
+   *  module n'est posé sur ce pan. */
+  function moduleShadeReadings(): ModuleShadeReading[] | null {
+    const plan = ctx.layoutPlan;
+    if (!plan || !plan.grid.panels.length || ctx.vertices.length < 3) return null;
+    return moduleShadeReadingsForPanels(ctx.centroidLat, activeShadeEntries(), plan.grid.panels, hasShadeSources());
+  }
+
+  /** CALX122 — texte d'info-bulle prêt à afficher au survol d'UN module. Aucune
+   *  production ici — le survol reste géométrique, comme le compte publié dans le
+   *  panneau (`renderModuleShadeReadings`). Attacher ce texte au survol 3D reste un
+   *  crochet attendu côté scene3d.ts/roof-tool-pro11.ts, hors périmètre de cette tâche. */
+  function moduleShadeTooltip(cellIndex: number): string | null {
+    const readings = moduleShadeReadings();
+    if (!readings) {
+      return hasShadeSources()
+        ? 'Ombrage : non calculé (aucun module posé sur ce pan).'
+        : 'Ombrage : non renseigné — aucune obstruction n’a été saisie.';
+    }
+    const r = cellIndex >= 0 && cellIndex < readings.length ? readings[cellIndex] : null;
+    if (!r) return null;
+    return r.maskedHours > 0 && r.firstMonthIndex != null
+      ? `Ombrage : ${r.maskedHours} heure(s) sur 288 masquée(s) par une obstruction, dès ${HEATMAP_MONTH_LABELS[r.firstMonthIndex]}.`
+      : 'Ombrage : aucune heure masquée pour ce module.';
+  }
+
+  /** CALX122 — publie, PAR MODULE, la lecture géométrique d'ombrage (heures masquées +
+   *  premier mois) à côté de l'accès solaire CHIFFRÉ (CAL97) : sans source d'ombrage
+   *  saisie, le compte est ABSENT — jamais un « 0 heure ». Aucun kWh ici. */
+  function renderModuleShadeReadings() {
+    const el = shadeHoursEl;
+    if (!el) return;
+    const readings = moduleShadeReadings();
+    if (!readings) {
+      el.textContent = hasShadeSources()
+        ? 'Ombrage par module : non calculé (aucun module posé sur ce pan).'
+        : 'Ombrage par module : non renseigné — aucune obstruction n’a été saisie. Le nombre d’heures est volontairement ABSENT plutôt qu’estimé à zéro.';
+      return;
+    }
+    const shaded = readings.filter((r) => r.maskedHours > 0);
+    if (!shaded.length) {
+      el.textContent =
+        `Ombrage par module (lecture géométrique, ${readings.length} module(s)) : aucune heure masquée — ` +
+        'les obstructions renseignées ne couvrent la trajectoire solaire d’aucun module.';
+      return;
+    }
+    const hours = shaded.map((r) => r.maskedHours);
+    const minH = Math.min(...hours);
+    const maxH = Math.max(...hours);
+    const firstMonths = shaded.map((r) => r.firstMonthIndex).filter((m): m is number => m != null);
+    const earliestMonth = firstMonths.length ? Math.min(...firstMonths) : null;
+    el.textContent =
+      'Ombrage par module (lecture géométrique, sur 288 heures représentatives = 12 mois × 24 h) : ' +
+      `${shaded.length} module(s) sur ${readings.length} couvert(s) par une obstruction, de ${minH} à ${maxH} heure(s)` +
+      (earliestMonth != null ? `, dès ${HEATMAP_MONTH_LABELS[earliestMonth]}` : '') +
+      '. Aucune production n’est calculée ici.';
   }
 
   function setHeatmap(on: boolean) {
@@ -687,6 +837,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   recomputeHorizonFactors(); // CAL93 — état initial (document rechargé avec un profil)
   renderHorizonNote();
   renderSolarAccess(); // CAL97 — état initial (dossier rechargé avec des obstructions)
+  renderModuleShadeReadings(); // CALX122 — état initial
 
   return {
     handleMapClick,
@@ -696,5 +847,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     solarAccess,
     setHorizonProfile,
     horizonStatus,
+    moduleShadeReadings,
+    moduleShadeTooltip,
   };
 }
