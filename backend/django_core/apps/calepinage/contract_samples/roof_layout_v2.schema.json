@@ -894,8 +894,64 @@
             "null"
           ],
           "minimum": 0
+        },
+        "usage": {
+          "description": "CALX401 — ce à quoi la zone SERT, quand ce n'est pas seulement sa nature réglementaire. `circulation` = ALLÉE de circulation TRACÉE sur le toit : un passage que le pompier emprunte, posé et déplaçable là où il doit l'être. OPTIONNEL et additif : absent = une zone d'exclusion ordinaire, qui se relit exactement comme aujourd'hui. Jusqu'ici la seule allée que le module connaissait était une valeur UNIFORME de réglage société (`services/degagements.py::allee_technique`, `Parametres.allee_m`), jamais un passage dessiné — un retrait de rive et un passage ne sont pas la même pièce, et le second ne se déduit pas du premier.",
+          "type": "string",
+          "enum": [
+            "circulation"
+          ]
+        },
+        "axe": {
+          "description": "CALX401 — la POLYLIGNE tracée par l'utilisateur en [[lng, lat], …], MÊME ordre que `vertices`. Requise quand `usage` vaut `circulation`, et il lui faut au moins DEUX points : un passage à un point ne mène nulle part. Elle garde le GESTE (ce que l'utilisateur a dessiné) ; c'est `vertices` qui fait foi pour la géométrie, le couloir y ayant été calculé depuis `axe` et `largeurM` au moment du tracé.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/couple"
+          },
+          "minItems": 2
+        },
+        "largeurM": {
+          "description": "CALX401 — largeur du passage (m), SAISIE. Requise quand `usage` vaut `circulation`. Le schéma ne livre AUCUNE largeur : ni valeur par défaut, ni minimum réglementaire, ni suggestion — une largeur de passage se lit dans le texte qui s'applique au chantier, ou elle est saisie ; elle ne descend jamais d'un contrat de données (D-CALX 7).",
+          "type": "number",
+          "exclusiveMinimum": 0
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "usage"
+            ],
+            "properties": {
+              "usage": {
+                "const": "circulation"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "axe",
+              "largeurM"
+            ],
+            "properties": {
+              "axe": {
+                "description": "CALX401 — une allée porte la polyligne tracée, d'au moins deux points.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/couple"
+                },
+                "minItems": 2
+              },
+              "largeurM": {
+                "description": "CALX401 — une allée porte sa largeur SAISIE.",
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        }
+      ]
     },
     "measurement": {
       "description": "CAL102 — une mesure posée (distance cumulée, surface d'un polygone fermé, ou angle à 3 points).",
