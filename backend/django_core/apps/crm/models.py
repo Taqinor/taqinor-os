@@ -506,6 +506,10 @@ class Lead(SoftDeleteModel):
     prenom = models.CharField(max_length=255, blank=True, null=True)
     societe = models.CharField(max_length=255, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
+    # CAD146 (21/09/2026) — pas de fuseau horaire par lead : un numéro
+    # étranger (diaspora) reçoit ses touches à l'heure de Casablanca. Décision
+    # écrite, rien construit tant que CADM7 (comptage) n'a pas de chiffre —
+    # voir `apps/crm/horaires.py`, bas de fichier.
     telephone = models.CharField(max_length=50, blank=True, null=True)
     adresse = models.TextField(blank=True, null=True)
     ville = models.CharField(max_length=120, blank=True, null=True)
