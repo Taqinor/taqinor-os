@@ -164,3 +164,27 @@ def count_working_days(start, end, extra_holidays=None):
             count += 1
         current += _dt.timedelta(days=1)
     return count
+
+
+# ── CAD40 ── accès aux fêtes MOBILES connues (rien n'est calculé) ──────────
+
+def movable_holidays(year):
+    """``{date: libellé}`` des fêtes mobiles CONNUES pour ``year`` (peut être
+    vide).
+
+    Point d'entrée unique des appelants (le seeder de fériés par société,
+    notamment) : ils ne plongent pas dans ``MOROCCAN_MOVABLE_HOLIDAYS``, et
+    surtout ils ne CALCULENT jamais une date hégirienne — une année absente
+    renvoie un dictionnaire vide, ce qui doit se traduire par un RAPPEL à
+    saisir, jamais par une date devinée.
+    """
+    try:
+        annee = int(year)
+    except (TypeError, ValueError):
+        return {}
+    return dict(MOROCCAN_MOVABLE_HOLIDAYS.get(annee, {}))
+
+
+def movable_holiday_years():
+    """Les années pour lesquelles des fêtes mobiles sont connues, triées."""
+    return sorted(MOROCCAN_MOVABLE_HOLIDAYS)

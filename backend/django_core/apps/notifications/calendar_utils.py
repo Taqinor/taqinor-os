@@ -260,3 +260,45 @@ def feries_entre(
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('calendar_utils: feries_entre échoué : %s', exc)
         return []
+
+
+# ── CAD40 ── rappel « les fêtes mobiles de l'année ne sont pas saisies » ────
+
+def rappel_fetes_mobiles(company, annee=None):
+    """``None`` si tout va bien, sinon une PHRASE française à afficher.
+
+    Les fêtes mobiles (Aïd al-Fitr, Aïd al-Adha, Nouvel An hégirien, Aïd
+    al-Mawlid) suivent le calendrier lunaire : leur date n'est JAMAIS
+    calculée ici, elle est saisie (Paramètres → Localisation → Fêtes
+    mobiles) ou posée à la création de la société quand ``core.calendar`` la
+    connaît déjà. Tant qu'aucune n'existe pour l'année demandée,
+    ``is_jour_ouvre`` laisse passer le jour de l'Aïd — et une touche de
+    cadence peut y tomber. Ce rappel est ce qui rend ce trou VISIBLE.
+
+    Ne compte que les lignes NON récurrentes : cocher « Récurrent chaque
+    année » sur un Aïd est justement l'erreur que CAD42 traite, et une telle
+    ligne ne prouve pas que l'année en cours est saisie.
+    """
+    if annee is None:
+        from core.dates import aujourd_hui_local
+        annee = aujourd_hui_local().year
+    try:
+        annee = int(annee)
+    except (TypeError, ValueError):
+        return None
+    try:
+        from .models import Holiday
+        existe = Holiday.objects.filter(
+            company=company, recurrent_annuel=False,
+            date__year=annee).exists()
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('calendar_utils: rappel_fetes_mobiles échoué : %s', exc)
+        return None
+    if existe:
+        return None
+    return (
+        f'Les fêtes mobiles de {annee} (Aïd al-Fitr, Aïd al-Adha, Nouvel An '
+        f'hégirien, Aïd al-Mawlid) ne sont pas saisies : une relance peut '
+        f'tomber le jour de la fête. Saisissez-les dans Paramètres → '
+        f'Localisation → Fêtes mobiles.'
+    )
