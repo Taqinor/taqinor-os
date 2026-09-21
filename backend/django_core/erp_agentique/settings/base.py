@@ -1233,6 +1233,14 @@ CELERY_TASK_ROUTES = {
     '*.backfill_*': {'queue': 'bulk'},
     '*.seed_*': {'queue': 'bulk'},
     '*.export_bulk_*': {'queue': 'bulk'},
+    # NTOBS1 — rafraîchissement 5 min des composants publics de statut.
+    # `statuspage` est une app CONSERVÉE : sa route avait été retirée par
+    # ricochet avec celles de ses voisines parquées (paie/grc/rh), alors que son
+    # entrée beat reste déclarée dans erp_agentique/celery.py — la tâche
+    # retombait donc sur la queue `default` (elle partageait la file
+    # interactive). Toute tâche du beat_schedule DOIT être routée explicitement
+    # vers `scheduled` (garde core/tests/test_celery_task_routes.py).
+    'statuspage.rafraichir_composants': {'queue': 'scheduled'},
     # NTOBS3 — snapshot SLA mensuel de toutes les sociétés.
     'core.generer_sla_mensuel': {'queue': 'scheduled'},
     # NTOBS9 — notification 24h/1h avant une fenêtre de maintenance.
@@ -1523,6 +1531,13 @@ SECURE_BROWSER_XSS_FILTER = True
 VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
 VAPID_ADMIN_EMAIL = os.environ.get('VAPID_ADMIN_EMAIL', '')
+
+# SOLMVP — runner du projet : `DiscoverRunner` + purge de fin de
+# `TransactionTestCase` en `TRUNCATE … CASCADE`. Les apps parquées gardent leurs
+# TABLES (coquilles de migrations) sans garder leurs MODÈLES : leurs clés
+# étrangères vers les tables conservées font refuser un TRUNCATE non cascadé.
+# Le POURQUOI complet est dans `core/test_runner.py`.
+TEST_RUNNER = 'core.test_runner.TaqinorTestRunner'
 
 TESTING = ('test' in sys.argv) or bool(os.environ.get('PYTEST_CURRENT_TEST'))
 # WOW2 — sous le test runner UNIQUEMENT, hacher les mots de passe en MD5 (rapide)

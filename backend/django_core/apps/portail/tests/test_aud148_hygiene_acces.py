@@ -101,10 +101,15 @@ class DerniereConnexionPortailTests(TestCase):
         self.assertIsNotNone(self.compte.derniere_connexion)
 
     def test_une_connexion_tokenisee_renseigne_la_derniere_connexion(self):
-        """ROUGE avant AUD148 : la colonne restait NULL."""
+        """ROUGE avant AUD148 : la colonne restait NULL.
+
+        Correctif CI SOLMVP — ``mon-releve`` vivait sous l'ancien préfixe
+        ``/api/django/compta/portail/`` (compta, coquillée depuis, n'expose
+        plus aucune url) ; il est nativement servi sous le préfixe public du
+        portail (``apps.portail.public_urls``)."""
         public = APIClient()
         res = public.get(
-            f'/api/django/compta/portail/{self.compte.token_acces}'
+            f'/api/django/public/portail/{self.compte.token_acces}'
             '/mon-releve/')
         self.assertEqual(res.status_code, 200, res.content)
 

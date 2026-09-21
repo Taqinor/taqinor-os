@@ -23,6 +23,7 @@ objets et vérifiant que le compte de requêtes ne bouge pas.
 """
 from __future__ import annotations
 
+import functools
 from contextlib import contextmanager
 
 from django.test.utils import CaptureQueriesContext
@@ -51,6 +52,94 @@ class AssertQueryBudgetMixin:
                 f'Budget de requêtes dépassé : {actual} requêtes exécutées, '
                 f'plafond {n}.\nRequêtes capturées :\n{queries_preview}')
             self.fail(msg or base_msg)
+
+
+@contextmanager
+def wide_fixture_teardown_timeout(aliases):
+    """Élargit ``statement_timeout`` à ``FIXTURE_TEARDOWN_TIMEOUT_MS`` sur
+    ``aliases`` le temps du bloc, puis rétablit la valeur d'origine.
+
+    Extrait de ``WideTeardownTimeoutMixin`` pour être réutilisable par le
+    runner du projet (``core.test_runner``), qui l'applique à TOUS les
+    ``TransactionTestCase`` et non aux seules classes portant le mixin.
+    Ré-entrant : appliquer le mixin PUIS le runner ne fait qu'écrire deux fois
+    la même valeur et rétablir dans l'ordre inverse.
+    """
+    previous = {}
+    for alias in aliases:
+        conn = connections[alias]
+        if conn.vendor != 'postgresql':
+            continue
+        try:
+            with conn.cursor() as cur:
+                cur.execute('SHOW statement_timeout')
+                previous[alias] = cur.fetchone()[0]
+                cur.execute(
+                    f'SET statement_timeout = {FIXTURE_TEARDOWN_TIMEOUT_MS}')
+        except Exception:  # pragma: no cover - jamais casser un teardown
+            previous.pop(alias, None)
+    try:
+        yield
+    finally:
+        for alias, value in previous.items():
+            try:
+                with connections[alias].cursor() as cur:
+                    # psycopg2 interpole côté client : `SET` n'accepte pas de
+                    # paramètre lié, mais la valeur reste échappée.
+                    cur.execute('SET statement_timeout = %s', [value])
+            except Exception:  # pragma: no cover - connexion déjà fermée
+                pass
+
+
+@contextmanager
+def cascading_flush(aliases):
+    """Force ``TRUNCATE … CASCADE`` pour les ``flush`` émis dans le bloc.
+
+    POURQUOI (SOLMVP — « coquilles de migrations », ``core.parked`` /
+    ``docs/parked-modules.md``) : les 47 apps sorties du MVP solaire ont perdu
+    leurs MODÈLES (migration d'état) mais GARDÉ leurs TABLES — la base de test
+    est construite par les migrations gelées, donc ces tables existent toujours
+    et portent toujours leurs clés étrangères vers les tables CONSERVÉES
+    (``authentication_company``, ``installations_ordreassemblage``…). Or
+    ``TransactionTestCase._fixture_teardown()`` ne tronque que les tables des
+    modèles INSTALLÉS : Postgres refuse alors le ``TRUNCATE`` (« cannot
+    truncate a table referenced in a foreign key constraint ») et la purge
+    échoue — le test suivant explose en doublon de clé.
+
+    Le ``CASCADE`` est le comportement CORRECT ici : il ratisse en plus les
+    tables des coquilles, qui sont VIDES dans une base de test (aucun modèle,
+    donc aucune écriture possible). C'est aussi, littéralement, ce que Django
+    fait déjà quand une classe déclare ``available_apps``
+    (``allow_cascade=self.available_apps is not None``) — d'où le fait que
+    ``apps/crm/tests_webhook.py`` était la SEULE classe
+    ``TransactionTestCase`` verte avant ce correctif.
+
+    Implémentation : on emballe ``connection.ops.sql_flush`` (le seul point où
+    ``allow_cascade`` est consommé) plutôt que de recopier le corps de
+    ``_fixture_teardown``, pour ne pas figer une version de Django ni perdre sa
+    logique (``inhibit_post_migrate``, ``serialized_rollback``…).
+    """
+    poses = []
+    for alias in aliases:
+        ops = connections[alias].ops
+        origine = ops.sql_flush
+        deja_pose = 'sql_flush' in ops.__dict__
+
+        @functools.wraps(origine)
+        def sql_flush(*args, _origine=origine, **kwargs):
+            kwargs['allow_cascade'] = True
+            return _origine(*args, **kwargs)
+
+        ops.sql_flush = sql_flush
+        poses.append((ops, origine, deja_pose))
+    try:
+        yield
+    finally:
+        for ops, origine, deja_pose in poses:
+            if deja_pose:
+                ops.sql_flush = origine
+            else:
+                ops.__dict__.pop('sql_flush', None)
 
 
 class WideTeardownTimeoutMixin:
@@ -82,30 +171,16 @@ class WideTeardownTimeoutMixin:
 
         class MesTests(WideTeardownTimeoutMixin, TransactionTestCase):
             ...
+
+    NB (SOLMVP) : depuis que ``core.test_runner.TaqinorTestRunner`` élargit ce
+    même timeout pour TOUS les ``TransactionTestCase`` (et force le ``CASCADE``
+    du flush, cf. ``cascading_flush``), ce mixin est REDONDANT sur le chemin
+    ``manage.py test`` du projet. Il est conservé : il documente l'intention
+    classe par classe, il reste ré-entrant (deux ``SET`` de la même valeur), et
+    il protège un usage direct hors runner du projet.
     """
 
     def _fixture_teardown(self):  # noqa: N802 — nom imposé par Django
-        previous = {}
-        for alias in self._databases_names(include_mirrors=False):
-            conn = connections[alias]
-            if conn.vendor != 'postgresql':
-                continue
-            try:
-                with conn.cursor() as cur:
-                    cur.execute('SHOW statement_timeout')
-                    previous[alias] = cur.fetchone()[0]
-                    cur.execute(
-                        f'SET statement_timeout = {FIXTURE_TEARDOWN_TIMEOUT_MS}')
-            except Exception:  # pragma: no cover - jamais casser un teardown
-                previous.pop(alias, None)
-        try:
+        aliases = self._databases_names(include_mirrors=False)
+        with wide_fixture_teardown_timeout(aliases):
             super()._fixture_teardown()
-        finally:
-            for alias, value in previous.items():
-                try:
-                    with connections[alias].cursor() as cur:
-                        # psycopg2 interpole côté client : `SET` n'accepte pas
-                        # de paramètre lié, mais la valeur reste échappée.
-                        cur.execute('SET statement_timeout = %s', [value])
-                except Exception:  # pragma: no cover - connexion déjà fermée
-                    pass

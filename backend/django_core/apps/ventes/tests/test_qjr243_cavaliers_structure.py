@@ -196,8 +196,26 @@ class CavalierGRecensementAvecVerdicts(SimpleTestCase):
 
     def test_aucun_recablage_dans_ce_lot(self):
         """Les cinq écritures cross-app de ``cpq`` sont CONSTATÉES, pas
-        déplacées : le lot ne recâble rien."""
-        source = (VENTES.parent / 'cpq' / 'services.py').read_text(
-            encoding='utf-8')
-        self.assertNotIn('from apps.ventes.domain.lignes import creer_ligne',
-                         source)
+        déplacées : le lot ne recâble rien.
+
+        SOLMVP (21/09/2026) — ``apps/cpq`` est parqué (coquille de migrations,
+        cf. ``core/parked.py``) : son ``services.py`` n'est plus sur le disque,
+        donc le constat d'origine ne peut plus s'y lire. Il s'ancre sur le côté
+        GARDÉ, où il dit exactement la même chose : ``apps/ventes`` ne connaît
+        ``cpq`` que comme un CONSTAT ÉCRIT (le recensement de ``domain/lignes``,
+        vérifié par ``test_les_deux_contournements_de_la_garde_sont_nommes``) et
+        n'en importe rien — ni avant le parcage, ni depuis.
+        """
+        services_cpq = VENTES.parent / 'cpq' / 'services.py'
+        if services_cpq.exists():  # app dé-parquée : le constat d'origine
+            self.assertNotIn(
+                'from apps.ventes.domain.lignes import creer_ligne',
+                services_cpq.read_text(encoding='utf-8'))
+            return
+        fichiers = sorted((VENTES / 'domain').glob('*.py'))
+        fichiers += [VENTES / 'services.py', VENTES / 'selectors.py']
+        for chemin in fichiers:
+            source = chemin.read_text(encoding='utf-8')
+            for interdit in ('from apps.cpq', 'import apps.cpq'):
+                with self.subTest(fichier=chemin.name, interdit=interdit):
+                    self.assertNotIn(interdit, source)

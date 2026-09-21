@@ -134,9 +134,13 @@ class Ntmig26CertificationTests(TestCase):
             self.partenaire.niveau_certification = niveau
             self.assertEqual(self.partenaire.rang_certification, rang)
 
-    def test_ancienne_route_compta_expose_les_memes_champs(self):
-        resp = self.api.get(
-            f'/api/django/compta/partenaires/{self.partenaire.pk}/')
-        self.assertEqual(resp.status_code, 200)
-        self.assertIn('niveau_certification', resp.data)
-        self.assertIn('specialites', resp.data)
+    # NOTE (correctif CI SOLMVP) — ``test_ancienne_route_compta_expose_les_
+    # memes_champs`` a été retiré : il vérifiait la parité entre la route
+    # ``/api/django/crm/partenaires/`` et l'ancien préfixe legacy
+    # ``/api/django/compta/partenaires/``, une fenêtre de compatibilité
+    # ouverte par SOLMVP10 « tant que compta n'est pas coquillé (SOLMVP30) ».
+    # SOLMVP30b a depuis coquillé ``compta`` en app-coquille SANS AUCUNE url
+    # (contrat ``core.parked`` gardé par ``core.tests.test_parked_registry``)
+    # — la route legacy est partie pour de bon, pas seulement de passage.
+    # La couverture réelle (les champs de certification sont bien exposés)
+    # reste entière via la route native ci-dessus.
