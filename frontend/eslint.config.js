@@ -5,7 +5,9 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'playwright-report', 'test-results', 'e2e/.auth']),
+  // SOLMVP40 — modules sortis du MVP solaire, rangés hors build/lint/tests
+  // (code conservé pour retour possible, cf. frontend/parked/README.md).
+  globalIgnores(['dist', 'playwright-report', 'test-results', 'e2e/.auth', 'parked/**']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

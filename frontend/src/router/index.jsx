@@ -64,27 +64,18 @@ const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 const PublicBookingPage = lazy(() => import('../pages/crm/PublicBookingPage'))
 // NTCRM18 — page publique de la salle de vente digitale (sans login).
 const PublicSalleVentePage = lazy(() => import('../pages/crm/salle-vente/PublicSalleVentePage'))
-// XCTR14 — portail client public « Mes contrats » (token, sans login).
-const PortailContratsPage = lazy(() => import('../features/contrats/PortailContratsPage'))
 // XGED1/XGED2 — cérémonie de signature électronique publique (sans login).
 const PublicSignaturePage = lazy(() => import('../pages/ged/PublicSignaturePage'))
 // XGED7 — dépôt public de fichier (upload-request, sans login).
 const PublicDepotPage = lazy(() => import('../pages/ged/PublicDepotPage'))
-// XRH10 — guichet kiosque de pointage (device-token, sans session ni layout ERP).
-const KiosquePointage = lazy(() => import('../features/rh/Kiosque'))
 // XSAV19 — page publique « Signaler un problème » via QR équipement.
 const EquipementSignalerPage = lazy(() => import('../pages/sav/EquipementSignalerPage'))
 // XSAV10/FG86 — page publique de suivi client d'un ticket SAV + CSAT.
 const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
-// XKB19 — page publique de consultation d'un article KB partagé (lien tokenisé).
-const PublicArticlePage = lazy(() => import('../pages/kb/PublicArticlePage'))
-// WIR214 — page publique de signalement chantier QHSE via QR (lien tokenisé).
-const SignalementPublicPage = lazy(() => import('../pages/qhse/SignalementPublicPage'))
 // WIR264 — pages publiques d'intervention (suivi « en route » ZFSM/XFSM7 et
 // compte-rendu signé ZFSM2), chacune sur son propre jeton.
 const InterventionSuiviPublicPage = lazy(() => import('../pages/installations/InterventionSuiviPublicPage'))
 const InterventionRapportPublicPage = lazy(() => import('../pages/installations/InterventionRapportPublicPage'))
-const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 // VX78 — Écran 404 déjà construit (ui/NotFound.jsx), jusqu'ici jamais importé
 // par le routeur : le catch-all rebondissait en silence vers /dashboard.
@@ -386,16 +377,12 @@ const router = createBrowserRouter([
   { path: '/rdv/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense></RouteErrorBoundary> },
   // NTCRM18 — salle de vente digitale publique (sans login, sans layout ERP).
   { path: '/salle-vente/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicSalleVentePage /></Suspense></RouteErrorBoundary> },
-  // XCTR14 — portail client public « Mes contrats » (sans login, sans layout ERP).
-  { path: '/portail-contrats/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PortailContratsPage /></Suspense></RouteErrorBoundary> },
   // XGED1 — cérémonie de signature publique (mono-signataire), sans login.
   { path: '/ged/signature/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicSignaturePage mode="signature" /></Suspense></RouteErrorBoundary> },
   // XGED2 — cérémonie de signature publique d'un destinataire (multi-signataires).
   { path: '/ged/signataire/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicSignaturePage mode="signataire" /></Suspense></RouteErrorBoundary> },
   // XGED7 — dépôt public de fichier (upload-request), sans login.
   { path: '/ged/depot/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicDepotPage /></Suspense></RouteErrorBoundary> },
-  // XRH10 — kiosque de pointage (jeton de device en localStorage, sans session).
-  { path: '/kiosque', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><KiosquePointage /></Suspense></RouteErrorBoundary> },
   // XSAV19 — « Signaler un problème » via QR équipement (sans login, sans layout ERP).
   { path: '/e/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><EquipementSignalerPage /></Suspense></RouteErrorBoundary> },
   // XSAV10/FG86 — suivi client d'un ticket SAV + CSAT (sans login, sans layout ERP).
@@ -403,10 +390,6 @@ const router = createBrowserRouter([
   // XPLT10 — kiosque TV plein écran des dashboards partagés (authentifié,
   // sans layout ERP — rotation/rafraîchissement pilotés côté écran).
   { path: '/dashboards-tv', loader: authLoader, element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><DashboardsTvPage /></Suspense></RouteErrorBoundary> },
-  // XKB19 — consultation publique d'un article KB partagé (sans login, sans layout ERP).
-  { path: '/kb/public/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicArticlePage /></Suspense></RouteErrorBoundary> },
-  // WIR214 — signalement chantier QHSE via QR (sans login, sans layout ERP).
-  { path: '/qhse/signalement/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><SignalementPublicPage /></Suspense></RouteErrorBoundary> },
   // WIR264/XFSM7 — suivi public « technicien en route » (sans login).
   { path: '/intervention/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><InterventionSuiviPublicPage /></Suspense></RouteErrorBoundary> },
   // WIR264/ZFSM2 — compte-rendu d'intervention signé, jeton DISTINCT.
@@ -500,7 +483,6 @@ const router = createBrowserRouter([
   // (société RÉELLE, jamais démo). Auto-déclenché depuis PremiersPasWidget.jsx
   // (lien programmatique, jamais un item de menu statique).
   { path: '/onboarding/demarrage', loader: authLoader, element: <WithLayout><DemarrageWizard /></WithLayout> },
-  { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
   // VX247(d) — glossaire métier (les HelpTip VX47 y pointent au lieu de dupliquer).
   { path: '/aide/lexique', loader: authLoader, element: <WithLayout><LexiquePage /></WithLayout> },
   // WIR177 — annonces internes reçues (`?annonce=<pk>` déplie celle visée).

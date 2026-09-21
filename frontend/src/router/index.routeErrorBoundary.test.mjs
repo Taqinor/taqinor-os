@@ -25,21 +25,22 @@ const routeLines = routerBlock
   .filter((line) => /\{\s*path:/.test(line))
 
 // Routes historiquement SANS layout ERP (WithLayout) — celles visées par VX64.
+// SOLMVP40 — '/portail-contrats/:token' (contrats), '/kiosque' (rh) et
+// '/kb/public/:token' (kb) ont quitté le routeur avec leurs modules, sortis
+// physiquement du dépôt vers frontend/parked/. 'ged' reste dans le produit
+// (décision founder finale) — ses trois routes '/ged/*' restent ici.
 const nakedRoutePaths = [
   '/',
   '/landing',
   '/login',
   '/ui',
   '/rdv/:token',
-  '/portail-contrats/:token',
   '/ged/signature/:token',
   '/ged/signataire/:token',
   '/ged/depot/:token',
-  '/kiosque',
   '/e/:token',
   '/suivi/:token',
   '/dashboards-tv',
-  '/kb/public/:token',
 ]
 
 test('chaque route nue déclarée est bien enveloppée dans <RouteErrorBoundary>', () => {
