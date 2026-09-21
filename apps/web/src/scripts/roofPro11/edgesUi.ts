@@ -25,6 +25,20 @@
  * vers `edgesUi.handleMapClick(lngLat)` et ne pas traiter ce clic comme un geste de tracé
  * quand `edgesUi.isEdgeMode()` est vrai (tant que ce crochet n'existe pas, le module
  * s'abonne lui-même au clic de la carte, mais UNIQUEMENT pendant que le mode est armé).
+ *
+ * CALX99 — PRENDRE L'AZIMUT D'UN PAN DEPUIS UNE ARÊTE CLIQUÉE (parité HelioScope, « Set
+ * Azimuth to ___ »). Deuxième mode « clic sur arête », mutuellement exclusif avec le
+ * précédent (armer l'un désarme l'autre — un seul geste de clic possible à la fois) : le
+ * clic retient l'arête la plus proche (même `areteAuPoint`/même tolérance) et écrit
+ * directement `ctx.facingAzimuthDeg` = cap de la normale sortante du segment
+ * (`azimutNormaleArete`, `snap.ts`) + `ctx.facingManual = true` — le MÊME geste que les
+ * boutons cardinaux de `roof-tool-pro11.ts:3226-3236` (override manuel PAR ZONE, qui gagne
+ * ensuite sur `autoInferFacing`). Aucune étape de confirmation : contrairement à la
+ * correction de type, un clic suffit. Crochet attendu : `roof-tool-pro11.ts` — quand
+ * `deps.redraw` est câblé, le faire pointer vers la MÊME re-résolution qu'un clic sur un
+ * bouton cardinal (`pitchedRecompute()` sur un pan en pente fermé), pour que le nouvel
+ * azimut recalcule la pose 3D et pas seulement son affichage ; ce module ne peut pas
+ * l'appeler lui-même (fonction privée de `roof-tool-pro11.ts`).
  */
 import { type LngLat } from '../../lib/roof';
 import { DEG2RAD, DEG2M } from './constants';
@@ -40,6 +54,7 @@ import {
   type EdgeType,
   type SerializedEdge,
 } from './edges';
+import { azimutNormaleArete } from './snap';
 import { type AreaRecord } from './types';
 
 /** CALX94 — convention de dessin (tolérance de POINTAGE, aucune portée d'ingénierie) :
@@ -56,9 +71,11 @@ export interface EdgeMapLike {
 
 /** Dépendances injectées (toutes optionnelles : le module fonctionne sans page hôte). */
 export interface EdgesUiDeps {
-  /** La carte, pour armer le clic pendant le mode « corriger une arête ». */
+  /** La carte, pour armer le clic pendant le mode « corriger une arête » ou « prendre
+   *  l'azimut ». */
   map?: EdgeMapLike | null;
-  /** Re-dessin (contour 2D + scène 3D) après une correction. */
+  /** Re-dessin (contour 2D + scène 3D) après une correction de type OU une prise d'azimut
+   *  (CALX99). */
   redraw?: () => void;
   /** Bandeau de statut de l'atelier. */
   setStatus?: (msg: string) => void;
@@ -72,8 +89,15 @@ export interface EdgesUi {
   /** Arme/désarme le mode « corriger une arête » (le clic carte y sélectionne un segment). */
   setEdgeMode: (on: boolean) => void;
   isEdgeMode: () => boolean;
-  /** Traite un clic carte : sélectionne l'arête la plus proche. `true` si une arête a été
-   *  retenue (l'appelant peut alors ignorer son propre traitement du clic). */
+  /** CALX99 — arme/désarme le mode « prendre l'azimut d'une arête » : un clic y écrit
+   *  directement l'azimut du pan actif (aucune sélection persistée, contrairement au mode
+   *  de correction de type). Mutuellement exclusif avec `setEdgeMode` : armer celui-ci
+   *  désarme l'autre. */
+  setAzimuthMode: (on: boolean) => void;
+  isAzimuthMode: () => boolean;
+  /** Traite un clic carte : selon le mode armé, sélectionne l'arête la plus proche (mode
+   *  type) ou lui prend directement son azimut (mode azimut). `true` si le clic a été traité
+   *  (l'appelant peut alors ignorer son propre traitement du clic). */
   handleMapClick: (lngLat: LngLat) => boolean;
   /** Arête sélectionnée (rang du segment) ou null. */
   selectedEdge: () => number | null;
@@ -138,6 +162,12 @@ export function createEdgesUi(ctx: Ctx, deps: EdgesUiDeps = {}): EdgesUi {
   const { map = null, redraw, setStatus } = deps;
   let edgeMode = false;
   let selected: number | null = null;
+  // CALX99 — deuxième mode « clic sur arête », mutuellement exclusif avec `edgeMode`.
+  let azimuthMode = false;
+  let mapSubscribed = false;
+  /** Dernier azimut pris (pour le lire dans le panneau) — remis à zéro à chaque
+   *  désarmement du mode, jamais persisté ailleurs que dans `ctx`/le document. */
+  let lastAzimuth: { index: number; azimutDeg: number } | null = null;
 
   /** Contour EFFECTIF de la zone active : l'état d'édition vivant s'il existe, sinon le
    *  contour figé de l'enregistrement (même règle que `serializeLayout`). */
@@ -219,6 +249,7 @@ export function createEdgesUi(ctx: Ctx, deps: EdgesUiDeps = {}): EdgesUi {
   const anchor = deps.anchor ?? $('rp9-edges-host') ?? ctx.dom.areasWindowEl ?? null;
   const panel = ensurePanel();
   const modeBtn = panel ? $<HTMLButtonElement>('rp9-edge-mode') : null;
+  const azimuthBtn = panel ? $<HTMLButtonElement>('rp9-edge-azimuth-mode') : null;
   const select = panel ? $<HTMLSelectElement>('rp9-edge-type') : null;
   const infoEl = panel ? $('rp9-edge-info') : null;
   const errorEl = panel ? $('rp9-edge-error') : null;
@@ -236,6 +267,13 @@ export function createEdgesUi(ctx: Ctx, deps: EdgesUiDeps = {}): EdgesUi {
     btn.className = 'rp9-btn';
     btn.textContent = 'Corriger le type d’une arête';
     el.appendChild(btn);
+    // CALX99 — deuxième geste : prendre l'azimut du pan depuis une arête cliquée.
+    const btnAzimuth = document.createElement('button');
+    btnAzimuth.type = 'button';
+    btnAzimuth.id = 'rp9-edge-azimuth-mode';
+    btnAzimuth.className = 'rp9-btn';
+    btnAzimuth.textContent = 'Prendre l’azimut du pan sur une arête';
+    el.appendChild(btnAzimuth);
     const label = document.createElement('label');
     label.className = 'rp9-edge-type-row';
     label.setAttribute('for', 'rp9-edge-type');
@@ -272,9 +310,21 @@ export function createEdgesUi(ctx: Ctx, deps: EdgesUiDeps = {}): EdgesUi {
   }
 
   function refresh() {
-    if (panel) panel.setAttribute('data-mode', edgeMode ? 'on' : 'off');
+    if (panel) panel.setAttribute('data-mode', edgeMode ? 'on' : azimuthMode ? 'azimuth' : 'off');
     if (modeBtn) modeBtn.setAttribute('aria-pressed', edgeMode ? 'true' : 'false');
+    if (azimuthBtn) azimuthBtn.setAttribute('aria-pressed', azimuthMode ? 'true' : 'false');
     if (select) select.disabled = selected === null;
+    // CALX99 — le mode azimut n'a pas de sélection persistée : un clic écrit directement
+    // l'azimut du pan actif. Le panneau affiche seulement la consigne, puis le résultat du
+    // dernier clic pris (jusqu'au désarmement du mode).
+    if (azimuthMode) {
+      if (infoEl) {
+        infoEl.textContent = lastAzimuth
+          ? `Azimut pris depuis l’arête nº${lastAzimuth.index + 1} : ${Math.round(lastAzimuth.azimutDeg)}° (réglage manuel du pan).`
+          : 'Cliquez un segment du contour pour en prendre l’azimut (perpendiculaire sortante).';
+      }
+      return;
+    }
     if (selected === null) {
       if (infoEl) {
         infoEl.textContent = edgeMode
@@ -305,7 +355,40 @@ export function createEdgesUi(ctx: Ctx, deps: EdgesUiDeps = {}): EdgesUi {
     refresh();
   }
 
+  /**
+   * CALX99 — prend l'azimut du pan actif depuis l'arête la plus proche du clic : écrit
+   * `ctx.facingAzimuthDeg`/`ctx.facingManual` (le MÊME override par zone que les boutons
+   * cardinaux) et, quand une zone est déjà enregistrée, persiste `facingManual` dessus
+   * (même geste que `roof-tool-pro11.ts:3236` — la valeur d'azimut elle-même reste lue
+   * LIVE depuis `ctx` pour la zone active, `prefill.ts` le fait déjà). Aucun azimut n'est
+   * posé quand le clic ne vise aucune arête ou que le segment est dégénéré.
+   */
+  function handleAzimuthClick(lngLat: LngLat): boolean {
+    const ring = contourActif();
+    const idx = areteAuPoint(ring, lngLat);
+    if (idx === null) {
+      setStatus?.('Aucune arête sous le clic — visez un segment du contour pour en prendre l’azimut.');
+      return false;
+    }
+    const azimutDeg = azimutNormaleArete(ring[idx], ring[(idx + 1) % ring.length]);
+    if (!Number.isFinite(azimutDeg)) {
+      setStatus?.('Arête dégénérée — aucun azimut n’en a été tiré.');
+      return false;
+    }
+    ctx.pushWorkshopHistory?.();
+    ctx.facingAzimuthDeg = azimutDeg;
+    ctx.facingManual = true;
+    const active = ctx.activeArea();
+    if (active) active.facingManual = true; // même geste que les boutons cardinaux
+    lastAzimuth = { index: idx, azimutDeg };
+    setStatus?.(`Azimut pris depuis l’arête nº${idx + 1} : ${Math.round(azimutDeg)}° (réglage manuel du pan).`);
+    refresh();
+    redraw?.();
+    return true;
+  }
+
   function handleMapClick(lngLat: LngLat): boolean {
+    if (azimuthMode) return handleAzimuthClick(lngLat);
     if (!edgeMode) return false;
     const idx = areteAuPoint(contourActif(), lngLat);
     if (idx === null) {
@@ -321,23 +404,51 @@ export function createEdgesUi(ctx: Ctx, deps: EdgesUiDeps = {}): EdgesUi {
     handleMapClick([e.lngLat.lng, e.lngLat.lat]);
   };
 
+  /** Le clic carte n'est capté QUE pendant l'un des deux modes : hors des deux, le
+   *  dispatcher de tracé de `roof-tool-pro11.ts` garde exactement son comportement
+   *  d'aujourd'hui. Un seul abonnement, partagé par les deux modes. */
+  function syncMapSubscription() {
+    const veut = edgeMode || azimuthMode;
+    if (veut === mapSubscribed) return;
+    mapSubscribed = veut;
+    if (!map) return;
+    if (veut) map.on('click', onMapClick);
+    else map.off('click', onMapClick);
+  }
+
   function setEdgeMode(on: boolean) {
     if (on === edgeMode) {
       refresh();
       return;
     }
     edgeMode = on;
-    // Le clic carte n'est capté QUE pendant le mode : hors mode, le dispatcher de tracé de
-    // `roof-tool-pro11.ts` garde exactement son comportement d'aujourd'hui.
-    if (map) {
-      if (on) map.on('click', onMapClick);
-      else map.off('click', onMapClick);
+    // CALX99 — un seul mode « clic sur arête » à la fois : armer celui-ci désarme l'autre.
+    if (on && azimuthMode) {
+      azimuthMode = false;
+      lastAzimuth = null;
     }
+    syncMapSubscription();
     if (!on) selected = null;
     refresh();
   }
 
+  function setAzimuthMode(on: boolean) {
+    if (on === azimuthMode) {
+      refresh();
+      return;
+    }
+    azimuthMode = on;
+    if (on && edgeMode) {
+      edgeMode = false;
+      selected = null;
+    }
+    if (!on) lastAzimuth = null;
+    syncMapSubscription();
+    refresh();
+  }
+
   modeBtn?.addEventListener('click', () => setEdgeMode(!edgeMode));
+  azimuthBtn?.addEventListener('click', () => setAzimuthMode(!azimuthMode));
   select?.addEventListener('change', () => {
     if (selected === null) return;
     const v = select.value;
@@ -353,6 +464,8 @@ export function createEdgesUi(ctx: Ctx, deps: EdgesUiDeps = {}): EdgesUi {
   return {
     setEdgeMode,
     isEdgeMode: () => edgeMode,
+    setAzimuthMode,
+    isAzimuthMode: () => azimuthMode,
     handleMapClick,
     selectedEdge: () => selected,
     selectEdge,
@@ -361,8 +474,10 @@ export function createEdgesUi(ctx: Ctx, deps: EdgesUiDeps = {}): EdgesUi {
     couleurArete,
     refresh,
     destroy: () => {
-      if (map && edgeMode) map.off('click', onMapClick);
+      if (map && mapSubscribed) map.off('click', onMapClick);
       edgeMode = false;
+      azimuthMode = false;
+      mapSubscribed = false;
     },
   };
 }

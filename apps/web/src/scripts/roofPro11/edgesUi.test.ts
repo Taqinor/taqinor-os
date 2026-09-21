@@ -301,3 +301,92 @@ describe('CALX94 — fusionnerAretesSaisies (fonction pure)', () => {
     expect(fusionnerAretesSaisies([{ index: 0, type: 'rive', manuel: true }], [])).toBeUndefined();
   });
 });
+
+describe('CALX99 — prendre l’azimut d’un pan depuis une arête cliquée', () => {
+  it('crée le bouton « Prendre l’azimut… » à côté du bouton de correction de type', () => {
+    const areas = [zone('z1', polyM(CARRE))];
+    createEdgesUi(makeCtx(areas), { anchor: hote() });
+    expect(document.getElementById('rp9-edge-mode')).toBeTruthy();
+    expect(document.getElementById('rp9-edge-azimuth-mode')).toBeTruthy();
+  });
+
+  it('une page qui fournit déjà le panneau garde SON markup (pas de bouton azimut ajouté)', () => {
+    const h = hote();
+    h.innerHTML = '<div id="rp9-edge-panel"><select id="rp9-edge-type"><option value="rive">R</option></select></div>';
+    createEdgesUi(makeCtx([zone('z1', polyM(CARRE))]), { anchor: h });
+    expect(document.getElementById('rp9-edge-azimuth-mode')).toBeNull();
+  });
+
+  it('clic sur le côté EST en mode azimut écrit ctx.facingAzimuthDeg (90°, cap+90) et facingManual, sans sélection persistée', () => {
+    const areas = [zone('z1', polyM(CARRE), { facingAzimuthDeg: 180, facingManual: false })];
+    const ctx = makeCtx(areas);
+    const ui = createEdgesUi(ctx, { anchor: hote() });
+    ui.setAzimuthMode(true);
+    expect(ui.handleMapClick(ptM(5.1, 0))).toBe(true); // côté EST (segment 1 : SE→NE, cap 0 → normale 90°)
+    expect(ctx.facingAzimuthDeg).toBeCloseTo(90, 3);
+    expect(ctx.facingManual).toBe(true);
+    expect(areas[0].facingManual).toBe(true); // même geste que les boutons cardinaux
+    expect(ui.selectedEdge()).toBeNull(); // le mode azimut ne persiste aucune sélection de type
+  });
+
+  it('sur le côté SUD (arête est-ouest), la normale rend 180° — l’exemple du Done', () => {
+    const areas = [zone('z1', polyM(CARRE), { facingAzimuthDeg: 0 })];
+    const ctx = makeCtx(areas);
+    const ui = createEdgesUi(ctx, { anchor: hote() });
+    ui.setAzimuthMode(true);
+    expect(ui.handleMapClick(ptM(0, -5.2))).toBe(true); // côté SUD (segment 0)
+    expect(ctx.facingAzimuthDeg).toBeCloseTo(180, 3);
+  });
+
+  it('un clic loin de tout segment ne pose aucun azimut et le dit', () => {
+    const messages: string[] = [];
+    const areas = [zone('z1', polyM(CARRE), { facingAzimuthDeg: 33 })];
+    const ctx = makeCtx(areas);
+    const ui = createEdgesUi(ctx, { anchor: hote(), setStatus: (m) => messages.push(m) });
+    ui.setAzimuthMode(true);
+    expect(ui.handleMapClick(ptM(0, 0))).toBe(false); // centre : hors tolérance de tout côté
+    expect(ctx.facingAzimuthDeg).toBe(33); // rien n’a bougé
+    expect(ctx.facingManual).toBe(false);
+    expect(messages.join(' ')).toContain('Aucune arête');
+  });
+
+  it('hors mode azimut, le clic carte n’écrit aucun azimut', () => {
+    const areas = [zone('z1', polyM(CARRE), { facingAzimuthDeg: 33 })];
+    const ctx = makeCtx(areas);
+    const ui = createEdgesUi(ctx, { anchor: hote() });
+    expect(ui.isAzimuthMode()).toBe(false);
+    expect(ui.handleMapClick(ptM(5.1, 0))).toBe(false); // mode « type » : aucune arête sous tolérance sélectionnée non plus, mais surtout aucun azimut écrit
+    expect(ctx.facingAzimuthDeg).toBe(33);
+  });
+
+  it('les deux modes « clic sur arête » sont mutuellement exclusifs', () => {
+    const ctx = makeCtx([zone('z1', polyM(CARRE))]);
+    const ui = createEdgesUi(ctx, { anchor: hote() });
+    ui.setEdgeMode(true);
+    expect(ui.isEdgeMode()).toBe(true);
+    ui.setAzimuthMode(true);
+    expect(ui.isAzimuthMode()).toBe(true);
+    expect(ui.isEdgeMode()).toBe(false); // armer l'azimut désarme la correction de type
+
+    ui.setEdgeMode(true);
+    expect(ui.isEdgeMode()).toBe(true);
+    expect(ui.isAzimuthMode()).toBe(false); // et réciproquement
+  });
+
+  it('l’abonnement carte est UN SEUL abonnement, partagé par les deux modes', () => {
+    const abonnes: string[] = [];
+    const map: EdgeMapLike = {
+      on: () => abonnes.push('on'),
+      off: () => abonnes.push('off'),
+    };
+    const ui = createEdgesUi(makeCtx([zone('z1', polyM(CARRE))]), { anchor: hote(), map });
+    expect(abonnes).toEqual([]);
+    ui.setAzimuthMode(true);
+    expect(abonnes).toEqual(['on']);
+    // Basculer vers l'autre mode ne désabonne/réabonne pas (toujours au moins un mode armé).
+    ui.setEdgeMode(true);
+    expect(abonnes).toEqual(['on']);
+    ui.setEdgeMode(false);
+    expect(abonnes).toEqual(['on', 'off']);
+  });
+});

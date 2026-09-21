@@ -460,3 +460,32 @@ export function redimensionnerRectangle(
   return { ok: true, anneau: [coin(-1, -1), coin(1, -1), coin(1, 1), coin(-1, 1)] };
 }
 
+// ————————————————————————————————————————————————————————————————————————
+// CALX99 — PRENDRE L'AZIMUT D'UN PAN DEPUIS UNE ARÊTE CLIQUÉE
+//
+// L'azimut se réglait seulement aux boutons cardinaux et au curseur fin 0-359°
+// (`roof-tool-pro11.ts`) ou s'inférait de l'adjacence (`autoInferFacing`) : rien ne
+// permettait de désigner l'arête basse d'un pan pour en tirer directement la direction de
+// fruit. Parité HelioScope (clic droit sur une arête de toit, « Set Azimuth to ___ »).
+//
+// CONVENTION DE PARCOURS : ce module (comme `areteAuPoint`/`projeterSurArete` plus haut, et
+// les sommets tels que tracés dans l'atelier) lit une arête dans l'ordre `a = vertices[i]`,
+// `b = vertices[i+1]` ; la normale SORTANTE est le cap du segment a→b tourné de 90° dans le
+// sens HORAIRE (à droite du sens de parcours). Preuve sur un carré tracé SO→SE→NE→NO :
+// l'arête SO→SE (le côté SUD, cap plein est) rend une normale plein SUD (180°) — c'est le
+// côté extérieur attendu, et l'exemple même du Done de CALX99.
+// ————————————————————————————————————————————————————————————————————————
+
+/**
+ * CALX99 — cap (° depuis le nord vrai, sens horaire) de la normale SORTANTE du segment
+ * `a` → `b` : le cap du segment tourné de 90° dans le sens horaire (convention de parcours
+ * ci-dessus). Fonction PURE, aucune lecture du reste du contour. `NaN` quand `a`/`b` n'est
+ * pas un point exploitable — l'appelant refuse alors de poser un azimut plutôt que d'en
+ * inventer un.
+ */
+export function azimutNormaleArete(a: LngLat, b: LngLat): number {
+  if (!estPoint(a) || !estPoint(b)) return NaN;
+  const cap = capEntreDeg(a, b);
+  return ((cap + 90) % 360 + 360) % 360;
+}
+

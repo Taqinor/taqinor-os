@@ -22,6 +22,7 @@ import {
   centroideAnneau,
   dimensionsRectangleM,
   redimensionnerRectangle,
+  azimutNormaleArete,
   PAS_ANGLE_DEG,
   TOLERANCE_ANGLE_DEG,
 } from './snap';
@@ -522,5 +523,49 @@ describe('CALX97 — dimensionsRectangleM', () => {
   it('ne DEVINE aucune cote pour une forme quelconque', () => {
     expect(dimensionsRectangleM(PAN_RECT.slice(0, 3))).toBeNull();
     expect(dimensionsRectangleM([...PAN_RECT, [-7.5995, 33.5008]])).toBeNull();
+  });
+});
+
+describe('CALX99 — azimutNormaleArete : cap de la normale sortante', () => {
+  // `pointDepuisCap` (CALX90, formule EXACTE du point de destination sur la sphère) construit
+  // ici les points a→b à un cap connu — contrairement à `depuis()` (plan tangent local, une
+  // approximation distincte volontaire pour les tests de `contraindreAngle` plus haut), il
+  // partage la MÊME géométrie sphérique que `capEntreDeg` : le cap du segment obtenu est donc
+  // celui demandé à la précision flottante, sans résidu d'approximation à absorber ici.
+  it('sur une arête est-ouest (a→b plein est), la normale sud rend 180°', () => {
+    const a = P;
+    const b = pointDepuisCap(P, 90, 40); // segment plein EST
+    expect(azimutNormaleArete(a, b)).toBeCloseTo(180, 6);
+  });
+
+  it('sur une arête nord-sud (a→b plein nord), la normale est rend 90°', () => {
+    const a = P;
+    const b = pointDepuisCap(P, 0, 40); // segment plein NORD
+    expect(azimutNormaleArete(a, b)).toBeCloseTo(90, 6);
+  });
+
+  it('parcourue en sens inverse, la normale s’inverse de ~180° (convergence des méridiens négligeable sur 40 m)', () => {
+    const a = P;
+    const b = pointDepuisCap(P, 90, 40);
+    const aller = azimutNormaleArete(a, b);
+    const retour = azimutNormaleArete(b, a);
+    // Distance CIRCULAIRE à 180° (jamais une simple soustraction : `retour`/`aller` peuvent
+    // tomber de part et d'autre de la coupure ±180° sans que la relation en soit fausse).
+    const ecart = normaliserDeg(retour - aller - 180);
+    expect(Math.abs(ecart)).toBeLessThan(0.001);
+  });
+
+  it('reste dans [0, 360) même pour un cap proche de 360°', () => {
+    const a = P;
+    const b = pointDepuisCap(P, 280, 40); // + 90 dépasse 360° : doit se ramener dans [0, 360)
+    const az = azimutNormaleArete(a, b);
+    expect(az).toBeGreaterThanOrEqual(0);
+    expect(az).toBeLessThan(360);
+    expect(az).toBeCloseTo(10, 6);
+  });
+
+  it('point inexploitable : NaN plutôt qu’un azimut inventé', () => {
+    expect(Number.isNaN(azimutNormaleArete(P, [Number.NaN, 33.5]))).toBe(true);
+    expect(Number.isNaN(azimutNormaleArete(null as unknown as LngLat, P))).toBe(true);
   });
 });
