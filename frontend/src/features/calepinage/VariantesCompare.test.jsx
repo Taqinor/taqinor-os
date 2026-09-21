@@ -18,10 +18,20 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
         serveur le dit au rechargement.
    ========================================================================== */
 
-const mocks = vi.hoisted(() => ({ comparer: vi.fn(), retenirVariante: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  comparer: vi.fn(), retenirVariante: vi.fn(),
+  // CALX37
+  layout: vi.fn(), creerVariante: vi.fn(), dupliquerVariante: vi.fn(),
+}))
 
 vi.mock('../../api/calepinageApi', () => ({
-  default: { calepinages: { comparer: mocks.comparer, retenirVariante: mocks.retenirVariante } },
+  default: {
+    calepinages: {
+      comparer: mocks.comparer, retenirVariante: mocks.retenirVariante,
+      layout: mocks.layout, creerVariante: mocks.creerVariante,
+      dupliquerVariante: mocks.dupliquerVariante,
+    },
+  },
 }))
 
 import VariantesCompare from './VariantesCompare'
@@ -176,5 +186,118 @@ describe('VariantesCompare (CAL42)', () => {
     mocks.comparer.mockRejectedValue({ response: { data: { detail: 'Accès refusé.' } } })
     rendre()
     expect(await screen.findByRole('alert')).toHaveTextContent('Accès refusé.')
+  })
+})
+
+/* ============================================================================
+   CALX37 — CRÉER ET DUPLIQUER UNE VARIANTE.
+   ----------------------------------------------------------------------------
+   Un nom vide est refusé CÔTÉ ÉCRAN avant tout appel réseau ; créer puis
+   dupliquer produit deux lignes DISTINCTES dans le comparatif (rechargé
+   depuis le serveur) ; retenir l'une des deux dé-retient l'autre — le MÊME
+   invariant du service que pour les variantes semées autrement.
+   ========================================================================== */
+describe('VariantesCompare (CALX37) — créer et dupliquer', () => {
+  it('un nom vide est refusé AVANT tout appel réseau', async () => {
+    rendre()
+    fireEvent.click(await screen.findByTestId('cal-variante-nouvelle'))
+    fireEvent.click(screen.getByTestId('cal-variante-confirmer'))
+
+    expect(screen.getByTestId('cal-variante-nom-erreur')).toHaveTextContent('obligatoire')
+    expect(mocks.layout).not.toHaveBeenCalled()
+    expect(mocks.creerVariante).not.toHaveBeenCalled()
+  })
+
+  it('« Nouvelle variante depuis la conception courante » relit la conception puis crée', async () => {
+    mocks.layout.mockResolvedValue({ data: { roof_layout: { zones: [{ id: 'a' }] } } })
+    mocks.creerVariante.mockResolvedValue({ data: { id: 99, nom: 'Ma nouvelle variante' } })
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+
+    fireEvent.click(screen.getByTestId('cal-variante-nouvelle'))
+    fireEvent.change(screen.getByTestId('cal-variante-nom'), { target: { value: 'Ma nouvelle variante' } })
+    fireEvent.click(screen.getByTestId('cal-variante-confirmer'))
+
+    await waitFor(() => expect(mocks.layout).toHaveBeenCalledWith('1'))
+    await waitFor(() => expect(mocks.creerVariante).toHaveBeenCalledWith('1', {
+      nom: 'Ma nouvelle variante', roof_layout: { zones: [{ id: 'a' }] },
+    }))
+    // Le formulaire se ferme et le comparatif est rechargé (2 appels : montage + après création).
+    await waitFor(() => expect(mocks.comparer).toHaveBeenCalledTimes(2))
+    expect(screen.queryByTestId('cal-variante-formulaire')).not.toBeInTheDocument()
+  })
+
+  it('« Dupliquer cette variante » compose GET + POST avec le nom saisi', async () => {
+    mocks.dupliquerVariante.mockResolvedValue({ data: { id: 98, nom: 'Copie retenue' } })
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+
+    fireEvent.click(screen.getByTestId(`cal-variante-dupliquer-${RETENUE.id}`))
+    fireEvent.change(screen.getByTestId('cal-variante-nom'), { target: { value: 'Copie retenue' } })
+    fireEvent.click(screen.getByTestId('cal-variante-confirmer'))
+
+    await waitFor(() => expect(mocks.dupliquerVariante)
+      .toHaveBeenCalledWith('1', RETENUE.id, 'Copie retenue'))
+    await waitFor(() => expect(mocks.comparer).toHaveBeenCalledTimes(2))
+  })
+
+  it('créer PUIS dupliquer produit deux lignes distinctes dans le comparatif', async () => {
+    mocks.layout.mockResolvedValue({ data: { roof_layout: {} } })
+    const NEUVE = { ...RETENUE, id: 201, nom: 'Neuve', est_retenue: false, ecart_modules: -1 }
+    const COPIE = { ...RETENUE, id: 202, nom: 'Copie', est_retenue: false, ecart_modules: -1 }
+    mocks.creerVariante.mockResolvedValue({ data: NEUVE })
+    mocks.dupliquerVariante.mockResolvedValue({ data: COPIE })
+
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+
+    // 1. Créer.
+    fireEvent.click(screen.getByTestId('cal-variante-nouvelle'))
+    fireEvent.change(screen.getByTestId('cal-variante-nom'), { target: { value: 'Neuve' } })
+    mocks.comparer.mockResolvedValueOnce({ data: { ...CONTRAT, lignes: [...CONTRAT.lignes, NEUVE] } })
+    fireEvent.click(screen.getByTestId('cal-variante-confirmer'))
+    expect(await screen.findByTestId('cal-variante-dupliquer-201')).toBeInTheDocument()
+
+    // 2. Dupliquer la variante retenue.
+    mocks.comparer.mockResolvedValueOnce({
+      data: { ...CONTRAT, lignes: [...CONTRAT.lignes, NEUVE, COPIE] },
+    })
+    fireEvent.click(screen.getByTestId(`cal-variante-dupliquer-${RETENUE.id}`))
+    fireEvent.change(screen.getByTestId('cal-variante-nom'), { target: { value: 'Copie' } })
+    fireEvent.click(screen.getByTestId('cal-variante-confirmer'))
+
+    // Deux lignes DISTINCTES neuves, chacune avec son propre identifiant.
+    expect(await screen.findByTestId('cal-variante-dupliquer-202')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-variante-dupliquer-201')).toBeInTheDocument()
+  })
+
+  it('retenir une variante créée dé-retient l’ancienne — même invariant du service', async () => {
+    const NEUVE = { ...RETENUE, id: 301, nom: 'Neuve', est_retenue: false, ecart_modules: -1 }
+    mocks.layout.mockResolvedValue({ data: { roof_layout: {} } })
+    mocks.creerVariante.mockResolvedValue({ data: NEUVE })
+    mocks.comparer.mockResolvedValueOnce({ data: CONTRAT })
+    mocks.comparer.mockResolvedValueOnce({ data: { ...CONTRAT, lignes: [...CONTRAT.lignes, NEUVE] } })
+    rendre()
+    await screen.findByTestId('cal-tableau-variantes')
+
+    fireEvent.click(screen.getByTestId('cal-variante-nouvelle'))
+    fireEvent.change(screen.getByTestId('cal-variante-nom'), { target: { value: 'Neuve' } })
+    fireEvent.click(screen.getByTestId('cal-variante-confirmer'))
+    await screen.findByTestId('cal-variante-dupliquer-301')
+
+    // Retenir la variante neuve : le serveur bascule, l'ancienne perd son badge.
+    mocks.comparer.mockResolvedValueOnce({
+      data: {
+        ...CONTRAT,
+        lignes: [...CONTRAT.lignes.map((l) => ({ ...l, est_retenue: false })),
+          { ...NEUVE, est_retenue: true }],
+      },
+    })
+    const ligneNeuve = screen.getByTestId('cal-variante-dupliquer-301').closest('td')
+    fireEvent.click(within(ligneNeuve).getByRole('button', { name: 'Retenir' }))
+
+    await waitFor(() => expect(mocks.retenirVariante).toHaveBeenCalledWith('1', 301))
+    await waitFor(() => expect(screen.getByTestId('cal-retenue-301')).toBeInTheDocument())
+    expect(screen.queryByTestId(`cal-retenue-${RETENUE.id}`)).not.toBeInTheDocument()
   })
 })

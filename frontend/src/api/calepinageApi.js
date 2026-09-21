@@ -101,6 +101,26 @@ const calepinageApi = {
     retenirVariante: (id, varianteId) =>
       api.post(`${pivot(id)}variantes/${varianteId}/retenir/`),
 
+    // CALX37 — créer une variante (`services.creer_variante`, déjà servi par
+    // `POST variantes/`) : `corps` porte `nom`/`roof_layout`/`resultat`, un nom
+    // vide est refusé CÔTÉ ÉCRAN avant tout appel (la garde serveur existe
+    // aussi, elle n'est jamais la seule).
+    creerVariante: (id, corps) => api.post(`${pivot(id)}variantes/`, corps),
+
+    // CALX37 — dupliquer : AUCUNE action serveur dédiée n'existe, c'est un
+    // geste d'écran qui relit le détail complet de la source (`roof_layout`/
+    // `resultat`, que le comparatif ne publie pas) puis crée une variante
+    // neuve avec ce contenu. `nom` (saisi par l'utilisateur) prime ; sans lui,
+    // un nom dérivé de la source évite un POST refusé pour nom vide.
+    dupliquerVariante: (id, varianteId, nom) =>
+      api.get(`${pivot(id)}variantes/${varianteId}/`).then((res) => {
+        const source = res?.data ?? {}
+        const nomFinal = nom || (source.nom ? `${source.nom} (copie)` : 'Copie de variante')
+        return api.post(`${pivot(id)}variantes/`, {
+          nom: nomFinal, roof_layout: source.roof_layout, resultat: source.resultat,
+        })
+      }),
+
     // CAL21 — comparatif des variantes, conforme à
     // `contract_samples/variantes_comparer.json`. Les ÉCARTS viennent du
     // serveur : un écran ne les recalcule jamais.
@@ -217,6 +237,14 @@ const calepinageApi = {
     // le relevé créé PLUS l'historique à jour (contrat `calepinage_releve.json`).
     releve: (id) => api.get(`${pivot(id)}releve/`),
     enregistrerReleve: (id, corps) => api.post(`${pivot(id)}releve/`, corps),
+
+    // CALX31 — le chatter GÉNÉRIQUE de la plateforme (`records`), hérité par
+    // `CalepinageViewSet` via `ChatterViewSetMixin` (views/calepinages.py) :
+    // AUCUNE seconde API de chatter, AUCUNE classe `…Activity` maison. GET
+    // rend l'historique (créations + notes), POST ajoute une note manuelle
+    // (auteur + société posés côté serveur).
+    chatterHistorique: (id) => api.get(`${pivot(id)}chatter/historique/`),
+    chatterNoter: (id, body) => api.post(`${pivot(id)}chatter/noter/`, { body }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
@@ -238,6 +266,17 @@ const calepinageApi = {
   parametres: {
     get: () => api.get('/calepinage/parametres/'),
     update: (corps) => api.put('/calepinage/parametres/', corps),
+
+    // CALX29 — suggestion de pente par LiDAR IGN (France seule,
+    // `services/lidar_ign.py`). GET est une LECTURE LOCALE : elle dit si le
+    // service est offert à la société de l'appelant SANS émettre de requête
+    // sortante, même quand il l'est — c'est elle qui commande l'affichage du
+    // bouton. POST envoie le document de conception et reçoit une suggestion
+    // par pan, jamais persistée côté serveur : c'est l'écran qui accepte ou
+    // jette, puis enregistre via `enregistrerLayoutCalepinage` (CAL18).
+    suggestionPenteDisponible: () => api.get('/calepinage/parametres/suggestion-pente/'),
+    suggererPentesIGN: (roofLayout) =>
+      api.post('/calepinage/parametres/suggestion-pente/', { roof_layout: roofLayout }),
   },
 }
 

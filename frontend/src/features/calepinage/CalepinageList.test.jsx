@@ -209,4 +209,47 @@ describe('CalepinageList (CAL35)', () => {
     rendre()
     expect(await screen.findByRole('alert')).toHaveTextContent('Accès refusé à ce module.')
   })
+
+  // CALX32 — le sélecteur de tri, limité aux 4 champs de `ordering_fields`
+  // (`views/calepinages.py:173-174`) : created_at, updated_at, statut, titre.
+  describe('CALX32 — le tri', () => {
+    it('le sélecteur ne propose QUE les 4 champs réellement servis', async () => {
+      rendre()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      fireEvent.click(screen.getByRole('combobox', { name: 'Tri' }))
+      await screen.findByRole('listbox')
+      for (const libelle of ['Date de création', 'Date de modification', 'Statut', 'Titre']) {
+        expect(screen.getByRole('option', { name: libelle })).toBeInTheDocument()
+      }
+      // Rien d'autre n'est inventé : ces 4 + le repli « Tri par défaut ».
+      expect(screen.getAllByRole('option')).toHaveLength(5)
+    })
+
+    it('changer le tri relance la requête avec `ordering=` et remet la page à 1', async () => {
+      mocks.list.mockResolvedValue({
+        data: { count: 9, next: 'http://x/?page=2', previous: null, results: [AVEC_IMAGE] },
+      })
+      rendre()
+      await screen.findByTestId(`cal-vignette-${AVEC_IMAGE.id}`)
+      fireEvent.click(screen.getByRole('button', { name: 'Suivant' }))
+      await waitFor(() => expect(derniersParams()).toEqual({ page: 2 }))
+
+      fireEvent.click(screen.getByRole('combobox', { name: 'Tri' }))
+      fireEvent.click(await screen.findByRole('option', { name: 'Titre' }))
+      // `ordering=` part, et la page est revenue à 1 (absente des params).
+      await waitFor(() => expect(derniersParams()).toEqual({ ordering: 'titre' }))
+    })
+
+    it('le sens croissant/décroissant inverse le préfixe `-` de `ordering=`', async () => {
+      rendre()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      fireEvent.click(screen.getByRole('combobox', { name: 'Tri' }))
+      fireEvent.click(await screen.findByRole('option', { name: 'Statut' }))
+      await waitFor(() => expect(derniersParams()).toEqual({ ordering: 'statut' }))
+
+      fireEvent.click(screen.getByRole('combobox', { name: 'Ordre' }))
+      fireEvent.click(await screen.findByRole('option', { name: 'Décroissant' }))
+      await waitFor(() => expect(derniersParams()).toEqual({ ordering: '-statut' }))
+    })
+  })
 })

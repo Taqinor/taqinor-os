@@ -61,6 +61,9 @@ export const ONGLETS = [
 
   { cle: 'postes-pertes', libelle: 'Postes de pertes', groupe: 'Résultats', ordre: 150, composant: lazy(() => import('./PanneauPertes')) }, // CALX18
   { cle: 'releve', libelle: 'Relevé terrain', groupe: 'Site', ordre: 160, composant: lazy(() => import('./PanneauReleve')) }, // CALX25
+
+  { cle: 'activite', libelle: 'Activité', groupe: 'Dossiers', ordre: 170, composant: lazy(() => import('./PanneauActivite')) }, // CALX31
+  { cle: 'versions', libelle: 'Versions', groupe: 'Dossiers', ordre: 180, composant: lazy(() => import('./PanneauVersions')) }, // CALX36
 ]
 
 /**
