@@ -66,6 +66,7 @@ __all__ = [
     'longueur_chaine_retenue', 'plafond_modules',
     'journaliser_ecart_longueur', 'parametres_societe',
     'CLE_POLYSTRING',  # CALX206
+    'CLE_MICRO_ONDULEURS',  # CALX209
 ]
 
 #: Les deux SOURCES possibles d'une température de dimensionnement. Une
@@ -716,6 +717,11 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         reglages=_reglages_electrique_societe(calepinage))
     if poly['bloc'] is not None:
         electrique[CLE_POLYSTRING] = poly['bloc']
+    # CALX209 — le régime micro-onduleur : des branches AC, plus de chaînes.
+    micro = _micro_onduleurs_du_calepinage(conception, optimiseur,
+                                           nom_optimiseur)
+    if micro['bloc'] is not None:
+        electrique[CLE_MICRO_ONDULEURS] = micro['bloc']
     pose = bloc_pose(conception)
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
@@ -755,6 +761,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     messages = list(avertissements) + list(messages_ratio)
     messages.extend(poly['bloquants'])
     messages.extend(poly['alertes'])
+    messages.extend(micro['omissions'])
     if motif_faible:
         messages.append(motif_faible)
     messages.extend(regle['bornes_non_verifiables'])
@@ -852,7 +859,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'cables': cables['cables'],
         'longueurs': cables['longueurs'],
         # CAL132 — la check-list d'organes (retenus / ajoutés / écartés).
-        'protections': protections['organes'],
+        # CALX209/CALX210 — les ``QAC.N`` des branches de micro-onduleurs s'y
+        # AJOUTENT : un départ par branche, calibré par la même règle.
+        'protections': protections['organes'] + micro['protections'],
         'justifications': protections['justifications'],
         # CAL134 — la check-list de terre (jamais une résistance inventée).
         'terre': terre,
@@ -1048,6 +1057,11 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
         materiel_resolu['designations'].get('optimiseur', ''))
     alertes = list(alertes_nommees(conception))
     alertes.extend(poly['alertes'])
+    # CALX209 — une borne de branche NON VÉRIFIABLE est une alerte nommée,
+    # jamais un bloquant : rien ne prouve le défaut, la fiche se tait.
+    alertes.extend(_micro_onduleurs_du_calepinage(
+        conception, materiel_resolu.get('optimiseur'),
+        materiel_resolu['designations'].get('optimiseur', ''))['omissions'])
     alertes.extend(regle['bornes_non_verifiables'])
     return {
         'verdict': 'bloquant' if bloquants else (
@@ -1357,6 +1371,11 @@ def _version_moteur():
 #: et celle du bloc publié dans ``resultat['electrique']``.
 CLE_POLYSTRING = 'polystring'
 
+#: CALX209 — la clé du bloc « régime micro-onduleur » dans
+#: ``resultat['electrique']``. Absente tant que la fiche déclarée n'est pas
+#: celle d'un micro-onduleur : le résultat reste celui d'aujourd'hui.
+CLE_MICRO_ONDULEURS = 'micro_onduleurs'
+
 
 def _polystring_du_calepinage(conception, *, saisie=None, reglages=None):
     """CALX206/CALX207 — les groupes polystring SAISIS, avec leur écart.
@@ -1405,6 +1424,29 @@ def _polystring_du_calepinage(conception, *, saisie=None, reglages=None):
             # servent au verdict, ils ne se sérialisent pas dans le résultat.
             if cle not in ('chaines', 'verdicts')}
     return {'bloc': bloc, 'bloquants': bloquants, 'alertes': alertes}
+
+
+def _micro_onduleurs_du_calepinage(conception, specs, designation=''):
+    """CALX209 — le régime micro-onduleur, ses branches et leur équipement.
+
+    Rend ``{bloc, protections, omissions}``. ``bloc`` vaut ``None`` quand la
+    fiche déclarée n'est pas celle d'un micro-onduleur : le résultat est
+    alors exactement celui d'aujourd'hui, sans clé de plus.
+    """
+    from .micro_onduleurs import (
+        branches_du_champ, equipement_ac, est_micro_onduleur,
+    )
+
+    if conception.fiche_incomplete or conception.resultat is None \
+            or not est_micro_onduleur(specs):
+        return {'bloc': None, 'protections': [], 'omissions': []}
+    bloc = branches_du_champ(conception, specs, designation=designation)
+    if not bloc['applique']:
+        return {'bloc': None, 'protections': [], 'omissions': []}
+    equipement = equipement_ac(conception, bloc['branches'])
+    bloc['cables'] = equipement['cables']
+    return {'bloc': bloc, 'protections': equipement['protections'],
+            'omissions': list(bloc['motifs']) + equipement['omissions']}
 
 
 def _reglages_electrique_societe(calepinage):
