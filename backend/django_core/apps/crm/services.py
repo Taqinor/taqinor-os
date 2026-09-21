@@ -842,7 +842,14 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
         echeance = horaires.prochain_creneau_appel(
             echeance, lead.company,
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
-            canal=_canal(gabarit))
+            canal=_canal(gabarit),
+            # CAD21 — l'heure imposée du gabarit SURVIT au passage au jour
+            # ouvré suivant : l'« Appel 4 » de 18 h ne ressort plus à 09 h le
+            # lundi. Jamais sur la touche dominicale : son heure est celle de
+            # la fenêtre 16 h-19 h, et 10 h 30 un dimanche n'existe pas.
+            heure_cible=(None
+                         if getattr(gabarit, 'dimanche_ok', False)
+                         else heure_cible))
         echeances.append((gabarit, echeance))
     # CAD20 — « jamais plus d'un appel ET d'un message par jour » était écrite
     # dans le référentiel des cadences et exécutée nulle part : le recalage sur
