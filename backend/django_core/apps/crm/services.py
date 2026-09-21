@@ -6512,46 +6512,21 @@ def ajouter_note_lead_si_nouvelle(*, company, lead_id, user, body):
     return activity.log_note(lead, user, body)
 
 
-# ── YSERV11 — Gabarit de message « parrainage » (FR + darija, éditable) ─────
-
-# Corps par défaut — ÉDITABLES ensuite par l'admin comme tout MessageTemplate.
-_PARRAINAGE_TEMPLATE_DEFAULTS = {
-    'fr': (
-        'parrainage',
-        "Bonjour {prenom}, merci pour votre confiance ! Si un proche "
-        "souhaite passer au solaire, recommandez-nous : notre programme de "
-        "parrainage vous récompense. Parlez-en à votre conseiller ou "
-        "répondez à ce message.",
-    ),
-    'darija': (
-        'parrainage_darija',
-        "Salam {prenom}, choukran 3la ti9a dyalek ! Ila kan chi wahed 9rib "
-        "lik bagh idir solaire, 3eyet lina — barnamaj l'parrainage dyalna "
-        "kay3tik mokafaa. Hder m3a lmostachar dyalek wla jaweb 3la had "
-        "l'message.",
-    ),
-}
-
-
-def get_or_create_parrainage_template(company, langue='fr'):
-    """YSERV11 — renvoie (crée au premier usage) le ``MessageTemplate``
-    « parrainage » de la société pour ``langue`` ('fr'|'darija').
-
-    Point d'entrée cross-app THIN (appelé par compta au moment de
-    l'enchantement NPS) : la clé template est posée additivement, idempotente
-    par (company, nom), le corps reste éditable par l'admin — jamais écrasé.
-    Langue inconnue → repli FR."""
-    from .models import MessageTemplate
-    cle = 'darija' if (langue or '').strip().lower() == 'darija' else 'fr'
-    nom, corps_defaut = _PARRAINAGE_TEMPLATE_DEFAULTS[cle]
-    template, _ = MessageTemplate.objects.get_or_create(
-        company=company, nom=nom,
-        defaults={
-            'langue': (MessageTemplate.Langue.DARIJA if cle == 'darija'
-                       else MessageTemplate.Langue.FR),
-            'corps': corps_defaut,
-        })
-    return template
+# CAD72 (21/09/2026) — le SECOND catalogue « parrainage » de YSERV11 a
+# disparu d'ici. Un dictionnaire de textes par défaut + un générateur
+# `get_or_create_*` vivaient ici, semant une SECONDE ligne
+# `crm.MessageTemplate` au premier usage — texte FR promettant une
+# récompense FERME, et texte darija TRANSCRIT EN ALPHABET LATIN (chiffres
+# pour des lettres arabes — « 3 »/« 9 »), alors que le catalogue darija
+# validé (`parametres.MESSAGE_TEMPLATE_DEFAULTS_DARIJA`) est écrit en
+# arabe, relu par un natif le 04/09/2026. Leur seul appelant vivait dans
+# `apps/compta/services.py` (flux NPS), retiré quand `compta` a été mis en
+# coquille par le drain SOLMVP (`apps/compta/` n'a plus de `services.py`) —
+# plus aucun appelant (grep sur tout le backend). Le catalogue UNIQUE pour
+# les messages client est désormais `parametres.MessageTemplate` (clé
+# `parrainage`, déjà validée dans `docs/crm/messages_meryem.md`, rendue par
+# `message_pour_etape` comme n'importe quelle autre touche) — voir
+# `tests_cad72_parrainage_catalogue_unique.py`.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
