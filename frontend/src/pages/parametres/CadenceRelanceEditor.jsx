@@ -33,12 +33,29 @@ const CADENCES = [
 ]
 
 // L'enum du GABARIT de cadence, jamais `crm.Canal` (source du lead).
+//
+// CAD114 — `visite` n'est PLUS proposé à la configuration : la ligne de
+// relance ne teste `etape.canal` que pour `appel` et les canaux de message,
+// jamais pour `visite` ; une touche de canal « Visite » affichait donc un
+// badge et proposait Appeler/WhatsApp comme les autres — un canal qui ne
+// déclenche rien. Garde-fou du round 2 : on n'y câble SURTOUT PAS la modale
+// de planification. Le seul barreau de canal visite est le J+35 générique,
+// porté par des leads legacy souvent SANS devis : l'ouvrir
+// institutionnaliserait la visite AVANT le devis, contre la doctrine du
+// 15/09 (`PanneauProposerVisite` est gaté `apres_devis`).
 const CANAUX = [
   { value: 'appel', label: 'Appel' },
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'email', label: 'E-mail' },
-  { value: 'visite', label: 'Visite' },
 ]
+
+// CAD114 — un barreau EXISTANT qui porte déjà `visite` (le J+35 générique)
+// doit continuer d'afficher sa valeur : elle est montrée en lecture, désactivée
+// et étiquetée pour ce qu'elle est. Rien n'est réécrit en base — le canal se
+// change vers un canal qui, lui, fait quelque chose.
+const CANAL_VISITE_HERITE = {
+  value: 'visite', label: 'Visite (héritée — ne déclenche rien)',
+}
 
 // Sentinel pour l'option « aucun » : Radix Select n'autorise pas la valeur ''.
 const NONE = '__none__'
@@ -281,6 +298,14 @@ function CadenceTable({ cadence, gabarits }) {
                 {CANAUX.map(c => (
                   <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
                 ))}
+                {/* CAD114 — proposé à AUCUNE nouvelle configuration ; présent
+                    seulement pour que le barreau qui le porte déjà affiche sa
+                    valeur au lieu d'un champ vide. */}
+                {row.canal === CANAL_VISITE_HERITE.value && (
+                  <SelectItem value={CANAL_VISITE_HERITE.value} disabled>
+                    {CANAL_VISITE_HERITE.label}
+                  </SelectItem>
+                )}
               </SelectContent>
             </Select>
           </div>
