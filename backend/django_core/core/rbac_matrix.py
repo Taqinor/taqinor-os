@@ -1,18 +1,19 @@
 """Matrice endpoint×rôle canonique (YRBAC2).
 
 Déclare, pour un ensemble d'endpoints métier de référence (crm + ventes +
-stock + qhse + gestion_projet + contrats + litiges + kb), le VERDICT attendu
-(``ALLOW`` / ``DENY``) par rôle canonique parmi les 7 de
-``roles.CANONICAL_SYSTEM_ROLES``. Le test ``core/tests/test_rbac_matrix.py``
-crée, par société de test, un utilisateur de chaque rôle et appelle chaque
-entrée en asserttant le code HTTP (2xx = allow / 403|404 = deny).
+stock), le VERDICT attendu (``ALLOW`` / ``DENY``) par rôle canonique parmi les
+7 de ``roles.CANONICAL_SYSTEM_ROLES``. Le test
+``core/tests/test_rbac_matrix.py`` crée, par société de test, un utilisateur de
+chaque rôle et appelle chaque entrée en asserttant le code HTTP (2xx = allow /
+403|404 = deny).
 
 Cette table est la source de vérité du comportement RBAC attendu sur ces
 surfaces — un changement de garde qui la contredit casse le test. Elle démarre
-sur crm/ventes/stock (apps déjà finement gatées) comme référence verte ;
-YRBAC3 l'étend aux 5 apps nouvellement fine-grainées (qhse/gestion_projet/
-contrats/litiges/kb — toutes en lecture ``<app>_voir``, désormais accordée aux
-7 rôles canoniques y compris Viewer).
+sur crm/ventes/stock (apps déjà finement gatées) comme référence verte ; YRBAC3
+l'avait étendue aux 5 apps alors nouvellement fine-grainées
+(qhse/gestion_projet/contrats/litiges/kb), SOLMVP a retiré ces 5 lignes avec
+leurs modules (sortis du MVP solaire, urls plus montées → 404). Elles
+reviendront avec eux.
 
 ``core`` reste FONDATION : ce module ne déclare que des données (chemins,
 noms de rôles, verdicts) — aucun import d'app métier.
@@ -110,36 +111,15 @@ MATRIX: tuple[MatrixEntry, ...] = (
         verdicts=_only("Directeur", "Commercial responsable"),
         body={"nom": "RBAC-matrix produit", "prix_vente": 100},
     ),
-    # ─ QHSE (YRBAC3 — <app>_voir accordé aux 7 rôles canoniques) ─
-    MatrixEntry(
-        app="qhse", label="Liste des non-conformités",
-        method="GET", path="/api/django/qhse/non-conformites/",
-        verdicts=_all(ALLOW),  # qhse_voir accordé à tous les 7 rôles.
-    ),
-    # ─ GESTION_PROJET ─
-    MatrixEntry(
-        app="gestion_projet", label="Liste des projets",
-        method="GET", path="/api/django/gestion-projet/projets/",
-        verdicts=_all(ALLOW),  # projet_voir accordé à tous les 7 rôles.
-    ),
-    # ─ CONTRATS ─
-    MatrixEntry(
-        app="contrats", label="Liste des contrats",
-        method="GET", path="/api/django/contrats/contrats/",
-        verdicts=_all(ALLOW),  # contrat_voir accordé à tous les 7 rôles.
-    ),
-    # ─ LITIGES ─
-    MatrixEntry(
-        app="litiges", label="Liste des réclamations",
-        method="GET", path="/api/django/litiges/reclamations/",
-        verdicts=_all(ALLOW),  # litige_voir accordé à tous les 7 rôles.
-    ),
-    # ─ KB ─
-    MatrixEntry(
-        app="kb", label="Liste des articles KB",
-        method="GET", path="/api/django/kb/articles/",
-        verdicts=_all(ALLOW),  # kb_voir accordé à tous les 7 rôles.
-    ),
+    # SOLMVP — les 5 lignes YRBAC3 (qhse « non-conformités », gestion_projet
+    # « projets », contrats « contrats », litiges « réclamations », kb
+    # « articles ») ont été RETIRÉES : ces apps sont sorties du MVP solaire
+    # (``core.parked`` / ``docs/parked-modules.md``), leurs urls ne sont plus
+    # montées, donc chaque appel rendait 404 et la matrice n'asserte plus rien
+    # de réel. Elles reviendront AVEC leur module (recette § 5 de
+    # ``docs/parked-modules.md``) — leur forme est intacte dans l'historique
+    # git. La matrice reste le garde-fou vivant de crm + ventes + stock, avec
+    # son différenciateur fort (création de produit QG4).
 )
 
 

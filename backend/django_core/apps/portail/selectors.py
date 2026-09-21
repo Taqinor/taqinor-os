@@ -6,10 +6,15 @@ via ``apps.portail.models``).
 
 À la sortie de compta (ODX12), les lecteurs internes de ``ComptePortailClient``
 (les vues publiques tokenisées ``portail_mon_releve`` / ``portail_contester_
-facture`` de compta, et le sélecteur lecture de ``apps.contrats``) continuent de
-passer par le shim compta. Ce module est le point d'accès stable pour toute
-future lecture fine — jamais un import direct de ``apps.portail.models`` depuis
-l'extérieur.
+facture`` de compta, et le sélecteur lecture de ``apps.contrats``) passaient
+par le shim compta. Correctif CI SOLMVP — ``compta`` est désormais une
+coquille parquée SANS AUCUNE url (``core.parked``) : ``portail_mon_releve``
+est relogée nativement dans ``apps.portail.public_views``/``public_urls``
+(elle ne lisait que ``apps.ventes.selectors``, resté en périmètre MVP
+solaire). ``portail_contester_facture`` reste hors périmètre : elle créait
+une ``litiges.Reclamation``, et ``litiges`` est lui-même une app parquée. Ce
+module est le point d'accès stable pour toute future lecture fine — jamais un
+import direct de ``apps.portail.models`` depuis l'extérieur.
 """
 from .models import (
     ComptePortailClient, DemandeTicketPortail, JalonChantierPortail,

@@ -10,12 +10,10 @@
 //     Ce spec ne la MODIFIE jamais, il compte seulement ses leads avant/après.
 //   - `taqinor-demo-full` (`est_demo=True`, admin `demo_admin_full`) : SEULE
 //     cible du reset, seedée en fixture par `manage.py seed_demo_company`
-//     (.github/workflows/release-verify.yml — même patron que
-//     `seed_ao_demo --company taqinor-demo` déjà présent pour AO ; `Faker`,
-//     dev-only, y est installé ponctuellement pour cette étape). Comme
-//     `leads.spec.js`, ce spec vit en e2e COMPLET (release-verify), pas dans
-//     le palier smoke par-merge de ci.yml (qui ne seed pas
-//     `taqinor-demo-full`).
+//     (.github/workflows/release-verify.yml ; `Faker`, dev-only, y est
+//     installé ponctuellement pour cette étape). Comme `leads.spec.js`, ce
+//     spec vit en e2e COMPLET (release-verify), pas dans le palier smoke
+//     par-merge de ci.yml (qui ne seed pas `taqinor-demo-full`).
 import { test, expect } from '@playwright/test'
 import { uiLogin, ADMIN } from './helpers'
 

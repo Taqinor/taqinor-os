@@ -149,11 +149,23 @@ class TestCatalogueEndpointGating(TestCase):
     """Le gatage traverse jusqu'à l'endpoint catalogue AG1."""
 
     def setUp(self):
+        from apps.roles.models import Role
+
         self.company = Company.objects.get_or_create(
             slug='arc33-endpoint', defaults={'nom': 'ARC33 Endpoint Co'})[0]
+        # SOLMVP-sweep (2026-09-21) — ``adsengine.campaigns.list`` exige
+        # ``adsengine_view`` (contrairement au pilote historique compta,
+        # ``required_permission=None``) : ``has_erp_permission`` ne consulte
+        # QUE le rôle fin ``self.role`` (jamais ``role_legacy`` seul, qui
+        # renvoie toujours False sans rôle rattaché) — un rôle fin portant
+        # cette permission est donc nécessaire pour que ce test prouve
+        # vraiment la distribution ENG19 « à tous les rôles ».
+        role = Role.objects.create(
+            company=self.company, nom='Responsable ARC33',
+            permissions=['adsengine_view'])
         self.user = User.objects.create_user(
             username='arc33_endpoint_user', password='x',
-            role_legacy='responsable', company=self.company)
+            role_legacy='responsable', role=role, company=self.company)
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')

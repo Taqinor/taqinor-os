@@ -3,9 +3,8 @@
 // `est_demo=False` — voir helpers.js/ADMIN) : ce spec cible `taqinor-demo-full`
 // (`est_demo=True`, admin `demo_admin_full`), seedée en fixture par
 // `manage.py seed_demo_company` (.github/workflows/release-verify.yml, ajoutée
-// pour ce spec — même patron que `seed_ao_demo --company taqinor-demo` déjà
-// présent pour les specs AO ; `Faker`, dev-only, y est installé ponctuellement
-// pour cette étape, jamais ajouté à requirements.txt). Comme `leads.spec.js`,
+// pour ce spec ; `Faker`, dev-only, y est installé ponctuellement pour cette
+// étape, jamais ajouté à requirements.txt). Comme `leads.spec.js`,
 // ce spec vit en e2e COMPLET (release-verify), pas dans le palier smoke
 // par-merge de ci.yml (qui ne seed pas `taqinor-demo-full`). Runs COLD (pas
 // le storageState partagé) : c'est tout l'intérêt du scénario « premier

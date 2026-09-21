@@ -18,9 +18,11 @@ Couvre :
 * isolation multi-tenant : un ``partenaire_id`` d'une AUTRE société ne
   provisionne rien (jamais un compte croisé) ;
 * le ``token_acces`` historique du partenaire est CONSERVÉ intact ;
-* l'endpoint ``POST /api/django/compta/partenaires/{id}/provisionner-acces/``
-  est réservé à l'ADMINISTRATEUR : un Responsable et un compte portail externe
-  reçoivent 403, et la réponse ne contient JAMAIS le mot de passe temporaire.
+* l'endpoint ``POST /api/django/crm/partenaires/{id}/provisionner-acces/``
+  (natif crm depuis SOLMVP30b — compta, sa maison d'origine ODX13, est
+  désormais une coquille parquée sans aucune url) est réservé à
+  l'ADMINISTRATEUR : un Responsable et un compte portail externe reçoivent
+  403, et la réponse ne contient JAMAIS le mot de passe temporaire.
 
 Run :
     python manage.py test apps.portail.tests.test_ntprt4_provisionnement_partenaire -v2
@@ -178,7 +180,7 @@ class EndpointProvisionnementPartenaireTests(TestCase):
     def setUp(self):
         self.company = make_company('ntprt4-api-a', 'NTPRT4 API A')
         self.partenaire = make_partenaire(self.company)
-        self.url = ('/api/django/compta/partenaires/'
+        self.url = ('/api/django/crm/partenaires/'
                     f'{self.partenaire.id}/provisionner-acces/')
         self.api = APIClient()
 

@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 5e6496d679f2f39c20900a57c665b9a04a13890286a2cfd14685b55769450b99
-Plan fingerprint: 48d6976e32f94441a1f9a7b1cd2773afb5fae3cd3f0832509badba20a2271104
+Structure fingerprint: fa8cb4a778d91f004099865b17f777d3d421c4df3e07a12e13448584e4a052eb
+Plan fingerprint: f6914456c632839b4bff47b8f2489d8a76e31fa7bf1cca96dc6494cc4327272c
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -530,8 +530,39 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (47)**
+**Done (78)**
 
+- `SOLMVP1` — Archive + registre unique
+- `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
+- `SOLMVP3` — Fin du mécanisme d'édition (un seul produit)
+- `SOLMVP10` — Détacher crm
+- `SOLMVP11` — Détacher ventes + facturation
+- `SOLMVP12` — Détacher stock + achats
+- `SOLMVP13` — Détacher installations + Chantiers « cœur + GPS » (décision 4)
+- `SOLMVP14` — Détacher sav
+- `SOLMVP15` — Détacher calepinage d'AO sans rien perdre du studio
+- `SOLMVP16` — Détacher portail (Portail client = MVP, décision 1)
+- `SOLMVP17` — Détacher adsengine + Publicité vendable (décision 5)
+- `SOLMVP18` — Détacher reporting
+- `SOLMVP19` — Détacher notifications
+- `SOLMVP20` — Détacher records + customfields + dataimport
+- `SOLMVP21` — Détacher audit + tiers + monitoring + parametres + roles
+- `SOLMVP22` — Détacher automation + publicapi + agent
+- `SOLMVP23` — Détacher `core/` (fondation sous contrats import-linter)
+- `SOLMVP30` — Coquiller Finance
+- `SOLMVP31` — Coquiller RH
+- `SOLMVP32` — Coquiller Commercial avancé
+- `SOLMVP33` — Coquiller Opérations & services
+- `SOLMVP34` — Coquiller Supply & retail
+- `SOLMVP35` — Coquiller Technique
+- `SOLMVP36` — Coquiller les 7 verticaux
+- `SOLMVP40` — Frontend : suppression des modules sortis
+- `SOLMVP41` — Frontend : recâblage des fichiers gardés (inventaire du 20/09)
+- `SOLMVP42` — e2e + gardes
+- `SOLMVP50` — Plans : la mémoire de la Phase 2
+- `SOLMVP51` — CODEMAP + gardes de plateforme
+- `SOLMVP52` — Semis et démo
+- `SOLMVP53` — Gate final + garde CI permanente
 - `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
 - `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
 - `CALX3` — Faire exposer par le constructeur 3D l'entrée moteur, l'application d'un plan et les…
@@ -580,7 +611,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX68` — Garder un brouillon local de l'atelier et proposer sa reprise
 - `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
 
-**Open — to build (558)**
+**Open — to build (528)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -768,37 +799,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM8` — Relever quatre valeurs d'environnement en production
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
-- `SOLMVP1` — Archive + registre unique
-- `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
-- `SOLMVP3` — Fin du mécanisme d'édition (un seul produit)
-- `SOLMVP10` — Détacher crm
-- `SOLMVP11` — Détacher ventes + facturation
-- `SOLMVP12` — Détacher stock + achats
-- `SOLMVP13` — Détacher installations + Chantiers « cœur + GPS » (décision 4)
-- `SOLMVP14` — Détacher sav
-- `SOLMVP15` — Détacher calepinage d'AO sans rien perdre du studio
-- `SOLMVP16` — Détacher portail (Portail client = MVP, décision 1)
-- `SOLMVP17` — Détacher adsengine + Publicité vendable (décision 5)
-- `SOLMVP18` — Détacher reporting
-- `SOLMVP19` — Détacher notifications
-- `SOLMVP20` — Détacher records + customfields + dataimport
-- `SOLMVP21` — Détacher audit + tiers + monitoring + parametres + roles
-- `SOLMVP22` — Détacher automation + publicapi + agent
-- `SOLMVP23` — Détacher `core/` (fondation sous contrats import-linter)
-- `SOLMVP30` — Coquiller Finance
-- `SOLMVP31` — Coquiller RH
-- `SOLMVP32` — Coquiller Commercial avancé
-- `SOLMVP33` — Coquiller Opérations & services
-- `SOLMVP34` — Coquiller Supply & retail
-- `SOLMVP35` — Coquiller Technique
-- `SOLMVP36` — Coquiller les 7 verticaux
-- `SOLMVP40` — Frontend : suppression des modules sortis
-- `SOLMVP41` — Frontend : recâblage des fichiers gardés (inventaire du 20/09)
-- `SOLMVP42` — e2e + gardes
-- `SOLMVP50` — Plans : la mémoire de la Phase 2
-- `SOLMVP51` — CODEMAP + gardes de plateforme
-- `SOLMVP52` — Semis et démo
-- `SOLMVP53` — Gate final + garde CI permanente
+- `SOLMVP54` — CI sous 2 minutes (demande fondateur 21/09, APRÈS le merge SOLMVP)
 - `CALX5` — Construire le service d'orchestration de la simulation et sa porte HTTP, sur la chaîne…
 - `CALX6` — Persister la série horaire et rendre l'export horaire réellement téléchargeable
 - `CALX14` — Rendre visibles la batterie et le hors-réseau que la chaîne calcule
