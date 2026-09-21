@@ -2272,7 +2272,14 @@ def message_pour_etape(etape, *, request=None, user=None):
             devis = get_devis_by_pk(etape.devis_id)
             if devis is not None:
                 contexte['reference'] = getattr(devis, 'reference', '') or ''
-                validite = getattr(devis, 'date_validite', None)
+                # CAD59 — le message applique le MÊME repli que le PDF :
+                # `date_validite` si posée, sinon date de création + le
+                # réglage société `quote_validity_days`. Lire le seul champ
+                # laissait MRY13 supprimer la phrase entière quand il était
+                # vide, et le WhatsApp contredisait alors un PDF qui, lui,
+                # affichait « valable jusqu'au X ». Règle #4 respectée : on ne
+                # touche pas au moteur de rendu, on lit la MÊME règle.
+                validite = _date_validite_comme_le_pdf(devis)
                 if validite:
                     contexte['date_validite'] = validite.strftime('%d/%m/%Y')
                 contexte['lien'] = url_proposition(devis) or ''
@@ -8641,3 +8648,35 @@ def _validite_selon_financement(lead, devis, date_fin_de_suivi):
     if date_fin_de_suivi is None:
         return candidate
     return max(candidate, date_fin_de_suivi)
+
+
+# ── CAD-E ── CAD59 — le message J9 et le PDF disent la MÊME date ───────────
+#
+# Le moteur de devis a un repli documenté (``date_validite``, sinon date de
+# création + le réglage société ``quote_validity_days``) alors que
+# ``message_pour_etape`` ne lisait QUE ``devis.date_validite`` : vide, MRY13
+# supprimait la phrase entière et le WhatsApp enchaînait sur « Après, je dois
+# revalider les prix… » pendant que le PDF affichait « valable jusqu'au X ».
+# Deux voix contradictoires sur le même dossier.
+#
+# Règle #4 respectée : on ne touche PAS au moteur de rendu — on lit la MÊME
+# règle, par la surface de lecture de ventes.
+
+def _date_validite_comme_le_pdf(devis):
+    """La date de validité que le PDF affiche, ou ``None``.
+
+    ``None`` fait OMETTRE la phrase (MRY13) — c'est le comportement voulu
+    quand la date est indéterminable : jamais un blanc, jamais une date
+    inventée. Le chemin ``devis=None`` (TREADMILL-1538) reste couvert par
+    CAD55.
+    """
+    if devis is None:
+        return None
+    try:
+        from apps.ventes.selectors import date_validite_effective
+        return date_validite_effective(devis)
+    except Exception:  # noqa: BLE001 — jamais bloquant, jamais inventé
+        logger.warning(
+            'CAD59 : validité illisible (devis #%s)',
+            getattr(devis, 'pk', '?'), exc_info=True)
+        return getattr(devis, 'date_validite', None)

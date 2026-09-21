@@ -3364,3 +3364,29 @@ def devis_utilisant_produit(user, produit_id, limit=20):
             'total_ttc': str(devis.total_ttc),
         })
     return lignes
+
+
+# ── CAD59 (21/09/2026) — LA date de validité, celle que le PDF affiche ─────
+
+def date_validite_effective(devis):
+    """La date de validité RÉELLE d'un devis — celle qu'imprime le PDF.
+
+    ``date_validite`` si elle est posée, sinon date de création + le réglage
+    société ``quote_validity_days`` : exactement la règle que
+    ``utils/expiry.date_expiration`` applique déjà pour le moteur de devis et
+    le portail client. ``None`` si elle est indéterminable — l'appelant OMET
+    alors sa phrase plutôt que d'inventer une date.
+
+    Surface de LECTURE cross-app (le CRM la consomme depuis
+    ``message_pour_etape``) : sans elle, le message WhatsApp ne lisait que
+    ``devis.date_validite`` et supprimait sa phrase de validité pendant que le
+    PDF, lui, affichait « valable jusqu'au X » — deux voix contradictoires sur
+    le même dossier.
+    """
+    from apps.ventes.utils.expiry import date_expiration
+    if devis is None:
+        return None
+    try:
+        return date_expiration(devis)
+    except Exception:  # noqa: BLE001 — jamais une date inventée en repli
+        return None
