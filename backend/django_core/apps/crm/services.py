@@ -5027,6 +5027,10 @@ def notify_client_contact_request(devis_reference: str, lead,
                 'contact_preference', 'contact_preference_set_at'])
         if canal_key == 'rappel':
             notify_lead_callback_requested(lead)
+            # CAD129 — la demande entre dans la FILE, pas seulement dans la
+            # cloche : une notification noyée faisait disparaître la demande
+            # la plus forte qu'un prospect puisse faire.
+            poser_touche_rappel_demande(lead, user=None)
 
         recipients = lead_notification_recipients(lead)
         if not recipients:
@@ -8637,5 +8641,108 @@ def enregistrer_base_legale_lead(lead, *, source, base_legale,
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             'CAD90 : base légale non écrite au registre pour le lead #%s',
+            getattr(lead, 'pk', None), exc_info=True)
+        return None
+
+
+# ── CAD-K ── CAD129 — « rappelez-moi » entre dans la FILE, pas dans la cloche ─
+#
+# Audit L3 du 21/09/2026. Un clic « rappelez-moi » écrivait une note, notifiait
+# le responsable et son supérieur, et posait la préférence « joignable par
+# téléphone » — mais ne créait AUCUNE touche. Si la notification est noyée dans
+# la cloche, la demande la plus forte qu'un prospect puisse faire disparaît.
+#
+# LA RÈGLE : décaler, jamais redémarrer. Quand le lead a déjà un plan en cours,
+# on RAMÈNE sa prochaine touche au prochain créneau d'appel et tout le reste du
+# plan glisse du MÊME delta (``reporter_prochaine_touche`` le fait déjà, ancre
+# comprise) : le lead garde sa position dans le protocole, on ne fabrique pas un
+# second plan concurrent. Quand il n'a plus aucune touche ouverte (cadence
+# terminée ou arrêtée), on pose UNE touche — une seule, jamais un plan.
+
+#: Libellé de la touche « rappel demandé ». Sert aussi de clé d'idempotence :
+#: deux clics du même client ne laissent jamais deux lignes dans la file.
+RAPPEL_DEMANDE_LIBELLE = 'Rappeler le client (il l’a demandé)'
+
+#: Cadence des touches hors protocole déjà utilisée par le dépôt.
+RAPPEL_DEMANDE_CADENCE = 'generique'
+
+
+def _touche_rappel_demande_ouverte(lead):
+    """La touche « rappel demandé » encore À FAIRE sur ce lead, ou ``None``."""
+    return (lead.relance_etapes
+            .filter(libelle=RAPPEL_DEMANDE_LIBELLE,
+                    statut=RelanceEtape.Statut.A_FAIRE)
+            .order_by('due_date', 'pk')
+            .first())
+
+
+def poser_touche_rappel_demande(lead, *, user=None, quand=None):
+    """CAD129 — un rappel demandé devient une TOUCHE datée, pas une notification.
+
+    ``quand`` (instant ou date) par défaut = maintenant ; l'échéance réelle est
+    toujours recalée sur le prochain créneau d'APPEL de la société — un rappel
+    promis à 23 h ne rend service à personne.
+
+    Renvoie la touche (déplacée ou créée), ou ``None`` si le lead n'a pas de
+    société. Best-effort intégral : une demande client n'est JAMAIS perdue
+    parce que la file n'a pas pu être écrite — l'appelant a déjà consigné la
+    note et notifié le responsable.
+    """
+    from . import horaires
+
+    if lead is None or getattr(lead, 'company_id', None) is None:
+        return None
+    try:
+        instant = quand or timezone.now()
+        if not isinstance(instant, datetime.datetime):
+            instant = datetime.datetime.combine(
+                instant, datetime.time(0, 0), tzinfo=horaires.CASABLANCA)
+        elif timezone.is_naive(instant):
+            instant = timezone.make_aware(instant, datetime.timezone.utc)
+        echeance = horaires.prochain_creneau_appel(
+            instant, lead.company, canal=RelanceEtape.Canal.APPEL)
+
+        # 1. Une touche « rappel demandé » déjà ouverte est DÉPLACÉE, jamais
+        #    dupliquée : deux clics ne font pas deux lignes dans la file.
+        deja = _touche_rappel_demande_ouverte(lead)
+        if deja is not None:
+            deja.due_at = echeance
+            deja.due_date = echeance.astimezone(horaires.CASABLANCA).date()
+            deja.save(update_fields=['due_at', 'due_date'])
+            _recaler_file(lead, user)
+            return deja
+
+        # 2. Un plan en cours : on le RAMÈNE, avec tout son reste (l'ancre
+        #    comprise). C'est « décaler, jamais redémarrer ».
+        ouverte = _prochaine_touche_a_faire(lead)
+        if ouverte is not None:
+            deplacee = reporter_prochaine_touche(
+                lead, user, echeance, etape=ouverte, journaliser=False)
+            if deplacee is not None:
+                # Python 3.11 (prod/CI) refuse une expression MULTI-LIGNE dans
+                # une f-string : le libellé est composé AVANT.
+                quand_local = echeance.astimezone(horaires.CASABLANCA)
+                quand_lisible = quand_local.strftime('%d/%m/%Y à %H:%M')
+                activity.log_note(
+                    lead, user,
+                    'Rappel demandé par le client : la prochaine touche est '
+                    f'ramenée au {quand_lisible}, et la suite du plan glisse '
+                    'du même écart.')
+                return deplacee
+
+        # 3. Plus aucune touche ouverte : UNE touche, jamais un second plan.
+        etape = RelanceEtape.objects.create(
+            company=lead.company, lead=lead,
+            cadence=RAPPEL_DEMANDE_CADENCE, ordre=0,
+            canal=RelanceEtape.Canal.APPEL,
+            libelle=RAPPEL_DEMANDE_LIBELLE,
+            due_at=echeance,
+            due_date=echeance.astimezone(horaires.CASABLANCA).date(),
+            note='Posée automatiquement : le client a demandé un rappel.')
+        _recaler_file(lead, user)
+        return etape
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD129 : touche de rappel non posée pour le lead #%s',
             getattr(lead, 'pk', None), exc_info=True)
         return None
