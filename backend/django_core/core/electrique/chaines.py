@@ -44,11 +44,38 @@ from core.electrique.types import (
 
 __all__ = [
     "FenetreChaine", "RepartitionPan", "ResultatChaines",
+    "ChoixLongueur", "PartitionEcartee",
     "LONGUEUR_MAX_NON_BORNEE",
     "SOURCE_FICHE_ONDULEUR", "SOURCE_FICHES", "SOURCE_SAISIE",
     "SOURCE_REPARTITION",
+    "MOTIF_HORS_FENETRE_HAUTE", "MOTIF_HORS_FENETRE_BASSE",
+    "MOTIF_PARTITION_NON_EGALE", "MOTIF_SURCHARGE_MPPT",
+    "MOTIF_CHAINE_PLUS_COURTE", "MOTIFS_ECARTEMENT",
+    "CRITERE_COURANT_ENTREE", "CRITERE_CHAINE_LA_PLUS_LONGUE",
+    "CRITERE_SEULE_PARTITION", "CRITERE_AUCUNE_PARTITION",
     "fenetre_admissible", "concevoir_chaines",
 ]
+
+#: CALX216 — les SEULS motifs d'écartement d'une partition. La liste est
+#: FERMÉE : elle n'énonce aucune heuristique que ``_choisir_longueur`` ne
+#: pratique pas déjà, elle NOMME celles qu'il pratiquait en silence.
+MOTIF_HORS_FENETRE_HAUTE = "hors fenêtre haute"
+MOTIF_HORS_FENETRE_BASSE = "hors fenêtre basse"
+MOTIF_PARTITION_NON_EGALE = "partition non égale"
+MOTIF_SURCHARGE_MPPT = "surcharge d'entrée MPPT"
+MOTIF_CHAINE_PLUS_COURTE = "chaîne plus courte à critère de courant égal"
+MOTIFS_ECARTEMENT = (MOTIF_HORS_FENETRE_HAUTE, MOTIF_HORS_FENETRE_BASSE,
+                     MOTIF_PARTITION_NON_EGALE, MOTIF_SURCHARGE_MPPT,
+                     MOTIF_CHAINE_PLUS_COURTE)
+
+#: CALX216 — le critère qui a RETENU la partition. Ce sont les deux critères
+#: de ``_choisir_longueur``, dans leur ordre, plus les deux cas dégénérés
+#: (une seule partition admissible, aucune).
+CRITERE_COURANT_ENTREE = ("courant d'entrée MPPT — d'autres partitions "
+                          "surchargent l'entrée, la retenue non")
+CRITERE_CHAINE_LA_PLUS_LONGUE = "chaîne la plus longue à critère de courant égal"
+CRITERE_SEULE_PARTITION = "seule partition égale dans la fenêtre de tension"
+CRITERE_AUCUNE_PARTITION = "aucune partition égale dans la fenêtre de tension"
 
 #: CALX215 — d'OÙ sort la borne que chaque verdict a comparée. Quatre
 #: provenances, et aucune autre : la fiche de l'onduleur, le COUPLE de fiches
@@ -160,6 +187,57 @@ class FenetreChaine:
 
 
 @dataclass(frozen=True)
+class PartitionEcartee:
+    """Une partition NON retenue et le motif — en français — de son écartement.
+
+    ``nb_chaines`` vaut 0 quand la longueur ne divise pas le pan : il n'existe
+    alors aucune partition en chaînes ÉGALES de cette longueur, ce que dit
+    précisément ``MOTIF_PARTITION_NON_EGALE``.
+    """
+
+    longueur: int
+    nb_chaines: int
+    motif: str
+
+
+class ChoixLongueur(tuple):
+    """``(longueur, nb_chaines)`` — ET le motif du choix (CALX216).
+
+    C'est un 2-uplet À PART ENTIÈRE : ``longueur, nb_chaines = choix`` marche
+    comme avant, ``choix == (8, 1)`` reste vrai, et les appelants historiques
+    (``apps.ventes.solar_design._choose_string_layout``, qui RE-EXPORTE cette
+    fonction) ne voient aucun changement. Le motif s'ajoute À CÔTÉ du couple,
+    jamais à sa place : c'est ce qui rend la tâche non régressive par
+    construction.
+    """
+
+    def __new__(cls, longueur, nb_chaines, critere_retenu="",
+                partitions_ecartees=()):
+        choix = super().__new__(cls, (int(longueur), int(nb_chaines)))
+        choix._critere_retenu = str(critere_retenu)
+        choix._partitions_ecartees = tuple(partitions_ecartees)
+        return choix
+
+    @property
+    def longueur(self):
+        return self[0]
+
+    @property
+    def nb_chaines(self):
+        return self[1]
+
+    @property
+    def critere_retenu(self):
+        """Lequel des deux critères a tranché — jamais une phrase inventée."""
+        return self._critere_retenu
+
+    @property
+    def partitions_ecartees(self):
+        """Les partitions écartées, chacune avec SON motif."""
+        return self._partitions_ecartees
+
+
+@dataclass(frozen=True)
 class RepartitionPan:
     """Découpage d'UN pan — le reste est ANNONCÉ, jamais dissimulé."""
 
@@ -170,6 +248,11 @@ class RepartitionPan:
     reste: int
     mppt: Tuple[int, ...] = ()
     homogene: bool = True
+    #: CALX216 — POURQUOI cette longueur, et pourquoi pas les autres. Vides
+    #: quand la longueur a été IMPOSÉE : aucun choix n'a eu lieu, et publier
+    #: un critère là où l'utilisateur a tranché serait un motif fabriqué.
+    critere_longueur: str = ""
+    partitions_ecartees: Tuple[PartitionEcartee, ...] = ()
 
     @property
     def modules_en_chaine(self):
@@ -356,6 +439,13 @@ def _choisir_longueur(nb_modules, n_mppt, longueur_min, longueur_max,
     entrées » n'est pas une exigence électrique : c'est un confort de câblage
     qui coûtait un départ DC, un jeu de connecteurs et une longueur de câble
     en plus, sur chaque dossier.
+
+    CALX216 — le résultat PORTE désormais son motif : ``critere_retenu`` dit
+    lequel des deux critères a tranché, ``partitions_ecartees`` dit pourquoi
+    chacune des autres longueurs n'a pas été retenue. Le couple numérique,
+    lui, est rigoureusement celui d'avant : la boucle de décision ci-dessous
+    n'a pas bougé d'une ligne, le motif se calcule APRÈS elle et ne peut donc
+    pas l'influencer.
     """
     meilleur = (0, 0)
     meilleur_score = None
@@ -371,7 +461,74 @@ def _choisir_longueur(nb_modules, n_mppt, longueur_min, longueur_max,
         if meilleur_score is None or score < meilleur_score:
             meilleur_score = score
             meilleur = (longueur, nb_chaines)
-    return meilleur
+
+    ecartees = _partitions_ecartees(nb_modules, n_mppt, longueur_min,
+                                    longueur_max, imp_a, i_max_mppt_a,
+                                    meilleur, meilleur_score)
+    return ChoixLongueur(meilleur[0], meilleur[1],
+                         _critere_retenu(meilleur_score, ecartees), ecartees)
+
+
+def _motif_ecartement(longueur, nb_modules, longueur_min, longueur_max,
+                      surcharge, surcharge_retenue):
+    """Le motif — UN seul — pour lequel cette longueur n'a pas été retenue.
+
+    L'ordre d'examen est celui du calcul lui-même : la fenêtre de tension
+    ferme d'abord (elle est physique), l'égalité de la partition ensuite (le
+    moteur ne câble que des chaînes égales), le courant d'entrée enfin, et à
+    critère de courant ÉGAL c'est la longueur qui départage.
+    """
+    if longueur > longueur_max:
+        return MOTIF_HORS_FENETRE_HAUTE
+    if longueur < longueur_min:
+        return MOTIF_HORS_FENETRE_BASSE
+    if nb_modules % longueur:
+        return MOTIF_PARTITION_NON_EGALE
+    if surcharge and not surcharge_retenue:
+        return MOTIF_SURCHARGE_MPPT
+    return MOTIF_CHAINE_PLUS_COURTE
+
+
+def _partitions_ecartees(nb_modules, n_mppt, longueur_min, longueur_max,
+                         imp_a, i_max_mppt_a, meilleur, meilleur_score):
+    """Toutes les longueurs de chaîne NON retenues, chacune avec son motif.
+
+    Le balayage couvre 1 → ``nb_modules`` : le lecteur qui demande « pourquoi
+    pas 7 modules par chaîne ? » trouve la réponse, qu'elle tienne à la
+    fenêtre de tension, à l'égalité de la partition ou au courant d'entrée.
+    """
+    surcharge_retenue = meilleur_score[0] if meilleur_score else 0
+    ecartees = []
+    for longueur in range(1, nb_modules + 1):
+        if longueur == meilleur[0] and meilleur_score is not None:
+            continue
+        nb_chaines = (nb_modules // longueur if nb_modules % longueur == 0
+                      else 0)
+        surcharge = (1 if nb_chaines and _surcharge_mppt(
+            nb_chaines, n_mppt, imp_a, i_max_mppt_a) else 0)
+        ecartees.append(PartitionEcartee(
+            longueur=longueur, nb_chaines=nb_chaines,
+            motif=_motif_ecartement(longueur, nb_modules, longueur_min,
+                                    longueur_max, surcharge,
+                                    surcharge_retenue)))
+    return tuple(ecartees)
+
+
+def _critere_retenu(meilleur_score, ecartees):
+    """Lequel des DEUX critères a discriminé — ou l'aveu qu'aucun n'a pu jouer.
+
+    Chaque phrase rendue est un FAIT sur ce balayage-ci, jamais une règle
+    générale : « d'autres partitions surchargent l'entrée, la retenue non » ne
+    sort que si c'est vrai des deux côtés.
+    """
+    if meilleur_score is None:
+        return CRITERE_AUCUNE_PARTITION
+    motifs = {partition.motif for partition in ecartees}
+    if MOTIF_SURCHARGE_MPPT in motifs and not meilleur_score[0]:
+        return CRITERE_COURANT_ENTREE
+    if MOTIF_CHAINE_PLUS_COURTE in motifs:
+        return CRITERE_CHAINE_LA_PLUS_LONGUE
+    return CRITERE_SEULE_PARTITION
 
 
 def _repartir(nb_chaines, entrees):
@@ -515,13 +672,15 @@ def concevoir_chaines(entree):
         nb_modules = _entier(groupe.nb_modules)
         entrees = blocs[index] if index < len(blocs) else (1,)
         # L'équilibrage vise les entrées RÉELLEMENT allouées à ce pan.
+        choix = None
         if forcee_acceptee:
             longueur = forcee
             nb_chaines = nb_modules // longueur
         else:
-            longueur, nb_chaines = _choisir_longueur(
+            choix = _choisir_longueur(
                 nb_modules, len(entrees), fenetre.longueur_min,
                 fenetre.longueur_max, module.imp_a, onduleur.i_max_mppt_a)
+            longueur, nb_chaines = choix
 
         homogene = True
         if longueur <= 0 or nb_chaines <= 0:
@@ -572,7 +731,9 @@ def concevoir_chaines(entree):
         repartitions.append(RepartitionPan(
             pan=groupe.label, nb_modules=nb_modules, longueur_chaine=longueur,
             nb_chaines=nb_chaines, reste=reste, mppt=tuple(entrees),
-            homogene=homogene))
+            homogene=homogene,
+            critere_longueur=choix.critere_retenu if choix else "",
+            partitions_ecartees=(choix.partitions_ecartees if choix else ())))
 
     # Les deux familles de verdicts gardent leur signature historique (une
     # liste d'alertes à remplir, les bloquants en retour) : ``apps.ventes.
