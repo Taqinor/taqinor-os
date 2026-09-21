@@ -14,11 +14,6 @@ from .views_referentiels import (
     UniteMesureViewSet,
 )
 from .views_realisations import RealisationViewSet
-from .views_pos import (
-    BoutiquePosViewSet,
-    get_parametres_pos,
-    update_parametres_pos,
-)
 from .views_onboarding import onboarding_localisation
 from .views_fetes_mobiles import fetes_mobiles_enregistrer, fetes_mobiles_etat
 
@@ -69,11 +64,6 @@ gabarits_router = DefaultRouter()
 gabarits_router.register(r'gabarits-document', GabaritDocumentCustomViewSet,
                          basename='gabarit-document')
 
-# NTRET8 — Paramètres POS (Point de vente) : boutiques actives. Routeur isolé.
-pos_router = DefaultRouter()
-pos_router.register(r'pos-boutiques', BoutiquePosViewSet,
-                    basename='pos-boutique')
-
 urlpatterns = [
     path('', views.get_profile),
     path('update/', views.update_profile),
@@ -116,11 +106,6 @@ urlpatterns = [
     path('', include(realisations_router.urls)),
     # NTEXT19 — gabarits de document custom (lecture + rendu PDF par cible).
     path('', include(gabarits_router.urls)),
-    # NTRET8 — Paramètres POS (Point de vente) : taux horaire comptoir +
-    # boutiques actives (surface m²/adresse/horaires).
-    path('pos/', get_parametres_pos),
-    path('pos/update/', update_parametres_pos),
-    path('', include(pos_router.urls)),
     # NTI18N31 — assistant « Onboarding pays » (devise/fuseau/langue de
     # secours + seed des jours fériés, en un seul appel).
     path('onboarding-localisation/', onboarding_localisation),
