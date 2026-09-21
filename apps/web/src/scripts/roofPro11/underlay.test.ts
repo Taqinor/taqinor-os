@@ -33,7 +33,19 @@ import {
   underlayPourDocument,
   type DocumentUnderlay,
 } from './underlay';
+import {
+  caleDeuxPoints,
+  calagePourDocument,
+  capImageDeg,
+  coinsDuPlanCale,
+  deplacerCalage,
+  MOTIF_PLAN_NON_CALE,
+  pointImageSurCarte,
+  tournerCalage,
+  type CalageDeuxPoints,
+} from './underlay';
 import { createMapDraw, MAPLIBRE_LAYERS_PAR_CALQUE, ORDRE_RENDU_CALQUES, opacityPropFor } from './mapDraw';
+import { distanceEntreM } from './snap';
 import { type Ctx } from './context';
 import { type LngLat } from '../../lib/roof';
 
@@ -402,7 +414,9 @@ function carteFactice() {
 }
 
 function harnaisMapDraw() {
-  document.body.innerHTML = '';
+  // `ensureTraceChips` (CALX89) s'ancre sur le parent du bouton « Terminer » : sans lui,
+  // le constructeur ne crée AUCUN de ses contrôles (comportement voulu en mode capture).
+  document.body.innerHTML = '<div id="rp9-barre"><button type="button" id="rp9-finish"></button></div>';
   const { map, sources, couches, pile } = carteFactice();
   const ctx = {
     opts: { maptilerKey: 'K', imagery: { pays: 'ma' }, reducedMotion: true },
@@ -561,5 +575,377 @@ describe('CALX107 — un fond qu’on ne sait pas placer n’est JAMAIS peint au
     expect(r.motif).toContain('quatre coins');
     expect(couches.size).toBe(0);
     expect(underlayPourDocument(ctx)).toEqual({}); // rien n'est entré dans le document
+  });
+});
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX108 — CALER LE FOND PAR DEUX POINTS ET UNE DISTANCE RÉELLE SAISIE
+//
+// Ce que ce bloc garde :
+//  1. deux points distants de 100 px déclarés à 10 m ⇒ 0,1 m/px et rotation NULLE ;
+//  2. distance non saisie ⇒ AUCUN calage écrit, et le motif est affiché ;
+//  3. AUCUNE échelle n'est déduite du fichier — une unité/échelle/DPI que le fichier
+//     prétendrait porter n'entre dans aucun calcul.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Deux points de l'image alignés horizontalement, 100 px d'écart. */
+const IMAGE_100PX: [[number, number], [number, number]] = [
+  [120, 840],
+  [220, 840],
+];
+/** Les deux ancres correspondantes sur la carte : plein EST (même latitude). */
+const ANCRES_EST: [LngLat, LngLat] = [
+  [-7.62, 33.58],
+  [-7.6, 33.58],
+];
+
+describe('CALX108 — le facteur d’échelle vient de la distance SAISIE', () => {
+  it('100 px déclarés à 10 m donnent 0,1 m/px et une rotation nulle', () => {
+    const r = caleDeuxPoints(IMAGE_100PX, ANCRES_EST, 10, 'mesurée au télémètre');
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('calage attendu');
+    expect(r.calibration.echelleMParPx).toBeCloseTo(0.1, 12);
+    expect(r.calibration.rotationDeg).toBeCloseTo(0, 6);
+    expect(r.calibration.distanceImagePx).toBeCloseTo(100, 12);
+  });
+
+  it('le facteur d’échelle ne dépend QUE des pixels et de la distance saisie — jamais de la carte', () => {
+    // Deux ancres BEAUCOUP plus éloignées : l'échelle annoncée reste 0,1 m/px.
+    const loin: [LngLat, LngLat] = [
+      [-7.62, 33.58],
+      [-7.4, 33.58],
+    ];
+    const proche = caleDeuxPoints(IMAGE_100PX, ANCRES_EST, 10, 's');
+    const lointain = caleDeuxPoints(IMAGE_100PX, loin, 10, 's');
+    if (!proche.ok || !lointain.ok) throw new Error('calages attendus');
+    expect(lointain.calibration.echelleMParPx).toBe(proche.calibration.echelleMParPx);
+    expect(lointain.calibration.echelleMParPx).toBeCloseTo(0.1, 12);
+  });
+
+  it('200 px déclarés à 10 m donnent 0,05 m/px : c’est la SAISIE qui commande', () => {
+    const r = caleDeuxPoints(
+      [
+        [0, 0],
+        [200, 0],
+      ],
+      ANCRES_EST,
+      10,
+      's',
+    );
+    if (!r.ok) throw new Error('calage attendu');
+    expect(r.calibration.echelleMParPx).toBeCloseTo(0.05, 12);
+  });
+
+  it('un repère image tourné donne la rotation, jamais une échelle différente', () => {
+    // Points image alignés VERTICALEMENT (y croît vers le bas = sud) ; ancres plein est.
+    const r = caleDeuxPoints(
+      [
+        [0, 0],
+        [0, 100],
+      ],
+      ANCRES_EST,
+      10,
+      's',
+    );
+    if (!r.ok) throw new Error('calage attendu');
+    expect(r.calibration.echelleMParPx).toBeCloseTo(0.1, 12);
+    // Image : cap 180° (sud). Carte : cap 90° (est). Rotation = 90 − 180 = −90 → 270°.
+    expect(r.calibration.rotationDeg).toBeCloseTo(270, 4);
+  });
+
+  it('le repère image est le repère usuel : +x = est, +y = sud', () => {
+    expect(capImageDeg(1, 0)).toBeCloseTo(90, 9); // vers la droite = est
+    expect(capImageDeg(0, -1)).toBeCloseTo(0, 9); // vers le haut = nord
+    expect(capImageDeg(0, 1)).toBeCloseTo(180, 9); // vers le bas = sud
+    expect(capImageDeg(-1, 0)).toBeCloseTo(-90, 9); // vers la gauche = ouest
+  });
+});
+
+describe('CALX108 — distance non saisie : AUCUN calage écrit, le motif est affiché', () => {
+  it('sans distance, le refus nomme `distanceReelleM` et dit qu’aucune échelle n’est déduite', () => {
+    for (const absente of [undefined, null, '', Number.NaN, 0, -3]) {
+      const r = caleDeuxPoints(IMAGE_100PX, ANCRES_EST, absente, 's');
+      expect(r.ok).toBe(false);
+      if (r.ok) throw new Error('refus attendu');
+      expect(r.champ).toBe('distanceReelleM');
+      expect(r.motif).toContain('déduite du fichier');
+      expect(r).not.toHaveProperty('calibration');
+    }
+  });
+
+  it('`calagePourDocument` n’écrit RIEN quand la distance manque', () => {
+    const r = calagePourDocument(IMAGE_100PX, ANCRES_EST, undefined, 'mesurée au télémètre');
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('refus attendu');
+    expect(r.champ).toBe('distanceReelleM');
+    expect(r).not.toHaveProperty('calage');
+  });
+
+  it('sans source, rien n’est écrit non plus : deux plans calés autrement ne se comparent pas', () => {
+    const r = calagePourDocument(IMAGE_100PX, ANCRES_EST, 10, '   ');
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('refus attendu');
+    expect(r.champ).toBe('source');
+  });
+
+  it('un seul point posé (ou deux points confondus) est refusé sur `pointsImage`', () => {
+    expect(caleDeuxPoints([[0, 0]], ANCRES_EST, 10, 's').ok).toBe(false);
+    const confondus = caleDeuxPoints(
+      [
+        [5, 5],
+        [5, 5],
+      ],
+      ANCRES_EST,
+      10,
+      's',
+    );
+    expect(confondus.ok).toBe(false);
+    if (confondus.ok) throw new Error('refus attendu');
+    expect(confondus.champ).toBe('pointsImage');
+    expect(confondus.motif).toContain('confondus');
+  });
+
+  it('sans ancres sur la carte, le refus nomme `ancre`', () => {
+    const r = caleDeuxPoints(IMAGE_100PX, [[-7.62, 33.58]], 10, 's');
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('refus attendu');
+    expect(r.champ).toBe('ancre');
+  });
+});
+
+describe('CALX108 — AUCUNE échelle n’est déduite du fichier', () => {
+  it('une unité/échelle/DPI portée par le fichier n’entre dans AUCUN calcul', () => {
+    const nu = caleDeuxPoints(IMAGE_100PX, ANCRES_EST, 10, 's');
+    // Les mêmes points, mais l'appelant prétend que le fichier porte une échelle.
+    const bavard = caleDeuxPoints(
+      Object.assign([...IMAGE_100PX], { unite: 'mm', echelle: 50, dpi: 300 }),
+      Object.assign([...ANCRES_EST], { unite: 'm' }),
+      10,
+      's',
+    );
+    if (!nu.ok || !bavard.ok) throw new Error('calages attendus');
+    expect(bavard.calibration).toEqual(nu.calibration);
+  });
+
+  it('un plan SANS calage n’est jamais placé, quoi qu’il prétende porter', () => {
+    const fond = { kind: 'plan' as const, attachmentId: 3071 };
+    const r = placementDuFond(fond, {
+      url: 'https://exemple/plan.dxf',
+      tailleImage: { largeur: 1200, hauteur: 900 },
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('refus attendu');
+    expect(r.champ).toBe('calage');
+    expect(r.motif).toBe(MOTIF_PLAN_NON_CALE);
+  });
+
+  it('un plan calé mais dont les dimensions du fichier sont inconnues n’est pas placé non plus', () => {
+    const fond = (lireUnderlay(EXEMPLE_PLAN) as { ok: true; fond: DocumentUnderlay }).fond;
+    const r = placementDuFond(fond, { url: 'u' }); // ni coinsPlan, ni tailleImage
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('refus attendu');
+    expect(r.champ).toBe('calage');
+  });
+});
+
+describe('CALX108 — le fond se REPLACE une fois calé', () => {
+  const calage: CalageDeuxPoints = {
+    ancre: ANCRES_EST,
+    pointsImage: IMAGE_100PX,
+    distanceReelleM: 10,
+    rotationDeg: 0,
+    source: 'mesurée au télémètre',
+  };
+
+  it('le point image d’origine retombe EXACTEMENT sur son ancre', () => {
+    const r = caleDeuxPoints(calage.pointsImage, calage.ancre, calage.distanceReelleM, calage.source);
+    if (!r.ok) throw new Error('calage attendu');
+    const p = pointImageSurCarte(r.calibration, calage.pointsImage[0]);
+    expect(p[0]).toBeCloseTo(ANCRES_EST[0][0], 12);
+    expect(p[1]).toBeCloseTo(ANCRES_EST[0][1], 12);
+  });
+
+  it('le SECOND point image retombe à la distance réelle SAISIE de l’ancre — 10 m, pas autre chose', () => {
+    const r = caleDeuxPoints(calage.pointsImage, calage.ancre, 10, 's');
+    if (!r.ok) throw new Error('calage attendu');
+    const p = pointImageSurCarte(r.calibration, calage.pointsImage[1]);
+    expect(distanceEntreM(ANCRES_EST[0], p)).toBeCloseTo(10, 3);
+  });
+
+  it('les quatre coins du plan se dérivent du calage et de la taille du fichier', () => {
+    const r = coinsDuPlanCale(calage, { largeur: 1200, hauteur: 900 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('coins attendus');
+    expect(r.coins).toHaveLength(4);
+    // Rotation nulle : le coin haut-gauche est au NORD-OUEST du coin bas-droite.
+    expect(r.coins[0][1]).toBeGreaterThan(r.coins[2][1]); // plus au nord
+    expect(r.coins[0][0]).toBeLessThan(r.coins[2][0]); // plus à l'ouest
+    // La largeur réelle du plan = 1200 px × 0,1 m/px = 120 m, à la précision du plan tangent.
+    expect(distanceEntreM(r.coins[0], r.coins[1])).toBeCloseTo(120, 1);
+    expect(distanceEntreM(r.coins[0], r.coins[3])).toBeCloseTo(90, 1);
+  });
+
+  it('sans dimensions de fichier, aucun coin n’est inventé', () => {
+    for (const taille of [null, undefined, { largeur: 0, hauteur: 900 }, { largeur: 1200, hauteur: -1 }]) {
+      const r = coinsDuPlanCale(calage, taille as never);
+      expect(r.ok).toBe(false);
+      if (r.ok) throw new Error('refus attendu');
+      expect(r.motif).toContain('dimensions du fichier');
+    }
+  });
+
+  it('`placementDuFond` dérive les coins tout seul dès que le plan est calé', () => {
+    const fond: DocumentUnderlay = { kind: 'plan', attachmentId: 3071, calage };
+    const r = placementDuFond(fond, { url: 'u', tailleImage: { largeur: 1200, hauteur: 900 } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('placement attendu');
+    expect(distanceEntreM(r.coins[0], r.coins[1])).toBeCloseTo(120, 1);
+  });
+});
+
+describe('CALX108 — glissé et molette ajustent translation et rotation, jamais la mesure', () => {
+  const calage: CalageDeuxPoints = {
+    ancre: ANCRES_EST,
+    pointsImage: IMAGE_100PX,
+    distanceReelleM: 10,
+    rotationDeg: 0,
+    source: 'mesurée au télémètre',
+  };
+
+  it('un glissé déplace les DEUX ancres du même vecteur — l’échelle est intacte', () => {
+    const apres = deplacerCalage(calage, 25, -10);
+    expect(apres.distanceReelleM).toBe(10);
+    expect(apres.pointsImage).toEqual(calage.pointsImage);
+    // Translation RIGIDE dans le plan tangent : l'écart entre les ancres est conservé au
+    // centimètre près (le reste est la courbure — déplacer un plan vers le nord change
+    // très légèrement ce qu'un degré de longitude y vaut en mètres).
+    expect(distanceEntreM(apres.ancre[0], apres.ancre[1])).toBeCloseTo(
+      distanceEntreM(calage.ancre[0], calage.ancre[1]),
+      2,
+    );
+    expect(distanceEntreM(calage.ancre[0], apres.ancre[0])).toBeCloseTo(Math.hypot(25, 10), 2);
+  });
+
+  it('une rotation à la molette ne touche ni la distance saisie ni le facteur d’échelle', () => {
+    const apres = tournerCalage(calage, 37);
+    expect(apres.rotationDeg).toBeCloseTo(37, 9);
+    expect(apres.distanceReelleM).toBe(10);
+    expect(apres.ancre).toEqual(calage.ancre);
+    expect(apres.pointsImage).toEqual(calage.pointsImage);
+    const avant = coinsDuPlanCale(calage, { largeur: 1200, hauteur: 900 });
+    const tourne = coinsDuPlanCale(apres, { largeur: 1200, hauteur: 900 });
+    if (!avant.ok || !tourne.ok) throw new Error('coins attendus');
+    // Le plan a tourné, mais il mesure toujours 120 m de large.
+    expect(tourne.coins[0]).not.toEqual(avant.coins[0]);
+    expect(distanceEntreM(tourne.coins[0], tourne.coins[1])).toBeCloseTo(120, 1);
+  });
+
+  it('la rotation reste bornée à [0, 360) comme le contrat l’exige', () => {
+    expect(tournerCalage(calage, -30).rotationDeg).toBeCloseTo(330, 9);
+    expect(tournerCalage({ ...calage, rotationDeg: 350 }, 20).rotationDeg).toBeCloseTo(10, 9);
+  });
+
+  it('un ajustement non fini ne change RIEN', () => {
+    expect(deplacerCalage(calage, Number.NaN, 5)).toBe(calage);
+    expect(tournerCalage(calage, Number.NaN)).toBe(calage);
+  });
+});
+
+describe('CALX108 — le mode « caler le fond » dans l’atelier', () => {
+  function atelierAvecPlan() {
+    const h = harnaisMapDraw();
+    h.draw.setFond({ kind: 'plan', attachmentId: 3071 }, { url: 'u', tailleImage: { largeur: 1200, hauteur: 900 } });
+    return h;
+  }
+
+  it('le mode ne s’ouvre que sur un PLAN — une photo est déjà calée à quatre coins', () => {
+    const h = harnaisMapDraw();
+    expect(h.draw.demarrerCalageFond()).toBe(false); // aucun fond
+    h.draw.setFond({ kind: 'photo', photoSiteId: 918 }, { url: 'p', calagePhoto: CALAGE_PHOTO });
+    expect(h.draw.demarrerCalageFond()).toBe(false);
+    expect(h.draw.modeCalageFond()).toBe(false);
+  });
+
+  it('deux points + une distance saisie écrivent `underlay.calage` et replacent le fond', () => {
+    const { draw, ctx, sources } = atelierAvecPlan();
+    expect(draw.demarrerCalageFond()).toBe(true);
+    expect(draw.modeCalageFond()).toBe(true);
+    expect(draw.pointCalageFond(IMAGE_100PX[0], ANCRES_EST[0])).toBe(1);
+    expect(draw.pointCalageFond(IMAGE_100PX[1], ANCRES_EST[1])).toBe(2);
+    const distance = document.getElementById('rp9-fond-distance') as HTMLInputElement;
+    const source = document.getElementById('rp9-fond-source') as HTMLInputElement;
+    distance.value = '10';
+    source.value = 'mesurée au télémètre';
+    expect(draw.validerCalageFond().ok).toBe(true);
+    // Le calage voyage par le document, avec sa distance SAISIE et sa source.
+    const doc = underlayPourDocument(ctx);
+    expect(doc.underlay?.calage?.distanceReelleM).toBe(10);
+    expect(doc.underlay?.calage?.source).toBe('mesurée au télémètre');
+    expect(doc.underlay?.calage?.pointsImage).toEqual(IMAGE_100PX);
+    // Et le fond est peint, à l'échelle saisie.
+    const spec = sources.get(UNDERLAY_PLAN_LAYER_ID) as { coordinates: LngLat[] };
+    expect(distanceEntreM(spec.coordinates[0], spec.coordinates[1])).toBeCloseTo(120, 1);
+    expect(draw.modeCalageFond()).toBe(false); // le mode se referme
+  });
+
+  it('distance NON saisie : rien n’est écrit, le refus nomme le champ et l’affiche sous lui', () => {
+    const { draw, ctx, sources } = atelierAvecPlan();
+    draw.demarrerCalageFond();
+    draw.pointCalageFond(IMAGE_100PX[0], ANCRES_EST[0]);
+    draw.pointCalageFond(IMAGE_100PX[1], ANCRES_EST[1]);
+    (document.getElementById('rp9-fond-source') as HTMLInputElement).value = 'mesurée au télémètre';
+    const r = draw.validerCalageFond();
+    expect(r.ok).toBe(false);
+    expect(r.champ).toBe('distanceReelleM');
+    expect(underlayPourDocument(ctx).underlay?.calage).toBeUndefined();
+    expect(sources.has(UNDERLAY_PLAN_LAYER_ID)).toBe(false);
+    const erreur = document.getElementById('rp9-fond-erreur') as HTMLElement;
+    expect(erreur.hidden).toBe(false);
+    expect(erreur.textContent).toContain('déduite du fichier');
+    expect(document.getElementById('rp9-fond-distance')?.getAttribute('aria-invalid')).toBe('true');
+    expect(draw.modeCalageFond()).toBe(true); // le mode RESTE ouvert : on peut corriger
+  });
+
+  it('un seul point posé est refusé en nommant `pointsImage`', () => {
+    const { draw } = atelierAvecPlan();
+    draw.demarrerCalageFond();
+    draw.pointCalageFond(IMAGE_100PX[0], ANCRES_EST[0]);
+    (document.getElementById('rp9-fond-distance') as HTMLInputElement).value = '10';
+    const r = draw.validerCalageFond();
+    expect(r.ok).toBe(false);
+    expect(r.champ).toBe('pointsImage');
+  });
+
+  it('annuler le calage n’écrit RIEN', () => {
+    const { draw, ctx } = atelierAvecPlan();
+    draw.demarrerCalageFond();
+    draw.pointCalageFond(IMAGE_100PX[0], ANCRES_EST[0]);
+    draw.pointCalageFond(IMAGE_100PX[1], ANCRES_EST[1]);
+    draw.annulerCalageFond();
+    expect(draw.modeCalageFond()).toBe(false);
+    expect(underlayPourDocument(ctx).underlay?.calage).toBeUndefined();
+  });
+
+  it('`ajusterFond` ne fait rien tant que le plan n’est pas calé', () => {
+    const { draw } = atelierAvecPlan();
+    expect(draw.ajusterFond({ estM: 5 })).toBe(false);
+  });
+
+  it('une fois calé, glissé et molette replacent le fond sans toucher la mesure', () => {
+    const { draw, ctx } = atelierAvecPlan();
+    draw.demarrerCalageFond();
+    draw.pointCalageFond(IMAGE_100PX[0], ANCRES_EST[0]);
+    draw.pointCalageFond(IMAGE_100PX[1], ANCRES_EST[1]);
+    (document.getElementById('rp9-fond-distance') as HTMLInputElement).value = '10';
+    (document.getElementById('rp9-fond-source') as HTMLInputElement).value = 'télémètre';
+    draw.validerCalageFond();
+    const avant = underlayPourDocument(ctx).underlay?.calage as CalageDeuxPoints;
+    expect(draw.ajusterFond({ estM: 12, nordM: -4, rotationDeg: 15 })).toBe(true);
+    const apres = underlayPourDocument(ctx).underlay?.calage as CalageDeuxPoints;
+    expect(apres.distanceReelleM).toBe(10);
+    expect(apres.source).toBe('télémètre');
+    expect(apres.pointsImage).toEqual(avant.pointsImage);
+    expect(apres.rotationDeg).toBeCloseTo(15, 6);
+    expect(apres.ancre[0]).not.toEqual(avant.ancre[0]);
   });
 });

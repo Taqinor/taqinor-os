@@ -23,6 +23,8 @@
  * le pavage, ni aucune production. Il ne fait que se peindre sous le tracé.
  */
 import { type LngLat } from '../../lib/roof';
+import { normaliserDeg, pivoterPoint } from './snap';
+import { DEG2M, DEG2RAD } from './constants';
 
 // ————————————————————————————————————————————————————————————————————————
 // Vocabulaire du contrat CALX86 (`roof_layout_v2.schema.json`, `$defs.underlay`)
@@ -301,9 +303,14 @@ export interface RessourceFond {
   url?: string | null;
   /** `PhotoSite.calage` TEL QUEL (`{ coins: [[lat, lng] × 4] }`) — genre `photo`. */
   calagePhoto?: unknown;
-  /** Les quatre coins déjà calculés pour un `plan` (CALX108 les dérive du calage à
-   *  deux points). Absents ⇒ le plan n'est pas placé, et le motif le dit. */
+  /** Les quatre coins déjà calculés pour un `plan`. Absents, CALX108 les DÉRIVE du calage
+   *  à deux points + `tailleImage`. Ni l'un ni l'autre ⇒ le plan n'est pas placé, et le
+   *  motif le dit. */
   coinsPlan?: readonly LngLat[] | null;
+  /** CALX108 — dimensions du fichier de fond, dans SON repère (pixels pour une image,
+   *  unité du fichier pour un plan vectoriel). Le repère n'est PAS converti : c'est
+   *  justement parce qu'on ignore son unité qu'une distance réelle est exigée. */
+  tailleImage?: TailleImage | null;
 }
 
 /** Ce qu'il faut pour peindre un fond, ou le motif du refus — jamais un placement partiel. */
@@ -342,14 +349,19 @@ export function placementDuFond(fond: DocumentUnderlay, ressource: RessourceFond
       opacite,
     };
   }
-  const coins = ressource.coinsPlan;
+  let coins = ressource.coinsPlan;
+  // CALX108 — sans coins fournis, ils se DÉRIVENT du calage à deux points + la taille du
+  // fichier. Sans calage ni taille, rien n'est placé : aucune échelle n'est devinée.
+  if (!Array.isArray(coins) && fond.calage && ressource.tailleImage) {
+    const derive = coinsDuPlanCale(fond.calage, ressource.tailleImage);
+    if (!derive.ok) return { ok: false, champ: 'calage', motif: derive.motif };
+    coins = derive.coins;
+  }
   if (!Array.isArray(coins) || coins.length !== 4 || !coins.every(estCouple)) {
     return {
       ok: false,
       champ: 'calage',
-      motif:
-        'Plan non affiché : il n’est pas calé — cliquez deux points sur le plan et saisissez la distance réelle qui les sépare. ' +
-        'Aucune échelle n’est déduite du fichier.',
+      motif: MOTIF_PLAN_NON_CALE,
     };
   }
   return {
@@ -422,4 +434,307 @@ export function coucheAvantPourFond(
     }
   }
   return undefined;
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX108 — CALER LE FOND À L'ÉCHELLE PAR DEUX POINTS ET UNE DISTANCE RÉELLE SAISIE
+//
+// Constat : l'échelle venait EXCLUSIVEMENT de la projection géodésique — aucune
+// calibration n'existait dans le module — et `services/import_plan.py` le dit : un DXF
+// sans `$INSUNITS` ou un PDF rend `unite='inconnu'` et « c'est la calibration de l'atelier
+// qui donne l'échelle ». Cette calibration-là n'existait pas. La voici.
+//
+// RÈGLE DURE : le facteur d'échelle vient de DEUX points cliqués sur l'image et de la
+// distance réelle SAISIE entre eux, JAMAIS d'une unité lue (ou devinée) dans le fichier.
+// Une clé `unite`, `echelle`, `dpi`… que porterait le fichier est IGNORÉE : elle n'entre
+// dans aucun des calculs ci-dessous. Sans distance saisie, rien n'est calé et le motif le
+// dit, en nommant `distanceReelleM`.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Le motif unique du « plan pas encore calé » — une seule formulation dans tout l'atelier. */
+export const MOTIF_PLAN_NON_CALE =
+  'Plan non affiché : il n’est pas calé — cliquez deux points sur le plan et saisissez la distance réelle qui les sépare. ' +
+  'Aucune échelle n’est déduite du fichier.';
+
+/** Dimensions du fichier de fond, dans SON repère (jamais converties). */
+export interface TailleImage {
+  largeur: number;
+  hauteur: number;
+}
+
+/** Champ que nomme un refus de calage. */
+export type ChampCalage = 'pointsImage' | 'ancre' | 'distanceReelleM' | 'source';
+
+/**
+ * CALX108 — le résultat du calage : rotation, translation et facteur d'échelle. Aucune
+ * des trois valeurs n'est devinée : l'échelle vient de la distance SAISIE, la rotation de
+ * l'écart entre la direction des deux points sur l'image et sur la carte, la translation
+ * de l'ancre elle-même.
+ */
+export interface Calibration {
+  /** Facteur d'échelle : mètres réels par unité du fichier (m/px pour une image). */
+  echelleMParPx: number;
+  /** Rotation du fond (°, sens horaire, même repère de cap que `snap.ts`), dans [0, 360). */
+  rotationDeg: number;
+  /** Le point de l'IMAGE qui sert d'origine : `pointsImage[0]`. */
+  origineImage: [number, number];
+  /** Le point de la CARTE sur lequel cette origine atterrit : `ancre[0]`. */
+  origineCarte: LngLat;
+  /** Distance mesurée entre les deux points, dans le repère du FICHIER (px/unité). */
+  distanceImagePx: number;
+}
+
+export type VerdictCalage =
+  | { ok: true; calibration: Calibration }
+  | { ok: false; champ: ChampCalage; motif: string };
+
+/**
+ * CALX108 — cap (°, depuis le nord, sens horaire) d'un vecteur exprimé dans le repère de
+ * l'IMAGE, si l'image était posée NON TOURNÉE : x croît vers l'est, y croît vers le BAS,
+ * donc vers le SUD (convention universelle des repères image). Le nord vaut donc `-y`.
+ */
+export function capImageDeg(dx: number, dy: number): number {
+  return normaliserDeg((Math.atan2(dx, -dy) * 180) / Math.PI);
+}
+
+/**
+ * CALX108 — cap (°, depuis le nord, sens horaire) de `a`→`b` mesuré dans le PLAN TANGENT
+ * local, et NON sur la grande ellipse (`capEntreDeg`, `snap.ts`).
+ *
+ * Le fond est une image PLATE posée sur ce même plan tangent (`pointImageSurCarte`,
+ * `depuisOffsetM`) : mesurer sa rotation avec le cap géodésique INITIAL — qui varie le long
+ * d'une grande ellipse — introduirait un écart (~0,006° à la latitude de Casablanca sur
+ * deux points est-ouest) qui n'a aucun sens physique pour une image plate, et qui ferait
+ * que deux points parfaitement horizontaux ne donnent pas une rotation NULLE. Le tracé du
+ * toit, lui, garde ses caps géodésiques : ce repère-ci ne sert qu'au placement du fond.
+ */
+export function capPlanTangentDeg(a: LngLat, b: LngLat): number {
+  const cosLat = Math.max(1e-6, Math.cos(((a[1] + b[1]) / 2) * DEG2RAD));
+  const est = (b[0] - a[0]) * cosLat;
+  const nord = b[1] - a[1];
+  return normaliserDeg((Math.atan2(est, nord) * 180) / Math.PI);
+}
+
+/**
+ * CALX108 — LA fonction de calage. Deux points cliqués sur l'image, les deux points
+ * correspondants sur la carte, et la distance RÉELLE saisie entre eux : elle en tire le
+ * facteur d'échelle, la rotation et la translation.
+ *
+ *  - `echelleMParPx = distanceReelleM / distance entre les deux points de l'IMAGE` — c'est
+ *    tout : 100 px déclarés à 10 m font 0,1 m/px, quelle que soit la carte dessous ;
+ *  - `rotationDeg = cap des deux ancres (carte) − cap des deux points (image non tournée)` ;
+ *  - la translation est l'ancre elle-même : `pointsImage[0]` atterrit sur `ancre[0]`.
+ *
+ * Chaque refus NOMME son champ. Une distance non saisie ⇒ AUCUN calage n'est rendu (et donc
+ * rien n'est écrit dans `underlay.calage`) : l'atelier affiche le motif, il ne se rabat sur
+ * aucune échelle de fichier.
+ */
+export function caleDeuxPoints(
+  pointsImage: unknown,
+  ancres: unknown,
+  distanceReelleM: unknown,
+  source?: unknown,
+): VerdictCalage {
+  const image = litDeuxCouples(pointsImage);
+  if (!image) {
+    return {
+      ok: false,
+      champ: 'pointsImage',
+      motif: 'Calage incomplet : cliquez DEUX points sur le plan (`pointsImage` attend deux paires [x, y]).',
+    };
+  }
+  const dxImage = image[1][0] - image[0][0];
+  const dyImage = image[1][1] - image[0][1];
+  const distanceImagePx = Math.hypot(dxImage, dyImage);
+  if (!(distanceImagePx > 0)) {
+    return {
+      ok: false,
+      champ: 'pointsImage',
+      motif: 'Calage refusé : les deux points cliqués sur le plan sont confondus — écartez-les pour donner une échelle.',
+    };
+  }
+  const ancre = litDeuxCouples(ancres);
+  if (!ancre) {
+    return {
+      ok: false,
+      champ: 'ancre',
+      motif: 'Calage incomplet : désignez sur la carte les DEUX points correspondants (`ancre` attend deux paires [lng, lat]).',
+    };
+  }
+  if (typeof distanceReelleM !== 'number' || !Number.isFinite(distanceReelleM) || distanceReelleM <= 0) {
+    return {
+      ok: false,
+      champ: 'distanceReelleM',
+      motif:
+        'Distance réelle manquante — saisissez la distance mesurée (m) entre les deux points, supérieure à 0. ' +
+        'Aucune échelle n’est déduite du fichier.',
+    };
+  }
+  if (typeof source !== 'undefined' && !(typeof source === 'string' && source.trim())) {
+    return {
+      ok: false,
+      champ: 'source',
+      motif: 'Source de la distance manquante — dites d’où elle vient (« mesurée au télémètre », « cote lue sur le plan »…).',
+    };
+  }
+  const a0: LngLat = [ancre[0][0], ancre[0][1]];
+  const a1: LngLat = [ancre[1][0], ancre[1][1]];
+  const capCarte = capPlanTangentDeg(a0, a1);
+  const rotation = normaliserDeg(capCarte - capImageDeg(dxImage, dyImage));
+  return {
+    ok: true,
+    calibration: {
+      echelleMParPx: distanceReelleM / distanceImagePx,
+      // Le contrat CALX86 borne `rotationDeg` à [0, 360] : on y ramène la valeur signée.
+      rotationDeg: (rotation + 360) % 360,
+      origineImage: [image[0][0], image[0][1]],
+      origineCarte: a0,
+      distanceImagePx,
+    },
+  };
+}
+
+/**
+ * CALX108 — le calage tel que le document le porte (`$defs.calageDeuxPoints`), à partir
+ * des deux points, de la distance SAISIE et de sa SOURCE. Rien n'est écrit tant que le
+ * calage n'est pas complet : un refus rend son champ et son motif, et l'appelant ne touche
+ * pas à `underlay.calage`.
+ */
+export function calagePourDocument(
+  pointsImage: unknown,
+  ancres: unknown,
+  distanceReelleM: unknown,
+  source: unknown,
+): { ok: true; calage: CalageDeuxPoints; calibration: Calibration } | { ok: false; champ: ChampCalage; motif: string } {
+  const texte = typeof source === 'string' ? source.trim() : '';
+  if (!texte) {
+    return {
+      ok: false,
+      champ: 'source',
+      motif: 'Source de la distance manquante — dites d’où elle vient (« mesurée au télémètre », « cote lue sur le plan »…).',
+    };
+  }
+  const verdict = caleDeuxPoints(pointsImage, ancres, distanceReelleM, texte);
+  if (!verdict.ok) return verdict;
+  const image = litDeuxCouples(pointsImage) as [[number, number], [number, number]];
+  const ancre = litDeuxCouples(ancres) as [[number, number], [number, number]];
+  return {
+    ok: true,
+    calibration: verdict.calibration,
+    calage: {
+      ancre: [
+        [ancre[0][0], ancre[0][1]],
+        [ancre[1][0], ancre[1][1]],
+      ],
+      pointsImage: image,
+      distanceReelleM: distanceReelleM as number,
+      rotationDeg: verdict.calibration.rotationDeg,
+      source: texte,
+    },
+  };
+}
+
+/** Le point de la carte situé à (`estM`, `nordM`) de `origine` — plan tangent local, la
+ *  MÊME projection que `grilleMetrique` (`mapDraw.ts`) et `redimensionnerRectangle`
+ *  (`snap.ts`) : aucun rayon ni facteur neuf. */
+function depuisOffsetM(origine: LngLat, estM: number, nordM: number): LngLat {
+  const cosLat = Math.max(1e-6, Math.cos(origine[1] * DEG2RAD));
+  return [origine[0] + estM / (DEG2M * cosLat), origine[1] + nordM / DEG2M];
+}
+
+/**
+ * CALX108 — où atterrit un point de l'IMAGE, une fois le fond calé : son écart à l'origine
+ * est converti en mètres par le facteur d'échelle, puis tourné de `rotationDeg` autour de
+ * l'ancre. C'est la seule transformation appliquée au fond — aucune correction de
+ * perspective n'est inventée.
+ */
+export function pointImageSurCarte(calibration: Calibration, point: readonly [number, number]): LngLat {
+  const dx = point[0] - calibration.origineImage[0];
+  const dy = point[1] - calibration.origineImage[1];
+  // Repère image NON tourné : +x = est, +y = sud (donc nord = −y).
+  const brut = depuisOffsetM(
+    calibration.origineCarte,
+    dx * calibration.echelleMParPx,
+    -dy * calibration.echelleMParPx,
+  );
+  return pivoterPoint(brut, calibration.rotationDeg, calibration.origineCarte);
+}
+
+/**
+ * CALX108 — les QUATRE coins d'un plan calé, dans l'ordre MapLibre (haut-gauche,
+ * haut-droite, bas-droite, bas-gauche), c'est-à-dire les coins (0,0), (L,0), (L,H), (0,H)
+ * du fichier passés par le calage. La rotation RETENUE à l'écran (`calage.rotationDeg`,
+ * ajustée à la molette) l'emporte sur celle déduite des deux points.
+ */
+export function coinsDuPlanCale(
+  calage: unknown,
+  taille: TailleImage | null | undefined,
+): { ok: true; coins: CoinsImage } | { ok: false; motif: string } {
+  const lu = lireCalageDeuxPoints(calage);
+  if (!lu.ok) return { ok: false, motif: lu.motif };
+  const largeur = taille?.largeur;
+  const hauteur = taille?.hauteur;
+  if (!Number.isFinite(largeur) || !Number.isFinite(hauteur) || (largeur as number) <= 0 || (hauteur as number) <= 0) {
+    return {
+      ok: false,
+      motif: 'Plan non affiché : les dimensions du fichier sont inconnues — impossible de savoir quelle étendue couvre le calage.',
+    };
+  }
+  const verdict = caleDeuxPoints(lu.calage.pointsImage, lu.calage.ancre, lu.calage.distanceReelleM, lu.calage.source);
+  if (!verdict.ok) return { ok: false, motif: verdict.motif };
+  const calibration: Calibration = {
+    ...verdict.calibration,
+    rotationDeg:
+      typeof lu.calage.rotationDeg === 'number' && Number.isFinite(lu.calage.rotationDeg)
+        ? lu.calage.rotationDeg
+        : verdict.calibration.rotationDeg,
+  };
+  const L = largeur as number;
+  const H = hauteur as number;
+  return {
+    ok: true,
+    coins: [
+      pointImageSurCarte(calibration, [0, 0]),
+      pointImageSurCarte(calibration, [L, 0]),
+      pointImageSurCarte(calibration, [L, H]),
+      pointImageSurCarte(calibration, [0, H]),
+    ],
+  };
+}
+
+/**
+ * CALX108 — GLISSÉ : translate le fond de (`deltaEstM`, `deltaNordM`) en déplaçant les DEUX
+ * ancres du même vecteur. Le facteur d'échelle (qui ne dépend que de `pointsImage` et de
+ * `distanceReelleM`) et la rotation retenue sont donc INCHANGÉS : un glissé ne remet jamais
+ * en cause la mesure saisie.
+ */
+export function deplacerCalage(calage: CalageDeuxPoints, deltaEstM: number, deltaNordM: number): CalageDeuxPoints {
+  if (!Number.isFinite(deltaEstM) || !Number.isFinite(deltaNordM)) return calage;
+  // Translation RIGIDE dans le plan tangent : le MÊME décalage lng/lat est appliqué aux deux
+  // ancres (cosinus de latitude pris UNE fois, sur l'ancre d'origine — comme
+  // `pointImageSurCarte` le fait pour les quatre coins). Deux cosinus différents
+  // déformeraient légèrement le fond à chaque glissé.
+  const origine = calage.ancre[0];
+  const arrivee = depuisOffsetM(origine, deltaEstM, deltaNordM);
+  const dLng = arrivee[0] - origine[0];
+  const dLat = arrivee[1] - origine[1];
+  const bouge = (p: LngLat): LngLat => [p[0] + dLng, p[1] + dLat];
+  return { ...calage, ancre: [bouge(calage.ancre[0]), bouge(calage.ancre[1])] };
+}
+
+/**
+ * CALX108 — MOLETTE : fait tourner le fond de `deltaDeg` (sens horaire). Seule la rotation
+ * RETENUE bouge ; `pointsImage`, `ancre`, `distanceReelleM` et donc le facteur d'échelle
+ * restent identiques — tourner un plan ne change pas sa mesure.
+ */
+export function tournerCalage(calage: CalageDeuxPoints, deltaDeg: number): CalageDeuxPoints {
+  if (!Number.isFinite(deltaDeg)) return calage;
+  const verdict = caleDeuxPoints(calage.pointsImage, calage.ancre, calage.distanceReelleM, calage.source);
+  const actuelle =
+    typeof calage.rotationDeg === 'number' && Number.isFinite(calage.rotationDeg)
+      ? calage.rotationDeg
+      : verdict.ok
+        ? verdict.calibration.rotationDeg
+        : 0;
+  return { ...calage, rotationDeg: (((actuelle + deltaDeg) % 360) + 360) % 360 };
 }

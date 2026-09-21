@@ -16,13 +16,18 @@ import { $ } from './dom';
 import { type Ctx } from './context';
 import { aimanterAuxZones, contraindreAngle, metresParPixel, pointDepuisCap, PAS_ANGLE_DEG } from './snap';
 import {
+  calagePourDocument,
   coucheAvantPourFond,
+  deplacerCalage,
   lireUnderlay,
   placementDuFond,
   specCoucheFond,
   specSourceFond,
+  tournerCalage,
   UNDERLAY_PHOTO_LAYER_ID,
   UNDERLAY_PLAN_LAYER_ID,
+  type CalageDeuxPoints,
+  type ChampCalage,
   type DocumentUnderlay,
   type RessourceFond,
 } from './underlay';
@@ -365,6 +370,22 @@ export interface MapDraw {
   /** CALX107 — le fond actuellement porté par l'atelier (celui qui voyage par le document
    *  via `underlayPourDocument`), ou `null`. */
   fond: () => DocumentUnderlay | null;
+  /** CALX108 — entre (ou sort) du mode « caler le fond ». Ouvre la saisie de la distance
+   *  réelle et attend les DEUX paires de points. */
+  demarrerCalageFond: () => boolean;
+  /** CALX108 — vrai tant que le mode « caler le fond » est actif. */
+  modeCalageFond: () => boolean;
+  /** CALX108 — enregistre UNE paire (point cliqué sur l'image, point correspondant sur la
+   *  carte). Renvoie le nombre de paires posées ; au-delà de deux, la plus ancienne sort. */
+  pointCalageFond: (pointImage: readonly [number, number], ancre: LngLat) => number;
+  /** CALX108 — lit la distance réelle SAISIE + sa source et écrit `underlay.calage`, puis
+   *  replace le fond. Refuse en NOMMANT le champ fautif, et n'écrit alors RIEN. */
+  validerCalageFond: () => { ok: boolean; champ?: ChampCalage; motif?: string };
+  /** CALX108 — abandonne le calage en cours SANS rien écrire. */
+  annulerCalageFond: () => void;
+  /** CALX108 — glissé (translation, m) et molette (rotation, °) du fond déjà calé. Ne
+   *  touche ni `distanceReelleM` ni le facteur d'échelle : la mesure saisie fait foi. */
+  ajusterFond: (ajust: { estM?: number; nordM?: number; rotationDeg?: number }) => boolean;
   addVertex: (v: LngLat) => void;
   /** W92 — retire le dernier sommet posé (pendant le tracé, avant fermeture). */
   undoLastPoint: () => void;
@@ -491,7 +512,13 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     retirerFond(UNDERLAY_PHOTO_LAYER_ID);
   }
 
+  /** CALX108 — la ressource d'affichage du fond courant (URL pré-signée, calage photo,
+   *  taille du fichier), mémorisée pour pouvoir REPLACER le fond après un calage ou un
+   *  ajustement sans que l'hôte ait à la redonner. */
+  let ressourceFond: RessourceFond = {};
+
   function setFond(fond: DocumentUnderlay | null, ressource: RessourceFond = {}): { ok: boolean; motif?: string } {
+    ressourceFond = ressource;
     if (fond == null) {
       // Un seul fond à la fois (contrat CALX86) : on efface les DEUX couches possibles.
       retirerTousLesFonds();
@@ -503,11 +530,16 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
       setStatus(lu.motif);
       return { ok: false, motif: lu.motif };
     }
-    const placement = placementDuFond(lu.fond, ressource);
+    return poserFond(lu.fond);
+  }
+
+  /** Pose (ou repose) un fond DÉJÀ validé, avec la ressource mémorisée. */
+  function poserFond(fond: DocumentUnderlay): { ok: boolean; motif?: string } {
+    const placement = placementDuFond(fond, ressourceFond);
     if (!placement.ok) {
       // Le fond RESTE porté par le document (il est valide : c'est son affichage qui
       // manque d'un calage ou d'un fichier), mais rien n'est peint « au jugé ».
-      ctxFond.underlay = lu.fond;
+      ctxFond.underlay = fond;
       retirerTousLesFonds();
       setStatus(placement.motif);
       return { ok: false, motif: placement.motif };
@@ -527,7 +559,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
       /* style pas encore chargé : le prochain appel reposera le fond */
       return { ok: false, motif: 'Fond non affiché : la carte n’est pas encore prête — réessayez dans un instant.' };
     }
-    ctxFond.underlay = lu.fond;
+    ctxFond.underlay = fond;
     return { ok: true };
   }
 
@@ -966,6 +998,215 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     });
   }
 
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX108 — MODE « CALER LE FOND » : deux points + une distance réelle SAISIE
+  //
+  // L'échelle venait EXCLUSIVEMENT de la projection géodésique, et `import_plan.py` le
+  // disait : un DXF sans `$INSUNITS` ou un PDF rend `unite='inconnu'` et « c'est la
+  // calibration de l'atelier qui donne l'échelle ». Cette calibration existe désormais.
+  //
+  // Deux paires (point cliqué SUR LE PLAN, point correspondant SUR LA CARTE), la distance
+  // réelle SAISIE entre elles, et sa SOURCE : `caleDeuxPoints` en tire l'échelle, la
+  // rotation et la translation. Sans distance saisie, RIEN n'est écrit dans
+  // `underlay.calage` et le motif s'affiche SOUS le champ fautif. Aucune échelle n'est
+  // jamais lue dans le fichier.
+  //
+  // CROCHET ATTENDU — `roof-tool-pro11.ts` : router le clic carte vers
+  // `mapDraw.pointCalageFond(pointImage, [lng, lat])` tant que `modeCalageFond()` est vrai,
+  // et le glissé/la molette sur le fond vers `mapDraw.ajusterFond(...)`.
+  // ————————————————————————————————————————————————————————————————————————
+
+  /** Les paires (point image, ancre carte) posées pendant le calage — deux au maximum. */
+  let pairesCalage: Array<{ image: [number, number]; ancre: LngLat }> = [];
+  let calageActif = false;
+
+  const calageBoxEl = ensureCalageBox();
+  function ensureCalageBox(): HTMLElement | null {
+    const existing = $('rp9-fond-calage');
+    if (existing) return existing;
+    if (!traceChipsEl || typeof document.createElement !== 'function') return null;
+    const box = document.createElement('span');
+    box.id = 'rp9-fond-calage';
+    box.className = 'rp9-fond-calage inline-flex flex-wrap items-center gap-1';
+    box.hidden = true;
+    box.innerHTML =
+      `<span id="rp9-fond-calage-etat" class="text-xs opacity-70" role="status"></span>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-fond-distance">Distance réelle (m)` +
+      `<input type="text" id="rp9-fond-distance" class="rp9-input w-20" inputmode="decimal" /></label>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-fond-source">Source de la mesure` +
+      `<input type="text" id="rp9-fond-source" class="rp9-input w-40" ` +
+      `placeholder="mesurée au télémètre…" /></label>` +
+      `<button type="button" id="rp9-fond-valider" class="rp9-btn">Caler le fond</button>` +
+      `<span id="rp9-fond-erreur" class="rp9-fond-erreur text-alert-300" role="alert" hidden></span>`;
+    traceChipsEl.appendChild(box);
+    return box;
+  }
+  const calageChipEl = ensureCalageChip();
+  function ensureCalageChip(): HTMLButtonElement | null {
+    const existing = $<HTMLButtonElement>('rp9-fond-chip');
+    if (existing) return existing;
+    if (!traceChipsEl || typeof document.createElement !== 'function') return null;
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.id = 'rp9-fond-chip';
+    chip.className = 'rp9-btn';
+    chip.textContent = 'Caler le fond';
+    chip.setAttribute('aria-pressed', 'false'); // ÉTEINT par défaut
+    chip.title = 'Cliquez deux points du plan, puis saisissez la distance réelle qui les sépare.';
+    traceChipsEl.insertBefore(chip, calageBoxEl);
+    return chip;
+  }
+  const calageDistanceEl = $<HTMLInputElement>('rp9-fond-distance');
+  const calageSourceEl = $<HTMLInputElement>('rp9-fond-source');
+  const calageValiderBtn = $<HTMLButtonElement>('rp9-fond-valider');
+  const calageErreurEl = $('rp9-fond-erreur');
+  const calageEtatEl = $('rp9-fond-calage-etat');
+
+  /** Affiche (ou efface) le refus SOUS le champ fautif et met le focus dessus. */
+  function montrerRefusCalage(refus: { champ: ChampCalage; motif: string } | null) {
+    for (const el of [calageDistanceEl, calageSourceEl]) el?.removeAttribute('aria-invalid');
+    if (!calageErreurEl) return;
+    if (!refus) {
+      calageErreurEl.textContent = '';
+      calageErreurEl.hidden = true;
+      return;
+    }
+    calageErreurEl.textContent = refus.motif;
+    calageErreurEl.hidden = false;
+    const champEl = refus.champ === 'source' ? calageSourceEl : refus.champ === 'distanceReelleM' ? calageDistanceEl : null;
+    champEl?.setAttribute('aria-invalid', 'true');
+    champEl?.focus?.();
+  }
+
+  /** Dit combien de points sont posés — jamais « en attente » sans dire de quoi. */
+  function syncEtatCalage() {
+    if (!calageEtatEl) return;
+    calageEtatEl.textContent =
+      pairesCalage.length === 0
+        ? 'Cliquez le PREMIER point repérable du plan, puis le même point sur la carte.'
+        : pairesCalage.length === 1
+          ? 'Premier point posé. Cliquez maintenant le SECOND point, sur le plan puis sur la carte.'
+          : 'Deux points posés. Saisissez la distance réelle qui les sépare, et d’où elle vient.';
+  }
+
+  function modeCalageFond(): boolean {
+    return calageActif;
+  }
+
+  function demarrerCalageFond(): boolean {
+    const fond = fondCourant();
+    if (!fond || fond.kind !== 'plan') {
+      const motif =
+        'Le calage à deux points ne concerne que les PLANS importés — une photo de site est déjà calée à quatre coins.';
+      setStatus(motif);
+      return false;
+    }
+    calageActif = true;
+    pairesCalage = [];
+    calageChipEl?.setAttribute('aria-pressed', 'true');
+    if (calageBoxEl) calageBoxEl.hidden = false;
+    montrerRefusCalage(null);
+    syncEtatCalage();
+    setStatus('Calage du fond : cliquez deux points repérables du plan, puis saisissez la distance réelle entre eux.');
+    return true;
+  }
+
+  function annulerCalageFond() {
+    calageActif = false;
+    pairesCalage = [];
+    calageChipEl?.setAttribute('aria-pressed', 'false');
+    if (calageBoxEl) calageBoxEl.hidden = true;
+    montrerRefusCalage(null);
+  }
+
+  function pointCalageFond(pointImage: readonly [number, number], ancre: LngLat): number {
+    if (!calageActif) return pairesCalage.length;
+    if (!Array.isArray(pointImage) || pointImage.length !== 2) return pairesCalage.length;
+    if (!Array.isArray(ancre) || ancre.length !== 2) return pairesCalage.length;
+    pairesCalage.push({ image: [pointImage[0], pointImage[1]], ancre: [ancre[0], ancre[1]] });
+    // Au-delà de deux, la plus ancienne sort : le dernier couple cliqué fait foi.
+    if (pairesCalage.length > 2) pairesCalage = pairesCalage.slice(-2);
+    syncEtatCalage();
+    return pairesCalage.length;
+  }
+
+  function validerCalageFond(): { ok: boolean; champ?: ChampCalage; motif?: string } {
+    const fond = fondCourant();
+    if (!fond || fond.kind !== 'plan') {
+      return { ok: false, motif: 'Aucun plan de fond à caler.' };
+    }
+    if (pairesCalage.length < 2) {
+      const refus = {
+        champ: 'pointsImage' as ChampCalage,
+        motif: 'Calage incomplet : posez DEUX points repérables du plan avant de saisir la distance.',
+      };
+      montrerRefusCalage(refus);
+      setStatus(refus.motif);
+      return { ok: false, ...refus };
+    }
+    const distance = Number.parseFloat((calageDistanceEl?.value ?? '').replace(/\s/g, '').replace(',', '.'));
+    const verdict = calagePourDocument(
+      pairesCalage.map((p) => p.image),
+      pairesCalage.map((p) => p.ancre),
+      Number.isFinite(distance) ? distance : undefined,
+      calageSourceEl?.value ?? '',
+    );
+    if (!verdict.ok) {
+      // RIEN n'est écrit : `underlay.calage` reste exactement ce qu'il était.
+      montrerRefusCalage(verdict);
+      setStatus(verdict.motif);
+      return { ok: false, champ: verdict.champ, motif: verdict.motif };
+    }
+    montrerRefusCalage(null);
+    const cale: DocumentUnderlay = { ...fond, calage: verdict.calage };
+    const pose = poserFond(cale);
+    annulerCalageFond();
+    if (pose.ok) {
+      setStatus(
+        `Fond calé : ${verdict.calibration.echelleMParPx.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} m par unité du plan ` +
+          `(distance saisie : ${verdict.calage.distanceReelleM} m — ${verdict.calage.source}).`,
+      );
+    }
+    return { ok: pose.ok, motif: pose.motif };
+  }
+
+  function ajusterFond(ajust: { estM?: number; nordM?: number; rotationDeg?: number }): boolean {
+    const fond = fondCourant();
+    const calage = fond?.calage as CalageDeuxPoints | undefined | null;
+    if (!fond || fond.kind !== 'plan' || !calage) return false;
+    let suivant = calage;
+    const estM = Number.isFinite(ajust?.estM) ? (ajust.estM as number) : 0;
+    const nordM = Number.isFinite(ajust?.nordM) ? (ajust.nordM as number) : 0;
+    if (estM !== 0 || nordM !== 0) suivant = deplacerCalage(suivant, estM, nordM);
+    if (Number.isFinite(ajust?.rotationDeg) && ajust.rotationDeg !== 0) {
+      suivant = tournerCalage(suivant, ajust.rotationDeg as number);
+    }
+    if (suivant === calage) return false; // rien à ajuster : aucun repaint inutile
+    return poserFond({ ...fond, calage: suivant }).ok;
+  }
+
+  calageChipEl?.addEventListener('click', () => {
+    if (calageActif) annulerCalageFond();
+    else demarrerCalageFond();
+  });
+  calageValiderBtn?.addEventListener('click', () => {
+    validerCalageFond();
+  });
+  for (const el of [calageDistanceEl, calageSourceEl]) {
+    el?.addEventListener('keydown', (e) => {
+      const key = (e as KeyboardEvent).key;
+      if (key === 'Enter') {
+        e.preventDefault();
+        validerCalageFond();
+      } else if (key === 'Escape') {
+        // Échap sort du mode SANS rien écrire.
+        e.preventDefault();
+        annulerCalageFond();
+        el.blur?.();
+      }
+    });
+  }
+
   // W92 — retire le DERNIER sommet posé pendant le tracé (avant fermeture). N'agit pas une
   // fois le toit fermé (le glissé-sommet édite alors les coins). Re-dessine + remet à jour
   // le statut/les boutons via redrawTrace.
@@ -1193,6 +1434,12 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     setLayerState,
     setFond,
     fond: fondCourant,
+    demarrerCalageFond,
+    modeCalageFond,
+    pointCalageFond,
+    validerCalageFond,
+    annulerCalageFond,
+    ajusterFond,
     addVertex,
     undoLastPoint,
     poserSegmentSaisi,
