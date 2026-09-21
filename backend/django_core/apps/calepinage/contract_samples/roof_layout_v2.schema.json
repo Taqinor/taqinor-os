@@ -147,6 +147,13 @@
       "description": "CALX201 — la couche ÉLECTRIQUE du document : les organes posés dans l'atelier (`equipements[]`) et, depuis CALX202, les cheminements de câble qui les relient (`cheminements[]`). Clé RACINE OPTIONNELLE et additive : absente, le comportement est EXACTEMENT celui d'aujourd'hui (aucun organe, aucun marqueur dans la scène, aucun bloc supplémentaire au schéma unifilaire), et un document v2 déjà enregistré reste valide sans qu'une seule de ses clés change. Aucune valeur par défaut n'est inventée : l'absence d'équipement n'est pas « un onduleur au centre du toit », c'est une information qui manque — les calculs qui en dépendent s'OMETTENT en la nommant.",
       "$ref": "#/$defs/electrical"
     },
+    "buildings": {
+      "description": "CALX84 — les BÂTIMENTS du site, ceux que `zones[].buildingId` (CAL59) et `poseSurfaces[].buildingId` (CAL91) désignent déjà sans qu'aucun objet ne les décrive. Clé RACINE OPTIONNELLE et additive : absente, la 3D continue d'extruder l'hypothèse affichée d'aujourd'hui (`FLOORS × FLOOR_HEIGHT_M`, `apps/web/src/scripts/roofPro11/constants.ts`) et l'atelier le DIT — l'hypothèse reste une hypothèse. Présente, elle fait voyager la hauteur SAISIE dans CAL60, qui vivait jusqu'ici dans une `Map` locale de `shadingUi.ts` et n'était jamais sérialisée : rouvrir le document la perdait. AUCUNE hauteur n'est devinée : `hauteurM` est SAISIE et porte obligatoirement sa `source`, ou vaut `null` — et une hauteur `null` n'est pas 0 m, c'est une mesure qui manque. Un `buildingId` qui ne figure pas ici reste TOLÉRÉ (les documents d'aujourd'hui en portent déjà sans qu'aucun bâtiment n'existe) : il signifie simplement « bâtiment non décrit ».",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/building"
+      }
+    },
     "modules": {
       "description": "CALX82 — le CATALOGUE des modules physiques utilisés par ce document. Clé RACINE OPTIONNELLE et additive : absente ou vide, tous les pans posent le module unique d'aujourd'hui (`PANEL2_*` de `apps/web/src/lib/roofPro2.ts`, dont seule la puissance voyage, par `panelWatt`) — comportement d'aujourd'hui, byte pour byte. Présente, elle permet à deux pans de poser deux modèles DIFFÉRENTS, chacun désigné par `zones[].geometry.moduleId`. Aucune dimension n'est déduite d'une puissance ni l'inverse : chaque valeur est SAISIE ou lue d'une fiche produit, et `null` quand la fiche ne la porte pas.",
       "type": "array",
@@ -531,6 +538,83 @@
           ]
         }
       }
+    },
+    "building": {
+      "description": "CALX84 — UN bâtiment du site. Il ne porte que ce qu'un humain a RELEVÉ ou SAISI : une hauteur, un nombre d'étages, une hauteur d'étage, et d'où chacune vient. Le schéma ne dérive rien — ni la hauteur depuis les étages, ni l'inverse : deux valeurs cohérentes sont deux valeurs saisies, deux valeurs incohérentes sont un fait que l'écran montre, pas une erreur qu'un calcul efface.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "description": "Identifiant STABLE du bâtiment DANS ce document : c'est lui que `zones[].buildingId` (CAL59) et `poseSurfaces[].buildingId` (CAL91) désignent.",
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "description": "Libellé FRANÇAIS affiché (« Villa », « Hangar nord »…). Absent = le bâtiment n'est désigné que par son `id`.",
+          "type": "string"
+        },
+        "hauteurM": {
+          "description": "Hauteur du bâtiment (m), SAISIE ou relevée. `null` = NON RENSEIGNÉE : la 3D reste alors sur l'hypothèse qu'elle affiche, elle ne pose pas une hauteur au jugé, et « non renseignée » n'est pas 0 m. Dès qu'elle porte un nombre, `source` devient OBLIGATOIRE — une hauteur sans provenance n'est pas engageable (D-CALX 7) et le document qui en porte une est refusé en nommant `source`.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "etages": {
+          "description": "Nombre d'étages SAISI (rez-de-chaussée compris). `null` = non renseigné. Il ne sert PAS à fabriquer une hauteur : le produit `etages × hauteurEtageM` est une information d'écran, jamais une hauteur écrite à la place de `hauteurM`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "hauteurEtageM": {
+          "description": "Hauteur d'un étage (m), SAISIE. `null` = non renseignée. Même discipline que `etages` : aucune hauteur de bâtiment n'en est déduite en silence.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "source": {
+          "description": "D'OÙ vient la hauteur, en clair et en français (« mesurée au télémètre », « lue sur le permis », « déclarée par le client »…). `null` ou absente quand `hauteurM` vaut `null` ; OBLIGATOIRE et non vide dès que `hauteurM` porte un nombre.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "hauteurM"
+            ],
+            "properties": {
+              "hauteurM": {
+                "type": "number"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "source"
+            ],
+            "properties": {
+              "source": {
+                "description": "CALX84 — une hauteur SAISIE arrive toujours avec sa provenance.",
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
     },
     "moduleDocument": {
       "description": "CALX82 — UN modèle de module physique, tel qu'il est utilisé dans ce document. L'entrée ne porte que l'IDENTITÉ et les dimensions du modèle : aucun prix, aucune marge, aucun rendement calculé. Chaque valeur est SAISIE dans l'atelier ou lue de la fiche `stock.Produit` désignée par `produitId` ; quand la fiche ne porte pas la valeur, elle vaut `null` — jamais une dimension standard supposée, jamais un poids déduit d'une surface (D-CALX 7).",
