@@ -145,6 +145,13 @@ DARIJA : غادي نحط الملف ديالكم فالوقفة. العرض دي
 FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.
 DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. عارفة بلي القرار كيتاخد مع العائلة. إلا غادي تهضرو عليه هاد الويكاند، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نعيط ليكم نهار الحد من بعد 5 ديال العشية وتكونو جوج ولا تلاتة، كيف ما بغيتو.
 
+**CAD60 (21/09/2026) — les deux textes ci-dessous partent À LA MAIN, hors cadence, après la décision du fondateur.**
+Aucun des 10 barreaux après-devis ne les porte, et aucun ne les portera : `offre_reda` contient trois blancs que rien
+ne peut calculer ([la raison réelle], [montant en dirhams], [nouveau total TTC]), et l'appel du fondateur se décide au
+cas par cas — jamais à l'avance. **Ne cherchez pas le bouton : il n'existe pas, et c'est voulu.** On copie le texte
+depuis le catalogue des messages au moment choisi, on remplit les blancs, on envoie. Un bouton conditionnel
+enverrait un jour une offre que le fondateur n'a pas décidée.
+
 ### annonce_appel_reda — le vendredi, annoncer l'appel de Reda du dimanche (M11)
 FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Le fondateur, qui valide chaque étude, aimerait vous appeler dimanche vers 18 h pour répondre à vos questions en cinq minutes. Ça vous convient, ou préférez-vous un autre moment ?
 DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. المؤسس ديال الشركة اللي كيراجع كل دراسة بغا يعيط ليكم نهار الحد على 6 ديال العشية باش يجاوب على الأسئلة ديالكم ف خمس دقايق. واش مناسب ليكم، ولا كتفضلو وقت آخر؟

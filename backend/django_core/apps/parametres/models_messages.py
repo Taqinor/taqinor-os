@@ -128,6 +128,14 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver. Répondez STOP et je n'insiste plus.",
     'dimanche_famille':
         "Bonjour M. {prenom}, {conseiller} de {marque}. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
+    # CAD60 (21/09/2026) — ENVOI MANUEL, HORS CADENCE, APRÈS LA DÉCISION DU
+    # FONDATEUR. Ces deux textes ne sont portés par AUCUN des barreaux
+    # après-devis et ne le seront pas : `offre_reda` contient trois blancs
+    # ([la raison réelle], [montant en dirhams], [nouveau total TTC]) qui ne
+    # sont calculables par rien, et l'appel du fondateur se décide au cas par
+    # cas. Ne cherchez pas le bouton : il n'existe pas, et c'est voulu —
+    # câbler une touche conditionnelle serait de la sur-ingénierie. Ils se
+    # copient depuis le catalogue des messages, au moment choisi.
     'annonce_appel_reda':
         "Bonjour M. {prenom}, {conseiller} de {marque}. Le fondateur, qui valide chaque étude, aimerait vous appeler dimanche vers 18 h pour répondre à vos questions en cinq minutes. Ça vous convient, ou préférez-vous un autre moment ?",
     'offre_reda':
@@ -330,6 +338,21 @@ CLES_RELANCE = [
     'visite_proposition',
     'visite_confirmation',
 ]
+
+#: CAD60 (21/09/2026) — les textes à ENVOI MANUEL, hors cadence.
+#:
+#: Aucun des 10 barreaux après-devis ne les porte, et aucun ne les portera :
+#: `offre_reda` contient trois blancs non calculables ([la raison réelle],
+#: [montant en dirhams], [nouveau total TTC]) et l'appel du fondateur se
+#: décide au cas par cas, après SA décision — jamais avant. Câbler un bouton
+#: conditionnel serait de la sur-ingénierie ; la liste existe pour que l'écran
+#: puisse DIRE « envoi manuel » au lieu de laisser chercher un bouton absent.
+CLES_ENVOI_MANUEL = frozenset({'annonce_appel_reda', 'offre_reda'})
+
+#: La phrase à afficher à côté de ces textes, au catalogue comme au guide.
+MENTION_ENVOI_MANUEL = (
+    'Envoi manuel, hors cadence, après la décision du fondateur — aucun '
+    'bouton ne l’envoie.')
 
 
 class MessageTemplate(models.Model):
