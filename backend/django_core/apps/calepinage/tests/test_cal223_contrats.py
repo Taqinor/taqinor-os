@@ -125,6 +125,15 @@ SANS_PRODUCTEUR_PUR = {
         'horizon, production) et son assembleur arrive avec CALX150 — la '
         'forme est affirmée sans base, depuis une réponse PVGIS rejouée, par '
         'apps/calepinage/tests/test_calx143_contrat_meteo.py',
+
+    # CALX144
+    'calepinage_incertitude.json':
+        "détail du bloc `resultat['incertitude']` servi par GET resultat/ "
+        '(CALX70) : son producteur est services/incertitude.py (CALX185, '
+        'CALX186), pas encore écrit — la forme et les deux règles dures '
+        '(aucun σ sans source, aucun P50 recopié en P90) sont affirmées sans '
+        'base par '
+        'apps/calepinage/tests/test_calx144_contrat_incertitude.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur

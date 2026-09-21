@@ -1229,6 +1229,12 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "servi par GET calepinages/<pk>/resultat/ : la route existe mais sa "
         "forme n'est pas lisible statiquement, et l'assembleur du bloc "
         "arrive avec CALX150 (CALX143)",
+    "calepinage/calepinage_incertitude.json":
+        "detail du bloc `resultat['incertitude']` (composantes de sigma en "
+        "quadrature et quantiles) servi par GET calepinages/<pk>/resultat/ : "
+        "la route existe mais sa forme n'est pas lisible statiquement, et le "
+        "producteur services/incertitude.py arrive avec CALX185/CALX186 "
+        "(CALX144)",
     "calepinage/calepinage_du_devis.json":
         "cle ADDITIVE `calepinage` du detail d'un devis (GET ventes/devis/"
         "<pk>/) : la route est servie, mais par un ModelViewSet dont la forme "
