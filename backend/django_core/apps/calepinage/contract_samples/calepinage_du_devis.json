@@ -1,0 +1,32 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "La clé `calepinage` du DÉTAIL d'un devis : quelle conception pilote ce devis, et décrit-elle encore ce qu'il vend. PACT10 — POURQUOI CE CONTRAT PART SEUL : le bloc `frontend/src/features/ventes/BlocCalepinageDevis.jsx` est monté (`DevisForm.jsx:881`), lit `r?.data?.calepinage` (`:43`) et rend `null` quand la clé manque (`:48`) ; il a donc été livré AVEUGLE, en face d'un sérialiseur écrit par une lane file-disjointe. Le contrat atterrit ici pour que les deux moitiés lisent le MÊME document : le test backend affirme cet exemple, le test d'écran l'IMPORTE au lieu de retaper sa charge utile (PACT13). PORTÉE DÉLIBÉRÉMENT PARTIELLE (`forme_serveur: partielle`) : le détail d'un devis porte des dizaines de clés servies par `DevisSerializer` ; ce document n'en décrit qu'UNE, la clé ADDITIVE `calepinage`, et ne prétend pas porter la carte complète de sa route. D'OÙ VIENT CHAQUE CLÉ — `id`, `titre` et `layout_hash` sont lus sur le `Calepinage` que rend `apps.calepinage.selectors.calepinage_du_devis` (`selectors.py:271` — LE point d'entrée cross-app, borné société, qui évite à `apps.ventes` d'importer `apps.calepinage.models`) ; `a_jour` est ajouté par le pont `apps.ventes.selectors.calepinage_du_devis`, qui COMPARE LES DEUX EMPREINTES (`layout_hash` du devis et du calepinage) — jamais un recalcul de géométrie à l'écran, exactement comme `layout_stale` sur la page client. TROIS ÉTATS, ET SEULEMENT TROIS : `a_jour: true` (« à jour »), `a_jour: false` (« à rejouer »), `a_jour: null` = INCONNU, quand une empreinte manque d'un côté — l'écran n'affiche alors AUCUN badge. Déclarer « à rejouer » ce qui n'a pas été mesuré serait une alerte inventée, et c'est précisément ce que le sélecteur refuse de faire côté serveur ; c'est pourquoi les trois états portent chacun leur exemple ici, et non un seul. DISCIPLINE DU NULL — `exemple_vide` = devis SANS calepinage : la clé `calepinage` est PRÉSENTE et vaut `null`, jamais un objet vide ni une clé absente. Le bloc DISPARAÎT alors de l'écran (patron CAL213) : jamais un bloc vide, jamais un tiret qui laisserait croire à une donnée manquante. `null` veut aussi dire « non calculé ici » en LISTE de devis — le sélecteur exécute une requête PAR devis, le calculer en liste ferait un N+1 — et jamais « pas de calepinage ». LECTURE SEULE : la donnée appartient à `apps.calepinage` ; aucune écriture ne passe par cette clé. AUCUN ARGENT, AUCUN CHIFFRE CLIENT : ce bloc ne porte ni total, ni prix, ni marge, ni prix d'achat — seulement de quoi nommer la conception et ouvrir sa page. Les valeurs ci-dessous sont des PLACEHOLDERS ASSUMÉS : identifiant à un chiffre, empreintes visiblement factices (`abab…`, `cdcd…`), titre « d'essai ».",
+  "exemple": {
+    "calepinage": {
+      "id": 1,
+      "titre": "Toiture d'essai — bâtiment principal",
+      "layout_hash": "abababababababababababababababababababababababababababababababab",
+      "a_jour": true
+    }
+  },
+  "exemple_a_rejouer": {
+    "calepinage": {
+      "id": 1,
+      "titre": "Toiture d'essai — bâtiment principal",
+      "layout_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "a_jour": false
+    }
+  },
+  "exemple_inconnu": {
+    "calepinage": {
+      "id": 1,
+      "titre": "Toiture d'essai — bâtiment principal",
+      "layout_hash": null,
+      "a_jour": null
+    }
+  },
+  "exemple_vide": {
+    "calepinage": null
+  }
+}

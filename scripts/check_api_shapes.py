@@ -1189,26 +1189,28 @@ def echantillons_de_contrat(shapes, racine: Path = None, lecteur_serveur=None):
 
 
 # ---------------------------------------------------------------------------
-# CALX4 — LES CONTRATS POSES AVANT LEUR VUE, NOMMES DANS LE VERDICT
+# CALX4 — LES CONTRATS QUE LA GARDE NE PEUT PAS COMPARER, NOMMES QUAND MEME
 # ---------------------------------------------------------------------------
 #
 # LE TROU. `echantillons_de_contrat` s'abstient tant que la route d'un exemple
 # n'a aucune forme connue — « un doute ne rougit JAMAIS », et c'est la bonne
-# regle. Mais elle rend INVISIBLES, precisement, les exemples qui atterrissent
-# SEULS sur `main` AVANT la vue qui les servira : c'est le mode d'emploi de
-# PACT10 (« le contrat part EN PREMIER »), et ces documents-la ne se signalent
-# alors nulle part — ni vert, ni rouge, ni nommes. Un contrat pose puis oublie
-# est exactement ce que ce fichier existe pour empecher.
+# regle. Mais elle rend INVISIBLES deux familles d'exemples : ceux qui
+# atterrissent SEULS sur `main` AVANT la vue qui les servira (PACT10, « le
+# contrat part EN PREMIER ») et ceux dont la route est servie par un
+# ModelViewSet, donc pas lisible statiquement. Ces documents-la ne se
+# signalent nulle part — ni vert, ni rouge, ni nommes. Un contrat pose puis
+# oublie est exactement ce que ce fichier existe pour empecher.
 #
-# LE REMEDE, MINUSCULE ET SANS EFFET DE BORD. Chaque contrat pose en avance est
-# DECLARE ici avec la tache qui le servira. La garde le NOMME dans son verdict
-# — il existe donc pour qui lit la CI — et ECHOUE si le fichier declare a
-# disparu ou a ete renomme. Aucune abstention n'est touchee : le jour ou la vue
-# naitra, la comparaison de `echantillons_de_contrat` reprendra ses droits
-# toute seule, et cette entree n'aura plus qu'a etre retiree.
+# LE REMEDE, MINUSCULE ET SANS EFFET DE BORD. Chaque contrat hors de portee de
+# la comparaison est DECLARE ici, avec la RAISON pour laquelle il l'est. La
+# garde le NOMME dans son verdict — il existe donc pour qui lit la CI — et
+# ECHOUE si le fichier declare a disparu ou a ete renomme. Aucune abstention
+# n'est touchee : le jour ou la forme deviendra lisible,
+# `echantillons_de_contrat` reprendra ses droits toute seule, et cette entree
+# n'aura plus qu'a etre retiree.
 #
-# Cle : `<app>/<fichier>.json`. Valeur : la route attendue et la tache qui la
-# livre — jamais « plus tard », toujours un identifiant de tache.
+# Cle : `<app>/<fichier>.json`. Valeur : la route visee et la raison de
+# l'abstention — jamais « plus tard », toujours un identifiant de tache.
 ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
     "calepinage/calepinage_simulation.json":
         "POST calepinages/<pk>/simuler/, et les blocs ecrits par fusion dans "
@@ -1216,6 +1218,12 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "incertitude, performance, ombrage, consommation, autoconsommation, "
         "batterie, hors_reseau, validation, serie_horaire) — vue et service "
         "livres par CALX5",
+    "calepinage/calepinage_du_devis.json":
+        "cle ADDITIVE `calepinage` du detail d'un devis (GET ventes/devis/"
+        "<pk>/) : la route est servie, mais par un ModelViewSet dont la forme "
+        "n'est pas lisible statiquement — la garde s'abstient, les deux "
+        "moities (DevisSerializer, BlocCalepinageDevis.jsx) s'appuient sur "
+        "CET exemple (CALX45/CALX46)",
 }
 
 
@@ -1994,11 +2002,10 @@ def main(argv=None) -> int:
     if contract.rapport_plancher("check_api_shapes", mesures):
         return 1
 
-    # CALX4 — les contrats poses AVANT leur vue : nommes, et jamais muets.
+    # CALX4 — les contrats hors comparaison : nommes, et jamais muets.
     annonces, manquants = annonce_des_echantillons_poses()
     if manquants:
-        print("\nECHEC : contrat(s) pose(s) en avance, declare(s) ici et "
-              "introuvable(s) :")
+        print("\nECHEC : contrat(s) declare(s) ici et introuvable(s) :")
         for ligne in manquants:
             print(ligne)
         return 1
@@ -2027,8 +2034,8 @@ def main(argv=None) -> int:
         return 1
 
     if annonces:
-        print(f"Contrat(s) pose(s) AVANT leur vue (PACT10), nomme(s) ici pour "
-              f"qu'aucun ne dorme : {len(annonces)}.")
+        print(f"Contrat(s) hors de portee de la comparaison (PACT10), "
+              f"nomme(s) ici pour qu'aucun ne dorme : {len(annonces)}.")
         for ligne in annonces:
             print(ligne)
 
