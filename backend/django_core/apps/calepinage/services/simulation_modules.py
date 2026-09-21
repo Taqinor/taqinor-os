@@ -36,6 +36,21 @@ inclinaison et même azimut restent alors un seul appel. Sinon ce pilote pose
 sa propre mémoire, keyée par le repère du plan, et l'installe dans le
 contexte des modules pour que les étapes la partagent aussi.
 
+CHAQUE PASSAGE TOURNE SUR SA PROPRE COPIE DU CONTEXTE
+--------------------------------------------------------
+``appliquer_chaine`` ÉCRIT dans le contexte qu'on lui donne, et c'est voulu :
+elle y installe l'accès météo partagé, y sème le compteur
+``meteo.appels_pvgis``, y réécrit ``meteo.heure`` après le recalage sur
+l'heure du site et y pose le verdict ``croisement_horaire`` (CALX59/153/155).
+Un pilote qui lui passerait le contexte de son appelant le laisserait donc
+modifié — et l'appelant, lui, n'a rien demandé. Chaque passage reçoit donc sa
+COPIE DE TRAVAIL : les clés de premier niveau sont reprises telles quelles
+(les objets injectés — client météo, fiches — ne sont jamais clonés, sans
+quoi leur cache serait perdu), et le bloc ``meteo``, le seul conteneur
+imbriqué où la chaîne écrit, est recopié en profondeur. Ce que la chaîne y
+pose n'est pas perdu pour autant : le verdict horaire et le bloc
+``meteo.heure`` du premier passage sont REPUBLIÉS dans ``entree``.
+
 LA PART D'UN MODULE DANS SON PAN
 ----------------------------------
 La série d'un pan décrit le pan ENTIER. Un module en porte donc la part
@@ -63,6 +78,8 @@ publie que ce qu'il a : une énergie illisible reste ``None``, jamais un zéro
 (D-CALX 7), et un pan sans module est NOMMÉ plutôt qu'ignoré.
 """
 from __future__ import annotations
+
+import copy
 
 from apps.calepinage.services import chaine_pertes, etapes
 from apps.calepinage.services.ombrage_chaines import acces_par_module
@@ -170,6 +187,7 @@ def production_module_par_module(contexte, *, chaine=None):
     par_module = []
     plans_sans_module = []
     groupes = []
+    premiere_copie = None
     for plan in plans:
         repere = _repere(plan)
         acces = _acces_du_plan(plan, repere, acces_par_pan)
@@ -185,8 +203,10 @@ def production_module_par_module(contexte, *, chaine=None):
                 # Deux modules d'un même pan qui partagent leur accès
                 # solaire partagent aussi leur résultat : la chaîne est
                 # DÉTERMINISTE, la recalculer donnerait le même nombre.
-                sortie, _cascade = appliquer(
-                    part, _contexte_du_module(contexte, plan, valeur, meteo))
+                travail = _contexte_du_module(contexte, plan, valeur, meteo)
+                if premiere_copie is None:
+                    premiere_copie = travail
+                sortie, _cascade = appliquer(part, travail)
                 groupe = {'serie': sortie, 'modules': 0,
                           'kwh': etapes.energie_kwh(sortie)}
                 memoire[valeur] = groupe
@@ -232,6 +252,7 @@ def production_module_par_module(contexte, *, chaine=None):
         'motif_energie': (MOTIF_ENERGIE_ILLISIBLE.format(modules=sans_energie)
                           if sans_energie else ''),
     }
+    entree.update(_ce_que_la_chaine_a_pose(premiere_copie))
     return {
         'par_module': [] if tronque else par_module,
         'par_chaine': _par_chaine(par_module, contexte),
@@ -310,15 +331,24 @@ def _acces_du_plan(plan, repere, acces_par_pan):
 
 
 def _contexte_du_module(contexte, plan, acces, meteo):
-    """Le contexte d'UN module : son pan, son accès, la météo partagée.
+    """La COPIE DE TRAVAIL d'UN module : son pan, son accès, sa météo.
 
     Le document de toiture et la table d'affectation restent INTACTS : les
     étapes qui raisonnent par CHAÎNE (la dispersion d'ombrage, CALX168) ont
     besoin de voir toute la chaîne, pas le seul module simulé. Seule la
     lecture d'accès solaire est réduite au module — c'est elle qui fait la
     différence avec une simulation par pan.
+
+    ``meteo`` est recopié EN PROFONDEUR parce que ``appliquer_chaine`` y
+    écrit (``appels_pvgis``, ``heure`` après le recalage horaire) : sans
+    cette copie, le contexte de l'appelant ressortirait modifié. Les autres
+    valeurs sont reprises telles quelles — cloner un client météo ou une
+    fiche perdrait leur cache, et la chaîne n'y écrit pas.
     """
     copie = dict(contexte)
+    bloc_meteo = contexte.get('meteo')
+    copie['meteo'] = (copy.deepcopy(bloc_meteo)
+                      if isinstance(bloc_meteo, dict) else {})
     copie['plan'] = plan
     copie['plans'] = [plan]
     copie[chaine_pertes.CLE_METEO_PARTAGEE] = meteo
@@ -436,6 +466,26 @@ def _horodatage(point):
     return tuple(point.get(cle) for cle in ('annee', 'mois', 'jour', 'heure'))
 
 
+def _ce_que_la_chaine_a_pose(travail):
+    """Ce que la chaîne a écrit sur la copie de travail, REPUBLIÉ ici.
+
+    ``appliquer_chaine`` pose son verdict de croisement horaire et le bloc
+    ``meteo.heure`` dans le contexte qu'elle reçoit (CALX59/153). Comme ce
+    pilote ne lui donne que des copies, ces deux blocs seraient perdus : ils
+    sont republiés tels quels. Ils ne dépendent que du site et de la série
+    du pan, donc le premier passage les porte tous.
+    """
+    if not isinstance(travail, dict):
+        return {'croisement_horaire': None, 'meteo_heure': None}
+    bloc_meteo = travail.get('meteo')
+    return {
+        'croisement_horaire': travail.get(
+            chaine_pertes.CLE_CROISEMENT_HORAIRE),
+        'meteo_heure': (bloc_meteo.get('heure')
+                        if isinstance(bloc_meteo, dict) else None),
+    }
+
+
 # ── les entrées, une par une ────────────────────────────────────────────
 
 def _affectation(contexte):
@@ -489,7 +539,8 @@ def _vide(motif):
         'serie_agregee': None,
         'entree': {'methode': METHODE, 'reference': REFERENCE,
                    'modules_simules': 0, 'chaines_executees': 0,
-                   'series_demandees': 0},
+                   'series_demandees': 0, 'croisement_horaire': None,
+                   'meteo_heure': None},
         'motif': motif,
     }
 
