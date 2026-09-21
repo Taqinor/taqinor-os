@@ -95,6 +95,18 @@ class CrmConfig(AppConfig):
                 apply_,
             ),
         )
+        # CAD92 — le traitement seedé `leads_clients` déclare au registre
+        # CNDP « 3 ans après le dernier contact (prospects) » et rien ne
+        # l'appliquait : aucune anonymisation du Lead lui-même n'était
+        # enregistrée ici. La politique existe désormais, avec EXACTEMENT la
+        # durée déclarée (`tests_cad92_retention.py` échoue si les deux
+        # divergent). Elle compte sans rien écrire tant que le fondateur n'a
+        # pas armé `CRM_LEAD_RETENTION_ACTIF` — un réglage neuf garde le
+        # comportement d'aujourd'hui.
+        register_retention_policy(
+            dsr_provider.RETENTION_POLICY_PROSPECTS,
+            dsr_provider.sweep_retention_prospects,
+        )
         # ARC18 — miroir one-way crm.Client → répertoire unifié tiers.Tiers
         # (l'import câble le récepteur post_save ; pont réversible).
         from . import tiers_bridge  # noqa: F401

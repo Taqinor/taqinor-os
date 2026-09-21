@@ -131,6 +131,18 @@ CADENCE_CONTACT_DEFAUT = [
 # Suivi APRÈS ENVOI DU DEVIS (Guide v2.1 chapitre 7). La touche « dimanche
 # famille » est posée sur le premier dimanche 16 h après J3, pour les seuls
 # leads portant l'étiquette « Décision à plusieurs ».
+#
+# CAD52 — PAS DE VARIANTE PAR SEGMENT — décision du 21/09/2026, à rouvrir sur
+# les mesures de CAD87.
+# `unique_together = ('company', 'cadence', 'ordre')` n'autorise qu'UNE
+# cadence après-devis par société, et l'action de démarrage ne lit que le nom
+# de la cadence : un rythme différent pour l'agricole ou le B2B demanderait
+# donc d'ouvrir la clé, l'API, l'éditeur et le démarrage. Décision fondateur
+# du 21/09/2026 : on ne le construit PAS — l'effort est gros, aucune source
+# primaire sur le cycle de décision agricole n'a pu être ouverte, et rendre
+# les phrases de l'écran lisibles (CAD46-CAD48) couvre le besoin ressenti.
+# La question se rouvrira sur les CHIFFRES de CAD87, jamais sur une intuition.
+# Cette note existe pour qu'un futur audit ne la re-soulève pas.
 CADENCE_APRES_DEVIS_DEFAUT = [
     {'ordre': 1, 'delai_jours': 1, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Le PDF s\'ouvre bien ?',

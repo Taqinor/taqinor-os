@@ -78,6 +78,14 @@ const parametresApi = {
     api.get('/parametres/cadence-relance/', { params: cadence ? { cadence } : {} }),
   updateCadenceRelanceEtape: (id, data) =>
     api.patch(`/parametres/cadence-relance/${id}/`, data),
+  // CAD53 — l'éditeur peut AJOUTER et SUPPRIMER un barreau (décision fondateur
+  // du 21/09/2026). Jamais rétroactif : le gabarit est copié barreau par
+  // barreau à l'initialisation d'un plan, donc un plan déjà lancé garde ses
+  // touches. `ordre` est calculé côté serveur quand il n'est pas fourni.
+  createCadenceRelanceEtape: (data) =>
+    api.post('/parametres/cadence-relance/', data),
+  deleteCadenceRelanceEtape: (id) =>
+    api.delete(`/parametres/cadence-relance/${id}/`),
   // Catalogue « Réalisations » (08/09/2026) — installations RÉELLES de la
   // société et leur page publique. Source de la preuve de la touche J4 :
   // le serveur y choisit celle de la ville du lead. `company` n'est jamais

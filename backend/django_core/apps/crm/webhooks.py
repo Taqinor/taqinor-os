@@ -776,6 +776,14 @@ def _map_payload_to_fields(data: dict) -> dict:
         'roof_type': (str(data.get('roofType')).strip()[:30] if data.get('roofType') else None),
         'bill_range_bucket': data.get('billRange') if data.get('billRange') in Lead.BillRangeBucket.values else None,
         'roi_band': roi_band,
+        # CAD121 (21/09/2026) — TROIS états, jamais deux. `True` = le client a
+        # coché la case (décochée par défaut depuis CAD121 : la loi 09-08
+        # art. 10 exige un consentement « libre, spécifique et informé »,
+        # qu'une case pré-cochée n'est pas) ; `False` = la question a été posée
+        # et il ne l'a PAS cochée ; `None` = la question n'a pas été posée du
+        # tout — un silence n'est ni un accord ni un refus, et le registre de
+        # consentement n'écrit alors rien (voir `enregistrer_consentements_
+        # intake_web`). Ne jamais replier `None` sur `False`.
         'whatsapp_opt_in': bool(data['whatsappOptIn']) if 'whatsappOptIn' in data else None,
         'consent_timestamp': consent_ts,
         'fbclid': (str(data.get('fbclid')).strip()[:500] if data.get('fbclid') else None),

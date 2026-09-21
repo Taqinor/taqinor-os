@@ -142,8 +142,16 @@ const inputClass =
             <p id="lf-phone-err" role="alert" class="mt-1 hidden text-xs text-alert-300"></p>
           </div>
         </div>
+        <!-- CAD121 (décision fondateur du 21/09/2026) — CASE DÉCOCHÉE PAR
+             DÉFAUT. Elle était rendue PRÉ-COCHÉE, alimentait `whatsapp_opt_in`
+             et valait +3 points de score : or la loi 09-08 (art. 10) exige un
+             consentement « libre, spécifique et informé », qu'une case
+             pré-cochée n'est pas — et ce faux consentement polluait le
+             registre que CAD90 remplit. Effets assumés : -3 points sur les
+             leads web qui ne la cochent pas, et un taux d'opt-in affiché plus
+             bas mais VRAI. Ne jamais remettre `checked` ici. -->
         <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm text-lune">
-          <input type="checkbox" name="whatsappOptIn" class="h-5 w-5 shrink-0 cursor-pointer accent-brass-400" checked />
+          <input type="checkbox" name="whatsappOptIn" class="h-5 w-5 shrink-0 cursor-pointer accent-brass-400" />
           <span>{t('form.waOptIn')}</span>
         </label>
         <label class="flex min-h-[44px] cursor-pointer items-start gap-2 text-sm text-lune">

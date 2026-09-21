@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, act, cleanup, waitFor } from '@testing-library/react'
 
 /* MRY28 — éditeur des trois cadences de relance (contact / après devis /
-   réveil), Paramètres → Référentiels → « Cadences de relance ». Édition en
-   place (PATCH) uniquement : aucune création/suppression depuis cet écran
-   (les lignes sont posées par `seed_cadence`, MRY4). */
+   réveil), Paramètres → Référentiels → « Cadences de relance ». Ce module
+   couvre l'édition EN PLACE (PATCH) des lignes posées par `seed_cadence`
+   (MRY4) ; l'ajout et la suppression d'un barreau, ouverts par CAD53, sont
+   couverts par `CadenceRelanceEditor.cad53.test.jsx`. */
 
 vi.mock('../../api/parametresApi', () => ({
   default: {

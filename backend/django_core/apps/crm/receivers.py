@@ -31,12 +31,14 @@ from .services import (
     journaliser_visite,
     arreter_cadence,
     arreter_cadence_du_lead_id,
+    CADENCES_ARRETEES_PAR_ISSUE,
     FILET_REFUS_LIBELLE,
     assurer_prochaine_etape_apres_succes,
     avancer_stage_lead_vers,
     avancer_stage_new_vers_contacted,
     avancer_stage_sur_reponse_devis,
     avancer_stage_pour_devis,
+    est_note_de_touche_sautee,
     generer_playbook_progress,
     initialiser_plan_relance,
     marquer_premier_contact,
@@ -520,6 +522,14 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
     # appel sans réponse ou un WhatsApp ENVOYÉ ne déplacent plus l'étape
     # (l'ancien « auto — premier contact » sur toute activité est mort) ;
     # le KPI de premier contact, lui, reste horodaté (MRY19).
+    # CAD131 (audit L3 du 21/09/2026) — SAUTER une touche n'est PAS une
+    # tentative : rien n'est sorti vers le client, et la note que le saut
+    # écrit posait pourtant `first_contacted_at`. Sauter la toute première
+    # touche satisfaisait donc la promesse « rappelé en moins de N minutes »
+    # ET éteignait l'escalade, qui n'agit que sur les leads SANS horodatage.
+    # La reconnaissance vit dans `services` — là où la note est ÉCRITE.
+    if est_note_de_touche_sautee(instance):
+        return
     marquer_premier_contact(lead)
     if (instance.outcome or '').strip() in ('joint', 'interesse'):
         avancer_stage_new_vers_contacted(lead, instance.user)
@@ -556,13 +566,14 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
     # M1 (revue Fable 07/09/2026) — la cadence ``reveil`` est arrêtée comme
     # les autres : un client JOINT au réveil J30 ne doit pas recevoir le J60,
     # et un refus au réveil termine les réveils (le dossier reste au Froid).
-    if issue in ('joint', 'interesse'):
-        motif, cadences = 'joint', ['contact', 'reveil']
-    elif issue == 'refuse':
-        motif, cadences = ('refus au téléphone',
-                           ['contact', 'apres_devis', 'reveil'])
-    else:
+    # CAD1 — la liste des cadences arrêtées est lue dans `services`
+    # (``CADENCES_ARRETEES_PAR_ISSUE``), d'où la matérialisation réactive la
+    # lit aussi : une seule table, donc plus de divergence possible entre
+    # « ce que l'arrêt fait » et « ce que la suite croit qu'il a fait ».
+    cadences = list(CADENCES_ARRETEES_PAR_ISSUE.get(issue, ()))
+    if not cadences:
         return
+    motif = 'joint' if issue in ('joint', 'interesse') else 'refus au téléphone'
     try:
         arreter_cadence(instance.lead, user=instance.user, motif=motif,
                         cadences=cadences)

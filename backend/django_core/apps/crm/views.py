@@ -891,6 +891,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             demarrer_cadence_contact, recompute_lead_score,
             sync_relance_activity,
         )
+        # CAD90 — un lead saisi à la main entre dans la cadence comme ceux du
+        # site : il doit donc, comme eux, exister au registre de consentement.
+        # La personne a elle-même sollicité le contact (appel entrant,
+        # message reçu, demande au salon) : c'est la base légale tracée ici.
+        from .services import (
+            BASE_LEGALE_SOLLICITATION, CONSENT_SOURCE_SAISIE_MANUELLE,
+            enregistrer_base_legale_lead,
+        )
+        enregistrer_base_legale_lead(
+            serializer.instance, source=CONSENT_SOURCE_SAISIE_MANUELLE,
+            base_legale=BASE_LEGALE_SOLLICITATION)
         sync_relance_activity(serializer.instance, user)
         recompute_lead_score(serializer.instance)
         # MRY6 — un lead saisi à la main est une demande réelle : il entre
@@ -1021,6 +1032,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                           # rôle, comme `sla_breach`.
                                           'kpi_premier_contact',
                                           'kpi_cadences',
+                                          # CAD87 — lecture seule, même
+                                          # ouverture que les deux KPI
+                                          # ci-dessus.
+                                          'mesure_cadence',
                                           'client_match', 'points_contact',
                                           'scan_carte',
                                           'salle_vente_analytics_view']:
@@ -1343,8 +1358,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             permission_classes=[IsAnyRole])
     def doublons(self, request):
         """Atelier doublons : scanne TOUS les leads de la société et renvoie les
-        clusters de doublons probables (téléphone / email / nom normalisé), avec
-        pour chacun un survivant suggéré (le plus complet, puis le plus récent)."""
+        clusters de doublons probables (téléphone / email / nom normalisé, et
+        depuis CAD93 adresse / point GPS pour le « même foyer »), avec pour
+        chacun un survivant suggéré (le plus complet, puis le plus récent).
+
+        SUGGESTION seulement : aucune fusion n'est faite ici, `match_keys` dit
+        POURQUOI chaque groupe est rapproché et la décision reste humaine."""
         from .services import (
             find_duplicate_clusters, _completeness, cluster_match_keys,
             _MERGE_FILL_FIELDS,
@@ -2029,6 +2048,37 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from .selectors import kpi_cadences as _kpi
         return Response(_kpi(request.user.company, jours=jours))
 
+    # ── CAD-I ── CAD87 — les trois mesures de la cadence ─────────────────────
+    # PACT7 — même raison que `kpi_cadences` : un agrégat déclare sa forme,
+    # sinon le schéma publierait le `LeadSerializer` du ViewSet à sa place.
+    @extend_schema(responses=inline_serializer('CrmMesureCadence', {
+        'jours': serializers.IntegerField(),
+        'source_issue': serializers.CharField(),
+        'taux_joint_par_creneau': serializers.ListField(
+            child=serializers.DictField()),
+        'signatures_par_touches_consommees': serializers.ListField(
+            child=serializers.DictField()),
+        'part_contact_et_langue': serializers.DictField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='mesure-cadence',
+            permission_classes=[IsAnyRole])
+    def mesure_cadence(self, request):
+        """Forme `mesure_cadence` (CAD87). ``?jours=`` (90, borné [1, 365]).
+
+        LECTURE SEULE, bornée à `request.user.company`. Trois mesures et rien
+        d'autre : taux de joint par (touche × heure × jour × canal),
+        signatures par nombre de touches consommées, part de « WhatsApp
+        uniquement » et de darija. Aucun seuil, aucune couleur — le jugement
+        reste humain, et `null` dès qu'un dénominateur est 0."""
+        from .mesure_cadence import JOURS_MESURE_DEFAUT
+        from .mesure_cadence import mesure_cadence as _mesure
+        try:
+            jours = max(1, min(365, int(request.query_params.get(
+                'jours', JOURS_MESURE_DEFAUT))))
+        except (TypeError, ValueError):
+            jours = JOURS_MESURE_DEFAUT
+        return Response(_mesure(request.user.company, jours=jours))
+
     # ── MRY19 — KPI « rappelé en moins de N minutes OUVRÉES » ────────────────
     # PACT7 — même raison que `kpi_cadences` ci-dessous : un agrégat déclare
     # sa forme, sinon le schéma la remplace par celle du ViewSet.
@@ -2038,6 +2088,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         'nb_sous_objectif': serializers.IntegerField(allow_null=True),
         'pct_sous_objectif': serializers.FloatField(allow_null=True),
         'mediane_minutes_ouvrees': serializers.IntegerField(allow_null=True),
+        # CAD88 — le délai CALENDAIRE réel, à côté de l'ouvré (jamais à sa
+        # place) : un lead du vendredi soir traité lundi n'est plus « tenu ».
+        'mediane_minutes_calendaires': serializers.IntegerField(
+            allow_null=True),
         'nb_nuit_rappeles_avant_930': serializers.IntegerField(
             allow_null=True),
         'nb_nuit': serializers.IntegerField(),
@@ -3049,10 +3103,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # que l'écran n'offre pas était un mur sans porte.
         # L'erreur NOMME le champ fautif (règle fondateur 08/09/2026) —
         # jamais un « non enregistré » générique.
+        # EXCEPTION CAD45 — la touche d'appel TRAITÉE PAR ÉCRIT : le message de
+        # cette touche a été ouvert depuis l'ERP (trace RLC3). Aucun appel n'a
+        # eu lieu, exiger « Joint / Non joint » demanderait l'issue d'un appel
+        # qui n'existe pas. L'issue reste obligatoire sur un appel réellement
+        # passé — c'est elle qui alimente l'adhérence CKP3.
         if (statut == RelanceEtape.Statut.FAIT
                 and etape.canal == RelanceEtape.Canal.APPEL
                 and etape.cadence != 'generique'
-                and not outcome):
+                and not outcome
+                and not _message_ouvert_sur_touche(etape)):
             return Response(
                 {'erreurs': {'outcome': "Issue de l'appel obligatoire : "
                                         'Joint, Non joint, À rappeler, '
@@ -3072,7 +3132,34 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                     {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
                                   'heure HH:MM optionnelle).'},
                     status=status.HTTP_400_BAD_REQUEST)
-        from .services import marquer_etape_relance, reporter_prochaine_touche
+        from .services import (est_etape_de_filet, marquer_etape_relance,
+                               reporter_prochaine_touche)
+        # CAD3 — « À rappeler le… » sur une étape de FILET la REPORTE, elle ne
+        # la consomme pas. L'écran promet « L'étape est déplacée à la date
+        # choisie » ; la clore rendait la main au filet, qui posait une AUTRE
+        # étape, renommée « Décider la suite — perdu (motif) ou relance
+        # ultérieure » par la ceinture anti-tapis-roulant, avant que la date
+        # choisie ne lui soit appliquée. Un client qui dit « rappelez-moi la
+        # semaine prochaine » n'a rien arbitré. Même chemin que le bouton
+        # « Reporter » (action `reporter` plus bas) : la touche garde son
+        # identité, sa cadence et son libellé.
+        if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
+                and quand is not None and est_etape_de_filet(etape)):
+            reportee = reporter_prochaine_touche(
+                etape.lead, request.user, quand, etape=etape)
+            if reportee is not None:
+                etape = reportee
+                if note:
+                    etape.note = note
+                    etape.save(update_fields=['note'])
+                data = self.get_serializer(etape).data
+                data['prochaine_touche'] = {
+                    'due_at': (etape.due_at.isoformat()
+                               if etape.due_at else None),
+                    'due_date': etape.due_date.isoformat(),
+                    'canal': etape.canal,
+                }
+                return Response(data)
         etape = marquer_etape_relance(
             etape, request.user, statut, note=note, outcome=outcome,
             body=body)
@@ -4535,3 +4622,32 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
         reponse.set_cookie(COOKIE_APPAREIL, appareil.appareil_id,
                            httponly=False, **commun)
         return reponse
+
+
+# ── CAD-D ── CAD45 — une touche « appel » traitée PAR ÉCRIT ──────────────────
+
+def _message_ouvert_sur_touche(etape):
+    """CAD45 — le message de CETTE touche a-t-il été ouvert depuis l'ERP ?
+
+    Les boutons « Appeler » et « WhatsApp » sont rendus sur CHAQUE ligne quel
+    que soit le canal : le geste est donc déjà libre, et la commerciale écrit
+    parfois au lieu d'appeler. L'issue restait pourtant OBLIGATOIRE dès que le
+    canal vaut « appel » — elle devait répondre « Joint / Non joint » à propos
+    d'un appel qu'elle n'avait pas passé. C'est ce frottement-là qui gênait,
+    pas une impossibilité d'agir.
+
+    La preuve est celle que RLC3 écrit déjà : l'activité « WhatsApp ouvert »
+    portant le préfixe de cette touche, posée par le clic humain — jamais une
+    mémoire d'écran. Le préfixe vient de ``services`` (la même fonction que
+    l'écriture), jamais d'un second littéral.
+
+    Coût : une requête d'existence, et seulement quand la clôture arrive SANS
+    issue sur un canal « appel » — le seul cas où la réponse sert.
+    """
+    from .models import LeadActivity
+    from .services import prefixe_activite_message_ouvert
+    return LeadActivity.objects.filter(
+        company_id=etape.company_id, lead_id=etape.lead_id,
+        kind=LeadActivity.Kind.WHATSAPP,
+        body__startswith=prefixe_activite_message_ouvert(etape),
+    ).exists()

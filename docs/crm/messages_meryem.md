@@ -327,9 +327,61 @@ Décisions fondateur du 21/09/2026 (CAD173) — TROIS RÈGLES DE CONTENU, à ten
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.
 (`visite_proposition` et `visite_confirmation`, eux, ont reçu leur texte validé le 15/09/2026 — section ci-dessus.)
+Les versions darija absentes ci-dessus (après devis, réveils A1/A3/B, après signature) retombent sur le FR (`get_corps`).
 
 CAD62 (21/09/2026) — les 11 darija manquantes (les 6 touches après-devis, `reveil_a1/a3/b`, `avis_google`,
 `parrainage`) sont traduites ci-dessus : `CLES_RELANCE` a désormais 27/27 clés avec un équivalent darija. Comme
 `visite_proposition`/`visite_confirmation`, ces 11 traductions n'ont PAS encore reçu la relecture native du
 04/09/2026 (CADM1 — à faire avant tout envoi réel) ; elles suivent le FR validé phrase par phrase (aucune promesse
 ajoutée, aucun chiffre, aucune traduction automatique).
+
+## Sur quoi la DENSITÉ du protocole se discute — et sur quoi elle ne se discute pas (CAD89, 21/09/2026)
+
+Cette note existe pour qu'aucun futur audit ne recalibre le nombre de touches sur un chiffre qui n'en est pas un.
+Le protocole (6 appels + 5 WhatsApp sur 14 jours, 10 touches après devis, 2 réveils) n'est PAS dérivé des repères
+ci-dessous, et il ne doit pas l'être.
+
+**Le chiffre à ne plus jamais citer : « 80 % des ventes se font après 5 relances ».** Omniprésent dans le secteur,
+il remonte à un sondage de **1942** portant sur **moins de 40 personnes**, jamais publié ni relu par des pairs ;
+l'organisation censée l'avoir produit **n'a pas pu le retracer** quand on le lui a demandé (enquête conciergr.com,
+2024-2025 ; reprise VentureBeat). Il ne mesure rien d'aujourd'hui, rien du Maroc, rien du solaire.
+
+**Le repère le plus sérieux, et sa limite : Velocify, 2013.** Sur ~3,5 millions de leads, 93 % des prospects
+convertis avaient été joints au 6ᵉ appel. Son **rapport primaire n'est plus hébergé nulle part** : il ne peut donc
+être cité que comme **source SECONDAIRE**, jamais comme une mesure vérifiable (correction du round 2 de l'audit).
+
+**Et le repère qu'on lui confond, qui répond à une AUTRE question : MIT / Oldroyd, 2007.** 15 000 leads, 100 000
+appels — l'étude mesure la **VITESSE de rappel** (un contact ~100 fois plus probable entre 5 et 30 minutes), pas le
+**NOMBRE de tentatives**. Deux études américaines, deux questions différentes, **aucune preuve marocaine** ni dans
+l'une ni dans l'autre.
+
+**Le trou qui compte le plus ici : aucune de ces sources ne porte sur WhatsApp**, alors que WhatsApp porte 5 des
+11 touches de la prise de contact. Un rythme calibré sur des séquences d'appels et d'e-mails américains ne dit rien
+de ce canal.
+
+**Conséquence pratique.** La densité (« faut-il plus / moins de touches ? »), le samedi et la soirée de Ramadan se
+tranchent sur les chiffres MAISON — l'agrégat taux de joint par touche × heure × jour × canal et les signatures par
+nombre de touches consommées (CAD87) —, jamais sur les trois repères ci-dessus. Tant que ces mesures n'ont pas assez
+de cases peuplées, **on ne change rien** : ni le nombre, ni l'ordre, ni le J+N des touches.
+
+## Signer le bon de commande CHEZ LE CLIENT — ce que la loi 31-08 impose (CAD122, 21/09/2026)
+
+La visite technique se passe au domicile, après le devis, et le bon de commande s'y signe **parfois**. Dans ce cas
+précis — et seulement dans ce cas — la vente est un **démarchage à domicile** : la loi 31-08 le définit à
+l'**art. 45** comme la proposition d'achat au domicile « même à sa demande », et l'**art. 46** liste trois
+exclusions dont **aucune ne couvre le solaire** (texte ONSSA, extrait mot pour mot).
+
+**Ce que la commerciale fait quand elle fait signer chez le client** (rien d'autre ne change) :
+
+1. **Elle coche « signé au domicile » sur le bon de commande.** C'est ce marqueur — et lui seul — qui déclenche tout
+   ce qui suit. Un bon signé au bureau ou à distance reste régi par l'art. 32 (vente à distance) : **rien ne change**.
+2. **Le document imprimé porte une page de plus** : les mentions de l'**art. 48** et un **formulaire détachable de
+   rétractation**, que le client garde. C'est le moteur habituel qui la rend — il n'existe pas de second PDF.
+3. **Le client date et signe de SA MAIN** (art. 47 al. 2) : la date qu'il écrit est celle qui compte, et c'est elle
+   qu'on saisit dans « date écrite par le client ».
+4. **Aucun acompte n'est encaissé pendant 7 jours** à compter de la commande (**art. 49 et 50**). Le chèque peut être
+   remis, il ne part pas à la banque avant. L'ERP refuse l'encaissement et affiche la date à partir de laquelle il
+   redevient possible ; ce n'est pas un réglage, c'est la loi.
+
+Ce qui n'a PAS changé : le devis, ses conditions de paiement affichées, la signature à distance, et le parcours du
+client qui signe en ligne.

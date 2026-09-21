@@ -482,11 +482,25 @@ def _stamp_view(link):
         # d'un simple rechargement — et ne notifie jamais sans stamp.
         link._vue_precedente = link.last_viewed_at
         link._vue_stampee = True
-        # Increment atomically; set last_viewed_at unconditionally.
-        ShareLink.objects.filter(pk=link.pk).update(
-            view_count=F('view_count') + 1,
-            last_viewed_at=now,
-        )
+        # CAD137 (audit L3 du 21/09/2026) — LE COMPTEUR COMPTE DES VISITES,
+        # PLUS DES REQUÊTES. Trois portes l'incrémentaient à chaque GET (la
+        # page de proposition, le PDF public, le document tokenisé) : lire sa
+        # page, télécharger le PDF puis recharger suffisait à atteindre 3 —
+        # et l'alerte la plus forte du système (« rouverte 3 fois, le client
+        # hésite, appelez ») se déclenchait sur le comportement le plus banal.
+        # La fenêtre de sessionisation de 15 minutes qui protégeait DÉJÀ la
+        # notification (``REOUVERTURE_FENETRE``, QJ1bis) s'applique désormais
+        # au COMPTEUR lui-même : une seule et même source, un seul délai.
+        # ``last_viewed_at``, lui, reste écrit à CHAQUE GET — c'est la vérité
+        # de « vu pour la dernière fois », et rien ne s'en sert pour compter.
+        precedente = link.last_viewed_at
+        nouvelle_visite = (
+            precedente is None
+            or (now - precedente) >= REOUVERTURE_FENETRE)
+        champs_maj = {'last_viewed_at': now}
+        if nouvelle_visite:
+            champs_maj['view_count'] = F('view_count') + 1
+        ShareLink.objects.filter(pk=link.pk).update(**champs_maj)
         # Set first_viewed_at only once (conditioned on still being null so
         # concurrent requests from the same client don't overwrite each other).
         if is_first:
@@ -554,7 +568,10 @@ def _notifier_variante_consultee(link):
     devis = link.devis
     if devis is None or not devis.variante_de_id:
         return
-    fired = set(link.engagement_triggers_fired or [])
+    # CAD138 — lecture par la forme partagée (liste historique OU dict daté) :
+    # l'idempotence ne change pas, mais la date d'allumage est préservée.
+    from .selectors import dates_declencheurs, marquer_declencheur
+    fired = set(dates_declencheurs(link))
     marqueur = 'variante_consultee'
     if marqueur in fired:
         return
@@ -572,8 +589,7 @@ def _notifier_variante_consultee(link):
               f'({devis.reference}) de la proposition {devis_base.reference}.'),
         link=f'/ventes/devis?devis={devis_base.id}',
         company=devis.company)
-    fired.add(marqueur)
-    link.engagement_triggers_fired = sorted(fired)
+    marquer_declencheur(link, marqueur)
     link.save(update_fields=['engagement_triggers_fired'])
 
 
@@ -4160,6 +4176,28 @@ ENGAGEMENT_SECTION_LABELS = {
 }
 
 
+# ── CAD-K ── CAD135 — les signaux de lecture remontent au LEAD ─────────────
+def _remonter_signal_lecture_au_lead(link, *, friction_section='', resume=''):
+    """CAD135 — passe le signal au CRM par son point d'entrée de services.
+
+    Frontière inter-apps : ``ventes`` appelle ``crm.services``, jamais
+    ``crm.models``. Best-effort intégral — un beacon d'engagement est un
+    signal, pas une transaction : rien ici ne peut faire échouer la requête
+    publique du client.
+    """
+    try:
+        devis = getattr(link, 'devis', None)
+        lead = getattr(devis, 'lead', None) if devis is not None else None
+        if lead is None:
+            return
+        from apps.crm.services import notifier_signal_lecture
+        notifier_signal_lecture(
+            getattr(devis, 'reference', '') or '', lead,
+            friction_section=friction_section, resume=resume)
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -4275,20 +4313,24 @@ def proposal_engagement(request, token):
     link = locked
 
     if newly_deep and link.devis_id:
+        resume = ', '.join(
+            f'{sec} ({v["seconds"]}s)' for sec, v in engagement.items())
         try:
             from . import activity
-            resume = ', '.join(
-                f'{sec} ({v["seconds"]}s)' for sec, v in engagement.items())
             activity.log_devis_note(
                 link.devis, None,
                 f'Le client a commencé à lire la proposition en détail ({resume}).')
         except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
             pass
+        # CAD135 (audit L3 du 21/09/2026) — le signal remonte AUSSI au LEAD,
+        # par le même chemin que « devis ouvert » : écrit dans l'historique du
+        # seul DEVIS, personne ne le lisait. La note côté devis reste.
+        _remonter_signal_lecture_au_lead(link, resume=resume)
 
     if newly_friction and link.devis_id:
+        label = ENGAGEMENT_SECTION_LABELS.get(section, section)
         try:
             from . import activity
-            label = ENGAGEMENT_SECTION_LABELS.get(section, section)
             activity.log_devis_note(
                 link.devis, None,
                 f'Le client relit la section « {label} » de la proposition '
@@ -4296,6 +4338,9 @@ def proposal_engagement(request, token):
                 f'friction, un appel peut débloquer la décision.')
         except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
             pass
+        # CAD135 — « un appel peut débloquer la décision » ne sert à rien dans
+        # un onglet que personne n'ouvre : le responsable est prévenu.
+        _remonter_signal_lecture_au_lead(link, friction_section=label)
 
     # T-TRACE (25/08/2026) — le beacon d'engagement porte la clé ADDITIVE
     # `appareil_id` : chaque battement prolonge LA MÊME visite (le service

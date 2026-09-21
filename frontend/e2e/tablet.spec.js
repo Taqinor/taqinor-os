@@ -7,7 +7,26 @@
 //      :hover est invisible au doigt.
 import { test, expect } from '@playwright/test'
 
-const PAGES = ['/ventes/factures', '/crm/leads', '/chantiers']
+// CAD85 — les écrans QUOTIDIENS de la cadence rejoignent la liste : le cockpit
+// CRM et le suivi des relances, ouverts chaque matin, et la FICHE d'un lead
+// (plus bas — son URL porte un id, elle ne peut pas être statique). Trois
+// routes de plus dans le tableau existant, pas une nouvelle famille de tests.
+const PAGES = [
+  '/ventes/factures', '/crm/leads', '/crm/cockpit', '/crm/relances',
+  '/chantiers',
+]
+
+/** CAD85 — l'URL de la FICHE d'un lead (`/crm/leads/:id`), ou `null`.
+ *  L'id se résout par l'API, comme dans `calepinage_tactile.spec.js` : aucun
+ *  lien d'écran n'est supposé. Base sans lead ⇒ rien à mesurer, jamais un
+ *  échec. */
+async function urlFicheLead(page) {
+  const res = await page.request.get('/api/django/crm/leads/?page_size=1')
+  if (!res.ok()) return null
+  const body = await res.json()
+  const rows = Array.isArray(body) ? body : body.results
+  return rows?.length ? `/crm/leads/${rows[0].id}` : null
+}
 
 function assertNoHorizontalOverflow(page, path) {
   return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
@@ -15,7 +34,8 @@ function assertNoHorizontalOverflow(page, path) {
 }
 
 test('VX68: aucun débordement horizontal sur les écrans denses (iPad paysage)', async ({ page }) => {
-  for (const path of PAGES) {
+  const fiche = await urlFicheLead(page)
+  for (const path of [...PAGES, ...(fiche ? [fiche] : [])]) {
     await page.goto(path)
     await expect(page.locator('.header-title')).toBeVisible()
     await page.waitForLoadState('networkidle').catch(() => {})
