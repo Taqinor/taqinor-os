@@ -780,6 +780,23 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
     origine = horaires.prochain_creneau_appel(
         depart, lead.company, canal='whatsapp')
 
+    # CAD19 — L'ANCRE EST UNIQUE : c'est `origine`, pour TOUTES les touches.
+    # Les touches du jour même partaient déjà d'elle, mais les autres
+    # partaient de `depart`, l'instant BRUT d'arrivée. Un lead arrivé samedi
+    # 11 h voyait donc J0, J+1 et J+2 s'écraser sur le même lundi : trois
+    # jours de protocole en un, des touches qui NAISSENT en retard, et une
+    # adhérence fausse. Le même défaut frappait `apres_devis`, dont le départ
+    # est l'instant d'envoi du devis — un devis fini un vendredi soir empilait
+    # J+1, J+2 et J+3 sur deux jours. Les délais du protocole (J+N) ne
+    # changent pas d'un jour : c'est le POINT ZÉRO depuis lequel on les compte
+    # qui devient le premier instant réellement joignable.
+    # EXCEPTION `reveil` : MRY30 rétrodate EXPRÈS son départ (créneau moins
+    # `delai_jours`) pour que la touche J+30 tombe SUR le créneau d'étalement
+    # qu'il vient de calculer. Recaler cette ancre-là sur l'ouverture
+    # déplacerait le créneau dès que le départ rétrodaté tombe un week-end —
+    # et ferait dérailler le quota de huit réveils par jour ouvré.
+    ancre = depart if cadence == 'reveil' else origine
+
     echeances = []
     for gabarit in gabarits:
         if ((getattr(gabarit, 'template_cle', '') or '')
@@ -804,8 +821,8 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             # — l'`heure_cible` du gabarit ne s'applique pas ici : elle vise un
             # jour ouvré, et 10 h 30 un dimanche n'existe pas.
             echeance = horaires.prochain_dimanche(
-                depart + timedelta(days=gabarit.delai_jours))
-            if echeance < depart:  # garde-fou : jamais dans le passé
+                ancre + timedelta(days=gabarit.delai_jours))
+            if echeance < ancre:  # garde-fou : jamais dans le passé
                 echeance = horaires.prochain_dimanche(
                     echeance + timedelta(days=1))
         elif gabarit.delai_jours == 0 and heure_cible is None:
@@ -815,7 +832,7 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             # l'heure d'arrivée.
             echeance = origine + timedelta(minutes=delai_minutes)
         else:
-            echeance = depart + timedelta(
+            echeance = ancre + timedelta(
                 days=gabarit.delai_jours, minutes=delai_minutes)
             if heure_cible is not None:
                 locale = echeance.astimezone(horaires.CASABLANCA)
@@ -858,8 +875,14 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     n'aurait jamais eu son plan. Pour ``apres_devis``, l'idempotence est en
     plus portée PAR DEVIS.
 
-    ``depart`` est un datetime AWARE (défaut : maintenant). Chaque touche vaut
-    ``depart + delai_jours + delai_minutes``, puis — si le gabarit porte une
+    ``depart`` est un datetime AWARE (défaut : maintenant). CAD19 — toutes les
+    touches se comptent depuis l'ORIGINE (``prochain_creneau_appel(depart,
+    canal='whatsapp')``, le premier instant réellement joignable), plus depuis
+    l'instant brut d'arrivée : sans quoi un lead du week-end voyait J0, J+1 et
+    J+2 s'écraser sur le même lundi. Seule la cadence ``reveil`` garde
+    ``depart`` pour ancre (MRY30 le rétrodate exprès sur son créneau).
+    Chaque touche vaut donc
+    ``ancre + delai_jours + delai_minutes``, puis — si le gabarit porte une
     ``heure_cible`` — l'heure locale est REMPLACÉE par celle-ci, et enfin
     l'instant est recalé sur la fenêtre d'appel de la société
     (``horaires.prochain_creneau_appel``, MRY8) — sur la fenêtre de SON CANAL
