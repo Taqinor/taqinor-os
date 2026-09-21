@@ -143,6 +143,11 @@ def appliquer(serie, contexte):
         'pct_pondere_irradiance': mesure['pct'],
         'heures_retenues': mesure['heures_retenues'],
         'heures_sans_temperature': sans_temperature,
+        # CALX164 — ce que le vent a coûté ou n'a pas pu donner : les heures
+        # qui portaient vraiment un ``ws10m``, et les hypothèses NOMMÉES qui
+        # en découlent (fiche muette sur Uv, ou série muette sur le vent).
+        'heures_avec_vent': mesure['heures_avec_vent'],
+        'hypotheses': list(mesure['hypotheses']),
         'temperature_cellule_moyenne_c':
             mesure['temperature_cellule_moyenne_c'],
         'temperature_cellule_max_c': mesure['temperature_cellule_max_c'],

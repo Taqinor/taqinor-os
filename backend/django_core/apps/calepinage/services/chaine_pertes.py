@@ -69,6 +69,7 @@ from __future__ import annotations
 import datetime
 
 from apps.calepinage.services import etapes as _etapes
+from apps.calepinage.services import orientation as _orientation
 from apps.calepinage.services.pvgis_serie import (
     BASE_HEURE_LOCALE_LEGALE, BASE_HEURE_LOCALE_STANDARD, BASE_HEURE_UTC,
     MOTIF_TMY_HORIZONTAL, cle_de_cache,
@@ -362,6 +363,7 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'MOTIF_RESOLUTION_DIVERGENTE', 'COLONNES_SERIE_PERSISTEE',
            'JOURS_MAX_SERIE_PERSISTEE', 'PAS_JOURNALIER_MINUTES',
            'MOTIF_SERIE_AGREGEE',
+           'CLE_CLIENT_PVGIS',  # CALX58
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -497,8 +499,13 @@ def _publier(resultat, serie, contexte, cascade):
     decision = decision_meteo(contexte)
     resultat['meteo'] = _bloc_meteo_publie(contexte, decision)
     _publier_la_resolution(resultat, serie, contexte)
+    # CALX58 — TOF/TSRF : une seule mesure par pan, lue DEUX fois (les
+    # colonnes de ``production.par_pan`` et le bloc ``ombrage``), jamais
+    # calculée deux fois.
+    orientations = _orientations_par_pan(serie, contexte)
     resultat['production'] = _bloc_production(
-        resultat, serie, contexte, cascade, decision)
+        resultat, serie, contexte, cascade, decision, orientations)
+    resultat['ombrage'] = _bloc_ombrage(contexte, orientations)
     resultat['serie_horaire'] = _bloc_serie_horaire(serie)
 
 
@@ -876,7 +883,8 @@ MOTIF_PAN_SANS_SERIE = (
     'part supposée ne se distingue plus, ensuite, d\'une part mesurée.')
 
 
-def _bloc_production(resultat, serie, contexte, cascade, decision):
+def _bloc_production(resultat, serie, contexte, cascade, decision,
+                     orientations=None):
     """``resultat['production']`` — mensuel, par pan, annuel et total.
 
     UN SEUL CHEMIN ARITHMÉTIQUE. ``services/production.py::_agreger``
@@ -909,6 +917,7 @@ def _bloc_production(resultat, serie, contexte, cascade, decision):
         kwc = _flottant(plan.get('kwc')) or 0.0
         total_kwc += kwc
         ligne = _ligne_de_pan(plan, kwc)
+        _poser_orientation(ligne, (orientations or {}).get(_cle_de_pan(plan)))
         serie_du_pan = series.get(_cle_de_pan(plan))
         if serie_du_pan is None:
             lignes.append(ligne)
@@ -1064,7 +1073,88 @@ def _ligne_de_pan(plan, kwc):
         # (CALX182) : tant qu'il n'y en a qu'une, la clé reste nulle plutôt
         # que de recopier la valeur globale sur chaque ligne.
         'shading_annual_loss_pct': None,
+        # CALX58 — l'orientation de CE pan contre le plan optimal du site.
+        # Nulles tant que PVGIS n'a pas répondu : un TOF supposé à 1,0
+        # affirmerait que le toit est orienté au mieux.
+        'tof': None,
+        'tsrf': None,
+        'inclinaison_optimale_deg': None,
+        'azimut_optimal_deg': None,
+        'source': None,
     }
+
+
+#: CALX58 — les colonnes que l'orientation pose sur une ligne ``par_pan``.
+CLES_ORIENTATION_PAR_PAN = ('tof', 'tsrf', 'inclinaison_optimale_deg',
+                            'azimut_optimal_deg', 'source')
+
+#: La clé sous laquelle ``services/simulation.py`` POSE le ``ClientPvgis``.
+#: Absent, le plan optimal n'est pas demandé et le TOF est omis AVEC son
+#: motif (``services/orientation.py``), jamais remplacé par 1,0.
+CLE_CLIENT_PVGIS = 'client_pvgis'
+
+
+def _poser_orientation(ligne, orientation):
+    """Recopie les cinq colonnes d'orientation sur la ligne d'un pan."""
+    if not isinstance(orientation, dict):
+        return
+    for cle in CLES_ORIENTATION_PAR_PAN:
+        ligne[cle] = orientation.get(cle)
+
+
+def _orientations_par_pan(serie, contexte):
+    """``{clé du pan: bloc d'orientation}`` — UN appel PVcalc pour le site.
+
+    Le plan optimal est demandé UNE fois (``orientation.plan_optimal``) puis
+    partagé par tous les pans : c'est la même optimisation pour tout le toit,
+    et la redemander par pan multiplierait les requêtes sans changer la
+    réponse. L'irradiation du plan RÉEL, elle, est propre à chaque pan et ne
+    coûte AUCUN appel : elle est déjà dans sa série (CALX181).
+    """
+    plans = [plan for plan in (contexte.get('plans') or ())
+             if isinstance(plan, dict)]
+    if not plans:
+        return {}
+    series = _series_par_pan(serie, contexte, plans)
+    site = contexte.get('site') or {}
+    lat, lon = site.get('lat'), site.get('lon')
+    client = contexte.get(CLE_CLIENT_PVGIS)
+    optimal = _orientation.plan_optimal(lat, lon, client=client)
+
+    orientations = {}
+    for plan in plans:
+        cle = _cle_de_pan(plan)
+        acces, _motif = _orientation.acces_solaire_moyen_pct(
+            contexte.get('ombrage'), plan, layout=contexte.get('layout'))
+        orientations[cle] = _orientation.tof_du_pan(
+            lat, lon, plan.get('inclinaison_deg'),
+            plan.get('azimut_pvgis_deg'), client=client,
+            serie=series.get(cle), acces_solaire_pct=acces, optimal=optimal)
+    return orientations
+
+
+def _bloc_ombrage(contexte, orientations):
+    """``resultat['ombrage']`` — TOF, TSRF et accès solaire, pan par pan.
+
+    ``methode`` reste ``null`` tant qu'AUCUN pan n'a de TOF : annoncer une
+    méthode qui n'a rien produit ferait lire un calcul là où chaque ligne
+    porte son motif d'omission.
+    """
+    par_pan = []
+    for plan in (contexte.get('plans') or ()):
+        if not isinstance(plan, dict):
+            continue
+        bloc = orientations.get(_cle_de_pan(plan)) or {}
+        par_pan.append({
+            'pan': str(plan.get('pan') or plan.get('cle') or ''),
+            'tof': bloc.get('tof'),
+            'tsrf': bloc.get('tsrf'),
+            'acces_solaire_moyen_pct': bloc.get('acces_solaire_moyen_pct'),
+            'motif_omission': bloc.get('motif_omission') or '',
+        })
+    mesure = any(ligne['tof'] is not None for ligne in par_pan)
+    return {'par_pan': par_pan,
+            'methode': _orientation.METHODE if mesure else None}
 
 
 def _remplir_ligne(ligne, kwh, annuel_pan, kwc, irradiation):

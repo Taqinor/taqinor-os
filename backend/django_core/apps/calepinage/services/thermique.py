@@ -23,6 +23,11 @@ Deux suffisent ici, et on prend TOUJOURS le plus informé :
   ventilé chauffe moins. Il exige ``uc_w_m2k`` ; sans ``uv_w_m3sk`` la fiche
   ne dit rien du vent, et l'hypothèse ``Uv = 0`` est prise ET NOMMÉE (elle est
   CONSERVATRICE : moins de refroidissement, donc plus de perte).
+  CALX164 — le vent vient de la SÉRIE (``ws10m``, PVGIS ``WS10m``), et il
+  manque parfois alors que la fiche, elle, donne bien Uv : ce silence-là est
+  celui du FOURNISSEUR MÉTÉO, pas du fabricant, et il porte donc son propre
+  motif (``HYPOTHESE_VENT_ABSENT_DE_LA_SERIE``). Les deux hypothèses sont
+  publiées dans ``hypotheses`` et reprises dans ``motif``.
 * **NOCT** (repli) — ``T_cellule = T_air + (NOCT − 20) / 800 × G``, la
   définition même de la NOCT. Employé quand la fiche donne ``noct_c`` sans
   ``uc_w_m2k``.
@@ -45,7 +50,33 @@ Module PUR : aucune base, aucun réseau, aucun prix.
 from __future__ import annotations
 
 __all__ = ['MODELE_FAIMAN', 'MODELE_NOCT', 'TEMPERATURE_STC_C',
-           'perte_thermique', 'poste_thermique', 'temperature_cellule']
+           'HYPOTHESE_UV_ABSENT_DE_LA_FICHE',
+           'HYPOTHESE_VENT_ABSENT_DE_LA_SERIE', 'GABARIT_VENT_PARTIEL',
+           'COLONNE_VENT', 'perte_thermique', 'poste_thermique',
+           'temperature_cellule']
+
+#: La colonne de vent de la série horaire (PVGIS ``WS10m``, CALX150/CALX164).
+COLONNE_VENT = 'ws10m'
+
+#: CALX164 — les DEUX raisons de tourner avec un terme de vent nul, et elles
+#: ne se confondent pas : la FICHE ne dit rien de Uv, ou la SÉRIE ne porte
+#: aucune vitesse de vent. Les nommer séparément, c'est dire à qui s'adresser
+#: pour lever l'hypothèse — au fabricant du module, ou au fournisseur météo.
+HYPOTHESE_UV_ABSENT_DE_LA_FICHE = (
+    "la fiche ne donne pas Uv : l'effet du vent est ignoré "
+    '(hypothèse conservatrice, Uv = 0)')
+
+HYPOTHESE_VENT_ABSENT_DE_LA_SERIE = (
+    'la fiche donne Uv, mais la série météo ne porte aucune vitesse de vent '
+    '(« ws10m ») sur les heures retenues : le terme de vent reste nul '
+    '(hypothèse conservatrice, Uv × vent = 0)')
+
+#: Le cas MIXTE : du vent sur une partie des heures seulement. Le taire
+#: reviendrait à supposer un temps calme sur les autres sans le dire.
+GABARIT_VENT_PARTIEL = (
+    'la fiche donne Uv, mais la série météo ne porte de vent (« ws10m ») que '
+    'sur {avec} des {total} heures retenues : le vent est pris nul sur les '
+    'autres (hypothèse conservatrice)')
 
 #: Température de référence STC — la définition de la puissance crête.
 TEMPERATURE_STC_C = 25.0
@@ -99,6 +130,29 @@ def temperature_cellule(*, t_air_c, irradiance_w_m2, modele, noct_c=None,
     return None
 
 
+def _hypotheses_de_vent(modele, uv_w_m3sk, heures, heures_avec_vent):
+    """CALX164 — ce que le calcul a SUPPOSÉ du vent, dit avec sa raison.
+
+    Faiman refroidit la cellule par ``Uv × vent`` : le terme tombe à zéro
+    pour deux raisons INDÉPENDANTES, et l'écran doit pouvoir les distinguer.
+    Une fiche qui donne ``uv_w_m3sk = 0`` ne suppose rien — elle DIT que le
+    vent ne compte pas ; aucune hypothèse n'est alors publiée.
+    """
+    if modele != MODELE_FAIMAN:
+        return []
+    uv = _nombre(uv_w_m3sk)
+    if uv is None:
+        return [HYPOTHESE_UV_ABSENT_DE_LA_FICHE]
+    if uv <= 0:
+        return []
+    if heures_avec_vent <= 0:
+        return [HYPOTHESE_VENT_ABSENT_DE_LA_SERIE]
+    if heures_avec_vent < heures:
+        return [GABARIT_VENT_PARTIEL.format(avec=heures_avec_vent,
+                                            total=heures)]
+    return []
+
+
 def _modele_de_la_fiche(specs):
     """Le modèle applicable et ses paramètres, LUS sur la fiche seule."""
     uc = _nombre(specs.get('uc_w_m2k'))
@@ -131,7 +185,10 @@ def perte_thermique(specs_module, points):
         l'irradiance, ``None`` si incalculable), ``source`` (``'fiche'`` ou
         ``None``), ``modele``, ``parametres``, ``motif`` (le français à
         afficher), ``heures_retenues``, ``temperature_cellule_moyenne_c``,
-        ``temperature_cellule_max_c``.
+        ``temperature_cellule_max_c``, ``heures_avec_vent`` (CALX164 — les
+        heures retenues qui portaient vraiment un ``ws10m``) et
+        ``hypotheses`` (la liste des suppositions faites, reprise dans
+        ``motif``).
 
     Ne lève jamais : une fiche muette est une RÉPONSE (« non calculable »),
     pas une erreur.
@@ -145,6 +202,7 @@ def perte_thermique(specs_module, points):
         'parametres': {}, 'heures_retenues': 0,
         'temperature_cellule_moyenne_c': None,
         'temperature_cellule_max_c': None,
+        'heures_avec_vent': 0, 'hypotheses': [],
     }
     if gamma is None:
         return dict(vide, motif=(
@@ -162,6 +220,7 @@ def perte_thermique(specs_module, points):
     somme_irradiance = 0.0
     somme_temperature = 0.0
     heures = 0
+    heures_avec_vent = 0
     t_max = None
     for point in (points or []):
         if not isinstance(point, dict):
@@ -173,11 +232,14 @@ def perte_thermique(specs_module, points):
             # Une perte thermique la nuit ne coûte aucun kWh : l'heure ne
             # pèse rien dans la moyenne (pondération par l'irradiance).
             continue
+        vent = _nombre(point.get(COLONNE_VENT))
         t_cellule = temperature_cellule(
             t_air_c=point.get('t2m_c'), irradiance_w_m2=irradiance,
-            modele=modele, vent_m_s=point.get('ws10m'), **parametres)
+            modele=modele, vent_m_s=vent, **parametres)
         if t_cellule is None:
             continue
+        if vent is not None:
+            heures_avec_vent += 1
         # γ est NÉGATIF sur une fiche (−0,35 %/°C) : au-dessus de 25 °C la
         # perte est positive, en dessous elle est négative (un GAIN par temps
         # froid, réel et conservé tel quel — l'effacer gonflerait la perte).
@@ -194,11 +256,8 @@ def perte_thermique(specs_module, points):
             "exploitable (irradiance et température) : la perte thermique "
             "n'est pas calculée."))
 
-    hypotheses = []
-    if modele == MODELE_FAIMAN and parametres.get('uv_w_m3sk') is None:
-        hypotheses.append(
-            "la fiche ne donne pas Uv : l'effet du vent est ignoré "
-            '(hypothèse conservatrice, Uv = 0)')
+    hypotheses = _hypotheses_de_vent(modele, parametres.get('uv_w_m3sk'),
+                                     heures, heures_avec_vent)
 
     return {
         'calculable': True,
@@ -207,6 +266,8 @@ def perte_thermique(specs_module, points):
         'modele': modele,
         'parametres': dict(parametres, temp_coeff_pmax_pct_c=gamma),
         'heures_retenues': heures,
+        'heures_avec_vent': heures_avec_vent,
+        'hypotheses': hypotheses,
         'temperature_cellule_moyenne_c': round(somme_temperature / heures, 2),
         'temperature_cellule_max_c': round(t_max, 2),
         'motif': (

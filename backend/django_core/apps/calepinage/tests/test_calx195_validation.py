@@ -6,7 +6,7 @@ Les deux réponses PVGIS employées ici sont RÉELLES et ENREGISTRÉES, et elles
 décrivent la MÊME installation :
 
 * ``fixtures_pvgis/seriescalc_casablanca_sud.json`` — ``pvcalculation=1``,
-  ``peakpower=1``, ``loss=7,25 %``, plan 15° plein sud, Casablanca
+  ``peakpower=1``, ``loss`` = somme des postes (7,25 %), plan 15° plein sud, Casablanca
   (33,5 / −7,6), année 2020. C'est PVGIS qui calcule la production, avec son
   propre modèle PV (température de cellule comprise).
 * ``fixtures_pvgis/seriescalc_casablanca_sud_irradiance.json`` —

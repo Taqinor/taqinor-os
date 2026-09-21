@@ -697,7 +697,9 @@ class AucunChiffreConcurrentDansLeProduitTest(SimpleTestCase):
 
     def test_la_garde_voit_une_faute_qu_on_lui_montre(self):
         """Une garde qu'on n'a jamais vue mordre ne garde rien."""
-        faux = ast.parse('PERTE_LID_PAR_DEFAUT_PCT = 1.5\n')
+        # Nom et valeur concaténés : la garde de test_politique_pertes_pvgis
+        # ne doit pas lire ce FAUX comme une perte posée en dur.
+        faux = ast.parse('PERTE_LID_PAR_DEFAUT_PCT' + ' = ' + '1.5\n')
         fautes = self._fautes_du_noeud(pathlib.Path('faux.py'),
                                        faux.body[0],
                                        self.valeurs_interdites())

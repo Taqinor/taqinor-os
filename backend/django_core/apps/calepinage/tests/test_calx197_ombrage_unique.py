@@ -31,6 +31,9 @@ from apps.ventes.etude import (
     _zone_shading,
 )
 
+#: Énergie retirée par l'étape fictive des fixtures (kWh sur 10 000).
+ENERGIE_RETIREE_KWH = 1000.0
+
 #: Le module dont CALX197 verrouille la frontière d'import.
 SOURCE_ETUDE = (pathlib.Path(__file__).resolve().parents[3]
                 / 'apps' / 'ventes' / 'etude.py')
@@ -47,7 +50,7 @@ def _etape(nom, perte_pct, *, motif=''):
         'libelle': nom,
         'kwh_avant': 10000.0,
         'kwh_apres': 9000.0 if appliquee else None,
-        'perte_kwh': 1000.0 if appliquee else None,
+        'perte_kwh': ENERGIE_RETIREE_KWH if appliquee else None,
         'perte_pct': perte_pct,
         'gain': False,
         'source': 'pvgis' if appliquee else None,

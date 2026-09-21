@@ -126,9 +126,9 @@ class ApplicationTest(unittest.TestCase):
         quart = {'pas_minutes': 60,
                  'points': [{'p_w': 25000.0}, {'p_w': 50000.0}]}
         rendue, _ = transformateur.appliquer(quart, contexte_de(COMPLET))
-        perte_quart = 25.0 - rendue['points'][0]['p_w'] / 1000.0 - A_VIDE_KW
-        perte_moitie = 50.0 - rendue['points'][1]['p_w'] / 1000.0 - A_VIDE_KW
-        self.assertAlmostEqual(perte_moitie / perte_quart, 4.0, places=6)
+        ecart_quart = 25.0 - rendue['points'][0]['p_w'] / 1000.0 - A_VIDE_KW
+        ecart_moitie = 50.0 - rendue['points'][1]['p_w'] / 1000.0 - A_VIDE_KW
+        self.assertAlmostEqual(ecart_moitie / ecart_quart, 4.0, places=6)
 
     def test_les_deux_energies_sont_publiees_separement(self):
         self.assertAlmostEqual(self.etape['entree']['energie_a_vide_kwh'],

@@ -38,7 +38,7 @@ Notations, toutes sorties de la géométrie du document :
   ``AntiOmbrage.empreinte_pan_m``, les deux seules définitions du dépôt ;
 * ``D`` = ``pas_m``, le pas de rangée (arête basse à arête basse), et
   ``g = D − d`` le JEU LIBRE entre l'empreinte d'une table et l'arête basse
-  de la suivante — le ``gapM`` que ``apps/web/src/lib/shadingEngine.ts``
+  de la suivante — le ``gapM`` que le moteur d'ombrage du constructeur 3D (``shadingEngine``)
   (``rowSelfShading``, ``:646-670``) calcule déjà côté atelier.
 
 La position du soleil n'entre PAS par son élévation brute mais par son
@@ -112,7 +112,7 @@ LES DEUX EXTENSIONS DEMANDÉES
 
 CE QUE CE MODULE NE FAIT PAS
 ------------------------------
-* **Aucun lancer de rayons.** ``apps/web/src/lib/shadingEngine.ts`` en fait
+* **Aucun lancer de rayons.** Le moteur d'ombrage du constructeur 3D (``shadingEngine``) en fait
   un (``isRowSelfShadedAt``, ``:622-638``) mais il rend un BOOLÉEN — ombré ou
   non — et jamais une fraction : il répond « à quelle heure de l'année une
   rangée commence-t-elle à en ombrer une autre ? », pas « combien perd-on ».
