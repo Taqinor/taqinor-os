@@ -1524,6 +1524,13 @@ VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
 VAPID_ADMIN_EMAIL = os.environ.get('VAPID_ADMIN_EMAIL', '')
 
+# SOLMVP — runner du projet : `DiscoverRunner` + purge de fin de
+# `TransactionTestCase` en `TRUNCATE … CASCADE`. Les apps parquées gardent leurs
+# TABLES (coquilles de migrations) sans garder leurs MODÈLES : leurs clés
+# étrangères vers les tables conservées font refuser un TRUNCATE non cascadé.
+# Le POURQUOI complet est dans `core/test_runner.py`.
+TEST_RUNNER = 'core.test_runner.TaqinorTestRunner'
+
 TESTING = ('test' in sys.argv) or bool(os.environ.get('PYTEST_CURRENT_TEST'))
 # WOW2 — sous le test runner UNIQUEMENT, hacher les mots de passe en MD5 (rapide)
 # au lieu du PBKDF2 par défaut (des milliers d'itérations). Chaque test qui crée
