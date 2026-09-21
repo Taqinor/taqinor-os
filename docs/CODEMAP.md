@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a364531b52d5c7aa7a8779f15cca51e377a8b10b2773e8b56f739c2fc92ce0d6
-Plan fingerprint: 3bb0872c9e48e678d67fb9ef3c58942754071203c421a29beb53d1386adb54b3
+Plan fingerprint: 9e02f00ffa496c6ff6d05d410110a1fdec56cac85dbabf29197f2e1fa5c79d92
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (187)**
+**Done (188)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -623,6 +623,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX68` — Garder un brouillon local de l'atelier et proposer sa reprise
 - `CALX69` — Donner une saisie aux réglages société de simulation et d'électrique, avec provenance…
 - `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
+- `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
 - `CALX141` — Déclarer le contrat de la cascade de pertes séquentielle, sous une clé neuve
 - `CALX142` — Déclarer le contrat de la série horaire persistée
 - `CALX143` — Déclarer le contrat de l'énoncé de source météo
@@ -721,7 +722,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (419)**
+**Open — to build (418)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -954,7 +955,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX119` — Choisir une date libre pour le soleil de la scène et la retenir
 - `CALX120` — Animer la course de l'ombre sur une journée et sur l'année
 - `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
-- `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
 - `CALX123` — Tracer et éditer un champ au sol sur la carte de l'atelier
 - `CALX124` — Éditer une ombrière dans l'atelier, poteaux compris
 - `CALX125` — Poser des modules en façade sur un mur du bâtiment
