@@ -66,7 +66,13 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     # avant/après (vérifiée contre 024a132c). Bug-class #34.
     "backend/django_core/apps/facturation/models.py:920",
     "backend/django_core/apps/facturation/models.py:1111",
-    "backend/django_core/apps/ventes/models.py:1251",  # NoteDebit.date_emission (1260->1251 : SOLMVP11 retire 9 lignes avant) (1221->1260 : STKCAT2 vocabulaire + STKCAT23 LigneDevis.role_devis insérés avant, champ relu byte-identique) (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
+    # Remappé 1251->1346 (lane CAD IK-MESURE 21/09 : +95 lignes insérées AVANT
+    # NoteDebit dans ventes/models.py — le marqueur « signé au domicile » de
+    # CAD122 sur BonCommande, sa constante de délai, son exception et ses deux
+    # lectures). MÊME champ, déclaration identique avant/après (vérifié contre
+    # origin/dev-cad : `date_emission = models.DateField(auto_now_add=True)`).
+    # Bug-class #34.
+    "backend/django_core/apps/ventes/models.py:1346",  # NoteDebit.date_emission (1260->1251 : SOLMVP11 retire 9 lignes avant) (1221->1260 : STKCAT2 vocabulaire + STKCAT23 LigneDevis.role_devis insérés avant, champ relu byte-identique) (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les
     # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.

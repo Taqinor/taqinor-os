@@ -179,3 +179,25 @@ de ce canal.
 tranchent sur les chiffres MAISON — l'agrégat taux de joint par touche × heure × jour × canal et les signatures par
 nombre de touches consommées (CAD87) —, jamais sur les trois repères ci-dessus. Tant que ces mesures n'ont pas assez
 de cases peuplées, **on ne change rien** : ni le nombre, ni l'ordre, ni le J+N des touches.
+
+## Signer le bon de commande CHEZ LE CLIENT — ce que la loi 31-08 impose (CAD122, 21/09/2026)
+
+La visite technique se passe au domicile, après le devis, et le bon de commande s'y signe **parfois**. Dans ce cas
+précis — et seulement dans ce cas — la vente est un **démarchage à domicile** : la loi 31-08 le définit à
+l'**art. 45** comme la proposition d'achat au domicile « même à sa demande », et l'**art. 46** liste trois
+exclusions dont **aucune ne couvre le solaire** (texte ONSSA, extrait mot pour mot).
+
+**Ce que la commerciale fait quand elle fait signer chez le client** (rien d'autre ne change) :
+
+1. **Elle coche « signé au domicile » sur le bon de commande.** C'est ce marqueur — et lui seul — qui déclenche tout
+   ce qui suit. Un bon signé au bureau ou à distance reste régi par l'art. 32 (vente à distance) : **rien ne change**.
+2. **Le document imprimé porte une page de plus** : les mentions de l'**art. 48** et un **formulaire détachable de
+   rétractation**, que le client garde. C'est le moteur habituel qui la rend — il n'existe pas de second PDF.
+3. **Le client date et signe de SA MAIN** (art. 47 al. 2) : la date qu'il écrit est celle qui compte, et c'est elle
+   qu'on saisit dans « date écrite par le client ».
+4. **Aucun acompte n'est encaissé pendant 7 jours** à compter de la commande (**art. 49 et 50**). Le chèque peut être
+   remis, il ne part pas à la banque avant. L'ERP refuse l'encaissement et affiche la date à partir de laquelle il
+   redevient possible ; ce n'est pas un réglage, c'est la loi.
+
+Ce qui n'a PAS changé : le devis, ses conditions de paiement affichées, la signature à distance, et le parcours du
+client qui signe en ligne.

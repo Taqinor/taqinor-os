@@ -116,7 +116,13 @@ def enregistrer_paiement(*, facture, montant, mode, date_paiement, user,
 
     Thin service exposé pour apps.pos (encaissement comptoir XPOS1/XPOS6) —
     même modèle/table que le paiement enregistré depuis l'écran facture,
-    aucune duplication de logique."""
+    aucune duplication de logique.
+
+    CAD122 — REFUSE un encaissement d'ACOMPTE sur une commande signée au
+    domicile du client tant que le délai des articles 49 et 50 de la loi 31-08
+    court (``AcompteAvantDelaiLegal``, message nommant la date). Une commande
+    signée à distance ou au bureau n'est pas concernée."""
+    _verifier_delai_acompte_domicile(facture, date_paiement)
     from apps.ventes.models import Paiement
     paiement = Paiement.objects.create(
         company=facture.company,
@@ -923,6 +929,37 @@ def debiter_mandat_pour_facture(*, facture, periode, retry_index=0):
         pass
 
     return None
+
+
+# ── CAD122 ── délai légal de rétractation (démarchage à domicile) ───────────
+def _verifier_delai_acompte_domicile(facture, date_paiement=None):
+    """Refuse un encaissement d'ACOMPTE pendant le délai de la loi 31-08.
+
+    Trois conditions cumulatives, sinon la fonction ne fait RIEN (aucun
+    changement de comportement pour l'immense majorité des paiements) :
+    la facture est de type ACOMPTE, elle remonte à un bon de commande, et ce
+    bon porte le marqueur « signé au domicile » (CAD122). Le refus vient du
+    modèle (``BonCommande.verifier_encaissement_acompte``) : une seule règle,
+    un seul endroit, un message qui nomme la date.
+
+    Best-effort sur la RÉSOLUTION du bon (une chaîne documentaire incomplète
+    ne fait jamais tomber un encaissement) — mais JAMAIS sur le refus
+    lui-même, qui remonte tel quel à l'appelant.
+    """
+    from apps.ventes.models import AcompteAvantDelaiLegal, Facture
+
+    try:
+        if getattr(facture, 'type_facture', None) != Facture.TypeFacture.ACOMPTE:
+            return
+        devis = getattr(facture, 'devis', None)
+        bon = getattr(devis, 'bon_commande', None) if devis is not None else None
+        if bon is None:
+            return
+    except AcompteAvantDelaiLegal:
+        raise
+    except Exception:  # noqa: BLE001 — une chaîne incomplète ne bloque rien
+        return
+    bon.verifier_encaissement_acompte(a_la_date=date_paiement)
 
 
 # ── PONT M3 : noms hébergés par un autre module ──────────────────────────────
