@@ -1,23 +1,19 @@
 """ARC14 — registre data-driven des modules customfieldables.
 
-Couvre : (1) non-régression des 8 clés natives historiques (elles résolvent
+Couvre : (1) non-régression des clés natives historiques (elles résolvent
 toujours vers le bon modèle et leurs données existantes restent lisibles) ;
-(2) l'API du registre lui-même (register/is_registered/get_model) ; (3) les 2
-pilotes ``contrats.contrat`` et ``flotte.vehicule`` — un champ personnalisé
-créé, écrit puis lu via l'API existante de ``apps.customfields``, scopé
-société.
+(2) l'API du registre lui-même (register/is_registered/get_model).
+
+SOLMVP20 — les clés natives ``document``/``employe`` (apps PARQUÉES GED/RH)
+et les pilotes ``contrats.contrat``/``flotte.vehicule`` (apps PARQUÉES,
+Groupe SOLMVP) ont été retirés du registre et de cette couverture.
 """
-from django.contrib.auth import get_user_model
 from django.test import TestCase
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.customfields import registry
 from apps.customfields.models import CustomFieldDef
 from apps.customfields.serializers import _module_model
 from authentication.models import Company
-
-User = get_user_model()
 
 
 def make_company(slug, nom):
@@ -25,29 +21,27 @@ def make_company(slug, nom):
     return company
 
 
-def auth(user):
-    api = APIClient()
-    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
-    return api
-
-
 class TestNativeModulesNonRegression(TestCase):
-    """Les 8 clés natives historiques (Module.LEAD..EMPLOYE) résolvent
-    toujours vers le même modèle après le passage au registre — le
+    """Les clés natives historiques GARDÉES (Module.LEAD..FOURNISSEUR)
+    résolvent toujours vers le même modèle après le passage au registre — le
     comportement de ``_module_model`` est inchangé pour les appelants
-    existants."""
+    existants.
 
-    def test_all_eight_native_keys_registered(self):
-        for key in CustomFieldDef.Module.values:
+    SOLMVP20 — ``document``/``employe`` restent dans ``Module.values``
+    (catalogue historique) mais ne sont plus enregistrées (apps GED/RH
+    PARQUÉES) : exclues explicitement, jamais itérées en aveugle sur
+    ``Module.values``."""
+
+    def test_all_native_keys_registered(self):
+        for key in ('lead', 'client', 'produit', 'devis', 'installation',
+                    'ticket', 'fournisseur'):
             self.assertTrue(
                 registry.is_registered(key),
                 f'Clé native « {key} » absente du registre.')
 
     def test_native_keys_resolve_to_expected_models(self):
         from apps.crm.models import Client, Lead
-        from apps.ged.models import Document
         from apps.installations.models import Installation
-        from apps.rh.models import DossierEmploye
         from apps.sav.models import Ticket
         from apps.stock.models import Fournisseur, Produit
         from apps.ventes.models import Devis
@@ -59,9 +53,7 @@ class TestNativeModulesNonRegression(TestCase):
             'devis': Devis,
             'installation': Installation,
             'ticket': Ticket,
-            'document': Document,
             'fournisseur': Fournisseur,
-            'employe': DossierEmploye,
         }
         for key, model in expected.items():
             self.assertIs(_module_model(key), model,
@@ -104,150 +96,3 @@ class TestRegistryApi(TestCase):
         registry.register('_arc14_conflict_key', 'crm', 'Lead')
         with self.assertRaises(ValueError):
             registry.register('_arc14_conflict_key', 'crm', 'Client')
-
-    def test_pilots_registered_by_app_ready(self):
-        """contrats et flotte sont enregistrés au démarrage Django — donc déjà
-        présents ici (ARC31 : désormais via le chargeur central
-        ``CustomfieldsConfig.ready()`` qui lit leurs manifestes ``platform.py``,
-        plus depuis un ``registry.register()`` explicite dans leur propre
-        ``AppConfig.ready()`` — même résultat, source différente)."""
-        from apps.contrats.models import Contrat
-        from apps.flotte.models import Vehicule
-        self.assertTrue(registry.is_registered('contrat'))
-        self.assertTrue(registry.is_registered('vehicule'))
-        self.assertIs(registry.get_model('contrat'), Contrat)
-        self.assertIs(registry.get_model('vehicule'), Vehicule)
-
-
-class TestContratPilot(TestCase):
-    """Pilote 1/2 — un champ personnalisé sur ``contrats.Contrat`` créé,
-    écrit et lu via l'API existante de ``apps.customfields``."""
-
-    def setUp(self):
-        self.company = make_company('arc14-contrat', 'ARC14 Contrat Co')
-        # role_legacy='admin' (pas 'responsable') : le test crée AUSSI la
-        # CustomFieldDef via l'API, gardée par IsAdminRole (repli legacy
-        # is_admin_role exige role_legacy == ROLE_ADMIN) — 'responsable' n'y
-        # suffit pas, alors que 'admin' satisfait aussi le repli legacy
-        # contrat_gerer (is_responsable est vrai pour ADMIN et RESPONSABLE).
-        self.admin = User.objects.create_user(
-            username='arc14-contrat-admin', password='x',
-            company=self.company, role_legacy='admin')
-        self.api = auth(self.admin)
-
-    def test_definition_created_for_contrat_module(self):
-        resp = self.api.post('/api/django/custom-fields/definitions/', {
-            'module': 'contrat', 'code': 'dossier_juridique',
-            'libelle': 'Dossier juridique', 'type': 'text',
-        }, format='json')
-        self.assertEqual(resp.status_code, 201, resp.data)
-        self.assertTrue(CustomFieldDef.objects.filter(
-            company=self.company, module='contrat',
-            code='dossier_juridique').exists())
-
-    def test_custom_field_written_and_read_via_contrat_api(self):
-        CustomFieldDef.objects.create(
-            company=self.company, module='contrat', code='dossier_juridique',
-            libelle='Dossier juridique', type='text', obligatoire=True)
-        # Manquant → 400 (champ personnalisé obligatoire non fourni).
-        missing = self.api.post('/api/django/contrats/contrats/', {
-            'objet': 'Contrat sans dossier',
-        }, format='json')
-        self.assertEqual(missing.status_code, 400, missing.data)
-        # Fourni → créé et persisté.
-        created = self.api.post('/api/django/contrats/contrats/', {
-            'objet': 'Contrat avec dossier',
-            'custom_data': {'dossier_juridique': 'DJ-2026-001'},
-        }, format='json')
-        self.assertEqual(created.status_code, 201, created.data)
-        from apps.contrats.models import Contrat
-        contrat = Contrat.objects.get(id=created.data['id'])
-        self.assertEqual(
-            contrat.custom_data.get('dossier_juridique'), 'DJ-2026-001')
-        # Relu via l'API (GET).
-        got = self.api.get(f'/api/django/contrats/contrats/{contrat.id}/')
-        self.assertEqual(got.status_code, 200, got.data)
-        self.assertEqual(
-            got.data['custom_data'].get('dossier_juridique'), 'DJ-2026-001')
-
-    def test_custom_field_is_company_scoped(self):
-        """Une définition posée sur la société A n'affecte pas la société B
-        (pas de fuite cross-tenant du registre)."""
-        other_company = make_company('arc14-contrat-b', 'ARC14 Contrat B')
-        other_admin = User.objects.create_user(
-            username='arc14-contrat-admin-b', password='x',
-            company=other_company, role_legacy='responsable')
-        other_api = auth(other_admin)
-
-        CustomFieldDef.objects.create(
-            company=self.company, module='contrat', code='dossier_juridique',
-            libelle='Dossier juridique', type='text', obligatoire=True)
-        # La société B n'a pas cette définition obligatoire → création libre.
-        resp = other_api.post('/api/django/contrats/contrats/', {
-            'objet': 'Contrat société B sans dossier',
-        }, format='json')
-        self.assertEqual(resp.status_code, 201, resp.data)
-
-
-class TestVehiculePilot(TestCase):
-    """Pilote 2/2 — un champ personnalisé sur ``flotte.Vehicule`` créé,
-    écrit et lu via l'API existante de ``apps.customfields``."""
-
-    def setUp(self):
-        self.company = make_company('arc14-vehicule', 'ARC14 Vehicule Co')
-        self.admin = User.objects.create_user(
-            username='arc14-vehicule-admin', password='x',
-            company=self.company, role_legacy='admin')
-        self.api = auth(self.admin)
-
-    def test_definition_created_for_vehicule_module(self):
-        resp = self.api.post('/api/django/custom-fields/definitions/', {
-            'module': 'vehicule', 'code': 'numero_flotte_interne',
-            'libelle': 'N° flotte interne', 'type': 'text',
-        }, format='json')
-        self.assertEqual(resp.status_code, 201, resp.data)
-        self.assertTrue(CustomFieldDef.objects.filter(
-            company=self.company, module='vehicule',
-            code='numero_flotte_interne').exists())
-
-    def test_custom_field_written_and_read_via_vehicule_api(self):
-        CustomFieldDef.objects.create(
-            company=self.company, module='vehicule',
-            code='numero_flotte_interne', libelle='N° flotte interne',
-            type='text', obligatoire=True)
-        missing = self.api.post('/api/django/flotte/vehicules/', {
-            'immatriculation': '1111-A-11', 'marque': 'Renault',
-            'modele': 'Kangoo', 'energie': 'diesel',
-        }, format='json')
-        self.assertEqual(missing.status_code, 400, missing.data)
-        created = self.api.post('/api/django/flotte/vehicules/', {
-            'immatriculation': '2222-B-22', 'marque': 'Renault',
-            'modele': 'Kangoo', 'energie': 'diesel',
-            'custom_data': {'numero_flotte_interne': 'FL-042'},
-        }, format='json')
-        self.assertEqual(created.status_code, 201, created.data)
-        from apps.flotte.models import Vehicule
-        vehicule = Vehicule.objects.get(id=created.data['id'])
-        self.assertEqual(
-            vehicule.custom_data.get('numero_flotte_interne'), 'FL-042')
-        got = self.api.get(f'/api/django/flotte/vehicules/{vehicule.id}/')
-        self.assertEqual(got.status_code, 200, got.data)
-        self.assertEqual(
-            got.data['custom_data'].get('numero_flotte_interne'), 'FL-042')
-
-    def test_custom_field_is_company_scoped(self):
-        other_company = make_company('arc14-vehicule-b', 'ARC14 Vehicule B')
-        other_admin = User.objects.create_user(
-            username='arc14-vehicule-admin-b', password='x',
-            company=other_company, role_legacy='admin')
-        other_api = auth(other_admin)
-
-        CustomFieldDef.objects.create(
-            company=self.company, module='vehicule',
-            code='numero_flotte_interne', libelle='N° flotte interne',
-            type='text', obligatoire=True)
-        resp = other_api.post('/api/django/flotte/vehicules/', {
-            'immatriculation': '3333-C-33', 'marque': 'Renault',
-            'modele': 'Kangoo', 'energie': 'diesel',
-        }, format='json')
-        self.assertEqual(resp.status_code, 201, resp.data)

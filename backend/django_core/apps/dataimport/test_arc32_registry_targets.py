@@ -2,19 +2,20 @@
 
 Couvre : (1) non-régression stricte — le ``set`` résolu par la vue paresseuse
 ``_LazyTargets`` est EXACTEMENT identique à la référence figée
-``EXPECTED_TARGETS`` (les 8 clés ``FIELD_MAPS`` d'avant ARC32 + les cibles
-ajoutées DÉLIBÉRÉMENT depuis, chacune nommée : ``HISTORICAL_TARGETS`` pour
-celles que dataimport lit lui-même, ``REGISTRY_ONLY_TARGETS`` pour celles dont
-l'app propriétaire porte son propre lecteur), chaque cible étant déclarée par
-son app propriétaire dans son ``platform.py`` ; (2) l'API existante (``in``, itération, ``len``, ``sorted``)
+``EXPECTED_TARGETS`` (les cibles ``FIELD_MAPS`` GARDÉES + les cibles ajoutées
+DÉLIBÉRÉMENT depuis, chacune nommée : ``HISTORICAL_TARGETS`` pour celles que
+dataimport lit lui-même, ``REGISTRY_ONLY_TARGETS`` pour celles dont l'app
+propriétaire porte son propre lecteur — ou n'a plus de lecteur dataimport du
+tout, cf. SOLMVP20 ci-dessous), chaque cible étant déclarée par son app
+propriétaire dans son ``platform.py`` ; (2) l'API existante (``in``, itération, ``len``, ``sorted``)
 se comporte à l'identique (DROP-IN replacement) ; (3) chaque cible historique
 est bien déclarée dans un manifeste plateforme (``import_specs``) ET conserve
 son mapping d'en-têtes dans ``FIELD_MAPS`` (les cibles à lecteur propre, elles,
 restent DEHORS de ``FIELD_MAPS`` — vérifié) ; (4) une nouvelle cible déclarée
 UNIQUEMENT dans un manifeste fictif apparaît dans ``TARGETS`` sans toucher
 ``apps/dataimport/services.py`` — preuve que la résolution suit vraiment
-``core.platform.import_specs()`` ; (5) les 6+2 cibles restent inchangées côté
-FIELD_MAPS (idempotence de la liste des cibles).
+``core.platform.import_specs()`` ; (5) les cibles FIELD_MAPS restent
+inchangées (idempotence de la liste des cibles).
 """
 from unittest import mock
 
@@ -22,22 +23,12 @@ from django.test import SimpleTestCase
 
 from apps.dataimport.services import FIELD_MAPS, TARGETS, _LazyTargets
 
-# Les 8 clés FIELD_MAPS historiques (set littéral d'avant ARC32) + toute cible
-# ajoutée DÉLIBÉRÉMENT depuis, chacune nommée par sa tâche — la référence de
-# non-régression. Toute divergence ici = régression réelle du registre (une
-# cible qui DISPARAÎT, ou une cible ajoutée sans être déclarée ici).
+# Les clés FIELD_MAPS GARDÉES (dataimport lit lui-même leur mapping
+# d'en-têtes) + toute cible ajoutée DÉLIBÉRÉMENT depuis, chacune nommée par sa
+# tâche — la référence de non-régression. Toute divergence ici = régression
+# réelle du registre (une cible qui DISPARAÎT, ou une cible ajoutée sans être
+# déclarée ici).
 #
-#   NTEDU36 — 'eleves_education' : import CSV des élèves, déclaré par son app
-#   propriétaire dans ``apps/education/platform.py`` (``import_specs``) et
-#   résolu par ``_LazyTargets`` SANS toucher ``apps/dataimport/services.py``
-#   — c'est exactement le comportement que TestNewManifestTargetAppears...
-#   prouve avec un manifeste fictif, ici confirmé sur une vraie app.
-#   NTSCM40 — 'scm_evenement_demande' : import CSV/XLSX des événements de
-#   demande (planification supply chain), déclaré par
-#   ``apps/scm/platform.py`` (``import_specs``), mapping d'en-têtes dans
-#   ``dataimport.FIELD_MAPS``, écriture DÉLÉGUÉE à ``apps.scm.services.
-#   creer_evenement_demande_import`` (mode `creer` uniquement — pas dans
-#   ``UPSERT_TARGETS``).
 #   NTMIG10 — 'devis'/'factures' : import d'EN-TÊTES (lignes via NTMIG11, un
 #   second fichier) pour les migrations sortantes (kits Odoo/Sage NTMIG8/12),
 #   déclarées par ``apps/ventes/platform.py`` (``import_specs``), mapping
@@ -46,13 +37,13 @@ from apps.dataimport.services import FIELD_MAPS, TARGETS, _LazyTargets
 #   (mode `creer` uniquement — pas dans ``UPSERT_TARGETS``).
 HISTORICAL_TARGETS = {
     'leads', 'clients', 'products', 'fournisseurs', 'equipements',
-    'vehicules', 'contrats', 'dossiers_rh',
-    'eleves_education', 'scm_evenement_demande',
     'devis', 'factures',
 }
 
 # Cibles déclarées au registre par une app qui porte son PROPRE lecteur de
-# fichier — donc SANS entrée dans ``dataimport.FIELD_MAPS``. Elles apparaissent
+# fichier (donc SANS entrée dans ``dataimport.FIELD_MAPS``), OU dont le
+# mapping/l'écriture dataimport a été retiré côté SOLMVP20 alors que l'app
+# propriétaire elle-même n'est pas encore coquillée. Elles apparaissent
 # légitimement dans ``TARGETS`` (l'union paresseuse) mais pas dans les mappings
 # d'en-têtes de dataimport : les deux ensembles ne coïncident plus, et c'est le
 # comportement voulu du registre réparti.
@@ -69,20 +60,28 @@ HISTORICAL_TARGETS = {
 #   VAO28 — 'avis_veille' : déclarée par ``apps/veille_ao/platform.py`` et
 #   servie par ``apps/veille_ao/imports.py`` (``FIELD_MAPS_VEILLE``, ses
 #   propres en-têtes et ses propres validations de dates/montants). Elle
-#   alimente le SAS de la veille (un humain trie), là où 'avis' d'``apps.ao``
-#   crée directement des AFFAIRES : les deux cibles coexistent délibérément et
-#   ne doivent jamais fusionner — un fichier d'agrégateur de 400 lignes
-#   ouvrirait sinon 400 dossiers dont 380 seraient du bruit.
-#   NTSRV43 — 'sav_categorie_competence' : declaree par
-#   ``apps/sav/platform.py`` et servie par ``apps/sav/imports.py``
-#   (``FIELD_MAP``, ses propres en-tetes et ses propres validations). Elle ne
-#   cree AUCUNE fiche a plat : elle peuple un ManyToMany
-#   (``CategorieTicket.competences_requises``, NTSRV6) dont la cle humaine est
-#   un CODE de competence RH resolu via ``rh.selectors`` — donc pas d'entree
-#   dans ``dataimport.FIELD_MAPS``.
+#   alimente le SAS de la veille (un humain trie), là où 'avis' (déclarée par
+#   son app propriétaire ci-dessous) crée directement des AFFAIRES : les deux
+#   cibles coexistent délibérément et ne doivent jamais fusionner — un
+#   fichier d'agrégateur de 400 lignes ouvrirait sinon 400 dossiers dont 380
+#   seraient du bruit.
+#
+#   SOLMVP20 (2026-09-21) — 'vehicules', 'contrats', 'dossiers_rh',
+#   'eleves_education', 'scm_evenement_demande' : leurs mappings d'en-têtes et
+#   leur écriture déléguée ont été RETIRÉS de ``dataimport`` (leurs apps
+#   propriétaires — flotte/contrats/rh/education/scm — sont PARQUÉES, Groupe
+#   SOLMVP). Ces apps existent encore aujourd'hui et déclarent toujours la
+#   cible dans leur PROPRE ``platform.py`` (elles n'ont PAS de lecteur propre
+#   pour autant, contrairement à ao/veille_ao ci-dessus) : la cible reste donc
+#   dans ``TARGETS`` via le registre, mais ``verifier_cible_importable`` la
+#   refuse désormais comme « servie ailleurs ». Ce groupe disparaîtra
+#   ENTIÈREMENT de ``TARGETS`` quand ces apps seront coquillées (SOLMVP31/33/
+#   34/36) — leur ``platform.py`` disparaît alors avec elles, rien à faire ici
+#   à ce moment-là.
 REGISTRY_ONLY_TARGETS = {
     'obstacles', 'chaines', 'avis', 'avis_veille',
-    'sav_categorie_competence',
+    'vehicules', 'contrats', 'dossiers_rh',
+    'eleves_education', 'scm_evenement_demande',
 }
 
 # Référence de non-régression du set RÉSOLU par ``_LazyTargets`` : les cibles
@@ -102,7 +101,6 @@ TARGET_OWNER_MODULE = {
     'devis': 'ventes', 'factures': 'ventes',
     'obstacles': 'ao', 'chaines': 'ao', 'avis': 'ao',
     'avis_veille': 'veille_ao',
-    'sav_categorie_competence': 'sav',
 }
 
 
@@ -138,10 +136,10 @@ class TestTargetsNonRegression(SimpleTestCase):
 
 
 class TestFieldMapsUnchanged(SimpleTestCase):
-    """Les 6+2 cibles FIELD_MAPS (mappings d'en-têtes) restent inchangées : le
-    registre ne remplace PAS les mappings, il unionne seulement la LISTE."""
+    """Les cibles FIELD_MAPS GARDÉES (mappings d'en-têtes) restent inchangées :
+    le registre ne remplace PAS les mappings, il unionne seulement la LISTE."""
 
-    def test_field_maps_keys_are_the_eight_targets(self):
+    def test_field_maps_keys_are_the_historical_targets(self):
         self.assertEqual(set(FIELD_MAPS), HISTORICAL_TARGETS)
 
     def test_every_target_keeps_a_header_mapping(self):

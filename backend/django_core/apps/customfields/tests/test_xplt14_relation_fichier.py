@@ -1,4 +1,8 @@
-"""XPLT14 — types RELATION/FICHIER + couverture fournisseur/employé."""
+"""XPLT14 — types RELATION/FICHIER + couverture fournisseur.
+
+SOLMVP20 — la couverture ``employe`` (app RH, PARQUÉE Groupe SOLMVP) a été
+retirée avec la clé native correspondante.
+"""
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -9,7 +13,6 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.customfields.models import CustomFieldDef
 from apps.customfields.serializers import validate_custom_data
-from apps.rh.models import DossierEmploye
 from apps.stock.models import Fournisseur, Produit
 from authentication.models import Company
 
@@ -141,7 +144,7 @@ class TestFichierFieldValidation(CF14Base):
                     {'piece': type('F', (), {'read': lambda self: b''})()})
 
 
-class TestFournisseurEmployeModuleCoverage(CF14Base):
+class TestFournisseurModuleCoverage(CF14Base):
     """Nouveaux modules acceptent des définitions ; custom_data se filtre en
     liste (isolation tenant testée via company-scoping standard)."""
 
@@ -167,19 +170,6 @@ class TestFournisseurEmployeModuleCoverage(CF14Base):
         fournisseur = Fournisseur.objects.create(
             company=self.company, nom='Four X', custom_data=clean)
         self.assertEqual(fournisseur.custom_data['note_qualite'], 8.0)
-
-    def test_employe_module_choice_accepted(self):
-        resp = self.api.post('/api/django/custom-fields/definitions/', {
-            'module': 'employe', 'code': 'permis_conduire',
-            'libelle': 'Permis de conduire', 'type': 'boolean',
-        }, format='json')
-        self.assertEqual(resp.status_code, 201, resp.data)
-
-    def test_employe_custom_data_field_exists(self):
-        field = DossierEmploye._meta.get_field('custom_data')
-        from django.db import models as db_models
-        self.assertIsInstance(field, db_models.JSONField)
-        self.assertTrue(field.null)
 
     def test_relation_pointing_to_produit_module(self):
         produit = Produit.objects.create(
