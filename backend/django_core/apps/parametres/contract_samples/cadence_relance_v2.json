@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/parametres/cadence-relance/",
-  "pourquoi": "MRY25 (PACT10) — l'éditeur « Cadences de relance » de Paramètres → CRM (MRY28) et le gabarit serveur `parametres.CadenceRelanceEtape` (MRY4) sont deux moitiés sans fichier commun. Ce qui CHANGE et doit donc être publié d'avance : le gabarit passe de UNE cadence anonyme à TROIS cadences nommées (`contact`, `apres_devis`, `reveil`, plus `generique` = les 5 barreaux historiques, migrés jamais supprimés), et la granularité passe au MINUTE (`delai_minutes`) avec une `heure_cible` optionnelle — la touche 2 de la cadence contact tombe à J0 + 3 minutes, ce qu'un modèle en JOURS ne pouvait pas exprimer. `template_cle` est un TEXTE LIBRE côté gabarit (valeur = une `MessageTemplate.Cle` de MRY12) : volontairement pas une FK, pour ne pas créer de dépendance d'import entre les deux modules. `unique_together` = (company, cadence, ordre). `?cadence=` filtre la liste ; sans lui, toutes cadences confondues. Validation serveur : `delai_minutes < 1440`, `heure_cible` optionnelle (`null` = pas de recalage horaire).",
+  "pourquoi": "MRY25 (PACT10) — l'éditeur « Cadences de relance » de Paramètres → CRM (MRY28) et le gabarit serveur `parametres.CadenceRelanceEtape` (MRY4) sont deux moitiés sans fichier commun. Ce qui CHANGE et doit donc être publié d'avance : le gabarit passe de UNE cadence anonyme à TROIS cadences nommées (`contact`, `apres_devis`, `reveil`, plus `generique` = les 5 barreaux historiques, migrés jamais supprimés), et la granularité passe au MINUTE (`delai_minutes`) avec une `heure_cible` optionnelle — la touche 2 de la cadence contact tombe à J0 + 3 minutes, ce qu'un modèle en JOURS ne pouvait pas exprimer. `template_cle` est un TEXTE LIBRE côté gabarit (valeur = une `MessageTemplate.Cle` de MRY12) : volontairement pas une FK, pour ne pas créer de dépendance d'import entre les deux modules. `unique_together` = (company, cadence, ordre). `?cadence=` filtre la liste ; sans lui, toutes cadences confondues. Validation serveur : `delai_minutes < 1440`, `heure_cible` optionnelle (`null` = pas de recalage horaire). CAD24 (21/09/2026) : `dimanche_ok` — la VRAIE commande du rendez-vous dominical du Protocole v3 — figure dans la réponse et donc dans ce contrat ; une seule touche par cadence peut le porter, et son `heure_cible` n'est honorée que si elle tombe dans la fenêtre 16 h-19 h (sinon 16 h 30).",
   "exemple": {
     "id": 51,
     "cadence": "contact",
@@ -11,6 +11,7 @@
     "canal": "whatsapp",
     "libelle": "Message d'identité",
     "template_cle": "identite",
+    "dimanche_ok": false,
     "actif": true
   },
   "exemple_liste": [
@@ -24,6 +25,7 @@
       "canal": "whatsapp",
       "libelle": "Message d'identité",
       "template_cle": "identite",
+      "dimanche_ok": false,
       "actif": true
     },
     {
@@ -36,6 +38,7 @@
       "canal": "appel",
       "libelle": "Appel d'ouverture",
       "template_cle": "appel_ouverture",
+      "dimanche_ok": false,
       "actif": true
     },
     {
@@ -48,6 +51,20 @@
       "canal": "appel",
       "libelle": "Appel J1",
       "template_cle": "repondeur",
+      "dimanche_ok": false,
+      "actif": true
+    },
+    {
+      "id": 58,
+      "cadence": "contact",
+      "ordre": 8,
+      "delai_jours": 5,
+      "delai_minutes": 0,
+      "heure_cible": "10:30",
+      "canal": "appel",
+      "libelle": "Appel 5 (dimanche)",
+      "template_cle": "appel_dimanche",
+      "dimanche_ok": true,
       "actif": true
     }
   ],
@@ -56,6 +73,7 @@
     "cadence": "contact | apres_devis | reveil | generique.",
     "canal": "appel | whatsapp | email | visite — l'enum du GABARIT, jamais `crm.Canal` (source du lead).",
     "heure_cible": "chaîne « HH:MM » ou null ; appliquée en heure locale Africa/Casablanca puis recalée sur la fenêtre d'appel (MRY8).",
-    "compat": "`seed_defaults` continue de poser les 5 barreaux J+2/5/10/20/35 en cadence `generique` — inchangés, ni supprimés ni réécrits."
+    "compat": "`seed_defaults` continue de poser les 5 barreaux J+2/5/10/20/35 en cadence `generique` — inchangés, ni supprimés ni réécrits.",
+    "dimanche_ok": "true sur UNE SEULE touche par cadence (Protocole v3) : c'est elle qui est PLACÉE sur un dimanche, entre 16 h et 19 h. `heure_cible` est honorée si elle tombe dans cette fenêtre, sinon la touche est posée à 16 h 30. Le champ est servi en LECTURE par l'écran Paramètres."
   }
 }

@@ -136,8 +136,27 @@ function CadenceTable({ cadence, gabarits }) {
                     aria-label={`Active — étape ${row.ordre}`} />
             Active
           </label>
+          {/* CAD24 — `dimanche_ok` est la VRAIE commande du rendez-vous
+              dominical (l'heure cible ne décide de rien toute seule), et
+              l'écran ne la montrait pas : le fondateur réglait une heure sans
+              voir QUELLE touche part le dimanche. En LECTURE, jamais en
+              édition : le Protocole v3 n'autorise qu'une touche dominicale
+              par cadence, et l'ouvrir ici en ouvrirait plusieurs. */}
+          <label className="flex items-center gap-1.5 pb-2 text-sm text-muted-foreground">
+            <input type="checkbox" readOnly checked={!!row.dimanche_ok}
+                   className="h-4 w-4 accent-primary"
+                   aria-label={`Autorisée le dimanche (16 h-19 h) — étape ${row.ordre}`} />
+            Autorisée le dimanche (16 h-19 h)
+          </label>
         </div>
       ))}
+      <p className="pt-1 text-xs text-muted-foreground"
+         data-testid={`cadence-regle-dimanche-${cadence}`}>
+        Une seule touche par cadence peut être autorisée le dimanche, entre 16 h et 19 h —
+        c'est le rendez-vous réservé aux prospects qu'on ne trouve jamais en semaine.
+        Son heure cible n'est honorée que si elle tombe dans cette fenêtre ; sinon la touche
+        est posée à 16 h 30.
+      </p>
     </div>
   )
 }
