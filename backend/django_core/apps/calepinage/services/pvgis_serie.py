@@ -62,10 +62,13 @@ import urllib.parse
 import urllib.request
 
 __all__ = [
-    'BASES_RAYONNEMENT', 'BASE_PAR_DEFAUT', 'COLONNES_COMPOSANTES',
+    'BASES_HEURE', 'BASES_RAYONNEMENT', 'BASE_HEURE_LOCALE_LEGALE',
+    'BASE_HEURE_LOCALE_STANDARD', 'BASE_HEURE_UTC', 'BASE_PAR_DEFAUT',
+    'COLONNES_COMPOSANTES',
     'COLONNES_IRRADIANCE', 'CONVENTION_AZIMUT', 'ClientPvgis',
-    'EntreeInvalide', 'MOTIF_COMPOSANTES_ABSENTES', 'PvgisIndisponible',
-    'RACINE_API', 'azimut_pvgis', 'cle_de_cache', 'vider_le_cache',
+    'EntreeInvalide', 'MOTIF_COMPOSANTES_ABSENTES', 'MOTIF_TMY_HORIZONTAL',
+    'PvgisIndisponible', 'RACINE_API', 'azimut_pvgis', 'cle_de_cache',
+    'vider_le_cache',
 ]
 
 #: v5_3 — la version courante de l'API PVGIS. ``apps/ventes/weather_feed.py``
@@ -96,6 +99,25 @@ ATTENTE_529_S = 1.0
 CACHE_TTL_S = 6 * 60 * 60
 CACHE_MAX = 200
 
+#: CALX59 — LES TROIS BASES HORAIRES qu'une série peut déclarer, et il n'y
+#: en a pas d'autre. ``meteo.heure.base`` dit LAQUELLE, pour que la chaîne
+#: sache de quoi partir : la ré-indexer deux fois la décalerait deux fois.
+#:
+#: * ``utc`` — l'heure universelle, ce que ``seriescalc`` sert par défaut ;
+#: * ``locale_standard`` — l'heure locale SANS heure d'été, ce que PVGIS
+#:   annonce servir sous ``localtime=1`` (« Output the time in the local time
+#:   zone (not daylight saving time), instead of UTC »,
+#:   https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis/getting-started-pvgis/api-non-interactive-service_en) ;
+#: * ``locale_legale`` — l'heure LÉGALE du site, saison comprise. C'est celle
+#:   dans laquelle une courbe de charge est saisie, donc la SEULE dans
+#:   laquelle un croisement production/consommation a un sens. Aucune réponse
+#:   PVGIS ne la sert : c'est ``services/chaine_pertes.py`` qui y ré-indexe.
+BASE_HEURE_UTC = 'utc'
+BASE_HEURE_LOCALE_STANDARD = 'locale_standard'
+BASE_HEURE_LOCALE_LEGALE = 'locale_legale'
+BASES_HEURE = (BASE_HEURE_UTC, BASE_HEURE_LOCALE_STANDARD,
+               BASE_HEURE_LOCALE_LEGALE)
+
 #: La convention d'azimut DÉCLARÉE avec la météo (CALX143) : PVGIS compte
 #: ``aspect`` depuis le Sud, positif vers l'Ouest, quand le constructeur de
 #: toiture travaille en azimut de face boussole. ``azimut_pvgis()`` convertit ;
@@ -122,6 +144,19 @@ COLONNES_COMPOSANTES = ('gb_i_w_m2', 'gd_i_w_m2', 'gr_i_w_m2')
 MOTIF_COMPOSANTES_ABSENTES = (
     "les composantes directe/diffuse de l'irradiance ne sont pas disponibles "
     'pour cette réponse PVGIS : aucune part diffuse n\'est supposée')
+
+#: CALX153 — le motif UNIQUE du refus d'une série qui ne porte que
+#: l'irradiance GLOBALE HORIZONTALE. Il vit ICI parce que c'est le SERVICE
+#: PVGIS qui décide de la colonne servie : ``tmy`` rend ``G(h)`` (horizontal)
+#: là où ``seriescalc`` rend ``G(i)`` (sur le plan des modules). Transposer
+#: l'un vers l'autre demanderait un modèle de transposition que ce module
+#: n'a pas, et le supposer fabriquerait une irradiance de plan qui n'a été
+#: ni mesurée ni calculée (D-CALX 7).
+MOTIF_TMY_HORIZONTAL = (
+    "La série météo ne porte que l'irradiance HORIZONTALE (« gh_w_m2 ») : "
+    "sans irradiance sur le PLAN des modules (« gi_w_m2 »), la chaîne de "
+    'pertes ne peut pas démarrer. Aucune transposition horizontal → plan '
+    "n'est supposée — elle demanderait un modèle que ce module n'a pas.")
 
 
 class PvgisIndisponible(RuntimeError):
@@ -643,6 +678,15 @@ class ClientPvgis:
         return {
             'service': 'tmy',
             'points': points,
+            # CALX153 — le mode est DÉCLARÉ par le service appelé, et une
+            # année météo type n'est l'observation d'AUCUNE année réelle :
+            # ``annees`` reste vide, si bien qu'aucune variabilité
+            # interannuelle ne peut se dire « mesurée » sur cette série.
+            'mode': 'tmy',
+            'annees': [],
+            # La colonne d'irradiance servie ici est HORIZONTALE : la chaîne
+            # de pertes refuse d'y démarrer, avec ce motif exact.
+            'motif_irradiance_de_plan': MOTIF_TMY_HORIZONTAL,
             'mois_retenus': list(
                 ((charge or {}).get('outputs') or {}).get('months_selected')
                 or []),
@@ -718,8 +762,15 @@ def _pas_minutes(points):
     precedent = None
     for point in points:
         try:
+            # Le fuseau est DÉCLARÉ (UTC) alors que seul l'ÉCART entre deux
+            # points est lu : sans lui, la garde ``check_naive_datetime``
+            # signale à juste titre un horodatage sans fuseau, et deux points
+            # de part et d'autre d'un changement d'heure donneraient un écart
+            # faux. L'heure à laquelle la série est INDEXÉE, elle, est celle
+            # que ``meteo.heure.base`` déclare (CALX59).
             courant = datetime.datetime(point['annee'], point['mois'],
-                                        point['jour'], point['heure'])
+                                        point['jour'], point['heure'],
+                                        tzinfo=datetime.timezone.utc)
         except (KeyError, TypeError, ValueError):
             continue
         if precedent is not None:
@@ -881,9 +932,11 @@ def _bloc_meteo(charge, base_demandee, params, *, url, depuis_cache, annees,
         'depuis_cache': depuis_cache,
         'convention_azimut': CONVENTION_AZIMUT,
         'heure': {
-            # ``localtime=1`` est DEMANDÉ (CALX150) ; le fuseau du site et les
-            # décalages réellement appliqués sont posés par CALX59.
-            'base': 'locale_standard',
+            # ``localtime=1`` est DEMANDÉ (CALX150) : PVGIS sert alors
+            # l'heure locale SANS heure d'été. Le fuseau du site et les
+            # décalages réellement appliqués sont posés par CALX59, qui
+            # ré-indexe ensuite sur l'heure LÉGALE du site.
+            'base': BASE_HEURE_LOCALE_STANDARD,
             'fuseau_site': None,
             'decalage_minutes': [],
         },
