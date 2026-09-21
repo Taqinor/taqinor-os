@@ -63,8 +63,17 @@ class Cadence(models.TextChoices):
 
 # ── Protocole de rappel v3 (04/09/2026) ─────────────────────────────────────
 # 6 APPELS MAXIMUM + 5 WhatsApp sur 14 jours, jamais plus d'un appel ET d'un
-# message par jour. Ces délais viennent du protocole validé par le fondateur —
-# ils ne sont pas une estimation et ne se retouchent pas ici.
+# message par jour — **HORS J0** : les trois gestes du jour même (message
+# d'identité, appel d'ouverture, appel 2 à +2 h 30) sont VOULUS ensemble, c'est
+# la promesse « rappelé dans les cinq minutes ». Ces délais viennent du
+# protocole validé par le fondateur — ils ne sont pas une estimation et ne se
+# retouchent pas ici.
+# CAD20 (21/09/2026) — cette phrase n'est plus une intention : elle est
+# EXÉCUTÉE par le moteur (`apps.crm.cadence_temps.un_geste_par_jour`, appelé
+# par `calculer_echeances_cadence`). Une touche en trop sur une journée est
+# décalée d'un jour ouvré ; les trois touches J0 et le rendez-vous dominical
+# en sont exemptés. Un délai retouché depuis Paramètres ne peut donc plus
+# empiler trois appels le même jour.
 #
 # ``dimanche_ok`` : la touche 8 (5ᵉ appel) est le SEUL rendez-vous autorisé le
 # dimanche, entre 16 h et 19 h, pour les prospects qu'on ne trouve jamais en

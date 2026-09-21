@@ -9,15 +9,19 @@ le moteur de cadence :
     retard ;
   * `nee_en_retard` (CAD22) — la touche a-t-elle été CRÉÉE après son échéance
     (auquel cas personne n'a jamais eu la chance de la faire à l'heure) ?
+  * `un_geste_par_jour` (CAD20) — jamais plus d'un appel ET d'un message le
+    même jour, hors les trois touches du jour même.
 
-La règle du groupe reste entière : ni le NOMBRE, ni l'ORDRE, ni le J+N des
-touches ne changent ici — seule change la DATE à laquelle une touche
-matérialisée tombe quand cette date serait déjà passée.
+La règle du groupe reste entière : ni le NOMBRE, ni l'ORDRE, ni le J+N du
+gabarit ne changent ici — seule change la DATE à laquelle une touche tombe
+quand cette date serait déjà passée ou déjà prise.
 
 Convention de temps : datetimes AWARE partout, raisonnement local
 Africa/Casablanca via `apps.crm.horaires` (jamais un `datetime(...)` nu).
 """
 from __future__ import annotations
+
+import datetime
 
 from django.utils import timezone
 
@@ -78,3 +82,69 @@ def nee_en_retard(etape):
     if getattr(etape, 'cadence_depart', None) is None:
         return False
     return cree_le > due_at
+
+
+# ── CAD-B ── CAD20 ──────────────────────────────────────────────────────────
+
+#: Garde-fou de boucle : au pire deux semaines de décalages en cascade.
+_MAX_DECALAGES = 14
+
+
+def _genre(canal):
+    """Les deux seuls « genres » que la règle distingue : un APPEL ou un
+    MESSAGE. `horaires.est_un_message` reste l'unique autorité (WhatsApp et
+    e-mail sont des messages ; une visite, comme un canal inconnu, compte du
+    côté APPEL — le plus prudent)."""
+    return 'message' if horaires.est_un_message(canal) else 'appel'
+
+
+def _lendemain_joignable(echeance, company, canal):
+    """Le même horaire, le lendemain, recalé sur la fenêtre du canal."""
+    locale = echeance.astimezone(horaires.CASABLANCA)
+    demain = datetime.datetime.combine(
+        locale.date() + datetime.timedelta(days=1), locale.time(),
+        tzinfo=horaires.CASABLANCA)
+    return horaires.prochain_creneau_appel(demain, company, canal=canal)
+
+
+def un_geste_par_jour(echeances, company):
+    """CAD20 — applique « jamais plus d'un appel ET d'un message par jour ».
+
+    La règle était ÉCRITE dans le référentiel des cadences
+    (`apps/parametres/models_relance.py`) et exécutée NULLE PART : il
+    suffisait de décaler un délai depuis Paramètres pour empiler trois appels
+    le même jour sans qu'aucun garde-fou ne bronche. Le recalage sur les jours
+    ouvrés y pousse d'ailleurs tout seul — un J+13 dominical et un J+14
+    retombent tous deux sur le même lundi.
+
+    Une touche en trop est décalée d'UN JOUR OUVRÉ (à la même heure, recalée
+    sur la fenêtre de son canal), puis du suivant tant que la place est prise.
+    Le nombre, l'ordre et le J+N du gabarit ne bougent pas.
+
+    DEUX EXEMPTIONS, explicites :
+      * les touches du JOUR MÊME (`delai_jours == 0`) — les trois gestes J0 du
+        Protocole v3 (message d'identité, appel d'ouverture, appel 2) sont
+        VOULUS ensemble ; ils occupent leur journée mais ne se décalent
+        jamais ;
+      * la touche `dimanche_ok` — c'est le seul rendez-vous dominical du
+        protocole ; la décaler d'un jour ouvré la sortirait du dimanche.
+
+    Rend une NOUVELLE liste ``[(gabarit, échéance), …]``, dans l'ordre reçu.
+    """
+    occupe = set()
+    resultat = []
+    for gabarit, echeance in echeances:
+        canal = getattr(gabarit, 'canal', None) or 'appel'
+        genre = _genre(canal)
+        exemptee = (not (getattr(gabarit, 'delai_jours', 0) or 0)
+                    or bool(getattr(gabarit, 'dimanche_ok', False)))
+        if not exemptee:
+            for _ in range(_MAX_DECALAGES):
+                jour = echeance.astimezone(horaires.CASABLANCA).date()
+                if (jour, genre) not in occupe:
+                    break
+                echeance = _lendemain_joignable(echeance, company, canal)
+        occupe.add(
+            (echeance.astimezone(horaires.CASABLANCA).date(), genre))
+        resultat.append((gabarit, echeance))
+    return resultat

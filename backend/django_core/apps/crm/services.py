@@ -752,7 +752,7 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
 
     from apps.parametres.models_relance import CadenceRelanceEtape
 
-    from . import horaires
+    from . import cadence_temps, horaires
 
     def _canal(gabarit):
         """Le canal de CETTE touche — `appel` par défaut, jamais deviné."""
@@ -844,7 +844,14 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
             canal=_canal(gabarit))
         echeances.append((gabarit, echeance))
-    return echeances
+    # CAD20 — « jamais plus d'un appel ET d'un message par jour » était écrite
+    # dans le référentiel des cadences et exécutée nulle part : le recalage sur
+    # les jours ouvrés empile tout seul un J+13 dominical et un J+14 sur le
+    # même lundi, et un délai retouché depuis Paramètres pouvait poser trois
+    # appels le même jour. La garde s'exécute ICI, en dernier, sur la partition
+    # complète — les trois gestes J0 et le rendez-vous dominical en sont
+    # exemptés, et rien n'est ajouté, retiré ni réordonné.
+    return cadence_temps.un_geste_par_jour(echeances, lead.company)
 
 
 # ── CADX (fondateur 15/09/2026) — UNE SEULE cadence active par lead ──────────
