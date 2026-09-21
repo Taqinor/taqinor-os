@@ -130,7 +130,10 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # identique avant/après (vérifié contre origin/dev-cad : `paye_le =
     # models.DateField(null=True, blank=True, verbose_name='Payée le')`).
     # Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2605",  # CommissionPartenaire.paye_le
+    # Remappé 2605->2624 (fold des autres lanes CAD du 21/09 : +19 lignes
+    # insérées AVANT CommissionPartenaire dans crm/models.py). MÊME champ,
+    # déclaration identique avant/après. Bug-class #34.
+    "backend/django_core/apps/crm/models.py:2624",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.
