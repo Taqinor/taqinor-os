@@ -1,0 +1,128 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/troncons/",
+  "pourquoi": "CALX203 — LE MÉTRÉ ET LA CHUTE, TRONÇON PAR TRONÇON. `GET calepinages/<pk>/troncons/` publie ce que `resultat['cables']` ne peut pas porter : ce bloc ne contient que DEUX lignes, `W1` (DC) et `W2` (AC), chacune avec UNE longueur scalaire (`core/electrique/cables.py`, `services/cables.py`). Aucune chute par tronçon, aucun métré par section, aucun cumul le long du chemin — un installateur ne peut donc ni commander son câble ni savoir OÙ la chute se paie.\n\nPOURQUOI CE CONTRAT PART SEUL (PACT10). La route n'existe pas encore : son producteur est `services/troncons.py` (CALX224, CALX225, CALX226) et sa vue arrive avec la vague ÉLECTRIQUE PRO. En face, l'écran (`frontend/src/features/calepinage/electrique/`), l'export tableur et la nomenclature (`core/electrique/nomenclature.py`) sont des lanes FILE-DISJOINTES : sans ce fichier, chacune inventerait ses clés. L'échantillon est déclaré `POSES_AVANT_LEUR_ROUTE` dans `tests/test_cal223_contrats.py` — l'entrée se retire dans la MÊME tâche que la route.\n\nD'OÙ VIENT CHAQUE CLÉ.\n* `id`, `cote`, `de`, `vers` — recopiés du document (`electrical.cheminements[]`, CALX202) : un tronçon publié correspond toujours à un tracé du plan, jamais à une ligne inventée pour les besoins du tableau.\n* `longueur_m` + `longueur_origine` (`plan` / `saisie` / `mixte`) — `services/troncons.py::troncons_du_calepinage` (CALX224). Les deux vont TOUJOURS ensemble : c'est la discipline `Longueur` de `services/cables.py` étendue au tracé, et un nombre nu n'est jamais publié.\n* `nb_conducteurs`, `section_mm2`, `ib_a`, `iz_a`, `chute_pct`, `critere_dimensionnant` — le noyau pur `core/electrique/cables.py` (`proposer_section`, `ampacite`, `chute_tension_pct`), avec ses barèmes à source citée.\n* `chute_cumulee_pct` — la chute cumulée DEPUIS LA SOURCE le long du chemin, par `cote` : c'est elle qui dit où le budget de chute est consommé, tronçon après tronçon.\n* `regle_source` — la référence de la règle appliquée à CE tronçon. Jamais un nombre recopié : la RÉFÉRENCE, pour qu'un chiffre publié soit remontable à son texte.\n* `totaux.metre_par_section` — le métré à commander, une ligne par section. Une section OMISE garde sa ligne (`section_mm2: null`) : la longueur existe, c'est la section qui manque, et fondre ce métré dans une autre ligne le ferait disparaître.\n\nAUCUNE GRANDEUR NON CALCULABLE N'EST REMPLIE. `null`, jamais `0` — `0 %` de chute et « chute non calculable » sont deux états opposés, et un écran qui reçoit `0` affiche un tronçon parfait. Chaque `null` a son entrée dans `omissions[]`, qui NOMME le tronçon, le champ et le motif en français. L'exemple montre le cas réel du lot : `ch5` est la liaison de terre, sa section dépend de la norme, et `pays = ma` sans norme choisie fait OMETTRE le calcul (D1, `services/norme.py::norme_applicable`) — jamais un barème supposé.\n\nAUCUN PRIX, AUCUN kWh. Le calepinage ne calcule pas d'argent (D-CALX 5) et ce lot ne produit aucun kWh : un métré est une longueur et une section, pas une ligne de devis.",
+  "exemple": {
+    "troncons": [
+      {
+        "id": "ch1",
+        "cote": "dc",
+        "de": "z1",
+        "vers": "eq2",
+        "longueur_m": 18.4,
+        "longueur_origine": "plan",
+        "nb_conducteurs": 2,
+        "section_mm2": 6.0,
+        "ib_a": 13.6,
+        "iz_a": 70.0,
+        "chute_pct": 0.42,
+        "chute_cumulee_pct": 0.42,
+        "critere_dimensionnant": "plancher DC 6 mm² (décision fondateur 19/08/2026)",
+        "regle_source": "UTE C 15-712-1 — chute DC (core/electrique/cables.py)"
+      },
+      {
+        "id": "ch2",
+        "cote": "dc",
+        "de": "eq2",
+        "vers": "eq1",
+        "longueur_m": 12.0,
+        "longueur_origine": "plan",
+        "nb_conducteurs": 2,
+        "section_mm2": 6.0,
+        "ib_a": 13.6,
+        "iz_a": 70.0,
+        "chute_pct": 0.28,
+        "chute_cumulee_pct": 0.7,
+        "critere_dimensionnant": "plancher DC 6 mm² (décision fondateur 19/08/2026)",
+        "regle_source": "UTE C 15-712-1 — chute DC (core/electrique/cables.py)"
+      },
+      {
+        "id": "ch3",
+        "cote": "ac",
+        "de": "eq1",
+        "vers": "eq4",
+        "longueur_m": 34.7,
+        "longueur_origine": "mixte",
+        "nb_conducteurs": 3,
+        "section_mm2": 10.0,
+        "ib_a": 21.7,
+        "iz_a": 66.0,
+        "chute_pct": 0.88,
+        "chute_cumulee_pct": 0.88,
+        "critere_dimensionnant": "chute de tension",
+        "regle_source": "IEC 60364-5-52 tableau B.52.4 — ampacité U-1000 R2V, méthode C"
+      },
+      {
+        "id": "ch4",
+        "cote": "ac",
+        "de": "eq4",
+        "vers": "eq7",
+        "longueur_m": 12.0,
+        "longueur_origine": "saisie",
+        "nb_conducteurs": 3,
+        "section_mm2": 10.0,
+        "ib_a": 21.7,
+        "iz_a": 66.0,
+        "chute_pct": 0.3,
+        "chute_cumulee_pct": 1.18,
+        "critere_dimensionnant": "chute de tension",
+        "regle_source": "IEC 60364-5-52 tableau B.52.4 — ampacité U-1000 R2V, méthode C"
+      },
+      {
+        "id": "ch5",
+        "cote": "terre",
+        "de": "eq2",
+        "vers": "eq7",
+        "longueur_m": 41.2,
+        "longueur_origine": "plan",
+        "nb_conducteurs": 1,
+        "section_mm2": null,
+        "ib_a": null,
+        "iz_a": null,
+        "chute_pct": null,
+        "chute_cumulee_pct": null,
+        "critere_dimensionnant": null,
+        "regle_source": null
+      }
+    ],
+    "totaux": {
+      "dc_chute_pct": 0.7,
+      "ac_chute_pct": 1.18,
+      "metre_par_section": [
+        {
+          "section_mm2": 6.0,
+          "longueur_m": 30.4
+        },
+        {
+          "section_mm2": 10.0,
+          "longueur_m": 46.7
+        },
+        {
+          "section_mm2": null,
+          "longueur_m": 41.2
+        }
+      ]
+    },
+    "omissions": [
+      {
+        "troncon": "ch5",
+        "champ": "section_mm2",
+        "motif": "aucune norme électrique sélectionnée pour le pays « ma » : la section du conducteur de protection en dépend, elle est donc OMISE. Sélectionnez la norme applicable dans les réglages du module (services/norme.py::norme_applicable)."
+      }
+    ]
+  },
+  "exemple_vide": {
+    "troncons": [],
+    "totaux": {
+      "dc_chute_pct": null,
+      "ac_chute_pct": null,
+      "metre_par_section": []
+    },
+    "omissions": [
+      {
+        "troncon": null,
+        "champ": "electrical.cheminements",
+        "motif": "aucun cheminement n'est tracé sur ce plan : il n'y a pas de tronçon à mesurer. Tracez les liaisons dans l'atelier, ou saisissez leurs longueurs — un calepinage sans tracé n'a pas 0 % de chute, il n'a PAS de chute calculable."
+      }
+    ]
+  }
+}

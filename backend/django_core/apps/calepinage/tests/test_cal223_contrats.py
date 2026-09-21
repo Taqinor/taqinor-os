@@ -167,6 +167,15 @@ SANS_PRODUCTEUR_PUR = {
         'résolution des références sont affirmées sans base par '
         'apps/calepinage/tests/test_calx202_contrat_cheminements.py',
 
+    # CALX203
+    'calepinage_troncons.json':
+        'métré et chute TRONÇON PAR TRONÇON : la route arrive avec la vague '
+        'ÉLECTRIQUE PRO et son producteur est services/troncons.py '
+        '(CALX224-226), pas encore écrit — la forme, les omissions nommées '
+        'et la cohérence avec electrique_cheminements.json sont affirmées '
+        'sans base par '
+        'apps/calepinage/tests/test_calx203_contrat_troncons.py',
+
     # CALX62
     'calepinage_meteo_fichier.json':
         'réponse de la porte MULTIPART qui dépose une série météo de la '
@@ -182,7 +191,13 @@ SANS_PRODUCTEUR_PUR = {
 #: la porte ; retirer l'entrée dans la même tâche que la route.
 #: CALX5 a livré ``POST simuler/`` : ``calepinage_simulation.json`` en est
 #: SORTI, et le contrôle 2 vérifie désormais sa route comme celle des autres.
-POSES_AVANT_LEUR_ROUTE = {}
+POSES_AVANT_LEUR_ROUTE = {
+    # CALX203 — `GET calepinages/<pk>/troncons/` : la vue arrive avec la
+    # vague ÉLECTRIQUE PRO, le producteur est services/troncons.py (CALX224).
+    'calepinage_troncons.json': 'CALX203 — route posée par la vague '
+                                'ÉLECTRIQUE PRO (services/troncons.py, '
+                                'CALX224-226)',
+}
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
 #: chercher) : ils appartiennent à une autre app.
