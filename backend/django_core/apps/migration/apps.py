@@ -1,33 +1,31 @@
+"""Configuration de l'app « migration » — PARQUÉE (voir ``core.parked``)."""
 from django.apps import AppConfig
 
 
 class MigrationConfig(AppConfig):
-    """Groupe NTMIG — Kits de migration ERP sortants (Odoo/Sage/Excel).
+    """Migration ERP (Odoo/Sage/Excel) — app PARQUÉE du MVP solaire (20/09/2026).
 
-    App CONTENEUR des projets de migration (regroupement de lots par entité),
-    du rapport de réconciliation obligatoire et de l'outillage
-    d'implémentation. Le chargement effectif des données est TOUJOURS DÉLÉGUÉ
-    au moteur ``apps.dataimport`` (dry-run/commit/ExternalRef/ImportJob) —
-    jamais un second importateur, jamais un second journal. Multi-société,
-    additive, société forcée côté serveur ; aucune écriture SQL vers Odoo
-    (règle #1 — JSON-2 en lecture seule ou fichier, rien d'autre).
+    Coquille de migrations : plus aucun modèle, aucune url, aucune
+    tâche, aucun écran. Le code complet est dans l'archive
+    ``archive/full-erp-2026-09-20`` ; recette de retour : docs/parked-modules.md §5.
+
+    L'app RESTE dans INSTALLED_APPS : c'est ce qui garde valide le
+    graphe de migrations des apps gardées (jamais de squash).
     """
 
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.migration'
+    label = 'migration'
     verbose_name = 'Migration ERP (Odoo/Sage/Excel)'
-
+    # SOLMVP — marqueur lu par les gardes (core.parked.est_parquee).
+    parked = True
     module_manifest = {
         'key': 'migration',
         'sku': 'generic',
         'label': 'Migration',
         'icone': 'database',
         'depends': [],
-        'description': (
-            'Projets de migration ERP sortants (Odoo/Sage/Excel) avec '
-            'rapport de réconciliation obligatoire : comptages et totaux '
-            'source vs cible avant toute clôture.'),
-        # Vocabulaire FERMÉ de `core.modules.CATEGORIES` : pas de catégorie
-        # « Administration » (l'app sœur `adminops` est elle aussi 'Technique').
+        'description': 'Projets de migration ERP sortants (Odoo/Sage/Excel) avec rapport de réconciliation obligatoire : comptages et totaux source vs cible avant toute clôture.',
         'categorie': 'Technique',
+        'parked': True,
     }
