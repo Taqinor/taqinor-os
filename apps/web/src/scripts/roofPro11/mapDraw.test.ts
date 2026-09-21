@@ -15,7 +15,9 @@ import {
   MAX_LIGNES_GRILLE,
   ORDRE_RENDU_CALQUES,
   MAPLIBRE_LAYERS_PAR_CALQUE,
+  opacityPropFor,
 } from './mapDraw';
+import { UNDERLAY_PHOTO_LAYER_ID, UNDERLAY_PLAN_LAYER_ID } from './underlay';
 import { distanceEntreM } from './snap';
 import { geodesicAreaM2, layoutPanels, type LngLat } from '../../lib/roof';
 
@@ -267,5 +269,28 @@ describe('CALX117 — la grille n’entre dans AUCUN calcul', () => {
     for (const couches of Object.values(MAPLIBRE_LAYERS_PAR_CALQUE)) {
       expect(couches).not.toContain(GRILLE_LAYER_ID);
     }
+  });
+});
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX107 — les calques `photo` et `plan` du panneau ne pilotent PLUS une liste vide :
+// le calque de fond existe. Le détail du placement, des refus et du rang d'insertion est
+// prouvé dans `underlay.test.ts` (qui monte une carte factice).
+// ————————————————————————————————————————————————————————————————————————
+describe('CALX107 — les deux calques de fond pilotent une couche réelle', () => {
+  it('« Photo calée » et « Plan importé » ont chacun leur couche MapLibre', () => {
+    expect(MAPLIBRE_LAYERS_PAR_CALQUE.photo).toEqual([UNDERLAY_PHOTO_LAYER_ID]);
+    expect(MAPLIBRE_LAYERS_PAR_CALQUE.plan).toEqual([UNDERLAY_PLAN_LAYER_ID]);
+  });
+
+  it('leur couche est un raster : l’opacité du panneau la pilote (CAL103)', () => {
+    expect(opacityPropFor('raster')).toBe('raster-opacity');
+  });
+
+  it('les deux fonds restent sous le tracé client et au-dessus de l’imagerie', () => {
+    const rang = (id: string) => ORDRE_RENDU_CALQUES.indexOf(id);
+    expect(rang('imagerie')).toBeLessThan(rang('photo'));
+    expect(rang('photo')).toBeLessThan(rang('plan'));
+    expect(rang('plan')).toBeLessThan(rang('trace_client'));
   });
 });
