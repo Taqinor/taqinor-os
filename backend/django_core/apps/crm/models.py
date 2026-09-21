@@ -576,6 +576,10 @@ class Lead(SoftDeleteModel):
     prenom = models.CharField(max_length=255, blank=True, null=True)
     societe = models.CharField(max_length=255, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
+    # CAD146 (21/09/2026) — pas de fuseau horaire par lead : un numéro
+    # étranger (diaspora) reçoit ses touches à l'heure de Casablanca. Décision
+    # écrite, rien construit tant que CADM7 (comptage) n'a pas de chiffre —
+    # voir `apps/crm/horaires.py`, bas de fichier.
     telephone = models.CharField(max_length=50, blank=True, null=True)
     adresse = models.TextField(blank=True, null=True)
     ville = models.CharField(max_length=120, blank=True, null=True)
@@ -668,6 +672,12 @@ class Lead(SoftDeleteModel):
     # l'un NI l'autre : il interdit seulement toute future cadence.
     ne_plus_contacter = models.BooleanField(
         default=False, verbose_name='Ne plus contacter')
+    # CAD145 (21/09/2026) — SOURCE UNIQUE lue par le scoring (`scoring.py`),
+    # les playbooks (`Playbook.condition`, évalué contre {type_installation,
+    # canal} DU LEAD) et les textes de segment (CAD126) : ces trois surfaces
+    # ne lisent JAMAIS `SiteProfile.type_installation` (champ CLIENT distinct,
+    # voir sa docstring). Les deux existent parce que leurs cycles de vie
+    # diffèrent — le lead précède souvent le client — pas par erreur.
     type_installation = models.CharField(
         max_length=20, choices=TypeInstallation.choices, blank=True, null=True)
 
@@ -2218,6 +2228,15 @@ class SiteProfile(models.Model):
         max_length=12, choices=Lead.Raccordement.choices,
         blank=True, null=True)
     regularisation_8221 = models.BooleanField(default=False)
+    # CAD145 (21/09/2026) — dupliqué AVEC INTENTION, pas une divergence : ce
+    # champ vit au niveau CLIENT (réutilisable sur un futur devis SANS lead,
+    # raison d'être de ce modèle — voir la docstring de la classe), tandis que
+    # `Lead.type_installation` est le champ PRÉ-SALE que lisent seuls le
+    # scoring, les playbooks et les textes de segment pendant la cadence.
+    # Aucun code ne lit CE champ-ci pour ces trois usages (`grep -rn
+    # SiteProfile backend/django_core/apps/crm/scoring.py
+    # backend/django_core/apps/crm/services.py` = vide) ; il ne sert QUE le
+    # pré-remplissage du générateur de devis (`selectors.site_profile_for_client`).
     type_installation = models.CharField(
         max_length=20, choices=Lead.TypeInstallation.choices,
         blank=True, null=True)
