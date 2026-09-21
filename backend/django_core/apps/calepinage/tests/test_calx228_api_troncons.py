@@ -332,21 +332,39 @@ class TronconsApiTest(TestCase):
 
     def setUp(self):
         from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
 
-        from authentication.models import Company
         from apps.calepinage.models import Calepinage
+        from apps.crm.models import Lead
+        from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
+        from authentication.models import Company
 
-        self.company = Company.objects.create(name='TAQINOR')
-        self.autre = Company.objects.create(name='AUTRE')
+        # Même patron que ``test_api_liste`` : deux sociétés, un porteur des
+        # droits (``calepinage_voir``), un lead par calepinage (contrainte
+        # ``calepinage_lead_ou_client``), authentification par jeton.
+        self.company = Company.objects.create(nom='Troncons Co',
+                                              slug='troncons-co-228')
+        self.autre = Company.objects.create(nom='Voisine Co',
+                                            slug='voisine-co-228')
+        role = Role.objects.create(
+            company=self.company, nom='Directeur',
+            permissions=list(DIRECTEUR_PERMISSIONS))
         self.user = get_user_model().objects.create_user(
-            username='poseur', password='x', company=self.company)
+            username='poseur_228', password='x', company=self.company,
+            role=role)
+        lead = Lead.objects.create(company=self.company, nom='Toiture A')
+        lead_autre = Lead.objects.create(company=self.autre,
+                                         nom='Toiture B')
         self.calepinage = Calepinage.objects.create(
-            company=self.company, titre='Toiture A',
+            company=self.company, lead=lead, titre='Toiture A',
             roof_layout={'version': 2, 'zones': []})
         self.calepinage_autre = Calepinage.objects.create(
-            company=self.autre, titre='Toiture B',
+            company=self.autre, lead=lead_autre, titre='Toiture B',
             roof_layout={'version': 2, 'zones': []})
-        self.client.force_login(self.user)
+        self.client = APIClient()
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
 
     def _url(self, calepinage):
         return ('/api/django/calepinage/calepinages/%d/troncons/'
