@@ -8769,3 +8769,103 @@ def _canal_effectif(gabarit):
 CAD124_PAS_D_AXE_SEGMENT = (
     'pas d’axe segment dans le gabarit de cadence — décision du 21/09/2026'
 )
+
+
+# ── CAD-J ── CAD125 — le dossier 82-21 et le dossier FDA ont une parole ────
+#
+# `Lead.regularisation_8221` est capté, LU par le scoring (+5 points) — et par
+# aucune logique de message ni de touche ; aucune des clés de relance ne
+# parlait d'une subvention ou d'un dossier institutionnel, alors que le
+# résidentiel a son équivalent avec `j6_garanties`.
+#
+# Le remède n'ajoute NI barreau NI migration de cadence : c'est une TÂCHE de
+# `Playbook`, conditionnée sur `{type_installation}` — le mécanisme existe et
+# est déjà évalué contre ce contexte (`_playbook_correspond_au_lead`).
+#
+# Contexte daté (pour la docstring, jamais pour le client) : le décret
+# d'application de la loi 82-21 est en vigueur depuis le 09/06/2026 (BO 7489).
+# GARDE-FOU « zéro chiffre inventé » : les TEXTES ne citent AUCUN montant,
+# AUCUN plafond, AUCUNE fenêtre de dépôt (le plafond FDA et la fenêtre du
+# round 2 sont introuvables sur leur source), AUCUN nombre de régimes.
+
+#: Les deux playbooks de segment, avec leur condition et leur tâche unique.
+#: `stage` vient de STAGES.py (règle #2), jamais d'un littéral.
+PLAYBOOKS_SEGMENT_CAD125 = (
+    {
+        'nom': 'Segment — dossier d’autoproduction 82-21',
+        'segments': ('industriel', 'commercial'),
+        'cle_message': 'dossier_8221',
+        'tache': ('Demander où en est le dossier d’autoproduction 82-21 '
+                  '(texte « dossier_8221 » au catalogue des messages)'),
+    },
+    {
+        'nom': 'Segment — dossier de subvention agricole (FDA)',
+        'segments': ('agricole',),
+        'cle_message': 'dossier_fda',
+        'tache': ('Demander où en est le dossier de subvention agricole FDA '
+                  '(texte « dossier_fda » au catalogue des messages)'),
+    },
+)
+
+
+def _condition_segment(segments):
+    """L'arbre `core.rules` qui matche ces `type_installation` — et eux seuls.
+
+    Un lead sans segment renseigné ne matche AUCUN des deux : on ne pose pas
+    la question du dossier 82-21 à quelqu'un dont on ignore le marché.
+    """
+    return {
+        'op': 'or',
+        'conditions': [
+            {'field': 'type_installation', 'operator': 'eq', 'value': segment}
+            for segment in segments
+        ],
+    }
+
+
+def seed_playbooks_segment(company, *, stage=None):
+    """CAD125 — pose (idempotemment) les deux playbooks de segment.
+
+    ``stage`` est l'étape du funnel qui porte la tâche ; par défaut celle de
+    la prise de contact (``stages.CONTACTED``), importée de STAGES.py. Renvoie
+    la liste des ``Playbook`` concernés (créés ou déjà présents).
+
+    Additif et rejouable : ``get_or_create`` sur (société, nom), puis sur
+    l'étape et la tâche. Un playbook que le fondateur aurait désactivé ou
+    personnalisé n'est JAMAIS réécrit.
+    """
+    from . import stages as _stages
+    from .models import Playbook, PlaybookEtape, PlaybookTache
+
+    cible = stage or _stages.CONTACTED
+    resultats = []
+    for entree in PLAYBOOKS_SEGMENT_CAD125:
+        playbook, cree = Playbook.objects.get_or_create(
+            company=company, nom=entree['nom'],
+            defaults={'actif': True,
+                      'condition': _condition_segment(entree['segments'])})
+        resultats.append(playbook)
+        if not cree:
+            continue
+        etape, _ = PlaybookEtape.objects.get_or_create(
+            playbook=playbook, stage=cible, defaults={'ordre': 0})
+        PlaybookTache.objects.get_or_create(
+            etape=etape, libelle=entree['tache'],
+            defaults={'obligatoire': False, 'ordre': 0})
+    return resultats
+
+
+def cle_message_segment(lead):
+    """La clé de message institutionnelle de CE lead, ou ``None``.
+
+    Lecture pure : sert à l'écran qui propose le texte à copier, et au test.
+    Un lead résidentiel — ou sans segment — n'en a AUCUNE : il a déjà
+    `j6_garanties`, et on n'invente pas un dossier institutionnel pour lui.
+    """
+    segment = (getattr(lead, 'type_installation', None) or '').strip()
+    if not segment:
+        return None
+    for entree in PLAYBOOKS_SEGMENT_CAD125:
+        if segment in entree['segments']:
+            return entree['cle_message']
+    return None

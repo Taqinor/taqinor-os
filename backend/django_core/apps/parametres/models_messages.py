@@ -187,6 +187,22 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Bonjour M. {prenom}, {conseiller} de {marque}. Je reviens vers vous pour votre demande solaire d'hier — vous avez deux minutes maintenant ?",
     'appel_dernier':
         "Bonjour M. {prenom}, {conseiller} de {marque}. Dernier essai avant de classer votre demande : votre projet solaire est-il toujours d'actualité ?",
+    # CAD125 (21/09/2026) — LE DOSSIER INSTITUTIONNEL, ENFIN UNE PAROLE.
+    # `Lead.regularisation_8221` est capté et LU par le scoring, mais par
+    # aucune logique de message : aucune des clés de relance ne parlait d'une
+    # subvention ni d'un dossier institutionnel, alors que le résidentiel a
+    # son équivalent avec `j6_garanties`. Ces deux textes sont posés par un
+    # playbook conditionné sur `{type_installation}` — zéro migration de
+    # cadence, zéro barreau ajouté.
+    # GARDE-FOU « zéro chiffre inventé » : AUCUN montant, AUCUN plafond,
+    # AUCUNE fenêtre de dépôt, AUCUN nombre de régimes. Le plafond FDA et la
+    # fenêtre de dépôt cités au round 2 sont INTROUVABLES sur leur source et
+    # ne doivent jamais réapparaître ici ; « trois régimes » 82-21 n'est pas
+    # sourcé non plus. On pose LA question, le client apporte les chiffres.
+    'dossier_8221':
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Une question sur votre projet : où en est votre dossier d'autoproduction (loi 82-21) ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si le dossier n'est pas encore lancé, je vous explique les étapes en cinq minutes.",
+    'dossier_fda':
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.",
 })
 
 # Variantes darija (écriture arabe, revue native le 04/09/2026). Une clé
@@ -337,6 +353,10 @@ CLES_RELANCE = [
     # confirmée la veille.
     'visite_proposition',
     'visite_confirmation',
+    # CAD125 — dossiers institutionnels, posés par playbook de SEGMENT
+    # (industriel/commercial et agricole), jamais par un barreau de cadence.
+    'dossier_8221',
+    'dossier_fda',
 ]
 
 #: CAD60 (21/09/2026) — les textes à ENVOI MANUEL, hors cadence.
@@ -419,6 +439,14 @@ class MessageTemplate(models.Model):
         VISITE_CONFIRMATION = (
             'visite_confirmation',
             "Visite — confirmation la veille")
+        # CAD125 — dossiers institutionnels, par SEGMENT (playbook conditionné
+        # sur `{type_installation}`), jamais un barreau de cadence.
+        DOSSIER_8221 = (
+            'dossier_8221',
+            "Segment — dossier d'autoproduction 82-21 (industriel/commercial)")
+        DOSSIER_FDA = (
+            'dossier_fda',
+            "Segment — dossier de subvention agricole (FDA)")
 
     company = models.ForeignKey(
         'authentication.Company',

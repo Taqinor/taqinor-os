@@ -194,6 +194,24 @@ pression sur les finances des ménages ». Le montant par enfant parfois cité (
 contesté entre relecteurs : il n'est PAS un chiffre de référence et ne part dans aucun message client. La fenêtre
 porteuse reste juillet-août, à l'intérieur de la saison ci-dessus.
 
+## Dossiers institutionnels, par segment (CAD125, 21/09/2026)
+
+Ces deux textes ne sont PAS des barreaux de cadence : ils sont posés comme TÂCHE d'un playbook conditionné sur
+`type_installation` (industriel/commercial d'un côté, agricole de l'autre). `Lead.regularisation_8221` était capté et
+lu par le scoring, mais aucune des clés de relance ne parlait d'un dossier institutionnel — alors que le résidentiel a
+son équivalent avec `j6_garanties`.
+
+**Garde-fou « zéro chiffre inventé », absolu ici :** aucun montant, aucun plafond, aucune fenêtre de dépôt, aucun
+nombre de régimes. Le plafond FDA et la fenêtre de dépôt cités au round 2 de l'audit sont INTROUVABLES sur leur source
+et ne doivent jamais réapparaître ; « trois régimes » 82-21 n'est pas sourcé non plus. On pose LA question ; les
+chiffres viennent du client et de son dossier, jamais du gabarit.
+
+### dossier_8221 — industriel/commercial : où en est le dossier d'autoproduction
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Une question sur votre projet : où en est votre dossier d'autoproduction (loi 82-21) ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si le dossier n'est pas encore lancé, je vous explique les étapes en cinq minutes.
+
+### dossier_fda — agricole : le dossier de subvention
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.
+
 ## Après la signature (Guide v2.1, chapitre 13)
 
 ### avis_google — à tous les clients, de la même façon, sans contrepartie
