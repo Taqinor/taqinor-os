@@ -160,7 +160,7 @@ import {
 } from './roofPro11/optimizer';
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout, deserializeSceneFromLayout } from './roofPro11/prefill';
 
 let booted = false;
 
@@ -227,6 +227,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // ctx.sunHour / ctx.sunDay (la scène 3D positionne un VRAI soleil et son ombre).
   const sunHourEl = $<HTMLInputElement>('rp9-sun-hour');
   const sunHourValueEl = $('rp9-sun-hour-value');
+  // CALX119/CALX120 — bandeau hôte des contrôles soleil (date libre + lecture) : les
+  // deux tâches y créent LEURS-MÊMES leurs contrôles quand la page ne les fournit pas
+  // (même patron que `obstaclesUi.ts ensureTypePicker`/`zones.ts ensureStatsTable`).
+  const sunControlsHost = $('rp9-sun-controls');
   // — Obstacles : le DOM (bouton ajouter/effacer, panneau d'édition, saisies longueur/
   // largeur, +/−, suppr.) est piloté par le module roofPro11/obstaclesUi.ts. —
   // V3 : bouton Optimum, toggle type de toit, et contrôles toit en pente.
@@ -1723,6 +1727,25 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // historique). `shadingUi` a déjà été construit (ligne ~1327) : on passe par SON API
     // pour que la matrice/le facteur/la note soient recalculés cohéremment.
     shadingUi.setHorizonProfile(deserializeHorizonProfileFromLayout(layout));
+    // CALX119 — l'instant du soleil de scène (jour + heure) voyage avec le document ;
+    // absent (devis antérieur à CALX88/CALX119), `ctx.sunDay`/`ctx.sunHour` gardent leur
+    // défaut historique (solstice d'hiver, midi) — comportement d'aujourd'hui, jamais un
+    // jour deviné. Les contrôles (curseur/date/raccourcis saison) déjà câblés plus bas
+    // sont resynchronisés ici pour ne pas afficher un instant périmé.
+    const savedScene = deserializeSceneFromLayout(layout);
+    if (savedScene) {
+      ctx.sunDay = savedScene.sunDay;
+      ctx.sunHour = savedScene.sunHour;
+      if (sunHourEl) sunHourEl.value = String(Math.round(savedScene.sunHour));
+      if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(savedScene.sunHour)} h`;
+      if (sunDateEl) sunDateEl.value = dayOfYearToDateValue(savedScene.sunDay);
+      document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) =>
+        o.setAttribute('aria-pressed', String(
+          (o.dataset.sunSeason === 'summer' && savedScene.sunDay === 172) ||
+            (o.dataset.sunSeason !== 'summer' && savedScene.sunDay === WINTER_SOLSTICE_DAY),
+        )),
+      );
+    }
     const setIf = (id: string, v?: string) => {
       const el = $<HTMLInputElement>(id);
       if (el && v && !el.value.trim()) el.value = v;
@@ -3268,13 +3291,79 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       shadingUi.refreshHeatmap(); // WJ21 — le re-rendu a recréé les panneaux : garde la heatmap
     });
   }
-  // W87 — saison : hiver (solstice = pire cas d'ombrage, défaut) ou été (jour 172).
+  // CALX119 — DATE LIBRE pour le jour de la scène : convention de dessin — année
+  // bissextile FIXE (jour 366 représentable), seuls le mois et le jour comptent pour la
+  // déclinaison solaire (`sunDirection`/`sunPosition` ne prennent qu'un jour 1–366, pas
+  // une année réelle). Créée ICI si la page ne la fournit pas déjà (`ensureTypePicker`,
+  // `obstaclesUi.ts`, même patron) : ancrée dans le bandeau `#rp9-sun-controls` existant.
+  const SCENE_DATE_REF_YEAR = 2028;
+  const dayOfYearToDateValue = (dayOfYear: number): string => {
+    const clamped = Math.max(1, Math.min(366, Math.round(dayOfYear)));
+    const d = new Date(Date.UTC(SCENE_DATE_REF_YEAR, 0, clamped));
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    return `${SCENE_DATE_REF_YEAR}-${mm}-${dd}`;
+  };
+  const dateValueToDayOfYear = (value: string): number | null => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!m) return null;
+    const d = new Date(Date.UTC(SCENE_DATE_REF_YEAR, Number(m[2]) - 1, Number(m[3])));
+    if (Number.isNaN(d.getTime())) return null;
+    const start = Date.UTC(SCENE_DATE_REF_YEAR, 0, 1);
+    return Math.round((d.getTime() - start) / 86400000) + 1;
+  };
+  const ensureSceneDateInput = (): HTMLInputElement | null => {
+    const existing = $<HTMLInputElement>('rp9-sun-date');
+    if (existing) return existing;
+    if (!sunControlsHost || typeof document.createElement !== 'function') return null;
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-3';
+    const label = document.createElement('label');
+    label.setAttribute('for', 'rp9-sun-date');
+    label.className = 'tech-label shrink-0 text-lune-faint';
+    label.textContent = 'Date';
+    const input = document.createElement('input');
+    input.id = 'rp9-sun-date';
+    input.type = 'date';
+    input.className = 'rp9-input';
+    input.setAttribute('aria-label', 'Date libre pour le soleil de la scène');
+    row.appendChild(label);
+    row.appendChild(input);
+    // Insérée AVANT la ligne « Saison » (les deux bascules restent des raccourcis vers
+    // cette même date, lisibilité haut→bas : date d'abord, raccourcis ensuite).
+    const seasonRow = sunControlsHost.querySelector('[data-sun-season]')?.parentElement ?? null;
+    if (seasonRow) sunControlsHost.insertBefore(row, seasonRow);
+    else sunControlsHost.appendChild(row);
+    return input;
+  };
+  const sunDateEl = ensureSceneDateInput();
+  if (sunDateEl) {
+    sunDateEl.value = dayOfYearToDateValue(ctx.sunDay);
+    sunDateEl.addEventListener('change', () => {
+      const day = dateValueToDayOfYear(sunDateEl.value);
+      if (day == null) return; // saisie incomplète/invalide : rien ne bouge (jamais un jour deviné)
+      ctx.sunDay = day;
+      // Une date libre n'est PLUS l'un des deux raccourcis saisonniers — sauf coïncidence.
+      document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) =>
+        o.setAttribute('aria-pressed', String(
+          (o.dataset.sunSeason === 'summer' && day === 172) ||
+            (o.dataset.sunSeason !== 'summer' && day === WINTER_SOLSTICE_DAY),
+        )),
+      );
+      renderActive();
+      shadingUi.refreshHeatmap(); // WJ21 — garde la heatmap après le re-rendu
+    });
+  }
+  // W87 — saison : hiver (solstice = pire cas d'ombrage, défaut) ou été (jour 172). Les
+  // deux bascules restent des RACCOURCIS vers la même date libre (CALX119) : elles la
+  // font juste avancer/reculer, la date affichée suit.
   document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((b) => {
     b.addEventListener('click', () => {
       ctx.sunDay = b.dataset.sunSeason === 'summer' ? 172 : WINTER_SOLSTICE_DAY;
       document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) =>
         o.setAttribute('aria-pressed', String(o === b)),
       );
+      if (sunDateEl) sunDateEl.value = dayOfYearToDateValue(ctx.sunDay); // CALX119 — la date reflète le raccourci
       renderActive();
       shadingUi.refreshHeatmap(); // WJ21 — garde la heatmap après le re-rendu saisonnier
     });
