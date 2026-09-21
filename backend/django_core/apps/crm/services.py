@@ -756,7 +756,7 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
 
     def _canal(gabarit):
         """Le canal de CETTE touche — `appel` par défaut, jamais deviné."""
-        return getattr(gabarit, 'canal', None) or 'appel'
+        return _canal_effectif(gabarit)
 
     if gabarits is None:
         gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
@@ -987,7 +987,7 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
             company=lead.company, lead=lead, cadence=cadence,
             ordre=gabarit.ordre, due_at=echeance,
             due_date=echeance.astimezone(horaires.CASABLANCA).date(),
-            canal=gabarit.canal, libelle=gabarit.libelle,
+            canal=_canal_effectif(gabarit), libelle=gabarit.libelle,
             template_cle=getattr(gabarit, 'template_cle', '') or '',
             devis=devis, cadence_depart=ancre,
         )
@@ -1202,12 +1202,12 @@ def materialiser_touche_suivante(etape_close, user=None):
             echeance = horaires.prochain_creneau_appel(
                 base + datetime.timedelta(minutes=max(0, ecart)),
                 lead.company,
-                canal=getattr(gabarit, 'canal', None) or 'appel')
+                canal=_canal_effectif(gabarit))
         etape = RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
             ordre=gabarit.ordre, due_at=echeance,
             due_date=echeance.astimezone(horaires.CASABLANCA).date(),
-            canal=gabarit.canal, libelle=gabarit.libelle,
+            canal=_canal_effectif(gabarit), libelle=gabarit.libelle,
             template_cle=getattr(gabarit, 'template_cle', '') or '',
             devis_id=etape_close.devis_id, cadence_depart=ancre)
         if cadence == 'reveil':
@@ -8707,3 +8707,40 @@ def _date_validite_comme_le_pdf(devis):
             'CAD59 : validité illisible (devis #%s)',
             getattr(devis, 'pk', '?'), exc_info=True)
         return getattr(devis, 'date_validite', None)
+
+
+# ── CAD-E ── CAD58 — plus aucune touche de cadence n'est une VISITE ────────
+#
+# [TRANCHÉ 21/09/2026] Le barreau 5 de la cadence générique portait le canal
+# `visite` à J+35 sans poser AUCUNE condition de devis, alors que la décision
+# fondateur du 15/09 est « visite technique JAMAIS avant le devis, proposée
+# après ». Le gabarit par défaut a changé (J+35 = appel), mais une société
+# seedée AVANT cette date garde sa ligne en base : `seed_cadence` ne retouche
+# jamais un barreau existant (et c'est une bonne règle — le fondateur peut
+# personnaliser). On normalise donc à la MATÉRIALISATION, là où la touche
+# devient réelle : un gabarit legacy `visite` pose un APPEL.
+#
+# Ni le nombre, ni l'ordre, ni le J+N des barreaux ne changent : seul le canal
+# du dernier. La visite technique garde son chemin propre (proposition après
+# devis, VISITE-CADENCE du 15/09) — ce n'est pas un barreau de protocole.
+
+#: Le canal retiré des cadences. Valeur de ``parametres.CanalRelance.VISITE``,
+#: reprise en littéral (ce module ne dépend d'aucun modèle de référentiel).
+CANAL_VISITE = 'visite'
+
+#: Ce qu'une touche legacy `visite` devient : un appel. C'est le canal le plus
+#: prudent (fenêtre d'appel, pause du vendredi respectée) et c'est la décision.
+CANAL_VISITE_REMPLACEMENT = 'appel'
+
+
+def _canal_effectif(gabarit):
+    """Le canal RÉEL d'une touche de cadence — jamais `visite` (CAD58).
+
+    `appel` par défaut, jamais deviné. Un gabarit encore en `visite` (société
+    seedée avant le 21/09/2026) est normalisé ici plutôt que refusé : la
+    touche existe, elle doit juste cesser d'annoncer une visite.
+    """
+    canal = getattr(gabarit, 'canal', None) or CANAL_VISITE_REMPLACEMENT
+    if canal == CANAL_VISITE:
+        return CANAL_VISITE_REMPLACEMENT
+    return canal

@@ -39,7 +39,12 @@ CADENCE_RELANCE_DEFAUT = [
      'libelle': 'Relance e-mail'},
     {'ordre': 4, 'delai_jours': 20, 'canal': CanalRelance.APPEL,
      'libelle': "Point d'étape"},
-    {'ordre': 5, 'delai_jours': 35, 'canal': CanalRelance.VISITE,
+    # CAD58 (décision fondateur du 21/09/2026) — le canal VISITE est RETIRÉ de
+    # la cadence générique : ce barreau ne posait aucune condition de devis,
+    # alors que la doctrine du 15/09 est « visite technique JAMAIS avant le
+    # devis, proposée après ». Le J+35 devient un APPEL. Les 5 barreaux ne
+    # sont ni supprimés ni réordonnés — seul le canal du dernier change.
+    {'ordre': 5, 'delai_jours': 35, 'canal': CanalRelance.APPEL,
      'libelle': 'Dernière relance'},
 ]
 
