@@ -171,8 +171,9 @@ export interface LayoutEditor {
   /** PV30 — bascule de mode. `false` revient à la lattice SANS demander (l'appelant a déjà
    *  décidé) ; le bouton d'interface, lui, passe par la demande de confirmation. */
   setFreeMode: (on: boolean) => boolean;
-  /** PV30 — copie des panneaux posés librement (centres ENU). */
-  freePanels: () => { cx: number; cy: number; face?: 'E' | 'W' }[];
+  /** PV30 — copie des panneaux posés librement (centres ENU). CALX113 — `angleDeg` est
+   *  l'orientation PROPRE du panneau (rotation/symétrie), absente tant qu'il n'a pas tourné. */
+  freePanels: () => { cx: number; cy: number; face?: 'E' | 'W'; angleDeg?: number }[];
   /** PV30 — marges RELÂCHABLES courantes (m). */
   freeMargins: () => { setbackM: number; gapM: number };
   /** PV30 — fixe les marges relâchables (m). Une valeur absente laisse la sienne. */
@@ -180,8 +181,9 @@ export interface LayoutEditor {
   /** PV27 — HYDRATE la disposition depuis les centres de panneaux d'un layout exporté
    *  (leur repère d'origine si différent de celui du pavage courant). Re-snappe chaque
    *  centre sur la lattice courante et rend la 3D avec CETTE occupation. Renvoie true si
-   *  la disposition a été appliquée. */
-  hydrateLayout: (centers: readonly { cx: number; cy: number }[], origin?: readonly [number, number], mode?: 'lattice' | 'free') => boolean;
+   *  la disposition a été appliquée. CALX113 — en placement LIBRE, l'`angleDeg` enregistré
+   *  de chaque panneau est reposé avec son centre (sans lui, une symétrie était perdue). */
+  hydrateLayout: (centers: readonly { cx: number; cy: number; angleDeg?: number }[], origin?: readonly [number, number], mode?: 'lattice' | 'free') => boolean;
   /** CAL80 — tourne la sélection libre donnée (angle ABSOLU, °). Tout ou rien ; refusée
    *  SEULEMENT sur une contrainte DURE réelle (chevauchement, sortie de contour, obstacle). */
   freeRotateSelection: (angleDeg: number, members: readonly number[]) => boolean;
