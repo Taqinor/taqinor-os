@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 773b060576795ba4785b9af2b90a61ed0ecd78d0208b322ded6004634b1c9125
-Plan fingerprint: 4679caca082c0f0eb5e4b3a704aba30013243cccf87ba749c65f3bdd1caa3529
+Structure fingerprint: bcae767071486a85847d0a7c5c56628c2f667e3026f4d3b3608caeea0e874d37
+Plan fingerprint: 07fa0690e7c38d61d3c44751bab567b884de8c565a913b2d282720ec7ad26054
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (109)**
+**Done (112)**
 
 - `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
 - `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
@@ -541,6 +541,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX6` — Persister la série horaire et rendre l'export horaire réellement téléchargeable
 - `CALX7` — Lever le masquage qui empêche l'export tableur CSV d'être enregistré
 - `CALX8` — Remettre au panneau de l'atelier l'API du constructeur, et non la référence qui la…
+- `CALX14` — Rendre visibles la batterie et le hors-réseau que la chaîne calcule
 - `CALX16` — Brancher la chaîne électrique la plus faible en ombrage sur le verdict
 - `CALX17` — Brancher la masse installée et la feuille de lestage sur un panneau
 - `CALX18` — Ouvrir l'éditeur des postes de pertes
@@ -571,6 +572,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX45` — Figer le contrat du calepinage publié avec un devis
 - `CALX46` — Publier le calepinage d'un devis et rendre le bloc de retour vivant
 - `CALX47` — Ouvrir le module calepinage depuis la fiche d'un lead
+- `CALX48` — Rendre le refus « production non calculée » actionnable
 - `CALX49` — Brancher la priorité de remplissage déjà écrite
 - `CALX50` — Dessiner le champ au sol au lieu de n'en donner que le compte
 - `CALX51` — Dessiner l'ombrière à sa hauteur libre saisie
@@ -585,6 +587,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX61` — Brancher enfin le fournisseur de températures TMY que la chaîne électrique attend
 - `CALX62` — Accepter un fichier météo horaire déposé par la société, à la place de PVGIS, pour un…
 - `CALX64` — Montrer la série horaire : tapis de chaleur jour × heure et journée type par mois
+- `CALX65` — Dire dans l'atelier laquelle des deux productions parle : l'estimation rapide du…
 - `CALX68` — Garder un brouillon local de l'atelier et proposer sa reprise
 - `CALX69` — Donner une saisie aux réglages société de simulation et d'électrique, avec provenance…
 - `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
@@ -643,7 +646,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (496)**
+**Open — to build (493)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -862,12 +865,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `SOLMVP51` — CODEMAP + gardes de plateforme
 - `SOLMVP52` — Semis et démo
 - `SOLMVP53` — Gate final + garde CI permanente
-- `CALX14` — Rendre visibles la batterie et le hors-réseau que la chaîne calcule
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
-- `CALX48` — Rendre le refus « production non calculée » actionnable
 - `CALX58` — Publier TOF et TSRF par pan, à côté de l'accès solaire
 - `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
-- `CALX65` — Dire dans l'atelier laquelle des deux productions parle : l'estimation rapide du…
 - `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
 - `CALX81` — Porter au contrat le type d'arête corrigé à la main et le retrait PAR arête
 - `CALX82` — Porter au contrat un catalogue de MODULES dans le document et le module retenu par pan
