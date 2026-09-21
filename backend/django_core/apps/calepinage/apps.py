@@ -65,3 +65,22 @@ class CalepinageConfig(AppConfig):
         from .services.archivage import CLE_MODELE, restaurateur_calepinage
 
         enregistrer_restaurateur(CLE_MODELE, restaurateur_calepinage)
+
+        # CALX61 — branche le fournisseur de températures TMY que
+        # ``services/electrique.py`` attend depuis CAL123. Sans lui,
+        # ``_FOURNISSEUR`` restait ``None`` et les bornes de tension
+        # (``core/electrique/chaines.py``) tournaient toujours sur une
+        # température SAISIE ou sur les valeurs de repli du noyau avec la
+        # mention « non sourcées » — alors que ``ClientPvgis.tmy`` (CAL136)
+        # sait rendre les extrêmes de ``T2m`` de l'année type du point.
+        #
+        # On enregistre un APPELABLE, et rien de plus : aucun appel réseau
+        # n'est fait ici. PVGIS n'est interrogé que le jour où une conception
+        # SANS température saisie demande ses bornes — une saisie prime
+        # toujours sur le TMY (``temperatures_site``), et un PVGIS
+        # injoignable rend ``None``, c'est-à-dire exactement le comportement
+        # d'avant ce branchement.
+        from .services.electrique import enregistrer_fournisseur_temperatures
+        from .services.temperatures_tmy import temperatures_tmy
+
+        enregistrer_fournisseur_temperatures(temperatures_tmy)
