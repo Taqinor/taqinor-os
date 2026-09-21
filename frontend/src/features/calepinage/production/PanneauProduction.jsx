@@ -4,6 +4,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Card, Spinner, Stat } from '../../../ui'
+import RetourAtelier from '../atelier/RetourAtelier'
 
 /* ============================================================================
    CAL236 — LE PANNEAU « PRODUCTION » DU MODULE.
@@ -174,15 +175,29 @@ export default function PanneauProduction({ calepinageId }) {
     { select: (r) => r.data, errorMessage: 'Production indisponible.' },
   )
 
-  if (loading) return <Spinner />
+  if (loading) {
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <Spinner />
+      </>
+    )
+  }
   if (error) {
-    return <p className="text-sm text-destructive" data-testid="cal236-erreur">{error}</p>
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <p className="text-sm text-destructive" data-testid="cal236-erreur">{error}</p>
+      </>
+    )
   }
 
   const production = data?.production || null
 
   return (
-    <Card className="flex flex-col gap-4 p-4" data-testid="cal236-panneau">
+    <>
+      <RetourAtelier calepinageId={id} />
+      <Card className="flex flex-col gap-4 p-4" data-testid="cal236-panneau">
       <h2 className="text-base font-semibold">Production</h2>
       {!data?.simule && <BandeauNonSimule avertissements={data?.avertissements} />}
       <BlocBase base={production?.base} />
@@ -198,5 +213,6 @@ export default function PanneauProduction({ calepinageId }) {
         </div>
       </div>
     </Card>
+    </>
   )
 }

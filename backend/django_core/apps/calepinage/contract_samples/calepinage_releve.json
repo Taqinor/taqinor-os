@@ -1,0 +1,148 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/releve/",
+  "pourquoi": "CALX25 — le relevé terrain (chaînes de cotes, CAL64) est servi et testé côté serveur (`views/releve.py`, `services/releve.py`, `core.calepinage.solveur_cotes`) depuis CAL64, mais AUCUN écran ne le consommait. Cet échantillon fige la forme AVANT le panneau `atelier/PanneauReleve.jsx`. `GET` et `POST` partagent la MÊME action (`url_path='releve'`) : le GET rend `{releves}` (l'historique), le POST rend `{releve, releves}` (le relevé qu'il vient de créer, PLUS l'historique à jour) — cet exemple porte donc les deux clés, l'union des deux verbes. AUCUNE COTE INVENTÉE EN SILENCE : une chaîne à laquelle il manque UNE cote, mais dont le total est mesuré, voit cette cote DÉDUITE par fermeture et marquée `a_confirmer: true` (ici, la cote « b » de « Pignon nord », déduite de 12,40 m − 5,20 m = 7,20 m) — jamais une valeur masquée. Une chaîne dont la fermeture n'est PAS tenue rend `ok: false` avec son `motif` nommé (le point de rupture) : elle REMONTE à l'écran, elle ne fait pas tomber le calcul. Un azimut boussole SANS `precision_azimut_deg` est refusé par le modèle (`ReleveTerrain.clean`) — publier une valeur nue la ferait lire comme une mesure exacte, d'où le `libelle` qui porte toujours le `±`. Toutes les valeurs de ce document (`geometrie`) sont celles RÉELLEMENT rendues par `services/releve.resoudre_chaines` pour la saisie `chaines` ci-dessous — affirmées par `tests/test_calx25_releve_contrat.py` — jamais recalculées à la main.",
+  "exemple": {
+    "releve": {
+      "id": 1,
+      "releve_le": "2026-09-18",
+      "notes": "Relevé du pignon nord et de l'égout sud, mesuré au mètre laser.",
+      "chaines": [
+        {
+          "nom": "Pignon nord",
+          "total_mesure": 12.4,
+          "cotes": [
+            { "nom": "a", "valeur": 5.2 },
+            { "nom": "b", "valeur": null }
+          ]
+        },
+        {
+          "nom": "Égout sud",
+          "total_mesure": 9.0,
+          "tolerance_m": 0.05,
+          "cotes": [
+            { "nom": "c", "valeur": 4.5 },
+            { "nom": "d", "valeur": 4.55 }
+          ]
+        }
+      ],
+      "geometrie": {
+        "chaines": [
+          {
+            "nom": "Pignon nord",
+            "ok": true,
+            "motif": "cote b DÉDUITE par fermeture (7.200 m) — à confirmer à l'exécution",
+            "somme": 12.4,
+            "total_mesure": 12.4,
+            "residu_m": 0.0,
+            "residu_pct": 0.0,
+            "tolerance_m": 0.3,
+            "positions": [0.0, 5.2, 12.4],
+            "cotes": [
+              { "nom": "a", "valeur": 5.2, "statut": "MESUREE", "a_confirmer": false },
+              { "nom": "b", "valeur": 7.2, "statut": "A_CONFIRMER", "a_confirmer": true }
+            ]
+          },
+          {
+            "nom": "Égout sud",
+            "ok": true,
+            "motif": "",
+            "somme": 9.05,
+            "total_mesure": 9.0,
+            "residu_m": 0.05,
+            "residu_pct": 0.5555555555555556,
+            "tolerance_m": 0.05,
+            "positions": [0.0, 4.5, 9.05],
+            "cotes": [
+              { "nom": "c", "valeur": 4.5, "statut": "MESUREE", "a_confirmer": false },
+              { "nom": "d", "valeur": 4.55, "statut": "MESUREE", "a_confirmer": false }
+            ]
+          }
+        ],
+        "cotes_a_confirmer": ["Pignon nord / b"],
+        "toutes_fermees": true
+      },
+      "azimut": {
+        "deg": 187.0,
+        "precision_deg": 5.0,
+        "source": "boussole",
+        "libelle": "187.0° ± 5.0° (boussole, précision déclarée)"
+      },
+      "cotes_a_confirmer": ["Pignon nord / b"],
+      "photos": [],
+      "releve_par": "tech.releve",
+      "created_at": "2026-09-18T09:12:00+01:00"
+    },
+    "releves": [
+      {
+        "id": 1,
+        "releve_le": "2026-09-18",
+        "notes": "Relevé du pignon nord et de l'égout sud, mesuré au mètre laser.",
+        "chaines": [
+          {
+            "nom": "Pignon nord",
+            "total_mesure": 12.4,
+            "cotes": [
+              { "nom": "a", "valeur": 5.2 },
+              { "nom": "b", "valeur": null }
+            ]
+          },
+          {
+            "nom": "Égout sud",
+            "total_mesure": 9.0,
+            "tolerance_m": 0.05,
+            "cotes": [
+              { "nom": "c", "valeur": 4.5 },
+              { "nom": "d", "valeur": 4.55 }
+            ]
+          }
+        ],
+        "geometrie": {
+          "chaines": [
+            {
+              "nom": "Pignon nord",
+              "ok": true,
+              "motif": "cote b DÉDUITE par fermeture (7.200 m) — à confirmer à l'exécution",
+              "somme": 12.4,
+              "total_mesure": 12.4,
+              "residu_m": 0.0,
+              "residu_pct": 0.0,
+              "tolerance_m": 0.3,
+              "positions": [0.0, 5.2, 12.4],
+              "cotes": [
+                { "nom": "a", "valeur": 5.2, "statut": "MESUREE", "a_confirmer": false },
+                { "nom": "b", "valeur": 7.2, "statut": "A_CONFIRMER", "a_confirmer": true }
+              ]
+            },
+            {
+              "nom": "Égout sud",
+              "ok": true,
+              "motif": "",
+              "somme": 9.05,
+              "total_mesure": 9.0,
+              "residu_m": 0.05,
+              "residu_pct": 0.5555555555555556,
+              "tolerance_m": 0.05,
+              "positions": [0.0, 4.5, 9.05],
+              "cotes": [
+                { "nom": "c", "valeur": 4.5, "statut": "MESUREE", "a_confirmer": false },
+                { "nom": "d", "valeur": 4.55, "statut": "MESUREE", "a_confirmer": false }
+              ]
+            }
+          ],
+          "cotes_a_confirmer": ["Pignon nord / b"],
+          "toutes_fermees": true
+        },
+        "azimut": {
+          "deg": 187.0,
+          "precision_deg": 5.0,
+          "source": "boussole",
+          "libelle": "187.0° ± 5.0° (boussole, précision déclarée)"
+        },
+        "cotes_a_confirmer": ["Pignon nord / b"],
+        "photos": [],
+        "releve_par": "tech.releve",
+        "created_at": "2026-09-18T09:12:00+01:00"
+      }
+    ]
+  }
+}

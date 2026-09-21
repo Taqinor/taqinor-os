@@ -42,8 +42,12 @@
     action_type:inconnu, detail:texte, enabled:inconnu, id:inconnu, nom:inconnu, trigger_type:inconnu
 - frontend/src/api/calepinageApi.js :: pose -> /api/django/calepinage/moteur/pose
     engageable:inconnu, hash_entree:inconnu, kwc:inconnu, marges:inconnu, motifs_non_engageable:inconnu, plans:inconnu, preuve:inconnu, repere:inconnu, schema_version:inconnu, total_modules:inconnu, verdict:inconnu, version_moteur:inconnu
+- frontend/src/api/calepinageApi.js :: profilsTypes -> /api/django/calepinage/parametres/profils-types
+    profils:inconnu
 - frontend/src/api/calepinageApi.js :: resultat -> /api/django/calepinage/moteur/resultat/<>
     detail:texte, elements:liste, job_id:inconnu, kind:inconnu, message_erreur:texte, progress_pct:inconnu, resultat:inconnu, statut:inconnu, variante:inconnu
+- frontend/src/api/calepinageApi.js :: suggestionPenteDisponible -> /api/django/calepinage/parametres/suggestion-pente
+    detail:texte, disponible:inconnu, pays_couvert:inconnu, source:inconnu, source_url:inconnu, suggestions:liste
 - frontend/src/api/coreApi.js :: activer -> /api/django/core/modules/<>/activer
     actives:inconnu, detail:texte
 - frontend/src/api/coreApi.js :: appliquer -> /api/django/core/bulk-edit/appliquer

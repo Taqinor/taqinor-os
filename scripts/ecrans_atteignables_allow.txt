@@ -18,3 +18,11 @@
 # pas invalider la base.
 sans-nav|frontend/src/features/admin/module.config.jsx::/admin/impersonation
 sans-nav|frontend/src/features/admin/module.config.jsx::/admin/tenants
+sans-nav|frontend/src/features/calepinage/module.config.jsx::/calepinage/:id/fiches
+sans-nav|frontend/src/features/calepinage/module.config.jsx::/calepinage/:id/horizon
+sans-nav|frontend/src/features/calepinage/module.config.jsx::/calepinage/:id/pente
+sans-nav|frontend/src/features/calepinage/module.config.jsx::/calepinage/:id/pertes
+sans-nav|frontend/src/features/calepinage/module.config.jsx::/calepinage/:id/plan
+sans-nav|frontend/src/features/calepinage/module.config.jsx::/calepinage/:id/pompage
+sans-nav|frontend/src/features/calepinage/module.config.jsx::/calepinage/:id/production
+sans-nav|frontend/src/features/calepinage/module.config.jsx::/calepinage/:id/terrain

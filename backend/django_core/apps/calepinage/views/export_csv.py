@@ -19,6 +19,28 @@ motif en français et le champ nommé, jamais remplacé par un fichier de zéros
 
 La société est bornée par ``get_queryset`` du viewset (404 pour un calepinage
 d'une autre société), comme toute autre sous-ressource.
+
+CALX7 — POURQUOI L'ACTION S'APPELLE ``export_csv_simulation``
+--------------------------------------------------------------
+``SortiesMixin`` (``views/sorties.py``) porte DÉJÀ une action ``export_csv``
+(``url_path='export.csv'``, CAL179 — modules, chaînes et nomenclature). Tant
+que ce fichier posait ``CalepinageViewSet.export_csv``, l'attribut de classe
+ÉCRASAIT celle du mixin : ``get_extra_actions()`` n'en voyait qu'UNE, et
+l'export tableur — pourtant construit et testé — n'était jamais enregistré.
+Les deux actions portent donc des noms distincts :
+
+* ``export_csv``            → ``export.csv``  (CAL179, tableur, le mixin) ;
+* ``export_csv_simulation`` → ``export-csv``  (CAL144, ce fichier).
+
+Le nom de la fonction, celui de l'attribut de classe et la clé du mapping DRF
+doivent rester IDENTIQUES (``get_extra_actions()`` lit ``__name__``) : aucun
+alias, aucun décorateur qui ne recopierait pas ``__name__``. ``url_path``
+reste ``export-csv`` — aucune URL publique ne change de forme. Le ``url_name``
+n'est pas épinglé ici : DRF le dérive du nom de la méthode
+(``export-csv-simulation``), ce qui laisse à l'export tableur du mixin son
+propre ``url_name='export-csv'``. Épingler les deux sur le même ``url_name``
+rendrait l'un des deux irréversible — ``reverse()`` ne rend que le DERNIER
+motif enregistré sous un nom donné.
 """
 from __future__ import annotations
 
@@ -33,13 +55,12 @@ from ..permissions import PeutVoirCalepinage
 from ..services.export_csv import (
     EXPORTS, ExportImpossible, encoder_pour_tableur, nom_de_fichier,
 )
-# Renommé à l'import : l'ACTION doit s'appeler ``export_csv`` (le routeur DRF
-# mappe la méthode par son ``__name__``, et l'attribut de classe doit porter
-# le même nom), donc le service ne peut pas garder ce nom ici.
+# Renommé à l'import : le service ``export_csv`` et l'action HTTP vivent dans
+# le même espace de noms, ils ne peuvent pas porter le même nom ici.
 from ..services.export_csv import export_csv as construire_csv
 from .calepinages import CalepinageViewSet
 
-__all__ = ['document_exportable', 'export_csv']
+__all__ = ['document_exportable', 'export_csv_simulation']
 
 
 def document_exportable(calepinage):
@@ -73,7 +94,7 @@ def document_exportable(calepinage):
 )
 @action(detail=True, methods=['get'], url_path='export-csv',
         permission_classes=[PeutVoirCalepinage])
-def export_csv(self, request, pk=None):
+def export_csv_simulation(self, request, pk=None):
     """CAL144 — ``GET /calepinages/<pk>/export-csv/?quoi=horaire``.
 
     * **200** — le fichier CSV (``;`` + décimale ``,`` + BOM, ouvrable tel
@@ -98,5 +119,8 @@ def export_csv(self, request, pk=None):
     return reponse
 
 
-# Rattachement au viewset PIVOT — voir la docstring du module.
-CalepinageViewSet.export_csv = export_csv
+# Rattachement au viewset PIVOT — voir la docstring du module. CALX7 :
+# l'attribut porte EXACTEMENT le nom de la fonction, sinon
+# ``get_extra_actions()`` ignore l'action ; et il ne masque plus
+# ``SortiesMixin.export_csv`` (``export.csv``, CAL179).
+CalepinageViewSet.export_csv_simulation = export_csv_simulation

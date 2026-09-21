@@ -5,7 +5,7 @@ import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
 import { formatNumber } from '../../lib/format'
 import {
-  Badge, Button, Card, Spinner,
+  Badge, Button, Card, Input, Spinner,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../../ui'
 
@@ -221,6 +221,14 @@ export default function VariantesCompare() {
   const [erreurAction, setErreurAction] = useState(null)
   const [enCours, setEnCours] = useState(null)
 
+  // CALX37 — création/duplication de variante. `formulaire` porte soit
+  // `{ mode: 'creer' }`, soit `{ mode: 'dupliquer', varianteId }` ; `null` =
+  // pas de formulaire ouvert. Un SEUL formulaire à la fois.
+  const [formulaire, setFormulaire] = useState(null)
+  const [nomSaisi, setNomSaisi] = useState('')
+  const [erreurNom, setErreurNom] = useState(null)
+  const [creationEnCours, setCreationEnCours] = useState(false)
+
   const { data, loading, error, refetch } = useResource(
     (p) => calepinageApi.calepinages.comparer(p.id),
     { id },
@@ -247,6 +255,42 @@ export default function VariantesCompare() {
     }
   }
 
+  const ouvrirCreation = () => { setFormulaire({ mode: 'creer' }); setNomSaisi(''); setErreurNom(null) }
+  const ouvrirDuplication = (varianteId) => {
+    setFormulaire({ mode: 'dupliquer', varianteId }); setNomSaisi(''); setErreurNom(null)
+  }
+  const fermerFormulaire = () => { setFormulaire(null); setNomSaisi(''); setErreurNom(null) }
+
+  const confirmerFormulaire = async () => {
+    // Un nom vide est REFUSÉ avant tout appel réseau — jamais un POST pour
+    // apprendre ensuite que le serveur, lui, l'a refusé.
+    const nom = nomSaisi.trim()
+    if (!nom) {
+      setErreurNom('Le nom de la variante est obligatoire.')
+      return
+    }
+    setErreurNom(null)
+    setErreurAction(null)
+    setCreationEnCours(true)
+    try {
+      if (formulaire.mode === 'creer') {
+        const reponse = await calepinageApi.calepinages.layout(id)
+        const roofLayout = reponse?.data?.roof_layout ?? null
+        await calepinageApi.calepinages.creerVariante(id, { nom, roof_layout: roofLayout })
+      } else {
+        await calepinageApi.calepinages.dupliquerVariante(id, formulaire.varianteId, nom)
+      }
+      await refetch()
+      fermerFormulaire()
+    } catch (e) {
+      setErreurAction(errMsg(e, formulaire.mode === 'creer'
+        ? 'Impossible de créer cette variante.'
+        : 'Impossible de dupliquer cette variante.'))
+    } finally {
+      setCreationEnCours(false)
+    }
+  }
+
   if (loading && !data) return <div className="flex justify-center py-10"><Spinner /></div>
   if (error) return <Card className="p-4 text-sm text-destructive" role="alert">{error}</Card>
 
@@ -260,7 +304,46 @@ export default function VariantesCompare() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold">Comparer les variantes</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-lg font-semibold">Comparer les variantes</h1>
+        <Button size="sm" variant="outline" onClick={ouvrirCreation}
+          data-testid="cal-variante-nouvelle">
+          Nouvelle variante depuis la conception courante
+        </Button>
+      </div>
+
+      {formulaire ? (
+        <Card className="space-y-2 p-3" data-testid="cal-variante-formulaire">
+          <div className="text-sm font-medium">
+            {formulaire.mode === 'creer'
+              ? 'Nouvelle variante depuis la conception courante'
+              : 'Dupliquer cette variante'}
+          </div>
+          <Input
+            aria-label="Nom de la variante"
+            placeholder="Nom de la variante"
+            value={nomSaisi}
+            onChange={(e) => setNomSaisi(e.target.value)}
+            data-testid="cal-variante-nom"
+          />
+          {erreurNom ? (
+            <p role="alert" className="text-xs text-destructive" data-testid="cal-variante-nom-erreur">
+              {erreurNom}
+            </p>
+          ) : null}
+          <div className="flex gap-2">
+            <Button size="sm" onClick={confirmerFormulaire} disabled={creationEnCours}
+              data-testid="cal-variante-confirmer">
+              {creationEnCours
+                ? 'En cours…'
+                : (formulaire.mode === 'creer' ? 'Créer' : 'Dupliquer')}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={fermerFormulaire} disabled={creationEnCours}>
+              Annuler
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       {erreurAction ? (
         <Card className="border-destructive/50 bg-destructive/5 p-3" role="alert">
@@ -327,7 +410,7 @@ export default function VariantesCompare() {
                 Décision
               </th>
               {lignes.map((ligne) => (
-                <td key={ligne.id} className="p-3">
+                <td key={ligne.id} className="space-y-1 p-3">
                   {ligne.est_retenue ? (
                     <span
                       className="inline-flex items-center gap-1 text-sm text-muted-foreground"
@@ -346,6 +429,16 @@ export default function VariantesCompare() {
                       Retenir
                     </Button>
                   )}
+                  <div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => ouvrirDuplication(ligne.id)}
+                      data-testid={`cal-variante-dupliquer-${ligne.id}`}
+                    >
+                      Dupliquer
+                    </Button>
+                  </div>
                 </td>
               ))}
             </tr>

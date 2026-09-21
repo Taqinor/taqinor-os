@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 7ed9346c71e2b180adb0edb5d1e7b634c8eb7c5e9eda58147c484e4edc8cb203
-Plan fingerprint: 0ebdf93135c5a9695ce5d63940c953d07930d506fb3fbfff879488cd39ac6516
+Structure fingerprint: fa8cb4a778d91f004099865b17f777d3d421c4df3e07a12e13448584e4a052eb
+Plan fingerprint: f6914456c632839b4bff47b8f2489d8a76e31fa7bf1cca96dc6494cc4327272c
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -314,6 +314,12 @@ Model counts are the real class count across `models*.py`/`models/`.
   `core` reads its models. `core` remains a base layer (import-linter).
 - **authentication** (SOLMVP30b) — `CustomUser.poste_ref` (rh) removed.
 
+### calepinage — Groupe CALX (lot 1 « rendre visible et opérant », 21/09/2026 ; complète la ligne du tableau ci-dessus)  *( `/api/django/calepinage/` )*
+- **Forme d'URL unique (CAL233)** : l'objet métier est servi sous `calepinages/<pk>/…` (sous-ressources en `@action` du routeur DRF, `SimpleRouter`), les réglages société sous `parametres/…`, et le moteur — un calcul SANS état — sous `moteur/calculer|pose|resultat/<job_id>/`. `tests/test_structure_urls.py` refuse toute quatrième famille.
+- **Rattachement des `@action` — `views/rattachements.py` (CALX2)** : les dix sous-modules de `views/` qui posent une `@action` sur le `CalepinageViewSet` par affectation d'attribut de classe (`equipements`, `horizon`, `export_csv`, `bibliotheque`, `verrou`, `archivage`, `io_layout`, `pompage`, `simulation`, `reglementaire` — 13 actions) sont importés DEPUIS CE SEUL FICHIER ; `urls.py` l'importe une fois, AVANT `router.register` (DRF découvre les actions via `get_extra_actions()` au moment de l'enregistrement — un import posé après ne route rien). **Une action neuve s'AJOUTE en fin de `views/rattachements.py` avec son commentaire `# CALX<id>`, jamais au milieu, jamais réordonnée ; `urls.py` n'est plus rouvert par aucune tâche.**
+- **Les QUATRE surfaces APPEND-ONLY du module (décision D-CALX 13)** — `frontend/src/api/calepinageApi.js`, `frontend/src/features/calepinage/atelier/onglets.js` (le rail d'onglets déclaratif), `backend/django_core/apps/calepinage/views/rattachements.py`, `backend/django_core/apps/calepinage/services/parametres_cles.py`. Elles sont déclarées dans `_APPEND_ONLY_SUFFIXES` de `scripts/plan_lanes.py` : deux tâches qui les citent ne fondent PAS leurs lanes, parce qu'une méthode, un onglet, une action ou un réglage neuf s'y **AJOUTE en fin avec un commentaire `// CALX<id>` (JS) ou `# CALX<id>` (Python)** — jamais une réécriture, jamais un tri. Mesuré sur `docs/PLAN2.md` avant CALX2 : 13 des 16 fusions de lanes du groupe CALX venaient de ces seuls fichiers (9 sur `rattachements.py`, 4 sur `calepinageApi.js`). Les règles sont purement TEXTUELLES (suffixe du chemin déclaré) : elles valent pour `onglets.js` et `parametres_cles.py` avant même leur création. `scripts/check_taches_cablage.py` admet en conséquence `features/<app>/atelier/onglets.js` comme fichier de MONTAGE d'un écran de la même feature, au même titre qu'un `module.config.jsx`.
+- Corollaires de la même décision : les sorties du lot 6 vivent dans `views/documents.py` (jamais `views/sorties.py`) et le rapport d'étude dans `services/rapport/<section>.py` (jamais un `rapport_etude.py` unique). Aucun import `apps.ao` / `apps.ged` n'entre dans le module (D-CALX 2).
+
 ### FastAPI AI service (`backend/fastapi_ia`, root_path `/api/fastapi`)
 
 `ocr.py` (Zhipu/GLM vision invoice + document OCR, key-gated by `ZHIPU_API_KEY`) and
@@ -524,7 +530,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (31)**
+**Done (78)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -557,8 +563,55 @@ Things this map could not fully verify from source — do not over-trust:
 - `SOLMVP51` — CODEMAP + gardes de plateforme
 - `SOLMVP52` — Semis et démo
 - `SOLMVP53` — Gate final + garde CI permanente
+- `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
+- `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
+- `CALX3` — Faire exposer par le constructeur 3D l'entrée moteur, l'application d'un plan et les…
+- `CALX4` — Figer le contrat de la simulation avant ses deux moitiés
+- `CALX7` — Lever le masquage qui empêche l'export tableur CSV d'être enregistré
+- `CALX8` — Remettre au panneau de l'atelier l'API du constructeur, et non la référence qui la…
+- `CALX17` — Brancher la masse installée et la feuille de lestage sur un panneau
+- `CALX18` — Ouvrir l'éditeur des postes de pertes
+- `CALX19` — Ouvrir l'inventaire des sorties et y brancher la planche cotée
+- `CALX20` — Brancher les trois plans (pose, toiture, masse) sur le panneau Documents
+- `CALX21` — Brancher la note de calcul et son verdict de preuve
+- `CALX22` — Brancher l'export DXF et l'export XLSX
+- `CALX23` — Brancher l'export tableur CSV, une fois son enregistrement réparé
+- `CALX24` — Brancher la composition du pack technique
+- `CALX25` — Ouvrir le relevé terrain (chaînes de cotes) sur un panneau
+- `CALX26` — Brancher l'archivage et la restauration depuis la corbeille
+- `CALX27` — Brancher le déverrouillage d'une conception figée
+- `CALX28` — Brancher l'export et l'import du document de conception
+- `CALX29` — Brancher la suggestion de pente LiDAR, France seulement
+- `CALX30` — Brancher les profils types de consommation de la société
+- `CALX31` — Ouvrir le fil d'activité du calepinage
+- `CALX32` — Brancher les colonnes de tri déjà servies par la liste
+- `CALX33` — Permettre de renommer un calepinage après sa création
+- `CALX35` — Exposer la duplication de calepinage qui existe déjà dans le service
+- `CALX36` — Ouvrir l'historique des versions et la restauration
+- `CALX37` — Permettre de créer et de dupliquer une variante
+- `CALX38` — Permettre de téléverser une photo de site
+- `CALX39` — Ouvrir une porte HTTP pour l'import d'un plan DXF/PDF/image
+- `CALX40` — Ouvrir la génération d'un dossier réglementaire
+- `CALX41` — Faire enregistrer les champs à compléter d'un dossier
+- `CALX42` — Brancher le marquage « modèle » et la création depuis un modèle
+- `CALX43` — Ouvrir l'édition des préréglages et des favoris de la société
+- `CALX45` — Figer le contrat du calepinage publié avec un devis
+- `CALX46` — Publier le calepinage d'un devis et rendre le bloc de retour vivant
+- `CALX47` — Ouvrir le module calepinage depuis la fiche d'un lead
+- `CALX49` — Brancher la priorité de remplissage déjà écrite
+- `CALX50` — Dessiner le champ au sol au lieu de n'en donner que le compte
+- `CALX51` — Dessiner l'ombrière à sa hauteur libre saisie
+- `CALX52` — Afficher, ou faire saisir, la hauteur de toit supposée du diagramme solaire
+- `CALX53` — Signaler les coefficients de température non sourcés jusque dans le verdict
+- `CALX54` — N'offrir que les calques réellement présents dans la scène
+- `CALX55` — Poser le retour vers l'atelier depuis chaque lien profond
+- `CALX56` — Fermer le trou de la garde d'atteignabilité sur les chemins paramétrés
+- `CALX57` — Poser la garde « service sans appelant » et l'e2e du parcours complet
+- `CALX61` — Brancher enfin le fournisseur de températures TMY que la chaîne électrique attend
+- `CALX68` — Garder un brouillon local de l'atelier et proposer sa reprise
+- `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
 
-**Open — to build (575)**
+**Open — to build (528)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -747,67 +800,20 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `SOLMVP54` — CI sous 2 minutes (demande fondateur 21/09, APRÈS le merge SOLMVP)
-- `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
-- `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
-- `CALX3` — Faire exposer par le constructeur 3D l'entrée moteur, l'application d'un plan et les…
-- `CALX4` — Figer le contrat de la simulation avant ses deux moitiés
 - `CALX5` — Construire le service d'orchestration de la simulation et sa porte HTTP, sur la chaîne…
 - `CALX6` — Persister la série horaire et rendre l'export horaire réellement téléchargeable
-- `CALX7` — Lever le masquage qui empêche l'export tableur CSV d'être enregistré
-- `CALX8` — Remettre au panneau de l'atelier l'API du constructeur, et non la référence qui la…
 - `CALX14` — Rendre visibles la batterie et le hors-réseau que la chaîne calcule
 - `CALX16` — Brancher la chaîne électrique la plus faible en ombrage sur le verdict
-- `CALX17` — Brancher la masse installée et la feuille de lestage sur un panneau
-- `CALX18` — Ouvrir l'éditeur des postes de pertes
-- `CALX19` — Ouvrir l'inventaire des sorties et y brancher la planche cotée
-- `CALX20` — Brancher les trois plans (pose, toiture, masse) sur le panneau Documents
-- `CALX21` — Brancher la note de calcul et son verdict de preuve
-- `CALX22` — Brancher l'export DXF et l'export XLSX
-- `CALX23` — Brancher l'export tableur CSV, une fois son enregistrement réparé
-- `CALX24` — Brancher la composition du pack technique
-- `CALX25` — Ouvrir le relevé terrain (chaînes de cotes) sur un panneau
-- `CALX26` — Brancher l'archivage et la restauration depuis la corbeille
-- `CALX27` — Brancher le déverrouillage d'une conception figée
-- `CALX28` — Brancher l'export et l'import du document de conception
-- `CALX29` — Brancher la suggestion de pente LiDAR, France seulement
-- `CALX30` — Brancher les profils types de consommation de la société
-- `CALX31` — Ouvrir le fil d'activité du calepinage
-- `CALX32` — Brancher les colonnes de tri déjà servies par la liste
-- `CALX33` — Permettre de renommer un calepinage après sa création
-- `CALX35` — Exposer la duplication de calepinage qui existe déjà dans le service
-- `CALX36` — Ouvrir l'historique des versions et la restauration
-- `CALX37` — Permettre de créer et de dupliquer une variante
-- `CALX38` — Permettre de téléverser une photo de site
-- `CALX39` — Ouvrir une porte HTTP pour l'import d'un plan DXF/PDF/image
-- `CALX40` — Ouvrir la génération d'un dossier réglementaire
-- `CALX41` — Faire enregistrer les champs à compléter d'un dossier
-- `CALX42` — Brancher le marquage « modèle » et la création depuis un modèle
-- `CALX43` — Ouvrir l'édition des préréglages et des favoris de la société
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
-- `CALX45` — Figer le contrat du calepinage publié avec un devis
-- `CALX46` — Publier le calepinage d'un devis et rendre le bloc de retour vivant
-- `CALX47` — Ouvrir le module calepinage depuis la fiche d'un lead
 - `CALX48` — Rendre le refus « production non calculée » actionnable
-- `CALX49` — Brancher la priorité de remplissage déjà écrite
-- `CALX50` — Dessiner le champ au sol au lieu de n'en donner que le compte
-- `CALX51` — Dessiner l'ombrière à sa hauteur libre saisie
-- `CALX52` — Afficher, ou faire saisir, la hauteur de toit supposée du diagramme solaire
-- `CALX53` — Signaler les coefficients de température non sourcés jusque dans le verdict
-- `CALX54` — N'offrir que les calques réellement présents dans la scène
-- `CALX55` — Poser le retour vers l'atelier depuis chaque lien profond
-- `CALX56` — Fermer le trou de la garde d'atteignabilité sur les chemins paramétrés
-- `CALX57` — Poser la garde « service sans appelant » et l'e2e du parcours complet
 - `CALX58` — Publier TOF et TSRF par pan, à côté de l'accès solaire
 - `CALX59` — Aligner la série météo (UTC) sur l'heure locale du site avant tout croisement avec une…
 - `CALX60` — Ajouter à la fiche technique, en UNE migration, tout ce que la chaîne de pertes et…
-- `CALX61` — Brancher enfin le fournisseur de températures TMY que la chaîne électrique attend
 - `CALX62` — Accepter un fichier météo horaire déposé par la société, à la place de PVGIS, pour un…
 - `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
 - `CALX64` — Montrer la série horaire : tapis de chaleur jour × heure et journée type par mois
 - `CALX65` — Dire dans l'atelier laquelle des deux productions parle : l'estimation rapide du…
-- `CALX68` — Garder un brouillon local de l'atelier et proposer sa reprise
 - `CALX69` — Donner une saisie aux réglages société de simulation et d'électrique, avec provenance…
-- `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
 - `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
 - `CALX81` — Porter au contrat le type d'arête corrigé à la main et le retrait PAR arête
 - `CALX82` — Porter au contrat un catalogue de MODULES dans le document et le module retenu par pan

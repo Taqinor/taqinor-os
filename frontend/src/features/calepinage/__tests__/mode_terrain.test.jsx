@@ -46,10 +46,77 @@ vi.mock('../../../api/calepinageApi', () => ({
   },
 }))
 
+/* CALX50 — `@roofpro/scene3d` porte la couche WebGL (Three + MapLibre) : en CI
+ * (job frontend-vitest-shard) seul `frontend/node_modules` est installé, donc
+ * l'import dynamique que `ModeTerrain.jsx` fait de ce module échoue et l'écran
+ * ne dessine rien (rouge mesuré sur PR #706, `cal-terrain-table` introuvable —
+ * en local, la jonction vers `apps/web/node_modules` le fait résoudre, d'où le
+ * vert local trompeur). On mocke ici SEULEMENT le placement
+ * (`construireChampPose`) par la MÊME transformation géométrique pure que le
+ * builder — x0/x1/y0/y1 moteur → centre + emprise, pas inter-rangées MESURÉ,
+ * `nonMesure` — appliquée aux VRAIES tables/rangées de l'exemple de contrat
+ * `pose.json` (`REPONSE` ci-dessus), donc les assertions existantes n'ont pas
+ * besoin de changer. Le VRAI module reste exercé par ses propres tests
+ * (`apps/web/src/scripts/roofPro11/*.test.ts`) — ici on ne teste QUE l'écran. */
+const construireChampPose = vi.fn((plan, opts) => {
+  const tablesMoteur = plan?.tables ?? []
+  const tables = []
+  let empriseTablesM2Calc = 0
+  for (const t of tablesMoteur) {
+    const largeurM = Math.abs(t.x1 - t.x0)
+    const profondeurM = Math.abs(t.y1 - t.y0)
+    empriseTablesM2Calc += largeurM * profondeurM
+    tables.push({
+      cx: (t.x0 + t.x1) / 2,
+      cy: (t.y0 + t.y1) / 2,
+      largeurM,
+      profondeurM,
+      z: Number.isFinite(opts?.hauteurLibreM) ? opts.hauteurLibreM : 0,
+      inclinaisonRad: 0,
+      kit: typeof t.kit === 'string' ? t.kit : null,
+    })
+  }
+  const nonMesure = []
+  if (!tables.length) nonMesure.push('aucune table rendue par le moteur')
+  if (!Number.isFinite(opts?.penteTerrainDeg)) {
+    nonMesure.push('pente du terrain non renseignée : terrain rendu horizontal')
+  }
+
+  const y = Array.from(new Set((plan?.rangees ?? [])
+    .map((r) => Number(r?.y0)).filter((v) => Number.isFinite(v)))).sort((a, b) => a - b)
+  let pasInterRangeeM = null
+  if (y.length >= 2) {
+    let min = Infinity
+    for (let i = 1; i < y.length; i += 1) min = Math.min(min, y[i] - y[i - 1])
+    pasInterRangeeM = Number.isFinite(min) && min > 0 ? min : null
+  }
+  if (pasInterRangeeM === null) {
+    nonMesure.push('pas inter-rangées non mesurable (moins de deux rangées posées)')
+  }
+
+  const aire = Number.isFinite(opts?.aireTerrainM2) ? opts.aireTerrainM2 : null
+  let tauxOccupationCalc = null
+  if (aire !== null && aire > 0 && tables.length) tauxOccupationCalc = empriseTablesM2Calc / aire
+  else nonMesure.push('taux d’occupation non calculable (surface du terrain manquante)')
+
+  return {
+    tables,
+    modules: Number.isFinite(plan?.modules) ? plan.modules : null,
+    pasInterRangeeM,
+    empriseTablesM2: empriseTablesM2Calc,
+    tauxOccupation: tauxOccupationCalc,
+    nonMesure,
+  }
+})
+vi.mock('@roofpro/scene3d', () => ({
+  construireChampPose: (...args) => construireChampPose(...args),
+}))
+
 const {
   default: ModeTerrain, pasMesure, tauxOccupation, empriseTablesM2,
-  contourTerrain, demandeMoteur, documentTerrain,
+  contourTerrain, demandeMoteur, documentTerrain, planVue2D,
 } = await import('../ModeTerrain')
+const { formatCote } = await import('../plan2d')
 
 /** La VRAIE réponse du moteur — l'exemple committé du contrat `pose.json`
  *  (PACT10/13 : un mock écrit à la main est une deuxième source de vérité,
@@ -257,6 +324,129 @@ describe('CAL89 — l’écran calcule, enregistre et recharge', () => {
       expect(screen.getByTestId('cal-terrain-message').textContent).toMatch(/incomplètes/i)
     })
     expect(pose).not.toHaveBeenCalled()
+  })
+})
+
+/* ── 6bis. CALX50 — LE CHAMP EST DESSINÉ, PAS SEULEMENT COMPTÉ ─────────── */
+
+const remplir = (valeurs = SAISIE) => {
+  for (const [cle, valeur] of Object.entries(valeurs)) {
+    const champ = screen.queryByTestId(`cal-terrain-${cle}`)
+    if (champ) fireEvent.change(champ, { target: { value: valeur } })
+  }
+}
+
+describe('CALX50 — la mise en page du champ ne décide d’aucune géométrie', () => {
+  const VUE = planVue2D({
+    contourM: [[0, 0], [20, 0], [20, 10], [0, 10]],
+    tables: [
+      { cx: 2, cy: 1.5, largeurM: 2, profondeurM: 1 },
+      { cx: 6, cy: 5.5, largeurM: 2, profondeurM: 1 },
+    ],
+    rangees: [{ y0: 1 }, { y0: 5 }],
+    pasM: 4,
+    compteModules: 12,
+  })
+  const longueur = (c) => Math.hypot(c.to[0] - c.from[0], c.to[1] - c.from[1])
+
+  it('place le contour, une forme par table et une ligne par rangée', () => {
+    expect(VUE.contour).toHaveLength(4)
+    expect(VUE.tables).toHaveLength(2)
+    expect(VUE.tables[0]).toHaveLength(4)
+    expect(VUE.rangees).toHaveLength(2)
+  })
+
+  it('garde la MÊME échelle sur les deux axes (une cote reste lisible à la règle)', () => {
+    expect(VUE.cotes[0].lengthM).toBeCloseTo(20, 9)
+    expect(VUE.cotes[1].lengthM).toBeCloseTo(10, 9)
+    expect(longueur(VUE.cotes[0]) / longueur(VUE.cotes[1])).toBeCloseTo(2, 9)
+  })
+
+  it('le trait de cote du pas mesure EXACTEMENT le pas reçu, pas un écart voisin', () => {
+    expect(VUE.cotePas.lengthM).toBe(4)
+    expect(longueur(VUE.cotePas)).toBeCloseTo(4 * VUE.pxParM, 9)
+  })
+
+  it('le compte est celui du moteur, RECOPIÉ — jamais le nombre de formes', () => {
+    expect(VUE.compteModules).toBe(12)
+    expect(VUE.tables).toHaveLength(2)
+  })
+
+  it('moins de trois sommets ⇒ rien n’est dessiné (jamais un champ supposé)', () => {
+    expect(planVue2D({ contourM: [[0, 0], [1, 0]] })).toBeNull()
+    expect(planVue2D({ contourM: null })).toBeNull()
+    expect(planVue2D()).toBeNull()
+  })
+
+  it('sans rangée mesurable, aucun trait de pas n’est tracé', () => {
+    const v = planVue2D({
+      contourM: [[0, 0], [20, 0], [20, 10], [0, 10]],
+      tables: [{ cx: 2, cy: 1.5, largeurM: 2, profondeurM: 1 }],
+      rangees: [{ y0: 1 }],
+      pasM: null,
+    })
+    expect(v.cotePas).toBeNull()
+  })
+})
+
+describe('CALX50 — l’écran dessine le champ rendu par le moteur', () => {
+  it('une forme par table du moteur, une ligne par rangée, et le pas MESURÉ coté', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir()
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cal-terrain-table'))
+        .toHaveLength(REPONSE.plans[0].tables.length)
+    })
+    expect(screen.getAllByTestId('cal-terrain-rangee'))
+      .toHaveLength(REPONSE.plans[0].rangees.length)
+    // Le pas dessiné est celui qui est MESURÉ sur les rangées du moteur : la
+    // même valeur que la tuile chiffrée, pas une seconde formule.
+    expect(screen.getByTestId('cal-terrain-cote-pas').textContent)
+      .toBe(formatCote(PAS_REPONSE))
+  })
+
+  it('le compte affiché reste celui du moteur, jamais le nombre de tables dessinées', async () => {
+    // L'exemple de contrat pose 12 modules sur 2 tables : les deux nombres
+    // diffèrent, donc un recomptage se verrait.
+    expect(REPONSE.plans[0].modules).not.toBe(REPONSE.plans[0].tables.length)
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir()
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-emprise').textContent)
+        .toMatch(new RegExp(`${REPONSE.plans[0].modules} module`))
+    })
+    expect(screen.getByTestId('cal-terrain-emprise').textContent)
+      .toMatch(new RegExp(`${REPONSE.plans[0].tables.length} table`))
+  })
+
+  it('pente non renseignée ⇒ « terrain rendu horizontal » est affiché tel quel', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir({ ...SAISIE, penteTerrainDeg: '' })
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-nonmesure').textContent)
+        .toMatch(/terrain rendu horizontal/i)
+    })
+  })
+
+  it('pente renseignée ⇒ la mention disparaît (rien n’est dit qui ne soit vrai)', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir()
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cal-terrain-table').length).toBeGreaterThan(0)
+    })
+    expect(screen.queryByTestId('cal-terrain-nonmesure')).toBeNull()
   })
 })
 

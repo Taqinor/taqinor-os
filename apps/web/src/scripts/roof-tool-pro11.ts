@@ -55,6 +55,9 @@ import {
   type ConfigFamily,
 } from '../lib/estimatorBrainV2';
 import {
+  PANEL2_LONG_M,
+  PANEL2_SHORT_M,
+  PANEL2_WATT,
   PERIMETER_SETBACK_M,
   WINTER_SOLSTICE_DAY,
   uniformSetbacks,
@@ -130,13 +133,31 @@ import { createZones, exclusionObstructionRings, exclusionColor, exclusionZoneRi
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
-import { createLayoutEditor } from './roofPro11/layoutEditor';
+import { createLayoutEditor, resnapEnMasse } from './roofPro11/layoutEditor';
+// CALX3 — l'entrée du moteur de calepinage, composée depuis la scène vivante.
+import {
+  composerEntreeMoteur,
+  centresDepuisPlan,
+  versLocal,
+  versRepereDuPack,
+  construireRaccourcis,
+  calquesDisponibles,
+  type SceneMoteur,
+  type KitScene,
+  type DocumentMoteur,
+} from './roofPro11/entreeMoteur';
 import { createObstaclesUi } from './roofPro11/obstaclesUi';
 import { createMesureUi, formatMeasure, isMeasureValid, type Measurement, type MeasureKind } from './roofPro11/mesureUi';
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createScene3d, projectPlanView, panelQuadsLngLat } from './roofPro11/scene3d';
-import { createOptimizer } from './roofPro11/optimizer';
+import {
+  createOptimizer,
+  departagerRemplissage,
+  PRIORITES_REMPLISSAGE,
+  type PrioriteRemplissage,
+  type EntreeDepartage,
+} from './roofPro11/optimizer';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
 
@@ -2720,6 +2741,210 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   }
   ensureMixedOrientChip();
 
+  // ═══════════ CALX49 — « PRIORITÉ DE POSE » (le départage, enfin pilotable) ═══════════
+  //
+  // `departagerRemplissage` (CAL83) était écrite, testée, et appelée par personne : le
+  // remplissage automatique se posait donc toujours au même endroit du mou, sans que le
+  // dessinateur puisse dire « colle au faîtage » ou « colle à la rive ». Le sélecteur
+  // ci-dessous est SA seule commande. Trois règles le tiennent :
+  //
+  //   * les six choix et leurs libellés viennent de `PRIORITES_REMPLISSAGE` — l'écran ne
+  //     réécrit jamais un libellé de sa propre main ;
+  //   * le COMPTE ne bouge jamais : le départage translate le pavage dans son mou, il
+  //     n'arbitre pas le nombre de modules (invariant tenu par la fonction pure) ;
+  //   * « Meilleur ensoleillement » reste INACTIF tant qu'aucun accès solaire n'est
+  //     calculé, et son motif est AFFICHÉ — on ne classe pas ce qu'on ne sait pas.
+  //
+  // Retour en arrière : en pose lattice, le décalage appliqué est mémorisé, donc revenir
+  // à « Aucune » repose le pavage d'origine au millimètre, et l'atelier est photographié
+  // avant chaque application (Ctrl+Z, CAL100). En placement LIBRE, les positions font
+  // partie de la photo d'atelier : Ctrl+Z les restaure directement.
+  const PRIORITE_SELECT_ID = 'rp9-priorite-remplissage';
+  const PRIORITE_NOTE_ID = 'rp9-priorite-note';
+  let prioriteRemplissage: PrioriteRemplissage = 'aucune';
+  /** Décalage COURANT du pavage lattice (m, repère ENU du pack) — 0 = pavage d'origine.
+   *  `grille` retient SUR QUEL pavage il a été appliqué : un re-pavage en crée un neuf,
+   *  et défaire l'ancien décalage sur celui-là décalerait un pavage qui n'a rien subi. */
+  let decalageRemplissage: { dx: number; dy: number; grille: PanelGrid | null } = {
+    dx: 0, dy: 0, grille: null,
+  };
+  const prioriteSelectEl = () => document.getElementById(PRIORITE_SELECT_ID) as HTMLSelectElement | null;
+  const prioriteNoteEl = () => document.getElementById(PRIORITE_NOTE_ID);
+  const libellePriorite = (id: PrioriteRemplissage) =>
+    PRIORITES_REMPLISSAGE.find((p) => p.id === id)?.label ?? id;
+
+  function direPriorite(message: string) {
+    const el = prioriteNoteEl();
+    if (el) el.textContent = message;
+  }
+
+  /** Centres ENU des sources d'ombre DÉCLARÉES : les obstacles à hauteur saisie. Un
+   *  obstacle sans hauteur n'ombre rien (comportement historique) — il n'en est pas une. */
+  function sourcesOmbreENU(): [number, number][] {
+    const origine = ctx.layoutPlan?.pack.origin;
+    if (!origine) return [];
+    const ancrage = { lng0: origine[0], lat0: origine[1] };
+    const out: [number, number][] = [];
+    for (const o of ctx.obstacles) {
+      if (!Number.isFinite(o.heightM as number) || !((o.heightM as number) > 0)) continue;
+      const [est, nord] = versLocal(ancrage, o.centerLng, o.centerLat);
+      out.push([est, nord]); // le repère ENU du pavage : est en x, nord en y
+    }
+    return out;
+  }
+
+  /** Motif d'INDISPONIBILITÉ de « Meilleur ensoleillement », ou `null` s'il est utilisable. */
+  function motifEnsoleillement(): string | null {
+    if (!shadingUi.solarAccess()) {
+      return 'Meilleur ensoleillement indisponible : aucun accès solaire n’est calculé sur '
+        + 'ce pan. Renseignez les ombres (hauteurs d’obstacles, horizon) et relancez le '
+        + 'calcul d’ombrage.';
+    }
+    if (!sourcesOmbreENU().length) {
+      return 'Meilleur ensoleillement indisponible : aucune source d’ombre déclarée. '
+        + 'Saisissez la hauteur des obstacles qui portent une ombre.';
+    }
+    return null;
+  }
+
+  /** Les modules RÉELLEMENT posés, dans le repère ENU du pavage courant. */
+  function pavagePose(): { cx: number; cy: number; face?: 'E' | 'W' }[] {
+    if (layoutEditor.isFreeMode()) return layoutEditor.freePanels().map((p) => ({ ...p }));
+    const grid = ctx.layoutPlan?.grid;
+    if (!grid) return [];
+    const st = ctx.layoutState;
+    if (st && st.cells.length === grid.panels.length && st.occupied.size) {
+      return [...st.occupied]
+        .filter((i) => i >= 0 && i < st.cells.length)
+        .sort((a, b) => a - b)
+        .map((i) => ({ cx: st.cells[i].cx, cy: st.cells[i].cy, face: st.cells[i].face }));
+    }
+    const n = Math.max(0, Math.min(grid.panels.length, Math.round(ctx.layoutOptimalCount)));
+    return grid.panels.slice(0, n).map((p) => ({ cx: p.cx, cy: p.cy, face: p.face }));
+  }
+
+  /** Translate le pavage lattice ENTIER (cellules + pavage du plan) — le contour ne bouge
+   *  pas, donc le mou repris est bien celui du tracé, et les index d'occupation tiennent. */
+  function translaterPavage(dx: number, dy: number) {
+    if (!dx && !dy) return;
+    const grid = ctx.layoutPlan?.grid;
+    if (!grid) return;
+    grid.panels = grid.panels.map((p) => ({ ...p, cx: p.cx + dx, cy: p.cy + dy }));
+    const st = ctx.layoutState;
+    if (st) for (const c of st.cells) { c.cx += dx; c.cy += dy; }
+  }
+
+  /** Applique une priorité au pavage courant. Aucun effet de bord quand rien ne bouge. */
+  function appliquerPrioriteRemplissage(priorite: PrioriteRemplissage) {
+    prioriteRemplissage = priorite;
+    syncPrioriteRemplissage();
+    const plan = ctx.layoutPlan;
+    if (!plan) {
+      direPriorite('Aucun pavage posé : dessinez d’abord un pan de toit.');
+      return;
+    }
+    layoutEditor.ensureLayoutState();
+    // Tout départage part du pavage D'ORIGINE : on défait d'abord le précédent, et
+    // seulement s'il a été appliqué à CE pavage-là (un re-pavage repart déjà d'origine).
+    if (decalageRemplissage.dx || decalageRemplissage.dy) {
+      if (decalageRemplissage.grille === plan.grid) {
+        translaterPavage(-decalageRemplissage.dx, -decalageRemplissage.dy);
+        layoutEditor.renderCustomLayout();
+      }
+      decalageRemplissage = { dx: 0, dy: 0, grille: null };
+    }
+    if (priorite === 'aucune') {
+      direPriorite('Pavage d’origine reposé : les modules sont là où l’optimiseur les a mis.');
+      return;
+    }
+    const indisponible = priorite === 'ensoleillement' ? motifEnsoleillement() : null;
+    if (indisponible) {
+      direPriorite(indisponible);
+      return;
+    }
+    const poses = pavagePose();
+    if (!poses.length) {
+      direPriorite('Aucun module posé : rien à départager.');
+      return;
+    }
+    const entree: EntreeDepartage = {
+      ringENU: plan.pack.ringENU,
+      panels: poses,
+      azimuthDeg: plan.pack.azimuthDeg,
+      rowWidthM: plan.grid.rowWidthM,
+      footprintPerPanelM2: plan.grid.footprintPerPanelM2,
+      setbackM: setbacks.lateralM,
+      sourcesOmbreENU: sourcesOmbreENU(),
+    };
+    const res = departagerRemplissage(entree, priorite);
+    if (!res.departage || !res.panels.length) {
+      direPriorite(res.motif ?? 'Le pavage est déjà collé de ce côté : aucun mou à reprendre.');
+      return;
+    }
+    const dx = res.panels[0].cx - poses[0].cx;
+    const dy = res.panels[0].cy - poses[0].cy;
+    ctx.pushWorkshopHistory?.(); // CAL100 — le geste devient annulable
+    if (layoutEditor.isFreeMode()) {
+      layoutEditor.hydrateLayout(res.panels.map((p) => ({ cx: p.cx, cy: p.cy })), undefined, 'free');
+      direPriorite(
+        `Priorité « ${libellePriorite(priorite)} » appliquée — ${fmt(res.count)} modules, `
+          + 'compte inchangé. Ctrl+Z revient au placement précédent.',
+      );
+      return;
+    }
+    translaterPavage(dx, dy);
+    decalageRemplissage = { dx, dy, grille: plan.grid };
+    layoutEditor.renderCustomLayout();
+    direPriorite(
+      `Priorité « ${libellePriorite(priorite)} » appliquée — ${fmt(res.count)} modules, `
+        + 'compte inchangé. Revenir à « Aucune » repose le pavage d’origine.',
+    );
+  }
+
+  /** Reflète l'état du sélecteur : choix courant, et « ensoleillement » grisé + motivé. */
+  function syncPrioriteRemplissage() {
+    const select = prioriteSelectEl();
+    if (!select) return;
+    select.value = prioriteRemplissage;
+    const motif = motifEnsoleillement();
+    for (const option of Array.from(select.options)) {
+      if (option.value !== 'ensoleillement') continue;
+      option.disabled = Boolean(motif);
+      option.title = motif ?? '';
+    }
+  }
+
+  function ensurePrioriteRemplissage() {
+    if (prioriteSelectEl()) return;
+    const voisin = document.querySelector<HTMLButtonElement>('[data-orient]');
+    const hote = voisin?.parentElement?.parentElement ?? voisin?.parentElement;
+    if (!hote) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'rp9-priorite';
+    const label = document.createElement('label');
+    label.htmlFor = PRIORITE_SELECT_ID;
+    label.textContent = 'Priorité de pose';
+    const select = document.createElement('select');
+    select.id = PRIORITE_SELECT_ID;
+    select.className = 'rp9-input';
+    for (const { id, label: libelle } of PRIORITES_REMPLISSAGE) {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = libelle;
+      select.appendChild(option);
+    }
+    const note = document.createElement('p');
+    note.id = PRIORITE_NOTE_ID;
+    note.className = 'rp9-note';
+    wrap.append(label, select, note);
+    hote.appendChild(wrap);
+    select.addEventListener('change', () => {
+      appliquerPrioriteRemplissage(select.value as PrioriteRemplissage);
+    });
+    syncPrioriteRemplissage();
+  }
+  ensurePrioriteRemplissage();
+
   // PV63/CAL76 — QUATRE CHAMPS de retrait de rive (latéral / extrémité / acrotère / joint),
   // créés à côté du groupe « marge » si la page ne les fournit pas. Règle de saisie :
   // `step="any"`, aucune borne HTML, et le commit se fait à la VALIDATION (`change`) — on
@@ -3108,6 +3333,201 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     };
   }
 
+  // ═══════════ CALX3 — L'ENTRÉE MOTEUR, LE PLAN APPLIQUÉ, LES RACCOURCIS ═══════════
+  //
+  // L'atelier de calepinage poste une `entree` au moteur, lui applique le plan rendu,
+  // et branche ses huit raccourcis clavier sur les gestes du constructeur. Les trois
+  // passaient jusqu'ici par des clés qui n'existaient pas. La COMPOSITION du document
+  // vit dans `roofPro11/entreeMoteur.ts` (pure, testée) ; ici on ne fait que lire la
+  // scène vivante et rebrancher les gestes déjà en place.
+
+  /** CALX3 — le kit du pavage COURANT : géométrie et puissance de module lues sur le
+   *  plan gagnant, jamais un catalogue deviné. Sans plan (rien de pavé encore), on
+   *  retombe sur le module du cerveau d'estimation, celui qui pavera. */
+  function kitDeLaScene(): KitScene {
+    const grid = ctx.layoutPlan?.grid ?? null;
+    const longM = grid ? Math.max(grid.slopeLenM, grid.rowWidthM) : PANEL2_LONG_M;
+    const courtM = grid ? Math.min(grid.slopeLenM, grid.rowWidthM) : PANEL2_SHORT_M;
+    const wattPlan = grid && grid.panels.length ? (grid.kwc * 1000) / grid.panels.length : null;
+    const watt = devisOrigin?.panelWatt ?? (wattPlan && wattPlan > 0 ? wattPlan : PANEL2_WATT);
+    // Le grand côté dans le sens de la pente = pose PORTRAIT ; sinon PAYSAGE.
+    const orientation = !grid || grid.slopeLenM >= grid.rowWidthM ? 'PORTRAIT' : 'PAYSAGE';
+    // Une pose Est-Ouest est un chevron DOS-À-DOS : deux modules par table.
+    const famille = ctx.layoutPlan?.family ?? ctx.sel.family;
+    return {
+      code: `ATELIER-${Math.round(watt)}`,
+      libelle: `Module posé par l’atelier — ${Math.round(watt)} Wc`,
+      moduleLongM: longM,
+      moduleCourtM: courtM,
+      puissanceModuleWc: watt,
+      inclinaisonDeg: ctx.layoutPlan?.tiltDeg ?? ctx.pitchDeg,
+      orientation,
+      modulesParTable: famille === 'eastwest' ? 2 : 1,
+    };
+  }
+
+  /** CALX3 — la scène d'atelier réduite à ce que le moteur sait lire. Les pans figés
+   *  viennent de `ctx.areas` ; le pan ACTIF est surchargé par son état d'édition vivant
+   *  (tracé et obstacles en cours), exactement comme à la sérialisation du layout. */
+  function sceneMoteur(): SceneMoteur {
+    const pans = ctx.areas.map((a) => {
+      const actif = a.id === ctx.activeAreaId;
+      return {
+        id: a.id,
+        label: a.label,
+        vertices: actif ? ctx.vertices : a.vertices,
+        obstacles: actif ? ctx.obstacles : a.obstacles,
+        pitchDeg: actif ? ctx.pitchDeg : a.pitchDeg,
+        facingAzimuthDeg: actif ? ctx.facingAzimuthDeg : a.facingAzimuthDeg,
+        neededPanels: actif ? ctx.neededPanels : a.neededPanels,
+        neededAuto: actif ? ctx.neededAuto : a.neededAuto,
+      };
+    });
+    // Aucune zone enregistrée encore (premier tracé) : le pan actif vivant seul.
+    if (!pans.length && ctx.vertices.length >= 3) {
+      pans.push({
+        id: ctx.activeAreaId || 'PAN-A',
+        label: 'Pan',
+        vertices: ctx.vertices,
+        obstacles: ctx.obstacles,
+        pitchDeg: ctx.pitchDeg,
+        facingAzimuthDeg: ctx.facingAzimuthDeg,
+        neededPanels: ctx.neededPanels,
+        neededAuto: ctx.neededAuto,
+      });
+    }
+    return {
+      repere: devisOrigin?.devisId != null
+        ? `DEVIS-${devisOrigin.devisId}`
+        : (ctx.activeArea()?.label ?? 'RELEVE'),
+      pans,
+      zonesExclusion: ctx.exclusionZones ?? [],
+      retraits: { ...setbacks },
+      kit: kitDeLaScene(),
+    };
+  }
+
+  /** CALX3 — le document d'entrée du moteur, ou `null` tant qu'aucun pan n'est tracé. */
+  function entreeMoteur(): DocumentMoteur | null {
+    return composerEntreeMoteur(sceneMoteur());
+  }
+
+  /**
+   * CALX3 — repose les modules à partir du plan que le moteur a rendu.
+   *
+   * Le plan revient en rangées (position transversale + tronçons + compte) : on en
+   * déduit les centres de modules, on les ramène dans le repère du pavage courant,
+   * et on les re-snappe sur la lattice — le MÊME chemin que le rechargement d'un
+   * dossier. L'atelier est PHOTOGRAPHIÉ juste avant (CAL100), donc Ctrl+Z revient à
+   * la disposition d'avant. Rend `false` sans rien changer quand il n'y a pas de
+   * pavage, pas de plan, ou aucune cellule atteignable — jamais un pan à moitié posé.
+   */
+  function appliquerPlan(resultat: unknown): boolean {
+    if (!ctx.layoutPlan) return false;
+    const scene = sceneMoteur();
+    const sortie = centresDepuisPlan(resultat, scene);
+    if (!sortie) return false;
+    const centres = versRepereDuPack(sortie.centres, sortie.ancrage, ctx.layoutPlan.pack.origin);
+    if (!centres.length) return false;
+    // Placement LIBRE : les positions continues du plan sont reposées telles quelles.
+    if (layoutEditor.isFreeMode()) {
+      ctx.pushWorkshopHistory?.();
+      const pose = layoutEditor.hydrateLayout(centres, undefined, 'free');
+      if (pose) setStatus(`Plan du moteur appliqué — ${fmt(centres.length)} modules reposés.`);
+      return pose;
+    }
+    layoutEditor.ensureLayoutState();
+    const st = ctx.layoutState;
+    if (!st || !st.cells.length) return false;
+    const reposes = resnapEnMasse(st.cells, centres);
+    if (!reposes.length) return false;
+    ctx.pushWorkshopHistory?.();
+    st.occupied.clear();
+    for (const idx of reposes) st.occupied.add(idx);
+    ctx.layoutSel = null;
+    layoutEditor.renderCustomLayout();
+    layoutEditor.renderLayoutPanel();
+    setStatus(
+      `Plan du moteur appliqué — ${fmt(reposes.length)} modules reposés. `
+        + 'Ctrl+Z revient à la disposition précédente.',
+    );
+    return true;
+  }
+
+  // CALX3 — l'aimantation des positions libres (CAL81) : allumée par défaut, donc le
+  // comportement d'aujourd'hui. La couper laisse les positions exactement où elles
+  // sont posées ; la rallumer ré-aimante tout de suite ce qui est posé, sinon la
+  // bascule ne se verrait nulle part.
+  let aimantationActive = true;
+  function basculerAimantation() {
+    aimantationActive = !aimantationActive;
+    if (aimantationActive && layoutEditor.isFreeMode()) {
+      const poses = layoutEditor.freePanels();
+      if (poses.length) {
+        const aimantes = poses.map((p, i) => {
+          const cible = layoutEditor.freeSnapCandidate(i, p.cx, p.cy);
+          return { cx: cible.cx, cy: cible.cy };
+        });
+        ctx.pushWorkshopHistory?.();
+        layoutEditor.hydrateLayout(aimantes, undefined, 'free');
+      }
+    }
+    setStatus(
+      aimantationActive
+        ? 'Aimantation activée : les positions libres se collent aux rives et aux panneaux voisins.'
+        : 'Aimantation coupée : les positions libres restent exactement où vous les posez.',
+    );
+  }
+
+  function basculerPleinEcran() {
+    const doc = document as Document & { fullscreenElement?: Element | null };
+    const cible = mapEl;
+    if (!cible) return;
+    try {
+      if (doc.fullscreenElement) {
+        void document.exitFullscreen?.();
+        return;
+      }
+      const demande = cible.requestFullscreen?.();
+      if (demande && typeof demande.catch === 'function') {
+        demande.catch(() => setStatus('Le plein écran a été refusé par le navigateur.'));
+      }
+    } catch {
+      setStatus('Le plein écran n’est pas disponible dans ce navigateur.');
+    }
+  }
+
+  /** CALX3 — les huit raccourcis de l'atelier, branchés sur les gestes existants. */
+  const raccourcisAtelier = construireRaccourcis({
+    outilTrace: () => {
+      setObstacleMode(false);
+      ctx.pendingZoneNature = null;
+      mesureUi.cancel();
+      setStatus('Outil tracé : touchez la carte pour poser les coins du toit.');
+    },
+    outilObstacle: () => setObstacleMode(!ctx.obstacleMode),
+    outilZone: () => obstaclesUi.beginZone(ctx.pendingZoneNature ?? 'INTERDITE'),
+    outilMesure: () => {
+      if (mesureUi.isActive()) mesureUi.cancel();
+      else mesureUi.begin('distance');
+      renderMeasurements();
+    },
+    aimantation: basculerAimantation,
+    supprimer: () => {
+      if (ctx.selectedObsId) {
+        obstaclesUi.deleteSelected();
+        return;
+      }
+      const choisis = layoutEditor.selection();
+      if (choisis.length) layoutEditor.removeCells(choisis);
+    },
+    dupliquer: () => {
+      if (!ctx.selectedObsId) return;
+      $<HTMLButtonElement>('rp9-obs-duplicate')?.click();
+    },
+    pleinEcran: basculerPleinEcran,
+  });
+
   // W114/W115 — expose une petite API à la page de design (étude Meriem) : sérialiser
   // le layout finalisé (W113) + instantané PNG de la 3D (W115). Boot complet seulement
   // (jamais en capture). Absent → aucun effet.
@@ -3179,5 +3599,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // CAL93 — horizon lointain : fixer le profil (HorizonPanel) et lire son état.
     setHorizonProfile: (profile) => shadingUi.setHorizonProfile(profile),
     horizonStatus: () => shadingUi.horizonStatus(),
+    // CALX3 — le document d'entrée du moteur de calepinage, composé de la scène
+    // VIVANTE à chaque appel (`null` tant qu'aucun pan n'est tracé).
+    entreeMoteur: () => entreeMoteur(),
+    // CALX3 — repose les modules depuis le plan rendu par le moteur (annulable).
+    appliquerPlan: (resultat: unknown) => appliquerPlan(resultat),
+    // CALX3 — les huit raccourcis clavier de l'atelier, une fonction par action.
+    raccourcis: raccourcisAtelier,
+    // CALX3 — les calques réellement installés sur la carte, dans l'ordre de rendu.
+    calquesDisponibles: () => calquesDisponibles(map),
   });
 }

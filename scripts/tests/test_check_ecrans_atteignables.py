@@ -456,12 +456,19 @@ class NavigationTests(BaseDepot):
             self.sans_nav(),
             ["frontend/src/features/x/module.config.jsx::/x/rapport"])
 
-    def test_route_dynamique_exemptee(self):
-        """Un segment `:id` est exempte — la garde ne sait pas resoudre un
-        lien concret vers une instance particuliere."""
+    def test_route_dynamique_N_EST_PLUS_exemptee(self):
+        """CALX56 — ce test AFFIRMAIT l'exemption en bloc des chemins a
+        segment dynamique (« la garde ne sait pas resoudre un lien concret
+        vers une instance particuliere »). C'etait le trou : treize chemins
+        `/calepinage/:id/<x>` y ont vecu sans aucun lien entrant sans jamais
+        rougir. La garde lit desormais les chaines a gabarit et compare
+        segment a segment — le detail est verrouille par
+        `scripts/tests/test_check_ecrans_parametres.py`."""
         self._config_routee("x", "/x/rapport/:id")
         self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
-        self.assertEqual(self.sans_nav(), [])
+        self.assertEqual(
+            self.sans_nav(),
+            ["frontend/src/features/x/module.config.jsx::/x/rapport/:id"])
 
     def test_marqueur_contextuel_justifie(self):
         """Route volontairement hors menu, marquee explicitement."""
@@ -729,13 +736,21 @@ class DepotReelTests(unittest.TestCase):
         `/credit/conditions` et `/reporting/dashboards` (ecrans reels sans
         entree de menu, dette pre-existante, hors perimetre de cette tache).
         Meme discipline de « sens de variation » que le passif AO : ce compte
-        ne doit jamais REMONTER."""
+        ne doit jamais REMONTER.
+
+        RECALIBRE LE 21/09/2026 (CALX56) : 4 -> 10. Le plafond mesurait la
+        classe 3 telle qu'elle voyait le depot — c'est-a-dire en exemptant EN
+        BLOC tout chemin a segment dynamique. La garde les lit desormais, et
+        en trouve huit deja livres (les chemins `/calepinage/:id/<x>` que
+        personne ne mene). Ce n'est pas une regression : c'est la mesure qui
+        devient honnete, et le plafond suit la mesure du jour — apres quoi il
+        ne peut plus que descendre, panneau par panneau."""
         constats, _ = analyse_reelle()
         sans_nav = [c for c in constats if c[0] == "sans-nav"]
         self.assertLessEqual(
-            len(sans_nav), 4,
+            len(sans_nav), 10,
             "le nombre de routes sans nav a AUGMENTE depuis le passif mesure "
-            "le 07/08/2026 (4) : une route reelle a ete livree sans etre "
+            "le 21/09/2026 (10) : une route reelle a ete livree sans etre "
             "reliee au menu",
         )
 

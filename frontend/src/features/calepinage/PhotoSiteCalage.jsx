@@ -8,7 +8,10 @@ import { useParams } from 'react-router-dom'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import calepinageApi from '../../api/calepinageApi'
-import { Button, Card, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner } from '../../ui'
+import {
+  Button, Card, FileUpload, Input, Label, Select, SelectContent, SelectItem,
+  SelectTrigger, SelectValue, Spinner,
+} from '../../ui'
 import { warpImageToQuad, boundingBox } from '../../lib/roofTextureWarp'
 
 /* ============================================================================
@@ -37,6 +40,28 @@ import { warpImageToQuad, boundingBox } from '../../lib/roofTextureWarp'
 
 const DEFAULT_CENTER = [31.7917, -7.0926] // Maroc — repli si rien n'est connu.
 const DELTA = 0.00012 // ≈13 m — écart initial des 4 poignées autour du centre.
+
+/* CALX38 — LE DÉPÔT D'UNE PHOTO DE SITE, EN TÊTE DU PANNEAU DE CALAGE.
+   ----------------------------------------------------------------------------
+   Constat : `calepinageApi.js` expose déjà `ajouterPhoto` (servie par
+   `views/photos.py:40-70`) mais AUCUN écran ne l'appelait — ce panneau
+   invitait pourtant à « déposer une photo drone/oblique/sol avant de la
+   caler », un geste qui n'existait nulle part.
+
+   `genre` ET `prise_le` sont REFUSÉS avant tout envoi, champ pointé — même
+   si le serveur, lui, retombe sur `drone` faute de genre : un genre choisi
+   EN SILENCE serait une valeur inventée par l'écran, pas une saisie
+   (règle « zéro chiffre inventé »). La date de prise de vue, elle, EST
+   obligatoire côté serveur aussi (`services/photos.py::_date_saisie`).
+
+   Les 3 genres viennent EXACTEMENT de `PhotoSite.Genre` (models.py) — en
+   inventer un quatrième produirait un `genre` que le serveur refuse. */
+const GENRES_PHOTO = [
+  ['drone', 'Drone'],
+  ['oblique', 'Oblique (aérienne)'],
+  ['sol', 'Depuis le sol'],
+]
+const TAILLE_MAX_OCTETS = 15 * 1024 * 1024 // MAX_OCTETS, services/photos.py
 
 /**
  * Les 4 positions `[lat, lng]` de départ des poignées : celles d'un calage
@@ -84,6 +109,14 @@ export default function PhotoSiteCalage({ calepinageId: idPropose } = {}) {
   const [message, setMessage] = useState(null)
   const [chargement, setChargement] = useState(true)
 
+  // CALX38 — le dépôt d'une photo de site.
+  const [genreDepot, setGenreDepot] = useState('')
+  const [priseLeDepot, setPriseLeDepot] = useState('')
+  const [legendeDepot, setLegendeDepot] = useState('')
+  const [erreursDepot, setErreursDepot] = useState({})
+  const [depotEnCours, setDepotEnCours] = useState(false)
+  const [progressionDepot, setProgressionDepot] = useState(undefined)
+
   const mapRef = useRef(null)
   const containerRef = useRef(null)
   const markersRef = useRef([])
@@ -112,6 +145,44 @@ export default function PhotoSiteCalage({ calepinageId: idPropose } = {}) {
   }, [calepinageId])
 
   useEffect(() => { recharger() }, [recharger])
+
+  // CALX38 — un genre ou une date absents sont REFUSÉS avant tout envoi (le
+  // fichier reste choisi côté navigateur, aucun octet n'est parti).
+  const deposerPhoto = (fichiers) => {
+    const fichier = fichiers?.[0]
+    if (!fichier || !calepinageId) return
+    const erreurs = {}
+    if (!genreDepot) erreurs.genre = 'Le genre de la photo est obligatoire.'
+    if (!priseLeDepot) erreurs.prise_le = 'La date de prise de vue est obligatoire.'
+    setErreursDepot(erreurs)
+    if (Object.keys(erreurs).length) return
+
+    setDepotEnCours(true)
+    setProgressionDepot(20)
+    setMessage(null)
+    const corps = new FormData()
+    corps.append('photo', fichier)
+    corps.append('genre', genreDepot)
+    corps.append('prise_le', priseLeDepot)
+    if (legendeDepot) corps.append('legende', legendeDepot)
+
+    setProgressionDepot(60)
+    Promise.resolve(calepinageApi.calepinages.ajouterPhoto(calepinageId, corps))
+      .then((res) => {
+        setProgressionDepot(100)
+        setMessage('Photo ajoutée : elle est calable ci-dessous.')
+        setGenreDepot(''); setPriseLeDepot(''); setLegendeDepot(''); setErreursDepot({})
+        const neuve = res?.data?.photo
+        recharger()
+        if (neuve?.id) setPhotoId(neuve.id)
+      })
+      .catch((e) => {
+        const donnees = e?.response?.data
+        if (donnees && typeof donnees === 'object') setErreursDepot(donnees)
+        setMessage(donnees?.detail || 'Le dépôt de la photo a échoué.')
+      })
+      .finally(() => { setDepotEnCours(false); setProgressionDepot(undefined) })
+  }
 
   const photo = photos.find((p) => p.id === photoId) ?? null
 
@@ -216,6 +287,72 @@ export default function PhotoSiteCalage({ calepinageId: idPropose } = {}) {
   return (
     <div className="page max-w-[900px]" data-testid="cal-photo-calage">
       <p className="tech-label rule-brass text-brass-300">Caler la photo du site</p>
+
+      {/* CALX38 — dépôt d'une photo, EN TÊTE du panneau. */}
+      <Card className="mt-3 space-y-3 p-4" data-testid="cal-photo-depot">
+        <p className="tech-label text-lune-faint">Déposer une photo</p>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor="cal-photo-depot-genre">Genre</Label>
+            <Select value={genreDepot} onValueChange={setGenreDepot}>
+              <SelectTrigger id="cal-photo-depot-genre" data-testid="cal-photo-depot-genre">
+                <SelectValue placeholder="Choisir un genre…" />
+              </SelectTrigger>
+              <SelectContent>
+                {GENRES_PHOTO.map(([valeur, libelle]) => (
+                  <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {erreursDepot.genre && (
+              <p role="alert" className="text-xs text-destructive" data-testid="cal-photo-depot-erreur-genre">
+                {erreursDepot.genre}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="cal-photo-depot-date">Prise de vue le</Label>
+            <Input
+              id="cal-photo-depot-date"
+              type="date"
+              value={priseLeDepot}
+              onChange={(e) => setPriseLeDepot(e.target.value)}
+              data-testid="cal-photo-depot-date"
+            />
+            {erreursDepot.prise_le && (
+              <p role="alert" className="text-xs text-destructive" data-testid="cal-photo-depot-erreur-date">
+                {erreursDepot.prise_le}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="cal-photo-depot-legende">Légende (facultatif)</Label>
+          <Input
+            id="cal-photo-depot-legende"
+            value={legendeDepot}
+            onChange={(e) => setLegendeDepot(e.target.value)}
+            data-testid="cal-photo-depot-legende"
+          />
+        </div>
+
+        <FileUpload
+          accept="image/png,image/jpeg"
+          maxSize={TAILLE_MAX_OCTETS}
+          busy={depotEnCours}
+          progress={progressionDepot}
+          onFiles={deposerPhoto}
+          data-testid="cal-photo-depot-fichier"
+        />
+        {erreursDepot.photo && (
+          <p role="alert" className="text-xs text-destructive" data-testid="cal-photo-depot-erreur-photo">
+            {erreursDepot.photo}
+          </p>
+        )}
+      </Card>
 
       {photos.length === 0 && (
         <Card className="mt-3 p-4 text-sm text-lune-soft" data-testid="cal-photo-calage-vide">

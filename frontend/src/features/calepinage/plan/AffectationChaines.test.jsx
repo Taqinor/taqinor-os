@@ -292,3 +292,53 @@ describe('AffectationChaines (CAL234) — la teinte est celle de CAL126', () => 
     expect(legende.at(-1)).toMatchObject({ libelle: 'Non affecté', nombre: 1 })
   })
 })
+
+/* ── CALX53 — l'avertissement « coefficients non sourcés », À CÔTÉ DES BORNES
+   L'échantillon committé sert `avertissements: []` (rien à signaler). On part
+   de LUI et on y pose le message que le serveur publie quand la fiche module
+   ne donne pas ses coefficients de température : seule cette clé bouge. */
+const AVERTISSEMENT_COEFFS = (
+  'Coefficients de température NON SOURCÉS sur la fiche de Module d essai '
+  + '710 Wc (« temp_coeff_voc_pct_c » — coefficient de la tension à vide '
+  + '(β Voc) : -0,270 %/°C, « temp_coeff_pmax_pct_c » — coefficient de la '
+  + 'puissance crête (γ Pmax) : -0,350 %/°C). Ces valeurs sont les défauts du '
+  + 'noyau, pas des données constructeur : les bornes de tension de chaîne '
+  + 'restent calculées, mais elles sont marquées tant que la fiche produit ne '
+  + 'publie pas ces coefficients.'
+)
+
+const resultatAvecAvertissement = () => {
+  const reponse = contratResultat()
+  return {
+    ...reponse,
+    data: { ...reponse.data, avertissements: [AVERTISSEMENT_COEFFS] },
+  }
+}
+
+describe('AffectationChaines (CALX53) — coefficients non sourcés', () => {
+  it('aucun avertissement servi : le panneau n’en invente aucun', async () => {
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    expect(contratResultat().data.avertissements).toEqual([])
+    expect(screen.queryByTestId('calx53-avertissements')).toBeNull()
+  })
+
+  it('l’avertissement du serveur est visible, et NOMME les deux coefficients', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue(resultatAvecAvertissement())
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    const avertissement = screen.getByTestId('calx53-avertissement')
+    expect(avertissement).toHaveTextContent('temp_coeff_voc_pct_c')
+    expect(avertissement).toHaveTextContent('temp_coeff_pmax_pct_c')
+    // Il est rendu AVANT la grille des modules (donc au-dessus des bornes).
+    const grille = screen.getByTestId('cal234-pan-PAN-A')
+    // `compareDocumentPosition` rend un MASQUE de bits : on teste le bit.
+    const apres = avertissement.compareDocumentPosition(grille)
+      & Node.DOCUMENT_POSITION_FOLLOWING
+    expect(apres).toBeTruthy()
+    // Les bornes restent servies : rien n'est omis à cause du défaut.
+    expect(screen.getByTestId('cal234-module-PAN-A#1')).toBeInTheDocument()
+  })
+})

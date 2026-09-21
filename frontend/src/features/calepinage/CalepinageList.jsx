@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { LayoutGrid, Plus, Search, X } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
 import crmApi from '../../api/crmApi'
@@ -45,16 +45,28 @@ import BadgePerime from './BadgePerime'
 
 const errMsg = (e, repli) => e?.response?.data?.detail || repli
 
+/* CALX32 — LES 4 CHAMPS RÉELLEMENT SERVIS PAR LA LISTE (`ordering_fields`,
+   `views/calepinages.py:173-174`). En inventer un cinquième produirait un
+   `ordering=` que le serveur ignore silencieusement — la même leçon PV22 que
+   les filtres ci-dessus. */
+const CHAMPS_TRI = [
+  ['created_at', 'Date de création'],
+  ['updated_at', 'Date de modification'],
+  ['statut', 'Statut'],
+  ['titre', 'Titre'],
+]
+
 /* Les filtres, tels qu'ils partent au serveur. Une valeur vide n'est pas
    envoyée du tout : `?statut=` (vide) serait un filtre, pas une absence de
    filtre. */
-function paramsServeur({ q, statut, depuis, lead, client, page }) {
+function paramsServeur({ q, statut, depuis, lead, client, page, ordering }) {
   const params = {}
   if (q) params.q = q
   if (statut) params.statut = statut
   if (depuis) params.depuis = depuis
   if (lead) params.lead = lead
   if (client) params.client = client
+  if (ordering) params.ordering = ordering
   if (page && page > 1) params.page = page
   return params
 }
@@ -142,9 +154,16 @@ export default function CalepinageList() {
   const [client, setClient] = useState(null)
   const [page, setPage] = useState(1)
 
+  // CALX32 — le tri vit dans l'URL (`?ordering=`), partageable et rechargeable
+  // à l'identique — contrairement aux autres filtres ci-dessus (état local).
+  const [searchParams, setSearchParams] = useSearchParams()
+  const ordering = searchParams.get('ordering') || ''
+  const champTri = ordering.replace(/^-/, '')
+  const decroissant = ordering.startsWith('-')
+
   const params = useMemo(
-    () => paramsServeur({ q, statut, depuis, lead, client, page }),
-    [q, statut, depuis, lead, client, page],
+    () => paramsServeur({ q, statut, depuis, lead, client, page, ordering }),
+    [q, statut, depuis, lead, client, page, ordering],
   )
 
   const { data, loading, error } = useResource(
@@ -179,6 +198,24 @@ export default function CalepinageList() {
   const filtreActif = Boolean(q || statut || depuis || lead || client)
   const surFiltre = (poser) => (valeur) => { poser(valeur); setPage(1) }
 
+  // CALX32 — changer le champ ou le sens relance la requête avec `ordering=`
+  // ET remet la pagination à la première page (sinon une page 3 triée
+  // autrement s'afficherait vide).
+  const changerChampTri = (valeur) => {
+    const suivants = new URLSearchParams(searchParams)
+    if (!valeur || valeur === '__defaut__') suivants.delete('ordering')
+    else suivants.set('ordering', decroissant ? `-${valeur}` : valeur)
+    setSearchParams(suivants)
+    setPage(1)
+  }
+  const changerSensTri = (dec) => {
+    if (!champTri) return
+    const suivants = new URLSearchParams(searchParams)
+    suivants.set('ordering', dec ? `-${champTri}` : champTri)
+    setSearchParams(suivants)
+    setPage(1)
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -189,7 +226,7 @@ export default function CalepinageList() {
         </Button>
       </div>
 
-      <Card className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-5">
+      <Card className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-7">
         <div className="space-y-1">
           <Label htmlFor="cal-q">Recherche</Label>
           <div className="relative">
@@ -253,8 +290,35 @@ export default function CalepinageList() {
           />
         </div>
 
+        <div className="space-y-1">
+          <Label htmlFor="cal-tri">Tri</Label>
+          <Select value={champTri || '__defaut__'} onValueChange={changerChampTri}>
+            <SelectTrigger id="cal-tri"><SelectValue placeholder="Tri par défaut" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__defaut__">Tri par défaut</SelectItem>
+              {CHAMPS_TRI.map(([valeur, libelle]) => (
+                <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {champTri ? (
+          <div className="space-y-1">
+            <Label htmlFor="cal-tri-sens">Ordre</Label>
+            <Select value={decroissant ? 'desc' : 'asc'}
+              onValueChange={(v) => changerSensTri(v === 'desc')}>
+              <SelectTrigger id="cal-tri-sens"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="asc">Croissant</SelectItem>
+                <SelectItem value="desc">Décroissant</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+
         {filtreActif ? (
-          <div className="sm:col-span-2 lg:col-span-5">
+          <div className="sm:col-span-2 lg:col-span-7">
             <Button size="sm" variant="ghost" onClick={reinitialiser}>
               <X size={15} aria-hidden="true" />
               Réinitialiser les filtres

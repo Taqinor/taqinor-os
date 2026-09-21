@@ -367,3 +367,61 @@ class SortiesMixin:
             # Les pièces ABSENTES sont dites, jamais tues.
             'signalements': resultat['signalements'],
         }, status=status.HTTP_201_CREATED)
+
+    # ── CALX17 — la masse posée et la feuille de lestage ───────────────────
+    @action(detail=True, methods=['get'], url_path='masse-lestage',
+            url_name='masse-lestage',
+            permission_classes=[PeutVoirCalepinage])
+    def masse_lestage(self, request, pk=None):
+        """CALX17 — la masse installée et le lest requis, TELS QUE CALCULÉS.
+
+        ``services/lestage.masse_et_lestage`` (CAL163/CAL164) composait la
+        masse posée et la feuille de lestage depuis le poids de FICHE et les
+        saisies de la société — sans aucun appelant hors de ses tests, donc
+        sans aucun consommateur. Cette porte est ce consommateur, et elle ne
+        met RIEN de son cru : la réponse est la sortie du service mot pour
+        mot (contrat ``contract_samples/calepinage_masse_lestage.json``).
+
+        Le MODULE dont le poids est lu est celui que l'appelant DÉSIGNE
+        (``?module=<id du produit>``), borné à la société par le sélecteur du
+        stock ; à défaut, c'est le panneau du devis lié (CAL243). Aucun poids
+        « moyen de catalogue » n'existe : sans fiche, la masse n'est pas
+        publiée et le champ fautif est nommé par le service.
+
+        Lecture PURE : aucun statut ne bouge, aucun document n'est écrit, et
+        aucune somme d'argent n'apparaît ici.
+        """
+        from ..services.lestage import masse_et_lestage
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        demande = str(request.query_params.get('module') or '').strip()
+        if demande:
+            try:
+                produit_module_id = int(demande)
+            except (TypeError, ValueError):
+                # L'erreur NOMME le champ fautif — jamais un refus générique.
+                return Response(
+                    {'module': "« module » attend l'identifiant numérique "
+                               f"d'un produit (reçu : « {demande} »)."},
+                    status=status.HTTP_400_BAD_REQUEST)
+        else:
+            produit_module_id = self._module_pose(calepinage)
+        return Response(masse_et_lestage(
+            calepinage, produit_module_id=produit_module_id))
+
+    @staticmethod
+    def _module_pose(calepinage):
+        """L'identifiant du produit MODULE posé, d'après le devis lié.
+
+        ``equipements_du_calepinage`` (CAL243) rend déjà la famille
+        ``panneau`` du devis : la relire ici évite une deuxième règle de
+        choix du module, qui finirait par diverger de la première. Aucun
+        devis lié, ou aucun panneau sur ses lignes ⇒ ``None`` : le service
+        liste alors le poids comme manquant, il n'en suppose pas un.
+        """
+        if not getattr(calepinage, 'devis_id', None):
+            return None
+        from ..services.equipements import equipements_du_calepinage
+
+        panneau = (equipements_du_calepinage(calepinage) or {}).get('panneau')
+        return (panneau or {}).get('produit')

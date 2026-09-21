@@ -8,14 +8,24 @@
       `valeur: null` — le champ est rendu VIDE et le message du serveur
       s'affiche (le Done de la tâche) ;
    3. un dossier dont le gabarit n'est pas déposé reste VISIBLE et dit pourquoi ;
-   4. société sans aucun gabarit ⇒ liste vide ET le message du serveur. */
+   4. société sans aucun gabarit ⇒ liste vide ET le message du serveur.
+
+   CALX40 — la génération est SERVIE : le bouton n'est actif que si le serveur
+   déclare `peut_generer`, et un refus 400 est rendu sous le champ nommé. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { reponseContrat } from '../../test/fixtures/contractSamples'
 
 vi.mock('../../api/calepinageApi', () => ({
-  default: { calepinages: { dossiersReglementaires: vi.fn() } },
+  default: {
+    calepinages: {
+      dossiersReglementaires: vi.fn(),
+      genererDossier: vi.fn(),
+      enregistrerChampsDossier: vi.fn(),
+    },
+  },
 }))
 
 import calepinageApi from '../../api/calepinageApi'
@@ -125,5 +135,188 @@ describe('DossiersReglementaires (CAL196)', () => {
     expect(await screen.findByTestId('cal196-erreur')).toHaveTextContent(
       'Dossiers réglementaires indisponibles.',
     )
+  })
+})
+
+/* ── CALX40 — la génération, autorisée par le SERVEUR et par lui seul ──────
+   L'échantillon committé ne porte que des dossiers `peut_generer: false`
+   (c'est son propos : rien n'est générable sans gabarit ni champs). Pour le
+   cas AUTORISÉ, on part de CE MÊME échantillon et on bascule la seule clé que
+   le serveur publie pour l'autoriser — aucune charge utile écrite à la main,
+   aucune autre clé inventée. */
+const servirGenerable = () => {
+  const reponse = reponseContrat('calepinage', 'dossiers_reglementaires', 'exemple')
+  calepinageApi.calepinages.dossiersReglementaires.mockResolvedValue({
+    ...reponse,
+    data: {
+      ...reponse.data,
+      dossiers: reponse.data.dossiers.map((dossier) => ({
+        ...dossier, peut_generer: true, motif_non_generable: '',
+      })),
+    },
+  })
+}
+
+describe('DossiersReglementaires — génération (CALX40)', () => {
+  it('le bouton n’est actif que si le serveur déclare peut_generer', async () => {
+    servir('exemple')
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    echantillon('exemple').dossiers.forEach((dossier) => {
+      expect(dossier.peut_generer).toBe(false)
+      expect(screen.getByTestId(`cal196-generer-${dossier.id}`)).toBeDisabled()
+    })
+
+    cleanup()
+    servirGenerable()
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    echantillon('exemple').dossiers.forEach((dossier) => {
+      expect(screen.getByTestId(`cal196-generer-${dossier.id}`)).toBeEnabled()
+    })
+  })
+
+  it('génère le dossier désigné et liste les pièces rendues par le serveur', async () => {
+    servirGenerable()
+    calepinageApi.calepinages.genererDossier.mockResolvedValue({
+      data: {
+        dossier: 1,
+        document: 42,
+        genere_le: '2026-09-21T10:00:00Z',
+        pieces: [{ code: 'planche', libelle: 'Planche de calepinage' },
+          { code: 'note_calcul', libelle: 'Note de calcul' }],
+        signalements: [],
+      },
+    })
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+    await userEvent.click(screen.getByTestId(`cal196-generer-${premier.id}`))
+
+    await waitFor(() => {
+      expect(calepinageApi.calepinages.genererDossier)
+        .toHaveBeenCalledWith(1, { dossier: premier.id })
+    })
+    expect(await screen.findByTestId(`calx40-genere-${premier.id}`))
+      .toHaveTextContent('Planche de calepinage, Note de calcul')
+  })
+
+  it('un refus 400 est rendu SOUS le champ que le serveur nomme', async () => {
+    servirGenerable()
+    const motif = 'Le gabarit « Dossier d’essai » n’a pas de fichier déposé.'
+    calepinageApi.calepinages.genererDossier.mockRejectedValue({
+      response: { data: { gabarit: [motif] } },
+    })
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+    await userEvent.click(screen.getByTestId(`cal196-generer-${premier.id}`))
+
+    expect(await screen.findByTestId('calx40-erreur-gabarit'))
+      .toHaveTextContent(motif)
+    // Aucun message générique n'est fabriqué à côté du message serveur.
+    expect(screen.queryByTestId(`calx40-genere-${premier.id}`)).toBeNull()
+  })
+})
+
+/* ── CALX41 — les champs sont CONTRÔLÉS, ENREGISTRÉS, et relus ─────────────
+   `apresSaisie` dérive MÉCANIQUEMENT l'état d'après-enregistrement de
+   l'échantillon committé : le champ enregistré quitte `champs_a_completer` et
+   rejoint `champs_saisis` avec sa valeur — ce que `composer_dossier` fait
+   côté serveur. Aucune charge utile écrite à la main. */
+const apresSaisie = (code, valeur) => {
+  const reponse = reponseContrat('calepinage', 'dossiers_reglementaires', 'exemple')
+  const dossiers = reponse.data.dossiers.map((dossier, rang) => {
+    if (rang !== 0) return dossier
+    const champ = dossier.champs_a_completer.find((c) => c.code === code)
+    return {
+      ...dossier,
+      champs_a_completer: dossier.champs_a_completer.filter((c) => c.code !== code),
+      champs_saisis: [...dossier.champs_saisis, { ...champ, valeur, message: '' }],
+    }
+  })
+  return { ...reponse, data: { ...reponse.data, dossiers } }
+}
+
+describe('DossiersReglementaires — champs du dossier (CALX41)', () => {
+  it('restitue les champs DÉJÀ enregistrés, avec la valeur du serveur', async () => {
+    servir('exemple')
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+
+    expect(premier.champs_saisis.length).toBeGreaterThan(0)
+    premier.champs_saisis.forEach((champ) => {
+      expect(screen.getByTestId(`cal196-champ-${champ.code}`))
+        .toHaveValue(String(champ.valeur))
+    })
+  })
+
+  it('n’enregistre rien tant que rien n’est saisi', async () => {
+    servir('exemple')
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+
+    expect(screen.getByTestId(`calx41-enregistrer-${premier.id}`)).toBeDisabled()
+    expect(calepinageApi.calepinages.enregistrerChampsDossier)
+      .not.toHaveBeenCalled()
+  })
+
+  it('quitter puis rouvrir restitue la saisie enregistrée', async () => {
+    servir('exemple')
+    const apres = apresSaisie('reference_dossier', 'DP-2026-01')
+    calepinageApi.calepinages.enregistrerChampsDossier.mockResolvedValue(apres)
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+
+    await userEvent.type(screen.getByTestId('cal196-champ-reference_dossier'), 'DP-2026-01')
+    await userEvent.click(screen.getByTestId(`calx41-enregistrer-${premier.id}`))
+
+    await waitFor(() => {
+      expect(calepinageApi.calepinages.enregistrerChampsDossier)
+        .toHaveBeenCalledWith(1, {
+          dossier: premier.id, champs: { reference_dossier: 'DP-2026-01' },
+        })
+    })
+    expect(await screen.findByTestId(`calx41-enregistre-${premier.id}`))
+      .toHaveTextContent('Champs enregistrés.')
+
+    // QUITTER puis ROUVRIR : le serveur sert désormais la saisie, et l'écran
+    // la RESTITUE (elle n'est plus « à compléter », elle est enregistrée).
+    cleanup()
+    calepinageApi.calepinages.dossiersReglementaires.mockResolvedValue(apres)
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    expect(screen.getByTestId('cal196-champ-reference_dossier'))
+      .toHaveValue('DP-2026-01')
+  })
+
+  it('un champ refusé par le serveur est rendu SOUS ce champ', async () => {
+    servir('exemple')
+    const motif = 'Le champ « Référence du dossier » attend une valeur simple.'
+    calepinageApi.calepinages.enregistrerChampsDossier.mockRejectedValue({
+      response: { data: { reference_dossier: [motif] } },
+    })
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+
+    await userEvent.type(screen.getByTestId('cal196-champ-reference_dossier'), 'X')
+    await userEvent.click(screen.getByTestId(`calx41-enregistrer-${premier.id}`))
+
+    expect(await screen.findByTestId('calx41-erreur-reference_dossier'))
+      .toHaveTextContent(motif)
+    expect(screen.queryByTestId(`calx41-enregistre-${premier.id}`)).toBeNull()
   })
 })

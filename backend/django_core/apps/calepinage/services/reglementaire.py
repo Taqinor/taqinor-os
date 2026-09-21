@@ -69,6 +69,8 @@ __all__ = [
     # CAL192 / CAL193 — les packs pays (Maroc, France).
     'DossierRefuse', 'construire_pack_dossier', 'GENRES_FRANCE',
     'avancement_du_dossier', 'packs_france',
+    # CALX41 — enregistrer les champs à compléter d'un dossier.
+    'ChampsDossierInvalides', 'enregistrer_champs',
 ]
 
 
@@ -84,28 +86,48 @@ def _valeur_reelle(valeur):
     return valeur
 
 
-def _champ_a_completer(champ, saisis, infos):
-    """Un champ du gabarit, avec la seule valeur RÉELLE que le serveur a.
-
-    Renvoie ``None`` quand l'utilisateur l'a déjà saisi : « à compléter » ne
-    liste que ce qui reste à faire.
-    """
-    code = str(champ.get('code') or '').strip()
-    if not code:
-        return None
-    saisie = _valeur_reelle((saisis or {}).get(code))
-    if saisie is not None:
-        return None
-    cle = champ.get('cle_calepinage')
-    valeur = _valeur_reelle((infos or {}).get(cle)) if cle else None
+def _champ_publie(champ, code, valeur, message):
+    """La forme PUBLIÉE d'un champ de gabarit — la même dans les deux listes."""
     return {
         'code': code,
         'libelle': str(champ.get('libelle') or code),
         'type': str(champ.get('type') or 'texte'),
         'valeur': valeur,
         'obligatoire': bool(champ.get('obligatoire')),
-        'message': ('' if valeur is not None else MESSAGE_CHAMP_SANS_SOURCE),
+        'message': message,
     }
+
+
+def _champs_du_gabarit(champs, saisis, infos):
+    """``(à_compléter, déjà_saisis)`` — un champ SAISI quitte « à compléter ».
+
+    « À compléter » ne liste QUE ce qui reste à faire : c'est cette liste que
+    ``avancement_du_dossier`` compte, et c'est elle qui décide de
+    ``peut_generer``. Un champ dont la source manque sort avec ``valeur =
+    null`` et son message — l'écran n'affiche alors AUCUNE valeur.
+
+    CALX41 — la SAISIE, elle, reste publiée dans sa propre liste : un champ
+    qui disparaîtrait dès qu'il est rempli serait un champ que personne ne
+    peut plus relire ni corriger. Rien n'y est deviné non plus : la valeur
+    publiée est celle que l'utilisateur a enregistrée, telle quelle.
+    """
+    a_completer, deja_saisis = [], []
+    for champ in champs or []:
+        if not isinstance(champ, dict):
+            continue
+        code = str(champ.get('code') or '').strip()
+        if not code:
+            continue
+        saisie = _valeur_reelle((saisis or {}).get(code))
+        if saisie is not None:
+            deja_saisis.append(_champ_publie(champ, code, saisie, ''))
+            continue
+        cle = champ.get('cle_calepinage')
+        valeur = _valeur_reelle((infos or {}).get(cle)) if cle else None
+        a_completer.append(_champ_publie(
+            champ, code, valeur,
+            '' if valeur is not None else MESSAGE_CHAMP_SANS_SOURCE))
+    return (a_completer, deja_saisis)
 
 
 def _piece(piece, jointes, gabarit):
@@ -162,10 +184,9 @@ def composer_dossier(entree, infos):
     pieces = [_piece(piece, jointes, gabarit)
               for piece in (entree.get('pieces_attendues') or [])
               if isinstance(piece, dict)] if present else []
-    champs = [champ for champ in (
-        _champ_a_completer(champ, saisis, infos)
-        for champ in (entree.get('champs') or []) if isinstance(champ, dict)
-    ) if champ is not None] if present else []
+    champs, champs_saisis = (
+        _champs_du_gabarit(entree.get('champs'), saisis, infos)
+        if present else ([], []))
 
     champs_bloquants = [c for c in champs
                         if c['obligatoire'] and c['valeur'] is None]
@@ -193,6 +214,9 @@ def composer_dossier(entree, infos):
         },
         'pieces': pieces,
         'champs_a_completer': champs,
+        # CALX41 — ce que l'utilisateur a DÉJÀ enregistré, relisible et
+        # corrigeable ; « à compléter » ne garde que ce qui reste à faire.
+        'champs_saisis': champs_saisis,
         'peut_generer': peut_generer,
         'motif_non_generable': motif,
         'genere_le': entree.get('genere_le'),
@@ -322,6 +346,132 @@ def dossiers_du_calepinage(calepinage, *, pays=None):
                for gabarit in gabarits]
     return composer_dossiers(calepinage_id=calepinage.pk, pays=pays,
                              entrees=entrees, infos=infos)
+
+
+# ── CALX41 — ENREGISTRER LES CHAMPS À COMPLÉTER D'UN DOSSIER ───────────────
+#
+# L'écran rendait les champs en saisie NON CONTRÔLÉE, sans envoi : ce que
+# l'utilisateur tapait était perdu à la fermeture, alors que
+# ``DossierReglementaire`` est un modèle PERSISTANT. La saisie s'enregistre
+# désormais — et la règle du module ne bouge pas d'un pouce : le gabarit de la
+# société FAIT FOI, un code hors du gabarit est REFUSÉ en le nommant (l'ERP
+# n'ajoute aucun champ à un formulaire officiel qu'il n'a pas reçu), et une
+# valeur vide EFFACE la saisie au lieu d'inventer un défaut.
+
+
+class ChampsDossierInvalides(ValueError):
+    """Saisie refusée — message FRANÇAIS, et le CHAMP fautif est nommé."""
+
+    def __init__(self, message, *, champ='champs'):
+        super().__init__(message)
+        self.champ = champ
+
+
+def _nombre_saisi(valeur):
+    """Le nombre qu'une saisie VEUT dire, ou ``None`` si ce n'en est pas un.
+
+    Normaliser plutôt que refuser quand l'intention est claire (règle
+    fondateur du 08/09/2026) : « 1 234,5 » est un nombre, pas une faute.
+    """
+    if isinstance(valeur, bool):
+        return None
+    if isinstance(valeur, (int, float)):
+        return valeur
+    texte = str(valeur)
+    for espace in (' ', ' ', ' '):
+        texte = texte.replace(espace, '')
+    texte = texte.replace(',', '.')
+    try:
+        return int(texte)
+    except ValueError:
+        pass
+    try:
+        return float(texte)
+    except ValueError:
+        return None
+
+
+def _valeur_de_champ(champ, code, valeur):
+    """La valeur ENREGISTRABLE d'un champ, ou ``None`` pour l'effacer."""
+    libelle = str(champ.get('libelle') or code)
+    if isinstance(valeur, (dict, list, tuple)):
+        raise ChampsDossierInvalides(
+            f"Le champ « {libelle} » attend une valeur simple "
+            f"(reçu : {type(valeur).__name__}).", champ=code)
+    propre = _valeur_reelle(valeur)
+    if propre is None:
+        return None
+    if str(champ.get('type') or 'texte') == 'nombre':
+        nombre = _nombre_saisi(propre)
+        if nombre is None:
+            raise ChampsDossierInvalides(
+                f"Le champ « {libelle} » attend un nombre "
+                f"(reçu : « {propre} »).", champ=code)
+        return nombre
+    if isinstance(propre, (int, float)) and not isinstance(propre, bool):
+        return propre
+    return propre if isinstance(propre, bool) else str(propre)
+
+
+def _valider_champs_saisis(champs_gabarit, saisie):
+    """``{code: valeur}`` VALIDÉ contre les champs DU GABARIT — PUR.
+
+    Refuse EN NOMMANT le champ fautif : un code absent du gabarit, une valeur
+    qui n'est pas une donnée simple, un « nombre » qui n'en est pas un. Une
+    valeur vide sort à ``None`` : elle EFFACE la saisie (la seule façon de
+    revenir en arrière sans inventer une valeur).
+    """
+    if saisie is None:
+        return {}
+    if not isinstance(saisie, dict):
+        raise ChampsDossierInvalides(
+            "Les champs du dossier se donnent en objet « code : valeur » "
+            f"(reçu : {type(saisie).__name__}).")
+    connus = {}
+    for champ in champs_gabarit or []:
+        if not isinstance(champ, dict):
+            continue
+        code = str(champ.get('code') or '').strip()
+        if code:
+            connus[code] = champ
+    valide = {}
+    for brut, valeur in saisie.items():
+        code = str(brut or '').strip()
+        champ = connus.get(code)
+        if champ is None:
+            raise ChampsDossierInvalides(
+                f"Le champ « {code or brut} » n'existe pas dans le gabarit de "
+                f"ce dossier : le gabarit déclare "
+                f"{', '.join('« %s »' % c for c in sorted(connus)) or 'aucun champ'}"
+                ". L'ERP n'ajoute aucun champ à un formulaire officiel qu'il "
+                "n'a pas reçu.", champ=code or 'champs')
+        valide[code] = _valeur_de_champ(champ, code, valeur)
+    return valide
+
+
+def enregistrer_champs(dossier, saisie):
+    """CALX41 — écrit les champs saisis sur le ``DossierReglementaire``.
+
+    La saisie est FUSIONNÉE : le panneau n'envoie que les champs qu'il
+    affiche, et un champ absent de l'envoi garde sa valeur (l'écraser
+    effacerait une saisie que personne n'a touchée). Une valeur vide efface
+    explicitement le champ concerné.
+
+    Raises:
+        ChampsDossierInvalides: code hors gabarit, valeur non simple, nombre
+            attendu — le champ fautif est NOMMÉ.
+    """
+    valide = _valider_champs_saisis(
+        getattr(dossier.gabarit, 'champs', None), saisie)
+    courant = dict(dossier.champs_saisis or {})
+    for code, valeur in valide.items():
+        if valeur is None:
+            courant.pop(code, None)
+        else:
+            courant[code] = valeur
+    dossier.champs_saisis = courant
+    dossier.save(update_fields=['champs_saisis'])
+    return dossier
 
 
 # ── CAL192 — LE PACK DE RACCORDEMENT AUTOPRODUCTION (MAROC) ────────────────
@@ -527,6 +677,9 @@ def avancement_du_dossier(dossier):
         'pieces_a_completer': len(a_completer),
         'pieces_manquantes': len(manquantes),
         'champs_a_completer': len(dossier.get('champs_a_completer') or []),
+        # CALX41 — un champ enregistré quitte « à compléter » et se compte
+        # ici : l'avancement tient donc compte de ce qui a été saisi.
+        'champs_saisis': len(dossier.get('champs_saisis') or []),
         'pourcentage': (round(len(fournies) * 100 / total)
                         if total else None),
     }

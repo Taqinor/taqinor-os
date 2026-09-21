@@ -6,6 +6,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatPercent } from '../../../lib/format'
 import { Card, Spinner } from '../../../ui'
+import RetourAtelier from '../atelier/RetourAtelier'
 import { ChartFrame, ChartTooltip, ChartEmpty } from '../../../ui/charts'
 import {
   CHART_TOKENS, CHART_GRID_STYLE, BAR_RADIUS, animationDuration, CHART_ANIM_EASING,
@@ -81,15 +82,29 @@ export default function DiagrammePertes({ calepinageId }) {
     { select: (r) => r.data, errorMessage: 'Diagramme de pertes indisponible.' },
   )
 
-  if (loading) return <Spinner />
+  if (loading) {
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <Spinner />
+      </>
+    )
+  }
   if (error) {
-    return <p className="text-sm text-destructive" data-testid="cal143-erreur">{error}</p>
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <p className="text-sm text-destructive" data-testid="cal143-erreur">{error}</p>
+      </>
+    )
   }
 
   const pertes = data?.production?.pertes ?? data?.pertes ?? []
 
   return (
-    <Card className="flex flex-col gap-3 p-4" data-testid="cal143-panneau">
+    <>
+      <RetourAtelier calepinageId={id} />
+      <Card className="flex flex-col gap-3 p-4" data-testid="cal143-panneau">
       <h2 className="text-base font-semibold">Diagramme de pertes</h2>
       {pertes.length === 0 ? (
         <ChartEmpty
@@ -101,6 +116,7 @@ export default function DiagrammePertes({ calepinageId }) {
         <DiagrammePertesCascade pertes={pertes} />
       )}
     </Card>
+    </>
   )
 }
 

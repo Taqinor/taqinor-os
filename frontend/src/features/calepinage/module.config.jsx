@@ -195,9 +195,18 @@ const config = {
     { path: '/calepinage/bibliotheque', component: Bibliotheque, roles: ROLES },
     // CAL165 — AVANT `/calepinage/:id` : « sources » n'est pas un identifiant.
     { path: '/calepinage/sources', component: SourcesNormatives, roles: ROLES },
-    // Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
-    // contextuel à un objet, comme `/ao/affaires/:id/design`. C'est la cible de
-    // la redirection après création (CAL36).
+    /* Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
+       contextuel à un objet, comme `/ao/affaires/:id/design`. C'est la cible de
+       la redirection après création (CAL36).
+
+       CALX1 — C'EST AUSSI L'ADRESSE DE TOUS LES ONGLETS : `/calepinage/:id
+       ?onglet=<cle>`, où `<cle>` est une clé de `atelier/onglets.js` et vaut
+       EXACTEMENT le dernier segment de la route profonde correspondante
+       ci-dessous. Le rail est monté par `AtelierPanneaux.jsx`. Les routes
+       profondes ne disparaissent pas pour autant : elles restent SERVIES comme
+       liens profonds (un lien envoyé hier doit encore s'ouvrir demain), et
+       aucune n'est à ajouter ici pour un onglet neuf — un panneau de plus,
+       c'est une ligne de plus dans `atelier/onglets.js`, rien d'autre. */
     { path: '/calepinage/:id', component: AtelierCalepinage, roles: ROLES },
     // contextuelle: comparatif d'UN calepinage, ouvert depuis son atelier (CAL37) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/variantes', component: VariantesCompare, roles: ROLES },

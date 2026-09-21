@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
    CAL63 — CALER UN PLAN IMPORTÉ : translation, rotation, ÉCHELLE SAISIE.
@@ -31,11 +32,21 @@ import calepinageApi from '../../api/calepinageApi'
    la MÊME porte `layout/` (CAL18) — aucun second stockage, aucune seconde
    forme d'URL.
 
-   CE QUE CET ÉCRAN NE PEUT PAS ENCORE FAIRE, ET QU'IL FAUT DIRE : CAL62 vit
-   dans `services/import_plan.py` et n'a AUCUNE porte HTTP à ce jour. Le contour
-   arrive donc par la propriété `contour` (celui qui dépose le fichier le
-   passe), ou depuis un calage déjà enregistré. Sans contour, l'écran le DIT
-   au lieu d'afficher un calque vide qui aurait l'air cassé.
+   D'OÙ VIENT LE CONTOUR (CALX39). L'analyseur de CAL62 a désormais sa porte
+   HTTP : `POST calepinages/<pk>/importer-plan/` (contrat
+   `apps/calepinage/contract_samples/calepinage_import_plan.json`). Le fichier
+   déposé ici est ANALYSÉ par le serveur, qui rend ses calques ; le calque
+   choisi rend le contour. Cette porte n'écrit RIEN — ni `roof_layout`, ni
+   document : l'enregistrement reste les deux boutons du bas, et c'est
+   l'utilisateur qui les presse. Le contour peut toujours arriver par la
+   propriété `contour` ou depuis un calage déjà enregistré ; sans aucun des
+   trois, l'écran le DIT au lieu d'afficher un calque vide qui aurait l'air
+   cassé.
+
+   LE SERVEUR NE DEVINE AUCUNE ÉCHELLE, ET CET ÉCRAN NON PLUS : la réponse
+   porte l'unité DÉCLARÉE par le fichier (ou « inconnu ») et le motif qui dit
+   pourquoi l'échelle vient d'ici. Un refus est rendu SOUS le champ fautif
+   (`fichier` ou `calque`), avec le bandeau qui le nomme.
    ========================================================================== */
 
 const RAD = Math.PI / 180
@@ -174,6 +185,13 @@ export default function PlanImporteCalage({
   const [aimantationActive, setAimantationActive] = useState(false)
   const [message, setMessage] = useState(null)
   const [refus, setRefus] = useState(null)
+  // CALX39 — le plan déposé, l'analyse rendue par le serveur, le calque choisi
+  // et le contour qu'il propose. Rien de tout cela n'est persisté par la porte.
+  const [fichierDepose, setFichierDepose] = useState(null)
+  const [analyse, setAnalyse] = useState(null)
+  const [calqueChoisi, setCalqueChoisi] = useState('')
+  const [contourImporte, setContourImporte] = useState(null)
+  const [refusImport, setRefusImport] = useState(null)
 
   // RELECTURE du calage persisté : la MÊME porte `layout/` que la conception.
   useEffect(() => {
@@ -200,7 +218,8 @@ export default function PlanImporteCalage({
     return () => { annule = true }
   }, [calepinageId])
 
-  const contour = contourPropose ?? layout?.planImporte?.contour ?? null
+  const contour = contourPropose ?? contourImporte
+    ?? layout?.planImporte?.contour ?? null
   const sommets = Array.isArray(contour) ? contour : []
 
   const pointA = sommets[Number(saisie.indexA)] ?? null
@@ -272,23 +291,142 @@ export default function PlanImporteCalage({
 
   const majChamp = (cle, brutSaisi) => setSaisie((s) => ({ ...s, [cle]: brutSaisi }))
 
+  /* CALX39 — dépose le plan et lit ce que le SERVEUR en dit. `calque` vide =
+     première analyse (la liste des calques) ; `calque` renseigné = le contour
+     de ce calque. Le fichier n'est pas conservé côté serveur : il repart avec
+     le choix du calque. Un refus atterrit SOUS son champ. */
+  const envoyerPlan = (calque) => {
+    if (!fichierDepose) {
+      setRefusImport({
+        champ: 'fichier',
+        message: 'Déposez un plan (DXF ou PDF vectoriel) avant de lancer l’analyse.',
+      })
+      return
+    }
+    const corps = new FormData()
+    corps.append('fichier', fichierDepose)
+    if (calque) corps.append('calque', calque)
+    setRefusImport(null)
+    Promise.resolve(calepinageApi.calepinages.importerPlan(calepinageId, corps))
+      .then((res) => {
+        const donnees = res?.data ?? null
+        setAnalyse(donnees)
+        if (donnees?.contour) setContourImporte(donnees.contour)
+        setMessage(donnees?.message ?? null)
+      })
+      .catch((e) => {
+        // Le motif vient du SERVEUR, et il NOMME son champ (`fichier` ou
+        // `calque`) : on ne réécrit ni l'un ni l'autre.
+        const corpsErreur = e?.response?.data ?? {}
+        const champ = Object.keys(corpsErreur)[0] ?? 'fichier'
+        setRefusImport({
+          champ,
+          message: String(corpsErreur[champ]
+            ?? 'Le plan n’a pas pu être analysé.'),
+        })
+      })
+  }
+
+  const blocDepot = (
+    <div className="mt-4" data-testid="cal-calage-import">
+      <p className="tech-label text-lune-faint">
+        Déposer un plan (DXF ou PDF vectoriel)
+      </p>
+      <input
+        type="file"
+        id="cal-calage-fichier"
+        data-testid="cal-calage-fichier"
+        accept=".dxf,.pdf"
+        aria-invalid={refusImport?.champ === 'fichier' ? 'true' : undefined}
+        onChange={(e) => {
+          setFichierDepose(e.target.files?.[0] ?? null)
+          setRefusImport(null)
+        }}
+        className="mt-1 block w-full text-sm text-lune-soft"
+      />
+      <button type="button" onClick={() => envoyerPlan('')}
+        data-testid="cal-calage-analyser"
+        className="mt-2 rounded border border-white/15 px-3 py-1 text-sm text-white">
+        Analyser le plan
+      </button>
+      {refusImport?.champ === 'fichier' && (
+        <span role="alert" data-testid="cal-calage-erreur-fichier"
+          className="mt-1 block text-xs text-red-300">{refusImport.message}</span>
+      )}
+
+      {analyse && (
+        <div className="mt-3" data-testid="cal-calage-analyse">
+          <p className="text-xs text-lune-soft" data-testid="cal-calage-unite">
+            Format : {texte(analyse.format)} — unité déclarée par le fichier :{' '}
+            {texte(analyse.unite)}
+          </p>
+          <p className="text-xs text-lune-faint" data-testid="cal-calage-motif-echelle">
+            {analyse.motif_echelle}
+          </p>
+          <label className="mt-2 block" data-testid="cal-calage-champ-calque">
+            <span className="tech-label text-lune-faint">Calque d’enveloppe</span>
+            <select
+              data-testid="cal-calage-calque"
+              value={calqueChoisi}
+              aria-invalid={refusImport?.champ === 'calque' ? 'true' : undefined}
+              onChange={(e) => setCalqueChoisi(e.target.value)}
+              className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+            >
+              <option value="">— choisir un calque —</option>
+              {(analyse.calques ?? []).map((calque) => (
+                <option key={calque.nom} value={calque.nom}>
+                  {calque.nom} — {calque.entites} tracé(s), {calque.sommets} sommet(s)
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" onClick={() => envoyerPlan(calqueChoisi)}
+            data-testid="cal-calage-proposer"
+            className="mt-2 rounded bg-brass-500/20 px-3 py-1 text-sm font-semibold text-brass-200">
+            Proposer ce contour
+          </button>
+          {refusImport?.champ === 'calque' && (
+            <span role="alert" data-testid="cal-calage-erreur-calque"
+              className="mt-1 block text-xs text-red-300">{refusImport.message}</span>
+          )}
+        </div>
+      )}
+
+      {refusImport && (
+        <p role="alert" data-testid="cal-calage-bandeau-import"
+          className="mt-2 text-xs text-red-300">
+          Le champ « {refusImport.champ} » doit être corrigé : {refusImport.message}
+        </p>
+      )}
+    </div>
+  )
+
   if (!sommets.length) {
     return (
-      <div className="cine-card mt-6 p-6" data-testid="cal-calage-plan">
-        <p className="tech-label rule-brass text-brass-300">Plan importé</p>
-        <p className="mt-2 text-sm text-lune-soft" data-testid="cal-calage-sans-plan">
-          Aucun plan importé n’est rattaché à ce calepinage : il n’y a donc rien
-          à caler. Déposez un plan (DXF ou PDF vectoriel) depuis l’atelier.
-        </p>
-      </div>
+      <>
+        <RetourAtelier calepinageId={calepinageId} />
+        <div className="cine-card mt-6 p-6" data-testid="cal-calage-plan">
+          <p className="tech-label rule-brass text-brass-300">Plan importé</p>
+          <p className="mt-2 text-sm text-lune-soft" data-testid="cal-calage-sans-plan">
+            Aucun plan importé n’est rattaché à ce calepinage : il n’y a donc rien
+            à caler. Déposez un plan (DXF ou PDF vectoriel) ci-dessous : le serveur
+            l’analyse et propose le contour du calque choisi, sans rien enregistrer.
+          </p>
+          {blocDepot}
+        </div>
+      </>
     )
   }
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-calage-plan">
-      <p className="tech-label rule-brass text-brass-300">
-        Caler le plan importé
-      </p>
+    <>
+      <RetourAtelier calepinageId={calepinageId} />
+      <div className="cine-card mt-6 p-6" data-testid="cal-calage-plan">
+        <p className="tech-label rule-brass text-brass-300">
+          Caler le plan importé
+        </p>
+
+      {blocDepot}
 
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <ChampNombre cle="translationX" label="Translation X"
@@ -372,5 +510,6 @@ export default function PlanImporteCalage({
           data-testid="cal-calage-message">{message}</p>
       )}
     </div>
+    </>
   )
 }

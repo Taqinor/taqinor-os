@@ -11,6 +11,7 @@ import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { Button, Card, Spinner } from '../../../ui'
+import RetourAtelier from '../atelier/RetourAtelier'
 
 /* ============================================================================
    CAL234 — AFFECTER LES CHAÎNES À LA MAIN, AVEC LE VERDICT EN DIRECT.
@@ -52,6 +53,15 @@ import { Button, Card, Spinner } from '../../../ui'
    RELANCER L'AUTOMATIQUE NE PEUT PAS ÊTRE ACCIDENTEL. Effacer une affectation
    faite à la main demande une CONFIRMATION explicite : le premier clic arme,
    le second exécute. C'est la garantie exigée par le Done de la tâche.
+
+   CALX53 — LES AVERTISSEMENTS DU SERVEUR SONT AFFICHÉS, PAS AVALÉS.
+   `resultat.avertissements` (contrat `calepinage_resultat.json`) est rendu EN
+   HAUT du panneau, avant la grille et les bornes de chaîne : c'est là que le
+   serveur NOMME, par exemple, un coefficient de température non sourcé —
+   `temp_coeff_voc_pct_c` / `temp_coeff_pmax_pct_c` tombés sur le défaut du
+   noyau. Les bornes restent calculées ; l'utilisateur sait seulement qu'elles
+   reposent sur une valeur que sa fiche produit ne publie pas. Les messages
+   sont RECOPIÉS tels quels — cet écran n'en reformule ni n'en filtre aucun.
    ========================================================================== */
 
 /* ── LA TEINTE DES CHAÎNES — MIROIR EXACT DE CAL126 ────────────────────────
@@ -334,9 +344,21 @@ export default function AffectationChaines({ calepinageId }) {
       })
   }
 
-  if (chargement) return <Spinner />
+  if (chargement) {
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <Spinner />
+      </>
+    )
+  }
   if (erreur) {
-    return <p className="text-sm text-destructive" data-testid="cal234-erreur">{erreur}</p>
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <p className="text-sm text-destructive" data-testid="cal234-erreur">{erreur}</p>
+      </>
+    )
   }
 
   const parPan = new Map()
@@ -349,9 +371,14 @@ export default function AffectationChaines({ calepinageId }) {
   const bloquants = verdict?.bloquants || []
   const alertes = verdict?.alertes || []
   const aProposition = editions.size > 0
+  // CALX53 — les avertissements publiés AVEC le résultat (coefficients de
+  // température non sourcés, exemplaire d'onduleur non nommé…).
+  const avertissements = resultat?.avertissements || []
 
   return (
-    <Card className="flex flex-col gap-4 p-4" data-testid="cal234-ecran">
+    <>
+      <RetourAtelier calepinageId={id} />
+      <Card className="flex flex-col gap-4 p-4" data-testid="cal234-ecran">
       <header className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">Affectation des chaînes</h2>
         <p className="text-sm text-muted-foreground">
@@ -360,6 +387,24 @@ export default function AffectationChaines({ calepinageId }) {
           n’est enregistré tant que vous ne validez pas.
         </p>
       </header>
+
+      {/* CALX53 — AVANT la grille et les bornes : ce que le serveur avertit
+          sur les données qui ont servi à les calculer. RECOPIÉ mot pour mot. */}
+      {avertissements.length
+        ? (
+          <section className="flex flex-col gap-1" data-testid="calx53-avertissements">
+            {avertissements.map((message) => (
+              <p
+                key={message}
+                className="rounded border border-border bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
+                data-testid="calx53-avertissement"
+              >
+                {message}
+              </p>
+            ))}
+          </section>
+        )
+        : null}
 
       <div className="flex items-center gap-2">
         <Button
@@ -552,5 +597,6 @@ export default function AffectationChaines({ calepinageId }) {
         ))}
       </ul>
     </Card>
+    </>
   )
 }

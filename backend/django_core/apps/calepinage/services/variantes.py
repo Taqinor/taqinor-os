@@ -199,13 +199,18 @@ def retenir_variante(variante):
     return variante
 
 
-def dupliquer(calepinage, *, user=None, titre=''):
+def dupliquer(calepinage, *, user=None, titre='', avec_variantes=True):
     """Recopie layout + variantes vers un NOUVEAU calepinage.
 
     Le duplicata reste dans la MÊME société et garde le rattachement
     lead/client (sinon il violerait la contrainte « lead ou client »), mais
     il ne porte NI ``devis`` NI ``appel_offre_id`` : dupliquer une conception
     ne réquisitionne pas le devis de l'original.
+
+    CALX35 — ``avec_variantes`` vaut ``True`` par DÉFAUT : c'est le
+    comportement du service depuis CAL14, et la décision D12 exige qu'un
+    réglage neuf ne change rien pour un appelant qui ne le passe pas. À
+    ``False``, seule la conception suit : aucune variante n'est recopiée.
     """
     from django.db import transaction
 
@@ -229,9 +234,11 @@ def dupliquer(calepinage, *, user=None, titre=''):
             resultat=calepinage.resultat,
             cree_par=user,
         )
+        sources = ((CalepinageVariante.objects
+                    .filter(calepinage=calepinage).order_by('id'))
+                   if avec_variantes else CalepinageVariante.objects.none())
         with bascule_autorisee():
-            for source in (CalepinageVariante.objects
-                           .filter(calepinage=calepinage).order_by('id')):
+            for source in sources:
                 CalepinageVariante.objects.create(
                     company=copie.company,
                     calepinage=copie,
