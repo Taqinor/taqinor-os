@@ -31,6 +31,7 @@ client API dédié) sont devenus respectivement `frontend/parked/features/<x>`,
 | Module | features/ | pages/ | api/ |
 |---|---|---|---|
 | agriculture | oui | oui | oui (agricultureApi.js) |
+| ai_governance | — (voir note) | — (voir note) | oui (aiGovernanceApi.js) |
 | ao | oui | — | oui (aoApi.js + aoApi.test.mjs) |
 | assurances | oui | — | — |
 | btp_chantier | oui | oui (`pages/btp`) | oui (btpChantierApi.js) |
@@ -82,6 +83,19 @@ utilisés par des écrans CONSERVÉS (installations, ventes, CRM, SAV, stock) ;
 SOLMVP41c a retiré ces derniers usages (CTA « Créer le projet de
 facturation », dictée vocale terrain, sélecteur d'acheteur BCF recablé sur
 `coreApi.utilisateurs.list()`) et déplacé les trois clients ici.
+
+Note « ai_governance » : ce module n'a jamais eu de dossier
+`features/ai_governance` ni `pages/ai_governance` dédié — son usage frontend
+était dispersé en petits bouts dans des écrans CONSERVÉS d'autres modules
+(copilote contextuel de fiche dans `features/ia/CopilotContext.jsx`, carte
+« IA (capacités) » dans `features/parametres/IaCapacites.jsx`, page
+`features/reporting/RapportPeriodePage.jsx`, widget
+`pages/parametres/AssistantConfigWidget.jsx`, mémo vocal `CrVocalMemo` dans
+`pages/sav/TicketsPage.jsx`, brouillon IA dans `pages/stock/ProduitForm.jsx`,
+brouillon de relance dans `pages/crm/leads/LeadDetailPage.jsx`). SOLMVP41c a
+retiré tous ces bouts (composants/routes/menus supprimés, jamais parqués —
+ils ne survivraient pas sans le backend) et ne parque que `aiGovernanceApi.js`
+lui-même, seul fichier qui EST le module côté frontend.
 
 ## Faire revenir un module
 

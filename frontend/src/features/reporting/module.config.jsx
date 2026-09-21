@@ -52,9 +52,6 @@ const CohortsPage = lazy(() => import('../../pages/reporting/CohortsPage'))
 const DashboardConfigPage = lazy(() => import('../../pages/reporting/DashboardConfigPage'))
 // XPLT10 — partage de dashboard (liens publics tokenisés, créer/révoquer).
 const DashboardSharePage = lazy(() => import('../../pages/reporting/DashboardSharePage'))
-// PACT144 — rapport d'activité périodique (métriques serveur + narratif
-// éditable ; un narratif citant un chiffre absent est refusé côté serveur).
-const RapportPeriodePage = lazy(() => import('./RapportPeriodePage'))
 // PACT146 — générateur de rapports croisés (définitions NTEXT10 rejouables).
 const RapportBuilderPage = lazy(() => import('./RapportBuilderPage'))
 const ArchiveClientPage = lazy(() => import('../../pages/reporting/ArchiveClientPage'))
@@ -124,8 +121,6 @@ const config = {
       { to: '/dashboards-tv',        label: 'Dashboards TV',    k: 'nav.dashboards_tv', icon: navIcon(Tv), roles: ['responsable','admin'] },
       // XPLT10 — gestion des liens de partage (créer/révoquer).
       { to: '/reporting/dashboards/partage', label: 'Partage de dashboards', k: 'nav.dashboards_partage', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
-      // PACT144 — rapport d'activité périodique (chiffres serveur + narratif).
-      { to: '/reporting/rapport-periode', label: 'Rapport de période', k: 'nav.rapport_periode', icon: navIcon(ScrollText), roles: ['responsable','admin'] },
       // PACT146 — générateur de rapports croisés (définitions rejouables).
       { to: '/reporting/rapport-builder', label: 'Rapports croisés', k: 'nav.rapport_builder', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       // ODY23 — Journal d'activité rejoint l'app Rapports (route inchangée,
@@ -138,7 +133,6 @@ const config = {
   // PACT144 — titre de page du seul chemin AJOUTÉ par ce module (les autres
   // restent déclarés dans `components/layout/routes.meta.js`, non dupliqués).
   titles: [
-    ['/reporting/rapport-periode', 'Rapport d’activité périodique'],
     ['/reporting/rapport-builder', 'Générateur de rapports croisés'],
     ['/reporting/pilotage-chantiers', 'Pilotage chantiers'],
   ],
@@ -151,7 +145,6 @@ const config = {
     { path: '/reporting/cohortes', component: CohortsPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/dashboards', component: DashboardConfigPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/dashboards/partage', component: DashboardSharePage, roles: RESPONSABLE_ADMIN },
-    { path: '/reporting/rapport-periode', component: RapportPeriodePage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/rapport-builder', component: RapportBuilderPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/archive/client/:id', component: ArchiveClientPage },
     { path: '/reporting/archive/chantier/:id', component: ArchiveChantierPage },
