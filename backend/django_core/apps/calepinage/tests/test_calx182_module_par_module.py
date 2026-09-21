@@ -16,8 +16,10 @@ CE QUI EST PROUVÉ ICI
 5. **Les modules identiques d'un pan sont calculés une fois** et comptés
    autant de fois qu'ils sont : l'agrégat est exact, jamais échantillonné.
 6. **La série agrégée** est cohérente avec le total, heure par heure.
-7. **Pureté** : le contexte reçu ne bouge pas, et deux passages rendent le
-   même document.
+7. **Pureté** : le contexte reçu ne bouge pas — chaque passage tourne sur sa
+   copie de travail, parce que ``appliquer_chaine`` écrit dans le contexte
+   qu'elle reçoit (CALX59/153/155) — et deux passages rendent le même
+   document.
 8. **Rien n'est supposé** : sans pan ou sans accès météo, le bloc est publié
    VIDE avec son motif — jamais un 0 kWh.
 
@@ -32,7 +34,7 @@ import copy
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.services import etapes, simulation_modules
+from apps.calepinage.services import chaine_pertes, etapes, simulation_modules
 from apps.calepinage.services.chaine_pertes import appliquer_chaine
 
 #: La méthode d'accès solaire que le document déclare (CALX158).
@@ -117,10 +119,13 @@ class ProprietesDAgregation(SimpleTestCase):
         self.assertAlmostEqual(somme, bloc['total']['p50_kwh'], delta=0.1)
 
     def test_tous_a_un_rend_le_total_de_la_simulation_par_pan(self):
-        contexte = contexte_de([('PAN-A', [1.0] * 8)])
-        bloc = simulation_modules.production_module_par_module(contexte)
-        # La MÊME fixture, la MÊME chaîne, mais en une seule passe de pan.
-        sortie, _cascade = appliquer_chaine(SERIE, dict(contexte))
+        bloc = simulation_modules.production_module_par_module(
+            contexte_de([('PAN-A', [1.0] * 8)]))
+        # La MÊME fixture, la MÊME chaîne, mais en une seule passe de pan —
+        # sur un contexte NEUF, puisque la chaîne écrit dans celui qu'elle
+        # reçoit (CALX59/155).
+        sortie, _cascade = appliquer_chaine(
+            SERIE, contexte_de([('PAN-A', [1.0] * 8)]))
         self.assertAlmostEqual(bloc['total']['p50_kwh'],
                                etapes.energie_kwh(sortie), places=6)
 
@@ -296,7 +301,14 @@ class RienNestSuppose(SimpleTestCase):
 
 
 class PureteEtDeterminisme(SimpleTestCase):
-    """Le contexte ne bouge pas, et deux passages rendent le même document."""
+    """Le contexte ne bouge pas, et deux passages rendent le même document.
+
+    ``appliquer_chaine`` ÉCRIT dans le contexte qu'elle reçoit — accès météo
+    partagé, ``meteo.appels_pvgis``, ``meteo.heure`` après le recalage
+    horaire, verdict ``croisement_horaire`` (CALX59/153/155). Ce pilote ne
+    lui donne donc que des COPIES DE TRAVAIL, et ces tests le prouvent des
+    deux côtés : rien ne fuit vers l'appelant, et la chaîne a bien écrit.
+    """
 
     def test_le_contexte_recu_nest_pas_modifie(self):
         contexte = contexte_de([('PAN-A', [1.0, 0.5])])
@@ -308,6 +320,18 @@ class PureteEtDeterminisme(SimpleTestCase):
                  if cle != 'obtenir_serie'}
         self.assertEqual(avant, apres)
         self.assertNotIn('plan', contexte)
+        self.assertNotIn(chaine_pertes.CLE_METEO_PARTAGEE, contexte)
+        self.assertNotIn(chaine_pertes.CLE_CROISEMENT_HORAIRE, contexte)
+        self.assertNotIn('heure', contexte['meteo'])
+        self.assertNotIn('appels_pvgis', contexte['meteo'])
+
+    def test_ce_que_la_chaine_a_pose_est_republie(self):
+        """La copie isole, elle n'escamote pas : le verdict ressort."""
+        bloc = simulation_modules.production_module_par_module(
+            contexte_de([('PAN-A', [1.0, 0.5])]))
+        self.assertIsNotNone(bloc['entree']['croisement_horaire'])
+        self.assertIsNotNone(bloc['entree']['meteo_heure'])
+        self.assertIn('possible', bloc['entree']['croisement_horaire'])
 
     def test_deux_passages_rendent_le_meme_document(self):
         pans = [('PAN-A', [1.0] * 3 + [0.3]), ('PAN-B', [0.8, 0.8])]
