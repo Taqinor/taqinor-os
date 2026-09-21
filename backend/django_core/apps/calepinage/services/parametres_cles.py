@@ -98,6 +98,7 @@ CLES_SIMULATION = (
     ('modele_degradation', 'Modèle de dégradation pluriannuelle', '', 'PVsyst — Array and system losses'),  # CALX145
     ('thermique_par_pose', 'Coefficients Uc/Uv par type de pose', 'W/m²K et W/m³sK', 'PVsyst — Array thermal losses (Faiman)'),  # CALX145
     ('attenuation_horizon', "Atténuation appliquée au profil d'horizon", '', 'PVGIS — printhorizon, profil DEM'),  # CALX145
+    ('salissure_mensuelle_pct', 'Salissure, mois par mois (12 valeurs, ou une seule pour les douze)', '%', 'PVsyst — Soiling loss (facteurs MENSUELS, aucune valeur universelle par défaut)'),  # CALX161
 )
 
 #: Les clés ADMISES de la section ``electrique_societe``, même forme et même
