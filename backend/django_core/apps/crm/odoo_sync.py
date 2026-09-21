@@ -347,6 +347,13 @@ def build_rows(odoo_leads, tag_names):
             'ville': _ville_odoo_corrigee(lead.get('city')),
             'stage': stage_odoo,
             'note': '\n'.join(note_lines),
+            # CAD119 — la VRAIE date de création Odoo voyage désormais dans
+            # une COLONNE, pas seulement dans la note en texte libre
+            # ci-dessus (que personne ne peut requêter). Sans elle, tous les
+            # leads synchronisés portent la date de la SYNCHRO et tout import
+            # de rattrapage fausse les KPI de délai (CAD87).
+            'date_creation_odoo': (str(lead['create_date'])
+                                   if lead.get('create_date') else None),
         }
         rows.append({k: v for k, v in row.items() if v is not None})
     return rows

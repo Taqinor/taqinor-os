@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 415e1d46de50c6c19aad0a5966f0a2d3ca0c0b5222b7ac3728f6fe7a2d120ba3
-Plan fingerprint: 04f6244241f0b4419de4ec8627dd35f812591b2ff37160fb4b02d937b062f0c0
+Structure fingerprint: 08e9b420e14818daf80a7c80a73d16ca77e5e4dfb19e2c626381700cec97da89
+Plan fingerprint: 2bb11b2f2c4b272a0ef7176ae8fa74fc95d0dc20a11197f108bb7f562ab3a99b
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -532,7 +532,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (238)**
+**Done (257)**
 
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
@@ -552,6 +552,13 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD73` — Le premier réveil dit au client « il y a quelques mois » alors qu'il part six semaines…
 - `CAD83` — La file du jour trie par heure ; la priorité et le score affichés ne servent à rien
 - `CAD85` — Les écrans quotidiens de la cadence ne sont couverts par aucun test mobile
+- `CAD87` — Rien ne mesure ce qui prouverait que la cadence marche
+- `CAD88` — Le KPI de premier contact neutralise le week-end : un lead qui a attendu 60 heures…
+- `CAD89` — Écrire la méthode de comparaison, pour qu'aucun futur run ne recalibre la cadence sur…
+- `CAD90` — Le registre de consentement ne couvre que les leads du formulaire du site
+- `CAD92` — Une durée de conservation est déclarée et n'est appliquée nulle part
+- `CAD93` — Deux leads du même foyer reçoivent deux cadences parallèles
+- `CAD94` — [TRANCHÉ 21/09/2026 — rien sur le score avant la mesure de CAD87.]
 - `CAD95` — Joindre une courte vidéo à la preuve chantier J4
 - `CAD96` — Trois graphies de la marque dans la même conversation WhatsApp
 - `CAD102` — Après l'appel du filet resté sans réponse, l'ERP réclame un devis pour un client jamais…
@@ -560,6 +567,18 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD113` — Dans l'éditeur de cadence, une erreur serveur s'affiche en toast générique
 - `CAD114` — Le canal « Visite » est proposé à la configuration et ne déclenche rien
 - `CAD116` — Le rappel de 08:30 ne donne qu'un nombre — et il part aussi chez qui ne peut pas le…
+- `CAD118` — On mesure si les touches sont cochées, jamais si elles joignent quelqu'un
+- `CAD119` — La vraie date de création Odoo finit dans une note, pas dans un champ
+- `CAD120` — Les notifications ne connaissent aucune fenêtre horaire, et la garde est éteinte par…
+- `CAD121` — [TRANCHÉ 21/09/2026 — case WhatsApp du formulaire décochée par défaut.]
+- `CAD122` — [TRANCHÉ 21/09/2026 — formalisme 31-08 quand le bon de commande se signe chez le…
+- `CAD129` — Le client clique « rappelez-moi » : sa demande n'entre pas dans la file
+- `CAD131` — « Rappelé en moins de 5 minutes » se valide en SAUTANT la première touche
+- `CAD133` — Le score ne regarde que ce que le client a DIT, jamais ce qu'il FAIT
+- `CAD134` — La même phrase du client vaut 8 points depuis le site et 0 depuis Meta
+- `CAD135` — « Le client relit la page du prix » : le code dit lui-même qu'il faut appeler, et…
+- `CAD137` — « Rouvert 3 fois » se déclenche sur une seule visite
+- `CAD138` — Le panier « relance d'engagement » ne se vide jamais et masque les devis qui expirent
 - `CAD139` — Du code mort laisse croire que l'ouverture d'un devis fait avancer le funnel
 - `CAD141` — Le rafraîchissement nocturne des scores balaie les dossiers clos
 - `CAD143` — L'éditeur n'a pas d'onglet pour la cadence « Générique », pourtant encore active sur de…
@@ -773,7 +792,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (368)**
+**Open — to build (349)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
@@ -844,14 +863,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD82` — Le bouton « Appeler » se désactive en silence, et la préférence du client n'atteint pas…
 - `CAD84` — La question « message ouvert ? » présume le canal suggéré
 - `CAD86` — Quatre écrans de la cadence n'ont été ouverts par personne pendant l'audit
-- `CAD87` — Rien ne mesure ce qui prouverait que la cadence marche
-- `CAD88` — Le KPI de premier contact neutralise le week-end : un lead qui a attendu 60 heures…
-- `CAD89` — Écrire la méthode de comparaison, pour qu'aucun futur run ne recalibre la cadence sur…
-- `CAD90` — Le registre de consentement ne couvre que les leads du formulaire du site
 - `CAD91` — L'opposition (« ne plus contacter ») n'est jamais tracée au registre
-- `CAD92` — Une durée de conservation est déclarée et n'est appliquée nulle part
-- `CAD93` — Deux leads du même foyer reçoivent deux cadences parallèles
-- `CAD94` — [TRANCHÉ 21/09/2026 — rien sur le score avant la mesure de CAD87.]
 - `CAD97` — Sur la cadence générique, « Fait — passer à la suite » annonce « demain » à tort
 - `CAD98` — Les trois « Appel de suivi » du suivi après-devis n'ont aucun script
 - `CAD99` — Afficher la liste des cadences échues (moitié écran de CAD75)
@@ -867,27 +879,15 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD112` — Deux onglets portent le même nom et montrent deux choses différentes
 - `CAD115` — La file qui lit les signaux est fermée à la personne qui relance
 - `CAD117` — « X leads sans cadence » n'existe nulle part : le refus se lit fiche par fiche
-- `CAD118` — On mesure si les touches sont cochées, jamais si elles joignent quelqu'un
-- `CAD119` — La vraie date de création Odoo finit dans une note, pas dans un champ
-- `CAD120` — Les notifications ne connaissent aucune fenêtre horaire, et la garde est éteinte par…
-- `CAD121` — [TRANCHÉ 21/09/2026 — case WhatsApp du formulaire décochée par défaut.]
-- `CAD122` — [TRANCHÉ 21/09/2026 — formalisme 31-08 quand le bon de commande se signe chez le…
 - `CAD123` — [TRANCHÉ 21/09/2026 — avertir, sans bloquer, une visite sans devis envoyé.]
 - `CAD124` — [TRANCHÉ 21/09/2026 — pas d'axe segment dans le gabarit de cadence.]
 - `CAD125` — Le dossier 82-21 et le dossier FDA sont captés et ne déclenchent aucune parole
 - `CAD126` — Les textes sont 100 % résidentiels : « sur votre toit » part à un pompage au bord d'un…
 - `CAD127` — « Vous venez de remplir notre formulaire » est faux pour la moitié des origines
 - `CAD128` — Un ancien client SIGNÉ qui redemande un devis est refusé comme « doublon »
-- `CAD129` — Le client clique « rappelez-moi » : sa demande n'entre pas dans la file
 - `CAD130` — Le client rouvre sa proposition trois fois dans la soirée : la cadence ne bouge pas…
-- `CAD131` — « Rappelé en moins de 5 minutes » se valide en SAUTANT la première touche
 - `CAD132` — Le filet « lead chaud non contacté » ne peut pas se déclencher sur un lead Meta, et…
-- `CAD133` — Le score ne regarde que ce que le client a DIT, jamais ce qu'il FAIT
-- `CAD134` — La même phrase du client vaut 8 points depuis le site et 0 depuis Meta
-- `CAD135` — « Le client relit la page du prix » : le code dit lui-même qu'il faut appeler, et…
 - `CAD136` — Questionnaire rempli, photo de facture reçue : silence complet
-- `CAD137` — « Rouvert 3 fois » se déclenche sur une seule visite
-- `CAD138` — Le panier « relance d'engagement » ne se vide jamais et masque les devis qui expirent
 - `CAD140` — Le « score d'engagement client » a abandonné le seul signal comportemental qu'il devait…
 - `CAD142` — Le Journal du plan de relance ne mentionne jamais les visites, que la Frise affiche…
 - `CAD144` — Un achat de coopérative ou un comité industriel n'a qu'UN seul contact dans le CRM

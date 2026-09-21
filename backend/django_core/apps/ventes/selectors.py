@@ -2196,11 +2196,15 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
         ``devis_a_facturer``, ZFAC12 — aucune logique dupliquée) ;
       * ``refuses_sans_motif``    — refusé sans ``motif_refus`` (QX26 : un
         refus sans motif est une information perdue pour toujours) ;
-      * ``engagement_relance``    — envoyé et le moteur d'engagement (QX30be,
-        ``ShareLink.engagement_triggers_fired``) a déjà tiré au moins un
-        déclencheur (non ouvert 24 h / ouvert non signé 48 h / rouvert 3×) ;
       * ``expirant_bientot``      — envoyé, ``date_validite`` dans les
-        ``jours_avant_expiration`` jours (échéance non encore dépassée) ;
+        ``jours_avant_expiration`` jours (échéance non encore dépassée).
+        CAD138 : ce panier passe DEVANT l'engagement — une date de validité
+        qui tombe est une urgence datée ;
+      * ``engagement_relance``    — envoyé et le moteur d'engagement (QX30be,
+        ``ShareLink.engagement_triggers_fired``) a tiré au moins un
+        déclencheur ENCORE actif (non ouvert 24 h / ouvert non signé 48 h /
+        rouvert 3×). CAD138 : un déclencheur de plus de
+        ``DECLENCHEUR_PEREMPTION_JOURS`` jours sort du panier ;
       * ``envoyes_sans_reponse``  — envoyé depuis plus de
         ``jours_sans_reponse`` jours sans aucun des signaux ci-dessus (palier
         de cadence).
@@ -2267,17 +2271,24 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
     limite_expiration = today + timedelta(days=jours_avant_expiration)
 
     for devis in envoyes:
+        # CAD138 — L'EXPIRATION PASSE DEVANT L'ENGAGEMENT. Une date de
+        # validité qui tombe dans trois jours est une urgence DATÉE ; un
+        # drapeau de comportement ne l'est plus après trois semaines. L'ordre
+        # inverse cachait le premier derrière le second.
+        if (devis.date_validite is not None
+                and today <= devis.date_validite <= limite_expiration):
+            expirant_bientot.append(devis.id)
+            continue
+        # CAD138 — et les déclencheurs se PÉRIMENT : inscrits une fois pour
+        # toutes, sans aucun code de remise à zéro, ils ne sortaient jamais du
+        # panier.
         declencheurs = set()
         for link in devis.share_links.all():
-            declencheurs.update(link.engagement_triggers_fired or [])
+            declencheurs |= declencheurs_actifs(link, devis=devis, now=now)
         if declencheurs:
             engagement_relance.append(devis.id)
             wa_drafts[devis.id] = _brouillon_relance_engagement(
                 devis, declencheurs)
-            continue
-        if (devis.date_validite is not None
-                and today <= devis.date_validite <= limite_expiration):
-            expirant_bientot.append(devis.id)
             continue
         envoye_le = devis.date_envoi
         if (envoye_le is not None
@@ -3364,3 +3375,137 @@ def devis_utilisant_produit(user, produit_id, limit=20):
             'total_ttc': str(devis.total_ttc),
         })
     return lignes
+
+
+# ── CAD-K ── CAD138 — le panier « relance d'engagement » se vide enfin ──────
+#
+# Audit L3 du 21/09/2026. Un déclencheur allumé était inscrit UNE FOIS POUR
+# TOUTES : deux sites d'écriture, tous deux additifs, aucun code de remise à
+# zéro — et le panier engagement passait AVANT le test d'expiration. Un devis
+# dont la validité tombait dans trois jours restait donc caché derrière un
+# drapeau « non ouvert » vieux de trois semaines. (Les déclencheurs
+# s'éteignaient de toute façon à l'expiration du LIEN, ce qui n'est pas la
+# même chose qu'un traitement.)
+#
+# DEUX CORRECTIONS, ET RIEN D'AUTRE : les déclencheurs se PÉRIMENT, et
+# l'expiration passe DEVANT l'engagement dans l'ordre des paniers — une date
+# de validité qui tombe est une urgence datée, un drapeau de comportement ne
+# l'est plus après trois semaines.
+
+#: Durée au-delà de laquelle un déclencheur d'engagement sort du panier.
+#: Elle vient du texte de la tâche CAD138 — « un drapeau de comportement ne
+#: l'est plus après TROIS SEMAINES » — et non d'un réglage : la péremption
+#: est automatique, préférée à un geste manuel de plus pour une équipe de
+#: deux personnes.
+DECLENCHEUR_PEREMPTION_JOURS = 21
+
+
+def dates_declencheurs(link):
+    """``{clé: date ISO ou None}`` des déclencheurs allumés sur un lien.
+
+    Accepte les DEUX formes : la LISTE historique (aucune date connue → la
+    valeur est ``None``) et le DICT daté écrit depuis CAD138. Aucune migration
+    n'est nécessaire — le champ est un ``JSONField``.
+    """
+    brut = getattr(link, 'engagement_triggers_fired', None) or []
+    if isinstance(brut, dict):
+        return {str(cle): valeur for cle, valeur in brut.items()}
+    return {str(cle): None for cle in brut}
+
+
+def marquer_declencheur(link, cle, *, quand=None):
+    """Allume un déclencheur DATÉ sans perdre les dates déjà connues.
+
+    Écrit la forme DICT sur le lien (sans le sauvegarder — l'appelant décide
+    quand) et la renvoie. Un déclencheur déjà allumé est RAFRAÎCHI : il vient
+    de se reproduire, la péremption repart de là."""
+    from django.utils import timezone
+
+    dates = dates_declencheurs(link)
+    dates[str(cle)] = (quand or timezone.now()).isoformat()
+    link.engagement_triggers_fired = dict(sorted(dates.items()))
+    return link.engagement_triggers_fired
+
+
+def _date_declencheur_heritee(link, devis=None):
+    """Date de repli d'un déclencheur SANS date (forme liste d'avant CAD138).
+
+    La meilleure preuve disponible de QUAND le comportement a eu lieu : la
+    dernière consultation du lien, sinon l'envoi du devis, sinon la création
+    du lien. Rien n'est inventé — on lit ce qui existe déjà."""
+    for valeur in (getattr(link, 'last_viewed_at', None),
+                   getattr(devis, 'date_envoi', None),
+                   getattr(link, 'created_at', None)):
+        if valeur is not None:
+            return valeur
+    return None
+
+
+def declencheurs_actifs(link, *, devis=None, now=None):
+    """Les déclencheurs d'engagement ENCORE actionnables sur ce lien.
+
+    Un déclencheur de plus de ``DECLENCHEUR_PEREMPTION_JOURS`` jours sort du
+    panier : il ne dit plus rien d'utile au commercial, et il masquait des
+    devis dont la validité tombe. Un déclencheur sans date connue est daté par
+    ``_date_declencheur_heritee`` ; sans aucune date exploitable, il est
+    GARDÉ — on ne jette pas un signal faute de savoir le dater.
+    """
+    import datetime as _dt
+
+    from django.utils import timezone
+
+    now = now or timezone.now()
+    limite = _dt.timedelta(days=DECLENCHEUR_PEREMPTION_JOURS)
+    actifs = set()
+    for cle, iso in dates_declencheurs(link).items():
+        quand = None
+        if iso:
+            try:
+                quand = _dt.datetime.fromisoformat(str(iso))
+            except (TypeError, ValueError):
+                quand = None
+        if quand is None:
+            quand = _date_declencheur_heritee(link, devis)
+        if quand is None or (now - quand) < limite:
+            actifs.add(cle)
+    return actifs
+
+
+# ── CAD-K ── CAD133 — engagement du client sur SA proposition ───────────────
+def engagement_proposition_du_lead(lead_id, company):
+    """CAD133 — ce que le client a FAIT de sa proposition (lecture seule).
+
+    Point d'entrée cross-app UNIQUE pour que le score du CRM compte un
+    COMPORTEMENT sans importer ``apps.ventes.models``. Multi-tenant : borné à
+    la société fournie. Aucun montant, aucun prix d'achat, aucune marge — ce
+    sont des faits de lecture, jamais du chiffrage.
+
+    Renvoie ``{ouverte, vues, lue_en_detail, derniere_vue}`` :
+      * ``ouverte``       — la proposition a été ouverte au moins une fois ;
+      * ``vues``          — total des consultations (``ShareLink.view_count``) ;
+      * ``lue_en_detail`` — un ``deep_engagement_logged_at`` existe ;
+      * ``derniere_vue``  — le plus récent instant connu, ou ``None``.
+    """
+    from django.db.models import Max, Sum
+
+    from .models import ShareLink
+
+    vide = {'ouverte': False, 'vues': 0, 'lue_en_detail': False,
+            'derniere_vue': None}
+    if not lead_id or company is None:
+        return vide
+    agregat = (ShareLink.objects
+               .filter(devis__lead_id=lead_id, devis__company=company)
+               .aggregate(vues=Sum('view_count'),
+                          premiere=Max('first_viewed_at'),
+                          profond=Max('deep_engagement_logged_at')))
+    vues = int(agregat.get('vues') or 0)
+    premiere = agregat.get('premiere')
+    profond = agregat.get('profond')
+    instants = [i for i in (premiere, profond) if i is not None]
+    return {
+        'ouverte': premiere is not None or vues > 0,
+        'vues': vues,
+        'lue_en_detail': profond is not None,
+        'derniere_vue': max(instants) if instants else None,
+    }

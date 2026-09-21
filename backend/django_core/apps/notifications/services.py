@@ -456,6 +456,12 @@ def _in_quiet_hours_non_critique(event_type, company, respect_quiet_hours):
     # qui n'ont jamais rien configuré (régression). Défaut False = comportement
     # historique (toujours notifier). Un vrai réglage par société remplacera ce
     # drapeau global plus tard.
+    # CAD120 (audit L3 du 21/09/2026) — ce drapeau n'apparaissait dans AUCUN
+    # fichier d'exemple : personne ne savait qu'il existait, et la cadence de
+    # suivi client était réglée au quart d'heure près pendant que les
+    # notifications partaient à n'importe quelle heure. Il est désormais
+    # documenté dans `.env.example` (les deux valeurs et ce que chacune
+    # implique), et `tests_cad120_heures_calmes.py` couvre les deux.
     if not respect_quiet_hours or not getattr(
             settings, 'NOTIFICATIONS_QUIET_HOURS_ENABLED', False):
         return False

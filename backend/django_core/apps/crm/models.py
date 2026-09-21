@@ -1136,6 +1136,24 @@ class Lead(SoftDeleteModel):
 
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
+    # CAD119 (audit L3 du 21/09/2026) — LA VRAIE DATE DE CRÉATION DU SYSTÈME
+    # D'ORIGINE. ``date_creation`` est en ``auto_now_add`` : tous les leads
+    # importés portaient la date de la SYNCHRONISATION, et la vraie date
+    # finissait dans une note en texte libre (« Créé dans Odoo: … ») que
+    # personne ne peut requêter. Le modèle à copier existait à côté : la
+    # création Meta repose déjà ``date_creation`` sur la vraie heure d'arrivée.
+    # Sans ce champ, tout futur import de rattrapage fausserait de nouveau les
+    # KPI de délai (CAD87).
+    #
+    # NULL = aucune date d'origine connue (lead natif, ou ligne d'avant
+    # CAD119) — c'est la vérité ; la lecture retombe alors sur
+    # ``date_creation`` via la propriété ``date_origine``.
+    date_creation_origine = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="Date de création dans le système d'origine",
+        help_text="Quand ce dossier est-il né chez le système qui nous l'a "
+                  "transmis (Odoo, import) ? Vide si créé ici.",
+    )
 
     # QJ6 — Score de qualité calculé (0–100) et persisté pour un tri
     # pagination-safe. Recalculé à chaque création/mise à jour du lead
@@ -1389,6 +1407,17 @@ class Lead(SoftDeleteModel):
     def __str__(self):
         return f"{self.nom} {self.prenom or ''} [{self.stage}]".strip()
 
+    # ── CAD-K ── CAD119 ─────────────────────────────────────────────────
+    @property
+    def date_origine(self):
+        """La date qui DATE ce dossier : celle du système d'origine si on la
+        connaît, sinon celle de son insertion ici.
+
+        Tout KPI de délai doit passer par ici : mesurer « joint sous 5 jours »
+        depuis la date d'une SYNCHRONISATION répond à une question que
+        personne ne pose."""
+        return self.date_creation_origine or self.date_creation
+
 
 class WebsiteLeadPayload(models.Model):
     """Charge utile BRUTE reçue d'une source d'intake — stockée AVANT tout
@@ -1618,6 +1647,24 @@ class RelanceEtape(TenantModel):
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
     note = models.TextField(blank=True, default='')
+    # CAD118 (audit L3 du 21/09/2026) — L'ISSUE DE LA TOUCHE, SUR LA TOUCHE.
+    # On mesurait si les touches étaient cochées, jamais si elles joignaient
+    # quelqu'un : l'issue ne vivait que sur la ligne de chatter, et le seul
+    # rapprochement possible était une fenêtre de DEUX MINUTES entre les deux
+    # horodatages — un bricolage qui casse en silence dès qu'un traitement
+    # ralentit. Écrite au MÊME instant que la ligne d'historique par
+    # ``services.marquer_etape_relance``.
+    #
+    # Additive et sans nouvelle valeur d'énumération : les choix sont ceux de
+    # ``LeadActivity.OUTCOMES``, qui reste la source de vérité du chatter.
+    # Vide = touche close sans issue saisie (ou ligne d'avant CAD118) — c'est
+    # la vérité, jamais un « non joint » supposé.
+    outcome = models.CharField(
+        max_length=20, blank=True, default='',
+        choices=LeadActivity.OUTCOMES,
+        verbose_name="Issue de la touche",
+        help_text="Ce que la touche a donné : le client a-t-il été joint ?",
+    )
     # Traçabilité de la clôture (fait/sautée) — jamais silencieuse.
     traite_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

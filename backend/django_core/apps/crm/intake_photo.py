@@ -137,6 +137,13 @@ def attach_capture_photo(lead, data: dict):
             kind=LeadActivity.Kind.NOTE,
             body='Photo de facture/compteur jointe via le site web',
         )
+        # CAD136 (audit L3 du 21/09/2026) — la photo était attachée (OCR
+        # compris) sans PRÉVENIR personne. Le libellé dit le geste qu'elle
+        # appelle : PRÉPARER LE DEVIS — production, pas relance (nuance du
+        # round 2). Best-effort par construction (le point d'entrée ne lève
+        # jamais) : la photo ne fait pas retomber le webhook.
+        from .services import SIGNAL_PHOTO_FACTURE, notifier_signal_client
+        notifier_signal_client(lead, SIGNAL_PHOTO_FACTURE)
 
         # OCR key-gated : sans flag/clé → simple pièce jointe (dégradation douce).
         if capture_ocr_enabled():

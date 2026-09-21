@@ -483,6 +483,15 @@ def appliquer_section(lien, section, reponses=None, photo=None):
     lien.sections_repondues = repondues
     lien.derniere_reponse_at = timezone.now()
     lien.save(update_fields=['sections_repondues', 'derniere_reponse_at'])
+    # CAD136 (audit L3 du 21/09/2026) — le responsable est PRÉVENU. Jusqu'ici
+    # répondre au questionnaire enrichissait le lead, recalculait le score et
+    # écrivait une note — sans aucune notification, et `derniere_reponse_at`
+    # n'était relu par personne dans tout le dépôt. Le client vient pourtant
+    # de passer cinq minutes sur NOTRE formulaire.
+    from .services import SIGNAL_QUESTIONNAIRE, notifier_signal_client
+    notifier_signal_client(
+        lead, SIGNAL_QUESTIONNAIRE,
+        detail=f'Section « {LIBELLE_SECTION[section]} » renseignée.')
     return enregistrees
 
 
