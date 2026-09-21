@@ -106,15 +106,22 @@ def lead_odoo_neuf(lead):
     """CAD105 — ce lead de source Odoo est-il NÉ après la bascule ?
 
     Faux pour une fiche sans date d'origine (rattrapage historique), faux
-    pour une fiche antérieure, faux pour tout ce qui n'est pas du miroir."""
-    from django.utils import timezone
+    pour une fiche antérieure, faux pour tout ce qui n'est pas du miroir.
+
+    CRX26 — la date se lit en heure MÉTIER (Africa/Casablanca) via
+    ``core.dates``, jamais avec ``timezone.localdate`` : le fuseau actif de
+    Django n'est pas une garantie d'environnement, et une fiche créée le
+    31/08 à 23 h 30 au Maroc doit être jugée sur SA date marocaine, pas sur
+    la date UTC de la veille. C'est exactement ce qu'une bascule à date fixe
+    (01/09/2026) rend visible."""
+    from core.dates import maintenant_local
 
     if getattr(lead, 'source', None) != Lead.Source.ODOO_IMPORT_TEST:
         return False
     origine = getattr(lead, 'date_creation_origine', None)
     if origine is None:
         return False
-    return timezone.localdate(origine) >= BASCULE_MIROIR
+    return maintenant_local(origine).date() >= BASCULE_MIROIR
 
 
 def est_lead_de_test(lead):

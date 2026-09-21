@@ -153,8 +153,12 @@ class AdherenceNaccusePlusATortTests(SimpleTestCase):
 
 
 class ToucheJamaisNeeEchueTests(TestCase):
-    """Le cas de la tâche : lead du MERCREDI, touche J+7 née après l'appel
-    du dimanche."""
+    """Le cas de la tâche : lead du MERCREDI, touche J+7 qui naîtrait déjà
+    échue derrière l'appel du dimanche.
+
+    Depuis le fold de CAD23 (dimanche le PLUS PROCHE de J+N), ce n'est plus
+    le PLACEMENT du rendez-vous dominical qui crée le retard mais son
+    TRAITEMENT tardif — la règle de CAD22, elle, est la même."""
 
     def setUp(self):
         gel = frozen(MERCREDI)
@@ -182,18 +186,60 @@ class ToucheJamaisNeeEchueTests(TestCase):
                 return gabarit.ordre
         self.fail('aucune touche dominicale dans la cadence « contact »')
 
-    def test_la_touche_du_dimanche_tombe_APRES_la_touche_suivante(self):
-        """Le décor du bug, énoncé comme un fait vérifiable : pour un lead du
-        mercredi, l'échéance calculée du barreau qui SUIT l'appel dominical
-        est ANTÉRIEURE à cet appel."""
+    def test_depuis_CAD23_la_touche_du_dimanche_tombe_AVANT_la_suivante(self):
+        """Le DÉCOR du bug a disparu — et c'est CAD23 qui l'a supprimé.
+
+        Quand CAD22 a été écrite, l'appel dominical se posait sur le PREMIER
+        dimanche atteignant J+5 : pour un lead du mercredi il glissait au
+        dimanche 20/09, donc APRÈS la touche J+7 (mercredi 16/09), et c'est
+        cet ordre-là que ce test épinglait.
+
+        CAD23 (TRANCHÉ 21/09/2026, fold du même jour) le place désormais sur
+        le dimanche le PLUS PROCHE de J+N, avant ou après : pour ce même lead
+        du mercredi, J+5 tombe le lundi 14/09 et le rendez-vous se cale sur le
+        dimanche 13/09. Comme l'ancre de la cadence est toujours un jour
+        OUVRABLE (CAD19, lundi-vendredi), le dimanche le plus proche de J+5 ne
+        dépasse jamais J+6 : la touche dominicale est structurellement AVANT
+        la touche J+7, pour tous les jours d'arrivée.
+
+        La règle de CAD22 elle-même — « une touche ne naît jamais déjà
+        échue » — n'est pas touchée : elle reste vérifiée par
+        ``EcheanceJamaisEchueTests`` et par le test suivant, qui construit
+        désormais le retard par la seule cause qui subsiste (une touche
+        TRAITÉE en retard).
+        """
         ordre_dimanche = self._ordre_dominical()
-        _g, dimanche = self._partition(ordre_dimanche)
+        gabarit_dimanche, dimanche = self._partition(ordre_dimanche)
         _g2, suivante = self._partition(ordre_dimanche + 1)
-        self.assertLess(suivante, dimanche)
+        self.assertLess(dimanche, suivante)
+        # Le garde-fou de CAD23 : l'écart au J+N visé ne dépasse pas 3 jours.
+        vise = (MERCREDI + datetime.timedelta(
+            days=gabarit_dimanche.delai_jours)).astimezone(
+                horaires.CASABLANCA).date()
+        pose = dimanche.astimezone(horaires.CASABLANCA).date()
+        self.assertLessEqual(abs((pose - vise).days), 3)
 
     def test_la_touche_suivante_nait_avec_une_echeance_FUTURE(self):
+        """CAD22 — l'appel dominical TRAITÉ EN RETARD ne fait pas naître une
+        touche déjà échue.
+
+        Depuis CAD23 la touche dominicale ne dépasse plus la touche J+7 (voir
+        le test précédent), mais la règle de CAD22 garde tout son objet : il
+        suffit que l'appel du dimanche soit traité en retard — ici le JEUDI
+        17/09, après l'échéance de partition de la J+7 (mercredi 16/09) —
+        pour que la touche suivante naisse avec une date passée. Elle ne
+        pourrait alors JAMAIS être « à l'heure » (grain jour,
+        ``selectors._a_lheure``) et le cockpit compterait un manquement que
+        personne n'a commis.
+        """
         ordre_dimanche = self._ordre_dominical()
         gabarit, echeance_dimanche = self._partition(ordre_dimanche)
+        _g2, echeance_partition = self._partition(gabarit.ordre + 1)
+        # L'appel du dimanche n'est traité que le JEUDI suivant, APRÈS
+        # l'échéance de partition de la touche J+7.
+        traite_tard = echeance_partition + datetime.timedelta(
+            days=1, hours=2)
+        self.assertLess(echeance_partition, traite_tard)
         close = RelanceEtape.objects.create(
             company=self.company, lead=self.lead, cadence='contact',
             ordre=gabarit.ordre, due_at=echeance_dimanche,
@@ -203,15 +249,11 @@ class ToucheJamaisNeeEchueTests(TestCase):
             template_cle=getattr(gabarit, 'template_cle', '') or '',
             cadence_depart=MERCREDI,
             statut=RelanceEtape.Statut.FAIT, traite_par=self.acteur,
-            traite_le=echeance_dimanche)
-        # L'appel du dimanche est traité le dimanche : c'est CE jour-là que
-        # la touche suivante naît, et son échéance de partition est passée.
-        gel = frozen(echeance_dimanche)
+            traite_le=traite_tard)
+        gel = frozen(traite_tard)
         gel.start()
         self.addCleanup(gel.stop)
-        maintenant = echeance_dimanche  # horloge GELÉE sur ce dimanche
-        _g2, echeance_partition = self._partition(gabarit.ordre + 1)
-        self.assertLess(echeance_partition, maintenant)
+        maintenant = traite_tard  # horloge GELÉE sur ce jeudi
 
         nee = materialiser_touche_suivante(close, self.acteur)
 
@@ -275,9 +317,22 @@ class ReportNeLaissePersonneDerriereTests(TestCase):
         ne reste plantée derrière la touche reportée. L'appel dominical
         (ordre 8) est d'ordre INFÉRIEUR à la touche reportée (ordre 9) mais
         de date POSTÉRIEURE : le filtre `ordre__gt` le laissait sur place, et
-        le plan se réordonnait tout seul."""
-        avant_dimanche = self.dimanche.due_at
-        avant_j14 = self.j14.due_at
+        le plan se réordonnait tout seul.
+
+        TOUT SE COMPARE EN INSTANTS (UTC), et ce n'est pas un détail de
+        forme. Ce plan-ci enjambe la bascule du décret 2.26.530 : le Maroc
+        passe de UTC+1 à UTC+0 dans la nuit du 19 au 20/09/2026 (CAD30,
+        tzdata épinglée). Or Python soustrait DEUX datetimes qui partagent le
+        MÊME objet `tzinfo` en heure MURALE, pas en instants : les objets en
+        mémoire, tous porteurs de `horaires.CASABLANCA`, donnaient ici un
+        delta de 8 jours pile là où le moteur — qui relit des instants UTC
+        depuis la base — décale de 8 jours et 1 heure. Une heure d'écart, sur
+        une comparaison censée vérifier « le MÊME delta pour tout le monde ».
+        On convertit donc chaque côté en UTC avant de soustraire et
+        d'ajouter : le delta est alors celui du temps réellement écoulé, des
+        deux côtés."""
+        avant_dimanche = self.dimanche.due_at.astimezone(datetime.timezone.utc)
+        avant_j14 = self.j14.due_at.astimezone(datetime.timezone.utc)
 
         cible = reporter_prochaine_touche(
             self.lead, self.acteur,
@@ -285,7 +340,8 @@ class ReportNeLaissePersonneDerriereTests(TestCase):
 
         self.assertIsNotNone(cible)
         self.assertEqual(cible.ordre, 9)
-        delta = cible.due_at - self.j7.due_at
+        delta = (cible.due_at.astimezone(datetime.timezone.utc)
+                 - self.j7.due_at.astimezone(datetime.timezone.utc))
         self.dimanche.refresh_from_db()
         self.j14.refresh_from_db()
         self.assertEqual(self.dimanche.due_at, avant_dimanche + delta)

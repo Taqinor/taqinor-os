@@ -149,16 +149,27 @@ class LeGardeFouDeLaFenetreTests(_Base):
                          (VENDREDI_11, 12, 0))
 
     def test_pendant_le_RAMADAN_une_heure_du_soir_retombe_sur_louverture(self):
-        """La fenêtre se resserre (10 h-14 h par défaut) : 18 h n'existe
-        plus ce jour-là."""
+        """La fenêtre se resserre : 18 h n'existe plus ce jour-là.
+
+        L'ouverture attendue est celle du DÉFAUT DÉCLARÉ de
+        ``CompanyProfile.ramadan_appel_debut`` — 09:00 depuis CAD38
+        (21/09/2026), l'horaire continu du Ramadan annoncé par le Ministère
+        de la Transition numérique le 10/02/2026. Ce test épinglait 10:00,
+        l'ancien défaut sans source que CAD38 a remplacé le même jour : le
+        garde-fou vérifié ici (« hors fenêtre ⇒ on retombe sur l'ouverture »)
+        est inchangé, c'est l'ouverture elle-même qui a bougé.
+        """
         profil = CompanyProfile.objects.get(company=self.company)
         profil.ramadan_debut = datetime.date(2026, 9, 1)
         profil.ramadan_fin = datetime.date(2026, 9, 30)
         profil.save(update_fields=['ramadan_debut', 'ramadan_fin'])
         quand = self._creneau(_q(DIMANCHE_13, 18), canal='appel',
                               heure_cible=datetime.time(18, 0))
+        ouverture = CompanyProfile._meta.get_field(
+            'ramadan_appel_debut').default
+        self.assertEqual(ouverture, datetime.time(9, 0))
         self.assertEqual((quand.date(), quand.hour, quand.minute),
-                         (LUNDI_14, 10, 0))
+                         (LUNDI_14, ouverture.hour, ouverture.minute))
 
     def test_pendant_le_RAMADAN_une_heure_de_la_fenetre_est_gardee(self):
         profil = CompanyProfile.objects.get(company=self.company)

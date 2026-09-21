@@ -110,22 +110,32 @@ class LesTroisCheminsProduisentLaMemeRepriseTests(_Base):
 
 
 class LaRepriseEstVISIBLETests(_Base):
-    """« L'écran affiche ce qui vient d'être posé. »"""
+    """« L'écran affiche ce qui vient d'être posé. »
+
+    Le lead de ces deux tests est un dossier DÉJÀ ROUVERT (`perdu=False`) :
+    `reprendre_cadence_apres_reouverture` refuse délibérément un lead encore
+    perdu — « ce n'est pas une réouverture », no-op vérifié par
+    `LesNoOpDeliberesTests.test_un_lead_encore_PERDU_ne_recoit_rien`. Les
+    appeler sur un lead `perdu=True` demandait au moteur l'exact contraire de
+    ce que le même module exige ailleurs.
+    """
 
     slug = 'cad107-visible'
 
     def test_une_note_de_chatter_dit_que_le_dossier_est_rouvert(self):
-        lead = self._lead_perdu()
-        services.reprendre_cadence_apres_reouverture(
+        lead = self._lead_perdu(perdu=False)
+        etapes = services.reprendre_cadence_apres_reouverture(
             lead, self.acteur, origine='fiche rouverte')
+        self.assertTrue(etapes)
         notes = [n.body for n in LeadActivity.objects.filter(lead=lead)]
         self.assertTrue(
             any('cadence de reprise posée' in (b or '') for b in notes),
             notes)
 
     def test_la_prochaine_touche_remonte_dans_la_file(self):
-        lead = self._lead_perdu()
-        services.reprendre_cadence_apres_reouverture(lead, self.acteur)
+        lead = self._lead_perdu(perdu=False)
+        self.assertTrue(
+            services.reprendre_cadence_apres_reouverture(lead, self.acteur))
         lead.refresh_from_db()
         self.assertIsNotNone(lead.relance_date)
         prochaine = self._ouvertes(lead).order_by('due_date').first()

@@ -34,6 +34,16 @@ User = get_user_model()
 #: Lundi 7 septembre 2026, 10 h — l'envoi du devis.
 ENVOI = datetime.datetime(2026, 9, 7, 10, 0, tzinfo=horaires.CASABLANCA)
 
+#: La FIN DU SUIVI de ce devis-là : la DERNIÈRE touche de la partition
+#: `apres_devis`, mardi 22/09/2026. Ce n'est pas « ENVOI + 14 jours » et ce
+#: n'est plus censé l'être : la touche J+13 tombe le dimanche 20/09, glisse
+#: au lundi 21/09 dans le créneau des messages (CAD19 ancre ouvrable, CAD25
+#: créneaux par type de touche), et la règle « jamais plus d'un message par
+#: jour » (CAD20) pousse alors la touche J+14 au mardi 22/09. Le protocole
+#: n'a ni gagné ni perdu de touche : seule la DATE de la dernière a bougé.
+#: VALID1 pose la validité sur cette date — la fin du suivi, pas un J+N.
+FIN_DU_SUIVI = datetime.date(2026, 9, 22)
+
 
 class _Base(TestCase):
     slug = 'cad57'
@@ -76,11 +86,20 @@ class ComptantTests(_Base):
     financement = 'cash'
 
     def test_un_devis_comptant_expire_a_la_FIN_DU_SUIVI(self):
-        """Comportement VALID1 inchangé — J+14, la dernière touche."""
+        """Comportement VALID1 inchangé — la DERNIÈRE touche du suivi.
+
+        L'attente était écrite « ENVOI + 14 jours », un raccourci qui a cessé
+        d'être vrai le jour même : voir ``FIN_DU_SUIVI``. Ce qui est vérifié
+        reste exactement la règle CAD57 — un dossier NON financé garde la fin
+        du suivi, jamais la validité allongée du réglage société.
+        """
         devis = self._envoyer()
         self.assertIsNotNone(devis.date_validite)
-        self.assertEqual(
-            devis.date_validite, ENVOI.date() + datetime.timedelta(days=14))
+        self.assertEqual(devis.date_validite, FIN_DU_SUIVI)
+        self.assertNotEqual(
+            devis.date_validite,
+            ENVOI.date() + datetime.timedelta(
+                days=jours_validite_societe(self.company)))
 
     def test_le_lead_comptant_n_est_pas_un_dossier_finance(self):
         self.assertFalse(lead_finance_a_credit(self.lead))
@@ -91,10 +110,17 @@ class IndecisTests(_Base):
     financement = 'indecis'
 
     def test_pas_encore_decide_ne_declenche_RIEN(self):
-        """On n'allonge pas une validité sur une supposition."""
+        """On n'allonge pas une validité sur une supposition.
+
+        Même correction d'attente que ci-dessus : la fin du suivi
+        (``FIN_DU_SUIVI``), pas le raccourci « ENVOI + 14 jours ».
+        """
         devis = self._envoyer()
-        self.assertEqual(
-            devis.date_validite, ENVOI.date() + datetime.timedelta(days=14))
+        self.assertEqual(devis.date_validite, FIN_DU_SUIVI)
+        self.assertNotEqual(
+            devis.date_validite,
+            ENVOI.date() + datetime.timedelta(
+                days=jours_validite_societe(self.company)))
         self.assertFalse(lead_finance_a_credit(self.lead))
 
 
