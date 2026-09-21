@@ -67,6 +67,7 @@ import {
   construireAcrotere,
 } from './batiment'; // CALX100/101/102 — hauteur, acrotère et lucarne viennent du DOCUMENT
 import { type PerimeterSetbacks } from '../../lib/roofPro2';
+import { teinterAllees } from './teinteAllees'; // CALX403
 
 /** Dépendances injectées (carte + capacités de l'appareil, figées au boot). */
 export interface Scene3dDeps {
@@ -1927,6 +1928,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       }
       ctx.activePanelMesh = panelIM;
       ctx.activePanelCellIndex = panelCellIndices;
+      teinterAllees(ctx, panelIM, panelCellIndices); // CALX403 câblage
     }
 
     // Zones NON actives : obstacles rendus en boîtes subduées (sans étiquette ni drag),
