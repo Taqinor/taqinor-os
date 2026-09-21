@@ -255,3 +255,80 @@ export function supprimerSommet(anneau: readonly LngLat[], index: number): Verdi
   }
   return { ok: true, anneau: restant };
 }
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX92 — AIMANTER LE TRACÉ AUX SOMMETS ET AUX ARÊTES DES PANS DÉJÀ TRACÉS
+//
+// L'aimantation existante (`layoutEditor.ts`) ne concerne QUE les panneaux en placement
+// libre : rien n'aimantait un nouveau pan à un pan voisin, alors que c'est l'adjacence
+// entre pans qui fait remonter une faîtière commune (`scene3d.ts`). Parité HelioScope
+// (« object-snap »). Le sommet COMMUN devient exact, donc les deux pans partagent
+// réellement leur arête au lieu de se frôler à quelques centimètres.
+//
+// `tolM` est une tolérance de SAISIE (convention de dessin) : elle vient de la puce, ou du
+// rayon de saisie de sommet lu en mètres (`metresParPixel` × VERTEX_GRAB_PX). Une tolérance
+// nulle/absente (puce éteinte) rend le candidat TEL QUEL.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Ce à quoi un sommet s'est accroché — utile pour le dire à l'écran, jamais pour calculer. */
+export type NatureAccroche = 'sommet' | 'arete';
+
+export interface Accroche {
+  point: LngLat;
+  nature: NatureAccroche;
+  /** Rang de l'anneau accroché dans la liste passée. */
+  anneau: number;
+  /** Distance réellement franchie (m). */
+  distanceM: number;
+}
+
+/**
+ * CALX92 — accroche `candidat` au SOMMET ou au point d'ARÊTE le plus proche des anneaux
+ * fournis, sous `tolM`. Un sommet l'emporte toujours sur une arête à portée : c'est le
+ * point que le dessinateur vise (convention partagée par tous les outils de dessin).
+ * `null` quand rien n'est à portée — le point cliqué reste alors exactement où il est.
+ */
+export function accrocheAuxZones(
+  candidat: LngLat,
+  anneaux: readonly (readonly LngLat[])[] | null | undefined,
+  tolM: number,
+): Accroche | null {
+  if (!estPoint(candidat)) return null;
+  if (!Array.isArray(anneaux) || anneaux.length === 0) return null;
+  if (!Number.isFinite(tolM) || tolM <= 0) return null; // puce éteinte : aucun déplacement
+  let meilleurSommet: Accroche | null = null;
+  let meilleureArete: Accroche | null = null;
+  for (let a = 0; a < anneaux.length; a++) {
+    const anneau = anneaux[a];
+    if (!Array.isArray(anneau) || anneau.length < 2) continue;
+    for (const v of anneau) {
+      if (!estPoint(v)) continue;
+      const d = distanceEntreM(candidat, v);
+      if (d <= tolM && (!meilleurSommet || d < meilleurSommet.distanceM)) {
+        meilleurSommet = { point: [v[0], v[1]], nature: 'sommet', anneau: a, distanceM: d };
+      }
+    }
+    if (anneau.length < 3) continue; // pas d'anneau fermé : aucune arête à viser
+    for (let i = 0; i < anneau.length; i++) {
+      const projete = projeterSurArete(anneau[i], anneau[(i + 1) % anneau.length], candidat);
+      if (!projete) continue;
+      const d = distanceEntreM(candidat, projete);
+      if (d <= tolM && (!meilleureArete || d < meilleureArete.distanceM)) {
+        meilleureArete = { point: projete, nature: 'arete', anneau: a, distanceM: d };
+      }
+    }
+  }
+  return meilleurSommet ?? meilleureArete;
+}
+
+/**
+ * CALX92 — version « poseuse » : rend le point accroché, ou le CANDIDAT TEL QUEL (même
+ * référence) quand rien n'est à portée ou que l'aimantation est éteinte (`tolM` nul).
+ */
+export function aimanterAuxZones(
+  candidat: LngLat,
+  anneaux: readonly (readonly LngLat[])[] | null | undefined,
+  tolM: number,
+): LngLat {
+  return accrocheAuxZones(candidat, anneaux, tolM)?.point ?? candidat;
+}

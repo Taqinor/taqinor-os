@@ -14,7 +14,8 @@ import { isSimplePolygon, type LngLat } from '../../lib/roof';
 import { availableOptionalLayers, getOptionalLayer, optionalLayerSourceSpec } from '../../lib/roofConfig';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { contraindreAngle, pointDepuisCap, PAS_ANGLE_DEG } from './snap';
+import { aimanterAuxZones, contraindreAngle, metresParPixel, pointDepuisCap, PAS_ANGLE_DEG } from './snap';
+import { VERTEX_GRAB_PX } from './constants';
 
 /**
  * WJ41 — libellés/messages de statut de la carte/géocodeur, tous LOCALISABLES.
@@ -428,11 +429,79 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     return Number.isFinite(v) && v > 0 ? v : 0;
   }
 
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX92 — puce « Aimanter aux pans » : accrochage aux SOMMETS et aux ARÊTES des pans
+  // déjà tracés. Éteinte par défaut. La tolérance est SAISIE dans la puce ; laissée vide,
+  // elle vaut le rayon de saisie de sommet déjà en place (`VERTEX_GRAB_PX`, convention de
+  // dessin) converti en mètres au zoom courant — jamais une distance inventée.
+  // ————————————————————————————————————————————————————————————————————————
+  const aimantChipEl = ensureAimantChip();
+  const aimantTolEl = $<HTMLInputElement>('rp9-snap-zones-tol');
+  function ensureAimantChip(): HTMLButtonElement | null {
+    const existing = $<HTMLButtonElement>('rp9-snap-zones');
+    if (existing) return existing;
+    if (!traceChipsEl || typeof document.createElement !== 'function') return null;
+    const wrap = document.createElement('span');
+    wrap.className = 'rp9-snap-zones-row inline-flex items-center gap-1';
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.id = 'rp9-snap-zones';
+    chip.className = 'rp9-btn';
+    chip.textContent = 'Aimanter aux pans';
+    chip.setAttribute('aria-pressed', 'false'); // ÉTEINTE par défaut
+    chip.title = 'Colle le sommet au sommet ou au côté le plus proche d’un pan déjà tracé.';
+    const tol = document.createElement('input');
+    tol.type = 'text';
+    tol.id = 'rp9-snap-zones-tol';
+    tol.className = 'rp9-input w-20';
+    tol.inputMode = 'decimal';
+    tol.placeholder = 'tolérance m';
+    tol.setAttribute('aria-label', 'Tolérance d’aimantation (m)');
+    wrap.appendChild(chip);
+    wrap.appendChild(tol);
+    traceChipsEl.appendChild(wrap);
+    return chip;
+  }
+  aimantChipEl?.addEventListener('click', () => {
+    const on = aimantChipEl.getAttribute('aria-pressed') === 'true';
+    aimantChipEl.setAttribute('aria-pressed', String(!on));
+    setStatus(
+      !on
+        ? 'Aimantation aux pans active — les sommets se collent aux pans déjà tracés.'
+        : 'Aimantation aux pans désactivée — les points se posent exactement où vous cliquez.',
+    );
+  });
+
+  /** Tolérance d'aimantation ACTIVE (m), ou 0 quand la puce est éteinte / Alt maintenue. */
+  function toleranceAimantM(lat: number): number {
+    if (aimantChipEl?.getAttribute('aria-pressed') !== 'true') return 0;
+    if (altEnfoncee) return 0;
+    const saisie = Number.parseFloat((aimantTolEl?.value ?? '').replace(/\s/g, '').replace(',', '.'));
+    if (Number.isFinite(saisie) && saisie > 0) return saisie;
+    // Repli : le rayon de saisie d'un sommet, lu en mètres au zoom courant.
+    const zoom = typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN;
+    if (!Number.isFinite(zoom)) return 0;
+    return VERTEX_GRAB_PX * metresParPixel(lat, zoom);
+  }
+
+  /** Contours des pans DÉJÀ tracés (hors pan actif, qui est celui qu'on dessine). */
+  function anneauxDesAutresPans(): LngLat[][] {
+    return ctx.areas
+      .filter((a) => a.id !== ctx.activeAreaId && Array.isArray(a.vertices) && a.vertices.length >= 3)
+      .map((a) => a.vertices);
+  }
+
   /**
-   * CALX89 — applique les aides au tracé au point cliqué. Toute aide éteinte ⇒ `v` est
+   * CALX89/CALX92 — applique les aides au tracé au point cliqué. Toute aide éteinte ⇒ `v` est
    * rendu TEL QUEL (même référence), donc le tracé reste celui d'aujourd'hui.
+   *
+   * ORDRE : l'aimantation à un pan voisin l'emporte sur le magnétisme angulaire. Un sommet
+   * accroché est un sommet COMMUN exact (c'est tout l'intérêt : une faîtière partagée) ;
+   * lui réappliquer un angle le décollerait aussitôt.
    */
   function appliquerAidesTrace(v: LngLat): LngLat {
+    const aimante = aimanterAuxZones(v, anneauxDesAutresPans(), toleranceAimantM(v[1]));
+    if (aimante !== v) return aimante;
     const n = ctx.vertices.length;
     return contraindreAngle(ctx.vertices[n - 1], ctx.vertices[n - 2], v, pasAngleDeg());
   }

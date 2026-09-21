@@ -15,6 +15,8 @@ import {
   insertionSurContour,
   supprimerSommet,
   metresParPixel,
+  aimanterAuxZones,
+  accrocheAuxZones,
   PAS_ANGLE_DEG,
   TOLERANCE_ANGLE_DEG,
 } from './snap';
@@ -321,5 +323,76 @@ describe('CALX91 — metresParPixel : la tolérance pixel se lit en mètres', ()
   it('au zoom de travail du builder, un rayon de saisie reste de l’ordre du mètre', () => {
     expect(metresParPixel(33.5, 19)).toBeGreaterThan(0);
     expect(metresParPixel(33.5, 19)).toBeLessThan(1);
+  });
+});
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX92 — AIMANTATION AUX SOMMETS ET AUX ARÊTES DES PANS DÉJÀ TRACÉS.
+// ————————————————————————————————————————————————————————————————————————
+describe('CALX92 — aimanterAuxZones', () => {
+  const panVoisin: LngLat[] = [
+    [-7.6, 33.5],
+    [-7.599, 33.5],
+    [-7.599, 33.501],
+    [-7.6, 33.501],
+  ];
+  const SOMMET: LngLat = panVoisin[1];
+
+  /** Un point à `dM` mètres plein est de `o` (plan tangent local). */
+  const aEst = (o: LngLat, dM: number): LngLat => [o[0] + dM / (DEG2M * Math.cos(o[1] * DEG2RAD)), o[1]];
+
+  it('un sommet à 10 cm d’un sommet voisin s’y colle EXACTEMENT', () => {
+    const candidat = aEst(SOMMET, 0.1);
+    expect(distanceEntreM(candidat, SOMMET)).toBeCloseTo(0.1, 3);
+    const cale = aimanterAuxZones(candidat, [panVoisin], 1);
+    expect(cale[0]).toBeCloseTo(SOMMET[0], 12);
+    expect(cale[1]).toBeCloseTo(SOMMET[1], 12);
+  });
+
+  it('un sommet à 5 m ne bouge PAS (hors tolérance)', () => {
+    const candidat = aEst(SOMMET, 5);
+    expect(aimanterAuxZones(candidat, [panVoisin], 1)).toBe(candidat);
+  });
+
+  it('PUCE ÉTEINTE (tolérance nulle/absente) : aucun déplacement, jamais', () => {
+    const candidat = aEst(SOMMET, 0.1); // pourtant à portée
+    expect(aimanterAuxZones(candidat, [panVoisin], 0)).toBe(candidat);
+    expect(aimanterAuxZones(candidat, [panVoisin], -1)).toBe(candidat);
+    expect(aimanterAuxZones(candidat, [panVoisin], Number.NaN)).toBe(candidat);
+  });
+
+  it('aucun pan voisin ⇒ aucun déplacement', () => {
+    const candidat = aEst(SOMMET, 0.1);
+    expect(aimanterAuxZones(candidat, [], 5)).toBe(candidat);
+    expect(aimanterAuxZones(candidat, null, 5)).toBe(candidat);
+    expect(aimanterAuxZones(candidat, undefined, 5)).toBe(candidat);
+  });
+
+  it('accroche une ARÊTE quand aucun sommet n’est à portée', () => {
+    // Milieu du côté sud du pan voisin, décalé de ~20 cm vers le nord.
+    const milieuSud: LngLat = [(panVoisin[0][0] + panVoisin[1][0]) / 2, 33.5];
+    const candidat: LngLat = [milieuSud[0], milieuSud[1] + 0.0000018];
+    const accroche = accrocheAuxZones(candidat, [panVoisin], 1);
+    expect(accroche).not.toBeNull();
+    expect(accroche!.nature).toBe('arete');
+    expect(accroche!.point[1]).toBeCloseTo(33.5, 10);
+  });
+
+  it('un SOMMET l’emporte sur une arête quand les deux sont à portée', () => {
+    // Proche du coin sud-est : le sommet est à ~0,3 m, le côté sud à ~0,2 m sous lui.
+    const candidat: LngLat = [SOMMET[0] - 0.0000005, SOMMET[1] + 0.0000018];
+    const accroche = accrocheAuxZones(candidat, [panVoisin], 2);
+    expect(accroche).not.toBeNull();
+    expect(accroche!.nature).toBe('sommet');
+    expect(accroche!.point).toEqual([SOMMET[0], SOMMET[1]]);
+  });
+
+  it('retient le pan le plus proche quand plusieurs sont à portée, et le nomme', () => {
+    const autrePan: LngLat[] = panVoisin.map(([lng, lat]) => [lng, lat + 0.00002] as LngLat);
+    const candidat = aEst(SOMMET, 0.05);
+    const accroche = accrocheAuxZones(candidat, [autrePan, panVoisin], 5);
+    expect(accroche).not.toBeNull();
+    expect(accroche!.anneau).toBe(1); // le pan d'origine, le plus proche
+    expect(accroche!.distanceM).toBeLessThan(0.1);
   });
 });
