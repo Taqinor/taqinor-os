@@ -1,0 +1,915 @@
+{
+ "inputs": {
+  "location": {
+   "latitude": 33.5,
+   "longitude": -7.6,
+   "elevation": 139.0
+  },
+  "meteo_data": {
+   "radiation_db": "PVGIS-SARAH3",
+   "meteo_db": "ERA5",
+   "year_min": 2019,
+   "year_max": 2020,
+   "use_horizon": true,
+   "horizon_db": null,
+   "horizon_data": "DEM-calculated"
+  },
+  "mounting_system": {
+   "fixed": {
+    "slope": {
+     "value": 15,
+     "optimal": false
+    },
+    "azimuth": {
+     "value": 0,
+     "optimal": false
+    },
+    "type": "free-standing"
+   }
+  },
+  "pv_module": {
+   "technology": null,
+   "peak_power": null,
+   "system_loss": null
+  }
+ },
+ "outputs": {
+  "hourly": [
+   {
+    "time": "20190115:0009",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 6.69,
+    "WS10m": 1.66,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:0109",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 6.03,
+    "WS10m": 1.66,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:0209",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 5.52,
+    "WS10m": 1.59,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:0309",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 5.2,
+    "WS10m": 1.66,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:0409",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 4.97,
+    "WS10m": 1.72,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:0509",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 4.58,
+    "WS10m": 1.79,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:0609",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 3.77,
+    "WS10m": 1.72,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:0709",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 4.65,
+    "WS10m": 1.66,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:0809",
+    "G(i)": 92.17,
+    "H_sun": 5.69,
+    "T2m": 5.03,
+    "WS10m": 1.66,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:0909",
+    "G(i)": 202.97,
+    "H_sun": 15.96,
+    "T2m": 8.0,
+    "WS10m": 1.24,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:1009",
+    "G(i)": 563.51,
+    "H_sun": 24.73,
+    "T2m": 10.66,
+    "WS10m": 0.97,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:1109",
+    "G(i)": 725.57,
+    "H_sun": 31.32,
+    "T2m": 12.69,
+    "WS10m": 0.76,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:1209",
+    "G(i)": 523.29,
+    "H_sun": 34.9,
+    "T2m": 14.33,
+    "WS10m": 1.17,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:1309",
+    "G(i)": 678.24,
+    "H_sun": 34.9,
+    "T2m": 15.39,
+    "WS10m": 1.59,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:1409",
+    "G(i)": 567.4,
+    "H_sun": 31.29,
+    "T2m": 15.9,
+    "WS10m": 1.93,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:1509",
+    "G(i)": 532.58,
+    "H_sun": 24.69,
+    "T2m": 15.97,
+    "WS10m": 2.14,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:1609",
+    "G(i)": 328.73,
+    "H_sun": 15.91,
+    "T2m": 15.5,
+    "WS10m": 2.28,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:1709",
+    "G(i)": 48.74,
+    "H_sun": 5.63,
+    "T2m": 14.62,
+    "WS10m": 2.21,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:1809",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 13.14,
+    "WS10m": 2.07,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:1909",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 12.03,
+    "WS10m": 1.86,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:2009",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 11.09,
+    "WS10m": 1.45,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:2109",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 10.34,
+    "WS10m": 0.97,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:2209",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 10.67,
+    "WS10m": 0.62,
+    "Int": 0.0
+   },
+   {
+    "time": "20190115:2309",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 8.87,
+    "WS10m": 1.17,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:0009",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 19.12,
+    "WS10m": 2.41,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:0109",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 19.01,
+    "WS10m": 2.34,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:0209",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 18.79,
+    "WS10m": 2.14,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:0309",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 18.69,
+    "WS10m": 2.0,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:0409",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 18.53,
+    "WS10m": 1.72,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:0509",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 18.41,
+    "WS10m": 1.79,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:0609",
+    "G(i)": 36.22,
+    "H_sun": 6.5,
+    "T2m": 18.33,
+    "WS10m": 1.79,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:0709",
+    "G(i)": 130.05,
+    "H_sun": 18.4,
+    "T2m": 18.91,
+    "WS10m": 2.07,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:0809",
+    "G(i)": 250.88,
+    "H_sun": 30.69,
+    "T2m": 20.04,
+    "WS10m": 2.07,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:0909",
+    "G(i)": 584.06,
+    "H_sun": 43.17,
+    "T2m": 21.73,
+    "WS10m": 2.28,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:1009",
+    "G(i)": 828.17,
+    "H_sun": 55.61,
+    "T2m": 23.7,
+    "WS10m": 2.62,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:1109",
+    "G(i)": 958.43,
+    "H_sun": 67.48,
+    "T2m": 25.82,
+    "WS10m": 2.97,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:1209",
+    "G(i)": 1025.38,
+    "H_sun": 76.69,
+    "T2m": 27.46,
+    "WS10m": 3.38,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:1309",
+    "G(i)": 1026.1,
+    "H_sun": 75.94,
+    "T2m": 28.69,
+    "WS10m": 3.79,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:1409",
+    "G(i)": 946.18,
+    "H_sun": 66.16,
+    "T2m": 29.09,
+    "WS10m": 4.21,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:1509",
+    "G(i)": 813.28,
+    "H_sun": 54.17,
+    "T2m": 28.69,
+    "WS10m": 4.48,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:1609",
+    "G(i)": 620.69,
+    "H_sun": 41.71,
+    "T2m": 27.73,
+    "WS10m": 4.55,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:1709",
+    "G(i)": 404.58,
+    "H_sun": 29.24,
+    "T2m": 26.3,
+    "WS10m": 4.28,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:1809",
+    "G(i)": 171.19,
+    "H_sun": 16.99,
+    "T2m": 24.71,
+    "WS10m": 3.79,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:1909",
+    "G(i)": 28.26,
+    "H_sun": 5.15,
+    "T2m": 22.34,
+    "WS10m": 3.24,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:2009",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 21.0,
+    "WS10m": 2.9,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:2109",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 20.16,
+    "WS10m": 2.76,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:2209",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 19.55,
+    "WS10m": 2.21,
+    "Int": 0.0
+   },
+   {
+    "time": "20190715:2309",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 18.99,
+    "WS10m": 1.79,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:0009",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 7.26,
+    "WS10m": 2.28,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:0109",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 6.95,
+    "WS10m": 2.34,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:0209",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 6.74,
+    "WS10m": 2.41,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:0309",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 6.53,
+    "WS10m": 2.41,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:0409",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 6.21,
+    "WS10m": 2.41,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:0509",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 5.75,
+    "WS10m": 2.34,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:0609",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 5.24,
+    "WS10m": 2.28,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:0709",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 5.31,
+    "WS10m": 2.48,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:0809",
+    "G(i)": 129.34,
+    "H_sun": 5.69,
+    "T2m": 5.42,
+    "WS10m": 2.48,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:0909",
+    "G(i)": 373.32,
+    "H_sun": 15.96,
+    "T2m": 8.42,
+    "WS10m": 1.93,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:1009",
+    "G(i)": 575.81,
+    "H_sun": 24.73,
+    "T2m": 14.02,
+    "WS10m": 1.52,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:1109",
+    "G(i)": 719.54,
+    "H_sun": 31.32,
+    "T2m": 17.32,
+    "WS10m": 1.59,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:1209",
+    "G(i)": 793.86,
+    "H_sun": 34.9,
+    "T2m": 18.68,
+    "WS10m": 0.9,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:1309",
+    "G(i)": 803.96,
+    "H_sun": 34.9,
+    "T2m": 19.5,
+    "WS10m": 0.28,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:1409",
+    "G(i)": 727.07,
+    "H_sun": 31.29,
+    "T2m": 19.94,
+    "WS10m": 0.9,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:1509",
+    "G(i)": 575.47,
+    "H_sun": 24.69,
+    "T2m": 19.97,
+    "WS10m": 1.72,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:1609",
+    "G(i)": 372.24,
+    "H_sun": 15.91,
+    "T2m": 19.51,
+    "WS10m": 2.14,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:1709",
+    "G(i)": 103.71,
+    "H_sun": 5.63,
+    "T2m": 18.19,
+    "WS10m": 2.21,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:1809",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 15.89,
+    "WS10m": 2.55,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:1909",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 14.46,
+    "WS10m": 2.48,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:2009",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 13.12,
+    "WS10m": 2.34,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:2109",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 11.95,
+    "WS10m": 2.34,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:2209",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 10.92,
+    "WS10m": 2.34,
+    "Int": 0.0
+   },
+   {
+    "time": "20200115:2309",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 9.98,
+    "WS10m": 2.28,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:0009",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 21.81,
+    "WS10m": 0.69,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:0109",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 21.65,
+    "WS10m": 0.48,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:0209",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 21.62,
+    "WS10m": 0.48,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:0309",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 21.03,
+    "WS10m": 0.34,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:0409",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 21.19,
+    "WS10m": 0.14,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:0509",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 21.11,
+    "WS10m": 0.34,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:0609",
+    "G(i)": 36.08,
+    "H_sun": 6.5,
+    "T2m": 21.0,
+    "WS10m": 0.55,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:0709",
+    "G(i)": 155.32,
+    "H_sun": 18.4,
+    "T2m": 21.87,
+    "WS10m": 0.07,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:0809",
+    "G(i)": 416.84,
+    "H_sun": 30.69,
+    "T2m": 23.98,
+    "WS10m": 0.14,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:0909",
+    "G(i)": 630.52,
+    "H_sun": 43.17,
+    "T2m": 27.0,
+    "WS10m": 0.28,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:1009",
+    "G(i)": 809.13,
+    "H_sun": 55.61,
+    "T2m": 29.72,
+    "WS10m": 1.17,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:1109",
+    "G(i)": 943.07,
+    "H_sun": 67.48,
+    "T2m": 31.99,
+    "WS10m": 2.07,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:1209",
+    "G(i)": 1008.84,
+    "H_sun": 76.69,
+    "T2m": 33.67,
+    "WS10m": 2.69,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:1309",
+    "G(i)": 1009.6,
+    "H_sun": 75.94,
+    "T2m": 34.58,
+    "WS10m": 3.03,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:1409",
+    "G(i)": 941.08,
+    "H_sun": 66.16,
+    "T2m": 35.01,
+    "WS10m": 3.38,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:1509",
+    "G(i)": 804.29,
+    "H_sun": 54.17,
+    "T2m": 34.89,
+    "WS10m": 3.79,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:1609",
+    "G(i)": 607.47,
+    "H_sun": 41.71,
+    "T2m": 34.13,
+    "WS10m": 4.0,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:1709",
+    "G(i)": 396.2,
+    "H_sun": 29.24,
+    "T2m": 32.86,
+    "WS10m": 4.14,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:1809",
+    "G(i)": 178.38,
+    "H_sun": 16.99,
+    "T2m": 31.25,
+    "WS10m": 3.72,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:1909",
+    "G(i)": 30.21,
+    "H_sun": 5.15,
+    "T2m": 29.32,
+    "WS10m": 2.55,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:2009",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 27.61,
+    "WS10m": 1.93,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:2109",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 26.49,
+    "WS10m": 1.45,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:2209",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 25.66,
+    "WS10m": 1.03,
+    "Int": 0.0
+   },
+   {
+    "time": "20200715:2309",
+    "G(i)": 0.0,
+    "H_sun": 0.0,
+    "T2m": 24.77,
+    "WS10m": 0.62,
+    "Int": 0.0
+   }
+  ]
+ },
+ "meta": {
+  "inputs": {
+   "location": {
+    "description": "Selected location",
+    "variables": {
+     "latitude": {
+      "description": "Latitude",
+      "units": "decimal degree"
+     },
+     "longitude": {
+      "description": "Longitude",
+      "units": "decimal degree"
+     },
+     "elevation": {
+      "description": "Elevation",
+      "units": "m"
+     }
+    }
+   },
+   "meteo_data": {
+    "description": "Sources of meteorological data",
+    "variables": {
+     "radiation_db": {
+      "description": "Solar radiation database"
+     },
+     "meteo_db": {
+      "description": "Database used for meteorological variables other than solar radiation"
+     },
+     "year_min": {
+      "description": "First year of the calculations"
+     },
+     "year_max": {
+      "description": "Last year of the calculations"
+     },
+     "use_horizon": {
+      "description": "Include horizon shadows"
+     },
+     "horizon_db": {
+      "description": "Source of horizon data"
+     }
+    }
+   },
+   "mounting_system": {
+    "description": "Mounting system",
+    "choices": "fixed, vertical_axis, inclined_axis, two_axis",
+    "fields": {
+     "slope": {
+      "description": "Inclination angle from the horizontal plane",
+      "units": "degree"
+     },
+     "azimuth": {
+      "description": "Orientation (azimuth) angle of the (fixed) PV system (0 = S, 90 = W, -90 = E)",
+      "units": "degree"
+     }
+    }
+   },
+   "pv_module": {
+    "description": "PV module parameters",
+    "variables": {
+     "technology": {
+      "description": "PV technology"
+     },
+     "peak_power": {
+      "description": "Nominal (peak) power of the PV module",
+      "units": "kW"
+     },
+     "system_loss": {
+      "description": "Sum of system losses",
+      "units": "%"
+     }
+    }
+   }
+  },
+  "outputs": {
+   "hourly": {
+    "type": "time series",
+    "timestamp": "hourly averages",
+    "variables": {
+     "G(i)": {
+      "description": "Global irradiance on the inclined plane (plane of the array)",
+      "units": "W/m2"
+     },
+     "H_sun": {
+      "description": "Sun height",
+      "units": "degree"
+     },
+     "T2m": {
+      "description": "2-m air temperature",
+      "units": "degree Celsius"
+     },
+     "WS10m": {
+      "description": "10-m total wind speed",
+      "units": "m/s"
+     },
+     "Int": {
+      "description": "1 means solar radiation values are reconstructed"
+     }
+    }
+   }
+  }
+ },
+ "_provenance": {
+  "enregistre_le": "2026-09-21",
+  "url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=33.5&lon=-7.6&startyear=2019&endyear=2020&pvcalculation=0&angle=15&aspect=0&raddatabase=PVGIS-SARAH3&outputformat=json&localtime=1",
+  "reponse": "RÉELLE — réponse PVGIS v5_3 telle qu'elle est revenue",
+  "troncature": "seules les lignes du 15 janvier et du 15 juillet de CHAQUE année sont gardées (96 lignes réelles sur 17544) : la fixture existe pour prouver la borne de volume de CALX142 (une seule année persistée, « tronquee » vrai) sur une fenêtre RÉELLEMENT pluriannuelle, sans committer 1,5 Mo. Aucune colonne « P » : pvcalculation=0."
+ }
+}
