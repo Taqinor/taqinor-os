@@ -120,9 +120,11 @@ class ExclusiviteTest(unittest.TestCase):
     def test_un_document_sans_solar_access_ne_l_omet_pas_pour_cette_raison(
             self):
         etape = cascade({})['ombrage_proche']
-        self.assertIn('Étape non livrée', etape['motif_omission'],
-                      'sans lecture par module, l’ombrage proche n’est pas '
-                      'écarté par exclusivité : il attend son module.')
+        # CALX157 : sans lecture par module, l'exclusivité ne s'applique pas
+        # — c'est l'étape elle-même qui dit alors ce qui lui manque.
+        self.assertNotIn('module par module',
+                         etape['motif_omission'].lower())
+        self.assertTrue(etape['motif_omission'].strip())
 
     def test_l_inter_rangees_n_est_ecarte_que_si_l_acces_le_declare(self):
         sans = cascade({'ombrage': {'solar_access': {'method': {}}}})
