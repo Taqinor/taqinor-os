@@ -10,7 +10,14 @@ import {
   geocodeReverseUrl,
   geocodeCountryNote,
   lireSaisieSegment,
+  grilleMetrique,
+  GRILLE_LAYER_ID,
+  MAX_LIGNES_GRILLE,
+  ORDRE_RENDU_CALQUES,
+  MAPLIBRE_LAYERS_PAR_CALQUE,
 } from './mapDraw';
+import { distanceEntreM } from './snap';
+import { geodesicAreaM2, layoutPanels, type LngLat } from '../../lib/roof';
 
 describe('CAL49 — pays du géocodage', () => {
   it('contexte absent → repli `ma` (comportement historique)', () => {
@@ -147,5 +154,118 @@ describe('CALX90 — deux valeurs saisies : le couple est rendu tel quel', () =>
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error('lecture attendue');
     expect(r.capDeg).toBe(-45);
+  });
+});
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX117 — GRILLE MÉTRIQUE DE REPÈRE AU PAS SAISI. Deux garanties : l'espacement RÉEL des
+// lignes vaut le pas saisi, et la grille n'entre dans AUCUN calcul (puce éteinte = aucune
+// source ; allumée = l'aire posable est rigoureusement inchangée).
+// ————————————————————————————————————————————————————————————————————————
+const CENTRE_GRILLE: LngLat = [-7.6, 33.5];
+
+describe('CALX117 — l’espacement des lignes vaut le pas saisi', () => {
+  it('un pas de 5 m donne 5 m de distance géodésique entre deux lignes voisines', () => {
+    const trame = grilleMetrique({ centre: CENTRE_GRILLE, pasM: 5, demiEtendueM: 40 });
+    const paralleles = trame.features.filter((f) => f.properties.axe === 'u');
+    expect(paralleles.length).toBeGreaterThan(2);
+    for (let i = 1; i < paralleles.length; i++) {
+      const a = paralleles[i - 1].geometry.coordinates[0];
+      const b = paralleles[i].geometry.coordinates[0];
+      expect(Math.abs(distanceEntreM(a, b) - 5)).toBeLessThan(0.001);
+    }
+  });
+
+  it('tient pour l’autre axe et pour un autre pas', () => {
+    const trame = grilleMetrique({ centre: CENTRE_GRILLE, pasM: 2.5, demiEtendueM: 20 });
+    const perpendiculaires = trame.features.filter((f) => f.properties.axe === 'v');
+    for (let i = 1; i < perpendiculaires.length; i++) {
+      const a = perpendiculaires[i - 1].geometry.coordinates[0];
+      const b = perpendiculaires[i].geometry.coordinates[0];
+      expect(Math.abs(distanceEntreM(a, b) - 2.5)).toBeLessThan(0.001);
+    }
+  });
+
+  it('les deux familles de lignes sont perpendiculaires entre elles', () => {
+    const trame = grilleMetrique({ centre: CENTRE_GRILLE, pasM: 5, demiEtendueM: 20 });
+    const u = trame.features.find((f) => f.properties.axe === 'u' && f.properties.rang === 0)!;
+    const v = trame.features.find((f) => f.properties.axe === 'v' && f.properties.rang === 0)!;
+    // Croix centrée : les deux lignes de rang 0 passent par le centre et se coupent au milieu.
+    expect(distanceEntreM(u.geometry.coordinates[0], v.geometry.coordinates[0])).toBeGreaterThan(0);
+    const milieuU: LngLat = [
+      (u.geometry.coordinates[0][0] + u.geometry.coordinates[1][0]) / 2,
+      (u.geometry.coordinates[0][1] + u.geometry.coordinates[1][1]) / 2,
+    ];
+    expect(distanceEntreM(milieuU, CENTRE_GRILLE)).toBeLessThan(0.001);
+  });
+
+  it('l’azimut demandé oriente la trame (nord vrai par défaut)', () => {
+    const nord = grilleMetrique({ centre: CENTRE_GRILLE, pasM: 5, demiEtendueM: 20 });
+    const tournee = grilleMetrique({ centre: CENTRE_GRILLE, pasM: 5, demiEtendueM: 20, azimutDeg: 30 });
+    const bout = (t: typeof nord) =>
+      t.features.find((f) => f.properties.axe === 'u' && f.properties.rang === 0)!.geometry.coordinates[1];
+    expect(distanceEntreM(bout(nord), bout(tournee))).toBeGreaterThan(1);
+    // À azimut 0, la ligne de rang 0 de l'axe u est plein nord : même longitude que le centre.
+    expect(bout(nord)[0]).toBeCloseTo(CENTRE_GRILLE[0], 10);
+  });
+});
+
+describe('CALX117 — PUCE ÉTEINTE : aucune source ajoutée', () => {
+  it('un pas nul, négatif, absent ou illisible rend une trame VIDE', () => {
+    for (const pas of [0, -5, Number.NaN]) {
+      expect(grilleMetrique({ centre: CENTRE_GRILLE, pasM: pas, demiEtendueM: 40 }).features).toEqual([]);
+    }
+  });
+
+  it('une étendue nulle (carte pas prête) rend une trame VIDE', () => {
+    expect(grilleMetrique({ centre: CENTRE_GRILLE, pasM: 5, demiEtendueM: 0 }).features).toEqual([]);
+  });
+
+  it('un centre illisible rend une trame VIDE', () => {
+    expect(grilleMetrique({ centre: [Number.NaN, 33.5], pasM: 5, demiEtendueM: 40 }).features).toEqual([]);
+  });
+
+  it('un pas trop fin pour la vue ne dessine RIEN (plafond de rendu)', () => {
+    const trame = grilleMetrique({ centre: CENTRE_GRILLE, pasM: 0.1, demiEtendueM: 500 });
+    expect(trame.features).toEqual([]);
+  });
+
+  it('une trame affichée reste sous le plafond de rendu', () => {
+    const trame = grilleMetrique({ centre: CENTRE_GRILLE, pasM: 5, demiEtendueM: 200 });
+    expect(trame.features.length).toBeGreaterThan(0);
+    expect(trame.features.length).toBeLessThanOrEqual(MAX_LIGNES_GRILLE);
+  });
+});
+
+describe('CALX117 — la grille n’entre dans AUCUN calcul', () => {
+  const toit: LngLat[] = [
+    [-7.6, 33.5],
+    [-7.5993, 33.5],
+    [-7.5993, 33.5004],
+    [-7.6, 33.5004],
+  ];
+
+  it('l’aire posable est rigoureusement inchangée quand la grille est allumée', () => {
+    const aireAvant = geodesicAreaM2(toit);
+    const poseAvant = layoutPanels(toit);
+    // On « allume » la grille : elle produit ses lignes, et rien d'autre.
+    const trame = grilleMetrique({ centre: CENTRE_GRILLE, pasM: 5, demiEtendueM: 40 });
+    expect(trame.features.length).toBeGreaterThan(0);
+    expect(geodesicAreaM2(toit)).toBe(aireAvant);
+    expect(layoutPanels(toit).panels.length).toBe(poseAvant.panels.length);
+  });
+
+  it('elle ne touche pas le contour qu’on lui passe en repère', () => {
+    const copie = toit.map((v) => [v[0], v[1]] as LngLat);
+    grilleMetrique({ centre: toit[0], pasM: 5, demiEtendueM: 40 });
+    expect(toit).toEqual(copie);
+  });
+
+  it('sa couche n’appartient à AUCUN calque de l’ordre de rendu (CAL103)', () => {
+    expect(GRILLE_LAYER_ID).toBe('rp9-grille');
+    expect(ORDRE_RENDU_CALQUES).not.toContain(GRILLE_LAYER_ID);
+    for (const couches of Object.values(MAPLIBRE_LAYERS_PAR_CALQUE)) {
+      expect(couches).not.toContain(GRILLE_LAYER_ID);
+    }
   });
 });

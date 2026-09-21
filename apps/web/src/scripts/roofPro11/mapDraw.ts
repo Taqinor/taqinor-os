@@ -15,7 +15,7 @@ import { availableOptionalLayers, getOptionalLayer, optionalLayerSourceSpec } fr
 import { $ } from './dom';
 import { type Ctx } from './context';
 import { aimanterAuxZones, contraindreAngle, metresParPixel, pointDepuisCap, PAS_ANGLE_DEG } from './snap';
-import { VERTEX_GRAB_PX } from './constants';
+import { DEG2M, DEG2RAD, VERTEX_GRAB_PX } from './constants';
 
 /**
  * WJ41 — libellés/messages de statut de la carte/géocodeur, tous LOCALISABLES.
@@ -215,6 +215,110 @@ export function lireSaisieSegment(longueurBrute: string, angleBrut: string): Sai
     return { ok: false, champ: 'angle', motif: 'Angle invalide — saisissez un cap en degrés (0 = nord, 90 = est).' };
   }
   return { ok: true, distanceM, capDeg };
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX117 — GRILLE MÉTRIQUE DE REPÈRE AU PAS SAISI
+//
+// La seule « grille » du module était le pas du pavage servant à caler un glissé
+// (`layoutEditor.ts`) : rien n'affichait de trame métrique sur la carte pour aider au tracé.
+// Parité PV*SOL (section de carte à l'échelle vraie, qui restitue les distances réelles).
+//
+// LA GRILLE EST PUREMENT VISUELLE : elle n'entre dans AUCUN calcul. Elle ne touche ni
+// `ctx.vertices`, ni les obstacles, ni le pavage — c'est une couche de lignes de plus sur
+// la carte, et son identifiant `rp9-grille` n'appartient à aucun calque de
+// `ORDRE_RENDU_CALQUES` (donc `setLayerState` ne peut pas la mêler à une entrée de calcul).
+// ————————————————————————————————————————————————————————————————————————
+
+/** Identifiant de la source ET de la couche MapLibre de la grille. */
+export const GRILLE_LAYER_ID = 'rp9-grille';
+
+/**
+ * Nombre MAXIMAL de lignes dessinées. CONVENTION DE RENDU (pas un seuil métier) : au-delà,
+ * une trame est illisible à l'œil et coûteuse à peindre — on n'en dessine alors AUCUNE et on
+ * le dit, plutôt que d'afficher une bouillie.
+ */
+export const MAX_LIGNES_GRILLE = 400;
+
+export interface OptionsGrille {
+  /** Point autour duquel la trame est bâtie (centroïde du tracé, ou centre de la vue). */
+  centre: LngLat;
+  /** Pas SAISI, en mètres. ≤ 0 ⇒ aucune ligne (puce éteinte). */
+  pasM: number;
+  /** Demi-étendue couverte, en mètres — DÉRIVÉE de la vue par l'appelant, jamais inventée. */
+  demiEtendueM: number;
+  /** Orientation de la trame (° depuis le nord vrai). Absente/0 ⇒ nord vrai. */
+  azimutDeg?: number;
+}
+
+/** Une trame, au format GeoJSON que MapLibre consomme directement. */
+export interface TrameGeoJSON {
+  type: 'FeatureCollection';
+  features: Array<{
+    type: 'Feature';
+    geometry: { type: 'LineString'; coordinates: LngLat[] };
+    properties: { axe: 'u' | 'v'; rang: number };
+  }>;
+}
+
+const TRAME_VIDE: TrameGeoJSON = { type: 'FeatureCollection', features: [] };
+
+/**
+ * CALX117 — construit la trame métrique. PURE : elle ne lit ni ne modifie aucun état du
+ * builder, et un pas nul/absent (puce éteinte) rend une trame VIDE — donc aucune source
+ * n'est peuplée et rien n'est ajouté à la carte.
+ *
+ * Les lignes sont espacées du pas SAISI en distance réelle (plan tangent local au centre),
+ * quelle que soit la latitude : 5 m saisis = 5 m mesurés entre deux lignes voisines.
+ */
+export function grilleMetrique(opts: OptionsGrille): TrameGeoJSON {
+  const { centre, pasM, demiEtendueM } = opts ?? ({} as OptionsGrille);
+  if (!Array.isArray(centre) || centre.length !== 2) return TRAME_VIDE;
+  if (!Number.isFinite(centre[0]) || !Number.isFinite(centre[1])) return TRAME_VIDE;
+  if (!Number.isFinite(pasM) || pasM <= 0) return TRAME_VIDE; // puce éteinte : rien à dessiner
+  if (!Number.isFinite(demiEtendueM) || demiEtendueM <= 0) return TRAME_VIDE;
+  const rangs = Math.floor(demiEtendueM / pasM);
+  // 2 axes × (2·rangs + 1) lignes : au-delà du plafond de rendu, on ne dessine rien.
+  if (2 * (2 * rangs + 1) > MAX_LIGNES_GRILLE) return TRAME_VIDE;
+  const azimut = Number.isFinite(opts.azimutDeg) ? (opts.azimutDeg as number) : 0;
+  const a = azimut * DEG2RAD;
+  // u = direction de l'azimut (est, nord) ; v = sa perpendiculaire (azimut + 90°).
+  const u: [number, number] = [Math.sin(a), Math.cos(a)];
+  const v: [number, number] = [Math.cos(a), -Math.sin(a)];
+  const cosLat = Math.max(1e-6, Math.cos(centre[1] * DEG2RAD));
+  const versLngLat = (est: number, nord: number): LngLat => [
+    centre[0] + est / (DEG2M * cosLat),
+    centre[1] + nord / DEG2M,
+  ];
+  const features: TrameGeoJSON['features'] = [];
+  for (let k = -rangs; k <= rangs; k++) {
+    const d = k * pasM;
+    // Ligne parallèle à u, décalée de d le long de v.
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          versLngLat(d * v[0] - demiEtendueM * u[0], d * v[1] - demiEtendueM * u[1]),
+          versLngLat(d * v[0] + demiEtendueM * u[0], d * v[1] + demiEtendueM * u[1]),
+        ],
+      },
+      properties: { axe: 'u', rang: k },
+    });
+    // Ligne parallèle à v, décalée de d le long de u.
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          versLngLat(d * u[0] - demiEtendueM * v[0], d * u[1] - demiEtendueM * v[1]),
+          versLngLat(d * u[0] + demiEtendueM * v[0], d * u[1] + demiEtendueM * v[1]),
+        ],
+      },
+      properties: { axe: 'v', rang: k },
+    });
+  }
+  return { type: 'FeatureCollection', features };
 }
 
 /** Dépendances injectées (carte + bandeau de statut + re-lecture d'aire + bouton finir). */
@@ -525,6 +629,140 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     if (ctx.vertices.length >= 3) setStatus(t.doubleClickToClose);
     else setStatus(t.cornerPlaced(ctx.vertices.length));
   }
+
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX117 — puce « Grille » + son pas SAISI et son orientation (nord vrai, ou l'azimut
+  // d'un pan désigné). Éteinte par défaut : tant qu'elle l'est, AUCUNE source n'est ajoutée
+  // à la carte. La trame est purement visuelle et n'entre dans aucun calcul.
+  // ————————————————————————————————————————————————————————————————————————
+  const grilleChipEl = ensureGrilleChip();
+  const grillePasEl = $<HTMLInputElement>('rp9-grille-pas');
+  const grilleAxeEl = $<HTMLSelectElement>('rp9-grille-axe');
+  function ensureGrilleChip(): HTMLButtonElement | null {
+    const existing = $<HTMLButtonElement>('rp9-grille-chip');
+    if (existing) return existing;
+    if (!traceChipsEl || typeof document.createElement !== 'function') return null;
+    const wrap = document.createElement('span');
+    wrap.className = 'rp9-grille-row inline-flex items-center gap-1';
+    wrap.innerHTML =
+      `<button type="button" id="rp9-grille-chip" class="rp9-btn" aria-pressed="false" ` +
+      `title="Trame métrique de repère. Purement visuelle : elle ne change aucun calcul.">Grille</button>` +
+      `<input type="text" id="rp9-grille-pas" class="rp9-input w-20" inputmode="decimal" ` +
+      `placeholder="pas m" aria-label="Pas de la grille (m)" />` +
+      `<select id="rp9-grille-axe" class="rp9-input" aria-label="Orientation de la grille"></select>`;
+    traceChipsEl.appendChild(wrap);
+    return $<HTMLButtonElement>('rp9-grille-chip');
+  }
+
+  /** Remplit le choix d'orientation : nord vrai, ou l'azimut d'un pan déjà tracé. */
+  function syncGrilleAxe() {
+    if (!grilleAxeEl || typeof document.createElement !== 'function') return;
+    const choisi = grilleAxeEl.value;
+    grilleAxeEl.innerHTML = '';
+    const nord = document.createElement('option');
+    nord.value = '';
+    nord.textContent = 'Nord vrai';
+    grilleAxeEl.appendChild(nord);
+    ctx.areas.forEach((a, i) => {
+      if (!Array.isArray(a.vertices) || a.vertices.length < 3) return;
+      const opt = document.createElement('option');
+      opt.value = a.id;
+      opt.textContent = `Azimut du pan ${i + 1}`;
+      grilleAxeEl.appendChild(opt);
+    });
+    grilleAxeEl.value = choisi;
+    if (grilleAxeEl.selectedIndex < 0) grilleAxeEl.value = '';
+  }
+
+  /** Azimut de la trame : 0 (nord vrai) ou l'azimut SAISI du pan désigné — jamais déduit. */
+  function azimutGrilleDeg(): number {
+    const id = grilleAxeEl?.value ?? '';
+    if (!id) return 0;
+    const pan = ctx.areas.find((a) => a.id === id);
+    const az = pan?.facingAzimuthDeg;
+    return Number.isFinite(az) ? (az as number) : 0;
+  }
+
+  /** Demi-étendue de la trame, DÉRIVÉE de la vue (jamais un nombre inventé). */
+  function demiEtendueGrilleM(lat: number): number {
+    const zoom = typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN;
+    if (!Number.isFinite(zoom)) return 0;
+    const canvas = typeof map.getCanvas === 'function' ? map.getCanvas() : null;
+    const cote = Math.max(canvas?.clientWidth ?? 0, canvas?.clientHeight ?? 0);
+    if (!(cote > 0)) return 0;
+    return (cote / 2) * metresParPixel(lat, zoom);
+  }
+
+  function grilleAllumee(): boolean {
+    return grilleChipEl?.getAttribute('aria-pressed') === 'true';
+  }
+
+  /** Retire la couche ET la source de la grille : éteinte, elle ne laisse RIEN sur la carte. */
+  function retirerGrille() {
+    try {
+      if (map.getLayer?.(GRILLE_LAYER_ID)) map.removeLayer(GRILLE_LAYER_ID);
+      if (map.getSource?.(GRILLE_LAYER_ID)) map.removeSource(GRILLE_LAYER_ID);
+    } catch {
+      /* style pas prêt : rien à retirer */
+    }
+  }
+
+  /** (Re)dessine la trame. Puce éteinte ⇒ la couche est retirée, aucune source n'est ajoutée. */
+  function redrawGrille() {
+    if (!grilleAllumee()) {
+      retirerGrille();
+      return;
+    }
+    const centre = ctx.closed && ctx.vertices.length >= 3 ? ctx.centroid : (map.getCenter?.() ? ([map.getCenter().lng, map.getCenter().lat] as LngLat) : null);
+    if (!centre) return;
+    const pasM = Number.parseFloat((grillePasEl?.value ?? '').replace(/\s/g, '').replace(',', '.'));
+    const trame = grilleMetrique({
+      centre,
+      pasM,
+      demiEtendueM: demiEtendueGrilleM(centre[1]),
+      azimutDeg: azimutGrilleDeg(),
+    });
+    if (trame.features.length === 0) {
+      retirerGrille();
+      setStatus(
+        Number.isFinite(pasM) && pasM > 0
+          ? 'Grille non affichée : le pas saisi est trop fin pour la vue actuelle — zoomez, ou saisissez un pas plus grand.'
+          : 'Saisissez le pas de la grille, en mètres.',
+      );
+      return;
+    }
+    try {
+      if (!map.getSource?.(GRILLE_LAYER_ID)) {
+        map.addSource(GRILLE_LAYER_ID, { type: 'geojson', data: trame } as never);
+      } else {
+        (map.getSource(GRILLE_LAYER_ID) as maplibregl.GeoJSONSource | undefined)?.setData(trame as never);
+      }
+      if (!map.getLayer?.(GRILLE_LAYER_ID)) {
+        map.addLayer({
+          id: GRILLE_LAYER_ID,
+          type: 'line',
+          source: GRILLE_LAYER_ID,
+          paint: { 'line-color': '#ffffff', 'line-opacity': 0.25, 'line-width': 1 },
+        } as never);
+      }
+    } catch {
+      /* style pas encore chargé : le prochain appel retrouvera la carte */
+    }
+  }
+
+  grilleChipEl?.addEventListener('click', () => {
+    const on = grilleAllumee();
+    grilleChipEl.setAttribute('aria-pressed', String(!on));
+    syncGrilleAxe();
+    redrawGrille();
+    if (on) setStatus('Grille masquée.');
+  });
+  grillePasEl?.addEventListener('change', redrawGrille);
+  grilleAxeEl?.addEventListener('change', redrawGrille);
+  map.on?.('moveend', () => {
+    if (grilleAllumee()) redrawGrille();
+  });
+  syncGrilleAxe();
 
   // ————————————————————————————————————————————————————————————————————————
   // CALX90 — la saisie « longueur (m) / angle (°) », créée par le module s'il faut.
