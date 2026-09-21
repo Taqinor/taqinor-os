@@ -8744,3 +8744,28 @@ def _canal_effectif(gabarit):
     if canal == CANAL_VISITE:
         return CANAL_VISITE_REMPLACEMENT
     return canal
+
+
+# ── CAD-J ── CAD124 — pas d'axe segment dans le gabarit de cadence ────────
+#
+# [TRANCHÉ 21/09/2026] `calculer_echeances_cadence` ne lit AUCUN segment, et
+# ce n'est pas un oubli : le gabarit de cadence reste aveugle au
+# `type_installation`. Le CRM s'en sert ailleurs — pour scorer
+# (`apps/crm/scoring.py`) et pour exiger les bons champs au devis
+# (`apps/ventes/devis_auto.py`) — mais l'ordonnancement des touches, lui, est
+# le MÊME protocole pour tout le monde.
+#
+# Ce que les segments changent vraiment, c'est le TEXTE : variantes par
+# exception sur les clés qui mentent (CAD126) et playbook conditionné sur
+# `{type_installation}` (CAD125). Les deux passent par des mécanismes qui
+# existent déjà — zéro migration, zéro sélecteur de plus, zéro barreau ajouté.
+#
+# La décision se rouvrira sur le VOLUME par segment (comptage CADM7), pas
+# avant. Voir aussi le commentaire jumeau dans
+# `apps/parametres/models_relance.py` (clé `unique_together` du gabarit).
+
+#: CAD124 — la trace lisible de la décision, pour un futur audit qui se
+#: demanderait pourquoi le gabarit ignore le segment.
+CAD124_PAS_D_AXE_SEGMENT = (
+    'pas d’axe segment dans le gabarit de cadence — décision du 21/09/2026'
+)

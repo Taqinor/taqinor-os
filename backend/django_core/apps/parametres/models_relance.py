@@ -247,6 +247,18 @@ class CadenceRelanceEtape(TenantModel):
         # Un seul barreau par société + cadence + ordre (idempotence
         # seed/backfill). L'ordre 1 existe désormais dans CHAQUE cadence :
         # l'ancienne clé (company, ordre) les aurait fait se percuter.
+        #
+        # CAD124 — PAS D'AXE SEGMENT : décision du 21/09/2026. La clé reste
+        # (société, cadence, ordre) et n'accueillera PAS `type_installation`.
+        # Le CRM lit déjà le segment pour scorer (`apps/crm/scoring.py`) et
+        # pour exiger les bons champs au devis (`apps/ventes/devis_auto.py`),
+        # mais le GABARIT de cadence reste aveugle : le levier langue/texte
+        # (CAD126) et le playbook conditionné sur `{type_installation}`
+        # (CAD125) couvrent l'essentiel sans migration ni sélecteur de plus.
+        # Une quatrième dimension ici multiplierait les barreaux à maintenir
+        # par le nombre de segments, pour un protocole dont le fondateur a
+        # tranché qu'il ne change pas. La décision se rouvrira sur le VOLUME
+        # par segment (comptage CADM7), pas avant.
         unique_together = [('company', 'cadence', 'ordre')]
         indexes = [
             models.Index(fields=['company', 'cadence', 'actif'],
