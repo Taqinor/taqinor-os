@@ -65,6 +65,11 @@ CHAMPS_PAR_FAMILLE = {
         'uc_w_m2k', 'uv_w_m3sk', 'bifacialite_pct',
         'degradation_annuelle_pct', 'degradation_annee1_pct',
         'garantie_pct_a_10_ans', 'garantie_pct_a_25_ans',
+        # CALX60 — ce que la chaîne de pertes lit sur le module : la courbe
+        # de rendement à éclairement partiel (CALX162) et les deux bornes de
+        # tolérance de puissance (CALX165).
+        'rendement_par_irradiance', 'tolerance_pmax_min_pct',
+        'tolerance_pmax_max_pct',
     ),
     'onduleur': (
         'n_mppt', 'mppt_v_min', 'mppt_v_max', 'v_max_abs', 'i_max_mppt_a',
@@ -72,16 +77,33 @@ CHAMPS_PAR_FAMILLE = {
         'isc_max_mppt_a', 'bat_max_charge_kw', 'bat_max_decharge_kw',
         'entrees_par_mppt', 'chaines_max_par_mppt', 's_max_kva',
         'dc_max_kwc',
+        # CALX60 — la courbe de rendement η(P) (CALX170), les deux autres
+        # rendements publiés et la consommation de nuit (CALX175).
+        'rendement_par_charge', 'rendement_max_pct', 'rendement_cec_pct',
+        'conso_nuit_w',
     ),
     'batterie': (
         'kwh_nominal', 'kwh_usable', 'dod_pct', 'v_nominal',
         'max_charge_kw', 'max_decharge_kw', 'max_modules_par_banc',
         'rendement_ar_pct', 'cycles_publies', 'retention_fin_de_vie_pct',
         'garantie_annees',
+        # CALX60 — C-rate, chimie, plage de température et rétention de fin
+        # de vie. ``eol_pct`` est publié depuis le MÊME champ que
+        # ``retention_fin_de_vie_pct`` : la complétude le compte deux fois
+        # parce que deux consommateurs le lisent sous deux noms.
+        'c_rate_charge', 'c_rate_decharge', 'chimie', 'temp_min_c',
+        'temp_max_c', 'eol_pct',
     ),
     'optimiseur': (
         'pmax_in_w', 'v_in_min', 'v_in_max', 'i_in_max_a', 'rendement_pct',
         'modules_par_optimiseur',
+        # CALX60 — LA SORTIE du composant : les ``ac_*`` décrivent le
+        # micro-onduleur, les ``v_out_*``/``i_out_*``/``pmax_out_w``
+        # l'optimiseur, et ``modules_max_par_chaine`` ferme la longueur de
+        # chaîne (CALX209-CALX211).
+        'ac_kw', 'ac_tension_v', 'ac_i_max_a', 'ac_unites_max_par_branche',
+        'v_out_nominal_v', 'v_out_min', 'v_out_max', 'i_out_max_a',
+        'pmax_out_w', 'modules_max_par_chaine',
     ),
 }
 
