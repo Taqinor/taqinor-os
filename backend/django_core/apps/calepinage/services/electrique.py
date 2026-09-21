@@ -62,6 +62,8 @@ __all__ = [
     'REGLE_CHAINE_MODULE', 'REGLE_CHAINE_OPTIMISEUR', 'regle_de_chaine',
     'PublicationBloquee', 'bloquants_nommes', 'alertes_nommees',
     'evaluation_electrique', 'garde_publication', 'rejouer_apres_layout',
+    'verdict_publiable', 'STATUT_MOTIF_OMIS', 'STATUT_MOTIF_SANS_SOURCE',
+    'CLE_PUBLICATION',  # CALX248
     'ORIGINE_LONGUEUR_FICHE', 'ORIGINE_LONGUEUR_DOSSIER',
     'longueur_chaine_retenue', 'plafond_modules',
     'journaliser_ecart_longueur', 'parametres_societe',
@@ -1333,6 +1335,238 @@ def garde_publication(calepinage):
         "Publication refusée : %d contrainte(s) onduleur bloquante(s). %s"
         % (len(evaluation['bloquants']), ' '.join(evaluation['bloquants'])),
         bloquants=evaluation['bloquants'])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX248 — UN VERDICT PUBLIABLE UNIQUE, ENTRÉE PAR ENTRÉE SOURCÉE
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``garde_publication`` ne regarde que DEUX choses — les bloquants d'onduleur
+# et la garde de terre — alors que le résultat porte déjà des omissions de
+# norme, de câble et de protection. Un dossier dont TOUTES les sections sont
+# OMISES faute de norme passait donc la garde, et personne ne lisait au même
+# endroit ce qui empêchait vraiment de publier.
+#
+# Parité : Aurora vend un rapport de validation comme livrable NOMMÉ
+# (https://aurorasolar.com/design-mode/) ; PV*SOL bloque la simulation sur ses
+# violations les plus graves (https://help.valentin-software.com/pvsol/en/
+# pages/inverters/configuration-check/).
+#
+# LA RÈGLE, ET ELLE TIENT EN DEUX LIGNES :
+#   * ZÉRO plage BLOQUANTE — un dépassement de spécification se corrige, il ne
+#     se publie pas ;
+#   * ZÉRO entrée SANS PROVENANCE — une omission ASSUMÉE (statut
+#     ``non_verifiable``, motif en clair) n'empêche PAS la publication ; une
+#     valeur qui a servi à JUGER sans que rien ne dise d'où elle vient, si.
+#
+# CE VERDICT NE REMPLACE PAS LA GARDE. ``garde_publication`` continue de
+# refuser exactement ce qu'elle refusait (test de non-régression) : la garde
+# est le CLIQUET du geste de publication, ce verdict est le RAPPORT qu'on lit
+# avant de cliquer.
+
+#: Le statut d'une omission ASSUMÉE — le calcul ne s'est pas fait, on DIT
+#: pourquoi, et ça ne bloque pas la publication.
+STATUT_MOTIF_OMIS = 'omis'
+
+#: Le statut d'une entrée qui a JUGÉ sans provenance : elle, elle bloque.
+STATUT_MOTIF_SANS_SOURCE = 'sans_source'
+
+#: La clé du verdict de publication quand il est publié à côté d'un résultat.
+CLE_PUBLICATION = 'publication'
+
+
+def _motif_publication(code, statut, libelle, source=''):
+    """UNE entrée du verdict de publication — quatre clés, jamais plus.
+
+    Un statut CONCLUSIF (``ok``, ``alerte``, ``bloquant``) sans provenance
+    devient ``sans_source`` : c'est une valeur qui a servi à juger sans que
+    personne ne puisse dire d'où elle vient. Un statut d'ABSTENTION
+    (``non_verifiable``, ``omis``) n'a pas besoin de source — son libellé EST
+    le motif de l'abstention.
+    """
+    from core.electrique.types import STATUT_ALERTE, STATUT_BLOQUANT, STATUT_OK
+
+    source = (source or '').strip()
+    if statut in (STATUT_OK, STATUT_ALERTE, STATUT_BLOQUANT) and not source:
+        statut = STATUT_MOTIF_SANS_SOURCE
+    return {'code': code, 'statut': statut, 'libelle': libelle,
+            'source': source}
+
+
+def _motif_du_verdict(verdict):
+    """Un ``VerdictElectrique`` (CALX215) traduit en motif de publication."""
+    return _motif_publication(verdict.code, verdict.statut, verdict.libelle,
+                              verdict.source)
+
+
+def _motifs_de_la_conception(conception):
+    """Les natures de CALX215 — les verdicts ``ok`` ne sont pas des motifs."""
+    resultat = getattr(conception, 'resultat', None)
+    return [_motif_du_verdict(verdict)
+            for verdict in getattr(resultat, 'verdicts', ()) or ()
+            if not verdict.est_ok]
+
+
+def _motifs_de_la_norme(norme):
+    """L'omission de norme (D1) — ASSUMÉE, donc jamais bloquante."""
+    if (norme or {}).get('applicable'):
+        return []
+    return [_motif_publication(
+        'NORME_NON_APPLICABLE', STATUT_MOTIF_OMIS,
+        (norme or {}).get('motif')
+        or "aucune norme électrique n'est applicable : sections, chutes de "
+           "tension et check-list de terre sont OMISES",
+        'services/norme.py::norme_applicable')]
+
+
+def _motifs_du_raccordement(conception, saisie, reglages):
+    """CALX242 + CALX243 — branchement et équilibrage, LUS, jamais recalculés.
+
+    ``services/raccordement.py`` est en LECTURE SEULE ici : ce module ne
+    reprononce aucun de ses verdicts, il les traduit en motifs.
+    """
+    from .raccordement import (
+        RaccordementInvalide, repartition_des_phases, verdicts_raccordement,
+    )
+
+    motifs = []
+    try:
+        bloc = verdicts_raccordement(conception, saisie)
+    except RaccordementInvalide as refus:
+        return [_motif_publication(
+            'RACCORDEMENT_REFUSE', STATUT_MOTIF_SANS_SOURCE, str(refus),
+            '')]
+    motifs.extend(_motif_du_verdict(verdict) for verdict in bloc['verdicts']
+                  if not verdict.est_ok)
+
+    equilibrage = repartition_des_phases(
+        _onduleurs_poses(conception),
+        (saisie or {}).get('phases') or _phases_du_champ(conception),
+        reglages=reglages)
+    verdict = equilibrage.get('verdict')
+    if verdict is not None and not verdict.est_ok:
+        motifs.append(_motif_du_verdict(verdict))
+    return motifs
+
+
+def _phases_du_champ(conception):
+    """Le régime que le CALCUL emploie, à défaut d'un régime saisi."""
+    entree = getattr(conception, 'entree', None)
+    return int(getattr(entree, 'phases', 0) or 0) or None
+
+
+def _onduleurs_poses(conception):
+    """Les onduleurs POSÉS, dans la forme que CALX243 relit.
+
+    Le noyau dimensionne un MODÈLE et un NOMBRE (``evaluer_onduleurs``) : les
+    exemplaires sont donc identiques, et aucune phase imposée n'est supposée
+    — c'est le tourniquet de CALX243 qui répartit, et lui seul.
+    """
+    from .chaines import evaluer_onduleurs
+
+    evaluation = evaluer_onduleurs(conception)
+    if evaluation is None or not evaluation.nombre:
+        return []
+    phases = _phases_du_champ(conception) or 1
+    return [{'repere': 'ONDULEUR%d' % rang,
+             'ac_kw': evaluation.ac_kw_unitaire, 'phases': phases}
+            for rang in range(1, int(evaluation.nombre) + 1)]
+
+
+def _motifs_de_la_terre(terre):
+    """CALX245 — la justification de continuité, et les omissions assumées."""
+    motifs = []
+    if terre.get('justification_requise') \
+            and not terre.get('justification_fournie'):
+        from core.electrique.types import STATUT_BLOQUANT
+
+        motifs.append(_motif_publication(
+            'TERRE_JUSTIFICATION_MANQUANTE', STATUT_BLOQUANT,
+            "prise de terre non fournie au marché : la justification de "
+            "continuité de la terre existante reste à cocher "
+            "(terre.justification_continuite)",
+            'NF C 15-100 §542'))
+    motifs.extend(_motif_publication('TERRE_OMISE', STATUT_MOTIF_OMIS, motif)
+                  for motif in terre.get('omissions') or ())
+    return motifs
+
+
+def _motifs_des_troncons(troncons):
+    """CALX226 — les tronçons non calculables, et les cumuls verdictés."""
+    from core.electrique.types import (
+        STATUT_ALERTE, STATUT_BLOQUANT, STATUT_OK,
+    )
+
+    motifs = []
+    for omission in (troncons or {}).get('omissions') or ():
+        motifs.append(_motif_publication(
+            'TRONCON_NON_CALCULABLE', STATUT_MOTIF_OMIS,
+            "tronçon « %s », champ « %s » : %s"
+            % (omission.get('troncon') or '—', omission.get('champ') or '—',
+               omission.get('motif') or ''),
+            'services/troncons.py'))
+    for verdict in (troncons or {}).get('verdicts') or ():
+        if verdict.get('bloquant'):
+            statut = STATUT_BLOQUANT
+        elif verdict.get('conforme'):
+            statut = STATUT_OK
+        else:
+            statut = STATUT_ALERTE
+        if statut == STATUT_OK:
+            continue
+        motifs.append(_motif_publication(
+            verdict.get('code') or 'CHUTE_CUMULEE', statut,
+            verdict.get('detail') or verdict.get('libelle') or '',
+            verdict.get('source') or ''))
+    return motifs
+
+
+def verdict_publiable(calepinage):
+    """CALX248 — ``{publiable, motifs}`` : TOUT ce qui empêche de publier.
+
+    Rassemble, en un seul rapport et sans reprononcer aucun calcul : les
+    natures de CALX215 (conception), l'omission de norme (D1), les verdicts
+    de raccordement (CALX242), l'équilibrage des phases (CALX243), la terre
+    (CALX245) et les tronçons non calculables (CALX226).
+
+    ``publiable`` exige ZÉRO motif BLOQUANT **et** ZÉRO motif
+    ``sans_source``. Une omission assumée (``omis`` / ``non_verifiable``) est
+    publiable : elle DIT ce qui n'a pas été calculé et pourquoi.
+
+    Lecture PURE : rien n'est écrit, aucun statut n'est touché.
+    """
+    from core.electrique.types import STATUT_BLOQUANT
+
+    from .norme import norme_applicable
+    from .terre import checklist_terre
+    from .troncons import troncons_du_calepinage
+
+    conception, _materiel, donnees, document = conception_du_calepinage(
+        calepinage)
+    norme = norme_applicable(parametres_societe(calepinage))
+    reglages = _reglages_electrique_societe(calepinage)
+
+    motifs = list(_motifs_de_la_conception(conception))
+    motifs.extend(_motifs_de_la_norme(norme))
+    motifs.extend(_motifs_du_raccordement(
+        conception, donnees.get('raccordement'), reglages))
+    motifs.extend(_motifs_de_la_terre(checklist_terre(
+        conception, decisions=donnees.get('terre'), norme=norme,
+        company=getattr(calepinage, 'company', None))))
+    motifs.extend(_motifs_des_troncons(troncons_du_calepinage(calepinage)))
+    # Le matériel NON DÉSIGNÉ n'est pas une omission assumée : on ne certifie
+    # pas ce qu'on n'a pas pu vérifier (même règle que ``garde_publication``).
+    for manquante in getattr(conception, 'manquantes', ()) or ():
+        motifs.append(_motif_publication(
+            'FICHE_INCOMPLETE', STATUT_BLOQUANT, manquante,
+            'fiche technique du matériel retenu'))
+
+    refusants = (STATUT_BLOQUANT, STATUT_MOTIF_SANS_SOURCE)
+    return {
+        'publiable': not any(motif['statut'] in refusants
+                             for motif in motifs),
+        'motifs': motifs,
+    }
 
 
 def rejouer_apres_layout(calepinage, *, user=None):

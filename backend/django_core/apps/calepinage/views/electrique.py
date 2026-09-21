@@ -28,8 +28,8 @@ from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..services.electrique import (
-    EntreeInvalide, TemperaturesInvalides, enregistrer_entree,
-    evaluation_electrique, resultat_calepinage,
+    CLE_PUBLICATION, EntreeInvalide, TemperaturesInvalides, enregistrer_entree,
+    evaluation_electrique, resultat_calepinage, verdict_publiable,
 )
 
 __all__ = ['ElectriqueActionsMixin']
@@ -102,6 +102,13 @@ class ElectriqueActionsMixin:
         chaîne fautifs. Une fiche technique incomplète rend
         ``verdict: 'indetermine'`` et AUCUN bloquant : le silence, jamais un
         faux vert.
+
+        CALX248 — la clé ``publication`` porte le verdict PUBLIABLE complet
+        (``{publiable, motifs}``) : norme omise, raccordement, équilibrage,
+        terre et tronçons non calculables, tout ce qui empêche de publier au
+        MÊME endroit. Il se prononce sur la conception ENREGISTRÉE — on
+        publie ce qui est enregistré, pas ce qui est en cours de dessin — et
+        il est donc omis quand l'appel porte un dessin à chaud.
         """
         calepinage = self.get_object()
         corps = request.data if isinstance(request.data, dict) else {}
@@ -118,8 +125,15 @@ class ElectriqueActionsMixin:
                                       "objet."},
                 status=status.HTTP_400_BAD_REQUEST)
         try:
-            return Response(evaluation_electrique(
-                calepinage, entree=entree, layout=layout))
+            evaluation = evaluation_electrique(
+                calepinage, entree=entree, layout=layout)
+            # La clé est TOUJOURS présente : ``None`` quand l'appel porte un
+            # dessin ou une entrée à chaud, pour que l'écran n'ait jamais à
+            # deviner si elle manque ou si elle est vide.
+            evaluation[CLE_PUBLICATION] = (
+                None if (layout is not None or entree is not None)
+                else verdict_publiable(calepinage))
+            return Response(evaluation)
         except (EntreeInvalide, TemperaturesInvalides) as refus:
             return Response({refus.champ or 'entree_electrique': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
