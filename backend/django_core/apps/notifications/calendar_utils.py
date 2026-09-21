@@ -52,40 +52,72 @@ def _load_working_days(company) -> int:
     return _DEFAULT_WORKING_DAYS
 
 
-def _load_holidays_for_year(company, year: int) -> set[tuple[int, int]]:
-    """Retourne l'ensemble des (mois, jour) fériés pour la société et l'année.
+class _Feries:
+    """CAD42 — les fériés d'une société, avec DEUX clés distinctes.
 
-    Pour les jours récurrents annuels, on compare (mois, jour).
-    Pour les jours non récurrents, on compare (mois, jour) uniquement si
-    l'année stockée correspond à `year`.
+    Un férié RÉCURRENT (1ᵉʳ Mai, Fête du Trône…) se compare sur (mois, jour) :
+    c'est la même date chaque année. Un férié NON récurrent (un Aïd, saisi
+    pour une année précise) se compare sur la DATE COMPLÈTE.
+
+    Avant CAD42, les deux partageaient la clé (mois, jour) alors que
+    ``prochain_jour_ouvre`` et ``ajouter_jours_ouvres`` chargent PLUSIEURS
+    années d'un coup : trois Aïd saisis = trois dates bloquées CHAQUE année.
+    ``feries_entre`` faisait déjà la distinction correctement — les deux
+    lectures parlent enfin du même calendrier.
+    """
+
+    __slots__ = ('recurrents', 'dates')
+
+    def __init__(self, recurrents=None, dates=None):
+        self.recurrents: set[tuple[int, int]] = set(recurrents or ())
+        self.dates: set[datetime.date] = set(dates or ())
+
+    def __ior__(self, autre: '_Feries') -> '_Feries':
+        self.recurrents |= autre.recurrents
+        self.dates |= autre.dates
+        return self
+
+    def contient(self, d: datetime.date) -> bool:
+        return (d.month, d.day) in self.recurrents or d in self.dates
+
+    def __bool__(self) -> bool:
+        return bool(self.recurrents or self.dates)
+
+
+def _load_holidays_for_year(company, year: int) -> _Feries:
+    """Les fériés de la société applicables à `year`.
+
+    Les jours récurrents annuels sont retenus par (mois, jour) ; les jours
+    NON récurrents par leur date complète, et seulement s'ils tombent dans
+    `year` — une fête lunaire saisie pour 2027 ne bloque rien en 2026.
     """
     try:
         from .models import Holiday
         qs = Holiday.objects.filter(company=company)
-        result: set[tuple[int, int]] = set()
+        feries = _Feries()
         for h in qs:
             if h.recurrent_annuel:
-                result.add((h.date.month, h.date.day))
+                feries.recurrents.add((h.date.month, h.date.day))
             elif h.date.year == year:
-                result.add((h.date.month, h.date.day))
-        return result
+                feries.dates.add(h.date)
+        return feries
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('calendar_utils: chargement Holiday échoué : %s', exc)
-        return set()
+        return _Feries()
 
 
 # ---------------------------------------------------------------------------
 # Helpers internes
 # ---------------------------------------------------------------------------
 
-def _is_holiday(d: datetime.date, holidays: set[tuple[int, int]]) -> bool:
-    return (d.month, d.day) in holidays
+def _is_holiday(d: datetime.date, holidays: '_Feries') -> bool:
+    return holidays.contient(d)
 
 
 def _is_working_day_raw(
         d: datetime.date,
         working_days: int,
-        holidays: set[tuple[int, int]]) -> bool:
+        holidays: '_Feries') -> bool:
     """Vrai si `d` est ouvré selon le bitmask ET non férié."""
     weekday = d.weekday()  # 0=Lun … 6=Dim
     if not (working_days & (1 << weekday)):
@@ -118,7 +150,7 @@ def prochain_jour_ouvre(d: datetime.date, company) -> datetime.date:
     working_days = _load_working_days(company)
     # Charge les fériés pour l'année de départ + l'année suivante (si on
     # franchit le 31/12).
-    holidays: set[tuple[int, int]] = set()
+    holidays = _Feries()
     holidays |= _load_holidays_for_year(company, d.year)
     holidays |= _load_holidays_for_year(company, d.year + 1)
 
@@ -150,7 +182,7 @@ def ajouter_jours_ouvres(d: datetime.date, n: int, company) -> datetime.date:
 
     working_days = _load_working_days(company)
     # Pré-charge les fériés pour une plage raisonnable (année de `d` + 2 ans).
-    holidays: set[tuple[int, int]] = set()
+    holidays = _Feries()
     for yr in range(d.year, d.year + 3):
         holidays |= _load_holidays_for_year(company, yr)
 
