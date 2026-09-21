@@ -123,7 +123,8 @@ def _lignes_structure(nb_modules, regle_bom_structure):
 
 
 def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
-                 resultat_cables=None, regle_bom_structure=None):
+                 resultat_cables=None, resultat_coffrets_dc=None,
+                 regle_bom_structure=None):
     """PV37 — les lignes de bordereau déduites des calculs amont."""
     lignes = []
     alertes = []
@@ -159,13 +160,35 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
                 protection.quantite, "u",
                 "%s ; %s" % (protection.calibre, protection.regle_source))
 
-    # ── Coffrets — leur nombre suit le nombre de chaînes à raccorder ─────────
-    nb_chaines = len(resultat_chaines.chaines) if resultat_chaines else 0
-    if nb_chaines:
-        ajouter("Coffret", "Coffret de chaînes DC (string box)",
-                1 if nb_chaines <= 2 else 2, "u",
-                "IP65, presse-étoupes, embase parafoudre, %d chaîne(s) à "
-                "raccorder" % nb_chaines)
+    # ── Coffrets DC — CALX230 : leur nombre suit les coffrets RÉELLEMENT
+    # posés dans le plan (``electrical.equipements[]``), jamais un comptage
+    # deviné à partir du nombre de chaînes. ``resultat_coffrets_dc`` est le
+    # résultat de ``apps.calepinage.services.coffrets.coffrets_dc`` — un
+    # coffret par organe posé, chacun avec ses entrées réellement raccordées.
+    # ``resultat_coffrets_dc is None`` (intégration pas encore câblée) :
+    # comportement d'aujourd'hui préservé SANS alerte.
+    if resultat_coffrets_dc is not None and resultat_coffrets_dc.coffrets:
+        for coffret in resultat_coffrets_dc.coffrets:
+            if coffret.capacite_entrees:
+                capacite_texte = ("%d entrée(s) disponible(s)"
+                                  % coffret.capacite_entrees)
+            else:
+                capacite_texte = "capacité non publiée"
+            ajouter("Coffret",
+                    "Coffret de chaînes DC (string box) — %s" % coffret.label,
+                    1, "u",
+                    "IP65, presse-étoupes, embase parafoudre, %d chaîne(s) "
+                    "raccordée(s) sur %s"
+                    % (len(coffret.chaines), capacite_texte))
+        alertes.extend(resultat_coffrets_dc.refus)
+        alertes.extend(resultat_coffrets_dc.omissions)
+    elif resultat_coffrets_dc is not None:
+        # ``coffrets_dc`` a tourné (equipements[] connu, éventuellement vide)
+        # et n'a rien pu retenir : son propre motif est publié — jamais un
+        # second motif inventé ici.
+        alertes.extend(resultat_coffrets_dc.refus)
+        alertes.extend(resultat_coffrets_dc.omissions)
+
     if resultat_protections is not None and resultat_protections.calibre_ac_a:
         ajouter("Coffret", "Coffret de protection AC", 1, "u",
                 "IP65, prêt à raccorder au tableau, disjoncteur %s A"
@@ -207,7 +230,7 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
 
 def nomenclature_dict(entree, resultat_chaines=None, resultat_protections=None,
                       resultat_cables=None, resultat_nomenclature=None,
-                      regle_bom_structure=None):
+                      resultat_coffrets_dc=None, regle_bom_structure=None):
     """Même contenu, dans la FORME du bordereau historique (``generate_boq``).
 
     ``{items: [...], summary: {...}, warnings: [...]}`` — les clés de résumé
@@ -217,7 +240,7 @@ def nomenclature_dict(entree, resultat_chaines=None, resultat_protections=None,
     """
     resultat = resultat_nomenclature or nomenclature(
         entree, resultat_chaines, resultat_protections, resultat_cables,
-        regle_bom_structure)
+        resultat_coffrets_dc, regle_bom_structure)
     section_ac = None
     for cable in (resultat_cables.cables if resultat_cables else ()):
         if cable.repere == "W2":
