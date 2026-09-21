@@ -44,7 +44,7 @@ import datetime
 import time
 
 from .chaine_pertes import (
-    CLE_CHARGE, CLE_FOURNISSEUR_METEO, CLE_SORTIES_PAR_PAN,
+    CLE_CHARGE, CLE_CLIENT_PVGIS, CLE_FOURNISSEUR_METEO, CLE_SORTIES_PAR_PAN,
     MOTIF_TMY_HORIZONTAL, MeteoIndecise, appliquer_chaine, decision_meteo,
 )
 from .etapes.autoconsommation import bloc_autoconsommation
@@ -701,6 +701,10 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         client=client, decision=decision,
         document=meta['document'], fichier=fichier, compteur=compteur)
     contexte[CLE_FOURNISSEUR_METEO] = fournisseur
+    # CALX58 — le MÊME client sert le plan optimal du site (un appel PVcalc
+    # « optimalangles », cache et cadence compris). Absent, le TOF est omis
+    # avec son motif plutôt que supposé à 1,0.
+    contexte[CLE_CLIENT_PVGIS] = client
 
     blocs = {}
     reference = max(plans_equipes, key=lambda plan: plan.get('kwc') or 0.0)
@@ -743,6 +747,9 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     blocs['meteo'] = ecrit['meteo']
     blocs['production'] = ecrit['production']
     blocs['serie_horaire'] = ecrit['serie_horaire']
+    # CALX58 — le bloc TOF/TSRF par pan, publié par la chaîne (elle seule
+    # tient les séries par pan) et relayé tel quel.
+    blocs['ombrage'] = ecrit['ombrage']
     for texte in (ecrit.get('avertissements') or []):
         _ajouter_avertissement(blocs, texte)
     # Le compteur d'appels RÉELS : l'ordonnanceur compte ses demandes, le
