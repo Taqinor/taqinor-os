@@ -13,7 +13,6 @@
  */
 import maplibregl from 'maplibre-gl';
 import {
-  obstacleRing,
   obstacleFromDrag,
   defaultObstacle,
   scaledObstacle,
@@ -33,7 +32,16 @@ import { OBSTACLE_TAP_PX, VERTEX_GRAB_PX, DEG2RAD, DEG2M } from './constants';
 import { insertionSurContour, supprimerSommet, metresParPixel } from './snap';
 import { $, esc } from './dom';
 import { type Ctx } from './context';
-import { OBSTACLE_TYPES, clearanceForType } from './types';
+import {
+  OBSTACLE_TYPES,
+  aireObstacleM2,
+  anneauObstacle,
+  clearanceForType,
+  degagementObstacle,
+  formeObstacle,
+  obstaclePolygone,
+  type ObstacleEtendu,
+} from './types';
 import {
   newEnvironmentObject,
   environmentNeedsFootprint,
@@ -230,7 +238,15 @@ export interface ObstaclesUi {
   endEnvMove: () => void;
   /** Re-dessine les marqueurs d'environnement. */
   redrawEnvironment: () => void;
+  // CALX103 — mode de tracé « à la volée » (clics successifs, double-clic pour fermer).
+  /** Arme (ou désarme, `null`) un tracé d'obstacle polygonal. */
+  armerTrace: (mode: ModeTrace | null) => void;
+  /** Le mode de tracé armé, ou null. */
+  modeTraceArme: () => ModeTrace | null;
 }
+
+/** CALX103 — les tracés « à la volée » que l'atelier sait armer. */
+export type ModeTrace = 'polygone';
 
 export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi {
   const { map, recalc, setStatus, redrawTrace } = deps;
@@ -249,7 +265,22 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   /** Décimal à 1 chiffre, à la française (identique à l'entrée). */
   const fmt1 = (n: number): string =>
     n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  const dimsLabel = (o: Obstacle) => `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
+  /** CALX103/CALX104 — les cotes AFFICHÉES suivent la forme réelle : le rayon SAISI d'un
+   *  disque, le nombre de sommets et l'aire d'un polygone, et le rectangle sinon. La boîte
+   *  `lengthM × widthM` reste rappelée pour les formes qui ne sont pas des rectangles —
+   *  c'est le repli que tout lecteur du document retrouve. */
+  const dimsLabel = (obs: Obstacle) => {
+    const o = obs as ObstacleEtendu;
+    const boite = `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
+    const forme = formeObstacle(o);
+    if (forme === 'cercle' && o.rayonM != null) {
+      return `disque r = ${fmt1(o.rayonM)} m (boîte ${boite})`;
+    }
+    if (forme === 'polygone' && Array.isArray(o.contour)) {
+      return `polygone ${o.contour.length} sommets · ${fmt1(aireObstacleM2(o))} m² (boîte ${boite})`;
+    }
+    return boite;
+  };
 
   // — DOM des obstacles —
   const obstacleBtn = $<HTMLButtonElement>('rp9-obstacle');
@@ -731,12 +762,137 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   });
   renderZoneList(); // état initial (dossier rechargé avec des zones)
 
+  // ————————————————————————————————————————————————————————————————————
+  // CALX103 — TRACER UN OBSTACLE POLYGONAL AU CLIC
+  //
+  // Un obstacle était TOUJOURS un rectangle tiré au glissé : une souche en L ou un édicule
+  // biscornu ne se saisissait pas. Parité HelioScope (les keepouts sont des polygones). Le
+  // geste est celui du tracé du toit — clics successifs, double-clic pour fermer — donc
+  // rien de neuf à apprendre, et la MÊME garde `isSimplePolygon` refuse un tracé croisé.
+  //
+  // Le panneau est créé ICI si la page hôte ne le fournit pas (patron `ensureTypePicker`) :
+  // aucune page n'a à être modifiée.
+  // ————————————————————————————————————————————————————————————————————
+
+  let modeTrace: ModeTrace | null = null;
+  let pointsEnCours: LngLat[] = [];
+
+  function ensureFormePanel(): HTMLElement | null {
+    const existing = $('rp9-forme-panel');
+    if (existing) return existing;
+    const anchorEl = obstacleBtn?.parentElement ?? obsEditPanel?.parentElement ?? null;
+    if (!anchorEl || typeof document.createElement !== 'function') return null;
+    const panel = document.createElement('div');
+    panel.id = 'rp9-forme-panel';
+    panel.className = 'rp9-forme-panel mt-2 flex flex-col gap-2 text-xs';
+    panel.innerHTML =
+      `<div class="flex flex-wrap items-center gap-2">` +
+      `<button type="button" id="rp9-obs-polygone" class="rp9-btn" aria-pressed="false">Obstacle polygonal</button>` +
+      `</div>` +
+      `<span id="rp9-forme-motif" class="text-alert-300" role="alert" hidden></span>`;
+    anchorEl.appendChild(panel);
+    return panel;
+  }
+  ensureFormePanel();
+  const obsPolygoneBtn = $<HTMLButtonElement>('rp9-obs-polygone');
+  const formeMotifEl = $('rp9-forme-motif');
+
+  /** Affiche (ou efface) un refus NOMMÉ, dans le panneau ET dans le bandeau de statut. */
+  function direRefusForme(motif: string | null) {
+    if (formeMotifEl) {
+      formeMotifEl.textContent = motif ?? '';
+      formeMotifEl.hidden = !motif;
+    }
+    if (motif) setStatus(motif);
+  }
+
+  /** Points du tracé en cours, sans doublon consécutif (le double-clic de fermeture émet
+   *  deux clics au MÊME endroit : on ne garde pas le point en double). */
+  function pointsPropres(): LngLat[] {
+    const out: LngLat[] = [];
+    for (const p of pointsEnCours) {
+      const d = out[out.length - 1];
+      if (d && Math.abs(d[0] - p[0]) < 1e-9 && Math.abs(d[1] - p[1]) < 1e-9) continue;
+      out.push(p);
+    }
+    return out;
+  }
+
+  /** Aperçu du contour en cours de tracé. */
+  function apercuTrace() {
+    const pts = pointsPropres();
+    if (pts.length < 2) {
+      clearPreview();
+      return;
+    }
+    srcOf('rp9-obs-preview')?.setData({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: pts },
+      properties: {},
+    } as never);
+  }
+
+  const LIBELLE_MODE: Record<ModeTrace, string> = {
+    polygone: 'Cliquez les sommets de l’obstacle, double-clic pour fermer.',
+  };
+
+  /** Arme (ou désarme) un tracé à la volée. Réarmer le même mode le désarme. Le mode de
+   *  tracé NEUTRALISE les glissés (sommet, obstacle) tant qu'il est armé — sinon deux
+   *  gestes partiraient ensemble. */
+  function armerTrace(mode: ModeTrace | null) {
+    modeTrace = mode;
+    pointsEnCours = [];
+    clearPreview();
+    direRefusForme(null);
+    obsPolygoneBtn?.setAttribute('aria-pressed', String(mode === 'polygone'));
+    if (typeof map.getCanvas === 'function') {
+      const canvas = map.getCanvas();
+      if (canvas) canvas.style.cursor = mode ? 'crosshair' : '';
+    }
+    if (mode) setStatus(LIBELLE_MODE[mode]);
+  }
+
+  /** CALX103 — ferme le contour tracé et crée l'obstacle polygonal, ou REFUSE en nommant
+   *  la raison (moins de trois points, ou tracé qui se croise). */
+  function fermerObstaclePolygone(): boolean {
+    const pts = pointsPropres();
+    const verdict = obstaclePolygone(`obs-${ctx.obsCounter + 1}`, pts);
+    if (!verdict.ok) {
+      direRefusForme(verdict.motif);
+      return false;
+    }
+    ctx.obsCounter += 1;
+    armerTrace(null);
+    addObstacle(verdict.obstacle);
+    setStatus(
+      `Obstacle polygonal ajouté (${pts.length} sommets) — le calepinage évite sa forme réelle, ` +
+        `dégagement ${fmt1(degagementObstacle(verdict.obstacle))} m compris.`,
+    );
+    return true;
+  }
+
+  obsPolygoneBtn?.addEventListener('click', () => armerTrace(modeTrace === 'polygone' ? null : 'polygone'));
+
+  map.on?.('click', (e: maplibregl.MapMouseEvent) => {
+    if (!modeTrace) return;
+    pointsEnCours.push([e.lngLat.lng, e.lngLat.lat]);
+    apercuTrace();
+  });
+
+  map.on?.('dblclick', (e: maplibregl.MapMouseEvent) => {
+    if (modeTrace !== 'polygone') return;
+    e.preventDefault?.();
+    fermerObstaclePolygone();
+  });
+
 
   function redrawObstacles() {
     srcOf('rp9-obs')?.setData({
       type: 'FeatureCollection',
       features: ctx.obstacles.map((o) => {
-        const ring = obstacleRing(o);
+        // CALX103/CALX104 — la carte dessine la forme RÉELLE (contour polygonal, disque),
+        // pas sa boîte englobante ; un obstacle sans forme reste le rectangle d'hier.
+        const ring = anneauObstacle(o as ObstacleEtendu);
         return {
           type: 'Feature',
           geometry: { type: 'Polygon', coordinates: [[...ring, ring[0]]] },
@@ -929,6 +1085,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     // disposition personnalisée.
     if (!ctx.closed || ctx.obstacleMode || ctx.layoutMode) return false;
     if (glisseEnv) return false; // CALX105 — un marqueur d'environnement est déjà saisi
+    if (modeTrace) return false; // CALX103/104/403 — un tracé à la volée est armé
     const hit = obstacleAtPoint(point);
     if (!hit) return false;
     const o = ctx.obstacles.find((x) => x.id === hit);
@@ -991,6 +1148,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   function tryBeginVertexMove(lngLat: LngLat, point: maplibregl.Point): boolean {
     if (!ctx.closed || ctx.obstacleMode || ctx.layoutMode) return false;
     if (glisseEnv) return false; // CALX105 — un marqueur d'environnement est déjà saisi
+    if (modeTrace) return false; // CALX103/104/403 — un tracé à la volée est armé
     const idx = vertexAtPoint(point);
     // CALX91 — Alt maintenue : le geste est une SUPPRESSION (déjà traitée au mousedown),
     // jamais un glissé — sinon les deux partiraient ensemble.
@@ -1062,6 +1220,9 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   /** CALX91 — insère un sommet au projeté orthogonal du point sur l'arête la plus proche. */
   function insererSommetAu(lngLat: LngLat): boolean {
     if (!ctx.closed || ctx.obstacleMode || ctx.layoutMode) return false;
+    // CALX103/104/403 — pendant un tracé à la volée, le double-clic FERME le tracé : il
+    // n'insère surtout pas un sommet dans le contour du toit.
+    if (modeTrace) return false;
     const trouve = insertionSurContour(ctx.vertices, lngLat, toleranceSaisieM(lngLat[1]));
     if (!trouve) return false;
     ctx.pushWorkshopHistory?.(); // CAL100 — un pas d'historique par geste
@@ -1267,5 +1428,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     doEnvMove,
     endEnvMove,
     redrawEnvironment,
+    armerTrace,
+    modeTraceArme: () => modeTrace,
   };
 }

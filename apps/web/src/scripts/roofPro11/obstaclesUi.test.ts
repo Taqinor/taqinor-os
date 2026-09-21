@@ -11,6 +11,18 @@ import {
   avancerGlisseEnvironnement,
 } from './obstaclesUi';
 import { newEnvironmentObject, environmentShadeEntries } from './environment';
+import {
+  aireObstacleM2,
+  aireRetireeM2,
+  anneauObstacle,
+  champsFormeObstacle,
+  clearanceForType,
+  degagementObstacle,
+  motifContourObstacle,
+  obstaclePolygone,
+  type ObstacleEtendu,
+} from './types';
+import { obstacleRing } from '../../lib/obstacles';
 import { type LngLat } from '../../lib/roof';
 
 const ETAT = {
@@ -139,5 +151,98 @@ describe('CALX105 — le glissé déplace le marqueur et consomme UN pas d’his
   it('un simple tap (aucun mouvement) ne laisse rien à annuler', () => {
     const glisse = debutGlisseEnvironnement(objet(), [-7.6, 33.5]);
     expect(glisse.moved).toBe(false); // rien n'a été poussé tant qu'on n'a pas bougé
+  });
+});
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX103 — TRACER UN OBSTACLE POLYGONAL
+//
+// Repère de travail : un point de référence au Maroc, et deux conversions mètres ⇆ lng/lat
+// à sa latitude — celles de la géométrie testée. Toutes les cotes des tests sont donc des
+// mètres LISIBLES (une souche en L de 4 m × 4 m dont on a retiré un carré de 2 m), et les
+// aires attendues se vérifient à la main.
+// ————————————————————————————————————————————————————————————————————————
+
+const REF: LngLat = [-7.6, 33.5];
+const TEST_DEG2M = (Math.PI / 180) * 6378137;
+const TEST_COS_LAT = Math.cos((33.5 * Math.PI) / 180);
+/** Point à `estM` mètres à l'est et `nordM` mètres au nord de la référence. */
+const pt = (estM: number, nordM: number): LngLat => [
+  REF[0] + estM / (TEST_DEG2M * TEST_COS_LAT),
+  REF[1] + nordM / TEST_DEG2M,
+];
+
+/** Souche en L : un carré de 4 m × 4 m amputé du carré de 2 m de son coin nord-est.
+ *  Aire 12 m², périmètre 16 m — sa boîte englobante, elle, fait 16 m². */
+const CONTOUR_EN_L: LngLat[] = [pt(0, 0), pt(4, 0), pt(4, 2), pt(2, 2), pt(2, 4), pt(0, 4)];
+
+describe('CALX103 — un obstacle polygonal se trace, et sa forme RÉELLE fait foi', () => {
+  it('le contour tracé devient la forme de l’obstacle, la boîte restant le repli explicite', () => {
+    const verdict = obstaclePolygone('obs-1', CONTOUR_EN_L);
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.obstacle.forme).toBe('polygone');
+    expect(verdict.obstacle.contour).toHaveLength(6);
+    // Repli explicite : la boîte englobante du L, soit 4 m × 4 m.
+    expect(verdict.obstacle.lengthM).toBeCloseTo(4, 2);
+    expect(verdict.obstacle.widthM).toBeCloseTo(4, 2);
+    // L'anneau dessiné est le contour lui-même, pas sa boîte.
+    expect(anneauObstacle(verdict.obstacle)).toHaveLength(6);
+  });
+
+  it('l’aire RETIRÉE suit le polygone dilaté du dégagement, PAS son rectangle englobant', () => {
+    const verdict = obstaclePolygone('obs-1', CONTOUR_EN_L);
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    const polygone = verdict.obstacle;
+    // Le MÊME obstacle réduit à sa boîte englobante (ce que l'atelier faisait hier).
+    const boite: ObstacleEtendu = {
+      id: 'obs-boite',
+      centerLng: polygone.centerLng,
+      centerLat: polygone.centerLat,
+      lengthM: 4,
+      widthM: 4,
+    };
+    const d = degagementObstacle(polygone); // aucun type saisi ⇒ dégagement de base
+    expect(aireObstacleM2(polygone)).toBeCloseTo(12, 1);
+    expect(aireObstacleM2(boite)).toBeCloseTo(16, 1);
+    // Steiner sur la forme réelle : 12 + 16·d + π·d².
+    expect(aireRetireeM2(polygone)).toBeCloseTo(12 + 16 * d + Math.PI * d * d, 1);
+    // …et l'encoche de 4 m² n'est PAS retirée du posable, contrairement à la boîte.
+    expect(aireRetireeM2(boite) - aireRetireeM2(polygone)).toBeCloseTo(4, 1);
+    expect(aireRetireeM2(polygone)).toBeLessThan(aireRetireeM2(boite));
+  });
+
+  it('un polygone CROISÉ est refusé, et le motif nomme le croisement', () => {
+    const noeudPapillon: LngLat[] = [pt(0, 0), pt(4, 4), pt(4, 0), pt(0, 4)];
+    const verdict = obstaclePolygone('obs-1', noeudPapillon);
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.motif).toContain('se croise');
+    expect(motifContourObstacle(noeudPapillon)).toContain('se croise');
+  });
+
+  it('moins de trois points est refusé en le disant', () => {
+    const verdict = obstaclePolygone('obs-1', [pt(0, 0), pt(4, 0)]);
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.motif).toContain('au moins trois points');
+  });
+
+  it('un obstacle SANS forme reste le rectangle d’aujourd’hui, à l’identique', () => {
+    const rect = { id: 'obs-1', centerLng: REF[0], centerLat: REF[1], lengthM: 2, widthM: 3 };
+    expect(anneauObstacle(rect)).toEqual(obstacleRing(rect));
+    expect(champsFormeObstacle(rect)).toEqual({}); // rien d'additif n'est émis
+    expect(degagementObstacle(rect)).toBe(clearanceForType(undefined));
+  });
+
+  it('la forme VOYAGE par le document (aller-retour de `champsFormeObstacle`)', () => {
+    const verdict = obstaclePolygone('obs-1', CONTOUR_EN_L);
+    if (!verdict.ok) throw new Error('polygone refusé');
+    const emis = champsFormeObstacle(verdict.obstacle);
+    expect(emis.forme).toBe('polygone');
+    expect(emis.contour).toHaveLength(6);
+    // Relu tel quel depuis le document (JSON pur) : identique.
+    expect(champsFormeObstacle(JSON.parse(JSON.stringify(emis)))).toEqual(emis);
   });
 });

@@ -5,10 +5,17 @@
 import { type RoofTypeSelect } from '../../lib/roofTypeSelect';
 import { type ImagerySettings } from '../../lib/roofConfig';
 import { type PackResult, type PanelGrid, type ConfigFamily, OBSTACLE_CLEARANCE_M } from '../../lib/estimatorBrainV2';
-import { type Obstacle, type ObstacleType, type ObstacleProvenance } from '../../lib/obstacles';
+import {
+  clampDim,
+  obstacleRing,
+  ringDimsM,
+  type Obstacle,
+  type ObstacleType,
+  type ObstacleProvenance,
+} from '../../lib/obstacles';
 import { type SerializeMeta, type DevisPayload, type RawContourPoint } from './prefill';
 import { type AreaResult } from '../../lib/roofAreas';
-import { type LngLat } from '../../lib/roof';
+import { geodesicAreaM2, geodesicPerimeterM, isSimplePolygon, type LngLat } from '../../lib/roof';
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
 import { type SerializedEdge } from './edges';
 import { type CoucheElectrique } from './electrique3d';
@@ -218,6 +225,176 @@ export function clearanceForType(type?: ObstacleType | null): number {
 /** Dégagements (m) PARALLÈLES à une liste d'obstacles (même ordre que leurs anneaux). */
 export function obstructionClearancesFor(obstacles: readonly { type?: ObstacleType }[]): number[] {
   return obstacles.map((o) => clearanceForType(o.type));
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX103 — LA FORME RÉELLE D'UN OBSTACLE (POLYGONE)
+//
+// Un obstacle était TOUJOURS un rectangle centré (`centerLng`/`centerLat`/`lengthM`/
+// `widthM`) : une souche en L ou un édicule biscornu ne se saisissait pas. Le contrat
+// CALX85 porte désormais la forme (`forme` + `contour`) ; ce bloc en fait de la GÉOMÉTRIE
+// PURE — aucun DOM, aucune carte, aucune constante d'ingénierie neuve.
+//
+// LA BOÎTE RESTE LE REPLI EXPLICITE : `lengthM`/`widthM` continuent d'exister sur chaque
+// obstacle (boîte englobante du contour, ou côté du carré circonscrit au disque), pour
+// que tout lecteur qui ignore `forme` — un document v2 antérieur, la 3D, un export —
+// retrouve EXACTEMENT le rectangle d'aujourd'hui. Ce sont les fonctions ci-dessous qui
+// donnent la forme réelle à qui sait la lire.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Les trois formes du contrat CALX85. Absente ⇒ `rectangle` (comportement historique). */
+export type FormeObstacle = 'rectangle' | 'polygone' | 'cercle';
+
+/** CALX103 — les champs de FORME qu'un obstacle peut porter, tous OPTIONNELS et additifs :
+ *  un obstacle qui n'en porte aucun est le rectangle d'aujourd'hui. */
+export interface ObstacleForme {
+  /** Forme réelle. Absente = `rectangle`. */
+  forme?: FormeObstacle;
+  /** Contour [[lng, lat], …] du polygone (≥ 3 sommets), fermé implicitement. */
+  contour?: LngLat[];
+  /** Rayon SAISI (m) du disque, centré sur `centerLng`/`centerLat`. Jamais déduit. */
+  rayonM?: number;
+}
+
+/** Un obstacle du document, forme comprise. */
+export type ObstacleEtendu = Obstacle & ObstacleForme;
+
+const FORME_DEG2RAD = Math.PI / 180;
+const FORME_WGS84_RADIUS = 6378137;
+const FORME_DEG2M = FORME_DEG2RAD * FORME_WGS84_RADIUS;
+
+/** La forme réellement portée par un obstacle (`rectangle` par défaut). */
+export function formeObstacle(o: ObstacleForme | null | undefined): FormeObstacle {
+  const f = o?.forme;
+  return f === 'polygone' || f === 'cercle' ? f : 'rectangle';
+}
+
+/** CALX103 — le contour d'un polygone est-il exploitable ? `null` = oui ; sinon le MOTIF
+ *  français du refus, qui NOMME la raison (trop peu de sommets, ou tracé qui se croise). */
+export function motifContourObstacle(contour: readonly LngLat[] | null | undefined): string | null {
+  const pts = Array.isArray(contour) ? contour : [];
+  const propres = pts.filter(
+    (p): p is LngLat => Array.isArray(p) && p.length === 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]),
+  );
+  if (propres.length < 3) {
+    return 'Obstacle polygonal refusé : il faut au moins trois points — deux points ne délimitent aucune surface.';
+  }
+  if (!isSimplePolygon(propres as LngLat[])) {
+    return 'Obstacle polygonal refusé : le tracé se croise (nœud papillon). Reprenez le contour sans croisement.';
+  }
+  return null;
+}
+
+/** Verdict de création d'un obstacle — un refus NOMME toujours sa raison. */
+export type VerdictObstacle = { ok: true; obstacle: ObstacleEtendu } | { ok: false; motif: string };
+
+/** Centre (moyenne des sommets) d'un anneau — même convention que `exclusionZoneRing`. */
+function centreAnneau(anneau: readonly LngLat[]): LngLat {
+  let sLng = 0;
+  let sLat = 0;
+  for (const [lng, lat] of anneau) {
+    sLng += lng;
+    sLat += lat;
+  }
+  return [sLng / anneau.length, sLat / anneau.length];
+}
+
+/**
+ * CALX103 — obstacle POLYGONAL depuis le contour tracé. Le centre est celui du contour ;
+ * `lengthM`/`widthM` reçoivent sa BOÎTE ENGLOBANTE (le repli explicite décrit plus haut,
+ * borné comme tout rectangle d'obstacle). `base` recopie le type / la hauteur / la
+ * provenance d'un obstacle existant sans rien inventer.
+ */
+export function obstaclePolygone(
+  id: string,
+  contour: readonly LngLat[],
+  base: Partial<ObstacleEtendu> = {},
+): VerdictObstacle {
+  const motif = motifContourObstacle(contour);
+  if (motif) return { ok: false, motif };
+  const anneau = contour.map(([lng, lat]) => [lng, lat] as LngLat);
+  const centre = centreAnneau(anneau);
+  const dims = ringDimsM(anneau);
+  return {
+    ok: true,
+    obstacle: {
+      ...base,
+      id,
+      centerLng: centre[0],
+      centerLat: centre[1],
+      lengthM: clampDim(dims.lengthM),
+      widthM: clampDim(dims.widthM),
+      forme: 'polygone',
+      contour: anneau,
+    },
+  };
+}
+
+/**
+ * L'anneau RÉEL d'un obstacle, celui que le pavage doit éviter : le contour pour un
+ * polygone, et le rectangle historique (`obstacleRing`) dans tous les autres cas — y
+ * compris un polygone dont le contour manque ou est bancal : on retombe alors sur la
+ * boîte, jamais sur rien.
+ */
+export function anneauObstacle(o: ObstacleEtendu): LngLat[] {
+  const forme = formeObstacle(o);
+  if (forme === 'polygone' && Array.isArray(o.contour) && !motifContourObstacle(o.contour)) {
+    return o.contour.map(([lng, lat]) => [lng, lat] as LngLat);
+  }
+  return obstacleRing(o);
+}
+
+/** Les anneaux RÉELS d'une liste d'obstacles — PARALLÈLES à `obstructionClearancesFor`.
+ *  Remplace `obstacles.map(obstacleRing)` partout où le pavage reçoit les obstructions. */
+export function anneauxObstruction(obstacles: readonly ObstacleEtendu[]): LngLat[][] {
+  return obstacles.map((o) => anneauObstacle(o));
+}
+
+/** Le dégagement (m) appliqué autour d'un obstacle : celui de son type (PV61), sinon le
+ *  dégagement de base. */
+export function degagementObstacle(o: { type?: ObstacleType } | null | undefined): number {
+  return clearanceForType(o?.type);
+}
+
+/** L'aire (m²) de la forme RÉELLE d'un obstacle (l'aire géodésique de son anneau). */
+export function aireObstacleM2(o: ObstacleEtendu): number {
+  return geodesicAreaM2(anneauObstacle(o));
+}
+
+/**
+ * L'aire (m²) réellement RETIRÉE du posable par un obstacle : sa forme RÉELLE, ÉLARGIE de
+ * son dégagement — exactement la bande que le pavage applique (un panneau est refusé s'il
+ * entre dans l'obstacle OU s'approche à moins du dégagement de son bord, cf.
+ * `estimatorBrainV2` `hitsObstruction`). Jamais la boîte englobante.
+ *
+ * Le calcul est A + P·d + π d² — la formule de Steiner, EXACTE pour un contour convexe et
+ * MAJORANTE pour un contour rentrant (un coin rentrant voit ses deux bandes se recouvrir).
+ * Elle reste, dans les deux cas, STRICTEMENT inférieure à celle de la boîte englobante dès
+ * que la forme est plus petite qu'elle — c'est tout l'intérêt de tracer la vraie forme.
+ */
+export function aireRetireeM2(o: ObstacleEtendu): number {
+  const d = degagementObstacle(o);
+  const anneau = anneauObstacle(o);
+  const aire = geodesicAreaM2(anneau);
+  const perimetre = geodesicPerimeterM(anneau); // l'anneau est fermé implicitement
+  return aire + perimetre * d + Math.PI * d * d;
+}
+
+/**
+ * CALX103 — les champs de FORME à ÉMETTRE dans le document (et à relire depuis lui) :
+ * additifs, jamais émis quand ils sont absents, donc un obstacle rectangulaire sérialise
+ * octet pour octet comme aujourd'hui. Prend un `unknown` pour servir les DEUX bouts du
+ * round-trip (`serializeLayout` et `deserializeLayout`) avec UNE seule fonction.
+ */
+export function champsFormeObstacle(o: unknown): ObstacleForme {
+  const src = (o ?? {}) as ObstacleForme;
+  const forme = src.forme;
+  const out: ObstacleForme = {};
+  if (forme === 'polygone' && Array.isArray(src.contour) && !motifContourObstacle(src.contour)) {
+    out.forme = 'polygone';
+    out.contour = src.contour.map(([lng, lat]) => [lng, lat] as LngLat);
+  }
+  return out;
 }
 
 export type TiltMode = 'reco' | number;
