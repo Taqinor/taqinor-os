@@ -41,6 +41,7 @@ client API dédié) sont devenus respectivement `frontend/parked/features/<x>`,
 | credit | oui | — | oui (creditApi.js) |
 | customobjects | oui | — | — |
 | education | oui | oui | oui (educationApi.js) |
+| einvoice | — (voir note) | — | oui (einvoiceApi.js) |
 | esg | oui | oui | oui (esgApi.js) |
 | fiscal | oui | oui | oui (fiscalApi.js) |
 | flotte | oui | — | oui (flotteApi.js) |
@@ -83,6 +84,11 @@ utilisés par des écrans CONSERVÉS (installations, ventes, CRM, SAV, stock) ;
 SOLMVP41c a retiré ces derniers usages (CTA « Créer le projet de
 facturation », dictée vocale terrain, sélecteur d'acheteur BCF recablé sur
 `coreApi.utilisateurs.list()`) et déplacé les trois clients ici.
+
+Note « einvoice » : pas de dossier `features/einvoice` dédié — son seul
+usage frontend était le composant `components/EinvoiceActions.jsx` (actions
+de facturation électronique DGI sur `pages/ventes/FactureForm.jsx`),
+supprimé avec `einvoiceApi.js` (SOLMVP41c).
 
 Note « ai_governance » : ce module n'a jamais eu de dossier
 `features/ai_governance` ni `pages/ai_governance` dédié — son usage frontend
