@@ -487,7 +487,15 @@ def wide_purge_classes(unit: str, repo_root: str = REPO_ROOT) -> int:
     path = os.path.join(repo_root, "backend", "django_core", *unit.split(".")) + ".py"
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
-            arbre = ast.parse(fh.read(), path)
+            src = fh.read()
+        # SOLMVP54 — pre-filtre textuel AVANT l'analyse AST : parser ~2 300
+        # modules coutait ~5 s au demarrage de CHAQUE shard (mesure 21/09/2026,
+        # « Shard 3/6 -> 382 modules » arrivait 5,5 s apres le lancement).
+        # Un module qui ne CITE aucun marqueur ne peut pas en heriter — l'AST
+        # rendrait 0 ; on le saute. Le verdict est strictement identique.
+        if not any(marqueur in src for marqueur in PURGE_MARQUEURS):
+            return 0
+        arbre = ast.parse(src, path)
     except (OSError, SyntaxError, ValueError):
         return 0
     return sum(

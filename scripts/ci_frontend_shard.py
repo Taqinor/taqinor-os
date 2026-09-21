@@ -78,6 +78,15 @@ _VITEST_FILE_RE = re.compile(
     r"(?:\|[^0-9]*\d+\s*\w+\s*)?(\d+(?:\.\d+)?)\s*(ms|s)\b"
 )
 _TS_PREFIX = re.compile(r"^\d{4}-\d\d-\d\dT[\d:.]+Z\s?")
+# SOLMVP54 (21/09/2026) — les journaux `gh run view --log` / `gh api …/logs`
+# conservent les codes de couleur ANSI du rapporteur Vitest
+# (`ESC[2m(ESC[22m35 testsESC[22m…`) : sans les retirer, `\s*\(` ne colle
+# jamais et le rafraichissement rendait « aucune duree reconnue » sur des
+# journaux parfaitement valides. `gh run view --log` ajoute en plus un prefixe
+# `job<TAB>step<TAB>` devant l'horodatage.
+# `gh run view --log` ecrit l'ESC en notation caret (`^[`), `gh api` l'octet brut.
+_ANSI = re.compile(r"(?:\x1b|\^\[)\[[0-9;]*[A-Za-z]")
+_GH_VIEW_PREFIX = re.compile(r"^[^\t]*\t[^\t]*\t")
 
 
 @functools.lru_cache(maxsize=None)
@@ -139,7 +148,8 @@ def parse_log_durations(lines) -> dict:
     """Per-file seconds from Vitest's default reporter output."""
     out: dict = defaultdict(float)
     for raw in lines:
-        line = _TS_PREFIX.sub("", raw.rstrip("\n"))
+        line = raw.rstrip("\n").lstrip("﻿")
+        line = _ANSI.sub("", _TS_PREFIX.sub("", _GH_VIEW_PREFIX.sub("", line)))
         for path, value, unit in _VITEST_FILE_RE.findall(line):
             secs = float(value) / 1000.0 if unit == "ms" else float(value)
             out[path] = max(out[path], secs)
