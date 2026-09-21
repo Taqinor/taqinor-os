@@ -108,6 +108,40 @@
         "champ": "section_mm2",
         "motif": "aucune norme électrique sélectionnée pour le pays « ma » : la section du conducteur de protection en dépend, elle est donc OMISE. Sélectionnez la norme applicable dans les réglages du module (services/norme.py::norme_applicable)."
       }
+    ],
+    "verdicts": [
+      {
+        "code": "chute_cumulee_dc",
+        "libelle": "Chute de tension cumulée DC (champ → onduleur)",
+        "cote": "dc",
+        "conforme": true,
+        "bloquant": false,
+        "valeur_pct": 0.7,
+        "cible_pct": 1.5,
+        "maximum_pct": 3.0,
+        "troncons": [
+          "ch1",
+          "ch2"
+        ],
+        "source": "norme",
+        "detail": "chute cumulée de 0,70 % bout en bout, sous la cible de 1,5 % (UTE C 15-712-1 — chute de tension DC, cible). Tronçons contributeurs : « ch1 », « ch2 »."
+      },
+      {
+        "code": "chute_cumulee_ac",
+        "libelle": "Chute de tension cumulée AC (onduleur → tableau)",
+        "cote": "ac",
+        "conforme": false,
+        "bloquant": false,
+        "valeur_pct": 1.18,
+        "cible_pct": 1.0,
+        "maximum_pct": 2.0,
+        "troncons": [
+          "ch3",
+          "ch4"
+        ],
+        "source": "norme",
+        "detail": "chute cumulée de 1,18 % bout en bout, au-dessus de la cible de 1,0 % (UTE C 15-712-1 — chute de tension AC, cible) mais sous le maximum de 2,0 %. Tronçons contributeurs : « ch3 », « ch4 »."
+      }
     ]
   },
   "exemple_vide": {
@@ -123,6 +157,7 @@
         "champ": "electrical.cheminements",
         "motif": "aucun cheminement n'est tracé sur ce plan : il n'y a pas de tronçon à mesurer. Tracez les liaisons dans l'atelier, ou saisissez leurs longueurs — un calepinage sans tracé n'a pas 0 % de chute, il n'a PAS de chute calculable."
       }
-    ]
+    ],
+    "verdicts": []
   }
 }

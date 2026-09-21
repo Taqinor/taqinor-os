@@ -348,10 +348,19 @@ class DepotReelTests(unittest.TestCase):
         """Le Done explicite de CALX250 : les deux coefficients de
         ``types.py`` figurent dans la base avec leur motif dedie."""
         base = g.charger_base()
-        cle_voc = "backend/django_core/core/electrique/types.py:130"
-        cle_pmax = "backend/django_core/core/electrique/types.py:132"
-        self.assertIn(cle_voc, base)
-        self.assertIn(cle_pmax, base)
+        # Les cles sont fichier:ligne — un commit voisin decale les lignes
+        # (lane K, 21/09) ; on retrouve donc chaque coefficient par son NOM.
+
+        def _cle(nom):
+            trouvees = [cle for cle, motif in base.items()
+                        if cle.endswith("core/electrique/types.py")
+                        or "core/electrique/types.py:" in cle
+                        if motif.startswith(nom + " :")]
+            self.assertEqual(len(trouvees), 1, (nom, trouvees))
+            return trouvees[0]
+
+        cle_voc = _cle("SpecModule.temp_coeff_voc_pct_c")
+        cle_pmax = _cle("SpecModule.temp_coeff_pmax_pct_c")
         motif = "défaut non sourcé, à remplacer par une fiche"
         self.assertIn(motif, base[cle_voc])
         self.assertIn(motif, base[cle_pmax])

@@ -83,8 +83,9 @@ class EnveloppeTest(SimpleTestCase):
 
     def test_les_trois_cles_sont_toujours_la(self):
         for etat in ('exemple', 'exemple_vide'):
+            # CALX226 a ajouté `verdicts[]` (chute cumulée, un par côté).
             self.assertEqual(sorted(TRONCONS[etat]),
-                             ['omissions', 'totaux', 'troncons'],
+                             ['omissions', 'totaux', 'troncons', 'verdicts'],
                              f'{etat} : les clés de réponse ont bougé.')
             self.assertEqual(sorted(TRONCONS[etat]['totaux']),
                              ['ac_chute_pct', 'dc_chute_pct',

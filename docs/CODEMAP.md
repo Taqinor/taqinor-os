@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 4a1666946ba6be4299ee67b100aa9ce2526f909bc77d6bf61909c08c53cd867e
-Plan fingerprint: 8e9117930ec2e714bf850461424320a5b7956bdba1990e06eaa435fe98005965
+Plan fingerprint: d0392f1ffdcf5b1700f02f1a67b1a144f76cd70eca6d253e9b888ef97f6c4903
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (128)**
+**Done (131)**
 
 - `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
 - `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
@@ -655,6 +655,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX215` — Nommer les deux natures de dépassement : plage INTERDITE et plage BLOQUANTE
 - `CALX216` — Dire POURQUOI cette longueur de chaîne a été retenue
 - `CALX222` — Donner à l'atelier son onglet « Équipements électriques »
+- `CALX224` — Mesurer la longueur RÉELLE de chaque tronçon
+- `CALX225` — Dimensionner la section et la chute PAR tronçon
+- `CALX226` — Cumuler la chute de tension bout en bout et la verdicter une seule fois
 - `CALX229` — Donner à l'atelier son onglet « Cheminement & câbles »
 - `CALX236` — Exporter le schéma unifilaire en PNG depuis le navigateur
 - `CALX238` — Replier les circuits d'onduleurs identiques en un seul « typique de N »
@@ -662,7 +665,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (477)**
+**Open — to build (474)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -951,9 +954,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX220` — Poser, déplacer et retirer un équipement au clic, et le persister
 - `CALX221` — Ajouter le calque « Électrique » au panneau de calques
 - `CALX223` — Tracer un cheminement de câble par points de passage dans l'atelier
-- `CALX224` — Mesurer la longueur RÉELLE de chaque tronçon
-- `CALX225` — Dimensionner la section et la chute PAR tronçon
-- `CALX226` — Cumuler la chute de tension bout en bout et la verdicter une seule fois
 - `CALX227` — Produire le métré de câble par tronçon et par section
 - `CALX228` — Servir les tronçons en HTTP et les joindre au résultat électrique
 - `CALX230` — Dimensionner un coffret de jonction DC par son nombre d'entrées
