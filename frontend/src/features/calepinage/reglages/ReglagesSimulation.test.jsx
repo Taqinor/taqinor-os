@@ -95,6 +95,45 @@ describe('CALX69 — une ligne par clé du registre, dans les deux sections', ()
   })
 })
 
+describe('CALX145/69 — le registre SERVI par le GET est utilisé, jamais celui redéclaré en local', () => {
+  it('affiche le libellé et la référence servis par `registre`, pas ceux de la table locale', async () => {
+    // Un registre servi DÉLIBÉRÉMENT différent de `REGISTRE_SIMULATION` (le
+    // repli local codé dans l'écran) : si l'écran lisait encore sa table
+    // locale, il afficherait « Mode météo (année type ou fenêtre
+    // pluriannuelle) » — la preuve que la clé `registre` du GET est bien la
+    // source utilisée.
+    const contratServi = reponseContrat('calepinage', 'parametres_calepinage')
+    const ligneModeMeteo = contratServi.data.registre.simulation
+      .find((ligne) => ligne.cle === 'mode_meteo')
+    ligneModeMeteo.libelle = 'Mode météo (servi par le GET, jamais la table locale)'
+    ligneModeMeteo.reference = 'référence servie par le GET, jamais celle codée en local'
+    mocks.getParametres.mockResolvedValue(contratServi)
+    rendre()
+
+    const ligne = await screen.findByTestId('calx69-ligne-mode_meteo')
+    expect(ligne).toHaveTextContent('Mode météo (servi par le GET, jamais la table locale)')
+    expect(screen.getByTestId('calx69-aide-mode_meteo')).toHaveTextContent(
+      'référence servie par le GET, jamais celle codée en local',
+    )
+  })
+
+  it('retombe sur la table locale quand la clé `registre` est absente de la réponse (client ancien)', async () => {
+    const sansRegistre = reponseContrat('calepinage', 'parametres_calepinage')
+    delete sansRegistre.data.registre
+    mocks.getParametres.mockResolvedValue(sansRegistre)
+    rendre()
+
+    // Toutes les lignes du repli local se montent quand même — aucun écran
+    // vide faute de `registre`.
+    for (const [cle] of REGISTRE_SIMULATION) {
+      expect(await screen.findByTestId(`calx69-ligne-${cle}`)).toBeInTheDocument()
+    }
+    expect(champValeur('mode_meteo').value).toBe(REGLAGES.simulation.mode_meteo.valeur)
+    const aide = screen.getByTestId('calx69-aide-mode_meteo')
+    expect(aide).toHaveTextContent('HelioScope')
+  })
+})
+
 describe('CALX69 — une clé entamée sans source est refusée AVANT tout envoi', () => {
   it('pointe le champ fautif, le bandeau le nomme, et n’appelle jamais le serveur', async () => {
     mocks.getParametres.mockResolvedValue(reponseContrat('calepinage', 'parametres_calepinage', 'exemple_vide'))
@@ -107,7 +146,10 @@ describe('CALX69 — une clé entamée sans source est refusée AVANT tout envoi
 
     const erreur = await screen.findByTestId('calx69-erreur-fenetre_annees')
     expect(erreur).toHaveTextContent('source')
-    expect(screen.getByTestId('calx69-bandeau')).toHaveTextContent('Fenêtre d’années météo')
+    // Le libellé vient désormais du `registre` SERVI (contrat committé,
+    // apostrophe simple) : la sous-chaîne évite de figer un style
+    // d'apostrophe qui n'est plus celui de la table locale transcrite.
+    expect(screen.getByTestId('calx69-bandeau')).toHaveTextContent('années météo')
     expect(screen.getByTestId('calx69-bandeau').querySelector('a[href="#calx69-fenetre_annees"]'))
       .toBeTruthy()
     expect(mocks.putParametres).not.toHaveBeenCalled()

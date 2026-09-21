@@ -39,7 +39,8 @@ SECTIONS_PARAMETRES = (
 #: CAL246 — clés DÉRIVÉES publiées par ``GET /parametres/`` mais JAMAIS écrites :
 #: elles ne sont pas des sections (aucune n'entre dans ``enregistrer_parametres``).
 #: Le contrat les porte ; les gardes de cohérence les retirent avant de comparer.
-SECTIONS_LECTURE_SEULE = ('kits',)
+#: CALX145/69 — ``registre`` rejoint ``kits`` : même mécanique, lecture seule.
+SECTIONS_LECTURE_SEULE = ('kits', 'registre')
 
 
 def liste_calepinages(company, *, lead_id=None, client_id=None, statut=None,
@@ -637,6 +638,36 @@ def kits_de_pose_disponibles(company):
     if company is None:
         return []
     return kits_de_societe(company)
+
+
+def registre_des_reglages():
+    """CALX145/69 — le registre LABEL/UNITÉ/RÉFÉRENCE des deux sections à
+    registre (« simulation », « electrique_societe »), publié en LECTURE
+    SEULE par ``GET /parametres/`` — même mécanique que ``kits`` (CAL246) :
+    une clé DÉRIVÉE, jamais stockée, jamais acceptée en écriture (``PUT`` la
+    refuse comme toute clé inconnue, ``ParametresCalepinage.SECTIONS`` ne la
+    connaît pas).
+
+    Chaque déclaration de ``services/parametres_cles.py::REGISTRES`` devient
+    une ligne ``{cle, libelle, unite, reference}`` — LISTE, dans l'ordre du
+    registre (celui-ci fige l'ordre d'ajout, jamais réordonné). Avant cette
+    fonction, l'écran (``ReglagesSimulation.jsx``) redéclarait ces mêmes
+    lignes à la main : une seconde source de vérité que
+    ``scripts/check_api_shapes.py`` existe justement pour repérer.
+
+    Lecture PURE : aucune valeur, aucun défaut, aucun accès base — la
+    déclaration seule, sans dépendre de ``company``.
+    """
+    from .services.parametres_cles import REGISTRES
+
+    return {
+        section: [
+            {'cle': cle, 'libelle': libelle, 'unite': unite,
+             'reference': reference}
+            for cle, libelle, unite, reference in declarations
+        ]
+        for section, declarations in REGISTRES.items()
+    }
 
 
 def favoris_materiel_de_societe(company):
