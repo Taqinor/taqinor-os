@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 4a1666946ba6be4299ee67b100aa9ce2526f909bc77d6bf61909c08c53cd867e
-Plan fingerprint: d0392f1ffdcf5b1700f02f1a67b1a144f76cd70eca6d253e9b888ef97f6c4903
+Plan fingerprint: 7c49af4dd0cf6de5c7aafdc5bd64ad4347e3763cab4b05b1d7fc1cec25910e4e
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (131)**
+**Done (136)**
 
 - `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
 - `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
@@ -632,6 +632,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX179` — Publier le ratio de performance au sens de la norme IEC 61724-1
 - `CALX181` — Rendre les tableaux mensuels et par pan cohérents avec la cascade
 - `CALX182` — Simuler MODULE PAR MODULE, et agréger
+- `CALX183` — Agréger la production par chaîne, MPPT et onduleur
 - `CALX184` — Mesurer σ, ou refuser — supprimer le repli 6 % non sourcé
 - `CALX185` — Composer l'incertitude en quadrature, comme une étude bancable
 - `CALX186` — Ajouter P95 aux quantiles publiés
@@ -661,11 +662,15 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX229` — Donner à l'atelier son onglet « Cheminement & câbles »
 - `CALX236` — Exporter le schéma unifilaire en PNG depuis le navigateur
 - `CALX238` — Replier les circuits d'onduleurs identiques en un seul « typique de N »
+- `CALX241` — Calculer l'élévation de tension au point de raccordement contre une limite SAISIE
+- `CALX242` — Vérifier la puissance de raccordement et le régime mono/tri
+- `CALX243` — Équilibrer les phases quand plusieurs onduleurs monophasés se branchent sur un réseau…
+- `CALX245` — Étendre la check-list de terre à la continuité mesurée de l'existant
 - `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (474)**
+**Open — to build (469)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -939,7 +944,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
 - `CALX172` — Étape « écrêtage » : brancher le calcul horaire qui existe déjà et n'a jamais de série
-- `CALX183` — Agréger la production par chaîne, MPPT et onduleur
 - `CALX199` — Trancher l'achat d'une source météo bancable
 - `CALX200` — Trancher le pas infra-horaire
 - `CALX206` — Autoriser plusieurs orientations sur UNE entrée MPPT (jamais dans une chaîne)
@@ -963,11 +967,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX234` — Persister les positions de blocs et les passer jusqu'au dessin
 - `CALX235` — Exporter le schéma unifilaire en DXF
 - `CALX237` — Choisir un gabarit de schéma par pays, sans supposer une norme au Maroc
-- `CALX241` — Calculer l'élévation de tension au point de raccordement contre une limite SAISIE
-- `CALX242` — Vérifier la puissance de raccordement et le régime mono/tri
-- `CALX243` — Équilibrer les phases quand plusieurs onduleurs monophasés se branchent sur un réseau…
 - `CALX244` — Servir le raccordement en HTTP et lui donner son onglet
-- `CALX245` — Étendre la check-list de terre à la continuité mesurée de l'existant
 - `CALX246` — Rattacher chaque ligne de nomenclature électrique à une référence du catalogue
 - `CALX247` — Retirer les quantités de structure non sourcées de la nomenclature électrique
 - `CALX248` — Prononcer un verdict électrique publiable unique, entrée par entrée sourcée
