@@ -449,8 +449,8 @@ forbidden_modules =
     apps.visites
     apps.voip
 # ARC18/19/21 + AUDV23 — les modules de TEST des ponts Tiers importent volontairement les
-# vrais modèles historiques (crm.Client/Lead, stock.Fournisseur, compta.Partenaire,
-# rh.DossierEmploye) et le service crm pour PROUVER que le miroir one-way et la
+# vrais modèles historiques (crm.Client/Lead, stock.Fournisseur) et le service
+# crm pour PROUVER que le miroir one-way et la
 # bascule flag-gatée fonctionnent de bout en bout. Ce sont des tests d'intégration
 # cross-couche, PAS un couplage de production : le code de PRODUCTION de `tiers`
 # reste strictement base-layer (aucun import statique de domaine — vérifié). On
@@ -459,8 +459,6 @@ forbidden_modules =
 ignore_imports =
     apps.tiers.tests.test_arc18_bridge -> apps.crm.models
     apps.tiers.tests.test_arc18_bridge -> apps.stock.models
-    apps.tiers.tests.test_arc19_bridge -> apps.compta.models
-    apps.tiers.tests.test_arc19_bridge -> apps.rh.models
     apps.tiers.tests.test_arc21_source_ecriture -> apps.crm.models
     apps.tiers.tests.test_arc21_source_ecriture -> apps.crm.services
     apps.tiers.tests.test_audv23_hooks_identite -> apps.crm.models
