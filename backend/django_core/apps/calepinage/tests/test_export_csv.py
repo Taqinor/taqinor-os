@@ -156,9 +156,12 @@ class ActionRattacheeTest(unittest.TestCase):
             from apps.calepinage.views import export_csv  # noqa: F401
         except Exception as erreur:  # pragma: no cover - hors harnais Django
             self.skipTest(f'Réglages Django indisponibles : {erreur}')
-        action = CalepinageViewSet.export_csv
+        # CALX7 — l'action de CE fichier s'appelle ``export_csv_simulation``
+        # depuis qu'elle a cessé de masquer ``SortiesMixin.export_csv``
+        # (``export.csv``, CAL179). Son ``url_path`` public, lui, est INCHANGÉ.
+        action = CalepinageViewSet.export_csv_simulation
         self.assertEqual(action.url_path, 'export-csv')
-        self.assertEqual(action.mapping, {'get': 'export_csv'})
+        self.assertEqual(action.mapping, {'get': 'export_csv_simulation'})
         self.assertEqual(
             [garde.__name__
              for garde in action.kwargs['permission_classes']],
