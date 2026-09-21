@@ -100,6 +100,7 @@ CLES_SIMULATION = (
     ('attenuation_horizon', "Atténuation appliquée au profil d'horizon", '', 'PVGIS — printhorizon, profil DEM'),  # CALX145
     ('salissure_mensuelle_pct', 'Salissure, mois par mois (12 valeurs, ou une seule pour les douze)', '%', 'PVsyst — Soiling loss (facteurs MENSUELS, aucune valeur universelle par défaut)'),  # CALX161
     ('indisponibilite_fenetres', "Fenêtres d'arrêt de l'installation (début, fin, motif)", '', 'PVsyst — Unavailability loss (des périodes d\'arrêt explicites, jamais un forfait annuel)'),  # CALX176
+    ('seuil_derivation_acces', "Seuil d'accès solaire sous lequel un module est dérivé de sa chaîne", '', 'PV*SOL — Shading due to nearby objects (la caractéristique du module s\'effondre selon le nombre de brins ombrés ; aucun seuil n\'est proposé par défaut)'),  # CALX168
 )
 
 #: Les clés ADMISES de la section ``electrique_societe``, même forme et même
