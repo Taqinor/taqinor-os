@@ -693,3 +693,115 @@ export function construireLucarnes(
   }
   return out;
 }
+
+// ═══════════════ CALX132 — LA PROPOSITION OSM, JAMAIS APPLIQUÉE D'OFFICE ═══════════════
+
+/**
+ * CALX132 — moitié SERVEUR de l'empreinte OSM (CALX106, `GET crm/leads/<id>/roof-footprint/`,
+ * clé `batiment` — contrat `contract_samples/calepinage_empreinte_osm.json`). Miroir EXACT
+ * de ce que le serveur publie : RIEN n'y est converti — `levels`/`roof_levels` restent des
+ * niveaux, `height_m` reste une hauteur, `null` reste « non renseigné », jamais 0.
+ */
+export interface BatimentOsmServeur {
+  osm_way_id?: number | null;
+  levels?: number | null;
+  roof_levels?: number | null;
+  height_m?: number | null;
+  source?: string | null;
+  provenance?: Record<string, string>;
+  non_renseignes?: Record<string, string>;
+}
+
+/**
+ * Une PROPOSITION à afficher au panneau « Bâtiment » — jamais une valeur déjà écrite au
+ * document. `hauteurM` n'est présente QUE si le tag `height` d'OSM la porte : des niveaux
+ * SEULS (`etages`, deux par exemple) ne fabriquent JAMAIS une hauteur — même règle que
+ * `mentionEtages`/le contrat CALX84 côté saisie humaine.
+ */
+export interface PropositionOsm {
+  /** Hauteur (m) proposée, ou absente si OSM ne porte pas le tag `height`. */
+  hauteurM?: number;
+  /** Étages proposés (information d'écran) — jamais convertis en hauteur ici. */
+  etages?: number;
+  /** `osm:<tag>` EXACT, repris de `provenance` (CALX106) — ce que `appliquerPropositionOsm`
+   *  écrit dans `Batiment.source` si la proposition est acceptée. Jamais reconstruit. */
+  source: string;
+  /** La voie OSM lue (`osm_way_id`, CALX106), pour l'afficher — pas pour la recalculer. */
+  osmWayId?: number;
+  /** Phrase française prête à afficher, « OpenStreetMap — à confirmer » incluse. */
+  mention: string;
+  /** Ce qu'OSM ne dit PAS pour `height_m`/`levels`, NOMMÉ tel que le serveur l'a écrit. */
+  motifs: string[];
+}
+
+/** Le motif serveur pour `cle`, ou aucun (jamais une phrase inventée ici). */
+function motifManquant(non_renseignes: Record<string, string>, cle: 'height_m' | 'levels'): string[] {
+  const m = non_renseignes[cle];
+  return typeof m === 'string' && m.trim().length ? [m] : [];
+}
+
+/**
+ * CALX132 — la proposition OSM pour ce bâtiment, ou `null` quand il n'y a RIEN à proposer
+ * (aucun tag exploitable — un bâtiment SANS tag n'affiche AUCUNE proposition, `exemple_
+ * batiment_sans_tag`/`exemple_vide` du contrat).
+ *
+ * ZÉRO conversion : une hauteur SEULE (`height_m`) ou des niveaux SEULS (`levels`) restent
+ * ce qu'ils sont — `etages` n'entre JAMAIS `hauteurM` à la place d'une hauteur absente
+ * (« deux niveaux ne fabriquent aucune hauteur »).
+ */
+export function propositionOsm(batiment: BatimentOsmServeur | null | undefined): PropositionOsm | null {
+  if (!batiment) return null;
+  const hasHeight = estMesure(batiment.height_m);
+  const hasLevels = typeof batiment.levels === 'number' && Number.isFinite(batiment.levels) && batiment.levels > 0;
+  if (!hasHeight && !hasLevels) return null;
+
+  const wayId =
+    typeof batiment.osm_way_id === 'number' && Number.isFinite(batiment.osm_way_id) ? batiment.osm_way_id : null;
+  const wayMention = wayId != null ? `, way ${wayId}` : '';
+  const provenance = batiment.provenance ?? {};
+  const nonRenseignes = batiment.non_renseignes ?? {};
+
+  if (hasHeight) {
+    const h = batiment.height_m as number;
+    const src = (provenance.height_m ?? '').trim() || 'osm:height';
+    return {
+      hauteurM: h,
+      etages: hasLevels ? Math.round(batiment.levels as number) : undefined,
+      source: src,
+      osmWayId: wayId ?? undefined,
+      mention: `Hauteur OpenStreetMap — à confirmer : ${fmt1(h)} m (openstreetmap${wayMention}).`,
+      motifs: hasLevels ? [] : motifManquant(nonRenseignes, 'levels'),
+    };
+  }
+
+  // Niveaux SEULS : information d'écran, AUCUNE hauteur n'est fabriquée à partir d'eux.
+  const n = Math.round(batiment.levels as number);
+  const src = (provenance.levels ?? '').trim() || 'osm:building:levels';
+  return {
+    etages: n,
+    source: src,
+    osmWayId: wayId ?? undefined,
+    mention: `Niveaux OpenStreetMap — à confirmer : ${n} — aucune hauteur connue (openstreetmap${wayMention}).`,
+    motifs: motifManquant(nonRenseignes, 'height_m'),
+  };
+}
+
+/**
+ * CALX132 — applique une proposition OSM ACCEPTÉE (clic explicite de l'utilisateur, jamais
+ * automatique) au bâtiment `id`, par le MÊME chemin d'écriture que toute saisie humaine
+ * (`appliquerSaisie`) : mêmes refus nommés par champ, même liste NEUVE en retour. La
+ * provenance écrite est CELLE DU SERVEUR (`proposition.source`), jamais reconstruite ici ;
+ * une proposition sans `hauteurM` (niveaux seuls) n'écrit NI hauteur ni provenance — elle
+ * laisse une éventuelle hauteur déjà saisie intacte.
+ */
+export function appliquerPropositionOsm(
+  batiments: readonly Batiment[] | null | undefined,
+  id: string,
+  proposition: PropositionOsm,
+): ResultatSaisie {
+  return appliquerSaisie(batiments, id, {
+    hauteurM: proposition.hauteurM,
+    etages: proposition.etages,
+    source: proposition.hauteurM != null ? proposition.source : undefined,
+  });
+}

@@ -7,10 +7,12 @@ import {
   effectiveBuildingHeightM,
   heatmapAccessValues,
   HEATMAP_MONTH_LABELS,
+  libelleBoutonOsm,
   moduleShadeReading,
   moduleShadeReadingsForPanels,
   type ModuleShadeReading,
 } from './shadingUi';
+import { propositionOsm, type BatimentOsmServeur } from './batiment';
 import { FLOORS, FLOOR_HEIGHT_M } from './constants';
 import { fallbackPerKwc } from '../../lib/productionEngine';
 import { hourlyShadeFactors, type ShadeObstructionENU } from '../../lib/shadingEngine';
@@ -167,5 +169,26 @@ describe('CALX122 — lecture géométrique d’ombrage par module (heures + pre
     expect(readings[0].firstMonthIndex).not.toBeNull();
     expect(readings[1].maskedHours).toBeLessThanOrEqual(readings[0].maskedHours);
     expect(readings[1].firstMonthIndex == null || typeof readings[1].firstMonthIndex === 'number').toBe(true);
+  });
+});
+
+describe('CALX132 — libelleBoutonOsm : le texte du bouton de reprise, jamais un chiffre recalculé', () => {
+  const AVEC_HAUTEUR: BatimentOsmServeur = {
+    osm_way_id: 123456,
+    height_m: 7.5,
+    levels: 2,
+    source: 'openstreetmap',
+    provenance: { height_m: 'osm:height', levels: 'osm:building:levels' },
+    non_renseignes: {},
+  };
+
+  it('cite la hauteur, la voie OSM — dérivées de la proposition, aucun recalcul', () => {
+    const p = propositionOsm(AVEC_HAUTEUR)!;
+    expect(libelleBoutonOsm(p)).toBe('Reprendre la hauteur OSM (7,5 m — openstreetmap, way 123456)');
+  });
+
+  it('niveaux seuls : le libellé parle de niveaux, jamais d’une hauteur inventée', () => {
+    const p = propositionOsm({ ...AVEC_HAUTEUR, height_m: null, source: null })!;
+    expect(libelleBoutonOsm(p)).toBe('Reprendre les niveaux OSM (2 — openstreetmap, way 123456)');
   });
 });
