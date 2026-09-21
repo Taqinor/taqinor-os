@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 1a33a8a94963459a640f8c9380ae6b4084d32fd100e919e93e00d82298cf8988
-Plan fingerprint: 2beae57c6a4167f9dd6e61a31e6ef653136d657cc23e4d7b721075944c90d968
+Plan fingerprint: 9291d431e84a8a19a6e65844bb1c99ed9f7ef15b216b499ce677e766df53094b
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (226)**
+**Done (230)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -646,6 +646,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX102` — Modéliser une lucarne comme un volume qui perce le pan, pas comme une boîte posée
 - `CALX105` — Poser un arbre ou un bâtiment voisin au clic et le déplacer au glissé
 - `CALX106` — Remonter la hauteur et le nombre de niveaux OSM du bâtiment, avec leur provenance…
+- `CALX107` — Afficher un plan importé ou une photo calée comme calque de fond de l'atelier
+- `CALX108` — Caler le fond de plan à l'échelle par deux points et une distance réelle saisie
 - `CALX109` — Choisir le module depuis le stock et calepiner avec ses vraies cotes
 - `CALX110` — Poser plusieurs modèles de module dans un même système
 - `CALX111` — Numéroter les modules de façon stable et l'afficher en 3D comme en plan
@@ -658,7 +660,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX120` — Animer la course de l'ombre sur une journée et sur l'année
 - `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
 - `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
+- `CALX128` — Rendre les gestes de l'atelier utilisables au clavier et annoncés
 - `CALX129` — Basculer la vue 3D d'édition en plein écran
+- `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
 - `CALX141` — Déclarer le contrat de la cascade de pertes séquentielle, sous une clé neuve
 - `CALX142` — Déclarer le contrat de la série horaire persistée
 - `CALX143` — Déclarer le contrat de l'énoncé de source météo
@@ -760,7 +764,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (380)**
+**Open — to build (376)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -955,18 +959,14 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
 - `CALX103` — Tracer un obstacle polygonal au clic
 - `CALX104` — Tracer un obstacle circulaire et réutiliser des gabarits d'obstacle de la société
-- `CALX107` — Afficher un plan importé ou une photo calée comme calque de fond de l'atelier
-- `CALX108` — Caler le fond de plan à l'échelle par deux points et une distance réelle saisie
 - `CALX114` — Choisir la cible de l'optimisation au lieu de la figer sur l'énergie
 - `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
 - `CALX123` — Tracer et éditer un champ au sol sur la carte de l'atelier
 - `CALX124` — Éditer une ombrière dans l'atelier, poteaux compris
 - `CALX125` — Poser des modules en façade sur un mur du bâtiment
 - `CALX126` — Totaliser le site par bâtiment et par surface de pose dans l'atelier
-- `CALX128` — Rendre les gestes de l'atelier utilisables au clavier et annoncés
 - `CALX130` — Prouver le parcours de conception enrichi de bout en bout
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
-- `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
 - `CALX199` — Trancher l'achat d'une source météo bancable
 - `CALX200` — Trancher le pas infra-horaire
 - `CALX214` — Publier, contrôle par contrôle, LA température qui a servi
