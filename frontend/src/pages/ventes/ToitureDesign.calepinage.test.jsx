@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
-   CAL37 — MODE `calepinage` de l'atelier 3D : le MÊME builder, un quatrième
+   CAL37 — MODE `calepinage` de l'atelier 3D : le MÊME builder, un troisième
    mode. Ce que ce fichier prouve :
 
    1. `/calepinage/:id` boote le builder sur UN SEUL appel (`design-context`),
@@ -33,9 +33,6 @@ vi.mock('../../api/ventesApi', () => ({
     whatsappPreviewDevis: vi.fn(),
     reviserDevis: vi.fn(),
   },
-}))
-vi.mock('../../api/aoApi', () => ({
-  default: { affaires: { designContext: vi.fn(), enregistrerLayout: vi.fn() } },
 }))
 // Le double SUIT la surface RÉELLE de `calepinageApi` : chaque méthode du
 // module est remplacée par un espion qui résout `{ data: null }`. Une
