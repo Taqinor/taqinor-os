@@ -53,6 +53,8 @@ _CROCHETS = [
     # du lien de la réalisation — deux liens différents dans le même message.
     (r'\[lien preuve\]', '{lien_preuve}'),
     (r'\[puissance preuve\]', '{puissance_preuve}'),
+    # CAD95 (21/09/2026) — vidéo courte du chantier, EN PLUS du lien preuve.
+    (r'\[lien vidéo\]', '{lien_video_preuve}'),
     # CAD71 (21/09/2026) — AVANT `\[lien …\]` (règle générale) : le lien de
     # la fiche Google n'est PAS le lien du devis, `{lien_google}` est un
     # placeholder dédié alimenté par `CompanyProfile.lien_avis_google`.
@@ -62,6 +64,9 @@ _CROCHETS = [
     (r'\[ville\]', '{ville_preuve}'),
     (r'\[Conseiller\]', '{conseiller}'),
     (r'\[المستشار\]', '{conseiller}'),
+    # CAD96 (21/09/2026) — le nom de marque, résolu côté serveur (jamais une
+    # graphie codée en dur). AVANT n'importe quelle règle plus générale.
+    (r'\[Marque\]', '{marque}'),
 ]
 
 _TOKEN_RE = re.compile(r'\{[^{}]*\}')

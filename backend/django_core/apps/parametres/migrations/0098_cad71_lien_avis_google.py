@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('parametres', '0096_nti18n51_traduction_manquante'),
+        ('parametres', '0097_cad95_realisation_lien_video'),
     ]
 
     operations = [

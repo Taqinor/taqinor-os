@@ -36,6 +36,9 @@ _CROCHETS = [
     (r'\[الاسم\]', '{prenom}'),
     (r'\[Conseiller\]', '{conseiller}'),
     (r'\[المستشار\]', '{conseiller}'),
+    # CAD96 (fold post-merge, 21/09/2026) — le nom de marque, résolu côté
+    # serveur (jamais une graphie codée en dur).
+    (r'\[Marque\]', '{marque}'),
 ]
 
 _TOKEN_RE = re.compile(r'\{[^{}]*\}')
