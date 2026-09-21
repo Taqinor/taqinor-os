@@ -134,6 +134,15 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # vos questions »), qui est aussi la vraie valeur du passage.
     'visite_confirmation':
         "Bonjour, on confirme la visite technique prévue {date_visite} chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+    # CAD67 (21/09/2026) — deux appels de la cadence contact n'avaient aucune
+    # phrase d'ouverture (`apps/parametres/models_relance.py` ordre 4 et 10).
+    # `appel_relance` (Appel 3, J1 10:30) : troisième tentative, ton court
+    # comme `appel_ouverture`/`vocal_j3`/`appel_dimanche`. `appel_dernier`
+    # (Appel 6, dernier avant clôture J14) : celui qui décide du classement.
+    'appel_relance':
+        "Bonjour M. {prenom}, {conseiller} de TAQINOR. Je reviens vers vous pour votre demande solaire d'hier — vous avez deux minutes maintenant ?",
+    'appel_dernier':
+        "Bonjour M. {prenom}, {conseiller} de TAQINOR. Dernier essai avant de classer votre demande : votre projet solaire est-il toujours d'actualité ?",
 })
 
 # Variantes darija (écriture arabe, revue native le 04/09/2026). Une clé
@@ -176,6 +185,11 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "باش نثبتو ليكم العرض، نقدرو نجيو عندكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه ديال السطح، من الهيكل ومن الطابلو ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — {conseiller}",
     'visite_confirmation':
         "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — {conseiller}",
+    # CAD-F — CAD67 (21/09/2026) — darija des deux nouveaux scripts d'appel.
+    'appel_relance':
+        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. كنرجع ليكم بخصوص الطلب ديالكم ديال البارح — عندكم جوج دقايق دابا؟",
+    'appel_dernier':
+        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. هادي آخر محاولة قبل ما نسد الطلب ديالكم: واش مشروع الطاقة الشمسية ديالكم مازال كيهمكم؟",
     # CAD-F — CAD62 (21/09/2026) — les 11 clés qui manquaient au repli darija de
     # la marche après-devis, du réveil et de l'après-signature. Même patron que
     # `visite_proposition`/`visite_confirmation` ci-dessus : traduction phrase
@@ -231,6 +245,9 @@ CLES_RELANCE = [
     'identite',
     'appel_ouverture',
     'repondeur',
+    # CAD67 — Appel 3 (relance J1) et Appel 6 (dernier, avant clôture).
+    'appel_relance',
+    'appel_dernier',
     'valeur_j1',
     'vocal_j3',
     'appel_dimanche',
@@ -290,6 +307,9 @@ class MessageTemplate(models.Model):
         IDENTITE = 'identite', "Relance — identité (J0)"
         APPEL_OUVERTURE = 'appel_ouverture', "Relance — script d'appel d'ouverture (J0)"
         REPONDEUR = 'repondeur', "Relance — message sur répondeur"
+        # CAD67 — Appel 3 (relance, J1) et Appel 6 (dernier, avant clôture).
+        APPEL_RELANCE = 'appel_relance', "Relance — script d'appel 3 (J1)"
+        APPEL_DERNIER = 'appel_dernier', "Relance — script du dernier appel (J10)"
         VALEUR_J1 = 'valeur_j1', "Relance — message de valeur (J1)"
         VOCAL_J3 = 'vocal_j3', "Relance — script du vocal (J3)"
         APPEL_DIMANCHE = 'appel_dimanche', "Relance — script d'appel du dimanche"

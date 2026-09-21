@@ -41,6 +41,12 @@ DARIJA : السلام عليكم السي [الاسم]، [المستشار] من
 FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je vous appelle au sujet de votre demande solaire. Je vous envoie un message WhatsApp, répondez-y quand vous voulez. Bonne journée.
 DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.
 
+### appel_relance — Appel 3, J1 10 h 30, troisième tentative (CAD67, 21/09/2026)
+Avant CAD67, `repondeur` partait aussi ici (ordre 4), à ~20 h du premier envoi (ordre 3) — contraire au document
+ci-dessus qui le réserve aux appels 2 et 4. Script court dédié, comme `appel_ouverture`/`vocal_j3`/`appel_dimanche`.
+FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je reviens vers vous pour votre demande solaire d'hier — vous avez deux minutes maintenant ?
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. كنرجع ليكم بخصوص الطلب ديالكم ديال البارح — عندكم جوج دقايق دابا؟
+
 ### valeur_j1 — J1, WhatsApp de valeur (M2)
 FR : Bonjour M. [Prénom], je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?
 DARIJA : السلام عليكم السي [الاسم]، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟
@@ -58,6 +64,11 @@ CAD66 (21/09/2026) — « dans trois jours » promettait une clôture à J10 ; l
 (`cloture_j14`), donc « dans une semaine » depuis J7. Aucun barreau déplacé, seul le mot change.
 FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Sans nouvelle de votre part, je mets votre demande de côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte.
 DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول.
+
+### appel_dernier — Appel 6 (dernier), J10, avant clôture (CAD67, 21/09/2026)
+Le dernier appel avant `cloture_j14` — celui qui décide du classement du lead — n'avait aucune phrase d'ouverture.
+FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Dernier essai avant de classer votre demande : votre projet solaire est-il toujours d'actualité ?
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. هادي آخر محاولة قبل ما نسد الطلب ديالكم: واش مشروع الطاقة الشمسية ديالكم مازال كيهمكم؟
 
 ### cloture_j14 — J14, WhatsApp de clôture, passage en Froid (M5)
 FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h.
