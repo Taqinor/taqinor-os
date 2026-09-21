@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ReceiptText, Plus, FileText, Building2, AlertTriangle, ShieldCheck,
+import { ReceiptText, Plus, FileText, AlertTriangle, ShieldCheck,
   Wallet, CalendarClock,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import comptaApi from '../../api/comptaApi'
 import { formatMAD } from '../../lib/format'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
-  Button, StatusPill, DataTable, toast, Badge,
+  Button, StatusPill, DataTable, Badge,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -257,28 +256,6 @@ export function FactureDetail({ facture: factureProp, onClose, onSaved, canResou
     } finally { setBusy(false) }
   }
 
-  // XACC33 — Capitalise une ligne de la facture en immobilisation (bouton
-  // « Immobiliser »). Pas d'écran de lignes ici : on demande le ligne_id
-  // ponctuellement (module interne), puis on route via /compta/.
-  const [immobilising, setImmobilising] = useState(false)
-  const immobiliser = async () => {
-    const ligneId = window.prompt(
-      'ID de la ligne de facture à immobiliser (voir le détail de la facture) :')
-    if (!ligneId) return
-    setImmobilising(true)
-    try {
-      await comptaApi.immobilisations.depuisFactureFournisseur({
-        facture_id: facture.id, ligne_id: Number(ligneId),
-      })
-      toast.success('Immobilisation créée depuis la ligne de facture.')
-    } catch (err) {
-      const d = err?.response?.data
-      toast.error(typeof d === 'string' ? d : (d?.detail || 'Immobilisation impossible.'))
-    } finally {
-      setImmobilising(false)
-    }
-  }
-
   // WR4 / FG55 — PDF de la facture fournisseur (INTERNE) : ouvre dans un
   // nouvel onglet (repli téléchargement), erreur serveur lue depuis le blob.
   const telechargerPdf = async () => {
@@ -463,9 +440,6 @@ export function FactureDetail({ facture: factureProp, onClose, onSaved, canResou
         )}
 
         <DialogFooter className="flex-wrap">
-          <Button type="button" variant="outline" loading={immobilising} onClick={immobiliser}>
-            <Building2 /> Immobiliser
-          </Button>
           <Button type="button" variant="outline" onClick={telechargerPdf}>
             <FileText /> PDF (interne)
           </Button>
