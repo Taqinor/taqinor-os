@@ -31,7 +31,7 @@ from __future__ import annotations
 
 __all__ = ['ImportCourbeInvalide', 'ProfilInvalide', 'SOURCES_MOIS',
            'UNITES', 'apercu_courbe_csv', 'interpoler_factures',
-           'profil_depuis_lead', 'profil_mensuel']
+           'profil_depuis_lead', 'profil_depuis_layout', 'profil_mensuel']
 
 #: D'où vient le montant d'un mois. ``None`` = mois vide (rien de connu).
 SOURCES_MOIS = ('facture', 'interpole', 'saisi')
@@ -199,6 +199,85 @@ def profil_depuis_lead(company, lead_id, *, saisies=None, lire_lead=None):
         saisies=saisies,
         conso_mensuelle_kwh=getattr(lead, 'conso_mensuelle_kwh', None),
     )
+
+
+# ── CALX255 — le profil de consommation depuis le DOCUMENT (atelier) ─────
+#
+# LE CONSTAT : ce module ne savait partir que des factures du lead
+# (``profil_depuis_lead``) ou d'un CSV importé (``apercu_courbe_csv``) ;
+# rien ne lisait ``Calepinage.roof_layout``, donc la courbe horaire SAISIE
+# dans l'atelier (CALX251 : clé racine ``consumption`` du contrat
+# ``roof_layout`` v2 — ``courbe24``, ``saisons``, ``appareils``, ``methode``,
+# ``source``) n'atteignait jamais les services de charges
+# (``autoconsommation.py`` / ``batterie.py``). Parité : HelioScope importe une
+# courbe de consommation en CSV et la republie telle quelle (aucune moyenne
+# inventée) — https://help-center.helioscope.com/hc/en-us/articles/
+# 8644788320659-How-to-create-a-CSV-with-consumption-data.
+#
+# LA RÈGLE : la courbe de l'atelier est déjà une SAISIE — rien n'est déduit
+# ni moyenné ici. Un document sans ``consumption`` (ou sans ``courbe24``)
+# rend un profil VIDE (``courbe24: None``) avec son motif, JAMAIS un repli
+# sur une autre source. Une courbe dont la longueur n'est pas 24 est REFUSÉE
+# en NOMMANT le champ fautif (``consumption.courbe24``).
+
+def profil_depuis_layout(layout, *, saisies=None):
+    """Le profil de consommation depuis le document ATELIER (``roof_layout``).
+
+    Args:
+        layout: le document du calepinage (``dict``) — porte, s'il existe,
+            la clé racine ``consumption`` du contrat v2 (CALX251) :
+            ``courbe24`` (24 valeurs horaires kWh/h), ``methode``
+            (``'facture'``/``'courbe'``/``'appareils'``), ``saisons``,
+            ``appareils``, ``source``.
+        saisies: réservé pour la cohérence de signature avec
+            :func:`profil_depuis_lead` — la courbe de l'atelier EST déjà la
+            saisie du client, aucune correction manuelle n'est câblée ici
+            (aucun comportement n'est inventé pour ce paramètre tant qu'un
+            besoin réel ne le motive pas).
+
+    Returns:
+        dict — ``courbe24`` (les 24 valeurs horaires, ou ``None``),
+        ``pas_minutes`` (60 dès qu'une courbe existe, sinon ``None``),
+        ``total_kwh``, ``methode`` (reprise TELLE QUELLE du document),
+        ``source`` (toujours ``'layout'`` — la provenance de ce profil),
+        ``avertissements``.
+
+    Raises:
+        ProfilInvalide: ``consumption.courbe24`` d'une longueur différente
+            de 24, en NOMMANT le champ — jamais tronquée ni complétée.
+    """
+    consumption = (layout or {}).get('consumption') or {}
+    courbe24 = consumption.get('courbe24')
+
+    if courbe24 is not None and len(courbe24) != 24:
+        raise ProfilInvalide(
+            "La courbe horaire de l'atelier (« consumption.courbe24 ») "
+            f'compte {len(courbe24)} valeur(s) au lieu de 24 : elle est '
+            'refusée plutôt que tronquée ou complétée.',
+            champ='consumption.courbe24')
+
+    if not consumption or courbe24 is None:
+        return {
+            'courbe24': None,
+            'pas_minutes': None,
+            'total_kwh': None,
+            'methode': consumption.get('methode'),
+            'source': 'layout',
+            'avertissements': [
+                "Aucune courbe de consommation saisie dans l'atelier "
+                "(document sans « consumption.courbe24 ») : le profil "
+                'reste VIDE — aucun repli sur une autre source ni aucune '
+                'moyenne inventée.'],
+        }
+
+    return {
+        'courbe24': [float(valeur) for valeur in courbe24],
+        'pas_minutes': 60,
+        'total_kwh': round(sum(float(valeur) for valeur in courbe24), 4),
+        'methode': consumption.get('methode'),
+        'source': 'layout',
+        'avertissements': [],
+    }
 
 
 # ── CAL148 — import d'une courbe de charge HORAIRE en CSV ────────────────
