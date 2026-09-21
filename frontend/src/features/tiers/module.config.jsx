@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    Fichier de configuration de module (données + composants lazy), collecté par
-   `router/moduleRoutes.jsx` via glob — même dérogation que
-   `features/agriculture/module.config.jsx`. */
+   `router/moduleRoutes.jsx` via glob — même dérogation que les autres
+   module.config.jsx auto-enregistrés (patron UX1). */
 import { lazy } from 'react'
 import { Users, Contact } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'

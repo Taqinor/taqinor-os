@@ -39,9 +39,8 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    avant Flotte (50, accent `success`) — `lune` (référentiel documentaire/
    accès, même famille que GED/KB/IA) ne collisionne avec aucun des deux
    voisins immédiats. `DoorOpen` (porte d'accès — la métaphore du portail)
-   n'est repris comme glyphe D'APP par aucun autre module (déjà utilisé comme
-   icône de SOUS-ÉCRAN dans `features/hospitality/module.config.jsx`, ce qui
-   ne compte pas pour ce garde-fou — seul `nav.icon` est comparé). */
+   n'est repris comme glyphe D'APP par aucun autre module gardé (seul
+   `nav.icon` est comparé par ce garde-fou). */
 
 const PortailAdminPage = lazy(() => import('./admin/PortailAdminPage'))
 
