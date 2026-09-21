@@ -1,21 +1,19 @@
-"""ZACC9 — Comptabilisation + garde de sur-paiement du règlement fournisseur
-(parité Register Payment).
+"""ZACC9 — Garde de sur-paiement du règlement fournisseur (parité Register
+Payment).
 
 Couvre :
   * un paiement > solde dû est refusé (400) sur
     `factures-fournisseur/{id}/paiements/` (POST) ;
-  * un paiement valide poste une écriture comptable équilibrée réduisant le
-    solde du bon montant (débit 4411 / crédit trésorerie), UNIQUEMENT quand
-    `COMPTA_AUTO_ECRITURES` est actif (comportement historique OFF par
-    défaut) ;
-  * re-poster (rejouer l'événement) le même paiement n'écrit jamais deux
-    fois (idempotence côté récepteur compta) ;
   * cross-company : une facture d'une autre société → 404.
   * AUD208 — le verrou `select_for_update` posé sur la facture AVANT de
     re-vérifier le solde dû SOUS verrou : preuve mécanique (SELECT ... FOR
     UPDATE émis) + preuve de course RÉELLE (deux threads, deux paiements
     chacun valide isolément mais dont la somme dépasse le solde dû — le
     second doit être refusé).
+
+SOLMVP12 (20/09/2026) — les assertions sur l'écriture comptable générée
+(lecture du module compta, détaché de stock) ont été retirées : la
+comptabilisation reste couverte par les tests de son propre module.
 
 Run:
     python manage.py test \
@@ -27,7 +25,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.db import connection
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TestCase, TransactionTestCase
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -35,8 +33,6 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.roles.models import Role
 from apps.stock.models import FactureFournisseur, Fournisseur
-from apps.compta.models import EcritureComptable
-from apps.compta import services as compta_services
 
 User = get_user_model()
 
@@ -100,51 +96,11 @@ class TestGardeSurPaiement(Zacc9Base):
             'montant': '50', 'mode': 'virement'}, format='json')
         self.assertEqual(resp2.status_code, 400, resp2.data)
 
-
-@override_settings(COMPTA_AUTO_ECRITURES=True)
-class TestEcritureComptable(Zacc9Base):
-    def test_paiement_valide_poste_ecriture_equilibree(self):
-        resp = self.api.post(self._paiements_url(), {
-            'montant': '120', 'mode': 'virement'}, format='json')
-        self.assertEqual(resp.status_code, 201, resp.data)
-        ecr = EcritureComptable.objects.get(
-            company=self.company, source_type='paiement_fournisseur')
-        self.assertTrue(ecr.est_equilibree)
-        self.assertEqual(ecr.total_credit, Decimal('120'))
-        fourn = ecr.lignes.get(compte__numero='4411')
-        self.assertEqual(fourn.debit, Decimal('120'))
-
     def test_reduit_le_solde_du_bon_montant(self):
         self.api.post(self._paiements_url(), {
             'montant': '50', 'mode': 'virement'}, format='json')
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.solde_du, Decimal('70'))
-
-    def test_rejouer_le_meme_paiement_necrit_pas_deux_fois(self):
-        resp = self.api.post(self._paiements_url(), {
-            'montant': '120', 'mode': 'virement'}, format='json')
-        self.assertEqual(resp.status_code, 201, resp.data)
-        from apps.stock.models import PaiementFournisseur
-        paiement = PaiementFournisseur.objects.get(facture=self.facture)
-        # Rejoue directement le service compta (simule un ré-abonné) :
-        # idempotence garantie par `_ecriture_existante`.
-        compta_services.ecriture_pour_paiement_fournisseur(paiement)
-        self.assertEqual(
-            EcritureComptable.objects.filter(
-                company=self.company,
-                source_type='paiement_fournisseur').count(), 1)
-
-
-class TestOffParDefaut(Zacc9Base):
-    def test_sans_toggle_aucune_ecriture(self):
-        self.assertFalse(compta_services.auto_ecritures_actif())
-        resp = self.api.post(self._paiements_url(), {
-            'montant': '120', 'mode': 'virement'}, format='json')
-        self.assertEqual(resp.status_code, 201, resp.data)
-        self.assertEqual(
-            EcritureComptable.objects.filter(
-                company=self.company,
-                source_type='paiement_fournisseur').count(), 0)
 
 
 class TestMultiTenant(Zacc9Base):

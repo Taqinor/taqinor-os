@@ -43,7 +43,7 @@ class PlanEchantillonnageSerializer(serializers.ModelSerializer):
         return value
 
 
-# YAPIC6 — `apps.qhse.serializers` publie DEJA un composant `ControleReception`
+# YAPIC6 — le module qhse publie DEJA un composant `ControleReception`
 # (modele different). Deux composants homonymes d'identites differentes
 # cassent le schema : on renomme CELUI-CI (le plus recent) pour laisser
 # intact le nom deja publie par qhse.

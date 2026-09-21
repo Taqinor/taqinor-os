@@ -6,20 +6,16 @@ d'achat ne peut PAS approuver sa propre étape (400 explicite, contrôle
 SERVEUR — même en appelant l'API directement).
 
 Couvre aussi : le no-op total quand le réglage est OFF (défaut — les petites
-structures à un seul décideur ne sont pas cassées), le cas d'un approbateur
-TIERS (toujours autorisé), et la validation direction d'une note de frais
-escaladée (NTP2P11).
+structures à un seul décideur ne sont pas cassées) et le cas d'un approbateur
+TIERS (toujours autorisé).
 
 Run :
     python manage.py test apps.stock.test_ntp2p37_separation_taches -v2
 """
 import itertools
-from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
 from django.test import TestCase
-from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -136,67 +132,3 @@ class SodDemandeAchatTests(TestCase):
             f'{BASE}/demandes-achat/{da.pk}/approuver-etape/', {},
             format='json')
         self.assertEqual(resp.status_code, 200)
-
-
-class SodNoteFraisTests(TestCase):
-
-    def setUp(self):
-        from apps.frais.models import NoteFrais, PlafondNoteFrais
-
-        self.company = make_company()
-        self.employe = make_user(self.company)
-        self.tiers = make_user(self.company)
-        PlafondNoteFrais.objects.create(
-            company=self.company, categorie=NoteFrais.Categorie.AUTRE,
-            montant_max=Decimal('50000'),
-            escalade_direction_au_dela_de=Decimal('3000'))
-
-    def _note_soumise(self, montant):
-        from apps.compta import services as compta_services
-        from apps.frais.models import NoteFrais
-
-        note = NoteFrais.objects.create(
-            company=self.company, employe=self.employe,
-            reference=f'NDF-SOD-{next(_seq):04d}',
-            date_frais=timezone.localdate(), montant=Decimal(montant),
-            motif='SoD', categorie=NoteFrais.Categorie.AUTRE,
-            created_by=self.employe)
-        return compta_services.soumettre_note_frais(note)
-
-    def test_sans_sod_le_createur_peut_valider(self):
-        from apps.compta import services as compta_services
-
-        note = self._note_soumise(4000)
-        self.assertTrue(note.escalade_direction)
-        compta_services.valider_note_frais(note, user=self.employe)
-        note.refresh_from_db()
-        self.assertEqual(note.statut, note.Statut.VALIDEE)
-
-    def test_avec_sod_le_createur_dune_note_escaladee_est_refuse(self):
-        from apps.compta import services as compta_services
-
-        activer_sod(self.company)
-        note = self._note_soumise(4000)
-        with self.assertRaises(ValidationError):
-            compta_services.valider_note_frais(note, user=self.employe)
-        note.refresh_from_db()
-        self.assertEqual(note.statut, note.Statut.SOUMISE)
-
-    def test_avec_sod_une_note_non_escaladee_reste_validable(self):
-        from apps.compta import services as compta_services
-
-        activer_sod(self.company)
-        note = self._note_soumise(500)
-        self.assertFalse(note.escalade_direction)
-        compta_services.valider_note_frais(note, user=self.employe)
-        note.refresh_from_db()
-        self.assertEqual(note.statut, note.Statut.VALIDEE)
-
-    def test_avec_sod_un_tiers_peut_valider_une_note_escaladee(self):
-        from apps.compta import services as compta_services
-
-        activer_sod(self.company)
-        note = self._note_soumise(4000)
-        compta_services.valider_note_frais(note, user=self.tiers)
-        note.refresh_from_db()
-        self.assertEqual(note.statut, note.Statut.VALIDEE)

@@ -5,8 +5,11 @@ CRITÈRE D'ACCEPTATION : un fournisseur avec 3 retards CONSÉCUTIFS et un
 document EXPIRÉ affiche un score < 50, avec le détail des facteurs.
 
 Couvre aussi : le fournisseur sain à 100, chaque facteur isolément (OTD,
-documents, retours, litiges, blocage), le plafonnement à 0-100, et le scope
+documents, retours, blocage), le plafonnement à 0-100, et le scope
 société (un fournisseur d'une autre société n'est jamais noté).
+
+SOLMVP12 (20/09/2026) — le facteur « litiges » (lecture du module litiges,
+détaché de stock) a été retiré du score : 4 facteurs restent.
 
 Run :
     python manage.py test apps.stock.test_ntp2p8_score_risque_fournisseur -v2
@@ -76,7 +79,7 @@ class ScoreRisqueTests(TestCase):
         self.assertEqual(resultat['score'], 100)
         self.assertEqual(resultat['niveau'], 'faible')
         self.assertEqual(resultat['penalite_totale'], 0)
-        self.assertEqual(len(resultat['facteurs']), 5)
+        self.assertEqual(len(resultat['facteurs']), 4)
 
     def test_trois_retards_et_un_document_expire_score_sous_50(self):
         """CRITÈRE D'ACCEPTATION NTP2P8."""
@@ -152,30 +155,6 @@ class ScoreRisqueTests(TestCase):
         self.assertEqual(retours['detail']['taux_retour_pct'], 50)
         self.assertEqual(retours['penalite'], round(0.5 * 15))
 
-    def test_litiges_ouverts_penalises(self):
-        from apps.litiges.models import Reclamation
-        Reclamation.objects.create(
-            company=self.company, reference=f'REC-{next(_seq)}',
-            objet='Marchandise non conforme', source_type='fournisseur',
-            source_id=self.fournisseur.pk,
-            statut=Reclamation.Statut.OUVERTE)
-        resultat = stock_selectors.score_risque_fournisseur(
-            self.company, self.fournisseur.pk)
-        litiges = facteur(resultat, 'litiges')
-        self.assertEqual(litiges['detail']['ouvertes'], 1)
-        self.assertEqual(litiges['penalite'], 5)
-
-    def test_litige_resolu_ne_penalise_pas(self):
-        from apps.litiges.models import Reclamation
-        Reclamation.objects.create(
-            company=self.company, reference=f'REC-{next(_seq)}',
-            objet='Résolu', source_type='fournisseur',
-            source_id=self.fournisseur.pk,
-            statut=Reclamation.Statut.RESOLUE)
-        resultat = stock_selectors.score_risque_fournisseur(
-            self.company, self.fournisseur.pk)
-        self.assertEqual(facteur(resultat, 'litiges')['penalite'], 0)
-
     def test_blocage_total_penalise_au_maximum(self):
         self.fournisseur.statut = Fournisseur.Statut.BLOQUE_TOTAL
         self.fournisseur.save(update_fields=['statut'])
@@ -217,7 +196,7 @@ class ScoreRisqueTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['score'], 100)
         self.assertEqual(resp.data['fournisseur_id'], self.fournisseur.pk)
-        self.assertEqual(len(resp.data['facteurs']), 5)
+        self.assertEqual(len(resp.data['facteurs']), 4)
 
     def test_fournisseur_dune_autre_societe_jamais_note(self):
         autre = make_company()

@@ -33,7 +33,6 @@ from apps.stock.services_consignation import creer_depot_consignation
 from apps.stock.services_transfert_deux_temps import (
     expedier_transfert, receptionner_transfert,
 )
-from apps.stock.services_van_sales import charger_vehicule, decharger_vehicule
 
 User = get_user_model()
 
@@ -158,27 +157,6 @@ class TestChemInsServices(Aud223Base):
                 date_depot='2026-09-02')
         self.assertEqual(len(capture), 1)
         self.assertEqual(self._stock(), 94)
-
-    def test_van_sales_charge_et_decharge_emettent(self):
-        # `StockVehicule.actif_flotte` est un VRAI FK : l'id inventé « 1 » ne
-        # cassait rien pendant le test mais violait la contrainte au
-        # `SET CONSTRAINTS ALL IMMEDIATE` du teardown. On monte l'actif de
-        # flotte pour de bon (test seul : jamais d'import flotte en production,
-        # même convention que le `Client` de test_consignation_emet).
-        from apps.flotte.models import ActifFlotte, Vehicule
-        vehicule = Vehicule.objects.create(
-            company=self.company, immatriculation='AUD223-B-1')
-        actif = ActifFlotte.objects.create(
-            company=self.company, vehicule=vehicule)
-        lignes = [{'produit': self.produit.id, 'quantite': 10}]
-        with CaptureEvenements() as capture:
-            charger_vehicule(company=self.company, user=self.user,
-                             actif_flotte_id=actif.id, lignes=lignes)
-            self.assertEqual(self._stock(), 90)
-            decharger_vehicule(company=self.company, user=self.user,
-                               actif_flotte_id=actif.id, lignes=lignes)
-        self.assertEqual(len(capture), 2)
-        self.assertEqual(self._stock(), 100)
 
 
 class TestChemInsReception(Aud223Base):
