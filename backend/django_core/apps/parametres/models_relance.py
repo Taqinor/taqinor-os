@@ -212,6 +212,18 @@ class CadenceRelanceEtape(TenantModel):
     # semaine. Toutes les autres sont recalées sur un jour ouvré.
     dimanche_ok = models.BooleanField(
         default=False, verbose_name='Autorisée le dimanche')
+    # CAD43 — symétrique exact de `dimanche_ok`, pour le SAMEDI. Les jours
+    # ouvrés par défaut sont lundi-vendredi : toute touche calculée un samedi
+    # est repoussée au lundi, y compris le message d'identité J0. Cocher
+    # « Samedi » dans Paramètres → Notifications ouvrirait le samedi aux SIX
+    # appels d'un coup ; ce drapeau PAR TOUCHE permet d'ouvrir le seul
+    # message (canal silencieux) pour le lead arrivé le vendredi soir.
+    # Par défaut FAUX partout : rien ne change tant que personne ne coche.
+    samedi_ok = models.BooleanField(
+        default=False, verbose_name='Autorisée le samedi',
+        help_text='Cette touche peut-elle tomber un samedi ? À réserver aux '
+                  'canaux silencieux (WhatsApp, e-mail) — un appel le samedi '
+                  "n'est pas dans le protocole.")
     canal = models.CharField(max_length=20, choices=CanalRelance.choices)
     libelle = models.CharField(max_length=150)
     actif = models.BooleanField(default=True)
@@ -260,6 +272,9 @@ class CadenceRelanceEtape(TenantModel):
                     'heure_cible': entry.get('heure_cible'),
                     'template_cle': entry.get('template_cle', ''),
                     'dimanche_ok': entry.get('dimanche_ok', False),
+                    # CAD43 — absent de tous les gabarits par défaut : le
+                    # samedi ne s'ouvre que par un geste humain.
+                    'samedi_ok': entry.get('samedi_ok', False),
                     'canal': entry['canal'],
                     'libelle': entry['libelle'],
                     'actif': True,

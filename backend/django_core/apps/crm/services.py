@@ -825,6 +825,8 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
         echeance = horaires.prochain_creneau_appel(
             echeance, lead.company,
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
+            # CAD43 — drapeau PAR TOUCHE, faux partout par défaut.
+            samedi=bool(getattr(gabarit, 'samedi_ok', False)),
             canal=_canal(gabarit))
         echeances.append((gabarit, echeance))
     return echeances

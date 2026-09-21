@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/parametres/cadence-relance/",
-  "pourquoi": "MRY25 (PACT10) — l'éditeur « Cadences de relance » de Paramètres → CRM (MRY28) et le gabarit serveur `parametres.CadenceRelanceEtape` (MRY4) sont deux moitiés sans fichier commun. Ce qui CHANGE et doit donc être publié d'avance : le gabarit passe de UNE cadence anonyme à TROIS cadences nommées (`contact`, `apres_devis`, `reveil`, plus `generique` = les 5 barreaux historiques, migrés jamais supprimés), et la granularité passe au MINUTE (`delai_minutes`) avec une `heure_cible` optionnelle — la touche 2 de la cadence contact tombe à J0 + 3 minutes, ce qu'un modèle en JOURS ne pouvait pas exprimer. `template_cle` est un TEXTE LIBRE côté gabarit (valeur = une `MessageTemplate.Cle` de MRY12) : volontairement pas une FK, pour ne pas créer de dépendance d'import entre les deux modules. `unique_together` = (company, cadence, ordre). `?cadence=` filtre la liste ; sans lui, toutes cadences confondues. Validation serveur : `delai_minutes < 1440`, `heure_cible` optionnelle (`null` = pas de recalage horaire).",
+  "pourquoi": "MRY25 (PACT10) — l'éditeur « Cadences de relance » de Paramètres → CRM (MRY28) et le gabarit serveur `parametres.CadenceRelanceEtape` (MRY4) sont deux moitiés sans fichier commun. Ce qui CHANGE et doit donc être publié d'avance : le gabarit passe de UNE cadence anonyme à TROIS cadences nommées (`contact`, `apres_devis`, `reveil`, plus `generique` = les 5 barreaux historiques, migrés jamais supprimés), et la granularité passe au MINUTE (`delai_minutes`) avec une `heure_cible` optionnelle — la touche 2 de la cadence contact tombe à J0 + 3 minutes, ce qu'un modèle en JOURS ne pouvait pas exprimer. `template_cle` est un TEXTE LIBRE côté gabarit (valeur = une `MessageTemplate.Cle` de MRY12) : volontairement pas une FK, pour ne pas créer de dépendance d'import entre les deux modules. `unique_together` = (company, cadence, ordre). `?cadence=` filtre la liste ; sans lui, toutes cadences confondues. Validation serveur : `delai_minutes < 1440`, `heure_cible` optionnelle (`null` = pas de recalage horaire). CAD43 (21/09/2026) : le champ `samedi_ok` s'AJOUTE en fin de forme — aucun champ retire ni deplace, aucun ecran existant casse.",
   "exemple": {
     "id": 51,
     "cadence": "contact",
@@ -11,7 +11,9 @@
     "canal": "whatsapp",
     "libelle": "Message d'identité",
     "template_cle": "identite",
-    "actif": true
+    "actif": true,
+    "dimanche_ok": false,
+    "samedi_ok": false
   },
   "exemple_liste": [
     {
@@ -24,7 +26,9 @@
       "canal": "whatsapp",
       "libelle": "Message d'identité",
       "template_cle": "identite",
-      "actif": true
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": true
     },
     {
       "id": 52,
@@ -36,7 +40,9 @@
       "canal": "appel",
       "libelle": "Appel d'ouverture",
       "template_cle": "appel_ouverture",
-      "actif": true
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": false
     },
     {
       "id": 54,
@@ -48,7 +54,9 @@
       "canal": "appel",
       "libelle": "Appel J1",
       "template_cle": "repondeur",
-      "actif": true
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": false
     }
   ],
   "exemple_vide": [],
@@ -56,6 +64,8 @@
     "cadence": "contact | apres_devis | reveil | generique.",
     "canal": "appel | whatsapp | email | visite — l'enum du GABARIT, jamais `crm.Canal` (source du lead).",
     "heure_cible": "chaîne « HH:MM » ou null ; appliquée en heure locale Africa/Casablanca puis recalée sur la fenêtre d'appel (MRY8).",
-    "compat": "`seed_defaults` continue de poser les 5 barreaux J+2/5/10/20/35 en cadence `generique` — inchangés, ni supprimés ni réécrits."
+    "compat": "`seed_defaults` continue de poser les 5 barreaux J+2/5/10/20/35 en cadence `generique` — inchangés, ni supprimés ni réécrits.",
+    "dimanche_ok": "booleen — seule une touche marquee ainsi peut tomber un dimanche (16 h-19 h, Protocole v3).",
+    "samedi_ok": "CAD43 — booleen PAR TOUCHE, symetrique exact de `dimanche_ok`, FAUX partout par defaut (aucun gabarit ne l'active). Coche, il ouvre le samedi a CETTE touche seule, dans la fenetre ordinaire de son canal : il sert a poser le message d'identite du lead arrive le vendredi soir sans ouvrir les six appels du protocole. Le ferie et le Ramadan priment (CAD41)."
   }
 }

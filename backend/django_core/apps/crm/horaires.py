@@ -173,12 +173,17 @@ def est_en_ramadan(d, company, profil=None):
     return debut <= d <= fin
 
 
-def fenetre_du_jour(d, company, *, dimanche=False, canal='appel'):
+def fenetre_du_jour(d, company, *, dimanche=False, samedi=False,
+                    canal='appel'):
     """`(debut, fin, pause)` du jour `d`, ou ``None`` si non appelable.
 
     `pause` est ``(debut, fin)`` le vendredi (prière), sinon ``None``.
     `dimanche=True` renvoie la fenêtre dominicale 16 h-19 h du Protocole v3 —
     réservée à la touche marquée `dimanche_ok`, jamais au reste.
+    `samedi=True` (CAD43) ouvre le SAMEDI à la seule touche marquée
+    `samedi_ok`, dans la fenêtre ORDINAIRE de son canal : rien n'est ouvert
+    pour les autres touches, et si la société a déjà coché le samedi comme
+    jour ouvré, ce drapeau ne change rien.
 
     `canal` (07/09/2026) décide de la seule chose qui SÉPARE les deux
     fenêtres : l'ouverture (`message_heure_debut` pour WhatsApp/e-mail,
@@ -202,6 +207,22 @@ def fenetre_du_jour(d, company, *, dimanche=False, canal='appel'):
                     _heure(profil, 'ramadan_appel_fin', datetime.time(15, 0)),
                     None)
         return (DIMANCHE_DEBUT, DIMANCHE_FIN, None)
+    if samedi and d.weekday() == 5 and not _jour_ouvre(d, company):
+        # CAD43 — symétrique de la branche dominicale, pour la seule touche
+        # marquée `samedi_ok` : le samedi reste fermé à TOUTES les autres.
+        # Aucune fenêtre inventée — c'est la fenêtre ordinaire du canal (un
+        # message dès l'ouverture des messages, un appel jamais avant celle
+        # des appels). Comme le dimanche (CAD41), le férié et le Ramadan
+        # priment.
+        if _est_ferie(d, company):
+            return None
+        if est_en_ramadan(d, company, profil=profil):
+            return (_heure(profil, 'ramadan_appel_debut', datetime.time(9, 0)),
+                    _heure(profil, 'ramadan_appel_fin', datetime.time(15, 0)),
+                    None)
+        return (_ouverture(profil, canal),
+                _heure(profil, 'appel_heure_fin', datetime.time(20, 0)),
+                None)
     if not _jour_ouvre(d, company):
         return None
     if est_en_ramadan(d, company, profil=profil):
@@ -239,11 +260,12 @@ def _combiner(d, t):
     return datetime.datetime.combine(d, t, tzinfo=CASABLANCA)
 
 
-def est_dans_fenetre(dt, company, *, dimanche=False, canal='appel'):
+def est_dans_fenetre(dt, company, *, dimanche=False, samedi=False,
+                     canal='appel'):
     """L'instant `dt` est-il dans la fenêtre de son jour, pour ce `canal` ?"""
     local = _local(dt)
     fenetre = fenetre_du_jour(local.date(), company, dimanche=dimanche,
-                              canal=canal)
+                              samedi=samedi, canal=canal)
     if fenetre is None:
         return False
     debut, fin, pause = fenetre
@@ -255,7 +277,8 @@ def est_dans_fenetre(dt, company, *, dimanche=False, canal='appel'):
     return True
 
 
-def prochain_creneau_appel(dt, company, *, dimanche=False, canal='appel'):
+def prochain_creneau_appel(dt, company, *, dimanche=False, samedi=False,
+                           canal='appel'):
     """Le prochain instant JOIGNABLE à partir de `dt` (inclus), pour `canal`.
 
     Renvoie `dt` inchangé s'il est déjà dans la fenêtre. Sinon, dans l'ordre :
@@ -273,7 +296,7 @@ def prochain_creneau_appel(dt, company, *, dimanche=False, canal='appel'):
     jour = local.date()
     for _ in range(_MAX_JOURS):
         fenetre = fenetre_du_jour(jour, company, dimanche=dimanche,
-                                  canal=canal)
+                                  samedi=samedi, canal=canal)
         if fenetre is not None:
             debut, fin, pause = fenetre
             candidat = local if jour == local.date() else _combiner(jour, debut)
