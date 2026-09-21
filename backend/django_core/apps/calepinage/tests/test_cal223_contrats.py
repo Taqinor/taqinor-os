@@ -134,6 +134,15 @@ SANS_PRODUCTEUR_PUR = {
         '(aucun σ sans source, aucun P50 recopié en P90) sont affirmées sans '
         'base par '
         'apps/calepinage/tests/test_calx144_contrat_incertitude.py',
+
+    # CALX142
+    'calepinage_serie_horaire.json':
+        "détail du bloc `resultat['serie_horaire']` PERSISTÉ : il n'est pas "
+        'recopié par GET resultat/ (D-CALX 14, volume) et son seul lecteur '
+        "est l'export CSV, qui rend un FICHIER — aucune forme JSON servie à "
+        'comparer ; la série est écrite par CALX150 et la forme est affirmée '
+        "sans base, par l'exporteur lui-même, dans "
+        'apps/calepinage/tests/test_calx142_contrat_serie.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
