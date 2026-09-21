@@ -337,7 +337,9 @@ def extraire_talon(source, noms):
             bloquants.extend(modeles)
             continue
         segments.append(segment)
-    return '\n\n'.join(segments), sorted(manquants), sorted(set(bloquants))
+    # Deux lignes vides entre définitions de premier niveau : le talon doit
+    # passer flake8 (E302) comme n'importe quel fichier du dépôt.
+    return '\n\n\n'.join(segments), sorted(manquants), sorted(set(bloquants))
 
 
 # --------------------------------------------------------------------------
@@ -634,15 +636,31 @@ def rendre_models_py(label, talon='', reclames=()):
         % (label, NOM_MIGRATION, parked.ARCHIVE_REF))
     if not talon:
         return entete + '"""\n'
+    liste = ''
+    ligne = ' '
+    for symbole in sorted(reclames):
+        if len(ligne) + len(symbole) + 2 > 78:
+            liste += ligne.rstrip() + '\n'
+            ligne = ' '
+        ligne += '``%s``, ' % symbole
+    liste += ligne.rstrip().rstrip(',')
     return entete + (
         '\n'
-        'TALON — ce qui SUIT n\'est pas du code métier : ce sont les %d symbole(s)\n'
-        'que les migrations GELÉES de l\'app référencent encore (%s),\n'
-        'recopiés VERBATIM de l\'original. Sans eux, ces migrations ne\n'
-        's\'importent plus et le graphe ENTIER casse. Aucun modèle Django ici :\n'
-        'c\'est la règle vérifiée par ``core.parked.modeles_declares``.\n'
+        'TALON — ce qui suit n\'est PAS du code métier : ce sont les %d\n'
+        'symbole(s) que des migrations GELÉES référencent encore dans ce\n'
+        'fichier, recopiés VERBATIM de l\'original :\n'
+        '%s.\n'
+        '\n'
+        'Sans eux, ces migrations ne s\'importent plus et le graphe ENTIER\n'
+        'casse (``AttributeError`` au chargement, visible seulement dans un\n'
+        'processus neuf). Aucun modèle Django ici : c\'est la règle vérifiée\n'
+        'par ``core.parked.modeles_declares``. Au retour du module, ce talon\n'
+        'est REMPLACÉ par le models.py archivé (docs/parked-modules.md §5).\n'
         '"""\n'
-        '%s\n' % (len(reclames), ', '.join(sorted(reclames)), talon))
+        # Deux lignes vides après le docstring : sans elles, un talon qui
+        # commence par une fonction (aucun import à tirer) échoue en E302.
+        '\n\n'
+        '%s\n' % (len(reclames), liste, talon))
 
 
 def rendre_migration(label, feuille, dependances, suppressions, retraits_cycle):

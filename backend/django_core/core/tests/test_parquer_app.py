@@ -203,10 +203,12 @@ class ParquerAppTests(SimpleTestCase):
         """``call_command`` sur une INSTANCE : la découverte des commandes passe
         par INSTALLED_APPS, que ce test réduit volontairement à l'app jouet
         (registre minimal = graphe de migrations minimal, et surtout AUCUN
-        ``ready()`` d'app réelle rejoué)."""
+        ``ready()`` d'app réelle rejoué).
+
+        Pas de ``skip_checks=`` : la commande porte ``requires_system_checks =
+        []``, donc Django n'expose même pas l'option (elle serait refusée)."""
         self.sortie = io.StringIO()
-        call_command(cmd.Command(), *args, verbosity=0, skip_checks=True,
-                     stdout=self.sortie)
+        call_command(cmd.Command(), *args, verbosity=0, stdout=self.sortie)
         return self.sortie.getvalue()
 
     def _coquiller(self, *args):
@@ -396,7 +398,7 @@ class TalonModelsPyTests(SimpleTestCase):
     def _coquiller(self, *args, **kwargs):
         sortie = io.StringIO()
         call_command(cmd.Command(), 'talon', *args, verbosity=0,
-                     skip_checks=True, stdout=sortie, **kwargs)
+                     stdout=sortie, **kwargs)
         return sortie.getvalue()
 
     def _models_py(self):
