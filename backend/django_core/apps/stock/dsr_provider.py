@@ -78,26 +78,18 @@ def erase_stock(company, subject_identifier):
 
     Renvoie ``{'pseudonymises', 'motif_conservation'}``. Aucune ligne n'est
     supprimée ; la personne morale et l'historique d'achat sont conservés.
-    """
-    from apps.grc.services import empreinte_avant, journaliser_destruction
 
+    SOLMVP12 (20/09/2026) — la journalisation de l'effacement dans le module
+    GRC (détaché de stock) a été retirée : la pseudonymisation reste
+    identique, seule sa trace dans le registre GRC n'est plus posée.
+    """
     fournisseurs = _matcher(company, subject_identifier)
     count = 0
     for f in fournisseurs:
-        empreinte = empreinte_avant({
-            'contact_personne': f.contact_personne,
-            'email': f.email,
-            'telephone': f.telephone,
-        })
         f.contact_personne = ANONYME
         f.email = None
         f.telephone = None
         f.save(update_fields=['contact_personne', 'email', 'telephone'])
-        journaliser_destruction(
-            company, type_objet='stock_fournisseur', objet_ref=f.pk,
-            action='anonymise', demande_droit_ref=subject_identifier,
-            motif='Effacement DSR (loi 09-08) — contact fournisseur',
-            empreinte=empreinte)
         count += 1
 
     return {

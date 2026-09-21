@@ -2637,32 +2637,30 @@ from django.core.exceptions import (  # noqa: E402
 )
 
 
-# ── NTP2P4 — Budget d'engagement par département ───────────────────────────
-# Un budget est une ENVELOPPE (département × période) ; chaque demande d'achat
+# ── NTP2P4 — Budget d'engagement d'achats ───────────────────────────────────
+# Un budget est une ENVELOPPE (société × période) ; chaque demande d'achat
 # soumise consomme cette enveloppe sous forme d'ENGAGEMENT. Le blocage dur est
 # OPT-IN (``AchatsParametres.budget_departement_actif``, défaut False) : sans
 # activation, la soumission d'une demande d'achat reste exactement ce qu'elle
-# était. Le département est référencé en STRING-FK vers ``rh.Departement``
-# (aucun import cross-app au chargement).
+# était. SOLMVP12 (20/09/2026) — la distinction PAR DÉPARTEMENT a été retirée
+# (elle référençait le module RH, détaché de stock) : l'enveloppe est
+# désormais unique par société et par période.
 
 
 class BudgetDepartement(TenantModel):
-    """NTP2P4 — enveloppe budgétaire d'achats d'un département sur une période.
+    """NTP2P4 — enveloppe budgétaire d'achats de la société sur une période.
 
     Deux périodicités : ANNUELLE (``mois = 0``) et MENSUELLE (``mois`` 1-12).
     Le résolveur privilégie le budget MENSUEL de la période visée et se replie
     sur le budget ANNUEL de l'année. ``mois = 0`` (et non ``NULL``) pour que la
-    contrainte d'unicité company × département × périodicité × année × mois
-    tienne réellement en base (``NULL != NULL`` en Postgres).
+    contrainte d'unicité company × périodicité × année × mois tienne
+    réellement en base (``NULL != NULL`` en Postgres).
     """
 
     class Periodicite(models.TextChoices):
         MENSUELLE = 'mensuelle', 'Mensuelle'
         ANNUELLE = 'annuelle', 'Annuelle'
 
-    departement = models.ForeignKey(
-        'rh.Departement', on_delete=models.PROTECT,  # on_delete: PROTECT — un budget porte un montant alloué RÉEL (donnée de pilotage non reconstructible) ; on refuse la suppression du département plutôt que d'effacer silencieusement son enveloppe et ses engagements
-        related_name='budgets_achat', verbose_name='Département')
     periodicite = models.CharField(
         max_length=10, choices=Periodicite.choices,
         default=Periodicite.ANNUELLE, verbose_name='Périodicité')
@@ -2682,21 +2680,18 @@ class BudgetDepartement(TenantModel):
         ordering = ['-annee', '-mois', 'id']
         constraints = [
             models.UniqueConstraint(
-                fields=['company', 'departement', 'periodicite', 'annee',
-                        'mois'],
+                fields=['company', 'periodicite', 'annee', 'mois'],
                 name='uniq_budget_dep_periode'),
         ]
         indexes = [
             models.Index(fields=['company', 'annee'],
                          name='idx_budgdep_co_annee'),
-            models.Index(fields=['company', 'departement'],
-                         name='idx_budgdep_co_dept'),
         ]
 
     def __str__(self):
         periode = f'{self.annee}' if not self.mois else \
             f'{self.mois:02d}/{self.annee}'
-        return f'Budget {self.departement_id} · {periode}'
+        return f'Budget {periode}'
 
     def clean(self):
         super().clean()

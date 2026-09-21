@@ -983,38 +983,6 @@ def check_negative_stock_guard(company, quantite_avant, quantite_apres):
             'opération ferait passer le stock sous zéro.')
 
 
-def check_periode_comptable_ouverte(company, une_date, *,
-                                    document='Ce document'):
-    """AUD232 — refuse un DOCUMENT d'achat daté dans une période comptable
-    VERROUILLÉE (FG115).
-
-    Le refus n'existait qu'au fond de la pile (``EcritureComptable.save``) et
-    seulement quand ``COMPTA_AUTO_ECRITURES`` est actif (défaut OFF) : sans
-    écriture, une facture ou un paiement fournisseur pouvait être ANTIDATÉ
-    dans un mois clos sans que rien ne bronche ; avec le toggle ON, il partait
-    en ``ValidationError`` non traduite APRÈS la création du document (facture
-    orpheline). La garde est donc posée EN AMONT, sur le document lui-même —
-    même patron que ``compta.services.verifier_facture_modifiable`` côté
-    ventes : import function-local du SERVICE compta, jamais de son modèle.
-
-    ``compta`` absente, société inconnue, date vide ou aucune période
-    verrouillée = no-op strict (comportement historique). Lève ``ValueError``
-    (les vues la traduisent en 400 métier).
-    """
-    if company is None or une_date is None:
-        return
-    try:
-        from apps.compta.services import periode_verrouillee_pour
-    except Exception:  # noqa: BLE001 — compta absent = garde silencieuse
-        return
-    periode = periode_verrouillee_pour(company, une_date)
-    if periode is not None:
-        raise ValueError(
-            f'Période comptable clôturée : {document.lower()} daté du '
-            f'{une_date} tombe dans une période verrouillée '
-            f'({periode.date_debut} → {periode.date_fin}).')
-
-
 # ── N19 — Retour fournisseur : validation = décrément de stock (SORTIE) ───────
 
 def _reouvrir_quantite_recue_bcf(bc, produit_id, quantite_retournee):
@@ -1057,9 +1025,8 @@ def apply_retour_fournisseur(retour, user):
     YPROC8 — quand ``retour.bon_commande`` est renseigné, rouvre
     ``quantite_recue`` des lignes BCF du même produit (plafonné à la quantité
     reçue), rétrograde le statut RECU→ENVOYE si le BCF n'est plus entièrement
-    reçu, et rafraîchit les rapprochements 3 voies OUVERTS de ce BCF (via le
-    service compta dédié — jamais d'import du modèle compta). Un retour SANS
-    BCF lié se comporte exactement comme avant (aucune régression)."""
+    reçu. Un retour SANS BCF lié se comporte exactement comme avant (aucune
+    régression)."""
     from django.db import transaction
     from .models import Produit, RetourFournisseur, MouvementStock
     if retour.statut != RetourFournisseur.Statut.BROUILLON:
@@ -1089,17 +1056,6 @@ def apply_retour_fournisseur(retour, user):
                     retour.bon_commande, ligne.produit_id, ligne.quantite)
         retour.statut = RetourFournisseur.Statut.VALIDE
         retour.save(update_fields=['statut'])
-    if retour.bon_commande_id:
-        try:
-            from apps.compta.services import (
-                refresh_rapprochements_ouverts_pour_bcf,
-            )
-            refresh_rapprochements_ouverts_pour_bcf(
-                retour.company, retour.bon_commande_id)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            logger.warning(
-                'apply_retour_fournisseur: échec refresh rapprochement '
-                'BCF %s', retour.bon_commande_id)
     return retour
 
 
@@ -1243,13 +1199,6 @@ def confirm_reception_fournisseur(reception, user):
             company=reception.company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
-    # AUD233 — le rapprochement 3 voies du BCF est CRÉÉ/RAFRAÎCHI dès que la
-    # marchandise est réellement entrée : c'est le moment où « reçu » cesse
-    # d'être une hypothèse. Réglage société, ON par défaut, best-effort (une
-    # réception confirmée n'échoue jamais pour cette raison).
-    if bc is not None:
-        rafraichir_rapprochement_3voies_auto(
-            reception.company, bc.id, user=user)
     # NTWMS34 — routage post-contrôle : un verdict NON CONFORME met la
     # marchandise reçue en quarantaine (NTWMS31) au lieu du put-away normal.
     try:
@@ -1613,7 +1562,7 @@ def add_paiement_sous_traitant(*, company, user=None, facture, montant,
     chaîne fournisseur générique.
 
     APPELANT INTERNE DÉLIBÉRÉMENT EXCLU de cette chaîne :
-    ``apps.compta.services.valider_compensation`` (compensation AR/AP) appelle
+    la compensation AR/AP de la comptabilité appelle
     ce service SANS RAS ni événement — elle poste sa PROPRE écriture de
     compensation, un second passage par ``ecriture_pour_paiement_fournisseur``
     doublonnerait le décaissement, et une retenue à la source n'a pas de sens
@@ -1631,9 +1580,6 @@ def add_paiement_sous_traitant(*, company, user=None, facture, montant,
         raise ValueError('Le montant du paiement doit être positif.')
     if montant_dec > facture.solde_du:
         raise ValueError('Le paiement dépasse le reste à payer.')
-    # AUD232 — garde de période comptable EN AMONT du document.
-    check_periode_comptable_ouverte(
-        company, date_paiement, document='Ce règlement sous-traitant')
     extra = {}
     if taux_ras is not None:
         extra['taux_ras'] = taux_ras
@@ -2049,7 +1995,7 @@ def _emit_mouvement_stock_enregistre(mouvement, company):
     ``scripts/check_mouvement_stock_service.py`` (garde CI sémantique) refuse
     tout nouveau ``MouvementStock.objects.create`` hors de ce service.
 
-    ``stock`` n'importe jamais ``apps.compta`` : l'instance transite par le
+    ``stock`` n'importe jamais la comptabilité : l'instance transite par le
     signal. Best-effort strict : un abonné qui échoue ne doit JAMAIS faire
     échouer le mouvement de stock lui-même (le stock reste la source de vérité,
     la comptabilité en est le miroir). Le double garde-fou (toggle WIR24
@@ -3250,13 +3196,6 @@ def supplier_performance(company, fournisseur):
         company=company, fournisseur=fournisseur, resolu=False,
         gravite=IncidentQualiteFournisseur.Gravite.CRITIQUE).count()
 
-    # DRAFT165-79 (AUDV11) — compteur SCAR (demandes d'action corrective
-    # fournisseur QHSE) ADVISORY au scorecard : lu via le sélecteur qhse
-    # (jamais un import de modèle cross-app) ; best-effort à zéro si l'app
-    # qhse n'a aucune donnée pour ce fournisseur.
-    from apps.qhse.selectors import scar_count_par_fournisseur
-    scar = scar_count_par_fournisseur(company, fournisseur.id)
-
     return {
         'fournisseur_id': fournisseur.id,
         'fournisseur_nom': fournisseur.nom,
@@ -3266,8 +3205,6 @@ def supplier_performance(company, fournisseur):
         'otif_nb_retard': otif['nb_retard'],
         'otif_nb_incomplet': otif['nb_incomplet'],
         'incidents_qualite_critiques_ouverts': incidents_critiques,
-        'scar_total': scar['total'],
-        'scar_ouvertes': scar['ouvertes'],
         'avg_lead_time_days': round(sum(lead_times) / len(lead_times), 1) if lead_times else None,
         'fill_rate_pct': round(sum(fill_rates) / len(fill_rates), 1) if fill_rates else None,
         'nb_retours': nb_retours,
@@ -4886,53 +4823,6 @@ def imputer_avoir_fournisseur(avoir, facture, montant=None, *, user=None):
 
 # ── XPUR10 — tolérances 3 voies & file d'exceptions ─────────────────────────
 
-def rafraichir_rapprochement_3voies_auto(company, bon_commande_id, *,
-                                         user=None):
-    """AUD233 — auto-crée/rafraîchit le rapprochement 3 voies d'un BCF.
-
-    [DÉCISION FONDATEUR 03/09/2026] Le rapprochement commandé/reçu/facturé
-    était OPT-IN PAR BON DE COMMANDE et n'avait qu'UN seul créateur : une
-    action manuelle explicite. Conséquence en chaîne :
-    ``compta.selectors.rapprochement_ecart_pct`` renvoyait ``None`` faute de
-    ``Rapprochement``, donc ``evaluate_facture_exception`` était un NO-OP
-    STRUCTUREL — par défaut, une facture fournisseur pouvait être payée pour
-    plus que ce qui avait été reçu sans qu'aucune alerte ne se déclenche.
-
-    Réglage société ``AchatsParametres.rapprochement_3voies_auto``, ON par
-    défaut. **JAMAIS RÉTROACTIF** : cette fonction n'est appelée que par des
-    ÉVÉNEMENTS (confirmation d'une réception, évaluation d'une facture liée à
-    un BCF) — aucun rattrapage de l'historique n'a lieu, un BCF déjà reçu et
-    facturé avant la bascule reste exactement dans l'état où il était.
-
-    Écrit dans ``apps.compta`` par son SERVICE (jamais un import de ses
-    modèles). Best-effort et silencieuse : une réception ne doit jamais échouer
-    parce que la compta est indisponible.
-    """
-    from .models import AchatsParametres
-    if not bon_commande_id or company is None:
-        return None
-    try:
-        if not AchatsParametres.for_company(company).rapprochement_3voies_auto:
-            return None
-    except Exception:  # pragma: no cover - défensif (réglage illisible)
-        return None
-    try:
-        from apps.compta.services import creer_rapprochement_3voies
-    except Exception:  # pragma: no cover - défensif (compta indisponible)
-        return None
-    try:
-        parametres = AchatsParametres.for_company(company)
-        return creer_rapprochement_3voies(
-            company, bon_commande_id=bon_commande_id,
-            tolerance=parametres.tolerance_prix_absolu_mad or Decimal('0'),
-            note='AUD233 — rapprochement automatique.', user=user)
-    except Exception:  # pragma: no cover - best-effort, jamais bloquant
-        logger.exception(
-            'AUD233 rapprochement 3 voies automatique impossible pour le '
-            'BCF %s', bon_commande_id)
-        return None
-
-
 def _categorie_unique_du_bcf(bon_commande_id):
     """NTP2P9 — catégorie produit COMMUNE aux lignes catalogue du BCF, ou
     ``None`` si les lignes portent des catégories différentes (ou aucune
@@ -4972,57 +4862,17 @@ def evaluer_tolerance_ecart(company, bon_commande_id):
     return override.tolerance_prix_pct
 
 
-def evaluate_facture_exception(company, facture):
-    """XPUR10 — compare l'écart du rapprochement 3 voies (FG131, lu via
-    ``apps.compta.selectors`` — jamais d'import de modèles compta) du BCF
-    d'origine de ``facture`` à la tolérance APPLICABLE (NTP2P9 —
-    ``evaluer_tolerance_ecart`` : catégorie du BCF si configurée, sinon le
-    défaut de la société, ``AchatsParametres.tolerance_prix_pct``).
-
-    Hors tolérance → statut_controle=exception + motif_ecart(persistés).
-    Dans la tolérance (ou pas de BCF/rapprochement encore évalué) → no-op,
-    la facture reste 'normale' (comportement historique). Renvoie
-    ``(en_exception: bool, ecart_pct: Decimal|None)``."""
-    from .models import FactureFournisseur
-    if not facture.bon_commande_id:
-        return False, None
-    try:
-        from apps.compta.selectors import rapprochement_ecart_pct
-    except Exception:  # pragma: no cover - défensif (compta indisponible)
-        return False, None
-    # AUD233 — LE RAPPROCHEMENT EXISTE ENFIN QUAND ON LE LIT. Sans cette
-    # ligne, `rapprochement_ecart_pct` renvoyait `None` pour tout BCF dont
-    # personne n'avait cliqué le bouton manuel, et cette fonction ne pouvait
-    # STRUCTURELLEMENT jamais détecter le moindre écart. Idempotent
-    # (get_or_create + ré-évaluation) et gouverné par le réglage société.
-    rafraichir_rapprochement_3voies_auto(company, facture.bon_commande_id)
-    ecart_pct = rapprochement_ecart_pct(company, facture.bon_commande_id)
-    if ecart_pct is None:
-        return False, None
-    # NTP2P9 — tolérance la plus spécifique (catégorie > défaut société).
-    tolerance = evaluer_tolerance_ecart(company, facture.bon_commande_id)
-    hors_tolerance = ecart_pct > tolerance
-    if hors_tolerance:
-        facture.statut_controle = FactureFournisseur.StatutControle.EXCEPTION
-        facture.motif_ecart = (
-            f'Écart de {ecart_pct:.2f} % (tolérance applicable : '
-            f'{tolerance:.2f} %) sur le rapprochement 3 voies.')
-        facture.save(update_fields=['statut_controle', 'motif_ecart'])
-    return hors_tolerance, ecart_pct
-
-
 def check_facture_exception_gate(company, facture):
-    """XPUR10 — (ré)évalue l'écart de rapprochement 3 voies de la facture
-    contre les tolérances société PUIS lève ValueError si elle est (ou
-    devient) EXCEPTION non résolue — bloque la CRÉATION d'un
-    PaiementFournisseur. No-op si la facture reste 'normale' (pas de BCF,
-    pas encore de rapprochement évalué, ou dans la tolérance) ou a déjà été
-    résolue (statut 'resolue' n'est jamais re-basculé en exception ici —
-    la résolution est un acte explicite du responsable)."""
+    """XPUR10 — lève ValueError si la facture est en EXCEPTION non résolue —
+    bloque la CRÉATION d'un PaiementFournisseur. No-op si la facture reste
+    'normale' ou a déjà été résolue (statut 'resolue' n'est jamais re-basculé
+    en exception ici — la résolution est un acte explicite du responsable).
+
+    SOLMVP12 (20/09/2026) — l'ÉVALUATION automatique de l'écart de
+    rapprochement 3 voies (lecture du module compta, détaché de stock) a été
+    retirée : seule la résolution manuelle (``resoudre_exception_facture``)
+    fait évoluer ``statut_controle`` désormais."""
     from .models import FactureFournisseur
-    if facture.statut_controle == FactureFournisseur.StatutControle.RESOLUE:
-        return
-    evaluate_facture_exception(company, facture)
     if facture.statut_controle == FactureFournisseur.StatutControle.EXCEPTION:
         raise ValueError(
             f'Paiement bloqué : facture {facture.reference} en exception '
@@ -7372,10 +7222,10 @@ class BudgetDepasseError(Exception):
         self.manquant = manquant
 
 
-def engager_budget(company, *, departement_id, montant, periode=None,
+def engager_budget(company, *, departement_id=None, montant, periode=None,
                    demande_achat_id=None, bon_commande_id=None,
                    autoriser_depassement=False, note=''):
-    """Pose un engagement sur le budget du département, ou lève.
+    """Pose un engagement sur le budget de la société, ou lève.
 
     Renvoie l'``EngagementBudget`` créé, ou ``None`` quand le contrôle
     budgétaire est inactif / aucun budget n'est configuré (comportement
@@ -7384,6 +7234,11 @@ def engager_budget(company, *, departement_id, montant, periode=None,
 
     Idempotent par demande : ré-engager une demande déjà engagée met le
     montant à jour au lieu d'empiler une seconde ligne.
+
+    SOLMVP12 (20/09/2026) — ``departement_id`` est conservé UNIQUEMENT pour
+    compatibilité avec son appelant cross-app (``installations``) : le
+    budget n'est plus distingué par département (le module RH a été
+    détaché) — le paramètre n'est plus utilisé pour résoudre l'enveloppe.
     """
     from decimal import Decimal
     from . import selectors
@@ -7391,7 +7246,7 @@ def engager_budget(company, *, departement_id, montant, periode=None,
 
     montant = Decimal(montant or 0)
     verdict = selectors.verifier_budget_disponible(
-        company, departement_id, periode, montant)
+        company, periode, montant)
     if not verdict['controle_actif']:
         return None
     budget = verdict['budget']

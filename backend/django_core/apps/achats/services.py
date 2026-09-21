@@ -9,8 +9,8 @@ re-logera le corps des fonctions ici et retirera ce shim.
 FRONTIÈRE STOCK (CLAUDE.md) : les mouvements de stock à la réception/au retour
 sont réalisés par ``apps.stock.services`` (``confirm_reception_fournisseur`` /
 ``apply_retour_fournisseur`` posent les MouvementStock) — ``achats`` ne touche
-JAMAIS les modèles stock directement. L'intégration compta (écritures
-fournisseurs) continue via ``apps.compta.services``.
+JAMAIS les modèles stock directement. L'intégration comptable (écritures
+fournisseurs) continue via son propre service.
 """
 
 from apps.stock.services import (  # noqa: F401

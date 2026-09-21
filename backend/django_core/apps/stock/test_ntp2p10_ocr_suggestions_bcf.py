@@ -1,13 +1,10 @@
 """
-NTP2P10 — OCR facture fournisseur → auto-lien BCF + auto-évaluation 3-voies.
+NTP2P10 — OCR facture fournisseur → auto-lien BCF (suggestions).
 
 CRITÈRE D'ACCEPTATION : uploader une facture OCR d'un fournisseur ayant un
 BCF ouvert du même montant (± tolérance) propose ce BCF en premier choix
 (``stock/factures-fournisseur/suggestions-bcf/?fournisseur=&montant=``).
-Ne lie JAMAIS rien silencieusement (lecture seule) ; la confirmation
-(PATCH classique posant ``bon_commande``) déclenche IMMÉDIATEMENT
-``services.evaluate_facture_exception`` au lieu d'attendre le prochain
-paiement.
+Ne lie JAMAIS rien silencieusement (lecture seule).
 
 Run :
     python manage.py test apps.stock.test_ntp2p10_ocr_suggestions_bcf -v2
@@ -116,7 +113,11 @@ class SuggererBcfPourFactureTests(TestCase):
         self.assertEqual(resp.status_code, 400)
 
 
-class ConfirmationDeclencheRapprochementTests(TestCase):
+class ConfirmationBonCommandeTests(TestCase):
+    """SOLMVP12 (20/09/2026) — l'évaluation immédiate du rapprochement 3
+    voies à la confirmation (lecture du module compta, détaché de stock) a
+    été retirée : seule la confirmation du lien BCF reste testée ici."""
+
     def setUp(self):
         self.company = _company('ntp2p10-confirm-co')
         self.user = _user(self.company, 'ntp2p10-confirm-user')
@@ -138,27 +139,18 @@ class ConfirmationDeclencheRapprochementTests(TestCase):
             fournisseur=self.fournisseur, date_facture=date.today(),
             montant_ht=Decimal('1000'), montant_ttc=Decimal('1000'))
 
-    def test_patch_bon_commande_declenche_evaluation_immediate(self):
+    def test_patch_bon_commande_confirme_le_lien(self):
         resp = self.api.patch(
             f'{BASE}/factures-fournisseur/{self.facture.id}/',
             {'bon_commande': self.bc.id}, format='json')
         self.assertEqual(resp.status_code, 200)
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.bon_commande_id, self.bc.id)
-        # Le rapprochement 3 voies a été créé/rafraîchi (AUD233) : la
-        # facture n'a pas attendu le prochain paiement pour être évaluée.
-        # On interroge l'EXISTENCE, pas l'écart : rien n'a encore été reçu sur
-        # ce BCF, donc `rapprochement_ecart_pct` vaut légitimement None (on ne
-        # divise pas par un reçu nul) même une fois l'évaluation faite.
-        from apps.compta.selectors import rapprochement_existe
-        self.assertTrue(rapprochement_existe(self.company, self.bc.id))
 
-    def test_patch_sans_changer_bon_commande_ne_relance_rien(self):
-        # Un PATCH qui ne touche pas bon_commande (ex. note) ne déclenche
-        # rien — comportement historique inchangé, aucune évaluation.
+    def test_patch_sans_changer_bon_commande_ne_change_rien(self):
         resp = self.api.patch(
             f'{BASE}/factures-fournisseur/{self.facture.id}/',
             {'note': 'test'}, format='json')
         self.assertEqual(resp.status_code, 200)
-        from apps.compta.selectors import rapprochement_existe
-        self.assertFalse(rapprochement_existe(self.company, self.bc.id))
+        self.facture.refresh_from_db()
+        self.assertIsNone(self.facture.bon_commande_id)
