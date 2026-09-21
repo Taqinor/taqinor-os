@@ -3049,10 +3049,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # que l'écran n'offre pas était un mur sans porte.
         # L'erreur NOMME le champ fautif (règle fondateur 08/09/2026) —
         # jamais un « non enregistré » générique.
+        # EXCEPTION CAD45 — la touche d'appel TRAITÉE PAR ÉCRIT : le message de
+        # cette touche a été ouvert depuis l'ERP (trace RLC3). Aucun appel n'a
+        # eu lieu, exiger « Joint / Non joint » demanderait l'issue d'un appel
+        # qui n'existe pas. L'issue reste obligatoire sur un appel réellement
+        # passé — c'est elle qui alimente l'adhérence CKP3.
         if (statut == RelanceEtape.Statut.FAIT
                 and etape.canal == RelanceEtape.Canal.APPEL
                 and etape.cadence != 'generique'
-                and not outcome):
+                and not outcome
+                and not _message_ouvert_sur_touche(etape)):
             return Response(
                 {'erreurs': {'outcome': "Issue de l'appel obligatoire : "
                                         'Joint, Non joint, À rappeler, '
@@ -3072,7 +3078,34 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                     {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
                                   'heure HH:MM optionnelle).'},
                     status=status.HTTP_400_BAD_REQUEST)
-        from .services import marquer_etape_relance, reporter_prochaine_touche
+        from .services import (est_etape_de_filet, marquer_etape_relance,
+                               reporter_prochaine_touche)
+        # CAD3 — « À rappeler le… » sur une étape de FILET la REPORTE, elle ne
+        # la consomme pas. L'écran promet « L'étape est déplacée à la date
+        # choisie » ; la clore rendait la main au filet, qui posait une AUTRE
+        # étape, renommée « Décider la suite — perdu (motif) ou relance
+        # ultérieure » par la ceinture anti-tapis-roulant, avant que la date
+        # choisie ne lui soit appliquée. Un client qui dit « rappelez-moi la
+        # semaine prochaine » n'a rien arbitré. Même chemin que le bouton
+        # « Reporter » (action `reporter` plus bas) : la touche garde son
+        # identité, sa cadence et son libellé.
+        if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
+                and quand is not None and est_etape_de_filet(etape)):
+            reportee = reporter_prochaine_touche(
+                etape.lead, request.user, quand, etape=etape)
+            if reportee is not None:
+                etape = reportee
+                if note:
+                    etape.note = note
+                    etape.save(update_fields=['note'])
+                data = self.get_serializer(etape).data
+                data['prochaine_touche'] = {
+                    'due_at': (etape.due_at.isoformat()
+                               if etape.due_at else None),
+                    'due_date': etape.due_date.isoformat(),
+                    'canal': etape.canal,
+                }
+                return Response(data)
         etape = marquer_etape_relance(
             etape, request.user, statut, note=note, outcome=outcome,
             body=body)
@@ -4535,3 +4568,32 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
         reponse.set_cookie(COOKIE_APPAREIL, appareil.appareil_id,
                            httponly=False, **commun)
         return reponse
+
+
+# ── CAD-D ── CAD45 — une touche « appel » traitée PAR ÉCRIT ──────────────────
+
+def _message_ouvert_sur_touche(etape):
+    """CAD45 — le message de CETTE touche a-t-il été ouvert depuis l'ERP ?
+
+    Les boutons « Appeler » et « WhatsApp » sont rendus sur CHAQUE ligne quel
+    que soit le canal : le geste est donc déjà libre, et la commerciale écrit
+    parfois au lieu d'appeler. L'issue restait pourtant OBLIGATOIRE dès que le
+    canal vaut « appel » — elle devait répondre « Joint / Non joint » à propos
+    d'un appel qu'elle n'avait pas passé. C'est ce frottement-là qui gênait,
+    pas une impossibilité d'agir.
+
+    La preuve est celle que RLC3 écrit déjà : l'activité « WhatsApp ouvert »
+    portant le préfixe de cette touche, posée par le clic humain — jamais une
+    mémoire d'écran. Le préfixe vient de ``services`` (la même fonction que
+    l'écriture), jamais d'un second littéral.
+
+    Coût : une requête d'existence, et seulement quand la clôture arrive SANS
+    issue sur un canal « appel » — le seul cas où la réponse sert.
+    """
+    from .models import LeadActivity
+    from .services import prefixe_activite_message_ouvert
+    return LeadActivity.objects.filter(
+        company_id=etape.company_id, lead_id=etape.lead_id,
+        kind=LeadActivity.Kind.WHATSAPP,
+        body__startswith=prefixe_activite_message_ouvert(etape),
+    ).exists()

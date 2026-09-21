@@ -2614,8 +2614,9 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
     # MRY5 — tri à la MINUTE : `due_at` d'abord, les lignes d'avant MRY5 (sans
     # heure) EN DERNIER. Sans `nulls_last`, Postgres les remonterait en tête
     # de la file de Meryem alors qu'elles n'ont pas d'heure connue.
-    from django.db.models import F
-    return qs.order_by(F('due_at').asc(nulls_last=True), 'due_date', 'ordre')
+    # CAD83 — le départage à heure ÉGALE passe par `trier_file_du_jour`
+    # (priorité puis score), sans jamais précéder l'heure cible.
+    return trier_file_du_jour(qs)
 
 
 #: MRY30 — le statut VIRTUEL du suivi : « en retard » n'existe pas en base
@@ -4898,6 +4899,60 @@ def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
                      if lead.date_creation else ''),
         })
     return lignes
+
+
+# ── CAD-H ── CAD83 — départage de la file du jour ────────────────────────────
+#: Rang de tri de ``Lead.priorite``. La colonne est un ``CharField`` : trié tel
+#: quel, Postgres rendrait « basse » AVANT « haute ». Le rang explicite met la
+#: priorité haute en tête et laisse la basse en fin de tranche.
+PRIORITE_RANG_FILE = {'haute': 0, 'normale': 1, 'basse': 2}
+
+#: Rang appliqué à une priorité vide ou inconnue : celui de « normale », pour
+#: qu'un lead sans priorité ne soit ni promu ni relégué.
+PRIORITE_RANG_DEFAUT = 1
+
+
+def trier_file_du_jour(qs):
+    """CAD83 — ordonne la file du jour (``RelanceEtape``) en utilisant enfin
+    les deux signaux DÉJÀ affichés sur la ligne : le badge de priorité et le
+    ``ScoreBadge``.
+
+    L'ordre est un ordre d'AFFICHAGE, en DÉPARTAGE seulement :
+
+    1. ``due_at`` croissant, les touches sans heure en dernier — inchangé
+       depuis MRY5. Comme ``due_at`` porte la date, les touches en retard
+       passent d'elles-mêmes devant celles du jour.
+    2. ``due_date`` croissant — départage les touches sans heure connue.
+    3. **priorité** (haute → normale → basse), puis **score** décroissant
+       (les touches sans score en dernier) : ils n'interviennent qu'à heure
+       STRICTEMENT égale, donc jamais avant une ``heure_cible``. Un rendez-vous
+       pris avec le client à 10 h reste à 10 h, quelle que soit la priorité du
+       dossier de 11 h.
+    4. ``ordre`` — le barreau du plan, dernier mot (deux touches du même lead
+       ont la même priorité et le même score).
+
+    MRY32 reste intact : aucune touche n'est ajoutée, retirée ni déplacée dans
+    le temps ; seul l'ordre de lecture intra-tranche change.
+    """
+    from django.db.models import Case, F, IntegerField, Value, When
+
+    rangs = [
+        When(lead__priorite=valeur, then=Value(rang))
+        for valeur, rang in PRIORITE_RANG_FILE.items()
+    ]
+    return qs.annotate(
+        cad83_priorite_rang=Case(
+            *rangs,
+            default=Value(PRIORITE_RANG_DEFAUT),
+            output_field=IntegerField(),
+        ),
+    ).order_by(
+        F('due_at').asc(nulls_last=True),
+        'due_date',
+        'cad83_priorite_rang',
+        F('lead__score').desc(nulls_last=True),
+        'ordre',
+    )
 
 
 # ── CAD-M ── CAD166 — LES kWh DÉCLARÉS, JUSQU'AU MOTEUR
