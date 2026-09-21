@@ -49,12 +49,53 @@ CADENCE_RELANCE_DEFAUT = [
 ]
 
 
+# ── CAD25 (TRANCHÉ 21/09/2026) — CRÉNEAUX PAR TYPE DE TOUCHE ────────────────
+#
+# 7 des 11 touches de la prise de contact et 9 des 10 barreaux après devis
+# n'avaient AUCUNE heure cible : leur heure était celle de l'arrivée du lead
+# ou de l'envoi du devis. Un devis fini à 19 h 50 faisait tomber « le PDF
+# s'ouvre bien ? » à 19 h 50 le lendemain, et tous les leads de nuit ou de
+# week-end se regroupaient à l'ouverture.
+#
+# Décision fondateur : un créneau par TYPE de touche — les MESSAGES à 09 h 30,
+# les APPELS entre 17 h 30 et 18 h 30 (on pose le milieu de la fourchette,
+# 18 h 00, qui est aussi l'heure déjà retenue pour l'« Appel 4 »). Ces heures
+# sont des DÉFAUTS DE SEED : l'éditeur Paramètres → CRM reste la source de
+# vérité par société, et une société qui observe le Ramadan y ajuste ses
+# créneaux comme le reste.
+#
+# DEUX FAMILLES GARDENT VOLONTAIREMENT `heure_cible: None` :
+#   * les trois gestes J0 de la prise de contact (J0, J0+3 min, J0+2 h 30) —
+#     ce n'est pas un créneau mais une SÉQUENCE dans la journée, celle qui
+#     tient la promesse « rappelé dans les cinq minutes ». Leur imposer une
+#     heure les écraserait sur la même minute, le défaut que MRY5 a corrigé ;
+#   * les deux réveils J30/J60 — ils sont POSÉS sur un créneau d'étalement
+#     calculé par le placement (MRY30, huit réveils par jour ouvré, 20 min
+#     d'écart). Une heure imposée ferait retomber les huit sur la même minute.
+# La cadence `generique` (historique, plus jamais démarrée — CAD143) n'est pas
+# touchée : ses cinq barreaux restent exactement ce qu'ils ont toujours été.
+#
+# Garde-fou : ces heures restent BORNÉES par les fenêtres de la société
+# (message dès 08:30, appel dès 09:00, fermeture 20:00) et par la fenêtre du
+# Ramadan — `apps.crm.horaires.prochain_creneau_appel` recale toute heure qui
+# n'y tiendrait pas.
+CRENEAU_MESSAGE = datetime.time(9, 30)
+#: Bornes de la fourchette d'appel décidée le 21/09/2026.
+CRENEAU_APPEL_DEBUT = datetime.time(17, 30)
+CRENEAU_APPEL_FIN = datetime.time(18, 30)
+#: L'heure POSÉE par défaut sur un appel sans heure : le milieu de la
+#: fourchette, jamais un de ses bords.
+CRENEAU_APPEL = datetime.time(18, 0)
+
+
 class Cadence(models.TextChoices):
     """MRY4 — les trois cadences NOMMÉES du protocole de rappel, plus la
     cadence historique.
 
     Une seule échelle anonyme ne pouvait pas porter trois rythmes différents :
-    la prise de contact (8 touches sur 14 j, la première à J0 + 3 minutes),
+    la prise de contact (11 touches sur 14 j — 6 appels et 5 WhatsApp —, dont
+    la PREMIÈRE est le message d'identité à J0 + 0 minute, la deuxième l'appel
+    d'ouverture à J0 + 3 minutes et la troisième l'appel 2 à J0 + 2 h 30),
     le suivi après devis (J1…J14) et le réveil des dormants (J30/J60). La
     quatrième valeur, ``generique``, N'EST PAS une nouveauté : c'est le nom
     donné aux 5 barreaux neutres qui existaient déjà (J+2/5/10/20/35). Ils ne
@@ -75,8 +116,17 @@ class Cadence(models.TextChoices):
 
 # ── Protocole de rappel v3 (04/09/2026) ─────────────────────────────────────
 # 6 APPELS MAXIMUM + 5 WhatsApp sur 14 jours, jamais plus d'un appel ET d'un
-# message par jour. Ces délais viennent du protocole validé par le fondateur —
-# ils ne sont pas une estimation et ne se retouchent pas ici.
+# message par jour — **HORS J0** : les trois gestes du jour même (message
+# d'identité, appel d'ouverture, appel 2 à +2 h 30) sont VOULUS ensemble, c'est
+# la promesse « rappelé dans les cinq minutes ». Ces délais viennent du
+# protocole validé par le fondateur — ils ne sont pas une estimation et ne se
+# retouchent pas ici.
+# CAD20 (21/09/2026) — cette phrase n'est plus une intention : elle est
+# EXÉCUTÉE par le moteur (`apps.crm.cadence_temps.un_geste_par_jour`, appelé
+# par `calculer_echeances_cadence`). Une touche en trop sur une journée est
+# décalée d'un jour ouvré ; les trois touches J0 et le rendez-vous dominical
+# en sont exemptés. Un délai retouché depuis Paramètres ne peut donc plus
+# empiler trois appels le même jour.
 #
 # ``dimanche_ok`` : la touche 8 (5ᵉ appel) est le SEUL rendez-vous autorisé le
 # dimanche, entre 16 h et 19 h, pour les prospects qu'on ne trouve jamais en
@@ -100,21 +150,24 @@ CADENCE_CONTACT_DEFAUT = [
      'heure_cible': datetime.time(10, 30),
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 3',
      'template_cle': 'appel_relance', 'dimanche_ok': False},
-    {'ordre': 5, 'delai_jours': 1, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 5, 'delai_jours': 1, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'WhatsApp de valeur',
      'template_cle': 'valeur_j1', 'dimanche_ok': False},
     {'ordre': 6, 'delai_jours': 2, 'delai_minutes': 0,
      'heure_cible': datetime.time(18, 0),
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 4 (répondeur)',
      'template_cle': 'repondeur', 'dimanche_ok': False},
-    {'ordre': 7, 'delai_jours': 3, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 7, 'delai_jours': 3, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Vocal',
      'template_cle': 'vocal_j3', 'dimanche_ok': False},
     {'ordre': 8, 'delai_jours': 5, 'delai_minutes': 0,
      'heure_cible': datetime.time(10, 30),
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 5 (dimanche)',
      'template_cle': 'appel_dimanche', 'dimanche_ok': True},
-    {'ordre': 9, 'delai_jours': 7, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 9, 'delai_jours': 7, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': '« Je classe ? »',
      'template_cle': 'je_classe_j7', 'dimanche_ok': False},
     # CAD67 — le DERNIER appel avant clôture (celui qui décide du classement
@@ -123,7 +176,8 @@ CADENCE_CONTACT_DEFAUT = [
      'heure_cible': datetime.time(15, 0),
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 6 (dernier)',
      'template_cle': 'appel_dernier', 'dimanche_ok': False},
-    {'ordre': 11, 'delai_jours': 14, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 11, 'delai_jours': 14, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Clôture',
      'template_cle': 'cloture_j14', 'dimanche_ok': False},
 ]
@@ -144,35 +198,44 @@ CADENCE_CONTACT_DEFAUT = [
 # La question se rouvrira sur les CHIFFRES de CAD87, jamais sur une intuition.
 # Cette note existe pour qu'un futur audit ne la re-soulève pas.
 CADENCE_APRES_DEVIS_DEFAUT = [
-    {'ordre': 1, 'delai_jours': 1, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 1, 'delai_jours': 1, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Le PDF s\'ouvre bien ?',
      'template_cle': 'j1_pdf', 'dimanche_ok': False},
-    {'ordre': 2, 'delai_jours': 2, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 2, 'delai_jours': 2, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
      'template_cle': '', 'dimanche_ok': False},
     {'ordre': 3, 'delai_jours': 3, 'delai_minutes': 0,
      'heure_cible': datetime.time(16, 0),
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Dimanche famille',
      'template_cle': 'dimanche_famille', 'dimanche_ok': True},
-    {'ordre': 4, 'delai_jours': 4, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 4, 'delai_jours': 4, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Preuve — chantier comparable',
      'template_cle': 'j4_preuve', 'dimanche_ok': False},
-    {'ordre': 5, 'delai_jours': 6, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 5, 'delai_jours': 6, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Garanties fabricants',
      'template_cle': 'j6_garanties', 'dimanche_ok': False},
-    {'ordre': 6, 'delai_jours': 7, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 6, 'delai_jours': 7, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
      'template_cle': '', 'dimanche_ok': False},
-    {'ordre': 7, 'delai_jours': 9, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 7, 'delai_jours': 9, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Validité de la proposition',
      'template_cle': 'j9_validite', 'dimanche_ok': False},
-    {'ordre': 8, 'delai_jours': 11, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 8, 'delai_jours': 11, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
      'template_cle': '', 'dimanche_ok': False},
-    {'ordre': 9, 'delai_jours': 13, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 9, 'delai_jours': 13, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Dernier message',
      'template_cle': 'j13_dernier', 'dimanche_ok': False},
-    {'ordre': 10, 'delai_jours': 14, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 10, 'delai_jours': 14, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Mise en pause',
      'template_cle': 'j14_pause', 'dimanche_ok': False},
 ]

@@ -541,7 +541,7 @@ class Command(BaseCommand):
                     # (`_borne`, lue sur le modèle) : une seule ligne trop
                     # longue faisait tomber l'INSERT et, la transaction étant
                     # unique, tout l'import avec elle.
-                    Lead.objects.create(
+                    lead_cree = Lead.objects.create(
                         company=company,
                         nom=_borne('nom',
                                    fields.get('nom') or fields.get('societe')
@@ -572,6 +572,17 @@ class Command(BaseCommand):
                         date_creation_origine=_date_odoo(
                             fields.get('date_creation_odoo')),
                     )
+                    # CAD105 [TRANCHÉ 21/09/2026] — la SYNCHRONISATION démarre
+                    # la cadence des leads NEUFS. On appelle la même fonction
+                    # que le site, avec les mêmes gardes : un lead né dans
+                    # Odoo après la bascule reçoit son protocole, un lead
+                    # antérieur est refusé par la garde « miroir » et son
+                    # refus est TRACÉ au chatter (CAD104) — la commerciale
+                    # voit enfin qu'un dossier n'est pas suivi. La fonction
+                    # avale ses propres exceptions : un import n'échoue
+                    # jamais sur une cadence.
+                    services.demarrer_cadence_contact(
+                        lead_cree, origine='import_odoo_leads')
                 created += 1
 
             if dry_run:

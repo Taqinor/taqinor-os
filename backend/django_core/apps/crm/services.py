@@ -451,7 +451,76 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
             body=f'auto — réactivation ({source})',
         )
         _emit_stage_changed(lead, ancien_stage, cible, None)
+    # CAD107 — une réouverture pose une CADENCE DE REPRISE, quel que soit le
+    # chemin. Best-effort : une nouvelle touche entrante ne doit jamais
+    # échouer sur une cadence.
+    try:
+        reprendre_cadence_apres_reouverture(lead, None, origine=source)
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            'CAD107: reprise non posée après réactivation (lead #%s)',
+            getattr(lead, 'pk', '?'), exc_info=True)
     return True
+
+
+# ── CAD-B ── CAD107 ─────────────────────────────────────────────────────────
+
+def reprendre_cadence_apres_reouverture(lead, user, *, origine=''):
+    """CAD107 — UN seul comportement pour les trois chemins de réouverture.
+
+    Un client PERDU qui revient est le meilleur signal d'achat qui existe, et
+    il avait trois sorties différentes : le PATCH qui décoche « Perdu » ne
+    déclenchait RIEN (seul le passage inverse était traité), le lot
+    `unset_perdu` appelait le filet, et `reactivate_lead_on_new_touch` ne
+    créait aucune `RelanceEtape`. Dans les trois cas la prise de contact ne
+    pouvait de toute façon pas repartir (garde « déjà contacté ») : au mieux
+    une étape nue.
+
+    Le comportement unique REUTILISE la cadence RÉVEIL — jamais une nouvelle
+    cadence (CADX), et c'est exactement ce à quoi elle sert : reprendre le
+    contact d'un dossier mis de côté, sans rejouer six appels en quatorze
+    jours à quelqu'un qu'on a déjà travaillé.
+
+    Trois no-op délibérés :
+
+    * une touche est DÉJÀ ouverte ⇒ rien. CADX interdit deux cadences en
+      parallèle, et le dossier est déjà suivi ;
+    * lead perdu, archivé, « ne plus contacter », signé ou au froid ⇒ rien :
+      ce n'est pas une réouverture ;
+    * une cadence plus prioritaire est active ⇒ `CadenceActiveConflit` est
+      avalée, l'humain arrête d'abord (recette du 08/09).
+
+    Rend la liste des touches posées (vide sur no-op).
+    """
+    if lead is None or not getattr(lead, 'pk', None):
+        return []
+    lead.refresh_from_db(
+        fields=['stage', 'perdu', 'is_archived', 'ne_plus_contacter'])
+    if (lead.perdu or lead.is_archived
+            or getattr(lead, 'ne_plus_contacter', False)):
+        return []
+    if lead.stage in (stages.SIGNED, stages.COLD):
+        return []
+    if lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).exists():
+        return []
+    try:
+        etapes = initialiser_plan_relance(
+            lead, user, cadence='reveil', depart=timezone.now())
+    except CadenceActiveConflit:
+        etapes = []
+    if not etapes:
+        # REPLI — société sans gabarit de réveil, ou conflit de cadence :
+        # QJ-INVARIANT prime, un lead actif ne reste jamais sans prochaine
+        # étape. Le filet pose alors ce qu'il sait poser.
+        etape = assurer_prochaine_etape_apres_succes(lead, user)
+        return [etape] if etape is not None else []
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=('Dossier rouvert' + (f' ({origine})' if origine else '')
+              + ' — cadence de reprise posée.'))
+    return etapes
 
 
 def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
@@ -752,7 +821,7 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
 
     from apps.parametres.models_relance import CadenceRelanceEtape
 
-    from . import horaires
+    from . import cadence_temps, horaires
 
     def _canal(gabarit):
         """Le canal de CETTE touche — `appel` par défaut, jamais deviné."""
@@ -780,6 +849,23 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
     origine = horaires.prochain_creneau_appel(
         depart, lead.company, canal='whatsapp')
 
+    # CAD19 — L'ANCRE EST UNIQUE : c'est `origine`, pour TOUTES les touches.
+    # Les touches du jour même partaient déjà d'elle, mais les autres
+    # partaient de `depart`, l'instant BRUT d'arrivée. Un lead arrivé samedi
+    # 11 h voyait donc J0, J+1 et J+2 s'écraser sur le même lundi : trois
+    # jours de protocole en un, des touches qui NAISSENT en retard, et une
+    # adhérence fausse. Le même défaut frappait `apres_devis`, dont le départ
+    # est l'instant d'envoi du devis — un devis fini un vendredi soir empilait
+    # J+1, J+2 et J+3 sur deux jours. Les délais du protocole (J+N) ne
+    # changent pas d'un jour : c'est le POINT ZÉRO depuis lequel on les compte
+    # qui devient le premier instant réellement joignable.
+    # EXCEPTION `reveil` : MRY30 rétrodate EXPRÈS son départ (créneau moins
+    # `delai_jours`) pour que la touche J+30 tombe SUR le créneau d'étalement
+    # qu'il vient de calculer. Recaler cette ancre-là sur l'ouverture
+    # déplacerait le créneau dès que le départ rétrodaté tombe un week-end —
+    # et ferait dérailler le quota de huit réveils par jour ouvré.
+    ancre = depart if cadence == 'reveil' else origine
+
     echeances = []
     for gabarit in gabarits:
         if ((getattr(gabarit, 'template_cle', '') or '')
@@ -791,6 +877,22 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             # La numérotation `ordre` garde son trou : elle vient du gabarit
             # de la société, pas d'un compteur local.
             continue
+        # CAD32 — « WhatsApp uniquement » est saisi par le client, une fois,
+        # explicitement, et la cadence ne le lisait NULLE PART : le prospect
+        # qui a coché « ne m'appelez pas » recevait quand même les six appels
+        # du protocole. Sur ce segment, un barreau d'appel naît en WhatsApp —
+        # le canal change, rien d'autre : ni le nombre de touches, ni les
+        # libellés, ni les délais, ni les jours.
+        # CAD33 [TRANCHÉ 21/09/2026] — la préférence du client prime JUSQUE
+        # sur le rendez-vous du dimanche : lui aussi naît en WhatsApp pour un
+        # lead `whatsapp_only`. La fenêtre 16 h-19 h et l'unicité de la touche
+        # ne changent pas — c'est le canal, et lui seul, qui suit le client.
+        gabarit = cadence_temps.adapter_canal_au_lead(gabarit, lead)
+        # CAD34 — le symétrique : sans WhatsApp joignable (aucun numéro
+        # exploitable, ou une ligne FIXE), un barreau de message naît en
+        # APPEL. La touche 1 du protocole est un WhatsApp : un lead arrivé
+        # par téléphone n'avait sinon aucune cadence du tout.
+        gabarit = cadence_temps.adapter_canal_au_numero(gabarit, lead)
         delai_minutes = getattr(gabarit, 'delai_minutes', 0) or 0
         heure_cible = getattr(gabarit, 'heure_cible', None)
         if getattr(gabarit, 'dimanche_ok', False):
@@ -799,15 +901,26 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             # instant dans la fenêtre de SON jour : l'« appel du dimanche »
             # calculé en J+5 depuis un mercredi tombait un lundi, et le seul
             # rendez-vous dominical du protocole n'avait jamais lieu un
-            # dimanche. On prend donc le PREMIER dimanche dont la date atteint
-            # `depart + delai_jours`, à 16 h 30 (milieu de la fenêtre 16 h-19 h)
-            # — l'`heure_cible` du gabarit ne s'applique pas ici : elle vise un
-            # jour ouvré, et 10 h 30 un dimanche n'existe pas.
-            echeance = horaires.prochain_dimanche(
-                depart + timedelta(days=gabarit.delai_jours))
-            if echeance < depart:  # garde-fou : jamais dans le passé
-                echeance = horaires.prochain_dimanche(
-                    echeance + timedelta(days=1))
+            # dimanche.
+            # CAD24 — l'HEURE CIBLE du gabarit est désormais HONORÉE quand
+            # elle tombe dans la fenêtre dominicale 16 h-19 h : le réglage de
+            # l'écran Paramètres s'enregistrait sans le moindre effet ici.
+            # Hors de cette fenêtre (10 h 30 un dimanche n'existe pas), on
+            # garde 16 h 30 — le milieu de la fenêtre, jamais son bord.
+            heure_dimanche = (
+                heure_cible
+                if (heure_cible is not None
+                    and horaires.DIMANCHE_DEBUT <= heure_cible
+                    < horaires.DIMANCHE_FIN)
+                else horaires.DIMANCHE_HEURE_DEFAUT)
+            # CAD23 (TRANCHÉ 21/09/2026) — le dimanche le PLUS PROCHE du J+N
+            # visé, AVANT ou après : le premier dimanche ≥ J+5 faisait dériver
+            # le rendez-vous de J+5 (lead du mardi) à J+11 (lead du mercredi),
+            # et la touche J+7 naissait ensuite déjà en retard. `plancher`
+            # garantit qu'il ne précède jamais l'ancre de la cadence.
+            echeance = horaires.dimanche_le_plus_proche(
+                ancre + timedelta(days=gabarit.delai_jours), heure_dimanche,
+                plancher=ancre)
         elif gabarit.delai_jours == 0 and heure_cible is None:
             # Les touches DU JOUR MÊME s'enchaînent depuis l'origine ouvrable,
             # pas depuis l'heure brute d'arrivée du lead : les écarts du
@@ -815,7 +928,7 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             # l'heure d'arrivée.
             echeance = origine + timedelta(minutes=delai_minutes)
         else:
-            echeance = depart + timedelta(
+            echeance = ancre + timedelta(
                 days=gabarit.delai_jours, minutes=delai_minutes)
             if heure_cible is not None:
                 locale = echeance.astimezone(horaires.CASABLANCA)
@@ -827,9 +940,23 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
             # CAD43 — drapeau PAR TOUCHE, faux partout par défaut.
             samedi=bool(getattr(gabarit, 'samedi_ok', False)),
-            canal=_canal(gabarit))
+            canal=_canal(gabarit),
+            # CAD21 — l'heure imposée du gabarit SURVIT au passage au jour
+            # ouvré suivant : l'« Appel 4 » de 18 h ne ressort plus à 09 h le
+            # lundi. Jamais sur la touche dominicale : son heure est celle de
+            # la fenêtre 16 h-19 h, et 10 h 30 un dimanche n'existe pas.
+            heure_cible=(None
+                         if getattr(gabarit, 'dimanche_ok', False)
+                         else heure_cible))
         echeances.append((gabarit, echeance))
-    return echeances
+    # CAD20 — « jamais plus d'un appel ET d'un message par jour » était écrite
+    # dans le référentiel des cadences et exécutée nulle part : le recalage sur
+    # les jours ouvrés empile tout seul un J+13 dominical et un J+14 sur le
+    # même lundi, et un délai retouché depuis Paramètres pouvait poser trois
+    # appels le même jour. La garde s'exécute ICI, en dernier, sur la partition
+    # complète — les trois gestes J0 et le rendez-vous dominical en sont
+    # exemptés, et rien n'est ajouté, retiré ni réordonné.
+    return cadence_temps.un_geste_par_jour(echeances, lead.company)
 
 
 # ── CADX (fondateur 15/09/2026) — UNE SEULE cadence active par lead ──────────
@@ -865,8 +992,14 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     n'aurait jamais eu son plan. Pour ``apres_devis``, l'idempotence est en
     plus portée PAR DEVIS.
 
-    ``depart`` est un datetime AWARE (défaut : maintenant). Chaque touche vaut
-    ``depart + delai_jours + delai_minutes``, puis — si le gabarit porte une
+    ``depart`` est un datetime AWARE (défaut : maintenant). CAD19 — toutes les
+    touches se comptent depuis l'ORIGINE (``prochain_creneau_appel(depart,
+    canal='whatsapp')``, le premier instant réellement joignable), plus depuis
+    l'instant brut d'arrivée : sans quoi un lead du week-end voyait J0, J+1 et
+    J+2 s'écraser sur le même lundi. Seule la cadence ``reveil`` garde
+    ``depart`` pour ancre (MRY30 le rétrodate exprès sur son créneau).
+    Chaque touche vaut donc
+    ``ancre + delai_jours + delai_minutes``, puis — si le gabarit porte une
     ``heure_cible`` — l'heure locale est REMPLACÉE par celle-ci, et enfin
     l'instant est recalé sur la fenêtre d'appel de la société
     (``horaires.prochain_creneau_appel``, MRY8) — sur la fenêtre de SON CANAL
@@ -1133,7 +1266,7 @@ def materialiser_touche_suivante(etape_close, user=None):
     relance plus, société sans gabarit, ancre introuvable)."""
     from apps.parametres.models_relance import CadenceRelanceEtape
 
-    from . import horaires
+    from . import cadence_temps, horaires
 
     lead = etape_close.lead
     if (getattr(lead, 'ne_plus_contacter', False)
@@ -1214,6 +1347,15 @@ def materialiser_touche_suivante(etape_close, user=None):
                 base + datetime.timedelta(minutes=max(0, ecart)),
                 lead.company,
                 canal=_canal_effectif(gabarit))
+        # CAD22 — une touche ne NAÎT JAMAIS déjà échue : après l'appel du
+        # dimanche (posé entre J+5 et J+11), la J+7 du protocole naissait avec
+        # une date passée et ne pouvait plus jamais être « à l'heure ». Elle
+        # est ramenée au prochain créneau joignable — le J+N du protocole
+        # n'est pas touché, seule cette échéance-ci l'est.
+        echeance = cadence_temps.echeance_jamais_echue(
+            echeance, company=lead.company,
+            dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
+            canal=_canal_effectif(gabarit))
         etape = RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
             ordre=gabarit.ordre, due_at=echeance,
@@ -2528,9 +2670,33 @@ def verifier_gabarit_assignable(company, template_cle):
 
 
 #: MRY6 — codes de garde dont le refus est TRACÉ en chatter. Les autres
-#: (miroir Odoo, lead déjà contacté, cadence déjà en place…) restent muets :
-#: les journaliser inonderait l'historique de chaque import.
-_GARDES_CADENCE_TRACEES = frozenset({'sans_numero', 'doublon'})
+#: (cadence déjà en place, lead qu'on ne relance plus…) restent muets : les
+#: journaliser inonderait l'historique de chaque import.
+#:
+#: CAD103 (21/09/2026) — `deja_contacte` REJOINT les refus tracés. Le cas est
+#: le plus courant de tous : la commerciale reçoit un appel, crée la fiche,
+#: la passe en « Contacté » parce que c'est la vérité — et le dossier n'entre
+#: dans AUCUN plan, sans une ligne pour le dire. Même silence pour l'API
+#: publique partenaire, qui accepte une étape dans sa requête puis appelle la
+#: cadence. Un refus muet est le pire des deux mondes.
+#: CAD104 (21/09/2026) — `miroir` REJOINT les refus tracés. Odoo est le
+#: cockpit où la commerciale travaille encore, et trois chemins donnaient
+#: trois résultats sur la MÊME population : la cadence automatique refusait en
+#: silence, l'écran « placer les anciens leads » ne filtre AUCUNE source, et
+#: la commande de reprise passe, elle, par cette garde. L'asymétrie
+#: automatique/manuel reste VOULUE (elle est datée et commentée) — ce qui
+#: change est seulement qu'un dossier non suivi cesse de l'être en silence.
+_GARDES_CADENCE_TRACEES = frozenset({'sans_numero', 'doublon',
+                                     'deja_contacte', 'miroir'})
+
+#: CAD103 — ce que le refus PROPOSE, en toutes lettres. Le protocole ne
+#: change pas : c'est la touche 3 (le rappel du jour même) qui reprend un
+#: dossier après un premier échange, et le placement à barreau intermédiaire
+#: existe déjà (MRY30, « Placer les anciens leads » : il pose le plan depuis
+#: une ancre rétrodatée et annule les touches déjà passées).
+SUITE_DEJA_CONTACTE = (
+    'démarrez le protocole à la touche 3 (le rappel du jour même) depuis '
+    '« Placer les anciens leads »')
 
 
 def _garde_cadence_contact(lead):
@@ -2547,15 +2713,43 @@ def _garde_cadence_contact(lead):
     if lead is None:
         return ('absent', 'lead absent')
     if lead.source == Lead.Source.ODOO_IMPORT_TEST:
-        return ('miroir', 'lead du miroir Odoo')
+        # CAD105 [TRANCHÉ 21/09/2026] — la synchronisation démarre la cadence
+        # des leads NEUFS, avec EXACTEMENT les mêmes gardes que le site : un
+        # lead né dans Odoo après la bascule tombe donc à travers cette garde
+        # et affronte les suivantes (numéro, doublon, étape, inactivité).
+        # « Neuf » se juge sur la date de création DANS ODOO (CAD119), jamais
+        # sur l'instant de synchronisation — sans quoi les 930 fiches du
+        # rattrapage historique seraient toutes « neuves ».
+        from . import odoo_sync
+        if not odoo_sync.lead_odoo_neuf(lead):
+            # CAD104 — le motif DIT la suite : ce refus est désormais tracé,
+            # et le libellé du modèle reconnaît lui-même qu'« Import Odoo »
+            # n'est plus un test. Le placement à la main, lui, ne filtre
+            # aucune source.
+            return ('miroir',
+                    'lead du miroir Odoo antérieur à la mise en service de '
+                    'la synchronisation — la cadence automatique ne part pas '
+                    'sur le rattrapage historique ; lancez-la depuis '
+                    '« Placer les anciens leads » si ce dossier doit être '
+                    'suivi')
     if lead.stage != stages.NEW or lead.first_contacted_at is not None:
-        return ('deja_contacte', 'lead déjà contacté ou hors étape NEW')
+        # CAD103 — le motif DIT la suite : ce refus est désormais tracé, et
+        # une ligne qui constate sans proposer ne sert à rien.
+        return ('deja_contacte',
+                'lead déjà contacté ou hors étape « Nouveau » — '
+                f'{SUITE_DEJA_CONTACTE}')
     if lead.perdu or lead.is_archived or lead.ne_plus_contacter:
         return ('inactif', 'lead perdu, archivé ou « ne plus contacter »')
-    from apps.ventes.utils.whatsapp import build_wa_url
-    if build_wa_url(lead.whatsapp or lead.telephone or '', '') is None:
+    # CAD34 — on cherche le premier numéro EXPLOITABLE de la fiche :
+    # `lead.whatsapp or lead.telephone` ne se repliait sur le téléphone que si
+    # le champ WhatsApp était VIDE, jamais s'il était INUTILISABLE. Une ligne
+    # FIXE ne bloque plus rien : la cadence démarre par un APPEL (CAD34).
+    # L'erreur NOMME les champs à remplir (règle fondateur du 08/09/2026).
+    from . import cadence_temps
+    if not cadence_temps.numero_joignable(lead):
         return ('sans_numero',
-                'aucun numéro exploitable — cadence à lancer à la main')
+                'aucun numéro exploitable — renseignez « Téléphone » ou '
+                '« WhatsApp » sur la fiche')
     doublons = [
         autre for autre in find_duplicates_by_contact(
             lead.company, phone=lead.telephone, email=lead.email,
@@ -2691,9 +2885,23 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
     cible.save(update_fields=['due_at', 'due_date'])
 
     if delta:
+        # CAD22 — le jeu des touches à décaler est CHRONOLOGIQUE, pas
+        # seulement `ordre__gt`. L'ordre du PROTOCOLE et l'ordre des DATES
+        # divergent : l'appel du dimanche (ordre 8, J+5) est placé sur le
+        # premier dimanche atteignant J+5, donc parfois APRÈS la touche J+7
+        # (ordre 9). Ne glisser que les `ordre__gt` laissait cette touche-là
+        # sur place et réordonnait le plan en silence. On décale donc toute
+        # touche ouverte qui vient après la reportée — par l'ordre OU par la
+        # date —, du MÊME delta : aucune n'est réordonnée, aucune n'est
+        # laissée derrière.
+        from django.db.models import Q
+
         suivantes = lead.relance_etapes.filter(
             cadence=cible.cadence, statut=RelanceEtape.Statut.A_FAIRE,
-            ordre__gt=cible.ordre, due_at__isnull=False)
+            due_at__isnull=False,
+        ).filter(
+            Q(ordre__gt=cible.ordre) | Q(due_at__gte=ancien)
+        ).exclude(pk=cible.pk)
         for suivante in suivantes:
             decalee = suivante.due_at + delta
             suivante.due_at = decalee
@@ -3251,6 +3459,63 @@ def is_strong_identity_match(other, *, phone=None, email=None):
             and normalize_email(other.email) == email)
 
 
+# ── CAD-B ── CAD106 ─────────────────────────────────────────────────────────
+
+#: Le motif porté par une touche que la FUSION retire du plan. Statut
+#: ANNULEE (CKP1 : annulation MOTEUR, jamais un saut humain) — sans quoi la
+#: fusion compterait autant de manquements d'adhérence que de touches.
+FUSION_TOUCHE_NOTE = 'annulée — fusion de fiches'
+
+
+def relances_ouvertes_de(lead):
+    """Les touches encore À FAIRE d'un lead (l'aperçu et la fusion comptent
+    la même chose — jamais deux définitions)."""
+    return lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
+
+
+def reprendre_relances_apres_fusion(absorbed, survivor, user):
+    """CAD106 — les relances SUIVENT le dossier quand deux fiches fusionnent.
+
+    `merge_leads` déplaçait devis, chantiers, activités, pièces jointes et
+    historique — et pas une seule relance. Les touches ouvertes restaient
+    accrochées à une fiche ARCHIVÉE, donc invisibles dans la file (qui exclut
+    les archivés), jamais passées en « annulée », et rien ne reposait de
+    prochaine étape sur la survivante. Le cas est garanti d'arriver : le
+    nouveau lead venait justement d'être privé de cadence par la garde
+    « doublon ».
+
+    Ce qu'on fait, et POURQUOI pas un simple déplacement : la survivante a
+    souvent DÉJÀ une cadence active, et CADX interdit deux cadences en
+    parallèle sur un lead. Les touches ouvertes de l'absorbée sont donc
+    CLOSES en ANNULÉE avec le motif « fusion » — elles ne comptent alors
+    comme un manquement nulle part (CKP1) — puis le FILET garantit à la
+    survivante une prochaine étape, exactement comme à la reprise d'un lead
+    dé-perdu (`unset_perdu`).
+
+    Rend le nombre de touches retirées du plan de l'absorbée.
+    """
+    from django.utils import timezone
+
+    ouvertes = list(relances_ouvertes_de(absorbed))
+    if ouvertes:
+        RelanceEtape.objects.filter(
+            pk__in=[e.pk for e in ouvertes],
+        ).update(statut=RelanceEtape.Statut.ANNULEE,
+                 note=FUSION_TOUCHE_NOTE, traite_par=None,
+                 traite_le=timezone.now())
+        absorbed.relance_date = None
+        absorbed.save(update_fields=['relance_date'])
+    # QJ-INVARIANT — la survivante ne reste jamais sans prochaine étape.
+    # Best-effort : une fusion n'échoue pas sur un filet.
+    try:
+        assurer_prochaine_etape_apres_succes(survivor, user)
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            'CAD106: filet non posé après fusion (lead #%s)',
+            getattr(survivor, 'pk', '?'), exc_info=True)
+    return len(ouvertes)
+
+
 def merge_leads(survivor, others, user):
     """Fusionne `others` dans `survivor` SANS perte de données. Déplace devis,
     activités, pièces jointes, historique et chantiers ; complète les champs
@@ -3267,6 +3532,7 @@ def merge_leads(survivor, others, user):
         return survivor
 
     ct = ContentType.objects.get_for_model(Lead)
+    relances_reprises = 0
     with transaction.atomic():
         for absorbed in others:
             # 1) Devis → survivant (related_name='devis').
@@ -3292,6 +3558,12 @@ def merge_leads(survivor, others, user):
                 pass
             # 4) Historique chatter → survivant.
             LeadActivity.objects.filter(lead=absorbed).update(lead=survivor)
+            # 4 bis) CAD106 — les RELANCES suivent le dossier : les touches
+            # ouvertes de l'absorbée sortent de son plan (annulées « fusion »,
+            # donc jamais comptées comme des manquements) et le filet garantit
+            # une prochaine étape à la survivante.
+            relances_reprises += reprendre_relances_apres_fusion(
+                absorbed, survivor, user)
             # 5) Client : adopter celui de l'absorbé si le survivant n'en a pas.
             if not survivor.client_id and absorbed.client_id:
                 survivor.client = absorbed.client
@@ -3325,6 +3597,15 @@ def merge_leads(survivor, others, user):
                 body=(f"Fusion : lead « {absorbed.nom} {absorbed.prenom or ''} »"
                       f" (#{absorbed.id}) absorbé dans cette fiche."))
         survivor.save()
+    if relances_reprises:
+        # CAD106 — la fusion DIT ce qu'elle a fait des relances : sans cette
+        # ligne, des touches disparaissaient du plan sans un mot.
+        LeadActivity.objects.create(
+            company=survivor.company, lead=survivor, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Fusion : {relances_reprises} relance(s) reprise(s) — '
+                  'les touches des fiches absorbées sont retirées de leur '
+                  'plan et le suivi continue sur cette fiche.'))
     # CRX33 — l'étape 6 complète les champs VIDES du survivant depuis les
     # absorbés (téléphone, e-mail, ville, facture, orientation…) : autant de
     # composantes du score. Sans ce recalcul, le survivant gardait le score
@@ -5987,10 +6268,14 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 activity.log_bulk_change(lead, user, 'perdu', True, False)
                 if old_motif:
                     activity.log_bulk_change(lead, user, 'motif_perte', old_motif, None)
-                # QJ-INVARIANT — un lead REPRIS (dé-perdu) redevient actif :
-                # ses cadences avaient été arrêtées au marquage, le filet lui
-                # repose une prochaine étape (plan après-devis si devis).
-                assurer_prochaine_etape_apres_succes(lead, user)
+                # CAD107 — un lead REPRIS (dé-perdu) redevient actif : ses
+                # cadences avaient été arrêtées au marquage. Les TROIS
+                # chemins de réouverture passent désormais par la MÊME
+                # fonction (cadence de REPRISE, filet en repli) — avant, ce
+                # lot appelait le filet, le PATCH ne faisait rien et la
+                # nouvelle touche entrante ne créait aucune relance.
+                reprendre_cadence_apres_reouverture(
+                    lead, user, origine='reprise en masse')
                 updated += 1
 
             elif op == 'archive':
@@ -8361,6 +8646,41 @@ def suspendre_plan_jusqu_apres_visite(lead, user, date_prevue):
         lead, user, quand, etape=cible, journaliser=False)
 
 
+# ── CAD-B ── CAD28 ──────────────────────────────────────────────────────────
+
+def reprendre_plan_apres_retour_visite(lead, user):
+    """CAD28 — la reprise du protocole part du RETOUR RÉELLEMENT SAISI.
+
+    La suspension calait la reprise sur la date PRÉVUE de la visite. Une
+    visite reportée à la dernière minute sans mise à jour de la fiche laissait
+    donc la relance repartir quand même : le client recevait un message
+    « suite à notre visite » avant que quiconque soit passé chez lui.
+
+    Le retour de visite, lui, est déjà saisi (``appliquer_retour_visite``).
+    On recale donc la touche pendante du protocole sur CE jour-là plus le
+    délai de débrief, par la mécanique EXISTANTE — jamais une seconde :
+    ``suspendre_plan_jusqu_apres_visite`` avec la date du jour. Elle apporte
+    ses deux garde-fous tels quels : aucune touche pendante ⇒ on ne CRÉE
+    rien ; une touche déjà postérieure à la reprise ⇒ on ne la tire jamais EN
+    AVANT (un retour tardif ne doit pas accélérer une relance).
+
+    Le délai reste ``VISITE_REPRISE_JOURS`` — la place du débrief plus un
+    jour, non réglable : un réglage de plus pour deux personnes.
+
+    Rend la touche déplacée, ou ``None`` (les deux no-op ci-dessus).
+    """
+    deplacee = suspendre_plan_jusqu_apres_visite(
+        lead, user, aujourd_hui_local())
+    if deplacee is None:
+        return None
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=('Relances recalées sur le retour de visite — prochaine touche '
+              f'le {deplacee.due_date:%d/%m/%Y}.'))
+    return deplacee
+
+
 def _etape_visite_ouverte(lead, libelle):
     """L'étape de visite ``libelle`` encore À FAIRE sur ce lead, ou ``None``."""
     return (lead.relance_etapes
@@ -8655,7 +8975,10 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
        à la planification) ? Il est RENOMMÉ si besoin et AVANCÉ seulement s'il
        était plus loin — jamais repoussé, jamais dupliqué. Il n'existe pas
        (visite faite sans avoir été planifiée dans l'ERP) ? On le pose, à
-       condition que le lead soit encore relançable.
+       condition que le lead soit encore relançable ;
+    4. CAD28 — la reprise du PROTOCOLE est recalée sur CE retour plutôt que
+       sur la date prévue de la visite (``reprendre_plan_apres_retour_visite``),
+       et jamais tirée en avant.
 
     ``STAGES.py`` n'est pas touché. Renvoie l'étape de débrief, ou ``None``."""
     LeadActivity.objects.create(
@@ -8667,6 +8990,16 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
 
     if not _lead_relancable(lead):
         return None
+    # CAD28 — la reprise du protocole part d'ICI, du retour réellement saisi,
+    # et plus de la date PRÉVUE de la visite (voir
+    # ``reprendre_plan_apres_retour_visite``). Best-effort : un recalage
+    # impossible ne doit jamais faire échouer la redescente du terrain.
+    try:
+        reprendre_plan_apres_retour_visite(lead, user)
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le retour terrain
+        logger.warning(
+            'CAD28: reprise du plan non recalée sur le retour (lead #%s)',
+            getattr(lead, 'pk', '?'), exc_info=True)
     libelle, jours, rappel_choisi = _plan_du_debrief(qualification)
     vise = aujourd_hui_local() + datetime.timedelta(days=jours)
     existante = _debrief_ouvert(lead)

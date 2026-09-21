@@ -148,6 +148,13 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     # demande une confirmation explicite : Meryem peut avoir écrit depuis son
     # téléphone, donc jamais un blocage — seulement une question.
     message_ouvert_le = serializers.SerializerMethodField()
+    # CAD32 — sur un lead « WhatsApp uniquement », les barreaux d'appel du
+    # protocole naissent en WhatsApp. Sans cette phrase, la commerciale verrait
+    # « Appel 3 » sur une touche WhatsApp sans savoir POURQUOI : un
+    # comportement caché, et elle rappellerait par téléphone un client qui a
+    # demandé le contraire. Chaîne VIDE — jamais null — quand rien n'est
+    # adapté, comme les autres champs de confort de ce sérialiseur.
+    canal_adapte = serializers.SerializerMethodField()
 
     class Meta:
         model = RelanceEtape
@@ -162,7 +169,7 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             'cadence', 'ordre', 'due_date', 'due_at', 'canal', 'libelle',
             'template_cle', 'statut', 'note', 'overdue', 'devis',
             'devis_reference', 'traite_le', 'traite_par_nom',
-            'statut_libelle', 'message_ouvert_le',
+            'statut_libelle', 'message_ouvert_le', 'canal_adapte',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
@@ -190,6 +197,15 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
     def get_lead_langue(self, obj) -> str:
         return obj.lead.langue_preferee or 'fr'
+
+    def get_canal_adapte(self, obj) -> str:
+        """CAD32 — la phrase qui explique un canal qui n'est pas celui du
+        libellé. Jamais un comportement caché."""
+        if (getattr(obj.lead, 'contact_preference', '')
+                == Lead.ContactPreference.WHATSAPP_ONLY):
+            return ('Canal adapté à la préférence du client : '
+                    'WhatsApp uniquement.')
+        return ''
 
     @extend_schema_field(serializers.IntegerField())
     def get_lead_score(self, obj):

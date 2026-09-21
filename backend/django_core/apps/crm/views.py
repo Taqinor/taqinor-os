@@ -1022,6 +1022,20 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             logger.warning(
                 'MRY9: arrêt de cadence échoué sur le lead #%s',
                 new_lead.pk, exc_info=True)
+        # CAD107 — la bascule INVERSE n'était traitée nulle part : décocher
+        # « Perdu » ne déclenchait rien, alors qu'un client perdu qui revient
+        # est le meilleur signal d'achat qui existe. Les trois chemins de
+        # réouverture (ce PATCH, le lot `unset_perdu`, la nouvelle touche
+        # entrante) posent désormais la MÊME cadence de reprise.
+        from .services import reprendre_cadence_apres_reouverture
+        try:
+            if old.perdu and not new_lead.perdu:
+                reprendre_cadence_apres_reouverture(
+                    new_lead, self.request.user, origine='fiche rouverte')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'CAD107: reprise non posée sur le lead #%s',
+                new_lead.pk, exc_info=True)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['duplicates',
@@ -1384,6 +1398,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             devis_migres = sum(d.devis.count() for d in others)
             activites_migrees = sum(
                 LeadActivity.objects.filter(lead=d).count() for d in others)
+            # CAD106 — l'aperçu annonçait devis, activités et champs comblés,
+            # JAMAIS les relances : on confirmait une fusion sans savoir que
+            # des touches ouvertes allaient quitter leur plan. Le compte vient
+            # de la MÊME définition que la fusion (`relances_ouvertes_de`),
+            # jamais d'un second filtre qui dériverait.
+            from .services import relances_ouvertes_de
+            relances_reprises = sum(
+                relances_ouvertes_de(d).count() for d in others)
             champs_combles = []
             for field in _MERGE_FILL_FIELDS:
                 cur = getattr(suggested, field, None)
@@ -1399,6 +1421,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     'activites': activites_migrees,
                     'fiches_archivees': len(others),
                     'champs_combles': champs_combles,
+                    # CAD106 — combien de touches OUVERTES quittent leur plan.
+                    'relances': relances_reprises,
                 },
                 'members': [
                     {
@@ -3012,6 +3036,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             child=serializers.DictField()),
         'par_etape': serializers.ListField(child=serializers.DictField()),
         'leads_sans_touche': serializers.ListField(
+            child=serializers.DictField()),
+        # CAD35 — les périodes d'absence déclarées de la fenêtre.
+        'absences_declarees': serializers.ListField(
             child=serializers.DictField()),
         'conversion_par_stage': serializers.ListField(
             child=serializers.DictField()),

@@ -374,6 +374,18 @@ function CadenceTable({ cadence, gabarits }) {
           )}
         </div>
       ))}
+      {/* CAD24 — la case « Dimanche » ci-dessus (ouverte à l'édition par
+          CAD53) ne dit pas la RÈGLE qu'elle commande : une seule touche par
+          cadence, une fenêtre de trois heures, et une heure cible qui n'est
+          honorée que dedans. Le fondateur réglait une heure sans savoir
+          laquelle comptait. */}
+      <p className="pt-1 text-xs text-muted-foreground"
+         data-testid={`cadence-regle-dimanche-${cadence}`}>
+        Une seule touche par cadence peut être autorisée le dimanche, entre 16 h et 19 h —
+        c'est le rendez-vous réservé aux prospects qu'on ne trouve jamais en semaine.
+        Son heure cible n'est honorée que si elle tombe dans cette fenêtre ; sinon la touche
+        est posée à 16 h 30.
+      </p>
       <ConfirmDialog
         open={aSupprimer != null}
         onOpenChange={o => { if (!o) setASupprimer(null) }}

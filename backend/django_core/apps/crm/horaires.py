@@ -277,29 +277,60 @@ def est_dans_fenetre(dt, company, *, dimanche=False, samedi=False,
     return True
 
 
+def _heure_visee(heure_cible, debut, fin, pause):
+    """CAD21 — l'heure à laquelle un jour ULTÉRIEUR démarre.
+
+    L'heure imposée par le gabarit quand elle tient dans la fenêtre de ce
+    jour-là et hors de sa pause ; l'ouverture sinon (comportement d'avant :
+    une touche ne sort JAMAIS de sa fenêtre pour honorer une heure cible)."""
+    if heure_cible is None:
+        return debut
+    if not (debut <= heure_cible < fin):
+        return debut
+    if pause is not None and pause[0] <= heure_cible < pause[1]:
+        return debut
+    return heure_cible
+
+
 def prochain_creneau_appel(dt, company, *, dimanche=False, samedi=False,
-                           canal='appel'):
+                           canal='appel', heure_cible=None):
     """Le prochain instant JOIGNABLE à partir de `dt` (inclus), pour `canal`.
 
     Renvoie `dt` inchangé s'il est déjà dans la fenêtre. Sinon, dans l'ordre :
     la pause du vendredi pousse à sa fin ; avant l'ouverture on attend
     l'ouverture ; après la fermeture (ou un jour non ouvré) on passe au
-    prochain jour ouvré à son heure d'ouverture. Sortie AWARE, dans le même
-    fuseau que l'entrée.
+    prochain jour ouvré — à `heure_cible` si le gabarit en impose une et
+    qu'elle tient dans la fenêtre de ce jour-là, sinon à son heure
+    d'ouverture. Sortie AWARE, dans le même fuseau que l'entrée.
 
     `canal` porte la décision du 07/09/2026 : une touche WhatsApp/e-mail se
     pose dès 08:30, un appel jamais avant 09:00. Le NOM de la fonction reste
     historique — elle recale désormais toutes les touches, pas seulement les
-    appels."""
+    appels.
+
+    CAD21 — `heure_cible` (heure LOCALE du gabarit) : l'heure imposée d'une
+    touche était effacée dès qu'elle changeait de jour. L'« Appel 4 » prévu à
+    18 h — quand un particulier est rentré chez lui — ressortait à 09 h le
+    lundi matin, et le réglage « Heure cible » de l'écran Paramètres ne tenait
+    pas sa promesse une fois sur trois. On recombine donc la date du prochain
+    jour ouvré avec cette heure AVANT le contrôle de fenêtre. GARDE-FOU : si
+    l'heure visée tombe hors de la fenêtre de ce jour (fermeture, pause de la
+    prière du vendredi, fenêtre resserrée du Ramadan, fenêtre dominicale), on
+    retombe sur l'ouverture — jamais une touche posée hors fenêtre."""
     tz_entree = dt.tzinfo or datetime.timezone.utc
     local = _local(dt)
     jour = local.date()
+    # CAD21 — le jour de DÉPART, figé : c'est le seul où l'heure de `dt`
+    # compte. Les suivants se recomposent (heure cible, sinon ouverture).
+    jour_initial = jour
     for _ in range(_MAX_JOURS):
         fenetre = fenetre_du_jour(jour, company, dimanche=dimanche,
                                   samedi=samedi, canal=canal)
         if fenetre is not None:
             debut, fin, pause = fenetre
-            candidat = local if jour == local.date() else _combiner(jour, debut)
+            candidat = (local if jour == jour_initial
+                        else _combiner(jour, _heure_visee(
+                            heure_cible, debut, fin, pause)))
             heure = candidat.time()
             if (dimanche and jour.weekday() == 6 and heure >= fin
                     and est_en_ramadan(jour, company)):
@@ -313,7 +344,10 @@ def prochain_creneau_appel(dt, company, *, dimanche=False, samedi=False,
                 # l'heure d'un rendez-vous.
                 candidat = _combiner(jour, debut)
                 heure = debut
-            if jour == local.date() and heure < debut:
+            # CAD21 — le jour de DÉPART est le seul où l'heure de `dt`
+            # compte : les jours suivants sont déjà recomposés par
+            # `_heure_visee`, qui ne rend jamais une heure avant l'ouverture.
+            if jour == jour_initial and heure < debut:
                 candidat = _combiner(jour, debut)
                 heure = debut
             if heure < fin:
@@ -331,8 +365,9 @@ def prochain_creneau_appel(dt, company, *, dimanche=False, samedi=False,
             jour += datetime.timedelta(days=7)
         else:
             jour += datetime.timedelta(days=1)
-        # Les jours suivants démarrent à leur ouverture, plus à l'heure de dt.
-        local = _combiner(jour, datetime.time(0, 0))
+        # CAD21 — plus de réinitialisation de `local` ici : les jours
+        # suivants sont recomposés par `_heure_visee` (heure cible du
+        # gabarit si elle tient dans la fenêtre, ouverture sinon).
     logger.warning(
         'crm.horaires: aucun créneau trouvé en %s jours (société %s)',
         _MAX_JOURS, getattr(company, 'pk', '?'))
@@ -367,6 +402,58 @@ def prochain_dimanche(dt, heure=DIMANCHE_HEURE_DEFAUT):
     delta = (6 - local.weekday()) % 7 or 7
     cible = local.date() + datetime.timedelta(days=delta)
     return _combiner(cible, heure).astimezone(tz_entree)
+
+
+def dimanche_le_plus_proche(cible, heure=DIMANCHE_HEURE_DEFAUT, *,
+                            plancher=None):
+    """CAD23 — le dimanche le PLUS PROCHE de `cible`, AVANT ou après.
+
+    Décision fondateur du 21/09/2026. `prochain_dimanche` prend le premier
+    dimanche ≥ `cible` : pour un J+5, le rendez-vous dominical dérivait de
+    J+5 (lead du mardi) à J+11 (lead du mercredi), et la touche J+7 du
+    protocole naissait ensuite déjà en retard. En prenant le dimanche le plus
+    proche — la veille du J+N compte autant que le lendemain — l'écart entre
+    le J+N visé et la date posée ne dépasse jamais 3 jours, sans toucher au
+    principe « une seule touche le dimanche, 16 h-19 h, pour les prospects
+    qu'on ne trouve jamais en semaine ».
+
+    `plancher` (l'ancre de la cadence) borne le résultat par le bas : le
+    dimanche le plus proche d'un J+1 tomberait sinon AVANT l'arrivée du lead.
+    On passe alors au dimanche suivant, de semaine en semaine.
+
+    Ce choix ne change NI le nombre, NI l'ordre des touches : il ne déplace
+    que la date de l'unique touche `dimanche_ok` de la cadence.
+    `prochain_dimanche` reste inchangée — c'est toujours elle qui répond à
+    « le prochain dimanche à partir de tel instant ».
+
+    Entrée et sortie AWARE, dans le fuseau de l'entrée."""
+    tz_entree = cible.tzinfo or datetime.timezone.utc
+    local = _local(cible)
+    jour_cible = local.date()
+    vers_apres = (6 - jour_cible.weekday()) % 7
+    apres = jour_cible + datetime.timedelta(days=vers_apres)
+    avant = (apres if vers_apres == 0
+             else apres - datetime.timedelta(days=7))
+    # Distances entières : l'égalité est impossible (k vs 7-k), donc pas de
+    # départage arbitraire à écrire.
+    jour = avant if (jour_cible - avant) < (apres - jour_cible) else apres
+    candidat = _combiner(jour, heure)
+    if jour == jour_cible:
+        if local.time() >= DIMANCHE_FIN:
+            # Ce dimanche est fini : le rendez-vous part au suivant.
+            jour = jour_cible + datetime.timedelta(days=7)
+            candidat = _combiner(jour, heure)
+        elif local > candidat:
+            # On ne remonte jamais dans le passé de la cible.
+            candidat = local
+    plancher_local = _local(plancher) if plancher is not None else None
+    for _ in range(_MAX_JOURS):
+        if plancher_local is None or candidat >= plancher_local:
+            return candidat.astimezone(tz_entree)
+        jour += datetime.timedelta(days=7)
+        candidat = _combiner(jour, heure)
+    logger.warning('crm.horaires: aucun dimanche au-dessus du plancher')
+    return candidat.astimezone(tz_entree)
 
 
 def minutes_ouvrees_entre(a, b, company, *, canal='whatsapp'):
