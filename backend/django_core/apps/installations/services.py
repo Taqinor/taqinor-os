@@ -4537,6 +4537,70 @@ def rejeter_etape_achat(etape, *, approbateur, commentaire=''):
     return etape
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P4 — Contrôle budgétaire (société) à la soumission
+# ══════════════════════════════════════════════════════════════════════════
+# Cross-app STRICT : le budget est lu via ``stock.selectors`` et l'engagement
+# écrit via ``stock.services``. Aucun import de ``models`` d'une autre app.
+#
+# SOLMVP12 (20/09/2026) — l'enveloppe n'est plus distinguée par département
+# (le module RH a été détaché de ``stock`` ; SOLMVP13 a sorti ``rh`` du MVP
+# solaire) : une SEULE enveloppe par société et par période. Le contrôle ne
+# résout donc plus de département pour le demandeur — il engage directement
+# sur le budget de la société.
+
+
+class BudgetAchatError(Exception):
+    """Budget de la société dépassé à la soumission (mappé en 400)."""
+
+
+def controler_budget_demande_achat(demande, *, regle=None):
+    """NTP2P4 — engage le budget de la société de la demande, ou refuse.
+
+    No-op total quand le contrôle est désactivé (défaut) ou qu'aucun budget
+    n'est configuré pour la société : la soumission reste ce qu'elle était.
+    Une ``RegleApprobationAchat`` avec ``autorise_depassement_budget`` (NTP2P2)
+    laisse passer le dépassement — la dérogation est alors tranchée par les
+    étapes d'approbation, pas par un blocage muet.
+    """
+    from apps.stock import selectors as stock_selectors
+    from apps.stock import services as stock_services
+
+    company = demande.company
+    if not stock_selectors.budget_departement_actif(company):
+        return None
+    regle = regle if regle is not None else resoudre_regle_approbation_achat(
+        demande)
+    autoriser = bool(regle and regle.autorise_depassement_budget)
+    try:
+        return stock_services.engager_budget(
+            company, montant=demande.montant_estime,
+            periode=getattr(demande, 'date_besoin', None),
+            demande_achat_id=demande.pk,
+            autoriser_depassement=autoriser,
+            note=f'Demande {demande.reference}')
+    except stock_services.BudgetDepasseError as exc:
+        raise BudgetAchatError(
+            'Budget départemental dépassé : il reste '
+            f'{exc.restant} MAD, il manque {exc.manquant} MAD. '
+            "Une règle d'approbation autorisant le dépassement est requise."
+        ) from exc
+
+
+def liberer_budget_demande_achat(demande):
+    """NTP2P4 — rend l'enveloppe engagée (demande refusée/annulée)."""
+    from apps.stock import services as stock_services
+    return stock_services.liberer_engagements_demande(
+        demande.company, demande.pk)
+
+
+def consommer_budget_demande_achat(demande, bon_commande_id=None):
+    """NTP2P4 — l'engagement devient RÉALISÉ (le BCF est émis)."""
+    from apps.stock import services as stock_services
+    return stock_services.consommer_engagements_demande(
+        demande.company, demande.pk, bon_commande_id=bon_commande_id)
+
+
 # ── CHT17 — Camion en maintenance = indisponible au planning ────────────────
 # `flotte.changer_statut_vehicule` ignorait totalement le planning terrain :
 # un camion passé en MAINTENANCE restait « disponible » pour
