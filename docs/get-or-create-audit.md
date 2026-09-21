@@ -5,10 +5,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | Fichier:ligne | Appel | Récepteur | Clés de lookup |
 |---|---|---|---|
 | `backend/django_core/apps/accessreview/sod.py:137` | get_or_create | SodRule.objects | company, permission_a, permission_b |
-| `backend/django_core/apps/adminops/config_package_service.py:118` | update_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/adminops/config_package_service.py:128` | update_or_create | CustomFieldDef.objects | code, company, module |
-| `backend/django_core/apps/adminops/config_package_service.py:138` | update_or_create | MessageTemplate.objects | cle, company |
-| `backend/django_core/apps/adminops/plan_seeds.py:46` | get_or_create | PlanLicence.objects | code |
+| `backend/django_core/apps/adminops/config_package_service.py:111` | update_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/adminops/config_package_service.py:121` | update_or_create | CustomFieldDef.objects | code, company, module |
+| `backend/django_core/apps/adminops/config_package_service.py:131` | update_or_create | MessageTemplate.objects | cle, company |
+| `backend/django_core/apps/adminops/plan_seeds.py:47` | get_or_create | PlanLicence.objects | code |
 | `backend/django_core/apps/adminops/views_annonces.py:149` | get_or_create | LectureAnnonce.objects | annonce, utilisateur |
 | `backend/django_core/apps/adsengine/brief.py:469` | update_or_create | WeeklyBrief.objects | company, period_start |
 | `backend/django_core/apps/adsengine/calendar.py:69` | get_or_create | CreativeCalendarEvent.objects | company, date_debut, tag |
@@ -49,126 +49,24 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/views.py:2603` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/views.py:2610` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/whatsapp_webhook.py:221` | update_or_create | CtwaReferral.objects | company, wa_message_id |
-| `backend/django_core/apps/ai_governance/drift.py:118` | update_or_create | DriftSnapshot.objects | company, date, modele |
-| `backend/django_core/apps/ao/calepinage_service.py:781` | update_or_create | VarianteCalepinage.objects | company, nom, parent, role, toiture |
-| `backend/django_core/apps/ao/calepinage_views.py:384` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:283` | get_or_create | ReleveAO.objects | appel_offre, company, date_visite |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:292` | update_or_create | BatimentAO.objects | appel_offre, code, company |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:299` | update_or_create | ToitureAO.objects | batiment, code_document, company |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:312` | update_or_create | ObstacleAO.objects | company, repere, toiture |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:339` | update_or_create | VarianteCalepinage.objects | company, est_retenue, toiture |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:371` | get_or_create | BordereauPrix.objects | appel_offre, company, indice_revision, intitule |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:378` | update_or_create | LigneBordereau.objects | bordereau, company, numero |
-| `backend/django_core/apps/ao/management/commands/seed_pack_ao.py:146` | get_or_create | ModelePack.objects | code, company |
-| `backend/django_core/apps/ao/services.py:644` | update_or_create | ResultatAO.objects | appel_offre, company |
-| `backend/django_core/apps/ao/services.py:739` | get_or_create | PresetCalepinage.objects | company, nom |
-| `backend/django_core/apps/assurances/services.py:340` | update_or_create | IndemnisationSinistre.objects | declaration |
 | `backend/django_core/apps/automation/templates.py:252` | get_or_create | AutomationRule.objects | company, nom |
 | `backend/django_core/apps/automation/views.py:514` | get_or_create | IncomingWebhookTrigger.objects | rule |
-| `backend/django_core/apps/btp_chantier/offline_ops.py:117` | update_or_create | JournalChantier.objects | chantier, company, date |
-| `backend/django_core/apps/btp_chantier/services.py:1387` | update_or_create | LotChecklistItem.objects | cle, lot |
-| `backend/django_core/apps/btp_chantier/views.py:1164` | get_or_create | ParametresBtpChantier.objects | company |
 | `backend/django_core/apps/calepinage/services/modeles.py:55` | get_or_create | Tag.objects | company, nom |
 | `backend/django_core/apps/calepinage/services/modeles.py:88` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
 | `backend/django_core/apps/calepinage/views/calepinages.py:133` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
-| `backend/django_core/apps/chat/services.py:152` | get_or_create | MessageMention.objects | mentioned_user, message |
-| `backend/django_core/apps/chat/services.py:258` | get_or_create | UserChatStatus.objects | user |
-| `backend/django_core/apps/chat/services.py:433` | get_or_create | Conversation.objects | company, kind, name |
-| `backend/django_core/apps/chat/services.py:441` | get_or_create | ConversationMember.objects | conversation, user |
-| `backend/django_core/apps/chat/services.py:466` | get_or_create | ThreadFollow.objects | root_message, user_id |
-| `backend/django_core/apps/chat/services.py:469` | get_or_create | ThreadFollow.objects | root_message, user |
-| `backend/django_core/apps/chat/services.py:512` | get_or_create | ThreadFollow.objects | root_message, user |
-| `backend/django_core/apps/chat/services.py:868` | get_or_create | RetentionPolicy.objects | company, conversation_kind |
-| `backend/django_core/apps/chat/views.py:74` | get_or_create | ConversationMember.objects | conversation, user |
-| `backend/django_core/apps/chat/views.py:83` | get_or_create | ConversationMember.objects | conversation, user |
-| `backend/django_core/apps/chat/views.py:186` | get_or_create | ConversationMember.objects | conversation, user |
-| `backend/django_core/apps/compta/receivers.py:338` | get_or_create | EnqueteNPS.objects | chantier_id, company |
-| `backend/django_core/apps/compta/services.py:235` | get_or_create | PlanComptable.objects | code, company |
-| `backend/django_core/apps/compta/services.py:240` | get_or_create | CompteComptable.objects | company, numero |
-| `backend/django_core/apps/compta/services.py:275` | get_or_create | Journal.objects | code, company |
-| `backend/django_core/apps/compta/services.py:1319` | get_or_create | PeriodeComptable.objects | company, date_debut, date_fin |
-| `backend/django_core/apps/compta/services.py:1640` | get_or_create | ExerciceComptable.objects | company, date_debut, date_fin |
-| `backend/django_core/apps/compta/services.py:1710` | get_or_create | Journal.objects | code, company |
-| `backend/django_core/apps/compta/services.py:1894` | get_or_create | Journal.objects | code, company |
-| `backend/django_core/apps/compta/services.py:2036` | get_or_create | PlanAmortissement.objects | company, immobilisation |
-| `backend/django_core/apps/compta/services.py:2229` | get_or_create | CompteComptable.objects | company, numero |
-| `backend/django_core/apps/compta/services.py:4049` | get_or_create | Rapprochement.objects | bon_commande_id, company |
-| `backend/django_core/apps/compta/services.py:4411` | get_or_create | ParametresTresorerie.objects | company |
-| `backend/django_core/apps/compta/services.py:6082` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
-| `backend/django_core/apps/compta/services.py:6088` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
-| `backend/django_core/apps/compta/services.py:6100` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
-| `backend/django_core/apps/compta/services.py:6115` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
-| `backend/django_core/apps/compta/services.py:6129` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
-| `backend/django_core/apps/compta/services.py:6134` | get_or_create | ObligationFiscale.objects | company, periode_debut, periode_fin, type_obligation |
-| `backend/django_core/apps/compta/services.py:6944` | get_or_create | CentreCout.objects | code, company |
-| `backend/django_core/apps/compta/services.py:7230` | get_or_create | EntiteConsolidation.objects | company, entite |
-| `backend/django_core/apps/compta/services.py:7453` | update_or_create | StatutEngagementContact.objects | company, destinataire |
-| `backend/django_core/apps/compta/services.py:7464` | update_or_create | StatutEngagementContact.objects | company, destinataire |
-| `backend/django_core/apps/compta/services.py:8229` | get_or_create | RebondSoft.objects | company, destinataire |
-| `backend/django_core/apps/compta/services.py:8411` | get_or_create | SuppressionMarketing.objects | company, destinataire |
-| `backend/django_core/apps/compta/services.py:8503` | get_or_create | SuppressionMarketing.objects | company, destinataire |
-| `backend/django_core/apps/compta/services.py:8693` | get_or_create | AbonnementListe.objects | destinataire, liste |
-| `backend/django_core/apps/compta/services.py:9883` | get_or_create | OuverturePartage.objects | company, token |
-| `backend/django_core/apps/compta/services.py:9923` | get_or_create | MessageWhatsAppEntrant.objects | company, wa_message_id |
-| `backend/django_core/apps/compta/services.py:10881` | get_or_create | MappingCompte.objects | clef, company, type_clef |
-| `backend/django_core/apps/compta/services.py:11766` | get_or_create | PlanAmortissementFiscal.objects | company, plan_comptable |
-| `backend/django_core/apps/compta/services.py:12124` | update_or_create | LigneReevaluation.objects | item, reevaluation |
-| `backend/django_core/apps/compta/services.py:12246` | get_or_create | VentilationAnalytique.objects | company, ligne_ecriture |
-| `backend/django_core/apps/compta/services.py:13660` | update_or_create | LiasseRemontee.objects | company, cycle, entite |
-| `backend/django_core/apps/compta/services.py:14005` | get_or_create | ReferentielComptable.objects | code, company |
-| `backend/django_core/apps/compta/services.py:14326` | get_or_create | ModeleCloture.objects | company, libelle, periodicite |
-| `backend/django_core/apps/compta/services.py:14332` | get_or_create | TacheClotureModele.objects | company, libelle, modele |
-| `backend/django_core/apps/compta/services.py:14348` | get_or_create | InstanceCloture.objects | company, periode |
-| `backend/django_core/apps/compta/services.py:14570` | get_or_create | RapprochementCompte.objects | company, compte, periode |
-| `backend/django_core/apps/compta/services.py:14977` | get_or_create | AcompteIS.objects | company, exercice, rang |
-| `backend/django_core/apps/contrats/management/commands/seed_motifs_resiliation.py:40` | get_or_create | MotifResiliation.objects | code, company |
-| `backend/django_core/apps/contrats/management/commands/seed_plans_recurrents.py:34` | get_or_create | PlanRecurrent.objects | company, nom |
-| `backend/django_core/apps/contrats/services.py:4970` | update_or_create | CompteurUsage.objects | cible_id, code_compteur, company, periode_debut, periode_fin, type_cible |
-| `backend/django_core/apps/contrats/services.py:5253` | update_or_create | MetriquesSaasCache.objects | company, periode |
-| `backend/django_core/apps/contrats/services.py:5346` | get_or_create | CompteurUsageArchive.objects | code_compteur, company, periode |
-| `backend/django_core/apps/contrats/services.py:5375` | get_or_create | ParametresAbonnement.objects | company |
-| `backend/django_core/apps/contrats/services.py:5560` | get_or_create | EtapeDunningLog.objects | company, contrat, etape |
-| `backend/django_core/apps/contrats/services.py:6251` | get_or_create | ParametresCLM.objects | company |
-| `backend/django_core/apps/contrats/views.py:3628` | get_or_create | ParametresLocation.objects | company |
-| `backend/django_core/apps/cpq/views.py:286` | get_or_create | ParametresCPQ.objects | company |
-| `backend/django_core/apps/cpq/views.py:713` | update_or_create | ReponseConfigurateur.objects | question, session |
-| `backend/django_core/apps/credit/selectors.py:66` | update_or_create | EncoursCache.objects | client |
-| `backend/django_core/apps/credit/tasks.py:76` | update_or_create | EncoursCache.objects | client |
-| `backend/django_core/apps/credit/views.py:399` | get_or_create | ReglageCredit.objects | company |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/services.py:205` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py:6519` | get_or_create | MessageTemplate.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2479` | get_or_create | LeadTag.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2493` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2505` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2562` | get_or_create | Canal.objects | cle, company |
+| `backend/django_core/apps/crm/services.py:6494` | get_or_create | MessageTemplate.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2465` | get_or_create | LeadTag.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2479` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2491` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2548` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/customfields/blueprint.py:201` | update_or_create | modele.objects |  |
 | `backend/django_core/apps/customfields/catalogue.py:99` | get_or_create | CustomObjectDef.objects | code, company |
 | `backend/django_core/apps/customfields/catalogue.py:106` | get_or_create | CustomFieldDef.objects | code, company, module |
-| `backend/django_core/apps/dataimport/services.py:494` | update_or_create | ImportMapping.objects | company, entity, nom |
-| `backend/django_core/apps/dataimport/services.py:540` | get_or_create | ExternalRef.objects | company, external_id, external_system |
+| `backend/django_core/apps/dataimport/services.py:440` | update_or_create | ImportMapping.objects | company, entity, nom |
+| `backend/django_core/apps/dataimport/services.py:486` | get_or_create | ExternalRef.objects | company, external_id, external_system |
 | `backend/django_core/apps/dataimport/translations_i18n.py:112` | update_or_create | TranslationOverride.objects | company, key, locale |
-| `backend/django_core/apps/dataquality/services.py:904` | update_or_create | GoldenRecord.objects | cle_metier, company, entite |
-| `backend/django_core/apps/datarooms/services.py:44` | get_or_create | SalleDeDonneesDocument.objects | document, salle |
-| `backend/django_core/apps/douane/models.py:180` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/education/models.py:772` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/education/services.py:547` | get_or_create | Famille.objects | company, nom |
-| `backend/django_core/apps/education/services_planning.py:81` | get_or_create | Seance.objects | classe, company, date, heure_debut, matiere |
-| `backend/django_core/apps/education/viewsets.py:480` | update_or_create | Presence.objects | company, eleve, seance |
-| `backend/django_core/apps/education/viewsets.py:553` | update_or_create | Note.objects | company, eleve, evaluation |
-| `backend/django_core/apps/einvoice/services.py:182` | get_or_create | TransmissionDGI.objects | company, einvoice |
-| `backend/django_core/apps/esg/management/commands/seed_catalogue_esg.py:22` | get_or_create | CatalogueIndicateurESG.objects | code, company |
-| `backend/django_core/apps/esg/services.py:219` | get_or_create | FacteurEmissionVersionCounter.objects.select_for_update() | categorie, company, unite |
-| `backend/django_core/apps/esg/views.py:318` | get_or_create | ParametresESG.objects | company |
-| `backend/django_core/apps/extensions/services.py:152` | get_or_create | ExtensionInstall.objects | company, package |
-| `backend/django_core/apps/extensions/services.py:229` | get_or_create | BrandedTemplate.objects | code, company, kind |
-| `backend/django_core/apps/fiscal/services.py:38` | get_or_create | ObligationFiscale.objects | company, type_obligation |
-| `backend/django_core/apps/fiscal/services.py:102` | get_or_create | EcheanceFiscale.objects | company, obligation, periode_debut, periode_fin |
-| `backend/django_core/apps/flotte/management/commands/seed_baremes_vignette.py:75` | get_or_create | BaremeVignette.objects | annee, company, cv_max, cv_min, energie |
-| `backend/django_core/apps/flotte/management/commands/seed_referentiels_flotte.py:79` | get_or_create | ReferentielFlotte.objects | code, company, domaine |
-| `backend/django_core/apps/fpa/services.py:68` | get_or_create | SoumissionBudgetDepartement.objects | company, cycle, departement |
-| `backend/django_core/apps/fpa/services.py:228` | update_or_create | LignePrevisionGlissante.objects | categorie, company, mois_relatif, prevision |
-| `backend/django_core/apps/fpa/views.py:338` | get_or_create | PrevisionGlissante.objects | company, date_reference, departement_id |
 | `backend/django_core/apps/ged/management/commands/migrate_attachments_to_ged.py:57` | get_or_create | Cabinet.objects | company, nom |
 | `backend/django_core/apps/ged/management/commands/migrate_attachments_to_ged.py:163` | get_or_create | DocumentLien.objects | content_type, document, object_id |
 | `backend/django_core/apps/ged/management/commands/seed_types_champ_signature.py:30` | get_or_create | TypeChampSignature.objects | code, company |
@@ -178,28 +76,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/ged/services.py:3947` | get_or_create | DocumentLien.objects | company, content_type, document, object_id |
 | `backend/django_core/apps/ged/services.py:4625` | get_or_create | DocumentTag.objects | company, slug |
 | `backend/django_core/apps/ged/services.py:5857` | get_or_create | Folder.objects | cabinet, company, nom, parent |
-| `backend/django_core/apps/ged/views.py:2013` | get_or_create | DocumentLien.objects | content_type, document, object_id |
-| `backend/django_core/apps/gestion_projet/services.py:584` | update_or_create | ClotureProjet.objects | projet |
-| `backend/django_core/apps/gestion_projet/services.py:886` | update_or_create | LigneSituation.objects | libelle, situation |
-| `backend/django_core/apps/gestion_projet/services.py:1020` | update_or_create | Indisponibilite.objects | company, motif, ressource |
-| `backend/django_core/apps/gestion_projet/services.py:1135` | get_or_create | ReglageTemps.objects | company |
-| `backend/django_core/apps/gestion_projet/services.py:1405` | get_or_create | JourFerie.objects | calendrier, company, date |
-| `backend/django_core/apps/gestion_projet/views.py:576` | get_or_create | EvaluationProjet.objects | company, projet |
-| `backend/django_core/apps/grc/management/commands/seed_cadres_conformite.py:75` | update_or_create | CadreConformite.objects | code, company |
-| `backend/django_core/apps/grc/management/commands/seed_cadres_conformite.py:83` | update_or_create | ExigenceCadre.objects | cadre, code_exigence, company |
-| `backend/django_core/apps/grc/management/commands/seed_controles_base.py:115` | update_or_create | ControleInterne.objects | code, company |
-| `backend/django_core/apps/grc/management/commands/seed_modeles_questionnaire.py:93` | update_or_create | ModeleQuestionnaire.objects | code, company |
-| `backend/django_core/apps/hospitality/services.py:443` | get_or_create | TicketPension.objects | company, date, reservation, type_repas |
-| `backend/django_core/apps/hospitality/views.py:65` | get_or_create | ParametresTaxeSejour.objects | company |
-| `backend/django_core/apps/immobilier/services.py:479` | update_or_create | RegularisationCharges.objects | bail_id, company, exercice |
-| `backend/django_core/apps/innovation/management/commands/seed_innovation_demo.py:112` | get_or_create | Idee.objects | company, titre |
-| `backend/django_core/apps/innovation/management/commands/seed_innovation_demo.py:124` | get_or_create | CampagneInnovation.objects | company, nom |
-| `backend/django_core/apps/innovation/management/commands/seed_innovation_demo.py:130` | get_or_create | FeedbackProduit.objects | company, titre |
-| `backend/django_core/apps/innovation/services.py:150` | get_or_create | InnovationSettings.objects | company |
-| `backend/django_core/apps/innovation/services.py:177` | get_or_create | InnovationSettings.objects | company |
-| `backend/django_core/apps/innovation/services.py:235` | get_or_create | Tag.objects | company, nom |
-| `backend/django_core/apps/innovation/services.py:241` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
-| `backend/django_core/apps/innovation/views.py:598` | get_or_create | InnovationSettings.objects | company |
+| `backend/django_core/apps/ged/views.py:1997` | get_or_create | DocumentLien.objects | content_type, document, object_id |
 | `backend/django_core/apps/installations/field_capture.py:79` | get_or_create | MaterielConsommation.objects | intervention |
 | `backend/django_core/apps/installations/field_capture.py:334` | get_or_create | SafetyChecklistSlot.objects | cle, company |
 | `backend/django_core/apps/installations/field_capture.py:344` | get_or_create | SafetySignoff.objects | intervention |
@@ -211,60 +88,41 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/installations/services.py:511` | get_or_create | StockReservation.objects | installation, produit_id |
 | `backend/django_core/apps/installations/services.py:778` | get_or_create | StockReservation.objects | installation, produit_id |
 | `backend/django_core/apps/installations/services.py:863` | get_or_create | StockReservation.objects | installation, produit_id |
-| `backend/django_core/apps/installations/services.py:1214` | get_or_create | StageModele.objects | cle, company |
-| `backend/django_core/apps/installations/services.py:1872` | get_or_create | CommissioningRecord.objects | installation |
-| `backend/django_core/apps/installations/services.py:2081` | get_or_create | HandoverPack.objects | installation |
-| `backend/django_core/apps/installations/services.py:2143` | get_or_create | ReservationAssemblage.objects | ordre, produit_id |
-| `backend/django_core/apps/installations/services.py:3209` | get_or_create | SerieEntrepot.objects | company, numero_serie, produit_id |
-| `backend/django_core/apps/installations/services.py:3857` | get_or_create | JalonProjet.objects | installation, phase |
-| `backend/django_core/apps/installations/services.py:3946` | get_or_create | EmplacementStock.objects | company, nom |
+| `backend/django_core/apps/installations/services.py:1113` | get_or_create | StageModele.objects | cle, company |
+| `backend/django_core/apps/installations/services.py:1700` | get_or_create | CommissioningRecord.objects | installation |
+| `backend/django_core/apps/installations/services.py:1909` | get_or_create | HandoverPack.objects | installation |
+| `backend/django_core/apps/installations/services.py:1971` | get_or_create | ReservationAssemblage.objects | ordre, produit_id |
+| `backend/django_core/apps/installations/services.py:2995` | get_or_create | SerieEntrepot.objects | company, numero_serie, produit_id |
+| `backend/django_core/apps/installations/services.py:3643` | get_or_create | JalonProjet.objects | installation, phase |
+| `backend/django_core/apps/installations/services.py:3732` | get_or_create | EmplacementStock.objects | company, nom |
 | `backend/django_core/apps/installations/views/approbation_bcf.py:100` | update_or_create | ApprobationBCF.objects | bcf, company |
 | `backend/django_core/apps/installations/views/checklist_etape.py:103` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/installations/views/checklist_template.py:103` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/installations/views/installation.py:91` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/installations/views/installation.py:658` | update_or_create | PhotoChecklistMeta.objects | attachment |
 | `backend/django_core/apps/installations/views/intervention.py:135` | get_or_create | TypeIntervention.objects | cle, company |
-| `backend/django_core/apps/installations/views/intervention.py:1062` | get_or_create | PhotoAnnotation.objects | attachment |
-| `backend/django_core/apps/installations/views/intervention.py:1609` | get_or_create | ToolReturn.objects | intervention, outil_id |
+| `backend/django_core/apps/installations/views/intervention.py:1020` | get_or_create | PhotoAnnotation.objects | attachment |
+| `backend/django_core/apps/installations/views/intervention.py:1567` | get_or_create | ToolReturn.objects | intervention, outil_id |
 | `backend/django_core/apps/installations/views/program.py:152` | get_or_create | link_model.objects | projet |
-| `backend/django_core/apps/installations/views/rfq.py:277` | get_or_create | RFQConsultation.objects | fournisseur, rfq |
 | `backend/django_core/apps/installations/views/safety.py:103` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/installations/views/shotlist.py:102` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/installations/views/type_intervention.py:102` | get_or_create | TypeIntervention.objects | cle, company |
-| `backend/django_core/apps/kb/management/commands/seed_kb_templates.py:295` | get_or_create | KbArticle.objects | company, titre |
-| `backend/django_core/apps/kb/services.py:37` | get_or_create | KbLecture.objects | article, utilisateur |
-| `backend/django_core/apps/marketing/services.py:286` | update_or_create | AbonnementListe.objects | destinataire, liste |
-| `backend/django_core/apps/marketing/services.py:1083` | get_or_create | ParametresMarketing.objects | company |
-| `backend/django_core/apps/marketing/services.py:1169` | get_or_create | ScoreMaturite.objects | company, lead_id |
-| `backend/django_core/apps/mlops/services.py:90` | update_or_create | FeatureVector.objects | company, content_type, object_id |
 | `backend/django_core/apps/monitoring/models.py:204` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/monitoring/services.py:44` | get_or_create | MonitoringConfig.objects | installation |
 | `backend/django_core/apps/monitoring/services.py:208` | get_or_create | UnderperformanceFlag.objects | installation, is_open |
-| `backend/django_core/apps/mrp/services.py:962` | get_or_create | ParametresMRP.objects | company |
 | `backend/django_core/apps/notifications/management/commands/seed_holidays_ci.py:73` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/management/commands/seed_holidays_fr.py:75` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/management/commands/seed_holidays_sn.py:73` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/management/commands/seed_ma_holidays.py:72` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/selectors.py:149` | update_or_create | Holiday.objects | company, date, pays |
-| `backend/django_core/apps/notifications/services.py:944` | get_or_create | AnnonceLecture.objects | annonce, utilisateur |
-| `backend/django_core/apps/notifications/services.py:1032` | get_or_create | AnnonceRelance.objects | annonce, utilisateur |
-| `backend/django_core/apps/notifications/services.py:1081` | get_or_create | ApprovalReminderState.objects | content_type, object_id |
-| `backend/django_core/apps/notifications/services.py:1257` | update_or_create | SnoozedItem.objects | object_id, source, user |
+| `backend/django_core/apps/notifications/services.py:927` | get_or_create | AnnonceLecture.objects | annonce, utilisateur |
+| `backend/django_core/apps/notifications/services.py:1015` | get_or_create | AnnonceRelance.objects | annonce, utilisateur |
+| `backend/django_core/apps/notifications/services.py:1065` | get_or_create | ApprovalReminderState.objects | content_type, object_id |
+| `backend/django_core/apps/notifications/services.py:1216` | update_or_create | SnoozedItem.objects | object_id, source, user |
 | `backend/django_core/apps/notifications/views.py:141` | get_or_create | NotificationPreference.objects | event_type, user |
 | `backend/django_core/apps/notifications/views.py:225` | get_or_create | WorkingHoursConfig.objects | company |
 | `backend/django_core/apps/notifications/views.py:533` | update_or_create | PushSubscription.objects | endpoint |
 | `backend/django_core/apps/outillage/views.py:32` | get_or_create | KitOutillage.objects | company, nom |
-| `backend/django_core/apps/paie/services.py:138` | get_or_create | ParametrePaie.objects | company, date_effet, pays |
-| `backend/django_core/apps/paie/services.py:147` | get_or_create | BaremeIR.objects | company, date_effet, pays |
-| `backend/django_core/apps/paie/services.py:332` | get_or_create | Rubrique.objects | code, company |
-| `backend/django_core/apps/paie/services.py:405` | get_or_create | TypeEntreePonctuelle.objects | code, company |
-| `backend/django_core/apps/paie/services.py:2736` | get_or_create | PaysPaie.objects | code_iso, company |
-| `backend/django_core/apps/paie/services.py:3659` | get_or_create | EcheanceDeclarative.objects | company, periode, type_echeance |
-| `backend/django_core/apps/paie/services.py:5823` | get_or_create | SchemaComptablePaie.objects | code_systeme, company, rubrique |
-| `backend/django_core/apps/paie/services.py:7177` | get_or_create | CumulAnnuel.objects.select_for_update() | annee, company, profil |
-| `backend/django_core/apps/paie/services.py:7879` | get_or_create | StructurePaie.objects | code, company |
-| `backend/django_core/apps/paie/services.py:7889` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
-| `backend/django_core/apps/paie/services.py:7915` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
 | `backend/django_core/apps/parametres/fetes_mobiles.py:97` | update_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/parametres/models_company.py:972` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_company.py:977` | get_or_create | cls.objects | pk |
@@ -284,59 +142,22 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/parametres/views_messages.py:148` | get_or_create | MessageTemplate.objects | cle, company |
 | `backend/django_core/apps/parametres/views_statuses.py:138` | get_or_create | StatutConfig.objects | cle, company, domaine |
 | `backend/django_core/apps/parametres/views_translations.py:137` | get_or_create | TranslationOverride.objects | company, key, locale |
-| `backend/django_core/apps/portail/services.py:156` | get_or_create | ComptePortailClient.objects | client, company |
-| `backend/django_core/apps/portail/services.py:173` | get_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/portail/services.py:251` | get_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/portail/services.py:414` | update_or_create | JalonChantierPortail.objects | chantier_id, cle_phase, company |
-| `backend/django_core/apps/portail/services.py:537` | get_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/portail/services.py:284` | get_or_create | ComptePortailClient.objects | client, company |
+| `backend/django_core/apps/portail/services.py:301` | get_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/portail/services.py:377` | get_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/portail/services.py:540` | update_or_create | JalonChantierPortail.objects | chantier_id, cle_phase, company |
+| `backend/django_core/apps/portail/services.py:663` | get_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/portail/views_client.py:572` | get_or_create | AcceptationDevisPortail.objects | company, devis |
 | `backend/django_core/apps/portail/views_client.py:675` | get_or_create | PaiementFacturePortail.objects | company, facture, statut |
 | `backend/django_core/apps/portail/views_externes.py:495` | update_or_create | PreferencePortail.objects | utilisateur |
-| `backend/django_core/apps/pos/services.py:883` | get_or_create | CodePinCaissier.objects | company, user |
 | `backend/django_core/apps/publicapi/idempotency.py:64` | get_or_create | IdempotencyRecord.objects | api_key, endpoint, idempotency_key |
-| `backend/django_core/apps/qhse/management/commands/seed_aspects_environnementaux_solaire.py:72` | get_or_create | AspectEnvironnemental.objects | activite, aspect, company |
-| `backend/django_core/apps/qhse/management/commands/seed_clauses_norme.py:87` | get_or_create | ClauseNorme.objects | company, numero, referentiel |
-| `backend/django_core/apps/qhse/management/commands/seed_codes_defaut_solaire.py:79` | get_or_create | CodeDefaut.objects | code, company |
-| `backend/django_core/apps/qhse/management/commands/seed_exigences_maroc.py:107` | get_or_create | ConformiteEnvironnementale.objects | company, intitule |
-| `backend/django_core/apps/qhse/management/commands/seed_itp_solaire.py:205` | get_or_create | PlanInspectionModele.objects | code, company |
-| `backend/django_core/apps/qhse/management/commands/seed_itp_solaire.py:221` | get_or_create | PointControleModele.objects | company, ordre, plan |
-| `backend/django_core/apps/qhse/services.py:51` | get_or_create | PlanInspectionChantier.objects | chantier_id, company, modele |
-| `backend/django_core/apps/qhse/services.py:1119` | get_or_create | ControleReception.objects | company, plan, reception_id |
-| `backend/django_core/apps/qhse/services.py:1496` | get_or_create | AnalyseNcr.objects | company, non_conformite |
-| `backend/django_core/apps/qhse/services.py:1976` | get_or_create | RisqueOpportuniteCapa.objects | capa, company, risque_opportunite |
-| `backend/django_core/apps/qhse/services.py:2042` | get_or_create | AccuseLecture.objects | company, diffusion, user |
-| `backend/django_core/apps/qhse/services.py:2060` | get_or_create | AccuseLecture.objects | company, diffusion, user |
-| `backend/django_core/apps/qhse/services.py:2079` | get_or_create | AccuseLecture.objects | company, diffusion, user |
-| `backend/django_core/apps/qhse/services.py:2591` | update_or_create | LigneBilanCarbone.objects | bilan, company, libelle |
-| `backend/django_core/apps/qhse/services.py:2730` | get_or_create | DemandeChangementCapa.objects | capa, company, demande_changement |
-| `backend/django_core/apps/qhse/views.py:3847` | get_or_create | ContexteOrganisation.objects | company |
 | `backend/django_core/apps/records/services.py:104` | get_or_create | Follower.objects | company, content_type, object_id, sous_type, user |
-| `backend/django_core/apps/records/views.py:986` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
-| `backend/django_core/apps/rh/services.py:114` | get_or_create | SoldeConge.objects.select_for_update() | annee, company, employe |
-| `backend/django_core/apps/rh/services.py:151` | get_or_create | SoldeConge.objects.select_for_update() | annee, company, employe |
-| `backend/django_core/apps/rh/services.py:434` | get_or_create | SoldeConge.objects | annee, company, employe |
-| `backend/django_core/apps/rh/services.py:468` | get_or_create | SoldeConge.objects.select_for_update() | annee, company, employe |
-| `backend/django_core/apps/rh/services.py:2656` | update_or_create | InscriptionFormation.objects | participant, session |
-| `backend/django_core/apps/rh/services.py:2770` | get_or_create | SoldeConge.objects.select_for_update() | annee, company, employe |
-| `backend/django_core/apps/rh/services.py:2827` | update_or_create | CompetenceEmploye.objects | company, competence_id, employe |
-| `backend/django_core/apps/rh/services.py:2858` | get_or_create | CampagneEvaluation.objects | annee, company, intitule |
-| `backend/django_core/apps/rh/services.py:2969` | get_or_create | EvaluationEmploye.objects | campagne, company, employe |
-| `backend/django_core/apps/rh/services.py:3623` | get_or_create | ProgressionParcours.objects | company, employe, parcours |
-| `backend/django_core/apps/rh/views.py:2295` | get_or_create | ReglageRH.objects | company |
-| `backend/django_core/apps/rh/views.py:4531` | update_or_create | NoteEntretien.objects | entretien, evaluateur |
+| `backend/django_core/apps/records/views.py:956` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
 | `backend/django_core/apps/roles/management/commands/init_roles.py:87` | get_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/sante/models.py:728` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/sav/models.py:176` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/sav/services.py:1557` | get_or_create | TicketFollower.objects | company, ticket, user |
-| `backend/django_core/apps/sav/views.py:1303` | get_or_create | TicketFollower.objects | company, ticket, user |
-| `backend/django_core/apps/sav/views.py:1984` | get_or_create | TicketChecklistItem.objects | cle, ticket |
-| `backend/django_core/apps/scm/selectors.py:104` | update_or_create | ClassificationABC.objects | company, produit |
-| `backend/django_core/apps/scm/services.py:154` | update_or_create | PrevisionDemande.objects | company, periode, produit, segment |
-| `backend/django_core/apps/scm/services.py:252` | get_or_create | PolitiqueStock.objects | company, produit |
-| `backend/django_core/apps/scm/services.py:378` | update_or_create | LigneDemandeSOP.objects | cycle, produit_id |
-| `backend/django_core/apps/scm/services.py:420` | update_or_create | LigneOffreSOP.objects | cycle, produit |
-| `backend/django_core/apps/scm/services.py:797` | get_or_create | ParametresSCM.objects | company |
-| `backend/django_core/apps/scm/services.py:1039` | get_or_create | PolitiqueStock.objects | company, produit |
+| `backend/django_core/apps/sav/models.py:167` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/sav/services.py:1134` | get_or_create | TicketFollower.objects | company, ticket, user |
+| `backend/django_core/apps/sav/views.py:1280` | get_or_create | TicketFollower.objects | company, ticket, user |
+| `backend/django_core/apps/sav/views.py:1923` | get_or_create | TicketChecklistItem.objects | cle, ticket |
 | `backend/django_core/apps/statuspage/tasks.py:71` | get_or_create | UptimeDayBucket.objects | company, composant, date, region |
 | `backend/django_core/apps/statuspage/tasks.py:137` | update_or_create | ComponentStatus.objects | company, nom, region |
 | `backend/django_core/apps/statuspage/tasks.py:155` | update_or_create | ComponentStatus.objects | company, nom, region |
@@ -351,32 +172,24 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/stock/services.py:342` | get_or_create | StockEmplacement.objects | emplacement, produit |
 | `backend/django_core/apps/stock/services.py:377` | get_or_create | PrixFournisseur.objects | fournisseur, produit |
 | `backend/django_core/apps/stock/services.py:407` | get_or_create | StockEmplacement.objects | company, emplacement, produit |
-| `backend/django_core/apps/stock/services.py:1361` | get_or_create | LotEntrepot.objects.select_for_update() | company, numero_lot, produit |
-| `backend/django_core/apps/stock/services.py:1553` | get_or_create | SousTraitantProfile.objects | fournisseur |
-| `backend/django_core/apps/stock/services.py:2025` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:2258` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:3977` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:3996` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:4043` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:4069` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:6297` | get_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/stock/services.py:1310` | get_or_create | LotEntrepot.objects.select_for_update() | company, numero_lot, produit |
+| `backend/django_core/apps/stock/services.py:1502` | get_or_create | SousTraitantProfile.objects | fournisseur |
+| `backend/django_core/apps/stock/services.py:1971` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:2204` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:3914` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:3933` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:3980` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:4006` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:6147` | get_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/stock/services_transfert_deux_temps.py:100` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/services_transfert_deux_temps.py:162` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services_van_sales.py:93` | get_or_create | StockVehicule.objects.select_for_update() | actif_flotte_id, company, produit |
 | `backend/django_core/apps/stock/services_wms.py:1013` | get_or_create | PlanComptageTournant.objects | classe_abc, company |
 | `backend/django_core/apps/stock/views/catalogue_achat.py:138` | get_or_create | FavorisCatalogueAchat.objects | company, utilisateur |
 | `backend/django_core/apps/stock/views/marque.py:57` | get_or_create | Marque.objects | company, nom |
-| `backend/django_core/apps/transport/models.py:373` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/uxviews/models.py:174` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/uxviews/views.py:98` | update_or_create | EcranRecent.objects | company, ecran, owner |
 | `backend/django_core/apps/uxviews/views.py:585` | get_or_create | FavoriUtilisateur.objects | company, content_type, object_id, owner |
-| `backend/django_core/apps/veille_ao/services.py:895` | get_or_create | SourceVeille.objects | code, company |
-| `backend/django_core/apps/ventes/domain/facturation_ops.py:453` | get_or_create | Produit.objects | company, sku |
-| `backend/django_core/apps/ventes/domain/facturation_ops.py:785` | get_or_create | Produit.objects | company, sku |
+| `backend/django_core/apps/ventes/domain/facturation_ops.py:706` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/domain/gammes.py:256` | get_or_create | ParametresGammes.objects | company |
 | `backend/django_core/apps/ventes/views/liste_prix.py:90` | update_or_create | LignePrixListe.objects | liste, produit |
 | `backend/django_core/apps/ventes/views/remise_encaissement.py:127` | get_or_create | LigneRemiseEncaissement.objects | paiement, remise |
-| `backend/django_core/apps/voip/services.py:26` | get_or_create | VoipParametres.objects | company |
-| `backend/django_core/apps/voip/services.py:138` | get_or_create | ActivityType.objects | company, nom |
-| `backend/django_core/apps/voip/views.py:46` | get_or_create | VoipIdentifiantUtilisateur.objects | company, utilisateur |
-| `backend/django_core/apps/voip/views.py:51` | get_or_create | VoipIdentifiantUtilisateur.objects | company, utilisateur |
