@@ -163,8 +163,21 @@ class PlanSolaireTests(TestCase):
 
     def test_le_coeur_metier_est_inclus(self):
         inclus = set(modules_du_plan_solaire())
-        for cle in ('crm', 'ventes', 'stock', 'installations', 'sav', 'compta'):
+        for cle in ('crm', 'ventes', 'stock', 'installations', 'sav',
+                    'adsengine'):
             self.assertIn(cle, inclus, cle)
+
+    def test_solmvp52_aucune_app_parquee_dans_le_plan(self):
+        """SOLMVP52 — une coquille garde son manifeste mais ne doit JAMAIS
+        réapparaître dans un plan de licence vendu (compta/pos font partie
+        des 47 apps sorties du MVP solaire le 20/09/2026)."""
+        from core.parked import APPS_PARQUEES
+
+        inclus = set(modules_du_plan_solaire())
+        for cle in ('compta', 'pos'):
+            self.assertIn(cle, APPS_PARQUEES, cle)  # garde la prémisse du test
+            self.assertNotIn(cle, inclus, cle)
+        self.assertEqual(inclus & set(APPS_PARQUEES), set())
 
     def test_plan_solaire_n_assigne_aucune_societe(self):
         company = Company.objects.create(nom='Non assignée', slug='sol9-na')
@@ -180,6 +193,8 @@ class PlanSolaireTests(TestCase):
         CompanyProfile.objects.create(
             company=company, nom='Solaire', plan=plan)
         hors = feature_flags.modules_desactives(company)
-        for cle in ('crm', 'ventes', 'stock', 'installations', 'sav', 'pos'):
+        # SOLMVP52 — 'pos' est une des 47 apps sorties du MVP solaire (plus
+        # aucun manifeste vendable) : le métier CONSERVÉ reste seul.
+        for cle in ('crm', 'ventes', 'stock', 'installations', 'sav'):
             self.assertNotIn(cle, hors, cle)
         self.assertTrue(feature_flags.module_actif(company, 'crm'))

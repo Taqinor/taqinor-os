@@ -5,10 +5,15 @@ INSTALLABLES du dépôt. Une app ajoutée demain entre donc dans le plan sans
 qu'on ait à maintenir une liste à la main.
 
 SOLMVP3 — la soustraction « moins les verticaux parqués par l'édition » a
-disparu avec le mécanisme d'édition : il n'y a plus qu'un produit. Les apps
-sorties du MVP solaire (`core/parked.py`) quittent le plan d'elles-mêmes dès
-leur coquille, parce qu'elles n'exposent plus de manifeste installable — la
-dérivation reste la seule source, sans seconde liste à tenir.
+disparu avec le mécanisme d'édition : il n'y a plus qu'un produit.
+
+SOLMVP52 — une coquille de migrations (`core/parked.py`) GARDE son
+`module_manifest` (le contrat de coquille l'exige, voir `core/parked.py`) et la
+plupart ne posent PAS explicitement `installable: False` dessus : la
+dérivation seule ne les exclurait donc PAS. `modules_du_plan_solaire` retire
+donc explicitement tout label de `core.parked.APPS_PARQUEES`, quel que soit ce
+que porte son manifeste — la SEULE garantie qu'une app sortie du MVP ne
+revienne jamais dans un plan de licence vendu.
 
 Volontairement PAS une migration de données : `modules_inclus` doit refléter
 les manifestes RÉELLEMENT chargés. Un semis explicite (commande ou appel de
@@ -24,13 +29,20 @@ NOM_SOLAIRE = 'Solaire'
 
 
 def modules_du_plan_solaire():
-    """Clés de module installables du périmètre solaire (triées, stables)."""
+    """Clés de module installables du périmètre solaire (triées, stables).
+
+    SOLMVP52 — exclut explicitement toute app parquée (`core.parked`) : son
+    manifeste RESTE (contrat de coquille) et la plupart ne portent PAS
+    `installable: False`, donc la dérivation seule les laisserait passer.
+    """
     from core import modules as modules_infra
+    from core.parked import est_parquee
 
     manifests = modules_infra.collect_manifests()
     return sorted(
         key for key, manifest in manifests.items()
         if manifest.get('installable')
+        and not est_parquee(manifest.get('app_label'))
     )
 
 
