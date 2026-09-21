@@ -107,6 +107,8 @@ CLES_SIMULATION = (
     ('bifacial_taux_occupation', "Taux d'occupation du sol (GCR) retenu pour la face arrière (repli quand le document ne le porte pas)", '', 'PVsyst — Bifacial systems (facteurs de vue : taux d\'occupation)'),  # CALX177
     ('bifacial_pas_rangee_m', 'Pas entre rangées retenu pour la face arrière (repli quand le document ne le porte pas)', 'm', 'PVsyst — Bifacial systems (facteurs de vue : pas entre rangées)'),  # CALX177
     ('bifacial_mismatch_arriere_pct', 'Mismatch de face arrière', '%', 'PVsyst — Bifacial systems (les 10 % du logiciel sont CITÉS en aide à la saisie, jamais préremplis)'),  # CALX177
+    ('seuil_derivation_acces', "Seuil d'accès solaire sous lequel un module est dérivé de sa chaîne", '', 'PV*SOL — Shading due to nearby objects (la caractéristique du module s\'effondre selon le nombre de brins ombrés ; aucun seuil n\'est proposé par défaut)'),  # CALX168
+    ('plafond_modules_simules', 'Plafond de modules simulés un par un (au-delà, seul l\'agrégat est publié)', 'modules', 'Décision fondateur 21/09/2026 — plafond de simulation module par module à 5 000 modules, mesuré par CALX389'),  # CALX182
 )
 
 #: Les clés ADMISES de la section ``electrique_societe``, même forme et même
