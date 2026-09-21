@@ -22,23 +22,19 @@ import { Badge, Card, Spinner } from '../../../ui'
    chaque étape de la chaîne de pertes et chaque contrôle électrique qui en
    dépend restait donc condamné à l'« omis » faute d'écran pour les renseigner.
 
-   LE REGISTRE N'EST PAS SERVI PAR LE GET (constat vérifié, gap signalé).
-   `views/parametres.py::_forme_reglages` déclare `simulation` et
-   `electrique_societe` en `DictField()` NU — le libellé français, l'unité et
-   la référence doctrinale de chaque clé ne sont publiés NULLE PART par
-   l'API : ils ne vivent que dans `services/parametres_cles.py`
-   (`CLES_SIMULATION`, `CLES_ELECTRIQUE_SOCIETE`), un module Python que cet
-   écran ne peut pas importer. Le contrat committé
-   (`contract_samples/parametres_calepinage.json`) ne porte lui aussi que DEUX
-   exemples de valeurs, jamais la liste complète des clés admises. Cette lane
-   étant strictement frontend (aucun fichier backend touché), les deux tables
-   ci-dessous redéclarent donc, DANS L'ORDRE où le serveur les déclare, les
-   clés et leur libellé/unité/référence — un doublon assumé, pas inventé
-   (chaque valeur est recopiée du fichier serveur). LE GAP POUR UNE TÂCHE
-   BACKEND FUTURE : servir ces deux tables depuis `GET parametres/` (par
-   exemple sous une clé `registre`, comme `kits` l'est déjà pour CAL246)
-   éviterait cette redéclaration et la garantie qu'elle reste à jour serait
-   alors mécanique plutôt que manuelle.
+   LE REGISTRE EST DÉSORMAIS SERVI PAR LE GET (follow-up CALX145/69).
+   `GET /api/django/calepinage/parametres/` publie maintenant une clé DÉRIVÉE
+   `registre` — `{simulation: [{cle, libelle, unite, reference}, …],
+   electrique_societe: [...]}`, résolue en lecture seule depuis
+   `services/parametres_cles.py` par `selectors.registre_des_reglages`
+   (même mécanique que `kits`, CAL246 : jamais une section, `PUT` la refuse
+   comme toute clé inconnue). Les deux tables ci-dessous
+   (`REGISTRE_SIMULATION`/`REGISTRE_ELECTRIQUE_SOCIETE`) restent exportées
+   pour le test jumeau et servent de REPLI : l'écran lit d'abord `registre`
+   sur la réponse du serveur (voir `registreDepuisServeur` plus bas) et ne
+   retombe sur ces tables locales que si la clé est absente — un client
+   ancien ou un mock de test qui ne la sert pas encore continue de fonctionner
+   à l'identique.
 
    LA DISCIPLINE DE SAISIE, IDENTIQUE À CELLE DU SERVEUR
    (`services/parametres.py::_normaliser_section_a_registre`) :
@@ -102,20 +98,47 @@ export const REGISTRE_ELECTRIQUE_SOCIETE = [
   ['cos_phi_par_defaut', 'Cos φ retenu à défaut de mesure', '', 'Réglage société — aucune valeur n’est supposée'],
 ]
 
-const SECTIONS = [
-  ['simulation', 'Simulation', REGISTRE_SIMULATION],
-  ['electrique_societe', 'Électrique — société', REGISTRE_ELECTRIQUE_SOCIETE],
-]
+/** Les deux sections à afficher, avec le registre ACTIF de chacune (servi
+ *  par le GET, ou le repli local si la clé `registre` est absente). */
+function sectionsDe(registreSimulation, registreElectrique) {
+  return [
+    ['simulation', 'Simulation', registreSimulation],
+    ['electrique_societe', 'Électrique — société', registreElectrique],
+  ]
+}
 
 const LIGNE_VIDE = { valeurTexte: '', source: '', reference: '' }
 
-/** Le libellé français d'une clé, cherché dans les deux registres. */
-function libelleDe(cle) {
-  for (const [, , registre] of SECTIONS) {
+/** Le libellé français d'une clé, cherché dans les registres ACTIFS. */
+function libelleDe(cle, sections) {
+  for (const [, , registre] of sections) {
     const trouve = registre.find(([c]) => c === cle)
     if (trouve) return trouve[1]
   }
   return cle
+}
+
+/** `registre.<section>` servi par le GET — une LISTE `[{cle, libelle, unite,
+ *  reference}, …]` (contrat `parametres_calepinage.json`) — reconverti dans
+ *  la forme `[clé, libellé, unité, référence]` qu'utilisent `lignesDepuis`/
+ *  `validerSection`. Rend `null` si la clé est absente ou mal formée : c'est
+ *  le signal qui déclenche le repli sur la table locale, jamais un registre
+ *  à moitié reconstruit. */
+function registreDepuisServeur(liste) {
+  if (!Array.isArray(liste) || liste.length === 0) return null
+  const lignes = []
+  for (const ligne of liste) {
+    if (!ligne || typeof ligne !== 'object' || typeof ligne.cle !== 'string') {
+      return null
+    }
+    lignes.push([
+      ligne.cle,
+      typeof ligne.libelle === 'string' ? ligne.libelle : ligne.cle,
+      typeof ligne.unite === 'string' ? ligne.unite : '',
+      typeof ligne.reference === 'string' ? ligne.reference : '',
+    ])
+  }
+  return lignes
 }
 
 /** Le texte affiché dans le champ « valeur », depuis ce que le serveur sert. */
@@ -253,6 +276,11 @@ export default function ReglagesSimulation() {
 
   const [lignesSimulation, setLignesSimulation] = useState({})
   const [lignesElectrique, setLignesElectrique] = useState({})
+  // Le registre ACTIF : celui servi par le GET (`data.registre`), ou le
+  // repli local tant que la réponse n'est pas encore arrivée — jamais un
+  // écran sans aucune ligne pendant le chargement.
+  const [registreSimulation, setRegistreSimulation] = useState(REGISTRE_SIMULATION)
+  const [registreElectrique, setRegistreElectrique] = useState(REGISTRE_ELECTRIQUE_SOCIETE)
   const [chargement, setChargement] = useState(true)
   const [erreurChargement, setErreurChargement] = useState(null)
   const [erreurs, setErreurs] = useState({})
@@ -265,8 +293,17 @@ export default function ReglagesSimulation() {
       .then((res) => {
         if (annule) return
         const data = res?.data ?? {}
-        setLignesSimulation(lignesDepuis(REGISTRE_SIMULATION, data.simulation))
-        setLignesElectrique(lignesDepuis(REGISTRE_ELECTRIQUE_SOCIETE, data.electrique_societe))
+        const servi = data.registre && typeof data.registre === 'object' ? data.registre : {}
+        // Le registre SERVI d'abord ; le repli local (`REGISTRE_SIMULATION`/
+        // `REGISTRE_ELECTRIQUE_SOCIETE`) seulement si la clé `registre` est
+        // absente ou mal formée (client ancien, mock de test incomplet).
+        const simulationActive = registreDepuisServeur(servi.simulation) || REGISTRE_SIMULATION
+        const electriqueActive = registreDepuisServeur(servi.electrique_societe)
+          || REGISTRE_ELECTRIQUE_SOCIETE
+        setRegistreSimulation(simulationActive)
+        setRegistreElectrique(electriqueActive)
+        setLignesSimulation(lignesDepuis(simulationActive, data.simulation))
+        setLignesElectrique(lignesDepuis(electriqueActive, data.electrique_societe))
       })
       .catch(() => {
         if (!annule) {
@@ -284,8 +321,8 @@ export default function ReglagesSimulation() {
   const changerElectrique = changer(setLignesElectrique)
 
   const enregistrer = async () => {
-    const simulation = validerSection(REGISTRE_SIMULATION, lignesSimulation)
-    const electrique = validerSection(REGISTRE_ELECTRIQUE_SOCIETE, lignesElectrique)
+    const simulation = validerSection(registreSimulation, lignesSimulation)
+    const electrique = validerSection(registreElectrique, lignesElectrique)
     const toutesErreurs = { ...simulation.erreurs, ...electrique.erreurs }
     setMessage(null)
     if (Object.keys(toutesErreurs).length > 0) {
@@ -300,8 +337,8 @@ export default function ReglagesSimulation() {
         { electrique_societe: electrique.section },
       )
       const data = res?.data ?? {}
-      setLignesSimulation(lignesDepuis(REGISTRE_SIMULATION, data.simulation))
-      setLignesElectrique(lignesDepuis(REGISTRE_ELECTRIQUE_SOCIETE, data.electrique_societe))
+      setLignesSimulation(lignesDepuis(registreSimulation, data.simulation))
+      setLignesElectrique(lignesDepuis(registreElectrique, data.electrique_societe))
       setMessage('Réglages enregistrés.')
     } catch (e) {
       const corps = e?.response?.data
@@ -333,6 +370,7 @@ export default function ReglagesSimulation() {
   }
 
   const champsFautifs = Object.keys(erreurs)
+  const sections = sectionsDe(registreSimulation, registreElectrique)
   const lignesParSection = { simulation: lignesSimulation, electrique_societe: lignesElectrique }
   const changerParSection = { simulation: changerSimulation, electrique_societe: changerElectrique }
 
@@ -365,13 +403,13 @@ export default function ReglagesSimulation() {
           {champsFautifs.map((cle, i) => (
             <span key={cle}>
               {i > 0 && ', '}
-              <a href={`#calx69-${cle}`} className="underline">{libelleDe(cle)}</a>
+              <a href={`#calx69-${cle}`} className="underline">{libelleDe(cle, sections)}</a>
             </span>
           ))}
         </p>
       )}
 
-      {SECTIONS.map(([section, titre, registre]) => (
+      {sections.map(([section, titre, registre]) => (
         <Card key={section} className="mt-5 p-4" data-testid={`calx69-section-${section}`}>
           <h2 className="text-base font-semibold text-foreground">{titre}</h2>
           {registre.map(([cle, libelle, unite, reference]) => (

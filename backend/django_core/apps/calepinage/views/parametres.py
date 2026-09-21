@@ -31,13 +31,27 @@ from rest_framework.views import APIView
 from core.permissions import ScopedPermission
 
 from ..permissions import CAL_GERER, CAL_VOIR
-from ..selectors import kits_de_pose_disponibles, parametres_de_societe
+from ..selectors import (
+    kits_de_pose_disponibles, parametres_de_societe, registre_des_reglages,
+)
 from ..services.parametres import ReglageInvalide, enregistrer_parametres
 
 __all__ = ['ParametresCalepinageView', 'SuggestionPenteIGNView']
 
 
-def _forme_reglages(nom):
+def _forme_registre():
+    """CALX145/69 — la forme du ``registre`` publié : deux sections, chacune
+    une LISTE de lignes ``{cle, libelle, unite, reference}`` (l'ordre du
+    registre de ``services/parametres_cles.py``, jamais réordonné). Voir
+    ``selectors.registre_des_reglages``."""
+    return inline_serializer('CalepinageRegistreReponse', {
+        'simulation': serializers.ListField(child=serializers.DictField()),
+        'electrique_societe': serializers.ListField(
+            child=serializers.DictField()),
+    })
+
+
+def _forme_reglages(nom, avec_registre=False):
     """YAPIC6/PACT7 — la forme DÉCLARÉE des réglages, tirée du contrat.
 
     Les sept sections sont celles de `contract_samples/
@@ -46,8 +60,13 @@ def _forme_reglages(nom):
     donc un `DictField` par section — pas un `dict` nu, que la garde
     `scripts/check_openapi_shapes.py` interdit à juste titre : une forme qui
     valide tout ne protège rien.
+
+    ``avec_registre`` — CALX145/69 : ajoute la clé DÉRIVÉE ``registre``
+    (labels/unités/références), publiée SEULEMENT sur les réponses (GET,
+    PUT écrite) : comme ``kits`` (CAL246), ``PUT`` ne l'accepte jamais en
+    entrée, donc absente de la forme de requête.
     """
-    return inline_serializer(nom, {
+    champs = {
         'imagerie': serializers.DictField(),
         'degagements': serializers.DictField(),
         'zones_types': serializers.DictField(),
@@ -62,7 +81,10 @@ def _forme_reglages(nom):
         # leur vocabulaire vit là, pas dans la forme HTTP.
         'simulation': serializers.DictField(),
         'electrique_societe': serializers.DictField(),
-    })
+    }
+    if avec_registre:
+        champs['registre'] = _forme_registre()
+    return inline_serializer(nom, champs)
 
 
 class ParametresCalepinageView(APIView):
@@ -73,13 +95,18 @@ class ParametresCalepinageView(APIView):
     write_permission = CAL_GERER
 
     @extend_schema(responses={200: _forme_reglages(
-        'CalepinageParametresReponse')})
+        'CalepinageParametresReponse', avec_registre=True)})
     def get(self, request, *args, **kwargs):
         company = getattr(request.user, 'company', None)
         reponse = parametres_de_societe(company)
         # CAL246 — catalogue LU (AO), jamais stocké : ajouté à la réponse,
         # jamais accepté en écriture (PUT ne connaît que les 7 sections).
         reponse['kits'] = kits_de_pose_disponibles(company)
+        # CALX145/69 — le registre des deux sections « simulation » et
+        # « electrique_societe » (labels, unités, références doctrinales),
+        # publié en LECTURE SEULE : l'écran n'a plus à le redéclarer,
+        # ``services/parametres_cles.py`` reste la seule déclaration.
+        reponse['registre'] = registre_des_reglages()
         return Response(reponse)
 
     @extend_schema(request=_forme_reglages('CalepinageParametresRequete'),
