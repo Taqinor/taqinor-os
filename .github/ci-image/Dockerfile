@@ -126,12 +126,15 @@ RUN set -eux; \
 # seraient une source de confusion garantie.
 
 # --- MinIO (serveur + client) ----------------------------------------------
-# Memes binaires que les images `minio/minio:latest` / `minio/mc:latest`
-# utilisees aujourd'hui par `backend-env` — donc AUCUN changement de
-# comportement, juste plus de `docker run` a payer par lane.
+# dl.min.io ne sert plus AUCUN binaire (HTTP 410 sur « latest » ET sur les
+# archives, constate le 21/09/2026 ; les releases GitHub n'ont plus d'assets).
+# Les binaires sont donc COPIES depuis l'image officielle EPINGLEE — la meme
+# release que docker-compose.yml (`minio/minio:RELEASE.2025-01-20T14-49-07Z`),
+# qui embarque `minio` ET `mc` sous /usr/bin (Dockerfile.release l.61-62 de
+# cette release ; binaires Go statiques, aucune lib a installer). Registre :
+# quay.io (200 sans authentification le 21/09/2026, pas de quota anonyme).
+COPY --from=quay.io/minio/minio:RELEASE.2025-01-20T14-49-07Z /usr/bin/minio /usr/bin/mc /usr/local/bin/
 RUN set -eux; \
-    curl -fsSL -o /usr/local/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio; \
-    curl -fsSL -o /usr/local/bin/mc https://dl.min.io/client/mc/release/linux-amd64/mc; \
     chmod +x /usr/local/bin/minio /usr/local/bin/mc; \
     minio --version; mc --version
 
