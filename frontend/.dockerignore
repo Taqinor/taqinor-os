@@ -1,3 +1,8 @@
 node_modules
 .git
 dist
+# SOLMVP40 — modules sortis du MVP solaire (voir parked/README.md). Sans
+# effet sur le build de prod réel (contexte = racine du repo, voir le
+# .dockerignore racine) — présent ici pour un build standalone
+# (`docker build -f frontend/Dockerfile.dev ./frontend`).
+parked
