@@ -82,13 +82,58 @@ def exporter_layout(calepinage):
     }
 
 
+def _refuser_module_inconnu(document):
+    """CALX82 — un pan ne peut pas désigner un modèle absent de ``modules[]``.
+
+    JSON Schema sait contraindre une NATURE, pas comparer deux endroits d'un
+    même document : le renvoi ``zones[].geometry.moduleId`` -> ``modules[].id``
+    se contrôle donc ici, APRÈS la validation de schéma (les natures sont donc
+    déjà sûres), et le refus NOMME le chemin du champ fautif.
+    """
+    catalogue = document.get('modules')
+    connus = set()
+    if isinstance(catalogue, list):
+        connus = {entree.get('id') for entree in catalogue
+                  if isinstance(entree, dict)
+                  and isinstance(entree.get('id'), str)}
+    zones = document.get('zones')
+    if not isinstance(zones, list):
+        return
+    for rang, zone in enumerate(zones):
+        if not isinstance(zone, dict):
+            continue
+        geometrie = zone.get('geometry')
+        if not isinstance(geometrie, dict):
+            continue
+        modele = geometrie.get('moduleId')
+        if modele is None or modele in connus:
+            continue
+        chemin = f'zones.{rang}.geometry.moduleId'
+        inventaire = ', '.join(sorted(connus)) or 'aucun'
+        raise ImportLayoutRefuse(
+            f'Document refusé au champ « {chemin} » : le module '
+            f'« {modele} » ne figure pas dans « modules » '
+            f'(modèles déclarés : {inventaire}).', champ=chemin)
+
+
+def _controles_croises(document):
+    """Les refus que le vocabulaire JSON Schema ne sait pas exprimer.
+
+    Un seul endroit, appelé par ``valider_document`` juste après le schéma :
+    les écrans et l'import HTTP héritent donc des mêmes refus, nommés de la
+    même façon, sans qu'aucun d'eux ne recode une règle.
+    """
+    _refuser_module_inconnu(document)
+
+
 def valider_document(document):
     """Valide ``document`` contre le schéma v2 (CAL232) — refuse en NOMMANT
     le CHEMIN du champ fautif.
 
     Raises:
-        ImportLayoutRefuse: document qui n'est pas un objet, ou qui viole le
-            schéma.
+        ImportLayoutRefuse: document qui n'est pas un objet, qui viole le
+            schéma, ou dont un renvoi interne ne pointe rien
+            (``_controles_croises``).
     """
     import jsonschema
 
@@ -104,6 +149,7 @@ def valider_document(document):
         raise ImportLayoutRefuse(
             f'Document refusé au champ « {chemin} » : {erreur.message}.',
             champ=chemin) from erreur
+    _controles_croises(document)
 
 
 def importer_layout(calepinage, document, *, user=None):

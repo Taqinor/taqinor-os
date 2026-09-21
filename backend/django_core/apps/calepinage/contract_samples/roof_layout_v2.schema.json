@@ -146,6 +146,13 @@
     "electrical": {
       "description": "CALX201 — la couche ÉLECTRIQUE du document : les organes posés dans l'atelier (`equipements[]`) et, depuis CALX202, les cheminements de câble qui les relient (`cheminements[]`). Clé RACINE OPTIONNELLE et additive : absente, le comportement est EXACTEMENT celui d'aujourd'hui (aucun organe, aucun marqueur dans la scène, aucun bloc supplémentaire au schéma unifilaire), et un document v2 déjà enregistré reste valide sans qu'une seule de ses clés change. Aucune valeur par défaut n'est inventée : l'absence d'équipement n'est pas « un onduleur au centre du toit », c'est une information qui manque — les calculs qui en dépendent s'OMETTENT en la nommant.",
       "$ref": "#/$defs/electrical"
+    },
+    "modules": {
+      "description": "CALX82 — le CATALOGUE des modules physiques utilisés par ce document. Clé RACINE OPTIONNELLE et additive : absente ou vide, tous les pans posent le module unique d'aujourd'hui (`PANEL2_*` de `apps/web/src/lib/roofPro2.ts`, dont seule la puissance voyage, par `panelWatt`) — comportement d'aujourd'hui, byte pour byte. Présente, elle permet à deux pans de poser deux modèles DIFFÉRENTS, chacun désigné par `zones[].geometry.moduleId`. Aucune dimension n'est déduite d'une puissance ni l'inverse : chaque valeur est SAISIE ou lue d'une fiche produit, et `null` quand la fiche ne la porte pas.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/moduleDocument"
+      }
     }
   },
   "$defs": {
@@ -459,6 +466,11 @@
         "solarAccess": {
           "description": "CAL248 — accès solaire PAR MODULE, persisté pour que le backend puisse le lire (`pointSolarAccess` / `cellsSolarAccess` vivent aujourd'hui côté client et ne sortent jamais de l'écran). OPTIONNEL et additif : absent = comportement d'aujourd'hui, JAMAIS une valeur par défaut — un module sans accès solaire calculé n'est pas un module à 100 %.",
           "$ref": "#/$defs/solarAccess"
+        },
+        "moduleId": {
+          "description": "CALX82 — le module physique posé sur CE pan, désigné par son `id` dans le catalogue `modules[]` de la racine. OPTIONNEL et additif : absent = le module unique d'aujourd'hui, comportement d'aujourd'hui. Un `moduleId` qui ne figure PAS dans `modules[]` est REFUSÉ en nommant le champ (`services/io_layout.py`) : un pan qui désigne un modèle introuvable n'a ni dimensions ni poids, donc aucune surface et aucune charge vérifiables — mieux vaut un refus lisible qu'un pan silencieusement repavé avec le module d'un autre.",
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -479,6 +491,80 @@
             "E",
             "W"
           ]
+        }
+      }
+    },
+    "moduleDocument": {
+      "description": "CALX82 — UN modèle de module physique, tel qu'il est utilisé dans ce document. L'entrée ne porte que l'IDENTITÉ et les dimensions du modèle : aucun prix, aucune marge, aucun rendement calculé. Chaque valeur est SAISIE dans l'atelier ou lue de la fiche `stock.Produit` désignée par `produitId` ; quand la fiche ne porte pas la valeur, elle vaut `null` — jamais une dimension standard supposée, jamais un poids déduit d'une surface (D-CALX 7).",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "libelle",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "description": "Identifiant STABLE du modèle DANS ce document : c'est lui que `zones[].geometry.moduleId` désigne. Le renommer casse les pans qui le citent.",
+          "type": "string",
+          "minLength": 1
+        },
+        "produitId": {
+          "description": "Renvoi vers la fiche `stock.Produit` qui porte les caractéristiques du modèle. `null` = modèle saisi à la main, sans fiche : les valeurs ci-dessous sont alors celles que l'utilisateur a tapées, et celles qu'il n'a pas tapées restent `null`.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "libelle": {
+          "description": "Libellé FRANÇAIS affiché dans l'atelier et dans le sélecteur de module. Saisi, ou repris de la fiche produit.",
+          "type": "string",
+          "minLength": 1
+        },
+        "longueurMm": {
+          "description": "Longueur hors-tout du module (mm). `null` = la fiche ne la porte pas et personne ne l'a saisie : le pavage qui en a besoin s'OMET en nommant ce champ, il ne retombe pas sur le module d'aujourd'hui.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "largeurMm": {
+          "description": "Largeur hors-tout du module (mm). `null` = non renseignée, même discipline que `longueurMm`.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "epaisseurMm": {
+          "description": "Épaisseur du module cadre compris (mm). `null` = non renseignée. Elle sert au rendu 3D et au calepinage des rails ; absente, la scène ne l'invente pas.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "poidsKg": {
+          "description": "Poids unitaire du module (kg). `null` = non renseigné. AUCUNE charge de toiture n'est calculée ici : le document dit ce que pèse un module, il ne dit pas ce que la toiture supporte.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "pmaxWc": {
+          "description": "Puissance crête unitaire du modèle (Wc). `null` = non renseignée. À ne pas confondre avec `panelWatt` à la racine, qui reste la puissance unitaire HISTORIQUE passée par la page : quand les deux existent, c'est le module DU PAN qui fait foi pour ce pan.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "source": {
+          "description": "D'OÙ viennent les valeurs ci-dessus, en clair et en français (« fiche produit », « saisie atelier », « fiche technique du fabricant »…). Sans elle, deux modèles renseignés par deux chemins différents ne sont pas comparables, et rien ne dit à l'utilisateur ce qu'il peut engager (D-CALX 7).",
+          "type": "string",
+          "minLength": 1
         }
       }
     },
