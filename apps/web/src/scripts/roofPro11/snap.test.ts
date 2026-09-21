@@ -10,6 +10,11 @@ import {
   distanceEntreM,
   normaliserDeg,
   pointDepuisCap,
+  projeterSurArete,
+  distanceAAreteM,
+  insertionSurContour,
+  supprimerSommet,
+  metresParPixel,
   PAS_ANGLE_DEG,
   TOLERANCE_ANGLE_DEG,
 } from './snap';
@@ -166,5 +171,155 @@ describe('CALX90 — pointDepuisCap : la cote tapée est la cote obtenue', () =>
     expect(pointDepuisCap(P, 90, -10)).toBe(P);
     expect(pointDepuisCap(P, 90, Number.NaN)).toBe(P);
     expect(pointDepuisCap(P, Number.NaN, 100)).toBe(P);
+  });
+});
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX91 — INSÉRER ET SUPPRIMER UN SOMMET SUR UNE ARÊTE D'UN CONTOUR FERMÉ.
+// ————————————————————————————————————————————————————————————————————————
+const A_ARETE: LngLat = [-7.6, 33.5];
+const B_ARETE: LngLat = [-7.599, 33.5]; // plein est de A
+
+describe('CALX91 — projeterSurArete', () => {
+  it('un clic au-dessus du milieu rend le MILIEU exact de l’arête', () => {
+    const milieuVrai: LngLat = [(A_ARETE[0] + B_ARETE[0]) / 2, (A_ARETE[1] + B_ARETE[1]) / 2];
+    const clic: LngLat = [milieuVrai[0], milieuVrai[1] + 0.0002]; // au nord du milieu
+    const projete = projeterSurArete(A_ARETE, B_ARETE, clic);
+    expect(projete).not.toBeNull();
+    expect(projete![0]).toBeCloseTo(milieuVrai[0], 12);
+    expect(projete![1]).toBeCloseTo(milieuVrai[1], 12);
+  });
+
+  it('rend le point au quart quand le clic est au quart', () => {
+    const clic: LngLat = [A_ARETE[0] + 0.00025, A_ARETE[1] + 0.0003];
+    const projete = projeterSurArete(A_ARETE, B_ARETE, clic);
+    expect(projete).not.toBeNull();
+    expect(projete![0]).toBeCloseTo(A_ARETE[0] + 0.00025, 12);
+  });
+
+  it('un projeté HORS du segment est refusé (avant A comme après B)', () => {
+    expect(projeterSurArete(A_ARETE, B_ARETE, [A_ARETE[0] - 0.0005, 33.5003])).toBeNull();
+    expect(projeterSurArete(A_ARETE, B_ARETE, [B_ARETE[0] + 0.0005, 33.5003])).toBeNull();
+  });
+
+  it('un clic pile sur un sommet existant n’insère pas de doublon', () => {
+    expect(projeterSurArete(A_ARETE, B_ARETE, A_ARETE)).toBeNull();
+    expect(projeterSurArete(A_ARETE, B_ARETE, B_ARETE)).toBeNull();
+  });
+
+  it('une arête dégénérée (deux sommets confondus) n’a aucun projeté', () => {
+    expect(projeterSurArete(A_ARETE, [...A_ARETE] as LngLat, [-7.5995, 33.5003])).toBeNull();
+  });
+
+  it('distanceAAreteM mesure bien l’écart perpendiculaire, en mètres', () => {
+    const milieu: LngLat = [(A_ARETE[0] + B_ARETE[0]) / 2, A_ARETE[1]];
+    const clic: LngLat = [milieu[0], milieu[1] + 0.0002];
+    const d = distanceAAreteM(A_ARETE, B_ARETE, clic);
+    expect(d).not.toBeNull();
+    expect(d!).toBeCloseTo(distanceEntreM(clic, milieu), 6);
+    expect(distanceAAreteM(A_ARETE, B_ARETE, [B_ARETE[0] + 0.001, 33.5])).toBeNull();
+  });
+});
+
+describe('CALX91 — insertionSurContour', () => {
+  const carre: LngLat[] = [
+    [-7.6, 33.5],
+    [-7.599, 33.5],
+    [-7.599, 33.501],
+    [-7.6, 33.501],
+  ];
+
+  it('désigne l’arête cliquée et le point d’insertion, sous la tolérance', () => {
+    const clic: LngLat = [-7.5995, 33.50002]; // juste au-dessus du côté sud
+    const trouve = insertionSurContour(carre, clic, 10);
+    expect(trouve).not.toBeNull();
+    expect(trouve!.index).toBe(0); // le nouveau sommet s'insère en index + 1
+    expect(trouve!.point[1]).toBeCloseTo(33.5, 10);
+  });
+
+  it('un clic loin de tout côté n’insère RIEN', () => {
+    expect(insertionSurContour(carre, [-7.5995, 33.5005], 5)).toBeNull();
+  });
+
+  it('une tolérance nulle ou absente n’insère RIEN', () => {
+    const clic: LngLat = [-7.5995, 33.50002];
+    expect(insertionSurContour(carre, clic, 0)).toBeNull();
+    expect(insertionSurContour(carre, clic, Number.NaN)).toBeNull();
+  });
+
+  it('retient l’arête la PLUS PROCHE quand deux sont à portée', () => {
+    const coin: LngLat = [-7.59995, 33.50001]; // proche du côté sud ET du côté ouest
+    const trouve = insertionSurContour(carre, coin, 50);
+    expect(trouve).not.toBeNull();
+    // Le côté sud (index 0) est à ~1 m, le côté ouest (index 3) à ~4 m.
+    expect(trouve!.index).toBe(0);
+  });
+});
+
+describe('CALX91 — supprimerSommet', () => {
+  const carre: LngLat[] = [
+    [-7.6, 33.5],
+    [-7.599, 33.5],
+    [-7.599, 33.501],
+    [-7.6, 33.501],
+  ];
+
+  it('retire le sommet demandé sans toucher aux autres', () => {
+    const v = supprimerSommet(carre, 1);
+    expect(v.ok).toBe(true);
+    if (!v.ok) throw new Error('suppression attendue');
+    expect(v.anneau).toHaveLength(3);
+    expect(v.anneau).toEqual([carre[0], carre[2], carre[3]]);
+    expect(carre).toHaveLength(4); // l'anneau d'origine est intact
+  });
+
+  it('refuse en NOMMANT la raison quand il ne resterait plus 3 sommets', () => {
+    const triangle = carre.slice(0, 3);
+    const v = supprimerSommet(triangle, 0);
+    expect(v.ok).toBe(false);
+    if (v.ok) throw new Error('refus attendu');
+    expect(v.motif).toContain('au moins 3 sommets');
+  });
+
+  it('refuse en NOMMANT la raison un index qui ne désigne aucun sommet', () => {
+    for (const i of [-1, 4, 1.5]) {
+      const v = supprimerSommet(carre, i);
+      expect(v.ok).toBe(false);
+      if (!v.ok) expect(v.motif).toContain('Sommet introuvable');
+    }
+  });
+
+  it('refuse, en nommant la raison, la suppression qui ferait CROISER le contour', () => {
+    // Contour SIMPLE dont le retrait du sommet 1 fait passer la corde à travers une arête
+    // non adjacente (nœud papillon). Coordonnées ancrées près de Casablanca.
+    const base: LngLat = [-7.6, 33.5];
+    const pt = (x: number, y: number): LngLat => [base[0] + x * 0.0001, base[1] + y * 0.0001];
+    const contour: LngLat[] = [pt(0, 0), pt(5, 10), pt(10, 0), pt(8, -4), pt(3, 4)];
+    // Prémisse du test : le contour de départ est bien simple.
+    expect(supprimerSommet(contour, 0).ok).toBe(true);
+
+    const v = supprimerSommet(contour, 1);
+    expect(v.ok).toBe(false);
+    if (v.ok) throw new Error('refus attendu');
+    expect(v.motif).toContain('se croiserait');
+    expect(v.motif).toContain('nœud papillon');
+  });
+});
+
+describe('CALX91 — metresParPixel : la tolérance pixel se lit en mètres', () => {
+  it('décroît d’un facteur 2 à chaque niveau de zoom', () => {
+    const a = metresParPixel(33.5, 18);
+    const b = metresParPixel(33.5, 19);
+    expect(a / b).toBeCloseTo(2, 10);
+  });
+
+  it('vaut 0 pour une latitude ou un zoom illisibles (aucune tolérance inventée)', () => {
+    expect(metresParPixel(Number.NaN, 19)).toBe(0);
+    expect(metresParPixel(33.5, Number.NaN)).toBe(0);
+  });
+
+  it('au zoom de travail du builder, un rayon de saisie reste de l’ordre du mètre', () => {
+    expect(metresParPixel(33.5, 19)).toBeGreaterThan(0);
+    expect(metresParPixel(33.5, 19)).toBeLessThan(1);
   });
 });

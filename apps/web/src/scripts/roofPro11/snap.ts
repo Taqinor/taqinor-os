@@ -17,7 +17,7 @@
  * partout ailleurs dans le builder (`constants.ts`) : aucun rayon ni facteur neuf.
  */
 import { DEG2RAD, WGS84_RADIUS } from './constants';
-import { type LngLat } from '../../lib/roof';
+import { isSimplePolygon, type LngLat } from '../../lib/roof';
 
 const RAD2DEG = 180 / Math.PI;
 
@@ -145,4 +145,113 @@ export function contraindreAngle(
   const cible = Math.round(relatif / pasDeg) * pasDeg;
   if (Math.abs(normaliserDeg(relatif - cible)) > toleranceDeg) return candidat;
   return destination(precedent, capReference + cible, distance);
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX91 — INSÉRER ET SUPPRIMER UN SOMMET SUR UNE ARÊTE D'UN CONTOUR FERMÉ
+//
+// Après fermeture, seul le glissé d'un sommet EXISTANT était possible, et « Annuler le
+// dernier point » n'agissait que pendant le tracé : rien ne permettait d'ajouter un coin au
+// milieu d'un côté ni d'en retirer un. Parité Aurora SmartRoof (insertion de « fold » et
+// édition des nœuds). Géométrie PURE, gestes câblés dans `obstaclesUi.ts`.
+// ————————————————————————————————————————————————————————————————————————
+
+/**
+ * Mètres couverts par UN pixel écran au zoom MapLibre courant, à la latitude donnée
+ * (tuiles de 512 px — convention MapLibre GL). Sert à exprimer une tolérance de SAISIE
+ * pixel (ex. `VERTEX_GRAB_PX`) en mètres : c'est la même tolérance de dessin, lue dans
+ * l'unité du calcul. Aucun nombre neuf : le tour de Terre vient de `WGS84_RADIUS`.
+ */
+export function metresParPixel(latDeg: number, zoom: number): number {
+  if (!Number.isFinite(latDeg) || !Number.isFinite(zoom)) return 0;
+  const cosLat = Math.max(1e-6, Math.cos(latDeg * DEG2RAD));
+  return (2 * Math.PI * WGS84_RADIUS * cosLat) / (512 * Math.pow(2, zoom));
+}
+
+/**
+ * CALX91 — projeté ORTHOGONAL de `p` sur l'arête `a`→`b`, ou `null` quand le projeté tombe
+ * HORS du segment (y compris exactement sur `a` ou `b` : il y a déjà un sommet là, insérer
+ * un doublon n'a aucun sens).
+ *
+ * Le rapport de projection est calculé dans le plan tangent local (est/nord en mètres,
+ * longitude corrigée du cosinus de la latitude) puis appliqué en lng/lat : un clic pile au
+ * milieu d'un côté rend le MILIEU exact.
+ */
+export function projeterSurArete(a: LngLat, b: LngLat, p: LngLat): LngLat | null {
+  if (!estPoint(a) || !estPoint(b) || !estPoint(p)) return null;
+  const cosLat = Math.max(1e-6, Math.cos(a[1] * DEG2RAD));
+  const abX = (b[0] - a[0]) * cosLat;
+  const abY = b[1] - a[1];
+  const carre = abX * abX + abY * abY;
+  if (!(carre > 0)) return null; // arête dégénérée : aucun projeté défini
+  const apX = (p[0] - a[0]) * cosLat;
+  const apY = p[1] - a[1];
+  const t = (apX * abX + apY * abY) / carre;
+  if (!(t > 0) || !(t < 1)) return null; // hors du segment (ou sur un sommet existant)
+  return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+}
+
+/** Distance (m) de `p` à son projeté orthogonal sur `a`→`b`, ou null si hors du segment. */
+export function distanceAAreteM(a: LngLat, b: LngLat, p: LngLat): number | null {
+  const projete = projeterSurArete(a, b, p);
+  return projete ? distanceEntreM(p, projete) : null;
+}
+
+/**
+ * CALX91 — arête du contour FERMÉ la plus proche de `p`, dont le projeté orthogonal est à
+ * moins de `tolM`. `index` est le rang du PREMIER sommet de l'arête : le nouveau sommet
+ * s'insère donc en `index + 1`. `null` quand aucune arête n'est assez proche (le geste ne
+ * fabrique alors AUCUN sommet).
+ */
+export function insertionSurContour(
+  anneau: readonly LngLat[],
+  p: LngLat,
+  tolM: number,
+): { index: number; point: LngLat } | null {
+  if (!Array.isArray(anneau) || anneau.length < 3 || !estPoint(p)) return null;
+  if (!Number.isFinite(tolM) || tolM <= 0) return null;
+  let meilleur: { index: number; point: LngLat } | null = null;
+  let meilleureDistance = Infinity;
+  for (let i = 0; i < anneau.length; i++) {
+    const a = anneau[i];
+    const b = anneau[(i + 1) % anneau.length];
+    const projete = projeterSurArete(a, b, p);
+    if (!projete) continue;
+    const d = distanceEntreM(p, projete);
+    if (d <= tolM && d < meilleureDistance) {
+      meilleureDistance = d;
+      meilleur = { index: i, point: projete };
+    }
+  }
+  return meilleur;
+}
+
+/** Verdict d'une suppression de sommet — un refus NOMME toujours sa raison. */
+export type VerdictSuppression = { ok: true; anneau: LngLat[] } | { ok: false; motif: string };
+
+/**
+ * CALX91 — retire le sommet `index` du contour. REFUSE, en nommant la raison :
+ *  - un index qui ne désigne aucun sommet ;
+ *  - une suppression qui laisserait moins de 3 sommets (il n'y a plus de contour) ;
+ *  - une suppression qui ferait CROISER le contour (nœud papillon) — même garde W76 que
+ *    la pose d'un sommet : un anneau croisé fausse l'aire géodésique et le pavage.
+ */
+export function supprimerSommet(anneau: readonly LngLat[], index: number): VerdictSuppression {
+  if (!Array.isArray(anneau) || !Number.isInteger(index) || index < 0 || index >= anneau.length) {
+    return { ok: false, motif: 'Sommet introuvable — rien à supprimer.' };
+  }
+  if (anneau.length <= 3) {
+    return {
+      ok: false,
+      motif: `Suppression refusée : un contour garde au moins 3 sommets (celui-ci n’en a que ${anneau.length}).`,
+    };
+  }
+  const restant = anneau.filter((_, i) => i !== index).map((v) => [v[0], v[1]] as LngLat);
+  if (!isSimplePolygon(restant)) {
+    return {
+      ok: false,
+      motif: 'Suppression refusée : le contour se croiserait (nœud papillon) — déplacez d’abord les sommets voisins.',
+    };
+  }
+  return { ok: true, anneau: restant };
 }

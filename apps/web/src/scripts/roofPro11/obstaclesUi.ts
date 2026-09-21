@@ -30,6 +30,7 @@ import {
 } from '../../lib/obstacles';
 import { type LngLat } from '../../lib/roof';
 import { OBSTACLE_TAP_PX, VERTEX_GRAB_PX, DEG2RAD, DEG2M } from './constants';
+import { insertionSurContour, supprimerSommet, metresParPixel } from './snap';
 import { $, esc } from './dom';
 import { type Ctx } from './context';
 import { OBSTACLE_TYPES, clearanceForType } from './types';
@@ -66,6 +67,37 @@ const OBSTACLE_PROVENANCES: { id: ObstacleProvenance; label: string }[] = [
   { id: 'DEVINE', label: 'Deviné (bloque le compte)' },
   { id: 'ECARTE', label: 'Écarté' },
 ];
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX91 — GESTES SUR LES SOMMETS D'UN CONTOUR FERMÉ
+//
+// Le glissé d'un sommet existant était le SEUL geste possible après fermeture. On ajoute
+// deux gestes (parité Aurora SmartRoof) : double-clic sur une arête = insertion d'un sommet
+// au projeté orthogonal, Alt+clic sur un sommet = suppression. La décision « quel geste »
+// est isolée ici, PURE, pour être prouvée sans carte ni DOM.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Geste déclenché par un appui sur un sommet du tracé. */
+export type GesteSommet = 'deplacer' | 'supprimer' | 'aucun';
+
+/**
+ * CALX91 — quel geste un appui sur un sommet déclenche. Alt maintenue = SUPPRESSION, jamais
+ * un glissé (sinon les deux partent ensemble et le contour part à la dérive). Hors contour
+ * fermé, ou en mode obstacle / disposition, aucun geste sommet n'existe : gardes identiques
+ * à celles du glissé de sommet W92, donc le comportement d'aujourd'hui est inchangé tant
+ * qu'Alt n'est pas maintenue.
+ */
+export function gesteSommet(etat: {
+  sommet: number | null;
+  altEnfoncee: boolean;
+  ferme: boolean;
+  modeObstacle: boolean;
+  modeDisposition: boolean;
+}): GesteSommet {
+  if (!etat.ferme || etat.modeObstacle || etat.modeDisposition) return 'aucun';
+  if (etat.sommet == null) return 'aucun';
+  return etat.altEnfoncee ? 'supprimer' : 'deplacer';
+}
 
 /** Dépendances injectées (carte + recalcul complet + bandeau de statut). */
 export interface ObstaclesUiDeps {
@@ -720,6 +752,11 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   function tryBeginVertexMove(lngLat: LngLat, point: maplibregl.Point): boolean {
     if (!ctx.closed || ctx.obstacleMode || ctx.layoutMode) return false;
     const idx = vertexAtPoint(point);
+    // CALX91 — Alt maintenue : le geste est une SUPPRESSION (déjà traitée au mousedown),
+    // jamais un glissé — sinon les deux partiraient ensemble.
+    if (gesteSommet({ sommet: idx, altEnfoncee, ferme: ctx.closed, modeObstacle: ctx.obstacleMode, modeDisposition: ctx.layoutMode }) !== 'deplacer') {
+      return false;
+    }
     if (idx == null) return false;
     const v = ctx.vertices[idx];
     if (!v) return false;
@@ -750,6 +787,88 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     // Re-pavage + recalcul seulement si le sommet a réellement bougé.
     if (moved) recalc();
   }
+
+  // ————————————————————————————————————————————————————————————————————
+  // CALX91 — INSERTION (double-clic sur une arête) ET SUPPRESSION (Alt+clic sur un sommet)
+  //
+  // Les deux gestes sont écoutés ICI, sur la carte : le dispatcher de l'entrée n'a pas à
+  // être modifié. Sur un contour FERMÉ, son `dblclick` appelle `close()`, qui sort
+  // immédiatement puisque le contour est déjà fermé — aucun conflit. Chaque geste pousse UN
+  // pas d'historique (CAL100), donc Ctrl+Z le défait.
+  // ————————————————————————————————————————————————————————————————————
+
+  /** Alt maintenue ? Suivi au clavier ET relu sur chaque événement souris (source sûre). */
+  let altEnfoncee = false;
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Alt') altEnfoncee = true;
+    });
+    document.addEventListener('keyup', (e) => {
+      if ((e as KeyboardEvent).key === 'Alt') altEnfoncee = false;
+    });
+    window.addEventListener?.('blur', () => {
+      altEnfoncee = false; // Alt+Tab : on ne garde jamais l'état
+    });
+  }
+
+  /** Tolérance de SAISIE d'une arête, en mètres : le rayon pixel du sommet (`VERTEX_GRAB_PX`,
+   *  convention de dessin déjà en place) lu au zoom courant. 0 = carte pas prête, aucun geste. */
+  function toleranceSaisieM(lat: number): number {
+    const zoom = typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN;
+    if (!Number.isFinite(zoom)) return 0;
+    return VERTEX_GRAB_PX * metresParPixel(lat, zoom);
+  }
+
+  /** CALX91 — insère un sommet au projeté orthogonal du point sur l'arête la plus proche. */
+  function insererSommetAu(lngLat: LngLat): boolean {
+    if (!ctx.closed || ctx.obstacleMode || ctx.layoutMode) return false;
+    const trouve = insertionSurContour(ctx.vertices, lngLat, toleranceSaisieM(lngLat[1]));
+    if (!trouve) return false;
+    ctx.pushWorkshopHistory?.(); // CAL100 — un pas d'historique par geste
+    ctx.vertices.splice(trouve.index + 1, 0, trouve.point);
+    redrawTrace();
+    recalc();
+    setStatus('Sommet inséré sur le côté — glissez-le pour ajuster le contour.');
+    return true;
+  }
+
+  /** CALX91 — supprime le sommet `idx`, ou explique en clair pourquoi c'est refusé. */
+  function supprimerSommetDuContour(idx: number): boolean {
+    const verdict = supprimerSommet(ctx.vertices, idx);
+    if (!verdict.ok) {
+      setStatus(verdict.motif);
+      return false;
+    }
+    ctx.pushWorkshopHistory?.(); // CAL100 — un pas d'historique par geste
+    ctx.vertices.splice(0, ctx.vertices.length, ...verdict.anneau);
+    redrawTrace();
+    recalc();
+    setStatus(`Sommet supprimé — le contour garde ${ctx.vertices.length} sommets.`);
+    return true;
+  }
+
+  map.on?.('mousedown', (e: maplibregl.MapMouseEvent) => {
+    const alt = (e.originalEvent as MouseEvent | undefined)?.altKey;
+    if (typeof alt === 'boolean') altEnfoncee = alt; // la source la plus sûre
+    if (!altEnfoncee) return;
+    const idx = vertexAtPoint(e.point);
+    const geste = gesteSommet({
+      sommet: idx,
+      altEnfoncee,
+      ferme: ctx.closed,
+      modeObstacle: ctx.obstacleMode,
+      modeDisposition: ctx.layoutMode,
+    });
+    if (geste !== 'supprimer' || idx == null) return;
+    e.preventDefault?.();
+    ctx.suppressClick = true; // pas de sélection/désélection parasite au click de synthèse
+    supprimerSommetDuContour(idx);
+  });
+
+  map.on?.('dblclick', (e: maplibregl.MapMouseEvent) => {
+    if (!ctx.closed) return; // pendant le tracé, le double-clic FERME (comportement inchangé)
+    if (insererSommetAu([e.lngLat.lng, e.lngLat.lat])) e.preventDefault?.();
+  });
 
   // — Câblage : bouton « ajouter », bouton « effacer », et édition de l'obstacle —
   obstacleBtn?.addEventListener('click', () => {
