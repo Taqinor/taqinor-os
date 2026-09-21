@@ -45,30 +45,50 @@ from __future__ import annotations
 
 from apps.calepinage.services import etapes as _etapes
 
-#: L'ORDRE DE LA CHAÎNE — le seul endroit du dépôt qui le déclare. CALX148 y
-#: attache les sources doctrinales de chaque rang et les règles
-#: d'exclusivité ; la boucle ci-dessous ne fait que le parcourir.
+#: L'ORDRE DE LA CHAÎNE — le seul endroit du dépôt qui le déclare (CALX148).
+#: ``services/pertes.py::CATALOGUE`` est un TUPLE de noms sans rang, et
+#: ``pertes_politique.py`` les somme : l'ordre n'existe QUE ci-dessous.
+#: Chaque rang porte la source doctrinale qui le place là.
+#:
+#: SOURCES CITÉES :
+#: * PVsyst — Array and system losses, la liste ordonnée IAM → salissure →
+#:   irradiance → thermique → LID → qualité → mismatch → ohmique DC →
+#:   onduleur → ohmique AC → transfo → auxiliaires → indisponibilité :
+#:   https://www.pvsyst.com/help/project-design/array-and-system-losses/
+#: * PV*SOL — Energy balance, « clipping on account of the MPP voltage
+#:   range » AVANT « DC/AC conversion », et des diodes à 0,5 % :
+#:   https://help.valentin-software.com/pvsol/en/pages/results/energy-balance/
+#: * Aurora — System Losses, « Snow (default 0%) » comme poste à part
+#:   entière des pertes d'irradiance :
+#:   https://help.aurorasolar.com/hc/en-us/articles/220450107-System-Losses
+#: * PVsyst — Shadings, les ombrages évalués à chaque pas de temps :
+#:   https://www.pvsyst.com/help/project-design/shadings/index.html
 ORDRE_ETAPES = (
-    'horizon',
-    'ombrage_proche',
-    'acces_module',
-    'inter_rangees',
-    'bifacial',
-    'iam',
-    'spectral',
-    'salissure',
-    'neige',
-    'niveau_irradiance',
-    'thermique',
-    'qualite_module',
-    'lid',
-    'mismatch_fabricant',
-    'mismatch_ombrage',
-    'diodes',
-    'ohmique_dc',
-    'mppt',
-    'onduleur',
-    'ecretage',
+    # — ce qui atteint le plan des modules (PVsyst, Shadings) —
+    'horizon',            # masque lointain : avant tout ombrage proche
+    'ombrage_proche',     # matrice 12×24 du constructeur
+    'acces_module',       # solarAccess module par module (même moteur)
+    'inter_rangees',      # auto-ombrage des rangées entre elles
+    'bifacial',           # GAIN, juste après l'auto-ombrage (préambule L3)
+    # — l'optique et l'irradiance (PVsyst, Array and system losses) —
+    'iam',                # incidence : Fresnel physique par défaut (D-CALX 16)
+    'spectral',           # PVsyst modélise le spectre ; nous, jamais (v1)
+    'salissure',          # soiling, mois par mois
+    'neige',              # poste d'irradiance à part entière (Aurora)
+    'niveau_irradiance',  # rendement à faible éclairement
+    # — le champ DC (PVsyst) —
+    'thermique',          # échauffement au-dessus du STC
+    'qualite_module',     # tolérance de puissance
+    'lid',                # première exposition
+    'mismatch_fabricant',  # dispersion entre modules d'un même lot
+    'mismatch_ombrage',   # dispersion I-V créée par l'ombre, par chaîne
+    'diodes',             # PV*SOL les assume à 0,5 % ; nous, jamais (v1)
+    'ohmique_dc',         # chutes sur les longueurs du plan
+    # — la conversion (PV*SOL : MPPT → rendement → écrêtage) —
+    'mppt',               # fenêtre de tension MPP : AVANT la conversion
+    'onduleur',           # rendement η(P)
+    'ecretage',           # plafond de puissance en sortie
+    # — l'aval (PVsyst) —
     'ohmique_ac',
     'transformateur',
     'auxiliaires',
@@ -105,6 +125,139 @@ LIBELLES = {
     'indisponibilite': 'Indisponibilité',
 }
 
+#: LA GARDE CATALOGUE ↔ ORDRE, sens 1 (CALX148) : l'étape de la chaîne et le
+#: POSTE SAISI de ``services/pertes.py::CATALOGUE`` qu'elle recouvre. Deux
+#: noms diffèrent volontairement (``irradiance`` du catalogue est
+#: ``niveau_irradiance`` ici ; ``mismatch`` est celui du FABRICANT) : la
+#: correspondance est déclarée plutôt que devinée, sinon l'arbitrage de
+#: CALX149 laisserait passer un double comptage.
+POSTE_PAR_ETAPE = {
+    'iam': 'iam',
+    'salissure': 'salissure',
+    'niveau_irradiance': 'irradiance',
+    'thermique': 'thermique',
+    'qualite_module': 'qualite_module',
+    'lid': 'lid',
+    'mismatch_fabricant': 'mismatch',
+    'ohmique_dc': 'ohmique_dc',
+    'ohmique_ac': 'ohmique_ac',
+    'onduleur': 'onduleur',
+    'transformateur': 'transformateur',
+    'auxiliaires': 'auxiliaires',
+    'indisponibilite': 'indisponibilite',
+}
+
+#: Sens 1 bis : les étapes qui n'ont AUCUN poste saisi en face, chacune avec
+#: la raison de son absence du catalogue. Une étape hors de ces deux tables
+#: est orpheline, et la garde de CALX148 la nomme.
+ETAPES_HORS_CATALOGUE = {
+    'horizon': "Le masque lointain vient du profil d'horizon, pas d'une "
+               'saisie de pourcentage.',
+    'ombrage_proche': "L'ombrage proche vient de la matrice 12×24 du "
+                      'constructeur.',
+    'acces_module': "L'accès solaire est une lecture par module du même "
+                    "moteur d'ombrage.",
+    'inter_rangees': "L'auto-ombrage se calcule sur la géométrie des "
+                     'rangées.',
+    'bifacial': 'Le bifacial est un GAIN : le catalogue ne décrit que des '
+                'pertes.',
+    'spectral': 'Poste non modélisé en v1 (voir TOUJOURS_OMISES).',
+    'neige': 'Poste mensuel neuf, saisi par la société (CALX161).',
+    'mismatch_ombrage': "La dispersion d'ombrage se calcule par chaîne à "
+                        'partir des I-V, jamais en pourcentage saisi.',
+    'diodes': 'Poste non modélisé en v1 (voir TOUJOURS_OMISES).',
+    'mppt': 'La fenêtre MPPT se vérifie sur les tensions, pas en pourcentage.',
+    'ecretage': "L'écrêtage se lit sur la série horaire, pas en pourcentage.",
+}
+
+#: Sens 2 : les postes du CATALOGUE qui n'ont PAS d'étape dans la chaîne,
+#: chacun avec la raison. Sans cette table, un poste saisi pourrait
+#: disparaître silencieusement de la cascade.
+POSTES_HORS_CHAINE = {
+    'vieillissement': "Le vieillissement est PLURIANNUEL (CALX178) : la "
+                      "chaîne est celle de l'année 1, et il ne se "
+                      'soustrait pas deux fois.',
+    'auxiliaires_nocturnes': "L'énergie soutirée la nuit (CAL139) n'est pas "
+                             'un pourcentage de la production : elle '
+                             's\'ajoute au bilan, elle ne la réduit pas.',
+}
+
+
+def _acces_module_disponible(contexte):
+    """Le document porte-t-il une lecture ``solarAccess`` par module ?"""
+    return bool(_acces_module(contexte))
+
+
+def _rangees_lues_par_acces_module(contexte):
+    """``solarAccess`` dit-il couvrir l'ombre des rangées entre elles ?"""
+    acces = _acces_module(contexte)
+    methode = acces.get('method') or acces.get('methode') or {}
+    return isinstance(methode, dict) and methode.get('rangees') is True
+
+
+def _horizon_deja_dans_la_meteo(contexte):
+    """PVGIS a-t-il DÉJÀ retranché l'horizon de son modèle de terrain ?"""
+    horizon = (contexte.get('meteo') or {}).get('horizon') or {}
+    return horizon.get('origine') == 'dem_pvgis'
+
+
+def _acces_module(contexte):
+    ombrage = contexte.get('ombrage') or {}
+    acces = ombrage.get('solar_access') or ombrage.get('solarAccess') or {}
+    return acces if isinstance(acces, dict) else {}
+
+
+#: LES EXCLUSIVITÉS (D-CALX 16) : trois lectures d'un MÊME ombrage ne se
+#: cumulent pas — ``ombrage_proche`` (matrice 12×24), ``acces_module``
+#: (``solarAccess``) et ``inter_rangees`` viennent du même moteur d'ombrage
+#: du constructeur, et les additionner compterait l'ombre deux ou trois fois.
+#: ``{étape: (prédicat sur le contexte, motif publié)}`` — le motif part tel
+#: quel dans ``motif_omission``, jamais un silence.
+EXCLUSIVITES = {
+    'ombrage_proche': (
+        _acces_module_disponible,
+        "Le document porte une lecture d'accès solaire MODULE PAR MODULE : "
+        "c'est elle qui s'applique, et la matrice 12×24 du même moteur "
+        "d'ombrage est écartée pour ne pas compter l'ombre deux fois."),
+    'inter_rangees': (
+        _rangees_lues_par_acces_module,
+        "L'accès solaire par module déclare couvrir l'ombre des rangées "
+        "entre elles : l'auto-ombrage inter-rangées est écarté pour ne pas "
+        "la compter deux fois."),
+    'horizon': (
+        _horizon_deja_dans_la_meteo,
+        "L'horizon vient du modèle de terrain de PVGIS, qui l'a DÉJÀ "
+        "retranché de l'irradiance rendue : le retrancher ici le compterait "
+        'deux fois.'),
+}
+
+#: LES ÉTAPES TOUJOURS OMISES EN v1 (D-CALX 16). Elles FIGURENT dans la
+#: cascade — une ligne absente se lirait « oubliée », une ligne à 0 % se
+#: lirait « gratuite » —, avec leur motif et ``perte_pct`` à ``null``. Une
+#: saisie société SOURCÉE du même nom les réveille (arbitrage CALX149).
+TOUJOURS_OMISES = {
+    'spectral': 'Étape non modélisée en v1 : PVsyst applique un modèle '
+                'spectral, nous n\'en avons aucun — aucun forfait n\'est '
+                'appliqué à sa place.',
+    'diodes': 'Étape non modélisée en v1 : PV*SOL assume 0,5 % de pertes de '
+              'diodes, chiffre de leur logiciel et non du nôtre — aucun '
+              'forfait n\'est appliqué à sa place.',
+    'neige': "Aucune valeur mensuelle de neige saisie pour cette société : "
+             "l'étape figure dans la cascade pour être VUE, et reste omise "
+             "tant que les mois ne sont pas renseignés (0 % par défaut "
+             'ferait croire à un calcul).',
+}
+
+#: L'ALBÉDO DE FACE AVANT, déclaré ici pour le bloc ``resultat['meteo']``
+#: (contrat CALX143). PVGIS applique déjà un albédo dans le ``Gr(i)`` qu'il
+#: rend, mais son API ne publie PAS la valeur employée : la publier serait
+#: l'inventer. Elle reste donc ``null`` avec son motif, jusqu'à ce qu'une
+#: citation de la méthodologie PVGIS soit committée.
+ALBEDO_FACE_AVANT = {
+    'valeur': None,
+    'motif': "appliqué par PVGIS dans Gr(i), valeur non publiée par l'API",
+}
+
 #: Les douze champs d'une étape publiée. Les six premiers viennent de
 #: l'étape, les six autres de l'ordonnanceur.
 CLES_ETAPE_PUBLIEE = (
@@ -117,6 +270,8 @@ CLES_ETAPE_PUBLIEE = (
 _EPSILON = 1e-9
 
 __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
+           'POSTE_PAR_ETAPE', 'ETAPES_HORS_CATALOGUE', 'POSTES_HORS_CHAINE',
+           'EXCLUSIVITES', 'TOUJOURS_OMISES', 'ALBEDO_FACE_AVANT',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -198,7 +353,16 @@ def appliquer_chaine(serie, contexte=None):
 # ── la boucle, pièce par pièce ──────────────────────────────────────────
 
 def _executer(nom, serie, contexte):
-    """Appelle le module de l'étape, ou l'omet parce qu'il n'est pas livré."""
+    """Appelle le module de l'étape, ou l'omet en DISANT pourquoi.
+
+    Trois raisons d'omettre sans même charger le module : une exclusivité a
+    déjà pris la lecture (D-CALX 16), l'étape est de celles que la v1 assume
+    ne pas modéliser, ou le module n'est pas livré.
+    """
+    motif = _motif_avant_module(nom, contexte)
+    if motif:
+        return serie, _etapes.etape_omise(_libelle(nom), motif)
+
     module = _etapes.charger(nom)
     appliquer = getattr(module, 'appliquer', None) if module else None
     if appliquer is None:
@@ -212,6 +376,16 @@ def _executer(nom, serie, contexte):
             f'L\'étape « {nom} » doit rendre le couple (serie, etape) ; elle '
             f'a rendu {type(rendu).__name__}.', etape=nom)
     return rendu
+
+
+def _motif_avant_module(nom, contexte):
+    """Le motif d'omission décidé par l'ORDRE lui-même, ou ``''`` (CALX148)."""
+    exclusivite = EXCLUSIVITES.get(nom)
+    if exclusivite is not None:
+        predicat, motif = exclusivite
+        if predicat(contexte):
+            return motif
+    return TOUJOURS_OMISES.get(nom, '')
 
 
 def _normaliser(nom, brute):
