@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a09519d8ffec5e537659cedd60a878e56e2e2899b11d2370a5320a001d29cf09
-Plan fingerprint: 44b844969510fda006df5a2d97b162af5a6f450607d1c4f06f1f84cba0b0623b
+Plan fingerprint: 13aeaf3a05b115b82f2be19eb5c61d620aa429f69c75d06a4ad72854c385dec7
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (204)**
+**Done (212)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -631,10 +631,18 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX86` — Porter au contrat le calque de fond calé (plan importé ou photo) et son échelle à deux…
 - `CALX87` — Porter au contrat la surface de pose « façade » et les poteaux d'ombrière
 - `CALX88` — Porter au contrat les choix d'optimisation et le soleil de scène
+- `CALX89` — Magnétiser le tracé à 90° et 45° et offrir un mode orthogonal
+- `CALX90` — Saisir au clavier la longueur et l'angle du segment en cours de tracé
+- `CALX91` — Insérer et supprimer un sommet sur une arête d'un contour fermé
+- `CALX92` — Aimanter le tracé aux sommets et aux arêtes des pans déjà tracés
 - `CALX93` — Déduire noue et arêtier en comparant les pans voisins
+- `CALX97` — Saisir les cotes exactes d'un pan et le faire pivoter d'un bloc
+- `CALX98` — Dupliquer un pan avec ses obstacles et ses réglages
+- `CALX105` — Poser un arbre ou un bâtiment voisin au clic et le déplacer au glissé
 - `CALX112` — Dupliquer une sélection de panneaux et la coller au pas saisi
 - `CALX113` — Rendre la symétrie d'une sélection de panneaux par rapport à un axe
 - `CALX116` — Sélectionner des panneaux au lasso, en plus du rectangle
+- `CALX117` — Afficher une grille métrique de repère au pas saisi
 - `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
 - `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
 - `CALX129` — Basculer la vue 3D d'édition en plein écran
@@ -738,7 +746,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (402)**
+**Open — to build (394)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -930,22 +938,15 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
 - `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
-- `CALX89` — Magnétiser le tracé à 90° et 45° et offrir un mode orthogonal
-- `CALX90` — Saisir au clavier la longueur et l'angle du segment en cours de tracé
-- `CALX91` — Insérer et supprimer un sommet sur une arête d'un contour fermé
-- `CALX92` — Aimanter le tracé aux sommets et aux arêtes des pans déjà tracés
 - `CALX94` — Corriger à la main le type d'une arête depuis l'atelier
 - `CALX95` — Appliquer un retrait propre à chaque arête physique du contour
 - `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
-- `CALX97` — Saisir les cotes exactes d'un pan et le faire pivoter d'un bloc
-- `CALX98` — Dupliquer un pan avec ses obstacles et ses réglages
 - `CALX99` — Prendre l'azimut d'un pan depuis une arête cliquée
 - `CALX100` — Saisir la hauteur et le nombre d'étages du bâtiment, et extruder la 3D à cette hauteur
 - `CALX101` — Rendre les murs et les acrotères comme des volumes 3D distincts
 - `CALX102` — Modéliser une lucarne comme un volume qui perce le pan, pas comme une boîte posée
 - `CALX103` — Tracer un obstacle polygonal au clic
 - `CALX104` — Tracer un obstacle circulaire et réutiliser des gabarits d'obstacle de la société
-- `CALX105` — Poser un arbre ou un bâtiment voisin au clic et le déplacer au glissé
 - `CALX106` — Remonter la hauteur et le nombre de niveaux OSM du bâtiment, avec leur provenance…
 - `CALX107` — Afficher un plan importé ou une photo calée comme calque de fond de l'atelier
 - `CALX108` — Caler le fond de plan à l'échelle par deux points et une distance réelle saisie
@@ -954,7 +955,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX111` — Numéroter les modules de façon stable et l'afficher en 3D comme en plan
 - `CALX114` — Choisir la cible de l'optimisation au lieu de la figer sur l'énergie
 - `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
-- `CALX117` — Afficher une grille métrique de repère au pas saisi
 - `CALX118` — Montrer la course du soleil du site dans l'atelier
 - `CALX119` — Choisir une date libre pour le soleil de la scène et la retenir
 - `CALX120` — Animer la course de l'ombre sur une journée et sur l'année
