@@ -42,11 +42,7 @@ export const PREFETCH_MAP = {
   '/chantiers': () => import('../pages/installations/InstallationsPage'),
   // ODY12 — cockpits d'app supplémentaires (copies des module.config).
   '/sav': () => import('../pages/sav/TicketsPage'),
-  '/rh': () => import('../features/rh/RhCockpit.jsx'),
-  '/comptabilite': () => import('../features/compta/pages/CockpitPage.jsx'),
   '/reporting': () => import('../pages/Reporting'),
-  '/ged': () => import('../pages/ged/DocumentsPage'),
-  '/messages': () => import('../pages/messaging/ChatPage'),
 }
 
 // Chaque destination n'est chargée qu'UNE fois (le navigateur cache déjà le
