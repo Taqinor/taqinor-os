@@ -43,6 +43,17 @@ LECTURE SEULE). L'étape non calculable laisse la place au poste saisi
 SOURCÉ ; une saisie sans source ne s'applique jamais et son nom part dans
 ``postes_non_sources``.
 
+UNE REQUÊTE MÉTÉO PAR PLAN, JAMAIS PAR MODULE (CALX155)
+---------------------------------------------------------
+``appliquer_chaine`` INSTALLE dans le contexte ``serie_du_pan(pan)`` : une
+mémoire keyée comme le cache PVGIS existant (coordonnées au dix-millième,
+angles au dixième de degré), si bien que deux pans de même inclinaison et
+même azimut ne font qu'un appel, partagé par tous leurs modules. Un module
+d'étape n'appelle donc JAMAIS PVGIS lui-même. Le compteur d'appels réels est
+publié dans ``meteo.appels_pvgis``. C'est le seul effet de bord de cette
+fonction sur le contexte, et il est volontaire : le contexte est le lieu que
+toutes les étapes partagent.
+
 CE QU'IL REND
 --------------
 ``appliquer_chaine(serie, contexte)`` rend ``(serie, cascade)`` : la série
@@ -56,6 +67,7 @@ la LISTE PLATE des postes saisis (D-CALX 11).
 from __future__ import annotations
 
 from apps.calepinage.services import etapes as _etapes
+from apps.calepinage.services.pvgis_serie import cle_de_cache
 
 #: L'ORDRE DE LA CHAÎNE — le seul endroit du dépôt qui le déclare (CALX148).
 #: ``services/pertes.py::CATALOGUE`` est un TUPLE de noms sans rang, et
@@ -284,6 +296,7 @@ _EPSILON = 1e-9
 __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'POSTE_PAR_ETAPE', 'ETAPES_HORS_CATALOGUE', 'POSTES_HORS_CHAINE',
            'EXCLUSIVITES', 'TOUJOURS_OMISES', 'ALBEDO_FACE_AVANT',
+           'CLE_METEO_PARTAGEE', 'CLE_FOURNISSEUR_METEO',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -319,6 +332,7 @@ def appliquer_chaine(serie, contexte=None):
             sans nommer sa source, ou n'a pas rendu ``(serie, etape)``.
     """
     contexte = contexte if isinstance(contexte, dict) else {}
+    _installer_meteo_partagee(contexte)
     courante = serie
     premiere = _arrondi(_etapes.energie_kwh(courante))
     dernier_connu = premiere
@@ -412,6 +426,95 @@ def _executer(nom, serie, contexte):
         return _appliquer_saisie(nom, serie, saisi)
     return serie, _etapes.etape_omise(
         _libelle(nom), _avec_saisie_non_sourcee(nom, motif, saisi))
+
+
+# ── une requête météo par PLAN, jamais par module (CALX155) ─────────────
+
+#: La clé sous laquelle l'ordonnanceur INSTALLE l'accès météo partagé. Un
+#: module d'étape appelle ``contexte['serie_du_pan'](pan)`` et rien d'autre :
+#: il n'a ni client PVGIS, ni URL, ni compteur à tenir.
+CLE_METEO_PARTAGEE = 'serie_du_pan'
+
+#: La clé sous laquelle l'appelant (``services/simulation.py``, CALX5) POSE
+#: le fournisseur réel — ``fournisseur(plan) → serie``. C'est lui qui porte
+#: le ``ClientPvgis``, donc l'auto-limitation de débit (``_Limiteur``) et le
+#: cache de processus de ``services/pvgis_serie.py`` : la mémoire installée
+#: ici s'ajoute devant eux, elle ne les contourne pas.
+CLE_FOURNISSEUR_METEO = 'obtenir_serie'
+
+
+def _installer_meteo_partagee(contexte):
+    """Pose ``contexte['serie_du_pan']`` — UNE requête par couple d'angles.
+
+    ``services/production.py`` demande aujourd'hui une série PAR PAN ; la
+    simulation module par module (CALX182) en demanderait une par MODULE.
+    La mémoire installée ici est donc keyée exactement comme le cache
+    existant (``pvgis_serie.cle_de_cache`` : coordonnées au dix-millième,
+    angles au dixième de degré), si bien que deux pans de même inclinaison
+    et de même azimut sur le même toit sont UN SEUL appel, partagé par tous
+    leurs modules. Le compteur d'appels RÉELS est publié dans
+    ``meteo.appels_pvgis``.
+    """
+    if callable(contexte.get(CLE_METEO_PARTAGEE)):
+        return
+    fournisseur = contexte.get(CLE_FOURNISSEUR_METEO)
+    if not callable(fournisseur):
+        return
+
+    memoire = {}
+    meteo = contexte.get('meteo')
+    if not isinstance(meteo, dict):
+        meteo = {}
+        contexte['meteo'] = meteo
+    meteo.setdefault('appels_pvgis', 0)
+
+    def serie_du_pan(pan):
+        plan = _plan_du_contexte(contexte, pan)
+        cle = _cle_meteo(contexte, plan)
+        if cle not in memoire:
+            memoire[cle] = fournisseur(plan)
+            meteo['appels_pvgis'] = (meteo.get('appels_pvgis') or 0) + 1
+        return memoire[cle]
+
+    contexte[CLE_METEO_PARTAGEE] = serie_du_pan
+
+
+def _plan_du_contexte(contexte, pan):
+    """Le pan lui-même, ou celui que sa clé désigne dans ``plans``."""
+    if isinstance(pan, dict):
+        return pan
+    for plan in contexte.get('plans') or ():
+        if isinstance(plan, dict) and plan.get('cle') == pan:
+            return plan
+    raise ChaineInvalide(
+        f'Aucun pan « {pan} » dans le contexte : la météo ne peut pas être '
+        'demandée pour un pan que le document ne porte pas.')
+
+
+def _cle_meteo(contexte, plan):
+    """La clé de partage d'un pan, au format du cache PVGIS existant."""
+    site = contexte.get('site') or {}
+    return cle_de_cache('seriescalc', {
+        'lat': _nombre_obligatoire(site.get('lat'), 'site.lat'),
+        'lon': _nombre_obligatoire(site.get('lon'), 'site.lon'),
+        'angle': _nombre_obligatoire(plan.get('inclinaison_deg'),
+                                     'inclinaison_deg'),
+        'aspect': _nombre_obligatoire(plan.get('azimut_pvgis_deg'),
+                                      'azimut_pvgis_deg'),
+    })
+
+
+def _nombre_obligatoire(valeur, champ):
+    """Un nombre, ou un refus qui NOMME le champ manquant."""
+    if valeur is None or isinstance(valeur, bool):
+        raise ChaineInvalide(
+            f'Le champ « {champ} » manque : sans lui, deux pans différents '
+            'partageraient la même requête météo.')
+    try:
+        return float(valeur)
+    except (TypeError, ValueError):
+        raise ChaineInvalide(
+            f'Le champ « {champ} » est illisible (reçu : {valeur!r}).')
 
 
 def _refuser_si_modifiee(nom, avant, apres):
