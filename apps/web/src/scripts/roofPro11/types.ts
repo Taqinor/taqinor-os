@@ -5,10 +5,17 @@
 import { type RoofTypeSelect } from '../../lib/roofTypeSelect';
 import { type ImagerySettings } from '../../lib/roofConfig';
 import { type PackResult, type PanelGrid, type ConfigFamily, OBSTACLE_CLEARANCE_M } from '../../lib/estimatorBrainV2';
-import { type Obstacle, type ObstacleType, type ObstacleProvenance } from '../../lib/obstacles';
+import {
+  clampDim,
+  obstacleRing,
+  ringDimsM,
+  type Obstacle,
+  type ObstacleType,
+  type ObstacleProvenance,
+} from '../../lib/obstacles';
 import { type SerializeMeta, type DevisPayload, type RawContourPoint } from './prefill';
 import { type AreaResult } from '../../lib/roofAreas';
-import { type LngLat } from '../../lib/roof';
+import { geodesicAreaM2, geodesicPerimeterM, isSimplePolygon, type LngLat } from '../../lib/roof';
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
 import { type SerializedEdge } from './edges';
 import { type CoucheElectrique } from './electrique3d';
@@ -86,6 +93,25 @@ export interface InitOptions {
   // panneau près. Le type reste volontairement OPAQUE ici : la forme fait foi dans
   // le contrat, et `moduleSelect.ts` est le seul à la lire.
   modulesDisponibles?: unknown;
+
+  // CALX104/CALX403 — les deux sections des réglages société que l'ATELIER consomme
+  // (`zones_types` pour les gabarits d'obstacle, `degagements` pour la largeur d'allée
+  // de circulation par pays, CALX402), lues par la page HÔTE sur
+  // `GET /api/django/calepinage/parametres/` et transmises TELLES QUELLES — l'outil
+  // n'appelle jamais Django lui-même. Le PAYS, lui, est déjà porté par `imagery.pays`
+  // (CAL47) : on ne le redemande pas. Absente/vide ⇒ AUCUN gabarit proposé et AUCUNE
+  // largeur d'allée préremplie — jamais une cote ni une largeur de repli.
+  reglagesAtelier?: ReglagesAtelier | null;
+}
+
+/** CALX104/CALX403 — le sous-ensemble des réglages société que l'atelier lit. Les sections
+ *  gardent la forme BRUTE servie par l'API (clés en `snake_case`) : l'atelier les
+ *  interprète, il ne les réécrit pas. */
+export interface ReglagesAtelier {
+  /** Section `zones_types` (CAL74) — les gabarits saisis par la société. */
+  zones_types?: unknown;
+  /** Section `degagements` (CAL71/CALX402) — dont `allees_circulation` par pays. */
+  degagements?: unknown;
 }
 
 /** PV75 — sous-ensemble bancable de `simulation.pr` (P50/P90/PR/cascade des pertes),
@@ -226,9 +252,268 @@ export function clearanceForType(type?: ObstacleType | null): number {
   return CLEARANCE_BY_TYPE[type] ?? OBSTACLE_CLEARANCE_M;
 }
 
-/** Dégagements (m) PARALLÈLES à une liste d'obstacles (même ordre que leurs anneaux). */
-export function obstructionClearancesFor(obstacles: readonly { type?: ObstacleType }[]): number[] {
-  return obstacles.map((o) => clearanceForType(o.type));
+/** Dégagements (m) PARALLÈLES à une liste d'obstacles (même ordre que leurs anneaux).
+ *  CALX104 — un obstacle qui porte SON PROPRE dégagement (posé depuis un gabarit de la
+ *  société, avec sa source) prime sur le dégagement de son type ; sans dégagement propre,
+ *  le dégagement par type s'applique inchangé. */
+export function obstructionClearancesFor(
+  obstacles: readonly (ObstacleForme & { type?: ObstacleType })[],
+): number[] {
+  return obstacles.map((o) => degagementObstacle(o));
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX103/CALX104 — LA FORME RÉELLE D'UN OBSTACLE (POLYGONE, CERCLE)
+//
+// Un obstacle était TOUJOURS un rectangle centré (`centerLng`/`centerLat`/`lengthM`/
+// `widthM`) : une souche en L ou un édicule biscornu ne se saisissait pas, et une
+// cheminée ronde passait pour un carré. Le contrat CALX85 porte désormais la forme
+// (`forme` + `contour` | `rayonM`) ; ce bloc en fait de la GÉOMÉTRIE PURE — aucun DOM,
+// aucune carte, aucune constante d'ingénierie neuve.
+//
+// LA BOÎTE RESTE LE REPLI EXPLICITE : `lengthM`/`widthM` continuent d'exister sur chaque
+// obstacle (boîte englobante du contour, ou côté du carré circonscrit au disque), pour
+// que tout lecteur qui ignore `forme` — un document v2 antérieur, la 3D, un export —
+// retrouve EXACTEMENT le rectangle d'aujourd'hui. Ce sont les fonctions ci-dessous qui
+// donnent la forme réelle à qui sait la lire.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Les trois formes du contrat CALX85. Absente ⇒ `rectangle` (comportement historique). */
+export type FormeObstacle = 'rectangle' | 'polygone' | 'cercle';
+
+/** CALX103/CALX104 — les champs de FORME qu'un obstacle peut porter, tous OPTIONNELS et
+ *  additifs : un obstacle qui n'en porte aucun est le rectangle d'aujourd'hui. */
+export interface ObstacleForme {
+  /** Forme réelle. Absente = `rectangle`. */
+  forme?: FormeObstacle;
+  /** Contour [[lng, lat], …] du polygone (≥ 3 sommets), fermé implicitement. */
+  contour?: LngLat[];
+  /** Rayon SAISI (m) du disque, centré sur `centerLng`/`centerLat`. Jamais déduit. */
+  rayonM?: number;
+  /** CALX104 — dégagement PROPRE (m) hérité d'un gabarit société : il PRIME sur le
+   *  dégagement du type. Absent ⇒ le dégagement par type s'applique, inchangé. */
+  degagementM?: number;
+  /** CALX104 — la source TEXTUELLE de ce dégagement propre, telle que la société l'a
+   *  saisie. Un chiffre qui retire de la surface sans dire au nom de quoi est indéfendable. */
+  sourceDegagement?: string;
+}
+
+/** Un obstacle du document, forme comprise. */
+export type ObstacleEtendu = Obstacle & ObstacleForme;
+
+/** Nombre de segments qui DESSINENT un disque. CONVENTION DE DESSIN : elle ne change ni le
+ *  rayon saisi, ni l'aire annoncée — celles-ci restent calculées sur le disque exact (π r²). */
+export const SEGMENTS_CERCLE_OBSTACLE = 36;
+
+const FORME_DEG2RAD = Math.PI / 180;
+const FORME_WGS84_RADIUS = 6378137;
+const FORME_DEG2M = FORME_DEG2RAD * FORME_WGS84_RADIUS;
+
+/** La forme réellement portée par un obstacle (`rectangle` par défaut). */
+export function formeObstacle(o: ObstacleForme | null | undefined): FormeObstacle {
+  const f = o?.forme;
+  return f === 'polygone' || f === 'cercle' ? f : 'rectangle';
+}
+
+/** CALX103 — le contour d'un polygone est-il exploitable ? `null` = oui ; sinon le MOTIF
+ *  français du refus, qui NOMME la raison (trop peu de sommets, ou tracé qui se croise). */
+export function motifContourObstacle(contour: readonly LngLat[] | null | undefined): string | null {
+  const pts = Array.isArray(contour) ? contour : [];
+  const propres = pts.filter(
+    (p): p is LngLat => Array.isArray(p) && p.length === 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]),
+  );
+  if (propres.length < 3) {
+    return 'Obstacle polygonal refusé : il faut au moins trois points — deux points ne délimitent aucune surface.';
+  }
+  if (!isSimplePolygon(propres as LngLat[])) {
+    return 'Obstacle polygonal refusé : le tracé se croise (nœud papillon). Reprenez le contour sans croisement.';
+  }
+  return null;
+}
+
+/** CALX104 — le rayon d'un cercle est-il SAISI ? `null` = oui ; sinon le motif, qui NOMME
+ *  le champ manquant. Aucun rayon n'est jamais déduit d'une longueur ni d'une largeur. */
+export function motifRayonObstacle(rayonM: number | null | undefined): string | null {
+  if (rayonM == null || !Number.isFinite(rayonM) || rayonM <= 0) {
+    return 'Obstacle circulaire refusé : saisissez son rayon en mètres — aucun rayon n’est déduit du rectangle.';
+  }
+  return null;
+}
+
+/** Verdict de création d'un obstacle — un refus NOMME toujours sa raison. */
+export type VerdictObstacle = { ok: true; obstacle: ObstacleEtendu } | { ok: false; motif: string };
+
+/** Centre (moyenne des sommets) d'un anneau — même convention que `exclusionZoneRing`. */
+function centreAnneau(anneau: readonly LngLat[]): LngLat {
+  let sLng = 0;
+  let sLat = 0;
+  for (const [lng, lat] of anneau) {
+    sLng += lng;
+    sLat += lat;
+  }
+  return [sLng / anneau.length, sLat / anneau.length];
+}
+
+/**
+ * CALX103 — obstacle POLYGONAL depuis le contour tracé. Le centre est celui du contour ;
+ * `lengthM`/`widthM` reçoivent sa BOÎTE ENGLOBANTE (le repli explicite décrit plus haut,
+ * borné comme tout rectangle d'obstacle). `base` recopie le type / la hauteur / la
+ * provenance d'un obstacle existant sans rien inventer.
+ */
+export function obstaclePolygone(
+  id: string,
+  contour: readonly LngLat[],
+  base: Partial<ObstacleEtendu> = {},
+): VerdictObstacle {
+  const motif = motifContourObstacle(contour);
+  if (motif) return { ok: false, motif };
+  const anneau = contour.map(([lng, lat]) => [lng, lat] as LngLat);
+  const centre = centreAnneau(anneau);
+  const dims = ringDimsM(anneau);
+  return {
+    ok: true,
+    obstacle: {
+      ...base,
+      id,
+      centerLng: centre[0],
+      centerLat: centre[1],
+      lengthM: clampDim(dims.lengthM),
+      widthM: clampDim(dims.widthM),
+      forme: 'polygone',
+      contour: anneau,
+    },
+  };
+}
+
+/**
+ * CALX104 — obstacle CIRCULAIRE : centre cliqué + rayon SAISI. `lengthM`/`widthM`
+ * reçoivent le côté du carré circonscrit (2 r) — le même repli explicite : un lecteur qui
+ * ignore `forme` retrouve un rectangle qui contient le disque, jamais un disque deviné.
+ */
+export function obstacleCercle(
+  id: string,
+  centre: LngLat,
+  rayonM: number | null | undefined,
+  base: Partial<ObstacleEtendu> = {},
+): VerdictObstacle {
+  const motif = motifRayonObstacle(rayonM);
+  if (motif) return { ok: false, motif };
+  const r = rayonM as number;
+  return {
+    ok: true,
+    obstacle: {
+      ...base,
+      id,
+      centerLng: centre[0],
+      centerLat: centre[1],
+      lengthM: clampDim(2 * r),
+      widthM: clampDim(2 * r),
+      forme: 'cercle',
+      rayonM: r,
+    },
+  };
+}
+
+/**
+ * L'anneau RÉEL d'un obstacle, celui que le pavage doit éviter : le contour pour un
+ * polygone, le disque DESSINÉ (`SEGMENTS_CERCLE_OBSTACLE`) pour un cercle, et le
+ * rectangle historique (`obstacleRing`) dans tous les autres cas — y compris un polygone
+ * dont le contour manque ou est bancal : on retombe alors sur la boîte, jamais sur rien.
+ */
+export function anneauObstacle(o: ObstacleEtendu): LngLat[] {
+  const forme = formeObstacle(o);
+  if (forme === 'polygone' && Array.isArray(o.contour) && !motifContourObstacle(o.contour)) {
+    return o.contour.map(([lng, lat]) => [lng, lat] as LngLat);
+  }
+  if (forme === 'cercle' && !motifRayonObstacle(o.rayonM)) {
+    const r = o.rayonM as number;
+    const cosLat = Math.max(1e-6, Math.cos(o.centerLat * FORME_DEG2RAD));
+    const anneau: LngLat[] = [];
+    for (let i = 0; i < SEGMENTS_CERCLE_OBSTACLE; i++) {
+      const a = (2 * Math.PI * i) / SEGMENTS_CERCLE_OBSTACLE;
+      anneau.push([
+        o.centerLng + (r * Math.cos(a)) / (FORME_DEG2M * cosLat),
+        o.centerLat + (r * Math.sin(a)) / FORME_DEG2M,
+      ]);
+    }
+    return anneau;
+  }
+  return obstacleRing(o);
+}
+
+/** Les anneaux RÉELS d'une liste d'obstacles — PARALLÈLES à `obstructionClearancesFor`.
+ *  Remplace `obstacles.map(obstacleRing)` partout où le pavage reçoit les obstructions. */
+export function anneauxObstruction(obstacles: readonly ObstacleEtendu[]): LngLat[][] {
+  return obstacles.map((o) => anneauObstacle(o));
+}
+
+/** Le dégagement (m) appliqué autour d'un obstacle : le SIEN s'il en porte un (gabarit
+ *  société, CALX104), sinon celui de son type (PV61), sinon le dégagement de base. */
+export function degagementObstacle(o: (ObstacleForme & { type?: ObstacleType }) | null | undefined): number {
+  const propre = o?.degagementM;
+  if (typeof propre === 'number' && Number.isFinite(propre) && propre >= 0) return propre;
+  return clearanceForType(o?.type);
+}
+
+/** L'aire (m²) de la forme RÉELLE d'un obstacle : π r² exact pour un disque (jamais
+ *  l'aire du polygone qui le dessine), l'aire géodésique de l'anneau sinon. */
+export function aireObstacleM2(o: ObstacleEtendu): number {
+  if (formeObstacle(o) === 'cercle' && !motifRayonObstacle(o.rayonM)) {
+    const r = o.rayonM as number;
+    return Math.PI * r * r;
+  }
+  return geodesicAreaM2(anneauObstacle(o));
+}
+
+/**
+ * L'aire (m²) réellement RETIRÉE du posable par un obstacle : sa forme RÉELLE, ÉLARGIE de
+ * son dégagement — exactement la bande que le pavage applique (un panneau est refusé s'il
+ * entre dans l'obstacle OU s'approche à moins du dégagement de son bord, cf.
+ * `estimatorBrainV2` `hitsObstruction`). Jamais la boîte englobante.
+ *
+ * Pour un disque : π (r + d)². Pour un anneau : A + P·d + π d² — la formule de Steiner,
+ * EXACTE pour un contour convexe et MAJORANTE pour un contour rentrant (un coin rentrant
+ * voit ses deux bandes se recouvrir). Elle reste, dans les deux cas, STRICTEMENT inférieure
+ * à celle de la boîte englobante dès que la forme est plus petite qu'elle — c'est tout
+ * l'intérêt de tracer la vraie forme.
+ */
+export function aireRetireeM2(o: ObstacleEtendu): number {
+  const d = degagementObstacle(o);
+  if (formeObstacle(o) === 'cercle' && !motifRayonObstacle(o.rayonM)) {
+    const r = (o.rayonM as number) + d;
+    return Math.PI * r * r;
+  }
+  const anneau = anneauObstacle(o);
+  const aire = geodesicAreaM2(anneau);
+  const perimetre = geodesicPerimeterM(anneau); // l'anneau est fermé implicitement
+  return aire + perimetre * d + Math.PI * d * d;
+}
+
+/**
+ * CALX103/CALX104 — les champs de FORME à ÉMETTRE dans le document (et à relire depuis
+ * lui) : additifs, jamais émis quand ils sont absents, donc un obstacle rectangulaire
+ * sérialise octet pour octet comme aujourd'hui. Prend un `unknown` pour servir les DEUX
+ * bouts du round-trip (`serializeLayout` et `deserializeLayout`) avec UNE seule fonction.
+ */
+export function champsFormeObstacle(o: unknown): ObstacleForme {
+  const src = (o ?? {}) as ObstacleForme;
+  const forme = src.forme;
+  const out: ObstacleForme = {};
+  if (forme === 'polygone' && Array.isArray(src.contour) && !motifContourObstacle(src.contour)) {
+    out.forme = 'polygone';
+    out.contour = src.contour.map(([lng, lat]) => [lng, lat] as LngLat);
+  } else if (forme === 'cercle' && !motifRayonObstacle(src.rayonM)) {
+    out.forme = 'cercle';
+    out.rayonM = src.rayonM as number;
+  }
+  // CALX104 — le dégagement PROPRE d'un gabarit voyage AVEC sa source : sans elle, le
+  // chiffre serait orphelin, et un chiffre qui retire de la surface doit dire d'où il vient.
+  if (typeof src.degagementM === 'number' && Number.isFinite(src.degagementM) && src.degagementM >= 0) {
+    out.degagementM = src.degagementM;
+    const source = typeof src.sourceDegagement === 'string' ? src.sourceDegagement.trim() : '';
+    if (source) out.sourceDegagement = source;
+  }
+  return out;
 }
 
 export type TiltMode = 'reco' | number;
@@ -371,4 +656,196 @@ export interface RenderConfigOpts {
   why: string;
   sourceLabel?: string;
   rowId: string | null;
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX104 — GABARITS D'OBSTACLE DE LA SOCIÉTÉ
+//
+// La duplication et la trame N×M existaient déjà, mais aucun gabarit NOMMÉ ne se
+// réutilisait d'un dossier à l'autre : chaque cheminée se redessinait. Parité PV*SOL
+// (bibliothèque d'objets d'ombrage prédéfinis).
+//
+// D'OÙ VIENNENT LES GABARITS, ET CE QUE LE DÉPÔT N'EN LIVRE PAS : ils sont LUS dans la
+// section `zones_types` des réglages société (`GET /api/django/calepinage/parametres/`).
+// Le dépôt n'en livre AUCUN : ni cote, ni hauteur, ni dégagement. Tant que la société n'a
+// rien saisi, la liste est VIDE et l'écran le dit — jamais une cheminée « standard ».
+// ————————————————————————————————————————————————————————————————————————
+
+/** Un gabarit d'obstacle, tel que la société l'a saisi. Tout est OPTIONNEL sauf le nom :
+ *  ce sont SES cotes, pas les nôtres. */
+export interface GabaritObstacle {
+  /** Clé du gabarit dans la section (identifiant stable). */
+  cle: string;
+  /** Nom affiché dans le sélecteur (`libelle` saisi). */
+  libelle: string;
+  /** Forme à poser. `rectangle` par défaut quand la société ne la précise pas. */
+  forme: FormeObstacle;
+  /** Type d'obstacle (porte son dégagement PV61) quand la société l'a saisi. */
+  type?: ObstacleType;
+  /** Cote NORD-SUD (m) du rectangle, telle que saisie (`longueur_m`). */
+  longueurM?: number;
+  /** Cote EST-OUEST (m) du rectangle, telle que saisie (`largeur_m`). */
+  largeurM?: number;
+  /** Rayon (m) du disque (`rayon_m`). */
+  rayonM?: number;
+  /** Contour RELATIF du polygone, en mètres autour du centre : [[est, nord], …]. */
+  sommetsM?: Array<[number, number]>;
+  /** Hauteur (m) saisie. Absente = obstacle plan, aucune ombre (CAL66 inchangé). */
+  hauteurM?: number;
+  /** Dégagement PROPRE (m) du gabarit — il prime sur celui du type. */
+  degagementM?: number;
+  /** Source textuelle du dégagement propre, saisie par la société. */
+  sourceDegagement?: string;
+}
+
+/** Un gabarit ÉCARTÉ, avec le champ qui lui manque — l'écran le dit, il ne le devine pas. */
+export interface GabaritRefuse {
+  cle: string;
+  libelle: string;
+  motif: string;
+}
+
+function nombreReglage(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
+}
+
+function texteReglage(v: unknown): string | undefined {
+  const s = typeof v === 'string' ? v.trim() : '';
+  return s || undefined;
+}
+
+/**
+ * CALX104 — lit la section `zones_types` et en tire les gabarits POSABLES. Un gabarit sans
+ * cote exploitable n'est PAS proposé : il rejoint `refuses` avec le champ qui lui manque,
+ * NOMMÉ. Section absente / vide / bancale ⇒ `{gabarits: [], refuses: []}` — l'état vide.
+ *
+ * Les clés lues sont celles des réglages (`snake_case`) : `libelle`, `type`, `forme`,
+ * `longueur_m`, `largeur_m`, `rayon_m`, `sommets`, `hauteur_m`, `retrait_m`, `source`.
+ */
+export function lireGabaritsObstacle(section: unknown): {
+  gabarits: GabaritObstacle[];
+  refuses: GabaritRefuse[];
+} {
+  const gabarits: GabaritObstacle[] = [];
+  const refuses: GabaritRefuse[] = [];
+  if (!section || typeof section !== 'object' || Array.isArray(section)) return { gabarits, refuses };
+  for (const [cle, brut] of Object.entries(section as Record<string, unknown>)) {
+    if (!brut || typeof brut !== 'object' || Array.isArray(brut)) continue;
+    const e = brut as Record<string, unknown>;
+    const libelle = texteReglage(e.libelle) ?? cle;
+    const typeSaisi = texteReglage(e.type);
+    const type = OBSTACLE_TYPES.some((t) => t.id === typeSaisi) ? (typeSaisi as ObstacleType) : undefined;
+    const longueurM = nombreReglage(e.longueur_m);
+    const largeurM = nombreReglage(e.largeur_m);
+    const rayonM = nombreReglage(e.rayon_m);
+    const hauteurM = nombreReglage(e.hauteur_m);
+    const sommetsM = Array.isArray(e.sommets)
+      ? (e.sommets as unknown[])
+          .filter(
+            (p): p is [number, number] =>
+              Array.isArray(p) && p.length === 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]),
+          )
+          .map((p) => [p[0], p[1]] as [number, number])
+      : [];
+    const formeSaisie = texteReglage(e.forme);
+    const forme: FormeObstacle =
+      formeSaisie === 'cercle' || formeSaisie === 'polygone' || formeSaisie === 'rectangle'
+        ? formeSaisie
+        : rayonM != null
+          ? 'cercle'
+          : sommetsM.length >= 3
+            ? 'polygone'
+            : 'rectangle';
+    const source = texteReglage(e.source);
+    const commun = {
+      cle,
+      libelle,
+      forme,
+      ...(type ? { type } : {}),
+      ...(hauteurM != null ? { hauteurM } : {}),
+      ...(typeof e.retrait_m === 'number' && Number.isFinite(e.retrait_m) && e.retrait_m >= 0
+        ? { degagementM: e.retrait_m }
+        : {}),
+      ...(source ? { sourceDegagement: source } : {}),
+    };
+    if (forme === 'cercle') {
+      if (rayonM == null) {
+        refuses.push({
+          cle,
+          libelle,
+          motif: `« ${libelle} » n’est pas proposé : son rayon (rayon_m) n’est pas saisi.`,
+        });
+        continue;
+      }
+      gabarits.push({ ...commun, rayonM });
+      continue;
+    }
+    if (forme === 'polygone') {
+      if (sommetsM.length < 3) {
+        refuses.push({
+          cle,
+          libelle,
+          motif: `« ${libelle} » n’est pas proposé : son contour (sommets) compte moins de trois points.`,
+        });
+        continue;
+      }
+      gabarits.push({ ...commun, sommetsM });
+      continue;
+    }
+    if (longueurM == null || largeurM == null) {
+      refuses.push({
+        cle,
+        libelle,
+        motif: `« ${libelle} » n’est pas proposé : ses cotes (longueur_m et largeur_m) ne sont pas toutes saisies.`,
+      });
+      continue;
+    }
+    gabarits.push({ ...commun, longueurM, largeurM });
+  }
+  return { gabarits, refuses };
+}
+
+/**
+ * CALX104 — pose un gabarit à un centre donné. Toutes les cotes viennent du gabarit :
+ * AUCUNE n'est complétée ici. Un gabarit polygonal porte un contour RELATIF (mètres
+ * est/nord autour du centre) qu'on replace autour du point posé, sans le déformer.
+ */
+export function obstacleDepuisGabarit(
+  id: string,
+  gabarit: GabaritObstacle,
+  centre: LngLat,
+): VerdictObstacle {
+  const base: Partial<ObstacleEtendu> = {
+    ...(gabarit.type ? { type: gabarit.type } : {}),
+    ...(gabarit.hauteurM != null ? { heightM: gabarit.hauteurM } : {}),
+    ...(gabarit.degagementM != null ? { degagementM: gabarit.degagementM } : {}),
+    ...(gabarit.sourceDegagement ? { sourceDegagement: gabarit.sourceDegagement } : {}),
+  };
+  if (gabarit.forme === 'cercle') return obstacleCercle(id, centre, gabarit.rayonM, base);
+  if (gabarit.forme === 'polygone') {
+    const sommets = gabarit.sommetsM ?? [];
+    const cosLat = Math.max(1e-6, Math.cos(centre[1] * FORME_DEG2RAD));
+    const contour = sommets.map(
+      ([est, nord]) => [centre[0] + est / (FORME_DEG2M * cosLat), centre[1] + nord / FORME_DEG2M] as LngLat,
+    );
+    return obstaclePolygone(id, contour, base);
+  }
+  if (gabarit.longueurM == null || gabarit.largeurM == null) {
+    return {
+      ok: false,
+      motif: `« ${gabarit.libelle} » n’est pas posable : ses cotes (longueur_m et largeur_m) ne sont pas toutes saisies.`,
+    };
+  }
+  return {
+    ok: true,
+    obstacle: {
+      ...base,
+      id,
+      centerLng: centre[0],
+      centerLat: centre[1],
+      lengthM: clampDim(gabarit.longueurM),
+      widthM: clampDim(gabarit.largeurM),
+      forme: 'rectangle',
+    },
+  };
 }

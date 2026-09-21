@@ -13,7 +13,6 @@
  */
 import maplibregl from 'maplibre-gl';
 import {
-  obstacleRing,
   obstacleFromDrag,
   defaultObstacle,
   scaledObstacle,
@@ -33,7 +32,19 @@ import { OBSTACLE_TAP_PX, VERTEX_GRAB_PX, DEG2RAD, DEG2M } from './constants';
 import { insertionSurContour, supprimerSommet, metresParPixel } from './snap';
 import { $, esc } from './dom';
 import { type Ctx } from './context';
-import { OBSTACLE_TYPES, clearanceForType } from './types';
+import {
+  OBSTACLE_TYPES,
+  aireObstacleM2,
+  anneauObstacle,
+  degagementObstacle,
+  formeObstacle,
+  lireGabaritsObstacle,
+  obstacleCercle,
+  obstacleDepuisGabarit,
+  obstaclePolygone,
+  type GabaritObstacle,
+  type ObstacleEtendu,
+} from './types';
 import {
   newEnvironmentObject,
   environmentNeedsFootprint,
@@ -47,15 +58,23 @@ import {
 } from './environment';
 import {
   EXCLUSION_NATURES,
+  USAGE_CIRCULATION,
+  aireAlleeM2,
+  alleeCirculation,
+  couloirDepuisAxe,
+  deplacerAllee,
   exclusionColor,
   exclusionZoneFromDrag,
   exclusionZoneRing,
+  largeurAlleeDepuisReglages,
+  modulesSurAllee,
   withZoneNature,
   withZoneSetback,
   withZoneHeight,
   withZoneLabel,
   type ExclusionZone,
   type ExclusionNature,
+  type ModulePose,
 } from './zones';
 
 /** CAL72 — provenances proposées (vocabulaire `core.calepinage.types.Provenance`), avec
@@ -189,6 +208,11 @@ export interface ObstaclesUiDeps {
    *  d'environnement : ces deux-là ombrent désormais réellement. Optionnel — absent,
    *  seul le re-pavage (`recalc`) a lieu, comportement d'avant CAL66. */
   recomputeShading?: () => void;
+  /** CALX403 — les modules POSÉS du pan actif (repère + emprise au sol en ENU) et
+   *  l'origine de la scène, pour COMPTER ceux qui chevauchent une allée de circulation.
+   *  Optionnel : absent, le bandeau d'allée ne parle QUE du couloir (surface retirée) —
+   *  jamais un compte de modules inventé. Cette fonction ne supprime jamais rien. */
+  modulesPoses?: () => { modules: ModulePose[]; origine: LngLat };
 }
 
 export interface ObstaclesUi {
@@ -230,7 +254,22 @@ export interface ObstaclesUi {
   endEnvMove: () => void;
   /** Re-dessine les marqueurs d'environnement. */
   redrawEnvironment: () => void;
+  // CALX103/CALX104/CALX403 — modes de tracé « à la volée » (clics successifs).
+  /** Arme (ou désarme, `null`) un tracé : obstacle polygonal, obstacle circulaire, pose
+   *  d'un gabarit société, ou allée de circulation. */
+  armerTrace: (mode: ModeTrace | null) => void;
+  /** Le mode de tracé armé, ou null. */
+  modeTraceArme: () => ModeTrace | null;
+  /** CALX104 — les gabarits d'obstacle lus dans les réglages société (liste VIDE tant que
+   *  la société n'a rien saisi — le dépôt n'en livre aucun). */
+  gabaritsObstacle: () => GabaritObstacle[];
+  /** CALX403 — les repères des modules posés qui chevauchent une allée de circulation.
+   *  AUCUN module n'est supprimé : ils sont comptés. */
+  modulesSurAllees: () => string[];
 }
+
+/** CALX103/CALX104/CALX403 — les tracés « à la volée » que l'atelier sait armer. */
+export type ModeTrace = 'polygone' | 'cercle' | 'gabarit' | 'allee';
 
 export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi {
   const { map, recalc, setStatus, redrawTrace } = deps;
@@ -249,7 +288,22 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   /** Décimal à 1 chiffre, à la française (identique à l'entrée). */
   const fmt1 = (n: number): string =>
     n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  const dimsLabel = (o: Obstacle) => `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
+  /** CALX103/CALX104 — les cotes AFFICHÉES suivent la forme réelle : le rayon SAISI d'un
+   *  disque, le nombre de sommets et l'aire d'un polygone, et le rectangle sinon. La boîte
+   *  `lengthM × widthM` reste rappelée pour les formes qui ne sont pas des rectangles —
+   *  c'est le repli que tout lecteur du document retrouve. */
+  const dimsLabel = (obs: Obstacle) => {
+    const o = obs as ObstacleEtendu;
+    const boite = `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
+    const forme = formeObstacle(o);
+    if (forme === 'cercle' && o.rayonM != null) {
+      return `disque r = ${fmt1(o.rayonM)} m (boîte ${boite})`;
+    }
+    if (forme === 'polygone' && Array.isArray(o.contour)) {
+      return `polygone ${o.contour.length} sommets · ${fmt1(aireObstacleM2(o))} m² (boîte ${boite})`;
+    }
+    return boite;
+  };
 
   // — DOM des obstacles —
   const obstacleBtn = $<HTMLButtonElement>('rp9-obstacle');
@@ -299,9 +353,15 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     obsEditPanel.insertBefore(label, obsEditPanel.firstChild);
     return select;
   }
-  /** Libellé du dégagement courant (m), affiché sous le sélecteur. */
-  const clearanceLabel = (o: Obstacle): string =>
-    `Dégagement autour : ${fmt1(clearanceForType(o.type))} m`;
+  /** Libellé du dégagement courant (m), affiché sous le sélecteur. CALX104 — un obstacle
+   *  posé depuis un gabarit porte SON dégagement, qui prime sur celui de son type : on dit
+   *  alors lequel s'applique ET d'où il vient (la source saisie par la société). */
+  const clearanceLabel = (obs: Obstacle): string => {
+    const o = obs as ObstacleEtendu;
+    const base = `Dégagement autour : ${fmt1(degagementObstacle(o))} m`;
+    if (o.degagementM == null) return base;
+    return `${base} (gabarit de votre société — ${o.sourceDegagement ?? 'source non renseignée'})`;
+  };
 
   // CAL72 — SÉLECTEUR « provenance ». Même pattern que le sélecteur de type (PV61) : créé
   // ICI s'il n'existe pas déjà (aucune page n'a à être modifiée).
@@ -731,12 +791,415 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   });
   renderZoneList(); // état initial (dossier rechargé avec des zones)
 
+  // ————————————————————————————————————————————————————————————————————
+  // CALX103 — TRACER UN OBSTACLE POLYGONAL AU CLIC
+  // CALX104 — OBSTACLE CIRCULAIRE (RAYON SAISI) ET GABARITS DE LA SOCIÉTÉ
+  // CALX403 — ALLÉE DE CIRCULATION (POLYLIGNE + LARGEUR SAISIE)
+  //
+  // Un obstacle était TOUJOURS un rectangle tiré au glissé : une souche en L ou un édicule
+  // biscornu ne se saisissait pas, une cheminée ronde passait pour un carré, et aucun
+  // gabarit NOMMÉ ne se réutilisait d'un dossier à l'autre. Parité HelioScope (keepouts
+  // polygonaux) et PV*SOL (bibliothèque d'objets d'ombrage). Le geste est celui du tracé du
+  // toit — clics successifs, double-clic pour fermer — donc rien de neuf à apprendre, et la
+  // MÊME garde `isSimplePolygon` refuse un tracé croisé.
+  //
+  // ZÉRO CHIFFRE INVENTÉ : le rayon d'un cercle est SAISI, les cotes d'un gabarit viennent
+  // des réglages société (`zones_types`), et la largeur d'une allée vient des réglages
+  // (`degagements.allees_circulation`, CALX402) POUR LE PAYS DU SITE — sans elle, l'allée
+  // refuse de se fermer en nommant le pays et le réglage manquant.
+  //
+  // Le panneau est créé ICI si la page hôte ne le fournit pas (patron `ensureTypePicker`) :
+  // aucune page n'a à être modifiée.
+  // ————————————————————————————————————————————————————————————————————
+
+  /** Nombre à la française (virgule décimale tolérée), comme partout dans l'atelier. */
+  const nombreSaisi = (s: string | null | undefined): number =>
+    parseFloat((s ?? '').replace(/\s/g, '').replace(',', '.'));
+
+  const reglages = ctx.opts?.reglagesAtelier ?? null;
+  /** CALX403 — le pays du site vient de la section `imagerie` déjà transmise (CAL47) :
+   *  on ne le redemande pas, et on n'en suppose aucun. */
+  const paysDuSite = ctx.opts?.imagery?.pays ?? null;
+  const { gabarits: gabaritsObstacle, refuses: gabaritsRefuses } = lireGabaritsObstacle(reglages?.zones_types);
+  const largeurReglee = largeurAlleeDepuisReglages(reglages?.degagements, paysDuSite);
+
+  let modeTrace: ModeTrace | null = null;
+  let pointsEnCours: LngLat[] = [];
+
+  function ensureFormePanel(): HTMLElement | null {
+    const existing = $('rp9-forme-panel');
+    if (existing) return existing;
+    const anchorEl = obstacleBtn?.parentElement ?? obsEditPanel?.parentElement ?? null;
+    if (!anchorEl || typeof document.createElement !== 'function') return null;
+    const panel = document.createElement('div');
+    panel.id = 'rp9-forme-panel';
+    panel.className = 'rp9-forme-panel mt-2 flex flex-col gap-2 text-xs';
+    panel.innerHTML =
+      `<div class="flex flex-wrap items-center gap-2">` +
+      `<button type="button" id="rp9-obs-polygone" class="rp9-btn" aria-pressed="false">Obstacle polygonal</button>` +
+      `<button type="button" id="rp9-obs-cercle" class="rp9-btn" aria-pressed="false">Obstacle circulaire</button>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-obs-rayon">Rayon (m)` +
+      `<input type="text" id="rp9-obs-rayon" class="rp9-input w-20" inputmode="decimal" value="" /></label>` +
+      `</div>` +
+      `<div class="flex flex-wrap items-center gap-2">` +
+      `<label class="inline-flex items-center gap-1" for="rp9-obs-gabarit">Gabarit de votre société` +
+      `<select id="rp9-obs-gabarit" class="rp9-input"></select></label>` +
+      `<button type="button" id="rp9-obs-gabarit-poser" class="rp9-btn" aria-pressed="false" disabled>Poser ce gabarit</button>` +
+      `<span id="rp9-obs-gabarit-vide" class="text-lune-faint"></span>` +
+      `</div>` +
+      `<div class="flex flex-wrap items-center gap-2">` +
+      `<button type="button" id="rp9-allee-tracer" class="rp9-btn" aria-pressed="false">Tracer une allée de circulation</button>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-allee-largeur">Largeur de l’allée (m)` +
+      `<input type="text" id="rp9-allee-largeur" class="rp9-input w-20" inputmode="decimal" value="" /></label>` +
+      `<span id="rp9-allee-reglage" class="text-lune-faint"></span>` +
+      `</div>` +
+      `<span id="rp9-forme-motif" class="text-alert-300" role="alert" hidden></span>` +
+      `<span id="rp9-allee-bandeau" class="text-alert-300" role="status" hidden></span>`;
+    anchorEl.appendChild(panel);
+    return panel;
+  }
+  ensureFormePanel();
+  const obsPolygoneBtn = $<HTMLButtonElement>('rp9-obs-polygone');
+  const obsCercleBtn = $<HTMLButtonElement>('rp9-obs-cercle');
+  const obsRayonEl = $<HTMLInputElement>('rp9-obs-rayon');
+  const obsGabaritEl = $<HTMLSelectElement>('rp9-obs-gabarit');
+  const obsGabaritPoserBtn = $<HTMLButtonElement>('rp9-obs-gabarit-poser');
+  const obsGabaritVideEl = $('rp9-obs-gabarit-vide');
+  const alleeTracerBtn = $<HTMLButtonElement>('rp9-allee-tracer');
+  const alleeLargeurEl = $<HTMLInputElement>('rp9-allee-largeur');
+  const alleeReglageEl = $('rp9-allee-reglage');
+  const formeMotifEl = $('rp9-forme-motif');
+  const alleeBandeauEl = $('rp9-allee-bandeau');
+
+  /** Affiche (ou efface) un refus NOMMÉ, dans le panneau ET dans le bandeau de statut. */
+  function direRefusForme(motif: string | null) {
+    if (formeMotifEl) {
+      formeMotifEl.textContent = motif ?? '';
+      formeMotifEl.hidden = !motif;
+    }
+    if (motif) setStatus(motif);
+  }
+
+  /** Points du tracé en cours, sans doublon consécutif (le double-clic de fermeture émet
+   *  deux clics au MÊME endroit : on ne garde pas le point en double). */
+  function pointsPropres(): LngLat[] {
+    const out: LngLat[] = [];
+    for (const p of pointsEnCours) {
+      const d = out[out.length - 1];
+      if (d && Math.abs(d[0] - p[0]) < 1e-9 && Math.abs(d[1] - p[1]) < 1e-9) continue;
+      out.push(p);
+    }
+    return out;
+  }
+
+  /** Aperçu du tracé en cours : la polyligne pour un contour, le couloir DÉJÀ élargi de
+   *  sa largeur saisie pour une allée (on voit ce que l'on retire, pas un simple trait). */
+  function apercuTrace() {
+    const pts = pointsPropres();
+    if (pts.length < 2) {
+      clearPreview();
+      return;
+    }
+    const couloir =
+      modeTrace === 'allee' && nombreSaisi(alleeLargeurEl?.value) > 0
+        ? couloirDepuisAxe(pts, nombreSaisi(alleeLargeurEl?.value))
+        : null;
+    const coords = couloir ? [...couloir, couloir[0]] : pts;
+    srcOf('rp9-obs-preview')?.setData({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: coords },
+      properties: {},
+    } as never);
+  }
+
+  /** CALX104 — remplit le sélecteur de gabarits. AUCUN gabarit n'est livré par le dépôt :
+   *  sans saisie de la société, la liste est vide, le bouton reste inactif, et l'écran le
+   *  DIT (en citant, le cas échéant, les gabarits écartés et le champ qui leur manque). */
+  function remplirGabarits() {
+    if (!obsGabaritEl) return;
+    obsGabaritEl.innerHTML = '';
+    if (!gabaritsObstacle.length) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Aucun gabarit enregistré';
+      obsGabaritEl.appendChild(opt);
+      obsGabaritEl.disabled = true;
+      if (obsGabaritPoserBtn) obsGabaritPoserBtn.disabled = true;
+      if (obsGabaritVideEl) {
+        obsGabaritVideEl.textContent = gabaritsRefuses.length
+          ? `Aucun gabarit posable. ${gabaritsRefuses.map((r) => r.motif).join(' ')}`
+          : 'Aucun gabarit d’obstacle n’est enregistré dans les réglages de votre société.';
+      }
+      return;
+    }
+    for (const g of gabaritsObstacle) {
+      const opt = document.createElement('option');
+      opt.value = g.cle;
+      opt.textContent = g.libelle;
+      obsGabaritEl.appendChild(opt);
+    }
+    obsGabaritEl.disabled = false;
+    if (obsGabaritPoserBtn) obsGabaritPoserBtn.disabled = false;
+    if (obsGabaritVideEl) {
+      obsGabaritVideEl.textContent = gabaritsRefuses.length ? gabaritsRefuses.map((r) => r.motif).join(' ') : '';
+    }
+  }
+  remplirGabarits();
+
+  // CALX403 — la largeur d'allée est PRÉREMPLIE depuis les réglages du pays du site, et
+  // reste MODIFIABLE. Pays sans largeur saisie ⇒ le champ reste VIDE et le motif nomme le
+  // pays et le réglage manquant : rien n'est supposé.
+  if (alleeLargeurEl && largeurReglee.largeurM != null) alleeLargeurEl.value = fmt1(largeurReglee.largeurM);
+  if (alleeReglageEl) alleeReglageEl.textContent = largeurReglee.motif;
+
+  const LIBELLE_MODE: Record<ModeTrace, string> = {
+    polygone: 'Cliquez les sommets de l’obstacle, double-clic pour fermer.',
+    cercle: 'Cliquez le centre de l’obstacle circulaire (son rayon est celui que vous avez saisi).',
+    gabarit: 'Cliquez l’endroit où poser ce gabarit.',
+    allee: 'Cliquez les points de l’allée, double-clic pour finir.',
+  };
+
+  /** Arme (ou désarme) un tracé à la volée. Un seul mode à la fois ; réarmer le même le
+   *  désarme. Le mode de tracé NEUTRALISE les glissés (sommet, obstacle) tant qu'il est
+   *  armé — sinon deux gestes partiraient ensemble. */
+  function armerTrace(mode: ModeTrace | null) {
+    modeTrace = mode;
+    pointsEnCours = [];
+    clearPreview();
+    direRefusForme(null);
+    obsPolygoneBtn?.setAttribute('aria-pressed', String(mode === 'polygone'));
+    obsCercleBtn?.setAttribute('aria-pressed', String(mode === 'cercle'));
+    obsGabaritPoserBtn?.setAttribute('aria-pressed', String(mode === 'gabarit'));
+    alleeTracerBtn?.setAttribute('aria-pressed', String(mode === 'allee'));
+    if (typeof map.getCanvas === 'function') {
+      const canvas = map.getCanvas();
+      if (canvas) canvas.style.cursor = mode ? 'crosshair' : '';
+    }
+    if (mode) setStatus(LIBELLE_MODE[mode]);
+  }
+
+  /** CALX103 — ferme le contour tracé et crée l'obstacle polygonal, ou REFUSE en nommant
+   *  la raison (moins de trois points, ou tracé qui se croise). */
+  function fermerObstaclePolygone(): boolean {
+    const pts = pointsPropres();
+    const verdict = obstaclePolygone(`obs-${ctx.obsCounter + 1}`, pts);
+    if (!verdict.ok) {
+      direRefusForme(verdict.motif);
+      return false;
+    }
+    ctx.obsCounter += 1;
+    armerTrace(null);
+    addObstacle(verdict.obstacle);
+    setStatus(
+      `Obstacle polygonal ajouté (${pts.length} sommets) — le calepinage évite sa forme réelle, ` +
+        `dégagement ${fmt1(degagementObstacle(verdict.obstacle))} m compris.`,
+    );
+    return true;
+  }
+
+  /** CALX104 — pose l'obstacle circulaire au point cliqué, au rayon SAISI. */
+  function poserObstacleCercle(centre: LngLat): boolean {
+    const verdict = obstacleCercle(`obs-${ctx.obsCounter + 1}`, centre, nombreSaisi(obsRayonEl?.value));
+    if (!verdict.ok) {
+      direRefusForme(verdict.motif);
+      return false;
+    }
+    ctx.obsCounter += 1;
+    armerTrace(null);
+    addObstacle(verdict.obstacle);
+    setStatus(`Obstacle circulaire ajouté (rayon ${fmt1(verdict.obstacle.rayonM as number)} m).`);
+    return true;
+  }
+
+  /** CALX104 — pose le gabarit SÉLECTIONNÉ au point cliqué, à SES cotes. */
+  function poserGabarit(centre: LngLat): boolean {
+    const cle = obsGabaritEl?.value ?? '';
+    const gabarit = gabaritsObstacle.find((g) => g.cle === cle);
+    if (!gabarit) {
+      direRefusForme('Aucun gabarit sélectionné : votre société n’en a enregistré aucun.');
+      return false;
+    }
+    const verdict = obstacleDepuisGabarit(`obs-${ctx.obsCounter + 1}`, gabarit, centre);
+    if (!verdict.ok) {
+      direRefusForme(verdict.motif);
+      return false;
+    }
+    ctx.obsCounter += 1;
+    armerTrace(null);
+    addObstacle(verdict.obstacle);
+    setStatus(`« ${gabarit.libelle} » posé à ses cotes — ${dimsLabel(verdict.obstacle)}.`);
+    return true;
+  }
+
+  /** CALX403 — ferme l'allée tracée. Sans largeur saisie pour le pays, elle REFUSE de se
+   *  fermer et le motif NOMME le pays et le réglage manquant. */
+  function fermerAllee(): boolean {
+    const pts = pointsPropres();
+    ctx.zoneCounter = ctx.zoneCounter ?? 0;
+    const verdict = alleeCirculation(
+      `zone-${ctx.zoneCounter + 1}`,
+      pts,
+      nombreSaisi(alleeLargeurEl?.value),
+      paysDuSite,
+    );
+    if (!verdict.ok) {
+      direRefusForme(verdict.motif);
+      return false;
+    }
+    ctx.zoneCounter += 1;
+    armerTrace(null);
+    ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
+    zoneList().push(verdict.zone);
+    renderZoneList();
+    redrawExclusionZones();
+    recalcWithShading();
+    majBandeauAllees();
+    setStatus(
+      `Allée de circulation tracée (${fmt1(verdict.zone.largeurM as number)} m de large, ` +
+        `${fmt1(aireAlleeM2(verdict.zone))} m² retirés du posable).`,
+    );
+    return true;
+  }
+
+  /** CALX403 — les repères des modules posés qui chevauchent UNE allée quelconque. Aucun
+   *  module n'est retiré : ils sont COMPTÉS (parité Aurora). Sans modules fournis par
+   *  l'hôte (`deps.modulesPoses`), la liste est vide — jamais un compte inventé. */
+  function modulesSurAllees(): string[] {
+    const pose = deps.modulesPoses?.();
+    if (!pose || !pose.modules?.length) return [];
+    const reperes = new Set<string>();
+    for (const z of zoneList()) {
+      if (z.usage !== USAGE_CIRCULATION) continue;
+      for (const r of modulesSurAllee(pose.modules, z, pose.origine)) reperes.add(r);
+    }
+    return [...reperes];
+  }
+
+  /** CALX403 — bandeau des allées : surface retirée, et modules posés en travers (comptés,
+   *  jamais supprimés). Masqué quand aucune allée n'est tracée. */
+  function majBandeauAllees() {
+    if (!alleeBandeauEl) return;
+    const allees = zoneList().filter((z) => z.usage === USAGE_CIRCULATION);
+    if (!allees.length) {
+      alleeBandeauEl.textContent = '';
+      alleeBandeauEl.hidden = true;
+      return;
+    }
+    const surface = allees.reduce((s, z) => s + aireAlleeM2(z), 0);
+    const reperes = modulesSurAllees();
+    const phrase = reperes.length
+      ? ` ${reperes.length} module(s) posé(s) en travers : ${reperes.join(', ')} — ils sont signalés, pas supprimés.`
+      : '';
+    alleeBandeauEl.hidden = false;
+    alleeBandeauEl.textContent =
+      `${allees.length} allée(s) de circulation · ${fmt1(surface)} m² retirés du posable.${phrase}`;
+  }
+
+  obsPolygoneBtn?.addEventListener('click', () => armerTrace(modeTrace === 'polygone' ? null : 'polygone'));
+  obsCercleBtn?.addEventListener('click', () => armerTrace(modeTrace === 'cercle' ? null : 'cercle'));
+  obsGabaritPoserBtn?.addEventListener('click', () => armerTrace(modeTrace === 'gabarit' ? null : 'gabarit'));
+  alleeTracerBtn?.addEventListener('click', () => armerTrace(modeTrace === 'allee' ? null : 'allee'));
+  alleeLargeurEl?.addEventListener('input', apercuTrace);
+
+  map.on?.('click', (e: maplibregl.MapMouseEvent) => {
+    if (!modeTrace) return;
+    const p: LngLat = [e.lngLat.lng, e.lngLat.lat];
+    if (modeTrace === 'cercle') {
+      poserObstacleCercle(p);
+      return;
+    }
+    if (modeTrace === 'gabarit') {
+      poserGabarit(p);
+      return;
+    }
+    pointsEnCours.push(p);
+    apercuTrace();
+  });
+
+  map.on?.('dblclick', (e: maplibregl.MapMouseEvent) => {
+    if (modeTrace !== 'polygone' && modeTrace !== 'allee') return;
+    e.preventDefault?.();
+    if (modeTrace === 'polygone') fermerObstaclePolygone();
+    else fermerAllee();
+  });
+
+  // ————————————————————————————————————————————————————————————————————
+  // CALX403 — GLISSÉ D'UNE ALLÉE : elle se déplace d'un bloc, largeur CONSERVÉE
+  // Parité Aurora (« Fire pathways can be moved … which will maintain their orientation
+  // and total width »). Le glissé translate l'axe ET le couloir du MÊME delta lng/lat :
+  // aucune cote n'est re-dérivée, donc `largeurM` est identique au millimètre.
+  // ————————————————————————————————————————————————————————————————————
+  let glisseAllee: { id: string; startLng: number; startLat: number; moved: boolean } | null = null;
+
+  /** Allée touchée au point écran, ou null (le calque des zones porte leur `id`). */
+  function alleeAtPoint(pt: maplibregl.Point): string | null {
+    if (typeof map.queryRenderedFeatures !== 'function' || !map.getLayer?.('rp9-zones')) return null;
+    const box: [maplibregl.Point, maplibregl.Point] = [
+      { x: pt.x - OBSTACLE_TAP_PX, y: pt.y - OBSTACLE_TAP_PX } as maplibregl.Point,
+      { x: pt.x + OBSTACLE_TAP_PX, y: pt.y + OBSTACLE_TAP_PX } as maplibregl.Point,
+    ];
+    const hits = map.queryRenderedFeatures(box, { layers: ['rp9-zones'] });
+    for (const h of hits) {
+      const id = h?.properties?.id;
+      if (typeof id !== 'string') continue;
+      if (zoneList().some((z) => z.id === id && z.usage === USAGE_CIRCULATION)) return id;
+    }
+    return null;
+  }
+
+  function tryBeginAlleeMove(lngLat: LngLat, point: maplibregl.Point): boolean {
+    if (modeTrace || ctx.obstacleMode || ctx.layoutMode || glisseEnv) return false;
+    const id = alleeAtPoint(point);
+    if (!id) return false;
+    glisseAllee = { id, startLng: lngLat[0], startLat: lngLat[1], moved: false };
+    map.dragPan?.disable?.();
+    return true;
+  }
+
+  function doAlleeMove(lngLat: LngLat) {
+    if (!glisseAllee) return;
+    const list = zoneList();
+    const idx = list.findIndex((z) => z.id === glisseAllee!.id);
+    if (idx < 0) return;
+    if (!glisseAllee.moved) ctx.pushWorkshopHistory?.(); // CAL100 — une photo par glissé
+    glisseAllee.moved = true;
+    list[idx] = deplacerAllee(list[idx], lngLat[0] - glisseAllee.startLng, lngLat[1] - glisseAllee.startLat);
+    glisseAllee.startLng = lngLat[0];
+    glisseAllee.startLat = lngLat[1];
+    redrawExclusionZones();
+  }
+
+  function endAlleeMove() {
+    if (!glisseAllee) return;
+    const bouge = glisseAllee.moved;
+    glisseAllee = null;
+    map.dragPan?.enable?.();
+    ctx.suppressClick = true;
+    if (bouge) {
+      renderZoneList();
+      recalcWithShading();
+      majBandeauAllees();
+    }
+  }
+
+  map.on?.('mousedown', (e: maplibregl.MapMouseEvent) => {
+    tryBeginAlleeMove([e.lngLat.lng, e.lngLat.lat], e.point);
+  });
+  map.on?.('mousemove', (e: maplibregl.MapMouseEvent) => {
+    doAlleeMove([e.lngLat.lng, e.lngLat.lat]);
+  });
+  map.on?.('mouseup', () => endAlleeMove());
+
+  majBandeauAllees(); // état initial (dossier rechargé avec des allées)
+
 
   function redrawObstacles() {
     srcOf('rp9-obs')?.setData({
       type: 'FeatureCollection',
       features: ctx.obstacles.map((o) => {
-        const ring = obstacleRing(o);
+        // CALX103/CALX104 — la carte dessine la forme RÉELLE (contour polygonal, disque),
+        // pas sa boîte englobante ; un obstacle sans forme reste le rectangle d'hier.
+        const ring = anneauObstacle(o as ObstacleEtendu);
         return {
           type: 'Feature',
           geometry: { type: 'Polygon', coordinates: [[...ring, ring[0]]] },
@@ -929,6 +1392,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     // disposition personnalisée.
     if (!ctx.closed || ctx.obstacleMode || ctx.layoutMode) return false;
     if (glisseEnv) return false; // CALX105 — un marqueur d'environnement est déjà saisi
+    if (modeTrace) return false; // CALX103/104/403 — un tracé à la volée est armé
     const hit = obstacleAtPoint(point);
     if (!hit) return false;
     const o = ctx.obstacles.find((x) => x.id === hit);
@@ -991,6 +1455,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   function tryBeginVertexMove(lngLat: LngLat, point: maplibregl.Point): boolean {
     if (!ctx.closed || ctx.obstacleMode || ctx.layoutMode) return false;
     if (glisseEnv) return false; // CALX105 — un marqueur d'environnement est déjà saisi
+    if (modeTrace) return false; // CALX103/104/403 — un tracé à la volée est armé
     const idx = vertexAtPoint(point);
     // CALX91 — Alt maintenue : le geste est une SUPPRESSION (déjà traitée au mousedown),
     // jamais un glissé — sinon les deux partiraient ensemble.
@@ -1062,6 +1527,9 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   /** CALX91 — insère un sommet au projeté orthogonal du point sur l'arête la plus proche. */
   function insererSommetAu(lngLat: LngLat): boolean {
     if (!ctx.closed || ctx.obstacleMode || ctx.layoutMode) return false;
+    // CALX103/104/403 — pendant un tracé à la volée, le double-clic FERME le tracé : il
+    // n'insère surtout pas un sommet dans le contour du toit.
+    if (modeTrace) return false;
     const trouve = insertionSurContour(ctx.vertices, lngLat, toleranceSaisieM(lngLat[1]));
     if (!trouve) return false;
     ctx.pushWorkshopHistory?.(); // CAL100 — un pas d'historique par geste
@@ -1267,5 +1735,9 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     doEnvMove,
     endEnvMove,
     redrawEnvironment,
+    armerTrace,
+    modeTraceArme: () => modeTrace,
+    gabaritsObstacle: () => gabaritsObstacle.map((g) => ({ ...g })),
+    modulesSurAllees,
   };
 }
