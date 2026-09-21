@@ -28,12 +28,15 @@ const mocks = vi.hoisted(() => ({
   // CALX30 — `GET/PUT parametres/profils-types/` (CAL149).
   getProfilsTypes: vi.fn(),
   putProfilsTypes: vi.fn(),
+  // CALX43 — `PUT parametres/` : la SEULE porte d'écriture des deux sections.
+  putParametres: vi.fn(),
 }))
 
 vi.mock('../../api/calepinageApi', () => ({
   default: {
     parametres: {
       get: (...a) => mocks.getParametres(...a),
+      update: (...a) => mocks.putParametres(...a),
       profilsTypes: (...a) => mocks.getProfilsTypes(...a),
       enregistrerProfilsTypes: (...a) => mocks.putProfilsTypes(...a),
     },
@@ -297,6 +300,141 @@ describe('CALX30 — profils types de consommation', () => {
 
     expect(await screen.findByText(/Aucun profil type servi/))
       .toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   CALX43 — PRÉRÉGLAGES ET FAVORIS MATÉRIEL, ÉDITABLES PAR LA PORTE EXISTANTE.
+   ----------------------------------------------------------------------------
+   Ce qui est prouvé : sans le droit de gérer, tout reste en lecture avec le
+   badge existant ; une valeur sans source est refusée et la LIGNE est
+   pointée ; un préréglage neuf n'arrive avec AUCUNE valeur par défaut ; les
+   entrées réservées de la section (`jeux`, `kits`) traversent intactes.
+   ========================================================================== */
+describe('CALX43 — édition des préréglages et des favoris', () => {
+  const rendreAvecDroit = async (reglages = REGLAGES) => {
+    mocks.hasPermission.mockReturnValue(true)
+    mocks.getParametres.mockResolvedValue({ data: reglages })
+    mocks.getModeles.mockResolvedValue({ data: [] })
+    render(<Bibliotheque />)
+    await waitFor(() => expect(screen.getByTestId('cal-biblio-presets-edition'))
+      .toBeInTheDocument())
+  }
+
+  it('sans `calepinage_gerer` : lecture seule, le badge existant, aucune édition', async () => {
+    mocks.hasPermission.mockReturnValue(false)
+    mocks.getParametres.mockResolvedValue({ data: REGLAGES })
+    mocks.getModeles.mockResolvedValue({ data: [] })
+    render(<Bibliotheque />)
+
+    expect(await screen.findByTestId('cal-biblio-lecture-seule')).toBeInTheDocument()
+    expect(screen.queryByTestId('cal-biblio-presets-edition')).toBeNull()
+    expect(screen.queryByTestId('cal-biblio-favoris-edition')).toBeNull()
+    expect(screen.getByText(/la création\/édition des\s+presets n’est pas proposée ici/))
+      .toBeInTheDocument()
+  })
+
+  it('un préréglage sans source est REFUSÉ et sa ligne est pointée', async () => {
+    await rendreAvecDroit()
+
+    // La ligne 0 vient du contrat committé et ne porte AUCUNE source.
+    await userEvent.click(screen.getByTestId('cal-biblio-presets-enregistrer'))
+
+    expect(screen.getByTestId('cal-biblio-preset-erreur-0'))
+      .toHaveTextContent('doit porter sa source')
+    expect(mocks.getParametres).toHaveBeenCalledTimes(1)
+    // Rien n'a été envoyé : le PUT n'est pas appelé sur une valeur sans source.
+    expect(mocks.putParametres).not.toHaveBeenCalled()
+  })
+
+  it('avec sa source, le préréglage part — et `jeux`/`kits` traversent intacts', async () => {
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    await rendreAvecDroit({
+      ...REGLAGES,
+      presets: {
+        ...REGLAGES.presets,
+        jeux: [{ id: 'maison', nom: 'Jeu maison' }],
+        kits: [{ id: 7 }],
+      },
+    })
+
+    await userEvent.type(screen.getByTestId('cal-biblio-preset-source-0'),
+      'Fiche produit du fabricant, 2026')
+    await userEvent.click(screen.getByTestId('cal-biblio-presets-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalled())
+    const corps = mocks.putParametres.mock.calls[0][0]
+    const cle = Object.keys(REGLAGES.presets)[0]
+    expect(corps.presets[cle].source).toBe('Fiche produit du fabricant, 2026')
+    // Les deux entrées réservées sont RENVOYÉES telles quelles : éditer un
+    // préréglage n'efface pas le catalogue de kits (leçon services/presets).
+    expect(corps.presets.jeux).toEqual([{ id: 'maison', nom: 'Jeu maison' }])
+    expect(corps.presets.kits).toEqual([{ id: 7 }])
+    // La section `favoris_materiel` n'est PAS touchée par cet envoi.
+    expect(corps.favoris_materiel).toBeUndefined()
+  })
+
+  it('« Ajouter un préréglage » n’invente AUCUNE valeur par défaut', async () => {
+    await rendreAvecDroit()
+
+    await userEvent.click(screen.getByTestId('cal-biblio-preset-ajouter'))
+
+    expect(screen.getByTestId('cal-biblio-preset-cle-1')).toHaveValue('')
+    expect(screen.getByTestId('cal-biblio-preset-champs-1')).toHaveValue('')
+    expect(screen.getByTestId('cal-biblio-preset-source-1')).toHaveValue('')
+  })
+
+  it('un préréglage sans nom est refusé en pointant SA ligne', async () => {
+    await rendreAvecDroit()
+
+    await userEvent.click(screen.getByTestId('cal-biblio-preset-ajouter'))
+    await userEvent.click(screen.getByTestId('cal-biblio-presets-enregistrer'))
+
+    // La ligne 0 est fautive la première (pas de source) : on la corrige.
+    await userEvent.type(screen.getByTestId('cal-biblio-preset-source-0'), 'Facture ONEE')
+    await userEvent.click(screen.getByTestId('cal-biblio-presets-enregistrer'))
+    expect(screen.getByTestId('cal-biblio-preset-erreur-1'))
+      .toHaveTextContent('n’a pas de nom')
+  })
+
+  it('le refus SERVEUR s’affiche tel quel, sans être réécrit', async () => {
+    const MOTIF = 'Section de réglages inconnue : « presets ».'
+    mocks.putParametres.mockRejectedValue({
+      response: { status: 400, data: { presets: MOTIF } },
+    })
+    await rendreAvecDroit()
+
+    await userEvent.type(screen.getByTestId('cal-biblio-preset-source-0'), 'Fiche produit')
+    await userEvent.click(screen.getByTestId('cal-biblio-presets-enregistrer'))
+
+    expect(await screen.findByTestId('cal-biblio-presets-erreur'))
+      .toHaveTextContent(MOTIF)
+  })
+
+  it('un favori dont un identifiant n’en est pas un est refusé, ligne pointée', async () => {
+    await rendreAvecDroit()
+
+    await userEvent.clear(screen.getByTestId('cal-biblio-favori-ids-0'))
+    await userEvent.type(screen.getByTestId('cal-biblio-favori-ids-0'), '412, panneau')
+    await userEvent.click(screen.getByTestId('cal-biblio-favoris-enregistrer'))
+
+    expect(screen.getByTestId('cal-biblio-favori-erreur-0'))
+      .toHaveTextContent('n’est pas un identifiant de produit')
+    expect(mocks.putParametres).not.toHaveBeenCalled()
+  })
+
+  it('les favoris valides partent sous `favoris_materiel`, en entiers', async () => {
+    mocks.putParametres.mockResolvedValue({ data: REGLAGES })
+    await rendreAvecDroit()
+
+    await userEvent.click(screen.getByTestId('cal-biblio-favoris-enregistrer'))
+
+    await waitFor(() => expect(mocks.putParametres).toHaveBeenCalled())
+    const corps = mocks.putParametres.mock.calls[0][0]
+    const role = Object.keys(REGLAGES.favoris_materiel)[0]
+    expect(corps.favoris_materiel[role])
+      .toEqual(REGLAGES.favoris_materiel[role].map(Number))
+    expect(corps.presets).toBeUndefined()
   })
 })
 
