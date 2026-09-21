@@ -70,6 +70,9 @@ import ToitClientOverlay from '../../features/ventes/ToitClientOverlay'
 import { contourExploitable } from '../../features/crm/workspace/traceToit'
 // VT13 — la photo réelle du toit calée en visite terrain (porte VT12).
 import { normaliserTextureToit } from '../../features/crm/workspace/photoToit'
+// CALX129 — bascule plein écran RÉVERSIBLE du conteneur de la scène 3D, MÊME
+// mécanique que celle de `Vue2DPlan.jsx` (CAL104) — voir l'en-tête du module.
+import { basculerPleinEcran, estEnPleinEcranSur } from '../../features/calepinage/pleinEcran'
 import '../../styles/roofbuilder.css'
 
 // Convertit un data URL PNG en Blob (upload multipart de la 3D).
@@ -463,6 +466,27 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // bascule « Photo réelle » la masque quand elle gêne la lecture du tracé.
   const [photoToitCharge, setPhotoToitCharge] = useState(null)
   const [photoToitVisible, setPhotoToitVisible] = useState(true)
+
+  // CALX129 — plein écran RÉVERSIBLE du conteneur de la scène 3D. `mapWrapRef`
+  // pointe `.rp9-map-wrap`, l'enveloppe ADDITIVE déjà posée par L-MAP autour de
+  // `#rp9-map` (jamais l'id lui-même : le builder ne cherche que ses propres
+  // id, et cette enveloppe couvre aussi `ToitClientOverlay`). Le composant
+  // n'est ni démonté ni ré-amorcé : seule sa classe change.
+  const mapWrapRef = useRef(null)
+  const [pleinEcran3d, setPleinEcran3d] = useState(false)
+
+  // Sortie par Échap suivie via l'évènement du document — jamais supposé que
+  // le bouton est la seule sortie (même repli que Vue2DPlan.jsx).
+  useEffect(() => {
+    const onChange = () => setPleinEcran3d(estEnPleinEcranSur(document, mapWrapRef.current))
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  const basculerPleinEcran3d = () => {
+    Promise.resolve(basculerPleinEcran(mapWrapRef.current, document, pleinEcran3d))
+      .then((etat) => setPleinEcran3d(etat.enPleinEcran))
+  }
 
   // ── Boot : charge lead + config carte, puis initialise le builder ──────────
   useEffect(() => {
@@ -1571,10 +1595,21 @@ export default function ToitureDesign({ mode = 'lead' }) {
           {/* L-MAP — enveloppe ADDITIVE autour de `#rp9-map` (jamais un enfant :
               le builder ne cherche que ses propres id, un parent ne lui change
               rien). `ToitClientOverlay` y flotte en calque de référence
-              passif — voir roofbuilder.css `.rp9-map-wrap`/`.rp9-toit-client`. */}
-          <div className="rp9-map-wrap">
-            <div id="rp9-map" className="h-[56vh] min-h-[360px] w-full bg-nuit-700"
-              role="application" aria-label="Carte 3D pour dessiner le toit">
+              passif — voir roofbuilder.css `.rp9-map-wrap`/`.rp9-toit-client`.
+              CALX129 — c'est cette MÊME enveloppe que la bascule plein écran
+              cible (jamais `#rp9-map` : le builder ne cherche que ses propres
+              id, une classe sur son parent ne le démonte ni ne le ré-amorce). */}
+          <div
+            ref={mapWrapRef}
+            data-plein-ecran={pleinEcran3d ? '1' : '0'}
+            data-testid="rp9-map-wrap"
+            className={pleinEcran3d ? 'rp9-map-wrap fixed inset-0 z-[var(--z-overlay)] bg-nuit-900' : 'rp9-map-wrap'}
+          >
+            <div
+              id="rp9-map"
+              className={pleinEcran3d ? 'h-full w-full bg-nuit-700' : 'h-[56vh] min-h-[360px] w-full bg-nuit-700'}
+              role="application" aria-label="Carte 3D pour dessiner le toit"
+            >
               <div id="rp9-compass" className="rp9-compass" aria-hidden="true">
                 <div id="rp9-compass-arrow" className="rp9-compass-arrow"><span>N</span><span>S</span></div>
               </div>
@@ -1589,6 +1624,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
               photoToit={photoToit}
               photoVisible={photoToitVisible}
             />
+            {/* CALX129 — reste À L'INTÉRIEUR de l'enveloppe (pas dans la barre
+                d'outils plus bas) : en plein écran, tout ce qui est hors de
+                cette enveloppe est recouvert — le bouton de sortie doit donc y
+                vivre pour rester cliquable dans les deux états. */}
+            <button
+              type="button"
+              onClick={basculerPleinEcran3d}
+              data-testid="rp9-plein-ecran-toggle"
+              className={`${chipClass} absolute right-3 top-3 z-10`}
+            >
+              {pleinEcran3d ? 'Quitter le plein écran' : 'Plein écran'}
+            </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">

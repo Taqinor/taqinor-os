@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
@@ -1186,5 +1186,98 @@ describe('ToitureDesign — le calque « Électrique » route vers SA couche, ja
 
     expect(electriqueSetLayerState).toHaveBeenCalledWith('electrique', { visible: false, opacite: 1 })
     expect(setLayerStateGenerique).not.toHaveBeenCalled()
+  })
+})
+
+/* ============================================================================
+   CALX129 — PLEIN ÉCRAN DE LA SCÈNE 3D, RÉVERSIBLE, SANS REBOOT.
+   ----------------------------------------------------------------------------
+   Ce que ce test tient : la bascule cible `.rp9-map-wrap` (jamais `#rp9-map` :
+   le builder ne cherche que ses propres id) ; `initRoofToolPro8` n'est PAS
+   rappelé par la bascule (le builder n'est ni démonté ni ré-amorcé) ; l'aspect
+   du rendu (`#rp9-map`) suit le conteneur dans les deux états ; navigateur
+   sans API Fullscreen ⇒ repli CSS, même réversibilité (MÊME mécanique que
+   `Vue2DPlan.jsx`, `__tests__/vue2d_plan.test.jsx`).
+   ========================================================================== */
+describe('CALX129 — plein écran de la scène 3D', () => {
+  it('bascule sans ré-initialiser le builder, l’aspect du rendu suit le conteneur', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const appelsAvant = initRoofToolPro8.mock.calls.length
+
+    const wrap = screen.getByTestId('rp9-map-wrap')
+    // Un vrai navigateur pose `document.fullscreenElement` à la demande et le
+    // relâche à la sortie : la doublure suit la MÊME vérité, jamais l'inverse.
+    const requestFullscreen = vi.fn().mockImplementation(() => {
+      Object.defineProperty(document, 'fullscreenElement', { value: wrap, configurable: true })
+      return Promise.resolve()
+    })
+    const exitFullscreen = vi.fn().mockImplementation(() => {
+      Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true })
+      return Promise.resolve()
+    })
+    wrap.requestFullscreen = requestFullscreen
+    document.exitFullscreen = exitFullscreen
+
+    await userEvent.click(screen.getByTestId('rp9-plein-ecran-toggle'))
+
+    expect(requestFullscreen).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('rp9-map-wrap').dataset.pleinEcran).toBe('1')
+    // L'aspect du rendu (`#rp9-map`) suit la bascule : plus de hauteur figée.
+    expect(document.getElementById('rp9-map').className).toContain('h-full')
+    expect(document.getElementById('rp9-map').className).not.toContain('h-[56vh]')
+    // Aucun ré-amorçage : toujours le même nombre d'appels au builder.
+    expect(initRoofToolPro8).toHaveBeenCalledTimes(appelsAvant)
+
+    await userEvent.click(screen.getByTestId('rp9-plein-ecran-toggle'))
+
+    expect(exitFullscreen).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('rp9-map-wrap').dataset.pleinEcran).toBe('0')
+    expect(document.getElementById('rp9-map').className).toContain('h-[56vh]')
+    expect(initRoofToolPro8).toHaveBeenCalledTimes(appelsAvant)
+  })
+
+  it('sortie par Échap suivie sans clic (le navigateur quitte de lui-même)', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+    rendreDevis(CTX.devis.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+
+    const wrap = screen.getByTestId('rp9-map-wrap')
+    wrap.requestFullscreen = vi.fn().mockImplementation(() => {
+      Object.defineProperty(document, 'fullscreenElement', { value: wrap, configurable: true })
+      return Promise.resolve()
+    })
+
+    await userEvent.click(screen.getByTestId('rp9-plein-ecran-toggle'))
+    expect(screen.getByTestId('rp9-map-wrap').dataset.pleinEcran).toBe('1')
+
+    // Échap : le navigateur quitte le plein écran DE LUI-MÊME (le document ne
+    // porte plus l'élément) puis émet `fullscreenchange` — jamais un clic.
+    await act(async () => {
+      Object.defineProperty(document, 'fullscreenElement', { value: null, configurable: true })
+      document.dispatchEvent(new Event('fullscreenchange'))
+    })
+    expect(screen.getByTestId('rp9-map-wrap').dataset.pleinEcran).toBe('0')
+  })
+
+  it('navigateur sans API Fullscreen ⇒ repli plein cadre, toujours réversible', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+    rendreDevis(CTX.devis.id)
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+
+    const wrap = screen.getByTestId('rp9-map-wrap')
+    wrap.requestFullscreen = undefined
+
+    await userEvent.click(screen.getByTestId('rp9-plein-ecran-toggle'))
+    expect(screen.getByTestId('rp9-map-wrap').dataset.pleinEcran).toBe('1')
+
+    await userEvent.click(screen.getByTestId('rp9-plein-ecran-toggle'))
+    expect(screen.getByTestId('rp9-map-wrap').dataset.pleinEcran).toBe('0')
   })
 })
