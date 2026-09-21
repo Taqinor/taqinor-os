@@ -43,13 +43,13 @@ import math
 
 from core.electrique.cables import RHO_CUIVRE_20C, chute_tension_v
 from core.electrique.types import (
-    NATURE_MATERIELLE, STATUT_BLOQUANT, STATUT_NON_VERIFIABLE, STATUT_OK,
-    VerdictElectrique, fr,
+    NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE, STATUT_BLOQUANT,
+    STATUT_NON_VERIFIABLE, STATUT_OK, VerdictElectrique, fr,
 )
 
 __all__ = [
     'RaccordementInvalide', 'CODE_ELEVATION', 'LIBELLES',
-    'elevation_de_tension',
+    'elevation_de_tension', 'verdicts_raccordement',
 ]
 
 # ── les cinq contrôles du contrat CALX205, et leur intitulé d'écran ────────
@@ -86,6 +86,28 @@ REFUS_LIMITE_SANS_SOURCE = (
     "Une limite d'élévation de tension ne peut pas être enregistrée sans sa "
     "source : indiquez le texte réglementaire ou le contrat de raccordement "
     "qui la fixe — un seuil sans provenance n'est pas opposable.")
+
+#: Le refus opposé à un cos φ imposé SANS source (clé ``source_cos_phi`` de
+#: ``refus_cos_phi_sans_source``, contrat CALX205). Le cos φ imposé par le
+#: contrat de raccordement de CE site n'est PAS le réglage société
+#: ``cos_phi_par_defaut`` (registre CALX145) : deux grandeurs, deux noms.
+REFUS_COS_PHI_SANS_SOURCE = (
+    "Un cos φ imposé ne peut pas être enregistré sans sa source : indiquez "
+    "le contrat de raccordement ou la prescription du gestionnaire de réseau "
+    "qui l'impose.")
+
+#: CALX242 — les motifs d'omission des trois contrôles de branchement, textes
+#: du contrat CALX205 (état ``exemple_vide``).
+MOTIF_SANS_PUISSANCE_SOUSCRITE = (
+    "« puissance_souscrite_kva » n'est pas saisie : rien ne peut être "
+    "comparé à la puissance injectée. Saisissez la puissance souscrite du "
+    "contrat de raccordement.")
+MOTIF_SANS_PHASES = (
+    "« phases » n'est pas saisi : le régime du branchement est inconnu, et "
+    "il n'est pas supposé. Saisissez 1 ou 3 phases.")
+MOTIF_SANS_TENSION_NOMINALE = (
+    "« tension_nominale_v » n'est pas saisie : ni 230 V ni 400 V ne sont "
+    "supposés. Saisissez la tension nominale du branchement.")
 
 
 class RaccordementInvalide(ValueError):
@@ -350,3 +372,291 @@ def _source_limite(source_limite):
     if not source_limite:
         return ''
     return 'saisie — limite_elevation_pct, source : %s' % source_limite
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX242 — PUISSANCE DE RACCORDEMENT ET RÉGIME MONO/TRI
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``entree.phases`` ne servait qu'à CHOISIR un barème d'ampacité et un
+# coefficient de protection (``core/electrique/cables.py``,
+# ``core/electrique/protections.py``) : rien ne comparait la puissance
+# injectée à une puissance souscrite, et rien ne signalait un onduleur
+# TRIPHASÉ posé sur un abonnement MONOPHASÉ — un dossier impossible à
+# raccorder, qui ne se découvrait que le jour de la mise en service.
+#
+# TROIS CONTRÔLES, TROIS GRAVITÉS DIFFÉRENTES, ET ELLES NE SE CONFONDENT PAS :
+#
+# * la PUISSANCE souscrite dépassée est une ALERTE — un dépassement se
+#   NÉGOCIE avec le gestionnaire de réseau (augmentation d'abonnement,
+#   bridage), il n'empêche pas la conception d'exister ;
+# * le RÉGIME (onduleur triphasé sur un branchement monophasé) est BLOQUANT —
+#   il ne se négocie pas, aucun réglage ne le rattrape. L'inverse (onduleurs
+#   MONOphasés sur un réseau triphasé) est parfaitement normal : c'est
+#   l'équilibrage des phases (CALX243) qui s'en occupe, pas un refus ;
+# * la TENSION nominale saisie qui DIVERGE de celle que le calcul emploie est
+#   BLOQUANTE — toutes les chutes et toute l'élévation déjà publiées portent
+#   alors sur une tension que personne n'a sur son compteur.
+#
+# Saisie absente ⇒ contrôle OMIS avec son motif. Aucun contrôle ne suppose
+# 230 V, 400 V, ni un régime : c'est exactement ce que le contrat CALX205
+# publie dans son état `exemple_vide`.
+
+def verdicts_raccordement(conception, saisie):
+    """CALX242 — les trois contrôles du branchement, chacun NOMMANT son champ.
+
+    Args:
+        conception: la ``Conception`` de CAL124 (``services/chaines.py``),
+            ou ``None`` — seuls l'onduleur retenu, son régime et la tension
+            que le calcul emploie sont lus.
+        saisie: le bloc ``saisie`` du contrat CALX205 —
+            ``{puissance_souscrite_kva, phases, tension_nominale_v,
+            cos_phi_impose, source_cos_phi, …}``.
+
+    Returns:
+        ``{puissance_injectee_kva, source_puissance, phases_onduleur,
+        tension_employee_v, verdicts}`` — ``verdicts`` est le tuple des trois
+        ``VerdictElectrique`` (puissance souscrite, régime, tension), dans
+        l'ordre du contrat.
+
+    Raises:
+        RaccordementInvalide: ``cos_phi_impose`` saisi sans
+            ``source_cos_phi``.
+
+    Fonction PURE : aucune base, aucun réseau, aucune horloge.
+    """
+    saisie = saisie if isinstance(saisie, dict) else {}
+    cos_phi, source_cos_phi = _cos_phi_saisi(saisie)
+    injectee, source_puissance, motif_puissance = _puissance_injectee_kva(
+        conception, cos_phi, source_cos_phi)
+    phases_onduleur = _phases_onduleur(conception)
+    tension_employee = _tension_employee_v(conception)
+
+    return {
+        'puissance_injectee_kva': (None if injectee is None
+                                   else round(injectee, 3)),
+        'source_puissance': source_puissance,
+        'phases_onduleur': phases_onduleur,
+        'tension_employee_v': tension_employee,
+        'verdicts': (
+            _verdict_puissance_souscrite(saisie, injectee, source_puissance,
+                                         motif_puissance),
+            _verdict_regime_phases(saisie, phases_onduleur),
+            _verdict_tension_nominale(saisie, tension_employee),
+        ),
+    }
+
+
+def _cos_phi_saisi(saisie):
+    """``(cos_phi, source)`` — un cos φ sans source est REFUSÉ, pas ignoré.
+
+    C'est le couple que l'étape d'écrêtage (CALX172) lira pour borner la
+    puissance : le laisser passer sans provenance ferait entrer un chiffre
+    non défendable dans la simulation.
+    """
+    cos_phi = _nombre(saisie.get('cos_phi_impose'))
+    brut = saisie.get('source_cos_phi')
+    source = brut.strip() if isinstance(brut, str) else ''
+    if cos_phi is not None and not source:
+        raise RaccordementInvalide(REFUS_COS_PHI_SANS_SOURCE,
+                                   champ='raccordement.source_cos_phi')
+    return (cos_phi, source or None)
+
+
+def _evaluation(conception):
+    """L'``EvaluationOnduleurs`` de la conception, ou ``None``."""
+    if conception is None:
+        return None
+    from .chaines import evaluer_onduleurs
+
+    try:
+        return evaluer_onduleurs(conception)
+    except Exception:  # noqa: BLE001 — une conception incomplète ne fait pas
+        # tomber la page de raccordement : elle rend le contrôle OMIS.
+        return None
+
+
+def _puissance_injectee_kva(conception, cos_phi, source_cos_phi):
+    """``(kVA, source, motif)`` — la puissance APPARENTE réellement injectée.
+
+    Deux provenances, dans cet ordre, et AUCUN repli au-delà :
+
+    1. la fiche onduleur publie ``s_max_kva`` (champ CALX60) — c'est la
+       puissance apparente que le constructeur garantit ;
+    2. à défaut, la puissance ACTIVE de la fiche divisée par le ``cos φ``
+       IMPOSÉ et sourcé du contrat de raccordement.
+
+    Sans l'un ni l'autre, la valeur vaut ``None`` en NOMMANT les deux champs :
+    supposer un cos φ de 1 présenterait une puissance active pour une
+    puissance apparente.
+    """
+    evaluation = _evaluation(conception)
+    if evaluation is None or not evaluation.nombre:
+        return (None, '', "aucun onduleur n'est retenu par la conception : "
+                          "il n'y a pas de puissance injectée à comparer.")
+    onduleur = conception.entree.onduleur
+    s_max = _positif(getattr(onduleur, 's_max_kva', None))
+    if s_max is not None:
+        return (evaluation.nombre * s_max,
+                'fiche onduleur — s_max_kva', '')
+    active = _positif(evaluation.puissance_ac_kw)
+    if active is None:
+        return (None, '', "la puissance AC de l'onduleur n'est pas "
+                          "renseignée : « ac_kw » manque sur la fiche.")
+    if cos_phi is not None and cos_phi > 0:
+        return (active / cos_phi,
+                'saisie — cos_phi_impose, source : %s' % source_cos_phi, '')
+    return (None, '',
+            "la puissance APPARENTE injectée n'est pas calculable : la fiche "
+            "onduleur ne publie pas « s_max_kva » et aucun « cos_phi_impose » "
+            "n'est saisi. Aucun cos φ n'est supposé — une puissance active "
+            "n'est pas une puissance apparente.")
+
+
+def _phases_onduleur(conception):
+    """Le régime de l'onduleur RETENU (1 ou 3), ou ``None`` si non publié."""
+    if conception is None or getattr(conception, 'entree', None) is None:
+        return None
+    return _entier(getattr(conception.entree.onduleur, 'phases', None))
+
+
+def _tension_employee_v(conception):
+    """La tension que le CALCUL emploie (``EntreeElectrique``), ou ``None``.
+
+    Elle n'est pas une saisie : c'est la tension sur laquelle les chutes et
+    l'élévation ont déjà été calculées. Tout l'objet du verdict est de la
+    confronter à celle du branchement RÉEL.
+    """
+    if conception is None or getattr(conception, 'entree', None) is None:
+        return None
+    return _positif(getattr(conception.entree, 'tension_reseau_v', None))
+
+
+def _mot_regime(phases):
+    """« monophasé » / « triphasé » — jamais un chiffre nu à l'écran."""
+    return 'triphasé' if _entier(phases) == 3 else 'monophasé'
+
+
+def _verdict_puissance_souscrite(saisie, injectee, source, motif):
+    """Dépassement = ALERTE : une puissance souscrite se RENÉGOCIE."""
+    souscrite = _positif(saisie.get('puissance_souscrite_kva'))
+    if souscrite is None:
+        return VerdictElectrique(
+            code=CODE_PUISSANCE_SOUSCRITE, nature=NATURE_FONCTIONNELLE,
+            statut=STATUT_NON_VERIFIABLE,
+            libelle=MOTIF_SANS_PUISSANCE_SOUSCRITE,
+            borne=None, valeur=injectee, source='')
+    if injectee is None:
+        return VerdictElectrique(
+            code=CODE_PUISSANCE_SOUSCRITE, nature=NATURE_FONCTIONNELLE,
+            statut=STATUT_NON_VERIFIABLE,
+            libelle="la puissance souscrite de %s kVA est saisie, mais %s"
+                    % (fr(souscrite, 1), motif),
+            borne=souscrite, valeur=None,
+            source='saisie — puissance_souscrite_kva')
+    if injectee <= souscrite:
+        return VerdictElectrique(
+            code=CODE_PUISSANCE_SOUSCRITE, nature=NATURE_FONCTIONNELLE,
+            statut=STATUT_OK,
+            libelle="%s kVA injectés pour %s kVA souscrits : la puissance "
+                    "souscrite saisie couvre l'injection."
+                    % (fr(injectee, 1), fr(souscrite, 1)),
+            borne=souscrite, valeur=injectee,
+            source='saisie — puissance_souscrite_kva (%s)' % source)
+    return VerdictElectrique(
+        code=CODE_PUISSANCE_SOUSCRITE, nature=NATURE_FONCTIONNELLE,
+        statut=STATUT_ALERTE,
+        libelle="%s kVA injectés pour %s kVA souscrits : « "
+                "puissance_souscrite_kva » est dépassée de %s kVA — "
+                "augmentez l'abonnement ou bridez l'injection avant le dépôt "
+                "du dossier de raccordement."
+                % (fr(injectee, 1), fr(souscrite, 1),
+                   fr(injectee - souscrite, 1)),
+        borne=souscrite, valeur=injectee,
+        source='saisie — puissance_souscrite_kva (%s)' % source)
+
+
+def _verdict_regime_phases(saisie, phases_onduleur):
+    """Onduleur TRIPHASÉ sur branchement MONOPHASÉ = BLOQUANT."""
+    phases_saisies = _entier(saisie.get('phases'))
+    if phases_saisies not in (1, 3):
+        return VerdictElectrique(
+            code=CODE_REGIME_PHASES, nature=NATURE_MATERIELLE,
+            statut=STATUT_NON_VERIFIABLE, libelle=MOTIF_SANS_PHASES,
+            borne=None, valeur=None, source='')
+    if phases_onduleur not in (1, 3):
+        return VerdictElectrique(
+            code=CODE_REGIME_PHASES, nature=NATURE_MATERIELLE,
+            statut=STATUT_NON_VERIFIABLE,
+            libelle="le branchement est saisi à %d phase(s), mais la fiche "
+                    "onduleur ne publie pas son régime : « phases » manque "
+                    "sur la fiche, et aucun régime n'est supposé."
+                    % phases_saisies,
+            borne=float(phases_saisies), valeur=None, source='saisie — phases')
+    if phases_onduleur == 3 and phases_saisies == 1:
+        return VerdictElectrique(
+            code=CODE_REGIME_PHASES, nature=NATURE_MATERIELLE,
+            statut=STATUT_BLOQUANT,
+            libelle="onduleur triphasé sur un branchement saisi à 1 phase : "
+                    "ce raccordement est impossible en l'état. Corrigez "
+                    "« phases » si l'abonnement est en réalité triphasé, ou "
+                    "retenez un onduleur monophasé.",
+            borne=float(phases_saisies), valeur=float(phases_onduleur),
+            source='saisie — phases')
+    if phases_onduleur == phases_saisies:
+        return VerdictElectrique(
+            code=CODE_REGIME_PHASES, nature=NATURE_MATERIELLE,
+            statut=STATUT_OK,
+            libelle="onduleur %s sur un branchement saisi à %d phase(s) : "
+                    "les deux régimes concordent."
+                    % (_mot_regime(phases_onduleur), phases_saisies),
+            borne=float(phases_saisies), valeur=float(phases_onduleur),
+            source='saisie — phases')
+    # Onduleur(s) MONOphasé(s) sur un réseau triphasé : configuration normale
+    # — c'est la répartition des phases (CALX243) qui la surveille.
+    return VerdictElectrique(
+        code=CODE_REGIME_PHASES, nature=NATURE_MATERIELLE, statut=STATUT_OK,
+        libelle="onduleur monophasé sur un branchement saisi à 3 phases : "
+                "configuration admise — la répartition des onduleurs entre "
+                "les phases est traitée par le contrôle de déséquilibre.",
+        borne=float(phases_saisies), valeur=float(phases_onduleur),
+        source='saisie — phases')
+
+
+def _verdict_tension_nominale(saisie, tension_employee):
+    """Une tension saisie qui DIVERGE de celle du calcul est BLOQUANTE."""
+    saisie_v = _positif(saisie.get('tension_nominale_v'))
+    if saisie_v is None:
+        return VerdictElectrique(
+            code=CODE_TENSION_NOMINALE, nature=NATURE_MATERIELLE,
+            statut=STATUT_NON_VERIFIABLE,
+            libelle=MOTIF_SANS_TENSION_NOMINALE,
+            borne=None, valeur=tension_employee, source='')
+    if tension_employee is None:
+        return VerdictElectrique(
+            code=CODE_TENSION_NOMINALE, nature=NATURE_MATERIELLE,
+            statut=STATUT_NON_VERIFIABLE,
+            libelle="%s V sont saisis, mais aucune conception n'est "
+                    "calculée : il n'y a pas encore de tension employée à "
+                    "confronter." % fr(saisie_v, 0),
+            borne=saisie_v, valeur=None,
+            source='saisie — tension_nominale_v')
+    if abs(tension_employee - saisie_v) <= 1e-6:
+        return VerdictElectrique(
+            code=CODE_TENSION_NOMINALE, nature=NATURE_MATERIELLE,
+            statut=STATUT_OK,
+            libelle="%s V saisis, %s V employés par le calcul de chute et "
+                    "d'élévation : aucune divergence."
+                    % (fr(saisie_v, 0), fr(tension_employee, 0)),
+            borne=saisie_v, valeur=tension_employee,
+            source='saisie — tension_nominale_v')
+    return VerdictElectrique(
+        code=CODE_TENSION_NOMINALE, nature=NATURE_MATERIELLE,
+        statut=STATUT_BLOQUANT,
+        libelle="« tension_nominale_v » vaut %s V alors que le calcul de "
+                "chute et d'élévation emploie %s V : toutes les chutes "
+                "publiées portent sur une tension qui n'est pas celle du "
+                "branchement. Corrigez la saisie ou le régime retenu."
+                % (fr(saisie_v, 0), fr(tension_employee, 0)),
+        borne=saisie_v, valeur=tension_employee,
+        source='saisie — tension_nominale_v')
