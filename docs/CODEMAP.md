@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: aaca5955516d8fecca32b2ec07a026d04c38df93d79bf40da58984d127b9dd0a
-Plan fingerprint: 54c56f1d403785bf295ab34555a3a623b5bb7059cc95a8cc957a35f402d6ae2c
+Plan fingerprint: 782c4188a9743a2926f0acd37b0e106ecc85d7a9ded08ef92422c1517a35fb42
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (145)**
+**Done (146)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -564,6 +564,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `SOLMVP51` — CODEMAP + gardes de plateforme
 - `SOLMVP52` — Semis et démo
 - `SOLMVP53` — Gate final + garde CI permanente
+- `SOLMVP54` — CI sous 2 minutes (demande fondateur 21/09, APRÈS le merge SOLMVP)
 - `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
 - `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
 - `CALX3` — Faire exposer par le constructeur 3D l'entrée moteur, l'application d'un plan et les…
@@ -679,7 +680,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (461)**
+**Open — to build (460)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -867,7 +868,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM8` — Relever quatre valeurs d'environnement en production
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
-- `SOLMVP54` — CI sous 2 minutes (demande fondateur 21/09, APRÈS le merge SOLMVP)
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
 - `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
