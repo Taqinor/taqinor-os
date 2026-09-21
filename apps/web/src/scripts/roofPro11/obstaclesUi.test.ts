@@ -18,8 +18,14 @@ import {
   champsFormeObstacle,
   clearanceForType,
   degagementObstacle,
+  lireGabaritsObstacle,
   motifContourObstacle,
+  motifRayonObstacle,
+  obstacleCercle,
+  obstacleDepuisGabarit,
   obstaclePolygone,
+  obstructionClearancesFor,
+  type GabaritObstacle,
   type ObstacleEtendu,
 } from './types';
 import { obstacleRing } from '../../lib/obstacles';
@@ -155,7 +161,7 @@ describe('CALX105 — le glissé déplace le marqueur et consomme UN pas d’his
 });
 
 // ————————————————————————————————————————————————————————————————————————
-// CALX103 — TRACER UN OBSTACLE POLYGONAL
+// CALX103 — TRACER UN OBSTACLE POLYGONAL · CALX104 — CERCLE ET GABARITS
 //
 // Repère de travail : un point de référence au Maroc, et deux conversions mètres ⇆ lng/lat
 // à sa latitude — celles de la géométrie testée. Toutes les cotes des tests sont donc des
@@ -244,5 +250,111 @@ describe('CALX103 — un obstacle polygonal se trace, et sa forme RÉELLE fait f
     expect(emis.contour).toHaveLength(6);
     // Relu tel quel depuis le document (JSON pur) : identique.
     expect(champsFormeObstacle(JSON.parse(JSON.stringify(emis)))).toEqual(emis);
+  });
+});
+
+describe('CALX104 — un obstacle circulaire, au rayon SAISI', () => {
+  it('sans rayon saisi, la pose est refusée en nommant le champ', () => {
+    const verdict = obstacleCercle('obs-1', REF, Number.NaN);
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.motif).toContain('rayon');
+    expect(motifRayonObstacle(0)).toContain('rayon');
+  });
+
+  it('avec son rayon, le disque est la forme réelle et la boîte reste son repli', () => {
+    const verdict = obstacleCercle('obs-1', REF, 1.5, { type: 'cheminee' });
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.obstacle.forme).toBe('cercle');
+    expect(verdict.obstacle.rayonM).toBe(1.5);
+    expect(verdict.obstacle.lengthM).toBe(3); // carré circonscrit, 2 r
+    expect(verdict.obstacle.widthM).toBe(3);
+    expect(aireObstacleM2(verdict.obstacle)).toBeCloseTo(Math.PI * 1.5 * 1.5, 6);
+    const d = degagementObstacle(verdict.obstacle); // cheminée : 0,50 m (PV61)
+    expect(aireRetireeM2(verdict.obstacle)).toBeCloseTo(Math.PI * (1.5 + d) ** 2, 6);
+  });
+});
+
+// Les réglages société utilisés par CALX104 et CALX403 — AUCUNE de ces valeurs ne vient du
+// dépôt : ce sont des saisies de société, écrites ici pour le test.
+const ZONES_TYPES = {
+  souche: {
+    libelle: 'Souche de cheminée',
+    type: 'cheminee',
+    longueur_m: 0.8,
+    largeur_m: 0.8,
+    hauteur_m: 1.2,
+    retrait_m: 0.9,
+    source: 'Consigne de pose de la société',
+  },
+  vmc_ronde: { libelle: 'VMC ronde', type: 'ventilation', rayon_m: 0.25 },
+  edicule_a_mesurer: { libelle: 'Édicule à mesurer', type: 'edicule' },
+};
+
+describe('CALX104 — les gabarits d’obstacle viennent des réglages, jamais du dépôt', () => {
+  it('réglages vides ⇒ AUCUN gabarit proposé (état vide, pas de cheminée « standard »)', () => {
+    expect(lireGabaritsObstacle(undefined).gabarits).toEqual([]);
+    expect(lireGabaritsObstacle({}).gabarits).toEqual([]);
+    expect(lireGabaritsObstacle(null).refuses).toEqual([]);
+  });
+
+  it('un gabarit sans cote n’est PAS proposé, et le motif nomme les champs manquants', () => {
+    const { gabarits, refuses } = lireGabaritsObstacle(ZONES_TYPES);
+    expect(gabarits.map((g) => g.cle).sort()).toEqual(['souche', 'vmc_ronde']);
+    expect(refuses).toHaveLength(1);
+    expect(refuses[0].cle).toBe('edicule_a_mesurer');
+    expect(refuses[0].motif).toContain('longueur_m');
+    expect(refuses[0].motif).toContain('largeur_m');
+  });
+
+  it('poser un gabarit donne un obstacle AUX COTES DU GABARIT', () => {
+    const { gabarits } = lireGabaritsObstacle(ZONES_TYPES);
+    const souche = gabarits.find((g) => g.cle === 'souche') as GabaritObstacle;
+    const verdict = obstacleDepuisGabarit('obs-7', souche, REF);
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.obstacle.lengthM).toBeCloseTo(0.8, 6);
+    expect(verdict.obstacle.widthM).toBeCloseTo(0.8, 6);
+    expect(verdict.obstacle.heightM).toBe(1.2);
+    expect(verdict.obstacle.type).toBe('cheminee');
+    // Un gabarit circulaire pose un DISQUE au rayon saisi.
+    const vmc = gabarits.find((g) => g.cle === 'vmc_ronde') as GabaritObstacle;
+    const rond = obstacleDepuisGabarit('obs-8', vmc, REF);
+    expect(rond.ok).toBe(true);
+    if (!rond.ok) return;
+    expect(rond.obstacle.forme).toBe('cercle');
+    expect(rond.obstacle.rayonM).toBe(0.25);
+  });
+
+  it('le dégagement PROPRE d’un gabarit prime sur celui de son type, avec sa source', () => {
+    const { gabarits } = lireGabaritsObstacle(ZONES_TYPES);
+    const souche = gabarits.find((g) => g.cle === 'souche') as GabaritObstacle;
+    const verdict = obstacleDepuisGabarit('obs-7', souche, REF);
+    if (!verdict.ok) throw new Error('gabarit refusé');
+    // Le type « cheminee » vaut 0,50 m (PV61) ; le gabarit, lui, porte 0,90 m.
+    expect(clearanceForType('cheminee')).toBe(0.5);
+    expect(degagementObstacle(verdict.obstacle)).toBe(0.9);
+    expect(obstructionClearancesFor([verdict.obstacle])).toEqual([0.9]);
+    expect(verdict.obstacle.sourceDegagement).toBe('Consigne de pose de la société');
+    // L'aire retirée suit CE dégagement, pas celui du type.
+    expect(aireRetireeM2(verdict.obstacle)).toBeCloseTo(
+      0.8 * 0.8 + 3.2 * 0.9 + Math.PI * 0.81,
+      1,
+    );
+    // Le dégagement propre et sa source VOYAGENT par le document.
+    expect(champsFormeObstacle(verdict.obstacle)).toMatchObject({
+      degagementM: 0.9,
+      sourceDegagement: 'Consigne de pose de la société',
+    });
+  });
+
+  it('un gabarit SANS dégagement propre laisse le dégagement par type inchangé', () => {
+    const { gabarits } = lireGabaritsObstacle(ZONES_TYPES);
+    const vmc = gabarits.find((g) => g.cle === 'vmc_ronde') as GabaritObstacle;
+    const verdict = obstacleDepuisGabarit('obs-8', vmc, REF);
+    if (!verdict.ok) throw new Error('gabarit refusé');
+    expect(verdict.obstacle.degagementM).toBeUndefined();
+    expect(degagementObstacle(verdict.obstacle)).toBe(clearanceForType('ventilation'));
   });
 });

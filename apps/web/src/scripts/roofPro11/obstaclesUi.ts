@@ -36,10 +36,13 @@ import {
   OBSTACLE_TYPES,
   aireObstacleM2,
   anneauObstacle,
-  clearanceForType,
   degagementObstacle,
   formeObstacle,
+  lireGabaritsObstacle,
+  obstacleCercle,
+  obstacleDepuisGabarit,
   obstaclePolygone,
+  type GabaritObstacle,
   type ObstacleEtendu,
 } from './types';
 import {
@@ -238,15 +241,19 @@ export interface ObstaclesUi {
   endEnvMove: () => void;
   /** Re-dessine les marqueurs d'environnement. */
   redrawEnvironment: () => void;
-  // CALX103 — mode de tracé « à la volée » (clics successifs, double-clic pour fermer).
-  /** Arme (ou désarme, `null`) un tracé d'obstacle polygonal. */
+  // CALX103/CALX104 — modes de tracé « à la volée » (clics successifs).
+  /** Arme (ou désarme, `null`) un tracé : obstacle polygonal, obstacle circulaire, ou
+   *  pose d'un gabarit de la société. */
   armerTrace: (mode: ModeTrace | null) => void;
   /** Le mode de tracé armé, ou null. */
   modeTraceArme: () => ModeTrace | null;
+  /** CALX104 — les gabarits d'obstacle lus dans les réglages société (liste VIDE tant que
+   *  la société n'a rien saisi — le dépôt n'en livre aucun). */
+  gabaritsObstacle: () => GabaritObstacle[];
 }
 
-/** CALX103 — les tracés « à la volée » que l'atelier sait armer. */
-export type ModeTrace = 'polygone';
+/** CALX103/CALX104 — les tracés « à la volée » que l'atelier sait armer. */
+export type ModeTrace = 'polygone' | 'cercle' | 'gabarit';
 
 export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi {
   const { map, recalc, setStatus, redrawTrace } = deps;
@@ -330,9 +337,15 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     obsEditPanel.insertBefore(label, obsEditPanel.firstChild);
     return select;
   }
-  /** Libellé du dégagement courant (m), affiché sous le sélecteur. */
-  const clearanceLabel = (o: Obstacle): string =>
-    `Dégagement autour : ${fmt1(clearanceForType(o.type))} m`;
+  /** Libellé du dégagement courant (m), affiché sous le sélecteur. CALX104 — un obstacle
+   *  posé depuis un gabarit porte SON dégagement, qui prime sur celui de son type : on dit
+   *  alors lequel s'applique ET d'où il vient (la source saisie par la société). */
+  const clearanceLabel = (obs: Obstacle): string => {
+    const o = obs as ObstacleEtendu;
+    const base = `Dégagement autour : ${fmt1(degagementObstacle(o))} m`;
+    if (o.degagementM == null) return base;
+    return `${base} (gabarit de votre société — ${o.sourceDegagement ?? 'source non renseignée'})`;
+  };
 
   // CAL72 — SÉLECTEUR « provenance ». Même pattern que le sélecteur de type (PV61) : créé
   // ICI s'il n'existe pas déjà (aucune page n'a à être modifiée).
@@ -764,15 +777,28 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
 
   // ————————————————————————————————————————————————————————————————————
   // CALX103 — TRACER UN OBSTACLE POLYGONAL AU CLIC
+  // CALX104 — OBSTACLE CIRCULAIRE (RAYON SAISI) ET GABARITS DE LA SOCIÉTÉ
   //
   // Un obstacle était TOUJOURS un rectangle tiré au glissé : une souche en L ou un édicule
-  // biscornu ne se saisissait pas. Parité HelioScope (les keepouts sont des polygones). Le
-  // geste est celui du tracé du toit — clics successifs, double-clic pour fermer — donc
-  // rien de neuf à apprendre, et la MÊME garde `isSimplePolygon` refuse un tracé croisé.
+  // biscornu ne se saisissait pas, une cheminée ronde passait pour un carré, et aucun
+  // gabarit NOMMÉ ne se réutilisait d'un dossier à l'autre. Parité HelioScope (keepouts
+  // polygonaux) et PV*SOL (bibliothèque d'objets d'ombrage). Le geste est celui du tracé du
+  // toit — clics successifs, double-clic pour fermer — donc rien de neuf à apprendre, et la
+  // MÊME garde `isSimplePolygon` refuse un tracé croisé.
+  //
+  // ZÉRO CHIFFRE INVENTÉ : le rayon d'un cercle est SAISI, et les cotes d'un gabarit
+  // viennent des réglages société (`zones_types`). Le dépôt n'en livre AUCUN.
   //
   // Le panneau est créé ICI si la page hôte ne le fournit pas (patron `ensureTypePicker`) :
   // aucune page n'a à être modifiée.
   // ————————————————————————————————————————————————————————————————————
+
+  /** Nombre à la française (virgule décimale tolérée), comme partout dans l'atelier. */
+  const nombreSaisi = (s: string | null | undefined): number =>
+    parseFloat((s ?? '').replace(/\s/g, '').replace(',', '.'));
+
+  const reglages = ctx.opts?.reglagesAtelier ?? null;
+  const { gabarits: gabaritsObstacle, refuses: gabaritsRefuses } = lireGabaritsObstacle(reglages?.zones_types);
 
   let modeTrace: ModeTrace | null = null;
   let pointsEnCours: LngLat[] = [];
@@ -788,6 +814,15 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     panel.innerHTML =
       `<div class="flex flex-wrap items-center gap-2">` +
       `<button type="button" id="rp9-obs-polygone" class="rp9-btn" aria-pressed="false">Obstacle polygonal</button>` +
+      `<button type="button" id="rp9-obs-cercle" class="rp9-btn" aria-pressed="false">Obstacle circulaire</button>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-obs-rayon">Rayon (m)` +
+      `<input type="text" id="rp9-obs-rayon" class="rp9-input w-20" inputmode="decimal" value="" /></label>` +
+      `</div>` +
+      `<div class="flex flex-wrap items-center gap-2">` +
+      `<label class="inline-flex items-center gap-1" for="rp9-obs-gabarit">Gabarit de votre société` +
+      `<select id="rp9-obs-gabarit" class="rp9-input"></select></label>` +
+      `<button type="button" id="rp9-obs-gabarit-poser" class="rp9-btn" aria-pressed="false" disabled>Poser ce gabarit</button>` +
+      `<span id="rp9-obs-gabarit-vide" class="text-lune-faint"></span>` +
       `</div>` +
       `<span id="rp9-forme-motif" class="text-alert-300" role="alert" hidden></span>`;
     anchorEl.appendChild(panel);
@@ -795,6 +830,11 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   }
   ensureFormePanel();
   const obsPolygoneBtn = $<HTMLButtonElement>('rp9-obs-polygone');
+  const obsCercleBtn = $<HTMLButtonElement>('rp9-obs-cercle');
+  const obsRayonEl = $<HTMLInputElement>('rp9-obs-rayon');
+  const obsGabaritEl = $<HTMLSelectElement>('rp9-obs-gabarit');
+  const obsGabaritPoserBtn = $<HTMLButtonElement>('rp9-obs-gabarit-poser');
+  const obsGabaritVideEl = $('rp9-obs-gabarit-vide');
   const formeMotifEl = $('rp9-forme-motif');
 
   /** Affiche (ou efface) un refus NOMMÉ, dans le panneau ET dans le bandeau de statut. */
@@ -832,19 +872,57 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     } as never);
   }
 
+  /** CALX104 — remplit le sélecteur de gabarits. AUCUN gabarit n'est livré par le dépôt :
+   *  sans saisie de la société, la liste est vide, le bouton reste inactif, et l'écran le
+   *  DIT (en citant, le cas échéant, les gabarits écartés et le champ qui leur manque). */
+  function remplirGabarits() {
+    if (!obsGabaritEl) return;
+    obsGabaritEl.innerHTML = '';
+    if (!gabaritsObstacle.length) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Aucun gabarit enregistré';
+      obsGabaritEl.appendChild(opt);
+      obsGabaritEl.disabled = true;
+      if (obsGabaritPoserBtn) obsGabaritPoserBtn.disabled = true;
+      if (obsGabaritVideEl) {
+        obsGabaritVideEl.textContent = gabaritsRefuses.length
+          ? `Aucun gabarit posable. ${gabaritsRefuses.map((r) => r.motif).join(' ')}`
+          : 'Aucun gabarit d’obstacle n’est enregistré dans les réglages de votre société.';
+      }
+      return;
+    }
+    for (const g of gabaritsObstacle) {
+      const opt = document.createElement('option');
+      opt.value = g.cle;
+      opt.textContent = g.libelle;
+      obsGabaritEl.appendChild(opt);
+    }
+    obsGabaritEl.disabled = false;
+    if (obsGabaritPoserBtn) obsGabaritPoserBtn.disabled = false;
+    if (obsGabaritVideEl) {
+      obsGabaritVideEl.textContent = gabaritsRefuses.length ? gabaritsRefuses.map((r) => r.motif).join(' ') : '';
+    }
+  }
+  remplirGabarits();
+
   const LIBELLE_MODE: Record<ModeTrace, string> = {
     polygone: 'Cliquez les sommets de l’obstacle, double-clic pour fermer.',
+    cercle: 'Cliquez le centre de l’obstacle circulaire (son rayon est celui que vous avez saisi).',
+    gabarit: 'Cliquez l’endroit où poser ce gabarit.',
   };
 
-  /** Arme (ou désarme) un tracé à la volée. Réarmer le même mode le désarme. Le mode de
-   *  tracé NEUTRALISE les glissés (sommet, obstacle) tant qu'il est armé — sinon deux
-   *  gestes partiraient ensemble. */
+  /** Arme (ou désarme) un tracé à la volée. Un seul mode à la fois ; réarmer le même le
+   *  désarme. Le mode de tracé NEUTRALISE les glissés (sommet, obstacle) tant qu'il est
+   *  armé — sinon deux gestes partiraient ensemble. */
   function armerTrace(mode: ModeTrace | null) {
     modeTrace = mode;
     pointsEnCours = [];
     clearPreview();
     direRefusForme(null);
     obsPolygoneBtn?.setAttribute('aria-pressed', String(mode === 'polygone'));
+    obsCercleBtn?.setAttribute('aria-pressed', String(mode === 'cercle'));
+    obsGabaritPoserBtn?.setAttribute('aria-pressed', String(mode === 'gabarit'));
     if (typeof map.getCanvas === 'function') {
       const canvas = map.getCanvas();
       if (canvas) canvas.style.cursor = mode ? 'crosshair' : '';
@@ -871,11 +949,56 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     return true;
   }
 
+  /** CALX104 — pose l'obstacle circulaire au point cliqué, au rayon SAISI. */
+  function poserObstacleCercle(centre: LngLat): boolean {
+    const verdict = obstacleCercle(`obs-${ctx.obsCounter + 1}`, centre, nombreSaisi(obsRayonEl?.value));
+    if (!verdict.ok) {
+      direRefusForme(verdict.motif);
+      return false;
+    }
+    ctx.obsCounter += 1;
+    armerTrace(null);
+    addObstacle(verdict.obstacle);
+    setStatus(`Obstacle circulaire ajouté (rayon ${fmt1(verdict.obstacle.rayonM as number)} m).`);
+    return true;
+  }
+
+  /** CALX104 — pose le gabarit SÉLECTIONNÉ au point cliqué, à SES cotes. */
+  function poserGabarit(centre: LngLat): boolean {
+    const cle = obsGabaritEl?.value ?? '';
+    const gabarit = gabaritsObstacle.find((g) => g.cle === cle);
+    if (!gabarit) {
+      direRefusForme('Aucun gabarit sélectionné : votre société n’en a enregistré aucun.');
+      return false;
+    }
+    const verdict = obstacleDepuisGabarit(`obs-${ctx.obsCounter + 1}`, gabarit, centre);
+    if (!verdict.ok) {
+      direRefusForme(verdict.motif);
+      return false;
+    }
+    ctx.obsCounter += 1;
+    armerTrace(null);
+    addObstacle(verdict.obstacle);
+    setStatus(`« ${gabarit.libelle} » posé à ses cotes — ${dimsLabel(verdict.obstacle)}.`);
+    return true;
+  }
+
   obsPolygoneBtn?.addEventListener('click', () => armerTrace(modeTrace === 'polygone' ? null : 'polygone'));
+  obsCercleBtn?.addEventListener('click', () => armerTrace(modeTrace === 'cercle' ? null : 'cercle'));
+  obsGabaritPoserBtn?.addEventListener('click', () => armerTrace(modeTrace === 'gabarit' ? null : 'gabarit'));
 
   map.on?.('click', (e: maplibregl.MapMouseEvent) => {
     if (!modeTrace) return;
-    pointsEnCours.push([e.lngLat.lng, e.lngLat.lat]);
+    const p: LngLat = [e.lngLat.lng, e.lngLat.lat];
+    if (modeTrace === 'cercle') {
+      poserObstacleCercle(p);
+      return;
+    }
+    if (modeTrace === 'gabarit') {
+      poserGabarit(p);
+      return;
+    }
+    pointsEnCours.push(p);
     apercuTrace();
   });
 
@@ -1430,5 +1553,6 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     redrawEnvironment,
     armerTrace,
     modeTraceArme: () => modeTrace,
+    gabaritsObstacle: () => gabaritsObstacle.map((g) => ({ ...g })),
   };
 }
