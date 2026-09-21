@@ -148,6 +148,53 @@ SANS_PRODUCTEUR_PUR = {
         "sans base, par l'exporteur lui-même, dans "
         'apps/calepinage/tests/test_calx142_contrat_serie.py',
 
+    # CALX201
+    'electrique_equipements.json':
+        "FRAGMENT du document `roof_layout` v2 (clé racine OPTIONNELLE "
+        '`electrical.equipements[]`), pas une réponse serveur : la route '
+        'GET layout/ rend `{roof_layout, layout_hash, schema_version}` et '
+        "l'écrivain du fragment est l'atelier 3D (CALX219/CALX220) — la "
+        'forme est affirmée sans base, contre le schéma et contre la porte '
+        "d'import réelle, par "
+        'apps/calepinage/tests/test_calx201_contrat_equipements.py',
+
+    # CALX202
+    'electrique_cheminements.json':
+        'FRAGMENT du document `roof_layout` v2 (clé racine OPTIONNELLE '
+        '`electrical.cheminements[]`), pas une réponse serveur : le tracé '
+        "est écrit par l'atelier 3D (CALX223) et relu par "
+        'services/troncons.py (CALX224) — la forme, les deux refus et la '
+        'résolution des références sont affirmées sans base par '
+        'apps/calepinage/tests/test_calx202_contrat_cheminements.py',
+
+    # CALX203
+    'calepinage_troncons.json':
+        'métré et chute TRONÇON PAR TRONÇON : la route arrive avec la vague '
+        'ÉLECTRIQUE PRO et son producteur est services/troncons.py '
+        '(CALX224-226), pas encore écrit — la forme, les omissions nommées '
+        'et la cohérence avec electrique_cheminements.json sont affirmées '
+        'sans base par '
+        'apps/calepinage/tests/test_calx203_contrat_troncons.py',
+
+    # CALX204
+    'calepinage_sld.json':
+        "schéma unifilaire ÉDITABLE : GET est servi (views/schema.py) mais "
+        'son producteur traverse la conception électrique et la porte '
+        'cross-app apps.ventes.selectors.schema_unifilaire_svg, donc la '
+        'base ; les deux clés neuves (`blocs`, `edition`) et la règle dure '
+        "« `edition` n'est pas une seconde source de vérité du dessin » "
+        'sont affirmées sans base par '
+        'apps/calepinage/tests/test_calx204_contrat_sld.py',
+
+    # CALX205
+    'calepinage_raccordement.json':
+        'point de RACCORDEMENT réseau : la route arrive avec CALX244 et son '
+        'producteur est services/raccordement.py (CALX241-243), pas encore '
+        'écrit — la forme, la règle « une limite est une saisie qui porte '
+        'sa source » et le verdict `omis` sans limite sont affirmés sans '
+        'base par '
+        'apps/calepinage/tests/test_calx205_contrat_raccordement.py',
+
     # CALX62
     'calepinage_meteo_fichier.json':
         'réponse de la porte MULTIPART qui dépose une série météo de la '
@@ -163,7 +210,18 @@ SANS_PRODUCTEUR_PUR = {
 #: la porte ; retirer l'entrée dans la même tâche que la route.
 #: CALX5 a livré ``POST simuler/`` : ``calepinage_simulation.json`` en est
 #: SORTI, et le contrôle 2 vérifie désormais sa route comme celle des autres.
-POSES_AVANT_LEUR_ROUTE = {}
+POSES_AVANT_LEUR_ROUTE = {
+    # CALX203 — `GET calepinages/<pk>/troncons/` : la vue arrive avec la
+    # vague ÉLECTRIQUE PRO, le producteur est services/troncons.py (CALX224).
+    'calepinage_troncons.json': 'CALX203 — route posée par la vague '
+                                'ÉLECTRIQUE PRO (services/troncons.py, '
+                                'CALX224-226)',
+    # CALX205 — `GET`/`POST calepinages/<pk>/raccordement/` : la vue arrive
+    # avec CALX244, le producteur est services/raccordement.py (CALX241-243).
+    'calepinage_raccordement.json': 'CALX205 — route posée par CALX244 '
+                                    '(services/raccordement.py, '
+                                    'CALX241-243)',
+}
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
 #: chercher) : ils appartiennent à une autre app.
