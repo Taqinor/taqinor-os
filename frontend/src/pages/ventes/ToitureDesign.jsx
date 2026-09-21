@@ -503,7 +503,30 @@ export default function ToitureDesign({ mode = 'lead' }) {
       return undefined
     }
 
+    // CALX104/CALX403 câblage — les DEUX sections des réglages société que l'atelier
+    // consomme (`zones_types` : les gabarits d'obstacle de la société ; `degagements` :
+    // la largeur d'allée de circulation par pays). L'outil ne parle JAMAIS à Django : la
+    // page les lit et les transmet TELLES QUELLES, comme elle le fait déjà pour le
+    // catalogue de modules (CALX109). Best-effort : un refus de droits ou une panne
+    // réseau ne bloque pas le boot — l'atelier ne propose alors AUCUN gabarit et ne
+    // préremplit AUCUNE largeur (jamais une cote de repli).
+    function chargerReglagesAtelier() {
+      return Promise.resolve()
+        .then(() => calepinageApi.parametres.get())
+        .then((res) => {
+          const p = res?.data
+          if (!p || typeof p !== 'object') return null
+          return { zones_types: p.zones_types ?? null, degagements: p.degagements ?? null }
+        })
+        .catch(() => null)
+    }
+
     async function boot() {
+      // CALX104/CALX403 — lancés EN PARALLÈLE du lead (best-effort, cf. ci-dessus).
+      const reglagesPromise = chargerReglagesAtelier()
+      // CALX132 — l'empreinte OSM du bâtiment, lue plus bas avec le contour et
+      // proposée au panneau « Bâtiment » une fois le builder monté.
+      let batimentOsm = null
       let leadData = null
       try {
         const res = await api.get(`/crm/leads/${encodeURIComponent(leadId)}/`)
@@ -531,6 +554,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
       if (!leadData.roof_outline && pinDepuisLead(leadData)) {
         try {
           const fp = await crmApi.getRoofFootprint(leadId)
+          // CALX132 câblage — la MÊME réponse porte un bloc `batiment`
+          // (hauteur/niveaux OSM + provenance, contrat CALX106) qui était JETÉ :
+          // l'atelier extrudait donc toujours ses 6 m de convention. Il part
+          // vers le panneau « Bâtiment » comme une PROPOSITION (le module
+          // `shadingUi` affiche un bouton « Reprendre la hauteur OSM… ») — rien
+          // n'est écrit dans le document sans un clic. Mémorisé ici parce que le
+          // builder n'est pas encore monté : la pose se fait dans `onApiReady`.
+          batimentOsm = fp?.data?.batiment ?? null
           const polygon = fp?.data?.polygon
           if (Array.isArray(polygon) && polygon.length >= 3) {
             // Fable review — le serveur (roof_detect.py) renvoie des points
@@ -576,6 +607,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
 
       // Le DOM `rp9-*` est déjà rendu (JSX ci-dessous) : on boote le builder.
       const mod = await import('@roofbuilder')
+      const reglagesAtelier = await reglagesPromise
       if (cancelled) return
       window.__taqinorRoofBooted = true
       mod.initRoofToolPro8({
@@ -583,6 +615,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
         mapboxToken,
         reducedMotion: !!reducedMotion,
         hydrate: { lead: leadToBuilderPayload(leadData) },
+        // CALX104/CALX403 câblage — gabarits d'obstacle + largeur d'allée de la société,
+        // transmis TELS QUELS ; `null` = aucun réglage, aucune cote de repli.
+        reglagesAtelier,
         // L-MAP — le contour ORIGINAL du client, géo-référencé sur la carte
         // (calque passif, roofPro11/prefill.ts referenceContourRing). Gardé
         // par le MÊME `contourExploitable` que la légende/bascule (revue
@@ -590,7 +625,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
         // bornes, forme inconnue) ne part JAMAIS vers le builder — pas de
         // polygone orphelin sans bascule pour le masquer.
         referenceContour: contourExploitable(leadData.roof_outline) ? leadData.roof_outline : null,
-        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
+        onApiReady: (a) => {
+          builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a)
+          // CALX132 câblage — la proposition OSM ne part QUE si le serveur en a
+          // renvoyé une : sans bloc `batiment`, AUCUNE hauteur n'est proposée (et
+          // l'atelier garde sa convention d'extrusion, affichée comme telle).
+          if (batimentOsm) a.setBatimentOsmPropose?.(batimentOsm)
+        },
       })
       // Pré-remplit l'adresse depuis la ville du lead (champ de recherche).
       const addrEl = document.getElementById('rp9-address')
@@ -667,6 +708,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
         referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
           ? ctx.geometrie.contour_client : null,
         bankable,
+        // CALX104/CALX403 — PAS de lecture des réglages société ici : le mode DEVIS
+        // tient une garantie TESTÉE (« un seul appel : rien n'est complété par une
+        // requête annexe », `ToitureDesign.test.jsx`). Les gabarits d'obstacle et la
+        // largeur d'allée sont branchés dans les modes lead et calepinage ; les câbler
+        // ici demande d'abord que `devis_design_context` porte ces deux sections.
         onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
       })
       // PV23bis — pré-remplit la barre de recherche d'adresse depuis
@@ -709,6 +755,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
         .then(() => calepinageApi.calepinages.modulesDisponibles(calepinageId))
         .then((res) => res.data)
         .catch(() => null)
+      // CALX104/CALX403 — même porte, même discipline best-effort.
+      const reglagesPromise = chargerReglagesAtelier()
 
       let ctx = null
       try {
@@ -746,6 +794,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         // la promesse a couru pendant, et un échec vaut « aucun catalogue »
         // (le module par défaut de l'atelier reste posé), jamais un boot raté.
         const modulesDisponibles = await modulesPromise
+        const reglagesAtelier = await reglagesPromise
         if (cancelled) return
         window.__taqinorRoofBooted = true
         const payload = contexteCalepinageVersPayload(ctx)
@@ -769,6 +818,8 @@ export default function ToitureDesign({ mode = 'lead' }) {
           // CALX109 — le catalogue de modules de la société, transmis TEL QUEL
           // (l'outil ne parle jamais à Django) ; `null` = aucun catalogue.
           modulesDisponibles,
+          // CALX104/CALX403 câblage — voir `boot()` plus haut.
+          reglagesAtelier,
           onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
         })
         // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en

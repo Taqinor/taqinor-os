@@ -19,6 +19,7 @@ import { geodesicAreaM2, geodesicPerimeterM, isSimplePolygon, type LngLat } from
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
 import { type SerializedEdge } from './edges';
 import { type CoucheElectrique } from './electrique3d';
+import { type BatimentOsmServeur } from './batiment'; // CALX132 câblage
 
 export interface InitOptions {
   maptilerKey: string;
@@ -189,6 +190,11 @@ export interface RoofToolApi {
    *  en 3D, calque « Électrique »). TOUJOURS présente (`creerCoucheElectrique` la construit
    *  inconditionnellement) — `calqueDisponible()` dit si le document porte une couche. */
   electrique: CoucheElectrique;
+  /** CALX132 câblage — la page hôte dépose l'empreinte OSM du bâtiment (`batiment` de
+   *  `GET crm/leads/<id>/roof-footprint/`, contrat CALX106) : le panneau « Bâtiment »
+   *  l'affiche en PROPOSITION, et rien n'est écrit tant que personne n'a cliqué
+   *  « Reprendre ». `null`/absent efface la proposition. */
+  setBatimentOsmPropose: (batiment: BatimentOsmServeur | null | undefined) => void;
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET

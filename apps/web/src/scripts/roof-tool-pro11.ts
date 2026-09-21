@@ -3927,5 +3927,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // CALX3 — les calques réellement installés sur la carte, dans l'ordre de rendu.
     calquesDisponibles: () => calquesDisponibles(map),
     electrique: coucheElectrique, // CALX220 — pose/déplacement/retrait d'organes électriques
+    // CALX132 câblage — l'empreinte OSM du bâtiment, déposée par la page hôte
+    // (`ToitureDesign.jsx` lisait `fp.data.polygon` et JETAIT `fp.data.batiment`). Le
+    // panneau « Bâtiment » l'affiche en PROPOSITION : rien n'est écrit sans un clic.
+    setBatimentOsmPropose: (batiment) => shadingUi.setBatimentOsmPropose(batiment), // CALX132 câblage
   });
 }
