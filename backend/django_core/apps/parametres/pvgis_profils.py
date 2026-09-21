@@ -81,13 +81,17 @@ aucune ville reconnue ni GPS reste ``None``.
 Convention horaire — À LIRE AVANT DE CONSOMMER
 -----------------------------------------------
 PVGIS renvoie ses profils journaliers en **UTC**. Les formes stockées ici sont
-donc en UTC, indice 0 = 00 h UTC. L'heure civile marocaine est **UTC+1 toute
-l'année**, SAUF pendant le Ramadan où le pays repasse à **UTC+0**. Le décalage
-est l'affaire du CONSOMMATEUR, pas du stockage : appeler
-:func:`vers_heure_locale` pour obtenir la forme en heure civile marocaine
-(UTC+1). Le cas Ramadan (UTC+0 = la forme brute, sans décalage) n'est PAS
-modélisé ici — c'est une note d'affichage à porter côté page, pas un second
-jeu de données.
+donc en UTC, indice 0 = 00 h UTC. Le passage à l'heure civile est l'affaire du
+CONSOMMATEUR, pas du stockage : appeler :func:`vers_heure_locale`.
+
+LE DÉCALAGE N'EST PAS CODÉ EN DUR — il est DÉRIVÉ de la base de fuseaux IANA
+par :func:`decalage_maroc_h`. Depuis le **20/09/2026 le Maroc est à UTC+0**
+toute l'année, sans AUCUNE bascule saisonnière ni Ramadan : décret n° 2.26.530
+relatif à l'heure légale (Bulletin officiel n° 7521 du 29/06/2026), qui abroge
+le décret 2.18.855 de 2018 — UTC+1 permanent avec retour à UTC+0 pendant le
+Ramadan. La forme locale est donc aujourd'hui la forme BRUTE ; elle se
+redécalerait d'elle-même si la loi changeait de nouveau, sans qu'une ligne de
+ce module ne bouge.
 
 Le module est PUR pour tout ce qui touche à la table de référence (aucun accès
 DB, aucun I/O) ; seuls les chemins « live » font un appel réseau, avec le même
@@ -97,12 +101,14 @@ repli silencieux) et le même cache SYSTÈME que PV73 (``core.cache`` avec
 """
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -161,9 +167,52 @@ MOIS_PAR_SAISON = {
 # pluriannuelle, le 29 février ne change rien à une moyenne journalière).
 JOURS_PAR_MOIS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
 
-# Décalage heure civile marocaine vs UTC (UTC+1 toute l'année depuis 2018 ;
-# retour à UTC+0 pendant le Ramadan — NON modélisé, cf. docstring).
-DECALAGE_MAROC_H = 1
+# ── Heure civile marocaine ───────────────────────────────────────────────────
+#: Le fuseau IANA du pays. On NOMME le fuseau, on ne code PAS un décalage : la
+#: base de fuseaux tranche, et ``core/checks_tz.py`` refuse le démarrage si elle
+#: est périmée. Une constante ``= 1`` a vécu ici jusqu'au 20/09/2026 ; elle est
+#: devenue fausse d'une heure pleine du jour au lendemain (décret n° 2.26.530).
+FUSEAU_MAROC = 'Africa/Casablanca'
+
+
+def decalage_maroc_h(quand=None):
+    """Décalage de l'heure civile marocaine vs UTC, EN HEURES ENTIÈRES.
+
+    ``quand`` accepte un ``datetime`` (naïf ⇒ interprété en UTC), une ``date``
+    (⇒ midi UTC de ce jour, loin de toute heure de transition), ou ``None``
+    (⇒ maintenant). Le décalage est LU dans la base de fuseaux IANA, jamais
+    écrit ici : depuis le 20/09/2026 le Maroc est à UTC+0 toute l'année (décret
+    n° 2.26.530, BO n° 7521 du 29/06/2026), avant cette date il était à UTC+1
+    hors Ramadan — les deux réponses sortent de la MÊME fonction, selon la date
+    qu'on lui donne.
+
+    Repli à 0 — et seulement si le fuseau est introuvable (paquet ``tzdata``
+    absent alors que ``PYTHONTZPATH`` est vide) : 0 est l'heure légale du jour,
+    et ``core.checks_tz`` fait de toute façon échouer le démarrage dans ce cas.
+    """
+    if quand is None:
+        quand = datetime.datetime.now(datetime.timezone.utc)
+    elif isinstance(quand, datetime.datetime):
+        if quand.tzinfo is None:
+            quand = quand.replace(tzinfo=datetime.timezone.utc)
+    elif isinstance(quand, datetime.date):
+        quand = datetime.datetime(quand.year, quand.month, quand.day, 12,
+                                  tzinfo=datetime.timezone.utc)
+    else:
+        raise TypeError(
+            'decalage_maroc_h attend un datetime, une date ou None — '
+            'reçu %r' % type(quand).__name__)
+    try:
+        decalage = quand.astimezone(ZoneInfo(FUSEAU_MAROC)).utcoffset()
+    except Exception:       # pragma: no cover - dépend de la base installée
+        logger.warning(
+            'Fuseau %s introuvable dans la base de fuseaux : on retient '
+            "l'heure légale en vigueur (UTC+0, décret 2.26.530).",
+            FUSEAU_MAROC)
+        return 0
+    if decalage is None:    # pragma: no cover - un ZoneInfo rend toujours un offset
+        return 0
+    return int(round(decalage.total_seconds() / 3600.0))
 
 
 # ── Table de référence : 7 courbes horaires (parts de l'énergie du jour) ──────
@@ -820,18 +869,25 @@ def _normaliser_forme(valeurs):
     return [round(v / total, 5) for v in vals]
 
 
-def vers_heure_locale(forme_utc, decalage_h=DECALAGE_MAROC_H):
-    """Décale une forme 24 h UTC vers l'heure civile marocaine (UTC+1).
+def vers_heure_locale(forme_utc, decalage_h=None):
+    """Décale une forme 24 h UTC vers l'heure civile marocaine.
 
-    ``forme_locale[h] = forme_utc[(h - decalage) % 24]`` : le pic de janvier,
-    à 12 h UTC dans la donnée PVGIS, s'affiche bien à 13 h locale.
+    ``forme_locale[h] = forme_utc[(h - decalage) % 24]``.
 
-    NOTE RAMADAN (affichage, non modélisé) : pendant le Ramadan le Maroc
-    repasse à UTC+0 — la courbe est alors la forme BRUTE (``decalage_h=0``),
-    décalée d'une heure vers la gauche par rapport au reste de l'année.
+    ``decalage_h=None`` (le défaut) ⇒ le décalage est DÉRIVÉ de la base de
+    fuseaux par :func:`decalage_maroc_h`, jamais supposé. Depuis le 20/09/2026
+    il vaut 0 (décret n° 2.26.530 : le Maroc est à UTC+0 toute l'année, sans
+    bascule saisonnière ni Ramadan) — la forme locale est donc la forme BRUTE.
+    Avant cette date il valait 1, et le pic de janvier, à 12 h UTC dans la
+    donnée PVGIS, s'affichait à 13 h locale.
+
+    Une valeur EXPLICITE reste acceptée (``decalage_h=0``, ``1``…) pour
+    reconstituer un repère donné sans dépendre de l'horloge.
     """
     if not forme_utc or len(forme_utc) != 24:
         return None
+    if decalage_h is None:
+        decalage_h = decalage_maroc_h()
     try:
         dec = int(decalage_h) % 24
     except (TypeError, ValueError):

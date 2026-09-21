@@ -5,6 +5,12 @@ WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1
 
+# Fuseaux horaires : zoneinfo ne lit QUE le paquet pip `tzdata` (épinglé dans
+# requirements.txt), jamais /usr/share/zoneinfo — la tzdata de Debian peut être
+# en retard sur IANA (bookworm servait encore 2026b le 21/09/2026, donc SANS le
+# décret marocain 2.26.530 qui fixe le pays à UTC+0 depuis le 20/09/2026).
+ENV PYTHONTZPATH=""
+
 COPY requirements.txt /app/
 # ── torch en version PROCESSEUR, jamais CUDA (03/08/2026) ──────────────────
 # Mesuré DANS l'image en production : `site-packages` pesait 5,6 Go, dont

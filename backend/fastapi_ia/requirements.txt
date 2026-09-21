@@ -6,6 +6,15 @@ python-multipart==0.0.31
 python-dotenv==1.2.2
 PyJWT==2.13.0
 
+# Base de fuseaux horaires (IANA) — EPINGLEE, et elle FAIT FOI (meme pin que
+# backend/django_core/requirements.txt : les deux services datent les memes
+# faits). Le Maroc est repasse DEFINITIVEMENT a l'heure GMT (UTC+0) la nuit du
+# 19 au 20 septembre 2026 : decret 2.26.530, Bulletin officiel 7521 du
+# 29/06/2026, qui abroge le decret 2.18.855 de 2018. IANA l'encode depuis
+# tzdata 2026c ; l'image Debian peut etre EN RETARD (bookworm servait encore
+# 2026b le 21/09/2026), d'ou PYTHONTZPATH="" dans le Dockerfile.
+tzdata==2026.4
+
 # Database
 sqlalchemy==2.0.36
 psycopg2-binary==2.9.10

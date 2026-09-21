@@ -20,6 +20,7 @@ from datetime import date
 
 from django.test import SimpleTestCase
 
+from apps.parametres.pvgis_profils import decalage_maroc_h
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes import ramadan as RM
 from apps.ventes.etude_horaire import jours_types_annee
@@ -127,20 +128,48 @@ class FenetreRamadanTest(SimpleTestCase):
         self.assertLessEqual(fenetre['jour_reference'],
                              plage['fin'].isoformat())
 
-    def test_l_iftar_est_servi_dans_le_repere_civil_du_moteur(self):
-        """Le pays passe à UTC+0 pendant le Ramadan, la production PVGIS reste
-        en heure civile UTC+1 : la bosse d'iftar DOIT être décalée d'une heure,
-        sinon elle serait posée en plein soleil et ferait gagner une
-        autoconsommation qui n'existe pas."""
+    def test_l_iftar_est_le_coucher_du_soleil_du_repere_civil(self):
+        """IL N'Y A PLUS D'HORLOGE DU RAMADAN À CONVERTIR.
+
+        Jusqu'au 19/09/2026 le pays repassait à UTC+0 pendant le mois, et le
+        moteur ramenait donc l'iftar de +1 h vers son repère civil ordinaire
+        (UTC+1) — d'où les constantes ``RAMADAN_FUSEAU_UTC`` et
+        ``DECALAGE_FUSEAU_VERS_CIVIL_H``, retirées. Le décret n° 2.26.530
+        relatif à l'heure légale (Bulletin officiel n° 7521 du 29/06/2026), qui
+        abroge le décret 2.18.855 de 2018, a supprimé CETTE bascule : une seule
+        horloge désormais. L'iftar EST donc le coucher du soleil calculé dans le
+        décalage civil du jour — attendu DÉRIVÉ, jamais un « +1 » figé."""
+        decalage = decalage_maroc_h(_PLAGE_2028)
         soleil = RM.heures_soleil(_PLAGE_2028, RM.DEFAUT_LAT, RM.DEFAUT_LON,
-                                  RM.RAMADAN_FUSEAU_UTC)
+                                  decalage)
         self.assertIsNotNone(soleil)
-        _lever, coucher = soleil
+        lever, coucher = soleil
+        fenetre = RM.fenetre_ramadan(_PLAGE_2028)
+        self.assertAlmostEqual(fenetre['iftar_h'], coucher / 60.0, places=9)
+        self.assertAlmostEqual(
+            fenetre['imsak_h'],
+            (lever - RM.FAJR_AVANT_LEVER_MIN) / 60.0, places=9)
+        self.assertLess(fenetre['imsak_h'], fenetre['iftar_h'])
+
+    def test_la_fenetre_suit_le_decalage_legal_du_jour(self):
+        """L'INVARIANT que gardait l'ancien « +1 h » : la bosse d'iftar et la
+        courbe de production doivent être lues sur la MÊME horloge, sinon la
+        bosse tombe en plein soleil et fait gagner une autoconsommation qui
+        n'existe pas. Les deux dérivent maintenant du même ``decalage_maroc_h``,
+        donc l'écart entre l'iftar et le coucher « brut » (UTC) vaut EXACTEMENT
+        le décalage légal du jour — 0 depuis le 20/09/2026."""
+        brut = RM.heures_soleil(_PLAGE_2028, RM.DEFAUT_LAT, RM.DEFAUT_LON, 0)
+        self.assertIsNotNone(brut)
         fenetre = RM.fenetre_ramadan(_PLAGE_2028)
         self.assertAlmostEqual(
-            fenetre['iftar_h'],
-            coucher / 60.0 + RM.DECALAGE_FUSEAU_VERS_CIVIL_H, places=9)
-        self.assertLess(fenetre['imsak_h'], fenetre['iftar_h'])
+            fenetre['iftar_h'] - brut[1] / 60.0,
+            decalage_maroc_h(_PLAGE_2028), places=9)
+
+    def test_les_constantes_d_horloge_du_ramadan_ont_disparu(self):
+        """Garde de non-retour : ré-introduire l'une des deux reposerait une
+        bascule d'horloge que la loi a supprimée."""
+        for disparue in ('RAMADAN_FUSEAU_UTC', 'DECALAGE_FUSEAU_VERS_CIVIL_H'):
+            self.assertFalse(hasattr(RM, disparue), disparue)
 
     def test_les_parts_mensuelles_comptent_les_vrais_jours(self):
         """Ramadan 1449 = 28/01/2028 → 25/02/2028 : 4 jours en janvier,

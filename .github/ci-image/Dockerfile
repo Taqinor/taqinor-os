@@ -52,6 +52,18 @@ ENV PYTHONUNBUFFERED=1 \
     # leur sert de signal. Les deux disent la meme chose, volontairement.
     TAQINOR_CI_IMAGE=1
 
+# --- Fuseaux horaires ------------------------------------------------------
+# MEME regle que les images de PRODUCTION (backend/django_core/Dockerfile et
+# backend/fastapi_ia/Dockerfile) : zoneinfo ne lit QUE le paquet pip `tzdata`
+# (epingle dans requirements.txt), jamais /usr/share/zoneinfo. La tzdata de
+# Debian peut etre en retard sur IANA — bookworm servait encore 2026b le
+# 21/09/2026, donc SANS le decret marocain 2.26.530 qui fixe le pays a UTC+0
+# depuis le 20/09/2026. Sans cette ligne, la CI validerait des conversions
+# horaires que la production ne ferait pas (et inversement).
+# ENV separe, et non ajoute au bloc ci-dessus : un commentaire au milieu d'une
+# continuation `\` est une ambiguite de parsing qu'on ne cherche pas.
+ENV PYTHONTZPATH=""
+
 # --- Couche systeme --------------------------------------------------------
 # 1. Les bibliotheques WeasyPrint : liste STRICTEMENT identique a l'etape
 #    « Install WeasyPrint system libraries » de `.github/actions/backend-env`
@@ -114,12 +126,15 @@ RUN set -eux; \
 # seraient une source de confusion garantie.
 
 # --- MinIO (serveur + client) ----------------------------------------------
-# Memes binaires que les images `minio/minio:latest` / `minio/mc:latest`
-# utilisees aujourd'hui par `backend-env` — donc AUCUN changement de
-# comportement, juste plus de `docker run` a payer par lane.
+# dl.min.io ne sert plus AUCUN binaire (HTTP 410 sur « latest » ET sur les
+# archives, constate le 21/09/2026 ; les releases GitHub n'ont plus d'assets).
+# Les binaires sont donc COPIES depuis l'image officielle EPINGLEE — la meme
+# release que docker-compose.yml (`minio/minio:RELEASE.2025-01-20T14-49-07Z`),
+# qui embarque `minio` ET `mc` sous /usr/bin (Dockerfile.release l.61-62 de
+# cette release ; binaires Go statiques, aucune lib a installer). Registre :
+# quay.io (200 sans authentification le 21/09/2026, pas de quota anonyme).
+COPY --from=quay.io/minio/minio:RELEASE.2025-01-20T14-49-07Z /usr/bin/minio /usr/bin/mc /usr/local/bin/
 RUN set -eux; \
-    curl -fsSL -o /usr/local/bin/minio https://dl.min.io/server/minio/release/linux-amd64/minio; \
-    curl -fsSL -o /usr/local/bin/mc https://dl.min.io/client/mc/release/linux-amd64/mc; \
     chmod +x /usr/local/bin/minio /usr/local/bin/mc; \
     minio --version; mc --version
 

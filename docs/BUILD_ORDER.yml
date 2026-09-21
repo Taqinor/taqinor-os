@@ -106,11 +106,24 @@ waves:
     # ne sont pas de-parquees.
     groups: [NTFIN, NTAGR, NTAI, NTASS, NTCOL, NTCON, NTCPQ, NTCRD, NTCRM, NTDATA, NTDMO, NTDOC, NTDST, NTEDU, NTESG, NTEXT, NTFPA, NTFSM, NTHCM, NTHOT, NTIDE, NTJUR, NTLOG, NTMFG, NTMIG, NTMKT, NTMOB, NTNRG, NTPAY, NTPRJ, NTPRO, NTPRT, NTRET, NTSAN, NTSCM, NTSRV, NTSUB, NTSVC, NTTRE, NTUX, NTWFL, NTWMS]
 
+  E:
+    order: 6
+    description: >-
+      CAD — cadence de suivi client (audit L3 lecture seule du 21/09/2026,
+      Groupe CAD de PLAN.md, PRIORITÉ 1) : correctifs du moteur de relance
+      (crm/parametres/notifications + écrans crm). Gated on SOLMVP (priorité 0,
+      sortie physique des 49 apps) at 100 % — the two groups edit apps/crm and
+      its screens, and PACT11 would otherwise hold SOLMVP's crm screen tasks
+      behind CAD's selectors work (priority inversion). --force-wave (founder)
+      starts CAD early.
+    groups: [CAD]
+
 # Aliases resolve a prerequisite name in `after:` to one-or-more real wave
 # groups. ARC-noyau / ARC-sweep are themselves aliases for explicit ARC
 # task-number subsets (task numbers, not separate task-id prefixes — both
 # alias entries share the literal prefix "ARC" but constrain a numbered
 # subset via `members`).
+
 aliases:
   ARC-noyau:
     prefix: ARC
@@ -401,6 +414,10 @@ edges:
     after:
       ARC-noyau: 80
       SCA-kit-document: 80
+  - group: CAD
+    wave: E
+    after:
+      SOLMVP: 100
 unmapped_ok:
   # AUD — Campagne d'audit L3 ERP solaire entier (Groupes AUD1/AUD2/AUD3 de
   # PLAN.md, nuit du 02-03/09/2026) : des CORRECTIFS de code existant,
@@ -418,6 +435,10 @@ unmapped_ok:
   # 2026-09-20, priorité 0) : transversal par nature (touche core + toutes les apps),
   # hors vagues comme SOL.
   - SOLMVP
+  # CADM — tâches MANUELLES (Reda / Meryem, pas du code) du Groupe CAD : relecture
+  # darija, déclaration CNDP, question juriste, comptages SQL en production — jamais
+  # dispatchées à un agent, pass-through.
+  - CADM
   # RLC — Relances : retour arriere, journal & etat client (Groupe RLC de
   # PLAN.md, releves fondateur du 08/09/2026) : correctifs/complements du
   # moteur de relances existant (apps/crm), aucun prerequis de vague plateforme.
@@ -447,6 +468,11 @@ unmapped_ok:
   # auto-ordonnee par ses @after (CAL1-3 contrats d'abord) ; aucun prerequis
   # de vague plateforme.
   - CAL
+  # CALX — Calepinage : parité OpenSolar / PV*SOL / PVsyst / Aurora / HelioScope
+  # (Groupe CALX de PLAN2, fondateur 2026-09-21) : cablage de l'existant puis
+  # capacites neuves, auto-ordonne par ses @after (contrats CALX d'abord) ;
+  # aucun prerequis de vague plateforme.
+  - CALX
   # VT/VTG — Visite technique terrain (Groupe VT de PLAN2, fondateur
   # 2026-09-09) : nouveau module apps/crm auto-ordonne par ses @after
   # (VT0 contrat d'abord -> lanes backend/frontend) ; aucun prerequis de

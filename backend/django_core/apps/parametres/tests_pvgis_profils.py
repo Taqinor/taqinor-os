@@ -1,4 +1,4 @@
-"""Profils PVGIS journaliers — chaîne de résolution, décalage UTC+1, épingles.
+"""Profils PVGIS journaliers — chaîne de résolution, décalage horaire, épingles.
 
 Les valeurs ÉPINGLÉES ici viennent des relevés PVGIS 5.3 du 21/08/2026 (13
 villes marocaines) et du 31/08/2026 (19 villes de plus, mêmes appels), aux URLs
@@ -13,6 +13,7 @@ citées dans ``apps/parametres/pvgis_profils.py`` ::
 AUCUN test ne touche le réseau : le seul point de sortie
 (``_appel_pvgis``) est mocké partout où le chemin « live » est exercé.
 """
+from datetime import date, datetime, timezone
 from unittest import mock
 
 from django.core.cache import cache as django_cache
@@ -148,16 +149,57 @@ class NormalisationVilleTests(SimpleTestCase):
 
 
 class DecalageHoraireTests(SimpleTestCase):
-    def test_utc_plus_un_deplace_le_pic_de_12_a_13(self):
+    """Le décalage est DÉRIVÉ de la base de fuseaux, jamais figé à « +1 ».
+
+    Ce bloc affirmait « le pic passe de 12 h à 13 h ». C'était « 12 h UTC + 1 »,
+    et le « + 1 » a cessé d'être vrai le 20/09/2026 : décret n° 2.26.530 relatif
+    à l'heure légale (Bulletin officiel n° 7521 du 29/06/2026), qui abroge le
+    décret 2.18.855 de 2018 — le Maroc est à UTC+0 toute l'année, sans bascule
+    saisonnière ni Ramadan. Les attendus se calculent donc depuis
+    ``decalage_maroc_h``, exactement comme le code servi.
+    """
+
+    def test_le_decalage_du_jour_deplace_le_pic_d_autant(self):
         forme_utc = pp.COURBES_REFERENCE['casa_atlantique']['jan']
         self.assertEqual(forme_utc.index(max(forme_utc)), 12)
         locale = pp.vers_heure_locale(forme_utc)
-        self.assertEqual(locale.index(max(locale)), 13)
+        self.assertEqual(locale.index(max(locale)),
+                         (12 + pp.decalage_maroc_h()) % 24)
         self.assertAlmostEqual(sum(locale), sum(forme_utc), places=6)
 
-    def test_ramadan_utc_zero_est_la_forme_brute(self):
+    def test_le_21_09_2026_le_decalage_marocain_est_zero(self):
+        """Le fait, épinglé : le lendemain de la bascule, le Maroc est à UTC+0.
+        Ce test ÉCHOUE sur une base de fuseaux antérieure à tzdata 2026c — c'est
+        exactement ce qu'il garde (cf. ``core/checks_tz.py`` et le pin
+        ``tzdata==2026.4`` des requirements)."""
+        self.assertEqual(pp.decalage_maroc_h(date(2026, 9, 21)), 0)
+        self.assertEqual(
+            pp.decalage_maroc_h(
+                datetime(2026, 9, 21, 12, tzinfo=timezone.utc)), 0)
+        # …et la forme locale est alors la forme BRUTE.
         forme_utc = pp.COURBES_REFERENCE['casa_atlantique']['jan']
         self.assertEqual(pp.vers_heure_locale(forme_utc, 0), list(forme_utc))
+
+    def test_la_veille_de_la_bascule_le_decalage_etait_encore_un(self):
+        """Contrôle POSITIF : la base connaît la BASCULE, elle ne rend pas « 0 »
+        partout. 19/09/2026 = dernier jour à UTC+1."""
+        self.assertEqual(pp.decalage_maroc_h(date(2026, 9, 19)), 1)
+
+    def test_plus_aucune_bascule_saisonniere_ni_ramadan_ensuite(self):
+        for jour in (date(2027, 3, 1), date(2027, 7, 1), date(2028, 2, 11)):
+            with self.subTest(jour=jour):
+                self.assertEqual(pp.decalage_maroc_h(jour), 0)
+
+    def test_un_decalage_explicite_reste_accepte(self):
+        forme_utc = pp.COURBES_REFERENCE['casa_atlantique']['jan']
+        self.assertEqual(pp.vers_heure_locale(forme_utc, 0), list(forme_utc))
+        self.assertEqual(
+            pp.vers_heure_locale(forme_utc, 1).index(
+                max(pp.vers_heure_locale(forme_utc, 1))), 13)
+
+    def test_un_type_inattendu_est_refuse_plutot_que_devine(self):
+        with self.assertRaises(TypeError):
+            pp.decalage_maroc_h('lundi')
 
     def test_forme_invalide_renvoie_none(self):
         self.assertIsNone(pp.vers_heure_locale(None))

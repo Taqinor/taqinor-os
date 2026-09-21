@@ -109,8 +109,11 @@ function fmtMAD(value) {
 // LW5 — date du jour civil en LOCAL, jamais en UTC : `toISOString()` restitue
 // toujours la date UTC, qui décale d'un jour du côté du fuseau local dès que
 // l'heure système passe minuit dans l'un des deux référentiels sans avoir
-// encore passé minuit dans l'autre (à UTC+1 — Maroc — c'est le cas entre
-// 00h00 et 01h00 locales). Utilisée à la fois pour le défaut du champ date
+// encore passé minuit dans l'autre (au Maroc c'était le cas entre 00h00 et
+// 01h00 locales tant que le pays vivait à UTC+1, jusqu'au 19/09/2026 ; le
+// décret n° 2.26.530 l'a ramené à UTC+0 le 20/09, mais le raisonnement vaut
+// pour TOUT fuseau décalé et ne doit pas dépendre de la loi du moment).
+// Utilisée à la fois pour le défaut du champ date
 // (L121) et pour la comparaison « date future » (confirm ci-dessous) : les
 // deux doivent parler le même référentiel que le sélecteur de date natif,
 // lui-même toujours local. `now` est injectable pour les tests (horloge

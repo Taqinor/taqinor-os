@@ -1,7 +1,8 @@
 """CRX26 — la date « aujourd'hui » du CRM est celle de Casablanca, pas d'UTC.
 
 ``settings.TIME_ZONE`` valait ``'UTC'`` : ``timezone.localdate()`` rendait donc
-la date UTC. Africa/Casablanca étant à UTC+1 la majeure partie de l'année,
+la date UTC. Africa/Casablanca ayant été à UTC+1 la majeure partie de l'année
+jusqu'au 19/09/2026 (décret n° 2.26.530 : UTC+0 depuis le 20/09),
 **entre 23 h et minuit UTC il est déjà demain au Maroc** — et pendant cette
 heure-là, chaque décision de date du CRM était fausse d'un jour entier :
 relance « du jour », étape « en retard », signal d'intérêt « déjà noté
@@ -33,7 +34,8 @@ from core.dates import FUSEAU_METIER, aujourd_hui_local, maintenant_local
 
 UTC = dt.timezone.utc
 
-#: 1ᵉʳ mai 2026, 23 h 30 UTC — hors Ramadan, donc Casablanca est à UTC+1 :
+#: 1ᵉʳ mai 2026, 23 h 30 UTC — à cette date Casablanca est encore à UTC+1
+#: (le décret n° 2.26.530 ne ramène le pays à UTC+0 que le 20/09/2026) :
 #: il est déjà le 2 mai sur le terrain. C'est LA fenêtre du défaut.
 FIN_DE_SOIREE_UTC = dt.datetime(2026, 5, 1, 23, 30, tzinfo=UTC)
 #: Le même jour à midi : aucune ambiguïté, les deux dates coïncident.
