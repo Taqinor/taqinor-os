@@ -27,9 +27,13 @@ THROTTLE_EXEMPT = {
     # (``crm/public_chat_views.py::open_chat_session`` a QUITTÉ cette liste :
     # il porte désormais ``@throttle_classes([PublicChatRateThrottle])`` — le
     # ratchet ne fait que décroître, une exemption résorbée se retire.)
-    "gestion_projet/public_views.py::portail_avancement",
-    "gestion_projet/public_views.py::evaluation_projet",
-    "pos/views.py::PublicTicketPDFView",
+    # (SOLMVP — ``gestion_projet/public_views.py::portail_avancement`` et
+    # ``::evaluation_projet`` ainsi que ``pos/views.py::PublicTicketPDFView``
+    # ont quitté cette liste : leurs apps sont sorties du MVP solaire
+    # (``core.parked`` / ``docs/parked-modules.md``), les fichiers n'existent
+    # plus, donc les endpoints ne sont plus servis. Le ratchet ne garde AUCUNE
+    # exemption pour une surface absente ; au retour d'un module, l'exemption se
+    # redéclare avec lui — ou mieux, sa dette de throttle est résorbée.)
     "reporting/calendar.py::calendar_ics",
 }
 
