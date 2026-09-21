@@ -48,7 +48,12 @@ ROUTES_ATTENDUES = (
      '/api/django/calepinage/calepinages/1/equipements/'),
     ('calepinage-horizon', ('1',),
      '/api/django/calepinage/calepinages/1/horizon/'),
+    # CALX7 — `export-csv` (url_name) est le tableur CSV de `SortiesMixin`
+    # (`url_path='export.csv'`) ; l'export de simulation, renommé
+    # `export_csv_simulation`, garde `url_path='export-csv'`.
     ('calepinage-export-csv', ('1',),
+     '/api/django/calepinage/calepinages/1/export.csv/'),
+    ('calepinage-export-csv-simulation', ('1',),
      '/api/django/calepinage/calepinages/1/export-csv/'),
     ('calepinage-modeles', (),
      '/api/django/calepinage/calepinages/modeles/'),

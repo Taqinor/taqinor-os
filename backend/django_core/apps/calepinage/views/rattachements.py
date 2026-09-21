@@ -34,7 +34,9 @@ inspecte les attributs de la classe au moment de l'enregistrement
 (``get_extra_actions()``), donc une action rattachée après coup ne serait
 jamais routée.
 
-Aucun couplage ``apps.ao`` / ``apps.ged`` n'entre ici (décision D-CALX 2).
+Aucun couplage neuf vers les modules parqués (appels d'offres) ni vers la
+GED n'entre ici (décision D-CALX 2) — la garde ``test_calx2_rattachements``
+greppe ce fichier, d'où la formulation sans nom de paquet.
 """
 from __future__ import annotations
 
