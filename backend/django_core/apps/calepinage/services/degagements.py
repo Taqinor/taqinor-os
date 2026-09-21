@@ -31,8 +31,23 @@ propres règles (``core/calepinage/obstacles.py``, règle tracée).
 
 ÉQUIVALENCE, GARANTIE PAR TEST : une société qui n'a rien saisi obtient les
 chiffres d'aujourd'hui, au centimètre près.
+
+ALLÉES DE CIRCULATION PAR PAYS (CALX402)
+------------------------------------------
+La clé ``allees_circulation`` de cette même section porte une largeur
+d'allée de circulation SAISIE PAR PAYS — un besoin distinct de l'allée
+technique unique ci-dessus (``CLE_ALLEE``). Parité marché : Aurora fait
+dépendre cette largeur du code de l'autorité locale et publie 36 pouces
+comme simple valeur usuelle américaine, modifiable. **Ce dépôt ne porte
+AUCUNE largeur** — ni les 36 pouces américains, ni une règle DTU ou une
+prescription des services d'incendie française : elles n'y sont pas. Un
+pays non saisi n'obtient donc PAS de valeur par défaut : la circulation est
+OMISE, en nommant le réglage qui manque (``largeur_allee_circulation``,
+patron de ``allee_technique``).
 """
 from __future__ import annotations
+
+import re
 
 from .parametres import ReglageInvalide
 
@@ -51,7 +66,8 @@ DEGAGEMENTS_ATELIER = (
     ('autre', 0.30, 'Autre'),
 )
 
-#: Dégagement de l'atelier pour un obstacle SANS type (``OBSTACLE_CLEARANCE_M``).
+#: Dégagement de l'atelier pour un obstacle SANS type
+#: (``OBSTACLE_CLEARANCE_M``).
 DEGAGEMENT_ATELIER_DEFAUT_M = 0.30
 
 #: Retrait de rive de l'atelier (``PERIMETER_SETBACK_M``). Même statut : c'est
@@ -77,12 +93,25 @@ CLE_SOURCE = 'source'
 #: formulations de la même réserve seraient deux réserves différentes.
 MENTION_NON_SOURCEE = 'valeur atelier actuelle, non sourcée'
 
+#: CALX402 — la clé des allées de circulation SAISIES par pays. Forme :
+#: ``[{"pays": "ma", "largeur_m": 1.2, "source": "…", "reference": "…"}]``.
+#: Publiée telle quelle par le contrat des réglages société.
+CLE_ALLEES_CIRCULATION = 'allees_circulation'
+
+#: Les quatre clés admises d'une entrée d'``allees_circulation`` — et
+#: AUCUNE autre : on ne range pas un réglage dans un tiroir qui n'existe pas.
+_CLES_ALLEE_CIRCULATION = ('pays', 'largeur_m', 'source', 'reference')
+
+#: Même convention de code pays que CAL47 (``services/site.py``) : deux
+#: lettres minuscules (ISO 3166-1 alpha-2), jamais devinée.
+_PAYS_ALLEE = re.compile(r'^[a-z]{2}$')
+
 __all__ = [
     'SECTION', 'DEGAGEMENTS_ATELIER', 'DEGAGEMENT_ATELIER_DEFAUT_M',
     'RETRAIT_ATELIER_M', 'CLE_RETRAIT', 'CLE_ALLEE', 'CLE_SOURCE',
-    'MENTION_NON_SOURCEE', 'types_admis', 'degagement_du_type',
-    'retrait_perimetre', 'allee_technique',
-    'normaliser_section_degagements',
+    'MENTION_NON_SOURCEE', 'CLE_ALLEES_CIRCULATION', 'types_admis',
+    'degagement_du_type', 'retrait_perimetre', 'allee_technique',
+    'largeur_allee_circulation', 'normaliser_section_degagements',
 ]
 
 
@@ -133,11 +162,16 @@ def normaliser_section_degagements(valeur):
     dans un tiroir qui n'existe pas :
 
         {"cheminee": 0.6, …, "retrait_rive_m": 0.4,
-         "allee_technique_m": 0.9, "source": "…"}
+         "allee_technique_m": 0.9, "source": "…",
+         "allees_circulation": [{"pays": "ma", "largeur_m": 1.2,
+                                  "source": "…", "reference": "…"}]}
 
-    Les deux dernières clés sont celles que le contrat publié
+    Les trois clés avant la dernière sont celles que le contrat publié
     (``contract_samples/parametres_calepinage.json``) déclare déjà : elles
-    sont acceptées telles quelles, jamais renommées.
+    sont acceptées telles quelles, jamais renommées. ``allees_circulation``
+    (CALX402) est une LISTE : chaque entrée porte SA propre provenance, une
+    par pays, et une entrée sans ``source`` est refusée en nommant le champ
+    (``allees_circulation[i].source``).
 
     Returns:
         ``{}`` quand la section est vide : ÉQUIVALENCE stricte — une société
@@ -156,7 +190,8 @@ def normaliser_section_degagements(valeur):
     if not valeur:
         return {}
 
-    admises = types_admis() + (CLE_RETRAIT, CLE_ALLEE, CLE_SOURCE)
+    admises = types_admis() + (
+        CLE_RETRAIT, CLE_ALLEE, CLE_ALLEES_CIRCULATION, CLE_SOURCE)
     inconnues = [str(cle) for cle in valeur if str(cle) not in admises]
     if inconnues:
         raise ReglageInvalide(
@@ -172,8 +207,103 @@ def normaliser_section_degagements(valeur):
             if texte:
                 propre[CLE_SOURCE] = texte
             continue
+        if cle == CLE_ALLEES_CIRCULATION:
+            propre[cle] = _allees_circulation(brut)
+            continue
         propre[cle] = _nombre(brut, f'{SECTION}.{cle}', _titre(cle))
     return propre
+
+
+def _allee_circulation_entree(brut, indice):
+    """Une entrée ``{pays, largeur_m, source, reference}`` VALIDÉE (CALX402).
+
+    ``reference`` est optionnelle (une valeur arrêtée par la société se
+    défend par sa provenance) ; les trois autres clés sont obligatoires.
+    Le champ fauté est nommé SANS le préfixe de section, sur le patron de
+    l'entrée elle-même : ``allees_circulation[i].<clé>``.
+    """
+    prefixe = f'{CLE_ALLEES_CIRCULATION}[{indice}]'
+    if not isinstance(brut, dict):
+        raise ReglageInvalide(
+            f"« {prefixe} » doit être un objet "
+            "{pays, largeur_m, source, reference} "
+            f"(reçu : {type(brut).__name__}).", champ=prefixe)
+
+    surplus = sorted(set(brut) - set(_CLES_ALLEE_CIRCULATION))
+    if surplus:
+        raise ReglageInvalide(
+            f"« {prefixe} » ne porte que pays, largeur_m, source et "
+            f"reference (reçu en plus : {', '.join(surplus)}).",
+            champ=f'{prefixe}.{surplus[0]}')
+
+    pays = str(brut.get('pays') or '').strip().lower()
+    if not pays or not _PAYS_ALLEE.match(pays):
+        raise ReglageInvalide(
+            f"« {prefixe}.pays » doit être un code pays à deux lettres "
+            f"(reçu : {brut.get('pays')!r}).", champ=f'{prefixe}.pays')
+
+    largeur = _nombre(brut.get('largeur_m'), f'{prefixe}.largeur_m',
+                      "Largeur d'allée de circulation")
+    if largeur <= 0:
+        raise ReglageInvalide(
+            f"« {prefixe}.largeur_m » doit être strictement positive "
+            f"(reçu : {largeur}).", champ=f'{prefixe}.largeur_m')
+
+    source = str(brut.get('source') or '').strip()
+    if not source:
+        raise ReglageInvalide(
+            f"« {prefixe}.source » doit être renseignée : une largeur "
+            "d'allée de circulation ne se défend pas sans sa provenance.",
+            champ=f'{prefixe}.source')
+
+    reference = brut.get('reference')
+    if reference is None:
+        reference = ''
+    elif not isinstance(reference, str):
+        raise ReglageInvalide(
+            f"« {prefixe}.reference » doit être un texte "
+            f"(reçu : {type(reference).__name__}).",
+            champ=f'{prefixe}.reference')
+    else:
+        reference = reference.strip()
+
+    return {'pays': pays, 'largeur_m': largeur, 'source': source,
+            'reference': reference}
+
+
+def _allees_circulation(brut):
+    """La liste ``allees_circulation`` VALIDÉE — une entrée par pays.
+
+    Returns:
+        ``[]`` quand rien n'est saisi, sinon la liste PROPRE, chaque entrée
+        ``{pays, largeur_m, source, reference}``.
+
+    Raises:
+        ReglageInvalide: pas une liste, entrée malformée, ou pays réglé
+            deux fois (ambiguïté — lequel ferait foi ?).
+    """
+    if brut is None:
+        return []
+    if not isinstance(brut, list):
+        raise ReglageInvalide(
+            f"« {CLE_ALLEES_CIRCULATION} » doit être une liste "
+            "{pays, largeur_m, source, reference} "
+            f"(reçu : {type(brut).__name__}).",
+            champ=CLE_ALLEES_CIRCULATION)
+
+    propres = []
+    vus = set()
+    for indice, entree in enumerate(brut):
+        propre = _allee_circulation_entree(entree, indice)
+        if propre['pays'] in vus:
+            raise ReglageInvalide(
+                f"« {CLE_ALLEES_CIRCULATION}[{indice}].pays » : le pays "
+                f"« {propre['pays']} » est déjà réglé par une entrée "
+                "précédente.",
+                champ=f'{CLE_ALLEES_CIRCULATION}[{indice}].pays')
+        vus.add(propre['pays'])
+        propres.append(propre)
+    return propres
 
 
 def _source(section):
@@ -256,3 +386,56 @@ def allee_technique(section=None):
         phrase = ('Allée technique : %.2f m (réglage de votre société — %s)'
                   % (float(saisi), source))
     return (float(saisi), phrase)
+
+
+def largeur_allee_circulation(section, *, pays):
+    """``(valeur ou None, phrase)`` — la largeur d'allée de circulation
+    SAISIE par la société pour ``pays`` (CALX402), sur le patron de
+    ``allee_technique``.
+
+    Args:
+        section: la section ``degagements`` de la société (ou ``None``).
+        pays: le code pays (deux lettres, insensible à la casse) dont
+            l'appelant veut la largeur — typiquement celui du site du
+            calepinage en cours.
+
+    Returns:
+        ``(mètres, phrase)`` quand ce pays a une entrée dans
+        ``allees_circulation`` ; ``(None, motif)`` sinon — le dépôt ne porte
+        AUCUNE largeur de référence (ni les 36 pouces américains d'Aurora,
+        ni une règle DTU ou une prescription incendie française) : un pays
+        non saisi ne reçoit donc PAS de défaut, et ``motif`` NOMME le
+        réglage manquant pour que l'appelant (CALX403, l'atelier) OMETTE la
+        circulation en le citant, jamais en la forfaitisant.
+    """
+    code = str(pays or '').strip().lower()
+    reglage = f'{SECTION}.{CLE_ALLEES_CIRCULATION}.{code or "?"}'
+
+    if not code:
+        return (None, 'Allée de circulation : aucun pays fourni — réglage '
+                      f'manquant : {reglage}.')
+
+    entrees = (section or {}).get(CLE_ALLEES_CIRCULATION)
+    if not isinstance(entrees, list):
+        entrees = []
+
+    for entree in entrees:
+        if not isinstance(entree, dict):
+            continue
+        if str(entree.get('pays') or '').strip().lower() != code:
+            continue
+        largeur = entree.get('largeur_m')
+        if isinstance(largeur, bool) or not isinstance(largeur, (int, float)):
+            break
+        source = str(entree.get('source') or '').strip()
+        reference = str(entree.get('reference') or '').strip()
+        phrase = ('Allée de circulation (%s) : %.2f m (réglage de votre '
+                  'société — %s)' % (code, float(largeur), source or
+                                     'source non renseignée'))
+        if reference:
+            phrase = '%s, %s' % (phrase, reference)
+        return (float(largeur), phrase)
+
+    return (None, 'Allée de circulation (%s) : non réglée — aucune largeur '
+                  "n'est saisie pour ce pays (réglage manquant : %s)."
+                  % (code, reglage))
