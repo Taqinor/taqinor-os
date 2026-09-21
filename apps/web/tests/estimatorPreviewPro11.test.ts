@@ -711,7 +711,9 @@ describe('pro-11 — W78 : cohérence vue/totaux multi-zones (zone comptée touj
     expect(fn).not.toContain('|| !a.renderPlan) continue');
     // on saute UNIQUEMENT la zone active, puis on branche sur le repli quand pas de plan.
     expect(fn).toContain('if (a.id === ctx.activeAreaId) continue');
-    expect(fn).toContain('buildBareZoneRing(a.vertices, activeOrigin)');
+    // CALX100 a rendu l'appel multi-ligne (hauteur SAISIE en 3e argument) : on épingle la
+    // garantie (vertices + origine active), pas la mise en page.
+    expect(fn.replace(/\s+/g, ' ')).toContain('buildBareZoneRing( a.vertices, activeOrigin,');
   });
 
   it('buildBareZoneRing bâtit le bâtiment + la dalle nus depuis vertices (lng/lat → ENU)', () => {

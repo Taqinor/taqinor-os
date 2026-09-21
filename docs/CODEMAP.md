@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: f8c713093ec07ca3d0eaf82b2cc05cd4a74c84d71827fc70ac999001d531b3fa
-Plan fingerprint: e1b75eb8e7869c3b45b45876f8def9957d89154c532ada79d8068fdbe12781ab
+Plan fingerprint: 82854df6055aee3d3b51308479a8ae1272d72f01d2293a94735cb798e62bf135
 
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
@@ -533,7 +533,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (246)**
+**Done (247)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -659,6 +659,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX112` — Dupliquer une sélection de panneaux et la coller au pas saisi
 - `CALX113` — Rendre la symétrie d'une sélection de panneaux par rapport à un axe
 - `CALX114` — Choisir la cible de l'optimisation au lieu de la figer sur l'énergie
+- `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
 - `CALX116` — Sélectionner des panneaux au lasso, en plus du rectangle
 - `CALX117` — Afficher une grille métrique de repère au pas saisi
 - `CALX118` — Montrer la course du soleil du site dans l'atelier
@@ -782,7 +783,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (360)**
+**Open — to build (359)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -974,7 +975,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
 - `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
 - `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
-- `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
 - `CALX130` — Prouver le parcours de conception enrichi de bout en bout
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX199` — Trancher l'achat d'une source météo bancable
