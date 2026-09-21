@@ -172,6 +172,12 @@ const calepinageApi = {
     // lecture pure du catalogue + des postes persistés, et leur enregistrement.
     pertes: (id) => api.get(`${pivot(id)}pertes/`),
     enregistrerPertes: (id, corps) => api.post(`${pivot(id)}enregistrer-pertes/`, corps),
+
+    // CALX25 — le relevé terrain (chaînes de cotes, CAL64, `views/releve.py`).
+    // GET rend l'historique (`releves`) ; POST enregistre une chaîne ET rend
+    // le relevé créé PLUS l'historique à jour (contrat `calepinage_releve.json`).
+    releve: (id) => api.get(`${pivot(id)}releve/`),
+    enregistrerReleve: (id, corps) => api.post(`${pivot(id)}releve/`, corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
