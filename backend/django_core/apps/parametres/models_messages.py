@@ -505,3 +505,94 @@ class MessageTemplate(models.Model):
             if corps_langue.strip():
                 return corps_langue
         return corps_fr.strip() or default
+
+
+# ── CAD126 (21/09/2026) — VARIANTES DE SEGMENT, PAR EXCEPTION ──────────────
+#
+# Les 27 textes sont 100 % résidentiels : « vos panneaux posés sur votre
+# toit » (`valeur_j1`, `reveil_a1`, `reveil_a3`), « la décision se prend en
+# famille » (`dimanche_famille`), « orientation du toit, charpente »
+# (`visite_proposition`/`visite_confirmation`). Pour un pompage agricole il
+# n'y a littéralement pas de toit, et `valeur_j1` demande « votre facture »,
+# sans objet pour une exploitation au butane. Pour un industriel, « en
+# famille » ne correspond à aucun processus d'achat — et le round 2 précise
+# le vrai défaut : `dimanche_famille` EST filtré par l'étiquette « décision à
+# plusieurs », donc c'est un industriel TAGUÉ qui reçoit « en famille ».
+#
+# Modèle : le dictionnaire darija ci-dessus — dict SÉPARÉ, repli sur le FR
+# quand la clé est absente. On ne fabrique PAS une matrice 27 × langues ×
+# segments : seules les clés qui MENTENT ont une variante, et seulement en
+# français (aucune variante darija n'est validée — le repli reste le texte FR
+# de base, jamais une traduction automatique).
+#
+# Un texte que la société a PERSONNALISÉ n'est jamais remplacé par une
+# variante (même règle que `_REVEIL_CLES_SEEDEES`) : la variante ne s'applique
+# qu'au texte encore au catalogue d'origine.
+
+#: Les segments qui ont des variantes. Clés de `crm.Lead.TypeInstallation`,
+#: reprises en littéral (ce module ne dépend d'aucun modèle du CRM).
+SEGMENT_POMPAGE = 'agricole'
+SEGMENTS_B2B = ('industriel', 'commercial')
+
+#: `{segment: {cle: texte FR}}`. Une clé absente = le texte de base.
+MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
+    # Pompage agricole : pas de toit, pas de facture d'électricité (butane),
+    # pas de « chez vous » — le chantier est au bord d'un forage.
+    'agricole': {
+        'valeur_j1':
+            "Bonjour M. {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de connaître votre pompe (puissance, profondeur du forage, débit souhaité) et l'emplacement du point d'eau : je vous montre l'installation adaptée, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
+        'reveil_a1':
+            "Bonjour M. {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu un devis de pompage solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer votre installation en 3D, sur VOTRE parcelle, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'emplacement.) Répondez STOP et je n'insiste plus.",
+        'reveil_a3':
+            "Bonjour M. {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de votre installation de pompage, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+        # Une exploitation se décide souvent à plusieurs — associés, frères,
+        # coopérative — pas nécessairement « en famille » : formulation
+        # neutre, même chaleur, aucune supposition sur qui décide.
+        'dimanche_famille':
+            "Bonjour M. {prenom}, {conseiller} de {marque}. Je sais que la décision se prend à plusieurs. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
+        'visite_proposition':
+            "Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : le technicien confirme l'emplacement des panneaux, les caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
+        'visite_confirmation':
+            "Bonjour, on confirme la visite technique prévue {date_visite} sur votre exploitation. Le technicien vérifie l'emplacement des panneaux, le forage et le coffret électrique — prévoyez l'accès au point d'eau. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+    },
+    # Industriel / commercial : on parle à une ORGANISATION. « En famille »
+    # ne décrit aucun processus d'achat B2B ; le site n'est pas « chez vous ».
+    'industriel': {
+        'valeur_j1':
+            "Bonjour M. {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de vos relevés de consommation (une photo suffit) et de l'adresse du site : je vous montre l'installation sur vos bâtiments, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
+        'reveil_a1':
+            "Bonjour M. {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu une étude solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer l'installation posée sur VOS bâtiments, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'adresse du site.) Répondez STOP et je n'insiste plus.",
+        'reveil_a3':
+            "Bonjour M. {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de l'installation sur vos bâtiments, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+        'dimanche_famille':
+            "Bonjour M. {prenom}, {conseiller} de {marque}. Je sais que la décision se prend à plusieurs. Si vous en parlez avec votre équipe, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou nous réunir à deux ou trois au moment qui vous arrange, comme vous préférez.",
+        'visite_proposition':
+            "Pour verrouiller votre proposition, on peut passer sur votre site pour la vérification technique gratuite : le technicien confirme l'orientation et la structure des bâtiments ainsi que le tableau électrique, et répond à toutes les questions de votre équipe sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
+        'visite_confirmation':
+            "Bonjour, on confirme la visite technique prévue {date_visite} sur votre site. Le technicien vérifie la structure des bâtiments et le tableau électrique — prévoyez l'accès au local technique. La présence d'un responsable est importante : c'est l'occasion de répondre à toutes les questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+    },
+}
+# Le commercial partage EXACTEMENT les textes de l'industriel : même
+# organisation, même processus d'achat. Un dict partagé plutôt que recopié —
+# une correction sur l'un vaut pour l'autre, par construction.
+MESSAGE_TEMPLATE_VARIANTES_SEGMENT['commercial'] = (
+    MESSAGE_TEMPLATE_VARIANTES_SEGMENT['industriel'])
+
+#: Les clés qui MENTENT au résidentiel près — celles qui ont une variante.
+#: Sert au test paramétré et à l'écran qui voudra signaler « texte adapté ».
+CLES_VARIANTES_SEGMENT = frozenset(
+    cle
+    for textes in MESSAGE_TEMPLATE_VARIANTES_SEGMENT.values()
+    for cle in textes
+)
+
+
+def variante_segment(cle, type_installation):
+    """Le texte FR adapté à CE segment, ou ``None`` (repli sur le texte FR).
+
+    Tolérant : un segment inconnu, vide ou résidentiel n'a jamais de variante.
+    """
+    segment = (type_installation or '').strip()
+    if not segment:
+        return None
+    return MESSAGE_TEMPLATE_VARIANTES_SEGMENT.get(segment, {}).get(cle)

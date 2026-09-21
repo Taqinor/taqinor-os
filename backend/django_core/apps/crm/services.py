@@ -2218,6 +2218,8 @@ def message_visite_pour_lead(lead, cle, *, user=None):
             'date_visite': date_visite,
         }
         corps = MessageTemplate.get_corps(lead.company, cle, langue) or ''
+        # CAD126 — variante de SEGMENT par exception (pompage / B2B).
+        corps = _corps_pour_segment(corps, cle, lead, langue)
         manquants = [c for c in _PLACEHOLDERS_RENDUS
                      if '{' + c + '}' in corps
                      and not str(contexte.get(c, '')).strip()]
@@ -2248,6 +2250,11 @@ def message_pour_etape(etape, *, request=None, user=None):
     langue = lead.langue_preferee or 'fr'
     corps = MessageTemplate.get_corps(
         lead.company, etape.template_cle, langue) if etape.template_cle else ''
+    # CAD126 — variante de SEGMENT par exception : « sur votre toit » ne part
+    # pas à un pompage au bord d'un forage, « en famille » pas à une
+    # entreprise. Par exception SEULEMENT, et jamais sur un texte que la
+    # société a personnalisé.
+    corps = _corps_pour_segment(corps, etape.template_cle, lead, langue)
 
     civilite, prenom = _civilite_et_prenom(lead, langue)
     contexte = {
@@ -8869,3 +8876,53 @@ def cle_message_segment(lead):
         if segment in entree['segments']:
             return entree['cle_message']
     return None
+
+
+# ── CAD-J ── CAD126 — variantes de SEGMENT, par exception ─────────────────
+#
+# Les textes sont 100 % résidentiels : « vos panneaux posés sur votre toit »
+# part à un pompage au bord d'un forage, où il n'y a littéralement pas de
+# toit, et `valeur_j1` demande « votre facture », sans objet pour une
+# exploitation au butane. Côté industriel, `dimanche_famille` EST filtré par
+# l'étiquette « décision à plusieurs » — c'est donc un industriel TAGUÉ qui
+# reçoit « en famille ».
+#
+# Le dictionnaire de variantes vit dans `apps/parametres/models_messages.py`
+# (à côté des textes), sur le modèle du dictionnaire darija : dict SÉPARÉ,
+# repli sur le FR quand la clé est absente. Rien ici n'est une matrice
+# complète : uniquement les clés qui MENTENT.
+
+
+def _corps_pour_segment(corps, cle, lead, langue):
+    """Le corps adapté au segment du lead — ou le corps reçu, inchangé.
+
+    Trois garde-fous, dans cet ordre :
+
+      * seul le FRANÇAIS a des variantes (aucune darija n'est validée : une
+        traduction automatique partirait à de vrais clients) ;
+      * un texte que la société a PERSONNALISÉ n'est jamais remplacé — la
+        variante ne s'applique qu'au texte encore au catalogue d'origine,
+        même règle que `_REVEIL_CLES_SEEDEES` ;
+      * un segment absent, inconnu ou résidentiel ne change RIEN.
+
+    Best-effort : en cas de lecture impossible, le corps d'origine part.
+    """
+    if not corps or not cle or (langue or 'fr') != 'fr':
+        return corps
+    try:
+        from apps.parametres.models_messages import (
+            MESSAGE_TEMPLATE_DEFAULTS, variante_segment,
+        )
+        variante = variante_segment(
+            cle, getattr(lead, 'type_installation', None))
+        if not variante:
+            return corps
+        if corps.strip() != (MESSAGE_TEMPLATE_DEFAULTS.get(cle, '') or ''
+                             ).strip():
+            return corps
+        return variante
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning(
+            'CAD126 : variante de segment illisible (clé %s)', cle,
+            exc_info=True)
+        return corps

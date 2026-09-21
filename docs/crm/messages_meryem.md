@@ -35,6 +35,9 @@ côté serveur avec le prénom (à défaut le nom d'utilisateur) du RESPONSABLE 
 défaut des leads de la société ; en dernier repli, l'utilisateur qui déclenche l'envoi. Toute mention du fondateur
 dans un texte client utilise le rôle « le fondateur », jamais son prénom.
 
+
+**Variantes de segment (CAD126, 21/09/2026).** Les textes ci-dessous sont 100 % résidentiels : « sur votre toit » part à un pompage au bord d'un forage, « en famille » à une entreprise, et `valeur_j1` demande « votre facture » — sans objet pour une exploitation au butane. Les clés qui MENTENT portent donc une variante `POMPAGE` (agricole) et/ou `B2B` (industriel et commercial), sur le modèle du dictionnaire darija : dict séparé, repli sur le FR quand la variante est absente. **Par exception seulement** — on ne fabrique pas une matrice 27 × langues × segments —, en français seulement, et jamais sur un texte qu'une société a personnalisé.
+
 ## Cadence « contact » (Protocole v3, chapitre 5)
 
 ### identite — J0, WhatsApp, dans les cinq minutes (M1)
@@ -63,6 +66,8 @@ DARIJA : السلام عليكم السي [الاسم]، [المستشار] من
 ### valeur_j1 — J1, WhatsApp de valeur (M2)
 FR : Bonjour M. [Prénom], je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?
 DARIJA : السلام عليكم السي [الاسم]، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟
+POMPAGE : Bonjour M. [Prénom], je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de connaître votre pompe (puissance, profondeur du forage, débit souhaité) et l'emplacement du point d'eau : je vous montre l'installation adaptée, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?
+B2B : Bonjour M. [Prénom], je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de vos relevés de consommation (une photo suffit) et de l'adresse du site : je vous montre l'installation sur vos bâtiments, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?
 
 ### vocal_j3 — J3, vocal WhatsApp de trente secondes (M3, script à dire)
 FR : Bonjour M. [Prénom], c'est [Conseiller] de [Marque]. Je vous ai laissé deux messages, je ne veux pas insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. Bonne journée.
@@ -144,6 +149,8 @@ DARIJA : غادي نحط الملف ديالكم فالوقفة. العرض دي
 ### dimanche_famille — premier dimanche 16 h après J3, leads « Décision à plusieurs » (M7)
 FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.
 DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. عارفة بلي القرار كيتاخد مع العائلة. إلا غادي تهضرو عليه هاد الويكاند، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نعيط ليكم نهار الحد من بعد 5 ديال العشية وتكونو جوج ولا تلاتة، كيف ما بغيتو.
+POMPAGE : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je sais que la décision se prend à plusieurs. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.
+B2B : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je sais que la décision se prend à plusieurs. Si vous en parlez avec votre équipe, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou nous réunir à deux ou trois au moment qui vous arrange, comme vous préférez.
 
 **CAD60 (21/09/2026) — les deux textes ci-dessous partent À LA MAIN, hors cadence, après la décision du fondateur.**
 Aucun des 10 barreaux après-devis ne les porte, et aucun ne les portera : `offre_reda` contient trois blancs que rien
@@ -167,11 +174,15 @@ mois. Reformulé SANS durée plutôt qu'une durée inventée.
 CAD110 — porte de sortie sur les QUATRE touches de réveil (voir note, section `je_classe_j7`).
 FR : Bonjour M. [prénom], c'est [Conseiller] de [Marque]. Vous aviez reçu un devis solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.) Répondez STOP et je n'insiste plus.
 DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. كنتو توصلتو بعرض للطاقة الشمسية عندنا. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.) جاوبو STOP وما نلحوش عليكم.
+POMPAGE : Bonjour M. [Prénom], c'est [Conseiller] de [Marque]. Vous aviez reçu un devis de pompage solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer votre installation en 3D, sur VOTRE parcelle, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'emplacement.) Répondez STOP et je n'insiste plus.
+B2B : Bonjour M. [Prénom], c'est [Conseiller] de [Marque]. Vous aviez reçu une étude solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer l'installation posée sur VOS bâtiments, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'adresse du site.) Répondez STOP et je n'insiste plus.
 
 ### reveil_a3 — dernière chance, la rupture honnête (A3 du Guide)
 CAD110 — porte de sortie (voir note, section `je_classe_j7`).
 FR : Bonjour M. [prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
 DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نقدر نصيفط ليكم الصورة ب 3D ديال الألواح فوق السطح ديالكم، مع تقدير محين. نوجدها ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.
+POMPAGE : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de votre installation de pompage, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
+B2B : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de l'installation sur vos bâtiments, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
 
 ### reveil_b — la saison des factures (B du Guide)
 CAD110 — porte de sortie (voir note, section `je_classe_j7`).
@@ -245,10 +256,14 @@ responsable sous 24-48 h.
 ### visite_proposition — après l'envoi du devis, WhatsApp
 FR : Pour verrouiller votre proposition, on peut passer chez vous pour la vérification technique gratuite : le technicien confirme l'orientation du toit, la charpente et le tableau électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
 DARIJA : باش نثبتو ليكم العرض، نقدرو نجيو عندكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه ديال السطح، من الهيكل ومن الطابلو ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — [المستشار]
+POMPAGE : Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : le technicien confirme l'emplacement des panneaux, les caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
+B2B : Pour verrouiller votre proposition, on peut passer sur votre site pour la vérification technique gratuite : le technicien confirme l'orientation et la structure des bâtiments ainsi que le tableau électrique, et répond à toutes les questions de votre équipe sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
 
 ### visite_confirmation — la veille de la visite, WhatsApp
 FR : Bonjour, on confirme la visite technique prévue [date de la visite] chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
 DARIJA : السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة [تاريخ الزيارة] عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — [المستشار]
+POMPAGE : Bonjour, on confirme la visite technique prévue [date de la visite] sur votre exploitation. Le technicien vérifie l'emplacement des panneaux, le forage et le coffret électrique — prévoyez l'accès au point d'eau. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
+B2B : Bonjour, on confirme la visite technique prévue [date de la visite] sur votre site. Le technicien vérifie la structure des bâtiments et le tableau électrique — prévoyez l'accès au local technique. La présence d'un responsable est importante : c'est l'occasion de répondre à toutes les questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
 
 Ordre fondateur du 15/09/2026 : la visite ne se fait qu'avec le VRAI client présent — jamais le gardien ni la bonne. La
 phrase « Votre présence est importante » le demande sans être blessante, en donnant la RAISON (répondre à ses questions
