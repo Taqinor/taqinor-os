@@ -74,7 +74,12 @@ DARIJA : السلام عليكم السي [الاسم]، [المستشار] من
 FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h.
 DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة.
 
-### reveil_a2 — J30 puis J60, réveil des leads jamais chiffrés (M6)
+### reveil_a2 — J30 seulement, réveil des leads jamais chiffrés (M6)
+CAD68 (21/09/2026) — routage RÉEL (`apps/crm/services._adapter_gabarits_reveil`, appelée par
+`initialiser_plan_relance`) : à J30, le gabarit part selon le dossier — `reveil_a1` si le lead a déjà reçu un
+devis, `reveil_a2` sinon ; à J60, TOUS les leads reçoivent `reveil_a3` (dernière chance), jamais `reveil_a2` — le
+barreau J60 seedé sous `reveil_a2` (`CADENCE_REVEIL_DEFAUT`) est TOUJOURS remplacé. `reveil_a2` ne part donc
+qu'à J30, jamais à J60 malgré son ancien intitulé.
 FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour.
 DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد.
 
