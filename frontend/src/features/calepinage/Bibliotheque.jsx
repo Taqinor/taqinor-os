@@ -41,6 +41,100 @@ function ListeVide({ enfant }) {
   return <p className="text-sm text-muted-foreground">{enfant}</p>
 }
 
+/* ============================================================================
+   CALX30 — LES PROFILS TYPES DE CONSOMMATION, ÉDITABLES ICI.
+   ----------------------------------------------------------------------------
+   `views/consommation.py` sert `GET/PUT parametres/profils-types/` depuis
+   CAL149 et n'avait AUCUN consommateur : la société ne pouvait pas saisir la
+   forme de ses journées, donc tout le dépôt retombait sur les profils CODÉS
+   (`apps/ventes/solar_design.py`) — ceux qui décident du taux
+   d'autoconsommation, donc de la taille du champ et de la batterie vendus.
+
+   LES DEUX RÈGLES QUE CET ÉCRAN NE PEUT PAS ENFREINDRE :
+   1. **Un repli reste un repli.** Le serveur l'étiquette `hypothese_interne`
+      et publie sa provenance ; l'écran l'AFFICHE comme tel, ne l'édite pas et
+      ne le renvoie JAMAIS dans le PUT — sinon une hypothèse interne
+      deviendrait une « saisie de la société », c'est-à-dire une mesure.
+   2. **Aucune valeur n'est inventée ici.** Un profil neuf part avec ses
+      champs VIDES : c'est le serveur (`ProfilTypeConsommation.clean`) qui
+      refuse une provenance vide ou une courbe absente, et son motif s'affiche
+      SOUS le profil fautif.
+   ========================================================================== */
+
+//: Le serveur étiquette ainsi tout profil qui n'est PAS une saisie société.
+const SOURCE_REPLI = 'hypothese_interne'
+
+//: `ProfilTypeConsommation.Famille` — les familles ADMISES par le serveur.
+const FAMILLES = [
+  ['residentiel', 'Résidentiel'],
+  ['commercial', 'Commercial / tertiaire'],
+  ['industriel', 'Industriel'],
+  ['agricole', 'Agricole'],
+  ['autre', 'Autre'],
+]
+
+/** `{rang, message}` du refus serveur, ramené au profil ENVOYÉ qu'il NOMME.
+ *
+ * `services/profils_types.py` nomme son champ de quatre façons :
+ * `profils`, `profils[N].cle`, `<cle>` et `<cle>.<champ>`. `rang` est
+ * l'indice DANS LA LISTE ENVOYÉE, `null` quand le refus porte sur la liste
+ * entière (ou sur la société). Le message est celui du serveur, mot pour mot.
+ */
+function refusProfil(erreur, clesEnvoyees) {
+  const aucunMotif = {
+    rang: null,
+    message: "Le serveur n’a rendu aucun motif : rien n’a été enregistré.",
+  }
+  const corps = erreur?.response?.data
+  if (!corps || typeof corps !== 'object') return aucunMotif
+  const entree = Object.entries(corps)[0]
+  if (!entree) return aucunMotif
+  const [champ, brut] = entree
+  const message = Array.isArray(brut) ? brut.join(' ') : String(brut)
+  const indice = /^profils\[(\d+)\]/.exec(champ)
+  if (indice) return { rang: Number(indice[1]), message }
+  const racine = champ.split('.')[0]
+  const rang = clesEnvoyees.indexOf(racine)
+  return { rang: rang >= 0 ? rang : null, message }
+}
+
+/** La courbe annuelle SERVIE, telle quelle — jamais arrondie (arrondir un
+ *  poids, c'est le changer). Les autres saisons ne sont pas éditées ici et
+ *  traversent intactes. */
+function texteCourbeAnnuelle(profil) {
+  const annuel = (profil.courbes ?? {}).annuel
+  return Array.isArray(annuel) ? annuel.join(', ') : ''
+}
+
+/** Le profil, sous la forme que `PUT profils-types/` attend (`courbe`, au
+ *  singulier — le GET sert `courbes`, normalisées). */
+function corpsProfil(profil) {
+  const courbe = { ...(profil.courbes ?? {}) }
+  const texte = (profil.courbeTexte ?? '').trim()
+  if (texte) {
+    // Une valeur illisible part TELLE QUELLE : c'est le serveur qui juge et
+    // qui nomme le champ, pas l'écran qui devine un nombre de remplacement.
+    courbe.annuel = texte.split(',').map((brut) => {
+      const valeur = brut.trim()
+      const nombre = Number(valeur)
+      return valeur !== '' && Number.isFinite(nombre) ? nombre : valeur
+    })
+  } else {
+    delete courbe.annuel
+  }
+  const corps = {
+    cle: profil.cle,
+    libelle: profil.libelle,
+    courbe,
+    provenance: profil.provenance,
+    actif: profil.actif !== false,
+  }
+  // Famille non choisie : on ne l'envoie PAS — le serveur applique alors son
+  // propre défaut documenté, plutôt que l'écran qui en invente un.
+  if (profil.famille) corps.famille = profil.famille
+  return corps
+}
+
 export default function Bibliotheque() {
   const peutGerer = useHasPermission('calepinage_gerer')
 
@@ -48,18 +142,29 @@ export default function Bibliotheque() {
   const [modeles, setModeles] = useState(null)
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState(null)
+  // CALX30 — les profils types, SERVIS puis édités sur place. `refusProfils`
+  // porte la clé du profil fautif : l'erreur s'affiche SOUS lui, jamais en
+  // haut de page comme un « non enregistré » anonyme.
+  const [profils, setProfils] = useState(null)
+  const [refusProfils, setRefusProfils] = useState(null)
+  const [enregistrementProfils, setEnregistrementProfils] = useState(false)
 
   useEffect(() => {
     let annule = false
     Promise.all([
       Promise.resolve(calepinageApi.parametres.get()),
       Promise.resolve(calepinageApi.calepinages.modeles()),
+      Promise.resolve(calepinageApi.parametres.profilsTypes()),
     ])
-      .then(([resParametres, resModeles]) => {
+      .then(([resParametres, resModeles, resProfils]) => {
         if (annule) return
         setParametres(resParametres?.data ?? null)
         const liste = resModeles?.data
         setModeles(Array.isArray(liste) ? liste : (liste?.results ?? []))
+        const servis = resProfils?.data?.profils
+        setProfils((Array.isArray(servis) ? servis : []).map((profil) => ({
+          ...profil, courbeTexte: texteCourbeAnnuelle(profil),
+        })))
       })
       .catch((e) => {
         if (annule) return
@@ -88,6 +193,58 @@ export default function Bibliotheque() {
 
   const clesPresets = Object.keys(presets)
   const clesFavoris = Object.keys(favoris)
+
+  // ── CALX30 — les gestes des profils types ────────────────────────────────
+  const lignesProfils = profils ?? []
+  const estRepli = (profil) => profil.source === SOURCE_REPLI
+
+  const majProfil = (rang, champ, valeur) => {
+    setProfils((liste) => (liste ?? []).map(
+      (profil, i) => (i === rang ? { ...profil, [champ]: valeur } : profil)))
+  }
+  const retirerProfil = (rang) => {
+    setRefusProfils(null)
+    setProfils((liste) => (liste ?? []).filter((_, i) => i !== rang))
+  }
+  const ajouterProfil = () => {
+    setRefusProfils(null)
+    // TOUT VIDE : aucune valeur par défaut n'est inventée ici. C'est le
+    // serveur qui refuse, et son motif s'affiche sous ce profil.
+    setProfils((liste) => [...(liste ?? []), {
+      id: null, cle: '', libelle: '', famille: '', provenance: '',
+      source: 'societe', courbes: {}, courbeTexte: '',
+    }])
+  }
+
+  // Les rangs AFFICHÉS des profils qui partent au serveur (les replis, eux,
+  // ne partent jamais) : c'est la table de correspondance qui ramène un refus
+  // « profils[N] » sur la bonne ligne de l'écran.
+  const rangsEnvoyes = lignesProfils
+    .map((profil, rang) => (estRepli(profil) ? null : rang))
+    .filter((rang) => rang !== null)
+  const rangFautif = refusProfils && refusProfils.rang !== null
+    ? rangsEnvoyes[refusProfils.rang] ?? null
+    : null
+
+  const enregistrerProfils = async () => {
+    const aSoumettre = lignesProfils.filter((profil) => !estRepli(profil))
+    setEnregistrementProfils(true)
+    setRefusProfils(null)
+    try {
+      const res = await calepinageApi.parametres.enregistrerProfilsTypes(
+        aSoumettre.map(corpsProfil))
+      const servis = res?.data?.profils
+      if (Array.isArray(servis)) {
+        setProfils(servis.map((profil) => ({
+          ...profil, courbeTexte: texteCourbeAnnuelle(profil),
+        })))
+      }
+    } catch (e) {
+      setRefusProfils(refusProfil(e, aSoumettre.map((p) => p.cle)))
+    } finally {
+      setEnregistrementProfils(false)
+    }
+  }
 
   return (
     <div className="page" data-testid="cal-bibliotheque">
@@ -204,6 +361,149 @@ export default function Bibliotheque() {
             <p className="mt-2 text-xs text-muted-foreground">
               Sans le droit « gérer le calepinage », la création/édition des
               favoris n’est pas proposée ici.
+            </p>
+          )}
+        </Section>
+      </div>
+
+      {/* CALX30 — LES PROFILS TYPES, la section éditable. Elle est SOUS la
+          grille parce qu'une courbe de 24 poids ne tient pas dans une demi-
+          colonne. */}
+      <div className="mt-4">
+        <Section titre="Profils types"
+          sousTitre="Courbes de consommation de la société (CAL149) — la saisie de la société l’emporte toujours sur un repli">
+          {lignesProfils.length === 0
+            ? <ListeVide enfant="Aucun profil type servi pour votre société." />
+            : (
+              <ul className="space-y-3" data-testid="cal-biblio-profils-liste">
+                {lignesProfils.map((profil, rang) => (
+                  <li key={profil.id ?? `rang-${rang}`}
+                    className="border border-border p-3"
+                    data-testid={`cal-biblio-profil-${rang}`}>
+                    {estRepli(profil) ? (
+                      <>
+                        {/* UN REPLI RESTE UN REPLI : étiqueté, non éditable,
+                            jamais renvoyé comme une saisie de la société. */}
+                        <p className="text-sm font-medium text-foreground">
+                          {profil.libelle || profil.cle}
+                          {' '}
+                          <Badge variant="outline"
+                            data-testid={`cal-biblio-profil-repli-${rang}`}>
+                            Hypothèse interne
+                          </Badge>
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground"
+                          data-testid={`cal-biblio-profil-provenance-${rang}`}>
+                          {profil.provenance}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Ce profil n’est PAS une mesure : il n’est pas
+                          modifiable ici et n’est jamais enregistré comme un
+                          profil de votre société. Ajoutez le vôtre pour qu’il
+                          prenne sa place.
+                        </p>
+                      </>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <label className="text-xs text-muted-foreground">
+                          Clé
+                          <input type="text" value={profil.cle ?? ''}
+                            disabled={!peutGerer || enregistrementProfils}
+                            data-testid={`cal-biblio-profil-cle-${rang}`}
+                            onChange={(e) => majProfil(rang, 'cle', e.target.value)}
+                            className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
+                        </label>
+                        <label className="text-xs text-muted-foreground">
+                          Libellé
+                          <input type="text" value={profil.libelle ?? ''}
+                            disabled={!peutGerer || enregistrementProfils}
+                            data-testid={`cal-biblio-profil-libelle-${rang}`}
+                            onChange={(e) => majProfil(rang, 'libelle', e.target.value)}
+                            className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
+                        </label>
+                        <label className="text-xs text-muted-foreground">
+                          Famille
+                          <select value={profil.famille ?? ''}
+                            disabled={!peutGerer || enregistrementProfils}
+                            data-testid={`cal-biblio-profil-famille-${rang}`}
+                            onChange={(e) => majProfil(rang, 'famille', e.target.value)}
+                            className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground">
+                            <option value="">Choisir une famille</option>
+                            {FAMILLES.map(([code, libelle]) => (
+                              <option key={code} value={code}>{libelle}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="text-xs text-muted-foreground">
+                          Provenance (obligatoire)
+                          <input type="text" value={profil.provenance ?? ''}
+                            disabled={!peutGerer || enregistrementProfils}
+                            data-testid={`cal-biblio-profil-provenance-${rang}`}
+                            onChange={(e) => majProfil(rang, 'provenance', e.target.value)}
+                            className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
+                        </label>
+                        <label className="text-xs text-muted-foreground sm:col-span-2">
+                          Courbe annuelle — 24 poids séparés par des virgules
+                          <input type="text" value={profil.courbeTexte ?? ''}
+                            disabled={!peutGerer || enregistrementProfils}
+                            data-testid={`cal-biblio-profil-courbe-${rang}`}
+                            onChange={(e) => majProfil(rang, 'courbeTexte', e.target.value)}
+                            className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
+                        </label>
+                        {peutGerer && (
+                          <div className="sm:col-span-2">
+                            <button type="button" disabled={enregistrementProfils}
+                              className="text-xs text-destructive underline"
+                              data-testid={`cal-biblio-profil-retirer-${rang}`}
+                              onClick={() => retirerProfil(rang)}>
+                              Retirer ce profil
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* L'ERREUR SOUS LE PROFIL FAUTIF, celui que le serveur
+                        a NOMMÉ — jamais ailleurs. */}
+                    {rangFautif === rang && (
+                      <p className="mt-2 text-xs text-destructive" role="alert"
+                        data-testid={`cal-biblio-profil-erreur-${rang}`}>
+                        {refusProfils.message}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+          {peutGerer ? (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button type="button" disabled={enregistrementProfils}
+                className="text-sm font-semibold underline"
+                data-testid="cal-biblio-profil-ajouter"
+                onClick={ajouterProfil}>
+                Ajouter un profil
+              </button>
+              <button type="button" disabled={enregistrementProfils}
+                className="text-sm font-semibold underline"
+                data-testid="cal-biblio-profils-enregistrer"
+                onClick={enregistrerProfils}>
+                Enregistrer les profils
+              </button>
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Sans le droit « gérer le calepinage », les profils types se
+              consultent mais ne se modifient pas ici.
+            </p>
+          )}
+
+          {/* Un refus qui ne vise AUCUN profil (la liste entière) : il est
+              dit ici, avec le motif du serveur, jamais réécrit. */}
+          {refusProfils && rangFautif === null && (
+            <p className="mt-2 text-xs text-destructive" role="alert"
+              data-testid="cal-biblio-profils-erreur">
+              {refusProfils.message}
             </p>
           )}
         </Section>

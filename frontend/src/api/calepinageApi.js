@@ -195,6 +195,16 @@ const calepinageApi = {
   parametres: {
     get: () => api.get('/calepinage/parametres/'),
     update: (corps) => api.put('/calepinage/parametres/', corps),
+
+    // CALX30 — les PROFILS TYPES de consommation de la société (CAL149,
+    // `views/consommation.py`, servi sous le préfixe `parametres` parce
+    // qu'aucun identifiant de calepinage n'y entre). Le GET sert les profils
+    // SAISIS puis les replis ÉTIQUETÉS « hypothèse interne » ; le PUT
+    // REMPLACE les profils saisis — un repli n'en est pas un, il n'est donc
+    // jamais renvoyé comme une saisie.
+    profilsTypes: () => api.get('/calepinage/parametres/profils-types/'),
+    enregistrerProfilsTypes: (profils) =>
+      api.put('/calepinage/parametres/profils-types/', { profils }),
   },
 }
 
