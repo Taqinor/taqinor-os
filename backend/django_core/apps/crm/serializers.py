@@ -17,7 +17,7 @@ from .models import (
     EquipeCommerciale,
     EtapePlanActivite, ForecastEntry, ForecastSnapshot, Lead, LeadActivity,
     LeadPlaybookProgress, MessageTemplate, ObjectifCommercial, Parrainage,
-    PlanActivite, PlanCompte, Playbook, PlaybookEtape,
+    Partenaire, PlanActivite, PlanCompte, Playbook, PlaybookEtape,
     PlaybookTache, PointContact, RelanceEtape, RevueCompte, SalleVente,
     SalleVenteItem, SavedView, SiteProfile, VisiteExterne, WebsiteLeadPayload,
 )
@@ -1905,3 +1905,83 @@ class AppareilEquipeSerializer(serializers.ModelSerializer):
         # rend le POST idempotent (re-marquer met à jour le libellé, jamais un
         # 400) — la contrainte DB reste le filet contre une vraie course.
         validators = []
+
+
+class PartenaireSerializer(serializers.ModelSerializer):
+    """Partenaires commerciaux (apporteurs/sous-revendeurs/installateurs,
+    FG234/FG237) + couche certification NTMIG26.
+
+    SOLMVP10/SOLMVP30b — ce serializer vivait dans ``apps.compta`` (shim
+    ODX13, réexporté ici) ; compta est désormais une coquille parquée sans
+    aucune url (``core.parked``), donc ``crm.Partenaire`` — qui n'a jamais
+    quitté cette app — reprend nativement sa propre surface API. Aucun champ
+    n'a changé : seule la maison a bougé.
+    """
+    certification_expiree = serializers.BooleanField(read_only=True)
+    rang_certification = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Partenaire
+        fields = [
+            'id', 'nom', 'type_partenaire', 'email', 'telephone',
+            'taux_commission', 'token_acces', 'actif',
+            'statut_onboarding', 'numero_agrement', 'zone', 'date_activation',
+            'niveau_certification', 'date_certification',
+            'date_expiration_certification', 'specialites',
+            'nb_deploiements_reussis', 'certification_expiree',
+            'rang_certification',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'token_acces', 'date_activation', 'date_creation',
+            # NTMIG26 — le compteur de déploiements est de l'HISTORIQUE : il
+            # s'alimente par l'enregistrement d'un déploiement (NTMIG28), pas
+            # par un PATCH qui permettrait de gonfler son propre score.
+            'nb_deploiements_reussis', 'certification_expiree',
+            'rang_certification',
+        ]
+
+    def validate_specialites(self, value):
+        """NTMIG26 — spécialités prises dans la liste FERMÉE du référentiel.
+
+        Une valeur libre rendrait l'annuaire des certifiés infiltrable :
+        « Compta », « compta » et « COMPTA » seraient trois spécialités
+        distinctes qu'aucun filtre ne retrouverait ensemble.
+        """
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'Les spécialités doivent être une liste de clés de module.')
+        connues_cles = Partenaire.SPECIALITES_CLES
+        inconnues = [str(v) for v in value if str(v) not in connues_cles]
+        if inconnues:
+            connues = ', '.join(connues_cles)
+            raise serializers.ValidationError(
+                f"Spécialité(s) inconnue(s) : {', '.join(inconnues)}. "
+                f'Valeurs acceptées : {connues}.')
+        # Dédoublonne en préservant l'ordre de saisie.
+        vues, propres = set(), []
+        for v in value:
+            if str(v) in vues:
+                continue
+            vues.add(str(v))
+            propres.append(str(v))
+        return propres
+
+    def validate(self, attrs):
+        """NTMIG26 — une échéance de certification antérieure à sa date de
+        délivrance décrirait une certification née expirée."""
+        attrs = super().validate(attrs)
+        instance = getattr(self, 'instance', None)
+        debut = attrs.get(
+            'date_certification', getattr(instance, 'date_certification', None))
+        fin = attrs.get(
+            'date_expiration_certification',
+            getattr(instance, 'date_expiration_certification', None))
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError({
+                'date_expiration_certification': (
+                    "L'expiration ne peut pas précéder la date de "
+                    'certification.')})
+        return attrs

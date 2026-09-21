@@ -156,6 +156,25 @@ class TestMigrationDedoublonnage(_SansContrainteMixin,
                                  TransactionTestCase):
     """``stock.0134`` — renomme, ne supprime JAMAIS."""
 
+    # SOLMVP (2026-09-21) — sans ``available_apps``, ``allow_cascade`` reste
+    # False (sémantique Django : ``allow_cascade = available_apps is not
+    # None``) et le TRUNCATE de teardown échoue désormais sur les tables des
+    # apps parquées (``ai_governance_extractioncorrection`` référence
+    # ``authentication_customuser`` mais n'a plus de modèle Django pour
+    # entrer dans la liste TRUNCATE — FK physique orpheline du point de vue
+    # de l'ORM). Même patron que
+    # ``apps/crm/tests_webhook.py::QW10IndexedDedupAndConcurrencyTests`` :
+    # ``available_apps`` (même vide de sens précis ici, cf.
+    # ``WideTeardownTimeoutMixin``) force ``allow_cascade=True``, qui
+    # ratisse correctement toutes les tables dépendantes sans lister
+    # ``ai_governance``.
+    available_apps = [
+        'django.contrib.contenttypes', 'django.contrib.auth',
+        'django.contrib.sessions', 'core', 'authentication',
+        'apps.roles', 'apps.parametres', 'apps.customfields',
+        'apps.records', 'apps.reporting', 'apps.audit', 'apps.stock',
+    ]
+
     def setUp(self):
         super().setUp()
         self.company = make_company('uniq-nom-mig', 'Uniq Nom Mig')

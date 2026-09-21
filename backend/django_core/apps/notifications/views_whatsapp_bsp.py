@@ -8,9 +8,12 @@ Deux endpoints publics (pas de session / JWT) :
        Retourne 403 si non configuré ou token incorrect.
 
   POST /api/django/notifications/whatsapp/webhook/
-       Reçoit les callbacks de statut (delivered / read). Les statuts mettent
-       à jour WhatsAppMessageLog (via external_id). Valide la signature
-       X-Hub-Signature-256 contre WHATSAPP_BSP_APP_SECRET (env).
+       Reçoit les callbacks de statut (delivered / read) ET les messages
+       ENTRANTS (XSAV26). Les statuts mettent à jour WhatsAppMessageLog (via
+       external_id). Les messages entrants sont routés vers un ticket SAV
+       quand l'expéditeur matche un `crm.Client` existant
+       (`apps.sav.services.router_whatsapp_entrant_vers_ticket`). Valide la
+       signature X-Hub-Signature-256 contre WHATSAPP_BSP_APP_SECRET (env).
        Retourne 200 même si la signature est absente MAIS que
        WHATSAPP_BSP_APP_SECRET n'est pas configuré (mode non sécurisé
        explicite) — log d'avertissement.
@@ -25,12 +28,22 @@ SÉCURITÉ :
   - Aucun appel réseau sortant depuis ce module.
   - Aucune session / authentification JWT (webhook public).
 
-SOLMVP19 — la capture des messages ENTRANTS (XKB33) est retirée : elle
-  passait par le service gated FG207 (`compta.services.capturer_message_
-  whatsapp`, gardé par `compta.services.whatsapp_actif()`) puis surfaçait
-  dans une conversation Discuss dédiée (`chat.services`) — compta ET chat
-  sont sortis du produit. Seul le traitement des callbacks de STATUT
-  (delivered/read) reste, inchangé.
+SOLMVP19 — la capture des messages entrants vers COMPTA (FG207, lead
+  pré-qualifié `compta.services.capturer_message_whatsapp`) et la
+  conversation Discuss dédiée (`chat.services`) sont retirées : compta ET
+  chat sont sortis du produit (apps parquées, voir `core/parked.py`) — toute
+  référence à ces labels casse le boot (`scripts/check_parked_apps.py`).
+  Le ROUTAGE VERS LE SAV (XSAV26,
+  `apps.sav.services.router_whatsapp_entrant_vers_ticket`) reste : `apps.sav`
+  n'est PAS parquée. Un expéditeur reconnu comme `crm.Client` existant route
+  vers un ticket SAV (créé ou noté) ; un numéro inconnu du SAV est un NO-OP
+  strict (le chemin lead XKB33 disparaît avec compta/chat). Le toggle
+  générique WHATSAPP_ENABLED/WHATSAPP_ACCESS_TOKEN (ex-`compta.services.
+  whatsapp_actif()`) est réimplémenté localement (`_whatsapp_actif()`) pour
+  ne dépendre d'aucune app parquée. La résolution de la société cible se
+  fait via `WHATSAPP_BSP_COMPANY_ID` (env, id opaque) — scaffold
+  mono-société tant qu'aucun routage multi-société par numéro Meta n'est
+  fourni.
 """
 import hashlib
 import hmac
@@ -38,12 +51,47 @@ import json
 import logging
 import os
 
+from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
 logger = logging.getLogger(__name__)
+
+
+def _whatsapp_actif():
+    """Toggle générique WhatsApp Business Cloud (Meta). OFF par défaut.
+
+    SOLMVP19 — remplace `compta.services.whatsapp_actif()` (compta est
+    parquée, cf. module docstring) : même contrat exact, vérification
+    directe des settings, sans dépendance vers une app parquée. Le founder
+    l'active en posant `WHATSAPP_ENABLED = True` + un jeton
+    `WHATSAPP_ACCESS_TOKEN` (settings/env). Tant que c'est faux/sans jeton,
+    le traitement des messages entrants (XSAV26) est un NO-OP.
+    """
+    return bool(getattr(settings, "WHATSAPP_ENABLED", False)
+                and getattr(settings, "WHATSAPP_ACCESS_TOKEN", ""))
+
+
+def _target_company():
+    """Société cible pour le routage des messages entrants (XSAV26), ou None.
+
+    Scaffold mono-société : `WHATSAPP_BSP_COMPANY_ID` (env, id opaque). Sans
+    cette variable, le routage entrant reste un NO-OP complet (aucune
+    société résolue → rien n'est traité), même si le webhook de statut
+    continue de fonctionner normalement."""
+    raw = os.getenv("WHATSAPP_BSP_COMPANY_ID", "").strip()
+    if not raw:
+        return None
+    try:
+        from authentication.models import Company
+        return Company.objects.filter(pk=int(raw)).first()
+    except (ValueError, TypeError):
+        return None
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning("Webhook BSP WhatsApp : résolution société échouée : %s", exc)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +203,7 @@ class WhatsAppBspWebhookView(View):
             return JsonResponse({"detail": "JSON invalide."}, status=400)
 
         self._process_statuses(payload)
+        self._process_messages(payload)
         # Meta exige un 200 OK dans tous les cas pour ne pas rejouer.
         return JsonResponse({"ok": True}, status=200)
 
@@ -206,3 +255,80 @@ class WhatsAppBspWebhookView(View):
                             )
         except Exception as exc:  # pragma: no cover - defensif
             logger.warning("Webhook BSP WhatsApp : traitement des statuts echoue : %s", exc)
+
+    # ---- Traitement interne des messages entrants (XSAV26) ----
+
+    @staticmethod
+    def _process_messages(payload):
+        """Parse les messages ENTRANTS Meta et les route vers le SAV (XSAV26).
+
+        Structure Meta (simplifiee) :
+          { "entry": [{ "changes": [{ "value": {
+              "contacts": [{ "profile": { "name": "..." }, "wa_id": "..." }],
+              "messages": [{ "id": "wamid.xxx", "from": "2126...",
+                             "type": "text", "text": {"body": "..."} }]
+          }}]}]}
+
+        GATED : sans societe cible resolue (`_target_company`) OU sans
+        `_whatsapp_actif()` (WHATSAPP_ENABLED + WHATSAPP_ACCESS_TOKEN), c'est
+        un NO-OP complet — rien n'est traite, rien ne change. SOLMVP19 — la
+        capture compta (FG207) et la conversation Discuss dediee sont
+        retirees (apps compta/chat parquees, cf. docstring du module) ; seul
+        le routage SAV (XSAV26) subsiste. Erreurs absorbees (best-effort) :
+        un webhook mal forme ne doit jamais planter le serveur.
+        """
+        try:
+            if not _whatsapp_actif():
+                return
+            company = _target_company()
+            if company is None:
+                return
+
+            entries = payload.get("entry") or []
+            for entry in entries:
+                for change in (entry.get("changes") or []):
+                    value = change.get("value") or {}
+                    messages = value.get("messages") or []
+                    if not messages:
+                        continue
+                    contacts = value.get("contacts") or []
+                    profile_names = {
+                        (c.get("wa_id") or "").strip():
+                            (c.get("profile") or {}).get("name", "")
+                        for c in contacts
+                    }
+                    for msg in messages:
+                        wa_message_id = (msg.get("id") or "").strip()
+                        expediteur = (msg.get("from") or "").strip()
+                        if not wa_message_id or not expediteur:
+                            continue
+                        texte = ((msg.get("text") or {}).get("body", "") or "")
+                        nom_profil = profile_names.get(expediteur, "")
+                        WhatsAppBspWebhookView._capture_and_route(
+                            company, wa_message_id=wa_message_id,
+                            expediteur=expediteur, nom_profil=nom_profil,
+                            texte=texte)
+        except Exception as exc:  # pragma: no cover - defensif
+            logger.warning(
+                "Webhook BSP WhatsApp : traitement des messages entrants echoue : %s",
+                exc)
+
+    @staticmethod
+    def _capture_and_route(company, *, wa_message_id, expediteur, nom_profil, texte):
+        """Route un message WhatsApp entrant vers un ticket SAV (XSAV26).
+
+        SOLMVP19 — la capture compta (FG207, lead pré-qualifié) et la
+        conversation Discuss dédiée sont retirées (apps compta/chat
+        parquées) : seul le routage SAV subsiste ci-dessous. Un expéditeur
+        reconnu comme `crm.Client` existant route vers un ticket (créé ou
+        note sur le ticket ouvert le plus récent) ; un numéro inconnu du SAV
+        est un NO-OP strict (le chemin lead XKB33 disparaît avec compta/chat).
+        Best-effort : un échec de routage ne doit jamais planter le webhook.
+        """
+        try:
+            from apps.sav.services import router_whatsapp_entrant_vers_ticket
+            router_whatsapp_entrant_vers_ticket(
+                company=company, expediteur=expediteur, texte=texte)
+        except Exception as exc:  # pragma: no cover - defensif
+            logger.warning(
+                "Webhook BSP WhatsApp : routage SAV echoue : %s", exc)

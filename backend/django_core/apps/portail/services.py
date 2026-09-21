@@ -74,7 +74,7 @@ def initier_paiement_facture(paiement):
     return paiement
 
 
-def rapprocher_paiement_facture(paiement, *, reference=None):
+def rapprocher_paiement_facture(paiement, *, reference=None, user=None):
     """Marque un paiement de facture portail comme payé (FG230), idempotent.
 
     Sert le rapprochement auto (webhook CMI) ET le rapprochement manuel d'un
@@ -85,12 +85,23 @@ def rapprocher_paiement_facture(paiement, *, reference=None):
     trouvé AUCUN appelant qui le fasse. L'argent réellement encaissé au
     portail (``portail.views_client``) n'entrait donc dans le
     ``montant_paye`` d'AUCUNE facture, et l'ERP relançait un client déjà
-    réglé. Le report est désormais fait ICI, par le service ventes
-    ``enregistrer_paiement_portail`` (cross-app par ``apps.ventes.services``,
-    jamais un import de ses modèles) : il est idempotent sur la référence de
-    transaction, borne le montant au reste dû et solde la facture par le
-    service unique AUD102.
+    réglé. Le report était fait par le service ventes dédié
+    ``enregistrer_paiement_portail`` — SOLMVP11 (« ventes détaché de compta,
+    litiges, marketing, grc, ecommerce_connect ») l'a supprimé de
+    ``apps.ventes.domain.encaissements`` en même temps que le nettoyage
+    compta, alors qu'il n'avait AUCUN lien avec compta (pont ventes<->portail
+    pur) : chaque appel plantait en 500 (``ImportError`` sur un nom qui
+    n'existe plus). Correctif CI SOLMVP, côté portail (``apps/ventes`` est
+    hors périmètre de ce lot) : on recompose le même comportement avec les
+    services ventes toujours en place — ``enregistrer_paiement`` (création)
+    puis ``marquer_facture_soldee`` (bascule AUD102, seule porte qui pose
+    ``Facture.Statut.PAYEE``) — toujours cross-app par
+    ``apps.ventes.services``, jamais un import de ses modèles. Le montant est
+    borné au reste dû ; la facture ne bascule que si son résiduel retombe à
+    zéro (garde interne à ``marquer_facture_soldee``).
     """
+    from decimal import Decimal
+
     from .models import PaiementFacturePortail
 
     if paiement.statut != PaiementFacturePortail.Statut.INITIE:
@@ -103,18 +114,24 @@ def rapprocher_paiement_facture(paiement, *, reference=None):
 
     if paiement.facture_id:
         from apps.ventes.services import (
-            enregistrer_paiement_portail, get_facture_or_none,
+            enregistrer_paiement, get_facture_or_none, marquer_facture_soldee,
         )
         facture = get_facture_or_none(
             company=paiement.company, facture_id=paiement.facture_id)
         if facture is not None:
-            enregistrer_paiement_portail(
-                facture=facture, montant=paiement.montant,
-                reference=paiement.reference,
-                mode=('carte'
-                      if paiement.methode == PaiementFacturePortail.Methode.CARTE
-                      else 'virement'),
-                company=paiement.company)
+            montant = min(Decimal(str(paiement.montant)), facture.montant_du)
+            if montant > Decimal('0'):
+                mode = ('carte'
+                        if paiement.methode == PaiementFacturePortail.Methode.CARTE
+                        else 'virement')
+                enregistrer_paiement(
+                    facture=facture, montant=montant, mode=mode,
+                    date_paiement=timezone.localdate(), user=user,
+                    reference=paiement.reference or '',
+                    note='Paiement encaissé au portail client.')
+                marquer_facture_soldee(
+                    facture, montant=montant, user=user,
+                    source='portail_client')
     return paiement
 
 

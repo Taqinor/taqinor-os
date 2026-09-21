@@ -51,9 +51,19 @@ class ModuleToggleGateTests(TestCase):
         ModuleToggle.objects.create(
             company=self.company, module='adsengine', actif=False)
         resp = auth(self.user).get(BASE)
-        self.assertEqual(resp.status_code, 404, resp.data)
+        # SOLMVP-fix (2026-09-21) — le 404 vient de
+        # ``DisabledModuleMiddleware`` (``core/permissions.py``), qui rend un
+        # ``JsonResponse`` DJANGO brut (pas une ``rest_framework.Response`` :
+        # le middleware tourne hors du cycle de rendu DRF) — donc SANS
+        # attribut ``.data``. Le mettre en message d'assertion faisait
+        # planter ``assertEqual`` en ``AttributeError`` AVANT même de
+        # comparer le status (l'argument message est évalué toujours, succès
+        # ou échec) : le vrai statut ÉTAIT déjà 404, la garde marchait — seul
+        # le message de diagnostic ne s'appliquait pas à ce type de réponse.
+        # ``.content`` existe sur les deux (JsonResponse et Response).
+        self.assertEqual(resp.status_code, 404, resp.content)
 
     def test_no_toggle_passes_through(self):
         resp = auth(self.user).get(BASE)
-        self.assertNotEqual(resp.status_code, 404, resp.data)
-        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertNotEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(resp.status_code, 200, resp.content)

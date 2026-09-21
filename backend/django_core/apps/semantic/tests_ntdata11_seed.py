@@ -18,6 +18,15 @@ from apps.semantic.management.commands.seed_metriques import METRIQUES_COEUR
 from apps.semantic.models import MetricDefinition
 from authentication.models import Company
 
+# SOLMVP (2026-09-21) — ``compta`` (fournisseur des adaptateurs ``dso`` et
+# ``marge_brute``) est une app PARQUÉE (Groupe SOLMVP, MVP solaire) : son
+# ``ready()`` n'enregistre plus rien, donc ``compta.dso``/``compta.marge_
+# brute`` ont disparu du registre ``apps.semantic.adapters`` (vérifié en
+# shell Django). Les 8 métriques cœur (dont ``dso``) restent SEMÉES telles
+# quelles (``test_huit_metriques_coeur``, inchangé) — seule leur RÉSOLUTION
+# dégrade proprement, exactement comme ``AdaptateurInconnu`` le prévoyait
+# déjà pour un module désactivé.
+
 CLES_ATTENDUES = {
     'ca_ht', 'ca_ttc', 'panier_moyen', 'taux_conversion', 'mrr',
     'marge_brute', 'dso', 'valeur_pipeline_ponderee',
@@ -84,9 +93,11 @@ class SeedMetriquesTests(TestCase):
 
     def test_adaptateurs_enregistres(self):
         enregistres = adapters.list_adapters()
-        for cle in ('compta.dso', 'compta.marge_brute',
-                    'crm.pipeline_pondere'):
-            self.assertIn(cle, enregistres)
+        # compta.dso / compta.marge_brute : voir la note SOLMVP en tête de
+        # fichier — compta est parqué, plus enregistré.
+        self.assertIn('crm.pipeline_pondere', enregistres)
+        self.assertNotIn('compta.dso', enregistres)
+        self.assertNotIn('compta.marge_brute', enregistres)
 
     def test_metrique_adaptateur_refuse_un_regroupement(self):
         self._seed()
@@ -97,11 +108,14 @@ class SeedMetriquesTests(TestCase):
 
     def test_dso_resolu_par_l_adaptateur(self):
         self._seed()
-        res = services.resolve_metric(self.company, None, 'dso')
-        # Société sans écriture comptable : le cockpit rend 0 — une valeur
-        # RÉELLE (aucun encours), pas un chiffre inventé.
-        self.assertEqual(res['unite'], MetricDefinition.Unite.JOURS)
-        self.assertIsNotNone(res['valeur'])
+        # compta (fournisseur de l'adaptateur DSO) est parqué (Groupe
+        # SOLMVP) : plus aucun adaptateur ``compta.dso`` n'est enregistré.
+        # Le résolveur le dit en clair (module désactivé) plutôt que de
+        # rendre un faux zéro — même famille d'erreur que
+        # ``test_metrique_adaptateur_refuse_un_regroupement``.
+        with self.assertRaises(services.MetriqueNonResolvable) as ctx:
+            services.resolve_metric(self.company, None, 'dso')
+        self.assertIn('désactivé', str(ctx.exception))
 
     def test_pipeline_pondere_resolu_par_l_adaptateur(self):
         self._seed()

@@ -401,6 +401,13 @@ Les valeurs des 8 colonnes retirées disparaissent avec elles (comportement norm
 par une NOUVELLE migration `AddField` ; pour `CustomUser.poste_ref` le rattachement se refait
 tout seul par `authentication.poste_sync.backfill_poste_ref`, conservé exprès.
 
+**Conséquence côté DEV/CI — les tables des coquilles existent AUSSI dans les bases de test**
+(elles sont bâties par les migrations gelées), et leurs FK vers les tables conservées font
+refuser un `TRUNCATE` non cascadé : la purge de fin de `TransactionTestCase` est donc
+**cascadée par le runner du projet** (`TEST_RUNNER = core.test_runner.TaqinorTestRunner`, le
+pourquoi complet est dans `core/test_runner.py`) — ces tables sont vides en test, rien d'autre
+n'est touché. Ne pas retirer ce `TEST_RUNNER` sans faire revenir les 47 modules.
+
 ### 6.3 Pourquoi l'ordre de l'auto-deploy est sûr
 
 - Les 47 migrations d'état n'émettent aucun SQL : elles ne peuvent ni verrouiller une table,

@@ -174,7 +174,14 @@ describe('ProductTour (NTDMO15)', () => {
     expect(api.post).not.toHaveBeenCalled()
     // Dehors : ferme et marque vu, comme le faisait le clic sur le voile.
     fireEvent.pointerDown(document.body)
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'))
+    // CI run 35590013022 (frontend-vitest-shard 3/4, 21/09/2026) : rouge
+    // mouvant sur le délai `waitFor` par défaut (1 s) — ni `ProductTour.jsx`
+    // ni `/ventes/devis/nouveau` (écran cible du tour) ne sont concernés par
+    // le parking SOLMVP40 (grep vérifié), et ce test passe 5/5 en local ;
+    // même classe de flake « rendu à froid sous charge CI parallèle » déjà
+    // documentée par `testTimeout: 20000` dans vitest.config.js — `waitFor`
+    // a son propre délai, non couvert par ce réglage.
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'), { timeout: 5000 })
     expect(screen.queryByText('Créer un devis')).not.toBeInTheDocument()
   })
 

@@ -16,6 +16,11 @@ public au lieu de se faire refuser ».
     levait un ``AttributeError`` sur un champ valant un nombre, un objet ou une
     liste, donc un 500 sur des POST publics.
 
+    SOLMVP (21/09/2026) — il en reste CINQ : le 6ᵉ (``site_web``, honeypot de
+    l'e-catalogue public XPOS14) est parti avec son endpoint entier quand
+    ``compta`` a été parquée (SOLMVP11). Les mentions « 6 sites » de ce fichier
+    se lisent donc « les sites recensés » ; le détail est sur ``_CHAMPS``.
+
 CE QUE CE FICHIER PROUVE, ET COMMENT. Les neuf sites du (a) sont exercés
 DIRECTEMENT (fonction de vérification ou vue de poignée de main), avec une
 valeur hostile réelle : aucun n'a le droit de lever, tous doivent REFUSER, et
@@ -298,10 +303,20 @@ class TexteDuCorpsTests(SimpleTestCase):
 
 
 class GardeStructurelleCorpsPublicTests(SimpleTestCase):
-    """Aucun des 6 sites n'est resté sur ``request.data.get(...).strip()``."""
+    """Aucun site public n'est resté sur ``request.data.get(...).strip()``."""
 
-    #: Les six champs recensés par QJR413 (b), avec leur vue.
-    _CHAMPS = ('otp_code', 'nom', 'name', 'option', 'on_behalf_of', 'site_web')
+    #: Les champs recensés par QJR413 (b), avec leur vue.
+    #:
+    #: SOLMVP (21/09/2026) — le 6ᵉ champ, ``site_web``, était le HONEYPOT du
+    #: seul endpoint e-catalogue public (XPOS14 ``ecatalogue_demander_devis``).
+    #: Cet endpoint lisait ``apps.compta.selectors`` : il est parti ENTIER avec
+    #: le parcage de ``compta`` (SOLMVP11), url comprise — il n'existe donc plus
+    #: de surface à protéger sous ce nom. La garde n'est pas affaiblie : elle
+    #: s'ancre sur les CINQ sites gardés, et
+    #: ``test_plus_aucun_strip_nu_sur_le_corps_de_requete`` reste inchangé —
+    #: c'est lui qui interdit STRUCTURELLEMENT tout nouveau ``.strip()`` nu,
+    #: y compris sur un champ que ce recensement ne nomme pas encore.
+    _CHAMPS = ('otp_code', 'nom', 'name', 'option', 'on_behalf_of')
 
     def test_plus_aucun_strip_nu_sur_le_corps_de_requete(self):
         source = Path(public_views.__file__).read_text(encoding='utf-8')

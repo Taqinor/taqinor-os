@@ -126,3 +126,95 @@ def accepter_invitation_portail_public(request):
             status=status.HTTP_400_BAD_REQUEST)
     return Response(
         {'detail': 'Compte créé — vous pouvez maintenant vous connecter.'})
+
+
+# ── XFAC26 / AUD148 — Relevé de compte self-service (lien tokenisé) ────────
+#
+# Correctif CI SOLMVP : cette surface vivait dans ``apps.compta`` (montée
+# sous ``/api/django/compta/portail/<token>/mon-releve/``, shim ODX12 jamais
+# achevé — voir ``apps.portail.selectors``, en-tête). SOLMVP30b a coquillé
+# ``compta`` en app SANS AUCUNE url (contrat ``core.parked``) ; la lecture
+# elle-même (``apps.ventes.selectors.releve_client_portail``) n'a jamais
+# quitté le périmètre MVP solaire, seule sa porte d'entrée manquait. Elle
+# reprend ICI, sous le préfixe public natif du portail, seule maison qu'elle
+# ait jamais eue côté portail. ``portail_contester_facture`` (XFAC27) N'EST
+# PAS restauré : il créait une ``litiges.Reclamation`` — ``litiges`` est une
+# app parquée du MVP solaire (``core.parked``), donc hors périmètre, pas
+# seulement de cette lane.
+
+class RelevePortailThrottle(SimpleRateThrottle):
+    """Débit du relevé de compte tokenisé, par IP (même patron que
+    ``ThemePortailPublicThrottle``) : un token seul ne dispense jamais d'un
+    plafond anonyme."""
+
+    scope = 'portail_mon_releve'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': self.get_ident(request),
+        }
+
+
+def _releve_noindex(response):
+    response['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
+    return response
+
+
+def _releve_not_found():
+    return _releve_noindex(Response(
+        {'detail': "Ce lien de portail est invalide ou n'existe pas."},
+        status=status.HTTP_404_NOT_FOUND))
+
+
+def _resoudre_compte_par_token(token):
+    """Compte portail ACTIF pour ``token``, ou ``None`` — jamais cross-tenant.
+
+    Horodate l'accès (AUD148) via le service dédié, jamais une écriture
+    inline ici : même point d'entrée que le reste du module.
+    """
+    from . import services
+    from .models import ComptePortailClient
+
+    if not token:
+        return None
+    compte = (ComptePortailClient.objects
+              .filter(token_acces=token, actif=True)
+              .select_related('client')
+              .first())
+    if compte is not None:
+        services.enregistrer_connexion_portail(
+            compte.id, compte.derniere_connexion)
+    return compte
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([RelevePortailThrottle])
+def portail_mon_releve(request, token):
+    """XFAC26 — Relevé de compte self-service : postes ouverts, solde
+    courant, mini balance âgée (0-30/31-60/61-90/90+).
+
+    GET /api/django/public/portail/<token>/mon-releve/
+
+    Résout le compte par token (404 si invalide/inconnu/révoqué, sans fuite
+    d'existence), puis lit le relevé via ``apps.ventes.selectors`` — jamais un
+    import de ``apps.ventes.models``. Le client ne voit jamais le compte d'un
+    autre (le relevé est celui de ``compte.client``, borné à la société du
+    compte)."""
+    compte = _resoudre_compte_par_token(token)
+    if compte is None:
+        return _releve_not_found()
+
+    client = compte.client
+    if client is None or client.company_id != compte.company_id:
+        return _releve_not_found()
+
+    from apps.ventes import selectors as ventes_selectors
+
+    data = ventes_selectors.releve_client_portail(client)
+    return _releve_noindex(Response(data))

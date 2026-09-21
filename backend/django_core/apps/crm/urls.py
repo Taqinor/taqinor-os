@@ -5,7 +5,8 @@ from .views import (
     ConcurrentPerteViewSet, LeadViewSet,
     assignable_users, equipes_statistiques, rapport_attribution,
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
-    MessageTemplateViewSet, ObjectifCommercialViewSet, PlanActiviteViewSet,
+    MessageTemplateViewSet, ObjectifCommercialViewSet, PartenaireViewSet,
+    PlanActiviteViewSet,
     PointContactViewSet, RelanceEtapeViewSet, SavedViewViewSet,
     SiteProfileViewSet, VisiteExterneViewSet,
     EquipeCommercialeViewSet, WebsiteLeadPayloadViewSet,
@@ -56,12 +57,16 @@ router.register(r'relance-etapes', RelanceEtapeViewSet, basename='relance-etape'
 router.register(r'equipes', EquipeCommercialeViewSet)  # ZSAL3 (admin CRUD)
 router.register(r'website-lead-payloads', WebsiteLeadPayloadViewSet)  # QX16
 router.register(r'vues-enregistrees', SavedViewViewSet)  # LB48
-# SOLMVP10 — les routes /api/django/crm/partenaires|soumissions-lead-
-# partenaire|commissions-partenaire (ODX13, ViewSets adossés à compta) ont
-# été retirées : compta sort du produit. ``crm.Partenaire``/
-# ``SoumissionLeadPartenaire``/``CommissionPartenaire`` restent en base
-# (jamais supprimés) mais ne sont plus servis QUE par l'ancien préfixe
-# ``/api/django/compta/…`` tant que compta n'est pas coquillé (SOLMVP30).
+# SOLMVP10 avait retiré /api/django/crm/partenaires/ (shim ODX13 adossé à
+# compta) au profit de l'ancien préfixe /api/django/compta/partenaires/ —
+# mais SOLMVP30b a depuis coquillé compta (AUCUNE url, contrat de coquille
+# core.parked) : cette route native reprend donc sa place ici, seule maison
+# qu'elle ait jamais eue. ``crm.Partenaire`` n'a jamais quitté cette app ;
+# aucune donnée perdue.
+router.register(r'partenaires', PartenaireViewSet)
+# ``SoumissionLeadPartenaire``/``CommissionPartenaire`` restent en base mais
+# n'ont PAS de route ici — hors périmètre du correctif CI courant (compta
+# était leur seule maison ; aucun test actif ne les requiert).
 # WIR81 — ``crm.TerritoireCommercial`` (FG236, legacy) N'EST pas monté ici
 # non plus, pour la même raison ; reste conservé pour la FK à venir NTDST11.
 # NTCRM4 — Catégories de forecast (commit/best-case/pipeline/omis).

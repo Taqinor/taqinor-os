@@ -191,7 +191,7 @@ jobs:
           # démonstration `FRDISI`, construite DEPUIS les goldens AOF183).
           # La matrice complète ci-dessous inclut `mobile-safari`, donc la
           # même dépendance qu'en CI : sans ce seed, les specs AO expirent.
-          python manage.py seed_ao_demo --company taqinor-demo --confirmer
+          # SOLMVP (21/09/2026) — plus de seed_ao_demo : app AO en coquille.
           # NTDMO37/38 — fixture de `demo-first-login.spec.js`/
           # `demo-reset-isolation.spec.js` (auto-découvertes par le
           # `--grep-invert @visual` ci-dessous, comme tout spec). `Faker` est

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4630, operations: 7396, components: 2103}
+counts: {paths: 4637, operations: 7411, components: 2110}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -970,6 +970,13 @@ operations:
 - get /api/django/crm/parrainages/{id}/ -> django_crm_parrainages_retrieve
 - patch /api/django/crm/parrainages/{id}/ -> django_crm_parrainages_partial_update
 - put /api/django/crm/parrainages/{id}/ -> django_crm_parrainages_update
+- get /api/django/crm/partenaires/ -> django_crm_partenaires_list
+- post /api/django/crm/partenaires/ -> django_crm_partenaires_create
+- delete /api/django/crm/partenaires/{id}/ -> django_crm_partenaires_destroy
+- get /api/django/crm/partenaires/{id}/ -> django_crm_partenaires_retrieve
+- patch /api/django/crm/partenaires/{id}/ -> django_crm_partenaires_partial_update
+- put /api/django/crm/partenaires/{id}/ -> django_crm_partenaires_update
+- post /api/django/crm/partenaires/{id}/provisionner-acces/ -> django_crm_partenaires_provisionner_acces_create
 - get /api/django/crm/plans-activite/ -> django_crm_plans_activite_list
 - post /api/django/crm/plans-activite/ -> django_crm_plans_activite_create
 - delete /api/django/crm/plans-activite/{id}/ -> django_crm_plans_activite_destroy
@@ -2451,6 +2458,7 @@ operations:
 - post /api/django/public/pay/{token}/webhook/ -> django_public_pay_webhook_create
 - post /api/django/public/portail/invitations/accepter/ -> django_public_portail_invitations_accepter_create
 - get /api/django/public/portail/theme/ -> django_public_portail_theme_retrieve
+- get /api/django/public/portail/{token}/mon-releve/ -> django_public_portail_mon_releve_retrieve
 - post /api/django/public/proposal/{token}/accept/ -> django_public_proposal_accept_create
 - post /api/django/public/proposal/{token}/activer-option/ -> django_public_proposal_activer_option_create
 - post /api/django/public/proposal/{token}/contact/ -> django_public_proposal_contact_create
@@ -4705,6 +4713,13 @@ operations:
 - get /api/v1/crm/parrainages/{id}/ -> v1_crm_parrainages_retrieve
 - patch /api/v1/crm/parrainages/{id}/ -> v1_crm_parrainages_partial_update
 - put /api/v1/crm/parrainages/{id}/ -> v1_crm_parrainages_update
+- get /api/v1/crm/partenaires/ -> v1_crm_partenaires_list
+- post /api/v1/crm/partenaires/ -> v1_crm_partenaires_create
+- delete /api/v1/crm/partenaires/{id}/ -> v1_crm_partenaires_destroy
+- get /api/v1/crm/partenaires/{id}/ -> v1_crm_partenaires_retrieve
+- patch /api/v1/crm/partenaires/{id}/ -> v1_crm_partenaires_partial_update
+- put /api/v1/crm/partenaires/{id}/ -> v1_crm_partenaires_update
+- post /api/v1/crm/partenaires/{id}/provisionner-acces/ -> v1_crm_partenaires_provisionner_acces_create
 - get /api/v1/crm/plans-activite/ -> v1_crm_plans_activite_list
 - post /api/v1/crm/plans-activite/ -> v1_crm_plans_activite_create
 - delete /api/v1/crm/plans-activite/{id}/ -> v1_crm_plans_activite_destroy
@@ -8203,6 +8218,7 @@ components:
 - NetworkPolicyRequest
 - NiveauApprobationEnum
 - NiveauB3eEnum
+- NiveauCertificationEnum
 - NomenclatureCodeBarres
 - NomenclatureCodeBarresRequest
 - NoteDebit
@@ -8480,6 +8496,7 @@ components:
 - PaginatedParrainageList
 - PaginatedPartageDashboardList
 - PaginatedPartageGedList
+- PaginatedPartenaireList
 - PaginatedPaymentTransactionList
 - PaginatedPickListLigneList
 - PaginatedPickListList
@@ -8631,6 +8648,8 @@ components:
 - PartageDashboardRequest
 - PartageGed
 - PartageGedRequest
+- Partenaire
+- PartenaireRequest
 - PatchedAccessReviewCampaignRequest
 - PatchedAccordRFAFournisseurRequest
 - PatchedAclGedRequest
@@ -8833,6 +8852,7 @@ components:
 - PatchedParrainageRequest
 - PatchedPartageDashboardRequest
 - PatchedPartageGedRequest
+- PatchedPartenaireRequest
 - PatchedPaymentTransactionRequest
 - PatchedPickListLigneRequest
 - PatchedPickListRequest
@@ -9312,6 +9332,7 @@ components:
 - StatutF9bEnum
 - StatutFd9Enum
 - StatutLegacyEnum
+- StatutOnboardingEnum
 - StatutTeledeclarationEnum
 - StatutValidationEnum
 - StockCasiersAReapprovisionner
@@ -9448,6 +9469,7 @@ components:
 - TypeMaterielEnum
 - TypeMouvementEnum
 - TypeNomenclatureEnum
+- TypePartenaireEnum
 - TypeProprietaireEnum
 - TypeQuaiEnum
 - TypeRegleEnum
