@@ -9,11 +9,17 @@
 // l'initialisation d'un plan (`initialiser_plan_relance`), donc un plan DÉJÀ
 // lancé garde ses touches, ses libellés et ses dates — l'écran le rappelle en
 // toutes lettres plutôt que de laisser la commerciale le deviner.
+//
+// CAD113 — un refus serveur ne part plus en toast générique : le sérialiseur
+// renvoie ses erreurs PAR CHAMP (`validate_delai_minutes`,
+// `validate_libelle`…), donc `detail` était `undefined` et le message EXACT
+// était jeté. Le message s'affiche SOUS le champ fautif, avec un bandeau qui
+// le NOMME et y renvoie (règle fondateur du 08/09/2026).
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Info } from 'lucide-react'
+import { Plus, Trash2, Info, AlertTriangle } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import {
-  Input, Switch, Spinner, Label, Button, IconButton,
+  Input, Switch, Spinner, Label, Button, IconButton, FormErrorSummary,
   Tabs, TabsList, TabsTrigger, TabsContent,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
@@ -46,6 +52,36 @@ const AVERTISSEMENT_NON_RETROACTIF = (
   + 'garde ses touches, ses libellés et ses dates.'
 )
 
+// CAD113 — une cadence dont TOUS les barreaux sont désactivés devient muette
+// sans un mot : plus aucune relance n'en naîtra. L'écran le dit.
+const AVERTISSEMENT_CADENCE_MUETTE = (
+  'Tous les barreaux de cette cadence sont désactivés : elle ne programmera '
+  + 'plus aucune relance.'
+)
+
+// CAD113 — libellé FR de chaque champ, pour que le bandeau NOMME le champ
+// fautif au lieu de citer sa clé technique. `id` = celui du champ à l'écran,
+// pour que le clic du bandeau y renvoie.
+const LIBELLES_CHAMPS = {
+  libelle: ['Libellé', 'lib'],
+  delai_jours: ['Délai (j)', 'jours'],
+  delai_minutes: ['Délai (min)', 'min'],
+  heure_cible: ['Heure cible', 'heure'],
+  canal: ['Canal', 'canal'],
+  template_cle: ['Gabarit de message', 'gab'],
+  dimanche_ok: ['Autorisée le dimanche', 'dim'],
+  actif: ['Active', 'actif'],
+  ordre: ['Rang', 'ordre'],
+}
+
+/** CAD113 — le message du serveur, SOUS le champ. */
+function ErreurChamp({ id, message }) {
+  if (!message) return null
+  return (
+    <p id={id} role="alert" className="text-xs text-destructive">{message}</p>
+  )
+}
+
 function CadenceTable({ cadence, gabarits }) {
   const [rows, setRows] = useState(null)
   // CAD53 — suppression d'un barreau : confirmation explicite, jamais un
@@ -53,6 +89,8 @@ function CadenceTable({ cadence, gabarits }) {
   const [aSupprimer, setASupprimer] = useState(null)
   const [suppression, setSuppression] = useState(false)
   const [ajout, setAjout] = useState(false)
+  // CAD113 — erreurs serveur PAR LIGNE puis PAR CHAMP : { [id]: { champ: msg } }
+  const [erreurs, setErreurs] = useState({})
 
   useEffect(() => {
     let cancelled = false
@@ -103,15 +141,47 @@ function CadenceTable({ cadence, gabarits }) {
     const prev = rows
     // Optimiste : reflète tout de suite, revient en arrière si le serveur refuse.
     setRows(rs => rs.map(r => (r.id === row.id ? { ...r, ...data } : r)))
+    setErreurs(e => ({ ...e, [row.id]: {} }))
     try {
       await parametresApi.updateCadenceRelanceEtape(row.id, data)
     } catch (e) {
       setRows(prev)
-      toast.error(e?.response?.data?.detail ?? 'Modification impossible.')
+      // CAD113 — le serveur renvoie ses refus PAR CHAMP
+      // (`validate_delai_minutes`, `validate_libelle`…) : `detail` est alors
+      // `undefined` et le toast générique jetait le message EXACT. Une 400 de
+      // VALIDATION s'affiche désormais SOUS le champ fautif, avec un bandeau
+      // qui le NOMME (règle fondateur du 08/09/2026, patron CKP4 de
+      // `PlanifierVisiteModal`). Toute autre erreur (réseau, 500) garde une
+      // phrase claire — jamais un « Modification impossible » muet.
+      const corps = e?.response?.data
+      if (e?.response?.status === 400 && corps && typeof corps === 'object'
+          && !Array.isArray(corps)) {
+        const parChamp = {}
+        for (const [champ, messages] of Object.entries(corps)) {
+          parChamp[champ] = Array.isArray(messages)
+            ? String(messages[0]) : String(messages)
+        }
+        setErreurs(er => ({ ...er, [row.id]: parChamp }))
+      } else {
+        toast.error(corps?.detail
+          ?? 'La modification n’a pas pu être enregistrée — réessayez.')
+      }
     }
   }
 
   if (rows === null) return <Spinner />
+  // CAD113 — helpers de rendu des erreurs serveur.
+  const erreurDe = (row, champ) => erreurs[row.id]?.[champ] ?? ''
+  const bandeau = (row) => Object.entries(erreurs[row.id] ?? {}).map(
+    ([champ, message]) => {
+      const [libelle, suffixe] = LIBELLES_CHAMPS[champ] ?? [champ, null]
+      return {
+        field: suffixe ? `cre-${suffixe}-${row.id}` : undefined,
+        message: `${libelle} : ${message}`,
+      }
+    })
+  // CAD113 — la cadence est-elle devenue MUETTE (tous ses barreaux inactifs) ?
+  const muette = rows.length > 0 && rows.every(r => !r.actif)
   const entete = (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="flex items-start gap-1.5 text-xs text-muted-foreground"
@@ -135,37 +205,60 @@ function CadenceTable({ cadence, gabarits }) {
   return (
     <div className="space-y-2" data-testid={`cadence-table-${cadence}`}>
       {entete}
+      {muette && (
+        <p role="alert"
+           className="flex items-start gap-1.5 rounded-md border border-warning/40 px-3 py-2 text-xs text-foreground">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          {AVERTISSEMENT_CADENCE_MUETTE}
+        </p>
+      )}
       {rows.map(row => (
         <div key={row.id}
              className="flex flex-wrap items-end gap-2 border rounded-md px-3 py-2">
           <div className="w-8 shrink-0 pb-2 text-sm text-muted-foreground">
             #{row.ordre}
           </div>
+          {/* CAD113 — le bandeau NOMME le champ fautif et y renvoie ; le
+              message exact du serveur est répété sous le champ. */}
+          {bandeau(row).length > 0 && (
+            <div className="w-full">
+              <FormErrorSummary errors={bandeau(row)} />
+            </div>
+          )}
           <div className="flex flex-col gap-1">
             <Label className="text-xs" htmlFor={`cre-lib-${row.id}`}>Libellé</Label>
             <Input id={`cre-lib-${row.id}`} className="w-40" defaultValue={row.libelle}
+                   aria-invalid={!!erreurDe(row, 'libelle') || undefined}
+                   aria-describedby={erreurDe(row, 'libelle') ? `cre-lib-${row.id}-err` : undefined}
                    onBlur={e => {
                      const v = e.target.value.trim()
                      if (v && v !== row.libelle) patch(row, { libelle: v })
                    }} />
+            <ErreurChamp id={`cre-lib-${row.id}-err`} message={erreurDe(row, 'libelle')} />
           </div>
           <div className="flex flex-col gap-1">
             <Label className="text-xs" htmlFor={`cre-jours-${row.id}`}>Délai (j)</Label>
             <Input id={`cre-jours-${row.id}`} className="w-16" type="number" min="0" step="1"
                    defaultValue={row.delai_jours}
+                   aria-invalid={!!erreurDe(row, 'delai_jours') || undefined}
+                   aria-describedby={erreurDe(row, 'delai_jours') ? `cre-jours-${row.id}-err` : undefined}
                    onBlur={e => {
                      const v = Math.max(0, Math.trunc(Number(e.target.value) || 0))
                      if (v !== row.delai_jours) patch(row, { delai_jours: v })
                    }} />
+            <ErreurChamp id={`cre-jours-${row.id}-err`} message={erreurDe(row, 'delai_jours')} />
           </div>
           <div className="flex flex-col gap-1">
             <Label className="text-xs" htmlFor={`cre-min-${row.id}`}>Délai (min)</Label>
             <Input id={`cre-min-${row.id}`} className="w-16" type="number" min="0" max="1439" step="1"
                    defaultValue={row.delai_minutes}
+                   aria-invalid={!!erreurDe(row, 'delai_minutes') || undefined}
+                   aria-describedby={erreurDe(row, 'delai_minutes') ? `cre-min-${row.id}-err` : undefined}
                    onBlur={e => {
                      const v = Math.max(0, Math.trunc(Number(e.target.value) || 0))
                      if (v !== row.delai_minutes) patch(row, { delai_minutes: v })
                    }} />
+            <ErreurChamp id={`cre-min-${row.id}-err`} message={erreurDe(row, 'delai_minutes')} />
           </div>
           <div className="flex flex-col gap-1">
             <Label className="text-xs" htmlFor={`cre-heure-${row.id}`}>Heure cible</Label>
