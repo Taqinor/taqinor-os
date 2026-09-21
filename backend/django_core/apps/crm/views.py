@@ -1021,6 +1021,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                           # rôle, comme `sla_breach`.
                                           'kpi_premier_contact',
                                           'kpi_cadences',
+                                          # CAD87 — lecture seule, même
+                                          # ouverture que les deux KPI
+                                          # ci-dessus.
+                                          'mesure_cadence',
                                           'client_match', 'points_contact',
                                           'scan_carte',
                                           'salle_vente_analytics_view']:
@@ -2021,6 +2025,37 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             jours = 30
         from .selectors import kpi_cadences as _kpi
         return Response(_kpi(request.user.company, jours=jours))
+
+    # ── CAD-I ── CAD87 — les trois mesures de la cadence ─────────────────────
+    # PACT7 — même raison que `kpi_cadences` : un agrégat déclare sa forme,
+    # sinon le schéma publierait le `LeadSerializer` du ViewSet à sa place.
+    @extend_schema(responses=inline_serializer('CrmMesureCadence', {
+        'jours': serializers.IntegerField(),
+        'source_issue': serializers.CharField(),
+        'taux_joint_par_creneau': serializers.ListField(
+            child=serializers.DictField()),
+        'signatures_par_touches_consommees': serializers.ListField(
+            child=serializers.DictField()),
+        'part_contact_et_langue': serializers.DictField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='mesure-cadence',
+            permission_classes=[IsAnyRole])
+    def mesure_cadence(self, request):
+        """Forme `mesure_cadence` (CAD87). ``?jours=`` (90, borné [1, 365]).
+
+        LECTURE SEULE, bornée à `request.user.company`. Trois mesures et rien
+        d'autre : taux de joint par (touche × heure × jour × canal),
+        signatures par nombre de touches consommées, part de « WhatsApp
+        uniquement » et de darija. Aucun seuil, aucune couleur — le jugement
+        reste humain, et `null` dès qu'un dénominateur est 0."""
+        from .mesure_cadence import JOURS_MESURE_DEFAUT
+        from .mesure_cadence import mesure_cadence as _mesure
+        try:
+            jours = max(1, min(365, int(request.query_params.get(
+                'jours', JOURS_MESURE_DEFAUT))))
+        except (TypeError, ValueError):
+            jours = JOURS_MESURE_DEFAUT
+        return Response(_mesure(request.user.company, jours=jours))
 
     # ── MRY19 — KPI « rappelé en moins de N minutes OUVRÉES » ────────────────
     # PACT7 — même raison que `kpi_cadences` ci-dessous : un agrégat déclare

@@ -1,0 +1,65 @@
+{
+  "endpoint": "GET /api/django/crm/leads/mesure-cadence/?jours=90",
+  "pourquoi": "CAD87 (audit L3 du 21/09/2026, section CAD-I) — CKP3 dit OÙ les dossiers décrochent, mais rien ne répondait à « à quelle HEURE et quel JOUR joint-on le plus ? », « combien de touches consommées avant une signature ? » et « quelle part des leads demande WhatsApp uniquement ou la darija ? ». Ces trois mesures maison sont le prérequis pour trancher le samedi, la soirée de Ramadan et la densité du protocole sur des faits plutôt que sur des repères occidentaux non transposables (CAD89 consigne pourquoi ces repères ne valent pas). Publier la forme AVANT l'écran (CAD100) évite qu'un tableau lise `taux_joint` là où le serveur sert `taux_joint_pct`. Trois règles portées par ce contrat. (1) LECTURE SEULE, bornée à `request.user.company` — jamais un identifiant de société reçu du client. (2) `null` dès qu'un DÉNOMINATEUR est 0, jamais un 0 % qui se lirait comme un échec là où il n'y a rien à mesurer. (3) `source_issue` dit comment l'issue de chaque touche a été retrouvée : `colonne` quand `RelanceEtape.outcome` existe (CAD118), `appariement_2min` tant qu'il faut la rapprocher de la ligne de chatter écrite par la même requête — un chiffre dont on ignore la fabrication n'est pas un chiffre. Aucun seuil et aucune couleur côté serveur : des valeurs, le jugement reste humain.",
+  "exemple": {
+    "jours": 90,
+    "source_issue": "colonne",
+    "taux_joint_par_creneau": [
+      {
+        "ordre": 1,
+        "canal": "whatsapp",
+        "heure": 8,
+        "jour_semaine": 0,
+        "closes": 24,
+        "joints": 9,
+        "taux_joint_pct": 37.5
+      },
+      {
+        "ordre": 2,
+        "canal": "appel",
+        "heure": 18,
+        "jour_semaine": 6,
+        "closes": 11,
+        "joints": 7,
+        "taux_joint_pct": 63.6
+      }
+    ],
+    "signatures_par_touches_consommees": [
+      {
+        "touches": 2,
+        "signatures": 1
+      },
+      {
+        "touches": 5,
+        "signatures": 3
+      }
+    ],
+    "part_contact_et_langue": {
+      "nb_leads": 140,
+      "whatsapp_only": 21,
+      "whatsapp_only_pct": 15.0,
+      "darija": 35,
+      "darija_pct": 25.0
+    }
+  },
+  "exemple_vide": {
+    "jours": 90,
+    "source_issue": "appariement_2min",
+    "taux_joint_par_creneau": [],
+    "signatures_par_touches_consommees": [],
+    "part_contact_et_langue": {
+      "nb_leads": 0,
+      "whatsapp_only": 0,
+      "whatsapp_only_pct": null,
+      "darija": 0,
+      "darija_pct": null
+    }
+  },
+  "notes": {
+    "jours": "profondeur demandée, bornée par la vue à [1, 365] ; défaut 90 — un agrégat croisé (touche × heure × jour × canal) sur 30 jours n'a presque aucune case peuplée.",
+    "source_issue": "`colonne` = lue sur `RelanceEtape.outcome` (CAD118) ; `appariement_2min` = repli, la ligne de chatter écrite par la MÊME requête que la clôture (même lead, même auteur, moins de deux minutes).",
+    "taux_joint_par_creneau": "une ligne par (ordre de touche × canal × heure locale de clôture × jour de semaine, 0 = lundi). Dénominateur = les touches CLOSES PAR UN HUMAIN (fait + sautée) ; une annulation moteur n'a jamais été tentée par personne. Numérateur = issue `joint` ou `interesse`, exactement la définition de `kpi_cadences` — deux KPI qui compteraient « joint » autrement seraient impossibles à confronter.",
+    "signatures_par_touches_consommees": "distribution, pas une moyenne : `touches` = nombre de touches closes par un humain AVANT le passage d'étape vers SIGNED (lu dans `LeadActivity`, `field='stage'` — jamais une liste d'étapes littérale, STAGES.py fait foi).",
+    "part_contact_et_langue": "leads créés sur la période, miroir Odoo et archivés écartés : `contact_preference = whatsapp_only` (QW3, la question posée au client) et `langue_preferee = darija`."
+  }
+}

@@ -1588,14 +1588,25 @@ def kpi_cadences(company, *, jours=30):
     * les tentatives comptées sont HUMAINES (MRY20) — une moyenne gonflée par
       les lignes système ne dirait rien de l'effort réel.
     """
-    from django.db.models import Count, Q
+    from django.db.models import Count, Min, Q
     from django.utils import timezone
 
     from . import horaires, stages
     from .models import Lead, LeadActivity, RelanceEtape
 
     depuis = timezone.now() - datetime.timedelta(days=int(jours))
-    leads = Lead.objects.filter(company=company, date_creation__gte=depuis)
+    # CAD87 — le miroir Odoo et les archivés sont ÉCARTÉS, comme les deux KPI
+    # voisins le font déjà (`kpi_premier_contact`, `kpi_adherence`). Sans ce
+    # filtre, un import de rattrapage faisait plonger « joints sous 5 jours »
+    # trente jours durant sans qu'aucun comportement n'ait changé : ces leads
+    # ne sont pas une file que la commerciale doit rappeler (`services.py`
+    # les exclut d'ailleurs de toute cadence automatique). L'exclusion porte
+    # sur la SOURCE Odoo seule, et non sur « source = créé dans TAQINOR » :
+    # les leads du site et de Meta, eux, SONT dans la file du jour.
+    leads = (Lead.objects
+             .filter(company=company, is_archived=False,
+                     date_creation__gte=depuis)
+             .exclude(source=Lead.Source.ODOO_IMPORT_TEST))
     nb_leads = leads.count()
 
     # « Joint » = une issue d'appel joint/intéressé dans les 5 jours OUVRÉS
@@ -1605,16 +1616,23 @@ def kpi_cadences(company, *, jours=30):
     # minutes de calendrier) revenait à accorder ~10 jours ouvrés de 11 h 30 —
     # deux fois la promesse. Le seuil est donc lui-même compté en minutes
     # ouvrées, jusqu'à la fermeture du 5ᵉ jour ouvré.
+    # CAD87 — une seule requête GROUPÉE pour les premières issues, là où le
+    # code interrogeait la base UNE FOIS PAR LEAD : sur 900 leads le panneau
+    # du Cockpit tirait 900 requêtes. La fenêtre ouvrée, elle, reste calculée
+    # en Python (elle dépend des horaires de la société).
+    premieres_issues = dict(
+        LeadActivity.objects
+        .filter(company=company, lead_id__in=leads.values('id'),
+                outcome__in=('joint', 'interesse'), user__isnull=False)
+        .values('lead_id').annotate(premiere=Min('created_at'))
+        .values_list('lead_id', 'premiere'))
     joints = 0
     for lead in leads.only('id', 'date_creation'):
-        premiere = (LeadActivity.objects
-                    .filter(lead=lead, outcome__in=('joint', 'interesse'),
-                            user__isnull=False)
-                    .order_by('created_at').first())
+        premiere = premieres_issues.get(lead.id)
         if premiere is None:
             continue
         minutes = horaires.minutes_ouvrees_entre(
-            lead.date_creation, premiere.created_at, company)
+            lead.date_creation, premiere, company)
         if minutes <= _minutes_ouvrees_de_5_jours(lead.date_creation, company):
             joints += 1
 
@@ -4859,3 +4877,18 @@ def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
                      if lead.date_creation else ''),
         })
     return lignes
+
+
+# ── CAD-I ── CAD87 ──────────────────────────────────────────────────────────
+# Les trois mesures qui manquaient à côté de CKP3 (« à quelle heure et quel
+# jour joint-on ? », « combien de touches avant une signature ? », « quelle
+# part de WhatsApp-seulement et de darija ? ») vivent dans un module à part,
+# `apps/crm/mesure_cadence.py` : ce fichier passe déjà 4 800 lignes, et un
+# agrégat croisé n'a rien à faire au milieu des lectures de la fiche lead.
+# Ce renvoi existe pour que qui cherche un KPI de cadence le trouve ICI.
+def mesure_cadence(company, *, jours=None):
+    """CAD87 — voir ``apps.crm.mesure_cadence``. Lecture seule."""
+    from .mesure_cadence import JOURS_MESURE_DEFAUT
+    from .mesure_cadence import mesure_cadence as _mesure
+    return _mesure(company,
+                   jours=JOURS_MESURE_DEFAUT if jours is None else jours)
