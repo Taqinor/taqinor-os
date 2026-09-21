@@ -100,6 +100,10 @@ CLES_SIMULATION = (
     ('attenuation_horizon', "Atténuation appliquée au profil d'horizon", '', 'PVGIS — printhorizon, profil DEM'),  # CALX145
     ('salissure_mensuelle_pct', 'Salissure, mois par mois (12 valeurs, ou une seule pour les douze)', '%', 'PVsyst — Soiling loss (facteurs MENSUELS, aucune valeur universelle par défaut)'),  # CALX161
     ('indisponibilite_fenetres', "Fenêtres d'arrêt de l'installation (début, fin, motif)", '', 'PVsyst — Unavailability loss (des périodes d\'arrêt explicites, jamais un forfait annuel)'),  # CALX176
+    ('bifacial_hauteur_pose_m', 'Hauteur de pose de la face arrière au-dessus du sol (repli quand le document ne la porte pas)', 'm', 'PVsyst — Bifacial systems (facteurs de vue : hauteur de pose)'),  # CALX177
+    ('bifacial_taux_occupation', "Taux d'occupation du sol (GCR) retenu pour la face arrière (repli quand le document ne le porte pas)", '', 'PVsyst — Bifacial systems (facteurs de vue : taux d\'occupation)'),  # CALX177
+    ('bifacial_pas_rangee_m', 'Pas entre rangées retenu pour la face arrière (repli quand le document ne le porte pas)', 'm', 'PVsyst — Bifacial systems (facteurs de vue : pas entre rangées)'),  # CALX177
+    ('bifacial_mismatch_arriere_pct', 'Mismatch de face arrière', '%', 'PVsyst — Bifacial systems (les 10 % du logiciel sont CITÉS en aide à la saisie, jamais préremplis)'),  # CALX177
 )
 
 #: Les clés ADMISES de la section ``electrique_societe``, même forme et même
