@@ -24,10 +24,11 @@ function arrayBlock(src, name) {
 }
 
 // L'ORDRE et l'ENSEMBLE des clés d'onglets — figés : VX35 ne renomme ni ne
-// supprime aucun onglet.
+// supprime aucun onglet (hors retrait explicite d'un onglet dont le module
+// est sorti du MVP — SOLMVP41 a retiré `point_de_vente`, POS parqué).
 const EXPECTED_TAB_KEYS = [
   'onboarding', 'societe', 'leads', 'clients', 'devis', 'documents',
-  'tarification', 'stock', 'point_de_vente', 'donnees', 'statuts', 'monitoring', 'checklists',
+  'tarification', 'stock', 'donnees', 'statuts', 'monitoring', 'checklists',
   'etapes_chantier', 'kits', 'shotlist', 'automatisations', 'notifications', 'securite',
   'equipe', 'messages', 'email', 'api', 'avance',
 ]
