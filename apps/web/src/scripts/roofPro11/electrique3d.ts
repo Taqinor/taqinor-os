@@ -452,6 +452,36 @@ export function creerMarqueur(equipement: EquipementElectrique, origine: LngLat)
   return maillage;
 }
 
+/** Le tracé 3D d'UN cheminement. `null` quand le plan ne porte pas le tracé
+ *  (tronçon SAISI au clavier) : il n'y a rien à dessiner, et rien n'est deviné. */
+export function creerTraceCheminement(
+  cheminement: CheminementElectrique,
+  origine: LngLat,
+): THREE.Object3D | null {
+  const points = cheminement.points ?? [];
+  if (points.length < 2) return null;
+  const sommets: number[] = [];
+  for (const p of points) {
+    const [est, nord] = versScene(p.lng, p.lat, origine);
+    sommets.push(est, nord, nombreFini(p.altitudeM) ? p.altitudeM : ALTITUDE_DESSIN_PAR_DEFAUT_M);
+  }
+  const geometrie = new THREE.BufferGeometry();
+  geometrie.setAttribute('position', new THREE.Float32BufferAttribute(sommets, 3));
+  const ligne = new THREE.Line(
+    geometrie,
+    new THREE.LineBasicMaterial({ color: TEINTE_COTE[cheminement.cote], transparent: true, opacity: 1 }),
+  );
+  ligne.userData = {
+    calque: ID_CALQUE_ELECTRIQUE,
+    id: cheminement.id,
+    cote: cheminement.cote,
+    de: cheminement.de,
+    vers: cheminement.vers,
+    origine: cheminement.origine,
+  };
+  return ligne;
+}
+
 /** Vide un groupe et rend la mémoire GPU de ce qu'il portait. */
 function viderGroupe(groupe: THREE.Group): void {
   for (const enfant of [...groupe.children]) {
@@ -493,6 +523,11 @@ export interface PoseReussie {
   equipement: EquipementElectrique;
 }
 
+export interface CheminementReussi {
+  ok: true;
+  cheminement: CheminementElectrique;
+}
+
 export interface CoucheElectrique {
   /** Le SEUL groupe 3D de la couche (à ajouter à la scène de l'atelier). */
   readonly groupe: THREE.Group;
@@ -508,6 +543,14 @@ export interface CoucheElectrique {
   selection: () => string | null;
   deplacer: (id: string, lngLat: LngLat) => PoseReussie | RefusElectrique;
   retirer: (id?: string) => boolean;
+  // — CALX223 : tracer un cheminement —
+  demarrerCheminement: (depart: { cote: CoteCheminement; de: string }) => true | RefusElectrique;
+  ajouterPointCheminement: (lngLat: LngLat, altitudeM?: number | null) => number;
+  pointsEnCours: () => PointCheminement[];
+  terminerCheminement: (vers: string) => CheminementReussi | RefusElectrique;
+  abandonnerCheminement: () => boolean;
+  saisirCheminement: (saisie: { cote: CoteCheminement; de: string; vers: string; longueurM: number }) => CheminementReussi | RefusElectrique;
+  dernierRefus: () => RefusElectrique | null;
   // — l'annulation —
   annuler: () => boolean;
   retablir: () => boolean;
@@ -588,8 +631,22 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     const lu = lireCoucheElectrique({ electrical: document() });
     ignores = lu.avertissements;
     const o = origine();
+    for (const c of lu.cheminements) {
+      const trace = creerTraceCheminement(c, o);
+      if (trace) groupe.add(trace);
+    }
     for (const e of lu.equipements) groupe.add(creerMarqueur(e, o));
   }
+  /** Les identifiants qu'une extrémité de cheminement peut désigner : les
+   *  organes posés ET les pans de l'atelier. */
+  const idsResolvables = (): Set<string> => {
+    const out = new Set<string>();
+    for (const e of document()?.equipements ?? []) if (e?.id) out.add(e.id);
+    for (const a of ctx.areas ?? []) if (a?.id) out.add(a.id);
+    if (ctx.activeAreaId) out.add(ctx.activeAreaId);
+    return out;
+  };
+
   const refuser = (champ: string, message: string): RefusElectrique => {
     const r: RefusElectrique = { ok: false, champ, message };
     refus = r;
@@ -677,6 +734,137 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     return true;
   }
 
+  // ── CALX223 — tracer un cheminement ─────────────────────────────────────
+
+  function demarrerCheminement(depart: { cote: CoteCheminement; de: string }): true | RefusElectrique {
+    if (!estCote(depart?.cote)) {
+      return refuser(
+        'electrical.cheminements.cote',
+        `Côté électrique « ${texteOuVide(depart?.cote) || '(vide)'} » inconnu : les seuls côtés `
+        + `admis sont ${COTES_CHEMINEMENT.join(', ')}.`,
+      );
+    }
+    const de = texteOuVide(depart?.de).trim();
+    if (!idsResolvables().has(de)) {
+      return refuser(
+        'electrical.cheminements.de',
+        `Le cheminement part de « ${de || '(vide)'} », qui n'existe ni parmi les équipements `
+        + 'ni parmi les pans de ce plan : partez d’un organe posé ou d’un pan tracé — un '
+        + 'tronçon qui ne relie rien fausse le métré sans jamais se voir.',
+      );
+    }
+    enCours = { cote: depart.cote, de, points: [] };
+    refus = null;
+    return true;
+  }
+
+  function ajouterPointCheminement(lngLat: LngLat, altitudeM?: number | null): number {
+    if (!enCours) return 0;
+    if (!Array.isArray(lngLat) || !nombreFini(lngLat[0]) || !nombreFini(lngLat[1])) return enCours.points.length;
+    enCours.points.push({
+      lng: lngLat[0],
+      lat: lngLat[1],
+      ...(nombreFini(altitudeM) ? { altitudeM } : {}),
+    });
+    return enCours.points.length;
+  }
+
+  function terminerCheminement(vers: string): CheminementReussi | RefusElectrique {
+    if (!enCours) {
+      return refuser(
+        'electrical.cheminements.de',
+        'Aucun cheminement n’est en cours de tracé : démarrez-le depuis un organe ou un pan.',
+      );
+    }
+    const arrivee = texteOuVide(vers).trim();
+    if (!idsResolvables().has(arrivee)) {
+      const courant = enCours;
+      return refuser(
+        'electrical.cheminements.vers',
+        `Le cheminement part de « ${courant.de} » vers « ${arrivee || '(vide)'} », qui n'existe `
+        + 'ni parmi les équipements ni parmi les pans de ce plan : reliez-le à un organe posé, '
+        + 'ou abandonnez le tracé — un tronçon qui ne relie rien fausse le métré sans jamais '
+        + 'se voir.',
+      );
+    }
+    if (enCours.points.length < 2) {
+      return refuser(
+        'electrical.cheminements.points',
+        `Le cheminement de « ${enCours.de} » vers « ${arrivee} » n'a ni tracé (deux points `
+        + 'minimum) ni longueur saisie : tracez-le sur le plan, ou saisissez sa longueur en '
+        + 'mètres — elle ne peut pas être devinée.',
+      );
+    }
+    photographier();
+    const doc = documentEcrivable();
+    const liste = doc.cheminements as CheminementElectrique[];
+    const cheminement: CheminementElectrique = {
+      id: prochainId('ch', liste),
+      cote: enCours.cote,
+      de: enCours.de,
+      vers: arrivee,
+      points: enCours.points.map((p) => ({ ...p })),
+      origine: 'plan',
+    };
+    liste.push(cheminement);
+    enCours = null;
+    refus = null;
+    rafraichir();
+    return { ok: true, cheminement };
+  }
+
+  function abandonnerCheminement(): boolean {
+    if (!enCours) return false;
+    enCours = null;
+    return true;
+  }
+
+  function saisirCheminement(saisie: {
+    cote: CoteCheminement;
+    de: string;
+    vers: string;
+    longueurM: number;
+  }): CheminementReussi | RefusElectrique {
+    const demarre = demarrerCheminement({ cote: saisie?.cote, de: saisie?.de });
+    if (demarre !== true) return demarre;
+    const arrivee = texteOuVide(saisie?.vers).trim();
+    if (!idsResolvables().has(arrivee)) {
+      const depart = saisie.de;
+      enCours = null;
+      return refuser(
+        'electrical.cheminements.vers',
+        `Le cheminement part de « ${depart} » vers « ${arrivee || '(vide)'} », qui n'existe ni `
+        + 'parmi les équipements ni parmi les pans de ce plan : reliez-le à un organe posé, ou '
+        + 'retirez-le — un tronçon qui ne relie rien fausse le métré sans jamais se voir.',
+      );
+    }
+    if (!nombreFini(saisie?.longueurM) || saisie.longueurM <= 0) {
+      enCours = null;
+      return refuser(
+        'electrical.cheminements.longueurSaisieM',
+        'Saisissez la longueur du tronçon en mètres (descente verticale, traversée de mur, '
+        + 'passage en gaine) : elle ne peut pas être devinée depuis le plan, qui ne la porte pas.',
+      );
+    }
+    photographier();
+    enCours = null;
+    const doc = documentEcrivable();
+    const liste = doc.cheminements as CheminementElectrique[];
+    const cheminement: CheminementElectrique = {
+      id: prochainId('ch', liste),
+      cote: saisie.cote,
+      de: texteOuVide(saisie.de).trim(),
+      vers: arrivee,
+      points: [],
+      longueurSaisieM: saisie.longueurM,
+      origine: 'saisie',
+    };
+    liste.push(cheminement);
+    refus = null;
+    rafraichir();
+    return { ok: true, cheminement };
+  }
+
   // ── l'annulation ────────────────────────────────────────────────────────
 
   function annuler(): boolean {
@@ -729,6 +917,12 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     selection: () => selectionne,
     deplacer,
     retirer,
+    demarrerCheminement,
+    ajouterPointCheminement,
+    pointsEnCours: () => (enCours ? enCours.points.map((p) => ({ ...p })) : []),
+    terminerCheminement,
+    abandonnerCheminement,
+    saisirCheminement,
     dernierRefus: () => (refus ? { ...refus } : null),
     annuler,
     retablir,

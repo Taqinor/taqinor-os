@@ -403,6 +403,171 @@ describe('CALX220 — déplacer, retirer, annuler', () => {
   });
 });
 
+/* ============================================================================
+   CALX223 — TRACER UN CHEMINEMENT DE CÂBLE PAR POINTS DE PASSAGE.
+   ----------------------------------------------------------------------------
+   Le tracé est la SOURCE de la longueur que le serveur publiera : un tronçon
+   qui ne relie rien, ou qui n'a ni tracé ni longueur saisie, est REFUSÉ en
+   nommant l'extrémité ou le champ fautif — jamais accepté puis oublié.
+   ========================================================================== */
+
+const ECHANTILLON_CHEMINS = contrat('electrique_cheminements');
+const DOC_CHEMINS = (ECHANTILLON_CHEMINS.exemple as { electrical: DocumentElectrique }).electrical;
+
+describe('CALX223 — le tracé par points de passage', () => {
+  /** Un atelier avec les huit organes de l'échantillon et un pan « z1 ». */
+  function atelier() {
+    const ctx = {
+      electrical: { equipements: (DOC_HUIT.equipements ?? []).map((e) => ({ ...e })) } as DocumentElectrique,
+      sceneOrigin: ORIGINE,
+      areas: [{ id: 'z1' }],
+      activeAreaId: 'z1',
+    };
+    return creerCoucheElectrique(ctx);
+  }
+
+  it('trois points tracés produisent un cheminement à trois points, origine `plan`', () => {
+    const couche = atelier();
+    expect(couche.demarrerCheminement({ cote: 'dc', de: 'z1' })).toBe(true);
+    expect(couche.ajouterPointCheminement([-7.6001, 33.5003], 3.2)).toBe(1);
+    couche.ajouterPointCheminement([-7.6002, 33.5003], 3.2);
+    couche.ajouterPointCheminement([-7.6003, 33.5002], 3.2);
+    expect(couche.pointsEnCours()).toHaveLength(3);
+    const fin = couche.terminerCheminement('eq2');
+    expect(fin.ok).toBe(true);
+    const ecrit = couche.documentElectrique()!.cheminements![0];
+    expect(ecrit.points).toHaveLength(3);
+    expect(ecrit.origine).toBe('plan');
+    expect(ecrit.de).toBe('z1');
+    expect(ecrit.vers).toBe('eq2');
+    expect(ecrit.cote).toBe('dc');
+    // Le tracé est DESSINÉ : une polyligne de trois sommets dans le groupe.
+    const ligne = couche.groupe.children.find((c) => c.userData.id === ecrit.id) as THREE.Line;
+    expect(ligne).toBeTruthy();
+    expect(ligne.geometry.getAttribute('position').count).toBe(3);
+  });
+
+  it('l’entrée écrite a la forme de l’échantillon de contrat CALX202', () => {
+    const couche = atelier();
+    couche.demarrerCheminement({ cote: 'dc', de: 'eq2' });
+    couche.ajouterPointCheminement([-7.6003, 33.5002], 3.2);
+    couche.ajouterPointCheminement([-7.6002, 33.5001], 3.2);
+    couche.terminerCheminement('eq1');
+    const ecrit = couche.documentElectrique()!.cheminements![0] as unknown as Record<string, unknown>;
+    const modele = (DOC_CHEMINS.cheminements ?? []).find((c) => c.id === 'ch2') as unknown as Record<string, unknown>;
+    const formeModele = formeDe(modele);
+    for (const [cle, type] of Object.entries(formeDe(ecrit))) {
+      expect(Object.keys(formeModele)).toContain(cle);
+      expect(type).toBe(formeModele[cle]);
+    }
+    for (const cle of ['id', 'cote', 'de', 'vers', 'origine']) {
+      expect(Object.keys(ecrit)).toContain(cle);
+    }
+    // Chaque point porte les mêmes clés que ceux du contrat.
+    const pointModele = formeDe((modele.points as Record<string, unknown>[])[0]);
+    const pointEcrit = formeDe((ecrit.points as Record<string, unknown>[])[0]);
+    expect(Object.keys(pointEcrit)).toEqual(Object.keys(pointModele));
+  });
+
+  it('une extrémité qui n’atterrit pas sur un organe est REFUSÉE en la nommant', () => {
+    const couche = atelier();
+    couche.demarrerCheminement({ cote: 'dc', de: 'z1' });
+    couche.ajouterPointCheminement([-7.6001, 33.5003]);
+    couche.ajouterPointCheminement([-7.6003, 33.5002]);
+    const refus = couche.terminerCheminement('eq9');
+    expect(refus.ok).toBe(false);
+    expect(couche.dernierRefus()?.champ).toBe('electrical.cheminements.vers');
+    expect(couche.dernierRefus()?.message).toContain('eq9');
+    expect(couche.documentElectrique()!.cheminements ?? []).toHaveLength(0);
+  });
+
+  it('un départ qui ne résout ni un organe ni un pan est refusé avant le premier point', () => {
+    const couche = atelier();
+    const refus = couche.demarrerCheminement({ cote: 'dc', de: 'z7' });
+    expect(refus).not.toBe(true);
+    expect(couche.dernierRefus()?.champ).toBe('electrical.cheminements.de');
+    expect(couche.dernierRefus()?.message).toContain('z7');
+    expect(couche.ajouterPointCheminement([-7.6, 33.5])).toBe(0);
+  });
+
+  it('un tracé d’UN SEUL point est refusé : il n’a aucune longueur mesurable', () => {
+    const couche = atelier();
+    couche.demarrerCheminement({ cote: 'ac', de: 'eq1' });
+    couche.ajouterPointCheminement([-7.6002, 33.5001]);
+    const refus = couche.terminerCheminement('eq4');
+    expect(refus.ok).toBe(false);
+    expect(couche.dernierRefus()?.champ).toBe('electrical.cheminements.points');
+    expect(couche.dernierRefus()?.message).toContain('deux points');
+  });
+
+  it('Échap abandonne le tracé en cours sans rien écrire', () => {
+    const couche = atelier();
+    couche.demarrerCheminement({ cote: 'dc', de: 'z1' });
+    couche.ajouterPointCheminement([-7.6001, 33.5003]);
+    expect(couche.abandonnerCheminement()).toBe(true);
+    expect(couche.pointsEnCours()).toEqual([]);
+    expect(couche.documentElectrique()!.cheminements ?? []).toHaveLength(0);
+    expect(couche.abandonnerCheminement()).toBe(false);
+  });
+
+  it('la pile d’annulation couvre le geste', () => {
+    const couche = atelier();
+    couche.demarrerCheminement({ cote: 'dc', de: 'z1' });
+    couche.ajouterPointCheminement([-7.6001, 33.5003]);
+    couche.ajouterPointCheminement([-7.6003, 33.5002]);
+    couche.terminerCheminement('eq2');
+    expect(couche.documentElectrique()!.cheminements).toHaveLength(1);
+    expect(couche.annuler()).toBe(true);
+    expect(couche.documentElectrique()!.cheminements ?? []).toHaveLength(0);
+    expect(couche.retablir()).toBe(true);
+    expect(couche.documentElectrique()!.cheminements).toHaveLength(1);
+  });
+});
+
+describe('CALX223 — le tronçon que le plan ne porte pas se SAISIT', () => {
+  function atelier() {
+    return creerCoucheElectrique({
+      electrical: { equipements: (DOC_HUIT.equipements ?? []).map((e) => ({ ...e })) } as DocumentElectrique,
+      sceneOrigin: ORIGINE,
+      areas: [{ id: 'z1' }],
+    });
+  }
+
+  it('une descente verticale saisie porte `origine: saisie` et aucun tracé', () => {
+    const couche = atelier();
+    const fait = couche.saisirCheminement({ cote: 'ac', de: 'eq4', vers: 'eq7', longueurM: 12 });
+    expect(fait.ok).toBe(true);
+    const ecrit = couche.documentElectrique()!.cheminements![0];
+    expect(ecrit.origine).toBe('saisie');
+    expect(ecrit.longueurSaisieM).toBe(12);
+    expect(ecrit.points).toEqual([]);
+    // Rien à dessiner : le plan ne porte pas ce tronçon, et rien n'est deviné.
+    expect(couche.groupe.children.find((c) => c.userData.id === ecrit.id)).toBeUndefined();
+  });
+
+  it('sans longueur saisie, le tronçon est refusé en nommant le champ', () => {
+    const couche = atelier();
+    const refus = couche.saisirCheminement({ cote: 'ac', de: 'eq4', vers: 'eq7', longueurM: 0 });
+    expect(refus.ok).toBe(false);
+    expect(couche.dernierRefus()?.champ).toBe('electrical.cheminements.longueurSaisieM');
+    expect(couche.documentElectrique()!.cheminements ?? []).toHaveLength(0);
+  });
+
+  it('l’échantillon de contrat committé se relit sans un seul avertissement', () => {
+    const couche = creerCoucheElectrique({
+      electrical: {
+        equipements: (DOC_HUIT.equipements ?? []).map((e) => ({ ...e })),
+        cheminements: (DOC_CHEMINS.cheminements ?? []).map((c) => ({ ...c })),
+      },
+      sceneOrigin: ORIGINE,
+      areas: [{ id: 'z1' }],
+    });
+    expect(couche.avertissements()).toEqual([]);
+    // Huit marqueurs + les quatre cheminements TRACÉS (`ch4` est saisi : aucun tracé).
+    expect(couche.groupe.children).toHaveLength(12);
+  });
+});
+
 describe('CALX220 — l’attache dans le constructeur', () => {
   const source = readFileSync(
     fileURLToPath(new URL('../roof-tool-pro11.ts', import.meta.url)),
