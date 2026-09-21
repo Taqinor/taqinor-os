@@ -824,7 +824,9 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     nord.value = '';
     nord.textContent = 'Nord vrai';
     grilleAxeEl.appendChild(nord);
-    ctx.areas.forEach((a, i) => {
+    // Fold lot 2 : un contexte hôte sans `areas` (tests W2, boot minimal) ne doit pas faire lever
+    // la synchronisation de la grille — aucune zone, aucune puce (CALX117).
+    (ctx.areas ?? []).forEach((a, i) => {
       if (!Array.isArray(a.vertices) || a.vertices.length < 3) return;
       const opt = document.createElement('option');
       opt.value = a.id;
