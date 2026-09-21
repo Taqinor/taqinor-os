@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: a364531b52d5c7aa7a8779f15cca51e377a8b10b2773e8b56f739c2fc92ce0d6
-Plan fingerprint: 1b2f1ce7a44ae1aa3ba22686509dd9a8a9db188a8b31b403818e33801868814d
+Structure fingerprint: a09519d8ffec5e537659cedd60a878e56e2e2899b11d2370a5320a001d29cf09
+Plan fingerprint: a0642fa1c77c0a3891313293adb84e1f2844aaa139b0d5684c8690c116211901
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (190)**
+**Done (192)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -624,7 +624,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX69` — Donner une saisie aux réglages société de simulation et d'électrique, avec provenance…
 - `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
 - `CALX93` — Déduire noue et arêtier en comparant les pans voisins
+- `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
 - `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
+- `CALX129` — Basculer la vue 3D d'édition en plein écran
 - `CALX141` — Déclarer le contrat de la cascade de pertes séquentielle, sous une clé neuve
 - `CALX142` — Déclarer le contrat de la série horaire persistée
 - `CALX143` — Déclarer le contrat de l'énoncé de source météo
@@ -724,7 +726,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (416)**
+**Open — to build (414)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -955,13 +957,11 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX118` — Montrer la course du soleil du site dans l'atelier
 - `CALX119` — Choisir une date libre pour le soleil de la scène et la retenir
 - `CALX120` — Animer la course de l'ombre sur une journée et sur l'année
-- `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
 - `CALX123` — Tracer et éditer un champ au sol sur la carte de l'atelier
 - `CALX124` — Éditer une ombrière dans l'atelier, poteaux compris
 - `CALX125` — Poser des modules en façade sur un mur du bâtiment
 - `CALX126` — Totaliser le site par bâtiment et par surface de pose dans l'atelier
 - `CALX128` — Rendre les gestes de l'atelier utilisables au clavier et annoncés
-- `CALX129` — Basculer la vue 3D d'édition en plein écran
 - `CALX130` — Prouver le parcours de conception enrichi de bout en bout
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
