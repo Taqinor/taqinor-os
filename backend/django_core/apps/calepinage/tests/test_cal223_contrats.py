@@ -88,6 +88,11 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_du_devis.json':
         "endpoint d'une AUTRE app (apps.ventes, DevisSerializer) — couvert "
         'par apps/ventes/tests/test_calx46_calepinage_du_devis.py',
+    # CALX35
+    'calepinage_dupliquer.json':
+        'la réponse décrit la COPIE enregistrée (identifiant, référence '
+        'dérivée, variantes comptées) : son producteur exige la base — '
+        'couvert par apps/calepinage/tests/test_calx35_dupliquer.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur

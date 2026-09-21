@@ -184,6 +184,12 @@ const calepinageApi = {
     demarquerModele: (id) => api.post(`${pivot(id)}demarquer-modele/`),
     creerDepuisModele: (corps) =>
       api.post('/calepinage/calepinages/creer-depuis-modele/', corps),
+
+    // CALX35 — la porte HTTP du service de copie qui existe depuis CAL14
+    // (`services/variantes.py::dupliquer`), forme de réponse figée par
+    // `contract_samples/calepinage_dupliquer.json`. `{avec_variantes}` est
+    // EXPLICITE : absent, le serveur garde le comportement d'aujourd'hui.
+    dupliquer: (id, corps) => api.post(`${pivot(id)}dupliquer/`, corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

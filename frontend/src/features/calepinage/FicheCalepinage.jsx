@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import { formatDateTime } from '../../lib/format'
 
@@ -144,7 +144,15 @@ export default function FicheCalepinage({ detail }) {
      un état. */
   const [estModele, setEstModele] = useState(null)
   const [refusModele, setRefusModele] = useState(null)
+  /* CALX35 — la duplication. La boîte de confirmation ÉNUMÈRE ce que la copie
+     laisse derrière elle AVANT de dupliquer : OpenSolar publie la même liste
+     pour sa duplication de projet, et c'est la seule façon qu'un commercial
+     ne découvre pas après coup que l'historique n'a pas suivi. */
+  const [confirmationCopie, setConfirmationCopie] = useState(false)
+  const [avecVariantes, setAvecVariantes] = useState(true)
+  const [refusCopie, setRefusCopie] = useState(null)
   const identifiant = detail?.id ?? null
+  const naviguer = useNavigate()
 
   useEffect(() => {
     if (!identifiant) return undefined
@@ -262,6 +270,23 @@ export default function FicheCalepinage({ detail }) {
     }
   }
 
+  const lancerDuplication = async () => {
+    setEnCours(true)
+    setRefusCopie(null)
+    try {
+      const res = await calepinageApi.calepinages.dupliquer(
+        detail.id, { avec_variantes: avecVariantes })
+      const copie = res?.data?.calepinage ?? null
+      setConfirmationCopie(false)
+      // « Le bouton ouvre la copie » : l'atelier du NOUVEAU calepinage.
+      if (copie) naviguer(`/calepinage/${copie}`)
+    } catch (erreur) {
+      setRefusCopie(refusChamp(erreur, 'calepinage'))
+    } finally {
+      setEnCours(false)
+    }
+  }
+
   const styleBouton = 'inline-flex items-center gap-2 border border-brass-400 '
     + 'px-5 py-3 text-base font-bold text-brass-300 '
     + 'disabled:cursor-not-allowed disabled:opacity-60'
@@ -316,6 +341,68 @@ export default function FicheCalepinage({ detail }) {
                 </button>
               )}
             </>
+          )}
+
+          {/* CALX35 — DUPLIQUER, après une confirmation qui ÉNUMÈRE. */}
+          {!archive && (
+            <button type="button" className={styleBouton} disabled={enCours}
+              data-testid="cal-fiche-dupliquer"
+              onClick={() => { setRefusCopie(null); setConfirmationCopie(true) }}>
+              Dupliquer
+            </button>
+          )}
+
+          {confirmationCopie && !archive && (
+            <div className="basis-full border border-brass-400/40 p-3"
+              data-testid="cal-fiche-dupliquer-confirmation">
+              <p className="tech-label text-brass-300">
+                Ce que la copie NE reprend PAS
+              </p>
+              <ul className="mt-1 list-disc pl-5 text-sm text-lune-soft">
+                <li>l’historique des versions ;</li>
+                <li>
+                  {avecVariantes
+                    ? 'les variantes SUIVENT la copie (case cochée ci-dessous) ;'
+                    : 'les variantes ;'}
+                </li>
+                <li>le lien vers le devis ;</li>
+                <li>le fil d’activité ;</li>
+                <li>les pièces produites (exports, documents).</li>
+              </ul>
+              <p className="mt-1 text-xs text-lune-faint">
+                La copie reste dans votre société et garde le même lead ou
+                client que l’original.
+              </p>
+              <label className="mt-2 flex items-center gap-2 text-sm text-lune-soft">
+                <input type="checkbox" checked={avecVariantes}
+                  disabled={enCours}
+                  data-testid="cal-fiche-dupliquer-variantes"
+                  onChange={(e) => { setAvecVariantes(e.target.checked) }} />
+                Reprendre les variantes
+              </label>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button type="button" className={styleBouton} disabled={enCours}
+                  data-testid="cal-fiche-dupliquer-confirmer"
+                  onClick={lancerDuplication}>
+                  Confirmer la duplication
+                </button>
+                <button type="button" disabled={enCours}
+                  className="text-sm text-lune-soft underline"
+                  data-testid="cal-fiche-dupliquer-annuler"
+                  onClick={() => { setConfirmationCopie(false) }}>
+                  Annuler
+                </button>
+              </div>
+              {refusCopie && (
+                <div className="mt-3 border border-alert-300/40 p-3"
+                  data-testid="cal-fiche-dupliquer-erreur">
+                  <p className="tech-label text-alert-300">Dupliquer</p>
+                  <p className="mt-1 text-sm text-alert-300" role="alert">
+                    {refusCopie}
+                  </p>
+                </div>
+              )}
+            </div>
           )}
 
           {/* CALX42 — LA BASCULE « MODÈLE ». Offerte seulement quand le

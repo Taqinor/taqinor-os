@@ -64,6 +64,9 @@ from . import pompage as _pompage_action  # noqa: F401
 from . import simulation as _simulation_actions  # noqa: F401
 # CAL191 — même patron : rattache ``dossiers-reglementaires`` (contrat CAL247).
 from . import reglementaire as _reglementaire_action  # noqa: F401
+# CALX35 — même patron : rattache ``dupliquer`` (la porte HTTP du service de
+# copie CAL14, ``services/variantes.py::dupliquer``).
+from . import cycle as _cycle_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -81,6 +84,7 @@ MODULES_RATTACHES = (
     'pompage',
     'simulation',
     'reglementaire',
+    'cycle',
 )
 
 __all__ = ['MODULES_RATTACHES']

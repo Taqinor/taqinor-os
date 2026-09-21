@@ -20,6 +20,8 @@ vi.mock('../../api/calepinageApi', () => ({
       modeles: vi.fn(),
       marquerModele: vi.fn(),
       demarquerModele: vi.fn(),
+      // CALX35 — la porte HTTP du service de copie CAL14.
+      dupliquer: vi.fn(),
     },
   },
 }))
@@ -42,6 +44,14 @@ vi.mock('../../api/calepinageApi', () => ({
    JAMAIS un `0`, qui ferait lire « aucune version » là où rien n'a encore été
    enregistré.
    ========================================================================== */
+
+// CALX35 — `MemoryRouter` et `Link` restent RÉELS (les tests de liens du
+// contrat les exigent) ; seule la navigation impérative est observée.
+const navigateMock = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, useNavigate: () => navigateMock }
+})
 
 import calepinageApi from '../../api/calepinageApi'
 import FicheCalepinage from './FicheCalepinage'
@@ -416,6 +426,105 @@ describe('CALX42 — marquer / démarquer un calepinage comme modèle', () => {
   })
 })
 
+/* ============================================================================
+   CALX35 — DUPLIQUER : LA CONFIRMATION ÉNUMÈRE AVANT DE COPIER.
+   ----------------------------------------------------------------------------
+   `services/variantes.py::dupliquer` existe depuis CAL14 sans aucune route.
+   Ce qui est prouvé : la boîte de confirmation ÉNUMÈRE ce que la copie laisse
+   derrière elle (versions, variantes, lien devis, fil d'activité, pièces
+   produites) AVANT de dupliquer ; le drapeau `avec_variantes` part explicite,
+   à `true` par défaut (comportement d'aujourd'hui) ; le bouton ouvre le
+   NOUVEAU calepinage.
+   ========================================================================== */
+describe('CALX35 — dupliquer un calepinage depuis sa fiche', () => {
+  it('la confirmation ÉNUMÈRE ce que la copie laisse derrière elle', async () => {
+    rendre(DETAIL)
+
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
+
+    const boite = screen.getByTestId('cal-fiche-dupliquer-confirmation')
+    for (const terme of ['versions', 'variantes', 'devis', 'activité',
+      'pièces produites']) {
+      expect(boite).toHaveTextContent(terme)
+    }
+    // Rien n'a été dupliqué par le seul fait d'ouvrir la boîte.
+    expect(calepinageApi.calepinages.dupliquer).not.toHaveBeenCalled()
+  })
+
+  it('confirme : `avec_variantes` part EXPLICITE, à true par défaut', async () => {
+    calepinageApi.calepinages.dupliquer.mockResolvedValue({
+      data: { calepinage: 77, reference: 'CAL-2609-0077' },
+    })
+    rendre(DETAIL)
+
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
+    expect(screen.getByTestId('cal-fiche-dupliquer-variantes')).toBeChecked()
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.dupliquer)
+      .toHaveBeenCalledWith(DETAIL.id, { avec_variantes: true }))
+    // Le bouton OUVRE la copie.
+    expect(navigateMock).toHaveBeenCalledWith('/calepinage/77')
+  })
+
+  it('case décochée : les variantes figurent dans ce qui reste derrière', async () => {
+    calepinageApi.calepinages.dupliquer.mockResolvedValue({
+      data: { calepinage: 78 },
+    })
+    rendre(DETAIL)
+
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-variantes'))
+
+    const boite = screen.getByTestId('cal-fiche-dupliquer-confirmation')
+    expect(boite).toHaveTextContent('les variantes ;')
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.dupliquer)
+      .toHaveBeenCalledWith(DETAIL.id, { avec_variantes: false }))
+  })
+
+  it('« Annuler » referme sans rien dupliquer', async () => {
+    rendre(DETAIL)
+
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-annuler'))
+
+    expect(screen.queryByTestId('cal-fiche-dupliquer-confirmation')).toBeNull()
+    expect(calepinageApi.calepinages.dupliquer).not.toHaveBeenCalled()
+  })
+
+  it('refus serveur : le motif s’affiche, le geste est NOMMÉ, rien n’est ouvert', async () => {
+    const MOTIF = "Le calepinage à dupliquer n'est pas enregistré."
+    calepinageApi.calepinages.dupliquer.mockRejectedValue({
+      response: { status: 400, data: { calepinage: MOTIF } },
+    })
+    rendre(DETAIL)
+
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer'))
+    await userEvent.click(screen.getByTestId('cal-fiche-dupliquer-confirmer'))
+
+    const bloc = await screen.findByTestId('cal-fiche-dupliquer-erreur')
+    expect(bloc).toHaveTextContent(MOTIF)
+    expect(bloc).toHaveTextContent('Dupliquer')
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  it('archivé : la duplication n’est plus proposée', async () => {
+    calepinageApi.calepinages.archiver.mockResolvedValue({
+      data: { calepinage: DETAIL.id, archive: true },
+    })
+    rendre(DETAIL)
+
+    await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
+    await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
+
+    expect(await screen.findByTestId('cal-fiche-bandeau-archive'))
+      .toBeInTheDocument()
+    expect(screen.queryByTestId('cal-fiche-dupliquer')).toBeNull()
+  })
+})
+
 /* L'écran RÉEL la monte : sans montage, la fiche serait un composant de plus
    écrit pour personne (l'oubli du 03/08/2026). */
 describe('AtelierPanneaux monte la fiche sur UNE seule lecture de l’agrégat', () => {
@@ -432,6 +541,7 @@ describe('AtelierPanneaux monte la fiche sur UNE seule lecture de l’agrégat',
           archiver: vi.fn(), restaurerCorbeille: vi.fn(),
           modeles: vi.fn().mockResolvedValue({ data: [] }),
           marquerModele: vi.fn(), demarquerModele: vi.fn(),
+          dupliquer: vi.fn(),
         },
         // CAL70 — PanneauAllees (monté par AtelierPanneaux) lit les réglages
         // société au montage.
