@@ -1221,6 +1221,36 @@ _CANAL_VERS_KIND = {
     RelanceEtape.Canal.VISITE: LeadActivity.Kind.NOTE,
 }
 
+# ── CAD-K ── CAD131 — la première TENTATIVE n'est pas le premier CONTACT ────
+#
+# Audit L3 du 21/09/2026. ``first_contacted_at`` était posé dès qu'une note,
+# un appel, un e-mail ou un WhatsApp était écrit par un humain — or SAUTER une
+# touche écrit une NOTE signée par le commercial. Sauter la toute première
+# touche satisfaisait donc la promesse client (« rappelé en moins de N
+# minutes ») ET éteignait l'escalade, qui n'agit que sur les leads SANS
+# horodatage : personne ne parlait au client, et plus rien ne le signalait.
+#
+# Le verbe est hissé en CONSTANTE pour que la reconnaissance vive à UN SEUL
+# endroit, celui qui ÉCRIT la note — jamais un texte deviné ailleurs (même
+# discipline que les préfixes du journal RLC2).
+VERBE_TOUCHE_SAUTEE = 'sautée'
+MENTION_TOUCHE_SAUTEE = f'marquée {VERBE_TOUCHE_SAUTEE}.'
+
+
+def est_note_de_touche_sautee(activite):
+    """CAD131 — cette ligne de chatter est-elle la note d'une touche SAUTÉE ?
+
+    Une touche sautée n'est PAS une tentative : rien n'est sorti vers le
+    client. Seule cette note doit être écartée du premier contact — une note
+    ordinaire écrite à la main par la commerciale (« Appelé, pas de réponse »)
+    reste un contact, comme depuis MRY19.
+    """
+    if activite is None:
+        return False
+    if getattr(activite, 'kind', None) != LeadActivity.Kind.NOTE:
+        return False
+    return MENTION_TOUCHE_SAUTEE in (getattr(activite, 'body', '') or '')
+
 
 def marquer_etape_relance(etape, user, statut, note='', outcome='',
                           body=''):
@@ -1265,7 +1295,8 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     etape.save(update_fields=['statut', 'note', 'outcome', 'traite_par',
                               'traite_le'])
 
-    verbe = 'faite' if statut == RelanceEtape.Statut.FAIT else 'sautée'
+    verbe = ('faite' if statut == RelanceEtape.Statut.FAIT
+             else VERBE_TOUCHE_SAUTEE)
     # MRY5 — le corps disait « Relance J+{ordre} », faux depuis que `ordre`
     # est un RANG dans la cadence et non plus un délai en jours (la touche 2
     # de la prise de contact tombe à J0 + 3 minutes, pas à J+2).
