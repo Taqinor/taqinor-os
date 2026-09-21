@@ -289,7 +289,8 @@ class PaiementFacturePortailViewSet(_PortailBaseViewSet):
     def rapprocher(self, request, pk=None):
         paiement = self.get_object()
         reference = request.data.get('reference') or None
-        services.rapprocher_paiement_facture(paiement, reference=reference)
+        services.rapprocher_paiement_facture(
+            paiement, reference=reference, user=request.user)
         return Response(self.get_serializer(paiement).data)
 
 

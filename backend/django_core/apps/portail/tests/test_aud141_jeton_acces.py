@@ -32,8 +32,12 @@ from authentication.models import Company, CustomUser
 
 _seq = itertools.count(1)
 
+# Correctif CI SOLMVP — la surface tokenisée (``mon-releve``) vivait sous
+# l'ancien préfixe ``/api/django/compta/portail/`` ; compta est désormais
+# coquillée (``core.parked``, AUCUNE url) et la vue est nativement servie
+# sous le préfixe public natif du portail (``apps.portail.public_urls``).
 RACINE = '/api/django/portail/comptes-portail/'
-RACINE_TOKENISEE = '/api/django/compta/portail/'
+RACINE_TOKENISEE = '/api/django/public/portail/'
 
 
 def compte_portail_par_token(token):
