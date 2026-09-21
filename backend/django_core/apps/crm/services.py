@@ -808,6 +808,17 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             # La numérotation `ordre` garde son trou : elle vient du gabarit
             # de la société, pas d'un compteur local.
             continue
+        # CAD32 — « WhatsApp uniquement » est saisi par le client, une fois,
+        # explicitement, et la cadence ne le lisait NULLE PART : le prospect
+        # qui a coché « ne m'appelez pas » recevait quand même les six appels
+        # du protocole. Sur ce segment, un barreau d'appel naît en WhatsApp —
+        # le canal change, rien d'autre : ni le nombre de touches, ni les
+        # libellés, ni les délais, ni les jours.
+        # Le rendez-vous DOMINICAL reste un appel à ce stade — c'est CAD33
+        # (décision fondateur du 21/09/2026) qui tranche qu'il suit lui aussi
+        # la préférence du client.
+        gabarit = cadence_temps.adapter_canal_au_lead(
+            gabarit, lead, dimanche_compris=False)
         delai_minutes = getattr(gabarit, 'delai_minutes', 0) or 0
         heure_cible = getattr(gabarit, 'heure_cible', None)
         if getattr(gabarit, 'dimanche_ok', False):

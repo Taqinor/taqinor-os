@@ -98,6 +98,18 @@ def _genre(canal):
     return 'message' if horaires.est_un_message(canal) else 'appel'
 
 
+def _genre_du_protocole(gabarit):
+    """CAD20 × CAD32 — le genre que le PROTOCOLE prévoit pour ce barreau.
+
+    Sur un lead « WhatsApp uniquement », un appel est RENDU en message
+    (`GabaritAdapte`) : compter son genre sur le canal rendu ferait percuter
+    les deux touches du même jour et en décalerait une, alors que la
+    préférence du client ne change que le canal."""
+    canal = (getattr(gabarit, 'canal_protocole', None)
+             or getattr(gabarit, 'canal', None))
+    return _genre(canal)
+
+
 def _lendemain_joignable(echeance, company, canal):
     """Le même horaire, le lendemain, recalé sur la fenêtre du canal."""
     locale = echeance.astimezone(horaires.CASABLANCA)
@@ -135,7 +147,7 @@ def un_geste_par_jour(echeances, company):
     resultat = []
     for gabarit, echeance in echeances:
         canal = getattr(gabarit, 'canal', None) or 'appel'
-        genre = _genre(canal)
+        genre = _genre_du_protocole(gabarit)
         exemptee = (not (getattr(gabarit, 'delai_jours', 0) or 0)
                     or bool(getattr(gabarit, 'dimanche_ok', False)))
         if not exemptee:
@@ -148,3 +160,82 @@ def un_geste_par_jour(echeances, company):
             (echeance.astimezone(horaires.CASABLANCA).date(), genre))
         resultat.append((gabarit, echeance))
     return resultat
+
+
+# ── CAD-B ── CAD32 ──────────────────────────────────────────────────────────
+
+#: La valeur de `crm.Lead.ContactPreference.WHATSAPP_ONLY`, reprise en
+#: littéral : ce module de calcul ne dépend d'aucun modèle (même discipline
+#: que `horaires.CANAUX_MESSAGE`).
+PREFERENCE_WHATSAPP_ONLY = 'whatsapp_only'
+
+#: Le canal dans lequel un barreau d'appel est RENDU pour un lead qui a
+#: explicitement demandé WhatsApp. Valeur de `crm.RelanceEtape.Canal`.
+CANAL_WHATSAPP = 'whatsapp'
+
+
+class GabaritAdapte:
+    """CAD32 — un barreau du protocole RENDU dans un autre canal.
+
+    Le gabarit de la société n'est jamais muté : on l'enveloppe. Tout ce que
+    le moteur lit (`ordre`, `libelle`, `delai_jours`, `delai_minutes`,
+    `heure_cible`, `dimanche_ok`…) retombe sur l'original ; seuls le CANAL et
+    la clé de gabarit de message changent.
+
+    `canal_protocole` garde le canal d'ORIGINE : c'est lui que
+    `un_geste_par_jour` (CAD20) regarde, pour que la règle « un appel ET un
+    message par jour » continue de raisonner sur la FORME du protocole. Sans
+    ça, un lead « WhatsApp uniquement » verrait ses touches du même jour se
+    percuter et se décaler — alors que la tâche exige les MÊMES jours.
+    """
+
+    __slots__ = ('_gabarit', 'canal', 'template_cle', 'canal_protocole')
+
+    def __init__(self, gabarit, canal, template_cle=''):
+        self._gabarit = gabarit
+        self.canal = canal
+        self.canal_protocole = getattr(gabarit, 'canal', None)
+        self.template_cle = template_cle
+
+    def __getattr__(self, nom):
+        return getattr(self._gabarit, nom)
+
+    def __repr__(self):  # pragma: no cover — confort de débogage
+        return (f'<GabaritAdapte ordre={getattr(self, "ordre", "?")} '
+                f'{self.canal_protocole}→{self.canal}>')
+
+
+def _prefere_whatsapp(lead):
+    return (getattr(lead, 'contact_preference', '')
+            == PREFERENCE_WHATSAPP_ONLY)
+
+
+def adapter_canal_au_lead(gabarit, lead, *, dimanche_compris=True):
+    """CAD32 — sur un lead « WhatsApp uniquement », un barreau d'APPEL naît
+    en WhatsApp.
+
+    « Ne m'appelez pas » est saisi par le client, une fois, explicitement — et
+    la cadence ne le lisait nulle part : le prospect recevait quand même les
+    six appels du protocole. Ce qui change est le CANAL, et lui seul : même
+    nombre de touches, mêmes libellés, mêmes délais, mêmes jours.
+
+    La clé de gabarit de message est RETIRÉE au passage. Les barreaux d'appel
+    portent des SCRIPTS (« script d'appel d'ouverture », « message sur
+    répondeur ») : des textes à DIRE, pas à envoyer. Les coller dans un
+    WhatsApp serait pire que de n'envoyer rien — la commerciale écrit son
+    message, exactement comme sur les barreaux d'appel qui n'ont déjà aucun
+    gabarit. Poser des textes WhatsApp validés pour ces six moments est un
+    travail de TEXTES (`docs/crm/messages_meryem.md`), pas de moteur.
+
+    `dimanche_compris=False` laisse le rendez-vous dominical en appel (état de
+    CAD32 avant la décision CAD33 du 21/09/2026).
+
+    Rend le gabarit INCHANGÉ dans tous les autres cas.
+    """
+    if not _prefere_whatsapp(lead):
+        return gabarit
+    if horaires.est_un_message(getattr(gabarit, 'canal', None)):
+        return gabarit
+    if not dimanche_compris and getattr(gabarit, 'dimanche_ok', False):
+        return gabarit
+    return GabaritAdapte(gabarit, CANAL_WHATSAPP)
