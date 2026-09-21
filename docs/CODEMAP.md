@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 512799b8c4cdbd55306bd7ca2eeaea2cf66adda8e29912e1172900118a39463d
-Plan fingerprint: 8e0761cb2d8c42420e98b318570a8c4db7627aaef655cf52f1e54ad577e92e58
+Structure fingerprint: 4a1666946ba6be4299ee67b100aa9ce2526f909bc77d6bf61909c08c53cd867e
+Plan fingerprint: 8e9117930ec2e714bf850461424320a5b7956bdba1990e06eaa435fe98005965
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (125)**
+**Done (128)**
 
 - `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
 - `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
@@ -654,12 +654,15 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX213` — Contrôler enfin les deux bornes d'onduleur publiées mais jamais lues
 - `CALX215` — Nommer les deux natures de dépassement : plage INTERDITE et plage BLOQUANTE
 - `CALX216` — Dire POURQUOI cette longueur de chaîne a été retenue
+- `CALX222` — Donner à l'atelier son onglet « Équipements électriques »
+- `CALX229` — Donner à l'atelier son onglet « Cheminement & câbles »
+- `CALX236` — Exporter le schéma unifilaire en PNG depuis le navigateur
 - `CALX238` — Replier les circuits d'onduleurs identiques en un seul « typique de N »
 - `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (480)**
+**Open — to build (477)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -947,21 +950,18 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX219` — Créer `electrique3d.ts` et y poser les marqueurs d'équipement
 - `CALX220` — Poser, déplacer et retirer un équipement au clic, et le persister
 - `CALX221` — Ajouter le calque « Électrique » au panneau de calques
-- `CALX222` — Donner à l'atelier son onglet « Équipements électriques »
 - `CALX223` — Tracer un cheminement de câble par points de passage dans l'atelier
 - `CALX224` — Mesurer la longueur RÉELLE de chaque tronçon
 - `CALX225` — Dimensionner la section et la chute PAR tronçon
 - `CALX226` — Cumuler la chute de tension bout en bout et la verdicter une seule fois
 - `CALX227` — Produire le métré de câble par tronçon et par section
 - `CALX228` — Servir les tronçons en HTTP et les joindre au résultat électrique
-- `CALX229` — Donner à l'atelier son onglet « Cheminement & câbles »
 - `CALX230` — Dimensionner un coffret de jonction DC par son nombre d'entrées
 - `CALX231` — Dimensionner le coffret de regroupement quand plusieurs coffrets remontent
 - `CALX232` — Dimensionner le coffret AC par ses départs
 - `CALX233` — Persister les libellés et les repères édités du schéma unifilaire
 - `CALX234` — Persister les positions de blocs et les passer jusqu'au dessin
 - `CALX235` — Exporter le schéma unifilaire en DXF
-- `CALX236` — Exporter le schéma unifilaire en PNG depuis le navigateur
 - `CALX237` — Choisir un gabarit de schéma par pays, sans supposer une norme au Maroc
 - `CALX241` — Calculer l'élévation de tension au point de raccordement contre une limite SAISIE
 - `CALX242` — Vérifier la puissance de raccordement et le régime mono/tri
