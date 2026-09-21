@@ -161,13 +161,6 @@ class PlanSolaireTests(TestCase):
         self.assertFalse(cree2)
         self.assertEqual(plan2.pk, plan.pk)
 
-    def test_aucun_vertical_parque_dans_le_plan(self):
-        from erp_agentique.settings import editions
-
-        inclus = set(modules_du_plan_solaire())
-        for cle in editions.modules_parques(editions.EDITION_SOLAR):
-            self.assertNotIn(cle, inclus, cle)
-
     def test_le_coeur_metier_est_inclus(self):
         inclus = set(modules_du_plan_solaire())
         for cle in ('crm', 'ventes', 'stock', 'installations', 'sav', 'compta'):

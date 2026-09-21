@@ -136,26 +136,21 @@ FIELD_MAPS = {
 
 # SOL2(b) — cible d'import → clé de module PROPRIÉTAIRE, pour les seules cibles
 # dont le mapping d'en-têtes vit ici (``FIELD_MAPS``) alors que l'ÉCRITURE est
-# déléguée à une app susceptible d'être parquée par l'édition (registre
-# ``erp_agentique/settings/editions.py``). Les cibles déclarées uniquement par
-# le registre plateforme n'ont pas besoin d'entrée : l'app parquée n'étant pas
-# chargée, son ``platform.py`` ne déclare plus rien.
+# déléguée à une app PARQUÉE (registre ``core/parked.py``). Les cibles
+# déclarées uniquement par le registre plateforme n'ont pas besoin d'entrée :
+# une app coquillée n'expose plus de ``platform.py``.
 # SOLMVP20 — actuellement VIDE : la seule cible qui portait une entrée
 # (``eleves_education``) a perdu son mapping ``FIELD_MAPS`` (app education
-# PARQUÉE, Groupe SOLMVP) et n'a donc plus besoin de ce suivi par édition.
+# PARQUÉE, Groupe SOLMVP) et n'a donc plus besoin de ce suivi.
 CIBLES_MODULE_PROPRIETAIRE = {}
 
 
-def cibles_parquees_par_edition(edition=None):
+def cibles_parquees():
     """Cibles d'import indisponibles parce que leur app est parquée."""
-    try:
-        from erp_agentique.settings import editions
-        parques = editions.modules_parques(edition)
-    except Exception:  # pragma: no cover - registre indisponible ⇒ rien de parqué
-        return frozenset()
+    from core.parked import est_parquee
     return frozenset(
         cible for cible, module in CIBLES_MODULE_PROPRIETAIRE.items()
-        if module in parques)
+        if est_parquee(module))
 
 
 # ARC32 — l'ensemble des cibles importables lit désormais le REGISTRE plateforme
@@ -193,7 +188,7 @@ class _LazyTargets:
         # retrait `_commit_raw` tenterait d'importer une app non chargée. Le
         # refus est alors le refus HISTORIQUE « cible inconnue » (400 clair),
         # jamais un ImportError.
-        return cibles - cibles_parquees_par_edition()
+        return cibles - cibles_parquees()
 
     def __contains__(self, item):
         return item in self._resolve()

@@ -1,15 +1,18 @@
 """SOL9 — semis du plan de licence « Solaire ».
 
 Le périmètre du plan est DÉRIVÉ, jamais recopié : tous les modules
-INSTALLABLES du dépôt, moins les verticaux parqués par l'édition solaire
-(registre `erp_agentique/settings/editions.py`). Une app ajoutée demain entre
-donc dans le plan sans qu'on ait à maintenir une liste à la main — et un
-vertical parqué n'y entre jamais.
+INSTALLABLES du dépôt. Une app ajoutée demain entre donc dans le plan sans
+qu'on ait à maintenir une liste à la main.
+
+SOLMVP3 — la soustraction « moins les verticaux parqués par l'édition » a
+disparu avec le mécanisme d'édition : il n'y a plus qu'un produit. Les apps
+sorties du MVP solaire (`core/parked.py`) quittent le plan d'elles-mêmes dès
+leur coquille, parce qu'elles n'exposent plus de manifeste installable — la
+dérivation reste la seule source, sans seconde liste à tenir.
 
 Volontairement PAS une migration de données : `modules_inclus` doit refléter
-les manifestes RÉELLEMENT chargés, or une migration jouée en édition solaire
-n'en verrait que 81 sur 88. Un semis explicite (commande ou appel de service),
-idempotent, garde la liste juste.
+les manifestes RÉELLEMENT chargés. Un semis explicite (commande ou appel de
+service), idempotent, garde la liste juste.
 
 Assignation : `CompanyProfile.plan` reste posé par le founder (admin Django) ou
 par le gabarit de tenant Solaire (SOL10). Ce module ne touche AUCUNE société.
@@ -23,13 +26,11 @@ NOM_SOLAIRE = 'Solaire'
 def modules_du_plan_solaire():
     """Clés de module installables du périmètre solaire (triées, stables)."""
     from core import modules as modules_infra
-    from erp_agentique.settings import editions
 
     manifests = modules_infra.collect_manifests()
-    parques = editions.modules_parques(editions.EDITION_SOLAR)
     return sorted(
         key for key, manifest in manifests.items()
-        if manifest.get('installable') and key not in parques
+        if manifest.get('installable')
     )
 
 

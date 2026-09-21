@@ -12,18 +12,19 @@ celui d'ÉDITION.
     ``feature_flags.module_actif`` (``acces_module_autorise`` en ET), point
     d'entrée UNIQUE du ``DisabledModuleMiddleware`` : un module hors plan suit
     donc exactement le même chemin de 404 que le miroir garde déjà ;
-  · volet ÉDITION — c'est celui que ce module gèle. ``erp_agentique/urls.py``
-    ne parque pas une app en la retirant d'un préfixe : ``_si_active()`` la
-    retire de la liste ``_APP_URLS``, et cette liste UNIQUE est montée deux
-    fois. La garantie qui compte n'est donc pas « les sept verticaux solaires
-    sont absents » (vide de sens en édition ``full``, celle de la CI) mais :
-    **quelle que soit l'édition, les deux montages exposent EXACTEMENT le même
-    ensemble de routes**. Une future app montée à la main sous ``api/django/``
-    seulement — ou, pire, sous ``api/v1/`` seulement, hors ``_APP_URLS`` et
-    donc hors ``_si_active`` — rendrait ce test rouge immédiatement.
+  · volet MONTAGE — c'est celui que ce module gèle. ``erp_agentique/urls.py``
+    ne retire jamais une app d'un SEUL préfixe : les includes vivent dans la
+    liste ``_APP_URLS``, et cette liste UNIQUE est montée deux fois. La
+    garantie qui compte est donc : **les deux montages exposent EXACTEMENT le
+    même ensemble de routes**. Une future app montée à la main sous
+    ``api/django/`` seulement — ou, pire, sous ``api/v1/`` seulement, hors
+    ``_APP_URLS`` — rendrait ce test rouge immédiatement. SOLMVP3 : la sortie
+    d'une app se fait maintenant en retirant sa LIGNE de ``_APP_URLS``
+    (``manage.py parquer_app``), ce qui vaut mecaniquement pour les deux
+    préfixes — exactement l'invariant gelé ici.
 
-Ce test est un GEL de non-régression : il doit rester vert en édition ``full``
-comme en édition ``solar``, sans jamais dépendre de la liste des apps parquées.
+Ce test est un GEL de non-régression, sans jamais dépendre de la liste des apps
+montées.
 
 Lancer :
     docker compose exec django_core python manage.py test \
@@ -84,12 +85,12 @@ class LesDeuxMontagesExposentLeMemePlan(SimpleTestCase):
             "aussi 'api/v1/' de core.permissions._API_ROOTS.")
 
     def test_meme_liste_de_modules_sous_les_deux_racines(self):
-        """``_si_active`` filtre la liste PARTAGÉE : le parking d'édition vaut
-        donc pour les deux préfixes, ou pour aucun."""
+        """La liste ``_APP_URLS`` est PARTAGÉE : retirer (ou ajouter) un
+        include vaut pour les deux préfixes, ou pour aucun."""
         self.assertEqual(
             _modules_montes(self.historique), _modules_montes(self.miroir),
             "un module d'urls n'est monté que sous UNE des deux racines : le "
-            "gating d'édition/module serait contournable par l'autre.")
+            "gating par module serait contournable par l'autre.")
 
     def test_memes_segments_de_route_sous_les_deux_racines(self):
         self.assertEqual(
