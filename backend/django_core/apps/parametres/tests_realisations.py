@@ -128,6 +128,28 @@ class ApiTests(TestCase):
         realisation = Realisation.objects.get(pk=resp.data['id'])
         self.assertEqual(realisation.company_id, self.company.id)
 
+    def test_le_champ_video_est_optionnel_et_expose(self):
+        """CAD95 (21/09/2026) — le champ vidéo existe, reste VIDE sans qu'on
+        le saisisse (aucune vidéo requise pour qu'une réalisation serve de
+        preuve), et l'API l'expose une fois rempli."""
+        resp = self.api.post(URL, {
+            'titre': 'Villa sans vidéo',
+            'ville': 'Bouskoura',
+            'url_page': 'https://taqinor.ma/realisations/villa-sans-video/',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['lien_video'], '')
+
+        resp = self.api.post(URL, {
+            'titre': 'Villa avec vidéo',
+            'ville': 'Bouskoura',
+            'url_page': 'https://taqinor.ma/realisations/villa-avec-video/',
+            'lien_video': 'https://youtu.be/villa-bouskoura',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(
+            resp.data['lien_video'], 'https://youtu.be/villa-bouskoura')
+
     def test_la_ville_envoyee_par_l_api_est_canonisee(self):
         resp = self.api.post(URL, {
             'titre': 'Ferme',

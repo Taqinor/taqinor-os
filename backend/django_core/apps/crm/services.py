@@ -2022,6 +2022,9 @@ _TEMPLATES_VOCAUX = frozenset({'vocal_j3'})
 _PLACEHOLDERS_RENDUS = (
     'civilite', 'nom', 'prenom', 'ville', 'reference', 'lien',
     'lien_rdv', 'date_validite', 'conseiller',
+    # CAD96 (21/09/2026) — le nom de marque affiché (résolu côté serveur,
+    # jamais codé en dur ; voir ``_nom_affiche_marque``).
+    'marque',
     # VISITE-CADENCE (15/09/2026) — la date du RENDEZ-VOUS de visite technique
     # posée sur la fiche (``Lead.visite_prevue_le``), rendue « mardi 16
     # septembre ». Fiche sans date ⇒ valeur vide ⇒ la phrase entière est OMISE
@@ -2030,13 +2033,17 @@ _PLACEHOLDERS_RENDUS = (
     'date_visite',
     # 08/09/2026 — la PREUVE de la touche `j4_preuve` (mois, ville et lien de
     # la page publique d'une `parametres.Realisation` réelle).
-    'mois_preuve', 'ville_preuve', 'lien_preuve', 'puissance_preuve')
+    # CAD95 (21/09/2026) — vidéo COURTE (30-60 s) du même chantier, proposée
+    # EN PLUS du lien (jamais à la place) ; sa propre phrase est omise SEULE
+    # (MRY13) quand `Realisation.lien_video` est vide.
+    'mois_preuve', 'ville_preuve', 'lien_preuve', 'puissance_preuve',
+    'lien_video_preuve')
 
 #: Les trois placeholders de la preuve. Regroupés pour n'aller chercher une
 #: réalisation QUE si le texte en porte au moins un (même discipline que
 #: `{lien_rdv}` : aucun travail, aucune requête, quand ce n'est pas demandé).
 _PLACEHOLDERS_PREUVE = ('{mois_preuve}', '{ville_preuve}', '{lien_preuve}',
-                        '{puissance_preuve}')
+                        '{puissance_preuve}', '{lien_video_preuve}')
 
 #: Noms de mois en français, pour « posée en juillet 2026 ». Codés ici plutôt
 #: que via une locale système : le rendu d'un message client ne doit pas
@@ -2109,7 +2116,7 @@ def _contexte_preuve(lead):
     `_omettre_phrases_incompletes` retire la phrase entière : jamais un
     chantier inventé, jamais un crochet laissé au client."""
     vide = {'mois_preuve': '', 'ville_preuve': '', 'lien_preuve': '',
-            'puissance_preuve': ''}
+            'puissance_preuve': '', 'lien_video_preuve': ''}
     try:
         from apps.parametres.selectors import realisation_pour_lead
         realisation = realisation_pour_lead(lead)
@@ -2124,6 +2131,9 @@ def _contexte_preuve(lead):
         'ville_preuve': (realisation.ville or '').strip(),
         'lien_preuve': (realisation.url_page or '').strip(),
         'puissance_preuve': _kwc_francais(realisation.puissance_kwc),
+        # CAD95 — vidéo courte EN PLUS du lien ; vide si la réalisation n'en
+        # porte aucune (jamais un défaut inventé).
+        'lien_video_preuve': (realisation.lien_video or '').strip(),
     }
 
 
@@ -2173,6 +2183,30 @@ def _nom_affiche_conseiller(lead, user):
         return ''
     return (getattr(conseiller, 'first_name', '')
             or getattr(conseiller, 'username', '') or '')
+
+
+def _nom_affiche_marque(lead):
+    """CAD96 (21/09/2026) — le nom de marque AFFICHÉ dans un texte client.
+
+    Trois graphies codées en dur coexistaient (« TAQINOR », « TAQINOR
+    Solutions », « Taqinor Solutions ») dans le même guide de messages,
+    incohérence déjà présente dans le document source validé. Plutôt que de
+    figer UNE de ces graphies dans le code (une future société white-label
+    hériterait du nom de TAQINOR), la marque vient désormais de
+    ``parametres.CompanyProfile.nom`` — même source que les PDFs (SCA27) —
+    avec repli sur ``Company.nom`` si la société n'a pas encore de profil."""
+    company = getattr(lead, 'company', None)
+    if company is None:
+        return ''
+    try:
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=company).first()
+    except Exception:  # noqa: BLE001 — un profil illisible ne bloque jamais l'envoi
+        profile = None
+    nom = (getattr(profile, 'nom', '') or '').strip()
+    if nom:
+        return nom
+    return (getattr(company, 'nom', '') or '').strip()
 
 
 def _civilite_et_prenom(lead, langue):
@@ -2243,6 +2277,7 @@ def message_visite_pour_lead(lead, cle, *, user=None):
             'prenom': prenom,
             'ville': (lead.ville or '').strip(),
             'conseiller': _nom_affiche_conseiller(lead, user),
+            'marque': _nom_affiche_marque(lead),
             'date_visite': date_visite,
         }
         corps = MessageTemplate.get_corps(lead.company, cle, langue) or ''
@@ -2284,6 +2319,7 @@ def message_pour_etape(etape, *, request=None, user=None):
         'prenom': prenom,
         'ville': (lead.ville or '').strip(),
         'conseiller': _nom_affiche_conseiller(lead, user),
+        'marque': _nom_affiche_marque(lead),
         'reference': '',
         'lien': '',
         'date_validite': '',
@@ -3175,6 +3211,10 @@ def recalculer_scores_obsoletes(*, taille_lot=500) -> dict:
     ``update_fields``) : le passage nocturne ne fait donc jamais passer un
     lead dormant pour un lead fraîchement édité.
 
+    CAD141 (21/09/2026) — les leads ARCHIVÉS et PERDUS sont écartés : un
+    dossier clos n'a plus besoin d'un score à jour, et un score recalculé
+    pourrait le faire ressortir dans un tri (CAD83).
+
     Renvoie ``{'examines': int, 'mis_a_jour': int}``.
     """
     from datetime import timedelta
@@ -3184,8 +3224,13 @@ def recalculer_scores_obsoletes(*, taille_lot=500) -> dict:
     seuil = timezone.now() - timedelta(days=DELAI_SCORE_OBSOLETE_JOURS)
     examines = 0
     mis_a_jour = 0
-    queryset = (Lead.objects.filter(date_modification__lt=seuil)
-                .order_by('pk').iterator(chunk_size=taille_lot))
+    # CAD141 (21/09/2026) — écarte archivés et perdus : un dossier CLOS n'a
+    # plus besoin d'un score à jour (coût divisé) et ne doit jamais remonter
+    # dans un tri par score après ce passage (CAD83).
+    queryset = (
+        Lead.objects
+        .filter(date_modification__lt=seuil, is_archived=False, perdu=False)
+        .order_by('pk').iterator(chunk_size=taille_lot))
     for lead in queryset:
         examines += 1
         if compute_score(lead) == lead.score:
@@ -4615,6 +4660,18 @@ def avancer_stage_sur_ouverture_devis(lead) -> bool:
     perdus et ceux déjà ≥ FOLLOW_UP (donc un lead déjà SIGNED/COLD-au-delà
     ne bouge pas). Idempotent : une seconde ouverture ne réécrit rien de
     plus (le rang est déjà atteint). Renvoie True si l'avance a eu lieu.
+
+    CAD139 (21/09/2026) — CONSERVÉE SANS APPELANT DE PRODUCTION. La RÈGLE
+    FONDATEUR du 07/09/2026 a débranché cette avance automatique
+    (``noter_devis_ouvert`` ne l'appelle plus : « le funnel ne bouge que sur
+    une réponse confirmée de Meryem ») ; seuls ``tests_crx20_stage_events.py``
+    et ``tests_ylead10_fastlane_open.py`` l'invoquent aujourd'hui. Gardée
+    plutôt que supprimée (version préférée de l'audit L3, round 2) : c'est
+    l'implémentation TESTÉE et idempotente du fast-lane comportemental que la
+    décision du 07/09 a désactivé sans l'invalider — si le fondateur revient
+    sur ce choix, le comportement et ses tests existent déjà, au lieu d'être
+    re-dérivés de zéro. Ni code mort silencieux, ni suppression d'un choix
+    documenté.
     """
     if lead is None or lead.perdu:
         return False

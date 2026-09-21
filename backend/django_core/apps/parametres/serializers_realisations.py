@@ -22,7 +22,7 @@ class RealisationSerializer(serializers.ModelSerializer):
         model = Realisation
         fields = [
             'id', 'titre', 'ville', 'puissance_kwc', 'mise_en_service',
-            'url_page', 'lien_suivi', 'actif', 'date_creation',
+            'url_page', 'lien_suivi', 'lien_video', 'actif', 'date_creation',
         ]
 
     def validate_titre(self, value):
