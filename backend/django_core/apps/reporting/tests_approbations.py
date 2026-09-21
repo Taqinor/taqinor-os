@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.automation.models import AutomationApproval
+from apps.ged.models import Cabinet, Document, Folder
 from apps.installations.models import Installation
 from apps.installations.models_demande_achat import DemandeAchat, DemandeAchatLigne
 from apps.reporting.models import ApprobationSlaConfig
@@ -52,6 +53,21 @@ class TestApprobationsAggregation(ApprobationsBase):
         self.assertEqual(resp.status_code, 200)
         sources = {it['source'] for it in resp.data['items']}
         self.assertIn('automation', sources)
+
+    def test_ged_source_listed(self):
+        cab = Cabinet.objects.create(company=self.company, nom='Docs')
+        folder = Folder.objects.create(
+            company=self.company, cabinet=cab, nom='Entrants')
+        doc = Document.objects.create(
+            company=self.company, folder=folder, nom='Contrat.pdf')
+        from apps.ged.models import APPROBATION_EN_ATTENTE
+        from apps.ged.models import DemandeApprobation
+        DemandeApprobation.objects.create(
+            company=self.company, document=doc, statut=APPROBATION_EN_ATTENTE)
+        resp = self.api.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        sources = {it['source'] for it in resp.data['items']}
+        self.assertIn('ged', sources)
 
     def test_installations_source_listed(self):
         DemandeAchat.objects.create(
