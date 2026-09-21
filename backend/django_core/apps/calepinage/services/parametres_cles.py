@@ -101,6 +101,7 @@ CLES_SIMULATION = (
     ('salissure_mensuelle_pct', 'Salissure, mois par mois (12 valeurs, ou une seule pour les douze)', '%', 'PVsyst — Soiling loss (facteurs MENSUELS, aucune valeur universelle par défaut)'),  # CALX161
     ('indisponibilite_fenetres', "Fenêtres d'arrêt de l'installation (début, fin, motif)", '', 'PVsyst — Unavailability loss (des périodes d\'arrêt explicites, jamais un forfait annuel)'),  # CALX176
     ('seuil_derivation_acces', "Seuil d'accès solaire sous lequel un module est dérivé de sa chaîne", '', 'PV*SOL — Shading due to nearby objects (la caractéristique du module s\'effondre selon le nombre de brins ombrés ; aucun seuil n\'est proposé par défaut)'),  # CALX168
+    ('plafond_modules_simules', 'Plafond de modules simulés un par un (au-delà, seul l\'agrégat est publié)', 'modules', 'Décision fondateur 21/09/2026 — plafond de simulation module par module à 5 000 modules, mesuré par CALX389'),  # CALX182
 )
 
 #: Les clés ADMISES de la section ``electrique_societe``, même forme et même
