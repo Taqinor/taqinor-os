@@ -158,6 +158,15 @@ SANS_PRODUCTEUR_PUR = {
         "d'import réelle, par "
         'apps/calepinage/tests/test_calx201_contrat_equipements.py',
 
+    # CALX202
+    'electrique_cheminements.json':
+        'FRAGMENT du document `roof_layout` v2 (clé racine OPTIONNELLE '
+        '`electrical.cheminements[]`), pas une réponse serveur : le tracé '
+        "est écrit par l'atelier 3D (CALX223) et relu par "
+        'services/troncons.py (CALX224) — la forme, les deux refus et la '
+        'résolution des références sont affirmées sans base par '
+        'apps/calepinage/tests/test_calx202_contrat_cheminements.py',
+
     # CALX62
     'calepinage_meteo_fichier.json':
         'réponse de la porte MULTIPART qui dépose une série météo de la '
