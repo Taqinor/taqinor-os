@@ -1233,6 +1233,14 @@ CELERY_TASK_ROUTES = {
     '*.backfill_*': {'queue': 'bulk'},
     '*.seed_*': {'queue': 'bulk'},
     '*.export_bulk_*': {'queue': 'bulk'},
+    # NTOBS1 — rafraîchissement 5 min des composants publics de statut.
+    # `statuspage` est une app CONSERVÉE : sa route avait été retirée par
+    # ricochet avec celles de ses voisines parquées (paie/grc/rh), alors que son
+    # entrée beat reste déclarée dans erp_agentique/celery.py — la tâche
+    # retombait donc sur la queue `default` (elle partageait la file
+    # interactive). Toute tâche du beat_schedule DOIT être routée explicitement
+    # vers `scheduled` (garde core/tests/test_celery_task_routes.py).
+    'statuspage.rafraichir_composants': {'queue': 'scheduled'},
     # NTOBS3 — snapshot SLA mensuel de toutes les sociétés.
     'core.generer_sla_mensuel': {'queue': 'scheduled'},
     # NTOBS9 — notification 24h/1h avant une fenêtre de maintenance.
