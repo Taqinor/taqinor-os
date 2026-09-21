@@ -46,6 +46,84 @@ vi.mock('../../../api/calepinageApi', () => ({
   },
 }))
 
+/* CALX51 — `@roofpro/scene3d` porte la couche WebGL (Three + MapLibre) : en CI
+ * (job frontend-vitest-shard) seul `frontend/node_modules` est installé, donc
+ * l'import dynamique que `Ombriere.jsx` fait de ce module échoue et l'écran ne
+ * dessine rien (rouge mesuré sur PR #706, `cal-ombriere-travee` introuvable —
+ * en local, la jonction vers `apps/web/node_modules` le fait résoudre, d'où le
+ * vert local trompeur). On mocke ici SEULEMENT le placement
+ * (`construireOmbriere`) par la MÊME transformation géométrique pure que le
+ * builder — x0/x1/y0/y1 moteur → centre + emprise, couverture levée à la
+ * hauteur libre SAISIE (ou pas levée du tout), `nonMesure` — appliquée aux
+ * VRAIES tables/rangées de l'exemple de contrat `pose.json` (`REPONSE`
+ * ci-dessus), donc les assertions existantes n'ont pas besoin de changer. Le
+ * VRAI module reste exercé par ses propres tests
+ * (`apps/web/src/scripts/roofPro11/*.test.ts`) — ici on ne teste QUE l'écran. */
+const construireOmbriere = vi.fn((plan, opts) => {
+  const hauteurConnue = Number.isFinite(opts?.hauteurLibreM) && opts.hauteurLibreM > 0
+  const hauteurLibreM = hauteurConnue ? opts.hauteurLibreM : 0
+
+  const tablesMoteur = plan?.tables ?? []
+  const tables = []
+  let empriseTablesM2Calc = 0
+  for (const t of tablesMoteur) {
+    const largeurM = Math.abs(t.x1 - t.x0)
+    const profondeurM = Math.abs(t.y1 - t.y0)
+    empriseTablesM2Calc += largeurM * profondeurM
+    tables.push({
+      cx: (t.x0 + t.x1) / 2,
+      cy: (t.y0 + t.y1) / 2,
+      largeurM,
+      profondeurM,
+      // Aucune pente n'est jamais transmise par `Ombriere.jsx` : l'altitude
+      // est donc la même hauteur libre pour toutes les tables — comme le
+      // fait le VRAI `construireChampPose` quand `tanPente` vaut 0.
+      z: hauteurLibreM,
+      inclinaisonRad: 0,
+      kit: typeof t.kit === 'string' ? t.kit : null,
+    })
+  }
+
+  const nonMesure = []
+  if (!tables.length) nonMesure.push('aucune table rendue par le moteur')
+  nonMesure.push('pente du terrain non renseignée : terrain rendu horizontal')
+
+  const y = Array.from(new Set((plan?.rangees ?? [])
+    .map((r) => Number(r?.y0)).filter((v) => Number.isFinite(v)))).sort((a, b) => a - b)
+  let pasInterRangeeM = null
+  if (y.length >= 2) {
+    let min = Infinity
+    for (let i = 1; i < y.length; i += 1) min = Math.min(min, y[i] - y[i - 1])
+    pasInterRangeeM = Number.isFinite(min) && min > 0 ? min : null
+  }
+  if (pasInterRangeeM === null) {
+    nonMesure.push('pas inter-rangées non mesurable (moins de deux rangées posées)')
+  }
+
+  const aire = Number.isFinite(opts?.aireTerrainM2) ? opts.aireTerrainM2 : null
+  let tauxOccupationCalc = null
+  if (aire !== null && aire > 0 && tables.length) tauxOccupationCalc = empriseTablesM2Calc / aire
+  else nonMesure.push('taux d’occupation non calculable (surface du terrain manquante)')
+
+  if (!hauteurConnue) {
+    nonMesure.push(
+      'hauteur libre non renseignée : la couverture n’est pas levée (aucune hauteur supposée)',
+    )
+  }
+
+  return {
+    tables,
+    modules: Number.isFinite(plan?.modules) ? plan.modules : null,
+    pasInterRangeeM,
+    empriseTablesM2: empriseTablesM2Calc,
+    tauxOccupation: tauxOccupationCalc,
+    nonMesure,
+  }
+})
+vi.mock('@roofpro/scene3d', () => ({
+  construireOmbriere: (...args) => construireOmbriere(...args),
+}))
+
 const {
   default: Ombriere, documentOmbriere, totauxParBatiment, coupeOmbriere,
 } = await import('../Ombriere')
