@@ -52,6 +52,18 @@ ENV PYTHONUNBUFFERED=1 \
     # leur sert de signal. Les deux disent la meme chose, volontairement.
     TAQINOR_CI_IMAGE=1
 
+# --- Fuseaux horaires ------------------------------------------------------
+# MEME regle que les images de PRODUCTION (backend/django_core/Dockerfile et
+# backend/fastapi_ia/Dockerfile) : zoneinfo ne lit QUE le paquet pip `tzdata`
+# (epingle dans requirements.txt), jamais /usr/share/zoneinfo. La tzdata de
+# Debian peut etre en retard sur IANA — bookworm servait encore 2026b le
+# 21/09/2026, donc SANS le decret marocain 2.26.530 qui fixe le pays a UTC+0
+# depuis le 20/09/2026. Sans cette ligne, la CI validerait des conversions
+# horaires que la production ne ferait pas (et inversement).
+# ENV separe, et non ajoute au bloc ci-dessus : un commentaire au milieu d'une
+# continuation `\` est une ambiguite de parsing qu'on ne cherche pas.
+ENV PYTHONTZPATH=""
+
 # --- Couche systeme --------------------------------------------------------
 # 1. Les bibliotheques WeasyPrint : liste STRICTEMENT identique a l'etape
 #    « Install WeasyPrint system libraries » de `.github/actions/backend-env`

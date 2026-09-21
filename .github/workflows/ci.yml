@@ -1348,6 +1348,15 @@ jobs:
       DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
       DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
       DJANGO_DEBUG: 'True'
+      # SEUL job de ce workflow qui BOOTE Django sur l'hote (les lanes backend,
+      # elles, tournent dans l'image CI qui porte deja cette variable). Vide =
+      # zoneinfo ignore /usr/share/zoneinfo du runner et ne lit QUE le paquet
+      # pip `tzdata` epingle dans requirements.txt — la MEME base de fuseaux
+      # qu'en production. Le boot execute les controles systeme, dont le
+      # controle « heure legale marocaine » (core/checks_tz.py, decret
+      # 2.26.530 : UTC+0 depuis le 20/09/2026) : sans cette ligne, le verdict
+      # dependrait de la tzdata du runner, pas de celle qu'on deploie.
+      PYTHONTZPATH: ''
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
