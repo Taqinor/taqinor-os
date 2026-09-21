@@ -1792,6 +1792,11 @@ FILET_RAPPEL_LIBELLE = 'Rappeler le client — rappel convenu'
 FILET_MESSAGE_CRENEAU_LIBELLE = "Message — proposer un créneau pour l'appel"
 FILET_DERNIER_APPEL_LIBELLE = 'Rappeler — dernier essai avant de chiffrer'
 
+#: CAD54 — la touche qui DIT au client que son dossier change de mains. C'est
+#: une étape de FILET (posée par le moteur, hors protocole), déclarée ici avec
+#: ses sœurs pour que `_LIBELLES_FILET` la connaisse sans second littéral.
+PASSATION_LIBELLE = 'Passation — prévenir le client du changement de conseiller'
+
 #: CKP2 — les libellés des étapes POSÉES PAR LE FILET. Elles portent la
 #: cadence `generique` sans être un barreau du gabarit `generique` : leur suite
 #: est décidée par `assurer_prochaine_etape_apres_succes`, jamais par la
@@ -1801,6 +1806,7 @@ _LIBELLES_FILET = frozenset({
     FILET_APPEL_LIBELLE, FILET_REFUS_LIBELLE,
     FILET_RAPPEL_LIBELLE,  # CAD3
     FILET_MESSAGE_CRENEAU_LIBELLE, FILET_DERNIER_APPEL_LIBELLE,  # CAD102
+    PASSATION_LIBELLE,  # CAD54
 })
 
 # ── VISITE-CADENCE — LES TROIS GESTES DU RENDEZ-VOUS ────────────────────────
@@ -8734,14 +8740,53 @@ def _palier_sans_reponse(libelle_touche_close, issue_touche_close):
 #: gabarit : AUCUN prénom n'est codé en dur (règle fondateur 08/09/2026).
 PASSATION_TEMPLATE_CLE = 'passation'
 
-#: Libellé de la touche de passation. Hors protocole, comme les trois gestes
-#: de visite : elle n'ajoute aucun barreau à aucune cadence.
-PASSATION_LIBELLE = 'Passation — prévenir le client du changement de conseiller'
+#: Le libellé de la touche, lui, est déclaré plus haut avec ses sœurs de
+#: FILET (``PASSATION_LIBELLE``) : `_LIBELLES_FILET` doit le connaître, et un
+#: second littéral aurait dérivé au premier ajustement de la phrase.
 
 #: Rang hors de la plage des gabarits (1-10), même précaution que les étapes
 #: de visite : aucune matérialisation réactive ne peut le confondre avec un
 #: barreau.
 PASSATION_ORDRE = 93
+
+
+def _poser_etape_passation(lead):
+    """CAD54 — crée (ou DÉPLACE) l'unique touche de passation du lead.
+
+    Cadence ``generique``, comme les étapes de FILET : c'en est une (posée par
+    le moteur, hors protocole). Surtout PAS la cadence des gestes de visite —
+    ``apres_devis`` — qui ferait d'une simple réattribution une « cadence
+    active » capable de bloquer le démarrage d'une prise de contact (garde
+    CADX) ou l'initialisation du suivi de proposition.
+
+    IDEMPOTENTE par libellé : une passation déjà ouverte est déplacée à
+    aujourd'hui, jamais dupliquée.
+    """
+    from core.dates import aujourd_hui_local
+
+    from . import horaires
+
+    vise = datetime.datetime.combine(
+        aujourd_hui_local(), datetime.time(9, 0),
+        tzinfo=horaires.CASABLANCA)
+    echeance = horaires.prochain_creneau_appel(
+        vise, lead.company, canal=RelanceEtape.Canal.WHATSAPP)
+    ouverte = (lead.relance_etapes
+               .filter(libelle=PASSATION_LIBELLE,
+                       statut=RelanceEtape.Statut.A_FAIRE)
+               .order_by('due_date', 'pk').first())
+    if ouverte is not None:
+        ouverte.due_at = echeance
+        ouverte.due_date = echeance.astimezone(horaires.CASABLANCA).date()
+        ouverte.save(update_fields=['due_at', 'due_date'])
+        return ouverte
+    return RelanceEtape.objects.create(
+        company=lead.company, lead=lead, cadence='generique',
+        ordre=PASSATION_ORDRE, canal=RelanceEtape.Canal.WHATSAPP,
+        libelle=PASSATION_LIBELLE, template_cle=PASSATION_TEMPLATE_CLE,
+        due_at=echeance,
+        due_date=echeance.astimezone(horaires.CASABLANCA).date(),
+        note='Posée automatiquement : le dossier change de conseiller.')
 
 
 def poser_touche_passation(lead, user, ancien_responsable=None):
@@ -8757,18 +8802,13 @@ def poser_touche_passation(lead, user, ancien_responsable=None):
 
     Renvoie l'étape posée, ou ``None``.
     """
-    from core.dates import aujourd_hui_local
-
     if not _lead_relancable(lead):
         return None
     if not getattr(lead, 'first_contacted_at', None):
         return None
     if lead.stage in (stages.SIGNED,):
         return None
-    etape = _poser_etape_visite(
-        lead, libelle=PASSATION_LIBELLE,
-        canal=RelanceEtape.Canal.WHATSAPP, ordre=PASSATION_ORDRE,
-        quand=aujourd_hui_local(), template_cle=PASSATION_TEMPLATE_CLE)
+    etape = _poser_etape_passation(lead)
     if etape is not None and ancien_responsable is not None:
         # La trace dit DE QUI le dossier vient — l'écran et le gabarit, eux,
         # lisent le responsable courant, jamais un prénom figé.
