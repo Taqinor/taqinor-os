@@ -26,7 +26,13 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 vi.mock('../../../utils/downloadBlob', () => ({
   downloadBlob: vi.fn(),
-  filenameFromResponse: vi.fn((_res, fallback) => `${fallback}.bin`),
+  // Reprend la RÈGLE du vrai helper (lire `Content-Disposition`, jamais un
+  // nom inventé) — assez fidèle pour prouver que le nom AFFICHÉ est bien
+  // celui posé par le serveur, jamais un nom écrit en dur côté écran.
+  filenameFromResponse: vi.fn((res, repli) => {
+    const cd = res?.headers?.['content-disposition'] || ''
+    return /filename="([^"]+)"/.exec(cd)?.[1] || `${repli}.bin`
+  }),
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
@@ -130,5 +136,49 @@ describe('PanneauDocuments (CALX19)', () => {
     expect(screen.queryByTestId('cal-doc-sortie-planche_pdf')
       ?.querySelector('[data-testid="cal-doc-erreurs"]')).toBeNull()
     expect(downloadBlob).not.toHaveBeenCalled()
+  })
+})
+
+describe('PanneauDocuments — les trois plans (CALX20)', () => {
+  it('les trois boutons apparaissent', async () => {
+    servirInventaire('exemple')
+
+    rendre()
+
+    expect(await screen.findByTestId('cal-doc-sortie-plan_pose_pdf')).toBeTruthy()
+    expect(screen.getByTestId('cal-doc-sortie-plan_toiture_pdf')).toBeTruthy()
+    expect(screen.getByTestId('cal-doc-sortie-plan_masse_pdf')).toBeTruthy()
+  })
+
+  it('le plan de masse est inactif sans parcelle et son motif nomme le champ', async () => {
+    servirInventaire('exemple') // le contrat committé : plan_masse_pdf indisponible ici
+
+    rendre()
+
+    const bouton = await screen.findByTestId('cal-doc-bouton-plan_masse_pdf')
+    expect(bouton).toBeDisabled()
+    expect(screen.getByTestId('cal-doc-motif-plan_masse_pdf'))
+      .toHaveTextContent(/parcelle/)
+    // Les deux autres plans, eux, sont actifs — seul celui qui manque de
+    // parcelle tombe.
+    expect(screen.getByTestId('cal-doc-bouton-plan_pose_pdf')).toBeEnabled()
+    expect(screen.getByTestId('cal-doc-bouton-plan_toiture_pdf')).toBeEnabled()
+  })
+
+  it('un téléchargement pose le nom de fichier RENDU PAR LE SERVEUR', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.telechargerSortie.mockResolvedValue({
+      data: new Blob(['%PDF-1.4']),
+      headers: { 'content-disposition': 'attachment; filename="plan-pose-calepinage-41.pdf"' },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-plan_pose_pdf'))
+
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    // Le nom livré à `downloadBlob` est CELUI DU SERVEUR, jamais un nom
+    // écrit en dur côté écran (`filenameFromResponse` lit `Content-Disposition`).
+    expect(downloadBlob.mock.calls[0][1]).toBe('plan-pose-calepinage-41.pdf')
   })
 })

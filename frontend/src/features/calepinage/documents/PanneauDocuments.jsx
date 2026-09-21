@@ -49,6 +49,9 @@ import { Button, Card, Spinner } from '../../../ui'
 const CODES_GERES = [
   'planche_pdf', // CALX19
   'planche_svg', // CALX19
+  'plan_pose_pdf', // CALX20
+  'plan_toiture_pdf', // CALX20
+  'plan_masse_pdf', // CALX20 — inactif sans parcelle, motif du serveur nommant le champ.
 ]
 
 /** Une erreur serveur -> `[{champ, message}]`, triée pour un affichage
