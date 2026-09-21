@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
@@ -33,12 +34,15 @@ import { Button, Card, Spinner } from '../../ui'
    parti SEUL sur `main` — PACT10). Rien n'est recalculé côté écran : les
    états, les motifs et les messages sont RECOPIÉS tels que servis.
 
-   LA GÉNÉRATION N'EST PAS SERVIE. Le contrat publie `peut_generer` et
-   `motif_non_generable`, mais AUCUNE route de génération n'est enregistrée à
-   ce jour (`apps/calepinage/views/reglementaire.py` n'expose que la lecture).
-   Le bouton est donc présent et DÉSACTIVÉ, en disant pourquoi — plutôt qu'un
-   bouton qui appellerait un chemin inexistant (la faute de la Bibliothèque AO
-   du 03/08/2026, neuf chemins appelés sous aucune route).
+   CALX40 — LA GÉNÉRATION EST SERVIE, ET C'EST LE SERVEUR QUI L'AUTORISE.
+   `POST calepinages/<pk>/generer-dossier/` existe désormais : le bouton
+   n'est actif QUE si le serveur déclare `peut_generer` pour CE dossier, et il
+   rend le `motif_non_generable` du serveur sinon — l'écran ne recalcule
+   jamais l'autorisation, il la RECOPIE (c'est le serveur qui refuse à
+   nouveau, un bouton actif ne suffit jamais à faire sortir un dossier).
+   Un refus 400 est rendu SOUS le champ que le serveur nomme (`gabarit`,
+   `dossier`, ou le code de la pièce qui n'a pas pu être rendue) : jamais un
+   « non enregistré » générique (règle fondateur du 08/09/2026).
    ========================================================================== */
 
 /** Les états de pièce servis par le contrat, et leur libellé français. */
@@ -162,8 +166,42 @@ function ChampsACompleter({ champs, dossierId }) {
   )
 }
 
-function Dossier({ dossier }) {
+/* CALX40 — le corps de la demande : un dossier déjà commencé se désigne par
+   son `id` ; un dossier jamais commencé (`id: null`) par son gabarit. */
+function corpsDeGeneration(dossier) {
+  return dossier.id == null
+    ? { gabarit: dossier.gabarit_id }
+    : { dossier: dossier.id }
+}
+
+function Dossier({ dossier, calepinageId, onGenere }) {
   const gabarit = dossier.gabarit || {}
+  const [enVol, setEnVol] = useState(false)
+  const [erreurs, setErreurs] = useState({})
+  const [genere, setGenere] = useState(null)
+
+  const generer = () => {
+    setErreurs({})
+    setGenere(null)
+    setEnVol(true)
+    calepinageApi.calepinages.genererDossier(
+      calepinageId, corpsDeGeneration(dossier),
+    )
+      .then((r) => {
+        setGenere(r.data)
+        if (onGenere) onGenere()
+      })
+      .catch((err) => {
+        // Un 400 NOMME son champ : on le rend sous ce champ-là, jamais sous
+        // un « non enregistré » générique.
+        const corps = err?.response?.data
+        setErreurs(corps && typeof corps === 'object'
+          ? corps
+          : { dossier: 'Génération refusée par le serveur.' })
+      })
+      .finally(() => setEnVol(false))
+  }
+
   return (
     <Card className="flex flex-col gap-3 p-3" data-testid={`cal196-dossier-${dossier.id}`}>
       <div className="flex flex-wrap items-center gap-2">
@@ -188,16 +226,44 @@ function Dossier({ dossier }) {
       <div className="flex flex-col gap-1">
         <Button
           type="button"
-          disabled
+          onClick={generer}
+          disabled={!dossier.peut_generer || enVol}
           data-testid={`cal196-generer-${dossier.id}`}
         >
-          Générer le dossier
+          {enVol ? 'Génération en cours…' : 'Générer le dossier'}
         </Button>
         <p className="text-xs text-muted-foreground" data-testid={`cal196-motif-${dossier.id}`}>
           {dossier.peut_generer
-            ? 'La génération n’est pas encore servie par le serveur : aucun dossier n’est fabriqué depuis cet écran.'
+            ? 'Toutes les pièces et tous les champs obligatoires sont là : le dossier peut être généré.'
             : dossier.motif_non_generable}
         </p>
+        {/* TOUT refus serveur est rendu SOUS le champ qu'il nomme. */}
+        {Object.entries(erreurs).map(([code, message]) => (
+          <p
+            key={code}
+            className="text-xs text-destructive"
+            data-testid={`calx40-erreur-${code}`}
+          >
+            {Array.isArray(message) ? message.join(' ') : String(message)}
+          </p>
+        ))}
+        {genere
+          ? (
+            <p className="text-xs text-muted-foreground" data-testid={`calx40-genere-${dossier.id}`}>
+              Dossier généré —
+              {' '}
+              {(genere.pieces || []).map((piece) => piece.libelle).join(', ')
+                || 'aucune pièce listée par le serveur'}
+            </p>
+          )
+          : null}
+        {/* Les signalements du serveur (pièce facultative non rendue) sont
+            RECOPIÉS : une pièce absente ne se découvre pas au dépôt. */}
+        {(genere?.signalements || []).map((signalement) => (
+          <p key={signalement} className="text-xs text-muted-foreground" data-testid="calx40-signalement">
+            {signalement}
+          </p>
+        ))}
         <p className="text-xs text-muted-foreground">
           {dossier.genere_le
             ? `Dernière génération : ${formatDateTime(dossier.genere_le)}`
@@ -212,7 +278,7 @@ export default function DossiersReglementaires({ calepinageId }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
-  const { data, loading, error } = useResource(
+  const { data, loading, error, refetch } = useResource(
     () => calepinageApi.calepinages.dossiersReglementaires(id), id,
     { select: (r) => r.data, errorMessage: 'Dossiers réglementaires indisponibles.' },
   )
@@ -243,7 +309,14 @@ export default function DossiersReglementaires({ calepinageId }) {
         )
         : null}
 
-      {dossiers.map((dossier) => <Dossier key={dossier.id} dossier={dossier} />)}
+      {dossiers.map((dossier) => (
+        <Dossier
+          key={dossier.id ?? `gabarit-${dossier.gabarit_id}`}
+          dossier={dossier}
+          calepinageId={id}
+          onGenere={refetch}
+        />
+      ))}
     </div>
   )
 }

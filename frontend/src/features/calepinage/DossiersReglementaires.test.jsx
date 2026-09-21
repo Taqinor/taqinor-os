@@ -8,14 +8,23 @@
       `valeur: null` — le champ est rendu VIDE et le message du serveur
       s'affiche (le Done de la tâche) ;
    3. un dossier dont le gabarit n'est pas déposé reste VISIBLE et dit pourquoi ;
-   4. société sans aucun gabarit ⇒ liste vide ET le message du serveur. */
+   4. société sans aucun gabarit ⇒ liste vide ET le message du serveur.
+
+   CALX40 — la génération est SERVIE : le bouton n'est actif que si le serveur
+   déclare `peut_generer`, et un refus 400 est rendu sous le champ nommé. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { render, screen, cleanup, within, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { reponseContrat } from '../../test/fixtures/contractSamples'
 
 vi.mock('../../api/calepinageApi', () => ({
-  default: { calepinages: { dossiersReglementaires: vi.fn() } },
+  default: {
+    calepinages: {
+      dossiersReglementaires: vi.fn(),
+      genererDossier: vi.fn(),
+    },
+  },
 }))
 
 import calepinageApi from '../../api/calepinageApi'
@@ -125,5 +134,90 @@ describe('DossiersReglementaires (CAL196)', () => {
     expect(await screen.findByTestId('cal196-erreur')).toHaveTextContent(
       'Dossiers réglementaires indisponibles.',
     )
+  })
+})
+
+/* ── CALX40 — la génération, autorisée par le SERVEUR et par lui seul ──────
+   L'échantillon committé ne porte que des dossiers `peut_generer: false`
+   (c'est son propos : rien n'est générable sans gabarit ni champs). Pour le
+   cas AUTORISÉ, on part de CE MÊME échantillon et on bascule la seule clé que
+   le serveur publie pour l'autoriser — aucune charge utile écrite à la main,
+   aucune autre clé inventée. */
+const servirGenerable = () => {
+  const reponse = reponseContrat('calepinage', 'dossiers_reglementaires', 'exemple')
+  calepinageApi.calepinages.dossiersReglementaires.mockResolvedValue({
+    ...reponse,
+    data: {
+      ...reponse.data,
+      dossiers: reponse.data.dossiers.map((dossier) => ({
+        ...dossier, peut_generer: true, motif_non_generable: '',
+      })),
+    },
+  })
+}
+
+describe('DossiersReglementaires — génération (CALX40)', () => {
+  it('le bouton n’est actif que si le serveur déclare peut_generer', async () => {
+    servir('exemple')
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    echantillon('exemple').dossiers.forEach((dossier) => {
+      expect(dossier.peut_generer).toBe(false)
+      expect(screen.getByTestId(`cal196-generer-${dossier.id}`)).toBeDisabled()
+    })
+
+    cleanup()
+    servirGenerable()
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    echantillon('exemple').dossiers.forEach((dossier) => {
+      expect(screen.getByTestId(`cal196-generer-${dossier.id}`)).toBeEnabled()
+    })
+  })
+
+  it('génère le dossier désigné et liste les pièces rendues par le serveur', async () => {
+    servirGenerable()
+    calepinageApi.calepinages.genererDossier.mockResolvedValue({
+      data: {
+        dossier: 1,
+        document: 42,
+        genere_le: '2026-09-21T10:00:00Z',
+        pieces: [{ code: 'planche', libelle: 'Planche de calepinage' },
+          { code: 'note_calcul', libelle: 'Note de calcul' }],
+        signalements: [],
+      },
+    })
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+    await userEvent.click(screen.getByTestId(`cal196-generer-${premier.id}`))
+
+    await waitFor(() => {
+      expect(calepinageApi.calepinages.genererDossier)
+        .toHaveBeenCalledWith(1, { dossier: premier.id })
+    })
+    expect(await screen.findByTestId(`calx40-genere-${premier.id}`))
+      .toHaveTextContent('Planche de calepinage, Note de calcul')
+  })
+
+  it('un refus 400 est rendu SOUS le champ que le serveur nomme', async () => {
+    servirGenerable()
+    const motif = 'Le gabarit « Dossier d’essai » n’a pas de fichier déposé.'
+    calepinageApi.calepinages.genererDossier.mockRejectedValue({
+      response: { data: { gabarit: [motif] } },
+    })
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+    await userEvent.click(screen.getByTestId(`cal196-generer-${premier.id}`))
+
+    expect(await screen.findByTestId('calx40-erreur-gabarit'))
+      .toHaveTextContent(motif)
+    // Aucun message générique n'est fabriqué à côté du message serveur.
+    expect(screen.queryByTestId(`calx40-genere-${premier.id}`)).toBeNull()
   })
 })

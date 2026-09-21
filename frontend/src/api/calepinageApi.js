@@ -167,6 +167,17 @@ const calepinageApi = {
     // produit, aucun statut n'est écrit par l'écran.
     genererDevis: (id, corps) => api.post(`${pivot(id)}generer-devis/`, corps),
     syncDevis: (id, corps) => api.post(`${pivot(id)}sync-devis/`, corps),
+
+    /* ↓ APPEND-ONLY (décision D-CALX 13) : toute méthode neuve s'ajoute EN FIN
+       de cet objet, avec son commentaire `// CALX<id>` — jamais au milieu,
+       jamais de tri (deux lanes qui trient ce fichier, c'est le conflit de
+       fusion garanti que la règle append-only évite). */
+
+    // CALX40 — ouvre la génération d'un dossier réglementaire. Le corps
+    // désigne `{dossier}` (un dossier déjà commencé) ou `{gabarit}` (le
+    // gabarit déposé par la société). Un refus sort en 400 SOUS le champ
+    // qu'il nomme (`gabarit`, `dossier`, ou le code de la pièce).
+    genererDossier: (id, corps) => api.post(`${pivot(id)}generer-dossier/`, corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
