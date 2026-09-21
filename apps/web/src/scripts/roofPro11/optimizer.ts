@@ -43,6 +43,16 @@ import {
 } from '../../lib/estimatorBrainV2';
 import { PERIMETER_SETBACK_M, PANEL2_LONG_M, PANEL2_SHORT_M, uniformSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { supplementsParArete } from '../../lib/roofSetbackEdge'; // CALX95 câblage
+// CALX109 câblage — les VRAIES cotes du module posé sur le pan actif. Même discipline que
+// `retraitsParArete` ci-dessous (OPT-B/CALX95) : on lit le DOCUMENT (`AreaRecord.moduleId` +
+// le catalogue de la société), on n'invente aucune dimension, et rien n'est passé au moteur
+// tant que personne n'a choisi — le balayage reste alors celui d'aujourd'hui, octet pour octet.
+import {
+  cotesPourPan,
+  estRefus,
+  lireModulesDisponibles,
+} from './moduleSelect';
+import { type Panel2Module } from '../../lib/roofPro2';
 import {
   recommendPitched,
   type FlushPack,
@@ -328,6 +338,26 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
    *  saisie ⇒ table VIDE ⇒ anneau posable = contour tracé, pavage d'aujourd'hui. */
   const retraitsParArete = (): Record<number, number> =>
     supplementsParArete(ctx.activeArea()?.edges, keepSetbacks()?.lateralM ?? PERIMETER_SETBACK_M);
+
+  /** CALX109 câblage — le catalogue CHOISISSABLE de la société, lu UNE fois (`ctx.opts` est
+   *  figé au boot). Vide sans catalogue : l'atelier reste sur son module par défaut. */
+  const catalogueModules = lireModulesDisponibles(ctx.opts?.modulesDisponibles).choisissables;
+
+  /**
+   * CALX109 câblage — les cotes du module posé sur le pan ACTIF, ou `undefined`.
+   *
+   * `undefined` dans DEUX cas, et c'est volontaire : (1) le pan n'a choisi aucun module —
+   * l'option est alors ABSENTE du solve, donc `JSON.stringify(res)` est identique à celui
+   * d'aujourd'hui, octet pour octet ; (2) le `moduleId` du pan est introuvable au catalogue ou
+   * sa fiche n'a pas de cotes — on ne pave JAMAIS avec une dimension supposée (le refus, lui,
+   * est déjà NOMMÉ par le sélecteur de `zones.ts`).
+   */
+  const cotesDuModuleDuPanActif = (): Panel2Module | undefined => {
+    const moduleId = ctx.activeArea()?.moduleId;
+    if (!moduleId) return undefined;
+    const cotes = cotesPourPan(catalogueModules, moduleId);
+    return estRefus(cotes) ? undefined : cotes;
+  };
 
   /* ═════════ CALX115 — LE SEUIL D'ACCÈS SOLAIRE RETIRE DES EMPLACEMENTS DU POSABLE ═════════
      `optimisation.seuilAccesSolaire` (contrat CALX88) voyage par le DOCUMENT et arrive ici
@@ -815,6 +845,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       setbacksM: keepSetbacks(), // PV63
       retraitsParAreteM: retraitsParArete(), // CALX95 — retrait propre à chaque arête saisie
       eastWestGeometry: eastWestGeometryInput(), // CAL87 — faîtage + écart inter-chevrons saisis
+      module: cotesDuModuleDuPanActif(), // CALX109 — vraies cotes du module posé sur ce pan
     });
     ctx.liveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
@@ -1169,6 +1200,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       obstructionClearancesM: obstructionClearances(), // PV61
       setbacksM: keepSetbacks(), // PV63
       retraitsParAreteM: retraitsParArete(), // CALX95 — retrait propre à chaque arête saisie
+      module: cotesDuModuleDuPanActif(), // CALX109 — vraies cotes du module posé sur ce pan
     });
     ctx.pitchedLiveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;

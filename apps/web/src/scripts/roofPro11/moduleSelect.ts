@@ -253,6 +253,27 @@ export function resoudreModuleDuPan(
   };
 }
 
+/**
+ * CALX109/CALX110 câblage — l'AFFECTATION courante, lue sur les pans eux-mêmes.
+ *
+ * Les trois consommateurs du choix de module (le sélecteur de `zones.ts`, le pavage de
+ * `optimizer.ts`, l'écriture du document depuis `roof-tool-pro11.ts`) lisent tous la MÊME
+ * chose : le catalogue choisissable + le `moduleId` que chaque pan porte. Cette fonction est
+ * la seule à le construire, pour qu'aucun appelant n'en invente une variante. PURE : un pan
+ * sans `moduleId` n'entre PAS dans `parPan` (il reste sur le module par défaut, nommé).
+ */
+export function affectationDesPans(
+  catalogue: readonly ModuleDocument[],
+  pans: readonly { id: string; moduleId?: string }[],
+): AffectationModules {
+  const parPan: Record<string, string | undefined> = {};
+  for (const pan of pans) {
+    const id = typeof pan?.moduleId === 'string' ? pan.moduleId.trim() : '';
+    if (id) parPan[pan.id] = id;
+  }
+  return { catalogue, parPan };
+}
+
 /** CALX109 — les cotes à paver pour un pan, ou le refus nommé qui l'en empêche. */
 export function cotesPourPan(
   catalogue: readonly ModuleDocument[],
