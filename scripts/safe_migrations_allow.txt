@@ -80,3 +80,25 @@ backend/django_core/apps/crm/migrations/0088_crx35_retrait_playbook_bloquant.py
 # l'index est instantanee — le verrou d'un AddIndex nu y est negligeable, et une
 # migration concurrent separee recreerait une collision de numerotation inter-lots.
 backend/django_core/core/migrations/0056_ntgrc3_dsr_echeance.py
+# SOLMVP14 (21/09/2026, SOLMVP-sweep) — RemoveField reviewed : detache sav des
+# apps parquees (rh notamment). Seules les 3 colonnes de LIEN vers la feature
+# "competences RH exigees par categorie" (retiree avec rh) partent -
+# CategorieTicket.competences_requises/niveau_competence_min et
+# SavSlaSettings.affectation_par_competence, devenues orphelines sans rh.
+# Destructif-revertable (regle CLAUDE.md) : aucune table SAV supprimee ; le
+# SOLMVP12/14 DONE LOG lui-meme est encore vide au moment de ce sweep (la
+# tache Groupe SOLMVP n'est pas cochee) — reviewed ici via le docstring de la
+# migration, pas via une entree DONE LOG deja postee.
+backend/django_core/apps/sav/migrations/0064_solmvp14_detacher_apps_parquees.py
+# SOLMVP12 (21/09/2026, SOLMVP-sweep) — RemoveField reviewed : detache stock
+# des modules flotte/qhse/rh (parques). Seules les 4 FK gardee->parquee
+# partent (StockVehicule.actif_flotte -> flotte.ActifFlotte,
+# PlanChargement.vehicule -> flotte.Vehicule,
+# BlocageQualite.non_conformite -> qhse.NonConformite,
+# BudgetDepartement.departement -> rh.Departement, l'enveloppe budgetaire
+# devenant unique par societe+periode) ; les contraintes/index qui les
+# referencaient partent et sont recrees sous le meme nom la ou necessaire
+# (BudgetDepartement). Destructif-revertable (regle CLAUDE.md), aucune table
+# stock supprimee ; reviewed ici via le docstring exhaustif de la migration
+# elle-meme (meme motif que l'entree SOLMVP14 ci-dessus).
+backend/django_core/apps/stock/migrations/0159_solmvp12_detacher_flotte_qhse_rh.py
