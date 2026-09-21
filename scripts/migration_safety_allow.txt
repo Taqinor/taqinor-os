@@ -95,3 +95,15 @@ backend/django_core/apps/facturation/migrations/0005_aud188_contraintes_argent.p
 # 0049 (NTPRT13 : ged_acl_principal_required_v2 inclut le principal client) ;
 # l'ancien nom est absent de Meta par construction, la v2 y est déclarée.
 backend/django_core/apps/ged/migrations/0013_aclged.py
+# REVUE 21/09/2026 (SOLMVP-sweep) — stock_stockvehicule_co_actif_produit_uniq
+# posée par 0115 sur un champ retiré depuis (SOLMVP12 : RemoveField des FK
+# flotte.ActifFlotte/flotte.Vehicule hors du MVP solaire) ; models.py ne
+# décrit plus ce champ donc ne peut plus mirroiter le nom — migration figée,
+# aucune dérive réelle (le champ lui-même a disparu, pas juste son index).
+backend/django_core/apps/stock/migrations/0115_ntdst14_stock_vehicule.py
+# REVUE 21/09/2026 (SOLMVP-sweep) — idx_budgdep_co_dept posé par 0117 sur le
+# champ ``departement`` de BudgetDepartement, retiré par SOLMVP12 (la
+# distinction par département référençait rh.Departement, hors du MVP
+# solaire : une seule enveloppe par société et par période désormais) ;
+# migration figée, même motif que ci-dessus.
+backend/django_core/apps/stock/migrations/0117_ntp2p4_budget_departement.py
