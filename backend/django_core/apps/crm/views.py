@@ -1042,7 +1042,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                              # MORTE et les deux actions retomberaient sur le
                              # `return [IsAdminRole()]` final — 403 pour la
                              # Commerciale, qui est justement celle qui lit.
-                             'visites', 'message_visite'):
+                             'visites', 'message_visite',
+                             # CAD148 — le PANNEAU D'APPEL est une LECTURE de
+                             # la fiche (script, questions, équipements) :
+                             # même garde fine que l'historique. Sans cette
+                             # ligne il retomberait sur le `[IsAdminRole()]`
+                             # final et la commerciale — qui est justement
+                             # celle qui appelle — serait refusée (bug CI #25).
+                             'panneau_appel'):
             # CRX19/CRX37 — l'historique COMPLET d'un lead (et ses jalons
             # devis, qui sont le même historique vu côté ventes) exige
             # ``crm_voir``. get_permissions() PRIME sur le permission_classes
@@ -2376,6 +2383,21 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         record(AuditLog.Action.EXPORT,
                detail=f'Export leads (.xlsx) — {len(ids)} ligne(s)')
         return export_leads_xlsx(leads)
+
+    # ── CAD-L ── CAD148 — le panneau d'appel guidé.
+    @action(detail=True, methods=['get'], url_path='panneau-appel',
+            permission_classes=[IsAnyRole])
+    def panneau_appel(self, request, pk=None):
+        """CAD148 — tout ce qu'un écran d'appel attend du serveur, en UNE
+        réponse : segment, touche en cours, script rendu, questions encore à
+        poser (jamais une déjà répondue) et, par équipement, « compté dans
+        l'étude » ou le champ qui lui manque.
+
+        Contrat : `apps/crm/contract_samples/panneau_appel.json` (CAD147).
+        Lecture seule, company-scopée par `get_object()` — aucune écriture."""
+        from .panneau_appel import panneau_appel as _panneau
+        lead = self.get_object()
+        return Response(_panneau(lead, request=request, user=request.user))
 
 
 class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
