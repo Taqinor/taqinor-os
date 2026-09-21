@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import SunDiagram, { COURBES_REPERE } from './SunDiagram'
 import { HAUTEUR_TOIT_HYPOTHESE_M, centroideDuContour, obstructionsDuPan } from './obstructionMath'
+import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
    CAL96 — LA COURSE DU SOLEIL, PAR PAN.
@@ -98,11 +99,18 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
   }, [zone, layout?.environment, hauteurToitM])
 
   if (chargement) {
-    return <div className="cine-card mt-6 p-6" data-testid="cal-course-soleil-loading">Chargement…</div>
+    return (
+      <>
+        <RetourAtelier calepinageId={calepinageId} />
+        <div className="cine-card mt-6 p-6" data-testid="cal-course-soleil-loading">Chargement…</div>
+      </>
+    )
   }
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-course-soleil">
+    <>
+      <RetourAtelier calepinageId={calepinageId} />
+      <div className="cine-card mt-6 p-6" data-testid="cal-course-soleil">
       <p className="tech-label rule-brass text-brass-300">Course du soleil</p>
       <p className="mt-1 text-sm text-lune-faint">
         Azimut (0°=Nord) en abscisse, hauteur du soleil en ordonnée, pour les trois jours
@@ -226,5 +234,6 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
         </div>
       )}
     </div>
+    </>
   )
 }

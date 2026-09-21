@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
    CAL58 — LA PENTE : en degrés, en pourcentage, OU PAR COTES.
@@ -258,7 +259,9 @@ export default function SaisiePente({
   }
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-pente">
+    <>
+      <RetourAtelier calepinageId={calepinageId} />
+      <div className="cine-card mt-6 p-6" data-testid="cal-pente">
       <p className="tech-label rule-brass text-brass-300">Pente de la toiture</p>
 
       <div className="mt-3 flex flex-wrap gap-2" role="radiogroup"
@@ -399,5 +402,6 @@ export default function SaisiePente({
         </div>
       )}
     </div>
+    </>
   )
 }
