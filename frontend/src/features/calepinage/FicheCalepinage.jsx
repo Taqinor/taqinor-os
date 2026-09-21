@@ -94,6 +94,36 @@ function refusServeur(erreur, geste) {
 
 const LIBELLE_GESTE = { archiver: 'Archiver', restaurer: 'Restaurer' }
 
+/* ============================================================================
+   CALX33 — RENOMMER UN CALEPINAGE APRÈS SA CRÉATION.
+   ----------------------------------------------------------------------------
+   `CalepinageNouveau.jsx` posait le nom UNE fois, à la création, et
+   `calepinages.update` (fabrique CRUD, CAL33) n'avait AUCUN appelant : un nom
+   mal tapé restait mal tapé pour la vie du calepinage.
+
+   LE CHAMP SERVEUR S'APPELLE `titre`, LA CLÉ DE L'AGRÉGAT `nom`. Le détail
+   CAL17 publie `nom` (`views/calepinages.py:823` le dérive de `titre`) mais
+   le sérialiseur d'écriture (`CalepinageSerializer.Meta.fields`) ne connaît
+   que `titre` : le PATCH part donc sur `titre`, et le refus qui revient le
+   nomme sous CE nom — on le rend sous le champ « Nom », jamais ailleurs.
+   ========================================================================== */
+
+//: Le nom du champ d'ÉCRITURE côté serveur (jamais `nom`, qui est la clé de
+//: lecture de l'agrégat).
+const CHAMP_NOM = 'titre'
+
+/** Le refus d'un PATCH DRF, ramené au message du champ demandé. */
+function refusChamp(erreur, champ) {
+  const corps = erreur?.response?.data
+  if (typeof corps === 'string' && corps.trim()) return corps.trim()
+  if (corps && typeof corps === 'object') {
+    const brut = corps[champ] ?? corps.detail ?? Object.values(corps)[0]
+    const message = Array.isArray(brut) ? brut.join(' ') : brut
+    if (message) return String(message)
+  }
+  return "Le serveur n’a rendu aucun motif : le nom n’a pas été changé."
+}
+
 export default function FicheCalepinage({ detail }) {
   // CALX26 — la confirmation en DEUX TEMPS : un premier clic explique ce que
   // l'archivage fait, le second l'exécute. Jamais un archivage au clic seul.
@@ -101,6 +131,12 @@ export default function FicheCalepinage({ detail }) {
   const [archive, setArchive] = useState(false)
   const [enCours, setEnCours] = useState(false)
   const [refus, setRefus] = useState(null)
+  // CALX33 — le nom éditable sur place. `nomLocal` reste `null` tant que rien
+  // n'a été enregistré : l'écran affiche alors le nom SERVI, jamais une copie.
+  const [edition, setEdition] = useState(false)
+  const [saisie, setSaisie] = useState('')
+  const [nomLocal, setNomLocal] = useState(null)
+  const [refusNom, setRefusNom] = useState(null)
 
   if (!detail) return null
 
@@ -156,6 +192,35 @@ export default function FicheCalepinage({ detail }) {
     }
   }
 
+  const nomAffiche = nomLocal === null ? detail.nom : nomLocal
+
+  const ouvrirEdition = () => {
+    setRefusNom(null)
+    setSaisie(nomAffiche ?? '')
+    setEdition(true)
+  }
+
+  const enregistrerNom = async () => {
+    const propre = (saisie || '').trim()
+    // REFUS AVANT ENVOI : un nom vide n'est pas une requête à faire au
+    // serveur, c'est une saisie à corriger — et le champ le dit lui-même.
+    if (!propre) {
+      setRefusNom('Le nom ne peut pas être vide : saisissez-en un, ou annulez.')
+      return
+    }
+    setEnCours(true)
+    setRefusNom(null)
+    try {
+      await calepinageApi.calepinages.update(detail.id, { [CHAMP_NOM]: propre })
+      setNomLocal(propre)
+      setEdition(false)
+    } catch (erreur) {
+      setRefusNom(refusChamp(erreur, CHAMP_NOM))
+    } finally {
+      setEnCours(false)
+    }
+  }
+
   const styleBouton = 'inline-flex items-center gap-2 border border-brass-400 '
     + 'px-5 py-3 text-base font-bold text-brass-300 '
     + 'disabled:cursor-not-allowed disabled:opacity-60'
@@ -173,6 +238,17 @@ export default function FicheCalepinage({ detail }) {
             listes et aucune modification n’est possible. La restauration le
             remet à l’identique.
           </p>
+        </div>
+      )}
+
+      {/* CALX33 — LE BANDEAU QUI NOMME LE CHAMP FAUTIF. Il ne remplace pas le
+          message sous le champ : il le double en haut de la fiche, pour qu'un
+          refus ne passe jamais inaperçu. */}
+      {refusNom && (
+        <div className="mt-5 border border-alert-300/40 p-3"
+          data-testid="cal-fiche-bandeau-nom" role="alert">
+          <p className="tech-label text-alert-300">Nom</p>
+          <p className="mt-1 text-sm text-alert-300">{refusNom}</p>
         </div>
       )}
 
@@ -228,7 +304,50 @@ export default function FicheCalepinage({ detail }) {
       <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-white/10 pt-5 sm:grid-cols-3"
         data-testid="cal-fiche-calepinage">
         <Champ cle="reference" label="Référence">{texte(detail.reference)}</Champ>
-        <Champ cle="nom" label="Nom">{texte(detail.nom)}</Champ>
+        {/* CALX33 — le nom, éditable SUR PLACE. Le droit de gérer commande le
+            crayon ; un calepinage archivé n'offre plus aucune écriture. */}
+        <Champ cle="nom" label="Nom">
+          {edition ? (
+            <span className="flex flex-wrap items-center gap-2">
+              <label className="sr-only" htmlFor="cal-fiche-nom-champ">
+                Nom du calepinage
+              </label>
+              <input id="cal-fiche-nom-champ" type="text" value={saisie}
+                data-testid="cal-fiche-nom-champ" disabled={enCours}
+                onChange={(e) => { setSaisie(e.target.value) }}
+                className="border border-white/20 bg-transparent px-2 py-1 text-sm text-white" />
+              <button type="button" disabled={enCours}
+                className="text-sm font-semibold text-brass-300 underline"
+                data-testid="cal-fiche-nom-enregistrer" onClick={enregistrerNom}>
+                Enregistrer
+              </button>
+              <button type="button" disabled={enCours}
+                className="text-sm text-lune-soft underline"
+                data-testid="cal-fiche-nom-annuler"
+                onClick={() => { setEdition(false); setRefusNom(null) }}>
+                Annuler
+              </button>
+            </span>
+          ) : (
+            <span className="flex flex-wrap items-center gap-2">
+              <span>{texte(nomAffiche)}</span>
+              {peutGerer && !archive && (
+                <button type="button" onClick={ouvrirEdition}
+                  className="text-sm text-brass-300 underline"
+                  data-testid="cal-fiche-nom-editer">
+                  Renommer
+                </button>
+              )}
+            </span>
+          )}
+          {/* L'ERREUR SOUS LE CHAMP FAUTIF — le motif du serveur, tel quel. */}
+          {refusNom && (
+            <span className="mt-1 block text-xs text-alert-300" role="alert"
+              data-testid="cal-fiche-nom-erreur">
+              {refusNom}
+            </span>
+          )}
+        </Champ>
         <Champ cle="id" label="Identifiant technique">
           <span className="fig">{texte(detail.id)}</span>
         </Champ>

@@ -12,6 +12,9 @@ vi.mock('../../api/calepinageApi', () => ({
     calepinages: {
       archiver: vi.fn(),
       restaurerCorbeille: vi.fn(),
+      // CALX33 — la fabrique CRUD partagée (`api/resource.js`) : PATCH sur
+      // `/calepinage/calepinages/<id>/`.
+      update: vi.fn(),
     },
   },
 }))
@@ -225,6 +228,99 @@ describe('CALX26 — archivage et restauration depuis la fiche', () => {
     expect(screen.queryByTestId('cal-fiche-archiver')).toBeNull()
     // La fiche reste entièrement lisible : « lecture seule » n'est pas « rien ».
     expect(screen.getByTestId('cal-fiche-calepinage')).toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   CALX33 — RENOMMER UN CALEPINAGE APRÈS SA CRÉATION.
+   ----------------------------------------------------------------------------
+   `calepinages.update` existait sans appelant : le nom posé à la création
+   était définitif. Ce qui est prouvé : sans le droit de gérer, aucun bouton
+   d'édition ; un titre vide est refusé AVANT envoi ; un refus serveur pointe
+   le champ (sous lui, et dans un bandeau qui le nomme).
+   ========================================================================== */
+
+describe('CALX33 — le nom de la fiche est éditable sur place', () => {
+  it('sans le droit de gérer : aucun bouton d’édition', () => {
+    rendre(SANS_DROIT)
+    expect(screen.queryByTestId('cal-fiche-nom-editer')).toBeNull()
+    // La valeur reste LUE — lecture seule n'est pas « rien à voir ».
+    expect(screen.getByTestId('cal-fiche-nom')).toHaveTextContent(DETAIL.nom)
+  })
+
+  it('crayon → champ → enregistrer : PATCH sur `titre`, nom mis à jour', async () => {
+    calepinageApi.calepinages.update.mockResolvedValue({ data: {} })
+    rendre(DETAIL)
+
+    await userEvent.click(screen.getByTestId('cal-fiche-nom-editer'))
+    const champ = screen.getByTestId('cal-fiche-nom-champ')
+    await userEvent.clear(champ)
+    await userEvent.type(champ, 'Toiture atelier nord')
+    await userEvent.click(screen.getByTestId('cal-fiche-nom-enregistrer'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.update)
+      .toHaveBeenCalledWith(DETAIL.id, { titre: 'Toiture atelier nord' }))
+    expect(await screen.findByTestId('cal-fiche-nom'))
+      .toHaveTextContent('Toiture atelier nord')
+    expect(screen.queryByTestId('cal-fiche-nom-champ')).toBeNull()
+  })
+
+  it('un titre VIDE est refusé AVANT tout envoi', async () => {
+    rendre(DETAIL)
+
+    await userEvent.click(screen.getByTestId('cal-fiche-nom-editer'))
+    await userEvent.clear(screen.getByTestId('cal-fiche-nom-champ'))
+    await userEvent.click(screen.getByTestId('cal-fiche-nom-enregistrer'))
+
+    expect(calepinageApi.calepinages.update).not.toHaveBeenCalled()
+    expect(screen.getByTestId('cal-fiche-nom-erreur'))
+      .toHaveTextContent('ne peut pas être vide')
+    // Le champ reste ouvert : on corrige, on ne recommence pas.
+    expect(screen.getByTestId('cal-fiche-nom-champ')).toBeInTheDocument()
+  })
+
+  it('refus serveur : le motif est SOUS le champ et le bandeau le NOMME', async () => {
+    const MOTIF = 'Ce nom est déjà porté par un autre calepinage.'
+    calepinageApi.calepinages.update.mockRejectedValue({
+      response: { status: 400, data: { titre: [MOTIF] } },
+    })
+    rendre(DETAIL)
+
+    await userEvent.click(screen.getByTestId('cal-fiche-nom-editer'))
+    await userEvent.clear(screen.getByTestId('cal-fiche-nom-champ'))
+    await userEvent.type(screen.getByTestId('cal-fiche-nom-champ'), 'Doublon')
+    await userEvent.click(screen.getByTestId('cal-fiche-nom-enregistrer'))
+
+    expect(await screen.findByTestId('cal-fiche-nom-erreur'))
+      .toHaveTextContent(MOTIF)
+    const bandeau = screen.getByTestId('cal-fiche-bandeau-nom')
+    expect(bandeau).toHaveTextContent('Nom')
+    expect(bandeau).toHaveTextContent(MOTIF)
+  })
+
+  it('« Annuler » ferme le champ sans rien envoyer', async () => {
+    rendre(DETAIL)
+
+    await userEvent.click(screen.getByTestId('cal-fiche-nom-editer'))
+    await userEvent.click(screen.getByTestId('cal-fiche-nom-annuler'))
+
+    expect(screen.queryByTestId('cal-fiche-nom-champ')).toBeNull()
+    expect(calepinageApi.calepinages.update).not.toHaveBeenCalled()
+    expect(screen.getByTestId('cal-fiche-nom')).toHaveTextContent(DETAIL.nom)
+  })
+
+  it('archivé : le renommage n’est plus proposé (le bandeau coupe l’écriture)', async () => {
+    calepinageApi.calepinages.archiver.mockResolvedValue({
+      data: { calepinage: DETAIL.id, archive: true },
+    })
+    rendre(DETAIL)
+
+    await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
+    await userEvent.click(screen.getByTestId('cal-fiche-archiver'))
+
+    expect(await screen.findByTestId('cal-fiche-bandeau-archive'))
+      .toBeInTheDocument()
+    expect(screen.queryByTestId('cal-fiche-nom-editer')).toBeNull()
   })
 })
 
