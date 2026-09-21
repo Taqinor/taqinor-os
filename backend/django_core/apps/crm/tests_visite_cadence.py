@@ -924,6 +924,24 @@ class DeploiementSansEffetTests(VisiteCadenceBase):
 
         (``tests_mry12_messages_relance`` re-dérive le fichier source et
         compare TOUT ; cette garde-ci vise seulement la non-régression du lot.)
+
+        Gel mis à jour le 21/09/2026 pour DEUX décisions postérieures au lot
+        visite, toutes deux assumées et testées chez elles :
+
+        * **CAD110** (porte de sortie, loi 09-08 art. 10 al. 5) a ajouté
+          « Répondez STOP et je n'insiste plus. » à HUIT clés — `je_classe_j7`,
+          `cloture_j14`, `j13_dernier`, `j14_pause`, `reveil_a1`, `reveil_a2`,
+          `reveil_a3`, `reveil_b`. `j14_pause` en fait partie : son texte gelé
+          ici porte donc désormais cette phrase. Le test vérifie ci-dessous
+          que la différence s'arrête là — que SEULES les huit clés de CAD110
+          portent la mention, et qu'aucune des trois premières touches de la
+          cadence contact n'a été alourdie (garde-fou explicite de CAD110).
+        * **CAD125/CAD127/CAD128** ont APPENDU des clés après les deux clés
+          de visite : celles-ci ne sont plus la fin de `CLES_RELANCE`. Ce
+          qu'on gèle reste ce que le lot visite a promis — les deux clés
+          arrivent ensemble, dans cet ordre, juste après `parrainage`
+          (dernière clé d'avant le lot) — sans figer une queue de liste que
+          toute tâche additive périme.
         """
         from apps.parametres.models_messages import (
             CLES_RELANCE, MESSAGE_TEMPLATE_DEFAULTS,
@@ -932,10 +950,23 @@ class DeploiementSansEffetTests(VisiteCadenceBase):
         self.assertEqual(
             MESSAGE_TEMPLATE_DEFAULTS['j14_pause'],
             'Je mets votre dossier en pause. Votre proposition reste dans '
-            'notre système ; un message suffit pour la réactiver.')
-        # Les nouvelles clés sont AJOUTÉES en fin de liste, dans cet ordre.
-        self.assertEqual(CLES_RELANCE[-2:],
-                         ['visite_proposition', 'visite_confirmation'])
+            'notre système ; un message suffit pour la réactiver. '
+            "Répondez STOP et je n'insiste plus.")
+        # CAD110 — la mention ne s'est PAS répandue : exactement les 8 clés
+        # décidées la portent, et aucune autre.
+        cles_stop = sorted(
+            cle for cle in CLES_RELANCE
+            if 'STOP' in MESSAGE_TEMPLATE_DEFAULTS[cle])
+        self.assertEqual(cles_stop, sorted([
+            'je_classe_j7', 'cloture_j14', 'j13_dernier', 'j14_pause',
+            'reveil_a1', 'reveil_a2', 'reveil_a3', 'reveil_b',
+        ]))
+        # Les deux clés du lot visite sont AJOUTÉES ensemble, dans cet ordre,
+        # juste après la dernière clé d'avant le lot.
+        depart = CLES_RELANCE.index('parrainage')
+        self.assertEqual(
+            CLES_RELANCE[depart:depart + 3],
+            ['parrainage', 'visite_proposition', 'visite_confirmation'])
 
 
 class DateVisiteFrancaisTests(TestCase):
