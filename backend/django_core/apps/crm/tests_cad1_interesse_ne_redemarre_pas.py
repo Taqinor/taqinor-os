@@ -170,10 +170,23 @@ class InteresseApresDevisTests(_Base):
         self.assertEqual(apres, avant + 1)
 
     def test_aucun_barreau_deja_consomme_n_est_repose(self):
+        """Aucun barreau DÉJÀ POSÉ n'existe en double après l'issue.
+
+        Les ordres parcourus sont ceux que la partition de CE lead contient
+        vraiment, pas `range(1, 6)` : le barreau 3 (« Dimanche famille »,
+        `dimanche_ok`) est RÉSERVÉ aux dossiers étiquetés « Décision à
+        plusieurs » (MRY4, `services._TEMPLATE_DIMANCHE_FAMILLE`) et ce lead
+        ne porte pas l'étiquette — il n'a donc jamais été matérialisé, et en
+        exiger un exemplaire revenait à reprocher au moteur une touche qu'il
+        a EXPRÈS écartée. Le trou dans la numérotation est épinglé ici même
+        pour que ce test reste un vrai contrôle de non-duplication.
+        """
+        ordres_poses = sorted(self.etapes)
+        self.assertEqual(ordres_poses, [1, 2, 4, 5])
         marquer_etape_relance(
             self.touche5, self.acteur, RelanceEtape.Statut.FAIT,
             outcome='interesse')
-        for ordre in range(1, 6):
+        for ordre in ordres_poses:
             self.assertEqual(
                 self.lead.relance_etapes.filter(
                     cadence='apres_devis', ordre=ordre).count(), 1,
