@@ -146,6 +146,32 @@
     "electrical": {
       "description": "CALX201 — la couche ÉLECTRIQUE du document : les organes posés dans l'atelier (`equipements[]`) et, depuis CALX202, les cheminements de câble qui les relient (`cheminements[]`). Clé RACINE OPTIONNELLE et additive : absente, le comportement est EXACTEMENT celui d'aujourd'hui (aucun organe, aucun marqueur dans la scène, aucun bloc supplémentaire au schéma unifilaire), et un document v2 déjà enregistré reste valide sans qu'une seule de ses clés change. Aucune valeur par défaut n'est inventée : l'absence d'équipement n'est pas « un onduleur au centre du toit », c'est une information qui manque — les calculs qui en dépendent s'OMETTENT en la nommant.",
       "$ref": "#/$defs/electrical"
+    },
+    "optimisation": {
+      "description": "CALX88 — ce que le balayage CHERCHE, et comment il remplit. Clé RACINE OPTIONNELLE et additive : absente = le comparateur unique d'aujourd'hui (l'énergie annuelle posée classée d'abord, `apps/web/src/lib/estimatorBrainV6.ts::betterMatrixV6`), aucune priorité de remplissage et aucun seuil — comportement d'aujourd'hui, byte pour byte. Présente, elle dit ce que l'utilisateur a DEMANDÉ ; elle ne recalcule rien et ne classe rien par elle-même.",
+      "$ref": "#/$defs/optimisation"
+    },
+    "scene": {
+      "description": "CALX88 — l'instant de la SCÈNE 3D (jour et heure du soleil) RÉELLEMENT affiché au moment de l'export. Clé RACINE OPTIONNELLE et additive : absente = l'instant par défaut de la scène d'aujourd'hui, celui qu'elle affiche quand personne n'a bougé la bascule hiver/été (`roof-tool-pro11.ts`) — ni `ctx.sunDay` ni `ctx.sunHour` ne voyageaient dans `serializeLayout`, donc rouvrir le document perdait l'instant choisi et l'ombre montrée changeait sous les yeux du client. AUCUN calcul n'en dépend : c'est un point de vue, pas une donnée d'ingénierie ; les pertes d'ombrage se calculent sur l'année entière (CAL93, chaîne de pertes), jamais sur cet instant.",
+      "$ref": "#/$defs/scene"
+    },
+    "underlay": {
+      "description": "CALX86 — le CALQUE DE FOND calé sous le tracé : un plan importé, ou une photo du site. Clé RACINE OPTIONNELLE et additive : absente = AUCUN fond, exactement l'atelier d'aujourd'hui (les calques `photo` et `plan` du panneau pilotent une liste VIDE de couches MapLibre, `roofPro11/mapDraw.ts`). AUCUNE échelle n'est déduite d'un fichier muet : l'analyseur de plan rend un contour dans l'unité DU FICHIER et ne convertit jamais en mètres (`services/import_plan.py`) — c'est le calage à deux points qui donne l'échelle, et il porte sa `distanceReelleM` SAISIE ou il est refusé. Un seul fond à la fois : superposer deux images calées différemment ferait lire deux toits.",
+      "$ref": "#/$defs/underlay"
+    },
+    "buildings": {
+      "description": "CALX84 — les BÂTIMENTS du site, ceux que `zones[].buildingId` (CAL59) et `poseSurfaces[].buildingId` (CAL91) désignent déjà sans qu'aucun objet ne les décrive. Clé RACINE OPTIONNELLE et additive : absente, la 3D continue d'extruder l'hypothèse affichée d'aujourd'hui (`FLOORS × FLOOR_HEIGHT_M`, `apps/web/src/scripts/roofPro11/constants.ts`) et l'atelier le DIT — l'hypothèse reste une hypothèse. Présente, elle fait voyager la hauteur SAISIE dans CAL60, qui vivait jusqu'ici dans une `Map` locale de `shadingUi.ts` et n'était jamais sérialisée : rouvrir le document la perdait. AUCUNE hauteur n'est devinée : `hauteurM` est SAISIE et porte obligatoirement sa `source`, ou vaut `null` — et une hauteur `null` n'est pas 0 m, c'est une mesure qui manque. Un `buildingId` qui ne figure pas ici reste TOLÉRÉ (les documents d'aujourd'hui en portent déjà sans qu'aucun bâtiment n'existe) : il signifie simplement « bâtiment non décrit ».",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/building"
+      }
+    },
+    "modules": {
+      "description": "CALX82 — le CATALOGUE des modules physiques utilisés par ce document. Clé RACINE OPTIONNELLE et additive : absente ou vide, tous les pans posent le module unique d'aujourd'hui (`PANEL2_*` de `apps/web/src/lib/roofPro2.ts`, dont seule la puissance voyage, par `panelWatt`) — comportement d'aujourd'hui, byte pour byte. Présente, elle permet à deux pans de poser deux modèles DIFFÉRENTS, chacun désigné par `zones[].geometry.moduleId`. Aucune dimension n'est déduite d'une puissance ni l'inverse : chaque valeur est SAISIE ou lue d'une fiche produit, et `null` quand la fiche ne la porte pas.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/moduleDocument"
+      }
     }
   },
   "$defs": {
@@ -321,6 +347,7 @@
       }
     },
     "edge": {
+      "description": "Une arête du contour d'un pan, avec son type (CAL57) et, depuis CALX81, le retrait qui lui est PROPRE.",
       "type": "object",
       "additionalProperties": true,
       "properties": {
@@ -342,8 +369,13 @@
           ]
         },
         "manuel": {
-          "description": "`true` quand un humain a corrigé le type déduit — la correction ne doit pas être écrasée à la relecture.",
+          "description": "CALX81 — `true` quand le type de cette arête a été ÉCRIT PAR L'UTILISATEUR dans l'atelier, en remplacement du type déduit. C'est une marque de provenance (D-CALX 7) : la relecture ne réécrase jamais un type marqué `manuel`, et un écran qui affiche l'origine du type lit ce drapeau. Absent ou `false` = type déduit, jamais corrigé à la main.",
           "type": "boolean"
+        },
+        "retraitM": {
+          "description": "CALX81 — retrait SAISI pour CETTE arête seule, en mètres. OPTIONNEL et additif : absent = seul le retrait de CATÉGORIE s'applique (`setbacksM`, CAL76 : latérale / extrémité / acrotère / joint), soit exactement le comportement d'aujourd'hui, byte pour byte. Présent, il vaut POUR CE SEGMENT PHYSIQUE, que les quatre catégories ne savent pas désigner — un rampant qui longe une limite de propriété n'a pas le même retrait que les autres rampants du même pan. Aucune valeur n'est proposée par le schéma : un retrait non saisi est ABSENT, jamais un zéro (qui se lirait « mesuré à ras »).",
+          "type": "number",
+          "minimum": 0
         }
       }
     },
@@ -399,8 +431,85 @@
             "DECLARE_CLIENT",
             "ECARTE"
           ]
+        },
+        "forme": {
+          "description": "CALX85 — la FORME réelle de l'obstacle. OPTIONNELLE et additive : absente, l'obstacle est lu comme le RECTANGLE centré d'aujourd'hui (`centerLng`/`centerLat`/`lengthM`/`widthM`), byte pour byte. `polygone` = contour quelconque (`contour`), `cercle` = disque (`rayonM`) : ce sont les formes qu'une cheminée ronde ou un édicule biscornu exigeaient de faire passer pour des rectangles. Le dégagement par type (`CLEARANCE_BY_TYPE`, PV61) continue de s'appliquer autour de la forme RÉELLE, il n'est ni recalculé ni élargi ici.",
+          "type": "string",
+          "enum": [
+            "rectangle",
+            "polygone",
+            "cercle"
+          ]
+        },
+        "contour": {
+          "description": "CALX85 — sommets du polygone en [[lng, lat], …], MÊME ordre que `zones[].vertices`. Requis quand `forme` vaut `polygone`, et il lui faut au moins TROIS sommets : deux points ne délimitent aucune surface, donc aucun dégagement mesurable. Le contour est FERMÉ implicitement (le dernier sommet rejoint le premier), comme `vertices`. Ignoré pour les autres formes.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/couple"
+          },
+          "minItems": 3
+        },
+        "rayonM": {
+          "description": "CALX85 — rayon du disque (m), SAISI. Requis quand `forme` vaut `cercle`, centré sur `centerLng`/`centerLat`. Aucun rayon n'est déduit d'une longueur ni d'une largeur : un cercle sans rayon saisi est refusé en nommant le champ, jamais arrondi depuis le rectangle.",
+          "type": "number",
+          "exclusiveMinimum": 0
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "forme"
+            ],
+            "properties": {
+              "forme": {
+                "const": "polygone"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "contour"
+            ],
+            "properties": {
+              "contour": {
+                "description": "CALX85 — un polygone porte son contour, et il compte au moins trois sommets.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/couple"
+                },
+                "minItems": 3
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "forme"
+            ],
+            "properties": {
+              "forme": {
+                "const": "cercle"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "rayonM"
+            ],
+            "properties": {
+              "rayonM": {
+                "description": "CALX85 — un cercle porte son rayon SAISI.",
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        }
+      ]
     },
     "zoneGeometry": {
       "type": "object",
@@ -453,6 +562,15 @@
         "solarAccess": {
           "description": "CAL248 — accès solaire PAR MODULE, persisté pour que le backend puisse le lire (`pointSolarAccess` / `cellsSolarAccess` vivent aujourd'hui côté client et ne sortent jamais de l'écran). OPTIONNEL et additif : absent = comportement d'aujourd'hui, JAMAIS une valeur par défaut — un module sans accès solaire calculé n'est pas un module à 100 %.",
           "$ref": "#/$defs/solarAccess"
+        },
+        "moduleId": {
+          "description": "CALX82 — le module physique posé sur CE pan, désigné par son `id` dans le catalogue `modules[]` de la racine. OPTIONNEL et additif : absent = le module unique d'aujourd'hui, comportement d'aujourd'hui. Un `moduleId` qui ne figure PAS dans `modules[]` est REFUSÉ en nommant le champ (`services/io_layout.py`) : un pan qui désigne un modèle introuvable n'a ni dimensions ni poids, donc aucune surface et aucune charge vérifiables — mieux vaut un refus lisible qu'un pan silencieusement repavé avec le module d'un autre.",
+          "type": "string",
+          "minLength": 1
+        },
+        "numerotation": {
+          "description": "CALX83 — la convention de numérotation SAISIE pour ce pan. OPTIONNELLE et additive : absente = l'affichage par index d'aujourd'hui. Elle décrit ce que l'utilisateur a choisi, elle ne renumérote rien.",
+          "$ref": "#/$defs/numerotationPan"
         }
       }
     },
@@ -473,6 +591,392 @@
             "E",
             "W"
           ]
+        },
+        "n": {
+          "description": "CALX83 — numéro STABLE du module, attribué À LA POSE et JAMAIS réattribué : retirer un module laisse un TROU dans la suite, il ne renumérote pas ses voisins. OPTIONNEL et additif : absent = l'affichage par index du tableau d'aujourd'hui (`nº${i + 1}`, `shadingUi.ts`), qui change dès qu'un module est retiré. C'est ce numéro que le rapport d'ombrage et le repérage de pose citent ; deux modules d'un MÊME pan ne peuvent pas le partager, et le document qui le tente est refusé en nommant le champ (`services/io_layout.py`).",
+          "type": "integer",
+          "minimum": 1
+        },
+        "rangee": {
+          "description": "CALX83 — étiquette de la rangée qui porte ce module, SAISIE ou déduite du pavage (« A », « R3 »…). OPTIONNELLE : absente = le module n'est rattaché à aucune rangée nommée, et l'écran ne lui en invente pas une. C'est une ÉTIQUETTE, pas un rang calculé : deux modules de la même rangée physique portent la même.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "numerotationPan": {
+      "description": "CALX83 — la convention de numérotation SAISIE pour un pan : ce que l'utilisateur a choisi, jamais une règle que le schéma impose. OPTIONNELLE dans son entier ; absente, les modules gardent les `n` déjà attribués (ou l'affichage par index d'aujourd'hui s'ils n'en ont pas). Elle ne renumérote RIEN par elle-même : c'est la description de ce qui a été fait, pour qu'un écran rouvert reprenne la même main.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "prefixe": {
+          "description": "Préfixe SAISI affiché devant le numéro (« PV », « TOIT-A »…). Chaîne vide ou absente = aucun préfixe.",
+          "type": "string"
+        },
+        "depart": {
+          "description": "Premier numéro attribué sur ce pan, SAISI. Absent = la suite commence à son premier `n` réellement posé ; le schéma ne propose aucun départ.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "sens": {
+          "description": "ORDRE d'attribution des numéros sur le pan, SAISI, énumération FERMÉE. `ligne` = chaque rangée numérotée dans le même sens ; `serpentin` = une rangée sur deux en sens inverse, l'ordre dans lequel un poseur marche réellement. Absent = l'ordre n'est pas documenté et aucun écran ne le devine ; il ne descend d'aucun calcul.",
+          "type": "string",
+          "enum": [
+            "ligne",
+            "serpentin"
+          ]
+        }
+      }
+    },
+    "optimisation": {
+      "description": "CALX88 — les choix d'optimisation SAISIS pour ce document. Aujourd'hui l'objectif est FIGÉ dans un comparateur unique et la priorité de remplissage CAL83 est du code sans appelant (`roofPro11/optimizer.ts`, `PRIORITES_REMPLISSAGE` / `departagerRemplissage`) : cette clé est ce qui les rend demandables. Elle ne porte QUE l'intention ; aucun résultat, aucun classement, aucun seuil par défaut.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "cible": {
+          "description": "Ce que le balayage cherche à maximiser ou à respecter, énumération FERMÉE. `compte` = le plus de modules posés ; `kwc` = la plus grande puissance crête ; `energie` = la plus grande énergie annuelle posée, l'objectif figé d'aujourd'hui ; `ombrage` = le moins d'ombrage subi ; `faitage` = le plus près du faîtage. Une cible hors de cette liste est REFUSÉE en nommant le champ : un objectif inconnu n'a aucun comparateur, il ne classerait donc rien.",
+          "type": "string",
+          "enum": [
+            "compte",
+            "kwc",
+            "energie",
+            "ombrage",
+            "faitage"
+          ]
+        },
+        "priorite": {
+          "description": "Priorité de REMPLISSAGE, énumération FERMÉE reprenant les identifiants de `PRIORITES_REMPLISSAGE` (CAL83, `roofPro11/optimizer.ts`) — l'ordre dans lequel les modules se collent une fois le compte acquis, à ne pas confondre avec `cible`, qui dit ce que le balayage cherche. `aucune` = l'ordre du pavage, comportement historique.",
+          "type": "string",
+          "enum": [
+            "aucune",
+            "faitage",
+            "egout",
+            "rive-debut",
+            "rive-fin",
+            "ensoleillement"
+          ]
+        },
+        "seuilAccesSolaire": {
+          "description": "Accès solaire minimal SAISI en dessous duquel un emplacement n'est pas retenu, dans [0, 1] — même échelle que `zones[].geometry.solarAccess.values` (CAL248). `null` ou absent = AUCUN seuil, et l'atelier ne retire alors aucun emplacement pour cette raison. Le schéma n'en propose aucun : un seuil d'acceptation est une décision commerciale, jamais une constante de contrat (D-CALX 7).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "scene": {
+      "description": "CALX88 — l'instant du soleil de la scène 3D. Deux valeurs SAISIES au curseur, rien d'autre : ce que le client voyait à l'écran quand le document a été exporté. Elles n'entrent dans AUCUN calcul de production ni de perte.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "sunDay": {
+          "description": "Jour de l'année affiché (1 à 366, 366 admis pour une année bissextile). Il vient de la bascule saison ou d'un réglage fin ; le schéma n'en propose aucun.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 366
+        },
+        "sunHour": {
+          "description": "Heure solaire affichée, en heures décimales dans [0, 24]. Le curseur de l'atelier n'en offre aujourd'hui qu'une partie ; le contrat borne la JOURNÉE, il ne reproduit pas les bornes d'un curseur qui peut changer.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24
+        }
+      }
+    },
+    "underlay": {
+      "description": "CALX86 — le calque de fond du document. Deux GENRES, et ils ne se calent PAS de la même façon : un `plan` importé arrive sans échelle (son contour est dans l'unité du fichier) et se cale à DEUX points plus une distance réelle SAISIE ; une `photo` de site est DÉJÀ calée à QUATRE coins par CAL53 (`PhotoSite.calage`, `services/photos.py::calage_photo_site`), et ce calage-là fait foi. Aucun second calage n'est donc créé pour une photo : un document qui en porte un est refusé en nommant `calage`, parce que deux calages d'une même image se contrediraient sans que rien ne dise lequel a raison.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "description": "Genre de fond, énumération FERMÉE. `plan` = fichier importé (DXF / PDF vectoriel) analysé par `services/import_plan.py` ; `photo` = photo de site rangée par `services/photos.py`.",
+          "type": "string",
+          "enum": [
+            "plan",
+            "photo"
+          ]
+        },
+        "attachmentId": {
+          "description": "La pièce (`records.Attachment`) qui porte le FICHIER du fond. OBLIGATOIRE et non nulle pour un `plan` : un plan sans fichier n'affiche rien. `null` ou absente pour une `photo`, dont le fichier est celui de la `PhotoSite` désignée.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "photoSiteId": {
+          "description": "La `PhotoSite` utilisée comme fond, et DONC son calage à quatre coins (CAL53). OBLIGATOIRE pour une `photo` : sans elle, le fond ne désigne aucune image et aucun calage. `null` ou absente pour un `plan`.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "opacite": {
+          "description": "Opacité du fond, SAISIE, entre 0 (invisible) et 1 (opaque). Absente = l'atelier applique l'opacité de son propre réglage d'affichage ; le document n'en propose aucune, parce qu'une opacité est un confort de dessin, pas une donnée du site.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "calage": {
+          "description": "Calage à DEUX points du `plan` : deux points cliqués sur l'image, les deux points correspondants sur la carte, et la distance RÉELLE entre eux. Réservé à `kind = 'plan'` — une `photo` lit son calage à quatre coins existant et n'en porte jamais un second.",
+          "$ref": "#/$defs/calageDeuxPoints"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "plan"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "attachmentId"
+            ],
+            "properties": {
+              "attachmentId": {
+                "description": "CALX86 — un plan de fond désigne toujours son fichier.",
+                "type": "integer"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "photo"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "photoSiteId"
+            ],
+            "properties": {
+              "photoSiteId": {
+                "description": "CALX86 — une photo de fond désigne toujours sa PhotoSite.",
+                "type": "integer"
+              },
+              "calage": {
+                "description": "CALX86 — une photo est DÉJÀ calée à quatre coins par CAL53 : elle ne porte pas de calage à deux points. Seule la valeur `null` est admise ici, et elle se lit « aucun calage propre ».",
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "calageDeuxPoints": {
+      "description": "CALX86 — le calage à deux points d'un PLAN importé : l'échelle que le fichier ne porte pas. Aucune des trois valeurs n'est déduite des deux autres, et la distance réelle est SAISIE — un plan muet ne se met pas à l'échelle tout seul (`services/import_plan.py` rend un contour dans l'unité du fichier et s'arrête là).",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "ancre",
+        "pointsImage",
+        "distanceReelleM",
+        "source"
+      ],
+      "properties": {
+        "ancre": {
+          "description": "Les DEUX points correspondants SUR LA CARTE, en [[lng, lat], [lng, lat]] — même ordre que `zones[].vertices`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/couple"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "pointsImage": {
+          "description": "Les DEUX points cliqués SUR L'IMAGE, en [[x, y], [x, y]], dans le repère PROPRE du fichier (pixels pour une image, unité du fichier pour un plan vectoriel). Ce repère n'est pas converti : c'est précisément parce qu'on ignore son unité qu'une distance réelle est exigée.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/couple"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "distanceReelleM": {
+          "description": "Distance RÉELLE entre les deux points, en mètres, SAISIE par l'utilisateur (relevée sur site, ou lue comme cote sur le plan). C'est ELLE qui donne l'échelle ; sans elle le calage ne dit rien et le document est refusé en la nommant. Aucune valeur n'est proposée.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "rotationDeg": {
+          "description": "Rotation appliquée au fond (degrés, 0 = aucune). OPTIONNELLE : absente = fond non tourné. Elle se déduit des deux points quand ils suffisent ; écrite ici, c'est la valeur RETENUE à l'écran.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 360
+        },
+        "source": {
+          "description": "D'OÙ vient `distanceReelleM`, en clair et en français (« mesurée au télémètre », « cote lue sur le plan »…). Sans elle, deux plans calés par deux chemins différents ne sont pas comparables et rien n'est engageable (D-CALX 7).",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "building": {
+      "description": "CALX84 — UN bâtiment du site. Il ne porte que ce qu'un humain a RELEVÉ ou SAISI : une hauteur, un nombre d'étages, une hauteur d'étage, et d'où chacune vient. Le schéma ne dérive rien — ni la hauteur depuis les étages, ni l'inverse : deux valeurs cohérentes sont deux valeurs saisies, deux valeurs incohérentes sont un fait que l'écran montre, pas une erreur qu'un calcul efface.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "description": "Identifiant STABLE du bâtiment DANS ce document : c'est lui que `zones[].buildingId` (CAL59) et `poseSurfaces[].buildingId` (CAL91) désignent.",
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "description": "Libellé FRANÇAIS affiché (« Villa », « Hangar nord »…). Absent = le bâtiment n'est désigné que par son `id`.",
+          "type": "string"
+        },
+        "hauteurM": {
+          "description": "Hauteur du bâtiment (m), SAISIE ou relevée. `null` = NON RENSEIGNÉE : la 3D reste alors sur l'hypothèse qu'elle affiche, elle ne pose pas une hauteur au jugé, et « non renseignée » n'est pas 0 m. Dès qu'elle porte un nombre, `source` devient OBLIGATOIRE — une hauteur sans provenance n'est pas engageable (D-CALX 7) et le document qui en porte une est refusé en nommant `source`.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "etages": {
+          "description": "Nombre d'étages SAISI (rez-de-chaussée compris). `null` = non renseigné. Il ne sert PAS à fabriquer une hauteur : le produit `etages × hauteurEtageM` est une information d'écran, jamais une hauteur écrite à la place de `hauteurM`.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "hauteurEtageM": {
+          "description": "Hauteur d'un étage (m), SAISIE. `null` = non renseignée. Même discipline que `etages` : aucune hauteur de bâtiment n'en est déduite en silence.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "source": {
+          "description": "D'OÙ vient la hauteur, en clair et en français (« mesurée au télémètre », « lue sur le permis », « déclarée par le client »…). `null` ou absente quand `hauteurM` vaut `null` ; OBLIGATOIRE et non vide dès que `hauteurM` porte un nombre.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "hauteurM"
+            ],
+            "properties": {
+              "hauteurM": {
+                "type": "number"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "source"
+            ],
+            "properties": {
+              "source": {
+                "description": "CALX84 — une hauteur SAISIE arrive toujours avec sa provenance.",
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "moduleDocument": {
+      "description": "CALX82 — UN modèle de module physique, tel qu'il est utilisé dans ce document. L'entrée ne porte que l'IDENTITÉ et les dimensions du modèle : aucun prix, aucune marge, aucun rendement calculé. Chaque valeur est SAISIE dans l'atelier ou lue de la fiche `stock.Produit` désignée par `produitId` ; quand la fiche ne porte pas la valeur, elle vaut `null` — jamais une dimension standard supposée, jamais un poids déduit d'une surface (D-CALX 7).",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "libelle",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "description": "Identifiant STABLE du modèle DANS ce document : c'est lui que `zones[].geometry.moduleId` désigne. Le renommer casse les pans qui le citent.",
+          "type": "string",
+          "minLength": 1
+        },
+        "produitId": {
+          "description": "Renvoi vers la fiche `stock.Produit` qui porte les caractéristiques du modèle. `null` = modèle saisi à la main, sans fiche : les valeurs ci-dessous sont alors celles que l'utilisateur a tapées, et celles qu'il n'a pas tapées restent `null`.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "libelle": {
+          "description": "Libellé FRANÇAIS affiché dans l'atelier et dans le sélecteur de module. Saisi, ou repris de la fiche produit.",
+          "type": "string",
+          "minLength": 1
+        },
+        "longueurMm": {
+          "description": "Longueur hors-tout du module (mm). `null` = la fiche ne la porte pas et personne ne l'a saisie : le pavage qui en a besoin s'OMET en nommant ce champ, il ne retombe pas sur le module d'aujourd'hui.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "largeurMm": {
+          "description": "Largeur hors-tout du module (mm). `null` = non renseignée, même discipline que `longueurMm`.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "epaisseurMm": {
+          "description": "Épaisseur du module cadre compris (mm). `null` = non renseignée. Elle sert au rendu 3D et au calepinage des rails ; absente, la scène ne l'invente pas.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "poidsKg": {
+          "description": "Poids unitaire du module (kg). `null` = non renseigné. AUCUNE charge de toiture n'est calculée ici : le document dit ce que pèse un module, il ne dit pas ce que la toiture supporte.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "pmaxWc": {
+          "description": "Puissance crête unitaire du modèle (Wc). `null` = non renseignée. À ne pas confondre avec `panelWatt` à la racine, qui reste la puissance unitaire HISTORIQUE passée par la page : quand les deux existent, c'est le module DU PAN qui fait foi pour ce pan.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "source": {
+          "description": "D'OÙ viennent les valeurs ci-dessus, en clair et en français (« fiche produit », « saisie atelier », « fiche technique du fabricant »…). Sans elle, deux modèles renseignés par deux chemins différents ne sont pas comparables, et rien ne dit à l'utilisateur ce qu'il peut engager (D-CALX 7).",
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -603,8 +1107,64 @@
             "null"
           ],
           "minimum": 0
+        },
+        "usage": {
+          "description": "CALX401 — ce à quoi la zone SERT, quand ce n'est pas seulement sa nature réglementaire. `circulation` = ALLÉE de circulation TRACÉE sur le toit : un passage que le pompier emprunte, posé et déplaçable là où il doit l'être. OPTIONNEL et additif : absent = une zone d'exclusion ordinaire, qui se relit exactement comme aujourd'hui. Jusqu'ici la seule allée que le module connaissait était une valeur UNIFORME de réglage société (`services/degagements.py::allee_technique`, `Parametres.allee_m`), jamais un passage dessiné — un retrait de rive et un passage ne sont pas la même pièce, et le second ne se déduit pas du premier.",
+          "type": "string",
+          "enum": [
+            "circulation"
+          ]
+        },
+        "axe": {
+          "description": "CALX401 — la POLYLIGNE tracée par l'utilisateur en [[lng, lat], …], MÊME ordre que `vertices`. Requise quand `usage` vaut `circulation`, et il lui faut au moins DEUX points : un passage à un point ne mène nulle part. Elle garde le GESTE (ce que l'utilisateur a dessiné) ; c'est `vertices` qui fait foi pour la géométrie, le couloir y ayant été calculé depuis `axe` et `largeurM` au moment du tracé.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/couple"
+          },
+          "minItems": 2
+        },
+        "largeurM": {
+          "description": "CALX401 — largeur du passage (m), SAISIE. Requise quand `usage` vaut `circulation`. Le schéma ne livre AUCUNE largeur : ni valeur par défaut, ni minimum réglementaire, ni suggestion — une largeur de passage se lit dans le texte qui s'applique au chantier, ou elle est saisie ; elle ne descend jamais d'un contrat de données (D-CALX 7).",
+          "type": "number",
+          "exclusiveMinimum": 0
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "usage"
+            ],
+            "properties": {
+              "usage": {
+                "const": "circulation"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "axe",
+              "largeurM"
+            ],
+            "properties": {
+              "axe": {
+                "description": "CALX401 — une allée porte la polyligne tracée, d'au moins deux points.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/couple"
+                },
+                "minItems": 2
+              },
+              "largeurM": {
+                "description": "CALX401 — une allée porte sa largeur SAISIE.",
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        }
+      ]
     },
     "measurement": {
       "description": "CAL102 — une mesure posée (distance cumulée, surface d'un polygone fermé, ou angle à 3 points).",
@@ -641,11 +1201,12 @@
       "additionalProperties": true,
       "properties": {
         "kind": {
-          "description": "Genre de surface de pose. `sol` = centrale au sol (CAL89) ; `ombriere` = ombrière / carport (CAL91), qui pave comme un toit incliné et se totalise avec le reste du site.",
+          "description": "Genre de surface de pose. `sol` = centrale au sol (CAL89) ; `ombriere` = ombrière / carport (CAL91), qui pave comme un toit incliné et se totalise avec le reste du site ; `facade` = mur vertical (CALX87), la troisième surface que le site sait porter — elle pave comme les deux autres et se totalise avec elles, mais elle est bornée en HAUTEUR au lieu de l'être au sol.",
           "type": "string",
           "enum": [
             "sol",
-            "ombriere"
+            "ombriere",
+            "facade"
           ]
         },
         "id": {
@@ -719,8 +1280,84 @@
           "description": "CAL91 — bâtiment auquel cette surface de pose est rattachée, MÊME clé que `zones[].buildingId` (CAL59) : c'est elle qui fait apparaître l'ombrière dans les totaux PAR BÂTIMENT à côté des pans de toiture. Absente = bâtiment unique.",
           "type": "string"
         },
+        "hauteurBasseM": {
+          "description": "CALX87 — hauteur du BAS de la surface posable sur le mur (m au-dessus du terrain), SAISIE. Elle borne le mur par le bas : en dessous, on ne pose pas. OPTIONNELLE et additive dans l'absolu, mais une surface `kind: 'facade'` la porte OBLIGATOIREMENT avec `hauteurHauteM` — sans les deux, la façade n'a aucune étendue verticale, donc aucune surface posable, et le document est refusé en nommant les clés. `null` n'est pas admis sur une façade : « non mesuré » ne se pave pas.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "hauteurHauteM": {
+          "description": "CALX87 — hauteur du HAUT de la surface posable sur le mur (m au-dessus du terrain), SAISIE. Avec `hauteurBasseM`, elle délimite la bande réellement posable — un mur n'est presque jamais posable sur toute sa hauteur (ouvertures, acrotère, bandeau). Aucune des deux n'est déduite de l'autre ni d'une hauteur de bâtiment (CALX84) : ce sont deux mesures.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "appuis": {
+          "description": "CALX87 — les POTEAUX d'une ombrière : ce sur quoi la couverture repose, que `clearHeightM` (CAL91) ne décrivait pas — elle donnait la hauteur libre sans jamais dire ce qui tient au-dessus. OPTIONNEL et additif : absent = aucun appui décrit, et la scène n'en dessine aucun plutôt que d'en poser au jugé. AUCUNE charge, aucune structure, aucun dimensionnement n'est calculé ici (CAL89/CAL91) : le document dit OÙ sont les appuis et ce qu'ils mesurent, jamais ce qu'ils supportent.",
+          "$ref": "#/$defs/appuisOmbriere"
+        },
         "engine": {
           "$ref": "#/$defs/posePlanMoteur"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "facade"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "hauteurBasseM",
+              "hauteurHauteM"
+            ],
+            "properties": {
+              "hauteurBasseM": {
+                "description": "CALX87 — une façade porte les DEUX hauteurs qui bornent sa bande posable.",
+                "type": "number",
+                "minimum": 0
+              },
+              "hauteurHauteM": {
+                "description": "CALX87 — une façade porte les DEUX hauteurs qui bornent sa bande posable.",
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "appuisOmbriere": {
+      "description": "CALX87 — les appuis (poteaux) d'une ombrière, tels qu'ils ont été SAISIS. Deux mesures, et rien d'autre : ni matériau, ni charge admissible, ni prix. Une valeur absente est ABSENTE — la scène ne dessine alors pas d'appui, elle n'en invente pas un.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "pasM": {
+          "description": "Entraxe entre deux appuis le long de l'ombrière (m), SAISI. Aucun pas n'est proposé par le schéma ni déduit de la portée : un entraxe vient d'une étude ou d'un relevé.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "sectionM": {
+          "description": "Dimension SAISIE de la section d'un appui (m), telle qu'elle a été relevée ou choisie. Le schéma ne suppose ni la forme ni le matériau du poteau, et n'en propose aucune valeur.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
         }
       }
     },
