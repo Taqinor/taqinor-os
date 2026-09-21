@@ -69,8 +69,11 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Bonjour M. {prenom}, c'est {conseiller} de TAQINOR. Je vous ai laissé deux messages, je ne veux pas insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. Bonne journée.",
     'appel_dimanche':
         "Bonjour M. {prenom}, {conseiller} de TAQINOR. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?",
+    # CAD66 (21/09/2026) — « dans trois jours » promettait une clôture à J10 ;
+    # le moteur clôture réellement à J14 (`cloture_j14`), donc « dans une
+    # semaine » depuis J7. Aucun barreau déplacé, seul le mot change.
     'je_classe_j7':
-        "Bonjour M. {prenom}, {conseiller} de TAQINOR. Sans nouvelle de votre part, je mets votre demande de côté dans trois jours. Un simple « plus tard » me suffit pour la garder ouverte.",
+        "Bonjour M. {prenom}, {conseiller} de TAQINOR. Sans nouvelle de votre part, je mets votre demande de côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte.",
     'cloture_j14':
         "Bonjour M. {prenom}, {conseiller} de TAQINOR. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h.",
     'reveil_a2':
@@ -150,7 +153,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'appel_dimanche':
         "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟",
     'je_classe_j7':
-        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لتلت أيام. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول.",
+        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول.",
     'cloture_j14':
         "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة.",
     'reveil_a2':

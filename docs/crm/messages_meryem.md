@@ -54,8 +54,10 @@ FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je me permets de vous appele
 DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟
 
 ### je_classe_j7 — J7, WhatsApp « je classe ? » (M4)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Sans nouvelle de votre part, je mets votre demande de côté dans trois jours. Un simple « plus tard » me suffit pour la garder ouverte.
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لتلت أيام. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول.
+CAD66 (21/09/2026) — « dans trois jours » promettait une clôture à J10 ; le moteur clôture réellement à J14
+(`cloture_j14`), donc « dans une semaine » depuis J7. Aucun barreau déplacé, seul le mot change.
+FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Sans nouvelle de votre part, je mets votre demande de côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول.
 
 ### cloture_j14 — J14, WhatsApp de clôture, passage en Froid (M5)
 FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h.
