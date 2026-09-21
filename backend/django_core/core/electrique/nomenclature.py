@@ -20,7 +20,7 @@ import math
 from dataclasses import dataclass
 from typing import Tuple
 
-from core.electrique.types import LigneNomenclature, fr
+from core.electrique.types import LigneNomenclature, fr, fr_a
 
 __all__ = [
     "CATEGORIE_PAR_REPERE", "MOTIF_STRUCTURE_NON_SOURCEE",
@@ -174,12 +174,22 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
                                   % coffret.capacite_entrees)
             else:
                 capacite_texte = "capacité non publiée"
+            # CALX231 — un coffret dont l'Isc cumulé dépasse son propre Isc
+            # regroupe des enfants : la ligne le dit, avec le cumul.
+            regroupement = ""
+            if coffret.isc_cumule_a != coffret.isc_propre_a:
+                nb_enfants = sum(
+                    1 for autre in resultat_coffrets_dc.coffrets
+                    if autre.parent_id == coffret.id)
+                regroupement = (
+                    "; regroupe %d coffret(s) enfant(s), Isc cumulé %s"
+                    % (nb_enfants, fr_a(coffret.isc_cumule_a)))
             ajouter("Coffret",
                     "Coffret de chaînes DC (string box) — %s" % coffret.label,
                     1, "u",
                     "IP65, presse-étoupes, embase parafoudre, %d chaîne(s) "
-                    "raccordée(s) sur %s"
-                    % (len(coffret.chaines), capacite_texte))
+                    "raccordée(s) sur %s%s"
+                    % (len(coffret.chaines), capacite_texte, regroupement))
         alertes.extend(resultat_coffrets_dc.refus)
         alertes.extend(resultat_coffrets_dc.omissions)
     elif resultat_coffrets_dc is not None:

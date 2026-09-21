@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
-"""CALX230 — dimensionner un coffret DC par son nombre d'ENTRÉES réelles.
+"""CALX230/231 — dimensionner les coffrets DC par leurs ENTRÉES réelles, et
+deux niveaux de regroupement quand plusieurs coffrets remontent.
 
 LE CONSTAT
 ----------
 ``core/electrique/nomenclature.py`` posait un ou deux coffrets DC par une
 règle de comptage écrite en dur (``1 if nb_chaines <= 2 else 2``, sans
 source), et aucune entité « coffret » n'existait ailleurs : ni nombre
-d'entrées, ni nombre de sorties, ni rattachement à un emplacement.
+d'entrées, ni nombre de sorties, ni rattachement à un emplacement. La
+chaîne canonique du schéma unifilaire ne connaît par ailleurs qu'UN coffret
+DC (``core/electrique/schema.py:8-13``) : une architecture à deux niveaux
+(coffrets de toiture → coffret de regroupement) n'était pas représentable.
 
 CE QUE CE MODULE FAIT
 ----------------------
@@ -19,7 +23,12 @@ résolue par la fiche produit ``produitId`` via le paramètre
 répartition qui dépasse la capacité totale est REFUSÉE en nommant le
 nombre de chaînes en trop ; les fusibles de chaîne suivent la règle
 EXISTANTE (``core.electrique.protections`` — IEC 62548 §7.3.3, exigés dès
-trois chaînes en parallèle), aucun seuil neuf.
+trois chaînes en parallèle), aucun seuil neuf. CALX231 — chaque
+``coffret_dc`` peut désigner un ``coffret_dc`` parent (clé ``parentId``,
+même discipline ``additionalProperties``) : le courant d'entrée du parent
+CUMULE celui de ses enfants, deux niveaux de regroupement sont admis, et
+une boucle de parenté ou une profondeur supérieure à deux est REFUSÉE en
+nommant le coffret fautif.
 
 AUCUN CHIFFRE INVENTÉ, AUCUN SEUIL NEUF (D-CALX 7, règles du lot 4)
 ---------------------------------------------------------------------
@@ -35,13 +44,16 @@ CROCHET ATTENDU (phase 2, hors fichiers de cette lane)
 résoudre ``electrical.equipements[]`` depuis le document, résoudre les
 capacités par ``produitId`` (fiche ``stock.Produit``), l'appeler et
 transmettre son résultat à ``core.electrique.nomenclature.nomenclature``
-(paramètre ``resultat_coffrets_dc``).
+(paramètre ``resultat_coffrets_dc``) ; le tronçon qui relie un coffret
+enfant à son parent est dimensionné par CALX225 (``services/troncons.py``,
+lane T, hors fichiers de cette lane) à partir de l'Isc cumulé publié ici.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from core.electrique.protections import SEUIL_CHAINES_PARALLELES_FUSIBLE
 
@@ -56,13 +68,24 @@ TYPE_COFFRET_DC = "coffret_dc"
 
 @dataclass(frozen=True)
 class CoffretDc:
-    """Un coffret DC RÉELLEMENT posé — ses entrées, ses fusibles."""
+    """Un coffret DC RÉELLEMENT posé — ses entrées, sa parenté, ses fusibles."""
 
     id: str
     label: str
     capacite_entrees: Optional[int]
     #: Repères des chaînes qui lui sont effectivement raccordées.
     chaines: Tuple[str, ...] = ()
+    #: CALX231 — le ``coffret_dc`` parent désigné (``parentId``), ou
+    #: ``None`` pour un coffret racine.
+    parent_id: Optional[str] = None
+    #: 0 = coffret racine ; 1 = un niveau de regroupement ; 2 = deux
+    #: niveaux (le maximum admis).
+    profondeur: int = 0
+    #: Isc de SES propres chaînes seulement (A).
+    isc_propre_a: float = 0.0
+    #: Isc cumulé — le sien + celui de tous ses descendants (A). Égal à
+    #: ``isc_propre_a`` pour un coffret sans enfant.
+    isc_cumule_a: float = 0.0
     fusibles_requis: bool = False
     nb_fusibles: int = 0
 
@@ -110,19 +133,94 @@ def _repere_chaine(chaine):
     return getattr(chaine, "repere", None)
 
 
-def coffrets_dc(chaines, equipements, *, capacites=None):
-    """CALX230 — un coffret DC par organe RÉELLEMENT posé.
+def _isc_chaine(chaine, isc_par_chaine):
+    """L'Isc d'UNE chaîne — la correspondance saisie prime, sinon son champ."""
+    repere = _repere_chaine(chaine)
+    if isc_par_chaine and repere in isc_par_chaine:
+        try:
+            return float(isc_par_chaine[repere])
+        except (TypeError, ValueError):
+            return 0.0
+    valeur = (chaine.get("isc_a") if isinstance(chaine, dict)
+              else getattr(chaine, "isc_a", None))
+    try:
+        return float(valeur) if valeur is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _topologie(postes):
+    """CALX231 — ``(profondeurs, exclus, refus)`` : parenté validée.
+
+    ``profondeurs`` — ``{id: profondeur}`` pour les coffrets dont la
+    parenté est SAINE (0, 1 ou 2 niveaux). ``exclus`` — les ``id`` refusés
+    (boucle, parent inconnu, profondeur > 2) : ils ne reçoivent AUCUNE
+    chaîne, la répartition les ignore.
+    """
+    ids_connus = {eq.get("id") for eq in postes}
+    parent_de = {eq.get("id"): eq.get("parentId") for eq in postes
+                 if eq.get("parentId")}
+    profondeurs = {}
+    exclus = set()
+    refus = []
+    for identifiant in sorted(ids_connus):
+        chemin = []
+        courant = identifiant
+        en_boucle = False
+        parent_invalide = None
+        while courant is not None:
+            if courant in chemin:
+                en_boucle = True
+                break
+            chemin.append(courant)
+            parent = parent_de.get(courant)
+            if parent is not None and parent not in ids_connus:
+                parent_invalide = parent
+                break
+            courant = parent
+        if en_boucle:
+            exclus.add(identifiant)
+            refus.append(
+                "coffret DC « %s » : boucle de parenté détectée (%s) — un "
+                "coffret ne peut pas remonter, directement ou indirectement, "
+                "vers lui-même" % (identifiant, " -> ".join(chemin + [courant])))
+            continue
+        if parent_invalide is not None:
+            exclus.add(identifiant)
+            refus.append(
+                "coffret DC « %s » : le coffret parent « %s » qu'il désigne "
+                "n'est posé nulle part dans le plan"
+                % (identifiant, parent_invalide))
+            continue
+        profondeur = len(chemin) - 1
+        if profondeur > 2:
+            exclus.add(identifiant)
+            refus.append(
+                "coffret DC « %s » : profondeur de regroupement de %d "
+                "niveaux (de la chaîne jusqu'à son ancêtre le plus haut), "
+                "au-delà du maximum de deux niveaux admis"
+                % (identifiant, profondeur))
+            continue
+        profondeurs[identifiant] = profondeur
+    return profondeurs, exclus, refus
+
+
+def coffrets_dc(chaines, equipements, *, capacites=None, isc_par_chaine=None):
+    """CALX230/231 — un coffret DC par organe RÉELLEMENT posé.
 
     Args:
         chaines: les chaînes calculées (``core.electrique.types.Chaine`` ou
-            équivalent — accès ``.repere``, ou un dict à la même clé) qu'il
-            faut raccorder.
+            équivalent — accès ``.repere``/``.isc_a``, ou un dict aux mêmes
+            clés) qu'il faut raccorder.
         equipements: ``electrical.equipements[]`` du document (contrat
             CALX201) — seuls les ``type: "coffret_dc"`` sont retenus, dans
-            l'ordre où ils apparaissent.
+            l'ordre où ils apparaissent. Chacun peut désigner un
+            ``parentId`` (CALX231, deux niveaux de regroupement admis).
         capacites: ``{id équipement: capacité d'entrées}`` — résolue par
             l'appelant sur la fiche ``produitId`` (CALX60). À défaut, la
             clé ``capaciteEntrees`` saisie sur l'équipement fait foi.
+        isc_par_chaine: ``{repère chaîne: Isc en A}`` — à défaut, l'Isc
+            porté par la chaîne elle-même (champ ``isc_a``).
 
     Returns:
         ``ResultatCoffretsDc``. Aucun coffret posé et des chaînes à
@@ -140,10 +238,12 @@ def coffrets_dc(chaines, equipements, *, capacites=None):
                 "à partir du nombre de chaînes",))
         return ResultatCoffretsDc()
 
-    refus = []
+    profondeurs, exclus, refus = _topologie(postes)
+    postes_valides = [eq for eq in postes if eq.get("id") not in exclus]
+
     restantes = list(chaines)
     coffrets = []
-    for eq in postes:
+    for eq in postes_valides:
         identifiant = eq.get("id")
         label = eq.get("label") or identifiant
         capacite = _capacite_entiere(eq, capacites)
@@ -159,10 +259,14 @@ def coffrets_dc(chaines, equipements, *, capacites=None):
         while restantes and len(assignees) < capacite_effective:
             assignees.append(restantes.pop(0))
         chaines_reperes = tuple(_repere_chaine(c) or "?" for c in assignees)
+        isc_propre = sum(_isc_chaine(c, isc_par_chaine) for c in assignees)
         fusibles_requis = len(assignees) >= SEUIL_CHAINES_PARALLELES_FUSIBLE
         coffrets.append(CoffretDc(
             id=identifiant, label=label, capacite_entrees=capacite,
-            chaines=chaines_reperes, fusibles_requis=fusibles_requis,
+            chaines=chaines_reperes, parent_id=eq.get("parentId"),
+            profondeur=profondeurs.get(identifiant, 0),
+            isc_propre_a=isc_propre, isc_cumule_a=isc_propre,
+            fusibles_requis=fusibles_requis,
             nb_fusibles=(2 * len(assignees)) if fusibles_requis else 0,
         ))
 
@@ -174,4 +278,22 @@ def coffrets_dc(chaines, equipements, *, capacites=None):
             "supplémentaire ou augmentez sa capacité"
             % (len(restantes), capacite_totale))
 
-    return ResultatCoffretsDc(coffrets=tuple(coffrets), refus=tuple(refus))
+    # ── Isc cumulé du parent = somme de ses enfants (CALX231) ───────────────
+    par_id = {c.id: c for c in coffrets}
+    enfants_de: Dict[str, list] = {}
+    for c in coffrets:
+        if c.parent_id and c.parent_id in par_id:
+            enfants_de.setdefault(c.parent_id, []).append(c.id)
+
+    def _isc_cumule(identifiant):
+        c = par_id[identifiant]
+        total = c.isc_propre_a
+        for enfant_id in enfants_de.get(identifiant, ()):
+            total += _isc_cumule(enfant_id)
+        return total
+
+    coffrets_finaux = tuple(
+        dataclasses.replace(c, isc_cumule_a=_isc_cumule(c.id))
+        for c in coffrets)
+
+    return ResultatCoffretsDc(coffrets=coffrets_finaux, refus=tuple(refus))
