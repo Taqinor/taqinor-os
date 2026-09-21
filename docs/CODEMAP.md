@@ -1306,9 +1306,193 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 
 - _(none)_
 
-**Open — to build (61)**
+**Open — to build (605)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
+- `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
+- `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
+- `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
+- `CAD4` — « Client joint » et « Intéressé » sont deux mots pour le même effet moteur
+- `CAD5` — Réponse « Ne plus me contacter » sur toutes les cadences
+- `CAD6` — Réponse « Plus tard — pas maintenant » (la plus fréquente du résidentiel), avec le…
+- `CAD7` — Réponse « Question de prix — veut négocier »
+- `CAD8` — Réponse « Demande un devis modifié » — le libellé existe déjà mais n'est atteignable…
+- `CAD9` — Réponse « Décision à plusieurs (famille / propriétaire) », qui pose l'étiquette au…
+- `CAD10` — Motif de refus FACULTATIF dans le panneau « Refus », au seul moment où la raison est…
+- `CAD11` — Raccourci « Numéro invalide / a bloqué » sur la touche, et `est_junk` visible
+- `CAD12` — « Le client accepte » : l'issue la plus importante oblige à quitter l'écran de relance
+- `CAD13` — La précision « Répondeur » / « Occupé » est effacée dès que Meryem tape une note
+- `CAD14` — L'issue « Visite acceptée » n'a aucun libellé dans l'historique — ni dans le journal…
+- `CAD15` — Le journal d'appel de la fiche arrête des cadences sans rien annoncer
+- `CAD16` — Sur le DERNIER réveil (J60), « Pas de réponse » promet un réveil suivant qui n'existe…
+- `CAD17` — Cause commune : les phrases « suite » sont écrites PAR CADENCE, le comportement dépend…
+- `CAD18` — Le lead qui répond au message d'identité AVANT l'appel J0+3 min ne reçoit jamais…
+- `CAD19` — Un lead du week-end voit trois jours de protocole s'écraser sur le lundi
+- `CAD20` — La règle « jamais plus d'un appel ET un message par jour » est écrite en français et…
+- `CAD21` — L'heure imposée d'une touche est effacée dès qu'elle est repoussée d'un jour
+- `CAD22` — Une touche naît déjà en retard, et le tableau de bord compte une faute
+- `CAD23` — [TRANCHÉ 21/09/2026 — le dimanche le PLUS PROCHE de J+5.]
+- `CAD24` — L'« Heure cible » des touches dominicales est un réglage qui s'enregistre sans effet…
+- `CAD25` — [TRANCHÉ 21/09/2026 — créneaux par type — messages 09:30, appels 17:30-18:30.]
+- `CAD26` — « Rappelez-moi dans trois semaines » translate tout le plan de trois semaines, clôture…
+- `CAD27` — Une date de report dans le passé est acceptée et tire tout le plan en arrière
+- `CAD28` — La reprise après visite part de la date PRÉVUE, jamais du retour réellement saisi
+- `CAD29` — Le champ « délai en minutes » annonce une limite 0-1439 que rien n'applique côté…
+- `CAD30` — La justesse du fuseau pendant le Ramadan dépend de la base tzdata de l'image de…
+- `CAD31` — La promesse « 5 minutes » ne surveille AUCUN lead publicitaire, et punit Meryem le…
+- `CAD32` — « WhatsApp uniquement » est saisi par le client et jamais lu par la cadence
+- `CAD33` — [TRANCHÉ 21/09/2026 — lead « WhatsApp uniquement » → dimanche en WhatsApp.]
+- `CAD34` — Un lead arrivé par téléphone, sans WhatsApp, n'a aucune cadence
+- `CAD35` — Aucune suspension globale quand Meryem est absente
+- `CAD36` — La docstring des cadences contredit le gabarit qu'elle décrit
+- `CAD37` — La branche Ramadan est MORTE par défaut : les appels sonnent de 09 h à 20 h en plein…
+- `CAD38` — La fenêtre de Ramadan par défaut (10 h-14 h) est deux heures plus étroite que la…
+- `CAD39` — [TRANCHÉ 21/09/2026 — Ramadan : fenêtre commune 09 h-15 h, pas de soirée.]
+- `CAD40` — Les fêtes mobiles (Aïd al-Fitr, Aïd al-Adha, Mawlid, 1er Moharram) ne sont dans aucun…
+- `CAD41` — La touche du dimanche court-circuite les fériés ET le Ramadan
+- `CAD42` — Un férié non récurrent bloque la même date TOUTES les années — et cocher « Récurrent »…
+- `CAD43` — Le samedi est totalement fermé, alors que le dimanche est ouvert par exception
+- `CAD44` — [TRANCHÉ 21/09/2026 — agir en avance : Appeler/WhatsApp/Reporter ouverts, « Fait »…
+- `CAD45` — Traiter par écrit une touche « appel » impose quand même de répondre « Joint / Non…
+- `CAD46` — « Reporter au » et « À rappeler le… » déplacent TOUT le plan, et aucun écran ne le dit
+- `CAD47` — « Sauter » n'explique pas ce qu'il fait : Meryem peut croire qu'elle éteint la cadence
+- `CAD48` — Le champ « Relance le » de la fiche ment sur ce qu'il fait
+- `CAD49` — L'action en masse « définir la relance » écrit une date que le moteur écrase
+- `CAD50` — « Annuler » et « Arrêter » n'existent que sur la fiche du lead
+- `CAD51` — « Relancer la cadence » peut TUER une cadence en cours, en silence et sans motif
+- `CAD52` — [TRANCHÉ 21/09/2026 — pas de variante de rythme — mesurer d'abord.]
+- `CAD53` — [TRANCHÉ 21/09/2026 — l'éditeur ouvre l'ajout/suppression de barreau et la case…
+- `CAD54` — Réattribuer un lead à un autre commercial : personne ne sait ce que deviennent ses…
+- `CAD55` — « Relancer la cadence — Après devis » depuis la fiche crée des touches SANS devis
+- `CAD56` — Un devis corrigé et renvoyé ne redate rien : le client reçoit « je classe ? » deux…
+- `CAD57` — [TRANCHÉ 21/09/2026 — validité J+30 pour un dossier financé, J+14 sinon.]
+- `CAD58` — [TRANCHÉ 21/09/2026 — retirer le canal visite de la générique : J+35 devient un appel.]
+- `CAD59` — Le message J9 et le PDF ne calculent pas la validité de la même façon
+- `CAD60` — Les deux messages de l'appel du fondateur n'ont aucun bouton — et personne ne sait…
+- `CAD61` — [TRANCHÉ 21/09/2026 — document reçu = geste « pièce reçue » ; facture envoyée = trace…
+- `CAD62` — Zéro darija sur toute la marche après-devis : le repli en français est silencieux
+- `CAD63` — Changer la langue au moment utile coûte trois écrans
+- `CAD64` — Le repli de langue est invisible : darija, anglais et arabe classique partent en…
+- `CAD65` — « Bonjour M
+- `CAD66` — Le message J7 promet un classement « dans trois jours » que le moteur tient à J14
+- `CAD67` — Le script « répondeur » part deux fois en 20 heures, et deux appels n'ont aucun script
+- `CAD68` — L'écran de réglage des réveils montre des gabarits que le moteur n'enverra pas
+- `CAD69` — Les crochets `[ ]` partent tels quels dans WhatsApp, sans aucun avertissement
+- `CAD70` — Sans catalogue Réalisations, le message J4 se réduit à une phrase orpheline
+- `CAD71` — `avis_google` enverrait au client le lien de SON DEVIS à la place du lien d'avis
+- `CAD72` — `parrainage` promet un lien qui n'existe pas — et ce n'est même pas ce texte qui part
+- `CAD73` — Le premier réveil dit au client « il y a quelques mois » alors qu'il part six semaines…
+- `CAD74` — `reveil_b` (« la saison des factures d'été ») est écrit, validé, et n'est envoyé par…
+- `CAD75` — Le réveil n'est pas déclenché par le temps mais par un CLIC : un dossier abandonné n'en…
+- `CAD76` — Écrire noir sur blanc que la rentrée scolaire n'est PAS une fenêtre de réveil
+- `CAD77` — La recette marketing « Réveil base froide » trace des exécutions sans jamais rien…
+- `CAD78` — Les scripts d'appel écrits par le fondateur ne sont JAMAIS affichés
+- `CAD79` — Le « vocal » part en texte écrit
+- `CAD80` — « Appeler » fait QUITTER l'application, et la note en cours est perdue
+- `CAD81` — La langue du lead n'est jamais affichée avant de décrocher
+- `CAD82` — Le bouton « Appeler » se désactive en silence, et la préférence du client n'atteint pas…
+- `CAD83` — La file du jour trie par heure ; la priorité et le score affichés ne servent à rien
+- `CAD84` — La question « message ouvert ? » présume le canal suggéré
+- `CAD85` — Les écrans quotidiens de la cadence ne sont couverts par aucun test mobile
+- `CAD86` — Quatre écrans de la cadence n'ont été ouverts par personne pendant l'audit
+- `CAD87` — Rien ne mesure ce qui prouverait que la cadence marche
+- `CAD88` — Le KPI de premier contact neutralise le week-end : un lead qui a attendu 60 heures…
+- `CAD89` — Écrire la méthode de comparaison, pour qu'aucun futur run ne recalibre la cadence sur…
+- `CAD90` — Le registre de consentement ne couvre que les leads du formulaire du site
+- `CAD91` — L'opposition (« ne plus contacter ») n'est jamais tracée au registre
+- `CAD92` — Une durée de conservation est déclarée et n'est appliquée nulle part
+- `CAD93` — Deux leads du même foyer reçoivent deux cadences parallèles
+- `CAD94` — [TRANCHÉ 21/09/2026 — rien sur le score avant la mesure de CAD87.]
+- `CAD95` — Joindre une courte vidéo à la preuve chantier J4
+- `CAD96` — Trois graphies de la marque dans la même conversation WhatsApp
+- `CAD97` — Sur la cadence générique, « Fait — passer à la suite » annonce « demain » à tort
+- `CAD98` — Les trois « Appel de suivi » du suivi après-devis n'ont aucun script
+- `CAD99` — Afficher la liste des cadences échues (moitié écran de CAD75)
+- `CAD100` — Afficher les KPI touche × heure × jour × canal (moitié écran de CAD87)
+- `CAD101` — Le client envoie sa facture ou son adresse sur WhatsApp : aucun geste pour…
+- `CAD102` — Après l'appel du filet resté sans réponse, l'ERP réclame un devis pour un client jamais…
+- `CAD103` — Un lead créé déjà « Contacté » n'entre dans aucun protocole, et rien ne le dit
+- `CAD104` — Un lead NEUF créé dans Odoo est refusé en silence par la cadence, et servi par l'écran…
+- `CAD105` — [TRANCHÉ 21/09/2026 — la sync Odoo démarre la cadence des leads neufs.]
+- `CAD106` — La fusion de deux fiches ne déplace PAS les relances : le doublon fusionné sort du…
+- `CAD107` — Un lead perdu qui revient : trois chemins, trois résultats, et le plus courant ne…
+- `CAD108` — [TRANCHÉ 21/09/2026 — l'étage 3 exclut le miroir Odoo, comme l'étage 2.]
+- `CAD109` — Le script d'appel ne dit ni que l'appel est commercial, ni d'où viennent les données
+- `CAD110` — Aucun message ne dit au client comment faire cesser les relances
+- `CAD111` — Le message qui propose la visite part sans laisser aucune trace, et son lien wa.me…
+- `CAD112` — Deux onglets portent le même nom et montrent deux choses différentes
+- `CAD113` — Dans l'éditeur de cadence, une erreur serveur s'affiche en toast générique
+- `CAD114` — Le canal « Visite » est proposé à la configuration et ne déclenche rien
+- `CAD115` — La file qui lit les signaux est fermée à la personne qui relance
+- `CAD116` — Le rappel de 08:30 ne donne qu'un nombre — et il part aussi chez qui ne peut pas le…
+- `CAD117` — « X leads sans cadence » n'existe nulle part : le refus se lit fiche par fiche
+- `CAD118` — On mesure si les touches sont cochées, jamais si elles joignent quelqu'un
+- `CAD119` — La vraie date de création Odoo finit dans une note, pas dans un champ
+- `CAD120` — Les notifications ne connaissent aucune fenêtre horaire, et la garde est éteinte par…
+- `CAD121` — [TRANCHÉ 21/09/2026 — case WhatsApp du formulaire décochée par défaut.]
+- `CAD122` — [TRANCHÉ 21/09/2026 — formalisme 31-08 quand le bon de commande se signe chez le…
+- `CAD123` — [TRANCHÉ 21/09/2026 — avertir, sans bloquer, une visite sans devis envoyé.]
+- `CAD124` — [TRANCHÉ 21/09/2026 — pas d'axe segment dans le gabarit de cadence.]
+- `CAD125` — Le dossier 82-21 et le dossier FDA sont captés et ne déclenchent aucune parole
+- `CAD126` — Les textes sont 100 % résidentiels : « sur votre toit » part à un pompage au bord d'un…
+- `CAD127` — « Vous venez de remplir notre formulaire » est faux pour la moitié des origines
+- `CAD128` — Un ancien client SIGNÉ qui redemande un devis est refusé comme « doublon »
+- `CAD129` — Le client clique « rappelez-moi » : sa demande n'entre pas dans la file
+- `CAD130` — Le client rouvre sa proposition trois fois dans la soirée : la cadence ne bouge pas…
+- `CAD131` — « Rappelé en moins de 5 minutes » se valide en SAUTANT la première touche
+- `CAD132` — Le filet « lead chaud non contacté » ne peut pas se déclencher sur un lead Meta, et…
+- `CAD133` — Le score ne regarde que ce que le client a DIT, jamais ce qu'il FAIT
+- `CAD134` — La même phrase du client vaut 8 points depuis le site et 0 depuis Meta
+- `CAD135` — « Le client relit la page du prix » : le code dit lui-même qu'il faut appeler, et…
+- `CAD136` — Questionnaire rempli, photo de facture reçue : silence complet
+- `CAD137` — « Rouvert 3 fois » se déclenche sur une seule visite
+- `CAD138` — Le panier « relance d'engagement » ne se vide jamais et masque les devis qui expirent
+- `CAD139` — Du code mort laisse croire que l'ouverture d'un devis fait avancer le funnel
+- `CAD140` — Le « score d'engagement client » a abandonné le seul signal comportemental qu'il devait…
+- `CAD141` — Le rafraîchissement nocturne des scores balaie les dossiers clos
+- `CAD142` — Le Journal du plan de relance ne mentionne jamais les visites, que la Frise affiche…
+- `CAD143` — L'éditeur n'a pas d'onglet pour la cadence « Générique », pourtant encore active sur de…
+- `CAD144` — Un achat de coopérative ou un comité industriel n'a qu'UN seul contact dans le CRM
+- `CAD145` — Le type d'installation est stocké à deux endroits
+- `CAD146` — Un prospect de la diaspora reçoit ses touches à l'heure de Casablanca
+- `CAD147` — T0 — Le contrat du panneau d'appel, livré SEUL et en premier (PACT10)
+- `CAD148` — T1 — L'endpoint « questions à poser sur cet appel »
+- `CAD149` — T2 — Migration « vague 1 » : les champs qui manquent, et les SIX endroits à tenir
+- `CAD150` — T3 — Les champs captés par le site sont figés en lecture seule, même quand ils sont…
+- `CAD151` — T4 — `appelGuidance.js` : le contenu du script, sur le patron de `visiteGuidance.js`
+- `CAD152` — T5 — `PanneauScriptAppel.jsx` : le script sous les yeux pendant l'appel
+- `CAD153` — T9 — Les tests qui figent le script guidé
+- `CAD154` — Vague 2 des champs, à ouvrir seulement après la vague 1
+- `CAD155` — Pendant le Ramadan, l'appel du soir n'existe pas — aucun script ne le dit
+- `CAD156` — « Je vous rappelle jeudi à 18 h » : l'heure promise n'a aucun champ
+- `CAD157` — Dire à l'écran ce qui n'est PAS compté
+- `CAD158` — « Votre facture, c'est pour un mois ou pour deux ? » — la périodicité n'est nulle part
+- `CAD159` — [TRANCHÉ 21/09/2026 — champs du site TOUJOURS éditables, jamais reposés.]
+- `CAD160` — [TRANCHÉ 21/09/2026 — vague 1 confirmée telle quelle.]
+- `CAD161` — [TRANCHÉ 21/09/2026 — panneau résidentiel d'abord, agricole/industriel en seconde…
+- `CAD162` — [TRANCHÉ 21/09/2026 — ordre de l'appel 1 : facture, été, occupation, toit, objectif.]
+- `CAD163` — [TRANCHÉ 21/09/2026 — 82-21 : rien de spontané, une phrase factuelle sans tarif si le…
+- `CAD164` — [TRANCHÉ 21/09/2026 — locataire : demander le propriétaire, sinon « Perdu — Locataire…
+- `CAD165` — T6 — Quatre correctifs du moteur horaire, tous visibles sur le chiffre client
+- `CAD166` — T7 — Le pro qui donne ses kWh sur le site reste « incomplet » dans l'ERP
+- `CAD167` — T8 — La liste des distributeurs devient les SRM régionales, et « autre » cesse de…
+- `CAD168` — Deux lignes fixes de la facture ne sont jamais dites, et elles creusent l'écart entre…
+- `CAD169` — [TRANCHÉ 21/09/2026 — VE prévue : comptée des deux côtés, devis étiqueté.]
+- `CAD170` — [TRANCHÉ 21/09/2026 — recharge nocturne : dimensionner la batterie pour la couvrir.]
+- `CAD171` — [TRANCHÉ 21/09/2026 — créneau déclaré sans chargeur : étaler sur tout le créneau.]
+- `CAD172` — [TRANCHÉ 21/09/2026 — occupation non posée : présence supposée + bandeau sur la…
+- `CAD173` — [TRANCHÉ 21/09/2026 — lot des 13 réglages du calcul et du contenu.]
+- `CAD174` — La moitié écran de la migration : un champ qui n'est pas déclaré à la fiche est…
+- `CAD175` — Seconde livraison du panneau d'appel : agricole (pompage) et industriel
+- `CADM1` — Relecture darija par un locuteur natif
+- `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
+- `CADM3` — Question à un juriste : loi 31-08, démarchage à domicile
+- `CADM4` — Décision RH : travaille-t-on le soir pendant le Ramadan ?
+- `CADM5` — Saisie annuelle : dates du Ramadan + 4 fêtes mobiles
+- `CADM6` — Lancer le semis des 9 fériés fixes sur la société TAQINOR
+- `CADM7` — Lecture SQL de production : les ~10 comptages qui manquent aux deux rondes
+- `CADM8` — Relever quatre valeurs d'environnement en production
+- `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -1341,6 +1525,366 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 - `SOLMVP51` — CODEMAP + gardes de plateforme
 - `SOLMVP52` — Semis et démo
 - `SOLMVP53` — Gate final + garde CI permanente
+- `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
+- `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
+- `CALX3` — Faire exposer par le constructeur 3D l'entrée moteur, l'application d'un plan et les…
+- `CALX4` — Figer le contrat de la simulation avant ses deux moitiés
+- `CALX5` — Construire le service d'orchestration de la simulation et sa porte HTTP, sur la chaîne…
+- `CALX6` — Persister la série horaire et rendre l'export horaire réellement téléchargeable
+- `CALX7` — Lever le masquage qui empêche l'export tableur CSV d'être enregistré
+- `CALX8` — Remettre au panneau de l'atelier l'API du constructeur, et non la référence qui la…
+- `CALX14` — Rendre visibles la batterie et le hors-réseau que la chaîne calcule
+- `CALX16` — Brancher la chaîne électrique la plus faible en ombrage sur le verdict
+- `CALX17` — Brancher la masse installée et la feuille de lestage sur un panneau
+- `CALX18` — Ouvrir l'éditeur des postes de pertes
+- `CALX19` — Ouvrir l'inventaire des sorties et y brancher la planche cotée
+- `CALX20` — Brancher les trois plans (pose, toiture, masse) sur le panneau Documents
+- `CALX21` — Brancher la note de calcul et son verdict de preuve
+- `CALX22` — Brancher l'export DXF et l'export XLSX
+- `CALX23` — Brancher l'export tableur CSV, une fois son enregistrement réparé
+- `CALX24` — Brancher la composition du pack technique
+- `CALX25` — Ouvrir le relevé terrain (chaînes de cotes) sur un panneau
+- `CALX26` — Brancher l'archivage et la restauration depuis la corbeille
+- `CALX27` — Brancher le déverrouillage d'une conception figée
+- `CALX28` — Brancher l'export et l'import du document de conception
+- `CALX29` — Brancher la suggestion de pente LiDAR, France seulement
+- `CALX30` — Brancher les profils types de consommation de la société
+- `CALX31` — Ouvrir le fil d'activité du calepinage
+- `CALX32` — Brancher les colonnes de tri déjà servies par la liste
+- `CALX33` — Permettre de renommer un calepinage après sa création
+- `CALX35` — Exposer la duplication de calepinage qui existe déjà dans le service
+- `CALX36` — Ouvrir l'historique des versions et la restauration
+- `CALX37` — Permettre de créer et de dupliquer une variante
+- `CALX38` — Permettre de téléverser une photo de site
+- `CALX39` — Ouvrir une porte HTTP pour l'import d'un plan DXF/PDF/image
+- `CALX40` — Ouvrir la génération d'un dossier réglementaire
+- `CALX41` — Faire enregistrer les champs à compléter d'un dossier
+- `CALX42` — Brancher le marquage « modèle » et la création depuis un modèle
+- `CALX43` — Ouvrir l'édition des préréglages et des favoris de la société
+- `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
+- `CALX45` — Figer le contrat du calepinage publié avec un devis
+- `CALX46` — Publier le calepinage d'un devis et rendre le bloc de retour vivant
+- `CALX47` — Ouvrir le module calepinage depuis la fiche d'un lead
+- `CALX48` — Rendre le refus « production non calculée » actionnable
+- `CALX49` — Brancher la priorité de remplissage déjà écrite
+- `CALX50` — Dessiner le champ au sol au lieu de n'en donner que le compte
+- `CALX51` — Dessiner l'ombrière à sa hauteur libre saisie
+- `CALX52` — Afficher, ou faire saisir, la hauteur de toit supposée du diagramme solaire
+- `CALX53` — Signaler les coefficients de température non sourcés jusque dans le verdict
+- `CALX54` — N'offrir que les calques réellement présents dans la scène
+- `CALX55` — Poser le retour vers l'atelier depuis chaque lien profond
+- `CALX56` — Fermer le trou de la garde d'atteignabilité sur les chemins paramétrés
+- `CALX57` — Poser la garde « service sans appelant » et l'e2e du parcours complet
+- `CALX58` — Publier TOF et TSRF par pan, à côté de l'accès solaire
+- `CALX59` — Aligner la série météo (UTC) sur l'heure locale du site avant tout croisement avec une…
+- `CALX60` — Ajouter à la fiche technique, en UNE migration, tout ce que la chaîne de pertes et…
+- `CALX61` — Brancher enfin le fournisseur de températures TMY que la chaîne électrique attend
+- `CALX62` — Accepter un fichier météo horaire déposé par la société, à la place de PVGIS, pour un…
+- `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
+- `CALX64` — Montrer la série horaire : tapis de chaleur jour × heure et journée type par mois
+- `CALX65` — Dire dans l'atelier laquelle des deux productions parle : l'estimation rapide du…
+- `CALX68` — Garder un brouillon local de l'atelier et proposer sa reprise
+- `CALX69` — Donner une saisie aux réglages société de simulation et d'électrique, avec provenance…
+- `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
+- `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
+- `CALX81` — Porter au contrat le type d'arête corrigé à la main et le retrait PAR arête
+- `CALX82` — Porter au contrat un catalogue de MODULES dans le document et le module retenu par pan
+- `CALX83` — Porter au contrat la numérotation persistante des modules et des rangées
+- `CALX84` — Porter au contrat les bâtiments : hauteur et nombre d'étages SAISIS, avec provenance
+- `CALX85` — Porter au contrat les obstacles non rectangulaires (polygone, cercle)
+- `CALX86` — Porter au contrat le calque de fond calé (plan importé ou photo) et son échelle à deux…
+- `CALX87` — Porter au contrat la surface de pose « façade » et les poteaux d'ombrière
+- `CALX88` — Porter au contrat les choix d'optimisation et le soleil de scène
+- `CALX89` — Magnétiser le tracé à 90° et 45° et offrir un mode orthogonal
+- `CALX90` — Saisir au clavier la longueur et l'angle du segment en cours de tracé
+- `CALX91` — Insérer et supprimer un sommet sur une arête d'un contour fermé
+- `CALX92` — Aimanter le tracé aux sommets et aux arêtes des pans déjà tracés
+- `CALX93` — Déduire noue et arêtier en comparant les pans voisins
+- `CALX94` — Corriger à la main le type d'une arête depuis l'atelier
+- `CALX95` — Appliquer un retrait propre à chaque arête physique du contour
+- `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
+- `CALX97` — Saisir les cotes exactes d'un pan et le faire pivoter d'un bloc
+- `CALX98` — Dupliquer un pan avec ses obstacles et ses réglages
+- `CALX99` — Prendre l'azimut d'un pan depuis une arête cliquée
+- `CALX100` — Saisir la hauteur et le nombre d'étages du bâtiment, et extruder la 3D à cette hauteur
+- `CALX101` — Rendre les murs et les acrotères comme des volumes 3D distincts
+- `CALX102` — Modéliser une lucarne comme un volume qui perce le pan, pas comme une boîte posée
+- `CALX103` — Tracer un obstacle polygonal au clic
+- `CALX104` — Tracer un obstacle circulaire et réutiliser des gabarits d'obstacle de la société
+- `CALX105` — Poser un arbre ou un bâtiment voisin au clic et le déplacer au glissé
+- `CALX106` — Remonter la hauteur et le nombre de niveaux OSM du bâtiment, avec leur provenance…
+- `CALX107` — Afficher un plan importé ou une photo calée comme calque de fond de l'atelier
+- `CALX108` — Caler le fond de plan à l'échelle par deux points et une distance réelle saisie
+- `CALX109` — Choisir le module depuis le stock et calepiner avec ses vraies cotes
+- `CALX110` — Poser plusieurs modèles de module dans un même système
+- `CALX111` — Numéroter les modules de façon stable et l'afficher en 3D comme en plan
+- `CALX112` — Dupliquer une sélection de panneaux et la coller au pas saisi
+- `CALX113` — Rendre la symétrie d'une sélection de panneaux par rapport à un axe
+- `CALX114` — Choisir la cible de l'optimisation au lieu de la figer sur l'énergie
+- `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
+- `CALX116` — Sélectionner des panneaux au lasso, en plus du rectangle
+- `CALX117` — Afficher une grille métrique de repère au pas saisi
+- `CALX118` — Montrer la course du soleil du site dans l'atelier
+- `CALX119` — Choisir une date libre pour le soleil de la scène et la retenir
+- `CALX120` — Animer la course de l'ombre sur une journée et sur l'année
+- `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
+- `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
+- `CALX123` — Tracer et éditer un champ au sol sur la carte de l'atelier
+- `CALX124` — Éditer une ombrière dans l'atelier, poteaux compris
+- `CALX125` — Poser des modules en façade sur un mur du bâtiment
+- `CALX126` — Totaliser le site par bâtiment et par surface de pose dans l'atelier
+- `CALX128` — Rendre les gestes de l'atelier utilisables au clavier et annoncés
+- `CALX129` — Basculer la vue 3D d'édition en plein écran
+- `CALX130` — Prouver le parcours de conception enrichi de bout en bout
+- `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
+- `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
+- `CALX141` — Déclarer le contrat de la cascade de pertes séquentielle, sous une clé neuve
+- `CALX142` — Déclarer le contrat de la série horaire persistée
+- `CALX143` — Déclarer le contrat de l'énoncé de source météo
+- `CALX144` — Déclarer le contrat d'incertitude et de quantiles
+- `CALX145` — Ouvrir deux sections société — « simulation » et « electrique_societe » — au registre…
+- `CALX146` — Donner au noyau une position solaire HORAIRE (le dépôt n'en a qu'une, au solstice)
+- `CALX147` — Écrire l'ordonnanceur de la chaîne de pertes
+- `CALX148` — Déclarer l'ordre de la chaîne une fois, avec ses règles d'exclusivité et ses étapes…
+- `CALX149` — Faire primer le poste CALCULÉ sur le poste saisi, et refuser le double comptage
+- `CALX150` — Demander à PVGIS l'irradiance NUE et non sa propre production
+- `CALX151` — Passer NOTRE horizon à PVGIS, et dire lequel fait foi
+- `CALX152` — Séparer direct, diffus et réfléchi — sans quoi ni IAM ni ombrage ne se calculent
+- `CALX153` — Laisser choisir entre année météo type et fenêtre pluriannuelle, et en tirer les…
+- `CALX154` — Publier le bloc `meteo` dans le résultat
+- `CALX155` — Une requête météo par PLAN, jamais par module
+- `CALX156` — Étape « horizon » : masquer le direct heure par heure sous la ligne d'horizon
+- `CALX157` — Étape « ombrage proche » : appliquer la matrice 12×24 HEURE PAR HEURE
+- `CALX158` — Étape « accès module » : lire `solarAccess` par module au lieu d'un facteur de toit
+- `CALX159` — Étape « inter-rangées » : l'auto-ombrage horaire depuis la géométrie 3D
+- `CALX160` — Étape « IAM » : Fresnel par défaut (physique, sourcé), ASHRAE ou Martin-Ruiz sur choix…
+- `CALX161` — Étape « salissure » : douze valeurs mensuelles, pas une moyenne
+- `CALX162` — Étape « niveau d'irradiance » : le faible éclairement, depuis la courbe de la fiche
+- `CALX163` — Étape « thermique » : Faiman avec des coefficients PAR TYPE DE POSE, NOCT en repli…
+- `CALX164` — Donner enfin le vent au modèle thermique
+- `CALX165` — Étape « qualité module » : la tolérance de la fiche, ou rien
+- `CALX166` — Étape « LID » : selon la technologie de cellule, et seulement si la société la chiffre
+- `CALX167` — Étape « mismatch fabricant » : la dispersion des modules, saisie et sourcée
+- `CALX168` — Étape « mismatch d'ombrage » : l'effondrement I-V d'une chaîne dont un module est…
+- `CALX169` — Étape « ohmique DC » : la chute réelle des câbles, plus jamais saisie en double
+- `CALX170` — Étape « onduleur » : la courbe η(P), sinon le rendement européen, sinon rien
+- `CALX171` — Étape « fenêtre MPPT » : les heures où la tension sort de la plage
+- `CALX172` — Étape « écrêtage » : brancher le calcul horaire qui existe déjà et n'a jamais de série
+- `CALX173` — Étape « ohmique AC » : la liaison onduleur-comptage, sur sa longueur saisie
+- `CALX174` — Étape « transformateur » : seulement si la société en déclare un
+- `CALX175` — Étape « auxiliaires » : une énergie soutirée, jour et nuit, pas un pourcentage
+- `CALX176` — Étape « indisponibilité » : des fenêtres d'arrêt datées, pas un forfait annuel
+- `CALX177` — Faire entrer le bifacial dans la chaîne, avec un albédo MENSUEL
+- `CALX178` — Étape « vieillissement » : une production ANNÉE PAR ANNÉE, pas un pourcentage unique
+- `CALX179` — Publier le ratio de performance au sens de la norme IEC 61724-1
+- `CALX181` — Rendre les tableaux mensuels et par pan cohérents avec la cascade
+- `CALX182` — Simuler MODULE PAR MODULE, et agréger
+- `CALX183` — Agréger la production par chaîne, MPPT et onduleur
+- `CALX184` — Mesurer σ, ou refuser — supprimer le repli 6 % non sourcé
+- `CALX185` — Composer l'incertitude en quadrature, comme une étude bancable
+- `CALX186` — Ajouter P95 aux quantiles publiés
+- `CALX188` — Faire tourner le dispatch batterie sur la série AC réelle
+- `CALX189` — Construire la courbe de charge horaire, VE et PAC compris
+- `CALX190` — Publier l'autoconsommation et le plafond d'injection sur la vraie série
+- `CALX191` — Chiffrer le défaut d'alimentation hors réseau sur la série réelle
+- `CALX192` — Dire la vérité sur la résolution : PVGIS est horaire
+- `CALX193` — Persister la série horaire que l'export attend depuis toujours
+- `CALX195` — Bâtir le harnais de validation contre PVGIS lui-même
+- `CALX196` — Figer un golden pluriannuel de la cascade et des quantiles
+- `CALX197` — Un seul calcul d'ombrage pour un même toit
+- `CALX198` — Adopter `pvlib` (tranché par Reda le 21/09/2026) pour le modèle à une diode, la…
+- `CALX199` — Trancher l'achat d'une source météo bancable
+- `CALX200` — Trancher le pas infra-horaire
+- `CALX201` — Déclarer le contrat `electrical.equipements[]` du document v2
+- `CALX202` — Déclarer le contrat `electrical.cheminements[]` du document v2
+- `CALX203` — Déclarer le contrat des tronçons de câble calculés
+- `CALX204` — Déclarer le contrat du schéma unifilaire éditable
+- `CALX205` — Déclarer le contrat du raccordement réseau
+- `CALX206` — Autoriser plusieurs orientations sur UNE entrée MPPT (jamais dans une chaîne)
+- `CALX207` — Calculer l'écart de puissance d'un groupe polystring et le verdicter sur un seuil…
+- `CALX209` — Dimensionner une branche AC de micro-onduleurs
+- `CALX210` — Calibrer la protection et le câble d'une branche AC de micro-onduleurs
+- `CALX211` — Fermer la longueur de chaîne à optimiseurs quand la fiche publie enfin la sortie…
+- `CALX212` — Compter et placer les optimiseurs module par module
+- `CALX213` — Contrôler enfin les deux bornes d'onduleur publiées mais jamais lues
+- `CALX214` — Publier, contrôle par contrôle, LA température qui a servi
+- `CALX215` — Nommer les deux natures de dépassement : plage INTERDITE et plage BLOQUANTE
+- `CALX216` — Dire POURQUOI cette longueur de chaîne a été retenue
+- `CALX217` — Rejouer l'incident DEV-202608-0016 sur les trois régimes de chaînage
+- `CALX218` — Choisir le motif de parcours d'une chaîne et en tirer sa longueur de câble
+- `CALX219` — Créer `electrique3d.ts` et y poser les marqueurs d'équipement
+- `CALX220` — Poser, déplacer et retirer un équipement au clic, et le persister
+- `CALX221` — Ajouter le calque « Électrique » au panneau de calques
+- `CALX222` — Donner à l'atelier son onglet « Équipements électriques »
+- `CALX223` — Tracer un cheminement de câble par points de passage dans l'atelier
+- `CALX224` — Mesurer la longueur RÉELLE de chaque tronçon
+- `CALX225` — Dimensionner la section et la chute PAR tronçon
+- `CALX226` — Cumuler la chute de tension bout en bout et la verdicter une seule fois
+- `CALX227` — Produire le métré de câble par tronçon et par section
+- `CALX228` — Servir les tronçons en HTTP et les joindre au résultat électrique
+- `CALX229` — Donner à l'atelier son onglet « Cheminement & câbles »
+- `CALX230` — Dimensionner un coffret de jonction DC par son nombre d'entrées
+- `CALX231` — Dimensionner le coffret de regroupement quand plusieurs coffrets remontent
+- `CALX232` — Dimensionner le coffret AC par ses départs
+- `CALX233` — Persister les libellés et les repères édités du schéma unifilaire
+- `CALX234` — Persister les positions de blocs et les passer jusqu'au dessin
+- `CALX235` — Exporter le schéma unifilaire en DXF
+- `CALX236` — Exporter le schéma unifilaire en PNG depuis le navigateur
+- `CALX237` — Choisir un gabarit de schéma par pays, sans supposer une norme au Maroc
+- `CALX238` — Replier les circuits d'onduleurs identiques en un seul « typique de N »
+- `CALX241` — Calculer l'élévation de tension au point de raccordement contre une limite SAISIE
+- `CALX242` — Vérifier la puissance de raccordement et le régime mono/tri
+- `CALX243` — Équilibrer les phases quand plusieurs onduleurs monophasés se branchent sur un réseau…
+- `CALX244` — Servir le raccordement en HTTP et lui donner son onglet
+- `CALX245` — Étendre la check-list de terre à la continuité mesurée de l'existant
+- `CALX246` — Rattacher chaque ligne de nomenclature électrique à une référence du catalogue
+- `CALX247` — Retirer les quantités de structure non sourcées de la nomenclature électrique
+- `CALX248` — Prononcer un verdict électrique publiable unique, entrée par entrée sourcée
+- `CALX249` — Donner à l'atelier son onglet « Verdict électrique »
+- `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
+- `CALX251` — Déclarer `consumption` dans le contrat `roof_layout` v2
+- `CALX253` — Sérialiser la consommation de l'atelier dans le document
+- `CALX254` — Ré-hydrater la consommation au rechargement de l'atelier
+- `CALX255` — Lire la consommation du document côté serveur
+- `CALX256` — Persister la méthode « somme d'appareils » avec la provenance de chaque appareil
+- `CALX257` — Convertir les montants MAD en kWh par le barème de la société
+- `CALX258` — Ouvrir les profils société au segment pompage et au type de jour
+- `CALX259` — Enregistrer une courbe importée comme profil société, avec sa provenance de fichier
+- `CALX260` — Décaler la courbe pendant le Ramadan sans introduire un seul chiffre neuf
+- `CALX261` — Offrir les deux modes de recharge du véhicule électrique
+- `CALX262` — Borner la recharge par la puissance de la borne et dire le débordement
+- `CALX263` — Modéliser la climatisation en BTU avec un EER saisi
+- `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
+- `CALX265` — Rattacher une clé tarifaire à chaque charge déclarée
+- `CALX267` — Simuler plusieurs groupes de batteries, chacun avec son couplage
+- `CALX268` — Ajouter la commande horaire à SOC cible par groupe
+- `CALX269` — Publier la pointe avant et après effacement
+- `CALX270` — Déduire la réserve de secours des appareils réellement secourus
+- `CALX271` — Proposer des capacités candidates depuis la motivation du client, sans aucun prix
+- `CALX272` — Rendre saisissables les seuils de protection de la batterie hors-réseau
+- `CALX274` — Faire saisir les tranches horaires et leurs tarifs par la société, avec source et date
+- `CALX275` — Découper les tranches horaires par saison
+- `CALX276` — Typer le mécanisme de compensation du surplus
+- `CALX277` — Admettre une grille tarifaire à prix unique ou à deux postes horaires pour les sociétés…
+- `CALX278` — Séparer les taxes des prix dans la grille société
+- `CALX279` — Faire saisir l'indexation annuelle et trancher la contradiction interne
+- `CALX280` — Poser le contrat du bloc économie servi par `apps/ventes`
+- `CALX281` — Construire le flux de trésorerie, la VAN, le TRI et le retour actualisé dans…
+- `CALX282` — Calculer le coût actualisé du kWh (LCOE)
+- `CALX283` — Modéliser les prêts : annuité, échéances constantes, différé
+- `CALX284` — Ajouter l'amortissement et la fiscalité en paramètres société
+- `CALX285` — Faire passer le P90 dans le flux de trésorerie
+- `CALX286` — Remplacer les défauts financiers non sourcés par une omission motivée, et le prouver
+- `CALX287` — Exiger un tarif PPA saisi
+- `CALX288` — Servir le bloc économie en lecture seule depuis `apps/ventes`
+- `CALX289` — Monter un onglet « Économie » en lecture seule dans l'atelier
+- `CALX290` — Comparer deux scénarios sur le MÊME flux
+- `CALX291` — Publier le contrat de l'inventaire « Documents »
+- `CALX292` — Publier le contrat des sections du rapport d'étude
+- `CALX293` — Publier le contrat de l'export JSON projet + résultats
+- `CALX294` — Donner aux documents du module un gabarit société (en-tête, pied, logo, couleurs)
+- `CALX295` — Imprimer une page de garde avec l'identité société et projet
+- `CALX296` — Servir les documents techniques en français et en anglais
+- `CALX297` — Bâtir le rapport d'étude PDF et son endpoint
+- `CALX298` — Écrire la section Site et source météo du rapport
+- `CALX299` — Écrire la section Système, l'annexe des fiches et JOINDRE les fiches PDF constructeur
+- `CALX300` — Écrire la section Chaîne de pertes SÉQUENTIELLE (table)
+- `CALX301` — Écrire la section Production mensuelle, PR et P50/P90
+- `CALX302` — Écrire la section Ombrage et recevoir sa carte de chaleur produite par le navigateur
+- `CALX303` — Écrire la section Électrique du rapport, schéma unifilaire inclus
+- `CALX304` — Écrire la section Nomenclature SANS prix du rapport
+- `CALX305` — Écrire la section Régime de preuve et empreinte du rapport
+- `CALX306` — Donner au rapport un sommaire, une pagination et un test de pages
+- `CALX307` — Laisser la société choisir les sections incluses dans ses rapports
+- `CALX308` — Rendre le diagramme de pertes en SVG côté serveur
+- `CALX309` — Rendre enfin le plan de toiture et le plan de masse dans le dossier technique
+- `CALX310` — Produire le plan de câblage des chaînes, en PDF et en DXF
+- `CALX312` — Exporter le projet et ses résultats en JSON versionné
+- `CALX313` — Laisser choisir les colonnes et le pas de temps de l'export horaire
+- `CALX314` — Poser la provenance sur TOUS les exports, pas seulement le CSV
+- `CALX315` — Produire une présentation compacte INTERNE de deux pages, sans aucun montant
+- `CALX316` — Produire le manuel du propriétaire depuis un gabarit société
+- `CALX317` — Produire un rapport d'ombrage autonome
+- `CALX318` — Imprimer le document as-built (prévu, posé, écarts, photos)
+- `CALX319` — Assembler le dossier de fin de chantier du calepinage
+- `CALX320` — Étendre le panneau Documents : versions, données manquantes nommées, images jointes
+- `CALX321` — Nommer, donnée par donnée, ce qui manque à chaque document
+- `CALX322` — Versionner les documents produits
+- `CALX323` — Servir un aperçu HTML avant le PDF
+- `CALX324` — Journaliser l'émission d'un document dans le fil du calepinage
+- `CALX325` — Dire sur la pièce qu'elle vient d'une conception verrouillée ou archivée
+- `CALX326` — Faire entrer le rapport d'étude et le plan de câblage dans le dossier technique
+- `CALX327` — Interdire tout mot de montant dans le TEXTE EXTRAIT de chaque document du module
+- `CALX328` — Verrouiller le nombre de pages attendu de chaque document
+- `CALX329` — Poser une garde CI : un document déclaré a un rendu
+- `CALX330` — Imprimer l'annexe « hypothèses, sources et omissions » du rapport
+- `CALX331` — Figer le contrat de la comparaison de plusieurs calepinages
+- `CALX332` — Figer le contrat des étiquettes libres d'un calepinage
+- `CALX333` — Figer le contrat du différentiel entre deux versions
+- `CALX334` — Figer le contrat de l'approbation d'un calepinage
+- `CALX335` — Figer le contrat du catalogue de fixation et de sa nomenclature
+- `CALX336` — Figer le contrat de la reprise d'une visite technique dans un calepinage
+- `CALX337` — Figer le contrat des écarts de pose réelle
+- `CALX339` — Figer le contrat de l'import d'un fichier PVsyst `.PAN`/`.OND` vers une fiche technique
+- `CALX340` — Étendre le contrat des réglages avec les zones de vent et de neige société
+- `CALX341` — Construire la comparaison de jusqu'à 5 calepinages et son export tableur
+- `CALX342` — Servir la comparaison de calepinages sur sa propre route de liste
+- `CALX343` — Poser les étiquettes libres et leur filtre de liste
+- `CALX344` — Afficher et filtrer les étiquettes dans la liste et la fiche
+- `CALX345` — Calculer le différentiel champ par champ entre deux versions
+- `CALX346` — Monter le différentiel de versions en onglet de l'atelier
+- `CALX347` — Créer le rôle relecteur et la décision d'approbation
+- `CALX348` — Exiger l'approbation avant de retenir une variante, en réglage société
+- `CALX349` — Monter la décision d'approbation en onglet de l'atelier
+- `CALX351` — Démarrer un calepinage depuis un modèle et un jeu de réglages société
+- `CALX352` — Proposer modèle et jeu de réglages au moment de la création
+- `CALX355` — Rendre les nouveaux champs de fiche saisissables dans le formulaire produit
+- `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
+- `CALX357` — Téléverser un fichier `.PAN`/`.OND` depuis le formulaire produit
+- `CALX358` — Créer le catalogue de systèmes de fixation dans le module
+- `CALX359` — Calculer la nomenclature de fixation d'un calepinage et l'exporter
+- `CALX360` — Monter la fixation en onglet de l'atelier
+- `CALX361` — Saisir les zones de vent et de neige par site et servir la feuille de lestage
+- `CALX362` — Monter le lestage en onglet de l'atelier
+- `CALX363` — Ouvrir la porte visite technique → calepinage côté `apps.visites`
+- `CALX364` — Reprendre les mesures et les photos d'une visite dans le calepinage, avec leur…
+- `CALX365` — Monter la reprise de visite en onglet de l'atelier
+- `CALX366` — Ouvrir la porte de la pose réelle et transformer les écarts en version
+- `CALX367` — Monter la pose réelle en onglet de l'atelier
+- `CALX368` — Publier l'évènement « calepinage simulé » et son webhook
+- `CALX369` — Servir le résultat de simulation d'un calepinage en lecture publique
+- `CALX370` — Exporter et réimporter un projet de calepinage complet en JSON
+- `CALX371` — Monter l'export et l'import de projet en onglet de l'atelier
+- `CALX372` — Garder la frontière du module contre les couplages interdits, depuis une base mesurée
+- `CALX373` — (DECISION) Trancher l'aller-retour avec un configurateur de fixation constructeur
+- `CALX374` — (COST) Trancher la photogrammétrie par drone comme source de relevé
+- `CALX375` — (DECISION) Trancher les intégrations partenaires de conception et de stockage
+- `CALX381` — Garder qu'aucune `@action` du module ne reste sans consommateur
+- `CALX382` — Garder qu'aucune clé de `calepinageApi.js` ne reste jamais appelée
+- `CALX383` — Garder qu'un onglet du rail arrive avec son test
+- `CALX384` — Étendre au paquet `services/` la discipline de provenance des constantes
+- `CALX385` — Garder qu'un échantillon de contrat a bien ses DEUX moitiés
+- `CALX386` — Traverser le parcours calepinage COMPLET en e2e, et le faire tourner par PR
+- `CALX387` — Prouver que chaque onglet du rail s'ouvre, en e2e
+- `CALX388` — Porter le budget de performance de l'atelier à 10 000 modules
+- `CALX389` — Déclarer et garder le temps de la chaîne de simulation
+- `CALX390` — Donner au module ses budgets de requêtes SQL
+- `CALX391` — Affirmer le déterminisme de la simulation, entrée pour entrée
+- `CALX392` — Rendre le rail d'onglets utilisable au clavier
+- `CALX393` — Écrire la chaîne de simulation dans `docs/moteur-calepinage.md`
+- `CALX394` — Réécrire la section « Calepinage » du guide utilisateur sur le parcours réel
+- `CALX395` — Faire entrer le module dans la CODEMAP
+- `CALX396` — Mettre les mots du métier solaire dans le lexique
+- `CALX397` — Savoir quels onglets sont réellement ouverts
+- `CALX398` — Re-mesurer le budget de poids du module après le lot
+- `CALX399` — Figer la forme des agrégats du module dans `docs/api-contracts.md`
+- `CALX400` — Geler les repères DOM `cal-*` en contrat
+- `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
+- `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
+- `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
+- `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
+- `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
+- `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
 - `CRXB1` — [GATED: mot fondateur « lance CRXB »] Contrat d'abord (PACT10)
 - `CRXB2` — [GATED] Scission models.py [VAGUE EXCLUSIVE]
