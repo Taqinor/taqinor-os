@@ -124,7 +124,7 @@ def _lignes_structure(nb_modules, regle_bom_structure):
 
 def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
                  resultat_cables=None, resultat_coffrets_dc=None,
-                 regle_bom_structure=None):
+                 resultat_coffret_ac=None, regle_bom_structure=None):
     """PV37 — les lignes de bordereau déduites des calculs amont."""
     lignes = []
     alertes = []
@@ -199,7 +199,24 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
         alertes.extend(resultat_coffrets_dc.refus)
         alertes.extend(resultat_coffrets_dc.omissions)
 
-    if resultat_protections is not None and resultat_protections.calibre_ac_a:
+    # ── Coffret AC — CALX232 : dimensionné par ses départs réels quand
+    # ``resultat_coffret_ac`` (apps.calepinage.services.coffrets.coffret_ac)
+    # est fourni ; comportement d'aujourd'hui préservé tant qu'il ne l'est
+    # pas, pour qu'un appelant qui n'a pas encore câblé CALX232 ne voie rien
+    # changer.
+    if resultat_coffret_ac is not None:
+        if resultat_coffret_ac.departs:
+            tete_texte = (" — calibre de tête %s"
+                          % fr_a(resultat_coffret_ac.calibre_tete_a, 0)
+                          if resultat_coffret_ac.calibre_tete_a else "")
+            ajouter("Coffret",
+                    "Coffret de protection AC — %d départ(s)%s"
+                    % (resultat_coffret_ac.departs, tete_texte), 1, "u",
+                    "IP65, prêt à raccorder au tableau, %d organe(s) AC ; %s"
+                    % (resultat_coffret_ac.organes,
+                       resultat_coffret_ac.regle_source))
+        alertes.extend(resultat_coffret_ac.omissions)
+    elif resultat_protections is not None and resultat_protections.calibre_ac_a:
         ajouter("Coffret", "Coffret de protection AC", 1, "u",
                 "IP65, prêt à raccorder au tableau, disjoncteur %s A"
                 % fr(resultat_protections.calibre_ac_a, 0))
@@ -240,7 +257,8 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
 
 def nomenclature_dict(entree, resultat_chaines=None, resultat_protections=None,
                       resultat_cables=None, resultat_nomenclature=None,
-                      resultat_coffrets_dc=None, regle_bom_structure=None):
+                      resultat_coffrets_dc=None, resultat_coffret_ac=None,
+                      regle_bom_structure=None):
     """Même contenu, dans la FORME du bordereau historique (``generate_boq``).
 
     ``{items: [...], summary: {...}, warnings: [...]}`` — les clés de résumé
@@ -250,7 +268,7 @@ def nomenclature_dict(entree, resultat_chaines=None, resultat_protections=None,
     """
     resultat = resultat_nomenclature or nomenclature(
         entree, resultat_chaines, resultat_protections, resultat_cables,
-        resultat_coffrets_dc, regle_bom_structure)
+        resultat_coffrets_dc, resultat_coffret_ac, regle_bom_structure)
     section_ac = None
     for cable in (resultat_cables.cables if resultat_cables else ()):
         if cable.repere == "W2":

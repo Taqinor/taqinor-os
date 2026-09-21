@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""CALX230/231 — dimensionner les coffrets DC par leurs ENTRÉES réelles, et
-deux niveaux de regroupement quand plusieurs coffrets remontent.
+"""CALX230/231/232 — dimensionner les coffrets DC par leurs ENTRÉES réelles,
+deux niveaux de regroupement quand plusieurs coffrets remontent, et le
+coffret AC par ses DÉPARTS réels.
 
 LE CONSTAT
 ----------
@@ -28,25 +29,34 @@ trois chaînes en parallèle), aucun seuil neuf. CALX231 — chaque
 même discipline ``additionalProperties``) : le courant d'entrée du parent
 CUMULE celui de ses enfants, deux niveaux de regroupement sont admis, et
 une boucle de parenté ou une profondeur supérieure à deux est REFUSÉE en
-nommant le coffret fautif.
+nommant le coffret fautif. CALX232 — ``coffret_ac`` publie ``{departs,
+organes, calibre_tete_a, regle_source}`` : un départ par branche AC de
+micro-onduleurs (CALX210) ou un départ unique en régime chaîne ; ``organes``
+compte les organes de protection AC réellement retenus
+(``core.electrique.types.COTE_AC``) ; la règle d'enveloppe citée
+(NF C 15-100 §512.2) est celle qu'``core/electrique/protections.py`` cite
+déjà pour ARM1 — jamais une nouvelle.
 
 AUCUN CHIFFRE INVENTÉ, AUCUN SEUIL NEUF (D-CALX 7, règles du lot 4)
 ---------------------------------------------------------------------
 Ce module ne pose ni calibre, ni capacité, ni ratio : une capacité
-manquante REFUSE la répartition en nommant le coffret. Le seul seuil
-utilisé (``SEUIL_CHAINES_PARALLELES_FUSIBLE``) est IMPORTÉ du noyau,
-jamais recopié.
+manquante REFUSE la répartition en nommant le coffret, un calibre non lu
+est OMIS en le disant. Le seul seuil utilisé
+(``SEUIL_CHAINES_PARALLELES_FUSIBLE``) est IMPORTÉ du noyau, jamais
+recopié.
 
 CROCHET ATTENDU (phase 2, hors fichiers de cette lane)
 --------------------------------------------------------
-``coffrets_dc`` n'a pas encore d'appelant en production : c'est
-``apps/calepinage/services/electrique.py`` (CALX246/228, lane E2) qui doit
-résoudre ``electrical.equipements[]`` depuis le document, résoudre les
-capacités par ``produitId`` (fiche ``stock.Produit``), l'appeler et
-transmettre son résultat à ``core.electrique.nomenclature.nomenclature``
-(paramètre ``resultat_coffrets_dc``) ; le tronçon qui relie un coffret
-enfant à son parent est dimensionné par CALX225 (``services/troncons.py``,
-lane T, hors fichiers de cette lane) à partir de l'Isc cumulé publié ici.
+Ni ``coffrets_dc`` ni ``coffret_ac`` n'ont encore d'appelant en production :
+c'est ``apps/calepinage/services/electrique.py`` (CALX246/228, lane E2) qui
+doit résoudre ``electrical.equipements[]`` depuis le document, résoudre les
+capacités par ``produitId`` (fiche ``stock.Produit``), appeler ces deux
+fonctions et transmettre leurs résultats à
+``core.electrique.nomenclature.nomenclature`` (paramètres
+``resultat_coffrets_dc`` / ``resultat_coffret_ac``) ; le tronçon qui relie
+un coffret enfant à son parent est dimensionné par CALX225
+(``services/troncons.py``, lane T, hors fichiers de cette lane) à partir de
+l'Isc cumulé publié ici.
 """
 
 from __future__ import annotations
@@ -56,14 +66,25 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
 from core.electrique.protections import SEUIL_CHAINES_PARALLELES_FUSIBLE
+from core.electrique.types import COTE_AC
 
 __all__ = [
-    "TYPE_COFFRET_DC", "CoffretDc", "ResultatCoffretsDc", "coffrets_dc",
+    "TYPE_COFFRET_DC", "REGLE_ENVELOPPE_AC",
+    "CoffretDc", "ResultatCoffretsDc", "CoffretAc",
+    "coffrets_dc", "coffret_ac",
 ]
 
 #: L'énumération FERMÉE du contrat CALX201 ne connaît que ce type pour un
 #: coffret DC — le seul filtré ici.
 TYPE_COFFRET_DC = "coffret_dc"
+
+#: CALX232 — la règle d'enveloppe AC. LA MÊME que celle qu'
+#: ``core/electrique/protections.py`` cite déjà pour l'organe ARM1
+#: (NF C 15-100 §512.2, dimensionnement par le nombre d'organes hébergés) —
+#: le coffret AC la republie, sans en écrire une nouvelle.
+REGLE_ENVELOPPE_AC = (
+    "NF C 15-100 §512.2 — l'enveloppe d'un coffret de protection se "
+    "dimensionne par le nombre d'organes qu'elle héberge")
 
 
 @dataclass(frozen=True)
@@ -97,6 +118,17 @@ class ResultatCoffretsDc:
     #: coffret ou la chaîne fautive est NOMMÉ, jamais un refus muet.
     refus: Tuple[str, ...] = ()
     #: Omissions qui ne sont pas des refus (aucun coffret posé du tout).
+    omissions: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CoffretAc:
+    """CALX232 — le coffret AC, dimensionné par ses départs réels."""
+
+    departs: int = 0
+    organes: int = 0
+    calibre_tete_a: Optional[float] = None
+    regle_source: str = REGLE_ENVELOPPE_AC
     omissions: Tuple[str, ...] = ()
 
 
@@ -297,3 +329,89 @@ def coffrets_dc(chaines, equipements, *, capacites=None, isc_par_chaine=None):
         for c in coffrets)
 
     return ResultatCoffretsDc(coffrets=coffrets_finaux, refus=tuple(refus))
+
+
+def _protections_ac(conception):
+    """Les organes AC RETENUS de la conception — ``()`` si aucun.
+
+    ``conception`` est duck-typée : ``conception.resultat.protections``
+    (forme de ``core.electrique.types.ResultatElectrique``, chaque organe
+    portant son ``.cote``) — c'est la même conception que consomment déjà
+    ``core.electrique.concevoir`` et ``services/protections.py``.
+    """
+    resultat = getattr(conception, "resultat", None)
+    protections = getattr(resultat, "protections", None) or ()
+    return tuple(p for p in protections if getattr(p, "cote", None) == COTE_AC)
+
+
+def _calibre_numerique(texte):
+    """Le premier nombre d'un calibre publié (« 32 A / 230 V » → ``32.0``).
+
+    Une LECTURE, jamais un seuil : le calibre est déjà celui que
+    ``core.electrique.protections`` a retenu et cité ; ce n'est qu'un
+    formatage à défaire pour republier le nombre à côté.
+    """
+    if not texte:
+        return None
+    lus = []
+    trouve = False
+    for caractere in texte:
+        if caractere.isdigit():
+            lus.append(caractere)
+            trouve = True
+        elif caractere == "," and trouve:
+            lus.append(".")
+        elif trouve:
+            break
+    if not lus:
+        return None
+    try:
+        return float("".join(lus))
+    except ValueError:
+        return None
+
+
+def coffret_ac(conception, branches):
+    """CALX232 — le coffret AC, dimensionné par ses DÉPARTS réels.
+
+    Args:
+        conception: porte ``.resultat.protections`` (organes AC déjà
+            retenus par ``core.electrique.protections.concevoir_protections``
+            ou la check-list ``services/protections.py``).
+        branches: les branches AC de micro-onduleurs publiées par CALX209 —
+            vide ou absent = régime chaîne (UN départ, l'onduleur).
+
+    Returns:
+        ``CoffretAc``. En régime micro, il n'y a PAS de calibre de tête
+        commun : chaque départ porte déjà son propre organe (CALX210), la
+        chose est dite plutôt que devinée.
+    """
+    branches = tuple(branches or ())
+    organes_ac = _protections_ac(conception)
+
+    if branches:
+        departs = len(branches)
+        calibre_tete = None
+        omissions: Tuple[str, ...] = () if not organes_ac else (
+            "calibre de tête OMIS : en régime micro-onduleurs chaque départ "
+            "porte son propre organe (CALX210), il n'y a pas de protection "
+            "de tête commune à calibrer",)
+        return CoffretAc(departs=departs, organes=len(organes_ac),
+                         calibre_tete_a=calibre_tete,
+                         regle_source=REGLE_ENVELOPPE_AC,
+                         omissions=omissions)
+
+    if not organes_ac:
+        return CoffretAc(departs=0, organes=0, calibre_tete_a=None,
+                         regle_source=REGLE_ENVELOPPE_AC,
+                         omissions=("aucun organe AC retenu : coffret AC "
+                                    "omis du bordereau",))
+
+    tete = next((p for p in organes_ac if p.repere == "QAC1"), None)
+    calibre_tete = _calibre_numerique(tete.calibre) if tete is not None else None
+    omissions = () if calibre_tete is not None else (
+        "calibre de tête OMIS : le calibre du disjoncteur AC de tête "
+        "(QAC1) n'a pas pu être lu sur les organes retenus",)
+    return CoffretAc(departs=1, organes=len(organes_ac),
+                     calibre_tete_a=calibre_tete,
+                     regle_source=REGLE_ENVELOPPE_AC, omissions=omissions)
