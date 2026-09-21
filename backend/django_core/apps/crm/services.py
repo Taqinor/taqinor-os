@@ -2610,8 +2610,15 @@ def verifier_gabarit_assignable(company, template_cle):
 #: dans AUCUN plan, sans une ligne pour le dire. Même silence pour l'API
 #: publique partenaire, qui accepte une étape dans sa requête puis appelle la
 #: cadence. Un refus muet est le pire des deux mondes.
+#: CAD104 (21/09/2026) — `miroir` REJOINT les refus tracés. Odoo est le
+#: cockpit où la commerciale travaille encore, et trois chemins donnaient
+#: trois résultats sur la MÊME population : la cadence automatique refusait en
+#: silence, l'écran « placer les anciens leads » ne filtre AUCUNE source, et
+#: la commande de reprise passe, elle, par cette garde. L'asymétrie
+#: automatique/manuel reste VOULUE (elle est datée et commentée) — ce qui
+#: change est seulement qu'un dossier non suivi cesse de l'être en silence.
 _GARDES_CADENCE_TRACEES = frozenset({'sans_numero', 'doublon',
-                                     'deja_contacte'})
+                                     'deja_contacte', 'miroir'})
 
 #: CAD103 — ce que le refus PROPOSE, en toutes lettres. Le protocole ne
 #: change pas : c'est la touche 3 (le rappel du jour même) qui reprend un
@@ -2637,7 +2644,13 @@ def _garde_cadence_contact(lead):
     if lead is None:
         return ('absent', 'lead absent')
     if lead.source == Lead.Source.ODOO_IMPORT_TEST:
-        return ('miroir', 'lead du miroir Odoo')
+        # CAD104 — le motif DIT la suite : ce refus est désormais tracé, et le
+        # libellé du modèle reconnaît lui-même qu'« Import Odoo » n'est plus
+        # un test. Le placement à la main, lui, ne filtre aucune source.
+        return ('miroir',
+                'lead du miroir Odoo — la cadence automatique ne part pas '
+                'sur le rattrapage historique ; lancez-la depuis '
+                '« Placer les anciens leads » si ce dossier doit être suivi')
     if lead.stage != stages.NEW or lead.first_contacted_at is not None:
         # CAD103 — le motif DIT la suite : ce refus est désormais tracé, et
         # une ligne qui constate sans proposer ne sert à rien.

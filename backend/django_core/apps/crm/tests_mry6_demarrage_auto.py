@@ -168,13 +168,17 @@ class GardesTests(_Base):
         self.assertEqual(demarrer_cadence_contact(lead), [])
         self.assertEqual(self._touches(lead), 0)
 
-    def test_un_lead_hors_OS_NATIVE_est_ignore_en_silence(self):
-        """Le miroir Odoo n'est PAS une demande : ni cadence, ni note de
-        refus (930 notes inutiles dans l'historique)."""
+    def test_un_lead_hors_OS_NATIVE_nentre_dans_aucune_cadence(self):
+        """Le miroir Odoo n'est PAS une demande : aucune cadence.
+
+        CAD104 (21/09/2026) a en revanche levé le SILENCE : Odoo est le
+        cockpit où la commerciale travaille encore, et trois chemins
+        donnaient trois résultats sur la même population. Le refus est
+        désormais tracé — `tests_cad104_refus_miroir_trace.py` le verrouille
+        — mais la décision, elle, ne bouge pas."""
         lead = self._lead(source=Lead.Source.ODOO_IMPORT_TEST)
         self.assertEqual(demarrer_cadence_contact(lead), [])
-        self.assertFalse(
-            LeadActivity.objects.filter(lead=lead).exists())
+        self.assertEqual(self._touches(lead), 0)
 
     def test_une_exception_ne_casse_jamais_la_creation(self):
         lead = self._lead()
