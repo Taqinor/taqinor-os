@@ -147,6 +147,14 @@
       "description": "CALX201 — la couche ÉLECTRIQUE du document : les organes posés dans l'atelier (`equipements[]`) et, depuis CALX202, les cheminements de câble qui les relient (`cheminements[]`). Clé RACINE OPTIONNELLE et additive : absente, le comportement est EXACTEMENT celui d'aujourd'hui (aucun organe, aucun marqueur dans la scène, aucun bloc supplémentaire au schéma unifilaire), et un document v2 déjà enregistré reste valide sans qu'une seule de ses clés change. Aucune valeur par défaut n'est inventée : l'absence d'équipement n'est pas « un onduleur au centre du toit », c'est une information qui manque — les calculs qui en dépendent s'OMETTENT en la nommant.",
       "$ref": "#/$defs/electrical"
     },
+    "optimisation": {
+      "description": "CALX88 — ce que le balayage CHERCHE, et comment il remplit. Clé RACINE OPTIONNELLE et additive : absente = le comparateur unique d'aujourd'hui (l'énergie annuelle posée classée d'abord, `apps/web/src/lib/estimatorBrainV6.ts::betterMatrixV6`), aucune priorité de remplissage et aucun seuil — comportement d'aujourd'hui, byte pour byte. Présente, elle dit ce que l'utilisateur a DEMANDÉ ; elle ne recalcule rien et ne classe rien par elle-même.",
+      "$ref": "#/$defs/optimisation"
+    },
+    "scene": {
+      "description": "CALX88 — l'instant de la SCÈNE 3D (jour et heure du soleil) RÉELLEMENT affiché au moment de l'export. Clé RACINE OPTIONNELLE et additive : absente = l'instant par défaut de la scène d'aujourd'hui, celui qu'elle affiche quand personne n'a bougé la bascule hiver/été (`roof-tool-pro11.ts`) — ni `ctx.sunDay` ni `ctx.sunHour` ne voyageaient dans `serializeLayout`, donc rouvrir le document perdait l'instant choisi et l'ombre montrée changeait sous les yeux du client. AUCUN calcul n'en dépend : c'est un point de vue, pas une donnée d'ingénierie ; les pertes d'ombrage se calculent sur l'année entière (CAL93, chaîne de pertes), jamais sur cet instant.",
+      "$ref": "#/$defs/scene"
+    },
     "underlay": {
       "description": "CALX86 — le CALQUE DE FOND calé sous le tracé : un plan importé, ou une photo du site. Clé RACINE OPTIONNELLE et additive : absente = AUCUN fond, exactement l'atelier d'aujourd'hui (les calques `photo` et `plan` du panneau pilotent une liste VIDE de couches MapLibre, `roofPro11/mapDraw.ts`). AUCUNE échelle n'est déduite d'un fichier muet : l'analyseur de plan rend un contour dans l'unité DU FICHIER et ne convertit jamais en mètres (`services/import_plan.py`) — c'est le calage à deux points qui donne l'échelle, et il porte sa `distanceReelleM` SAISIE ou il est refusé. Un seul fond à la fois : superposer deux images calées différemment ferait lire deux toits.",
       "$ref": "#/$defs/underlay"
@@ -617,6 +625,64 @@
             "ligne",
             "serpentin"
           ]
+        }
+      }
+    },
+    "optimisation": {
+      "description": "CALX88 — les choix d'optimisation SAISIS pour ce document. Aujourd'hui l'objectif est FIGÉ dans un comparateur unique et la priorité de remplissage CAL83 est du code sans appelant (`roofPro11/optimizer.ts`, `PRIORITES_REMPLISSAGE` / `departagerRemplissage`) : cette clé est ce qui les rend demandables. Elle ne porte QUE l'intention ; aucun résultat, aucun classement, aucun seuil par défaut.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "cible": {
+          "description": "Ce que le balayage cherche à maximiser ou à respecter, énumération FERMÉE. `compte` = le plus de modules posés ; `kwc` = la plus grande puissance crête ; `energie` = la plus grande énergie annuelle posée, l'objectif figé d'aujourd'hui ; `ombrage` = le moins d'ombrage subi ; `faitage` = le plus près du faîtage. Une cible hors de cette liste est REFUSÉE en nommant le champ : un objectif inconnu n'a aucun comparateur, il ne classerait donc rien.",
+          "type": "string",
+          "enum": [
+            "compte",
+            "kwc",
+            "energie",
+            "ombrage",
+            "faitage"
+          ]
+        },
+        "priorite": {
+          "description": "Priorité de REMPLISSAGE, énumération FERMÉE reprenant les identifiants de `PRIORITES_REMPLISSAGE` (CAL83, `roofPro11/optimizer.ts`) — l'ordre dans lequel les modules se collent une fois le compte acquis, à ne pas confondre avec `cible`, qui dit ce que le balayage cherche. `aucune` = l'ordre du pavage, comportement historique.",
+          "type": "string",
+          "enum": [
+            "aucune",
+            "faitage",
+            "egout",
+            "rive-debut",
+            "rive-fin",
+            "ensoleillement"
+          ]
+        },
+        "seuilAccesSolaire": {
+          "description": "Accès solaire minimal SAISI en dessous duquel un emplacement n'est pas retenu, dans [0, 1] — même échelle que `zones[].geometry.solarAccess.values` (CAL248). `null` ou absent = AUCUN seuil, et l'atelier ne retire alors aucun emplacement pour cette raison. Le schéma n'en propose aucun : un seuil d'acceptation est une décision commerciale, jamais une constante de contrat (D-CALX 7).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "scene": {
+      "description": "CALX88 — l'instant du soleil de la scène 3D. Deux valeurs SAISIES au curseur, rien d'autre : ce que le client voyait à l'écran quand le document a été exporté. Elles n'entrent dans AUCUN calcul de production ni de perte.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "sunDay": {
+          "description": "Jour de l'année affiché (1 à 366, 366 admis pour une année bissextile). Il vient de la bascule saison ou d'un réglage fin ; le schéma n'en propose aucun.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 366
+        },
+        "sunHour": {
+          "description": "Heure solaire affichée, en heures décimales dans [0, 24]. Le curseur de l'atelier n'en offre aujourd'hui qu'une partie ; le contrat borne la JOURNÉE, il ne reproduit pas les bornes d'un curseur qui peut changer.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24
         }
       }
     },
