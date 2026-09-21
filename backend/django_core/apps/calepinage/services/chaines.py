@@ -341,6 +341,10 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
     Les températures viennent de CAL123 (``services.electrique``) : elles sont
     passées EXPLICITEMENT au noyau, jamais laissées au défaut — c'est tout
     l'objet de CAL123.
+
+    CALX214 — leur PROVENANCE fait le voyage avec elles (``source`` et
+    ``mention`` du ``TemperaturesSite``) : sans elle, le noyau pouvait écrire
+    « à −5 °C » dans une phrase sans que rien ne dise d'où venait ce −5.
     """
     return EntreeElectrique(
         module=module, onduleur=onduleur,
@@ -348,6 +352,8 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
         dc_m=float(dc_m or 0.0), ac_m=float(ac_m or 0.0),
         phases=int(phases or getattr(onduleur, 'phases', 1) or 1),
         temp_froid_c=temperatures.froid_c, temp_chaud_c=temperatures.chaud_c,
+        temp_source=getattr(temperatures, 'source', None),
+        temp_mention=getattr(temperatures, 'mention', '') or '',
         longueur_chaine_forcee=longueur_forcee,
         zone_keraunique=bool(zone_keraunique),
         inclure_prise_terre=bool(inclure_prise_terre),

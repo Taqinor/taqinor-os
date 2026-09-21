@@ -1868,6 +1868,10 @@ def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
                 'source': None,
                 'detail': "borne non publiée sur la fiche — contrôle NON "
                           "vérifiable",
+                # CALX214 — un contrôle d'ENTRÉE d'optimiseur compare deux
+                # chiffres de fiche aux conditions STC : aucune température de
+                # site n'y sert, les trois clés restent NEUTRES.
+                **_bloc_temperature(None),
             })
             continue
         conforme = valeur <= borne + 1e-9
@@ -1882,6 +1886,7 @@ def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
             'detail': '%s %s %s (%s)' % (
                 texte, 'sous' if conforme else 'AU-DESSUS DE', texte_borne,
                 nom),
+            **_bloc_temperature(None),
         })
 
     # CALX211 — la longueur se ferme quand les DEUX champs de sortie sont
@@ -1985,23 +1990,33 @@ def verdicts_electriques(conception, optimiseur_specs=None,
             'source': 'fiche',
             'detail': "règle SUBSTITUÉE — %s (%s)" % (regle['libelle'],
                                                       regle['source']),
+            # CALX214 — la règle change, la température de contrôle reste
+            # celle du site : les trois clés ne disparaissent jamais.
+            **_bloc_temperature(conception.temperatures,
+                                conception.entree.temp_froid_c),
         }
     else:
         verdict_voc = _verdict(
             'voc_cold_under_vmax',
             "Voc à froid sous la tension maximale admissible de l'onduleur",
-            voc_max, onduleur.v_max_abs, 'sous', bloquant=True, unite='V')
+            voc_max, onduleur.v_max_abs, 'sous', bloquant=True, unite='V',
+            temperatures=conception.temperatures,
+            temperature_c=conception.entree.temp_froid_c)
 
     verdicts = [
         verdict_voc,
         _verdict('vmp_cold_under_mppt_max',
                  'Vmp à froid dans le haut de la plage MPPT',
                  vmp_froid_max, onduleur.mppt_v_max, 'sous',
-                 bloquant=False, unite='V'),
+                 bloquant=False, unite='V',
+                 temperatures=conception.temperatures,
+                 temperature_c=conception.entree.temp_froid_c),
         _verdict('vmp_hot_over_mppt_min',
                  'Vmp à chaud au-dessus du bas de la plage MPPT',
                  vmp_chaud_min, onduleur.mppt_v_min, 'au-dessus',
-                 bloquant=False, unite='V'),
+                 bloquant=False, unite='V',
+                 temperatures=conception.temperatures,
+                 temperature_c=conception.entree.temp_chaud_c),
     ]
 
     # Courant d'entrée : DEUX bornes de fiche, et la ligne de partage n'est
@@ -2018,7 +2033,11 @@ def verdicts_electriques(conception, optimiseur_specs=None,
         "Courant par entrée MPPT sous le courant admissible",
         isc_cumule if depasse_isc else imp_cumule,
         float(isc_publie) if depasse_isc else onduleur.i_max_mppt_a,
-        'sous', bloquant=depasse_isc, unite='A'))
+        'sous', bloquant=depasse_isc, unite='A',
+        # Un courant ne se contrôle À AUCUNE température : les trois clés
+        # restent présentes et NEUTRES plutôt que de citer un chiffre qui
+        # n'a servi à rien ici.
+        temperatures=conception.temperatures))
 
     # CALX213 — les trois paliers du ratio DC/AC viennent des réglages
     # SOCIÉTÉ quand ils sont saisis : c est eux qui jugent ce verdict.
@@ -2033,6 +2052,7 @@ def verdicts_electriques(conception, optimiseur_specs=None,
         'source': 'fiche',
         'detail': ('' if ratio is None or ratio.valeur is None
                    else '%s (%s)' % (ratio.texte, ratio.fourchette_texte)),
+        **_bloc_temperature(conception.temperatures),
     })
     # CAL129 — les contrôles d'ENTRÉE de l'optimiseur viennent APRÈS les cinq
     # codes du contrat : ils s'ajoutent, ils ne remplacent aucune clé.
@@ -2193,10 +2213,41 @@ def bloc_ratio_dc_ac(conception, *, exigence_marche=None,
     }, tuple(avertissements))
 
 
-def _verdict(code, libelle, valeur, borne, sens, *, bloquant, unite):
-    """Un verdict de tension/courant — ``conforme: null`` si la borne manque."""
+#: CALX214 — les trois clés que TOUT verdict du contrat CAL244 porte
+#: désormais. Elles sont TOUJOURS présentes (``null`` / ``''`` quand le
+#: contrôle ne dépend d'aucune température) : une clé qui apparaît et
+#: disparaît oblige l'écran à deviner si elle manque ou si elle est vide.
+CLES_TEMPERATURE_VERDICT = ('temperature_c', 'temperature_source',
+                            'temperature_mention')
+
+
+def _bloc_temperature(temperatures, temperature_c=None):
+    """Les trois clés de température d'un verdict — jamais un chiffre nu.
+
+    ``temperatures`` est le ``TemperaturesSite`` de CE calepinage (CAL123) :
+    la source vient de LUI (relevé de site, série météo type, ou ``None``) et
+    la mention est celle qu'il rédige quand rien ne source les températures
+    (``MENTION_NON_SOURCEE``). Aucun texte de repli n'est écrit ici.
+    """
+    return {
+        'temperature_c': (None if temperature_c is None
+                          else round(float(temperature_c), 1)),
+        'temperature_source': getattr(temperatures, 'source', None),
+        'temperature_mention': getattr(temperatures, 'mention', '') or '',
+    }
+
+
+def _verdict(code, libelle, valeur, borne, sens, *, bloquant, unite,
+             temperatures=None, temperature_c=None):
+    """Un verdict de tension/courant — ``conforme: null`` si la borne manque.
+
+    CALX214 — un contrôle évalué À UNE TEMPÉRATURE la publie dans un CHAMP
+    (``temperature_c``) avec sa provenance, au lieu de la laisser dans la
+    seule phrase de ``detail``.
+    """
     from core.electrique.types import fr
 
+    temperature = _bloc_temperature(temperatures, temperature_c)
     borne_publiee = _nombre(borne)
     if borne_publiee is None or borne_publiee <= 0:
         return {
@@ -2204,6 +2255,7 @@ def _verdict(code, libelle, valeur, borne, sens, *, bloquant, unite):
             'bloquant': bloquant, 'source': None,
             'detail': "borne non publiée sur la fiche — contrôle NON "
                       "vérifiable, aucune limite n'est supposée à sa place",
+            **temperature,
         }
     conforme = (valeur <= borne_publiee + 1e-9 if sens == 'sous'
                 else valeur >= borne_publiee - 1e-9)
@@ -2218,4 +2270,5 @@ def _verdict(code, libelle, valeur, borne, sens, *, bloquant, unite):
             fr(valeur, 1), unite,
             'au-dessus de' if sens == 'sous' else 'sous',
             fr(borne_publiee, 1), unite),
+        **temperature,
     }
