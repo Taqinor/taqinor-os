@@ -116,6 +116,44 @@ def _refuser_module_inconnu(document):
             f'(modèles déclarés : {inventaire}).', champ=chemin)
 
 
+def _refuser_numero_de_module_double(document):
+    """CALX83 — deux modules d'un MÊME pan ne peuvent pas partager ``n``.
+
+    ``uniqueItems`` compare des ÉLÉMENTS entiers, pas une propriété d'objet :
+    l'unicité du numéro stable se contrôle donc ici. Un doublon rendrait le
+    numéro inutilisable pour ce à quoi il sert — citer un module précis dans
+    un rapport d'ombrage ou sur un plan de pose.
+    """
+    zones = document.get('zones')
+    if not isinstance(zones, list):
+        return
+    for rang, zone in enumerate(zones):
+        if not isinstance(zone, dict):
+            continue
+        geometrie = zone.get('geometry')
+        if not isinstance(geometrie, dict):
+            continue
+        modules = geometrie.get('panels')
+        if not isinstance(modules, list):
+            continue
+        vus = {}
+        for place, module in enumerate(modules):
+            if not isinstance(module, dict):
+                continue
+            numero = module.get('n')
+            if not isinstance(numero, int) or isinstance(numero, bool):
+                continue
+            if numero in vus:
+                chemin = f'zones.{rang}.geometry.panels.{place}.n'
+                raise ImportLayoutRefuse(
+                    f'Document refusé au champ « {chemin} » : le numéro de '
+                    f'module {numero} est déjà porté par '
+                    f'« zones.{rang}.geometry.panels.{vus[numero]}.n » — sur '
+                    f'un même pan, un numéro désigne UN module et un seul.',
+                    champ=chemin)
+            vus[numero] = place
+
+
 def _controles_croises(document):
     """Les refus que le vocabulaire JSON Schema ne sait pas exprimer.
 
@@ -124,6 +162,7 @@ def _controles_croises(document):
     même façon, sans qu'aucun d'eux ne recode une règle.
     """
     _refuser_module_inconnu(document)
+    _refuser_numero_de_module_double(document)
 
 
 def valider_document(document):

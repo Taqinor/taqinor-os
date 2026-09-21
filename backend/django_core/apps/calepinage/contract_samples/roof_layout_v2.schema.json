@@ -471,6 +471,10 @@
           "description": "CALX82 — le module physique posé sur CE pan, désigné par son `id` dans le catalogue `modules[]` de la racine. OPTIONNEL et additif : absent = le module unique d'aujourd'hui, comportement d'aujourd'hui. Un `moduleId` qui ne figure PAS dans `modules[]` est REFUSÉ en nommant le champ (`services/io_layout.py`) : un pan qui désigne un modèle introuvable n'a ni dimensions ni poids, donc aucune surface et aucune charge vérifiables — mieux vaut un refus lisible qu'un pan silencieusement repavé avec le module d'un autre.",
           "type": "string",
           "minLength": 1
+        },
+        "numerotation": {
+          "description": "CALX83 — la convention de numérotation SAISIE pour ce pan. OPTIONNELLE et additive : absente = l'affichage par index d'aujourd'hui. Elle décrit ce que l'utilisateur a choisi, elle ne renumérote rien.",
+          "$ref": "#/$defs/numerotationPan"
         }
       }
     },
@@ -490,6 +494,40 @@
           "enum": [
             "E",
             "W"
+          ]
+        },
+        "n": {
+          "description": "CALX83 — numéro STABLE du module, attribué À LA POSE et JAMAIS réattribué : retirer un module laisse un TROU dans la suite, il ne renumérote pas ses voisins. OPTIONNEL et additif : absent = l'affichage par index du tableau d'aujourd'hui (`nº${i + 1}`, `shadingUi.ts`), qui change dès qu'un module est retiré. C'est ce numéro que le rapport d'ombrage et le repérage de pose citent ; deux modules d'un MÊME pan ne peuvent pas le partager, et le document qui le tente est refusé en nommant le champ (`services/io_layout.py`).",
+          "type": "integer",
+          "minimum": 1
+        },
+        "rangee": {
+          "description": "CALX83 — étiquette de la rangée qui porte ce module, SAISIE ou déduite du pavage (« A », « R3 »…). OPTIONNELLE : absente = le module n'est rattaché à aucune rangée nommée, et l'écran ne lui en invente pas une. C'est une ÉTIQUETTE, pas un rang calculé : deux modules de la même rangée physique portent la même.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "numerotationPan": {
+      "description": "CALX83 — la convention de numérotation SAISIE pour un pan : ce que l'utilisateur a choisi, jamais une règle que le schéma impose. OPTIONNELLE dans son entier ; absente, les modules gardent les `n` déjà attribués (ou l'affichage par index d'aujourd'hui s'ils n'en ont pas). Elle ne renumérote RIEN par elle-même : c'est la description de ce qui a été fait, pour qu'un écran rouvert reprenne la même main.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "prefixe": {
+          "description": "Préfixe SAISI affiché devant le numéro (« PV », « TOIT-A »…). Chaîne vide ou absente = aucun préfixe.",
+          "type": "string"
+        },
+        "depart": {
+          "description": "Premier numéro attribué sur ce pan, SAISI. Absent = la suite commence à son premier `n` réellement posé ; le schéma ne propose aucun départ.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "sens": {
+          "description": "ORDRE d'attribution des numéros sur le pan, SAISI, énumération FERMÉE. `ligne` = chaque rangée numérotée dans le même sens ; `serpentin` = une rangée sur deux en sens inverse, l'ordre dans lequel un poseur marche réellement. Absent = l'ordre n'est pas documenté et aucun écran ne le devine ; il ne descend d'aucun calcul.",
+          "type": "string",
+          "enum": [
+            "ligne",
+            "serpentin"
           ]
         }
       }
