@@ -1,11 +1,12 @@
 // WR10 — Planification & logistique chantiers/interventions : câble les
 // endpoints de scheduling/logistique qui n'avaient aucune UI. Regroupe en
-// onglets le Gantt multi-chantier (FG74), le calendrier dispatch techniciens
-// (FG68), « ma tournée » (FG73), le plan de charge / conflits / nivellement
-// (FG299-301), le planning camionnettes (FG303) et deux outils par chantier
-// (suggestion de régime loi 82-21 N43 + génération des interventions
-// standard FG79). La synthèse coût/marge (FG71, INTERNE admin-only) vit dans
-// un onglet séparé, jamais exposée hors du rôle admin.
+// onglets le calendrier dispatch techniciens (FG68), « ma tournée » (FG73),
+// le plan de charge / conflits / nivellement (FG299-301), le planning
+// camionnettes (FG303) et deux outils par chantier (suggestion de régime
+// loi 82-21 N43 + génération des interventions standard FG79). La synthèse
+// coût/marge (FG71, INTERNE admin-only) vit dans un onglet séparé, jamais
+// exposée hors du rôle admin. SOLMVP41 — le Gantt multi-chantier (FG74) est
+// parti : il dépendait de `features/gestion_projet/gantt` (Groupe SOLMVP).
 //
 // Ne touche PAS à InstallationDetail.jsx / InstallationsPage.jsx (Group CH
 // possède la refonte du statut/stepper) : ce module est une surface neuve,
@@ -35,7 +36,6 @@ import { useIsMobile } from '../../ui/ResponsiveDialog'
 // APX29 — carte + liste des arrêts, partagée avec « Ma journée ».
 import TourneeStops from '../../features/installations/TourneeStops'
 import { toastWithUndo } from '../../lib/toast'
-import { timelineBounds, barGeometry, markerGeometry } from '../../features/gestion_projet/gantt'
 import { formatDate } from '../../lib/format'
 
 function todayISO() {
@@ -61,103 +61,11 @@ function defaultWeek() {
   return { debut: isoOf(debut), fin: isoOf(fin) }
 }
 
-// ── FG74 — Gantt multi-chantier ──────────────────────────────────────────────
-const GANTT_JALON_ORDER = [
-  ['signature', 'Signature'],
-  ['materiel_commande', 'Matériel commandé'],
-  ['pose_prevue', 'Pose prévue'],
-  ['pose_reelle', 'Pose réelle'],
-  ['mise_en_service', 'Mise en service'],
-  ['reception', 'Réception'],
-  ['cloture', 'Clôture'],
-]
-
-function GanttTab() {
-  const [rows, setRows] = useState(null)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    let alive = true
-    installationsApi.getGanttChantiers()
-      .then((r) => { if (alive) setRows(r.data ?? []) })
-      .catch(() => { if (alive) setError('Impossible de charger le Gantt des chantiers.') })
-    return () => { alive = false }
-  }, [])
-
-  const bounds = useMemo(() => {
-    if (!rows) return null
-    const bars = rows.map((row) => {
-      const dates = GANTT_JALON_ORDER
-        .map(([k]) => row.jalons?.[k])
-        .filter(Boolean)
-      return { date_debut: dates[0], date_fin: dates[dates.length - 1] }
-    }).filter((b) => b.date_debut)
-    return timelineBounds(bars)
-  }, [rows])
-
-  if (error) {
-    return <EmptyState icon={AlertTriangle} title="Gantt indisponible" description={error} />
-  }
-  if (!rows) {
-    return <p className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><Spinner className="size-4" /> Chargement du Gantt…</p>
-  }
-  if (rows.length === 0 || !bounds) {
-    return (
-      <EmptyState icon={CalendarRange} title="Aucun chantier actif daté"
-        description="Les chantiers actifs (non clôturés, non annulés) avec au moins un jalon daté apparaîtront ici." />
-    )
-  }
-
-  const { min, max } = bounds
-  return (
-    <div className="flex flex-col gap-3" data-testid="gantt-chantiers">
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{formatDate(min)}</span>
-        <span>{formatDate(max)}</span>
-      </div>
-      <div className="flex flex-col gap-1.5" role="list" aria-label="Gantt multi-chantier">
-        {rows.map((row) => {
-          const dates = GANTT_JALON_ORDER.map(([k]) => row.jalons?.[k]).filter(Boolean)
-          const debut = dates[0]
-          const fin = dates[dates.length - 1]
-          const geo = debut ? barGeometry(debut, fin || debut, min, max) : { offsetPct: 0, widthPct: 0 }
-          return (
-            <div key={row.id} className="grid grid-cols-[minmax(140px,220px)_1fr] items-center gap-2" role="listitem">
-              <span className="truncate text-sm" title={row.client_nom || row.reference}>
-                <span className="mr-1 font-mono text-xs text-muted-foreground">{row.reference}</span>
-                {row.client_nom}
-              </span>
-              <div className="relative h-5 rounded bg-muted/50">
-                {geo.widthPct > 0 && (
-                  <div className="absolute top-0.5 h-4 rounded bg-primary/80"
-                    style={{ left: `${geo.offsetPct}%`, width: `${geo.widthPct}%` }}
-                    title={`${row.reference} — ${formatDate(debut)} → ${formatDate(fin)}`} />
-                )}
-                {GANTT_JALON_ORDER.map(([k, label]) => {
-                  const d = row.jalons?.[k]
-                  if (!d) return null
-                  const m = markerGeometry(d, min, max)
-                  if (!m) return null
-                  return (
-                    <span key={k} className="absolute top-0 h-5 w-0.5 bg-foreground/40"
-                      style={{ left: `${m.leftPct}%` }} title={`${label} — ${formatDate(d)}`} />
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 // ── FG68 / VX251 — Calendrier dispatch techniciens (glisser-déposer) ──────────
 // VX251 — glisser une carte intervention d'une colonne-technicien à une autre
 // réaffecte réellement (PATCH `technicien` EXISTANT) avec un toastWithUndo 6 s
 // (VX95, jamais un 2ᵉ primitif undo) : « Annuler » restaure l'affectation.
-// Le geste réplique le pattern drag+recul-guard prouvé par KanbanView.jsx
-// (CRM). Le Gantt (FG74) reste lecture seule — ce module n'y touche pas.
+// Le geste réplique le pattern drag+recul-guard prouvé par KanbanView.jsx (CRM).
 const NON_ASSIGNE = '__non_assigne__'
 
 // Clé droppable stable d'une colonne technicien (id numérique ou sentinelle).
@@ -1123,7 +1031,6 @@ export function OutilsChantierTab() {
 }
 
 const TABS = [
-  { value: 'gantt', label: 'Gantt chantiers', icon: CalendarRange },
   { value: 'calendrier', label: 'Calendrier techniciens', icon: Users },
   { value: 'ma-tournee', label: 'Ma tournée', icon: Navigation },
   { value: 'charge', label: 'Plan de charge', icon: Gauge },
@@ -1138,7 +1045,7 @@ export default function PlanificationPage() {
         <h2>Planification &amp; logistique</h2>
       </div>
 
-      <Tabs defaultValue="gantt">
+      <Tabs defaultValue="calendrier">
         <TabsList className="flex w-full flex-wrap gap-1">
           {TABS.map((tab) => {
             const Icon = tab.icon
@@ -1150,7 +1057,6 @@ export default function PlanificationPage() {
             )
           })}
         </TabsList>
-        <TabsContent value="gantt"><GanttTab /></TabsContent>
         <TabsContent value="calendrier"><CalendrierTab /></TabsContent>
         <TabsContent value="ma-tournee"><MaTourneeTab /></TabsContent>
         <TabsContent value="charge"><ChargeTab /></TabsContent>

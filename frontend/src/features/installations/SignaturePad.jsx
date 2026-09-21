@@ -1,9 +1,10 @@
 // XSTK2 — Pad de signature tracée (canvas), même esprit que la signature
 // client FG69 (`installations.Intervention.signature_client` — data-URL PNG).
-// Aucun composant canvas de signature réutilisable n'existait ailleurs dans le
-// frontend (FG69 backend n'a pas d'écran de trace dédié) ; ce petit composant
-// LOCAL au module Logistique produit la même forme de donnée (data-URL PNG)
-// attendue par `PreuveLivraison.signature_data`. Pointeur souris + tactile via
+// SOLMVP41 — déplacé de `features/logistique/` (sorti du MVP, Groupe SOLMVP)
+// vers `features/installations/` : composant GÉNÉRIQUE (aucune dépendance
+// logistique) consommé par SignatureLivraisonDialog.jsx (BL, kept — SOLMVP13)
+// et SignatureClientPanel.jsx. Produit une donnée (data-URL PNG) au même
+// format que `PreuveLivraison.signature_data`. Pointeur souris + tactile via
 // Pointer Events (aucune dépendance npm). `onChange(dataUrl|null)` remonte la
 // signature courante ; le parent gère l'appel réseau (mêmes conventions que
 // `CameraCapture` : ce composant ne fait AUCUN appel réseau).
