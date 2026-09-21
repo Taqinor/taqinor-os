@@ -15,6 +15,17 @@ import { availableOptionalLayers, getOptionalLayer, optionalLayerSourceSpec } fr
 import { $ } from './dom';
 import { type Ctx } from './context';
 import { aimanterAuxZones, contraindreAngle, metresParPixel, pointDepuisCap, PAS_ANGLE_DEG } from './snap';
+import {
+  coucheAvantPourFond,
+  lireUnderlay,
+  placementDuFond,
+  specCoucheFond,
+  specSourceFond,
+  UNDERLAY_PHOTO_LAYER_ID,
+  UNDERLAY_PLAN_LAYER_ID,
+  type DocumentUnderlay,
+  type RessourceFond,
+} from './underlay';
 import { DEG2M, DEG2RAD, VERTEX_GRAB_PX } from './constants';
 
 /**
@@ -141,8 +152,12 @@ export const ORDRE_RENDU_CALQUES: readonly string[] = [
 export const MAPLIBRE_LAYERS_PAR_CALQUE: Readonly<Record<string, readonly string[]>> = {
   imagerie: [],
   cadastre: ['rp9-opt-cadastre'],
-  photo: [],
-  plan: [],
+  // CALX107 — les deux calques de FOND pilotent enfin de vraies couches MapLibre : la
+  // photo de site calée à quatre coins (CAL53) et le plan importé calé à deux points
+  // (CALX86/CALX108). Tant qu'aucun fond n'est posé, la couche n'existe pas sur la carte
+  // et `setLayerState` reste le no-op silencieux d'aujourd'hui.
+  photo: [UNDERLAY_PHOTO_LAYER_ID],
+  plan: [UNDERLAY_PLAN_LAYER_ID],
   trace_client: ['rp9-ref-contour-fill', 'rp9-ref-contour-line'],
   obstacles: ['rp9-obs', 'rp9-obs-outline', 'rp9-obs-label'],
   zones: ['rp9-zones', 'rp9-zones-outline', 'rp9-zones-label'],
@@ -342,6 +357,14 @@ export interface MapDraw {
   /** CAL103 — applique visibilité + opacité d'un calque. Renvoie false si le calque
    *  n'existe pas dans l'ordre de rendu. Un calque sans couche MapLibre est un no-op. */
   setLayerState: (id: string, state: { visible: boolean; opacite?: number }) => boolean;
+  /** CALX107 — pose (ou retire) le CALQUE DE FOND calé : un plan importé, ou une photo de
+   *  site. `fond = null` retire tout fond et ne laisse RIEN sur la carte. Renvoie le motif
+   *  du refus quand rien n'a pu être placé (fichier absent, plan non calé, photo non
+   *  calée…) — jamais un fond posé « au jugé ». */
+  setFond: (fond: DocumentUnderlay | null, ressource?: RessourceFond) => { ok: boolean; motif?: string };
+  /** CALX107 — le fond actuellement porté par l'atelier (celui qui voyage par le document
+   *  via `underlayPourDocument`), ou `null`. */
+  fond: () => DocumentUnderlay | null;
   addVertex: (v: LngLat) => void;
   /** W92 — retire le dernier sommet posé (pendant le tracé, avant fermeture). */
   undoLastPoint: () => void;
@@ -432,6 +455,84 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
       }
     }
     return true;
+  }
+
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX107 — LE CALQUE DE FOND CALÉ (plan importé / photo de site)
+  //
+  // Les calques `photo` et `plan` du panneau pilotaient une liste VIDE : les bascules
+  // existaient sans rien à montrer. Le fond est désormais une vraie source `image`
+  // géo-référencée par ses QUATRE coins, insérée AU RANG prévu par `ORDRE_RENDU_CALQUES`
+  // (sous le tracé, au-dessus de l'imagerie), et son opacité suit le panneau de calques.
+  //
+  // AUCUNE ÉCHELLE N'EST DEVINÉE (contrat CALX86) : la photo lit son calage à quatre coins
+  // (CAL53), le plan attend son calage à deux points + sa distance réelle SAISIE. Rien de
+  // calé ⇒ rien de posé, et le motif est affiché.
+  //
+  // Le fond n'entre dans AUCUN calcul : il ne touche ni `ctx.vertices`, ni les obstacles,
+  // ni le pavage. Il se peint, c'est tout.
+  // ————————————————————————————————————————————————————————————————————————
+
+  /** Le fond porté par l'atelier — lu par `serializeLayout` (`underlayPourDocument`). */
+  const ctxFond = ctx as unknown as { underlay?: DocumentUnderlay | null };
+
+  /** Retire la couche ET la source d'un fond : rien ne reste sur la carte. */
+  function retirerFond(layerId: string) {
+    try {
+      if (map.getLayer?.(layerId)) map.removeLayer(layerId);
+      if (map.getSource?.(layerId)) map.removeSource(layerId);
+    } catch {
+      /* style pas prêt : rien à retirer */
+    }
+  }
+
+  function retirerTousLesFonds() {
+    retirerFond(UNDERLAY_PLAN_LAYER_ID);
+    retirerFond(UNDERLAY_PHOTO_LAYER_ID);
+  }
+
+  function setFond(fond: DocumentUnderlay | null, ressource: RessourceFond = {}): { ok: boolean; motif?: string } {
+    if (fond == null) {
+      // Un seul fond à la fois (contrat CALX86) : on efface les DEUX couches possibles.
+      retirerTousLesFonds();
+      ctxFond.underlay = null;
+      return { ok: true };
+    }
+    const lu = lireUnderlay(fond);
+    if (!lu.ok) {
+      setStatus(lu.motif);
+      return { ok: false, motif: lu.motif };
+    }
+    const placement = placementDuFond(lu.fond, ressource);
+    if (!placement.ok) {
+      // Le fond RESTE porté par le document (il est valide : c'est son affichage qui
+      // manque d'un calage ou d'un fichier), mais rien n'est peint « au jugé ».
+      ctxFond.underlay = lu.fond;
+      retirerTousLesFonds();
+      setStatus(placement.motif);
+      return { ok: false, motif: placement.motif };
+    }
+    // Un seul fond à la fois : l'autre genre est retiré avant de poser celui-ci.
+    retirerTousLesFonds();
+    try {
+      map.addSource(placement.layerId, specSourceFond(placement) as never);
+      const avant = coucheAvantPourFond(
+        placement.calque,
+        ORDRE_RENDU_CALQUES,
+        MAPLIBRE_LAYERS_PAR_CALQUE,
+        (id) => Boolean(map.getLayer?.(id)),
+      );
+      map.addLayer(specCoucheFond(placement) as never, avant as never);
+    } catch {
+      /* style pas encore chargé : le prochain appel reposera le fond */
+      return { ok: false, motif: 'Fond non affiché : la carte n’est pas encore prête — réessayez dans un instant.' };
+    }
+    ctxFond.underlay = lu.fond;
+    return { ok: true };
+  }
+
+  function fondCourant(): DocumentUnderlay | null {
+    return ctxFond.underlay ?? null;
   }
 
   function redrawTrace() {
@@ -1090,6 +1191,8 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     setOptionalLayer,
     optionalLayerIds,
     setLayerState,
+    setFond,
+    fond: fondCourant,
     addVertex,
     undoLastPoint,
     poserSegmentSaisi,

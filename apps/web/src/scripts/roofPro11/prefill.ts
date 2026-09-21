@@ -27,6 +27,7 @@ import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone 
 import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
 import { type CoucheElectrique, type DocumentElectrique } from './electrique3d';
+import { underlayPourDocument } from './underlay'; // CALX107
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -735,6 +736,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     ...(meta?.horizonProfile && meta.horizonProfile.points.length >= 2
       ? { horizonProfile: serializeHorizonProfile(meta.horizonProfile) }
       : {}),
+    ...underlayPourDocument(ctx), // CALX107 — le calque de fond calé voyage par le document (contrat CALX86) ; aucun fond ⇒ aucune clé
   };
   // CALX22x câblage — la couche électrique s'écrit EN DERNIER, par son PROPRE crochet
   // d'export (`ecrireDansDocument`) : jamais une deuxième copie de sa logique ici — elle
