@@ -1,0 +1,44 @@
+{
+  "endpoint": "POST /api/django/compta/items-ouverts-devise/{id}/constater-ecart/",
+  "pourquoi": "AUDV06 / XACC18 — `services.enregistrer_item_ouvert_devise` et `services.constater_ecart_change` existaient sans AUCUN ViewSet : aucun écran ne pouvait déclarer un poste ouvert en devise ni constater son écart au règlement, donc le gain (733) ou la perte (633) de change n'entrait JAMAIS au grand livre. `difference` est SIGNÉE — positive = gain, négative = perte — et vaut la contre-valeur au taux de règlement moins la contre-valeur au taux d'origine. Un écart NUL ne poste aucune écriture (`ecriture` reste `null`) : il n'y a rien à dire. Le constat SOLDE le poste ; la vue refuse explicitement un second constat (400 français), car un écart réalisé ne se constate qu'une fois. Cette réponse est celle du POSTE, `ecart_change` IMBRIQUÉ : l'écran a besoin des deux en un seul aller-retour. Les montants sont sérialisés en TEXTE (DecimalField DRF), jamais en flottant.",
+  "exemple": {
+    "id": 88,
+    "type_document": "facture_client",
+    "type_document_display": "Facture client",
+    "document_id": 4412,
+    "document_reference": "FAC-2026-0212",
+    "devise": "EUR",
+    "montant_devise": "12000.00",
+    "taux_origine": "10.850000",
+    "date_origine": "2026-06-01",
+    "solde": true,
+    "contre_valeur_origine": "130200.00",
+    "ecart_change": {
+      "id": 31,
+      "item": 88,
+      "date_reglement": "2026-08-14",
+      "taux_reglement": "11.100000",
+      "difference": "3000.00",
+      "posted": true,
+      "ecriture": 9021,
+      "date_creation": "2026-08-14T10:02:00Z"
+    },
+    "date_creation": "2026-06-01T09:00:00Z"
+  },
+  "exemple_non_solde": {
+    "pourquoi": "état AVANT règlement : le poste est ouvert et n'a encore aucun écart réalisé.",
+    "id": 89,
+    "type_document": "facture_fournisseur",
+    "type_document_display": "Facture fournisseur",
+    "document_id": 771,
+    "document_reference": "FF-2026-0044",
+    "devise": "USD",
+    "montant_devise": "5000.00",
+    "taux_origine": "9.900000",
+    "date_origine": "2026-07-10",
+    "solde": false,
+    "contre_valeur_origine": "49500.00",
+    "ecart_change": null,
+    "date_creation": "2026-07-10T09:00:00Z"
+  }
+}

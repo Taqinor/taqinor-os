@@ -1,0 +1,38 @@
+{
+  "endpoint": "GET /api/django/paie/bulletins/<pk>/pdf/",
+  "forme_serveur": "partielle",
+  "pourquoi": "AUD701 (audit ERP R7 du 03/09/2026) — le bulletin de paie est le SEUL document remis au salarié, et il n'affichait AUCUNE cotisation salariale : `calculer_bulletin` (services.py) n'émettait, sur ses ~14 `lignes.append`, que 3 lignes 100 % PATRONALES (MUTUELLE_PAT, ALLOC_FAM, FORMATION_PRO) portant `type=cotisation` ; CNSS/AMO/CIMR/IR salariales étaient uniquement soustraites arithmétiquement au net, jamais matérialisées. En face, `render_bulletin_html` (builders.py) passait directement du tableau des lignes à « Net à payer » et imprimait les 3 lignes patronales en positif au milieu des gains. Le moteur et le gabarit sont les DEUX MOITIÉS de ce document : sans ce fichier partagé, chacun invente son propre jeu de codes. Ce contrat fixe donc, une fois pour toutes, les CODES de ligne stables du bulletin et le BLOC d'affichage de chacun. Il ne décrit pas une réponse JSON (l'endpoint sert des octets PDF) : d'où `forme_serveur: partielle`, comme apps/ventes/contract_samples/ligne_fiche_mapping.json. Sa garde de conformité est le test-cliquet légal apps/paie/tests/test_pdf_attestations.py::BulletinRetenuesSalarialesTests, qui rougit si une retenue salariale disparaît du rendu.",
+  "exemple": {
+    "lignes": [
+      {"code": "SB", "libelle": "Salaire de base", "type": "gain", "bloc": "gains", "montant": "10000.00"},
+      {"code": "ANCIENNETE", "libelle": "Prime d'ancienneté", "type": "gain", "bloc": "gains", "montant": "0.00"},
+      {"code": "CNSS_SAL", "libelle": "CNSS (part salariale)", "type": "cotisation", "bloc": "retenues_salariales", "montant": "448.00"},
+      {"code": "AMO_SAL", "libelle": "AMO (part salariale)", "type": "cotisation", "bloc": "retenues_salariales", "montant": "226.00"},
+      {"code": "CIMR_SAL", "libelle": "CIMR (part salariale)", "type": "cotisation", "bloc": "retenues_salariales", "montant": "0.00"},
+      {"code": "IR", "libelle": "Impôt sur le revenu", "type": "retenue", "bloc": "retenues_salariales", "montant": "1256.10"},
+      {"code": "MUTUELLE_SAL", "libelle": "Mutuelle (part salariale)", "type": "retenue", "bloc": "retenues_salariales", "montant": "0.00"},
+      {"code": "AVANCE", "libelle": "Avance sur salaire", "type": "retenue", "bloc": "retenues_salariales", "montant": "0.00"},
+      {"code": "SAISIE", "libelle": "Saisie-arrêt", "type": "retenue", "bloc": "retenues_salariales", "montant": "0.00"},
+      {"code": "MUTUELLE_PAT", "libelle": "Mutuelle (part patronale)", "type": "cotisation", "bloc": "patronal_informatif", "montant": "0.00"},
+      {"code": "ALLOC_FAM", "libelle": "Allocations familiales (part patronale)", "type": "cotisation", "bloc": "patronal_informatif", "montant": "640.00"},
+      {"code": "FORMATION_PRO", "libelle": "Taxe de formation professionnelle (part patronale)", "type": "cotisation", "bloc": "patronal_informatif", "montant": "160.00"}
+    ],
+    "chaine": {
+      "brut": "10000.00",
+      "total_retenues_salariales": "1930.10",
+      "frais_professionnels": "2000.00",
+      "net_imposable": "7326.00",
+      "ir": "1256.10",
+      "net_a_payer": "8069.90"
+    }
+  },
+  "notes": {
+    "montants": "Les valeurs de l'exemple sont ILLUSTRATIVES de la FORME (chaînes décimales à 2 décimales), jamais une table de taux : les taux réels viennent de `ParametrePaie`/`BaremeIR` en base. Aucun consommateur ne doit lire un montant ici.",
+    "bloc": "`bloc` n'est PAS un champ persisté sur `LigneBulletin` : c'est la dérivation d'affichage, calculée par `builders.bulletin_context` à partir de (`type`, `code`). gains = `type == 'gain'` ; patronal_informatif = code dans CODES_PATRONAUX_INFORMATIFS ; retenues_salariales = tout le reste (cotisation ou retenue).",
+    "codes_stables": "CNSS_SAL / AMO_SAL / CIMR_SAL / IR sont les quatre codes AJOUTÉS par AUD701 ; MUTUELLE_SAL, AVANCE, SAISIE, REMB_FRAIS, MUTUELLE_PAT, ALLOC_FAM, FORMATION_PRO préexistaient et gardent leur code à l'octet. Un code de rubrique catalogue (WIR243 / élément variable) reste libre : il tombe dans son bloc par son `type`.",
+    "type": "Les cotisations sociales salariales portent `type = 'cotisation'` (CNSS/AMO/CIMR) ; l'IR et les retenues de net portent `type = 'retenue'`. La distinction salarial/patronal ne se lit PAS sur `type` (les lignes patronales sont aussi `cotisation`) : elle se lit sur le CODE, via CODES_PATRONAUX_INFORMATIFS.",
+    "net": "Les quatre lignes ajoutées sont une MATÉRIALISATION D'AFFICHAGE : elles ne rejoignent aucun accumulateur du moteur (`retenues_variables`, `net_a_payer`), qui soustrayait déjà CNSS/AMO/CIMR/IR arithmétiquement. Les y ajouter les compterait DEUX FOIS.",
+    "patronal": "Les trois lignes patronales sont exclues du corps du bulletin et rendues dans un encadré séparé « information — non déduit de votre net ». Elles ne diminuent JAMAIS le net du salarié.",
+    "signe": "Chaque ligne s'imprime avec l'effet de son sens : un gain en positif, une retenue/cotisation en négatif (`-montant`). Un bulletin d'ANNULATION porte des montants déjà négatifs — la même règle rend alors une retenue en positif, ce qui est l'extourne correcte."
+  }
+}

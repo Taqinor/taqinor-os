@@ -1,0 +1,37 @@
+{
+  "endpoint": "GET /api/django/rh/recrutement/statistiques/",
+  "pourquoi": "Analytics recrutement (XRH22) consommées par l'onglet « Statistiques » de RH → Recrutement. C'est l'endpoint de PACT20 : l'écran y lisait `delai_embauche_moyen`, `total_candidatures`, `total_embauches` et `ouvertures_actives` — QUATRE clés que le serveur ne renvoie PAS, donc quatre tuiles à « — » pour toujours, sans la moindre erreur. Source de vérité : apps/rh/selectors.py::stats_recrutement (servie par RecrutementStatistiquesViewSet.list). `delai_embauche_moyen_jours` vaut null quand aucun candidat embauché de la période n'a ses deux dates. Dans `entonnoir`, une candidature compte dans TOUTES les étapes qu'elle a franchies, et les rejetées sont comptées à part sous `rejete` (hors entonnoir) : le total de candidatures est donc `recu + rejete`.",
+  "exemple": {
+    "delai_embauche_moyen_jours": 24.5,
+    "entonnoir": {
+      "recu": 18,
+      "preselection": 11,
+      "entretien": 6,
+      "offre": 3,
+      "embauche": 2,
+      "rejete": 7
+    },
+    "candidatures_par_ouverture": [
+      { "ouverture_id": 4, "intitule": "Technicien photovoltaïque", "nb": 14 },
+      { "ouverture_id": 7, "intitule": "Chargé d'affaires solaire", "nb": 11 }
+    ],
+    "sources": [
+      { "source": "Cooptation", "candidatures": 4, "embauches": 2, "taux_embauche_pct": 50.0 },
+      { "source": "LinkedIn", "candidatures": 15, "embauches": 0, "taux_embauche_pct": 0.0 },
+      { "source": "", "candidatures": 6, "embauches": 0, "taux_embauche_pct": 0.0 }
+    ]
+  },
+  "exemple_vide": {
+    "delai_embauche_moyen_jours": null,
+    "entonnoir": {
+      "recu": 0,
+      "preselection": 0,
+      "entretien": 0,
+      "offre": 0,
+      "embauche": 0,
+      "rejete": 0
+    },
+    "candidatures_par_ouverture": [],
+    "sources": []
+  }
+}

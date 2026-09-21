@@ -1,0 +1,19 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/{id}/accepter/",
+  "pourquoi": "WIR187 (reprend NTCRD7/8) — l'acceptation d'un devis renvoie désormais, EN PLUS du devis sérialisé, une clé `credit_warning` : l'état crédit du client APRÈS cette acceptation. Le module crédit calculait déjà tout (limite, encours, mode de hold, tolérance de dépassement) mais l'écran de vente n'en voyait rien : un commercial pouvait faire signer un client au-delà de sa limite sans que rien ne le dise. Source de vérité : apps/credit/selectors.py::avertissement_credit (lecture pure, composée depuis les sélecteurs crédit — jamais un import de models cross-app). Le bloc décrit ci-dessous EST la valeur de `credit_warning` ; `mode` vaut `aucun` | `avertissement` | `blocage` et vient du mode de hold de la limite du client (`aucun` quand le client n'a AUCUNE limite : rien à signaler, comportement historique). `depassement` est le dépassement APRÈS la transaction, en texte décimal, `0.00` quand il n'y en a pas. `disponible` est le reste de limite AVANT la transaction, en texte décimal, ou null quand le crédit est illimité (aucune limite posée). Aucun montant d'achat ni marge n'y figure jamais. `credit_warning` est TOUJOURS présent sur une acceptation réussie — un écran n'a donc jamais à deviner son absence.",
+  "exemple": {
+    "mode": "blocage",
+    "depassement": "12500.00",
+    "disponible": "7500.00"
+  },
+  "exemple_avertissement": {
+    "mode": "avertissement",
+    "depassement": "3000.00",
+    "disponible": "1000.00"
+  },
+  "exemple_sans_limite": {
+    "mode": "aucun",
+    "depassement": "0.00",
+    "disponible": null
+  }
+}

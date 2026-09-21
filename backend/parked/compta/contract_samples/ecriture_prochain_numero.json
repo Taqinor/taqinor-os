@@ -1,0 +1,14 @@
+{
+  "endpoint": "GET /api/django/compta/ecritures/prochain-numero/",
+  "pourquoi": "AUDV03 / COMPTA4 (DRAFT165-31) — `services.sequence_piece_journal` calculait déjà le prochain numéro de pièce d'un journal, sans aucun appelant : l'écran de saisie ne pouvait donc pas annoncer le numéro qui SERA attribué à une écriture laissée sans référence. Pur APERÇU : cet endpoint ne réserve rien et ne crée rien — deux saisies simultanées voient le même numéro, c'est `create_with_reference` (plus-haut-utilisé + 1, savepoint + retry sur course) qui tranche au moment de l'écriture. Jamais `count()+1` : ce compte a déjà collisionné en production après une suppression. Le préfixe dérive du CODE du journal, donc chaque journal a sa propre séquence. `detail` est le canal d'ERREUR (message français) : il porte une chaîne sur un 400 (`journal` manquant) ou un 404 (journal d'une autre société) et vaut `null` sur la réponse de succès — la garde `check_api_shapes.py` unifie la forme de TOUTES les branches d'une vue, donc la clé figure ici même si le succès ne la remplit jamais.",
+  "exemple": {
+    "journal": 4,
+    "journal_code": "OD",
+    "reference": "PC-OD-202609-0003",
+    "detail": null
+  },
+  "exemple_erreur": {
+    "pourquoi": "journal absent (400) ou journal d'une autre société (404) — seule `detail` est renvoyée, jamais un numéro partiel.",
+    "detail": "Paramètre `journal` requis."
+  }
+}

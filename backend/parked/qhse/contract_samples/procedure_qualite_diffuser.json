@@ -1,0 +1,14 @@
+{
+  "endpoint": "POST /api/django/qhse/procedures-qualite/<int:pk>/diffuser/",
+  "pourquoi": "WIR277 (XQHS15) — diffuse cette version de procédure à une population d'utilisateurs (service diffuser_procedure existant, jusqu'ici sans appelant REST). Corps {\"user_ids\": [...]} VALIDÉS côté serveur (jamais un id hors société) ; 400 si aucun destinataire valide. Crée une DiffusionProcedure + un AccuseLecture par destinataire (idempotent : un utilisateur déjà ciblé n'est pas dupliqué).",
+  "exemple": {
+    "id": 12,
+    "procedure": 8,
+    "procedure_reference": "PQ-ACCUEIL-CHANTIER",
+    "procedure_version": 2,
+    "population_cible": {"user_ids": [5, 7, 9]},
+    "nb_lecteurs": 3,
+    "nb_lus": 0,
+    "date_diffusion": "2026-08-26T09:00:00Z"
+  }
+}

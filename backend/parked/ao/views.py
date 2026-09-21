@@ -1,0 +1,1772 @@
+"""Vues du module Appels d'offres (``apps.ao``).
+
+AOF1 — le CORPS des 8 ViewSets AO vit désormais ICI (il vivait encore dans
+``apps.compta.views`` malgré la sortie ODX11 des modèles). ``apps.compta.views``
+porte maintenant un shim de ré-export **INVERSE** (``from apps.ao.views import
+…``) pour que ni les routes ``/api/django/compta/…`` ni les imports historiques
+ne cassent.
+
+ODX22 (`docs/PLAN.md`) reste OUVERT et n'est PAS atterri ici : il demande le
+RETRAIT des shims transitoires — AOF1 en a seulement INVERSÉ le sens (compta →
+ao devient ao → compta), ce qui est à prendre en compte le jour de son
+déblocage.
+
+Socle (AOF3) : les 8 ViewSets héritent de ``apps.ao.viewsets.AoBaseViewSet`` =
+``core.viewsets.CompanyScopedModelViewSet`` (scoping ``request.user.company`` +
+``company`` forcée côté serveur, détection par le sweep d'isolation
+multi-tenant) + chatter générique ``records``, gardé par ``ao_voir`` (lecture)
+et ``ao_gerer`` (écriture). L'ancienne garde grossière ``IsResponsableOrAdmin``
+héritée de ``_ComptaBaseViewSet`` est ABANDONNÉE : elle ouvrait tout le dossier
+d'appel d'offres au palier Responsable (cf. AOF2).
+"""
+
+from decimal import Decimal, InvalidOperation
+
+from django.core.exceptions import (
+    FieldDoesNotExist, ValidationError as DjangoValidationError,
+)
+from django.db import models
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
+from rest_framework import filters, serializers, status
+from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
+from rest_framework.exceptions import ValidationError as DrfValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.response import Response
+from rest_framework.settings import api_settings
+from rest_framework.views import APIView
+
+from core.permissions import ScopedPermission
+
+from . import services
+from .permissions import AO_GERER, AO_VOIR
+from .models import (
+    AppelOffre,
+    BatimentAO,
+    BordereauPrix,
+    CautionSoumission,
+    ChaineCotes,
+    DossierSoumission,
+    EcheanceAO,
+    EquipementAO,
+    ExigenceCPS,
+    KitCalepinage,
+    LigneBordereau,
+    ModelePack,
+    ObstacleAO,
+    PieceConsultation,
+    PieceSoumission,
+    PlanSource,
+    PlancheAO,
+    PresetCalepinage,
+    ReleveAO,
+    QuestionAO,
+    ResultatAO,
+    SectionBordereau,
+    SectionMemoire,
+    SerieQuestions,
+    ToitureAO,
+    VarianteCalepinage,
+    ZoneAO,
+)
+from .serializers import (
+    AppelOffreSerializer,
+    BatimentAOSerializer,
+    BordereauPrixSerializer,
+    CautionSoumissionSerializer,
+    ChaineCotesSerializer,
+    DossierSoumissionSerializer,
+    EcheanceAOSerializer,
+    EquipementAOSerializer,
+    ExigenceCPSSerializer,
+    KitCalepinageSerializer,
+    LigneBordereauSerializer,
+    ModelePackSerializer,
+    ObstacleAOSerializer,
+    PieceConsultationSerializer,
+    PieceSoumissionSerializer,
+    PlanSourceSerializer,
+    PlancheAOSerializer,
+    TeleversementPlancheSerializer,
+    PresetCalepinageSerializer,
+    ReleveAOSerializer,
+    QuestionAOSerializer,
+    ResultatAOSerializer,
+    SectionBordereauSerializer,
+    SectionMemoireSerializer,
+    SerieQuestionsSerializer,
+    TeleversementPlanSourceSerializer,
+    ToitureAOSerializer,
+    VarianteCalepinageSerializer,
+    ZoneAOSerializer,
+)
+from .viewsets import AoBaseViewSet
+
+
+#: Écritures admises d'un booléen dans une URL. Un filtre de liste est tapé à
+#: la main ou posé par un client JS : ``?a_reverifier=true`` est la forme
+#: NATURELLE, et c'est justement celle que Django refuse.
+_URL_VRAI = frozenset({'1', 't', 'true', 'vrai', 'oui', 'yes', 'y', 'on'})
+_URL_FAUX = frozenset({'0', 'f', 'false', 'faux', 'non', 'no', 'n', 'off'})
+
+
+def _valeur_de_filtre(queryset, champ, valeur):
+    """Convertit la valeur reçue de l'URL selon le TYPE du champ visé.
+
+    ``BooleanField.to_python`` de Django n'accepte QUE ``'True'``/``'1'`` (et
+    leurs faux) : ``?a_reverifier=true`` levait une ``ValidationError`` DANS
+    ``get_queryset``, que DRF ne rattrape pas — la liste répondait 500 sur une
+    URL parfaitement légitime. La conversion est faite ici, et une valeur
+    vraiment ininterprétable devient un 400 MOTIVÉ, jamais un 500 muet.
+    """
+    try:
+        interne = queryset.model._meta.get_field(champ)
+    except FieldDoesNotExist:  # champ dérivé : laissé tel quel
+        return valeur
+    if isinstance(interne, models.BooleanField):
+        texte = str(valeur).strip().lower()
+        if texte in _URL_VRAI:
+            return True
+        if texte in _URL_FAUX:
+            return False
+        raise DrfValidationError({champ: (
+            f'Valeur « {valeur} » incomprise : attendu vrai/faux '
+            '(true, false, 1, 0, oui, non).')})
+    return valeur
+
+
+def _filtres_exacts(queryset, params, champs):
+    """Applique les filtres d'égalité ``?champ=valeur`` présents dans l'URL.
+
+    ``DjangoFilterBackend`` n'est PAS monté dans ce projet : le filtrage des
+    listes AO se fait explicitement, avec les mêmes noms que les champs du
+    modèle (voir le contrat d'API publié par AOF31).
+    """
+    for champ in champs:
+        valeur = params.get(champ)
+        if valeur in (None, ''):
+            continue
+        valeur = _valeur_de_filtre(queryset, champ, valeur)
+        try:
+            queryset = queryset.filter(**{champ: valeur})
+        except (DjangoValidationError, ValueError) as exc:
+            # Un identifiant non numérique, une date mal écrite… : c'est la
+            # REQUÊTE qui est fautive, pas le serveur.
+            raise DrfValidationError({champ: (
+                f'Valeur « {valeur} » invalide pour ce filtre.')}) from exc
+    return queryset
+
+
+# ── AOF31 — Contrat d'API PUBLIÉ ───────────────────────────────────────────
+#
+# Le contrat n'est pas une page de documentation qu'on oublie de mettre à jour :
+# il est DÉRIVÉ du routeur au moment de la requête. Une ressource ajoutée sans
+# être décrite apparaît quand même ; une ressource retirée disparaît. C'est ce
+# qui permet aux lanes frontend et fabrique de coder contre quelque chose de
+# vrai plutôt que contre une liste recopiée à la main.
+
+class ContratApiAO(APIView):
+    """``GET /api/django/ao/contrat/`` — les ressources AO et leurs filtres.
+
+    Gardé par ``ao_voir`` comme le reste du domaine : le contrat décrit un
+    périmètre métier, il n'a pas à être plus public que les données.
+    """
+    permission_classes = [ScopedPermission]
+    read_permission = AO_VOIR
+    write_permission = AO_GERER
+
+    def get(self, request):
+        from .urls import router
+
+        ressources = []
+        for prefixe, viewset, basename in router.registry:
+            modele = getattr(viewset, 'queryset', None)
+            actions = sorted(
+                nom for nom in dir(viewset)
+                if getattr(getattr(viewset, nom, None), 'mapping', None)
+            )
+            ressources.append({
+                'prefixe': prefixe,
+                'basename': basename,
+                'modele': (modele.model._meta.label_lower
+                           if modele is not None else None),
+                'recherche': list(getattr(viewset, 'search_fields', []) or []),
+                'tri': list(getattr(viewset, 'ordering_fields', []) or []),
+                'actions': actions,
+            })
+        return Response({
+            'prefixe': '/api/django/ao/',
+            'permissions': {'lecture': AO_VOIR, 'ecriture': AO_GERER},
+            'pagination': {
+                'style': 'page',
+                'parametres': ['page', 'page_size'],
+                'taille_par_defaut': api_settings.PAGE_SIZE,
+            },
+            'ressources': sorted(ressources, key=lambda r: r['prefixe']),
+        })
+
+
+class AnalyserDxfView(APIView):
+    """``POST /api/django/ao/toitures/dxf/analyser/`` — PVG1, import DXF réel.
+
+    Complète ``ImportDxf.jsx`` (AOF81) : le fichier MULTIPART est parsé EN
+    MÉMOIRE (``dxf.analyser_dxf``) et RIEN n'est persisté — ni ``PlanSource``,
+    ni ``records.Attachment``. L'atelier ne fait que PROPOSER un mapping de
+    calques ; c'est le choix de l'utilisateur (bouton « Importer ce mapping »)
+    qui produit un contour, écrit ensuite par la voie existante de la toiture.
+
+    Gardée par ``ao_gerer`` (comme les autres écritures du domaine) : bien
+    qu'aucune donnée ne soit écrite, poser un fichier arbitraire à analyser
+    n'est pas un geste de simple lecture.
+
+    Un fichier hostile/corrompu ou trop lourd → 400 MOTIVÉ en français
+    (``dxf.DxfInvalide``, exceptions ``ezdxf`` toutes enveloppées) — jamais un
+    500.
+    """
+    permission_classes = [ScopedPermission]
+    write_permission = AO_GERER
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        request=None,
+        responses={200: inline_serializer(
+            name='AnalyseDxfReponse',
+            fields={
+                'unite': drf_serializers.CharField(),
+                'calques': inline_serializer(
+                    name='CalqueDxf', many=True,
+                    fields={
+                        'nom': drf_serializers.CharField(),
+                        'entites': drf_serializers.IntegerField(),
+                        'sommets': drf_serializers.ListField(
+                            child=drf_serializers.ListField(
+                                child=drf_serializers.FloatField())),
+                    }),
+            })},
+        description="Analyse un DXF en mémoire (calques/entités/"
+                    "sommets + unité $INSUNITS) — rien n'est persisté.")
+    def post(self, request):
+        from . import dxf
+
+        fichier = request.data.get('fichier')
+        if fichier is None:
+            return Response(
+                {'fichier': 'Aucun fichier reçu.'}, status=status.HTTP_400_BAD_REQUEST)
+        taille = getattr(fichier, 'size', None)
+        if taille is not None and taille > dxf.TAILLE_MAX_OCTETS:
+            return Response({'fichier': (
+                'Ce fichier dépasse 5 Mo : simplifiez-le (purge des calques '
+                'inutiles) puis réessayez.'
+            )}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            contenu = fichier.read()
+        except AttributeError:
+            return Response(
+                {'fichier': "Le fichier reçu n'est pas exploitable."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            resultat = dxf.analyser_dxf(contenu)
+        except dxf.DxfInvalide as exc:
+            return Response({'fichier': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
+
+
+def _calepinage_pour_ecriture(appel_offre, user):
+    """CAL32 — LE calepinage du module où écrire la conception de l'affaire.
+
+    Le module est atteint par ses SEULES portes publiques
+    (``apps.calepinage.selectors`` / ``apps.calepinage.services``, imports
+    fonction-locaux) : jamais ses modèles — contrats import-linter
+    ``ao-models-decoupled`` / ``calepinage-models-decoupled``.
+
+    Ordre, et il n'y en a pas d'autre :
+
+    1. le calepinage DÉJÀ rattaché à l'affaire (le geste est idempotent) ;
+    2. sinon, un calepinage neuf créé sur le LEAD de l'affaire, puis rattaché.
+
+    Rend ``None`` — sans lever — quand l'affaire n'a pas de lead RÉSOLVABLE
+    dans sa société (aucun ``lead_id``, ou un identifiant devenu orphelin) :
+    la base REFUSE un calepinage qui n'a ni lead ni client (contrainte
+    ``calepinage_lead_ou_client``, CAL7) et ``AppelOffre`` ne porte AUCUN
+    client. Inventer un rattachement serait un lien faux, et refuser
+    l'enregistrement casserait un atelier qui fonctionne aujourd'hui :
+    l'affaire écrit alors ``roof_layout`` seul, exactement comme avant CAL32.
+    Le cas est couvert par un test.
+
+    Raises:
+        ValueError: refus métier du module sur le RATTACHEMENT (l'affaire est
+            déjà liée à un AUTRE calepinage) — message français, champ nommé.
+    """
+    from apps.calepinage import selectors as selectors_calepinage
+    from apps.calepinage import services as services_calepinage
+
+    company = getattr(appel_offre, 'company', None)
+    existant = selectors_calepinage.calepinage_de_l_affaire(
+        appel_offre.pk, company)
+    if existant is not None:
+        return existant
+    if not appel_offre.lead_id:
+        return None
+
+    try:
+        calepinage = services_calepinage.creer_pour_lead(
+            appel_offre.lead_id, company, user=user,
+            titre=f'Calepinage {appel_offre.reference}'.strip())
+    except ValueError:
+        # Lead orphelin ou d'une autre société : MÊME cas que « pas de lead ».
+        return None
+    return services_calepinage.lier_appel_offre(
+        calepinage, appel_offre.pk, user=user)
+
+
+# ── FG222 — Gestion des appels d'offres ────────────────────────────────────
+
+class AppelOffreViewSet(AoBaseViewSet):
+    """Objets appels d'offres public/privé (FG222).
+
+    AUD615 — ``prefetch_related('batiments__toitures')`` n'est pas une
+    optimisation de confort. ``AppelOffreSerializer`` publie deux agrégats
+    CALCULÉS (``surface_toitures_m2``, ``engagement_modules_batiments``) qui
+    itèrent ``batiments`` puis, par bâtiment, ``toitures`` : sans préchargement,
+    la liste des AO coûtait une requête par bâtiment PLUS une par bâtiment pour
+    ses toitures, sur CHAQUE ligne. Le préchargement rend ce coût constant sans
+    retirer les deux champs de la liste (le patron « détail seulement » de
+    ``synthese_calepinage`` aurait, lui, changé le contrat côté écran).
+    """
+    queryset = AppelOffre.objects.prefetch_related(
+        'batiments__toitures').all()
+    serializer_class = AppelOffreSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'reference_acheteur', 'objet', 'acheteur',
+                     'maitre_ouvrage', 'soumissionnaire', 'reference_cps',
+                     'lot']
+    ordering_fields = ['date_creation', 'date_limite', 'date_ouverture_plis',
+                       'statut']
+    #: AOF12 — filtres d'égalité exposés en paramètres de requête.
+    FILTRES_EXACTS = ('statut', 'type_marche', 'mode_passation')
+
+    def get_serializer_context(self):
+        """PV68 — la synthèse de calepinage est un bloc de DÉTAIL.
+
+        Elle coûte deux requêtes par affaire : la calculer sur une LISTE ferait
+        cinquante requêtes pour une donnée qu'aucune liste n'affiche. La clé
+        reste publiée dans les deux cas (``null`` en liste) — voir
+        ``AppelOffreSerializer.get_synthese_calepinage``.
+        """
+        contexte = super().get_serializer_context()
+        contexte['synthese_calepinage'] = getattr(self, 'action', '') in (
+            'retrieve', 'update', 'partial_update')
+        return contexte
+
+    def get_queryset(self):
+        params = self.request.query_params
+        qs = _filtres_exacts(
+            super().get_queryset(), params, self.FILTRES_EXACTS)
+        groupement = params.get('groupement')
+        if groupement not in (None, ''):
+            qs = qs.filter(
+                groupement=groupement.lower() in ('1', 'true', 'vrai', 'oui'))
+        # AOF17 — ``?lead=<id>`` : les AO d'un lead. ``lead_id`` reste un
+        # ENTIER OPAQUE (jamais une FK vers crm.Lead — contrat import-linter
+        # ``ao-models-decoupled``), donc le filtre est une simple égalité.
+        lead = params.get('lead')
+        if lead not in (None, ''):
+            qs = qs.filter(lead_id=lead) if str(lead).isdigit() \
+                else qs.none()
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='lead')
+    def lead(self, request, pk=None):
+        """AOF17 — fiche-carte du lead lié (lecture seule), ou ``null``.
+
+        Passe par ``apps.crm.selectors`` — ``ao`` n'importe JAMAIS
+        ``apps.crm.models``.
+        """
+        from . import selectors
+
+        return Response({
+            'lead_id': self.get_object().lead_id,
+            'fiche': selectors.fiche_lead_de_l_ao(self.get_object()),
+        })
+
+    @action(detail=True, methods=['post'], url_path='rattacher-lead')
+    def rattacher_lead(self, request, pk=None):
+        """AOF17 — rattache/détache un lead, en validant l'appartenance."""
+        appel_offre = self.get_object()
+        try:
+            services.rattacher_ao_au_lead(
+                appel_offre, request.data.get('lead'), user=request.user)
+        except DjangoValidationError as exc:
+            return Response(exc.message_dict if hasattr(exc, 'message_dict')
+                            else {'lead': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(appel_offre).data)
+
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, pk=None):
+        """AOF130 — duplique l'affaire en gabarit ; AUCUN résultat n'est hérité.
+
+        Écriture ⇒ ``ao_gerer`` et scoping société : les deux viennent
+        d'``AoBaseViewSet`` (``ScopedPermission`` route POST vers
+        ``write_permission``). La société n'est JAMAIS lue du corps — elle est
+        celle de l'affaire source, elle-même déjà scopée par ``get_object()``.
+
+        La réponse porte la copie sérialisée (l'écran navigue vers son ``id``)
+        ET le plan de duplication : ce qui a été écarté est NOMMÉ, jamais tu.
+        """
+        from .fabrique.duplication import OptionDeCopieInconnue
+
+        appel_offre = self.get_object()
+        try:
+            copie, plan = services.dupliquer_appel_offre(
+                appel_offre, user=request.user,
+                objet=request.data.get('objet') or '',
+                copier=request.data.get('copier'))
+        except OptionDeCopieInconnue as exc:
+            return Response({'copier': [str(exc)]},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except DjangoValidationError as exc:
+            return Response(getattr(exc, 'message_dict', None)
+                            or {'duplication': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        donnees = self.get_serializer(copie).data
+        donnees['duplication'] = plan.vers_dict()
+        return Response(donnees, status=status.HTTP_201_CREATED)
+
+    def perform_create(self, serializer):
+        """AOF5 — référence auto ``AO-YYYYMM-0001`` quand elle n'est pas fournie.
+
+        La société reste posée CÔTÉ SERVEUR dans les deux branches (jamais lue
+        du corps de requête) : ``super()`` pour la branche « référence
+        fournie », ``serializer.save(company=…)`` dans la fabrique de référence
+        pour l'autre.
+        """
+        if (serializer.validated_data.get('reference') or '').strip():
+            return super().perform_create(serializer)
+        societe = self.request.user.company
+        services.creer_appel_offre_avec_reference(
+            societe,
+            lambda reference: serializer.save(
+                company=societe, reference=reference),
+        )
+
+    @action(detail=True, methods=['post'], url_path='changer-statut')
+    def changer_statut(self, request, pk=None):
+        """AOF13 — SEUL chemin HTTP de mutation du statut d'un AO.
+
+        Une transition interdite par ``services.TRANSITIONS_AO`` répond 400
+        avec un message en français listant les statuts atteignables.
+        """
+        appel_offre = self.get_object()
+        try:
+            services.changer_statut_ao(
+                appel_offre, request.data.get('statut'), user=request.user,
+                motif=(request.data.get('motif') or ''))
+        except DjangoValidationError as exc:
+            return Response(exc.message_dict if hasattr(exc, 'message_dict')
+                            else {'statut': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(appel_offre).data)
+
+    @action(detail=True, methods=['get'], url_path='points-a-lever')
+    def points_a_lever(self, request, pk=None):
+        """AOF24 — « à confirmer à l'exécution », DÉRIVÉ (jamais saisi).
+
+        La liste vient des cotes ``A_CONFIRMER`` et des obstacles non
+        engageables ; ``mention_cartouche`` donne la base opposable du dossier.
+        """
+        from . import selectors
+
+        appel_offre = self.get_object()
+        return Response({
+            'mention_cartouche': selectors.mention_cartouche(appel_offre),
+            'points': selectors.points_a_lever(appel_offre),
+        })
+
+    @action(detail=True, methods=['get'], url_path='design-context')
+    def design_context(self, request, pk=None):
+        """TOUT ce que l'atelier 3D doit savoir d'une AFFAIRE, en UN appel.
+
+        MIROIR exact de ``ventes``/``devis/<id>/design-context/`` : le MÊME
+        écran (``frontend/src/pages/ventes/ToitureDesign.jsx``) s'ouvre en mode
+        « ao » sur une affaire, hydraté par la géométrie AO déjà relevée
+        (``ToitureAO``/``ZoneAO``, reprojetée en degrés à la frontière AOF19).
+
+        Renvoie ``{affaire, geometrie, cible, carte, modifiable,
+        raison_lecture_seule, avertissements}`` — toutes les clés TOUJOURS
+        présentes (contrat ``contract_samples/ao_design_context.json``) : un
+        panier vide vaut ``[]``, une valeur inconnue ``None``/``''``, jamais une
+        clé absente. L'écran n'a donc rien à deviner.
+
+        LECTURE PURE, scopée société par ``get_queryset`` (une affaire d'une
+        autre société → 404) : aucun statut, aucune toiture, aucun layout n'est
+        écrit ici.
+        """
+        from . import selectors
+
+        appel_offre = self.get_object()  # borné société par get_queryset
+        contexte = selectors.contexte_conception_affaire(
+            appel_offre, request.user.company)
+        if contexte is None:
+            return Response({'detail': 'Affaire inconnue.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(contexte)
+
+    @action(detail=True, methods=['get', 'post'], url_path='layout')
+    def layout(self, request, pk=None):
+        """Lit (GET) ou enregistre (POST) le calepinage 3D de l'affaire.
+
+        Le corps POST EST le layout sérialisé par le builder (on accepte aussi
+        les enveloppes ``{"layout": …}`` / ``{"roof_layout": …}``, comme côté
+        devis). SEUL ``roof_layout`` est touché : aucun statut ne bouge (la
+        garde ``AppelOffre.save`` reste intacte, ``update_fields`` ne cite
+        jamais ``statut``), et la géométrie OPPOSABLE du dossier
+        (``ToitureAO``/``ZoneAO``/``ChaineCotes``) n'est pas réécrite — le
+        layout est un document de TRAVAIL, pas un relevé.
+
+        CAL32 — LE DOCUMENT EST DÉSORMAIS CELUI DU MODULE. Le POST délègue à
+        ``apps.calepinage.services.enregistrer_layout`` (import fonction-local,
+        jamais ses modèles) : c'est lui qui pose l'empreinte et historise une
+        VERSION quand la géométrie a changé. ``AppelOffre.roof_layout`` reste
+        écrit en miroir — c'est ce que lisent encore le GET ci-dessous et
+        ``selectors.contexte_conception_affaire``, et CAL30 l'a délibérément
+        CONSERVÉ : tant que ces lecteurs ne sont pas rebranchés, cesser de
+        l'écrire ferait régresser l'atelier.
+
+        Une affaire déposée ou close répond 409 avec le motif FRANÇAIS du
+        serveur (le même que ``design-context``) : l'écran n'a rien à deviner.
+        Affaire d'une autre société → 404 (get_queryset).
+        """
+        from . import selectors
+
+        appel_offre = self.get_object()  # borné société par get_queryset
+        if request.method.lower() == 'get':
+            return Response({'roof_layout': appel_offre.roof_layout,
+                             'calepinage_id': appel_offre.calepinage_id})
+
+        # Le motif est celui du SELECTOR (source unique) : l'écran affiche au
+        # chargement EXACTEMENT la phrase que le refus d'écriture renvoie.
+        raison = selectors.raison_conception_figee(appel_offre)
+        if raison:
+            return Response({'detail': raison},
+                            status=status.HTTP_409_CONFLICT)
+
+        payload = request.data
+        if isinstance(payload, dict):
+            for enveloppe in ('layout', 'roof_layout'):
+                if set(payload.keys()) == {enveloppe}:
+                    payload = payload[enveloppe]
+                    break
+        if not isinstance(payload, dict) or not payload:
+            return Response({'detail': 'Layout manquant ou invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.calepinage import services as services_calepinage
+
+        champs = ['roof_layout', 'updated_at']
+        appel_offre.roof_layout = payload
+        try:
+            calepinage = _calepinage_pour_ecriture(appel_offre, request.user)
+            if calepinage is not None:
+                services_calepinage.enregistrer_layout(
+                    calepinage, payload, user=request.user,
+                    libelle=f'Atelier 3D — affaire {appel_offre.reference}')
+                if appel_offre.calepinage_id != calepinage.pk:
+                    appel_offre.calepinage_id = calepinage.pk
+                    champs.insert(1, 'calepinage_id')
+        except ValueError as refus:
+            # ``CreationRefusee`` / ``LiaisonRefusee`` / ``LayoutRefuse`` —
+            # tous porteurs d'un message FRANÇAIS nommant le champ fautif.
+            return Response({'detail': str(refus),
+                             'champ': getattr(refus, 'champ', '')},
+                            status=status.HTTP_400_BAD_REQUEST)
+        appel_offre.save(update_fields=champs)
+        return Response({'roof_layout': appel_offre.roof_layout,
+                         'calepinage_id': appel_offre.calepinage_id})
+
+    @action(detail=True, methods=['get'], url_path='transitions')
+    def transitions(self, request, pk=None):
+        """Statuts atteignables depuis l'état courant (pilote l'UI)."""
+        appel_offre = self.get_object()
+        libelles = dict(AppelOffre.Statut.choices)
+        cibles = services.transitions_possibles(appel_offre.statut)
+        return Response({
+            'statut': appel_offre.statut,
+            'statut_display': libelles.get(appel_offre.statut, ''),
+            'transitions': [
+                {'valeur': s, 'libelle': libelles[s]} for s in cibles
+            ],
+        })
+
+
+# ── AOF18 — Bâtiments et toitures ──────────────────────────────────────────
+
+class BatimentAOViewSet(AoBaseViewSet):
+    """Bâtiments d'un projet d'appel d'offres (AOF18)."""
+    queryset = BatimentAO.objects.prefetch_related('toitures').all()
+    serializer_class = BatimentAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'designation']
+    ordering_fields = ['ordre', 'code']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre',))
+
+
+class ToitureAOViewSet(AoBaseViewSet):
+    """Toitures d'un bâtiment, en repère LOCAL MÉTRIQUE (AOF18).
+
+    ``surface_m2`` est RECALCULÉE côté serveur à chaque écriture : une surface
+    saisie à la main diverge du contour dès la première correction de relevé.
+    """
+    queryset = ToitureAO.objects.all()
+    serializer_class = ToitureAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code_document', 'designation']
+    ordering_fields = ['code_document', 'niveau']
+
+    def get_queryset(self):
+        qs = _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('batiment', 'forme', 'type_couverture'))
+        appel_offre = self.request.query_params.get('appel_offre')
+        if appel_offre not in (None, ''):
+            qs = qs.filter(batiment__appel_offre_id=appel_offre) \
+                if str(appel_offre).isdigit() else qs.none()
+        return qs
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        self._recalculer(serializer.instance)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        self._recalculer(serializer.instance)
+
+    @staticmethod
+    def _recalculer(toiture):
+        toiture.recalculer_surface()
+        toiture.save(update_fields=['surface_m2', 'updated_at'])
+
+    @action(detail=True, methods=['post'], url_path='appliquer-preset')
+    def appliquer_preset(self, request, pk=None):
+        """AOF27 — applique un preset à cette toiture EN UN APPEL."""
+        toiture = self.get_object()
+        preset = PresetCalepinage.objects.filter(
+            pk=request.data.get('preset'),
+            company=request.user.company).first()
+        if preset is None:
+            return Response(
+                {'preset': "Ce preset n'existe pas dans votre société."},
+                status=status.HTTP_400_BAD_REQUEST)
+        services.appliquer_preset(preset, toiture, user=request.user)
+        return Response(self.get_serializer(toiture).data)
+
+    @action(detail=True, methods=['post'], url_path='reprendre-contour-3d')
+    def reprendre_contour_3d(self, request, pk=None):
+        """CAL241 — reprend dans la toiture le contour DESSINÉ en 3D.
+
+        L'autre sens de l'import bidirectionnel (D4). Le contour tracé dans le
+        module Calepinage redescend dans le relevé AO, converti des DEGRÉS
+        (``outline``, ``[lat, lng]``) vers le repère LOCAL MÉTRIQUE de la
+        toiture par ``services.outline_latlng_vers_contour_ao`` (CAL31) — une
+        seule projection dans tout le domaine, jamais recodée ici.
+
+        SEUL LE CONTOUR VOYAGE. Cette action écrit ``contour_local_m``, son
+        ancre géographique et la surface qui en DÉRIVE — rien d'autre : aucun
+        obstacle, aucune chaîne de cotes, aucune zone, et aucune variante 2D
+        retenue n'est touchée. C'est ce qui rend la reprise sans danger pour
+        un dossier déjà relevé.
+
+        Le module est lu par son SEUL sélecteur (``apps.calepinage.selectors``,
+        import fonction-local) : jamais ses modèles — contrats import-linter
+        ``ao-models-decoupled`` / ``calepinage-models-decoupled``.
+
+        Une affaire déposée ou close répond 409 avec EXACTEMENT le motif du
+        serveur (``selectors.raison_conception_figee``, source unique de la
+        phrase), comme l'action ``layout``. Toiture d'une autre société → 404
+        (``get_queryset``).
+        """
+        from apps.calepinage import selectors as selectors_calepinage
+
+        from . import selectors
+
+        toiture = self.get_object()  # borné société par get_queryset
+        affaire = toiture.batiment.appel_offre
+
+        raison = selectors.raison_conception_figee(affaire)
+        if raison:
+            return Response({'detail': raison},
+                            status=status.HTTP_409_CONFLICT)
+
+        calepinage = selectors_calepinage.calepinage_de_l_affaire(
+            affaire.pk, request.user.company)
+        if calepinage is None:
+            return Response(
+                {'detail': "Cette affaire n'a aucun calepinage 3D : "
+                           'concevez la toiture en 3D avant de reprendre '
+                           'son contour.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        layout = calepinage.roof_layout \
+            if isinstance(calepinage.roof_layout, dict) else {}
+        outline = layout.get('outline') or []
+        if not isinstance(outline, list) or len(outline) < 3:
+            return Response(
+                {'detail': 'Le calepinage 3D ne porte aucun contour fermé '
+                           '(« outline ») : tracez la toiture avant de la '
+                           'reprendre.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        ancre = _ancre_de_reprise(toiture, layout, outline)
+        if ancre is None:
+            return Response(
+                {'detail': "Impossible de situer ce contour : ni la toiture "
+                           "ni le calepinage 3D ne portent de coordonnées "
+                           "géographiques exploitables."},
+                status=status.HTTP_400_BAD_REQUEST)
+        toiture.origine_lat, toiture.origine_lng = ancre
+
+        try:
+            contour = services.outline_latlng_vers_contour_ao(outline, toiture)
+        except DjangoValidationError as erreur:
+            return Response({'detail': ' '.join(erreur.messages)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except (TypeError, ValueError, InvalidOperation):
+            return Response(
+                {'detail': 'Le contour du calepinage 3D contient une '
+                           'coordonnée illisible : il n\'a pas été repris.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        toiture.contour_local_m = [[round(x, 3), round(y, 3)]
+                                   for x, y in contour]
+        try:
+            toiture.clean()
+        except DjangoValidationError as erreur:
+            return Response(erreur.message_dict
+                            if hasattr(erreur, 'message_dict')
+                            else {'detail': str(erreur)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        toiture.recalculer_surface()
+        toiture.save(update_fields=['contour_local_m', 'origine_lat',
+                                    'origine_lng', 'surface_m2',
+                                    'updated_at'])
+        return Response(self.get_serializer(toiture).data)
+
+
+def _ancre_de_reprise(toiture, layout, outline):
+    """L'origine du repère local pour une reprise de contour 3D.
+
+    ORDRE DE REPLI, et il n'y en a pas d'autre :
+
+    1. **l'ancre DÉJÀ posée sur la toiture** — c'est le relevé qui fait foi,
+       et la garder rend la reprise idempotente (le contour retombe au même
+       endroit du plan) ;
+    2. le repère ``pin`` du document 3D ;
+    3. le premier sommet du contour tracé.
+
+    Rend ``None`` quand aucune des trois n'est exploitable : on ne devine
+    JAMAIS une coordonnée (un ``0, 0`` inventé désignerait le golfe de
+    Guinée).
+    """
+    if toiture.origine_lat is not None and toiture.origine_lng is not None:
+        return toiture.origine_lat, toiture.origine_lng
+
+    pin = layout.get('pin')
+    candidats = []
+    if isinstance(pin, dict):
+        candidats.append((pin.get('lat'), pin.get('lng')))
+    premier = outline[0] if outline else None
+    if isinstance(premier, (list, tuple)) and len(premier) >= 2:
+        candidats.append((premier[0], premier[1]))
+
+    for lat, lng in candidats:
+        try:
+            return (Decimal(str(float(lat))).quantize(Decimal('0.0000001')),
+                    Decimal(str(float(lng))).quantize(Decimal('0.0000001')))
+        except (TypeError, ValueError, InvalidOperation):
+            continue
+    return None
+
+
+class SerieQuestionsViewSet(AoBaseViewSet):
+    """Séries de questions chiffrées sur documents annotés (AOF25)."""
+    queryset = SerieQuestions.objects.prefetch_related('questions').all()
+    serializer_class = SerieQuestionsSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['numero', 'date_envoi']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'canal'))
+
+    def perform_create(self, serializer):
+        """Le NUMÉRO de série est attribué côté serveur (AOF25).
+
+        ``numero`` a un défaut de 1 et une contrainte d'unicité
+        ``(company, appel_offre, numero)`` : sans attribution, la DEUXIÈME
+        série d'un dossier crée une IntegrityError (500) — et laisser l'écran
+        proposer le numéro reviendrait à ``count()+1``, la faute exacte que le
+        dépôt interdit (une série supprimée ferait recollisionner le compte).
+
+        Le numéro est donc le PLUS HAUT UTILISÉ + 1, sur le couple
+        (société, appel d'offres), avec point de sauvegarde et rejeu en cas de
+        course — même patron que ``apps.ventes.utils.references``.
+        """
+        if serializer.validated_data.get('numero'):
+            return super().perform_create(serializer)
+
+        from django.db import IntegrityError, transaction
+        from django.db.models import Max
+
+        company = self.request.user.company
+        appel_offre = serializer.validated_data.get('appel_offre')
+        for _essai in range(5):
+            plus_haut = SerieQuestions.objects.filter(
+                company=company, appel_offre=appel_offre,
+            ).aggregate(m=Max('numero'))['m'] or 0
+            try:
+                with transaction.atomic():
+                    serializer.save(company=company, numero=plus_haut + 1)
+                return
+            except IntegrityError as erreur:
+                # SEULE la collision de numéro se rejoue. Avaler toute
+                # IntegrityError transformerait une vraie erreur d'intégrité
+                # (FK absente, société nulle…) en « réessayez » — un message
+                # faux, exactement le défaut qu'on répare.
+                if 'uniq_serie_questions_numero' not in str(erreur):
+                    raise
+        raise DrfValidationError(
+            {'numero': ["Impossible d'attribuer un numéro de série : "
+                        'réessayez.']})
+
+
+class QuestionAOViewSet(AoBaseViewSet):
+    """Questions chiffrées (AOF25).
+
+    ``trancher`` APPLIQUE la décision : l'objet lié est mis à jour (obstacle
+    écarté/confirmé, cote requalifiée) et les variantes de calepinage
+    dépendantes basculent ``PERIME``. Une décision qui ne modifierait rien ne
+    servirait à rien.
+    """
+    queryset = QuestionAO.objects.all()
+    serializer_class = QuestionAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['repere', 'texte']
+    ordering_fields = ['repere', 'statut']
+
+    def get_queryset(self):
+        qs = _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('serie', 'statut', 'obstacle', 'chaine'))
+        appel_offre = self.request.query_params.get('appel_offre')
+        if appel_offre not in (None, ''):
+            qs = qs.filter(serie__appel_offre_id=appel_offre) \
+                if str(appel_offre).isdigit() else qs.none()
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='trancher')
+    def trancher(self, request, pk=None):
+        decision = (request.data.get('decision') or '').strip()
+        if not decision:
+            return Response(
+                {'decision': 'Trancher une question exige une décision '
+                             'écrite.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            question, perimees = services.trancher_question(
+                self.get_object(), decision=decision,
+                action=(request.data.get('action') or 'aucune'),
+                statut_cote=request.data.get('statut_cote'),
+                provenance=request.data.get('provenance'),
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(exc.message_dict if hasattr(exc, 'message_dict')
+                            else {'action': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        donnees = self.get_serializer(question).data
+        donnees['variantes_perimees'] = perimees
+        return Response(donnees)
+
+
+class ReleveAOViewSet(AoBaseViewSet):
+    """Visites de relevé (AOF24) — la base opposable du dossier."""
+    queryset = ReleveAO.objects.prefetch_related('toitures', 'photos').all()
+    serializer_class = ReleveAOSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_visite']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'contradictoire'))
+
+
+class ChaineCotesViewSet(AoBaseViewSet):
+    """Chaînes de cotes et fermetures (AOF23).
+
+    ``deduire`` applique la règle métier gravée : la cote DÉDUITE d'une
+    fermeture exacte prime sur la valeur annoncée et bascule en
+    ``A_CONFIRMER``. ``compensation`` PROPOSE une répartition au prorata sans
+    RIEN appliquer — une compensation silencieuse transformerait un écart de
+    relevé en fausse précision.
+    """
+    queryset = ChaineCotes.objects.all()
+    serializer_class = ChaineCotesSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle']
+    ordering_fields = ['libelle', 'axe', 'verdict']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('toiture', 'axe', 'verdict'))
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        services.recalculer_chaine(serializer.instance)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        services.recalculer_chaine(serializer.instance)
+
+    @action(detail=True, methods=['post'], url_path='deduire')
+    def deduire(self, request, pk=None):
+        try:
+            index = int(request.data.get('index'))
+        except (TypeError, ValueError):
+            return Response({'index': 'Index de segment requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            chaine = services.deduire_segment(
+                self.get_object(), index, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(exc.message_dict if hasattr(exc, 'message_dict')
+                            else {'segments': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(chaine).data)
+
+    @action(detail=True, methods=['get'], url_path='compensation')
+    def compensation(self, request, pk=None):
+        """PROPOSE la compensation au prorata — n'applique RIEN."""
+        return Response(
+            services.proposer_compensation_prorata(self.get_object()))
+
+
+class ObstacleAOViewSet(AoBaseViewSet):
+    """Obstacles de toiture (AOF22) — provenance de premier rang.
+
+    ``?provenance=ECARTE`` renvoie les obstacles ÉCARTÉS **avec leur
+    géométrie** : sans cette requête, la marche correspondante de l'échelle de
+    décomposition serait irreproductible. Le dégagement est recalculé côté
+    serveur à chaque écriture, sauf surcharge motivée.
+    """
+    queryset = ObstacleAO.objects.all()
+    serializer_class = ObstacleAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['repere', 'designation']
+    ordering_fields = ['repere', 'nature', 'provenance']
+
+    def get_queryset(self):
+        qs = _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('toiture', 'nature', 'provenance', 'actif', 'hors_zone_pv'))
+        appel_offre = self.request.query_params.get('appel_offre')
+        if appel_offre not in (None, ''):
+            qs = qs.filter(
+                toiture__batiment__appel_offre_id=appel_offre) \
+                if str(appel_offre).isdigit() else qs.none()
+        return qs
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        self._appliquer(serializer.instance)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        self._appliquer(serializer.instance)
+
+    @staticmethod
+    def _appliquer(obstacle):
+        obstacle.appliquer_degagement()
+        obstacle.save(update_fields=[
+            'degagement_m', 'regle_degagement', 'updated_at'])
+
+    @action(detail=True, methods=['post'], url_path='ecarter')
+    def ecarter(self, request, pk=None):
+        """Écarte l'obstacle SANS le supprimer (géométrie conservée)."""
+        motif = (request.data.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'motif': "Écarter un obstacle exige un motif : c'est ce qui "
+                          'rend le retour arrière défendable.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        obstacle = services.ecarter_obstacle(
+            self.get_object(), motif=motif, user=request.user)
+        return Response(self.get_serializer(obstacle).data)
+
+    @action(detail=True, methods=['post'], url_path='reintegrer')
+    def reintegrer(self, request, pk=None):
+        """Retour arrière : l'obstacle écarté redevient actif."""
+        provenance = request.data.get('provenance') \
+            or ObstacleAO.Provenance.MESURE
+        if provenance not in dict(ObstacleAO.Provenance.choices):
+            return Response({'provenance': 'Provenance inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        obstacle = services.reintegrer_obstacle(
+            self.get_object(), provenance, user=request.user,
+            motif=(request.data.get('motif') or ''))
+        return Response(self.get_serializer(obstacle).data)
+
+
+class ZoneAOViewSet(AoBaseViewSet):
+    """Zones de toiture (PV54) — le contour NOMMÉ que le moteur sait déjà lire.
+
+    Même socle que ``ObstacleAOViewSet`` : société scopée et ``company`` posée
+    côté serveur par ``AoBaseViewSet``, lecture gardée par ``ao_voir``,
+    écriture par ``ao_gerer``. Aucune action métier : une zone est une donnée
+    de saisie, pas un document à faire avancer.
+    """
+    queryset = ZoneAO.objects.all()
+    serializer_class = ZoneAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['repere']
+    ordering_fields = ['repere', 'nature', 'id']
+
+    def get_queryset(self):
+        qs = _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('toiture', 'nature'))
+        appel_offre = self.request.query_params.get('appel_offre')
+        if appel_offre not in (None, ''):
+            qs = qs.filter(
+                toiture__batiment__appel_offre_id=appel_offre) \
+                if str(appel_offre).isdigit() else qs.none()
+        return qs
+
+
+class PlanSourceViewSet(AoBaseViewSet):
+    """Supports de plan d'une toiture (AOF20) — les 3 portes d'entrée.
+
+    Un même toit peut cumuler PLUSIEURS supports : un plan fourni calibré ET
+    des tracés manuels additifs. L'échelle est TOUJOURS recalculée côté serveur
+    à chaque écriture d'un point de calibration.
+    """
+    queryset = PlanSource.objects.all()
+    serializer_class = PlanSourceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'etat']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('toiture', 'batiment', 'origine', 'etat', 'type_fichier'))
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        self._recalibrer(serializer.instance)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        self._recalibrer(serializer.instance)
+
+    @staticmethod
+    def _recalibrer(plan_source):
+        plan_source.recalculer_echelle()
+        plan_source.save(update_fields=[
+            'echelle_m_par_px', 'etat', 'updated_at'])
+
+    @extend_schema(request=TeleversementPlanSourceSerializer,
+                   responses=PlanSourceSerializer)
+    @action(detail=True, methods=['post'], url_path='upload',
+            parser_classes=[MultiPartParser, FormParser],
+            permission_classes=[ScopedPermission])
+    def upload(self, request, pk=None):
+        """AOF20 — le fichier du plan, envoyé en MULTIPART.
+
+        Jusqu'ici le support n'avait qu'un CRUD JSON : le service qui range le
+        binaire (``attacher_fichier_plan_source``) n'avait AUCUN appelant, donc
+        aucun plan fourni ne pouvait entrer par l'API. C'est ce trou que cette
+        action ferme.
+
+        Le binaire ne touche jamais ``apps/ao`` : il part dans
+        ``records.Attachment`` (MinIO, clé préfixée par société) et seul
+        l'attachement est référencé — jamais un ``FileField`` (garde ARC26).
+        L'empreinte SHA-256 est calculée côté serveur : un plan DÉJÀ reçu par
+        la même société (erratum, dossier re-téléchargé) RÉUTILISE son
+        attachement au lieu d'en téléverser un doublon.
+
+        Un format refusé par le stockage partagé (ou un fichier trop lourd)
+        donne un 400 motivé en français — jamais un 500 muet.
+        """
+        plan_source = self.get_object()
+        entree = TeleversementPlanSourceSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        try:
+            plan_source = services.attacher_fichier_plan_source(
+                plan_source, entree.validated_data['fichier'],
+                user=request.user)
+        except DjangoValidationError as exc:
+            erreurs = getattr(exc, 'message_dict', None) or {
+                api_settings.NON_FIELD_ERRORS_KEY: exc.messages}
+            return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(plan_source).data)
+
+
+class PlancheAOViewSet(AoBaseViewSet):
+    """AUDV24 (DRAFT165-5, AOF140) — versionnement des planches d'implantation.
+
+    ``PlancheAO`` n'avait AUCUN ViewSet/serializer/URL — capacité inaccessible
+    hors tests, malgré ``services.generer_indice_planche`` déjà écrit et
+    testé. Lecture/écriture standard (l'indice reste lecture seule, posé côté
+    serveur) + l'action `upload` qui verse un fichier de planche : son
+    empreinte SHA-256 pilote le versionnement (indice inchangé si le contenu
+    est identique, incrémenté + ancienne version archivée sinon)."""
+    queryset = PlancheAO.objects.select_related(
+        'appel_offre', 'toiture', 'variante', 'attachment').all()
+    serializer_class = PlancheAOSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'code_document', 'indice']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'code_document', 'statut'))
+
+    @extend_schema(request=TeleversementPlancheSerializer,
+                   responses=PlancheAOSerializer)
+    @action(detail=False, methods=['post'], url_path='upload',
+            parser_classes=[MultiPartParser, FormParser],
+            permission_classes=[ScopedPermission])
+    def upload(self, request):
+        """Verse une nouvelle révision de planche (multipart : appel_offre,
+        code_document, fichier, toiture/variante/motif optionnels). Un
+        upload à l'IDENTIQUE du contenu déjà actif ne crée rien (204-like
+        200, `id`/`indice` inchangés) — jamais un indice fabriqué pour rien."""
+        entree = TeleversementPlancheSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        data = entree.validated_data
+        appel_offre = data['appel_offre']
+        if appel_offre.company_id != request.user.company_id:
+            return Response(
+                {'detail': "Appel d'offres introuvable."},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            planche, creee = services.televerser_planche(
+                appel_offre, data['code_document'], data['fichier'],
+                motif=data.get('motif', ''), variante=data.get('variante'),
+                toiture=data.get('toiture'), user=request.user)
+        except DjangoValidationError as exc:
+            erreurs = getattr(exc, 'message_dict', None) or {
+                api_settings.NON_FIELD_ERRORS_KEY: exc.messages}
+            return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(planche).data,
+            status=status.HTTP_201_CREATED if creee else status.HTTP_200_OK)
+
+
+# ── AOF21 — Pièces du dossier de consultation reçues ───────────────────────
+
+class PieceConsultationViewSet(AoBaseViewSet):
+    """Le DCE REÇU de l'acheteur (CPS, règlement, plans, cadres vierges).
+
+    L'action ``additif`` enregistre un erratum ET marque « à revérifier » les
+    clauses qui dérivent de la pièce modifiée.
+    """
+    queryset = PieceConsultation.objects.all()
+    serializer_class = PieceConsultationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'version']
+    ordering_fields = ['date_reception', 'type_piece']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'type_piece'))
+
+    @action(detail=True, methods=['post'], url_path='additif')
+    def additif(self, request, pk=None):
+        piece = self.get_object()
+        _, marquees = services.enregistrer_additif(
+            piece.appel_offre, piece_modifiee=piece,
+            reference=(request.data.get('reference') or ''),
+            version=(request.data.get('version') or ''),
+            user=request.user)
+        return Response({'exigences_a_reverifier': marquees},
+                        status=status.HTTP_201_CREATED)
+
+
+# ── AOF14 — Exigences du CPS ───────────────────────────────────────────────
+
+class ExigenceCPSViewSet(AoBaseViewSet):
+    """Clauses chiffrées du CPS d'un AO (AOF14). Aucune exigence d'ASSURANCE
+    ici : elles vivent dans ``apps.assurances`` (``ExigenceAssuranceMarche``,
+    rattachée par sa string-FK ``marche_ref``)."""
+    queryset = ExigenceCPS.objects.all()
+    serializer_class = ExigenceCPSSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle', 'valeur_texte']
+    ordering_fields = ['code', 'type_exigence', 'bloquant']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'type_exigence', 'bloquant', 'a_reverifier',
+             'piece_consultation'))
+
+
+class VarianteCalepinageViewSet(AoBaseViewSet):
+    """Variantes de calepinage (AOF28) — l'écran de comparaison est UNE requête.
+
+    ``publier`` refuse (400) tant que la PREUVE ne tient pas ; ``retenir``
+    désigne l'unique variante retenue de la toiture.
+    """
+    queryset = VarianteCalepinage.objects.all()
+    serializer_class = VarianteCalepinageSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'justification']
+    ordering_fields = ['role', 'score', 'statut']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('toiture', 'appel_offre', 'role', 'statut', 'est_retenue',
+             'est_recommandee', 'parent'))
+
+    @action(detail=True, methods=['post'], url_path='publier')
+    def publier(self, request, pk=None):
+        try:
+            variante = services.publier_variante(self.get_object())
+        except DjangoValidationError as exc:
+            return Response(exc.message_dict if hasattr(exc, 'message_dict')
+                            else {'preuve': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(variante).data)
+
+    @action(detail=True, methods=['post'], url_path='retenir')
+    def retenir(self, request, pk=None):
+        variante = services.retenir_variante(self.get_object())
+        return Response(self.get_serializer(variante).data)
+
+
+class PresetCalepinageViewSet(AoBaseViewSet):
+    """Presets de calepinage (AOF27) — jeux de paramètres NOMMÉS."""
+    queryset = PresetCalepinage.objects.all()
+    serializer_class = PresetCalepinageSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description']
+    ordering_fields = ['nom', 'portee']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('portee', 'par_defaut'))
+
+
+# ── AOF26 — Kits de calepinage ─────────────────────────────────────────────
+
+class KitCalepinageViewSet(AoBaseViewSet):
+    """Catalogue des kits de pose (AOF26). L'emprise est TOUJOURS recalculée
+    côté serveur : dérivée par défaut, mesurée quand elle est figée, écart
+    tracé dans les deux cas."""
+    queryset = KitCalepinage.objects.all()
+    serializer_class = KitCalepinageSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['code', 'modules_par_kit']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('mode', 'actif', 'orientation_modules'))
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        self._appliquer(serializer.instance)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        self._appliquer(serializer.instance)
+
+    @staticmethod
+    def _appliquer(kit):
+        kit.appliquer_emprise()
+        kit.save(update_fields=[
+            'emprise_transversale_m', 'ecart_emprise_m', 'updated_at'])
+
+
+# ── AOF116/AOF173 — Bibliothèque : gabarits de pack, textes normalisés ─────
+#
+# L'écran Bibliothèque appelait ``/api/django/ao/bibliotheque/`` : cette route
+# n'a JAMAIS existé (404 constatée en production le 03/08/2026). Les quatre
+# catégories de l'écran sont quatre ressources RÉELLES — kits (``kits-
+# calepinage``), jeux de paramètres (``presets-calepinage``), gabarits de pack
+# et textes normalisés. Les deux dernières manquaient : les voici, en
+# ressources REST ordinaires du socle AO (jamais un agrégat à identifiant
+# composite inventé).
+
+class ModelePackViewSet(AoBaseViewSet):
+    """Gabarits de pack (AOF116) : la liste ORDONNÉE des pièces d'un dossier."""
+    queryset = ModelePack.objects.all()
+    serializer_class = ModelePackSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle', 'description']
+    ordering_fields = ['code', 'libelle', 'actif']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params, ('actif',))
+
+
+class SectionMemoireViewSet(AoBaseViewSet):
+    """Textes normalisés du mémoire (AOF116/AOF133) + dossiers impactés.
+
+    ``dossiers-impactes`` répond à la question que l'écran d'AOF173 pose AVANT
+    toute modification : « qui reprend ce texte ? ». La réponse n'est pas
+    estimée — elle rejoue la MÊME règle d'inclusion déclarative que le rendu du
+    mémoire (``services.dossiers_impactes_par_section``).
+    """
+    queryset = SectionMemoire.objects.all()
+    serializer_class = SectionMemoireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'titre', 'corps']
+    ordering_fields = ['ordre', 'code', 'titre']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params, ('actif',))
+
+    @action(detail=True, methods=['get'], url_path='dossiers-impactes')
+    def dossiers_impactes(self, request, pk=None):
+        """Les dossiers d'AO dont le mémoire REPREND cette section."""
+        return Response(
+            services.dossiers_impactes_par_section(self.get_object()))
+
+
+# ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────
+
+class BordereauPrixViewSet(AoBaseViewSet):
+    """Bordereaux des prix (BOQ) d'AO (FG223), séparés du devis client.
+
+    AOF120 — l'action ``totaux`` publie les agrégats RECALCULÉS côté serveur
+    (sous-total HT → remise → total HT → TVA → total TTC) et l'action
+    ``controles`` les motifs qui interdiraient de remettre le bordereau.
+    """
+    queryset = BordereauPrix.objects.prefetch_related(
+        'lignes', 'sections').all()
+    serializer_class = BordereauPrixSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'indice_revision'))
+
+    @action(detail=True, methods=['get'])
+    def totaux(self, request, pk=None):
+        """Chaîne complète des totaux, dérivée à la lecture."""
+        totaux = services.totaux_bordereau(self.get_object())
+        return Response({cle: str(valeur) if not isinstance(valeur, dict)
+                         else {k: str(v) for k, v in valeur.items()}
+                         for cle, valeur in totaux.items()})
+
+    @action(detail=True, methods=['get'])
+    def controles(self, request, pk=None):
+        """Motifs de non-remettabilité (clause de réserve, traçabilité)."""
+        raisons = services.raisons_bordereau_non_remettable(self.get_object())
+        return Response({'remettable': not raisons, 'raisons': raisons})
+
+    @action(detail=True, methods=['post'], url_path='creer-devis')
+    def creer_devis(self, request, pk=None):
+        """UN SEUL chemin de chiffrage : ce bordereau devient un DEVIS ventes.
+
+        Le montage vit dans le POINT DE CONTACT UNIQUE
+        ``apps.ventes.services.creer_devis_depuis_bordereau`` (symétrique de
+        ``apps.ao.services.creer_appel_offre_depuis_avis``) : ``ao`` appelle ce
+        service PAR RÉFÉRENCE et n'importe JAMAIS ``apps.ventes.models``. Le
+        devis produit repart ensuite dans le pipeline devis normal — PDF
+        ``/proposal`` compris (règle #4 : rien n'est ajouté à ``quote_engine``).
+
+        Réponse : ``{devis, cree, bordereau, appel_offre, avertissements}``
+        (contrat ``contract_samples/ao_bordereau_devis.json``). ``cree`` vaut
+        ``false`` quand un brouillon issu du MÊME bordereau existait déjà —
+        idempotent, un double clic ne crée pas deux devis. Un refus motivé
+        (aucun client résoluble, bordereau sans ligne chiffrable) répond 400
+        avec le message FRANÇAIS du service, jamais un 500 muet.
+
+        Écriture ⇒ ``ao_gerer`` + scoping société : les deux viennent
+        d'``AoBaseViewSet``. La société n'est JAMAIS lue du corps — c'est celle
+        du bordereau, lui-même déjà borné par ``get_object()``.
+        """
+        from apps.ventes.services import (
+            creer_devis_depuis_bordereau, resume_devis_depuis_bordereau,
+        )
+
+        bordereau = self.get_object()  # borné société par get_queryset
+        # AUD605 — l'action ne vérifiait AUCUN statut d'AO : un devis pouvait
+        # naître du bordereau d'un appel d'offres PERDU ou ABANDONNÉ, en
+        # consommant une référence DEV réelle et en réapparaissant dans le
+        # pipeline commercial. La règle vit dans `services`, jamais ici.
+        refus = services.refus_de_creation_de_devis(bordereau.appel_offre)
+        if refus:
+            return Response({'appel_offre': [refus]},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            devis, rapport = creer_devis_depuis_bordereau(
+                bordereau, user=request.user, company=bordereau.company)
+        except DjangoValidationError as exc:
+            return Response(getattr(exc, 'message_dict', None)
+                            or {'bordereau': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        charge = {
+            'devis': resume_devis_depuis_bordereau(devis),
+            'cree': rapport['cree'],
+            'bordereau': bordereau.pk,
+            'appel_offre': bordereau.appel_offre_id,
+            'avertissements': rapport['avertissements'],
+        }
+        return Response(charge, status=(status.HTTP_201_CREATED
+                                        if rapport['cree']
+                                        else status.HTTP_200_OK))
+
+
+class SectionBordereauViewSet(AoBaseViewSet):
+    """Sections d'un bordereau des prix (AOF120)."""
+    queryset = SectionBordereau.objects.all()
+    serializer_class = SectionBordereauSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'numero']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('bordereau', 'batiment'))
+
+
+class LigneBordereauViewSet(AoBaseViewSet):
+    """Lignes chiffrées d'un BOQ (FG223), étendues par AOF120."""
+    queryset = LigneBordereau.objects.all()
+    serializer_class = LigneBordereauSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['numero']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('bordereau', 'section', 'batiment', 'quantite_source'))
+
+
+# ── AOF118/AOF141 — Équipements engagés et leur BASCULE ────────────────────
+#
+# Le modèle ``EquipementAO`` existait depuis AOF118 (snapshot figé, string-FK
+# catalogue) et la mécanique de RAPPORT de bascule depuis AOF142 — mais aucune
+# route ne les exposait : l'écran Équipements du dossier n'avait rien à
+# appeler, et le client d'API avait dû poser un rejet nommé à la place d'un
+# chemin (``api/endpointNonConstruit.js``, 03/08/2026). Voici la ressource,
+# sur le socle AO ordinaire.
+
+class EquipementAOViewSet(AoBaseViewSet):
+    """Équipements engagés par le dossier (AOF118) + bascule ATOMIQUE (AOF141).
+
+    Le snapshot (désignation, marque, référence, caractéristiques) est FIGÉ à
+    l'engagement : il ne se modifie pas au fil de l'eau, sinon un re-seed du
+    catalogue ferait bouger un dossier déjà déposé. Changer de matériel se
+    fait donc par l'action ``bascule`` — jamais par un PATCH de la
+    désignation, qui laisserait la fiche technique annexée, les grandeurs
+    dérivées et les pièces déjà produites en arrière.
+    """
+    queryset = EquipementAO.objects.select_related(
+        'produit', 'fiche_technique', 'batiment').all()
+    serializer_class = EquipementAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['designation', 'marque', 'reference_constructeur']
+    ordering_fields = ['role', 'designation', 'quantite']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'batiment', 'role', 'actif'))
+
+    @action(detail=True, methods=['post'], url_path='bascule')
+    def bascule(self, request, pk=None):
+        """AOF141 — bascule vers un autre produit, en UNE transaction.
+
+        Écriture, donc gardée par ``ao_gerer`` : le socle route toute méthode
+        non sûre sur ``write_permission`` (cf. ``core.permissions``).
+
+        Corps : ``produit`` (obligatoire), ``fiche_technique`` (identifiant
+        d'une ``records.Attachment``), ``motif``. La réponse porte le nouvel
+        équipement, celui qu'il remplace, le RAPPORT de bascule (ce qui a
+        changé ET les textes qui portent encore l'ancienne référence) et les
+        artefacts périmés — refuser en silence ou réécrire d'office les textes
+        seraient les deux mauvaises réponses.
+
+        Traitement BORNÉ (quelques écritures + une passe de contrôle), donc
+        synchrone. Ce qui est LONG n'est délibérément pas fait ici : la
+        bascule PÉRIME les pièces déjà produites, elle ne refabrique aucun
+        pack ni aucun PDF — cette régénération-là reste un travail de fond
+        (``core.jobs``), sur ses propres endpoints.
+        """
+        equipement = self.get_object()
+        try:
+            resultat = services.basculer_equipement(
+                equipement, request.data.get('produit'), user=request.user,
+                fiche_technique=request.data.get('fiche_technique'),
+                motif=(request.data.get('motif') or '').strip())
+        except DjangoValidationError as exc:
+            donnees = getattr(exc, 'message_dict', None) or {
+                api_settings.NON_FIELD_ERRORS_KEY: exc.messages}
+            return Response(donnees, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'equipement': self.get_serializer(resultat['equipement']).data,
+            'remplace': self.get_serializer(resultat['ancien']).data,
+            'rapport': resultat['rapport'],
+            'artefacts_perimes': resultat['artefacts_perimes'],
+        })
+
+
+# ── FG224 — Cautions & garanties de soumission ─────────────────────────────
+
+class DeriverCautionDefinitiveSerializer(serializers.Serializer):
+    """Entrée de ``cautions-soumission/deriver-definitive`` (AOF16).
+
+    Le TAUX n'est délibérément PAS un champ : il se lit dans la clause
+    ``CAUTION_DEFINITIVE_TAUX`` du CPS de l'appel d'offres. L'exposer ici
+    rouvrirait exactement la porte que ``services.taux_caution_definitive``
+    ferme — une caution définitive calculée sur une hypothèse d'écran plutôt
+    que sur le marché.
+
+    ``montant_marche`` reste facultatif : sans lui, la base est le montant HT
+    de NOTRE offre, qui est la valeur juste dans le cas courant.
+    """
+    appel_offre = serializers.IntegerField(label="Appel d'offres")
+    montant_marche = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, allow_null=True,
+        label='Montant du marché (MAD HT)')
+    banque = serializers.CharField(
+        max_length=200, required=False, allow_blank=True, label='Banque')
+    date_echeance = serializers.DateField(
+        required=False, allow_null=True, label="Date d'échéance")
+
+
+class ChangerStatutCautionSerializer(serializers.Serializer):
+    """AUD610 — entrée de ``cautions-soumission/<id>/changer-statut``.
+
+    Deux champs seulement : la cible et le motif. Le statut de DÉPART n'est pas
+    un champ — il est lu sur la ligne, sinon un client pourrait décrire un état
+    de départ qui n'est pas le sien et franchir une transition qui n'existe pas.
+    """
+    statut = serializers.ChoiceField(
+        choices=CautionSoumission.Statut.choices, label='Nouveau statut')
+    motif = serializers.CharField(
+        required=False, allow_blank=True, max_length=500, label='Motif')
+
+
+class CautionSoumissionViewSet(AoBaseViewSet):
+    """Cautions de soumission (provisoires/définitives) d'AO (FG224).
+
+    ``deriver-definitive`` (AOF16) est le SEUL chemin d'écriture du montant
+    définitif : il le dérive du taux du CPS au lieu de le laisser saisir à la
+    main, et la règle de cohérence ``AO_CAUTION_EXPIREE`` surveille en aval
+    les échéances qui tomberaient avant l'ouverture des plis.
+
+    AUD610 — ``changer-statut`` est de même le SEUL chemin d'écriture du
+    statut : il valide la transition contre ``CautionSoumission.TRANSITIONS``
+    et la journalise au chatter.
+    """
+    queryset = CautionSoumission.objects.all()
+    serializer_class = CautionSoumissionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'date_echeance', 'statut']
+
+    def perform_destroy(self, instance):
+        """AUD609 — une caution APPELÉE ne s'efface pas.
+
+        « Appelée » signifie que la banque a DÉJÀ débité le montant : la
+        supprimer effacerait la trace d'un mouvement d'argent réel, et le
+        rapprochement bancaire n'aurait plus rien à quoi rattacher la sortie.
+        """
+        if instance.statut == CautionSoumission.Statut.APPELEE:
+            raise DrfValidationError({api_settings.NON_FIELD_ERRORS_KEY: [
+                'Suppression refusée : cette caution est APPELÉE — la banque a '
+                'débité le montant. Sa trace ne se supprime pas.']})
+        super().perform_destroy(instance)
+
+    @extend_schema(request=ChangerStatutCautionSerializer,
+                   responses=CautionSoumissionSerializer)
+    @action(detail=True, methods=['post'], url_path='changer-statut',
+            permission_classes=[ScopedPermission])
+    def changer_statut(self, request, pk=None):
+        """AUD610 — fait avancer la caution dans sa machine d'états."""
+        entree = ChangerStatutCautionSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        caution = self.get_object()  # borné société par get_queryset
+        try:
+            caution = services.changer_statut_caution(
+                caution, entree.validated_data['statut'],
+                user=request.user,
+                motif=entree.validated_data.get('motif', ''))
+        except DjangoValidationError as exc:
+            return Response(getattr(exc, 'message_dict', None)
+                            or {'statut': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(caution).data)
+
+    @extend_schema(request=DeriverCautionDefinitiveSerializer,
+                   responses=CautionSoumissionSerializer)
+    @action(detail=False, methods=['post'], url_path='deriver-definitive',
+            permission_classes=[ScopedPermission])
+    def deriver_definitive(self, request):
+        """AOF16 — dérive (ou MET À JOUR) la caution DÉFINITIVE du taux CPS.
+
+        IDEMPOTENT : un second appel ne crée pas une seconde caution, il
+        recalcule celle qui existe. Sans clause ``CAUTION_DEFINITIVE_TAUX``
+        saisie, l'appel est REFUSÉ en 400 motivé — mieux vaut un blocage
+        explicite qu'une caution posée sur un taux inventé.
+
+        L'action est ``detail=False`` parce que la caution définitive n'existe
+        pas forcément encore : la dérivation la CRÉE au premier appel.
+        """
+        entree = DeriverCautionDefinitiveSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        donnees = entree.validated_data
+        appel_offre = AppelOffre.objects.filter(
+            pk=donnees['appel_offre'],
+            company=request.user.company).first()
+        if appel_offre is None:
+            return Response(
+                {'appel_offre': "Appel d'offres introuvable pour cette "
+                                'société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            caution = services.deriver_caution_definitive(
+                appel_offre,
+                montant_marche=donnees.get('montant_marche'),
+                banque=donnees.get('banque') or '',
+                date_echeance=donnees.get('date_echeance'))
+        except DjangoValidationError as exc:
+            erreurs = getattr(exc, 'message_dict', None) or {
+                api_settings.NON_FIELD_ERRORS_KEY: exc.messages}
+            return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(caution).data)
+
+
+# ── FG225 — Dossier de soumission (pièces administratives) ─────────────────
+
+class DossierSoumissionViewSet(AoBaseViewSet):
+    """Dossiers de soumission d'AO (FG225) : checklist des pièces."""
+    queryset = DossierSoumission.objects.prefetch_related('pieces').all()
+    serializer_class = DossierSoumissionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+
+class PieceSoumissionViewSet(AoBaseViewSet):
+    """Pièces administratives d'un dossier de soumission (FG225)."""
+    queryset = PieceSoumission.objects.all()
+    serializer_class = PieceSoumissionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['libelle']
+
+
+# ── FG226 — Échéancier & alertes de deadline d'AO ──────────────────────────
+
+class EcheanceAOViewSet(AoBaseViewSet):
+    """Dates clés d'un AO avec rappels (FG226). L'action ``dues`` liste les
+    échéances dont le rappel est échu et non traité."""
+    queryset = EcheanceAO.objects.all()
+    serializer_class = EcheanceAOSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_echeance', 'date_creation']
+
+    @action(detail=False, methods=['get'])
+    def dues(self, request):
+        dues = services.echeances_ao_dues(request.user.company)
+        return Response(EcheanceAOSerializer(dues, many=True).data)
+
+
+# ── FG227 — Analyse gagné/perdu des appels d'offres ────────────────────────
+
+class ResultatAOViewSet(AoBaseViewSet):
+    """Résultats d'AO pour l'analyse gagné/perdu (FG227). L'action ``stats``
+    renvoie le taux de réussite consolidé.
+
+    AUD605 — LECTURE SEULE au CRUD. Le résultat d'un appel d'offres n'est pas
+    une ligne comme une autre : écrire ``issue`` fait suivre le STATUT de l'AO,
+    journalise au chatter et émet ``ao_gagne`` (auquel le CRM s'abonne pour
+    avancer le lead à SIGNED). Un ``POST /resultats-ao/`` standard court-
+    circuitait tout cela : le résultat existait, l'AO restait « déposé », le
+    lead ne bougeait pas, et rien ne le disait. Toute écriture passe donc par
+    l'action ``enregistrer`` — miroir exact de ``services.enregistrer_resultat_ao``.
+    """
+    queryset = ResultatAO.objects.all()
+    serializer_class = ResultatAOSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'date_resultat']
+
+    #: Message unique des quatre refus — il NOMME le chemin à prendre.
+    ECRITURE_REFUSEE = (
+        "Le résultat d'un appel d'offres ne s'écrit pas directement : il fait "
+        "suivre le statut de l'AO, le chatter et l'événement « AO gagné ». "
+        "Utiliser POST /resultats-ao/enregistrer/.")
+
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed('POST', detail=self.ECRITURE_REFUSEE)
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed('PUT', detail=self.ECRITURE_REFUSEE)
+
+    def partial_update(self, request, *args, **kwargs):
+        raise MethodNotAllowed('PATCH', detail=self.ECRITURE_REFUSEE)
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed('DELETE', detail=self.ECRITURE_REFUSEE)
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        return Response(services.taux_reussite_ao(request.user.company))
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'issue'))
+
+    @action(detail=False, methods=['post'], url_path='enregistrer')
+    def enregistrer(self, request):
+        """AOF32 — saisie du résultat d'ouverture des plis.
+
+        Le statut du dossier suit PAR LE SERVICE de statut (jamais une
+        mutation directe) : la transition est validée, journalisée, et
+        ``ao_gagne`` est émis quand il le faut.
+        """
+        appel_offre = AppelOffre.objects.filter(
+            pk=request.data.get('appel_offre'),
+            company=request.user.company).first()
+        if appel_offre is None:
+            return Response(
+                {'appel_offre': "Cet appel d'offres n'existe pas dans votre "
+                                'société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        champs = {
+            cle: request.data[cle] for cle in (
+                'date_ouverture', 'nombre_plis', 'classement', 'notre_rang',
+                'attributaire', 'notre_prix', 'prix_gagnant', 'motif',
+                'date_resultat',
+            ) if cle in request.data
+        }
+        try:
+            resultat = services.enregistrer_resultat_ao(
+                appel_offre, issue=request.data.get('issue'),
+                user=request.user, **champs)
+        except DjangoValidationError as exc:
+            return Response(exc.message_dict if hasattr(exc, 'message_dict')
+                            else {'issue': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(resultat).data,
+                        status=status.HTTP_201_CREATED)

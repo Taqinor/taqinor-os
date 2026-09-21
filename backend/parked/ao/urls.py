@@ -1,0 +1,158 @@
+"""Routes du module Appels d'offres (``apps.ao``) — ODX11 puis AOF31.
+
+Préfixe ``/api/django/ao/…``. Les classes vivent dans ``apps.ao.views``
+(AOF1). PACT26 — le double montage historique qui re-servait les 8 ViewSets
+HISTORIQUES sous ``apps.compta.urls`` (``/api/django/compta/…``) a été
+retiré : aucun appelant frontend ne l'utilisait (vérifié). Ces 8 ressources
+ne sont désormais servies que sous ce préfixe-ci.
+
+**Tous les basenames restent préfixés ``ao-``** (héritage de l'époque où le
+routeur compta enregistrait les mêmes ViewSets sous ``appeloffre-list`` etc.) :
+conservé pour ne pas risquer une collision de basename ailleurs et parce que
+``test_routes_ao`` continue de le vérifier explicitement.
+
+AOF31 — le contrat d'API (``/contrat/``) est DÉRIVÉ de ce routeur : il ne peut
+pas se désynchroniser de la réalité. La pagination est celle du projet
+(``core.pagination.StandardPagination``), donc transverse et non redéclarée.
+"""
+
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+
+from .kpis import tableau_marches_view
+from .views import (
+    AnalyserDxfView,
+    AppelOffreViewSet,
+    ContratApiAO,
+    BatimentAOViewSet,
+    BordereauPrixViewSet,
+    CautionSoumissionViewSet,
+    ChaineCotesViewSet,
+    DossierSoumissionViewSet,
+    EcheanceAOViewSet,
+    EquipementAOViewSet,
+    ExigenceCPSViewSet,
+    KitCalepinageViewSet,
+    LigneBordereauViewSet,
+    ModelePackViewSet,
+    ObstacleAOViewSet,
+    PieceConsultationViewSet,
+    PieceSoumissionViewSet,
+    PlanSourceViewSet,
+    PlancheAOViewSet,
+    PresetCalepinageViewSet,
+    ReleveAOViewSet,
+    SectionBordereauViewSet,
+    SectionMemoireViewSet,
+    QuestionAOViewSet,
+    ResultatAOViewSet,
+    SerieQuestionsViewSet,
+    ToitureAOViewSet,
+    VarianteCalepinageViewSet,
+    ZoneAOViewSet,
+)
+from .viewsets import (
+    DossierAOViewSet, LigneChecklistPartenaireViewSet,
+    PieceAdministrativeViewSet, PieceDossierAOViewSet,
+)
+# AOF157 — l'économie DIRECTEUR vit dans des vues SÉPARÉES, gardées par
+# ``ao_rentabilite_voir`` (permission ÉLEVÉE) : jamais mêlée aux vues AO
+# générales, sinon la marge suivrait toutes leurs surfaces.
+from .views_directeur import (
+    CibleFinanciereViewSet, EconomieAOViewSet, LigneCoutRevientViewSet,
+)
+
+router = DefaultRouter()
+router.register(r'appels-offres', AppelOffreViewSet, basename='ao-appel-offre')
+router.register(r'pieces-consultation', PieceConsultationViewSet,
+                basename='ao-piece-consultation')
+router.register(r'exigences-cps', ExigenceCPSViewSet,
+                basename='ao-exigence-cps')
+router.register(r'batiments', BatimentAOViewSet, basename='ao-batiment')
+router.register(r'toitures', ToitureAOViewSet, basename='ao-toiture')
+router.register(r'plans-source', PlanSourceViewSet,
+                basename='ao-plan-source')
+router.register(r'planches', PlancheAOViewSet, basename='ao-planche')
+router.register(r'obstacles', ObstacleAOViewSet,
+                basename='ao-obstacle')
+# PV54 — zones de toiture (enveloppe / interdite / réservée / préférée).
+router.register(r'zones', ZoneAOViewSet, basename='ao-zone')
+router.register(r'chaines-cotes', ChaineCotesViewSet,
+                basename='ao-chaine-cotes')
+router.register(r'releves', ReleveAOViewSet, basename='ao-releve')
+router.register(r'series-questions', SerieQuestionsViewSet,
+                basename='ao-serie-questions')
+router.register(r'questions', QuestionAOViewSet,
+                basename='ao-question')
+router.register(r'kits-calepinage', KitCalepinageViewSet,
+                basename='ao-kit-calepinage')
+router.register(r'presets-calepinage', PresetCalepinageViewSet,
+                basename='ao-preset-calepinage')
+router.register(r'variantes-calepinage', VarianteCalepinageViewSet,
+                basename='ao-variante-calepinage')
+# AOF116/AOF173 — les deux dernières catégories de la BIBLIOTHÈQUE. Les kits
+# et les jeux de paramètres étaient déjà routés ci-dessus ; les gabarits de
+# pack et les textes normalisés ne l'étaient PAS, et l'écran Bibliothèque
+# appelait à leur place un ``/ao/bibliotheque/`` inexistant (404 en prod).
+router.register(r'modeles-pack', ModelePackViewSet,
+                basename='ao-modele-pack')
+router.register(r'sections-memoire', SectionMemoireViewSet,
+                basename='ao-section-memoire')
+router.register(r'bordereaux-prix', BordereauPrixViewSet,
+                basename='ao-bordereau-prix')
+router.register(r'lignes-bordereau', LigneBordereauViewSet,
+                basename='ao-ligne-bordereau')
+# AOF120 — sections du bordereau (une par bâtiment + prestations communes).
+router.register(r'sections-bordereau', SectionBordereauViewSet,
+                basename='ao-section-bordereau')
+# AOF118/AOF141 — équipements engagés (snapshot figé) et leur bascule. Le
+# modèle existait depuis AOF118 sans qu'AUCUNE route ne l'expose : l'écran
+# Équipements n'avait rien à appeler (03/08/2026).
+router.register(r'equipements', EquipementAOViewSet,
+                basename='ao-equipement')
+router.register(r'cautions-soumission', CautionSoumissionViewSet,
+                basename='ao-caution-soumission')
+router.register(r'dossiers-soumission', DossierSoumissionViewSet,
+                basename='ao-dossier-soumission')
+router.register(r'pieces-soumission', PieceSoumissionViewSet,
+                basename='ao-piece-soumission')
+router.register(r'echeances-ao', EcheanceAOViewSet, basename='ao-echeance')
+router.register(r'resultats-ao', ResultatAOViewSet, basename='ao-resultat')
+# AOF115 — dossier de dépôt (kit ``core/documents.py``) et ses pièces.
+router.register(r'dossiers-ao', DossierAOViewSet, basename='ao-dossier-ao')
+router.register(r'pieces-dossier-ao', PieceDossierAOViewSet,
+                basename='ao-piece-dossier-ao')
+# AOF136 — checklist partenaire suivie point par point.
+router.register(r'checklist-partenaire', LigneChecklistPartenaireViewSet,
+                basename='ao-checklist-partenaire')
+# AOF137 — pièces administratives DATÉES, réutilisables d'un AO à l'autre.
+router.register(r'pieces-administratives', PieceAdministrativeViewSet,
+                basename='ao-piece-administrative')
+# AOF157 — ÉCONOMIE DIRECTEUR : routes séparées, garde ``ao_rentabilite_voir``.
+router.register(r'economie', EconomieAOViewSet, basename='ao-economie')
+router.register(r'lignes-cout-revient', LigneCoutRevientViewSet,
+                basename='ao-ligne-cout-revient')
+router.register(r'cibles-financieres', CibleFinanciereViewSet,
+                basename='ao-cible-financiere')
+
+urlpatterns = [
+    # AOF31 — contrat d'API publié, dérivé du routeur ci-dessus.
+    path('contrat/', ContratApiAO.as_view(), name='ao-contrat'),
+    # AOF166 — tableau de bord des marchés, en UN SEUL appel agrégé. Le NOM de
+    # cette route est REPRIS DE NTMAR27 (`docs/plans/PLAN_FINANCE.md`) à
+    # dessein : sans cette reprise nominative, l'ERP finirait avec deux
+    # tableaux de bord d'appels d'offres concurrents.
+    path('tableau-marches/', tableau_marches_view, name='ao-tableau-marches'),
+    # PVG1 — import DXF réel : parsing en mémoire, rien n'est persisté
+    # (`apps/ao/dxf.py`). Route hors routeur DRF : ce n'est pas une
+    # ressource, juste une analyse.
+    path('toitures/dxf/analyser/', AnalyserDxfView.as_view(),
+         name='ao-toiture-dxf-analyser'),
+    path('', include(router.urls)),
+]
+
+# AOF61/AOF62 — l'API de calepinage (calcul borné, job de fond, actions de
+# variante idempotentes) est routée par son PROPRE module. Ajout en fin de
+# fichier, sans toucher au routeur historique ci-dessus : celui-ci est
+# consommé tel quel par ``ContratApiAO`` et par ``apps.compta.urls``.
+urlpatterns += [path('', include('apps.ao.calepinage_urls'))]

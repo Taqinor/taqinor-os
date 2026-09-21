@@ -1,0 +1,38 @@
+{
+  "endpoint": "POST /api/django/compta/etats-personnalises/{id}/evaluer/",
+  "pourquoi": "XACC19/WIR279 — évalue un état financier PARAMÉTRABLE (défini en données : des lignes portant une formule « +70,+71,-60 » et des colonnes période / comparatif N-1 / budget). Source de vérité : apps/compta/selectors.py::evaluer_etat_personnalise. La forme est un couple {colonnes, lignes} : chaque ligne porte `valeurs`, un OBJET indexé par ID DE COLONNE (jamais une liste — l'ordre des colonnes vit dans `colonnes`). Une ligne de type `titre` est un intitulé de section : son `valeurs` est un objet VIDE, jamais des zéros. Une formule illégale renvoie 400 avec un message français explicite (« Terme invalide … ») — jamais un 500. Les montants sont sérialisés en TEXTE (Decimal), jamais en flottant.",
+  "exemple": {
+    "etat": 5,
+    "libelle": "Compte de résultat simplifié",
+    "colonnes": [
+      { "id": 21, "libelle": "2026", "type_colonne": "periode" },
+      { "id": 22, "libelle": "2025", "type_colonne": "comparatif_n1" }
+    ],
+    "lignes": [
+      {
+        "id": 41,
+        "libelle": "PRODUITS",
+        "type_ligne": "titre",
+        "valeurs": {}
+      },
+      {
+        "id": 42,
+        "libelle": "Chiffre d'affaires",
+        "type_ligne": "total",
+        "valeurs": { "21": "1250000.00", "22": "980000.00" }
+      },
+      {
+        "id": 43,
+        "libelle": "Résultat d'exploitation",
+        "type_ligne": "total",
+        "valeurs": { "21": "312500.00", "22": "-44000.00" }
+      }
+    ]
+  },
+  "exemple_vide": {
+    "etat": 5,
+    "libelle": "Compte de résultat simplifié",
+    "colonnes": [],
+    "lignes": []
+  }
+}

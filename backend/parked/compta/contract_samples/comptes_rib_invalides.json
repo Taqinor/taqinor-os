@@ -1,0 +1,19 @@
+{
+  "endpoint": "GET /api/django/compta/tresorerie/rib-invalides/",
+  "pourquoi": "AUDV02 / DRAFT165-16 (XACC24) — `selectors.comptes_tresorerie_rib_invalides` n'avait aucun appelant : un virement pouvait partir sur un RIB à clé mod-97 fausse sans qu'aucun écran ne le signale, l'erreur n'apparaissant qu'au rejet par la banque des semaines plus tard. WARNING PUR : rien n'est bloqué (la saisie historique n'est jamais cassée rétroactivement) et un compte SANS RIB n'est PAS signalé — c'est le cas normal d'une caisse. `erreurs` est une liste de messages français prêts à afficher, produits par `core.rib.valider_rib` ; l'écran les rend tels quels sans jamais re-valider côté client.",
+  "exemple": {
+    "nb": 1,
+    "comptes": [
+      {
+        "id": 12,
+        "libelle": "BP — Compte courant Casablanca",
+        "rib": "011780000012345678901234",
+        "erreurs": ["Clé de contrôle invalide (mod 97)."]
+      }
+    ]
+  },
+  "exemple_vide": {
+    "nb": 0,
+    "comptes": []
+  }
+}

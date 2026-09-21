@@ -1,0 +1,94 @@
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+
+from .public_views import evaluation_projet, portail_avancement
+from .views import (
+    ActionProjetViewSet,
+    AffectationRessourceViewSet,
+    BaselinePlanningViewSet,
+    ChronoActifViewSet,
+    ClotureProjetViewSet,
+    CommentaireProjetViewSet,
+    CompteRenduReunionViewSet,
+    DocumentProjetViewSet,
+    LigneSituationViewSet,
+    LotSousTraitanceViewSet,
+    SituationTravauxViewSet,
+    BudgetProjetViewSet,
+    CalendrierProjetViewSet,
+    DependanceTacheViewSet,
+    EquipeViewSet,
+    IndisponibiliteViewSet,
+    ItemChecklistTacheViewSet,
+    JalonViewSet,
+    JourFerieViewSet,
+    PointAvancementViewSet,
+    LigneBudgetProjetViewSet,
+    ModeleProjetViewSet,
+    ModeleTacheViewSet,
+    PeriodeVerrouilleeTempsViewSet,
+    PhaseProjetViewSet,
+    PortailProjetTokenViewSet,
+    ProjetChantierViewSet,
+    ProjetLienViewSet,
+    ProjetViewSet,
+    RecurrenceTacheViewSet,
+    ReglageTempsViewSet,
+    RessourceProfilViewSet,
+    RisqueViewSet,
+    SousTraitantViewSet,
+    TacheViewSet,
+    TimesheetViewSet,
+)
+
+router = DefaultRouter()
+router.register(r'projets', ProjetViewSet)
+router.register(r'projet-chantiers', ProjetChantierViewSet)
+router.register(r'projet-liens', ProjetLienViewSet)
+router.register(r'phases', PhaseProjetViewSet)
+router.register(r'taches', TacheViewSet)
+router.register(r'recurrences-tache', RecurrenceTacheViewSet)
+router.register(r'items-checklist', ItemChecklistTacheViewSet)
+router.register(r'points-avancement', PointAvancementViewSet)
+router.register(r'dependances', DependanceTacheViewSet)
+router.register(r'jalons', JalonViewSet)
+router.register(r'calendriers', CalendrierProjetViewSet)
+router.register(r'jours-feries', JourFerieViewSet)
+router.register(r'baselines', BaselinePlanningViewSet)
+router.register(r'ressources', RessourceProfilViewSet)
+router.register(r'equipes', EquipeViewSet)
+router.register(r'affectations', AffectationRessourceViewSet)
+router.register(r'indisponibilites', IndisponibiliteViewSet)
+router.register(r'budgets', BudgetProjetViewSet)
+router.register(r'lignes-budget', LigneBudgetProjetViewSet)
+router.register(r'timesheets', TimesheetViewSet)
+router.register(r'periodes-verrouillees-temps', PeriodeVerrouilleeTempsViewSet)
+router.register(r'risques', RisqueViewSet)
+router.register(r'actions', ActionProjetViewSet)
+router.register(r'comptes-rendus', CompteRenduReunionViewSet)
+router.register(r'documents', DocumentProjetViewSet)
+router.register(r'commentaires', CommentaireProjetViewSet)
+router.register(r'modeles', ModeleProjetViewSet)
+router.register(r'modele-taches', ModeleTacheViewSet)
+router.register(r'portail-tokens', PortailProjetTokenViewSet)
+router.register(r'sous-traitants', SousTraitantViewSet)
+router.register(r'lots-sous-traitance', LotSousTraitanceViewSet)
+router.register(r'clotures', ClotureProjetViewSet)
+router.register(r'situations', SituationTravauxViewSet)
+router.register(r'lignes-situation', LigneSituationViewSet)
+router.register(r'chrono-actif', ChronoActifViewSet, basename='chrono-actif')
+router.register(
+    r'reglages-temps', ReglageTempsViewSet, basename='reglages-temps')
+
+urlpatterns = [
+    # Portail PUBLIC (non authentifié) — placé AVANT le routeur pour éviter
+    # toute capture par un viewset ; expose uniquement l'avancement non
+    # financier d'un projet (PROJ37).
+    # headless: portail client ouvert par lien tokenise, aucun ecran ERP en face
+    path('portail/<str:token>/', portail_avancement, name='portail-avancement'),
+    # Enquête de satisfaction client (CSAT, ZPRJ7) — public, GET+POST par jeton.
+    # headless: enquete CSAT ouverte par le client depuis un lien tokenise
+    path('portail/evaluation/<str:token>/', evaluation_projet,
+         name='portail-evaluation'),
+    path('', include(router.urls)),
+]
