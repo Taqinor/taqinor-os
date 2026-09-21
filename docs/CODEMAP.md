@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a09519d8ffec5e537659cedd60a878e56e2e2899b11d2370a5320a001d29cf09
-Plan fingerprint: f1103078a9a73d05230b6a9a7cd551f13c49abcdd53309ce0edce6df479df4b7
+Plan fingerprint: 11549a221f6686fa27bb2d9a64f534d152807eb537286997214ac49c15993390
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (215)**
+**Done (216)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -641,6 +641,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX97` — Saisir les cotes exactes d'un pan et le faire pivoter d'un bloc
 - `CALX98` — Dupliquer un pan avec ses obstacles et ses réglages
 - `CALX105` — Poser un arbre ou un bâtiment voisin au clic et le déplacer au glissé
+- `CALX106` — Remonter la hauteur et le nombre de niveaux OSM du bâtiment, avec leur provenance…
 - `CALX112` — Dupliquer une sélection de panneaux et la coller au pas saisi
 - `CALX113` — Rendre la symétrie d'une sélection de panneaux par rapport à un axe
 - `CALX116` — Sélectionner des panneaux au lasso, en plus du rectangle
@@ -749,7 +750,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (391)**
+**Open — to build (390)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -948,7 +949,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX102` — Modéliser une lucarne comme un volume qui perce le pan, pas comme une boîte posée
 - `CALX103` — Tracer un obstacle polygonal au clic
 - `CALX104` — Tracer un obstacle circulaire et réutiliser des gabarits d'obstacle de la société
-- `CALX106` — Remonter la hauteur et le nombre de niveaux OSM du bâtiment, avec leur provenance…
 - `CALX107` — Afficher un plan importé ou une photo calée comme calque de fond de l'atelier
 - `CALX108` — Caler le fond de plan à l'échelle par deux points et une distance réelle saisie
 - `CALX109` — Choisir le module depuis le stock et calepiner avec ses vraies cotes
