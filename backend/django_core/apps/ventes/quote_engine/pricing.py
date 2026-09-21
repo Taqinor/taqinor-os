@@ -339,6 +339,18 @@ def _resolve_tranches(utility=None, tranches_override=None):
     if utility and str(utility).lower() in UTILITY_TABLES:
         # Q7 — le distributeur est un LIBELLÉ : la grille est la même pour tous.
         return UTILITY_TABLES[str(utility).lower()], False
+    if utility and str(utility).strip():
+        # ── CAD167 ── UN DISTRIBUTEUR INCONNU RÉSOUT SUR LA GRILLE NATIONALE.
+        # ``UTILITY_TABLES`` ne nommait que trois délégataires : « autre » —
+        # et, depuis la décision fondateur du 21/09/2026, les douze SRM
+        # régionales — n'y figuraient pas, donc la table était None et
+        # l'appelant retombait sur un PRIX PLAT inventé. Pire, la proposition
+        # publique masque sa courbe dès que l'inversion se déclare
+        # « estimation » : nommer sa vraie SRM faisait DISPARAÎTRE le graphe.
+        # Or le barème est NATIONAL et unique (Q7) : un distributeur nommé,
+        # quel qu'il soit, lit la même grille. La valeur reste un libellé et
+        # ne change toujours aucun prix.
+        return UTILITY_TABLES['onee'], False
     return None, False
 
 

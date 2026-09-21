@@ -437,6 +437,93 @@ def _entier_positif(valeur):
     return val if val > 0 else None
 
 
+# ── CAD173 (Q12) ── LES DEUX « ÉTÉS » DU MOTEUR N'EN FONT PLUS QU'UN.
+#
+# Les couches piscine et clim portent ``saisons: ['ete']``, et « été » au sens
+# PVGIS vaut juin-juillet-août. Mais la FACTURE d'été du même moteur court de
+# mai à octobre (``etude_horaire.MOIS_ETE_FACTURE``, aligné sur la série
+# mensuelle de la page publique) : le même client avait donc deux étés, l'un
+# pour son argent, l'autre pour sa piscine. Décision fondateur du 21/09/2026
+# (Q12) : la clim et la piscine redistribuent de MAI À OCTOBRE, le découpage
+# de la facture. Aucun mois n'est choisi ici — il est REPRIS de celui qui
+# existait déjà.
+#: Mois (1-12) où les couches de redistribution saisonnières sont actives.
+MOIS_REDISTRIBUTION_ETE = (5, 6, 7, 8, 9, 10)
+
+#: En dessous de ce facteur, la journée ne peut pas porter les bosses
+#: déclarées telles quelles : la renormalisation les RABOTE. Le seuil n'est
+#: pas un réglage métier — c'est la tolérance numérique qui distingue « pas de
+#: plafonnement » d'un arrondi.
+_TOLERANCE_FACTEUR = 1e-9
+
+
+def couche_saisonniere_active(couche, *, saison=None, mois=None):
+    """Cette couche de redistribution est-elle active à ce moment ?
+
+    ``mois`` (1-12) PRIME quand il est fourni : une couche déclarée
+    saisonnière suit alors ``MOIS_REDISTRIBUTION_ETE`` (mai→octobre, CAD173).
+    Sans mois, on retombe sur le grain PVGIS d'avant (``saisons``) — c'est ce
+    qui garde le comportement inchangé pour les appelants qui ne connaissent
+    que la saison."""
+    saisons = (couche or {}).get('saisons')
+    if not saisons:
+        return True
+    if mois is not None:
+        return mois in MOIS_REDISTRIBUTION_ETE
+    return saison is None or saison in saisons
+
+
+# ── CAD169 ── L'ÉTIQUETTE DE LA VOITURE SEULEMENT PRÉVUE.
+#
+# Décision fondateur du 21/09/2026 : une voiture pas encore achetée reste
+# COMPTÉE des deux côtés du chiffre, et le devis comme la proposition portent
+# cette étiquette. Un seul texte, ici : tout rendu qui affiche la couche
+# véhicule électrique le lit à cette source, jamais une variante recopiée.
+#: Valeur de ``crm.Lead.equip_ve_statut`` qui déclenche l'étiquette.
+VE_STATUT_PREVU = 'prevu'
+VE_STATUT_POSSEDE = 'possede'
+ETIQUETTE_VE_PREVU = 'avec votre future voiture'
+
+
+def etiquette_ve(couches):
+    """L'étiquette à AFFICHER pour la couche véhicule, ou ``None``.
+
+    ``couches`` = la sortie de :func:`composer_equipements`. Renvoie le texte
+    UNIQUEMENT quand la voiture est déclarée « seulement prévue » ; une
+    voiture possédée, une absence de couche ou un statut jamais renseigné ne
+    produisent AUCUNE étiquette (on n'étiquette pas un chiffre qui ne le
+    demande pas)."""
+    couche = (couches or {}).get('ve') or {}
+    return couche.get('etiquette') or None
+
+
+# ── CAD165 (2) ── LE CRÉNEAU « JOUR » SE CALE SUR LE MILIEU DE LA JOURNÉE.
+#
+# Quand le chargeur est connu, la recharge n'occupe qu'une PARTIE du créneau
+# déclaré. Elle était placée sur les PREMIÈRES heures de ce créneau : pour le
+# créneau « jour » (9h-18h), cela mettait la recharge à 9h du matin, c'est-à-
+# dire AVANT le gros de la production d'un champ plein sud — exactement à côté
+# de ce que le client cherchait en répondant « je recharge le jour ».
+#
+# Le recentrage est GÉOMÉTRIQUE, et c'est délibéré : ce module ne voit pas la
+# série de production (elle est calculée ailleurs), il ne peut donc pas lire
+# une heure de pic. Il place la recharge au MILIEU du créneau déclaré — même
+# nature de convention que les fenêtres de ``VE_CRENEAUX`` elles-mêmes, qui
+# sont documentées comme des découpages conventionnels et non des mesures.
+# Aucune heure n'est inventée : la fenêtre reste à l'intérieur du créneau que
+# le client a déclaré. Les créneaux « nuit » et « soir » gardent leurs
+# premières heures — il n'y a pas de soleil à viser.
+VE_CRENEAUX_RECENTRES = ('jour',)
+
+
+def _fenetre_recharge(fenetre, n, creneau):
+    """Les ``n`` heures de recharge retenues dans le créneau déclaré."""
+    if creneau in VE_CRENEAUX_RECENTRES:
+        debut = max(0, (len(fenetre) - n) // 2)
+        return fenetre[debut:debut + n]
+    return fenetre[:n]
+
+
 def _equipements(lead_equip):
     """Couches d'équipement composables, ou ``{}`` si aucune n'est utilisable.
 
@@ -525,10 +612,22 @@ def _equipements(lead_equip):
             chargeur_kw = _nombre_positif(lead_equip.get('ve_chargeur_kw'))
             creneau = lead_equip.get('ve_creneau')
             fenetre = VE_CRENEAUX.get(creneau)
-            if chargeur_kw is not None and fenetre:
+            if fenetre and chargeur_kw is None:
+                # ── CAD165 (1) / CAD171 ── LE CRÉNEAU DÉCLARÉ NE PEUT PLUS
+                # ÊTRE IGNORÉ. Avant, la fenêtre n'était resserrée que
+                # ``if chargeur_kw is not None`` : un client qui répondait
+                # « je recharge le jour » gardait la fenêtre 21h-6h et son
+                # chiffre ne bougeait PAS d'un kWh — sa réponse ne servait à
+                # rien. Sans la puissance du chargeur, on ne sait pas combien
+                # d'heures la recharge dure : on l'ÉTALE donc sur TOUT le
+                # créneau déclaré (décision fondateur du 21/09/2026), ce qui
+                # n'invente aucune durée et respecte enfin la réponse.
+                heures = list(fenetre)
+                source += '+lead:equip_ve_creneau'
+            elif chargeur_kw is not None and fenetre:
                 duree_h = kwh_jour / chargeur_kw
                 n = max(1, min(len(fenetre), math.ceil(duree_h - 1e-9)))
-                heures = list(fenetre[:n])
+                heures = list(_fenetre_recharge(fenetre, n, creneau))
                 source += '+lead:equip_ve_chargeur_kw+creneau'
             out['ve'] = {
                 'kwh_jour': round(kwh_jour, 2),
@@ -537,16 +636,41 @@ def _equipements(lead_equip):
                 'mode': 'addition',
                 'source': source,
             }
+            # ── CAD169 ── « AVEC VOTRE FUTURE VOITURE ». Le script d'appel
+            # demande « avez-vous OU prévoyez-vous » : une voiture pas encore
+            # achetée gonflait donc l'autoconsommation et l'économie promise
+            # SANS que le client le sache. Décision fondateur du 21/09/2026 :
+            # elle reste comptée des deux côtés — et le devis comme la
+            # proposition portent l'étiquette. L'étiquette est OBLIGATOIRE dès
+            # que le statut vaut « prévu » : sans elle, le chiffre ment.
+            # Les deux clés n'apparaissent QUE si le statut a été renseigné :
+            # une fiche qui n'a jamais répondu garde une couche byte-identique
+            # à celle d'avant.
+            statut = lead_equip.get('ve_statut')
+            if statut:
+                out['ve']['statut'] = statut
+                if statut == VE_STATUT_PREVU:
+                    out['ve']['etiquette'] = ETIQUETTE_VE_PREVU
 
     # chauffe_eau_electrique (booléen informatif) reste sans couche — voir le
     # commentaire d'en-tête. L-BACK ajoute une paire DISTINCTE
     # (``chauffe_eau_kw``/``chauffe_eau_creneau``) qui, elle, EN produit une
     # quand les DEUX sont renseignées : puissance réelle sur son créneau,
     # jamais un chiffre inventé pour l'une sans l'autre.
+    #
+    # ── CAD165 (3) ── UN « NON » DOIT EMPÊCHER LA COUCHE. La paire se
+    # composait SANS jamais regarder le booléen, contrairement aux trois
+    # couches ci-dessus : un client qui avait répondu « non, mon chauffe-eau
+    # n'est pas électrique » voyait quand même sa couche chauffe-eau entrer
+    # dans le chiffre. Le gate est donc ``is not False`` et pas ``is True`` :
+    # ``None`` veut dire « la question n'a jamais été posée » (règle de tout
+    # le bloc L4 : vide ≠ Non), et un lead jamais interrogé garde exactement
+    # le chiffre qu'il avait — seul le « non » explicite change quelque chose.
     chauffe_eau_kw = _nombre_positif(lead_equip.get('chauffe_eau_kw'))
     chauffe_eau_creneau = lead_equip.get('chauffe_eau_creneau')
     fenetre_ce = CHAUFFE_EAU_CRENEAUX.get(chauffe_eau_creneau)
-    if chauffe_eau_kw is not None and fenetre_ce:
+    chauffe_eau_refuse = lead_equip.get('chauffe_eau_electrique') is False
+    if chauffe_eau_kw is not None and fenetre_ce and not chauffe_eau_refuse:
         out['chauffe_eau'] = {
             'kw': round(chauffe_eau_kw, 2),
             'heures': list(fenetre_ce),
@@ -987,7 +1111,7 @@ def renormalisation_redistribution(niveau_kwh, ve_kwh, brute_totale_kwh):
 
 
 def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
-                                 equipements=None, ramadan=None):
+                                 equipements=None, ramadan=None, mois=None):
     """``(conso_24h, couches_horaires)`` — la courbe ET sa décomposition L4.
 
     C'est la fonction que le moteur horaire intègre contre la production. Elle
@@ -1058,9 +1182,15 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
         kw = _nombre_positif(couche.get('kw'))
         if kw is None:
             continue
-        saisons = couche.get('saisons')
-        if saisons and saison is not None and saison not in saisons:
-            continue
+        # CAD173 (Q12) — le MOIS prime quand l'appelant le connaît : clim et
+        # piscine suivent l'été de la FACTURE (mai→octobre), pas l'été PVGIS.
+        if mois is not None:
+            if not couche_saisonniere_active(couche, mois=mois):
+                continue
+        else:
+            saisons = couche.get('saisons')
+            if saisons and saison is not None and saison not in saisons:
+                continue
         heures_couche = []
         for heure in couche.get('heures') or ():
             if isinstance(heure, int) and 0 <= heure <= 23:
@@ -1093,11 +1223,36 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
     # l'heure servie est donc ``kw × facteur``. C'est cette énergie-là — pas la
     # bosse brute — que le moteur concentre en impulsions, sinon il sortirait de
     # l'heure plus d'énergie que la courbe n'en contient.
+    # ── CAD173 (Q11) ── LE PLAFONNEMENT EST DIT, JAMAIS SUBI EN SILENCE.
+    # Une couche qui dépasse la journée (un chauffe-eau de 2,5 kW pendant 9 h
+    # sur un petit niveau, par exemple) ne peut pas être servie telle quelle :
+    # la renormalisation la RABOTE, et le facteur descend sous 1. Jusqu'ici ce
+    # rabotage n'apparaissait nulle part — le chiffre montré au client était
+    # plus petit que la déclaration, sans que rien ne l'explique. Chaque
+    # couche porte donc désormais SON facteur et son drapeau, et l'écran les
+    # affiche (CAD157). Décision fondateur du 21/09/2026.
+    # « Dépasser la journée » a un sens PRÉCIS, et ce n'est pas « le facteur
+    # est inférieur à 1 » : la renormalisation rabote toujours un peu dès
+    # qu'une bosse existe, c'est son métier. Une couche DÉBORDE quand son
+    # énergie déclarée (kW × ses heures) dépasse à elle seule TOUT le niveau
+    # de la journée du client — l'exemple de la décision : un chauffe-eau de
+    # 2,5 kW pendant 9 h, soit 22,5 kWh, sur une journée qui n'en consomme
+    # que quelques-uns. Là, le chiffre servi n'a plus rien à voir avec la
+    # déclaration, et le taire serait mentir par omission.
     for info in actives.values():
         heures_kwh = [0.0] * 24
         for heure in info['heures']:
             heures_kwh[heure] += info['kw'] * facteur
         info['heures_kwh'] = heures_kwh
+        info['facteur'] = round(facteur, 6)
+        brute_couche = info['kw'] * len(info['heures'])
+        info['brute_kwh'] = round(brute_couche, 3)
+        info['plafonnee'] = brute_couche > base_total + _TOLERANCE_FACTEUR
+        if info['plafonnee']:
+            info['plafond_motif'] = (
+                'la journée du client ne peut pas porter cette puissance sur '
+                'ces heures : la couche est ramenée à ce que son niveau réel '
+                'permet.')
 
     return sortie, actives
 

@@ -1240,6 +1240,12 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "est GET calepinages/<pk>/export-csv/ : cette route sert un FICHIER "
         "CSV, il n'y a donc aucune forme JSON a comparer, et la serie est "
         "ecrite par CALX150 (CALX142)",
+    "crm/panneau_appel.json":
+        "GET crm/leads/<id>/panneau-appel/ — le contrat du PANNEAU D'APPEL "
+        "GUIDE, pose SEUL et EN PREMIER (PACT10) : l'@action de LeadViewSet "
+        "qui le sert arrive avec CAD148, et aucun ecran ne l'appelle encore, "
+        "donc la garde n'a rien a comparer. Les deux moities (l'@action, puis "
+        "l'ecran d'appel) s'appuient sur CET exemple (CAD147)",
     "calepinage/calepinage_du_devis.json":
         "cle ADDITIVE `calepinage` du detail d'un devis (GET ventes/devis/"
         "<pk>/) : la route est servie, mais par un ModelViewSet dont la forme "

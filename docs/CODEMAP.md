@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 4db621b256989d0291f17a02995458ee3cace61487f6a5d74c103193a3494e97
-Plan fingerprint: d273cc97981190b530c5b6d75517c576582df14467db3d6a4fb8648063ac0e00
+Structure fingerprint: 415e1d46de50c6c19aad0a5966f0a2d3ca0c0b5222b7ac3728f6fe7a2d120ba3
+Plan fingerprint: 04f6244241f0b4419de4ec8627dd35f812591b2ff37160fb4b02d937b062f0c0
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -532,8 +532,17 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (211)**
+**Done (238)**
 
+- `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
+- `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
+- `CAD14` — L'issue « Visite acceptée » n'a aucun libellé dans l'historique — ni dans le journal…
+- `CAD18` — Le lead qui répond au message d'identité AVANT l'appel J0+3 min ne reçoit jamais…
+- `CAD45` — Traiter par écrit une touche « appel » impose quand même de répondre « Joint / Non…
+- `CAD49` — L'action en masse « définir la relance » écrit une date que le moteur écrase
+- `CAD52` — [TRANCHÉ 21/09/2026 — pas de variante de rythme — mesurer d'abord.]
+- `CAD53` — [TRANCHÉ 21/09/2026 — l'éditeur ouvre l'ajout/suppression de barreau et la case…
+- `CAD54` — Réattribuer un lead à un autre commercial : personne ne sait ce que deviennent ses…
 - `CAD62` — Zéro darija sur toute la marche après-devis : le repli en français est silencieux
 - `CAD66` — Le message J7 promet un classement « dans trois jours » que le moteur tient à J14
 - `CAD67` — Le script « répondeur » part deux fois en 20 heures, et deux appels n'ont aucun script
@@ -541,15 +550,33 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD71` — `avis_google` enverrait au client le lien de SON DEVIS à la place du lien d'avis
 - `CAD72` — `parrainage` promet un lien qui n'existe pas — et ce n'est même pas ce texte qui part
 - `CAD73` — Le premier réveil dit au client « il y a quelques mois » alors qu'il part six semaines…
+- `CAD83` — La file du jour trie par heure ; la priorité et le score affichés ne servent à rien
+- `CAD85` — Les écrans quotidiens de la cadence ne sont couverts par aucun test mobile
 - `CAD95` — Joindre une courte vidéo à la preuve chantier J4
 - `CAD96` — Trois graphies de la marque dans la même conversation WhatsApp
+- `CAD102` — Après l'appel du filet resté sans réponse, l'ERP réclame un devis pour un client jamais…
 - `CAD109` — Le script d'appel ne dit ni que l'appel est commercial, ni d'où viennent les données
 - `CAD110` — Aucun message ne dit au client comment faire cesser les relances
+- `CAD113` — Dans l'éditeur de cadence, une erreur serveur s'affiche en toast générique
+- `CAD114` — Le canal « Visite » est proposé à la configuration et ne déclenche rien
+- `CAD116` — Le rappel de 08:30 ne donne qu'un nombre — et il part aussi chez qui ne peut pas le…
 - `CAD139` — Du code mort laisse croire que l'ouverture d'un devis fait avancer le funnel
 - `CAD141` — Le rafraîchissement nocturne des scores balaie les dossiers clos
 - `CAD143` — L'éditeur n'a pas d'onglet pour la cadence « Générique », pourtant encore active sur de…
 - `CAD145` — Le type d'installation est stocké à deux endroits
 - `CAD146` — Un prospect de la diaspora reçoit ses touches à l'heure de Casablanca
+- `CAD147` — T0 — Le contrat du panneau d'appel, livré SEUL et en premier (PACT10)
+- `CAD148` — T1 — L'endpoint « questions à poser sur cet appel »
+- `CAD149` — T2 — Migration « vague 1 » : les champs qui manquent, et les SIX endroits à tenir
+- `CAD154` — Vague 2 des champs, à ouvrir seulement après la vague 1
+- `CAD160` — [TRANCHÉ 21/09/2026 — vague 1 confirmée telle quelle.]
+- `CAD165` — T6 — Quatre correctifs du moteur horaire, tous visibles sur le chiffre client
+- `CAD166` — T7 — Le pro qui donne ses kWh sur le site reste « incomplet » dans l'ERP
+- `CAD167` — T8 — La liste des distributeurs devient les SRM régionales, et « autre » cesse de…
+- `CAD169` — [TRANCHÉ 21/09/2026 — VE prévue : comptée des deux côtés, devis étiqueté.]
+- `CAD170` — [TRANCHÉ 21/09/2026 — recharge nocturne : dimensionner la batterie pour la couvrir.]
+- `CAD171` — [TRANCHÉ 21/09/2026 — créneau déclaré sans chargeur : étaler sur tout le créneau.]
+- `CAD173` — [TRANCHÉ 21/09/2026 — lot des 13 réglages du calcul et du contenu.]
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
 - `SOLMVP3` — Fin du mécanisme d'édition (un seul produit)
@@ -746,12 +773,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (395)**
+**Open — to build (368)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
-- `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
-- `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
 - `CAD4` — « Client joint » et « Intéressé » sont deux mots pour le même effet moteur
 - `CAD5` — Réponse « Ne plus me contacter » sur toutes les cadences
 - `CAD6` — Réponse « Plus tard — pas maintenant » (la plus fréquente du résidentiel), avec le…
@@ -762,11 +787,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD11` — Raccourci « Numéro invalide / a bloqué » sur la touche, et `est_junk` visible
 - `CAD12` — « Le client accepte » : l'issue la plus importante oblige à quitter l'écran de relance
 - `CAD13` — La précision « Répondeur » / « Occupé » est effacée dès que Meryem tape une note
-- `CAD14` — L'issue « Visite acceptée » n'a aucun libellé dans l'historique — ni dans le journal…
 - `CAD15` — Le journal d'appel de la fiche arrête des cadences sans rien annoncer
 - `CAD16` — Sur le DERNIER réveil (J60), « Pas de réponse » promet un réveil suivant qui n'existe…
 - `CAD17` — Cause commune : les phrases « suite » sont écrites PAR CADENCE, le comportement dépend…
-- `CAD18` — Le lead qui répond au message d'identité AVANT l'appel J0+3 min ne reçoit jamais…
 - `CAD19` — Un lead du week-end voit trois jours de protocole s'écraser sur le lundi
 - `CAD20` — La règle « jamais plus d'un appel ET un message par jour » est écrite en français et…
 - `CAD21` — L'heure imposée d'une touche est effacée dès qu'elle est repoussée d'un jour
@@ -793,16 +816,11 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD42` — Un férié non récurrent bloque la même date TOUTES les années — et cocher « Récurrent »…
 - `CAD43` — Le samedi est totalement fermé, alors que le dimanche est ouvert par exception
 - `CAD44` — [TRANCHÉ 21/09/2026 — agir en avance : Appeler/WhatsApp/Reporter ouverts, « Fait »…
-- `CAD45` — Traiter par écrit une touche « appel » impose quand même de répondre « Joint / Non…
 - `CAD46` — « Reporter au » et « À rappeler le… » déplacent TOUT le plan, et aucun écran ne le dit
 - `CAD47` — « Sauter » n'explique pas ce qu'il fait : Meryem peut croire qu'elle éteint la cadence
 - `CAD48` — Le champ « Relance le » de la fiche ment sur ce qu'il fait
-- `CAD49` — L'action en masse « définir la relance » écrit une date que le moteur écrase
 - `CAD50` — « Annuler » et « Arrêter » n'existent que sur la fiche du lead
 - `CAD51` — « Relancer la cadence » peut TUER une cadence en cours, en silence et sans motif
-- `CAD52` — [TRANCHÉ 21/09/2026 — pas de variante de rythme — mesurer d'abord.]
-- `CAD53` — [TRANCHÉ 21/09/2026 — l'éditeur ouvre l'ajout/suppression de barreau et la case…
-- `CAD54` — Réattribuer un lead à un autre commercial : personne ne sait ce que deviennent ses…
 - `CAD55` — « Relancer la cadence — Après devis » depuis la fiche crée des touches SANS devis
 - `CAD56` — Un devis corrigé et renvoyé ne redate rien : le client reçoit « je classe ? » deux…
 - `CAD57` — [TRANCHÉ 21/09/2026 — validité J+30 pour un dossier financé, J+14 sinon.]
@@ -824,9 +842,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD80` — « Appeler » fait QUITTER l'application, et la note en cours est perdue
 - `CAD81` — La langue du lead n'est jamais affichée avant de décrocher
 - `CAD82` — Le bouton « Appeler » se désactive en silence, et la préférence du client n'atteint pas…
-- `CAD83` — La file du jour trie par heure ; la priorité et le score affichés ne servent à rien
 - `CAD84` — La question « message ouvert ? » présume le canal suggéré
-- `CAD85` — Les écrans quotidiens de la cadence ne sont couverts par aucun test mobile
 - `CAD86` — Quatre écrans de la cadence n'ont été ouverts par personne pendant l'audit
 - `CAD87` — Rien ne mesure ce qui prouverait que la cadence marche
 - `CAD88` — Le KPI de premier contact neutralise le week-end : un lead qui a attendu 60 heures…
@@ -841,7 +857,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD99` — Afficher la liste des cadences échues (moitié écran de CAD75)
 - `CAD100` — Afficher les KPI touche × heure × jour × canal (moitié écran de CAD87)
 - `CAD101` — Le client envoie sa facture ou son adresse sur WhatsApp : aucun geste pour…
-- `CAD102` — Après l'appel du filet resté sans réponse, l'ERP réclame un devis pour un client jamais…
 - `CAD103` — Un lead créé déjà « Contacté » n'entre dans aucun protocole, et rien ne le dit
 - `CAD104` — Un lead NEUF créé dans Odoo est refusé en silence par la cadence, et servi par l'écran…
 - `CAD105` — [TRANCHÉ 21/09/2026 — la sync Odoo démarre la cadence des leads neufs.]
@@ -850,10 +865,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD108` — [TRANCHÉ 21/09/2026 — l'étage 3 exclut le miroir Odoo, comme l'étage 2.]
 - `CAD111` — Le message qui propose la visite part sans laisser aucune trace, et son lien wa.me…
 - `CAD112` — Deux onglets portent le même nom et montrent deux choses différentes
-- `CAD113` — Dans l'éditeur de cadence, une erreur serveur s'affiche en toast générique
-- `CAD114` — Le canal « Visite » est proposé à la configuration et ne déclenche rien
 - `CAD115` — La file qui lit les signaux est fermée à la personne qui relance
-- `CAD116` — Le rappel de 08:30 ne donne qu'un nombre — et il part aussi chez qui ne peut pas le…
 - `CAD117` — « X leads sans cadence » n'existe nulle part : le refus se lit fiche par fiche
 - `CAD118` — On mesure si les touches sont cochées, jamais si elles joignent quelqu'un
 - `CAD119` — La vraie date de création Odoo finit dans une note, pas dans un champ
@@ -879,33 +891,21 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD140` — Le « score d'engagement client » a abandonné le seul signal comportemental qu'il devait…
 - `CAD142` — Le Journal du plan de relance ne mentionne jamais les visites, que la Frise affiche…
 - `CAD144` — Un achat de coopérative ou un comité industriel n'a qu'UN seul contact dans le CRM
-- `CAD147` — T0 — Le contrat du panneau d'appel, livré SEUL et en premier (PACT10)
-- `CAD148` — T1 — L'endpoint « questions à poser sur cet appel »
-- `CAD149` — T2 — Migration « vague 1 » : les champs qui manquent, et les SIX endroits à tenir
 - `CAD150` — T3 — Les champs captés par le site sont figés en lecture seule, même quand ils sont…
 - `CAD151` — T4 — `appelGuidance.js` : le contenu du script, sur le patron de `visiteGuidance.js`
 - `CAD152` — T5 — `PanneauScriptAppel.jsx` : le script sous les yeux pendant l'appel
 - `CAD153` — T9 — Les tests qui figent le script guidé
-- `CAD154` — Vague 2 des champs, à ouvrir seulement après la vague 1
 - `CAD155` — Pendant le Ramadan, l'appel du soir n'existe pas — aucun script ne le dit
 - `CAD156` — « Je vous rappelle jeudi à 18 h » : l'heure promise n'a aucun champ
 - `CAD157` — Dire à l'écran ce qui n'est PAS compté
 - `CAD158` — « Votre facture, c'est pour un mois ou pour deux ? » — la périodicité n'est nulle part
 - `CAD159` — [TRANCHÉ 21/09/2026 — champs du site TOUJOURS éditables, jamais reposés.]
-- `CAD160` — [TRANCHÉ 21/09/2026 — vague 1 confirmée telle quelle.]
 - `CAD161` — [TRANCHÉ 21/09/2026 — panneau résidentiel d'abord, agricole/industriel en seconde…
 - `CAD162` — [TRANCHÉ 21/09/2026 — ordre de l'appel 1 : facture, été, occupation, toit, objectif.]
 - `CAD163` — [TRANCHÉ 21/09/2026 — 82-21 : rien de spontané, une phrase factuelle sans tarif si le…
 - `CAD164` — [TRANCHÉ 21/09/2026 — locataire : demander le propriétaire, sinon « Perdu — Locataire…
-- `CAD165` — T6 — Quatre correctifs du moteur horaire, tous visibles sur le chiffre client
-- `CAD166` — T7 — Le pro qui donne ses kWh sur le site reste « incomplet » dans l'ERP
-- `CAD167` — T8 — La liste des distributeurs devient les SRM régionales, et « autre » cesse de…
 - `CAD168` — Deux lignes fixes de la facture ne sont jamais dites, et elles creusent l'écart entre…
-- `CAD169` — [TRANCHÉ 21/09/2026 — VE prévue : comptée des deux côtés, devis étiqueté.]
-- `CAD170` — [TRANCHÉ 21/09/2026 — recharge nocturne : dimensionner la batterie pour la couvrir.]
-- `CAD171` — [TRANCHÉ 21/09/2026 — créneau déclaré sans chargeur : étaler sur tout le créneau.]
 - `CAD172` — [TRANCHÉ 21/09/2026 — occupation non posée : présence supposée + bandeau sur la…
-- `CAD173` — [TRANCHÉ 21/09/2026 — lot des 13 réglages du calcul et du contenu.]
 - `CAD174` — La moitié écran de la migration : un champ qui n'est pas déclaré à la fiche est…
 - `CAD175` — Seconde livraison du panneau d'appel : agricole (pompage) et industriel
 - `CADM1` — Relecture darija par un locuteur natif

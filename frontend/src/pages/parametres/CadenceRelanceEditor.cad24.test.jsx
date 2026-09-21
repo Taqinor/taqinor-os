@@ -4,13 +4,18 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
-/* CAD24 — l'écran montre ENFIN quelle touche part le dimanche.
+/* CAD24 — l'écran montre quelle touche part le dimanche, ET dit la règle.
 
    `dimanche_ok` est la vraie commande du rendez-vous dominical du Protocole
    v3 : l'API la sert, mais l'éditeur ne l'affichait pas — le fondateur
    réglait une « Heure cible » sans voir QUELLE ligne tombe le dimanche, et
    cette heure était de toute façon écartée par le calcul (corrigé côté
    serveur par la même tâche).
+
+   La CASE elle-même est posée par CAD53 (décision fondateur du même jour :
+   l'éditeur OUVRE `dimanche_ok` à l'édition) ; CAD24 y ajoute ce qui manquait
+   encore — la MENTION de la règle sous la cadence — et verrouille ici que la
+   case reflète bien le contrat partagé.
 
    CONTRAT PARTAGÉ (PACT10) : la réponse simulée ici est LUE dans
    `apps/parametres/contract_samples/cadence_relance_v2.json`, le fichier que
@@ -63,7 +68,7 @@ describe('CAD24 — la case « dimanche » et la mention de la règle', () => {
 
   it('affiche une case « Autorisée le dimanche » par étape', async () => {
     await renderEditor()
-    const cases = await screen.findAllByRole('checkbox', {
+    const cases = await screen.findAllByRole('switch', {
       name: /Autorisée le dimanche \(16 h-19 h\)/,
     })
     expect(cases).toHaveLength(LIGNES.length)
@@ -73,27 +78,15 @@ describe('CAD24 — la case « dimanche » et la mention de la règle', () => {
     async () => {
       await renderEditor()
       const dominicale = LIGNES.find(l => l.dimanche_ok)
-      const cochee = await screen.findByRole('checkbox', {
+      const cochee = await screen.findByRole('switch', {
         name: `Autorisée le dimanche (16 h-19 h) — étape ${dominicale.ordre}`,
       })
       expect(cochee).toBeChecked()
       const autre = LIGNES.find(l => !l.dimanche_ok)
-      expect(screen.getByRole('checkbox', {
+      expect(screen.getByRole('switch', {
         name: `Autorisée le dimanche (16 h-19 h) — étape ${autre.ordre}`,
       })).not.toBeChecked()
     })
-
-  it('la case est en LECTURE seule — aucun PATCH n\'en sort', async () => {
-    await renderEditor()
-    const dominicale = LIGNES.find(l => l.dimanche_ok)
-    const cochee = await screen.findByRole('checkbox', {
-      name: `Autorisée le dimanche (16 h-19 h) — étape ${dominicale.ordre}`,
-    })
-    expect(cochee).toHaveAttribute('readonly')
-    const { default: userEvent } = await import('@testing-library/user-event')
-    await userEvent.setup().click(cochee)
-    expect(parametresApi.updateCadenceRelanceEtape).not.toHaveBeenCalled()
-  })
 
   it('affiche la mention de la règle sous la cadence', async () => {
     await renderEditor()

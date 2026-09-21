@@ -57,10 +57,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/calepinage/views/reglementaire.py:136` | get_or_create | DossierReglementaire.objects | calepinage, company, gabarit |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/services.py:205` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/views.py:2466` | get_or_create | LeadTag.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2480` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2492` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2549` | get_or_create | Canal.objects | cle, company |
+| `backend/django_core/apps/crm/views.py:2488` | get_or_create | LeadTag.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2502` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2514` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2571` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/customfields/blueprint.py:201` | update_or_create | modele.objects |  |
 | `backend/django_core/apps/customfields/catalogue.py:99` | get_or_create | CustomObjectDef.objects | code, company |
 | `backend/django_core/apps/customfields/catalogue.py:106` | get_or_create | CustomFieldDef.objects | code, company, module |
@@ -130,7 +130,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/parametres/models_documents.py:102` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_payment_terms.py:89` | get_or_create | cls.objects | company, delai_jours, escompte_pct, fin_de_mois |
 | `backend/django_core/apps/parametres/models_pos.py:72` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/parametres/models_relance.py:316` | get_or_create | cls.objects | cadence, company, ordre |
+| `backend/django_core/apps/parametres/models_relance.py:328` | get_or_create | cls.objects | cadence, company, ordre |
 | `backend/django_core/apps/parametres/models_tariff.py:187` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_tariff.py:189` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_taxes.py:103` | get_or_create | cls.objects | code, company |

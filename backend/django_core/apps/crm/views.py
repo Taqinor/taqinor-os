@@ -1042,7 +1042,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                              # MORTE et les deux actions retomberaient sur le
                              # `return [IsAdminRole()]` final — 403 pour la
                              # Commerciale, qui est justement celle qui lit.
-                             'visites', 'message_visite'):
+                             'visites', 'message_visite',
+                             # CAD148 — le PANNEAU D'APPEL est une LECTURE de
+                             # la fiche (script, questions, équipements) :
+                             # même garde fine que l'historique. Sans cette
+                             # ligne il retomberait sur le `[IsAdminRole()]`
+                             # final et la commerciale — qui est justement
+                             # celle qui appelle — serait refusée (bug CI #25).
+                             'panneau_appel'):
             # CRX19/CRX37 — l'historique COMPLET d'un lead (et ses jalons
             # devis, qui sont le même historique vu côté ventes) exige
             # ``crm_voir``. get_permissions() PRIME sur le permission_classes
@@ -2377,6 +2384,21 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                detail=f'Export leads (.xlsx) — {len(ids)} ligne(s)')
         return export_leads_xlsx(leads)
 
+    # ── CAD-L ── CAD148 — le panneau d'appel guidé.
+    @action(detail=True, methods=['get'], url_path='panneau-appel',
+            permission_classes=[IsAnyRole])
+    def panneau_appel(self, request, pk=None):
+        """CAD148 — tout ce qu'un écran d'appel attend du serveur, en UNE
+        réponse : segment, touche en cours, script rendu, questions encore à
+        poser (jamais une déjà répondue) et, par équipement, « compté dans
+        l'étude » ou le champ qui lui manque.
+
+        Contrat : `apps/crm/contract_samples/panneau_appel.json` (CAD147).
+        Lecture seule, company-scopée par `get_object()` — aucune écriture."""
+        from .panneau_appel import panneau_appel as _panneau
+        lead = self.get_object()
+        return Response(_panneau(lead, request=request, user=request.user))
+
 
 class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Étiquettes de lead gérées (Paramètres → CRM). Lecture tout rôle,
@@ -3030,10 +3052,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # que l'écran n'offre pas était un mur sans porte.
         # L'erreur NOMME le champ fautif (règle fondateur 08/09/2026) —
         # jamais un « non enregistré » générique.
+        # EXCEPTION CAD45 — la touche d'appel TRAITÉE PAR ÉCRIT : le message de
+        # cette touche a été ouvert depuis l'ERP (trace RLC3). Aucun appel n'a
+        # eu lieu, exiger « Joint / Non joint » demanderait l'issue d'un appel
+        # qui n'existe pas. L'issue reste obligatoire sur un appel réellement
+        # passé — c'est elle qui alimente l'adhérence CKP3.
         if (statut == RelanceEtape.Statut.FAIT
                 and etape.canal == RelanceEtape.Canal.APPEL
                 and etape.cadence != 'generique'
-                and not outcome):
+                and not outcome
+                and not _message_ouvert_sur_touche(etape)):
             return Response(
                 {'erreurs': {'outcome': "Issue de l'appel obligatoire : "
                                         'Joint, Non joint, À rappeler, '
@@ -3053,7 +3081,34 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                     {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
                                   'heure HH:MM optionnelle).'},
                     status=status.HTTP_400_BAD_REQUEST)
-        from .services import marquer_etape_relance, reporter_prochaine_touche
+        from .services import (est_etape_de_filet, marquer_etape_relance,
+                               reporter_prochaine_touche)
+        # CAD3 — « À rappeler le… » sur une étape de FILET la REPORTE, elle ne
+        # la consomme pas. L'écran promet « L'étape est déplacée à la date
+        # choisie » ; la clore rendait la main au filet, qui posait une AUTRE
+        # étape, renommée « Décider la suite — perdu (motif) ou relance
+        # ultérieure » par la ceinture anti-tapis-roulant, avant que la date
+        # choisie ne lui soit appliquée. Un client qui dit « rappelez-moi la
+        # semaine prochaine » n'a rien arbitré. Même chemin que le bouton
+        # « Reporter » (action `reporter` plus bas) : la touche garde son
+        # identité, sa cadence et son libellé.
+        if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
+                and quand is not None and est_etape_de_filet(etape)):
+            reportee = reporter_prochaine_touche(
+                etape.lead, request.user, quand, etape=etape)
+            if reportee is not None:
+                etape = reportee
+                if note:
+                    etape.note = note
+                    etape.save(update_fields=['note'])
+                data = self.get_serializer(etape).data
+                data['prochaine_touche'] = {
+                    'due_at': (etape.due_at.isoformat()
+                               if etape.due_at else None),
+                    'due_date': etape.due_date.isoformat(),
+                    'canal': etape.canal,
+                }
+                return Response(data)
         etape = marquer_etape_relance(
             etape, request.user, statut, note=note, outcome=outcome,
             body=body)
@@ -4516,3 +4571,32 @@ class AppareilEquipeViewSet(mixins.ListModelMixin, mixins.CreateModelMixin,
         reponse.set_cookie(COOKIE_APPAREIL, appareil.appareil_id,
                            httponly=False, **commun)
         return reponse
+
+
+# ── CAD-D ── CAD45 — une touche « appel » traitée PAR ÉCRIT ──────────────────
+
+def _message_ouvert_sur_touche(etape):
+    """CAD45 — le message de CETTE touche a-t-il été ouvert depuis l'ERP ?
+
+    Les boutons « Appeler » et « WhatsApp » sont rendus sur CHAQUE ligne quel
+    que soit le canal : le geste est donc déjà libre, et la commerciale écrit
+    parfois au lieu d'appeler. L'issue restait pourtant OBLIGATOIRE dès que le
+    canal vaut « appel » — elle devait répondre « Joint / Non joint » à propos
+    d'un appel qu'elle n'avait pas passé. C'est ce frottement-là qui gênait,
+    pas une impossibilité d'agir.
+
+    La preuve est celle que RLC3 écrit déjà : l'activité « WhatsApp ouvert »
+    portant le préfixe de cette touche, posée par le clic humain — jamais une
+    mémoire d'écran. Le préfixe vient de ``services`` (la même fonction que
+    l'écriture), jamais d'un second littéral.
+
+    Coût : une requête d'existence, et seulement quand la clôture arrive SANS
+    issue sur un canal « appel » — le seul cas où la réponse sert.
+    """
+    from .models import LeadActivity
+    from .services import prefixe_activite_message_ouvert
+    return LeadActivity.objects.filter(
+        company_id=etape.company_id, lead_id=etape.lead_id,
+        kind=LeadActivity.Kind.WHATSAPP,
+        body__startswith=prefixe_activite_message_ouvert(etape),
+    ).exists()
