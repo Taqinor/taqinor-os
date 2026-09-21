@@ -62,7 +62,13 @@ def _forme():
     })
 
 
-@extend_schema(responses={200: _forme()})
+#: UNE instance partagée par toutes les réponses qui servent l'agrégat CAL247 :
+#: deux `inline_serializer` du MÊME nom = « identical names, different identities »
+#: dans le schéma OpenAPI (garde `check_openapi_schema`).
+_FORME_DOSSIERS = _forme()
+
+
+@extend_schema(responses={200: _FORME_DOSSIERS})
 @action(detail=True, methods=['get'], url_path='dossiers-reglementaires',
         permission_classes=[PeutVoirCalepinage])
 def dossiers_reglementaires(self, request, pk=None):
@@ -189,7 +195,7 @@ def generer_dossier(self, request, pk=None):
 
 # ── CALX41 — ENREGISTRER LES CHAMPS À COMPLÉTER ───────────────────────────
 
-@extend_schema(responses={200: _forme()})
+@extend_schema(responses={200: _FORME_DOSSIERS})
 @action(detail=True, methods=['post'], url_path='champs-dossier',
         permission_classes=[PeutGererCalepinage])
 def champs_dossier(self, request, pk=None):
