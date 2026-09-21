@@ -86,7 +86,6 @@ APPS_PARQUEES = (
     'rh',
     'sante',
     'scm',
-    'statuspage',
     'territoires',
     'transport',
     'veille_ao',
@@ -117,7 +116,7 @@ GROUPES = {
     'Supply & retail': ('promotions', 'pos', 'transport', 'douane', 'scm'),
     'Technique': (
         'grc', 'dataquality', 'mlops', 'ai_governance', 'extensions',
-        'migration', 'statuspage',
+        'migration',
     ),
     'Verticaux': (
         'agriculture', 'education', 'hospitality', 'immobilier', 'mrp',

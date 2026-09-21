@@ -149,7 +149,7 @@ celles de `GROUPES` dans `core/parked.py`, et chaque famille est une lane de coq
 | `ai_governance` | Copilotes IA contextuels et surveillance des modèles. |
 | `extensions` | Catalogue global (lecture seule) de packages d'extension no-code. |
 | `migration` | Projets de migration ERP sortants (Odoo/Sage/Excel) avec rapport de réconciliation. |
-| `statuspage` | Page de statut publique : composants, incidents, frise 90 jours, abonnements. |
+| ~~`statuspage`~~ | **RESTE (fondation, décision orchestrateur 21/09)** : `core` lit ses modèles (`sla.py`, `tasks.py`, registre de fiabilité, 6 modules de tests) par `get_model('statuspage', …)` ; la sortir aurait rendu un uptime de 100 % non dérivé. 48 apps sortent, pas 49. |
 
 ### Verticaux — 7 apps *(coquillées par SOLMVP36)*
 
