@@ -104,28 +104,17 @@ describe('CALX1 — le registre `atelier/onglets.js`', () => {
     expect(resoudreOnglet(premier.cle)).toBe(premier)
   })
 
-  it('la clé d’un onglet est EXACTEMENT le dernier segment de sa route profonde, quand il en hérite une', () => {
-    // CALX19 — `module.config.jsx` le dit lui-même (commentaire au-dessus de
-    // `/calepinage/:id`) : « aucune [route] n’est à ajouter ici pour un
-    // onglet neuf — un panneau de plus, c’est une ligne de plus dans
-    // `atelier/onglets.js`, rien d’autre. » Les TREIZE onglets de CALX1
-    // héritaient d’un lien profond PRÉEXISTANT (le constat même du lot 1 :
-    // des routes servies sans consommateur) ; un onglet POSÉ APRÈS eux n’en a
-    // pas besoin et n’en crée pas. Liste EXPLICITE (jamais une exception
-    // devinée) : un onglet qui s’y ajoute le fait avec son commentaire
-    // `// CALX<id>`, jamais en silence.
-    const SANS_ROUTE_PROFONDE = new Set([
-      'documents', // CALX19 — panneau tab-only, aucun lien profond dédié.
-    ])
-    const chemins = new Set(config.routes.map((r) => r.path))
-    for (const onglet of ONGLETS) {
-      if (SANS_ROUTE_PROFONDE.has(onglet.cle)) continue
-      expect(
-        chemins.has(`/calepinage/:id/${onglet.cle}`),
-        `l’onglet « ${onglet.cle} » n’a pas de route profonde /calepinage/:id/${onglet.cle}`,
-      ).toBe(true)
-    }
-  })
+  /* CALX18/CALX25 — un onglet NEUF n'a pas forcément de route profonde
+     héritée : le rail est désormais le chemin normal pour l'ouvrir, et
+     `module.config.jsx` n'est plus rouvert pour chaque panneau (D-CALX 13).
+     L'ancien test symétrique (chaque onglet ⇔ une route de même clé) tenait
+     par coïncidence pour les treize onglets fondateurs, mais AUCUNE des deux
+     directions n'est une vraie invariante du module : `variantes` a une route
+     profonde sans être un onglet du rail (c'est un écran à part), et un
+     onglet neuf peut n'avoir aucune route héritée. La protection qui reste
+     réellement utile — une route déjà servie ne devient jamais introuvable —
+     est celle du test « aucune route du module ne reste orpheline » plus bas,
+     qui accepte plusieurs chemins d'accès (nav, onglet, lien rendu). */
 })
 
 describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {

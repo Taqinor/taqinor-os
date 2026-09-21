@@ -157,6 +157,85 @@ describe('CAL96 — l’écran', () => {
   })
 })
 
+/* ── 3. CALX52 — la hauteur de toit supposée, enfin lisible ─────────────── */
+
+const MENTION_HYPOTHESE = 'hauteur de toit supposée à 6 m (2 étages × 3 m), '
+  + 'non mesurée'
+
+// Un objet d'ENVIRONNEMENT (CAL67, référencé au sol) : sa hauteur EFFECTIVE
+// dépend de `roofHeightM` — contrairement à un obstacle de toiture (CAL66),
+// qui est pris tel quel. C'est le cas qui rend le 4ᵉ argument observable.
+const ZONE_AVEC_ENVIRONNEMENT = {
+  ...ZONE,
+  obstacles: [],
+}
+const ENVIRONNEMENT = [
+  { label: 'Arbre voisin', kind: 'arbre', centerLng: -7.598, centerLat: 33.6, heightM: 10 },
+]
+
+const rendreAvecEnvironnement = () => {
+  layout.mockResolvedValue({
+    data: {
+      roof_layout: {
+        pin: { lat: 33.6, lng: -7.6 },
+        activeAreaId: 'z1',
+        zones: [ZONE_AVEC_ENVIRONNEMENT],
+        environment: ENVIRONNEMENT,
+      },
+    },
+  })
+  return rendre()
+}
+
+describe('CALX52 — la hauteur de toit supposée du diagramme', () => {
+  it('la mention est présente au montage, sans aucune saisie', async () => {
+    await rendreAvecEnvironnement()
+    await screen.findByTestId('cal-course-soleil')
+
+    expect(screen.getByTestId('cal-course-soleil-hauteur-toit-provenance'))
+      .toHaveTextContent(MENTION_HYPOTHESE)
+    expect(screen.getByTestId('cal-course-soleil-hauteur-toit-valeur'))
+      .toHaveTextContent('6 m')
+  })
+
+  it('aucune obstruction proche n’est tracée sans que la hauteur employée soit lisible', async () => {
+    await rendreAvecEnvironnement()
+    await screen.findByTestId('cal-course-soleil')
+
+    const marqueurs = screen.getAllByTestId('cal-sundiagram-obstruction')
+    expect(marqueurs.length).toBeGreaterThan(0)
+    const lignes = screen.getAllByTestId(/^cal-course-soleil-obstruction-hauteur-/)
+    expect(lignes).toHaveLength(marqueurs.length)
+    for (const ligne of lignes) {
+      expect(ligne).toHaveTextContent(MENTION_HYPOTHESE)
+    }
+  })
+
+  it('saisir 9 m change les angles d’élévation calculés ET la provenance affichée', async () => {
+    await rendreAvecEnvironnement()
+    await screen.findByTestId('cal-course-soleil')
+
+    const cercleAvant = screen.getAllByTestId('cal-sundiagram-obstruction')[0]
+      .querySelector('circle')
+    const cyAvant = cercleAvant.getAttribute('cy')
+
+    fireEvent.change(screen.getByTestId('cal-course-soleil-hauteur-toit-champ'),
+      { target: { value: '9' } })
+
+    expect(screen.getByTestId('cal-course-soleil-hauteur-toit-provenance'))
+      .toHaveTextContent('Hauteur de toit saisie : 9 m.')
+    expect(screen.getByTestId('cal-course-soleil-hauteur-toit-valeur'))
+      .toHaveTextContent('9 m')
+
+    const cercleApres = screen.getAllByTestId('cal-sundiagram-obstruction')[0]
+      .querySelector('circle')
+    // La hauteur EFFECTIVE de l'objet d'environnement change (10 − 6 = 4 m
+    // devient 10 − 9 = 1 m) : l'angle d'élévation calculé, donc la position
+    // tracée, en est la conséquence directe — jamais un second calcul ici.
+    expect(cercleApres.getAttribute('cy')).not.toBe(cyAvant)
+  })
+})
+
 describe('CAL96 — l’écran est ATTEIGNABLE', () => {
   it('le module déclare la route `/calepinage/:id/course-soleil` avec ses rôles', async () => {
     const { default: config } = await import('../module.config.jsx')

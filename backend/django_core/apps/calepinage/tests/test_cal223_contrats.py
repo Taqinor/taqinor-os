@@ -88,6 +88,11 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_du_devis.json':
         "endpoint d'une AUTRE app (apps.ventes, DevisSerializer) — couvert "
         'par apps/ventes/tests/test_calx46_calepinage_du_devis.py',
+    # CALX25
+    'calepinage_releve.json':
+        'enveloppe (`releve_en_ligne`) lue sur un `ReleveTerrain` SAUVÉ en '
+        'base (photos, auteur) — la géométrie PURE (`resoudre_chaines`) est '
+        'affirmée sans base par tests/test_calx25_releve_contrat.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
