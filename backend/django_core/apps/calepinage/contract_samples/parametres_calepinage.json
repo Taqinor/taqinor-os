@@ -23,6 +23,20 @@
         "retrait_m": 0.0,
         "hauteur_m": null,
         "source": "Arrêté préfectoral n° 2026-14, art. 7"
+      },
+      "souche_type": {
+        "libelle": "Souche de cheminée type",
+        "nature": "INTERDITE",
+        "genre": "bande",
+        "largeur_m": 0.6,
+        "cote": "perimetre",
+        "sommets": [],
+        "retrait_m": 0.8,
+        "hauteur_m": 1.1,
+        "source": "Consigne de pose interne v3, fiche souche",
+        "type": "cheminee",
+        "forme": "rectangle",
+        "longueur_m": 0.9
       }
     },
     "gabarits_disposition": {

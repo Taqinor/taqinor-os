@@ -85,7 +85,7 @@ import {
 } from '../lib/estimatorBrainV8';
 import { isSimplePolygon, roofAreaLabel, zoomToFitRing, type LngLat } from '../lib/roof';
 import { inferZoneFacingAmong } from '../lib/roofAdjacency';
-import { obstacleRing, type Obstacle } from '../lib/obstacles';
+import { type Obstacle } from '../lib/obstacles';
 import { areaLabel } from '../lib/roofAreas';
 import { buildSatelliteStyle, imageryAttribution, resolveImageryProvider } from '../lib/roofConfig';
 import { type RoofTypeSelect } from '../lib/roofTypeSelect';
@@ -119,6 +119,7 @@ import {
   type AreaRecord,
   type RenderConfigOpts,
   obstructionClearancesFor,
+  anneauxObstruction, // CALX103/104 câblage — la FORME réelle d'un obstacle fait foi
 } from './roofPro11/types';
 import {
   GOLD,
@@ -129,7 +130,18 @@ import { $, fmt, fmtMad, esc } from './roofPro11/dom';
 import { type Ctx } from './roofPro11/context';
 import { createGraphs } from './roofPro11/graphs';
 import { createPrefill } from './roofPro11/prefill';
-import { createZones, exclusionObstructionRings, exclusionColor, exclusionZoneRing } from './roofPro11/zones';
+import {
+  createZones,
+  exclusionObstructionRings,
+  exclusionColor,
+  exclusionZoneRing,
+  empriseModuleENU, // CALX403 câblage
+  type ModulePose, // CALX403 câblage
+} from './roofPro11/zones';
+import { etiquette, registreAtelier } from './roofPro11/numerotation'; // CALX403 câblage — le repère d'un module vient du DOCUMENT
+import { poserSourceCellulesSurAllees } from './roofPro11/teinteAllees'; // CALX403 câblage
+import { creerInfoBulleOmbrage } from './roofPro11/infoBulleOmbrage'; // CALX122 câblage
+import { fondDuDocument, motifFondRefuse } from './roofPro11/fondDocument'; // CALX107 câblage
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
@@ -147,7 +159,15 @@ import {
   type DocumentMoteur,
 } from './roofPro11/entreeMoteur';
 import { createObstaclesUi } from './roofPro11/obstaclesUi';
-import { createMesureUi, formatMeasure, isMeasureValid, type Measurement, type MeasureKind } from './roofPro11/mesureUi';
+import {
+  createMesureUi,
+  formatMeasure,
+  gestesMesure, // CALX128 câblage
+  isMeasureValid,
+  type Measurement,
+  type MeasureKind,
+} from './roofPro11/mesureUi';
+import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
@@ -404,8 +424,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // (dilatés de leur retrait SAISI) rejoignent les obstructions du pavage, donc le compte
   // de modules bouge IMMÉDIATEMENT. Une zone PRÉFÉRÉE n'en produit aucun : elle ne change
   // JAMAIS un compte (garantie CAL68).
+  // CALX103/CALX104 câblage — le pavage évite désormais la FORME RÉELLE de l'obstacle
+  // (contour d'un polygone, disque d'un cercle) et plus sa boîte englobante : un obstacle
+  // dessiné rond retirait jusqu'ici son rectangle circonscrit, donc des modules posables.
+  // `anneauxObstruction` retombe sur `obstacleRing` pour un rectangle (et pour un contour
+  // manquant/bancal) : un dossier sans forme saisie repave à l'identique.
   const obstructionRings = (): LngLat[][] => [
-    ...obstacles.map(obstacleRing),
+    ...anneauxObstruction(obstacles), // CALX103/104 câblage
     ...exclusionObstructionRings(ctx.exclusionZones),
   ];
   // PV61 — dégagement (m) de CHAQUE obstacle selon son TYPE (cheminée > antenne), dans le
@@ -1280,7 +1305,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // à hauteur saisie ou un objet d'environnement OMBRE réellement, donc toute
     // modification doit recalculer la matrice de dérate + la carte d'accès solaire.
     recomputeShading: () => shadingUi.recomputeShading(),
+    // CALX403 câblage — les modules POSÉS (repère + emprise au sol) : sans eux, le bandeau
+    // d'allée ne parlait QUE du couloir et ne pouvait nommer aucun module en travers.
+    modulesPoses: () => modulesPosesPourAllees(), // CALX403 câblage
   });
+  // CALX403 câblage — et la scène 3D teinte ces mêmes modules (module `teinteAllees.ts`).
+  // Source relue à CHAQUE rendu : une allée tracée entre deux rendus se voit aussitôt.
+  poserSourceCellulesSurAllees(ctx, () => cellulesSurAlleesCourantes()); // CALX403 câblage
   const redrawObstacles = obstaclesUi.redrawObstacles;
   // CAL69 — redessine le calque des zones d'exclusion (même cadence que les obstacles).
   const redrawExclusionZones = obstaclesUi.redrawExclusionZones;
@@ -1396,19 +1427,84 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const addVertex = mapDraw.addVertex;
   const geocode = mapDraw.geocode;
 
+  // ═══════════ CALX128 câblage — L'ATELIER AU CLAVIER SUIT L'OUTIL COURANT ═══════════
+  // `mapDraw` sert les gestes du mode `trace` et attend que l'hôte (a) lui DISE quel outil
+  // est actif et (b) lui DONNE les gestes des autres modes. Sans ces deux lignes, le plan
+  // clavier restait bloqué sur « trace » : les raccourcis de mesure existaient et testés,
+  // mais aucune frappe ne les atteignait jamais.
+  //
+  // Les gestes de MESURE sont fournis par `mesureUi.gestesMesure` ; obstacles et zones
+  // n'ont PAS de jeu de gestes dans le dépôt — non enregistrés, `mapDraw` annonce alors
+  // proprement que le geste n'y est pas disponible (jamais un geste inventé ici).
+  mapDraw.enregistrerGestesClavier('mesure', gestesMesure(mesureUi, mapDraw.curseurClavier)); // CALX128 câblage
+
+  /** Le mode clavier DÉDUIT de l'état de l'atelier — jamais un mode mémorisé à part, qui
+   *  divergerait au premier bouton câblé ailleurs (l'obstacle et la zone sont armés par
+   *  `obstaclesUi`, pas par cette entrée). */
+  function modeClavierCourant(): ModeClavier {
+    if (mesureUi.isActive()) return 'mesure';
+    if (ctx.obstacleMode) return ctx.pendingZoneNature ? 'zone' : 'obstacle';
+    return 'trace';
+  }
+  function syncModeClavier() {
+    mapDraw.setModeClavier(modeClavierCourant()); // CALX128 câblage
+  }
+  // Synchronisé en phase de CAPTURE : ce listener passe avant celui de `mapDraw` (posé en
+  // bulle sur le même document), quel que soit l'ordre de création des modules. Le mode
+  // est donc juste avant que le raccourci ne soit résolu, sans rien écouter d'autre.
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('keydown', syncModeClavier, true);
+  }
+  syncModeClavier();
+
   // CALX94 câblage — correction MANUELLE du type d'une arête. Le module crée lui-même ses
   // contrôles ; on ne lui passe PAS la carte, parce que c'est le dispatcher de clic de
   // cette entrée qui route le geste (`isEdgeMode()` / `handleMapClick`) — lui donner la
   // carte le ferait s'abonner en plus, et le clic serait traité deux fois. `redraw` est un
   // wrapper paresseux (`renderActive` est déclaré plus bas) : une correction de type
   // repeint le contour 2D et la scène, où la couleur d'arête est désormais lue.
+  // CALX99 câblage — le module DIT que `redraw` doit pointer vers la MÊME re-résolution
+  // qu'un clic sur un bouton cardinal : un azimut PRIS sur une arête doit recalculer la
+  // POSE (pavage en pente), pas seulement repeindre son affichage. Même garde que les
+  // boutons `[data-facing]` (pan en pente ET contour fermé) — sinon rien à re-poser.
   const edgesUi = createEdgesUi(ctx, {
     setStatus,
     redraw: () => {
       redrawTrace();
       renderActive();
+      if (roofType === 'pitched' && closed) pitchedRecompute(); // CALX99 câblage
     },
   });
+
+  // ═══════════ CALX122 câblage — L'OMBRAGE D'UN MODULE, AU SURVOL ═══════════
+  // `shadingUi.moduleShadeTooltip(cellIndex)` rendait un texte prêt à afficher depuis
+  // CALX122, et son en-tête disait lui-même que le câblage au survol restait un crochet :
+  // il n'existait AUCUNE info-bulle dans l'atelier. Le module `infoBulleOmbrage.ts` crée
+  // son `div` (patron `obstaclesUi`) ; ici on lui donne la cellule survolée — le MÊME
+  // hit-test que le surlignage W88 (`layoutEditor.layoutPanelAt`), pour qu'elle parle
+  // exactement du module doré sous le curseur.
+  //
+  // Sans mesure d'ombrage, `moduleShadeTooltip` DIT que rien n'est renseigné : l'info-bulle
+  // affiche cette phrase, jamais un chiffre à la place d'une mesure absente.
+  const infoBulleOmbrage = creerInfoBulleOmbrage({ hote: map.getContainer?.() ?? null });
+  map.on('mousemove', (e) => {
+    if (!ctx.layoutMode || ctx.obstacleMode || !ctx.layoutState) {
+      infoBulleOmbrage.cacher();
+      return;
+    }
+    const cellule = layoutEditor.layoutPanelAt(e.point);
+    if (cellule == null) {
+      infoBulleOmbrage.cacher();
+      return;
+    }
+    const point = (e.originalEvent ?? null) as MouseEvent | null;
+    infoBulleOmbrage.montrer(
+      shadingUi.moduleShadeTooltip(cellule), // CALX122 câblage
+      point?.clientX ?? 0,
+      point?.clientY ?? 0,
+    );
+  });
+  map.on('mouseout', () => infoBulleOmbrage.cacher());
 
   const updateCompass = () => {
     if (compassArrow) compassArrow.style.transform = `rotate(${-map.getBearing()}deg)`;
@@ -2890,6 +2986,77 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     return grid.panels.slice(0, n).map((p) => ({ cx: p.cx, cy: p.cy, face: p.face }));
   }
 
+  // ═══════ CALX403 câblage — les modules posés EN TRAVERS d'une allée, nommés et teintés ═══════
+  // `obstaclesUi` sait compter les modules qui chevauchent une allée de circulation, mais
+  // il ne connaît ni le pavage ni les numéros : c'est l'entrée qui les lui donne
+  // (`deps.modulesPoses`). On mémorise au passage la CELLULE de lattice de chaque repère,
+  // seul lien qui permette ensuite à la scène 3D de teinter les bons panneaux.
+  // Rien n'est supprimé nulle part : un module en travers est SIGNALÉ.
+
+  /** Repère → cellule de lattice, reconstruit à chaque appel de `modulesPosesPourAllees`. */
+  let celluleParRepere = new Map<string, number>();
+
+  /** Les modules posés AVEC leur cellule de lattice (l'index que `scene3d` connaît). */
+  function pavagePoseCellules(): { cellule: number; cx: number; cy: number }[] {
+    if (layoutEditor.isFreeMode()) {
+      return layoutEditor.freePanels().map((p, i) => ({ cellule: i, cx: p.cx, cy: p.cy }));
+    }
+    const grid = ctx.layoutPlan?.grid;
+    if (!grid) return [];
+    const st = ctx.layoutState;
+    if (st && st.cells.length === grid.panels.length && st.occupied.size) {
+      return [...st.occupied]
+        .filter((i) => i >= 0 && i < st.cells.length)
+        .sort((a, b) => a - b)
+        .map((i) => ({ cellule: i, cx: st.cells[i].cx, cy: st.cells[i].cy }));
+    }
+    const n = Math.max(0, Math.min(grid.panels.length, Math.round(ctx.layoutOptimalCount)));
+    return grid.panels.slice(0, n).map((p, i) => ({ cellule: i, cx: p.cx, cy: p.cy }));
+  }
+
+  /** Le repère AFFICHÉ d'un module posé : celui du document quand il en porte un (CALX111),
+   *  sinon son rang — jamais un numéro inventé. MÊME expression que `shadingUi`. */
+  function repereModulePose(rang: number): string {
+    const panId = ctx.activeAreaId;
+    return etiquette(registreAtelier.modules(panId)[rang], registreAtelier.convention(panId)) || `nº${rang + 1}`;
+  }
+
+  /** CALX403 — les modules posés vus par `obstaclesUi` : repère + emprise au sol ENU.
+   *  Sans pavage (ou sans largeur de rangée), la liste est VIDE : aucune emprise devinée. */
+  function modulesPosesPourAllees(): { modules: ModulePose[]; origine: LngLat } {
+    const plan = ctx.layoutPlan;
+    const grid = plan?.grid;
+    celluleParRepere = new Map<string, number>();
+    if (!plan || !grid || !(grid.rowWidthM > 0) || !(grid.footprintPerPanelM2 > 0)) {
+      return { modules: [], origine: (plan?.pack.origin ?? [0, 0]) as LngLat };
+    }
+    // Profondeur AU SOL d'un module : l'emprise publiée par le pavage divisée par la
+    // largeur de rangée — aucune cote de module n'est inventée ici.
+    const profondeurAuSolM = grid.footprintPerPanelM2 / grid.rowWidthM;
+    const modules = pavagePoseCellules().map(({ cellule, cx, cy }, rang) => {
+      const repere = repereModulePose(rang);
+      celluleParRepere.set(repere, cellule);
+      return {
+        repere,
+        empriseM: empriseModuleENU({ cx, cy }, plan.pack.azimuthDeg, grid.rowWidthM, profondeurAuSolM),
+      };
+    });
+    return { modules, origine: plan.pack.origin };
+  }
+
+  /** CALX403 — les CELLULES des modules en travers d'une allée, pour la teinte 3D. La
+   *  liste des repères est recalculée par `obstaclesUi`, qui rappelle `modulesPoses` :
+   *  la table repère → cellule est donc fraîche quand on la relit juste après. */
+  function cellulesSurAlleesCourantes(): number[] {
+    const reperes = obstaclesUi.modulesSurAllees();
+    const cellules: number[] = [];
+    for (const r of reperes) {
+      const c = celluleParRepere.get(r);
+      if (typeof c === 'number') cellules.push(c);
+    }
+    return cellules;
+  }
+
   /** Translate le pavage lattice ENTIER (cellules + pavage du plan) — le contour ne bouge
    *  pas, donc le mou repris est bien celui du tracé, et les index d'occupation tiennent. */
   function translaterPavage(dx: number, dy: number) {
@@ -3835,5 +4002,18 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // CALX3 — les calques réellement installés sur la carte, dans l'ordre de rendu.
     calquesDisponibles: () => calquesDisponibles(map),
     electrique: coucheElectrique, // CALX220 — pose/déplacement/retrait d'organes électriques
+    // CALX132 câblage — l'empreinte OSM du bâtiment, déposée par la page hôte
+    // (`ToitureDesign.jsx` lisait `fp.data.polygon` et JETAIT `fp.data.batiment`). Le
+    // panneau « Bâtiment » l'affiche en PROPOSITION : rien n'est écrit sans un clic.
+    setBatimentOsmPropose: (batiment) => shadingUi.setBatimentOsmPropose(batiment), // CALX132 câblage
+    // CALX111 câblage — le pan ACTIF : sans lui, `Vue2DPlan` ne pouvait pas lire les
+    // numéros du document (`registreAtelier.modules(panId)`) et rendait un plan MUET.
+    panActifId: () => ctx.activeAreaId ?? '', // CALX111 câblage
+    // CALX107 câblage — le fond que le document rouvert demande, et la pose de ce fond
+    // avec le fichier que la page hôte est allée chercher. `mapDraw.setFond` existait et
+    // n'avait AUCUN appelant : un dossier rouvert perdait son calque de fond.
+    fondDuDocument: () => fondDuDocument(), // CALX107 câblage
+    motifFondRefuse: () => motifFondRefuse(), // CALX107 câblage
+    poserFond: (fond, ressource) => mapDraw.setFond(fond, ressource), // CALX107 câblage
   });
 }

@@ -204,6 +204,10 @@ export interface LayoutEditor {
   panelsInLasso: (ring: readonly [number, number][]) => number[];
   /** CALX116 — le mode de sélection tracé courant est-il le LASSO (vs le cadre, défaut) ? */
   isLassoMode: () => boolean;
+  /** CALX122 câblage — la CELLULE de lattice sous un point écran, ou `null`. Même hit-test
+   *  que le survol (W88) : l'info-bulle d'ombrage parle donc exactement du module que le
+   *  surlignage désigne. Lecture PURE — elle ne sélectionne ni ne déplace rien. */
+  layoutPanelAt: (point: maplibregl.Point) => number | null;
 }
 
 /**
@@ -3034,6 +3038,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     symetriserSelection,
     panelsInLasso,
     isLassoMode: () => lassoMode,
+    layoutPanelAt, // CALX122 câblage
   };
 }
 

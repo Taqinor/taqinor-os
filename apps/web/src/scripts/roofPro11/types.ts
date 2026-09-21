@@ -19,6 +19,7 @@ import { geodesicAreaM2, geodesicPerimeterM, isSimplePolygon, type LngLat } from
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
 import { type SerializedEdge } from './edges';
 import { type CoucheElectrique } from './electrique3d';
+import { type BatimentOsmServeur } from './batiment'; // CALX132 câblage
 
 export interface InitOptions {
   maptilerKey: string;
@@ -189,6 +190,31 @@ export interface RoofToolApi {
    *  en 3D, calque « Électrique »). TOUJOURS présente (`creerCoucheElectrique` la construit
    *  inconditionnellement) — `calqueDisponible()` dit si le document porte une couche. */
   electrique: CoucheElectrique;
+  /** CALX132 câblage — la page hôte dépose l'empreinte OSM du bâtiment (`batiment` de
+   *  `GET crm/leads/<id>/roof-footprint/`, contrat CALX106) : le panneau « Bâtiment »
+   *  l'affiche en PROPOSITION, et rien n'est écrit tant que personne n'a cliqué
+   *  « Reprendre ». `null`/absent efface la proposition. */
+  setBatimentOsmPropose: (batiment: BatimentOsmServeur | null | undefined) => void;
+  /** CALX111 câblage — l'identifiant du pan ACTIF, pour que la vue 2D de la page hôte
+   *  puisse lire les numéros de module de CE pan (`registreAtelier`) au lieu d'afficher
+   *  un plan sans étiquettes. Chaîne vide tant qu'aucun pan n'est actif. */
+  panActifId: () => string;
+  /** CALX107 câblage — le calque de fond que le document ROUVERT demande (`underlay`,
+   *  contrat CALX86), ou `null`. La page hôte s'en sert pour aller chercher le FICHIER
+   *  correspondant : l'outil ne parle jamais à Django. */
+  fondDuDocument: () => import('./underlay').DocumentUnderlay | null;
+  /** CALX107 câblage — le motif quand le document portait un `underlay` ILLISIBLE (il
+   *  NOMME le champ fautif), ou `null`. Sans lui, un fond refusé disparaîtrait en
+   *  silence. */
+  motifFondRefuse: () => string | null;
+  /** CALX107/CALX108 câblage — pose (ou retire, `null`) le fond avec la RESSOURCE fournie
+   *  par la page hôte (URL pré-signée du fichier, calage à quatre coins d'une `PhotoSite`,
+   *  taille du fichier). Rend `{ok:false, motif}` quand rien ne peut être peint — le motif
+   *  NOMME ce qui manque, il n'est jamais muet. */
+  poserFond: (
+    fond: import('./underlay').DocumentUnderlay | null,
+    ressource?: import('./underlay').RessourceFond,
+  ) => { ok: boolean; motif?: string };
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET

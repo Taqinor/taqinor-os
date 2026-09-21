@@ -69,6 +69,8 @@ import {
 import { type PerimeterSetbacks } from '../../lib/roofPro2';
 import { construireMaillagesPose } from './poseSurfaces'; // CALX124
 
+import { teinterAllees } from './teinteAllees'; // CALX403
+
 /** Dépendances injectées (carte + capacités de l'appareil, figées au boot). */
 export interface Scene3dDeps {
   /** La carte MapLibre (canvas WebGL, triggerRepaint pour les images de toit asynchrones). */
@@ -1928,6 +1930,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       }
       ctx.activePanelMesh = panelIM;
       ctx.activePanelCellIndex = panelCellIndices;
+      teinterAllees(ctx, panelIM, panelCellIndices); // CALX403 câblage
     }
 
     // Zones NON actives : obstacles rendus en boîtes subduées (sans étiquette ni drag),
