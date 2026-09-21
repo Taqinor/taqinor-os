@@ -28,12 +28,9 @@ Deux règles dures :
    le service en sus ne se retire du bordereau qu'à condition d'avoir vérifié
    la terre existante.
 
-La pièce jointe (procès-verbal de mesure) est OPTIONNELLE et désigne une pièce
-jointe ``records`` du module (SOLMVP15 — elle désignait un document du
-référentiel documentaire, qui sort du produit ; ``records`` est le référentiel
-où vivent déjà les photos de site et les fichiers de gabarit). La vérification
-reste bornée SOCIÉTÉ : un identifiant qui ne correspond à aucune pièce de la
-société est REFUSÉ, jamais accepté « au cas où ».
+La pièce jointe (procès-verbal de mesure) est OPTIONNELLE et passe par la GED
+existante — lecture par ``apps.ged.selectors``, bornée société, jamais un
+import des modèles de la GED.
 """
 from __future__ import annotations
 
@@ -67,11 +64,11 @@ def _nombre(valeur):
 
 
 def _piece_jointe(decisions, company):
-    """La pièce jointe, VÉRIFIÉE et bornée société, ou ``None``.
+    """La pièce jointe GED, VÉRIFIÉE et bornée société, ou ``None``.
 
-    C'est une pièce jointe ``records`` (SOLMVP15). Un identifiant qui ne
-    correspond à aucune pièce de la société est REFUSÉ : une pièce jointe
-    fantôme ferait croire à un procès-verbal qui n'existe pas.
+    Lecture cross-app par ``apps.ged.selectors`` uniquement. Un identifiant
+    qui ne correspond à aucun document de la société est REFUSÉ : une pièce
+    jointe fantôme ferait croire à un procès-verbal qui n'existe pas.
     """
     identifiant = (decisions or {}).get('document_id')
     if identifiant in (None, ''):
@@ -86,12 +83,11 @@ def _piece_jointe(decisions, company):
         # Hors base (calcul à chaud, test) : on conserve la référence telle
         # quelle sans prétendre l'avoir vérifiée.
         return {'document_id': identifiant, 'verifie': False}
-    from apps.records.models import Attachment
+    from apps.ged.selectors import documents_for_company
 
-    if not Attachment.objects.filter(company=company,
-                                     pk=identifiant).exists():
+    if not documents_for_company(company).filter(pk=identifiant).exists():
         raise TerreInvalide(
-            "Pièce jointe introuvable dans les documents de la société "
+            "Pièce jointe introuvable dans la GED de la société "
             "(document %d)." % identifiant, champ='terre.document_id')
     return {'document_id': identifiant, 'verifie': True}
 

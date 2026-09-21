@@ -1,35 +1,28 @@
-"""CAL181 — le PACK « dossier technique » du calepinage.
+"""CAL181 — le PACK « dossier technique », fusionné par la GED.
 
 Le constat
 ==========
-Le calepinage n'avait aucun pack : le technicien envoyait trois pièces
-séparées, et le client les recevait dans le désordre — quand il les recevait
-toutes.
+La fusion PDF est une primitive de PLATEFORME (``apps.ged.services.fusionner_pdf``,
+XGED10), déjà utilisée par le dossier d'appel d'offres. Le calepinage, lui,
+n'avait aucun pack : le technicien envoyait trois pièces séparées, et le client
+les recevait dans le désordre — quand il les recevait toutes.
 
-Ce module ne fusionne RIEN lui-même : il rend les pièces et appelle le SEUL
-foyer de dépôt/fusion PDF du module (``services/depot_pdf.py``). Une fusion
-écrite ici serait un second chemin PDF à maintenir.
-
-SOLMVP15 — le dépôt et la fusion passaient par la GED (XGED10). La GED sort du
-produit (elle revient en PHASE 2) ; le pack, lui, est une capacité de
-l'atelier et reste. Les pièces se rangent désormais dans ``records`` (le
-référentiel de pièces jointes que le module utilise déjà pour les photos de
-site et pour les fichiers de gabarit) et la fusion se fait sur les octets,
-avec la même bibliothèque PDF. Mêmes pièces, même ordre, même compte de
-pages, mêmes refus.
+Ce module ne fusionne RIEN lui-même : il rend les pièces, les dépose comme
+documents GED, puis appelle ``fusionner_pdf``. Une fusion maison serait un
+second chemin PDF à maintenir, et c'est exactement ce que XGED10 a supprimé.
 
 Les frontières respectées
 =========================
-* le dépôt et la fusion passent par ``services/depot_pdf.py``, qui parle à
-  ``records`` par son service de stockage — ``apps.calepinage`` n'importe
-  aucune vue étrangère (``lint-imports``) ;
+* la GED est atteinte par ses SERVICES (``deposit_document``, ``fusionner_pdf``)
+  — jamais par ses modèles : ``apps.calepinage`` n'importe aucun modèle
+  étranger (``lint-imports``) ;
 * la société est POSÉE côté serveur (celle du calepinage), jamais lue d'un
   corps de requête ;
 * l'idempotence du dépôt est ancrée sur (calepinage, EMPREINTE DU LAYOUT,
-  pièce) : relancer le pack sur la MÊME conception retrouve les pièces déjà
-  déposées, tandis qu'une conception MODIFIÉE en produit de nouvelles. Ancrer
-  sur le seul identifiant du calepinage aurait rendu un pack PÉRIMÉ en
-  silence — le pire des deux mondes.
+  pièce) : relancer le pack sur la MÊME conception retrouve les documents déjà
+  déposés, tandis qu'une conception MODIFIÉE en produit de nouveaux. Ancrer sur
+  le seul identifiant du calepinage aurait rendu un pack PÉRIMÉ en silence —
+  le pire des deux mondes.
 
 Une pièce manquante est SIGNALÉE
 ================================
@@ -46,12 +39,9 @@ __all__ = [
     'rendre_pieces', 'construire_pack',
 ]
 
-#: Comment le pack se NOMME. Ces deux libellés désignaient son emplacement dans
-#: le référentiel documentaire (un cabinet et un dossier racine dédiés : un
-#: dossier technique n'a rien à faire dans « Contrats »). Ce référentiel sort du
-#: produit (SOLMVP15) ; les libellés restent PUBLIÉS pour que l'écran nomme le
-#: pack comme avant, et pour que la recette de retour du module sache où les
-#: pièces devront se ranger à nouveau.
+#: Où le pack se range dans la GED. Un cabinet et un dossier racine dédiés :
+#: un dossier technique n'a rien à faire dans « Contrats » (le défaut du
+#: service de dépôt).
 CABINET = 'Calepinage'
 DOSSIER = 'Dossiers techniques'
 
@@ -159,26 +149,21 @@ def rendre_pieces(calepinage, *, company=None, rendus=None):
 
 
 def _ancre(calepinage, code):
-    """L'ancre d'idempotence : calepinage + EMPREINTE du layout + pièce.
-
-    Elle voyage dans le NOM DE FICHIER de la pièce déposée (SOLMVP15), donc
-    elle ne porte que des caractères sûrs pour un nom de fichier — un ``:``
-    rendrait le téléchargement impossible sous Windows.
-    """
+    """L'ancre d'idempotence : calepinage + EMPREINTE du layout + pièce."""
     empreinte = (getattr(calepinage, 'layout_hash', '') or 'sans-empreinte')
-    return '%s-%s-%s' % (getattr(calepinage, 'pk', ''), empreinte[:12], code)
+    return '%s:%s:%s' % (getattr(calepinage, 'pk', ''), empreinte[:12], code)
 
 
 def construire_pack(calepinage, *, company=None, created_by=None,
                     rendus=None):
-    """Rend les pièces, les dépose et les fusionne en UN document.
+    """Rend les pièces, les dépose en GED et les fusionne en UN document.
 
-    Renvoie ``{'document', 'nom', 'pieces', 'pages_attendues',
-    'signalements'}`` où le total de pages attendu est la somme des pages des
+    Renvoie ``{'document', 'pieces', 'pages', 'signalements'}`` où ``pages``
+    est le nombre de pages du pack fusionné — égal à la somme des pages des
     pièces, faute de quoi le pack est refusé.
     """
-    # La société AVANT tout dépôt : un refus de société doit être immédiat, et
-    # il ne coûte pas le chargement d'un module lourd.
+    # La société AVANT l'import de la GED : un refus de société doit être
+    # immédiat, et il ne coûte pas le chargement d'un module lourd.
     company = company or getattr(calepinage, 'company', None)
     if company is None:
         raise PackRefuse(
@@ -192,32 +177,28 @@ def construire_pack(calepinage, *, company=None, created_by=None,
             "Dossier technique refusé : aucune pièce à fusionner.",
             piece='pieces')
 
-    from .depot_pdf import DepotRefuse, deposer_pdf, fusionner_pdf
+    from apps.ged.services import deposit_document, fusionner_pdf
 
-    attendues = 0
-    try:
-        for code, libelle, octets, pages in pieces:
-            deposer_pdf(
-                calepinage, octets, company=company,
-                filename='%s.pdf' % _ancre(calepinage, code),
-                user=created_by)
-            attendues += pages
+    documents, attendues = [], 0
+    for code, libelle, octets, pages in pieces:
+        document, _cree = deposit_document(
+            company=company,
+            nom='%s — %s' % (libelle, calepinage),
+            source_type='calepinage.%s' % code,
+            source_id=_ancre(calepinage, code),
+            contenu_bytes=octets,
+            mime='application/pdf',
+            filename='%s.pdf' % code,
+            cabinet_nom=CABINET, folder_nom=DOSSIER,
+            created_by=created_by)
+        documents.append(document)
+        attendues += pages
 
-        nom_pack = 'Dossier technique — %s' % calepinage
-        fusionne = fusionner_pdf(
-            [(libelle, octets) for _c, libelle, octets, _p in pieces])
-        pack, _cree = deposer_pdf(
-            calepinage, fusionne, company=company,
-            filename='%s.pdf' % _ancre(calepinage, 'pack'),
-            user=created_by)
-    except DepotRefuse as refus:
-        # Le motif du dépôt/de la fusion est rendu TEL QUEL — jamais un 500 et
-        # jamais un texte réécrit par-dessus celui qui nomme la cause.
-        raise PackRefuse(str(refus), piece='pieces') from refus
-
+    pack = fusionner_pdf(
+        documents, company=company, created_by=created_by,
+        nom='Dossier technique — %s' % calepinage)
     return {
         'document': pack,
-        'nom': nom_pack,
         'pieces': [(code, libelle, pages) for code, libelle, _o, pages
                    in pieces],
         'pages_attendues': attendues,
