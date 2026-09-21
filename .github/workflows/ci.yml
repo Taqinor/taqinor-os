@@ -415,7 +415,7 @@ jobs:
         run: python -m compileall -q backend/django_core/apps backend/django_core/erp_agentique backend/fastapi_ia
       - run: pip install flake8 import-linter==2.11
       - name: Lint backend (flake8)
-        run: flake8 backend --max-line-length=120 --extend-ignore=E501 --exclude=migrations
+        run: flake8 backend --max-line-length=120 --extend-ignore=E501 --exclude=migrations,parked
       - name: Lint imports (import-linter contracts — M3)
         working-directory: backend/django_core
         run: lint-imports

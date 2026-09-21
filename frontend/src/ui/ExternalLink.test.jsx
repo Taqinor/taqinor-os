@@ -43,11 +43,11 @@ describe('VX177 — ExternalLink', () => {
   it('/api/… (fichier backend, pas une route SPA) reste target=_blank malgré le / initial', () => {
     render(
       <MemoryRouter>
-        <ExternalLink href="/api/django/rh/bulletins/42/">Bulletin</ExternalLink>
+        <ExternalLink href="/api/django/crm/leads/42/">Bulletin</ExternalLink>
       </MemoryRouter>,
     )
     const link = screen.getByRole('link', { name: 'Bulletin' })
-    expect(link).toHaveAttribute('href', '/api/django/rh/bulletins/42/')
+    expect(link).toHaveAttribute('href', '/api/django/crm/leads/42/')
     expect(link).toHaveAttribute('target', '_blank')
   })
 

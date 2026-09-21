@@ -1,0 +1,15 @@
+{
+  "endpoint": "POST /api/django/ao/calepinage/imposer-rangees/<int:resultat_id>/",
+  "pourquoi": "Le mode « rangées imposées par l'utilisateur » du calepinage : l'utilisateur fixe lui-même l'ordonnée de départ et le kit de chaque rangée (`rangees_imposees`, une liste de paires [y0, code_kit]), et le moteur renvoie un résultat qui n'est PAS optimal — `preuve.methode` vaut exactement `core.calepinage.types.MethodePreuve.IMPOSE_UTILISATEUR.value` (\"impose_utilisateur\", vocabulaire VERROUILLÉ de la preuve, risque commercial n°1) et `ecart_a_l_optimum` chiffre l'écart avec le plan prouvé optimal, pour que l'écran ne présente JAMAIS une pose imposée comme un « optimum prouvé ». PACT10 : ce contrat part SEUL avant les deux lanes front/back — c'est exactement le genre de vocabulaire qu'une lane isolée ne doit pas réinventer.",
+  "exemple": {
+    "requete": {
+      "mode_pose": "rangees_imposees_utilisateur",
+      "rangees_imposees": [[0.0, "portrait"], [4.7, "paysage"], [9.4, "portrait"]]
+    },
+    "reponse": {
+      "preuve": { "methode": "impose_utilisateur" },
+      "optimal": false,
+      "ecart_a_l_optimum": { "modules": -6, "texte": "-6 modules par rapport à l'optimum prouvé (DP exact)." }
+    }
+  }
+}

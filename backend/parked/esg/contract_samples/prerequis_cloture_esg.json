@@ -1,0 +1,65 @@
+{
+  "endpoint": "GET /api/django/esg/periodes-esg/<id>/prerequis-cloture/",
+  "pourquoi": "NTESG18 — l'assistant de clôture de période en 4 étapes a besoin, en UN appel, de la couverture du catalogue (NTESG3), du diff avant/après vs la période précédente (NTESG11) et de la liste de ce qui bloque vraiment. PACT10 : la forme est déclarée ICI pour que l'écran et le serveur ne l'inventent pas chacun de leur côté.",
+  "avertissement_forme": "LA DISTINCTION EST LE CONTRAT. `bloquants` = incohérences RÉELLES (période déjà figée/publiée, dates absentes ou fin avant début) → `peut_figer` est false et le figeage est refusé. `avertissements` = simples MANQUES de donnée (couverture < 50 % sur un pilier, aucune période antérieure, catalogue non seedé) → on informe, on ne bloque JAMAIS : une société qui démarre son reporting a le droit de figer une période peu couverte. `comparaison` vaut null quand aucune période antérieure n'existe — jamais un diff inventé contre un zéro imaginaire. L'API `POST figer/` reste directement appelable pour l'automatisation : c'est l'ÉCRAN qui impose les 4 étapes, pas le serveur.",
+  "exemple": {
+    "periode": {
+      "id": 12,
+      "libelle": "Exercice 2026",
+      "statut": "brouillon",
+      "date_debut": "2026-01-01",
+      "date_fin": "2026-12-31"
+    },
+    "couverture": {
+      "piliers": {
+        "environnement": { "total": 10, "couverts": 7, "pct": 70.0 },
+        "social": { "total": 8, "couverts": 3, "pct": 37.5 },
+        "gouvernance": { "total": 6, "couverts": 6, "pct": 100.0 }
+      },
+      "global_pct": 66.7
+    },
+    "comparaison": {
+      "periode_reference": { "id": 11, "libelle": "Exercice 2025" },
+      "periode_n": { "id": 12, "libelle": "Exercice 2026" },
+      "piliers": {
+        "environnement": [
+          {
+            "code": "ENV-CO2",
+            "libelle": "Émissions de CO2",
+            "comparable": true,
+            "valeur_reference": 120.0,
+            "valeur_n": 96.0,
+            "variation_abs": -24.0,
+            "variation_pct": -20.0
+          }
+        ]
+      }
+    },
+    "avertissements": [
+      "Couverture du pilier « social » : 37.5 % (3/8 indicateurs du catalogue renseignés)."
+    ],
+    "bloquants": [],
+    "peut_figer": true,
+    "frequence_reporting": "annuelle"
+  },
+  "exemple_vide": {
+    "periode": {
+      "id": 13,
+      "libelle": "Exercice 2027",
+      "statut": "figee",
+      "date_debut": "2027-01-01",
+      "date_fin": "2027-12-31"
+    },
+    "couverture": { "piliers": {}, "global_pct": 0.0 },
+    "comparaison": null,
+    "avertissements": [
+      "Aucun catalogue GRI-lite n’est seedé pour cette société : la couverture ne peut pas être évaluée.",
+      "Aucune période antérieure : les écarts avant/après ne peuvent pas être calculés pour cette première clôture."
+    ],
+    "bloquants": [
+      "Cette période est déjà « Figée » : le figeage est refusé (les chiffres figés ne sont jamais recalculés)."
+    ],
+    "peut_figer": false,
+    "frequence_reporting": "annuelle"
+  }
+}

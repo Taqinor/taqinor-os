@@ -1,0 +1,57 @@
+{
+  "endpoint": "GET /api/django/rh/okr-individuels/tableau-de-bord/",
+  "pourquoi": "NTHCM9 — tableau de bord OKR, consommé par l'écran RH → « Mes OKR ». Source de vérité : apps/rh/views.py::OkrIndividuelViewSet.tableau_de_bord, qui délègue à apps/rh/selectors.py::tableau_okr_employe. TROIS PORTÉES DISTINCTES, jamais mélangées : `mes_okr` (les OKR du dossier RÉSOLU CÔTÉ SERVEUR depuis le compte appelant — jamais un ?employe= lu de l'URL, sinon n'importe qui lirait les OKR d'un autre), `equipe` (ceux des subordonnés DIRECTS via DossierEmploye.manager, NTHCM1 — un non-manager reçoit une LISTE VIDE, pas une erreur) et `entreprise` (le rollup selectors.rollup_okr_entreprise). `est_manager` est un BOOLÉEN dérivé (`equipe` non vide). Dans le rollup, `progression_okr_pct` vaut NULL quand aucun OKR n'est rattaché à l'objectif : « personne n'y contribue encore » n'est PAS « tout le monde est à 0 % », et l'écran doit pouvoir les distinguer ; `nombre_contributeurs` compte les EMPLOYÉS distincts (deux OKR du même employé ne font pas deux contributeurs), `nombre_okr_rattaches` compte les OKR. Les pourcentages sont des chaînes décimales (DecimalField sérialisé). Un compte SANS dossier RH reçoit `mes_okr` et `equipe` vides et garde le rollup.",
+  "exemple": {
+    "mes_okr": [
+      {
+        "id": 31,
+        "titre": "Réduire le délai de pose",
+        "periode": "T1-2027",
+        "employe_id": 21,
+        "employe": "Alami Sara",
+        "objectif_parent_id": 5,
+        "progression_pct": "62.50"
+      }
+    ],
+    "equipe": [
+      {
+        "id": 32,
+        "titre": "Zéro incident chantier",
+        "periode": "T1-2027",
+        "employe_id": 22,
+        "employe": "Cherkaoui Imane",
+        "objectif_parent_id": 5,
+        "progression_pct": "40.00"
+      }
+    ],
+    "entreprise": [
+      {
+        "objectif_id": 5,
+        "titre": "Doubler la capacité de pose",
+        "periode": "T1-2027",
+        "progression_okr_pct": "51.25",
+        "progression_key_results_pct": "48.00",
+        "nombre_contributeurs": 2,
+        "nombre_okr_rattaches": 2
+      },
+      {
+        "objectif_id": 6,
+        "titre": "Ouvrir une agence à Agadir",
+        "periode": "T1-2027",
+        "progression_okr_pct": null,
+        "progression_key_results_pct": null,
+        "nombre_contributeurs": 0,
+        "nombre_okr_rattaches": 0
+      }
+    ],
+    "periode": "T1-2027",
+    "est_manager": true
+  },
+  "exemple_vide": {
+    "mes_okr": [],
+    "equipe": [],
+    "entreprise": [],
+    "periode": "",
+    "est_manager": false
+  }
+}

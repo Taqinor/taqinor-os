@@ -1,0 +1,142 @@
+{
+  "endpoint": "GET /api/django/ao/calepinage/tiroirs/<int:resultat_id>/",
+  "pourquoi": "Les 5 tiroirs du panneau de calepinage (kits, allées, rives, orientation, contraintes électriques) en UN SEUL appel agrégé, chacun sous sa clé de tiroir avec `donnees` (ce que le composant affiche) et `valeurs` (la sélection courante à préremplir). Les composants `frontend/src/features/ao/calepinage/Tiroir*.jsx` sont la source de vérité des clés lues : ce fichier les recopie verbatim. PACT10 : ce contrat part SEUL avant les deux lanes front/back — sans lui chacune invente sa propre forme, exactement l'incident du 03/08/2026 (Tableau de bord AO, zéro clé sur six concordante). `exemple_vide` couvre l'état « aucun résultat de calepinage encore calculé » : chaque tiroir garde sa clé mais `donnees` est `null` (les composants font tous `if (!donnees) return null`).",
+  "exemple": {
+    "kits": {
+      "donnees": {
+        "kits": [
+          { "code": "portrait", "libelle": "Portrait", "recommande": true },
+          { "code": "paysage", "libelle": "Paysage" },
+          { "code": "mixte", "libelle": "Mixte" }
+        ],
+        "granularites": [
+          { "code": "site", "libelle": "Site" },
+          { "code": "segment", "libelle": "Segment" }
+        ],
+        "recommandation": { "code": "portrait", "libelle": "Portrait" },
+        "composition": { "texte": "13 rangées : 4 portrait + 9 paysage", "total_texte": "314 modules" },
+        "contre_epreuve": [
+          {
+            "id": 7,
+            "segment": "Bâtiment A — segment 2",
+            "options": [
+              { "code": "paysage", "libelle": "Paysage", "texte": "34 modules" },
+              { "code": "portrait", "libelle": "Portrait", "texte": "24 modules" }
+            ],
+            "motif": "La cage de 5,93 m interdit toute rangée large."
+          }
+        ],
+        "approvisionnement": {
+          "confirme": true,
+          "argument": "Les 2 kits sont ceux des bâtiments déjà approvisionnés — aucun approvisionnement nouveau."
+        }
+      },
+      "valeurs": { "kit": "portrait", "granularite_kit": "site" }
+    },
+    "allees": {
+      "donnees": {
+        "presets": [
+          { "code": "minimum", "libelle": "0,60 minimum", "largeur_m": 0.6 },
+          { "code": "maintenance", "libelle": "Allée de maintenance", "largeur_m": 1.0 }
+        ],
+        "graphe": {
+          "points": [
+            { "largeur_m": 0.6, "compte": 314, "texte_largeur": "0,60 m", "texte_compte": "314 modules" },
+            { "largeur_m": 1.94, "compte": 314, "texte_largeur": "1,94 m", "texte_compte": "314 modules" },
+            { "largeur_m": 2.1, "compte": 298, "texte_largeur": "2,10 m", "texte_compte": "298 modules" }
+          ],
+          "plateau": {
+            "debut_m": 0.6,
+            "fin_m": 1.94,
+            "texte_debut": "0,60 m",
+            "texte_fin": "1,94 m",
+            "resume": "Le compte reste à 314 modules jusqu'à 1,94 m — poser 0,60 m jette 1,90 m de circulation gratuite.",
+            "largeur_offerte_m": 1.94,
+            "libelle_bouton": "Appliquer 1,94 m (gratuit)"
+          }
+        }
+      },
+      "valeurs": { "allee_m": 0.6 }
+    },
+    "rives": {
+      "donnees": {
+        "champs": [
+          {
+            "code": "rive_laterale",
+            "libelle": "Rive latérale",
+            "unite": "m",
+            "min": 0.3,
+            "max": 2.0,
+            "message_borne": "Hors plage usuelle du CPS (0,30 à 2,00 m).",
+            "impacts": [
+              { "valeur": 0.3, "texte_valeur": "0,30 m", "impact_texte": "+6 modules", "sens": "gain" },
+              { "valeur": 1.5, "texte_valeur": "1,50 m", "impact_texte": "-4 modules", "sens": "perte" }
+            ]
+          },
+          {
+            "code": "rive_extremite",
+            "libelle": "Rive d'extrémité",
+            "unite": "m",
+            "min": 0.3,
+            "max": 2.0,
+            "impacts": []
+          },
+          {
+            "code": "degagement_inconnu",
+            "libelle": "Dégagement — nature inconnue",
+            "unite": "m",
+            "impacts": []
+          }
+        ],
+        "variante_conservatrice": {
+          "libelle": "Variante conservatrice (1,50 / 0,50 / 0,50)",
+          "valeurs": { "rive_laterale": 1.5, "rive_extremite": 0.5, "degagement_inconnu": 0.5 },
+          "comparaison_texte": "-4 modules par rapport à la sélection actuelle"
+        }
+      },
+      "valeurs": { "rive_laterale": 0.3, "rive_extremite": 0.3, "degagement_inconnu": 0.3 }
+    },
+    "orientation": {
+      "donnees": {
+        "sens_rangees": [
+          { "code": "nord_sud", "libelle": "Nord-Sud", "disponible": true },
+          { "code": "est_ouest", "libelle": "Est-Ouest", "disponible": false, "motif": "Faîtage Est-Ouest incompatible : modules face nord." }
+        ],
+        "orientations_tables": [
+          { "code": "portrait", "libelle": "Portrait", "disponible": true },
+          { "code": "paysage", "libelle": "Paysage", "disponible": true }
+        ],
+        "segmentations": [
+          { "code": "auto", "libelle": "Automatique", "disponible": true },
+          { "code": "manuelle", "libelle": "Manuelle", "disponible": true }
+        ],
+        "formes_l": [
+          { "code": "traiter", "libelle": "Traiter le L en deux segments", "disponible": true },
+          { "code": "ignorer", "libelle": "Ignorer le L", "disponible": false, "motif": "Le bâtiment n'a pas de forme en L." }
+        ]
+      },
+      "valeurs": { "sens_rangees": "nord_sud", "orientation_table": "portrait", "segmentation": "auto", "forme_l": "traiter" }
+    },
+    "electrique": {
+      "donnees": {
+        "chaine": { "libelle_taille": "16 modules / chaîne", "reste_texte": "6 modules en réserve d'appoint" },
+        "onduleurs": { "nombre_texte": "3 onduleurs", "puissance_texte": "3 × 50 kW", "plafond_texte": "60 kW max / onduleur" },
+        "ratio_dc_ac": { "texte": "1,18", "fourchette_texte": "attendu 0,75 à 1" },
+        "conformite": {
+          "conforme": false,
+          "bloquant": true,
+          "alerte": "Onduleur 2 : 80 kW hors fourchette 0,75-1 du CPS.",
+          "repartition_proposee": { "texte": "14 modules / chaîne", "patch": { "taille_chaine": 14 } }
+        }
+      },
+      "valeurs": { "taille_chaine": 16 }
+    }
+  },
+  "exemple_vide": {
+    "kits": { "donnees": null, "valeurs": {} },
+    "allees": { "donnees": null, "valeurs": {} },
+    "rives": { "donnees": null, "valeurs": {} },
+    "orientation": { "donnees": null, "valeurs": {} },
+    "electrique": { "donnees": null, "valeurs": {} }
+  }
+}

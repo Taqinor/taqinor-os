@@ -1,0 +1,71 @@
+{
+  "endpoint": "GET /api/django/rh/cycles-revision/{id}/calibration/",
+  "pourquoi": "NTHCM6 — vue RH d'ENSEMBLE d'un cycle de révision salariale, consommée par l'écran RH → « Calibration des révisions ». Source de vérité : apps/rh/views.py::CycleRevisionSalarialeViewSet.calibration, qui délègue tout à apps/rh/selectors.py::calibration_cycle_revision. Donnée de PAIE : le gate de classe `salaires_voir` s'applique, jamais élargi. La réponse est un OBJET : `cycle` porte son identité + `statut` + `clos` (BOOLÉEN — l'écran sait si le cycle est déjà figé et désactive alors la validation) ; `propositions` est la liste de TOUTES les propositions du cycle, tous managers confondus, chacune avec le manager hiérarchique de l'employé (NTHCM1) et sa `tranche` ; `distribution` est l'histogramme par tranche de % d'augmentation sur le vocabulaire FERMÉ selectors.TRANCHES_CALIBRATION (0 / 0-2 / 2-4 / 4-6 / 6+) — l'écran ne choisit pas ses tranches, sinon deux écrans liraient deux distributions ; `par_manager` compare l'enveloppe ALLOUÉE à la CONSOMMÉE (même calcul que services.enveloppe_consommee : une proposition REJETÉE rend son enveloppe) et lève `depassement`. `nb_propositions` est un ENTIER égal à la longueur de `propositions`. Le POST {id}/valider-calibration/ fige le cycle (statut=clos) UNE SEULE FOIS : un second appel répond 400 « Cycle déjà clos ».",
+  "exemple": {
+    "cycle": {
+      "id": 3,
+      "libelle": "Révisions 2026",
+      "periode": "2026",
+      "statut": "calibration",
+      "clos": false
+    },
+    "propositions": [
+      {
+        "id": 11,
+        "employe_id": 21,
+        "employe": "Alami Sara",
+        "manager_id": 9,
+        "manager": "Bennani Youssef",
+        "augmentation_pct_proposee": "3.00",
+        "statut": "proposee",
+        "tranche": "2-4"
+      },
+      {
+        "id": 12,
+        "employe_id": 22,
+        "employe": "Cherkaoui Imane",
+        "manager_id": 9,
+        "manager": "Bennani Youssef",
+        "augmentation_pct_proposee": "0.00",
+        "statut": "rejetee",
+        "tranche": "0"
+      }
+    ],
+    "distribution": [
+      { "tranche": "0", "nombre": 1 },
+      { "tranche": "0-2", "nombre": 0 },
+      { "tranche": "2-4", "nombre": 1 },
+      { "tranche": "4-6", "nombre": 0 },
+      { "tranche": "6+", "nombre": 0 }
+    ],
+    "par_manager": [
+      {
+        "manager_id": 9,
+        "manager": "Bennani Youssef",
+        "enveloppe_allouee_pct": "5.00",
+        "enveloppe_consommee_pct": "3.00",
+        "depassement": false
+      }
+    ],
+    "nb_propositions": 2
+  },
+  "exemple_vide": {
+    "cycle": {
+      "id": 3,
+      "libelle": "Révisions 2026",
+      "periode": "2026",
+      "statut": "clos",
+      "clos": true
+    },
+    "propositions": [],
+    "distribution": [
+      { "tranche": "0", "nombre": 0 },
+      { "tranche": "0-2", "nombre": 0 },
+      { "tranche": "2-4", "nombre": 0 },
+      { "tranche": "4-6", "nombre": 0 },
+      { "tranche": "6+", "nombre": 0 }
+    ],
+    "par_manager": [],
+    "nb_propositions": 0
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "endpoint": "GET /api/django/ao/appels-offres/<int:pk>/design-context/",
+  "pourquoi": "MIROIR AO du contrat ventes `devis_design_context` : le contexte agrégé que le MÊME écran de conception 3D (frontend/src/pages/ventes/ToitureDesign.jsx, mode 'ao') lit EN UN SEUL appel pour démarrer sur une AFFAIRE d'appel d'offres. Identité + statut de l'affaire, géométrie AO déjà relevée (layout 3D enregistré, ancre GPS de la toiture, contour reprojeté en degrés), cible d'engagement (modules du projet) et disponibilité de la carte. PACT10 : ce fichier part AVANT les deux moitiés — sans lui, la lane écran et la lane serveur inventent deux formes, exactement l'incident du 03/08/2026. `modifiable` + `raison_lecture_seule` protègent une affaire DÉPOSÉE ou close : l'écran bascule en lecture seule SANS deviner pourquoi — le motif vient TOUJOURS du serveur. Les clés de premier niveau sont EXACTEMENT celles du contrat devis, à `affaire` près (`devis` côté ventes) : un seul écran, deux modes, aucune forme divergente. Source de vérité : apps/ao/selectors.py::contexte_conception_affaire.",
+  "exemple": {
+    "affaire": {
+      "id": 42,
+      "reference": "AO-202608-0007",
+      "reference_acheteur": "AOO 12/2026/DR-CASA",
+      "statut": "etude",
+      "objet": "Fourniture et pose d'une centrale photovoltaïque en toiture",
+      "acheteur": "Direction Régionale de Casablanca",
+      "maitre_ouvrage": "Ministère de l'Éducation nationale"
+    },
+    "geometrie": {
+      "source": "toiture",
+      "roof_layout": null,
+      "pin": { "lat": 33.5731, "lng": -7.5898 },
+      "outline": [[33.5731, -7.5898], [33.5734, -7.5898], [33.5734, -7.5893]],
+      "toiture": {
+        "id": 311,
+        "code_document": "05H",
+        "designation": "Bâtiment A — toiture principale",
+        "surface_m2": "1240.500",
+        "angle_nord_deg": "0.00",
+        "parametres_calepinage": { "orientation": "portrait", "retrait_rive_m": 1.0 },
+        "zones": [
+          {
+            "id": 88,
+            "repere": "Z1",
+            "nature": "INTERDITE",
+            "sommets": [[12.0, 4.0], [18.0, 4.0], [18.0, 9.0], [12.0, 9.0]],
+            "retrait_m": "0.50",
+            "hauteur_m": null
+          }
+        ]
+      }
+    },
+    "cible": {
+      "panneaux": 618,
+      "kwc": 386.25,
+      "panel_watt": 625,
+      "scenario": "",
+      "batterie": false,
+      "surface_m2": "1240.500"
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-demo",
+      "mapboxToken": ""
+    },
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "avertissements": []
+  },
+  "exemple_lecture_seule": {
+    "affaire": {
+      "id": 77,
+      "reference": "AO-202605-0002",
+      "reference_acheteur": "AOO 04/2026/CU-RABAT",
+      "statut": "depose",
+      "objet": "Centrale PV 500 kWc — lot unique",
+      "acheteur": "Commune urbaine de Rabat",
+      "maitre_ouvrage": ""
+    },
+    "geometrie": {
+      "source": "none",
+      "roof_layout": null,
+      "pin": null,
+      "outline": [],
+      "toiture": null
+    },
+    "cible": {
+      "panneaux": 0,
+      "kwc": 0,
+      "panel_watt": 0,
+      "scenario": "",
+      "batterie": false,
+      "surface_m2": "0.000"
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-demo",
+      "mapboxToken": ""
+    },
+    "modifiable": false,
+    "raison_lecture_seule": "Affaire « Déposé » : le dossier est parti chez l'acheteur — le calepinage ne se modifie plus.",
+    "avertissements": ["Aucune toiture relevée sur cette affaire : commencez par relever une toiture."]
+  }
+}

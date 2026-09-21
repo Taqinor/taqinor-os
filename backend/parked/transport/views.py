@@ -1,0 +1,590 @@
+"""Vues (ViewSets) de l'app `apps.transport` — toutes scopées société via
+`core.viewsets.CompanyScopedModelViewSet` (jamais un `ModelViewSet` nu,
+SCA4)."""
+from decimal import Decimal, InvalidOperation
+
+from django.contrib.contenttypes.models import ContentType
+from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
+from rest_framework import serializers as drf_serializers
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
+from rest_framework.negotiation import DefaultContentNegotiation
+from rest_framework.response import Response
+
+from authentication.permissions import IsResponsableOrAdmin
+from core.permissions import ScopedPermission
+from core.viewsets import CompanyScopedModelViewSet
+from apps.records.views import ChatterViewSetMixin
+
+from . import services
+from .models import (
+    CoutFretReel, EtapeTransport, FacteurEmissionCO2, LigneOrdreTransport,
+    LitigeTransport, OrdreTransport, ParametresTransport, ReserveReception,
+)
+from .serializers import (
+    CoutFretReelSerializer, EtapeTransportSerializer,
+    FacteurEmissionCO2Serializer, LigneOrdreTransportSerializer,
+    LitigeTransportSerializer, OrdreTransportSerializer,
+    ParametresTransportSerializer, ReserveReceptionSerializer,
+)
+
+
+class _ExportFormatContentNegotiation(DefaultContentNegotiation):
+    """NTLOG27/31 — sur les actions d'export, ``?format=`` désigne le format
+    D'EXPORT (xlsx/pdf/csv), PAS le renderer DRF — motif
+    ``apps.douane.views._ExportFormatContentNegotiation`` (elle-même motif
+    ``apps.compta.views._BankFormatContentNegotiation``). Sans cette
+    surcharge, DRF traite ``?format=xlsx``/``?format=pdf`` comme un override
+    de renderer (``URL_FORMAT_OVERRIDE``) : aucun renderer enregistré ne
+    porte ces formats → ``Http404`` AVANT même d'exécuter la vue. On neutralise
+    donc l'override par query param et on négocie toujours sur le renderer
+    JSON (la vue renvoie elle-même une ``HttpResponse``/``build_xlsx_response``
+    manuelle, jamais via ce renderer)."""
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        for renderer in renderers:
+            if renderer.format == 'json':
+                return renderer, renderer.media_type
+        return renderers[0], renderers[0].media_type
+
+
+def _check_same_company(request, **fields):
+    """Refuse (400) toute FK référençant un objet d'une AUTRE société — une
+    `PrimaryKeyRelatedField` DRF n'est, par défaut, PAS scopée société ; sans
+    ce garde un id valide d'une autre société serait accepté (IDOR)."""
+    company = request.user.company
+    cid = getattr(company, 'id', None)
+    for name, obj in fields.items():
+        if obj is not None and getattr(obj, 'company_id', None) != cid:
+            raise ValidationError({name: 'Référence inconnue pour cette société.'})
+
+
+class OrdreTransportViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
+    """NTLOG1 — ordre de transport. Filtrable par `?statut=`. `numero` posé
+    côté serveur à la création (`services.attribuer_numero`, anti-collision,
+    ARC6). Le chatter générique (`chatter/historique`/`chatter/noter`,
+    ``ChatterViewSetMixin``) porte l'historique NTLOG8 (statut de l'ordre ET
+    de ses étapes — voir ``services.log_activite_ordre``)."""
+
+    queryset = OrdreTransport.objects.select_related(
+        'created_by').prefetch_related('lignes', 'etapes').all()
+    serializer_class = OrdreTransportSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        # NTLOG39 — un ordre archivé (`archiver_ordres_transport_anciens`,
+        # jamais supprimé physiquement) disparaît des listes par défaut ;
+        # ``?inclure_archives=1`` les fait réapparaître explicitement.
+        inclure_archives = self.request.query_params.get('inclure_archives')
+        if inclure_archives not in ('1', 'true', 'True'):
+            qs = qs.filter(archive=False)
+        return qs
+
+    def perform_create(self, serializer):
+        data = serializer.validated_data
+        conducteur = data.get('conducteur')
+        erreur = services.valider_mode_transport_champs(
+            data.get('mode_transport', OrdreTransport.ModeTransport.AFFRETEMENT),
+            flotte_actif_id=data.get('flotte_actif_id'),
+            conducteur_id=getattr(conducteur, 'id', None),
+            installations_transporteur_id=data.get('installations_transporteur_id'),
+        )
+        if erreur:
+            raise ValidationError({'mode_transport': erreur})
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+        services.attribuer_numero(serializer.instance)
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        data = serializer.validated_data
+        mode_transport = data.get('mode_transport', instance.mode_transport)
+        conducteur = data.get('conducteur', instance.conducteur)
+        flotte_actif_id = data.get('flotte_actif_id', instance.flotte_actif_id)
+        installations_transporteur_id = data.get(
+            'installations_transporteur_id',
+            instance.installations_transporteur_id)
+        erreur = services.valider_mode_transport_champs(
+            mode_transport,
+            flotte_actif_id=flotte_actif_id,
+            conducteur_id=getattr(conducteur, 'id', None),
+            installations_transporteur_id=installations_transporteur_id,
+        )
+        if erreur:
+            raise ValidationError({'mode_transport': erreur})
+        super().perform_update(serializer)
+
+    # ── NTLOG3 — lecture imbriquée des étapes ────────────────────────────
+    # YRBAC4 — gardes DÉCLARÉES sur les 3 lectures de ce viewset.
+    # ``ScopedPermission`` (GET → ``read_permission``, ici None) exprime le
+    # tier réel « authentifié INTERNE de la société », identique au défaut de
+    # classe : consultation d'étapes, comparatif transporteurs et bilan CO2
+    # sont des lectures d'exploitation ouvertes à tout le personnel interne.
+    # Ni ce viewset ni ses bases (ChatterViewSetMixin /
+    # CompanyScopedModelViewSet / TenantMixin) ne définissent de
+    # ``get_permissions`` — les déclarations ne sont donc pas neutralisées.
+    @action(detail=True, methods=['get'], url_path='etapes',
+            permission_classes=[ScopedPermission])
+    def etapes_action(self, request, pk=None):
+        ordre = self.get_object()
+        return Response(
+            EtapeTransportSerializer(ordre.etapes.all(), many=True).data)
+
+    # ── NTLOG7 — comparateur de coûts d'affrètement ──────────────────────
+    @action(detail=True, methods=['get'], url_path='comparer-transporteurs',
+            permission_classes=[ScopedPermission])
+    def comparer_transporteurs(self, request, pk=None):
+        ordre = self.get_object()
+        from . import selectors
+        return Response(
+            selectors.comparer_transporteurs(
+                ordre.id, company=request.user.company))
+
+    # ── NTLOG20 — estimation CO2 (affichée sur le détail de l'ordre) ─────
+    @action(detail=True, methods=['get'], url_path='co2',
+            permission_classes=[ScopedPermission])
+    def co2(self, request, pk=None):
+        ordre = self.get_object()
+        from . import selectors
+        return Response(
+            selectors.estimer_co2_transport(
+                ordre.id, company=request.user.company))
+
+    # ── NTLOG24 — tableau de bord logistique ──────────────────────────────
+    # PACT7 — sans cette déclaration, le schéma OpenAPI publierait cet
+    # agrégat avec `OrdreTransportSerializer` (le `serializer_class` de ce
+    # ViewSet) alors qu'il renvoie une forme entièrement différente (motif
+    # `apps.flotte.views.FlotteViewSet.tableau_bord`).
+    # Champs numériques en `FloatField` (pas `DecimalField`) : cette action
+    # renvoie un DICT BRUT (pas une instance passée par un `ModelSerializer`
+    # qui coercerait ses `Decimal` en chaînes) — `rest_framework.utils.
+    # encoders.JSONEncoder` convertit un `Decimal` non sérialisé en `float`,
+    # motif exact `apps.flotte.views.FlotteViewSet.tableau_bord` (mêmes
+    # `FloatField` sur son propre dict brut de coûts).
+    @extend_schema(responses=inline_serializer('TransportTableauBordLogistique', {
+        'periode': drf_serializers.CharField(allow_null=True),
+        'nb_ordres': drf_serializers.IntegerField(),
+        'nb_livres': drf_serializers.IntegerField(),
+        'total_fret_ht': drf_serializers.FloatField(),
+        'poids_livre_kg': drf_serializers.FloatField(),
+        'cout_par_kg_transporte': drf_serializers.FloatField(allow_null=True),
+        'taux_service_pct': drf_serializers.FloatField(allow_null=True),
+        'litiges_ouverts_count': drf_serializers.IntegerField(),
+        'litiges_ouverts_montant_conteste': drf_serializers.FloatField(),
+        'repartition_mode_transport': drf_serializers.DictField(
+            child=drf_serializers.IntegerField()),
+        'co2_total_estime_kg': drf_serializers.FloatField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='tableau-bord-logistique',
+            permission_classes=[ScopedPermission])
+    def tableau_bord_logistique(self, request):
+        """NTLOG24 — cartes KPI + répartition transporteurs du dashboard
+        logistique. Lecture seule (tout rôle interne), filtrable
+        ``?periode=YYYY-MM``."""
+        from . import selectors
+        return Response(
+            selectors.tableau_bord_logistique(
+                request.user.company,
+                periode=request.query_params.get('periode')))
+
+    # ── NTLOG29 — bordereau d'expédition (packing list) PDF ──────────────
+    @action(detail=True, methods=['get'], url_path='bordereau-expedition',
+            permission_classes=[ScopedPermission])
+    def bordereau_expedition(self, request, pk=None):
+        """NTLOG29 — PDF interne (document d'accompagnement chauffeur,
+        distinct du moteur devis — règle #4 non concernée) listant les
+        lignes/poids/volume de l'ordre, expéditeur/destinataire, transporteur
+        affecté et cases signature enlèvement/livraison."""
+        ordre = self.get_object()
+        from .bordereau_pdf import render_bordereau_expedition_pdf
+
+        pdf_bytes = render_bordereau_expedition_pdf(ordre)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        nom_fichier = f'bordereau-expedition-{ordre.numero or ordre.id}.pdf'
+        resp['Content-Disposition'] = f'attachment; filename="{nom_fichier}"'
+        return resp
+
+
+class LigneOrdreTransportViewSet(CompanyScopedModelViewSet):
+    """NTLOG2 — marchandises d'un ordre. Filtrable par `?ordre=`."""
+
+    queryset = LigneOrdreTransport.objects.select_related('ordre').all()
+    serializer_class = LigneOrdreTransportSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordre = self.request.query_params.get('ordre')
+        if ordre:
+            qs = qs.filter(ordre_id=ordre)
+        return qs
+
+    def perform_create(self, serializer):
+        _check_same_company(
+            self.request, ordre=serializer.validated_data.get('ordre'))
+        serializer.save(company=self.request.user.company)
+
+
+class EtapeTransportViewSet(CompanyScopedModelViewSet):
+    """NTLOG3 — étapes enlèvement/transit/livraison. Filtrable par
+    `?ordre=`. Toute écriture de `statut_etape` déclenche l'avancement
+    automatique du statut de l'ordre parent
+    (`services.apres_changement_statut_etape`)."""
+
+    queryset = EtapeTransport.objects.select_related('ordre').all()
+    serializer_class = EtapeTransportSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordre = self.request.query_params.get('ordre')
+        if ordre:
+            qs = qs.filter(ordre_id=ordre)
+        return qs
+
+    def perform_create(self, serializer):
+        _check_same_company(
+            self.request, ordre=serializer.validated_data.get('ordre'))
+        serializer.save(company=self.request.user.company)
+
+    def perform_update(self, serializer):
+        ancien_statut = serializer.instance.statut_etape
+        super().perform_update(serializer)
+        services.apres_changement_statut_etape(
+            serializer.instance, ancien_statut, user=self.request.user)
+
+    # ── NTLOG9 — preuve de livraison (POD), réutilise records.Attachment ──
+    # YRBAC4 — garde DÉCLARÉE, RESSERREMENT réel : ce viewset ne pose ni
+    # ``read_permission`` ni ``write_permission``, donc le défaut
+    # ``ScopedPermission`` se réduisait à « authentifié interne suffit » —
+    # tout compte pouvait acter une livraison, ce qui fait avancer le statut
+    # de l'ordre parent (``services.apres_changement_statut_etape``). Acter
+    # une preuve de livraison exige désormais un porteur de rôle. Aucun
+    # ``get_permissions`` sur ce viewset ni ses bases → garde effective.
+    @action(detail=True, methods=['post'], url_path='livrer',
+            permission_classes=[IsResponsableOrAdmin])
+    def livrer(self, request, pk=None):
+        """Exige AU MOINS une pièce jointe (`records.Attachment`, photo ou
+        signature) déjà déposée sur cette étape avant de la clôturer
+        « fait » — sinon 400. NTLOG35 : cette contrainte est désactivable
+        PAR SOCIÉTÉ via ``ParametresTransport.pod_obligatoire=False``
+        (défaut ``True`` — comportement historique inchangé)."""
+        etape = self.get_object()
+        pod_obligatoire = ParametresTransport.for_company(
+            request.user.company).pod_obligatoire
+        if pod_obligatoire:
+            from apps.records.models import Attachment
+            ct = ContentType.objects.get_for_model(EtapeTransport)
+            a_une_piece = Attachment.objects.filter(
+                content_type=ct, object_id=etape.id).exists()
+            if not a_une_piece:
+                return Response(
+                    {'detail': (
+                        'Photo ou signature requise avant de clôturer la '
+                        'livraison.')},
+                    status=status.HTTP_400_BAD_REQUEST)
+        ancien_statut = etape.statut_etape
+        etape.statut_etape = EtapeTransport.StatutEtape.FAIT
+        etape.save(update_fields=['statut_etape'])
+        services.apres_changement_statut_etape(
+            etape, ancien_statut, user=request.user)
+        return Response(EtapeTransportSerializer(etape).data)
+
+
+class CoutFretReelViewSet(CompanyScopedModelViewSet):
+    """NTLOG16 — coûts de fret réels. Filtrable par `?ordre_transport=`."""
+
+    queryset = CoutFretReel.objects.select_related('ordre_transport').all()
+    serializer_class = CoutFretReelSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordre = self.request.query_params.get('ordre_transport')
+        if ordre:
+            qs = qs.filter(ordre_transport_id=ordre)
+        return qs
+
+    def perform_create(self, serializer):
+        _check_same_company(
+            self.request,
+            ordre_transport=serializer.validated_data.get('ordre_transport'))
+        serializer.save(company=self.request.user.company)
+
+    # ── NTLOG27 — export comptable des coûts de fret ─────────────────────
+    # YRBAC4 — garde DÉCLARÉE. GET = méthode sûre, ouverte à tout utilisateur
+    # authentifié de la société (motif `DossierExportViewSet.export`,
+    # NTLOG47 — rapprochement comptable, pas une décision qui engage
+    # l'entreprise).
+    @action(detail=False, methods=['get'], url_path='export',
+            permission_classes=[ScopedPermission],
+            content_negotiation_class=_ExportFormatContentNegotiation)
+    def export(self, request):
+        """NTLOG27 — ``couts-fret/export/?periode=YYYY-MM`` génère un .xlsx
+        listant les coûts de fret par ordre/BCF/période (réutilise le
+        pattern ``export=xlsx`` de ``apps.douane.views``/``reporting``) pour
+        rapprochement comptable manuel avant intégration éventuelle dans
+        ``compta``. Filtre par ``created_at`` — EXACTEMENT le même filtre que
+        `selectors.tableau_bord_logistique` (NTLOG24) : le total exporté ici
+        correspond au dernier chiffre près au total affiché sur son
+        dashboard pour la même période (critère d'acceptation)."""
+        from . import selectors
+
+        periode = request.query_params.get('periode')
+        qs = selectors._filtre_periode(
+            self.get_queryset().order_by('ordre_transport_id', 'id'),
+            periode)
+
+        headers = [
+            'Ordre de transport', 'BCF (stock.BonCommandeFournisseur)',
+            'Type de coût', 'Montant HT', 'Devise', 'Date',
+        ]
+        rows = [
+            [
+                c.ordre_transport.numero or f'#{c.ordre_transport_id}',
+                c.stock_boncommandefournisseur_id or '',
+                c.get_type_cout_display(),
+                c.montant_ht,
+                c.devise,
+                c.created_at.date().isoformat(),
+            ]
+            for c in qs
+        ]
+
+        from apps.records.xlsx import build_xlsx_response
+        return build_xlsx_response(
+            'couts-fret-transport.xlsx', headers, rows,
+            sheet_title='Coûts de fret')
+
+
+class LitigeTransportViewSet(CompanyScopedModelViewSet):
+    """NTLOG17 — litiges transport, machine à états calquée sur
+    `litiges.Reclamation` (LITIGE2) : ouvert → en_traitement → résolu, ou
+    rejeté depuis ouvert/en_traitement. Transition illégale → 400."""
+
+    queryset = LitigeTransport.objects.select_related(
+        'ordre_transport', 'created_by').all()
+    serializer_class = LitigeTransportSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordre = self.request.query_params.get('ordre_transport')
+        if ordre:
+            qs = qs.filter(ordre_transport_id=ordre)
+        return qs
+
+    def perform_create(self, serializer):
+        _check_same_company(
+            self.request,
+            ordre_transport=serializer.validated_data.get('ordre_transport'))
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    def _transition(self, request, *, allowed_from, target, extra_fields=None):
+        litige = self.get_object()
+        if litige.statut not in allowed_from:
+            return Response(
+                {'statut': (
+                    f"Transition invalide depuis « "
+                    f"{litige.get_statut_display()} » vers « "
+                    f"{LitigeTransport.Statut(target).label} ».")},
+                status=status.HTTP_400_BAD_REQUEST)
+        ancien = litige.statut
+        litige.statut = target
+        update_fields = ['statut']
+        for field, value in (extra_fields or {}).items():
+            setattr(litige, field, value)
+            update_fields.append(field)
+        litige.save(update_fields=update_fields)
+        services.log_activite_ordre(
+            litige.ordre_transport, user=request.user,
+            field='litige_statut', field_label=f'Litige #{litige.id}',
+            old_value=ancien, new_value=target)
+        return Response(LitigeTransportSerializer(litige).data)
+
+    # YRBAC4 — gardes DÉCLARÉES sur les 4 écritures de ce viewset, et
+    # RESSERREMENT réel (même motif que ``EtapeTransportViewSet.livrer``) :
+    # sans ``write_permission``, tout compte authentifié pouvait faire
+    # avancer la machine à états d'un litige (prise en charge, résolution,
+    # REJET) ou émettre une réclamation transporteur. Ces décisions engagent
+    # la société : elles exigent désormais un porteur de rôle. Aucun
+    # ``get_permissions`` sur ce viewset ni ses bases → gardes effectives.
+    @action(detail=True, methods=['post'], url_path='prendre-en-charge',
+            permission_classes=[IsResponsableOrAdmin])
+    def prendre_en_charge(self, request, pk=None):
+        return self._transition(
+            request, allowed_from={LitigeTransport.Statut.OUVERT},
+            target=LitigeTransport.Statut.EN_TRAITEMENT)
+
+    @action(detail=True, methods=['post'], url_path='resoudre',
+            permission_classes=[IsResponsableOrAdmin])
+    def resoudre(self, request, pk=None):
+        """NTLOG31 — accepte un ``montant_resolu`` optionnel dans le corps
+        (le montant réellement obtenu du transporteur, qui peut différer de
+        ``montant_conteste``) ; absent → laissé `None` (le relevé mensuel
+        NTLOG31 l'affiche vide plutôt qu'un 0 trompeur, jamais un recopiage
+        automatique de `montant_conteste`)."""
+        extra_fields = {}
+        montant_resolu = request.data.get('montant_resolu')
+        if montant_resolu not in (None, ''):
+            try:
+                extra_fields['montant_resolu'] = Decimal(str(montant_resolu))
+            except InvalidOperation:
+                return Response(
+                    {'montant_resolu': 'Montant invalide.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        return self._transition(
+            request, allowed_from={LitigeTransport.Statut.EN_TRAITEMENT},
+            target=LitigeTransport.Statut.RESOLU, extra_fields=extra_fields)
+
+    @action(detail=True, methods=['post'], url_path='rejeter',
+            permission_classes=[IsResponsableOrAdmin])
+    def rejeter(self, request, pk=None):
+        return self._transition(
+            request,
+            allowed_from={
+                LitigeTransport.Statut.OUVERT,
+                LitigeTransport.Statut.EN_TRAITEMENT,
+            },
+            target=LitigeTransport.Statut.REJETE)
+
+    # ── NTLOG19 — réclamation transporteur chiffrée (PDF) ────────────────
+    @action(detail=True, methods=['post'], url_path='reclamer-transporteur',
+            permission_classes=[IsResponsableOrAdmin])
+    def reclamer_transporteur(self, request, pk=None):
+        litige = self.get_object()
+        from . import selectors
+        from .reclamation_pdf import render_reclamation_transporteur_pdf
+
+        destinataire = selectors.transporteur_nom_pour_ordre(
+            litige.ordre_transport)
+        pdf_bytes = render_reclamation_transporteur_pdf(litige)
+        services.envoyer_reclamation_transporteur(
+            litige, destinataire=destinataire)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        nom_fichier = (
+            f'reclamation-transporteur-'
+            f'{litige.ordre_transport.numero or litige.id}.pdf')
+        resp['Content-Disposition'] = f'attachment; filename="{nom_fichier}"'
+        return resp
+
+    # ── NTLOG31 — relevé mensuel des litiges (PDF ou xlsx au choix) ───────
+    @action(detail=False, methods=['get'], url_path='releve',
+            permission_classes=[ScopedPermission],
+            content_negotiation_class=_ExportFormatContentNegotiation)
+    def releve(self, request):
+        """NTLOG31 — ``litiges-transport/releve/?periode=YYYY-MM&format=
+        pdf|xlsx`` (défaut xlsx), filtrable ``?transporteur=<installations_
+        transporteur_id>`` pour la revue mensuelle avec CE transporteur.
+        Filtre ``periode`` sur ``created_at`` — même convention que NTLOG24/27
+        (`selectors._filtre_periode`) : le total « montant contesté » des
+        litiges OUVERTS du relevé correspond au total
+        `litiges_ouverts_montant_conteste` du dashboard NTLOG24 pour la même
+        période/société (critère d'acceptation)."""
+        from . import selectors
+
+        fmt = request.query_params.get('format', 'xlsx')
+        if fmt not in ('pdf', 'xlsx'):
+            return Response(
+                {'detail': "Le paramètre 'format' doit être 'pdf' ou 'xlsx'."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        qs = selectors._filtre_periode(
+            self.get_queryset(), request.query_params.get('periode'))
+        transporteur_id = request.query_params.get('transporteur')
+        if transporteur_id:
+            qs = qs.filter(
+                ordre_transport__installations_transporteur_id=transporteur_id)
+        litiges = list(qs.order_by('-created_at'))
+
+        if fmt == 'pdf':
+            from .releve_litiges_pdf import render_releve_litiges_pdf
+            pdf_bytes = render_releve_litiges_pdf(litiges)
+            resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+            resp['Content-Disposition'] = (
+                'attachment; filename="releve-litiges-transport.pdf"')
+            return resp
+
+        headers = [
+            'Ordre de transport', 'Transporteur', 'Type de litige', 'Statut',
+            'Montant contesté', 'Montant résolu',
+        ]
+        rows = [
+            [
+                litige.ordre_transport.numero or f'#{litige.ordre_transport_id}',
+                selectors.transporteur_nom_pour_ordre(litige.ordre_transport),
+                litige.get_type_litige_display(),
+                litige.get_statut_display(),
+                litige.montant_conteste,
+                litige.montant_resolu if litige.montant_resolu is not None else '',
+            ]
+            for litige in litiges
+        ]
+        from apps.records.xlsx import build_xlsx_response
+        return build_xlsx_response(
+            'releve-litiges-transport.xlsx', headers, rows,
+            sheet_title='Litiges transport')
+
+
+class ReserveReceptionViewSet(CompanyScopedModelViewSet):
+    """NTLOG18 — réserve à réception, capturable depuis l'écran POD. Sa
+    création fait automatiquement naître un `LitigeTransport` ouvert
+    (`services.creer_litige_depuis_reserve`)."""
+
+    queryset = ReserveReception.objects.select_related('etape', 'litige').all()
+    serializer_class = ReserveReceptionSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        etape = self.request.query_params.get('etape')
+        if etape:
+            qs = qs.filter(etape_id=etape)
+        return qs
+
+    def perform_create(self, serializer):
+        _check_same_company(
+            self.request, etape=serializer.validated_data.get('etape'))
+        serializer.save(company=self.request.user.company)
+        services.creer_litige_depuis_reserve(
+            serializer.instance, user=self.request.user)
+
+
+class FacteurEmissionCO2ViewSet(CompanyScopedModelViewSet):
+    """NTLOG20 — facteur d'émission CO2, éditable en Paramètres."""
+
+    queryset = FacteurEmissionCO2.objects.all()
+    serializer_class = FacteurEmissionCO2Serializer
+
+
+@extend_schema_view(
+    list=extend_schema(responses=ParametresTransportSerializer),
+    partial_update=extend_schema(
+        request=ParametresTransportSerializer,
+        responses=ParametresTransportSerializer),
+)
+class ParametresTransportViewSet(viewsets.ViewSet):
+    """NTLOG35 — réglages transport, singleton par société (motif
+    ``apps.douane.views.ParametresDouaneViewSet``, NTLOG36). GET (``list``,
+    sur ``parametres-transport/``) renvoie le réglage courant, le créant si
+    besoin ; PATCH (``partial_update``) le met à jour. ``company`` toujours
+    dérivée de l'utilisateur, jamais du corps de requête. Écriture réservée
+    à un porteur de rôle (repli légataire ``is_responsable``, motif
+    ``core.permissions._user_has_or_legacy`` — même mécanisme que
+    ``DOUANE_RESPONSABLE``) — désactiver ``pod_obligatoire`` engage la
+    société (NTLOG9)."""
+    permission_classes = [ScopedPermission]
+    write_permission = 'transport_responsable'
+
+    def list(self, request):
+        obj = ParametresTransport.for_company(request.user.company)
+        return Response(ParametresTransportSerializer(obj).data)
+
+    def partial_update(self, request, pk=None):
+        obj = ParametresTransport.for_company(request.user.company)
+        serializer = ParametresTransportSerializer(
+            obj, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

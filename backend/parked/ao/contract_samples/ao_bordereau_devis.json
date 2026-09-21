@@ -1,0 +1,36 @@
+{
+  "endpoint": "POST /api/django/ao/bordereaux-prix/<int:pk>/creer-devis/",
+  "pourquoi": "UN SEUL chemin de chiffrage : le bordereau des prix (BOQ) d'un appel d'offres devient un DEVIS ventes standard, qui repart ensuite dans le pipeline devis normal (PDF `/proposal`, envoi, acceptation). PACT10 : le contrat part AVANT les deux moitiés — l'écran Bordereau lit `devis`/`cree`/`avertissements`, le serveur les sert, et rien n'est deviné de part et d'autre. La construction vit dans le POINT DE CONTACT UNIQUE `apps.ventes.services.creer_devis_depuis_bordereau` (symétrique de `apps.ao.services.creer_appel_offre_depuis_avis`) : `ao` ne connaît de `ventes` que ce service, jamais ses modèles. `cree` vaut `false` quand un brouillon issu du MÊME bordereau existait déjà (idempotence : un double clic ne crée pas deux devis). `avertissements` porte, en français, tout ce que le serveur n'a PAS pu reprendre à l'identique (quantité arrondie au centième, ligne sans prix…) — un devis amputé en silence est le défaut que ce champ ferme.",
+  "exemple": {
+    "devis": {
+      "id": 5120,
+      "reference": "DEV-202608-0031",
+      "statut": "brouillon",
+      "client": 51,
+      "client_nom": "Commune urbaine de Rabat",
+      "lignes": 34,
+      "total_ht": "5207280.00",
+      "total_ttc": "6248736.00"
+    },
+    "cree": true,
+    "bordereau": 9,
+    "appel_offre": 42,
+    "avertissements": []
+  },
+  "exemple_deja_cree": {
+    "devis": {
+      "id": 5120,
+      "reference": "DEV-202608-0031",
+      "statut": "brouillon",
+      "client": 51,
+      "client_nom": "Commune urbaine de Rabat",
+      "lignes": 34,
+      "total_ht": "5207280.00",
+      "total_ttc": "6248736.00"
+    },
+    "cree": false,
+    "bordereau": 9,
+    "appel_offre": 42,
+    "avertissements": ["Un devis brouillon issu de ce bordereau existait déjà : il est réouvert, aucun doublon n'a été créé."]
+  }
+}

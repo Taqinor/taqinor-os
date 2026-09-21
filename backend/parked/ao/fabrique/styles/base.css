@@ -1,0 +1,250 @@
+/*
+ * AOF117 — feuille de style PROPRE de la fabrique documentaire AO.
+ *
+ * Elle ne réutilise AUCUN jeton du moteur de devis (`apps/ventes/quote_engine`),
+ * même en lecture. Deux raisons, l'une produit et l'autre architecture :
+ *
+ *  - PRODUIT : un dossier administratif d'appel d'offres n'a pas le code visuel
+ *    d'une proposition commerciale premium. Il est lu par une commission qui
+ *    cherche une pièce, une quantité, un montant, une signature — pas une
+ *    ambiance. D'où : noir sur blanc, filets fins, titres capitalisés, tableaux
+ *    lisibles en photocopie, aucun aplat de couleur, aucun dégradé, aucun coin
+ *    arrondi. Un pli se lit plié, agrafé, et souvent en noir et blanc.
+ *  - ARCHITECTURE : tout partage de jeton créerait un chemin par lequel une
+ *    évolution de l'AO casserait `/proposal` (règle #4).
+ *
+ * Tous les PDF passent par `core.pdf.render_pdf` (ARC11) — jamais un import
+ * direct de WeasyPrint. Cette feuille est INLINÉE dans le document (aucun
+ * `url()` externe, aucune police téléchargée) : un rendu ne doit dépendre ni du
+ * réseau ni d'un chemin de fichier au moment du dépôt.
+ */
+
+/* ---------------------------------------------------------------- jetons */
+:root {
+  /* Encres — une seule couleur d'accent, sobre, lisible en niveaux de gris. */
+  --ao-encre: #111111;
+  --ao-encre-douce: #444444;
+  --ao-encre-faible: #6b6b6b;
+  --ao-accent: #1a3a5c;
+  --ao-trait: #111111;
+  --ao-trait-fin: #9a9a9a;
+  --ao-fond: #ffffff;
+  --ao-fond-entete: #eeeeee;
+
+  /* Typographie — familles à empattement variable disponibles dans l'image
+     de production ; aucune police n'est téléchargée. */
+  --ao-police: "Liberation Sans", "Noto Sans", "DejaVu Sans", Arial, sans-serif;
+  --ao-police-titre: "Liberation Serif", "Noto Serif", "DejaVu Serif", Georgia, serif;
+  --ao-corps: 10pt;
+  --ao-petit: 8.5pt;
+  --ao-tableau: 9pt;
+  --ao-titre: 15pt;
+  --ao-sous-titre: 11pt;
+  --ao-interligne: 1.45;
+
+  /* Grille — marges d'un document destiné à être relié et paraphé. */
+  --ao-marge-haut: 18mm;
+  --ao-marge-bas: 20mm;
+  --ao-marge-gauche: 20mm;
+  --ao-marge-droite: 15mm;
+  --ao-gouttiere: 6mm;
+}
+
+/* ------------------------------------------------------------------ page */
+@page {
+  size: A4 portrait;
+  margin: var(--ao-marge-haut) var(--ao-marge-droite) var(--ao-marge-bas) var(--ao-marge-gauche);
+}
+
+@page paysage {
+  size: A4 landscape;
+  margin: 12mm 12mm 15mm 15mm;
+}
+
+.ao-paysage {
+  page: paysage;
+}
+
+/* ---------------------------------------------------------------- corps */
+body {
+  font-family: var(--ao-police);
+  font-size: var(--ao-corps);
+  line-height: var(--ao-interligne);
+  color: var(--ao-encre);
+  background: var(--ao-fond);
+}
+
+.ao-document {
+  width: 100%;
+}
+
+/* -------------------------------------------------------------- en-tête */
+.ao-entete {
+  border-bottom: 1.2pt solid var(--ao-trait);
+  padding-bottom: 3mm;
+  margin-bottom: 6mm;
+}
+
+.ao-entete .ao-soumissionnaire {
+  font-weight: bold;
+  font-size: var(--ao-sous-titre);
+  text-transform: uppercase;
+  letter-spacing: 0.4pt;
+}
+
+.ao-entete .ao-identifiants {
+  font-size: var(--ao-petit);
+  color: var(--ao-encre-faible);
+}
+
+.ao-titre-piece {
+  font-family: var(--ao-police-titre);
+  font-size: var(--ao-titre);
+  font-weight: bold;
+  text-transform: uppercase;
+  text-align: center;
+  letter-spacing: 0.6pt;
+  margin: 6mm 0 2mm;
+  color: var(--ao-accent);
+}
+
+.ao-sous-titre {
+  text-align: center;
+  font-size: var(--ao-sous-titre);
+  color: var(--ao-encre-douce);
+  margin-bottom: 6mm;
+}
+
+/* -------------------------------------------------------------- sections */
+.ao-section {
+  margin-bottom: 5mm;
+}
+
+.ao-section > h2 {
+  font-size: var(--ao-sous-titre);
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.3pt;
+  border-bottom: 0.6pt solid var(--ao-trait-fin);
+  padding-bottom: 1mm;
+  margin-bottom: 2mm;
+}
+
+.ao-champ {
+  margin-bottom: 1.5mm;
+}
+
+.ao-champ .ao-etiquette {
+  color: var(--ao-encre-douce);
+}
+
+.ao-champ .ao-valeur {
+  font-weight: bold;
+}
+
+/* -------------------------------------------------------------- tableaux */
+table.ao-tableau {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ao-tableau);
+}
+
+table.ao-tableau th,
+table.ao-tableau td {
+  border: 0.5pt solid var(--ao-trait-fin);
+  padding: 1.4mm 1.8mm;
+  vertical-align: top;
+}
+
+table.ao-tableau thead th {
+  background: var(--ao-fond-entete);
+  font-weight: bold;
+  text-align: center;
+  text-transform: uppercase;
+  font-size: var(--ao-petit);
+}
+
+table.ao-tableau thead {
+  display: table-header-group;
+}
+
+table.ao-tableau tr {
+  page-break-inside: avoid;
+}
+
+.ao-num { text-align: center; white-space: nowrap; }
+.ao-montant { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ao-lettres { font-style: italic; font-size: var(--ao-petit); color: var(--ao-encre-douce); }
+
+tr.ao-section-titre td {
+  background: var(--ao-fond-entete);
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+tr.ao-sous-total td {
+  font-weight: bold;
+  border-top: 1pt solid var(--ao-trait);
+}
+
+tr.ao-total td {
+  font-weight: bold;
+  border-top: 1.2pt solid var(--ao-trait);
+  border-bottom: 1.2pt double var(--ao-trait);
+}
+
+/* ---------------------------------------------------------------- arrêté */
+.ao-arrete {
+  border: 0.8pt solid var(--ao-trait);
+  padding: 3mm;
+  margin-top: 4mm;
+  text-transform: uppercase;
+  font-weight: bold;
+  page-break-inside: avoid;
+}
+
+/* --------------------------------------------------------------- clauses */
+.ao-clause {
+  border-left: 2pt solid var(--ao-accent);
+  padding-left: 3mm;
+  margin-top: 4mm;
+  text-align: justify;
+  font-size: var(--ao-petit);
+  page-break-inside: avoid;
+}
+
+/* -------------------------------------------------------------- signature */
+.ao-signature {
+  margin-top: 10mm;
+  page-break-inside: avoid;
+}
+
+.ao-signature .ao-cadre {
+  border: 0.5pt solid var(--ao-trait-fin);
+  height: 30mm;
+  margin-top: 2mm;
+}
+
+/* ------------------------------------------------------------------ pied */
+.ao-pied {
+  border-top: 0.5pt solid var(--ao-trait-fin);
+  padding-top: 2mm;
+  margin-top: 6mm;
+  font-size: var(--ao-petit);
+  color: var(--ao-encre-faible);
+}
+
+.ao-empreinte {
+  font-size: var(--ao-petit);
+  color: var(--ao-encre-faible);
+  letter-spacing: 0.2pt;
+}
+
+/* ------------------------------------------------------------- utilitaires */
+.ao-saut-page { page-break-before: always; }
+.ao-insecable { page-break-inside: avoid; }
+.ao-a-remplir {
+  border-bottom: 0.5pt dotted var(--ao-trait);
+  display: inline-block;
+  min-width: 40mm;
+}

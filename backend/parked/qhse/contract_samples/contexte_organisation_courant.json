@@ -1,0 +1,10 @@
+{
+  "endpoint": "GET /api/django/qhse/contexte-organisation/courant/",
+  "pourquoi": "WIR277 (XQHS15, ISO 4.1) — le contexte/enjeux de l'organisation est un SINGLETON par société (comme cpq.ParametresCPQ « courant/ ») : GET crée la ligne à la volée (get_or_create) si elle n'existe pas encore, PUT/PATCH la met à jour. company posée côté serveur — jamais lue du corps.",
+  "exemple": {
+    "id": 3,
+    "swot": "Forces : équipe technique solaire expérimentée. Faiblesses : dépendance à un seul fournisseur d'onduleurs. Opportunités : marché agricole (pompage). Menaces : volatilité des prix de l'acier.",
+    "perimetre_smq": "Conception, vente et installation de centrales photovoltaïques résidentielles, industrielles et agricoles au Maroc.",
+    "date_modification": "2026-08-26T09:00:00Z"
+  }
+}

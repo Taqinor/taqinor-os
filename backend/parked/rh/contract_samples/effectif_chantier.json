@@ -1,0 +1,37 @@
+{
+  "endpoint": "GET /api/django/rh/presences-chantier/effectif/",
+  "pourquoi": "AUDV20 — effectif RÉELLEMENT présent sur un chantier un jour donné, consommé par l'écran RH → « Présents chantier ». Source de vérité : apps/rh/views.py::PresenceChantierViewSet.effectif, qui délègue le COMPTE à apps/rh/selectors.py::effectif_present_le (les lignes ABSENT sont exclues, scope société) et la LISTE à selectors.presences_installation(presents_seulement=True) sérialisée par PresenceChantierSerializer. `effectif` est un ENTIER (jamais une liste) et vaut toujours la longueur de `presents` : un nombre facturé s'affiche avec les employés qu'il compte. `installation_id` est un entier (STRING-FK vers installations.Installation) ; `date` est une chaîne ISO YYYY-MM-DD, le jour effectivement interrogé (aujourd'hui si le paramètre `?date=` est absent ou illisible). Sans `?installation_id=` numérique, l'endpoint répond 400 — il ne renvoie JAMAIS un effectif tous chantiers confondus.",
+  "exemple": {
+    "installation_id": 42,
+    "date": "2026-09-04",
+    "effectif": 2,
+    "presents": [
+      {
+        "id": 1,
+        "employe": 9,
+        "employe_nom": "Bennani Youssef",
+        "installation_id": 42,
+        "date": "2026-09-04",
+        "statut": "present",
+        "statut_display": "Présent",
+        "emarge": true
+      },
+      {
+        "id": 2,
+        "employe": 11,
+        "employe_nom": "Alami Sara",
+        "installation_id": 42,
+        "date": "2026-09-04",
+        "statut": "retard",
+        "statut_display": "Retard",
+        "emarge": false
+      }
+    ]
+  },
+  "exemple_vide": {
+    "installation_id": 42,
+    "date": "2026-09-04",
+    "effectif": 0,
+    "presents": []
+  }
+}
