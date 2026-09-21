@@ -814,11 +814,11 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
         # du protocole. Sur ce segment, un barreau d'appel naît en WhatsApp —
         # le canal change, rien d'autre : ni le nombre de touches, ni les
         # libellés, ni les délais, ni les jours.
-        # Le rendez-vous DOMINICAL reste un appel à ce stade — c'est CAD33
-        # (décision fondateur du 21/09/2026) qui tranche qu'il suit lui aussi
-        # la préférence du client.
-        gabarit = cadence_temps.adapter_canal_au_lead(
-            gabarit, lead, dimanche_compris=False)
+        # CAD33 [TRANCHÉ 21/09/2026] — la préférence du client prime JUSQUE
+        # sur le rendez-vous du dimanche : lui aussi naît en WhatsApp pour un
+        # lead `whatsapp_only`. La fenêtre 16 h-19 h et l'unicité de la touche
+        # ne changent pas — c'est le canal, et lui seul, qui suit le client.
+        gabarit = cadence_temps.adapter_canal_au_lead(gabarit, lead)
         delai_minutes = getattr(gabarit, 'delai_minutes', 0) or 0
         heure_cible = getattr(gabarit, 'heure_cible', None)
         if getattr(gabarit, 'dimanche_ok', False):

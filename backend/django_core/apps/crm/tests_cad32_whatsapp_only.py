@@ -113,12 +113,13 @@ class ZeroAppelHorsDimancheTests(_Base):
             self.assertEqual(autre.delai_minutes, gabarit.delai_minutes,
                              ordre)
 
-    def test_la_touche_dominicale_reste_un_appel_ICI(self):
-        """État intermédiaire assumé : c'est CAD33 qui la bascule."""
+    def test_la_touche_dominicale_reste_UNIQUE(self):
+        """L'unicité du rendez-vous dominical ne bouge pas — son CANAL, lui,
+        suit désormais la préférence du client (CAD33, dont c'est le
+        fichier)."""
         dominicales = [g for g, _e in self._plan(self.whatsapp_only)
                        if getattr(g, 'dimanche_ok', False)]
         self.assertEqual(len(dominicales), 1)
-        self.assertFalse(horaires.est_un_message(dominicales[0].canal))
 
     def test_le_suivi_apres_devis_est_adapte_aussi(self):
         for gabarit, _echeance in self._plan(self.whatsapp_only,
