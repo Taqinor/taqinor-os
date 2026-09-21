@@ -269,14 +269,25 @@ def _rendu(*, applique, designation, unites, borne, branches, motifs):
 
 
 def _organe(protection):
-    """Un organe du noyau, publié comme la check-list CAL132 le publie."""
+    """Un organe du noyau, publié comme la check-list CAL132 le publie.
+
+    Les NEUF clés sont celles de ``services/protections.py::_ligne`` : les
+    départs de branches rejoignent ``resultat['protections']`` à côté des
+    organes de la check-list, et une liste dont les lignes n'ont pas les
+    mêmes clés est exactement ce que PACT10 interdit.
+    """
+    from .protections import ORIGINE_REGLE
+
     return {
         'repere': protection.repere,
         'designation': protection.designation,
         'calibre': protection.calibre,
         'quantite': protection.quantite,
         'cote': protection.cote,
+        'origine': ORIGINE_REGLE,
         'regle_source': protection.regle_source,
+        'motif': '',
+        'retenu': True,
     }
 
 

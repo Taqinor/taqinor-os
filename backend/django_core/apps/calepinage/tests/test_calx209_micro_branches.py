@@ -244,6 +244,9 @@ class BranchementApplicatifTest(SimpleTestCase):
         reperes = [organe['repere'] for organe in resultat['protections']]
         self.assertIn('QAC.1', reperes)
         self.assertIn('QAC.3', reperes)
+        # La liste reste HOMOGÈNE : mêmes clés pour tous les organes.
+        clefs = {tuple(sorted(organe)) for organe in resultat['protections']}
+        self.assertEqual(len(clefs), 1)
 
     def test_une_branche_sans_longueur_relevee_n_est_pas_dimensionnee(self):
         resultat = resultat_calepinage(
