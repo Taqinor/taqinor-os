@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
@@ -62,6 +62,7 @@ const CODES_GERES = [
   'dxf', // CALX22 — 4 calques, voir DESCRIPTIONS.
   'tableur_xlsx', // CALX22 — 3 feuilles, voir DESCRIPTIONS.
   'tableur_csv', // CALX23 — sélecteur de feuille, voir FEUILLES_CSV.
+  'pack_technique', // CALX24 — POST, pas un GET : voir composerPack().
 ]
 
 // CALX23 — les TROIS feuilles servies par `?feuille=`, recopiées à l'IDENTIQUE
@@ -137,9 +138,12 @@ function ErreursSortie({ erreurs }) {
 }
 
 /** Une carte de sortie : libellé, format, bouton (actif seulement si
-    l'inventaire le dit), motif d'indisponibilité SOUS le bouton inactif. */
+    l'inventaire le dit), motif d'indisponibilité SOUS le bouton inactif.
+    `libelleBouton` : « Télécharger » par défaut, remplacé pour une action
+    qui n'est pas un téléchargement (CALX24 — « Composer… », une écriture). */
 function CarteSortie({
   entree, enCours, onTelecharger, erreurs, description, enfant,
+  libelleBouton = 'Télécharger',
 }) {
   return (
     <div
@@ -159,7 +163,7 @@ function CarteSortie({
           onClick={onTelecharger}
           data-testid={`cal-doc-bouton-${entree.code}`}
         >
-          Télécharger
+          {libelleBouton}
         </Button>
       </div>
       {description && (
@@ -206,6 +210,37 @@ function SelecteurFeuilleCsv({ valeur, onChange }) {
   )
 }
 
+/** CALX24 — le résultat d'une composition RÉUSSIE : le lien du document
+    déposé (nom rendu par le serveur) et CHAQUE signalement affiché « en
+    toutes lettres », jamais résumé. Un dossier sans signalement n'affiche
+    aucune liste vide. Le lien vise `/ged` (aucune route de détail par
+    document n'existe encore côté GED) — jamais un import `apps.ged` ici : ce
+    module ne parle qu'à `composerPackTechnique`, une action DÉJÀ posée par le
+    serveur. */
+function ResultatPack({ resultat }) {
+  if (!resultat) return null
+  return (
+    <div className="mt-2 space-y-1" data-testid="cal-doc-pack-resultat">
+      <p className="text-xs text-foreground">
+        Document déposé :{' '}
+        <Link to="/ged" className="font-medium text-primary-text underline">
+          {resultat.nom || `Dossier technique #${resultat.document}`}
+        </Link>
+      </p>
+      {resultat.signalements?.length > 0 && (
+        <ul
+          className="space-y-0.5 text-xs text-muted-foreground"
+          data-testid="cal-doc-pack-signalements"
+        >
+          {resultat.signalements.map((signalement) => (
+            <li key={signalement}>{signalement}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export default function PanneauDocuments({ calepinageId }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
@@ -220,6 +255,8 @@ export default function PanneauDocuments({ calepinageId }) {
   const [erreurs, setErreurs] = useState({})
   // CALX23 — la feuille CSV choisie, réamorcée à la première des trois servies.
   const [feuilleCsv, setFeuilleCsv] = useState(FEUILLES_CSV[0])
+  // CALX24 — le dernier résultat de composition du pack technique (ou `null`).
+  const [resultatPack, setResultatPack] = useState(null)
 
   const parCode = useMemo(() => {
     const carte = new Map()
@@ -243,6 +280,26 @@ export default function PanneauDocuments({ calepinageId }) {
     }
   }
 
+  // CALX24 — POST, jamais un téléchargement : succès -> `resultatPack`
+  // (document déposé + signalements) ; échec -> le MÊME régime d'erreur
+  // générique que tous les autres boutons (sous CETTE carte).
+  async function composerPack() {
+    const entree = parCode.get('pack_technique')
+    if (!entree) return
+    setErreurs((precedent) => ({ ...precedent, pack_technique: null }))
+    setResultatPack(null)
+    setEnCours('pack_technique')
+    try {
+      const reponse = await calepinageApi.calepinages.composerPackTechnique(id)
+      setResultatPack(reponse.data)
+    } catch (erreur) {
+      const details = await erreurDeTelechargement(erreur)
+      setErreurs((precedent) => ({ ...precedent, pack_technique: details }))
+    } finally {
+      setEnCours(null)
+    }
+  }
+
   if (loading) return <Spinner />
   if (error) {
     return <p className="text-sm text-destructive" data-testid="cal-doc-erreur">{error}</p>
@@ -258,21 +315,48 @@ export default function PanneauDocuments({ calepinageId }) {
           Aucun document disponible pour l’instant.
         </p>
       )}
-      {entrees.map((entree) => (
-        <CarteSortie
-          key={entree.code}
-          entree={entree}
-          enCours={enCours === entree.code}
-          onTelecharger={() => (entree.code === 'tableur_csv'
-            ? telecharger(entree.code, { feuille: feuilleCsv })
-            : telecharger(entree.code))}
-          erreurs={erreurs[entree.code]}
-          description={DESCRIPTIONS[entree.code]}
-          enfant={entree.code === 'tableur_csv' && (
-            <SelecteurFeuilleCsv valeur={feuilleCsv} onChange={setFeuilleCsv} />
-          )}
-        />
-      ))}
+      {entrees.map((entree) => {
+        // CALX23/CALX24 — deux codes s'écartent du téléchargement générique
+        // (un sélecteur de feuille, une composition POST) : le dispatch reste
+        // ICI, jamais dans `CarteSortie` elle-même (qui ne connaît AUCUN code
+        // par son nom).
+        if (entree.code === 'tableur_csv') {
+          return (
+            <CarteSortie
+              key={entree.code}
+              entree={entree}
+              enCours={enCours === entree.code}
+              onTelecharger={() => telecharger(entree.code, { feuille: feuilleCsv })}
+              erreurs={erreurs[entree.code]}
+              description={DESCRIPTIONS[entree.code]}
+              enfant={<SelecteurFeuilleCsv valeur={feuilleCsv} onChange={setFeuilleCsv} />}
+            />
+          )
+        }
+        if (entree.code === 'pack_technique') {
+          return (
+            <CarteSortie
+              key={entree.code}
+              entree={entree}
+              enCours={enCours === entree.code}
+              onTelecharger={composerPack}
+              erreurs={erreurs[entree.code]}
+              libelleBouton="Composer le pack technique"
+              enfant={<ResultatPack resultat={resultatPack} />}
+            />
+          )
+        }
+        return (
+          <CarteSortie
+            key={entree.code}
+            entree={entree}
+            enCours={enCours === entree.code}
+            onTelecharger={() => telecharger(entree.code)}
+            erreurs={erreurs[entree.code]}
+            description={DESCRIPTIONS[entree.code]}
+          />
+        )
+      })}
     </Card>
   )
 }

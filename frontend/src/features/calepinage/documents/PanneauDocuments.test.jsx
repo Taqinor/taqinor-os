@@ -21,6 +21,7 @@ vi.mock('../../../api/calepinageApi', () => ({
     calepinages: {
       sorties: vi.fn(),
       telechargerSortie: vi.fn(),
+      composerPackTechnique: vi.fn(),
     },
   },
 }))
@@ -336,5 +337,78 @@ describe('PanneauDocuments — export tableur CSV (CALX23)', () => {
     // répond bel et bien — notre appel n'affiche donc aucune erreur.
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
     expect(screen.queryByTestId('cal-doc-erreurs')).toBeNull()
+  })
+})
+
+describe('PanneauDocuments — composer le pack technique (CALX24)', () => {
+  it('pendant la composition, le bouton est inactif', async () => {
+    servirInventaire('exemple') // pack_technique disponible=true ici
+    let resoudre
+    calepinageApi.calepinages.composerPackTechnique.mockReturnValue(
+      new Promise((resolve) => { resoudre = resolve }),
+    )
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    const bouton = await screen.findByTestId('cal-doc-bouton-pack_technique')
+    expect(bouton).toHaveTextContent('Composer le pack technique')
+    expect(bouton).toBeEnabled()
+
+    await utilisateur.click(bouton)
+    await waitFor(() => expect(bouton).toBeDisabled())
+
+    resoudre({
+      data: {
+        document: 9, nom: 'Dossier.pdf', pieces: [], pages_attendues: 2, signalements: [],
+      },
+    })
+    await waitFor(() => expect(bouton).toBeEnabled())
+  })
+
+  it('chaque signalement du serveur est affiché EN TOUTES LETTRES, avec le lien du document déposé', async () => {
+    servirInventaire('exemple')
+    const SIGNALEMENT = '« Note de calcul » : refusée — aucun résultat de moteur enregistré.'
+    calepinageApi.calepinages.composerPackTechnique.mockResolvedValue({
+      data: {
+        document: 12,
+        nom: 'Dossier technique — Toiture atelier.pdf',
+        pieces: [{ code: 'planche_pdf', libelle: 'Planche', pages: 1 }],
+        pages_attendues: 2,
+        signalements: [SIGNALEMENT],
+      },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-pack_technique'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-doc-pack-signalements')).toHaveTextContent(SIGNALEMENT)
+    })
+    expect(screen.getByTestId('cal-doc-pack-resultat'))
+      .toHaveTextContent('Dossier technique — Toiture atelier.pdf')
+  })
+
+  it('un refus serveur s’affiche SOUS sa carte (régime d’erreur générique, aucun résultat affiché)', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.composerPackTechnique.mockRejectedValue({
+      response: {
+        status: 400,
+        data: {
+          pieces: 'Aucune pièce disponible : un dossier technique ne se remet pas amputé en silence.',
+        },
+      },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-pack_technique'))
+
+    const carte = await screen.findByTestId('cal-doc-sortie-pack_technique')
+    await waitFor(() => {
+      expect(carte.querySelector('[data-testid="cal-doc-erreurs"]'))
+        .toHaveTextContent('amputé en silence')
+    })
+    expect(screen.queryByTestId('cal-doc-pack-resultat')).toBeNull()
   })
 })

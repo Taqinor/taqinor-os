@@ -181,6 +181,13 @@ const calepinageApi = {
     // `params` porte `?feuille=` pour le tableur CSV (CALX23), vide ailleurs.
     telechargerSortie: (endpoint, params) =>
       api.get(endpoint, { responseType: 'blob', params }),
+
+    // CALX24 — compose le dossier technique (planche + note de calcul
+    // fusionnées) et le DÉPOSE dans la GED : en ÉCRITURE (POST), gardée par
+    // `calepinage_gerer` côté serveur. Réponse JSON normale (jamais un blob) :
+    // `{document, nom, pieces, pages_attendues, signalements}`. Aucun import
+    // `apps.ged` ici — l'écran ne parle qu'à CETTE action.
+    composerPackTechnique: (id) => api.post(`${pivot(id)}pack-technique/`),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
