@@ -5,8 +5,8 @@ AO sort du produit. Ce test prouve que la capacité de recomptage dont
 / ``comparaison_calepinage_devis``) survit au déménagement SANS changer de
 forme : mêmes clés de sortie, même type de résultat, même empreinte d'entrée et
 même compte que le chemin « surface libre » sur la MÊME géométrie, ordre lat/lng
-toujours EXPLICITE. Porté de ``apps.ao.tests.test_pont_villa`` — et il n'importe
-AUCUN module AO : c'est précisément le point.
+toujours EXPLICITE. Porté du test « pont villa » d'AO — et il n'importe AUCUN
+module AO : c'est précisément le point.
 
 Run : python manage.py test
     apps.calepinage.tests.test_solmvp15b_moteur_villa -v2
