@@ -88,7 +88,9 @@ class Cadence(models.TextChoices):
     cadence historique.
 
     Une seule échelle anonyme ne pouvait pas porter trois rythmes différents :
-    la prise de contact (8 touches sur 14 j, la première à J0 + 3 minutes),
+    la prise de contact (11 touches sur 14 j — 6 appels et 5 WhatsApp —, dont
+    la PREMIÈRE est le message d'identité à J0 + 0 minute, la deuxième l'appel
+    d'ouverture à J0 + 3 minutes et la troisième l'appel 2 à J0 + 2 h 30),
     le suivi après devis (J1…J14) et le réveil des dormants (J30/J60). La
     quatrième valeur, ``generique``, N'EST PAS une nouveauté : c'est le nom
     donné aux 5 barreaux neutres qui existaient déjà (J+2/5/10/20/35). Ils ne
