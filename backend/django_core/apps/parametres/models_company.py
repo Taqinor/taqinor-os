@@ -339,11 +339,20 @@ class CompanyProfile(models.Model):
         null=True, blank=True, verbose_name='Ramadan — début')
     ramadan_fin = models.DateField(
         null=True, blank=True, verbose_name='Ramadan — fin')
+    # CAD38 — défaut 09:00-15:00, l'horaire continu appliqué au Maroc pendant
+    # le Ramadan dans les administrations, établissements publics et
+    # collectivités (Ministère de la Transition numérique et de la Réforme de
+    # l'administration, annonce du 10/02/2026 ; relais maroc-hebdo puis
+    # medias24 du 10/02/2026). L'ancien défaut 10:00-14:00 était deux heures
+    # plus étroit que cette référence, sans source. Le champ reste éditable
+    # par société. Décision fondateur du 21/09/2026 (CAD39) : cette fenêtre
+    # est COMMUNE aux appels et aux messages — pas de découpage par canal, et
+    # AUCUNE fenêtre du soir après le ftour.
     ramadan_appel_debut = models.TimeField(
-        default=datetime.time(10, 0),
+        default=datetime.time(9, 0),
         verbose_name='Ramadan — début des appels')
     ramadan_appel_fin = models.TimeField(
-        default=datetime.time(14, 0),
+        default=datetime.time(15, 0),
         verbose_name='Ramadan — fin des appels')
     # Objectif de première prise de contact, en minutes OUVRÉES (KPI MRY19).
     premier_contact_objectif_min = models.PositiveIntegerField(
