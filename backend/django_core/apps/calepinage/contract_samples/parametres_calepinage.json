@@ -228,6 +228,30 @@
           "libelle": "Auxiliaires — consommation de nuit",
           "unite": "W",
           "reference": "PVsyst — Auxiliaries consumption (consommation de nuit, valeur fixe distincte)"
+        },
+        {
+          "cle": "bifacial_hauteur_pose_m",
+          "libelle": "Hauteur de pose de la face arrière au-dessus du sol (repli quand le document ne la porte pas)",
+          "unite": "m",
+          "reference": "PVsyst — Bifacial systems (facteurs de vue : hauteur de pose)"
+        },
+        {
+          "cle": "bifacial_taux_occupation",
+          "libelle": "Taux d'occupation du sol (GCR) retenu pour la face arrière (repli quand le document ne le porte pas)",
+          "unite": "",
+          "reference": "PVsyst — Bifacial systems (facteurs de vue : taux d'occupation)"
+        },
+        {
+          "cle": "bifacial_pas_rangee_m",
+          "libelle": "Pas entre rangées retenu pour la face arrière (repli quand le document ne le porte pas)",
+          "unite": "m",
+          "reference": "PVsyst — Bifacial systems (facteurs de vue : pas entre rangées)"
+        },
+        {
+          "cle": "bifacial_mismatch_arriere_pct",
+          "libelle": "Mismatch de face arrière",
+          "unite": "%",
+          "reference": "PVsyst — Bifacial systems (les 10 % du logiciel sont CITÉS en aide à la saisie, jamais préremplis)"
         }
       ],
       "electrique_societe": [
@@ -446,6 +470,30 @@
           "libelle": "Auxiliaires — consommation de nuit",
           "unite": "W",
           "reference": "PVsyst — Auxiliaries consumption (consommation de nuit, valeur fixe distincte)"
+        },
+        {
+          "cle": "bifacial_hauteur_pose_m",
+          "libelle": "Hauteur de pose de la face arrière au-dessus du sol (repli quand le document ne la porte pas)",
+          "unite": "m",
+          "reference": "PVsyst — Bifacial systems (facteurs de vue : hauteur de pose)"
+        },
+        {
+          "cle": "bifacial_taux_occupation",
+          "libelle": "Taux d'occupation du sol (GCR) retenu pour la face arrière (repli quand le document ne le porte pas)",
+          "unite": "",
+          "reference": "PVsyst — Bifacial systems (facteurs de vue : taux d'occupation)"
+        },
+        {
+          "cle": "bifacial_pas_rangee_m",
+          "libelle": "Pas entre rangées retenu pour la face arrière (repli quand le document ne le porte pas)",
+          "unite": "m",
+          "reference": "PVsyst — Bifacial systems (facteurs de vue : pas entre rangées)"
+        },
+        {
+          "cle": "bifacial_mismatch_arriere_pct",
+          "libelle": "Mismatch de face arrière",
+          "unite": "%",
+          "reference": "PVsyst — Bifacial systems (les 10 % du logiciel sont CITÉS en aide à la saisie, jamais préremplis)"
         }
       ],
       "electrique_societe": [
