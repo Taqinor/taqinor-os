@@ -167,6 +167,20 @@ const calepinageApi = {
     // produit, aucun statut n'est écrit par l'écran.
     genererDevis: (id, corps) => api.post(`${pivot(id)}generer-devis/`, corps),
     syncDevis: (id, corps) => api.post(`${pivot(id)}sync-devis/`, corps),
+
+    // CALX19 — l'INVENTAIRE des sorties d'un calepinage (planche, plans, note
+    // de calcul, DXF, tableurs, pack technique), contrat
+    // `contract_samples/calepinage_sorties.json`. Lecture PURE : ne produit
+    // aucun document, dit seulement ce qui existe et pourquoi une sortie
+    // manque quand elle manque.
+    sorties: (id) => api.get(`${pivot(id)}sorties/`),
+    // CALX19 — le téléchargement GÉNÉRIQUE d'UNE sortie de cet inventaire :
+    // `endpoint` vient TOUJOURS de l'entrée servie par `sorties()` ci-dessus
+    // (déjà préfixée `/api/django/…`, l'intercepteur d'`api/axios.js` ne la
+    // préfixe pas deux fois) — jamais un chemin reconstruit à la main ici.
+    // `params` porte `?feuille=` pour le tableur CSV (CALX23), vide ailleurs.
+    telechargerSortie: (endpoint, params) =>
+      api.get(endpoint, { responseType: 'blob', params }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

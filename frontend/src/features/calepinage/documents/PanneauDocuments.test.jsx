@@ -1,0 +1,134 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
+import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+
+/* ============================================================================
+   CALX19 — le panneau « Documents » lit l'inventaire des sorties, RIEN
+   D'AUTRE.
+   ----------------------------------------------------------------------------
+   PACT10/PACT13 — AUCUNE CHARGE UTILE RETAPÉE ICI : les payloads viennent du
+   document committé `backend/django_core/apps/calepinage/contract_samples/
+   calepinage_sorties.json`, le MÊME que le test backend
+   `apps/calepinage/tests/test_cal175_sorties.py` affirme. Un mock écrit à la
+   main serait une DEUXIÈME source de vérité (l'incident « AO — Tableau de
+   bord » du 03/08/2026, exactement ce que ces helpers empêchent).
+   ========================================================================== */
+
+vi.mock('../../../api/calepinageApi', () => ({
+  default: {
+    calepinages: {
+      sorties: vi.fn(),
+      telechargerSortie: vi.fn(),
+    },
+  },
+}))
+vi.mock('../../../utils/downloadBlob', () => ({
+  downloadBlob: vi.fn(),
+  filenameFromResponse: vi.fn((_res, fallback) => `${fallback}.bin`),
+}))
+
+import calepinageApi from '../../../api/calepinageApi'
+import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
+import PanneauDocuments from './PanneauDocuments'
+
+const APP = 'calepinage'
+const NOM = 'calepinage_sorties'
+
+const sortie = (variante, code) =>
+  exempleContrat(APP, NOM, variante).sorties.find((s) => s.code === code)
+
+const servirInventaire = (variante = 'exemple') => {
+  calepinageApi.calepinages.sorties.mockResolvedValue(reponseContrat(APP, NOM, variante))
+}
+
+const rendre = (calepinageId = 41) => render(
+  <MemoryRouter><PanneauDocuments calepinageId={calepinageId} /></MemoryRouter>,
+)
+
+beforeEach(() => { vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.clearAllMocks() })
+
+describe('PanneauDocuments (CALX19)', () => {
+  it('le contrat committé porte bien les deux sorties branchées ici', () => {
+    expect(sortie('exemple', 'planche_pdf').endpoint)
+      .toBe('/api/django/calepinage/calepinages/41/planche.pdf/')
+    expect(sortie('exemple', 'planche_svg').endpoint)
+      .toBe('/api/django/calepinage/calepinages/41/planche.svg/')
+  })
+
+  it('sans conception (exemple_vide) : aucun bouton n’est actif, chaque motif est lisible', async () => {
+    servirInventaire('exemple_vide')
+
+    rendre()
+
+    const boutonPdf = await screen.findByTestId('cal-doc-bouton-planche_pdf')
+    const boutonSvg = await screen.findByTestId('cal-doc-bouton-planche_svg')
+    expect(boutonPdf).toBeDisabled()
+    expect(boutonSvg).toBeDisabled()
+
+    expect(screen.getByTestId('cal-doc-motif-planche_pdf'))
+      .toHaveTextContent(sortie('exemple_vide', 'planche_pdf').motif_indisponible)
+    expect(screen.getByTestId('cal-doc-motif-planche_svg'))
+      .toHaveTextContent(sortie('exemple_vide', 'planche_svg').motif_indisponible)
+  })
+
+  it('avec conception : les DEUX boutons branchés sont actifs et rien d’autre n’apparaît', async () => {
+    servirInventaire('exemple')
+
+    rendre()
+
+    await screen.findByTestId('cal-doc-bouton-planche_pdf')
+    expect(screen.getByTestId('cal-doc-bouton-planche_pdf')).toBeEnabled()
+    expect(screen.getByTestId('cal-doc-bouton-planche_svg')).toBeEnabled()
+    // Seuls les deux codes gérés par CALX19 ont une carte — les dix autres
+    // sorties de l'inventaire (plans, note de calcul, exports…) n'ont pas
+    // encore d'entrée : un bouton qui ne ferait rien au clic n'est jamais
+    // rendu.
+    expect(screen.queryByTestId('cal-doc-sortie-pack_technique')).toBeNull()
+    expect(screen.queryByTestId('cal-doc-sortie-dxf')).toBeNull()
+  })
+
+  it('clic sur « Télécharger » (planche PDF) : télécharge via l’endpoint du serveur', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.telechargerSortie.mockResolvedValue({
+      data: new Blob(['%PDF-1.4']),
+      headers: { 'content-disposition': 'attachment; filename="planche.pdf"' },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-planche_pdf'))
+
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    expect(calepinageApi.calepinages.telechargerSortie)
+      .toHaveBeenCalledWith(sortie('exemple', 'planche_pdf').endpoint, undefined)
+    expect(filenameFromResponse).toHaveBeenCalled()
+  })
+
+  it('refus serveur au téléchargement : le motif s’affiche SOUS la carte concernée', async () => {
+    servirInventaire('exemple')
+    const corpsErreur = { roof_layout: 'Aucune conception enregistrée.' }
+    calepinageApi.calepinages.telechargerSortie.mockRejectedValue({
+      response: {
+        status: 400,
+        data: new Blob([JSON.stringify(corpsErreur)], { type: 'application/json' }),
+      },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-planche_svg'))
+
+    const carte = await screen.findByTestId('cal-doc-sortie-planche_svg')
+    await waitFor(() => {
+      expect(carte.querySelector('[data-testid="cal-doc-erreurs"]'))
+        .toHaveTextContent('Aucune conception enregistrée.')
+    })
+    // Le refus reste SOUS sa carte : l'autre sortie n'affiche rien.
+    expect(screen.queryByTestId('cal-doc-sortie-planche_pdf')
+      ?.querySelector('[data-testid="cal-doc-erreurs"]')).toBeNull()
+    expect(downloadBlob).not.toHaveBeenCalled()
+  })
+})
