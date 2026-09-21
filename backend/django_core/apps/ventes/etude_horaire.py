@@ -1075,9 +1075,13 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
             if ve_kwh_jour > 0 and (not ve_saisons or saison in ve_saisons):
                 ve_jour_actif = ve_kwh_jour
 
+        # CAD173 (Q12) — le MOIS est passé au compositeur : clim et piscine
+        # suivent l'été de la FACTURE (mai→octobre), plus l'été PVGIS
+        # (juin-août). Les deux « étés » du moteur n'en font plus qu'un.
         conso_24h, couches_horaires = forme_consommation_detaillee(
             conso_jour_kwh + ve_jour_actif, occupation, saison=saison,
-            equipements=couches, ramadan=contexte_ramadan.get(numero))
+            equipements=couches, ramadan=contexte_ramadan.get(numero),
+            mois=numero)
 
         # L-GLITCH — la chronologie FINE du même jour type, posée ICI et nulle
         # part ailleurs : le balayage du stockage (DIM2) et l'étude complète
@@ -1186,10 +1190,13 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
                 continue
             kw = _num(couche.get('kw'))
             heures = couche.get('heures') or ()
-            saisons = couche.get('saisons')
             if kw <= 0 or not heures:
                 continue
-            if saisons and saison not in saisons:
+            # CAD173 (Q12) — MÊME porte que le compositeur de forme : le mois
+            # décide, pas la saison PVGIS. Deux portes différentes
+            # publieraient au client d'autres mois que ceux réellement servis.
+            from .courbes_journalieres import couche_saisonniere_active
+            if not couche_saisonniere_active(couche, mois=numero):
                 continue
             brutes[cle] = kw * len(heures) * jours
 

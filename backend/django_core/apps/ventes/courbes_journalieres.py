@@ -437,6 +437,42 @@ def _entier_positif(valeur):
     return val if val > 0 else None
 
 
+# ── CAD173 (Q12) ── LES DEUX « ÉTÉS » DU MOTEUR N'EN FONT PLUS QU'UN.
+#
+# Les couches piscine et clim portent ``saisons: ['ete']``, et « été » au sens
+# PVGIS vaut juin-juillet-août. Mais la FACTURE d'été du même moteur court de
+# mai à octobre (``etude_horaire.MOIS_ETE_FACTURE``, aligné sur la série
+# mensuelle de la page publique) : le même client avait donc deux étés, l'un
+# pour son argent, l'autre pour sa piscine. Décision fondateur du 21/09/2026
+# (Q12) : la clim et la piscine redistribuent de MAI À OCTOBRE, le découpage
+# de la facture. Aucun mois n'est choisi ici — il est REPRIS de celui qui
+# existait déjà.
+#: Mois (1-12) où les couches de redistribution saisonnières sont actives.
+MOIS_REDISTRIBUTION_ETE = (5, 6, 7, 8, 9, 10)
+
+#: En dessous de ce facteur, la journée ne peut pas porter les bosses
+#: déclarées telles quelles : la renormalisation les RABOTE. Le seuil n'est
+#: pas un réglage métier — c'est la tolérance numérique qui distingue « pas de
+#: plafonnement » d'un arrondi.
+_TOLERANCE_FACTEUR = 1e-9
+
+
+def couche_saisonniere_active(couche, *, saison=None, mois=None):
+    """Cette couche de redistribution est-elle active à ce moment ?
+
+    ``mois`` (1-12) PRIME quand il est fourni : une couche déclarée
+    saisonnière suit alors ``MOIS_REDISTRIBUTION_ETE`` (mai→octobre, CAD173).
+    Sans mois, on retombe sur le grain PVGIS d'avant (``saisons``) — c'est ce
+    qui garde le comportement inchangé pour les appelants qui ne connaissent
+    que la saison."""
+    saisons = (couche or {}).get('saisons')
+    if not saisons:
+        return True
+    if mois is not None:
+        return mois in MOIS_REDISTRIBUTION_ETE
+    return saison is None or saison in saisons
+
+
 # ── CAD169 ── L'ÉTIQUETTE DE LA VOITURE SEULEMENT PRÉVUE.
 #
 # Décision fondateur du 21/09/2026 : une voiture pas encore achetée reste
@@ -1075,7 +1111,7 @@ def renormalisation_redistribution(niveau_kwh, ve_kwh, brute_totale_kwh):
 
 
 def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
-                                 equipements=None, ramadan=None):
+                                 equipements=None, ramadan=None, mois=None):
     """``(conso_24h, couches_horaires)`` — la courbe ET sa décomposition L4.
 
     C'est la fonction que le moteur horaire intègre contre la production. Elle
@@ -1146,9 +1182,15 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
         kw = _nombre_positif(couche.get('kw'))
         if kw is None:
             continue
-        saisons = couche.get('saisons')
-        if saisons and saison is not None and saison not in saisons:
-            continue
+        # CAD173 (Q12) — le MOIS prime quand l'appelant le connaît : clim et
+        # piscine suivent l'été de la FACTURE (mai→octobre), pas l'été PVGIS.
+        if mois is not None:
+            if not couche_saisonniere_active(couche, mois=mois):
+                continue
+        else:
+            saisons = couche.get('saisons')
+            if saisons and saison is not None and saison not in saisons:
+                continue
         heures_couche = []
         for heure in couche.get('heures') or ():
             if isinstance(heure, int) and 0 <= heure <= 23:
@@ -1181,11 +1223,36 @@ def forme_consommation_detaillee(kwh_jour, occupation, *, saison=None,
     # l'heure servie est donc ``kw × facteur``. C'est cette énergie-là — pas la
     # bosse brute — que le moteur concentre en impulsions, sinon il sortirait de
     # l'heure plus d'énergie que la courbe n'en contient.
+    # ── CAD173 (Q11) ── LE PLAFONNEMENT EST DIT, JAMAIS SUBI EN SILENCE.
+    # Une couche qui dépasse la journée (un chauffe-eau de 2,5 kW pendant 9 h
+    # sur un petit niveau, par exemple) ne peut pas être servie telle quelle :
+    # la renormalisation la RABOTE, et le facteur descend sous 1. Jusqu'ici ce
+    # rabotage n'apparaissait nulle part — le chiffre montré au client était
+    # plus petit que la déclaration, sans que rien ne l'explique. Chaque
+    # couche porte donc désormais SON facteur et son drapeau, et l'écran les
+    # affiche (CAD157). Décision fondateur du 21/09/2026.
+    # « Dépasser la journée » a un sens PRÉCIS, et ce n'est pas « le facteur
+    # est inférieur à 1 » : la renormalisation rabote toujours un peu dès
+    # qu'une bosse existe, c'est son métier. Une couche DÉBORDE quand son
+    # énergie déclarée (kW × ses heures) dépasse à elle seule TOUT le niveau
+    # de la journée du client — l'exemple de la décision : un chauffe-eau de
+    # 2,5 kW pendant 9 h, soit 22,5 kWh, sur une journée qui n'en consomme
+    # que quelques-uns. Là, le chiffre servi n'a plus rien à voir avec la
+    # déclaration, et le taire serait mentir par omission.
     for info in actives.values():
         heures_kwh = [0.0] * 24
         for heure in info['heures']:
             heures_kwh[heure] += info['kw'] * facteur
         info['heures_kwh'] = heures_kwh
+        info['facteur'] = round(facteur, 6)
+        brute_couche = info['kw'] * len(info['heures'])
+        info['brute_kwh'] = round(brute_couche, 3)
+        info['plafonnee'] = brute_couche > base_total + _TOLERANCE_FACTEUR
+        if info['plafonnee']:
+            info['plafond_motif'] = (
+                'la journée du client ne peut pas porter cette puissance sur '
+                'ces heures : la couche est ramenée à ce que son niveau réel '
+                'permet.')
 
     return sortie, actives
 
