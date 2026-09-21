@@ -2090,6 +2090,31 @@ def dimensions_de_pose(produit):
     return out
 
 
+def produits_modules_qs(company):
+    """CALX109 — les produits MODULE PV du catalogue d'une société.
+
+    ``dimensions_de_pose`` ci-dessus rend les cotes d'UN produit ; il manquait
+    la porte qui dit LESQUELS : l'atelier 3D ne connaissait qu'un module, écrit
+    en dur dans ``apps/web/src/lib/roofPro2.ts``, alors que les vraies cotes
+    dorment sur les fiches (PV5/CAL111-114). Point d'entrée cross-app LECTURE
+    SEULE : ``apps.calepinage`` liste ses modules PAR ICI, jamais en important
+    ``stock.models``.
+
+    Filtres : la société de l'appelant (jamais un corps de requête), une fiche
+    technique de type ``module``, et les produits archivés EXCLUS — même règle
+    que la liste catalogue (cf. ``nb_produits_par_entite``). Trié par nom puis
+    identifiant, pour que deux appels rendent le même ordre. Rend un QuerySet
+    (``select_related`` sur la fiche : une requête, pas une par produit)."""
+    from .models import Produit
+
+    return (Produit.objects
+            .filter(company=company,
+                    fiche_technique__type_fiche='module',
+                    is_archived=False)
+            .select_related('fiche_technique')
+            .order_by('nom', 'id'))
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # PVOND — CONTRAT DE DONNÉES « ONDULEUR » : ajouter un onduleur demain doit
 # être de la pure SAISIE, jamais du code.

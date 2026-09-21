@@ -22,6 +22,40 @@ export const PANEL2_SHORT_M = 1.303; // petit côté (dans le sens de la pente)
 export const PANEL2_THICK_M = 0.033;
 export const PANEL2_WATT = 720; // 0,72 kWc par panneau
 
+/**
+ * CALX109 — LES COTES D'UN MODULE, telles que le pavage les consomme.
+ * Quatre grandeurs et rien d'autre : le grand côté (le long de la rangée), le petit côté
+ * (dans le sens de la pente), l'épaisseur (rendu 3D uniquement) et la puissance unitaire.
+ * Toutes en MÈTRES / Wc — c'est l'unité du moteur ; le document, lui, parle en millimètres
+ * (`modules[].longueurMm`…) et c'est `roofPro11/moduleSelect.ts` qui convertit, une fois.
+ */
+export interface Panel2Module {
+  /** Grand côté (m) — horizontal en paysage, le long de la rangée. */
+  longM: number;
+  /** Petit côté (m) — dans le sens de la pente, celui qui pilote le pas de rangée. */
+  courtM: number;
+  /** Épaisseur (m). `null` = non renseignée : la scène ne l'invente pas. */
+  epaisM: number | null;
+  /** Puissance crête unitaire (Wc). */
+  watt: number;
+}
+
+/**
+ * CALX109 — LE MODULE PAR DÉFAUT DE L'ATELIER, nommé une bonne fois.
+ *
+ * Les quatre constantes ci-dessus décrivent le SEUL module que l'atelier savait poser
+ * avant CALX109. Elles restent le repli — mais un repli EXPLICITE et NOMMÉ : tant qu'aucun
+ * module n'est choisi dans le catalogue de la société (`zones[].geometry.moduleId`, CALX82),
+ * c'est CE module-là qui est pavé, et l'atelier le dit. Ce n'est jamais un repli muet sur
+ * lequel un pan qui désigne un autre modèle retomberait en silence.
+ */
+export const MODULE_ATELIER_PAR_DEFAUT: Panel2Module = {
+  longM: PANEL2_LONG_M,
+  courtM: PANEL2_SHORT_M,
+  epaisM: PANEL2_THICK_M,
+  watt: PANEL2_WATT,
+};
+
 // — Décisions géométriques (ajustables ici) —
 export const PANEL2_TILT_DEG = 13; // inclinaison toit plat (plage densité 12–15°)
 export const PERIMETER_SETBACK_M = 0.5; // retrait de rive (valeur par défaut des trois)
@@ -314,6 +348,14 @@ export interface ProLayout2Options {
   tiltDeg?: number;
   /** Pose affleurante (toit en pente) : rangées jointives, pas d'espacement solaire. */
   flush?: boolean;
+  /**
+   * CALX109 — le module RÉELLEMENT posé sur ce pan, avec ses cotes de fiche. Optionnel et
+   * additif : absent ⇒ `MODULE_ATELIER_PAR_DEFAUT`, donc un pavage IDENTIQUE à celui
+   * d'avant CALX109, au panneau près. Présent, ses cotes remplacent les constantes dans la
+   * maille ET dans le pas de rangée (un module plus court ombrage moins loin), et sa
+   * puissance remplace `PANEL2_WATT` dans le kWc.
+   */
+  module?: Panel2Module;
 }
 
 /**
@@ -334,8 +376,11 @@ export function layoutProRows2(
   const azimuthDeg = orientationToAzimuthDeg(orientation);
   const designElevDeg = designSunElevationDeg(latitudeDeg);
 
-  const alongRow = PANEL2_LONG_M; // 2,384 m le long de la rangée (paysage)
-  const slope = PANEL2_SHORT_M; // 1,303 m dans le sens de la pente
+  // CALX109 — les cotes viennent du module CHOISI ; sans choix, du module par défaut de
+  // l'atelier (constantes historiques), donc le pavage est inchangé au panneau près.
+  const moduleP = opts.module ?? MODULE_ATELIER_PAR_DEFAUT;
+  const alongRow = moduleP.longM; // grand côté, le long de la rangée (paysage)
+  const slope = moduleP.courtM; // petit côté, dans le sens de la pente
   const depthFootprint = slope * Math.cos(tiltRad);
   const rise = slope * Math.sin(tiltRad);
   // Ombre projetée par une rangée au soleil de design + empreinte = pas mini.
@@ -433,7 +478,9 @@ export function layoutProRows2(
     ringENU,
     panels,
     count: panels.length,
-    kwc: (panels.length * PANEL2_WATT) / 1000,
+    // CALX109 — la puissance est celle du module POSÉ, jamais la constante de l'atelier
+    // quand un autre modèle est choisi (sinon deux modèles rendraient le même kWc).
+    kwc: (panels.length * moduleP.watt) / 1000,
     areaM2,
     rowAngleRad,
     tiltRad,

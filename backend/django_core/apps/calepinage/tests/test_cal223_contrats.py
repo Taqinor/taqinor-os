@@ -43,6 +43,9 @@ from apps.calepinage.selectors import (
 from apps.calepinage.services import site
 from apps.calepinage.services.equipements import equipements_du_calepinage
 from apps.calepinage.services.lestage import masse_et_lestage
+from apps.calepinage.services.modules_stock import (
+    modules_disponibles_du_calepinage,
+)
 from apps.calepinage.services.raccordement import bloc_raccordement
 from apps.calepinage.services.reglementaire import composer_dossiers
 
@@ -63,7 +66,11 @@ AVEC_PRODUCTEUR_PUR = ('calepinage_equipements.json',
                        # CALX244 — le point de raccordement : producteur PUR
                        # (``services/raccordement.py::bloc_raccordement``),
                        # servi par ``views/raccordement.py``.
-                       'calepinage_raccordement.json')
+                       'calepinage_raccordement.json',
+                       # CALX109 — le catalogue de modules de la société :
+                       # producteur PUR (``services/modules_stock.py``), la
+                       # vue ne fait que lui passer le QuerySet du stock.
+                       'calepinage_modules_disponibles.json')
 
 #: Les autres, avec la RAISON — aucun n'est oublié, chacun est un choix.
 SANS_PRODUCTEUR_PUR = {
@@ -350,6 +357,14 @@ class ClesServiesTest(unittest.TestCase):
         servi = masse_et_lestage(Faux())
         self._comparer('calepinage_masse_lestage.json', servi)
         self._comparer('calepinage_masse_lestage.json', servi,
+                       'exemple_vide')
+
+    def test_modules_disponibles(self):
+        # CALX109 — le service est PUR : la vue lui passe le QuerySet des
+        # produits MODULE de la société, il n'en requête aucun lui-même.
+        servi = modules_disponibles_du_calepinage(Faux(), [])
+        self._comparer('calepinage_modules_disponibles.json', servi)
+        self._comparer('calepinage_modules_disponibles.json', servi,
                        'exemple_vide')
 
     def test_site_imagerie(self):
