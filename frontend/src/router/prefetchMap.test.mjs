@@ -41,8 +41,8 @@ test('PREFETCH_MAP couvre 8 à 24 destinations chaudes, mêmes chemins que Sideb
 })
 
 test('ODY12 — les cockpits d’app de la grille sont préchargeables', () => {
-  // SOLMVP40 — '/rh', '/comptabilite' et '/ged' ont quitté la table avec les
-  // modules rh/compta/ged, sortis physiquement du dépôt vers frontend/parked/.
+  // SOLMVP40 — '/rh' et '/comptabilite' ont quitté la table avec les modules
+  // rh/compta, sortis physiquement du dépôt vers frontend/parked/.
   for (const to of ['/crm', '/ventes/devis', '/stock', '/chantiers', '/sav', '/reporting']) {
     assert.equal(typeof PREFETCH_MAP[to], 'function', `${to} devrait être préchargeable`)
   }

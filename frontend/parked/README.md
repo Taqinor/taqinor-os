@@ -2,17 +2,18 @@
 
 ## Ce que c'est
 
-Ce dossier contient le code frontend des **38 modules** sortis du périmètre
+Ce dossier contient le code frontend des **37 modules** sortis du périmètre
 « un seul produit : le MVP solaire » (Groupe SOLMVP, `docs/PLAN.md`). Le
 founder a tranché : ce code n'est **pas supprimé**, il est **rangé**, hors
 build/lint/tests/déploiement, mais il reste visible dans le dépôt et son
 historique `git` complet (via `git mv`, jamais un nouveau fichier) — n'importe
 quel module peut revenir en arrière avec la recette ci-dessous.
 
-`ged` (GED / gestion documentaire) était initialement conservé le temps
-d'une décision founder ; le founder a ensuite tranché de le sortir aussi
-(21/09/2026) — il fait donc partie des 38 modules parqués ci-dessous, au
-même titre que les 37 autres.
+`ged` (GED / gestion documentaire) a été évoqué puis écarté de cette liste en
+cours de tâche (décision founder finale, 21/09/2026) : **il reste dans le
+produit**, intact sous `frontend/src/features/ged`, `pages/ged`,
+`api/gedApi.js`, avec toutes ses routes (`/ged`, `/ged/signature/:token`,
+`/ged/signataire/:token`, `/ged/depot/:token`) inchangées dans le routeur.
 
 Rien ici n'est chargé par l'application : aucun `import.meta.glob`, aucun
 `import(...)` du routeur ne pointe plus vers ce dossier, et `frontend/parked/`
@@ -43,7 +44,6 @@ client API dédié) sont devenus respectivement `frontend/parked/features/<x>`,
 | fiscal | oui | oui | oui (fiscalApi.js) |
 | flotte | oui | — | oui (flotteApi.js) |
 | fpa | oui | oui | oui (fpaApi.js) |
-| ged | oui | oui | oui (gedApi.js) |
 | gestion_projet | oui | — (`pages/dossiers`, voir note) | — (gestionProjetApi.js reste : partagé) |
 | hospitality | oui | — | oui (hospitalityApi.js) |
 | immobilier | oui | oui | oui (immobilierApi.js) |
@@ -92,13 +92,13 @@ paramètres, stock) — les déplacer aurait cassé ces écrans.
    le redétecte automatiquement dès que le dossier réapparaît sous
    `frontend/src/features/`.
 3. Sinon (route déclarée directement dans `router/index.jsx`, cas de
-   `contrats`, `kb`, `messaging`, `qhse`, `rh`, `ged`) : retrouver la route et
+   `contrats`, `kb`, `messaging`, `qhse`, `rh`) : retrouver la route et
    l'import lazy supprimés par le commit SOLMVP40 dans l'historique git
    (`git log -p -- frontend/src/router/index.jsx`, chercher le commit
    `solmvp(SOLMVP40)`) et les restaurer dans `frontend/src/router/index.jsx`.
    Restaurer aussi l'entrée correspondante dans
    `frontend/src/router/prefetchMap.js` si elle existait (`/rh`,
-   `/comptabilite`, `/messages`, `/ged`).
+   `/comptabilite`, `/messages`).
 4. Retirer `frontend/parked/**` des exclusions si plus aucun module n'y
    reste dans **chacun** des fichiers suivants (ne toucher que celles qui ne
    servent plus qu'à ce module) : `frontend/eslint.config.js` (`ignores`),

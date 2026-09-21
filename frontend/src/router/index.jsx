@@ -64,6 +64,10 @@ const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 const PublicBookingPage = lazy(() => import('../pages/crm/PublicBookingPage'))
 // NTCRM18 — page publique de la salle de vente digitale (sans login).
 const PublicSalleVentePage = lazy(() => import('../pages/crm/salle-vente/PublicSalleVentePage'))
+// XGED1/XGED2 — cérémonie de signature électronique publique (sans login).
+const PublicSignaturePage = lazy(() => import('../pages/ged/PublicSignaturePage'))
+// XGED7 — dépôt public de fichier (upload-request, sans login).
+const PublicDepotPage = lazy(() => import('../pages/ged/PublicDepotPage'))
 // XSAV19 — page publique « Signaler un problème » via QR équipement.
 const EquipementSignalerPage = lazy(() => import('../pages/sav/EquipementSignalerPage'))
 // XSAV10/FG86 — page publique de suivi client d'un ticket SAV + CSAT.
@@ -72,6 +76,7 @@ const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 // compte-rendu signé ZFSM2), chacune sur son propre jeton.
 const InterventionSuiviPublicPage = lazy(() => import('../pages/installations/InterventionSuiviPublicPage'))
 const InterventionRapportPublicPage = lazy(() => import('../pages/installations/InterventionRapportPublicPage'))
+const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 // VX78 — Écran 404 déjà construit (ui/NotFound.jsx), jusqu'ici jamais importé
 // par le routeur : le catch-all rebondissait en silence vers /dashboard.
 const NotFound = lazy(() => import('../ui/NotFound'))
@@ -372,6 +377,12 @@ const router = createBrowserRouter([
   { path: '/rdv/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense></RouteErrorBoundary> },
   // NTCRM18 — salle de vente digitale publique (sans login, sans layout ERP).
   { path: '/salle-vente/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicSalleVentePage /></Suspense></RouteErrorBoundary> },
+  // XGED1 — cérémonie de signature publique (mono-signataire), sans login.
+  { path: '/ged/signature/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicSignaturePage mode="signature" /></Suspense></RouteErrorBoundary> },
+  // XGED2 — cérémonie de signature publique d'un destinataire (multi-signataires).
+  { path: '/ged/signataire/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicSignaturePage mode="signataire" /></Suspense></RouteErrorBoundary> },
+  // XGED7 — dépôt public de fichier (upload-request), sans login.
+  { path: '/ged/depot/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicDepotPage /></Suspense></RouteErrorBoundary> },
   // XSAV19 — « Signaler un problème » via QR équipement (sans login, sans layout ERP).
   { path: '/e/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><EquipementSignalerPage /></Suspense></RouteErrorBoundary> },
   // XSAV10/FG86 — suivi client d'un ticket SAV + CSAT (sans login, sans layout ERP).
@@ -496,8 +507,8 @@ const router = createBrowserRouter([
   // Chantiers / Installations — migré vers
   // frontend/src/features/installations/module.config.jsx (ARC54).
 
-  // GED — sortie du périmètre MVP solaire (SOLMVP40, module parqué sous
-  // frontend/parked/features/ged, /pages/ged, /api/gedApi.js).
+  // GED — gestion documentaire (navigateur arborescent)
+  { path: '/ged', loader: authLoader, element: <WithLayout><DocumentsPage /></WithLayout> },
 
   // Après-vente : migré vers frontend/src/features/sav/module.config.jsx (ARC48).
 
