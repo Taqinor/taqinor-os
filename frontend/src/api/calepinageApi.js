@@ -371,6 +371,16 @@ const calepinageApi = {
     raccordement: (id) => api.get(`${pivot(id)}raccordement/`),
     enregistrerRaccordement: (id, corps) =>
       api.post(`${pivot(id)}raccordement/`, corps),
+
+    // CALX235 — le schéma unifilaire en DXF, pour qu'un bureau d'études le
+    // reprenne (`views/schema.py`, `url_path='schema-unifilaire.dxf'` — le
+    // point fait partie du chemin, comme `export.csv`). Le fichier est
+    // transposé du MÊME dessin que le SVG : les deux ne peuvent pas
+    // diverger. Réponse BLOB ; une conception incomplète ou bloquée ne
+    // produit AUCUN fichier et le serveur refuse en 400 en NOMMANT le champ
+    // en cause — l'écran affiche CE motif-là, il n'en invente aucun.
+    sldDxf: (id) =>
+      api.get(`${pivot(id)}schema-unifilaire.dxf/`, { responseType: 'blob' }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
