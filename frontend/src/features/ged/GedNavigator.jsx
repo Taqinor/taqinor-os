@@ -1512,12 +1512,8 @@ function DocQaDialog({ onClose }) {
               {results.map((r, i) => (
                 <li key={i} className="rounded-md border border-border p-2 text-sm">
                   <div className="mb-1 flex items-center gap-1.5">
-                    <Badge tone={r.source === 'kb' ? 'info' : 'neutral'}>
-                      {r.source === 'kb' ? 'Base de connaissances' : 'GED'}
-                    </Badge>
-                    <span className="truncate font-medium">
-                      {r.source === 'kb' ? r.article_titre : r.document_nom}
-                    </span>
+                    <Badge tone="neutral">GED</Badge>
+                    <span className="truncate font-medium">{r.document_nom}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">{r.texte}</p>
                 </li>
