@@ -1782,6 +1782,16 @@ FILET_REFUS_LIBELLE = 'Décider la suite — perdu (motif) ou relance ultérieur
 #: a seulement demandé du temps. Le nom de l'étape doit dire la vérité.
 FILET_RAPPEL_LIBELLE = 'Rappeler le client — rappel convenu'
 
+#: CAD102 — les deux paliers de « il a écrit, puis il ne décroche plus ».
+#: L'appel du filet resté sans réponse envoyait directement sur « préparer et
+#: envoyer le devis » : l'ERP réclamait un chiffrage pour quelqu'un que
+#: personne n'avait jamais eu au téléphone. On tente d'abord de le JOINDRE —
+#: un message pour convenir d'un créneau, puis un dernier appel — et seulement
+#: ensuite on parle de devis. Ce sont des étapes de FILET, pas des barreaux du
+#: protocole : le nombre de touches de la cadence ne bouge pas.
+FILET_MESSAGE_CRENEAU_LIBELLE = "Message — proposer un créneau pour l'appel"
+FILET_DERNIER_APPEL_LIBELLE = 'Rappeler — dernier essai avant de chiffrer'
+
 #: CKP2 — les libellés des étapes POSÉES PAR LE FILET. Elles portent la
 #: cadence `generique` sans être un barreau du gabarit `generique` : leur suite
 #: est décidée par `assurer_prochaine_etape_apres_succes`, jamais par la
@@ -1790,6 +1800,7 @@ _LIBELLES_FILET = frozenset({
     FILET_JOINT_LIBELLE, _FILET_JOINT_LIBELLE_ANCIEN,
     FILET_APPEL_LIBELLE, FILET_REFUS_LIBELLE,
     FILET_RAPPEL_LIBELLE,  # CAD3
+    FILET_MESSAGE_CRENEAU_LIBELLE, FILET_DERNIER_APPEL_LIBELLE,  # CAD102
 })
 
 # ── VISITE-CADENCE — LES TROIS GESTES DU RENDEZ-VOUS ────────────────────────
@@ -1944,6 +1955,7 @@ def assurer_prochaine_etape_apres_succes(lead, user,
                     if e.statut == RelanceEtape.Statut.A_FAIRE]
         if ouvertes:
             return ouvertes[0]
+    canal_etape = RelanceEtape.Canal.APPEL
     if canal_touche in _KINDS_MESSAGE:
         # RELANCE-SUITE — message répondu : on l'appelle, dès le prochain
         # créneau d'appel (maintenant si la fenêtre est ouverte).
@@ -1951,6 +1963,16 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         vise = timezone.now()
     else:
         vise = timezone.now() + datetime.timedelta(days=FILET_JOINT_DELAI_JOURS)
+    # CAD102 — « il a écrit, puis il ne décroche plus » : avant de réclamer un
+    # devis pour quelqu'un que personne n'a jamais eu au téléphone, on pose un
+    # ou deux gestes rapprochés pour LE JOINDRE (voir
+    # `FILET_SANS_REPONSE_SUITE`, bas de fichier). Chaque palier est une
+    # étape de filet de plus, jamais un barreau du protocole, et il n'y en a
+    # qu'UNE d'ouverte à la fois (CKP2).
+    palier = _palier_sans_reponse(libelle_touche_close, issue_touche_close)
+    if palier is not None:
+        libelle, canal_etape, jours = palier
+        vise = timezone.now() + datetime.timedelta(days=jours)
     if libelle_touche_close and libelle == libelle_touche_close:
         # CEINTURE anti-tapis-roulant (TREADMILL-1538) : ne JAMAIS re-poser à
         # l'identique la touche qu'on vient de clore — « Fait » doit toujours
@@ -1960,10 +1982,14 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         # RAPPEL, jamais « perdu (motif) ou relance ultérieure ».
         libelle = (FILET_RAPPEL_LIBELLE if issue_touche_close == 'rappel'
                    else FILET_REFUS_LIBELLE)
-    quand = horaires.prochain_creneau_appel(vise, lead.company, canal='appel')
+    # CAD102 — le recalage suit le CANAL de l'étape posée : un message se cale
+    # sur la fenêtre des messages, un appel sur celle des appels (la pause du
+    # vendredi ne vise que les appels). Aucune règle d'horaire n'est réécrite.
+    quand = horaires.prochain_creneau_appel(
+        vise, lead.company, canal=canal_etape)
     etape = RelanceEtape.objects.create(
         company=lead.company, lead=lead, cadence='generique', ordre=1,
-        canal=RelanceEtape.Canal.APPEL, libelle=libelle,
+        canal=canal_etape, libelle=libelle,
         # CAD18 — l'étape de filet porte enfin un GABARIT quand il en existe
         # un pour elle (voir `FILET_TEMPLATE_CLES`, bas de fichier). Le lead
         # le plus chaud du portefeuille — celui qui a répondu au message
@@ -8527,3 +8553,55 @@ def est_etape_de_filet(etape):
 FILET_TEMPLATE_CLES = {
     FILET_APPEL_LIBELLE: 'appel_apres_reponse',
 }
+
+
+# ── CAD-A ── CAD102 — « il a écrit, puis il ne décroche plus » ───────────────
+#
+#: Les issues qui, sur une étape de FILET, veulent dire « je n'ai pas eu le
+#: client ». ``non_joint`` porte aussi Répondeur et Occupé (CKP4 : la
+#: précision part dans la note, aucune valeur d'énumération n'est ajoutée).
+#: La chaîne VIDE ne vaut « pas joint » que sur une étape ÉCRITE, où l'écran
+#: ne propose aucune issue : sur un appel, « Fait — passer à la suite » veut
+#: dire que l'appel a eu lieu, et le devis est alors la bonne suite.
+_ISSUES_SANS_REPONSE = ('non_joint',)
+
+#: CAD102 — l'escalier du filet quand le client a RÉPONDU PAR ÉCRIT puis n'a
+#: plus décroché. Chaque entrée : libellé clos → (libellé suivant, canal,
+#: délai en jours), avec les issues qui déclenchent le palier.
+#:
+#: Deux gestes rapprochés, puis le devis. Le dernier appel n'a PAS d'entrée :
+#: après lui, le filet reprend son cours normal (« préparer et envoyer le
+#: devis »). C'est la garantie que l'escalier se termine — jamais une boucle.
+#:
+#: Les délais sont ceux du filet : le message part le jour même (prochain
+#: créneau de MESSAGE), le dernier appel le lendemain (prochain créneau
+#: d'APPEL) — aucun horaire nouveau n'est inventé, les fenêtres de la société
+#: décident.
+_FILET_SANS_REPONSE_PALIERS = {
+    FILET_APPEL_LIBELLE: {
+        'issues': _ISSUES_SANS_REPONSE,
+        'suite': (FILET_MESSAGE_CRENEAU_LIBELLE,
+                  RelanceEtape.Canal.WHATSAPP, 0),
+    },
+    FILET_MESSAGE_CRENEAU_LIBELLE: {
+        # Une touche ÉCRITE se clôt sans issue : l'écran n'en propose pas.
+        'issues': _ISSUES_SANS_REPONSE + ('',),
+        'suite': (FILET_DERNIER_APPEL_LIBELLE,
+                  RelanceEtape.Canal.APPEL, FILET_JOINT_DELAI_JOURS),
+    },
+}
+
+
+def _palier_sans_reponse(libelle_touche_close, issue_touche_close):
+    """CAD102 — le palier suivant de l'escalier « ne décroche pas », ou
+    ``None`` si cette clôture n'en déclenche aucun.
+
+    Rend ``(libelle, canal, delai_jours)``.
+    """
+    palier = _FILET_SANS_REPONSE_PALIERS.get(
+        (libelle_touche_close or '').strip())
+    if palier is None:
+        return None
+    if (issue_touche_close or '').strip() not in palier['issues']:
+        return None
+    return palier['suite']
