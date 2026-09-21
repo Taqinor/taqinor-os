@@ -180,9 +180,17 @@ class BalanceTests(unittest.TestCase):
         if module not in units:
             self.skipTest(f"{module} n'est plus decouvert")
         weights = ci_shard.weigh(units, ci_shard.load_timings())
-        blocs = ci_shard.class_weights(module, weights[module])
+        # SOLMVP54 (21/09/2026) — on lit la classe PAR SON NOM, pas comme le
+        # `max` du module : un voisin NON mesure du meme module peut recevoir
+        # davantage au prorata du reliquat (test_quote_engine_formats apres la
+        # scission de TestPdfFormats : la plus lourde mesuree vaut 31 s, une
+        # classe encore jamais mesuree en recoit 40). Ce que le test verrouille
+        # est inchange : la duree mesuree traverse `class_weights` telle quelle.
+        blocs = dict(ci_shard.class_weight_items(module, weights[module]))
+        nom_classe = pire_nom.rsplit(".", 1)[-1]
+        self.assertIn(nom_classe, blocs, f"{pire_nom} n'est plus une classe du module")
         self.assertAlmostEqual(
-            max(blocs), mesures[pire_nom], places=1,
+            blocs[nom_classe], mesures[pire_nom], places=1,
             msg=f"la classe {pire_nom} ({mesures[pire_nom]:.0f}s) doit garder "
                 "sa duree mesuree, sinon le plancher d'une lane est sous-estime",
         )

@@ -256,12 +256,19 @@ runs:
             minio/minio:latest server /data
         fi
         # Wait for MinIO's health endpoint before creating buckets.
-        for i in $(seq 1 30); do
-          if curl -sf http://localhost:9000/minio/health/live; then
+        # SOLMVP54 — sondage toutes les 0,25 s (au lieu de 2 s) : le serveur est
+        # pret en ~1 s, le premier `curl` echouait presque toujours et la lane
+        # payait un `sleep 2` entier ; 120 tours x 0,25 s = le meme plafond de 30 s.
+        # `/minio/health/ready` (pas `/live`) : le run 35608961728 a prouve que
+        # `live` repond AVANT que le serveur accepte `mc alias set` (« Server not
+        # initialized yet ») — le `sleep 2` d'avant masquait cette fenetre ;
+        # `ready` ne repond 200 que quand le serveur sert vraiment.
+        for i in $(seq 1 120); do
+          if curl -sf http://localhost:9000/minio/health/ready; then
             echo "MinIO ready"; break
           fi
-          echo "Waiting for MinIO ($i)..."; sleep 2
-          if [ "$i" = "30" ]; then
+          echo "Waiting for MinIO ($i)..."; sleep 0.25
+          if [ "$i" = "120" ]; then
             echo "MinIO unavailable"
             [ -f /tmp/minio.log ] && tail -50 /tmp/minio.log
             exit 1
@@ -269,8 +276,15 @@ runs:
         done
         # Pre-create the buckets (erp-pdf is also self-healed by the app). The
         # minio/mc entrypoint is `mc`, so force `sh` to chain the commands.
+        # Ceinture en plus de la sonde `ready` : `mc alias set` est reessaye
+        # jusqu'a 20 fois (0,5 s) — un refus transitoire ne doit jamais rougir
+        # une lane requise pour une question de demarrage.
         if [ "$PREBUILT" = 'true' ]; then
-          mc alias set local http://localhost:9000 erp_admin erp_minio_password
+          for i in $(seq 1 20); do
+            if mc alias set local http://localhost:9000 erp_admin erp_minio_password; then break; fi
+            echo "mc alias set: nouvel essai ($i)..."; sleep 0.5
+            if [ "$i" = "20" ]; then echo "MinIO n'accepte pas l'alias mc"; exit 1; fi
+          done
           mc mb -p local/erp-pdf local/erp-uploads
         else
           docker run --rm --network host --entrypoint sh minio/mc:latest -c "
@@ -411,7 +425,16 @@ runs:
         # Apply migrations: exact hit -> no-op; safe delta -> only the new ones;
         # rebuild/cold -> full build. Belt-and-suspenders: if migrate still fails
         # (a delta we thought safe couldn't apply), drop and rebuild clean.
-        if ! migrate; then
+        # SOLMVP54 (21/09/2026) — sur un hit EXACT on ne lance plus `migrate` du
+        # tout : la cle de cache est l'empreinte de TOUS les fichiers de migration
+        # + requirements.txt, donc le dump restaure porte exactement l'ensemble
+        # courant et `migrate` ne pouvait qu'imprimer « No migrations to apply »
+        # — apres ~10 s de demarrage Django + checks systeme, payes par CHAQUE
+        # lane backend et e2e a CHAQUE PR (mesure : 10,4 s sur le shard 3 du run
+        # 35600379409). Le chemin delta et le chemin froid sont inchanges.
+        if [ "$EXACT" = 'true' ] && [ "$REBUILD" = 'no' ]; then
+          echo "Exact hit — le dump porte exactement l'ensemble de migrations courant : migrate saute (SOLMVP54)."
+        elif ! migrate; then
           echo "migrate failed on the restored DB — dropping and rebuilding $TARGET clean"
           pgtool dropdb --force -h "$PGHOST" -U "$PGUSER" "$TARGET"
           pgtool createdb -h "$PGHOST" -U "$PGUSER" "$TARGET"

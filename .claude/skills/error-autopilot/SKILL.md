@@ -347,11 +347,11 @@ no hashes. Then print both status lines for the headless loop:
 ## Appendix A — Detection tool cheat-sheet (commands)
 
 Required CI checks (the merge gate and the no-regression bar):
-- backend-lint: `flake8 backend --max-line-length=120 --extend-ignore=E501 --exclude=migrations` and `lint-imports` (needs `import-linter==2.11`)
+- backend-lint: `python scripts/ci_guards.py backend-lint-fast` (runs flake8, `lint-imports` — needs `import-linter==2.11` — and every gated `check_*.py` in parallel; `--only <motif>` for one guard)
 - backend-tests: `python manage.py test apps` (Postgres + MinIO env, like CI)
-- frontend-lint: `cd frontend && npm run lint`; tests: `node --test --experimental-test-coverage "src/**/*.test.mjs"` and `npm run test:coverage`
+- frontend-lint: `cd frontend && npm run lint`; tests: `node --test "src/**/*.test.mjs"` and `npm run test:unit`
 - web: `cd apps/web && npm run check` (tsc) + `npm run build` (astro) + vitest
-- stage-names: `python scripts/check_stages.py` and `python scripts/codemap_fingerprint.py --check`
+- stage-names: `python scripts/ci_guards.py stage-names` (all 41 guards in parallel, incl. `check_stages.py` and `codemap_fingerprint.py --check`)
 
 Deeper analyzers (transient install for detection only; skip if unavailable):
 - Python: `ruff check backend`, `bandit -r backend - q`, `mypy backend` / `pyright`,
