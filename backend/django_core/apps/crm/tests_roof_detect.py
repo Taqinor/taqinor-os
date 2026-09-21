@@ -19,7 +19,9 @@ from unittest.mock import MagicMock, patch
 from django.test import TestCase, RequestFactory
 from rest_framework.test import force_authenticate
 
-from apps.crm.roof_detect import fetch_building_footprint, _parse_geometry
+from apps.crm.roof_detect import (
+    _parse_geometry, batiment_non_renseigne, fetch_building_footprint,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -62,18 +64,18 @@ class ParseGeometryTests(TestCase):
     """_parse_geometry parses Overpass JSON directly — no HTTP."""
 
     def test_valid_way_returns_vertices(self):
-        result = _parse_geometry(_SAMPLE_OVERPASS_WAY)
+        result = _parse_geometry(_SAMPLE_OVERPASS_WAY)["polygon"]
         self.assertEqual(len(result), 4)
         self.assertEqual(result[0], {"lat": 33.5731, "lng": -7.5898})
         self.assertEqual(result[1], {"lat": 33.5732, "lng": -7.5897})
 
     def test_empty_elements_returns_empty_list(self):
         result = _parse_geometry(_SAMPLE_OVERPASS_EMPTY)
-        self.assertEqual(result, [])
+        self.assertEqual(result["polygon"], [])
 
     def test_way_without_geometry_key_skipped(self):
         data = {"elements": [{"type": "way", "id": 1}]}
-        self.assertEqual(_parse_geometry(data), [])
+        self.assertEqual(_parse_geometry(data)["polygon"], [])
 
     def test_node_type_elements_skipped(self):
         data = {
@@ -81,7 +83,7 @@ class ParseGeometryTests(TestCase):
                 {"type": "node", "id": 1, "lat": 33.0, "lon": -7.0},
             ]
         }
-        self.assertEqual(_parse_geometry(data), [])
+        self.assertEqual(_parse_geometry(data)["polygon"], [])
 
     def test_fewer_than_3_vertices_skipped(self):
         data = {
@@ -96,7 +98,7 @@ class ParseGeometryTests(TestCase):
                 }
             ]
         }
-        self.assertEqual(_parse_geometry(data), [])
+        self.assertEqual(_parse_geometry(data)["polygon"], [])
 
     def test_malformed_node_skipped_gracefully(self):
         """First node is malformed (ValueError on float("bad")) — skipped;
@@ -115,7 +117,7 @@ class ParseGeometryTests(TestCase):
                 }
             ]
         }
-        result = _parse_geometry(data)
+        result = _parse_geometry(data)["polygon"]
         self.assertEqual(len(result), 3)
 
 
@@ -134,9 +136,11 @@ class FetchBuildingFootprintTests(TestCase):
             result = fetch_building_footprint(33.5731, -7.5898)
 
         self.assertIsNotNone(result)
-        self.assertGreaterEqual(len(result), 3)
-        self.assertIn("lat", result[0])
-        self.assertIn("lng", result[0])
+        # CALX106 — la fonction rend {"polygon": [...], "batiment": {...}}.
+        self.assertGreaterEqual(len(result["polygon"]), 3)
+        self.assertIn("lat", result["polygon"][0])
+        self.assertIn("lng", result["polygon"][0])
+        self.assertIn("batiment", result)
 
     def test_network_error_returns_none(self):
         """(b) Overpass timeout/error → returns None."""
@@ -149,13 +153,17 @@ class FetchBuildingFootprintTests(TestCase):
         self.assertIsNone(result)
 
     def test_no_building_returns_empty_list(self):
-        """(c) No building near the pin → returns []."""
+        """(c) No building near the pin → returns an empty polygon."""
         fake_requests = _fake_requests_success(_SAMPLE_OVERPASS_EMPTY)
 
         with patch.dict(sys.modules, {"requests": fake_requests}):
             result = fetch_building_footprint(33.5731, -7.5898)
 
-        self.assertEqual(result, [])
+        self.assertEqual(result["polygon"], [])
+        # CALX106 — le bloc `batiment` est servi MÊME sans bâtiment : toutes
+        # ses valeurs sont nulles et leur motif est nommé.
+        self.assertIsNone(result["batiment"]["height_m"])
+        self.assertIsNone(result["batiment"]["source"])
 
     def test_http_error_status_returns_none(self):
         """HTTP 429 / 503 → raise_for_status raises → returns None."""
@@ -216,13 +224,18 @@ class LeadRoofFootprintViewTests(TestCase):
             mock_mgr.get.return_value = lead
             request = self._make_request(user, 42)
             from apps.crm import roof_views as rv
-            with patch.object(rv, "fetch_building_footprint", return_value=polygon):
+            empreinte = {"polygon": polygon,
+                         "batiment": batiment_non_renseigne("exemple de test")}
+            with patch.object(rv, "fetch_building_footprint",
+                              return_value=empreinte):
                 response = rv.lead_roof_footprint(request, lead_id=42)
 
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertEqual(data["source"], "osm")
         self.assertEqual(len(data["polygon"]), 3)
+        # CALX106 — la réponse porte toujours le bloc `batiment`.
+        self.assertIn("batiment", data)
 
     def test_wrong_company_returns_404(self):
         """(d) Lead belongs to company_b; user is company_a → 404."""
@@ -275,6 +288,10 @@ class LeadRoofFootprintViewTests(TestCase):
         data = json.loads(response.content)
         self.assertEqual(data["polygon"], [])
         self.assertIn("message", data)
+        # CALX106 — Overpass injoignable : le bloc est servi quand même, tout
+        # à `null`, avec le motif qui le dit.
+        self.assertIsNone(data["batiment"]["height_m"])
+        self.assertIn("height_m", data["batiment"]["non_renseignes"])
 
     def test_roof_point_preferred_over_gps_fields(self):
         """(f) roof_point takes priority over gps_lat/gps_lng."""
@@ -289,7 +306,8 @@ class LeadRoofFootprintViewTests(TestCase):
 
         def mock_fetch(lat, lng):
             captured.append((lat, lng))
-            return []
+            return {"polygon": [],
+                    "batiment": batiment_non_renseigne("exemple de test")}
 
         with patch("apps.crm.models.Lead.objects") as mock_mgr:
             mock_mgr.get.return_value = lead
@@ -314,7 +332,8 @@ class LeadRoofFootprintViewTests(TestCase):
 
         def mock_fetch(lat, lng):
             captured.append((lat, lng))
-            return []
+            return {"polygon": [],
+                    "batiment": batiment_non_renseigne("exemple de test")}
 
         with patch("apps.crm.models.Lead.objects") as mock_mgr:
             mock_mgr.get.return_value = lead

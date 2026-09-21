@@ -192,6 +192,16 @@ SANS_PRODUCTEUR_PUR = {
         'apps/calepinage/tests/test_calx204_contrat_sld.py',
 
 
+    # CALX106
+    'calepinage_empreinte_osm.json':
+        "endpoint d'une AUTRE app (apps.crm, GET leads/<id>/roof-footprint/) "
+        '— hors périmètre de ce module ; son producteur '
+        '(apps/crm/roof_detect.py::_parse_geometry) est PUR et la forme est '
+        'affirmée sans base, depuis des réponses Overpass FIXÉES, par '
+        'apps/crm/tests/test_calx106_empreinte_osm.py, et le document lui-'
+        'même par '
+        'apps/calepinage/tests/test_calx106_contrat_empreinte_osm.py',
+
     # CALX62
     'calepinage_meteo_fichier.json':
         'réponse de la porte MULTIPART qui dépose une série météo de la '

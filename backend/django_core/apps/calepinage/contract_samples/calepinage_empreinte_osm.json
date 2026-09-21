@@ -1,0 +1,66 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/roof-footprint/",
+  "pourquoi": "CALX106 — l'empreinte OpenStreetMap du bâtiment épinglé, ET ce que la voie OSM DIT de ce bâtiment. Constat : la requête Overpass demande déjà `out geom` (apps/crm/roof_detect.py), donc chaque réponse portait les `tags` de la voie — `height`, `building:levels`, `roof:levels` — et `_parse_geometry` les jetait ; l'atelier 3D extrudait alors TOUJOURS l'hypothèse 6 m (`apps/web/src/scripts/roofPro11/constants.ts`) alors qu'OSM connaissait la vraie hauteur. Parité : PV*SOL importe des données de bâtiment 3D pour en déduire hauteurs d'égout et de faîtage. CE QUI EST AJOUTÉ, ET RIEN D'AUTRE : la clé racine `batiment`, servie dans les TROIS cas (bâtiment trouvé, aucun bâtiment, OpenStreetMap injoignable) avec exactement les mêmes clés — `polygon`, `source` et `message` sont INCHANGÉS, aucun consommateur existant ne change de comportement. TROIS RÈGLES DURES. (1) RIEN N'EST CONVERTI : les niveaux restent des niveaux (`levels`, `roof_levels`), la hauteur reste une hauteur (`height_m`) ; aucun étage de 3 m n'est supposé, ni dans un sens ni dans l'autre — deux valeurs cohérentes sont deux valeurs LUES, une valeur seule reste seule. (2) ZÉRO CHIFFRE INVENTÉ (D-CALX 7) : un tag absent, vide, ou écrit dans une forme illisible (pieds `25'`, intervalle `10-12`, liste `3;4`, texte libre) publie `null` et NOMME son motif en français dans `non_renseignes` — jamais un défaut, jamais 0, et « non renseigné » n'est pas « 0 m ». (3) TOUTE VALEUR PUBLIÉE PORTE SA PROVENANCE : `source` vaut `openstreetmap` dès qu'au moins une valeur est publiée (`null` sinon), `provenance[<clé>]` nomme le tag exact (`osm:height`, `osm:building:levels`, `osm:roof:levels`) et `osm_way_id` identifie la voie OSM lue. CE QUE LA MOITIÉ ATELIER EN FERA (CALX132) : `height_m` → `buildings[].hauteurM`, `levels` → `buildings[].etages`, `source` → `buildings[].source` du document `roof_layout` v2 (`$defs/building`, CALX84) — une hauteur OSM arrive donc dans le document AVEC sa provenance, exactement comme le contrat CALX84 l'exige ; une hauteur `null` n'y entre pas et l'atelier continue d'AFFICHER son hypothèse. Producteur : `apps/crm/roof_detect.py::_parse_geometry` (pur, aucune base) ; porte : `apps/crm/roof_views.py::lead_roof_footprint`.",
+  "exemple": {
+    "polygon": [
+      {"lat": 33.5731, "lng": -7.5898},
+      {"lat": 33.5732, "lng": -7.5897},
+      {"lat": 33.5733, "lng": -7.5898},
+      {"lat": 33.5731, "lng": -7.5898}
+    ],
+    "source": "osm",
+    "batiment": {
+      "osm_way_id": 123456,
+      "levels": 2,
+      "roof_levels": 1,
+      "height_m": 7.5,
+      "source": "openstreetmap",
+      "provenance": {
+        "levels": "osm:building:levels",
+        "roof_levels": "osm:roof:levels",
+        "height_m": "osm:height"
+      },
+      "non_renseignes": {}
+    }
+  },
+  "exemple_batiment_sans_tag": {
+    "polygon": [
+      {"lat": 33.5731, "lng": -7.5898},
+      {"lat": 33.5732, "lng": -7.5897},
+      {"lat": 33.5733, "lng": -7.5898},
+      {"lat": 33.5731, "lng": -7.5898}
+    ],
+    "source": "osm",
+    "batiment": {
+      "osm_way_id": 123456,
+      "levels": null,
+      "roof_levels": null,
+      "height_m": null,
+      "source": null,
+      "provenance": {},
+      "non_renseignes": {
+        "levels": "le bâtiment OpenStreetMap ne porte pas le tag « building:levels ».",
+        "roof_levels": "le bâtiment OpenStreetMap ne porte pas le tag « roof:levels ».",
+        "height_m": "le bâtiment OpenStreetMap ne porte pas le tag « height »."
+      }
+    }
+  },
+  "exemple_vide": {
+    "polygon": [],
+    "source": "osm",
+    "batiment": {
+      "osm_way_id": null,
+      "levels": null,
+      "roof_levels": null,
+      "height_m": null,
+      "source": null,
+      "provenance": {},
+      "non_renseignes": {
+        "levels": "aucun bâtiment OpenStreetMap n'a été trouvé à cet emplacement.",
+        "roof_levels": "aucun bâtiment OpenStreetMap n'a été trouvé à cet emplacement.",
+        "height_m": "aucun bâtiment OpenStreetMap n'a été trouvé à cet emplacement."
+      }
+    },
+    "message": "Aucun bâtiment trouvé à cet emplacement — tracez le contour manuellement."
+  }
+}
