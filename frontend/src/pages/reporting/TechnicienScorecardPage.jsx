@@ -11,7 +11,7 @@ import PageHeader from '../../components/layout/PageHeader'
 /* ============================================================================
    XFSM17 — Scorecard technicien (coaching), `reporting/insights/
    technicien-scorecard/`. Combine interventions terminées, durée réelle vs
-   estimée, récidive, ponctualité, NPS et utilisation — comparé à la MOYENNE
+   estimée, récidive, ponctualité et utilisation — comparé à la MOYENNE
    ÉQUIPE. Réservé responsable/admin (jamais visible du technicien
    lui-même). `?technicien=<id>` est REQUIS côté backend.
    ========================================================================== */
@@ -69,7 +69,7 @@ export default function TechnicienScorecardPage() {
     <div className="page">
       <PageHeader
         title="Scorecard technicien"
-        subtitle="Coaching : interventions, durée réelle vs estimée, récidive, ponctualité, NPS, utilisation — vs moyenne équipe."
+        subtitle="Coaching : interventions, durée réelle vs estimée, récidive, ponctualité, utilisation — vs moyenne équipe."
       />
 
       <div className="mb-4 flex flex-col gap-1">
@@ -130,11 +130,6 @@ export default function TechnicienScorecardPage() {
                     techValue={data.scorecard?.ponctualite_pct}
                     equipeValue={data.moyenne_equipe?.ponctualite_pct}
                     format={pct}
-                  />
-                  <ScoreRow
-                    label="NPS"
-                    techValue={data.scorecard?.nps}
-                    equipeValue={data.moyenne_equipe?.nps}
                   />
                   <ScoreRow
                     label="% utilisation"
