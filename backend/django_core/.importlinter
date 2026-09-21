@@ -79,22 +79,13 @@ ignore_imports =
 # DIRECT `apps.ventes.models -> apps.{stock,crm,sav,installations}.models`
 # import would still be caught.
     apps.ventes.models -> apps.facturation.models
-# NTCPQ25/29/49 — `apps.ventes.models` appelle DÉJÀ (avant ce lot, inchangé)
-# `apps.cpq.selectors.premiere_etape_en_attente` en import fonction-local dans
-# une property (`Devis`, NTCPQ8) : c'est le motif cross-app sanctionné par
-# CLAUDE.md (lire une AUTRE app par son `selectors.py`). Ce lot a ajouté à
-# `cpq.selectors` ses propres lectures cross-app — elles aussi PAR SÉLECTEUR
-# (`stock.selectors.get_produit_scoped` pour les alternatives NTCPQ29,
-# `ventes.selectors.devis_envoyes_periode` pour les KPI NTCPQ49) — ce qui rend
-# les 5 modules de modèles transitivement couplés via cette entrée.
-# On élague les DEUX arêtes de la couche SÉLECTEUR, jamais l'arête d'entrée
-# `ventes.models -> cpq.selectors` : celle-ci reste visible, donc si
-# `cpq.selectors` importait un jour DIRECTEMENT `apps.<domaine>.models`, la
-# violation serait toujours détectée. Même raison d'être que les trois
-# exceptions ci-dessus (« la couche selector/service traverse légitimement les
-# domaines »), appliquée d'une app à l'autre.
-    apps.cpq.selectors -> apps.stock.selectors
-    apps.cpq.selectors -> apps.ventes.selectors
+# SOLMVP-sweep (2026-09-21) — l'exception NTCPQ25/29/49 (`apps.cpq.selectors ->
+# apps.stock.selectors` / `-> apps.ventes.selectors`) est retirée : `apps.cpq`
+# est sorti du MVP solaire (Groupe SOLMVP), `cpq/selectors.py` n'existe plus,
+# et l'arête d'entrée qu'elle justifiait (`ventes.models -> cpq.selectors`,
+# `Devis.premiere_etape_en_attente`) a déjà disparu du code (SOLMVP11). Import-
+# linter refusait cette exception avec « No matches for ignored import » avant
+# même d'évaluer le moindre contrat.
 # QJR50 — `apps.ventes.models` lit désormais son argent par la FAÇADE
 # `apps.ventes.domain.argent` (import fonction-local dans les properties
 # `total_ht`/`total_tva`/`total_ttc`/`tva_par_taux`, exactement le patron déjà
@@ -168,14 +159,12 @@ ignore_imports =
 # automation→audit.
     apps.automation.engine -> apps.audit.recorder
     apps.automation.engine -> apps.audit.models
-# NTSCM47 — `scm.services` ecrit sa PROPRE trace d'audit (import
-# fonction-local `audit.recorder` sur les transitions sensibles de cycle
-# S&OP). Depuis que NTSCM40 branche l'import generique
-# (`dataimport.services`) sur `scm.services`, le chemin transitif
-# ventes->stock.services->dataimport.services->scm.services->audit
-# apparait. C'est le logging transverse de scm, PAS ventes atteignant
-# audit — meme motif que les exceptions stock/automation ci-dessus.
-    apps.scm.services -> apps.audit.recorder
+# SOLMVP-sweep (2026-09-21) — l'exception NTSCM47 (`apps.scm.services ->
+# apps.audit.recorder`) est retirée : `apps.scm` est sorti du MVP solaire
+# (Groupe SOLMVP), `scm/services.py` n'existe plus (coquille), et le hop
+# `dataimport.services -> scm.services` qu'elle prolongeait a déjà été retiré
+# de `dataimport/services.py`. Import-linter refusait cette exception avec
+# « No matches for ignored import » avant même d'évaluer le moindre contrat.
 # Garde-fou « écrasement » des imports — la plateforme d'import générique
 # (`dataimport.services`) écrit sa PROPRE trace d'audit best-effort dans
 # `_journaliser_maj` (imports fonction-locaux `audit.recorder`/`audit.models`,
@@ -189,17 +178,15 @@ ignore_imports =
 # `apps.ventes.* -> apps.audit.*` resterait détecté.
     apps.dataimport.services -> apps.audit.recorder
     apps.dataimport.services -> apps.audit.models
-# NTMKT45/46 — marketing écrit sa PROPRE trace d'audit (imports fonction-locaux
-# `audit.recorder`/`audit.models` : envoi réel d'une campagne, export RGPD,
-# changement du modèle d'attribution). L'arête ventes→marketing est
-# PRÉ-EXISTANTE (WIR96, `ventes.public_views._enregistrer_ouverture_marketing`
-# lit `apps.marketing.services`, jamais les modèles marketing) ; seule la hop
-# marketing→audit est neuve, et c'est le logging transverse de MARKETING, pas
-# ventes atteignant audit. Motif identique aux exceptions
-# notifications/stock/automation/dataimport ci-dessus : un import DIRECT
-# `apps.ventes.* -> apps.audit.*` reste détecté.
-    apps.marketing.services -> apps.audit.recorder
-    apps.marketing.services -> apps.audit.models
+# SOLMVP-sweep (2026-09-21) — l'exception NTMKT45/46 (`apps.marketing.services
+# -> apps.audit.recorder` / `-> apps.audit.models`) est retirée : l'arête
+# d'entrée qu'elle prolongeait (`ventes.public_views._enregistrer_ouverture_
+# marketing -> apps.marketing.services`) a déjà disparu de
+# `apps/ventes/public_views.py` (SOLMVP11 a détaché ventes de marketing), donc
+# plus aucun chemin transitif ventes→marketing→audit n'existe. `apps.marketing`
+# est par ailleurs en cours de mise en coquille (Groupe SOLMVP, lane
+# SOLMVP30b) : ses modules non-migration (dont `services.py`) sont amenés à
+# disparaître, ce qui rendrait cette exception morte de toute façon.
 
 [importlinter:contract:ged-models-decoupled]
 name = GED models never import a business-core domain's models (string FKs only — GED38)

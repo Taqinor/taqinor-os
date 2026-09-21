@@ -12,10 +12,17 @@ l'émission du BCF, et le scope société.
 
 SOLMVP12 (20/09/2026) — la distinction PAR DÉPARTEMENT a été retirée (elle
 référençait le module RH, détaché de stock) : une seule enveloppe par
-société et par période. Le rattachement RH du demandeur (utilisé par
-``installations`` pour décider SI le contrôle s'applique à cet appelant)
-reste résolu dynamiquement (``apps.get_model``) — jamais un import statique
-d'un modèle du module RH depuis ce test.
+société et par période.
+
+SOLMVP-sweep (2026-09-21) — les fixtures RH (``make_departement``/
+``rattacher``, ``apps.get_model('rh', …)``) sont retirées de ce module :
+apps.rh est lui-même sorti du MVP solaire (Groupe SOLMVP, en cours de mise en
+coquille par la lane SOLMVP30b), donc plus aucun modèle RH à rattacher. Le
+test ``test_sans_departement_aucun_controle`` (qui contrastait un demandeur
+AVEC vs SANS dossier RH) est retiré avec elles — ce contraste n'a plus de
+sens une fois qu'aucun demandeur ne porte de dossier RH. Le contrôle
+budgétaire lui-même reste par SOCIÉTÉ (SOLMVP12 ci-dessus), donc les autres
+tests sont inchangés dans leur fond.
 
 Run :
     python manage.py test apps.stock.test_ntp2p4_budget_departement -v2
@@ -63,26 +70,6 @@ def auth(user):
     return api
 
 
-def make_departement(company, nom='Achats'):
-    # Résolution paresseuse par ``apps.get_model`` — jamais un import
-    # statique d'un modèle du module RH (frontière inter-apps).
-    from django.apps import apps as django_apps
-    Departement = django_apps.get_model('rh', 'Departement')
-    return Departement.objects.create(company=company, nom=nom)
-
-
-def rattacher(company, user, departement):
-    """Crée le dossier employé qui rattache l'utilisateur au département
-    (côté ``installations``/RH uniquement — le budget stock lui-même n'est
-    plus distingué par département, SOLMVP12)."""
-    from django.apps import apps as django_apps
-    DossierEmploye = django_apps.get_model('rh', 'DossierEmploye')
-    return DossierEmploye.objects.create(
-        company=company, user=user, departement=departement,
-        matricule=f'M{next(_seq):04d}', nom=f'Employe{next(_seq)}',
-        prenom='Test')
-
-
 def make_demande(company, user, *, montant):
     da = DemandeAchat.objects.create(
         company=company, reference=f'DA-BUD-{next(_seq):04d}',
@@ -99,8 +86,6 @@ class BudgetInactifTests(TestCase):
         self.company = make_company()
         self.user = make_user(self.company)
         self.api = auth(self.user)
-        self.dept = make_departement(self.company)
-        rattacher(self.company, self.user, self.dept)
         BudgetDepartement.objects.create(
             company=self.company,
             periodicite=BudgetDepartement.Periodicite.ANNUELLE,
@@ -127,8 +112,6 @@ class BudgetActifTests(TestCase):
         self.company = make_company()
         self.user = make_user(self.company)
         self.api = auth(self.user)
-        self.dept = make_departement(self.company)
-        rattacher(self.company, self.user, self.dept)
         params = AchatsParametres.for_company(self.company)
         params.budget_departement_actif = True
         params.save(update_fields=['budget_departement_actif'])
@@ -194,14 +177,6 @@ class BudgetActifTests(TestCase):
         self.api.post(f'{BASE}/demandes-achat/{da.pk}/soumettre/')
         self.assertEqual(
             EngagementBudget.objects.filter(demande_achat=da).count(), 1)
-
-    def test_sans_departement_aucun_controle(self):
-        """Un demandeur sans dossier RH n'est jamais bloqué (no-op)."""
-        orphelin = make_user(self.company)
-        da = make_demande(self.company, orphelin, montant=99999)
-        resp = auth(orphelin).post(
-            f'{BASE}/demandes-achat/{da.pk}/soumettre/')
-        self.assertEqual(resp.status_code, 200)
 
 
 class ResolutionEtConsommationTests(TestCase):

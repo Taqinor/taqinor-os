@@ -78,6 +78,13 @@ parametres.ApprovalPolicyViewSet
 parametres.EmailTemplateViewSet
 parametres.StatutConfigViewSet
 parametres.TranslationOverrideViewSet
+# SOLMVP16 (2026-09-21, SOLMVP-sweep) — le portail client relogeait déjà ses
+# ViewSets sur cette MÊME forme (TenantMixin + ModelViewSet) sous le nom
+# ``compta._ComptaBaseViewSet`` (ré-export transitoire ODX12) ; SOLMVP16 les a
+# déplacés dans leur propre app sous ``portail._PortailBaseViewSet`` — le
+# scoping société (get_queryset/perform_create forcés par TenantMixin) est
+# IDENTIQUE, seule la classe basée n'est pas nommément CompanyScopedModelViewSet.
+portail._PortailBaseViewSet
 pos.CommandeRetraitViewSet
 pos.ConfigMaterielPOSViewSet
 pos.SessionCaisseViewSet

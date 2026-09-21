@@ -802,17 +802,13 @@ SPECTACULAR_SETTINGS = {
         # de table). Un seul nom d'énumération pour les deux.
         'OrientationPanneauEnum':
             'apps.ventes.models.RoofLayout.Orientation',
-        # neuf / bon / usage_normal / degrade
-        'EtatGeneralPieceEnum':
-            'apps.immobilier.models.PieceEtatLieux.EtatGeneral',
         # fr / en / ar — partagé par core.ContentTranslation et
         # parametres.TranslationOverride (jeu identique).
         'LocaleEnum': 'core.models.ContentTranslation.Locale',
-        # virement / cheque / especes (libellés de compta.PaymentRun ;
-        # paie.ProfilPaie porte les mêmes valeurs avec d'AUTRES libellés,
-        # donc un jeu distinct que le générateur nomme déjà sans ambiguïté).
-        'ModePaiementReglementEnum':
-            'apps.compta.models.PaymentRun.ModePaiement',
+        # SOLMVP-sweep (2026-09-21) — `EtatGeneralPieceEnum`
+        # (immobilier.PieceEtatLieux.EtatGeneral) est retiré : apps.immobilier
+        # est sorti du MVP solaire (Groupe SOLMVP, coquille).
+        #
         # mensuelle / trimestrielle / semestrielle / annuelle — même jeu sous
         # `regle` (installations.RecurrenceIntervention) et sous `periodicite`
         # (assurances.EcheancePrime).
@@ -827,13 +823,10 @@ SPECTACULAR_SETTINGS = {
         'CreneauEquipementEnum': 'apps.crm.models.Lead.CreneauClim',
         # particulier / entreprise
         'TypeTiersParticulierEntrepriseEnum': 'apps.tiers.models.Tiers.TypeTiers',
-        # mensuel / trimestriel / semestriel / annuel — même jeu sous `unite`
-        # (contrats.PlanRecurrent) et sous `periodicite` (sav.ContratMaintenance).
-        'PeriodiciteMensuelAnnuelEnum':
-            'apps.contrats.models.PlanRecurrent.Unite',
-        # mensuelle / trimestrielle
-        'PeriodiciteMensuelleTrimestrielleEnum':
-            'apps.compta.models.AllocationRecurrente.Periodicite',
+        # SOLMVP (21/09/2026) — les surcharges PeriodiciteMensuelAnnuelEnum /
+        # PeriodiciteMensuelleTrimestrielleEnum visaient contrats.PlanRecurrent et
+        # compta.AllocationRecurrente : les deux apps sont des coquilles, le conflit
+        # de nommage a disparu avec elles.
         # en_cours / conforme / non_conforme / reserves — jeu identique dans
         # installations.CommissioningRecord et ventes.CommissioningTest.
         'ResultatCommissioningEnum':
@@ -849,25 +842,25 @@ SPECTACULAR_SETTINGS = {
         # un nom explicite et stable (jamais un hachage auto-généré) au
         # nouveau.
         #
-        # prix_fixe / remise_pct / formule_sur_prix_vente — ventes.RegleListePrix
-        # (préexistant, garde le nom historique) ; promotions.ReglexPromotion
-        # porte un jeu DIFFÉRENT sous le même champ `type_regle`.
+        # prix_fixe / remise_pct / formule_sur_prix_vente —
+        # ventes.RegleListePrix (préexistant, garde le nom historique).
+        # SOLMVP-sweep (2026-09-21) : le second jeu du couple,
+        # `promotions.ReglexPromotion.TypeRegle` (`TypeReglePromotionEnum`),
+        # est retiré — apps.promotions est sorti du MVP solaire (Groupe
+        # SOLMVP, en cours de mise en coquille par la lane SOLMVP30b).
         'TypeRegleEnum': 'apps.ventes.models.RegleListePrix.TypeRegle',
-        'TypeReglePromotionEnum':
-            'apps.promotions.models.ReglexPromotion.TypeRegle',
         # casse / defaut / erreur / obsolete / perime / vol / autre —
-        # stock.MouvementStock (préexistant) ; mrp.OperationOF porte un jeu
-        # DISTINCT (motif de rebut d'une opération de fabrication) sous le
-        # même champ `motif_rebut`.
+        # stock.MouvementStock (préexistant, garde le nom historique).
+        # SOLMVP-sweep (2026-09-21) : le second jeu du couple,
+        # `mrp.OperationOF.MotifRebut` (`MotifRebutOFEnum`), est retiré —
+        # apps.mrp est sorti du MVP solaire (Groupe SOLMVP, coquille).
         'MotifRebutEnum': 'apps.stock.models.MouvementStock.MotifRebut',
-        'MotifRebutOFEnum': 'apps.mrp.models.OperationOF.MotifRebut',
-        # salon / porte_ouverte / webinaire — marketing.EvenementMarketing
-        # (préexistant, champ `type_evenement`) ; scm.EvenementDemande porte
-        # un jeu DISTINCT (promotion/chantier majeur/rupture fournisseur…)
-        # sous le même nom de champ.
-        'TypeEvenementEnum': 'apps.marketing.models.EvenementMarketing.Type',
-        'TypeEvenementDemandeEnum':
-            'apps.scm.models.EvenementDemande.TypeEvenement',
+        # SOLMVP-sweep (2026-09-21) — `TypeEvenementEnum`
+        # (marketing.EvenementMarketing.Type) et `TypeEvenementDemandeEnum`
+        # (scm.EvenementDemande.TypeEvenement) sont retirés : les deux apps du
+        # couple sortent du MVP solaire (Groupe SOLMVP — marketing en cours de
+        # mise en coquille par la lane SOLMVP30b, scm déjà en coquille).
+        #
         # A/B/C/toutes — installations.SessionComptage (préexistant, comptage
         # tournant FG324) ; stock.models_wms.PlanComptageTournant (NTWMS13)
         # porte un jeu DISTINCT (mêmes lettres, libellés différents) sous le
@@ -876,12 +869,10 @@ SPECTACULAR_SETTINGS = {
             'apps.installations.models_comptage.SessionComptage.ClasseABC',
         'ClasseAbcPlanComptageTournantEnum':
             'apps.stock.models_wms.PlanComptageTournant.ClasseAbc',
-        # route / mer / air — NTLOG20. drf-spectacular signalait « multiple
-        # names for the same choice set » : le MÊME triplet de valeurs est
-        # porté par un autre champ du dépôt sous un nom différent. On fige
-        # donc le nom sur le jeu de `transport`, comme les entrées voisines.
-        'ModeAcheminementPhysiqueEnum':
-            'apps.transport.models.OrdreTransport.ModeAcheminementPhysique',
+        # SOLMVP-sweep (2026-09-21) — `ModeAcheminementPhysiqueEnum`
+        # (transport.OrdreTransport.ModeAcheminementPhysique) est retiré :
+        # apps.transport est sorti du MVP solaire (Groupe SOLMVP, coquille).
+        #
         # operational/degraded/partial_outage/major_outage —
         # statuspage.ComponentStatus.statut est le jeu D'ORIGINE ;
         # ComponentStatusLog (journal d'historique) reprend LA MÊME liste de
@@ -890,15 +881,12 @@ SPECTACULAR_SETTINGS = {
         # seul jeu de valeurs (« multiple names for the same choice set »).
         'StatutComposantPublicEnum':
             'apps.statuspage.models.ComponentStatus.Statut',
-        # entree/sortie — compta.MouvementCaisse.Sens (FG124, jeu D'ORIGINE) ;
-        # immobilier.EtatLieuxImmo (champ `moment`) ET
-        # installations.GeofenceAlert (champ `type_franchissement`, NTMOB9)
-        # portent LE MÊME jeu sous un nom de champ différent. Fige aussi, en
-        # retirant immobilier de la résolution automatique du nom de champ
-        # « moment », sa collision avec flotte.EtatDesLieuxVehicule (jeu de
-        # valeurs DISTINCT sous le même nom de champ).
-        'MouvementEntreeSortieEnum':
-            'apps.compta.models.MouvementCaisse.Sens',
+        # SOLMVP-sweep (2026-09-21) — `MouvementEntreeSortieEnum`
+        # (compta.MouvementCaisse.Sens) est retiré : apps.compta est sorti du
+        # MVP solaire (Groupe SOLMVP, en cours de mise en coquille par la lane
+        # SOLMVP30b). Le schéma régénéré (ci-après) confirme qu'aucune
+        # collision « multiple names for the same choice set » ne réapparaît
+        # sur les jeux entree/sortie restants (installations.GeofenceAlert…).
     },
 }
 

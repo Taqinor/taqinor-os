@@ -30,8 +30,12 @@ const nomDuGlyphe = (n) => n?.type?.displayName || n?.type?.name || String(n?.ty
 describe('ODY34 — glyphes d’app', () => {
   it('le portail compte bien toutes les apps du registre', () => {
     // Repère de vigilance : si ce nombre bouge, une app est née ou morte — et
-    // les deux tests ci-dessous doivent l'avoir couverte.
-    expect(apps.length).toBeGreaterThanOrEqual(42)
+    // les deux tests ci-dessous doivent l'avoir couverte. SOLMVP40
+    // (21/09/2026, frontend/parked/README.md) a sorti 37 modules du MVP
+    // solaire — le plancher retombe de 42 à 18 (registre RÉEL vérifié :
+    // 19 module.config.jsx gardés, `offlinesync` routes-only sans `nav.items`
+    // exclu, comme `ao`/`admin` avant lui).
+    expect(apps.length).toBeGreaterThanOrEqual(18)
   })
 
   it('CHAQUE app déclare son glyphe (`nav.icon`) — jamais l’icône du 1er écran', () => {

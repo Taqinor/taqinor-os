@@ -65,10 +65,18 @@ describe('Breadcrumbs — I137 accessible + tronqué', () => {
 })
 
 describe('VX11 — 1er segment cliquable vers le cockpit du module', () => {
-  it('« RH » (module coquille, repli to:null) reste un texte non cliquable', () => {
-    renderCrumbs({ pathname: '/rh/employes/42' })
-    const rh = screen.getByText('RH')
-    expect(rh.tagName.toLowerCase()).not.toBe('a')
+  it('« Visites » (module coquille, repli to:null) reste un texte non cliquable', () => {
+    // SOLMVP40 a sorti `rh` du MVP solaire (frontend/parked/README.md) : ce
+    // cas utilisait `/rh/employes/42` pour illustrer une section SANS cockpit
+    // unique (`sectionLabels` déclare un libellé texte, jamais `{label, to}`,
+    // donc `to: null` par construction — voir NORMALIZED_MODULE_SECTION_LABELS
+    // dans routes.meta.js). `visites` (features/visites/module.config.jsx,
+    // `sectionLabels: { visites: 'Visites' }`) est un module GARDÉ qui suit la
+    // même déclaration texte-seule, avec une vraie sous-page titrée
+    // différemment (« Visites — Toutes les visites »).
+    renderCrumbs({ pathname: '/visites/toutes' })
+    const visites = screen.getByText('Visites')
+    expect(visites.tagName.toLowerCase()).not.toBe('a')
   })
 
   it('« Stock » (cockpit connu) est un lien cliquable vers /stock quand on est sur une sous-page', () => {
@@ -87,7 +95,7 @@ describe('VX11 — 1er segment cliquable vers le cockpit du module', () => {
 
   it('persiste taqinor.lastModule à chaque navigation', () => {
     window.localStorage.removeItem('taqinor.lastModule')
-    renderCrumbs({ pathname: '/rh/employes/42' })
-    expect(window.localStorage.getItem('taqinor.lastModule')).toBe('rh')
+    renderCrumbs({ pathname: '/visites/toutes' })
+    expect(window.localStorage.getItem('taqinor.lastModule')).toBe('visites')
   })
 })

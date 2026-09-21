@@ -3,20 +3,23 @@
 Deux niveaux : (1) la cohérence du registre lui-même (47 labels uniques,
 PHASE 2 ⊆ registre, groupes = partition exacte du registre) — active tout de
 suite ; (2) la garde de « coquille » : chaque label parqué ne doit garder sur le
-disque que ``__init__.py``, ``apps.py``, ``models.py`` (vide) et ``migrations/``.
+disque que ``__init__.py``, ``apps.py``, ``migrations/`` et un ``models.py``
+**sans aucune classe héritant de ``models.Model``** — un TALON (fonctions
+``default=`` / énumérations recopiées verbatim) est autorisé, car une migration
+GELÉE qui référence ``apps.<label>.models.<symbole>`` devient inimportable si le
+fichier est vidé (contrat détaillé dans ``core.parked``).
 
 Ce second niveau est SKIPPÉ tant que SOLMVP30-36 n'ont pas coquillé les
 dossiers : aujourd'hui les 47 apps sont encore complètes, le test doit être vert
 sans mentir. Dès le dernier coquillage, le skip s'éteint de lui-même et le test
 devient le garde-fou permanent contre un fichier remis dans une app parquée.
 """
-import ast
 from pathlib import Path
 
 from django.test import SimpleTestCase
 
 from core.parked import (APPS_PARQUEES, APPS_PARQUEES_SET, ARCHIVE_REF,
-                         GROUPES, PHASE2, est_parquee)
+                         GROUPES, PHASE2, est_parquee, modeles_declares)
 
 APPS_DIR = Path(__file__).resolve().parents[2] / 'apps'
 # Seul contenu autorisé dans une app coquille (contrat de core/parked.py).
@@ -64,11 +67,35 @@ class ParkedRegistryTests(SimpleTestCase):
                 )
             self.assertTrue((APPS_DIR / label / 'migrations').is_dir(),
                             '%s : migrations/ doit être conservé verbatim' % label)
-            corps = ast.parse((APPS_DIR / label / 'models.py').read_text(encoding='utf-8')).body
-            vide = not corps or (
-                len(corps) == 1
-                and isinstance(corps[0], ast.Expr)
-                and isinstance(corps[0].value, ast.Constant)
-                and isinstance(corps[0].value.value, str)
+            source = (APPS_DIR / label / 'models.py').read_text(encoding='utf-8')
+            self.assertEqual(
+                modeles_declares(source), [],
+                '%s : models.py ne doit déclarer AUCUN modèle Django (un talon de '
+                'fonctions/énumérations pour les migrations gelées est toléré)' % label,
             )
-            self.assertTrue(vide, '%s : models.py doit être vide (docstring seul toléré)' % label)
+
+    def test_regle_du_talon_models_py(self):
+        """La règle AST du contrat : pas de modèle, mais talon autorisé."""
+        self.assertEqual(modeles_declares('"""docstring seul."""\n'), [])
+        talon = (
+            'import secrets\n'
+            'from django.db import models\n'
+            'JOURS = [30, 15, 7]\n'
+            'def _token():\n'
+            '    return secrets.token_urlsafe(32)\n'
+            'class Sens(models.TextChoices):\n'
+            "    DEBIT = 'debit', 'Débit'\n"
+            'class PaymentRun:\n'
+            '    class ModePaiement(models.TextChoices):\n'
+            "        VIREMENT = 'virement', 'Virement'\n"
+        )
+        self.assertEqual(modeles_declares(talon), [])
+        self.assertEqual(
+            modeles_declares('from django.db import models\n'
+                             'class Facture(models.Model):\n    pass\n'),
+            ['Facture'])
+        self.assertEqual(
+            modeles_declares('from core.models import TenantModel\n'
+                             'class A(TenantModel):\n    pass\n'
+                             'class B(A):\n    pass\n'),
+            ['A', 'B'])

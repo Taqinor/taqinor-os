@@ -14,6 +14,8 @@ fondateur du 21/09/2026, SOLMVP16b).
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.mixins import SameCompanyFKSerializerMixin
+
 from apps.records.storage import AttachmentSerializerMixin
 
 from .models import (
@@ -88,7 +90,11 @@ def _resoudre_chantier(company, chantier_id):
 
 # ── FG228 — Comptes portail client ─────────────────────────────────────────
 
-class ComptePortailClientSerializer(serializers.ModelSerializer):
+class ComptePortailClientSerializer(SameCompanyFKSerializerMixin,
+                                    serializers.ModelSerializer):
+    # SOLMVP16 — la classe a quitte le shim compta : la FK `client` (crm.Client)
+    # est ecrivable, donc validee meme-societe (AUD601, check_fk_scoping).
+    same_company_fields = ('client',)
     # DC32 — l'email est lu depuis le client (source unique), jamais stocké.
     email = serializers.EmailField(source='client.email', read_only=True)
     # AUD141 — le jeton n'est PLUS servi en clair. Il authentifie à lui seul le

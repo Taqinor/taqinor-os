@@ -59,7 +59,7 @@ const RapportPeriodePage = lazy(() => import('./RapportPeriodePage'))
 const RapportBuilderPage = lazy(() => import('./RapportBuilderPage'))
 const ArchiveClientPage = lazy(() => import('../../pages/reporting/ArchiveClientPage'))
 const ArchiveChantierPage = lazy(() => import('../../pages/reporting/ArchiveChantierPage'))
-// XKB1/ZCTR7-9 — boîte d'approbations centralisée cross-app (3 sources).
+// XKB1/ZCTR7-9 — boîte d'approbations centralisée cross-app (4 sources).
 const ApprobationsPage = lazy(() => import('../../pages/approbations/ApprobationsPage'))
 // XPLT22 — classeur léger embarqué (mini-spreadsheet BI, données live).
 const ClasseursListPage = lazy(() => import('../../pages/reporting/ClasseursListPage'))
