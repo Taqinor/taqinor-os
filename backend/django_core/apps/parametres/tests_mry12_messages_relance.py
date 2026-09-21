@@ -53,6 +53,8 @@ _CROCHETS = [
     # du lien de la réalisation — deux liens différents dans le même message.
     (r'\[lien preuve\]', '{lien_preuve}'),
     (r'\[puissance preuve\]', '{puissance_preuve}'),
+    # CAD95 (21/09/2026) — vidéo courte du chantier, EN PLUS du lien preuve.
+    (r'\[lien vidéo\]', '{lien_video_preuve}'),
     (r'\[lien de la fiche TAQINOR\]', '{lien}'),
     (r'\[lien de votre proposition\]', '{lien}'),
     (r'\[mois\]', '{mois_preuve}'),

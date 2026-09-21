@@ -91,7 +91,7 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "dites-moi ce qui vous a le plus parlé. Je suis là pour la moindre "
         "question.",
     'j4_preuve':
-        "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Le suivi de production est en temps réel, je peux vous montrer.",
+        "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Le suivi de production est en temps réel, je peux vous montrer. Petite vidéo du chantier : {lien_video_preuve}.",
     'j6_garanties':
         "Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : {lien}. Ce qui est couvert et pour combien d'années : https://taqinor.ma/garanties",
     'j9_validite':
@@ -192,7 +192,10 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
 # rendez-vous que le client a lui-même accepté. Sans date sur la fiche, la
 # valeur reste VIDE et `_omettre_phrases_incompletes` retire la phrase entière
 # (MRY13) — jamais un crochet, jamais une date approximative.
-PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}"]
+# CAD95 (21/09/2026) — `{lien_video_preuve}` : vidéo courte (30-60 s) EN PLUS
+# du lien de la touche `j4_preuve`, même sélection serveur, même repli VIDE +
+# phrase omise (MRY13) sans vidéo au catalogue.
+PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_video_preuve}"]
 
 #: Les clés du moteur de relances (MRY12), dans l'ordre du fichier source.
 CLES_RELANCE = [

@@ -78,12 +78,37 @@ class AvecRealisationTests(_Base):
     def test_aucun_placeholder_ne_reste_visible(self):
         message = self._rendu()['message']
         for jeton in ('{mois_preuve}', '{ville_preuve}', '{lien_preuve}',
-                      '{puissance_preuve}', '[mois]', '[ville]'):
+                      '{puissance_preuve}', '{lien_video_preuve}',
+                      '[mois]', '[ville]'):
             self.assertNotIn(jeton, message)
 
     def test_la_phrase_de_suivi_reste(self):
         self.assertIn('Le suivi de production est en temps réel',
                       self._rendu()['message'])
+
+    def test_sans_video_la_phrase_video_est_omise_seule(self):
+        """CAD95 — `lien_video` est vide par défaut : la phrase vidéo tombe
+        SEULE (MRY13), le reste de la preuve (lien, mois, ville, puissance)
+        reste intact."""
+        self.assertEqual(self.realisation.lien_video, '')
+        message = self._rendu()['message']
+        self.assertNotIn('Petite vidéo du chantier', message)
+        self.assertIn('installation comparable', message)
+        self.assertIn('https://taqinor.ma/realisations/villa-casablanca/',
+                      message)
+
+    def test_avec_video_le_lien_est_propose_a_cote_du_texte(self):
+        """CAD95 — Done : quand le champ vidéo est rempli, son lien est
+        proposé EN PLUS du texte existant, jamais à la place."""
+        self.realisation.lien_video = 'https://youtu.be/villa-casablanca'
+        self.realisation.save(update_fields=['lien_video'])
+        rendu = self._rendu()
+        message = rendu['message']
+        self.assertIn('Petite vidéo du chantier : '
+                      'https://youtu.be/villa-casablanca', message)
+        self.assertIn('https://taqinor.ma/realisations/villa-casablanca/',
+                      message)
+        self.assertEqual(rendu['placeholders_manquants'], [])
 
     def test_la_puissance_est_dite_et_omise_seule_si_inconnue(self):
         """« comparable » parle de la TAILLE : la puissance réelle est dite
@@ -122,10 +147,13 @@ class SansRealisationTests(_Base):
                       rendu['message'])
 
     def test_les_placeholders_manquants_sont_nommes(self):
+        # CAD95 (21/09/2026) — `lien_video_preuve` s'ajoute à la liste : sans
+        # catalogue, la vidéo est aussi manquante que le reste de la preuve.
         manquants = self._rendu()['placeholders_manquants']
         self.assertEqual(
             sorted(manquants),
-            ['lien_preuve', 'mois_preuve', 'puissance_preuve', 'ville_preuve'])
+            ['lien_preuve', 'lien_video_preuve', 'mois_preuve',
+             'puissance_preuve', 'ville_preuve'])
 
     def test_une_realisation_lointaine_sert_en_repli(self):
         """Agadir est à 400 km de Casablanca : repli fondateur (08/09/2026) —
@@ -154,10 +182,10 @@ class SansRealisationTests(_Base):
 class TexteSourceTests(TestCase):
     """Le défaut lui-même : trois placeholders, plus aucun crochet."""
 
-    def test_le_defaut_porte_les_quatre_placeholders(self):
+    def test_le_defaut_porte_les_cinq_placeholders(self):
         texte = MESSAGE_TEMPLATE_DEFAULTS['j4_preuve']
         for jeton in ('{mois_preuve}', '{ville_preuve}', '{lien_preuve}',
-                      '{puissance_preuve}'):
+                      '{puissance_preuve}', '{lien_video_preuve}'):
             self.assertIn(jeton, texte)
 
     def test_le_defaut_ne_porte_plus_aucun_crochet(self):

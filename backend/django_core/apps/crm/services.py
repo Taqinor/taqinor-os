@@ -1957,13 +1957,17 @@ _PLACEHOLDERS_RENDUS = (
     'date_visite',
     # 08/09/2026 — la PREUVE de la touche `j4_preuve` (mois, ville et lien de
     # la page publique d'une `parametres.Realisation` réelle).
-    'mois_preuve', 'ville_preuve', 'lien_preuve', 'puissance_preuve')
+    # CAD95 (21/09/2026) — vidéo COURTE (30-60 s) du même chantier, proposée
+    # EN PLUS du lien (jamais à la place) ; sa propre phrase est omise SEULE
+    # (MRY13) quand `Realisation.lien_video` est vide.
+    'mois_preuve', 'ville_preuve', 'lien_preuve', 'puissance_preuve',
+    'lien_video_preuve')
 
 #: Les trois placeholders de la preuve. Regroupés pour n'aller chercher une
 #: réalisation QUE si le texte en porte au moins un (même discipline que
 #: `{lien_rdv}` : aucun travail, aucune requête, quand ce n'est pas demandé).
 _PLACEHOLDERS_PREUVE = ('{mois_preuve}', '{ville_preuve}', '{lien_preuve}',
-                        '{puissance_preuve}')
+                        '{puissance_preuve}', '{lien_video_preuve}')
 
 #: Noms de mois en français, pour « posée en juillet 2026 ». Codés ici plutôt
 #: que via une locale système : le rendu d'un message client ne doit pas
@@ -2036,7 +2040,7 @@ def _contexte_preuve(lead):
     `_omettre_phrases_incompletes` retire la phrase entière : jamais un
     chantier inventé, jamais un crochet laissé au client."""
     vide = {'mois_preuve': '', 'ville_preuve': '', 'lien_preuve': '',
-            'puissance_preuve': ''}
+            'puissance_preuve': '', 'lien_video_preuve': ''}
     try:
         from apps.parametres.selectors import realisation_pour_lead
         realisation = realisation_pour_lead(lead)
@@ -2051,6 +2055,9 @@ def _contexte_preuve(lead):
         'ville_preuve': (realisation.ville or '').strip(),
         'lien_preuve': (realisation.url_page or '').strip(),
         'puissance_preuve': _kwc_francais(realisation.puissance_kwc),
+        # CAD95 — vidéo courte EN PLUS du lien ; vide si la réalisation n'en
+        # porte aucune (jamais un défaut inventé).
+        'lien_video_preuve': (realisation.lien_video or '').strip(),
     }
 
 

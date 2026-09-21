@@ -4,9 +4,10 @@ Source de vérité des gabarits `parametres.MessageTemplate` que MRY12 seed dans
 (`corps_fr` = colonne FR ; `corps_darija` = colonne darija, écriture arabe, revue native le 04/09/2026).
 Règles : aucun chiffre qui ne vienne du devis ou du lead ; placeholders autorisés `{civilite} {nom} {prenom} {ville}
 {reference} {lien} {lien_rdv} {date_validite} {conseiller} {mois_preuve} {ville_preuve} {lien_preuve} {puissance_preuve}
-{date_visite}` ; le crochet
+{date_visite} {lien_video_preuve}` ; le crochet
 `[…]` des textes ci-dessous devient le placeholder correspondant au seed (`M. [Prénom]` → `{prenom}`, `[date]` →
-`{date_validite}`, `[date de la visite]`/`[تاريخ الزيارة]` → `{date_visite}`, `[référence]` → `{reference}`, `[lien preuve]` → `{lien_preuve}` (AVANT la règle générale), `[puissance preuve]` → `{puissance_preuve}`,
+`{date_validite}`, `[date de la visite]`/`[تاريخ الزيارة]` → `{date_visite}`, `[référence]` → `{reference}`, `[lien preuve]` → `{lien_preuve}` (AVANT la règle générale), `[puissance preuve]` → `{puissance_preuve}`, `[lien vidéo]` →
+`{lien_video_preuve}` (CAD95, 21/09/2026 — vidéo courte proposée EN PLUS du lien, jamais à la place),
 `[lien …]` → `{lien}` (dont `[lien de votre proposition]`, J6 — relevé fondateur 08/09/2026 : la touche « garanties » partait sans aucun lien), `[mois]` → `{mois_preuve}`, `[ville]` → `{ville_preuve}`, `[Conseiller]` → `{conseiller}`,
 `[المستشار]` → `{conseiller}`) ; ce qui n'a pas de placeholder (montant, raison réelle, jour/heure de rappel) reste à
 saisir par Meryem au moment de l'envoi — jamais un défaut. Une phrase dont le placeholder est vide est OMISE au rendu
@@ -79,7 +80,7 @@ DARIJA : واخا، فهمتكم، ما غاديش نعاود نعيط ليكم.
 FR : Bonjour M. [Prénom], j'espère que vous allez bien. Je vous ai envoyé votre proposition solaire — est-ce que le PDF s'ouvre bien de votre côté ? Prenez le temps de la regarder tranquillement, et dites-moi ce qui vous a le plus parlé. Je suis là pour la moindre question.
 
 ### j4_preuve — J4, WhatsApp (la vue de SON toit avec les panneaux, ou la photo d'un chantier comparable)
-FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Le suivi de production est en temps réel, je peux vous montrer.
+FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Le suivi de production est en temps réel, je peux vous montrer. Petite vidéo du chantier : [lien vidéo].
 
 ### j6_garanties — J6, WhatsApp (avec les certificats de garantie des fabricants)
 FR : Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : [lien de votre proposition]. Ce qui est couvert et pour combien d'années : https://taqinor.ma/garanties
