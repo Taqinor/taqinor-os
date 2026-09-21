@@ -424,11 +424,33 @@ class Lead(SoftDeleteModel):
 
     # ── QK1 — Qualification captée par le site (tous additifs, optionnels) ──
     # Distributeur d'électricité du prospect (détermine la tranche tarifaire).
+    # ── CAD-M ── CAD167 — LES SRM RÉGIONALES (décision fondateur du
+    # 21/09/2026, Q16 : « il n'y a plus désormais que SRM au Maroc »).
+    # Une valeur par région du découpage de 2015, et elle se DÉDUIT de la ville
+    # du lead (``apps/crm/srm_regions.py``) plutôt que d'être demandée.
+    # ONEE, Lydec, Redal et Amendis restent des libellés HISTORIQUES : une
+    # valeur déjà enregistrée ne disparaît JAMAIS d'une fiche existante.
+    # La VALEUR ne change AUCUN prix — le barème est national et unique
+    # (décision Q7 du 20/08/2026) ; ce champ est un libellé.
     class Distributeur(models.TextChoices):
-        ONEE = 'onee', 'ONEE'
-        LYDEC = 'lydec', 'Lydec'
-        REDAL = 'redal', 'Redal'
-        AUTRE = 'autre', 'Autre'
+        SRM_TANGER = 'srm_tanger', 'SRM Tanger-Tétouan-Al Hoceïma'
+        SRM_ORIENTAL = 'srm_oriental', 'SRM de l’Oriental'
+        SRM_FES = 'srm_fes', 'SRM Fès-Meknès'
+        SRM_RABAT = 'srm_rabat', 'SRM Rabat-Salé-Kénitra'
+        SRM_BENI_MELLAL = 'srm_beni_mellal', 'SRM Béni Mellal-Khénifra'
+        SRM_CASABLANCA = 'srm_casablanca', 'SRM Casablanca-Settat'
+        SRM_MARRAKECH = 'srm_marrakech', 'SRM Marrakech-Safi'
+        SRM_DRAA = 'srm_draa', 'SRM Drâa-Tafilalet'
+        SRM_SOUSS = 'srm_souss', 'SRM Souss-Massa'
+        SRM_GUELMIM = 'srm_guelmim', 'SRM Guelmim-Oued Noun'
+        SRM_LAAYOUNE = 'srm_laayoune', 'SRM Laâyoune-Sakia El Hamra'
+        SRM_DAKHLA = 'srm_dakhla', 'SRM Dakhla-Oued Ed-Dahab'
+        # ── Libellés HISTORIQUES, lecture seule (fiches déjà saisies) ──
+        ONEE = 'onee', 'ONEE (historique)'
+        LYDEC = 'lydec', 'Lydec (historique)'
+        REDAL = 'redal', 'Redal (historique)'
+        AMENDIS = 'amendis', 'Amendis (historique)'
+        AUTRE = 'autre', 'Autre (historique)'
 
     # Statut d'occupation du bâtiment (un locataire ne décide pas des travaux).
     class Ownership(models.TextChoices):
@@ -975,9 +997,18 @@ class Lead(SoftDeleteModel):
     # ── QK1 — Qualification captée par le site (additifs, nullable) ──
     # Le site collecte ces signaux au moment de la capture ; ils ne doivent
     # jamais être re-demandés au prospect par le commercial.
+    # CAD167 — la colonne passe de 12 à 20 caractères pour porter les codes
+    # SRM (`srm_beni_mellal` = 15) ; élargissement pur, aucune valeur
+    # existante n'est touchée.
     distributeur = models.CharField(
-        max_length=12, choices=Distributeur.choices, blank=True, null=True,
-        verbose_name="Distributeur d'électricité")
+        max_length=20, choices=Distributeur.choices, blank=True, null=True,
+        verbose_name="Distributeur d'électricité",
+        help_text="Question à l'appel : AUCUNE — la SRM se DÉDUIT de la "
+                  'ville du lead (règle CAD167). Le champ reste saisissable '
+                  'pour corriger une déduction, et les libellés historiques '
+                  '(ONEE, Lydec, Redal, Amendis) restent lisibles sur les '
+                  'fiches déjà remplies. La valeur ne change AUCUN prix : le '
+                  'barème est national et unique.')
     # Âge de la toiture en années (numérique simple ; NULL = inconnu).
     roof_age = models.PositiveSmallIntegerField(
         null=True, blank=True,

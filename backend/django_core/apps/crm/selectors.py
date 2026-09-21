@@ -533,6 +533,15 @@ def get_latest_lead_for_client(company, client_id):
             .first())
 
 
+def _srm_deduite(ville):
+    """CAD167 — la SRM régionale de cette ville, ou ``None``. Ne lève jamais."""
+    try:
+        from .srm_regions import srm_depuis_ville
+        return srm_depuis_ville(ville)
+    except Exception:  # noqa: BLE001 — une déduction ratée n'arrête rien
+        return None
+
+
 def lead_bills_for_devis(devis):
     """Factures électriques RÉELLES (MAD/mois) du lead d'un devis, ou None.
 
@@ -561,9 +570,16 @@ def lead_bills_for_devis(devis):
         'facture_ete': (float(lead.facture_ete)
                         if lead.facture_ete not in (None, '') else None),
         'ete_differente': bool(lead.ete_differente),
-        # QX7d — distributeur (onee/lydec/redal) pour convertir MAD→kWh par le
-        # barème réel progressif-puis-sélectif (mêmes tranches que le chemin ROI), pas un prix plat.
-        'distributeur': (lead.distributeur or None),
+        # QX7d — distributeur pour convertir MAD→kWh par le barème réel
+        # progressif-puis-sélectif (mêmes tranches que le chemin ROI), pas un
+        # prix plat.
+        # CAD167 — quand la fiche ne porte AUCUN distributeur, la SRM se
+        # DÉDUIT de la ville (décision fondateur du 21/09/2026 : on ne la
+        # demande plus). Ville inconnue de la table ⇒ toujours None : on
+        # n'invente pas un rattachement régional. La valeur ne change aucun
+        # prix — le barème est national.
+        'distributeur': (lead.distributeur
+                         or _srm_deduite(getattr(lead, 'ville', None))),
     }
 
 

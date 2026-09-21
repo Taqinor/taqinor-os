@@ -133,7 +133,10 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # vocabulaires et les six champs de la vague 2). MÊME champ, déclaration
     # identique (`paye_le = models.DateField(null=True, blank=True,
     # verbose_name='Payée le')`). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2757",  # CommissionPartenaire.paye_le
+    # Remappé 2757->2807 (lane CAD167, même run : +50 lignes — les douze SRM
+    # régionales, les libellés historiques et le help_text du distributeur).
+    # MÊME champ, déclaration identique. Bug-class #34.
+    "backend/django_core/apps/crm/models.py:2807",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.
