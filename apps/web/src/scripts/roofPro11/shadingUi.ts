@@ -41,6 +41,14 @@ import { environmentShadeEntries, type EnvironmentObject } from './environment';
 import { fallbackPerKwc, type PerKwcProduction } from '../../lib/productionEngine';
 import { type LngLat } from '../../lib/roof';
 import { FLOORS, FLOOR_HEIGHT_M, GOLD } from './constants';
+import {
+  appliquerSaisie,
+  batimentPourId,
+  hauteurExtrusion,
+  idBatimentDuPan,
+  mentionEtages,
+  type Batiment,
+} from './batiment'; // CALX100 — la hauteur vient du DOCUMENT, plus d'une Map locale
 import { $, esc } from './dom';
 import { type Ctx } from './context';
 
@@ -247,25 +255,116 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const hourValueEl = $('rp9-shade-hour-value');
   const listEl = $('rp9-shade-list');
   const noteEl = $('rp9-shade-note');
-  // CAL60 — hauteur de bâtiment SAISISSABLE (par bâtiment CAL59 : la zone active porte son
-  // propre override) ; le repli FLOORS×FLOOR_HEIGHT_M reste affiché comme une HYPOTHÈSE tant
-  // qu'aucune valeur n'est saisie. Stocké par `buildingId` (clé '' = zone sans bâtiment).
+  // CAL60 + CALX100 — hauteur de bâtiment SAISISSABLE (par bâtiment CAL59 : la zone active
+  // porte celle de SON bâtiment). CE QUI CHANGE AVEC CALX100 : elle ne vit PLUS dans une
+  // `Map` locale jamais sérialisée — elle vit dans `ctx.batiments` (`buildings[]` du
+  // document, contrat CALX84), elle y RETOURNE à chaque saisie avec sa provenance, et elle
+  // survit donc au rechargement du dossier. Sans saisie, la 3D reste sur la hauteur de
+  // DESSIN annoncée (`batiment.ts`), exactement l'hypothèse affichée d'aujourd'hui.
   const heightEl = $<HTMLInputElement>('rp9-shade-height');
   const heightNoteEl = $('rp9-shade-height-note');
-  const buildingHeights = new Map<string, number>();
-  const buildingKey = (): string => ctx.activeArea()?.buildingId ?? '';
-  const activeHeightOverride = (): number | null => buildingHeights.get(buildingKey()) ?? null;
+  const buildingKey = (): string => idBatimentDuPan(ctx.activeArea()?.buildingId);
+  const batimentActif = (): Batiment | null => batimentPourId(ctx.batiments, buildingKey());
+  const activeHeightOverride = (): number | null => {
+    const lu = hauteurExtrusion(batimentActif());
+    return lu.origine === 'saisie' ? lu.hauteurM : null;
+  };
   /** Hauteur EFFECTIVE (m) de la zone active — saisie si présente, sinon l'hypothèse. */
   const roofHeightM = (): number => effectiveBuildingHeightM(activeHeightOverride());
   function syncHeightUi() {
-    const override = activeHeightOverride();
+    const bat = batimentActif();
+    const lu = hauteurExtrusion(bat);
+    const override = lu.origine === 'saisie' ? lu.hauteurM : null;
     if (heightEl && document.activeElement !== heightEl) heightEl.value = override != null ? fmt1(override) : '';
-    if (heightNoteEl) {
-      heightNoteEl.textContent =
-        override != null
-          ? `Hauteur saisie : ${fmt1(override)} m.`
-          : `Hypothèse affichée : ${fmt1(FLOORS * FLOOR_HEIGHT_M)} m (${FLOORS} étages) — saisissez la hauteur réelle pour un ombrage exact.`;
+    if (heightNoteEl) heightNoteEl.textContent = lu.mention;
+    syncPanneauBatiment(bat);
+  }
+
+  // ═══ CALX100 — PANNEAU « BÂTIMENT » (créé par le module, pas par la page hôte) ═══
+  // La page ne fournit que le champ de hauteur CAL60 (`rp9-shade-height`). Les autres
+  // champs du bâtiment — nombre d'étages, hauteur d'étage, PROVENANCE de la hauteur, et
+  // le relevé d'acrotère de CALX101 — sont créés ici s'ils manquent, patron
+  // `ensureAccessBlock`/`obstaclesUi.ts` : AUCUNE page à modifier, et absent de tout DOM
+  // (harness jsdom minimal) tout ce bloc est un no-op.
+  const panneauBatiment = ensurePanneauBatiment();
+  const batEtagesEl = $<HTMLInputElement>('rp11-bat-etages');
+  const batHauteurEtageEl = $<HTMLInputElement>('rp11-bat-hauteur-etage');
+  const batSourceEl = $<HTMLInputElement>('rp11-bat-source');
+  const batAcrotereEl = $<HTMLInputElement>('rp11-bat-acrotere');
+  const batErreurEl = $('rp11-bat-erreur');
+  const batNoteEl = $('rp11-bat-note');
+
+  function ensurePanneauBatiment(): HTMLElement | null {
+    const existing = $('rp11-batiment');
+    if (existing) return existing;
+    const anchor = heightNoteEl?.parentElement ?? heightEl?.parentElement;
+    if (!anchor || typeof document.createElement !== 'function') return null;
+    const box = document.createElement('div');
+    box.id = 'rp11-batiment';
+    box.className = 'mt-2 space-y-1 text-xs text-lune-soft';
+    const champ = (id: string, label: string, aide: string, type = 'number', step = '0.1') =>
+      `<label class="block"><span class="text-lune-faint">${esc(label)}</span>
+        <input id="${id}" type="${type}"${type === 'number' ? ` step="${step}" min="0"` : ''}
+          class="mt-0.5 w-full rounded border border-white/20 bg-nuit-900/60 px-2 py-1 text-xs text-lune-soft"
+          placeholder="${esc(aide)}" /></label>`;
+    box.innerHTML = [
+      '<p class="text-lune-faint">Bâtiment — ce qui est SAISI ici voyage avec le dossier ; ce qui est vide reste vide.</p>',
+      champ('rp11-bat-source', 'Provenance de la hauteur', 'mesurée au télémètre, lue sur le permis…', 'text'),
+      champ('rp11-bat-etages', 'Nombre d’étages (information d’écran)', 'non renseigné', 'number', '1'),
+      champ('rp11-bat-hauteur-etage', 'Hauteur d’un étage (m)', 'non renseignée'),
+      champ('rp11-bat-acrotere', 'Relevé d’acrotère (m)', 'non renseigné'),
+      '<p id="rp11-bat-note" class="text-lune-faint"></p>',
+      '<p id="rp11-bat-erreur" class="text-alert-300"></p>',
+    ].join('');
+    anchor.appendChild(box);
+    return box;
+  }
+
+  /** Remet les champs du panneau sur ce que le DOCUMENT porte (jamais l'inverse). */
+  function syncPanneauBatiment(bat: Batiment | null) {
+    if (!panneauBatiment) return;
+    const poser = (el: HTMLInputElement | null, v: number | null | undefined, entier = false) => {
+      if (!el || document.activeElement === el) return;
+      el.value = typeof v === 'number' && Number.isFinite(v) && v > 0 ? (entier ? String(Math.round(v)) : fmt1(v)) : '';
+    };
+    poser(batEtagesEl, bat?.etages, true);
+    poser(batHauteurEtageEl, bat?.hauteurEtageM);
+    poser(batAcrotereEl, bat?.hauteurAcrotereM);
+    if (batSourceEl && document.activeElement !== batSourceEl) batSourceEl.value = bat?.source ?? '';
+    if (batNoteEl) batNoteEl.textContent = mentionEtages(bat) ?? '';
+  }
+
+  /** Nombre saisi à la française (virgule tolérée) ; vide/illisible → `null` = EFFACER. */
+  function nombreSaisi(el: HTMLInputElement | null): number | null {
+    const raw = (el?.value ?? '').replace(/\s/g, '').replace(',', '.').trim();
+    if (!raw) return null;
+    const v = Number(raw);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  }
+
+  /**
+   * CALX100 — écrit la saisie dans `ctx.batiments` (le DOCUMENT), puis re-synchronise.
+   * Un refus n'efface rien en silence : il s'affiche SOUS le champ fautif et le bandeau
+   * le NOMME (règle fondateur 08/09), la valeur d'avant restant en place.
+   */
+  function appliquerSaisieBatiment() {
+    const res = appliquerSaisie(ctx.batiments, buildingKey(), {
+      hauteurM: nombreSaisi(heightEl),
+      etages: nombreSaisi(batEtagesEl),
+      hauteurEtageM: nombreSaisi(batHauteurEtageEl),
+      hauteurAcrotereM: nombreSaisi(batAcrotereEl),
+      source: batSourceEl?.value ?? null,
+    });
+    ctx.pushWorkshopHistory?.(); // CAL100 — la saisie du bâtiment s'annule comme le reste
+    ctx.batiments = res.batiments;
+    if (batErreurEl) batErreurEl.textContent = res.refus.map((r) => r.message).join(' ');
+    if (res.refus.length) {
+      setStatus('Hauteur non enregistrée — champ « Provenance de la hauteur » à renseigner.');
+      batSourceEl?.focus?.();
     }
+    syncHeightUi();
+    recalcDisplays(); // la 3D extrude désormais cette hauteur : elle doit se re-dessiner
+    if (hasShadeSources()) recomputeShading();
   }
   // CAL93 — note du dérate d'horizon LOINTAIN (optionnelle, DOM créé par HorizonPanel/la
   // page hôte ; absente en tests unitaires du builder — no-op).
@@ -803,21 +902,13 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     renderSolarAccess(); // CAL97 — le chiffre publié porte la période choisie
   });
 
-  // CAL60 — hauteur de bâtiment saisie (`change` : blur/Entrée, jamais à chaque frappe,
-  // même règle que le reste de l'atelier — W81). Vide ou invalide → retour à l'hypothèse.
-  heightEl?.addEventListener('change', () => {
-    const raw = heightEl.value.replace(/\s/g, '').replace(',', '.').trim();
-    const key = buildingKey();
-    if (!raw) {
-      buildingHeights.delete(key);
-    } else {
-      const v = Number(raw);
-      if (Number.isFinite(v) && v > 0) buildingHeights.set(key, v);
-      else buildingHeights.delete(key);
-    }
-    syncHeightUi();
-    if (hasShadeSources()) recomputeShading();
-  });
+  // CAL60 + CALX100 — hauteur de bâtiment saisie (`change` : blur/Entrée, jamais à chaque
+  // frappe, même règle que le reste de l'atelier — W81). Vide ou invalide → le champ est
+  // EFFACÉ (non renseigné), jamais mis à 0, et la 3D repart sur sa hauteur de dessin
+  // annoncée. La valeur part dans `buildings[]` du document, avec sa provenance.
+  for (const el of [heightEl, batEtagesEl, batHauteurEtageEl, batSourceEl, batAcrotereEl]) {
+    el?.addEventListener('change', () => appliquerSaisieBatiment());
+  }
   syncHeightUi();
 
   // CAL235 — l'application du retrait est un GESTE EXPLICITE : rien ne part sans ce clic,

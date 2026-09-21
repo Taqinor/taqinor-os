@@ -639,11 +639,14 @@ describe('CALX220 — l’attache dans le constructeur', () => {
     'utf8',
   );
 
-  it('UNE ligne d’attache dans l’objet `onApiReady`, et rien d’autre', () => {
+  it('UNE seule construction de la couche, UNE ligne d’attache dans `onApiReady` — et son groupe est RENDU', () => {
     const bloc = source.slice(source.indexOf('opts.onApiReady?.({'));
-    expect(bloc).toContain('electrique: creerCoucheElectrique(ctx)');
+    expect(bloc).toContain('electrique: coucheElectrique');
     // Une seule occurrence dans tout le fichier, hors l'import du module.
     const appels = source.split('creerCoucheElectrique(ctx)').length - 1;
     expect(appels).toBe(1);
+    // CALX219 câblage — le groupe existait mais n'était attaché à AUCUNE scène : il est
+    // désormais donné à `scene3d`, qui le ré-attache après chaque `renderScene`.
+    expect(source).toContain('scene3d.setCoucheElectrique(coucheElectrique.groupe)');
   });
 });

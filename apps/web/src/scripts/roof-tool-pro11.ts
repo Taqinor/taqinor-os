@@ -159,6 +159,7 @@ import {
   type EntreeDepartage,
 } from './roofPro11/optimizer';
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
+import { lireBatiments } from './roofPro11/batiment'; // CALX100 — `buildings[]` du document
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout, deserializeSceneFromLayout } from './roofPro11/prefill';
 import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
@@ -1414,12 +1415,18 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // — Scène 3D Three.js (couche WebGL custom MapLibre) : voir roofPro11/scene3d.ts. Le
   // module possède le renderer/scène/caméra/soleil + la photo de toit (W70) ; l'entrée
   // garde la construction de la carte et le boot map.on('load') (qui ajoute customLayer).
-  const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize });
+  const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize, setbacksOf }); // CALX101 — retrait d'acrotère réglé
   const customLayer = scene3d.customLayer;
   const disposeScene = scene3d.disposeScene;
   const renderScene = scene3d.renderScene;
   const setPanelHighlight = scene3d.setPanelHighlight; // W88 — surlignage/pick des panneaux 3D
   const setPanelSelection = scene3d.setPanelSelection; // PV29 — surlignage d'une SÉLECTION 3D
+  // CALX219 câblage — la couche électrique (CALX219/220/223) existait mais n'était JAMAIS
+  // rendue : son `groupe` three.js n'était attaché à aucune scène. On la construit ici (au
+  // lieu de l'intérieur du littéral `onApiReady`) pour pouvoir la DONNER à la scène, qui la
+  // ré-attache après chaque `renderScene`. `electrique3d.ts` n'est pas modifié.
+  const coucheElectrique = creerCoucheElectrique(ctx);
+  scene3d.setCoucheElectrique(coucheElectrique.groupe);
 
   // — Moteur d'optimisation vivante (W34/V7 plat + W35/V8 pente + matrice V6 PVGIS) :
   // voir roofPro11/optimizer.ts. `syncChips`/`renderMatrixOptimumCard` sont déclarés plus
@@ -1747,6 +1754,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
         )),
       );
     }
+
+    ctx.batiments = lireBatiments(layout); // CALX100 — hauteurs SAISIES + provenance, relues
     const setIf = (id: string, v?: string) => {
       const el = $<HTMLInputElement>(id);
       if (el && v && !el.value.trim()) el.value = v;
@@ -3792,6 +3801,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     raccourcis: raccourcisAtelier,
     // CALX3 — les calques réellement installés sur la carte, dans l'ordre de rendu.
     calquesDisponibles: () => calquesDisponibles(map),
-    electrique: creerCoucheElectrique(ctx), // CALX220 — pose/déplacement/retrait d'organes électriques
+    electrique: coucheElectrique, // CALX220 — pose/déplacement/retrait d'organes électriques
   });
 }
