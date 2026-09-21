@@ -33,7 +33,7 @@ client API dédié) sont devenus respectivement `frontend/parked/features/<x>`,
 | agriculture | oui | oui | oui (agricultureApi.js) |
 | ao | oui | — | oui (aoApi.js + aoApi.test.mjs) |
 | assurances | oui | — | — |
-| btp_chantier | oui | oui (`pages/btp`) | — (btpChantierApi.js reste : partagé avec installations/ventes) |
+| btp_chantier | oui | oui (`pages/btp`) | oui (btpChantierApi.js) |
 | compta | oui | — | oui (comptaApi.js + comptaApi.pact18.test.mjs) |
 | contrats | oui | — | oui (contratsApi.js) |
 | cpq | oui | — | oui (cpqApi.js) |
@@ -44,7 +44,7 @@ client API dédié) sont devenus respectivement `frontend/parked/features/<x>`,
 | fiscal | oui | oui | oui (fiscalApi.js) |
 | flotte | oui | — | oui (flotteApi.js) |
 | fpa | oui | oui | oui (fpaApi.js) |
-| gestion_projet | oui | — (`pages/dossiers`, voir note) | — (gestionProjetApi.js reste : partagé) |
+| gestion_projet | oui | — (`pages/dossiers`, voir note) | oui (gestionProjetApi.js) |
 | hospitality | oui | — | oui (hospitalityApi.js) |
 | immobilier | oui | oui | oui (immobilierApi.js) |
 | innovation | oui | — | oui (innovationApi.js) |

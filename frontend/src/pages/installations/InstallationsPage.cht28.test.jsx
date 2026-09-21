@@ -40,7 +40,7 @@ vi.mock('../../api/installationsApi', () => ({
   default: {
     getInstallations: (...args) => mocks.getInstallations(...args),
     // Appelés au montage de InstallationDetail (deep-link) — voir
-    // InstallationDetail.cht18/20/21/22.test.jsx pour le même patron.
+    // InstallationDetail.cht20/21/22.test.jsx pour le même patron.
     getHistorique: () => Promise.resolve({ data: [] }),
     getTypesIntervention: () => Promise.resolve({ data: [] }),
   },
@@ -49,13 +49,6 @@ vi.mock('../../api/installationsApi', () => ({
 vi.mock('../../api/crmApi', () => ({
   default: {
     getAssignableUsers: () => Promise.resolve({ data: [] }),
-  },
-}))
-
-vi.mock('../../api/gestionProjetApi', () => ({
-  default: {
-    getChantiers: () => Promise.resolve({ data: { results: [] } }),
-    creerProjetDepuisDevis: () => Promise.resolve({ data: { id: 1, code: 'PRJ-0001' } }),
   },
 }))
 

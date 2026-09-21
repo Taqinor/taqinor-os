@@ -58,13 +58,6 @@ vi.mock('../../ui', async (importActual) => {
   }
 })
 
-vi.mock('../../api/gestionProjetApi', () => ({
-  default: {
-    getChantiers: () => Promise.resolve({ data: { results: [] } }),
-    creerProjetDepuisDevis: () => Promise.resolve({ data: { id: 1, code: 'PRJ-0001' } }),
-  },
-}))
-
 const RAISON = "Le pack de remise client n'est pas complet."
 
 vi.mock('../../api/installationsApi', () => ({
