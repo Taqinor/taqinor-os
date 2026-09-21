@@ -120,6 +120,26 @@ def _jour_ouvre(d, company):
     return ouvre
 
 
+def _est_ferie(d, company):
+    """CAD41 — `d` est-il un jour FÉRIÉ pour la société ?
+
+    Distinct de ``_jour_ouvre``, qui répond « non » aussi bien pour un férié
+    que pour un samedi : la touche dominicale du Protocole v3 est justement
+    posée un jour NON ouvré, et elle doit pourtant s'effacer devant l'Aïd.
+    Lecture par la surface cross-app documentée (``feries_entre``), jamais un
+    import de ``notifications.models``. Mémorisé comme ``_jour_ouvre``.
+    """
+    cache = _CACHE.get()
+    cle = ('ferie', getattr(company, 'pk', None), d)
+    if cache is not None and cle in cache:
+        return cache[cle]
+    from apps.notifications.calendar_utils import feries_entre
+    ferie = bool(feries_entre(company, d, d))
+    if cache is not None:
+        cache[cle] = ferie
+    return ferie
+
+
 def _heure(profil, champ, defaut):
     valeur = getattr(profil, champ, None) if profil is not None else None
     return valeur if isinstance(valeur, datetime.time) else defaut
@@ -167,6 +187,20 @@ def fenetre_du_jour(d, company, *, dimanche=False, canal='appel'):
     """
     profil = _profil(company)
     if dimanche and d.weekday() == 6:
+        # CAD41 — la branche dominicale ne court-circuite plus NI les fériés
+        # NI le Ramadan. Avant, `return` partait ici sans rien vérifier : un
+        # Aïd tombant un dimanche recevait quand même l'appel de 16:30, et
+        # pendant le Ramadan la touche restait posée à 16:30 en plein jeûne,
+        # dans le creux pré-ftour (jusqu'à 4 dimanches par an).
+        if _est_ferie(d, company):
+            # `None` = ce dimanche est inutilisable ; `prochain_creneau_appel`
+            # passe alors au dimanche SUIVANT (jamais au lundi : la touche
+            # dominicale ne se transforme pas en touche de semaine).
+            return None
+        if est_en_ramadan(d, company, profil=profil):
+            return (_heure(profil, 'ramadan_appel_debut', datetime.time(9, 0)),
+                    _heure(profil, 'ramadan_appel_fin', datetime.time(15, 0)),
+                    None)
         return (DIMANCHE_DEBUT, DIMANCHE_FIN, None)
     if not _jour_ouvre(d, company):
         return None
@@ -244,6 +278,18 @@ def prochain_creneau_appel(dt, company, *, dimanche=False, canal='appel'):
             debut, fin, pause = fenetre
             candidat = local if jour == local.date() else _combiner(jour, debut)
             heure = candidat.time()
+            if (dimanche and jour.weekday() == 6 and heure >= fin
+                    and est_en_ramadan(jour, company)):
+                # CAD41 — pendant le Ramadan, la fenêtre dominicale ferme à
+                # 15 h : l'heure canonique 16 h 30 du Protocole v3 n'existe
+                # tout simplement pas ce jour-là. La touche est REPLACÉE dans
+                # la fenêtre du mois, CE dimanche — jamais repoussée d'une
+                # semaine, jamais transformée en appel de semaine. C'est la
+                # même nature de geste que `prochain_dimanche`, qui PLACE la
+                # touche : on ne recale pas un instant vécu, on choisit
+                # l'heure d'un rendez-vous.
+                candidat = _combiner(jour, debut)
+                heure = debut
             if jour == local.date() and heure < debut:
                 candidat = _combiner(jour, debut)
                 heure = debut
@@ -254,7 +300,14 @@ def prochain_creneau_appel(dt, company, *, dimanche=False, canal='appel'):
                         return candidat.astimezone(tz_entree)
                 else:
                     return candidat.astimezone(tz_entree)
-        jour += datetime.timedelta(days=1)
+        # CAD41 — une touche DOMINICALE inutilisable (Aïd tombant un
+        # dimanche) saute au dimanche SUIVANT, jamais au lundi : sinon le
+        # seul rendez-vous dominical du protocole se transformerait en appel
+        # de semaine, exactement ce que `prochain_dimanche` évite.
+        if dimanche and jour.weekday() == 6:
+            jour += datetime.timedelta(days=7)
+        else:
+            jour += datetime.timedelta(days=1)
         # Les jours suivants démarrent à leur ouverture, plus à l'heure de dt.
         local = _combiner(jour, datetime.time(0, 0))
     logger.warning(
