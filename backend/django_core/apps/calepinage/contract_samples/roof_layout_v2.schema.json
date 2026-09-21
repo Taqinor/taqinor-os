@@ -419,8 +419,85 @@
             "DECLARE_CLIENT",
             "ECARTE"
           ]
+        },
+        "forme": {
+          "description": "CALX85 — la FORME réelle de l'obstacle. OPTIONNELLE et additive : absente, l'obstacle est lu comme le RECTANGLE centré d'aujourd'hui (`centerLng`/`centerLat`/`lengthM`/`widthM`), byte pour byte. `polygone` = contour quelconque (`contour`), `cercle` = disque (`rayonM`) : ce sont les formes qu'une cheminée ronde ou un édicule biscornu exigeaient de faire passer pour des rectangles. Le dégagement par type (`CLEARANCE_BY_TYPE`, PV61) continue de s'appliquer autour de la forme RÉELLE, il n'est ni recalculé ni élargi ici.",
+          "type": "string",
+          "enum": [
+            "rectangle",
+            "polygone",
+            "cercle"
+          ]
+        },
+        "contour": {
+          "description": "CALX85 — sommets du polygone en [[lng, lat], …], MÊME ordre que `zones[].vertices`. Requis quand `forme` vaut `polygone`, et il lui faut au moins TROIS sommets : deux points ne délimitent aucune surface, donc aucun dégagement mesurable. Le contour est FERMÉ implicitement (le dernier sommet rejoint le premier), comme `vertices`. Ignoré pour les autres formes.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/couple"
+          },
+          "minItems": 3
+        },
+        "rayonM": {
+          "description": "CALX85 — rayon du disque (m), SAISI. Requis quand `forme` vaut `cercle`, centré sur `centerLng`/`centerLat`. Aucun rayon n'est déduit d'une longueur ni d'une largeur : un cercle sans rayon saisi est refusé en nommant le champ, jamais arrondi depuis le rectangle.",
+          "type": "number",
+          "exclusiveMinimum": 0
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "forme"
+            ],
+            "properties": {
+              "forme": {
+                "const": "polygone"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "contour"
+            ],
+            "properties": {
+              "contour": {
+                "description": "CALX85 — un polygone porte son contour, et il compte au moins trois sommets.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/couple"
+                },
+                "minItems": 3
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "forme"
+            ],
+            "properties": {
+              "forme": {
+                "const": "cercle"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "rayonM"
+            ],
+            "properties": {
+              "rayonM": {
+                "description": "CALX85 — un cercle porte son rayon SAISI.",
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          }
+        }
+      ]
     },
     "zoneGeometry": {
       "type": "object",
