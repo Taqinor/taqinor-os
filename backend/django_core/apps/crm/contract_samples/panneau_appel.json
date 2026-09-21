@@ -1,0 +1,207 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/panneau-appel/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CAD147 (PACT10) — le contrat du PANNEAU D'APPEL GUIDÉ part SEUL et EN PREMIER : rien ne décrivait ce qu'un écran d'appel attend du serveur, et deux lanes file-disjointes auraient mécaniquement inventé deux contrats. Ce que le serveur assemble en UNE réponse : le SEGMENT du lead (`type_installation`), la TOUCHE en cours de la cadence, le SCRIPT rendu, les QUESTIONS encore à poser, le PRÉ-REMPLISSAGE de ce que la fiche porte déjà, et un DRAPEAU par équipement disant s'il compte déjà dans l'étude ou ce qui lui manque.\n\nTrois règles portées par ce contrat, et qui expliquent sa forme.\n1. « Chaque champ EST le script d'appel » (`apps/crm/models.py`, bloc L4) : le texte de `question` est le `help_text` du champ, lu à la source — l'écran ne réécrit JAMAIS une question, et une question améliorée l'est dans le modèle, pas ici.\n2. « On ne redemande jamais » (ordre fondateur du 25/08/2026) : `champs_a_poser` ne contient QUE des questions encore à obtenir. Une donnée que la fiche porte déjà n'y figure pas — elle revient dans `prefill`, pour être RELUE au téléphone, jamais reposée. C'est la différence avec le questionnaire envoyé au client (`questionnaire_lead.json`), où la même donnée revient pré-remplie parce que le client, lui, la CONFIRME.\n3. Zéro chiffre inventé : `prefill` ne contient que des valeurs réellement portées par la fiche — jamais un défaut forfaitaire — et un équipement sans sa grandeur réelle porte `compte_dans_etude: false` avec le champ manquant NOMMÉ, au lieu d'être compté sur une hypothèse.\n\nLe bloc `script` REPREND TEL QUEL le contrat `relance_etape_message.json` (mêmes clés `message`, `langue`, `placeholders_manquants`, même règle « la phrase qui contient un placeholder sans valeur est OMISE ») : un panneau d'appel n'est pas un second moteur de rendu. `wa_url` n'y figure pas — un appel n'ouvre pas WhatsApp. Le rendu est d'ailleurs canal-agnostique côté serveur (`apps/crm/services.py::message_pour_etape` ne teste jamais le canal), c'est ce qui rend cette réutilisation possible sans une ligne de code en double.\n\n`forme_serveur: partielle` : la réponse est assemblée par `apps/crm/panneau_appel.py` et servie par une `@action` de `LeadViewSet` (le routeur suffit, `apps/crm/urls.py` n'est pas rouvert). Aucun écran ne l'appelle encore, la garde de forme n'a donc rien à comparer ; c'est dit ici plutôt que subi.",
+  "exemple": {
+    "lead_id": 412,
+    "segment": "residentiel",
+    "segment_libelle": "Résidentiel",
+    "touche": {
+      "id": 1287,
+      "rang": 3,
+      "template_cle": "appel_j2",
+      "canal": "appel",
+      "statut": "a_faire",
+      "prevue_le": "2026-09-23",
+      "heure_cible": "18:30"
+    },
+    "script": {
+      "message": "Bonjour, je vous appelle au sujet de votre projet solaire. Pour que l'estimation soit juste, j'ai deux ou trois questions rapides — deux minutes, pas plus.",
+      "langue": "fr",
+      "placeholders_manquants": []
+    },
+    "champs_a_poser": [
+      {
+        "champ": "occupation_jour",
+        "section": "occupation",
+        "libelle": "Présence en journée",
+        "question": "Question à l'appel : « Y a-t-il quelqu'un à la maison en journée ? »",
+        "choix": [
+          { "valeur": "present", "libelle": "Présent en journée" },
+          { "valeur": "absent", "libelle": "Absent en journée" },
+          { "valeur": "partiel", "libelle": "Présence partielle (télétravail/mi-temps)" }
+        ]
+      },
+      {
+        "champ": "equip_clim_kw",
+        "section": "equipements",
+        "libelle": "Puissance clim déclarée (kW)",
+        "question": "Puissance totale RÉELLE de la climatisation (kW, relevée sur plaque signalétique), quand elle est connue.",
+        "choix": null
+      },
+      {
+        "champ": "decideur",
+        "section": null,
+        "libelle": "Qui décide",
+        "question": "Question à l'appel : « Qui décide avec vous de ce projet ? »",
+        "choix": [
+          { "valeur": "seul", "libelle": "Décide seul" },
+          { "valeur": "conjoint_famille", "libelle": "Avec le conjoint / la famille" },
+          { "valeur": "associe_direction", "libelle": "Avec un associé / la direction" },
+          { "valeur": "proprietaire_tiers", "libelle": "Le propriétaire (un tiers) décide" }
+        ]
+      }
+    ],
+    "prefill": {
+      "type_bien": "villa",
+      "facture_hiver": 1200.0,
+      "equip_piscine": true,
+      "equip_piscine_pompe_kw": 1.1,
+      "equip_clim": true
+    },
+    "equipements": [
+      {
+        "cle": "piscine",
+        "libelle": "Piscine",
+        "declare": true,
+        "compte_dans_etude": true,
+        "champs_manquants": []
+      },
+      {
+        "cle": "clim",
+        "libelle": "Climatisation",
+        "declare": true,
+        "compte_dans_etude": false,
+        "champs_manquants": ["equip_clim_kw", "equip_clim_pieces"]
+      },
+      {
+        "cle": "ve",
+        "libelle": "Véhicule électrique",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      },
+      {
+        "cle": "chauffe_eau",
+        "libelle": "Chauffe-eau électrique",
+        "declare": true,
+        "compte_dans_etude": false,
+        "champs_manquants": ["equip_chauffe_eau_kw", "equip_chauffe_eau_creneau"]
+      }
+    ]
+  },
+  "exemple_sans_cadence_active": {
+    "lead_id": 977,
+    "segment": "agricole",
+    "segment_libelle": "Agricole",
+    "touche": null,
+    "script": null,
+    "champs_a_poser": [
+      {
+        "champ": "pompage_heures_jour",
+        "section": null,
+        "libelle": "Pompage — heures par jour",
+        "question": "Question à l'appel : « Combien d'heures par jour la pompe tourne-t-elle ? »",
+        "choix": null
+      }
+    ],
+    "prefill": {
+      "pompe_alim_actuelle": "butane"
+    },
+    "equipements": [
+      {
+        "cle": "piscine",
+        "libelle": "Piscine",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      },
+      {
+        "cle": "clim",
+        "libelle": "Climatisation",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      },
+      {
+        "cle": "ve",
+        "libelle": "Véhicule électrique",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      },
+      {
+        "cle": "chauffe_eau",
+        "libelle": "Chauffe-eau électrique",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      }
+    ]
+  },
+  "exemple_tout_repondu": {
+    "lead_id": 58,
+    "segment": "residentiel",
+    "segment_libelle": "Résidentiel",
+    "touche": {
+      "id": 1290,
+      "rang": 5,
+      "template_cle": "appel_j7",
+      "canal": "appel",
+      "statut": "a_faire",
+      "prevue_le": "2026-09-28",
+      "heure_cible": null
+    },
+    "script": {
+      "message": "Bonjour, je reviens vers vous au sujet de votre projet solaire.",
+      "langue": "darija",
+      "placeholders_manquants": ["date_validite"]
+    },
+    "champs_a_poser": [],
+    "prefill": {
+      "occupation_jour": "present",
+      "type_bien": "appartement",
+      "decideur": "seul"
+    },
+    "equipements": [
+      {
+        "cle": "piscine",
+        "libelle": "Piscine",
+        "declare": true,
+        "compte_dans_etude": true,
+        "champs_manquants": []
+      },
+      {
+        "cle": "clim",
+        "libelle": "Climatisation",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      },
+      {
+        "cle": "ve",
+        "libelle": "Véhicule électrique",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      },
+      {
+        "cle": "chauffe_eau",
+        "libelle": "Chauffe-eau électrique",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      }
+    ]
+  },
+  "notes": {
+    "questions": "`question` est le `help_text` du champ `crm.Lead`, servi tel quel. L'écran ne le réécrit pas : améliorer une formulation, c'est modifier le `help_text`. `section` vaut `null` pour une question ORALE — celles que le questionnaire envoyé au client ne porte pas (décideur, concurrents, et les trois questions de pompage du segment agricole).",
+    "jamais_redemande": "Une colonne que la fiche porte déjà est ABSENTE de `champs_a_poser` et PRÉSENTE dans `prefill`. `tranche_onee` n'apparaît nulle part : elle se dérive de la facture et de la consommation, on ne la demande pas.",
+    "prefill": "Uniquement des valeurs réellement portées par la fiche, JAMAIS un défaut. `Decimal` rendu en nombre, date en ISO. Une clé absente veut dire « inconnu », et c'est alors une question.",
+    "choix": "`null` pour un champ à saisie libre (nombre, texte) ; une liste `{valeur, libelle}` pour un champ à vocabulaire fermé, dans l'ordre du modèle.",
+    "equipements": "Les quatre couches sont TOUJOURS servies, dans cet ordre. `declare` = le booléen du lead vaut Oui ; `compte_dans_etude` = la couche est réellement composable par `apps/ventes/courbes_journalieres.py::composer_equipements`. Les deux diffèrent exactement quand une grandeur manque — et `champs_manquants` la NOMME, pour que la question suivante soit la bonne.",
+    "touche": "`null` quand aucune cadence n'est active sur ce lead. Le panneau reste servi : les questions, elles, se posent toujours. `rang` est l'ordre de la touche dans sa cadence ; `heure_cible` vaut `null` sur les touches d'avant l'échéance à la minute.",
+    "script": "`null` quand il n'y a pas de touche. Sinon, forme reprise de `relance_etape_message.json` (sans `wa_url` : un appel n'ouvre pas WhatsApp).",
+    "permissions": "Lecture seule, company-scopée comme tout `LeadViewSet` (garde fine `crm_voir`) : aucune écriture, aucun effet de bord."
+  }
+}

@@ -239,6 +239,25 @@ sur place), qui est aussi la vraie valeur du passage.
 Les deux variantes darija ci-dessus sont À FAIRE RELIRE par un locuteur natif : elles suivent le FR validé phrase par
 phrase (aucune promesse ajoutée, aucun chiffre) mais n'ont pas reçu la revue native du 04/09/2026.
 
+Décision fondateur du 21/09/2026 (CAD170) — VÉHICULE ÉLECTRIQUE, RECHARGE DE NUIT : **aucun texte ne conseille au
+client de recharger sa voiture en journée.** C'est le cas majoritaire (fenêtre 21h-6h) et l'effet mesuré sur
+l'autoconsommation est nul, même avec une batterie de 10 kWh. La réponse commerciale est le DIMENSIONNEMENT : les
+kWh/jour de recharge nocturne s'ajoutent au besoin de stockage, servis par une taille d'offre réellement vendue
+(`apps/ventes/etude_horaire.besoin_stockage_avec_recharge_ve`) — jamais une batterie sur mesure, jamais au-delà du
+catalogue. Le conseil « décalez la recharge en journée » est ÉCARTÉ : le gain qui le soutenait venait d'une
+autoconsommation non bornée, corrigée depuis (CAD165). Toute rédaction future de texte client sur ce sujet parle de la
+batterie qui couvre la nuit, jamais d'un changement d'habitude du client.
+
+Décisions fondateur du 21/09/2026 (CAD173) — TROIS RÈGLES DE CONTENU, à tenir dans tout texte futur :
+- **Coupures (Q15)** : « tenir pendant les coupures » est un ARGUMENT commercial, rien d'autre. Aucun texte ne promet
+  une autonomie, une durée de secours ou un nombre d'heures : aucun dimensionnement de secours n'est calculé, donc
+  aucun chiffre de secours n'existe. La réponse du client vit dans l'objectif de projet de sa fiche.
+- **Carburant agricole (Q17)** : l'économie de carburant se calcule UNIQUEMENT sur ce que le client déclare (litres ou
+  dirhams par mois). **Aucun prix de gasoil de référence n'est écrit nulle part** — ni dans le code, ni dans un texte.
+  Sans déclaration du client, la phrase est omise ; jamais un prix de marché supposé.
+- **Subventions (Q22)** : on ne promet RIEN. Aucun texte n'annonce un montant, un taux, une éligibilité ni un délai de
+  subvention : on renvoie le client aux conditions officielles du programme concerné.
+
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.
 (`visite_proposition` et `visite_confirmation`, eux, ont reçu leur texte validé le 15/09/2026 — section ci-dessus.)

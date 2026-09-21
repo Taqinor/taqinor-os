@@ -533,6 +533,15 @@ def get_latest_lead_for_client(company, client_id):
             .first())
 
 
+def _srm_deduite(ville):
+    """CAD167 — la SRM régionale de cette ville, ou ``None``. Ne lève jamais."""
+    try:
+        from .srm_regions import srm_depuis_ville
+        return srm_depuis_ville(ville)
+    except Exception:  # noqa: BLE001 — une déduction ratée n'arrête rien
+        return None
+
+
 def lead_bills_for_devis(devis):
     """Factures électriques RÉELLES (MAD/mois) du lead d'un devis, ou None.
 
@@ -561,9 +570,16 @@ def lead_bills_for_devis(devis):
         'facture_ete': (float(lead.facture_ete)
                         if lead.facture_ete not in (None, '') else None),
         'ete_differente': bool(lead.ete_differente),
-        # QX7d — distributeur (onee/lydec/redal) pour convertir MAD→kWh par le
-        # barème réel progressif-puis-sélectif (mêmes tranches que le chemin ROI), pas un prix plat.
-        'distributeur': (lead.distributeur or None),
+        # QX7d — distributeur pour convertir MAD→kWh par le barème réel
+        # progressif-puis-sélectif (mêmes tranches que le chemin ROI), pas un
+        # prix plat.
+        # CAD167 — quand la fiche ne porte AUCUN distributeur, la SRM se
+        # DÉDUIT de la ville (décision fondateur du 21/09/2026 : on ne la
+        # demande plus). Ville inconnue de la table ⇒ toujours None : on
+        # n'invente pas un rattachement régional. La valeur ne change aucun
+        # prix — le barème est national.
+        'distributeur': (lead.distributeur
+                         or _srm_deduite(getattr(lead, 'ville', None))),
     }
 
 
@@ -1178,6 +1194,24 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
     + [(champ, _RAISON_STRUCTURE) for champ in (
         'structure_pref', 'structure_produit',
     )]
+    # ── CAD-L ── CAD149 — vague 1 du script d'appel guidé : deux des huit
+    # champs portent un marqueur de provenance (`equip_`, `pompe_`) et
+    # doivent donc être déclarés ICI, avec leur raison.
+    + [
+        ('equip_ve_statut',
+         "précision du profil d'équipements posée à l'appel (CAD149) : elle "
+         "dit si le véhicule électrique est DÉJÀ là ou seulement prévu, et "
+         "le devis ne la RECOPIE pas dans `etude_params` — elle est relue "
+         "sur le lead au moment où l'étude compose la couche véhicule et "
+         "où le rendu décide de l'étiquette « avec votre future voiture ». "
+         "Une valeur sans copie ne peut pas diverger de sa copie."),
+        ('pompe_alim_actuelle',
+         "questionnaire de pompage agricole (CAD149) : l'alimentation de la "
+         "pompe ACTUELLE sert l'argumentaire et l'économie de carburant, "
+         "pas le bloc énergie/toiture RÉSIDENTIEL que le devis recopie dans "
+         "`etude_params`. À déclarer le jour où l'écran agricole re-saisit "
+         "cette valeur depuis le lead."),
+    ]
     + [
         ('occupation_jour', _RAISON_LU_EN_DIRECT),
         ('roof_point', _RAISON_LU_EN_DIRECT),
@@ -2201,6 +2235,11 @@ def equipements_pour_lead(lead):
         # couche déjà active, jamais une paire requise). Mêmes None-par-défaut.
         'clim_creneau': lead.equip_clim_creneau,
         'piscine_creneau': lead.equip_piscine_creneau,
+        # CAD169 — « déjà là » ou « seulement prévu » : une voiture PRÉVUE est
+        # comptée des deux côtés, mais le devis et la proposition portent
+        # alors l'étiquette « avec votre future voiture ». Sans ce champ ici,
+        # le moteur ne pourrait pas la poser — et le chiffre mentirait.
+        've_statut': getattr(lead, 'equip_ve_statut', None),
     }
 
 
@@ -4967,3 +5006,36 @@ def cadences_echues_a_clore(company, user, *, jours, today=None, limit=200):
         if len(lignes) >= limite:
             break
     return lignes
+
+
+# ── CAD-M ── CAD166 — LES kWh DÉCLARÉS, JUSQU'AU MOTEUR
+#
+# Le moteur horaire sait lire une consommation en kWh depuis toujours ; il ne
+# la RECEVAIT simplement pas du lead, et repartait donc des montants en
+# dirhams inversés au barème même quand le client avait donné ses kWh.
+# Décision fondateur du 21/09/2026 : les kWh saisis passent en PRIORITÉ 1.
+#
+# Point d'entrée cross-app LECTURE SEULE, DISTINCT de
+# ``lead_bills_for_devis`` : celui-ci n'existe que si une facture d'hiver
+# existe, alors que le cas visé est justement le dossier qui n'a QUE des kWh.
+def conso_mensuelle_kwh_pour_devis(devis):
+    """Consommation mensuelle déclarée (kWh) du lead d'un devis, ou ``None``.
+
+    ``crm.Lead.conso_mensuelle_kwh`` est LE champ éditable (saisi par la
+    commerciale, écrit par l'OCR de facture) ; ``bill_kwh`` reste l'archive du
+    tunnel web, en lecture seule — les deux ne fusionnent pas, et c'est le
+    champ éditable qui parle au moteur. Même résolution de lead que le reste
+    du module (le lead du devis, sinon le plus récent du client), même bornage
+    société. Aucune donnée fabriquée : absente ⇒ ``None``."""
+    lead = getattr(devis, 'lead', None)
+    if lead is None:
+        lead = get_latest_lead_for_client(
+            getattr(devis, 'company', None), getattr(devis, 'client_id', None))
+    valeur = getattr(lead, 'conso_mensuelle_kwh', None) if lead else None
+    if valeur in (None, ''):
+        return None
+    try:
+        valeur = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return valeur if valeur > 0 else None

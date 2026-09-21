@@ -300,7 +300,15 @@ class TestE_FactureHorsPlage(SimpleTestCase):
                 doc = fonction.__doc__ or ""
                 self.assertNotIn("TOUJOURS False", doc)
                 self.assertNotIn("toujours False", doc)
-        sans_table = pricing.kwh_from_bill(500.0, utility="inconnu")
+        # CAD167 (21/09/2026) — la branche SANS table n'est plus celle d'un
+        # distributeur INCONNU : depuis la décision « il n'y a plus que SRM au
+        # Maroc », tout distributeur NOMMÉ résout sur la grille nationale (le
+        # barème est unique, la valeur n'est qu'un libellé). La branche de
+        # repli subsiste pour le cas où AUCUN distributeur n'est nommé — c'est
+        # elle que ce contrôle vise, et elle renvoie toujours True.
+        sans_table = pricing.kwh_from_bill(500.0, utility=None)
         self.assertTrue(sans_table["estimation"])
         self.assertEqual(sans_table["approximatif"],
                          sans_table["estimation"])
+        nomme = pricing.kwh_from_bill(500.0, utility="srm_casablanca")
+        self.assertFalse(nomme["estimation"])

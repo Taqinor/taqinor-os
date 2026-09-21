@@ -98,6 +98,27 @@ TRACKED_FIELDS = {
     # L-BACK2 (24/08/2026) — créneaux clim/piscine.
     'equip_clim_creneau': 'Créneau de fonctionnement de la clim',
     'equip_piscine_creneau': 'Créneau de filtration de la piscine',
+    # ── CAD-L ── CAD149 — vague 1 du script d'appel guidé (21/09/2026) : ces
+    # huit réponses décident de l'étiquette « Décision à plusieurs », de la
+    # couche véhicule électrique et de l'économie de carburant. Une valeur
+    # changée sans trace, c'est un chiffre client qui bouge sans explication.
+    'type_bien': 'Type de bien',
+    'objectif_projet': 'Objectif du projet',
+    'decideur': 'Qui décide',
+    'devis_concurrents': 'Autres devis en cours',
+    'equip_ve_statut': 'Véhicule électrique — déjà là ou prévu ?',
+    'pompage_heures_jour': 'Pompage — heures par jour',
+    'pompe_alim_actuelle': 'Pompe actuelle — alimentation',
+    'carburant_litres_mois': 'Carburant consommé (litres/mois)',
+    # ── CAD-L ── CAD154 — vague 2 : budget annoncé, frein et déclencheur
+    # décident de la suite commerciale ; un changement sans trace, c'est une
+    # relance calée sur une objection qui n'existe plus.
+    'nb_personnes_foyer': 'Nombre de personnes au foyer',
+    'budget_client_mad': 'Budget annoncé par le client (MAD)',
+    'frein_principal': 'Frein principal',
+    'declencheur': 'Ce qui a accroché',
+    'compteur_puissance_kva': 'Puissance souscrite du compteur (kVA)',
+    'chauffage_electrique_hiver': 'Chauffage électrique en hiver',
 }
 
 _CHOICE_FIELDS = {
@@ -116,6 +137,13 @@ _CHOICE_FIELDS = {
     'equip_clim_creneau', 'equip_piscine_creneau',
     # NTI18N49 — langue préférée (FR/Darija).
     'langue_preferee',
+    # CAD149 — six des huit champs de la vague 1 sont des choices
+    # (pompage_heures_jour et carburant_litres_mois sont des grandeurs).
+    'type_bien', 'objectif_projet', 'decideur', 'devis_concurrents',
+    'equip_ve_statut', 'pompe_alim_actuelle',
+    # CAD154 — deux des six champs de la vague 2 sont des choices (les
+    # quatre autres sont un nombre, un montant, une puissance, un booléen).
+    'frein_principal', 'declencheur',
 }
 
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}
