@@ -324,10 +324,15 @@ class HeureLocale(unittest.TestCase):
     """Le décalage UTC publié est APPLIQUÉ, jamais ignoré."""
 
     def _perte(self, meteo):
-        _rendue, cascade = appliquer_chaine(serie(), contexte(meteo=meteo))
-        etape = etape_de(cascade)
+        # Appel DIRECT de l'étape : depuis CALX59, `appliquer_chaine` ré-indexe
+        # la série sur le fuseau SAISI du site et réécrit `meteo.heure` — ici on
+        # prouve que l'ÉTAPE applique le décalage qu'on lui publie, pas la chaîne.
+        from ..services import etapes
+        from ..services.etapes import inter_rangees
+        source = serie()
+        rendue, etape = inter_rangees.appliquer(source, contexte(meteo=meteo))
         self.assertEqual(etape['motif_omission'], '')
-        return etape['perte_pct']
+        return round(etapes.energie_kwh(source) - etapes.energie_kwh(rendue), 9)
 
     def test_un_decalage_publie_deplace_le_soleil(self):
         utc = self._perte({'heure': {'base': 'utc'}})
