@@ -97,6 +97,10 @@ from . import modules_disponibles as _modules_disponibles_action  # noqa: F401
 # par tronçon, contrat CALX203, servi par ``services/troncons.py``). Lecture
 # PURE : la porte n'écrit rien.
 from . import troncons as _troncons_action  # noqa: F401
+# CALX107 — même patron : rattache ``plan-importe`` (l'URL servie et la taille
+# en pixels de la pièce jointe que le document désigne comme plan de fond).
+# LECTURE PURE : la porte n'écrit rien.
+from . import plan_importe as _plan_importe_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -122,6 +126,8 @@ MODULES_RATTACHES = (
     'modules_disponibles',  # CALX109
 
     'troncons',  # CALX228
+
+    'plan_importe',  # CALX107
 )
 
 __all__ = ['MODULES_RATTACHES']
