@@ -40,6 +40,10 @@ import {
 } from './moduleSelect';
 
 import { underlayPourDocument } from './underlay'; // CALX107
+import {
+  ecrireOptimisationDansDocument,
+  semerOptimisationDepuisDocument,
+} from './optimisationDocument'; // CALX114 câblage
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -835,6 +839,10 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   // somme, et `panelWatt` racine reste servi (watt du module MAJORITAIRE). Sans catalogue
   // ni pan affecté, le document repart INCHANGÉ, byte pour byte.
   ecrireModulesDansDocument(layout, meta?.modules);
+  // CALX114 câblage — l'objectif d'optimisation SAISI (contrat CALX88, clé racine
+  // `optimisation`) : sans cette ligne il ne quittait jamais la mémoire de l'optimiseur et
+  // était perdu au rechargement. Aucun objectif saisi ⇒ aucune clé, document inchangé.
+  ecrireOptimisationDansDocument(layout); // CALX114 câblage
   // CALX22x câblage — la couche électrique s'écrit EN DERNIER, par son PROPRE crochet
   // d'export (`ecrireDansDocument`) : jamais une deuxième copie de sa logique ici — elle
   // gère seule la copie profonde et l'absence de la clé quand le document ne porte ni
@@ -933,6 +941,10 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
   // premier enregistrement suivant repartait de zéro et renumérotait tout le pan.
   // `absorberDocument` est idempotent et n'écrit RIEN dans le document.
   registreAtelier.absorberDocument(json); // CALX111 câblage
+  // CALX114 câblage — l'objectif d'optimisation du document rouvert repart dans
+  // l'optimiseur (et un document sans objectif l'y REMET à « aucun objectif saisi »,
+  // sinon celui du dossier précédent déborderait sur celui-ci).
+  semerOptimisationDepuisDocument(json); // CALX114 câblage
   const zones = Array.isArray(json?.zones) ? json.zones : [];
   return zones.map((z) => ({
     id: z.id,

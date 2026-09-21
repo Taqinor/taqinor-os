@@ -6,9 +6,15 @@
 // (CRLF local).
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { anneauObstacle, anneauxObstruction, type ObstacleEtendu } from './types';
 import { TEINTE_ALLEE, poserSourceCellulesSurAllees, teinterAllees, type BufferTeinte } from './teinteAllees';
+import {
+  ecrireOptimisationDansDocument,
+  lireOptimisationDuDocument,
+  semerOptimisationDepuisDocument,
+} from './optimisationDocument';
+import { choixOptimisationCourant, poserChoixOptimisation, poserCibleOptimisation } from './optimizer';
 import { type Ctx } from './context';
 
 /** Les SOURCES câblés ici (pages à effets de bord, non importables en test). Chemins
@@ -121,5 +127,62 @@ describe('CALX403 câblage — les modules en travers d’une allée sont nommé
 
   it('la scène appelle la teinte sur le buffer d’instances de la zone ACTIVE', () => {
     expect(SOURCE_SCENE).toContain('teinterAllees(ctx, panelIM, panelCellIndices); // CALX403 câblage');
+  });
+});
+
+describe('CALX114 câblage — l’objectif d’optimisation survit au rechargement', () => {
+  // État de MODULE partagé (`optimizer.ts`) : on le remet à neuf après chaque cas, sans
+  // quoi l'objectif d'un test déborderait sur le suivant.
+  afterEach(() => poserChoixOptimisation(null));
+
+  const SOURCE_PREFILL = source('src/scripts/roofPro11/prefill.ts');
+
+  it('aucun objectif saisi ⇒ AUCUNE clé (document d’hier, octet pour octet)', () => {
+    poserChoixOptimisation(null);
+    const doc: Record<string, unknown> = { version: 2, zones: [] };
+    expect(ecrireOptimisationDansDocument(doc)).toBe(false);
+    expect('optimisation' in doc).toBe(false);
+  });
+
+  it('l’objectif choisi à l’écran est ÉCRIT, puis relu à l’ouverture suivante', () => {
+    poserChoixOptimisation({ priorite: 'faitage' });
+    poserCibleOptimisation('compte');
+    const doc: Record<string, unknown> = { version: 2, zones: [] };
+    expect(ecrireOptimisationDansDocument(doc)).toBe(true);
+    expect(doc.optimisation).toEqual({ priorite: 'faitage', cible: 'compte' });
+
+    // Rechargement : l'optimiseur repart de zéro, le document le re-sème.
+    poserChoixOptimisation(null);
+    expect(choixOptimisationCourant()).toBeNull();
+    expect(semerOptimisationDepuisDocument(doc)).toEqual({ priorite: 'faitage', cible: 'compte' });
+    expect(choixOptimisationCourant()).toEqual({ priorite: 'faitage', cible: 'compte' });
+  });
+
+  it('le document écrit est une COPIE : le modifier ne touche pas l’optimiseur', () => {
+    poserCibleOptimisation('kwc');
+    const doc: Record<string, unknown> = {};
+    ecrireOptimisationDansDocument(doc);
+    (doc.optimisation as Record<string, unknown>).cible = 'energie';
+    expect(choixOptimisationCourant()).toEqual({ cible: 'kwc' });
+  });
+
+  it('rouvrir un document SANS objectif efface celui du dossier précédent', () => {
+    poserCibleOptimisation('ombrage');
+    expect(semerOptimisationDepuisDocument({ version: 2, zones: [] })).toBeNull();
+    expect(choixOptimisationCourant()).toBeNull();
+  });
+
+  it('un fragment qui n’est pas un objet est IGNORÉ (jamais traduit en objectif)', () => {
+    for (const brut of [null, undefined, 'energie', 42, ['energie']]) {
+      expect(lireOptimisationDuDocument({ optimisation: brut })).toBeNull();
+    }
+    // Une cible HORS contrat est déposée telle quelle : c'est `resoudreCibleOptimisation`
+    // qui la refuse en la nommant, pas ce module qui la remplace.
+    expect(semerOptimisationDepuisDocument({ optimisation: { cible: 'zzz' } })).toEqual({ cible: 'zzz' });
+  });
+
+  it('`prefill.ts` porte les DEUX lignes d’appel (lecture et écriture)', () => {
+    expect(SOURCE_PREFILL).toContain('semerOptimisationDepuisDocument(json); // CALX114 câblage');
+    expect(SOURCE_PREFILL).toContain('ecrireOptimisationDansDocument(layout); // CALX114 câblage');
   });
 });
