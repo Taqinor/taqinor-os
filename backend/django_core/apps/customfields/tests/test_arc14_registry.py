@@ -4,9 +4,10 @@ Couvre : (1) non-régression des clés natives historiques (elles résolvent
 toujours vers le bon modèle et leurs données existantes restent lisibles) ;
 (2) l'API du registre lui-même (register/is_registered/get_model).
 
-SOLMVP20 — les clés natives ``document``/``employe`` (apps PARQUÉES GED/RH)
-et les pilotes ``contrats.contrat``/``flotte.vehicule`` (apps PARQUÉES,
-Groupe SOLMVP) ont été retirés du registre et de cette couverture.
+SOLMVP20 — la clé native ``employe`` (app PARQUÉE RH) et les pilotes
+``contrats.contrat``/``flotte.vehicule`` (apps PARQUÉES, Groupe SOLMVP) ont
+été retirés du registre et de cette couverture. ``document`` (GED) reste
+couverte : la GED est dans le MVP solaire (SOLMVP16b).
 """
 from django.test import TestCase
 
@@ -27,20 +28,20 @@ class TestNativeModulesNonRegression(TestCase):
     comportement de ``_module_model`` est inchangé pour les appelants
     existants.
 
-    SOLMVP20 — ``document``/``employe`` restent dans ``Module.values``
-    (catalogue historique) mais ne sont plus enregistrées (apps GED/RH
-    PARQUÉES) : exclues explicitement, jamais itérées en aveugle sur
-    ``Module.values``."""
+    SOLMVP20 — ``employe`` reste dans ``Module.values`` (catalogue
+    historique) mais n'est plus enregistrée (app RH PARQUÉE) : exclue
+    explicitement, jamais itérée en aveugle sur ``Module.values``."""
 
     def test_all_native_keys_registered(self):
         for key in ('lead', 'client', 'produit', 'devis', 'installation',
-                    'ticket', 'fournisseur'):
+                    'ticket', 'document', 'fournisseur'):
             self.assertTrue(
                 registry.is_registered(key),
                 f'Clé native « {key} » absente du registre.')
 
     def test_native_keys_resolve_to_expected_models(self):
         from apps.crm.models import Client, Lead
+        from apps.ged.models import Document
         from apps.installations.models import Installation
         from apps.sav.models import Ticket
         from apps.stock.models import Fournisseur, Produit
@@ -53,6 +54,7 @@ class TestNativeModulesNonRegression(TestCase):
             'devis': Devis,
             'installation': Installation,
             'ticket': Ticket,
+            'document': Document,
             'fournisseur': Fournisseur,
         }
         for key, model in expected.items():
