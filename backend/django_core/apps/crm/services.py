@@ -8072,6 +8072,41 @@ def suspendre_plan_jusqu_apres_visite(lead, user, date_prevue):
         lead, user, quand, etape=cible, journaliser=False)
 
 
+# ── CAD-B ── CAD28 ──────────────────────────────────────────────────────────
+
+def reprendre_plan_apres_retour_visite(lead, user):
+    """CAD28 — la reprise du protocole part du RETOUR RÉELLEMENT SAISI.
+
+    La suspension calait la reprise sur la date PRÉVUE de la visite. Une
+    visite reportée à la dernière minute sans mise à jour de la fiche laissait
+    donc la relance repartir quand même : le client recevait un message
+    « suite à notre visite » avant que quiconque soit passé chez lui.
+
+    Le retour de visite, lui, est déjà saisi (``appliquer_retour_visite``).
+    On recale donc la touche pendante du protocole sur CE jour-là plus le
+    délai de débrief, par la mécanique EXISTANTE — jamais une seconde :
+    ``suspendre_plan_jusqu_apres_visite`` avec la date du jour. Elle apporte
+    ses deux garde-fous tels quels : aucune touche pendante ⇒ on ne CRÉE
+    rien ; une touche déjà postérieure à la reprise ⇒ on ne la tire jamais EN
+    AVANT (un retour tardif ne doit pas accélérer une relance).
+
+    Le délai reste ``VISITE_REPRISE_JOURS`` — la place du débrief plus un
+    jour, non réglable : un réglage de plus pour deux personnes.
+
+    Rend la touche déplacée, ou ``None`` (les deux no-op ci-dessus).
+    """
+    deplacee = suspendre_plan_jusqu_apres_visite(
+        lead, user, aujourd_hui_local())
+    if deplacee is None:
+        return None
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=('Relances recalées sur le retour de visite — prochaine touche '
+              f'le {deplacee.due_date:%d/%m/%Y}.'))
+    return deplacee
+
+
 def _etape_visite_ouverte(lead, libelle):
     """L'étape de visite ``libelle`` encore À FAIRE sur ce lead, ou ``None``."""
     return (lead.relance_etapes
@@ -8366,7 +8401,10 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
        à la planification) ? Il est RENOMMÉ si besoin et AVANCÉ seulement s'il
        était plus loin — jamais repoussé, jamais dupliqué. Il n'existe pas
        (visite faite sans avoir été planifiée dans l'ERP) ? On le pose, à
-       condition que le lead soit encore relançable.
+       condition que le lead soit encore relançable ;
+    4. CAD28 — la reprise du PROTOCOLE est recalée sur CE retour plutôt que
+       sur la date prévue de la visite (``reprendre_plan_apres_retour_visite``),
+       et jamais tirée en avant.
 
     ``STAGES.py`` n'est pas touché. Renvoie l'étape de débrief, ou ``None``."""
     LeadActivity.objects.create(
@@ -8378,6 +8416,16 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
 
     if not _lead_relancable(lead):
         return None
+    # CAD28 — la reprise du protocole part d'ICI, du retour réellement saisi,
+    # et plus de la date PRÉVUE de la visite (voir
+    # ``reprendre_plan_apres_retour_visite``). Best-effort : un recalage
+    # impossible ne doit jamais faire échouer la redescente du terrain.
+    try:
+        reprendre_plan_apres_retour_visite(lead, user)
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le retour terrain
+        logger.warning(
+            'CAD28: reprise du plan non recalée sur le retour (lead #%s)',
+            getattr(lead, 'pk', '?'), exc_info=True)
     libelle, jours, rappel_choisi = _plan_du_debrief(qualification)
     vise = aujourd_hui_local() + datetime.timedelta(days=jours)
     existante = _debrief_ouvert(lead)
