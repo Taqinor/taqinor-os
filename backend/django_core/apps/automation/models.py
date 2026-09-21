@@ -51,12 +51,12 @@ class TriggerType(models.TextChoices):
     # viennent du REGISTRE plateforme (surface ``automation_state_fields`` des
     # manifestes ``apps/<x>/platform.py`` — voir
     # ``record_state_change_targets()`` ci-dessous), validés à la CRÉATION de
-    # la règle (serializer). Ouvre contrats/rh/sav/qhse… à l'automatisation
-    # no-code SANS nouvelle migration du framework par app. Émis DEPUIS les
-    # services des apps propriétaires (jamais leurs modèles) — pilotes ARC34 :
-    # ``apps.contrats.services`` (statut Contrat) et ``apps.sav.services``
-    # (statut Ticket). Les conditions optionnelles du ``trigger_config``
-    # réutilisent l'évaluateur d'arbre FG367 (``core.rules``) — jamais un
+    # la règle (serializer). Ouvre rh/sav/qhse… à l'automatisation no-code SANS
+    # nouvelle migration du framework par app. Émis DEPUIS les services des
+    # apps propriétaires (jamais leurs modèles) — pilote ARC34 :
+    # ``apps.sav.services`` (statut Ticket). Les conditions optionnelles du
+    # ``trigger_config`` réutilisent l'évaluateur d'arbre FG367
+    # (``core.rules``) — jamais un
     # nouvel évaluateur. Le catalogue FERMÉ ci-dessus reste INTOUCHÉ, et le
     # chemin parallèle ``gestion_projet`` (appel direct ``engine.evaluate()``,
     # XPRJ23 ci-dessus) est CONSERVÉ tel quel.

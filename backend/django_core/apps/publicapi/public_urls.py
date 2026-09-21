@@ -6,9 +6,9 @@ Distinct de `apps.ventes.public_urls` (liens PDF tokenisés sous
 NTAPI1 — cette urlconf est VERSION-AGNOSTIQUE : elle est montée par l'urlconf
 racine sous le préfixe de version (`/api/public/v1/`), jamais l'inverse. Aucune
 route ne réécrit `v1/` en dur — les chemins servis restent EXACTEMENT les mêmes
-qu'avant (`/api/public/v1/licence/statut/`, `/api/public/v1/scm/…` étaient déjà
-écrits avec le segment `v1/` en dur ici ; il vient désormais du mont). La racine
-historique SANS version reste servie 12 mois par `legacy_urls.py` (301/308 → v1).
+qu'avant (`/api/public/v1/licence/statut/` était déjà écrit avec le segment
+`v1/` en dur ici ; il vient désormais du mont). La racine historique SANS
+version reste servie 12 mois par `legacy_urls.py` (301/308 → v1).
 """
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
@@ -32,14 +32,6 @@ from .public_errors_views import PublicErrorCatalogView
 from .public_events_views import PublicEventFeedView
 from .public_oauth_views import PublicOAuthTokenView
 from .public_licence_views import PublicLicenceStatutView
-from .public_scm_views import (
-    PublicPolitiqueStockViewSet, PublicPrevisionDemandeViewSet,
-    PublicScmTableauBordReapproView,
-)
-from .public_btp_views import (
-    PublicDecompteGeneralViewSet, PublicRFIViewSet,
-    PublicReserveChantierViewSet, PublicVisaDocumentViewSet,
-)
 from .public_uxviews_views import PublicFavoriViewSet, PublicSavedViewViewSet
 from .public_achats_views import PublicDemandeAchatViewSet, PublicRFQViewSet
 from .public_fiabilite_views import (
@@ -60,29 +52,6 @@ router.register(r'calepinages', PublicCalepinageViewSet,
                 basename='public-calepinage')
 # NTAPI16/43 — suivi + reprise des jobs bulk (list/retrieve + action `relancer`).
 router.register(r'jobs', PublicJobViewSet, basename='public-job')
-# NTSCM38 — planification supply chain (apps.scm), scope `read:scm`. Sous-préfixe
-# `scm/…` (comme `licence/…`, NTADM42) plutôt que la racine des ressources
-# historiques (leads/devis/…) — même routeur, mêmes garanties testées par
-# `tests_ntapi42_contract_consistency`. NTAPI1 — le segment de version vient du
-# mont racine, plus du préfixe écrit ici : le chemin servi est inchangé.
-router.register(
-    r'scm/previsions-demande', PublicPrevisionDemandeViewSet,
-    basename='public-scm-prevision-demande')
-router.register(
-    r'scm/politiques-stock', PublicPolitiqueStockViewSet,
-    basename='public-scm-politique-stock')
-# NTCON31 — vertical BTP/EPC (apps.btp_chantier), scope `read:btp`. Sous-préfixe
-# `btp/…` (même choix que `scm/…` et `licence/…`) : même routeur, mêmes
-# garanties testées par `tests_ntapi42_contract_consistency`.
-router.register(
-    r'btp/reserves', PublicReserveChantierViewSet,
-    basename='public-btp-reserve')
-router.register(r'btp/rfi', PublicRFIViewSet, basename='public-btp-rfi')
-router.register(
-    r'btp/visas', PublicVisaDocumentViewSet, basename='public-btp-visa')
-router.register(
-    r'btp/decomptes-generaux', PublicDecompteGeneralViewSet,
-    basename='public-btp-dgd')
 # NTUX33 — favoris épinglés + vues sauvegardées (apps.uxviews), scopes
 # `read:favoris`/`read:vues`. Racine des ressources historiques (comme
 # leads/devis/…) : pas de sous-préfixe dédié, ce sont des ressources
@@ -91,7 +60,7 @@ router.register(r'favoris', PublicFavoriViewSet, basename='public-favori')
 router.register(
     r'saved-views', PublicSavedViewViewSet, basename='public-saved-view')
 # NTP2P39 — objets Procure-to-Pay (apps.installations), scope `lecture_achats`.
-# Sous-préfixe `achats/…` (même choix que `scm/…` et `btp/…`) : même routeur,
+# Sous-préfixe `achats/…` (même choix que `licence/…`) : même routeur,
 # mêmes garanties testées par `tests_ntapi42_contract_consistency`.
 router.register(
     r'achats/demandes-achat', PublicDemandeAchatViewSet,
@@ -142,9 +111,6 @@ urlpatterns = [
     # NTADM42 — statut de licence (plan/modules/sièges) de la société de la clé.
     path('licence/statut/', PublicLicenceStatutView.as_view(),
          name='public-licence-statut'),
-    # NTSCM38 — tableau de bord réappro consolidé (NTSCM7), objet unique.
-    path('scm/tableau-bord-reappro/', PublicScmTableauBordReapproView.as_view(),
-         name='public-scm-tableau-bord-reappro'),
     # NTOBS27 — surface « Fiabilité » en lecture seule (scope `fiabilite:lecture`),
     # trois objets uniques scopés société : sauvegardes (NTOBS5), rapport SLA
     # mensuel (NTOBS3) et limites & usage (NTOBS8).

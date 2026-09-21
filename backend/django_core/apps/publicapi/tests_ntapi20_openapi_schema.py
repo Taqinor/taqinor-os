@@ -34,22 +34,19 @@ class Ntapi20OpenApiSchemaTests(TestCase):
         # `public_urls.py` lui-même — jamais une liste dupliquée à la main qui
         # pourrait diverger silencieusement. NTAPI16 ajoute `public-job` (suivi
         # des jobs bulk, ReadOnlyModelViewSet) aux 5 ressources métier ;
-        # NTSCM38 ajoute 2 ressources de planification supply chain
-        # (`read:scm`) ; NTCON31 ajoute 4 ressources BTP/EPC (`read:btp` —
-        # montées de longue date mais jamais recensées ici ni documentées dans
-        # `docs.py`, comblé au passage NTUX33 puisque les deux ajouts
-        # partagent le même routeur) ; NTUX33 ajoute 2 ressources UX
-        # (`read:vues`/`read:favoris`) ; NTP2P39 ajoute 2 ressources
-        # Procure-to-Pay (`lecture_achats`), pour 17 au total (CAL214 : `public-calepinage`) : on fige
-        # l'ENSEMBLE exact (plus fort qu'un simple compte), donc un 18e
-        # enregistrement resterait un choix délibéré, pas un accident.
+        # NTUX33 ajoute 2 ressources UX (`read:vues`/`read:favoris`) ;
+        # NTP2P39 ajoute 2 ressources Procure-to-Pay (`lecture_achats`), pour
+        # 11 au total (CAL214 : `public-calepinage`) : on fige l'ENSEMBLE
+        # exact (plus fort qu'un simple compte), donc un 12e enregistrement
+        # resterait un choix délibéré, pas un accident. SOLMVP22 (2026-09-21)
+        # a retiré les 2 ressources supply chain NTSCM38 (`read:scm`) et les
+        # 4 ressources BTP/EPC NTCON31 (`read:btp`) : modules `scm`/
+        # `btp_chantier` sortis du produit (Groupe SOLMVP).
         registered_basenames = {r[2] for r in public_router.registry}
         self.assertEqual(registered_basenames, {
             'public-lead', 'public-devis', 'public-facture',
             'public-chantier', 'public-produit', 'public-job',
-            'public-scm-prevision-demande', 'public-scm-politique-stock',
-            'public-btp-reserve', 'public-btp-rfi', 'public-btp-visa',
-            'public-btp-dgd', 'public-favori', 'public-saved-view',
+            'public-favori', 'public-saved-view',
             # NTP2P39 — 2 ressources Procure-to-Pay (`lecture_achats` :
             # demandes d'achat FG310 et RFQ FG311, sans aucun prix d'achat).
             'public-achats-demande', 'public-achats-rfq',
@@ -76,21 +73,26 @@ class Ntapi20OpenApiSchemaTests(TestCase):
             self.assertIn(method, schema['paths'][path])
 
     def test_no_undocumented_paths_beyond_mounted_surface(self):
-        # 16 ressources en lecture seule × 2 (list+detail) = 32 (5 métier +
-        # `public-job` + 2 supply chain NTSCM38 + 4 BTP/EPC NTCON31 + 2 UX
-        # NTUX33 + 2 Procure-to-Pay NTP2P39) + 5 écritures (leads-write
+        # 10 ressources en lecture seule (`docs.py::endpoints`) × 2
+        # (list+detail) = 20 (5 métier + CAL214 calepinages + 2 UX NTUX33 +
+        # 2 Procure-to-Pay NTP2P39 — `public-job` n'y est PAS : ses chemins
+        # viennent de `endpoints_bulk` ci-dessous) + 5 écritures (leads-write
         # POST/PATCH, activités POST, devis-write POST, tickets-write POST) +
         # 6 bulk (NTAPI14/15/16/43/30 : exports, imports, jobs list/detail,
-        # jobs/<id>/relancer, exports/<entite>.csv) + 2 lectures simples
-        # (NTADM42 statut de licence, NTSCM38 tableau de bord réappro) = 45,
-        # + 3 (2026-09-20, NTOBS27 — surface « Fiabilité » en lecture seule :
-        # fiabilite/sauvegardes/, fiabilite/sla/<periode>/, fiabilite/usage/,
-        # chacune un objet unique en GET) = 48 opérations, sur autant de
-        # chemins distincts (aucun chemin ne cumule 2 méthodes ici) — jamais
-        # un chemin fantôme ajouté par erreur.
+        # jobs/<id>/relancer, exports/<entite>.csv) + 1 lecture simple
+        # (NTADM42 statut de licence) = 32, + 3 (2026-09-20, NTOBS27 —
+        # surface « Fiabilité » en lecture seule : fiabilite/sauvegardes/,
+        # fiabilite/sla/<periode>/, fiabilite/usage/, chacune un objet unique
+        # en GET) = 35 opérations, sur autant de chemins distincts (aucun
+        # chemin ne cumule 2 méthodes ici) — jamais un chemin fantôme ajouté
+        # par erreur. SOLMVP22 (2026-09-21) a retiré les 2 surfaces supply
+        # chain NTSCM38 et les 4 ressources BTP/EPC NTCON31 (list+detail,
+        # -12) ainsi que la lecture simple NTSCM38 « tableau de bord réappro »
+        # (-1) : modules `scm`/`btp_chantier` sortis du produit (Groupe
+        # SOLMVP), soit 48 - 13 = 35.
         schema = build_openapi_schema()
         nb_operations = sum(len(ops) for ops in schema['paths'].values())
-        self.assertEqual(nb_operations, 50)  # + 2 (CAL214 calepinages list+detail)
+        self.assertEqual(nb_operations, 35)
 
     def test_covers_licence_statut_ntadm42(self):
         schema = build_openapi_schema()
