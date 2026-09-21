@@ -252,6 +252,100 @@ class AffaireViewSet(viewsets.ModelViewSet):
         self.assertIn(("api", "django", "ao", "appels-offres"), backend.opaque)
 
 
+class ActionsGreffeesTests(unittest.TestCase):
+    """CALX2 / D-CALX 13 — les ``@action`` posees par affectation d'attribut.
+
+    Le module calepinage n'ecrit PAS ses actions dans le corps du ViewSet : il
+    les definit comme fonctions de module dans un ``views/<sujet>.py`` frere,
+    puis les greffe sur le pivot (``CalepinageViewSet.depuis_lead =
+    depuis_lead``), les sous-modules etant importes par
+    ``views/rattachements.py`` avant ``router.register``. DRF les route comme
+    des methodes ; la garde, qui ne lisait que ``node.body``, accusait donc des
+    routes REELLES et servies en production (``creer-depuis-modele``,
+    ``depuis-lead``).
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        write(self.base / "erp_agentique" / "urls.py", """
+from django.urls import include, path
+urlpatterns = [
+    path('api/django/', include([path('cal/', include('apps.cal.urls'))])),
+]
+""")
+        write(self.base / "apps" / "cal" / "urls.py", """
+from rest_framework.routers import DefaultRouter
+from .views import rattachements as _rattachements  # noqa: F401
+from .views.pivot import PivotViewSet
+router = DefaultRouter()
+router.register(r'plans', PivotViewSet, basename='plan')
+urlpatterns = router.urls
+""")
+        write(self.base / "apps" / "cal" / "views" / "__init__.py", "")
+        write(self.base / "apps" / "cal" / "views" / "rattachements.py", """
+from . import greffe as _greffe  # noqa: F401
+""")
+        write(self.base / "apps" / "cal" / "views" / "pivot.py", """
+from rest_framework import viewsets
+from rest_framework.decorators import action
+
+class PivotViewSet(viewsets.ModelViewSet):
+    @action(detail=True, url_path='dans-le-corps')
+    def dans_le_corps(self, request, pk=None):
+        pass
+""")
+        write(self.base / "apps" / "cal" / "views" / "greffe.py", """
+from rest_framework.decorators import action
+
+@action(detail=False, methods=['post'], url_path='depuis-lead')
+def depuis_lead(self, request):
+    pass
+
+@action(detail=False, url_path='jamais-greffee')
+def jamais_greffee(self, request):
+    pass
+
+from .pivot import PivotViewSet  # noqa: E402
+
+PivotViewSet.depuis_lead = depuis_lead
+""")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _backend(self):
+        backend = cac.BackendRoutes(self.base)
+        backend.build()
+        return backend
+
+    def test_action_greffee_depuis_un_module_frere_est_resolue(self):
+        # LE cas de la PR #706 : la route EXISTE et est servie, la garde la
+        # declarait inexistante.
+        self.assertIn(("api", "django", "cal", "plans", "depuis-lead"),
+                      self._backend().routes)
+
+    def test_une_fonction_jamais_greffee_ne_cree_aucune_route(self):
+        # Contre-test : une @action definie mais jamais affectee sur le
+        # ViewSet n'est PAS routee par DRF — l'inventer serait le faux vert
+        # symetrique (un appel mort passerait).
+        self.assertNotIn(("api", "django", "cal", "plans", "jamais-greffee"),
+                         self._backend().routes)
+
+    def test_les_actions_du_corps_de_classe_restent_resolues(self):
+        # Non-regression : la greffe s'AJOUTE a la lecture de `node.body`.
+        self.assertIn(("api", "django", "cal", "plans", cac.ANY, "dans-le-corps"),
+                      self._backend().routes)
+
+    def test_la_vue_pointe_le_module_greffeur(self):
+        # `views` est le chainon dont check_api_shapes.py a besoin pour
+        # remonter jusqu'au dictionnaire renvoye : il doit nommer le module qui
+        # porte le CODE de l'action, pas celui du ViewSet.
+        vue = self._backend().views[("api", "django", "cal", "plans", "depuis-lead")]
+        self.assertEqual(vue, ("apps.cal.views.greffe",
+                               ("action", "PivotViewSet", "depuis_lead")))
+
+
 class JokerPkTests(unittest.TestCase):
     """PACT151 — le `<pk>` d'un routeur n'avale plus un nom d'action manque.
 

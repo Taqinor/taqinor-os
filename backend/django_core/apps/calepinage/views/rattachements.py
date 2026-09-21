@@ -34,6 +34,11 @@ inspecte les attributs de la classe au moment de l'enregistrement
 (``get_extra_actions()``), donc une action rattachée après coup ne serait
 jamais routée.
 
+La garde CI ``scripts/check_api_contract.py`` connaît ce patron de greffe
+(elle lit les affectations ``CalepinageViewSet.<action> = <fonction>`` des
+modules frères) : ces routes existent pour elle comme n'importe quelle
+méthode — mais seule l'affectation ÉCRITE est vue, jamais un ``setattr``.
+
 Aucun couplage neuf vers les modules parqués (appels d'offres) ni vers la
 GED n'entre ici (décision D-CALX 2) — la garde ``test_calx2_rattachements``
 greppe ce fichier, d'où la formulation sans nom de paquet.

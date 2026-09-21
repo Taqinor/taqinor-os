@@ -35,6 +35,22 @@ CE QU'ELLE FAIT (analyse statique pure, sans base de donnees, sans dependance)
    ``url_path`` par defaut d'une ``@action`` est le nom de la methode TEL QUEL
    (``grand_livre``, avec un souligne) — c'est exactement le piege qui a tue
    l'onglet « Grand-livre » de la compta, appele avec un tiret.
+
+   ACTIONS GREFFEES PAR AFFECTATION D'ATTRIBUT DE CLASSE (CALX2 / D-CALX 13).
+   Une ``@action`` n'est pas toujours une methode ecrite dans le corps du
+   ViewSet : le module calepinage la definit comme FONCTION DE MODULE dans un
+   ``views/<sujet>.py``, puis la GREFFE sur le pivot en fin de fichier
+   (``CalepinageViewSet.depuis_lead = depuis_lead``), les sous-modules etant
+   importes par ``views/rattachements.py`` AVANT ``router.register``. DRF la
+   route exactement comme une methode (il lit les attributs de la classe via
+   ``get_extra_actions()``), donc la garde doit la voir : apres les actions du
+   corps de classe, elle parcourt les modules du MEME paquet que le ViewSet a
+   la recherche de ces affectations de premier niveau. Sans cela elle accusait
+   des routes REELLES et servies en production (mesure : ``creer-depuis-modele``
+   et ``depuis-lead``, les deux actions ``detail=False`` a chemin litteral).
+   Seule l'affectation STATIQUE est suivie — aucun ``setattr`` dynamique, qui
+   resterait un angle mort assume plutot qu'un faux vert.
+
    Les routes FastAPI (``/api/fastapi/...``) sont resolues de la meme facon
    depuis ``backend/fastapi_ia/app/main.py``.
 2. Extrait les chemins appeles par TOUT ``frontend/src`` (PACT5), en resolvant
@@ -197,6 +213,8 @@ class BackendRoutes:
         self._classes: dict[str, list] = {}       # nom simple -> [(dotted, node)]
         self._class_by_module: dict[str, dict] = {}
         self._action_cache: dict[str, tuple] = {}
+        # CALX2 — paquet dotted -> {nom de ViewSet: [actions greffees]} (memo).
+        self._greffes: dict[str, dict] = {}
         self._seen_includes: set[str] = set()
         self._constants: dict[str, dict] = {}
         self._imports: dict[str, dict] = {}
@@ -307,6 +325,59 @@ class BackendRoutes:
         source = self._imports_of(module).get(root.id, "")
         return any(source.startswith(r) or source == r for r in FRAMEWORK_ROOTS)
 
+    def _greffes_du_paquet(self, package: str) -> dict:
+        """{nom de ViewSet: [(detail, url_path, module, fonction, known)]}.
+
+        CALX2 / D-CALX 13 — les ``@action`` GREFFEES par affectation d'attribut
+        de classe. Le module calepinage ecrit ses actions comme fonctions de
+        module dans un ``views/<sujet>.py`` frere, puis les pose sur le pivot :
+
+            @action(detail=False, url_path='depuis-lead')
+            def depuis_lead(self, request): ...
+
+            CalepinageViewSet.depuis_lead = depuis_lead
+
+        DRF les route comme des methodes (``get_extra_actions()`` lit les
+        attributs de la classe) : les ignorer faisait accuser des routes
+        REELLES. On ne suit que l'affectation STATIQUE de premier niveau d'un
+        module du MEME paquet que le ViewSet ; un ``setattr`` dynamique reste
+        un angle mort assume (aucun n'existe dans le depot).
+        """
+        if package in self._greffes:
+            return self._greffes[package]
+        self._greffes[package] = {}             # memo + anti-recursion
+        table: dict[str, list] = {}
+        dossier = self.root.joinpath(*package.split(".")) if package else self.root
+        if dossier.is_dir():
+            for chemin in sorted(dossier.glob("*.py")):
+                if chemin.name.startswith(("test_", "tests_")) or chemin.name == "tests.py":
+                    continue
+                stem = chemin.stem
+                if stem == "__init__":
+                    dotted = package
+                else:
+                    dotted = f"{package}.{stem}" if package else stem
+                _, tree = self._module(dotted)
+                if tree is None:
+                    continue
+                fonctions = {item.name: item for item in tree.body
+                             if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))}
+                for node in tree.body:
+                    if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Name)):
+                        continue
+                    fonction = fonctions.get(node.value.id)
+                    if fonction is None:
+                        continue
+                    for cible in node.targets:
+                        if not (isinstance(cible, ast.Attribute)
+                                and isinstance(cible.value, ast.Name)):
+                            continue
+                        for detail, url_path, known in _actions_du_decorateur(fonction):
+                            table.setdefault(cible.value.id, []).append(
+                                (detail, url_path, dotted, fonction.name, known))
+        self._greffes[package] = table
+        return table
+
     def actions_of(self, viewset: str, from_module: str) -> tuple:
         """((detail, url_path), ...) et un drapeau « liste complete »."""
         key = f"{from_module}::{viewset}"
@@ -321,27 +392,21 @@ class BackendRoutes:
         for item in node.body:
             if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            for deco in item.decorator_list:
-                if not (isinstance(deco, ast.Call) and _call_name(deco) == "action"):
-                    continue
-                detail = False
-                url_path = item.name   # DRF : url_path par defaut = NOM DE LA METHODE
-                known = True
-                for kw in deco.keywords:
-                    if kw.arg == "detail":
-                        if isinstance(kw.value, ast.Constant):
-                            detail = bool(kw.value.value)
-                        else:
-                            known = False
-                    elif kw.arg == "url_path":
-                        if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
-                            url_path = kw.value.value
-                        else:
-                            known = False
+            # DRF : url_path par defaut = NOM DE LA METHODE (souligne compris).
+            for detail, url_path, known in _actions_du_decorateur(item):
                 if known:
                     actions.append((detail, url_path, module, item.name))
                 else:
                     complete = False
+        # CALX2 — puis les actions GREFFEES depuis un module frere du paquet du
+        # ViewSet (`owner` = le module greffeur, ce dont `self.views` a besoin).
+        package = module.rsplit(".", 1)[0] if "." in module else ""
+        for detail, url_path, owner, nom, known in \
+                self._greffes_du_paquet(package).get(viewset, ()):
+            if known:
+                actions.append((detail, url_path, owner, nom))
+            else:
+                complete = False
         for base in node.bases:
             if self._base_is_framework(base, module):
                 continue
@@ -572,6 +637,36 @@ class BackendRoutes:
             return
         self.opaque.add(tuple(prefix))
         self.stats["opaques"] += 1
+
+
+def _actions_du_decorateur(fonction) -> list:
+    """[(detail, url_path, known), ...] — une entree par ``@action`` posee.
+
+    Meme lecture pour une methode du corps de classe et pour une fonction de
+    module greffee (CALX2) : `url_path` par defaut = le NOM de la fonction TEL
+    QUEL (souligne compris), et un argument non litteral rend l'action
+    `known=False`, donc le ViewSet incomplet, donc son sous-arbre opaque.
+    """
+    trouvees = []
+    for deco in fonction.decorator_list:
+        if not (isinstance(deco, ast.Call) and _call_name(deco) == "action"):
+            continue
+        detail = False
+        url_path = fonction.name
+        known = True
+        for kw in deco.keywords:
+            if kw.arg == "detail":
+                if isinstance(kw.value, ast.Constant):
+                    detail = bool(kw.value.value)
+                else:
+                    known = False
+            elif kw.arg == "url_path":
+                if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                    url_path = kw.value.value
+                else:
+                    known = False
+        trouvees.append((detail, url_path, known))
+    return trouvees
 
 
 def _call_name(node: ast.Call) -> str:
