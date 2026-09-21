@@ -41,6 +41,7 @@
    ========================================================================== */
 
 import * as THREE from 'three';
+import { createValueHistory, type ValueHistory } from './layoutHistory';
 import { type LngLat } from '../../lib/roof';
 
 /** CALX221 — l'identifiant du calque, DÉCLARÉ ICI ET UNE SEULE FOIS côté
@@ -480,6 +481,18 @@ export interface ContexteCoucheElectrique {
   activeAreaId?: string;
 }
 
+/** Un geste REFUSÉ : le champ EXACT en cause, et le message affiché SOUS lui. */
+export interface RefusElectrique {
+  ok: false;
+  champ: string;
+  message: string;
+}
+
+export interface PoseReussie {
+  ok: true;
+  equipement: EquipementElectrique;
+}
+
 export interface CoucheElectrique {
   /** Le SEUL groupe 3D de la couche (à ajouter à la scène de l'atelier). */
   readonly groupe: THREE.Group;
@@ -487,10 +500,50 @@ export interface CoucheElectrique {
   rafraichir: () => void;
   /** Ce qui a été ignoré au dernier rafraîchissement, nommé en français. */
   avertissements: () => string[];
+  // — CALX220 : poser, déplacer, retirer —
+  armerPose: (type: TypeEquipement | null) => boolean;
+  typeArme: () => TypeEquipement | null;
+  poser: (lngLat: LngLat, options?: { label?: string; altitudeM?: number | null; rotationDeg?: number; produitId?: number | null }) => PoseReussie | RefusElectrique;
+  selectionner: (id: string | null) => boolean;
+  selection: () => string | null;
+  deplacer: (id: string, lngLat: LngLat) => PoseReussie | RefusElectrique;
+  retirer: (id?: string) => boolean;
+  // — l'annulation —
+  annuler: () => boolean;
+  retablir: () => boolean;
+  profondeurHistorique: () => { undo: number; redo: number };
   /** Le document électrique courant, ou `null` s'il n'y en a pas. */
   documentElectrique: () => DocumentElectrique | null;
+  /** Écrit la couche électrique dans un document sérialisé (crochet d'export). */
+  ecrireDansDocument: <T extends object>(document: T) => T;
 }
 
+/** Copie PROFONDE de la couche électrique — l'historique ne partage jamais une
+ *  référence avec l'état vivant. */
+function copieDocument(d: DocumentElectrique | null): DocumentElectrique | null {
+  if (!d) return null;
+  return {
+    ...(d.equipements ? { equipements: d.equipements.map((e) => ({ ...e })) } : {}),
+    ...(d.cheminements
+      ? {
+        cheminements: d.cheminements.map((c) => ({
+          ...c,
+          ...(c.points ? { points: c.points.map((p) => ({ ...p })) } : {}),
+        })),
+      }
+      : {}),
+  };
+}
+
+/** Le prochain identifiant libre d'une famille (`eq`, `ch`) — jamais un doublon. */
+function prochainId(prefixe: string, existants: readonly { id: string }[]): string {
+  let max = 0;
+  for (const e of existants) {
+    const m = /^([a-z]+)(\d+)$/.exec(e.id ?? '');
+    if (m && m[1] === prefixe) max = Math.max(max, Number(m[2]));
+  }
+  return `${prefixe}${max + 1}`;
+}
 
 /**
  * CALX219/220/223/221 — la couche électrique de l'atelier : un groupe 3D bâti
@@ -504,10 +557,31 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
   const groupe = new THREE.Group();
   groupe.name = ID_CALQUE_ELECTRIQUE;
   let ignores: string[] = [];
+  let arme: TypeEquipement | null = null;
+  let selectionne: string | null = null;
+  let refus: RefusElectrique | null = null;
+  let etat: EtatCalque = { visible: true, opacite: 1 };
+  let enCours: { cote: CoteCheminement; de: string; points: PointCheminement[] } | null = null;
+  // La MÊME mécanique d'historique que le reste de l'atelier (photo + tampon
+  // circulaire) — un seul modèle d'annulation dans le constructeur, pas deux.
+  const histoire: ValueHistory<DocumentElectrique | null> = createValueHistory(copieDocument);
 
   const origine = (): LngLat => (ctx.sceneOrigin ?? [0, 0]) as LngLat;
 
   const document = (): DocumentElectrique | null => (ctx.electrical ?? null);
+
+  /** Le document, créé au premier geste : tant que rien n'est posé, le plan n'a
+   *  PAS de couche électrique (et le calque n'est donc pas proposé). */
+  const documentEcrivable = (): DocumentElectrique => {
+    if (!ctx.electrical) ctx.electrical = {};
+    if (!Array.isArray(ctx.electrical.equipements)) ctx.electrical.equipements = [];
+    if (!Array.isArray(ctx.electrical.cheminements)) ctx.electrical.cheminements = [];
+    return ctx.electrical;
+  };
+
+  const photographier = (): void => {
+    histoire.push(copieDocument(document()));
+  };
 
   function rafraichir(): void {
     viderGroupe(groupe);
@@ -516,6 +590,115 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     const o = origine();
     for (const e of lu.equipements) groupe.add(creerMarqueur(e, o));
   }
+  const refuser = (champ: string, message: string): RefusElectrique => {
+    const r: RefusElectrique = { ok: false, champ, message };
+    refus = r;
+    return r;
+  };
+
+  // ── CALX220 — poser / déplacer / retirer ────────────────────────────────
+
+  function poser(
+    lngLat: LngLat,
+    options?: { label?: string; altitudeM?: number | null; rotationDeg?: number; produitId?: number | null },
+  ): PoseReussie | RefusElectrique {
+    if (!arme) {
+      return refuser(
+        'electrical.equipements.type',
+        'Aucun type d’équipement n’est armé : choisissez l’organe à poser '
+        + `(${TYPES_EQUIPEMENT.join(', ')}) avant de cliquer sur le plan.`,
+      );
+    }
+    if (!Array.isArray(lngLat) || !nombreFini(lngLat[0]) || !nombreFini(lngLat[1])) {
+      return refuser(
+        'electrical.equipements.lat',
+        'Le point cliqué n’a pas de coordonnées : l’équipement n’est pas posé — un organe '
+        + 'sans point ne porte aucune longueur de câble mesurable.',
+      );
+    }
+    const type: TypeEquipement = arme;
+    photographier();
+    const doc = documentEcrivable();
+    const liste = doc.equipements as EquipementElectrique[];
+    const id = prochainId('eq', liste);
+    const rang = liste.filter((e) => e.type === type).length + 1;
+    const equipement = normaliserEquipement({
+      id,
+      type,
+      label: (options?.label ?? '').trim() || `${NOM_TYPE_FR[type]} ${rang}`,
+      lng: lngLat[0],
+      lat: lngLat[1],
+      ...(options?.altitudeM != null ? { altitudeM: options.altitudeM } : {}),
+      ...(options?.rotationDeg != null ? { rotationDeg: options.rotationDeg } : {}),
+      ...(options?.produitId != null ? { produitId: options.produitId } : {}),
+      source: 'saisie',
+    });
+    liste.push(equipement);
+    selectionne = equipement.id;
+    refus = null;
+    rafraichir();
+    return { ok: true, equipement };
+  }
+
+  function deplacer(id: string, lngLat: LngLat): PoseReussie | RefusElectrique {
+    const liste = (document()?.equipements ?? []) as EquipementElectrique[];
+    const cible = liste.find((e) => e.id === id);
+    if (!cible) {
+      return refuser(
+        'electrical.equipements.id',
+        `Aucun équipement « ${id} » sur ce plan : rien n’a été déplacé.`,
+      );
+    }
+    if (!Array.isArray(lngLat) || !nombreFini(lngLat[0]) || !nombreFini(lngLat[1])) {
+      return refuser(
+        'electrical.equipements.lat',
+        `Le point d’arrivée n’a pas de coordonnées : « ${cible.label || cible.id} » n’a pas bougé.`,
+      );
+    }
+    photographier();
+    cible.lng = lngLat[0];
+    cible.lat = lngLat[1];
+    refus = null;
+    rafraichir();
+    return { ok: true, equipement: cible };
+  }
+
+  function retirer(id?: string): boolean {
+    const cible = id ?? selectionne;
+    if (!cible) return false;
+    const doc = document();
+    const liste = (doc?.equipements ?? []) as EquipementElectrique[];
+    const i = liste.findIndex((e) => e.id === cible);
+    if (i < 0) return false;
+    photographier();
+    liste.splice(i, 1);
+    if (selectionne === cible) selectionne = null;
+    rafraichir();
+    return true;
+  }
+
+  // ── l'annulation ────────────────────────────────────────────────────────
+
+  function annuler(): boolean {
+    // `canUndo()` tranche AVANT l'appel : une photo qui vaut `null` (le plan
+    // n'avait pas encore de couche électrique) est un état à restaurer, pas une
+    // pile vide — sans cette garde, le tout premier geste serait inannulable.
+    if (!histoire.canUndo()) return false;
+    ctx.electrical = histoire.undo(copieDocument(document())) ?? null;
+    selectionne = null;
+    enCours = null;
+    rafraichir();
+    return true;
+  }
+
+  function retablir(): boolean {
+    if (!histoire.canRedo()) return false;
+    ctx.electrical = histoire.redo(copieDocument(document())) ?? null;
+    selectionne = null;
+    enCours = null;
+    rafraichir();
+    return true;
+  }
 
   rafraichir();
 
@@ -523,6 +706,41 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     groupe,
     rafraichir,
     avertissements: () => [...ignores],
+    armerPose: (type) => {
+      if (type === null) {
+        arme = null;
+        return true;
+      }
+      if (!estTypeEquipement(type)) return false;
+      arme = type;
+      return true;
+    },
+    typeArme: () => arme,
+    poser,
+    selectionner: (id) => {
+      if (id === null) {
+        selectionne = null;
+        return true;
+      }
+      const existe = (document()?.equipements ?? []).some((e) => e.id === id);
+      if (existe) selectionne = id;
+      return existe;
+    },
+    selection: () => selectionne,
+    deplacer,
+    retirer,
+    dernierRefus: () => (refus ? { ...refus } : null),
+    annuler,
+    retablir,
+    profondeurHistorique: () => histoire.size(),
     documentElectrique: () => document(),
+    // CROCHET D'EXPORT — le document sérialisé de l'atelier repart avec sa
+    // couche électrique. Rien n'est écrit tant qu'aucun organe n'est posé : un
+    // document v2 déjà enregistré reste identique, octet pour octet.
+    ecrireDansDocument: <T extends object>(doc: T): T => {
+      const couche = copieDocument(document());
+      if (!couche) return doc;
+      return { ...doc, electrical: couche };
+    },
   };
 }

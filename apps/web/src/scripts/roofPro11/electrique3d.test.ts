@@ -21,6 +21,7 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import * as THREE from 'three';
 import {
@@ -233,5 +234,186 @@ describe('CALX219 — aucune dimension lue ailleurs que dans le document', () =>
     expect(b.position.x - a.position.x).toBeCloseTo(estB - estA, 9);
     expect(b.position.y).toBeCloseTo(a.position.y, 9);
     expect(b.position.z).toBeCloseTo(a.position.z, 9);
+  });
+});
+
+/* ============================================================================
+   CALX220 — POSER, DÉPLACER, RETIRER, ET LE PERSISTER.
+   ----------------------------------------------------------------------------
+   Le document est la seule source de vérité : chaque geste l'écrit, le groupe
+   est reconstruit depuis lui, et l'annulation restaure l'état d'AVANT — y
+   compris « le plan ne portait encore aucune couche électrique », qui n'est pas
+   la même chose qu'une couche vide.
+   ========================================================================== */
+
+/** La forme EXACTE d'une entrée : ses clés et le type de chacune. C'est ainsi
+ *  qu'on épingle une entrée écrite contre l'échantillon committé — `jsonschema`
+ *  n'existe pas côté vitest. */
+function formeDe(entree: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const cle of Object.keys(entree).sort()) {
+    const v = entree[cle];
+    out[cle] = v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v;
+  }
+  return out;
+}
+
+describe('CALX220 — la pose écrit le document, et sa forme est celle du contrat', () => {
+  it('poser écrit une entrée dans `electrical.equipements[]`, et `serializeLayout` la porte', () => {
+    const ctx: { electrical?: DocumentElectrique | null; sceneOrigin: [number, number] } = {
+      sceneOrigin: ORIGINE,
+    };
+    const couche = creerCoucheElectrique(ctx);
+    expect(couche.documentElectrique()).toBeNull();
+    couche.armerPose('onduleur');
+    const pose = couche.poser([-7.6002, 33.5001]);
+    expect(pose.ok).toBe(true);
+    const doc = couche.documentElectrique();
+    expect(doc?.equipements).toHaveLength(1);
+    expect(doc?.equipements?.[0].lng).toBe(-7.6002);
+    expect(couche.groupe.children).toHaveLength(1);
+    // Le CROCHET d'export : un document sérialisé repart avec sa couche.
+    const document3d = couche.ecrireDansDocument({ version: 2, zones: [] });
+    expect((document3d as { electrical?: DocumentElectrique }).electrical?.equipements).toHaveLength(1);
+    // ... et ne partage AUCUNE référence avec l'état vivant.
+    expect((document3d as { electrical?: DocumentElectrique }).electrical).not.toBe(doc);
+  });
+
+  it('rien n’est écrit tant qu’aucun organe n’est posé : le document reste intact', () => {
+    const couche = creerCoucheElectrique({ sceneOrigin: ORIGINE });
+    const avant = { version: 2, zones: [], setbacksM: { lateralM: 0.4 } };
+    expect(couche.ecrireDansDocument(avant)).toEqual(avant);
+  });
+
+  it('l’entrée écrite a EXACTEMENT la forme de l’échantillon de contrat', () => {
+    const ctx: { electrical?: DocumentElectrique | null; sceneOrigin: [number, number] } = {
+      sceneOrigin: ORIGINE,
+    };
+    const couche = creerCoucheElectrique(ctx);
+    couche.armerPose('coffret_dc');
+    couche.poser([-7.6003, 33.5002], { label: 'Coffret DC toiture', altitudeM: 3.2, rotationDeg: 0 });
+    const ecrite = couche.documentElectrique()!.equipements![0] as unknown as Record<string, unknown>;
+    // L'échantillon `eq2` est le même organe : mêmes clés, mêmes types.
+    const modele = (DOC_HUIT.equipements ?? []).find((e) => e.id === 'eq2') as unknown as Record<string, unknown>;
+    const formeModele = formeDe(modele);
+    const formeEcrite = formeDe(ecrite);
+    // Toute clé écrite existe au contrat, avec le MÊME type (les clés optionnelles
+    // non renseignées sont ABSENTES, jamais écrites à null ou à zéro).
+    for (const [cle, type] of Object.entries(formeEcrite)) {
+      expect(Object.keys(formeModele)).toContain(cle);
+      if (formeModele[cle] !== 'null') expect(type).toBe(formeModele[cle]);
+    }
+    // Les six clés OBLIGATOIRES du schéma sont toutes là.
+    for (const cle of ['id', 'type', 'label', 'lng', 'lat', 'source']) {
+      expect(Object.keys(formeEcrite)).toContain(cle);
+    }
+    expect(ecrite.source).toBe('saisie');
+    expect(ecrite.type).toBe('coffret_dc');
+  });
+
+  it('les identifiants posés ne rejouent jamais un identifiant déjà pris', () => {
+    const ctx: { electrical?: DocumentElectrique | null; sceneOrigin: [number, number] } = {
+      electrical: { equipements: [...(DOC_HUIT.equipements ?? []).map((e) => ({ ...e }))] },
+      sceneOrigin: ORIGINE,
+    };
+    const couche = creerCoucheElectrique(ctx);
+    couche.armerPose('batterie');
+    const pose = couche.poser([-7.6007, 33.4999]);
+    expect(pose.ok).toBe(true);
+    const ids = couche.documentElectrique()!.equipements!.map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids[ids.length - 1]).toBe('eq9');
+  });
+
+  it('sans type armé, la pose est REFUSÉE en nommant le champ', () => {
+    const couche = creerCoucheElectrique({ sceneOrigin: ORIGINE });
+    const refus = couche.poser([-7.6, 33.5]);
+    expect(refus.ok).toBe(false);
+    expect(couche.dernierRefus()?.champ).toBe('electrical.equipements.type');
+    expect(couche.dernierRefus()?.message).toContain('onduleur');
+    expect(couche.documentElectrique()).toBeNull();
+  });
+});
+
+describe('CALX220 — déplacer, retirer, annuler', () => {
+  function couchePosee() {
+    const ctx: { electrical?: DocumentElectrique | null; sceneOrigin: [number, number] } = {
+      sceneOrigin: ORIGINE,
+    };
+    const couche = creerCoucheElectrique(ctx);
+    couche.armerPose('onduleur');
+    couche.poser([-7.6002, 33.5001], { label: 'Onduleur 1' });
+    return couche;
+  }
+
+  it('le glissé met à jour les coordonnées, et le marqueur suit', () => {
+    const couche = couchePosee();
+    const avant = couche.groupe.children[0].position.x;
+    const deplace = couche.deplacer('eq1', [-7.5995, 33.5004]);
+    expect(deplace.ok).toBe(true);
+    const ecrit = couche.documentElectrique()!.equipements![0];
+    expect(ecrit.lng).toBe(-7.5995);
+    expect(ecrit.lat).toBe(33.5004);
+    expect(couche.groupe.children[0].position.x).not.toBe(avant);
+  });
+
+  it('déplacer un organe inexistant est refusé en le nommant, sans rien changer', () => {
+    const couche = couchePosee();
+    const refus = couche.deplacer('eq42', [-7.6, 33.5]);
+    expect(refus.ok).toBe(false);
+    expect(couche.dernierRefus()?.message).toContain('eq42');
+    expect(couche.documentElectrique()!.equipements).toHaveLength(1);
+  });
+
+  it('Suppr retire l’organe SÉLECTIONNÉ (la pose le sélectionne)', () => {
+    const couche = couchePosee();
+    expect(couche.selection()).toBe('eq1');
+    expect(couche.retirer()).toBe(true);
+    expect(couche.documentElectrique()!.equipements).toHaveLength(0);
+    expect(couche.groupe.children).toHaveLength(0);
+    expect(couche.retirer()).toBe(false);
+  });
+
+  it('Ctrl+Z restitue l’état d’AVANT le geste — pose, déplacement, retrait', () => {
+    const couche = couchePosee();
+    couche.deplacer('eq1', [-7.5995, 33.5004]);
+    expect(couche.annuler()).toBe(true);
+    expect(couche.documentElectrique()!.equipements![0].lng).toBe(-7.6002);
+    // Un cran de plus : avant la pose, le plan ne portait AUCUNE couche
+    // électrique — ce n'est pas une couche vide, c'est pas de couche.
+    expect(couche.annuler()).toBe(true);
+    expect(couche.documentElectrique()).toBeNull();
+    expect(couche.groupe.children).toHaveLength(0);
+    expect(couche.annuler()).toBe(false);
+    // Et « rétablir » rejoue les deux gestes dans l'ordre.
+    expect(couche.retablir()).toBe(true);
+    expect(couche.documentElectrique()!.equipements).toHaveLength(1);
+    expect(couche.retablir()).toBe(true);
+    expect(couche.documentElectrique()!.equipements![0].lng).toBe(-7.5995);
+  });
+
+  it('un retrait annulé remet l’organe, à sa place', () => {
+    const couche = couchePosee();
+    couche.retirer('eq1');
+    expect(couche.annuler()).toBe(true);
+    const revenu = couche.documentElectrique()!.equipements![0];
+    expect(revenu.id).toBe('eq1');
+    expect(revenu.lng).toBe(-7.6002);
+    expect(couche.groupe.children).toHaveLength(1);
+  });
+});
+
+describe('CALX220 — l’attache dans le constructeur', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('../roof-tool-pro11.ts', import.meta.url)),
+    'utf8',
+  );
+
+  it('UNE ligne d’attache dans l’objet `onApiReady`, et rien d’autre', () => {
+    const bloc = source.slice(source.indexOf('opts.onApiReady?.({'));
+    expect(bloc).toContain('electrique: creerCoucheElectrique(ctx)');
+    // Une seule occurrence dans tout le fichier, hors l'import du module.
+    const appels = source.split('creerCoucheElectrique(ctx)').length - 1;
+    expect(appels).toBe(1);
   });
 });
