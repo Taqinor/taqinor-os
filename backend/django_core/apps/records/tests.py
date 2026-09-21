@@ -1024,7 +1024,9 @@ class TestAttachmentsAll(TestCase):
         self.assertEqual(data[0]['filename'], 'mine.pdf')
 
 
-# ── XKB4 — à-faire personnel (sans cible métier) + conversion en tâche ──────
+# ── XKB4 — à-faire personnel (sans cible métier) ────────────────────────────
+# SOLMVP20 — la conversion en tâche projet (``vers-tache-projet``, déléguée à
+# la gestion de projet, app PARQUÉE Groupe SOLMVP) a été retirée avec elle.
 class TestActivitesPersonnelles(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -1069,35 +1071,6 @@ class TestActivitesPersonnelles(TestCase):
         listed = other_api.get('/api/django/records/activities/')
         data2 = listed.data['results'] if 'results' in listed.data else listed.data
         self.assertEqual(len(data2), 0)
-
-    def test_convert_personal_todo_to_project_task(self):
-        from apps.gestion_projet.models import Projet, Tache
-        projet = Projet.objects.create(
-            company=self.company, code='P-XKB4', nom='Projet XKB4')
-        act = Activity.objects.create(
-            company=self.company, activity_type=self.type_todo,
-            summary='Commander le matériel', note='Détail utile',
-            personnelle=True, created_by=self.user, assigned_to=self.user)
-        resp = self.api.post(
-            f'/api/django/records/activities/{act.id}/vers-tache-projet/',
-            {'projet_id': projet.id}, format='json')
-        self.assertEqual(resp.status_code, 201, resp.data)
-        tache = Tache.objects.get(pk=resp.data['tache_id'])
-        self.assertEqual(tache.projet_id, projet.id)
-        self.assertEqual(tache.libelle, 'Commander le matériel')
-        self.assertEqual(tache.description, 'Détail utile')
-        act.refresh_from_db()
-        self.assertTrue(act.done)
-
-    def test_convert_unknown_project_returns_400(self):
-        act = Activity.objects.create(
-            company=self.company, activity_type=self.type_todo,
-            summary='X', personnelle=True,
-            created_by=self.user, assigned_to=self.user)
-        resp = self.api.post(
-            f'/api/django/records/activities/{act.id}/vers-tache-projet/',
-            {'projet_id': 999999}, format='json')
-        self.assertEqual(resp.status_code, 400)
 
 
 # ── ZSAL1 — Enchaînement d'activités sur les types d'activité ───────────────

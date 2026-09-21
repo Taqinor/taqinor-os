@@ -188,36 +188,6 @@ class ActivityViewSet(viewsets.ModelViewSet):
         )
         return Response(ser.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], url_path='vers-tache-projet')
-    def vers_tache_projet(self, request, pk=None):
-        """XKB4 — convertit un à-faire personnel en tâche projet réelle.
-
-        Passe EXCLUSIVEMENT par ``gestion_projet.services`` (jamais un import
-        de ses ``models``) : préserve la frontière cross-app (CLAUDE.md). Le
-        contenu (résumé/note/échéance/assigné) est reporté sur la tâche créée.
-        L'activité d'origine est marquée faite pour ne plus polluer « Mes
-        activités » (mais n'est jamais supprimée)."""
-        act = self.get_object()
-        projet_id = request.data.get('projet_id') or request.data.get('projet')
-        if not projet_id:
-            return Response({'detail': 'projet_id requis.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        from apps.gestion_projet import services as gp_services
-        try:
-            tache = gp_services.creer_tache_depuis_activite(
-                act, projet_id=projet_id, company=act.company or _company(request))
-        except gp_services.ConversionActiviteError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
-        act.done = True
-        act.done_at = timezone.now()
-        act.done_by = request.user
-        act.save(update_fields=['done', 'done_at', 'done_by'])
-        return Response({
-            'activity': ActivitySerializer(act).data,
-            'tache_id': tache.id,
-        }, status=status.HTTP_201_CREATED)
-
     @action(detail=False, methods=['get'])
     def mine(self, request):
         """Cockpit « Mes activités » : ouvertes de l'utilisateur, bucketées."""

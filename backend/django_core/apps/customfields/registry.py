@@ -7,11 +7,18 @@ Avant ARC14, la cible d'un champ personnalisé (le modèle Django qui porte
 chaque app déclare ses modèles « customfieldables » via ``register()``, et
 ``get_model()``/``module_choices()`` résolvent la cible dynamiquement.
 
-Les 8 clés NATIVES historiques (lead/client/produit/devis/installation/
-ticket/document/fournisseur/employe — cf. ``CustomFieldDef.Module``) sont
-pré-enregistrées ICI MÊME au chargement du module, donc AUCUNE dépendance à
-l'ordre de ``ready()`` des autres apps pour elles : le comportement existant
-est garanti identique, avant comme après ARC14 (non-régression).
+Les clés NATIVES historiques (lead/client/produit/devis/installation/
+ticket/fournisseur — cf. ``CustomFieldDef.Module``) sont pré-enregistrées ICI
+MÊME au chargement du module, donc AUCUNE dépendance à l'ordre de ``ready()``
+des autres apps pour elles : le comportement existant est garanti identique,
+avant comme après ARC14 (non-régression).
+
+SOLMVP20 — les clés natives ``document`` (GED) et ``employe`` (RH)
+pointaient vers des apps PARQUÉES (Groupe SOLMVP) : leur enregistrement a été
+retiré d'ici (le registre ne liste plus que des modèles GARDÉS). Les deux
+clés restent listées, à titre informatif seulement, dans
+``CustomFieldDef.Module`` (catalogue historique — non touché ici, une
+modification de ``choices`` exigeant sa propre migration).
 
 Résolution PARESSEUSE : on enregistre un ``(app_label, model_name)``, jamais
 la classe modèle elle-même (évite tout import circulaire au chargement des
@@ -105,10 +112,14 @@ def get_model(module_key):
 
 
 def _register_native_modules():
-    """Pré-enregistre les 8 clés natives historiques (non-régression).
+    """Pré-enregistre les clés natives historiques (non-régression).
 
     Résolution paresseuse identique aux autres entrées — ``get_model`` ne
     résout la classe qu'à l'appel, donc aucun import de modèle ici.
+
+    SOLMVP20 — ``document`` (GED) et ``employe`` (RH) ne sont plus
+    enregistrées : leurs apps propriétaires sont PARQUÉES (Groupe SOLMVP), ce
+    registre ne liste plus que des modèles GARDÉS.
     """
     register('lead', 'crm', 'Lead', label='Lead')
     register('client', 'crm', 'Client', label='Client')
@@ -117,11 +128,8 @@ def _register_native_modules():
     register('devis', 'ventes', 'Devis', label='Devis')
     register('installation', 'installations', 'Installation', label='Chantier')
     register('ticket', 'sav', 'Ticket', label='Ticket SAV')
-    # GED10 — métadonnées typées configurables sur les documents GED.
-    register('document', 'ged', 'Document', label='Document GED')
     # XPLT14 — couverture des modules récents.
     register('fournisseur', 'stock', 'Fournisseur', label='Fournisseur')
-    register('employe', 'rh', 'DossierEmploye', label='Employé')
 
 
 def register_from_platform_manifests():

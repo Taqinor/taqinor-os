@@ -83,36 +83,6 @@ FIELD_MAPS = {
         'chantier': 'installation_ref', 'installation': 'installation_ref',
         'date_pose': 'date_pose',
     },
-    # XFLT22 — Import initial du parc flotte. Écriture DÉLÉGUÉE à
-    # ``apps.flotte.services.creer_vehicule_import`` (jamais les models
-    # flotte directement, contrairement aux autres cibles ci-dessus —
-    # règle explicite du plan flotte).
-    'vehicules': {
-        'immatriculation': 'immatriculation', 'immat': 'immatriculation',
-        'marque': 'marque', 'modele': 'modele', 'modèle': 'modele',
-        'energie': 'energie', 'énergie': 'energie',
-        'kilometrage': 'kilometrage', 'km': 'kilometrage',
-        'cv': 'cv', 'puissance_fiscale': 'cv',
-    },
-    # ARC13 — Contrats : import initial du registre contractuel. Écriture
-    # DÉLÉGUÉE à ``apps.contrats.services.creer_contrat_import`` (jamais le
-    # modèle ``Contrat`` directement, même motif XFLT22 que ``vehicules``).
-    'contrats': {
-        'reference': 'reference', 'ref': 'reference',
-        'objet': 'objet', 'type_contrat': 'type_contrat',
-        'type': 'type_contrat', 'statut': 'statut',
-        'date_debut': 'date_debut', 'date_fin': 'date_fin',
-        'montant': 'montant', 'devise': 'devise',
-    },
-    # ARC13 — Dossiers RH : import initial des fiches employé. Écriture
-    # DÉLÉGUÉE à ``apps.rh.services.creer_dossier_employe_import`` (jamais le
-    # modèle ``DossierEmploye`` directement, même motif XFLT22).
-    'dossiers_rh': {
-        'matricule': 'matricule', 'nom': 'nom', 'prenom': 'prenom',
-        'prénom': 'prenom', 'email': 'email', 'telephone': 'telephone',
-        'tel': 'telephone', 'cin': 'cin', 'poste': 'poste',
-        'date_embauche': 'date_embauche', 'type_contrat': 'type_contrat',
-    },
     # NTMIG10 — Devis (EN-TÊTES seulement — les lignes se rattachent via
     # NTMIG11, un second fichier). Écriture DÉLÉGUÉE à
     # ``apps.ventes.services.creer_devis_import`` (jamais le modèle ``Devis``
@@ -153,34 +123,15 @@ FIELD_MAPS = {
         'montant_ttc': 'montant_ttc_source',
         'external_id': 'external_id', 'id_externe': 'external_id',
     },
-    # NTEDU36 — Élèves (migration scolaire depuis Excel/ancien système).
-    # Écriture DÉLÉGUÉE à ``apps.education.services.creer_eleve_import``
-    # (jamais les modèles ``Eleve``/``Famille`` directement, motif XFLT22).
-    'eleves_education': {
-        'nom': 'nom', 'prenom': 'prenom', 'prénom': 'prenom',
-        'date_naissance': 'date_naissance', 'naissance': 'date_naissance',
-        'sexe': 'sexe', 'cin': 'cin',
-        'classe': 'classe_nom', 'classe_nom': 'classe_nom',
-        'famille': 'famille_nom', 'famille_nom': 'famille_nom',
-        'nom_famille': 'famille_nom',
-        'telephone': 'parent1_telephone', 'tel': 'parent1_telephone',
-        'telephone_parent': 'parent1_telephone',
-        'email': 'parent1_email', 'email_parent': 'parent1_email',
-    },
-    # NTSCM40 — Événements de demande (planification supply chain). Écriture
-    # DÉLÉGUÉE à ``apps.scm.services.creer_evenement_demande_import`` (jamais
-    # les modèles scm directement, motif XFLT22). Cible déclarée aussi dans
-    # ``apps/scm/platform.py`` (ARC28/32).
-    'scm_evenement_demande': {
-        'produit': 'produit', 'sku': 'produit', 'reference': 'produit',
-        'categorie': 'categorie', 'catégorie': 'categorie',
-        'date_debut': 'date_debut', 'début': 'date_debut',
-        'date_fin': 'date_fin', 'fin': 'date_fin',
-        'impact_pct': 'impact_pct', 'impact': 'impact_pct',
-        'type_evenement': 'type_evenement', 'type': 'type_evenement',
-        'libelle': 'libelle', 'libellé': 'libelle',
-    },
 }
+# SOLMVP20 — les cibles ``vehicules`` (flotte), ``contrats`` (contrats),
+# ``dossiers_rh`` (rh), ``eleves_education`` (education) et
+# ``scm_evenement_demande`` (scm) ont été retirées d'ici : leurs apps
+# propriétaires sont PARQUÉES (Groupe SOLMVP). Tant qu'elles ne sont pas
+# elles-mêmes coquillées, leur ``platform.py`` peut encore les déclarer dans
+# ``import_specs`` — ``TARGETS`` les verra alors comme des cibles À LECTEUR
+# PROPRE (refusées par ``verifier_cible_importable``, jamais un ``KeyError``)
+# jusqu'à leur coquille définitive, qui les retire pour de bon.
 
 
 # SOL2(b) — cible d'import → clé de module PROPRIÉTAIRE, pour les seules cibles
@@ -189,10 +140,10 @@ FIELD_MAPS = {
 # ``erp_agentique/settings/editions.py``). Les cibles déclarées uniquement par
 # le registre plateforme n'ont pas besoin d'entrée : l'app parquée n'étant pas
 # chargée, son ``platform.py`` ne déclare plus rien.
-CIBLES_MODULE_PROPRIETAIRE = {
-    # NTEDU36 — écrit via ``apps.education.services.creer_eleve_import``.
-    'eleves_education': 'education',
-}
+# SOLMVP20 — actuellement VIDE : la seule cible qui portait une entrée
+# (``eleves_education``) a perdu son mapping ``FIELD_MAPS`` (app education
+# PARQUÉE, Groupe SOLMVP) et n'a donc plus besoin de ce suivi par édition.
+CIBLES_MODULE_PROPRIETAIRE = {}
 
 
 def cibles_parquees_par_edition(edition=None):
@@ -899,9 +850,9 @@ def _analyser_conflits(target, rows, mapped, company, mode, external_system,
     Pour chaque ligne : quelle fiche existante elle vise, ce qu'elle
     ÉCRASERAIT (valeur actuelle → valeur du fichier, champ par champ) et ce
     qu'elle se contenterait de remplir. Les cibles créées uniquement et sans
-    rapprochement (véhicules, contrats, dossiers RH… — écriture déléguée à
-    l'app propriétaire) n'ont rien à prévisualiser : aucune fiche existante
-    n'y est jamais touchée.
+    rapprochement (fournisseurs, équipements, devis, factures… — écriture
+    déléguée à l'app propriétaire) n'ont rien à prévisualiser : aucune fiche
+    existante n'y est jamais touchée.
     """
     external_system = external_system or DEFAULT_EXTERNAL_SYSTEM
     conflits = []
@@ -1260,56 +1211,12 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 else:
                     skipped.append({'ligne': i, 'raison': message or 'erreur'})
 
-        # XFLT22 — Véhicules du parc flotte : écriture déléguée à
-        # ``apps.flotte.services`` (jamais les models flotte directement).
-        elif target == 'vehicules':
-            from apps.flotte.services import creer_vehicule_import
-            for i, row in enumerate(rows, 1):
-                f = _row_to_fields(row, mapped)
-                statut, message = creer_vehicule_import(company, f)
-                if statut == 'cree':
-                    created += 1
-                elif statut == 'doublon':
-                    skipped.append(
-                        {'ligne': i, 'raison': 'doublon (immatriculation existe)'})
-                else:
-                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
-
-        # ARC13 — Contrats : écriture déléguée à ``apps.contrats.services``
-        # (jamais le modèle ``Contrat`` directement, motif XFLT22).
-        elif target == 'contrats':
-            from apps.contrats.services import creer_contrat_import
-            for i, row in enumerate(rows, 1):
-                f = _row_to_fields(row, mapped)
-                statut, message = creer_contrat_import(company, f, user=user)
-                if statut == 'cree':
-                    created += 1
-                elif statut == 'doublon':
-                    skipped.append(
-                        {'ligne': i, 'raison': 'doublon (référence existe)'})
-                else:
-                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
-
-        # ARC13 — Dossiers RH : écriture déléguée à ``apps.rh.services``
-        # (jamais le modèle ``DossierEmploye`` directement, motif XFLT22).
-        elif target == 'dossiers_rh':
-            from apps.rh.services import creer_dossier_employe_import
-            for i, row in enumerate(rows, 1):
-                f = _row_to_fields(row, mapped)
-                statut, message = creer_dossier_employe_import(company, f)
-                if statut == 'cree':
-                    created += 1
-                elif statut == 'doublon':
-                    skipped.append(
-                        {'ligne': i, 'raison': 'doublon (matricule existe)'})
-                else:
-                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
-
         # NTMIG10 — Devis (en-têtes) : écriture DÉLÉGUÉE à
         # ``apps.ventes.services.creer_devis_import`` (jamais le modèle
-        # ``Devis`` directement, motif XFLT22). ``external_id`` posé en
-        # ``ExternalRef`` comme ``leads``/``clients`` : c'est ce qui permet à
-        # NTMIG11 de rattacher les lignes au bon en-tête ensuite.
+        # ``Devis`` directement, même motif que ``factures`` ci-dessous).
+        # ``external_id`` posé en ``ExternalRef`` comme ``leads``/``clients`` :
+        # c'est ce qui permet à NTMIG11 de rattacher les lignes au bon
+        # en-tête ensuite.
         elif target == 'devis':
             from apps.ventes.services import creer_devis_import
             for i, row in enumerate(rows, 1):
@@ -1341,39 +1248,6 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                     if ext_id:
                         _get_or_create_ref(
                             company, external_system, ext_id, facture)
-                else:
-                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
-
-        # NTEDU36 — Élèves (import scolaire) : écriture DÉLÉGUÉE à
-        # ``apps.education.services.creer_eleve_import`` (jamais les modèles
-        # education directement, motif XFLT22). Une ligne en erreur (ex.
-        # classe inconnue) est SKIPPÉE avec son motif — jamais bloquante pour
-        # les autres lignes valides du fichier (rapport d'erreurs
-        # téléchargeable réutilisé tel quel, XPLT2).
-        elif target == 'eleves_education':
-            from apps.education.services import creer_eleve_import
-            for i, row in enumerate(rows, 1):
-                f = _row_to_fields(row, mapped)
-                statut, message = creer_eleve_import(company, f)
-                if statut == 'cree':
-                    created += 1
-                else:
-                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
-
-        # NTSCM40 — Événements de demande (planification supply chain) :
-        # écriture DÉLÉGUÉE à ``apps.scm.services.creer_evenement_demande_import``
-        # (jamais les modèles scm directement, motif XFLT22). Mode ``creer``
-        # UNIQUEMENT (jamais de mise à jour en masse — un impact déjà
-        # appliqué à des prévisions gelées ne doit jamais être écrasé) : une
-        # ligne dont le produit est introuvable est SKIPPÉE avec son motif,
-        # jamais bloquante pour les autres lignes valides.
-        elif target == 'scm_evenement_demande':
-            from apps.scm.services import creer_evenement_demande_import
-            for i, row in enumerate(rows, 1):
-                f = _row_to_fields(row, mapped)
-                statut, message = creer_evenement_demande_import(company, f)
-                if statut == 'cree':
-                    created += 1
                 else:
                     skipped.append({'ligne': i, 'raison': message or 'erreur'})
 

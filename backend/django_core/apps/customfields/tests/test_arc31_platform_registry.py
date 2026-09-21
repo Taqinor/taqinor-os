@@ -1,12 +1,15 @@
 """ARC31 — cibles customfields peuplées depuis le registre plateforme
 (core.platform) au lieu d'un ``AppConfig.ready()`` par app pilote.
 
-Couvre : (1) non-régression stricte — les 8 clés natives + les 2 pilotes
-historiques (contrat, vehicule) résolvent EXACTEMENT comme avant ARC31 ; (2)
-la source de peuplement des pilotes est bien le manifeste ``platform.py``
-(``contrats.apps.ContratsConfig.ready()``/``flotte.apps.FlotteConfig`` ne les
-enregistrent plus explicitement) ; (3) une nouvelle cible déclarée SEULEMENT
-via un manifeste fictif (jamais via apps/customfields) devient enregistrée.
+Couvre : (1) non-régression stricte — les clés natives GARDÉES résolvent
+EXACTEMENT comme avant ARC31 ; (2) une nouvelle cible déclarée SEULEMENT via
+un manifeste fictif (jamais via apps/customfields) devient enregistrée.
+
+SOLMVP20 — les clés natives ``document``/``employe`` (apps PARQUÉES GED/RH)
+et les pilotes historiques ``contrat``/``vehicule`` (apps PARQUÉES, Groupe
+SOLMVP) ont été retirés de cette couverture ; la preuve du chargeur central
+reste faite par le manifeste FICTIF ci-dessous, indépendant de toute app
+réelle.
 """
 from unittest import mock
 
@@ -15,19 +18,17 @@ from django.test import SimpleTestCase
 from apps.customfields import registry
 
 
-class TestNativeAndPilotNonRegression(SimpleTestCase):
-    """Les 8 clés natives + 2 pilotes résolvent identiquement à avant ARC31."""
+class TestNativeModulesNonRegression(SimpleTestCase):
+    """Les clés natives GARDÉES résolvent identiquement à avant ARC31."""
 
-    def test_eight_native_keys_still_registered(self):
+    def test_native_keys_still_registered(self):
         for key in ('lead', 'client', 'produit', 'devis', 'installation',
-                    'ticket', 'document', 'fournisseur', 'employe'):
+                    'ticket', 'fournisseur'):
             self.assertTrue(registry.is_registered(key), key)
 
     def test_native_keys_resolve_to_expected_models(self):
         from apps.crm.models import Client, Lead
-        from apps.ged.models import Document
         from apps.installations.models import Installation
-        from apps.rh.models import DossierEmploye
         from apps.sav.models import Ticket
         from apps.stock.models import Fournisseur, Produit
         from apps.ventes.models import Devis
@@ -35,61 +36,10 @@ class TestNativeAndPilotNonRegression(SimpleTestCase):
         expected = {
             'lead': Lead, 'client': Client, 'produit': Produit,
             'devis': Devis, 'installation': Installation, 'ticket': Ticket,
-            'document': Document, 'fournisseur': Fournisseur,
-            'employe': DossierEmploye,
+            'fournisseur': Fournisseur,
         }
         for key, model in expected.items():
             self.assertIs(registry.get_model(key), model, key)
-
-    def test_pilots_still_registered_via_central_loader(self):
-        """contrat/vehicule sont toujours enregistrés — désormais via le
-        chargeur central (CustomfieldsConfig.ready()), plus via les
-        AppConfig.ready() de contrats/flotte."""
-        from apps.contrats.models import Contrat
-        from apps.flotte.models import Vehicule
-        self.assertTrue(registry.is_registered('contrat'))
-        self.assertTrue(registry.is_registered('vehicule'))
-        self.assertIs(registry.get_model('contrat'), Contrat)
-        self.assertIs(registry.get_model('vehicule'), Vehicule)
-
-
-class TestSourceIsPlatformManifestNotAppReady(SimpleTestCase):
-    """Preuve que la source a bien basculé vers les manifestes : ré-exécuter
-    ``register_from_platform_manifests()`` seul (sans les anciens appels
-    ContratsConfig/FlotteConfig.ready()) suffit à retrouver les 2 pilotes."""
-
-    def test_central_loader_alone_registers_pilots(self):
-        # On retire temporairement les entrées pour prouver qu'elles
-        # reviennent bien via le chargeur central (pas un résidu d'un autre
-        # ready() déjà exécuté au démarrage du process de test).
-        registry.unregister('contrat')
-        registry.unregister('vehicule')
-        self.assertFalse(registry.is_registered('contrat'))
-        self.assertFalse(registry.is_registered('vehicule'))
-        try:
-            registry.register_from_platform_manifests()
-            self.assertTrue(registry.is_registered('contrat'))
-            self.assertTrue(registry.is_registered('vehicule'))
-        finally:
-            # Ré-enregistre au cas où un test suivant dépendrait de l'état
-            # initial (idempotent, aucun risque de conflit).
-            registry.register_from_platform_manifests()
-
-    def test_contrats_apps_ready_no_longer_calls_register_directly(self):
-        """ContratsConfig.ready() n'importe plus le registre customfields —
-        preuve statique que la déclaration a bien migré vers platform.py.
-        (On vérifie l'IMPORT, pas la chaîne « register( » : le commentaire
-        historique du ready() cite l'ancien appel à titre documentaire.)"""
-        import inspect
-        from apps.contrats.apps import ContratsConfig
-        source = inspect.getsource(ContratsConfig.ready)
-        self.assertNotIn('from apps.customfields import registry', source)
-
-    def test_flotte_config_has_no_ready_override(self):
-        """FlotteConfig n'a plus besoin de ready() du tout (plus rien à y
-        enregistrer explicitement)."""
-        from apps.flotte.apps import FlotteConfig
-        self.assertNotIn('ready', FlotteConfig.__dict__)
 
 
 class TestNewManifestTargetRegistersWithoutTouchingCustomfields(SimpleTestCase):
