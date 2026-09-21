@@ -78,7 +78,7 @@ from .zones import projeteur_local
 
 __all__ = [
     'ORIGINE_MIXTE', 'COTE_DC', 'COTE_AC', 'COTE_TERRE',
-    'troncons_du_calepinage',
+    'troncons_du_calepinage', 'troncons_de_la_conception', 'metre_de_cable',
 ]
 
 #: Le vocabulaire d'origine PUBLIÉ est celui du DOCUMENT (CALX202,
@@ -648,6 +648,83 @@ def _metre_par_section(troncons):
     return lignes
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX227 — LE MÉTRÉ À COUPER, PAR CÔTÉ ET PAR SECTION
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``core/electrique/nomenclature.py`` produisait UNE ligne de câblage par
+# repère (``W1``, ``W2``) avec ``longueur_m × nb_conducteurs`` : un dossier à
+# dix tronçons de trois sections sortait donc DEUX lignes, et le magasinier
+# ne savait pas quoi couper. PV*SOL exporte sa liste de pièces avec des
+# numéros d'article (https://help.valentin-software.com/pvsol/en/pages/
+# plans-and-parts-list/) et OpenSolar décrit un BOM automatique couvrant les
+# câbles (https://www.opensolar.com/shop/) : c'est cette granularité-là.
+#
+# UNE LIGNE PAR COUPLE (CÔTÉ, SECTION), et rien d'autre. Un tronçon dont la
+# section n'est pas calculable n'entre dans AUCUNE ligne : son omission est
+# déjà NOMMÉE, tronçon par tronçon, par ``_dimensionner_troncon`` (norme
+# absente D1, longueur manquante, courant non publié…). L'agréger sous une
+# section « 0 » ou le fondre dans une autre ligne ferait commander du câble
+# qu'aucun calcul ne justifie.
+
+#: L'ordre de publication des côtés — celui du courant dans l'installation
+#: (continu, alternatif, terre), pas l'ordre alphabétique.
+ORDRE_DES_COTES = (COTE_DC, COTE_AC, COTE_TERRE)
+
+
+def metre_de_cable(troncons):
+    """CALX227 — ``[{section_mm2, cote, longueur_m, nb_conducteurs,
+    repere_des_troncons}]``.
+
+    Une ligne par couple (côté, section), ``longueur_m`` = somme des longueurs
+    des tronçons de ce couple (la longueur de CHEMIN : le nombre de
+    conducteurs voyage à côté, il ne se multiplie pas ici — c'est le
+    consommateur qui décide s'il commande du câble unipolaire ou un câble
+    multiconducteur).
+
+    ``nb_conducteurs`` vaut ``None`` quand les tronçons d'un même couple n'en
+    déclarent pas le même nombre (du monophasé et du triphasé sur la même
+    section) : un nombre unique serait faux pour l'un des deux, et aucune
+    moyenne n'a de sens sur un conducteur.
+
+    Fonction PURE : elle ne lit que la liste de tronçons qu'on lui passe.
+    """
+    lignes = {}
+    for troncon in troncons or ():
+        if not isinstance(troncon, dict):
+            continue
+        section = _nombre(troncon.get('section_mm2'))
+        longueur = _nombre(troncon.get('longueur_m'))
+        if section is None or longueur is None:
+            continue
+        cote = troncon.get('cote')
+        clef = (cote, section)
+        ligne = lignes.get(clef)
+        if ligne is None:
+            ligne = lignes[clef] = {
+                'section_mm2': section, 'cote': cote, 'longueur_m': 0.0,
+                'nb_conducteurs': troncon.get('nb_conducteurs'),
+                'repere_des_troncons': [],
+            }
+        elif ligne['nb_conducteurs'] != troncon.get('nb_conducteurs'):
+            ligne['nb_conducteurs'] = None
+        ligne['longueur_m'] += longueur
+        ligne['repere_des_troncons'].append(troncon.get('id'))
+
+    def _rang(clef):
+        cote, section = clef
+        ordre = (ORDRE_DES_COTES.index(cote) if cote in ORDRE_DES_COTES
+                 else len(ORDRE_DES_COTES))
+        return (ordre, section)
+
+    publiees = []
+    for clef in sorted(lignes, key=_rang):
+        ligne = lignes[clef]
+        ligne['longueur_m'] = round(ligne['longueur_m'], 2)
+        publiees.append(ligne)
+    return publiees
+
+
 def _troncons_du_document(document, contexte=None):
     """Le NOYAU de calcul : ``{troncons, totaux, omissions}``.
 
@@ -741,14 +818,28 @@ def _contexte_electrique(conception, norme):
     return contexte
 
 
+def troncons_de_la_conception(conception, document, norme):
+    """CALX224-226 — le métré et la chute d'une conception DÉJÀ calculée.
+
+    C'est la porte que le RÉSULTAT emprunte (``resultat['troncons']``,
+    CALX228) : le calepinage a déjà concevu son champ et résolu sa norme, les
+    recalculer ici en produirait une seconde — et rien ne garantirait qu'elle
+    décrive le même toit (une évaluation à chaud passe son propre document).
+
+    Aucune écriture, aucun effet de bord.
+    """
+    return _troncons_du_document(document,
+                                 _contexte_electrique(conception, norme))
+
+
 def troncons_du_calepinage(calepinage):
     """CALX224-226 — le métré et la chute, tronçon par tronçon, de CE
     calepinage.
 
     Enveloppe MINCE : elle lit le document enregistré
     (``Calepinage.roof_layout``), la norme applicable et la conception
-    électrique (toutes trois en LECTURE SEULE), puis passe la main au noyau
-    de calcul. Aucune écriture, aucun effet de bord.
+    électrique (toutes trois en LECTURE SEULE), puis passe la main à
+    ``troncons_de_la_conception``. Aucune écriture, aucun effet de bord.
     """
     from .electrique import conception_du_calepinage, parametres_societe
     from .norme import norme_applicable
@@ -756,5 +847,4 @@ def troncons_du_calepinage(calepinage):
     norme = norme_applicable(parametres_societe(calepinage))
     conception, _materiel, _donnees, document = conception_du_calepinage(
         calepinage)
-    return _troncons_du_document(document,
-                                 _contexte_electrique(conception, norme))
+    return troncons_de_la_conception(conception, document, norme)

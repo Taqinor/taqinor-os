@@ -938,6 +938,13 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     protections = checklist_protections(
         conception, decisions=donnees.get('protections'), norme=norme)
 
+    # CALX224-228 — le CHEMINEMENT mesuré, tronçon par tronçon. Calculé UNE
+    # fois ici : le bordereau en tire son métré (CALX227) et le résultat le
+    # publie tel quel (même charge utile que ``GET troncons/``).
+    from .troncons import troncons_de_la_conception
+
+    troncons = troncons_de_la_conception(conception, document, norme)
+
     # CALX246/230/232/247 — LE BORDEREAU. Il descend des mêmes objets purs que
     # les câbles ci-dessus (``cables['noyau']``), des coffrets RÉELLEMENT
     # posés dans le plan et de la règle de structure SOURCÉE ; chaque ligne
@@ -946,7 +953,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         calepinage, conception, cables.get('noyau'),
         equipements=_equipements_electriques(document),
         branches=((micro['bloc'] or {}).get('branches') or ()
-                  if micro['bloc'] is not None else ()))
+                  if micro['bloc'] is not None else ()),
+        troncons=troncons['troncons'])
 
     # CAL134 — la check-list de terre et sa justification exigée.
     from .terre import checklist_terre
@@ -1966,19 +1974,25 @@ def _ligne_bordereau(ligne):
 
 
 def _bordereau_du_calepinage(calepinage, conception, noyau, *,
-                             equipements=(), branches=()):
-    """CALX246/230/232/247 — ``{lignes, alertes}``, ou l'omission motivée.
+                             equipements=(), branches=(), troncons=()):
+    """CALX246/230/232/247/227 — ``{lignes, alertes}``, ou l'omission motivée.
 
     ``noyau`` est le ``{entree, protections, cables}`` que
     ``cables_du_calepinage`` vient de produire : le bordereau descend du MÊME
     calcul que les câbles publiés. ``None`` (norme absente, aucune chaîne) ⇒
     aucun bordereau, et le motif est déjà publié par les omissions de câbles.
+
+    ``troncons`` (CALX227) — les tronçons mesurés du cheminement. Dès qu'il
+    y en a un dont la section est calculable, le MÉTRÉ (une ligne par couple
+    côté/section) remplace les deux lignes de câblage forfaitaires : c'est ce
+    que le magasinier coupe. Aucun tronçon tracé ⇒ sortie d'aujourd'hui.
     """
     import types as _types
 
     from core.electrique.nomenclature import nomenclature
 
     from .coffrets import coffret_ac, coffrets_dc
+    from .troncons import metre_de_cable
 
     if not noyau:
         return {'lignes': [], 'alertes': []}
@@ -2013,7 +2027,8 @@ def _bordereau_du_calepinage(calepinage, conception, noyau, *,
     resultat = nomenclature(
         noyau['entree'], conception.resultat, noyau['protections'],
         noyau['cables'], resultat_coffrets, resultat_coffret_ac,
-        _regle_structure(valeur_structure, source_structure), references)
+        _regle_structure(valeur_structure, source_structure), references,
+        metre_de_cable(troncons))
     return {'lignes': [_ligne_bordereau(ligne) for ligne in resultat.lignes],
             'alertes': alertes + list(resultat.alertes)}
 

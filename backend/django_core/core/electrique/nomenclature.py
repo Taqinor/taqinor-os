@@ -24,6 +24,7 @@ from core.electrique.types import LigneNomenclature, fr, fr_a
 
 __all__ = [
     "CATEGORIE_PAR_REPERE", "MOTIF_STRUCTURE_NON_SOURCEE",
+    "CATEGORIE_PAR_COTE", "REPERE_PAR_COTE", "LIBELLE_PAR_COTE",
     "ResultatNomenclature", "nomenclature", "nomenclature_dict",
 ]
 
@@ -69,6 +70,47 @@ def _reference_de_ligne(references, repere, categorie):
 MOTIF_STRUCTURE_NON_SOURCEE = (
     "quantités de fixation non sourcées : renseignez la règle de bordereau "
     "de votre système de pose")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX227 — LE MÉTRÉ DE CÂBLE, TRONÇON PAR TRONÇON ET SECTION PAR SECTION
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Une ligne par repère (``W1``, ``W2``) ne dit pas au magasinier quoi couper :
+# un dossier à dix tronçons de trois sections sortait DEUX lignes. Quand
+# l'applicatif fournit le métré de ``apps/calepinage/services/troncons.py::
+# metre_de_cable`` (une entrée par couple côté/section), ce sont CES lignes
+# qui sont publiées ; sans lui, la sortie est celle d'aujourd'hui, champ pour
+# champ.
+
+#: Par CÔTÉ : la catégorie de bordereau (les MÊMES intitulés que les lignes
+#: de câblage historiques), le repère sous lequel la ligne se rattache à une
+#: référence d'article (CALX246 — celui du câble dimensionné de ce côté), et
+#: le libellé de repli quand aucun câble dimensionné ne donne sa désignation
+#: (descriptif, jamais une marque ni une référence inventée).
+#:
+#: Des TUPLES, jamais des dicts : une globale mutable de module se
+#: reconfigure par mutation, ce que la garde de pureté du noyau refuse
+#: (``core/tests/test_electrique_purete.py``).
+CATEGORIE_PAR_COTE = (
+    ("dc", "Câblage DC"),
+    ("ac", "Câblage AC"),
+    ("terre", "Mise à la terre"),
+)
+REPERE_PAR_COTE = (("dc", "W1"), ("ac", "W2"), ("terre", "T1"))
+LIBELLE_PAR_COTE = (
+    ("dc", "Câble solaire DC"),
+    ("ac", "Câble AC"),
+    ("terre", "Câble de terre cuivre nu"),
+)
+
+
+def _par_cote(table, cote, defaut):
+    """La valeur de ``table`` pour ce côté — ``defaut`` si le côté est muet."""
+    for clef, valeur in table:
+        if clef == cote:
+            return valeur
+    return defaut
+
 
 #: Catégorie de bordereau par préfixe de repère — mêmes intitulés que le
 #: bordereau historique, pour qu'un consommateur existant s'y retrouve.
@@ -162,16 +204,66 @@ def _lignes_structure(nb_modules, regle_bom_structure, references=None):
     ), ""
 
 
+def _designation_de_cote(cables, cote):
+    """La désignation du câble DIMENSIONNÉ de ce côté, ou un libellé neutre.
+
+    Elle est REPRISE du câble que ``dimensionner_cables`` vient de retenir —
+    jamais réécrite : une seconde désignation du même câble, c'est un
+    bordereau qui ne se recoupe plus avec la note de calcul.
+    """
+    for cable in cables or ():
+        repere = str(cable.repere or "")
+        cote_du_cable = "dc" if repere == "W1" else (
+            "ac" if repere.startswith("W2") else "")
+        if cote_du_cable == cote:
+            return cable.designation
+    return _par_cote(LIBELLE_PAR_COTE, cote, "Câble")
+
+
+def _ligne_de_metre(ajouter, ligne, cables):
+    """UNE ligne de bordereau pour UN couple (côté, section) — CALX227."""
+    cote = ligne.get("cote")
+    section = ligne.get("section_mm2")
+    longueur = float(ligne.get("longueur_m") or 0.0)
+    conducteurs = ligne.get("nb_conducteurs")
+    reperes = [str(repere) for repere in ligne.get("repere_des_troncons") or ()
+               if repere]
+    detail = ("tronçon(s) %s" % ", ".join(reperes)) if reperes else \
+        "cheminement relevé"
+    if conducteurs:
+        quantite = round(longueur * int(conducteurs), 1)
+        spec = ("%s ; %s m de cheminement × %d conducteur(s)"
+                % (detail, fr(longueur, 2), int(conducteurs)))
+    else:
+        # Deux tronçons du même couple ne déclarent pas le même nombre de
+        # conducteurs : on publie la longueur de CHEMINEMENT et on le DIT,
+        # plutôt que de multiplier par un nombre choisi au hasard.
+        quantite = round(longueur, 1)
+        spec = ("%s ; longueur de cheminement — nombre de conducteurs non "
+                "homogène sur ce couple, quantité à multiplier à la "
+                "commande" % detail)
+    ajouter(_par_cote(CATEGORIE_PAR_COTE, cote, "Câblage"),
+            "%s %s mm²" % (_designation_de_cote(cables, cote),
+                           fr(section, 1)),
+            quantite, "m", spec,
+            repere=_par_cote(REPERE_PAR_COTE, cote, ""))
+
+
 def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
                  resultat_cables=None, resultat_coffrets_dc=None,
                  resultat_coffret_ac=None, regle_bom_structure=None,
-                 references=None):
+                 references=None, metre_cable=None):
     """PV37 — les lignes de bordereau déduites des calculs amont.
 
     ``references`` (CALX246) — table ``{repère ou catégorie: {produit_id,
     reference}}`` DÉJÀ RÉSOLUE par l'applicatif contre le catalogue de la
     société. Absente, chaque ligne sort avec ``produit_id``/``reference`` à
     ``None``, exactement comme avant.
+
+    ``metre_cable`` (CALX227) — le métré du cheminement
+    (``apps/calepinage/services/troncons.py::metre_de_cable``), une entrée par
+    couple (côté, section). Fourni, il REMPLACE les deux lignes forfaitaires
+    ``W1``/``W2`` ; absent ou vide, la sortie est celle d'aujourd'hui.
     """
     lignes = []
     alertes = []
@@ -191,16 +283,25 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
 
     # ── Câblage, aux sections RÉELLEMENT calculées ───────────────────────────
     cables = resultat_cables.cables if resultat_cables else ()
-    for cable in cables:
-        categorie = "Câblage DC" if cable.repere == "W1" else "Câblage AC"
-        ajouter(categorie,
-                "%s %s mm²" % (cable.designation, fr(cable.section_mm2, 1)),
-                round(cable.longueur_m * cable.nb_conducteurs, 1), "m",
-                "chute de tension %s %% (cible %s %%), Iz %s A, critère "
-                "dimensionnant : %s"
-                % (fr(cable.chute_tension_pct, 2), fr(cable.chute_cible_pct, 1),
-                   fr(cable.iz_a, 0), cable.critere_dimensionnant),
-                repere=cable.repere)
+    if metre_cable:
+        # CALX227 — le métré du CHEMINEMENT remplace les deux lignes
+        # forfaitaires : une ligne par couple (côté, section), et les repères
+        # des tronçons qui la composent pour que le poseur sache où ça va.
+        for ligne in metre_cable:
+            _ligne_de_metre(ajouter, ligne, cables)
+    else:
+        for cable in cables:
+            categorie = "Câblage DC" if cable.repere == "W1" else "Câblage AC"
+            ajouter(categorie,
+                    "%s %s mm²" % (cable.designation,
+                                   fr(cable.section_mm2, 1)),
+                    round(cable.longueur_m * cable.nb_conducteurs, 1), "m",
+                    "chute de tension %s %% (cible %s %%), Iz %s A, critère "
+                    "dimensionnant : %s"
+                    % (fr(cable.chute_tension_pct, 2),
+                       fr(cable.chute_cible_pct, 1),
+                       fr(cable.iz_a, 0), cable.critere_dimensionnant),
+                    repere=cable.repere)
 
     # ── Protections, une ligne par organe RETENU par une règle ───────────────
     protections = (resultat_protections.protections
@@ -312,7 +413,8 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
 def nomenclature_dict(entree, resultat_chaines=None, resultat_protections=None,
                       resultat_cables=None, resultat_nomenclature=None,
                       resultat_coffrets_dc=None, resultat_coffret_ac=None,
-                      regle_bom_structure=None, references=None):
+                      regle_bom_structure=None, references=None,
+                      metre_cable=None):
     """Même contenu, dans la FORME du bordereau historique (``generate_boq``).
 
     ``{items: [...], summary: {...}, warnings: [...]}`` — les clés de résumé
@@ -323,7 +425,7 @@ def nomenclature_dict(entree, resultat_chaines=None, resultat_protections=None,
     resultat = resultat_nomenclature or nomenclature(
         entree, resultat_chaines, resultat_protections, resultat_cables,
         resultat_coffrets_dc, resultat_coffret_ac, regle_bom_structure,
-        references)
+        references, metre_cable)
     section_ac = None
     for cable in (resultat_cables.cables if resultat_cables else ()):
         if cable.repere == "W2":
