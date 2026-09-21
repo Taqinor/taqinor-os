@@ -42,6 +42,7 @@ import {
   type ConfigFamily,
 } from '../../lib/estimatorBrainV2';
 import { PERIMETER_SETBACK_M, PANEL2_LONG_M, PANEL2_SHORT_M, uniformSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
+import { supplementsParArete } from '../../lib/roofSetbackEdge'; // CALX95 câblage
 import {
   recommendPitched,
   type FlushPack,
@@ -62,6 +63,7 @@ import {
   type MatrixV6Result,
 } from '../../lib/estimatorBrainV6';
 import {
+  anneauPosableParArete, // CALX95 câblage
   solveLive,
   type AxisLocks,
   type LayoutAxis,
@@ -318,6 +320,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   /** PV63 — retraits effectifs d'une marge donnée : pleine rive = zéro partout. */
   const setbacksForMargin = (margin: 'keep' | 'remove'): PerimeterSetbacks | undefined =>
     margin === 'keep' ? keepSetbacks() : uniformSetbacks(0);
+
+  /** CALX95 câblage — supplément de retrait PROPRE à chaque arête du pan actif, tel que le
+   *  DOCUMENT le porte (`zones[].edges[].retraitM`, CALX81). Le retrait de CATÉGORIE passé
+   *  ici est celui déjà appliqué au pourtour (retrait latéral saisi, sinon le retrait unique
+   *  historique) : `supplementsParArete` ne retient que ce qu'une arête AJOUTE. Aucune arête
+   *  saisie ⇒ table VIDE ⇒ anneau posable = contour tracé, pavage d'aujourd'hui. */
+  const retraitsParArete = (): Record<number, number> =>
+    supplementsParArete(ctx.activeArea()?.edges, keepSetbacks()?.lateralM ?? PERIMETER_SETBACK_M);
 
   /* ═════════ CALX115 — LE SEUIL D'ACCÈS SOLAIRE RETIRE DES EMPLACEMENTS DU POSABLE ═════════
      `optimisation.seuilAccesSolaire` (contrat CALX88) voyage par le DOCUMENT et arrive ici
@@ -630,7 +640,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   /** Rend le gagnant vivant (3D + carte + contrôles) avec SES chiffres (PVGIS/estimé). */
   function renderLiveWinner(res: LiveSolveResult, isReco: boolean) {
     const w = res.winner;
-    const ring: LngLat[] = [...ctx.vertices];
+    // CALX95 câblage — on re-pave le MÊME anneau posable que le solveur a évalué (retraits
+    // d'arête rognés) ; sinon le compte affiché parlerait d'un contour que le solveur n'a
+    // pas vu. Aucune arête saisie ⇒ c'est le contour tracé lui-même, rendu inchangé.
+    const ring: LngLat[] = anneauPosableParArete([...ctx.vertices], retraitsParArete());
     const setbackM = w.margin === 'keep' ? PERIMETER_SETBACK_M : 0;
     const pack = packConfig(ring, ctx.centroidLat, {
       family: w.family,
@@ -800,6 +813,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       overhangM: ctx.overhangM,
       obstructionClearancesM: obstructionClearances(), // PV61
       setbacksM: keepSetbacks(), // PV63
+      retraitsParAreteM: retraitsParArete(), // CALX95 — retrait propre à chaque arête saisie
       eastWestGeometry: eastWestGeometryInput(), // CAL87 — faîtage + écart inter-chevrons saisis
     });
     ctx.liveResult = res;
@@ -1154,6 +1168,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       overhangM: ctx.overhangM,
       obstructionClearancesM: obstructionClearances(), // PV61
       setbacksM: keepSetbacks(), // PV63
+      retraitsParAreteM: retraitsParArete(), // CALX95 — retrait propre à chaque arête saisie
     });
     ctx.pitchedLiveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;

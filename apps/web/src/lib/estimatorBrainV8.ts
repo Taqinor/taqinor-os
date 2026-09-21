@@ -44,6 +44,7 @@ import {
   type FlushPack,
 } from './estimatorBrainV3';
 import { type YieldSource } from './estimatorBrainV6';
+import { anneauPosableParArete } from './estimatorBrainV7'; // CALX95 câblage
 
 export { PANEL2_WATT };
 export type { YieldSource };
@@ -237,6 +238,14 @@ export interface PitchedSolveOptions {
   obstructionClearancesM?: number[];
   /** PV63 — retraits de rive séparés (latéral / extrémité / acrotère) quand la marge est gardée. */
   setbacksM?: Partial<PerimeterSetbacks>;
+  /**
+   * CALX95 câblage — retrait PROPRE à certaines arêtes du contour (table `rang du segment
+   * → mètres`, telle que `roofSetbackEdge.supplementsParArete` la produit depuis
+   * `zones[].edges[].retraitM`, CALX81), EN SUPPLÉMENT des retraits de CATÉGORIE. Absente
+   * ou sans entrée exploitable → anneau posable = contour tracé, balayage IDENTIQUE à
+   * aujourd'hui. Le découpage est celui de `anneauPosableParArete` (V7), importé ici.
+   */
+  retraitsParAreteM?: Readonly<Record<number, number>>;
 }
 
 export interface PitchedLiveResult {
@@ -303,7 +312,10 @@ export function solveLivePitched(
   const effectiveNeed = lockedNeed ?? neededPanels;
 
   const ctx: PitchedCtx = {
-    ring,
+    // CALX95 câblage — l'anneau POSABLE (retraits d'arête déjà rognés) part au pavage
+    // affleurant. Aucun retrait d'arête exploitable ⇒ c'est le contour tracé lui-même
+    // (même référence) ⇒ balayage en pente inchangé.
+    ring: anneauPosableParArete(ring, options.retraitsParAreteM),
     latitudeDeg,
     pitchDeg,
     facingAzimuthDeg,
