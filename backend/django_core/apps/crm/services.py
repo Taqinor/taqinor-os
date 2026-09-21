@@ -1256,7 +1256,14 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     etape.note = note or ''
     etape.traite_par = user
     etape.traite_le = timezone.now()
-    etape.save(update_fields=['statut', 'note', 'traite_par', 'traite_le'])
+    # CAD118 — l'issue est écrite SUR la touche, au même instant que la ligne
+    # d'historique ci-dessous. La ligne de chatter reste la source de vérité
+    # du chatter ; cette colonne est ce qui rend mesurable « quelle touche, à
+    # quelle heure, quel jour, sur quel canal joint réellement le client »
+    # (CAD87) sans la fenêtre de rapprochement de deux minutes.
+    etape.outcome = outcome or ''
+    etape.save(update_fields=['statut', 'note', 'outcome', 'traite_par',
+                              'traite_le'])
 
     verbe = 'faite' if statut == RelanceEtape.Statut.FAIT else 'sautée'
     # MRY5 — le corps disait « Relance J+{ordre} », faux depuis que `ordre`

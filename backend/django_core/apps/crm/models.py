@@ -1378,6 +1378,24 @@ class RelanceEtape(TenantModel):
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
     note = models.TextField(blank=True, default='')
+    # CAD118 (audit L3 du 21/09/2026) — L'ISSUE DE LA TOUCHE, SUR LA TOUCHE.
+    # On mesurait si les touches étaient cochées, jamais si elles joignaient
+    # quelqu'un : l'issue ne vivait que sur la ligne de chatter, et le seul
+    # rapprochement possible était une fenêtre de DEUX MINUTES entre les deux
+    # horodatages — un bricolage qui casse en silence dès qu'un traitement
+    # ralentit. Écrite au MÊME instant que la ligne d'historique par
+    # ``services.marquer_etape_relance``.
+    #
+    # Additive et sans nouvelle valeur d'énumération : les choix sont ceux de
+    # ``LeadActivity.OUTCOMES``, qui reste la source de vérité du chatter.
+    # Vide = touche close sans issue saisie (ou ligne d'avant CAD118) — c'est
+    # la vérité, jamais un « non joint » supposé.
+    outcome = models.CharField(
+        max_length=20, blank=True, default='',
+        choices=LeadActivity.OUTCOMES,
+        verbose_name="Issue de la touche",
+        help_text="Ce que la touche a donné : le client a-t-il été joint ?",
+    )
     # Traçabilité de la clôture (fait/sautée) — jamais silencieuse.
     traite_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
