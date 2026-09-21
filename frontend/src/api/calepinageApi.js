@@ -357,6 +357,20 @@ const calepinageApi = {
     // (mécanisme PACT10 déjà posé). `CheminementCables.jsx` traite un 404 de
     // CETTE porte comme un état « pas encore calculable », jamais une panne.
     troncons: (id) => api.get(`${pivot(id)}troncons/`),
+
+    // CALX244 — le POINT DE RACCORDEMENT réseau (contrat
+    // `contract_samples/calepinage_raccordement.json`, CALX205), servi par
+    // `views/raccordement.py`. UNE SEULE URL, deux méthodes : `GET` lit,
+    // `POST` enregistre la saisie ET REND le raccordement recalculé —
+    // l'écran n'enchaîne aucun second appel. Les deux réponses portent les
+    // trois blocs `{saisie, calcul, verdicts}` et les CINQ verdicts, même
+    // quand rien n'est saisi. Un refus 400 NOMME le champ fautif
+    // (`source_limite`, `phases`… — les noms du bloc `saisie`, comme
+    // `refus_limite_sans_source` du contrat) : une limite ou un cos φ sans
+    // leur provenance n'entre jamais en base.
+    raccordement: (id) => api.get(`${pivot(id)}raccordement/`),
+    enregistrerRaccordement: (id, corps) =>
+      api.post(`${pivot(id)}raccordement/`, corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

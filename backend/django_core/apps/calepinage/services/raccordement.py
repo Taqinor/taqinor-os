@@ -43,14 +43,15 @@ import math
 
 from core.electrique.cables import RHO_CUIVRE_20C, chute_tension_v
 from core.electrique.types import (
-    NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE, STATUT_BLOQUANT,
-    STATUT_NON_VERIFIABLE, STATUT_OK, VerdictElectrique, fr,
+    COTE_AC, NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE,
+    STATUT_BLOQUANT, STATUT_NON_VERIFIABLE, STATUT_OK, VerdictElectrique, fr,
 )
 
 __all__ = [
     'RaccordementInvalide', 'CODE_ELEVATION', 'LIBELLES',
     'elevation_de_tension', 'verdicts_raccordement',
     'repartition_des_phases',
+    'bloc_raccordement',  # CALX244
 ]
 
 # ── les cinq contrôles du contrat CALX205, et leur intitulé d'écran ────────
@@ -903,3 +904,250 @@ def _verdict_desequilibre(desequilibre, seuil, source_seuil, motif):
                 "(« phase_imposee ») ou corrigez le seuil."
                 % (fr(desequilibre), fr(seuil, 1)),
         borne=seuil, valeur=desequilibre, source=source)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX244 — LES TROIS BLOCS DU CONTRAT, ASSEMBLÉS UNE SEULE FOIS
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Les trois calculs ci-dessus répondent chacun à UNE question ; l'écran, lui,
+# lit UN document — ``{saisie, calcul, verdicts}`` du contrat CALX205
+# (``contract_samples/calepinage_raccordement.json``). Assembler ce document
+# dans la vue mettrait la forme du contrat dans une couche HTTP, où aucun
+# test ne peut l'atteindre sans base de données ; il est donc assemblé ICI,
+# par une fonction PURE que la vue se contente d'appeler.
+#
+# CE QUE CETTE FONCTION N'INVENTE PAS. Le courant qui traverse un tronçon
+# n'est JAMAIS fabriqué : il est lu sur le tronçon publié par
+# ``services/troncons.py`` (``ib_a``, le courant d'emploi que la conception
+# électrique justifie). Absent, c'est l'omission NOMMÉE de
+# :func:`elevation_de_tension` qui est publiée — pas une élévation partielle.
+#
+# CE QUI EST PARCOURU. Seul le côté ALTERNATIF remonte la tension au point de
+# livraison : c'est le courant INJECTÉ par l'onduleur qui traverse la liaison
+# jusqu'au compteur. Les tronçons continus sont donc marqués non parcourus —
+# ils ne sont pas « oubliés », ils sont en amont de l'onduleur.
+
+#: Les sept champs de la saisie du contrat CALX205, dans son ordre.
+CHAMPS_SAISIE = ('puissance_souscrite_kva', 'phases', 'tension_nominale_v',
+                 'limite_elevation_pct', 'source_limite', 'cos_phi_impose',
+                 'source_cos_phi')
+
+#: Les champs saisis et leur intitulé français : un refus les NOMME tels que
+#: l'écran les affiche (règle fondateur du 08/09/2026 — l'erreur désigne le
+#: champ fautif, jamais un « non enregistré » générique).
+INTITULES_SAISIE = {
+    'puissance_souscrite_kva': 'la puissance souscrite (kVA)',
+    'tension_nominale_v': 'la tension nominale (V)',
+    'limite_elevation_pct': "la limite d'élévation (%)",
+    'cos_phi_impose': 'le cos φ imposé',
+    'phases': 'le nombre de phases du branchement',
+}
+
+#: Le statut PUBLIÉ pour un contrôle qui n'a pas eu lieu. Le noyau le nomme
+#: ``non_verifiable`` (``core/electrique/types.py``) ; le contrat CALX205 le
+#: publie ``omis``. Une seule traduction, à un seul endroit.
+STATUT_PUBLIE_OMIS = 'omis'
+
+#: Le préfixe des champs nommés par un refus : l'écran sait ainsi sous quel
+#: champ poser le message, sans découper une phrase.
+PREFIXE_CHAMP = 'raccordement.'
+
+
+def _refus_saisie(champ, phrase):
+    return RaccordementInvalide(phrase, champ=PREFIXE_CHAMP + champ)
+
+
+def _texte_saisi(valeur, champ):
+    """Un texte de provenance, ou ``None`` — jamais un objet quelconque."""
+    if valeur is None:
+        return None
+    if not isinstance(valeur, str):
+        raise _refus_saisie(
+            champ, "La provenance doit être un texte : indiquez le document "
+                   "qui fixe cette valeur (texte réglementaire, contrat de "
+                   "raccordement ou prescription du gestionnaire de réseau).")
+    return valeur.strip() or None
+
+
+def _nombre_saisi(valeur, champ):
+    """Un nombre STRICTEMENT positif, ``None``, ou un refus qui NOMME."""
+    if valeur is None or valeur == '':
+        return None
+    nombre = _nombre(valeur)
+    if nombre is None:
+        raise _refus_saisie(
+            champ, "%s n'est pas un nombre : saisissez une valeur chiffrée, "
+                   "ou laissez le champ vide si elle n'est pas connue."
+                   % INTITULES_SAISIE[champ].capitalize())
+    if nombre <= 0:
+        raise _refus_saisie(
+            champ, "%s doit être strictement positive : « %s » ne décrit "
+                   "aucun branchement réel."
+                   % (INTITULES_SAISIE[champ].capitalize(), fr(nombre)))
+    return nombre
+
+
+def _phases_saisies(valeur):
+    """1 ou 3 — un régime hors de ces deux-là est REFUSÉ, jamais ignoré."""
+    if valeur is None or valeur == '':
+        return None
+    nombre = _nombre(valeur)
+    if nombre is None or nombre != int(nombre) or int(nombre) not in (1, 3):
+        raise _refus_saisie(
+            'phases', "Un branchement est monophasé (1) ou triphasé (3) : "
+                      "saisissez 1 ou 3, ou laissez le champ vide tant que "
+                      "le régime n'est pas connu.")
+    return int(nombre)
+
+
+def _saisie_publiee(brute):
+    """Les SEPT champs du contrat, normalisés — aucun autre n'est retenu.
+
+    Une clé inconnue du corps est ignorée : le contrat CALX205 fige la
+    saisie à sept champs, et accepter une huitième clé la ferait vivre dans
+    la base sans qu'aucun écran ni aucun calcul ne la lise jamais.
+    """
+    brute = brute if isinstance(brute, dict) else {}
+    saisie = {
+        'phases': _phases_saisies(brute.get('phases')),
+        'source_limite': _texte_saisi(brute.get('source_limite'),
+                                      'source_limite'),
+        'source_cos_phi': _texte_saisi(brute.get('source_cos_phi'),
+                                       'source_cos_phi'),
+    }
+    for champ in ('puissance_souscrite_kva', 'tension_nominale_v',
+                  'limite_elevation_pct', 'cos_phi_impose'):
+        saisie[champ] = _nombre_saisi(brute.get(champ), champ)
+    return {champ: saisie[champ] for champ in CHAMPS_SAISIE}
+
+
+def _injection(saisie):
+    """Ce que :func:`elevation_de_tension` lit de la saisie.
+
+    Aucun ``courant_a`` global n'est posé : le courant vient du TRONÇON, et
+    son absence est une omission nommée, jamais une valeur de confort.
+    """
+    return {
+        'tension_nominale_v': saisie['tension_nominale_v'],
+        'phases': saisie['phases'],
+        'limite_elevation_pct': saisie['limite_elevation_pct'],
+        'source_limite': saisie['source_limite'],
+    }
+
+
+def _troncons_pour_elevation(troncons):
+    """Les tronçons de ``services/troncons.py``, lus par l'élévation.
+
+    La longueur garde son ORIGINE (discipline ``Longueur``,
+    ``services/cables.py``) : elle voyage en dict, jamais en nombre nu.
+    """
+    lignes = []
+    for troncon in troncons or ():
+        if not isinstance(troncon, dict):
+            continue
+        lignes.append({
+            'repere': troncon.get('id') or troncon.get('repere'),
+            'longueur_m': {'valeur_m': troncon.get('longueur_m'),
+                           'origine': troncon.get('longueur_origine') or ''},
+            'section_mm2': troncon.get('section_mm2'),
+            'courant_a': troncon.get('ib_a'),
+            'parcouru': troncon.get('cote') == COTE_AC,
+        })
+    return lignes
+
+
+def _parc_onduleurs(conception):
+    """Le parc RETENU par la conception, onduleur par onduleur.
+
+    Le nombre vient du dimensionnement (``evaluer_onduleurs``) et la
+    puissance de la FICHE : ``s_max_kva`` quand elle la publie, sinon
+    ``ac_kw``. Ni l'une ni l'autre ⇒ l'onduleur entre sans puissance, et
+    :func:`repartition_des_phases` OMET en le nommant.
+
+    Aucune phase n'est imposée ici : le document v2 (CALX201) ne porte
+    aucune affectation de phase, donc le tourniquet s'applique et il le dit
+    dans la ``source`` de chaque ligne.
+    """
+    evaluation = _evaluation(conception)
+    if evaluation is None or not evaluation.nombre:
+        return []
+    onduleur = conception.entree.onduleur
+    s_max = _positif(getattr(onduleur, 's_max_kva', None))
+    active = _positif(getattr(onduleur, 'ac_kw', None))
+    phases = _entier(getattr(onduleur, 'phases', None))
+    parc = []
+    for rang in range(1, int(evaluation.nombre) + 1):
+        ligne = {'repere': 'Onduleur %d' % rang}
+        if s_max is not None:
+            ligne['puissance_kva'] = s_max
+        elif active is not None:
+            ligne['ac_kw'] = active
+        if phases is not None:
+            ligne['phases'] = phases
+        parc.append(ligne)
+    return parc
+
+
+def _verdict_publie(verdict):
+    """Un ``VerdictElectrique`` (CALX215) dans la forme du contrat CALX205.
+
+    ``libelle`` est l'INTITULÉ du contrôle (toujours le même) et ``detail``
+    la phrase motivée par les nombres : les confondre priverait l'écran d'un
+    titre stable, ou le test d'une phrase qui dit POURQUOI.
+    """
+    return {
+        'code': verdict.code,
+        'libelle': LIBELLES.get(verdict.code, verdict.code),
+        'statut': (STATUT_PUBLIE_OMIS
+                   if verdict.statut == STATUT_NON_VERIFIABLE
+                   else verdict.statut),
+        'detail': verdict.libelle,
+        'source': verdict.source or None,
+    }
+
+
+def bloc_raccordement(conception, saisie, troncons, reglages=None):
+    """CALX244 — le document ``{saisie, calcul, verdicts}`` du raccordement.
+
+    Args:
+        conception: la ``Conception`` de CAL124, ou ``None``.
+        saisie: le corps SAISI (les sept champs du contrat CALX205) ; les
+            clés inconnues sont ignorées, les valeurs illisibles REFUSÉES en
+            nommant leur champ.
+        troncons: les tronçons publiés par
+            ``services/troncons.py::troncons_du_calepinage`` (clé
+            ``troncons``) — leur ``ib_a`` est le seul courant lu.
+        reglages: la section société « electrique_societe » du registre
+            (``services/parametres_cles.py``), ``{clé: {valeur, source}}``.
+
+    Returns:
+        ``{saisie, calcul, verdicts}`` — les CINQ verdicts sont toujours
+        présents, dans l'ordre du contrat, et un contrôle qui n'a pas eu
+        lieu vaut ``omis`` avec le motif qui nomme ce qui manque.
+
+    Raises:
+        RaccordementInvalide: saisie illisible, limite sans
+            ``source_limite``, cos φ sans ``source_cos_phi``.
+
+    Fonction PURE : aucune base, aucun réseau, aucune horloge.
+    """
+    saisie = _saisie_publiee(saisie)
+    elevation = elevation_de_tension(_troncons_pour_elevation(troncons),
+                                     _injection(saisie))
+    branchement = verdicts_raccordement(conception, saisie)
+    equilibrage = repartition_des_phases(_parc_onduleurs(conception),
+                                         saisie['phases'],
+                                         reglages=reglages)
+    verdicts = ((elevation['verdict'],) + tuple(branchement['verdicts'])
+                + (equilibrage['verdict'],))
+    return {
+        'saisie': saisie,
+        'calcul': {
+            'elevation_pct': elevation['elevation_pct'],
+            'marge_pct': elevation['marge_pct'],
+            'puissance_injectee_kva': branchement['puissance_injectee_kva'],
+            'desequilibre_pct': equilibrage['desequilibre_pct'],
+        },
+        'verdicts': [_verdict_publie(verdict) for verdict in verdicts],
+    }
