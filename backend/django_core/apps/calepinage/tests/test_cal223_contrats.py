@@ -80,11 +80,26 @@ SANS_PRODUCTEUR_PUR = {
         'comparatif qui lit les variantes en base (CAL21)',
     'zones.json':
         'entrée du moteur (pas une réponse serveur) — couvert par CAL22',
+    # CALX4 — contrat posé AVANT ses deux moitiés (PACT10)
+    'calepinage_simulation.json':
+        'document écrit par la simulation dans Calepinage.resultat — '
+        'producteur services/simulation.py livré par CALX5',
+    # CALX45
+    'calepinage_du_devis.json':
+        "endpoint d'une AUTRE app (apps.ventes, DevisSerializer) — couvert "
+        'par apps/ventes/tests/test_calx46_calepinage_du_devis.py',
+}
+
+#: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
+#: `main`) — le contrôle 2 les ignore tant que la tâche nommée n'a pas livré
+#: la porte ; retirer l'entrée dans la même tâche que la route.
+POSES_AVANT_LEUR_ROUTE = {
+    'calepinage_simulation.json': 'POST simuler/ livrée par CALX5 (lot M2)',
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
 #: chercher) : ils appartiennent à une autre app.
-HORS_MODULE = ('/api/django/crm/',)
+HORS_MODULE = ('/api/django/crm/', '/api/django/ventes/')
 
 
 def _echantillons():
@@ -150,6 +165,8 @@ class CheminDeclareTest(unittest.TestCase):
             donnees = _charger(chemin.name)
             _verbe, _, route = donnees['endpoint'].partition(' ')
             if route.startswith(HORS_MODULE):
+                continue
+            if chemin.name in POSES_AVANT_LEUR_ROUTE:
                 continue
             segment = route.rstrip('/').rsplit('/', 1)[-1]
             if segment.startswith('<'):        # ``calepinages/<int:pk>/``
