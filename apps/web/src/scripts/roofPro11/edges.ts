@@ -120,6 +120,27 @@ export const EDGE_COLOR_BY_TYPE: Record<EdgeType, number> = {
   inconnue: 0x6b7280, // gris terne — non déduit
 };
 
+/**
+ * CALX94 câblage — couleur 3D de CHAQUE segment du contour d'un pan, dans l'ordre des
+ * sommets (`vertices[i] → vertices[i+1]`, le dernier reboucle). Le type RETENU est celui
+ * que le document retiendrait : une arête corrigée à la main (`manuel: true`) l'emporte,
+ * sinon le type déduit, sinon « inconnue ». Fonction PURE (aucun Three, aucun DOM) —
+ * c'est l'équivalent de `edgesUi.couleurArete` pour un appelant qui n'a pas l'atelier
+ * sous la main (la scène 3D). Contour de moins de 3 sommets ⇒ liste VIDE (rien à peindre,
+ * jamais une couleur de circonstance).
+ */
+export function couleursAretes(
+  zone: EdgeDeductionZone,
+  voisins: readonly EdgeDeductionZone[],
+  saisies: readonly SerializedEdge[] | undefined,
+): number[] {
+  const n = zone?.vertices?.length ?? 0;
+  if (n < 3) return [];
+  const retenus = fusionnerAretesSaisies(saisies, deduceEdgeTypes(zone, voisins)) ?? [];
+  const parIndex = new Map<number, EdgeType>(retenus.map((e) => [e.index, e.type]));
+  return Array.from({ length: n }, (_, i) => EDGE_COLOR_BY_TYPE[parIndex.get(i) ?? 'inconnue']);
+}
+
 /** Un pan minimal pour la déduction d'arêtes (contour + toit + face). */
 export interface EdgeDeductionZone {
   vertices: LngLat[];

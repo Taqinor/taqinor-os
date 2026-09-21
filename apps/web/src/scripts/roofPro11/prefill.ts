@@ -27,7 +27,7 @@ import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone 
 import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
 import { type CoucheElectrique, type DocumentElectrique } from './electrique3d';
-import { numeroterDocument } from './numerotation'; // CALX111
+import { numeroterDocument, registreAtelier } from './numerotation'; // CALX111
 
 import { emettreBatiments, type Batiment } from './batiment'; // CALX100
 // CALX110 — le catalogue de modules et le module de chaque pan (CALX82). `prefill.ts`
@@ -211,8 +211,14 @@ export interface SerializedZoneGeometry {
   count: number;
   /** Origine ENU (lng/lat) du repère des centres de panneaux. */
   origin: LngLat;
-  /** Centres ENU (m) + face de CHAQUE panneau posé (repère `origin`). */
-  panels: Array<{ cx: number; cy: number; face?: 'E' | 'W' }>;
+  /** Centres ENU (m) + face de CHAQUE panneau posé (repère `origin`).
+   *  CALX113 — `angleDeg` (OPTIONNEL, placement LIBRE seulement) : l'orientation PROPRE
+   *  du panneau, celle qu'une rotation ou une symétrie (`symetriserSelection`) lui a
+   *  donnée. Absente = panneau aligné sur l'axe de rangée, exactement comme avant : un
+   *  document sans rotation ressort octet pour octet identique. Sans cette clé, une
+   *  symétrie appliquée était perdue au rechargement (les centres revenaient, pas
+   *  l'orientation). */
+  panels: Array<{ cx: number; cy: number; face?: 'E' | 'W'; angleDeg?: number }>;
   /**
    * PV30 — MODE de placement de ces panneaux. ADDITIF et OMIS par défaut : un pan calepiné
    * sur les emplacements validés sérialise exactement comme avant (octet pour octet), et
@@ -696,7 +702,16 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       const posedIdx =
         live ?? Array.from({ length: Math.max(0, Math.min(g.grid.panels.length, Math.round(g.count))) }, (_, i) => i);
       const panels = freePosed
-        ? freePosed.map((p) => ({ cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) }))
+        ? freePosed.map((p) => ({
+            cx: p.cx,
+            cy: p.cy,
+            ...(p.face ? { face: p.face } : {}),
+            // CALX113 câblage — l'orientation PROPRE du panneau (rotation/symétrie) voyage
+            // avec lui ; jamais écrite quand personne ne l'a donnée.
+            ...(typeof p.angleDeg === 'number' && Number.isFinite(p.angleDeg)
+              ? { angleDeg: p.angleDeg }
+              : {}),
+          }))
         : posedIdx.map((i) => {
             const p = g.grid.panels[i];
             return { cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) };
@@ -913,6 +928,11 @@ export function deserializeSceneFromLayout(json: unknown): ScenePoint | null {
  * et le dimensionnement.
  */
 export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
+  // CALX111 câblage — un dossier ROUVERT reprend SES numéros : la mémoire de l'atelier est
+  // semée par ce que le document porte déjà (`n`, `rangee`, `numerotation`), sinon le
+  // premier enregistrement suivant repartait de zéro et renumérotait tout le pan.
+  // `absorberDocument` est idempotent et n'écrit RIEN dans le document.
+  registreAtelier.absorberDocument(json); // CALX111 câblage
   const zones = Array.isArray(json?.zones) ? json.zones : [];
   return zones.map((z) => ({
     id: z.id,

@@ -150,6 +150,7 @@ import { createObstaclesUi } from './roofPro11/obstaclesUi';
 import { createMesureUi, formatMeasure, isMeasureValid, type Measurement, type MeasureKind } from './roofPro11/mesureUi';
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
+import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
 import { createScene3d, projectPlanView, panelQuadsLngLat } from './roofPro11/scene3d';
 import {
   createOptimizer,
@@ -1069,7 +1070,17 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const graphs = createGraphs(ctx);
   const prefill = createPrefill(ctx);
   const prefillLead = prefill.prefillLead;
-  const zones = createZones(ctx);
+  // CALX97 câblage — crochets d'écran de `createZones` : sans eux, une rotation, un
+  // redimensionnement ou une duplication de pan changeait le document sans que la carte
+  // bouge (il fallait un autre geste pour la rafraîchir). Wrappers PARESSEUX : les
+  // bindings `redrawTrace`/`redrawObstacles`/`recalc` sont déclarés plus bas et ne sont
+  // lus qu'à l'exécution du crochet (même patron que `createConsumption` ci-dessous).
+  const zones = createZones(ctx, {
+    redrawTrace: () => redrawTrace(), // CALX97 câblage
+    redrawObstacles: () => redrawObstacles(), // CALX97 câblage
+    recalc: () => recalc(), // CALX97 câblage
+    setStatus: (msg: string) => setStatus(msg), // CALX97 câblage
+  });
   const liveActiveResult = zones.liveActiveResult;
   const snapshotActiveAreaResult = zones.snapshotActiveAreaResult;
   const snapshotActiveAreaGeometry = zones.snapshotActiveAreaGeometry;
@@ -1384,6 +1395,20 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const redrawTrace = mapDraw.redrawTrace;
   const addVertex = mapDraw.addVertex;
   const geocode = mapDraw.geocode;
+
+  // CALX94 câblage — correction MANUELLE du type d'une arête. Le module crée lui-même ses
+  // contrôles ; on ne lui passe PAS la carte, parce que c'est le dispatcher de clic de
+  // cette entrée qui route le geste (`isEdgeMode()` / `handleMapClick`) — lui donner la
+  // carte le ferait s'abonner en plus, et le clic serait traité deux fois. `redraw` est un
+  // wrapper paresseux (`renderActive` est déclaré plus bas) : une correction de type
+  // repeint le contour 2D et la scène, où la couleur d'arête est désormais lue.
+  const edgesUi = createEdgesUi(ctx, {
+    setStatus,
+    redraw: () => {
+      redrawTrace();
+      renderActive();
+    },
+  });
 
   const updateCompass = () => {
     if (compassArrow) compassArrow.style.transform = `rotate(${-map.getBearing()}deg)`;
@@ -2524,6 +2549,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     }
     // WJ19 — tracé d'ombre actif : le module consomme le clic (pied puis bout).
     if (shadingUi.handleMapClick(lngLat)) return;
+    // CALX94 câblage — mode « corriger une arête » armé : le clic DÉSIGNE un segment du
+    // contour et n'est jamais un geste de tracé ni une sélection d'obstacle. On sort même
+    // quand aucune arête n'a été visée (le module l'a déjà dit dans le bandeau) : un clic
+    // à côté ne doit pas poser un sommet par surprise.
+    if (edgesUi.isEdgeMode()) {
+      edgesUi.handleMapClick(lngLat); // CALX94 câblage
+      return;
+    }
     if (closed) {
       // sélection/désélection d'un obstacle existant
       selectObstacle(obstacleAtPoint(e.point));
