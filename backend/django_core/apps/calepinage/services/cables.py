@@ -208,8 +208,29 @@ def _cable_publie(cable, longueur):
     }
 
 
+def _longueur_de_branche(branche, cable):
+    """La longueur d'une branche AC, AVEC son origine (CALX209/CALX210).
+
+    Une branche de micro-onduleurs n'est tracée sur aucun plan de toiture :
+    sa longueur est SAISIE sur la branche (``longueur_m``), exactement comme
+    la liaison onduleur → TGBT. Le document peut néanmoins déclarer une autre
+    origine (``longueur_origine``, vocabulaire de CALX202) — elle est alors
+    reprise telle quelle plutôt que réécrite.
+    """
+    branche = branche if isinstance(branche, dict) else {}
+    origine = str(branche.get('longueur_origine') or '').strip() \
+        or ORIGINE_SAISIE
+    nom = str(branche.get('repere') or cable.repere)
+    return Longueur(
+        valeur_m=float(cable.longueur_m or 0.0), origine=origine,
+        detail="longueur de la branche « %s » (« longueur_m ») : aucun plan "
+               "de toiture ne porte le chemin du départ AC" % nom,
+        composantes=((('branche « %s »' % nom),
+                      float(cable.longueur_m or 0.0), origine),))
+
+
 def cables_du_calepinage(conception, *, cheminement=None, norme=None,
-                         layout=None):
+                         layout=None, branches_ac=None):
     """CAL131 — les câbles DC et AC dimensionnés sur les longueurs du plan.
 
     Args:
@@ -219,6 +240,13 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
         norme: le verdict de ``services.norme.norme_applicable`` — sans norme
             applicable, le calcul est OMIS (règle D5).
         layout: le document de conception (à défaut, celui de la conception).
+        branches_ac: les branches AC de micro-onduleurs publiées par CALX209.
+            Fournies, les ``W2.1 … W2.N`` de CALX210 REMPLACENT la liaison AC
+            unique : une installation à micro-onduleurs n'a pas un onduleur au
+            bout d'un câble, elle a N départs protégés — publier en plus un
+            ``W2`` forfaitaire ferait un câble qui n'existe pas. Absentes (tout
+            onduleur de chaîne), la sortie est celle d'aujourd'hui, champ pour
+            champ.
 
     Returns:
         ``{cables, longueurs, omissions}`` — ``omissions`` dit, en français,
@@ -246,8 +274,15 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
 
     document = layout if layout is not None else _document(conception)
     dc, manques_dc = longueur_dc(document, cheminement)
-    ac, manques_ac = longueur_ac(cheminement)
     omissions.extend(manques_dc)
+    if branches_ac:
+        # Régime micro-onduleurs : il n'y a pas de liaison « onduleur → TGBT »
+        # à mesurer, donc rien à réclamer — chaque branche porte SA longueur,
+        # et c'est elle que ``dimensionner_branches_ac`` nomme quand elle
+        # manque (CALX210).
+        ac, manques_ac = None, ()
+    else:
+        ac, manques_ac = longueur_ac(cheminement)
     omissions.extend(manques_ac)
 
     entree = dataclasses.replace(
@@ -257,7 +292,14 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
     evaluation = evaluer_onduleurs(conception)
     protections = concevoir_protections(entree, conception.resultat,
                                         evaluation)
-    resultat = dimensionner_cables(entree, conception.resultat, protections)
+    branches = tuple(branches_ac or ())
+    resultat = dimensionner_cables(entree, conception.resultat, protections,
+                                   branches_ac=branches or None)
+    # ``dimensionner_branches_ac`` numérote ``W2.<rang>`` sur le RANG de la
+    # branche reçue (une branche non dimensionnable n'émet aucun câble, mais
+    # ne décale pas les suivantes) : la correspondance est donc l'index.
+    par_repere = {'W2.%d' % (rang + 1): branche
+                  for rang, branche in enumerate(branches)}
 
     publies = []
     for cable in resultat.cables:
@@ -269,13 +311,22 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
             if ac is None:
                 continue
             publies.append(_cable_publie(cable, ac))
+        elif str(cable.repere).startswith('W2.'):
+            publies.append(_cable_publie(
+                cable, _longueur_de_branche(par_repere.get(cable.repere),
+                                            cable)))
     omissions.extend(resultat.bloquants)
     omissions.extend(resultat.alertes)
 
     return {
         'cables': publies,
         'longueurs': {'dc': dc.en_dict() if dc is not None else None,
-                      'ac': ac.en_dict() if ac is not None else None},
+                      # En régime micro-onduleurs, la liaison AC unique
+                      # n'existe pas : publier la longueur saisie « onduleur →
+                      # TGBT » à côté de N départs ferait croire à un câble de
+                      # plus. La clé reste PRÉSENTE, à ``null``.
+                      'ac': (None if branches
+                             else (ac.en_dict() if ac is not None else None))},
         'omissions': omissions,
     }
 

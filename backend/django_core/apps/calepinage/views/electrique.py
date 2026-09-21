@@ -72,11 +72,16 @@ class ElectriqueActionsMixin:
         températures sont SAISIES : rien n'est deviné depuis le devis ni
         depuis un catalogue « par défaut ». La réponse est le ``resultat``
         recalculé — l'appelant n'a pas à enchaîner un second appel.
+
+        CALX215 — ``derogations`` (``[{code, motif}]``) passe outre des
+        ALERTES nommées par leur code : l'AUTEUR est l'utilisateur de la
+        requête (jamais un nom envoyé dans le corps) et l'instant est posé
+        par le serveur.
         """
         calepinage = self.get_object()
         corps = request.data if isinstance(request.data, dict) else {}
         try:
-            enregistrer_entree(calepinage, corps)
+            enregistrer_entree(calepinage, corps, user=request.user)
             return Response(resultat_calepinage(calepinage))
         except (EntreeInvalide, TemperaturesInvalides) as refus:
             return Response({refus.champ or 'entree_electrique': str(refus)},

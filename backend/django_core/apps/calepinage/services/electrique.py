@@ -65,6 +65,8 @@ __all__ = [
     'ORIGINE_LONGUEUR_FICHE', 'ORIGINE_LONGUEUR_DOSSIER',
     'longueur_chaine_retenue', 'plafond_modules',
     'journaliser_ecart_longueur', 'parametres_societe',
+    'CLE_DEROGATIONS', 'CLE_FIL_ECARTS',
+    'CLE_FIL_DEROGATIONS',  # CALX215
     'CLE_POLYSTRING',  # CALX206
     'CLE_MICRO_ONDULEURS',  # CALX209
     'CHAMP_OPT_V_OUT', 'CHAMP_OPT_MODULES_MAX', 'CLE_OPT_V_OUT',
@@ -333,7 +335,21 @@ CHAMPS_ENTREE = (
     'exigence_marche',      # CAL127 — bornes imposées par le CPS du dossier
     'affectation_manuelle',  # CAL234 — affectation IMPOSÉE module par module
     'polystring',           # CALX206 — pans mis en parallèle sur une entrée
+    'derogations',          # CALX215 — alertes PASSÉES OUTRE (geste, pas réglage)
 )
+
+#: CALX215 — la clé par laquelle une alerte est PASSÉE OUTRE. C'est un GESTE,
+#: pas un réglage : la saisie (``[{code, motif}]``) n'est jamais rangée dans
+#: l'entrée électrique, elle part directement dans le FIL du calepinage avec
+#: l'auteur et l'instant que le SERVEUR pose (``CLE_FIL_DEROGATIONS``). Une
+#: dérogation rangée dans l'entrée serait rejouée à chaque enregistrement.
+CLE_DEROGATIONS = 'derogations'
+
+#: Les trois champs que ``core.electrique.types.passer_outre`` NOMME en tête
+#: de son refus. Tout autre refus du noyau vise le verdict lui-même, donc le
+#: CODE saisi : la liste est fermée pour qu'un message reformulé ne fasse
+#: jamais pointer l'écran sur un champ qui n'existe pas.
+CHAMPS_DEROGATION = ('auteur', 'motif', 'horodatage')
 
 # ═══════════════════════════════════════════════════════════════════════════
 # CALX70 — LA SIMULATION PERSISTÉE EST SERVIE, AVEC SON CONTRÔLE DE FRAÎCHEUR
@@ -464,15 +480,117 @@ def entree_stockee(calepinage):
     return dict(entree) if isinstance(entree, dict) else {}
 
 
-def enregistrer_entree(calepinage, donnees):
+def _nom_auteur(user):
+    """Le nom de l'AUTEUR d'un geste, tel qu'il sera relu — jamais un prénom
+    codé en dur (règle fondateur 08/09/2026)."""
+    if user is None:
+        return ''
+    obtenir = getattr(user, 'get_full_name', None)
+    if callable(obtenir):
+        try:
+            nom = (obtenir() or '').strip()
+        except Exception:  # noqa: BLE001 — un utilisateur exotique ne casse
+            nom = ''        # pas un enregistrement ; le repli suit.
+        if nom:
+            return nom
+    for attribut in ('username', 'email'):
+        valeur = str(getattr(user, attribut, '') or '').strip()
+        if valeur:
+            return valeur
+    return ''
+
+
+def _verdict_par_code(conception, code):
+    """Le ``VerdictElectrique`` de CE code sur cette conception, ou ``None``.
+
+    Un verdict se désigne par son CODE (CALX215), jamais par sa position dans
+    une liste ni par un morceau de sa phrase.
+    """
+    resultat = getattr(conception, 'resultat', None)
+    for verdict in getattr(resultat, 'verdicts', ()) or ():
+        if getattr(verdict, 'code', None) == code:
+            return verdict
+    return None
+
+
+def _traces_de_derogation(conception, saisies, *, user=None):
+    """CALX215 — les traces des alertes PASSÉES OUTRE, prêtes pour le fil.
+
+    Le noyau (``core.electrique.types.passer_outre``) prononce la règle :
+    un BLOQUANT ne se passe jamais outre, un auteur vide ou un motif vide ne
+    sont pas relisibles, un horodatage sans fuseau n'est pas opposable. Ce
+    service ne la redit pas — il l'APPELLE, et traduit son refus en refus
+    nommant le champ fautif (règle fondateur 08/09/2026).
+
+    Fonction PURE : elle reçoit la ``Conception`` déjà calculée, ne lit aucune
+    base et n'écrit rien — c'est ``enregistrer_entree`` qui pose le fil.
+    """
+    from django.utils import timezone
+
+    from core.electrique.types import passer_outre
+
+    if not isinstance(saisies, (list, tuple)):
+        raise EntreeInvalide(
+            "Les dérogations doivent être une liste d'objets "
+            "« { code, motif } ».", champ=CLE_DEROGATIONS)
+    auteur = _nom_auteur(user)
+    # UN seul instant pour tout le geste : deux dérogations posées d'un même
+    # clic ne se relisent pas à deux dates. ``timezone.now()`` est AVISÉ.
+    horodatage = timezone.now()
+    traces = []
+    for rang, saisie in enumerate(saisies, start=1):
+        champ = '%s.%d' % (CLE_DEROGATIONS, rang)
+        if not isinstance(saisie, dict):
+            raise EntreeInvalide(
+                "La dérogation n° %d doit être un objet « { code, motif } »."
+                % rang, champ=champ)
+        code = str(saisie.get('code') or '').strip()
+        verdict = _verdict_par_code(conception, code)
+        if verdict is None:
+            raise EntreeInvalide(
+                "Aucun verdict électrique ne porte le code « %s » sur cette "
+                "conception : une alerte ne se passe outre que si elle a été "
+                "réellement prononcée." % (code or '(vide)'),
+                champ='%s.code' % champ)
+        try:
+            derogation = passer_outre(
+                verdict, auteur=auteur, horodatage=horodatage,
+                motif=str(saisie.get('motif') or ''))
+        except ValueError as refus:
+            texte = str(refus)
+            # Le noyau préfixe son refus du nom du champ fautif
+            # (« auteur : … », « motif : … », « horodatage : … ») ; tout autre
+            # refus (un bloquant qu'on tente de passer outre) désigne le CODE.
+            tete = texte.split(' : ', 1)[0]
+            nomme = tete if tete in CHAMPS_DEROGATION else 'code'
+            raise EntreeInvalide(texte, champ='%s.%s' % (champ, nomme))
+        traces.append({
+            'code': derogation.code,
+            'libelle': derogation.libelle,
+            'auteur': derogation.auteur,
+            'horodatage': derogation.horodatage.isoformat(),
+            'motif': derogation.motif,
+            'texte': derogation.texte,
+        })
+    return traces
+
+
+def enregistrer_entree(calepinage, donnees, *, user=None):
     """Pose l'entrée électrique sur le calepinage (mise à jour PARTIELLE).
 
     La société n'est jamais lue d'ici : elle est celle du calepinage, et
     l'appelant (le viewset) a déjà borné l'objet. Seule la clé ``resultat``
     est écrite — AUCUN statut (règle #4).
 
+    CALX215 — ``donnees['derogations']`` (``[{code, motif}]``) est un GESTE :
+    chaque alerte passée outre part dans le FIL du calepinage avec l'AUTEUR
+    (``user``, jamais le corps de la requête) et l'instant AVISÉ posés par le
+    serveur, et n'est PAS rangée dans l'entrée. Un refus laisse le calepinage
+    intact : rien n'est écrit tant que toutes les dérogations ne tiennent pas.
+
     Raises:
-        EntreeInvalide: champ inconnu, ou corps qui n'est pas un objet.
+        EntreeInvalide: champ inconnu, corps qui n'est pas un objet, ou
+            dérogation refusée (code inconnu, bloquant, auteur ou motif vide).
     """
     if not isinstance(donnees, dict):
         raise EntreeInvalide(
@@ -485,10 +603,18 @@ def enregistrer_entree(calepinage, donnees):
             f"« {', '.join(inconnus)} ». Champs admis : "
             f"{', '.join(CHAMPS_ENTREE)}.", champ=inconnus[0])
 
+    saisies = donnees.get(CLE_DEROGATIONS)
+    reglages = {cle: valeur for cle, valeur in donnees.items()
+                if cle != CLE_DEROGATIONS}
     resultat = getattr(calepinage, 'resultat', None)
     resultat = dict(resultat) if isinstance(resultat, dict) else {}
     entree = dict(resultat.get(CLE_ENTREE) or {})
-    entree.update(donnees)
+    entree.update(reglages)
+    if CLE_DEROGATIONS in donnees:
+        conception, _materiel, _donnees, _doc = conception_du_calepinage(
+            calepinage, entree=entree)
+        _ajouter_au_fil(resultat, CLE_FIL_DEROGATIONS, _traces_de_derogation(
+            conception, saisies, user=user))
     resultat[CLE_ENTREE] = entree
     calepinage.resultat = resultat
     if getattr(calepinage, 'pk', None):
@@ -794,7 +920,14 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     norme = norme_applicable(parametres_societe(calepinage))
     cables = cables_du_calepinage(
         conception, cheminement=donnees.get('cheminement'), norme=norme,
-        layout=document)
+        layout=document,
+        # CALX209/CALX210 (crochet de phase 2) — en régime micro-onduleurs,
+        # les ``W2.1 … W2.N`` REMPLACENT la liaison AC unique dans
+        # ``resultat['cables']`` : jusqu'ici elles n'existaient que dans le
+        # bloc « micro_onduleurs », et le bordereau continuait d'afficher un
+        # câble AC forfaitaire vers un onduleur qui n'existe pas.
+        branches_ac=((micro['bloc'] or {}).get('branches')
+                     if micro['bloc'] is not None else None))
 
     # CAL132 — la check-list de protections, éditable, chaque ligne gardant
     # sa source. C'est ELLE que la nomenclature et le schéma lisent.
@@ -1267,6 +1400,13 @@ TOLERANCE_LONGUEUR_PCT = 5.0
 #: norme ni fiche ne la fixe, et aucun calcul n'en dépend.
 JOURNAL_ECARTS_MAX = 20
 
+#: Les deux FILS bornés que ce module écrit sur ``Calepinage.resultat``
+#: (JSONField existant, aucune migration) : l'écart de longueur (CAL170) et
+#: les dérogations d'alerte (CALX215). Une clé de plus voudrait dire un
+#: troisième historique à relire ; il n'y en a que deux.
+CLE_FIL_ECARTS = 'journal_longueur_chaine'
+CLE_FIL_DEROGATIONS = 'journal_derogations'
+
 
 def _dans_la_tolerance(reference, ecart):
     """L'écart tient-il dans l'une des deux tolérances (modules OU %) ?"""
@@ -1338,6 +1478,23 @@ def plafond_modules(plafond_kwc, puissance_module_wc):
     return plafond_modules_pour_kwc(float(plafond_kwc), puissance)
 
 
+def _ajouter_au_fil(resultat, cle, entrees):
+    """Ajoute des entrées à UN fil BORNÉ de ``Calepinage.resultat``.
+
+    L'unique mécanique d'écriture d'un fil du module : l'écart de longueur
+    (CAL170) et la dérogation d'alerte (CALX215) passent par ICI. Une seconde
+    mécanique voudrait dire deux tailles de tampon, deux formes de liste et
+    deux façons d'écraser un historique.
+
+    Rend le fil tel qu'il est désormais posé sur ``resultat`` (jamais ``None``).
+    """
+    fil = resultat.get(cle)
+    fil = list(fil) if isinstance(fil, list) else []
+    fil.extend(entrees)
+    resultat[cle] = fil[-JOURNAL_ECARTS_MAX:]
+    return resultat[cle]
+
+
 def journaliser_ecart_longueur(calepinage, reconciliation):
     """Journalise un écart moteur↔fiche HORS TOLÉRANCE, historique conservé.
 
@@ -1357,15 +1514,12 @@ def journaliser_ecart_longueur(calepinage, reconciliation):
 
     resultat = getattr(calepinage, 'resultat', None)
     resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    journal = resultat.get('journal_longueur_chaine')
-    journal = list(journal) if isinstance(journal, list) else []
-    journal.append({
+    fil = _ajouter_au_fil(resultat, CLE_FIL_ECARTS, [{
         'longueur': reconciliation.get('longueur'),
         'longueur_dossier': reconciliation.get('longueur_dossier'),
         'ecart': reconciliation.get('ecart'),
         'par_pan': reconciliation.get('par_pan') or {},
-    })
-    resultat['journal_longueur_chaine'] = journal[-JOURNAL_ECARTS_MAX:]
+    }])
     calepinage.resultat = resultat
     if getattr(calepinage, 'pk', None):
         try:
@@ -1374,7 +1528,7 @@ def journaliser_ecart_longueur(calepinage, reconciliation):
             logging.getLogger(__name__).exception(
                 'CAL170 : journal d écart non enregistré (calepinage %s)',
                 getattr(calepinage, 'pk', None))
-    return resultat['journal_longueur_chaine']
+    return fil
 
 
 def parametres_societe(calepinage):

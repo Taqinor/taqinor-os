@@ -285,13 +285,23 @@ def specs_module(specs, designation=''):
 
 
 def specs_onduleur(specs, designation=''):
-    """``(SpecOnduleur | None, manquantes)`` depuis un bloc ``onduleur``."""
+    """``(SpecOnduleur | None, manquantes)`` depuis un bloc ``onduleur``.
+
+    CALX213 (crochet posé par la phase 2 du lot 4) — ``s_max_kva`` et
+    ``dc_max_kwc`` sont publiés par ``apps.stock.selectors.specs_for_produit``
+    (champs de fiche CALX60) et recopiés ICI : sans cette recopie, les deux
+    bornes n'atteignaient JAMAIS ``SpecOnduleur``, donc ni le verdict
+    d'onduleur (``core/electrique/onduleurs.py``) ni la puissance apparente du
+    raccordement (``services/raccordement.py``) ne pouvaient les lire. Elles
+    restent OPTIONNELLES : une fiche muette ne déclenche aucun contrôle.
+    """
     manquantes = _manquantes(specs, CHAMPS_ONDULEUR)
     if manquantes:
         return (None, manquantes)
     specs = dict(specs)
     optionnels = {}
-    for cle in ('rendement_euro_pct', 'v_demarrage_v', 'isc_max_mppt_a'):
+    for cle in ('rendement_euro_pct', 'v_demarrage_v', 'isc_max_mppt_a',
+                's_max_kva', 'dc_max_kwc'):
         valeur = _nombre(specs.get(cle))
         if valeur is not None:
             optionnels[cle] = valeur
