@@ -1328,6 +1328,19 @@ jobs:
         run: python scripts/check_stages.py
       - name: Check module registry <-> frontend consistency (ODX21)
         run: python scripts/check_modules.py
+      # SOLMVP53 — les 47 apps sorties du MVP solaire (décision fondateur du
+      # 20/09/2026) sont des COQUILLES de migrations : plus de code, plus
+      # d'urls, plus de tâche beat, plus d'écran. Le moindre import / FK par
+      # chaîne / include d'urls / entrée beat qui les vise casse le boot ou,
+      # pire, passe en silence en livrant un écran mort. Cette garde est le
+      # cliquet permanent. ICI et pas dans `backend-lint` : `stage-names` est
+      # le seul job NON GATÉ, donc une PR purement frontend (règle d :
+      # `frontend/src` qui importe `frontend/parked`) le déclenche aussi.
+      # Stdlib pure, ni base ni Django ni dépendance (~10 s).
+      - name: Check apps parquées (SOLMVP53 — aucun import/FK/url/beat vers une app sortie)
+        run: python scripts/check_parked_apps.py
+      - name: Tests de la garde apps parquées (SOLMVP53)
+        run: python -m unittest scripts.tests.test_check_parked_apps -v
       # CONTRAT FRONT<->BACK (incident du 03/08/2026 : l'écran AO Bibliothèque
       # appelait /ao/bibliotheque/, une route jamais enregistrée -> 404 en
       # production ; 8 autres ressources du même module étaient dans le même
