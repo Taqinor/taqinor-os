@@ -152,6 +152,11 @@ class EventType(models.TextChoices):
     # télématique (manuel ou fournisseur).
     FLOTTE_DTC_CRITIQUE = (
         'flotte_dtc_critique', 'Code défaut moteur critique (DTC)')
+    # ZGED14 — une demande de signature en attente approche de son expiration
+    # (versant ÉMETTEUR, complète les relances SIGNATAIRE de XGED2).
+    GED_SIGNATURE_EXPIRATION_PROCHE = (
+        'ged_signature_expiration_proche',
+        'Demande de signature bientôt expirée')
     # YEVNT2 — un devis envoyé a expiré automatiquement (QJ5, date de
     # validité dépassée) sans action du propriétaire.
     DEVIS_EXPIRED = 'devis_expired', 'Devis expiré'

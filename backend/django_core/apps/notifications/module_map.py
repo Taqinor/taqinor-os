@@ -44,6 +44,7 @@ EVENT_TYPE_MODULE = {
     # ne retire que les imports notifications→{gestion_projet,chat}).
     'projet_retard': 'gestion_projet',
     'projet_statut_change': 'gestion_projet',
+    'ged_signature_expiration_proche': 'ged',
     'chat_message': 'chat',
     'monitoring_rapport': 'monitoring',
     'veille_ao_nouveaux_avis': 'veille_ao',

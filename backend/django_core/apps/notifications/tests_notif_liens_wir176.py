@@ -4,9 +4,10 @@ Chaque site producteur de ``link=`` dans ``signals.py``/``sweeps.py``/
 ``apps.adminops.impersonation_service`` pointait vers une route INEXISTANTE
 côté front (ex. ``/sav/tickets/<pk>``, ``/leads/<pk>``, ``/factures/<pk>``,
 ``/gestion-projet/projets/<pk>``, ``/automation/approvals/<pk>``,
-``/installations/…``, ``/admin/impersonation/<pk>``). Ce module vérifie, par
-catégorie (calqué sur ``tests_qx12_devis_links.py``), que le ``link`` posé
-correspond désormais à une route RÉELLE :
+``/installations/…``, ``/ged/documents/<pk>``,
+``/admin/impersonation/<pk>``). Ce module vérifie, par catégorie (calqué sur
+``tests_qx12_devis_links.py``), que le ``link`` posé correspond désormais à
+une route RÉELLE :
   - ``/sav?id=<pk>``            — TicketsPage (SAV_TICKET_OPENED/RESOLU,
     SAV_EQUIPEMENT_REMPLACE, SAV_TICKET_BREACHING, SAV_ACTIVITE_DUE) ;
   - ``/crm/leads?lead=<pk>``    — LeadsPage (LEAD_ASSIGNED), format préservé
@@ -18,8 +19,7 @@ correspond désormais à une route RÉELLE :
   - ``/projets/<pk>``           — route directe `/projets/:id` (PROJET_STATUT_
     CHANGE) ;
   - ``/approbations?source=…``  — boîte unique XKB1, filtrée par la source
-    réelle de l'agrégateur (automation/installations ; SOLMVP19 : la source
-    ged est sortie avec l'app ged) ;
+    réelle de l'agrégateur (automation/installations/ged) ;
   - ``/equipements`` / ``/sav/contrats`` / ``/chantiers/demandes-achat`` —
     écrans de liste réels (WARRANTY_EXPIRING/MAINTENANCE_DUE/DA_SOUMISE_STALE,
     pas de deep-link vérifié côté page : jamais un paramètre fabriqué) ;
@@ -249,7 +249,7 @@ class ProjetStatutChangeLinkTests(TestCase):
         self.assertNotIn('/gestion-projet/', notif.link)
 
 
-# ── Approbations : automation / installations → boîte unique XKB1 ─────────
+# ── Approbations : automation / installations / ged → boîte unique XKB1 ────
 
 class ApprobationsSourceLinkTests(TestCase):
     def test_automation_approval_link_uses_approbations_source(self):
@@ -289,6 +289,26 @@ class ApprobationsSourceLinkTests(TestCase):
             recipient=approver, event_type=EventType.APPROVAL_REQUESTED)
         self.assertEqual(notif.link, '/approbations?source=installations')
         self.assertNotIn('/installations/demandes-achat/', notif.link)
+
+    def test_ged_demande_approbation_link_uses_approbations_source(self):
+        from apps.ged import services as ged_services
+        from apps.ged.models import Cabinet, Document, Folder
+
+        company = _make_company('Wir176GedCo')
+        approver = _make_user(company, 'wir176-ged-approver', role_legacy='admin')
+        requester = _make_user(company, 'wir176-ged-requester')
+        cabinet = Cabinet.objects.create(company=company, nom='Admin')
+        folder = Folder.objects.create(
+            company=company, cabinet=cabinet, nom='Dossier WIR176')
+        doc = Document.objects.create(
+            company=company, folder=folder, nom='Contrat WIR176')
+
+        ged_services.request_review(doc, user=requester)
+
+        notif = Notification.objects.get(
+            recipient=approver, event_type=EventType.APPROVAL_REQUESTED)
+        self.assertEqual(notif.link, '/approbations?source=ged')
+        self.assertNotIn('/ged/documents/', notif.link)
 
 
 # ── CHT7 — CHANTIER_ASSIGNE / chantier_card / DA_DECIDEE (installations) ──
