@@ -842,6 +842,11 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
 # (recette du 08/09), et un job système (le placement « contact » du 11/09
 # par-dessus un après-devis actif — lead #348) est neutralisé net.
 _PRIORITE_CADENCE = {'reveil': 0, 'generique': 1, 'contact': 2,
+                     # CAD128 — « deuxième affaire » a la MÊME priorité que
+                     # la prise de contact : c'est le même moment du cycle
+                     # (l'ouverture), pour un client acquis. Elle ne prend
+                     # donc jamais la place d'un suivi après-devis en cours.
+                     'deuxieme_affaire': 2,
                      'apres_devis': 3}
 
 
@@ -2439,6 +2444,15 @@ def _garde_cadence_contact(lead):
             lead.company, phone=lead.telephone, email=lead.email,
             exclude_pk=lead.pk)
         if not autre.is_archived and not autre.perdu]
+    # CAD128 — un homonyme SIGNÉ n'est pas un doublon vivant : c'est un CLIENT
+    # qui revient, le meilleur lead du portefeuille. Il sort de la garde
+    # UNIQUEMENT couplé à la cadence courte « deuxième affaire »
+    # (``demarrer_cadence_contact`` la lance à sa place) — jamais le protocole
+    # contact, six appels sur quatorze jours sur quelqu'un qui a déjà acheté.
+    if doublons and all(d.stage == stages.SIGNED for d in doublons):
+        return ('deuxieme_affaire',
+                'client déjà signé qui revient — cadence courte « deuxième '
+                'affaire », jamais le protocole contact')
     if doublons:
         refs = ', '.join(f'#{d.pk}' for d in doublons[:3])
         return ('doublon',
@@ -2485,6 +2499,10 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
         garde = _garde_cadence_contact(lead)
         if garde is not None:
             code, motif = garde
+            if code == 'deuxieme_affaire':
+                # CAD128 — le client acquis prend la cadence COURTE. Les deux
+                # fiches sont LIÉES par une note, jamais fusionnées d'office.
+                return _demarrer_deuxieme_affaire(lead, user)
             if code in _GARDES_CADENCE_TRACEES:
                 # MRY6/MRY10 — les deux refus « rattrapables à la main » sont
                 # ÉCRITS : sans numéro exploitable ou sur un doublon vivant,
@@ -9032,3 +9050,70 @@ def cle_identite_pour_lead(lead, cle_gabarit, *, reference=None):
 
     canal = (getattr(lead, 'canal', None) or '').strip()
     return CLE_IDENTITE_PAR_CANAL.get(canal, cle_gabarit)
+
+
+# ── CAD-J ── CAD128 — le client DÉJÀ SIGNÉ qui redemande un devis ─────────
+#
+# La garde doublon retenait tout lead partageant le téléphone ou l'e-mail et
+# n'écartait que les archivés et les perdus : une fiche SIGNÉE était donc un
+# doublon vivant, et le meilleur lead du portefeuille — il a déjà acheté —
+# repartait sans protocole, avec une simple ligne « doublon possible de #… ».
+#
+# Version RÉDUITE du round 2 : SIGNED sort de la garde **uniquement couplé**
+# à une cadence courte « deuxième affaire », avec son propre texte — jamais
+# le protocole contact, six appels sur quatorze jours sur un client acquis.
+#
+# Garde-fou : les deux fiches sont LIÉES par une note d'historique, JAMAIS
+# fusionnées d'office. Le volume (signés partageant un téléphone avec un lead
+# actif) est l'un des comptages de CADM7 : la liaison en base, s'il en faut
+# une, se décidera là — pas ici.
+
+#: Le nom de la cadence courte. Valeur de
+#: ``parametres.Cadence.DEUXIEME_AFFAIRE``, reprise en littéral comme les
+#: autres noms de cadence de ce module.
+CADENCE_DEUXIEME_AFFAIRE = 'deuxieme_affaire'
+
+
+def homonymes_signes(lead):
+    """Les fiches SIGNÉES qui partagent le téléphone ou l'e-mail de ``lead``.
+
+    Lecture pure (aucune écriture) : sert à la garde, au geste manuel et au
+    test. Les archivés et les perdus n'en font jamais partie.
+    """
+    if lead is None:
+        return []
+    return [
+        autre for autre in find_duplicates_by_contact(
+            lead.company, phone=lead.telephone, email=lead.email,
+            exclude_pk=lead.pk)
+        if not autre.is_archived and not autre.perdu
+        and autre.stage == stages.SIGNED
+    ]
+
+
+def _demarrer_deuxieme_affaire(lead, user):
+    """CAD128 — lance la cadence COURTE et LIE les deux fiches.
+
+    Renvoie les touches créées (liste vide si la cadence ne peut pas partir —
+    même tolérance que le reste du moteur : jamais d'exception vers
+    l'appelant).
+    """
+    anciens = homonymes_signes(lead)
+    refs = ', '.join(f'#{autre.pk}' for autre in anciens[:3])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'Client déjà signé qui revient (fiche {refs or "?"}) — '
+              'cadence courte « deuxième affaire » lancée, PAS le protocole '
+              'de prise de contact. Les deux fiches restent distinctes : '
+              'aucune fusion automatique.'))
+    for ancien in anciens[:3]:
+        # La liaison est SYMÉTRIQUE : depuis la fiche signée, on doit voir
+        # qu'une deuxième affaire est partie — sinon personne ne le sait.
+        LeadActivity.objects.create(
+            company=lead.company, lead=ancien, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Nouvelle demande de ce client : fiche #{lead.pk} — '
+                  'cadence courte « deuxième affaire ».'))
+    return initialiser_plan_relance(
+        lead, user, cadence=CADENCE_DEUXIEME_AFFAIRE, depart=timezone.now())

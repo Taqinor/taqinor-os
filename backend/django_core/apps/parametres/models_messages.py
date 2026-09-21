@@ -370,6 +370,9 @@ CLES_RELANCE = [
     'identite_telephone',
     'identite_whatsapp_entrant',
     'identite_ancien_dossier',
+    # CAD128 — le client DÉJÀ SIGNÉ qui redemande un devis : cadence courte,
+    # texte propre. Jamais le protocole contact sur un client acquis.
+    'deuxieme_affaire',
 ]
 
 #: CAD60 (21/09/2026) — les textes à ENVOI MANUEL, hors cadence.
@@ -473,6 +476,10 @@ class MessageTemplate(models.Model):
         IDENTITE_ANCIEN_DOSSIER = (
             'identite_ancien_dossier',
             "Identité — dossier ancien repris")
+        # CAD128 — client déjà signé qui revient.
+        DEUXIEME_AFFAIRE = (
+            'deuxieme_affaire',
+            "Identité — client déjà signé qui revient")
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -669,3 +676,22 @@ CLE_IDENTITE_PAR_CANAL = {
     'walk_in': 'identite_telephone',
     'whatsapp_ctwa': 'identite_whatsapp_entrant',
 }
+
+
+# ── CAD128 (21/09/2026) — LE CLIENT DÉJÀ SIGNÉ QUI REVIENT ────────────────
+#
+# La garde doublon retenait tout lead partageant le téléphone ou l'e-mail et
+# n'écartait que les archivés et les perdus : une fiche SIGNÉE était donc un
+# doublon vivant, et le meilleur lead du portefeuille — il a déjà acheté —
+# repartait sans protocole, avec une simple ligne « doublon possible de #… ».
+#
+# Son texte lui est propre : on ne se présente pas à quelqu'un qui nous
+# connaît. GARDE-FOU « zéro chiffre inventé » : AUCUN mois n'est cité. La
+# tâche l'illustrait par « nous avons déjà installé chez vous en {mois} »,
+# mais rien ne relie encore les deux fiches en base (la liaison se fait par
+# une note d'historique, pas par un champ) : plutôt qu'une date approximative,
+# le mois est OMIS. Il reviendra le jour où CADM7 tranchera la liaison.
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    'deuxieme_affaire':
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Nous avons déjà travaillé ensemble sur votre première installation — merci de nous redonner votre confiance. Dites-moi ce que vous souhaitez équiper cette fois et je vous prépare l'étude ; je vous appelle dans quelques minutes.",
+})

@@ -44,6 +44,18 @@ dans un texte client utilise le rôle « le fondateur », jamais son prénom.
 FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. Vous venez de nous laisser une demande pour le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
 DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
 
+**CAD128 (21/09/2026) — le client DÉJÀ SIGNÉ qui redemande un devis.** La garde doublon retenait tout lead partageant
+le téléphone ou l'e-mail et n'écartait que les archivés et les perdus : une fiche SIGNÉE était donc un « doublon
+vivant », et le meilleur lead du portefeuille repartait sans protocole. Il reçoit désormais une cadence COURTE
+(« deuxième affaire ») : les DEUX PREMIÈRES touches du protocole validé — message puis appel d'ouverture trois minutes
+après — et rien d'autre. Jamais six appels sur quatorze jours sur quelqu'un qui a déjà acheté. **Zéro chiffre
+inventé :** le texte ne cite AUCUN mois. La tâche l'illustrait par « nous avons déjà installé chez vous en [mois] »,
+mais rien ne relie encore les deux fiches en base (la liaison se fait par une note d'historique, jamais une fusion
+d'office) — plutôt qu'une date approximative, le mois est OMIS. Il reviendra si CADM7 tranche la liaison.
+
+### deuxieme_affaire — client déjà signé qui revient (cadence courte)
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Nous avons déjà travaillé ensemble sur votre première installation — merci de nous redonner votre confiance. Dites-moi ce que vous souhaitez équiper cette fois et je vous prépare l'étude ; je vous appelle dans quelques minutes.
+
 **CAD127 (21/09/2026) — le premier message dit la VÉRITÉ sur l'origine.** « Vous venez de remplir notre formulaire »
 est faux pour la moitié des origines : la même cadence part pour un lead arrivé par téléphone, en boutique, par
 recommandation, depuis un salon, repositionné par l'écran de placement, ou né d'une conversation entrante (CTWA,

@@ -64,6 +64,13 @@ class Cadence(models.TextChoices):
     APRES_DEVIS = 'apres_devis', 'Après devis'
     REVEIL = 'reveil', 'Réveil'
     GENERIQUE = 'generique', 'Générique (historique)'
+    # CAD128 (21/09/2026) — la cadence COURTE d'un client DÉJÀ ACQUIS qui
+    # redemande un devis. Elle n'est PAS une variante du protocole contact :
+    # six appels sur quatorze jours à quelqu'un qui a déjà acheté serait
+    # insultant. Deux touches seulement, et elles ne sont pas inventées —
+    # ce sont les DEUX PREMIÈRES du protocole validé (message d'identité,
+    # puis appel d'ouverture trois minutes après), arrêtées là.
+    DEUXIEME_AFFAIRE = 'deuxieme_affaire', 'Deuxième affaire (client acquis)'
 
 
 # ── Protocole de rappel v3 (04/09/2026) ─────────────────────────────────────
@@ -175,6 +182,21 @@ CADENCE_REVEIL_DEFAUT = [
      'template_cle': 'reveil_a2', 'dimanche_ok': False},
 ]
 
+# CAD128 (21/09/2026) — DEUXIÈME AFFAIRE : un client SIGNÉ qui redemande un
+# devis est le meilleur lead du portefeuille (il a déjà acheté), et la garde
+# doublon le renvoyait sans protocole. Il reçoit ici une cadence COURTE, avec
+# son propre texte — jamais les six appels sur quatorze jours du protocole
+# contact.
+#
+# Les deux barreaux ne sont PAS inventés : ce sont les DEUX PREMIERS du
+# protocole validé (`CADENCE_CONTACT_DEFAUT`, message d'identité puis appel
+# d'ouverture trois minutes après), arrêtés là. Seule la clé de message du
+# premier change — un client acquis ne se présente pas, on le retrouve.
+CADENCE_DEUXIEME_AFFAIRE_DEFAUT = [
+    dict(CADENCE_CONTACT_DEFAUT[0], template_cle='deuxieme_affaire'),
+    dict(CADENCE_CONTACT_DEFAUT[1], template_cle='appel_ouverture'),
+]
+
 #: Cadence -> gabarit par défaut. ``generique`` garde EXACTEMENT les 5
 #: barreaux historiques (aucune réécriture rétroactive).
 CADENCES_DEFAUT = {
@@ -182,6 +204,7 @@ CADENCES_DEFAUT = {
     Cadence.APRES_DEVIS: CADENCE_APRES_DEVIS_DEFAUT,
     Cadence.REVEIL: CADENCE_REVEIL_DEFAUT,
     Cadence.GENERIQUE: CADENCE_RELANCE_DEFAUT,
+    Cadence.DEUXIEME_AFFAIRE: CADENCE_DEUXIEME_AFFAIRE_DEFAUT,
 }
 
 
