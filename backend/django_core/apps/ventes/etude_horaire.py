@@ -1075,9 +1075,13 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
             if ve_kwh_jour > 0 and (not ve_saisons or saison in ve_saisons):
                 ve_jour_actif = ve_kwh_jour
 
+        # CAD173 (Q12) — le MOIS est passé au compositeur : clim et piscine
+        # suivent l'été de la FACTURE (mai→octobre), plus l'été PVGIS
+        # (juin-août). Les deux « étés » du moteur n'en font plus qu'un.
         conso_24h, couches_horaires = forme_consommation_detaillee(
             conso_jour_kwh + ve_jour_actif, occupation, saison=saison,
-            equipements=couches, ramadan=contexte_ramadan.get(numero))
+            equipements=couches, ramadan=contexte_ramadan.get(numero),
+            mois=numero)
 
         # L-GLITCH — la chronologie FINE du même jour type, posée ICI et nulle
         # part ailleurs : le balayage du stockage (DIM2) et l'étude complète
@@ -1186,10 +1190,13 @@ def estimation_conso_mensuelle(conso_kwh_mensuelles, equipements):
                 continue
             kw = _num(couche.get('kw'))
             heures = couche.get('heures') or ()
-            saisons = couche.get('saisons')
             if kw <= 0 or not heures:
                 continue
-            if saisons and saison not in saisons:
+            # CAD173 (Q12) — MÊME porte que le compositeur de forme : le mois
+            # décide, pas la saison PVGIS. Deux portes différentes
+            # publieraient au client d'autres mois que ceux réellement servis.
+            from .courbes_journalieres import couche_saisonniere_active
+            if not couche_saisonniere_active(couche, mois=numero):
                 continue
             brutes[cle] = kw * len(heures) * jours
 
@@ -2009,6 +2016,17 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
             auto_jour_sans = auto_jour_horaire
             batterie = batterie_horaire
 
+        # ── CAD165 (4) ── LA MÊME GARDE DES DEUX CÔTÉS. Seule l'option AVEC
+        # batterie était bornée : l'option SANS pouvait donc annoncer une
+        # autoconsommation SUPÉRIEURE à la consommation de référence du
+        # client (9 197 kWh contre 7 838 mesurés par l'audit du 21/09/2026,
+        # reproduit deux fois, avec une couche véhicule électrique et un
+        # chargeur de 3,7 à 4,0 kW). Un chiffre qui dépasse la consommation
+        # qu'il est censé couvrir est faux quelle que soit sa cause : la
+        # borne est posée AVANT que l'option AVEC ne s'y ajoute, exactement
+        # la même, avec les mêmes deux plafonds.
+        auto_jour_sans = min(auto_jour_sans, conso_jour_kwh, prod_jour_kwh)
+
         auto_jour_avec = auto_jour_sans + batterie['restitue_kwh']
         # Garde d'honnêteté : on n'autoconsomme jamais plus que ce que le
         # client consomme, ni plus que ce que le champ produit.
@@ -2474,13 +2492,20 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
 
 def profil_depuis_factures(*, facture_hiver_mad=None, facture_ete_mad=None,
                            ete_differente=False, factures_mensuelles_mad=None,
-                           conso_kwh_mensuelles=None, tranches=None,
+                           conso_kwh_mensuelles=None,
+                           conso_kwh_mensuelle_unique=None, tranches=None,
                            charges_fixes_mad=None, tppan=True):
     """Résout la série 12 mois en kWh depuis ce que le client a réellement donné.
 
     Ordre de PRIORITÉ (le plus réel d'abord) :
 
     1. ``conso_kwh_mensuelles`` — 12 kWh déjà mesurés (le cas idéal) ;
+    1 bis. ``conso_kwh_mensuelle_unique`` — UNE consommation mensuelle en kWh
+       déclarée sur la fiche (CAD166, décision fondateur du 21/09/2026 : « les
+       kWh saisis passent en PRIORITÉ 1 ; les montants en dirhams inversés au
+       barème ne servent que s'ils sont absents »). Elle est répétée sur les
+       douze mois — exactement l'honnêteté de la facture d'hiver répétée plus
+       bas, mais SANS l'inversion au barème, donc sans son incertitude ;
     2. ``factures_mensuelles_mad`` — 12 factures RÉELLES saisies
        (``etude_params['factures_mensuelles_reelles']``), back-calculées une à
        une : c'est la seule source qui porte une VRAIE variation mensuelle ;
@@ -2493,6 +2518,11 @@ def profil_depuis_factures(*, facture_hiver_mad=None, facture_ete_mad=None,
         valeurs = [max(0.0, _num(v)) for v in conso_kwh_mensuelles]
         if any(v > 0 for v in valeurs):
             return valeurs, 'kwh_mensuels_saisis', {'methode': 'saisie_directe'}
+
+    unique = _num(conso_kwh_mensuelle_unique)
+    if unique > 0:
+        return ([unique] * 12, 'kwh_mensuel_saisi',
+                {'methode': 'saisie_directe_mois_unique'})
 
     if factures_mensuelles_mad and len(factures_mensuelles_mad) == 12:
         valeurs = [_num(v) for v in factures_mensuelles_mad]
@@ -2991,12 +3021,19 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
     factures_mensuelles = etude_params.get('factures_mensuelles_reelles')
 
     bills = lead_bills_for_devis(devis) or {}
+    # CAD166 — les kWh DÉCLARÉS sur la fiche arrivent enfin jusqu'ici, et
+    # priment sur les dirhams inversés au barème (décision fondateur du
+    # 21/09/2026). Lecture cross-app par un sélecteur DISTINCT de
+    # ``lead_bills_for_devis`` : ce dernier n'existe que s'il y a une facture
+    # d'hiver, alors que le dossier pro visé n'a souvent QUE des kWh.
+    from apps.crm.selectors import conso_mensuelle_kwh_pour_devis
     conso, source_conso, detail_conso = profil_depuis_factures(
         facture_hiver_mad=bills.get('facture_hiver'),
         facture_ete_mad=bills.get('facture_ete'),
         ete_differente=bills.get('ete_differente'),
         factures_mensuelles_mad=factures_mensuelles,
         conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'),
+        conso_kwh_mensuelle_unique=conso_mensuelle_kwh_pour_devis(devis),
         tranches=tranches, charges_fixes_mad=charges_fixes)
     if not conso:
         return None
@@ -3070,3 +3107,105 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
     if resultat is not None:
         resultat['occupation_source'] = occupation_source
     return resultat
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CAD170 — LA RECHARGE NOCTURNE SE COUVRE PAR LE STOCKAGE, PAS PAR UN CONSEIL
+# ════════════════════════════════════════════════════════════════════════════
+#
+# LE CAS MAJORITAIRE. La fenêtre de recharge par défaut est 21h-6h : la voiture
+# se charge quand le champ ne produit plus. L'audit du 21/09/2026 a mesuré
+# l'effet sur l'autoconsommation — NUL, même avec une batterie de 10 kWh
+# (reproduit deux fois par ses relecteurs).
+#
+# LA DÉCISION FONDATEUR (21/09/2026). On ne conseille PAS « rechargez de
+# jour » comme argument principal : on DIMENSIONNE la batterie pour couvrir la
+# recharge nocturne. Le conseil de décaler la recharge est ÉCARTÉ — le gain
+# chiffré qui le soutenait était gonflé par l'absence de borne que CAD165 (4)
+# a corrigée.
+#
+# LES DEUX BORNES, et pourquoi elles ne sont pas négociables :
+#   · l'énergie ajoutée est celle que le moteur PLACE déjà (``kwh_jour`` de la
+#     couche véhicule, dérivée des km déclarés et de la conversion ADEME) —
+#     aucune consommation de recharge n'est inventée ici ;
+#   · le besoin est ensuite servi par une TAILLE D'OFFRE RÉELLEMENT VENDUE :
+#     jamais une batterie sur mesure, jamais au-delà du catalogue. Sans
+#     catalogue, aucune taille n'est proposée — l'omission est nommée.
+
+
+def _couche_ve_nocturne(equipements):
+    """La couche véhicule quand sa recharge est ENTIÈREMENT nocturne, sinon None.
+
+    « Nocturne » n'est pas un horaire choisi ici : c'est la fenêtre
+    heures-creuses que le module de courbes documente déjà
+    (``courbes_journalieres.VE_CRENEAUX['nuit']``). Une recharge déclarée de
+    jour ou de soirée n'entre donc pas dans ce calcul."""
+    couche = (equipements or {}).get('ve') or {}
+    heures = couche.get('heures') or []
+    if not heures:
+        return None
+    try:
+        from .courbes_journalieres import VE_CRENEAUX
+        nuit = set(VE_CRENEAUX['nuit'])
+    except Exception:  # noqa: BLE001 — sans fenêtre de référence, on s'abstient
+        return None
+    return couche if set(heures) <= nuit else None
+
+
+def recharge_ve_nocturne_kwh_jour(equipements) -> float:
+    """kWh/jour de recharge NOCTURNE à couvrir, ou ``0.0``.
+
+    Pas de couche véhicule, ou recharge déclarée hors de la nuit ⇒ ``0.0`` :
+    il n'y a alors rien à ajouter au stockage."""
+    couche = _couche_ve_nocturne(equipements)
+    if couche is None:
+        return 0.0
+    return max(0.0, _num(couche.get('kwh_jour')))
+
+
+def besoin_stockage_avec_recharge_ve(besoin_kwh, equipements,
+                                     tailles_offre_kwh) -> dict:
+    """CAD170 — le besoin de stockage AUGMENTÉ de la recharge nocturne.
+
+    ``besoin_kwh``       le besoin de stockage établi par ailleurs (kWh) ;
+    ``equipements``      les couches de ``composer_equipements`` ;
+    ``tailles_offre_kwh`` les capacités RÉELLEMENT VENDUES (catalogue).
+
+    Renvoie ``{besoin_base_kwh, recharge_ve_kwh, besoin_total_kwh,
+    taille_retenue_kwh, plafonne, motif}``.
+
+    La taille retenue est la PLUS PETITE taille d'offre qui couvre le besoin
+    total ; si aucune ne le couvre, c'est la PLUS GRANDE, et ``plafonne`` vaut
+    True avec son motif — jamais une capacité hors catalogue, jamais une
+    batterie sur mesure. Sans catalogue, ``taille_retenue_kwh`` vaut ``None``
+    et le motif nomme ce qui manque (aucune taille inventée)."""
+    base = max(0.0, _num(besoin_kwh))
+    recharge = recharge_ve_nocturne_kwh_jour(equipements)
+    total = base + recharge
+    tailles = sorted({round(max(0.0, _num(t)), 3)
+                      for t in (tailles_offre_kwh or []) if _num(t) > 0})
+    sortie = {
+        'besoin_base_kwh': round(base, 2),
+        'recharge_ve_kwh': round(recharge, 2),
+        'besoin_total_kwh': round(total, 2),
+        'taille_retenue_kwh': None,
+        'plafonne': False,
+        'motif': '',
+    }
+    if not tailles:
+        sortie['motif'] = (
+            "aucune taille d'offre connue : le besoin est chiffré, la "
+            "capacité à vendre reste à choisir dans le catalogue — jamais "
+            "une batterie sur mesure.")
+        return sortie
+    couvrantes = [t for t in tailles if t >= total]
+    if couvrantes:
+        sortie['taille_retenue_kwh'] = couvrantes[0]
+        return sortie
+    sortie['taille_retenue_kwh'] = tailles[-1]
+    sortie['plafonne'] = True
+    sortie['motif'] = (
+        f"besoin de {round(total, 2)} kWh plafonné à la plus grande taille "
+        f"vendue ({tailles[-1]} kWh) : au-delà du catalogue, on ne compose "
+        "pas une batterie sur mesure.")
+    return sortie

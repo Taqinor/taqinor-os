@@ -6,7 +6,8 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('crm', '0104_cad118_issue_de_touche'),
+        # Rebasée au fold du 21/09 (voir 0107) : chaîne linéaire, additive.
+        ('crm', '0107_cad118_issue_de_touche'),
     ]
 
     operations = [

@@ -6,7 +6,10 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('crm', '0103_stkcat9_lead_structure_produit'),
+        # Rebasée au fold du 21/09 : la chaîne crm a avancé (CAD149/154/167)
+        # pendant que cette lane construisait. Une seule feuille, jamais un
+        # `--merge` : la migration est purement additive.
+        ('crm', '0106_cad167_distributeur_srm'),
     ]
 
     operations = [
