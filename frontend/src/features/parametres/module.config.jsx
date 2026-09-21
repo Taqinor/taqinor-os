@@ -3,7 +3,7 @@
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
 import {
-  MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
+  ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
   Route, Layers, Repeat, Trash2,
@@ -25,16 +25,14 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    Sidebar.jsx et dans le même bloc legacy de index.jsx) — aucune des 6 apps
    citées par ARC54 ne le possède plus naturellement.
 
-   WIR13 — Territoires (`Territoires.jsx`, NTCRM3) était construit/testé mais
-   monté nulle part (ni route, ni menu). `parametres` n'étant PAS l'une des 6
-   clés legacy (cf. `LEGACY_NAV_KEYS` dans Sidebar.jsx), une section `nav`
-   posée ici est auto-collectée par le registre générique (`moduleNavSections`,
-   router/moduleRoutes.jsx) et insérée juste avant ADMINISTRATION.
-
-   WIR14 — même mécanisme pour Playbooks (`Playbooks.jsx`, NTCRM13, CRUD des
-   playbooks/étapes/tâches par stage STAGES.py) : construit/testé, monté nulle
-   part. Deux liens dans la section `nav` ci-dessous ; les autres routes
-   ci-dessus restent routes-only, comme documenté ci-dessus.
+   WIR14 — Playbooks (`Playbooks.jsx`, NTCRM13, CRUD des playbooks/étapes/
+   tâches par stage STAGES.py) était construit/testé mais monté nulle part
+   (ni route, ni menu). `parametres` n'étant PAS l'une des 6 clés legacy
+   (cf. `LEGACY_NAV_KEYS` dans Sidebar.jsx), une section `nav` posée ici est
+   auto-collectée par le registre générique (`moduleNavSections`,
+   router/moduleRoutes.jsx) et insérée juste avant ADMINISTRATION. Un lien
+   dans la section `nav` ci-dessous ; les autres routes ci-dessus restent
+   routes-only, comme documenté ci-dessus.
 
    ODY23 — « admin/roles/users/paramètres → app Paramètres » (une seule app,
    pas deux) : la section `nav` gagne ici (a) un item « Aperçu » vers le
@@ -88,10 +86,6 @@ const Journal = lazy(() => import('../../pages/Journal'))
 // admin, reflète `IsResponsableOrAdmin` côté backend — `toutes-company/`/
 // `export-xlsx/` de SavedViewViewSet).
 const VuesConfigurationPage = lazy(() => import('../../pages/parametres/VuesConfigurationPage'))
-// WIR13/NTCRM3 — Territoires (règles d'affectation auto des leads entrants
-// par zone/segment/secteur) — réservé responsable/admin, comme documenté en
-// tête de `Territoires.jsx` (le backend applique déjà le RBAC réel).
-const Territoires = lazy(() => import('./Territoires'))
 // WIR14/NTCRM13 — Playbooks (CRUD des playbooks/étapes/tâches par stage) —
 // même gating responsable/admin que les autres écrans de configuration CRM.
 const Playbooks = lazy(() => import('./Playbooks'))
@@ -206,7 +200,6 @@ const config = {
       { to: '/admin/roles', label: 'Rôles', icon: <Shield size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       { to: '/admin/securite-identite', label: 'Sécurité & Identité', icon: <Key size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       { to: '/admin/gouvernance-acces', label: 'Gouvernance des accès', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
-      { to: '/parametres/territoires', label: 'Territoires', icon: <MapPin size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       { to: '/parametres/playbooks', label: 'Playbooks', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       {
         to: '/parametres/vues',
@@ -266,7 +259,6 @@ const config = {
     { path: '/parametres/notifications', component: NotificationsPreferences },
     { path: '/parametres/alertes-kpi', component: KpiAlertesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/vues', component: VuesConfigurationPage, roles: ['responsable', 'admin'] },
-    { path: '/parametres/territoires', component: Territoires, roles: ['responsable', 'admin'] },
     { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats/cloture', component: ClotureAchatsWizardPage, roles: ['responsable', 'admin'] },
