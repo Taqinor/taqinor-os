@@ -557,8 +557,15 @@ def _numero_chaine(chaine):
     return int(chiffres) if chiffres else None
 
 
-def evaluer_onduleurs(conception):
-    """L'``EvaluationOnduleurs`` du noyau pour cette conception, ou ``None``."""
+def evaluer_onduleurs(conception, *, reglages=None):
+    """L'``EvaluationOnduleurs`` du noyau pour cette conception, ou ``None``.
+
+    CALX213 — ``reglages`` est la section ``electrique_societe`` des réglages
+    société (``services/parametres_cles.py``), ``{clé: {valeur, source}}``.
+    Elle porte les TROIS paliers du ratio DC/AC, dont le seuil BAS qui n'a
+    aucune constante de repli. Absente, les bornes du noyau s'appliquent à
+    l'identique : le comportement d'aujourd'hui est strictement conservé.
+    """
     from core.electrique.onduleurs import dimensionner_onduleurs
 
     entree = conception.entree
@@ -566,7 +573,7 @@ def evaluer_onduleurs(conception):
         return None
     puissance_dc = (conception.resultat.puissance_kwc
                     if conception.chaines else entree.puissance_kwc)
-    return dimensionner_onduleurs(entree, puissance_dc)
+    return dimensionner_onduleurs(entree, puissance_dc, reglages)
 
 
 def empreinte_entree(layout, *, module_specs, onduleur_specs, temperatures,

@@ -65,6 +65,12 @@ __all__ = [
     'ORIGINE_LONGUEUR_FICHE', 'ORIGINE_LONGUEUR_DOSSIER',
     'longueur_chaine_retenue', 'plafond_modules',
     'journaliser_ecart_longueur', 'parametres_societe',
+    'CLE_POLYSTRING',  # CALX206
+    'CLE_MICRO_ONDULEURS',  # CALX209
+    'CHAMP_OPT_V_OUT', 'CHAMP_OPT_MODULES_MAX', 'CLE_OPT_V_OUT',
+    'CLE_OPT_MODULES_MAX', 'REFERENCE_SOLAREDGE_DESIGNER',  # CALX211
+    'CLE_OPTIMISEURS', 'MOTIF_RATIO_NON_PUBLIE',
+    'MENTION_RATIO_NON_RECOUPE', 'REFERENCE_OPENSOLAR_RATIO',  # CALX212
 ]
 
 #: Les deux SOURCES possibles d'une température de dimensionnement. Une
@@ -326,6 +332,7 @@ CHAMPS_ENTREE = (
     'terre',                # CAL134 — check-list de mise à la terre
     'exigence_marche',      # CAL127 — bornes imposées par le CPS du dossier
     'affectation_manuelle',  # CAL234 — affectation IMPOSÉE module par module
+    'polystring',           # CALX206 — pans mis en parallèle sur une entrée
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -609,6 +616,42 @@ def _est_un_nombre(valeur):
     return isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
 
 
+#: CALX172 — la colonne de la série persistée qui porte la puissance DC
+#: horaire (``contract_samples/calepinage_serie_horaire.json``, CALX142).
+COLONNE_SERIE_DC = 'p_dc_kw'
+
+
+def _serie_dc_persistee(calepinage, empreinte):
+    """La série horaire de puissance DC déjà calculée, ou ``None``.
+
+    CALX172 — ``ecretage_depuis_serie`` existe depuis CAL127 et n'a JAMAIS
+    reçu de série : son unique appelant était invoqué sans ``serie_dc_kw``,
+    si bien que ``ecretage_pct`` valait toujours ``null``. La série existe
+    pourtant : la chaîne de pertes la dépose dans
+    ``Calepinage.resultat['serie_horaire']`` (CALX193).
+
+    Elle n'est servie que si elle décrit ENCORE ce toit — même contrôle de
+    fraîcheur que les blocs de simulation (CALX70) : une puissance calculée
+    sur un autre document ne doit pas chiffrer l'écrêtage de celui-ci.
+    ``None`` quand rien n'a été simulé, quand l'empreinte a bougé, ou quand
+    la colonne DC n'a pas été produite — jamais une série approchée.
+    """
+    stocke = getattr(calepinage, 'resultat', None)
+    stocke = stocke if isinstance(stocke, dict) else {}
+    simulation = stocke.get(CLE_SIMULATION)
+    simulation = simulation if isinstance(simulation, dict) else {}
+    if (simulation.get('hash_entree') or '') != empreinte:
+        return None
+    serie = stocke.get('serie_horaire')
+    if not isinstance(serie, dict):
+        return None
+    valeurs = [point.get(COLONNE_SERIE_DC)
+               for point in serie.get('points') or []
+               if isinstance(point, dict)]
+    valeurs = [valeur for valeur in valeurs if _est_un_nombre(valeur)]
+    return valeurs or None
+
+
 def _simulation_servie(calepinage, empreinte, *, defauts=None):
     """CALX70 — les blocs de simulation à publier, et leur état de fraîcheur.
 
@@ -685,7 +728,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         calepinage, entree=entree, layout=layout, materiel=materiel)
     optimiseur = materiel.get('optimiseur')
     nom_optimiseur = materiel['designations'].get('optimiseur', '')
-    verdicts = verdicts_electriques(conception, optimiseur, nom_optimiseur)
+    verdicts = verdicts_electriques(
+        conception, optimiseur, nom_optimiseur,
+        reglages=_reglages_electrique_societe(calepinage))
     regle = _regle_chaine_publiee(conception, optimiseur, nom_optimiseur)
     try:
         # CAL234 — l'affectation MANUELLE enregistrée (si elle existe) écrase
@@ -707,11 +752,39 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         document, electrique['affectation'])
     if faible is not None:
         electrique[CLE_CHAINE_FAIBLE] = faible
+    # CALX206 — les groupes polystring SAISIS. Clé publiée seulement quand
+    # une saisie existe : sans elle, le bloc est celui d'aujourd'hui.
+    poly = _polystring_du_calepinage(
+        conception, saisie=donnees.get(CLE_POLYSTRING),
+        reglages=_reglages_electrique_societe(calepinage))
+    if poly['bloc'] is not None:
+        electrique[CLE_POLYSTRING] = poly['bloc']
+    # CALX209 — le régime micro-onduleur : des branches AC, plus de chaînes.
+    micro = _micro_onduleurs_du_calepinage(conception, optimiseur,
+                                           nom_optimiseur)
+    if micro['bloc'] is not None:
+        electrique[CLE_MICRO_ONDULEURS] = micro['bloc']
+    # CALX212 — la carte module → optimiseur, et sa quantité (ou son motif).
+    optimiseurs = _optimiseurs_du_calepinage(conception, optimiseur,
+                                             nom_optimiseur)
+    if optimiseurs is not None:
+        electrique[CLE_OPTIMISEURS] = optimiseurs
+    # CALX70 — l'empreinte du document AUJOURD'HUI : c'est elle qui dit si la
+    # simulation déposée dans ``Calepinage.resultat`` décrit encore CE toit.
+    empreinte = empreinte_entree(
+        document, module_specs=materiel['module'],
+        onduleur_specs=materiel['onduleur'],
+        temperatures=conception.temperatures,
+        options=_options_entree(donnees))
     pose = bloc_pose(conception)
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
         exigence_marche=donnees.get('exigence_marche'),
-        parametres_societe=_parametres_electriques(calepinage))
+        parametres_societe=_parametres_electriques(calepinage),
+        # CALX172 — la série DC de la simulation PERSISTÉE, quand elle décrit
+        # encore CE toit : c'est le seul chemin par lequel
+        # ``ecretage_depuis_serie`` reçoit enfin une série.
+        serie_dc_kw=_serie_dc_persistee(calepinage, empreinte))
 
     # CAL130/CAL131 — la norme applicable commande ce qui peut être publié :
     # sans elle, sections et chutes de tension sont OMISES (règle D5).
@@ -744,6 +817,11 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         pose.get('puissance_module_wc')))
 
     messages = list(avertissements) + list(messages_ratio)
+    messages.extend(poly['bloquants'])
+    messages.extend(poly['alertes'])
+    messages.extend(micro['omissions'])
+    if optimiseurs is not None and optimiseurs['motif']:
+        messages.append(optimiseurs['motif'])
     if motif_faible:
         messages.append(motif_faible)
     messages.extend(regle['bornes_non_verifiables'])
@@ -768,13 +846,6 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     if conception.temperatures is not None and conception.temperatures.mention:
         messages.append(conception.temperatures.mention)
 
-    # CALX70 — l'empreinte du document AUJOURD'HUI : c'est elle qui dit si la
-    # simulation déposée dans ``Calepinage.resultat`` décrit encore CE toit.
-    empreinte = empreinte_entree(
-        document, module_specs=materiel['module'],
-        onduleur_specs=materiel['onduleur'],
-        temperatures=conception.temperatures,
-        options=_options_entree(donnees))
     blocs, perimee, motif, calcule_le = _simulation_servie(
         calepinage, empreinte, defauts={
             # Le squelette servi tant qu'aucune simulation n'a tourné : la
@@ -841,7 +912,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'cables': cables['cables'],
         'longueurs': cables['longueurs'],
         # CAL132 — la check-list d'organes (retenus / ajoutés / écartés).
-        'protections': protections['organes'],
+        # CALX209/CALX210 — les ``QAC.N`` des branches de micro-onduleurs s'y
+        # AJOUTENT : un départ par branche, calibré par la même règle.
+        'protections': protections['organes'] + micro['protections'],
         'justifications': protections['justifications'],
         # CAL134 — la check-list de terre (jamais une résistance inventée).
         'terre': terre,
@@ -1025,10 +1098,23 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     bloquants.extend(verdict_affectation(
         conception, imposee,
         specs_onduleur=materiel_resolu.get('onduleur')))
+    # CALX206 — un regroupement polystring met des chaînes en PARALLÈLE :
+    # son Isc cumulé se verdicte au même titre que celui du chaînage
+    # automatique, sans quoi le regroupement contournerait la garde.
+    poly = _polystring_du_calepinage(
+        conception, saisie=donnees.get(CLE_POLYSTRING),
+        reglages=_reglages_electrique_societe(calepinage))
+    bloquants.extend(poly['bloquants'])
     regle = _regle_chaine_publiee(
         conception, materiel_resolu.get('optimiseur'),
         materiel_resolu['designations'].get('optimiseur', ''))
     alertes = list(alertes_nommees(conception))
+    alertes.extend(poly['alertes'])
+    # CALX209 — une borne de branche NON VÉRIFIABLE est une alerte nommée,
+    # jamais un bloquant : rien ne prouve le défaut, la fiche se tait.
+    alertes.extend(_micro_onduleurs_du_calepinage(
+        conception, materiel_resolu.get('optimiseur'),
+        materiel_resolu['designations'].get('optimiseur', ''))['omissions'])
     alertes.extend(regle['bornes_non_verifiables'])
     return {
         'verdict': 'bloquant' if bloquants else (
@@ -1176,7 +1262,9 @@ TOLERANCE_LONGUEUR_MODULES = 2
 TOLERANCE_LONGUEUR_PCT = 5.0
 
 #: Nombre d'entrées conservées dans l'historique d'écarts (borné : un journal
-#: qui grossit sans fin finit par ne plus être lu).
+#: qui grossit sans fin finit par ne plus être lu). Ce n'est PAS un seuil
+#: électrique : c'est une taille de tampon, une convention d'atelier — aucune
+#: norme ni fiche ne la fixe, et aucun calcul n'en dépend.
 JOURNAL_ECARTS_MAX = 20
 
 
@@ -1321,6 +1409,210 @@ def _version_moteur():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# CALX206 — LE POLYSTRING : DEUX PANS EN PARALLÈLE SUR UNE ENTRÉE MPPT
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Le calcul est dans ``services/polystring.py`` (service PUR). Ici, seulement
+# le branchement applicatif : la saisie est lue dans l'entrée électrique
+# (``entree_electrique.polystring``), le bloc n'est PUBLIÉ que si elle
+# existe, et ses bloquants rejoignent ceux de l'évaluation — un Isc cumulé
+# hors spécification créé par un regroupement doit refuser la publication
+# exactement comme celui d'un chaînage automatique (incident DEV-202608-0016).
+#
+# SANS SAISIE, RIEN NE CHANGE : aucune clé de plus dans le résultat, aucun
+# avertissement de plus, la répartition d'aujourd'hui à l'identique.
+
+#: La clé de l'entrée électrique qui porte la saisie de groupes polystring,
+#: et celle du bloc publié dans ``resultat['electrique']``.
+CLE_POLYSTRING = 'polystring'
+
+#: CALX209 — la clé du bloc « régime micro-onduleur » dans
+#: ``resultat['electrique']``. Absente tant que la fiche déclarée n'est pas
+#: celle d'un micro-onduleur : le résultat reste celui d'aujourd'hui.
+CLE_MICRO_ONDULEURS = 'micro_onduleurs'
+
+
+def _polystring_du_calepinage(conception, *, saisie=None, reglages=None):
+    """CALX206/CALX207 — les groupes polystring SAISIS, avec leur écart.
+
+    Rend ``{bloc, bloquants, alertes}``. ``bloc`` vaut ``None`` quand rien
+    n'est saisi (la clé n'est alors pas publiée) OU quand la saisie est
+    REFUSÉE : le refus devient un message qui NOMME son champ, plutôt qu'une
+    erreur 500 sur un résultat qui, lui, reste lisible.
+
+    CALX207 — chaque groupe porte en plus son ``ecart`` de puissance crête et
+    le verdict de tolérance SOCIÉTÉ. Un verdict ``bloquant`` refuse la
+    publication ; ``alerte`` la laisse passer en le disant ; ``omis`` publie
+    l'écart sans rien prononcer (aucun seuil saisi).
+    """
+    from .polystring import (
+        STATUT_ALERTE, STATUT_BLOQUANT, PolystringRefuse, ecart_de_groupe,
+        grouper_polystring,
+    )
+
+    if not saisie:
+        return {'bloc': None, 'bloquants': [], 'alertes': []}
+    try:
+        rendu = grouper_polystring(conception, groupes=saisie)
+        for groupe in rendu['groupes']:
+            groupe['ecart'] = ecart_de_groupe(groupe, reglages=reglages)
+    except PolystringRefuse as refus:
+        return {
+            'bloc': None,
+            'bloquants': ["Polystring : %s (champ « %s »)"
+                          % (refus, refus.champ or CLE_POLYSTRING)],
+            'alertes': [],
+        }
+    bloquants = list(rendu['bloquants'])
+    alertes = list(rendu['alertes'])
+    for groupe in rendu['groupes']:
+        verdict = groupe['ecart']['verdict']
+        message = ("Polystring, entrée MPPT %d (%s) : %s"
+                   % (groupe['mppt'], ', '.join(groupe['pans']),
+                      verdict['detail']))
+        if verdict['statut'] == STATUT_BLOQUANT:
+            bloquants.append(message)
+        elif verdict['statut'] == STATUT_ALERTE:
+            alertes.append(message)
+    bloc = {cle: valeur for cle, valeur in rendu.items()
+            # ``chaines`` et ``verdicts`` portent des objets du noyau : ils
+            # servent au verdict, ils ne se sérialisent pas dans le résultat.
+            if cle not in ('chaines', 'verdicts')}
+    return {'bloc': bloc, 'bloquants': bloquants, 'alertes': alertes}
+
+
+def _micro_onduleurs_du_calepinage(conception, specs, designation=''):
+    """CALX209 — le régime micro-onduleur, ses branches et leur équipement.
+
+    Rend ``{bloc, protections, omissions}``. ``bloc`` vaut ``None`` quand la
+    fiche déclarée n'est pas celle d'un micro-onduleur : le résultat est
+    alors exactement celui d'aujourd'hui, sans clé de plus.
+    """
+    from .micro_onduleurs import (
+        branches_du_champ, equipement_ac, est_micro_onduleur,
+    )
+
+    if conception.fiche_incomplete or conception.resultat is None \
+            or not est_micro_onduleur(specs):
+        return {'bloc': None, 'protections': [], 'omissions': []}
+    bloc = branches_du_champ(conception, specs, designation=designation)
+    if not bloc['applique']:
+        return {'bloc': None, 'protections': [], 'omissions': []}
+    equipement = equipement_ac(conception, bloc['branches'])
+    bloc['cables'] = equipement['cables']
+    return {'bloc': bloc, 'protections': equipement['protections'],
+            'omissions': list(bloc['motifs']) + equipement['omissions']}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX212 — COMPTER ET PLACER LES OPTIMISEURS, MODULE PAR MODULE
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``apps/stock/selectors.py`` publie ``modules_par_optimiseur`` depuis CAL116
+# et AUCUN service ne le consommait : il n'existait ni quantité d'optimiseurs,
+# ni carte module → optimiseur. Un bordereau ne pouvait donc pas dire combien
+# d'unités poser, et l'atelier ne pouvait pas dire laquelle va où.
+#
+# LE RATIO VIENT DE LA FICHE, ET DE NULLE PART AILLEURS (D-CALX 7). Fiche
+# muette ⇒ quantité ``null`` et motif nommé — jamais un 1:1 supposé, qui
+# serait le pire des défauts possibles (il a l'air juste).
+#
+# ET NOUS NE PRÉTENDONS PAS L'AVOIR RECOUPÉ. OpenSolar calcule le ratio
+# optimiseur/module à partir de la tension, du courant et de la puissance
+# d'entrée ; nous le LISONS sur la fiche. La mention « ratio publié par la
+# fiche, non recoupé » voyage donc avec lui, et la liste des grandeurs
+# réellement publiées dit ce qui aurait permis le recoupement.
+#
+# AUCUNE SECONDE PARTITION : l'affectation suit l'ordre des modules que
+# ``services/chaines.py::affectation`` produit déjà (CAL125). Deux ordres de
+# modules dans le dépôt, ce serait deux cartes possibles pour une toiture.
+
+#: La clé du bloc « optimiseurs » dans ``resultat['electrique']``.
+CLE_OPTIMISEURS = 'optimiseurs'
+
+#: La clé de fiche qui porte le ratio, et les trois grandeurs d'ENTRÉE qui
+#: auraient permis de le recouper (libellés FRANÇAIS : ce sont eux que
+#: l'écran affiche).
+CLE_MODULES_PAR_OPTIMISEUR = 'modules_par_optimiseur'
+GRANDEURS_RECOUPEMENT = (
+    ('v_in_max', "tension d'entrée maximale"),
+    ('i_in_max_a', "courant d'entrée maximal"),
+    ('pmax_in_w', "puissance d'entrée maximale"),
+)
+
+MOTIF_RATIO_NON_PUBLIE = (
+    "ratio module/optimiseur non publié : la fiche « %s » ne renseigne pas "
+    "« FicheTechnique.opt_modules_par_optimiseur ». La quantité "
+    "d'optimiseurs n'est PAS déduite — aucun 1:1 n'est supposé.")
+
+MENTION_RATIO_NON_RECOUPE = 'ratio publié par la fiche, non recoupé'
+
+REFERENCE_OPENSOLAR_RATIO = (
+    'OpenSolar — Stringing Micro-Inverters and Power Optimizers : '
+    '« OpenSolar calculates the optimizer-to-panel ratio (e.g., 1:1 or 2:1) '
+    'based on voltage, current, and power constraints » '
+    '(https://support.opensolar.com/hc/en-us/articles/'
+    '4406931180313-Stringing-Micro-Inverters-and-Power-Optimizers)')
+
+
+def _optimiseurs_du_calepinage(conception, specs, designation=''):
+    """CALX212 — combien d'optimiseurs, et lequel porte quel module.
+
+    Rend ``{ratio, quantite, affectation, motif, recoupement, reference}``,
+    ou ``None`` quand aucun optimiseur n'est déclaré (le résultat est alors
+    exactement celui d'aujourd'hui, sans clé de plus).
+
+    Fonction PRIVÉE du module : son unique consommateur est le bloc
+    ``resultat['electrique']['optimiseurs']`` publié juste en dessous, et la
+    garde CALX57 refuse une fonction de service publique sans appelant
+    extérieur.
+    """
+    from .chaines import affectation
+
+    if not specs:
+        return None
+    nom = designation or 'optimiseur déclaré'
+    publiees = [libelle for cle, libelle in GRANDEURS_RECOUPEMENT
+                if _nombre(_champ_de_fiche(specs, cle)) is not None]
+    recoupement = {
+        'grandeurs_publiees': publiees,
+        'mention': MENTION_RATIO_NON_RECOUPE,
+        'reference': REFERENCE_OPENSOLAR_RATIO,
+    }
+
+    ratio = _nombre(_champ_de_fiche(specs, CLE_MODULES_PAR_OPTIMISEUR))
+    if ratio is None or ratio < 1:
+        return {
+            'ratio': None, 'quantite': None, 'affectation': [],
+            'motif': MOTIF_RATIO_NON_PUBLIE % nom,
+            'recoupement': recoupement, 'designation': nom,
+        }
+
+    ratio = int(ratio)
+    lignes = []
+    for rang, ligne in enumerate(affectation(conception)):
+        lignes.append({'module': ligne['module'],
+                       'optimiseur': rang // ratio + 1})
+    quantite = lignes[-1]['optimiseur'] if lignes else 0
+    return {
+        'ratio': ratio,
+        'quantite': quantite,
+        'affectation': lignes,
+        'motif': '',
+        'recoupement': recoupement,
+        'designation': nom,
+    }
+
+
+def _reglages_electrique_societe(calepinage):
+    """La seule section « electrique_societe » des réglages (CALX145)."""
+    from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE
+
+    return parametres_societe(calepinage).get(
+        SECTION_ELECTRIQUE_SOCIETE) or {}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # CAL129 — OPTIMISEURS ET MICRO-ONDULEURS : LA RÈGLE DE CHAÎNE CHANGE DE NATURE
 # ═══════════════════════════════════════════════════════════════════════════
 #
@@ -1342,6 +1634,37 @@ def _version_moteur():
 REGLE_CHAINE_MODULE = 'voc_module'
 REGLE_CHAINE_OPTIMISEUR = 'sortie_regulee_optimiseur'
 
+# ── CALX211 — la longueur se FERME quand la fiche publie enfin sa sortie ──
+#
+# Le paragraphe ci-dessus décrit l'état d'avant CALX60 : la fiche optimiseur
+# ne publiait QUE ses bornes d'entrée, donc la longueur de chaîne du système
+# restait « non vérifiable » et le repli prudent (fenêtre module/onduleur)
+# tenait lieu de réponse. CALX60 a ajouté les deux champs de SORTIE qui
+# manquaient — ``opt_v_out_nominal_v`` (tension de sortie régulée) et
+# ``opt_modules_max_par_chaine`` (nombre maximal de modules équipés sur une
+# même chaîne). Quand les DEUX sont publiés, la borne existe : la longueur
+# est FERMÉE par la fiche et la règle DIT laquelle. Quand l'un manque, le
+# texte « non vérifiable » d'aujourd'hui est conservé MOT POUR MOT — la
+# moitié d'une borne n'est pas une borne (D-CALX 7).
+#
+# SolarEdge Designer fait de ce retour le cœur de son outil : « real-time
+# feedback on the correct string design » (https://marketing.solaredge.com/
+# solaredge-designer-0-20). Nous ne le rendons que lorsque la fiche le
+# permet ; nous ne le fabriquons jamais.
+
+#: Les deux champs de SORTIE que CALX211 lit, nommés comme l'écran de fiche
+#: les affiche — ce sont eux que le message d'omission doit prononcer.
+CHAMP_OPT_V_OUT = 'FicheTechnique.opt_v_out_nominal_v'
+CHAMP_OPT_MODULES_MAX = 'FicheTechnique.opt_modules_max_par_chaine'
+
+#: Les clés correspondantes du sélecteur ``specs_for_produit``.
+CLE_OPT_V_OUT = 'v_out_nominal_v'
+CLE_OPT_MODULES_MAX = 'modules_max_par_chaine'
+
+REFERENCE_SOLAREDGE_DESIGNER = (
+    'SolarEdge Designer — « real-time feedback on the correct string design »'
+    ' (https://marketing.solaredge.com/solaredge-designer-0-20)')
+
 
 def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
                     designation=''):
@@ -1362,6 +1685,11 @@ def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
             'source': 'fiches module et onduleur',
             'verdicts_entree': [],
             'bornes_non_verifiables': [],
+            # CALX211 — clés TOUJOURS présentes : l'écran ne doit jamais
+            # avoir à deviner si la borne manque ou si la clé manque.
+            'longueur_max_modules': None,
+            'longueur_source': '',
+            'longueur_reference': '',
         }
 
     nom = designation or 'optimiseur déclaré'
@@ -1402,6 +1730,14 @@ def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
                 nom),
         })
 
+    # CALX211 — la longueur se ferme quand les DEUX champs de sortie sont
+    # publiés ; sinon le texte non vérifiable d'aujourd'hui est repris mot
+    # pour mot (une demi-borne n'est pas une borne).
+    v_out = _nombre(_champ_de_fiche(optimiseur_specs, CLE_OPT_V_OUT))
+    modules_max = _nombre(_champ_de_fiche(optimiseur_specs,
+                                          CLE_OPT_MODULES_MAX))
+    fermee = (v_out is not None and v_out > 0
+              and modules_max is not None and modules_max >= 1)
     return {
         'regle': REGLE_CHAINE_OPTIMISEUR,
         'libelle': "tension de chaîne RÉGULÉE par l'optimiseur : la borne Voc "
@@ -1410,17 +1746,38 @@ def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
                    "par module",
         'source': "fiche « %s » (type optimiseur)" % nom,
         'verdicts_entree': verdicts,
-        'bornes_non_verifiables': [
+        'bornes_non_verifiables': [] if fermee else [
             "longueur de chaîne admissible du système à optimiseurs : la "
             "fiche ne publie ni tension de sortie régulée ni nombre maximal "
             "de modules par chaîne — la longueur retenue reste celle du repli "
             "PRUDENT (fenêtre module/onduleur), aucune borne n'est supposée à "
             "sa place"],
+        'longueur_max_modules': int(modules_max) if fermee else None,
+        'longueur_source': (
+            "fiche « %s » : %s modules maximum par chaîne (« %s »), sortie "
+            "régulée à %s V (« %s »)"
+            % (nom, int(modules_max), CHAMP_OPT_MODULES_MAX,
+               fr_v(v_out), CHAMP_OPT_V_OUT)) if fermee else '',
+        'longueur_reference': (REFERENCE_SOLAREDGE_DESIGNER if fermee
+                               else ''),
     }
 
 
+def _champ_de_fiche(specs, cle):
+    """La valeur d'un champ de fiche, que ``specs`` soit un dict ou un objet.
+
+    Le sélecteur du stock rend un dict PLAT ; les doubles de test et les
+    fiches partiellement peuplées, eux, n'ont pas forcément la clé — un
+    ``getattr`` de repli évite qu'une fiche sans le champ récent lève, et
+    ABSENT y vaut toujours « non publié », jamais zéro.
+    """
+    if isinstance(specs, dict):
+        return specs.get(cle)
+    return getattr(specs, cle, None)
+
+
 def verdicts_electriques(conception, optimiseur_specs=None,
-                         optimiseur_designation=''):
+                         optimiseur_designation='', *, reglages=None):
     """Les verdicts du contrat CAL244, dérivés des chiffres de FICHE.
 
     Les cinq codes sont ceux du contrat (``voc_cold_under_vmax``,
@@ -1509,7 +1866,9 @@ def verdicts_electriques(conception, optimiseur_specs=None,
         float(isc_publie) if depasse_isc else onduleur.i_max_mppt_a,
         'sous', bloquant=depasse_isc, unite='A'))
 
-    evaluation = evaluer_onduleurs(conception)
+    # CALX213 — les trois paliers du ratio DC/AC viennent des réglages
+    # SOCIÉTÉ quand ils sont saisis : c est eux qui jugent ce verdict.
+    evaluation = evaluer_onduleurs(conception, reglages=reglages)
     ratio = evaluation.ratio_dc_ac if evaluation is not None else None
     verdicts.append({
         'code': 'ratio_dc_ac',
@@ -1553,6 +1912,23 @@ def verdicts_electriques(conception, optimiseur_specs=None,
 SOURCE_BORNE_MARCHE = 'exigence de marché'
 SOURCE_BORNE_SOCIETE = 'paramètre société'
 SOURCE_BORNE_NOYAU = 'borne usuelle du noyau électrique'
+
+# ── CALX172 — LES DEUX PHRASES DE L'ÉCRÊTAGE, ET ELLES SONT UNIQUES ──────
+#
+# ``ecretage_methode`` ne prend que deux valeurs, et le dépôt n'en connaît
+# pas d'autres : « calculée heure par heure » quand la série a été fournie,
+# le motif de refus sinon. Elles étaient écrites EN LITTÉRAL dans
+# ``bloc_ratio_dc_ac`` ; CALX172 leur donne un nom pour que l'étape de la
+# chaîne de pertes (``services/etapes/ecretage.py``) publie le MÊME refus
+# tel quel au lieu d'en écrire un second pour la même absence de calcul.
+# Les textes sont inchangés, octet pour octet.
+
+METHODE_ECRETAGE_SERIE = (
+    'calculée heure par heure sur la série de puissance DC')
+
+MOTIF_ECRETAGE_SANS_SERIE = (
+    "non calculée : la perte d'écrêtage exige la série horaire (CAL135) — "
+    "aucun forfait n'est appliqué à sa place")
 
 
 def bornes_ratio(*, exigence_marche=None, parametres_societe=None):
@@ -1658,11 +2034,8 @@ def bloc_ratio_dc_ac(conception, *, exigence_marche=None,
             round(max(0.0, dc_kwc - puissance_ac), 3)
             if dc_kwc and puissance_ac else None),
         'ecretage_pct': ecretage,
-        'ecretage_methode': (
-            "calculée heure par heure sur la série de puissance DC"
-            if ecretage is not None else
-            "non calculée : la perte d'écrêtage exige la série horaire "
-            "(CAL135) — aucun forfait n'est appliqué à sa place"),
+        'ecretage_methode': (METHODE_ECRETAGE_SERIE if ecretage is not None
+                             else MOTIF_ECRETAGE_SANS_SERIE),
     }, tuple(avertissements))
 
 
