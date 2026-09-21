@@ -133,6 +133,22 @@ TagChipInput.jsx`` reste donc HORS PERIMETRE de cette garde par construction
 son sort (brancher ou supprimer) est traite fichier par fichier par une tache
 dediee (PACT174), pas par une extension structurelle de cette garde.
 
+CHEMINS A SEGMENT DYNAMIQUE — LE TROU FERME PAR CALX56
+-------------------------------------------------------
+La classe 3 (route != menu) exemptait EN BLOC tout chemin contenant ``:``
+(« segment dynamique : exempte »). C'etait le trou par lequel treize chemins
+``/calepinage/:id/<x>`` ont vecu sans le moindre lien entrant sans jamais
+rougir — et pour cause : un chemin parametre ne peut par construction etre
+vise par un litteral fige, seul regime que la garde savait lire. Elle lit
+desormais AUSSI les chaines a gabarit (`` to={`/a/${x}/b`} ``,
+`` navigate(`/a/${x}/b`) ``) et compare SEGMENT A SEGMENT : un segment
+inconnu d'un cote accepte n'importe quoi. Un chemin parametre est donc
+justifie exactement comme un chemin litteral — par un lien entrant dont le
+gabarit correspond, par une entree declaree ailleurs, ou par le marqueur
+``// contextuelle: <raison>`` — et signale sinon. Le principe
+anti-faux-positif tient : `/a/:id/b` est justifie par `` `/a/${x}/b` `` comme
+par le litteral concret `/a/42/b`, jamais par `/a/b` ni par `/a/:id/c`.
+
 BASE DE REFERENCE — ELLE NE PEUT QUE RETRECIR
 ---------------------------------------------
 La dette du 03/08/2026 est GELEE dans ``scripts/ecrans_atteignables_allow.txt``
@@ -566,11 +582,54 @@ _LIEN_HREF = re.compile(r"""\bhref\s*=\s*(['"])([^'"\n]+)\1""")
 # `Directeur: '/mobile/cockpit'`, jamais un appel a route litterale).
 _LIEN_LITTERAL = re.compile(r"""(['"])(/[^'"\n]*)\1""")
 
+# CALX56 — GABARITS (chaines a gabarit). Un chemin PARAMETRE ne peut par
+# construction etre vise par aucun litteral fige : le lien reel qui y mene
+# s'ecrit `` to={`/a/${x}/b`} `` ou `` navigate(`/a/${x}/b`) ``. Sans ces
+# deux motifs, la classe 3 ne pouvait QUE se taire sur `/a/:id/b` — ce qui a
+# laisse treize chemins `/calepinage/:id/<x>` vivre sans le moindre lien
+# entrant, et sans jamais rougir.
+_LIEN_GABARIT = re.compile(r"`(/[^`\n]*)`")
+_LIEN_TO_GABARIT = re.compile(r"\bto\s*[:=]\s*\{?\s*`(/[^`\n]+)`")
+_LIEN_HREF_GABARIT = re.compile(r"\bhref\s*=\s*\{?\s*`(/[^`\n]+)`")
+# `${...}` d'un gabarit : la partie VARIABLE, dont on ne sait rien.
+_INTERPOLATION = re.compile(r"\$\{[^{}]*\}")
+
 _MARQUEUR_CONTEXTUEL = re.compile(r"//\s*contextuelle\s*:\s*(.+)")
 
 
 def _chemin_nu(spec: str) -> str:
     return spec.split("?", 1)[0].split("#", 1)[0]
+
+
+def gabarit(spec: str) -> list:
+    """CALX56 — la FORME d'un chemin, segment par segment.
+
+    Un segment dont on ne sait rien (`:id` d'une route, `${x}` d'un gabarit,
+    `*` d'un joker) devient ``None`` ; les autres restent eux-memes. C'est la
+    seule chose comparable entre une route declaree et un lien reel.
+    """
+    nu = _INTERPOLATION.sub("*", _chemin_nu(spec))
+    formes = []
+    for segment in nu.split("/"):
+        formes.append(None if (segment.startswith(":") or "*" in segment)
+                      else segment)
+    return formes
+
+
+def correspond(route: str, lien: str) -> bool:
+    """CALX56 — ce lien mene-t-il a cette route ?
+
+    Meme nombre de segments, et chaque segment egal OU inconnu d'un cote. Un
+    segment inconnu accepte n'importe quoi : la garde ne doit JAMAIS accuser
+    un chemin qu'un lien vise peut-etre (principe anti-faux-positif du
+    fichier). `/a/:id/b` est donc justifie par `` `/a/${x}/b` `` comme par le
+    litteral concret `/a/42/b`, mais pas par `/a/b` ni par `/a/:id/c`.
+    """
+    formes_route, formes_lien = gabarit(route), gabarit(lien)
+    if len(formes_route) != len(formes_lien):
+        return False
+    return all(a is None or b is None or a == b
+               for a, b in zip(formes_route, formes_lien))
 
 
 def liens_entrants(vus: set) -> set:
@@ -602,9 +661,19 @@ def liens_entrants(vus: set) -> set:
             for motif in (_LIEN_TO, _LIEN_HREF):
                 for match in motif.finditer(code):
                     cibles.add(_chemin_nu(match.group(2)))
+            # CALX56 — meme regime, forme a gabarit : seuls `to`/`href`
+            # comptent ici, jamais `path` (aucune auto-verification).
+            for motif in (_LIEN_TO_GABARIT, _LIEN_HREF_GABARIT):
+                for match in motif.finditer(code):
+                    cibles.add(_chemin_nu(match.group(1)))
         else:
             for match in _LIEN_LITTERAL.finditer(code):
                 cibles.add(_chemin_nu(match.group(2)))
+            # CALX56 — `` navigate(`/a/${x}/b`) ``, `` to={`/a/${x}/b`} ``,
+            # table de routage a gabarit... Hors module.config.jsx aucune
+            # route n'est declaree : le balayage large reste sans risque.
+            for match in _LIEN_GABARIT.finditer(code):
+                cibles.add(_chemin_nu(match.group(1)))
     return cibles
 
 
@@ -633,9 +702,18 @@ def routes_sans_nav(configs: list, vus: set) -> list:
             continue
         marqueurs = marqueurs_contextuels(config.path)
         for chemin, _cible, ligne_debut, ligne_fin in config.routes_reelles:
-            if not chemin or ":" in chemin:
-                continue    # segment dynamique, ou path non litteral : exempte
-            if chemin in liens:
+            if not chemin:
+                continue    # path non litteral : on ne devine pas
+            if ":" in chemin:
+                # CALX56 — chemin PARAMETRE. Il etait exempte en bloc ; il est
+                # desormais justifie par un lien entrant dont le GABARIT
+                # correspond (`` to={`/a/${x}/b`} ``, `navigate(...)`), par une
+                # entree declaree ailleurs, ou par le marqueur contextuel
+                # ci-dessous — comme un chemin litteral, avec la seule
+                # difference que la comparaison se fait segment a segment.
+                if any(correspond(chemin, lien) for lien in liens):
+                    continue
+            elif chemin in liens:
                 continue
             if any(ligne_debut - 1 <= numero <= ligne_fin + 1
                    for numero, _raison in marqueurs):
@@ -777,6 +855,10 @@ def analyse():
     sans_nav = routes_sans_nav(configs, vus)
     for cible, app in sans_nav:
         constats.append(("sans-nav", cible, app, ""))
+    # CALX56 — la part PARAMETREE de la classe 3, que l'exemption en bloc
+    # rendait structurellement invisible. Comptee a part pour que `--stats`
+    # montre ce que la garde voit desormais.
+    sans_nav_parametrees = [c for c, _ in sans_nav if ":" in c.partition("::")[2]]
 
     stats = {
         "ecrans": len(ecrans),
@@ -788,6 +870,7 @@ def analyse():
         "ecrans_features": len(ecrans_de_features()),
         "ecrans_pages": len(ecrans_de_pages()),
         "sans_nav": len(sans_nav),
+        "sans_nav_parametrees": len(sans_nav_parametrees),
     }
     return constats, stats
 
@@ -904,7 +987,9 @@ def main(argv=None) -> int:
               f"({stats['opaques']} opaque(s), credites en entier). "
               f"Graphe : {stats['noeuds']} module(s) atteints.")
         print(f"Routes sans nav.items ni lien entrant reel ni marqueur "
-              f"contextuel (PACT150) : {stats['sans_nav']}.")
+              f"contextuel (PACT150) : {stats['sans_nav']} — dont "
+              f"{stats.get('sans_nav_parametrees', 0)} a segment dynamique "
+              f"(CALX56 : elles etaient exemptees en bloc).")
         compte = _par_app(constats)
         if compte:
             totaux: dict[str, int] = {}
@@ -983,6 +1068,10 @@ def main(argv=None) -> int:
               "dans un autre module.config.jsx), un vrai lien entrant, ou — si "
               "elle est volontairement hors menu — un commentaire `// "
               "contextuelle: <raison>` sur sa ligne ;")
+        print("  - une route a segment dynamique (`/a/:id/b`) se justifie par "
+              "un lien dont le GABARIT correspond — `` to={`/a/${x}/b`} ``, "
+              "`` navigate(`/a/${x}/b`) `` — ou par le meme marqueur "
+              "contextuel ; elle n'est plus exemptee en bloc (CALX56) ;")
         print("  - ou montez-le dans un onglet de l'ecran parent, a la place du "
               "placeholder ;")
         print("  - ou supprimez le fichier s'il est mort — mais ne le laissez "
