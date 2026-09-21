@@ -13,7 +13,9 @@
 # VAO16 (2026-08-26) — User-Agent HONNÊTE du collecteur (règle #5) : la marque
 # et le contact IDENTIFIENT Taqinor auprès du portail public — infra, jamais
 # une surface client white-label.
-apps/veille_ao/portail/client.py
+# SOLMVP51 (2026-09-21) : 2 entrees d'apps PARQUEES retirees
+# (apps/veille_ao/portail/client.py, apps/gestion_projet/management/commands/
+# ingest_emails_projets.py) — fichiers absents du disque, cf. core/parked.py.
 apps/automation/actions.py
 apps/contact/views.py
 apps/crm/management/commands/import_odoo_leads.py
@@ -36,7 +38,6 @@ apps/crm/webhooks.py
 apps/dataimport/exporters.py
 apps/dataimport/models.py
 apps/ged/services.py
-apps/gestion_projet/management/commands/ingest_emails_projets.py
 apps/installations/energy_report.py
 apps/notifications/services.py
 apps/parametres/models_email.py
