@@ -231,3 +231,59 @@ describe('CALX113 — symetriserSelection', () => {
     expect(editor.freePanels()).toEqual(panels);
   });
 });
+
+describe('CALX116 — panelsInLasso', () => {
+  // Anneau en « L » (concave) : bande basse [0,10]×[0,4] + colonne droite [4,10]×[4,10].
+  // Sa boîte ENGLOBANTE est le carré [0,10]×[0,10] tout entier — un panneau posé dans le
+  // coin NON couvert (l'encoche haut-gauche) doit donc être retenu par la boîte mais PAS
+  // par l'anneau réel : c'est exactement la garantie que le lasso doit apporter.
+  const LASSO_RING: [number, number][] = [
+    [0, 0],
+    [10, 0],
+    [10, 10],
+    [4, 10],
+    [4, 4],
+    [0, 4],
+  ];
+
+  it('retient les modules de la poche, PAS ceux de la boîte englobante (placement libre)', () => {
+    const panels: FreePanel[] = [
+      { cx: 2, cy: 7 }, // dans l'ENCOCHE (boîte englobante seulement) — à exclure
+      { cx: 7, cy: 7 }, // dans la colonne droite — à retenir
+      { cx: 2, cy: 2 }, // dans la bande basse — à retenir
+    ];
+    const { editor } = buildFreeEditor(20, panels);
+    expect(editor.panelsInLasso(LASSO_RING)).toEqual([1, 2]);
+  });
+
+  it('même garantie en mode lattice (emplacements validés)', () => {
+    const { map } = makeMap();
+    const ctx = makeFreeCtx(makePlan(20), []);
+    ctx.freeMode = false;
+    ctx.layoutState = createLayoutState([{ cx: 2, cy: 7 }, { cx: 7, cy: 7 }, { cx: 2, cy: 2 }], 3);
+    const editor = createLayoutEditor(ctx, makeDeps(map));
+    expect(editor.panelsInLasso(LASSO_RING)).toEqual([1, 2]);
+  });
+
+  it('anneau dégénéré (< 3 points) ⇒ aucune sélection, jamais une exception', () => {
+    const { editor } = buildFreeEditor(20, [{ cx: 1, cy: 1 }]);
+    expect(editor.panelsInLasso([[0, 0], [1, 1]])).toEqual([]);
+  });
+
+  it('la bascule cadre/lasso est une puce du module, par défaut sur CADRE', () => {
+    const { editor } = buildFreeEditor(20, []);
+    expect(editor.isLassoMode()).toBe(false);
+    const btn = document.getElementById('rp9-layout-lasso') as HTMLButtonElement | null;
+    expect(btn).not.toBeNull();
+    expect(btn!.getAttribute('aria-pressed')).toBe('false');
+    btn!.click();
+    expect(editor.isLassoMode()).toBe(true);
+    expect(btn!.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('le box-zoom MapLibre reste désactivé (piège documenté layoutEditor.ts:309-318) — jamais réactivé par ce module', () => {
+    const { boxZoomDisable, boxZoomEnable } = buildFreeEditor(20, []);
+    expect(boxZoomDisable).toHaveBeenCalledTimes(1);
+    expect(boxZoomEnable).not.toHaveBeenCalled();
+  });
+});

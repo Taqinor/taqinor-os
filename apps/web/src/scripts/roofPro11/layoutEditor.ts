@@ -198,6 +198,10 @@ export interface LayoutEditor {
   /** CALX113 — symétrise la sélection libre par rapport à l'axe donné (droite ENU définie
    *  par deux points). Tout ou rien ; refusée seulement sur une contrainte DURE réelle. */
   symetriserSelection: (members: readonly number[], axis: { a: readonly [number, number]; b: readonly [number, number] }) => boolean;
+  /** CALX116 — panneaux dont le CENTRE tombe dans l'anneau lasso (ENU), dans le mode courant. */
+  panelsInLasso: (ring: readonly [number, number][]) => number[];
+  /** CALX116 — le mode de sélection tracé courant est-il le LASSO (vs le cadre, défaut) ? */
+  isLassoMode: () => boolean;
 }
 
 /**
@@ -315,8 +319,8 @@ function buildFallbackLayoutDom(container: HTMLElement | null): void {
 // RECOMPOSENT donc les trois contraintes DURES (contour / panneau / obstacle — jamais les
 // deux RELÂCHABLES retrait/écart, hors du texte de CALX112/113) à partir des seules
 // primitives déjà EXPORTÉES (`panelCornersUV`, `polyOverlap`, `polySeparation`) plus
-// `pointInPolygon` (contour du toit) — aucune règle métier neuve, seulement de la
-// géométrie publique assemblée différemment.
+// `pointInPolygon` (déjà la primitive du lasso CALX116 plus bas) — aucune règle métier
+// neuve, seulement de la géométrie publique assemblée différemment.
 
 /** 4 coins (u, v) d'un rectangle AXÉ — équivalent local du `rectCorners` privé de la lib. */
 function cornersOfRect(r: RectUV): Vec2[] {
@@ -434,6 +438,24 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   const layoutSelectBtn = $<HTMLButtonElement>('rp9-layout-select');
   const layoutRowBtn = $<HTMLButtonElement>('rp9-layout-row');
   const layoutClearSelBtn = $<HTMLButtonElement>('rp9-layout-clear-sel');
+  // CALX116 — bascule CADRE/LASSO, créée par le module si la page hôte ne la fournit pas
+  // (même patron que `ensureTypePicker`/`ensureProvenancePicker`, obstaclesUi.ts:155-180).
+  // Par défaut sur CADRE (comportement d'aujourd'hui inchangé).
+  function ensureLassoToggle(): HTMLButtonElement | null {
+    const existing = $<HTMLButtonElement>('rp9-layout-lasso');
+    if (existing) return existing;
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'rp9-layout-lasso';
+    btn.setAttribute('aria-pressed', 'false');
+    btn.textContent = '◔ Lasso';
+    if (layoutClearSelBtn?.parentElement) layoutClearSelBtn.insertAdjacentElement('afterend', btn);
+    else if (layoutPanelEl) layoutPanelEl.appendChild(btn);
+    else return null;
+    return btn;
+  }
+  const layoutLassoBtn = ensureLassoToggle();
   // PV34 — compteur permanent « N panneaux sélectionnés ».
   const layoutSelCountEl = $('rp9-layout-selcount');
   const layoutAzWrapEl = $('rp9-layout-azimuth');
@@ -573,6 +595,61 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   }
   function hideMarquee() {
     if (marqueeEl) marqueeEl.style.display = 'none';
+  }
+
+  // ── CALX116 — LASSO (tracé à main levée), en plus du cadre ───────────────────────
+  // Bascule cadre/lasso : FAUX par défaut = cadre, le comportement d'aujourd'hui inchangé
+  // (`ensureLassoToggle` ci-dessus). Le geste réutilise le MÊME déclenchement que le cadre
+  // (Maj + glissé, ou mode « ▭ Sélection ») ; seule la FORME tracée change.
+  let lassoMode = false;
+  /** Glissé lasso en cours : anneau ENU échantillonné + ses points ÉCRAN (pour le tracé
+   *  visible) — même convention `additive`/`moved` que `marquee`. */
+  let lasso:
+    | {
+        ring: Vec2[];
+        screenPts: maplibregl.Point[];
+        startPoint: maplibregl.Point;
+        moved: boolean;
+        additive: boolean;
+      }
+    | null = null;
+  /** Distance ÉCRAN minimale (px) entre deux points échantillonnés — un lasso qui
+   *  enregistrerait CHAQUE pixel gonflerait l'anneau pour rien. */
+  const LASSO_SAMPLE_PX = 6;
+  /** Garde-fou de mémoire : un anneau ne grossit pas indéfiniment (le geste le plus long
+   *  reste un tracé net, pas un journal de chaque micro-mouvement). */
+  const LASSO_MAX_POINTS = 600;
+  let lassoSvg: SVGSVGElement | null = null;
+  let lassoPoly: SVGPolygonElement | null = null;
+  function lassoLayer(): SVGPolygonElement | null {
+    if (typeof document === 'undefined' || typeof document.createElementNS !== 'function') return null;
+    if (lassoPoly) return lassoPoly;
+    const container = typeof map.getContainer === 'function' ? map.getContainer() : null;
+    if (!container) return null;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as SVGSVGElement;
+    svg.setAttribute('id', 'rp9-lasso-svg');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.style.cssText = 'position:absolute;inset:0;z-index:6;pointer-events:none;display:none;width:100%;height:100%;';
+    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon') as SVGPolygonElement;
+    poly.setAttribute('fill', 'rgba(224,178,92,0.18)');
+    poly.setAttribute('stroke', '#e0b25c');
+    poly.setAttribute('stroke-width', '2');
+    poly.setAttribute('stroke-dasharray', '4 3');
+    svg.appendChild(poly);
+    container.appendChild(svg);
+    lassoSvg = svg;
+    lassoPoly = poly;
+    return poly;
+  }
+  /** Peint l'anneau lasso entre les points ÉCRAN accumulés. */
+  function showLasso(points: readonly maplibregl.Point[]) {
+    const poly = lassoLayer();
+    if (!poly || !lassoSvg) return;
+    poly.setAttribute('points', points.map((p) => `${p.x},${p.y}`).join(' '));
+    lassoSvg.style.display = 'block';
+  }
+  function hideLasso() {
+    if (lassoSvg) lassoSvg.style.display = 'none';
   }
 
   // ── PV29 — PEINTURE de la 3D : sélection (or) + survol (or clair) + refus (rouge) ──
@@ -796,6 +873,34 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   /** PV34 — panneaux traversés par le cadre, dans le mode courant. */
   function panelsInMarquee(rect: { x0: number; y0: number; x1: number; y1: number }): number[] {
     return freeActive() ? freeInRect(rect) : latticeInRect(rect);
+  }
+
+  /**
+   * CALX116 — panneaux dont le CENTRE tombe dans l'anneau lasso (ENU), dans le mode courant.
+   * Critère « centre dedans » (et non « traversé », contrairement au cadre) : c'est le
+   * critère annoncé par la tâche, et il laisse le lasso isoler une poche EXACTE sans
+   * attraper un panneau que le tracé n'a qu'effleuré du bout du contour.
+   */
+  function panelsInLasso(ring: readonly Vec2[]): number[] {
+    if (ring.length < 3) return [];
+    if (freeActive()) {
+      const st = freeState();
+      if (!st) return [];
+      const out: number[] = [];
+      for (let i = 0; i < st.panels.length; i++) {
+        if (pointInPolygon([st.panels[i].cx, st.panels[i].cy], ring as [number, number][])) out.push(i);
+      }
+      return out;
+    }
+    const st = ctx.layoutState;
+    if (!st) return [];
+    const posed = occupiedIndices(st);
+    const out: number[] = [];
+    for (const idx of posed) {
+      const c = st.cells[idx];
+      if (pointInPolygon([c.cx, c.cy], ring as [number, number][])) out.push(idx);
+    }
+    return out;
   }
 
   /**
@@ -1776,6 +1881,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       setPanelHighlight(null); // W88 — efface tout surlignage de panneau en quittant le mode
       hideMarquee(); // PV31 — jamais un cadre orphelin après la sortie du mode disposition
       marquee = null;
+      hideLasso(); // CALX116 — idem pour un lasso orphelin
+      lasso = null;
       emptyPress = null;
       if (ctx.closed) renderActive();
     }
@@ -1896,6 +2003,17 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     setSelection([]);
     if (layoutNoteEl) layoutNoteEl.textContent = 'Sélection effacée.';
     renderLayoutPanel();
+  });
+  // CALX116 — bascule CADRE/LASSO : ne change QUE la forme du prochain tracé, par défaut
+  // sur cadre (comportement d'aujourd'hui inchangé).
+  layoutLassoBtn?.addEventListener('click', () => {
+    lassoMode = !lassoMode;
+    layoutLassoBtn.setAttribute('aria-pressed', String(lassoMode));
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = lassoMode
+        ? 'Lasso : tracez librement autour des panneaux à sélectionner.'
+        : 'Cadre : glissez pour encadrer les panneaux à sélectionner.';
+    }
   });
 
   // PV25 — NUDGE d'azimut (toit en pente) : ±1° sur la face du pan, puis RECALCUL complet
@@ -2219,10 +2337,25 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       map.getCanvas().style.cursor = 'crosshair';
       return true;
     };
-    // PV25 — MARQUEE : Maj + glissé (souris) ou mode « sélection multiple » (doigt) trace
-    // un rectangle au lieu de déplacer un panneau. Le rectangle est en ENU (mètres), via
-    // la MÊME déprojection écran→toit que le reste de l'éditeur — aucun second système.
-    if (shiftKey || selectMode) return startMarquee(shiftKey);
+    // CALX116 — arme le LASSO (même déclenchement que le cadre, forme différente). Le
+    // box-zoom MapLibre reste désactivé pour tout l'éditeur (map.boxZoom?.disable?.() à la
+    // construction, jamais réactivé) — le piège documenté du cadre (PV34 ci-dessus) ne
+    // revient donc pas non plus pour le lasso.
+    const startLasso = (additive: boolean): boolean => {
+      const enu = screenToENU(point);
+      if (!enu) return false;
+      lasso = { ring: [[enu.x, enu.y]], screenPts: [point], startPoint: point, moved: false, additive };
+      emptyPress = null;
+      showLasso(lasso.screenPts);
+      map.dragPan.disable();
+      map.getCanvas().style.cursor = 'crosshair';
+      return true;
+    };
+    const startSelectGesture = (additive: boolean): boolean => (lassoMode ? startLasso(additive) : startMarquee(additive));
+    // PV25 — MARQUEE/LASSO : Maj + glissé (souris) ou mode « sélection multiple » (doigt)
+    // trace un cadre (ou un lasso) au lieu de déplacer un panneau. En ENU (mètres), via la
+    // MÊME déprojection écran→toit que le reste de l'éditeur — aucun second système.
+    if (shiftKey || selectMode) return startSelectGesture(shiftKey);
     const from = layoutPanelAt(point);
     if (from == null) {
       // PV34 — SÉLECTION SANS MODIFICATEUR (ordre du fondateur : « the selection should be
@@ -2233,7 +2366,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       // change : un doigt continue de faire glisser la carte, le cadre reste sur le bouton
       // « ▭ Sélection » (un pan tactile perdu serait une régression bien pire).
       const enu = fromMouse ? screenToENU(point) : null;
-      if (enu && pointOnLayoutArea(enu.x, enu.y)) return startMarquee(false);
+      if (enu && pointOnLayoutArea(enu.x, enu.y)) return startSelectGesture(false);
       // PV31 — appui dans le VIDE : on le mémorise, un simple clic effacera la sélection
       // (un glissé, lui, reste un déplacement de carte et n'y touche pas).
       emptyPress = point;
@@ -2411,6 +2544,33 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  « relâchez sur un emplacement valide / aucun libre ». Le seuil évite qu'un simple
    *  tap/clic ne fasse sauter le panneau vers la cellule vide la plus proche. */
   function moveLayoutDrag(point: maplibregl.Point) {
+    // CALX116 — lasso en cours : on échantillonne le point (au pas mini `LASSO_SAMPLE_PX`,
+    // plafonné à `LASSO_MAX_POINTS`) et on annonce le compte, comme le cadre.
+    if (lasso && ctx.layoutState) {
+      const enu = screenToENU(point);
+      if (!enu) return;
+      const last = lasso.screenPts[lasso.screenPts.length - 1];
+      const farEnough = Math.hypot(point.x - last.x, point.y - last.y) >= LASSO_SAMPLE_PX;
+      if (farEnough && lasso.ring.length < LASSO_MAX_POINTS) {
+        lasso.ring.push([enu.x, enu.y]);
+        lasso.screenPts.push(point);
+      }
+      showLasso(lasso.screenPts); // le tracé suit le geste, à l'écran
+      if (Math.abs(point.x - lasso.startPoint.x) >= LAYOUT_GRAB_PX || Math.abs(point.y - lasso.startPoint.y) >= LAYOUT_GRAB_PX) {
+        lasso.moved = true;
+      }
+      const hits = panelsInLasso(lasso.ring);
+      paintPreviewSelection(lasso.additive ? applySelectionGesture(selection, hits, 'add') : hits);
+      if (layoutNoteEl) {
+        const total = lasso.additive ? applySelectionGesture(selection, hits, 'add').length : hits.length;
+        layoutNoteEl.textContent = hits.length
+          ? `${fmt(total)} panneaux dans la sélection — relâchez pour les sélectionner.`
+          : lasso.additive
+            ? 'Aucun panneau de plus dans le lasso.'
+            : 'Aucun panneau dans le lasso.';
+      }
+      return;
+    }
     // PV25 — marquee en cours : on met à jour le coin opposé et on annonce le compte.
     if (marquee && ctx.layoutState) {
       const enu = screenToENU(point);
@@ -2484,6 +2644,37 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  simple CLIC (souris, `removeOnTap`) sans glissé SUPPRIME le panneau saisi ; un tap tactile
    *  bref ne supprime pas (la suppression tactile passe par l'appui long, géré séparément). */
   function endLayoutDrag(point: maplibregl.Point, removeOnTap = false) {
+    // CALX116 — fin d'un LASSO : la sélection devient les panneaux dont le CENTRE tombe
+    // dans l'anneau tracé (même logique que le cadre : un simple clic, sans glissé, bascule
+    // le panneau visé au lieu de fermer un anneau de surface nulle).
+    if (lasso && ctx.layoutState) {
+      const enu = screenToENU(point);
+      if (enu) lasso.ring.push([enu.x, enu.y]);
+      const dragged = lasso.moved;
+      const additive = lasso.additive;
+      const hits = panelsInLasso(lasso.ring);
+      lasso = null;
+      hideLasso();
+      map.dragPan.enable();
+      map.getCanvas().style.cursor = '';
+      if (!dragged) {
+        const hit = layoutPanelAt(point);
+        if (hit != null) {
+          selectSinglePanel(hit, true);
+          return;
+        }
+        renderLayoutPanel();
+        return;
+      }
+      setSelection(applySelectionGesture(selection, hits, additive ? 'add' : 'replace'));
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = selection.length
+          ? `${fmt(selection.length)} panneaux sélectionnés — glissez-en un pour déplacer tout le groupe.`
+          : 'Sélection vide.';
+      }
+      renderLayoutPanel();
+      return;
+    }
     // PV25 — fin d'un MARQUEE : la sélection devient les panneaux du rectangle.
     if (marquee && ctx.layoutState) {
       const enu = screenToENU(point);
@@ -2679,7 +2870,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (selectRow(hit).length) e.preventDefault();
   });
   map.on('mousemove', (e) => {
-    if (layoutDrag || marquee) {
+    if (layoutDrag || marquee || lasso) {
       moveLayoutDrag(e.point);
       return;
     }
@@ -2688,9 +2879,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     setPanelHighlight(layoutPanelAt(e.point));
   });
   map.on('mouseup', (e) => {
-    const hadGesture = !!layoutDrag || !!marquee;
+    const hadGesture = !!layoutDrag || !!marquee || !!lasso;
     endLayoutDrag(e.point, true); // clic sans glissé = supprimer (W88)
-                                  // PV25 — un marquee en cours est committé par le même chemin.
+                                  // PV25 — un marquee/lasso en cours est committé par le même chemin.
     if (!hadGesture) clearSelectionOnEmptyClick(e.point);
   });
 
@@ -2703,7 +2894,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    */
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('mouseup', (ev: MouseEvent) => {
-      if (!layoutDrag && !marquee) return;
+      if (!layoutDrag && !marquee && !lasso) return;
       const canvas = typeof map.getCanvas === 'function' ? map.getCanvas() : null;
       // Relâché SUR la carte : le chemin `map.on('mouseup')` s'en charge déjà.
       if (canvas && ev.target instanceof Node && canvas.contains(ev.target)) return;
@@ -2776,14 +2967,14 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
   });
   map.on('touchmove', (e) => {
-    if (!layoutDrag && !marquee) return;
+    if (!layoutDrag && !marquee && !lasso) return;
     e.preventDefault();
     moveLayoutDrag(e.point);
     if (layoutDrag?.moved) cancelLongPress(); // un glissé annule l'appui long (c'est un déplacement)
   });
   map.on('touchend', (e) => {
     cancelLongPress(); // tap bref / fin de glissé : pas de suppression par appui long
-    if (!layoutDrag && !marquee) {
+    if (!layoutDrag && !marquee && !lasso) {
       clearSelectionOnEmptyClick(e.point); // PV31 — un tap dans le vide lâche la sélection
       return;
     }
@@ -2826,6 +3017,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     freeDistributeSelection,
     dupliquerSelection,
     symetriserSelection,
+    panelsInLasso,
+    isLassoMode: () => lassoMode,
   };
 }
 
