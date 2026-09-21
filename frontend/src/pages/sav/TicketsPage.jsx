@@ -367,9 +367,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     technicien_responsable: current.technicien_responsable ?? '',
     date_resolution: current.date_resolution ?? '',
     cout: current.cout ?? '',
-    // WIR233/ZMFG5 — distinct de `description` (motif signalé) et du chatter
-    // (notes) : instructions D'INTERVENTION, éditables, avec suggestions KB
-    // en pré-remplissage (jamais une écriture auto — voir insererSuggestionKb).
+    // WIR233 — distinct de `description` (motif signalé) et du chatter
+    // (notes) : instructions D'INTERVENTION, éditables.
     instructions: current.instructions ?? '',
   }), [current])
 
@@ -424,24 +423,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   })
   const [retirerBusy, setRetirerBusy] = useState(false)
   const [retirerError, setRetirerError] = useState(null)
-
-  // WIR233/ZMFG5 — suggestions KB pour pré-remplir « Instructions » : simple
-  // INSERTION dans le champ local (`fields.instructions`), jamais une
-  // écriture serveur tant que le ticket n'est pas explicitement enregistré.
-  const [kbSuggestions, setKbSuggestions] = useState(null) // null = jamais chargées
-  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
-  const chargerSuggestionsKb = () => {
-    setSuggestionsLoading(true)
-    savApi.getInstructionsSuggestions(id)
-      .then((r) => setKbSuggestions(r.data?.results ?? r.data ?? []))
-      .catch(() => setKbSuggestions([]))
-      .finally(() => setSuggestionsLoading(false))
-  }
-  const insererSuggestionKb = (article) => {
-    set('instructions', fields.instructions
-      ? `${fields.instructions}\n\n${article.corps}`
-      : article.corps)
-  }
 
   const loadPieces = () => {
     savApi.getTicketPieces(id).then((r) => setPieces(r.data)).catch(() => {})
@@ -799,24 +780,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     } catch (err) {
       setActionError(frError(err, 'Impossible de générer la facture.'))
     } finally { setFactureBusy(false) }
-  }
-  // AUD529 — escalade en réclamation formelle (apps.litiges). Idempotent
-  // côté serveur : un ticket déjà escaladé renvoie son dossier existant.
-  const [reclamationBusy, setReclamationBusy] = useState(false)
-  const escaladerEnReclamation = async () => {
-    setActionError(null)
-    setReclamationBusy(true)
-    try {
-      const r = await savApi.escaladerTicketEnReclamation(id)
-      toast.success(r.data?.cree
-        ? `Réclamation #${r.data?.reclamation_id} ouverte`
-        : `Réclamation #${r.data?.reclamation_id} déjà ouverte`)
-      setCurrent((c) => ({ ...c, reclamation_id_ext: r.data?.reclamation_id }))
-      loadHistorique()
-      onSaved?.()
-    } catch (err) {
-      setActionError(frError(err, "Impossible d'escalader ce ticket."))
-    } finally { setReclamationBusy(false) }
   }
   const facturer = async () => {
     setActionError(null)
@@ -1382,29 +1345,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             <Textarea id="ticket-instructions" rows={4} value={fields.instructions}
                       onChange={(e) => set('instructions', e.target.value)} />
           </FormField>
-          <div>
-            <Button type="button" variant="outline" size="sm"
-                    loading={suggestionsLoading} onClick={chargerSuggestionsKb}>
-              <Sparkles /> Suggestions KB
-            </Button>
-          </div>
-          {kbSuggestions != null && (
-            kbSuggestions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune suggestion pour ce ticket.</p>
-            ) : (
-              <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
-                {kbSuggestions.map((a) => (
-                  <li key={a.id ?? a.titre} className="flex items-center gap-2 p-2.5 text-sm">
-                    <span className="flex-1">{a.titre}</span>
-                    <Button type="button" variant="ghost" size="sm"
-                            onClick={() => insererSuggestionKb(a)}>
-                      Insérer
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )
-          )}
         </CollapsibleSection>
 
         {/* ── Historique (chatter) — L313 repliable ── */}
@@ -1497,21 +1437,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           <Button type="button" variant="outline" onClick={telechargerRapport}>
             <FileText /> Rapport d'intervention (PDF)
           </Button>
-          {/* AUD529 — escalade SAV → réclamation formelle (litiges). Le
-              chemin documenté n'existait pas : un ticket grave imposait une
-              re-saisie manuelle. Jamais proposé sur un ticket annulé. */}
-          {!current.annule && (
-            current.reclamation_id_ext ? (
-              <Badge tone="warning">
-                Réclamation #{current.reclamation_id_ext}
-              </Badge>
-            ) : (
-              <Button type="button" variant="outline" loading={reclamationBusy}
-                      onClick={escaladerEnReclamation}>
-                <AlertTriangle /> Escalader en réclamation
-              </Button>
-            )
-          )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
           <Button type="button" loading={saving} onClick={save}><Save /> Mettre à jour</Button>
         </FormActions>
