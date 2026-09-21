@@ -57,6 +57,11 @@ def _forme_reglages(nom):
         'gabarits_dossier': serializers.DictField(),
         'norme_electrique': serializers.DictField(),
         'lestage': serializers.DictField(),
+        # CALX145 — deux sections à REGISTRE : leurs clés admises sont
+        # déclarées une par une dans ``services/parametres_cles.py``, donc
+        # leur vocabulaire vit là, pas dans la forme HTTP.
+        'simulation': serializers.DictField(),
+        'electrique_societe': serializers.DictField(),
     })
 
 

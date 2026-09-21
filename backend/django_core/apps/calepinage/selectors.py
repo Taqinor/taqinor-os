@@ -27,6 +27,13 @@ SECTIONS_PARAMETRES = (
     # CAL163 — paramètres de lestage SAISIS avec leur source. Section vide =
     # aucun coefficient connu, donc aucune feuille calculée.
     'lestage',
+    # CALX145 — réglages de simulation, clés déclarées une par une dans
+    # ``services/parametres_cles.py``. Section vide = rien de saisi, donc
+    # chaque étape qui en dépend est OMISE en nommant ce qui manque.
+    'simulation',
+    # CALX145 — seuils électriques de la société (polystring, déséquilibre,
+    # DC/AC, nomenclature, cos φ). Section vide = aucun verdict rendu.
+    'electrique_societe',
 )
 
 #: CAL246 — clés DÉRIVÉES publiées par ``GET /parametres/`` mais JAMAIS écrites :

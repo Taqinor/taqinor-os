@@ -38,7 +38,7 @@ def enregistrer_parametres(company, donnees, *, remplacer=False):
         remplacer: ``True`` remet à ``{}`` les sections non fournies.
 
     Returns:
-        Le dict complet des sept sections, comme le rend le sélecteur.
+        Le dict complet des sections admises, comme le rend le sélecteur.
 
     Raises:
         ReglageInvalide: section inconnue, ou section qui n'est pas un objet.
@@ -122,12 +122,22 @@ def _normaliseurs():
         SECTION as SECTION_ZONES, normaliser_section_zones_types,
     )
 
+    from .parametres_cles import (
+        SECTION_ELECTRIQUE_SOCIETE, SECTION_SIMULATION,
+    )
+
     return {
         SECTION_IMAGERIE: normaliser_section_imagerie,
         SECTION_ZONES: normaliser_section_zones_types,
         SECTION_DEGAGEMENTS: normaliser_section_degagements,
         SECTION_GABARITS: normaliser_section_gabarits_disposition,
         SECTION_LESTAGE: normaliser_section_lestage,
+        # CALX145 — les deux sections à REGISTRE : leurs clés sont déclarées
+        # une par une dans ``parametres_cles.py`` et chaque valeur porte sa
+        # provenance. Même crochet que les cinq autres, aucun second chemin
+        # d'écriture.
+        SECTION_SIMULATION: normaliser_section_simulation,
+        SECTION_ELECTRIQUE_SOCIETE: normaliser_section_electrique_societe,
     }
 
 
@@ -145,3 +155,147 @@ def _normaliser(donnees):
     for section in concernees:
         donnees[section] = normaliseurs[section](donnees[section])
     return donnees
+
+
+# ── CALX145 — les deux sections À REGISTRE ──────────────────────────────────
+#
+# Les cinq normaliseurs précédents connaissent CHACUN le vocabulaire de leur
+# section. Les deux sections ouvertes par CALX145 n'ont pas ce luxe : leurs
+# clés arrivent une par une, au fil des étapes de la chaîne de pertes et des
+# contrôles électriques. Leur domaine de validité est donc DÉCLARATIF — le
+# registre append-only ``services/parametres_cles.py`` — et la règle de saisie
+# est la même pour toutes : ``{valeur, source, reference}``.
+#
+# Trois refus, chacun NOMMANT le champ fautif (jamais un « non enregistré »
+# générique) : clé hors registre, valeur sans provenance admise, valeur vide.
+
+def normaliser_section_simulation(valeur):
+    """La section ``simulation`` VALIDÉE — ``{}`` si rien n'est saisi."""
+    from .parametres_cles import SECTION_SIMULATION
+
+    return _normaliser_section_a_registre(SECTION_SIMULATION, valeur)
+
+
+def normaliser_section_electrique_societe(valeur):
+    """La section ``electrique_societe`` VALIDÉE, même discipline."""
+    from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE
+
+    return _normaliser_section_a_registre(SECTION_ELECTRIQUE_SOCIETE, valeur)
+
+
+def _normaliser_section_a_registre(section, valeur):
+    """Une section dont les clés ADMISES sont déclarées au registre.
+
+    Args:
+        section: ``'simulation'`` ou ``'electrique_societe'``.
+        valeur: la section telle que l'appelant l'envoie.
+
+    Returns:
+        ``{}`` quand rien n'est saisi — ÉQUIVALENCE : aucune étape ne change
+        de comportement, chacune reste omise en nommant ce qui lui manque —
+        sinon les seules clés saisies, chacune
+        ``{'valeur', 'source', 'reference'}``.
+
+    Raises:
+        ReglageInvalide: message FRANÇAIS nommant la clé fautive.
+    """
+    from .parametres_cles import SOURCES_ADMISES, registre
+
+    if valeur is None:
+        return {}
+    if not isinstance(valeur, dict):
+        raise ReglageInvalide(
+            f"La section « {section} » doit être un objet "
+            f"(reçu : {type(valeur).__name__}).", champ=section)
+    if not valeur:
+        return {}
+
+    declarations = registre(section)
+    inconnues = sorted(set(valeur) - set(declarations))
+    if inconnues:
+        raise ReglageInvalide(
+            f"Réglage inconnu dans « {section} » : "
+            f"« {', '.join(inconnues)} ». Clés admises : "
+            f"{', '.join(sorted(declarations))}.",
+            champ=inconnues[0])
+
+    propre = {}
+    for cle, brut in valeur.items():
+        libelle = declarations[cle][0]
+        if brut is None:
+            # Clé retirée : on revient au « non saisi », donc au comportement
+            # d'aujourd'hui. Rien n'est stocké, rien n'est deviné.
+            continue
+        if not isinstance(brut, dict):
+            raise ReglageInvalide(
+                f"« {libelle} » se saisit avec sa provenance : "
+                '{"valeur": …, "source": …, "reference": "…"} '
+                f"(reçu : {type(brut).__name__}).", champ=cle)
+        surplus = sorted(set(brut) - {'valeur', 'source', 'reference'})
+        if surplus:
+            raise ReglageInvalide(
+                f"« {libelle} » n'accepte que « valeur », « source » et "
+                f"« reference » (reçu en plus : {', '.join(surplus)}).",
+                champ=cle)
+        propre[cle] = {
+            'valeur': _valeur_declaree(brut.get('valeur'), cle, libelle),
+            'source': _source_declaree(brut.get('source'), cle, libelle,
+                                       SOURCES_ADMISES),
+            'reference': _reference_declaree(brut.get('reference'), cle,
+                                             libelle),
+        }
+    return propre
+
+
+def _valeur_declaree(valeur, cle, libelle):
+    """La valeur SAISIE — un nombre, un texte ou une table, jamais du vide.
+
+    Le registre ne dit pas de quel TYPE est une valeur : une tolérance est un
+    nombre, un mode est un mot, les coefficients thermiques par type de pose
+    sont une table. Ce qui est refusé ici, c'est le VIDE : une clé déclarée
+    qui ne porte rien ne dit rien et ferait croire à un réglage.
+    """
+    vide = (valeur is None
+            or (isinstance(valeur, str) and not valeur.strip())
+            or (isinstance(valeur, (dict, list, tuple)) and not valeur))
+    if vide:
+        raise ReglageInvalide(
+            f"« {libelle} » doit porter une valeur : une clé déclarée sans "
+            "valeur ne règle rien. Retirez-la pour revenir au comportement "
+            "d'aujourd'hui.", champ=cle)
+    if isinstance(valeur, str):
+        return valeur.strip()
+    if isinstance(valeur, tuple):
+        return list(valeur)
+    return valeur
+
+
+def _source_declaree(source, cle, libelle, admises):
+    """La PROVENANCE, obligatoire : sans elle, la valeur est refusée."""
+    if not isinstance(source, str) or not source.strip():
+        raise ReglageInvalide(
+            f"« {libelle} » doit porter sa provenance « source » : aucune "
+            "valeur n'est admise sans elle. Provenances admises : "
+            f"{', '.join(admises)}.", champ=cle)
+    source = source.strip()
+    if source not in admises:
+        raise ReglageInvalide(
+            f"« {libelle} » : provenance « {source} » inconnue. Provenances "
+            f"admises : {', '.join(admises)}.", champ=cle)
+    return source
+
+
+def _reference_declaree(reference, cle, libelle):
+    """La référence du texte ou de la décision — un texte, jamais autre chose.
+
+    Elle peut rester VIDE (une valeur arrêtée par la société se défend par sa
+    provenance ``societe``), mais elle ne peut pas être autre chose qu'un
+    texte : une référence numérique ne se relit pas.
+    """
+    if reference is None:
+        return ''
+    if not isinstance(reference, str):
+        raise ReglageInvalide(
+            f"« {libelle} » : la référence doit être un texte "
+            f"(reçu : {type(reference).__name__}).", champ=cle)
+    return reference.strip()
