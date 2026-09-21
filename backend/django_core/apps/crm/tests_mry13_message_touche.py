@@ -107,20 +107,52 @@ class AucunChiffreInventeTests(_Base):
 
     def test_une_phrase_sans_date_de_validite_est_OMISE(self):
         """« valable jusqu'au  » serait pire que rien : le client lirait une
-        promesse tronquée. On perd la phrase, jamais la vérité."""
+        promesse tronquée. On perd la phrase, jamais la vérité.
+
+        La date est INDÉTERMINABLE quand la touche ne porte aucun devis de
+        l'ERP (TREADMILL-1538 : « un devis parti hors ERP compte aussi ») —
+        c'est le cas que ce test tient désormais. Un devis SANS
+        ``date_validite`` n'en est plus un : CAD59 (21/09/2026) fait lire au
+        message le MÊME repli que le PDF (``date_validite``, sinon date de
+        création + le réglage société ``quote_validity_days``,
+        ``ventes.selectors.date_validite_effective``). Avant CAD59, le
+        WhatsApp supprimait sa phrase pendant que le PDF du même dossier
+        affichait « valable jusqu'au X » — deux voix contradictoires. La
+        règle MRY13 n'a pas bougé d'un pouce : la phrase tombe quand la
+        VALEUR manque ; c'est la valeur qui a cessé de manquer.
+        """
         MessageTemplate.objects.create(
             company=self.company, cle='j9_validite',
             corps_fr=("Bonjour {prenom}. Votre proposition est valable "
                       "jusqu'au {date_validite}. Je reste disponible."))
-        devis = self._devis('DEV-MRY13-0001', date_validite=None)
         rendu = message_pour_etape(
-            self._touche(template_cle='j9_validite', devis=devis),
+            self._touche(template_cle='j9_validite', devis=None),
             user=self.acteur)
         self.assertNotIn('{date_validite}', rendu['message'])
         self.assertNotIn('valable', rendu['message'])
         self.assertIn('Bonjour Aziz', rendu['message'])
         self.assertIn('Je reste disponible', rendu['message'])
         self.assertIn('date_validite', rendu['placeholders_manquants'])
+
+    def test_CAD59_un_devis_sans_date_cite_celle_que_le_PDF_imprime(self):
+        """La contrepartie de l'omission : la phrase est GARDÉE dès que la
+        date est déterminable, et c'est EXACTEMENT celle du PDF — jamais une
+        date inventée ici (CAD59, règle #4 : on lit la surface de ventes, on
+        ne touche pas au moteur de rendu)."""
+        from apps.ventes.selectors import date_validite_effective
+
+        MessageTemplate.objects.create(
+            company=self.company, cle='j9_validite',
+            corps_fr=("Bonjour {prenom}. Votre proposition est valable "
+                      "jusqu'au {date_validite}. Je reste disponible."))
+        devis = self._devis('DEV-MRY13-0001', date_validite=None)
+        attendue = date_validite_effective(devis)
+        self.assertIsNotNone(attendue)
+        rendu = message_pour_etape(
+            self._touche(template_cle='j9_validite', devis=devis),
+            user=self.acteur)
+        self.assertIn(attendue.strftime('%d/%m/%Y'), rendu['message'])
+        self.assertEqual(rendu['placeholders_manquants'], [])
 
     def test_la_phrase_est_gardee_quand_la_date_existe(self):
         MessageTemplate.objects.create(
