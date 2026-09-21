@@ -184,6 +184,15 @@ def demarrer_cadences_existantes(company, *, apply_changes=False,
         ne_plus_contacter=False,
     ).filter(
         stage__in=[stages.COLD, stages.QUOTE_SENT, stages.FOLLOW_UP],
+    ).exclude(
+        # CAD108 [TRANCHÉ 21/09/2026] — l'étage 3 applique le MÊME filtre de
+        # source que l'étage 2 juste au-dessus. Il n'en avait aucun : les
+        # fiches du miroir Odoo étaient donc éligibles aux réveils J30/J60
+        # alors que la cadence automatique les écarte — la même population,
+        # deux réponses. Cohérent avec CAD105 : seuls les leads Odoo NEUFS
+        # entrent dans une cadence, et par la SYNCHRONISATION, jamais par la
+        # reprise de masse.
+        source=Lead.Source.ODOO_IMPORT_TEST,
     ).order_by('-score', 'pk')
     rang = 0
     for lead in dormants:
