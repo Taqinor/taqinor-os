@@ -146,9 +146,21 @@ def _esc(texte):
     return escape(str(texte if texte is not None else ""), quote=True)
 
 
+def _famille(clef):
+    """La FAMILLE d'un bloc — « onduleur#3 » appartient à « onduleur ».
+
+    CALX238 replie les branches d'onduleur identiques ; les groupes qui
+    restent distincts occupent des clefs suffixées, pour que ``positions``
+    puisse encore en recaler UN seul. Tout ce qui se décide par famille (la
+    teinte, la mise à la terre) doit donc lire la famille, pas la clef.
+    """
+    return clef.split("#", 1)[0]
+
+
 def _teinte(clef):
+    famille = _famille(clef)
     for nom, couleur in _TEINTES:
-        if nom == clef:
+        if nom == famille:
             return couleur
     return "#ffffff"
 
@@ -161,8 +173,16 @@ def _protection(resultat, repere):
 
 
 # ─────────────────────────────────────────────────────── chaîne canonique
-def blocs_du_schema(entree, resultat, standard=False):
+def blocs_du_schema(entree, resultat, standard=False, branches_onduleur=None):
     """La chaîne canonique, RÉDUITE aux organes réellement retenus.
+
+    ``branches_onduleur`` (CALX238) — les branches d'onduleur de
+    l'installation, chacune décrite par
+    ``{modele, nb_chaines, longueurs: [...], organes: [...]}``. Les branches
+    STRICTEMENT identiques (les quatre composantes égales) sont repliées sous
+    UN bloc portant « typique de N » ; deux branches qui diffèrent d'un seul
+    organe restent DEUX blocs. Absente — ou réduite à une seule branche — la
+    planche est celle d'aujourd'hui, octet pour octet.
 
     ``standard`` (L-NIV, fondateur 24/08/2026) — au niveau de partage
     « standard », la planche montre la TOPOLOGIE : désignations, quantités et
@@ -224,8 +244,8 @@ def blocs_du_schema(entree, resultat, standard=False):
         # Publié SEULEMENT quand une fiche le donne (cf. SpecOnduleur).
         detail_onduleur.append("η %s %%"
                                % fr(onduleur.rendement_euro_pct, 1))
-    blocs.append(Bloc("onduleur", onduleur.designation or "Onduleur",
-                      " · ".join(detail_onduleur)))
+    blocs.extend(_blocs_onduleur(onduleur, " · ".join(detail_onduleur),
+                                 branches_onduleur))
     if entree.batterie:
         blocs.append(Bloc("batterie",
                           entree.batterie_designation or "Batterie",
@@ -254,6 +274,69 @@ def blocs_du_schema(entree, resultat, standard=False):
                           _conducteurs_texte(entree)))
         blocs.append(Bloc("reseau", "Compteur ONEE",
                           "injection / soutirage"))
+    return tuple(blocs)
+
+
+def _signature_de_branche(branche):
+    """L'IDENTITÉ d'une branche d'onduleur — quatre composantes, pas une de plus.
+
+    Modèle, nombre de chaînes, longueurs de chaîne, organes. Une SEULE qui
+    diffère et les deux branches ne sont plus repliables : c'est exactement la
+    règle « deux branches qui diffèrent d'un seul organe ne sont PAS
+    repliées ». Les longueurs et les organes sont comparés DANS L'ORDRE
+    publié — deux branches dont les organes ne se succèdent pas pareil ne
+    dessinent pas le même sous-ensemble.
+    """
+    branche = branche or {}
+    return (
+        str(branche.get("modele") or ""),
+        int(branche.get("nb_chaines") or 0),
+        tuple(str(valeur) for valeur in (branche.get("longueurs") or ())),
+        tuple(str(valeur) for valeur in (branche.get("organes") or ())),
+    )
+
+
+def _groupes_de_branches(branches):
+    """``((branche, effectif), …)`` — regroupement par identité STRICTE.
+
+    L'ordre est celui de la PREMIÈRE apparition : la planche garde la
+    séquence du dossier, elle ne la retrie pas.
+    """
+    groupes = []
+    rangs = {}
+    for branche in branches:
+        signature = _signature_de_branche(branche)
+        rang = rangs.get(signature)
+        if rang is None:
+            rangs[signature] = len(groupes)
+            groupes.append([branche, 1])
+        else:
+            groupes[rang][1] += 1
+    return tuple((branche, effectif) for branche, effectif in groupes)
+
+
+def _blocs_onduleur(onduleur, detail, branches_onduleur):
+    """Un bloc par GROUPE de branches identiques — « typique de N » (CALX238).
+
+    Sans branches, ou avec une seule, le bloc est RIGOUREUSEMENT celui
+    d'avant : même clef, même titre, même sous-titre. C'est ce qui garantit
+    qu'un schéma à un seul onduleur ne bouge pas d'un octet.
+
+    « typique de N » est posé EN TÊTE du sous-titre : la boîte ne tient que
+    deux lignes et coupe la fin, et c'est précisément l'information qu'un
+    lecteur de planche ne doit pas perdre.
+    """
+    titre_defaut = onduleur.designation or "Onduleur"
+    groupes = _groupes_de_branches(branches_onduleur or ())
+    if len(groupes) <= 1 and (not groupes or groupes[0][1] <= 1):
+        return (Bloc("onduleur", titre_defaut, detail),)
+    blocs = []
+    for rang, (branche, effectif) in enumerate(groupes):
+        clef = "onduleur" if rang == 0 else "onduleur#%d" % (rang + 1)
+        sous_titre = (detail if effectif <= 1
+                      else "typique de %d · %s" % (effectif, detail))
+        blocs.append(Bloc(clef, branche.get("modele") or titre_defaut,
+                          sous_titre))
     return tuple(blocs)
 
 
@@ -539,7 +622,7 @@ def _symbole_terre(x, y):
 
 # ────────────────────────────────────────────────────────────────── planche
 def rendre_schema(entree, resultat, cartouche=None, positions=None,
-                  standard=False):
+                  standard=False, branches_onduleur=None):
     """PV39 — rend le schéma unifilaire en SVG (texte), jamais un fichier.
 
     ``cartouche`` : ``{client, reference, date, indice}`` — aucun montant n'y a
@@ -550,8 +633,13 @@ def rendre_schema(entree, resultat, cartouche=None, positions=None,
     fait donc ICI, à la SOURCE du dessin, et non par un filtre texte appliqué
     au SVG déjà rendu : un filtre ne pouvait pas atteindre les calibres écrits
     dans les sous-titres des blocs, et les laissait donc en place.
+
+    ``branches_onduleur`` (CALX238) : cf. ``blocs_du_schema`` — dix onduleurs
+    identiques dessinent UN sous-ensemble « typique de 10 » au lieu de dix, et
+    la planche cesse de basculer en A3 par le seul effet du nombre.
     """
-    blocs = blocs_du_schema(entree, resultat, standard=standard)
+    blocs = blocs_du_schema(entree, resultat, standard=standard,
+                            branches_onduleur=branches_onduleur)
     # Seuls les blocs EN SÉRIE remplissent les rangées du serpentin : la
     # branche batterie pend sous son porteur et n'occupe aucune rangée — la
     # compter ici basculait en A3 une planche dont la chaîne tient sur A4
@@ -730,8 +818,10 @@ def _barrette_de_terre(places):
     du bord gauche de la planche. Rien ne traverse jamais un organe — sur un
     schéma, un trait qui coupe une boîte se lit comme une liaison à cette boîte.
     """
-    ancres = [_place(places, clef) for clef in _A_LA_TERRE]
-    ancres = [place for place in ancres if place is not None]
+    # Par FAMILLE : les groupes « typique de N » de CALX238 portent des clefs
+    # suffixées (« onduleur#2 ») et doivent être reliés comme le premier.
+    ancres = [place for clef in _A_LA_TERRE for place in places
+              if _famille(place[0].clef) == clef]
     if not ancres:
         return ""
     # La barrette passe SOUS tout le dessin, branches comprises.

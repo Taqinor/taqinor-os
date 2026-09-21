@@ -50,8 +50,9 @@ __all__ = [
     "SEUIL_CHAINES_PARALLELES_FUSIBLE", "FACTEUR_FUSIBLE_MIN",
     "FACTEUR_FUSIBLE_MAX", "FACTEUR_FUSIBLE_PLANCHER",
     "LONGUEUR_DC_SANS_PARAFOUDRE_M", "SENSIBILITE_DDR_MA",
-    "ResultatProtections", "calibre_fusible_chaine", "calibre_disjoncteur",
-    "courant_emploi_ac", "concevoir_protections",
+    "ResultatProtections", "ResultatBranchesAc", "calibre_fusible_chaine",
+    "calibre_disjoncteur", "courant_emploi_ac", "concevoir_protections",
+    "courant_de_branche_ac", "calibrer_branches_ac",
 ]
 
 #: Calibres normalisés de fusibles gPV (IEC 60269-6 — fusibles dédiés PV).
@@ -151,6 +152,98 @@ def courant_emploi_ac(puissance_ac_kw, phases):
     if int(phases or 1) == 3:
         return puissance / (400.0 * math.sqrt(3.0))
     return puissance / 230.0
+
+
+@dataclass(frozen=True)
+class ResultatBranchesAc:
+    """CALX210 — un organe de protection PAR branche AC, et les omissions.
+
+    ``omissions`` nomme, en français, le CHAMP qui manque à une branche pour
+    être calibrée. Une branche sans courant d'emploi ne reçoit pas un calibre
+    par défaut : elle reçoit son motif d'omission.
+    """
+
+    protections: Tuple[Protection, ...] = ()
+    omissions: Tuple[str, ...] = ()
+
+
+def courant_de_branche_ac(branche):
+    """Le courant d'emploi d'une branche AC, ou ``None`` — jamais un défaut.
+
+    La forme lue est celle que CALX209 publie
+    (``{repere, unites, i_branche_a, calibre_a, motif_de_coupure}``) ; la clé
+    ``ib_a`` est acceptée comme synonyme, parce que c'est le nom que porte la
+    même grandeur partout ailleurs dans le moteur.
+    """
+    for cle in ("i_branche_a", "ib_a"):
+        valeur = (branche or {}).get(cle)
+        if valeur is None:
+            continue
+        try:
+            nombre = float(valeur)
+        except (TypeError, ValueError):
+            return None
+        return nombre if nombre > 0 else None
+    return None
+
+
+def _etiquette_calibre(calibre_a, tension_v):
+    """« 32 A / 230 V » — ou « 32 A » quand personne n'a publié la tension.
+
+    La tension n'entre dans AUCUN calibre : elle n'est qu'une étiquette. Ne
+    pas la connaître ne justifie donc pas de l'inventer.
+    """
+    if tension_v > 0:
+        return "%s A / %s V" % (fr(calibre_a, 0), fr(tension_v, 0))
+    return "%s A" % fr(calibre_a, 0)
+
+
+def calibrer_branches_ac(branches, phases=1, tension_reseau_v=0.0):
+    """CALX210 — ``QAC.1 … QAC.N`` : un disjoncteur par branche de micro-onduleurs.
+
+    ``branches`` est la liste publiée par CALX209. Chaque entrée peut porter
+    ses propres ``phases`` et ``tension_v`` ; à défaut, celles de
+    l'installation (arguments ``phases`` / ``tension_reseau_v``) — ce ne sont
+    pas des valeurs supposées, ce sont celles du dossier.
+
+    Le calibre sort de ``calibre_disjoncteur`` (NF C 15-100 §433.1, Ib ≤ In),
+    exactement comme le QAC1 d'un onduleur de chaîne : aucun barème neuf.
+    Branche sans courant d'emploi ⇒ AUCUN calibre, une omission qui NOMME le
+    champ ``i_branche_a``.
+    """
+    protections = []
+    omissions = []
+    for rang, branche in enumerate(branches or (), start=1):
+        repere = "QAC.%d" % rang
+        ib_a = courant_de_branche_ac(branche)
+        if ib_a is None:
+            omissions.append(
+                "branche AC %s : calibre de protection OMIS — le courant "
+                "d'emploi « i_branche_a » n'est pas publié par la branche"
+                % (branche.get("repere") or repere))
+            continue
+        phases_branche = int(branche.get("phases") or phases or 1)
+        triphase = phases_branche == 3
+        # La tension ne change AUCUN calibre : elle ne sert qu'à l'étiquette.
+        # Inconnue, elle n'est pas inventée — l'étiquette n'en porte pas.
+        tension = float(branche.get("tension_v") or tension_reseau_v or 0.0)
+        calibre = calibre_disjoncteur(ib_a)
+        protections.append(Protection(
+            repere=repere,
+            cote=COTE_AC,
+            designation="Disjoncteur AC %s courbe C — branche %s"
+                        % ("tétrapolaire" if triphase else "bipolaire",
+                           branche.get("repere") or repere),
+            calibre=_etiquette_calibre(calibre, tension),
+            quantite=1,
+            regle_source=("NF C 15-100 §433.1 — Ib ≤ In : Ib = %s sur cette "
+                          "branche en %s, calibre normalisé immédiatement "
+                          "supérieur"
+                          % (fr_a(ib_a), "triphasé" if triphase
+                             else "monophasé")),
+        ))
+    return ResultatBranchesAc(protections=tuple(protections),
+                              omissions=tuple(omissions))
 
 
 def _chaines_paralleles_max(resultat_chaines):

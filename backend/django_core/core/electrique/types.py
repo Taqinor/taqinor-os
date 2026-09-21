@@ -35,6 +35,11 @@ __all__ = [
     "ORIGINE_FICHE", "ORIGINE_DEFAUT_NON_SOURCE", "COEFFICIENTS_TEMPERATURE",
     "REGIME_TT", "REGIME_TN", "REGIME_IT", "REGIMES_CONNUS",
     "COTE_DC", "COTE_AC", "COTE_COMMUN", "COTES_CONNUS",
+    "NATURE_MATERIELLE", "NATURE_FONCTIONNELLE", "NATURES_CONNUES",
+    "STATUT_OK", "STATUT_ALERTE", "STATUT_BLOQUANT", "STATUT_NON_VERIFIABLE",
+    "STATUTS_CONNUS", "STATUTS_ALERTANTS",
+    "VerdictElectrique", "DerogationVerdict",
+    "libelles", "enregistrement_possible", "passer_outre",
 ]
 
 # ------------------------------------------------------------------ constantes
@@ -86,6 +91,34 @@ ORIGINE_DEFAUT_NON_SOURCE = "defaut_non_source"
 #: les nomme. Ce sont les NOMS DE CHAMP de ``SpecModule`` : l'aval affiche
 #: exactement la clé que l'utilisateur doit renseigner sur sa fiche produit.
 COEFFICIENTS_TEMPERATURE = ("temp_coeff_voc_pct_c", "temp_coeff_pmax_pct_c")
+
+#: CALX215 — la NATURE d'un dépassement, distincte de sa GRAVITÉ.
+#: ``materielle`` = la configuration sort de la SPÉCIFICATION publiée par le
+#: constructeur (l'appareil n'est pas garanti dans cet emploi) ;
+#: ``fonctionnelle`` = l'appareil reste dans sa spécification mais l'énergie
+#: se perd (écrêtage, MPPT hors plage, modules non câblés). La distinction
+#: existait dans le calcul depuis l'incident DEV-202608-0016 mais ne
+#: ressortait QUE par la liste où le message atterrissait : aucun code, aucune
+#: nature, aucune sévérité nommée ne parvenait au consommateur.
+NATURE_MATERIELLE = "materielle"
+NATURE_FONCTIONNELLE = "fonctionnelle"
+NATURES_CONNUES = frozenset({NATURE_MATERIELLE, NATURE_FONCTIONNELLE})
+
+#: CALX215 — le STATUT d'un verdict. ``non_verifiable`` n'est PAS un ``ok``
+#: déguisé : c'est l'aveu qu'une borne manque aux fiches, donc que le contrôle
+#: n'a PAS eu lieu. Le confondre avec ``ok`` ferait passer un trou de fiche
+#: pour une vérification réussie.
+STATUT_OK = "ok"
+STATUT_ALERTE = "alerte"
+STATUT_BLOQUANT = "bloquant"
+STATUT_NON_VERIFIABLE = "non_verifiable"
+STATUTS_CONNUS = frozenset({STATUT_OK, STATUT_ALERTE, STATUT_BLOQUANT,
+                            STATUT_NON_VERIFIABLE})
+
+#: Les statuts qui alimentent la liste historique ``alertes`` : l'alerte
+#: proprement dite ET la borne non vérifiable (qui s'y rendait déjà avant
+#: CALX215). Les deux se lisent à l'écran, aucune n'arrête un enregistrement.
+STATUTS_ALERTANTS = (STATUT_ALERTE, STATUT_NON_VERIFIABLE)
 
 
 # ------------------------------------------------------------------ formatage
@@ -224,6 +257,17 @@ class SpecOnduleur:
     #: purement descriptive, elle ne participe à AUCUN calcul : elle sert à ce
     #: qu'un schéma unifilaire NOMME le matériel au lieu d'écrire « Onduleur ».
     designation: str = ""
+    #: CALX213 — puissance APPARENTE maximale de sortie (kVA), telle que la
+    #: fiche la publie (champ ``s_max_kva`` de CALX60). Un appareil dont la
+    #: puissance apparente est inférieure à sa puissance active nominale est
+    #: BRIDÉ : ça ne casse rien, ça plafonne l'injection. ``None`` = la fiche
+    #: ne la publie pas ⇒ AUCUN contrôle, jamais un repli sur ``ac_kw``.
+    s_max_kva: Optional[float] = None
+    #: CALX213 — puissance CRÊTE d'entrée maximale (kWc) admise par le
+    #: constructeur (champ ``dc_max_kwc`` de CALX60). La dépasser sort de la
+    #: SPÉCIFICATION de l'appareil, au même titre qu'un Isc cumulé au-dessus
+    #: de ``isc_max_mppt_a``. ``None`` = non publiée ⇒ aucun contrôle.
+    dc_max_kwc: Optional[float] = None
 
     @property
     def tension_demarrage_v(self):
@@ -464,6 +508,134 @@ class Conformite:
         if self.alertes:
             return self.alertes[0]
         return ""
+
+
+@dataclass(frozen=True)
+class VerdictElectrique:
+    """CALX215 — UN verdict, nommé : quel contrôle, quelle nature, quelle borne.
+
+    Avant, le moteur ne publiait que des PHRASES, rangées dans ``bloquants`` ou
+    dans ``alertes`` : la liste d'arrivée était la seule chose qui disait la
+    gravité, et RIEN ne disait la nature (spécification constructeur franchie
+    contre production dégradée), ni quel chiffre a été comparé à quoi. Un
+    consommateur ne pouvait donc ni filtrer, ni traduire, ni tracer une
+    dérogation.
+
+    * ``code`` — identifiant STABLE du contrôle (``CH_VOC_FROID_AU_DESSUS_V_MAX``),
+      unique dans tout le moteur : c'est par lui qu'un test, un écran ou un
+      journal désignent un verdict, jamais par sa position dans une liste ni
+      par un morceau de sa phrase ;
+    * ``nature`` — ``materielle`` / ``fonctionnelle`` (cf. le bandeau plus haut) ;
+    * ``statut`` — ``bloquant`` / ``alerte`` / ``non_verifiable`` / ``ok`` ;
+    * ``libelle`` — la phrase FRANÇAISE, mot pour mot celle d'avant CALX215 :
+      les listes historiques s'en déduisent sans qu'aucun aval ne bouge ;
+    * ``borne`` / ``valeur`` — le chiffre PUBLIÉ et le chiffre CALCULÉ qui lui a
+      été comparé, ``None`` quand le contrôle ne compare pas deux nombres (une
+      borne absente des fiches n'est jamais remplacée par un chiffre) ;
+    * ``source`` — d'OÙ vient la borne (fiche constructeur, règle de dossier,
+      décision fondateur) : une borne sans source est une borne indéfendable.
+    """
+
+    code: str
+    nature: str
+    statut: str
+    libelle: str
+    borne: Optional[float] = None
+    valeur: Optional[float] = None
+    source: str = ""
+
+    @property
+    def est_bloquant(self):
+        """Seul un BLOQUANT arrête l'enregistrement d'une conception."""
+        return self.statut == STATUT_BLOQUANT
+
+    @property
+    def est_ok(self):
+        """VRAI pour le seul statut ``ok``.
+
+        ``non_verifiable`` rend ``False`` : le contrôle n'a pas eu lieu, ce
+        n'est pas un contrôle réussi.
+        """
+        return self.statut == STATUT_OK
+
+
+@dataclass(frozen=True)
+class DerogationVerdict:
+    """Une alerte PASSÉE OUTRE, tracée pour être relisible (CALX215).
+
+    OpenSolar pose la règle en toutes lettres — les alertes sont une guidance,
+    le concepteur garde la décision finale — mais une décision qui ne laisse
+    aucune trace n'est pas relisible six mois plus tard. Le noyau produit donc
+    l'ENREGISTREMENT (qui, quand, pourquoi) ; c'est l'applicatif qui l'écrit
+    dans le fil du calepinage.
+    """
+
+    code: str
+    libelle: str
+    auteur: str
+    horodatage: object
+    motif: str
+
+    @property
+    def texte(self):
+        """La ligne FRANÇAISE à écrire dans le fil, telle quelle."""
+        return ("alerte « %s » passée outre par %s le %s — motif : %s"
+                % (self.libelle, self.auteur,
+                   self.horodatage.isoformat(), self.motif))
+
+
+def libelles(verdicts, statuts):
+    """Les libellés des verdicts de ces ``statuts``, DANS L'ORDRE D'ÉMISSION.
+
+    C'est la seule fabrique des listes historiques ``bloquants``/``alertes`` :
+    elles ne sont plus alimentées en parallèle des objets, elles en DÉRIVENT —
+    donc elles ne peuvent plus diverger d'eux.
+    """
+    retenus = frozenset(statuts if not isinstance(statuts, str) else (statuts,))
+    return tuple(verdict.libelle for verdict in verdicts
+                 if verdict.statut in retenus)
+
+
+def enregistrement_possible(verdicts):
+    """``(possible, codes_bloquants)`` — une ALERTE n'a jamais arrêté personne.
+
+    Règle CALX215 : seul un verdict de statut ``bloquant`` empêche
+    d'enregistrer une conception. Une alerte (et *a fortiori* une borne non
+    vérifiable) laisse passer, à charge pour l'applicatif de tracer la
+    dérogation avec ``passer_outre``.
+    """
+    codes = tuple(verdict.code for verdict in verdicts if verdict.est_bloquant)
+    return (not codes, codes)
+
+
+def passer_outre(verdict, *, auteur, horodatage, motif):
+    """La trace de dérogation d'UNE alerte — fonction PURE, n'écrit rien.
+
+    ``horodatage`` est un ``datetime`` AVISÉ (``tzinfo`` posé) : un instant sans
+    fuseau relu depuis un autre fuseau ne désigne plus le même moment, et cette
+    trace a vocation à être opposable.
+
+    Lève ``ValueError`` en NOMMANT le champ fautif dans trois cas, parce qu'une
+    dérogation muette vaut moins que pas de dérogation : verdict bloquant (on
+    ne passe pas outre un dépassement de spécification), auteur vide, motif
+    vide.
+    """
+    if verdict.est_bloquant:
+        raise ValueError(
+            "verdict « %s » de statut bloquant : un bloquant ne se passe pas "
+            "outre, il se corrige" % verdict.code)
+    if not (auteur or "").strip():
+        raise ValueError("auteur : une dérogation sans auteur n'est pas "
+                         "relisible")
+    if not (motif or "").strip():
+        raise ValueError("motif : une dérogation sans motif saisi n'est pas "
+                         "relisible")
+    if getattr(horodatage, "tzinfo", None) is None:
+        raise ValueError("horodatage : un instant sans fuseau ne désigne pas "
+                         "un moment opposable")
+    return DerogationVerdict(
+        code=verdict.code, libelle=verdict.libelle, auteur=auteur.strip(),
+        horodatage=horodatage, motif=motif.strip())
 
 
 @dataclass(frozen=True)
