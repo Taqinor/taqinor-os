@@ -1964,6 +1964,12 @@ def assurer_prochaine_etape_apres_succes(lead, user,
     etape = RelanceEtape.objects.create(
         company=lead.company, lead=lead, cadence='generique', ordre=1,
         canal=RelanceEtape.Canal.APPEL, libelle=libelle,
+        # CAD18 — l'étape de filet porte enfin un GABARIT quand il en existe
+        # un pour elle (voir `FILET_TEMPLATE_CLES`, bas de fichier). Le lead
+        # le plus chaud du portefeuille — celui qui a répondu au message
+        # d'identité avant même l'appel d'ouverture — était le seul à perdre
+        # son script.
+        template_cle=FILET_TEMPLATE_CLES.get(libelle, ''),
         due_at=quand, due_date=quand.astimezone(horaires.CASABLANCA).date(),
         note='Posée automatiquement : aucune autre relance ouverte.')
     lead.relance_date = etape.due_date
@@ -8498,3 +8504,26 @@ def est_etape_de_filet(etape):
     if etape is None:
         return False
     return (etape.libelle or '').strip() in _LIBELLES_FILET
+
+
+# ── CAD-A ── CAD18 — l'étape de filet hérite d'un script ─────────────────────
+#
+#: CAD18 — clé de gabarit de message pour une étape de FILET, par libellé.
+#:
+#: LE TROU : en régime réactif, seule la touche 1 existe. Un lead qui RÉPOND
+#: au message d'identité avant l'appel J0+3 min se fait marquer « joint », ce
+#: qui arrête la prise de contact ; le filet pose alors « appeler le client —
+#: il a répondu au message », et cette étape naissait SANS aucun gabarit. Le
+#: dossier le plus chaud du portefeuille était le seul appel sans script.
+#:
+#: POURQUOI PAS ``appel_ouverture`` : ce script ouvre par « vous venez de
+#: remplir notre formulaire », ce qui est FAUX pour quelqu'un qui vient de
+#: répondre — il a déjà eu un échange. D'où une clé propre,
+#: ``appel_apres_reponse``.
+#:
+#: Les autres libellés de filet n'ont PAS d'entrée ici : aucun texte validé
+#: n'existe pour eux, et on n'en invente pas. ``.get(libelle, '')`` rend donc
+#: exactement le comportement d'avant pour eux.
+FILET_TEMPLATE_CLES = {
+    FILET_APPEL_LIBELLE: 'appel_apres_reponse',
+}
