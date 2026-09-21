@@ -91,7 +91,9 @@
           "reseau_import_kwh": null,
           "reseau_export_kwh": null
         }
-      ]
+      ],
+      "plafond_points": 8784,
+      "motif_troncature": ""
     }
   },
   "exemple_tronquee": {
@@ -165,7 +167,9 @@
           "reseau_import_kwh": 0.0,
           "reseau_export_kwh": 3.4
         }
-      ]
+      ],
+      "plafond_points": 8784,
+      "motif_troncature": ""
     }
   },
   "exemple_vide": {
@@ -173,7 +177,9 @@
       "pas_minutes": null,
       "tronquee": null,
       "colonnes": [],
-      "points": []
+      "points": [],
+      "plafond_points": 8784,
+      "motif_troncature": ""
     }
   }
 }

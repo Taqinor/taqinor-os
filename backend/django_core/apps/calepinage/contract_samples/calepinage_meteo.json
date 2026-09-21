@@ -31,12 +31,19 @@
         "fuseau_site": "Africa/Casablanca",
         "decalage_minutes": [
           60
-        ]
+        ],
+        "motif": ""
       },
       "albedo_face_avant": {
         "valeur": null,
         "motif": "Appliqué par PVGIS à l'intérieur de Gr(i) et NON publié par l'API : aucune valeur n'est écrite ici tant qu'une citation de la méthodologie PVGIS n'est pas committée (CALX148). Seul un albédo saisi et sourcé par la société peut remplir cette clé."
-      }
+      },
+      "appels_pvgis": 2,
+      "pas_minutes": 60,
+      "resolution_minutes": 60,
+      "pas_charge_minutes": 60,
+      "interpolation": false,
+      "note_resolution": "La météo est au pas de 60 min (PVGIS sert une ligne par heure) et aucune interpolation infra-horaire n'est faite : entre deux heures, l'irradiance n'est jamais lissée."
     }
   },
   "exemple_vide": {
@@ -64,12 +71,19 @@
       "heure": {
         "base": null,
         "fuseau_site": null,
-        "decalage_minutes": []
+        "decalage_minutes": [],
+        "motif": ""
       },
       "albedo_face_avant": {
         "valeur": null,
         "motif": "Aucune simulation lancée : aucune météo n'a été demandée."
-      }
+      },
+      "appels_pvgis": 0,
+      "pas_minutes": null,
+      "resolution_minutes": null,
+      "pas_charge_minutes": null,
+      "interpolation": false,
+      "note_resolution": ""
     }
   }
 }
