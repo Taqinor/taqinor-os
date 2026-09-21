@@ -61,7 +61,14 @@ const CODES_GERES = [
   'note_calcul_pdf',
   'dxf', // CALX22 — 4 calques, voir DESCRIPTIONS.
   'tableur_xlsx', // CALX22 — 3 feuilles, voir DESCRIPTIONS.
+  'tableur_csv', // CALX23 — sélecteur de feuille, voir FEUILLES_CSV.
 ]
+
+// CALX23 — les TROIS feuilles servies par `?feuille=`, recopiées à l'IDENTIQUE
+// de `services/export_tableur.py::FEUILLES` (« Modules », « Chaînes »,
+// « Nomenclature ») — jamais un nom inventé ni une quatrième feuille : le
+// sélecteur ne propose QUE celles-là.
+const FEUILLES_CSV = ['Modules', 'Chaînes', 'Nomenclature']
 
 // CALX22 — ce que contient chaque export, affiché SOUS le bouton pour que
 // l'utilisateur sache ce qu'il télécharge AVANT de cliquer. Noms recopiés
@@ -177,6 +184,28 @@ function CarteSortie({
   )
 }
 
+/** CALX23 — le sélecteur de feuille du CSV. Un `<select>` NATIF plutôt que le
+    composant `Select` (Radix) de `ui/` : les menus Radix portalés sont
+    invisibles dans jsdom hors d'un vrai navigateur (piège catalogué), et ce
+    choix n'a aucun besoin de portail. */
+function SelecteurFeuilleCsv({ valeur, onChange }) {
+  return (
+    <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+      Feuille
+      <select
+        className="rounded border border-input bg-card px-2 py-1 text-xs text-foreground"
+        value={valeur}
+        onChange={(evenement) => onChange(evenement.target.value)}
+        data-testid="cal-doc-feuille-csv"
+      >
+        {FEUILLES_CSV.map((feuille) => (
+          <option key={feuille} value={feuille}>{feuille}</option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 export default function PanneauDocuments({ calepinageId }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
@@ -189,6 +218,8 @@ export default function PanneauDocuments({ calepinageId }) {
   // `code` en téléchargement -> vrai. `code` -> `[{champ,message}]` en refus.
   const [enCours, setEnCours] = useState(null)
   const [erreurs, setErreurs] = useState({})
+  // CALX23 — la feuille CSV choisie, réamorcée à la première des trois servies.
+  const [feuilleCsv, setFeuilleCsv] = useState(FEUILLES_CSV[0])
 
   const parCode = useMemo(() => {
     const carte = new Map()
@@ -232,9 +263,14 @@ export default function PanneauDocuments({ calepinageId }) {
           key={entree.code}
           entree={entree}
           enCours={enCours === entree.code}
-          onTelecharger={() => telecharger(entree.code)}
+          onTelecharger={() => (entree.code === 'tableur_csv'
+            ? telecharger(entree.code, { feuille: feuilleCsv })
+            : telecharger(entree.code))}
           erreurs={erreurs[entree.code]}
           description={DESCRIPTIONS[entree.code]}
+          enfant={entree.code === 'tableur_csv' && (
+            <SelecteurFeuilleCsv valeur={feuilleCsv} onChange={setFeuilleCsv} />
+          )}
         />
       ))}
     </Card>

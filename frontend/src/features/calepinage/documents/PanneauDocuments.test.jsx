@@ -279,3 +279,62 @@ describe('PanneauDocuments — export DXF et export XLSX (CALX22)', () => {
     expect(screen.queryByTestId('cal-doc-erreur')).toBeNull() // pas de bandeau de tête
   })
 })
+
+describe('PanneauDocuments — export tableur CSV (CALX23)', () => {
+  it('le sélecteur ne propose QUE les trois feuilles servies', async () => {
+    servirInventaire('exemple')
+
+    rendre()
+    await screen.findByTestId('cal-doc-sortie-tableur_csv')
+
+    const options = [...screen.getByTestId('cal-doc-feuille-csv').querySelectorAll('option')]
+      .map((option) => option.value)
+    expect(options).toEqual(['Modules', 'Chaînes', 'Nomenclature'])
+  })
+
+  it('le téléchargement part avec la feuille choisie (`?feuille=`) et le nom du serveur', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.telechargerSortie.mockResolvedValue({
+      data: new Blob(['a;b\n1;2']),
+      headers: { 'content-disposition': 'attachment; filename="nomenclature-41.csv"' },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.selectOptions(
+      await screen.findByTestId('cal-doc-feuille-csv'), 'Nomenclature',
+    )
+    await utilisateur.click(screen.getByTestId('cal-doc-bouton-tableur_csv'))
+
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    expect(calepinageApi.calepinages.telechargerSortie).toHaveBeenCalledWith(
+      sortie('exemple', 'tableur_csv').endpoint, { feuille: 'Nomenclature' },
+    )
+    expect(downloadBlob.mock.calls[0][1]).toBe('nomenclature-41.csv')
+  })
+
+  it('CALX7 — la porte appelée est « export.csv/ », jamais la route masquée « export-csv/ », et répond 200', async () => {
+    servirInventaire('exemple')
+    const endpoint = sortie('exemple', 'tableur_csv').endpoint
+    // `views/export_csv.py` (CAL144) sert une action DIFFÉRENTE sous
+    // `export-csv/` (tiret, export de la SIMULATION) : le contrat doit
+    // pointer sur `export.csv/` (point, CAL179 — le tableur de CE panneau),
+    // celle que CALX7 a démasquée dans `SortiesMixin`.
+    expect(endpoint).toMatch(/\/export\.csv\/$/)
+    expect(endpoint).not.toMatch(/\/export-csv\/$/)
+
+    calepinageApi.calepinages.telechargerSortie.mockResolvedValue({
+      data: new Blob(['a;b']),
+      headers: {},
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-tableur_csv'))
+
+    // Une RÉSOLUTION (200), pas un rejet : la porte démasquée par CALX7
+    // répond bel et bien — notre appel n'affiche donc aucune erreur.
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    expect(screen.queryByTestId('cal-doc-erreurs')).toBeNull()
+  })
+})
