@@ -77,6 +77,18 @@ class Realisation(TenantModel):
         'Lien de suivi de production', max_length=300,
         blank=True, default='',
         help_text='Suivi de production en temps réel, quand il est public.')
+    # CAD95 (21/09/2026) — vidéo courte (30-60 s) DU MÊME chantier, proposée
+    # EN PLUS du lien de la page publique dans la touche `j4_preuve` (jamais à
+    # la place : `crm.services._contexte_preuve` omet SA seule phrase — MRY13
+    # — quand ce champ est vide, le reste de la preuve ne bouge pas). Piste à
+    # tester, pas une certitude (audit du 21/09/2026) : aucune vidéo n'est
+    # requise pour qu'une réalisation reste utilisable comme preuve.
+    lien_video = models.URLField(
+        'Vidéo du chantier', max_length=300,
+        blank=True, default='',
+        help_text="Courte vidéo (30 à 60 s) de CETTE installation, si elle "
+                  "existe. Proposée en plus de la page publique, jamais à "
+                  "la place — laisser vide si aucune vidéo n'existe.")
     actif = models.BooleanField(
         'Actif', default=True,
         help_text='Une réalisation inactive ne sert plus aucune preuve.')

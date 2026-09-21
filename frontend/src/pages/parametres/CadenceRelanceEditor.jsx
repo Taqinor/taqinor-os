@@ -167,6 +167,49 @@ function CadenceTable({ cadence, gabarits }) {
   )
 }
 
+// CAD143 (21/09/2026) — la cadence « Générique » (`Cadence.GENERIQUE`, 5
+// barreaux J+2/5/10/20/35) n'a pas d'onglet d'édition alors qu'elle reste
+// LUE et actionnable côté fiche : des leads d'avant le protocole v3 tournent
+// encore dessus (`materialiser_touche_suivante` ne l'exclut pas). Aucun
+// appelant ne DÉMARRE plus de cadence générique (round 2) — cet onglet est
+// donc en LECTURE SEULE, pour que le fondateur puisse au moins la voir ; rien
+// n'est réorganisé, les trois onglets ci-dessus sont inchangés.
+const CADENCE_GENERIQUE = {
+  value: 'generique',
+  label: 'Générique — historique, ne plus assigner',
+}
+
+function CadenceTableReadOnly({ cadence }) {
+  const [rows, setRows] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    parametresApi.getCadenceRelance(cadence)
+      .then(r => { if (!cancelled) setRows(asList(r.data)) })
+      .catch(() => { if (!cancelled) setRows([]) })
+    return () => { cancelled = true }
+  }, [cadence])
+
+  if (rows === null) return <Spinner />
+  if (rows.length === 0) {
+    return <p className="py-2 text-xs text-muted-foreground">Aucune étape pour cette cadence.</p>
+  }
+  return (
+    <div className="space-y-2" data-testid={`cadence-table-${cadence}`}>
+      {rows.map(row => (
+        <div key={row.id}
+             className="flex flex-wrap items-center gap-4 border rounded-md px-3 py-2 text-sm text-muted-foreground">
+          <span className="w-8 shrink-0">#{row.ordre}</span>
+          <span className="text-foreground">{row.libelle}</span>
+          <span>J+{row.delai_jours}</span>
+          <span>{CANAUX.find(c => c.value === row.canal)?.label ?? row.canal}</span>
+          <span>{row.actif ? 'Active' : 'Inactive'}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function CadenceRelanceEditor() {
   const [tab, setTab] = useState('contact')
   const [gabarits, setGabarits] = useState([])
@@ -183,12 +226,16 @@ export default function CadenceRelanceEditor() {
         {CADENCES.map(c => (
           <TabsTrigger key={c.value} value={c.value}>{c.label}</TabsTrigger>
         ))}
+        <TabsTrigger value={CADENCE_GENERIQUE.value}>{CADENCE_GENERIQUE.label}</TabsTrigger>
       </TabsList>
       {CADENCES.map(c => (
         <TabsContent key={c.value} value={c.value}>
           <CadenceTable cadence={c.value} gabarits={gabarits} />
         </TabsContent>
       ))}
+      <TabsContent value={CADENCE_GENERIQUE.value}>
+        <CadenceTableReadOnly cadence={CADENCE_GENERIQUE.value} />
+      </TabsContent>
     </Tabs>
   )
 }
