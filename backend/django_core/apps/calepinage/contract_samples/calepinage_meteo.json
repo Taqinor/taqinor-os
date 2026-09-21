@@ -1,0 +1,75 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/resultat/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CALX143 — L'ÉNONCÉ DE LA SOURCE MÉTÉO, `resultat['meteo']`. Ce document ne décrit QUE ce bloc — d'où `forme_serveur: partielle`. La clé est publiée par `GET resultat/` (`services/electrique.py::BLOCS_SIMULATION`, CALX70) et la forme d'ensemble du document reste celle de `contract_samples/calepinage_simulation.json` (CALX4).\n\nCE QU'IL RÉPARE. La provenance météo EXISTE déjà, mais en morceaux : `services/pvgis_serie.py::_provenance` (`:479-502`) publie `base`, `base_meteo` et `fenetre_annees` ; `services/production.py:262-268` n'en recopie que trois clés dans `production.base` ; et le profil d'horizon (`services/horizon.py::lire_profil`, `:136-145` : `base_horizon`, `altitude_m`) ne rejoint JAMAIS ce bloc. Résultat : un chiffre de production circule sans que rien ne dise de quelle base, de quelle fenêtre ni de quel horizon il sort. PVsyst nomme chaque source avec sa nature et sa fenêtre ; ce bloc fait la même chose, en UN endroit.\n\nD'OÙ VIENT CHAQUE CLÉ — AUCUNE CLÉ INVENTÉE :\n* `service` — `services/pvgis_serie.py::ClientPvgis.serie_horaire` (`'seriescalc'`) ou `::ClientPvgis.tmy` (`'tmy'`), qui publient déjà la clé `service`. CALX62 ajoutera la valeur `'fichier'` pour une série déposée par la société.\n* `base_rayonnement` — la clé `base` de `_provenance` : la base que PVGIS dit avoir UTILISÉE (`inputs.meteo_data.radiation_db` de la réponse), jamais celle qui a été demandée. Le contrat la RENOMME parce que « base » seul ne dit pas de quoi (`base_meteo` existe à côté) ; `base_demandee` reste disponible dans la réponse du client et n'entre pas dans ce bloc.\n* `base_meteo` — `_provenance` (`inputs.meteo_data.meteo_db`).\n* `mode` — `'tmy'` ou `'pluriannuel'` : le réglage société `parametres.simulation.mode_meteo` (CALX145), lu par `services/simulation.py::simuler_calepinage` (CALX5), qui REFUSE la simulation en nommant le réglage quand il est absent. C'est le mode qui décide du service appelé, pas l'inverse.\n* `fenetre_annees` — `_provenance` (`year_min`-`year_max` de la réponse).\n* `annees` — les années RÉELLEMENT couvertes par les points de la série (`serie_horaire()['points']`), énumérées par `services/chaine_pertes.py::serie_irradiance` (CALX150). C'est cette liste que `services/p50p90.py::variabilite_interannuelle` consomme pour mesurer σ : une fenêtre de deux ans dont une seule année est exploitable ne doit pas se lire « deux ans ».\n* `point.lat` / `point.lon` — les coordonnées SAISIES du site, telles qu'elles sont parties dans l'appel (`pvgis_serie._params_communs`).\n* `point.altitude_m` — `services/horizon.py::lire_profil` (`:136-145`, `inputs.location.elevation`) quand le profil d'horizon a été demandé ; sinon l'élévation de la réponse `seriescalc` elle-même, qui porte le même champ.\n* `horizon.origine` — `'dem_pvgis'` quand PVGIS a calculé l'horizon depuis son modèle de terrain (`inputs.meteo_data.horizon_data == 'DEM-calculated'` avec `use_horizon` vrai), `'profil_mesure'` pour un relevé, `'saisie'` pour un profil corrigé à la main (`services/horizon.py::profil_saisi`, qui publie `source: 'saisie'`), `'aucun'` quand rien n'a été demandé. La valeur est un ÉNONCÉ d'origine, pas le nom interne de la source : c'est elle que `services/chaine_pertes.py` lit pour omettre l'étape `horizon` quand PVGIS l'a déjà appliqué (CALX148, règle d'exclusivité).\n* `horizon.hauteur_max_deg` et `horizon.base_horizon` — `services/horizon.py::lire_profil` (`:136-145`), qui les publie sous ces deux noms exacts à partir d'une réponse `printhorizon` (`inputs.horizon_db`). `seriescalc` ne publie PAS le profil : il dit seulement qu'il en a utilisé un, et sous un autre champ (`inputs.meteo_data.horizon_data`). Une simulation qui n'a pas appelé `printhorizon` renseigne donc `base_horizon` depuis ce champ-là et laisse `hauteur_max_deg` à `null` — c'est exactement l'état de l'exemple committé ci-dessous, et `null` s'y lit « non publié », jamais « horizon plat ».\n* `url` — `ClientPvgis.construire_url` : l'exemple porte l'URL du SERVICE sans sa chaîne de requête (celle-ci contient les paramètres de l'appel, dont la perte de CAL238) ; le producteur publie l'URL complète.\n* `obtenue_le` — l'horodatage de la réponse, posé par `services/chaine_pertes.py::serie_irradiance` (CALX150) au moment de l'appel. Le cache du client (`pvgis_serie.py:169-194`) est borné par TTL et ne conserve AUCUNE date : quand `depuis_cache` est vrai, c'est donc la date de la réponse MISE EN CACHE qui doit être reconduite, jamais celle de la lecture.\n* `depuis_cache` — `serie_horaire()['depuis_cache']`.\n* `convention_azimut` — littéral `'pvgis_sud_0_est_-90'`, DÉCLARÉ parce que le constructeur de toiture travaille en azimut de face boussole (0 = Nord, 90 = Est, 180 = Sud) et PVGIS en écart au Sud (0 = Sud, −90 = Est, +90 = Ouest) : `services/pvgis_serie.py::azimut_pvgis` (`:99-119`) fait la conversion, et la convention est écrite ICI pour qu'un écran ne réinvente pas la sienne.\n* `heure.base`, `heure.fuseau_site`, `heure.decalage_minutes` — CALX59 : `serie_irradiance` demande `localtime=1` et `chaine_pertes` ré-indexe la série sur le fuseau SAISI du site (`services/site.py::decalage_utc_minutes`). `decalage_minutes` porte les décalages UTC→site RÉELLEMENT appliqués sur la fenêtre : un fuseau à décalage constant n'en publie qu'un, un fuseau qui change au cours de la fenêtre (heure d'été, Ramadan marocain porté par `apps/ventes/ramadan.py`) les publie tous. Fuseau non saisi ⇒ D-CALX 15 : les blocs horaires de charge sont OMIS avec leur motif, jamais décalés d'une heure en silence.\n* `albedo_face_avant.valeur` / `.motif` — réglage société `simulation.albedo_mensuel` (CALX145) quand il est saisi et sourcé. À défaut, la valeur reste `null` avec le motif de CALX148 : PVGIS applique un albédo dans `Gr(i)` sans le publier, et aucun chiffre ne sera écrit ici tant qu'une citation de sa méthodologie n'est pas committée.\n\nLA CLÉ CONDITIONNELLE `station`. PVGIS `seriescalc` ne nomme AUCUNE station : il sert une maille de modèle, pas un poste de mesure. `station` n'est donc publiée QUE si la réponse la porte (une future source de fichier, CALX62) et reste ABSENTE sinon — absente, et non pas nulle : remplir une clé « station » avec le nom de la ville la plus proche fabriquerait une mesure qui n'existe pas. C'est la SEULE clé conditionnelle du bloc ; toutes les autres sont toujours présentes, à `null` quand elles ne sont pas connues. CALX62 ajoutera de la même façon `fournisseur` et `fichier` lorsque la série vient d'un fichier déposé.\n\nCE QUE L'EXEMPLE MONTRE, ET POURQUOI IL EST VÉRIFIABLE. `exemple` est construit depuis UNE seule réponse PVGIS réelle, rejouée par les tests : `tests/fixtures_pvgis/seriescalc_casablanca_sud.json` (enregistrée le 20/09/2026, elle porte son propre bloc `_provenance`). `base_rayonnement`, `base_meteo`, `fenetre_annees`, `point.lat`, `point.lon`, `point.altitude_m`, `horizon.origine`, `horizon.base_horizon`, `service` et `depuis_cache` en sortent DIRECTEMENT — `tests/test_calx143_contrat_meteo.py` rejoue la fixture et les compare une à une. UN SEUL POINT, UNE SEULE RÉPONSE : on ne mélange pas deux relevés dans un même exemple. Les quatre valeurs qu'aucune fixture ne peut produire (`mode`, `obtenue_le`, `heure.*`, `albedo_face_avant`) sont des PLACEHOLDERS ASSUMÉS (D-CALX 7) : ce sont les clés et leurs natures qui font le contrat. `exemple_vide` est le calepinage POSÉ mais JAMAIS SIMULÉ — toutes les clés présentes, toutes nulles, les listes vides, jamais un `0`.",
+  "exemple": {
+    "meteo": {
+      "service": "seriescalc",
+      "base_rayonnement": "PVGIS-SARAH3",
+      "base_meteo": "ERA5",
+      "mode": "pluriannuel",
+      "fenetre_annees": "2020-2020",
+      "annees": [
+        2020
+      ],
+      "point": {
+        "lat": 33.5,
+        "lon": -7.6,
+        "altitude_m": 139.0
+      },
+      "horizon": {
+        "origine": "dem_pvgis",
+        "hauteur_max_deg": null,
+        "base_horizon": "DEM-calculated"
+      },
+      "url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc",
+      "obtenue_le": "2026-09-21T10:14:00Z",
+      "depuis_cache": false,
+      "convention_azimut": "pvgis_sud_0_est_-90",
+      "heure": {
+        "base": "locale_standard",
+        "fuseau_site": "Africa/Casablanca",
+        "decalage_minutes": [
+          60
+        ]
+      },
+      "albedo_face_avant": {
+        "valeur": null,
+        "motif": "Appliqué par PVGIS à l'intérieur de Gr(i) et NON publié par l'API : aucune valeur n'est écrite ici tant qu'une citation de la méthodologie PVGIS n'est pas committée (CALX148). Seul un albédo saisi et sourcé par la société peut remplir cette clé."
+      }
+    }
+  },
+  "exemple_vide": {
+    "meteo": {
+      "service": null,
+      "base_rayonnement": null,
+      "base_meteo": null,
+      "mode": null,
+      "fenetre_annees": null,
+      "annees": [],
+      "point": {
+        "lat": null,
+        "lon": null,
+        "altitude_m": null
+      },
+      "horizon": {
+        "origine": null,
+        "hauteur_max_deg": null,
+        "base_horizon": null
+      },
+      "url": null,
+      "obtenue_le": null,
+      "depuis_cache": null,
+      "convention_azimut": null,
+      "heure": {
+        "base": null,
+        "fuseau_site": null,
+        "decalage_minutes": []
+      },
+      "albedo_face_avant": {
+        "valeur": null,
+        "motif": "Aucune simulation lancée : aucune météo n'a été demandée."
+      }
+    }
+  }
+}

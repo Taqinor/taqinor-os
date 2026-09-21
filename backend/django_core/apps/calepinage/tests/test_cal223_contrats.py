@@ -110,6 +110,39 @@ SANS_PRODUCTEUR_PUR = {
         'la réponse décrit la COPIE enregistrée (identifiant, référence '
         'dérivée, variantes comptées) : son producteur exige la base — '
         'couvert par apps/calepinage/tests/test_calx35_dupliquer.py',
+
+    # CALX141
+    'calepinage_pertes_cascade.json':
+        "détail du bloc `resultat['cascade']` servi par GET resultat/ "
+        '(CALX70) : son producteur est services/chaine_pertes.py '
+        '(CALX147), pas encore écrit — la forme est affirmée sans base par '
+        'apps/calepinage/tests/test_calx141_contrat_cascade.py',
+
+    # CALX143
+    'calepinage_meteo.json':
+        "détail du bloc `resultat['meteo']` servi par GET resultat/ "
+        '(CALX70) : la provenance est aujourd’hui éparse (pvgis_serie, '
+        'horizon, production) et son assembleur arrive avec CALX150 — la '
+        'forme est affirmée sans base, depuis une réponse PVGIS rejouée, par '
+        'apps/calepinage/tests/test_calx143_contrat_meteo.py',
+
+    # CALX144
+    'calepinage_incertitude.json':
+        "détail du bloc `resultat['incertitude']` servi par GET resultat/ "
+        '(CALX70) : son producteur est services/incertitude.py (CALX185, '
+        'CALX186), pas encore écrit — la forme et les deux règles dures '
+        '(aucun σ sans source, aucun P50 recopié en P90) sont affirmées sans '
+        'base par '
+        'apps/calepinage/tests/test_calx144_contrat_incertitude.py',
+
+    # CALX142
+    'calepinage_serie_horaire.json':
+        "détail du bloc `resultat['serie_horaire']` PERSISTÉ : il n'est pas "
+        'recopié par GET resultat/ (D-CALX 14, volume) et son seul lecteur '
+        "est l'export CSV, qui rend un FICHIER — aucune forme JSON servie à "
+        'comparer ; la série est écrite par CALX150 et la forme est affirmée '
+        "sans base, par l'exporteur lui-même, dans "
+        'apps/calepinage/tests/test_calx142_contrat_serie.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
