@@ -2,7 +2,7 @@
 
 Generated from commit `dev` on 2026-06-29, refreshed for the functional-domain expansion wave (5 parallel worktree lanes: apps/compta clÃƒÆ’Ã‚Â´ture de pÃƒÆ’Ã‚Â©riode + OD manuelles + ÃƒÆ’Ã‚Â -nouveaux FG115ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“117; apps/ventes solar string-design + inverter match + tilt/azimut FG246/247/249; apps/installations jalons/modÃƒÆ’Ã‚Â¨les-de-projet/rÃƒÆ’Ã‚Â©unions FG293/296/298; **NEW app apps/flotte** Vehicule+EnginRoulant FLOTTE1/2/4; **NEW app apps/ged** Cabinet/Folder/Document/Version GED1/2/3 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, company-scoped, tested), on top of the prior `dev-uiwave-20260621` world-class UI wave (34 frontend UI/UX tasks: premium DataTable, calm chrome, foundation hooks/primitives, page redesigns) (PLAN2 priority-queue run ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Group Q DevisÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬ÂToiture-3D pipeline backend (Q1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“Q7: Devis.roof_layout/roof_image + layout endpoints, Lead roof_point/roof_outline/bill_kwh + per-lead token, build_devis_from_layout() service, MinIO roof-image, layout-aware quote data with byte-identical no-layout path, tokenized /proposal data endpoint + e-sign accept); Group R agentic layer ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â NEW APP `apps/agent` (in-code action registry + `/api/django/agent/` catalogue, AG1), FastAPI registry-driven tools with proposeÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢confirm (`/sql-agent/confirm`, AG2) surfaced on /query, assistant confirm/result cards (AG3), domain agent actions in ventes/crm/stock/sav/installations `agent_actions.py` (AG4ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“AG9), Groq-Whisper assistant voice `/sql-agent/transcribe` (AG10) + voice/hands-free chat (AG11/AG12); Group S internal team chat ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â NEW APP `apps/chat` (Conversation/Member/Message/Attachment/Reaction/Mention, company+membership scoped, `/api/django/chat/`, S1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“S9), self-hosted faster-whisper `/chat/transcribe` (NEW dep, `CHAT_TRANSCRIPTION_ENABLED`, S10) + Celery transcription pipeline (S11), full React `features/messaging` UI + `/messages` route (S12ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“S20); design/UI/reporting polish (F120ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“F123 OKLCH tokens, G124ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“G128 primitives, K147/N161/K148/K149/J146/P167 chart kit + dashboard + table unification); P171 DataTableÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢@tanstack engine swap (API-compatible, full parity). ADDITIVE migrations: ventes/0024, crm/0024, chat/0001, notifications/0007. Founder standing consent recorded in CLAUDE.md lifting the ARCH/AUTH/COST/DECISION/GALLERY/DEP gate. + 2026-06-22 greenfield-foundations run: 7 NEW apps stood up (apps/rh DossierEmploye master FG154/DC29, apps/paie ParametrePaie/BaremeIR PAIE1/2/4, apps/gestion_projet Projet/ProjetChantier PROJ1, apps/contrats Contrat CONTRAT1/2, apps/qhse NCR/CAPA QHSE1/9/10, apps/kb KbArticle KB1, apps/litiges Reclamation LITIGE1) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â additive, multi-tenant, admin-gated, tested; INSTALLED_APPS+urls wired; 13 tasks ticked. BLOCKED: S21 WebSocket/Channels (needs provisioned ASGI/nginx-WS infra), I134/I138 ÃƒÂ¢Ã…â€™Ã‹Å“K palette (reconcile with existing providers).) + 2026-06-22 `claude/serene-ptolemy-dj5cs0` wave-1 run: 8 parallel worktree lanes ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â FG122 (compta consolidated treasury position + AR/AP/payroll/TVA projection, GL-only selector + read endpoint), M4 (last `ventes ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ audit` back-edge removed ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â PDF audit capture now flows through the `core.events.document_pdf_generated` bus with an `audit` receiver; new import-linter contract pins it), FG157 (apps/rh `Remuneration` gated by the new `salaires_voir` permission), PAIE3 (apps/paie 2026 Moroccan legal payroll defaults seeded editable + `valide_par_fondateur` flag), PROJ5 (apps/gestion_projet `Tache` WBS with self-FK sub-tasks), QHSE5 (apps/qhse auto-conformity min/max on `PointControleModele`/`ReleveControle`), FG350 (frontend global `CopilotPanel` drawer reusing the FastAPI agent), GED5 (frontend `/ged` arborescent navigator over existing ged endpoints) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations rh/0004, paie/0002, qhse/0004, gestion_projet/0005. + wave-2 (same run): FG123 (compta `RapprochementBancaire`/`LigneReleve`/`PointageReleve` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â statementÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬ÂGL pointing, ÃƒÆ’Ã‚Â©cart-zero close, no ÃƒÆ’Ã‚Â©criture), FG49 (ventes account-coded grand-livre export CGNC 3421/7111/4455, xlsx+csv, configurable codes), FG351 (apps/agent registry guarded write actions `ventes.devis.create`/`crm.client.create`/`crm.lead.create` via proposeÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢confirm + FastAPI dynamic action_tools), FG158 (rh `DossierEmploye` emergency-contact + extended coordinates fields), PAIE5 (paie family-charge deduction params + `compute_ir` helper), GED6 (ged `DocumentLien` generic-target link via `records.ALLOWED_TARGETS` +ventes.boncommande), PROJ6 (gestion_projet `DependanceTache` FS/SS/FF/SF + lag with cycle guards), QHSE6 (qhse hold-point gating selector/endpoint) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations compta/0006, rh/0005, paie/0003, ged/0002, gestion_projet/0006 (FG49/FG351/QHSE6 need none); import-linter stays 4/4. + wave-3 (same run, 7 lanes): FG124 (compta `Caisse`/`MouvementCaisse`/`ClotureCaisse` petty-cash with optional GL posting honouring the FG115 period lock), FG50 (ventes acompte transfer/refund on facture cancel ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â re-point Paiement or reversing negative Paiement, chatter, no migration), FG159 (rh `DocumentEmploye` vault reusing `records.Attachment` MinIO storage + optional expiry), PAIE6 (paie `Rubrique` configurable payslip-line catalogue + idempotent seed), GED7 (ged `migrate_attachments_to_ged` command importing records.Attachment into Documents reusing file_key + DocumentLien), PROJ7 (gestion_projet `Jalon` milestones + `facturation_pct`), QHSE7 (qhse `ReleveCourbeIV` PV string I-V curve + fill factor) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations compta/0007, rh/0006, paie/0004, gestion_projet/0007, qhse/0005 (FG50/GED7 need none); import-linter stays 4/4. FG352 (RAG/pgvector, DEP:langchain-textsplitters) intentionally left [ ] for a focused run. + 2026-06-22 `claude/plan-md-completion-ysbchz` drain: 8 parallel worktree lanes off PLAN.md (compta FG125ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“130, ventes FG51/53/248/250/251, core FG355ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“359 NoOp-AI, rh FG160ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“165, paie PAIE7ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“12, ged GED8ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“13, gestion_projet PROJ8ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“13, qhse QHSE8/11ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“15 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â 46 tasks; ADDITIVE migrations across those apps + customfields/0003; new NoOp scaffolds add no external dependency; GED12 semantic embedding OFF by default). + 2026-06-23 PLAN2 **Group U** drain (U1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“U14, 10 parallel worktree lanes, one self-merge): lead-modal stays-open UX (U1), mouse-wheel + mobile-header CSS regressions (U2/U3), WhatsApp-send flips devisÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢envoyÃƒÆ’Ã‚Â© via a NEW `core.events.devis_sent` event (U4), surface generated factures/BC in the devis list + BC-state warning (U5/U8), hide/badge superseded devis revisions (U7), auto-create chantier on devis acceptance via the `devis_accepted` bus (U6), stock reservation on the direct generer-facture path (U9), relance-escalation reset on full payment (U10), phantom-signÃƒÆ’Ã‚Â© flag on post-acceptance refusal (U11, flag-only), direct nullable lead FK on Facture/BonCommande (U12), avatar same-origin proxy fix (U13), GED Ãƒâ€šÃ‚Â« Documents Ãƒâ€šÃ‚Â» write UI + `documents/televerser/` upload (U14) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â additive, multi-tenant, tested; ADDITIVE migrations ventes/0027_devis_date_envoi + 0028_boncommande_lead_facture_lead. + 2026-06-24 PLAN.md batch-1 drain (8 parallel worktree lanes off the FG/module wave plan, adversarial review + local CI incl. makemigrations-check & full affected test run, one self-merge): 7 shipped ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â FG52 (ventes multi-currency `devise`/`taux_change` + CompanyProfile default), FG166 (rh `Pointage` clock-in/out), CONTRAT6 (contrats `confidentialite` gated on `menu_tier`), FLOTTE5 (flotte `ActifFlotte` unified asset ref), PAIE13 (paie multi-profile base-salary + proration), GED14 (ged inline `apercu` preview), PROJ14 (gestion_projet delay detection). ADDITIVE migrations ventes/0029 + parametres/0025, rh/0008, contrats/0005, flotte/0005, paie/0006. **FG131 (compta 3-way match) DEFERRED/backed-out** ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the build duplicated stock's BonCommandeFournisseur/FactureFournisseur (reverse-accessor clash); needs a rebuild reusing stock procurement via selectors/services (left `[ ]`). + 2026-06-27 `claude/lucid-banzai-33af1c` PLAN.md wave-1 drain (5 parallel worktree lanes, one self-merge): PAIE14 (paie heures-sup majorÃƒÆ’Ã‚Â©es 25/50/100 %), FG167 (rh `FeuilleTemps` timesheets + labour-hours selector), CONTRAT7 (contrats `ModeleContrat` + `/instancier/`), FLOTTE7 (flotte `Conducteur` + permis), QHSE16 (qhse `Audit`/`ReponseCritere` + score ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ NCR) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations paie/0007, rh/0009, contrats/0006, flotte/0006, qhse/0010. No new external/paid dependency, no auth change. Validated on the docker CI harness (511 affected-app tests green, makemigrations --check clean). + 2026-06-27 same run waves 2+3 (9 more file-disjoint lanes): GED15 (ged document version history + restore, `restored_from` audit), PROJ15 (gestion_projet `RessourceProfil`/`Equipe`, internal cout_horaire), FG39 (crm `ObjectifCommercial` + attainment selector, backend), FG5 (notifications `WorkingHoursConfig`/`Holiday` + calendar helpers + `seed_ma_holidays`, opt-in), FG86 (sav `Ticket.share_token` + public read-only tracking endpoint, allowlist no cout/chatter), KB5 (kb `seed_kb_templates` 5 SOP/ONEE/82-21 gabarits), FG96 (reporting `DashboardConfig` per-user/role, backend), FG102 (publicapi webhook deliveries history + replay + test, backend), FG297 (installations `DocumentProjet`/`RevisionDocument` versioned project-doc register) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations ged/0008, gestion_projet/0010, crm/0028, notifications/0010, sav/0009, reporting/0003, installations/0014 (KB5/FG102 need none); import-linter stays 4/4. No new external/paid dependency, no auth change. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-1 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI, one self-merge): FG135 (compta `NoteFrais` notes de frais + remboursements, justificatif photo, ÃƒÆ’Ã‚Â©critures ÃƒÆ’Ã‚Â©quilibrÃƒÆ’Ã‚Â©es, verrou de pÃƒÆ’Ã‚Â©riode, rÃƒÆ’Ã‚Â©f NDF race-safe), FG291 (installations `Projet` programme multi-chantiers regroupant chantiers/devis/tickets par FK chaÃƒÆ’Ã‚Â®nes, machine d'ÃƒÆ’Ã‚Â©tats propre ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â NEW arch component), FG255 (ventes `ev_charger_sizing` borne VE couplÃƒÆ’Ã‚Â©e au PV, math pure), FG361 (core `forecast.py` prÃƒÆ’Ã‚Â©vision CA/devis mensuels, Holt-Winters statsmodels + repli pur Python), FG172 (rh `Competence`/`CompetenceEmploye` matrice de compÃƒÆ’Ã‚Â©tences), CONTRAT13 (contrats `RegleApprobation` par montant/type + rÃƒÆ’Ã‚Â©solveur), FLOTTE13 (flotte conso L/100 km & kWh/100 km depuis pleins+odomÃƒÆ’Ã‚Â¨tre, endpoint scopÃƒÆ’Ã‚Â©), GED17 (ged `Document.statut` cycle de vie brouillonÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢obsolÃƒÆ’Ã‚Â¨te, machine d'ÃƒÆ’Ã‚Â©tats gardÃƒÆ’Ã‚Â©e, distinct de STAGES.py) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations compta/0011, installations/0016, rh/0014, contrats/0010, ged/0011 (FG255/FG361/FLOTTE13 need none). **NEW external dependency `statsmodels==0.14.4`** (FG361, import dÃƒÆ’Ã‚Â©fensif + repli si absente). Adversarial review fixed 2 CI-red issues pre-merge (FG361 garde NaN avant clamp, FLOTTE13 action `consommation` en lecture tout rÃƒÆ’Ã‚Â´le) + an FG135 reference race; core stays a foundation layer (import-linter 4/4). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-2 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI): FG136 (compta `BaremeIndemnite`+`IndemniteChantier` indemnitÃƒÆ’Ã‚Â©s km/per-diem, haversine, ÃƒÆ’Ã‚Â©critures ÃƒÆ’Ã‚Â©quilibrÃƒÆ’Ã‚Â©es + verrou de pÃƒÆ’Ã‚Â©riode), FG292 (installations `ProjetTache` tÃƒÆ’Ã‚Â¢ches/sous-tÃƒÆ’Ã‚Â¢ches + prÃƒÆ’Ã‚Â©dÃƒÆ’Ã‚Â©cesseur avec gardes anti-cycle ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ÃƒÆ’Ã‚Â©tend l'ARCH Projet FG291), FG256 (ventes `battery_storage_sizing` autoconso-max vs backup-heures, math pure), FG362 (core `win_probability.py` scorer pur fondation + `reporting/pipeline.py` pondÃƒÆ’Ã‚Â©rÃƒÆ’Ã‚Â© par lead, repli statique), FG173 (rh `Habilitation` ÃƒÆ’Ã‚Â©lectriques NF C 18-510 + expiry), CONTRAT14 (contrats `EtapeApprobation` workflow depuis `RegleApprobation`, ne touche pas `Contrat.statut`), FLOTTE14 (flotte `CarteCarburant` + dÃƒÆ’Ã‚Â©tecteur d'anomalies pleins), QHSE19 (qhse `RetourClientQualite` satisfaction 1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“5) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations compta/0012, installations/0017, rh/0015, contrats/0011, flotte/0012, qhse/0013 (FG256/FG362 need none). No new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). Fixed an FG136 constraint Q-order migration drift pre-merge (makemigrations --check clean). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-3 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI incl. the 8 wave-3 test modules run green before push): FG137 (compta `DeclarationTVA` prÃƒÆ’Ã‚Â©paration TVA collectÃƒÆ’Ã‚Â©eÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢dÃƒÆ’Ã‚Â©ductible par rÃƒÆ’Ã‚Â©gime/mÃƒÆ’Ã‚Â©thode + export), FG294 (installations `BudgetProjet`/`BudgetEngagement` budget vs rÃƒÆ’Ã‚Â©el agrÃƒÆ’Ã‚Â©gÃƒÆ’Ã‚Â© cross-app via get_model/selectors, alerte dÃƒÆ’Ã‚Â©passement ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ARCH), FG257 (ventes `simulate_bankable_yield` P50/P90 + Performance Ratio, math pure), FG363 (core `churn_risk.py` scorer pur fondation), FG174 (rh `Certification` non-ÃƒÆ’Ã‚Â©lectriques + expiry), CONTRAT15 (contrats `ContratActivity` chatter/journal des transitions), FLOTTE15 (flotte `PlanEntretien` entretien prÃƒÆ’Ã‚Â©ventif km/date/heures via ActifFlotte), GED18 (ged `DemandeApprobation` workflow rÃƒÆ’Ã‚Â©utilisant la machine d'ÃƒÆ’Ã‚Â©tats GED17) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations compta/0013, installations/0018, rh/0016, contrats/0012, flotte/0013, ged/0012 (FG257/FG363 need none). No new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation, FG363 stdlib-only). No migration drift. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-4 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-4 test modules before push ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â **ZERO migrations this wave**, all aggregation/pure-math/helper tasks): FG138 (compta `releve_deductions_tva` annexe TVA dÃƒÆ’Ã‚Â©ductible depuis le GL, rÃƒÆ’Ã‚Â©concilie FG137), FG295 (installations `projet_pnl` P&L consolidÃƒÆ’Ã‚Â© revenuÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢coÃƒÆ’Ã‚Â»ts par Projet, rÃƒÆ’Ã‚Â©utilise les agrÃƒÆ’Ã‚Â©gats cross-app FG294), FG258 (ventes `hourly_self_consumption` profil autoconso 8760 h + parser xlsx openpyxl dÃƒÆ’Ã‚Â©jÃƒÆ’Ã‚Â  prÃƒÆ’Ã‚Â©sent), FG364 (core `stock_reorder.py` prÃƒÆ’Ã‚Â©vision rupture/rÃƒÆ’Ã‚Â©appro, stdlib seul), FG175 (rh `echeances_rh` moteur d'alertes d'expiration unifiÃƒÆ’Ã‚Â© + commande notifiant via `notifications.notify`), PROJ18 (gestion_projet `plan_de_charge` capacitÃƒÆ’Ã‚Â© vs affectÃƒÆ’Ã‚Â©), PAIE20 (paie helper `cimr_salariale` CIMR optionnelle par employÃƒÆ’Ã‚Â©, champs prÃƒÆ’Ã‚Â©existants), QHSE20 (qhse `iso9001_readiness` tableau de bord) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; NO migrations; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). No migration drift. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-5 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-5 test modules before push): FG139 (compta `RetenueSource` RAS retenue ÃƒÆ’Ã‚Â  la source + bordereau de versement, export `?export=csv`), FG299 (installations `plan_de_charge_equipes` capacitÃƒÆ’Ã‚Â© vs affectÃƒÆ’Ã‚Â© des techniciens/ÃƒÆ’Ã‚Â©quipes sur interventions), FG259 (ventes `net_metering_savings` valorisation surplus injectÃƒÆ’Ã‚Â© par tranche loi 13-09), FG365 (core `payment_delay.py` prÃƒÆ’Ã‚Â©diction de retard de paiement, stdlib seul), FG176 (rh `verifier_habilitation_requise` garde d'affectation par habilitation, blocage doux), CONTRAT16 (contrats `SignatureContrat` e-sign in-app loi 53-05, preuve serveur, bascule statut signÃƒÆ’Ã‚Â©), FLOTTE16 (flotte `EcheanceEntretien` gÃƒÆ’Ã‚Â©nÃƒÆ’Ã‚Â©ration idempotente d'ÃƒÆ’Ã‚Â©chÃƒÆ’Ã‚Â©ances dues + alertes), GED19 (ged `AclGed` ACL par dossier/document hÃƒÆ’Ã‚Â©ritage+override, rÃƒÆ’Ã‚Â©trocompatible) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations compta/0014, contrats/0013, flotte/0014, ged/0013 (FG299/FG259/FG365/FG176 need none). No new external/paid dependency, no auth change; import-linter 4/4. Fixed a GED19 CheckConstraint `condition=` migration drift pre-merge (Django 5.1 deconstruction; Meta.constraints aligned with the migration, makemigrations --check clean). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-6 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-6 test modules before push): FG140 (compta aide au calcul de l'IS ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â barÃƒÆ’Ã‚Â¨me progressif + cotisation minimale + 4 acomptes + rÃƒÆ’Ã‚Â©gularisation, selectors-only), FG300 (installations `conflits_affectation` double-booking technicien/camionnette mÃƒÆ’Ã‚Âªme jour), FG260 (ventes `tariff_escalation_projection` escalade ONEE 20-25 ans + VAN/TRI stdlib), **FG366 (core moteur de workflow BPM gÃƒÆ’Ã‚Â©nÃƒÆ’Ã‚Â©rique `WorkflowDefinition/StepDefinition/Instance/StepInstance` cible gÃƒÆ’Ã‚Â©nÃƒÆ’Ã‚Â©rique contenttypes + SLA/escalades ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â NEW ARCH component dans la fondation, import-linter 4/4)**, FG177 (rh `VisiteMedicale` du travail + aptitude + expiry, alimente FG175), PROJ19 (gestion_projet `conflits_affectation` ressources chevauchantes), PAIE21 (paie frais professionnels ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â dÃƒÆ’Ã‚Â©jÃƒÆ’Ã‚Â  prÃƒÆ’Ã‚Â©sent, tests ajoutÃƒÆ’Ã‚Â©s), QHSE21 (qhse `EvaluationRisque`/`LigneEvaluationRisque` document unique, criticitÃƒÆ’Ã‚Â©=gravitÃƒÆ’Ã‚Â©ÃƒÆ’Ã¢â‚¬â€probabilitÃƒÆ’Ã‚Â©) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations core/0002 (BPM), rh/0017, qhse/0014 (FG140/FG300/FG260/PROJ19/PAIE21 need none). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-7 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of 9 wave-7 test modules before push): FG141 (compta `export_fec` export FEC DGI 18 colonnes, `?export=fec`), FG301 (installations `nivellement_charge` rÃƒÆ’Ã‚Â©ÃƒÆ’Ã‚Â©quilibrage des interventions surchargÃƒÆ’Ã‚Â©es sans conflit, lecture seule), FG261 (ventes `optimize_subscribed_power` rÃƒÆ’Ã‚Â©duction puissance souscrite post-PV C&I), FG367 (core `rules.py` ÃƒÆ’Ã‚Â©valuateur de conditions ET/OU/NON + actions sÃƒÆ’Ã‚Â©quentielles, pur fondation), FG178 (rh `EpiCatalogue`/`DotationEpi` dotation EPI nominative), CONTRAT17 (contrats auto signÃƒÆ’Ã‚Â©ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢actif sur signature), FLOTTE17 (flotte `Garage`/`OrdreReparation` ordres de rÃƒÆ’Ã‚Â©paration + coÃƒÆ’Ã‚Â»ts), GED20 (ged `PartageGed` partage tokenisÃƒÆ’Ã‚Â© public expiry/password/quota) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations rh/0018, flotte/0015, ged/0014 (FG141/FG301/FG261/FG367/CONTRAT17 need none). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). GED20 introduces a PUBLIC AllowAny tokenized document endpoint (token-only resolution, expiry/quota/password-hash, no cross-tenant leak ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â security model calquÃƒÆ’Ã‚Â© sur ventes.ShareLink). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-8 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of 8 wave-8 test modules before push): FG142 (compta `liasse_fiscale` trousse liasse fiscale bilan+CPC+balance+annexe-TVA, rÃƒÆ’Ã‚Â©utilise les sÃƒÆ’Ã‚Â©lecteurs), FG302 (installations `IndisponibiliteRessource` calendrier de disponibilitÃƒÆ’Ã‚Â© technicien/camionnette + sÃƒÆ’Ã‚Â©lecteur d'exclusion), FG262 (ventes `module_degradation_curve` dÃƒÆ’Ã‚Â©gradation modules + planchers de garantie), FG368 (core `core/jobs.py` + `ScheduledJobViewSet` liste/exÃƒÆ’Ã‚Â©cution des jobs Celery Beat, admin, cÃƒÆ’Ã‚Â¢blÃƒÆ’Ã‚Â© `/api/django/core/`), FG179 (rh pÃƒÆ’Ã‚Â©remption/contrÃƒÆ’Ã‚Â´le EPI dÃƒÆ’Ã‚Â©rivÃƒÆ’Ã‚Â©s + alertes, alimente FG175), PROJ20 (gestion_projet `nivellement_charge` rÃƒÆ’Ã‚Â©ÃƒÆ’Ã‚Â©quilibrage ressources projet), PAIE22 (paie calcul IR ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â dÃƒÆ’Ã‚Â©jÃƒÆ’Ã‚Â  prÃƒÆ’Ã‚Â©sent PAIE5, 30 tests ajoutÃƒÆ’Ã‚Â©s), QHSE22 (qhse `document_unique_valide`/`exiger_document_unique` gate document unique avant pose) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive, multi-tenant, tested; ADDITIVE migrations installations/0019, rh/0019 (FG142/FG262/FG368/PROJ20/PAIE22/QHSE22 need none). FG368 added a root-URLConf line (`api/django/core/` ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ `core.urls`, orchestrator wiring step). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation, jobs via celery infra). Wave-9 PLAN.md drain (2026-06-29, 8 parallel file-disjoint worktree lanes): rh `EmargementEpi` (FG180), contrats `VersionContrat` (CONTRAT18), flotte `Pneumatique`/`PieceFlotte` (FLOTTE18), ged watermarking flags `Document.watermark_diffusion`/`PartageGed.watermark` (GED21, lazy PyMuPDF/Pillow ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no hard dep), core workflow-template library + `/api/django/core/` workflow-templates route (FG369), plus selector/endpoint-only FG143 (compta ÃƒÆ’Ã‚Â©tat 9421), FG303 (installations van planning), FG263 (ventes PPA model) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive & company-scoped, 4 additive migrations (rh 0020, contrats 0014, flotte 0016, ged 0015). Wave-10 PLAN.md drain (2026-06-29, 7 parallel file-disjoint worktree lanes in apps disjoint from wave 9): crm `ConcurrentPerte` (lost-deal competitor capture FG242), gestion_projet `BudgetProjet`/`LigneBudgetProjet` (PROJ21), qhse `PermisTravail` (QHSE23), kb `KbArticleAcl`/`KbLecture` (role ACL + read tracking KB7), sav `AlarmeOnduleur` (inverter alarms FG280), plus paie allocations-familiales employer charge (PAIE23, fields on ParametrePaie/BulletinPaie) and selector-only LITIGE6 (disputes dashboard) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive & company-scoped, 6 additive migrations (crm 0029, gestion_projet 0013, kb 0005, paie 0011, qhse 0015, sav 0011). Wave-11 PLAN.md drain (2026-06-29, 6 parallel file-disjoint worktree lanes resuming wave-9 app lanes off the merged base): compta `TimbreFiscal` (droit de timbre cash FG144), rh `AccidentTravail` (HSE/accidents register FG181), installations `SousTraitant` (subcontractor registry FG304), ged `PolitiqueRetention` (non-destructive retention policies GED22), flotte `EcheanceReglementaire` (regulatory deadlines FLOTTE19), plus pure-math FG264 (ventes pumping-cycle water yield) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive & company-scoped, 5 additive migrations (compta 0015, rh 0021, installations 0020, ged 0016, flotte 0017). Wave-12 PLAN.md drain (2026-06-29, 3 parallel file-disjoint lanes resuming wave-10 app lanes): qhse `ConsignationLoto` (LOTO on a work permit QHSE24), crm `PointContact` (multi-touch attribution journal FG204), plus paie taxe de formation professionnelle employer charge (PAIE24, BulletinPaie snapshot) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive & company-scoped, 3 additive migrations (paie 0012, qhse 0016, crm 0030). Wave-13 PLAN.md drain (2026-06-30, 6 parallel file-disjoint worktree lanes resuming wave-9 app lanes): compta `RetenueGarantie`/`CautionBancaire` (FG145), rh `PresquAccident` (near-miss FG182), installations `OrdreSousTraitance` (subcontractor work orders FG305), ged `ArchivageLegal` (legal write-once GED23), flotte `BaremeVignette` + `Vehicule.puissance_fiscale` (TSAV FLOTTE20), plus selector-only PROJ22 (committed-vs-actual project cost) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all additive & company-scoped, 5 additive migrations (compta 0016, rh 0022, installations 0021, ged 0017, flotte 0018).
 Structure fingerprint: 0b8613005e5275df3381348ea0c8df4cf7596ad986a3a50a0f44b7ba3097bcc1
-Plan fingerprint: ee48c1f1ea8d39600c7a27d2b014117d6ecda6ae2c06a3e40ef9964ab4c41de8
+Plan fingerprint: fe0e555862829e1dd27838f7d1e11a751c3f48b8866b4b0c0bfc1127df8c7a83
 
 
 
@@ -1306,7 +1306,7 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 
 - _(none)_
 
-**Open — to build (260)**
+**Open — to build (620)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -1531,6 +1531,366 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 - `XACC12` — Position fiscale des tiers (exonérations avec attestation)
 - `XPOS19` — E-commerce transactionnel : checkout direct des petits articles (panier → paiement CMI…
 - `YCASH5` — Annulation d'une facture après acompte : réversion de l'acompte tracée mais AUCUNE…
+- `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
+- `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
+- `CALX3` — Faire exposer par le constructeur 3D l'entrée moteur, l'application d'un plan et les…
+- `CALX4` — Figer le contrat de la simulation avant ses deux moitiés
+- `CALX5` — Construire le service d'orchestration de la simulation et sa porte HTTP, sur la chaîne…
+- `CALX6` — Persister la série horaire et rendre l'export horaire réellement téléchargeable
+- `CALX7` — Lever le masquage qui empêche l'export tableur CSV d'être enregistré
+- `CALX8` — Remettre au panneau de l'atelier l'API du constructeur, et non la référence qui la…
+- `CALX14` — Rendre visibles la batterie et le hors-réseau que la chaîne calcule
+- `CALX16` — Brancher la chaîne électrique la plus faible en ombrage sur le verdict
+- `CALX17` — Brancher la masse installée et la feuille de lestage sur un panneau
+- `CALX18` — Ouvrir l'éditeur des postes de pertes
+- `CALX19` — Ouvrir l'inventaire des sorties et y brancher la planche cotée
+- `CALX20` — Brancher les trois plans (pose, toiture, masse) sur le panneau Documents
+- `CALX21` — Brancher la note de calcul et son verdict de preuve
+- `CALX22` — Brancher l'export DXF et l'export XLSX
+- `CALX23` — Brancher l'export tableur CSV, une fois son enregistrement réparé
+- `CALX24` — Brancher la composition du pack technique
+- `CALX25` — Ouvrir le relevé terrain (chaînes de cotes) sur un panneau
+- `CALX26` — Brancher l'archivage et la restauration depuis la corbeille
+- `CALX27` — Brancher le déverrouillage d'une conception figée
+- `CALX28` — Brancher l'export et l'import du document de conception
+- `CALX29` — Brancher la suggestion de pente LiDAR, France seulement
+- `CALX30` — Brancher les profils types de consommation de la société
+- `CALX31` — Ouvrir le fil d'activité du calepinage
+- `CALX32` — Brancher les colonnes de tri déjà servies par la liste
+- `CALX33` — Permettre de renommer un calepinage après sa création
+- `CALX35` — Exposer la duplication de calepinage qui existe déjà dans le service
+- `CALX36` — Ouvrir l'historique des versions et la restauration
+- `CALX37` — Permettre de créer et de dupliquer une variante
+- `CALX38` — Permettre de téléverser une photo de site
+- `CALX39` — Ouvrir une porte HTTP pour l'import d'un plan DXF/PDF/image
+- `CALX40` — Ouvrir la génération d'un dossier réglementaire
+- `CALX41` — Faire enregistrer les champs à compléter d'un dossier
+- `CALX42` — Brancher le marquage « modèle » et la création depuis un modèle
+- `CALX43` — Ouvrir l'édition des préréglages et des favoris de la société
+- `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
+- `CALX45` — Figer le contrat du calepinage publié avec un devis
+- `CALX46` — Publier le calepinage d'un devis et rendre le bloc de retour vivant
+- `CALX47` — Ouvrir le module calepinage depuis la fiche d'un lead
+- `CALX48` — Rendre le refus « production non calculée » actionnable
+- `CALX49` — Brancher la priorité de remplissage déjà écrite
+- `CALX50` — Dessiner le champ au sol au lieu de n'en donner que le compte
+- `CALX51` — Dessiner l'ombrière à sa hauteur libre saisie
+- `CALX52` — Afficher, ou faire saisir, la hauteur de toit supposée du diagramme solaire
+- `CALX53` — Signaler les coefficients de température non sourcés jusque dans le verdict
+- `CALX54` — N'offrir que les calques réellement présents dans la scène
+- `CALX55` — Poser le retour vers l'atelier depuis chaque lien profond
+- `CALX56` — Fermer le trou de la garde d'atteignabilité sur les chemins paramétrés
+- `CALX57` — Poser la garde « service sans appelant » et l'e2e du parcours complet
+- `CALX58` — Publier TOF et TSRF par pan, à côté de l'accès solaire
+- `CALX59` — Aligner la série météo (UTC) sur l'heure locale du site avant tout croisement avec une…
+- `CALX60` — Ajouter à la fiche technique, en UNE migration, tout ce que la chaîne de pertes et…
+- `CALX61` — Brancher enfin le fournisseur de températures TMY que la chaîne électrique attend
+- `CALX62` — Accepter un fichier météo horaire déposé par la société, à la place de PVGIS, pour un…
+- `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
+- `CALX64` — Montrer la série horaire : tapis de chaleur jour × heure et journée type par mois
+- `CALX65` — Dire dans l'atelier laquelle des deux productions parle : l'estimation rapide du…
+- `CALX68` — Garder un brouillon local de l'atelier et proposer sa reprise
+- `CALX69` — Donner une saisie aux réglages société de simulation et d'électrique, avec provenance…
+- `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
+- `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
+- `CALX81` — Porter au contrat le type d'arête corrigé à la main et le retrait PAR arête
+- `CALX82` — Porter au contrat un catalogue de MODULES dans le document et le module retenu par pan
+- `CALX83` — Porter au contrat la numérotation persistante des modules et des rangées
+- `CALX84` — Porter au contrat les bâtiments : hauteur et nombre d'étages SAISIS, avec provenance
+- `CALX85` — Porter au contrat les obstacles non rectangulaires (polygone, cercle)
+- `CALX86` — Porter au contrat le calque de fond calé (plan importé ou photo) et son échelle à deux…
+- `CALX87` — Porter au contrat la surface de pose « façade » et les poteaux d'ombrière
+- `CALX88` — Porter au contrat les choix d'optimisation et le soleil de scène
+- `CALX89` — Magnétiser le tracé à 90° et 45° et offrir un mode orthogonal
+- `CALX90` — Saisir au clavier la longueur et l'angle du segment en cours de tracé
+- `CALX91` — Insérer et supprimer un sommet sur une arête d'un contour fermé
+- `CALX92` — Aimanter le tracé aux sommets et aux arêtes des pans déjà tracés
+- `CALX93` — Déduire noue et arêtier en comparant les pans voisins
+- `CALX94` — Corriger à la main le type d'une arête depuis l'atelier
+- `CALX95` — Appliquer un retrait propre à chaque arête physique du contour
+- `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
+- `CALX97` — Saisir les cotes exactes d'un pan et le faire pivoter d'un bloc
+- `CALX98` — Dupliquer un pan avec ses obstacles et ses réglages
+- `CALX99` — Prendre l'azimut d'un pan depuis une arête cliquée
+- `CALX100` — Saisir la hauteur et le nombre d'étages du bâtiment, et extruder la 3D à cette hauteur
+- `CALX101` — Rendre les murs et les acrotères comme des volumes 3D distincts
+- `CALX102` — Modéliser une lucarne comme un volume qui perce le pan, pas comme une boîte posée
+- `CALX103` — Tracer un obstacle polygonal au clic
+- `CALX104` — Tracer un obstacle circulaire et réutiliser des gabarits d'obstacle de la société
+- `CALX105` — Poser un arbre ou un bâtiment voisin au clic et le déplacer au glissé
+- `CALX106` — Remonter la hauteur et le nombre de niveaux OSM du bâtiment, avec leur provenance…
+- `CALX107` — Afficher un plan importé ou une photo calée comme calque de fond de l'atelier
+- `CALX108` — Caler le fond de plan à l'échelle par deux points et une distance réelle saisie
+- `CALX109` — Choisir le module depuis le stock et calepiner avec ses vraies cotes
+- `CALX110` — Poser plusieurs modèles de module dans un même système
+- `CALX111` — Numéroter les modules de façon stable et l'afficher en 3D comme en plan
+- `CALX112` — Dupliquer une sélection de panneaux et la coller au pas saisi
+- `CALX113` — Rendre la symétrie d'une sélection de panneaux par rapport à un axe
+- `CALX114` — Choisir la cible de l'optimisation au lieu de la figer sur l'énergie
+- `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
+- `CALX116` — Sélectionner des panneaux au lasso, en plus du rectangle
+- `CALX117` — Afficher une grille métrique de repère au pas saisi
+- `CALX118` — Montrer la course du soleil du site dans l'atelier
+- `CALX119` — Choisir une date libre pour le soleil de la scène et la retenir
+- `CALX120` — Animer la course de l'ombre sur une journée et sur l'année
+- `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
+- `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
+- `CALX123` — Tracer et éditer un champ au sol sur la carte de l'atelier
+- `CALX124` — Éditer une ombrière dans l'atelier, poteaux compris
+- `CALX125` — Poser des modules en façade sur un mur du bâtiment
+- `CALX126` — Totaliser le site par bâtiment et par surface de pose dans l'atelier
+- `CALX128` — Rendre les gestes de l'atelier utilisables au clavier et annoncés
+- `CALX129` — Basculer la vue 3D d'édition en plein écran
+- `CALX130` — Prouver le parcours de conception enrichi de bout en bout
+- `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
+- `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
+- `CALX141` — Déclarer le contrat de la cascade de pertes séquentielle, sous une clé neuve
+- `CALX142` — Déclarer le contrat de la série horaire persistée
+- `CALX143` — Déclarer le contrat de l'énoncé de source météo
+- `CALX144` — Déclarer le contrat d'incertitude et de quantiles
+- `CALX145` — Ouvrir deux sections société — « simulation » et « electrique_societe » — au registre…
+- `CALX146` — Donner au noyau une position solaire HORAIRE (le dépôt n'en a qu'une, au solstice)
+- `CALX147` — Écrire l'ordonnanceur de la chaîne de pertes
+- `CALX148` — Déclarer l'ordre de la chaîne une fois, avec ses règles d'exclusivité et ses étapes…
+- `CALX149` — Faire primer le poste CALCULÉ sur le poste saisi, et refuser le double comptage
+- `CALX150` — Demander à PVGIS l'irradiance NUE et non sa propre production
+- `CALX151` — Passer NOTRE horizon à PVGIS, et dire lequel fait foi
+- `CALX152` — Séparer direct, diffus et réfléchi — sans quoi ni IAM ni ombrage ne se calculent
+- `CALX153` — Laisser choisir entre année météo type et fenêtre pluriannuelle, et en tirer les…
+- `CALX154` — Publier le bloc `meteo` dans le résultat
+- `CALX155` — Une requête météo par PLAN, jamais par module
+- `CALX156` — Étape « horizon » : masquer le direct heure par heure sous la ligne d'horizon
+- `CALX157` — Étape « ombrage proche » : appliquer la matrice 12×24 HEURE PAR HEURE
+- `CALX158` — Étape « accès module » : lire `solarAccess` par module au lieu d'un facteur de toit
+- `CALX159` — Étape « inter-rangées » : l'auto-ombrage horaire depuis la géométrie 3D
+- `CALX160` — Étape « IAM » : Fresnel par défaut (physique, sourcé), ASHRAE ou Martin-Ruiz sur choix…
+- `CALX161` — Étape « salissure » : douze valeurs mensuelles, pas une moyenne
+- `CALX162` — Étape « niveau d'irradiance » : le faible éclairement, depuis la courbe de la fiche
+- `CALX163` — Étape « thermique » : Faiman avec des coefficients PAR TYPE DE POSE, NOCT en repli…
+- `CALX164` — Donner enfin le vent au modèle thermique
+- `CALX165` — Étape « qualité module » : la tolérance de la fiche, ou rien
+- `CALX166` — Étape « LID » : selon la technologie de cellule, et seulement si la société la chiffre
+- `CALX167` — Étape « mismatch fabricant » : la dispersion des modules, saisie et sourcée
+- `CALX168` — Étape « mismatch d'ombrage » : l'effondrement I-V d'une chaîne dont un module est…
+- `CALX169` — Étape « ohmique DC » : la chute réelle des câbles, plus jamais saisie en double
+- `CALX170` — Étape « onduleur » : la courbe η(P), sinon le rendement européen, sinon rien
+- `CALX171` — Étape « fenêtre MPPT » : les heures où la tension sort de la plage
+- `CALX172` — Étape « écrêtage » : brancher le calcul horaire qui existe déjà et n'a jamais de série
+- `CALX173` — Étape « ohmique AC » : la liaison onduleur-comptage, sur sa longueur saisie
+- `CALX174` — Étape « transformateur » : seulement si la société en déclare un
+- `CALX175` — Étape « auxiliaires » : une énergie soutirée, jour et nuit, pas un pourcentage
+- `CALX176` — Étape « indisponibilité » : des fenêtres d'arrêt datées, pas un forfait annuel
+- `CALX177` — Faire entrer le bifacial dans la chaîne, avec un albédo MENSUEL
+- `CALX178` — Étape « vieillissement » : une production ANNÉE PAR ANNÉE, pas un pourcentage unique
+- `CALX179` — Publier le ratio de performance au sens de la norme IEC 61724-1
+- `CALX181` — Rendre les tableaux mensuels et par pan cohérents avec la cascade
+- `CALX182` — Simuler MODULE PAR MODULE, et agréger
+- `CALX183` — Agréger la production par chaîne, MPPT et onduleur
+- `CALX184` — Mesurer σ, ou refuser — supprimer le repli 6 % non sourcé
+- `CALX185` — Composer l'incertitude en quadrature, comme une étude bancable
+- `CALX186` — Ajouter P95 aux quantiles publiés
+- `CALX188` — Faire tourner le dispatch batterie sur la série AC réelle
+- `CALX189` — Construire la courbe de charge horaire, VE et PAC compris
+- `CALX190` — Publier l'autoconsommation et le plafond d'injection sur la vraie série
+- `CALX191` — Chiffrer le défaut d'alimentation hors réseau sur la série réelle
+- `CALX192` — Dire la vérité sur la résolution : PVGIS est horaire
+- `CALX193` — Persister la série horaire que l'export attend depuis toujours
+- `CALX195` — Bâtir le harnais de validation contre PVGIS lui-même
+- `CALX196` — Figer un golden pluriannuel de la cascade et des quantiles
+- `CALX197` — Un seul calcul d'ombrage pour un même toit
+- `CALX198` — Trancher l'adoption de `pvlib` pour le modèle à une diode et la transposition
+- `CALX199` — Trancher l'achat d'une source météo bancable
+- `CALX200` — Trancher le pas infra-horaire
+- `CALX201` — Déclarer le contrat `electrical.equipements[]` du document v2
+- `CALX202` — Déclarer le contrat `electrical.cheminements[]` du document v2
+- `CALX203` — Déclarer le contrat des tronçons de câble calculés
+- `CALX204` — Déclarer le contrat du schéma unifilaire éditable
+- `CALX205` — Déclarer le contrat du raccordement réseau
+- `CALX206` — Autoriser plusieurs orientations sur UNE entrée MPPT (jamais dans une chaîne)
+- `CALX207` — Calculer l'écart de puissance d'un groupe polystring et le verdicter sur un seuil…
+- `CALX209` — Dimensionner une branche AC de micro-onduleurs
+- `CALX210` — Calibrer la protection et le câble d'une branche AC de micro-onduleurs
+- `CALX211` — Fermer la longueur de chaîne à optimiseurs quand la fiche publie enfin la sortie…
+- `CALX212` — Compter et placer les optimiseurs module par module
+- `CALX213` — Contrôler enfin les deux bornes d'onduleur publiées mais jamais lues
+- `CALX214` — Publier, contrôle par contrôle, LA température qui a servi
+- `CALX215` — Nommer les deux natures de dépassement : plage INTERDITE et plage BLOQUANTE
+- `CALX216` — Dire POURQUOI cette longueur de chaîne a été retenue
+- `CALX217` — Rejouer l'incident DEV-202608-0016 sur les trois régimes de chaînage
+- `CALX218` — Choisir le motif de parcours d'une chaîne et en tirer sa longueur de câble
+- `CALX219` — Créer `electrique3d.ts` et y poser les marqueurs d'équipement
+- `CALX220` — Poser, déplacer et retirer un équipement au clic, et le persister
+- `CALX221` — Ajouter le calque « Électrique » au panneau de calques
+- `CALX222` — Donner à l'atelier son onglet « Équipements électriques »
+- `CALX223` — Tracer un cheminement de câble par points de passage dans l'atelier
+- `CALX224` — Mesurer la longueur RÉELLE de chaque tronçon
+- `CALX225` — Dimensionner la section et la chute PAR tronçon
+- `CALX226` — Cumuler la chute de tension bout en bout et la verdicter une seule fois
+- `CALX227` — Produire le métré de câble par tronçon et par section
+- `CALX228` — Servir les tronçons en HTTP et les joindre au résultat électrique
+- `CALX229` — Donner à l'atelier son onglet « Cheminement & câbles »
+- `CALX230` — Dimensionner un coffret de jonction DC par son nombre d'entrées
+- `CALX231` — Dimensionner le coffret de regroupement quand plusieurs coffrets remontent
+- `CALX232` — Dimensionner le coffret AC par ses départs
+- `CALX233` — Persister les libellés et les repères édités du schéma unifilaire
+- `CALX234` — Persister les positions de blocs et les passer jusqu'au dessin
+- `CALX235` — Exporter le schéma unifilaire en DXF
+- `CALX236` — Exporter le schéma unifilaire en PNG depuis le navigateur
+- `CALX237` — Choisir un gabarit de schéma par pays, sans supposer une norme au Maroc
+- `CALX238` — Replier les circuits d'onduleurs identiques en un seul « typique de N »
+- `CALX241` — Calculer l'élévation de tension au point de raccordement contre une limite SAISIE
+- `CALX242` — Vérifier la puissance de raccordement et le régime mono/tri
+- `CALX243` — Équilibrer les phases quand plusieurs onduleurs monophasés se branchent sur un réseau…
+- `CALX244` — Servir le raccordement en HTTP et lui donner son onglet
+- `CALX245` — Étendre la check-list de terre à la continuité mesurée de l'existant
+- `CALX246` — Rattacher chaque ligne de nomenclature électrique à une référence du catalogue
+- `CALX247` — Retirer les quantités de structure non sourcées de la nomenclature électrique
+- `CALX248` — Prononcer un verdict électrique publiable unique, entrée par entrée sourcée
+- `CALX249` — Donner à l'atelier son onglet « Verdict électrique »
+- `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
+- `CALX251` — Déclarer `consumption` dans le contrat `roof_layout` v2
+- `CALX253` — Sérialiser la consommation de l'atelier dans le document
+- `CALX254` — Ré-hydrater la consommation au rechargement de l'atelier
+- `CALX255` — Lire la consommation du document côté serveur
+- `CALX256` — Persister la méthode « somme d'appareils » avec la provenance de chaque appareil
+- `CALX257` — Convertir les montants MAD en kWh par le barème de la société
+- `CALX258` — Ouvrir les profils société au segment pompage et au type de jour
+- `CALX259` — Enregistrer une courbe importée comme profil société, avec sa provenance de fichier
+- `CALX260` — Décaler la courbe pendant le Ramadan sans introduire un seul chiffre neuf
+- `CALX261` — Offrir les deux modes de recharge du véhicule électrique
+- `CALX262` — Borner la recharge par la puissance de la borne et dire le débordement
+- `CALX263` — Modéliser la climatisation en BTU avec un EER saisi
+- `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
+- `CALX265` — Rattacher une clé tarifaire à chaque charge déclarée
+- `CALX267` — Simuler plusieurs groupes de batteries, chacun avec son couplage
+- `CALX268` — Ajouter la commande horaire à SOC cible par groupe
+- `CALX269` — Publier la pointe avant et après effacement
+- `CALX270` — Déduire la réserve de secours des appareils réellement secourus
+- `CALX271` — Proposer des capacités candidates depuis la motivation du client, sans aucun prix
+- `CALX272` — Rendre saisissables les seuils de protection de la batterie hors-réseau
+- `CALX274` — Faire saisir les tranches horaires et leurs tarifs par la société, avec source et date
+- `CALX275` — Découper les tranches horaires par saison
+- `CALX276` — Typer le mécanisme de compensation du surplus
+- `CALX277` — Admettre une grille tarifaire à prix unique ou à deux postes horaires pour les sociétés…
+- `CALX278` — Séparer les taxes des prix dans la grille société
+- `CALX279` — Faire saisir l'indexation annuelle et trancher la contradiction interne
+- `CALX280` — Poser le contrat du bloc économie servi par `apps/ventes`
+- `CALX281` — Construire le flux de trésorerie, la VAN, le TRI et le retour actualisé dans…
+- `CALX282` — Calculer le coût actualisé du kWh (LCOE)
+- `CALX283` — Modéliser les prêts : annuité, échéances constantes, différé
+- `CALX284` — Ajouter l'amortissement et la fiscalité en paramètres société
+- `CALX285` — Faire passer le P90 dans le flux de trésorerie
+- `CALX286` — Remplacer les défauts financiers non sourcés par une omission motivée, et le prouver
+- `CALX287` — Exiger un tarif PPA saisi
+- `CALX288` — Servir le bloc économie en lecture seule depuis `apps/ventes`
+- `CALX289` — Monter un onglet « Économie » en lecture seule dans l'atelier
+- `CALX290` — Comparer deux scénarios sur le MÊME flux
+- `CALX291` — Publier le contrat de l'inventaire « Documents »
+- `CALX292` — Publier le contrat des sections du rapport d'étude
+- `CALX293` — Publier le contrat de l'export JSON projet + résultats
+- `CALX294` — Donner aux documents du module un gabarit société (en-tête, pied, logo, couleurs)
+- `CALX295` — Imprimer une page de garde avec l'identité société et projet
+- `CALX296` — Servir les documents techniques en français et en anglais
+- `CALX297` — Bâtir le rapport d'étude PDF et son endpoint
+- `CALX298` — Écrire la section Site et source météo du rapport
+- `CALX299` — Écrire la section Système, l'annexe des fiches et JOINDRE les fiches PDF constructeur
+- `CALX300` — Écrire la section Chaîne de pertes SÉQUENTIELLE (table)
+- `CALX301` — Écrire la section Production mensuelle, PR et P50/P90
+- `CALX302` — Écrire la section Ombrage et recevoir sa carte de chaleur produite par le navigateur
+- `CALX303` — Écrire la section Électrique du rapport, schéma unifilaire inclus
+- `CALX304` — Écrire la section Nomenclature SANS prix du rapport
+- `CALX305` — Écrire la section Régime de preuve et empreinte du rapport
+- `CALX306` — Donner au rapport un sommaire, une pagination et un test de pages
+- `CALX307` — Laisser la société choisir les sections incluses dans ses rapports
+- `CALX308` — Rendre le diagramme de pertes en SVG côté serveur
+- `CALX309` — Rendre enfin le plan de toiture et le plan de masse dans le dossier technique
+- `CALX310` — Produire le plan de câblage des chaînes, en PDF et en DXF
+- `CALX312` — Exporter le projet et ses résultats en JSON versionné
+- `CALX313` — Laisser choisir les colonnes et le pas de temps de l'export horaire
+- `CALX314` — Poser la provenance sur TOUS les exports, pas seulement le CSV
+- `CALX315` — Produire une présentation compacte INTERNE de deux pages, sans aucun montant
+- `CALX316` — Produire le manuel du propriétaire depuis un gabarit société
+- `CALX317` — Produire un rapport d'ombrage autonome
+- `CALX318` — Imprimer le document as-built (prévu, posé, écarts, photos)
+- `CALX319` — Assembler le dossier de fin de chantier du calepinage
+- `CALX320` — Étendre le panneau Documents : versions, données manquantes nommées, images jointes
+- `CALX321` — Nommer, donnée par donnée, ce qui manque à chaque document
+- `CALX322` — Versionner les documents produits
+- `CALX323` — Servir un aperçu HTML avant le PDF
+- `CALX324` — Journaliser l'émission d'un document dans le fil du calepinage
+- `CALX325` — Dire sur la pièce qu'elle vient d'une conception verrouillée ou archivée
+- `CALX326` — Faire entrer le rapport d'étude et le plan de câblage dans le dossier technique
+- `CALX327` — Interdire tout mot de montant dans le TEXTE EXTRAIT de chaque document du module
+- `CALX328` — Verrouiller le nombre de pages attendu de chaque document
+- `CALX329` — Poser une garde CI : un document déclaré a un rendu
+- `CALX330` — Imprimer l'annexe « hypothèses, sources et omissions » du rapport
+- `CALX331` — Figer le contrat de la comparaison de plusieurs calepinages
+- `CALX332` — Figer le contrat des étiquettes libres d'un calepinage
+- `CALX333` — Figer le contrat du différentiel entre deux versions
+- `CALX334` — Figer le contrat de l'approbation d'un calepinage
+- `CALX335` — Figer le contrat du catalogue de fixation et de sa nomenclature
+- `CALX336` — Figer le contrat de la reprise d'une visite technique dans un calepinage
+- `CALX337` — Figer le contrat des écarts de pose réelle
+- `CALX339` — Figer le contrat de l'import d'un fichier PVsyst `.PAN`/`.OND` vers une fiche technique
+- `CALX340` — Étendre le contrat des réglages avec les zones de vent et de neige société
+- `CALX341` — Construire la comparaison de jusqu'à 5 calepinages et son export tableur
+- `CALX342` — Servir la comparaison de calepinages sur sa propre route de liste
+- `CALX343` — Poser les étiquettes libres et leur filtre de liste
+- `CALX344` — Afficher et filtrer les étiquettes dans la liste et la fiche
+- `CALX345` — Calculer le différentiel champ par champ entre deux versions
+- `CALX346` — Monter le différentiel de versions en onglet de l'atelier
+- `CALX347` — Créer le rôle relecteur et la décision d'approbation
+- `CALX348` — Exiger l'approbation avant de retenir une variante, en réglage société
+- `CALX349` — Monter la décision d'approbation en onglet de l'atelier
+- `CALX351` — Démarrer un calepinage depuis un modèle et un jeu de réglages société
+- `CALX352` — Proposer modèle et jeu de réglages au moment de la création
+- `CALX355` — Rendre les nouveaux champs de fiche saisissables dans le formulaire produit
+- `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
+- `CALX357` — Téléverser un fichier `.PAN`/`.OND` depuis le formulaire produit
+- `CALX358` — Créer le catalogue de systèmes de fixation dans le module
+- `CALX359` — Calculer la nomenclature de fixation d'un calepinage et l'exporter
+- `CALX360` — Monter la fixation en onglet de l'atelier
+- `CALX361` — Saisir les zones de vent et de neige par site et servir la feuille de lestage
+- `CALX362` — Monter le lestage en onglet de l'atelier
+- `CALX363` — Ouvrir la porte visite technique → calepinage côté `apps.visites`
+- `CALX364` — Reprendre les mesures et les photos d'une visite dans le calepinage, avec leur…
+- `CALX365` — Monter la reprise de visite en onglet de l'atelier
+- `CALX366` — Ouvrir la porte de la pose réelle et transformer les écarts en version
+- `CALX367` — Monter la pose réelle en onglet de l'atelier
+- `CALX368` — Publier l'évènement « calepinage simulé » et son webhook
+- `CALX369` — Servir le résultat de simulation d'un calepinage en lecture publique
+- `CALX370` — Exporter et réimporter un projet de calepinage complet en JSON
+- `CALX371` — Monter l'export et l'import de projet en onglet de l'atelier
+- `CALX372` — Garder la frontière du module contre les couplages interdits, depuis une base mesurée
+- `CALX373` — (DECISION) Trancher l'aller-retour avec un configurateur de fixation constructeur
+- `CALX374` — (COST) Trancher la photogrammétrie par drone comme source de relevé
+- `CALX375` — (DECISION) Trancher les intégrations partenaires de conception et de stockage
+- `CALX381` — Garder qu'aucune `@action` du module ne reste sans consommateur
+- `CALX382` — Garder qu'aucune clé de `calepinageApi.js` ne reste jamais appelée
+- `CALX383` — Garder qu'un onglet du rail arrive avec son test
+- `CALX384` — Étendre au paquet `services/` la discipline de provenance des constantes
+- `CALX385` — Garder qu'un échantillon de contrat a bien ses DEUX moitiés
+- `CALX386` — Traverser le parcours calepinage COMPLET en e2e, et le faire tourner par PR
+- `CALX387` — Prouver que chaque onglet du rail s'ouvre, en e2e
+- `CALX388` — Porter le budget de performance de l'atelier à 10 000 modules
+- `CALX389` — Déclarer et garder le temps de la chaîne de simulation
+- `CALX390` — Donner au module ses budgets de requêtes SQL
+- `CALX391` — Affirmer le déterminisme de la simulation, entrée pour entrée
+- `CALX392` — Rendre le rail d'onglets utilisable au clavier
+- `CALX393` — Écrire la chaîne de simulation dans `docs/moteur-calepinage.md`
+- `CALX394` — Réécrire la section « Calepinage » du guide utilisateur sur le parcours réel
+- `CALX395` — Faire entrer le module dans la CODEMAP
+- `CALX396` — Mettre les mots du métier solaire dans le lexique
+- `CALX397` — Savoir quels onglets sont réellement ouverts
+- `CALX398` — Re-mesurer le budget de poids du module après le lot
+- `CALX399` — Figer la forme des agrégats du module dans `docs/api-contracts.md`
+- `CALX400` — Geler les repères DOM `cal-*` en contrat
+- `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
+- `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
+- `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
+- `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
+- `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
+- `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
 - `CRXB1` — [GATED: mot fondateur « lance CRXB »] Contrat d'abord (PACT10)
 - `CRXB2` — [GATED] Scission models.py [VAGUE EXCLUSIVE]
