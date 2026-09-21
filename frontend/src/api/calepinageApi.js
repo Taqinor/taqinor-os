@@ -175,6 +175,37 @@ const calepinageApi = {
        `{calepinage, verrouille, deverrouille}`. Gardée par `calepinage_gerer`
        côté serveur — l'écran cache l'affordance avec le MÊME code. */
     deverrouiller: (id) => api.post(`${pivot(id)}deverrouiller/`, {}),
+
+    // CALX19 — l'INVENTAIRE des sorties d'un calepinage (planche, plans, note
+    // de calcul, DXF, tableurs, pack technique), contrat
+    // `contract_samples/calepinage_sorties.json`. Lecture PURE : ne produit
+    // aucun document, dit seulement ce qui existe et pourquoi une sortie
+    // manque quand elle manque.
+    sorties: (id) => api.get(`${pivot(id)}sorties/`),
+    // CALX19 — le téléchargement GÉNÉRIQUE d'UNE sortie de cet inventaire :
+    // `endpoint` vient TOUJOURS de l'entrée servie par `sorties()` ci-dessus
+    // (déjà préfixée `/api/django/…`, l'intercepteur d'`api/axios.js` ne la
+    // préfixe pas deux fois) — jamais un chemin reconstruit à la main ici.
+    // `params` porte `?feuille=` pour le tableur CSV (CALX23), vide ailleurs.
+    telechargerSortie: (endpoint, params) =>
+      api.get(endpoint, { responseType: 'blob', params }),
+
+    // CALX24 — compose le dossier technique (planche + note de calcul
+    // fusionnées) et le DÉPOSE dans la GED : en ÉCRITURE (POST), gardée par
+    // `calepinage_gerer` côté serveur. Réponse JSON normale (jamais un blob) :
+    // `{document, nom, pieces, pages_attendues, signalements}`. Aucun import
+    // `apps.ged` ici — l'écran ne parle qu'à CETTE action.
+    composerPackTechnique: (id) => api.post(`${pivot(id)}pack-technique/`),
+
+    // CALX28 — export/import du DOCUMENT de conception (`roof_layout`,
+    // schéma v2 — `views/io_layout.py`, CAL216). `exporterConception` rend
+    // `{roof_layout, layout_hash, schema_version}` TEL QUEL ; `importerConception`
+    // VALIDE STRICTEMENT côté serveur avant écriture, et refuse en NOMMANT le
+    // CHEMIN JSON du premier champ fautif (`champ`) — jamais une validation
+    // recalculée ici. Distinct de `layout()`/`enregistrerLayoutCalepinage`
+    // (CAL18, l'ATELIER) : ce sont les portes ÉCHANGE / round-trip fichier.
+    exporterConception: (id) => api.get(`${pivot(id)}export-layout/`),
+    importerConception: (id, document) => api.post(`${pivot(id)}import-layout/`, document),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
