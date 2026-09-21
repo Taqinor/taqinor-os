@@ -1424,7 +1424,11 @@ jobs:
       - name: Migrate + seed throwaway demo data
         working-directory: backend/django_core
         run: |
-          python manage.py migrate --noinput
+          # SOLMVP54 (21/09/2026) — plus de `migrate` ici : `backend-env` vient
+          # de restaurer `erp_db` depuis le dump WOW8 et l'a migré si (et
+          # seulement si) l'ensemble de migrations a bougé ; sur un hit exact
+          # cette ligne ne faisait qu'imprimer « No migrations to apply »
+          # après ~9 s de démarrage Django, sur chacune des deux lanes.
           python manage.py seed_demo
           # The simulator catalogue (defaults to the seeded `taqinor-demo`
           # company) is what the auto-devis sizing matches against.
@@ -1549,16 +1553,22 @@ jobs:
             npx playwright test --project=chromium --workers 3 \
               fumee-ecrans-1.spec.js fumee-ecrans-2.spec.js fumee-ecrans-3.spec.js
           else
-            npx playwright test --project=chromium --workers 2 \
-              devis.spec.js health.spec.js
-          fi
-          # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
-          # régressions qui n'apparaissent que sur Safari (VX48 window.open
-          # post-await, sticky, backdrop-blur). PR-only, hors matrice complète.
-          # Sur la lane 2 seulement : 1,3 min mesurées, c'est le contrepoids de
-          # la moitié chromium. Il n'est PAS shardé (16 tests, un seul worker).
-          if [ "${{ matrix.shard }}" = "2" ]; then
-            npx playwright test --project=mobile-safari
+            # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
+            # régressions qui n'apparaissent que sur Safari (VX48 window.open
+            # post-await, sticky, backdrop-blur). PR-only, hors matrice complète.
+            # SOLMVP54 (round 2) — UNE invocation pour les deux projets : sur le
+            # run 35607493246 la lane payait devis+health (51 s, 2 workers) PUIS
+            # mobile-safari (66 s, 1 worker) l'un après l'autre = 126 s. Avec les
+            # deux projets dans la même commande, Playwright répartit les
+            # FICHIERS sur 2 workers (mobile.spec.js reste sériel à l'intérieur ;
+            # devis crée son propre lead à nom unique, comme MB6) : ~75 s
+            # attendus. Le filtre `mobile.spec.js` couvre aussi
+            # adsengine-mobile.spec.js ; le projet chromium ignore ces deux
+            # fichiers par `testIgnore`, le projet mobile-safari n'exécute
+            # qu'eux par `testMatch` — chaque test tourne donc exactement une
+            # fois, comme avant.
+            npx playwright test --project=chromium --project=mobile-safari --workers 2 \
+              devis.spec.js health.spec.js mobile.spec.js
           fi
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

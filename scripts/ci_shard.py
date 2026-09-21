@@ -150,6 +150,10 @@ _TEST_DEF_RE = re.compile(r"^\s+(?:async\s+)?def\s+test", re.MULTILINE)
 # A Django -v 2 result line: "name (dotted.path.Class.name) ... ok"
 _RESULT_RE = re.compile(r"^\S*\s*\(([\w.]+)\)\s*\.\.\.")
 _TS_RE = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+Z)\s?(.*)$")
+# SOLMVP54 (21/09/2026) — `gh run view --job <id> --log` prefixe chaque ligne
+# de `job<TAB>step<TAB>` (et la premiere d'un BOM) ; `gh api …/logs` non. Les
+# deux formes doivent nourrir `--update-timings` sans pre-traitement.
+_GH_VIEW_PREFIX = re.compile(r"^[^\t]*\t[^\t]*\t")
 
 
 def _dotted(path: str) -> str:
@@ -581,7 +585,7 @@ def parse_log_durations(lines) -> dict:
     durations: dict = defaultdict(float)
     prev_time = None
     for raw in lines:
-        m = _TS_RE.match(raw.rstrip("\n"))
+        m = _TS_RE.match(_GH_VIEW_PREFIX.sub("", raw.rstrip("\n").lstrip("﻿")))
         if not m:
             continue
         stamp, body = m.group(1), m.group(2)
