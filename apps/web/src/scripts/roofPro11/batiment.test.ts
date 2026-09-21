@@ -3,13 +3,18 @@
 // pan. Tout est testé HORS DOM et hors carte (les fonctions de `batiment.ts` sont pures).
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import process from 'node:process';
 import {
   HAUTEUR_DESSIN_M,
   ID_BATIMENT_SANS_ID,
   acrotereDuBatiment,
   anneauInterieur,
+  appliquerPropositionOsm,
   appliquerSaisie,
   batimentDuPan,
+  batimentPourId,
   construireAcrotere,
   construireLucarne,
   emettreBatiments,
@@ -19,8 +24,10 @@ import {
   lucarnesDuPan,
   mentionEtages,
   percerPanLucarnes,
+  propositionOsm,
   serialiserBatiments,
   type Batiment,
+  type BatimentOsmServeur,
 } from './batiment';
 import { serializeLayout } from './prefill';
 import { CLEARANCE_BY_TYPE } from './types';
@@ -29,6 +36,33 @@ import { type Obstacle } from '../../lib/obstacles';
 import { type Ctx } from './context';
 import { type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
+
+// ───────────────────────────────────────────── l'échantillon de contrat committé (CALX132)
+// La fixture n'est PAS écrite ici : elle est LUE dans l'échantillon de contrat committé
+// (CALX106, `contract_samples/calepinage_empreinte_osm.json`) — le fichier que la moitié
+// serveur affirme et que l'atelier lit (même patron que `electrique3d.test.ts`).
+
+function racineDepot(): string {
+  let dossier = resolve(process.cwd());
+  for (let i = 0; i < 6; i += 1) {
+    if (existsSync(join(dossier, 'backend', 'django_core'))) return dossier;
+    dossier = dirname(dossier);
+  }
+  throw new Error(`Racine du dépôt introuvable depuis ${process.cwd()}`);
+}
+
+function contratEmpreinteOsm(): Record<string, { batiment: BatimentOsmServeur; message?: string }> {
+  const chemin = join(
+    racineDepot(), 'backend', 'django_core', 'apps', 'calepinage',
+    'contract_samples', 'calepinage_empreinte_osm.json',
+  );
+  if (!existsSync(chemin)) {
+    throw new Error(`Échantillon de contrat introuvable : ${chemin} — le contrat part EN PREMIER (PACT10).`);
+  }
+  return JSON.parse(readFileSync(chemin, 'utf8'));
+}
+
+const ECHANTILLON_OSM = contratEmpreinteOsm();
 
 // ── Le fragment PARTAGÉ du contrat CALX84 (miroir EXACT de `EXEMPLE_BATIMENTS`,
 // `backend/django_core/apps/calepinage/tests/test_calx84_batiments.py`) : un bâtiment dont
@@ -434,5 +468,88 @@ describe('CALX102 — le volume à deux versants', () => {
     const bbox = new THREE.Box3().setFromObject(construireLucarne(lucarnes[0], 0, false)!);
     expect((bbox.max.x + bbox.min.x) / 2).toBeCloseTo(12, 4);
     expect((bbox.max.y + bbox.min.y) / 2).toBeCloseTo(-7, 4);
+  });
+});
+
+describe('CALX132 — la PROPOSITION OSM, jamais appliquée d’office', () => {
+  it('un bâtiment avec hauteur ET niveaux propose les deux, source = le tag EXACT', () => {
+    const p = propositionOsm(ECHANTILLON_OSM.exemple.batiment)!;
+    expect(p).not.toBeNull();
+    expect(p.hauteurM).toBe(7.5);
+    expect(p.etages).toBe(2);
+    expect(p.source).toBe('osm:height'); // `provenance.height_m` du contrat, repris tel quel
+    expect(p.osmWayId).toBe(123456);
+    expect(p.mention).toContain('OpenStreetMap');
+    expect(p.mention).toContain('à confirmer');
+    expect(p.mention).toContain('7,5');
+    expect(p.motifs).toEqual([]); // rien ne manque : les deux tags sont présents
+  });
+
+  it('un bâtiment SANS tag (`exemple_batiment_sans_tag` du contrat) n’affiche AUCUNE proposition', () => {
+    expect(propositionOsm(ECHANTILLON_OSM.exemple_batiment_sans_tag.batiment)).toBeNull();
+  });
+
+  it('aucun bâtiment trouvé (`exemple_vide` du contrat) n’affiche AUCUNE proposition', () => {
+    expect(propositionOsm(ECHANTILLON_OSM.exemple_vide.batiment)).toBeNull();
+  });
+
+  it('bâtiment absent/indéfini : aucune proposition', () => {
+    expect(propositionOsm(null)).toBeNull();
+    expect(propositionOsm(undefined)).toBeNull();
+  });
+
+  it('DEUX NIVEAUX SEULS NE FABRIQUENT AUCUNE HAUTEUR (zéro conversion)', () => {
+    // Dérivé du contrat committé (mêmes tags OSM), `height_m` simplement absent — le
+    // contrat n'expose pas cet état partiel, cette fixture ne réécrit QUE ce qui manque,
+    // avec le motif que le serveur écrirait dans ce cas (repris de `exemple_batiment_sans_tag`).
+    const base = ECHANTILLON_OSM.exemple.batiment;
+    const niveauxSeuls: BatimentOsmServeur = {
+      ...base,
+      height_m: null,
+      source: null,
+      provenance: { levels: base.provenance!.levels },
+      non_renseignes: { height_m: ECHANTILLON_OSM.exemple_batiment_sans_tag.batiment.non_renseignes!.height_m },
+    };
+    const p = propositionOsm(niveauxSeuls)!;
+    expect(p).not.toBeNull();
+    expect(p.hauteurM).toBeUndefined(); // AUCUNE hauteur n'est déduite des niveaux
+    expect(p.etages).toBe(2);
+    expect(p.source).toBe('osm:building:levels');
+    expect(p.mention).toContain('aucune hauteur connue');
+    expect(p.motifs).toEqual([ECHANTILLON_OSM.exemple_batiment_sans_tag.batiment.non_renseignes!.height_m]);
+  });
+
+  it('calculer une proposition n’écrit RIEN : le document reste ce qu’il était avant', () => {
+    const avant: Batiment[] = [{ id: 'bat-osm', hauteurM: null, source: null }];
+    propositionOsm(ECHANTILLON_OSM.exemple.batiment); // calcul SEUL, jamais passé à appliquerSaisie
+    expect(batimentPourId(avant, 'bat-osm')?.hauteurM).toBeNull(); // rien n'a bougé
+  });
+
+  it('une proposition ACCEPTÉE s’écrit par le même chemin que toute saisie humaine, avec la provenance du serveur', () => {
+    const p = propositionOsm(ECHANTILLON_OSM.exemple.batiment)!;
+    const res = appliquerPropositionOsm([], 'bat-osm', p);
+    expect(res.refus).toEqual([]);
+    const b = batimentPourId(res.batiments, 'bat-osm')!;
+    expect(b.hauteurM).toBe(7.5);
+    expect(b.etages).toBe(2);
+    expect(b.source).toBe('osm:height');
+  });
+
+  it('accepter une proposition « niveaux seuls » n’écrit NI n’efface une hauteur déjà SAISIE', () => {
+    const existant: Batiment[] = [
+      { id: 'bat-osm', hauteurM: 6.4, source: 'mesurée au télémètre sur site', etages: null },
+    ];
+    const p = propositionOsm({
+      ...ECHANTILLON_OSM.exemple.batiment,
+      height_m: null,
+      source: null,
+      provenance: { levels: ECHANTILLON_OSM.exemple.batiment.provenance!.levels },
+    })!;
+    expect(p.hauteurM).toBeUndefined();
+    const res = appliquerPropositionOsm(existant, 'bat-osm', p);
+    const b = batimentPourId(res.batiments, 'bat-osm')!;
+    expect(b.hauteurM).toBe(6.4); // la hauteur SAISIE avant n'est pas écrasée
+    expect(b.source).toBe('mesurée au télémètre sur site');
+    expect(b.etages).toBe(2); // seuls les niveaux, proposés, sont entrés
   });
 });

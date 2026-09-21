@@ -42,12 +42,16 @@ import { fallbackPerKwc, type PerKwcProduction } from '../../lib/productionEngin
 import { type LngLat } from '../../lib/roof';
 import { FLOORS, FLOOR_HEIGHT_M, GOLD } from './constants';
 import {
+  appliquerPropositionOsm,
   appliquerSaisie,
   batimentPourId,
   hauteurExtrusion,
   idBatimentDuPan,
   mentionEtages,
+  propositionOsm,
   type Batiment,
+  type BatimentOsmServeur,
+  type PropositionOsm,
 } from './batiment'; // CALX100 — la hauteur vient du DOCUMENT, plus d'une Map locale
 import { $, esc } from './dom';
 import { type Ctx } from './context';
@@ -99,6 +103,34 @@ export interface ShadingUi {
    *  pour ce module (pan sans modules posés, indice hors plan). Le CÂBLAGE réel au survol
    *  3D reste un crochet attendu côté `scene3d.ts`/`roof-tool-pro11.ts` (hors périmètre). */
   moduleShadeTooltip: (cellIndex: number) => string | null;
+  /**
+   * CALX132 — reçoit l'empreinte OSM du bâtiment ACTIF (`batiment` de `GET crm/leads/<id>/
+   * roof-footprint/`, contrat CALX106 `calepinage_empreinte_osm.json`) et affiche sa
+   * PROPOSITION (jamais appliquée d'office) au panneau « Bâtiment ». `null`/absent efface
+   * la proposition affichée. CROCHET ATTENDU : aucune page n'appelle encore cette méthode
+   * aujourd'hui — `ToitureDesign.jsx` ne lit que `fp.data.polygon` de cette même réponse et
+   * ignore `fp.data.batiment` (hors périmètre de cette lane, `roofPro11/batiment.ts`/
+   * `batiment.test.ts` seuls).
+   */
+  setBatimentOsmPropose: (batiment: BatimentOsmServeur | null | undefined) => void;
+}
+
+/**
+ * CALX132 — libellé FRANÇAIS du bouton de reprise, dérivé UNIQUEMENT des champs de la
+ * proposition (jamais recalculé) : « Reprendre la hauteur OSM (7,5 m — openstreetmap, way
+ * 123) », ou la variante « niveaux » quand OSM ne connaît que le nombre d'étages. Pure —
+ * testée hors DOM dans `shadingUi.test.ts`.
+ */
+export function libelleBoutonOsm(p: PropositionOsm): string {
+  const way = typeof p.osmWayId === 'number' ? `, way ${p.osmWayId}` : '';
+  if (typeof p.hauteurM === 'number') {
+    const h = p.hauteurM.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    return `Reprendre la hauteur OSM (${h} m — openstreetmap${way})`;
+  }
+  if (typeof p.etages === 'number') {
+    return `Reprendre les niveaux OSM (${p.etages} — openstreetmap${way})`;
+  }
+  return 'Reprendre la proposition OSM';
 }
 
 const SHADE_SRC = 'rp9-shade-lines';
@@ -293,6 +325,12 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const batAcrotereEl = $<HTMLInputElement>('rp11-bat-acrotere');
   const batErreurEl = $('rp11-bat-erreur');
   const batNoteEl = $('rp11-bat-note');
+  // CALX132 — la PROPOSITION OSM affichée (jamais écrite tant que le bouton n'est pas
+  // cliqué) : `null` = rien à proposer (aucun tag OSM exploitable, ou pas encore reçue —
+  // voir le crochet attendu sur `setBatimentOsmPropose`, interface `ShadingUi`).
+  const batOsmBoutonEl = $<HTMLButtonElement>('rp11-bat-osm-bouton');
+  const batOsmNoteEl = $('rp11-bat-osm-note');
+  let propositionOsmCourante: PropositionOsm | null = null;
 
   function ensurePanneauBatiment(): HTMLElement | null {
     const existing = $('rp11-batiment');
@@ -315,6 +353,12 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       champ('rp11-bat-acrotere', 'Relevé d’acrotère (m)', 'non renseigné'),
       '<p id="rp11-bat-note" class="text-lune-faint"></p>',
       '<p id="rp11-bat-erreur" class="text-alert-300"></p>',
+      // CALX132 — PROPOSITION OSM : masquée (aucun texte, aucun bouton visible) tant
+      // qu'aucune empreinte n'a été reçue (`setBatimentOsmPropose`) — jamais affichée par
+      // défaut, jamais appliquée sans ce clic.
+      '<p id="rp11-bat-osm-note" class="text-lune-faint"></p>',
+      '<button type="button" id="rp11-bat-osm-bouton" hidden ' +
+        'class="border border-white/20 px-2 py-1 font-semibold text-white hover:bg-white/10"></button>',
     ].join('');
     anchor.appendChild(box);
     return box;
@@ -332,7 +376,44 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     poser(batAcrotereEl, bat?.hauteurAcrotereM);
     if (batSourceEl && document.activeElement !== batSourceEl) batSourceEl.value = bat?.source ?? '';
     if (batNoteEl) batNoteEl.textContent = mentionEtages(bat) ?? '';
+    renderPropositionOsm();
   }
+
+  /**
+   * CALX132 — affiche (ou masque) le bouton de reprise de la proposition OSM courante.
+   * Rien n'est écrit ici : ce n'est qu'un RENDU, la seule écriture possible est le clic
+   * (`appliquerPropositionOsmActive`).
+   */
+  function renderPropositionOsm() {
+    if (batOsmNoteEl) batOsmNoteEl.textContent = propositionOsmCourante?.mention ?? '';
+    if (batOsmBoutonEl) {
+      if (propositionOsmCourante) {
+        batOsmBoutonEl.hidden = false;
+        batOsmBoutonEl.textContent = libelleBoutonOsm(propositionOsmCourante);
+      } else {
+        batOsmBoutonEl.hidden = true;
+        batOsmBoutonEl.textContent = '';
+      }
+    }
+  }
+
+  /**
+   * CALX132 — CLIC EXPLICITE : la proposition OSM courante est acceptée et rejoint le
+   * document, par le même chemin qu'une saisie humaine (`appliquerSaisie`, mêmes refus
+   * nommés). Rien de ceci ne s'exécute ailleurs qu'ici — le calcul de la proposition
+   * (`setBatimentOsmPropose`) n'écrit jamais tout seul.
+   */
+  function appliquerPropositionOsmActive() {
+    if (!propositionOsmCourante) return;
+    const res = appliquerPropositionOsm(ctx.batiments, buildingKey(), propositionOsmCourante);
+    ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme toute saisie de bâtiment
+    ctx.batiments = res.batiments;
+    if (batErreurEl) batErreurEl.textContent = res.refus.map((r) => r.message).join(' ');
+    syncHeightUi();
+    recalcDisplays();
+    if (hasShadeSources()) recomputeShading();
+  }
+  batOsmBoutonEl?.addEventListener('click', () => appliquerPropositionOsmActive());
 
   /** Nombre saisi à la française (virgule tolérée) ; vide/illisible → `null` = EFFACER. */
   function nombreSaisi(el: HTMLInputElement | null): number | null {
@@ -930,6 +1011,16 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   renderSolarAccess(); // CAL97 — état initial (dossier rechargé avec des obstructions)
   renderModuleShadeReadings(); // CALX122 — état initial
 
+  /**
+   * CALX132 — reçoit l'empreinte OSM du bâtiment ACTIF et calcule sa PROPOSITION
+   * (`propositionOsm`, pure) — jamais appliquée d'office. `null`/absent, ou un bâtiment
+   * sans tag exploitable, efface le bouton (aucune proposition à afficher).
+   */
+  function setBatimentOsmPropose(batiment: BatimentOsmServeur | null | undefined) {
+    propositionOsmCourante = propositionOsm(batiment);
+    renderPropositionOsm();
+  }
+
   return {
     handleMapClick,
     recomputeShading,
@@ -940,5 +1031,6 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     horizonStatus,
     moduleShadeReadings,
     moduleShadeTooltip,
+    setBatimentOsmPropose,
   };
 }
