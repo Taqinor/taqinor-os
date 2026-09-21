@@ -1,5 +1,5 @@
 /**
- * CALX100 / CALX101 — LE BÂTIMENT VIENT DU DOCUMENT, PAS D'UNE CONSTANTE.
+ * CALX100 / CALX101 / CALX102 — LE BÂTIMENT VIENT DU DOCUMENT, PAS D'UNE CONSTANTE.
  *
  * Constat que ces trois tâches corrigent :
  *  - la 3D extrudait TOUJOURS `FLOORS × FLOOR_HEIGHT_M` (6 m), quelle que soit la
@@ -31,7 +31,9 @@
  *    emprise) et la dérivation est NOMMÉE ; aucune pente forfaitaire n'existe ici.
  */
 import * as THREE from 'three';
-import { FLOORS, FLOOR_HEIGHT_M } from './constants';
+import { FLOORS, FLOOR_HEIGHT_M, DEG2RAD, DEG2M } from './constants';
+import { type LngLat } from '../../lib/roof';
+import { type Obstacle } from '../../lib/obstacles';
 
 // ═══════════════ CALX84 — LE BÂTIMENT TEL QUE LE DOCUMENT LE DÉCRIT ═══════════════
 
@@ -329,7 +331,7 @@ export function lireBatiments(json: unknown): Batiment[] {
   return serialiserBatiments(raw as readonly Batiment[] | null | undefined);
 }
 
-// ═══════════════ GÉOMÉTRIE D'ANNEAU ═══════════════
+// ═══════════════ GÉOMÉTRIE D'ANNEAU (partagée acrotère / lucarne) ═══════════════
 
 /** Aire SIGNÉE (m²) d'un anneau ENU — positif = sens trigonométrique. */
 export function aireSigneeM2(ring: readonly [number, number][]): number {
@@ -340,6 +342,18 @@ export function aireSigneeM2(ring: readonly [number, number][]): number {
     s += x1 * y2 - x2 * y1;
   }
   return s / 2;
+}
+
+/** Le point (x, y) est-il STRICTEMENT dans l'anneau ? (lancer de rayon, anneau fermé implicitement.) */
+export function dansAnneau(ring: readonly [number, number][], x: number, y: number): boolean {
+  let dedans = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const traverse = yi > y !== yj > y;
+    if (traverse && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) dedans = !dedans;
+  }
+  return dedans;
 }
 
 /**
@@ -468,4 +482,214 @@ export function construireAcrotere(
   mesh.castShadow = true; // l'ombre de rive : la raison d'être du relevé
   mesh.receiveShadow = true;
   return mesh;
+}
+
+// ═══════════════ CALX102 — LA LUCARNE PERCE LE PAN ═══════════════
+
+/** Une lucarne (chien-assis) prête à dessiner, dans le repère ENU de la scène. */
+export interface Lucarne {
+  id: string;
+  /** Centre ENU (m) dans le repère de la scène (offset de zone déjà appliqué). */
+  centre: [number, number];
+  /** Étendue NORD-SUD (m), SAISIE. */
+  longueurM: number;
+  /** Étendue EST-OUEST (m), SAISIE. */
+  largeurM: number;
+  /** Hauteur de faîtage (m) au-dessus du plan du pan, SAISIE (CAL66 `heightM`). */
+  hauteurM: number;
+  /** Pente (°) des deux versants — DÉRIVÉE de la hauteur et de l'emprise saisies. */
+  penteDeg: number;
+  /** D'où vient `penteDeg`, en clair : la dérivation est nommée, jamais muette. */
+  provenancePente: string;
+  /** L'emprise, en ENU, dans l'ordre du contour. */
+  emprise: [number, number][];
+}
+
+/**
+ * CALX102 — les lucarnes d'un pan, lues dans les obstacles du DOCUMENT.
+ *
+ * Seul un obstacle de type `chien_assis` PORTANT une hauteur SAISIE (CAL66 `heightM`)
+ * devient une lucarne. Sans hauteur, l'obstacle reste ce qu'il est aujourd'hui — une
+ * boîte de placement — et RIEN ne change dans la scène.
+ *
+ * La pente des deux versants est DÉRIVÉE de deux valeurs saisies (la hauteur de faîtage
+ * et la demi-emprise du petit côté) : aucune pente forfaitaire n'existe ici, et la
+ * dérivation voyage avec la lucarne (`provenancePente`) pour que l'écran puisse la dire.
+ */
+export function lucarnesDuPan(
+  obstacles: readonly Obstacle[] | null | undefined,
+  origin: LngLat,
+  offX = 0,
+  offY = 0,
+): Lucarne[] {
+  if (!Array.isArray(obstacles) || !Array.isArray(origin)) return [];
+  const cosLat = Math.cos(origin[1] * DEG2RAD);
+  const out: Lucarne[] = [];
+  for (const o of obstacles) {
+    if (!o || o.type !== 'chien_assis' || !estMesure(o.heightM)) continue;
+    if (!estMesure(o.lengthM) || !estMesure(o.widthM)) continue;
+    const cx = (o.centerLng - origin[0]) * DEG2M * cosLat + offX;
+    const cy = (o.centerLat - origin[1]) * DEG2M + offY;
+    const hw = o.widthM / 2;
+    const hl = o.lengthM / 2;
+    // Le FAÎTAGE court le long du GRAND côté ; les versants descendent vers les deux
+    // grands côtés. La pente vient donc du PETIT demi-côté et de la hauteur saisie.
+    const demiPetitCote = Math.min(hw, hl);
+    const penteDeg = Math.atan2(o.heightM, demiPetitCote) / DEG2RAD;
+    out.push({
+      id: o.id,
+      centre: [cx, cy],
+      longueurM: o.lengthM,
+      largeurM: o.widthM,
+      hauteurM: o.heightM,
+      penteDeg,
+      provenancePente:
+        `dérivée de la hauteur saisie (${fmt1(o.heightM)} m) et de la demi-emprise saisie ` +
+        `(${fmt1(demiPetitCote)} m) — aucune pente forfaitaire`,
+      emprise: [
+        [cx - hw, cy - hl],
+        [cx + hw, cy - hl],
+        [cx + hw, cy + hl],
+        [cx - hw, cy + hl],
+      ],
+    });
+  }
+  return out;
+}
+
+/** Ce qu'un percement a réellement fait, et ce qu'il a refusé de faire — nommé. */
+export interface PercementPan {
+  /** La forme du PAN, trouée de chaque lucarne effectivement percée. */
+  shape: THREE.Shape;
+  /** Aire (m²) réellement retirée du maillage du pan. */
+  aireRetireeM2: number;
+  /** Identifiants des lucarnes percées. */
+  percees: string[];
+  /** Ce qui n'a PAS été percé, avec le motif (jamais un percement silencieusement raté). */
+  nonPercees: Array<{ id: string; motif: string }>;
+}
+
+/**
+ * CALX102 — construit la forme du PAN en y RETIRANT l'emprise de chaque lucarne.
+ *
+ * Le percement est VISUEL : il ne touche ni `clearanceForType` ni l'optimiseur, donc
+ * l'aire POSABLE reste EXACTEMENT celle d'aujourd'hui (le retrait par type était déjà
+ * appliqué autour du chien-assis — le percer ne le retire pas une seconde fois).
+ *
+ * Une lucarne dont l'emprise n'est pas STRICTEMENT à l'intérieur du tracé n'est PAS
+ * percée (une découpe qui mord la rive ne se triangule pas proprement) : elle est
+ * rapportée dans `nonPercees` avec son motif, jamais percée « à peu près ». La forme
+ * rendue est NEUVE : l'anneau d'origine, lui, continue d'extruder le bâtiment intact.
+ */
+export function percerPanLucarnes(
+  ring: readonly [number, number][],
+  lucarnes: readonly Lucarne[],
+): PercementPan {
+  const shape = new THREE.Shape();
+  ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
+  shape.closePath();
+  const percees: string[] = [];
+  const nonPercees: Array<{ id: string; motif: string }> = [];
+  let aireRetireeM2 = 0;
+  if (ring.length < 3) return { shape, aireRetireeM2, percees, nonPercees };
+  for (const l of lucarnes) {
+    if (!l.emprise.every(([x, y]) => dansAnneau(ring, x, y))) {
+      nonPercees.push({
+        id: l.id,
+        motif: 'emprise hors du tracé du pan (ou à cheval sur une rive) — le pan n’est pas percé',
+      });
+      continue;
+    }
+    const trou = new THREE.Path();
+    l.emprise.forEach(([x, y], i) => (i === 0 ? trou.moveTo(x, y) : trou.lineTo(x, y)));
+    trou.closePath();
+    shape.holes.push(trou);
+    percees.push(l.id);
+    aireRetireeM2 += Math.abs(aireSigneeM2(l.emprise));
+  }
+  return { shape, aireRetireeM2, percees, nonPercees };
+}
+
+/**
+ * CALX102 — le VOLUME d'une lucarne à DEUX VERSANTS, posé sur le plan du pan (base
+ * `baseZ`) : deux rampants qui montent jusqu'au faîtage à la hauteur SAISIE, fermés par
+ * deux pignons triangulaires. Il porte une vraie ombre (`castShadow`) — c'est ce qui le
+ * distingue de la boîte posée d'aujourd'hui.
+ *
+ * Le maillage est construit en coordonnées de scène (les sommets portent déjà le centre
+ * de la lucarne), donc aucune rotation n'est appliquée : le faîtage suit le GRAND côté de
+ * l'emprise SAISIE — pas un axe supposé.
+ */
+export function construireLucarne(lucarne: Lucarne, baseZ: number, dim: boolean): THREE.Mesh | null {
+  if (!estMesure(lucarne.hauteurM) || !Number.isFinite(baseZ)) return null;
+  const [cx, cy] = lucarne.centre;
+  const hw = lucarne.largeurM / 2; // est-ouest
+  const hl = lucarne.longueurM / 2; // nord-sud
+  if (!(hw > 0) || !(hl > 0)) return null;
+  const h = lucarne.hauteurM;
+  const faitageEO = hw >= hl; // faîtage le long du grand côté
+  const p: number[] = [];
+  const tri = (
+    a: [number, number, number],
+    b: [number, number, number],
+    c: [number, number, number],
+  ) => p.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+
+  if (faitageEO) {
+    // Faîtage sur l'axe X (est-ouest), versants descendant vers y = ±hl.
+    const f1: [number, number, number] = [cx - hw, cy, h];
+    const f2: [number, number, number] = [cx + hw, cy, h];
+    const s: [number, number, number] = [cx - hw, cy - hl, 0];
+    const se: [number, number, number] = [cx + hw, cy - hl, 0];
+    const n: [number, number, number] = [cx - hw, cy + hl, 0];
+    const ne: [number, number, number] = [cx + hw, cy + hl, 0];
+    tri(s, se, f2); tri(s, f2, f1); // versant sud
+    tri(ne, n, f1); tri(ne, f1, f2); // versant nord
+    tri(s, f1, n); // pignon ouest
+    tri(se, ne, f2); // pignon est
+  } else {
+    // Faîtage sur l'axe Y (nord-sud), versants descendant vers x = ±hw.
+    const f1: [number, number, number] = [cx, cy - hl, h];
+    const f2: [number, number, number] = [cx, cy + hl, h];
+    const o: [number, number, number] = [cx - hw, cy - hl, 0];
+    const on: [number, number, number] = [cx - hw, cy + hl, 0];
+    const e: [number, number, number] = [cx + hw, cy - hl, 0];
+    const en: [number, number, number] = [cx + hw, cy + hl, 0];
+    tri(o, on, f2); tri(o, f2, f1); // versant ouest
+    tri(e, f1, f2); tri(e, f2, en); // versant est
+    tri(o, e, f1); // pignon sud
+    tri(on, f2, en); // pignon nord
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(p), 3));
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({
+    color: dim ? 0x9aa3b4 : 0xe2e7f2,
+    roughness: 0.85,
+    metalness: 0,
+    side: THREE.DoubleSide,
+    transparent: dim,
+    opacity: dim ? 0.55 : 1,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = `rp11-lucarne-${lucarne.id}`;
+  mesh.position.z = baseZ;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+/** CALX102 — les volumes de TOUTES les lucarnes d'un pan (liste vide = rien à ajouter). */
+export function construireLucarnes(
+  lucarnes: readonly Lucarne[],
+  baseZ: number,
+  dim: boolean,
+): THREE.Mesh[] {
+  const out: THREE.Mesh[] = [];
+  for (const l of lucarnes) {
+    const m = construireLucarne(l, baseZ, dim);
+    if (m) out.push(m);
+  }
+  return out;
 }

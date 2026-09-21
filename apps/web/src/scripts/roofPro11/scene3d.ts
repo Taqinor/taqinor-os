@@ -52,9 +52,12 @@ import {
   HAUTEUR_DESSIN_M,
   acrotereDuBatiment,
   batimentDuPan,
-  construireAcrotere,
+  construireLucarnes,
   hauteurExtrusion,
-} from './batiment'; // CALX100/101 — hauteur et acrotère viennent du DOCUMENT
+  lucarnesDuPan,
+  percerPanLucarnes,
+  construireAcrotere,
+} from './batiment'; // CALX100/101/102 — hauteur, acrotère et lucarne viennent du DOCUMENT
 import { type PerimeterSetbacks } from '../../lib/roofPro2';
 
 /** Dépendances injectées (carte + capacités de l'appareil, figées au boot). */
@@ -1544,7 +1547,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       deckMat.transparent = true;
       deckMat.opacity = 0.7;
     }
-    const deckGeo = new THREE.ShapeGeometry(shape);
+    // CALX102 — la forme du PAN, PERCÉE de l'emprise de chaque lucarne (chien-assis à
+    // hauteur SAISIE). Forme NEUVE : l'anneau `shape` ci-dessus continue d'extruder le
+    // bâtiment intact. Sans lucarne à hauteur saisie, elle est identique à `shape`.
+    const lucarnes = lucarnesDuPan(plan.obstacles, pack.origin, offX, offY); // CALX102
+    const deckGeo = new THREE.ShapeGeometry(percerPanLucarnes(ring, lucarnes).shape);
     if (flush) {
       // FIX 1 (V6) — la SURFACE DE TOIT elle-même devient un plan INCLINÉ : chaque
       // sommet de la dalle est relevé à la hauteur du plan (pente × distance à
@@ -1574,6 +1581,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       ? null
       : construireAcrotere(ring, acrotereDuBatiment(plan.batiment, plan.parapetM), deck.position.z, dim);
     if (acrotere) sceneRoot!.add(acrotere);
+
+    // CALX102 — le VOLUME des lucarnes (deux versants), posé sur le plan du pan à l'endroit
+    // exact où il vient d'être percé. Liste vide (aucune hauteur saisie) → rien d'ajouté.
+    for (const m of construireLucarnes(lucarnes, deck.position.z, dim)) sceneRoot!.add(m); // CALX102
 
     // W90 — MASSING DU TOIT EN PENTE (pignons/jupe de rive). En pente (flush) la dalle
     // est un PLAN INCLINÉ posé au-dessus du toit plat du bâtiment (z = wallH) : sans rien

@@ -1,5 +1,6 @@
-// CALX100/101 — le bâtiment vient du DOCUMENT (`buildings[]`, contrat CALX84), pas d'une
-// constante : hauteur SAISIE + provenance, bandeau d'acrotère SAISI. Testé HORS DOM.
+// CALX100/101/102 — le bâtiment vient du DOCUMENT (`buildings[]`, contrat CALX84), pas
+// d'une constante : hauteur saisie + provenance, bandeau d'acrotère, lucarne qui perce le
+// pan. Tout est testé HORS DOM et hors carte (les fonctions de `batiment.ts` sont pures).
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
@@ -10,16 +11,21 @@ import {
   appliquerSaisie,
   batimentDuPan,
   construireAcrotere,
+  construireLucarne,
   emettreBatiments,
   hauteurExtrusion,
   idBatimentDuPan,
   lireBatiments,
+  lucarnesDuPan,
   mentionEtages,
+  percerPanLucarnes,
   serialiserBatiments,
   type Batiment,
 } from './batiment';
 import { serializeLayout } from './prefill';
+import { CLEARANCE_BY_TYPE } from './types';
 import { FLOORS, FLOOR_HEIGHT_M } from './constants';
+import { type Obstacle } from '../../lib/obstacles';
 import { type Ctx } from './context';
 import { type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
@@ -101,6 +107,27 @@ function ringENU(largeurM: number, profondeurM: number): [number, number][] {
     [hw, hl],
     [-hw, hl],
   ];
+}
+
+/** Aire (m²) RÉELLE d'un maillage : somme des aires de ses triangles. */
+function aireMaillageM2(geo: THREE.BufferGeometry): number {
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  const idx = geo.index;
+  const n = idx ? idx.count : pos.count;
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  let total = 0;
+  for (let i = 0; i < n; i += 3) {
+    const i0 = idx ? idx.getX(i) : i;
+    const i1 = idx ? idx.getX(i + 1) : i + 1;
+    const i2 = idx ? idx.getX(i + 2) : i + 2;
+    a.fromBufferAttribute(pos, i0);
+    b.fromBufferAttribute(pos, i1);
+    c.fromBufferAttribute(pos, i2);
+    total += b.clone().sub(a).cross(c.clone().sub(a)).length() / 2;
+  }
+  return total;
 }
 
 // ═══════════════ CALX100 — la hauteur et sa provenance ═══════════════
@@ -290,5 +317,122 @@ describe('CALX101 — acrotère : un VOLUME quand il est SAISI, rien sinon', () 
     const ys = interieur.map(([, y]) => y);
     expect(Math.max(...xs)).toBeCloseTo(4.5, 6); // 5 − 0,5
     expect(Math.max(...ys)).toBeCloseTo(3.5, 6); // 4 − 0,5
+  });
+});
+
+// ═══════════════ CALX102 — la lucarne perce le pan ═══════════════
+
+function chienAssis(over: Partial<Obstacle> = {}): Obstacle {
+  return {
+    id: 'obs-1',
+    centerLng: 0,
+    centerLat: 0,
+    lengthM: 2, // nord-sud
+    widthM: 3, // est-ouest
+    type: 'chien_assis',
+    heightM: 1.5,
+    ...over,
+  };
+}
+
+const ORIGINE: LngLat = [0, 0];
+
+describe('CALX102 — lucarne : lue seulement quand sa hauteur est SAISIE', () => {
+  it('sans hauteur saisie, aucun chien-assis n’est une lucarne (boîte d’aujourd’hui)', () => {
+    expect(lucarnesDuPan([chienAssis({ heightM: undefined })], ORIGINE)).toEqual([]);
+    expect(lucarnesDuPan([chienAssis({ type: 'cheminee' })], ORIGINE)).toEqual([]);
+    expect(lucarnesDuPan(undefined, ORIGINE)).toEqual([]);
+  });
+
+  it('avec hauteur saisie : la pente est DÉRIVÉE de deux valeurs saisies, et dite', () => {
+    const [l] = lucarnesDuPan([chienAssis()], ORIGINE);
+    expect(l.hauteurM).toBe(1.5);
+    // Faîtage sur le grand côté (3 m E-O) ⇒ pente depuis le demi-PETIT côté (1 m).
+    expect(l.penteDeg).toBeCloseTo((Math.atan2(1.5, 1) * 180) / Math.PI, 6);
+    expect(l.provenancePente).toContain('dérivée');
+    expect(l.provenancePente).toContain('aucune pente forfaitaire');
+  });
+});
+
+describe('CALX102 — le pan percé, et rien d’autre', () => {
+  const ring = ringENU(20, 16);
+
+  it('le maillage du pan perd EXACTEMENT l’emprise de la lucarne', () => {
+    const lucarnes = lucarnesDuPan([chienAssis()], ORIGINE);
+    const sans = new THREE.ShapeGeometry(percerPanLucarnes(ring, []).shape);
+    const avec = new THREE.ShapeGeometry(percerPanLucarnes(ring, lucarnes).shape);
+    const emprise = 2 * 3; // lengthM × widthM, SAISIS
+    expect(aireMaillageM2(sans)).toBeCloseTo(20 * 16, 4);
+    expect(aireMaillageM2(sans) - aireMaillageM2(avec)).toBeCloseTo(emprise, 4);
+  });
+
+  it('le percement se compte et se dit', () => {
+    const p = percerPanLucarnes(ring, lucarnesDuPan([chienAssis()], ORIGINE));
+    expect(p.percees).toEqual(['obs-1']);
+    expect(p.aireRetireeM2).toBeCloseTo(6, 6);
+    expect(p.shape.holes).toHaveLength(1);
+    expect(p.nonPercees).toEqual([]);
+  });
+
+  it('une emprise qui mord la rive n’est PAS percée, et le motif est nommé', () => {
+    const petit = ringENU(2, 2); // la lucarne 3 × 2 dépasse
+    const p = percerPanLucarnes(petit, lucarnesDuPan([chienAssis()], ORIGINE));
+    expect(p.percees).toEqual([]);
+    expect(p.shape.holes).toHaveLength(0);
+    expect(p.nonPercees[0].motif).toContain('hors du tracé');
+  });
+
+  it('sans lucarne, la forme du pan est celle d’aujourd’hui (aucun trou)', () => {
+    const p = percerPanLucarnes(ring, []);
+    expect(p.shape.holes).toHaveLength(0);
+    expect(p.aireRetireeM2).toBe(0);
+  });
+
+  it('le percement est VISUEL : ni les obstacles ni le dégagement par type ne bougent', () => {
+    const obstacles = [chienAssis()];
+    const avant = JSON.parse(JSON.stringify(obstacles));
+    const degagementAvant = CLEARANCE_BY_TYPE.chien_assis;
+    percerPanLucarnes(ring, lucarnesDuPan(obstacles, ORIGINE));
+    expect(obstacles).toEqual(avant); // l'entrée de l'optimiseur est intacte
+    expect(CLEARANCE_BY_TYPE.chien_assis).toBe(degagementAvant); // jamais un second retrait
+  });
+});
+
+describe('CALX102 — le volume à deux versants', () => {
+  it('monte exactement à la hauteur SAISIE, est posé sur le pan et porte une ombre', () => {
+    const [l] = lucarnesDuPan([chienAssis()], ORIGINE);
+    const mesh = construireLucarne(l, 6.02, false)!;
+    expect(mesh).toBeInstanceOf(THREE.Mesh);
+    expect(mesh.castShadow).toBe(true);
+    expect(mesh.position.z).toBeCloseTo(6.02, 6);
+    const bbox = new THREE.Box3().setFromObject(mesh);
+    expect(bbox.max.z - bbox.min.z).toBeCloseTo(1.5, 5);
+    expect(bbox.max.x - bbox.min.x).toBeCloseTo(3, 4); // largeur SAISIE
+    expect(bbox.max.y - bbox.min.y).toBeCloseTo(2, 4); // longueur SAISIE
+  });
+
+  it('le faîtage suit le GRAND côté saisi, dans les deux orientations', () => {
+    const [eo] = lucarnesDuPan([chienAssis({ widthM: 4, lengthM: 2 })], ORIGINE);
+    const [ns] = lucarnesDuPan([chienAssis({ widthM: 2, lengthM: 4 })], ORIGINE);
+    // Le demi-petit côté vaut 1 m dans les deux cas ⇒ même pente dérivée.
+    expect(eo.penteDeg).toBeCloseTo(ns.penteDeg, 6);
+    const meshEO = construireLucarne(eo, 0, false)!;
+    const posEO = meshEO.geometry.attributes.position as THREE.BufferAttribute;
+    // Faîtage est-ouest : tous les sommets HAUTS sont à y = 0 (l'axe du grand côté).
+    for (let i = 0; i < posEO.count; i++) {
+      if (posEO.getZ(i) > 0) expect(Math.abs(posEO.getY(i))).toBeLessThan(1e-9);
+    }
+    const meshNS = construireLucarne(ns, 0, false)!;
+    const posNS = meshNS.geometry.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < posNS.count; i++) {
+      if (posNS.getZ(i) > 0) expect(Math.abs(posNS.getX(i))).toBeLessThan(1e-9);
+    }
+  });
+
+  it('le volume est posé au CENTRE saisi de la lucarne, pas à l’origine de la scène', () => {
+    const lucarnes = lucarnesDuPan([chienAssis()], ORIGINE, 12, -7);
+    const bbox = new THREE.Box3().setFromObject(construireLucarne(lucarnes[0], 0, false)!);
+    expect((bbox.max.x + bbox.min.x) / 2).toBeCloseTo(12, 4);
+    expect((bbox.max.y + bbox.min.y) / 2).toBeCloseTo(-7, 4);
   });
 });
