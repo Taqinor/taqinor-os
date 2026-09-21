@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -40,9 +41,19 @@ const CONTRAT = JSON.parse(readFileSync(join(
   racineDepot(), 'backend', 'django_core', 'apps', 'calepinage',
   'contract_samples', 'calepinage_serie_horaire.json'), 'utf8'))
 
+const CONTRAT_METEO = JSON.parse(readFileSync(join(
+  racineDepot(), 'backend', 'django_core', 'apps', 'calepinage',
+  'contract_samples', 'calepinage_meteo_fichier.json'), 'utf8'))
+
 const exportCsv = vi.fn()
+const deposerMeteoFichier = vi.fn()
 vi.mock('../../../api/calepinageApi', () => ({
-  default: { calepinages: { exportCsv: (...a) => exportCsv(...a) } },
+  default: {
+    calepinages: {
+      exportCsv: (...a) => exportCsv(...a),
+      deposerMeteoFichier: (...a) => deposerMeteoFichier(...a),
+    },
+  },
 }))
 
 const downloadBlob = vi.fn()
@@ -138,6 +149,99 @@ describe('CALX6 — série absente : le bouton est désactivé, avec SON motif',
 
     const motif = await screen.findByTestId('cal-series-motif-mensuel')
     expect(motif).toHaveTextContent('sans en donner le motif')
+  })
+})
+
+describe('CALX62 — déposer une série météo de la société', () => {
+  const fichierCsv = () => new File(
+    ['horodatage;gi_w_m2\r\n2021-01-15T13:00:00+01:00;780.0\r\n'],
+    'meteo-2021.csv', { type: 'text/csv' })
+
+  it('offre les DEUX champs obligatoires : le fichier et le fournisseur', () => {
+    rendre()
+    expect(screen.getByTestId('cal-series-depot-fichier')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-series-depot-fournisseur')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-series-depot-envoyer')).toBeInTheDocument()
+  })
+
+  it('envoie le fichier ET le fournisseur, puis affiche la provenance rendue', async () => {
+    const utilisateur = userEvent.setup()
+    deposerMeteoFichier.mockResolvedValue({ data: CONTRAT_METEO.exemple })
+    rendre()
+
+    await utilisateur.upload(screen.getByTestId('cal-series-depot-fichier'),
+      fichierCsv())
+    await utilisateur.type(screen.getByTestId('cal-series-depot-fournisseur'),
+      'Station d essai')
+    await utilisateur.click(screen.getByTestId('cal-series-depot-envoyer'))
+
+    await waitFor(() => expect(deposerMeteoFichier).toHaveBeenCalled())
+    const [id, corps] = deposerMeteoFichier.mock.calls[0]
+    expect(id).toBe(5)
+    expect(corps.get('fournisseur')).toBe('Station d essai')
+    expect(corps.get('fichier')).toBeTruthy()
+
+    const provenance = await screen.findByTestId('cal-series-depot-provenance')
+    // Ce qui s'affiche vient du SERVEUR (l'exemple committé), pas de l'écran.
+    expect(provenance).toHaveTextContent(
+      CONTRAT_METEO.exemple.meteo.fichier.nom)
+    expect(provenance).toHaveTextContent(
+      CONTRAT_METEO.exemple.meteo.fournisseur)
+  })
+
+  it('un refus qui nomme une COLONNE du CSV s’affiche sous le fichier, avec sa ligne', async () => {
+    const utilisateur = userEvent.setup()
+    deposerMeteoFichier.mockRejectedValue({
+      response: {
+        status: 400,
+        data: {
+          ghi_w_m2: CONTRAT_METEO.exemple_refus_horizontal.ghi_w_m2,
+          ligne: 2,
+        },
+      },
+    })
+    rendre()
+    await utilisateur.click(screen.getByTestId('cal-series-depot-envoyer'))
+
+    const motif = await screen.findByTestId('cal-series-depot-motif-fichier')
+    expect(motif).toHaveTextContent('ghi_w_m2')
+    expect(motif).toHaveTextContent('CALX198')
+    expect(screen.getByTestId('cal-series-depot-bandeau'))
+      .toHaveTextContent('ligne 2 du fichier')
+    expect(screen.queryByTestId('cal-series-depot-motif-fournisseur')).toBeNull()
+  })
+
+  it('un refus qui nomme le fournisseur s’affiche SOUS ce champ-là', async () => {
+    const utilisateur = userEvent.setup()
+    deposerMeteoFichier.mockRejectedValue({
+      response: {
+        status: 400,
+        data: CONTRAT_METEO.exemple_refus_sans_fournisseur,
+      },
+    })
+    rendre()
+    await utilisateur.click(screen.getByTestId('cal-series-depot-envoyer'))
+
+    expect(await screen.findByTestId('cal-series-depot-motif-fournisseur'))
+      .toHaveTextContent('provenance')
+    expect(screen.queryByTestId('cal-series-depot-motif-fichier')).toBeNull()
+  })
+})
+
+describe('CALX62 — le contrat committé du dépôt météo', () => {
+  it('décrit la porte multipart que le panneau appelle', () => {
+    expect(CONTRAT_METEO.endpoint.startsWith('POST ')).toBe(true)
+    expect(CONTRAT_METEO.endpoint).toMatch(/meteo-fichier\/$/)
+  })
+
+  it('publie la provenance, et le NOMBRE de points — jamais les points', () => {
+    const { meteo, serie } = CONTRAT_METEO.exemple
+    expect(meteo.service).toBe('fichier')
+    expect(typeof meteo.fournisseur).toBe('string')
+    expect(meteo.fichier.empreinte_sha256).toHaveLength(64)
+    expect(typeof serie.points).toBe('number')
+    // Aucune clé de points dans le résumé : la série ne voyage pas en HTTP.
+    expect(Array.isArray(serie.points)).toBe(false)
   })
 })
 

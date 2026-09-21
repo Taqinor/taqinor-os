@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Download } from 'lucide-react'
+import { Download, Upload } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
-import { Button, Card } from '../../../ui'
+import { Button, Card, Input, Label } from '../../../ui'
 import { downloadBlob } from '../../../utils/downloadBlob'
 
 /* ============================================================================
@@ -74,13 +74,34 @@ async function lireRefus(erreur) {
     try { corps = JSON.parse(corps) } catch { return null }
   }
   if (!corps || typeof corps !== 'object') return null
+  // CALX62 — `ligne` accompagne un refus de fichier : elle dit OÙ ouvrir le
+  // CSV. Ce n'est pas un champ fautif, elle ne peut donc pas en tenir lieu.
+  const ligne = Number.isFinite(corps.ligne) ? corps.ligne : null
   for (const [champ, valeur] of Object.entries(corps)) {
-    if (champ === 'exports_disponibles') continue
+    if (champ === 'exports_disponibles' || champ === 'ligne') continue
     const motif = Array.isArray(valeur) ? valeur[0] : valeur
-    if (typeof motif === 'string' && motif.trim()) return { champ, motif }
+    if (typeof motif === 'string' && motif.trim()) {
+      return { champ, motif, ligne }
+    }
   }
   return null
 }
+
+/* ============================================================================
+   CALX62 — LE DÉPÔT D'UNE SÉRIE MÉTÉO HORAIRE DE LA SOCIÉTÉ.
+   ----------------------------------------------------------------------------
+   Deux champs, et les deux sont obligatoires : le FICHIER (CSV à colonnes
+   nommées, `horodatage` avec fuseau explicite et `gi_w_m2`) et le
+   FOURNISSEUR, SAISI — une série météo dont la provenance n'est pas écrite
+   devient un chiffre sans origine dès le lendemain, et l'écran n'en invente
+   aucune.
+
+   Le serveur est le seul juge du fichier : l'écran ne lit pas le CSV, ne
+   compte pas ses lignes et ne devine aucune colonne. Un refus s'affiche SOUS
+   le champ qu'il nomme (`fichier` ou `fournisseur` pour le formulaire, sinon
+   la COLONNE du CSV), avec la ligne du fichier quand le serveur la donne.
+   ========================================================================== */
+const CHAMPS_DU_FORMULAIRE = new Set(['fichier', 'fournisseur'])
 
 export default function PanneauSeries({ calepinageId: idPropose } = {}) {
   const { id: idUrl } = useParams()
@@ -165,6 +186,141 @@ export default function PanneauSeries({ calepinageId: idPropose } = {}) {
           )
         })}
       </div>
+
+      <DepotMeteo calepinageId={calepinageId} />
     </div>
+  )
+}
+
+function DepotMeteo({ calepinageId }) {
+  const [fichier, setFichier] = useState(null)
+  const [fournisseur, setFournisseur] = useState('')
+  const [envoi, setEnvoi] = useState(false)
+  const [refus, setRefus] = useState(null)
+  const [depose, setDepose] = useState(null)
+
+  const deposer = (evenement) => {
+    evenement.preventDefault()
+    setRefus(null)
+    setDepose(null)
+    setEnvoi(true)
+    const corps = new FormData()
+    if (fichier) corps.append('fichier', fichier)
+    corps.append('fournisseur', fournisseur)
+    return Promise.resolve(
+      calepinageApi.calepinages.deposerMeteoFichier(calepinageId, corps))
+      .then((res) => setDepose(res?.data || {}))
+      .catch(async (erreur) => {
+        setRefus(await lireRefus(erreur) || {
+          champ: 'fichier', motif: REFUS_SANS_MOTIF, ligne: null,
+        })
+      })
+      .finally(() => setEnvoi(false))
+  }
+
+  const refusDe = (champ) => (refus && refus.champ === champ ? refus : null)
+  // Un refus qui nomme une COLONNE du CSV (et non un champ du formulaire)
+  // appartient au fichier : c'est sous lui qu'il doit s'afficher.
+  const refusFichier = refusDe('fichier')
+    || (refus && !CHAMPS_DU_FORMULAIRE.has(refus.champ) ? refus : null)
+  const refusFournisseur = refusDe('fournisseur')
+
+  return (
+    <Card className="mt-2 p-3" data-testid="cal-series-depot">
+      <p className="text-sm text-white">Série météo de la société</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Un CSV à colonnes nommées : « horodatage » (ISO, avec son fuseau) et
+        « gi_w_m2 » (irradiance sur le PLAN) sont obligatoires ;
+        « gb_i_w_m2 », « gd_i_w_m2 », « gr_i_w_m2 », « t2m_c » et « ws10m »
+        entrent si elles sont là. Le serveur vérifie le fichier et refuse en
+        nommant la colonne — rien n’est deviné ici.
+      </p>
+
+      {refus && (
+        <p
+          role="alert"
+          className="mt-2 text-sm text-destructive"
+          data-testid="cal-series-depot-bandeau"
+        >
+          Dépôt refusé : corrigez « {refus.champ} »
+          {refus.ligne ? ` (ligne ${refus.ligne} du fichier)` : ''}.
+        </p>
+      )}
+
+      <form className="mt-3 flex flex-col gap-2" onSubmit={deposer}>
+        <div>
+          <Label htmlFor="cal-series-depot-fichier">Fichier CSV</Label>
+          <input
+            id="cal-series-depot-fichier"
+            type="file"
+            accept=".csv,text/csv"
+            className="mt-1 block w-full text-xs"
+            onChange={(e) => setFichier(e.target.files?.[0] || null)}
+            data-testid="cal-series-depot-fichier"
+          />
+          {refusFichier && (
+            <p
+              className="mt-1 text-xs text-destructive"
+              data-testid="cal-series-depot-motif-fichier"
+            >
+              {refusFichier.champ} : {refusFichier.motif}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <Label htmlFor="cal-series-depot-fournisseur">Fournisseur</Label>
+          <Input
+            id="cal-series-depot-fournisseur"
+            value={fournisseur}
+            onChange={(e) => setFournisseur(e.target.value)}
+            placeholder="Station, bureau d’études, éditeur du fichier…"
+            data-testid="cal-series-depot-fournisseur"
+          />
+          {refusFournisseur && (
+            <p
+              className="mt-1 text-xs text-destructive"
+              data-testid="cal-series-depot-motif-fournisseur"
+            >
+              {refusFournisseur.motif}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <Button
+            type="submit"
+            size="sm"
+            variant="outline"
+            disabled={envoi}
+            data-testid="cal-series-depot-envoyer"
+          >
+            <Upload className="mr-1 h-4 w-4" aria-hidden="true" />
+            {envoi ? 'Dépôt…' : 'Déposer la série météo'}
+          </Button>
+        </div>
+      </form>
+
+      {depose && (
+        <p
+          className="mt-2 text-xs text-lune-soft"
+          data-testid="cal-series-depot-provenance"
+        >
+          {depose.message}
+          {depose.meteo?.fichier?.nom
+            ? ` Fichier : ${depose.meteo.fichier.nom}`
+            : ''}
+          {depose.meteo?.fournisseur
+            ? ` · Fournisseur : ${depose.meteo.fournisseur}`
+            : ''}
+          {depose.serie?.points != null
+            ? ` · ${depose.serie.points} heure(s)`
+            : ''}
+          {depose.meteo?.fenetre_annees
+            ? ` · ${depose.meteo.fenetre_annees}`
+            : ''}
+        </p>
+      )}
+    </Card>
   )
 }

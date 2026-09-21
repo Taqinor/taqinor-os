@@ -143,6 +143,15 @@ SANS_PRODUCTEUR_PUR = {
         'comparer ; la série est écrite par CALX150 et la forme est affirmée '
         "sans base, par l'exporteur lui-même, dans "
         'apps/calepinage/tests/test_calx142_contrat_serie.py',
+
+    # CALX62
+    'calepinage_meteo_fichier.json':
+        'réponse de la porte MULTIPART qui dépose une série météo de la '
+        'société : son producteur crée une ligne records.Attachment et écrit '
+        "dans le magasin d'objets, donc il exige la base — le bloc `meteo` et "
+        'le résumé de série sont affirmés sans base, depuis un petit fichier '
+        'synthétique, par '
+        'apps/calepinage/tests/test_calx62_meteo_fichier.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
