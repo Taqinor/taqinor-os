@@ -43,6 +43,7 @@ from apps.calepinage.selectors import (
 from apps.calepinage.services import site
 from apps.calepinage.services.equipements import equipements_du_calepinage
 from apps.calepinage.services.lestage import masse_et_lestage
+from apps.calepinage.services.raccordement import bloc_raccordement
 from apps.calepinage.services.reglementaire import composer_dossiers
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
@@ -58,7 +59,11 @@ AVEC_PRODUCTEUR_PUR = ('calepinage_equipements.json',
                        'site_imagerie.json',
                        # CALX17 — masse posée + feuille de lestage : producteur
                        # PUR (aucune base) sur un calepinage nu.
-                       'calepinage_masse_lestage.json')
+                       'calepinage_masse_lestage.json',
+                       # CALX244 — le point de raccordement : producteur PUR
+                       # (``services/raccordement.py::bloc_raccordement``),
+                       # servi par ``views/raccordement.py``.
+                       'calepinage_raccordement.json')
 
 #: Les autres, avec la RAISON — aucun n'est oublié, chacun est un choix.
 SANS_PRODUCTEUR_PUR = {
@@ -186,14 +191,6 @@ SANS_PRODUCTEUR_PUR = {
         'sont affirmées sans base par '
         'apps/calepinage/tests/test_calx204_contrat_sld.py',
 
-    # CALX205
-    'calepinage_raccordement.json':
-        'point de RACCORDEMENT réseau : la route arrive avec CALX244 et son '
-        'producteur est services/raccordement.py (CALX241-243), pas encore '
-        'écrit — la forme, la règle « une limite est une saisie qui porte '
-        'sa source » et le verdict `omis` sans limite sont affirmés sans '
-        'base par '
-        'apps/calepinage/tests/test_calx205_contrat_raccordement.py',
 
     # CALX62
     'calepinage_meteo_fichier.json':
@@ -216,11 +213,6 @@ POSES_AVANT_LEUR_ROUTE = {
     'calepinage_troncons.json': 'CALX203 — route posée par la vague '
                                 'ÉLECTRIQUE PRO (services/troncons.py, '
                                 'CALX224-226)',
-    # CALX205 — `GET`/`POST calepinages/<pk>/raccordement/` : la vue arrive
-    # avec CALX244, le producteur est services/raccordement.py (CALX241-243).
-    'calepinage_raccordement.json': 'CALX205 — route posée par CALX244 '
-                                    '(services/raccordement.py, '
-                                    'CALX241-243)',
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
@@ -343,6 +335,14 @@ class ClesServiesTest(unittest.TestCase):
         self._comparer('parametres_calepinage.json', servi, 'exemple_vide')
         self.assertEqual(sorted(parametres_de_societe(None)),
                          sorted(SECTIONS_PARAMETRES))
+
+    def test_raccordement(self):
+        # CALX244 — ``bloc_raccordement`` est PUR : une conception absente,
+        # aucun tronçon, aucun réglage, et les trois blocs sortent quand
+        # même (les cinq verdicts omis en nommant ce qui manque).
+        servi = bloc_raccordement(None, {}, [], {})
+        self._comparer('calepinage_raccordement.json', servi)
+        self._comparer('calepinage_raccordement.json', servi, 'exemple_vide')
 
     def test_masse_lestage(self):
         # CALX17 — ``masse_et_lestage`` sur un calepinage NU ne touche

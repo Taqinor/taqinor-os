@@ -44,17 +44,16 @@ import { telechargerBlob } from './exportImage'
    quand `balisage` est vrai (`svg` non nul) : un schéma absent n'a rien à
    exporter.
 
-   CE QUI N'EST PAS FAIT ICI — ET POURQUOI. La tâche demande aussi un lien
-   vers le DXF de CALX235 (`services/sld_export.py::exporter_sld_dxf`) :
-   cette route n'existe PAS ENCORE côté serveur au moment où cette lane est
-   écrite (CALX235 est une lane différente, non postée sur cette branche) et
-   la discipline PACT10/D-CALX 13 de ce lot interdit d'ajouter à
-   `calepinageApi.js` un appel vers une route absente — le lien DXF est donc
-   OMIS, pas deviné. CROCHET ATTENDU : `calepinageApi.calepinages.sldDxf(id)`,
-   à ajouter EN FIN de `calepinageApi.js` avec `// CALX235` le jour où cette
-   route existe (l'`url_path` exact sera celui que CALX235 posera dans
-   `views/schema.py`) — puis un troisième bouton ici, sur le même modèle que
-   les deux ci-dessous.
+   CALX235/236 — LE TROISIÈME BOUTON : LE DXF. La route existe désormais
+   (`views/schema.py`, `url_path='schema-unifilaire.dxf'`, service
+   `services/sld_export.py::exporter_sld_dxf`) et
+   `calepinageApi.calepinages.sldDxf(id)` a été ajoutée EN FIN de
+   `calepinageApi.js` (`// CALX235`). Contrairement au PNG et au SVG, le DXF
+   n'est PAS dans le DOM : il est produit par le serveur depuis le MÊME
+   dessin (blocs, positions éditées, liaisons), donc un appel réseau est ici
+   la seule façon de l'obtenir — et c'est le SEUL de ce panneau. Une
+   conception incomplète ou bloquée ne produit aucun fichier : le serveur
+   refuse en 400 en nommant le champ, et ce motif-là est affiché tel quel.
    ========================================================================== */
 
 /** Le nom du fichier exporté : porte la RÉFÉRENCE du calepinage servie par
@@ -116,6 +115,28 @@ export function exporterSchemaSvg(svgTexte, nomFichier, { telecharger = telechar
   telecharger(new Blob([svgTexte], { type: 'image/svg+xml;charset=utf-8' }), nomFichier)
 }
 
+/**
+ * CALX235 — le MOTIF d'un refus de DXF, lu sur la réponse du serveur.
+ *
+ * La réponse est demandée en `blob` : un refus 400 arrive donc lui aussi en
+ * Blob, et son JSON (`{champ: motif}`) doit être relu pour qu'on affiche la
+ * phrase du serveur — jamais une phrase reformulée ici. Un corps illisible
+ * (panne réseau, HTML d'un proxy) rend un motif générique qui DIT qu'il est
+ * générique, plutôt qu'un motif métier inventé.
+ */
+export async function motifDuRefusDxf(erreur) {
+  const donnees = erreur?.response?.data
+  try {
+    const texte = typeof donnees?.text === 'function' ? await donnees.text() : donnees
+    const objet = typeof texte === 'string' ? JSON.parse(texte) : texte
+    const premier = objet && typeof objet === 'object' ? Object.values(objet)[0] : null
+    if (premier) return String(premier)
+  } catch {
+    // Le corps n'est pas un refus JSON : on ne devine pas ce qu'il disait.
+  }
+  return 'Le DXF n’a pas pu être produit par le serveur.'
+}
+
 const LISTES = [
   { cle: 'manquantes', titre: 'Fiche technique incomplète' },
   { cle: 'bloquants', titre: 'Conception non conforme' },
@@ -156,6 +177,7 @@ export default function SchemaUnifilairePanel({ calepinageId }) {
 
   const balisage = renderTrustedSvg(data?.svg)
   const [motifExport, setMotifExport] = useState(null)
+  const [dxfEnCours, setDxfEnCours] = useState(false)
 
   // CALX236 — le clic sérialise le SVG déjà reçu (`data.svg`) : aucun second
   // appel à `schemaUnifilaire()`, aucune route neuve.
@@ -166,6 +188,18 @@ export default function SchemaUnifilairePanel({ calepinageId }) {
   }
   const telechargerSvg = () => {
     exporterSchemaSvg(data.svg, nomFichierSchema(data?.calepinage, 'svg'))
+  }
+  // CALX235 — le SEUL appel réseau de ce panneau : le DXF est produit par le
+  // serveur depuis le même dessin, il n'est pas dans le DOM.
+  const telechargerDxf = () => {
+    setMotifExport(null)
+    setDxfEnCours(true)
+    calepinageApi.calepinages.sldDxf(id)
+      .then((reponse) => {
+        telechargerBlob(reponse.data, nomFichierSchema(data?.calepinage, 'dxf'))
+      })
+      .catch(async (err) => { setMotifExport(await motifDuRefusDxf(err)) })
+      .finally(() => setDxfEnCours(false))
   }
 
   if (loading) {
@@ -214,6 +248,17 @@ export default function SchemaUnifilairePanel({ calepinageId }) {
                 data-testid="calx236-telecharger-svg"
               >
                 Télécharger le SVG
+              </Button>
+              {/* CALX235/236 — le DXF : même dessin, repris par un bureau
+                  d'études. Produit par le serveur, donc un appel réseau. */}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={telechargerDxf}
+                disabled={dxfEnCours}
+                data-testid="calx235-telecharger-dxf"
+              >
+                {dxfEnCours ? 'Préparation du DXF…' : 'Télécharger le DXF'}
               </Button>
             </div>
             {motifExport

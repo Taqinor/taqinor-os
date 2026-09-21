@@ -315,8 +315,12 @@ export default function AtelierPanneaux({
 
       {/* CALX1 — LE RAIL D'ONGLETS, sous la fiche : les treize panneaux
           contextuels de ce calepinage, à un clic. Sans `?onglet=` aucun
-          panneau n'est ouvert — l'atelier rend ce qu'il rendait hier. */}
-      <Rail calepinageId={calepinageId} />
+          panneau n'est ouvert — l'atelier rend ce qu'il rendait hier.
+          CALX222 — `builderApi` descend avec lui : c'est le seul chemin par
+          lequel un panneau d'onglet peut piloter la scène 3D (« Armer la
+          pose »). Hors de la scène, elle vaut `undefined` et le panneau le
+          DIT plutôt que d'armer dans le vide. */}
+      <Rail calepinageId={calepinageId} builderApi={builderApi} />
 
       {/* L'EMPLACEMENT des panneaux des tâches suivantes. `builderApi`,
           `onRecharger` et `lectureSeule` leur sont passés par l'atelier, pour

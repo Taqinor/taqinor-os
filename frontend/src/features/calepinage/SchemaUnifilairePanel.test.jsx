@@ -10,7 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../api/calepinageApi', () => ({
-  default: { calepinages: { schemaUnifilaire: vi.fn() } },
+  default: { calepinages: { schemaUnifilaire: vi.fn(), sldDxf: vi.fn() } },
 }))
 
 // CALX236 — `telechargerBlob` est le SEUL point de sortie du navigateur
@@ -22,7 +22,7 @@ vi.mock('./exportImage', () => ({
 }))
 
 import calepinageApi from '../../api/calepinageApi'
-import SchemaUnifilairePanel from './SchemaUnifilairePanel'
+import SchemaUnifilairePanel, { motifDuRefusDxf } from './SchemaUnifilairePanel'
 
 const servir = (data) => {
   calepinageApi.calepinages.schemaUnifilaire.mockResolvedValue({ data })
@@ -185,5 +185,71 @@ describe('SchemaUnifilairePanel — export PNG/SVG depuis le navigateur (CALX236
       'Rendu PNG indisponible',
     )
     expect(telechargerBlob).not.toHaveBeenCalled()
+  })
+})
+
+/* CALX235 — le troisième bouton : le DXF, produit par le SERVEUR depuis le
+   même dessin (le SVG et le DXF ne peuvent donc pas diverger). C'est le SEUL
+   appel réseau de ce panneau, et le seul export que le navigateur ne sait pas
+   fabriquer seul. */
+describe('SchemaUnifilairePanel — export DXF (CALX235/236)', () => {
+  const AVEC_SCHEMA = {
+    calepinage: 7, svg: '<svg data-testid="planche"><title>SLD</title></svg>',
+    bloquants: [], manquantes: [],
+  }
+
+  it('le bouton DXF est ABSENT tant que `svg` vaut `null`', async () => {
+    servir({ calepinage: 12, svg: null, bloquants: [], manquantes: [] })
+
+    rendre()
+
+    await screen.findByTestId('cal195-sans-motif')
+    expect(screen.queryByTestId('calx235-telecharger-dxf')).toBeNull()
+  })
+
+  it('le clic télécharge le fichier du SERVEUR, nommé d’après le calepinage', async () => {
+    servir(AVEC_SCHEMA)
+    const fichier = { type: 'image/vnd.dxf', size: 128 }
+    calepinageApi.calepinages.sldDxf.mockResolvedValue({ data: fichier })
+    const user = userEvent.setup()
+
+    rendre()
+
+    await screen.findByTestId('cal195-svg')
+    await user.click(screen.getByTestId('calx235-telecharger-dxf'))
+
+    await vi.waitFor(() => expect(telechargerBlob).toHaveBeenCalledTimes(1))
+    // L'appel porte l'identifiant de l'ÉCRAN (la route), le nom de fichier la
+    // référence que CETTE réponse publie : les deux ne se confondent pas.
+    expect(calepinageApi.calepinages.sldDxf).toHaveBeenCalledWith(12)
+    const [blob, nom] = telechargerBlob.mock.calls[0]
+    expect(blob).toBe(fichier)
+    expect(nom).toBe('calepinage-7-schema-unifilaire.dxf')
+  })
+
+  it('un refus du serveur affiche SON motif, jamais un motif reformulé', async () => {
+    servir(AVEC_SCHEMA)
+    const motif = 'module : Isc (A) manque sur la fiche — aucun DXF produit.'
+    calepinageApi.calepinages.sldDxf.mockRejectedValue({
+      response: {
+        status: 400,
+        data: { text: async () => JSON.stringify({ schema: motif }) },
+      },
+    })
+    const user = userEvent.setup()
+
+    rendre()
+
+    await screen.findByTestId('cal195-svg')
+    await user.click(screen.getByTestId('calx235-telecharger-dxf'))
+
+    expect(await screen.findByTestId('calx236-erreur-export'))
+      .toHaveTextContent(motif)
+    expect(telechargerBlob).not.toHaveBeenCalled()
+  })
+
+  it('motifDuRefusDxf ne devine rien quand le corps est illisible', async () => {
+    await expect(motifDuRefusDxf(new Error('réseau')))
+      .resolves.toContain('n’a pas pu être produit')
   })
 })

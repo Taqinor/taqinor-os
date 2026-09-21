@@ -39,15 +39,14 @@ import RetourAtelier from '../atelier/RetourAtelier'
    panneau ARME le mode de pose et laisse la scène faire le clic. `builderApi`
    est un prop OPTIONNEL (même patron que `PanneauCalques.jsx`, CALX54) — sans
    lui, ou avant que le builder soit prêt, le bouton reste actionnable mais
-   RÉPOND avec un motif nommé plutôt que d'échouer en silence :
-     CROCHET ATTENDU (pas encore posé sur cette branche) :
-       `apps/web/src/scripts/roofPro11/electrique3d.ts` (CALX220), exposé à
-       l'hôte via `builderApi.electrique.armerPose(type)` (namespace
-       `electrique` déclaré par `onApiReady` de CALX220). L'écran qui monte ce
-       panneau DANS la scène 3D est celui qui doit un jour lui passer
-       `builderApi` — `atelier/Rail.jsx` (CALX1, hors périmètre de cette lane)
-       ne le fait pas aujourd'hui, exactement comme il ne le fait pas pour
-       `PanneauCalques.jsx`.
+   RÉPOND avec un motif nommé plutôt que d'échouer en silence. Le geste
+   lui-même est `builderApi.electrique.armerPose(type)`
+   (`apps/web/src/scripts/roofPro11/electrique3d.ts`, CALX220 — namespace
+   `electrique` déclaré par son `onApiReady`).
+   CALX222 (phase 2) — LE FIL EST BRANCHÉ : l'écran de conception passe son
+   `builderApi` à `AtelierPanneaux.jsx`, qui le passe à `atelier/Rail.jsx`,
+   qui le relaie à chaque panneau d'onglet. Ouvert hors de la scène 3D, le
+   panneau reçoit `null` et c'est le motif nommé qui s'affiche.
 
    ZÉRO FAIT INVENTÉ (D-CALX 7). Un `type` hors des huit connus est NOMMÉ tel
    quel (`libelleType`), jamais masqué ni requalifié. `produitId` n'est JAMAIS

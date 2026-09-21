@@ -236,6 +236,77 @@ describe('CALX1 — aucune route du module ne reste orpheline', () => {
   })
 })
 
+/* ============================================================================
+   CALX222 — `builderApi` DESCEND JUSQU'AU PANNEAU.
+   ----------------------------------------------------------------------------
+   Le panneau « Équipements électriques » sait armer une pose dans la scène 3D
+   depuis CALX222, mais personne ne lui passait l'API du constructeur : le
+   bouton répondait « outil 3D non prêt » même dans l'atelier. Ces deux essais
+   figent LE FIL (écran → `AtelierPanneaux` → `Rail` → panneau) et l'aveu
+   honnête quand le fil n'existe pas — jamais une pose armée dans le vide.
+   ========================================================================== */
+describe('CALX222 — l’API du constructeur atteint les panneaux d’onglet', () => {
+  const ONGLET = `?${PARAM_ONGLET}=equipements-electriques`
+
+  it('le rail relaie `builderApi` : « Armer la pose » atteint la scène', async () => {
+    const armerPose = vi.fn()
+    const utilisateur = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={[`/calepinage/${ID}${ONGLET}`]}>
+        <Routes>
+          <Route
+            path="/calepinage/:id"
+            element={<Rail builderApi={{ electrique: { armerPose } }} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await panneauOuvert()
+    await utilisateur.click(await screen.findByTestId('calx222-armer'))
+
+    expect(armerPose).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('calx222-armement-motif')).toBeNull()
+  }, 30_000)
+
+  it('sans `builderApi`, le panneau DIT que l’outil 3D n’est pas prêt', async () => {
+    const utilisateur = userEvent.setup()
+    rendreRail(ONGLET)
+
+    await panneauOuvert()
+    await utilisateur.click(await screen.findByTestId('calx222-armer'))
+
+    expect(await screen.findByTestId('calx222-armement-motif'))
+      .toHaveTextContent('Outil 3D non prêt')
+  }, 30_000)
+
+  it('l’atelier passe SON `builderApi` au rail — le fil complet', async () => {
+    const armerPose = vi.fn()
+    const utilisateur = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={[`/calepinage/${ID}${ONGLET}`]}>
+        <Routes>
+          <Route
+            path="/calepinage/:id"
+            element={(
+              <AtelierPanneaux
+                calepinageId={ID}
+                contexte={{ cible: null, calepinage: null }}
+                builderApi={{ electrique: { armerPose } }}
+              />
+            )}
+          />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await panneauOuvert()
+    await utilisateur.click(await screen.findByTestId('calx222-armer'))
+
+    expect(armerPose).toHaveBeenCalledTimes(1)
+  }, 30_000)
+})
+
 /** Témoin minimal : il rend la recherche de l'URL du ROUTEUR (MemoryRouter ne
     touche jamais `window.location`), pour l'assertion sur `?onglet=`. */
 function TemoinUrl() {
