@@ -16,7 +16,7 @@ from django.dispatch import receiver
 
 from core.events import (
     ao_depose, ao_gagne, appointment_effectue, deal_commission_due,
-    devis_accepted, devis_refused, devis_sent, layout_finalise,
+    devis_accepted, devis_refused, devis_sent, facture_emise, layout_finalise,
     lead_created, lead_stage_changed, ticket_resolu, visite_planifiee,
     visite_terminee, visite_validee,
 )
@@ -918,3 +918,52 @@ def _notifier_responsable_retour_visite(lead, acteur):
             'VISITE-CADENCE : notification de retour de visite non envoyée '
             '(lead #%s)', getattr(lead, 'pk', '?'), exc_info=True)
         return None
+
+
+# ── CAD-E ── CAD61 — une facture ÉMISE ne déclenche AUCUNE relance ─────────
+
+#: Le texte de la trace, tel que la commerciale le lit au chatter.
+FACTURE_EMISE_TRACE = (
+    'Facture {reference} émise — hors protocole de suivi : aucune touche de '
+    'relance n’est ouverte (la facture part après la signature).')
+
+
+@receiver(facture_emise, dispatch_uid="crm_cad61_trace_facture_emise")
+def _tracer_facture_emise_sur_le_lead(sender, instance, company, **kwargs):
+    """CAD61 — la facture envoyée se contente d'UNE LIGNE au chatter.
+
+    [TRANCHÉ 21/09/2026] Une facture partie hors cadence ne produisait ni
+    événement, ni réponse, ni touche : le dossier restait muet. Mais elle ne
+    doit rien DÉCLENCHER non plus — elle part APRÈS la signature, donc hors du
+    protocole de suivi. La décision fondateur est exactement celle-ci : une
+    trace, rien de plus.
+
+    L'autre moitié de la décision — « le client envoie quelque chose » — se
+    traite par le geste « pièce reçue » de CAD101 (il attache le document,
+    clôt la touche ouverte et pose « préparer le devis »). Il n'est PAS
+    dupliqué ici : ce récepteur n'ouvre, ne clôt et ne modifie aucune touche.
+
+    Garde-fou : la note est SYSTÈME (``user=None``) — une note portée par un
+    utilisateur compterait comme un contact manuel (QJ7) et ferait bouger le
+    funnel sur un simple envoi de facture. Best-effort : ne fait jamais
+    retomber une émission déjà actée.
+    """
+    client_id = getattr(instance, 'client_id', None)
+    if not client_id or company is None:
+        return
+    try:
+        lead = (Lead.objects
+                .filter(company=company, client_id=client_id,
+                        is_archived=False)
+                .order_by('-date_creation', '-id').first())
+        if lead is None:
+            return
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=FACTURE_EMISE_TRACE.format(
+                reference=getattr(instance, 'reference', '') or '?'))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD61: trace de facture non écrite (facture #%s)',
+            getattr(instance, 'pk', '?'), exc_info=True)

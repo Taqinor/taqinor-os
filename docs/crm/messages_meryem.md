@@ -204,6 +204,19 @@ DARIJA : السلام عليكم السي [الاسم]، كنتمنى تكونو
 FR : Si quelqu'un autour de vous, un voisin, un frère, un collègue, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; il aura la même étude gratuite, et on convient ensemble d'une récompense pour vous.
 DARIJA : إلا كان شي واحد حداكم، جار، خو، ولا زميل، كيفكر ف الطاقة الشمسية، تقدرو تصيفطو ليه الرابط ديال الرعاية ديالكم؛ غادي يكون عندو نفس الدراسة بلاش، ونتافقو مع بعضياتنا على مكافأة ليكم.
 
+## Les documents : ce qui ouvre une touche, et ce qui n'en ouvre pas (CAD61, 21/09/2026)
+
+**Le client envoie quelque chose** (photo de facture, pièce d'identité, relevé) → geste **« pièce reçue »** :
+il attache le document, clôt la touche ouverte et pose « préparer le devis ». C'est LE seul geste pour ce cas, il
+n'est jamais dupliqué ailleurs. Garde-fou : **aucune cadence ne s'arrête sur un message entrant** — un simple
+« merci » ne doit pas tuer une cadence ; c'est le geste humain qui décide.
+
+**TAQINOR envoie une facture hors cadence** → **aucune relance**. La facture part APRÈS la signature, donc hors du
+protocole de suivi : elle se contente d'une ligne dans l'historique du lead (« Facture … émise — hors protocole de
+suivi »). Aucune touche n'est ouverte, close ni déplacée, et l'étape du lead ne bouge pas (la trace est SYSTÈME, pas
+un contact manuel). Si un jour il faut relancer un impayé, c'est le recouvrement qui s'en charge, pas la cadence
+commerciale.
+
 ## La visite technique, étape du suivi (ordre fondateur 15/09/2026)
 
 La visite technique n'est pas un préalable à l'étude : elle se place APRÈS l'envoi du devis, comme outil de closing,
