@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('authentication', '0033_solmvp30b_customuser_sans_poste_ref'),
-        ('crm', '0103_stkcat9_lead_structure_produit'),
+        ('crm', '0108_cad119_date_creation_origine'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
