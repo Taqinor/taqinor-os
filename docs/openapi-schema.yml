@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4628, operations: 7394, components: 2099}
+counts: {paths: 4632, operations: 7398, components: 2103}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -550,6 +550,7 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/layout/ -> django_calepinage_calepinages_layout_create
 - post /api/django/calepinage/calepinages/{id}/marquer-modele/ -> django_calepinage_calepinages_marquer_modele_create
 - get /api/django/calepinage/calepinages/{id}/masse-lestage/ -> django_calepinage_calepinages_masse_lestage_retrieve
+- post /api/django/calepinage/calepinages/{id}/meteo-fichier/ -> django_calepinage_calepinages_meteo_fichier_create
 - get /api/django/calepinage/calepinages/{id}/note-calcul.pdf/ -> django_calepinage_calepinages_note_calcul.pdf_retrieve
 - post /api/django/calepinage/calepinages/{id}/pack-technique/ -> django_calepinage_calepinages_pack_technique_create
 - get /api/django/calepinage/calepinages/{id}/pertes/ -> django_calepinage_calepinages_pertes_retrieve
@@ -568,6 +569,7 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/resultat/ -> django_calepinage_calepinages_resultat_retrieve
 - post /api/django/calepinage/calepinages/{id}/roof-image/ -> django_calepinage_calepinages_roof_image_create
 - get /api/django/calepinage/calepinages/{id}/schema-unifilaire/ -> django_calepinage_calepinages_schema_unifilaire_retrieve
+- post /api/django/calepinage/calepinages/{id}/simuler/ -> django_calepinage_calepinages_simuler_create
 - get /api/django/calepinage/calepinages/{id}/sorties/ -> django_calepinage_calepinages_sorties_retrieve
 - post /api/django/calepinage/calepinages/{id}/sync-devis/ -> django_calepinage_calepinages_sync_devis_create
 - get /api/django/calepinage/calepinages/{id}/variantes/ -> django_calepinage_calepinages_variantes_retrieve
@@ -4284,6 +4286,7 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/layout/ -> v1_calepinage_calepinages_layout_create
 - post /api/v1/calepinage/calepinages/{id}/marquer-modele/ -> v1_calepinage_calepinages_marquer_modele_create
 - get /api/v1/calepinage/calepinages/{id}/masse-lestage/ -> v1_calepinage_calepinages_masse_lestage_retrieve
+- post /api/v1/calepinage/calepinages/{id}/meteo-fichier/ -> v1_calepinage_calepinages_meteo_fichier_create
 - get /api/v1/calepinage/calepinages/{id}/note-calcul.pdf/ -> v1_calepinage_calepinages_note_calcul.pdf_retrieve
 - post /api/v1/calepinage/calepinages/{id}/pack-technique/ -> v1_calepinage_calepinages_pack_technique_create
 - get /api/v1/calepinage/calepinages/{id}/pertes/ -> v1_calepinage_calepinages_pertes_retrieve
@@ -4302,6 +4305,7 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/resultat/ -> v1_calepinage_calepinages_resultat_retrieve
 - post /api/v1/calepinage/calepinages/{id}/roof-image/ -> v1_calepinage_calepinages_roof_image_create
 - get /api/v1/calepinage/calepinages/{id}/schema-unifilaire/ -> v1_calepinage_calepinages_schema_unifilaire_retrieve
+- post /api/v1/calepinage/calepinages/{id}/simuler/ -> v1_calepinage_calepinages_simuler_create
 - get /api/v1/calepinage/calepinages/{id}/sorties/ -> v1_calepinage_calepinages_sorties_retrieve
 - post /api/v1/calepinage/calepinages/{id}/sync-devis/ -> v1_calepinage_calepinages_sync_devis_create
 - get /api/v1/calepinage/calepinages/{id}/variantes/ -> v1_calepinage_calepinages_variantes_retrieve
@@ -7532,6 +7536,7 @@ components:
 - BackupRunResume
 - BackupRunStatutEnum
 - BaseEnum
+- BatChimieEnum
 - BatterieSouhaiteeEnum
 - BillRangeBucketEnum
 - BinAffectation
@@ -7576,6 +7581,7 @@ components:
 - CalepinageGenererDossier
 - CalepinageHorizon
 - CalepinageImportPlan
+- CalepinageMeteoFichier
 - CalepinageMoteurAccuseTravailLong
 - CalepinageMoteurCalculerReponse
 - CalepinageMoteurCalculerRequeteRequest
@@ -7586,7 +7592,9 @@ components:
 - CalepinageParametresEcrite
 - CalepinageParametresReponse
 - CalepinageParametresRequeteRequest
+- CalepinageRegistreReponse
 - CalepinageRequest
+- CalepinageSimulationAccuse
 - CalepinageStatutEnum
 - CalepinageSuggestionPenteDemandeRequest
 - CalepinageSuggestionPenteReponse
