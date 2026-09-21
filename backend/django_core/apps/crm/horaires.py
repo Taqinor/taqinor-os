@@ -328,3 +328,26 @@ def minutes_ouvrees_entre(a, b, company, *, canal='whatsapp'):
                         (borne_haut - borne_bas).total_seconds() // 60)
         jour += datetime.timedelta(days=1)
     return total
+
+
+# ── CAD146 (audit L3 cadence, 21/09/2026) — diaspora et fuseau horaire ───────
+#
+# CONSTAT : toutes les fenêtres et tous les recalages de ce module raisonnent
+# en Africa/Casablanca (voir `CASABLANCA` ci-dessus), sans aucune notion du
+# fuseau du LEAD. Un Marocain résidant en Europe reçoit donc son appel de
+# 09:00 à 08:00 chez lui ; un lead du Golfe le reçoit à 11:00.
+#
+# DÉCISION (21/09/2026) : NE RIEN CONSTRUIRE tant que CADM7 (comptage SQL en
+# lecture seule des numéros à indicatif étranger, action du fondateur — la
+# lecture en production a été REFUSÉE par le classificateur de sécurité de la
+# session d'audit, ce n'est donc pas une tâche de build) n'a pas donné de
+# chiffre. C'est peut-être un cas marginal ; sans le comptage, ajouter un
+# fuseau par lead serait de la complexité pour un volume inconnu — contraire
+# à la doctrine du groupe CAD (zéro chiffre inventé, y compris un volume).
+#
+# QUAND le comptage existe : si le volume le justifie, stocker le fuseau du
+# lead (nouveau champ sur `crm.Lead`, PROCHAIN à `ville`/`whatsapp`) et
+# recaler ICI les touches dessus, en gardant les fenêtres de la SOCIÉTÉ
+# (`fenetre_du_jour`) comme bornes — jamais une fenêtre individuelle sans
+# limite. Ce commentaire est la trace de la décision ; ne pas la re-soulever
+# sans le chiffre de CADM7.
