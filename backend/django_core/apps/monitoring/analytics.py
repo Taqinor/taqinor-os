@@ -216,10 +216,12 @@ def _jours_panne_dans_fenetre(installation, since, today):
              .filter(Q(date_cloture__isnull=True) | Q(date_cloture__date__gte=since)))
     for flag in flags:
         # ``.date()`` sur un datetime relu de la base donnerait le jour UTC :
-        # un flag ouvert à minuit heure marocaine (UTC+1) compterait un jour
-        # de panne de TROP (60 % devenaient 70 %). Le lookup ``__date`` du
-        # filtre ci-dessus convertit, lui, dans le fuseau du projet — on
-        # aligne le calcul Python dessus.
+        # tant que l'heure marocaine était décalée (UTC+1 jusqu'au 19/09/2026 ;
+        # décret n° 2.26.530 : UTC+0 depuis le 20/09), un flag ouvert à minuit
+        # heure locale comptait un jour de panne de TROP (60 % devenaient
+        # 70 %). Le lookup ``__date`` du filtre ci-dessus convertit, lui, dans
+        # le fuseau du projet — on aligne le calcul Python dessus, quel que
+        # soit le décalage en vigueur.
         debut = max(timezone.localtime(flag.date_creation).date(), since)
         fin = (min(timezone.localtime(flag.date_cloture).date(), today)
                if flag.date_cloture else today)
