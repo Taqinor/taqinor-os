@@ -1482,8 +1482,10 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
 
     * les minutes sont OUVRÉES (``horaires.minutes_ouvrees_entre``) — un lead
       arrivé vendredi 21 h et rappelé lundi 08:32 vaut 2 minutes, pas 60
-      heures. Un KPI en minutes calendaires serait faux à charge et
-      ininterprétable ;
+      heures. Un KPI d'objectif bâti sur les seules minutes calendaires
+      serait faux à charge et ininterprétable — CAD88 les AJOUTE à côté
+      (``mediane_minutes_calendaires``) sans toucher à celle-ci : l'ouvrée
+      dit si la promesse est tenue, la calendaire ce que le client a vécu ;
     * seuls les leads ``OS_NATIVE`` comptent : les 930 leads du miroir Odoo ne
       sont pas des demandes que Meryem doit rappeler ;
     * ``null`` PARTOUT dès que ``nb_leads == 0`` — jamais un 0 %, jamais une
@@ -1511,6 +1513,11 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
              .only('id', 'date_creation', 'first_contacted_at'))
 
     minutes = []
+    # CAD88 — la MÊME attente, comptée en calendrier : ce que le client a
+    # vécu. L'objectif reste l'ouvré (colonne inchangée) ; cette seconde
+    # colonne existe pour qu'un lead du vendredi soir traité lundi ne
+    # s'affiche plus « conforme » et rien d'autre.
+    minutes_calendaires = []
     nb_leads = 0
     nb_nuit = 0
     nb_nuit_rappeles = 0
@@ -1523,6 +1530,8 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
             continue
         minutes.append(horaires.minutes_ouvrees_entre(
             lead.date_creation, lead.first_contacted_at, company))
+        minutes_calendaires.append(horaires.minutes_calendaires_entre(
+            lead.date_creation, lead.first_contacted_at))
         if de_nuit and lead.first_contacted_at <= _limite_rappel_du_matin(
                 lead.date_creation, company):
             nb_nuit_rappeles += 1
@@ -1534,6 +1543,8 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
             'nb_sous_objectif': None,
             'pct_sous_objectif': None,
             'mediane_minutes_ouvrees': None,
+            # CAD88 — la colonne « vécue par le client », à côté de l'ouvrée.
+            'mediane_minutes_calendaires': None,
             'nb_nuit_rappeles_avant_930': None,
             'nb_nuit': 0,
         }
@@ -1544,6 +1555,7 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
         'nb_sous_objectif': sous,
         'pct_sous_objectif': round(100.0 * sous / nb_leads, 1),
         'mediane_minutes_ouvrees': _mediane(minutes),
+        'mediane_minutes_calendaires': _mediane(minutes_calendaires),
         'nb_nuit_rappeles_avant_930': nb_nuit_rappeles,
         'nb_nuit': nb_nuit,
     }

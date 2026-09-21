@@ -2066,6 +2066,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         'nb_sous_objectif': serializers.IntegerField(allow_null=True),
         'pct_sous_objectif': serializers.FloatField(allow_null=True),
         'mediane_minutes_ouvrees': serializers.IntegerField(allow_null=True),
+        # CAD88 — le délai CALENDAIRE réel, à côté de l'ouvré (jamais à sa
+        # place) : un lead du vendredi soir traité lundi n'est plus « tenu ».
+        'mediane_minutes_calendaires': serializers.IntegerField(
+            allow_null=True),
         'nb_nuit_rappeles_avant_930': serializers.IntegerField(
             allow_null=True),
         'nb_nuit': serializers.IntegerField(),
