@@ -5431,8 +5431,15 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                     unchanged += 1
                     continue
                 old = lead.owner
-                lead.owner = owner_obj
-                lead.save(update_fields=['owner'])
+                # CAD54 — la réattribution a des EFFETS : le nouveau
+                # responsable apprend ce qu'il hérite, et le client est
+                # prévenu du changement de conseiller. `reattribuer_lead`
+                # pose l'owner lui-même ; le journal « en masse » reste écrit
+                # ici, comme pour les autres champs.
+                reattribuer_lead(lead, user, owner_obj)
+                if owner_obj is None:
+                    lead.owner = None
+                    lead.save(update_fields=['owner'])
                 activity.log_bulk_change(lead, user, 'owner', old, owner_obj)
                 sync_relance_activity(lead, user)
                 updated += 1
@@ -8678,6 +8685,148 @@ def _palier_sans_reponse(libelle_touche_close, issue_touche_close):
     if (issue_touche_close or '').strip() not in palier['issues']:
         return None
     return palier['suite']
+
+
+# ── CAD-D ── CAD54 — réattribuer un lead : la passation se dit ───────────────
+#
+# Ce que le round 2 a déjà vérifié SAIN, et qui n'est donc pas retouché ici :
+# ``RelanceEtape`` n'a AUCUN champ responsable — les touches suivent le lead,
+# donc elles « portent » le nouveau responsable par construction ; le digest du
+# matin vise les owners ; le prénom du conseiller est recalculé à chaque rendu
+# (jamais figé dans une touche) ; le changement est déjà journalisé.
+#
+# Ce qui manquait est côté CLIENT et côté NOUVEAU responsable : aucun gabarit
+# de passation — tous les textes se présentent comme un premier contact, donc
+# le prospect voyait changer de prénom sans un mot — et le nouveau responsable
+# n'apprenait qu'il héritait d'une touche due demain que par une ligne
+# d'historique.
+
+#: CAD54 — clé du gabarit de passation. TEXTE LIBRE côté ``RelanceEtape``
+#: (aucune valeur d'énumération ajoutée, donc aucune migration). Le texte
+#: lui-même porte « {conseiller} » et « {ancien_conseiller} » en variables de
+#: gabarit : AUCUN prénom n'est codé en dur (règle fondateur 08/09/2026).
+PASSATION_TEMPLATE_CLE = 'passation'
+
+#: Libellé de la touche de passation. Hors protocole, comme les trois gestes
+#: de visite : elle n'ajoute aucun barreau à aucune cadence.
+PASSATION_LIBELLE = 'Passation — prévenir le client du changement de conseiller'
+
+#: Rang hors de la plage des gabarits (1-10), même précaution que les étapes
+#: de visite : aucune matérialisation réactive ne peut le confondre avec un
+#: barreau.
+PASSATION_ORDRE = 93
+
+
+def poser_touche_passation(lead, user, ancien_responsable=None):
+    """CAD54 — la touche qui DIT au client que son dossier change de mains.
+
+    Posée seulement sur un lead DÉJÀ CONTACTÉ (``first_contacted_at``) : sur
+    un lead jamais joint il n'y a rien à annoncer, et le premier message du
+    protocole fait déjà les présentations.
+
+    IDEMPOTENTE par libellé (``_poser_etape_visite``) : deux réattributions
+    d'affilée déplacent la même touche, elles n'en empilent pas deux. Aucune
+    touche n'est retirée ni réordonnée.
+
+    Renvoie l'étape posée, ou ``None``.
+    """
+    from core.dates import aujourd_hui_local
+
+    if not _lead_relancable(lead):
+        return None
+    if not getattr(lead, 'first_contacted_at', None):
+        return None
+    if lead.stage in (stages.SIGNED,):
+        return None
+    etape = _poser_etape_visite(
+        lead, libelle=PASSATION_LIBELLE,
+        canal=RelanceEtape.Canal.WHATSAPP, ordre=PASSATION_ORDRE,
+        quand=aujourd_hui_local(), template_cle=PASSATION_TEMPLATE_CLE)
+    if etape is not None and ancien_responsable is not None:
+        # La trace dit DE QUI le dossier vient — l'écran et le gabarit, eux,
+        # lisent le responsable courant, jamais un prénom figé.
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=('Passation à annoncer au client : le dossier change de '
+                  'conseiller.'))
+    return etape
+
+
+def notifier_touches_heritees(lead, nouveau_responsable):
+    """CAD54 — le nouveau responsable apprend CE QU'IL HÉRITE, pas seulement
+    qu'un lead lui est assigné.
+
+    Une seule notification, sur l'événement EXISTANT ``LEAD_ASSIGNED``
+    (aucune valeur d'énumération ajoutée) : le nombre de touches ouvertes et
+    la date de la plus proche. Sans touche ouverte, rien n'est envoyé — la
+    notification d'assignation ordinaire suffit et deux messages pour un seul
+    geste rendraient la boîte illisible.
+
+    Best-effort : ne lève jamais.
+    """
+    if nouveau_responsable is None:
+        return None
+    try:
+        ouvertes = list(
+            lead.relance_etapes
+            .filter(statut=RelanceEtape.Statut.A_FAIRE)
+            .order_by('due_date', 'ordre')[:3])
+        total = lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).count()
+        if not total:
+            return None
+        from apps.notifications.services import notify
+
+        lignes = [
+            f'{(e.libelle or e.get_canal_display())} — {e.due_date:%d/%m/%Y}'
+            for e in ouvertes if e.due_date
+        ]
+        corps = f'{total} relance(s) déjà programmée(s) sur ce dossier.'
+        if lignes:
+            corps += ' ' + ' · '.join(lignes)
+        return notify(
+            user=nouveau_responsable,
+            event_type='lead_assigned',
+            title='Dossier repris — relances héritées',
+            body=corps,
+            link=f'/crm/leads?lead={lead.pk}',
+            reason='assigne_a_vous',
+        )
+    except Exception:  # noqa: BLE001 — jamais bloquant pour la réattribution
+        logger.warning(
+            'CAD54: notification des touches héritées échouée (lead #%s)',
+            getattr(lead, 'pk', '?'), exc_info=True)
+        return None
+
+
+def reattribuer_lead(lead, user, nouveau_responsable):
+    """CAD54 — LE geste de réattribution, effets compris.
+
+    Trois choses, dans cet ordre :
+
+    1. le lead change d'``owner`` (les touches ouvertes suivent le lead — elles
+       n'ont pas de responsable propre, et c'est ce qui rend l'ensemble
+       cohérent sans rien migrer) ;
+    2. le NOUVEAU responsable est notifié de ce qu'il HÉRITE ;
+    3. sur un lead DÉJÀ contacté, la touche de passation est posée : le
+       prospect ne doit pas voir changer de prénom sans un mot.
+
+    L'ancien responsable ne reçoit plus rien : les notifications de relance
+    visent les owners, et il ne l'est plus. Renvoie la touche de passation
+    posée, ou ``None``.
+    """
+    if nouveau_responsable is None:
+        return None
+    ancien = getattr(lead, 'owner', None)
+    if ancien is not None and ancien.pk == nouveau_responsable.pk:
+        return None
+    lead.owner = nouveau_responsable
+    lead.save(update_fields=['owner'])
+    notifier_touches_heritees(lead, nouveau_responsable)
+    etape = poser_touche_passation(lead, user, ancien_responsable=ancien)
+    _recaler_file(lead, user)
+    return etape
 
 
 # ── CAD-D ── CAD49 — la relance en masse ne double plus le moteur ────────────
