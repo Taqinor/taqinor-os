@@ -162,7 +162,14 @@ class DansLaCascadeTest(unittest.TestCase):
                                        'source': 'societe'}])
         _, cascade = appliquer_chaine(SERIE, ctx)
         ligne = _ligne(cascade, 'auxiliaires')
-        self.assertAlmostEqual(ligne['perte_pct'], 3.32, places=2)
+        # La perte publiée est CELLE DU CALCUL, rapportée à l'énergie que
+        # l'étape a réellement reçue — pas la saisie de 1 %, et pas un
+        # chiffre figé qu'une étape amont ferait dériver.
+        calculee = ligne['entree']['champ']['energie_totale_kwh']
+        self.assertAlmostEqual(ligne['perte_pct'],
+                               100.0 * calculee / ligne['kwh_avant'],
+                               places=2)
+        self.assertNotAlmostEqual(ligne['perte_pct'], 1.0, places=2)
         ecartee = ligne['entree']['saisie_ecartee']
         self.assertEqual(ecartee['poste'], 'auxiliaires')
         self.assertTrue(ecartee['motif'])
