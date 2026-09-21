@@ -5,6 +5,7 @@ import {
   Badge, Button, Card, CardContent, IconButton, Input, Label, Spinner, Switch,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, toast,
 } from '../../ui'
+import { estFerieFixeMa } from '../../lib/feriesMaroc'
 import { SectionTitle } from './peComponents'
 
 /* ============================================================================
@@ -18,6 +19,7 @@ import { SectionTitle } from './peComponents'
    ========================================================================== */
 
 const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+
 const ROLES = [
   { value: 'admin', label: 'Admin' },
   { value: 'responsable', label: 'Responsable' },
@@ -180,21 +182,37 @@ function CalendrierPanel() {
       <div className="mb-2 flex flex-wrap items-end gap-2">
         <div>
           <Label>Date</Label>
-          <Input type="date" value={holForm.date}
+          <Input type="date" value={holForm.date} aria-label="Date du jour férié"
                  onChange={(e) => setHolForm((f) => ({ ...f, date: e.target.value }))} />
         </div>
         <div>
           <Label>Nom</Label>
-          <Input value={holForm.nom} placeholder="Fête du Travail"
+          <Input value={holForm.nom} placeholder="Fête du Travail" aria-label="Nom du jour férié"
                  onChange={(e) => setHolForm((f) => ({ ...f, nom: e.target.value }))} />
         </div>
         <label className="flex items-center gap-1.5 text-sm">
-          <Switch checked={holForm.recurrent_annuel}
+          <Switch checked={holForm.recurrent_annuel} aria-label="Récurrent chaque année"
                   onCheckedChange={(v) => setHolForm((f) => ({ ...f, recurrent_annuel: !!v }))} />
           Récurrent
         </label>
         <Button type="button" onClick={ajouterFerie}><Plus className="size-4" /> Ajouter</Button>
       </div>
+      {/* CAD42 — « Récurrent » figerait une fête lunaire sur la même date
+          grégorienne, pour toujours. On avertit à la SAISIE plutôt que de
+          refuser : la case reste utilisable, l'utilisateur décide. */}
+      {holForm.recurrent_annuel && holForm.date
+        && !estFerieFixeMa(holForm.date) && (
+        <p role="status" data-testid="cad42-avertissement-recurrent"
+           className="mb-2 rounded-md border border-amber-300 bg-amber-50 p-2.5
+                      text-[12.5px] text-amber-900 dark:border-amber-700/60
+                      dark:bg-amber-950/40 dark:text-amber-100">
+          Cette date ne fait pas partie des 9 jours fériés fixes du Maroc :
+          c'est probablement une fête religieuse, dont la date change chaque
+          année. Laissée « Récurrent », elle bloquerait le même jour du
+          calendrier en {Number(String(holForm.date).slice(0, 4)) + 1} et
+          au-delà. Décochez « Récurrent » et saisissez la fête chaque année.
+        </p>
+      )}
       {holidays.length > 0 && (
         <ul className="flex flex-col gap-1.5">
           {holidays.map((h) => (

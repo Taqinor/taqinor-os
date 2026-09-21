@@ -77,3 +77,115 @@ export function formatWithHijri(value) {
 export function shouldShowHijri({ locale, calendrierHegirien }) {
   return locale === 'ar' && calendrierHegirien === true
 }
+
+/* ── CAD37 ─────────────────────────────────────────────────────────────────
+   PROPOSER les dates de Ramadan d'une année grégorienne — jamais les POSER.
+
+   Le calendrier hégirien glisse d'environ onze jours par an : les deux dates
+   `ramadan_debut` / `ramadan_fin` de la société doivent être retapées chaque
+   année, et tant qu'elles sont vides `est_en_ramadan` renvoie faux — les
+   appels sonnent de 09 h à 20 h en plein jeûne.
+
+   Ces fonctions lisent le MÊME calendrier ICU que le reste de ce module
+   (`islamic-umalqura`, aucune dépendance ajoutée) et renvoient une
+   PROPOSITION que l'utilisateur confirme à la main. Les dates officielles du
+   début et de la fin du mois sont annoncées chaque année par l'observation :
+   rien ici n'est une date légale, rien n'est écrit automatiquement.
+   ======================================================================== */
+
+// `numeric` sur un calendrier hégirien rend le RANG du mois (« 9 » = ramadan)
+// et non son nom : c'est ce qui permet de reconnaître le mois sans dépendre
+// d'une transcription (« ramadan », « ramaḍān », « رمضان »…).
+const HIJRI_PARTS_TAG = 'en-u-ca-islamic-umalqura'
+const RAMADAN_RANG = 9
+
+let partsFormatter = null
+function hijriParts(date) {
+  if (!partsFormatter) {
+    partsFormatter = new Intl.DateTimeFormat(HIJRI_PARTS_TAG, {
+      day: 'numeric', month: 'numeric', year: 'numeric',
+    })
+  }
+  const parts = partsFormatter.formatToParts(date)
+  const get = (type) => parts.find((p) => p.type === type)?.value
+  const mois = Number(get('month'))
+  const jour = Number(get('day'))
+  const annee = Number(String(get('year')).replace(/[^0-9]/g, ''))
+  if (!mois || !jour || !annee) return null
+  return { mois, jour, annee }
+}
+
+function isoUTC(date) {
+  return date.toISOString().slice(0, 10)
+}
+
+/**
+ * Toutes les périodes de Ramadan qui TOMBENT dans l'année grégorienne
+ * `annee` — il peut y en avoir deux (une en janvier, une en décembre), le
+ * mois hégirien reculant d'environ onze jours chaque année.
+ *
+ * Renvoie `[{ debut, fin, anneeHegirienne }]` (dates ISO `AAAA-MM-JJ`),
+ * toujours un tableau, jamais d'exception. Le balayage DÉBORDE d'un mois de
+ * chaque côté puis ne garde que les périodes qui croisent l'année demandée :
+ * sans ce débordement, un Ramadan à cheval sur le 31 décembre serait proposé
+ * TRONQUÉ, c'est-à-dire faux.
+ */
+export function periodesRamadan(annee) {
+  const an = Number(annee)
+  if (!Number.isInteger(an)) return []
+  const periodes = []
+  let courante = null
+  const jour = new Date(Date.UTC(an - 1, 11, 1))
+  const borne = new Date(Date.UTC(an + 1, 1, 1))
+  while (jour < borne) {
+    const h = hijriParts(jour)
+    if (h && h.mois === RAMADAN_RANG) {
+      if (!courante) {
+        courante = {
+          debut: isoUTC(jour), fin: isoUTC(jour),
+          anneeHegirienne: String(h.annee),
+        }
+      } else {
+        courante.fin = isoUTC(jour)
+      }
+    } else if (courante) {
+      periodes.push(courante)
+      courante = null
+    }
+    jour.setUTCDate(jour.getUTCDate() + 1)
+  }
+  if (courante) periodes.push(courante)
+  const prefixe = String(an)
+  return periodes.filter(
+    (p) => p.debut.startsWith(prefixe) || p.fin.startsWith(prefixe))
+}
+
+/**
+ * LA proposition à montrer pour l'année de `aujourdHui` : la période de
+ * Ramadan qui n'est pas encore terminée, sinon la dernière de l'année (celle
+ * qu'on vient de vivre reste la bonne réponse jusqu'au 31 décembre).
+ *
+ * `null` si le moteur JS ne sait pas rendre ce calendrier — l'écran retombe
+ * alors sur la saisie manuelle, sans rien casser.
+ */
+export function proposerRamadan(aujourdHui = new Date()) {
+  const d = aujourdHui instanceof Date ? aujourdHui : new Date(aujourdHui)
+  if (Number.isNaN(d.getTime())) return null
+  const periodes = periodesRamadan(d.getUTCFullYear())
+  if (!periodes.length) return null
+  const iso = isoUTC(d)
+  return periodes.find((p) => p.fin >= iso) || periodes[periodes.length - 1]
+}
+
+/**
+ * Les deux dates saisies couvrent-elles bien l'année de `aujourdHui` ?
+ * Faux dès qu'une des deux manque ou qu'aucune des deux ne tombe dans cette
+ * année — c'est exactement le cas « on a oublié de retaper les dates ».
+ */
+export function datesRamadanASaisir(debut, fin, aujourdHui = new Date()) {
+  if (!debut || !fin) return true
+  const d = aujourdHui instanceof Date ? aujourdHui : new Date(aujourdHui)
+  if (Number.isNaN(d.getTime())) return false
+  const annee = String(d.getUTCFullYear())
+  return !(String(debut).startsWith(annee) || String(fin).startsWith(annee))
+}

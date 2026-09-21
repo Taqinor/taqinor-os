@@ -39,7 +39,12 @@ CADENCE_RELANCE_DEFAUT = [
      'libelle': 'Relance e-mail'},
     {'ordre': 4, 'delai_jours': 20, 'canal': CanalRelance.APPEL,
      'libelle': "Point d'étape"},
-    {'ordre': 5, 'delai_jours': 35, 'canal': CanalRelance.VISITE,
+    # CAD58 (décision fondateur du 21/09/2026) — le canal VISITE est RETIRÉ de
+    # la cadence générique : ce barreau ne posait aucune condition de devis,
+    # alors que la doctrine du 15/09 est « visite technique JAMAIS avant le
+    # devis, proposée après ». Le J+35 devient un APPEL. Les 5 barreaux ne
+    # sont ni supprimés ni réordonnés — seul le canal du dernier change.
+    {'ordre': 5, 'delai_jours': 35, 'canal': CanalRelance.APPEL,
      'libelle': 'Dernière relance'},
 ]
 
@@ -59,6 +64,13 @@ class Cadence(models.TextChoices):
     APRES_DEVIS = 'apres_devis', 'Après devis'
     REVEIL = 'reveil', 'Réveil'
     GENERIQUE = 'generique', 'Générique (historique)'
+    # CAD128 (21/09/2026) — la cadence COURTE d'un client DÉJÀ ACQUIS qui
+    # redemande un devis. Elle n'est PAS une variante du protocole contact :
+    # six appels sur quatorze jours à quelqu'un qui a déjà acheté serait
+    # insultant. Deux touches seulement, et elles ne sont pas inventées —
+    # ce sont les DEUX PREMIÈRES du protocole validé (message d'identité,
+    # puis appel d'ouverture trois minutes après), arrêtées là.
+    DEUXIEME_AFFAIRE = 'deuxieme_affaire', 'Deuxième affaire (client acquis)'
 
 
 # ── Protocole de rappel v3 (04/09/2026) ─────────────────────────────────────
@@ -166,13 +178,35 @@ CADENCE_APRES_DEVIS_DEFAUT = [
 ]
 
 # Réveil des dormants — deux touches seulement, très espacées.
+# CAD74 (décision fondateur du 21/09/2026, Q20) : le réveil J30 est un APPEL
+# (son script vit avec la touche, CAD151) ; le J60 reste un WhatsApp et porte
+# « reveil_a3 » — ce que `_adapter_gabarits_reveil` lui assigne déjà par rang,
+# donc la clé seedée ici n'est pas retouchée. Le nombre (2), l'ordre et les
+# J+N ne changent pas. La touche saisonnière `reveil_b` n'est PAS un barreau
+# de cette échelle : c'est une touche calendaire, hors gabarit
+# (`apps/crm/cadence_reveil_saison.py`).
 CADENCE_REVEIL_DEFAUT = [
     {'ordre': 1, 'delai_jours': 30, 'delai_minutes': 0, 'heure_cible': None,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Réveil J30',
+     'canal': CanalRelance.APPEL, 'libelle': 'Réveil J30',
      'template_cle': 'reveil_a1', 'dimanche_ok': False},
     {'ordre': 2, 'delai_jours': 60, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Réveil J60',
      'template_cle': 'reveil_a2', 'dimanche_ok': False},
+]
+
+# CAD128 (21/09/2026) — DEUXIÈME AFFAIRE : un client SIGNÉ qui redemande un
+# devis est le meilleur lead du portefeuille (il a déjà acheté), et la garde
+# doublon le renvoyait sans protocole. Il reçoit ici une cadence COURTE, avec
+# son propre texte — jamais les six appels sur quatorze jours du protocole
+# contact.
+#
+# Les deux barreaux ne sont PAS inventés : ce sont les DEUX PREMIERS du
+# protocole validé (`CADENCE_CONTACT_DEFAUT`, message d'identité puis appel
+# d'ouverture trois minutes après), arrêtés là. Seule la clé de message du
+# premier change — un client acquis ne se présente pas, on le retrouve.
+CADENCE_DEUXIEME_AFFAIRE_DEFAUT = [
+    dict(CADENCE_CONTACT_DEFAUT[0], template_cle='deuxieme_affaire'),
+    dict(CADENCE_CONTACT_DEFAUT[1], template_cle='appel_ouverture'),
 ]
 
 #: Cadence -> gabarit par défaut. ``generique`` garde EXACTEMENT les 5
@@ -182,6 +216,7 @@ CADENCES_DEFAUT = {
     Cadence.APRES_DEVIS: CADENCE_APRES_DEVIS_DEFAUT,
     Cadence.REVEIL: CADENCE_REVEIL_DEFAUT,
     Cadence.GENERIQUE: CADENCE_RELANCE_DEFAUT,
+    Cadence.DEUXIEME_AFFAIRE: CADENCE_DEUXIEME_AFFAIRE_DEFAUT,
 }
 
 
@@ -224,6 +259,18 @@ class CadenceRelanceEtape(TenantModel):
     # semaine. Toutes les autres sont recalées sur un jour ouvré.
     dimanche_ok = models.BooleanField(
         default=False, verbose_name='Autorisée le dimanche')
+    # CAD43 — symétrique exact de `dimanche_ok`, pour le SAMEDI. Les jours
+    # ouvrés par défaut sont lundi-vendredi : toute touche calculée un samedi
+    # est repoussée au lundi, y compris le message d'identité J0. Cocher
+    # « Samedi » dans Paramètres → Notifications ouvrirait le samedi aux SIX
+    # appels d'un coup ; ce drapeau PAR TOUCHE permet d'ouvrir le seul
+    # message (canal silencieux) pour le lead arrivé le vendredi soir.
+    # Par défaut FAUX partout : rien ne change tant que personne ne coche.
+    samedi_ok = models.BooleanField(
+        default=False, verbose_name='Autorisée le samedi',
+        help_text='Cette touche peut-elle tomber un samedi ? À réserver aux '
+                  'canaux silencieux (WhatsApp, e-mail) — un appel le samedi '
+                  "n'est pas dans le protocole.")
     canal = models.CharField(max_length=20, choices=CanalRelance.choices)
     libelle = models.CharField(max_length=150)
     actif = models.BooleanField(default=True)
@@ -235,6 +282,18 @@ class CadenceRelanceEtape(TenantModel):
         # Un seul barreau par société + cadence + ordre (idempotence
         # seed/backfill). L'ordre 1 existe désormais dans CHAQUE cadence :
         # l'ancienne clé (company, ordre) les aurait fait se percuter.
+        #
+        # CAD124 — PAS D'AXE SEGMENT : décision du 21/09/2026. La clé reste
+        # (société, cadence, ordre) et n'accueillera PAS `type_installation`.
+        # Le CRM lit déjà le segment pour scorer (`apps/crm/scoring.py`) et
+        # pour exiger les bons champs au devis (`apps/ventes/devis_auto.py`),
+        # mais le GABARIT de cadence reste aveugle : le levier langue/texte
+        # (CAD126) et le playbook conditionné sur `{type_installation}`
+        # (CAD125) couvrent l'essentiel sans migration ni sélecteur de plus.
+        # Une quatrième dimension ici multiplierait les barreaux à maintenir
+        # par le nombre de segments, pour un protocole dont le fondateur a
+        # tranché qu'il ne change pas. La décision se rouvrira sur le VOLUME
+        # par segment (comptage CADM7), pas avant.
         unique_together = [('company', 'cadence', 'ordre')]
         indexes = [
             models.Index(fields=['company', 'cadence', 'actif'],
@@ -272,6 +331,9 @@ class CadenceRelanceEtape(TenantModel):
                     'heure_cible': entry.get('heure_cible'),
                     'template_cle': entry.get('template_cle', ''),
                     'dimanche_ok': entry.get('dimanche_ok', False),
+                    # CAD43 — absent de tous les gabarits par défaut : le
+                    # samedi ne s'ouvre que par un geste humain.
+                    'samedi_ok': entry.get('samedi_ok', False),
                     'canal': entry['canal'],
                     'libelle': entry['libelle'],
                     'actif': True,

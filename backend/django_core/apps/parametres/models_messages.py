@@ -128,6 +128,14 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver. Répondez STOP et je n'insiste plus.",
     'dimanche_famille':
         "Bonjour M. {prenom}, {conseiller} de {marque}. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
+    # CAD60 (21/09/2026) — ENVOI MANUEL, HORS CADENCE, APRÈS LA DÉCISION DU
+    # FONDATEUR. Ces deux textes ne sont portés par AUCUN des barreaux
+    # après-devis et ne le seront pas : `offre_reda` contient trois blancs
+    # ([la raison réelle], [montant en dirhams], [nouveau total TTC]) qui ne
+    # sont calculables par rien, et l'appel du fondateur se décide au cas par
+    # cas. Ne cherchez pas le bouton : il n'existe pas, et c'est voulu —
+    # câbler une touche conditionnelle serait de la sur-ingénierie. Ils se
+    # copient depuis le catalogue des messages, au moment choisi.
     'annonce_appel_reda':
         "Bonjour M. {prenom}, {conseiller} de {marque}. Le fondateur, qui valide chaque étude, aimerait vous appeler dimanche vers 18 h pour répondre à vos questions en cinq minutes. Ça vous convient, ou préférez-vous un autre moment ?",
     'offre_reda':
@@ -179,6 +187,22 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Bonjour M. {prenom}, {conseiller} de {marque}. Je reviens vers vous pour votre demande solaire d'hier — vous avez deux minutes maintenant ?",
     'appel_dernier':
         "Bonjour M. {prenom}, {conseiller} de {marque}. Dernier essai avant de classer votre demande : votre projet solaire est-il toujours d'actualité ?",
+    # CAD125 (21/09/2026) — LE DOSSIER INSTITUTIONNEL, ENFIN UNE PAROLE.
+    # `Lead.regularisation_8221` est capté et LU par le scoring, mais par
+    # aucune logique de message : aucune des clés de relance ne parlait d'une
+    # subvention ni d'un dossier institutionnel, alors que le résidentiel a
+    # son équivalent avec `j6_garanties`. Ces deux textes sont posés par un
+    # playbook conditionné sur `{type_installation}` — zéro migration de
+    # cadence, zéro barreau ajouté.
+    # GARDE-FOU « zéro chiffre inventé » : AUCUN montant, AUCUN plafond,
+    # AUCUNE fenêtre de dépôt, AUCUN nombre de régimes. Le plafond FDA et la
+    # fenêtre de dépôt cités au round 2 sont INTROUVABLES sur leur source et
+    # ne doivent jamais réapparaître ici ; « trois régimes » 82-21 n'est pas
+    # sourcé non plus. On pose LA question, le client apporte les chiffres.
+    'dossier_8221':
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Une question sur votre projet : où en est votre dossier d'autoproduction (loi 82-21) ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si le dossier n'est pas encore lancé, je vous explique les étapes en cinq minutes.",
+    'dossier_fda':
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.",
 })
 
 # Variantes darija (écriture arabe, revue native le 04/09/2026). Une clé
@@ -293,7 +317,13 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
 # la société elle-même.
 # CAD71 (21/09/2026) — `{lien_google}` : lien de la fiche Google (réglage
 # société `CompanyProfile.lien_avis_google`), PAS le lien du devis.
-PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_video_preuve}", "{marque}", "{lien_google}"]
+# CAD127 (21/09/2026) — `{prescripteur}` : le nom de la personne qui a
+# recommandé le prospect (résolu côté serveur depuis le parrainage
+# enregistré ; aucun prénom codé en dur). `{mois_dossier}` : le mois où le
+# prospect nous avait consultés, dérivé de la date de création de SA fiche.
+# Les deux sont VIDES quand la donnée n'existe pas — leur phrase est alors
+# OMISE (MRY13), jamais un crochet envoyé au client.
+PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_video_preuve}", "{marque}", "{lien_google}", "{prescripteur}", "{mois_dossier}"]
 
 #: Les clés du moteur de relances (MRY12), dans l'ordre du fichier source.
 CLES_RELANCE = [
@@ -329,7 +359,36 @@ CLES_RELANCE = [
     # confirmée la veille.
     'visite_proposition',
     'visite_confirmation',
+    # CAD125 — dossiers institutionnels, posés par playbook de SEGMENT
+    # (industriel/commercial et agricole), jamais par un barreau de cadence.
+    'dossier_8221',
+    'dossier_fda',
+    # CAD127 — premier message par ORIGINE : « vous venez de remplir notre
+    # formulaire » est faux pour la moitié des canaux. Clés ADDITIVES
+    # (`unique_together (company, cle)` interdit une variante sur `identite`).
+    'identite_reference',
+    'identite_telephone',
+    'identite_whatsapp_entrant',
+    'identite_ancien_dossier',
+    # CAD128 — le client DÉJÀ SIGNÉ qui redemande un devis : cadence courte,
+    # texte propre. Jamais le protocole contact sur un client acquis.
+    'deuxieme_affaire',
 ]
+
+#: CAD60 (21/09/2026) — les textes à ENVOI MANUEL, hors cadence.
+#:
+#: Aucun des 10 barreaux après-devis ne les porte, et aucun ne les portera :
+#: `offre_reda` contient trois blancs non calculables ([la raison réelle],
+#: [montant en dirhams], [nouveau total TTC]) et l'appel du fondateur se
+#: décide au cas par cas, après SA décision — jamais avant. Câbler un bouton
+#: conditionnel serait de la sur-ingénierie ; la liste existe pour que l'écran
+#: puisse DIRE « envoi manuel » au lieu de laisser chercher un bouton absent.
+CLES_ENVOI_MANUEL = frozenset({'annonce_appel_reda', 'offre_reda'})
+
+#: La phrase à afficher à côté de ces textes, au catalogue comme au guide.
+MENTION_ENVOI_MANUEL = (
+    'Envoi manuel, hors cadence, après la décision du fondateur — aucun '
+    'bouton ne l’envoie.')
 
 
 class MessageTemplate(models.Model):
@@ -396,6 +455,31 @@ class MessageTemplate(models.Model):
         VISITE_CONFIRMATION = (
             'visite_confirmation',
             "Visite — confirmation la veille")
+        # CAD125 — dossiers institutionnels, par SEGMENT (playbook conditionné
+        # sur `{type_installation}`), jamais un barreau de cadence.
+        DOSSIER_8221 = (
+            'dossier_8221',
+            "Segment — dossier d'autoproduction 82-21 (industriel/commercial)")
+        DOSSIER_FDA = (
+            'dossier_fda',
+            "Segment — dossier de subvention agricole (FDA)")
+        # CAD127 — premier message selon l'ORIGINE réelle du lead.
+        IDENTITE_REFERENCE = (
+            'identite_reference',
+            "Identité — lead venu par recommandation")
+        IDENTITE_TELEPHONE = (
+            'identite_telephone',
+            "Identité — lead venu par téléphone ou en boutique")
+        IDENTITE_WHATSAPP_ENTRANT = (
+            'identite_whatsapp_entrant',
+            "Identité — lead né d'un message entrant")
+        IDENTITE_ANCIEN_DOSSIER = (
+            'identite_ancien_dossier',
+            "Identité — dossier ancien repris")
+        # CAD128 — client déjà signé qui revient.
+        DEUXIEME_AFFAIRE = (
+            'deuxieme_affaire',
+            "Identité — client déjà signé qui revient")
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -454,3 +538,160 @@ class MessageTemplate(models.Model):
             if corps_langue.strip():
                 return corps_langue
         return corps_fr.strip() or default
+
+
+# ── CAD126 (21/09/2026) — VARIANTES DE SEGMENT, PAR EXCEPTION ──────────────
+#
+# Les 27 textes sont 100 % résidentiels : « vos panneaux posés sur votre
+# toit » (`valeur_j1`, `reveil_a1`, `reveil_a3`), « la décision se prend en
+# famille » (`dimanche_famille`), « orientation du toit, charpente »
+# (`visite_proposition`/`visite_confirmation`). Pour un pompage agricole il
+# n'y a littéralement pas de toit, et `valeur_j1` demande « votre facture »,
+# sans objet pour une exploitation au butane. Pour un industriel, « en
+# famille » ne correspond à aucun processus d'achat — et le round 2 précise
+# le vrai défaut : `dimanche_famille` EST filtré par l'étiquette « décision à
+# plusieurs », donc c'est un industriel TAGUÉ qui reçoit « en famille ».
+#
+# Modèle : le dictionnaire darija ci-dessus — dict SÉPARÉ, repli sur le FR
+# quand la clé est absente. On ne fabrique PAS une matrice 27 × langues ×
+# segments : seules les clés qui MENTENT ont une variante, et seulement en
+# français (aucune variante darija n'est validée — le repli reste le texte FR
+# de base, jamais une traduction automatique).
+#
+# Un texte que la société a PERSONNALISÉ n'est jamais remplacé par une
+# variante (même règle que `_REVEIL_CLES_SEEDEES`) : la variante ne s'applique
+# qu'au texte encore au catalogue d'origine.
+
+#: Les segments qui ont des variantes. Clés de `crm.Lead.TypeInstallation`,
+#: reprises en littéral (ce module ne dépend d'aucun modèle du CRM).
+SEGMENT_POMPAGE = 'agricole'
+SEGMENTS_B2B = ('industriel', 'commercial')
+
+#: `{segment: {cle: texte FR}}`. Une clé absente = le texte de base.
+MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
+    # Pompage agricole : pas de toit, pas de facture d'électricité (butane),
+    # pas de « chez vous » — le chantier est au bord d'un forage.
+    'agricole': {
+        'valeur_j1':
+            "Bonjour M. {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de connaître votre pompe (puissance, profondeur du forage, débit souhaité) et l'emplacement du point d'eau : je vous montre l'installation adaptée, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
+        'reveil_a1':
+            "Bonjour M. {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu un devis de pompage solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer votre installation en 3D, sur VOTRE parcelle, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'emplacement.) Répondez STOP et je n'insiste plus.",
+        'reveil_a3':
+            "Bonjour M. {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de votre installation de pompage, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+        # Une exploitation se décide souvent à plusieurs — associés, frères,
+        # coopérative — pas nécessairement « en famille » : formulation
+        # neutre, même chaleur, aucune supposition sur qui décide.
+        'dimanche_famille':
+            "Bonjour M. {prenom}, {conseiller} de {marque}. Je sais que la décision se prend à plusieurs. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
+        'visite_proposition':
+            "Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : le technicien confirme l'emplacement des panneaux, les caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
+        'visite_confirmation':
+            "Bonjour, on confirme la visite technique prévue {date_visite} sur votre exploitation. Le technicien vérifie l'emplacement des panneaux, le forage et le coffret électrique — prévoyez l'accès au point d'eau. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+    },
+    # Industriel / commercial : on parle à une ORGANISATION. « En famille »
+    # ne décrit aucun processus d'achat B2B ; le site n'est pas « chez vous ».
+    'industriel': {
+        'valeur_j1':
+            "Bonjour M. {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de vos relevés de consommation (une photo suffit) et de l'adresse du site : je vous montre l'installation sur vos bâtiments, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
+        'reveil_a1':
+            "Bonjour M. {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu une étude solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer l'installation posée sur VOS bâtiments, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'adresse du site.) Répondez STOP et je n'insiste plus.",
+        'reveil_a3':
+            "Bonjour M. {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de l'installation sur vos bâtiments, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+        'dimanche_famille':
+            "Bonjour M. {prenom}, {conseiller} de {marque}. Je sais que la décision se prend à plusieurs. Si vous en parlez avec votre équipe, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou nous réunir à deux ou trois au moment qui vous arrange, comme vous préférez.",
+        'visite_proposition':
+            "Pour verrouiller votre proposition, on peut passer sur votre site pour la vérification technique gratuite : le technicien confirme l'orientation et la structure des bâtiments ainsi que le tableau électrique, et répond à toutes les questions de votre équipe sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
+        'visite_confirmation':
+            "Bonjour, on confirme la visite technique prévue {date_visite} sur votre site. Le technicien vérifie la structure des bâtiments et le tableau électrique — prévoyez l'accès au local technique. La présence d'un responsable est importante : c'est l'occasion de répondre à toutes les questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+    },
+}
+# Le commercial partage EXACTEMENT les textes de l'industriel : même
+# organisation, même processus d'achat. Un dict partagé plutôt que recopié —
+# une correction sur l'un vaut pour l'autre, par construction.
+MESSAGE_TEMPLATE_VARIANTES_SEGMENT['commercial'] = (
+    MESSAGE_TEMPLATE_VARIANTES_SEGMENT['industriel'])
+
+#: Les clés qui MENTENT au résidentiel près — celles qui ont une variante.
+#: Sert au test paramétré et à l'écran qui voudra signaler « texte adapté ».
+CLES_VARIANTES_SEGMENT = frozenset(
+    cle
+    for textes in MESSAGE_TEMPLATE_VARIANTES_SEGMENT.values()
+    for cle in textes
+)
+
+
+def variante_segment(cle, type_installation):
+    """Le texte FR adapté à CE segment, ou ``None`` (repli sur le texte FR).
+
+    Tolérant : un segment inconnu, vide ou résidentiel n'a jamais de variante.
+    """
+    segment = (type_installation or '').strip()
+    if not segment:
+        return None
+    return MESSAGE_TEMPLATE_VARIANTES_SEGMENT.get(segment, {}).get(cle)
+
+
+# ── CAD127 (21/09/2026) — LE PREMIER MESSAGE DIT LA VÉRITÉ SUR L'ORIGINE ──
+#
+# « Vous venez de remplir notre formulaire » est FAUX pour la moitié des
+# origines : la même cadence part pour un lead arrivé par téléphone, en
+# boutique, par recommandation, depuis un salon, repositionné par l'écran de
+# placement, ou né d'une conversation entrante (CTWA, livechat). Une première
+# phrase fausse est exactement ce qui fait perdre la confiance au premier
+# contact — et `unique_together (company, cle)` interdit toute VARIANTE sur
+# une clé existante : ces quatre clés sont donc ADDITIVES.
+#
+# Correction du round 2 : le ticket SAV n'est PAS une origine —
+# `create_lead_depuis_ticket` ne démarre aucune cadence (vérifié sur les 8
+# appelants de `demarrer_cadence_contact`). Aucune clé pour lui.
+#
+# Aucun prénom codé en dur (règle fondateur 08/09) : le prescripteur est un
+# PLACEHOLDER de gabarit, résolu côté serveur depuis le parrainage enregistré.
+# Vide ⇒ sa phrase est OMISE (MRY13), jamais un crochet envoyé au client.
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    'identite_reference':
+        "Bonjour M. {prenom}, je suis {conseiller} de {marque}. M. {prescripteur} nous a parlé de vous pour le solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+    'identite_telephone':
+        "Bonjour M. {prenom}, je suis {conseiller} de {marque}. Suite à notre échange au sujet du solaire, je vous rappelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+    'identite_whatsapp_entrant':
+        "Bonjour M. {prenom}, je suis {conseiller} de {marque}. Merci pour votre message au sujet du solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+    'identite_ancien_dossier':
+        "Bonjour M. {prenom}, je suis {conseiller} de {marque}. Vous nous aviez consultés en {mois_dossier} au sujet du solaire. Je vous appelle dans quelques minutes pour une estimation à jour ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+})
+
+#: CAD127 — les quatre clés d'identité par ORIGINE, plus celle du formulaire.
+#: L'écran et le moteur lisent CETTE liste, jamais une énumération recopiée.
+CLES_IDENTITE_PAR_ORIGINE = (
+    'identite', 'identite_reference', 'identite_telephone',
+    'identite_whatsapp_entrant', 'identite_ancien_dossier',
+)
+
+#: Canal d'origine (valeurs de ``crm.Lead.Canal``) → clé d'identité. Les
+#: canaux ABSENTS gardent `identite` : `site_web` et `meta_ads` sont de VRAIS
+#: formulaires remplis par le prospect, la phrase d'origine y est exacte.
+CLE_IDENTITE_PAR_CANAL = {
+    'reference': 'identite_reference',
+    'telephone': 'identite_telephone',
+    # Une visite en boutique est un ÉCHANGE, pas un formulaire : même texte.
+    'walk_in': 'identite_telephone',
+    'whatsapp_ctwa': 'identite_whatsapp_entrant',
+}
+
+
+# ── CAD128 (21/09/2026) — LE CLIENT DÉJÀ SIGNÉ QUI REVIENT ────────────────
+#
+# La garde doublon retenait tout lead partageant le téléphone ou l'e-mail et
+# n'écartait que les archivés et les perdus : une fiche SIGNÉE était donc un
+# doublon vivant, et le meilleur lead du portefeuille — il a déjà acheté —
+# repartait sans protocole, avec une simple ligne « doublon possible de #… ».
+#
+# Son texte lui est propre : on ne se présente pas à quelqu'un qui nous
+# connaît. GARDE-FOU « zéro chiffre inventé » : AUCUN mois n'est cité. La
+# tâche l'illustrait par « nous avons déjà installé chez vous en {mois} »,
+# mais rien ne relie encore les deux fiches en base (la liaison se fait par
+# une note d'historique, pas par un champ) : plutôt qu'une date approximative,
+# le mois est OMIS. Il reviendra le jour où CADM7 tranchera la liaison.
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    'deuxieme_affaire':
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Nous avons déjà travaillé ensemble sur votre première installation — merci de nous redonner votre confiance. Dites-moi ce que vous souhaitez équiper cette fois et je vous prépare l'étude ; je vous appelle dans quelques minutes.",
+})

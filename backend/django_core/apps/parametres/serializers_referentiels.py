@@ -83,9 +83,11 @@ class CadenceRelanceEtapeSerializer(serializers.ModelSerializer):
     class Meta:
         model = CadenceRelanceEtape
         # MRY4 — forme `cadence_relance_v2` (contrat MRY25).
+        # CAD43 — `samedi_ok` s'AJOUTE en fin de forme (contrat
+        # `cadence_relance_v2`) : aucun champ retiré ni déplacé.
         fields = ['id', 'cadence', 'ordre', 'delai_jours', 'delai_minutes',
                   'heure_cible', 'canal', 'libelle', 'template_cle',
-                  'dimanche_ok', 'actif']
+                  'dimanche_ok', 'actif', 'samedi_ok']
 
     def validate_libelle(self, value):
         value = (value or '').strip()
