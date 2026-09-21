@@ -105,6 +105,111 @@ export function formatMeasure(m: Pick<Measurement, 'kind' | 'points'>): string {
   return `${v.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} m`;
 }
 
+// ————————————————————————————————————————————————————————————————————————
+// CALX128 — UNE MESURE EST AFFICHÉE AVEC SA PRÉCISION, JAMAIS ARRONDIE EN SILENCE
+//
+// `formatMeasure` arrondit (2 décimales en mètres, 1 en m², le degré entier) sans le dire :
+// « 12,35 m » se lit comme une mesure exacte alors que c'est un arrondi au centimètre. Le
+// bloc ci-dessous rend la MÊME valeur, mais accompagnée de l'arrondi appliqué — on peut
+// donc l'afficher, l'annoncer au clavier (zone `aria-live`) et le relire sans ambiguïté.
+//
+// AUCUN chiffre n'est inventé : la valeur reste `measureValue(m)`, dérivée des points posés.
+// Seule la FAÇON de la dire change.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Nombre de décimales affichées par genre — CONVENTION D'AFFICHAGE, nommée et dite. */
+export const DECIMALES_MESURE: Readonly<Record<MeasureKind, number>> = {
+  distance: 2, // centimètre
+  area: 1, // décimètre carré
+  angle: 0, // degré
+};
+
+/** Unité affichée par genre. */
+export const UNITE_MESURE: Readonly<Record<MeasureKind, string>> = {
+  distance: 'm',
+  area: 'm²',
+  angle: '°',
+};
+
+/** Comment l'arrondi se dit, en clair — c'est ce que la zone d'annonces lit à voix haute. */
+export const ARRONDI_MESURE: Readonly<Record<MeasureKind, string>> = {
+  distance: 'arrondi au centimètre',
+  area: 'arrondi au décimètre carré',
+  angle: 'arrondi au degré',
+};
+
+/** Une mesure prête à afficher : sa valeur BRUTE, son texte, et l'arrondi appliqué. */
+export interface MesureAffichee {
+  /** La valeur exacte calculée depuis les points — jamais tronquée. */
+  valeur: number;
+  /** La valeur arrondie telle qu'elle est écrite (utile pour comparer ce qui est LU). */
+  valeurAffichee: number;
+  /** « 12,35 m » — le nombre + son unité, sans la mention d'arrondi. */
+  texte: string;
+  unite: string;
+  decimales: number;
+  /** « arrondi au centimètre ». */
+  arrondi: string;
+  /** « 12,35 m (arrondi au centimètre) » — le libellé COMPLET, celui qui ne ment pas. */
+  texteComplet: string;
+}
+
+/**
+ * CALX128 — la mesure, DITE avec sa précision. Un genre inconnu ne produit ni chiffre ni
+ * unité inventés : sa valeur est rendue telle quelle et l'arrondi est déclaré inconnu.
+ */
+export function formatMesurePrecise(m: Pick<Measurement, 'kind' | 'points'>): MesureAffichee {
+  const valeur = measureValue(m);
+  const decimales = DECIMALES_MESURE[m.kind] ?? 2;
+  const unite = UNITE_MESURE[m.kind] ?? '';
+  const arrondi = ARRONDI_MESURE[m.kind] ?? 'arrondi non déclaré';
+  const facteur = Math.pow(10, decimales);
+  const valeurAffichee = Math.round(valeur * facteur) / facteur;
+  const nombre = valeur.toLocaleString('fr-FR', {
+    minimumFractionDigits: decimales,
+    maximumFractionDigits: decimales,
+  });
+  const texte = unite ? `${nombre} ${unite}` : nombre;
+  return { valeur, valeurAffichee, texte, unite, decimales, arrondi, texteComplet: `${texte} (${arrondi})` };
+}
+
+/** Comment chaque genre de mesure se nomme à l'écran et dans une annonce. */
+export const LIBELLE_GENRE_MESURE: Readonly<Record<MeasureKind, string>> = {
+  distance: 'Distance',
+  area: 'Surface',
+  angle: 'Angle',
+};
+
+/** Le minimum de points EXIGÉ par genre — c'est lui que nomme un refus de fin de mesure. */
+export const POINTS_MINIMUM_MESURE: Readonly<Record<MeasureKind, number>> = {
+  distance: 2,
+  area: 3,
+  angle: 3,
+};
+
+/**
+ * CALX128 — la phrase d'une mesure posée : son genre, sa valeur et l'arrondi appliqué.
+ * C'est ce que la zone `aria-live` annonce quand un point de mesure est posé au clavier.
+ */
+export function decrireMesure(m: Pick<Measurement, 'kind' | 'points'>): string {
+  const genre = LIBELLE_GENRE_MESURE[m.kind] ?? 'Mesure';
+  return `${genre} : ${formatMesurePrecise(m).texteComplet}.`;
+}
+
+/**
+ * CALX128 — le motif d'une mesure qu'on ne peut pas encore terminer : il NOMME combien de
+ * points manquent, jamais un « mesure invalide » générique.
+ */
+export function motifMesureIncomplete(kind: MeasureKind, poses: number): string {
+  const minimum = POINTS_MINIMUM_MESURE[kind] ?? 2;
+  const genre = (LIBELLE_GENRE_MESURE[kind] ?? 'Mesure').toLowerCase();
+  const manquants = Math.max(0, minimum - poses);
+  return (
+    `Mesure incomplète : une ${genre} demande ${minimum} points, ${poses} posé(s) — ` +
+    `il en manque ${manquants}. Rien n’est enregistré.`
+  );
+}
+
 // ═══════════ Couche UI — pont vers `ctx.measurements` (persistance du calepinage) ═══════════
 
 export interface MesureUiDeps {
@@ -228,4 +333,83 @@ export function createMesureUi(ctx: Ctx, deps: MesureUiDeps = {}): MesureUi {
   }
 
   return { list, add, remove, clear, isActive, activeKind, begin, addPoint, undoPoint, sessionPoints, finish, cancel };
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX128 — LES GESTES CLAVIER DU MODE MESURE
+//
+// La mesure n'avait aucune entrée clavier : `addPoint` n'était appelé que depuis le clic
+// de la carte. Les gestes ci-dessous sont la MÊME session (`MesureUi`), routée depuis le
+// plan clavier — les gestes souris/tactile ne changent pas d'un octet.
+//
+// Chaque geste rend un VERDICT : accepté, il dit ce qui a été fait ET avec quelle
+// précision ; refusé, il NOMME ce qui manque (jamais un « mesure invalide » générique).
+// ————————————————————————————————————————————————————————————————————————
+
+/** Le verdict d'un geste clavier — même forme que `clavier.ts::VerdictGeste` (déclaré ici
+ *  pour que `mesureUi.ts` ne dépende pas du module de routage : c'est lui qui dépend d'elle). */
+export type VerdictMesure = { ok: true; texte: string } | { ok: false; motif: string };
+
+export interface GestesMesure {
+  poser: () => VerdictMesure;
+  'annuler-dernier': () => VerdictMesure;
+  terminer: () => VerdictMesure;
+  sortir: () => VerdictMesure;
+}
+
+/**
+ * CALX128 — les gestes clavier du mode mesure, branchés sur une session `MesureUi` et sur
+ * le curseur de pose (`curseur()` rend le point courant du curseur clavier).
+ *
+ * `poser` refuse hors session en le DISANT ; `terminer` refuse une mesure incomplète en
+ * nommant combien de points manquent et garde la session ouverte (rien n'est enregistré,
+ * rien n'est perdu).
+ */
+export function gestesMesure(mesure: MesureUi, curseur: () => LngLat | null): GestesMesure {
+  return {
+    poser: () => {
+      const kind = mesure.activeKind();
+      if (!kind) {
+        return { ok: false, motif: 'Aucune mesure en cours — démarrez une mesure avant de poser un point.' };
+      }
+      const p = curseur();
+      if (!p) {
+        return { ok: false, motif: 'Point non posé : le curseur de pose n’a pas encore de position sur la carte.' };
+      }
+      const avant = mesure.sessionPoints().length;
+      mesure.addPoint(p);
+      const apres = mesure.sessionPoints().length;
+      if (apres === avant) {
+        // Le genre « angle » se plafonne à 3 points : on le DIT plutôt que de l'ignorer.
+        return {
+          ok: false,
+          motif: `Point refusé : une ${(LIBELLE_GENRE_MESURE[kind] ?? 'mesure').toLowerCase()} n’accepte pas plus de ${avant} points.`,
+        };
+      }
+      const provisoire = { kind, points: mesure.sessionPoints() };
+      const valeur = isMeasureValid(provisoire) ? ` ${formatMesurePrecise(provisoire).texteComplet}.` : '';
+      return { ok: true, texte: `Point ${apres} posé.${valeur}` };
+    },
+    'annuler-dernier': () => {
+      const avant = mesure.sessionPoints().length;
+      if (avant === 0) {
+        return { ok: false, motif: 'Rien à annuler : aucun point de mesure n’est posé.' };
+      }
+      mesure.undoPoint();
+      return { ok: true, texte: `Dernier point annulé — ${mesure.sessionPoints().length} point(s) restant(s).` };
+    },
+    terminer: () => {
+      const kind = mesure.activeKind();
+      if (!kind) return { ok: false, motif: 'Aucune mesure en cours à terminer.' };
+      const poses = mesure.sessionPoints().length;
+      const posee = mesure.finish();
+      if (!posee) return { ok: false, motif: motifMesureIncomplete(kind, poses) };
+      return { ok: true, texte: `Mesure enregistrée. ${decrireMesure(posee)}` };
+    },
+    sortir: () => {
+      if (!mesure.isActive()) return { ok: false, motif: 'Aucune mesure en cours — rien à quitter.' };
+      mesure.cancel();
+      return { ok: true, texte: 'Mesure abandonnée — aucun point n’a été enregistré.' };
+    },
+  };
 }

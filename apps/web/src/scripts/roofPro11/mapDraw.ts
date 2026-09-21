@@ -31,6 +31,17 @@ import {
   type DocumentUnderlay,
   type RessourceFond,
 } from './underlay';
+import {
+  aideClavier,
+  createClavier,
+  deplacerCurseur,
+  pasCurseurM,
+  type Clavier,
+  type GestesAtelier,
+  type LigneAide,
+  type ModeClavier,
+  type VerdictGeste,
+} from './clavier';
 import { DEG2M, DEG2RAD, VERTEX_GRAB_PX } from './constants';
 
 /**
@@ -386,6 +397,23 @@ export interface MapDraw {
   /** CALX108 — glissé (translation, m) et molette (rotation, °) du fond déjà calé. Ne
    *  touche ni `distanceReelleM` ni le facteur d'échelle : la mesure saisie fait foi. */
   ajusterFond: (ajust: { estM?: number; nordM?: number; rotationDeg?: number }) => boolean;
+  /** CALX128 — le routeur clavier de l'atelier (plan déclaratif + zone `aria-live`). */
+  clavier: Clavier;
+  /** CALX128 — position courante du curseur de pose au clavier, ou `null` tant que la
+   *  carte n'a pas de centre lisible. Les gestes souris ne le consultent JAMAIS. */
+  curseurClavier: () => LngLat | null;
+  /** CALX128 — les gestes clavier du TRACÉ, pour que l'hôte les compose avec ceux des
+   *  autres modes (mesure, obstacles, zones) sans réécrire le routage. */
+  gestesTrace: () => GestesAtelier;
+  /** CALX128 — l'aide-mémoire affichable des raccourcis du mode courant. */
+  aideRaccourcis: () => LigneAide[];
+  /** CALX128 — mode clavier courant, et son réglage par l'hôte (mesure, obstacles, zones). */
+  modeClavier: () => ModeClavier;
+  setModeClavier: (mode: ModeClavier) => void;
+  /** CALX128 — branche les gestes clavier d'un AUTRE mode (ex. `gestesMesure(...)` de
+   *  `mesureUi.ts`) sans que ce module ait à connaître ce mode. Un mode sans gestes
+   *  enregistrés annonce, touche par touche, que le geste n'y est pas disponible. */
+  enregistrerGestesClavier: (mode: ModeClavier, gestes: GestesAtelier) => void;
   addVertex: (v: LngLat) => void;
   /** W92 — retire le dernier sommet posé (pendant le tracé, avant fermeture). */
   undoLastPoint: () => void;
@@ -1220,6 +1248,170 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
   }
   undoPointBtn?.addEventListener('click', undoLastPoint);
 
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX128 — L'ATELIER AU CLAVIER, ET SES ANNONCES
+  //
+  // Les raccourcis n'existaient QUE dans le panneau de disposition (`layoutEditor.ts`,
+  // gardé par `if (!ctx.layoutMode …) return;`) : le tracé n'avait AUCUNE entrée clavier.
+  // Parité Scanifly (la saisie terrain reste utilisable sans souris).
+  //
+  // Le plan est DÉCLARATIF (`clavier.ts::PLAN_CLAVIER`) et affichable ; chaque geste rend
+  // un VERDICT annoncé dans la zone `aria-live` — un refus NOMME sa raison. Les gestes
+  // souris/tactile ne sont pas touchés : ce bloc n'ajoute qu'une seconde porte d'entrée,
+  // et il s'efface dès que le focus est dans un champ de saisie (sans quoi la cote CALX90
+  // et le calage CALX108 deviendraient intapables).
+  //
+  // CROCHET ATTENDU — `roof-tool-pro11.ts` : appeler `setModeClavier('mesure'|'obstacle'|
+  // 'zone')` au changement d'outil et `enregistrerGestesClavier(mode, gestes)` avec
+  // `mesureUi.gestesMesure(mesure, curseurClavier)` / les gestes d'obstacles et de zones.
+  // ————————————————————————————————————————————————————————————————————————
+
+  /** Le curseur de pose au clavier. `null` tant qu'aucune position n'est lisible. */
+  let curseur: LngLat | null = null;
+
+  /** Position de DÉPART du curseur : le dernier sommet posé (on continue le contour), à
+   *  défaut le centre de la vue. Jamais une coordonnée inventée. */
+  function curseurClavier(): LngLat | null {
+    if (curseur) return curseur;
+    const dernier = ctx.vertices[ctx.vertices.length - 1];
+    if (dernier) {
+      curseur = [dernier[0], dernier[1]];
+      return curseur;
+    }
+    const centre = typeof map.getCenter === 'function' ? map.getCenter() : null;
+    if (centre && Number.isFinite(centre.lng) && Number.isFinite(centre.lat)) {
+      curseur = [centre.lng, centre.lat];
+      return curseur;
+    }
+    return null;
+  }
+
+  /** Le pas du curseur, DÉRIVÉ du zoom courant (jamais une distance en mètres inventée). */
+  function pasCourantM(lat: number, rapide: boolean): number {
+    const zoom = typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN;
+    return pasCurseurM(lat, zoom, rapide);
+  }
+
+  /** Les quatre points cardinaux, en français, pour l'annonce du déplacement. */
+  const DIRECTION_ANNONCEE: Readonly<Record<string, string>> = {
+    'curseur-nord': 'nord',
+    'curseur-sud': 'sud',
+    'curseur-est': 'est',
+    'curseur-ouest': 'ouest',
+  };
+
+  function deplacementClavier(action: string, rapide: boolean): VerdictGeste {
+    const depart = curseurClavier();
+    if (!depart) {
+      return { ok: false, motif: 'Déplacement impossible : la carte n’a pas encore de position lisible.' };
+    }
+    const pasM = pasCourantM(depart[1], rapide);
+    if (!(pasM > 0)) {
+      return { ok: false, motif: 'Déplacement impossible : le zoom de la carte n’est pas encore lisible.' };
+    }
+    const arrivee = deplacerCurseur(depart, action as never, pasM);
+    if (arrivee === depart) {
+      return { ok: false, motif: 'Déplacement impossible : cette touche ne déplace pas le curseur.' };
+    }
+    curseur = [arrivee[0], arrivee[1]];
+    const pas = pasM.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+    return { ok: true, texte: `Curseur déplacé de ${pas} m vers le ${DIRECTION_ANNONCEE[action] ?? 'nord'}.` };
+  }
+
+  /** CALX128 — les gestes clavier du TRACÉ. Chacun sait POURQUOI il refuse. */
+  function gestesTrace(): GestesAtelier {
+    const poser = (): VerdictGeste => {
+      if (ctx.closed) {
+        return { ok: false, motif: 'Contour déjà fermé — aucun coin ne peut plus être posé. Échap pour sortir du mode.' };
+      }
+      const p = curseurClavier();
+      if (!p) {
+        return { ok: false, motif: 'Coin non posé : le curseur de pose n’a pas encore de position sur la carte.' };
+      }
+      const avant = ctx.vertices.length;
+      addVertex([p[0], p[1]]);
+      if (ctx.vertices.length === avant) {
+        // Seule cause possible ici (le contour n'est pas fermé) : le garde W76.
+        return { ok: false, motif: t.pointWouldCross };
+      }
+      // Le sommet réellement posé peut avoir été aimanté/contraint : le curseur le suit,
+      // sinon la frappe suivante repartirait d'un point qui n'existe pas sur le tracé.
+      const pose = ctx.vertices[ctx.vertices.length - 1];
+      curseur = [pose[0], pose[1]];
+      return { ok: true, texte: t.cornerPlaced(ctx.vertices.length) };
+    };
+    const annuler = (): VerdictGeste => {
+      if (ctx.closed) {
+        return { ok: false, motif: 'Contour déjà fermé — « Annuler le dernier point » ne s’applique qu’au tracé en cours.' };
+      }
+      if (ctx.vertices.length === 0) {
+        return { ok: false, motif: 'Rien à annuler : aucun coin n’est posé.' };
+      }
+      undoLastPoint();
+      const dernier = ctx.vertices[ctx.vertices.length - 1];
+      curseur = dernier ? [dernier[0], dernier[1]] : curseur;
+      return { ok: true, texte: t.lastPointUndone(ctx.vertices.length) };
+    };
+    return {
+      'curseur-nord': () => deplacementClavier('curseur-nord', false),
+      'curseur-sud': () => deplacementClavier('curseur-sud', false),
+      'curseur-est': () => deplacementClavier('curseur-est', false),
+      'curseur-ouest': () => deplacementClavier('curseur-ouest', false),
+      poser,
+      'annuler-dernier': annuler,
+      supprimer: annuler, // le seul élément « sélectionné » du tracé est le dernier coin
+      terminer: () => {
+        if (ctx.closed) return { ok: false, motif: 'Contour déjà fermé.' };
+        if (ctx.vertices.length < 3) {
+          return {
+            ok: false,
+            motif: `Contour non fermé : il faut au moins 3 coins (${ctx.vertices.length} posé(s)). Continuez à tracer.`,
+          };
+        }
+        if (!finishBtn || finishBtn.disabled) {
+          return { ok: false, motif: 'Fermeture indisponible : le bouton « Terminer » n’est pas actif.' };
+        }
+        finishBtn.click();
+        return { ok: true, texte: `Contour fermé sur ${ctx.vertices.length} coins.` };
+      },
+      sortir: () => {
+        if (calageActif) {
+          annulerCalageFond();
+          return { ok: true, texte: 'Calage du fond abandonné — rien n’a été enregistré.' };
+        }
+        curseur = null;
+        return { ok: true, texte: 'Curseur de pose relâché — le tracé en cours est conservé.' };
+      },
+      aide: () => {
+        const lignes = aideRaccourcis();
+        return { ok: true, texte: `${lignes.length} raccourcis disponibles : ${lignes.map((l) => `${l.touches} ${l.libelle}`).join(' ; ')}.` };
+      },
+    };
+  }
+
+  /** Le mode clavier courant, et les gestes enregistrés par mode. */
+  let modeClavierCourant: ModeClavier = 'trace';
+  const gestesParMode = new Map<ModeClavier, GestesAtelier>();
+
+  function aideRaccourcis(): LigneAide[] {
+    return aideClavier(modeClavierCourant);
+  }
+
+  const clavier = createClavier({
+    mode: () => modeClavierCourant,
+    // Le mode `trace` est SERVI PAR CE MODULE ; les autres modes viennent de
+    // `enregistrerGestesClavier` (mesure, obstacles, zones), sinon ils annoncent
+    // proprement que le geste n'y est pas disponible.
+    gestes: () => (modeClavierCourant === 'trace' ? gestesTrace() : gestesParMode.get(modeClavierCourant) ?? {}),
+  });
+
+  // Le plan clavier vit sur le document : il s'efface de lui-même dès que le focus est
+  // dans un champ de saisie (`estChampDeSaisie`), donc aucune saisie existante ne change.
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('keydown', (e) => {
+      clavier.frappe(e as unknown as Parameters<Clavier['frappe']>[0]);
+    });
+  }
   // ═══════════ W93 — AUTOCOMPLÉTION D'ADRESSE (combobox WAI-ARIA) ═══════════
   // Une suggestion MapTiler retenue (libellé affiché + coordonnées de vol).
   interface GeoSuggestion {
@@ -1440,6 +1632,17 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     validerCalageFond,
     annulerCalageFond,
     ajusterFond,
+    clavier,
+    curseurClavier,
+    gestesTrace,
+    aideRaccourcis,
+    modeClavier: () => modeClavierCourant,
+    setModeClavier: (mode: ModeClavier) => {
+      modeClavierCourant = mode;
+    },
+    enregistrerGestesClavier: (mode: ModeClavier, gestes: GestesAtelier) => {
+      gestesParMode.set(mode, gestes);
+    },
     addVertex,
     undoLastPoint,
     poserSegmentSaisi,
