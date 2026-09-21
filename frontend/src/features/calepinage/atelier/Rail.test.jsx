@@ -104,15 +104,17 @@ describe('CALX1 — le registre `atelier/onglets.js`', () => {
     expect(resoudreOnglet(premier.cle)).toBe(premier)
   })
 
-  it('la clé d’un onglet est EXACTEMENT le dernier segment de sa route profonde', () => {
-    const chemins = new Set(config.routes.map((r) => r.path))
-    for (const onglet of ONGLETS) {
-      expect(
-        chemins.has(`/calepinage/:id/${onglet.cle}`),
-        `l’onglet « ${onglet.cle} » n’a pas de route profonde /calepinage/:id/${onglet.cle}`,
-      ).toBe(true)
-    }
-  })
+  /* CALX18/CALX25 — un onglet NEUF n'a pas forcément de route profonde
+     héritée : le rail est désormais le chemin normal pour l'ouvrir, et
+     `module.config.jsx` n'est plus rouvert pour chaque panneau (D-CALX 13).
+     L'ancien test symétrique (chaque onglet ⇔ une route de même clé) tenait
+     par coïncidence pour les treize onglets fondateurs, mais AUCUNE des deux
+     directions n'est une vraie invariante du module : `variantes` a une route
+     profonde sans être un onglet du rail (c'est un écran à part), et un
+     onglet neuf peut n'avoir aucune route héritée. La protection qui reste
+     réellement utile — une route déjà servie ne devient jamais introuvable —
+     est celle du test « aucune route du module ne reste orpheline » plus bas,
+     qui accepte plusieurs chemins d'accès (nav, onglet, lien rendu). */
 })
 
 describe('CALX1 — le rail monte le panneau de l’onglet demandé', () => {

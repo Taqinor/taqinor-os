@@ -167,6 +167,11 @@ const calepinageApi = {
     // produit, aucun statut n'est écrit par l'écran.
     genererDevis: (id, corps) => api.post(`${pivot(id)}generer-devis/`, corps),
     syncDevis: (id, corps) => api.post(`${pivot(id)}sync-devis/`, corps),
+
+    // CALX18 — les postes de pertes (catalogue CAL139, `views/simulation.py`) :
+    // lecture pure du catalogue + des postes persistés, et leur enregistrement.
+    pertes: (id) => api.get(`${pivot(id)}pertes/`),
+    enregistrerPertes: (id, corps) => api.post(`${pivot(id)}enregistrer-pertes/`, corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
