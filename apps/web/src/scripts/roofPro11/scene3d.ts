@@ -61,6 +61,7 @@ import {
   construireAcrotere,
 } from './batiment'; // CALX100/101/102 — hauteur, acrotère et lucarne viennent du DOCUMENT
 import { type PerimeterSetbacks } from '../../lib/roofPro2';
+import { construireMaillagesPose } from './poseSurfaces'; // CALX124
 
 /** Dépendances injectées (carte + capacités de l'appareil, figées au boot). */
 export interface Scene3dDeps {
@@ -2315,6 +2316,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     sc.updateProjectionMatrix();
 
     attacherCoucheElectrique(); // CALX219 câblage — la couche électrique revient sur la scène
+    for (const m of construireMaillagesPose(ctx.surfacesPose, pack.origin, readOnly)) sceneRoot!.add(m); // CALX124 — surfaces de pose (sol/ombrière) : volumes et ombres portées ; aucune surface ⇒ rien d'ajouté
     map.triggerRepaint();
   }
 

@@ -25,10 +25,23 @@
  * Les seules constantes de ce module sont des CONVENTIONS DE DESSIN, nommées et
  * commentées comme telles : aucune constante d'ingénierie neuve.
  * ══════════════════════════════════════════════════════════════════════════ */
+import * as THREE from 'three';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
 import { DEG2M, DEG2RAD } from './constants';
 import { esc } from './dom';
 import type { Ctx } from './context';
+// CALX124 — la géométrie de placement de CAL89/CAL91 existe et est testée depuis des
+// mois sans qu'aucun fichier applicatif ne l'importe : c'est ICI qu'elle est branchée.
+// On la RÉUTILISE telle quelle — il n'y a pas une seconde formule de placement.
+import {
+  construireChampPose,
+  construireOmbriere,
+  // `ChampPose` de `scene3d` est le PLACEMENT rendu ; `ChampPose` d'ici est un champ de
+  // SAISIE. Deux notions, deux noms : on renomme l'importé plutôt que de les confondre.
+  type ChampPose as PlacementPose,
+  type PlanMoteurSurface,
+  type TablePlacee,
+} from './scene3d';
 
 // ═══════════════ LE DOCUMENT : MIROIR EXACT DE `$defs/poseSurface` ═══════════════
 
@@ -114,6 +127,13 @@ export type ChampPose =
   | 'mur'
   | 'hauteurBasse'
   | 'hauteurHaute';
+
+/** Libellé FRANÇAIS de chaque genre de surface — l'écran n'affiche jamais la clé. */
+export const LIBELLE_GENRE: Readonly<Record<GenrePose, string>> = {
+  sol: 'Champ au sol',
+  ombriere: 'Ombrière',
+  facade: 'Façade',
+};
 
 /** Libellé FRANÇAIS de chaque champ — c'est lui que l'atelier affiche, jamais la clé. */
 export const LIBELLE_CHAMP_POSE: Readonly<Record<ChampPose, string>> = {
@@ -395,8 +415,12 @@ interface ChampNumerique {
 /** Les champs numériques du panneau, dans l'ordre d'affichage. */
 const CHAMPS_PANNEAU: readonly ChampNumerique[] = [
   { champ: 'penteTerrain', cle: 'pente', unite: '°', genres: ['sol'] },
-  { champ: 'azimutRangee', cle: 'azimut', unite: '°', genres: ['sol'] },
-  { champ: 'inclinaison', cle: 'inclinaison', unite: '°', genres: ['sol'] },
+  { champ: 'azimutRangee', cle: 'azimut', unite: '°', genres: ['sol', 'ombriere'] },
+  { champ: 'inclinaison', cle: 'inclinaison', unite: '°', genres: ['sol', 'ombriere'] },
+  { champ: 'hauteurLibre', cle: 'hauteurLibre', unite: 'm', genres: ['ombriere'] }, // CALX124
+  { champ: 'sensEcoulement', cle: 'ecoulement', unite: '°', genres: ['ombriere'] }, // CALX124
+  { champ: 'pasAppui', cle: 'pasAppui', unite: 'm', genres: ['ombriere'] }, // CALX124
+  { champ: 'sectionAppui', cle: 'sectionAppui', unite: 'm', genres: ['ombriere'] }, // CALX124
 ];
 
 /** Dépendances d'écran du panneau — toutes OPTIONNELLES : sans elles, le panneau
@@ -460,6 +484,7 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
     <label class="mb-2 block">Genre
       <select data-pose-genre class="mt-1 w-full rounded border border-white/20 bg-nuit-900/60 px-2 py-1">
         <option value="sol">Champ au sol</option>
+        <option value="ombriere">Ombrière</option>
       </select>
     </label>
     ${CHAMPS_PANNEAU.map(
@@ -538,15 +563,387 @@ function saisirSurface(
   const vertices = (ctx.vertices ?? []).map((v) => [v[0], v[1]] as LngLat);
   const base = {
     id: `${genre}-${rang}`,
-    label: `${genre === 'ombriere' ? 'Ombrière' : 'Champ au sol'} ${rang}`,
+    label: `${LIBELLE_GENRE[genre]} ${rang}`,
     vertices,
     buildingId: ctx.activeArea?.()?.buildingId ?? undefined,
   };
+  if (genre === 'ombriere') {
+    return creerOmbriere({
+      ...base,
+      azimutRangeeDeg: lireChamp(racine, 'azimut'),
+      inclinaisonDeg: lireChamp(racine, 'inclinaison'),
+      hauteurLibreM: lireChamp(racine, 'hauteurLibre'), // CALX124
+      sensEcoulementDeg: lireChamp(racine, 'ecoulement'), // CALX124
+      pasAppuiM: lireChamp(racine, 'pasAppui'), // CALX124
+      sectionAppuiM: lireChamp(racine, 'sectionAppui'), // CALX124
+    });
+  }
   return creerChampSol({
     ...base,
     penteTerrainDeg: lireChamp(racine, 'pente'),
     azimutRangeeDeg: lireChamp(racine, 'azimut'),
     inclinaisonDeg: lireChamp(racine, 'inclinaison'),
   });
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CALX124 — L'OMBRIÈRE SE DESSINE, POTEAUX COMPRIS.
+   ----------------------------------------------------------------------------
+   Constat : l'ombrière était un second formulaire de nombres sans visuel, et
+   `construireOmbriere` (CAL91, `scene3d.ts`) n'était importée par AUCUN fichier
+   applicatif. Ce bloc la BRANCHE : contour tracé, hauteur libre, sens
+   d'écoulement et inclinaison SAISIS, poteaux rendus au pas et à la section
+   SAISIS (`appuis`, contrat CALX87).
+
+   AUCUNE CHARGE, AUCUNE STRUCTURE n'est calculée — le contrat le dit et ce
+   module s'y tient : il place des volumes, il ne dimensionne aucun ouvrage.
+
+   CE QUI RESTE SANS SAISIE : sans hauteur libre, la couverture n'est PAS levée
+   à une hauteur supposée — elle reste au sol et le motif est affiché ; sans
+   entraxe, AUCUN poteau n'est dessiné — on n'en pose pas au jugé.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** CONVENTION DE DESSIN — au-delà de ce nombre d'appuis, la scène cesse d'en
+ *  instancier : un entraxe minuscule sur un grand contour ferait des dizaines de
+ *  milliers de volumes et figerait l'atelier. Ce n'est PAS une règle de structure
+ *  (aucune charge n'est calculée ici) : c'est une borne de rendu, et le nombre
+ *  écarté est DIT plutôt que masqué. */
+export const PLAFOND_APPUIS_DESSINES = 2000;
+
+/** CONVENTION DE DESSIN — épaisseur (m) des volumes de pose rendus en 3D. Elle ne
+ *  décrit aucun ouvrage : c'est ce qui donne un volume visible et une vraie ombre
+ *  portée plutôt qu'un plan d'épaisseur nulle. */
+export const EPAISSEUR_COUVERTURE_DESSIN_M = 0.08;
+
+/** Un nombre saisi ET strictement positif (hauteur, entraxe, section…). */
+function estPositif(v: unknown): v is number {
+  return estSaisi(v) && v > 0;
+}
+
+/** Ce que l'atelier recueille pour une ombrière (CAL91 + appuis CALX87). */
+export interface SaisieOmbriere {
+  id: string;
+  label?: string;
+  vertices: readonly LngLat[];
+  buildingId?: string;
+  /** Orientation des rangées (degrés), SAISIE. */
+  azimutRangeeDeg?: number | null;
+  /** Inclinaison de la COUVERTURE (degrés), SAISIE. */
+  inclinaisonDeg?: number | null;
+  /** Hauteur libre sous la couverture (m), SAISIE. */
+  hauteurLibreM?: number | null;
+  /** Sens d'écoulement de la couverture (degrés, 0=N, 90=E), SAISI. */
+  sensEcoulementDeg?: number | null;
+  /** Entraxe des appuis (m), SAISI. Absent ⇒ AUCUN poteau n'est décrit. */
+  pasAppuiM?: number | null;
+  /** Section d'un appui (m), SAISIE. */
+  sectionAppuiM?: number | null;
+}
+
+/**
+ * CALX124 — crée la surface de pose d'une OMBRIÈRE depuis le contour tracé.
+ *
+ * Le contour suit exactement les règles du champ au sol (CALX123) ; s'y ajoutent
+ * la hauteur libre, le sens d'écoulement et les appuis, chacun écrit SEULEMENT
+ * s'il est saisi et NOMMÉ dans `nonSaisi` sinon. La pente du TERRAIN n'est pas
+ * une donnée d'ombrière : elle n'est ni écrite, ni réclamée.
+ */
+export function creerOmbriere(saisie: SaisieOmbriere): VerdictSurface {
+  const verdict = creerChampSol({
+    id: saisie.id,
+    label: saisie.label,
+    vertices: saisie.vertices,
+    buildingId: saisie.buildingId,
+    azimutRangeeDeg: saisie.azimutRangeeDeg,
+    inclinaisonDeg: saisie.inclinaisonDeg,
+    // Marqueur interne : le terrain n'est pas le sujet d'une ombrière, donc on ne le
+    // réclame pas — et la clé est retirée juste en dessous, jamais publiée.
+    penteTerrainDeg: 0,
+  });
+  if (!verdict.ok) return verdict;
+  const surface = verdict.surface as unknown as Record<string, unknown>;
+  surface.kind = 'ombriere';
+  delete surface.terrainSlopeDeg;
+  const nonSaisi = verdict.nonSaisi.slice();
+
+  poserSaisie(surface, 'clearHeightM', saisie.hauteurLibreM, 'hauteurLibre', nonSaisi);
+  poserSaisie(surface, 'flowAzimuthDeg', saisie.sensEcoulementDeg, 'sensEcoulement', nonSaisi);
+
+  const appuis: Record<string, unknown> = {};
+  if (estPositif(saisie.pasAppuiM)) appuis.pasM = saisie.pasAppuiM;
+  else nonSaisi.push(LIBELLE_CHAMP_POSE.pasAppui);
+  if (estPositif(saisie.sectionAppuiM)) appuis.sectionM = saisie.sectionAppuiM;
+  else nonSaisi.push(LIBELLE_CHAMP_POSE.sectionAppui);
+  if (Object.keys(appuis).length) surface.appuis = appuis;
+
+  return { ok: true, surface: surface as unknown as SurfacePose, nonSaisi };
+}
+
+/**
+ * CALX124 — les POSITIONS des appuis le long du contour, à l'entraxe SAISI.
+ *
+ * On marche le périmètre fermé et on pose un appui tous les `pasM` mètres depuis
+ * le premier coin. Entraxe absent, nul ou négatif ⇒ tableau VIDE : l'atelier ne
+ * décide pas d'un entraxe, il n'en propose aucun, et la scène ne dessine alors
+ * aucun poteau (contrat CALX87 : « absent = aucun appui décrit »).
+ */
+export function positionsAppuis(
+  contourM: readonly (readonly number[])[] | null | undefined,
+  pasM: number | null | undefined,
+): [number, number][] {
+  if (!Array.isArray(contourM) || contourM.length < 3 || !estPositif(pasM)) return [];
+  const points: [number, number][] = [];
+  let reste = 0;
+  for (let i = 0; i < contourM.length; i++) {
+    const a = contourM[i];
+    const b = contourM[(i + 1) % contourM.length];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const longueur = Math.hypot(dx, dy);
+    if (!(longueur > 0)) continue;
+    for (let d = reste; d < longueur; d += pasM) {
+      points.push([a[0] + (dx * d) / longueur, a[1] + (dy * d) / longueur]);
+      if (points.length >= PLAFOND_APPUIS_DESSINES) return points;
+    }
+    reste = (((reste - longueur) % pasM) + pasM) % pasM;
+  }
+  return points;
+}
+
+/** CALX124 — ce que la scène a pu dessiner pour une surface, et ce qu'elle n'a
+ *  PAS dessiné, nommé. */
+export interface RenduPose {
+  maillages: THREE.Mesh[];
+  /** Le placement rendu par le moteur (CAL89/CAL91), ou `null` sans contour. */
+  placement: PlacementPose | null;
+  /** Ce qui manque, NOMMÉ — l'atelier l'affiche, il ne le comble pas. */
+  nonDessine: string[];
+}
+
+/** Décalage ENU (m) entre l'origine d'une surface et l'origine de la scène. */
+function decalageScene(surface: SurfacePose, origineScene: LngLat): [number, number] {
+  const o = origineContour(surface.vertices ?? []);
+  if (!o || !Array.isArray(origineScene)) return [0, 0];
+  const cosLat = Math.cos(origineScene[1] * DEG2RAD);
+  return [(o[0] - origineScene[0]) * DEG2M * cosLat, (o[1] - origineScene[1]) * DEG2M];
+}
+
+/** Le plan du moteur d'une surface, au format que `construireChampPose` attend. */
+function planMoteur(surface: SurfacePose): PlanMoteurSurface | null {
+  const e = surface.engine;
+  if (!e) return null;
+  return { modules: e.modules ?? undefined, tables: e.tables ?? [] };
+}
+
+/** Matériau des volumes de pose — même teinte que les volumes de bâtiment, subduée
+ *  pour une scène en lecture seule (`dim`), comme le fait déjà `construireAcrotere`. */
+function materiauPose(dim: boolean): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: dim ? 0x9aa3b4 : 0xe2e7f2,
+    roughness: 0.85,
+    metalness: 0,
+    transparent: dim,
+    opacity: dim ? 0.55 : 1,
+  });
+}
+
+/** Centroïde (moyenne des sommets) d'un contour métrique. */
+function centreContour(contourM: readonly (readonly number[])[]): [number, number] {
+  let sx = 0;
+  let sy = 0;
+  for (const p of contourM) {
+    sx += p[0];
+    sy += p[1];
+  }
+  return [sx / contourM.length, sy / contourM.length];
+}
+
+/** Le contour d'une surface, recentré sur son centroïde, prêt pour un `THREE.Shape`. */
+function formeContour(
+  contourM: readonly (readonly number[])[],
+  centre: [number, number],
+): THREE.Shape {
+  const shape = new THREE.Shape();
+  contourM.forEach((p, i) => {
+    const x = p[0] - centre[0];
+    const y = p[1] - centre[1];
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  });
+  shape.closePath();
+  return shape;
+}
+
+/** Les TABLES posées par le moteur, en volumes — une par rectangle rendu. */
+function volumesTables(
+  tables: readonly TablePlacee[],
+  offX: number,
+  offY: number,
+  dim: boolean,
+  prefixe: string,
+): THREE.Mesh[] {
+  const out: THREE.Mesh[] = [];
+  for (let i = 0; i < tables.length; i++) {
+    const t = tables[i];
+    if (!(t.largeurM > 0) || !(t.profondeurM > 0)) continue;
+    const geo = new THREE.BoxGeometry(t.largeurM, t.profondeurM, EPAISSEUR_COUVERTURE_DESSIN_M);
+    const mesh = new THREE.Mesh(geo, materiauPose(dim));
+    mesh.name = `${prefixe}-table-${i}`;
+    mesh.position.set(t.cx + offX, t.cy + offY, t.z);
+    mesh.rotation.x = t.inclinaisonRad;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    out.push(mesh);
+  }
+  return out;
+}
+
+/**
+ * CALX124 — les volumes 3D d'une OMBRIÈRE : sa couverture, ses poteaux, et les
+ * tables que le moteur a posées dessus.
+ *
+ * La couverture est levée à la hauteur libre SAISIE ; sans hauteur libre elle reste
+ * AU SOL (z = 0) et le motif est affiché. Les poteaux n'existent que si l'entraxe ET
+ * la section sont saisis ET que la couverture est levée : un poteau de hauteur nulle
+ * ou de section inconnue ne se dessine pas au jugé.
+ *
+ * Tous les volumes PROJETTENT leur ombre (`castShadow`) : c'est le seul intérêt de
+ * dessiner une ombrière plutôt que de la tabuler.
+ */
+export function construireOmbrierePose(
+  surface: SurfacePose,
+  origineScene: LngLat,
+  dim: boolean,
+): RenduPose {
+  const nonDessine: string[] = [];
+  const contourM = surface.contourM;
+  if (!Array.isArray(contourM) || contourM.length < 3) {
+    return { maillages: [], placement: null, nonDessine: ['contour de l’ombrière non tracé'] };
+  }
+  const [offX, offY] = decalageScene(surface, origineScene);
+  const centre = centreContour(contourM);
+
+  // Le PLACEMENT de CAL91 — réutilisé tel quel, jamais recalculé ici.
+  const placement = construireOmbriere(planMoteur(surface), {
+    tiltDeg: estSaisi(surface.tiltDeg) ? surface.tiltDeg : 0,
+    penteTerrainDeg: null,
+    hauteurLibreM: surface.clearHeightM ?? null,
+    aireTerrainM2: surface.areaM2 ?? null,
+  });
+  const hauteurLibre = estPositif(surface.clearHeightM) ? surface.clearHeightM : 0;
+  if (hauteurLibre === 0) {
+    nonDessine.push(
+      'hauteur libre non renseignée : la couverture reste au sol (aucune hauteur supposée)',
+    );
+  }
+
+  const maillages: THREE.Mesh[] = [];
+
+  // LA COUVERTURE — le contour extrudé d'une épaisseur de dessin, levé à la hauteur
+  // libre saisie. Inclinaison et sens d'écoulement SAISIS l'orientent ; absents, elle
+  // reste horizontale plutôt que penchée au jugé.
+  const geoCouverture = new THREE.ExtrudeGeometry(formeContour(contourM, centre), {
+    depth: EPAISSEUR_COUVERTURE_DESSIN_M,
+    bevelEnabled: false,
+  });
+  const couverture = new THREE.Mesh(geoCouverture, materiauPose(dim));
+  couverture.name = `rp11-ombriere-${surface.id}-couverture`;
+  couverture.position.set(centre[0] + offX, centre[1] + offY, hauteurLibre);
+  const tiltRad = (estSaisi(surface.tiltDeg) ? surface.tiltDeg : 0) * DEG2RAD;
+  const azRad = (estSaisi(surface.flowAzimuthDeg) ? surface.flowAzimuthDeg : 0) * DEG2RAD;
+  couverture.quaternion
+    .setFromAxisAngle(new THREE.Vector3(0, 0, 1), -azRad)
+    .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), tiltRad));
+  couverture.castShadow = true;
+  couverture.receiveShadow = true;
+  maillages.push(couverture);
+
+  // LES POTEAUX — au pas et à la section SAISIS, et à ces conditions seulement.
+  const pasM = surface.appuis?.pasM;
+  const sectionM = surface.appuis?.sectionM;
+  const points = positionsAppuis(contourM, pasM);
+  if (!estPositif(pasM)) {
+    nonDessine.push('entraxe des appuis non renseigné : aucun poteau n’est dessiné');
+  } else if (!estPositif(sectionM)) {
+    nonDessine.push('section des appuis non renseignée : aucun poteau n’est dessiné');
+  } else if (hauteurLibre === 0) {
+    nonDessine.push('aucun poteau dessiné : la couverture n’est pas levée');
+  } else {
+    for (let i = 0; i < points.length; i++) {
+      const geo = new THREE.BoxGeometry(sectionM, sectionM, hauteurLibre);
+      const poteau = new THREE.Mesh(geo, materiauPose(dim));
+      poteau.name = `rp11-ombriere-${surface.id}-appui-${i}`;
+      poteau.position.set(points[i][0] + offX, points[i][1] + offY, hauteurLibre / 2);
+      poteau.castShadow = true;
+      poteau.receiveShadow = true;
+      maillages.push(poteau);
+    }
+    if (points.length >= PLAFOND_APPUIS_DESSINES) {
+      nonDessine.push(
+        `appuis dessinés plafonnés à ${PLAFOND_APPUIS_DESSINES} : l’entraxe saisi en produit davantage`,
+      );
+    }
+  }
+
+  // LES TABLES — celles du MOTEUR, placées par CAL91, jamais repavées ici.
+  maillages.push(...volumesTables(placement.tables, offX, offY, dim, `rp11-ombriere-${surface.id}`));
+  if (!placement.tables.length) nonDessine.push('plan du moteur non reçu : aucune table posée');
+
+  return { maillages, placement, nonDessine };
+}
+
+/**
+ * CALX124 — les volumes 3D d'un CHAMP AU SOL : les tables que le moteur a posées,
+ * placées par CAL89 (`construireChampPose`) et par personne d'autre.
+ */
+export function construireChampSolPose(
+  surface: SurfacePose,
+  origineScene: LngLat,
+  dim: boolean,
+): RenduPose {
+  const contourM = surface.contourM;
+  if (!Array.isArray(contourM) || contourM.length < 3) {
+    return { maillages: [], placement: null, nonDessine: ['contour du champ non tracé'] };
+  }
+  const [offX, offY] = decalageScene(surface, origineScene);
+  const placement = construireChampPose(planMoteur(surface), {
+    tiltDeg: estSaisi(surface.tiltDeg) ? surface.tiltDeg : 0,
+    penteTerrainDeg: surface.terrainSlopeDeg ?? null,
+    hauteurLibreM: null,
+    aireTerrainM2: surface.areaM2 ?? null,
+  });
+  const maillages = volumesTables(placement.tables, offX, offY, dim, `rp11-sol-${surface.id}`);
+  const nonDessine = placement.tables.length ? [] : ['plan du moteur non reçu : aucune table posée'];
+  return { maillages, placement, nonDessine };
+}
+
+/** CALX124 — le rendu d'UNE surface de pose, quel que soit son genre. */
+export function construireSurfacePose(
+  surface: SurfacePose,
+  origineScene: LngLat,
+  dim: boolean,
+): RenduPose {
+  if (surface.kind === 'ombriere') return construireOmbrierePose(surface, origineScene, dim);
+  if (surface.kind === 'sol') return construireChampSolPose(surface, origineScene, dim);
+  return { maillages: [], placement: null, nonDessine: [] };
+}
+
+/**
+ * CALX124 — TOUS les volumes des surfaces de pose du document, prêts à être ajoutés
+ * à la scène. Liste vide (aucune surface tracée) ⇒ tableau vide, et la scène reste
+ * EXACTEMENT celle d'aujourd'hui.
+ */
+export function construireMaillagesPose(
+  surfaces: readonly SurfacePose[] | null | undefined,
+  origineScene: LngLat,
+  dim: boolean,
+): THREE.Mesh[] {
+  if (!Array.isArray(surfaces) || !surfaces.length || !Array.isArray(origineScene)) return [];
+  const out: THREE.Mesh[] = [];
+  for (const s of surfaces) {
+    if (!s) continue;
+    out.push(...construireSurfacePose(s, origineScene, dim).maillages);
+  }
+  return out;
 }
 
