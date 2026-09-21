@@ -18,7 +18,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm import exports
-from apps.crm.models import Client, Lead, LeadActivity
+from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
 from apps.crm.services import (
     coerce_id_list, merge_leads, resolve_client_for_lead,
 )
@@ -213,7 +213,20 @@ class TestMergePreservesFields(TestCase):
         merge_leads(survivor, [absorbed], self.user)
         survivor.refresh_from_db()
         self.assertTrue(survivor.regularisation_8221)
-        self.assertEqual(survivor.relance_date, date(2026, 7, 1))
+        # ERR77 × CAD106 — `relance_date` n'est plus RECOPIÉE de l'absorbée.
+        # Depuis CAD106 la fusion annule les touches ouvertes de l'absorbée
+        # (motif « fusion ») et le filet QJ-INVARIANT pose une prochaine
+        # étape à la SURVIVANTE : sa `relance_date` est donc DÉRIVÉE de cette
+        # touche. Hériter le 01/07/2026 d'un dossier qu'on vient d'absorber
+        # remettrait une date passée sur une fiche dont le prochain geste est
+        # réellement programmé — la file mentirait. L'assertion suit la
+        # dérivation (et ne dépend plus de l'horloge du jour).
+        prochaine = (survivor.relance_etapes
+                     .filter(statut=RelanceEtape.Statut.A_FAIRE)
+                     .order_by('due_date').first())
+        self.assertIsNotNone(prochaine)
+        self.assertEqual(survivor.relance_date, prochaine.due_date)
+        self.assertNotEqual(survivor.relance_date, date(2026, 7, 1))
         self.assertEqual(survivor.visite_prevue_le, date(2026, 6, 30))
         self.assertTrue(survivor.visite_effectuee)
         self.assertEqual(survivor.visite_notes, 'RDV confirmé')
