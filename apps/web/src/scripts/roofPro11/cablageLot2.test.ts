@@ -7,10 +7,11 @@ import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createZones } from './zones';
 import { couleursAretes, EDGE_COLOR_BY_TYPE, type EdgeDeductionZone } from './edges';
-import { deserializeLayout } from './prefill';
+import { deserializeLayout, serializeLayout } from './prefill';
 import { etiquette, registreAtelier, reinitialiserNumerotation } from './numerotation';
+import { createLayoutEditor, type LayoutEditorDeps } from './layoutEditor';
 import { type Ctx } from './context';
-import { type AreaRecord } from './types';
+import { type AreaRecord, type LayoutPlan } from './types';
 import { type LngLat } from '../../lib/roof';
 
 const DEG2RAD = Math.PI / 180;
@@ -234,5 +235,93 @@ describe('CALX111 câblage — les numéros du document survivent à une réouve
     expect(shading).not.toContain('proposal.indices.map((i) => `nº${i + 1}`)');
     const prefillSrc = readFileSync(resolve(process.cwd(), 'src/scripts/roofPro11/prefill.ts'), 'utf8');
     expect(prefillSrc).toContain('registreAtelier.absorberDocument(json); // CALX111 câblage');
+  });
+});
+
+describe('CALX113 câblage — une symétrie survit au rechargement (l’orientation voyage)', () => {
+  /** Plan de pavage minimal, azimut 0, un contour carré généreux. */
+  function plan(): LayoutPlan {
+    const c = 40;
+    return {
+      pack: {
+        origin: [LNG0, LAT0],
+        ringENU: [
+          [-c, -c],
+          [c, -c],
+          [c, c],
+          [-c, c],
+        ],
+        azimuthDeg: 0,
+      },
+      grid: { rowWidthM: 2, footprintPerPanelM2: 2, slopeLenM: 1, kwc: 1.44, panels: [{ cx: 0, cy: 0 }] },
+      count: 2,
+      tiltDeg: 0,
+      family: 'south',
+      flush: false,
+    } as unknown as LayoutPlan;
+  }
+
+  /** ctx en PLACEMENT LIBRE : un panneau tourné (symétrie appliquée), un autre non. */
+  function ctxLibre(): Ctx {
+    const areas = [zone('area-1', [...CARRE])];
+    return {
+      ...(makeCtx(areas) as unknown as Record<string, unknown>),
+      layoutPlan: plan(),
+      layoutState: null,
+      freeMode: true,
+      freeState: { panels: [{ cx: 1, cy: 2, angleDeg: 37 }, { cx: 4, cy: 2 }] },
+    } as unknown as Ctx;
+  }
+
+  it('`serializeLayout` écrit `angleDeg` — et seulement là où il existe', () => {
+    const doc = serializeLayout(ctxLibre());
+    const panneaux = doc.zones[0].geometry!.panels;
+    expect(doc.zones[0].geometry!.mode).toBe('free');
+    expect(panneaux[0].angleDeg).toBe(37);
+    // Panneau jamais tourné : la clé reste ABSENTE (document d'hier, octet pour octet).
+    expect('angleDeg' in panneaux[1]).toBe(false);
+  });
+
+  it('la relecture repose l’orientation enregistrée sur le panneau libre', () => {
+    const doc = serializeLayout(ctxLibre());
+    const geo = doc.zones[0].geometry!;
+
+    const conteneur = document.createElement('div');
+    document.body.appendChild(conteneur);
+    const map = {
+      getContainer: () => conteneur,
+      boxZoom: { disable: vi.fn(), enable: vi.fn() },
+      dragPan: { enable: vi.fn(), disable: vi.fn() },
+      getCanvas: () => ({ style: {} }) as unknown as HTMLCanvasElement,
+      on: vi.fn(),
+      unproject: () => ({ lng: 0, lat: 0 }),
+      easeTo: vi.fn(),
+      jumpTo: vi.fn(),
+    } as unknown as LayoutEditorDeps['map'];
+    const ctxNeuf = {
+      ...(makeCtx([zone('area-1', [...CARRE])]) as unknown as Record<string, unknown>),
+      layoutMode: true,
+      layoutPlan: plan(),
+      layoutState: null,
+      layoutSel: null,
+      freeMode: false,
+      freeState: null,
+    } as unknown as Ctx;
+    const editor = createLayoutEditor(ctxNeuf, {
+      map,
+      renderScene: vi.fn(),
+      prodConfigFromState: () => null,
+      updateProductionWindow: vi.fn(),
+      snapshotActiveAreaResult: vi.fn(),
+      renderAreasPanel: vi.fn(),
+      renderActive: vi.fn(),
+      isObstacleMode: () => false,
+      setPanelHighlight: vi.fn(),
+    });
+
+    expect(editor.hydrateLayout(geo.panels, geo.origin, 'free')).toBe(true);
+    const reposes = editor.freePanels();
+    expect(reposes[0].angleDeg).toBe(37);
+    expect(reposes[1].angleDeg).toBeUndefined();
   });
 });

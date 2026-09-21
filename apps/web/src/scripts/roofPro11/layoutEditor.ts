@@ -1770,7 +1770,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    * ça, tout le champ serait décalé de quelques mètres.
    */
   function hydrateLayout(
-    centers: readonly { cx: number; cy: number }[],
+    // CALX113 câblage — `angleDeg` OPTIONNEL : l'orientation propre d'un panneau libre
+    // (rotation, symétrie) vient du document et doit être REPOSÉE avec son centre.
+    centers: readonly { cx: number; cy: number; angleDeg?: number }[],
     origin?: readonly [number, number],
     mode?: 'lattice' | 'free',
   ): boolean {
@@ -1789,7 +1791,18 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     // PV30 — un dossier enregistré en PLACEMENT LIBRE se recharge VERBATIM : re-snapper ses
     // positions sur la lattice détruirait exactement le gain de place qu'il enregistrait.
     if (mode === 'free') {
-      ctx.freeState = freeStateFromCenters(centers.map((c) => ({ cx: c.cx + dx, cy: c.cy + dy })));
+      ctx.freeState = freeStateFromCenters(
+        centers.map((c) => ({
+          cx: c.cx + dx,
+          cy: c.cy + dy,
+          // CALX113 câblage — l'orientation enregistrée revient telle quelle : sans elle,
+          // une symétrie appliquée était perdue au rechargement. (La `face` E/O, elle,
+          // n'était déjà pas reposée ici avant ce câblage — hors périmètre, signalé.)
+          ...(typeof c.angleDeg === 'number' && Number.isFinite(c.angleDeg)
+            ? { angleDeg: c.angleDeg }
+            : {}),
+        })),
+      );
       ctx.freeMode = true;
       ctx.layoutSel = null;
       setSelection([]);

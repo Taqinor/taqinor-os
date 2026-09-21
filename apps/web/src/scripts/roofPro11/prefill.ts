@@ -201,8 +201,14 @@ export interface SerializedZoneGeometry {
   count: number;
   /** Origine ENU (lng/lat) du repère des centres de panneaux. */
   origin: LngLat;
-  /** Centres ENU (m) + face de CHAQUE panneau posé (repère `origin`). */
-  panels: Array<{ cx: number; cy: number; face?: 'E' | 'W' }>;
+  /** Centres ENU (m) + face de CHAQUE panneau posé (repère `origin`).
+   *  CALX113 — `angleDeg` (OPTIONNEL, placement LIBRE seulement) : l'orientation PROPRE
+   *  du panneau, celle qu'une rotation ou une symétrie (`symetriserSelection`) lui a
+   *  donnée. Absente = panneau aligné sur l'axe de rangée, exactement comme avant : un
+   *  document sans rotation ressort octet pour octet identique. Sans cette clé, une
+   *  symétrie appliquée était perdue au rechargement (les centres revenaient, pas
+   *  l'orientation). */
+  panels: Array<{ cx: number; cy: number; face?: 'E' | 'W'; angleDeg?: number }>;
   /**
    * PV30 — MODE de placement de ces panneaux. ADDITIF et OMIS par défaut : un pan calepiné
    * sur les emplacements validés sérialise exactement comme avant (octet pour octet), et
@@ -659,7 +665,16 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       const posedIdx =
         live ?? Array.from({ length: Math.max(0, Math.min(g.grid.panels.length, Math.round(g.count))) }, (_, i) => i);
       const panels = freePosed
-        ? freePosed.map((p) => ({ cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) }))
+        ? freePosed.map((p) => ({
+            cx: p.cx,
+            cy: p.cy,
+            ...(p.face ? { face: p.face } : {}),
+            // CALX113 câblage — l'orientation PROPRE du panneau (rotation/symétrie) voyage
+            // avec lui ; jamais écrite quand personne ne l'a donnée.
+            ...(typeof p.angleDeg === 'number' && Number.isFinite(p.angleDeg)
+              ? { angleDeg: p.angleDeg }
+              : {}),
+          }))
         : posedIdx.map((i) => {
             const p = g.grid.panels[i];
             return { cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) };
