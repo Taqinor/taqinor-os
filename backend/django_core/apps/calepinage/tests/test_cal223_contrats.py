@@ -92,6 +92,12 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_du_devis.json':
         "endpoint d'une AUTRE app (apps.ventes, DevisSerializer) — couvert "
         'par apps/ventes/tests/test_calx46_calepinage_du_devis.py',
+    # CALX39
+    'calepinage_import_plan.json':
+        "réponse d'une porte MULTIPART : son producteur exige un plan "
+        'déposé (DXF/PDF réel) et un calepinage résolu — affirmé par '
+        'apps/calepinage/tests/test_calx39_import_plan.py, qui appelle la '
+        "porte sur un DXF fabriqué par ezdxf",
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur

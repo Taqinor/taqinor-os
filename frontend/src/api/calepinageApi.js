@@ -177,6 +177,15 @@ const calepinageApi = {
     // `module` désigne le produit dont le poids de fiche est lu, à défaut
     // le panneau du devis lié.
     masseLestage: (id, params) => api.get(`${pivot(id)}masse-lestage/`, { params }),
+
+    // CALX39 — l'import d'un plan (DXF / PDF vectoriel) : le serveur ANALYSE
+    // le fichier et rend ses calques, puis le contour du calque choisi (contrat
+    // `contract_samples/calepinage_import_plan.json`). Il n'ÉCRIT RIEN : ni
+    // `roof_layout`, ni document — l'enregistrement reste le geste de
+    // l'utilisateur (`enregistrerLayoutCalepinage`). `corps` est un FormData
+    // (`fichier`, et `calque` une fois choisi) : on laisse axios poser sa
+    // frontière multipart.
+    importerPlan: (id, corps) => api.post(`${pivot(id)}importer-plan/`, corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
