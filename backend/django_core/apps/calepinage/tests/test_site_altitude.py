@@ -3,9 +3,11 @@
 Le « Done » de la tâche : « altitude affichée avec "source PVGIS" ; PVGIS muet
 → champ vide et mention "non renseignée", jamais un nombre de repli » — et la
 règle qui l'accompagne : le fuseau vient de la base IANA ou est SAISI, JAMAIS
-dérivé de la longitude (le Maroc est à UTC+1 toute l'année depuis 2018 : une
-dérivation par la longitude le placerait à UTC+0 et décalerait d'une heure
-toute la course du soleil).
+dérivé de la longitude (un fuseau est une décision politique : le Maroc a vécu
+à UTC+1 de 2018 au 19/09/2026, où une dérivation par la longitude — -7,6° ⇒
+UTC+0 — se serait trompée d'une heure pleine sur toute la course du soleil ;
+il est repassé à UTC+0 le 20/09/2026, décret n° 2.26.530, sans qu'aucune
+longitude ne bouge).
 
 Tests PURS : la réponse PVGIS est un dictionnaire ENREGISTRÉ, aucun appel
 réseau — jamais.
@@ -94,9 +96,12 @@ class FuseauTest(unittest.TestCase):
         self.assertEqual(capture.exception.champ, 'fuseau')
 
     def test_decalage_utc_vient_de_la_base_de_fuseaux(self):
-        # Le Maroc est à UTC+1 toute l'année depuis 2018 — c'est la base IANA
-        # qui le dit, et c'est précisément ce qu'une formule sur la longitude
-        # (-7,6° ⇒ UTC+0) manquerait.
+        # En janvier 2026 le Maroc est à UTC+1 — c'est la base IANA qui le
+        # dit, et c'est précisément ce qu'une formule sur la longitude
+        # (-7,6° ⇒ UTC+0) manquerait. La date est CHOISIE avant le 20/09/2026,
+        # jour où le décret n° 2.26.530 a ramené le pays à UTC+0 : l'attendu
+        # porte sur ce que dit la base à CETTE date, jamais sur un « +1 »
+        # supposé permanent.
         janvier = datetime.datetime(2026, 1, 15, 12, 0)
         decalage = site.decalage_utc_minutes('Africa/Casablanca', janvier)
         if decalage is not None:        # base tzdata absente : on n'invente pas

@@ -5,6 +5,12 @@ WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1
 
+# Fuseaux horaires : zoneinfo ne lit QUE le paquet pip `tzdata` (épinglé dans
+# requirements.txt), jamais /usr/share/zoneinfo — la tzdata de Debian peut être
+# en retard sur IANA (bookworm servait encore 2026b le 21/09/2026, donc SANS le
+# décret marocain 2.26.530 qui fixe le pays à UTC+0 depuis le 20/09/2026).
+ENV PYTHONTZPATH=""
+
 # Dépendances système pour WeasyPrint (Pango, Cairo, GDK-PixBuf) +
 # python3-saml/NTSEC2 (libxml2 + xmlsec1 requis à l'installation du wheel).
 RUN apt-get update && apt-get install -y --no-install-recommends \

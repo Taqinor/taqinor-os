@@ -5,9 +5,8 @@ Jusqu'ici le Ramadan n'existait QUE côté page :
 * ``apps/web/src/lib/dayProfiles.ts`` porte la table des plages, le calcul
   solaire NOAA et la fenêtre imsak/iftar ;
 * le serveur, lui, se contentait de le DIRE dans
-  ``courbes_journalieres.NOTE_HORAIRE`` (« pendant le Ramadan, le Maroc repasse
-  à UTC+0 : la courbe se décale alors d'une heure plus tôt ») sans jamais
-  l'intégrer dans les économies.
+  ``courbes_journalieres.NOTE_HORAIRE`` sans jamais l'intégrer dans les
+  économies.
 
 Or c'est le MOTEUR qui chiffre l'argent : une consommation décalée d'une heure
 pendant un mois entier ne croise pas la même production. Ce module porte donc
@@ -16,7 +15,6 @@ MÊMES sources citées — aucun chiffre nouveau n'est introduit ici.
 
 CE QUI EST RECOPIÉ VERBATIM DE ``dayProfiles.ts`` (avec sa provenance) :
   * :data:`RAMADAN_PLAGES` — les plages grégoriennes 2025→2033 ;
-  * :data:`RAMADAN_FUSEAU_UTC` — le fuseau du mois (UTC+0) ;
   * :data:`FAJR_AVANT_LEVER_MIN` — l'approximation de l'imsak ;
   * :func:`heures_soleil` — l'algorithme NOAA du lever/coucher ;
   * :data:`DEFAUT_LAT` / :data:`DEFAUT_LON` — le repli Casablanca.
@@ -26,22 +24,34 @@ CE QUI EST PROPRE AU MOTEUR, ET POURQUOI :
     mensuels ; il lui faut donc savoir quelle PART de chaque mois tombe dans le
     Ramadan. C'est de l'arithmétique de calendrier sur la table ci-dessus, pas
     une hypothèse de comportement.
-  * :data:`DECALAGE_FUSEAU_VERS_CIVIL_H` — la page AFFICHE des heures dans le
-    fuseau du Ramadan (UTC+0) ; le moteur, lui, INTÈGRE contre une production
-    servie en heure civile marocaine ordinaire (UTC+1, cf.
-    ``apps.parametres.pvgis_profils.DECALAGE_MAROC_H``). Un iftar à 18h30 sur
-    l'horloge du Ramadan tombe donc à 19h30 dans le repère du moteur. Sans
-    cette conversion, la bosse d'iftar serait posée une heure trop tôt, en
-    plein soleil : elle ferait GAGNER de l'autoconsommation qui n'existe pas.
-    C'est une DÉRIVATION du fait déjà établi (le pays repasse à UTC+0), jamais
-    une constante de plus.
+
+CE QUE CE MODULE MODÉLISE — ET CE QU'IL NE MODÉLISE PLUS (20/09/2026)
+--------------------------------------------------------------------
+Il modélise les **HABITUDES** du mois : on ne consomme pas aux mêmes heures
+quand on jeûne (suhoor avant l'aube, rupture au coucher du soleil, veille plus
+tardive). C'est du MÉTIER, et le décret n'y change rien : ces heures sortent du
+calcul solaire NOAA au point GPS du chantier, à la date réelle du mois.
+
+Il ne modélise PLUS un décalage d'**HORLOGE**. Jusqu'au 19/09/2026, le Maroc
+vivait à UTC+1 et repassait à UTC+0 pendant le Ramadan : ce module portait donc
+deux constantes (``RAMADAN_FUSEAU_UTC`` = 0 et
+``DECALAGE_FUSEAU_VERS_CIVIL_H`` = +1 h) pour ramener un iftar lu sur
+« l'horloge du Ramadan » vers le repère civil ordinaire du moteur. Le décret
+n° 2.26.530 relatif à l'heure légale (Bulletin officiel n° 7521 du 29/06/2026),
+qui abroge le décret 2.18.855 de 2018, a supprimé CETTE bascule : depuis le
+20/09/2026 il n'y a plus qu'une seule horloge, UTC+0 toute l'année. Les deux
+constantes sont donc retirées, et le lever/coucher est calculé DIRECTEMENT dans
+le décalage civil du jour de référence — lu dans la base de fuseaux par
+``apps.parametres.pvgis_profils.decalage_maroc_h``, jamais écrit ici. La
+fenêtre sort ainsi du même repère que la production PVGIS, par construction et
+quelle que soit la loi en vigueur à la date calculée.
 """
 from __future__ import annotations
 
 import math
 from datetime import date, timedelta
 
-from apps.parametres.pvgis_profils import DECALAGE_MAROC_H, JOURS_PAR_MOIS
+from apps.parametres.pvgis_profils import JOURS_PAR_MOIS, decalage_maroc_h
 
 # ── Table des plages, recopiée VERBATIM de dayProfiles.RAMADAN_RANGES ────────
 # « Plages grégoriennes du mois de Ramadan, 2025 → 2033 (hégire 1446 → 1455).
@@ -65,15 +75,6 @@ RAMADAN_PLAGES = (
     {'hijri': 1454, 'debut': date(2032, 12, 4), 'fin': date(2033, 1, 1)},
     {'hijri': 1455, 'debut': date(2033, 11, 23), 'fin': date(2033, 12, 22)},
 )
-
-#: Fuseau du mois de Ramadan — le Maroc vit à UTC+1 toute l'année SAUF pendant
-#: le Ramadan, où il repasse à UTC+0 (``courbes_journalieres.NOTE_HORAIRE``,
-#: notre source de vérité dans ce dépôt ; « Time in Morocco », en.wikipedia.org).
-RAMADAN_FUSEAU_UTC = 0
-
-#: De l'horloge du Ramadan (UTC+0) vers le repère du moteur (heure civile
-#: ordinaire UTC+1, celui des formes de production PVGIS). Voir l'en-tête.
-DECALAGE_FUSEAU_VERS_CIVIL_H = DECALAGE_MAROC_H - RAMADAN_FUSEAU_UTC
 
 #: Approximation assumée de l'imsak : lever du soleil MOINS 80 minutes. « Le
 #: fajr vrai est l'aube astronomique (dépression solaire de 18° pour la
@@ -185,7 +186,7 @@ def plage_ramadan_pour(jour):
 
 
 def fenetre_ramadan(jour, lat=None, lon=None):
-    """Fenêtre du Ramadan DANS LE REPÈRE DU MOTEUR (heure civile UTC+1).
+    """Fenêtre du Ramadan DANS LE REPÈRE DU MOTEUR (l'heure civile marocaine).
 
     Renvoie ``{'imsak_h', 'iftar_h', 'jour_reference', 'hijri', 'dedans'}`` en
     heures décimales, ou ``None`` hors table / calcul impossible.
@@ -193,8 +194,11 @@ def fenetre_ramadan(jour, lat=None, lon=None):
     * IFTAR = coucher du soleil NOAA, exact (c'est la définition) ;
     * IMSAK = lever du soleil moins :data:`FAJR_AVANT_LEVER_MIN`, approximation
       assumée et étiquetée ;
-    * les deux sont calculés dans le fuseau du Ramadan (UTC+0) puis RAMENÉS au
-      repère civil ordinaire du moteur (+1 h) — voir l'en-tête du module.
+    * les deux sont calculés DIRECTEMENT dans le décalage civil du jour de
+      référence (``decalage_maroc_h``), donc dans le même repère que les formes
+      de production PVGIS — aucune conversion d'horloge en plus. Il n'y a plus
+      d'« horloge du Ramadan » distincte depuis le 20/09/2026 (décret
+      n° 2.26.530) ; voir l'en-tête du module.
 
     Jour de référence : le jour même s'il tombe dans le Ramadan, sinon le jour
     MÉDIAN de la plage (représentatif du mois plutôt qu'une borne extrême) —
@@ -220,14 +224,14 @@ def fenetre_ramadan(jour, lat=None, lon=None):
     if not (math.isfinite(lat_eff) and math.isfinite(lon_eff)):
         lat_eff, lon_eff = DEFAUT_LAT, DEFAUT_LON
 
-    soleil = heures_soleil(reference, lat_eff, lon_eff, RAMADAN_FUSEAU_UTC)
+    soleil = heures_soleil(reference, lat_eff, lon_eff,
+                           decalage_maroc_h(reference))
     if soleil is None:
         return None
     lever_min, coucher_min = soleil
     return {
-        'imsak_h': ((lever_min - FAJR_AVANT_LEVER_MIN) / 60.0
-                    + DECALAGE_FUSEAU_VERS_CIVIL_H),
-        'iftar_h': coucher_min / 60.0 + DECALAGE_FUSEAU_VERS_CIVIL_H,
+        'imsak_h': (lever_min - FAJR_AVANT_LEVER_MIN) / 60.0,
+        'iftar_h': coucher_min / 60.0,
         'jour_reference': reference.isoformat(),
         'hijri': plage['hijri'],
         'dedans': dedans,

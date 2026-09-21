@@ -356,9 +356,14 @@ def _controler_coherence(section):
 #   (``inputs.location.elevation``) et est stockée AVEC SA SOURCE ; PVGIS muet
 #   ⇒ champ VIDE et mention « non renseignée », jamais un nombre de repli ;
 # * le FUSEAU vient de la base de fuseaux (``zoneinfo``) ou est SAISI —
-#   **JAMAIS dérivé de la longitude**. Le Maroc est à UTC+1 toute l'année
-#   depuis 2018 : une dérivation par la longitude le placerait à UTC+0 et
-#   décalerait d'une heure toute la production horaire.
+#   **JAMAIS dérivé de la longitude**. Un fuseau est une décision POLITIQUE,
+#   pas une coordonnée : le Maroc a vécu à UTC+1 toute l'année de 2018 au
+#   19/09/2026 (une dérivation par la longitude, -7,6° ⇒ UTC+0, se serait
+#   alors trompée d'une heure pleine sur toute la production horaire), puis il
+#   est repassé à UTC+0 le 20/09/2026 — décret n° 2.26.530 relatif à l'heure
+#   légale — sans qu'aucune longitude ne bouge. Seule la base de fuseaux suit
+#   ces décisions ; le calcul ci-dessous (``decalage_utc_minutes``) l'interroge
+#   à la DATE demandée, il ne fige aucun décalage.
 #
 # Dans les deux cas, une valeur SAISIE par la société l'emporte sur la valeur
 # automatique : c'est elle qui connaît son site.
