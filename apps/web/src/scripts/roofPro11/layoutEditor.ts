@@ -51,7 +51,7 @@ import {
 } from './constants';
 import { $, fmt } from './dom';
 import { type Ctx } from './context';
-import { type LngLat } from '../../lib/roof';
+import { type LngLat, pointInPolygon } from '../../lib/roof';
 import { type ProdConfig } from './types';
 import { createLayoutHistory, createValueHistory, createWorkshopHistory, type WorkshopSnapshot } from './layoutHistory';
 // PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
@@ -69,11 +69,22 @@ import {
   distributePanels,
   toUV,
   toENU,
+  rectAt,
+  // CALX112/113 — primitives EXPORTÉES de la lib partagée, recomposées LOCALEMENT (le
+  // fichier n'est pas dans le périmètre de cette lane, cf. LOT2_RECIPE.md) pour valider un
+  // panneau dont le centre ET l'angle propre changent EN MÊME TEMPS (translation, réflexion) —
+  // `checkPanelAt`/`checkPanelRotation` de la lib ne couvrent que l'un OU l'autre séparément.
+  panelCornersUV,
+  polyOverlap,
+  polySeparation,
   type FreeGeom,
   type FreeCheck,
   type FreeLayoutState,
+  type FreePanel,
   type FreeViolation,
   type FreeMargins,
+  type RectUV,
+  type Vec2,
 } from '../../lib/freeLayout';
 import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, quantizeFree } from './freeMode';
 
@@ -181,6 +192,9 @@ export interface LayoutEditor {
   freeAlignSelection: (axis: 'row' | 'col', members: readonly number[]) => boolean;
   /** CAL81 — « distribuer » la sélection libre à écart égal. Tout ou rien. */
   freeDistributeSelection: (members: readonly number[]) => boolean;
+  /** CALX112 — duplique la sélection libre, collée au décalage SAISI (m, le long de l'axe
+   *  des rangées). Un seul pas d'historique pour tout le geste ; tout ou rien. */
+  dupliquerSelection: (members: readonly number[], decalageM: number) => boolean;
 }
 
 /**
@@ -289,6 +303,88 @@ function buildFallbackLayoutDom(container: HTMLElement | null): void {
   container.appendChild(win);
 }
 
+// ═══════════ CALX112/113 — contrôles DURS d'un panneau CANDIDAT (centre ET angle propre
+// changés EN MÊME TEMPS par une translation ou une réflexion) ═══════════
+// `lib/freeLayout.ts` expose `checkRect` (translation, jamais d'angle) et
+// `checkPanelRotation` (angle, jamais de centre) mais aucune primitive ne couvre les DEUX à
+// la fois — et ce fichier n'est PAS dans le périmètre de cette lane (LOT2_RECIPE.md : fichiers
+// CHAUDS, `rp11/layoutEditor.ts`/`freeMode.ts` seulement). Les fonctions ci-dessous
+// RECOMPOSENT donc les trois contraintes DURES (contour / panneau / obstacle — jamais les
+// deux RELÂCHABLES retrait/écart, hors du texte de CALX112/113) à partir des seules
+// primitives déjà EXPORTÉES (`panelCornersUV`, `polyOverlap`, `polySeparation`) plus
+// `pointInPolygon` (contour du toit) — aucune règle métier neuve, seulement de la
+// géométrie publique assemblée différemment.
+
+/** 4 coins (u, v) d'un rectangle AXÉ — équivalent local du `rectCorners` privé de la lib. */
+function cornersOfRect(r: RectUV): Vec2[] {
+  return [
+    [r.u0, r.v0],
+    [r.u1, r.v0],
+    [r.u1, r.v1],
+    [r.u0, r.v1],
+  ];
+}
+
+/** 4 coins (u, v) d'un panneau EXISTANT, à sa position/angle ACTUELS. */
+function panelCornersFor(g: FreeGeom, p: Pick<FreePanel, 'cx' | 'cy' | 'angleDeg'>): Vec2[] {
+  const [cu, cv] = toUV(g, p.cx, p.cy);
+  return p.angleDeg ? panelCornersUV(g, cu, cv, p.angleDeg) : cornersOfRect(rectAt(g, cu, cv));
+}
+
+/** Deux segments [p1,p2] / [p3,p4] se croisent-ils vraiment ? (copie locale de la primitive
+ *  privée `segmentsCross` de la lib — même algèbre, aucune règle neuve). */
+function segCross(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
+  const d = (a: Vec2, b: Vec2, c: Vec2) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const d1 = d(p3, p4, p1);
+  const d2 = d(p3, p4, p2);
+  const d3 = d(p1, p2, p3);
+  const d4 = d(p1, p2, p4);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+/** Un coin du panneau est hors contour, OU une arête du contour traverse le panneau (le cas
+ *  du toit CONCAVE : 4 coins dedans et une encoche qui coupe quand même le rectangle). */
+function panelOutsideOutline(corners: readonly Vec2[], ringUV: readonly Vec2[]): boolean {
+  for (const c of corners) if (!pointInPolygon(c, ringUV as [number, number][])) return true;
+  for (let i = 0; i < corners.length; i++) {
+    const a = corners[i];
+    const b = corners[(i + 1) % corners.length];
+    for (let j = 0, k = ringUV.length - 1; j < ringUV.length; k = j++) {
+      if (segCross(ringUV[k], ringUV[j], a, b)) return true;
+    }
+  }
+  return false;
+}
+
+/** Les trois contraintes DURES d'un panneau candidat (contour / panneaux / obstacles),
+ *  renvoyées comme la liste des `FreeViolation` déjà nommées ailleurs dans ce fichier
+ *  (`violationLabel`) — jamais un refus muet. `extra` = panneaux du MÊME geste déjà
+ *  validés (copies, membres réfléchis) : ils s'excluent aussi entre eux. */
+function hardViolationsFor(
+  g: FreeGeom,
+  ringUV: readonly Vec2[],
+  corners: readonly Vec2[],
+  othersCorners: readonly (readonly Vec2[])[],
+  extra: readonly (readonly Vec2[])[],
+): FreeViolation[] {
+  const violations: FreeViolation[] = [];
+  if (panelOutsideOutline(corners, ringUV)) violations.push('outline');
+  let overlaps = false;
+  for (const oc of othersCorners) if (polyOverlap(corners as Vec2[], oc as Vec2[])) overlaps = true;
+  for (const oc of extra) if (polyOverlap(corners as Vec2[], oc as Vec2[])) overlaps = true;
+  if (overlaps) violations.push('overlap');
+  for (const o of g.obstacles) {
+    if (o.ring.length < 3) continue;
+    const ringO = o.ring.map(([x, y]) => toUV(g, x, y));
+    const d = polyOverlap(corners as Vec2[], ringO) ? 0 : polySeparation(corners as Vec2[], ringO);
+    if (d <= o.clearanceM) {
+      violations.push('obstacle');
+      break;
+    }
+  }
+  return violations;
+}
+
 export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEditor {
   const {
     map,
@@ -352,6 +448,40 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   const freeGapEl = $<HTMLInputElement>('rp9-free-gap');
   const freeAddBtn = $<HTMLButtonElement>('rp9-free-add');
   const freeMeasureEl = $('rp9-free-measure');
+
+  // CALX112 — champ « décalage » + bouton « Dupliquer », créés par le module (même patron)
+  // dans les réglages du placement libre : la duplication n'existe qu'en placement libre.
+  // Le bouton reste INACTIF tant qu'aucun pas > 0 n'est saisi (jamais un décalage deviné).
+  function ensureDuplicateControls(): { input: HTMLInputElement; btn: HTMLButtonElement } | null {
+    const existingBtn = $<HTMLButtonElement>('rp9-free-dup-btn');
+    const existingInput = $<HTMLInputElement>('rp9-free-dup-step');
+    if (existingBtn && existingInput) return { input: existingInput, btn: existingBtn };
+    if (typeof document === 'undefined' || !freeControlsEl) return null;
+    const row = document.createElement('div');
+    row.className = 'rp9-fb-row';
+    const label = document.createElement('label');
+    label.setAttribute('for', 'rp9-free-dup-step');
+    label.textContent = 'Dupliquer, décalage (cm) ';
+    const input = document.createElement('input');
+    input.id = 'rp9-free-dup-step';
+    input.type = 'text';
+    input.inputMode = 'decimal';
+    input.setAttribute('step', 'any');
+    input.size = 5;
+    label.appendChild(input);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'rp9-free-dup-btn';
+    btn.textContent = '⧉ Dupliquer';
+    btn.disabled = true;
+    row.appendChild(label);
+    row.appendChild(btn);
+    freeControlsEl.appendChild(row);
+    return { input, btn };
+  }
+  const dupControls = ensureDuplicateControls();
+  const freeDupStepEl = dupControls?.input ?? null;
+  const freeDupBtn = dupControls?.btn ?? null;
 
   // PV25 — ÉTAT de la sélection multiple. Il vit dans ce module (rien à ajouter au ctx
   // partagé) : c'est une intention d'édition, pas un état de design.
@@ -813,6 +943,58 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       return false;
     }
     if (layoutNoteEl) layoutNoteEl.textContent = `Distribué — ${fmt(members.length)} panneaux (placement libre).`;
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /**
+   * CALX112 — duplique la sélection libre et colle la copie au DÉCALAGE saisi (mètres, le
+   * long de l'axe des rangées `u` — le même axe que la trame N×M des obstacles, CAL73). Un
+   * seul pas d'historique pour tout le geste (une photo AVANT, un seul commit ensuite) ;
+   * TOUT OU RIEN : si l'image d'UN SEUL membre sortirait du posable ou chevaucherait un
+   * module existant (original ou copie déjà validée dans ce même geste), rien n'est copié.
+   */
+  function dupliquerSelection(members: readonly number[], decalageM: number): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g) return false;
+    const src = [...new Set(members)].filter((i) => Number.isInteger(i) && i >= 0 && i < st.panels.length);
+    if (!src.length || !Number.isFinite(decalageM) || decalageM === 0) return false;
+    recordFreeHistory();
+    const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
+    const othersCorners = st.panels.map((p) => panelCornersFor(g, p));
+    const placed: Vec2[][] = [];
+    const startIdx = st.panels.length;
+    const news: FreePanel[] = [];
+    for (const i of src) {
+      const p = st.panels[i];
+      const [u, v] = toUV(g, p.cx, p.cy);
+      const nu = u + decalageM;
+      const angle = p.angleDeg ?? 0;
+      const corners = panelCornersUV(g, nu, v, angle);
+      const violations = hardViolationsFor(g, ringUV, corners, othersCorners, placed);
+      if (violations.length) {
+        dropFreeHistory();
+        flashRefusal(src);
+        if (layoutNoteEl) {
+          layoutNoteEl.textContent = `Duplication refusée : ${violations.map(violationLabel).join(', ')} — rien n’a été copié.`;
+        }
+        renderLayoutPanel();
+        return false;
+      }
+      placed.push(corners);
+      const [cx, cy] = toENU(g, nu, v);
+      const copy: FreePanel = { cx, cy };
+      if (p.angleDeg) copy.angleDeg = p.angleDeg;
+      if (p.face) copy.face = p.face;
+      news.push(copy);
+    }
+    st.panels.push(...news);
+    setSelection(news.map((_, k) => startIdx + k)); // les COPIES restent sélectionnées
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = `Dupliqué — ${fmt(news.length)} panneaux copiés à ${fmt1(Math.abs(decalageM))} m (${fmt(st.panels.length)} posés).`;
+    }
     renderCustomLayout();
     renderLayoutPanel();
     return true;
@@ -1283,6 +1465,12 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (freeGapEl && document.activeElement !== freeGapEl) {
       freeGapEl.value = String(Math.round(margins().gapM * 100));
     }
+    // CALX112 — « Dupliquer » reste INACTIF tant qu'aucun pas > 0 n'est saisi.
+    if (freeDupBtn) {
+      const raw = (freeDupStepEl?.value ?? '').toString().trim().replace(',', '.');
+      const step = raw ? Number(raw) : NaN;
+      freeDupBtn.disabled = !on || !Number.isFinite(step) || step <= 0;
+    }
   }
 
   /** Lit un champ de marge (cm → m). Règle fondateur : on n'IMPOSE aucun arrondi et on ne
@@ -1664,6 +1852,23 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
     syncFreeInputs();
     renderLayoutPanel();
+  });
+
+  // CALX112 — lit le décalage SAISI (cm → m, même unité que les marges) et duplique la
+  // sélection courante. Le bouton reste inactif tant qu'aucun pas > 0 n'est saisi (voir
+  // `syncFreeInputs`) — un clic sans pas valide ne fait donc jamais rien de deviné.
+  freeDupStepEl?.addEventListener('input', syncFreeInputs);
+  freeDupBtn?.addEventListener('click', () => {
+    if (!freeActive() || !freeDupStepEl) return;
+    const raw = (freeDupStepEl.value ?? '').toString().trim().replace(',', '.');
+    const stepM = raw ? Number(raw) / 100 : NaN;
+    if (!Number.isFinite(stepM) || stepM <= 0) return;
+    const members = selection.length ? selection : [];
+    if (!members.length) {
+      if (layoutNoteEl) layoutNoteEl.textContent = 'Sélectionnez d’abord les panneaux à dupliquer.';
+      return;
+    }
+    dupliquerSelection(members, stepM);
   });
 
   // PV26 — RACCOURCIS clavier, actifs SEULEMENT en mode disposition (sinon on volerait
@@ -2481,6 +2686,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     freeSnapCandidate,
     freeAlignSelection,
     freeDistributeSelection,
+    dupliquerSelection,
   };
 }
 
