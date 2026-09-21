@@ -40,8 +40,12 @@ FR : Bonjour M. [Prénom], je suis [Conseiller] de TAQINOR Solutions. Vous venez
 DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من TAQINOR Solutions. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
 
 ### appel_ouverture — J0, script d'ouverture de l'appel n° 1 (A1)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR Solutions. Vous venez de remplir notre formulaire pour le solaire. Je vous dérange deux minutes ?
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR Solutions. عمرتو دابا الفورم ديالنا على الطاقة الشمسية. نقدر ناخد منكم جوج دقايق؟
+CAD109 (21/09/2026) — loi 31-08 art. 51 : un démarchage téléphonique doit indiquer explicitement l'identité ET le
+caractère commercial de l'intervention (sanctionné par l'art. 180) ; loi 09-08 art. 5 §3 + décret 2-09-165 art. 34 :
+pour des données non collectées auprès de la personne (Meta, Odoo), l'information sur leur origine peut être donnée
+oralement. La « confirmation écrite de l'offre » qu'exige l'art. 51 est déjà assurée par le devis envoyé.
+FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR Solutions — c'est un appel commercial. Vous venez de remplir notre formulaire pour le solaire ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux minutes ?
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR Solutions — هادا اتصال تجاري. عمرتو دابا الفورم ديالنا على الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟
 
 ### repondeur — appels 2 et 4, message sur répondeur (R1)
 FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je vous appelle au sujet de votre demande solaire. Je vous envoie un message WhatsApp, répondez-y quand vous voulez. Bonne journée.
@@ -62,8 +66,10 @@ FR : Bonjour M. [Prénom], c'est [Conseiller] de TAQINOR. Je vous ai laissé deu
 DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. صيفطت ليكم جوج رسائل وما بغيتش نثقل عليكم. غير قولوا ليا واش مشروع الطاقة الشمسية مازال كيهمكم، وفوقاش نقدر نعيط ليكم. نهاركم مبروك.
 
 ### appel_dimanche — 5e appel, le dimanche 16 h–19 h, pour les injoignables (A3)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟
+CAD109 — même mention que `appel_ouverture` (loi 31-08 art. 51 + loi 09-08 art. 5 §3), sur le second script d'appel
+EN DIRECT (`repondeur`/`vocal_j3` restent des scripts de répondeur/vocal, pas des ouvertures de conversation).
+FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR — c'est un appel commercial. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR — هادا اتصال تجاري. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟
 
 ### je_classe_j7 — J7, WhatsApp « je classe ? » (M4)
 CAD66 (21/09/2026) — « dans trois jours » promettait une clôture à J10 ; le moteur clôture réellement à J14

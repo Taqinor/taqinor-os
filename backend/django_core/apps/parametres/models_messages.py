@@ -59,16 +59,28 @@ MESSAGE_TEMPLATE_DEFAULTS = {
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'identite':
         "Bonjour M. {prenom}, je suis {conseiller} de TAQINOR Solutions. Vous venez de nous laisser une demande pour le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+    # CAD109 (21/09/2026) — loi 31-08 art. 51 : un démarchage téléphonique
+    # doit indiquer explicitement l'identité ET le caractère commercial de
+    # l'intervention (sanctionné par l'art. 180) ; loi 09-08 art. 5 §3 +
+    # décret 2-09-165 art. 34 : pour des données non collectées auprès de la
+    # personne (Meta, Odoo), l'information sur leur origine peut être donnée
+    # oralement. La « confirmation écrite de l'offre » qu'exige l'art. 51
+    # est déjà assurée par le devis envoyé — une phrase courte suffit ici,
+    # pas un pavé dans le WhatsApp.
     'appel_ouverture':
-        "Bonjour M. {prenom}, {conseiller} de TAQINOR Solutions. Vous venez de remplir notre formulaire pour le solaire. Je vous dérange deux minutes ?",
+        "Bonjour M. {prenom}, {conseiller} de TAQINOR Solutions — c'est un appel commercial. Vous venez de remplir notre formulaire pour le solaire ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux minutes ?",
     'repondeur':
         "Bonjour M. {prenom}, {conseiller} de TAQINOR. Je vous appelle au sujet de votre demande solaire. Je vous envoie un message WhatsApp, répondez-y quand vous voulez. Bonne journée.",
     'valeur_j1':
         "Bonjour M. {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
     'vocal_j3':
         "Bonjour M. {prenom}, c'est {conseiller} de TAQINOR. Je vous ai laissé deux messages, je ne veux pas insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. Bonne journée.",
+    # CAD109 — même mention que `appel_ouverture` (loi 31-08 art. 51 +
+    # loi 09-08 art. 5 §3), sur le second script d'appel EN DIRECT
+    # (`repondeur`/`vocal_j3` restent des scripts de répondeur/vocal, pas des
+    # ouvertures de conversation).
     'appel_dimanche':
-        "Bonjour M. {prenom}, {conseiller} de TAQINOR. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?",
+        "Bonjour M. {prenom}, {conseiller} de TAQINOR — c'est un appel commercial. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?",
     # CAD66 (21/09/2026) — « dans trois jours » promettait une clôture à J10 ;
     # le moteur clôture réellement à J14 (`cloture_j14`), donc « dans une
     # semaine » depuis J7. Aucun barreau déplacé, seul le mot change.
@@ -160,7 +172,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'identite':
         "السلام عليكم السي {prenom}، أنا {conseiller} من TAQINOR Solutions. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
     'appel_ouverture':
-        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR Solutions. عمرتو دابا الفورم ديالنا على الطاقة الشمسية. نقدر ناخد منكم جوج دقايق؟",
+        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR Solutions — هادا اتصال تجاري. عمرتو دابا الفورم ديالنا على الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟",
     'repondeur':
         "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.",
     'valeur_j1':
@@ -168,7 +180,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'vocal_j3':
         "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. صيفطت ليكم جوج رسائل وما بغيتش نثقل عليكم. غير قولوا ليا واش مشروع الطاقة الشمسية مازال كيهمكم، وفوقاش نقدر نعيط ليكم. نهاركم مبروك.",
     'appel_dimanche':
-        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟",
+        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR — هادا اتصال تجاري. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟",
     'je_classe_j7':
         "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول.",
     'cloture_j14':
