@@ -33,6 +33,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.roles.models import Role
 from apps.stock.models import FactureFournisseur, Fournisseur
+from core.test_utils import WideTeardownTimeoutMixin
 
 User = get_user_model()
 
@@ -149,7 +150,7 @@ class TestAUD208LeVerrouEstPose(Zacc9Base):
 
 
 class TestAUD208DeuxPaiementsConcurrentsNeDepassentPlusLeSolde(
-        TransactionTestCase):
+        WideTeardownTimeoutMixin, TransactionTestCase):
     """LE test : deux VRAIS threads, deux connexions DB, deux paiements sur
     la MÊME facture, chacun VALIDE isolément (< solde dû) mais dont la SOMME
     le dépasse.
@@ -167,6 +168,22 @@ class TestAUD208DeuxPaiementsConcurrentsNeDepassentPlusLeSolde(
     départ (120), chacun poste 70 (< 120 isolément), et les DEUX passent :
     140 réglés sur une facture de 120.
     """
+
+    # SOLMVP (2026-09-21) — sans ``available_apps``, le TRUNCATE de teardown
+    # (``allow_cascade=False`` par défaut) échoue désormais sur les tables
+    # des apps parquées (``conversation_ai_appelcommercial`` référence
+    # ``crm_lead`` mais n'a plus de modèle Django pour entrer dans la liste
+    # TRUNCATE). Même patron que ``core/test_utils.WideTeardownTimeoutMixin``
+    # + ``apps/crm/tests_webhook.py::QW10IndexedDedupAndConcurrencyTests`` :
+    # ``available_apps`` force ``allow_cascade=True`` (CASCADE ratisse les
+    # tables dépendantes sans avoir besoin de les lister), et le mixin
+    # élargit le ``statement_timeout`` le temps de ce TRUNCATE plus large.
+    available_apps = [
+        'django.contrib.contenttypes', 'django.contrib.auth',
+        'django.contrib.sessions', 'core', 'authentication',
+        'apps.roles', 'apps.parametres', 'apps.customfields',
+        'apps.records', 'apps.reporting', 'apps.audit', 'apps.stock',
+    ]
 
     def setUp(self):
         self.company = _company('zacc9-aud208-co')

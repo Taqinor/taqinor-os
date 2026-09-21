@@ -48,59 +48,34 @@ HISTORICAL_TARGETS = {
 # d'en-têtes de dataimport : les deux ensembles ne coïncident plus, et c'est le
 # comportement voulu du registre réparti.
 #
-#   AOF30/AOF165/AOF169 — 'obstacles', 'chaines', 'avis' : déclarées par
-#   ``apps/ao/platform.py`` et servies par ``apps/ao/imports.py``
-#   (``FIELD_MAPS_AO``, ses propres en-têtes et ses propres validations
-#   géométriques). Les deux premières ouvrent l'import d'un relevé de toiture
-#   saisi sur tableur, hors ligne, par un technicien sans tablette ; la
-#   troisième importe les AVIS de marchés publiés (l'amont du tunnel AO).
-#   Aucune n'est un import générique dataimport : leur écriture passe par les
-#   modèles AO, pas par ``dataimport.services``.
-#
-#   VAO28 — 'avis_veille' : déclarée par ``apps/veille_ao/platform.py`` et
-#   servie par ``apps/veille_ao/imports.py`` (``FIELD_MAPS_VEILLE``, ses
-#   propres en-têtes et ses propres validations de dates/montants). Elle
-#   alimente le SAS de la veille (un humain trie), là où 'avis' (déclarée par
-#   son app propriétaire ci-dessous) crée directement des AFFAIRES : les deux
-#   cibles coexistent délibérément et ne doivent jamais fusionner — un
-#   fichier d'agrégateur de 400 lignes ouvrirait sinon 400 dossiers dont 380
-#   seraient du bruit.
-#
-#   SOLMVP20 (2026-09-21) — 'vehicules', 'contrats', 'dossiers_rh',
-#   'eleves_education', 'scm_evenement_demande' : leurs mappings d'en-têtes et
-#   leur écriture déléguée ont été RETIRÉS de ``dataimport`` (leurs apps
-#   propriétaires — flotte/contrats/rh/education/scm — sont PARQUÉES, Groupe
-#   SOLMVP). Ces apps existent encore aujourd'hui et déclarent toujours la
-#   cible dans leur PROPRE ``platform.py`` (elles n'ont PAS de lecteur propre
-#   pour autant, contrairement à ao/veille_ao ci-dessus) : la cible reste donc
-#   dans ``TARGETS`` via le registre, mais ``verifier_cible_importable`` la
-#   refuse désormais comme « servie ailleurs ». Ce groupe disparaîtra
-#   ENTIÈREMENT de ``TARGETS`` quand ces apps seront coquillées (SOLMVP31/33/
-#   34/36) — leur ``platform.py`` disparaît alors avec elles, rien à faire ici
-#   à ce moment-là.
-REGISTRY_ONLY_TARGETS = {
-    'obstacles', 'chaines', 'avis', 'avis_veille',
-    'vehicules', 'contrats', 'dossiers_rh',
-    'eleves_education', 'scm_evenement_demande',
-}
+# SOLMVP-sweep (2026-09-21) — vide aujourd'hui. Chaque cible qui vivait ici
+# (AOF30/AOF165/AOF169 'obstacles'/'chaines'/'avis' via apps/ao ; VAO28
+# 'avis_veille' via apps/veille_ao ; SOLMVP20 'vehicules'/'contrats'/
+# 'dossiers_rh'/'eleves_education'/'scm_evenement_demande' via flotte/
+# contrats/rh/education/scm) appartenait à une app QUI EST DÉSORMAIS PARQUÉE
+# (Groupe SOLMVP, MVP solaire) — exactement la disparition « à ce moment-là »
+# que la note SOLMVP20 anticipait déjà pour son propre groupe. Une app
+# parquée n'a plus de ``platform.py`` du tout, donc plus aucune de ces cibles
+# ne résout via le registre (vérifié en shell Django : ``TARGETS`` == les 7
+# ``HISTORICAL_TARGETS`` ci-dessus, rien de plus). Laissé en ``set()`` plutôt
+# que supprimé : la prochaine cible à lecteur propre d'une app KEPT le
+# retrouve prêt à l'emploi, sans redécouvrir le motif.
+REGISTRY_ONLY_TARGETS = set()
 
 # Référence de non-régression du set RÉSOLU par ``_LazyTargets`` : les cibles
 # FIELD_MAPS de dataimport ∪ les cibles déclarées par une app à lecteur propre.
 EXPECTED_TARGETS = HISTORICAL_TARGETS | REGISTRY_ONLY_TARGETS
 
 # Cible → app propriétaire attendue (déclarante dans son platform.py).
+# SOLMVP-sweep (2026-09-21) — les entrées REGISTRY_ONLY_TARGETS (flotte/
+# contrats/rh/education/scm/ao/veille_ao) sont retirées : ces apps sont
+# parquées, leur ``platform.py`` a disparu avec elles (cf. REGISTRY_ONLY_
+# TARGETS ci-dessus).
 TARGET_OWNER_MODULE = {
     'leads': 'crm', 'clients': 'crm',
     'products': 'stock', 'fournisseurs': 'stock',
     'equipements': 'sav',
-    'vehicules': 'flotte',
-    'contrats': 'contrats',
-    'dossiers_rh': 'rh',
-    'eleves_education': 'education',
-    'scm_evenement_demande': 'scm',
     'devis': 'ventes', 'factures': 'ventes',
-    'obstacles': 'ao', 'chaines': 'ao', 'avis': 'ao',
-    'avis_veille': 'veille_ao',
 }
 
 

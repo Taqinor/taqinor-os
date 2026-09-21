@@ -2,12 +2,22 @@
 
 Couvre : (1) non-régression stricte — le ``set`` résolu par la vue paresseuse
 ``_LazyAllowedTargets`` est EXACTEMENT identique aux couples historiques
-littéraux (19 + les pilotes du kit ``core.documents`` : SCA34
-``installations.ordresoustraitance``, SCA36 ``installations.demandeachat``) ;
-(2) l'API existante (``in``, itération,
+littéraux ; (2) l'API existante (``in``, itération,
 ``resolve_target``) se comporte à l'identique (DROP-IN replacement) ; (3) une
 nouvelle cible déclarée UNIQUEMENT dans un manifeste fictif apparaît dans
 ``ALLOWED_TARGETS`` sans toucher ``apps/records/models.py``.
+
+SOLMVP (2026-09-21) — le registre plateforme est GÉNÉRIQUE (``core.platform``
+scanne ``apps/<x>/platform.py``) : les 47 apps parquées (Groupe SOLMVP, MVP
+solaire) ont perdu leur ``platform.py`` avec le reste de leur code, donc
+toutes leurs cibles ``record_targets`` ont disparu de la résolution SANS
+qu'aucune ligne d'ici n'ait besoin d'être touchée à la main — sauf la
+référence de non-régression ci-dessous, qui doit suivre la RÉALITÉ. Deux
+cibles ``installations`` (``ordresoustraitance`` SCA34, ``rfq`` NTP2P44) sont
+également retirées : SOLMVP13 a désinscrit leurs sous-fonctions (écrans +
+endpoints, modèles conservés) d'``apps/installations/platform.py`` — le
+chatter qu'elles ciblaient n'a donc plus de site d'appel. Vérifié en direct
+(``ALLOWED_TARGETS`` en shell Django) : 15 couples résolvent aujourd'hui.
 """
 from unittest import mock
 
@@ -17,10 +27,24 @@ from apps.records.models import ALLOWED_TARGETS
 from apps.records.serializers import resolve_target
 from authentication.models import Company
 
-# Les 19 couples historiques (set littéral d'avant ARC30) + les pilotes du kit
-# core.documents (installations.ordresoustraitance SCA34,
-# installations.demandeachat SCA36) — la référence de non-régression. Toute
-# divergence ici = régression réelle du registre.
+# Référence de non-régression : les couples RÉELLEMENT résolus aujourd'hui.
+# Toute divergence ici = régression réelle du registre.
+#
+# SOLMVP (2026-09-21) — retirés d'ici (plus déclarés par aucun
+# ``platform.py``, vérifié en shell Django) : les cibles des 47 apps
+# parquées qui portaient un manifeste (rh.dossieremploye, qhse.relevecontrole,
+# qhse.nonconformite, kb.kbarticle, contrats.contrat, flotte.vehicule,
+# gestion_projet.projet, ao.appeloffre, btp_chantier.* [reservechantier,
+# journalchantier, rfireponse, rfi, visadocument, avenantchantier,
+# decomptegeneral], innovation.idee, assurances.* [declarationsinistre,
+# policeassurance, attestationassurance], credit.* [limitecredit,
+# derogationcredit], esg.documentpolitiqueesg, veille_ao.avismarche,
+# transport.* [ordretransport, etapetransport, reservereception],
+# douane.dossierexport, mrp.ordrefabrication) ; ET les deux pilotes
+# ``installations`` dont SOLMVP13 a désinscrit la sous-fonction
+# d'``apps/installations/platform.py`` (écrans + endpoints retirés, modèles
+# conservés) : ``installations.ordresoustraitance`` (SCA34) et
+# ``installations.rfq`` (NTP2P44).
 HISTORICAL_TARGETS = {
     ('crm', 'lead'),
     ('crm', 'client'),
@@ -36,84 +60,18 @@ HISTORICAL_TARGETS = {
     ('outillage', 'outillage'),
     ('stock', 'produit'),
     ('stock', 'fournisseur'),
-    ('rh', 'dossieremploye'),
-    ('qhse', 'relevecontrole'),
-    ('qhse', 'nonconformite'),
-    ('kb', 'kbarticle'),
     ('ged', 'document'),
-    ('contrats', 'contrat'),
-    ('flotte', 'vehicule'),
-    ('gestion_projet', 'projet'),
-    ('ao', 'appeloffre'),
-    # SCA34 — pilote 1 du kit core.documents (chatter câblé sur son viewset).
-    ('installations', 'ordresoustraitance'),
     # SCA36 — pilote 3 du kit core.documents (dégradation gracieuse sans
     # totaux ; chatter câblé sur son viewset).
     ('installations', 'demandeachat'),
-    # NTCON — vertical BTP/Chantier : pièces jointes photos via
-    # ``records.Attachment`` (déclarées dans ``apps/btp_chantier/platform.py``).
-    ('btp_chantier', 'reservechantier'),
-    ('btp_chantier', 'journalchantier'),
-    ('btp_chantier', 'rfireponse'),
-    # NTIDE1 — boîte à idées : l'historique/tags d'une idée passe par le
-    # chatter/tag générique records (ARC8/FG9), pas un modèle *Activity maison.
-    ('innovation', 'idee'),
-    # NTASS — le registre assurances (police/sinistre/attestation) journalise
-    # ses transitions via le chatter générique records (ARC8), ciblé par les
-    # manifestes ``apps/assurances/platform.py``.
-    ('assurances', 'declarationsinistre'),
-    ('assurances', 'policeassurance'),
-    ('assurances', 'attestationassurance'),
-    # NTCRD — limites & dérogations de crédit journalisées via le chatter
-    # records (ARC8), ciblées par ``apps/credit/platform.py``.
-    ('credit', 'limitecredit'),
-    ('credit', 'derogationcredit'),
     # NTADM47 — l'entité (hiérarchie intra-tenant) journalise ses transitions
     # (renommage/re-parentage) via le chatter générique records (ARC8), ciblée
     # par ``apps/entites/platform.py``.
     ('entites', 'entite'),
-    # NTESG13 — dépôt des documents de politique RSE (charte éthique,
-    # politique environnementale…) via ``records.Attachment``, ciblé par
-    # ``apps/esg/platform.py``.
-    ('esg', 'documentpolitiqueesg'),
-    # VAO13/VAO14 — l'avis de veille journalise CHAQUE changement de statut
-    # (qui, quand, pourquoi) via le chatter générique records (ARC8) : jamais
-    # une classe ``*Activity`` maison. Ciblé par ``apps/veille_ao/platform.py``.
-    ('veille_ao', 'avismarche'),
-    # ARC28 (2026-08-14) — module Transport : chatter générique sur
-    # ``OrdreTransport`` (NTLOG8), photos/signatures de preuve de livraison
-    # sur ``EtapeTransport`` (NTLOG9), photos de réserve sur
-    # ``ReserveReception`` (NTLOG18) — via ``records.Attachment``/
-    # ``records.Activity`` génériques, ciblé par ``apps/transport/platform.py``.
-    ('transport', 'ordretransport'),
-    ('transport', 'etapetransport'),
-    ('transport', 'reservereception'),
-    # NTLOG49 (14/08/2026) — chatter/follower/tag génériques sur le dossier
-    # d'export douanier, ciblé par ``apps/douane/platform.py``. Le volet
-    # IMPORT n'est PAS déclaré : NTLOG10 reste BLOCKED (GARDE WIR80).
-    ('douane', 'dossierexport'),
-    # NTMFG38 (14/08/2026) — chatter/follower/tag generiques sur l'ordre de
-    # fabrication, cible par apps/mrp/platform.py.
-    ('mrp', 'ordrefabrication'),
-    # NTCON32 — chatter GÉNÉRIQUE (journal ancien→nouveau statut + notes
-    # manuelles) sur les quatre objets BTP qui portent un cycle de vie
-    # décisionnel, ciblé par ``apps/btp_chantier/platform.py``. Les trois
-    # autres cibles BTP (reservechantier/journalchantier/rfireponse, pièces
-    # jointes) étaient déjà déclarées.
-    ('btp_chantier', 'rfi'),
-    ('btp_chantier', 'visadocument'),
-    ('btp_chantier', 'avenantchantier'),
-    ('btp_chantier', 'decomptegeneral'),
     # CAL26 — chatter GÉNÉRIQUE (journal ancien→nouveau + notes manuelles) sur
     # le calepinage, ciblé par ``apps/calepinage/platform.py``
     # (``record_targets``). Le module n'a qu'UN objet chatté : la conception.
     ('calepinage', 'calepinage'),
-    # NTP2P44 — la RFQ (demande de prix multi-fournisseurs) gagne le chatter
-    # générique (historique ancien→nouveau statut + notes manuelles) via
-    # ``ChatterViewSetMixin`` sur ``RFQViewSet``, ciblé par
-    # ``apps/installations/platform.py`` — jamais un modèle ``RFQActivity``
-    # maison.
-    ('installations', 'rfq'),
 }
 
 
@@ -128,12 +86,10 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        # 33 historiques +2 supply/retail (vague 1) +1 PV45 (regulatorydossier)
-        # +1 douane.dossierexport (NTLOG49, vague 2 supply)
-        # +4 chatter BTP NTCON32 (rfi/visadocument/avenantchantier/
-        # decomptegeneral) +1 calepinage.calepinage (CAL26).
-        # decomptegeneral) +1 installations.rfq (NTP2P44).
-        self.assertEqual(len(ALLOWED_TARGETS), 45)
+        # SOLMVP (2026-09-21) — 15 couples résolvent aujourd'hui (47 apps
+        # parquées + 2 sous-fonctions installations désinscrites : voir le
+        # commentaire de HISTORICAL_TARGETS ci-dessus pour le détail).
+        self.assertEqual(len(ALLOWED_TARGETS), 15)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:

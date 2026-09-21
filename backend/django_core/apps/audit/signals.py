@@ -52,40 +52,13 @@ TRACKED_MODELS = [
     # FG15 — sécurité : émission/révocation de clés API et de webhooks.
     ('publicapi', 'ApiKey'),
     ('publicapi', 'Webhook'),
-    # XPAI23 — piste d'audit paie : constantes sociales/barèmes/rubriques/
-    # profils/avances/arrêts/périodes sont des écritures « argent » (FG15).
-    ('paie', 'ParametrePaie'),
-    ('paie', 'BaremeIR'),
-    ('paie', 'Rubrique'),
-    ('paie', 'ProfilPaie'),
-    ('paie', 'RubriqueEmploye'),
-    ('paie', 'AvanceSalarie'),
-    ('paie', 'SaisieArret'),
-    ('paie', 'PeriodePaie'),
-    # VX241(b) — KbArticle (parent est on_delete=CASCADE : une suppression
-    # cascade tout un sous-arbre sans une seule ligne au Journal aujourd'hui)
-    # et Timesheet (heures facturables d'un projet) n'étaient dans AUCUN des
-    # deux mécanismes de traçabilité (ni TRACKED_MODELS, ni un destroy() gardé
-    # dédié) — post_save/post_delete génériques suffisent ici, pas de garde
-    # d'usage particulier à écrire.
-    ('kb', 'KbArticle'),
-    ('gestion_projet', 'Timesheet'),
-    # AUD303 — btp_chantier était entièrement absent de TRACKED_MODELS malgré
-    # des DELETE désormais gardés (perform_destroy) sur des objets à valeur
-    # contractuelle : réserve levée/contestée, visa décidé, avenant décidé
-    # (potentiellement facturé). Toute suppression restant autorisée (statut
-    # non verrouillé) doit au moins laisser une trace au Journal.
-    ('btp_chantier', 'ReserveChantier'),
-    ('btp_chantier', 'VisaDocument'),
-    ('btp_chantier', 'AvenantChantier'),
-    # AUD609 — PrixContractuel : accord tarifaire NÉGOCIÉ client×produit, qui
-    # prime sur toute liste de prix. Sa suppression ne laissait AUCUNE trace :
-    # ni la vue (aucun destroy() gardé) ni ce mécanisme générique ne la
-    # journalisaient, alors que sa CRÉATION porte déjà un verrou d'auteur
-    # (NTCPQ37). Effacer un prix négocié fait silencieusement remonter le
-    # client au tarif catalogue — la trace de « qui l'a retiré, et quand » est
-    # exactement ce qui manquait.
-    ('cpq', 'PrixContractuel'),
+    # SOLMVP (2026-09-21) — paie/kb/gestion_projet/btp_chantier/cpq/rh sont
+    # des apps PARQUÉES (Groupe SOLMVP, MVP solaire) : ``models.py`` ne porte
+    # plus aucune classe, donc leurs entrées ne résolvent plus
+    # (``test_all_tracked_models_resolve``). Retirées d'ici comme leurs
+    # modèles ; leurs lignes AuditLog historiques restent intactes (aucune
+    # table touchée), et l'entrée reviendrait avec le module au retour
+    # (docs/parked-modules.md).
     # AUD813 — le changelog produit est GLOBAL (aucune FK société) et republié
     # sans authentification par ``apps.publicapi`` : son écriture (désormais
     # réservée au superutilisateur) doit laisser une trace au Journal.
@@ -99,16 +72,6 @@ TRACKED_MODELS = [
     ('core', 'ConsentRecord'),
     ('core', 'DataSubjectRequest'),
     ('core', 'RegistreTraitement'),
-    # AUD720 — `rh.Pointage` : `update()` écrit depuis XRH11 une
-    # `CorrectionPointage` IMMUABLE par champ corrigé, mais le DELETE générique
-    # n'était gardé par aucun `destroy()` — et `CorrectionPointage.pointage`
-    # étant en CASCADE, supprimer le pointage effaçait AUSSI les corrections
-    # déjà tracées. Sans soft-delete et absent d'ici, il ne restait
-    # littéralement aucune trace d'une heure travaillée effacée (pièce
-    # centrale d'un litige prud'homal). Le `destroy()` exige désormais un motif
-    # et journalise sur le dossier ; cette entrée ajoute la ligne AuditLog
-    # générique, hors de portée de la cascade.
-    ('rh', 'Pointage'),
     # CHT25 — RegulatoryDossier (dossier réglementaire 82-21/ONEE/ANRE, côté
     # ventes) n'avait AUCUN historique daté de ses transitions — contrairement
     # au chantier, tracé par son chatter. Dépôt, complément demandé,
