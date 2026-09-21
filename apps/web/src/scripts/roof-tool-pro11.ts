@@ -1069,7 +1069,17 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const graphs = createGraphs(ctx);
   const prefill = createPrefill(ctx);
   const prefillLead = prefill.prefillLead;
-  const zones = createZones(ctx);
+  // CALX97 câblage — crochets d'écran de `createZones` : sans eux, une rotation, un
+  // redimensionnement ou une duplication de pan changeait le document sans que la carte
+  // bouge (il fallait un autre geste pour la rafraîchir). Wrappers PARESSEUX : les
+  // bindings `redrawTrace`/`redrawObstacles`/`recalc` sont déclarés plus bas et ne sont
+  // lus qu'à l'exécution du crochet (même patron que `createConsumption` ci-dessous).
+  const zones = createZones(ctx, {
+    redrawTrace: () => redrawTrace(), // CALX97 câblage
+    redrawObstacles: () => redrawObstacles(), // CALX97 câblage
+    recalc: () => recalc(), // CALX97 câblage
+    setStatus: (msg: string) => setStatus(msg), // CALX97 câblage
+  });
   const liveActiveResult = zones.liveActiveResult;
   const snapshotActiveAreaResult = zones.snapshotActiveAreaResult;
   const snapshotActiveAreaGeometry = zones.snapshotActiveAreaGeometry;
