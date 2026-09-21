@@ -85,6 +85,10 @@ from . import depuis_lead as _depuis_lead_action  # noqa: F401
 # CALX62 — même patron : rattache ``meteo-fichier`` (le dépôt d'une série
 # météo horaire de la société, lue par ``services/meteo_fichier.py``).
 from . import meteo_fichier as _meteo_fichier_action  # noqa: F401
+# CALX228 — même patron : rattache ``troncons`` (le métré et la chute tronçon
+# par tronçon, contrat CALX203, servi par ``services/troncons.py``). Lecture
+# PURE : la porte n'écrit rien.
+from . import troncons as _troncons_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -106,6 +110,7 @@ MODULES_RATTACHES = (
     'cycle',  # CALX35
     'depuis_lead',  # CALX47
     'meteo_fichier',  # CALX62
+    'troncons',  # CALX228
 )
 
 __all__ = ['MODULES_RATTACHES']

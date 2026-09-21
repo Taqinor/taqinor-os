@@ -69,6 +69,7 @@ __all__ = [
     'CLE_FIL_DEROGATIONS',  # CALX215
     'CLE_BORDEREAU', 'CLE_CORRESPONDANCES',
     'CLE_REGLE_STRUCTURE',  # CALX246
+    'CLE_TRONCONS',  # CALX228
     'CLE_POLYSTRING',  # CALX206
     'CLE_MICRO_ONDULEURS',  # CALX209
     'CHAMP_OPT_V_OUT', 'CHAMP_OPT_MODULES_MAX', 'CLE_OPT_V_OUT',
@@ -943,7 +944,12 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     # publie tel quel (même charge utile que ``GET troncons/``).
     from .troncons import troncons_de_la_conception
 
-    troncons = troncons_de_la_conception(conception, document, norme)
+    troncons = troncons_de_la_conception(
+        conception, document, norme,
+        # CALX228 — le rattachement des BRANCHES de micro-onduleurs aux
+        # tronçons AC : sans lui, chaque départ prendrait le courant du côté.
+        (micro['bloc'] or {}).get('branches') or ()
+        if micro['bloc'] is not None else ())
 
     # CALX246/230/232/247 — LE BORDEREAU. Il descend des mêmes objets purs que
     # les câbles ci-dessus (``cables['noyau']``), des coffrets RÉELLEMENT
@@ -1069,6 +1075,11 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # câble dimensionné, par coffret posé, avec sa référence d'article
         # quand la société en a posé une. AUCUN prix (D-CALX 5).
         CLE_BORDEREAU: bordereau['lignes'],
+        # CALX228 — le CHEMINEMENT mesuré : la MÊME charge utile que
+        # ``GET troncons/`` (contrat CALX203), ``null`` tant qu'aucun
+        # cheminement n'est tracé — jamais une liste vide, qui se lirait
+        # « mesuré, et il n'y a rien ».
+        CLE_TRONCONS: (troncons if troncons['troncons'] else None),
         # CAL132 — la check-list d'organes (retenus / ajoutés / écartés).
         # CALX209/CALX210 — les ``QAC.N`` des branches de micro-onduleurs s'y
         # AJOUTENT : un départ par branche, calibré par la même règle.
@@ -1820,6 +1831,11 @@ def _reglages_electrique_societe(calepinage):
 
 #: La clé du bordereau dans le résultat publié.
 CLE_BORDEREAU = 'nomenclature'
+
+#: CALX228 — la clé du CHEMINEMENT mesuré dans le résultat publié. Sa charge
+#: utile est celle de ``GET calepinages/<pk>/troncons/`` (contrat CALX203),
+#: octet pour octet : deux formes du même métré, ce serait deux métrés.
+CLE_TRONCONS = 'troncons'
 
 #: Les deux clés de réglage société que le bordereau lit (registre CALX145,
 #: ``CLES_ELECTRIQUE_SOCIETE``).
