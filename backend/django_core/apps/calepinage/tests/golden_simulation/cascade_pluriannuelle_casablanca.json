@@ -3,7 +3,7 @@
   "tache": "CALX196",
   "produit_par": "python -m apps.calepinage.tests.test_calx196_golden --write",
   "produit_le": "2026-09-21",
-  "arbre_sha": "29757f05af029fec214234b7da11c672318b95cf",
+  "arbre_sha": "338bc64b734947bfdc56c27ef797216da39c77e4",
   "fixture": "seriescalc_casablanca_sud_deux_annees.json",
   "fixture_url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=33.5&lon=-7.6&startyear=2019&endyear=2020&pvcalculation=0&angle=15&aspect=0&raddatabase=PVGIS-SARAH3&outputformat=json&localtime=1",
   "fenetre_annees": "2019-2020",
@@ -564,7 +564,12 @@
      "p90_kwh": 121.7,
      "performance_ratio": 0.87,
      "specific_yield_kwh_kwc": 21.9,
-     "shading_annual_loss_pct": null
+     "shading_annual_loss_pct": null,
+     "tof": null,
+     "tsrf": null,
+     "inclinaison_optimale_deg": null,
+     "azimut_optimal_deg": null,
+     "source": null
     }
    ]
   },

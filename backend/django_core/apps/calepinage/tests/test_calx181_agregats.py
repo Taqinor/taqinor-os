@@ -175,7 +175,12 @@ class ClesLuesParLesConsommateursTest(unittest.TestCase):
     def test_les_colonnes_d_une_ligne_de_pan_sont_inchangees(self):
         attendues = {'pan', 'modules', 'kwc', 'azimut_deg', 'inclinaison_deg',
                      'p50_kwh', 'p75_kwh', 'p90_kwh', 'performance_ratio',
-                     'specific_yield_kwh_kwc', 'shading_annual_loss_pct'}
+                     'specific_yield_kwh_kwc', 'shading_annual_loss_pct',
+                     # CALX58 — cinq colonnes d'ORIENTATION, que le contrat
+                     # de simulation décrit et que la chaîne publie ; nulles
+                     # ici, faute de client PVGIS dans le harnais.
+                     'tof', 'tsrf', 'inclinaison_optimale_deg',
+                     'azimut_optimal_deg', 'source'}
         for ligne in self.production['par_pan']:
             self.assertEqual(set(ligne), attendues, ligne['pan'])
 
