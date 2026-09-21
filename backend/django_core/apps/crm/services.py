@@ -3138,6 +3138,10 @@ def recalculer_scores_obsoletes(*, taille_lot=500) -> dict:
     ``update_fields``) : le passage nocturne ne fait donc jamais passer un
     lead dormant pour un lead fraîchement édité.
 
+    CAD141 (21/09/2026) — les leads ARCHIVÉS et PERDUS sont écartés : un
+    dossier clos n'a plus besoin d'un score à jour, et un score recalculé
+    pourrait le faire ressortir dans un tri (CAD83).
+
     Renvoie ``{'examines': int, 'mis_a_jour': int}``.
     """
     from datetime import timedelta
@@ -3147,8 +3151,13 @@ def recalculer_scores_obsoletes(*, taille_lot=500) -> dict:
     seuil = timezone.now() - timedelta(days=DELAI_SCORE_OBSOLETE_JOURS)
     examines = 0
     mis_a_jour = 0
-    queryset = (Lead.objects.filter(date_modification__lt=seuil)
-                .order_by('pk').iterator(chunk_size=taille_lot))
+    # CAD141 (21/09/2026) — écarte archivés et perdus : un dossier CLOS n'a
+    # plus besoin d'un score à jour (coût divisé) et ne doit jamais remonter
+    # dans un tri par score après ce passage (CAD83).
+    queryset = (
+        Lead.objects
+        .filter(date_modification__lt=seuil, is_archived=False, perdu=False)
+        .order_by('pk').iterator(chunk_size=taille_lot))
     for lead in queryset:
         examines += 1
         if compute_score(lead) == lead.score:
