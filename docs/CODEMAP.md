@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 1a33a8a94963459a640f8c9380ae6b4084d32fd100e919e93e00d82298cf8988
-Plan fingerprint: 9291d431e84a8a19a6e65844bb1c99ed9f7ef15b216b499ce677e766df53094b
+Plan fingerprint: 6b8887add91ff188d531fac4385076669b313d4e12824ab9d673e55cac3548f5
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (230)**
+**Done (234)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -644,6 +644,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX100` — Saisir la hauteur et le nombre d'étages du bâtiment, et extruder la 3D à cette hauteur
 - `CALX101` — Rendre les murs et les acrotères comme des volumes 3D distincts
 - `CALX102` — Modéliser une lucarne comme un volume qui perce le pan, pas comme une boîte posée
+- `CALX103` — Tracer un obstacle polygonal au clic
+- `CALX104` — Tracer un obstacle circulaire et réutiliser des gabarits d'obstacle de la société
 - `CALX105` — Poser un arbre ou un bâtiment voisin au clic et le déplacer au glissé
 - `CALX106` — Remonter la hauteur et le nombre de niveaux OSM du bâtiment, avec leur provenance…
 - `CALX107` — Afficher un plan importé ou une photo calée comme calque de fond de l'atelier
@@ -653,6 +655,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX111` — Numéroter les modules de façon stable et l'afficher en 3D comme en plan
 - `CALX112` — Dupliquer une sélection de panneaux et la coller au pas saisi
 - `CALX113` — Rendre la symétrie d'une sélection de panneaux par rapport à un axe
+- `CALX114` — Choisir la cible de l'optimisation au lieu de la figer sur l'énergie
 - `CALX116` — Sélectionner des panneaux au lasso, en plus du rectangle
 - `CALX117` — Afficher une grille métrique de repère au pas saisi
 - `CALX118` — Montrer la course du soleil du site dans l'atelier
@@ -762,9 +765,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 - `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
 - `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
+- `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (376)**
+**Open — to build (372)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -957,9 +961,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
 - `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
 - `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
-- `CALX103` — Tracer un obstacle polygonal au clic
-- `CALX104` — Tracer un obstacle circulaire et réutiliser des gabarits d'obstacle de la société
-- `CALX114` — Choisir la cible de l'optimisation au lieu de la figer sur l'énergie
 - `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
 - `CALX123` — Tracer et éditer un champ au sol sur la carte de l'atelier
 - `CALX124` — Éditer une ombrière dans l'atelier, poteaux compris
@@ -1111,7 +1112,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX398` — Re-mesurer le budget de poids du module après le lot
 - `CALX399` — Figer la forme des agrégats du module dans `docs/api-contracts.md`
 - `CALX400` — Geler les repères DOM `cal-*` en contrat
-- `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
 - `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
