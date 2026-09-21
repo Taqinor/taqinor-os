@@ -4904,3 +4904,43 @@ def mesure_cadence(company, *, jours=None):
     from .mesure_cadence import mesure_cadence as _mesure
     return _mesure(company,
                    jours=JOURS_MESURE_DEFAUT if jours is None else jours)
+
+
+# ── CAD-I ── CAD93 ──────────────────────────────────────────────────────────
+def doublons_foyer_probables(company, *, include_archived=False):
+    """Les clusters rapprochés par l'ADRESSE ou le POINT GPS, et rien d'autre.
+
+    Deux fiches qui partagent un téléphone sont probablement la MÊME
+    personne ; deux fiches qui ne partagent que l'adresse sont probablement
+    deux personnes du MÊME FOYER — et c'est une décision différente pour le
+    commercial : on ne fusionne pas un père et son fils, on choisit qui
+    reçoit la cadence. Cette lecture isole donc le second cas.
+
+    Lecture seule, bornée à ``company``. Chaque entrée porte l'indice qui
+    l'explique ; rien n'est fusionné, jamais, sans le geste humain de
+    l'atelier doublons.
+    """
+    from .services import cluster_match_keys, find_duplicate_clusters
+
+    #: Les seules clés qui parlent de LIEU. Un cluster qui partage aussi un
+    #: téléphone, un e-mail ou un nom n'est pas un « même foyer » : c'est un
+    #: doublon ordinaire, déjà rendu par l'atelier.
+    cles_de_lieu = {'adresse', 'gps'}
+
+    sorties = []
+    clusters, _ = find_duplicate_clusters(
+        company, include_archived=include_archived)
+    for groupe in clusters:
+        cles = set(cluster_match_keys(groupe))
+        if not cles or not cles.issubset(cles_de_lieu):
+            continue
+        sorties.append({
+            'indices': sorted(cles),
+            'membres': [
+                {'id': lead.id, 'nom': lead.nom or '',
+                 'prenom': lead.prenom or '', 'ville': lead.ville or '',
+                 'telephone': lead.telephone or ''}
+                for lead in groupe
+            ],
+        })
+    return sorties

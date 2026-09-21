@@ -1340,8 +1340,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             permission_classes=[IsAnyRole])
     def doublons(self, request):
         """Atelier doublons : scanne TOUS les leads de la société et renvoie les
-        clusters de doublons probables (téléphone / email / nom normalisé), avec
-        pour chacun un survivant suggéré (le plus complet, puis le plus récent)."""
+        clusters de doublons probables (téléphone / email / nom normalisé, et
+        depuis CAD93 adresse / point GPS pour le « même foyer »), avec pour
+        chacun un survivant suggéré (le plus complet, puis le plus récent).
+
+        SUGGESTION seulement : aucune fusion n'est faite ici, `match_keys` dit
+        POURQUOI chaque groupe est rapproché et la décision reste humaine."""
         from .services import (
             find_duplicate_clusters, _completeness, cluster_match_keys,
             _MERGE_FILL_FIELDS,

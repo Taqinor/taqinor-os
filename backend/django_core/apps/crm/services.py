@@ -2840,10 +2840,14 @@ def _completeness(lead):
 
 def find_duplicate_clusters(company, include_archived=False):
     """Scanne TOUS les leads d'une société et regroupe les doublons probables
-    par téléphone OU email OU nom normalisé (union-find). Renvoie une liste de
-    clusters (chacun une liste de Lead, ≥ 2 membres), triés par taille puis par
-    membre le plus récent. Les leads archivés sont inclus seulement si demandé
-    (ils restent visibles pour comprendre une fusion passée)."""
+    par téléphone OU email OU nom normalisé OU adresse OU point GPS
+    (union-find, CAD93 pour les deux derniers). Renvoie une liste de clusters
+    (chacun une liste de Lead, ≥ 2 membres), triés par taille puis par membre
+    le plus récent. Les leads archivés sont inclus seulement si demandé (ils
+    restent visibles pour comprendre une fusion passée).
+
+    SUGGESTION, jamais décision : rien n'est fusionné ici. La fusion reste un
+    geste humain explicite (``merge_leads``, appelé par l'atelier doublons)."""
     qs = Lead.objects.filter(company=company)
     if not include_archived:
         qs = qs.filter(is_archived=False)
@@ -2867,6 +2871,12 @@ def find_duplicate_clusters(company, include_archived=False):
         lambda lead: ('p', normalize_phone(lead.telephone)),
         lambda lead: ('e', normalize_email(lead.email)),
         lambda lead: ('n', normalize_name(lead.nom, lead.prenom, lead.societe)),
+        # CAD93 — « même foyer » : deux membres d'un même ménage n'ont ni le
+        # même numéro ni le même nom, et recevaient donc chacun onze touches.
+        # SUGGESTION seulement : ce scan alimente l'atelier doublons, qu'un
+        # humain confirme ; aucune fusion n'est faite d'ici.
+        lambda lead: ('a', cles_foyer(lead)['adresse']),
+        lambda lead: ('g', cles_foyer(lead)['gps']),
     ):
         buckets = {}
         for lead in leads:
@@ -2903,6 +2913,11 @@ def cluster_match_keys(group):
         ('telephone', lambda le: normalize_phone(le.telephone)),
         ('email', lambda le: normalize_email(le.email)),
         ('nom', lambda le: normalize_name(le.nom, le.prenom, le.societe)),
+        # CAD93 — dire à l'écran POURQUOI deux fiches sont rapprochées : une
+        # même adresse n'est pas la même preuve qu'un même numéro, et le
+        # commercial doit pouvoir faire la différence avant de fusionner.
+        ('adresse', lambda le: cles_foyer(le)['adresse']),
+        ('gps', lambda le: cles_foyer(le)['gps']),
     )
     for label, keyer in checks:
         seen = {}
@@ -8370,3 +8385,80 @@ def clients_par_ids(company, ids):
     d'un autre tenant en passant un id deviné.
     """
     return list(Client.objects.filter(company=company, pk__in=list(ids or [])))
+
+
+# ── CAD-I ── CAD93 — « même foyer » : l'adresse et le point GPS ─────────────
+#
+# Trou signalé par le critique de l'audit L3 du 21/09/2026 (§3) : la garde
+# `doublon` bloque bien la cadence automatique, mais le rapprochement ne
+# compare que le téléphone, l'e-mail et le nom complet — jamais l'ADRESSE.
+# Deux membres d'un même foyer (ou deux numéros du même client) passent donc
+# au travers et reçoivent chacun onze touches.
+#
+# OÙ cet indice vit, et où il ne vit PAS. Adresse et GPS sont VIDES à la
+# création d'un lead — c'est `valeur_j1` qui les demande à J1 : les mettre
+# dans la garde de démarrage ne bloquerait donc rien au bon moment et ferait
+# dérailler le démarrage plus tard. L'indice « même foyer » vit dans
+# l'ATELIER DOUBLONS, où il est une SUGGESTION qu'un humain confirme —
+# `find_duplicates_by_contact` (garde de démarrage, contrôle pré-création,
+# rattachement Meta/WhatsApp) n'est pas touchée, et aucune fusion n'est
+# jamais faite sans validation.
+def normalize_adresse(adresse, ville=None):
+    """Clé d'adresse pour le rapprochement — même fabrique que ``normalize_name``.
+
+    Accents retirés, minuscules, ponctuation écrasée, mots TRIÉS : « Rés. Al
+    Firdaous, Imm. 4, Bouskoura » et « imm 4 residence al firdaous bouskoura »
+    donnent la même clé dès que les mots coïncident. La ville n'est ajoutée
+    qu'en COMPLÉMENT d'une adresse déjà renseignée : une ville seule
+    rapprocherait tous les leads de Casablanca.
+
+    Vide en dessous de 8 caractères utiles : « lot 4 » n'est pas une adresse,
+    et un rapprochement sur un fragment aussi court signalerait des foyers
+    qui n'en sont pas — un faux signal coûte plus cher que pas de signal.
+    """
+    if not adresse or not str(adresse).strip():
+        return ''
+    parts = [p for p in (adresse, ville) if p]
+    raw = _strip_accents(' '.join(str(p) for p in parts)).lower()
+    raw = _re.sub(r'[^a-z0-9 ]', ' ', raw)
+    tokens = sorted(t for t in raw.split() if t)
+    cle = ' '.join(tokens)
+    return cle if len(cle) >= 8 else ''
+
+
+#: Décimales conservées sur les coordonnées GPS pour la clé « même point ».
+#: 4 décimales de latitude ≈ 11 m (un degré de latitude ≈ 111 km, donc
+#: 0,0001° ≈ 11,1 m) : la taille d'un toit, pas celle d'un quartier. Deux
+#: relevés du même toit tombent dans la même case, deux maisons voisines non.
+GPS_DECIMALES_FOYER = 4
+
+
+def normalize_gps(lat, lng):
+    """Clé « même point de toiture » : les deux coordonnées ARRONDIES.
+
+    Vide dès qu'une des deux manque — un demi-point ne localise rien. Les
+    valeurs arrivent en ``Decimal`` (champs du lead) ou en flottant : les
+    deux sont acceptées, et une valeur illisible rend une clé vide plutôt
+    qu'une exception dans un scan de doublons.
+    """
+    if lat is None or lng is None:
+        return ''
+    try:
+        lat = round(float(lat), GPS_DECIMALES_FOYER)
+        lng = round(float(lng), GPS_DECIMALES_FOYER)
+    except (TypeError, ValueError):
+        return ''
+    return f'{lat:.{GPS_DECIMALES_FOYER}f},{lng:.{GPS_DECIMALES_FOYER}f}'
+
+
+def cles_foyer(lead):
+    """Les clés « même foyer » d'un lead : ``{'adresse': …, 'gps': …}``.
+
+    Les valeurs vides signifient « rien à rapprocher », jamais « identiques ».
+    """
+    return {
+        'adresse': normalize_adresse(
+            getattr(lead, 'adresse', None), getattr(lead, 'ville', None)),
+        'gps': normalize_gps(
+            getattr(lead, 'gps_lat', None), getattr(lead, 'gps_lng', None)),
+    }
