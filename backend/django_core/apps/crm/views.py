@@ -891,6 +891,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             demarrer_cadence_contact, recompute_lead_score,
             sync_relance_activity,
         )
+        # CAD90 — un lead saisi à la main entre dans la cadence comme ceux du
+        # site : il doit donc, comme eux, exister au registre de consentement.
+        # La personne a elle-même sollicité le contact (appel entrant,
+        # message reçu, demande au salon) : c'est la base légale tracée ici.
+        from .services import (
+            BASE_LEGALE_SOLLICITATION, CONSENT_SOURCE_SAISIE_MANUELLE,
+            enregistrer_base_legale_lead,
+        )
+        enregistrer_base_legale_lead(
+            serializer.instance, source=CONSENT_SOURCE_SAISIE_MANUELLE,
+            base_legale=BASE_LEGALE_SOLLICITATION)
         sync_relance_activity(serializer.instance, user)
         recompute_lead_score(serializer.instance)
         # MRY6 — un lead saisi à la main est une demande réelle : il entre

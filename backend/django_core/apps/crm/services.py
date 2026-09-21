@@ -3654,6 +3654,12 @@ def create_draft_lead_from_ocr(*, company, user, fields) -> Lead:
     activity.log_note(
         lead, None,
         "Lead créé depuis un document OCR (brouillon à compléter).")
+    # CAD90 — données lues sur un document, jamais collectées auprès de la
+    # personne par nous : c'est l'art. 5 §3 qui s'applique, et le registre
+    # doit le dire au lieu de rester muet.
+    enregistrer_base_legale_lead(
+        lead, source=CONSENT_SOURCE_DOCUMENT,
+        base_legale=BASE_LEGALE_NON_COLLECTEE)
     recompute_lead_score(lead)
     return lead
 
@@ -4177,6 +4183,13 @@ def create_lead_from_meta_lead_ads(
         kind=LeadActivity.Kind.NOTE,
         body='Lead créé depuis Meta Lead Ads (formulaire Facebook/Instagram).')
     _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
+    # CAD90 — la cohorte Meta n'avait aucune entrée au registre : ses données
+    # ne sont pas collectées auprès de la personne par nous (art. 5 §3), et
+    # l'horodatage tracé est celui de l'arrivée RÉELLE, jamais celui du beat.
+    enregistrer_base_legale_lead(
+        lead, source=CONSENT_SOURCE_META_LEAD_ADS,
+        base_legale=BASE_LEGALE_NON_COLLECTEE,
+        occurred_at=moment_meta or lead.date_creation)
     # D-CRX1 — signalement du doublon EN VISIBILITÉ (jamais une fusion), avec
     # la mention de l'héritage quand il a eu lieu. Réutilise ``dupes`` déjà
     # calculés (jamais une 2e requête). Best-effort, comme côté site : un
@@ -4292,6 +4305,12 @@ def create_minimal_lead_from_ctwa(*, company, phone, ad_id='') -> Lead:
         body='Lead créé depuis une conversation WhatsApp/CTWA entrante '
              '(aucun lead préalable trouvé pour ce numéro).',
     )
+    # CAD90 — la personne a ÉCRIT la première : relation précontractuelle à
+    # sa demande. Le registre le dit, plutôt que de rester muet sur un lead
+    # dont la touche n°1 partira justement sur WhatsApp.
+    enregistrer_base_legale_lead(
+        lead, source=CONSENT_SOURCE_WHATSAPP_ENTRANT,
+        base_legale=BASE_LEGALE_SOLLICITATION)
     try:
         notify_new_lead(lead)
     except Exception:  # noqa: BLE001 — best-effort
@@ -8462,3 +8481,70 @@ def cles_foyer(lead):
         'gps': normalize_gps(
             getattr(lead, 'gps_lat', None), getattr(lead, 'gps_lng', None)),
     }
+
+
+# ── CAD-I ── CAD90 — le registre couvre TOUTES les créations de lead ────────
+#
+# Audit L3 du 21/09/2026. ``enregistrer_consentement_lead`` n'était appelée
+# que depuis le webhook du formulaire du site : un lead créé à la main par la
+# commerciale (appel entrant, WhatsApp reçu au salon), un lead Meta Lead Ads
+# ou un lead venu d'un document n'écrivaient RIEN au registre
+# ``core.ConsentRecord`` — alors que la cadence démarre quand même et que sa
+# touche n°1 est un WhatsApp, le canal le plus encadré.
+#
+# CE QUE ``granted`` VEUT DIRE ICI, ET CE QU'IL NE VEUT PAS DIRE. Il dit
+# seulement si un CONSENTEMENT A ÉTÉ RECUEILLI — jamais si le traitement est
+# licite. Sur ces chemins, aucune case n'a été cochée par la personne : la
+# licéité vient de la BASE LÉGALE, tracée dans ``source``. Écrire
+# ``granted=True`` pour faire joli fabriquerait une preuve fausse, ce qui est
+# pire qu'une preuve absente (même raison que ``ip_confirmation`` laissée
+# vide par l'intake web).
+#
+# LES DEUX BASES, SUR TEXTE PRIMAIRE (extraction du round 2 de l'audit, PDF
+# adala.justice.gov.ma) :
+#   * données NON collectées auprès de la personne (Meta, import, document) —
+#     loi 09-08 art. 5 §3, avec l'information due « par tous moyens » de
+#     l'art. 34 du décret 2-09-165 ;
+#   * la personne a elle-même SOLLICITÉ le contact (appel entrant, message
+#     WhatsApp, demande au salon) — relation précontractuelle à sa demande,
+#     loi 09-08 art. 5. Le CNDP distingue les deux, le registre aussi.
+
+#: Finalité inscrite au registre pour la prospection commerciale.
+CONSENT_PURPOSE_PROSPECTION = 'marketing'
+
+#: Données NON collectées auprès de la personne (Meta, import, document).
+#: Le libellé est court À DESSEIN : ``ConsentRecord.source`` fait 120
+#: caractères et porte aussi l'origine — une base légale tronquée ne prouve
+#: rien. Le texte complet des deux articles est en tête de cette section.
+BASE_LEGALE_NON_COLLECTEE = 'base légale : loi 09-08 art. 5 §3 + décret ' \
+                            '2-09-165 art. 34'
+#: La personne a elle-même sollicité le contact (appel, message, salon).
+BASE_LEGALE_SOLLICITATION = 'base légale : relation précontractuelle à la ' \
+                            'demande de la personne (loi 09-08 art. 5)'
+
+CONSENT_SOURCE_SAISIE_MANUELLE = 'saisie manuelle CRM'
+CONSENT_SOURCE_META_LEAD_ADS = 'formulaire Meta Lead Ads'
+CONSENT_SOURCE_WHATSAPP_ENTRANT = 'message WhatsApp entrant'
+CONSENT_SOURCE_DOCUMENT = 'document importé'
+
+
+def enregistrer_base_legale_lead(lead, *, source, base_legale,
+                                 occurred_at=None):
+    """Trace au registre la BASE LÉGALE d'un lead créé hors formulaire du site.
+
+    ``granted=False`` : aucune case n'a été cochée par la personne sur ces
+    chemins. L'entrée existe pour que le registre ne soit pas MUET sur une
+    cohorte entière — une demande CNDP y lit la source ET le fondement
+    invoqué. Best-effort intégral : une création de lead ne tombe jamais
+    parce que le registre n'a pas pu être écrit.
+    """
+    try:
+        return enregistrer_consentement_lead(
+            lead, purpose=CONSENT_PURPOSE_PROSPECTION, granted=False,
+            source=f'{source} — {base_legale}'[:120],
+            occurred_at=occurred_at)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD90 : base légale non écrite au registre pour le lead #%s',
+            getattr(lead, 'pk', None), exc_info=True)
+        return None
