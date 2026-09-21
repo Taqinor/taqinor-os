@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a09519d8ffec5e537659cedd60a878e56e2e2899b11d2370a5320a001d29cf09
-Plan fingerprint: 00167418ef9f3d695df2bb3e31c3be5a90fee64e2823d11db4012ab013bd20ab
+Plan fingerprint: f1103078a9a73d05230b6a9a7cd551f13c49abcdd53309ce0edce6df479df4b7
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (213)**
+**Done (215)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -636,6 +636,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX91` — Insérer et supprimer un sommet sur une arête d'un contour fermé
 - `CALX92` — Aimanter le tracé aux sommets et aux arêtes des pans déjà tracés
 - `CALX93` — Déduire noue et arêtier en comparant les pans voisins
+- `CALX94` — Corriger à la main le type d'une arête depuis l'atelier
+- `CALX95` — Appliquer un retrait propre à chaque arête physique du contour
 - `CALX97` — Saisir les cotes exactes d'un pan et le faire pivoter d'un bloc
 - `CALX98` — Dupliquer un pan avec ses obstacles et ses réglages
 - `CALX105` — Poser un arbre ou un bâtiment voisin au clic et le déplacer au glissé
@@ -747,7 +749,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (393)**
+**Open — to build (391)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -939,8 +941,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
 - `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
-- `CALX94` — Corriger à la main le type d'une arête depuis l'atelier
-- `CALX95` — Appliquer un retrait propre à chaque arête physique du contour
 - `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
 - `CALX99` — Prendre l'azimut d'un pan depuis une arête cliquée
 - `CALX100` — Saisir la hauteur et le nombre d'étages du bâtiment, et extruder la 3D à cette hauteur
