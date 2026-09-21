@@ -3,22 +3,17 @@
 # converti au socle DISPARAÎT ici — la liste ne peut que DÉCROÎTRE. Ne JAMAIS
 # ajouter un nouveau viewset ici pour contourner : basez-le sur
 # CompanyScopedModelViewSet. Format : une entrée app.NomClasse par ligne.
+# SOLMVP51 (2026-09-21) : 22 entrees d'apps PARQUEES retirees (leurs views
+# n'existent plus sur le disque — cf. core/parked.py). Elles reviendront
+# avec leur module (docs/parked-modules.md §5).
 automation.ApprovalDelegationViewSet
 automation.ApprovalRequestTypeViewSet
 automation.ApprovalRequestViewSet
 automation.AutomationRuleViewSet
 automation.IncomingWebhookTriggerViewSet
-chat.CannedResponseViewSet
-chat.ConversationViewSet
-chat.MessageViewSet
-chat.RetentionPolicyViewSet
-chat.ScheduledMessageViewSet
-compta._ComptaBaseViewSet
-contrats._ContratsBaseViewSet
 customfields.CustomFieldDefViewSet
 customfields.CustomObjectDefViewSet
 customfields.CustomRecordViewSet
-flotte._FlotteBaseViewSet
 ged.AnnotationDocumentViewSet
 ged.CabinetViewSet
 ged.ChampSignatureViewSet
@@ -44,7 +39,6 @@ ged.RoleSignataireViewSet
 ged.RoutageDocumentaireViewSet
 ged.TypeChampSignatureViewSet
 ged.VueGedEnregistreeViewSet
-gestion_projet._GestionProjetBaseViewSet
 installations.ColisLigneViewSet
 installations.CommandeCadreLigneViewSet
 installations.ComptageLigneViewSet
@@ -58,8 +52,6 @@ installations.OrdreDemontageLigneViewSet
 installations.PickListLigneViewSet
 installations.RetourLivraisonLigneViewSet
 installations.RetourMaterielLigneViewSet
-kb._KbBaseViewSet
-litiges._LitigesBaseViewSet
 monitoring.CleaningEventViewSet
 monitoring.MonitoringConfigViewSet
 monitoring.MonitoringSettingsViewSet
@@ -72,8 +64,6 @@ notifications.WhatsAppTemplateViewSet
 outillage.KitOutillageItemViewSet
 outillage.KitOutillageViewSet
 outillage.OutillageViewSet
-paie.EcheanceDeclarativeViewSet
-paie._PaieBaseViewSet
 parametres.ApprovalPolicyViewSet
 parametres.EmailTemplateViewSet
 parametres.StatutConfigViewSet
@@ -85,14 +75,9 @@ parametres.TranslationOverrideViewSet
 # scoping société (get_queryset/perform_create forcés par TenantMixin) est
 # IDENTIQUE, seule la classe basée n'est pas nommément CompanyScopedModelViewSet.
 portail._PortailBaseViewSet
-pos.CommandeRetraitViewSet
-pos.ConfigMaterielPOSViewSet
-pos.SessionCaisseViewSet
-pos.VenteComptoirViewSet
 publicapi.ApiKeyViewSet
 publicapi.ServiceAccountViewSet
 publicapi.WebhookViewSet
-qhse._QhseBaseViewSet
 records.ActivityTypeViewSet
 records.ActivityViewSet
 records.AttachmentViewSet
@@ -104,10 +89,6 @@ reporting.ClasseurViewSet
 reporting.DashboardConfigViewSet
 reporting.KpiAlerteViewSet
 reporting.SavedReportViewSet
-rh.DocumentEmployeViewSet
-rh.GrilleSalarialeViewSet
-rh.RemunerationViewSet
-rh._RhBaseViewSet
 roles.RoleViewSet
 stock.RegleCodeBarresViewSet
 tiers.TiersViewSet
