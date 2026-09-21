@@ -131,6 +131,22 @@ export interface RoofToolApi {
   /** CAL93 — état courant du dérate d'horizon (`hasProfile`, `maskedHours` sur 12×24,
    *  `annualFactor` — 1 = aucun effet). */
   horizonStatus: () => { hasProfile: boolean; maskedHours: number; annualFactor: number };
+  /** CALX3 — le document d'entrée du moteur de calepinage (`{schema_version, repere,
+   *  contour, surfaces, kits, parametres, obstacles, zones, engagements}`), composé
+   *  depuis la scène VIVANTE à chaque appel. `null` tant qu'aucun pan ne porte un
+   *  contour d'au moins 3 sommets — jamais un document creux. */
+  entreeMoteur: () => import('./entreeMoteur').DocumentMoteur | null;
+  /** CALX3 — repose les modules à partir du plan rendu par le moteur (ses rangées :
+   *  position transversale, tronçons, compte). L'atelier est photographié avant, donc
+   *  Ctrl+Z revient à la disposition précédente. `false` = rien n'a changé. */
+  appliquerPlan: (resultat: unknown) => boolean;
+  /** CALX3 — les huit actions de raccourci de l'atelier (`outilTrace`, `outilObstacle`,
+   *  `outilZone`, `outilMesure`, `aimantation`, `supprimer`, `dupliquer`, `pleinEcran`),
+   *  TOUJOURS présentes et TOUJOURS des fonctions. */
+  raccourcis: Record<import('./entreeMoteur').ActionRaccourci, () => void>;
+  /** CALX3 — les identifiants de calque réellement installés sur la carte, dans
+   *  l'ordre de rendu (`ORDRE_RENDU_CALQUES`). Liste vide hors carte (capture, aperçu). */
+  calquesDisponibles: () => string[];
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET

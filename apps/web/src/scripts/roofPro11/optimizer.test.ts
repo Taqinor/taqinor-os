@@ -249,3 +249,94 @@ describe('CAL83 — priorité de remplissage : un DÉPARTAGE, jamais un arbitrag
     expect(sansTrace.motif).toBeTruthy();
   });
 });
+
+// CALX49 — LE DÉPARTAGE, MAINTENANT BRANCHÉ SUR UN SÉLECTEUR « Priorité de pose ».
+// Le constructeur applique `departagerRemplissage` au pavage courant et repose le
+// résultat. Ce que ces tests tiennent, c'est ce que cette commande PROMET à l'écran :
+//   * les six choix du sélecteur sont ceux du module, libellés compris ;
+//   * appliquer une priorité ne change JAMAIS le compte — c'est une translation, pas
+//     un ré-arbitrage : les modules gardent leurs écarts deux à deux ;
+//   * « Meilleur ensoleillement » sans accès solaire est INACTIF et le DIT en français ;
+//   * le pavage de départ reste intact, donc il y a toujours de quoi revenir en arrière.
+describe('CALX49 — priorité de pose : la commande du départage', () => {
+  const grandToit = rectRing(30, 26);
+
+  function entreeDuPavage(): EntreeDepartage {
+    const pack = packConfig(grandToit, 33.5, baseOpts);
+    return {
+      ringENU: pack.ringENU,
+      panels: pack.best.panels,
+      azimuthDeg: pack.azimuthDeg,
+      rowWidthM: pack.best.rowWidthM,
+      footprintPerPanelM2: pack.best.footprintPerPanelM2,
+      setbackM: PERIMETER_SETBACK_M,
+    };
+  }
+
+  it('le sélecteur est alimenté par les SIX valeurs du module, libellés compris', () => {
+    expect(PRIORITES_REMPLISSAGE).toHaveLength(6);
+    expect(PRIORITES_REMPLISSAGE.map((p) => p.id)).toEqual([
+      'aucune',
+      'faitage',
+      'egout',
+      'rive-debut',
+      'rive-fin',
+      'ensoleillement',
+    ]);
+    const libelles = PRIORITES_REMPLISSAGE.map((p) => p.label);
+    for (const libelle of libelles) expect(libelle.trim().length).toBeGreaterThan(3);
+    expect(new Set(libelles).size).toBe(libelles.length);
+  });
+
+  it('appliquer une priorité garde le compte ET les écarts entre modules (une translation)', () => {
+    const e = entreeDuPavage();
+    for (const { id } of PRIORITES_REMPLISSAGE) {
+      const r = departagerRemplissage(e, id);
+      expect(r.count, `priorité ${id}`).toBe(e.panels.length);
+      expect(r.panels.length, `priorité ${id}`).toBe(e.panels.length);
+      // Même décalage pour TOUS les modules : aucun n'a été déplacé isolément.
+      const dx = r.panels[0].cx - e.panels[0].cx;
+      const dy = r.panels[0].cy - e.panels[0].cy;
+      r.panels.forEach((p, i) => {
+        expect(p.cx - e.panels[i].cx, `priorité ${id}, module ${i}`).toBeCloseTo(dx, 9);
+        expect(p.cy - e.panels[i].cy, `priorité ${id}, module ${i}`).toBeCloseTo(dy, 9);
+      });
+    }
+  });
+
+  it('« Meilleur ensoleillement » sans accès solaire est INACTIF, et son motif est lisible', () => {
+    const e = entreeDuPavage();
+    for (const sansAcces of [undefined, [] as [number, number][]]) {
+      const r = departagerRemplissage({ ...e, sourcesOmbreENU: sansAcces }, 'ensoleillement');
+      expect(r.departage).toBe(false);
+      expect(r.count).toBe(e.panels.length);
+      expect(r.decalageU_m).toBe(0);
+      expect(r.decalageV_m).toBe(0);
+      const motif = r.motif ?? '';
+      // Une phrase française entière, qui NOMME ce qui manque — jamais un code.
+      expect(motif.length).toBeGreaterThan(30);
+      expect(motif).toMatch(/ombre/i);
+      expect(motif.trim().endsWith('.')).toBe(true);
+    }
+  });
+
+  it('le pavage de départ n’est jamais muté : il y a toujours de quoi revenir en arrière', () => {
+    const e = entreeDuPavage();
+    const avant = e.panels.map((p) => ({ cx: p.cx, cy: p.cy }));
+    for (const { id } of PRIORITES_REMPLISSAGE) {
+      const r = departagerRemplissage(e, id);
+      // Le pavage d'entrée est intact après l'application…
+      e.panels.forEach((p, i) => {
+        expect(p.cx).toBeCloseTo(avant[i].cx, 12);
+        expect(p.cy).toBeCloseTo(avant[i].cy, 12);
+      });
+      // …et le décalage inverse le repose exactement là où il était.
+      const dx = r.panels[0].cx - avant[0].cx;
+      const dy = r.panels[0].cy - avant[0].cy;
+      r.panels.forEach((p, i) => {
+        expect(p.cx - dx, `priorité ${id}`).toBeCloseTo(avant[i].cx, 9);
+        expect(p.cy - dy, `priorité ${id}`).toBeCloseTo(avant[i].cy, 9);
+      });
+    }
+  });
+});
