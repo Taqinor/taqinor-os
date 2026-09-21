@@ -147,9 +147,16 @@ CADENCE_APRES_DEVIS_DEFAUT = [
 ]
 
 # Réveil des dormants — deux touches seulement, très espacées.
+# CAD74 (décision fondateur du 21/09/2026, Q20) : le réveil J30 est un APPEL
+# (son script vit avec la touche, CAD151) ; le J60 reste un WhatsApp et porte
+# « reveil_a3 » — ce que `_adapter_gabarits_reveil` lui assigne déjà par rang,
+# donc la clé seedée ici n'est pas retouchée. Le nombre (2), l'ordre et les
+# J+N ne changent pas. La touche saisonnière `reveil_b` n'est PAS un barreau
+# de cette échelle : c'est une touche calendaire, hors gabarit
+# (`apps/crm/cadence_reveil_saison.py`).
 CADENCE_REVEIL_DEFAUT = [
     {'ordre': 1, 'delai_jours': 30, 'delai_minutes': 0, 'heure_cible': None,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Réveil J30',
+     'canal': CanalRelance.APPEL, 'libelle': 'Réveil J30',
      'template_cle': 'reveil_a1', 'dimanche_ok': False},
     {'ordre': 2, 'delai_jours': 60, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Réveil J60',

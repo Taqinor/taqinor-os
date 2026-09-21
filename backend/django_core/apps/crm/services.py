@@ -8370,3 +8370,23 @@ def clients_par_ids(company, ids):
     d'un autre tenant en passant un id deviné.
     """
     return list(Client.objects.filter(company=company, pk__in=list(ids or [])))
+
+
+# ── CAD-G ── CAD74 — réveil saisonnier (`reveil_b`) ────────────────────────
+# Le câblage vit dans `apps/crm/cadence_reveil_saison.py` (module autonome —
+# ce fichier est partagé par des dizaines de tâches). Ces deux passe-plats
+# sont le point d'entrée attendu par les appelants de `services` ; ils ne
+# dupliquent aucune logique. Crochet planifié : AUCUN aujourd'hui — la pose
+# se déclenche par un appel explicite, jamais à l'insu de la commerciale.
+
+def poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
+    """CAD74 — pose LA touche `reveil_b` sur un dormant (ou ``None``)."""
+    from .cadence_reveil_saison import poser_reveil_saisonnier as _poser
+    return _poser(lead, user, maintenant=maintenant)
+
+
+def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
+                              limite=200):
+    """CAD74 — passe la fenêtre juin-septembre sur les dormants d'une société."""
+    from .cadence_reveil_saison import poser_reveils_saisonniers as _tous
+    return _tous(company, user, maintenant=maintenant, limite=limite)
