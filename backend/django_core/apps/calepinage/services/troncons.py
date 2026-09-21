@@ -1,4 +1,4 @@
-"""CALX224 — la longueur RÉELLE de chaque tronçon de câble.
+"""CALX224-225 — le MÉTRÉ et la CHUTE, tronçon par tronçon.
 
 LE DÉFAUT CORRIGÉ
 -----------------
@@ -6,38 +6,57 @@ La seule longueur mesurée aujourd'hui est une distance à VOL D'OISEAU du
 module le plus éloigné vers un point de collecte saisi
 (``services/cables.py``), et la descente comme la liaison vers le TGBT sont
 des scalaires « qui ne se lisent sur aucun plan ». Un tronçon coudé de 40 m
-est donc compté comme sa corde, et l'installateur commande trop court.
+est donc compté comme sa corde, et l'installateur commande trop court. Pire :
+``dimensionner_cables`` ne dimensionne que DEUX liaisons (``W1`` DC, ``W2``
+AC), donc une seule section par côté — un tronçon de forte intensité et un
+tronçon terminal reçoivent la même.
 
 CE QUE CE SERVICE FAIT
 ----------------------
 Il lit les CHEMINEMENTS du document (``electrical.cheminements[]``, clé
 racine optionnelle posée par CALX202) et, pour chaque entrée :
 
-* somme les distances entre points consécutifs de la polyligne, dénivelé
-  compris quand les DEUX extrémités d'un segment portent leur ``altitudeM`` ;
-* ajoute la ``longueurSaisieM`` quand il y en a une (la traversée, la
-  descente ou le passage que le plan ne porte pas) ;
-* publie ``longueur_m`` ET ``longueur_origine`` (``plan`` / ``saisie`` /
-  ``mixte``) — jamais un nombre nu.
+* **CALX224 — la longueur.** Somme des distances entre points consécutifs de
+  la polyligne, dénivelé compris quand les DEUX extrémités d'un segment
+  portent leur ``altitudeM`` ; plus la ``longueurSaisieM`` quand il y en a
+  une. Chaque tronçon publie ``longueur_m`` ET ``longueur_origine``
+  (``plan`` / ``saisie`` / ``mixte``) — jamais un nombre nu. C'est la
+  discipline ``Longueur`` de ``services/cables.py`` ÉTENDUE au tracé : la
+  dataclasse y est importée telle quelle, jamais redéfinie.
+* **CALX225 — la section et la chute.** ``proposer_section``
+  (``core/electrique/cables.py``) est appelée UNE FOIS PAR TRONÇON, avec le
+  courant qui traverse CE tronçon, le barème de son côté et la cible de la
+  NORME applicable. Le critère dimensionnant et la référence de la règle
+  sortent tels quels.
 
-C'est la discipline ``Longueur`` de ``services/cables.py`` ÉTENDUE au tracé :
-la dataclasse y est importée telle quelle, avec ses composantes et leurs
-origines, plutôt que redéfinie ici.
+D'OÙ VIENNENT LES CHIFFRES (aucun n'est posé ici)
+--------------------------------------------------
+* **la longueur** — du DOCUMENT (tracé) et/ou de la SAISIE ;
+* **les cibles, maximums et le plancher DC** — de la NORME applicable
+  (``services/norme.py::norme_applicable`` → ``coefficients_publies``), qui
+  les LIT sur le noyau et les laisse écraser par un réglage société sourcé.
+  Rien n'est recopié en valeur dans ce module ;
+* **les barèmes d'ampacité** — du noyau pur (``AMPACITE_H1Z2Z2K``,
+  ``AMPACITE_U1000R2V_MONO``/``_TRI``), avec leurs sources ;
+* **le courant** — de la conception électrique du calepinage
+  (``services/electrique.py::conception_du_calepinage``, LECTURE SEULE), ou
+  du rattachement par tronçon quand il existe (``contexte['courants']``).
 
 CE QU'IL NE FAIT JAMAIS
 -----------------------
-Aucune longueur par défaut n'est substituée. Un cheminement sans tracé
-exploitable ET sans longueur saisie rend ``longueur_m: null`` (jamais ``0``,
-qui se lirait « mesuré, et nul ») avec une entrée dans ``omissions[]`` qui
+Aucune longueur, aucune section, aucun seuil par défaut. ``pays = ma`` sans
+norme choisie ⇒ le DIMENSIONNEMENT s'omet en le disant (D1), la LONGUEUR
+reste publiée. Toute grandeur non calculable vaut ``null`` (jamais ``0``, qui
+se lirait « calculé, et nul ») et porte une entrée dans ``omissions[]`` qui
 NOMME le tronçon, le champ et le motif en français — règle fondateur « zéro
 chiffre inventé » (D-CALX 7).
 
 FORME PUBLIÉE
 -------------
-``contract_samples/calepinage_troncons.json`` (CALX203) : ``troncons[]``,
-``totaux``, ``omissions[]``. Les grandeurs de dimensionnement (section,
-chute) arrivent avec CALX225/CALX226 ; ce module ne publie pour l'instant
-que ce qu'il MESURE.
+``contract_samples/calepinage_troncons.json`` (CALX203) : ``troncons[]`` (14
+champs), ``totaux{dc_chute_pct, ac_chute_pct, metre_par_section[]}``,
+``omissions[{troncon, champ, motif}]``. Les deux chutes cumulées de
+``totaux`` sont remplies par CALX226.
 """
 from __future__ import annotations
 
@@ -67,6 +86,23 @@ COTE_TERRE = 'terre'
 #: dans les omissions, jamais à deviner quoi que ce soit.
 CHAMP_CHEMINEMENTS = 'electrical.cheminements'
 
+# Nombre de conducteurs d'un tronçon, par côté. Convention de schéma d'une
+# installation BT (NF C 15-100) : une paire descendante + et − côté DC,
+# P + N + PE en monophasé, 3P + N + PE en triphasé, et un conducteur unique
+# pour une liaison équipotentielle de terre.
+NB_CONDUCTEURS_DC = 2
+NB_CONDUCTEURS_AC_MONO = 3
+NB_CONDUCTEURS_AC_TRI = 5
+NB_CONDUCTEURS_TERRE = 1
+
+#: Les clés du registre de coefficients de ``services/norme.py`` dont ce
+#: module a besoin, par côté. Les VALEURS ne sont jamais recopiées ici : la
+#: norme les publie avec leur référence et leur source.
+CLE_CIBLE = {COTE_DC: 'chute_dc_cible_pct', COTE_AC: 'chute_ac_cible_pct'}
+CLE_MAXIMUM = {COTE_DC: 'chute_dc_max_pct', COTE_AC: 'chute_ac_max_pct'}
+CLE_PLANCHER_DC = 'section_min_dc_mm2'
+CLE_COEFF_ISC = 'coeff_isc_dimensionnement'
+
 
 def _nombre(valeur):
     """``float`` ou ``None`` — un booléen n'est jamais une mesure."""
@@ -78,6 +114,7 @@ def _nombre(valeur):
         return None
 
 
+# ───────────────────────────────────────────── CALX224 : la longueur mesurée
 def _point(brut):
     """``(lng, lat, altitude_m | None)`` d'un point du document, ou ``None``.
 
@@ -228,12 +265,242 @@ def _omission_aucun_cheminement():
         "PAS de chute calculable.")
 
 
-def _mesurer(document):
-    """``{troncons, totaux, omissions}`` — la MESURE seule (CALX224)."""
+# ──────────────────────────────────── CALX225 : la section et la chute par tronçon
+def _coefficient(norme, cle):
+    """``(valeur | None, référence)`` d'un coefficient publié par la norme.
+
+    La valeur vient du registre de ``services/norme.py`` — noyau, ou réglage
+    société sourcé qui l'écrase. Absente, elle n'est JAMAIS remplacée.
+    """
+    entree = ((norme or {}).get('coefficients') or {}).get(cle)
+    if not isinstance(entree, dict):
+        return (None, '')
+    return (_nombre(entree.get('valeur')), str(entree.get('reference') or ''))
+
+
+def _nb_conducteurs(cote, phases=None):
+    """Le nombre de conducteurs du tronçon, ou ``None`` si le côté est muet."""
+    if cote == COTE_DC:
+        return NB_CONDUCTEURS_DC
+    if cote == COTE_TERRE:
+        return NB_CONDUCTEURS_TERRE
+    if cote == COTE_AC:
+        if phases == 3:
+            return NB_CONDUCTEURS_AC_TRI
+        if phases == 1:
+            return NB_CONDUCTEURS_AC_MONO
+    return None
+
+
+def _dimensionnement_vide(nb_conducteurs=None):
+    """Les huit champs de dimensionnement, tous ``null`` — jamais ``0``."""
+    return {
+        'nb_conducteurs': nb_conducteurs, 'section_mm2': None, 'ib_a': None,
+        'iz_a': None, 'chute_pct': None, 'chute_cumulee_pct': None,
+        'critere_dimensionnant': None, 'regle_source': None,
+    }
+
+
+def _courant_du_troncon(troncon, contexte):
+    """``(spec | None, motif | None)`` — le courant qui traverse CE tronçon.
+
+    Deux sources, dans cet ordre :
+
+    1. ``contexte['courants'][<id>]`` — le rattachement des chaînes/branches
+       à CE tronçon. C'est le crochet de CALX228 : lui seul sait qu'un
+       tronçon amont porte l'Isc cumulé de trois chaînes quand son tronçon
+       terminal n'en porte qu'une ;
+    2. ``contexte['dc']`` / ``contexte['ac']`` — le courant du CÔTÉ, publié
+       par la conception électrique du calepinage (lecture seule).
+
+    Aucune des deux ⇒ ``None`` et un motif qui NOMME le champ absent : le
+    dimensionnement est OMIS, jamais estimé.
+    """
+    contexte = contexte or {}
+    nom = troncon.get('id')
+    spec = (contexte.get('courants') or {}).get(nom)
+    if isinstance(spec, dict):
+        return (spec, None)
+    cote = troncon.get('cote')
+    if cote in (COTE_DC, COTE_AC):
+        spec = contexte.get(cote)
+        if isinstance(spec, dict):
+            return (spec, None)
+    manque = contexte.get('manque') or (
+        "la conception électrique de ce calepinage ne publie aucun courant "
+        "pour le côté « %s »" % (cote or 'inconnu'))
+    return (None,
+            "le courant qui traverse le tronçon « %s » n'est publié ni par "
+            "le rattachement des chaînes (« courants.%s.ib_a ») ni par la "
+            "conception électrique du calepinage (%s) : section et chute de "
+            "tension OMISES." % (nom, nom, manque))
+
+
+def _regle_source(cote, triphase, reference_chute, reference_plancher):
+    """La RÉFÉRENCE de la règle appliquée — jamais un nombre recopié."""
+    if cote == COTE_DC:
+        morceaux = [
+            "EN 50618 — intensité admissible du câble solaire H1Z2Z2-K",
+            "IEC 62548 §7.3 — courant de dimensionnement des câbles DC",
+            "NF C 15-100 §433.1 — Ib ≤ In ≤ Iz",
+        ]
+    else:
+        morceaux = [
+            "IEC 60364-5-52 tableau B.52.4 méthode C — ampacité U-1000 R2V "
+            "(%s)" % ('triphasé' if triphase else 'monophasé'),
+            "NF C 15-100 §433.1 — Ib ≤ In ≤ Iz",
+        ]
+    for reference in (reference_chute, reference_plancher):
+        if reference:
+            morceaux.append(reference)
+    return ' ; '.join(morceaux)
+
+
+def _motif_norme_absente(norme):
+    """Le motif D1, tel que ``norme_applicable`` le rédige — jamais un barème
+    supposé à la place."""
+    motif = (norme or {}).get('motif') or ''
+    return ("section et chute de tension OMISES : %s "
+            "(services/norme.py::norme_applicable)."
+            % (motif or "aucune norme électrique n'est applicable"))
+
+
+def _dimensionner_troncon(troncon, contexte):
+    """``(champs, omission | None)`` — la section et la chute de CE tronçon.
+
+    Une seule omission par CAUSE RACINE : quand la longueur manque, c'est
+    elle qui est déjà nommée (CALX224) et rien n'est répété ici.
+    """
+    contexte = contexte or {}
+    nom = troncon.get('id')
+    cote = troncon.get('cote')
+    spec, motif_courant = _courant_du_troncon(troncon, contexte)
+    phases = int(_nombre((spec or {}).get('phases')) or 0) or None
+    champs = _dimensionnement_vide(_nb_conducteurs(cote, phases))
+
+    if troncon.get('longueur_m') is None:
+        return (champs, None)
+
+    norme = contexte.get('norme') or {}
+    if not norme.get('applicable', False):
+        return (champs, _omission(nom, 'section_mm2',
+                                  _motif_norme_absente(norme)))
+
+    if cote == COTE_TERRE:
+        return (champs, _omission(
+            nom, 'section_mm2',
+            "la section du conducteur de terre ne se dimensionne pas sur la "
+            "chute de tension : elle relève de la check-list de terre "
+            "(services/terre.py) et de la norme applicable. La longueur du "
+            "tronçon, elle, reste publiée et entre au métré."))
+
+    if cote not in (COTE_DC, COTE_AC):
+        return (champs, _omission(
+            nom, 'cote',
+            "le tronçon « %s » ne déclare pas son côté (« cote » attendu : "
+            "dc, ac ou terre) : sans lui, ni barème d'ampacité ni cible de "
+            "chute ne sont applicables." % nom))
+
+    if spec is None:
+        return (champs, _omission(nom, 'ib_a', motif_courant))
+
+    courant = _nombre(spec.get('ib_a'))
+    tension = _nombre(spec.get('tension_v'))
+    if courant is None or courant <= 0:
+        return (champs, _omission(
+            nom, 'ib_a',
+            "le courant d'emploi du tronçon « %s » n'est pas publié "
+            "(« ib_a ») : section et chute de tension OMISES." % nom))
+    if tension is None or tension <= 0:
+        return (champs, _omission(
+            nom, 'chute_pct',
+            "la tension de service du tronçon « %s » n'est pas publiée "
+            "(« tension_v ») : une chute de tension en pourcentage n'a pas "
+            "de sens sans elle." % nom))
+
+    from core.electrique import cables as noyau
+
+    triphase = phases == 3
+    if cote == COTE_DC:
+        bareme = noyau.AMPACITE_H1Z2Z2K
+        # Continu : le facteur 2 porte le trajet ALLER-RETOUR de la formule
+        # u = 2 × rho × L × I / S (core/electrique/cables.py).
+        coefficient = 2.0
+        plancher, reference_plancher = _coefficient(norme, CLE_PLANCHER_DC)
+    else:
+        if phases not in (1, 3):
+            return (champs, _omission(
+                nom, 'nb_conducteurs',
+                "le nombre de phases du tronçon AC « %s » n'est pas publié "
+                "(« phases ») : ni le barème d'ampacité ni le coefficient de "
+                "la formule de chute ne sont déterminés." % nom))
+        bareme = (noyau.AMPACITE_U1000R2V_TRI if triphase
+                  else noyau.AMPACITE_U1000R2V_MONO)
+        # Triphasé : les trois phases se compensent, d'où le facteur √3 de
+        # u = √3 × rho × L × I / S (core/electrique/cables.py).
+        coefficient = math.sqrt(3.0) if triphase else 2.0
+        plancher, reference_plancher = (None, '')
+
+    cible, reference_chute = _coefficient(norme, CLE_CIBLE[cote])
+    if cible is None:
+        return (champs, _omission(
+            nom, 'section_mm2',
+            "la cible de chute de tension « %s » n'est pas publiée par la "
+            "norme applicable : aucune section n'est proposée sans elle."
+            % CLE_CIBLE[cote]))
+
+    proposee = noyau.proposer_section(
+        courant_ib_a=courant, longueur_m=troncon['longueur_m'],
+        tension_v=tension, cible_pct=cible, bareme=bareme,
+        coefficient=coefficient,
+        calibre_in_a=_nombre(spec.get('calibre_in_a')),
+        courant_service_a=_nombre(spec.get('i_service_a')),
+        section_min_mm2=plancher)
+
+    champs.update({
+        'section_mm2': proposee.section_mm2,
+        'ib_a': round(courant, 2),
+        'iz_a': round(proposee.iz_a, 2),
+        'chute_pct': round(proposee.chute_pct, 3),
+        'critere_dimensionnant': proposee.critere,
+        'regle_source': _regle_source(cote, triphase, reference_chute,
+                                      reference_plancher),
+    })
+    return (champs, None)
+
+
+def _metre_par_section(troncons):
+    """Le métré à commander : une ligne par section, la section OMISE comprise.
+
+    Fondre la ligne ``section_mm2: null`` dans une autre ferait DISPARAÎTRE
+    une longueur réelle du bon de commande.
+    """
+    cumul = {}
+    for troncon in troncons:
+        longueur = troncon.get('longueur_m')
+        if longueur is None:
+            continue
+        section = troncon.get('section_mm2')
+        cumul[section] = cumul.get(section, 0.0) + longueur
+    lignes = [{'section_mm2': section, 'longueur_m': round(valeur, 2)}
+              for section, valeur in cumul.items()]
+    lignes.sort(key=lambda ligne: (ligne['section_mm2'] is None,
+                                   ligne['section_mm2'] or 0.0))
+    return lignes
+
+
+def _troncons_du_document(document, contexte=None):
+    """Le NOYAU de calcul : ``{troncons, totaux, omissions}``.
+
+    Il ne connaît ni modèle ni requête — seulement ``layout['electrical']``
+    et un ``contexte`` (norme, courants du calepinage) PASSÉS en argument.
+    C'est ce qui le rend testable sans base de données.
+    """
     cheminements = _cheminements(document)
     if not cheminements:
         return {'troncons': [],
-                'totaux': {'metre_par_section': []},
+                'totaux': {'dc_chute_pct': None, 'ac_chute_pct': None,
+                           'metre_par_section': []},
                 'omissions': [_omission_aucun_cheminement()]}
 
     troncons = []
@@ -241,19 +508,85 @@ def _mesurer(document):
     for rang, cheminement in enumerate(cheminements, start=1):
         longueur, motif = _longueur_du_troncon(cheminement, rang)
         publie = _troncon_publie(cheminement, longueur, rang)
-        troncons.append(publie)
         if motif:
             omissions.append(_omission(publie['id'], 'longueur_m', motif))
-    return {'troncons': troncons, 'totaux': {'metre_par_section': []},
-            'omissions': omissions}
+        champs, omission = _dimensionner_troncon(publie, contexte)
+        publie.update(champs)
+        if omission is not None:
+            omissions.append(omission)
+        troncons.append(publie)
+
+    return {
+        'troncons': troncons,
+        'totaux': {'dc_chute_pct': None, 'ac_chute_pct': None,
+                   'metre_par_section': _metre_par_section(troncons)},
+        'omissions': omissions,
+    }
+
+
+def _contexte_electrique(conception, norme):
+    """Le contexte de dimensionnement LU sur la conception, jamais inventé.
+
+    Côté DC le courant d'échauffement est celui du noyau (le coefficient
+    d'Isc vient de la norme, pas d'ici) et le courant de service est l'Imp
+    réellement transporté ; côté AC ce sont le courant d'emploi et le calibre
+    que ``concevoir_protections`` a retenus. Conception muette ⇒ aucun
+    courant, et ``manque`` dit POURQUOI.
+    """
+    from core.electrique.protections import concevoir_protections
+
+    from .chaines import evaluer_onduleurs
+
+    contexte = {'norme': norme, 'dc': None, 'ac': None, 'courants': {}}
+    if conception is None or conception.entree is None \
+            or conception.resultat is None or not conception.chaines:
+        contexte['manque'] = (
+            "aucune chaîne n'est calculée pour ce calepinage : il n'y a pas "
+            "de courant à faire passer dans un tronçon")
+        return contexte
+    if conception.fiche_incomplete:
+        contexte['manque'] = (
+            "fiche produit incomplète — %s"
+            % ', '.join(conception.manquantes))
+        return contexte
+
+    entree = conception.entree
+    protections = concevoir_protections(entree, conception.resultat,
+                                        evaluer_onduleurs(conception))
+    module = entree.module
+    coefficient_isc, _reference = _coefficient(norme, CLE_COEFF_ISC)
+    if coefficient_isc is not None:
+        contexte[COTE_DC] = {
+            'ib_a': module.isc_a * coefficient_isc,
+            'i_service_a': module.imp_a or module.isc_a,
+            'tension_v': min(c.vmp_stc_v for c in conception.chaines),
+            'calibre_in_a': protections.calibre_fusible_a,
+        }
+    courant_ac = _nombre(protections.courant_ac_ib_a)
+    if courant_ac and courant_ac > 0:
+        contexte[COTE_AC] = {
+            'ib_a': courant_ac,
+            'tension_v': entree.tension_reseau_v,
+            'phases': int(entree.phases or 1),
+            'calibre_in_a': protections.calibre_ac_a,
+        }
+    return contexte
 
 
 def troncons_du_calepinage(calepinage):
-    """CALX224 — le métré tronçon par tronçon de CE calepinage.
+    """CALX224-225 — le métré et la chute, tronçon par tronçon, de CE
+    calepinage.
 
-    Enveloppe MINCE : elle ne fait que lire le document enregistré
-    (``Calepinage.roof_layout``) et passer la main au noyau de calcul, qui
-    travaille sur ``layout['electrical']`` seul. Aucune écriture, aucun
-    effet de bord.
+    Enveloppe MINCE : elle lit le document enregistré
+    (``Calepinage.roof_layout``), la norme applicable et la conception
+    électrique (toutes trois en LECTURE SEULE), puis passe la main au noyau
+    de calcul. Aucune écriture, aucun effet de bord.
     """
-    return _mesurer(getattr(calepinage, 'roof_layout', None))
+    from .electrique import conception_du_calepinage, parametres_societe
+    from .norme import norme_applicable
+
+    norme = norme_applicable(parametres_societe(calepinage))
+    conception, _materiel, _donnees, document = conception_du_calepinage(
+        calepinage)
+    return _troncons_du_document(document,
+                                 _contexte_electrique(conception, norme))

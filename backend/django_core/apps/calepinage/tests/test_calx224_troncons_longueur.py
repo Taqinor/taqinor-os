@@ -60,19 +60,12 @@ def par_id(paquet):
     return {t['id']: t for t in paquet['troncons']}
 
 
-class Calepinage:
-    """Le strict minimum qu'une enveloppe MINCE lit : le document."""
-
-    def __init__(self, roof_layout):
-        self.roof_layout = roof_layout
-
-
 class TroisOriginesTest(SimpleTestCase):
     """Les trois cas de test que l'exemple de CALX202 exerce."""
 
     def setUp(self):
-        self.troncons = par_id(service.troncons_du_calepinage(
-            Calepinage(DOCUMENT_EXEMPLE)))
+        self.troncons = par_id(
+            service._troncons_du_document(DOCUMENT_EXEMPLE))
 
     def test_polyligne_pure_lit_le_plan(self):
         for identifiant in ('ch1', 'ch2', 'ch5'):
@@ -96,8 +89,8 @@ class TroisOriginesTest(SimpleTestCase):
             [c for c in DOCUMENT_EXEMPLE['electrical']['cheminements']
              if c['id'] == 'ch3'][0])
         sans_saisie.pop('longueurSaisieM')
-        trace_seul = par_id(service.troncons_du_calepinage(
-            Calepinage(document(sans_saisie))))['ch3']
+        trace_seul = par_id(service._troncons_du_document(
+            document(sans_saisie)))['ch3']
         self.assertEqual(trace_seul['longueur_origine'], 'plan')
         self.assertAlmostEqual(mixte['longueur_m'],
                                round(trace_seul['longueur_m'] + 3.2, 2),
@@ -123,9 +116,9 @@ class AucuneLongueurParDefautTest(SimpleTestCase):
     """Sans mesure, ``null`` et un motif — jamais ``0``, jamais un forfait."""
 
     def _sans_rien(self):
-        return service.troncons_du_calepinage(Calepinage(document(
+        return service._troncons_du_document(document(
             {'id': 'chX', 'cote': 'dc', 'de': 'z1', 'vers': 'eq2',
-             'points': []})))
+             'points': []}))
 
     def test_ni_trace_ni_saisie_rend_null_et_pas_zero(self):
         troncon = par_id(self._sans_rien())['chX']
@@ -143,19 +136,19 @@ class AucuneLongueurParDefautTest(SimpleTestCase):
         self.assertIn('longueurSaisieM', omission['motif'])
 
     def test_un_seul_point_ne_fait_pas_un_trace(self):
-        paquet = service.troncons_du_calepinage(Calepinage(document(
-            {'id': 'chY', 'cote': 'dc', 'points': [point(altitude=3.0)]})))
+        paquet = service._troncons_du_document(document(
+            {'id': 'chY', 'cote': 'dc', 'points': [point(altitude=3.0)]}))
         self.assertIsNone(par_id(paquet)['chY']['longueur_m'])
 
     def test_une_saisie_negative_est_refusee_pas_redressee(self):
-        paquet = service.troncons_du_calepinage(Calepinage(document(
+        paquet = service._troncons_du_document(document(
             {'id': 'chZ', 'cote': 'ac', 'points': [],
-             'longueurSaisieM': -4.0})))
+             'longueurSaisieM': -4.0}))
         self.assertIsNone(par_id(paquet)['chZ']['longueur_m'])
         self.assertIn('négative', paquet['omissions'][0]['motif'])
 
     def test_document_sans_electrical_ne_publie_aucun_troncon(self):
-        paquet = service.troncons_du_calepinage(Calepinage({}))
+        paquet = service._troncons_du_document({})
         self.assertEqual(paquet['troncons'], [])
         omission = paquet['omissions'][0]
         self.assertIsNone(omission['troncon'])
@@ -167,8 +160,8 @@ class DeniveleTest(SimpleTestCase):
     """Le dénivelé entre quand il est CONNU des deux côtés du segment."""
 
     def _longueur(self, *points):
-        paquet = service.troncons_du_calepinage(Calepinage(document(
-            {'id': 'ch', 'cote': 'dc', 'points': list(points)})))
+        paquet = service._troncons_du_document(document(
+            {'id': 'ch', 'cote': 'dc', 'points': list(points)}))
         return par_id(paquet)['ch']['longueur_m']
 
     def test_une_descente_verticale_vaut_sa_hauteur(self):
