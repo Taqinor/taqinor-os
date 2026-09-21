@@ -1146,3 +1146,45 @@ describe('ToitureDesign — VT13 : la photo réelle du toit sous le tracé', () 
     expect(await screen.findByTestId('rp9-toit-client')).toBeInTheDocument()
   })
 })
+
+/* ============================================================================
+   CALX22x câblage — le calque « Électrique » du panneau (CALX221) DOIT piloter
+   la couche 3D du constructeur, jamais `mapDraw.setLayerState` (qui ne connaît
+   pas cet identifiant et rend `false`, sans rien basculer). Le routage vit dans
+   le gestionnaire `onChange` de `PanneauCalques` (ToitureDesign.jsx, ~l.2093).
+   ========================================================================== */
+describe('ToitureDesign — le calque « Électrique » route vers SA couche, jamais le setLayerState général', () => {
+  it('la bascule « Électrique » appelle `electrique.setLayerState`, jamais le setLayerState générique', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+    const setLayerStateGenerique = vi.fn(() => false)
+    const electriqueSetLayerState = vi.fn(() => true)
+    initRoofToolPro8.mockImplementationOnce((options) => {
+      options?.onApiReady?.({
+        serializeLayout, snapshot, setReferenceContourVisible, recommencerDepuisTraceClient,
+        setLayerState: setLayerStateGenerique,
+        calquesDisponibles: () => [],
+        electrique: {
+          idCalque: 'electrique',
+          calqueDisponible: () => true,
+          setLayerState: electriqueSetLayerState,
+          etatCalque: () => ({ visible: true, opacite: 1 }),
+        },
+      })
+    })
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const bascule = await screen.findByTestId('pc-visible-electrique')
+    // L'ouverture du panneau annonce déjà l'état de chaque calque à l'hôte
+    // (useEffect de PanneauCalques) : on efface ce bruit avant l'assertion.
+    setLayerStateGenerique.mockClear()
+    electriqueSetLayerState.mockClear()
+
+    await userEvent.click(bascule)
+
+    expect(electriqueSetLayerState).toHaveBeenCalledWith('electrique', { visible: false, opacite: 1 })
+    expect(setLayerStateGenerique).not.toHaveBeenCalled()
+  })
+})
