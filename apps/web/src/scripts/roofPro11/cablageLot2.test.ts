@@ -4,9 +4,11 @@
 // Ce fichier ne prouve que ces lignes-là (aucune fonctionnalité neuve).
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createZones } from './zones';
 import { couleursAretes, EDGE_COLOR_BY_TYPE, type EdgeDeductionZone } from './edges';
+import { deserializeLayout } from './prefill';
+import { etiquette, registreAtelier, reinitialiserNumerotation } from './numerotation';
 import { type Ctx } from './context';
 import { type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
@@ -159,5 +161,78 @@ describe('CALX94 câblage — le type d’arête corrigé se voit en 3D et le cl
     expect(scene).toContain('if (!isOtherZone) { // CALX94 câblage');
     expect(scene).toContain('const couleurs = couleursAretes(');
     expect(scene).toContain('new THREE.LineBasicMaterial({ color: couleur, transparent: true, opacity: 0.95 }),');
+  });
+});
+
+describe('CALX111 câblage — les numéros du document survivent à une réouverture', () => {
+  beforeEach(() => reinitialiserNumerotation());
+
+  it('`deserializeLayout` sème la mémoire de l’atelier depuis le document rouvert', () => {
+    const document = {
+      zones: [
+        {
+          id: 'area-1',
+          label: 'Zone 1',
+          vertices: CARRE.map(([lng, lat]) => [lng, lat]),
+          obstacles: [],
+          geometry: {
+            azimuthDeg: 180,
+            numerotation: { depart: 1, sens: 'ligne' as const },
+            panels: [
+              { cx: 0, cy: 0, n: 7 },
+              { cx: 2.4, cy: 0, n: 8 },
+            ],
+          },
+        },
+      ],
+    };
+    // Avant lecture : l'atelier ne sait rien de ce pan.
+    expect(registreAtelier.historique('area-1').plafond).toBe(0);
+
+    deserializeLayout(document as unknown as Parameters<typeof deserializeLayout>[0]);
+
+    // Après lecture : les numéros DU DOCUMENT sont la mémoire — le prochain module posé
+    // prendra le 9, et non le 1 (sinon rouvrir un dossier renumérotait tout le pan).
+    expect(registreAtelier.historique('area-1').plafond).toBe(8);
+    expect(registreAtelier.convention('area-1')).toEqual({ depart: 1, sens: 'ligne' });
+    expect(registreAtelier.modules('area-1').map((m) => m.n)).toEqual([7, 8]);
+  });
+
+  it('la désignation d’un module visé suit `n`, et retombe sur le rang sans numérotation', () => {
+    // L'expression exacte que `shadingUi.etiquetteModule` évalue.
+    const designer = (i: number) =>
+      etiquette(registreAtelier.modules('area-1')[i], registreAtelier.convention('area-1')) ||
+      `nº${i + 1}`;
+
+    // Aucun document absorbé : le libellé d'aujourd'hui, inchangé.
+    expect(designer(0)).toBe('nº1');
+
+    registreAtelier.absorberDocument({
+      zones: [
+        {
+          id: 'area-1',
+          geometry: {
+            azimuthDeg: 180,
+            numerotation: { prefixe: 'PV', depart: 1, sens: 'ligne' as const },
+            panels: [
+              { cx: 0, cy: 0, n: 7 },
+              { cx: 2.4, cy: 0, n: 8 },
+            ],
+          },
+        },
+      ],
+    });
+    expect(designer(0)).toBe('PV nº7');
+    expect(designer(1)).toBe('PV nº8');
+    // Hors plan : jamais un numéro inventé, on retombe sur le rang.
+    expect(designer(5)).toBe('nº6');
+  });
+
+  it('les deux points d’appel portent la ligne câblée', () => {
+    const shading = readFileSync(resolve(process.cwd(), 'src/scripts/roofPro11/shadingUi.ts'), 'utf8');
+    expect(shading).toContain('proposal.indices.map(etiquetteModule)');
+    expect(shading).not.toContain('proposal.indices.map((i) => `nº${i + 1}`)');
+    const prefillSrc = readFileSync(resolve(process.cwd(), 'src/scripts/roofPro11/prefill.ts'), 'utf8');
+    expect(prefillSrc).toContain('registreAtelier.absorberDocument(json); // CALX111 câblage');
   });
 });

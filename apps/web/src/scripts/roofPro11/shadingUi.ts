@@ -49,6 +49,7 @@ import {
   mentionEtages,
   type Batiment,
 } from './batiment'; // CALX100 — la hauteur vient du DOCUMENT, plus d'une Map locale
+import { etiquette, registreAtelier } from './numerotation'; // CALX111 câblage
 import { $, esc } from './dom';
 import { type Ctx } from './context';
 
@@ -606,6 +607,19 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     return solarAccessSummary(ctx.centroidLat, activeShadeEntries(), prod, points, heatmapMonth);
   }
 
+  /**
+   * CALX111 câblage — désignation HUMAINE du module de rang `i` dans le pavage : le numéro
+   * STABLE du document quand la numérotation est en service (il survit à un retrait et à
+   * une réouverture du dossier), sinon le rang dans le pavage — le libellé d'aujourd'hui,
+   * inchangé. Jamais un numéro inventé : `etiquette` rend une chaîne vide quand le module
+   * ne porte pas de `n`, et c'est alors le rang qui s'affiche.
+   */
+  function etiquetteModule(i: number): string {
+    const panId = ctx.activeAreaId;
+    const numerote = registreAtelier.modules(panId)[i];
+    return etiquette(numerote, registreAtelier.convention(panId)) || `nº${i + 1}`;
+  }
+
   /** CAL97 — publie le chiffre (et sa méthode) à côté de la carte, ou dit clairement
    *  POURQUOI il est absent — jamais une estimation de remplacement. */
   function renderSolarAccess() {
@@ -632,7 +646,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
         `${esc(pct(proposal.threshold))} : <span class="fig">−${esc(fmt2(proposal.kwcLost))}</span> kWc, ` +
         `accès solaire moyen des ${proposal.remaining} restants ` +
         `<span class="fig">${esc(pct(proposal.averageBefore))}</span> → <span class="fig">${esc(pct(proposal.averageAfter))}</span>.</div>` +
-        `<div class="mt-1 opacity-80">Modules visés : ${esc(proposal.indices.map((i) => `nº${i + 1}`).join(', '))}.</div>` +
+        `<div class="mt-1 opacity-80">Modules visés : ${esc(proposal.indices.map(etiquetteModule).join(', '))}.</div>` + // CALX111 câblage
         (deps.removePanels
           ? `<button type="button" id="rp9-solar-access-apply" class="mt-2 border border-white/20 px-2 py-1 font-semibold text-white hover:bg-white/10">Retirer ces modules</button>` +
             `<span class="ml-2 opacity-80">Rien n’est retiré tant que vous ne cliquez pas ; Ctrl+Z annule.</span>`

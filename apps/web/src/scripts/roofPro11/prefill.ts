@@ -27,7 +27,7 @@ import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone 
 import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
 import { type CoucheElectrique, type DocumentElectrique } from './electrique3d';
-import { numeroterDocument } from './numerotation'; // CALX111
+import { numeroterDocument, registreAtelier } from './numerotation'; // CALX111
 
 import { emettreBatiments, type Batiment } from './batiment'; // CALX100
 
@@ -869,6 +869,11 @@ export function deserializeSceneFromLayout(json: unknown): ScenePoint | null {
  * et le dimensionnement.
  */
 export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
+  // CALX111 câblage — un dossier ROUVERT reprend SES numéros : la mémoire de l'atelier est
+  // semée par ce que le document porte déjà (`n`, `rangee`, `numerotation`), sinon le
+  // premier enregistrement suivant repartait de zéro et renumérotait tout le pan.
+  // `absorberDocument` est idempotent et n'écrit RIEN dans le document.
+  registreAtelier.absorberDocument(json); // CALX111 câblage
   const zones = Array.isArray(json?.zones) ? json.zones : [];
   return zones.map((z) => ({
     id: z.id,
