@@ -5361,6 +5361,12 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
         activity_type = _resolve_activity_type(
             company, params.get('activity_type_id'), params.get('type_nom'))
 
+    # CAD49 — quels leads de la sélection ont une CADENCE ACTIVE ? Une seule
+    # requête, avant la boucle : le bulk traite des centaines de dossiers.
+    leads_a_cadence = (
+        leads_avec_cadence_active(company, lead_ids)
+        if op in ('set_relance', 'clear_relance') else frozenset())
+
     with transaction.atomic():
         for lead in leads:
             if op == 'reassign':
@@ -5431,6 +5437,11 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 updated += 1
 
             elif op == 'set_relance':
+                # CAD49 — REFUSÉ sur un lead à cadence active : la date serait
+                # écrasée au premier geste du plan (voir le motif).
+                if lead.id in leads_a_cadence:
+                    skip(lead, MOTIF_BULK_CADENCE_ACTIVE)
+                    continue
                 if lead.relance_date == relance:
                     unchanged += 1
                     continue
@@ -5442,6 +5453,11 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 updated += 1
 
             elif op == 'clear_relance':
+                # CAD49 — même refus : effacer la date ne retire pas la
+                # touche, elle reviendrait au premier geste du plan.
+                if lead.id in leads_a_cadence:
+                    skip(lead, MOTIF_BULK_CADENCE_ACTIVE)
+                    continue
                 if not lead.relance_date:
                     unchanged += 1
                     continue
@@ -8605,3 +8621,39 @@ def _palier_sans_reponse(libelle_touche_close, issue_touche_close):
     if (issue_touche_close or '').strip() not in palier['issues']:
         return None
     return palier['suite']
+
+
+# ── CAD-D ── CAD49 — la relance en masse ne double plus le moteur ────────────
+#
+#: CAD49 — la raison NOMMÉE d'un refus de « définir/effacer la relance » en
+#: masse. Le chemin de la FICHE passe par le moteur
+#: (``reporter_prochaine_touche``) ; l'action en masse, elle, écrivait
+#: directement ``Lead.relance_date`` sans rien lui dire : la fiche affichait
+#: une date, la frise une autre, et au premier geste de cadence le serveur
+#: réécrivait la date depuis la touche. C'était le « second système de rappel
+#: concurrent » que tout le reste du code s'interdit.
+#:
+#: Pourquoi REFUSER plutôt que passer N plans par ``reporter_prochaine_touche``
+#: en masse : décaler des centaines de plans d'un clic — avec leurs touches
+#: suivantes et leurs ancres — est plus dangereux que le mal soigné.
+MOTIF_BULK_CADENCE_ACTIVE = (
+    'cadence de relance active — la date vient de la prochaine touche du '
+    'plan ; ouvrez la fiche et utilisez « Reporter » sur cette touche'
+)
+
+
+def leads_avec_cadence_active(company, lead_ids):
+    """CAD49 — le sous-ensemble de ``lead_ids`` portant AU MOINS une touche de
+    relance encore À FAIRE. Renvoie un ``set`` d'identifiants.
+
+    EN LOT, comme ``leads_avec_devis_accepte`` : une action en masse porte sur
+    des centaines de dossiers, une requête par lead serait un N+1 assumé. Le
+    filtre société est POSÉ ICI.
+    """
+    ids = list(lead_ids or [])
+    if not ids:
+        return set()
+    return set(RelanceEtape.objects.filter(
+        company=company, lead_id__in=ids,
+        statut=RelanceEtape.Statut.A_FAIRE,
+    ).values_list('lead_id', flat=True))
