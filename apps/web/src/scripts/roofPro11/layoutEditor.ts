@@ -51,7 +51,7 @@ import {
 } from './constants';
 import { $, fmt } from './dom';
 import { type Ctx } from './context';
-import { type LngLat } from '../../lib/roof';
+import { type LngLat, pointInPolygon } from '../../lib/roof';
 import { type ProdConfig } from './types';
 import { createLayoutHistory, createValueHistory, createWorkshopHistory, type WorkshopSnapshot } from './layoutHistory';
 // PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
@@ -69,11 +69,22 @@ import {
   distributePanels,
   toUV,
   toENU,
+  rectAt,
+  // CALX112/113 — primitives EXPORTÉES de la lib partagée, recomposées LOCALEMENT (le
+  // fichier n'est pas dans le périmètre de cette lane, cf. LOT2_RECIPE.md) pour valider un
+  // panneau dont le centre ET l'angle propre changent EN MÊME TEMPS (translation, réflexion) —
+  // `checkPanelAt`/`checkPanelRotation` de la lib ne couvrent que l'un OU l'autre séparément.
+  panelCornersUV,
+  polyOverlap,
+  polySeparation,
   type FreeGeom,
   type FreeCheck,
   type FreeLayoutState,
+  type FreePanel,
   type FreeViolation,
   type FreeMargins,
+  type RectUV,
+  type Vec2,
 } from '../../lib/freeLayout';
 import { DEFAULT_FREE_MARGINS, FREE_STEP_M, freeGeomFrom, freeStateFromCenters, quantizeFree } from './freeMode';
 
@@ -181,6 +192,16 @@ export interface LayoutEditor {
   freeAlignSelection: (axis: 'row' | 'col', members: readonly number[]) => boolean;
   /** CAL81 — « distribuer » la sélection libre à écart égal. Tout ou rien. */
   freeDistributeSelection: (members: readonly number[]) => boolean;
+  /** CALX112 — duplique la sélection libre, collée au décalage SAISI (m, le long de l'axe
+   *  des rangées). Un seul pas d'historique pour tout le geste ; tout ou rien. */
+  dupliquerSelection: (members: readonly number[], decalageM: number) => boolean;
+  /** CALX113 — symétrise la sélection libre par rapport à l'axe donné (droite ENU définie
+   *  par deux points). Tout ou rien ; refusée seulement sur une contrainte DURE réelle. */
+  symetriserSelection: (members: readonly number[], axis: { a: readonly [number, number]; b: readonly [number, number] }) => boolean;
+  /** CALX116 — panneaux dont le CENTRE tombe dans l'anneau lasso (ENU), dans le mode courant. */
+  panelsInLasso: (ring: readonly [number, number][]) => number[];
+  /** CALX116 — le mode de sélection tracé courant est-il le LASSO (vs le cadre, défaut) ? */
+  isLassoMode: () => boolean;
 }
 
 /**
@@ -289,6 +310,88 @@ function buildFallbackLayoutDom(container: HTMLElement | null): void {
   container.appendChild(win);
 }
 
+// ═══════════ CALX112/113 — contrôles DURS d'un panneau CANDIDAT (centre ET angle propre
+// changés EN MÊME TEMPS par une translation ou une réflexion) ═══════════
+// `lib/freeLayout.ts` expose `checkRect` (translation, jamais d'angle) et
+// `checkPanelRotation` (angle, jamais de centre) mais aucune primitive ne couvre les DEUX à
+// la fois — et ce fichier n'est PAS dans le périmètre de cette lane (LOT2_RECIPE.md : fichiers
+// CHAUDS, `rp11/layoutEditor.ts`/`freeMode.ts` seulement). Les fonctions ci-dessous
+// RECOMPOSENT donc les trois contraintes DURES (contour / panneau / obstacle — jamais les
+// deux RELÂCHABLES retrait/écart, hors du texte de CALX112/113) à partir des seules
+// primitives déjà EXPORTÉES (`panelCornersUV`, `polyOverlap`, `polySeparation`) plus
+// `pointInPolygon` (déjà la primitive du lasso CALX116 plus bas) — aucune règle métier
+// neuve, seulement de la géométrie publique assemblée différemment.
+
+/** 4 coins (u, v) d'un rectangle AXÉ — équivalent local du `rectCorners` privé de la lib. */
+function cornersOfRect(r: RectUV): Vec2[] {
+  return [
+    [r.u0, r.v0],
+    [r.u1, r.v0],
+    [r.u1, r.v1],
+    [r.u0, r.v1],
+  ];
+}
+
+/** 4 coins (u, v) d'un panneau EXISTANT, à sa position/angle ACTUELS. */
+function panelCornersFor(g: FreeGeom, p: Pick<FreePanel, 'cx' | 'cy' | 'angleDeg'>): Vec2[] {
+  const [cu, cv] = toUV(g, p.cx, p.cy);
+  return p.angleDeg ? panelCornersUV(g, cu, cv, p.angleDeg) : cornersOfRect(rectAt(g, cu, cv));
+}
+
+/** Deux segments [p1,p2] / [p3,p4] se croisent-ils vraiment ? (copie locale de la primitive
+ *  privée `segmentsCross` de la lib — même algèbre, aucune règle neuve). */
+function segCross(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2): boolean {
+  const d = (a: Vec2, b: Vec2, c: Vec2) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const d1 = d(p3, p4, p1);
+  const d2 = d(p3, p4, p2);
+  const d3 = d(p1, p2, p3);
+  const d4 = d(p1, p2, p4);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+/** Un coin du panneau est hors contour, OU une arête du contour traverse le panneau (le cas
+ *  du toit CONCAVE : 4 coins dedans et une encoche qui coupe quand même le rectangle). */
+function panelOutsideOutline(corners: readonly Vec2[], ringUV: readonly Vec2[]): boolean {
+  for (const c of corners) if (!pointInPolygon(c, ringUV as [number, number][])) return true;
+  for (let i = 0; i < corners.length; i++) {
+    const a = corners[i];
+    const b = corners[(i + 1) % corners.length];
+    for (let j = 0, k = ringUV.length - 1; j < ringUV.length; k = j++) {
+      if (segCross(ringUV[k], ringUV[j], a, b)) return true;
+    }
+  }
+  return false;
+}
+
+/** Les trois contraintes DURES d'un panneau candidat (contour / panneaux / obstacles),
+ *  renvoyées comme la liste des `FreeViolation` déjà nommées ailleurs dans ce fichier
+ *  (`violationLabel`) — jamais un refus muet. `extra` = panneaux du MÊME geste déjà
+ *  validés (copies, membres réfléchis) : ils s'excluent aussi entre eux. */
+function hardViolationsFor(
+  g: FreeGeom,
+  ringUV: readonly Vec2[],
+  corners: readonly Vec2[],
+  othersCorners: readonly (readonly Vec2[])[],
+  extra: readonly (readonly Vec2[])[],
+): FreeViolation[] {
+  const violations: FreeViolation[] = [];
+  if (panelOutsideOutline(corners, ringUV)) violations.push('outline');
+  let overlaps = false;
+  for (const oc of othersCorners) if (polyOverlap(corners as Vec2[], oc as Vec2[])) overlaps = true;
+  for (const oc of extra) if (polyOverlap(corners as Vec2[], oc as Vec2[])) overlaps = true;
+  if (overlaps) violations.push('overlap');
+  for (const o of g.obstacles) {
+    if (o.ring.length < 3) continue;
+    const ringO = o.ring.map(([x, y]) => toUV(g, x, y));
+    const d = polyOverlap(corners as Vec2[], ringO) ? 0 : polySeparation(corners as Vec2[], ringO);
+    if (d <= o.clearanceM) {
+      violations.push('obstacle');
+      break;
+    }
+  }
+  return violations;
+}
+
 export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEditor {
   const {
     map,
@@ -335,6 +438,24 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   const layoutSelectBtn = $<HTMLButtonElement>('rp9-layout-select');
   const layoutRowBtn = $<HTMLButtonElement>('rp9-layout-row');
   const layoutClearSelBtn = $<HTMLButtonElement>('rp9-layout-clear-sel');
+  // CALX116 — bascule CADRE/LASSO, créée par le module si la page hôte ne la fournit pas
+  // (même patron que `ensureTypePicker`/`ensureProvenancePicker`, obstaclesUi.ts:155-180).
+  // Par défaut sur CADRE (comportement d'aujourd'hui inchangé).
+  function ensureLassoToggle(): HTMLButtonElement | null {
+    const existing = $<HTMLButtonElement>('rp9-layout-lasso');
+    if (existing) return existing;
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'rp9-layout-lasso';
+    btn.setAttribute('aria-pressed', 'false');
+    btn.textContent = '◔ Lasso';
+    if (layoutClearSelBtn?.parentElement) layoutClearSelBtn.insertAdjacentElement('afterend', btn);
+    else if (layoutPanelEl) layoutPanelEl.appendChild(btn);
+    else return null;
+    return btn;
+  }
+  const layoutLassoBtn = ensureLassoToggle();
   // PV34 — compteur permanent « N panneaux sélectionnés ».
   const layoutSelCountEl = $('rp9-layout-selcount');
   const layoutAzWrapEl = $('rp9-layout-azimuth');
@@ -352,6 +473,57 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   const freeGapEl = $<HTMLInputElement>('rp9-free-gap');
   const freeAddBtn = $<HTMLButtonElement>('rp9-free-add');
   const freeMeasureEl = $('rp9-free-measure');
+
+  // CALX112 — champ « décalage » + bouton « Dupliquer », créés par le module (même patron)
+  // dans les réglages du placement libre : la duplication n'existe qu'en placement libre.
+  // Le bouton reste INACTIF tant qu'aucun pas > 0 n'est saisi (jamais un décalage deviné).
+  function ensureDuplicateControls(): { input: HTMLInputElement; btn: HTMLButtonElement } | null {
+    const existingBtn = $<HTMLButtonElement>('rp9-free-dup-btn');
+    const existingInput = $<HTMLInputElement>('rp9-free-dup-step');
+    if (existingBtn && existingInput) return { input: existingInput, btn: existingBtn };
+    if (typeof document === 'undefined' || !freeControlsEl) return null;
+    const row = document.createElement('div');
+    row.className = 'rp9-fb-row';
+    const label = document.createElement('label');
+    label.setAttribute('for', 'rp9-free-dup-step');
+    label.textContent = 'Dupliquer, décalage (cm) ';
+    const input = document.createElement('input');
+    input.id = 'rp9-free-dup-step';
+    input.type = 'text';
+    input.inputMode = 'decimal';
+    input.setAttribute('step', 'any');
+    input.size = 5;
+    label.appendChild(input);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'rp9-free-dup-btn';
+    btn.textContent = '⧉ Dupliquer';
+    btn.disabled = true;
+    row.appendChild(label);
+    row.appendChild(btn);
+    freeControlsEl.appendChild(row);
+    return { input, btn };
+  }
+  const dupControls = ensureDuplicateControls();
+  const freeDupStepEl = dupControls?.input ?? null;
+  const freeDupBtn = dupControls?.btn ?? null;
+
+  // CALX113 — bouton « Symétrie », créé par le module (même patron), réglages du placement
+  // libre. Armé : les DEUX prochains clics sur le toit désignent l'axe (droite définie par
+  // deux points cliqués — la généralisation d'« une arête désignée au clic »).
+  function ensureMirrorButton(): HTMLButtonElement | null {
+    const existing = $<HTMLButtonElement>('rp9-free-mirror');
+    if (existing) return existing;
+    if (typeof document === 'undefined' || !freeControlsEl) return null;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'rp9-free-mirror';
+    btn.setAttribute('aria-pressed', 'false');
+    btn.textContent = '⇄ Symétrie';
+    freeControlsEl.appendChild(btn);
+    return btn;
+  }
+  const freeMirrorBtn = ensureMirrorButton();
 
   // PV25 — ÉTAT de la sélection multiple. Il vit dans ce module (rien à ajouter au ctx
   // partagé) : c'est une intention d'édition, pas un état de design.
@@ -423,6 +595,61 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   }
   function hideMarquee() {
     if (marqueeEl) marqueeEl.style.display = 'none';
+  }
+
+  // ── CALX116 — LASSO (tracé à main levée), en plus du cadre ───────────────────────
+  // Bascule cadre/lasso : FAUX par défaut = cadre, le comportement d'aujourd'hui inchangé
+  // (`ensureLassoToggle` ci-dessus). Le geste réutilise le MÊME déclenchement que le cadre
+  // (Maj + glissé, ou mode « ▭ Sélection ») ; seule la FORME tracée change.
+  let lassoMode = false;
+  /** Glissé lasso en cours : anneau ENU échantillonné + ses points ÉCRAN (pour le tracé
+   *  visible) — même convention `additive`/`moved` que `marquee`. */
+  let lasso:
+    | {
+        ring: Vec2[];
+        screenPts: maplibregl.Point[];
+        startPoint: maplibregl.Point;
+        moved: boolean;
+        additive: boolean;
+      }
+    | null = null;
+  /** Distance ÉCRAN minimale (px) entre deux points échantillonnés — un lasso qui
+   *  enregistrerait CHAQUE pixel gonflerait l'anneau pour rien. */
+  const LASSO_SAMPLE_PX = 6;
+  /** Garde-fou de mémoire : un anneau ne grossit pas indéfiniment (le geste le plus long
+   *  reste un tracé net, pas un journal de chaque micro-mouvement). */
+  const LASSO_MAX_POINTS = 600;
+  let lassoSvg: SVGSVGElement | null = null;
+  let lassoPoly: SVGPolygonElement | null = null;
+  function lassoLayer(): SVGPolygonElement | null {
+    if (typeof document === 'undefined' || typeof document.createElementNS !== 'function') return null;
+    if (lassoPoly) return lassoPoly;
+    const container = typeof map.getContainer === 'function' ? map.getContainer() : null;
+    if (!container) return null;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg') as SVGSVGElement;
+    svg.setAttribute('id', 'rp9-lasso-svg');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.style.cssText = 'position:absolute;inset:0;z-index:6;pointer-events:none;display:none;width:100%;height:100%;';
+    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon') as SVGPolygonElement;
+    poly.setAttribute('fill', 'rgba(224,178,92,0.18)');
+    poly.setAttribute('stroke', '#e0b25c');
+    poly.setAttribute('stroke-width', '2');
+    poly.setAttribute('stroke-dasharray', '4 3');
+    svg.appendChild(poly);
+    container.appendChild(svg);
+    lassoSvg = svg;
+    lassoPoly = poly;
+    return poly;
+  }
+  /** Peint l'anneau lasso entre les points ÉCRAN accumulés. */
+  function showLasso(points: readonly maplibregl.Point[]) {
+    const poly = lassoLayer();
+    if (!poly || !lassoSvg) return;
+    poly.setAttribute('points', points.map((p) => `${p.x},${p.y}`).join(' '));
+    lassoSvg.style.display = 'block';
+  }
+  function hideLasso() {
+    if (lassoSvg) lassoSvg.style.display = 'none';
   }
 
   // ── PV29 — PEINTURE de la 3D : sélection (or) + survol (or clair) + refus (rouge) ──
@@ -511,6 +738,10 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   const freeHistory = createValueHistory<FreeLayoutState>(copyFreeState);
   /** Le prochain clic doit-il POSER un nouveau panneau ? (bouton « Ajouter »). */
   let freeAddArmed = false;
+  /** CALX113 — la désignation de l'axe de symétrie est-elle ARMÉE ? (bouton « Symétrie »). */
+  let mirrorArmed = false;
+  /** CALX113 — premier point ENU cliqué de l'axe en cours de désignation, ou null. */
+  let mirrorFirstPoint: { x: number; y: number } | null = null;
 
   /**
    * Marges RELACHABLES courantes, avec repli sur celles de l'etude. Un `ctx` fourni par
@@ -642,6 +873,34 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   /** PV34 — panneaux traversés par le cadre, dans le mode courant. */
   function panelsInMarquee(rect: { x0: number; y0: number; x1: number; y1: number }): number[] {
     return freeActive() ? freeInRect(rect) : latticeInRect(rect);
+  }
+
+  /**
+   * CALX116 — panneaux dont le CENTRE tombe dans l'anneau lasso (ENU), dans le mode courant.
+   * Critère « centre dedans » (et non « traversé », contrairement au cadre) : c'est le
+   * critère annoncé par la tâche, et il laisse le lasso isoler une poche EXACTE sans
+   * attraper un panneau que le tracé n'a qu'effleuré du bout du contour.
+   */
+  function panelsInLasso(ring: readonly Vec2[]): number[] {
+    if (ring.length < 3) return [];
+    if (freeActive()) {
+      const st = freeState();
+      if (!st) return [];
+      const out: number[] = [];
+      for (let i = 0; i < st.panels.length; i++) {
+        if (pointInPolygon([st.panels[i].cx, st.panels[i].cy], ring as [number, number][])) out.push(i);
+      }
+      return out;
+    }
+    const st = ctx.layoutState;
+    if (!st) return [];
+    const posed = occupiedIndices(st);
+    const out: number[] = [];
+    for (const idx of posed) {
+      const c = st.cells[idx];
+      if (pointInPolygon([c.cx, c.cy], ring as [number, number][])) out.push(idx);
+    }
+    return out;
   }
 
   /**
@@ -813,6 +1072,125 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       return false;
     }
     if (layoutNoteEl) layoutNoteEl.textContent = `Distribué — ${fmt(members.length)} panneaux (placement libre).`;
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /**
+   * CALX112 — duplique la sélection libre et colle la copie au DÉCALAGE saisi (mètres, le
+   * long de l'axe des rangées `u` — le même axe que la trame N×M des obstacles, CAL73). Un
+   * seul pas d'historique pour tout le geste (une photo AVANT, un seul commit ensuite) ;
+   * TOUT OU RIEN : si l'image d'UN SEUL membre sortirait du posable ou chevaucherait un
+   * module existant (original ou copie déjà validée dans ce même geste), rien n'est copié.
+   */
+  function dupliquerSelection(members: readonly number[], decalageM: number): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g) return false;
+    const src = [...new Set(members)].filter((i) => Number.isInteger(i) && i >= 0 && i < st.panels.length);
+    if (!src.length || !Number.isFinite(decalageM) || decalageM === 0) return false;
+    recordFreeHistory();
+    const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
+    const othersCorners = st.panels.map((p) => panelCornersFor(g, p));
+    const placed: Vec2[][] = [];
+    const startIdx = st.panels.length;
+    const news: FreePanel[] = [];
+    for (const i of src) {
+      const p = st.panels[i];
+      const [u, v] = toUV(g, p.cx, p.cy);
+      const nu = u + decalageM;
+      const angle = p.angleDeg ?? 0;
+      const corners = panelCornersUV(g, nu, v, angle);
+      const violations = hardViolationsFor(g, ringUV, corners, othersCorners, placed);
+      if (violations.length) {
+        dropFreeHistory();
+        flashRefusal(src);
+        if (layoutNoteEl) {
+          layoutNoteEl.textContent = `Duplication refusée : ${violations.map(violationLabel).join(', ')} — rien n’a été copié.`;
+        }
+        renderLayoutPanel();
+        return false;
+      }
+      placed.push(corners);
+      const [cx, cy] = toENU(g, nu, v);
+      const copy: FreePanel = { cx, cy };
+      if (p.angleDeg) copy.angleDeg = p.angleDeg;
+      if (p.face) copy.face = p.face;
+      news.push(copy);
+    }
+    st.panels.push(...news);
+    setSelection(news.map((_, k) => startIdx + k)); // les COPIES restent sélectionnées
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = `Dupliqué — ${fmt(news.length)} panneaux copiés à ${fmt1(Math.abs(decalageM))} m (${fmt(st.panels.length)} posés).`;
+    }
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /** CALX113 — axe de symétrie : une droite ENU définie par deux points DISTINCTS (cliqués,
+   *  ou une arête du pan désignée). */
+  interface MirrorAxis {
+    a: readonly [number, number];
+    b: readonly [number, number];
+  }
+
+  /**
+   * CALX113 — symétrise la sélection libre par rapport à `axis` : le centre ET l'orientation
+   * propre de chaque membre sont réfléchis ENSEMBLE (une réflexion est sa propre inverse :
+   * symétriser deux fois de suite rend l'état initial). TOUT OU RIEN, refusée seulement sur
+   * une contrainte DURE réelle (contour/panneau/obstacle) — jamais un simple écart/retrait
+   * relâché, comme la rotation CAL80 dont ce geste reprend exactement le vocabulaire.
+   */
+  function symetriserSelection(members: readonly number[], axis: MirrorAxis): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g || !members.length) return false;
+    const src = [...new Set(members)].filter((i) => Number.isInteger(i) && i >= 0 && i < st.panels.length);
+    if (!src.length) return false;
+    const [au, av] = toUV(g, axis.a[0], axis.a[1]);
+    const [bu, bv] = toUV(g, axis.b[0], axis.b[1]);
+    const dirU = bu - au;
+    const dirV = bv - av;
+    const len2 = dirU * dirU + dirV * dirV;
+    if (!(len2 > 1e-12)) return false; // deux points confondus : aucun axe défini
+    const axisAngleDeg = (Math.atan2(dirV, dirU) * 180) / Math.PI;
+    const reflectUV = (u: number, v: number): [number, number] => {
+      const pu = u - au;
+      const pv = v - av;
+      const t = (pu * dirU + pv * dirV) / len2;
+      return [au + 2 * t * dirU - pu, av + 2 * t * dirV - pv];
+    };
+    recordFreeHistory();
+    const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
+    const othersCorners = st.panels.filter((_, i) => !src.includes(i)).map((p) => panelCornersFor(g, p));
+    const placed: Vec2[][] = [];
+    const results: { idx: number; cx: number; cy: number; angleDeg: number }[] = [];
+    for (const idx of src) {
+      const p = st.panels[idx];
+      const [pu, pv] = toUV(g, p.cx, p.cy);
+      const [nu, nv] = reflectUV(pu, pv);
+      const oldAngle = p.angleDeg ?? 0;
+      const newAngle = ((2 * axisAngleDeg - oldAngle) % 360 + 360) % 360;
+      const corners = panelCornersUV(g, nu, nv, newAngle);
+      const violations = hardViolationsFor(g, ringUV, corners, othersCorners, placed);
+      if (violations.length) {
+        dropFreeHistory();
+        flashRefusal(src);
+        if (layoutNoteEl) {
+          layoutNoteEl.textContent = `Symétrie refusée : ${violations.map(violationLabel).join(', ')} — rien n’a bougé.`;
+        }
+        renderLayoutPanel();
+        return false;
+      }
+      placed.push(corners);
+      const [ncx, ncy] = toENU(g, nu, nv);
+      results.push({ idx, cx: ncx, cy: ncy, angleDeg: newAngle });
+    }
+    // Commit atomique : rien n'a été muté tant que tous les membres n'étaient pas validés.
+    for (const r of results) st.panels[r.idx] = { ...st.panels[r.idx], cx: r.cx, cy: r.cy, angleDeg: r.angleDeg };
+    if (layoutNoteEl) layoutNoteEl.textContent = `Symétrisé — ${fmt(src.length)} panneaux (placement libre).`;
     renderCustomLayout();
     renderLayoutPanel();
     return true;
@@ -1283,6 +1661,13 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (freeGapEl && document.activeElement !== freeGapEl) {
       freeGapEl.value = String(Math.round(margins().gapM * 100));
     }
+    // CALX112 — « Dupliquer » reste INACTIF tant qu'aucun pas > 0 n'est saisi.
+    if (freeDupBtn) {
+      const raw = (freeDupStepEl?.value ?? '').toString().trim().replace(',', '.');
+      const step = raw ? Number(raw) : NaN;
+      freeDupBtn.disabled = !on || !Number.isFinite(step) || step <= 0;
+    }
+    if (freeMirrorBtn) freeMirrorBtn.setAttribute('aria-pressed', String(mirrorArmed));
   }
 
   /** Lit un champ de marge (cm → m). Règle fondateur : on n'IMPOSE aucun arrondi et on ne
@@ -1496,6 +1881,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       setPanelHighlight(null); // W88 — efface tout surlignage de panneau en quittant le mode
       hideMarquee(); // PV31 — jamais un cadre orphelin après la sortie du mode disposition
       marquee = null;
+      hideLasso(); // CALX116 — idem pour un lasso orphelin
+      lasso = null;
       emptyPress = null;
       if (ctx.closed) renderActive();
     }
@@ -1617,6 +2004,17 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (layoutNoteEl) layoutNoteEl.textContent = 'Sélection effacée.';
     renderLayoutPanel();
   });
+  // CALX116 — bascule CADRE/LASSO : ne change QUE la forme du prochain tracé, par défaut
+  // sur cadre (comportement d'aujourd'hui inchangé).
+  layoutLassoBtn?.addEventListener('click', () => {
+    lassoMode = !lassoMode;
+    layoutLassoBtn.setAttribute('aria-pressed', String(lassoMode));
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = lassoMode
+        ? 'Lasso : tracez librement autour des panneaux à sélectionner.'
+        : 'Cadre : glissez pour encadrer les panneaux à sélectionner.';
+    }
+  });
 
   // PV25 — NUDGE d'azimut (toit en pente) : ±1° sur la face du pan, puis RECALCUL complet
   // (re-pavage) qui re-entre la disposition personnalisée en re-snappant les panneaux
@@ -1664,6 +2062,37 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
     syncFreeInputs();
     renderLayoutPanel();
+  });
+
+  // CALX112 — lit le décalage SAISI (cm → m, même unité que les marges) et duplique la
+  // sélection courante. Le bouton reste inactif tant qu'aucun pas > 0 n'est saisi (voir
+  // `syncFreeInputs`) — un clic sans pas valide ne fait donc jamais rien de deviné.
+  freeDupStepEl?.addEventListener('input', syncFreeInputs);
+  freeDupBtn?.addEventListener('click', () => {
+    if (!freeActive() || !freeDupStepEl) return;
+    const raw = (freeDupStepEl.value ?? '').toString().trim().replace(',', '.');
+    const stepM = raw ? Number(raw) / 100 : NaN;
+    if (!Number.isFinite(stepM) || stepM <= 0) return;
+    const members = selection.length ? selection : [];
+    if (!members.length) {
+      if (layoutNoteEl) layoutNoteEl.textContent = 'Sélectionnez d’abord les panneaux à dupliquer.';
+      return;
+    }
+    dupliquerSelection(members, stepM);
+  });
+
+  // CALX113 — arme la désignation de l'axe : les DEUX prochains clics sur le toit
+  // (`beginLayoutDrag`) fixent les deux points qui définissent la droite.
+  freeMirrorBtn?.addEventListener('click', () => {
+    if (!freeActive()) return;
+    mirrorArmed = !mirrorArmed;
+    mirrorFirstPoint = null;
+    freeMirrorBtn.setAttribute('aria-pressed', String(mirrorArmed));
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = mirrorArmed
+        ? 'Touchez un premier point de l’axe de symétrie (Échap pour annuler).'
+        : 'Symétrie annulée.';
+    }
   });
 
   // PV26 — RACCOURCIS clavier, actifs SEULEMENT en mode disposition (sinon on volerait
@@ -1724,6 +2153,16 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
         freeAddArmed = false;
         syncFreeInputs();
         if (layoutNoteEl) layoutNoteEl.textContent = 'Ajout annulé.';
+        renderLayoutPanel();
+        e.preventDefault();
+        return;
+      }
+      // CALX113 — Échap désarme aussi la désignation de l'axe de symétrie.
+      if (mirrorArmed) {
+        mirrorArmed = false;
+        mirrorFirstPoint = null;
+        if (freeMirrorBtn) freeMirrorBtn.setAttribute('aria-pressed', 'false');
+        if (layoutNoteEl) layoutNoteEl.textContent = 'Symétrie annulée.';
         renderLayoutPanel();
         e.preventDefault();
         return;
@@ -1861,6 +2300,28 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       syncFreeInputs();
       return true;
     }
+    // CALX113 — « Symétrie » armée : les DEUX prochains clics désignent l'axe (une droite
+    // définie par deux points cliqués) ; le second clic COMMIT la symétrie de la sélection.
+    if (freeActive() && mirrorArmed) {
+      const enu = screenToENU(point);
+      if (!enu) return false;
+      if (!mirrorFirstPoint) {
+        mirrorFirstPoint = { x: enu.x, y: enu.y };
+        if (layoutNoteEl) layoutNoteEl.textContent = 'Touchez un second point pour définir l’axe (Échap pour annuler).';
+        return true;
+      }
+      const axis = { a: [mirrorFirstPoint.x, mirrorFirstPoint.y] as [number, number], b: [enu.x, enu.y] as [number, number] };
+      mirrorArmed = false;
+      mirrorFirstPoint = null;
+      if (freeMirrorBtn) freeMirrorBtn.setAttribute('aria-pressed', 'false');
+      const members = selection.length ? selection : [];
+      if (!members.length) {
+        if (layoutNoteEl) layoutNoteEl.textContent = 'Sélectionnez d’abord les panneaux à symétriser.';
+        return true;
+      }
+      symetriserSelection(members, axis);
+      return true;
+    }
     /** PV34 — arme le cadre. `additive` : le lot encadré s'AJOUTE au groupe courant
      *  (Maj) au lieu de le remplacer (glissé nu / mode ▭ Sélection). */
     const startMarquee = (additive: boolean): boolean => {
@@ -1876,10 +2337,25 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       map.getCanvas().style.cursor = 'crosshair';
       return true;
     };
-    // PV25 — MARQUEE : Maj + glissé (souris) ou mode « sélection multiple » (doigt) trace
-    // un rectangle au lieu de déplacer un panneau. Le rectangle est en ENU (mètres), via
-    // la MÊME déprojection écran→toit que le reste de l'éditeur — aucun second système.
-    if (shiftKey || selectMode) return startMarquee(shiftKey);
+    // CALX116 — arme le LASSO (même déclenchement que le cadre, forme différente). Le
+    // box-zoom MapLibre reste désactivé pour tout l'éditeur (map.boxZoom?.disable?.() à la
+    // construction, jamais réactivé) — le piège documenté du cadre (PV34 ci-dessus) ne
+    // revient donc pas non plus pour le lasso.
+    const startLasso = (additive: boolean): boolean => {
+      const enu = screenToENU(point);
+      if (!enu) return false;
+      lasso = { ring: [[enu.x, enu.y]], screenPts: [point], startPoint: point, moved: false, additive };
+      emptyPress = null;
+      showLasso(lasso.screenPts);
+      map.dragPan.disable();
+      map.getCanvas().style.cursor = 'crosshair';
+      return true;
+    };
+    const startSelectGesture = (additive: boolean): boolean => (lassoMode ? startLasso(additive) : startMarquee(additive));
+    // PV25 — MARQUEE/LASSO : Maj + glissé (souris) ou mode « sélection multiple » (doigt)
+    // trace un cadre (ou un lasso) au lieu de déplacer un panneau. En ENU (mètres), via la
+    // MÊME déprojection écran→toit que le reste de l'éditeur — aucun second système.
+    if (shiftKey || selectMode) return startSelectGesture(shiftKey);
     const from = layoutPanelAt(point);
     if (from == null) {
       // PV34 — SÉLECTION SANS MODIFICATEUR (ordre du fondateur : « the selection should be
@@ -1890,7 +2366,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       // change : un doigt continue de faire glisser la carte, le cadre reste sur le bouton
       // « ▭ Sélection » (un pan tactile perdu serait une régression bien pire).
       const enu = fromMouse ? screenToENU(point) : null;
-      if (enu && pointOnLayoutArea(enu.x, enu.y)) return startMarquee(false);
+      if (enu && pointOnLayoutArea(enu.x, enu.y)) return startSelectGesture(false);
       // PV31 — appui dans le VIDE : on le mémorise, un simple clic effacera la sélection
       // (un glissé, lui, reste un déplacement de carte et n'y touche pas).
       emptyPress = point;
@@ -2068,6 +2544,33 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  « relâchez sur un emplacement valide / aucun libre ». Le seuil évite qu'un simple
    *  tap/clic ne fasse sauter le panneau vers la cellule vide la plus proche. */
   function moveLayoutDrag(point: maplibregl.Point) {
+    // CALX116 — lasso en cours : on échantillonne le point (au pas mini `LASSO_SAMPLE_PX`,
+    // plafonné à `LASSO_MAX_POINTS`) et on annonce le compte, comme le cadre.
+    if (lasso && ctx.layoutState) {
+      const enu = screenToENU(point);
+      if (!enu) return;
+      const last = lasso.screenPts[lasso.screenPts.length - 1];
+      const farEnough = Math.hypot(point.x - last.x, point.y - last.y) >= LASSO_SAMPLE_PX;
+      if (farEnough && lasso.ring.length < LASSO_MAX_POINTS) {
+        lasso.ring.push([enu.x, enu.y]);
+        lasso.screenPts.push(point);
+      }
+      showLasso(lasso.screenPts); // le tracé suit le geste, à l'écran
+      if (Math.abs(point.x - lasso.startPoint.x) >= LAYOUT_GRAB_PX || Math.abs(point.y - lasso.startPoint.y) >= LAYOUT_GRAB_PX) {
+        lasso.moved = true;
+      }
+      const hits = panelsInLasso(lasso.ring);
+      paintPreviewSelection(lasso.additive ? applySelectionGesture(selection, hits, 'add') : hits);
+      if (layoutNoteEl) {
+        const total = lasso.additive ? applySelectionGesture(selection, hits, 'add').length : hits.length;
+        layoutNoteEl.textContent = hits.length
+          ? `${fmt(total)} panneaux dans la sélection — relâchez pour les sélectionner.`
+          : lasso.additive
+            ? 'Aucun panneau de plus dans le lasso.'
+            : 'Aucun panneau dans le lasso.';
+      }
+      return;
+    }
     // PV25 — marquee en cours : on met à jour le coin opposé et on annonce le compte.
     if (marquee && ctx.layoutState) {
       const enu = screenToENU(point);
@@ -2141,6 +2644,37 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  simple CLIC (souris, `removeOnTap`) sans glissé SUPPRIME le panneau saisi ; un tap tactile
    *  bref ne supprime pas (la suppression tactile passe par l'appui long, géré séparément). */
   function endLayoutDrag(point: maplibregl.Point, removeOnTap = false) {
+    // CALX116 — fin d'un LASSO : la sélection devient les panneaux dont le CENTRE tombe
+    // dans l'anneau tracé (même logique que le cadre : un simple clic, sans glissé, bascule
+    // le panneau visé au lieu de fermer un anneau de surface nulle).
+    if (lasso && ctx.layoutState) {
+      const enu = screenToENU(point);
+      if (enu) lasso.ring.push([enu.x, enu.y]);
+      const dragged = lasso.moved;
+      const additive = lasso.additive;
+      const hits = panelsInLasso(lasso.ring);
+      lasso = null;
+      hideLasso();
+      map.dragPan.enable();
+      map.getCanvas().style.cursor = '';
+      if (!dragged) {
+        const hit = layoutPanelAt(point);
+        if (hit != null) {
+          selectSinglePanel(hit, true);
+          return;
+        }
+        renderLayoutPanel();
+        return;
+      }
+      setSelection(applySelectionGesture(selection, hits, additive ? 'add' : 'replace'));
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = selection.length
+          ? `${fmt(selection.length)} panneaux sélectionnés — glissez-en un pour déplacer tout le groupe.`
+          : 'Sélection vide.';
+      }
+      renderLayoutPanel();
+      return;
+    }
     // PV25 — fin d'un MARQUEE : la sélection devient les panneaux du rectangle.
     if (marquee && ctx.layoutState) {
       const enu = screenToENU(point);
@@ -2336,7 +2870,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (selectRow(hit).length) e.preventDefault();
   });
   map.on('mousemove', (e) => {
-    if (layoutDrag || marquee) {
+    if (layoutDrag || marquee || lasso) {
       moveLayoutDrag(e.point);
       return;
     }
@@ -2345,9 +2879,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     setPanelHighlight(layoutPanelAt(e.point));
   });
   map.on('mouseup', (e) => {
-    const hadGesture = !!layoutDrag || !!marquee;
+    const hadGesture = !!layoutDrag || !!marquee || !!lasso;
     endLayoutDrag(e.point, true); // clic sans glissé = supprimer (W88)
-                                  // PV25 — un marquee en cours est committé par le même chemin.
+                                  // PV25 — un marquee/lasso en cours est committé par le même chemin.
     if (!hadGesture) clearSelectionOnEmptyClick(e.point);
   });
 
@@ -2360,7 +2894,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    */
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('mouseup', (ev: MouseEvent) => {
-      if (!layoutDrag && !marquee) return;
+      if (!layoutDrag && !marquee && !lasso) return;
       const canvas = typeof map.getCanvas === 'function' ? map.getCanvas() : null;
       // Relâché SUR la carte : le chemin `map.on('mouseup')` s'en charge déjà.
       if (canvas && ev.target instanceof Node && canvas.contains(ev.target)) return;
@@ -2433,14 +2967,14 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
   });
   map.on('touchmove', (e) => {
-    if (!layoutDrag && !marquee) return;
+    if (!layoutDrag && !marquee && !lasso) return;
     e.preventDefault();
     moveLayoutDrag(e.point);
     if (layoutDrag?.moved) cancelLongPress(); // un glissé annule l'appui long (c'est un déplacement)
   });
   map.on('touchend', (e) => {
     cancelLongPress(); // tap bref / fin de glissé : pas de suppression par appui long
-    if (!layoutDrag && !marquee) {
+    if (!layoutDrag && !marquee && !lasso) {
       clearSelectionOnEmptyClick(e.point); // PV31 — un tap dans le vide lâche la sélection
       return;
     }
@@ -2481,6 +3015,10 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     freeSnapCandidate,
     freeAlignSelection,
     freeDistributeSelection,
+    dupliquerSelection,
+    symetriserSelection,
+    panelsInLasso,
+    isLassoMode: () => lassoMode,
   };
 }
 
