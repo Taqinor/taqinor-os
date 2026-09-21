@@ -49,12 +49,26 @@ GENRES = ('bande', 'polygone')
 #: Les côtés admis pour une bande. ``perimetre`` = tout le tour.
 COTES = ('nord', 'sud', 'est', 'ouest', 'perimetre')
 
+#: CALX104 câblage — les FORMES d'un gabarit d'OBSTACLE (l'atelier les lit dans
+#: ``roofPro11/types.ts::lireGabaritsObstacle``). ``rectangle`` est la forme par
+#: défaut de l'atelier ; aucune n'est supposée à la place d'une autre.
+FORMES_OBSTACLE = ('rectangle', 'cercle', 'polygone')
+
 #: Les clés d'un gabarit. Aucune autre n'est admise (on ne range pas un
 #: réglage dans un tiroir qui n'existe pas).
+#:
+#: CALX104 câblage — ``type``, ``forme``, ``longueur_m`` et ``rayon_m`` ont été
+#: AJOUTÉES : l'atelier lisait déjà ces quatre clés pour proposer les gabarits
+#: d'OBSTACLE de la société, mais la porte d'enregistrement les refusait comme
+#: « réglage inconnu ». Aucune société ne pouvait donc enregistrer un gabarit
+#: d'obstacle, et le code qui les lit n'avait aucune donnée à lire. Les gabarits
+#: de ZONE (bande / polygone) sont strictement inchangés : ces quatre clés sont
+#: OPTIONNELLES et ne sont écrites que si elles sont saisies.
 CLES = ('libelle', 'nature', 'genre', 'largeur_m', 'cote', 'sommets',
-        'retrait_m', 'hauteur_m', 'source')
+        'retrait_m', 'hauteur_m', 'source',
+        'type', 'forme', 'longueur_m', 'rayon_m')
 
-__all__ = ['SECTION', 'GENRES', 'COTES', 'CLES',
+__all__ = ['SECTION', 'GENRES', 'COTES', 'CLES', 'FORMES_OBSTACLE',
            'normaliser_section_zones_types', 'appliquer_modele',
            'source_de_zone']
 
@@ -102,6 +116,38 @@ def _nature(valeur, champ):
         raise _refus(
             f"Nature de zone inconnue : « {texte} ». Natures admises : "
             f"{', '.join(admises)}.", champ)
+    return texte
+
+
+def _type_obstacle(valeur, champ):
+    """CALX104 — le type d'obstacle SAISI, ou ``None``.
+
+    Les types admis sont ceux de l'atelier (``services/degagements.py``,
+    ``DEGAGEMENTS_ATELIER``) : c'est la même table que celle qui porte leur
+    dégagement, on n'en tient pas une seconde.
+    """
+    from .degagements import DEGAGEMENTS_ATELIER
+
+    texte = _texte(valeur, champ, "Type d'obstacle")
+    if texte is None:
+        return None
+    admis = tuple(cle for cle, _, _ in DEGAGEMENTS_ATELIER)
+    if texte not in admis:
+        raise _refus(
+            f"Type d'obstacle inconnu : « {texte} ». Types admis : "
+            f"{', '.join(admis)}.", champ)
+    return texte
+
+
+def _forme_obstacle(valeur, champ):
+    """CALX104 — la forme SAISIE du gabarit d'obstacle, ou ``None``."""
+    texte = _texte(valeur, champ, 'Forme')
+    if texte is None:
+        return None
+    if texte not in FORMES_OBSTACLE:
+        raise _refus(
+            f"Forme de gabarit inconnue : « {texte} ». Formes admises : "
+            f"{', '.join(FORMES_OBSTACLE)}.", champ)
     return texte
 
 
@@ -185,6 +231,24 @@ def _modele(cle, brut):
     else:
         modele['sommets'] = _sommets(brut.get('sommets'),
                                      f'{racine}.sommets')
+
+    # CALX104 câblage — les quatre clés du gabarit d'OBSTACLE. Elles sont
+    # OPTIONNELLES et ne sont posées QUE si elles ont été saisies : un gabarit
+    # de zone enregistré avant cette tâche se relit octet pour octet.
+    type_obstacle = _type_obstacle(brut.get('type'), f'{racine}.type')
+    if type_obstacle is not None:
+        modele['type'] = type_obstacle
+    forme = _forme_obstacle(brut.get('forme'), f'{racine}.forme')
+    if forme is not None:
+        modele['forme'] = forme
+    longueur_m = _nombre(brut.get('longueur_m'), f'{racine}.longueur_m',
+                         'Longueur du gabarit')
+    if longueur_m is not None:
+        modele['longueur_m'] = longueur_m
+    rayon_m = _nombre(brut.get('rayon_m'), f'{racine}.rayon_m',
+                      'Rayon du gabarit')
+    if rayon_m is not None:
+        modele['rayon_m'] = rayon_m
     return modele
 
 
