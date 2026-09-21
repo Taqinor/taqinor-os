@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a09519d8ffec5e537659cedd60a878e56e2e2899b11d2370a5320a001d29cf09
-Plan fingerprint: 13aeaf3a05b115b82f2be19eb5c61d620aa429f69c75d06a4ad72854c385dec7
+Plan fingerprint: 00167418ef9f3d695df2bb3e31c3be5a90fee64e2823d11db4012ab013bd20ab
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (212)**
+**Done (213)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -744,9 +744,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 - `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
+- `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (394)**
+**Open — to build (393)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -1110,7 +1111,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX398` — Re-mesurer le budget de poids du module après le lot
 - `CALX399` — Figer la forme des agrégats du module dans `docs/api-contracts.md`
 - `CALX400` — Geler les repères DOM `cal-*` en contrat
-- `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
 - `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
 - `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
