@@ -26,14 +26,6 @@ vi.mock('../../../api/crmApi', () => ({
   default: { getLeadPointsContact, createPointContact, getLeadJalonsDevis },
 }))
 
-vi.mock('../../../api/marketingApi', () => ({
-  default: {
-    campagnes: { list: vi.fn(() => Promise.resolve({ data: [] })) },
-    sequences: { list: vi.fn(() => Promise.resolve({ data: [] })) },
-    unwrapList: (r) => r.data ?? [],
-  },
-}))
-
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
 vi.mock('../../../lib/toast', () => ({
   toastError,

@@ -641,14 +641,6 @@ const stockApi = {
       paramsSerializer: { indexes: null },
       responseType: 'blob',
     }),
-  // XPOS17 — étiquettes showroom : le QR pointe vers la fiche produit PUBLIQUE
-  // de l'e-catalogue tokenisé de la société (jamais de prix d'achat/marge).
-  etiquettesShowroom: (produitIds, catalogueToken, { sortie = 'pdf' } = {}) =>
-    api.get('/stock/produits/etiquettes-showroom/', {
-      params: { ids: produitIds, catalogue_token: catalogueToken, sortie },
-      paramsSerializer: { indexes: null },
-      responseType: 'blob',
-    }),
 }
 
 export default stockApi

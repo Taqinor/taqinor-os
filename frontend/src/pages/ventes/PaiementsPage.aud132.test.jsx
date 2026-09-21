@@ -25,11 +25,6 @@ vi.mock('../../hooks/useHasPermission', () => ({
   useIsAdmin: () => true,
   useIsAdminOrResponsable: () => true,
 }))
-// EcritureSourceLink interroge la compta : hors sujet ici.
-vi.mock('../../features/compta/components/EcritureSourceLink.jsx', () => ({
-  default: () => null,
-}))
-
 import ventesApi from '../../api/ventesApi'
 import PaiementsPage from './PaiementsPage'
 

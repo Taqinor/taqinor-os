@@ -16,7 +16,6 @@ import * as axeMatchers from 'vitest-axe/matchers'
 // périmètre de ce test purement a11y ; neutralisées comme dans
 // components/layout/Header.test.jsx (même convention exacte).
 vi.mock('../components/layout/NotificationBell', () => ({ default: () => null }))
-vi.mock('../components/layout/ChatBell', () => ({ default: () => null }))
 vi.mock('../components/layout/GlobalSearch', () => ({ default: () => null }))
 vi.mock('../design/ThemeToggle', () => ({ ThemeToggle: () => null }))
 // VX46 — PreferencesPanel dépend lui aussi d'un ThemeProvider (useDensity),

@@ -19,17 +19,18 @@ import { useConfirmDialog } from '../../ui/confirm'
    XKB1/ZCTR7-9 — Boîte d'approbations centralisée (agrégateur cross-app).
    ----------------------------------------------------------------------------
    Écran UNIQUE listant TOUT ce qui attend l'approbation de l'utilisateur
-   courant, à travers les CINQ sources exposées par
-   `reporting/approbations-en-attente/` (automation/contrats/ged/
-   installations/workflow) — UNFILTRÉ par défaut (contrairement à
-   `WorkflowsScreen` qui n'affiche que `source=workflow`).
+   courant, à travers les sources exposées par
+   `reporting/approbations-en-attente/` (automation/ged/installations/
+   workflow — SOLMVP41 : la source `contrats` est partie avec l'app
+   contrats, `ged` reste et le sera quand son câblage atterrira) —
+   UNFILTRÉ par défaut (contrairement à `WorkflowsScreen` qui n'affiche
+   que `source=workflow`).
    Décision unitaire ou en masse (sélection multi-lignes), filtres
    source/priorité, tri urgence/ancienneté/montant. company + acting user
    toujours résolus SERVEUR (jamais posté par le client). ========================================================================== */
 
 const SOURCE_LABELS = {
   automation: 'Automatisation',
-  contrats: 'Contrats',
   ged: 'GED',
   installations: 'Installations',
   workflow: 'Workflow',
@@ -914,7 +915,7 @@ export default function ApprobationsPage() {
       <div className="page-header">
         <h1 className="page-title">Approbations en attente</h1>
         <div className="page-subtitle">
-          Boîte unique — automatisations, contrats, GED, réquisitions
+          Boîte unique — automatisations, GED, réquisitions
           installations et étapes de workflow en attente de votre décision, plus
           les demandes d'approbation ad-hoc et la gestion de vos délégations
           d'absence.

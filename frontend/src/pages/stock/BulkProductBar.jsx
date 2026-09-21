@@ -2,7 +2,7 @@
 // est coché. Prix (% ou fixe), garantie, catégorie, marque, export Excel. La
 // règle (prix d'achat jamais touché) est appliquée SERVEUR ; ici, UI seulement.
 import { useState } from 'react'
-import { Download, QrCode, LayoutGrid, Store, X } from 'lucide-react'
+import { Download, QrCode, LayoutGrid, X } from 'lucide-react'
 import {
   Button, Input, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -23,8 +23,8 @@ const PANELS = [
 ]
 
 export default function BulkProductBar({
-  count, categories = [], marques = [], busy, labelsBusy, kanbanBusy, showroomBusy,
-  onAction, onExport, onPrintLabels, onPrintKanban, onPrintShowroom, onClear,
+  count, categories = [], marques = [], busy, labelsBusy, kanbanBusy,
+  onAction, onExport, onPrintLabels, onPrintKanban, onClear,
 }) {
   const [panel, setPanel] = useState(null)
   const [priceMode, setPriceMode] = useState('percent')
@@ -79,16 +79,6 @@ export default function BulkProductBar({
             className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
           >
             <LayoutGrid className="size-3.5" /> Cartes kanban
-          </button>
-        )}
-        {/* WIR268/XPOS17 — étiquettes showroom (QR → fiche e-catalogue publique). */}
-        {onPrintShowroom && (
-          <button
-            type="button" disabled={busy || showroomBusy} onClick={onPrintShowroom}
-            title="Étiquettes showroom (QR vers la fiche e-catalogue publique)"
-            className="inline-flex items-center gap-1.5 rounded-md border border-white/20 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-          >
-            <Store className="size-3.5" /> Étiquettes showroom
           </button>
         )}
         <button

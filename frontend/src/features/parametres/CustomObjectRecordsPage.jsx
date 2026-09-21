@@ -15,6 +15,11 @@
 //
 // Multi-tenant : la société vient de `request.user` côté serveur ; l'URL ne
 // porte que le code de l'objet. `company` n'est jamais envoyée.
+//
+// SOLMVP41 — déplacé de `features/customobjects/` (sorti du MVP solaire,
+// Groupe SOLMVP) vers `features/parametres/` : cet écran ne dépend que de
+// `customfields` (app fondation, jamais parquée) et reste le seul moyen
+// d'atteindre les enregistrements construits par ObjetsPersonnalisesPage.jsx.
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Boxes, Plus, Trash2, ArrowLeft } from 'lucide-react'
