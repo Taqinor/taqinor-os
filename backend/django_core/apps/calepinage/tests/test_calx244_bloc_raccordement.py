@@ -47,7 +47,7 @@ CODES = ['elevation_tension', 'puissance_souscrite', 'regime_phases',
          'tension_nominale', 'desequilibre_phases']
 
 #: Les quatre grandeurs du bloc ``calcul``.
-CHAMPS_CALCUL = {'elevation_pct', 'marge_pct', 'puissance_injectee_kva',
+CHAMPS_CALCUL = {'elevation_pct', 'ecart_limite_pct', 'puissance_injectee_kva',
                  'desequilibre_pct'}
 
 #: Les cinq champs d'un verdict publié.
@@ -166,8 +166,8 @@ class OmissionsNommeesTest(SimpleTestCase):
         self.assertIsNotNone(bloc['calcul']['elevation_pct'],
                              "L'élévation est un chiffre VRAI : elle se "
                              "publie même sans limite à lui opposer.")
-        self.assertIsNone(bloc['calcul']['marge_pct'],
-                          "`marge_pct` est une DIFFÉRENCE : sans limite, il "
+        self.assertIsNone(bloc['calcul']['ecart_limite_pct'],
+                          "`ecart_limite_pct` est une DIFFÉRENCE : sans limite, il "
                           "n'y a rien à soustraire.")
         verdict = _par_code(bloc)['elevation_tension']
         self.assertEqual(verdict['statut'], 'omis')

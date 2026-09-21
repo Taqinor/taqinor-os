@@ -62,9 +62,16 @@ __all__ = [
     'REGLE_CHAINE_MODULE', 'REGLE_CHAINE_OPTIMISEUR', 'regle_de_chaine',
     'PublicationBloquee', 'bloquants_nommes', 'alertes_nommees',
     'evaluation_electrique', 'garde_publication', 'rejouer_apres_layout',
+    'verdict_publiable', 'STATUT_MOTIF_OMIS', 'STATUT_MOTIF_SANS_SOURCE',
+    'CLE_PUBLICATION',  # CALX248
     'ORIGINE_LONGUEUR_FICHE', 'ORIGINE_LONGUEUR_DOSSIER',
     'longueur_chaine_retenue', 'plafond_modules',
     'journaliser_ecart_longueur', 'parametres_societe',
+    'CLE_DEROGATIONS', 'CLE_FIL_ECARTS',
+    'CLE_FIL_DEROGATIONS',  # CALX215
+    'CLE_BORDEREAU', 'CLE_CORRESPONDANCES',
+    'CLE_REGLE_STRUCTURE',  # CALX246
+    'CLE_TRONCONS',  # CALX228
     'CLE_POLYSTRING',  # CALX206
     'CLE_MICRO_ONDULEURS',  # CALX209
     'CHAMP_OPT_V_OUT', 'CHAMP_OPT_MODULES_MAX', 'CLE_OPT_V_OUT',
@@ -333,7 +340,21 @@ CHAMPS_ENTREE = (
     'exigence_marche',      # CAL127 — bornes imposées par le CPS du dossier
     'affectation_manuelle',  # CAL234 — affectation IMPOSÉE module par module
     'polystring',           # CALX206 — pans mis en parallèle sur une entrée
+    'derogations',          # CALX215 — alertes PASSÉES OUTRE (geste, pas réglage)
 )
+
+#: CALX215 — la clé par laquelle une alerte est PASSÉE OUTRE. C'est un GESTE,
+#: pas un réglage : la saisie (``[{code, motif}]``) n'est jamais rangée dans
+#: l'entrée électrique, elle part directement dans le FIL du calepinage avec
+#: l'auteur et l'instant que le SERVEUR pose (``CLE_FIL_DEROGATIONS``). Une
+#: dérogation rangée dans l'entrée serait rejouée à chaque enregistrement.
+CLE_DEROGATIONS = 'derogations'
+
+#: Les trois champs que ``core.electrique.types.passer_outre`` NOMME en tête
+#: de son refus. Tout autre refus du noyau vise le verdict lui-même, donc le
+#: CODE saisi : la liste est fermée pour qu'un message reformulé ne fasse
+#: jamais pointer l'écran sur un champ qui n'existe pas.
+CHAMPS_DEROGATION = ('auteur', 'motif', 'horodatage')
 
 # ═══════════════════════════════════════════════════════════════════════════
 # CALX70 — LA SIMULATION PERSISTÉE EST SERVIE, AVEC SON CONTRÔLE DE FRAÎCHEUR
@@ -464,15 +485,170 @@ def entree_stockee(calepinage):
     return dict(entree) if isinstance(entree, dict) else {}
 
 
-def enregistrer_entree(calepinage, donnees):
+def _nom_auteur(user):
+    """Le nom de l'AUTEUR d'un geste, tel qu'il sera relu — jamais un prénom
+    codé en dur (règle fondateur 08/09/2026)."""
+    if user is None:
+        return ''
+    obtenir = getattr(user, 'get_full_name', None)
+    if callable(obtenir):
+        try:
+            nom = (obtenir() or '').strip()
+        except Exception:  # noqa: BLE001 — un utilisateur exotique ne casse
+            nom = ''        # pas un enregistrement ; le repli suit.
+        if nom:
+            return nom
+    for attribut in ('username', 'email'):
+        valeur = str(getattr(user, attribut, '') or '').strip()
+        if valeur:
+            return valeur
+    return ''
+
+
+def _verdict_par_code(conception, code):
+    """Le ``VerdictElectrique`` de CE code sur cette conception, ou ``None``.
+
+    Un verdict se désigne par son CODE (CALX215), jamais par sa position dans
+    une liste ni par un morceau de sa phrase.
+    """
+    resultat = getattr(conception, 'resultat', None)
+    for verdict in getattr(resultat, 'verdicts', ()) or ():
+        if getattr(verdict, 'code', None) == code:
+            return verdict
+    return None
+
+
+def _traces_de_derogation(conception, saisies, *, user=None):
+    """CALX215 — les traces des alertes PASSÉES OUTRE, prêtes pour le fil.
+
+    Le noyau (``core.electrique.types.passer_outre``) prononce la règle :
+    un BLOQUANT ne se passe jamais outre, un auteur vide ou un motif vide ne
+    sont pas relisibles, un horodatage sans fuseau n'est pas opposable. Ce
+    service ne la redit pas — il l'APPELLE, et traduit son refus en refus
+    nommant le champ fautif (règle fondateur 08/09/2026).
+
+    Fonction PURE : elle reçoit la ``Conception`` déjà calculée, ne lit aucune
+    base et n'écrit rien — c'est ``enregistrer_entree`` qui pose le fil.
+    """
+    from django.utils import timezone
+
+    from core.electrique.types import passer_outre
+
+    if not isinstance(saisies, (list, tuple)):
+        raise EntreeInvalide(
+            "Les dérogations doivent être une liste d'objets "
+            "« { code, motif } ».", champ=CLE_DEROGATIONS)
+    auteur = _nom_auteur(user)
+    # UN seul instant pour tout le geste : deux dérogations posées d'un même
+    # clic ne se relisent pas à deux dates. ``timezone.now()`` est AVISÉ.
+    horodatage = timezone.now()
+    traces = []
+    for rang, saisie in enumerate(saisies, start=1):
+        champ = '%s.%d' % (CLE_DEROGATIONS, rang)
+        if not isinstance(saisie, dict):
+            raise EntreeInvalide(
+                "La dérogation n° %d doit être un objet « { code, motif } »."
+                % rang, champ=champ)
+        code = str(saisie.get('code') or '').strip()
+        verdict = _verdict_par_code(conception, code)
+        if verdict is None:
+            raise EntreeInvalide(
+                "Aucun verdict électrique ne porte le code « %s » sur cette "
+                "conception : une alerte ne se passe outre que si elle a été "
+                "réellement prononcée." % (code or '(vide)'),
+                champ='%s.code' % champ)
+        try:
+            derogation = passer_outre(
+                verdict, auteur=auteur, horodatage=horodatage,
+                motif=str(saisie.get('motif') or ''))
+        except ValueError as refus:
+            texte = str(refus)
+            # Le noyau préfixe son refus du nom du champ fautif
+            # (« auteur : … », « motif : … », « horodatage : … ») ; tout autre
+            # refus (un bloquant qu'on tente de passer outre) désigne le CODE.
+            tete = texte.split(' : ', 1)[0]
+            nomme = tete if tete in CHAMPS_DEROGATION else 'code'
+            raise EntreeInvalide(texte, champ='%s.%s' % (champ, nomme))
+        traces.append({
+            'code': derogation.code,
+            'libelle': derogation.libelle,
+            'auteur': derogation.auteur,
+            'horodatage': derogation.horodatage.isoformat(),
+            'motif': derogation.motif,
+            'texte': derogation.texte,
+        })
+    return traces
+
+
+def _panneaux_du_pan(document, libelle):
+    """Les centres de modules du pan NOMMÉ, ou ``()`` — lecture du document."""
+    zones = (document or {}).get('zones')
+    for rang, zone in enumerate(zones if isinstance(zones, (list, tuple))
+                                else (), start=1):
+        if not isinstance(zone, dict):
+            continue
+        nom = str(zone.get('label') or zone.get('id') or 'PAN-%d' % rang)
+        if nom != libelle:
+            continue
+        geometrie = zone.get('geometry')
+        if isinstance(geometrie, dict):
+            return geometrie.get('panels') or ()
+    return ()
+
+
+def _valider_cheminement(calepinage, cheminement, layout=None):
+    """CALX218 — un motif de parcours fautif est refusé À LA SAISIE.
+
+    Sans ce contrôle, un motif mal saisi ne se découvrait qu'au calcul, sous
+    la forme d'une omission de longueur : l'utilisateur voyait « pas de
+    section » sans savoir que SA saisie était en cause. Le refus NOMME le pan
+    et le champ (règle fondateur 08/09/2026).
+
+    La course est RÉELLEMENT calculée sur le plan enregistré : c'est le même
+    appel que fera ``longueur_dc``, donc la saisie acceptée est une saisie qui
+    produira une longueur.
+    """
+    from .cables import MotifDeParcoursInvalide, course_de_chaine
+
+    if not isinstance(cheminement, dict):
+        # Saisie historique en texte libre (« chemin de câbles ») ou vide :
+        # rien à valider, le motif de parcours n'existe que par pan.
+        return
+    pans = cheminement.get('pans')
+    if not isinstance(pans, dict):
+        return
+    document = layout if layout is not None else getattr(
+        calepinage, 'roof_layout', None)
+    for libelle, saisie in pans.items():
+        if not isinstance(saisie, dict) or not saisie.get('motif_parcours'):
+            continue
+        try:
+            course_de_chaine(
+                None, _panneaux_du_pan(document, str(libelle)),
+                saisie.get('motif_parcours'),
+                point_collecte=saisie.get('point_collecte'))
+        except MotifDeParcoursInvalide as refus:
+            raise EntreeInvalide(
+                "Pan « %s » : %s" % (libelle, refus),
+                champ='cheminement.pans.%s.motif_parcours' % libelle)
+
+
+def enregistrer_entree(calepinage, donnees, *, user=None):
     """Pose l'entrée électrique sur le calepinage (mise à jour PARTIELLE).
 
     La société n'est jamais lue d'ici : elle est celle du calepinage, et
     l'appelant (le viewset) a déjà borné l'objet. Seule la clé ``resultat``
     est écrite — AUCUN statut (règle #4).
 
+    CALX215 — ``donnees['derogations']`` (``[{code, motif}]``) est un GESTE :
+    chaque alerte passée outre part dans le FIL du calepinage avec l'AUTEUR
+    (``user``, jamais le corps de la requête) et l'instant AVISÉ posés par le
+    serveur, et n'est PAS rangée dans l'entrée. Un refus laisse le calepinage
+    intact : rien n'est écrit tant que toutes les dérogations ne tiennent pas.
+
     Raises:
-        EntreeInvalide: champ inconnu, ou corps qui n'est pas un objet.
+        EntreeInvalide: champ inconnu, corps qui n'est pas un objet, ou
+            dérogation refusée (code inconnu, bloquant, auteur ou motif vide).
     """
     if not isinstance(donnees, dict):
         raise EntreeInvalide(
@@ -485,10 +661,21 @@ def enregistrer_entree(calepinage, donnees):
             f"« {', '.join(inconnus)} ». Champs admis : "
             f"{', '.join(CHAMPS_ENTREE)}.", champ=inconnus[0])
 
+    if 'cheminement' in donnees:
+        _valider_cheminement(calepinage, donnees.get('cheminement'))
+
+    saisies = donnees.get(CLE_DEROGATIONS)
+    reglages = {cle: valeur for cle, valeur in donnees.items()
+                if cle != CLE_DEROGATIONS}
     resultat = getattr(calepinage, 'resultat', None)
     resultat = dict(resultat) if isinstance(resultat, dict) else {}
     entree = dict(resultat.get(CLE_ENTREE) or {})
-    entree.update(donnees)
+    entree.update(reglages)
+    if CLE_DEROGATIONS in donnees:
+        conception, _materiel, _donnees, _doc = conception_du_calepinage(
+            calepinage, entree=entree)
+        _ajouter_au_fil(resultat, CLE_FIL_DEROGATIONS, _traces_de_derogation(
+            conception, saisies, user=user))
     resultat[CLE_ENTREE] = entree
     calepinage.resultat = resultat
     if getattr(calepinage, 'pk', None):
@@ -794,7 +981,14 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     norme = norme_applicable(parametres_societe(calepinage))
     cables = cables_du_calepinage(
         conception, cheminement=donnees.get('cheminement'), norme=norme,
-        layout=document)
+        layout=document,
+        # CALX209/CALX210 (crochet de phase 2) — en régime micro-onduleurs,
+        # les ``W2.1 … W2.N`` REMPLACENT la liaison AC unique dans
+        # ``resultat['cables']`` : jusqu'ici elles n'existaient que dans le
+        # bloc « micro_onduleurs », et le bordereau continuait d'afficher un
+        # câble AC forfaitaire vers un onduleur qui n'existe pas.
+        branches_ac=((micro['bloc'] or {}).get('branches')
+                     if micro['bloc'] is not None else None))
 
     # CAL132 — la check-list de protections, éditable, chaque ligne gardant
     # sa source. C'est ELLE que la nomenclature et le schéma lisent.
@@ -802,6 +996,29 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
 
     protections = checklist_protections(
         conception, decisions=donnees.get('protections'), norme=norme)
+
+    # CALX224-228 — le CHEMINEMENT mesuré, tronçon par tronçon. Calculé UNE
+    # fois ici : le bordereau en tire son métré (CALX227) et le résultat le
+    # publie tel quel (même charge utile que ``GET troncons/``).
+    from .troncons import troncons_de_la_conception
+
+    troncons = troncons_de_la_conception(
+        conception, document, norme,
+        # CALX228 — le rattachement des BRANCHES de micro-onduleurs aux
+        # tronçons AC : sans lui, chaque départ prendrait le courant du côté.
+        (micro['bloc'] or {}).get('branches') or ()
+        if micro['bloc'] is not None else ())
+
+    # CALX246/230/232/247 — LE BORDEREAU. Il descend des mêmes objets purs que
+    # les câbles ci-dessus (``cables['noyau']``), des coffrets RÉELLEMENT
+    # posés dans le plan et de la règle de structure SOURCÉE ; chaque ligne
+    # porte sa référence d'article quand la société en a posé une.
+    bordereau = _bordereau_du_calepinage(
+        calepinage, conception, cables.get('noyau'),
+        equipements=_equipements_electriques(document),
+        branches=((micro['bloc'] or {}).get('branches') or ()
+                  if micro['bloc'] is not None else ()),
+        troncons=troncons['troncons'])
 
     # CAL134 — la check-list de terre et sa justification exigée.
     from .terre import checklist_terre
@@ -826,6 +1043,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         messages.append(motif_faible)
     messages.extend(regle['bornes_non_verifiables'])
     messages.extend(cables['omissions'])
+    messages.extend(bordereau['alertes'])
     messages.extend(protections['omissions'])
     messages.extend(terre['omissions'])
     if reconciliation['origine'] == ORIGINE_LONGUEUR_DOSSIER:
@@ -911,6 +1129,15 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # CAL131 — les câbles, avec la LONGUEUR et SON ORIGINE.
         'cables': cables['cables'],
         'longueurs': cables['longueurs'],
+        # CALX246 — le BORDEREAU électrique : une ligne par organe retenu, par
+        # câble dimensionné, par coffret posé, avec sa référence d'article
+        # quand la société en a posé une. AUCUN prix (D-CALX 5).
+        CLE_BORDEREAU: bordereau['lignes'],
+        # CALX228 — le CHEMINEMENT mesuré : la MÊME charge utile que
+        # ``GET troncons/`` (contrat CALX203), ``null`` tant qu'aucun
+        # cheminement n'est tracé — jamais une liste vide, qui se lirait
+        # « mesuré, et il n'y a rien ».
+        CLE_TRONCONS: (troncons if troncons['troncons'] else None),
         # CAL132 — la check-list d'organes (retenus / ajoutés / écartés).
         # CALX209/CALX210 — les ``QAC.N`` des branches de micro-onduleurs s'y
         # AJOUTENT : un départ par branche, calibré par la même règle.
@@ -1166,6 +1393,238 @@ def garde_publication(calepinage):
         bloquants=evaluation['bloquants'])
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX248 — UN VERDICT PUBLIABLE UNIQUE, ENTRÉE PAR ENTRÉE SOURCÉE
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``garde_publication`` ne regarde que DEUX choses — les bloquants d'onduleur
+# et la garde de terre — alors que le résultat porte déjà des omissions de
+# norme, de câble et de protection. Un dossier dont TOUTES les sections sont
+# OMISES faute de norme passait donc la garde, et personne ne lisait au même
+# endroit ce qui empêchait vraiment de publier.
+#
+# Parité : Aurora vend un rapport de validation comme livrable NOMMÉ
+# (https://aurorasolar.com/design-mode/) ; PV*SOL bloque la simulation sur ses
+# violations les plus graves (https://help.valentin-software.com/pvsol/en/
+# pages/inverters/configuration-check/).
+#
+# LA RÈGLE, ET ELLE TIENT EN DEUX LIGNES :
+#   * ZÉRO plage BLOQUANTE — un dépassement de spécification se corrige, il ne
+#     se publie pas ;
+#   * ZÉRO entrée SANS PROVENANCE — une omission ASSUMÉE (statut
+#     ``non_verifiable``, motif en clair) n'empêche PAS la publication ; une
+#     valeur qui a servi à JUGER sans que rien ne dise d'où elle vient, si.
+#
+# CE VERDICT NE REMPLACE PAS LA GARDE. ``garde_publication`` continue de
+# refuser exactement ce qu'elle refusait (test de non-régression) : la garde
+# est le CLIQUET du geste de publication, ce verdict est le RAPPORT qu'on lit
+# avant de cliquer.
+
+#: Le statut d'une omission ASSUMÉE — le calcul ne s'est pas fait, on DIT
+#: pourquoi, et ça ne bloque pas la publication.
+STATUT_MOTIF_OMIS = 'omis'
+
+#: Le statut d'une entrée qui a JUGÉ sans provenance : elle, elle bloque.
+STATUT_MOTIF_SANS_SOURCE = 'sans_source'
+
+#: La clé du verdict de publication quand il est publié à côté d'un résultat.
+CLE_PUBLICATION = 'publication'
+
+
+def _motif_publication(code, statut, libelle, source=''):
+    """UNE entrée du verdict de publication — quatre clés, jamais plus.
+
+    Un statut CONCLUSIF (``ok``, ``alerte``, ``bloquant``) sans provenance
+    devient ``sans_source`` : c'est une valeur qui a servi à juger sans que
+    personne ne puisse dire d'où elle vient. Un statut d'ABSTENTION
+    (``non_verifiable``, ``omis``) n'a pas besoin de source — son libellé EST
+    le motif de l'abstention.
+    """
+    from core.electrique.types import STATUT_ALERTE, STATUT_BLOQUANT, STATUT_OK
+
+    source = (source or '').strip()
+    if statut in (STATUT_OK, STATUT_ALERTE, STATUT_BLOQUANT) and not source:
+        statut = STATUT_MOTIF_SANS_SOURCE
+    return {'code': code, 'statut': statut, 'libelle': libelle,
+            'source': source}
+
+
+def _motif_du_verdict(verdict):
+    """Un ``VerdictElectrique`` (CALX215) traduit en motif de publication."""
+    return _motif_publication(verdict.code, verdict.statut, verdict.libelle,
+                              verdict.source)
+
+
+def _motifs_de_la_conception(conception):
+    """Les natures de CALX215 — les verdicts ``ok`` ne sont pas des motifs."""
+    resultat = getattr(conception, 'resultat', None)
+    return [_motif_du_verdict(verdict)
+            for verdict in getattr(resultat, 'verdicts', ()) or ()
+            if not verdict.est_ok]
+
+
+def _motifs_de_la_norme(norme):
+    """L'omission de norme (D1) — ASSUMÉE, donc jamais bloquante."""
+    if (norme or {}).get('applicable'):
+        return []
+    return [_motif_publication(
+        'NORME_NON_APPLICABLE', STATUT_MOTIF_OMIS,
+        (norme or {}).get('motif')
+        or "aucune norme électrique n'est applicable : sections, chutes de "
+           "tension et check-list de terre sont OMISES",
+        'services/norme.py::norme_applicable')]
+
+
+def _motifs_du_raccordement(conception, saisie, reglages):
+    """CALX242 + CALX243 — branchement et équilibrage, LUS, jamais recalculés.
+
+    ``services/raccordement.py`` est en LECTURE SEULE ici : ce module ne
+    reprononce aucun de ses verdicts, il les traduit en motifs.
+    """
+    from .raccordement import (
+        RaccordementInvalide, repartition_des_phases, verdicts_raccordement,
+    )
+
+    motifs = []
+    try:
+        bloc = verdicts_raccordement(conception, saisie)
+    except RaccordementInvalide as refus:
+        return [_motif_publication(
+            'RACCORDEMENT_REFUSE', STATUT_MOTIF_SANS_SOURCE, str(refus),
+            '')]
+    motifs.extend(_motif_du_verdict(verdict) for verdict in bloc['verdicts']
+                  if not verdict.est_ok)
+
+    equilibrage = repartition_des_phases(
+        _onduleurs_poses(conception),
+        (saisie or {}).get('phases') or _phases_du_champ(conception),
+        reglages=reglages)
+    verdict = equilibrage.get('verdict')
+    if verdict is not None and not verdict.est_ok:
+        motifs.append(_motif_du_verdict(verdict))
+    return motifs
+
+
+def _phases_du_champ(conception):
+    """Le régime que le CALCUL emploie, à défaut d'un régime saisi."""
+    entree = getattr(conception, 'entree', None)
+    return int(getattr(entree, 'phases', 0) or 0) or None
+
+
+def _onduleurs_poses(conception):
+    """Les onduleurs POSÉS, dans la forme que CALX243 relit.
+
+    Le noyau dimensionne un MODÈLE et un NOMBRE (``evaluer_onduleurs``) : les
+    exemplaires sont donc identiques, et aucune phase imposée n'est supposée
+    — c'est le tourniquet de CALX243 qui répartit, et lui seul.
+    """
+    from .chaines import evaluer_onduleurs
+
+    evaluation = evaluer_onduleurs(conception)
+    if evaluation is None or not evaluation.nombre:
+        return []
+    phases = _phases_du_champ(conception) or 1
+    return [{'repere': 'ONDULEUR%d' % rang,
+             'ac_kw': evaluation.ac_kw_unitaire, 'phases': phases}
+            for rang in range(1, int(evaluation.nombre) + 1)]
+
+
+def _motifs_de_la_terre(terre):
+    """CALX245 — la justification de continuité, et les omissions assumées."""
+    motifs = []
+    if terre.get('justification_requise') \
+            and not terre.get('justification_fournie'):
+        from core.electrique.types import STATUT_BLOQUANT
+
+        motifs.append(_motif_publication(
+            'TERRE_JUSTIFICATION_MANQUANTE', STATUT_BLOQUANT,
+            "prise de terre non fournie au marché : la justification de "
+            "continuité de la terre existante reste à cocher "
+            "(terre.justification_continuite)",
+            'NF C 15-100 §542'))
+    motifs.extend(_motif_publication('TERRE_OMISE', STATUT_MOTIF_OMIS, motif)
+                  for motif in terre.get('omissions') or ())
+    return motifs
+
+
+def _motifs_des_troncons(troncons):
+    """CALX226 — les tronçons non calculables, et les cumuls verdictés."""
+    from core.electrique.types import (
+        STATUT_ALERTE, STATUT_BLOQUANT, STATUT_OK,
+    )
+
+    motifs = []
+    for omission in (troncons or {}).get('omissions') or ():
+        motifs.append(_motif_publication(
+            'TRONCON_NON_CALCULABLE', STATUT_MOTIF_OMIS,
+            "tronçon « %s », champ « %s » : %s"
+            % (omission.get('troncon') or '—', omission.get('champ') or '—',
+               omission.get('motif') or ''),
+            'services/troncons.py'))
+    for verdict in (troncons or {}).get('verdicts') or ():
+        if verdict.get('bloquant'):
+            statut = STATUT_BLOQUANT
+        elif verdict.get('conforme'):
+            statut = STATUT_OK
+        else:
+            statut = STATUT_ALERTE
+        if statut == STATUT_OK:
+            continue
+        motifs.append(_motif_publication(
+            verdict.get('code') or 'CHUTE_CUMULEE', statut,
+            verdict.get('detail') or verdict.get('libelle') or '',
+            verdict.get('source') or ''))
+    return motifs
+
+
+def verdict_publiable(calepinage):
+    """CALX248 — ``{publiable, motifs}`` : TOUT ce qui empêche de publier.
+
+    Rassemble, en un seul rapport et sans reprononcer aucun calcul : les
+    natures de CALX215 (conception), l'omission de norme (D1), les verdicts
+    de raccordement (CALX242), l'équilibrage des phases (CALX243), la terre
+    (CALX245) et les tronçons non calculables (CALX226).
+
+    ``publiable`` exige ZÉRO motif BLOQUANT **et** ZÉRO motif
+    ``sans_source``. Une omission assumée (``omis`` / ``non_verifiable``) est
+    publiable : elle DIT ce qui n'a pas été calculé et pourquoi.
+
+    Lecture PURE : rien n'est écrit, aucun statut n'est touché.
+    """
+    from core.electrique.types import STATUT_BLOQUANT
+
+    from .norme import norme_applicable
+    from .terre import checklist_terre
+    from .troncons import troncons_du_calepinage
+
+    conception, _materiel, donnees, document = conception_du_calepinage(
+        calepinage)
+    norme = norme_applicable(parametres_societe(calepinage))
+    reglages = _reglages_electrique_societe(calepinage)
+
+    motifs = list(_motifs_de_la_conception(conception))
+    motifs.extend(_motifs_de_la_norme(norme))
+    motifs.extend(_motifs_du_raccordement(
+        conception, donnees.get('raccordement'), reglages))
+    motifs.extend(_motifs_de_la_terre(checklist_terre(
+        conception, decisions=donnees.get('terre'), norme=norme,
+        company=getattr(calepinage, 'company', None))))
+    motifs.extend(_motifs_des_troncons(troncons_du_calepinage(calepinage)))
+    # Le matériel NON DÉSIGNÉ n'est pas une omission assumée : on ne certifie
+    # pas ce qu'on n'a pas pu vérifier (même règle que ``garde_publication``).
+    for manquante in getattr(conception, 'manquantes', ()) or ():
+        motifs.append(_motif_publication(
+            'FICHE_INCOMPLETE', STATUT_BLOQUANT, manquante,
+            'fiche technique du matériel retenu'))
+
+    refusants = (STATUT_BLOQUANT, STATUT_MOTIF_SANS_SOURCE)
+    return {
+        'publiable': not any(motif['statut'] in refusants
+                             for motif in motifs),
+        'motifs': motifs,
+    }
+
+
 def rejouer_apres_layout(calepinage, *, user=None):
     """Rejoue le verdict après un enregistrement de conception (CAL128).
 
@@ -1267,6 +1726,13 @@ TOLERANCE_LONGUEUR_PCT = 5.0
 #: norme ni fiche ne la fixe, et aucun calcul n'en dépend.
 JOURNAL_ECARTS_MAX = 20
 
+#: Les deux FILS bornés que ce module écrit sur ``Calepinage.resultat``
+#: (JSONField existant, aucune migration) : l'écart de longueur (CAL170) et
+#: les dérogations d'alerte (CALX215). Une clé de plus voudrait dire un
+#: troisième historique à relire ; il n'y en a que deux.
+CLE_FIL_ECARTS = 'journal_longueur_chaine'
+CLE_FIL_DEROGATIONS = 'journal_derogations'
+
 
 def _dans_la_tolerance(reference, ecart):
     """L'écart tient-il dans l'une des deux tolérances (modules OU %) ?"""
@@ -1338,6 +1804,23 @@ def plafond_modules(plafond_kwc, puissance_module_wc):
     return plafond_modules_pour_kwc(float(plafond_kwc), puissance)
 
 
+def _ajouter_au_fil(resultat, cle, entrees):
+    """Ajoute des entrées à UN fil BORNÉ de ``Calepinage.resultat``.
+
+    L'unique mécanique d'écriture d'un fil du module : l'écart de longueur
+    (CAL170) et la dérogation d'alerte (CALX215) passent par ICI. Une seconde
+    mécanique voudrait dire deux tailles de tampon, deux formes de liste et
+    deux façons d'écraser un historique.
+
+    Rend le fil tel qu'il est désormais posé sur ``resultat`` (jamais ``None``).
+    """
+    fil = resultat.get(cle)
+    fil = list(fil) if isinstance(fil, list) else []
+    fil.extend(entrees)
+    resultat[cle] = fil[-JOURNAL_ECARTS_MAX:]
+    return resultat[cle]
+
+
 def journaliser_ecart_longueur(calepinage, reconciliation):
     """Journalise un écart moteur↔fiche HORS TOLÉRANCE, historique conservé.
 
@@ -1357,15 +1840,12 @@ def journaliser_ecart_longueur(calepinage, reconciliation):
 
     resultat = getattr(calepinage, 'resultat', None)
     resultat = dict(resultat) if isinstance(resultat, dict) else {}
-    journal = resultat.get('journal_longueur_chaine')
-    journal = list(journal) if isinstance(journal, list) else []
-    journal.append({
+    fil = _ajouter_au_fil(resultat, CLE_FIL_ECARTS, [{
         'longueur': reconciliation.get('longueur'),
         'longueur_dossier': reconciliation.get('longueur_dossier'),
         'ecart': reconciliation.get('ecart'),
         'par_pan': reconciliation.get('par_pan') or {},
-    })
-    resultat['journal_longueur_chaine'] = journal[-JOURNAL_ECARTS_MAX:]
+    }])
     calepinage.resultat = resultat
     if getattr(calepinage, 'pk', None):
         try:
@@ -1374,7 +1854,7 @@ def journaliser_ecart_longueur(calepinage, reconciliation):
             logging.getLogger(__name__).exception(
                 'CAL170 : journal d écart non enregistré (calepinage %s)',
                 getattr(calepinage, 'pk', None))
-    return resultat['journal_longueur_chaine']
+    return fil
 
 
 def parametres_societe(calepinage):
@@ -1613,6 +2093,253 @@ def _reglages_electrique_societe(calepinage):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# CALX246 (+ CALX230/232/247) — LE BORDEREAU ÉLECTRIQUE ENFIN SERVI
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``core/electrique/nomenclature.py`` existe depuis PV37 et le module
+# Calepinage ne l'appelait JAMAIS : le bordereau électrique d'un calepinage
+# n'existait nulle part, et les trois services que la phase 1 du lot 4 vient
+# d'écrire (``coffrets.coffrets_dc``, ``coffrets.coffret_ac``, la règle de
+# structure sourcée de CALX247) n'avaient aucun appelant. Ce bloc les branche.
+#
+# CE QUI ENTRE DANS LE BORDEREAU, ET D'OÙ ÇA VIENT :
+#   * les CÂBLES et les PROTECTIONS — des objets purs qui ont produit
+#     ``resultat['cables']`` (``cables_du_calepinage()['noyau']``), jamais un
+#     second dimensionnement ;
+#   * les COFFRETS DC — des organes RÉELLEMENT posés dans le plan
+#     (``electrical.equipements[]``, CALX201), leur capacité lue sur la fiche
+#     du ``produitId`` désigné ou saisie sur l'organe ;
+#   * le COFFRET AC — de ses départs réels (une branche de micro-onduleurs =
+#     un départ, CALX232) ;
+#   * la STRUCTURE — de la règle société SOURCÉE (CALX247), sinon RIEN ;
+#   * les RÉFÉRENCES d'article — de la table de correspondance société
+#     (CALX246), résolue contre le catalogue BORNÉ société.
+#
+# AUCUN PRIX N'ENTRE PAR CE CHEMIN : ni ``prix_achat``, ni ``prix_vente``, ni
+# marge — le sélecteur du stock n'est interrogé que pour l'identifiant et la
+# référence de l'article (D-CALX 5).
+
+#: La clé du bordereau dans le résultat publié.
+CLE_BORDEREAU = 'nomenclature'
+
+#: CALX228 — la clé du CHEMINEMENT mesuré dans le résultat publié. Sa charge
+#: utile est celle de ``GET calepinages/<pk>/troncons/`` (contrat CALX203),
+#: octet pour octet : deux formes du même métré, ce serait deux métrés.
+CLE_TRONCONS = 'troncons'
+
+#: Les deux clés de réglage société que le bordereau lit (registre CALX145,
+#: ``CLES_ELECTRIQUE_SOCIETE``).
+CLE_CORRESPONDANCES = 'correspondances_nomenclature'
+CLE_REGLE_STRUCTURE = 'regle_bom_structure'
+
+#: Les clés de fiche (CALX60) sous lesquelles une capacité d'entrées de
+#: coffret DC serait publiée. Liste FERMÉE : aucune fiche « coffret » n'existe
+#: aujourd'hui au catalogue, donc ce chemin rend ``None`` et
+#: ``coffrets_dc`` retombe sur la capacité SAISIE — ou refuse en nommant le
+#: coffret. Rien n'est supposé à la place (D-CALX 7).
+CLES_CAPACITE_COFFRET = ('capacite_entrees', 'entrees')
+
+
+def _valeur_reglee(reglages, cle):
+    """``(valeur, source)`` d'un réglage société — ``(None, '')`` sans saisie.
+
+    Même discipline que ``services/etapes/__init__.py::reglage`` : une valeur
+    sans source n'est PAS une valeur (D-CALX 7). La clé DOIT figurer au
+    registre — une clé hors registre est une faute de frappe, pas une absence
+    de saisie.
+    """
+    from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE, registre
+
+    connues = registre(SECTION_ELECTRIQUE_SOCIETE)
+    if cle not in connues:
+        raise KeyError(
+            "La clé de réglage « %s » ne figure pas au registre de la section "
+            "« %s » (CALX145)." % (cle, SECTION_ELECTRIQUE_SOCIETE))
+    saisie = (reglages or {}).get(cle)
+    if not isinstance(saisie, dict):
+        return (None, '')
+    source = str(saisie.get('source') or '').strip()
+    if saisie.get('valeur') is None or not source:
+        return (None, '')
+    return (saisie['valeur'], source)
+
+
+def _equipements_electriques(document):
+    """``electrical.equipements[]`` du document (CALX201), ou une liste vide."""
+    electrique = (document or {}).get('electrical')
+    if not isinstance(electrique, dict):
+        return []
+    equipements = electrique.get('equipements')
+    if not isinstance(equipements, (list, tuple)):
+        return []
+    return [eq for eq in equipements if isinstance(eq, dict)]
+
+
+def _produit_borne(company, identifiant):
+    """Le produit du catalogue de CETTE société, ou ``None`` — lecture seule.
+
+    Passe par le SÉLECTEUR du stock (``get_produit_scoped``) : un produit
+    d'une AUTRE société est introuvable, jamais « interdit ». Ni prix d'achat
+    ni prix de vente ne sont lus.
+    """
+    if company is None or identifiant in (None, ''):
+        return None
+    from apps.stock.selectors import get_produit_scoped
+
+    return get_produit_scoped(company, identifiant)
+
+
+def _capacites_des_coffrets(company, equipements):
+    """``({id coffret: capacité}, alertes)`` — capacités lues sur LA FICHE.
+
+    Un ``produitId`` qui ne désigne aucun produit du catalogue de la société
+    est NOMMÉ (règle fondateur « erreur → champ fautif ») et la capacité reste
+    absente : ``coffrets_dc`` retombera alors sur la capacité saisie, ou
+    refusera le coffret en le nommant.
+    """
+    from apps.stock.selectors import specs_for_produit
+
+    from .coffrets import TYPE_COFFRET_DC
+
+    capacites, alertes = {}, []
+    for equipement in equipements:
+        if equipement.get('type') != TYPE_COFFRET_DC:
+            continue
+        identifiant = equipement.get('produitId')
+        if identifiant in (None, ''):
+            continue
+        produit = _produit_borne(company, identifiant)
+        if produit is None:
+            alertes.append(
+                "coffret DC « %s » : le produit « %s » désigné par "
+                "« equipements[].produitId » est introuvable dans le "
+                "catalogue de la société — capacité d'entrées NON lue sur "
+                "une fiche."
+                % (equipement.get('label') or equipement.get('id') or '?',
+                   identifiant))
+            continue
+        specs = specs_for_produit(produit) or {}
+        for cle in CLES_CAPACITE_COFFRET:
+            valeur = _nombre(specs.get(cle))
+            if valeur is not None:
+                capacites[equipement.get('id')] = int(valeur)
+                break
+    return (capacites, alertes)
+
+
+def _references_nomenclature(company, correspondances, source):
+    """``({clef: {produit_id, reference}}, alertes)`` — CALX246.
+
+    ``correspondances`` est le réglage société ``{repère ou catégorie:
+    identifiant produit}``. Un identifiant qui ne désigne aucun produit de
+    CETTE société est refusé EN LE NOMMANT et la ligne reste sans référence —
+    jamais l'article d'une autre société, jamais un article deviné.
+    """
+    if not isinstance(correspondances, dict) or not correspondances:
+        return ({}, [])
+    references, alertes = {}, []
+    for clef, identifiant in correspondances.items():
+        produit = _produit_borne(company, identifiant)
+        if produit is None:
+            alertes.append(
+                "correspondance de nomenclature « %s » : le produit « %s » "
+                "est introuvable dans le catalogue de la société — la ligne "
+                "reste publiée SANS référence (« %s », %s)."
+                % (clef, identifiant, CLE_CORRESPONDANCES, source))
+            continue
+        references[str(clef)] = {
+            'produit_id': getattr(produit, 'pk', None),
+            'reference': (str(getattr(produit, 'reference', '') or '').strip()
+                          or _designation(produit)),
+        }
+    return (references, alertes)
+
+
+def _regle_structure(valeur, source):
+    """La règle de bordereau de structure, SOURCE COMPRISE (CALX247).
+
+    Le noyau exige la ``source`` DANS l'objet : le registre la range à côté de
+    la valeur, on la recolle ici sans jamais en fabriquer une.
+    """
+    if not isinstance(valeur, dict):
+        return None
+    return {**valeur, 'source': str(valeur.get('source') or source).strip()}
+
+
+def _ligne_bordereau(ligne):
+    """Une ligne publiée — sept clés, TOUJOURS présentes, AUCUN prix."""
+    return {
+        'categorie': ligne.categorie,
+        'designation': ligne.designation,
+        'quantite': ligne.quantite,
+        'unite': ligne.unite,
+        'spec': ligne.spec,
+        'produit_id': ligne.produit_id,
+        'reference': ligne.reference,
+    }
+
+
+def _bordereau_du_calepinage(calepinage, conception, noyau, *,
+                             equipements=(), branches=(), troncons=()):
+    """CALX246/230/232/247/227 — ``{lignes, alertes}``, ou l'omission motivée.
+
+    ``noyau`` est le ``{entree, protections, cables}`` que
+    ``cables_du_calepinage`` vient de produire : le bordereau descend du MÊME
+    calcul que les câbles publiés. ``None`` (norme absente, aucune chaîne) ⇒
+    aucun bordereau, et le motif est déjà publié par les omissions de câbles.
+
+    ``troncons`` (CALX227) — les tronçons mesurés du cheminement. Dès qu'il
+    y en a un dont la section est calculable, le MÉTRÉ (une ligne par couple
+    côté/section) remplace les deux lignes de câblage forfaitaires : c'est ce
+    que le magasinier coupe. Aucun tronçon tracé ⇒ sortie d'aujourd'hui.
+    """
+    import types as _types
+
+    from core.electrique.nomenclature import nomenclature
+
+    from .coffrets import coffret_ac, coffrets_dc
+    from .troncons import metre_de_cable
+
+    if not noyau:
+        return {'lignes': [], 'alertes': []}
+
+    company = getattr(calepinage, 'company', None)
+    reglages = _reglages_electrique_societe(calepinage)
+    alertes = []
+
+    capacites, alertes_capacite = _capacites_des_coffrets(company,
+                                                          equipements)
+    alertes.extend(alertes_capacite)
+    resultat_coffrets = coffrets_dc(conception.chaines, equipements,
+                                    capacites=capacites)
+
+    # ``coffret_ac`` lit ``conception.resultat.protections`` (forme du
+    # ``ResultatElectrique`` du noyau) ; la conception du calepinage porte,
+    # elle, un ``ResultatChaines``. On lui présente donc les organes que
+    # ``concevoir_protections`` vient de retenir — les MÊMES objets, pas une
+    # seconde liste.
+    porteur = _types.SimpleNamespace(resultat=_types.SimpleNamespace(
+        protections=noyau['protections'].protections))
+    resultat_coffret_ac = coffret_ac(porteur, branches)
+
+    valeur_structure, source_structure = _valeur_reglee(reglages,
+                                                        CLE_REGLE_STRUCTURE)
+    correspondances, source_correspondances = _valeur_reglee(
+        reglages, CLE_CORRESPONDANCES)
+    references, alertes_references = _references_nomenclature(
+        company, correspondances, source_correspondances)
+    alertes.extend(alertes_references)
+
+    resultat = nomenclature(
+        noyau['entree'], conception.resultat, noyau['protections'],
+        noyau['cables'], resultat_coffrets, resultat_coffret_ac,
+        _regle_structure(valeur_structure, source_structure), references,
+        metre_de_cable(troncons))
+    return {'lignes': [_ligne_bordereau(ligne) for ligne in resultat.lignes],
+            'alertes': alertes + list(resultat.alertes)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # CAL129 — OPTIMISEURS ET MICRO-ONDULEURS : LA RÈGLE DE CHAÎNE CHANGE DE NATURE
 # ═══════════════════════════════════════════════════════════════════════════
 #
@@ -1714,6 +2441,10 @@ def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
                 'source': None,
                 'detail': "borne non publiée sur la fiche — contrôle NON "
                           "vérifiable",
+                # CALX214 — un contrôle d'ENTRÉE d'optimiseur compare deux
+                # chiffres de fiche aux conditions STC : aucune température de
+                # site n'y sert, les trois clés restent NEUTRES.
+                **_bloc_temperature(None),
             })
             continue
         conforme = valeur <= borne + 1e-9
@@ -1728,6 +2459,7 @@ def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
             'detail': '%s %s %s (%s)' % (
                 texte, 'sous' if conforme else 'AU-DESSUS DE', texte_borne,
                 nom),
+            **_bloc_temperature(None),
         })
 
     # CALX211 — la longueur se ferme quand les DEUX champs de sortie sont
@@ -1831,23 +2563,33 @@ def verdicts_electriques(conception, optimiseur_specs=None,
             'source': 'fiche',
             'detail': "règle SUBSTITUÉE — %s (%s)" % (regle['libelle'],
                                                       regle['source']),
+            # CALX214 — la règle change, la température de contrôle reste
+            # celle du site : les trois clés ne disparaissent jamais.
+            **_bloc_temperature(conception.temperatures,
+                                conception.entree.temp_froid_c),
         }
     else:
         verdict_voc = _verdict(
             'voc_cold_under_vmax',
             "Voc à froid sous la tension maximale admissible de l'onduleur",
-            voc_max, onduleur.v_max_abs, 'sous', bloquant=True, unite='V')
+            voc_max, onduleur.v_max_abs, 'sous', bloquant=True, unite='V',
+            temperatures=conception.temperatures,
+            temperature_c=conception.entree.temp_froid_c)
 
     verdicts = [
         verdict_voc,
         _verdict('vmp_cold_under_mppt_max',
                  'Vmp à froid dans le haut de la plage MPPT',
                  vmp_froid_max, onduleur.mppt_v_max, 'sous',
-                 bloquant=False, unite='V'),
+                 bloquant=False, unite='V',
+                 temperatures=conception.temperatures,
+                 temperature_c=conception.entree.temp_froid_c),
         _verdict('vmp_hot_over_mppt_min',
                  'Vmp à chaud au-dessus du bas de la plage MPPT',
                  vmp_chaud_min, onduleur.mppt_v_min, 'au-dessus',
-                 bloquant=False, unite='V'),
+                 bloquant=False, unite='V',
+                 temperatures=conception.temperatures,
+                 temperature_c=conception.entree.temp_chaud_c),
     ]
 
     # Courant d'entrée : DEUX bornes de fiche, et la ligne de partage n'est
@@ -1864,7 +2606,11 @@ def verdicts_electriques(conception, optimiseur_specs=None,
         "Courant par entrée MPPT sous le courant admissible",
         isc_cumule if depasse_isc else imp_cumule,
         float(isc_publie) if depasse_isc else onduleur.i_max_mppt_a,
-        'sous', bloquant=depasse_isc, unite='A'))
+        'sous', bloquant=depasse_isc, unite='A',
+        # Un courant ne se contrôle À AUCUNE température : les trois clés
+        # restent présentes et NEUTRES plutôt que de citer un chiffre qui
+        # n'a servi à rien ici.
+        temperatures=conception.temperatures))
 
     # CALX213 — les trois paliers du ratio DC/AC viennent des réglages
     # SOCIÉTÉ quand ils sont saisis : c est eux qui jugent ce verdict.
@@ -1879,6 +2625,7 @@ def verdicts_electriques(conception, optimiseur_specs=None,
         'source': 'fiche',
         'detail': ('' if ratio is None or ratio.valeur is None
                    else '%s (%s)' % (ratio.texte, ratio.fourchette_texte)),
+        **_bloc_temperature(conception.temperatures),
     })
     # CAL129 — les contrôles d'ENTRÉE de l'optimiseur viennent APRÈS les cinq
     # codes du contrat : ils s'ajoutent, ils ne remplacent aucune clé.
@@ -2039,10 +2786,41 @@ def bloc_ratio_dc_ac(conception, *, exigence_marche=None,
     }, tuple(avertissements))
 
 
-def _verdict(code, libelle, valeur, borne, sens, *, bloquant, unite):
-    """Un verdict de tension/courant — ``conforme: null`` si la borne manque."""
+#: CALX214 — les trois clés que TOUT verdict du contrat CAL244 porte
+#: désormais. Elles sont TOUJOURS présentes (``null`` / ``''`` quand le
+#: contrôle ne dépend d'aucune température) : une clé qui apparaît et
+#: disparaît oblige l'écran à deviner si elle manque ou si elle est vide.
+CLES_TEMPERATURE_VERDICT = ('temperature_c', 'temperature_source',
+                            'temperature_mention')
+
+
+def _bloc_temperature(temperatures, temperature_c=None):
+    """Les trois clés de température d'un verdict — jamais un chiffre nu.
+
+    ``temperatures`` est le ``TemperaturesSite`` de CE calepinage (CAL123) :
+    la source vient de LUI (relevé de site, série météo type, ou ``None``) et
+    la mention est celle qu'il rédige quand rien ne source les températures
+    (``MENTION_NON_SOURCEE``). Aucun texte de repli n'est écrit ici.
+    """
+    return {
+        'temperature_c': (None if temperature_c is None
+                          else round(float(temperature_c), 1)),
+        'temperature_source': getattr(temperatures, 'source', None),
+        'temperature_mention': getattr(temperatures, 'mention', '') or '',
+    }
+
+
+def _verdict(code, libelle, valeur, borne, sens, *, bloquant, unite,
+             temperatures=None, temperature_c=None):
+    """Un verdict de tension/courant — ``conforme: null`` si la borne manque.
+
+    CALX214 — un contrôle évalué À UNE TEMPÉRATURE la publie dans un CHAMP
+    (``temperature_c``) avec sa provenance, au lieu de la laisser dans la
+    seule phrase de ``detail``.
+    """
     from core.electrique.types import fr
 
+    temperature = _bloc_temperature(temperatures, temperature_c)
     borne_publiee = _nombre(borne)
     if borne_publiee is None or borne_publiee <= 0:
         return {
@@ -2050,6 +2828,7 @@ def _verdict(code, libelle, valeur, borne, sens, *, bloquant, unite):
             'bloquant': bloquant, 'source': None,
             'detail': "borne non publiée sur la fiche — contrôle NON "
                       "vérifiable, aucune limite n'est supposée à sa place",
+            **temperature,
         }
     conforme = (valeur <= borne_publiee + 1e-9 if sens == 'sous'
                 else valeur >= borne_publiee - 1e-9)
@@ -2064,4 +2843,5 @@ def _verdict(code, libelle, valeur, borne, sens, *, bloquant, unite):
             fr(valeur, 1), unite,
             'au-dessus de' if sens == 'sous' else 'sous',
             fr(borne_publiee, 1), unite),
+        **temperature,
     }

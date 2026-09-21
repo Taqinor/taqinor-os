@@ -23,6 +23,11 @@ brought up; this is the short version for running it locally.
 - The suite is **serial** (`workers: 1`) over one freshly-seeded DB
   (`manage.py seed_demo`, user `demo_admin` / `Demo@2026!`), so mutating flows
   stay deterministic. `auth.setup.js` logs in once and shares the cookie jar.
+  One measured exception (SOLMVP54, 21/09/2026): the per-merge CI lane runs the
+  three read-only smoke files `fumee-ecrans-{1,2,3}.spec.js` with `--workers 3`
+  — Playwright hands each FILE to its own worker, the order inside a file is
+  unchanged, and those specs only visit screens. Every mutating spec keeps
+  `workers: 1`.
 
 ## Run locally
 

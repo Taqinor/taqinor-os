@@ -33,6 +33,9 @@ from core.electrique.types import fr
 __all__ = [
     "FORMAT_A4_PAYSAGE", "FORMAT_A3_PAYSAGE", "RANGEES_MAX_A4",
     "Bloc", "blocs_du_schema", "lignes_tableau", "rendre_schema",
+    # CALX233-235 (crochet de phase 2) — l'API PUBLIQUE du dessin, pour que
+    # les services applicatifs cessent d'importer les privés de ce module.
+    "GeometrieSchema", "GEOMETRIE", "places_du_schema", "bloc_svg",
 ]
 
 #: Formats de planche, en pixels CSS à 96 ppp (A4 paysage 297 × 210 mm,
@@ -116,6 +119,19 @@ _TEINTES = (
 )
 
 #: Blocs reliés à la barrette de terre unique.
+# ── CALX233-235 : LE BANDEAU D'OMISSION, RENDU PAR LE MOTEUR ──────────────
+#
+# Un gabarit NEUTRE (aucune norme choisie, D1) appose sous la planche une
+# ligne qui NOMME ce qui est omis. Le TEXTE est l'affaire de l'applicatif
+# (c'est lui qui sait quel réglage manque) ; sa mise en page est celle du
+# dessin, donc elle vit ici — l'applicatif n'a plus à connaître la marge du
+# moteur pour poser sa ligne au bon endroit.
+#
+#: Taille et teinte du bandeau : convention de dessin de la planche, en
+#: pixels CSS à 96 ppp comme tout ce module — aucune norme ne les fixe.
+_BANDEAU_TAILLE = 10.0
+_BANDEAU_COULEUR = "#9a3412"
+
 _A_LA_TERRE = ("champ", "onduleur", "tgbt")
 
 #: Organes dessinés EN BRANCHE (hors chaîne série) et l'organe qui les porte.
@@ -407,6 +423,50 @@ def _rangees(nb_blocs, par_rangee):
     return -(-nb_blocs // par_rangee)      # division entière par excès
 
 
+@dataclass(frozen=True)
+class GeometrieSchema:
+    """Les quatre cotes de la planche qu'un CONSOMMATEUR doit connaître.
+
+    Un export DXF doit tracer le rectangle d'un bloc, un écran doit refuser
+    une position qui sortirait de la planche : les deux ont besoin de la
+    boîte et de la marge du dessin. Elles étaient lues sur les privés de ce
+    module (``_BLOC_L``, ``_MARGE``…) — donc copiées de fait dans deux
+    services, qui auraient dérivé au premier ajustement de mise en page.
+    """
+
+    marge: float
+    bloc_l: float
+    bloc_h: float
+    tableau_l: float
+
+
+#: L'instance UNIQUE — les valeurs sont celles du dessin, pas une seconde
+#: convention posée pour les consommateurs.
+GEOMETRIE = GeometrieSchema(marge=_MARGE, bloc_l=_BLOC_L, bloc_h=_BLOC_H,
+                            tableau_l=_TABLEAU_L)
+
+
+def places_du_schema(blocs, positions=None):
+    """``(places, largeur, hauteur)`` — le PLACEMENT public de ces blocs.
+
+    Les trois lignes que ``rendre_schema`` exécute pour se placer, exposées
+    telles quelles : le format de planche dépend du nombre d'organes EN
+    SÉRIE (la branche batterie pend sous son porteur et n'occupe aucune
+    rangée), puis le serpentin place tout le monde.
+
+    Elle prend des BLOCS déjà construits, pas ``(entree, resultat)`` : un
+    appelant qui a substitué un libellé (CALX233) doit pouvoir placer SES
+    blocs — sinon il n'a d'autre choix que de rappeler le privé.
+
+    ``places`` est la séquence de 5-uplets ``(bloc, x, y, rangée, branche)``
+    que ``rendre_schema`` consomme.
+    """
+    blocs = tuple(blocs or ())
+    en_serie = sum(1 for bloc in blocs if bloc.clef not in _EN_BRANCHE)
+    largeur, hauteur = _format_planche(en_serie)
+    return (_positions(blocs, largeur, positions or None), largeur, hauteur)
+
+
 def _positions(blocs, largeur_planche, positions_forcees=None):
     """Serpentin BOUSTROPHÉDON : chaque rangée repart dans l'autre sens.
 
@@ -493,6 +553,17 @@ def _chevauche(x, y, places):
 
 
 # ─────────────────────────────────────────────────────────────── primitives
+def bloc_svg(x, y, bloc):
+    """L'émetteur PUBLIC d'un bloc — cf. :func:`_bloc_svg`.
+
+    Il existe pour qu'un service applicatif qui doit réémettre un groupe
+    ``<g data-bloc="…">`` (export DXF, recomposition d'un libellé édité)
+    emprunte l'émetteur DU MOTEUR au lieu d'en écrire un second : deux
+    émetteurs du même bloc, ce sont deux dessins possibles du même organe.
+    """
+    return _bloc_svg(x, y, bloc)
+
+
 def _bloc_svg(x, y, bloc):
     """Un bloc, ENVELOPPÉ dans un ``<g>`` qui porte son identité.
 
@@ -621,8 +692,21 @@ def _symbole_terre(x, y):
 
 
 # ────────────────────────────────────────────────────────────────── planche
+def _bandeau_svg(texte, hauteur):
+    """La ligne d'omission posée sous la planche — une ligne, rien d'autre.
+
+    Elle est APPOSÉE : elle ne filtre ni ne réinterprète quoi que ce soit du
+    dessin, et sa marge est celle du moteur (jamais une seconde valeur).
+    """
+    return ('<text x="%.1f" y="%.1f" font-size="%.1f" font-weight="700" '
+            'fill="%s">%s</text>'
+            % (_MARGE, hauteur - _MARGE, _BANDEAU_TAILLE, _BANDEAU_COULEUR,
+               escape(texte, quote=True)))
+
+
 def rendre_schema(entree, resultat, cartouche=None, positions=None,
-                  standard=False, branches_onduleur=None):
+                  standard=False, branches_onduleur=None, blocs=None,
+                  bandeau=""):
     """PV39 — rend le schéma unifilaire en SVG (texte), jamais un fichier.
 
     ``cartouche`` : ``{client, reference, date, indice}`` — aucun montant n'y a
@@ -637,16 +721,24 @@ def rendre_schema(entree, resultat, cartouche=None, positions=None,
     ``branches_onduleur`` (CALX238) : cf. ``blocs_du_schema`` — dix onduleurs
     identiques dessinent UN sous-ensemble « typique de 10 » au lieu de dix, et
     la planche cesse de basculer en A3 par le seul effet du nombre.
+
+    ``blocs`` (CALX233, crochet de phase 2) : les blocs à dessiner, quand
+    l'appelant en a SUBSTITUÉ le titre ou le repère (édition de schéma).
+    Absents, ils sont construits ici comme toujours. C'est ce paramètre qui
+    supprime la recomposition du SVG rendu côté applicatif : le dessin sort
+    d'un seul passage, avec les textes définitifs.
+
+    ``bandeau`` (CALX237) : la ligne d'omission apposée sous la planche quand
+    aucune norme n'est choisie. Vide, la planche est celle d'aujourd'hui.
     """
-    blocs = blocs_du_schema(entree, resultat, standard=standard,
-                            branches_onduleur=branches_onduleur)
+    if blocs is None:
+        blocs = blocs_du_schema(entree, resultat, standard=standard,
+                                branches_onduleur=branches_onduleur)
     # Seuls les blocs EN SÉRIE remplissent les rangées du serpentin : la
     # branche batterie pend sous son porteur et n'occupe aucune rangée — la
     # compter ici basculait en A3 une planche dont la chaîne tient sur A4
     # (3 rangées avec branche : 658 pt < 794 pt de haut, vérifié).
-    en_serie = sum(1 for b in blocs if b.clef not in _EN_BRANCHE)
-    largeur, hauteur = _format_planche(en_serie)
-    places = _positions(blocs, largeur, positions)
+    places, largeur, hauteur = places_du_schema(blocs, positions)
 
     svg = [
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %s %s" '
@@ -673,6 +765,8 @@ def rendre_schema(entree, resultat, cartouche=None, positions=None,
     svg.append(_barrette_de_terre(places))
     svg.append(_tableau(resultat, largeur, standard=standard))
     svg.append(_cartouche(entree, resultat, largeur, hauteur, cartouche))
+    if bandeau:
+        svg.append(_bandeau_svg(bandeau, hauteur))
     svg.append("</svg>")
     return "".join(svg)
 

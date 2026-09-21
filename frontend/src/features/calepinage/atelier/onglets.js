@@ -76,6 +76,8 @@ export const ONGLETS = [
   { cle: 'raccordement', libelle: 'Raccordement réseau', groupe: 'Système', ordre: 240, composant: lazy(() => import('../electrique/Raccordement')) }, // CALX244
 
   { cle: 'coupe', libelle: 'Coupe', groupe: 'Site', ordre: 65, composant: lazy(() => import('./OngletCoupeRangees')) }, // CALX121
+
+  { cle: 'verdict-electrique', libelle: 'Verdict électrique', groupe: 'Système', ordre: 250, composant: lazy(() => import('../electrique/VerdictElectrique')) }, // CALX249
 ]
 
 /**

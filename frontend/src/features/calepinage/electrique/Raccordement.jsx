@@ -350,7 +350,7 @@ export default function Raccordement({ calepinageId } = {}) {
           <span>
             {'Marge à la limite : '}
             <strong data-testid="calx244-marge">
-              {formatPercent(calcul.marge_pct, { decimals: 2 })}
+              {formatPercent(calcul.ecart_limite_pct, { decimals: 2 })}
             </strong>
           </span>
           <span>

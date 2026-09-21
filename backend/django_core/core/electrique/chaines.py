@@ -115,16 +115,26 @@ def _borne_texte(borne):
 
 
 def _verdict(verdicts, code, nature, statut, libelle, borne=None, valeur=None,
-             source=""):
+             source="", fenetre=None, temperature_c=None):
     """Enregistre UN verdict et rend son libellé — l'unique porte de sortie.
 
     Toute phrase que ce module prononce passe par ici : l'objet structuré et la
     liste historique naissent donc du MÊME appel, et il devient impossible
     d'ajouter un message qui n'aurait pas de code.
+
+    ``fenetre`` + ``temperature_c`` (CALX214) — quand le contrôle a été évalué
+    À UNE TEMPÉRATURE, elle est publiée DANS UN CHAMP avec sa provenance et,
+    si elle n'est pas sourcée, la mention que l'applicatif a rédigée. Les deux
+    voyagent ensemble : un contrôle sans température garde les trois champs à
+    leur valeur neutre.
     """
     verdicts.append(VerdictElectrique(
         code=code, nature=nature, statut=statut, libelle=libelle,
-        borne=borne, valeur=valeur, source=source))
+        borne=borne, valeur=valeur, source=source,
+        temperature_c=(None if temperature_c is None
+                       else float(temperature_c)),
+        temperature_source=getattr(fenetre, "temp_source", None),
+        temperature_mention=getattr(fenetre, "temp_mention", "") or ""))
     return libelle
 
 
@@ -166,6 +176,12 @@ class FenetreChaine:
     motif: str = ""
     #: Bornes que les fiches ne permettent pas de vérifier (libellés français).
     bornes_non_verifiables: Tuple[str, ...] = ()
+    #: CALX214 — la PROVENANCE des deux températures ci-dessus (relevé de
+    #: site, série météo type, ou ``None`` = aucune source établie) et la
+    #: mention qui accompagne alors chaque verdict. Elles ne changent AUCUN
+    #: calcul : elles accompagnent les verdicts que la fenêtre fait naître.
+    temp_source: Optional[str] = None
+    temp_mention: str = ""
 
     def admet(self, longueur):
         """La longueur tient-elle dans la plage admissible ?"""
@@ -299,7 +315,8 @@ class ResultatChaines:
 
 
 # ----------------------------------------------------------- fenêtre de tension
-def fenetre_admissible(module, onduleur, temp_froid_c, temp_chaud_c):
+def fenetre_admissible(module, onduleur, temp_froid_c, temp_chaud_c,
+                       temp_source=None, temp_mention=""):
     """Plage [longueur_min, longueur_max] admissible pour le couple module/onduleur.
 
     Port À L'IDENTIQUE des quatre bornes de ``string_design`` :
@@ -308,6 +325,11 @@ def fenetre_admissible(module, onduleur, temp_froid_c, temp_chaud_c):
     * ``max_par_mppt``      = ⌊V_mppt_max / Vmp(froid)⌋ — écrêtage sinon ;
     * ``min_par_mppt``      = ⌈V_mppt_min / Vmp(chaud)⌉ — MPPT hors plage sinon ;
     * ``min_par_demarrage`` = ⌈V_démarrage / Vmp(chaud)⌉ — l'onduleur ne part pas.
+
+    ``temp_source`` / ``temp_mention`` (CALX214) — la PROVENANCE des deux
+    températures, recopiée telle quelle sur la fenêtre puis sur chaque verdict
+    qu'elle fait naître. Aucun calcul n'en dépend : elles rendent seulement
+    opposable le « à −5 °C » que les phrases écrivaient déjà.
 
     Quand la plage est VIDE (max < min), la fenêtre est déclarée « trop étroite »
     AVEC MOTIF : aucun couple module/onduleur ne satisfait à la fois la borne
@@ -389,6 +411,8 @@ def fenetre_admissible(module, onduleur, temp_froid_c, temp_chaud_c):
         trop_etroite=trop_etroite,
         motif=motif,
         bornes_non_verifiables=tuple(non_verifiables),
+        temp_source=temp_source or None,
+        temp_mention=temp_mention or "",
     )
 
 
@@ -574,15 +598,23 @@ def concevoir_chaines(entree):
     """
     module = entree.module
     onduleur = entree.onduleur
-    fenetre = fenetre_admissible(module, onduleur,
-                                 entree.temp_froid_c, entree.temp_chaud_c)
+    fenetre = fenetre_admissible(
+        module, onduleur, entree.temp_froid_c, entree.temp_chaud_c,
+        # CALX214 — la provenance des températures traverse le moteur pour
+        # atteindre CHAQUE verdict, pas seulement l'en-tête du résultat.
+        temp_source=getattr(entree, "temp_source", None),
+        temp_mention=getattr(entree, "temp_mention", ""))
 
     verdicts = []
     if fenetre.trop_etroite:
+        # La phrase nomme les DEUX températures ; le champ porte celle de la
+        # borne HAUTE (à froid), qui est celle qui ferme la plage — la borne
+        # basse à chaud reste publiée par ``FenetreChaine.temp_chaud_c``.
         _verdict(verdicts, "CH_FENETRE_VIDE", NATURE_MATERIELLE,
                  STATUT_BLOQUANT, fenetre.motif,
                  borne=float(fenetre.longueur_max),
-                 valeur=float(fenetre.longueur_min), source=SOURCE_FICHES)
+                 valeur=float(fenetre.longueur_min), source=SOURCE_FICHES,
+                 fenetre=fenetre, temperature_c=fenetre.temp_froid_c)
     if fenetre.bornes_non_verifiables:
         # Le moteur DIT ce qu'il n'a pas pu vérifier plutôt que de le
         # remplacer par un défaut : l'alerte remonte telle quelle dans la
@@ -596,7 +628,7 @@ def concevoir_chaines(entree):
             "tenant (pratique d'installation) tant qu'aucune borne publiée ne "
             "la ferme : compléter la fiche technique pour un calcul opposable"
             % " ; ".join(fenetre.bornes_non_verifiables),
-            source=SOURCE_FICHES)
+            source=SOURCE_FICHES, fenetre=fenetre)
 
     # ── Longueur imposée : acceptée seulement DANS la plage admissible ────────
     forcee = entree.longueur_chaine_forcee
@@ -618,7 +650,7 @@ def concevoir_chaines(entree):
                 NATURE_MATERIELLE, STATUT_BLOQUANT,
                 "longueur de chaîne imposée de %d modules non vérifiable : la "
                 "fenêtre de tension est vide (voir le motif ci-dessus)" % forcee,
-                valeur=float(forcee), source=SOURCE_SAISIE)
+                valeur=float(forcee), source=SOURCE_SAISIE, fenetre=fenetre)
         elif not fenetre.admet(forcee):
             forcee_acceptee = False
             _verdict(
@@ -634,7 +666,7 @@ def concevoir_chaines(entree):
                    _borne_texte(fenetre.min_par_mppt),
                    fr_v(onduleur.mppt_v_min)),
                 borne=float(fenetre.longueur_max), valeur=float(forcee),
-                source=SOURCE_SAISIE)
+                source=SOURCE_SAISIE, fenetre=fenetre)
         else:
             forcee_acceptee = True
 
@@ -784,7 +816,8 @@ def _verdicts_tension(chaines, onduleur, fenetre, alertes, verdicts=None):
                fr(fenetre.temp_froid_c, 0)),
             borne=float(onduleur.v_max_abs),
             valeur=float(plus_longue.voc_froid_v),
-            source=SOURCE_FICHE_ONDULEUR)
+            source=SOURCE_FICHE_ONDULEUR, fenetre=fenetre,
+            temperature_c=fenetre.temp_froid_c)
     if onduleur.mppt_v_max > 0 and plus_longue.vmp_froid_v > onduleur.mppt_v_max:
         _verdict(
             locaux, "CH_VMP_FROID_AU_DESSUS_MPPT", NATURE_FONCTIONNELLE,
@@ -794,7 +827,8 @@ def _verdicts_tension(chaines, onduleur, fenetre, alertes, verdicts=None):
             % (fr_v(plus_longue.vmp_froid_v), fr_v(onduleur.mppt_v_max)),
             borne=float(onduleur.mppt_v_max),
             valeur=float(plus_longue.vmp_froid_v),
-            source=SOURCE_FICHE_ONDULEUR)
+            source=SOURCE_FICHE_ONDULEUR, fenetre=fenetre,
+            temperature_c=fenetre.temp_froid_c)
     if plus_courte.vmp_chaud_v < onduleur.mppt_v_min:
         _verdict(
             locaux, "CH_VMP_CHAUD_SOUS_MPPT", NATURE_FONCTIONNELLE,
@@ -804,7 +838,8 @@ def _verdicts_tension(chaines, onduleur, fenetre, alertes, verdicts=None):
             % (fr_v(plus_courte.vmp_chaud_v), fr_v(onduleur.mppt_v_min)),
             borne=float(onduleur.mppt_v_min),
             valeur=float(plus_courte.vmp_chaud_v),
-            source=SOURCE_FICHE_ONDULEUR)
+            source=SOURCE_FICHE_ONDULEUR, fenetre=fenetre,
+            temperature_c=fenetre.temp_chaud_c)
     if plus_courte.vmp_chaud_v < onduleur.tension_demarrage_v:
         _verdict(
             locaux, "CH_VMP_CHAUD_SOUS_DEMARRAGE", NATURE_FONCTIONNELLE,
@@ -814,7 +849,8 @@ def _verdicts_tension(chaines, onduleur, fenetre, alertes, verdicts=None):
                fr_v(onduleur.tension_demarrage_v)),
             borne=float(onduleur.tension_demarrage_v),
             valeur=float(plus_courte.vmp_chaud_v),
-            source=SOURCE_FICHE_ONDULEUR)
+            source=SOURCE_FICHE_ONDULEUR, fenetre=fenetre,
+            temperature_c=fenetre.temp_chaud_c)
     return _deverser(locaux, alertes, verdicts)
 
 

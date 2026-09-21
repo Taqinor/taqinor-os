@@ -314,10 +314,9 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
 
     Lecture seule : rien n'est écrit ici.
     """
+    from .agregation_electrique import affectation_du_calepinage
     from .cables import cables_du_calepinage
-    from .chaines import (
-        affectation, bloc_electrique, bloc_pose, empreinte_entree,
-    )
+    from .chaines import bloc_electrique, bloc_pose, empreinte_entree
     from .electrique import (
         _options_entree, conception_du_calepinage, parametres_societe,
     )
@@ -341,7 +340,15 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
                                   cheminement=donnees.get('cheminement'),
                                   norme=norme, layout=document)
     electrique, _avertissements = bloc_electrique(conception)
-    table_affectation = list(affectation(conception))
+    # CALX183 — la table d'affectation RÉELLE, affectation MANUELLE comprise
+    # (CAL234). Jusqu'ici la simulation appelait ``affectation(conception)``
+    # sans l'affectation imposée : elle agrégeait donc une AUTRE partition
+    # que celle que l'installateur avait enregistrée. Le motif de l'absence
+    # de table et les refus de lecture voyagent dans ``meta`` — ils sont
+    # publiés en avertissements par :func:`simuler_calepinage`, jamais
+    # avalés.
+    rattachement = affectation_du_calepinage(conception, donnees)
+    table_affectation = list(rattachement['affectation'])
 
     contexte = {
         # ── les réglages société (CALX145) ──────────────────────────────
@@ -394,6 +401,9 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
         'plans_equipes': plans_equipes,
         'kwc': _nombre(pose.get('kwc')),
         'avertissements': list(materiel_resolu.get('absents') or ()),
+        # CALX183 — ``{affectation, motif, avertissements}`` : POURQUOI il n'y
+        # a pas de table quand il n'y en a pas.
+        'affectation': rattachement,
     }
     return contexte, meta
 
@@ -619,6 +629,97 @@ def _ajouter_avertissement(blocs, texte):
         liste.append(texte)
 
 
+#: CALX183 — les TROIS blocs que l'agrégation électrique ajoute sous
+#: ``production``. Ils sont TOUJOURS présents : omis, ils valent ``null`` et
+#: leur motif part dans ``avertissements`` (discipline du null du contrat).
+CLES_AGREGATION = ('par_mppt', 'par_onduleur', 'hors_chaine')
+
+#: Les DEUX pertes de la maille chaîne et leurs motifs, posés sur chaque
+#: ligne de ``production.par_chaine``.
+CLES_PERTE_CHAINE = ('perte_mismatch_pct', 'perte_ecretage_pct',
+                     'motif_mismatch', 'motif_ecretage')
+
+#: Le motif d'une chaîne publiée par CALX182 sans agrégat CALX183 en face
+#: (``par_module`` tronqué, chaîne absente de la table d'affectation).
+MOTIF_CHAINE_NON_AGREGEE = (
+    "cette chaîne n'a pas d'agrégat électrique : ni le mismatch ni "
+    "l'écrêtage ne sont lus, et aucune valeur n'est supposée.")
+
+
+def _poser_les_pertes_de_chaine(production, agregation, motif):
+    """CALX183 — les deux pertes de la maille chaîne, ligne par ligne.
+
+    Les QUATRE clés sont posées sur TOUTES les lignes de ``par_chaine``, y
+    compris quand l'agrégation s'est omise : un écran qui reçoit parfois une
+    clé et parfois pas finit par tester l'ABSENCE DE CLÉ au lieu de l'absence
+    de donnée. Une perte non lue vaut ``None`` avec son motif — jamais ``0``,
+    qui se lirait « mesuré à zéro » (D-CALX 7).
+    """
+    par_cle = {(ligne.get('pan'), ligne.get('chaine')): ligne
+               for ligne in agregation['par_chaine']
+               if isinstance(ligne, dict)}
+    for ligne in production.get('par_chaine') or ():
+        if not isinstance(ligne, dict):
+            continue
+        agregee = par_cle.get((ligne.get('pan'), ligne.get('chaine')))
+        if agregee is None:
+            ligne['perte_mismatch_pct'] = None
+            ligne['perte_ecretage_pct'] = None
+            ligne['motif_mismatch'] = motif or MOTIF_CHAINE_NON_AGREGEE
+            ligne['motif_ecretage'] = motif or MOTIF_CHAINE_NON_AGREGEE
+            continue
+        for cle in CLES_PERTE_CHAINE:
+            ligne[cle] = agregee.get(cle)
+
+
+def _agregation_electrique(blocs, par_module, contexte, rattachement):
+    """CALX183 — la production agrégée par chaîne, MPPT et onduleur.
+
+    ``services/agregation_electrique.py`` était écrit, testé et fusionné sans
+    qu'aucun appelant ne l'exécute : c'est ici qu'il entre dans le résultat de
+    SIMULATION. Il ne simule rien — il CROISE la table d'affectation réelle
+    (affectation manuelle comprise, CAL234) et la production module par
+    module (CALX182), à la maille où se lisent l'écrêtage et le mismatch.
+
+    ``par_chaine`` reste celui de CALX182 (il porte en plus ``kwc``,
+    ``acces_solaire_min_pct``, ``ecart_intra_chaine_pct`` et ``source``,
+    figés par ``contract_samples/calepinage_simulation.json``) : l'agrégation
+    l'ENRICHIT des deux pertes de la maille chaîne au lieu de le remplacer,
+    ce qui perdrait quatre clés du contrat.
+
+    Sans table d'affectation ou sans module simulé, les trois blocs valent
+    ``null`` et le motif — celui de ``services/chaines.py`` quand il existe,
+    plus précis que le motif générique — part dans ``avertissements``. Jamais
+    des zéros.
+    """
+    from .agregation_electrique import agregation_production
+
+    production = blocs.get('production')
+    if not isinstance(production, dict):
+        return
+    agregation = agregation_production(
+        par_module, contexte.get('affectation') or (),
+        # AUCUNE cascade PAR CHAÎNE n'existe dans la simulation d'aujourd'hui
+        # : ``appliquer_chaine`` en rend UNE, celle du plan de référence.
+        # L'attribuer à chaque chaîne inventerait une perte (D-CALX 7), donc
+        # les deux clés s'omettent avec le motif que CALX183 publie déjà.
+        cascades=None)
+    motif = (rattachement or {}).get('motif') or agregation['motif'] or ''
+    if motif:
+        for cle in CLES_AGREGATION:
+            production[cle] = None
+        _ajouter_avertissement(blocs, motif)
+    else:
+        production['par_mppt'] = agregation['par_mppt']
+        production['par_onduleur'] = agregation['par_onduleur']
+        production['hors_chaine'] = agregation['hors_chaine']
+    _poser_les_pertes_de_chaine(production, agregation, motif)
+    for texte in agregation['omissions']:
+        _ajouter_avertissement(blocs, texte)
+    for texte in (rattachement or {}).get('avertissements') or ():
+        _ajouter_avertissement(blocs, texte)
+
+
 def _horodatage(maintenant=None):
     """L'instant du calcul, à la seconde, forme ``…Z`` du contrat."""
     moment = maintenant or datetime.datetime.now(datetime.timezone.utc)
@@ -768,6 +869,8 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
         blocs['production']['par_module'] = par_module['par_module']
         blocs['production']['par_chaine'] = par_module['par_chaine']
     _ajouter_avertissement(blocs, par_module.get('motif'))
+    # CALX183 — la MAILLE ÉLECTRIQUE : par chaîne, par MPPT, par onduleur.
+    _agregation_electrique(blocs, par_module, contexte, meta['affectation'])
 
     # 4. LA CHARGE, PUIS BATTERIE → AUTOCONSOMMATION → HORS RÉSEAU.
     serie_site = _serie_du_site(sortie, sorties, plans_equipes)

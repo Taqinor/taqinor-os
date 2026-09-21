@@ -15,7 +15,7 @@ en quatre promesses :
 2. **Une limite est une SAISIE qui porte sa source.** Sans elle,
    `elevation_pct` est publiée quand même et le verdict vaut `omis` avec son
    motif — jamais un barème supposé pour le Maroc (D1).
-3. **`marge_pct` est une différence, pas un confort** : `null` tant
+3. **`ecart_limite_pct` est une différence, pas un confort** : `null` tant
    qu'aucune limite n'est saisie. `0` se lirait « limite atteinte ».
 4. **`cos_phi_impose` et `source_cos_phi` vont ensemble** — c'est le couple
    que l'étape d'écrêtage (CALX172) lira pour borner la puissance ; un cos φ
@@ -59,7 +59,7 @@ CHAMPS_SAISIE = {'puissance_souscrite_kva', 'phases', 'tension_nominale_v',
                  'source_cos_phi'}
 
 #: Les quatre grandeurs calculées.
-CHAMPS_CALCUL = {'elevation_pct', 'marge_pct', 'puissance_injectee_kva',
+CHAMPS_CALCUL = {'elevation_pct', 'ecart_limite_pct', 'puissance_injectee_kva',
                  'desequilibre_pct'}
 
 #: Les cinq champs d'un verdict, et les quatre statuts admis.
@@ -74,7 +74,7 @@ CODES = ['elevation_tension', 'puissance_souscrite', 'regime_phases',
 COUPLES_SOURCES = (('limite_elevation_pct', 'source_limite'),
                    ('cos_phi_impose', 'source_cos_phi'))
 
-#: « marge » N'Y FIGURE PAS volontairement : `marge_pct` est ici la marge à
+#: « marge » N'Y FIGURE PAS volontairement : `ecart_limite_pct` est ici la marge à
 #: la limite d'élévation, en points de pourcentage — pas une marge
 #: commerciale.
 HORS_SUJET = ('prix', 'montant', 'mad', 'tva', 'kwh', 'remise')
@@ -234,8 +234,8 @@ class LimiteAbsenteTest(SimpleTestCase):
 
     def test_sans_limite_aucune_marge_n_est_publiee(self):
         """`0` se lirait « limite atteinte »."""
-        self.assertIsNone(RACCORDEMENT['exemple']['calcul']['marge_pct'])
-        self.assertIsNone(RACCORDEMENT['exemple_vide']['calcul']['marge_pct'])
+        self.assertIsNone(RACCORDEMENT['exemple']['calcul']['ecart_limite_pct'])
+        self.assertIsNone(RACCORDEMENT['exemple_vide']['calcul']['ecart_limite_pct'])
 
     def test_avec_limite_saisie_le_verdict_est_prononce(self):
         saisie = RACCORDEMENT['exemple_limite_saisie']['saisie']
@@ -249,11 +249,11 @@ class LimiteAbsenteTest(SimpleTestCase):
     def test_la_marge_est_la_difference_a_la_limite(self):
         etat = RACCORDEMENT['exemple_limite_saisie']
         self.assertAlmostEqual(
-            etat['calcul']['marge_pct'],
+            etat['calcul']['ecart_limite_pct'],
             etat['saisie']['limite_elevation_pct']
             - etat['calcul']['elevation_pct'],
             places=6,
-            msg='`marge_pct` est la différence à la limite SAISIE, rien '
+            msg='`ecart_limite_pct` est la différence à la limite SAISIE, rien '
                 'd’autre.')
 
 

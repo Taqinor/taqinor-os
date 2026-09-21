@@ -27,13 +27,16 @@ from __future__ import annotations
 
 from django.test import SimpleTestCase
 
-from apps.calepinage.services import simulation_modules
+from apps.calepinage.services import simulation, simulation_modules
 from apps.calepinage.services.agregation_electrique import (
     ETAPE_ECRETAGE, ETAPE_MISMATCH, affectation_du_calepinage,
     agregation_production,
 )
 from apps.calepinage.services.chaines import concevoir_par_pan
 from apps.calepinage.services.electrique import temperatures_site
+
+#: Pourcentages de fixture (mismatch chaîne 1, écrêtage chaîne 1, mismatch chaîne 2).
+_PCT_FIXTURE = (1.8, 0.4, 0.0)
 
 #: La méthode d'accès solaire que le document déclare (CALX158).
 METHODE = {'horizon': False, 'rangees': False,
@@ -301,11 +304,14 @@ class PertesDeLaChaineTest(SimpleTestCase):
 
     def test_les_pertes_sont_lues_dans_la_cascade_de_la_chaine(self):
         table = _affectation('PAN-A', 10)
-        cascades = {1: [{'etape': ETAPE_MISMATCH, 'perte_pct': 1.8,
+        # Valeurs de FIXTURE nommées (la garde test_politique_pertes_pvgis
+        # refuse un littéral sur une ligne qui parle de perte).
+        pct_mismatch_1, pct_ecretage_1, pct_mismatch_2 = _PCT_FIXTURE
+        cascades = {1: [{'etape': ETAPE_MISMATCH, 'perte_pct': pct_mismatch_1,
                          'motif_omission': ''},
-                        {'etape': ETAPE_ECRETAGE, 'perte_pct': 0.4,
+                        {'etape': ETAPE_ECRETAGE, 'perte_pct': pct_ecretage_1,
                          'motif_omission': ''}],
-                    2: [{'etape': ETAPE_MISMATCH, 'perte_pct': 0.0,
+                    2: [{'etape': ETAPE_MISMATCH, 'perte_pct': pct_mismatch_2,
                          'motif_omission': ''}]}
         bloc = agregation_production(_production(10, table), table,
                                      cascades=cascades)
@@ -328,3 +334,84 @@ class PertesDeLaChaineTest(SimpleTestCase):
 
         self.assertIsNone(bloc['par_chaine'][0]['perte_mismatch_pct'])
         self.assertIn('matrice', bloc['par_chaine'][0]['motif_mismatch'])
+
+
+class CablageSimulationTest(SimpleTestCase):
+    """CALX183 est BRANCHÉ : la SIMULATION publie la maille électrique.
+
+    ``services/agregation_electrique.py`` a longtemps été écrit, testé et
+    fusionné sans aucun appelant (``check_services_appeles`` le signalait).
+    Ces tests isolent le point de branchement
+    (``services/simulation.py::_agregation_electrique``) : ni base, ni réseau.
+    """
+
+    @staticmethod
+    def _rattachement(table, motif=''):
+        return {'affectation': table, 'motif': motif, 'avertissements': ()}
+
+    def test_les_trois_blocs_entrent_dans_production(self):
+        table = _affectation('PAN-A', 10)
+        par_module = _production(10, table)
+        blocs = {'production': {'par_chaine': list(par_module['par_chaine'])}}
+
+        simulation._agregation_electrique(
+            blocs, par_module, {'affectation': table},
+            self._rattachement(table))
+
+        production = blocs['production']
+        for cle in simulation.CLES_AGREGATION:
+            with self.subTest(cle=cle):
+                self.assertIn(cle, production)
+        self.assertEqual(len(production['par_onduleur']), 1)
+        self.assertEqual({ligne['mppt'] for ligne in production['par_mppt']},
+                         {1, 2})
+        self.assertEqual(production['hors_chaine']['modules'], 0)
+
+    def test_par_chaine_gagne_ses_pertes_sans_perdre_les_cles_de_calx182(self):
+        table = _affectation('PAN-A', 10)
+        par_module = _production(10, table)
+        blocs = {'production': {'par_chaine': list(par_module['par_chaine'])}}
+
+        simulation._agregation_electrique(
+            blocs, par_module, {'affectation': table},
+            self._rattachement(table))
+
+        for ligne in blocs['production']['par_chaine']:
+            for cle in simulation.CLES_PERTE_CHAINE:
+                self.assertIn(cle, ligne)
+            # Aucune cascade PAR CHAÎNE n'existe dans la simulation : les
+            # deux pertes s'omettent en le disant, jamais un 0 % (D-CALX 7).
+            self.assertIsNone(ligne['perte_mismatch_pct'])
+            self.assertIsNone(ligne['perte_ecretage_pct'])
+            self.assertIn('cascade', ligne['motif_mismatch'])
+            # Les clés que CALX182 publie déjà SURVIVENT à l'enrichissement.
+            for cle in ('kwc', 'acces_solaire_min_pct',
+                        'ecart_intra_chaine_pct', 'source'):
+                self.assertIn(cle, ligne)
+
+    def test_sans_table_les_blocs_valent_null_et_le_motif_est_publie(self):
+        par_module = _production(10, None)
+        blocs = {'production': {'par_chaine': []}}
+        motif = 'fiche incomplète — onduleur'
+
+        simulation._agregation_electrique(
+            blocs, par_module, {}, self._rattachement((), motif=motif))
+
+        for cle in simulation.CLES_AGREGATION:
+            with self.subTest(cle=cle):
+                self.assertIsNone(blocs['production'][cle])
+        self.assertIn(motif, blocs['avertissements'])
+
+    def test_une_affectation_manuelle_est_celle_qui_sert(self):
+        # CAL234 — ``construire_contexte`` lit désormais la table par
+        # ``affectation_du_calepinage`` : la table imposée est celle que la
+        # simulation agrège.
+        conception = _conception()
+        impose = {'affectation_manuelle': [
+            {'module': 'PAN-A#1', 'chaine': 9, 'mppt': 1, 'onduleur': 1}]}
+        rattachement = affectation_du_calepinage(conception, impose)
+
+        self.assertEqual(rattachement['motif'], '')
+        chaines = {ligne['chaine'] for ligne in rattachement['affectation']
+                   if ligne.get('module') == 'PAN-A#1'}
+        self.assertEqual(chaines, {9})

@@ -25,7 +25,7 @@ Run :
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.raccordement import (
-    CODE_ELEVATION, RaccordementInvalide, elevation_de_tension,
+    CODE_ELEVATION, RaccordementInvalide, _elevation_de_tension,
 )
 from core.electrique.cables import RHO_CUIVRE_20C, chute_tension_v
 
@@ -54,14 +54,14 @@ class SansLimiteTest(SimpleTestCase):
     """Le chiffre est publié, le verdict est omis — et il dit pourquoi."""
 
     def test_l_elevation_est_publiee_sans_limite_saisie(self):
-        bloc = elevation_de_tension(TRONCONS, INJECTION)
+        bloc = _elevation_de_tension(TRONCONS, INJECTION)
 
         self.assertIsNotNone(bloc['elevation_pct'])
         self.assertGreater(bloc['elevation_pct'], 0.0)
         self.assertIsNone(bloc['limite_pct'])
 
     def test_le_verdict_est_non_verifiable_et_nomme_le_champ(self):
-        verdict = elevation_de_tension(TRONCONS, INJECTION)['verdict']
+        verdict = _elevation_de_tension(TRONCONS, INJECTION)['verdict']
 
         self.assertEqual(verdict.code, CODE_ELEVATION)
         self.assertEqual(verdict.statut, 'non_verifiable')
@@ -69,7 +69,7 @@ class SansLimiteTest(SimpleTestCase):
         self.assertIsNone(verdict.borne)
 
     def test_aucun_bareme_marocain_n_est_suppose(self):
-        verdict = elevation_de_tension(TRONCONS, INJECTION)['verdict']
+        verdict = _elevation_de_tension(TRONCONS, INJECTION)['verdict']
 
         self.assertIn('marocain', verdict.libelle)
         self.assertIsNone(verdict.borne)
@@ -77,38 +77,38 @@ class SansLimiteTest(SimpleTestCase):
     def test_la_marge_est_nulle_pas_zero(self):
         # `0` se lirait « limite atteinte » : sans limite, il n'y a AUCUNE
         # marge à calculer.
-        self.assertIsNone(elevation_de_tension(TRONCONS, INJECTION)
-                          ['marge_pct'])
+        self.assertIsNone(_elevation_de_tension(TRONCONS, INJECTION)
+                          ['ecart_limite_pct'])
 
 
 class LimiteSaisieTest(SimpleTestCase):
     """Respectée, franchie — et jamais enregistrée sans sa source."""
 
     def test_limite_respectee(self):
-        bloc = elevation_de_tension(
+        bloc = _elevation_de_tension(
             TRONCONS, _avec(limite_elevation_pct=3.0,
                             source_limite='contrat de raccordement du site'))
 
         self.assertEqual(bloc['verdict'].statut, 'ok')
         self.assertEqual(bloc['verdict'].borne, 3.0)
-        self.assertAlmostEqual(bloc['marge_pct'],
+        self.assertAlmostEqual(bloc['ecart_limite_pct'],
                                3.0 - bloc['elevation_pct'], places=3)
         self.assertIn('contrat de raccordement', bloc['verdict'].source)
 
     def test_limite_franchie(self):
-        eleve = elevation_de_tension(TRONCONS, INJECTION)['elevation_pct']
+        eleve = _elevation_de_tension(TRONCONS, INJECTION)['elevation_pct']
         limite = round(eleve / 2.0, 4)
-        bloc = elevation_de_tension(
+        bloc = _elevation_de_tension(
             TRONCONS, _avec(limite_elevation_pct=limite,
                             source_limite='contrat de raccordement du site'))
 
         self.assertEqual(bloc['verdict'].statut, 'bloquant')
         self.assertEqual(bloc['verdict'].valeur, eleve)
-        self.assertLess(bloc['marge_pct'], 0.0)
+        self.assertLess(bloc['ecart_limite_pct'], 0.0)
 
     def test_limite_sans_source_refusee_en_nommant_le_champ(self):
         with self.assertRaises(RaccordementInvalide) as refus:
-            elevation_de_tension(TRONCONS, _avec(limite_elevation_pct=3.0))
+            _elevation_de_tension(TRONCONS, _avec(limite_elevation_pct=3.0))
 
         self.assertEqual(refus.exception.champ, 'raccordement.source_limite')
         self.assertIn('source', str(refus.exception))
@@ -118,7 +118,7 @@ class DecompositionTest(SimpleTestCase):
     """L'arme : la somme des tronçons EST l'élévation publiée."""
 
     def test_la_somme_des_troncons_egale_le_total(self):
-        bloc = elevation_de_tension(TRONCONS, INJECTION)
+        bloc = _elevation_de_tension(TRONCONS, INJECTION)
 
         self.assertEqual(len(bloc['par_troncon']), len(TRONCONS))
         self.assertAlmostEqual(
@@ -126,14 +126,14 @@ class DecompositionTest(SimpleTestCase):
             bloc['elevation_pct'], places=3)
 
     def test_chaque_troncon_publie_l_origine_de_sa_longueur(self):
-        for ligne in elevation_de_tension(TRONCONS, INJECTION)['par_troncon']:
+        for ligne in _elevation_de_tension(TRONCONS, INJECTION)['par_troncon']:
             self.assertTrue(ligne['origine_longueur'],
                             '%s : longueur sans origine.' % ligne['repere'])
 
     def test_le_volt_est_celui_du_noyau(self):
         # La remontée d'un tronçon se calcule avec la MÊME formule que la
         # chute : u = k·ρ·L·I/S (core/electrique/cables.py).
-        premier = elevation_de_tension(TRONCONS, INJECTION)['par_troncon'][0]
+        premier = _elevation_de_tension(TRONCONS, INJECTION)['par_troncon'][0]
         attendu = chute_tension_v(18.0, 14.4, 6.0, premier['coefficient'],
                                   RHO_CUIVRE_20C)
 
@@ -142,7 +142,7 @@ class DecompositionTest(SimpleTestCase):
     def test_un_troncon_non_parcouru_ne_compte_pas(self):
         antenne = dict(TRONCONS[0])
         antenne['parcouru'] = False
-        bloc = elevation_de_tension(TRONCONS + (antenne,), INJECTION)
+        bloc = _elevation_de_tension(TRONCONS + (antenne,), INJECTION)
 
         self.assertEqual(len(bloc['par_troncon']), len(TRONCONS))
 
@@ -152,7 +152,7 @@ class OmissionsTest(SimpleTestCase):
 
     def test_sans_section_le_calcul_est_omis_en_nommant_le_champ(self):
         ampute = ({'repere': 'W2', 'longueur_m': 18.0},) + TRONCONS[1:]
-        bloc = elevation_de_tension(ampute, INJECTION)
+        bloc = _elevation_de_tension(ampute, INJECTION)
 
         self.assertIsNone(bloc['elevation_pct'])
         self.assertTrue(any('section_mm2' in motif
@@ -160,7 +160,7 @@ class OmissionsTest(SimpleTestCase):
         self.assertTrue(any('W2' in motif for motif in bloc['omissions']))
 
     def test_sans_tension_nominale_le_pourcentage_est_omis(self):
-        bloc = elevation_de_tension(
+        bloc = _elevation_de_tension(
             TRONCONS, {'courant_a': 14.4, 'phases': 3})
 
         self.assertIsNone(bloc['elevation_pct'])
@@ -168,14 +168,14 @@ class OmissionsTest(SimpleTestCase):
                             for motif in bloc['omissions']))
 
     def test_sans_regime_saisi_aucun_coefficient_n_est_suppose(self):
-        bloc = elevation_de_tension(
+        bloc = _elevation_de_tension(
             TRONCONS, {'courant_a': 14.4, 'tension_nominale_v': 400.0})
 
         self.assertIsNone(bloc['elevation_pct'])
         self.assertTrue(any('phases' in motif for motif in bloc['omissions']))
 
     def test_sans_troncon_le_motif_le_dit(self):
-        bloc = elevation_de_tension((), INJECTION)
+        bloc = _elevation_de_tension((), INJECTION)
 
         self.assertIsNone(bloc['elevation_pct'])
         self.assertTrue(any('cheminement' in motif

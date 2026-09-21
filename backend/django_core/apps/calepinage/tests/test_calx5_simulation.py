@@ -605,6 +605,32 @@ class ContratTest(SimpleTestCase):
                                                        'par_chaine'}), [])
         self.assertEqual(sorted(servies - attendues), [])
 
+    def test_la_maille_electrique_est_au_contrat_et_toujours_servie(self):
+        # CALX183 — les TROIS blocs de `agregation_electrique` sont toujours
+        # PRÉSENTS. Sans table d'affectation ils valent `null` et leur motif
+        # part dans `avertissements` : jamais des zéros.
+        for cle in service.CLES_AGREGATION:
+            with self.subTest(cle=cle):
+                self.assertIn(cle, CONTRAT['exemple']['production'])
+                self.assertIn(cle, CONTRAT['exemple_vide']['production'])
+                self.assertIsNone(CONTRAT['exemple_vide']['production'][cle])
+                self.assertIn(cle, self.blocs['production'])
+
+    def test_chaque_chaine_de_l_echantillon_porte_ses_deux_pertes(self):
+        # CALX183 — la maille chaîne porte mismatch et écrêtage ; une perte
+        # non publiée DIT pourquoi (D-CALX 7), et les clés de CALX182 ne
+        # disparaissent pas au passage.
+        for ligne in CONTRAT['exemple']['production']['par_chaine']:
+            for cle in service.CLES_PERTE_CHAINE:
+                self.assertIn(cle, ligne)
+            for cle in ('kwc', 'acces_solaire_min_pct',
+                        'ecart_intra_chaine_pct', 'source'):
+                self.assertIn(cle, ligne)
+            if ligne['perte_mismatch_pct'] is None:
+                self.assertTrue(ligne['motif_mismatch'])
+            if ligne['perte_ecretage_pct'] is None:
+                self.assertTrue(ligne['motif_ecretage'])
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 6. L'ÉCRITURE EN BASE — écrite, NON EXÉCUTÉE sur le poste (aucune base)

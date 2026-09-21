@@ -87,11 +87,20 @@ HAUTEUR_TABLEAU_MM = 8.0 * MM_PAR_PX
 _PAS_LIGNE_MM = HAUTEUR_TABLEAU_MM * 2.0
 _COLONNES_MM = (0.0, 18.0, 74.0, 103.0)
 
-#: Les deux estampilles que la bibliothèque régénère À CHAQUE écriture.
-#: Figées pour que deux exports de la même conception soient identiques.
+#: Les estampilles que la bibliothèque régénère À CHAQUE écriture. Figées
+#: pour que deux exports de la même conception soient identiques.
+#:
+#: Les QUATRE variables d'en-tête ci-dessous sont des dates JULIENNES posées
+#: par ``ezdxf.new()`` : une seconde écoulée entre deux exports suffisait à
+#: faire diverger deux fichiers de la MÊME conception (constaté en suite
+#: complète, vert en isolation — le pire des rouges). Elles sont figées comme
+#: le GUID : « aucune date d'écriture », ce qui est exact — un DXF décrit une
+#: conception, pas un instant.
 _GUID_FIGE = '{00000000-0000-0000-0000-000000000000}'
 _ECRIVAIN_FIGE = 'taqinor-sld'
 _HORODATAGE_ECRIVAIN = re.compile(r'^\d+\.\d+\.\d+ @ \d{4}-\d{2}-\d{2}T')
+_DATES_FIGEES = ('$TDCREATE', '$TDUCREATE', '$TDUPDATE', '$TDUUPDATE')
+_DATE_FIGEE = '0.0'
 
 
 def _mm(valeur):
@@ -119,7 +128,8 @@ def _dessin_et_tableau(calepinage):
     )
     from .norme import norme_applicable
     from .sld import (
-        SldRefuse, cartouche_du_calepinage, edition_sld, gabarit_de_schema,
+        SldRefuse, branches_onduleur_de_la_conception,
+        cartouche_du_calepinage, edition_sld, gabarit_de_schema,
         rendu_du_schema,
     )
 
@@ -139,20 +149,24 @@ def _dessin_et_tableau(calepinage):
     gabarit = gabarit_de_schema(norme_applicable(
         parametres_societe(calepinage)))
     resultat = getattr(conception, 'resultat', None)
-    dessin = rendu_du_schema(getattr(conception, 'entree', None), resultat,
-                             edition=edition_sld(calepinage),
-                             gabarit=gabarit,
-                             cartouche=cartouche_du_calepinage(calepinage))
+    dessin = rendu_du_schema(
+        getattr(conception, 'entree', None), resultat,
+        edition=edition_sld(calepinage), gabarit=gabarit,
+        cartouche=cartouche_du_calepinage(calepinage),
+        # CALX238 — le DXF transpose le MÊME dessin que le SVG : il reçoit
+        # donc les mêmes branches d'onduleur.
+        branches_onduleur=branches_onduleur_de_la_conception(conception))
     return dessin, lignes_tableau(resultat, standard=gabarit['standard'])
 
 
 def _document_dxf(dessin, lignes):
     """``rendu_du_schema(...)`` + sa nomenclature -> un document ``ezdxf``."""
-    from core.electrique.schema import _BLOC_H, _BLOC_L, _MARGE, _TABLEAU_L
+    from core.electrique.schema import GEOMETRIE
 
     import ezdxf
     from ezdxf import units
 
+    bloc_l, bloc_h = GEOMETRIE.bloc_l, GEOMETRIE.bloc_h
     hauteur = dessin['hauteur']
     document = ezdxf.new(setup=True)
     document.units = units.MM
@@ -163,9 +177,9 @@ def _document_dxf(dessin, lignes):
 
     for bloc in dessin['blocs']:
         x, y = bloc['x'], bloc['y']
-        coins = [_point(x, y + _BLOC_H, hauteur),
-                 _point(x + _BLOC_L, y + _BLOC_H, hauteur),
-                 _point(x + _BLOC_L, y, hauteur),
+        coins = [_point(x, y + bloc_h, hauteur),
+                 _point(x + bloc_l, y + bloc_h, hauteur),
+                 _point(x + bloc_l, y, hauteur),
                  _point(x, y, hauteur)]
         espace.add_lwpolyline(coins, close=True,
                               dxfattribs={'layer': CALQUE_BLOCS})
@@ -186,8 +200,9 @@ def _document_dxf(dessin, lignes):
              _point(arrivee[0], arrivee[1], hauteur)],
             dxfattribs={'layer': CALQUE_LIAISONS})
 
-    origine_x = _mm(dessin['largeur'] - _MARGE - _TABLEAU_L)
-    origine_y = _mm(hauteur - _MARGE)
+    origine_x = _mm(dessin['largeur'] - GEOMETRIE.marge
+                    - GEOMETRIE.tableau_l)
+    origine_y = _mm(hauteur - GEOMETRIE.marge)
     for rang, ligne in enumerate(lignes):
         y = origine_y - _PAS_LIGNE_MM * (rang + 1)
         for index, valeur in enumerate(ligne):
@@ -206,16 +221,19 @@ def _texte(espace, contenu, position, hauteur, calque):
 def _fige_les_estampilles(texte):
     """Remplace les deux estampilles volatiles de l'écriture.
 
-    ``$VERSIONGUID`` (valeur en code de groupe 2, deux lignes plus bas) et la
-    signature « <version> @ <horodatage ISO> » que la bibliothèque dépose
-    dans ses métadonnées. Rien d'autre n'est touché : ni une coordonnée, ni
-    un texte du dessin.
+    ``$VERSIONGUID`` (valeur en code de groupe 2, deux lignes plus bas), les
+    quatre DATES d'en-tête (même forme : la valeur est deux lignes plus bas)
+    et la signature « <version> @ <horodatage ISO> » que la bibliothèque
+    dépose dans ses métadonnées. Rien d'autre n'est touché : ni une
+    coordonnée, ni un texte du dessin.
     """
     lignes = texte.split('\n')
     for index, ligne in enumerate(lignes):
         depouillee = ligne.strip()
         if depouillee == '$VERSIONGUID' and index + 2 < len(lignes):
             lignes[index + 2] = _GUID_FIGE
+        elif depouillee in _DATES_FIGEES and index + 2 < len(lignes):
+            lignes[index + 2] = _DATE_FIGEE
         elif _HORODATAGE_ECRIVAIN.match(depouillee):
             lignes[index] = _ECRIVAIN_FIGE
     return '\n'.join(lignes)

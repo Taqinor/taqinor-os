@@ -163,103 +163,6 @@ class TestPdfFormats(TestCase):
             if 'Replaced' in type(b).__name__ and b.height > 100 and b.width > 100
         ]
 
-    def test_premium_default_renders_three_pages(self):
-        html, doc = self._render()
-        self.assertEqual(len(doc.pages), 3)
-        # default = no payment/RIB block
-        self.assertNotIn('SGMBMAMCXXX', html)
-
-    def test_onepage_format_renders_exactly_one_page(self):
-        html, doc = self._render({'pdf_mode': 'onepage'})
-        self.assertEqual(
-            len(doc.pages), 1,
-            f'one-page quote must render exactly 1 page, got {len(doc.pages)}',
-        )
-        # the product list is there (designations from the quote lines)
-        self.assertIn('Panneau mono 550W', html)
-
-    def test_devis_final_keeps_three_pages_with_rib_and_payment(self):
-        html, doc = self._render({
-            'devis_final': True,
-            'payment_mode': 'custom',
-            'custom_acompte': 12000,
-        })
-        self.assertEqual(len(doc.pages), 3)
-        self.assertIn('SGMBMAMCXXX', html)  # RIB / BIC block present
-
-    def test_monthly_chart_toggle_keeps_three_pages(self):
-        _, doc_with = self._render({'show_monthly': True})
-        _, doc_without = self._render({'show_monthly': False})
-        self.assertEqual(len(doc_with.pages), 3)
-        self.assertEqual(len(doc_without.pages), 3)
-        # page 2 loses exactly one chart when the monthly chart is off
-        charts_with = len(self._charts_on_page(doc_with.pages[1]))
-        charts_without = len(self._charts_on_page(doc_without.pages[1]))
-        self.assertEqual(charts_with - charts_without, 1)
-
-    def test_onepage_brand_column_filled_from_product_names(self):
-        """The one-page Marque column shows the product brand (extracted from
-        the designation), and stays empty for unbranded items — like the
-        simulator's badge column."""
-        from apps.ventes.quote_engine.builder import build_quote_data
-        devis = make_devis(self.company, self.user, self.client_obj, [
-            ('Onduleur hybride Deye 5kW', '1', '14166.67'),
-            ('Batterie Dyness 10 kWh', '1', '25000'),
-            ('Panneau Canadien Solar 710W', '10', '1166.67'),
-            ('Socles béton', '20', '66.67'),
-        ], reference='DEV-QE-MARQUE')
-        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
-        marques = {it['designation']: it['marque'] for it in data['all_items']}
-        self.assertEqual(marques['Onduleur hybride Deye 5kW'], 'Deye')
-        self.assertEqual(marques['Batterie Dyness 10 kWh'], 'Dyness')
-        self.assertEqual(marques['Panneau Canadien Solar 710W'], 'Canadien Solar')
-        self.assertEqual(marques['Socles béton'], '')
-
-    def test_ht_lines_and_visible_discount(self):
-        """Per-line HT consistent with stored TTC; explicit Remise line with
-        percentage and negative amount; HT → TVA → TTC chain rendered."""
-        from apps.ventes.quote_engine.builder import build_quote_data
-        devis = make_devis(self.company, self.user, self.client_obj,
-                           self.FULL_LINES, remise_globale='8',
-                           reference='DEV-QE-HT', etude_params=DEUX_OPTIONS)
-        data = build_quote_data(devis)
-        for it in data['sans_items'] + data['avec_items']:
-            self.assertAlmostEqual(
-                it['prix_unit_ht'] * 1.2, it['prix_unit_ttc'], places=1)
-        html, doc = self._render(devis=devis)
-        self.assertEqual(len(doc.pages), 3)
-        self.assertIn('Sous-total HT', html)
-        self.assertIn('Remise (8', html)      # ligne remise explicite
-        self.assertIn('TVA (20', html)
-        self.assertIn('P.U. HT', html)
-        # one-page : même chaîne de totaux
-        html1, doc1 = self._render({'pdf_mode': 'onepage'}, devis=devis)
-        self.assertEqual(len(doc1.pages), 1)
-        self.assertIn('Sous-total HT', html1)
-        self.assertIn('Remise (8', html1)
-
-    def test_etude_page_renders_four_pages_with_data_three_without(self):
-        """include_etude adds the étude page (4 pages) only when the quote
-        carries étude data; degrades gracefully to 3 pages otherwise."""
-        self.devis.mode_installation = 'industriel'
-        self.devis.etude_params = {
-            **DEUX_OPTIONS,   # PV86 — l'alternative reste DÉCLARÉE
-            'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
-            'taux_autoconso': 100, 'taux_couverture': 10.4,
-            'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
-            'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
-        }
-        self.devis.save()
-        html, doc = self._render({'include_etude': True})
-        self.assertEqual(len(doc.pages), 4)
-        self.assertIn('autoconsommation', html)
-        self.assertIn('Taux de couverture', html)
-        # Sans données d'étude → 3 pages, pas d'erreur
-        self.devis.etude_params = None
-        self.devis.save(update_fields=['etude_params'])
-        _, doc2 = self._render({'include_etude': True})
-        self.assertEqual(len(doc2.pages), 3)
-
     # ── PV46 — page « Annexe technique » (défaut OFF) ────────────────────────
     _ELECTRICAL_DESIGN = {
         'chaines': [
@@ -288,62 +191,6 @@ class TestPdfFormats(TestCase):
         'parametres': {'dc_m': 40.0, 'ac_m': 15.0, 'phases': 3,
                        'regime': 'TT'},
     }
-
-    def test_sans_etude_electrique_le_pdf_est_celui_d_hier(self):
-        """Aucune conception ⇒ aucune clé nouvelle, aucune page nouvelle."""
-        from apps.ventes.quote_engine.builder import build_quote_data
-
-        self.devis.electrical_design = None
-        self.devis.save(update_fields=['electrical_design'])
-        data = build_quote_data(self.devis)
-        for clef in ('include_annexe_technique', 'electrical_design',
-                     'sld_svg'):
-            self.assertNotIn(clef, data)
-        _, doc = self._render()
-        self.assertEqual(len(doc.pages), 3)
-
-    def test_l_annexe_est_un_opt_in_explicite_meme_avec_une_etude(self):
-        """L-1V (24/08/2026 soir) — l'auto « dès que l'étude existe » est retiré.
-
-        Depuis que ``rafraichir_etudes_du_devis`` pose la conception à la
-        CRÉATION de chaque devis, « l'étude existe » est vrai partout : l'auto
-        d'hier ajoutait une 4e page à TOUS les PDF 'full' (doctrine : 3 pages).
-        L'annexe est donc un opt-in explicite — et le client, lui, voit le
-        schéma sur sa page proposition aux deux niveaux (une seule vérité).
-        """
-        from apps.ventes.quote_engine.builder import (
-            DEFAULT_PDF_OPTIONS, build_quote_data, clean_pdf_options)
-
-        self.assertIsNone(DEFAULT_PDF_OPTIONS['include_annexe_technique'])
-        self.assertIsNone(clean_pdf_options({})['include_annexe_technique'])
-
-        self.devis.electrical_design = self._ELECTRICAL_DESIGN
-        self.devis.save(update_fields=['electrical_design'])
-        # Étude présente + AUCUNE option ⇒ pas d'annexe, 3 pages (doctrine).
-        data = build_quote_data(self.devis)
-        self.assertNotIn('include_annexe_technique', data)
-        _, doc = self._render()
-        self.assertEqual(len(doc.pages), 3)
-        # Opt-in explicite ⇒ l'annexe sort, 4 pages.
-        data = build_quote_data(self.devis,
-                                {'include_annexe_technique': True})
-        self.assertTrue(data['include_annexe_technique'])
-        self.assertEqual(data['electrical_design'], self._ELECTRICAL_DESIGN)
-        html, doc = self._render({'include_annexe_technique': True})
-        self.assertEqual(len(doc.pages), 4)
-        self.assertIn('Annexe technique', html)
-
-    def test_un_refus_explicite_reste_souverain(self):
-        """L'opt-out marche toujours : ``False`` explicite ⇒ 3 pages."""
-        from apps.ventes.quote_engine.builder import build_quote_data
-
-        self.devis.electrical_design = self._ELECTRICAL_DESIGN
-        self.devis.save(update_fields=['electrical_design'])
-        data = build_quote_data(self.devis,
-                                {'include_annexe_technique': False})
-        self.assertNotIn('include_annexe_technique', data)
-        _, doc = self._render({'include_annexe_technique': False})
-        self.assertEqual(len(doc.pages), 3)
 
     def _equiper_fiches_annexe(self):
         """PVFCH-ANNEXE — le schéma de l'annexe est celui du MOTEUR, jamais
@@ -379,106 +226,6 @@ class TestPdfFormats(TestCase):
                 ond_mppt_v_max=Decimal('950.0'),
                 ond_v_max_abs=Decimal('1100.0'),
                 ond_i_max_mppt_a=Decimal('26.0'))
-
-    def test_annexe_technique_adds_a_fourth_page(self):
-        self._equiper_fiches_annexe()
-        self.devis.electrical_design = self._ELECTRICAL_DESIGN
-        self.devis.save(update_fields=['electrical_design'])
-        html, doc = self._render({'include_annexe_technique': True})
-        self.assertEqual(len(doc.pages), 4)
-        self.assertIn('Annexe technique', html)
-        self.assertIn('Nomenclature électrique', html)
-        self.assertIn('Disjoncteur AC général', html)
-        self.assertIn('Schéma unifilaire', html)
-        self.assertIn('<svg', html)
-        self.assertIn('Page 4', html)   # la signature reste la DERNIÈRE page
-
-    def test_annexe_sans_fiche_complete_n_imprime_plus_l_esquisse(self):
-        """PVFCH-ANNEXE (21/08/2026) — étude rangée mais fiches INCOMPLÈTES
-        (le cas des études d'avant le verrou PVFCH) : l'annexe sort avec sa
-        nomenclature, mais SANS schéma — plus jamais l'esquisse à cinq blocs,
-        qui ignorait l'étude et contredisait la page client."""
-        self.devis.electrical_design = self._ELECTRICAL_DESIGN
-        self.devis.save(update_fields=['electrical_design'])
-        html, _doc = self._render({'include_annexe_technique': True})
-        self.assertIn('Annexe technique', html)
-        self.assertIn('Nomenclature électrique', html)
-        # La SECTION schéma n'apparaît pas (les <svg> des graphiques du corps
-        # du devis, eux, existent toujours — on épingle la section, pas la
-        # simple présence d'un svg).
-        self.assertNotIn('Schéma unifilaire', html)
-
-    def test_annexe_technique_degrades_without_design(self):
-        """Drapeau activé mais aucune conception électrique → 3 pages, sans
-        erreur (même dégradation gracieuse qu'``include_etude``)."""
-        self.devis.electrical_design = None
-        self.devis.save(update_fields=['electrical_design'])
-        html, doc = self._render({'include_annexe_technique': True})
-        self.assertEqual(len(doc.pages), 3)
-        self.assertNotIn('Annexe technique', html)
-
-    def test_annexe_and_etude_together_make_five_pages(self):
-        self.devis.mode_installation = 'industriel'
-        self.devis.etude_params = {
-            **DEUX_OPTIONS,   # PV86 — l'alternative reste DÉCLARÉE
-            'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
-            'taux_autoconso': 100, 'taux_couverture': 10.4,
-            'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
-            'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
-        }
-        self.devis.electrical_design = self._ELECTRICAL_DESIGN
-        self.devis.save()
-        _, doc = self._render({'include_etude': True,
-                               'include_annexe_technique': True})
-        self.assertEqual(len(doc.pages), 5)
-
-    def test_annexe_technique_ignored_in_onepage_mode(self):
-        self.devis.electrical_design = self._ELECTRICAL_DESIGN
-        self.devis.save(update_fields=['electrical_design'])
-        html, doc = self._render({'pdf_mode': 'onepage',
-                                  'include_annexe_technique': True})
-        self.assertEqual(len(doc.pages), 1)
-        self.assertNotIn('Nomenclature électrique', html)
-
-    def test_annexe_technique_totals_unchanged(self):
-        """L'annexe n'ajoute AUCUN montant : les totaux du devis sont
-        identiques avec et sans elle."""
-        from apps.ventes.quote_engine.builder import build_quote_data
-
-        self.devis.electrical_design = self._ELECTRICAL_DESIGN
-        self.devis.save(update_fields=['electrical_design'])
-        sans = build_quote_data(self.devis,
-                                {'include_annexe_technique': False})
-        avec = build_quote_data(self.devis,
-                                {'include_annexe_technique': True})
-        for clef in ('totaux_sans', 'totaux_avec', 'totaux_all',
-                     'display_total', 'total_sans', 'total_avec'):
-            self.assertEqual(sans.get(clef), avec.get(clef), clef)
-
-    def test_annexe_technique_carries_no_price(self):
-        self.devis.electrical_design = self._ELECTRICAL_DESIGN
-        self.devis.save(update_fields=['electrical_design'])
-        from apps.ventes.quote_engine import generate_devis_premium as G
-        annexe = self._annexe_html()
-        # Ni les prix d'achat/marge, ni AUCUN prix de ligne du devis.
-        for interdit in ('prix_achat', 'marge', 'Total TTC', 'Sous-total'):
-            self.assertNotIn(interdit, annexe)
-        # PVSLD — le schéma v2 du moteur a rendu le scan de SOUS-CHAÎNE nue
-        # intenable : « 67 » surgissait d'une coordonnée SVG (x1="67"), puis
-        # « 1000 » de « 1000 V DC » — des grandeurs électriques LÉGITIMES.
-        # Le vrai vecteur de fuite d'un prix est son RENDU MONÉTAIRE : tout
-        # montant que le moteur imprime passe par ``fmt`` (« 11 700 MAD »,
-        # séparateurs insécables), et un contournement naïf écrirait
-        # « 11700 MAD ». On scanne donc l'annexe BRUTE ENTIÈRE pour ces deux
-        # formes — aucune collision possible avec tensions/calibres, et une
-        # fuite réelle reste attrapée à coup sûr.
-        for _designation, _qte, _prix in self.FULL_LINES:
-            self.assertNotIn(G.fmt(float(_prix)), annexe)
-            self.assertNotIn(f'{_prix} MAD', annexe)
-            self.assertNotIn(f'{_prix} MAD', annexe)
-        self.assertIn('Nomenclature électrique', annexe)
-        # La page de signature reste la DERNIÈRE page numérotée.
-        self.assertEqual(G.PAGE3_NUM, G.PAGES_TOTAL)
 
     @staticmethod
     def _sans_donnees_binaires(html):
@@ -613,6 +360,395 @@ class TestPdfFormats(TestCase):
             derniere.position_y + derniere.height, limite,
             'la dernière ligne d’équipement tombe sous la ligne de rognage')
 
+    def _simulation(self):
+        """QJR159 (b) — la simulation de test décrit LE champ PV de ce devis.
+
+        La puissance est LUE du builder (jamais recopiée à la main) : la
+        fixture suit donc automatiquement toute évolution des lignes de test,
+        et la garde ``_bankable_decrit_ce_champ`` est éprouvée sur son cas
+        NOMINAL (concordance) ici, et sur son cas de refus par le test QJR159
+        dédié.
+        """
+        if getattr(self, '_simulation_cache', None) is None:
+            from apps.ventes.quote_engine.builder import build_quote_data
+            base = type(self)._SIMULATION_BRUTE
+            kwc = float(build_quote_data(self.devis).get('puissance_kwc') or 0)
+            self.assertGreater(kwc, 0, 'fixture sans puissance lisible')
+            self._simulation_cache = {
+                **base, 'zones': [dict(base['zones'][0], kwc=kwc)]}
+        return self._simulation_cache
+
+    def _devis_avec_etude(self, simulation=None):
+        self.devis.mode_installation = 'industriel'
+        etude = {**DEUX_OPTIONS, **self._ETUDE_INDUSTRIELLE}
+        if simulation is not None:
+            etude['simulation'] = simulation
+        self.devis.etude_params = etude
+        self.devis.save()
+        return self.devis
+
+    @staticmethod
+    def _cles_profondes(obj):
+        """Toutes les clés de dict présentes à N'IMPORTE QUELLE profondeur."""
+        vues = set()
+        if isinstance(obj, dict):
+            for clef, valeur in obj.items():
+                vues.add(clef)
+                vues |= TestPdfFormats._cles_profondes(valeur)
+        elif isinstance(obj, (list, tuple)):
+            for valeur in obj:
+                vues |= TestPdfFormats._cles_profondes(valeur)
+        return vues
+
+    # ── CJ2b-bis (L-PDF, lot 4) — falaise tarifaire / remplissage batterie /
+    # part des glitchs, additifs sur la page Étude. ``dimensionnement`` suit
+    # le contrat ``apps.ventes.dimensionnement.recommander_taille`` (le même
+    # que ``POST /ventes/etude-horaire/preview/`` — voir
+    # ``apps/ventes/contract_samples/etude_horaire.json``) : AUCUN devis réel
+    # ne le porte encore ([HANDOFF backend], voir generate_devis_premium.
+    # _falaise_context), donc ces tests le posent directement pour prouver le
+    # rendu une fois le producteur câblé. ``etude_horaire`` en revanche EST
+    # déjà posé sur de vrais devis par ``services.rafraichir_etude_horaire_
+    # devis`` — le sous-ensemble ``annuel.part_glitch_*`` testé ici est réel.
+    _DIMENSIONNEMENT_SAMPLE = {
+        'falaise': {
+            'cible_kwh_mois': 500.0,
+            'tranche_actuelle': {'rang': 6, 'libelle': 'Tranche 6 (> 500 kWh)'},
+            'tranche_visee': {'rang': 5, 'libelle': 'Tranche 5 (401-500 kWh)'},
+        },
+        # QJR13 — cette combinaison DÉCRIT le devis de ce module : 14 panneaux
+        # 550 W (7,7 kWc) et « Batterie 5 kWh » dans ses lignes. Sans cette
+        # concordance, ses chiffres ne sont plus publiés (le PDF ne parle plus
+        # de « ce dimensionnement » à propos d'une combinaison non vendue).
+        'meilleure_falaise': {
+            'panneaux': 14, 'kwc': 7.7, 'batterie_kwh': 5.0,
+            'residuel_kwh_mois': 420.0,
+            'tranche_apres': {'rang': 5, 'libelle': 'Tranche 5 (401-500 kWh)'},
+            'remplissage': {
+                'moyen': 0.62,
+                'pire_mois': {'mois': 1, 'ratio': 0.62,
+                              'charge_jour_kwh': 8.0, 'surplus_jour_kwh': 5.0},
+            },
+            'cible_kwh_mois': 500.0,
+        },
+    }
+
+    _ETUDE_HORAIRE_GLITCH_SAMPLE = {
+        'annuel': {
+            'part_glitch_sans_kwh': 180.0,
+            'part_glitch_avec_kwh': 60.0,
+            'part_glitch_batterie_kwh': 120.0,
+            'part_glitch_sans_mad': 216.0,
+            'part_glitch_avec_mad': 72.0,
+        },
+    }
+
+    def _devis_avec_falaise(self, dimensionnement=None, etude_horaire=None):
+        etude = {**DEUX_OPTIONS, **self._ETUDE_INDUSTRIELLE}
+        if dimensionnement is not None:
+            etude['dimensionnement'] = dimensionnement
+        if etude_horaire is not None:
+            etude['etude_horaire'] = etude_horaire
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = etude
+        self.devis.save()
+        return self.devis
+
+    # ── QJR13 — un optimum du moteur ne se publie que s'il DÉCRIT ce devis ──
+    # ``meilleure_falaise`` est une combinaison champ + stockage que le
+    # BALAYAGE a trouvée : le PDF l'imprimait comme « ce dimensionnement »
+    # quelle que soit la taille et la batterie réellement vendues.
+    def _dim_divergent(self, **remplace):
+        return {
+            'falaise': self._DIMENSIONNEMENT_SAMPLE['falaise'],
+            'meilleure_falaise': {
+                **self._DIMENSIONNEMENT_SAMPLE['meilleure_falaise'],
+                **remplace,
+            },
+        }
+
+    def _mixed_devis(self, remise='0', reference='DEV-QE-MIX'):
+        return make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
+            ('Onduleur réseau Huawei 10kW', '1', '16666.67', '20'),
+            ('Structures acier', '14', '416.67', '20'),
+            ('Installation', '1', '4000', '20'),
+        ], remise_globale=remise, reference=reference)
+
+
+# SOLMVP54 (21/09/2026) — `TestPdfFormats` était UNE classe de 58 tests, chacun
+# rendant le HTML complet du devis (3 graphes matplotlib par rendu) : 154 s
+# MESURÉES sur le run 35607493246, sur un seul worker — Django affecte une
+# classe entière à un worker `--parallel`, donc cette classe fixait à elle
+# seule le plancher de la lane backend la plus lente (244 s contre 83-94 s
+# pour les lanes légères). Les helpers, `setUp`, `FULL_LINES` et la docstring
+# restent dans `TestPdfFormats` (qui ne porte plus aucun test et sert de base
+# — les autres modules importent `TestPdfFormats.FULL_LINES`) ; les 58 tests
+# sont répartis, dans leur ordre d'origine et SANS modification, en quatre
+# classes filles que le runner peut disperser sur quatre workers. Même
+# patron que le volet G (21/08/2026) sur `test_gammes_offre`.
+
+
+class TestPdfFormats1(TestPdfFormats):
+    """Tranche 1/4 des tests de `TestPdfFormats` (voir la note ci-dessus)."""
+
+    def test_premium_default_renders_three_pages(self):
+        html, doc = self._render()
+        self.assertEqual(len(doc.pages), 3)
+        # default = no payment/RIB block
+        self.assertNotIn('SGMBMAMCXXX', html)
+
+    def test_onepage_format_renders_exactly_one_page(self):
+        html, doc = self._render({'pdf_mode': 'onepage'})
+        self.assertEqual(
+            len(doc.pages), 1,
+            f'one-page quote must render exactly 1 page, got {len(doc.pages)}',
+        )
+        # the product list is there (designations from the quote lines)
+        self.assertIn('Panneau mono 550W', html)
+
+    def test_devis_final_keeps_three_pages_with_rib_and_payment(self):
+        html, doc = self._render({
+            'devis_final': True,
+            'payment_mode': 'custom',
+            'custom_acompte': 12000,
+        })
+        self.assertEqual(len(doc.pages), 3)
+        self.assertIn('SGMBMAMCXXX', html)  # RIB / BIC block present
+
+    def test_monthly_chart_toggle_keeps_three_pages(self):
+        _, doc_with = self._render({'show_monthly': True})
+        _, doc_without = self._render({'show_monthly': False})
+        self.assertEqual(len(doc_with.pages), 3)
+        self.assertEqual(len(doc_without.pages), 3)
+        # page 2 loses exactly one chart when the monthly chart is off
+        charts_with = len(self._charts_on_page(doc_with.pages[1]))
+        charts_without = len(self._charts_on_page(doc_without.pages[1]))
+        self.assertEqual(charts_with - charts_without, 1)
+
+    def test_onepage_brand_column_filled_from_product_names(self):
+        """The one-page Marque column shows the product brand (extracted from
+        the designation), and stays empty for unbranded items — like the
+        simulator's badge column."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Onduleur hybride Deye 5kW', '1', '14166.67'),
+            ('Batterie Dyness 10 kWh', '1', '25000'),
+            ('Panneau Canadien Solar 710W', '10', '1166.67'),
+            ('Socles béton', '20', '66.67'),
+        ], reference='DEV-QE-MARQUE')
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        marques = {it['designation']: it['marque'] for it in data['all_items']}
+        self.assertEqual(marques['Onduleur hybride Deye 5kW'], 'Deye')
+        self.assertEqual(marques['Batterie Dyness 10 kWh'], 'Dyness')
+        self.assertEqual(marques['Panneau Canadien Solar 710W'], 'Canadien Solar')
+        self.assertEqual(marques['Socles béton'], '')
+
+    def test_ht_lines_and_visible_discount(self):
+        """Per-line HT consistent with stored TTC; explicit Remise line with
+        percentage and negative amount; HT → TVA → TTC chain rendered."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           self.FULL_LINES, remise_globale='8',
+                           reference='DEV-QE-HT', etude_params=DEUX_OPTIONS)
+        data = build_quote_data(devis)
+        for it in data['sans_items'] + data['avec_items']:
+            self.assertAlmostEqual(
+                it['prix_unit_ht'] * 1.2, it['prix_unit_ttc'], places=1)
+        html, doc = self._render(devis=devis)
+        self.assertEqual(len(doc.pages), 3)
+        self.assertIn('Sous-total HT', html)
+        self.assertIn('Remise (8', html)      # ligne remise explicite
+        self.assertIn('TVA (20', html)
+        self.assertIn('P.U. HT', html)
+        # one-page : même chaîne de totaux
+        html1, doc1 = self._render({'pdf_mode': 'onepage'}, devis=devis)
+        self.assertEqual(len(doc1.pages), 1)
+        self.assertIn('Sous-total HT', html1)
+        self.assertIn('Remise (8', html1)
+
+    def test_etude_page_renders_four_pages_with_data_three_without(self):
+        """include_etude adds the étude page (4 pages) only when the quote
+        carries étude data; degrades gracefully to 3 pages otherwise."""
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = {
+            **DEUX_OPTIONS,   # PV86 — l'alternative reste DÉCLARÉE
+            'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
+            'taux_autoconso': 100, 'taux_couverture': 10.4,
+            'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
+            'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
+        }
+        self.devis.save()
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('autoconsommation', html)
+        self.assertIn('Taux de couverture', html)
+        # Sans données d'étude → 3 pages, pas d'erreur
+        self.devis.etude_params = None
+        self.devis.save(update_fields=['etude_params'])
+        _, doc2 = self._render({'include_etude': True})
+        self.assertEqual(len(doc2.pages), 3)
+
+    def test_sans_etude_electrique_le_pdf_est_celui_d_hier(self):
+        """Aucune conception ⇒ aucune clé nouvelle, aucune page nouvelle."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self.devis.electrical_design = None
+        self.devis.save(update_fields=['electrical_design'])
+        data = build_quote_data(self.devis)
+        for clef in ('include_annexe_technique', 'electrical_design',
+                     'sld_svg'):
+            self.assertNotIn(clef, data)
+        _, doc = self._render()
+        self.assertEqual(len(doc.pages), 3)
+
+    def test_l_annexe_est_un_opt_in_explicite_meme_avec_une_etude(self):
+        """L-1V (24/08/2026 soir) — l'auto « dès que l'étude existe » est retiré.
+
+        Depuis que ``rafraichir_etudes_du_devis`` pose la conception à la
+        CRÉATION de chaque devis, « l'étude existe » est vrai partout : l'auto
+        d'hier ajoutait une 4e page à TOUS les PDF 'full' (doctrine : 3 pages).
+        L'annexe est donc un opt-in explicite — et le client, lui, voit le
+        schéma sur sa page proposition aux deux niveaux (une seule vérité).
+        """
+        from apps.ventes.quote_engine.builder import (
+            DEFAULT_PDF_OPTIONS, build_quote_data, clean_pdf_options)
+
+        self.assertIsNone(DEFAULT_PDF_OPTIONS['include_annexe_technique'])
+        self.assertIsNone(clean_pdf_options({})['include_annexe_technique'])
+
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        # Étude présente + AUCUNE option ⇒ pas d'annexe, 3 pages (doctrine).
+        data = build_quote_data(self.devis)
+        self.assertNotIn('include_annexe_technique', data)
+        _, doc = self._render()
+        self.assertEqual(len(doc.pages), 3)
+        # Opt-in explicite ⇒ l'annexe sort, 4 pages.
+        data = build_quote_data(self.devis,
+                                {'include_annexe_technique': True})
+        self.assertTrue(data['include_annexe_technique'])
+        self.assertEqual(data['electrical_design'], self._ELECTRICAL_DESIGN)
+        html, doc = self._render({'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Annexe technique', html)
+
+    def test_un_refus_explicite_reste_souverain(self):
+        """L'opt-out marche toujours : ``False`` explicite ⇒ 3 pages."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        data = build_quote_data(self.devis,
+                                {'include_annexe_technique': False})
+        self.assertNotIn('include_annexe_technique', data)
+        _, doc = self._render({'include_annexe_technique': False})
+        self.assertEqual(len(doc.pages), 3)
+
+    def test_annexe_technique_adds_a_fourth_page(self):
+        self._equiper_fiches_annexe()
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        html, doc = self._render({'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Annexe technique', html)
+        self.assertIn('Nomenclature électrique', html)
+        self.assertIn('Disjoncteur AC général', html)
+        self.assertIn('Schéma unifilaire', html)
+        self.assertIn('<svg', html)
+        self.assertIn('Page 4', html)   # la signature reste la DERNIÈRE page
+
+    def test_annexe_sans_fiche_complete_n_imprime_plus_l_esquisse(self):
+        """PVFCH-ANNEXE (21/08/2026) — étude rangée mais fiches INCOMPLÈTES
+        (le cas des études d'avant le verrou PVFCH) : l'annexe sort avec sa
+        nomenclature, mais SANS schéma — plus jamais l'esquisse à cinq blocs,
+        qui ignorait l'étude et contredisait la page client."""
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        html, _doc = self._render({'include_annexe_technique': True})
+        self.assertIn('Annexe technique', html)
+        self.assertIn('Nomenclature électrique', html)
+        # La SECTION schéma n'apparaît pas (les <svg> des graphiques du corps
+        # du devis, eux, existent toujours — on épingle la section, pas la
+        # simple présence d'un svg).
+        self.assertNotIn('Schéma unifilaire', html)
+
+    def test_annexe_technique_degrades_without_design(self):
+        """Drapeau activé mais aucune conception électrique → 3 pages, sans
+        erreur (même dégradation gracieuse qu'``include_etude``)."""
+        self.devis.electrical_design = None
+        self.devis.save(update_fields=['electrical_design'])
+        html, doc = self._render({'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 3)
+        self.assertNotIn('Annexe technique', html)
+
+    def test_annexe_and_etude_together_make_five_pages(self):
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = {
+            **DEUX_OPTIONS,   # PV86 — l'alternative reste DÉCLARÉE
+            'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
+            'taux_autoconso': 100, 'taux_couverture': 10.4,
+            'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
+            'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
+        }
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save()
+        _, doc = self._render({'include_etude': True,
+                               'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 5)
+
+    def test_annexe_technique_ignored_in_onepage_mode(self):
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        html, doc = self._render({'pdf_mode': 'onepage',
+                                  'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 1)
+        self.assertNotIn('Nomenclature électrique', html)
+
+
+class TestPdfFormats2(TestPdfFormats):
+    """Tranche 2/4 des tests de `TestPdfFormats` (voir la note ci-dessus)."""
+
+    def test_annexe_technique_totals_unchanged(self):
+        """L'annexe n'ajoute AUCUN montant : les totaux du devis sont
+        identiques avec et sans elle."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        sans = build_quote_data(self.devis,
+                                {'include_annexe_technique': False})
+        avec = build_quote_data(self.devis,
+                                {'include_annexe_technique': True})
+        for clef in ('totaux_sans', 'totaux_avec', 'totaux_all',
+                     'display_total', 'total_sans', 'total_avec'):
+            self.assertEqual(sans.get(clef), avec.get(clef), clef)
+
+    def test_annexe_technique_carries_no_price(self):
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        annexe = self._annexe_html()
+        # Ni les prix d'achat/marge, ni AUCUN prix de ligne du devis.
+        for interdit in ('prix_achat', 'marge', 'Total TTC', 'Sous-total'):
+            self.assertNotIn(interdit, annexe)
+        # PVSLD — le schéma v2 du moteur a rendu le scan de SOUS-CHAÎNE nue
+        # intenable : « 67 » surgissait d'une coordonnée SVG (x1="67"), puis
+        # « 1000 » de « 1000 V DC » — des grandeurs électriques LÉGITIMES.
+        # Le vrai vecteur de fuite d'un prix est son RENDU MONÉTAIRE : tout
+        # montant que le moteur imprime passe par ``fmt`` (« 11 700 MAD »,
+        # séparateurs insécables), et un contournement naïf écrirait
+        # « 11700 MAD ». On scanne donc l'annexe BRUTE ENTIÈRE pour ces deux
+        # formes — aucune collision possible avec tensions/calibres, et une
+        # fuite réelle reste attrapée à coup sûr.
+        for _designation, _qte, _prix in self.FULL_LINES:
+            self.assertNotIn(G.fmt(float(_prix)), annexe)
+            self.assertNotIn(f'{_prix} MAD', annexe)
+            self.assertNotIn(f'{_prix} MAD', annexe)
+        self.assertIn('Nomenclature électrique', annexe)
+        # La page de signature reste la DERNIÈRE page numérotée.
+        self.assertEqual(G.PAGE3_NUM, G.PAGES_TOTAL)
+
     @tag('pdf')
     def test_qjr161_une_page_dense_garde_ses_lignes_et_ses_totaux_VISIBLES(self):
         """QJR161 — fixture DENSE (≥ 20 lignes) : la dernière ligne rendue ET
@@ -653,46 +789,6 @@ class TestPdfFormats(TestCase):
             self.assertIn('autres lignes d&#8217;&#233;quipement', html)
         # Le Total TTC reste celui du devis ENTIER, quoi qu'il arrive.
         self.assertIn(G._fmt2(data['totaux_all']['ttc']), html)
-
-    def _simulation(self):
-        """QJR159 (b) — la simulation de test décrit LE champ PV de ce devis.
-
-        La puissance est LUE du builder (jamais recopiée à la main) : la
-        fixture suit donc automatiquement toute évolution des lignes de test,
-        et la garde ``_bankable_decrit_ce_champ`` est éprouvée sur son cas
-        NOMINAL (concordance) ici, et sur son cas de refus par le test QJR159
-        dédié.
-        """
-        if getattr(self, '_simulation_cache', None) is None:
-            from apps.ventes.quote_engine.builder import build_quote_data
-            base = type(self)._SIMULATION_BRUTE
-            kwc = float(build_quote_data(self.devis).get('puissance_kwc') or 0)
-            self.assertGreater(kwc, 0, 'fixture sans puissance lisible')
-            self._simulation_cache = {
-                **base, 'zones': [dict(base['zones'][0], kwc=kwc)]}
-        return self._simulation_cache
-
-    def _devis_avec_etude(self, simulation=None):
-        self.devis.mode_installation = 'industriel'
-        etude = {**DEUX_OPTIONS, **self._ETUDE_INDUSTRIELLE}
-        if simulation is not None:
-            etude['simulation'] = simulation
-        self.devis.etude_params = etude
-        self.devis.save()
-        return self.devis
-
-    @staticmethod
-    def _cles_profondes(obj):
-        """Toutes les clés de dict présentes à N'IMPORTE QUELLE profondeur."""
-        vues = set()
-        if isinstance(obj, dict):
-            for clef, valeur in obj.items():
-                vues.add(clef)
-                vues |= TestPdfFormats._cles_profondes(valeur)
-        elif isinstance(obj, (list, tuple)):
-            for valeur in obj:
-                vues |= TestPdfFormats._cles_profondes(valeur)
-        return vues
 
     def test_pv77_sans_simulation_la_charge_utile_est_byte_identique(self):
         """Aucune simulation → AUCUNE clé nouvelle, nulle part, jamais."""
@@ -821,60 +917,6 @@ class TestPdfFormats(TestCase):
                        {'pr': {'loss_breakdown': {}}}):
             self.assertEqual(G._bankable_block_html(entree), '')
 
-    # ── CJ2b-bis (L-PDF, lot 4) — falaise tarifaire / remplissage batterie /
-    # part des glitchs, additifs sur la page Étude. ``dimensionnement`` suit
-    # le contrat ``apps.ventes.dimensionnement.recommander_taille`` (le même
-    # que ``POST /ventes/etude-horaire/preview/`` — voir
-    # ``apps/ventes/contract_samples/etude_horaire.json``) : AUCUN devis réel
-    # ne le porte encore ([HANDOFF backend], voir generate_devis_premium.
-    # _falaise_context), donc ces tests le posent directement pour prouver le
-    # rendu une fois le producteur câblé. ``etude_horaire`` en revanche EST
-    # déjà posé sur de vrais devis par ``services.rafraichir_etude_horaire_
-    # devis`` — le sous-ensemble ``annuel.part_glitch_*`` testé ici est réel.
-    _DIMENSIONNEMENT_SAMPLE = {
-        'falaise': {
-            'cible_kwh_mois': 500.0,
-            'tranche_actuelle': {'rang': 6, 'libelle': 'Tranche 6 (> 500 kWh)'},
-            'tranche_visee': {'rang': 5, 'libelle': 'Tranche 5 (401-500 kWh)'},
-        },
-        # QJR13 — cette combinaison DÉCRIT le devis de ce module : 14 panneaux
-        # 550 W (7,7 kWc) et « Batterie 5 kWh » dans ses lignes. Sans cette
-        # concordance, ses chiffres ne sont plus publiés (le PDF ne parle plus
-        # de « ce dimensionnement » à propos d'une combinaison non vendue).
-        'meilleure_falaise': {
-            'panneaux': 14, 'kwc': 7.7, 'batterie_kwh': 5.0,
-            'residuel_kwh_mois': 420.0,
-            'tranche_apres': {'rang': 5, 'libelle': 'Tranche 5 (401-500 kWh)'},
-            'remplissage': {
-                'moyen': 0.62,
-                'pire_mois': {'mois': 1, 'ratio': 0.62,
-                              'charge_jour_kwh': 8.0, 'surplus_jour_kwh': 5.0},
-            },
-            'cible_kwh_mois': 500.0,
-        },
-    }
-
-    _ETUDE_HORAIRE_GLITCH_SAMPLE = {
-        'annuel': {
-            'part_glitch_sans_kwh': 180.0,
-            'part_glitch_avec_kwh': 60.0,
-            'part_glitch_batterie_kwh': 120.0,
-            'part_glitch_sans_mad': 216.0,
-            'part_glitch_avec_mad': 72.0,
-        },
-    }
-
-    def _devis_avec_falaise(self, dimensionnement=None, etude_horaire=None):
-        etude = {**DEUX_OPTIONS, **self._ETUDE_INDUSTRIELLE}
-        if dimensionnement is not None:
-            etude['dimensionnement'] = dimensionnement
-        if etude_horaire is not None:
-            etude['etude_horaire'] = etude_horaire
-        self.devis.mode_installation = 'industriel'
-        self.devis.etude_params = etude
-        self.devis.save()
-        return self.devis
-
     def test_cj2b_bis_falaise_et_remplissage_rendus_quand_le_contrat_existe(self):
         self._devis_avec_falaise(dimensionnement=self._DIMENSIONNEMENT_SAMPLE)
         html, doc = self._render({'include_etude': True})
@@ -917,6 +959,10 @@ class TestPdfFormats(TestCase):
         self.assertIn('Part des pointes rattrapée par la batterie', html)
         self.assertIn('67 %', html)  # 120 / 180 = 66,7 % → arrondi 67 (espace insécable, passe typo)
 
+
+class TestPdfFormats3(TestPdfFormats):
+    """Tranche 3/4 des tests de `TestPdfFormats` (voir la note ci-dessus)."""
+
     def test_cj2b_bis_absent_ne_change_rien(self):
         """Sans ``dimensionnement`` ni glitch : page Étude byte-identique à
         avant ce lot — aucune des trois nouvelles cartes n'apparaît."""
@@ -948,19 +994,6 @@ class TestPdfFormats(TestCase):
         html, doc = self._render({'pdf_mode': 'onepage'})
         self.assertEqual(len(doc.pages), 1)
         self.assertNotIn('R&#233;siduel vis&#233;', html)
-
-    # ── QJR13 — un optimum du moteur ne se publie que s'il DÉCRIT ce devis ──
-    # ``meilleure_falaise`` est une combinaison champ + stockage que le
-    # BALAYAGE a trouvée : le PDF l'imprimait comme « ce dimensionnement »
-    # quelle que soit la taille et la batterie réellement vendues.
-    def _dim_divergent(self, **remplace):
-        return {
-            'falaise': self._DIMENSIONNEMENT_SAMPLE['falaise'],
-            'meilleure_falaise': {
-                **self._DIMENSIONNEMENT_SAMPLE['meilleure_falaise'],
-                **remplace,
-            },
-        }
 
     def test_qjr13_falaise_concordante_reste_imprimee_sur_les_deux_formats(self):
         """Combinaison = configuration vendue (14 panneaux, 5 kWh) ⇒ inchangé."""
@@ -1083,14 +1116,6 @@ class TestPdfFormats(TestCase):
         self.assertEqual(ond['taux_tva'], 20.0)
         self.assertEqual(ond['prix_unit_ttc'], 20000.0)
 
-    def _mixed_devis(self, remise='0', reference='DEV-QE-MIX'):
-        return make_devis(self.company, self.user, self.client_obj, [
-            ('Panneau Canadien Solar 710W', '14', '1272.73', '10'),
-            ('Onduleur réseau Huawei 10kW', '1', '16666.67', '20'),
-            ('Structures acier', '14', '416.67', '20'),
-            ('Installation', '1', '4000', '20'),
-        ], remise_globale=remise, reference=reference)
-
     def test_mixed_rates_buckets_reconcile_to_the_centime(self):
         """TVA 10 % + TVA 20 % éclatées ; HT net + somme des TVA = TTC exact,
         avec et sans remise globale."""
@@ -1127,6 +1152,10 @@ class TestPdfFormats(TestCase):
         data = build_quote_data(devis, {'pdf_mode': 'onepage'})
         self.assertIn('10% panneaux photovolta', data['tva_note'])
         self.assertIn('20% autres', data['tva_note'])
+
+
+class TestPdfFormats4(TestPdfFormats):
+    """Tranche 4/4 des tests de `TestPdfFormats` (voir la note ci-dessus)."""
 
     def test_legacy_single_rate_quote_renders_unchanged(self):
         """Devis historique (lignes sans taux) : note d'origine, ligne TVA

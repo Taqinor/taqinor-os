@@ -72,6 +72,33 @@ _SKIPS = [
 # point: preflight must follow the work, not the branch-protection label.
 FAST_GATE_JOBS = ("backend-lint-fast", "backend-openapi", "stage-names")
 
+# SOLMVP54 — etape runner (voir scripts/ci_guards.py) : `python scripts/ci_guards.py
+# <job>` avec d'eventuels drapeaux (`--jobs 4`) derriere.
+_RUNNER_RE = re.compile(r"^python scripts/ci_guards\.py (\S+)(?:\s+--\S+.*)?$")
+
+
+def _expand_runner(job: str, workdir: str):
+    """Une entree (label, workdir, commande) par garde de `ci_guards.GARDES[job]`.
+
+    Le repertoire de chaque garde est le sien (relatif a la racine du depot), pas
+    celui de l'etape runner — c'est ce que le runner applique lui-meme.
+    """
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import ci_guards  # noqa: E402 — import tardif : ce module est optionnel ailleurs
+    if job not in ci_guards.GARDES:
+        raise SystemExit(
+            f"ci_fast_gate_steps: ci.yml appelle `ci_guards.py {job}` mais "
+            f"scripts/ci_guards.py ne connait pas ce job ({', '.join(sorted(ci_guards.GARDES))})."
+        )
+    out = []
+    for _nom, commande, wd in ci_guards.GARDES[job]:
+        wd = wd if wd not in (".", "") else workdir
+        out.append((label_for(commande), wd, commande))
+    if not out:
+        raise SystemExit(f"ci_fast_gate_steps: ci_guards.GARDES['{job}'] est VIDE — "
+                         "un job sans garde serait un preflight faussement vert.")
+    return out
+
 
 def _shq(text: str) -> str:
     """Quote `text` for POSIX sh (single quotes; newlines survive verbatim)."""
@@ -147,6 +174,14 @@ def extract(job: str, jobs: dict):
         if any(re.search(p, run, re.MULTILINE) for p, _ in _SKIPS):
             continue
         workdir = str(step.get("working-directory") or ".")
+        # SOLMVP54 — l'etape `python scripts/ci_guards.py <job>` est un RUNNER qui
+        # execute en parallele toute la liste `ci_guards.GARDES[<job>]`. Preflight
+        # doit voir CHAQUE garde (une entree par commande, comme avant), pas une
+        # ligne opaque « ci_guards.py » : on developpe l'etape en ses gardes.
+        m = _RUNNER_RE.match(" ".join(run.split()))
+        if m:
+            steps.extend(_expand_runner(m.group(1), workdir))
+            continue
         steps.append((label_for(run), workdir, run.strip()))
 
     # Exact predicate, no magic threshold: if ci.yml declares `run:` steps for

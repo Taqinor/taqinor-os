@@ -103,6 +103,12 @@ MIN_UNIT_SECONDS = 0.4
 # et passe en argument (`ci_shard.py <shard> <total>`) — 6 depuis le volet G.
 DEFAULT_PARALLEL = 4
 
+# SOLMVP54 (21/09/2026) — temps de mur RESERVE sur une lane pour un travail
+# qui n'est pas dans le decoupage : la lane 0 enchaine la suite RLS
+# (`core.tests.test_rls*`, `--parallel 1`, etape dediee de ci.yml) apres sa
+# tranche, 42-45 s mesurees. Le LPT la traite comme deja chargee d'autant.
+LANE_RESERVE_SECONDS = {0: 45.0}
+
 # Seuil au-dessus duquel une CLASSE est retenue dans `ci_shard_class_timings.json`.
 # En dessous, elle ne peut pas etre le facteur limitant d'une lane (la charge
 # moyenne d'une lane est de l'ordre de 175 s a 6 lanes) : son cout reste compte
@@ -150,6 +156,10 @@ _TEST_DEF_RE = re.compile(r"^\s+(?:async\s+)?def\s+test", re.MULTILINE)
 # A Django -v 2 result line: "name (dotted.path.Class.name) ... ok"
 _RESULT_RE = re.compile(r"^\S*\s*\(([\w.]+)\)\s*\.\.\.")
 _TS_RE = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+Z)\s?(.*)$")
+# SOLMVP54 (21/09/2026) — `gh run view --job <id> --log` prefixe chaque ligne
+# de `job<TAB>step<TAB>` (et la premiere d'un BOM) ; `gh api …/logs` non. Les
+# deux formes doivent nourrir `--update-timings` sans pre-traitement.
+_GH_VIEW_PREFIX = re.compile(r"^[^\t]*\t[^\t]*\t")
 
 
 def _dotted(path: str) -> str:
@@ -437,6 +447,13 @@ def assign(units, total: int, weights, parallel: int = DEFAULT_PARALLEL,
     sommes = [0.0] * total          # contributions cumulees au temps de mur
     plus_gros = [0.0] * total       # plus grosse CLASSE deja posee sur la lane
     purges = [0] * total            # classes a purge large deja posees
+    # SOLMVP54 — la lane 0 porte EN PLUS la suite RLS (`--parallel 1`, 42-45 s
+    # mesurees sur les runs 35607493246/35608961728) apres sa tranche normale :
+    # on la pre-charge de ce temps pour que le LPT lui confie d'autant moins de
+    # modules, sinon elle finit systematiquement ~45 s apres les autres.
+    for lane_index, reserve in LANE_RESERVE_SECONDS.items():
+        if lane_index < total:
+            sommes[lane_index] = reserve
 
     for unit in sorted(units, key=lambda u: (-weights[u], u)):
         blocs = class_weights(unit, weights[unit], repo_root)
@@ -487,7 +504,15 @@ def wide_purge_classes(unit: str, repo_root: str = REPO_ROOT) -> int:
     path = os.path.join(repo_root, "backend", "django_core", *unit.split(".")) + ".py"
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
-            arbre = ast.parse(fh.read(), path)
+            src = fh.read()
+        # SOLMVP54 — pre-filtre textuel AVANT l'analyse AST : parser ~2 300
+        # modules coutait ~5 s au demarrage de CHAQUE shard (mesure 21/09/2026,
+        # « Shard 3/6 -> 382 modules » arrivait 5,5 s apres le lancement).
+        # Un module qui ne CITE aucun marqueur ne peut pas en heriter — l'AST
+        # rendrait 0 ; on le saute. Le verdict est strictement identique.
+        if not any(marqueur in src for marqueur in PURGE_MARQUEURS):
+            return 0
+        arbre = ast.parse(src, path)
     except (OSError, SyntaxError, ValueError):
         return 0
     return sum(
@@ -573,7 +598,7 @@ def parse_log_durations(lines) -> dict:
     durations: dict = defaultdict(float)
     prev_time = None
     for raw in lines:
-        m = _TS_RE.match(raw.rstrip("\n"))
+        m = _TS_RE.match(_GH_VIEW_PREFIX.sub("", raw.rstrip("\n").lstrip("﻿")))
         if not m:
             continue
         stamp, body = m.group(1), m.group(2)
@@ -713,7 +738,10 @@ def main(argv):
         total_w = sum(weights.values())
         print(f"{len(units)} modules, travail total estime {total_w / 60:.1f} min, "
               f"--parallel {p} par lane")
-        murs = [lane_makespan(lane, weights, p) for lane in lanes]
+        # Le temps de mur AFFICHE inclut la reserve de la lane (suite RLS sur
+        # la lane 0) — c'est ce que le run mesure, pas la seule tranche.
+        murs = [lane_makespan(lane, weights, p) + LANE_RESERVE_SECONDS.get(i, 0.0)
+                for i, lane in enumerate(lanes)]
         print(f"  {'lane':>4}  {'modules':>7}  {'travail':>8}  {'temps de mur':>12}")
         for i, lane in enumerate(lanes):
             load = sum(weights[u] for u in lane)
