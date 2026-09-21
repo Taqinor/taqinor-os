@@ -198,6 +198,18 @@
           "libelle": "Atténuation appliquée au profil d'horizon",
           "unite": "",
           "reference": "PVGIS — printhorizon, profil DEM"
+        },
+        {
+          "cle": "salissure_mensuelle_pct",
+          "libelle": "Salissure, mois par mois (12 valeurs, ou une seule pour les douze)",
+          "unite": "%",
+          "reference": "PVsyst — Soiling loss (facteurs MENSUELS, aucune valeur universelle par défaut)"
+        },
+        {
+          "cle": "indisponibilite_fenetres",
+          "libelle": "Fenêtres d'arrêt de l'installation (début, fin, motif)",
+          "unite": "",
+          "reference": "PVsyst — Unavailability loss (des périodes d'arrêt explicites, jamais un forfait annuel)"
         }
       ],
       "electrique_societe": [
@@ -386,6 +398,18 @@
           "libelle": "Atténuation appliquée au profil d'horizon",
           "unite": "",
           "reference": "PVGIS — printhorizon, profil DEM"
+        },
+        {
+          "cle": "salissure_mensuelle_pct",
+          "libelle": "Salissure, mois par mois (12 valeurs, ou une seule pour les douze)",
+          "unite": "%",
+          "reference": "PVsyst — Soiling loss (facteurs MENSUELS, aucune valeur universelle par défaut)"
+        },
+        {
+          "cle": "indisponibilite_fenetres",
+          "libelle": "Fenêtres d'arrêt de l'installation (début, fin, motif)",
+          "unite": "",
+          "reference": "PVsyst — Unavailability loss (des périodes d'arrêt explicites, jamais un forfait annuel)"
         }
       ],
       "electrique_societe": [
