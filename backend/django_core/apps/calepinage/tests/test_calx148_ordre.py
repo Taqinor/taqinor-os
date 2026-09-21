@@ -120,9 +120,11 @@ class ExclusiviteTest(unittest.TestCase):
     def test_un_document_sans_solar_access_ne_l_omet_pas_pour_cette_raison(
             self):
         etape = cascade({})['ombrage_proche']
-        self.assertIn('Étape non livrée', etape['motif_omission'],
-                      'sans lecture par module, l’ombrage proche n’est pas '
-                      'écarté par exclusivité : il attend son module.')
+        # CALX157 : sans lecture par module, l'exclusivité ne s'applique pas
+        # — c'est l'étape elle-même qui dit alors ce qui lui manque.
+        self.assertNotIn('module par module',
+                         etape['motif_omission'].lower())
+        self.assertTrue(etape['motif_omission'].strip())
 
     def test_l_inter_rangees_n_est_ecarte_que_si_l_acces_le_declare(self):
         # Sans la déclaration « rangees », l'EXCLUSIVITÉ ne joue pas :
@@ -140,9 +142,13 @@ class ExclusiviteTest(unittest.TestCase):
         etape = cascade(
             {'meteo': {'horizon': {'origine': 'dem_pvgis'}}})['horizon']
         self.assertIn('PVGIS', etape['motif_omission'])
+        self.assertIn('modèle de terrain', etape['motif_omission'])
         autre = cascade(
             {'meteo': {'horizon': {'origine': 'profil_mesure'}}})['horizon']
-        self.assertIn('Étape non livrée', autre['motif_omission'])
+        # CALX156 : un profil MESURÉ n'est pas le modèle de terrain de PVGIS.
+        # L'exclusivité de l'ordonnanceur ne le vise donc pas — c'est l'étape
+        # elle-même qui publie alors son propre motif.
+        self.assertNotIn('modèle de terrain', autre['motif_omission'])
 
 
 class ToujoursOmisesTest(unittest.TestCase):
