@@ -48,6 +48,7 @@ import {
   PANEL2_WATT,
   type ConfigFamily,
   type PackResult,
+  type PanelGrid,
   type TariffGrid,
   annualSavingsMad,
   aspectForAzimuth,
@@ -324,6 +325,13 @@ export interface MatrixEvalV6 {
   layoutLabel: string;
   /** Libellé complet de la ligne. */
   label: string;
+  /** CALX114 — accès solaire moyen (0–1) des modules de cette configuration, MESURÉ par
+   *  l'appelant (`MatrixV6Options.mesuresCible`). ABSENT = non mesuré : le balayage ne
+   *  fabrique aucun accès solaire, et une absence ne vaut jamais « plein soleil ». */
+  accesSolaireMoyen?: number;
+  /** CALX114 — dégagement (m) laissé libre au faîtage par cette configuration, MESURÉ
+   *  par l'appelant. ABSENT = non mesuré (un toit plat n'a pas de faîtage). */
+  degagementFaitageM?: number;
 }
 
 const ORIENT_FR: Record<AxisOrient, string> = { portrait: 'portrait', landscape: 'paysage' };
@@ -401,6 +409,7 @@ function evalMatrixConfig(
   cache: Map<string, PackResult>,
   obstructionClearancesM?: number[],
   setbacksMKeep?: Partial<PerimeterSetbacks>,
+  mesuresCible?: (config: ConfigurationMesurable) => MesuresCible | null | undefined,
 ): MatrixEvalV6 {
   const setbackM = cfg.margin === 'keep' ? defaultSetbackM : 0;
   // PV63 — marge gardée : les trois retraits saisis ; pleine rive : tout à zéro.
@@ -433,7 +442,7 @@ function evalMatrixConfig(
     cfg.family === 'eastwest'
       ? ewOrientationLabel(cfg.azimuthAxis)
       : southOrientationLabel(pack.azimuthDeg, cfg.azimuthAxis);
-  return {
+  const row: MatrixEvalV6 = {
     family: cfg.family,
     tiltDeg: cfg.tiltDeg,
     azimuthDeg: pack.azimuthDeg,
@@ -454,6 +463,206 @@ function evalMatrixConfig(
     layoutLabel: ORIENT_FR[cfg.orientation],
     label: `${cfg.tiltDeg}° · ${orientationLabel} · ${ORIENT_FR[cfg.orientation]}`,
   };
+  // CALX114 — les mesures viennent de l'APPELANT (atelier) ou n'existent pas : sans
+  // `mesuresCible`, la ligne ne porte AUCUNE clé de mesure — elle est identique à avant.
+  if (mesuresCible) {
+    const m = mesuresCible({ row, grid, pack });
+    if (m && Number.isFinite(m.accesSolaireMoyen as number)) row.accesSolaireMoyen = m.accesSolaireMoyen;
+    if (m && Number.isFinite(m.degagementFaitageM as number)) row.degagementFaitageM = m.degagementFaitageM;
+  }
+  return row;
+}
+
+/* ═══════════ CALX114 — L'OBJECTIF DU BALAYAGE EST SAISI, IL N'EST PLUS FIGÉ ═══════════
+   Le comparateur ci-dessous classait TOUJOURS l'énergie annuelle posée d'abord : un
+   objectif unique, écrit dans le code, que personne ne pouvait discuter. Aurora
+   AutoDesigner en expose deux (`max_fit`, `energy`) ; le document v2 en NOMME cinq
+   (`optimisation.cible`, CALX88). La cible devient donc un PARAMÈTRE du classement.
+
+   TROIS RÈGLES TIENNENT CE BLOC :
+   1. Sans cible saisie, le classement est CELUI D'AUJOURD'HUI — et il est NOMMÉ
+      (`resoudreCibleOptimisation` rend la phrase à afficher), jamais un défaut muet.
+   2. Aucun chiffre de production n'est fabriqué pour départager. Une cible qui exige
+      une MESURE que le balayage ne possède pas (`ombrage`, `faitage`) est REFUSÉE en
+      nommant le champ du contrat : l'absence de mesure d'ombrage ne vaut PAS plein
+      soleil, et un balayage sans faîtage mesuré ne sait pas le laisser libre.
+   3. Quelle que soit la cible, les départages restent la chaîne historique ci-dessous :
+      le classement est déterministe, sans hasard, reproductible d'un calcul à l'autre.
+   ════════════════════════════════════════════════════════════════════════════════════ */
+
+/** CALX114 — objectif du balayage. Énumération FERMÉE : ce sont les identifiants du
+ *  contrat `optimisation.cible` (CALX88), le balayage n'en invente pas un sixième. */
+export type CibleOptimisation = 'compte' | 'kwc' | 'energie' | 'ombrage' | 'faitage';
+
+/** Libellés FR des cibles (l'écran ne les réécrit pas), dans l'ordre du contrat. */
+export const CIBLES_OPTIMISATION: ReadonlyArray<{ id: CibleOptimisation; label: string }> = [
+  { id: 'compte', label: 'Le plus de modules posés' },
+  { id: 'kwc', label: 'La plus grande puissance crête' },
+  { id: 'energie', label: 'La plus grande énergie annuelle posée' },
+  { id: 'ombrage', label: 'Le moins d’ombrage subi' },
+  { id: 'faitage', label: 'Le faîtage laissé libre' },
+];
+
+/** La cible appliquée quand le document n'en porte AUCUNE : l'objectif historique.
+ *  Elle est exportée pour être NOMMÉE à l'écran, pas pour être supposée. */
+export const CIBLE_SANS_CHOIX: CibleOptimisation = 'energie';
+
+/** Libellé FR d'une cible (chaîne vide si l'identifiant n'est pas du contrat). */
+export function libelleCible(cible: CibleOptimisation): string {
+  return CIBLES_OPTIMISATION.find((c) => c.id === cible)?.label ?? '';
+}
+
+/** CALX114 — le fragment `optimisation` du document v2 (CALX88), TEL QU'IL ARRIVE :
+ *  les valeurs sont `unknown` parce qu'elles viennent d'un JSON, jamais du code. */
+export interface ChoixOptimisation {
+  cible?: unknown;
+  priorite?: unknown;
+  seuilAccesSolaire?: unknown;
+}
+
+/** CALX114 — mesures qu'une configuration ne porte pas d'elle-même et que seul
+ *  l'atelier peut fournir (il tient la matrice d'ombrage 12×24 déjà calculée et la
+ *  géométrie des pans). Une clé absente = MESURE ABSENTE, jamais une valeur supposée. */
+export interface MesuresCible {
+  /** Accès solaire moyen (0–1) des modules de cette configuration. */
+  accesSolaireMoyen?: number;
+  /** Dégagement (m) laissé libre au faîtage par cette configuration. */
+  degagementFaitageM?: number;
+}
+
+/** CALX114 — ce que l'appelant reçoit pour mesurer UNE configuration : la ligne telle
+ *  qu'elle vient d'être évaluée et le pavage DÉJÀ calculé (positions réelles). */
+export interface ConfigurationMesurable {
+  row: MatrixEvalV6;
+  grid: PanelGrid;
+  pack: PackResult;
+}
+
+/** CALX114 — la cible réellement appliquée au classement, et POURQUOI. */
+export interface CibleResolue {
+  /** La cible qui classe vraiment le balayage. */
+  appliquee: CibleOptimisation;
+  /** La cible SAISIE dans le document, ou null quand le document n'en porte aucune. */
+  saisie: CibleOptimisation | null;
+  /** Vrai quand une cible saisie a dû être écartée (inconnue, ou sans mesure). */
+  refusee: boolean;
+  /** Le champ du contrat nommé par le refus, ou null. */
+  champ: string | null;
+  /** Phrase FR à afficher : elle nomme ce qui classe, et pourquoi. */
+  motif: string;
+}
+
+/** Les cibles connues du contrat, pour relire une valeur venue d'un JSON. */
+const CIBLES_CONNUES: ReadonlyArray<CibleOptimisation> = CIBLES_OPTIMISATION.map((c) => c.id);
+
+/** Le champ du contrat v2 que les refus de cible NOMMENT (CALX88). */
+const CHAMP_CIBLE = 'optimisation.cible';
+
+/** La cible appliquée faute de mieux, écrite une fois pour toutes les phrases. */
+const CLASSEMENT_HISTORIQUE = 'classement sur l’énergie annuelle posée, l’objectif historique';
+
+/**
+ * CALX114 — quelle cible classe VRAIMENT ce balayage, et pourquoi ? PURE.
+ *
+ * `mesures` dit quelles mesures le balayage a réellement obtenues de l'appelant :
+ * une cible qui en dépend sans elles est REFUSÉE en nommant `optimisation.cible`,
+ * plutôt que de classer sur une valeur inventée (D-CALX 7). Aucun cas ne renvoie une
+ * cible sans phrase : un défaut muet serait indiscernable d'un choix.
+ */
+export function resoudreCibleOptimisation(
+  optimisation: ChoixOptimisation | null | undefined,
+  mesures: { accesSolaire?: boolean; faitage?: boolean } = {},
+): CibleResolue {
+  const brute = optimisation?.cible;
+  if (brute == null || brute === '') {
+    return {
+      appliquee: CIBLE_SANS_CHOIX,
+      saisie: null,
+      refusee: false,
+      champ: null,
+      motif: `Aucun objectif saisi sur ce document (« ${CHAMP_CIBLE} » absente) : ${CLASSEMENT_HISTORIQUE}.`,
+    };
+  }
+  const saisie = CIBLES_CONNUES.find((c) => c === brute) ?? null;
+  if (!saisie) {
+    return {
+      appliquee: CIBLE_SANS_CHOIX,
+      saisie: null,
+      refusee: true,
+      champ: CHAMP_CIBLE,
+      motif:
+        `« ${CHAMP_CIBLE} » : « ${String(brute)} » n’est pas un objectif du contrat — ` +
+        `aucun comparateur ne lui correspond, donc ${CLASSEMENT_HISTORIQUE}.`,
+    };
+  }
+  if (saisie === 'ombrage' && !mesures.accesSolaire) {
+    return {
+      appliquee: CIBLE_SANS_CHOIX,
+      saisie,
+      refusee: true,
+      champ: CHAMP_CIBLE,
+      motif:
+        `Objectif « ${libelleCible('ombrage')} » écarté : aucun accès solaire n’est mesuré sur ce toit ` +
+        `(aucune obstruction renseignée), et une mesure absente ne vaut pas plein soleil — ${CLASSEMENT_HISTORIQUE}.`,
+    };
+  }
+  if (saisie === 'faitage' && !mesures.faitage) {
+    return {
+      appliquee: CIBLE_SANS_CHOIX,
+      saisie,
+      refusee: true,
+      champ: CHAMP_CIBLE,
+      motif:
+        `Objectif « ${libelleCible('faitage')} » écarté : le dégagement au faîtage n’est mesuré sur aucune ` +
+        `configuration de ce balayage — ${CLASSEMENT_HISTORIQUE}.`,
+    };
+  }
+  return {
+    appliquee: saisie,
+    saisie,
+    refusee: false,
+    champ: null,
+    motif: `Objectif saisi sur ce document : ${libelleCible(saisie).toLowerCase()}.`,
+  };
+}
+
+/**
+ * CALX114 — critère PRIMAIRE de la cible : +1 si `a` l'emporte, −1 si `b` l'emporte,
+ * 0 si la cible ne sait pas les départager (elle passe alors la main à la chaîne
+ * historique, qui est déterministe). PURE.
+ *
+ * `kwc` compare la puissance crête POSÉE. Avec le seul modèle de panneau du catalogue
+ * (`PANEL2_WATT`), cette puissance suit le nombre posé : les deux cibles élisent donc
+ * aujourd'hui la même ligne, et elles divergeront le jour où plusieurs puissances
+ * unitaires coexisteront. On ne fabrique pas une différence pour les distinguer.
+ */
+function comparerCible(a: MatrixEvalV6, b: MatrixEvalV6, cible: CibleOptimisation): number {
+  if (cible === 'compte') {
+    if (a.placedCount === b.placedCount) return 0;
+    return a.placedCount > b.placedCount ? 1 : -1;
+  }
+  if (cible === 'kwc') {
+    if (Math.abs(a.kwc - b.kwc) <= EVAL_EPS) return 0;
+    return a.kwc > b.kwc ? 1 : -1;
+  }
+  if (cible === 'ombrage') {
+    const sa = a.accesSolaireMoyen;
+    const sb = b.accesSolaireMoyen;
+    // Une configuration NON mesurée ne se compare pas : la cible se tait plutôt que de
+    // la traiter comme non ombragée.
+    if (!Number.isFinite(sa as number) || !Number.isFinite(sb as number)) return 0;
+    if (Math.abs((sa as number) - (sb as number)) <= EVAL_EPS) return 0;
+    return (sa as number) > (sb as number) ? 1 : -1;
+  }
+  if (cible === 'faitage') {
+    const da = a.degagementFaitageM;
+    const db = b.degagementFaitageM;
+    if (!Number.isFinite(da as number) || !Number.isFinite(db as number)) return 0;
+    if (Math.abs((da as number) - (db as number)) <= EVAL_EPS) return 0;
+    // « Laisser le faîtage libre » = en garder le PLUS de dégagement.
+    return (da as number) > (db as number) ? 1 : -1;
+  }
+  return 0; // `energie` : le critère primaire EST le premier maillon de la chaîne.
 }
 
 /**
@@ -461,8 +670,19 @@ function evalMatrixConfig(
  * au besoin), puis rendement/panneau, moins de matériel, garder la marge, Sud avant
  * E-O, plus proche du plein sud, inclinaison plus raide, portrait. Départages
  * déterministes — JAMAIS de hasard.
+ *
+ * CALX114 — `cible` choisit le critère PRIMAIRE ; la chaîne ci-dessous départage
+ * ensuite, inchangée. Appel à deux arguments = objectif historique, octet pour octet.
  */
-export function betterMatrixV6(a: MatrixEvalV6, b: MatrixEvalV6): boolean {
+export function betterMatrixV6(
+  a: MatrixEvalV6,
+  b: MatrixEvalV6,
+  cible: CibleOptimisation = CIBLE_SANS_CHOIX,
+): boolean {
+  if (cible !== CIBLE_SANS_CHOIX) {
+    const primaire = comparerCible(a, b, cible);
+    if (primaire !== 0) return primaire > 0;
+  }
   if (a.annualKwh > b.annualKwh + EVAL_EPS) return true;
   if (a.annualKwh < b.annualKwh - EVAL_EPS) return false;
   if (a.perPanelYield !== b.perPanelYield) return a.perPanelYield > b.perPanelYield;
@@ -488,6 +708,13 @@ export interface MatrixV6Options {
   obstructionClearancesM?: number[];
   /** PV63 — retraits de rive séparés (latéral / extrémité / acrotère) quand la marge est gardée. */
   setbacksM?: Partial<PerimeterSetbacks>;
+  /** CALX114 — le fragment `optimisation` SAISI dans le document (CALX88). Absent →
+   *  objectif historique, NOMMÉ dans `MatrixV6Result.cible`. */
+  optimisation?: ChoixOptimisation | null;
+  /** CALX114 — mesure d'UNE configuration par l'appelant (accès solaire lu de la
+   *  matrice d'ombrage déjà calculée, dégagement au faîtage). Absent → aucune ligne
+   *  n'est mesurée, et les cibles qui en dépendent sont refusées en le disant. */
+  mesuresCible?: (config: ConfigurationMesurable) => MesuresCible | null | undefined;
 }
 
 export interface MatrixV6Result {
@@ -502,6 +729,9 @@ export interface MatrixV6Result {
   winner: MatrixEvalV6;
   /** Description « ligne à part » de l'optimum, badge « Recommandé ». */
   optimumRow: { label: string; reason: string; yieldSource: YieldSource };
+  /** CALX114 — l'objectif qui a CLASSÉ ce balayage, avec sa phrase : le tableau
+   *  l'affiche sur la ligne « Recommandé », y compris quand rien n'a été saisi. */
+  cible: CibleResolue;
   evaluated: number;
   yieldSource: YieldSource;
 }
@@ -538,14 +768,18 @@ export function fineGridMatrixV6(
   const ewAzes = uniqueAz([90, norm360(roofAz - 90)]);
 
   const rows: MatrixEvalV6[] = [];
-  let winner: MatrixEvalV6 | null = null;
   let anyPvgis = false;
+  // CALX114 — mesures RÉELLEMENT obtenues sur ce balayage (elles décident si une cible
+  // qui en dépend peut classer quoi que ce soit).
+  let aAccesSolaire = false;
+  let aFaitage = false;
 
   const consider = (cfg: MatrixCfg) => {
-    const e = evalMatrixConfig(ring, latitudeDeg, cfg, needed, target, obstructions, setback, overhang, tariff, options.yieldFn, cache, options.obstructionClearancesM, options.setbacksM);
+    const e = evalMatrixConfig(ring, latitudeDeg, cfg, needed, target, obstructions, setback, overhang, tariff, options.yieldFn, cache, options.obstructionClearancesM, options.setbacksM, options.mesuresCible);
     rows.push(e);
     if (e.yieldSource === 'pvgis') anyPvgis = true;
-    if (!winner || betterMatrixV6(e, winner)) winner = e;
+    if (Number.isFinite(e.accesSolaireMoyen as number)) aAccesSolaire = true;
+    if (Number.isFinite(e.degagementFaitageM as number)) aFaitage = true;
   };
 
   for (const az of southAzes) {
@@ -569,6 +803,16 @@ export function fineGridMatrixV6(
     }
   }
 
+  // CALX114 — l'objectif est résolu APRÈS le balayage (il faut savoir ce qui a été
+  // mesuré), puis le gagnant est élu en parcourant les lignes DANS L'ORDRE D'ÉVALUATION :
+  // à objectif historique, c'est exactement l'élection d'avant.
+  const cible = resoudreCibleOptimisation(options.optimisation, {
+    accesSolaire: aAccesSolaire,
+    faitage: aFaitage,
+  });
+  let winner: MatrixEvalV6 | null = null;
+  for (const e of rows) if (!winner || betterMatrixV6(e, winner, cible.appliquee)) winner = e;
+
   const w = winner!;
   const pct = Math.round(w.pctOfTarget);
   const reason =
@@ -591,6 +835,7 @@ export function fineGridMatrixV6(
       reason,
       yieldSource: anyPvgis ? 'pvgis' : 'estimate',
     },
+    cible, // CALX114
     evaluated: rows.length,
     yieldSource: anyPvgis ? 'pvgis' : 'estimate',
   };
