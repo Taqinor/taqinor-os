@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('parametres', '0098_cad71_lien_avis_google'),
+        ('parametres', '0101_cad128_cadence_deuxieme_affaire'),
     ]
 
     operations = [
