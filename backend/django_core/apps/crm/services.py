@@ -1073,6 +1073,12 @@ OUTCOME_VISITE_ACCEPTEE = 'visite_acceptee'
 #: générique suivante. Les trois premières parce que la cadence s'arrête
 #: (récepteur MRY9) ; « visite acceptée » parce que la suite n'est pas un
 #: barreau du protocole mais un rendez-vous à caler.
+#: CAD1 — cette table ne DÉCIDE plus : elle était trop grossière, puisqu'elle
+#: rangeait « intéressé » parmi les arrêts sans regarder la cadence de la
+#: touche, et faisait donc rejouer tout le suivi de proposition. La décision
+#: vit désormais dans ``issue_fait_naitre_la_suite`` (bas de fichier), qui lit
+#: l'issue ET la cadence. Le jeu reste exposé pour les écrans et les tests qui
+#: nomment « les issues qui ne font naître aucun barreau générique ».
 _OUTCOMES_SANS_MATERIALISATION = (
     _OUTCOMES_ARRET_CADENCE | {OUTCOME_VISITE_ACCEPTEE})
 
@@ -1347,9 +1353,12 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     #     RENDEZ-VOUS, la seule suite utile est de le CALER. Le filet juste
     #     en dessous pose cette étape-là, jamais le barreau suivant du
     #     protocole (qui relancerait un client déjà conquis).
+    # CAD1 — la condition se lit désormais AVEC la cadence de la touche :
+    # « intéressé » n'arrête PAS le suivi de proposition, il en fait naître le
+    # barreau suivant, exactement comme « pas de réponse ».
     suivante = None
     if (statut == RelanceEtape.Statut.SAUTEE
-            or (outcome or '') not in _OUTCOMES_SANS_MATERIALISATION):
+            or issue_fait_naitre_la_suite(outcome, etape.cadence)):
         try:
             suivante = materialiser_touche_suivante(etape, user)
         except Exception:  # noqa: BLE001 — jamais bloquant pour le geste
@@ -1407,7 +1416,10 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
         # (Détection hissée en tête de fonction — `touche_envoi_devis`.)
         assurer_prochaine_etape_apres_succes(
             lead, user, brouillon_compris=touche_envoi_devis,
-            libelle_touche_close=(etape.libelle or ''))
+            libelle_touche_close=(etape.libelle or ''),
+            # CAD3 — l'issue voyage avec le libellé : la ceinture doit pouvoir
+            # distinguer « le client a demandé un rappel » d'un arbitrage.
+            issue_touche_close=(outcome or '').strip())
     return etape
 
 
@@ -1801,6 +1813,28 @@ _KINDS_MESSAGE = frozenset({LeadActivity.Kind.WHATSAPP, LeadActivity.Kind.EMAIL}
 #: doit pas disparaître des files en attendant qu'elle soit prise.
 FILET_REFUS_LIBELLE = 'Décider la suite — perdu (motif) ou relance ultérieure'
 
+#: CAD3 — le filet posé après un RAPPEL CONVENU. « Rappelle-moi la semaine
+#: prochaine » est la réponse la plus fréquente avant décision : la ceinture
+#: anti-tapis-roulant renommait pourtant l'étape « Décider la suite — perdu
+#: (motif) ou relance ultérieure », c'est-à-dire un arbitrage, là où le client
+#: a seulement demandé du temps. Le nom de l'étape doit dire la vérité.
+FILET_RAPPEL_LIBELLE = 'Rappeler le client — rappel convenu'
+
+#: CAD102 — les deux paliers de « il a écrit, puis il ne décroche plus ».
+#: L'appel du filet resté sans réponse envoyait directement sur « préparer et
+#: envoyer le devis » : l'ERP réclamait un chiffrage pour quelqu'un que
+#: personne n'avait jamais eu au téléphone. On tente d'abord de le JOINDRE —
+#: un message pour convenir d'un créneau, puis un dernier appel — et seulement
+#: ensuite on parle de devis. Ce sont des étapes de FILET, pas des barreaux du
+#: protocole : le nombre de touches de la cadence ne bouge pas.
+FILET_MESSAGE_CRENEAU_LIBELLE = "Message — proposer un créneau pour l'appel"
+FILET_DERNIER_APPEL_LIBELLE = 'Rappeler — dernier essai avant de chiffrer'
+
+#: CAD54 — la touche qui DIT au client que son dossier change de mains. C'est
+#: une étape de FILET (posée par le moteur, hors protocole), déclarée ici avec
+#: ses sœurs pour que `_LIBELLES_FILET` la connaisse sans second littéral.
+PASSATION_LIBELLE = 'Passation — prévenir le client du changement de conseiller'
+
 #: CKP2 — les libellés des étapes POSÉES PAR LE FILET. Elles portent la
 #: cadence `generique` sans être un barreau du gabarit `generique` : leur suite
 #: est décidée par `assurer_prochaine_etape_apres_succes`, jamais par la
@@ -1808,6 +1842,9 @@ FILET_REFUS_LIBELLE = 'Décider la suite — perdu (motif) ou relance ultérieur
 _LIBELLES_FILET = frozenset({
     FILET_JOINT_LIBELLE, _FILET_JOINT_LIBELLE_ANCIEN,
     FILET_APPEL_LIBELLE, FILET_REFUS_LIBELLE,
+    FILET_RAPPEL_LIBELLE,  # CAD3
+    FILET_MESSAGE_CRENEAU_LIBELLE, FILET_DERNIER_APPEL_LIBELLE,  # CAD102
+    PASSATION_LIBELLE,  # CAD54
 })
 
 # ── VISITE-CADENCE — LES TROIS GESTES DU RENDEZ-VOUS ────────────────────────
@@ -1873,7 +1910,8 @@ def assurer_prochaine_etape_apres_succes(lead, user,
                                          avec_plan_devis=True,
                                          brouillon_compris=False,
                                          canal_touche=None,
-                                         libelle_touche_close=''):
+                                         libelle_touche_close='',
+                                         issue_touche_close=''):
     """QJ-INVARIANT (fondateur 07/09/2026) — un lead ACTIF ne reste JAMAIS
     sans prochaine étape : sa liste de relances ne se termine que par le
     parking Froid ou la signature.
@@ -1924,12 +1962,28 @@ def assurer_prochaine_etape_apres_succes(lead, user,
                  lead, brouillon_compris=brouillon_compris)
              if avec_plan_devis else None)
     if devis is not None:
-        etapes = initialiser_plan_relance(
-            lead, user, cadence='apres_devis', devis=devis)
-        ouvertes = [e for e in etapes
-                    if e.statut == RelanceEtape.Statut.A_FAIRE]
-        if ouvertes:
-            return ouvertes[0]
+        # CAD1 — le filet ne REJOUE jamais un plan dont des barreaux sont
+        # déjà CONSOMMÉS pour le MÊME devis. Il le POURSUIT : la suite d'une
+        # touche 5 clôturée « intéressé » est la touche 6, jamais la touche 1.
+        # Sans ce garde-fou, l'idempotence de `initialiser_plan_relance` — qui
+        # ne porte que sur les touches OUVERTES (TREADMILL-1538) — laissait
+        # repartir les dix barreaux depuis « maintenant », et le client qui
+        # venait de se dire intéressé recevait « Le PDF s'ouvre bien ? ».
+        # « Consommé » = traité par un humain (FAIT/SAUTÉE) : un plan ANNULÉ
+        # par le moteur reste redémarrable, c'est tout l'objet de
+        # TREADMILL-1538.
+        consomme = dernier_barreau_consomme(lead, 'apres_devis', devis)
+        if consomme is not None:
+            suite = materialiser_touche_suivante(consomme, user)
+            if suite is not None:
+                return suite
+        else:
+            etapes = initialiser_plan_relance(
+                lead, user, cadence='apres_devis', devis=devis)
+            ouvertes = [e for e in etapes
+                        if e.statut == RelanceEtape.Statut.A_FAIRE]
+            if ouvertes:
+                return ouvertes[0]
         # Plan déjà consommé pour CE devis → l'étape générique ci-dessous.
     elif brouillon_compris:
         # TREADMILL-1538 — cas AR intégral : « un devis parti hors ERP compte
@@ -1945,6 +1999,7 @@ def assurer_prochaine_etape_apres_succes(lead, user,
                     if e.statut == RelanceEtape.Statut.A_FAIRE]
         if ouvertes:
             return ouvertes[0]
+    canal_etape = RelanceEtape.Canal.APPEL
     if canal_touche in _KINDS_MESSAGE:
         # RELANCE-SUITE — message répondu : on l'appelle, dès le prochain
         # créneau d'appel (maintenant si la fenêtre est ouverte).
@@ -1952,15 +2007,39 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         vise = timezone.now()
     else:
         vise = timezone.now() + datetime.timedelta(days=FILET_JOINT_DELAI_JOURS)
+    # CAD102 — « il a écrit, puis il ne décroche plus » : avant de réclamer un
+    # devis pour quelqu'un que personne n'a jamais eu au téléphone, on pose un
+    # ou deux gestes rapprochés pour LE JOINDRE (voir
+    # `FILET_SANS_REPONSE_SUITE`, bas de fichier). Chaque palier est une
+    # étape de filet de plus, jamais un barreau du protocole, et il n'y en a
+    # qu'UNE d'ouverte à la fois (CKP2).
+    palier = _palier_sans_reponse(libelle_touche_close, issue_touche_close)
+    if palier is not None:
+        libelle, canal_etape, jours = palier
+        vise = timezone.now() + datetime.timedelta(days=jours)
     if libelle_touche_close and libelle == libelle_touche_close:
         # CEINTURE anti-tapis-roulant (TREADMILL-1538) : ne JAMAIS re-poser à
         # l'identique la touche qu'on vient de clore — « Fait » doit toujours
         # faire avancer. L'étape de DÉCISION prend le relais.
-        libelle = FILET_REFUS_LIBELLE
-    quand = horaires.prochain_creneau_appel(vise, lead.company, canal='appel')
+        # CAD3 — sauf si l'issue saisie est « à rappeler » : le client n'a rien
+        # arbitré, il a demandé du temps. L'étape porte alors un libellé de
+        # RAPPEL, jamais « perdu (motif) ou relance ultérieure ».
+        libelle = (FILET_RAPPEL_LIBELLE if issue_touche_close == 'rappel'
+                   else FILET_REFUS_LIBELLE)
+    # CAD102 — le recalage suit le CANAL de l'étape posée : un message se cale
+    # sur la fenêtre des messages, un appel sur celle des appels (la pause du
+    # vendredi ne vise que les appels). Aucune règle d'horaire n'est réécrite.
+    quand = horaires.prochain_creneau_appel(
+        vise, lead.company, canal=canal_etape)
     etape = RelanceEtape.objects.create(
         company=lead.company, lead=lead, cadence='generique', ordre=1,
-        canal=RelanceEtape.Canal.APPEL, libelle=libelle,
+        canal=canal_etape, libelle=libelle,
+        # CAD18 — l'étape de filet porte enfin un GABARIT quand il en existe
+        # un pour elle (voir `FILET_TEMPLATE_CLES`, bas de fichier). Le lead
+        # le plus chaud du portefeuille — celui qui a répondu au message
+        # d'identité avant même l'appel d'ouverture — était le seul à perdre
+        # son script.
+        template_cle=FILET_TEMPLATE_CLES.get(libelle, ''),
         due_at=quand, due_date=quand.astimezone(horaires.CASABLANCA).date(),
         note='Posée automatiquement : aucune autre relance ouverte.')
     lead.relance_date = etape.due_date
@@ -5540,6 +5619,12 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
         activity_type = _resolve_activity_type(
             company, params.get('activity_type_id'), params.get('type_nom'))
 
+    # CAD49 — quels leads de la sélection ont une CADENCE ACTIVE ? Une seule
+    # requête, avant la boucle : le bulk traite des centaines de dossiers.
+    leads_a_cadence = (
+        leads_avec_cadence_active(company, lead_ids)
+        if op in ('set_relance', 'clear_relance') else frozenset())
+
     with transaction.atomic():
         for lead in leads:
             if op == 'reassign':
@@ -5547,8 +5632,15 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                     unchanged += 1
                     continue
                 old = lead.owner
-                lead.owner = owner_obj
-                lead.save(update_fields=['owner'])
+                # CAD54 — la réattribution a des EFFETS : le nouveau
+                # responsable apprend ce qu'il hérite, et le client est
+                # prévenu du changement de conseiller. `reattribuer_lead`
+                # pose l'owner lui-même ; le journal « en masse » reste écrit
+                # ici, comme pour les autres champs.
+                reattribuer_lead(lead, user, owner_obj)
+                if owner_obj is None:
+                    lead.owner = None
+                    lead.save(update_fields=['owner'])
                 activity.log_bulk_change(lead, user, 'owner', old, owner_obj)
                 sync_relance_activity(lead, user)
                 updated += 1
@@ -5610,6 +5702,11 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 updated += 1
 
             elif op == 'set_relance':
+                # CAD49 — REFUSÉ sur un lead à cadence active : la date serait
+                # écrasée au premier geste du plan (voir le motif).
+                if lead.id in leads_a_cadence:
+                    skip(lead, MOTIF_BULK_CADENCE_ACTIVE)
+                    continue
                 if lead.relance_date == relance:
                     unchanged += 1
                     continue
@@ -5621,6 +5718,11 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 updated += 1
 
             elif op == 'clear_relance':
+                # CAD49 — même refus : effacer la date ne retire pas la
+                # touche, elle reviendrait au premier geste du plan.
+                if lead.id in leads_a_cadence:
+                    skip(lead, MOTIF_BULK_CADENCE_ACTIVE)
+                    continue
                 if not lead.relance_date:
                     unchanged += 1
                     continue
@@ -8844,3 +8946,377 @@ def poser_touche_rappel_demande(lead, *, user=None, quand=None):
             'CAD129 : touche de rappel non posée pour le lead #%s',
             getattr(lead, 'pk', None), exc_info=True)
         return None
+
+
+# ── CAD-A ── CAD1 — « intéressé » poursuit le plan, il ne le rejoue pas ──────
+#
+#: Quelles cadences une ISSUE arrête — LA source unique, lue par le récepteur
+#: MRY9 (``receivers._arreter_cadence_on_outcome``) comme par la
+#: matérialisation réactive ci-dessous. Deux listes séparées auraient dérivé :
+#: c'est précisément ce que CAD1 répare, puisque la matérialisation traitait
+#: « intéressé » comme un arrêt TOTAL alors que le récepteur, lui, laissait
+#: vivre le suivi de proposition.
+#:
+#: * ``joint`` / ``interesse`` → la PRISE DE CONTACT a atteint son but, et les
+#:   réveils d'un dormant n'ont plus lieu d'être. Le suivi de PROPOSITION, lui,
+#:   continue : un client joint reste à relancer sur son devis.
+#: * ``refuse`` → tout s'arrête, y compris la proposition refusée. Le lead
+#:   n'est PAS marqué perdu pour autant (MRY22 : décision humaine, avec motif).
+CADENCES_ARRETEES_PAR_ISSUE = {
+    'joint': ('contact', 'reveil'),
+    'interesse': ('contact', 'reveil'),
+    'refuse': ('contact', 'apres_devis', 'reveil'),
+}
+
+
+def issue_fait_naitre_la_suite(outcome, cadence):
+    """CAD1 — cette ISSUE, sur une touche de CETTE cadence, doit-elle faire
+    naître le barreau suivant du protocole ?
+
+    Trois cas, et rien d'autre :
+
+    * « visite acceptée » → JAMAIS : le client a dit oui à un rendez-vous, la
+      seule suite utile est de le caler (VISITE-CADENCE) ;
+    * une issue qui ARRÊTE la cadence de la touche → non plus : le récepteur
+      MRY9 vient d'annuler ce qui restait, et le filet pose la vraie suite ;
+    * tout le reste (« pas de réponse », « à rappeler », aucune issue sur un
+      message, et « intéressé »/« joint » sur le suivi de PROPOSITION que ces
+      issues n'arrêtent pas) → oui, le geste suivant est programmé.
+    """
+    issue = (outcome or '').strip()
+    if issue == OUTCOME_VISITE_ACCEPTEE:
+        return False
+    return cadence not in CADENCES_ARRETEES_PAR_ISSUE.get(issue, ())
+
+
+def dernier_barreau_consomme(lead, cadence, devis=None):
+    """CAD1 — le barreau de PROTOCOLE le plus avancé que cette cadence a déjà
+    consommé pour ce devis, ou ``None``.
+
+    « Consommé » = traité par un humain, donc ``fait`` ou ``sautee``. Une
+    touche ``annulee`` par le MOTEUR (arrêt de cadence) ne compte pas : un
+    plan entièrement annulé doit rester redémarrable, c'est tout l'objet de
+    TREADMILL-1538 — et c'est la différence qui permet à ce garde-fou d'être
+    strict sans casser la reprise d'un dossier.
+
+    Les étapes de FILET et les trois gestes de VISITE sont exclues : elles
+    portent une cadence de protocole sans en être des barreaux (leur suite est
+    décidée ailleurs), et les prendre pour le dernier barreau ferait naître un
+    rang qui n'a rien à voir avec elles.
+    """
+    qs = lead.relance_etapes.filter(
+        cadence=cadence,
+        statut__in=(RelanceEtape.Statut.FAIT, RelanceEtape.Statut.SAUTEE),
+    ).exclude(libelle__in=tuple(_LIBELLES_FILET | _LIBELLES_VISITE))
+    if devis is not None:
+        qs = qs.filter(devis=devis)
+    else:
+        qs = qs.filter(devis__isnull=True)
+    return qs.order_by('-ordre', '-pk').first()
+
+
+# ── CAD-A ── CAD3 — « à rappeler » sur une étape de filet la REPORTE ─────────
+
+def est_etape_de_filet(etape):
+    """CAD3 — cette touche est-elle une étape posée par le FILET
+    (``assurer_prochaine_etape_apres_succes``) plutôt qu'un barreau du
+    protocole ?
+
+    Les étapes de filet portent la cadence ``generique`` sans être des
+    barreaux du gabarit : ce sont « préparer et envoyer le devis (ou fixer un
+    rappel) », « appeler le client — il a répondu au message », « décider la
+    suite » et le rappel convenu de CAD3. C'est sur elles que « rappelle-moi
+    la semaine prochaine » tombe le plus souvent — l'étape que la commerciale
+    voit le plus — et les CLORE pour en recréer une autre faisait perdre à la
+    fois leur date et leur nom.
+    """
+    if etape is None:
+        return False
+    return (etape.libelle or '').strip() in _LIBELLES_FILET
+
+
+# ── CAD-A ── CAD18 — l'étape de filet hérite d'un script ─────────────────────
+#
+#: CAD18 — clé de gabarit de message pour une étape de FILET, par libellé.
+#:
+#: LE TROU : en régime réactif, seule la touche 1 existe. Un lead qui RÉPOND
+#: au message d'identité avant l'appel J0+3 min se fait marquer « joint », ce
+#: qui arrête la prise de contact ; le filet pose alors « appeler le client —
+#: il a répondu au message », et cette étape naissait SANS aucun gabarit. Le
+#: dossier le plus chaud du portefeuille était le seul appel sans script.
+#:
+#: POURQUOI PAS ``appel_ouverture`` : ce script ouvre par « vous venez de
+#: remplir notre formulaire », ce qui est FAUX pour quelqu'un qui vient de
+#: répondre — il a déjà eu un échange. D'où une clé propre,
+#: ``appel_apres_reponse``.
+#:
+#: Les autres libellés de filet n'ont PAS d'entrée ici : aucun texte validé
+#: n'existe pour eux, et on n'en invente pas. ``.get(libelle, '')`` rend donc
+#: exactement le comportement d'avant pour eux.
+FILET_TEMPLATE_CLES = {
+    FILET_APPEL_LIBELLE: 'appel_apres_reponse',
+}
+
+
+# ── CAD-A ── CAD102 — « il a écrit, puis il ne décroche plus » ───────────────
+#
+#: Les issues qui, sur une étape de FILET, veulent dire « je n'ai pas eu le
+#: client ». ``non_joint`` porte aussi Répondeur et Occupé (CKP4 : la
+#: précision part dans la note, aucune valeur d'énumération n'est ajoutée).
+#: La chaîne VIDE ne vaut « pas joint » que sur une étape ÉCRITE, où l'écran
+#: ne propose aucune issue : sur un appel, « Fait — passer à la suite » veut
+#: dire que l'appel a eu lieu, et le devis est alors la bonne suite.
+_ISSUES_SANS_REPONSE = ('non_joint',)
+
+#: CAD102 — l'escalier du filet quand le client a RÉPONDU PAR ÉCRIT puis n'a
+#: plus décroché. Chaque entrée : libellé clos → (libellé suivant, canal,
+#: délai en jours), avec les issues qui déclenchent le palier.
+#:
+#: Deux gestes rapprochés, puis le devis. Le dernier appel n'a PAS d'entrée :
+#: après lui, le filet reprend son cours normal (« préparer et envoyer le
+#: devis »). C'est la garantie que l'escalier se termine — jamais une boucle.
+#:
+#: Les délais sont ceux du filet : le message part le jour même (prochain
+#: créneau de MESSAGE), le dernier appel le lendemain (prochain créneau
+#: d'APPEL) — aucun horaire nouveau n'est inventé, les fenêtres de la société
+#: décident.
+_FILET_SANS_REPONSE_PALIERS = {
+    FILET_APPEL_LIBELLE: {
+        'issues': _ISSUES_SANS_REPONSE,
+        'suite': (FILET_MESSAGE_CRENEAU_LIBELLE,
+                  RelanceEtape.Canal.WHATSAPP, 0),
+    },
+    FILET_MESSAGE_CRENEAU_LIBELLE: {
+        # Une touche ÉCRITE se clôt sans issue : l'écran n'en propose pas.
+        'issues': _ISSUES_SANS_REPONSE + ('',),
+        'suite': (FILET_DERNIER_APPEL_LIBELLE,
+                  RelanceEtape.Canal.APPEL, FILET_JOINT_DELAI_JOURS),
+    },
+}
+
+
+def _palier_sans_reponse(libelle_touche_close, issue_touche_close):
+    """CAD102 — le palier suivant de l'escalier « ne décroche pas », ou
+    ``None`` si cette clôture n'en déclenche aucun.
+
+    Rend ``(libelle, canal, delai_jours)``.
+    """
+    palier = _FILET_SANS_REPONSE_PALIERS.get(
+        (libelle_touche_close or '').strip())
+    if palier is None:
+        return None
+    if (issue_touche_close or '').strip() not in palier['issues']:
+        return None
+    return palier['suite']
+
+
+# ── CAD-D ── CAD54 — réattribuer un lead : la passation se dit ───────────────
+#
+# Ce que le round 2 a déjà vérifié SAIN, et qui n'est donc pas retouché ici :
+# ``RelanceEtape`` n'a AUCUN champ responsable — les touches suivent le lead,
+# donc elles « portent » le nouveau responsable par construction ; le digest du
+# matin vise les owners ; le prénom du conseiller est recalculé à chaque rendu
+# (jamais figé dans une touche) ; le changement est déjà journalisé.
+#
+# Ce qui manquait est côté CLIENT et côté NOUVEAU responsable : aucun gabarit
+# de passation — tous les textes se présentent comme un premier contact, donc
+# le prospect voyait changer de prénom sans un mot — et le nouveau responsable
+# n'apprenait qu'il héritait d'une touche due demain que par une ligne
+# d'historique.
+
+#: CAD54 — clé du gabarit de passation. TEXTE LIBRE côté ``RelanceEtape``
+#: (aucune valeur d'énumération ajoutée, donc aucune migration). Le texte
+#: lui-même porte « {conseiller} » et « {ancien_conseiller} » en variables de
+#: gabarit : AUCUN prénom n'est codé en dur (règle fondateur 08/09/2026).
+PASSATION_TEMPLATE_CLE = 'passation'
+
+#: Le libellé de la touche, lui, est déclaré plus haut avec ses sœurs de
+#: FILET (``PASSATION_LIBELLE``) : `_LIBELLES_FILET` doit le connaître, et un
+#: second littéral aurait dérivé au premier ajustement de la phrase.
+
+#: Rang hors de la plage des gabarits (1-10), même précaution que les étapes
+#: de visite : aucune matérialisation réactive ne peut le confondre avec un
+#: barreau.
+PASSATION_ORDRE = 93
+
+
+def _poser_etape_passation(lead):
+    """CAD54 — crée (ou DÉPLACE) l'unique touche de passation du lead.
+
+    Cadence ``generique``, comme les étapes de FILET : c'en est une (posée par
+    le moteur, hors protocole). Surtout PAS la cadence des gestes de visite —
+    ``apres_devis`` — qui ferait d'une simple réattribution une « cadence
+    active » capable de bloquer le démarrage d'une prise de contact (garde
+    CADX) ou l'initialisation du suivi de proposition.
+
+    IDEMPOTENTE par libellé : une passation déjà ouverte est déplacée à
+    aujourd'hui, jamais dupliquée.
+    """
+    from core.dates import aujourd_hui_local
+
+    from . import horaires
+
+    vise = datetime.datetime.combine(
+        aujourd_hui_local(), datetime.time(9, 0),
+        tzinfo=horaires.CASABLANCA)
+    echeance = horaires.prochain_creneau_appel(
+        vise, lead.company, canal=RelanceEtape.Canal.WHATSAPP)
+    ouverte = (lead.relance_etapes
+               .filter(libelle=PASSATION_LIBELLE,
+                       statut=RelanceEtape.Statut.A_FAIRE)
+               .order_by('due_date', 'pk').first())
+    if ouverte is not None:
+        ouverte.due_at = echeance
+        ouverte.due_date = echeance.astimezone(horaires.CASABLANCA).date()
+        ouverte.save(update_fields=['due_at', 'due_date'])
+        return ouverte
+    return RelanceEtape.objects.create(
+        company=lead.company, lead=lead, cadence='generique',
+        ordre=PASSATION_ORDRE, canal=RelanceEtape.Canal.WHATSAPP,
+        libelle=PASSATION_LIBELLE, template_cle=PASSATION_TEMPLATE_CLE,
+        due_at=echeance,
+        due_date=echeance.astimezone(horaires.CASABLANCA).date(),
+        note='Posée automatiquement : le dossier change de conseiller.')
+
+
+def poser_touche_passation(lead, user, ancien_responsable=None):
+    """CAD54 — la touche qui DIT au client que son dossier change de mains.
+
+    Posée seulement sur un lead DÉJÀ CONTACTÉ (``first_contacted_at``) : sur
+    un lead jamais joint il n'y a rien à annoncer, et le premier message du
+    protocole fait déjà les présentations.
+
+    IDEMPOTENTE par libellé (``_poser_etape_visite``) : deux réattributions
+    d'affilée déplacent la même touche, elles n'en empilent pas deux. Aucune
+    touche n'est retirée ni réordonnée.
+
+    Renvoie l'étape posée, ou ``None``.
+    """
+    if not _lead_relancable(lead):
+        return None
+    if not getattr(lead, 'first_contacted_at', None):
+        return None
+    if lead.stage in (stages.SIGNED,):
+        return None
+    etape = _poser_etape_passation(lead)
+    if etape is not None and ancien_responsable is not None:
+        # La trace dit DE QUI le dossier vient — l'écran et le gabarit, eux,
+        # lisent le responsable courant, jamais un prénom figé.
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=('Passation à annoncer au client : le dossier change de '
+                  'conseiller.'))
+    return etape
+
+
+def notifier_touches_heritees(lead, nouveau_responsable):
+    """CAD54 — le nouveau responsable apprend CE QU'IL HÉRITE, pas seulement
+    qu'un lead lui est assigné.
+
+    Une seule notification, sur l'événement EXISTANT ``LEAD_ASSIGNED``
+    (aucune valeur d'énumération ajoutée) : le nombre de touches ouvertes et
+    la date de la plus proche. Sans touche ouverte, rien n'est envoyé — la
+    notification d'assignation ordinaire suffit et deux messages pour un seul
+    geste rendraient la boîte illisible.
+
+    Best-effort : ne lève jamais.
+    """
+    if nouveau_responsable is None:
+        return None
+    try:
+        ouvertes = list(
+            lead.relance_etapes
+            .filter(statut=RelanceEtape.Statut.A_FAIRE)
+            .order_by('due_date', 'ordre')[:3])
+        total = lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).count()
+        if not total:
+            return None
+        from apps.notifications.services import notify
+
+        lignes = [
+            f'{(e.libelle or e.get_canal_display())} — {e.due_date:%d/%m/%Y}'
+            for e in ouvertes if e.due_date
+        ]
+        corps = f'{total} relance(s) déjà programmée(s) sur ce dossier.'
+        if lignes:
+            corps += ' ' + ' · '.join(lignes)
+        return notify(
+            user=nouveau_responsable,
+            event_type='lead_assigned',
+            title='Dossier repris — relances héritées',
+            body=corps,
+            link=f'/crm/leads?lead={lead.pk}',
+            reason='assigne_a_vous',
+        )
+    except Exception:  # noqa: BLE001 — jamais bloquant pour la réattribution
+        logger.warning(
+            'CAD54: notification des touches héritées échouée (lead #%s)',
+            getattr(lead, 'pk', '?'), exc_info=True)
+        return None
+
+
+def reattribuer_lead(lead, user, nouveau_responsable):
+    """CAD54 — LE geste de réattribution, effets compris.
+
+    Trois choses, dans cet ordre :
+
+    1. le lead change d'``owner`` (les touches ouvertes suivent le lead — elles
+       n'ont pas de responsable propre, et c'est ce qui rend l'ensemble
+       cohérent sans rien migrer) ;
+    2. le NOUVEAU responsable est notifié de ce qu'il HÉRITE ;
+    3. sur un lead DÉJÀ contacté, la touche de passation est posée : le
+       prospect ne doit pas voir changer de prénom sans un mot.
+
+    L'ancien responsable ne reçoit plus rien : les notifications de relance
+    visent les owners, et il ne l'est plus. Renvoie la touche de passation
+    posée, ou ``None``.
+    """
+    if nouveau_responsable is None:
+        return None
+    ancien = getattr(lead, 'owner', None)
+    if ancien is not None and ancien.pk == nouveau_responsable.pk:
+        return None
+    lead.owner = nouveau_responsable
+    lead.save(update_fields=['owner'])
+    notifier_touches_heritees(lead, nouveau_responsable)
+    etape = poser_touche_passation(lead, user, ancien_responsable=ancien)
+    _recaler_file(lead, user)
+    return etape
+
+
+# ── CAD-D ── CAD49 — la relance en masse ne double plus le moteur ────────────
+#
+#: CAD49 — la raison NOMMÉE d'un refus de « définir/effacer la relance » en
+#: masse. Le chemin de la FICHE passe par le moteur
+#: (``reporter_prochaine_touche``) ; l'action en masse, elle, écrivait
+#: directement ``Lead.relance_date`` sans rien lui dire : la fiche affichait
+#: une date, la frise une autre, et au premier geste de cadence le serveur
+#: réécrivait la date depuis la touche. C'était le « second système de rappel
+#: concurrent » que tout le reste du code s'interdit.
+#:
+#: Pourquoi REFUSER plutôt que passer N plans par ``reporter_prochaine_touche``
+#: en masse : décaler des centaines de plans d'un clic — avec leurs touches
+#: suivantes et leurs ancres — est plus dangereux que le mal soigné.
+MOTIF_BULK_CADENCE_ACTIVE = (
+    'cadence de relance active — la date vient de la prochaine touche du '
+    'plan ; ouvrez la fiche et utilisez « Reporter » sur cette touche'
+)
+
+
+def leads_avec_cadence_active(company, lead_ids):
+    """CAD49 — le sous-ensemble de ``lead_ids`` portant AU MOINS une touche de
+    relance encore À FAIRE. Renvoie un ``set`` d'identifiants.
+
+    EN LOT, comme ``leads_avec_devis_accepte`` : une action en masse porte sur
+    des centaines de dossiers, une requête par lead serait un N+1 assumé. Le
+    filtre société est POSÉ ICI.
+    """
+    ids = list(lead_ids or [])
+    if not ids:
+        return set()
+    return set(RelanceEtape.objects.filter(
+        company=company, lead_id__in=ids,
+        statut=RelanceEtape.Statut.A_FAIRE,
+    ).values_list('lead_id', flat=True))

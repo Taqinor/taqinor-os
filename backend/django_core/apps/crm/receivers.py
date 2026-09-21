@@ -31,6 +31,7 @@ from .services import (
     journaliser_visite,
     arreter_cadence,
     arreter_cadence_du_lead_id,
+    CADENCES_ARRETEES_PAR_ISSUE,
     FILET_REFUS_LIBELLE,
     assurer_prochaine_etape_apres_succes,
     avancer_stage_lead_vers,
@@ -554,13 +555,14 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
     # M1 (revue Fable 07/09/2026) — la cadence ``reveil`` est arrêtée comme
     # les autres : un client JOINT au réveil J30 ne doit pas recevoir le J60,
     # et un refus au réveil termine les réveils (le dossier reste au Froid).
-    if issue in ('joint', 'interesse'):
-        motif, cadences = 'joint', ['contact', 'reveil']
-    elif issue == 'refuse':
-        motif, cadences = ('refus au téléphone',
-                           ['contact', 'apres_devis', 'reveil'])
-    else:
+    # CAD1 — la liste des cadences arrêtées est lue dans `services`
+    # (``CADENCES_ARRETEES_PAR_ISSUE``), d'où la matérialisation réactive la
+    # lit aussi : une seule table, donc plus de divergence possible entre
+    # « ce que l'arrêt fait » et « ce que la suite croit qu'il a fait ».
+    cadences = list(CADENCES_ARRETEES_PAR_ISSUE.get(issue, ()))
+    if not cadences:
         return
+    motif = 'joint' if issue in ('joint', 'interesse') else 'refus au téléphone'
     try:
         arreter_cadence(instance.lead, user=instance.user, motif=motif,
                         cadences=cadences)

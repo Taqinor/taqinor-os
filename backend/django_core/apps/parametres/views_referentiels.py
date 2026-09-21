@@ -140,3 +140,36 @@ class CadenceRelanceEtapeViewSet(_ReferentielViewSet):
             if company is not None and not qs.exists():
                 CadenceRelanceEtape.seed_cadence(company, cadence)
         return qs
+
+    def perform_create(self, serializer):
+        """CAD53 — un barreau AJOUTÉ prend le rang libre suivant de SA cadence.
+
+        ``unique_together = ('company', 'cadence', 'ordre')`` : un ajout sans
+        ``ordre`` retombait sur le défaut 0 et percutait le premier ajout
+        suivant avec une IntegrityError (500). Le rang est donc calculé côté
+        serveur — le seul endroit qui connaisse la cadence complète —, et un
+        rang explicitement demandé mais DÉJÀ pris donne un 400 qui NOMME le
+        champ fautif (règle fondateur 08/09/2026), jamais un refus muet.
+
+        Rien de rétroactif : le gabarit est copié barreau par barreau à
+        l'initialisation d'un plan (``initialiser_plan_relance``), donc un
+        barreau ajouté ici n'entre que dans les plans à NAÎTRE.
+        """
+        from django.db.models import Max
+
+        company = self.request.user.company
+        cadence = (serializer.validated_data.get('cadence')
+                   or Cadence.CONTACT)
+        deja = CadenceRelanceEtape.objects.filter(
+            company=company, cadence=cadence)
+        ordre = serializer.validated_data.get('ordre')
+        if not ordre:
+            ordre = (deja.aggregate(m=Max('ordre'))['m'] or 0) + 1
+        elif deja.filter(ordre=ordre).exists():
+            raise ValidationError(
+                {'ordre': f'Le rang {ordre} est déjà pris dans cette '
+                          'cadence. Laissez le champ vide pour prendre le '
+                          'rang suivant.'})
+        # La société reste POSÉE côté serveur, comme dans TenantMixin : elle
+        # n'est jamais lue du corps de la requête.
+        serializer.save(company=company, ordre=ordre)
