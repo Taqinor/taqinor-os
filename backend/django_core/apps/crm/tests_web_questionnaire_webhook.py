@@ -151,13 +151,15 @@ class WebQuestionnaireWebhookTests(TestCase):
             'water_source': 'forage',
             'profondeur_m': 45.0,
             'besoin_m3j': 84.0,
-            'heures_pompage': 7.0,
             'irrigation': 'goutte',
             'culture': 'olivier',
             'surface_ha': 5.0,
-            'pompe_actuelle': 'diesel',
             'fuel_spend_mad': 2500.0,
         })
+        # CAD149 — les deux réponses de pompage PROMUES en colonne : elles
+        # quittent le sac, exactement comme HMT/débit/CV au-dessus.
+        self.assertEqual(str(lead.pompage_heures_jour), '7.0')
+        self.assertEqual(lead.pompe_alim_actuelle, 'diesel')
         self.assertEqual(lead.web_estimate,
                          {'pompeCv': 10, 'champKwc': 10.3, 'm3Jour': 84})
         # UNE note chatter, résumé complet (y compris les valeurs mappées
@@ -308,8 +310,9 @@ class TrousDeMappingCombles(TestCase):
             'diesel_dh_mois': 18000.0,
             'surface_toiture_m2': 2600.0,
             'surface_m2': 3100.0,
-            'heures_pompage': 7.0,
         })
+        # CAD149 — `heures_pompage` a désormais sa colonne dédiée.
+        self.assertEqual(str(lead.pompage_heures_jour), '7.0')
 
     def test_cle_inconnue_survit_dans_le_payload_brut(self):
         """Une clé que le backend ne connaît pas encore n'est jamais perdue :

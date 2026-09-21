@@ -22,6 +22,7 @@ ce dossier s'écarte du cas nominal.
 | `lead_visites.json` | l'onglet « Visites » de la fiche lead (VISITE-CADENCE) |
 | `lead_visite_planifier.json` | la POSE d'un rendez-vous de visite depuis la fiche |
 | `lead_message_visite.json` | les deux textes « proposer / confirmer la visite » |
+| `panneau_appel.json` | le panneau d'appel guidé : segment, touche, script, questions à poser, drapeaux d'équipement (CAD147) |
 
 ## Écart 1 — un échantillon peut ne PAS décrire une réponse
 

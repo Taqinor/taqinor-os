@@ -1644,9 +1644,13 @@ class EstimationConsoRenormaliseeTests(SimpleTestCase):
         for index, conso_mois in enumerate(self.CONSO_MODESTE):
             jours = EH.JOURS_PAR_MOIS[index]
             saison = EH.saison_du_mois(index + 1)
+            # CAD173 (Q12) — le MOIS est passé au composeur, comme le fait
+            # `jours_types_annee` : clim et piscine suivent l'été de la
+            # FACTURE (mai→octobre). Sans lui, les deux côtés compareraient
+            # deux découpages différents.
             _forme, couches = CJ.forme_consommation_detaillee(
                 conso_mois / jours, CJ.OCCUPATION_PRESENCE, saison=saison,
-                equipements=self.CLIM)
+                equipements=self.CLIM, mois=index + 1)
             place = sum(couches.get('clim', {}).get('heures_kwh')
                         or [0.0]) * jours
             self.assertAlmostEqual(
@@ -1739,9 +1743,10 @@ class EstimationConsoFacteurCompositeurTests(SimpleTestCase):
         RÉELLEMENT dans la couche ``cle`` — la seule référence qui compte."""
         jours = EH.JOURS_PAR_MOIS[index]
         saison = EH.saison_du_mois(index + 1)
+        # CAD173 (Q12) — même porte que `jours_types_annee` : le MOIS décide.
         _forme, couches = CJ.forme_consommation_detaillee(
             self.CONSO[index] / jours, CJ.OCCUPATION_PRESENCE, saison=saison,
-            equipements=equip)
+            equipements=equip, mois=index + 1)
         return sum(couches.get(cle, {}).get('heures_kwh') or [0.0]) * jours
 
     def test_avec_ve_l_ajout_publie_egale_ce_que_le_composeur_place(self):

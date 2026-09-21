@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 4db621b256989d0291f17a02995458ee3cace61487f6a5d74c103193a3494e97
-Plan fingerprint: d273cc97981190b530c5b6d75517c576582df14467db3d6a4fb8648063ac0e00
+Structure fingerprint: ba7291809d586ec11749359e371c6b817495aba981c84ea56d431ccb1cea51d3
+Plan fingerprint: dfc165367ddcd6823edce5951d6fc0736892beb4dc86d6357aa6aaf1a836e8c9
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -532,7 +532,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (211)**
+**Done (223)**
 
 - `CAD62` — Zéro darija sur toute la marche après-devis : le repli en français est silencieux
 - `CAD66` — Le message J7 promet un classement « dans trois jours » que le moteur tient à J14
@@ -550,6 +550,18 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD143` — L'éditeur n'a pas d'onglet pour la cadence « Générique », pourtant encore active sur de…
 - `CAD145` — Le type d'installation est stocké à deux endroits
 - `CAD146` — Un prospect de la diaspora reçoit ses touches à l'heure de Casablanca
+- `CAD147` — T0 — Le contrat du panneau d'appel, livré SEUL et en premier (PACT10)
+- `CAD148` — T1 — L'endpoint « questions à poser sur cet appel »
+- `CAD149` — T2 — Migration « vague 1 » : les champs qui manquent, et les SIX endroits à tenir
+- `CAD154` — Vague 2 des champs, à ouvrir seulement après la vague 1
+- `CAD160` — [TRANCHÉ 21/09/2026 — vague 1 confirmée telle quelle.]
+- `CAD165` — T6 — Quatre correctifs du moteur horaire, tous visibles sur le chiffre client
+- `CAD166` — T7 — Le pro qui donne ses kWh sur le site reste « incomplet » dans l'ERP
+- `CAD167` — T8 — La liste des distributeurs devient les SRM régionales, et « autre » cesse de…
+- `CAD169` — [TRANCHÉ 21/09/2026 — VE prévue : comptée des deux côtés, devis étiqueté.]
+- `CAD170` — [TRANCHÉ 21/09/2026 — recharge nocturne : dimensionner la batterie pour la couvrir.]
+- `CAD171` — [TRANCHÉ 21/09/2026 — créneau déclaré sans chargeur : étaler sur tout le créneau.]
+- `CAD173` — [TRANCHÉ 21/09/2026 — lot des 13 réglages du calcul et du contenu.]
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
 - `SOLMVP3` — Fin du mécanisme d'édition (un seul produit)
@@ -746,7 +758,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (395)**
+**Open — to build (383)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -879,33 +891,21 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD140` — Le « score d'engagement client » a abandonné le seul signal comportemental qu'il devait…
 - `CAD142` — Le Journal du plan de relance ne mentionne jamais les visites, que la Frise affiche…
 - `CAD144` — Un achat de coopérative ou un comité industriel n'a qu'UN seul contact dans le CRM
-- `CAD147` — T0 — Le contrat du panneau d'appel, livré SEUL et en premier (PACT10)
-- `CAD148` — T1 — L'endpoint « questions à poser sur cet appel »
-- `CAD149` — T2 — Migration « vague 1 » : les champs qui manquent, et les SIX endroits à tenir
 - `CAD150` — T3 — Les champs captés par le site sont figés en lecture seule, même quand ils sont…
 - `CAD151` — T4 — `appelGuidance.js` : le contenu du script, sur le patron de `visiteGuidance.js`
 - `CAD152` — T5 — `PanneauScriptAppel.jsx` : le script sous les yeux pendant l'appel
 - `CAD153` — T9 — Les tests qui figent le script guidé
-- `CAD154` — Vague 2 des champs, à ouvrir seulement après la vague 1
 - `CAD155` — Pendant le Ramadan, l'appel du soir n'existe pas — aucun script ne le dit
 - `CAD156` — « Je vous rappelle jeudi à 18 h » : l'heure promise n'a aucun champ
 - `CAD157` — Dire à l'écran ce qui n'est PAS compté
 - `CAD158` — « Votre facture, c'est pour un mois ou pour deux ? » — la périodicité n'est nulle part
 - `CAD159` — [TRANCHÉ 21/09/2026 — champs du site TOUJOURS éditables, jamais reposés.]
-- `CAD160` — [TRANCHÉ 21/09/2026 — vague 1 confirmée telle quelle.]
 - `CAD161` — [TRANCHÉ 21/09/2026 — panneau résidentiel d'abord, agricole/industriel en seconde…
 - `CAD162` — [TRANCHÉ 21/09/2026 — ordre de l'appel 1 : facture, été, occupation, toit, objectif.]
 - `CAD163` — [TRANCHÉ 21/09/2026 — 82-21 : rien de spontané, une phrase factuelle sans tarif si le…
 - `CAD164` — [TRANCHÉ 21/09/2026 — locataire : demander le propriétaire, sinon « Perdu — Locataire…
-- `CAD165` — T6 — Quatre correctifs du moteur horaire, tous visibles sur le chiffre client
-- `CAD166` — T7 — Le pro qui donne ses kWh sur le site reste « incomplet » dans l'ERP
-- `CAD167` — T8 — La liste des distributeurs devient les SRM régionales, et « autre » cesse de…
 - `CAD168` — Deux lignes fixes de la facture ne sont jamais dites, et elles creusent l'écart entre…
-- `CAD169` — [TRANCHÉ 21/09/2026 — VE prévue : comptée des deux côtés, devis étiqueté.]
-- `CAD170` — [TRANCHÉ 21/09/2026 — recharge nocturne : dimensionner la batterie pour la couvrir.]
-- `CAD171` — [TRANCHÉ 21/09/2026 — créneau déclaré sans chargeur : étaler sur tout le créneau.]
 - `CAD172` — [TRANCHÉ 21/09/2026 — occupation non posée : présence supposée + bandeau sur la…
-- `CAD173` — [TRANCHÉ 21/09/2026 — lot des 13 réglages du calcul et du contenu.]
 - `CAD174` — La moitié écran de la migration : un champ qui n'est pas déclaré à la fiche est…
 - `CAD175` — Seconde livraison du panneau d'appel : agricole (pompage) et industriel
 - `CADM1` — Relecture darija par un locuteur natif
