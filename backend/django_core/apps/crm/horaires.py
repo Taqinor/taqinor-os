@@ -317,6 +317,58 @@ def prochain_dimanche(dt, heure=DIMANCHE_HEURE_DEFAUT):
     return _combiner(cible, heure).astimezone(tz_entree)
 
 
+def dimanche_le_plus_proche(cible, heure=DIMANCHE_HEURE_DEFAUT, *,
+                            plancher=None):
+    """CAD23 — le dimanche le PLUS PROCHE de `cible`, AVANT ou après.
+
+    Décision fondateur du 21/09/2026. `prochain_dimanche` prend le premier
+    dimanche ≥ `cible` : pour un J+5, le rendez-vous dominical dérivait de
+    J+5 (lead du mardi) à J+11 (lead du mercredi), et la touche J+7 du
+    protocole naissait ensuite déjà en retard. En prenant le dimanche le plus
+    proche — la veille du J+N compte autant que le lendemain — l'écart entre
+    le J+N visé et la date posée ne dépasse jamais 3 jours, sans toucher au
+    principe « une seule touche le dimanche, 16 h-19 h, pour les prospects
+    qu'on ne trouve jamais en semaine ».
+
+    `plancher` (l'ancre de la cadence) borne le résultat par le bas : le
+    dimanche le plus proche d'un J+1 tomberait sinon AVANT l'arrivée du lead.
+    On passe alors au dimanche suivant, de semaine en semaine.
+
+    Ce choix ne change NI le nombre, NI l'ordre des touches : il ne déplace
+    que la date de l'unique touche `dimanche_ok` de la cadence.
+    `prochain_dimanche` reste inchangée — c'est toujours elle qui répond à
+    « le prochain dimanche à partir de tel instant ».
+
+    Entrée et sortie AWARE, dans le fuseau de l'entrée."""
+    tz_entree = cible.tzinfo or datetime.timezone.utc
+    local = _local(cible)
+    jour_cible = local.date()
+    vers_apres = (6 - jour_cible.weekday()) % 7
+    apres = jour_cible + datetime.timedelta(days=vers_apres)
+    avant = (apres if vers_apres == 0
+             else apres - datetime.timedelta(days=7))
+    # Distances entières : l'égalité est impossible (k vs 7-k), donc pas de
+    # départage arbitraire à écrire.
+    jour = avant if (jour_cible - avant) < (apres - jour_cible) else apres
+    candidat = _combiner(jour, heure)
+    if jour == jour_cible:
+        if local.time() >= DIMANCHE_FIN:
+            # Ce dimanche est fini : le rendez-vous part au suivant.
+            jour = jour_cible + datetime.timedelta(days=7)
+            candidat = _combiner(jour, heure)
+        elif local > candidat:
+            # On ne remonte jamais dans le passé de la cible.
+            candidat = local
+    plancher_local = _local(plancher) if plancher is not None else None
+    for _ in range(_MAX_JOURS):
+        if plancher_local is None or candidat >= plancher_local:
+            return candidat.astimezone(tz_entree)
+        jour += datetime.timedelta(days=7)
+        candidat = _combiner(jour, heure)
+    logger.warning('crm.horaires: aucun dimanche au-dessus du plancher')
+    return candidat.astimezone(tz_entree)
+
+
 def minutes_ouvrees_entre(a, b, company, *, canal='whatsapp'):
     """Minutes d'ouverture écoulées entre `a` et `b` (0 si `b <= a`).
 

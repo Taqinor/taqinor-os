@@ -816,15 +816,16 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             # instant dans la fenêtre de SON jour : l'« appel du dimanche »
             # calculé en J+5 depuis un mercredi tombait un lundi, et le seul
             # rendez-vous dominical du protocole n'avait jamais lieu un
-            # dimanche. On prend donc le PREMIER dimanche dont la date atteint
-            # `depart + delai_jours`, à 16 h 30 (milieu de la fenêtre 16 h-19 h)
-            # — l'`heure_cible` du gabarit ne s'applique pas ici : elle vise un
-            # jour ouvré, et 10 h 30 un dimanche n'existe pas.
-            echeance = horaires.prochain_dimanche(
-                ancre + timedelta(days=gabarit.delai_jours))
-            if echeance < ancre:  # garde-fou : jamais dans le passé
-                echeance = horaires.prochain_dimanche(
-                    echeance + timedelta(days=1))
+            # dimanche. On le pose donc à 16 h 30 (milieu de la fenêtre
+            # 16 h-19 h) — l'`heure_cible` du gabarit ne s'applique pas ici :
+            # elle vise un jour ouvré, et 10 h 30 un dimanche n'existe pas.
+            # CAD23 (TRANCHÉ 21/09/2026) — le dimanche le PLUS PROCHE du J+N
+            # visé, AVANT ou après : le premier dimanche ≥ J+5 faisait dériver
+            # le rendez-vous de J+5 (lead du mardi) à J+11 (lead du mercredi),
+            # et la touche J+7 naissait ensuite déjà en retard. `plancher`
+            # garantit qu'il ne précède jamais l'ancre de la cadence.
+            echeance = horaires.dimanche_le_plus_proche(
+                ancre + timedelta(days=gabarit.delai_jours), plancher=ancre)
         elif gabarit.delai_jours == 0 and heure_cible is None:
             # Les touches DU JOUR MÊME s'enchaînent depuis l'origine ouvrable,
             # pas depuis l'heure brute d'arrivée du lead : les écarts du

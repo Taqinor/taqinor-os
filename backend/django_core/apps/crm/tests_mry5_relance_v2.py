@@ -230,14 +230,22 @@ class ToucheDominicaleTests(TestCase):
         self.assertEqual(touche.ordre, 8)
         return touche
 
-    def test_un_lead_du_mercredi_est_appele_le_dimanche_suivant(self):
-        # Mercredi 2 septembre 2026 10:00 ; J+5 = lundi 7 → dimanche 13.
+    def test_un_lead_du_mercredi_est_appele_le_dimanche_le_plus_proche(self):
+        """CAD23 (décision fondateur du 21/09/2026) : le rendez-vous
+        dominical se cale sur le dimanche le PLUS PROCHE de J+5, avant ou
+        après — plus sur le premier dimanche ≥ J+5.
+
+        Mercredi 2 septembre 2026 10:00 ; J+5 = lundi 7. Le dimanche 6 est à
+        1 jour, le dimanche 13 à 6 : c'est donc le 6. L'attente de ce test
+        était « le 13 » tant que le premier dimanche ≥ J+5 faisait loi, ce
+        qui faisait dériver le rendez-vous jusqu'à J+11 et faisait naître la
+        touche J+7 déjà en retard."""
         touche = self._touche_dominicale(
             datetime.datetime(2026, 9, 2, 10, 0, tzinfo=horaires.CASABLANCA))
         locale = touche.due_at.astimezone(horaires.CASABLANCA)
-        self.assertEqual(locale.date(), datetime.date(2026, 9, 13))
+        self.assertEqual(locale.date(), datetime.date(2026, 9, 6))
         self.assertEqual((locale.hour, locale.minute), (16, 30))
-        self.assertEqual(touche.due_date, datetime.date(2026, 9, 13))
+        self.assertEqual(touche.due_date, datetime.date(2026, 9, 6))
 
     def test_un_lead_du_samedi_soir_aussi(self):
         # Samedi 5 septembre 20:00 ; J+5 = jeudi 10 → dimanche 13.

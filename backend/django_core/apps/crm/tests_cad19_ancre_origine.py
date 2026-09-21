@@ -225,14 +225,16 @@ class LeGardeFouDesTroisPremieresTouchesTests(_Base):
              (datetime.date(2026, 9, 7), 9, 0),
              (datetime.date(2026, 9, 7), 11, 0)])
 
-    def test_un_lead_du_mercredi_est_toujours_appele_le_dimanche_13(self):
-        """L'autre garde-fou de MRY4 : la touche dominicale du lead du
-        mercredi 02/09 reste le dimanche 13 à 16:30."""
+    def test_la_touche_dominicale_reste_un_dimanche_a_16h30(self):
+        """L'autre garde-fou de MRY4 : la touche dominicale d'un lead du
+        mercredi tombe bien un DIMANCHE, à 16:30. Sa DATE exacte relève de
+        CAD23 (le dimanche le plus proche de J+5) — pinnée là-bas, pas ici."""
         plan = self._plan(_a(datetime.date(2026, 9, 2), heure=10))
-        dominicale = next(quand for _g, quand in plan.values()
-                          if quand.weekday() == 6)
-        self.assertEqual(dominicale.date(), datetime.date(2026, 9, 13))
-        self.assertEqual((dominicale.hour, dominicale.minute), (16, 30))
+        dominicales = [quand for _g, quand in plan.values()
+                       if quand.weekday() == 6]
+        self.assertEqual(len(dominicales), 1)
+        self.assertEqual((dominicales[0].hour, dominicales[0].minute),
+                         (16, 30))
 
 
 class LexceptionDuReveilTests(_Base):
