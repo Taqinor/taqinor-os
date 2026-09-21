@@ -574,6 +574,12 @@ def poll_inbound_mailboxes():
     return {'fetched': fetched, 'handled': handled}
 
 
+#: CAD137 — nombre de VISITES DISTINCTES au-delà duquel « le client hésite,
+#: appelez » se déclenche. Nommé plutôt qu'écrit en dur : le seuil et le
+#: libellé de l'alerte (« rouverte 3 fois ») doivent dire la même chose.
+_REOUVERTURES_ALERTE = 3
+
+
 @shared_task(name='ventes.engagement_followup_engine')
 def engagement_followup_engine():
     """QX30be — relance déclenchée par le COMPORTEMENT (pas le calendrier).
@@ -620,7 +626,16 @@ def engagement_followup_engine():
                 and (now - link.first_viewed_at).total_seconds() >= 48 * 3600):
             to_fire.append(('opened_not_signed_48h',
                             'Ouverte mais non signée depuis 48 h — appelez'))
-        if (link.view_count >= 3 and 'reopened_3x' not in fired):
+        # CAD137 — « rouverte 3 fois » se déclenchait sur UNE seule visite :
+        # le compteur montait à chaque GET (page, PDF public, document
+        # tokenisé), et lire sa page puis télécharger le PDF puis recharger
+        # suffisait. Depuis CAD137, ``view_count`` compte des VISITES
+        # DISTINCTES — la fenêtre de sessionisation de 15 minutes qui
+        # protégeait déjà la notification s'applique au compteur
+        # (``public_views._stamp_view``). Le seuil, lui, ne bouge pas : ce
+        # sont bien trois RETOURS du client.
+        if (link.view_count >= _REOUVERTURES_ALERTE
+                and 'reopened_3x' not in fired):
             to_fire.append(('reopened_3x',
                             'Rouverte 3 fois — le client hésite, appelez'))
 

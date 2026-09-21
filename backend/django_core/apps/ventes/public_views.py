@@ -482,11 +482,25 @@ def _stamp_view(link):
         # d'un simple rechargement — et ne notifie jamais sans stamp.
         link._vue_precedente = link.last_viewed_at
         link._vue_stampee = True
-        # Increment atomically; set last_viewed_at unconditionally.
-        ShareLink.objects.filter(pk=link.pk).update(
-            view_count=F('view_count') + 1,
-            last_viewed_at=now,
-        )
+        # CAD137 (audit L3 du 21/09/2026) — LE COMPTEUR COMPTE DES VISITES,
+        # PLUS DES REQUÊTES. Trois portes l'incrémentaient à chaque GET (la
+        # page de proposition, le PDF public, le document tokenisé) : lire sa
+        # page, télécharger le PDF puis recharger suffisait à atteindre 3 —
+        # et l'alerte la plus forte du système (« rouverte 3 fois, le client
+        # hésite, appelez ») se déclenchait sur le comportement le plus banal.
+        # La fenêtre de sessionisation de 15 minutes qui protégeait DÉJÀ la
+        # notification (``REOUVERTURE_FENETRE``, QJ1bis) s'applique désormais
+        # au COMPTEUR lui-même : une seule et même source, un seul délai.
+        # ``last_viewed_at``, lui, reste écrit à CHAQUE GET — c'est la vérité
+        # de « vu pour la dernière fois », et rien ne s'en sert pour compter.
+        precedente = link.last_viewed_at
+        nouvelle_visite = (
+            precedente is None
+            or (now - precedente) >= REOUVERTURE_FENETRE)
+        champs_maj = {'last_viewed_at': now}
+        if nouvelle_visite:
+            champs_maj['view_count'] = F('view_count') + 1
+        ShareLink.objects.filter(pk=link.pk).update(**champs_maj)
         # Set first_viewed_at only once (conditioned on still being null so
         # concurrent requests from the same client don't overwrite each other).
         if is_first:
