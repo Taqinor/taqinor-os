@@ -167,6 +167,14 @@ const calepinageApi = {
     // produit, aucun statut n'est écrit par l'écran.
     genererDevis: (id, corps) => api.post(`${pivot(id)}generer-devis/`, corps),
     syncDevis: (id, corps) => api.post(`${pivot(id)}sync-devis/`, corps),
+
+    /* CALX27 — la levée du VERROU (CAL207, `views/verrou.py`). L'action
+       existait, testée, et n'avait aucun consommateur : l'atelier affichait un
+       bandeau « lecture seule » sans aucune sortie. Elle ne touche AUCUN
+       statut de devis (règle #4) ; le serveur la trace au journal et rend
+       `{calepinage, verrouille, deverrouille}`. Gardée par `calepinage_gerer`
+       côté serveur — l'écran cache l'affordance avec le MÊME code. */
+    deverrouiller: (id) => api.post(`${pivot(id)}deverrouiller/`, {}),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
