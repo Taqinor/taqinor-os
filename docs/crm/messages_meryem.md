@@ -77,21 +77,27 @@ DARIJA : واخا، فهمتكم، ما غاديش نعاود نعيط ليكم.
 
 ### j1_pdf — J1, WhatsApp
 FR : Bonjour M. [Prénom], j'espère que vous allez bien. Je vous ai envoyé votre proposition solaire — est-ce que le PDF s'ouvre bien de votre côté ? Prenez le temps de la regarder tranquillement, et dites-moi ce qui vous a le plus parlé. Je suis là pour la moindre question.
+DARIJA : السلام عليكم السي [الاسم]، كنتمنى تكونو بخير. صيفطت ليكم العرض ديال الطاقة الشمسية ديالكم — واش كيحل عندكم مزيان الـ PDF؟ خدو الوقت باش تشوفوه بشوية، وقولوا ليا شنو اللي عجبكم بزاف. أنا هنا لأي سؤال.
 
 ### j4_preuve — J4, WhatsApp (la vue de SON toit avec les panneaux, ou la photo d'un chantier comparable)
 FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Le suivi de production est en temps réel, je peux vous montrer.
+DARIJA : هادي تجهيزة شبيهة بديالكم، تركبات ف [mois] ف [ville] : [lien preuve]. القوة المركبة: [puissance preuve] kWc. متابعة الإنتاج كاينة ف الوقت الحقيقي، نقدر نوريكم.
 
 ### j6_garanties — J6, WhatsApp (avec les certificats de garantie des fabricants)
 FR : Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : [lien de votre proposition]. Ce qui est couvert et pour combien d'années : https://taqinor.ma/garanties
+DARIJA : هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: [lien de votre proposition]. شنو المغطى وشحال ديال السنين: https://taqinor.ma/garanties
 
 ### j9_validite — J9, WhatsApp
 FR : Votre proposition est valable jusqu'au [date]. Après, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux.
+DARIJA : العرض ديالكم صالح حتى [date]. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط عليكم، باش ما نعطيكمش ثمن غير صحيح.
 
 ### j13_dernier — J13, WhatsApp
 FR : Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille.
+DARIJA : ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم.
 
 ### j14_pause — J14, WhatsApp, passage en Froid
 FR : Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver.
+DARIJA : غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه.
 
 ### dimanche_famille — premier dimanche 16 h après J3, leads « Décision à plusieurs » (M7)
 FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.
@@ -107,20 +113,25 @@ DARIJA : السلام عليكم السي [الاسم]، [المستشار] من
 
 ### reveil_a1 — dormants avec devis (A1 du Guide)
 FR : Bonjour M. [prénom], c'est [Conseiller] de Taqinor Solutions. Vous aviez reçu un devis solaire chez nous il y a quelques mois. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.)
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من Taqinor Solutions. كنتو توصلتو بعرض للطاقة الشمسية عندنا من شي شهور. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.)
 
 ### reveil_a3 — dernière chance, la rupture honnête (A3 du Guide)
 FR : Bonjour M. [prénom], [Conseiller] de Taqinor Solutions. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ?
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من Taqinor Solutions. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نقدر نصيفط ليكم الصورة ب 3D ديال الألواح فوق السطح ديالكم، مع تقدير محين. نوجدها ليكم، ولا نسد الملف؟
 
 ### reveil_b — la saison des factures (B du Guide)
 FR : Bonjour M. [prénom], c'est [Conseiller] de Taqinor Solutions. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ?
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من Taqinor Solutions. هادي موسم فواتير الصيف — غالبا هو الوقت اللي فيه كيتقرر مشروع الطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟ إلا واخا، نوجد ليكم تقدير محين ديال التوفير، بلا ما تلتزمو بوالو. نهضرو عليه؟
 
 ## Après la signature (Guide v2.1, chapitre 13)
 
 ### avis_google — à tous les clients, de la même façon, sans contrepartie
 FR : Bonjour M. [Prénom], j'espère que l'installation vous donne satisfaction. Si vous avez deux minutes, un avis sur Google nous aide énormément, c'est ce que regardent les futurs clients : [lien de la fiche TAQINOR]. Merci beaucoup !
+DARIJA : السلام عليكم السي [الاسم]، كنتمنى تكونو راضيين على التجهيزة. إلا عندكم جوج دقايق، رأي على Google كيعاوننا بزاف، هادشي اللي كيشوفوه الزبناء الجداد: [lien de la fiche TAQINOR]. شكرا بزاف!
 
 ### parrainage
 FR : Si quelqu'un autour de vous, un voisin, un frère, un collègue, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; il aura la même étude gratuite, et on convient ensemble d'une récompense pour vous.
+DARIJA : إلا كان شي واحد حداكم، جار، خو، ولا زميل، كيفكر ف الطاقة الشمسية، تقدرو تصيفطو ليه الرابط ديال الرعاية ديالكم؛ غادي يكون عندو نفس الدراسة بلاش، ونتافقو مع بعضياتنا على مكافأة ليكم.
 
 ## La visite technique, étape du suivi (ordre fondateur 15/09/2026)
 
@@ -147,4 +158,9 @@ phrase (aucune promesse ajoutée, aucun chiffre) mais n'ont pas reçu la revue n
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.
 (`visite_proposition` et `visite_confirmation`, eux, ont reçu leur texte validé le 15/09/2026 — section ci-dessus.)
-Les versions darija absentes ci-dessus (après devis, réveils A1/A3/B, après signature) retombent sur le FR (`get_corps`).
+
+CAD62 (21/09/2026) — les 11 darija manquantes (les 6 touches après-devis, `reveil_a1/a3/b`, `avis_google`,
+`parrainage`) sont traduites ci-dessus : `CLES_RELANCE` a désormais 27/27 clés avec un équivalent darija. Comme
+`visite_proposition`/`visite_confirmation`, ces 11 traductions n'ont PAS encore reçu la relecture native du
+04/09/2026 (CADM1 — à faire avant tout envoi réel) ; elles suivent le FR validé phrase par phrase (aucune promesse
+ajoutée, aucun chiffre, aucune traduction automatique).

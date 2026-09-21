@@ -125,9 +125,12 @@ class TextesFidelesALaSourceTests(TestCase):
 
     def test_les_cles_sans_darija_ne_sont_pas_inventees(self):
         """Une traduction automatique partirait à de vrais clients : une clé
-        sans darija validée retombe sur le FR, elle n'est jamais fabriquée."""
+        sans darija validée retombe sur le FR, elle n'est jamais fabriquée.
+
+        CAD62 (21/09/2026) a comblé les 11 clés qui manquaient — `sans_darija`
+        peut désormais être vide (27/27 clés couvertes) ; la garde reste utile
+        pour toute clé FUTURE qui n'aurait pas encore reçu sa traduction."""
         sans_darija = [c for c, v in self.source.items() if not v['darija']]
-        self.assertTrue(sans_darija)
         for cle in sans_darija:
             self.assertNotIn(cle, MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
 
