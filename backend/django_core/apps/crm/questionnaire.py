@@ -47,7 +47,11 @@ CHAMPS_PAR_SECTION = {
     # déjà l'âge du toit et le statut d'occupation).
     'toiture': ('type_toiture', 'surface_toiture_m2', 'roof_age', 'ownership',
                 'type_bien'),
-    'occupation': ('occupation_jour',),
+    # CAD154 — le nombre de personnes au foyer est LA donnée qui manquait au
+    # chauffe-eau, et le chauffage d'hiver se répond par oui/non : les deux
+    # se posent aussi bien par écrit.
+    'occupation': ('occupation_jour', 'nb_personnes_foyer',
+                   'chauffage_electrique_hiver'),
     'equipements': (
         'equip_piscine', 'equip_piscine_pompe_kw',
         'equip_piscine_heures_jour', 'equip_piscine_creneau',

@@ -545,6 +545,25 @@ class Lead(SoftDeleteModel):
         BUTANE = 'butane', 'Butane'
         ELECTRIQUE = 'electrique', 'Électrique (réseau)'
 
+    # ── CAD-L ── CAD154 — vocabulaires de la VAGUE 2. Les deux REPRENNENT
+    # mot pour mot ceux de la qualification de visite
+    # (``apps/visites/qualification.py``) : le terrain et le téléphone
+    # décrivent le même client, ouvrir un second vocabulaire rendrait les
+    # deux illisibles ensemble.
+    class FreinPrincipal(models.TextChoices):
+        AUCUN = 'aucun', 'Aucun frein'
+        PRIX = 'prix', 'Prix'
+        COMPARE = 'compare', 'Compare d’autres devis'
+        TIMING = 'timing', 'Timing'
+        TECHNIQUE = 'technique', 'Technique'
+        CONFIANCE = 'confiance', 'Confiance'
+
+    class Declencheur(models.TextChoices):
+        ECONOMIES = 'economies', 'Les économies'
+        COUPURES = 'coupures', 'Les coupures / l’autonomie'
+        ECOLOGIE = 'ecologie', 'L’écologie'
+        TECHNOLOGIE = 'technologie', 'La technologie'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1229,6 +1248,59 @@ class Lead(SoftDeleteModel):
                   'de la dépense en dirhams : l’économie de carburant se '
                   'calcule sur ce que le client DÉCLARE, aucun prix de '
                   'gasoil de référence n’est écrit nulle part.')
+
+    # ── CAD-L ── CAD154 — VAGUE 2 du script d'appel guidé : cinq besoins
+    # réels qui ne bloquaient pas l'appel 1 (liste arrêtée par le fondateur —
+    # CAD160). Mêmes règles que la vague 1 : ``null=True`` (vide = question
+    # pas encore posée), et le ``help_text`` EST la question orale. AUCUN de
+    # ces champs ne porte un marqueur de provenance énergie/toiture — il n'y
+    # a donc aucune exclusion à motiver dans `selectors.py`.
+    nb_personnes_foyer = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Nombre de personnes au foyer',
+        help_text="Question à l'appel : « Combien de personnes vivent dans "
+                  'ce logement ? » (vide = pas encore posée). Le moteur dit '
+                  "lui-même que son absence l'empêche de chiffrer le "
+                  "chauffe-eau par ordre de grandeur : sans ce nombre, la "
+                  'couche est OMISE plutôt qu’inventée.')
+    budget_client_mad = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Budget annoncé par le client (MAD)',
+        help_text="Question à l'appel, APRÈS l'envoi du devis seulement "
+                  '(décision fondateur du 21/09/2026) : « Quel budget '
+                  'aviez-vous en tête ? » (vide = pas encore posée). '
+                  "DISTINCT du montant estimé, qui est l'estimation du "
+                  'COMMERCIAL et nourrit le forecast pondéré. Question '
+                  'ORALE : jamais dans le questionnaire envoyé au client.')
+    frein_principal = models.CharField(
+        max_length=12, choices=FreinPrincipal.choices, null=True, blank=True,
+        verbose_name='Frein principal',
+        help_text="Question à l'appel : « Qu'est-ce qui vous retient "
+                  'aujourd’hui ? » (vide = pas encore posée). Même '
+                  'vocabulaire que la qualification de visite, pour que le '
+                  'terrain et le téléphone se relisent. Question ORALE.')
+    declencheur = models.CharField(
+        max_length=12, choices=Declencheur.choices, null=True, blank=True,
+        verbose_name='Ce qui a accroché',
+        help_text="Question à l'appel : « Qu'est-ce qui vous a donné envie "
+                  'de vous renseigner ? » (vide = pas encore posée). Même '
+                  'vocabulaire que la qualification de visite. Question '
+                  'ORALE.')
+    compteur_puissance_kva = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        verbose_name='Puissance souscrite du compteur (kVA)',
+        help_text="Question à l'appel, EN DERNIER RECOURS seulement : "
+                  '« Quelle puissance est inscrite sur votre compteur '
+                  '(kVA) ? » (vide = pas encore posée). La voie NORMALE est '
+                  'la photo du compteur, que le questionnaire demande déjà — '
+                  'on ne fait lire une plaque au téléphone que si la photo '
+                  'est impossible.')
+    chauffage_electrique_hiver = models.BooleanField(
+        null=True, blank=True, verbose_name='Chauffage électrique en hiver',
+        help_text="Question à l'appel : « Vous chauffez-vous à l'électricité "
+                  "en hiver ? » (Oui/Non — vide = pas encore posée). Champ "
+                  'INFORMATIF : décision fondateur du 21/09/2026 — aucune '
+                  "couche de chauffage d'hiver n'est composée, donc il "
+                  'n’ajuste AUCUNE courbe.')
 
     def save(self, *args, **kwargs):
         # QW10 — maintient les colonnes de dédup normalisées à chaque save,

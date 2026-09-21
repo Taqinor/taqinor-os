@@ -1242,6 +1242,33 @@ def _quest_carburant_litres_mois(raw):
     return _clean_decimal(raw, lo=0, hi=1_000_000)
 
 
+# CAD154 — vague 2 : mêmes primitives, même raison (une colonne sans nettoyeur
+# verrait la réponse portant son nom silencieusement jetée).
+def _quest_nb_personnes_foyer(raw):
+    valeur = _clean_decimal(raw, lo=0, hi=200)
+    return None if valeur is None else int(valeur)
+
+
+def _quest_budget_client_mad(raw):
+    return _clean_decimal(raw, lo=0, hi=1_000_000_000)
+
+
+def _quest_frein_principal(raw):
+    return _clean_choice(raw, Lead.FreinPrincipal.values)
+
+
+def _quest_declencheur(raw):
+    return _clean_choice(raw, Lead.Declencheur.values)
+
+
+def _quest_compteur_puissance_kva(raw):
+    return _clean_decimal(raw, lo=0, hi=100_000)
+
+
+def _quest_chauffage_electrique_hiver(raw):
+    return raw if isinstance(raw, bool) else None
+
+
 #: (b) colonnes Lead hors de portée du mapping site → nettoyeur dédié.
 _QUEST_NETTOYEURS_HORS_SITE = {
     'conso_mensuelle_kwh': _quest_conso,
@@ -1257,6 +1284,13 @@ _QUEST_NETTOYEURS_HORS_SITE = {
     'pompage_heures_jour': _quest_pompage_heures_jour,
     'pompe_alim_actuelle': _quest_pompe_alim_actuelle,
     'carburant_litres_mois': _quest_carburant_litres_mois,
+    # CAD154 — vague 2 du script d'appel guidé.
+    'nb_personnes_foyer': _quest_nb_personnes_foyer,
+    'budget_client_mad': _quest_budget_client_mad,
+    'frein_principal': _quest_frein_principal,
+    'declencheur': _quest_declencheur,
+    'compteur_puissance_kva': _quest_compteur_puissance_kva,
+    'chauffage_electrique_hiver': _quest_chauffage_electrique_hiver,
 }
 
 

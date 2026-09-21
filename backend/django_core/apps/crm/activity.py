@@ -110,6 +110,15 @@ TRACKED_FIELDS = {
     'pompage_heures_jour': 'Pompage — heures par jour',
     'pompe_alim_actuelle': 'Pompe actuelle — alimentation',
     'carburant_litres_mois': 'Carburant consommé (litres/mois)',
+    # ── CAD-L ── CAD154 — vague 2 : budget annoncé, frein et déclencheur
+    # décident de la suite commerciale ; un changement sans trace, c'est une
+    # relance calée sur une objection qui n'existe plus.
+    'nb_personnes_foyer': 'Nombre de personnes au foyer',
+    'budget_client_mad': 'Budget annoncé par le client (MAD)',
+    'frein_principal': 'Frein principal',
+    'declencheur': 'Ce qui a accroché',
+    'compteur_puissance_kva': 'Puissance souscrite du compteur (kVA)',
+    'chauffage_electrique_hiver': 'Chauffage électrique en hiver',
 }
 
 _CHOICE_FIELDS = {
@@ -132,6 +141,9 @@ _CHOICE_FIELDS = {
     # (pompage_heures_jour et carburant_litres_mois sont des grandeurs).
     'type_bien', 'objectif_projet', 'decideur', 'devis_concurrents',
     'equip_ve_statut', 'pompe_alim_actuelle',
+    # CAD154 — deux des six champs de la vague 2 sont des choices (les
+    # quatre autres sont un nombre, un montant, une puissance, un booléen).
+    'frein_principal', 'declencheur',
 }
 
 _BOOL_LABELS = {True: 'Oui', False: 'Non'}

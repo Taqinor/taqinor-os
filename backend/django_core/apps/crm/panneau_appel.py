@@ -43,7 +43,13 @@ CHAMPS_JAMAIS_DEMANDES = ('tranche_onee',)
 #: posent QU'À L'ORAL : elles restent hors du questionnaire envoyé au client
 #: (donc hors de ``CHAMPS_PAR_SECTION``), mais ce sont justement des questions
 #: de CET appel. Sans cette liste, le panneau ne les proposerait jamais.
-CHAMPS_ORAUX = ('decideur', 'devis_concurrents')
+#: CAD154 ajoute le frein et le déclencheur : même vocabulaire que la
+#: qualification de visite, et mêmes questions de découverte. `budget_client_mad`
+#: reste HORS de cette liste — il ne se pose qu'APRÈS l'envoi du devis
+#: (décision fondateur du 21/09/2026), une condition que ce panneau ne sait pas
+#: encore lire sans interroger les devis du lead.
+CHAMPS_ORAUX = ('decideur', 'devis_concurrents', 'frein_principal',
+                'declencheur')
 
 #: CAD148 — les colonnes NOT NULL à défaut non nul : leur valeur de départ ne
 #: veut PAS dire « le client a répondu ». ``ete_differente`` vaut ``False`` dès
