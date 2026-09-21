@@ -21,6 +21,10 @@ import {
 } from './moduleSelect';
 import { type Ctx } from './context';
 import { type AreaRecord } from './types';
+import { MODULE_ATELIER_PAR_DEFAUT, cotesDePavage, type Panel2Module } from '../../lib/roofPro2';
+import { packConfig } from '../../lib/estimatorBrainV2';
+import { solveLive } from '../../lib/estimatorBrainV7';
+import { solveLivePitched } from '../../lib/estimatorBrainV8';
 
 const VERTS: [number, number][] = [
   [-7.6, 33.59],
@@ -344,5 +348,106 @@ describe('CALX109 câblage — le sélecteur de module du pan, créé par le con
 
   it('`zones.ts` passe bien le 3ᵉ argument `moduleFor` à `computePanStats`', () => {
     expect(SOURCE_ZONES).toContain('a.result), moduleDuPan);');
+  });
+});
+
+// ═══════════ CALX109 câblage — LES VRAIES COTES ENTRENT DANS LE PAVAGE ═══════════
+// Jusqu'ici `Panel2Module` n'était consommé que par `roofPro2.layoutProRows2`, qui n'a AUCUN
+// appelant de production : choisir un module ne changeait donc RIEN au nombre de modules
+// posés. Les deux moteurs vivants (V7 toit plat, V8 toit en pente) acceptent maintenant
+// l'option — et la garantie tenue est la même partout : option absente ⇒ octet pour octet.
+
+/** Un carré de `cote` mètres autour de (LNG0, LAT0) — assez grand pour loger des rangées. */
+const LAT0 = 33.59;
+const LNG0 = -7.6;
+const DEG2M = 111320;
+function carreM(cote: number): [number, number][] {
+  const d = cote / 2;
+  const cosLat = Math.cos((LAT0 * Math.PI) / 180);
+  const dLng = d / (DEG2M * cosLat);
+  const dLat = d / DEG2M;
+  return [
+    [LNG0 - dLng, LAT0 - dLat],
+    [LNG0 + dLng, LAT0 - dLat],
+    [LNG0 + dLng, LAT0 + dLat],
+    [LNG0 - dLng, LAT0 + dLat],
+  ];
+}
+
+/** Un module NETTEMENT plus grand que celui de l'atelier : 3,00 × 2,00 m, 1 000 Wc. */
+const GROS_MODULE: Panel2Module = { longM: 3, courtM: 2, epaisM: 0.04, watt: 1000 };
+
+describe('CALX109 câblage — `cotesDePavage` : le défaut est un repli, jamais une invention', () => {
+  it('option absente ⇒ EXACTEMENT le module par défaut de l’atelier', () => {
+    expect(cotesDePavage()).toEqual(MODULE_ATELIER_PAR_DEFAUT);
+    expect(cotesDePavage(null)).toEqual(MODULE_ATELIER_PAR_DEFAUT);
+  });
+
+  it('une cote non exploitable fait retomber sur le défaut — jamais une dimension supposée', () => {
+    expect(cotesDePavage({ longM: 0, courtM: 1, epaisM: null, watt: 500 })).toEqual(MODULE_ATELIER_PAR_DEFAUT);
+    expect(cotesDePavage({ longM: 2, courtM: 1, epaisM: null, watt: Number.NaN })).toEqual(MODULE_ATELIER_PAR_DEFAUT);
+  });
+
+  it('le GRAND côté est toujours `longM`, quel que soit l’ordre de la fiche produit', () => {
+    expect(cotesDePavage({ longM: 1, courtM: 3, epaisM: null, watt: 400 }))
+      .toEqual({ longM: 3, courtM: 1, epaisM: null, watt: 400 });
+  });
+});
+
+describe('CALX109 câblage — toit PLAT (`solveLive` → `packConfig`)', () => {
+  const RING = carreM(30);
+
+  it('option absente ⇒ résultat IDENTIQUE, octet pour octet', () => {
+    const sans = solveLive(RING, LAT0, 3000, [], {});
+    const defaut = solveLive(RING, LAT0, 3000, [], {}, { module: MODULE_ATELIER_PAR_DEFAUT });
+
+    expect(JSON.stringify(defaut)).toBe(JSON.stringify(sans));
+  });
+
+  it('un module plus GRAND pose moins de modules, et le kWc vient de SA puissance', () => {
+    const sans = solveLive(RING, LAT0, 3000, [], {});
+    const gros = solveLive(RING, LAT0, 3000, [], {}, { module: GROS_MODULE });
+
+    expect(gros.winner.fitCount).toBeLessThan(sans.winner.fitCount);
+    // 1 000 Wc par module : le kWc est exactement le nombre posé ÷ 1.
+    expect(gros.winner.kwc).toBeCloseTo(gros.winner.placedCount * 1, 6);
+    expect(gros.winner.kwc).not.toBeCloseTo(gros.winner.placedCount * 0.72, 6);
+  });
+
+  it('`packConfig` lui-même : sans option, pavage identique octet pour octet', () => {
+    const sans = packConfig(RING, LAT0, { family: 'south', tiltDeg: 13 });
+    const defaut = packConfig(RING, LAT0, { family: 'south', tiltDeg: 13, module: MODULE_ATELIER_PAR_DEFAUT });
+
+    expect(JSON.stringify(defaut)).toBe(JSON.stringify(sans));
+    expect(packConfig(RING, LAT0, { family: 'south', tiltDeg: 13, module: GROS_MODULE }).best.count)
+      .toBeLessThan(sans.best.count);
+  });
+});
+
+describe('CALX109 câblage — toit EN PENTE (`solveLivePitched` → `packFlushPlane`)', () => {
+  const RING = carreM(30);
+
+  it('option absente ⇒ résultat IDENTIQUE, octet pour octet', () => {
+    const sans = solveLivePitched(RING, LAT0, 3000, 22, 180, [], {});
+    const defaut = solveLivePitched(RING, LAT0, 3000, 22, 180, [], {}, { module: MODULE_ATELIER_PAR_DEFAUT });
+
+    expect(JSON.stringify(defaut)).toBe(JSON.stringify(sans));
+  });
+
+  it('un module plus GRAND pose moins de modules, et le kWc vient de SA puissance', () => {
+    const sans = solveLivePitched(RING, LAT0, 3000, 22, 180, [], {});
+    const gros = solveLivePitched(RING, LAT0, 3000, 22, 180, [], {}, { module: GROS_MODULE });
+
+    expect(gros.winner.fitCount).toBeLessThan(sans.winner.fitCount);
+    expect(gros.winner.kwc).toBeCloseTo(gros.winner.placedCount * 1, 6);
+  });
+});
+
+describe('CALX109 câblage — l’optimiseur passe les cotes du pan ACTIF', () => {
+  it('`optimizer.ts` transmet `module` aux deux solveurs vivants', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/scripts/roofPro11/optimizer.ts'), 'utf8');
+    expect(source).toContain('const cotesDuModuleDuPanActif = (): Panel2Module | undefined => {');
+    // Deux lignes d'appel : `solveLive` (plat) et `solveLivePitched` (pente).
+    expect(source.split('module: cotesDuModuleDuPanActif(),').length - 1).toBe(2);
   });
 });

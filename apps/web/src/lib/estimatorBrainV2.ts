@@ -34,7 +34,7 @@
  * (yieldTable.ts). JAMAIS un devis. Voir apps/web/ESTIMATOR_BRAIN_NOTES.md.
  */
 import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
-import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_WATT, PERIMETER_SETBACK_M, resolveSetbacks, extremityTotalM, type PerimeterSetbacks } from './roofPro2';
+import { PANEL2_WATT, PERIMETER_SETBACK_M, cotesDePavage, resolveSetbacks, extremityTotalM, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import { YIELD_TABLE } from './yieldTable';
 import { PRODUCTION_NET_FACTOR } from './systemLoss';
 
@@ -929,6 +929,15 @@ export interface PackOptions {
    * reste tenue). Absent/0 → calepinage identique à aujourd'hui. Négatif ramené à 0.
    */
   rowGapExtraM?: number;
+  /**
+   * CALX109 câblage — LE MODULE RÉELLEMENT POSÉ, avec ses vraies cotes et sa vraie
+   * puissance (`roofPro11/moduleSelect.cotesDeModule`, depuis le catalogue de la société).
+   * Il remplace les cotes du module par défaut de l'atelier DANS le pavage (grand côté /
+   * petit côté, donc le nombre de colonnes ET le pas de rangée) ET la puissance qui sert au
+   * `kwc` de chaque grille. Absent ⇒ `cotesDePavage` rend `MODULE_ATELIER_PAR_DEFAUT` et le
+   * pavage est IDENTIQUE à celui d'aujourd'hui, octet pour octet (`JSON.stringify`).
+   */
+  module?: Panel2Module;
 }
 
 /**
@@ -1478,6 +1487,15 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const tiltDeg = opts.tiltDeg;
   const beta = tiltDeg * DEG2RAD;
   const eastWest = opts.family === 'eastwest';
+  // CALX109 câblage — les cotes du module POSÉ (option absente ⇒ celles du module par défaut
+  // de l'atelier : `moduleLongM`/`moduleCourtM`/`moduleWatt` valent alors exactement
+  // PANEL2_LONG_M/PANEL2_SHORT_M/PANEL2_WATT, donc le pavage ne bouge pas d'un millimètre).
+  // Le cache `opts.cache` du cerveau V7 est créé PAR APPEL de `solveLive`, et le module est
+  // constant sur tout un appel : aucune clé de cache à élargir ici.
+  const moduleDuPan = cotesDePavage(opts.module);
+  const moduleLongM = moduleDuPan.longM;
+  const moduleCourtM = moduleDuPan.courtM;
+  const moduleWatt = moduleDuPan.watt;
 
   // Surface utile = aire tracée − recouvrement RÉEL obstacles ∩ toit (union des
   // obstacles, part hors toit exclue) — la borne « Σ empreintes ≤ utile ».
@@ -1554,10 +1572,10 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   };
 
   if (!Array.isArray(ring) || ring.length < 3) {
-    const cP = cellFor(PANEL2_LONG_M, PANEL2_SHORT_M);
-    const cL = cellFor(PANEL2_SHORT_M, PANEL2_LONG_M);
-    const portrait = buildEmpty('portrait', PANEL2_LONG_M, PANEL2_SHORT_M, cP.pitchM);
-    const landscape = buildEmpty('landscape', PANEL2_SHORT_M, PANEL2_LONG_M, cL.pitchM);
+    const cP = cellFor(moduleLongM, moduleCourtM);
+    const cL = cellFor(moduleCourtM, moduleLongM);
+    const portrait = buildEmpty('portrait', moduleLongM, moduleCourtM, cP.pitchM);
+    const landscape = buildEmpty('landscape', moduleCourtM, moduleLongM, cL.pitchM);
     return {
       origin: ring?.[0] ?? [0, 0],
       ringENU: [],
@@ -1592,7 +1610,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
     return {
       panelOrientation,
       count: panels.length,
-      kwc: (panels.length * PANEL2_WATT) / 1000,
+      kwc: (panels.length * moduleWatt) / 1000,
       rowPitchM: cell.pitchM,
       panels,
       slopeLenM,
@@ -1601,9 +1619,10 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
     };
   };
 
-  // Portrait : grand côté (2,384) dans le sens de la pente. Paysage : l'inverse.
-  const portrait = makeGrid('portrait', PANEL2_LONG_M, PANEL2_SHORT_M);
-  const landscape = makeGrid('landscape', PANEL2_SHORT_M, PANEL2_LONG_M);
+  // Portrait : GRAND côté du module dans le sens de la pente. Paysage : l'inverse.
+  // CALX109 — ces deux cotes viennent du module posé (2,384 / 1,303 m par défaut).
+  const portrait = makeGrid('portrait', moduleLongM, moduleCourtM);
+  const landscape = makeGrid('landscape', moduleCourtM, moduleLongM);
   const best = portrait.count >= landscape.count ? portrait : landscape;
 
   // PV62 — pavage MIXTE, calculé PARESSEUSEMENT (le balayage fin coûte plus cher que le
@@ -1616,8 +1635,8 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
     if (mixedMemo) return mixedMemo;
     // Est-Ouest : le chevron dos à dos impose sa géométrie → le mixte n'a pas de sens.
     if (eastWest) return (mixedMemo = best);
-    const cP = cellFor(PANEL2_LONG_M, PANEL2_SHORT_M);
-    const cL = cellFor(PANEL2_SHORT_M, PANEL2_LONG_M);
+    const cP = cellFor(moduleLongM, moduleCourtM);
+    const cL = cellFor(moduleCourtM, moduleLongM);
     const panels = packMixedCells(ringENU, obstructionsENU, azimuthDeg, setbacks, cP, cL, clearanceM, overhangM, opts.obstructionClearancesM);
     if (panels.length <= best.count) return (mixedMemo = best);
     // Pose DOMINANTE = celle du plus grand nombre de panneaux : elle porte les
@@ -1625,12 +1644,12 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
     let nPortrait = 0;
     for (const p of panels) if (p.orient === 'portrait') nPortrait++;
     const dominant: PanelLayoutOrient = nPortrait * 2 >= panels.length ? 'portrait' : 'landscape';
-    const slopeLenM = dominant === 'portrait' ? PANEL2_LONG_M : PANEL2_SHORT_M;
-    const rowWidthM = dominant === 'portrait' ? PANEL2_SHORT_M : PANEL2_LONG_M;
+    const slopeLenM = dominant === 'portrait' ? moduleLongM : moduleCourtM;
+    const rowWidthM = dominant === 'portrait' ? moduleCourtM : moduleLongM;
     mixedMemo = {
       panelOrientation: 'mixed',
       count: panels.length,
-      kwc: (panels.length * PANEL2_WATT) / 1000,
+      kwc: (panels.length * moduleWatt) / 1000,
       rowPitchM: cellFor(slopeLenM, rowWidthM).pitchM,
       panels,
       slopeLenM,

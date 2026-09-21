@@ -30,7 +30,7 @@
  *  committée (« estimé ») si PVGIS est injoignable. JAMAIS un devis : une fourchette.
  */
 import { type LngLat } from './roof';
-import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from './roofPro2';
+import { PERIMETER_SETBACK_M, cotesDePavage, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import { rognerParArete } from './roofSetbackEdge'; // CALX95 câblage
 import {
   PANEL2_WATT,
@@ -252,6 +252,8 @@ interface SolveCtx {
   setbacksM?: Partial<PerimeterSetbacks>;
   /** CAL87 — géométrie est-ouest saisie (faîtage + écart inter-chevrons). */
   eastWestGeometry?: EastWestGeometry;
+  /** CALX109 câblage — module POSÉ (cotes + puissance). Absent ⇒ module par défaut. */
+  module?: Panel2Module;
   tariff: TariffGrid;
   yieldFn: YieldFn | undefined;
   roofAz: number;
@@ -305,6 +307,9 @@ function evalOne(
       obstructionClearancesM: ctx.obstructionClearancesM, // PV61 — dégagement par type
       setbacksM, // PV63 — retraits latéral / extrémité / acrotère
       eastWestGeometry: ctx.eastWestGeometry, // CAL87 — faîtage + écart inter-chevrons saisis
+      // CALX109 câblage — les VRAIES cotes du module posé sur ce pan : un module plus grand
+      // loge moins de rangées. Absent ⇒ module par défaut ⇒ pavage inchangé, octet pour octet.
+      module: ctx.module,
     });
     ctx.cache.set(key, pack);
   }
@@ -320,7 +325,9 @@ function evalOne(
     : ctx.needImposedZero
       ? 0
       : fitCount;
-  const kwc = (placedCount * PANEL2_WATT) / 1000;
+  // CALX109/CALX110 câblage — la puissance du module POSÉ fait foi : deux modèles ne peuvent
+  // plus rendre le même kWc. Sans option, `cotesDePavage` rend PANEL2_WATT — chiffre inchangé.
+  const kwc = (placedCount * cotesDePavage(ctx.module).watt) / 1000;
   const aspect = aspectForAzimuth(family, pack.azimuthDeg);
   let annualKwh: number;
   let perPanelYield: number;
@@ -435,6 +442,15 @@ export interface LiveSolveOptions {
    * exploitable → anneau posable = contour tracé, balayage IDENTIQUE à aujourd'hui.
    */
   retraitsParAreteM?: Readonly<Record<number, number>>;
+  /**
+   * CALX109 câblage — LE MODULE POSÉ sur ce pan, tel que `roofPro11/moduleSelect.cotesPourPan`
+   * le tire du catalogue de la société (`{longM, courtM, epaisM, watt}` — le grand côté, le
+   * petit côté, l'épaisseur et la puissance crête). Ses cotes remplacent celles du module par
+   * défaut DANS le pavage (donc le nombre de rangées et de colonnes bouge réellement) et sa
+   * puissance remplace `PANEL2_WATT` dans le kWc. Absent ⇒ balayage et chiffres IDENTIQUES à
+   * ceux d'aujourd'hui, octet pour octet (`JSON.stringify`).
+   */
+  module?: Panel2Module;
 }
 
 export interface LiveSolveResult {
@@ -516,6 +532,7 @@ export function solveLive(
     obstructionClearancesM: options.obstructionClearancesM, // PV61
     setbacksM: options.setbacksM, // PV63
     eastWestGeometry: options.eastWestGeometry, // CAL87
+    module: options.module, // CALX109 câblage — cotes RÉELLES du module posé
 
     tariff,
     yieldFn: options.yieldFn,
