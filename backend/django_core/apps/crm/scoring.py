@@ -250,6 +250,20 @@ def score_ajustement(lead) -> int:
         return 0
 
 
+# ── CAD-K ── CAD94 — décision du 21/09/2026 ─────────────────────────────────
+# AUCUN EFFET DES TENTATIVES DE CADENCE SUR LE SCORE — décision du
+# 21/09/2026, à rouvrir sur les mesures de CAD87.
+#
+# L'audit L3 du 21/09/2026 constatait qu'un lead injoignable depuis cinq
+# touches garde le même score qu'un lead frais. La tentation est d'en
+# déduire une règle (« -N points par touche sans réponse ») : le fondateur a
+# tranché l'inverse. On ne câble RIEN avant de mesurer. CAD87 dira si le
+# nombre de touches consommées prédit quoi que ce soit — taux de joint par
+# touche × heure × jour × canal, et signatures par nombre de touches
+# consommées — et la règle s'écrira sur ces chiffres, ou ne s'écrira pas.
+#
+# Cette note est datée pour qu'un futur audit ne re-soulève pas la question
+# sans les mesures : la rouvrir sans elles, c'est réinventer le même débat.
 def compute_score(lead) -> int:
     """Calcule et retourne le score de qualité du lead (entier 0–100).
 
@@ -259,6 +273,9 @@ def compute_score(lead) -> int:
     CRX22 — l'ajustement persistant (``Lead.score_ajustement``) est appliqué
     ICI, avant le bornage : c'est le SEUL endroit qui décide de la valeur d'un
     score, badge, tri et « Ma file » compris.
+
+    CAD94 (21/09/2026) — aucune composante ne lit les tentatives de cadence :
+    voir la note datée juste au-dessus.
     """
     score = 0
     score += _completeness_score(lead)
