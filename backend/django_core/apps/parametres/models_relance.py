@@ -88,17 +88,22 @@ CADENCE_CONTACT_DEFAUT = [
     {'ordre': 3, 'delai_jours': 0, 'delai_minutes': 150, 'heure_cible': None,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 2 (répondeur)',
      'template_cle': 'repondeur', 'dimanche_ok': False},
+    # CAD67 (21/09/2026) — `repondeur` partait DEUX fois en ~20 h (ici ET à
+    # l'ordre 6) : le document source (`docs/crm/messages_meryem.md`) le
+    # place sur les appels 2 et 4, pas 2 et 3. `repondeur` est donc retiré
+    # d'ici (script dédié `appel_relance`) et posé sur l'ordre 6 à sa place,
+    # ce qui espace les deux messages répondeur de ~2 jours au lieu de ~20 h.
     {'ordre': 4, 'delai_jours': 1, 'delai_minutes': 0,
      'heure_cible': datetime.time(10, 30),
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel 3 (répondeur)',
-     'template_cle': 'repondeur', 'dimanche_ok': False},
+     'canal': CanalRelance.APPEL, 'libelle': 'Appel 3',
+     'template_cle': 'appel_relance', 'dimanche_ok': False},
     {'ordre': 5, 'delai_jours': 1, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'WhatsApp de valeur',
      'template_cle': 'valeur_j1', 'dimanche_ok': False},
     {'ordre': 6, 'delai_jours': 2, 'delai_minutes': 0,
      'heure_cible': datetime.time(18, 0),
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel 4',
-     'template_cle': '', 'dimanche_ok': False},
+     'canal': CanalRelance.APPEL, 'libelle': 'Appel 4 (répondeur)',
+     'template_cle': 'repondeur', 'dimanche_ok': False},
     {'ordre': 7, 'delai_jours': 3, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Vocal',
      'template_cle': 'vocal_j3', 'dimanche_ok': False},
@@ -109,10 +114,12 @@ CADENCE_CONTACT_DEFAUT = [
     {'ordre': 9, 'delai_jours': 7, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.WHATSAPP, 'libelle': '« Je classe ? »',
      'template_cle': 'je_classe_j7', 'dimanche_ok': False},
+    # CAD67 — le DERNIER appel avant clôture (celui qui décide du classement
+    # du lead) n'avait aucune phrase d'ouverture : script court dédié.
     {'ordre': 10, 'delai_jours': 10, 'delai_minutes': 0,
      'heure_cible': datetime.time(15, 0),
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 6 (dernier)',
-     'template_cle': '', 'dimanche_ok': False},
+     'template_cle': 'appel_dernier', 'dimanche_ok': False},
     {'ordre': 11, 'delai_jours': 14, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Clôture',
      'template_cle': 'cloture_j14', 'dimanche_ok': False},
