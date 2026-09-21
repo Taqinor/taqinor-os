@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import SunDiagram, { COURBES_REPERE } from './SunDiagram'
-import { centroideDuContour, obstructionsDuPan } from './obstructionMath'
+import { HAUTEUR_TOIT_HYPOTHESE_M, centroideDuContour, obstructionsDuPan } from './obstructionMath'
 
 /* ============================================================================
    CAL96 — LA COURSE DU SOLEIL, PAR PAN.
@@ -25,7 +25,24 @@ import { centroideDuContour, obstructionsDuPan } from './obstructionMath'
    un obstacle sans hauteur saisie n'apparaît pas (il ne projette rien) ; aucune
    donnée météo n'entre dans ce diagramme — c'est de la géométrie/astronomie
    pure, pas une prévision.
+
+   CALX52 — LA HAUTEUR DE TOIT SUPPOSÉE DU DIAGRAMME, ENFIN LISIBLE.
+   ----------------------------------------------------------------------------
+   Constat : `obstructionMath.js` exporte `HAUTEUR_TOIT_HYPOTHESE_M = 6` « en
+   se déclarant affichée comme telle », mais cet écran appelait
+   `obstructionsDuPan(origine, obstacles, environment)` SANS le 4ᵉ argument —
+   la valeur retombait donc silencieusement à 6 m, sans qu'aucun mot ne le
+   dise à l'écran. Cette hauteur ne sert qu'aux objets d'ENVIRONNEMENT
+   référencés au sol (CAL67) : leur hauteur EFFECTIVE au-dessus du plan du
+   champ est `heightM − roofHeightM`. Ce panneau AFFICHE la hauteur employée
+   et sa provenance sous le diagramme, et offre un champ qui la REMPLACE (la
+   provenance passe alors à « saisie ») ; sans saisie, la mention exacte
+   accompagne chaque marqueur d'obstruction proche.
    ========================================================================== */
+
+/** La mention exacte exigée par la tâche — jamais reformulée. */
+const MENTION_HYPOTHESE_TOIT = 'hauteur de toit supposée à 6 m (2 étages × '
+  + '3 m), non mesurée'
 
 function libellePan(zone, index) {
   return zone?.label || `Pan ${index + 1}`
@@ -39,6 +56,9 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
   const [panId, setPanId] = useState(null)
   const [chargement, setChargement] = useState(!!calepinageId)
   const [erreur, setErreur] = useState(null)
+  // CALX52 — vide = l'hypothèse par défaut (6 m) ; une saisie valide la
+  // REMPLACE et fait passer la provenance à « saisie ».
+  const [hauteurToitSaisie, setHauteurToitSaisie] = useState('')
 
   useEffect(() => {
     if (!calepinageId) return undefined
@@ -62,12 +82,20 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
   const latitudeDeg = typeof layout?.pin?.lat === 'number' ? layout.pin.lat : null
   const horizonPoints = Array.isArray(layout?.horizonProfile?.points) ? layout.horizonProfile.points : []
 
+  // CALX52 — la hauteur RETENUE et sa provenance : une saisie numérique
+  // valide REMPLACE l'hypothèse (jamais un NaN qui glisserait dans la
+  // géométrie) ; sans saisie exploitable, l'hypothèse documentée s'applique.
+  const nombreSaisi = hauteurToitSaisie === '' ? null : Number(hauteurToitSaisie)
+  const hauteurToitSaisieValide = nombreSaisi !== null && Number.isFinite(nombreSaisi)
+  const provenanceHauteurToit = hauteurToitSaisieValide ? 'saisie' : 'hypothese'
+  const hauteurToitM = hauteurToitSaisieValide ? nombreSaisi : HAUTEUR_TOIT_HYPOTHESE_M
+
   const obstructions = useMemo(() => {
     if (!zone) return []
     const origine = centroideDuContour(zone.vertices)
     if (!origine) return []
-    return obstructionsDuPan(origine, zone.obstacles, layout?.environment)
-  }, [zone, layout?.environment])
+    return obstructionsDuPan(origine, zone.obstacles, layout?.environment, hauteurToitM)
+  }, [zone, layout?.environment, hauteurToitM])
 
   if (chargement) {
     return <div className="cine-card mt-6 p-6" data-testid="cal-course-soleil-loading">Chargement…</div>
@@ -130,6 +158,56 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
               Obstruction proche
             </span>
           </div>
+
+          {/* CALX52 — la hauteur de toit EMPLOYÉE et sa provenance, TOUJOURS
+              lisibles sous le diagramme (jamais une valeur muette). */}
+          <div className="mt-3 border-t border-white/10 pt-3" data-testid="cal-course-soleil-hauteur-toit">
+            <label htmlFor="cal-course-soleil-hauteur-toit-champ" className="tech-label text-lune-faint">
+              Hauteur de toit employée pour les obstructions proches
+            </label>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <input
+                id="cal-course-soleil-hauteur-toit-champ"
+                data-testid="cal-course-soleil-hauteur-toit-champ"
+                type="number"
+                step="any"
+                value={hauteurToitSaisie}
+                onChange={(e) => setHauteurToitSaisie(e.target.value)}
+                placeholder={String(HAUTEUR_TOIT_HYPOTHESE_M)}
+                className="w-24 rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white"
+              />
+              <span className="fig text-sm text-white" data-testid="cal-course-soleil-hauteur-toit-valeur">
+                {`${hauteurToitM} m`}
+              </span>
+            </div>
+            <p
+              className="mt-1 text-xs text-lune-faint"
+              data-testid="cal-course-soleil-hauteur-toit-provenance"
+            >
+              {provenanceHauteurToit === 'saisie'
+                ? `Hauteur de toit saisie : ${hauteurToitM} m.`
+                : MENTION_HYPOTHESE_TOIT}
+            </p>
+          </div>
+
+          {/* La mention accompagne CHAQUE marqueur d'obstruction proche
+              (règle de la tâche) : aucune obstruction n'est tracée sans que
+              la hauteur employée soit lisible juste à côté d'elle. */}
+          {obstructions.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-xs text-lune-faint" data-testid="cal-course-soleil-obstructions-hauteur">
+              {obstructions.map((o, i) => (
+                <li
+                  key={`${o.label ?? 'obs'}-${i}`}
+                  data-testid={`cal-course-soleil-obstruction-hauteur-${i}`}
+                >
+                  {`${o.label ?? 'Obstruction'} — ${provenanceHauteurToit === 'saisie'
+                    ? `hauteur de toit saisie : ${hauteurToitM} m`
+                    : MENTION_HYPOTHESE_TOIT}`}
+                </li>
+              ))}
+            </ul>
+          )}
+
           {latitudeDeg === null && (
             <p className="mt-1 text-xs text-amber-300">
               Latitude du site inconnue (aucun repère posé) — la course du soleil n’est pas tracée.
