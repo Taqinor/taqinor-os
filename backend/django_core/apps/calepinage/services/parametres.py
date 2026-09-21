@@ -136,8 +136,8 @@ def _normaliseurs():
         # une par une dans ``parametres_cles.py`` et chaque valeur porte sa
         # provenance. Même crochet que les cinq autres, aucun second chemin
         # d'écriture.
-        SECTION_SIMULATION: normaliser_section_simulation,
-        SECTION_ELECTRIQUE_SOCIETE: normaliser_section_electrique_societe,
+        SECTION_SIMULATION: _normaliser_section_simulation,
+        SECTION_ELECTRIQUE_SOCIETE: _normaliser_section_electrique_societe,
     }
 
 
@@ -169,14 +169,14 @@ def _normaliser(donnees):
 # Trois refus, chacun NOMMANT le champ fautif (jamais un « non enregistré »
 # générique) : clé hors registre, valeur sans provenance admise, valeur vide.
 
-def normaliser_section_simulation(valeur):
+def _normaliser_section_simulation(valeur):
     """La section ``simulation`` VALIDÉE — ``{}`` si rien n'est saisi."""
     from .parametres_cles import SECTION_SIMULATION
 
     return _normaliser_section_a_registre(SECTION_SIMULATION, valeur)
 
 
-def normaliser_section_electrique_societe(valeur):
+def _normaliser_section_electrique_societe(valeur):
     """La section ``electrique_societe`` VALIDÉE, même discipline."""
     from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE
 

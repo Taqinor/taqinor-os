@@ -44,8 +44,8 @@ from apps.calepinage.services.parametres import (
     ReglageInvalide,
     _normaliseurs,
     enregistrer_parametres,
-    normaliser_section_electrique_societe,
-    normaliser_section_simulation,
+    _normaliser_section_electrique_societe,
+    _normaliser_section_simulation,
 )
 from apps.calepinage.services.parametres_cles import (
     CLES_ELECTRIQUE_SOCIETE,
@@ -204,38 +204,38 @@ class NormalisationTest(SimpleTestCase):
     def test_rien_de_saisi_rend_une_section_vide(self):
         for valeur in (None, {}):
             with self.subTest(valeur=valeur):
-                self.assertEqual(normaliser_section_simulation(valeur), {})
+                self.assertEqual(_normaliser_section_simulation(valeur), {})
                 self.assertEqual(
-                    normaliser_section_electrique_societe(valeur), {})
+                    _normaliser_section_electrique_societe(valeur), {})
 
     def test_une_section_qui_n_est_pas_un_objet_est_refusee(self):
         with self.assertRaises(ReglageInvalide) as refus:
-            normaliser_section_simulation([1, 2])
+            _normaliser_section_simulation([1, 2])
         self.assertEqual(refus.exception.champ, SECTION_SIMULATION)
 
     def test_une_cle_hors_registre_est_refusee_en_la_nommant(self):
         with self.assertRaises(ReglageInvalide) as refus:
-            normaliser_section_simulation(
+            _normaliser_section_simulation(
                 {'coefficient_maison': {'valeur': 1, 'source': 'societe'}})
         self.assertEqual(refus.exception.champ, 'coefficient_maison')
         self.assertIn('coefficient_maison', str(refus.exception))
 
     def test_une_valeur_sans_source_est_refusee_en_nommant_la_cle(self):
         with self.assertRaises(ReglageInvalide) as refus:
-            normaliser_section_simulation(
+            _normaliser_section_simulation(
                 {'mismatch_fabricant_pct': {'valeur': 1.5}})
         self.assertEqual(refus.exception.champ, 'mismatch_fabricant_pct')
         self.assertIn('Mismatch de fabrication', str(refus.exception))
 
     def test_une_source_vide_est_refusee_comme_une_source_absente(self):
         with self.assertRaises(ReglageInvalide) as refus:
-            normaliser_section_simulation(
+            _normaliser_section_simulation(
                 {'b0_iam': {'valeur': 0.05, 'source': '   '}})
         self.assertEqual(refus.exception.champ, 'b0_iam')
 
     def test_une_provenance_hors_liste_est_refusee_en_la_citant(self):
         with self.assertRaises(ReglageInvalide) as refus:
-            normaliser_section_electrique_societe(
+            _normaliser_section_electrique_societe(
                 {'seuil_desequilibre_pct': {'valeur': 5,
                                             'source': 'au_pif'}})
         self.assertEqual(refus.exception.champ, 'seuil_desequilibre_pct')
@@ -245,14 +245,14 @@ class NormalisationTest(SimpleTestCase):
         for valeur in (None, '', {}, []):
             with self.subTest(valeur=valeur):
                 with self.assertRaises(ReglageInvalide) as refus:
-                    normaliser_section_simulation(
+                    _normaliser_section_simulation(
                         {'mode_meteo': {'valeur': valeur,
                                         'source': 'societe'}})
                 self.assertEqual(refus.exception.champ, 'mode_meteo')
 
     def test_une_enveloppe_avec_du_rabiot_est_refusee(self):
         with self.assertRaises(ReglageInvalide) as refus:
-            normaliser_section_simulation(
+            _normaliser_section_simulation(
                 {'mode_meteo': {'valeur': 'tmy', 'source': 'societe',
                                 'commentaire': 'au cas où'}})
         self.assertEqual(refus.exception.champ, 'mode_meteo')
@@ -260,13 +260,13 @@ class NormalisationTest(SimpleTestCase):
 
     def test_une_reference_qui_n_est_pas_un_texte_est_refusee(self):
         with self.assertRaises(ReglageInvalide) as refus:
-            normaliser_section_simulation(
+            _normaliser_section_simulation(
                 {'mode_meteo': {'valeur': 'tmy', 'source': 'societe',
                                 'reference': 2026}})
         self.assertEqual(refus.exception.champ, 'mode_meteo')
 
     def test_une_valeur_saisie_ressort_avec_sa_provenance(self):
-        rendu = normaliser_section_simulation({
+        rendu = _normaliser_section_simulation({
             'mode_meteo': {'valeur': '  pluriannuel  ', 'source': 'societe',
                            'reference': '  décision du 21/09/2026  '},
         })
@@ -276,7 +276,7 @@ class NormalisationTest(SimpleTestCase):
         })
 
     def test_une_reference_absente_ressort_vide_jamais_devinee(self):
-        rendu = normaliser_section_electrique_societe(
+        rendu = _normaliser_section_electrique_societe(
             {'cos_phi_par_defaut': {'valeur': 1.0, 'source': 'societe'}})
         self.assertEqual(rendu['cos_phi_par_defaut']['reference'], '')
 
@@ -285,19 +285,19 @@ class NormalisationTest(SimpleTestCase):
         ne dit pas le TYPE, il dit que la clé existe."""
         table = {'flush': {'uc_w_m2k': 20.0, 'uv_w_m3sk': 0.0,
                            'source': 'mesure', 'reference': 'essai chantier'}}
-        rendu = normaliser_section_simulation(
+        rendu = _normaliser_section_simulation(
             {'thermique_par_pose': {'valeur': table, 'source': 'mesure',
                                     'reference': 'essai chantier'}})
         self.assertEqual(rendu['thermique_par_pose']['valeur'], table)
 
     def test_une_cle_mise_a_null_est_retiree_sans_rien_deviner(self):
-        rendu = normaliser_section_simulation({'mode_meteo': None})
+        rendu = _normaliser_section_simulation({'mode_meteo': None})
         self.assertEqual(rendu, {})
 
     def test_toutes_les_provenances_admises_passent(self):
         for source in SOURCES_ADMISES:
             with self.subTest(source=source):
-                rendu = normaliser_section_simulation(
+                rendu = _normaliser_section_simulation(
                     {'annees_exploitation': {'valeur': 25, 'source': source}})
                 self.assertEqual(
                     rendu['annees_exploitation']['source'], source)
@@ -321,9 +321,9 @@ class ContratTest(SimpleTestCase):
 
     def test_l_exemple_committe_traverse_les_normaliseurs(self):
         for section, normaliseur in (
-                (SECTION_SIMULATION, normaliser_section_simulation),
+                (SECTION_SIMULATION, _normaliser_section_simulation),
                 (SECTION_ELECTRIQUE_SOCIETE,
-                 normaliser_section_electrique_societe)):
+                 _normaliser_section_electrique_societe)):
             with self.subTest(section=section):
                 publiee = CONTRAT['exemple'][section]
                 self.assertTrue(

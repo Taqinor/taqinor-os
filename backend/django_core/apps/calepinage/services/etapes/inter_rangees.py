@@ -65,7 +65,7 @@ nommant le champ.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from apps.calepinage.services import etapes
 from apps.calepinage.services.pvgis_serie import MOTIF_COMPOSANTES_ABSENTES
@@ -398,7 +398,8 @@ def _position(point, latitude, longitude, decalage_minutes):
     if heure is None:
         return None
     try:
-        moment = (datetime(int(annee), int(mois), int(jour))
+        moment = (datetime(int(annee), int(mois), int(jour),
+                           tzinfo=timezone.utc)
                   + timedelta(hours=heure, minutes=-float(decalage_minutes)))
         return position_solaire(
             latitude, longitude, annee=moment.year, mois=moment.month,

@@ -46,7 +46,8 @@ Module PUR : aucune base, aucun réseau.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from apps.calepinage.services import etapes as _etapes
 
@@ -89,7 +90,8 @@ def appliquer(serie, contexte):
             'un pourcentage annuel supposé.',
             champ=f'simulation.{CLE_REGLAGE}')
 
-    horodatages, colonne_absente = _horodatages(serie)
+    repere = _repere(contexte)
+    horodatages, colonne_absente = _horodatages(serie, repere)
     if colonne_absente:
         return serie, _etapes.etape_omise(
             LIBELLE,
@@ -98,7 +100,7 @@ def appliquer(serie, contexte):
             'peut être rapportée à aucune heure.',
             champ=f'serie_horaire.{colonne_absente}')
 
-    fenetres, motif = _fenetres(brutes, horodatages)
+    fenetres, motif = _fenetres(brutes, horodatages, repere)
     if fenetres is None:
         return serie, _etapes.etape_omise(
             LIBELLE, motif, champ=f'simulation.{CLE_REGLAGE}')
@@ -124,7 +126,26 @@ def appliquer(serie, contexte):
 
 # ── situer chaque heure ────────────────────────────────────────────────
 
-def _horodatages(serie):
+def _repere(contexte):
+    """Le fuseau partagé par les heures de la série ET les fenêtres saisies.
+
+    La série entre ré-indexée sur l'heure légale du site (CALX143) et les
+    fenêtres d'arrêt se saisissent dans ce même repère : les deux côtés
+    portent donc le fuseau saisi du site. Fuseau absent ou inconnu ⇒ repère
+    UTC nominal, partagé par les deux côtés — seule la comparaison importe,
+    aucune conversion n'est faite.
+    """
+    fuseau = ((contexte.get('site') or {}) if isinstance(contexte, dict)
+              else {}).get('fuseau')
+    if isinstance(fuseau, str) and fuseau.strip():
+        try:
+            return ZoneInfo(fuseau.strip())
+        except (KeyError, ValueError, OSError):
+            pass
+    return timezone.utc
+
+
+def _horodatages(serie, repere):
     """``([datetime | None, ...], colonne_absente)`` pour chaque point."""
     horodatages = []
     for point in (serie or {}).get('points') or ():
@@ -139,7 +160,8 @@ def _horodatages(serie):
             valeurs[colonne] = nombre
         try:
             horodatages.append(datetime(valeurs['annee'], valeurs['mois'],
-                                        valeurs['jour'], valeurs['heure']))
+                                        valeurs['jour'], valeurs['heure'],
+                                        tzinfo=repere))
         except ValueError:
             return horodatages, 'jour'
     return horodatages, ''
@@ -156,7 +178,7 @@ def _entier(valeur):
 
 # ── lire les fenêtres, et refuser celles qui ne tiennent pas ───────────
 
-def _fenetres(brutes, horodatages):
+def _fenetres(brutes, horodatages, repere):
     """``(fenetres, '')`` ou ``(None, motif)`` — chaque refus CITE ses dates."""
     connus = [instant for instant in horodatages if instant is not None]
     if not connus:
@@ -169,8 +191,8 @@ def _fenetres(brutes, horodatages):
         if not isinstance(brute, dict):
             return None, (f'La fenêtre d\'arrêt n° {rang} n\'est pas un objet '
                           '{debut, fin, motif}.')
-        debut = _instant(brute.get('debut'))
-        fin = _instant(brute.get('fin'))
+        debut = _instant(brute.get('debut'), repere)
+        fin = _instant(brute.get('fin'), repere)
         if debut is None or fin is None:
             return None, (
                 f'La fenêtre d\'arrêt n° {rang} porte des dates illisibles '
@@ -191,7 +213,7 @@ def _fenetres(brutes, horodatages):
     return fenetres, ''
 
 
-def _instant(valeur):
+def _instant(valeur, repere):
     """Un horodatage ISO — date seule ou date et heure — ou ``None``."""
     if not isinstance(valeur, str) or not valeur.strip():
         return None
@@ -199,7 +221,7 @@ def _instant(valeur):
     for forme in ('%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M', '%Y-%m-%dT%H',
                   '%Y-%m-%d %H:%M', '%Y-%m-%d %H', '%Y-%m-%d'):
         try:
-            return datetime.strptime(texte, forme)
+            return datetime.strptime(texte, forme).replace(tzinfo=repere)
         except ValueError:
             continue
     return None

@@ -449,7 +449,8 @@ def _instant_utc(point, decalage_minutes):
     """L'instant UTC d'un point de série, ou ``None`` s'il est illisible."""
     try:
         moment = datetime.datetime(int(point['annee']), int(point['mois']),
-                                   int(point['jour']))
+                                   int(point['jour']),
+                                   tzinfo=datetime.timezone.utc)
         moment += datetime.timedelta(hours=float(point['heure']))
     except (KeyError, TypeError, ValueError):
         return None
