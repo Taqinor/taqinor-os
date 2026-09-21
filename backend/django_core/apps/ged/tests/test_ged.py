@@ -696,21 +696,6 @@ class DocumentLienTests(GedBase):
         self.assertEqual(lien.company_id, self.co_a.id)
         self.assertEqual(lien.object_id, four.id)
 
-    def test_link_document_to_employe(self):
-        """DC33 — un document GED peut pointer une fiche employé (ContentType)."""
-        from apps.rh.models import DossierEmploye
-        emp = DossierEmploye.objects.create(
-            company=self.co_a, matricule='M-001', nom='Doe', prenom='Jane')
-        api = auth(self.admin_a)
-        resp = api.post('/api/django/ged/liens/', {
-            'document': self.doc_a.id,
-            'model': 'rh.dossieremploye', 'id': emp.id,
-        }, format='json')
-        self.assertEqual(resp.status_code, 201, resp.data)
-        lien = DocumentLien.objects.get(id=resp.data['id'])
-        self.assertEqual(lien.company_id, self.co_a.id)
-        self.assertEqual(lien.object_id, emp.id)
-
 
 # ── GED7 — import des records.Attachment existants dans la GED ──────
 class MigrateAttachmentsToGedTests(GedBase):

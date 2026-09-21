@@ -13,10 +13,52 @@ from core import usage_limits
 from core.models import ApiUsageRecord
 
 User = get_user_model()
-# Résolu par nom (jamais un import statique d'apps.publicapi, non-fondation) :
-# core reste une couche de base même en test — même patron
+# Résolus par nom (jamais un import statique d'apps.ged/apps.publicapi,
+# non-fondation) : core reste une couche de base même en test — même patron
 # que core.tests.test_rls_cross_tenant_denial (AUD422, ".importlinter").
+Cabinet = django_apps.get_model('ged', 'Cabinet')
+Document = django_apps.get_model('ged', 'Document')
+DocumentVersion = django_apps.get_model('ged', 'DocumentVersion')
+Folder = django_apps.get_model('ged', 'Folder')
+QuotaStockage = django_apps.get_model('ged', 'QuotaStockage')
 ApiKey = django_apps.get_model('publicapi', 'ApiKey')
+
+
+def _document_avec_version(company, size, suffix=''):
+    """Crée le chemin complet Cabinet -> Folder -> Document -> version d'UNE
+    société, avec une taille de fichier donnée (helper — DocumentVersion ne
+    peut pas exister sans document, ni document sans dossier/cabinet)."""
+    cabinet = Cabinet.objects.create(company=company, nom=f'Cabinet{suffix}')
+    folder = Folder.objects.create(
+        company=company, cabinet=cabinet, nom=f'Dossier{suffix}')
+    document = Document.objects.create(
+        company=company, folder=folder, nom=f'Doc{suffix}')
+    return DocumentVersion.objects.create(
+        company=company, document=document, file_key=f'key{suffix}', size=size)
+
+
+class UsageGedTest(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(nom='Acme', slug='acme-ntobs8')
+
+    def test_reads_real_stored_size_and_quota(self):
+        _document_avec_version(self.company, 2048)
+        QuotaStockage.objects.create(company=self.company, quota_octets=4096)
+
+        res = usage_limits._usage_ged(self.company)
+        self.assertEqual(res['utilise'], 2048)
+        self.assertEqual(res['limite'], 4096)
+
+    def test_zero_quota_means_illimite(self):
+        _document_avec_version(self.company, 100)
+        res = usage_limits._usage_ged(self.company)
+        self.assertIsNone(res['limite'])
+
+    def test_never_leaks_another_companys_storage(self):
+        autre = Company.objects.create(nom='Autre', slug='autre-ntobs8')
+        _document_avec_version(autre, 999999)
+        res = usage_limits._usage_ged(self.company)
+        self.assertEqual(res['utilise'], 0)
 
 
 class UsageApiTest(TestCase):

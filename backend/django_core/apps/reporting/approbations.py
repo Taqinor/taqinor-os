@@ -7,6 +7,9 @@ attente » existantes :
   * ``automation.AutomationApproval`` (status pending) — via
     ``apps.automation.selectors.approvals_en_attente`` +
     ``apps.automation.services.decider_approval`` ;
+  * ``ged.DemandeApprobation`` (statut en_attente) — via
+    ``apps.ged.selectors.demandes_approbation_en_attente`` +
+    ``apps.ged.services.approve_demande``/``reject_demande`` ;
   * ``installations.DemandeAchat`` (statut soumise, FG310 — vit dans
     installations, PAS stock) — via
     ``apps.installations.selectors.demandes_achat_en_attente`` +
@@ -69,6 +72,29 @@ def _automation_items(company):
     return out
 
 
+def _ged_items(company):
+    from apps.ged import selectors as ged_selectors
+    out = []
+    for demande in ged_selectors.demandes_approbation_en_attente(company):
+        out.append({
+            'source': 'ged',
+            'id': demande.id,
+            'libelle': f'Document {getattr(demande.document, "nom", demande.document_id)}',
+            'cree_le': demande.created_at,
+            'demandeur': getattr(demande.demandeur, 'username', None),
+            'priorite': None,
+            # VX100 — pas de route détail document ni de montant homogène
+            # côté GED aujourd'hui : jamais fabriqués.
+            'montant': None,
+            'lien': None,
+            # VX218 — seule `automation` est balayée par YEVNT9 aujourd'hui ;
+            # champs présents pour un contrat d'API uniforme, jamais fabriqués.
+            'niveau_escalade': None,
+            'derniere_relance_le': None,
+        })
+    return out
+
+
 def _installations_items(company):
     from apps.installations import selectors as installations_selectors
     out = []
@@ -124,6 +150,7 @@ def _core_workflow_items(company):
 
 _SOURCE_LOADERS = {
     'automation': _automation_items,
+    'ged': _ged_items,
     'installations': _installations_items,
     'workflow': _core_workflow_items,
 }
@@ -269,8 +296,8 @@ def approbations_en_attente(request):
 
     Renvoie les demandes multi-modules EN ATTENTE, scopées à la société de
     l'utilisateur (jamais une autre société). Filtres :
-      - ``?source=`` — une seule source (``automation``/``installations``/
-        ``workflow``).
+      - ``?source=`` — une seule source (``automation``/``ged``/
+        ``installations``/``workflow``).
       - ``?categorie=`` — ZCTR9, alias de ``source`` (la seule facette de
         catégorie homogène à travers les sources aujourd'hui).
       - ``?priorite=`` — ZCTR9, ne retient que les items portant cette
@@ -353,6 +380,20 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
                 return 404, {'detail': 'Introuvable.'}
             automation_services.decider_approval(
                 approval, approve=approve, user=user)
+
+        elif source == 'ged':
+            from apps.ged import selectors as ged_selectors
+            from apps.ged import services as ged_services
+            demande = (ged_selectors.demandes_approbation_en_attente(company)
+                       .filter(id=obj_id).first())
+            if demande is None:
+                return 404, {'detail': 'Introuvable.'}
+            if approve:
+                ged_services.approve_demande(
+                    demande, user=user, commentaire=motif)
+            else:
+                ged_services.reject_demande(
+                    demande, user=user, commentaire=motif)
 
         elif source == 'installations':
             from apps.installations import selectors as installations_selectors

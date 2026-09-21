@@ -1,12 +1,10 @@
 // PACT99 — Documents clients (portail). `apps.portail.DocumentClientPortail`
-// stocke le fichier téléversé par le client dans MinIO (`fichier_key`) ; le
-// champ `traite` est en lecture seule côté serializer — seule l'action
-// serveur `marquer_traite` peut le poser. SOLMVP16 — le miroir GED
-// automatique (WIR94) a été retiré (ged est un module sorti du produit) :
-// cet écran affiche désormais seulement si un fichier est présent, sans lien
-// de consultation directe. À noter honnêtement, contrairement à la règle
-// générale du portail : ni le client ni l'équipe n'ont d'écran de DÉPÔT ;
-// cet écran construit UNIQUEMENT le côté ERP (consultation + marquage
+// dépose déjà AUTOMATIQUEMENT en GED tout document lié à un client ou un
+// lead (récepteurs `apps/portail/receivers.py`, WIR94) ; le champ `traite`
+// est en lecture seule côté serializer — seule l'action serveur
+// `marquer_traite` peut le poser. À noter honnêtement, contrairement à la
+// règle générale du portail : ni le client ni l'équipe n'ont d'écran de
+// DÉPÔT ; cet écran construit UNIQUEMENT le côté ERP (consultation + marquage
 // traité), le dépôt côté client reste hors périmètre.
 import { useEffect, useState } from 'react'
 import { formatDateTime } from '../../../lib/format'
@@ -60,13 +58,18 @@ export default function DocumentsClientPortailAdmin() {
       // AUD148 (b) — le lien pointait sur l'URL BRUTE du `FileField`
       // (`/media/compta/portail_docs/…`), morte par construction : le backend
       // ne définit ni `MEDIA_URL` ni `MEDIA_ROOT`, aucune route ne sert
-      // `/media/` et `frontend/nginx.conf` n'a aucune `location /media/`.
-      // SOLMVP16 — le lien de consultation GED authentifié a été retiré avec
-      // le miroir GED (module sorti du produit) : la colonne affiche
-      // seulement si un binaire a été déposé, sans exposer d'URL brute.
+      // `/media/` et `frontend/nginx.conf` n'a aucune `location /media/`. On
+      // pointe désormais sur le téléchargement GED AUTHENTIFIÉ servi par le
+      // serveur (`lien_ged`), et on n'expose plus jamais d'URL de média
+      // statique.
       id: 'fichier', header: 'Fichier', width: 110, sortable: false,
-      cell: (_v, row) => (row.fichier_present ? 'Déposé' : '—'),
+      cell: (_v, row) => (row.lien_ged ? (
+        <a href={row.lien_ged} target="_blank" rel="noreferrer" className="text-primary underline">
+          Voir le fichier
+        </a>
+      ) : '—'),
     },
+    { id: 'ged', header: 'GED', width: 90, accessor: (r) => (r.document_ged ? `#${r.document_ged}` : '—') },
     {
       id: 'traite', header: 'Statut', width: 110, sortable: false,
       cell: (_v, row) => (
@@ -91,9 +94,9 @@ export default function DocumentsClientPortailAdmin() {
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
         Documents déposés par le client depuis le portail (factures ONEE,
-        plans…). « Marquer traité » signale qu'un document a été intégré à
-        l'étude — le dépôt lui-même reste hors périmètre de cet écran (aucun
-        formulaire de dépôt côté ERP).
+        plans…), intégrés automatiquement en GED. « Marquer traité » signale
+        qu'un document a été intégré à l'étude — le dépôt lui-même reste hors
+        périmètre de cet écran (aucun formulaire de dépôt côté ERP).
       </p>
 
       {loading ? (

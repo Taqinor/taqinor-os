@@ -918,8 +918,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='docqa')
     def docqa(self, request):
-        """FG352/XKB20 — Récupération RAG / DocQA : top-k fragments pour une
-        question, GED + KB combinés.
+        """FG352 — Récupération RAG / DocQA : top-k fragments pour une
+        question, sur les documents de la GED.
 
         `GET …/documents/docqa/?q=<question>&k=<n>`. Renvoie les fragments de
         documents (`DocumentChunk`) les plus proches de la question (distance
@@ -928,17 +928,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         d'embedding, `enabled` est faux et `results` est vide (no-op propre,
         aucun coût). Réutilise `selectors.retrieve_chunks`.
 
-        XKB20 — les fragments d'articles de la base de connaissances
-        (`apps.kb`) sont ÉGALEMENT récupérés, via `kb.selectors.retrieve_chunks`
-        (JAMAIS les models/views de `kb` directement — lecture cross-app par
-        selector, cf. CLAUDE.md) : ce sélecteur applique DÉJÀ les ACL KB (KB7 +
-        XKB9) pour l'utilisateur courant, donc un article restreint n'est
-        jamais cité pour un utilisateur non autorisé. Les deux jeux de
-        fragments sont fusionnés et re-triés par distance croissante avant
-        d'être tronqués à `k` — la meilleure source gagne, peu importe l'app
-        d'origine."""
-        from apps.kb import selectors as kb_selectors
-
+        SOLMVP16b — les fragments d'articles de la base de connaissances
+        (XKB20) ne sont plus récupérés : ce module est sorti du produit (MVP
+        solaire). Les résultats gardent leur clé `source` (toujours `'ged'`
+        aujourd'hui) : la forme de la réponse est inchangée pour l'écran."""
         query = request.query_params.get('q', '')
         try:
             k = int(request.query_params.get('k', 5))
@@ -953,15 +946,6 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             'texte': c.texte,
             'distance': getattr(c, 'distance', None),
         } for c in chunks]
-        kb_chunks = kb_selectors.retrieve_chunks(request.user, query, limit=k)
-        results += [{
-            'source': 'kb',
-            'article': c.article_id,
-            'article_titre': c.article.titre,
-            'chunk_index': c.chunk_index,
-            'texte': c.texte,
-            'distance': getattr(c, 'distance', None),
-        } for c in kb_chunks]
         results.sort(key=lambda r: (
             r['distance'] if r['distance'] is not None else float('inf')))
         results = results[:k]

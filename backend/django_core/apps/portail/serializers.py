@@ -5,10 +5,11 @@ transitoire ODX12, dans le module compta (interleavé avec les serializers
 comptables) ; il est désormais relogé ICI, seul point d'accès stable pour les
 ViewSets portail et les routes ``/api/django/portail/…``.
 
-``DocumentClientPortailSerializer`` ne dépose plus de miroir GED (module
-sorti du produit, WIR94 retiré) : le champ ``document_ged``/``lien_ged`` a
-disparu, le document déposé reste servi tel quel depuis son stockage MinIO
-natif (``fichier_key`` via ``records.storage``).
+``DocumentClientPortailSerializer`` garde le dépôt GED canonique (WIR94,
+orchestré par ``apps/portail/receivers.py``) : ``document_ged`` est posé côté
+serveur et ``lien_ged`` sert la relecture AUTHENTIFIÉE de la dernière version
+(jamais une URL de média statique). La GED reste dans le produit (décision
+fondateur du 21/09/2026, SOLMVP16b).
 """
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -164,8 +165,10 @@ class PaiementFacturePortailSerializer(serializers.ModelSerializer):
 class DocumentClientPortailSerializer(AttachmentSerializerMixin,
                                       serializers.ModelSerializer):
     # AUD835 — l'upload part dans MinIO (``records.storage``) au lieu du
-    # ``FileField`` irrécupérable. Le champ reste ÉCRIVABLE et jamais rendu :
-    # on n'expose toujours aucune URL brute.
+    # ``FileField`` irrécupérable ; le dépôt GED canonique (WIR94) relit les
+    # octets par la clé (``apps/portail/receivers.py``). Le champ reste
+    # ÉCRIVABLE et jamais rendu : on n'expose toujours aucune URL brute, la
+    # relecture passe par la GED authentifiée (``lien_ged``).
     attachment_fields = ('fichier',)
 
     # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
@@ -176,20 +179,25 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
     # ``MEDIA_URL`` NI ``MEDIA_ROOT`` (seules des constantes MinIO), qu'aucune
     # route ne sert ``/media/`` et que ``frontend/nginx.conf`` n'a aucune
     # ``location /media/`` : le lien était mort par construction. Le champ
-    # reste ÉCRIVABLE mais n'est plus RENDU — on n'expose jamais une URL de
-    # média statique.
+    # reste ÉCRIVABLE (le dépôt WIR94 vers la GED se déclenche au ``save()``)
+    # mais n'est plus RENDU — on n'expose jamais une URL de média statique.
     fichier = serializers.FileField(
         write_only=True, required=False, allow_null=True)
     fichier_present = serializers.SerializerMethodField()
+    lien_ged = serializers.SerializerMethodField()
 
     class Meta:
         model = DocumentClientPortail
         fields = [
             'id', 'client_id', 'lead_id', 'type_document', 'libelle',
-            'fichier', 'fichier_present', 'traite', 'date_depot',
+            'fichier', 'fichier_present', 'lien_ged', 'document_ged',
+            'traite', 'date_depot',
         ]
+        # WIR94 — ``document_ged`` posé côté serveur (dépôt GED automatique
+        # au ``save()``, jamais lu du corps de requête).
         read_only_fields = [
-            'fichier_present', 'traite', 'date_depot',
+            'document_ged', 'fichier_present', 'lien_ged', 'traite',
+            'date_depot',
         ]
 
     @extend_schema_field(serializers.BooleanField())
@@ -201,6 +209,27 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
         """
         return bool(getattr(obj, 'fichier_key', '')
                     or getattr(obj, 'fichier', None))
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_lien_ged(self, obj):
+        """AUD148 (b) — Téléchargement GED AUTHENTIFIÉ de la dernière version.
+
+        Chemin canonique déjà utilisé par l'écran GED
+        (``/api/django/ged/versions/<id>/apercu/``, gardé ``IsAnyRole`` et
+        journalisé) : le document déposé se relit par la GED, avec ses ACL et
+        sa trace d'accès, jamais par une URL de fichier statique. Lecture
+        cross-app via ``apps.ged.selectors`` — jamais ``apps.ged.models``.
+        """
+        if not getattr(obj, 'document_ged_id', None):
+            return None
+        try:
+            from apps.ged.selectors import latest_version
+            version = latest_version(obj.document_ged)
+        except Exception:  # noqa: BLE001 - une GED indisponible = pas de lien
+            return None
+        if version is None:
+            return None
+        return f'/api/django/ged/versions/{version.id}/apercu/'
 
     def validate_client_id(self, value):
         """AUD142 — le client DOIT appartenir à la société de l'appelant."""

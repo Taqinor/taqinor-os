@@ -106,17 +106,18 @@ ALLOWED_UNCONSUMED = {
     # aujourd'hui — réservé ici plutôt qu'orphelin, comme les seams ci-dessus.
     "dossier_export_cloture",
     # SOLMVP23 — SEAMS DES MODULES SORTIS DU MVP SOLAIRE (Phase 2,
-    # docs/parked-modules.md). Ces huit signaux restent DECLARES sur le bus (ils
+    # docs/parked-modules.md). Ces sept signaux restent DECLARES sur le bus (ils
     # sont au catalogue d'integration NTPLT12 et la migration de semis les
     # alimente) mais leur UNIQUE abonne vivait dans un module sorti : une fois
     # son app reduite a sa coquille, son ``receivers.py`` ne s'enregistre plus
     # et le signal devient orphelin. On les reserve ici plutot que de les
     # supprimer : le jour ou le module revient, son abonnement redevient vrai
     # sans toucher ``core``. Abonne historique entre parentheses.
+    # (SOLMVP16b — ``document_produit`` a quitte cette liste : la GED RESTE
+    # dans le MVP solaire, son ``receivers.py`` reste donc un abonne vivant.)
     "employe_sorti",                    # paie (desactivation du profil de paie)
     "conge_approuve",                   # gestion de projet (charge/planning)
     "contrat_actif",                    # contrats (chatter ARC8)
-    "document_produit",                 # GED (centralisation de fichiers)
     "incident_declared",                # QHSE (declaration d'incident)
     "cycle_sterilisation_non_conforme",  # QHSE (non-conformite de cycle)
     "budget_cycle_clos",                # FP&A (cloture de cycle budgetaire)

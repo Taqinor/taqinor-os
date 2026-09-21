@@ -59,11 +59,12 @@ Deux conséquences à connaître :
   | `qhse` | `NonConformite` | `stock` (SOLMVP12) |
   | `rh` | `Departement` | `stock` (SOLMVP12) |
   | `rh` | `Competence` | `sav` (SOLMVP14) |
-  | `ged` | `Document` | `portail` (SOLMVP16) |
+  | ~~`ged`~~ | ~~`Document`~~ | ~~`portail` (SOLMVP16)~~ — **ANNULÉ par SOLMVP16b** : la GED RESTE dans le MVP, la FK `document_ged` de `DocumentClientPortail` est rétablie et la migration `RemoveField` (jamais appliquée nulle part) supprimée. |
 
   Le décompte définitif et la note déployeur sont arrêtés par SOLMVP12/14/16 puis
   **SOLMVP53** *(à compléter par SOLMVP53)* — le préambule du Groupe SOLMVP annonce 7 liens,
-  l'inventaire par tâche en énumère 6 ci-dessus.
+  l'inventaire par tâche en énumère 5 qui partent vraiment ci-dessus (le 6e, `portail` →
+  `ged.Document`, est rétabli par SOLMVP16b).
 - **Les appels function-local gardé → parqué sont supprimés avec la fonctionnalité**, jamais
   remplacés par une garde `is_installed` : le code d'une app parquée **n'existe plus**.
 
@@ -117,7 +118,7 @@ celles de `GROUPES` dans `core/parked.py`, et chaque famille est une lane de coq
 | App | Ce qu'elle était |
 | --- | --- |
 | `datarooms` | Salles de données sécurisées : collections GED, liens et expirations par viewer, filigrane, journal. |
-| `ged` | Gestion électronique documentaire. |
+| ~~`ged`~~ | **RESTE (décision fondateur 21/09 : Documents/GED dans le MVP)** : la gestion électronique documentaire est un module vendu du MVP solaire (lanceur « Documents ») — PV de réception, attestations, contrats client, dépôts publics, signatures. Elle sort donc du registre : 47 apps sortent, pas 48. `apps/ged` est détaché des apps parquées par SOLMVP16b (liens `kb`/`rh` retirés) et ses liens depuis les apps gardées (portail, calepinage, notifications, reporting, customfields, core) sont rétablis. |
 | `esg` | Reporting ESG/RSE consolidé (périodes figées, catalogue GRI-lite, rapports, trajectoires). |
 | `qhse` | Qualité, hygiène, sécurité, environnement. |
 | `gestion_projet` | Projets multi-chantiers et ressources. |
@@ -172,10 +173,12 @@ Ordre décidé le 20/09/2026 (à retenir, **jamais à re-décider**) — `PHASE2
 `core/parked.py` :
 
 1. **`chat`** — Messages (messagerie interne d'équipe).
-2. **`ged`** — GED (gestion documentaire).
-3. **`ao` + `veille_ao` + `btp_chantier`** — ensemble, future **édition « Solaire C&I / EPC »**.
-4. **Pack Maroc : `paie` + `einvoice` + `fiscal`.**
-5. **`compta`** — comptabilité générale.
+2. **`ao` + `veille_ao` + `btp_chantier`** — ensemble, future **édition « Solaire C&I / EPC »**.
+3. **Pack Maroc : `paie` + `einvoice` + `fiscal`.**
+4. **`compta`** — comptabilité générale.
+
+La GED était le n°2 de cette liste : **décision fondateur du 21/09/2026, elle RESTE dans le
+MVP** (module « Documents ») — il n'y a donc plus rien à faire revenir pour elle.
 
 Les sous-fonctions retirées du module Chantiers (sous-traitance, prix négociés,
 documents-projet, suivi-projet, consultations fournisseurs, astreintes) restent en base,

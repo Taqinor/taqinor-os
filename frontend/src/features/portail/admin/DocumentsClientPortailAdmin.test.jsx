@@ -21,14 +21,14 @@ function renderPage(ui) {
 
 describe('DocumentsClientPortailAdmin — PACT99', () => {
   // AUD148 (b) — le serveur ne publie plus l'URL brute du FileField
-  // (`/media/…`, morte par construction). SOLMVP16 — le miroir GED (et son
-  // lien de consultation authentifié) a été retiré : la colonne « Fichier »
-  // affiche seulement une présence, jamais une URL.
+  // (`/media/…`, morte par construction) : la colonne lit `lien_ged`, le
+  // téléchargement GED authentifié.
   it('affiche la liste avec type, libellé et statut de traitement', async () => {
     portailApi.admin.documentsClient.liste.mockResolvedValue({
       data: [{
         id: 1, client_id: 12, lead_id: null, type_document: 'facture_onee',
         libelle: 'Facture ONEE juillet', fichier_present: true,
+        lien_ged: '/api/django/ged/versions/77/apercu/', document_ged: 55,
         traite: false, date_depot: '2026-08-01T08:00:00Z',
       }],
     })
@@ -37,23 +37,23 @@ describe('DocumentsClientPortailAdmin — PACT99', () => {
       screen.getAllByText('Facture ONEE juillet').length).toBeGreaterThan(0))
     expect(screen.getAllByText('Facture ONEE').length).toBeGreaterThan(0)
     expect(screen.getAllByText('À traiter').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Déposé').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Voir le fichier').length).toBeGreaterThan(0)
     // Aucun lien /media/ rendu : c'est le critère AUD148 (b).
     expect(container.querySelector('a[href^="/media/"]')).toBeNull()
   })
 
-  it("n'affiche aucune mention de dépôt sans fichier", async () => {
+  it("ne rend aucun lien quand la GED n'a pas (encore) le document", async () => {
     portailApi.admin.documentsClient.liste.mockResolvedValue({
       data: [{
         id: 2, client_id: 12, lead_id: null, type_document: 'plan',
-        libelle: 'Plan sans fichier', fichier_present: false,
-        traite: false, date_depot: '2026-08-01T08:00:00Z',
+        libelle: 'Plan sans GED', fichier_present: true, lien_ged: null,
+        document_ged: null, traite: false, date_depot: '2026-08-01T08:00:00Z',
       }],
     })
     const { container } = renderPage(<DocumentsClientPortailAdmin />)
     await waitFor(() => expect(
-      screen.getAllByText('Plan sans fichier').length).toBeGreaterThan(0))
-    expect(screen.queryByText('Déposé')).not.toBeInTheDocument()
+      screen.getAllByText('Plan sans GED').length).toBeGreaterThan(0))
+    expect(screen.queryByText('Voir le fichier')).not.toBeInTheDocument()
     expect(container.querySelector('a[href^="/media/"]')).toBeNull()
   })
 
@@ -67,7 +67,7 @@ describe('DocumentsClientPortailAdmin — PACT99', () => {
     portailApi.admin.documentsClient.liste.mockResolvedValue({
       data: [{
         id: 3, client_id: 9, lead_id: null, type_document: 'plan',
-        libelle: 'Plan toiture', fichier: '',
+        libelle: 'Plan toiture', fichier: '', document_ged: null,
         traite: false, date_depot: '2026-08-01T08:00:00Z',
       }],
     })
@@ -84,7 +84,7 @@ describe('DocumentsClientPortailAdmin — PACT99', () => {
     portailApi.admin.documentsClient.liste.mockResolvedValue({
       data: [{
         id: 5, client_id: 2, lead_id: null, type_document: 'autre',
-        libelle: 'Justificatif', fichier: '',
+        libelle: 'Justificatif', fichier: '', document_ged: null,
         traite: true, date_depot: '2026-08-01T08:00:00Z',
       }],
     })

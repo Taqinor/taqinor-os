@@ -5,11 +5,12 @@ Couvre : (1) non-régression stricte — les clés natives GARDÉES résolvent
 EXACTEMENT comme avant ARC31 ; (2) une nouvelle cible déclarée SEULEMENT via
 un manifeste fictif (jamais via apps/customfields) devient enregistrée.
 
-SOLMVP20 — les clés natives ``document``/``employe`` (apps PARQUÉES GED/RH)
-et les pilotes historiques ``contrat``/``vehicule`` (apps PARQUÉES, Groupe
-SOLMVP) ont été retirés de cette couverture ; la preuve du chargeur central
-reste faite par le manifeste FICTIF ci-dessous, indépendant de toute app
-réelle.
+SOLMVP20 — la clé native ``employe`` (app PARQUÉE RH) et les pilotes
+historiques ``contrat``/``vehicule`` (apps PARQUÉES, Groupe SOLMVP) ont été
+retirés de cette couverture ; la preuve du chargeur central reste faite par
+le manifeste FICTIF ci-dessous, indépendant de toute app réelle.
+``document`` (GED) reste couverte : la GED est dans le MVP solaire
+(SOLMVP16b).
 """
 from unittest import mock
 
@@ -23,11 +24,12 @@ class TestNativeModulesNonRegression(SimpleTestCase):
 
     def test_native_keys_still_registered(self):
         for key in ('lead', 'client', 'produit', 'devis', 'installation',
-                    'ticket', 'fournisseur'):
+                    'ticket', 'document', 'fournisseur'):
             self.assertTrue(registry.is_registered(key), key)
 
     def test_native_keys_resolve_to_expected_models(self):
         from apps.crm.models import Client, Lead
+        from apps.ged.models import Document
         from apps.installations.models import Installation
         from apps.sav.models import Ticket
         from apps.stock.models import Fournisseur, Produit
@@ -36,7 +38,7 @@ class TestNativeModulesNonRegression(SimpleTestCase):
         expected = {
             'lead': Lead, 'client': Client, 'produit': Produit,
             'devis': Devis, 'installation': Installation, 'ticket': Ticket,
-            'fournisseur': Fournisseur,
+            'document': Document, 'fournisseur': Fournisseur,
         }
         for key, model in expected.items():
             self.assertIs(registry.get_model(key), model, key)

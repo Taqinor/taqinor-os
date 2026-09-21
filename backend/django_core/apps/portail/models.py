@@ -25,12 +25,19 @@ posé côté serveur (jamais lu du corps de requête).
 ATTENTION surface AUTH : les mécanismes d'authentification portail (tokens/
 comptes clients) sont conservés À L'IDENTIQUE — aucun élargissement d'accès.
 
-SOLMVP16 — ``DocumentClientPortail`` ne dépose plus de miroir dans la GED
-(module sorti du produit) : le champ ``document_ged`` (WIR94) et son
-orchestration cross-app (``apps/portail/receivers.py``) ont été retirés. Le
-document déposé par le client reste stocké tel quel via ``fichier_key``/
-``fichier_filename``/``fichier_size``/``fichier_mime`` (stockage objet MinIO,
-``records.storage`` — voir le serializer) ; seul le miroir GED disparaît.
+WIR94 — ``DocumentClientPortail`` route son upload vers la GED canonique : le
+fichier téléversé est en plus déposé comme ``ged.Document`` et référencé par
+``document_ged``. Le ``FileField`` historique (``fichier``) est CONSERVÉ pour
+compatibilité ascendante (les enregistrements existants gardent leur fichier
+local) ; toute future consommation (NTPRT13 « Mes documents ») peut désormais
+parcourir le document via l'arbre GED (ACL/versions/cycle de vie) au lieu d'un
+fichier isolé. L'ORCHESTRATION de ce dépôt ne vit PAS ici : un modèle
+n'orchestre pas d'écriture cross-app — l'appel ``ged.services.deposit_document``
+est un couple de récepteurs ``pre_save``/``post_save`` dans
+``apps/portail/receivers.py`` (câblé par ``PortailConfig.ready``, même patron
+que ``apps/crm/tiers_bridge.py``). Ce module ne garde donc que le champ
+``document_ged`` — aucun import de ``apps.ged`` (contrat CI
+``portail-models-decoupled``).
 """
 from django.db import models
 from django.utils import timezone
@@ -311,6 +318,12 @@ class DocumentClientPortail(models.Model):
     client (et optionnellement au lead) par de VRAIES ``ForeignKey``
     string-référencées (WIR95 — jamais un import de ``apps.crm.models``). Le
     fichier va dans le stockage objet (MinIO/S3) ; aucun prix/marge ici.
+
+    WIR94 — en plus du ``FileField`` historique (conservé pour compat
+    ascendante), l'upload est déposé comme ``ged.Document`` réel (référentiel
+    documentaire central, ACL/versions/cycle de vie) et référencé par
+    ``document_ged`` — le dépôt lui-même est orchestré par les récepteurs de
+    ``apps/portail/receivers.py``, jamais par ce modèle.
     """
     class TypeDoc(models.TextChoices):
         FACTURE_ONEE = 'facture_onee', 'Facture ONEE'
@@ -351,7 +364,8 @@ class DocumentClientPortail(models.Model):
     # AUD835 — LEGACY, jamais réécrit : ce ``FileField`` écrivait sur le disque
     # du conteneur, sans ``MEDIA_URL``/``MEDIA_ROOT``, sans route ``/media/``,
     # sans ``location /media/`` nginx — irrécupérable. Le contenu vit désormais
-    # dans MinIO (``records.storage``), désigné par ``fichier_key``.
+    # dans MinIO (``records.storage``), désigné par ``fichier_key`` ; le dépôt
+    # GED canonique (WIR94, ``receivers.py``) relit les octets depuis cette clé.
     fichier = models.FileField(
         upload_to='compta/portail_docs/', null=True, blank=True,
         verbose_name='Fichier (legacy, hors MinIO)')
@@ -363,6 +377,17 @@ class DocumentClientPortail(models.Model):
         default=0, verbose_name='Taille (octets)')
     fichier_mime = models.CharField(
         max_length=120, blank=True, default='', verbose_name='Type MIME')
+    # WIR94 — dépôt GED canonique du même fichier (voir receivers.py). Pas de
+    # cascade métier sur suppression du document GED — la ligne portail garde
+    # simplement trace du dépôt (SET_NULL).
+    document_ged = models.ForeignKey(
+        'ged.Document',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name='Document GED',
+    )
     traite = models.BooleanField(
         default=False, verbose_name='Traité (intégré à l\'étude)')
     date_depot = models.DateTimeField(

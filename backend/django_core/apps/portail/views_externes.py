@@ -669,7 +669,124 @@ def ma_performance_fournisseur(request):
         request.user.company, portal_scope_id(request.user)))
 
 
-# SOLMVP16 — « Ressources » (NTPRT31, documents GED partagés globalement
-# avec les partenaires) a été retiré : ged est un module sorti du produit et
-# sa sélection par ACL (``ged.AclGed``) n'a pas d'équivalent dans les pièces
-# jointes génériques de ``records`` — jamais un second GED.
+class RessourcesPartenairePortailLigneSerializer(serializers.Serializer):
+    """Une ressource marketing telle que le portail la montre au partenaire —
+    payload volontairement pauvre : jamais de métadonnée interne."""
+    id = serializers.IntegerField()
+    nom = serializers.CharField()
+    reference = serializers.CharField(allow_blank=True)
+    taille = serializers.IntegerField(allow_null=True)
+    mime = serializers.CharField(allow_null=True)
+    date_creation = serializers.DateTimeField(allow_null=True)
+
+
+#: YAPIC6 — un ``ViewSet`` nu (sans ``queryset``) laisse drf-spectacular
+#: incapable de deviner le type de la PK entière de la ressource ; même
+#: patron que ``_ID_LIVRAISON``/``_ID_BCF`` dans ``views_client.py``.
+_ID_RESSOURCE_PARTENAIRE = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description="Identifiant de la ressource partagée avec les partenaires.",
+)
+
+
+class RessourcesPartenairePortailViewSet(viewsets.ViewSet):
+    """NTPRT31 — « Ressources » : documents GED partagés GLOBALEMENT avec
+    TOUS les partenaires (logos, fiches produit, argumentaires).
+
+    Réutilise ``ged.AclGed``/ACL par RÔLE portail (jamais un nouveau modèle
+    de partage, jamais une ACL à dupliquer par partenaire) :
+    ``ged.selectors.ressources_partenaire_portail`` ne renvoie QUE les
+    documents portant une ``AclGed`` EXPLICITE sur le rôle système « Portail
+    partenaire » — un document marqué « interne uniquement » (c'est-à-dire
+    SANS cette ACL) n'apparaît JAMAIS ici (critère d'acceptation NTPRT31).
+    Lecture seule ; le dépôt/gestion des ressources reste un écran GED
+    interne (l'ACL par rôle existant, ``AclGedViewSet``)."""
+
+    permission_classes = [IsPortalPartenaireUser]
+    serializer_class = RessourcesPartenairePortailLigneSerializer
+
+    @staticmethod
+    def _ligne(document):
+        from apps.ged.selectors import latest_version
+        version = latest_version(document)
+        return {
+            'id': document.id,
+            'nom': document.nom,
+            'reference': document.reference or '',
+            'taille': version.size if version else None,
+            'mime': version.mime if version else None,
+            'date_creation': (document.created_at.isoformat()
+                              if document.created_at else None),
+        }
+
+    @extend_schema(responses=inline_serializer(
+        name='RessourcesPartenairePortail',
+        fields={'results': serializers.ListField(
+            child=RessourcesPartenairePortailLigneSerializer())}))
+    def list(self, request):
+        from apps.ged.selectors import ressources_partenaire_portail
+        documents = ressources_partenaire_portail(request.user.company)
+        return Response(
+            {'results': [self._ligne(d) for d in documents]})
+
+    @extend_schema(parameters=[_ID_RESSOURCE_PARTENAIRE])
+    def retrieve(self, request, pk=None):
+        from apps.ged.selectors import ressource_partenaire_portail
+        document = ressource_partenaire_portail(request.user.company, pk)
+        if document is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(self._ligne(document))
+
+    @extend_schema(parameters=[_ID_RESSOURCE_PARTENAIRE])
+    @action(detail=True, methods=['get'], url_path='telecharger')
+    def telecharger(self, request, pk=None):
+        """Sert le contenu de la VERSION COURANTE de la ressource partagée."""
+        from django.http import HttpResponse
+
+        from apps.ged.selectors import (
+            latest_version, ressource_partenaire_portail,
+        )
+        from apps.records.storage import fetch_attachment
+
+        company = request.user.company
+        document = ressource_partenaire_portail(company, pk)
+        if document is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        version = latest_version(document)
+        if version is None:
+            return Response({'detail': 'Aucun fichier disponible.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        data, err = fetch_attachment(version.file_key)
+        if err:
+            return Response({'detail': err},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        mime = version.mime or 'application/octet-stream'
+        if getattr(document, 'watermark_diffusion', False):
+            try:
+                from apps.ged import services as ged_services
+                label = ged_services.watermark_label(company=company)
+                data, _marque = ged_services.apply_watermark(
+                    data, mime, label)
+            except Exception:  # noqa: BLE001 - dégrade à l'original, jamais 500
+                pass
+
+        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
+        try:
+            from apps.audit.models import AuditLog
+            from apps.audit.recorder import record
+            record(
+                AuditLog.Action.EXPORT, instance=document, company=company,
+                user=request.user, via_portail=True,
+                detail='Ressource partenaire téléchargée depuis le portail')
+        except Exception:  # noqa: BLE001 - l'audit ne casse jamais le téléchargement
+            pass
+
+        nom = (version.filename or document.nom
+               or 'ressource').replace('"', '')
+        resp = HttpResponse(data, content_type=mime)
+        resp['Content-Disposition'] = f'attachment; filename="{nom}"'
+        resp['X-Content-Type-Options'] = 'nosniff'
+        return resp

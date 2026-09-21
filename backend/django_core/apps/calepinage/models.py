@@ -976,11 +976,10 @@ class DossierReglementaire(TenantModel):
     (calepinage, gabarit) : deux dossiers sur le même gabarit seraient deux
     vérités pour une même démarche.
 
-    ``document_id`` est OPAQUE (``PositiveIntegerField``) — il porte le ``pk``
-    de la PIÈCE JOINTE produite (``records.Attachment``, SOLMVP15 ; c'était un
-    document du référentiel documentaire, qui sort du produit), atteinte par
-    les services du module, jamais par une FK : c'est ce que le contrat
-    import-linter du module verrouille.
+    ``document_id`` est OPAQUE (``PositiveIntegerField``) — le document GED
+    produit est atteint par les SERVICES de la GED
+    (``apps.ged.services``), jamais par une FK vers ses modèles : c'est ce
+    que le contrat import-linter du module verrouille.
     """
 
     calepinage = models.ForeignKey(
