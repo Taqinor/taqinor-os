@@ -63,13 +63,13 @@ aucun texte normatif marocain dans ce dépôt.
 
 LE DESSIN RESTE UNIQUE
 ----------------------
-Le SVG n'est pas reconstruit ici : il est rendu par ``rendre_schema`` (le
-moteur PUR), puis les seuls groupes ``<g data-bloc="…">`` dont le texte a
-changé sont RÉÉMIS par l'émetteur du noyau lui-même (``_bloc_svg``) à la
-place qu'il leur a donnée. Aucune seconde géométrie, aucun filtre de texte
-sur le SVG rendu. Le jour où le noyau acceptera ses blocs en paramètre
-(crochet attendu : ``core/electrique/schema.py::rendre_schema(..., blocs=)``),
-cette recomposition disparaîtra sans rien changer au résultat.
+Le SVG n'est pas reconstruit ici : les blocs ÉDITÉS sont passés au moteur
+(``rendre_schema(..., blocs=, bandeau=)``, API publique posée en phase 2 du
+lot 4) et la planche sort d'UN seul passage, avec ses textes définitifs et
+son bandeau. Ce module ne connaît plus ni la géométrie du dessin (elle est
+publiée par ``core/electrique/schema.py::GEOMETRIE``), ni le placement (par
+``places_du_schema``) : aucune seconde géométrie, aucune réémission de
+fragment, aucun filtre de texte sur le SVG rendu.
 """
 from __future__ import annotations
 
@@ -78,9 +78,9 @@ import re
 __all__ = [
     'CLE_EDITION', 'RUBRIQUES', 'LONGUEUR_TEXTE_MAX', 'MOTS_D_ARGENT',
     'GABARIT_FR', 'GABARIT_SOCIETE', 'GABARIT_NEUTRE',
-    'SldRefuse', 'cartouche_du_calepinage', 'edition_sld',
-    'enregistrer_edition_sld', 'gabarit_de_schema', 'rendu_du_schema',
-    'schema_du_calepinage',
+    'SldRefuse', 'branches_onduleur_de_la_conception',
+    'cartouche_du_calepinage', 'edition_sld', 'enregistrer_edition_sld',
+    'gabarit_de_schema', 'rendu_du_schema', 'schema_du_calepinage',
 ]
 
 #: La clé du bloc d'édition dans ``Calepinage.resultat`` (JSONField existant).
@@ -124,15 +124,6 @@ BANDEAU_NEUTRE = (
     "renseignez « Norme électrique » dans les réglages du module. Cette "
     "planche ne montre que la topologie : désignations, quantités, repères."
 )
-
-#: Taille et teinte du bandeau — convention de dessin, en pixels de planche
-#: (le moteur travaille en pixels CSS à 96 ppp, ``core/electrique/
-#: schema.py``). Sa marge est CELLE du moteur (``_MARGE``), jamais une
-#: seconde valeur : il est posé dans la bande LIBRE du bas-gauche, le
-#: cartouche occupant la colonne de droite et la dernière rangée d'organes
-#: s'arrêtant bien au-dessus.
-_BANDEAU_TAILLE = 10.0
-_BANDEAU_COULEUR = '#9a3412'
 
 
 class SldRefuse(ValueError):
@@ -229,24 +220,6 @@ def gabarit_de_schema(norme):
         'bandeau': '',
         'motif': norme.get('motif') or '',
     }
-
-
-def _bandeau_svg(texte, hauteur):
-    """Le bandeau d'omission, posé sous la planche — une ligne, rien d'autre.
-
-    Crochet attendu hors de ce fichier (cf. rapport de lane) :
-    ``core/electrique/schema.py::rendre_schema(..., bandeau=)``. D'ici là, le
-    module du calepinage APPOSE sa ligne sur la planche rendue ; il ne filtre
-    ni ne réinterprète quoi que ce soit du dessin.
-    """
-    from html import escape
-
-    from core.electrique.schema import _MARGE
-
-    return ('<text x="%.1f" y="%.1f" font-size="%.1f" font-weight="700" '
-            'fill="%s">%s</text>'
-            % (_MARGE, hauteur - _MARGE, _BANDEAU_TAILLE, _BANDEAU_COULEUR,
-               escape(texte, quote=True)))
 
 
 # ─────────────────────────────────────────────── lecture de l'édition posée
@@ -392,7 +365,7 @@ def _position_valide(brut, dessin, *, champ):
     le bord donnerait une planche tronquée à l'impression. Le refus NOMME la
     clef et la borne dépassée.
     """
-    from core.electrique.schema import _BLOC_H, _BLOC_L
+    from core.electrique.schema import GEOMETRIE
 
     clef = champ.rsplit('.', 1)[-1]
     point = _point_lisible(brut)
@@ -404,7 +377,8 @@ def _position_valide(brut, dessin, *, champ):
     hauteur = dessin.get('hauteur')
     if not largeur or not hauteur:
         return point
-    bornes = (('x', largeur - _BLOC_L), ('y', hauteur - _BLOC_H))
+    bornes = (('x', largeur - GEOMETRIE.bloc_l),
+              ('y', hauteur - GEOMETRIE.bloc_h))
     for axe, maximum in bornes:
         if point[axe] < 0.0 or point[axe] > maximum:
             raise SldRefuse(
@@ -479,23 +453,14 @@ def _gabarit_du_calepinage(calepinage):
 def _places(blocs, positions):
     """Les places des blocs, PAR LE MOTEUR — jamais une seconde géométrie.
 
-    Les trois lignes que ``rendre_schema`` exécute pour se placer sont
-    appelées ici sur les mêmes entrées : le format de planche dépend du
-    nombre d'organes EN SÉRIE (la branche batterie pend sous son porteur et
-    n'occupe aucune rangée), puis le serpentin place tout le monde.
-
-    Crochet attendu hors de ce fichier (cf. rapport de lane) :
-    ``core/electrique/schema.py`` n'expose pas encore de
-    ``places_du_schema(entree, resultat, positions=…)`` publique — d'ici là,
-    ce sont ses propres fonctions qui sont appelées, pas une copie.
+    ``core/electrique/schema.py::places_du_schema`` est l'API PUBLIQUE du
+    placement (crochet posé en phase 2) : ce module ne connaît plus ni le
+    format de planche, ni le serpentin, ni les organes qui pendent hors
+    rangée.
     """
-    from core.electrique.schema import (
-        _EN_BRANCHE, _format_planche, _positions,
-    )
+    from core.electrique.schema import places_du_schema
 
-    en_serie = sum(1 for bloc in blocs if bloc.clef not in _EN_BRANCHE)
-    largeur, hauteur = _format_planche(en_serie)
-    return _positions(blocs, largeur, positions or None), largeur, hauteur
+    return places_du_schema(blocs, positions)
 
 
 def _blocs_edites(blocs, edition):
@@ -515,34 +480,6 @@ def _blocs_edites(blocs, edition):
         else:
             sortie.append(Bloc(bloc.clef, titre, bloc.sous_titre, repere))
     return tuple(sortie)
-
-
-def _svg_avec_blocs_edites(svg, places, origine):
-    """Réémet, À SA PLACE, chaque groupe de bloc dont le texte a changé.
-
-    ``data-bloc`` est un CONTRAT de lecture déclaré par le noyau
-    (``core/electrique/schema.py::_bloc_svg``) : c'est par lui que le groupe
-    est retrouvé, et c'est l'émetteur du noyau qui le réécrit. Le reste du
-    SVG — liaisons, amorces MPPT, barrette de terre, tableau, cartouche —
-    n'est pas touché : un libellé édité ne déplace rien et ne renomme rien
-    d'autre.
-    """
-    from html import escape
-
-    from core.electrique.schema import _bloc_svg
-
-    for bloc, x, y, _rangee, _branche in places:
-        if bloc is origine.get(bloc.clef):
-            continue
-        marque = '<g data-bloc="%s"' % escape(bloc.clef, quote=True)
-        debut = svg.find(marque)
-        if debut < 0:
-            continue
-        fin = svg.find('</g>', debut)
-        if fin < 0:
-            continue
-        svg = svg[:debut] + _bloc_svg(x, y, bloc) + svg[fin + len('</g>'):]
-    return svg
 
 
 def _blocs_publies(places, edition):
@@ -573,8 +510,9 @@ def _liaisons(places):
     une information électrique : un consommateur de ces liaisons (l'export
     DXF, CALX235) relie les deux points.
     """
-    from core.electrique.schema import _BLOC_H, _BLOC_L
+    from core.electrique.schema import GEOMETRIE
 
+    bloc_l, bloc_h = GEOMETRIE.bloc_l, GEOMETRIE.bloc_h
     serie = [place for place in places if not place[4]]
     liaisons = []
     for depart, arrivee in zip(serie, serie[1:]):
@@ -582,14 +520,14 @@ def _liaisons(places):
         bloc_b, xb, yb, rangee_b, _ = arrivee
         if rangee_a == rangee_b:
             if xb >= xa:
-                points = ((xa + _BLOC_L, ya + _BLOC_H / 2),
-                          (xb, yb + _BLOC_H / 2))
+                points = ((xa + bloc_l, ya + bloc_h / 2),
+                          (xb, yb + bloc_h / 2))
             else:
-                points = ((xa, ya + _BLOC_H / 2),
-                          (xb + _BLOC_L, yb + _BLOC_H / 2))
+                points = ((xa, ya + bloc_h / 2),
+                          (xb + bloc_l, yb + bloc_h / 2))
         else:
-            points = ((xa + _BLOC_L / 2, ya + _BLOC_H),
-                      (xb + _BLOC_L / 2, yb))
+            points = ((xa + bloc_l / 2, ya + bloc_h),
+                      (xb + bloc_l / 2, yb))
         liaisons.append({'depart': bloc_a.clef, 'arrivee': bloc_b.clef,
                          'nature': 'serie', 'points': points})
     ancre = next((place for place in serie if place[0].clef == 'onduleur'),
@@ -601,19 +539,24 @@ def _liaisons(places):
             liaisons.append({
                 'depart': ancre[0].clef, 'arrivee': place[0].clef,
                 'nature': 'branche',
-                'points': ((ancre[1] + _BLOC_L / 2, ancre[2] + _BLOC_H),
-                           (place[1] + _BLOC_L / 2, place[2]))})
+                'points': ((ancre[1] + bloc_l / 2, ancre[2] + bloc_h),
+                           (place[1] + bloc_l / 2, place[2]))})
     return tuple(liaisons)
 
 
 def rendu_du_schema(entree, resultat, *, edition=None, gabarit=None,
-                    cartouche=None):
+                    cartouche=None, branches_onduleur=None):
     """Le dessin d'une conception, ÉDITION APPLIQUÉE — SVG et blocs d'accord.
 
     ``gabarit`` (CALX237) : le verdict de ``gabarit_de_schema``. Un gabarit
     NEUTRE bascule la planche en mode topologie (aucun calibre, aucune
     section) et lui appose son bandeau ; absent, la planche est celle
     d'aujourd'hui, inchangée.
+
+    ``branches_onduleur`` (CALX238, crochet de phase 2) : les branches
+    d'onduleur de l'installation. Plusieurs exemplaires IDENTIQUES se replient
+    en « typique de N » au lieu d'être dessinés N fois ; absentes — ou une
+    seule — la planche est celle d'aujourd'hui, octet pour octet.
 
     Returns:
         ``{svg, blocs, liaisons, largeur, hauteur}``. ``blocs`` porte les
@@ -632,7 +575,9 @@ def rendu_du_schema(entree, resultat, *, edition=None, gabarit=None,
         if isinstance(valeurs, dict):
             edition[rubrique] = dict(valeurs)
     standard = bool((gabarit or {}).get('standard'))
-    origine = blocs_du_schema(entree, resultat, standard=standard)
+    origine = blocs_du_schema(
+        entree, resultat, standard=standard,
+        branches_onduleur=branches_onduleur or None)
     blocs = _blocs_edites(origine, edition)
     positions = edition['positions'] or None
     places, largeur, hauteur = _places(blocs, positions)
@@ -640,18 +585,42 @@ def rendu_du_schema(entree, resultat, *, edition=None, gabarit=None,
     # positions forcées : la porte cross-app ``apps.ventes.selectors.
     # schema_unifilaire_svg`` n'en porte pas le paramètre et reste intacte,
     # octet pour octet, pour le chemin ``devis=``.
+    #
+    # CALX233 (crochet de phase 2) — les blocs ÉDITÉS partent au moteur, qui
+    # rend la planche en UN passage avec les textes définitifs : la
+    # recomposition du SVG rendu a disparu, et avec elle le seul endroit du
+    # module qui réémettait un fragment de dessin.
     svg = rendre_schema(entree, resultat, cartouche=cartouche or {},
-                        positions=positions, standard=standard)
-    svg = _svg_avec_blocs_edites(svg, places,
-                                 {bloc.clef: bloc for bloc in origine})
-    bandeau = (gabarit or {}).get('bandeau') or ''
-    if bandeau:
-        fermeture = svg.rindex('</svg>')
-        svg = (svg[:fermeture] + _bandeau_svg(bandeau, hauteur)
-               + svg[fermeture:])
+                        positions=positions, standard=standard, blocs=blocs,
+                        bandeau=(gabarit or {}).get('bandeau') or '')
     return {'svg': svg, 'blocs': _blocs_publies(places, edition),
             'liaisons': _liaisons(places), 'largeur': largeur,
             'hauteur': hauteur}
+
+
+def branches_onduleur_de_la_conception(conception):
+    """CALX238 — les branches d'onduleur de CETTE conception, ou ``()``.
+
+    Le noyau dimensionne un MODÈLE et un NOMBRE (``evaluer_onduleurs``) : les
+    exemplaires sont donc IDENTIQUES, et c'est tout ce qu'on peut en dire.
+    Chaque branche ne porte donc QUE son modèle — ni nombre de chaînes, ni
+    longueurs, ni organes par exemplaire : le moteur ne rattache aucune
+    chaîne à un exemplaire d'onduleur (``services/chaines.py`` le dit en
+    toutes lettres), et remplir ces champs serait les inventer (D-CALX 7).
+
+    Des branches IDENTIQUES se replient exactement en « typique de N », ce
+    qui est la seule chose que CALX238 avait à obtenir. UN SEUL onduleur ⇒
+    aucune branche : la planche est celle d'aujourd'hui, octet pour octet.
+    """
+    from .chaines import evaluer_onduleurs
+
+    evaluation = evaluer_onduleurs(conception)
+    nombre = int(getattr(evaluation, 'nombre', 0) or 0)
+    if nombre <= 1:
+        return ()
+    onduleur = getattr(getattr(conception, 'entree', None), 'onduleur', None)
+    modele = getattr(onduleur, 'designation', '') or ''
+    return tuple({'modele': modele} for _rang in range(nombre))
 
 
 # ────────────────────────────────── CALX234 — la réponse servie par la vue
@@ -718,11 +687,16 @@ def schema_du_calepinage(calepinage):
     if manquantes or bloquants:
         return reponse
     edition = edition_sld(calepinage)
-    dessin = rendu_du_schema(getattr(conception, 'entree', None),
-                             getattr(conception, 'resultat', None),
-                             edition=edition,
-                             gabarit=_gabarit_du_calepinage(calepinage),
-                             cartouche=cartouche_du_calepinage(calepinage))
+    dessin = rendu_du_schema(
+        getattr(conception, 'entree', None),
+        getattr(conception, 'resultat', None),
+        edition=edition,
+        gabarit=_gabarit_du_calepinage(calepinage),
+        cartouche=cartouche_du_calepinage(calepinage),
+        # CALX238 (crochet de phase 2) — dix onduleurs identiques dessinent
+        # UN sous-ensemble « typique de 10 », et la planche cesse de basculer
+        # en A3 par le seul effet du nombre.
+        branches_onduleur=branches_onduleur_de_la_conception(conception))
     reponse['svg'] = dessin['svg']
     reponse['blocs'] = [dict(bloc) for bloc in dessin['blocs']]
     reponse['edition'] = _edition_publiee(edition, dessin)
