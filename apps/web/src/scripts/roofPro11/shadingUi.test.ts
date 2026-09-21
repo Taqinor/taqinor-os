@@ -3,10 +3,17 @@
 // ce fichier couvre uniquement la résolution PURE de la hauteur (le reste de
 // `createShadingUi` a besoin d'une carte MapLibre + du DOM, hors de portée d'un test pur).
 import { describe, expect, it } from 'vitest';
-import { effectiveBuildingHeightM, heatmapAccessValues, HEATMAP_MONTH_LABELS } from './shadingUi';
+import {
+  effectiveBuildingHeightM,
+  heatmapAccessValues,
+  HEATMAP_MONTH_LABELS,
+  moduleShadeReading,
+  moduleShadeReadingsForPanels,
+  type ModuleShadeReading,
+} from './shadingUi';
 import { FLOORS, FLOOR_HEIGHT_M } from './constants';
 import { fallbackPerKwc } from '../../lib/productionEngine';
-import { type ShadeObstructionENU } from '../../lib/shadingEngine';
+import { hourlyShadeFactors, type ShadeObstructionENU } from '../../lib/shadingEngine';
 
 describe('CAL60 — effectiveBuildingHeightM', () => {
   it('sans saisie (null/undefined) : repli historique FLOORS × FLOOR_HEIGHT_M', () => {
@@ -81,5 +88,84 @@ describe('CAL95 — heatmapAccessValues : toutes les obstructions, et par mois',
     expect(HEATMAP_MONTH_LABELS).toHaveLength(12);
     expect(HEATMAP_MONTH_LABELS[0]).toBe('janvier');
     expect(HEATMAP_MONTH_LABELS[11]).toBe('décembre');
+  });
+});
+
+// CALX122 — lecture géométrique d'ombrage PAR MODULE : nombre d'heures représentatives
+// masquées (sur les 288 = 12 mois × 24 h de la matrice déjà calculée par
+// `hourlyShadeFactors`) et le premier mois concerné. Aucun kWh : lecture géométrique pure,
+// testable sans DOM ni production (les fonctions ne prennent même pas de profil PVGIS).
+describe('CALX122 — lecture géométrique d’ombrage par module (heures + premier mois)', () => {
+  const LAT = 33.5;
+  /** Même cheminée que CAL95 ci-dessus (3 × 3 m, 5 m de haut, 3 m au sud du module) —
+   *  déjà prouvée « obstruction effective » par le test CAL95 (`access[0]` < 1). */
+  const cheminee: ShadeObstructionENU = {
+    x: 0,
+    y: -3,
+    effHeightM: 5,
+    halfWidthM: Math.hypot(3, 3) / 2,
+    footprint: [
+      [-1.5, -4.5],
+      [1.5, -4.5],
+      [1.5, -1.5],
+      [-1.5, -1.5],
+    ],
+  };
+  const panels = [
+    { cx: 0, cy: 0 }, // juste au nord de la cheminée : dans son ombre
+    { cx: 40, cy: 0 }, // 40 m à l'est : hors de son ombre
+  ];
+
+  it('sans AUCUNE source d’ombrage saisie (hasSource=false) : la lecture est ABSENTE (null), jamais « 0 heure »', () => {
+    expect(moduleShadeReadingsForPanels(LAT, [cheminee], panels, false)).toBeNull();
+    expect(moduleShadeReadingsForPanels(LAT, [], panels, false)).toBeNull();
+  });
+
+  it('une source saisie mais sans obstruction effective (enu vide) publie un VRAI zéro, jamais une omission', () => {
+    const readings = moduleShadeReadingsForPanels(LAT, [], panels, true);
+    expect(readings).toEqual([
+      { maskedHours: 0, firstMonthIndex: null },
+      { maskedHours: 0, firstMonthIndex: null },
+    ]);
+  });
+
+  it('une obstruction saisie ⇒ le compte d’heures suit EXACTEMENT la matrice 12×24 existante', () => {
+    const reading = moduleShadeReading(LAT, [cheminee], 0, 0);
+    // Recalcul indépendant depuis la matrice déjà testée ailleurs (shadingWJ19.test.ts) :
+    // la lecture géométrique ne doit rien inventer de plus que ce que hourlyShadeFactors dit.
+    const matrix = hourlyShadeFactors(LAT, [cheminee], 0, 0);
+    let expectedHours = 0;
+    let expectedFirstMonth: number | null = null;
+    matrix.forEach((row, m) => {
+      const maskedInMonth = row.filter((v) => v < 1).length;
+      if (maskedInMonth > 0) {
+        expectedHours += maskedInMonth;
+        if (expectedFirstMonth == null) expectedFirstMonth = m;
+      }
+    });
+    expect(reading.maskedHours).toBe(expectedHours);
+    expect(reading.firstMonthIndex).toBe(expectedFirstMonth);
+    expect(reading.maskedHours).toBeGreaterThan(0);
+  });
+
+  it('le module plus loin (40 m à l’est) est nettement moins masqué — toujours depuis SA PROPRE matrice, jamais un chiffre par défaut', () => {
+    const far = moduleShadeReading(LAT, [cheminee], 40, 0);
+    const matrixFar = hourlyShadeFactors(LAT, [cheminee], 40, 0);
+    let expectedFarHours = 0;
+    matrixFar.forEach((row) => {
+      for (const v of row) if (v < 1) expectedFarHours++;
+    });
+    expect(far.maskedHours).toBe(expectedFarHours);
+    const near = moduleShadeReading(LAT, [cheminee], 0, 0);
+    expect(far.maskedHours).toBeLessThan(near.maskedHours);
+  });
+
+  it('moduleShadeReadingsForPanels aligne un résultat par panneau, dans l’ordre (le plus proche masqué au moins autant que le plus loin)', () => {
+    const readings = moduleShadeReadingsForPanels(LAT, [cheminee], panels, true) as ModuleShadeReading[];
+    expect(readings).toHaveLength(2);
+    expect(readings[0].maskedHours).toBeGreaterThan(0);
+    expect(readings[0].firstMonthIndex).not.toBeNull();
+    expect(readings[1].maskedHours).toBeLessThanOrEqual(readings[0].maskedHours);
+    expect(readings[1].firstMonthIndex == null || typeof readings[1].firstMonthIndex === 'number').toBe(true);
   });
 });
