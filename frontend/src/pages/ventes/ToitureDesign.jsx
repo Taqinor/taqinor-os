@@ -2068,11 +2068,17 @@ export default function ToitureDesign({ mode = 'lead' }) {
             photo calée, plan importé, tracé client, obstacles, zones, panneaux,
             ombres et mesures — visibilité + opacité, dans un ordre de rendu
             déterminé. Monté dès que le builder expose son API (sans elle, il n'y
-            aurait rien à piloter). */}
+            aurait rien à piloter).
+            CALX54 — `builderApi` (ci-dessous) est l'OBJET posé par `onApiReady`
+            (`builderApiActuel`, même raison que CALX8 pour `AtelierPanneaux` :
+            `builderApi.current` est une réf, illisible pendant le rendu) — le
+            panneau lit lui-même `calquesDisponibles()` dessus pour n'afficher
+            que les calques réellement installés sur la scène. */}
         {builderReady && (
           <div className="mt-4" data-testid="cal-panneau-calques">
             <PanneauCalques
               utilisateurId={utilisateurCourantId}
+              builderApi={builderApiActuel}
               onChange={(id, etat) => builderApi.current?.setLayerState?.(id, etat)}
             />
           </div>
