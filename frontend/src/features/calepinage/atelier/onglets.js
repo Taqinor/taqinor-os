@@ -101,3 +101,23 @@ export function groupesOnglets() {
   }
   return groupes
 }
+
+/**
+ * CALX55 — l'onglet que DÉSIGNE un chemin profond `/calepinage/<id>/<cle>`.
+ *
+ * Les treize panneaux du registre sont servis à deux adresses : l'onglet de
+ * l'atelier (`?onglet=<cle>`) et la route profonde historique, dont le DERNIER
+ * segment vaut exactement la clé. C'est ce que lit `atelier/RetourAtelier.jsx`
+ * pour savoir d'où l'on revient, sans qu'aucun panneau ait à se nommer.
+ *
+ * Rend `null` — jamais un onglet par défaut — quand le chemin est l'atelier
+ * lui-même (`/calepinage/<id>`) ou quand le dernier segment n'est pas une clé
+ * du registre : un fil d'Ariane qui renverrait vers un AUTRE panneau que celui
+ * qu'on lit mentirait, et ne rien afficher vaut mieux.
+ */
+export function ongletParChemin(chemin) { // CALX55
+  if (!chemin) return null
+  const segments = String(chemin).split('#')[0].split('?')[0].split('/').filter(Boolean)
+  if (segments.length < 3) return null
+  return ongletParCle(segments[segments.length - 1])
+}
