@@ -148,3 +148,32 @@ phrase (aucune promesse ajoutée, aucun chiffre) mais n'ont pas reçu la revue n
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.
 (`visite_proposition` et `visite_confirmation`, eux, ont reçu leur texte validé le 15/09/2026 — section ci-dessus.)
 Les versions darija absentes ci-dessus (après devis, réveils A1/A3/B, après signature) retombent sur le FR (`get_corps`).
+
+## Sur quoi la DENSITÉ du protocole se discute — et sur quoi elle ne se discute pas (CAD89, 21/09/2026)
+
+Cette note existe pour qu'aucun futur audit ne recalibre le nombre de touches sur un chiffre qui n'en est pas un.
+Le protocole (6 appels + 5 WhatsApp sur 14 jours, 10 touches après devis, 2 réveils) n'est PAS dérivé des repères
+ci-dessous, et il ne doit pas l'être.
+
+**Le chiffre à ne plus jamais citer : « 80 % des ventes se font après 5 relances ».** Omniprésent dans le secteur,
+il remonte à un sondage de **1942** portant sur **moins de 40 personnes**, jamais publié ni relu par des pairs ;
+l'organisation censée l'avoir produit **n'a pas pu le retracer** quand on le lui a demandé (enquête conciergr.com,
+2024-2025 ; reprise VentureBeat). Il ne mesure rien d'aujourd'hui, rien du Maroc, rien du solaire.
+
+**Le repère le plus sérieux, et sa limite : Velocify, 2013.** Sur ~3,5 millions de leads, 93 % des prospects
+convertis avaient été joints au 6ᵉ appel. Son **rapport primaire n'est plus hébergé nulle part** : il ne peut donc
+être cité que comme **source SECONDAIRE**, jamais comme une mesure vérifiable (correction du round 2 de l'audit).
+
+**Et le repère qu'on lui confond, qui répond à une AUTRE question : MIT / Oldroyd, 2007.** 15 000 leads, 100 000
+appels — l'étude mesure la **VITESSE de rappel** (un contact ~100 fois plus probable entre 5 et 30 minutes), pas le
+**NOMBRE de tentatives**. Deux études américaines, deux questions différentes, **aucune preuve marocaine** ni dans
+l'une ni dans l'autre.
+
+**Le trou qui compte le plus ici : aucune de ces sources ne porte sur WhatsApp**, alors que WhatsApp porte 5 des
+11 touches de la prise de contact. Un rythme calibré sur des séquences d'appels et d'e-mails américains ne dit rien
+de ce canal.
+
+**Conséquence pratique.** La densité (« faut-il plus / moins de touches ? »), le samedi et la soirée de Ramadan se
+tranchent sur les chiffres MAISON — l'agrégat taux de joint par touche × heure × jour × canal et les signatures par
+nombre de touches consommées (CAD87) —, jamais sur les trois repères ci-dessus. Tant que ces mesures n'ont pas assez
+de cases peuplées, **on ne change rien** : ni le nombre, ni l'ordre, ni le J+N des touches.
