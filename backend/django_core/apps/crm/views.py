@@ -1933,6 +1933,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         scope = request.query_params.get('scope', 'today')
         company = request.user.company if request.user.company_id else None
         qs = relances_du_jour(company, request.user, scope=scope)
+        # CAD133 (fix CI #713) — les signaux comportement/fraîcheur sont annotés en
+        # sous-requêtes, comme dans get_queryset() : sans cela chaque lead relit ses
+        # agrégats (16 requêtes par carte sur la file du jour).
+        from .signaux import annotations_signaux
+        qs = qs.annotate(**annotations_signaux())
         serializer = LeadSerializer(qs, many=True, context={'request': request})
         return Response({'count': qs.count(), 'results': serializer.data})
 
@@ -2169,6 +2174,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             first_contacted_at__isnull=True,
             date_creation__lte=cutoff,
         ).order_by('date_creation')
+        # CAD133 (fix CI #713) — les signaux comportement/fraîcheur sont annotés en
+        # sous-requêtes, comme dans get_queryset() : sans cela chaque lead relit ses
+        # agrégats (16 requêtes par carte sur la file du jour).
+        from .signaux import annotations_signaux
+        qs = qs.annotate(**annotations_signaux())
         serializer = LeadSerializer(qs, many=True, context={'request': request})
         return Response({
             'sla_hours': sla,
