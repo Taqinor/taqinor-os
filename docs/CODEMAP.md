@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: a09519d8ffec5e537659cedd60a878e56e2e2899b11d2370a5320a001d29cf09
-Plan fingerprint: 3ad772390fa63130042053b54c4b605c9831afa8d33653931c9d944196110469
+Structure fingerprint: 1a33a8a94963459a640f8c9380ae6b4084d32fd100e919e93e00d82298cf8988
+Plan fingerprint: 02029db051a2b23a220786ca6e23b1440bd2f1bfead5963958f2b2e0d385f43e
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (217)**
+**Done (220)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -647,6 +647,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX113` — Rendre la symétrie d'une sélection de panneaux par rapport à un axe
 - `CALX116` — Sélectionner des panneaux au lasso, en plus du rectangle
 - `CALX117` — Afficher une grille métrique de repère au pas saisi
+- `CALX118` — Montrer la course du soleil du site dans l'atelier
+- `CALX119` — Choisir une date libre pour le soleil de la scène et la retenir
+- `CALX120` — Animer la course de l'ombre sur une journée et sur l'année
 - `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
 - `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
 - `CALX129` — Basculer la vue 3D d'édition en plein écran
@@ -751,7 +754,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (389)**
+**Open — to build (386)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -956,9 +959,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX110` — Poser plusieurs modèles de module dans un même système
 - `CALX114` — Choisir la cible de l'optimisation au lieu de la figer sur l'énergie
 - `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
-- `CALX118` — Montrer la course du soleil du site dans l'atelier
-- `CALX119` — Choisir une date libre pour le soleil de la scène et la retenir
-- `CALX120` — Animer la course de l'ombre sur une journée et sur l'année
 - `CALX123` — Tracer et éditer un champ au sol sur la carte de l'atelier
 - `CALX124` — Éditer une ombrière dans l'atelier, poteaux compris
 - `CALX125` — Poser des modules en façade sur un mur du bâtiment
