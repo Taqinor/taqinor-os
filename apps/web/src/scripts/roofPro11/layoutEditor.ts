@@ -195,6 +195,9 @@ export interface LayoutEditor {
   /** CALX112 — duplique la sélection libre, collée au décalage SAISI (m, le long de l'axe
    *  des rangées). Un seul pas d'historique pour tout le geste ; tout ou rien. */
   dupliquerSelection: (members: readonly number[], decalageM: number) => boolean;
+  /** CALX113 — symétrise la sélection libre par rapport à l'axe donné (droite ENU définie
+   *  par deux points). Tout ou rien ; refusée seulement sur une contrainte DURE réelle. */
+  symetriserSelection: (members: readonly number[], axis: { a: readonly [number, number]; b: readonly [number, number] }) => boolean;
 }
 
 /**
@@ -483,6 +486,23 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   const freeDupStepEl = dupControls?.input ?? null;
   const freeDupBtn = dupControls?.btn ?? null;
 
+  // CALX113 — bouton « Symétrie », créé par le module (même patron), réglages du placement
+  // libre. Armé : les DEUX prochains clics sur le toit désignent l'axe (droite définie par
+  // deux points cliqués — la généralisation d'« une arête désignée au clic »).
+  function ensureMirrorButton(): HTMLButtonElement | null {
+    const existing = $<HTMLButtonElement>('rp9-free-mirror');
+    if (existing) return existing;
+    if (typeof document === 'undefined' || !freeControlsEl) return null;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'rp9-free-mirror';
+    btn.setAttribute('aria-pressed', 'false');
+    btn.textContent = '⇄ Symétrie';
+    freeControlsEl.appendChild(btn);
+    return btn;
+  }
+  const freeMirrorBtn = ensureMirrorButton();
+
   // PV25 — ÉTAT de la sélection multiple. Il vit dans ce module (rien à ajouter au ctx
   // partagé) : c'est une intention d'édition, pas un état de design.
   let selection: number[] = [];
@@ -641,6 +661,10 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   const freeHistory = createValueHistory<FreeLayoutState>(copyFreeState);
   /** Le prochain clic doit-il POSER un nouveau panneau ? (bouton « Ajouter »). */
   let freeAddArmed = false;
+  /** CALX113 — la désignation de l'axe de symétrie est-elle ARMÉE ? (bouton « Symétrie »). */
+  let mirrorArmed = false;
+  /** CALX113 — premier point ENU cliqué de l'axe en cours de désignation, ou null. */
+  let mirrorFirstPoint: { x: number; y: number } | null = null;
 
   /**
    * Marges RELACHABLES courantes, avec repli sur celles de l'etude. Un `ctx` fourni par
@@ -995,6 +1019,73 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (layoutNoteEl) {
       layoutNoteEl.textContent = `Dupliqué — ${fmt(news.length)} panneaux copiés à ${fmt1(Math.abs(decalageM))} m (${fmt(st.panels.length)} posés).`;
     }
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+
+  /** CALX113 — axe de symétrie : une droite ENU définie par deux points DISTINCTS (cliqués,
+   *  ou une arête du pan désignée). */
+  interface MirrorAxis {
+    a: readonly [number, number];
+    b: readonly [number, number];
+  }
+
+  /**
+   * CALX113 — symétrise la sélection libre par rapport à `axis` : le centre ET l'orientation
+   * propre de chaque membre sont réfléchis ENSEMBLE (une réflexion est sa propre inverse :
+   * symétriser deux fois de suite rend l'état initial). TOUT OU RIEN, refusée seulement sur
+   * une contrainte DURE réelle (contour/panneau/obstacle) — jamais un simple écart/retrait
+   * relâché, comme la rotation CAL80 dont ce geste reprend exactement le vocabulaire.
+   */
+  function symetriserSelection(members: readonly number[], axis: MirrorAxis): boolean {
+    const st = freeState();
+    const g = freeGeom();
+    if (!st || !g || !members.length) return false;
+    const src = [...new Set(members)].filter((i) => Number.isInteger(i) && i >= 0 && i < st.panels.length);
+    if (!src.length) return false;
+    const [au, av] = toUV(g, axis.a[0], axis.a[1]);
+    const [bu, bv] = toUV(g, axis.b[0], axis.b[1]);
+    const dirU = bu - au;
+    const dirV = bv - av;
+    const len2 = dirU * dirU + dirV * dirV;
+    if (!(len2 > 1e-12)) return false; // deux points confondus : aucun axe défini
+    const axisAngleDeg = (Math.atan2(dirV, dirU) * 180) / Math.PI;
+    const reflectUV = (u: number, v: number): [number, number] => {
+      const pu = u - au;
+      const pv = v - av;
+      const t = (pu * dirU + pv * dirV) / len2;
+      return [au + 2 * t * dirU - pu, av + 2 * t * dirV - pv];
+    };
+    recordFreeHistory();
+    const ringUV = g.ringENU.map(([x, y]) => toUV(g, x, y));
+    const othersCorners = st.panels.filter((_, i) => !src.includes(i)).map((p) => panelCornersFor(g, p));
+    const placed: Vec2[][] = [];
+    const results: { idx: number; cx: number; cy: number; angleDeg: number }[] = [];
+    for (const idx of src) {
+      const p = st.panels[idx];
+      const [pu, pv] = toUV(g, p.cx, p.cy);
+      const [nu, nv] = reflectUV(pu, pv);
+      const oldAngle = p.angleDeg ?? 0;
+      const newAngle = ((2 * axisAngleDeg - oldAngle) % 360 + 360) % 360;
+      const corners = panelCornersUV(g, nu, nv, newAngle);
+      const violations = hardViolationsFor(g, ringUV, corners, othersCorners, placed);
+      if (violations.length) {
+        dropFreeHistory();
+        flashRefusal(src);
+        if (layoutNoteEl) {
+          layoutNoteEl.textContent = `Symétrie refusée : ${violations.map(violationLabel).join(', ')} — rien n’a bougé.`;
+        }
+        renderLayoutPanel();
+        return false;
+      }
+      placed.push(corners);
+      const [ncx, ncy] = toENU(g, nu, nv);
+      results.push({ idx, cx: ncx, cy: ncy, angleDeg: newAngle });
+    }
+    // Commit atomique : rien n'a été muté tant que tous les membres n'étaient pas validés.
+    for (const r of results) st.panels[r.idx] = { ...st.panels[r.idx], cx: r.cx, cy: r.cy, angleDeg: r.angleDeg };
+    if (layoutNoteEl) layoutNoteEl.textContent = `Symétrisé — ${fmt(src.length)} panneaux (placement libre).`;
     renderCustomLayout();
     renderLayoutPanel();
     return true;
@@ -1471,6 +1562,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       const step = raw ? Number(raw) : NaN;
       freeDupBtn.disabled = !on || !Number.isFinite(step) || step <= 0;
     }
+    if (freeMirrorBtn) freeMirrorBtn.setAttribute('aria-pressed', String(mirrorArmed));
   }
 
   /** Lit un champ de marge (cm → m). Règle fondateur : on n'IMPOSE aucun arrondi et on ne
@@ -1871,6 +1963,20 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     dupliquerSelection(members, stepM);
   });
 
+  // CALX113 — arme la désignation de l'axe : les DEUX prochains clics sur le toit
+  // (`beginLayoutDrag`) fixent les deux points qui définissent la droite.
+  freeMirrorBtn?.addEventListener('click', () => {
+    if (!freeActive()) return;
+    mirrorArmed = !mirrorArmed;
+    mirrorFirstPoint = null;
+    freeMirrorBtn.setAttribute('aria-pressed', String(mirrorArmed));
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = mirrorArmed
+        ? 'Touchez un premier point de l’axe de symétrie (Échap pour annuler).'
+        : 'Symétrie annulée.';
+    }
+  });
+
   // PV26 — RACCOURCIS clavier, actifs SEULEMENT en mode disposition (sinon on volerait
   // Ctrl+Z à la page hôte) : Ctrl/⌘+Z annule, Ctrl/⌘+Y (ou Ctrl/⌘+Maj+Z) rétablit. Les
   // FLÈCHES nudgent le panneau sélectionné — ou tout le groupe — d'un pas de calepinage.
@@ -1929,6 +2035,16 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
         freeAddArmed = false;
         syncFreeInputs();
         if (layoutNoteEl) layoutNoteEl.textContent = 'Ajout annulé.';
+        renderLayoutPanel();
+        e.preventDefault();
+        return;
+      }
+      // CALX113 — Échap désarme aussi la désignation de l'axe de symétrie.
+      if (mirrorArmed) {
+        mirrorArmed = false;
+        mirrorFirstPoint = null;
+        if (freeMirrorBtn) freeMirrorBtn.setAttribute('aria-pressed', 'false');
+        if (layoutNoteEl) layoutNoteEl.textContent = 'Symétrie annulée.';
         renderLayoutPanel();
         e.preventDefault();
         return;
@@ -2064,6 +2180,28 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       freeAddArmed = false;
       freeAddAt(enu.x, enu.y);
       syncFreeInputs();
+      return true;
+    }
+    // CALX113 — « Symétrie » armée : les DEUX prochains clics désignent l'axe (une droite
+    // définie par deux points cliqués) ; le second clic COMMIT la symétrie de la sélection.
+    if (freeActive() && mirrorArmed) {
+      const enu = screenToENU(point);
+      if (!enu) return false;
+      if (!mirrorFirstPoint) {
+        mirrorFirstPoint = { x: enu.x, y: enu.y };
+        if (layoutNoteEl) layoutNoteEl.textContent = 'Touchez un second point pour définir l’axe (Échap pour annuler).';
+        return true;
+      }
+      const axis = { a: [mirrorFirstPoint.x, mirrorFirstPoint.y] as [number, number], b: [enu.x, enu.y] as [number, number] };
+      mirrorArmed = false;
+      mirrorFirstPoint = null;
+      if (freeMirrorBtn) freeMirrorBtn.setAttribute('aria-pressed', 'false');
+      const members = selection.length ? selection : [];
+      if (!members.length) {
+        if (layoutNoteEl) layoutNoteEl.textContent = 'Sélectionnez d’abord les panneaux à symétriser.';
+        return true;
+      }
+      symetriserSelection(members, axis);
       return true;
     }
     /** PV34 — arme le cadre. `additive` : le lot encadré s'AJOUTE au groupe courant
@@ -2687,6 +2825,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     freeAlignSelection,
     freeDistributeSelection,
     dupliquerSelection,
+    symetriserSelection,
   };
 }
 

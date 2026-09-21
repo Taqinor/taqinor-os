@@ -186,3 +186,48 @@ describe('CALX112 — dupliquerSelection', () => {
     expect(btn!.disabled).toBe(true);
   });
 });
+
+describe('CALX113 — symetriserSelection', () => {
+  it('symétrie appliquée deux fois de suite rend l’état initial à 10⁻⁹ près', () => {
+    const panels: FreePanel[] = [{ cx: -5, cy: 0 }]; // u = 5, v = 0
+    const before = panels.map((p) => ({ ...p }));
+    const { editor } = buildFreeEditor(20, panels);
+
+    // Axe = la droite u = 0 (deux points ENU distincts sur x = 0, cf. l'en-tête du fichier).
+    const axis = { a: [0, -5] as [number, number], b: [0, 5] as [number, number] };
+
+    expect(editor.symetriserSelection([0], axis)).toBe(true);
+    const mirrored = editor.freePanels()[0];
+    expect(mirrored.cx).toBeCloseTo(5, 9); // u = -5 → cx = 5
+    expect(mirrored.angleDeg).toBeCloseTo(180, 9); // orientation réfléchie AVEC le centre
+
+    expect(editor.symetriserSelection([0], axis)).toBe(true);
+    const back = editor.freePanels()[0];
+    expect(back.cx).toBeCloseTo(before[0].cx, 9);
+    expect(back.cy).toBeCloseTo(before[0].cy, 9);
+    expect(((back.angleDeg ?? 0) % 360 + 360) % 360).toBeCloseTo(0, 9);
+  });
+
+  it('un module dont l’image sortirait du posable fait refuser le geste ENTIER, en nommant le motif', () => {
+    const panels: FreePanel[] = [{ cx: -8.5, cy: 0 }]; // u = 8.5
+    const before = panels.map((p) => ({ ...p }));
+    const { editor } = buildFreeEditor(10, panels);
+
+    // Axe vertical à u = 10 (bord du toit) : l'image part à u = 11.5, hors du posable.
+    const axis = { a: [-10, -5] as [number, number], b: [-10, 5] as [number, number] };
+    const ok = editor.symetriserSelection([0], axis);
+    expect(ok).toBe(false);
+    expect(editor.freePanels()).toEqual(before); // tout ou rien : rien n'a bougé
+
+    const note = document.getElementById('rp9-layout-note');
+    expect(note?.textContent).toContain('sortirait du toit');
+  });
+
+  it('deux points confondus ne définissent aucun axe : le geste est refusé sans rien muter', () => {
+    const panels: FreePanel[] = [{ cx: -5, cy: 0 }];
+    const { editor } = buildFreeEditor(20, panels);
+    const same = [1, 1] as [number, number];
+    expect(editor.symetriserSelection([0], { a: same, b: same })).toBe(false);
+    expect(editor.freePanels()).toEqual(panels);
+  });
+});
