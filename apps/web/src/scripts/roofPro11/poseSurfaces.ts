@@ -29,6 +29,9 @@ import * as THREE from 'three';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
 import { DEG2M, DEG2RAD } from './constants';
 import { esc } from './dom';
+// CALX125 — la normale SORTANTE d'une arête est déjà posée et prouvée par CALX99 ; c'est
+// elle, et pas une seconde formule, qui donne l'azimut d'une façade.
+import { azimutNormaleArete, distanceEntreM } from './snap';
 import type { Ctx } from './context';
 // CALX124 — la géométrie de placement de CAL89/CAL91 existe et est testée depuis des
 // mois sans qu'aucun fichier applicatif ne l'importe : c'est ICI qu'elle est branchée.
@@ -126,7 +129,8 @@ export type ChampPose =
   | 'sectionAppui'
   | 'mur'
   | 'hauteurBasse'
-  | 'hauteurHaute';
+  | 'hauteurHaute'
+  | 'retraits';
 
 /** Libellé FRANÇAIS de chaque genre de surface — l'écran n'affiche jamais la clé. */
 export const LIBELLE_GENRE: Readonly<Record<GenrePose, string>> = {
@@ -149,6 +153,7 @@ export const LIBELLE_CHAMP_POSE: Readonly<Record<ChampPose, string>> = {
   mur: 'mur désigné',
   hauteurBasse: 'hauteur basse de la bande posable',
   hauteurHaute: 'hauteur haute de la bande posable',
+  retraits: 'retraits de la bande posable',
 };
 
 /** Verdict d'une saisie de surface : la surface écrite + ce qui n'a PAS été saisi
@@ -410,6 +415,9 @@ interface ChampNumerique {
   unite: string;
   /** Les genres qui affichent ce champ (les autres ne le montrent même pas). */
   genres: readonly GenrePose[];
+  /** Libellé propre quand plusieurs entrées partagent le même `champ` de refus
+   *  (les trois retraits de façade). Absent = le libellé du champ. */
+  libelle?: string;
 }
 
 /** Les champs numériques du panneau, dans l'ordre d'affichage. */
@@ -421,6 +429,12 @@ const CHAMPS_PANNEAU: readonly ChampNumerique[] = [
   { champ: 'sensEcoulement', cle: 'ecoulement', unite: '°', genres: ['ombriere'] }, // CALX124
   { champ: 'pasAppui', cle: 'pasAppui', unite: 'm', genres: ['ombriere'] }, // CALX124
   { champ: 'sectionAppui', cle: 'sectionAppui', unite: 'm', genres: ['ombriere'] }, // CALX124
+  { champ: 'mur', cle: 'mur', unite: 'n° du côté', genres: ['facade'] }, // CALX125
+  { champ: 'hauteurBasse', cle: 'hauteurBasse', unite: 'm', genres: ['facade'] }, // CALX125
+  { champ: 'hauteurHaute', cle: 'hauteurHaute', unite: 'm', genres: ['facade'] }, // CALX125
+  { champ: 'retraits', cle: 'retraitLateral', unite: 'm', genres: ['facade'], libelle: 'retrait latéral' }, // CALX125
+  { champ: 'retraits', cle: 'retraitBas', unite: 'm', genres: ['facade'], libelle: 'retrait bas' }, // CALX125
+  { champ: 'retraits', cle: 'retraitHaut', unite: 'm', genres: ['facade'], libelle: 'retrait haut' }, // CALX125
 ];
 
 /** Dépendances d'écran du panneau — toutes OPTIONNELLES : sans elles, le panneau
@@ -485,14 +499,16 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
       <select data-pose-genre class="mt-1 w-full rounded border border-white/20 bg-nuit-900/60 px-2 py-1">
         <option value="sol">Champ au sol</option>
         <option value="ombriere">Ombrière</option>
+        <option value="facade">Façade</option>
       </select>
     </label>
     ${CHAMPS_PANNEAU.map(
-      (c) => `<label class="mb-2 block" data-pose-ligne="${esc(c.champ)}">${esc(LIBELLE_CHAMP_POSE[c.champ])} (${esc(c.unite)})
+      (c) => `<label class="mb-2 block" data-pose-ligne="${esc(c.cle)}">${esc(c.libelle ?? LIBELLE_CHAMP_POSE[c.champ])} (${esc(c.unite)})
         <input type="number" inputmode="decimal" data-pose-champ="${esc(c.cle)}" class="mt-1 w-full rounded border border-white/20 bg-nuit-900/60 px-2 py-1" />
-        <span class="mt-1 block text-[11px] text-rose-300" data-pose-erreur="${esc(c.champ)}"></span>
+        ${c.libelle ? '' : `<span class="mt-1 block text-[11px] text-rose-300" data-pose-erreur="${esc(c.champ)}"></span>`}
       </label>`,
     ).join('')}
+    <span class="mb-2 block text-[11px] text-rose-300" data-pose-erreur="retraits"></span>
     <span class="mb-2 block text-[11px] text-rose-300" data-pose-erreur="contour"></span>
     <span class="mb-2 block text-[11px] text-rose-300" data-pose-erreur="identifiant"></span>
     <button type="button" data-pose-enregistrer class="w-full rounded border border-white/25 px-2 py-1 text-white">Enregistrer le contour tracé</button>
@@ -505,7 +521,7 @@ export function monterAtelierPose(ctx: Ctx, deps: AtelierPoseDeps = {}): Atelier
   function synchroniserGenre(): void {
     const genre = (genreEl?.value as GenrePose) ?? 'sol';
     for (const c of CHAMPS_PANNEAU) {
-      const ligne = racine!.querySelector(`[data-pose-ligne="${c.champ}"]`) as HTMLElement | null;
+      const ligne = racine!.querySelector(`[data-pose-ligne="${c.cle}"]`) as HTMLElement | null;
       if (ligne) ligne.style.display = c.genres.includes(genre) ? '' : 'none';
     }
   }
@@ -567,6 +583,25 @@ function saisirSurface(
     vertices,
     buildingId: ctx.activeArea?.()?.buildingId ?? undefined,
   };
+  if (genre === 'facade') {
+    // CALX125 — le mur est désigné par son NUMÉRO DE CÔTÉ (1 = le premier côté tracé) :
+    // un numéro d'écran commence à 1, l'index du contour à 0.
+    const numeroMur = lireChamp(racine, 'mur');
+    return creerFacade({
+      id: base.id,
+      label: base.label,
+      buildingId: base.buildingId,
+      contourBatiment: vertices,
+      areteIndex: estSaisi(numeroMur) ? Math.round(numeroMur) - 1 : -1,
+      hauteurBasseM: lireChamp(racine, 'hauteurBasse'),
+      hauteurHauteM: lireChamp(racine, 'hauteurHaute'),
+      retraitsM: {
+        lateralM: lireChamp(racine, 'retraitLateral'),
+        basM: lireChamp(racine, 'retraitBas'),
+        hautM: lireChamp(racine, 'retraitHaut'),
+      },
+    });
+  }
   if (genre === 'ombriere') {
     return creerOmbriere({
       ...base,
@@ -917,7 +952,313 @@ export function construireChampSolPose(
   return { maillages, placement, nonDessine };
 }
 
-/** CALX124 — le rendu d'UNE surface de pose, quel que soit son genre. */
+/* ════════════════════════════════════════════════════════════════════════════
+   CALX125 — POSER DES MODULES EN FAÇADE, SUR UN MUR DÉSIGNÉ DU BÂTIMENT.
+   ----------------------------------------------------------------------------
+   Constat : aucune occurrence de « façade » n'existait dans roofPro11 ni dans
+   `lib/roofPro2.ts`, et les murs n'étaient qu'une extrusion décorative. Le
+   contrat, lui, admet depuis CALX87 un troisième genre de surface — `facade` —
+   BORNÉ EN HAUTEUR au lieu de l'être au sol, avec ses deux hauteurs obligatoires.
+
+   CE QUI DÉFINIT UNE FAÇADE, ET CE QUI N'EST PAS UNE HYPOTHÈSE :
+     * l'AZIMUT est la NORMALE SORTANTE du mur désigné — `azimutNormaleArete`
+       (CALX99), déjà prouvée sur un carré tracé SO→SE→NE→NO ; aucune seconde
+       formule ici ;
+     * l'INCLINAISON vaut 90° : ce n'est pas une valeur « raisonnable », c'est la
+       définition d'un mur vertical, celle-là même qui fait que le contrat borne
+       la façade en hauteur ;
+     * les DEUX HAUTEURS sont SAISIES. Aucune n'est déduite de l'autre ni d'une
+       hauteur de bâtiment (CALX84) : ce sont deux mesures. Sans les deux, AUCUNE
+       surface n'est créée et le champ manquant est nommé — « non mesuré » ne se
+       pave pas.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** CONVENTION DE DESSIN — épaisseur (m) de la bande de façade et des modules
+ *  plaqués, pour qu'ils aient un volume visible et une vraie ombre portée plutôt
+ *  qu'un plan d'épaisseur nulle. Ne décrit aucun ouvrage. */
+export const EPAISSEUR_FACADE_DESSIN_M = 0.06;
+
+/** CALX125 — inclinaison d'une façade : un mur est VERTICAL, donc 90°. Ce n'est pas
+ *  une constante d'ingénierie choisie, c'est la définition du genre `facade`. */
+export const INCLINAISON_FACADE_DEG = 90;
+
+/** Les RETRAITS SAISIS de la bande posable d'un mur (m). Chacun absent = aucun
+ *  retrait appliqué de ce côté, et le manque est NOMMÉ — jamais un retrait supposé. */
+export interface RetraitsFacade {
+  /** Retrait de chaque côté vertical du mur (m), SAISI. */
+  lateralM?: number | null;
+  /** Retrait sous la hauteur haute (m), SAISI (bandeau, acrotère…). */
+  hautM?: number | null;
+  /** Retrait au-dessus de la hauteur basse (m), SAISI. */
+  basM?: number | null;
+}
+
+/** Ce que l'atelier recueille pour une façade : un MUR désigné + deux hauteurs. */
+export interface SaisieFacade {
+  id: string;
+  label?: string;
+  /** Le contour du BÂTIMENT (CALX100) dont on désigne un mur. */
+  contourBatiment: readonly LngLat[];
+  /** L'arête désignée : le mur va de `contourBatiment[areteIndex]` au suivant. */
+  areteIndex: number;
+  buildingId?: string;
+  /** Hauteur du BAS de la bande posable (m au-dessus du terrain), SAISIE. */
+  hauteurBasseM?: number | null;
+  /** Hauteur du HAUT de la bande posable (m au-dessus du terrain), SAISIE. */
+  hauteurHauteM?: number | null;
+  /** Les retraits SAISIS de la bande posable. */
+  retraitsM?: RetraitsFacade;
+}
+
+/** Un retrait SAISI, ou 0 quand il ne l'est pas — et le manque est nommé par l'appelant. */
+function retraitSaisi(v: unknown): number {
+  return estSaisi(v) && v >= 0 ? v : 0;
+}
+
+/**
+ * CALX125 — la SURFACE POSABLE d'un mur (m²) : sa longueur et sa bande de hauteur,
+ * DIMINUÉES des retraits saisis. C'est exactement la surface qui part au moteur,
+ * donc exactement celle que le nombre de modules posés suit.
+ *
+ * `null` quand la bande n'a plus d'étendue (retraits plus larges que le mur) :
+ * une surface négative ne se pave pas, et on ne la ramène pas à zéro en silence.
+ */
+export function surfacePosableFacadeM2(
+  longueurM: number,
+  hauteurBasseM: number,
+  hauteurHauteM: number,
+  retraits?: RetraitsFacade,
+): number | null {
+  const largeur = longueurM - 2 * retraitSaisi(retraits?.lateralM);
+  const hauteur =
+    hauteurHauteM - retraitSaisi(retraits?.hautM) - (hauteurBasseM + retraitSaisi(retraits?.basM));
+  if (!(largeur > 0) || !(hauteur > 0)) return null;
+  return largeur * hauteur;
+}
+
+/**
+ * CALX125 — le contour POSABLE d'un mur, dans le repère du mur : `x` = distance le
+ * long du mur depuis son premier coin, `y` = hauteur au-dessus du terrain. C'est
+ * lui que `contourM` porte, donc lui que le moteur reçoit.
+ */
+export function contourFacadeM(
+  longueurM: number,
+  hauteurBasseM: number,
+  hauteurHauteM: number,
+  retraits?: RetraitsFacade,
+): number[][] | null {
+  const lat = retraitSaisi(retraits?.lateralM);
+  const bas = hauteurBasseM + retraitSaisi(retraits?.basM);
+  const haut = hauteurHauteM - retraitSaisi(retraits?.hautM);
+  const x0 = lat;
+  const x1 = longueurM - lat;
+  if (!(x1 > x0) || !(haut > bas)) return null;
+  return [
+    [x0, bas],
+    [x1, bas],
+    [x1, haut],
+    [x0, haut],
+  ];
+}
+
+/**
+ * CALX125 — désigne un MUR du bâtiment et en fait une surface de pose `facade`.
+ *
+ * Refus NOMMÉS : contour de bâtiment absent, mur inexistant, hauteur basse ou haute
+ * non saisie (⇒ AUCUNE surface n'est créée), bande sans étendue. Aucune hauteur
+ * n'est déduite : deux mesures, ou rien.
+ */
+export function creerFacade(saisie: SaisieFacade): VerdictSurface {
+  const id = idNettoye(saisie?.id);
+  if (!id) {
+    return {
+      ok: false,
+      champ: 'identifiant',
+      motif: 'Nommez la façade avant de l’enregistrer : un identifiant vide ne se retrouve pas dans le document.',
+    };
+  }
+  const contour = saisie.contourBatiment;
+  if (!Array.isArray(contour) || contour.length < 3) {
+    return {
+      ok: false,
+      champ: 'contour',
+      motif: 'Tracez d’abord le contour du bâtiment : un mur se désigne sur un contour fermé.',
+    };
+  }
+  const i = saisie.areteIndex;
+  if (!Number.isInteger(i) || i < 0 || i >= contour.length) {
+    return {
+      ok: false,
+      champ: 'mur',
+      motif: 'Désignez un mur du bâtiment : cette arête n’existe pas sur le contour tracé.',
+    };
+  }
+  const a = contour[i];
+  const b = contour[(i + 1) % contour.length];
+  const longueurM = distanceEntreM(a, b);
+  if (!(longueurM > 0)) {
+    return {
+      ok: false,
+      champ: 'mur',
+      motif: 'Le mur désigné a une longueur nulle : reprenez le contour du bâtiment.',
+    };
+  }
+  if (!estSaisi(saisie.hauteurBasseM) || saisie.hauteurBasseM < 0) {
+    return {
+      ok: false,
+      champ: 'hauteurBasse',
+      motif: 'Saisissez la hauteur basse de la bande posable : sans elle, aucune surface de façade n’est créée (une hauteur non mesurée ne se pave pas).',
+    };
+  }
+  if (!estSaisi(saisie.hauteurHauteM) || saisie.hauteurHauteM < 0) {
+    return {
+      ok: false,
+      champ: 'hauteurHaute',
+      motif: 'Saisissez la hauteur haute de la bande posable : sans elle, aucune surface de façade n’est créée (elle n’est jamais déduite de la hauteur du bâtiment).',
+    };
+  }
+  if (!(saisie.hauteurHauteM > saisie.hauteurBasseM)) {
+    return {
+      ok: false,
+      champ: 'hauteurHaute',
+      motif: 'La hauteur haute doit dépasser la hauteur basse : sinon la bande posable n’a aucune étendue verticale.',
+    };
+  }
+  const contourM = contourFacadeM(
+    longueurM,
+    saisie.hauteurBasseM,
+    saisie.hauteurHauteM,
+    saisie.retraitsM,
+  );
+  const areaM2 = surfacePosableFacadeM2(
+    longueurM,
+    saisie.hauteurBasseM,
+    saisie.hauteurHauteM,
+    saisie.retraitsM,
+  );
+  if (!contourM || areaM2 === null) {
+    return {
+      ok: false,
+      champ: 'retraits',
+      motif: 'Les retraits saisis ne laissent aucune bande posable sur ce mur : réduisez-les ou désignez un autre mur.',
+    };
+  }
+
+  const azimut = azimutNormaleArete(a, b);
+  const nonSaisi: string[] = [];
+  if (!estSaisi(saisie.retraitsM?.lateralM)) nonSaisi.push('retrait latéral de la façade');
+  if (!estSaisi(saisie.retraitsM?.basM)) nonSaisi.push('retrait bas de la façade');
+  if (!estSaisi(saisie.retraitsM?.hautM)) nonSaisi.push('retrait haut de la façade');
+
+  const surface: Record<string, unknown> = {
+    kind: 'facade',
+    id,
+    vertices: [[a[0], a[1]], [b[0], b[1]]],
+    contourM,
+    areaM2,
+    hauteurBasseM: saisie.hauteurBasseM,
+    hauteurHauteM: saisie.hauteurHauteM,
+    // L'azimut de la surface EST la normale sortante du mur (CALX99) ; c'est la seule
+    // clé d'orientation que le contrat porte pour une surface de pose.
+    rowAzimuthDeg: azimut,
+    tiltDeg: INCLINAISON_FACADE_DEG,
+  };
+  const label = (saisie.label ?? '').trim();
+  if (label) surface.label = label;
+  const batiment = (saisie.buildingId ?? '').trim();
+  if (batiment) surface.buildingId = batiment;
+
+  return { ok: true, surface: surface as unknown as SurfacePose, nonSaisi };
+}
+
+/**
+ * CALX125 — les volumes 3D d'une FAÇADE : la bande posable plaquée sur le mur, et
+ * les modules que le moteur y a posés, plaqués avec elle.
+ *
+ * Le repère du moteur pour une façade est celui du mur (`x` le long du mur, `y` en
+ * hauteur) : chaque table rendue est donc reportée à sa distance le long du mur et
+ * à sa hauteur, jamais « à plat ». Tous les volumes portent leur ombre.
+ */
+export function construireFacadePose(
+  surface: SurfacePose,
+  origineScene: LngLat,
+  dim: boolean,
+): RenduPose {
+  const v = surface.vertices;
+  const contourM = surface.contourM;
+  if (!Array.isArray(v) || v.length < 2 || !Array.isArray(contourM) || contourM.length < 4) {
+    return { maillages: [], placement: null, nonDessine: ['mur de la façade non désigné'] };
+  }
+  const cosLat = Math.cos(origineScene[1] * DEG2RAD);
+  const enu = (p: LngLat): [number, number] => [
+    (p[0] - origineScene[0]) * DEG2M * cosLat,
+    (p[1] - origineScene[1]) * DEG2M,
+  ];
+  const a = enu(v[0]);
+  const b = enu(v[1]);
+  const longueur = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  if (!(longueur > 0)) {
+    return { maillages: [], placement: null, nonDessine: ['mur de la façade dégénéré'] };
+  }
+  const ux = (b[0] - a[0]) / longueur;
+  const uy = (b[1] - a[1]) / longueur;
+  const azRad = (estSaisi(surface.rowAzimuthDeg) ? surface.rowAzimuthDeg : 0) * DEG2RAD;
+  // Normale SORTANTE en repère ENU (est, nord) pour un cap depuis le nord vrai.
+  const nx = Math.sin(azRad);
+  const ny = Math.cos(azRad);
+  const angleZ = Math.atan2(uy, ux);
+  const demiEpaisseur = EPAISSEUR_FACADE_DESSIN_M / 2;
+
+  /** Pose un volume PLAQUÉ sur le mur, à `long` mètres du premier coin et `haut` m du sol. */
+  const plaquer = (
+    largeurM: number,
+    hauteurM: number,
+    long: number,
+    haut: number,
+    nom: string,
+  ): THREE.Mesh => {
+    const geo = new THREE.BoxGeometry(largeurM, EPAISSEUR_FACADE_DESSIN_M, hauteurM);
+    const mesh = new THREE.Mesh(geo, materiauPose(dim));
+    mesh.name = nom;
+    mesh.position.set(
+      a[0] + ux * long + nx * demiEpaisseur,
+      a[1] + uy * long + ny * demiEpaisseur,
+      haut,
+    );
+    mesh.rotation.z = angleZ;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  };
+
+  const x0 = contourM[0][0];
+  const x1 = contourM[1][0];
+  const yBas = contourM[0][1];
+  const yHaut = contourM[2][1];
+  const maillages: THREE.Mesh[] = [
+    plaquer(x1 - x0, yHaut - yBas, (x0 + x1) / 2, (yBas + yHaut) / 2, `rp11-facade-${surface.id}-bande`),
+  ];
+
+  // Le PLACEMENT du moteur, réutilisé tel quel (CAL89) : la façade ne pave pas plus
+  // que le sol ou l'ombrière — elle affiche ce que le moteur a posé.
+  const placement = construireChampPose(planMoteur(surface), {
+    tiltDeg: 0, // le repère du mur est déjà vertical : aucune seconde inclinaison
+    penteTerrainDeg: 0, // un mur n'a pas de pente de terrain
+    hauteurLibreM: 0,
+    aireTerrainM2: surface.areaM2 ?? null,
+  });
+  for (let i = 0; i < placement.tables.length; i++) {
+    const t = placement.tables[i];
+    if (!(t.largeurM > 0) || !(t.profondeurM > 0)) continue;
+    maillages.push(
+      plaquer(t.largeurM, t.profondeurM, t.cx, t.cy, `rp11-facade-${surface.id}-module-${i}`),
+    );
+  }
+  const nonDessine = placement.tables.length ? [] : ['plan du moteur non reçu : aucun module posé'];
+  return { maillages, placement, nonDessine };
+}
+
+/** CALX124/125 — le rendu d'UNE surface de pose, quel que soit son genre. */
 export function construireSurfacePose(
   surface: SurfacePose,
   origineScene: LngLat,
@@ -925,6 +1266,7 @@ export function construireSurfacePose(
 ): RenduPose {
   if (surface.kind === 'ombriere') return construireOmbrierePose(surface, origineScene, dim);
   if (surface.kind === 'sol') return construireChampSolPose(surface, origineScene, dim);
+  if (surface.kind === 'facade') return construireFacadePose(surface, origineScene, dim); // CALX125
   return { maillages: [], placement: null, nonDessine: [] };
 }
 

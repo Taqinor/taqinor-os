@@ -5,11 +5,14 @@ import { describe, expect, it } from 'vitest';
 import {
   aireAnneauM2,
   construireChampSolPose,
+  construireFacadePose,
   construireMaillagesPose,
   construireOmbrierePose,
   contourMetres,
   creerChampSol,
+  creerFacade,
   creerOmbriere,
+  surfacePosableFacadeM2,
   emettreSurfacesPose,
   lireSurfacesPose,
   modulesPoses,
@@ -20,6 +23,7 @@ import {
   type SurfacePose,
 } from './poseSurfaces';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
+import { azimutNormaleArete } from './snap';
 
 /** Un rectangle d'environ `largeurM` × `hauteurM` autour de Casablanca (anneau OUVERT,
  *  même convention que `ctx.vertices`). */
@@ -334,5 +338,292 @@ describe('CALX124 — aucune charge, aucune structure n’est calculée', () => 
     const v = ombriere({ hauteurLibreM: 3 });
     expect('terrainSlopeDeg' in v.surface).toBe(false);
     expect(v.nonSaisi).not.toContain('pente du terrain');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CALX125 — les modules en façade, sur un mur désigné du bâtiment.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Le carré de la preuve de CALX99, tracé SO → SE → NE → NO : son côté 0 est le
+ *  côté SUD, dont la normale sortante est plein sud (180°). */
+function carreSOSENENO(coteM = 20, lat = 33.55, lng = -7.6): LngLat[] {
+  const dLat = coteM / 111320;
+  const dLng = coteM / (111320 * Math.cos((lat * Math.PI) / 180));
+  return [
+    [lng, lat], // SO
+    [lng + dLng, lat], // SE
+    [lng + dLng, lat + dLat], // NE
+    [lng, lat + dLat], // NO
+  ];
+}
+
+describe('CALX125 — aucune hauteur saisie ⇒ aucune surface créée, motif affiché', () => {
+  it('hauteur basse absente ⇒ REFUS nommant « hauteurBasse », rien n’est créé', () => {
+    const v = creerFacade({
+      id: 'fac-1',
+      contourBatiment: carreSOSENENO(),
+      areteIndex: 0,
+      hauteurHauteM: 9,
+    });
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.champ).toBe('hauteurBasse');
+    expect(v.motif).toContain('aucune surface de façade n’est créée');
+  });
+
+  it('hauteur haute absente ⇒ REFUS nommant « hauteurHaute », jamais déduite du bâtiment', () => {
+    const v = creerFacade({
+      id: 'fac-1',
+      contourBatiment: carreSOSENENO(),
+      areteIndex: 0,
+      hauteurBasseM: 3,
+    });
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.champ).toBe('hauteurHaute');
+    expect(v.motif).toContain('jamais déduite de la hauteur du bâtiment');
+  });
+
+  it('bande sans étendue verticale (haute ≤ basse) ⇒ REFUS nommé', () => {
+    const v = creerFacade({
+      id: 'fac-1',
+      contourBatiment: carreSOSENENO(),
+      areteIndex: 0,
+      hauteurBasseM: 6,
+      hauteurHauteM: 6,
+    });
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.champ).toBe('hauteurHaute');
+  });
+
+  it('un mur qui n’existe pas sur le contour ⇒ REFUS nommant « mur »', () => {
+    const v = creerFacade({
+      id: 'fac-1',
+      contourBatiment: carreSOSENENO(),
+      areteIndex: 9,
+      hauteurBasseM: 3,
+      hauteurHauteM: 9,
+    });
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.champ).toBe('mur');
+  });
+});
+
+describe('CALX125 — l’azimut retenu est la normale sortante du mur désigné', () => {
+  it('le côté SUD d’un carré tracé SO→SE→NE→NO rend 180°, et l’inclinaison 90°', () => {
+    const contour = carreSOSENENO();
+    const v = creerFacade({
+      id: 'fac-sud',
+      contourBatiment: contour,
+      areteIndex: 0,
+      hauteurBasseM: 3,
+      hauteurHauteM: 9,
+    });
+    if (!v.ok) throw new Error(v.motif);
+    expect(v.surface.kind).toBe('facade');
+    expect(v.surface.rowAzimuthDeg).toBeCloseTo(azimutNormaleArete(contour[0], contour[1]), 9);
+    expect(v.surface.rowAzimuthDeg).toBeCloseTo(180, 3);
+    expect(v.surface.tiltDeg).toBe(90);
+  });
+
+  it('chaque côté rend SA propre normale sortante (est, nord, ouest)', () => {
+    const contour = carreSOSENENO();
+    const attendus = [180, 90, 0, 270];
+    for (let i = 0; i < 4; i++) {
+      const v = creerFacade({
+        id: `fac-${i}`,
+        contourBatiment: contour,
+        areteIndex: i,
+        hauteurBasseM: 3,
+        hauteurHauteM: 9,
+      });
+      if (!v.ok) throw new Error(v.motif);
+      expect(v.surface.rowAzimuthDeg).toBeCloseTo(attendus[i], 3);
+    }
+  });
+});
+
+describe('CALX125 — les modules posés suivent la surface du mur diminuée des retraits', () => {
+  it('la surface posable est exactement (longueur − 2 latéraux) × (bande − haut − bas)', () => {
+    expect(surfacePosableFacadeM2(20, 3, 9, {})).toBeCloseTo(20 * 6, 9);
+    expect(surfacePosableFacadeM2(20, 3, 9, { lateralM: 1, basM: 0.5, hautM: 0.5 })).toBeCloseTo(
+      18 * 5,
+      9,
+    );
+    // Des retraits plus larges que le mur ⇒ AUCUNE surface (jamais ramenée à zéro).
+    expect(surfacePosableFacadeM2(20, 3, 9, { lateralM: 12 })).toBeNull();
+  });
+
+  it('le contour envoyé au moteur est la bande RÉDUITE, en (le long du mur, hauteur)', () => {
+    const v = creerFacade({
+      id: 'fac-1',
+      contourBatiment: carreSOSENENO(20),
+      areteIndex: 0,
+      hauteurBasseM: 3,
+      hauteurHauteM: 9,
+      retraitsM: { lateralM: 1, basM: 0.5, hautM: 0.5 },
+    });
+    if (!v.ok) throw new Error(v.motif);
+    const c = v.surface.contourM as number[][];
+    expect(c[0][0]).toBeCloseTo(1, 6);
+    expect(c[1][0]).toBeCloseTo(19, 3);
+    expect(c[0][1]).toBeCloseTo(3.5, 9);
+    expect(c[2][1]).toBeCloseTo(8.5, 9);
+    expect(aireAnneauM2(c)).toBeCloseTo(v.surface.areaM2 as number, 6);
+  });
+
+  it('agrandir les retraits réduit STRICTEMENT la surface envoyée au moteur', () => {
+    const base = {
+      contourBatiment: carreSOSENENO(20),
+      areteIndex: 0,
+      hauteurBasseM: 3,
+      hauteurHauteM: 9,
+    };
+    const sans = creerFacade({ id: 'a', ...base });
+    const avec = creerFacade({ id: 'b', ...base, retraitsM: { lateralM: 2, basM: 1, hautM: 1 } });
+    if (!sans.ok || !avec.ok) throw new Error('les deux saisies auraient dû être acceptées');
+    expect(avec.surface.areaM2 as number).toBeLessThan(sans.surface.areaM2 as number);
+    expect(avec.surface.areaM2).toBeCloseTo(16 * 4, 3);
+  });
+
+  it('un retrait non saisi n’est pas inventé : il vaut 0 appliqué ET il est NOMMÉ', () => {
+    const v = creerFacade({
+      id: 'fac-1',
+      contourBatiment: carreSOSENENO(20),
+      areteIndex: 0,
+      hauteurBasseM: 3,
+      hauteurHauteM: 9,
+    });
+    if (!v.ok) throw new Error(v.motif);
+    expect(v.nonSaisi).toContain('retrait latéral de la façade');
+    expect(v.nonSaisi).toContain('retrait bas de la façade');
+    expect(v.nonSaisi).toContain('retrait haut de la façade');
+  });
+
+  it('le NOMBRE de modules reste celui du moteur : la table n’en recompte aucun', () => {
+    const v = creerFacade({
+      id: 'fac-1',
+      contourBatiment: carreSOSENENO(20),
+      areteIndex: 0,
+      hauteurBasseM: 3,
+      hauteurHauteM: 9,
+    });
+    if (!v.ok) throw new Error(v.motif);
+    expect(modulesPoses(v.surface)).toBeNull();
+    expect(modulesPoses({ ...v.surface, engine: { modules: 42 } })).toBe(42);
+  });
+
+  it('des retraits qui ne laissent aucune bande ⇒ REFUS nommant « retraits »', () => {
+    const v = creerFacade({
+      id: 'fac-1',
+      contourBatiment: carreSOSENENO(20),
+      areteIndex: 0,
+      hauteurBasseM: 3,
+      hauteurHauteM: 9,
+      retraitsM: { lateralM: 15 },
+    });
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.champ).toBe('retraits');
+  });
+});
+
+describe('CALX125 — les modules sont rendus PLAQUÉS sur le mur, avec leur ombre', () => {
+  /** Une façade sud valide, avec un plan moteur de deux modules. */
+  function facadeSud() {
+    const v = creerFacade({
+      id: 'fac-1',
+      contourBatiment: carreSOSENENO(20),
+      areteIndex: 0,
+      hauteurBasseM: 3,
+      hauteurHauteM: 9,
+    });
+    if (!v.ok) throw new Error(v.motif);
+    return {
+      ...v.surface,
+      engine: {
+        modules: 2,
+        tables: [
+          { x0: 2, x1: 4, y0: 4, y1: 5 },
+          { x0: 6, x1: 8, y0: 4, y1: 5 },
+        ],
+      },
+    };
+  }
+
+  it('la bande et chaque module portent leur ombre, à la HAUTEUR du plan moteur', () => {
+    const rendu = construireFacadePose(facadeSud(), ORIGINE_SCENE, false);
+    const modules = rendu.maillages.filter((m) => m.name.includes('-module-'));
+    expect(rendu.maillages.some((m) => m.name.endsWith('-bande'))).toBe(true);
+    expect(modules).toHaveLength(2);
+    for (const m of rendu.maillages) {
+      expect(m.castShadow).toBe(true);
+      expect(m.receiveShadow).toBe(true);
+    }
+    // Le repère du mur est (le long du mur, hauteur) : un module à y = 4,5 est à 4,5 m du sol.
+    expect(modules[0].position.z).toBeCloseTo(4.5, 6);
+    expect(modules[1].position.z).toBeCloseTo(4.5, 6);
+    // Et il est PLAQUÉ : le mur sud est à la latitude de l'origine, donc y ≈ 0.
+    expect(Math.abs(modules[0].position.y)).toBeLessThan(0.1);
+    expect(Math.abs(modules[1].position.y)).toBeLessThan(0.1);
+    // Les deux modules sont bien décalés LE LONG du mur (x0 = 3 m puis 7 m).
+    expect(modules[1].position.x - modules[0].position.x).toBeCloseTo(4, 3);
+  });
+
+  it('sans plan moteur, la bande est dessinée mais AUCUN module, et le manque est dit', () => {
+    const v = creerFacade({
+      id: 'fac-1',
+      contourBatiment: carreSOSENENO(20),
+      areteIndex: 0,
+      hauteurBasseM: 3,
+      hauteurHauteM: 9,
+    });
+    if (!v.ok) throw new Error(v.motif);
+    const rendu = construireFacadePose(v.surface, ORIGINE_SCENE, false);
+    expect(rendu.maillages.filter((m) => m.name.includes('-module-'))).toHaveLength(0);
+    expect(rendu.nonDessine.join(' ')).toContain('plan du moteur non reçu');
+  });
+
+  it('une façade voyage par le document avec SES deux hauteurs obligatoires', () => {
+    const v = creerFacade({
+      id: 'fac-1',
+      contourBatiment: carreSOSENENO(20),
+      areteIndex: 0,
+      hauteurBasseM: 3,
+      hauteurHauteM: 9,
+      buildingId: 'bat-A',
+    });
+    if (!v.ok) throw new Error(v.motif);
+    const relu = lireSurfacesPose(emettreSurfacesPose([v.surface]));
+    expect(relu).toHaveLength(1);
+    expect(relu[0].kind).toBe('facade');
+    expect(relu[0].hauteurBasseM).toBe(3);
+    expect(relu[0].hauteurHauteM).toBe(9);
+    expect(relu[0].buildingId).toBe('bat-A');
+    expect(relu[0]).toEqual(v.surface);
+  });
+
+  it('`construireMaillagesPose` rend les trois genres ensemble', () => {
+    const sol = creerChampSol({ id: 's', vertices: rectangle(30, 20), inclinaisonDeg: 20 });
+    const omb = ombriere({ hauteurLibreM: 3 });
+    const fac = creerFacade({
+      id: 'f',
+      contourBatiment: carreSOSENENO(20),
+      areteIndex: 0,
+      hauteurBasseM: 3,
+      hauteurHauteM: 9,
+    });
+    if (!sol.ok || !fac.ok) throw new Error('les saisies auraient dû être acceptées');
+    const maillages = construireMaillagesPose(
+      [{ ...sol.surface, engine: PLAN_MOTEUR }, omb.surface, fac.surface],
+      ORIGINE_SCENE,
+      false,
+    );
+    expect(maillages.some((m) => m.name.startsWith('rp11-sol-'))).toBe(true);
+    expect(maillages.some((m) => m.name.startsWith('rp11-ombriere-'))).toBe(true);
+    expect(maillages.some((m) => m.name.startsWith('rp11-facade-'))).toBe(true);
   });
 });
