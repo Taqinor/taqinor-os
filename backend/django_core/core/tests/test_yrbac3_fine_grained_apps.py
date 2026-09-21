@@ -1,10 +1,15 @@
-"""YRBAC3 — allow/deny par app pour qhse/gestion_projet/contrats/litiges/kb.
+"""YRBAC3 — allow/deny par app sur le régime ``<app>_voir``/``<app>_gerer``.
 
-Ces 5 apps étaient gatées SEULEMENT par ``IsResponsableOrAdmin`` (tout porteur
-de rôle avec au moins une permission d'écriture ailleurs passait, y compris en
-écriture, sans granularité). YRBAC3 introduit ``<app>_voir``/``<app>_gerer`` +
-``WriteScopedPermissionMixin`` (lecture ≠ écriture par méthode HTTP), avec repli
-légacy préservé pour les comptes sans rôle fin.
+Le régime YRBAC3 remplace un gatage grossier par ``IsResponsableOrAdmin`` (tout
+porteur de rôle avec au moins une permission d'écriture ailleurs passait, y
+compris en écriture, sans granularité) par une paire de codes
+``<app>_voir``/``<app>_gerer`` lue par ``ScopedPermission`` (lecture ≠ écriture
+par méthode HTTP), avec repli légacy préservé pour les comptes sans rôle fin.
+
+SOLMVP (2026-09-21) — les 5 apps d'origine (qhse, gestion_projet, contrats,
+litiges, kb) sont sorties du MVP solaire : les cas paramétrés sont RE-ANCRÉS sur
+4 modules GARDÉS qui portent le même régime (calepinage, adsengine, visites,
+sav). Voir le bloc de commentaire au-dessus des classes.
 
 Ce test prouve, par app, sur l'endpoint « liste » (GET) :
 
@@ -108,36 +113,53 @@ class _FineGrainedAppAllowDenyMixin:
         self.assertNotEqual(resp.status_code, 403)
 
 
-class QhseAllowDenyTests(_FineGrainedAppAllowDenyMixin, TestCase):
-    app_label = "qhse"
-    list_path = "/api/django/qhse/non-conformites/"
-    voir_code = "qhse_voir"
-    gerer_code = "qhse_gerer"
+# ─────────────────────────────────────────────────────────────────────────────
+# SOLMVP — RE-ANCRAGE des cas paramétrés sur des modules GARDÉS.
+#
+# Les 5 classes d'origine visaient qhse / gestion_projet / contrats / litiges /
+# kb : ces apps sont sorties du MVP solaire (``core.parked`` /
+# ``docs/parked-modules.md``), leurs urls ne sont plus montées, donc les 25
+# tests ne mesuraient plus qu'un 404. La GARDE elle-même — « sans permission
+# 403, ``_voir`` seul lit mais n'écrit pas, ``_gerer`` écrit, un compte légacy
+# garde son accès historique » — est intacte : elle est simplement rebranchée
+# sur les 4 modules CONSERVÉS qui portent exactement le même régime
+# lecture ≠ écriture (``read_permission``/``write_permission`` lus par
+# ``core.permissions.ScopedPermission``, ou la paire
+# ``HasPermissionOrLegacy`` de ``apps/sav``), avec le même repli légacy
+# (``_user_has_or_legacy`` / ``HasPermissionOrLegacy`` — même règle : rôle fin
+# ⇒ code exigé, pas de rôle fin ⇒ comportement historique du palier
+# Responsable). Les codes utilisés sont ceux du catalogue
+# ``apps/roles/models.py``. Les 5 classes d'origine reviendront avec leurs
+# modules (recette § 5 de ``docs/parked-modules.md``) ; leur forme exacte est
+# dans l'historique git.
+# ─────────────────────────────────────────────────────────────────────────────
 
 
-class GestionProjetAllowDenyTests(_FineGrainedAppAllowDenyMixin, TestCase):
-    app_label = "gestion_projet"
-    list_path = "/api/django/gestion-projet/projets/"
-    voir_code = "projet_voir"
-    gerer_code = "projet_gerer"
+class CalepinageAllowDenyTests(_FineGrainedAppAllowDenyMixin, TestCase):
+    app_label = "calepinage"
+    list_path = "/api/django/calepinage/calepinages/"
+    voir_code = "calepinage_voir"
+    gerer_code = "calepinage_gerer"
 
 
-class ContratsAllowDenyTests(_FineGrainedAppAllowDenyMixin, TestCase):
-    app_label = "contrats"
-    list_path = "/api/django/contrats/contrats/"
-    voir_code = "contrat_voir"
-    gerer_code = "contrat_gerer"
+class AdsengineAllowDenyTests(_FineGrainedAppAllowDenyMixin, TestCase):
+    app_label = "adsengine"
+    list_path = "/api/django/adsengine/annotations/"
+    voir_code = "adsengine_view"
+    gerer_code = "adsengine_manage"
 
 
-class LitigesAllowDenyTests(_FineGrainedAppAllowDenyMixin, TestCase):
-    app_label = "litiges"
-    list_path = "/api/django/litiges/reclamations/"
-    voir_code = "litige_voir"
-    gerer_code = "litige_gerer"
+class VisitesAllowDenyTests(_FineGrainedAppAllowDenyMixin, TestCase):
+    app_label = "visites"
+    list_path = "/api/django/visites/visites/"
+    voir_code = "visites_voir"
+    # ``VisiteTerrainViewSet`` exprime son code d'écriture PAR ACTION
+    # (``PERMISSIONS_ECRITURE``) : la création exige ``visites_creer``.
+    gerer_code = "visites_creer"
 
 
-class KbAllowDenyTests(_FineGrainedAppAllowDenyMixin, TestCase):
-    app_label = "kb"
-    list_path = "/api/django/kb/articles/"
-    voir_code = "kb_voir"
-    gerer_code = "kb_gerer"
+class SavAllowDenyTests(_FineGrainedAppAllowDenyMixin, TestCase):
+    app_label = "sav"
+    list_path = "/api/django/sav/tickets/"
+    voir_code = "sav_voir"
+    gerer_code = "sav_gerer"

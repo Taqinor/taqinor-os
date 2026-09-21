@@ -62,15 +62,14 @@ class RbacMatrixTests(TestCase):
                 f"Rôle de matrice « {name} » absent de CANONICAL_SYSTEM_ROLES.")
 
     def test_matrix_covers_crm_ventes_stock(self):
+        # SOLMVP — les 5 apps YRBAC3 (qhse, gestion_projet, contrats, litiges,
+        # kb) sont sorties du MVP solaire : leurs urls ne sont plus montées,
+        # leurs lignes de matrice ont été retirées avec elles (cf.
+        # ``core/rbac_matrix.py``). Le socle crm + ventes + stock reste couvert.
         self.assertEqual(
             rbac_matrix.covered_apps(),
-            {
-                "crm", "ventes", "stock",
-                # YRBAC3 — apps nouvellement fine-grainées.
-                "qhse", "gestion_projet", "contrats", "litiges", "kb",
-            },
-            "La matrice de référence doit couvrir crm + ventes + stock + "
-            "qhse + gestion_projet + contrats + litiges + kb.")
+            {"crm", "ventes", "stock"},
+            "La matrice de référence doit couvrir crm + ventes + stock.")
 
     def test_every_entry_has_allow_and_deny(self):
         """Chaque ligne a AU MOINS un allow ET, pour les gardes fines, un deny."""
