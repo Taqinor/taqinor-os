@@ -125,32 +125,21 @@ class AnnonceTargetingTests(TestCase):
         publish_annonce(annonce)
         self.assertEqual(Notification.objects.count(), 0)
 
-    def test_cible_departement_notifies_only_department_members(self):
-        from apps.rh.models import Departement, DossierEmploye
+    def test_cible_departement_notifies_no_one_since_rh_parked(self):
+        """SOLMVP19 — l'app rh (source des départements) est sortie du
+        produit : ce ciblage ne résout plus personne (no-op), jamais une
+        exception."""
         from .services import publish_annonce
 
-        dept_atelier = Departement.objects.create(
-            company=self.company, nom='Atelier')
-        dept_commercial = Departement.objects.create(
-            company=self.company, nom='Commercial')
-        atelier_user = _make_user(self.company, 'atelier_u')
-        commercial_user = _make_user(self.company, 'commercial_u')
-        DossierEmploye.objects.create(
-            company=self.company, user=atelier_user, matricule='M1',
-            nom='Atelier', prenom='User', departement=dept_atelier)
-        DossierEmploye.objects.create(
-            company=self.company, user=commercial_user, matricule='M2',
-            nom='Commercial', prenom='User', departement=dept_commercial)
-
+        someone = _make_user(self.company, 'dept_u')
         annonce = Annonce.objects.create(
             company=self.company, titre='Pour atelier',
             cible_type=Annonce.Cible.DEPARTEMENT,
             cible_departement_nom='Atelier')
         publish_annonce(annonce)
         self.assertEqual(
-            Notification.objects.filter(recipient=atelier_user).count(), 1)
-        self.assertEqual(
-            Notification.objects.filter(recipient=commercial_user).count(), 0)
+            Notification.objects.filter(recipient=someone).count(), 0)
+        self.assertEqual(Notification.objects.count(), 0)
 
     def test_publish_is_noop_when_already_published(self):
         from .services import publish_annonce

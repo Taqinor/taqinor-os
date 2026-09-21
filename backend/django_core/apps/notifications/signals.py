@@ -3,7 +3,7 @@
 Avant : ``notify()`` n'était appelé que par les digests planifiés et les tests —
 le moteur était inerte pour les évènements métier. On câble ici les producteurs
 DEPUIS l'app notifications (en miroir de ``apps/publicapi/signals.py``), sans
-jamais éditer crm/ventes/sav/automation/compta : on connecte simplement des
+jamais éditer crm/ventes/sav/automation : on connecte simplement des
 récepteurs à leurs ``pre_save``/``post_save``.
 
 Producteurs câblés :
@@ -13,18 +13,17 @@ Producteurs câblés :
 - ``SAV_TICKET_OPENED`` (YEVNT4) : à la CRÉATION d'un ``sav.Ticket``.
 - ``APPROVAL_REQUESTED``/``APPROVAL_DECIDED`` (YEVNT8) : sur
   ``automation.AutomationApproval`` (création → approbateur ; décision →
-  demandeur) ET ``compta.DemandeApprobationConfig`` (même paire).
+  demandeur).
 - ``APPROVAL_REQUESTED``/``APPROVAL_DECIDED`` (VX99) : étend le câblage YEVNT8
-  aux 2 sources restantes de l'agrégateur ``reporting/approbations.py`` qui
-  passent par un ``save()`` ordinaire : ``installations.DemandeAchat``
-  (brouillon→soumise → managers ; décision approuvée/refusée →
-  ``created_by``) et ``ged.DemandeApprobation`` (création en_attente →
-  l'``approbateur`` désigné s'il existe, sinon les managers ; décision →
-  ``demandeur``). La 3e source de l'agrégateur, ``contrats.EtapeApprobation``,
-  est créée via ``bulk_create()`` dans ``lancer_workflow_approbation`` —
-  ``bulk_create`` n'émet JAMAIS de signal ``post_save`` (aucun paramètre ne
-  l'active), donc sa notification de CRÉATION ne peut pas être câblée depuis
-  ce seul fichier (voir le ``[BLOCKED]`` laissé sur cette sous-tâche).
+  à ``installations.DemandeAchat`` (brouillon→soumise → managers ; décision
+  approuvée/refusée → ``created_by``), seule source restante de l'agrégateur
+  ``reporting/approbations.py`` qui passe par un ``save()`` ordinaire (SOLMVP19 :
+  la source ``ged.DemandeApprobation`` est sortie avec l'app ged). La 3e
+  source de l'agrégateur, ``contrats.EtapeApprobation``, est créée via
+  ``bulk_create()`` dans ``lancer_workflow_approbation`` — ``bulk_create``
+  n'émet JAMAIS de signal ``post_save`` (aucun paramètre ne l'active), donc sa
+  notification de CRÉATION ne peut pas être câblée depuis ce seul fichier
+  (voir le ``[BLOCKED]`` laissé sur cette sous-tâche).
 
 Tout est best-effort : ``notify()`` isole déjà ses propres exceptions, et les
 récepteurs en rajoutent une couche pour ne JAMAIS bloquer le save d'origine.
@@ -43,9 +42,7 @@ logger = logging.getLogger(__name__)
 
 _OLD_OWNER_ATTR = '_notif_old_owner_id'
 _OLD_STATUT_ATTR = '_notif_old_statut'
-_OLD_DEMANDE_STATUT_ATTR = '_notif_old_demande_statut'
 _OLD_DA_STATUT_ATTR = '_notif_old_da_statut'
-_OLD_GED_DEMANDE_STATUT_ATTR = '_notif_old_ged_demande_statut'
 
 
 # ── Lead → LEAD_ASSIGNED ─────────────────────────────────────────────────────
@@ -275,9 +272,11 @@ def equipement_remplace_receiver(sender, equipement, ticket, company, user,
 
 
 # ── Projet — changement de statut → PROJET_STATUT_CHANGE (ARC37) ───────────
-# S'abonne à ``core.events.projet_status_change`` (nouveau signal,
-# gestion_projet devient émetteur du bus, en plus du chemin EXISTANT vers le
-# moteur automation qui reste inchangé). Notifie le responsable du projet.
+# S'abonne à ``core.events.projet_status_change`` — reste câblé même après
+# SOLMVP19 : le signal est un couplage DÉCOUPLÉ (aucun import d'apps.gestion_
+# projet ici), et un autre test (apps.sav.tests_arc37_bus_emetteur) exige que
+# ce signal garde au moins un abonné réel tant que gestion_projet émet encore
+# (avant sa coquille, SOLMVP33).
 def projet_status_change_receiver(sender, projet, company, user,
                                   ancien_statut, nouveau_statut, **kwargs):
     responsable = getattr(projet, 'responsable', None)
@@ -384,63 +383,6 @@ def automation_approval_post_save(sender, instance, created, **kwargs):
             'notify APPROVAL_* failed (automation approval %s)', instance.pk)
 
 
-# ── compta.DemandeApprobationConfig → APPROVAL_REQUESTED / APPROVAL_DECIDED ─
-# (YEVNT8)
-
-def demande_approbation_pre_save(sender, instance, **kwargs):
-    old = None
-    if instance.pk:
-        try:
-            old = sender.objects.filter(pk=instance.pk).values_list(
-                'statut', flat=True).first()
-        except Exception:  # noqa: BLE001
-            old = None
-    setattr(instance, _OLD_DEMANDE_STATUT_ATTR, old)
-
-
-def demande_approbation_post_save(sender, instance, created, **kwargs):
-    from apps.compta.models import DemandeApprobationConfig
-    try:
-        from .sweeps import _managers
-        company = instance.company
-        # WIR176 — `/compta/approbations/<pk>` n'existe pas côté front (le
-        # préfixe réel est `/comptabilite/…`) ; `DemandeApprobationConfig`
-        # n'est PAS une des 5 sources de l'agrégateur XKB1 — son propre
-        # écran est `/comptabilite/approbations-config` (pas de deep-link
-        # par id, jamais un paramètre fabriqué).
-        link = '/comptabilite/approbations-config'
-        label = instance.devis_reference or instance.devis_id or ''
-        if created:
-            title = "Approbation demandée"
-            body = f'Composition non-standard à valider ({label}) : {instance.motif}'
-            for approver in _managers(company):
-                notify(
-                    approver, EventType.APPROVAL_REQUESTED, title, body=body,
-                    link=link, company=company, reason='manager')
-            return
-
-        old = getattr(instance, _OLD_DEMANDE_STATUT_ATTR, None)
-        if (instance.statut == old
-                or instance.statut == DemandeApprobationConfig.Statut.EN_ATTENTE):
-            return  # pas une décision.
-        requester = getattr(instance, 'demandeur', None)
-        if requester is None:
-            return
-        decided_label = (
-            'approuvée'
-            if instance.statut == DemandeApprobationConfig.Statut.APPROUVEE
-            else 'refusée')
-        body = f'Votre demande ({label}) a été {decided_label}.'
-        if instance.commentaire_decision:
-            body += f' Motif : {instance.commentaire_decision}'
-        notify(
-            requester, EventType.APPROVAL_DECIDED, 'Approbation décidée',
-            body=body, link=link, company=company)
-    except Exception:  # noqa: BLE001 — jamais bloquant
-        logger.exception(
-            'notify APPROVAL_* failed (demande approbation %s)', instance.pk)
-
-
 # ── installations.DemandeAchat → APPROVAL_REQUESTED / APPROVAL_DECIDED ──────
 # (VX99 — 2e des 3 sources muettes de l'agrégateur reporting/approbations.py)
 #
@@ -449,9 +391,8 @@ def demande_approbation_post_save(sender, instance, created, **kwargs):
 # ``post_save`` observe donc la transition normalement, contrairement à
 # ``contrats.EtapeApprobation`` (bulk_create, cf. docstring de tête). La
 # demande n'a pas d'approbateur dédié (rôle responsable/admin, cf. FG310) :
-# on notifie les managers, comme pour ``AutomationApproval``/
-# ``DemandeApprobationConfig``. La décision (approuvée/refusée) notifie
-# ``created_by``.
+# on notifie les managers, comme pour ``AutomationApproval``. La décision
+# (approuvée/refusée) notifie ``created_by``.
 def demande_achat_pre_save(sender, instance, **kwargs):
     old = None
     if instance.pk:
@@ -515,75 +456,6 @@ def demande_achat_post_save(sender, instance, created, **kwargs):
             'notify APPROVAL_* failed (demande achat %s)', instance.pk)
 
 
-# ── ged.DemandeApprobation → APPROVAL_REQUESTED / APPROVAL_DECIDED ─────────
-# (VX99 — 3e des 3 sources muettes de l'agrégateur reporting/approbations.py)
-#
-# Créée par ``demander_revue``/``request_review(_avec_routage)`` via un
-# ``save()`` ordinaire (jamais de bulk_create ici) : le ``post_save`` observe
-# la création normalement. ``approbateur`` peut être posé dès la création
-# (choix manuel ou routage XGED20) — s'il existe, on le notifie directement ;
-# sinon repli managers (même patron que les autres producteurs de ce module).
-# La décision (approuve/rejete, ``approve_demande``/``reject_demande``)
-# notifie le ``demandeur``.
-def ged_demande_approbation_pre_save(sender, instance, **kwargs):
-    old = None
-    if instance.pk:
-        try:
-            old = sender.objects.filter(pk=instance.pk).values_list(
-                'statut', flat=True).first()
-        except Exception:  # noqa: BLE001
-            old = None
-    setattr(instance, _OLD_GED_DEMANDE_STATUT_ATTR, old)
-
-
-def ged_demande_approbation_post_save(sender, instance, created, **kwargs):
-    from apps.ged.models import APPROBATION_APPROUVE, APPROBATION_EN_ATTENTE
-    try:
-        from .sweeps import _managers, _notify_user_or_managers
-        company = instance.company
-        doc_label = getattr(instance.document, 'nom', None) or instance.document_id
-        # WIR176 — `/ged/documents/<pk>` n'existe pas côté front (aucune
-        # route détail document) ; `ged` est une des 5 sources réelles de
-        # l'agrégateur XKB1 — la boîte unique `/approbations` filtrée par sa
-        # source.
-        link = '/approbations?source=ged'
-
-        if created:
-            title = 'Approbation demandée'
-            body = f'Une revue est demandée sur le document « {doc_label} ».'
-            approbateur = getattr(instance, 'approbateur', None)
-            if approbateur is not None:
-                notify(
-                    approbateur, EventType.APPROVAL_REQUESTED, title,
-                    body=body, link=link, company=company,
-                    reason='assigne_a_vous')
-            else:
-                for approver in _managers(company):
-                    notify(
-                        approver, EventType.APPROVAL_REQUESTED, title,
-                        body=body, link=link, company=company,
-                        reason='manager')
-            return
-
-        old = getattr(instance, _OLD_GED_DEMANDE_STATUT_ATTR, None)
-        if instance.statut == old or instance.statut == APPROBATION_EN_ATTENTE:
-            return  # pas une décision.
-        requester = getattr(instance, 'demandeur', None)
-        decided_label = (
-            'approuvée' if instance.statut == APPROBATION_APPROUVE
-            else 'rejetée')
-        body = f'Votre demande de revue ({doc_label}) a été {decided_label}.'
-        if instance.commentaire:
-            body += f' Commentaire : {instance.commentaire}'
-        _notify_user_or_managers(
-            requester, company, EventType.APPROVAL_DECIDED,
-            'Approbation décidée', body, link)
-    except Exception:  # noqa: BLE001 — jamais bloquant
-        logger.exception(
-            'notify APPROVAL_* failed (ged demande approbation %s)',
-            instance.pk)
-
-
 # ── Contrat signé → CONTRAT_SIGNE (ARC35) ────────────────────────────────────
 # S'abonne à ``core.events.contrat_signe`` (YDOCF5 — seam posé par
 # CONTRAT16/17, jusqu'ici SANS abonné, catalogué ``ALLOWED_UNCONSUMED``).
@@ -633,9 +505,7 @@ def dossier_echeance_depassee_receiver(
 def connect():
     """Branche les récepteurs. Appelé depuis ``AppConfig.ready()``."""
     from apps.automation.models import AutomationApproval
-    from apps.compta.models import DemandeApprobationConfig
     from apps.crm.models import Lead
-    from apps.ged.models import DemandeApprobation as GedDemandeApprobation
     from apps.installations.models import DemandeAchat
     from apps.sav.models import Ticket
     from apps.ventes.models import Devis
@@ -685,24 +555,13 @@ def connect():
     post_save.connect(
         automation_approval_post_save, sender=AutomationApproval,
         dispatch_uid='notifications_automation_approval_events')
-    pre_save.connect(
-        demande_approbation_pre_save, sender=DemandeApprobationConfig,
-        dispatch_uid='notifications_demande_approbation_pre')
-    post_save.connect(
-        demande_approbation_post_save, sender=DemandeApprobationConfig,
-        dispatch_uid='notifications_demande_approbation_events')
-    # VX99 — installations.DemandeAchat et ged.DemandeApprobation, les 2
-    # sources de l'agrégateur reporting/approbations.py qui passent par un
-    # save() ordinaire (contrats.EtapeApprobation reste [BLOCKED], bulk_create).
+    # VX99 — installations.DemandeAchat, seule source restante de
+    # l'agrégateur reporting/approbations.py qui passe par un save()
+    # ordinaire (contrats.EtapeApprobation reste [BLOCKED], bulk_create ;
+    # ged.DemandeApprobation est sortie avec l'app ged, SOLMVP19).
     pre_save.connect(
         demande_achat_pre_save, sender=DemandeAchat,
         dispatch_uid='notifications_demande_achat_pre')
     post_save.connect(
         demande_achat_post_save, sender=DemandeAchat,
         dispatch_uid='notifications_demande_achat_events')
-    pre_save.connect(
-        ged_demande_approbation_pre_save, sender=GedDemandeApprobation,
-        dispatch_uid='notifications_ged_demande_approbation_pre')
-    post_save.connect(
-        ged_demande_approbation_post_save, sender=GedDemandeApprobation,
-        dispatch_uid='notifications_ged_demande_approbation_events')

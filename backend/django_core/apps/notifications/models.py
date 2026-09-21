@@ -103,8 +103,13 @@ class EventType(models.TextChoices):
     # YSERV5 — génération automatique nocturne de visites préventives dues.
     SAV_VISITES_AUTO_GENEREES = (
         'sav_visites_auto_generees', 'Visites préventives générées automatiquement')
-    # Group S — messagerie interne (« Discuss »).
+    # Group S — messagerie interne (« Discuss », app ``chat`` — SOLMVP19 ne
+    # retire QUE les références notifications→chat ; ``chat`` référence
+    # encore CE type directement (attribut Python) tant qu'elle n'est pas
+    # elle-même coquillée, SOLMVP33 — jamais retiré avant).
     CHAT_MESSAGE = 'chat_message', 'Nouveau message'
+    # VX209(b) — @mention dans une note/activité (`apps.records`), jamais
+    # liée à un module de messagerie : reste même après SOLMVP19.
     CHAT_MENTION = 'chat_mention', 'Vous avez été mentionné'
     DIGEST = 'digest', 'Récapitulatif'
     # XKB5 — annonce interne publiée (programmée ou immédiate).
@@ -112,7 +117,7 @@ class EventType(models.TextChoices):
     # XKB6 — relance de lecture obligatoire non confirmée.
     ANNONCE_READ_REMINDER = (
         'annonce_read_reminder', 'Relance lecture obligatoire')
-    # YEVNT8 — demandes d'approbation (automation N73 + compta FG213).
+    # YEVNT8 — demandes d'approbation (automation N73).
     APPROVAL_REQUESTED = 'approval_requested', "Approbation demandée"
     APPROVAL_DECIDED = 'approval_decided', "Approbation décidée"
     # YEVNT9 — relance/escalade d'une approbation restée en attente.
@@ -131,7 +136,10 @@ class EventType(models.TextChoices):
     # doublon de notification.
     BCF_RELANCE_PROPOSEE = (
         'bcf_relance_proposee', 'Brouillon de relance BCF proposé')
-    # XPRJ22 — retard/risque de planning sur un projet (gestion_projet).
+    # XPRJ22 — retard/risque de planning sur un projet (app ``gestion_projet``
+    # — SOLMVP19 ne retire QUE les références notifications→gestion_projet ;
+    # ``gestion_projet`` référence encore CE type directement tant qu'elle
+    # n'est pas elle-même coquillée, SOLMVP33 — jamais retiré avant).
     PROJET_RETARD = 'projet_retard', 'Retard planning projet'
     # XFLT18 — dépassement de budget flotte annuel (par catégorie de coût).
     FLOTTE_BUDGET_DEPASSEMENT = (
@@ -144,11 +152,6 @@ class EventType(models.TextChoices):
     # télématique (manuel ou fournisseur).
     FLOTTE_DTC_CRITIQUE = (
         'flotte_dtc_critique', 'Code défaut moteur critique (DTC)')
-    # ZGED14 — une demande de signature en attente approche de son expiration
-    # (versant ÉMETTEUR, complète les relances SIGNATAIRE de XGED2).
-    GED_SIGNATURE_EXPIRATION_PROCHE = (
-        'ged_signature_expiration_proche',
-        'Demande de signature bientôt expirée')
     # YEVNT2 — un devis envoyé a expiré automatiquement (QJ5, date de
     # validité dépassée) sans action du propriétaire.
     DEVIS_EXPIRED = 'devis_expired', 'Devis expiré'
@@ -182,7 +185,9 @@ class EventType(models.TextChoices):
         'sav_equipement_remplace', 'Équipement SAV remplacé')
     # ARC37 — gestion_projet devient émetteur du bus
     # (``core.events.projet_status_change``) : notifie le responsable du
-    # projet d'un changement de statut.
+    # projet d'un changement de statut. Signal DÉCOUPLÉ (aucun import de
+    # l'app émettrice ici) — reste câblé après SOLMVP19, voir
+    # apps.sav.tests_arc37_bus_emetteur (couverture des signaux non-orphelins).
     PROJET_STATUT_CHANGE = 'projet_statut_change', 'Statut de projet modifié'
     # ARC39 — couverture notifications : le rapport O&M périodique
     # (``monitoring/report.py``) est un envoi CLIENT (PDF joint, reste un
@@ -1062,9 +1067,11 @@ class Annonce(TenantModel):
     # Utilisé quand cible_type == ROLE (valeurs de CustomUser.role_legacy).
     cible_role = models.CharField(
         max_length=20, blank=True, default='', verbose_name='Rôle cible')
-    # Utilisé quand cible_type == DEPARTEMENT — nom du département
-    # (`rh.Departement.nom`), comparé en lecture seule via un import
-    # function-local (jamais un FK cross-app dur, cf. CLAUDE.md).
+    # Utilisé quand cible_type == DEPARTEMENT — nom du département. SOLMVP19 :
+    # la source de vérité (l'app rh, qui portait les départements) est sortie
+    # du produit ; le choix reste au schéma (pas de migration dans cette lane)
+    # mais `services.annonce_recipients` ne résout plus personne pour ce
+    # ciblage (voir sa docstring).
     cible_departement_nom = models.CharField(
         max_length=120, blank=True, default='', verbose_name='Département cible')
 
@@ -1226,9 +1233,9 @@ class ApprovalReminderConfig(models.Model):
 
 class ApprovalReminderState(models.Model):
     """YEVNT9 — État de relance/escalade PAR approbation en attente (générique,
-    couvre `automation.AutomationApproval` ET `compta.DemandeApprobationConfig`
-    via content-type — mêmes deux moteurs que YEVNT8, jamais un FK dur vers
-    l'une ou l'autre app).
+    couvre `automation.AutomationApproval` via content-type — jamais un FK
+    dur vers l'app. SOLMVP19 : le second moteur historique, compta, est sorti
+    du produit avec l'app compta.
 
     `palier` : 0 = jamais relancé, 1 = relance envoyée à l'approbateur,
     2 = escaladé à l'admin/owner-tier. Une ligne par approbation en attente ;
