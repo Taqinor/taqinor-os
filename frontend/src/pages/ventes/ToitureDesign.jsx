@@ -53,6 +53,9 @@ import { exporterImageHd, FACTEURS_HD } from '../../features/calepinage/exportIm
 // CAL104 — vue 2D PLAN orthographique (cotée, nord en haut) + plein écran, montée en
 // ONGLET à côté de la 3D : le plan PROJETTE ce que la 3D a posé, il ne re-pave rien.
 import Vue2DPlan from '../../features/calepinage/Vue2DPlan'
+// CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
+// bandeau de reprise. Logique pure, voir l'en-tête de ce module.
+import { hacherLayout, brouillonPertinent, creerGestionnaireBrouillon } from '../../features/calepinage/brouillon'
 import { toastInfo } from '../../lib/toast'
 // L2 — confirmation maison (APX17 : jamais une popup système) avant une écriture qui
 // diverge de la cible vendue du devis (voir enregistrerConception ci-dessous).
@@ -262,6 +265,27 @@ function httpMessage(status, responseData) {
   return `Création du devis impossible (erreur ${status}).`
 }
 
+// CALX68 — accès protégé à `localStorage` : absent (rendu hors navigateur) ou
+// qui LÈVE (navigation privée à quota nul) ⇒ `null`, jamais une exception qui
+// remonte à l'écran. `features/calepinage/brouillon.js` dégrade alors tout en
+// silence — aucune erreur, aucun bandeau — exactement le repli demandé.
+function stockageBrouillonLocal() {
+  try {
+    return typeof window !== 'undefined' ? window.localStorage : null
+  } catch {
+    return null
+  }
+}
+
+// CALX68 — l'heure du brouillon, pour le bandeau (« Reprendre le brouillon du
+// <heure> »). Un horodatage illisible n'affiche rien plutôt qu'une heure
+// fabriquée.
+function formaterHeureBrouillon(horodatageIso) {
+  const t = Date.parse(horodatageIso)
+  if (!Number.isFinite(t)) return ''
+  return new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+}
+
 export default function ToitureDesign({ mode = 'lead' }) {
   const { id: idParam } = useParams()
   const [searchParams] = useSearchParams()
@@ -360,6 +384,15 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // pendant le boot) et ne JAMAIS rattraper l'état voulu. Cet état, lui,
   // déclenche un re-rendu à l'arrivée de l'API — voir l'effet plus bas.
   const [builderReady, setBuilderReady] = useState(false)
+  // CALX8 — MÊME objet que `builderApi.current`, mais en ÉTAT plutôt qu'en
+  // ref : `react-hooks/refs` (v7) refuse désormais de lire `ref.current`
+  // PENDANT le rendu (seuls les effets/gestionnaires le peuvent), et
+  // `AtelierPanneaux` a besoin de l'OBJET — jamais de la ref nue, qui ne
+  // change jamais d'identité et aurait fait voyager `undefined` pour
+  // toujours (CALX8). Posé par les mêmes `onApiReady` que `builderApi.current`
+  // ci-dessous, jamais lu ailleurs : tout le reste du fichier continue de lire
+  // `builderApi.current` dans des effets/gestionnaires, où c'est autorisé.
+  const [builderApiActuel, setBuilderApiActuel] = useState(null)
   // CAL103 — clé de persistance des calques : l'utilisateur connecté. Lu sur le store
   // (et non par `useSelector`) pour que cet écran reste montable SANS Provider, comme
   // le font déjà ses tests ; store indisponible ⇒ null ⇒ clé « anonyme », jamais une
@@ -367,6 +400,34 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const utilisateurCourantId = useMemo(() => {
     try { return store.getState()?.auth?.user?.id ?? null } catch { return null }
   }, [])
+  // CALX68 — intervalle d'autosauvegarde du brouillon, lu sur les réglages de
+  // l'utilisateur connecté (MÊME patron `store.getState()` que
+  // `utilisateurCourantId` ci-dessus, CAL103 — jamais un `useSelector`,
+  // l'écran reste montable sans Provider). AUCUN réglage de ce nom n'existe
+  // encore dans le produit aujourd'hui (grep `uxviews`/`reglages` sous
+  // `frontend/src` : aucun réglage utilisateur numérique de ce type) — en son
+  // ABSENCE, aucun nombre n'est inventé ici : la valeur reste `null` et
+  // `creerGestionnaireBrouillon` (`features/calepinage/brouillon.js`) bascule
+  // sur son repli « à chaque geste » (D-CALX 7).
+  const intervalleBrouillonSecondes = useMemo(() => {
+    try {
+      const brut = store.getState()
+        ?.auth?.user?.reglages?.calepinage?.brouillon_intervalle_secondes
+      return Number.isFinite(brut) && brut > 0 ? brut : null
+    } catch { return null }
+  }, [])
+  // CALX68 — brouillon LOCAL de l'atelier (mode calepinage). `hashBaseBrouillon`
+  // est l'empreinte du layout SERVEUR lue à l'ouverture (voir `bootCalepinage`
+  // et l'en-tête de `brouillon.js`) : elle change après chaque enregistrement
+  // réussi, ce qui fait démarrer une minuterie/clé neuve et orpheline
+  // l'ancien brouillon (jamais réhydraté par erreur). `brouillonPropose` porte
+  // le brouillon TROUVÉ à l'ouverture, tant que l'utilisateur n'a pas choisi
+  // « Reprendre » ou « Ignorer » — rien n'est réhydraté sans ce geste : le
+  // boot du constructeur ATTEND cette décision (voir `bootCalepinage`).
+  const [hashBaseBrouillon, setHashBaseBrouillon] = useState(null)
+  const [brouillonPropose, setBrouillonPropose] = useState(null)
+  const gestionnaireBrouillonRef = useRef(null)
+  const poursuivreBootRef = useRef(null)
   // CAL180 — état de l'export image HD (message affiché SOUS le bouton : soit la taille
   // réellement obtenue, soit le motif du refus — jamais un « ça a marché » supposé).
   // CAL104 — onglet vue 2D : le plan est DEMANDÉ au builder (`planView`), jamais
@@ -501,7 +562,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         // bornes, forme inconnue) ne part JAMAIS vers le builder — pas de
         // polygone orphelin sans bascule pour le masquer.
         referenceContour: contourExploitable(leadData.roof_outline) ? leadData.roof_outline : null,
-        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
       })
       // Pré-remplit l'adresse depuis la ville du lead (champ de recherche).
       const addrEl = document.getElementById('rp9-address')
@@ -578,7 +639,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
           ? ctx.geometrie.contour_client : null,
         bankable,
-        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
       })
       // PV23bis — pré-remplit la barre de recherche d'adresse depuis
       // adresse+ville du devis, comme le mode lead le fait déjà ci-dessus
@@ -635,53 +696,135 @@ export default function ToitureDesign({ mode = 'lead' }) {
         return
       }
 
-      const mod = await import('@roofbuilder')
-      if (cancelled) return
-      window.__taqinorRoofBooted = true
-      // Un calepinage non modifiable (devis lié déjà parti chez le client, la
-      // raison venant du serveur ventes MOT POUR MOT) BOOTE quand même : on
-      // peut regarder la conception — seule l'action d'enregistrement
-      // disparaît, exactement comme en mode devis.
-      mod.initRoofToolPro8({
-        maptilerKey: carte.maptilerKey,
-        mapboxToken: carte.mapboxToken || undefined,
-        reducedMotion: !!reducedMotion,
-        hydrate: { devis: contexteCalepinageVersPayload(ctx) },
-        // L-MAP — le contour ORIGINAL du client (jamais celui, déjà édité, de
-        // la conception courante), sous la MÊME garde `contourExploitable` que
-        // la légende/bascule : voir les commentaires jumeaux ci-dessus.
-        referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
-          ? ctx.geometrie.contour_client : null,
-        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
+      // CALX68 — poursuit le boot du constructeur, éventuellement avec un
+      // LAYOUT DE SUBSTITUTION (le brouillon repris) au lieu de celui du
+      // serveur. Extrait de `bootCalepinage` pour pouvoir être rappelé PLUS
+      // TARD, une fois que l'utilisateur a choisi « Reprendre » ou
+      // « Ignorer » (voir plus bas) — jamais avant.
+      async function poursuivreBootCalepinage(layoutSubstitue) {
+        const mod = await import('@roofbuilder')
+        if (cancelled) return
+        window.__taqinorRoofBooted = true
+        const payload = contexteCalepinageVersPayload(ctx)
+        if (payload && layoutSubstitue !== undefined) {
+          payload.geometrie = { ...payload.geometrie, roof_layout: layoutSubstitue }
+        }
+        // Un calepinage non modifiable (devis lié déjà parti chez le client, la
+        // raison venant du serveur ventes MOT POUR MOT) BOOTE quand même : on
+        // peut regarder la conception — seule l'action d'enregistrement
+        // disparaît, exactement comme en mode devis.
+        mod.initRoofToolPro8({
+          maptilerKey: carte.maptilerKey,
+          mapboxToken: carte.mapboxToken || undefined,
+          reducedMotion: !!reducedMotion,
+          hydrate: { devis: payload },
+          // L-MAP — le contour ORIGINAL du client (jamais celui, déjà édité, de
+          // la conception courante), sous la MÊME garde `contourExploitable` que
+          // la légende/bascule : voir les commentaires jumeaux ci-dessus.
+          referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
+            ? ctx.geometrie.contour_client : null,
+          onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
+        })
+        // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en
+        // mode devis (`bootDevis` ci-dessus, PV23bis) et en mode lead (`boot()`).
+        // C'était la dernière divergence connue du mode calepinage : le commercial
+        // ouvrait l'atelier sur une barre VIDE et devait retaper l'adresse que le
+        // serveur connaît déjà. Le contexte la porte sous les MÊMES noms que le
+        // contrat devis (`client_adresse`/`client_ville`) — aucune clé devinée,
+        // aucune adresse composée ici au-delà de la jointure des deux morceaux.
+        const addrEl = document.getElementById('rp9-address')
+        const adresse = [ctx?.calepinage?.client_adresse,
+          ctx?.calepinage?.client_ville]
+          .map((v) => (v ?? '').trim())
+          .filter(Boolean)
+          .join(', ')
+        if (addrEl && adresse) addrEl.value = adresse
+        const titre = (ctx?.calepinage?.titre ?? '').trim()
+        setStatus(
+          ctx?.modifiable
+            ? `Calepinage ${titre || calepinageId} chargé. Ajustez la conception, puis « Enregistrer le calepinage ».`
+            : `Calepinage ${titre || calepinageId} en lecture seule — consultation de la conception.`
+        )
+      }
+
+      // CALX68 — brouillon local : détecté AVANT de booter le constructeur,
+      // pour pouvoir substituer `roof_layout` SANS second boot si le
+      // commercial choisit de reprendre. `hashBase` est l'empreinte du
+      // layout SERVEUR lue MAINTENANT (voir l'en-tête de `brouillon.js` —
+      // elle tient lieu d'`updated_at`, absent du contrat design-context) ;
+      // elle reste constante pour toute la session d'édition qui suit.
+      const hashServeur = hacherLayout(ctx?.geometrie?.roof_layout ?? null)
+      if (!cancelled) setHashBaseBrouillon(hashServeur)
+      const brouillon = brouillonPertinent({
+        storage: stockageBrouillonLocal(),
+        calepinageId,
+        utilisateurId: utilisateurCourantId,
+        hashBase: hashServeur,
       })
-      // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en
-      // mode devis (`bootDevis` ci-dessus, PV23bis) et en mode lead (`boot()`).
-      // C'était la dernière divergence connue du mode calepinage : le commercial
-      // ouvrait l'atelier sur une barre VIDE et devait retaper l'adresse que le
-      // serveur connaît déjà. Le contexte la porte sous les MÊMES noms que le
-      // contrat devis (`client_adresse`/`client_ville`) — aucune clé devinée,
-      // aucune adresse composée ici au-delà de la jointure des deux morceaux.
-      const addrEl = document.getElementById('rp9-address')
-      const adresse = [ctx?.calepinage?.client_adresse,
-        ctx?.calepinage?.client_ville]
-        .map((v) => (v ?? '').trim())
-        .filter(Boolean)
-        .join(', ')
-      if (addrEl && adresse) addrEl.value = adresse
-      const titre = (ctx?.calepinage?.titre ?? '').trim()
-      setStatus(
-        ctx?.modifiable
-          ? `Calepinage ${titre || calepinageId} chargé. Ajustez la conception, puis « Enregistrer le calepinage ».`
-          : `Calepinage ${titre || calepinageId} en lecture seule — consultation de la conception.`
-      )
+      if (!cancelled && brouillon) {
+        // « Rien n'est réhydraté sans le geste » : le boot du constructeur
+        // ATTEND que l'utilisateur choisisse (bandeau plus bas dans le JSX).
+        poursuivreBootRef.current = poursuivreBootCalepinage
+        setBrouillonPropose(brouillon)
+        return
+      }
+      await poursuivreBootCalepinage(undefined)
     }
 
     if (estDevis) bootDevis()
     else if (estCalepinage) bootCalepinage()
     else boot()
     return () => { cancelled = true }
+    // CALX68 — `utilisateurCourantId` est un `useMemo([])` (CAL103) :
+    // référentiellement stable pour toute la vie du composant, mais listé ici
+    // pour que `react-hooks/exhaustive-deps` reste silencieux (`bootCalepinage`
+    // le lit désormais pour la clé du brouillon).
   }, [cibleId, devisId, leadId, calepinageId,
-    estDevis, estCalepinage, reducedMotion])
+    estDevis, estCalepinage, reducedMotion, utilisateurCourantId])
+
+  // CALX68 — décision du bandeau de reprise : « Reprendre » substitue le
+  // layout du brouillon AVANT le boot du constructeur (le seul moment où
+  // c'est possible — le builder n'expose aucune méthode de rechargement
+  // post-boot) ; « Ignorer » boote avec le layout SERVEUR, sans y toucher —
+  // le brouillon local n'est PAS effacé pour autant (seul un enregistrement
+  // réussi l'efface, CALX68), mais le document serveur, lui, reste intact
+  // dans les deux cas : ni l'un ni l'autre ne fait le moindre appel réseau.
+  const reprendreBrouillon = async () => {
+    const poursuivre = poursuivreBootRef.current
+    const brouillon = brouillonPropose
+    setBrouillonPropose(null)
+    if (poursuivre && brouillon) await poursuivre(brouillon.layout)
+  }
+  const ignorerBrouillon = async () => {
+    const poursuivre = poursuivreBootRef.current
+    setBrouillonPropose(null)
+    if (poursuivre) await poursuivre(undefined)
+  }
+
+  // CALX68 — le planificateur d'écriture du brouillon : démarre une fois le
+  // constructeur prêt (`builderReady`) et une empreinte de base connue
+  // (`hashBaseBrouillon`, posée par `bootCalepinage` — jamais avant, sans
+  // quoi la clé serait fausse). `obtenirLayout` relit `serializeLayout()` —
+  // LA MÊME fonction que « Enregistrer le calepinage » (CAL37) — donc un
+  // brouillon repris est strictement au format d'un enregistrement normal.
+  useEffect(() => {
+    if (!estCalepinage || !builderReady || !hashBaseBrouillon) return undefined
+    const gestionnaire = creerGestionnaireBrouillon({
+      storage: stockageBrouillonLocal(),
+      calepinageId,
+      utilisateurId: utilisateurCourantId,
+      hashBase: hashBaseBrouillon,
+      intervalleSecondes: intervalleBrouillonSecondes,
+      obtenirLayout: () => builderApi.current?.serializeLayout?.() ?? null,
+    })
+    gestionnaireBrouillonRef.current = gestionnaire
+    gestionnaire.demarrer()
+    return () => {
+      gestionnaire.arreter()
+      if (gestionnaireBrouillonRef.current === gestionnaire) gestionnaireBrouillonRef.current = null
+    }
+  }, [estCalepinage, builderReady, calepinageId, utilisateurCourantId,
+    hashBaseBrouillon, intervalleBrouillonSecondes])
 
   // VT13 — la photo réelle du toit se demande sur le LEAD, jamais sur la
   // visite : mode lead (l'id de l'URL) ou mode devis QUAND le devis porte un
@@ -970,6 +1113,12 @@ export default function ToitureDesign({ mode = 'lead' }) {
       // Même conception → ZÉRO écriture serveur, et on le DIT : aucune
       // version n'a été créée, rien ne doit prétendre le contraire.
       if (resultat?.inchange) {
+        // CALX68 — le document POSTÉ est, par définition ici, celui que le
+        // serveur sert déjà : le brouillon local ne porte donc plus rien de
+        // plus récent, il s'efface (repli sur `layout` si `serializeLayout()`
+        // n'est déjà plus joignable).
+        gestionnaireBrouillonRef.current?.effacer()
+        setHashBaseBrouillon(hacherLayout(layout))
         toastInfo('Aucun changement')
         setGenStatus(null)
         setSending(false)
@@ -991,6 +1140,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
           } catch { /* image best-effort */ }
         }
       }
+      // CALX68 — enregistrement réussi : le brouillon local ne porte plus
+      // rien de plus récent que le serveur, il s'efface. Le layout SERVEUR
+      // vient de changer (nouvelle version) : son empreinte change avec lui,
+      // ce qui fait démarrer une minuterie/clé neuve pour la suite de la
+      // session (l'effet dédié plus haut réagit à `hashBaseBrouillon`).
+      gestionnaireBrouillonRef.current?.effacer()
+      setHashBaseBrouillon(hacherLayout(layout))
       setGenStatus(null)
       setSending(false)
       setStatus(
@@ -1222,6 +1378,41 @@ export default function ToitureDesign({ mode = 'lead' }) {
           )}
         </div>
         <p className="mt-2 text-sm text-lune-faint" aria-live="polite">{status}</p>
+
+        {/* CALX68 — LE BANDEAU DE REPRISE DE BROUILLON. N'existe QUE tant que
+            l'utilisateur n'a pas choisi : le constructeur 3D n'a pas encore
+            booté (voir `bootCalepinage`/`poursuivreBootCalepinage`), donc
+            « rien n'est réhydraté sans le geste ». */}
+        {estCalepinage && brouillonPropose && (
+          <div className="cine-card mt-4 border border-brass-400/40 p-4"
+            data-testid="cal-brouillon-bandeau">
+            <p className="tech-label text-brass-300">Brouillon local</p>
+            <p className="mt-1 text-sm text-lune-soft" role="status">
+              Un brouillon non enregistré du{' '}
+              {formaterHeureBrouillon(brouillonPropose.horodatage)} a été
+              trouvé sur cet appareil — reprendre où vous en étiez, ou
+              l’ignorer et ouvrir la dernière conception enregistrée.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={reprendreBrouillon}
+                data-testid="cal-brouillon-reprendre"
+                className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
+              >
+                {`Reprendre le brouillon du ${formaterHeureBrouillon(brouillonPropose.horodatage)}`}
+              </button>
+              <button
+                type="button"
+                onClick={ignorerBrouillon}
+                data-testid="cal-brouillon-ignorer"
+                className="inline-flex items-center gap-2 px-5 py-3 text-base font-semibold text-lune-faint"
+              >
+                Ignorer
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Correction fondateur 24/08 — discret, jamais bloquant : dit
             pourquoi la carte reste au niveau Maroc quand ni épingle ni GPS
@@ -1946,7 +2137,17 @@ export default function ToitureDesign({ mode = 'lead' }) {
           <AtelierPanneaux
             calepinageId={calepinageId}
             contexte={contexte}
-            builderApi={builderApi}
+            // CALX8 — `builderApi` (ci-dessus) est une REF `useRef` (O3) : elle
+            // ne change JAMAIS d'identité, donc la passer telle quelle a envoyé
+            // `undefined` pour toujours à `AtelierPanneaux` (`.entreeMoteur`,
+            // `.appliquerPlan`, `.raccourcis` lus SUR la ref au lieu de
+            // l'objet posé par le builder). Il faut transmettre l'OBJET —
+            // `builderApiActuel`, un ÉTAT posé par les mêmes `onApiReady`
+            // (jamais `builderApi.current` ici : `react-hooks/refs` interdit
+            // de lire une ref PENDANT le rendu, seuls les effets/gestionnaires
+            // le peuvent ; le reste du fichier continue de lire
+            // `builderApi.current` dans ce cadre-là, inchangé).
+            builderApi={builderApiActuel}
             lectureSeule={lectureSeule}
             onRecharger={() => window.location.reload()}
           />

@@ -321,15 +321,23 @@ export default function AtelierPanneaux({
       {/* L'EMPLACEMENT des panneaux des tâches suivantes. `builderApi`,
           `onRecharger` et `lectureSeule` leur sont passés par l'atelier, pour
           qu'aucune n'ait à aller les rechercher elle-même. */}
-      {/* CAL79 — le remplissage prouvé, et son régime annoncé sans flatterie. */}
+      {/* CAL79 — le remplissage prouvé, et son régime annoncé sans flatterie.
+          CALX8 — `entreeMoteur` est une FONCTION (CALX3) qui compose le
+          document DEPUIS la scène vivante à chaque appel : `RemplissageProuve`
+          et `PanneauAllees` attendent un DOCUMENT dans `entree` (ils le postent
+          tel quel à `calepinageApi.moteur.calculer`), jamais la fonction elle-
+          même. Elle est donc appelée ICI, au rendu de ce panneau — jamais
+          mémoïsée au montage — pour que le document reflète la scène la plus
+          récente que ce rendu ait vue. */}
       <RemplissageProuve
-        entree={builderApi?.entreeMoteur ?? null}
+        entree={builderApi?.entreeMoteur?.() ?? null}
         onAppliquer={builderApi?.appliquerPlan ?? null}
         lectureSeule={enLectureSeule}
       />
 
-      {/* CAL70 — les allées de maintenance et le plateau gratuit du moteur. */}
-      <PanneauAllees entree={builderApi?.entreeMoteur ?? null} lectureSeule={enLectureSeule} />
+      {/* CAL70 — les allées de maintenance et le plateau gratuit du moteur.
+          Même appel de `entreeMoteur()` que ci-dessus, même raison. */}
+      <PanneauAllees entree={builderApi?.entreeMoteur?.() ?? null} lectureSeule={enLectureSeule} />
 
       {/* CAL101 — l'aide-mémoire des raccourcis, à portée de « ? ». */}
       <div className="mt-4">
