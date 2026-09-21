@@ -15,18 +15,38 @@
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { type AreaRecord, type CardData, type LeadPayload, type ObstacleType, type ObstacleProvenance } from './types';
+import { champsFormeObstacle, type AreaRecord, type CardData, type LeadPayload, type ObstacleType, type ObstacleProvenance } from './types';
 import { type LngLat } from '../../lib/roof';
 import { BILL_RANGES } from '../../lib/billRange';
 import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
 import { ROOF_TYPES } from '../../lib/lead';
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
-import { deduceEdgeTypes, type SerializedEdge, type EdgeDeductionZone } from './edges';
+import { deduceEdgeTypes, fusionnerAretesSaisies, type SerializedEdge, type EdgeDeductionZone } from './edges';
 import { type EnvironmentObject } from './environment';
 import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone } from './zones';
 import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
 import { type CoucheElectrique, type DocumentElectrique } from './electrique3d';
+import { numeroterDocument, registreAtelier } from './numerotation'; // CALX111
+
+import { emettreBatiments, type Batiment } from './batiment'; // CALX100
+// CALX110 — le catalogue de modules et le module de chaque pan (CALX82). `prefill.ts`
+// reste PUR : il ne décide rien ici, il délègue à la seule fonction qui sait écrire ce
+// bloc (`moduleSelect.ts`), comme il délègue déjà `electrical` à sa propre couche.
+import {
+  ecrireModulesDansDocument,
+  type AffectationModules,
+  type ModuleDocument,
+} from './moduleSelect';
+
+import { underlayPourDocument } from './underlay'; // CALX107
+import { emettreSurfacesPose } from './poseSurfaces'; // CALX123
+
+import {
+  ecrireOptimisationDansDocument,
+  semerOptimisationDepuisDocument,
+} from './optimisationDocument'; // CALX114 câblage
+import { semerFondDepuisDocument } from './fondDocument'; // CALX107 câblage
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -198,8 +218,14 @@ export interface SerializedZoneGeometry {
   count: number;
   /** Origine ENU (lng/lat) du repère des centres de panneaux. */
   origin: LngLat;
-  /** Centres ENU (m) + face de CHAQUE panneau posé (repère `origin`). */
-  panels: Array<{ cx: number; cy: number; face?: 'E' | 'W' }>;
+  /** Centres ENU (m) + face de CHAQUE panneau posé (repère `origin`).
+   *  CALX113 — `angleDeg` (OPTIONNEL, placement LIBRE seulement) : l'orientation PROPRE
+   *  du panneau, celle qu'une rotation ou une symétrie (`symetriserSelection`) lui a
+   *  donnée. Absente = panneau aligné sur l'axe de rangée, exactement comme avant : un
+   *  document sans rotation ressort octet pour octet identique. Sans cette clé, une
+   *  symétrie appliquée était perdue au rechargement (les centres revenaient, pas
+   *  l'orientation). */
+  panels: Array<{ cx: number; cy: number; face?: 'E' | 'W'; angleDeg?: number }>;
   /**
    * PV30 — MODE de placement de ces panneaux. ADDITIF et OMIS par défaut : un pan calepiné
    * sur les emplacements validés sérialise exactement comme avant (octet pour octet), et
@@ -217,6 +243,15 @@ export interface SerializedZoneGeometry {
    * (`roof_layout_v2.schema.json`, `$defs/solarAccess`).
    */
   solarAccess?: SerializedSolarAccess;
+  /**
+   * CALX82/CALX110 — le module physique posé sur CE pan, désigné par son `id` dans le
+   * catalogue `modules[]` de la racine. OPTIONNEL et additif : absent = le module par
+   * défaut de l'atelier, comportement d'aujourd'hui byte pour byte. Quand il est présent,
+   * `kwc` ci-dessus vaut `count × pmaxWc / 1000` de CE module — jamais la constante
+   * globale, qui rendrait deux modèles identiques. Un `moduleId` absent de `modules[]`
+   * est REFUSÉ par la porte d'import en nommant le champ (`services/io_layout.py`).
+   */
+  moduleId?: string;
 }
 
 /**
@@ -381,6 +416,14 @@ export interface SerializeMeta {
    * historique, aucune clé `electrical` dans le document sérialisé.
    */
   coucheElectrique?: Pick<CoucheElectrique, 'ecrireDansDocument'> | null;
+  /**
+   * CALX110 — le CATALOGUE de modules de la société + le module choisi pour chaque pan,
+   * tels que l'atelier les tient (`moduleSelect.ts`). Fournis par l'appelant, comme
+   * `setbacksM`/`horizonProfile` ci-dessus : `prefill.ts` ne lit aucun catalogue et n'en
+   * choisit aucun. Absents ⇒ comportement historique, aucune clé `modules` ni `moduleId`
+   * dans le document sérialisé, `panelWatt` et `result.kwc` inchangés.
+   */
+  modules?: AffectationModules | null;
 }
 
 // ═══════════ PV71 — MATRICE D'OMBRAGE 12 × 24 (sérialisation) ═══════════
@@ -544,6 +587,13 @@ export interface SerializedLayout {
    *  aucun horizon lointain modélisé — comportement historique, byte pour byte. Forme
    *  figée par `roof_layout_v2.schema.json` (`$defs/horizonProfile`). */
   horizonProfile?: HorizonProfile;
+  /** CALX119 — l'instant du soleil de SCÈNE (jour + heure) RÉELLEMENT affiché au moment de
+   *  l'export (contrat CALX88, `roof_layout_v2.schema.json` `$defs/scene`). Aucun calcul
+   *  n'en dépend (un point de vue, pas une donnée d'ingénierie). Omis seulement si
+   *  `ctx.sunDay`/`ctx.sunHour` ne sont pas finis (ne devrait pas arriver) — sinon TOUJOURS
+   *  écrit, pour que rouvrir le document restaure l'instant réellement vu (sinon chaque
+   *  rechargement retombe au solstice d'hiver/midi, l'incident que CALX119 corrige). */
+  scene?: ScenePoint;
   /**
    * CALX22x câblage — la couche électrique (organes + cheminements), écrite par
    * `couche.ecrireDansDocument` (voir `meta.coucheElectrique` ci-dessous) quand
@@ -553,6 +603,23 @@ export interface SerializedLayout {
    * `roof_layout_v2.schema.json` (`electrical.equipements[]` / `electrical.cheminements[]`).
    */
   electrical?: DocumentElectrique;
+  /**
+   * CALX84/CALX100 — les BÂTIMENTS du site (hauteur SAISIE + sa provenance, étages,
+   * hauteur d'étage, relevé d'acrotère), ceux que `zones[].buildingId` (CAL59) désigne.
+   * Clé RACINE, écrite par `batiment.ts` (`emettreBatiments`). Omise tant qu'aucun
+   * bâtiment n'apprend rien au document — comportement historique, byte pour byte.
+   * Forme figée par `roof_layout_v2.schema.json` (`$defs/building`).
+   */
+  buildings?: Batiment[];
+   /**
+   * CALX82/CALX110 — le CATALOGUE des modules physiques utilisés par ce document : une
+   * entrée par modèle RÉELLEMENT posé, désignée par `zones[].geometry.moduleId`. Clé
+   * RACINE optionnelle et additive : absente, tous les pans posent le module par défaut
+   * de l'atelier et `panelWatt` ci-dessus suffit — comportement d'aujourd'hui, byte pour
+   * byte. Écrite par `moduleSelect.ts::ecrireModulesDansDocument` (voir `meta.modules`),
+   * jamais ici. Forme figée par `roof_layout_v2.schema.json` (`$defs/moduleDocument`).
+   */
+  modules?: ModuleDocument[];
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -593,6 +660,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
         ...(o.type ? { type: o.type } : {}), // PV61 — additif, jamais émis si absent
         ...(o.heightM != null ? { heightM: o.heightM } : {}), // CAL66 — additif
         ...(o.provenance ? { provenance: o.provenance } : {}), // CAL72 — additif
+        ...champsFormeObstacle(o), // CALX103/CALX104 — forme/contour/rayon, additifs
       })),
       roofType: isActive ? ctx.roofType : a.roofType,
       pitchDeg: isActive ? ctx.pitchDeg : a.pitchDeg,
@@ -641,7 +709,16 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       const posedIdx =
         live ?? Array.from({ length: Math.max(0, Math.min(g.grid.panels.length, Math.round(g.count))) }, (_, i) => i);
       const panels = freePosed
-        ? freePosed.map((p) => ({ cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) }))
+        ? freePosed.map((p) => ({
+            cx: p.cx,
+            cy: p.cy,
+            ...(p.face ? { face: p.face } : {}),
+            // CALX113 câblage — l'orientation PROPRE du panneau (rotation/symétrie) voyage
+            // avec lui ; jamais écrite quand personne ne l'a donnée.
+            ...(typeof p.angleDeg === 'number' && Number.isFinite(p.angleDeg)
+              ? { angleDeg: p.angleDeg }
+              : {}),
+          }))
         : posedIdx.map((i) => {
             const p = g.grid.panels[i];
             return { cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) };
@@ -674,11 +751,23 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     vertices: z.vertices,
     roofType: z.roofType ?? 'flat',
     facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
+    // CALX94 — crochet laissé par CALX93 : la pente SAISIE du pan voyage jusqu'à la
+    // déduction (sans elle, aucune noue ni arêtier n'apparaît dans le vrai document).
+    // Absente/non finie ⇒ omise, et l'arête reste « inconnue » plutôt que supposée.
+    ...(typeof z.pitchDeg === 'number' && Number.isFinite(z.pitchDeg) ? { pitchDeg: z.pitchDeg } : {}),
   }));
   zones.forEach((z, i) => {
     const others = edgeZones.filter((_, j) => j !== i);
     const edges = deduceEdgeTypes(edgeZones[i], others);
     if (edges.length) z.edges = edges;
+  });
+  // CALX94 — les SAISIES d'arête (type corrigé à la main `manuel: true`, retrait propre
+  // `retraitM`) sont superposées à la déduction ci-dessus : une correction n'est jamais
+  // ré-écrasée, et une arête non corrigée reste re-déduite. Une seule ligne d'appel vers
+  // la fonction pure `fusionnerAretesSaisies` (edges.ts) — aucune logique dupliquée ici.
+  zones.forEach((z, i) => {
+    const fusion = fusionnerAretesSaisies(ctx.areas[i]?.edges, z.edges);
+    if (fusion) z.edges = fusion;
   });
   const activeVerts = ctx.vertices.length >= 1 ? ctx.vertices : ctx.areas.find((a) => a.id === ctx.activeAreaId)?.vertices ?? [];
   const outline: Array<[number, number]> =
@@ -735,7 +824,30 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     ...(meta?.horizonProfile && meta.horizonProfile.points.length >= 2
       ? { horizonProfile: serializeHorizonProfile(meta.horizonProfile) }
       : {}),
+    // CALX119 — l'instant du soleil de scène RÉELLEMENT affiché voyage avec le document,
+    // comme l'horizon et les retraits ci-dessus (sinon rouvrir le dossier ramène toujours
+    // midi au solstice d'hiver, l'incident que cette tâche corrige).
+    ...serializeScene(ctx.sunDay, ctx.sunHour),
+
+    ...emettreBatiments(ctx.batiments), // CALX100 — hauteurs SAISIES + provenance (batiment.ts)
+
+    ...underlayPourDocument(ctx), // CALX107 — le calque de fond calé voyage par le document (contrat CALX86) ; aucun fond ⇒ aucune clé
+
+    ...emettreSurfacesPose(ctx.surfacesPose), // CALX123 — les surfaces de pose tracées (contrat `poseSurfaces[]`) ; aucune surface ⇒ aucune clé
   };
+  // CALX111 — numéros STABLES des modules : sème la mémoire depuis ce que le document porte
+  // déjà, puis écrit `n`/`rangee`/`numerotation` (bascule « Numéroter » éteinte par défaut ⇒
+  // document inchangé, octet pour octet). L'attribution elle-même est PURE (`numerotation.ts`).
+  numeroterDocument(layout);
+  // CALX110 — le catalogue `modules[]` + le `moduleId` de chaque pan (contrat CALX82) :
+  // le kWc de chaque pan est recalculé depuis SON module, le total du site en devient la
+  // somme, et `panelWatt` racine reste servi (watt du module MAJORITAIRE). Sans catalogue
+  // ni pan affecté, le document repart INCHANGÉ, byte pour byte.
+  ecrireModulesDansDocument(layout, meta?.modules);
+  // CALX114 câblage — l'objectif d'optimisation SAISI (contrat CALX88, clé racine
+  // `optimisation`) : sans cette ligne il ne quittait jamais la mémoire de l'optimiseur et
+  // était perdu au rechargement. Aucun objectif saisi ⇒ aucune clé, document inchangé.
+  ecrireOptimisationDansDocument(layout); // CALX114 câblage
   // CALX22x câblage — la couche électrique s'écrit EN DERNIER, par son PROPRE crochet
   // d'export (`ecrireDansDocument`) : jamais une deuxième copie de sa logique ici — elle
   // gère seule la copie profonde et l'absence de la clé quand le document ne porte ni
@@ -790,12 +902,59 @@ export function deserializeHorizonProfileFromLayout(json: unknown): HorizonProfi
 }
 
 /**
+ * CALX119 — l'instant du soleil de SCÈNE (jour + heure AFFICHÉS), round-trip verbatim
+ * (contrat CALX88, `scene{sunDay,sunHour}` de `roof_layout_v2.schema.json`). AUCUN calcul
+ * n'en dépend (le contrat le dit) : ce n'est qu'un point de vue sauvegardé, jamais une
+ * donnée d'ingénierie — donc jamais recalculé ici, seulement recopié.
+ */
+export interface ScenePoint {
+  sunDay: number;
+  sunHour: number;
+}
+
+/** Sérialise l'instant de scène courant. `sunDay`/`sunHour` non finis (ne devrait jamais
+ *  arriver — `ctx` les garde toujours valides) ⇒ rien n'est émis, jamais une valeur
+ *  inventée. */
+export function serializeScene(sunDay: number, sunHour: number): { scene?: ScenePoint } {
+  if (!Number.isFinite(sunDay) || !Number.isFinite(sunHour)) return {};
+  return { scene: { sunDay, sunHour } };
+}
+
+/**
+ * Relit l'instant de scène d'un layout sérialisé. Absent (document antérieur à
+ * CALX88/CALX119) ou non exploitable ⇒ `null` : l'appelant garde alors le défaut
+ * historique (solstice d'hiver, midi) — comportement d'aujourd'hui, jamais un jour deviné.
+ */
+export function deserializeSceneFromLayout(json: unknown): ScenePoint | null {
+  const raw = (json as { scene?: { sunDay?: unknown; sunHour?: unknown } } | null | undefined)?.scene;
+  const sunDay = raw?.sunDay;
+  const sunHour = raw?.sunHour;
+  if (typeof sunDay !== 'number' || !Number.isFinite(sunDay)) return null;
+  if (typeof sunHour !== 'number' || !Number.isFinite(sunHour)) return null;
+  return { sunDay, sunHour };
+}
+
+/**
  * Reconstruit la liste d'AreaRecord à partir d'un layout sérialisé. Les champs
  * dérivés (result/renderPlan) repartent à null — l'optimiseur les recalcule au
  * boot. C'est l'inverse de serializeLayout : round-trip = identité sur la géométrie
  * et le dimensionnement.
  */
 export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
+  // CALX111 câblage — un dossier ROUVERT reprend SES numéros : la mémoire de l'atelier est
+  // semée par ce que le document porte déjà (`n`, `rangee`, `numerotation`), sinon le
+  // premier enregistrement suivant repartait de zéro et renumérotait tout le pan.
+  // `absorberDocument` est idempotent et n'écrit RIEN dans le document.
+  registreAtelier.absorberDocument(json); // CALX111 câblage
+  // CALX114 câblage — l'objectif d'optimisation du document rouvert repart dans
+  // l'optimiseur (et un document sans objectif l'y REMET à « aucun objectif saisi »,
+  // sinon celui du dossier précédent déborderait sur celui-ci).
+  semerOptimisationDepuisDocument(json); // CALX114 câblage
+  // CALX107 câblage — le calque de FOND que le document demande (clé racine `underlay`,
+  // contrat CALX86) : mémorisé ici pour que la page hôte aille chercher son FICHIER et le
+  // redonne au constructeur (l'atelier ne parle jamais à Django). Aucun `underlay` ⇒
+  // « aucun fond », et la mémoire est remise à zéro.
+  semerFondDepuisDocument(json); // CALX107 câblage
   const zones = Array.isArray(json?.zones) ? json.zones : [];
   return zones.map((z) => ({
     id: z.id,
@@ -810,6 +969,7 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       ...(o.type ? { type: o.type } : {}), // PV61 — le type survit au round-trip
       ...(o.heightM != null ? { heightM: o.heightM } : {}), // CAL66 — round-trip verbatim
       ...(o.provenance ? { provenance: o.provenance } : {}), // CAL72 — round-trip verbatim
+      ...champsFormeObstacle(o), // CALX103/CALX104 — la forme survit au round-trip
     })),
     // F2 (fondateur 26/08/2026) — une zone posée par le SERVEUR depuis le tracé du
     // client n'écrit PAS ces trois champs : personne n'a mesuré ce toit, et un champ
@@ -832,6 +992,13 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
     // CAL57 — round-trip verbatim ; un document sans arêtes n'en gagne aucune ici (elles
     // sont recalculées à la sérialisation SUIVANTE, pas devinées à la lecture).
     ...(z.edges && z.edges.length ? { edges: z.edges } : {}),
+    // CALX109/CALX110 câblage — le MODÈLE posé sur ce pan revient tel quel
+    // (`geometry.moduleId`, contrat CALX82) : sans cette ligne, rouvrir un dossier reposait
+    // tout le site sur le module par défaut et le kWc enregistré cessait d'être reproductible.
+    // Absent ⇒ aucun champ ajouté, pan identique à celui d'aujourd'hui.
+    ...(typeof z.geometry?.moduleId === 'string' && z.geometry.moduleId.trim()
+      ? { moduleId: z.geometry.moduleId.trim() }
+      : {}),
   }));
 }
 

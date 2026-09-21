@@ -30,7 +30,8 @@
  *  committée (« estimé ») si PVGIS est injoignable. JAMAIS un devis : une fourchette.
  */
 import { type LngLat } from './roof';
-import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from './roofPro2';
+import { PERIMETER_SETBACK_M, cotesDePavage, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
+import { rognerParArete } from './roofSetbackEdge'; // CALX95 câblage
 import {
   PANEL2_WATT,
   type ConfigFamily,
@@ -55,6 +56,75 @@ export type { YieldFn, YieldSource };
 const EVAL_EPS = 1e-6;
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const norm360 = (a: number) => ((a % 360) + 360) % 360;
+
+/* ═════ CALX95 câblage — LE RETRAIT PROPRE À UNE ARÊTE ENTRE DANS LE VRAI PAVAGE ═════
+   `rognerParArete` (lib/roofSetbackEdge.ts) découpe déjà l'anneau posable arête par arête,
+   mais son SEUL consommateur était `layoutProRows2` (lib/roofPro2.ts), qui n'a aucun
+   appelant de production : le calepinage de l'atelier passe par CE solveur, qui ne recevait
+   que les retraits de CATÉGORIE (`setbacksM`, PV63). Un `retraitM` saisi sur une arête
+   (`zones[].edges[].retraitM`, CALX81) ne changeait donc RIEN à ce qui est posé.
+   Il entre ici, sur l'anneau qui part au pavage — et SEULEMENT là : l'azimut dominant du
+   toit (`roofDominantAzimuthDeg`) reste lu sur le CONTOUR TRACÉ, sinon rogner une rive
+   ferait pivoter les rangées de tout le pan.
+   Table absente ou sans entrée exploitable ⇒ l'anneau d'origine repart TEL QUEL (la MÊME
+   référence, aucune reprojection) : le pavage est identique, octet pour octet. */
+
+/** Projection plane locale : degrés → mètres au centroïde (équirectangulaire, rayon WGS84).
+ *  C'est la convention de projection que `packConfig`/`layoutProRows2` utilisent déjà pour
+ *  passer d'un contour lng/lat à leur repère ENU — aucune donnée nouvelle. */
+const DEG2RAD_PROJ = Math.PI / 180;
+const WGS84_RADIUS_M = 6378137;
+const DEG2M_PROJ = DEG2RAD_PROJ * WGS84_RADIUS_M;
+
+/**
+ * CALX95 câblage — anneau POSABLE (lng/lat) d'un contour, rogné des retraits PROPRES à
+ * certaines arêtes, en SUPPLÉMENT des retraits de catégorie que le pavage applique ensuite.
+ * `retraitsParAreteM` est la table `rang du segment → mètres` que
+ * `roofSetbackEdge.supplementsParArete` produit depuis les arêtes du document.
+ *
+ *  - aucune entrée exploitable ⇒ `ring` est renvoyé TEL QUEL (même référence) : rien n'est
+ *    reprojeté, donc le pavage d'aujourd'hui est inchangé au flottant près ;
+ *  - les retraits qui mangent tout le pan ⇒ `[]` : « plus aucune surface posable » est une
+ *    réponse (le pavage rend alors 0 panneau), jamais un repli sur le contour entier ;
+ *  - la projection est refusée aux pôles (facteur de longitude nul) : on ne rogne pas au
+ *    hasard, on rend le contour intact.
+ *
+ * Fonction PURE : ne mute ni `ring` ni la table.
+ */
+export function anneauPosableParArete(
+  ring: LngLat[],
+  retraitsParAreteM?: Readonly<Record<number, number>>,
+): LngLat[] {
+  if (!Array.isArray(ring) || ring.length < 3) return ring;
+  const aRogner = Object.entries(retraitsParAreteM ?? {}).some(([cle, valeur]) => {
+    const i = Number(cle);
+    return (
+      Number.isInteger(i) &&
+      i >= 0 &&
+      i < ring.length &&
+      typeof valeur === 'number' &&
+      Number.isFinite(valeur) &&
+      valeur > 0
+    );
+  });
+  if (!aRogner) return ring;
+  let olng = 0;
+  let olat = 0;
+  for (const [lng, lat] of ring) {
+    olng += lng;
+    olat += lat;
+  }
+  olng /= ring.length;
+  olat /= ring.length;
+  const metresParDegreLng = DEG2M_PROJ * Math.cos(olat * DEG2RAD_PROJ);
+  if (!(metresParDegreLng > 0)) return ring;
+  const plan = ring.map(
+    ([lng, lat]) => [(lng - olng) * metresParDegreLng, (lat - olat) * DEG2M_PROJ] as [number, number],
+  );
+  const posable = rognerParArete(plan, retraitsParAreteM ?? {});
+  if (posable.length < 3) return [];
+  return posable.map(([x, y]) => [olng + x / metresParDegreLng, olat + y / DEG2M_PROJ] as LngLat);
+}
 
 // ════════════════════════════ Axes & verrous ════════════════════════════
 
@@ -182,6 +252,8 @@ interface SolveCtx {
   setbacksM?: Partial<PerimeterSetbacks>;
   /** CAL87 — géométrie est-ouest saisie (faîtage + écart inter-chevrons). */
   eastWestGeometry?: EastWestGeometry;
+  /** CALX109 câblage — module POSÉ (cotes + puissance). Absent ⇒ module par défaut. */
+  module?: Panel2Module;
   tariff: TariffGrid;
   yieldFn: YieldFn | undefined;
   roofAz: number;
@@ -235,6 +307,9 @@ function evalOne(
       obstructionClearancesM: ctx.obstructionClearancesM, // PV61 — dégagement par type
       setbacksM, // PV63 — retraits latéral / extrémité / acrotère
       eastWestGeometry: ctx.eastWestGeometry, // CAL87 — faîtage + écart inter-chevrons saisis
+      // CALX109 câblage — les VRAIES cotes du module posé sur ce pan : un module plus grand
+      // loge moins de rangées. Absent ⇒ module par défaut ⇒ pavage inchangé, octet pour octet.
+      module: ctx.module,
     });
     ctx.cache.set(key, pack);
   }
@@ -250,7 +325,9 @@ function evalOne(
     : ctx.needImposedZero
       ? 0
       : fitCount;
-  const kwc = (placedCount * PANEL2_WATT) / 1000;
+  // CALX109/CALX110 câblage — la puissance du module POSÉ fait foi : deux modèles ne peuvent
+  // plus rendre le même kWc. Sans option, `cotesDePavage` rend PANEL2_WATT — chiffre inchangé.
+  const kwc = (placedCount * cotesDePavage(ctx.module).watt) / 1000;
   const aspect = aspectForAzimuth(family, pack.azimuthDeg);
   let annualKwh: number;
   let perPanelYield: number;
@@ -357,6 +434,23 @@ export interface LiveSolveOptions {
   /** CAL87 — géométrie est-ouest saisie (faîtage + écart inter-chevrons). Absente →
    *  valeurs d'aujourd'hui, variante est-ouest IDENTIQUE. */
   eastWestGeometry?: EastWestGeometry;
+  /**
+   * CALX95 câblage — retrait PROPRE à certaines arêtes du contour (table `rang du segment
+   * → mètres`, telle que `roofSetbackEdge.supplementsParArete` la produit depuis
+   * `zones[].edges[].retraitM`, CALX81). EN SUPPLÉMENT des retraits de CATÉGORIE
+   * (`setbacksM`) que le pavage applique au pourtour entier. Absente ou sans entrée
+   * exploitable → anneau posable = contour tracé, balayage IDENTIQUE à aujourd'hui.
+   */
+  retraitsParAreteM?: Readonly<Record<number, number>>;
+  /**
+   * CALX109 câblage — LE MODULE POSÉ sur ce pan, tel que `roofPro11/moduleSelect.cotesPourPan`
+   * le tire du catalogue de la société (`{longM, courtM, epaisM, watt}` — le grand côté, le
+   * petit côté, l'épaisseur et la puissance crête). Ses cotes remplacent celles du module par
+   * défaut DANS le pavage (donc le nombre de rangées et de colonnes bouge réellement) et sa
+   * puissance remplace `PANEL2_WATT` dans le kWc. Absent ⇒ balayage et chiffres IDENTIQUES à
+   * ceux d'aujourd'hui, octet pour octet (`JSON.stringify`).
+   */
+  module?: Panel2Module;
 }
 
 export interface LiveSolveResult {
@@ -422,8 +516,13 @@ export function solveLive(
     margin: locks.margin,
   };
 
+  // CALX95 câblage — c'est l'anneau POSABLE qui part au pavage (retraits d'arête déjà
+  // rognés) ; `roofAz` ci-dessus reste lu sur le CONTOUR TRACÉ. Aucun retrait d'arête
+  // exploitable ⇒ `ringPosable === ring` (même référence) ⇒ balayage inchangé.
+  const ringPosable = anneauPosableParArete(ring, options.retraitsParAreteM);
+
   const baseCtx = {
-    ring,
+    ring: ringPosable,
     latitudeDeg,
     target,
     needImposedZero: locks.needImposedZero === true, // L2 — voir AxisLocks.needImposedZero
@@ -433,6 +532,7 @@ export function solveLive(
     obstructionClearancesM: options.obstructionClearancesM, // PV61
     setbacksM: options.setbacksM, // PV63
     eastWestGeometry: options.eastWestGeometry, // CAL87
+    module: options.module, // CALX109 câblage — cotes RÉELLES du module posé
 
     tariff,
     yieldFn: options.yieldFn,

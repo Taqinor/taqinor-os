@@ -69,6 +69,13 @@ REGLAGES = (
     # TELLES QUELLES — renommer une clé du contrat le casserait.
     ('rangees', 'Rangées'),
     ('colonnes', 'Colonnes'),
+    # CALX405 — le seuil de pente RELEVÉE sous lequel un pan reçoit la
+    # proposition d'un châssis incliné, et l'inclinaison saisie à lui
+    # appliquer. Ni l'un ni l'autre n'est calculé ici : ce module les
+    # valide et les transporte, ``services/traduction.py`` (CAL78) les
+    # CONSOMME pour publier la proposition et sa raison.
+    ('chassis_sous_pente_deg', 'Seuil châssis incliné'),
+    ('chassis_inclinaison_deg', 'Inclinaison du châssis'),
 )
 
 #: Les réglages qui sont des COMPTES entiers strictement positifs.
@@ -229,8 +236,32 @@ def _gabarit(cle, brut):
                     "« Pente » est un angle strictement inférieur à 90 "
                     f"degrés (reçu : {valeur}).", sous_champ)
             propre[nom] = pente
+        elif nom == 'chassis_sous_pente_deg':
+            seuil = _nombre(valeur, sous_champ, _libelle(nom))
+            if not (0.0 < seuil < 90.0):
+                raise _refus(
+                    "« Seuil châssis incliné » est un angle strictement "
+                    f"entre 0 et 90 degrés (reçu : {valeur}).", sous_champ)
+            propre[nom] = seuil
+        elif nom == 'chassis_inclinaison_deg':
+            inclinaison = _nombre(valeur, sous_champ, _libelle(nom))
+            if inclinaison >= 90.0:
+                raise _refus(
+                    "« Inclinaison du châssis » est un angle strictement "
+                    f"inférieur à 90 degrés (reçu : {valeur}).", sous_champ)
+            propre[nom] = inclinaison
         else:
             propre[nom] = _nombre(valeur, sous_champ, _libelle(nom))
+
+    # CALX405 — une inclinaison saisie sans son seuil ne dit à partir de
+    # quelle pente l'appliquer : refusée en nommant la clé manquante,
+    # jamais un seuil inventé.
+    if 'chassis_inclinaison_deg' in propre \
+            and 'chassis_sous_pente_deg' not in propre:
+        raise _refus(
+            "« Inclinaison du châssis » exige « Seuil châssis incliné » : "
+            "saisissez d'abord « chassis_sous_pente_deg ».",
+            f'{champ}.chassis_sous_pente_deg')
     return propre
 
 

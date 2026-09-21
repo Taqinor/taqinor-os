@@ -49,12 +49,54 @@ GENRES = ('bande', 'polygone')
 #: Les côtés admis pour une bande. ``perimetre`` = tout le tour.
 COTES = ('nord', 'sud', 'est', 'ouest', 'perimetre')
 
+#: CALX104 câblage — les FORMES d'un gabarit d'OBSTACLE (l'atelier les lit dans
+#: ``roofPro11/types.ts::lireGabaritsObstacle``). ``rectangle`` est la forme par
+#: défaut de l'atelier ; aucune n'est supposée à la place d'une autre.
+FORMES_OBSTACLE = ('rectangle', 'cercle', 'polygone')
+
+#: CALX104 câblage — les formes d'obstacle qui SE SUFFISENT : leurs cotes
+#: décrivent entièrement la géométrie, donc ``genre`` (le vocabulaire des zones
+#: réglementaires : bande le long d'un côté, ou contour relatif) n'a plus rien à
+#: apporter. Un gabarit d'obstacle circulaire n'a donc plus à inventer un
+#: ``genre`` — inventer « bande » pour une souche ronde était une valeur fausse
+#: rangée dans un tiroir qui ne la décrit pas.
+#:
+#: ``polygone`` n'en fait PAS partie : son contour est exactement ce que le
+#: genre ``polygone`` porte déjà (``sommets``), et deux chemins pour la même
+#: géométrie finiraient par diverger.
+FORMES_SANS_GENRE = ('rectangle', 'cercle')
+
+#: Les cotes OBLIGATOIRES de chaque forme qui se passe de ``genre``. Aucune
+#: n'a de valeur par défaut : un gabarit sans ses cotes n'est pas enregistré.
+COTES_PAR_FORME = {
+    'rectangle': (('longueur_m', 'Longueur du gabarit'),
+                  ('largeur_m', 'Largeur du gabarit')),
+    'cercle': (('rayon_m', 'Rayon du gabarit'),),
+}
+
+SANS_GENRE_NI_FORME = (
+    "Le gabarit « {cle} » n'a ni « genre » de zone ({genres}) ni « forme » "
+    "d'obstacle ({formes}) avec ses cotes : sans l'un des deux, rien ne décrit "
+    'sa géométrie. Un gabarit de forme « polygone » passe par le genre '
+    '« polygone » et ses sommets.'
+)
+
 #: Les clés d'un gabarit. Aucune autre n'est admise (on ne range pas un
 #: réglage dans un tiroir qui n'existe pas).
+#:
+#: CALX104 câblage — ``type``, ``forme``, ``longueur_m`` et ``rayon_m`` ont été
+#: AJOUTÉES : l'atelier lisait déjà ces quatre clés pour proposer les gabarits
+#: d'OBSTACLE de la société, mais la porte d'enregistrement les refusait comme
+#: « réglage inconnu ». Aucune société ne pouvait donc enregistrer un gabarit
+#: d'obstacle, et le code qui les lit n'avait aucune donnée à lire. Les gabarits
+#: de ZONE (bande / polygone) sont strictement inchangés : ces quatre clés sont
+#: OPTIONNELLES et ne sont écrites que si elles sont saisies.
 CLES = ('libelle', 'nature', 'genre', 'largeur_m', 'cote', 'sommets',
-        'retrait_m', 'hauteur_m', 'source')
+        'retrait_m', 'hauteur_m', 'source',
+        'type', 'forme', 'longueur_m', 'rayon_m')
 
-__all__ = ['SECTION', 'GENRES', 'COTES', 'CLES',
+__all__ = ['SECTION', 'GENRES', 'COTES', 'CLES', 'FORMES_OBSTACLE',
+           'FORMES_SANS_GENRE', 'COTES_PAR_FORME', 'SANS_GENRE_NI_FORME',
            'normaliser_section_zones_types', 'appliquer_modele',
            'source_de_zone']
 
@@ -105,6 +147,38 @@ def _nature(valeur, champ):
     return texte
 
 
+def _type_obstacle(valeur, champ):
+    """CALX104 — le type d'obstacle SAISI, ou ``None``.
+
+    Les types admis sont ceux de l'atelier (``services/degagements.py``,
+    ``DEGAGEMENTS_ATELIER``) : c'est la même table que celle qui porte leur
+    dégagement, on n'en tient pas une seconde.
+    """
+    from .degagements import DEGAGEMENTS_ATELIER
+
+    texte = _texte(valeur, champ, "Type d'obstacle")
+    if texte is None:
+        return None
+    admis = tuple(cle for cle, _, _ in DEGAGEMENTS_ATELIER)
+    if texte not in admis:
+        raise _refus(
+            f"Type d'obstacle inconnu : « {texte} ». Types admis : "
+            f"{', '.join(admis)}.", champ)
+    return texte
+
+
+def _forme_obstacle(valeur, champ):
+    """CALX104 — la forme SAISIE du gabarit d'obstacle, ou ``None``."""
+    texte = _texte(valeur, champ, 'Forme')
+    if texte is None:
+        return None
+    if texte not in FORMES_OBSTACLE:
+        raise _refus(
+            f"Forme de gabarit inconnue : « {texte} ». Formes admises : "
+            f"{', '.join(FORMES_OBSTACLE)}.", champ)
+    return texte
+
+
 def _sommets(valeur, champ):
     if not isinstance(valeur, list) or len(valeur) < 3:
         raise _refus(
@@ -147,21 +221,28 @@ def _modele(cle, brut):
             "(le dépôt ne contient aucun corpus réglementaire, donc rien "
             "n'est supposé à votre place).", f'{racine}.source')
 
-    genre = _texte(brut.get('genre'), f'{racine}.genre', 'Genre',
-                   obligatoire=True)
-    if genre not in GENRES:
+    # CALX104 câblage — la FORME est lue AVANT le genre : c'est elle qui décide
+    # si un ``genre`` de zone est encore exigé. Un gabarit d'obstacle
+    # rectangulaire ou circulaire porte déjà toute sa géométrie dans ses cotes.
+    forme = _forme_obstacle(brut.get('forme'), f'{racine}.forme')
+
+    genre = _texte(brut.get('genre'), f'{racine}.genre', 'Genre')
+    if genre is not None and genre not in GENRES:
         raise _refus(
             f"Genre de gabarit inconnu : « {genre} ». Genres admis : "
             f"{', '.join(GENRES)}.", f'{racine}.genre')
+    if genre is None and forme not in FORMES_SANS_GENRE:
+        # Ni l'un ni l'autre : le refus NOMME le champ, il ne choisit pas à la
+        # place de l'utilisateur.
+        raise _refus(
+            SANS_GENRE_NI_FORME.format(cle=cle, genres=', '.join(GENRES),
+                                       formes=', '.join(FORMES_SANS_GENRE)),
+            f'{racine}.genre')
 
     modele = {
         'libelle': _texte(brut.get('libelle'), f'{racine}.libelle',
                           'Libellé') or cle,
         'nature': _nature(brut.get('nature'), f'{racine}.nature'),
-        'genre': genre,
-        'largeur_m': None,
-        'cote': '',
-        'sommets': [],
         'retrait_m': _nombre(brut.get('retrait_m'), f'{racine}.retrait_m',
                              'Retrait') or 0.0,
         'hauteur_m': _nombre(brut.get('hauteur_m'), f'{racine}.hauteur_m',
@@ -169,22 +250,55 @@ def _modele(cle, brut):
         'source': source,
     }
 
-    if genre == 'bande':
-        # Largeur SAISIE, jamais un « standard » repris d'ailleurs.
-        modele['largeur_m'] = _nombre(
-            brut.get('largeur_m'), f'{racine}.largeur_m',
-            'Largeur de la bande', obligatoire=True)
-        cote = _texte(brut.get('cote'), f'{racine}.cote', 'Côté')
-        if cote is not None and cote not in COTES:
-            raise _refus(
-                f"Côté de bande inconnu : « {cote} ». Côtés admis : "
-                f"{', '.join(COTES)}.", f'{racine}.cote')
-        # « perimetre » n'est pas une valeur DEVINÉE : c'est le seul repli qui
-        # ne restreint rien (tout le tour), et il est documenté comme tel.
-        modele['cote'] = cote or 'perimetre'
+    if genre is not None:
+        # CHEMIN DES ZONES — strictement inchangé : mêmes clés, mêmes refus,
+        # mêmes valeurs qu'avant CALX104 (un gabarit de zone se relit à
+        # l'identique, clé pour clé).
+        modele['genre'] = genre
+        modele['largeur_m'] = None
+        modele['cote'] = ''
+        modele['sommets'] = []
+        if genre == 'bande':
+            # Largeur SAISIE, jamais un « standard » repris d'ailleurs.
+            modele['largeur_m'] = _nombre(
+                brut.get('largeur_m'), f'{racine}.largeur_m',
+                'Largeur de la bande', obligatoire=True)
+            cote = _texte(brut.get('cote'), f'{racine}.cote', 'Côté')
+            if cote is not None and cote not in COTES:
+                raise _refus(
+                    f"Côté de bande inconnu : « {cote} ». Côtés admis : "
+                    f"{', '.join(COTES)}.", f'{racine}.cote')
+            # « perimetre » n'est pas une valeur DEVINÉE : c'est le seul repli
+            # qui ne restreint rien (tout le tour), et il est documenté ainsi.
+            modele['cote'] = cote or 'perimetre'
+        else:
+            modele['sommets'] = _sommets(brut.get('sommets'),
+                                         f'{racine}.sommets')
     else:
-        modele['sommets'] = _sommets(brut.get('sommets'),
-                                     f'{racine}.sommets')
+        # CHEMIN DU GABARIT D'OBSTACLE PUR — aucune clé de zone n'est inventée
+        # (ni ``genre``, ni ``cote``, ni ``sommets``) : ce gabarit n'est pas une
+        # zone réglementaire, et lui en donner le vocabulaire le ferait passer
+        # pour telle. Ses cotes sont OBLIGATOIRES, chacune nommée si absente.
+        for champ, libelle in COTES_PAR_FORME[forme]:
+            modele[champ] = _nombre(brut.get(champ), f'{racine}.{champ}',
+                                    libelle, obligatoire=True)
+
+    # CALX104 câblage — les quatre clés du gabarit d'OBSTACLE. Elles sont
+    # OPTIONNELLES et ne sont posées QUE si elles ont été saisies : un gabarit
+    # de zone enregistré avant cette tâche se relit octet pour octet.
+    type_obstacle = _type_obstacle(brut.get('type'), f'{racine}.type')
+    if type_obstacle is not None:
+        modele['type'] = type_obstacle
+    if forme is not None:
+        modele['forme'] = forme
+    longueur_m = _nombre(brut.get('longueur_m'), f'{racine}.longueur_m',
+                         'Longueur du gabarit')
+    if longueur_m is not None:
+        modele['longueur_m'] = longueur_m
+    rayon_m = _nombre(brut.get('rayon_m'), f'{racine}.rayon_m',
+                      'Rayon du gabarit')
+    if rayon_m is not None:
+        modele['rayon_m'] = rayon_m
     return modele
 
 

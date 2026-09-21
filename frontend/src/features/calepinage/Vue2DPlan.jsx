@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatCote, milieu } from './plan2d'
+// CALX111 câblage — étiquettes de NUMÉRO de module en vue plan. Le module est le MÊME que
+// celui du builder (alias `@roofpro`, résolu sur le fichier de `apps/web`), donc c'est la
+// mémoire de l'atelier qui est lue — jamais une numérotation recalculée ici.
+import { etiquettesPlan, registreAtelier } from '@roofpro/numerotation'
 
 /* ============================================================================
    CAL104 — VUE 2D PLAN ORTHOGRAPHIQUE + PLEIN ÉCRAN.
@@ -30,8 +34,13 @@ const VUE_H = 560
  * @param {object} plan  résultat de `projectPlanView` (déjà projeté), ou null.
  * @param {number} compte3d  compte de modules AFFICHÉ par la 3D — sert de contrôle :
  *                           s'il diverge du plan, on le DIT au lieu de choisir.
+ * @param {string} [panId]   CALX111 — identifiant du pan dont on dessine le plan. Absent
+ *                           (défaut) : AUCUNE étiquette de numéro, rendu d'aujourd'hui à
+ *                           l'identique. Fourni : les numéros STABLES du document sont
+ *                           posés sur les modules, si la bascule « Numéroter » est
+ *                           allumée et que l'échelle les rend lisibles.
  */
-export default function Vue2DPlan({ plan, compte3d, titre }) {
+export default function Vue2DPlan({ plan, compte3d, titre, panId }) {
   const boiteRef = useRef(null)
   const [pleinEcran, setPleinEcran] = useState(false)
 
@@ -76,6 +85,14 @@ export default function Vue2DPlan({ plan, compte3d, titre }) {
     if (!plan || compte3d == null) return null
     return plan.panelCount === compte3d ? null : compte3d
   }, [plan, compte3d])
+
+  // CALX111 câblage — la DÉCISION est prise par `etiquettesPlan` (pure) : bascule éteinte,
+  // échelle trop petite, ou modules et projection qui ne se correspondent pas ⇒ liste vide
+  // et plan identique à celui d'aujourd'hui. Rien n'est numéroté ici.
+  const etiquettes = useMemo(() => {
+    if (!plan || !panId) return []
+    return etiquettesPlan(plan, registreAtelier.modules(panId), registreAtelier.convention(panId))
+  }, [plan, panId])
 
   return (
     <section
@@ -134,6 +151,21 @@ export default function Vue2DPlan({ plan, compte3d, titre }) {
                 stroke="currentColor"
                 strokeWidth="0.75"
               />
+            ))}
+            {/* CALX111 — numéros de module, posés au centre du rectangle projeté. */}
+            {etiquettes.map((e) => (
+              <text
+                key={`num-${e.index}`}
+                data-testid="v2d-numero"
+                x={e.x}
+                y={e.y}
+                fontSize="10"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="currentColor"
+              >
+                {e.texte}
+              </text>
             ))}
             {plan.cotes.map((c, i) => {
               const [mx, my] = milieu(c.from, c.to)

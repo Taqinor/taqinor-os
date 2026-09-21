@@ -5,18 +5,27 @@ Endpoint: GET /api/django/crm/leads/<id>/roof-footprint/
 Access: company-scoped (resolves lead by company; 404 for another company's lead).
 Auth: standard IsAuthenticated (inherits from the rest of the CRM views).
 Response:
-  200 {"polygon": [{lat, lng}, ...], "source": "osm"}
-  200 {"polygon": [], "source": "osm",
+  200 {"polygon": [{lat, lng}, ...], "source": "osm", "batiment": {...}}
+  200 {"polygon": [], "source": "osm", "batiment": {...},
        "message": "Aucun bâtiment trouvé — tracez le contour manuellement."}
   404 lead not found or wrong company
   400 le lead n'a pas de point GPS enregistré
+
+CALX106 — `batiment` is ALWAYS served, with the same keys in all three cases
+(building found, no building, Overpass unreachable) : `osm_way_id`, `levels`,
+`roof_levels`, `height_m`, `source`, `provenance`, `non_renseignes`. Nothing
+is derived: a value OSM does not carry is `null` and `non_renseignes` says, in
+French, why. Frozen by
+`apps/calepinage/contract_samples/calepinage_empreinte_osm.json`.
 """
 
 from django.http import JsonResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
-from .roof_detect import fetch_building_footprint
+from .roof_detect import (
+    MOTIF_OSM_INJOIGNABLE, batiment_non_renseigne, fetch_building_footprint,
+)
 
 _MSG_NO_BUILDING = (
     "Aucun bâtiment trouvé à cet emplacement — "
@@ -72,18 +81,32 @@ def lead_roof_footprint(request, lead_id):
             status=400,
         )
 
-    polygon = fetch_building_footprint(lat, lng)
+    empreinte = fetch_building_footprint(lat, lng)
 
-    # fetch_building_footprint returns None on network errors, [] on "no building".
-    # Both cases degrade gracefully — the client draws manually.
+    # fetch_building_footprint returns None on network errors, and an empty
+    # polygon on "no building". Both cases degrade gracefully — the client
+    # draws manually — and both still carry the `batiment` block (CALX106),
+    # whose keys are then all null with the reason named.
+    if empreinte is None:
+        empreinte = {
+            "polygon": [],
+            "batiment": batiment_non_renseigne(MOTIF_OSM_INJOIGNABLE),
+        }
+
+    polygon = empreinte.get("polygon") or []
+    batiment = empreinte.get("batiment") \
+        or batiment_non_renseigne(MOTIF_OSM_INJOIGNABLE)
+
     if not polygon:
         return JsonResponse({
             "polygon": [],
             "source": "osm",
+            "batiment": batiment,
             "message": _MSG_NO_BUILDING,
         })
 
     return JsonResponse({
         "polygon": polygon,
         "source": "osm",
+        "batiment": batiment,
     })

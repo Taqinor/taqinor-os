@@ -40,7 +40,7 @@
  * JAMAIS un devis : une fourchette indicative. Voir apps/web/BRAIN_V3_NOTES.md.
  */
 import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
-import { PANEL2_LONG_M, PANEL2_SHORT_M, PERIMETER_SETBACK_M, resolveSetbacks, extremityTotalM, type PerimeterSetbacks } from './roofPro2';
+import { PERIMETER_SETBACK_M, cotesDePavage, resolveSetbacks, extremityTotalM, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import {
   PANEL2_WATT,
   REGIE_TARIFF,
@@ -638,6 +638,15 @@ export function packFlushPlane(
     obstructionClearancesM?: number[];
     /** PV63 — retraits séparés (latéral / extrémité / acrotère) ; absent → `setbackM`. */
     setbacksM?: Partial<PerimeterSetbacks>;
+    /**
+     * CALX109 câblage — LE MODULE RÉELLEMENT POSÉ sur ce pan, avec ses vraies cotes et sa
+     * vraie puissance (`roofPro11/moduleSelect.cotesDeModule`). Il remplace les cotes du
+     * module par défaut de l'atelier DANS le pavage affleurant (grand côté / petit côté,
+     * donc le nombre de colonnes ET le pas de rangée) ET la puissance qui sert au `kwc` de
+     * chaque grille. Absent ⇒ `cotesDePavage` rend `MODULE_ATELIER_PAR_DEFAUT` et le pavage
+     * en pente est IDENTIQUE à celui d'aujourd'hui, octet pour octet.
+     */
+    module?: Panel2Module;
   } = {},
 ): FlushPack {
   const { ring, pitchDeg, facingAzimuthDeg } = plane;
@@ -649,6 +658,12 @@ export function packFlushPlane(
   const obstacleRule: ObstacleRule = opts.obstacleRule ?? 'footprint'; // PV60
   const setbacks = resolveSetbacks(opts.setbacksM ?? plane.setbacksM, setbackM); // PV63
   const beta = pitchDeg * DEG2RAD;
+  // CALX109 câblage — cotes du module POSÉ ; option absente ⇒ celles du module par défaut
+  // de l'atelier (PANEL2_LONG_M / PANEL2_SHORT_M / PANEL2_WATT), pavage inchangé.
+  const moduleDuPan = cotesDePavage(opts.module);
+  const moduleLongM = moduleDuPan.longM;
+  const moduleCourtM = moduleDuPan.courtM;
+  const moduleWatt = moduleDuPan.watt;
   const obstructions = plane.obstructions ?? [];
   // W108 — borne « Σ empreintes ≤ utile » élargie de l'anneau de débord (Minkowski).
   const overhangRingM2 = overhangM > 0 ? geodesicPerimeterM(ring) * overhangM + Math.PI * overhangM * overhangM : 0;
@@ -666,7 +681,7 @@ export function packFlushPlane(
     return {
       orientation,
       count: panels.length,
-      kwc: (panels.length * PANEL2_WATT) / 1000,
+      kwc: (panels.length * moduleWatt) / 1000,
       panels,
       rowPitchM,
       footprintPerPanelM2: panelPlanDepthM * rowWidthM,
@@ -686,8 +701,8 @@ export function packFlushPlane(
   };
 
   if (!Array.isArray(ring) || ring.length < 3) {
-    const portrait = emptyGrid('portrait', PANEL2_LONG_M, PANEL2_SHORT_M);
-    const landscape = emptyGrid('landscape', PANEL2_SHORT_M, PANEL2_LONG_M);
+    const portrait = emptyGrid('portrait', moduleLongM, moduleCourtM);
+    const landscape = emptyGrid('landscape', moduleCourtM, moduleLongM);
     return {
       origin: ring?.[0] ?? [0, 0],
       ringENU: [],
@@ -719,8 +734,8 @@ export function packFlushPlane(
   const obsENU = obstructions.map((o) => o.map(toENU));
 
   // Portrait : grand côté (2,384) dans le sens de la pente. Paysage : l'inverse.
-  const portrait = buildGrid('portrait', PANEL2_LONG_M, PANEL2_SHORT_M, ringENU, obsENU);
-  const landscape = buildGrid('landscape', PANEL2_SHORT_M, PANEL2_LONG_M, ringENU, obsENU);
+  const portrait = buildGrid('portrait', moduleLongM, moduleCourtM, ringENU, obsENU);
+  const landscape = buildGrid('landscape', moduleCourtM, moduleLongM, ringENU, obsENU);
   const best = portrait.count >= landscape.count ? portrait : landscape;
 
   return {

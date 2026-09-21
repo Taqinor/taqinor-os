@@ -43,6 +43,9 @@ from apps.calepinage.selectors import (
 from apps.calepinage.services import site
 from apps.calepinage.services.equipements import equipements_du_calepinage
 from apps.calepinage.services.lestage import masse_et_lestage
+from apps.calepinage.services.modules_stock import (
+    modules_disponibles_du_calepinage,
+)
 from apps.calepinage.services.raccordement import bloc_raccordement
 from apps.calepinage.services.reglementaire import composer_dossiers
 
@@ -63,7 +66,11 @@ AVEC_PRODUCTEUR_PUR = ('calepinage_equipements.json',
                        # CALX244 — le point de raccordement : producteur PUR
                        # (``services/raccordement.py::bloc_raccordement``),
                        # servi par ``views/raccordement.py``.
-                       'calepinage_raccordement.json')
+                       'calepinage_raccordement.json',
+                       # CALX109 — le catalogue de modules de la société :
+                       # producteur PUR (``services/modules_stock.py``), la
+                       # vue ne fait que lui passer le QuerySet du stock.
+                       'calepinage_modules_disponibles.json')
 
 #: Les autres, avec la RAISON — aucun n'est oublié, chacun est un choix.
 SANS_PRODUCTEUR_PUR = {
@@ -192,6 +199,16 @@ SANS_PRODUCTEUR_PUR = {
         'apps/calepinage/tests/test_calx204_contrat_sld.py',
 
 
+    # CALX106
+    'calepinage_empreinte_osm.json':
+        "endpoint d'une AUTRE app (apps.crm, GET leads/<id>/roof-footprint/) "
+        '— hors périmètre de ce module ; son producteur '
+        '(apps/crm/roof_detect.py::_parse_geometry) est PUR et la forme est '
+        'affirmée sans base, depuis des réponses Overpass FIXÉES, par '
+        'apps/crm/tests/test_calx106_empreinte_osm.py, et le document lui-'
+        'même par '
+        'apps/calepinage/tests/test_calx106_contrat_empreinte_osm.py',
+
     # CALX62
     'calepinage_meteo_fichier.json':
         'réponse de la porte MULTIPART qui dépose une série météo de la '
@@ -200,6 +217,15 @@ SANS_PRODUCTEUR_PUR = {
         'le résumé de série sont affirmés sans base, depuis un petit fichier '
         'synthétique, par '
         'apps/calepinage/tests/test_calx62_meteo_fichier.py',
+
+    # CALX107
+    'calepinage_plan_importe.json':
+        "l'URL servie et la taille en pixels du plan de fond : son producteur "
+        'résout une records.Attachment rattachée au calepinage et interroge '
+        "le magasin d'objets, donc il exige la base — la lecture PURE des "
+        'dimensions (en-tête PNG/JPEG) et les quatre refus nommés sont '
+        'affirmés sans base par '
+        'apps/calepinage/tests/test_calx107_plan_importe.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -350,6 +376,14 @@ class ClesServiesTest(unittest.TestCase):
         servi = masse_et_lestage(Faux())
         self._comparer('calepinage_masse_lestage.json', servi)
         self._comparer('calepinage_masse_lestage.json', servi,
+                       'exemple_vide')
+
+    def test_modules_disponibles(self):
+        # CALX109 — le service est PUR : la vue lui passe le QuerySet des
+        # produits MODULE de la société, il n'en requête aucun lui-même.
+        servi = modules_disponibles_du_calepinage(Faux(), [])
+        self._comparer('calepinage_modules_disponibles.json', servi)
+        self._comparer('calepinage_modules_disponibles.json', servi,
                        'exemple_vide')
 
     def test_site_imagerie(self):

@@ -9,15 +9,23 @@
  */
 import { packConfig } from '../../lib/estimatorBrainV2';
 import {
+  CIBLES_OPTIMISATION,
   fineGridMatrixV6,
+  libelleCible,
   matrixGroupKey,
+  resoudreCibleOptimisation,
   sortMatrix,
   type MatrixEvalV6,
   type MatrixSortKey,
 } from '../../lib/estimatorBrainV6';
+import {
+  choixOptimisationCourant,
+  cibleOptimisationSaisie,
+  poserCibleOptimisation,
+} from './optimizer';
 import { PERIMETER_SETBACK_M } from '../../lib/roofPro2';
 import { type LngLat } from '../../lib/roof';
-import { $, fmt, fmtMad } from './dom';
+import { $, esc, fmt, fmtMad } from './dom';
 import { type Ctx } from './context';
 import { type RenderConfigOpts } from './types';
 
@@ -104,6 +112,61 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
     }
   }
 
+  // ── CALX114 — la puce « objectif du classement », créée par le module ───────────
+  /** Conteneur de la puce, créé en tête du bloc comparatif si la page ne le fournit
+   *  pas (même patron que les contrôles d'obstacles/zones). */
+  function cibleHost(): HTMLElement | null {
+    const existant = $('rp9-cible');
+    if (existant) return existant;
+    const ancre = $('rp9-compare-wrap') ?? $('rp9-results');
+    if (!ancre || typeof document.createElement !== 'function') return null;
+    const host = document.createElement('div');
+    host.id = 'rp9-cible';
+    host.className = 'rp9-cible';
+    ancre.insertBefore(host, ancre.firstChild);
+    return host;
+  }
+
+  /** La phrase qui NOMME ce qui classe le balayage : celle du balayage lui-même dès
+   *  qu'il a tourné (lui seul sait quelles mesures existent), sinon celle du choix
+   *  saisi. Jamais un blanc : un classement muet est indiscernable d'un choix. */
+  function motifCible(): string {
+    return ctx.matrixResult?.cible.motif ?? resoudreCibleOptimisation(choixOptimisationCourant()).motif;
+  }
+
+  /** Peint la puce : un bouton par objectif du contrat, l'objectif saisi pressé, et
+   *  la phrase du classement dessous. Re-cliquer l'objectif pressé le RETIRE (retour
+   *  à « aucun objectif saisi », qui reste un état nommé). */
+  function renderCibleChips() {
+    const host = cibleHost();
+    if (!host) return;
+    const saisie = cibleOptimisationSaisie();
+    host.innerHTML = '';
+    const titre = document.createElement('span');
+    titre.className = 'rp9-cible-titre';
+    titre.textContent = 'Objectif du classement :';
+    host.appendChild(titre);
+    for (const c of CIBLES_OPTIMISATION) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'rp9-cible-chip';
+      btn.dataset.cible = c.id;
+      btn.textContent = c.label;
+      btn.setAttribute('aria-pressed', String(saisie === c.id));
+      btn.addEventListener('click', () => {
+        poserCibleOptimisation(saisie === c.id ? null : c.id);
+        recomputeMatrix();
+        renderCibleChips();
+      });
+      host.appendChild(btn);
+    }
+    const note = document.createElement('p');
+    note.id = 'rp9-cible-note';
+    note.className = 'rp9-cible-note';
+    note.textContent = motifCible();
+    host.appendChild(note);
+  }
+
   function paintComparison() {
     // W35 — la matrice plate ne doit JAMAIS repeindre le tableau en mode pente
     // (le comparatif pente est rendu par paintPitchedComparison).
@@ -114,6 +177,7 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
     if (!tbody) return;
     syncMatrixFilter();
     syncMatrixSortHeaders();
+    renderCibleChips(); // CALX114 — l'objectif est saisissable, et il est affiché
     const target = matrixResult.targetAnnualKwh;
     const winner = matrixResult.winner;
     // Optimum réel ÉPINGLÉ en tête, puis le reste de la matrice (triée/filtrée).
@@ -126,7 +190,11 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
       tr.dataset.id = key;
       const win = isMatrixWinner(r);
       const cover = target > 0 ? Math.round(r.pctOfTarget) : 0;
-      const badge = win ? ' <span style="color:var(--color-brass-300)">✓ Recommandé</span>' : '';
+      // CALX114 — la ligne « Recommandé » dit SELON QUOI elle l'est : le classement
+      // n'est plus un objectif implicite qu'il fallait connaître pour lire le tableau.
+      const badge = win
+        ? ` <span style="color:var(--color-brass-300)">✓ Recommandé · ${esc(libelleCible(matrixResult.cible.appliquee).toLowerCase())}</span>`
+        : '';
       tr.innerHTML =
         `<td>${r.label}${badge}</td>` +
         `<td class="num">${fmt(r.placedCount)}</td>` +
@@ -190,7 +258,12 @@ export function createMatrix(ctx: Ctx, deps: MatrixDeps): Matrix {
     // yieldFn adossé à `ctx.v4YieldCache` (identique à `buildMatrix`/le solveur vivant).
     // Cache vide (PVGIS pas encore résolu) → repli table des DEUX côtés ; une fois PVGIS
     // en cache, la ligne badgée == la config recommandée (plus de désaccord transitoire).
-    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings(), { yieldFn: matrixYieldFn });
+    // CALX114 — le MÊME objectif saisi que l'affinage PVGIS (`optimizer.buildMatrix`) :
+    // la ligne badgée et la carte reco ne peuvent pas classer sur deux objectifs.
+    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings(), {
+      yieldFn: matrixYieldFn,
+      optimisation: choixOptimisationCourant(),
+    });
     paintComparison();
   }
 

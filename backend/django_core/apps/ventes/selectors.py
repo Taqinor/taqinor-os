@@ -2764,6 +2764,36 @@ def _config_carte():
     }
 
 
+#: CALX104/CALX403 — les sections de réglages société que l'atelier 3D lit
+#: (option de boot ``reglagesAtelier``). Les NOMS sont ceux de
+#: ``apps.calepinage.selectors.SECTIONS_PARAMETRES`` : l'atelier les consomme
+#: sans traduction de clé, donc on ne les renomme pas au passage.
+SECTIONS_ATELIER_3D = ('zones_types', 'degagements')
+
+
+def _reglages_atelier(company):
+    """CALX104/CALX403 — les deux sections de réglages que l'atelier 3D lit.
+
+    ``zones_types`` porte les gabarits d'obstacle saisis par la société,
+    ``degagements`` le retrait de rive et la largeur d'allée. L'écran de
+    conception en mode DEVIS tient une garantie testée — « un seul appel :
+    rien n'est complété par une requête annexe » — donc ces deux sections
+    voyagent DANS le contexte agrégé plutôt que par une seconde porte.
+
+    FRONTIÈRE INTER-APPS : la lecture passe par le selector de l'app
+    propriétaire (``apps.calepinage.selectors``), jamais par ses modèles.
+
+    ÉQUIVALENCE : une société qui n'a rien réglé reçoit ``{}`` pour chacune —
+    donc aucun gabarit proposé, aucune largeur préremplie, l'atelier
+    d'aujourd'hui exactement. Rien n'est inventé ici.
+    """
+    from apps.calepinage.selectors import parametres_de_societe
+
+    reglages = parametres_de_societe(company) or {}
+    return {section: (reglages.get(section) or {})
+            for section in SECTIONS_ATELIER_3D}
+
+
 def contexte_conception_devis(devis, company):
     """PV17 — tout ce que l'écran de conception toiture doit savoir d'un devis.
 
@@ -2978,6 +3008,19 @@ def contexte_conception_devis(devis, company):
         'modifiable': not raison,
         'raison_lecture_seule': raison,
         'avertissements': avertissements,
+        # CALX104/CALX403 câblage — les DEUX sections de réglages société que
+        # l'atelier 3D consomme (`reglagesAtelier`) : les gabarits d'obstacle
+        # (`zones_types`) et la largeur d'allée / le retrait de rive
+        # (`degagements`). Les modes lead et calepinage les lisent sur
+        # ``GET /api/django/calepinage/parametres/`` ; le mode DEVIS, lui, tient
+        # la garantie testée « un seul appel : rien n'est complété par une
+        # requête annexe », donc elles voyagent ICI.
+        #
+        # Servies TELLES QUELLES, par le selector de l'app propriétaire (jamais
+        # ses modèles — frontière cross-app). ÉQUIVALENCE : une société qui n'a
+        # rien réglé reçoit ``{}`` pour chacune, donc aucun gabarit proposé et
+        # aucune largeur préremplie : l'atelier d'aujourd'hui exactement.
+        **_reglages_atelier(company),
     }
     # CTX3D — clé OPTIONNELLE : présente seulement quand l'option 2 est
     # réellement servable. Absente (et non ``None``) sinon : un écran qui teste

@@ -41,6 +41,19 @@ import { environmentShadeEntries, type EnvironmentObject } from './environment';
 import { fallbackPerKwc, type PerKwcProduction } from '../../lib/productionEngine';
 import { type LngLat } from '../../lib/roof';
 import { FLOORS, FLOOR_HEIGHT_M, GOLD } from './constants';
+import {
+  appliquerPropositionOsm,
+  appliquerSaisie,
+  batimentPourId,
+  hauteurExtrusion,
+  idBatimentDuPan,
+  mentionEtages,
+  propositionOsm,
+  type Batiment,
+  type BatimentOsmServeur,
+  type PropositionOsm,
+} from './batiment'; // CALX100 — la hauteur vient du DOCUMENT, plus d'une Map locale
+import { etiquette, registreAtelier } from './numerotation'; // CALX111 câblage
 import { $, esc } from './dom';
 import { type Ctx } from './context';
 
@@ -80,6 +93,45 @@ export interface ShadingUi {
    *  (au moins deux points exploitables), `maskedHours` (sur 12×24) et `annualFactor`
    *  (1 = aucun effet). */
   horizonStatus: () => { hasProfile: boolean; maskedHours: number; annualFactor: number };
+  /** CALX122 — lecture géométrique d'ombrage PAR MODULE du pan actif, alignée sur
+   *  `ctx.layoutPlan.grid.panels` : nombre d'heures représentatives masquées (sur les 288
+   *  = 12 mois × 24 h de la matrice déjà calculée) et le premier mois concerné — jamais un
+   *  kWh. `null` = ABSENT (aucune source d'ombrage saisie — jamais un « 0 heure » qui
+   *  ferait croire à un calcul qui n'a pas eu lieu). */
+  moduleShadeReadings: () => ModuleShadeReading[] | null;
+  /** CALX122 — texte d'info-bulle prêt à afficher au survol d'UN module (`cellIndex`,
+   *  même indexation que la heatmap WJ21/`buildHeatmapColorFn`). `null` si non calculable
+   *  pour ce module (pan sans modules posés, indice hors plan). Le CÂBLAGE réel au survol
+   *  3D reste un crochet attendu côté `scene3d.ts`/`roof-tool-pro11.ts` (hors périmètre). */
+  moduleShadeTooltip: (cellIndex: number) => string | null;
+  /**
+   * CALX132 — reçoit l'empreinte OSM du bâtiment ACTIF (`batiment` de `GET crm/leads/<id>/
+   * roof-footprint/`, contrat CALX106 `calepinage_empreinte_osm.json`) et affiche sa
+   * PROPOSITION (jamais appliquée d'office) au panneau « Bâtiment ». `null`/absent efface
+   * la proposition affichée. CROCHET ATTENDU : aucune page n'appelle encore cette méthode
+   * aujourd'hui — `ToitureDesign.jsx` ne lit que `fp.data.polygon` de cette même réponse et
+   * ignore `fp.data.batiment` (hors périmètre de cette lane, `roofPro11/batiment.ts`/
+   * `batiment.test.ts` seuls).
+   */
+  setBatimentOsmPropose: (batiment: BatimentOsmServeur | null | undefined) => void;
+}
+
+/**
+ * CALX132 — libellé FRANÇAIS du bouton de reprise, dérivé UNIQUEMENT des champs de la
+ * proposition (jamais recalculé) : « Reprendre la hauteur OSM (7,5 m — openstreetmap, way
+ * 123) », ou la variante « niveaux » quand OSM ne connaît que le nombre d'étages. Pure —
+ * testée hors DOM dans `shadingUi.test.ts`.
+ */
+export function libelleBoutonOsm(p: PropositionOsm): string {
+  const way = typeof p.osmWayId === 'number' ? `, way ${p.osmWayId}` : '';
+  if (typeof p.hauteurM === 'number') {
+    const h = p.hauteurM.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    return `Reprendre la hauteur OSM (${h} m — openstreetmap${way})`;
+  }
+  if (typeof p.etages === 'number') {
+    return `Reprendre les niveaux OSM (${p.etages} — openstreetmap${way})`;
+  }
+  return 'Reprendre la proposition OSM';
 }
 
 const SHADE_SRC = 'rp9-shade-lines';
@@ -163,6 +215,226 @@ export function heatmapAccessValues(
   );
 }
 
+// ═══════════ CALX122 — LECTURE GÉOMÉTRIQUE D'OMBRAGE PAR MODULE ═══════════
+// Jusqu'ici la matrice 12 × 24 (`hourlyShadeFactors`/`ctx.shadeFactors`, prefill.ts:
+// 375-408) ne disait QUE de combien la production était rabotée (`heatmapAccessValues`,
+// `solarAccessSummary`) — jamais COMBIEN d'heures représentatives une obstruction couvre
+// réellement un module donné, ni depuis quel mois. Cette lecture réutilise la MÊME
+// matrice, évaluée à la position du module plutôt qu'au centroïde, et se contente de
+// COMPTER les cellules masquées : aucun kWh n'est lu ni produit ici.
+
+/** CALX122 — lecture géométrique d'un module : heures masquées + premier mois concerné. */
+export interface ModuleShadeReading {
+  /** Nombre d'heures représentatives masquées, sur les 288 (12 mois × 24 h) de la
+   *  matrice — même unité que le dérate d'horizon lointain (CAL93, « heure(s) sur 288 »). */
+  maskedHours: number;
+  /** Premier mois (0 = janvier) où au moins une heure est masquée, ou `null` si aucune
+   *  (obstruction(s) saisie(s) mais hors de la trajectoire solaire de ce module — un vrai
+   *  zéro géométrique, jamais une absence de lecture). */
+  firstMonthIndex: number | null;
+}
+
+/**
+ * CALX122 — lecture géométrique PURE d'un point (cx, cy) : recalcule SA PROPRE matrice
+ * 12 × 24 (`hourlyShadeFactors`, évaluée à sa position) et compte les cellules masquées
+ * (facteur < 1). Aucune obstruction ⇒ matrice inchangée ⇒ 0 heure, aucun mois — un vrai
+ * zéro, distinct de l'ABSENCE de lecture publiée par `moduleShadeReadingsForPanels`
+ * quand aucune source n'a été saisie du tout. PURE : testable sans DOM ni carte.
+ */
+export function moduleShadeReading(
+  latitudeDeg: number,
+  obstructions: readonly ShadeObstructionENU[],
+  cx: number,
+  cy: number,
+): ModuleShadeReading {
+  const matrix = hourlyShadeFactors(latitudeDeg, obstructions, cx, cy);
+  let maskedHours = 0;
+  let firstMonthIndex: number | null = null;
+  matrix.forEach((row, m) => {
+    let maskedInMonth = 0;
+    for (const v of row) if (v < 1) maskedInMonth++;
+    if (maskedInMonth > 0) {
+      maskedHours += maskedInMonth;
+      if (firstMonthIndex == null) firstMonthIndex = m;
+    }
+  });
+  return { maskedHours, firstMonthIndex };
+}
+
+/**
+ * CALX122 — lecture géométrique de CHAQUE module d'un pan. `hasSource` distingue « rien à
+ * publier » d'un « vrai zéro » : sans AUCUNE source d'ombrage saisie (`false`), le
+ * résultat est `null` — le compte est ABSENT, jamais un « 0 heure » qui ferait croire à
+ * un calcul qui n'a pas eu lieu. Une source saisie (`true`) publie systématiquement un
+ * compte par module, même à 0 (obstruction sous le niveau du toit ou hors trajectoire
+ * solaire — cf. `moduleShadeReading`). PURE : testable sans DOM ni carte.
+ */
+export function moduleShadeReadingsForPanels(
+  latitudeDeg: number,
+  obstructions: readonly ShadeObstructionENU[],
+  panels: readonly HeatmapPoint[],
+  hasSource: boolean,
+): ModuleShadeReading[] | null {
+  if (!hasSource) return null;
+  return panels.map((p) => moduleShadeReading(latitudeDeg, obstructions, p.cx, p.cy));
+}
+
+// ═══════ CALX115 — SEUIL D'ACCÈS SOLAIRE : ÉCARTER DES EMPLACEMENTS, PAS DÉRATER ═══════
+// Jusqu'ici l'ombrage n'agissait QU'APRÈS la pose : la proposition de retrait
+// (`proposeShadedRemoval`, plus bas) attend que les modules soient posés puis attend un
+// clic. Le seuil d'Aurora (`irradiance_constraints.min_sap` / `min_tsrf`) fait l'inverse :
+// un emplacement dont l'accès solaire calculé est sous le seuil n'est PAS un emplacement,
+// il sort du posable AVANT que le pavage ne le retienne. Le seuil est SAISI
+// (`optimisation.seuilAccesSolaire`, contrat CALX88) : rien n'est proposé par défaut.
+//
+// DEUX RÈGLES TIENNENT CE BLOC :
+//  1. Aucun seuil saisi (ou seuil à 0) ⇒ AUCUN emplacement écarté : la pose est celle
+//     d'aujourd'hui, à l'emplacement près, et la phrase le dit.
+//  2. Un seuil ne s'applique JAMAIS sans mesure. Sans obstruction retenue, la carte
+//     d'accès solaire vaut 1 partout (`heatmapAccessValues`) — c'est l'ABSENCE de mesure,
+//     pas du plein soleil : le seuil est alors REFUSÉ en nommant `optimisation.seuilAccesSolaire`
+//     et la raison, jamais appliqué à des valeurs qui n'ont rien mesuré (D-CALX 7).
+
+/** Le champ du contrat v2 que les refus de seuil NOMMENT (CALX88). */
+const CHAMP_SEUIL = 'optimisation.seuilAccesSolaire';
+
+/** CALX115 — ce que le seuil a RÉELLEMENT fait au posable, et pourquoi. */
+export interface FiltrageAccesSolaire {
+  /** Rangs (dans `panels`) des emplacements RETENUS pour le pavage. */
+  retenus: number[];
+  /** Rangs ÉCARTÉS : leur accès solaire CALCULÉ est sous le seuil. */
+  ecartes: number[];
+  /** Le seuil réellement appliqué (0–1), ou `null` quand aucun ne l'a été. */
+  seuilApplique: number | null;
+  /** Vrai quand un seuil SAISI a dû être écarté (hors contrat, ou sans mesure). */
+  refuse: boolean;
+  /** Le champ du contrat nommé par le refus, ou `null`. */
+  champ: string | null;
+  /** Phrase FR à publier : elle dit COMBIEN d'emplacements sont écartés, ou pourquoi
+   *  aucun ne l'est — jamais un silence. */
+  motif: string;
+}
+
+/** Part d'accès solaire en français (« 70 % »), sans chiffre inventé : c'est la valeur
+ *  saisie ou calculée, seulement mise en forme. */
+function pctAcces(v: number): string {
+  return `${(v * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
+}
+
+/** Tous les emplacements retenus, aucun écarté — la pose d'aujourd'hui. */
+function toutRetenu(nombre: number, motif: string, refuse = false, champ: string | null = null): FiltrageAccesSolaire {
+  return {
+    retenus: Array.from({ length: Math.max(0, nombre) }, (_, i) => i),
+    ecartes: [],
+    seuilApplique: null,
+    refuse,
+    champ,
+    motif,
+  };
+}
+
+/**
+ * CALX115 — quels emplacements restent POSABLES sous le seuil d'accès solaire SAISI ? PURE.
+ *
+ * `seuilSaisi` arrive du document (`optimisation.seuilAccesSolaire`, CALX88) : c'est un
+ * `unknown`, jamais un nombre du code. `mesureDisponible` dit si une source d'ombrage a
+ * seulement été saisie (l'équivalent de `hasShadeSources()`), et `obstructions` ce qu'il
+ * en RESTE une fois ramené au plan du champ : les deux doivent tenir, sinon rien n'est
+ * mesuré et le seuil est refusé en le disant.
+ *
+ * L'accès solaire est lu en ANNUEL (`heatmapAccessValues`, mois `null`) — la même intégrale
+ * horaire dératée que la carte d'accès solaire WJ21/CAL95, aucun modèle nouveau.
+ */
+export function filtrerEmplacementsSousSeuil(
+  seuilSaisi: unknown,
+  latitudeDeg: number,
+  obstructions: readonly ShadeObstructionENU[],
+  prod: PerKwcProduction,
+  panels: readonly HeatmapPoint[],
+  mesureDisponible: boolean,
+): FiltrageAccesSolaire {
+  const total = panels.length;
+  if (seuilSaisi == null || seuilSaisi === '') {
+    return toutRetenu(
+      total,
+      `Aucun seuil d’accès solaire saisi (« ${CHAMP_SEUIL} » absente) : aucun emplacement n’est écarté, la pose est celle d’aujourd’hui.`,
+    );
+  }
+  if (typeof seuilSaisi !== 'number' || !Number.isFinite(seuilSaisi) || seuilSaisi < 0 || seuilSaisi > 1) {
+    return toutRetenu(
+      total,
+      `« ${CHAMP_SEUIL} » : « ${String(seuilSaisi)} » n’est pas une part d’accès solaire entre 0 et 1 — ` +
+        `le seuil est écarté et aucun emplacement n’est retiré du posable.`,
+      true,
+      CHAMP_SEUIL,
+    );
+  }
+  if (seuilSaisi === 0) {
+    // Seuil à 0 : aucun accès solaire ne peut lui être inférieur. On le dit plutôt que de
+    // lancer un calcul dont le résultat est connu — et la pose reste celle d'aujourd'hui.
+    return {
+      ...toutRetenu(total, `Seuil d’accès solaire à ${pctAcces(0)} : aucun emplacement n’est sous le seuil, la pose est celle d’aujourd’hui.`),
+      seuilApplique: 0,
+    };
+  }
+  if (!mesureDisponible) {
+    return toutRetenu(
+      total,
+      `Seuil d’accès solaire de ${pctAcces(seuilSaisi)} écarté : aucune obstruction, aucun obstacle et aucun objet ` +
+        `d’environnement à hauteur saisie sur ce toit — aucun accès solaire n’y est calculé, et une mesure absente ` +
+        `ne vaut pas du plein soleil. Aucun emplacement n’est écarté.`,
+      true,
+      CHAMP_SEUIL,
+    );
+  }
+  if (!obstructions.length) {
+    return toutRetenu(
+      total,
+      `Seuil d’accès solaire de ${pctAcces(seuilSaisi)} écarté : aucune des sources d’ombrage saisies ne dépasse le ` +
+        `plan du champ, donc aucun accès solaire n’est calculé ici — une mesure absente ne vaut pas du plein soleil. ` +
+        `Aucun emplacement n’est écarté.`,
+      true,
+      CHAMP_SEUIL,
+    );
+  }
+  if (!total) {
+    return {
+      ...toutRetenu(0, `Seuil d’accès solaire de ${pctAcces(seuilSaisi)} : aucun emplacement à évaluer sur ce pan.`),
+      seuilApplique: seuilSaisi,
+    };
+  }
+  const acces = heatmapAccessValues(latitudeDeg, obstructions, prod, panels, null);
+  const retenus: number[] = [];
+  const ecartes: number[] = [];
+  acces.forEach((a, i) => (a < seuilSaisi ? ecartes : retenus).push(i));
+  return {
+    retenus,
+    ecartes,
+    seuilApplique: seuilSaisi,
+    refuse: false,
+    champ: null,
+    motif: ecartes.length
+      ? `Seuil d’accès solaire de ${pctAcces(seuilSaisi)} : ${ecartes.length} emplacement(s) sur ${total} écarté(s) ` +
+        `du posable avant le pavage (accès solaire calculé sous le seuil).`
+      : `Seuil d’accès solaire de ${pctAcces(seuilSaisi)} : aucun des ${total} emplacements n’est sous le seuil — ` +
+        `la pose est celle d’aujourd’hui.`,
+  };
+}
+
+/**
+ * CALX115 — hauteur de bâtiment EFFECTIVE (m) du pan, pour l'ombrage. Exportée pour que
+ * l'optimiseur lise EXACTEMENT la même hauteur que l'atelier (`roofHeightM` ci-dessous
+ * l'appelle) : une seule règle de hauteur, jamais deux qui dérivent. Hauteur SAISIE du
+ * bâtiment du document (CALX100) si elle existe, sinon l'hypothèse affichée (CAL60).
+ */
+export function hauteurToitPourOmbrageM(
+  batiments: readonly Batiment[] | null | undefined,
+  buildingId: string | null | undefined,
+): number {
+  const lu = hauteurExtrusion(batimentPourId(batiments, idBatimentDuPan(buildingId)));
+  return effectiveBuildingHeightM(lu.origine === 'saisie' ? lu.hauteurM : null);
+}
+
 export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const { map, setStatus, recalcDisplays, applyHeatmap } = deps;
 
@@ -172,25 +444,162 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const hourValueEl = $('rp9-shade-hour-value');
   const listEl = $('rp9-shade-list');
   const noteEl = $('rp9-shade-note');
-  // CAL60 — hauteur de bâtiment SAISISSABLE (par bâtiment CAL59 : la zone active porte son
-  // propre override) ; le repli FLOORS×FLOOR_HEIGHT_M reste affiché comme une HYPOTHÈSE tant
-  // qu'aucune valeur n'est saisie. Stocké par `buildingId` (clé '' = zone sans bâtiment).
+  // CAL60 + CALX100 — hauteur de bâtiment SAISISSABLE (par bâtiment CAL59 : la zone active
+  // porte celle de SON bâtiment). CE QUI CHANGE AVEC CALX100 : elle ne vit PLUS dans une
+  // `Map` locale jamais sérialisée — elle vit dans `ctx.batiments` (`buildings[]` du
+  // document, contrat CALX84), elle y RETOURNE à chaque saisie avec sa provenance, et elle
+  // survit donc au rechargement du dossier. Sans saisie, la 3D reste sur la hauteur de
+  // DESSIN annoncée (`batiment.ts`), exactement l'hypothèse affichée d'aujourd'hui.
   const heightEl = $<HTMLInputElement>('rp9-shade-height');
   const heightNoteEl = $('rp9-shade-height-note');
-  const buildingHeights = new Map<string, number>();
-  const buildingKey = (): string => ctx.activeArea()?.buildingId ?? '';
-  const activeHeightOverride = (): number | null => buildingHeights.get(buildingKey()) ?? null;
-  /** Hauteur EFFECTIVE (m) de la zone active — saisie si présente, sinon l'hypothèse. */
-  const roofHeightM = (): number => effectiveBuildingHeightM(activeHeightOverride());
+  const buildingKey = (): string => idBatimentDuPan(ctx.activeArea()?.buildingId);
+  const batimentActif = (): Batiment | null => batimentPourId(ctx.batiments, buildingKey());
+  /** Hauteur EFFECTIVE (m) de la zone active — saisie si présente, sinon l'hypothèse.
+   *  CALX115 — une SEULE règle de hauteur, partagée avec l'optimiseur. */
+  const roofHeightM = (): number => hauteurToitPourOmbrageM(ctx.batiments, ctx.activeArea()?.buildingId);
   function syncHeightUi() {
-    const override = activeHeightOverride();
+    const bat = batimentActif();
+    const lu = hauteurExtrusion(bat);
+    const override = lu.origine === 'saisie' ? lu.hauteurM : null;
     if (heightEl && document.activeElement !== heightEl) heightEl.value = override != null ? fmt1(override) : '';
-    if (heightNoteEl) {
-      heightNoteEl.textContent =
-        override != null
-          ? `Hauteur saisie : ${fmt1(override)} m.`
-          : `Hypothèse affichée : ${fmt1(FLOORS * FLOOR_HEIGHT_M)} m (${FLOORS} étages) — saisissez la hauteur réelle pour un ombrage exact.`;
+    if (heightNoteEl) heightNoteEl.textContent = lu.mention;
+    syncPanneauBatiment(bat);
+  }
+
+  // ═══ CALX100 — PANNEAU « BÂTIMENT » (créé par le module, pas par la page hôte) ═══
+  // La page ne fournit que le champ de hauteur CAL60 (`rp9-shade-height`). Les autres
+  // champs du bâtiment — nombre d'étages, hauteur d'étage, PROVENANCE de la hauteur, et
+  // le relevé d'acrotère de CALX101 — sont créés ici s'ils manquent, patron
+  // `ensureAccessBlock`/`obstaclesUi.ts` : AUCUNE page à modifier, et absent de tout DOM
+  // (harness jsdom minimal) tout ce bloc est un no-op.
+  const panneauBatiment = ensurePanneauBatiment();
+  const batEtagesEl = $<HTMLInputElement>('rp11-bat-etages');
+  const batHauteurEtageEl = $<HTMLInputElement>('rp11-bat-hauteur-etage');
+  const batSourceEl = $<HTMLInputElement>('rp11-bat-source');
+  const batAcrotereEl = $<HTMLInputElement>('rp11-bat-acrotere');
+  const batErreurEl = $('rp11-bat-erreur');
+  const batNoteEl = $('rp11-bat-note');
+  // CALX132 — la PROPOSITION OSM affichée (jamais écrite tant que le bouton n'est pas
+  // cliqué) : `null` = rien à proposer (aucun tag OSM exploitable, ou pas encore reçue —
+  // voir le crochet attendu sur `setBatimentOsmPropose`, interface `ShadingUi`).
+  const batOsmBoutonEl = $<HTMLButtonElement>('rp11-bat-osm-bouton');
+  const batOsmNoteEl = $('rp11-bat-osm-note');
+  let propositionOsmCourante: PropositionOsm | null = null;
+
+  function ensurePanneauBatiment(): HTMLElement | null {
+    const existing = $('rp11-batiment');
+    if (existing) return existing;
+    const anchor = heightNoteEl?.parentElement ?? heightEl?.parentElement;
+    if (!anchor || typeof document.createElement !== 'function') return null;
+    const box = document.createElement('div');
+    box.id = 'rp11-batiment';
+    box.className = 'mt-2 space-y-1 text-xs text-lune-soft';
+    const champ = (id: string, label: string, aide: string, type = 'number', step = '0.1') =>
+      `<label class="block"><span class="text-lune-faint">${esc(label)}</span>
+        <input id="${id}" type="${type}"${type === 'number' ? ` step="${step}" min="0"` : ''}
+          class="mt-0.5 w-full rounded border border-white/20 bg-nuit-900/60 px-2 py-1 text-xs text-lune-soft"
+          placeholder="${esc(aide)}" /></label>`;
+    box.innerHTML = [
+      '<p class="text-lune-faint">Bâtiment — ce qui est SAISI ici voyage avec le dossier ; ce qui est vide reste vide.</p>',
+      champ('rp11-bat-source', 'Provenance de la hauteur', 'mesurée au télémètre, lue sur le permis…', 'text'),
+      champ('rp11-bat-etages', 'Nombre d’étages (information d’écran)', 'non renseigné', 'number', '1'),
+      champ('rp11-bat-hauteur-etage', 'Hauteur d’un étage (m)', 'non renseignée'),
+      champ('rp11-bat-acrotere', 'Relevé d’acrotère (m)', 'non renseigné'),
+      '<p id="rp11-bat-note" class="text-lune-faint"></p>',
+      '<p id="rp11-bat-erreur" class="text-alert-300"></p>',
+      // CALX132 — PROPOSITION OSM : masquée (aucun texte, aucun bouton visible) tant
+      // qu'aucune empreinte n'a été reçue (`setBatimentOsmPropose`) — jamais affichée par
+      // défaut, jamais appliquée sans ce clic.
+      '<p id="rp11-bat-osm-note" class="text-lune-faint"></p>',
+      '<button type="button" id="rp11-bat-osm-bouton" hidden ' +
+        'class="border border-white/20 px-2 py-1 font-semibold text-white hover:bg-white/10"></button>',
+    ].join('');
+    anchor.appendChild(box);
+    return box;
+  }
+
+  /** Remet les champs du panneau sur ce que le DOCUMENT porte (jamais l'inverse). */
+  function syncPanneauBatiment(bat: Batiment | null) {
+    if (!panneauBatiment) return;
+    const poser = (el: HTMLInputElement | null, v: number | null | undefined, entier = false) => {
+      if (!el || document.activeElement === el) return;
+      el.value = typeof v === 'number' && Number.isFinite(v) && v > 0 ? (entier ? String(Math.round(v)) : fmt1(v)) : '';
+    };
+    poser(batEtagesEl, bat?.etages, true);
+    poser(batHauteurEtageEl, bat?.hauteurEtageM);
+    poser(batAcrotereEl, bat?.hauteurAcrotereM);
+    if (batSourceEl && document.activeElement !== batSourceEl) batSourceEl.value = bat?.source ?? '';
+    if (batNoteEl) batNoteEl.textContent = mentionEtages(bat) ?? '';
+    renderPropositionOsm();
+  }
+
+  /**
+   * CALX132 — affiche (ou masque) le bouton de reprise de la proposition OSM courante.
+   * Rien n'est écrit ici : ce n'est qu'un RENDU, la seule écriture possible est le clic
+   * (`appliquerPropositionOsmActive`).
+   */
+  function renderPropositionOsm() {
+    if (batOsmNoteEl) batOsmNoteEl.textContent = propositionOsmCourante?.mention ?? '';
+    if (batOsmBoutonEl) {
+      if (propositionOsmCourante) {
+        batOsmBoutonEl.hidden = false;
+        batOsmBoutonEl.textContent = libelleBoutonOsm(propositionOsmCourante);
+      } else {
+        batOsmBoutonEl.hidden = true;
+        batOsmBoutonEl.textContent = '';
+      }
     }
+  }
+
+  /**
+   * CALX132 — CLIC EXPLICITE : la proposition OSM courante est acceptée et rejoint le
+   * document, par le même chemin qu'une saisie humaine (`appliquerSaisie`, mêmes refus
+   * nommés). Rien de ceci ne s'exécute ailleurs qu'ici — le calcul de la proposition
+   * (`setBatimentOsmPropose`) n'écrit jamais tout seul.
+   */
+  function appliquerPropositionOsmActive() {
+    if (!propositionOsmCourante) return;
+    const res = appliquerPropositionOsm(ctx.batiments, buildingKey(), propositionOsmCourante);
+    ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme toute saisie de bâtiment
+    ctx.batiments = res.batiments;
+    if (batErreurEl) batErreurEl.textContent = res.refus.map((r) => r.message).join(' ');
+    syncHeightUi();
+    recalcDisplays();
+    if (hasShadeSources()) recomputeShading();
+  }
+  batOsmBoutonEl?.addEventListener('click', () => appliquerPropositionOsmActive());
+
+  /** Nombre saisi à la française (virgule tolérée) ; vide/illisible → `null` = EFFACER. */
+  function nombreSaisi(el: HTMLInputElement | null): number | null {
+    const raw = (el?.value ?? '').replace(/\s/g, '').replace(',', '.').trim();
+    if (!raw) return null;
+    const v = Number(raw);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  }
+
+  /**
+   * CALX100 — écrit la saisie dans `ctx.batiments` (le DOCUMENT), puis re-synchronise.
+   * Un refus n'efface rien en silence : il s'affiche SOUS le champ fautif et le bandeau
+   * le NOMME (règle fondateur 08/09), la valeur d'avant restant en place.
+   */
+  function appliquerSaisieBatiment() {
+    const res = appliquerSaisie(ctx.batiments, buildingKey(), {
+      hauteurM: nombreSaisi(heightEl),
+      etages: nombreSaisi(batEtagesEl),
+      hauteurEtageM: nombreSaisi(batHauteurEtageEl),
+      hauteurAcrotereM: nombreSaisi(batAcrotereEl),
+      source: batSourceEl?.value ?? null,
+    });
+    ctx.pushWorkshopHistory?.(); // CAL100 — la saisie du bâtiment s'annule comme le reste
+    ctx.batiments = res.batiments;
+    if (batErreurEl) batErreurEl.textContent = res.refus.map((r) => r.message).join(' ');
+    if (res.refus.length) {
+      setStatus('Hauteur non enregistrée — champ « Provenance de la hauteur » à renseigner.');
+      batSourceEl?.focus?.();
+    }
+    syncHeightUi();
+    recalcDisplays(); // la 3D extrude désormais cette hauteur : elle doit se re-dessiner
+    if (hasShadeSources()) recomputeShading();
   }
   // CAL93 — note du dérate d'horizon LOINTAIN (optionnelle, DOM créé par HorizonPanel/la
   // page hôte ; absente en tests unitaires du builder — no-op).
@@ -207,6 +616,21 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     if (!anchor || typeof document.createElement !== 'function') return null;
     const box = document.createElement('div');
     box.id = 'rp9-solar-access';
+    box.className = 'mt-2 text-xs text-lune-soft';
+    anchor.appendChild(box);
+    return box;
+  }
+  // CALX122 — bloc où la lecture géométrique d'ombrage PAR MODULE (heures masquées +
+  // premier mois) est publiée, juste sous l'accès solaire chiffré (CAL97) — créé s'il
+  // manque dans la page (même patron que `ensureAccessBlock`).
+  const shadeHoursEl = ensureShadeHoursBlock();
+  function ensureShadeHoursBlock(): HTMLElement | null {
+    const existing = $('rp9-shade-hours');
+    if (existing) return existing;
+    const anchor = accessEl?.parentElement ?? heatmapNoteEl?.parentElement ?? heatmapBtn?.parentElement;
+    if (!anchor || typeof document.createElement !== 'function') return null;
+    const box = document.createElement('div');
+    box.id = 'rp9-shade-hours';
     box.className = 'mt-2 text-xs text-lune-soft';
     anchor.appendChild(box);
     return box;
@@ -377,6 +801,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     // la teinte d'accès solaire si la heatmap est active.
     refreshHeatmap();
     renderSolarAccess(); // CAL97 — le chiffre publié suit les obstructions
+    renderModuleShadeReadings(); // CALX122 — la lecture par module suit les obstructions
   }
 
   // WJ21 — CARTE D'ACCÈS SOLAIRE : teinte chaque panneau par sa part RÉELLE d'irradiation
@@ -416,6 +841,19 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     return solarAccessSummary(ctx.centroidLat, activeShadeEntries(), prod, points, heatmapMonth);
   }
 
+  /**
+   * CALX111 câblage — désignation HUMAINE du module de rang `i` dans le pavage : le numéro
+   * STABLE du document quand la numérotation est en service (il survit à un retrait et à
+   * une réouverture du dossier), sinon le rang dans le pavage — le libellé d'aujourd'hui,
+   * inchangé. Jamais un numéro inventé : `etiquette` rend une chaîne vide quand le module
+   * ne porte pas de `n`, et c'est alors le rang qui s'affiche.
+   */
+  function etiquetteModule(i: number): string {
+    const panId = ctx.activeAreaId;
+    const numerote = registreAtelier.modules(panId)[i];
+    return etiquette(numerote, registreAtelier.convention(panId)) || `nº${i + 1}`;
+  }
+
   /** CAL97 — publie le chiffre (et sa méthode) à côté de la carte, ou dit clairement
    *  POURQUOI il est absent — jamais une estimation de remplacement. */
   function renderSolarAccess() {
@@ -442,7 +880,7 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
         `${esc(pct(proposal.threshold))} : <span class="fig">−${esc(fmt2(proposal.kwcLost))}</span> kWc, ` +
         `accès solaire moyen des ${proposal.remaining} restants ` +
         `<span class="fig">${esc(pct(proposal.averageBefore))}</span> → <span class="fig">${esc(pct(proposal.averageAfter))}</span>.</div>` +
-        `<div class="mt-1 opacity-80">Modules visés : ${esc(proposal.indices.map((i) => `nº${i + 1}`).join(', '))}.</div>` +
+        `<div class="mt-1 opacity-80">Modules visés : ${esc(proposal.indices.map(etiquetteModule).join(', '))}.</div>` + // CALX111 câblage
         (deps.removePanels
           ? `<button type="button" id="rp9-solar-access-apply" class="mt-2 border border-white/20 px-2 py-1 font-semibold text-white hover:bg-white/10">Retirer ces modules</button>` +
             `<span class="ml-2 opacity-80">Rien n’est retiré tant que vous ne cliquez pas ; Ctrl+Z annule.</span>`
@@ -467,6 +905,65 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     const g = ctx.layoutPlan?.grid;
     if (!g || !g.panels.length || !Number.isFinite(g.kwc) || g.kwc <= 0) return 0;
     return g.kwc / g.panels.length;
+  }
+
+  /** CALX122 — lecture géométrique par module du pan actif (cf. `moduleShadeReadingsForPanels`
+   *  ci-dessus) : `null` tant qu'aucune source d'ombrage n'est saisie, ou tant qu'aucun
+   *  module n'est posé sur ce pan. */
+  function moduleShadeReadings(): ModuleShadeReading[] | null {
+    const plan = ctx.layoutPlan;
+    if (!plan || !plan.grid.panels.length || ctx.vertices.length < 3) return null;
+    return moduleShadeReadingsForPanels(ctx.centroidLat, activeShadeEntries(), plan.grid.panels, hasShadeSources());
+  }
+
+  /** CALX122 — texte d'info-bulle prêt à afficher au survol d'UN module. Aucune
+   *  production ici — le survol reste géométrique, comme le compte publié dans le
+   *  panneau (`renderModuleShadeReadings`). Attacher ce texte au survol 3D reste un
+   *  crochet attendu côté scene3d.ts/roof-tool-pro11.ts, hors périmètre de cette tâche. */
+  function moduleShadeTooltip(cellIndex: number): string | null {
+    const readings = moduleShadeReadings();
+    if (!readings) {
+      return hasShadeSources()
+        ? 'Ombrage : non calculé (aucun module posé sur ce pan).'
+        : 'Ombrage : non renseigné — aucune obstruction n’a été saisie.';
+    }
+    const r = cellIndex >= 0 && cellIndex < readings.length ? readings[cellIndex] : null;
+    if (!r) return null;
+    return r.maskedHours > 0 && r.firstMonthIndex != null
+      ? `Ombrage : ${r.maskedHours} heure(s) sur 288 masquée(s) par une obstruction, dès ${HEATMAP_MONTH_LABELS[r.firstMonthIndex]}.`
+      : 'Ombrage : aucune heure masquée pour ce module.';
+  }
+
+  /** CALX122 — publie, PAR MODULE, la lecture géométrique d'ombrage (heures masquées +
+   *  premier mois) à côté de l'accès solaire CHIFFRÉ (CAL97) : sans source d'ombrage
+   *  saisie, le compte est ABSENT — jamais un « 0 heure ». Aucun kWh ici. */
+  function renderModuleShadeReadings() {
+    const el = shadeHoursEl;
+    if (!el) return;
+    const readings = moduleShadeReadings();
+    if (!readings) {
+      el.textContent = hasShadeSources()
+        ? 'Ombrage par module : non calculé (aucun module posé sur ce pan).'
+        : 'Ombrage par module : non renseigné — aucune obstruction n’a été saisie. Le nombre d’heures est volontairement ABSENT plutôt qu’estimé à zéro.';
+      return;
+    }
+    const shaded = readings.filter((r) => r.maskedHours > 0);
+    if (!shaded.length) {
+      el.textContent =
+        `Ombrage par module (lecture géométrique, ${readings.length} module(s)) : aucune heure masquée — ` +
+        'les obstructions renseignées ne couvrent la trajectoire solaire d’aucun module.';
+      return;
+    }
+    const hours = shaded.map((r) => r.maskedHours);
+    const minH = Math.min(...hours);
+    const maxH = Math.max(...hours);
+    const firstMonths = shaded.map((r) => r.firstMonthIndex).filter((m): m is number => m != null);
+    const earliestMonth = firstMonths.length ? Math.min(...firstMonths) : null;
+    el.textContent =
+      'Ombrage par module (lecture géométrique, sur 288 heures représentatives = 12 mois × 24 h) : ' +
+      `${shaded.length} module(s) sur ${readings.length} couvert(s) par une obstruction, de ${minH} à ${maxH} heure(s)` +
+      (earliestMonth != null ? `, dès ${HEATMAP_MONTH_LABELS[earliestMonth]}` : '') +
+      '. Aucune production n’est calculée ici.';
   }
 
   function setHeatmap(on: boolean) {
@@ -653,21 +1150,13 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     renderSolarAccess(); // CAL97 — le chiffre publié porte la période choisie
   });
 
-  // CAL60 — hauteur de bâtiment saisie (`change` : blur/Entrée, jamais à chaque frappe,
-  // même règle que le reste de l'atelier — W81). Vide ou invalide → retour à l'hypothèse.
-  heightEl?.addEventListener('change', () => {
-    const raw = heightEl.value.replace(/\s/g, '').replace(',', '.').trim();
-    const key = buildingKey();
-    if (!raw) {
-      buildingHeights.delete(key);
-    } else {
-      const v = Number(raw);
-      if (Number.isFinite(v) && v > 0) buildingHeights.set(key, v);
-      else buildingHeights.delete(key);
-    }
-    syncHeightUi();
-    if (hasShadeSources()) recomputeShading();
-  });
+  // CAL60 + CALX100 — hauteur de bâtiment saisie (`change` : blur/Entrée, jamais à chaque
+  // frappe, même règle que le reste de l'atelier — W81). Vide ou invalide → le champ est
+  // EFFACÉ (non renseigné), jamais mis à 0, et la 3D repart sur sa hauteur de dessin
+  // annoncée. La valeur part dans `buildings[]` du document, avec sa provenance.
+  for (const el of [heightEl, batEtagesEl, batHauteurEtageEl, batSourceEl, batAcrotereEl]) {
+    el?.addEventListener('change', () => appliquerSaisieBatiment());
+  }
   syncHeightUi();
 
   // CAL235 — l'application du retrait est un GESTE EXPLICITE : rien ne part sans ce clic,
@@ -687,6 +1176,17 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   recomputeHorizonFactors(); // CAL93 — état initial (document rechargé avec un profil)
   renderHorizonNote();
   renderSolarAccess(); // CAL97 — état initial (dossier rechargé avec des obstructions)
+  renderModuleShadeReadings(); // CALX122 — état initial
+
+  /**
+   * CALX132 — reçoit l'empreinte OSM du bâtiment ACTIF et calcule sa PROPOSITION
+   * (`propositionOsm`, pure) — jamais appliquée d'office. `null`/absent, ou un bâtiment
+   * sans tag exploitable, efface le bouton (aucune proposition à afficher).
+   */
+  function setBatimentOsmPropose(batiment: BatimentOsmServeur | null | undefined) {
+    propositionOsmCourante = propositionOsm(batiment);
+    renderPropositionOsm();
+  }
 
   return {
     handleMapClick,
@@ -696,5 +1196,8 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     solarAccess,
     setHorizonProfile,
     horizonStatus,
+    moduleShadeReadings,
+    moduleShadeTooltip,
+    setBatimentOsmPropose,
   };
 }

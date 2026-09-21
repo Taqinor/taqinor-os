@@ -82,13 +82,97 @@ def exporter_layout(calepinage):
     }
 
 
+def _refuser_module_inconnu(document):
+    """CALX82 — un pan ne peut pas désigner un modèle absent de ``modules[]``.
+
+    JSON Schema sait contraindre une NATURE, pas comparer deux endroits d'un
+    même document : le renvoi ``zones[].geometry.moduleId`` -> ``modules[].id``
+    se contrôle donc ici, APRÈS la validation de schéma (les natures sont donc
+    déjà sûres), et le refus NOMME le chemin du champ fautif.
+    """
+    catalogue = document.get('modules')
+    connus = set()
+    if isinstance(catalogue, list):
+        connus = {entree.get('id') for entree in catalogue
+                  if isinstance(entree, dict)
+                  and isinstance(entree.get('id'), str)}
+    zones = document.get('zones')
+    if not isinstance(zones, list):
+        return
+    for rang, zone in enumerate(zones):
+        if not isinstance(zone, dict):
+            continue
+        geometrie = zone.get('geometry')
+        if not isinstance(geometrie, dict):
+            continue
+        modele = geometrie.get('moduleId')
+        if modele is None or modele in connus:
+            continue
+        chemin = f'zones.{rang}.geometry.moduleId'
+        inventaire = ', '.join(sorted(connus)) or 'aucun'
+        raise ImportLayoutRefuse(
+            f'Document refusé au champ « {chemin} » : le module '
+            f'« {modele} » ne figure pas dans « modules » '
+            f'(modèles déclarés : {inventaire}).', champ=chemin)
+
+
+def _refuser_numero_de_module_double(document):
+    """CALX83 — deux modules d'un MÊME pan ne peuvent pas partager ``n``.
+
+    ``uniqueItems`` compare des ÉLÉMENTS entiers, pas une propriété d'objet :
+    l'unicité du numéro stable se contrôle donc ici. Un doublon rendrait le
+    numéro inutilisable pour ce à quoi il sert — citer un module précis dans
+    un rapport d'ombrage ou sur un plan de pose.
+    """
+    zones = document.get('zones')
+    if not isinstance(zones, list):
+        return
+    for rang, zone in enumerate(zones):
+        if not isinstance(zone, dict):
+            continue
+        geometrie = zone.get('geometry')
+        if not isinstance(geometrie, dict):
+            continue
+        modules = geometrie.get('panels')
+        if not isinstance(modules, list):
+            continue
+        vus = {}
+        for place, module in enumerate(modules):
+            if not isinstance(module, dict):
+                continue
+            numero = module.get('n')
+            if not isinstance(numero, int) or isinstance(numero, bool):
+                continue
+            if numero in vus:
+                chemin = f'zones.{rang}.geometry.panels.{place}.n'
+                raise ImportLayoutRefuse(
+                    f'Document refusé au champ « {chemin} » : le numéro de '
+                    f'module {numero} est déjà porté par '
+                    f'« zones.{rang}.geometry.panels.{vus[numero]}.n » — sur '
+                    f'un même pan, un numéro désigne UN module et un seul.',
+                    champ=chemin)
+            vus[numero] = place
+
+
+def _controles_croises(document):
+    """Les refus que le vocabulaire JSON Schema ne sait pas exprimer.
+
+    Un seul endroit, appelé par ``valider_document`` juste après le schéma :
+    les écrans et l'import HTTP héritent donc des mêmes refus, nommés de la
+    même façon, sans qu'aucun d'eux ne recode une règle.
+    """
+    _refuser_module_inconnu(document)
+    _refuser_numero_de_module_double(document)
+
+
 def valider_document(document):
     """Valide ``document`` contre le schéma v2 (CAL232) — refuse en NOMMANT
     le CHEMIN du champ fautif.
 
     Raises:
-        ImportLayoutRefuse: document qui n'est pas un objet, ou qui viole le
-            schéma.
+        ImportLayoutRefuse: document qui n'est pas un objet, qui viole le
+            schéma, ou dont un renvoi interne ne pointe rien
+            (``_controles_croises``).
     """
     import jsonschema
 
@@ -104,6 +188,7 @@ def valider_document(document):
         raise ImportLayoutRefuse(
             f'Document refusé au champ « {chemin} » : {erreur.message}.',
             champ=chemin) from erreur
+    _controles_croises(document)
 
 
 def importer_layout(calepinage, document, *, user=None):

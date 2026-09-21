@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4643, operations: 7421, components: 2110}
+counts: {paths: 4647, operations: 7425, components: 2111}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -551,12 +551,14 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/marquer-modele/ -> django_calepinage_calepinages_marquer_modele_create
 - get /api/django/calepinage/calepinages/{id}/masse-lestage/ -> django_calepinage_calepinages_masse_lestage_retrieve
 - post /api/django/calepinage/calepinages/{id}/meteo-fichier/ -> django_calepinage_calepinages_meteo_fichier_create
+- get /api/django/calepinage/calepinages/{id}/modules-disponibles/ -> django_calepinage_calepinages_modules_disponibles_retrieve
 - get /api/django/calepinage/calepinages/{id}/note-calcul.pdf/ -> django_calepinage_calepinages_note_calcul.pdf_retrieve
 - post /api/django/calepinage/calepinages/{id}/pack-technique/ -> django_calepinage_calepinages_pack_technique_create
 - get /api/django/calepinage/calepinages/{id}/pertes/ -> django_calepinage_calepinages_pertes_retrieve
 - get /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_retrieve
 - post /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_create
 - patch /api/django/calepinage/calepinages/{id}/photos/{photo_id}/calage/ -> django_calepinage_calepinages_photos_calage_partial_update
+- get /api/django/calepinage/calepinages/{id}/plan-importe/ -> django_calepinage_calepinages_plan_importe_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-masse.pdf/ -> django_calepinage_calepinages_plan_masse.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-pose.pdf/ -> django_calepinage_calepinages_plan_pose.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-toiture.pdf/ -> django_calepinage_calepinages_plan_toiture.pdf_retrieve
@@ -4299,12 +4301,14 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/marquer-modele/ -> v1_calepinage_calepinages_marquer_modele_create
 - get /api/v1/calepinage/calepinages/{id}/masse-lestage/ -> v1_calepinage_calepinages_masse_lestage_retrieve
 - post /api/v1/calepinage/calepinages/{id}/meteo-fichier/ -> v1_calepinage_calepinages_meteo_fichier_create
+- get /api/v1/calepinage/calepinages/{id}/modules-disponibles/ -> v1_calepinage_calepinages_modules_disponibles_retrieve
 - get /api/v1/calepinage/calepinages/{id}/note-calcul.pdf/ -> v1_calepinage_calepinages_note_calcul.pdf_retrieve
 - post /api/v1/calepinage/calepinages/{id}/pack-technique/ -> v1_calepinage_calepinages_pack_technique_create
 - get /api/v1/calepinage/calepinages/{id}/pertes/ -> v1_calepinage_calepinages_pertes_retrieve
 - get /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_retrieve
 - post /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_create
 - patch /api/v1/calepinage/calepinages/{id}/photos/{photo_id}/calage/ -> v1_calepinage_calepinages_photos_calage_partial_update
+- get /api/v1/calepinage/calepinages/{id}/plan-importe/ -> v1_calepinage_calepinages_plan_importe_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-masse.pdf/ -> v1_calepinage_calepinages_plan_masse.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-pose.pdf/ -> v1_calepinage_calepinages_plan_pose.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-toiture.pdf/ -> v1_calepinage_calepinages_plan_toiture.pdf_retrieve
@@ -7615,6 +7619,7 @@ components:
 - CalepinageParametresEcrite
 - CalepinageParametresReponse
 - CalepinageParametresRequeteRequest
+- CalepinagePlanImporte
 - CalepinageRegistreReponse
 - CalepinageRequest
 - CalepinageSimulationAccuse

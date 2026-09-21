@@ -16,6 +16,8 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 
 import Vue2DPlan from '../Vue2DPlan'
 import { formatCote, milieu } from '../plan2d'
+// CALX111 câblage — la mémoire de numérotation du builder, lue par la vue plan.
+import { definirSaisie, registreAtelier, reinitialiserNumerotation } from '@roofpro/numerotation'
 
 /** Plan factice, tel que `projectPlanView` le rend (déjà projeté). */
 const PLAN = {
@@ -130,5 +132,65 @@ describe('CAL104 — plein écran réversible', () => {
       fireEvent.click(screen.getByTestId('v2d-plein-ecran'))
     })
     expect(screen.getByTestId('v2d-boite').dataset.pleinEcran).toBe('0')
+  })
+})
+
+/* ============================================================================
+   CALX111 câblage — les NUMÉROS de module du document s'affichent en vue plan.
+   La décision reste PURE (`etiquettesPlan`) : ce fichier prouve seulement que la
+   vue plan la CONSULTE, et qu'elle ne dessine rien sans elle.
+   ========================================================================== */
+
+/** Document tel que `serializeLayout` l'écrit une fois la numérotation en service. */
+const DOCUMENT_NUMEROTE = {
+  zones: [
+    {
+      id: 'area-1',
+      geometry: {
+        azimuthDeg: 180,
+        numerotation: { depart: 1, sens: 'ligne' },
+        panels: [
+          { cx: 0, cy: 0, n: 1 },
+          { cx: 2.4, cy: 0, n: 2 },
+        ],
+      },
+    },
+  ],
+}
+
+describe('CALX111 câblage — numéros de module en vue plan', () => {
+  beforeEach(() => {
+    reinitialiserNumerotation()
+  })
+
+  it('sans `panId`, le plan est celui d’aujourd’hui : aucune étiquette', () => {
+    registreAtelier.absorberDocument(DOCUMENT_NUMEROTE)
+    definirSaisie({ actif: true, depart: 1, sens: 'ligne' })
+    render(<Vue2DPlan plan={PLAN} compte3d={2} />)
+    expect(screen.queryAllByTestId('v2d-numero')).toHaveLength(0)
+  })
+
+  it('bascule « Numéroter » ÉTEINTE ⇒ aucune étiquette, même avec le pan désigné', () => {
+    registreAtelier.absorberDocument(DOCUMENT_NUMEROTE)
+    render(<Vue2DPlan plan={PLAN} compte3d={2} panId="area-1" />)
+    expect(screen.queryAllByTestId('v2d-numero')).toHaveLength(0)
+  })
+
+  it('bascule allumée ⇒ chaque module porte le numéro que le DOCUMENT lui donne', () => {
+    registreAtelier.absorberDocument(DOCUMENT_NUMEROTE)
+    definirSaisie({ actif: true, depart: 1, sens: 'ligne' })
+    render(<Vue2DPlan plan={PLAN} compte3d={2} panId="area-1" />)
+    const numeros = screen.getAllByTestId('v2d-numero')
+    expect(numeros.map((n) => n.textContent)).toEqual(['nº1', 'nº2'])
+    // La position est le CENTRE du rectangle projeté (premier module : x 10→30, y 10→40).
+    expect(numeros[0].getAttribute('x')).toBe('20')
+    expect(numeros[0].getAttribute('y')).toBe('25')
+  })
+
+  it('un pan que le document ne numérote pas ne reçoit aucune étiquette', () => {
+    registreAtelier.absorberDocument(DOCUMENT_NUMEROTE)
+    definirSaisie({ actif: true, depart: 1, sens: 'ligne' })
+    render(<Vue2DPlan plan={PLAN} compte3d={2} panId="area-inconnue" />)
+    expect(screen.queryAllByTestId('v2d-numero')).toHaveLength(0)
   })
 })

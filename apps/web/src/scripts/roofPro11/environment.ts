@@ -52,6 +52,28 @@ export function newEnvironmentObject(id: string, kind: EnvironmentKind, center: 
   return { id, kind, centerLng: center[0], centerLat: center[1] };
 }
 
+/**
+ * CALX105 — repose un objet d'environnement sur le point donné (clic sur la carte, ou fin
+ * d'un glissé de son marqueur). Son EMPRISE explicite suit le même déplacement : sans cela,
+ * un bâtiment voisin laisserait son polygone d'emprise derrière lui, et l'ombre porterait
+ * depuis un endroit où l'objet n'est plus.
+ *
+ * AUCUNE DIMENSION N'EST TOUCHÉE : un objet sans hauteur saisie reste sans hauteur, donc
+ * sans ombre — déplacer un objet ne lui invente jamais de dimensions.
+ */
+export function deplacerEnvironment(o: EnvironmentObject, centre: LngLat): EnvironmentObject {
+  if (!Array.isArray(centre) || centre.length !== 2) return o;
+  const [lng, lat] = centre;
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return o;
+  const dLng = lng - o.centerLng;
+  const dLat = lat - o.centerLat;
+  const out: EnvironmentObject = { ...o, centerLng: lng, centerLat: lat };
+  if (o.footprint && o.footprint.length > 0) {
+    out.footprint = o.footprint.map(([fLng, fLat]) => [fLng + dLng, fLat + dLat] as LngLat);
+  }
+  return out;
+}
+
 export function withEnvHeight(o: EnvironmentObject, heightM: number | null | undefined): EnvironmentObject {
   if (heightM == null || !Number.isFinite(heightM) || heightM <= 0) {
     const { heightM: _drop, ...rest } = o;
