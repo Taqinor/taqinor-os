@@ -1698,7 +1698,7 @@ Things this map could not fully verify from source ÃƒÂ¢Ã¢â€šÂ¬Ã¢â
 - `CALX195` — Bâtir le harnais de validation contre PVGIS lui-même
 - `CALX196` — Figer un golden pluriannuel de la cascade et des quantiles
 - `CALX197` — Un seul calcul d'ombrage pour un même toit
-- `CALX198` — Trancher l'adoption de `pvlib` pour le modèle à une diode et la transposition
+- `CALX198` — Adopter `pvlib` (tranché par Reda le 21/09/2026) pour le modèle à une diode, la…
 - `CALX199` — Trancher l'achat d'une source météo bancable
 - `CALX200` — Trancher le pas infra-horaire
 - `CALX201` — Déclarer le contrat `electrical.equipements[]` du document v2
