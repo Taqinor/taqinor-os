@@ -76,7 +76,7 @@ REFERENCE = (
     'et appliquées sur chaque module du champ, à chaque heure — '
     'https://help-center.helioscope.com/hc/en-us/articles/'
     '7899937559443-Shade-Modeling. Convention de la matrice : atelier 3D '
-    'TAQINOR (roofPro11, serializeShading), 1 = plein soleil, 0 = masqué.')
+    'du constructeur 3D (roofPro11, serializeShading), 1 = plein soleil, 0 = masqué.')
 
 __all__ = ['POSTE', 'MOIS', 'HEURES', 'CLES_MATRICE', 'MOTIF_SANS_MATRICE',
            'MOTIF_ACCES_MODULE', 'REFERENCE', 'appliquer']

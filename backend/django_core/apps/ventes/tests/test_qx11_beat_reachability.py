@@ -94,6 +94,10 @@ ON_DEMAND_ALLOWLIST = {
     # budget. Un job n'existe que si quelqu'un a envoyé un relevé : périodiser
     # recalculerait des toitures que personne n'a demandées.
     'calepinage.calculer',
+    # CALX5 — simulation de production d'un calepinage : soumise à la
+    # demande par ``POST calepinages/<pk>/simuler/``
+    # (``apps/calepinage/views/simulation.py``), jamais par beat.
+    'calepinage.simuler',
     # NTAI17 — traitement IA d'une pièce GED (classification + extraction) :
     # déclenché À LA DEMANDE au dépôt du document (``.delay()`` depuis le
     # receiver ``ai_governance.receivers``, après commit), jamais périodique —

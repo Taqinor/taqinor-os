@@ -618,10 +618,14 @@ class EcritureTest(TestCase):
     """
 
     def test_la_fusion_preserve_les_cles_etrangeres(self):
+        from authentication.models import Company
+
         from apps.calepinage.models import Calepinage
 
+        societe = Company.objects.create(nom='Simulation Co',
+                                         slug='simulation-co')
         calepinage = Calepinage.objects.create(
-            titre='Simulation', roof_layout=LAYOUT,
+            company=societe, titre='Simulation', roof_layout=LAYOUT,
             resultat={'entree_electrique': {'phases': 3},
                       'pertes': [{'poste': 'soiling', 'pct': 2.0}]})
 

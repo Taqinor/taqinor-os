@@ -60,9 +60,17 @@ METHODE = 'tof_pvcalc_optimalangles_x_acces_solaire'
 #: La provenance publiée sur une ligne ``production.par_pan[]`` servie.
 SOURCE_PVGIS = 'pvgis'
 
-#: Les deux paramètres que l'API ``PVcalc`` EXIGE et dont rien n'est lu.
+#: Les deux paramètres que l'API ``PVcalc`` EXIGE (``peakpower``, ``loss``)
+#: et dont RIEN n'est lu : seule ``H(i)_y`` (irradiation sur le plan optimal)
+#: est consommée, et elle ne dépend d'aucun des deux — aucune production
+#: PVGIS n'est publiée depuis cet appel (CAL238 reste la seule règle de
+#: ``loss`` pour les séries de production).
 PUISSANCE_EXIGEE_KWC = 1
-PERTE_EXIGEE_PCT = 0
+#: Valeur NEUTRE envoyée au champ que l'API exige : elle n'influence pas
+#: ``H(i)_y`` et n'est jamais publiée comme une perte.
+VALEUR_NEUTRE_EXIGEE = 0
+PARAMETRES_EXIGES_PVCALC = {'peakpower': PUISSANCE_EXIGEE_KWC,
+                            'loss': VALEUR_NEUTRE_EXIGEE}
 
 #: Les références CITÉES (jamais des constantes recopiées).
 REFERENCE = (
@@ -105,7 +113,8 @@ MOTIF_SANS_ACCES_SOLAIRE = (
     'se lirait « pan sans aucune ombre, mesuré ».')
 
 __all__ = ['SERVICE_PVCALC', 'METHODE', 'SOURCE_PVGIS', 'REFERENCE',
-           'PUISSANCE_EXIGEE_KWC', 'PERTE_EXIGEE_PCT', 'MOTIF_SANS_CLIENT',
+           'PUISSANCE_EXIGEE_KWC', 'VALEUR_NEUTRE_EXIGEE',
+           'PARAMETRES_EXIGES_PVCALC', 'MOTIF_SANS_CLIENT',
            'MOTIF_SANS_SITE', 'MOTIF_SANS_SERIE',
            'MOTIF_SERIE_SANS_IRRADIANCE', 'MOTIF_OPTIMAL_SANS_IRRADIATION',
            'MOTIF_SANS_ACCES_SOLAIRE', 'CLES_ORIENTATION',
@@ -153,7 +162,7 @@ def plan_optimal(lat, lon, *, client, base=BASE_PAR_DEFAUT):
         'raddatabase': base,
         # Exigences de l'API PVcalc : RIEN de ce que PVGIS en déduit n'est lu.
         'peakpower': PUISSANCE_EXIGEE_KWC,
-        'loss': PERTE_EXIGEE_PCT,
+        'loss': VALEUR_NEUTRE_EXIGEE,
         'optimalangles': 1,
         'pvtechchoice': 'crystSi',
         'mountingplace': 'building',
