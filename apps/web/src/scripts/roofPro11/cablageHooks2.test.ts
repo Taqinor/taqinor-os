@@ -17,6 +17,7 @@ import {
 import { choixOptimisationCourant, poserChoixOptimisation, poserCibleOptimisation } from './optimizer';
 import { LIBELLE_MODE, motifGesteIndisponible, resoudreRaccourci } from './clavier';
 import { ID_INFO_BULLE_OMBRAGE, creerInfoBulleOmbrage } from './infoBulleOmbrage';
+import { fondDuDocument, motifFondRefuse, semerFondDepuisDocument } from './fondDocument';
 import { type Ctx } from './context';
 
 /** Les SOURCES câblés ici (pages à effets de bord, non importables en test). Chemins
@@ -26,6 +27,7 @@ function source(chemin: string): string {
 }
 const SOURCE_ENTREE = source('src/scripts/roof-tool-pro11.ts');
 const SOURCE_SCENE = source('src/scripts/roofPro11/scene3d.ts');
+const SOURCE_PREFILL_FOND = source('src/scripts/roofPro11/prefill.ts');
 
 describe('CALX103/CALX104 câblage — le pavage évite la FORME réelle, plus la boîte', () => {
   const cercle: ObstacleEtendu = {
@@ -284,5 +286,42 @@ describe('CALX122 câblage — l’ombrage d’un module s’affiche au survol',
 describe('CALX111 câblage — la vue 2D lit les numéros du pan actif', () => {
   it('l’entrée publie le pan ACTIF sur son API', () => {
     expect(SOURCE_ENTREE).toContain("panActifId: () => ctx.activeAreaId ?? '', // CALX111 câblage");
+  });
+});
+
+describe('CALX107 câblage — un dossier rouvert retrouve son calque de fond', () => {
+  afterEach(() => semerFondDepuisDocument(null));
+
+  it('un document SANS `underlay` ne demande aucun fond (comportement d’aujourd’hui)', () => {
+    expect(semerFondDepuisDocument({ version: 2, zones: [] })).toBeNull();
+    expect(fondDuDocument()).toBeNull();
+    expect(motifFondRefuse()).toBeNull();
+  });
+
+  it('une photo de site calée est RETENUE telle que le document la désigne', () => {
+    const lu = semerFondDepuisDocument({ underlay: { kind: 'photo', photoSiteId: 7, opacite: 0.4 } });
+    expect(lu).toEqual({ kind: 'photo', photoSiteId: 7, opacite: 0.4 });
+    expect(fondDuDocument()).toEqual(lu);
+    expect(motifFondRefuse()).toBeNull();
+  });
+
+  it('un `underlay` ILLISIBLE ne disparaît pas en silence : le motif NOMME son champ', () => {
+    expect(semerFondDepuisDocument({ underlay: { kind: 'photo' } })).toBeNull();
+    expect(fondDuDocument()).toBeNull();
+    expect(motifFondRefuse()).toContain('photoSiteId');
+  });
+
+  it('rouvrir un document sans fond EFFACE celui du dossier précédent', () => {
+    semerFondDepuisDocument({ underlay: { kind: 'photo', photoSiteId: 7 } });
+    expect(fondDuDocument()).not.toBeNull();
+    semerFondDepuisDocument({ version: 2, zones: [] });
+    expect(fondDuDocument()).toBeNull();
+  });
+
+  it('`prefill.ts` sème le fond, et l’entrée expose les trois portes', () => {
+    expect(SOURCE_PREFILL_FOND).toContain('semerFondDepuisDocument(json); // CALX107 câblage');
+    expect(SOURCE_ENTREE).toContain('fondDuDocument: () => fondDuDocument(), // CALX107 câblage');
+    expect(SOURCE_ENTREE).toContain('motifFondRefuse: () => motifFondRefuse(), // CALX107 câblage');
+    expect(SOURCE_ENTREE).toContain('poserFond: (fond, ressource) => mapDraw.setFond(fond, ressource), // CALX107 câblage');
   });
 });

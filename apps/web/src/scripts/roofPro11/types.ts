@@ -199,6 +199,22 @@ export interface RoofToolApi {
    *  puisse lire les numéros de module de CE pan (`registreAtelier`) au lieu d'afficher
    *  un plan sans étiquettes. Chaîne vide tant qu'aucun pan n'est actif. */
   panActifId: () => string;
+  /** CALX107 câblage — le calque de fond que le document ROUVERT demande (`underlay`,
+   *  contrat CALX86), ou `null`. La page hôte s'en sert pour aller chercher le FICHIER
+   *  correspondant : l'outil ne parle jamais à Django. */
+  fondDuDocument: () => import('./underlay').DocumentUnderlay | null;
+  /** CALX107 câblage — le motif quand le document portait un `underlay` ILLISIBLE (il
+   *  NOMME le champ fautif), ou `null`. Sans lui, un fond refusé disparaîtrait en
+   *  silence. */
+  motifFondRefuse: () => string | null;
+  /** CALX107/CALX108 câblage — pose (ou retire, `null`) le fond avec la RESSOURCE fournie
+   *  par la page hôte (URL pré-signée du fichier, calage à quatre coins d'une `PhotoSite`,
+   *  taille du fichier). Rend `{ok:false, motif}` quand rien ne peut être peint — le motif
+   *  NOMME ce qui manque, il n'est jamais muet. */
+  poserFond: (
+    fond: import('./underlay').DocumentUnderlay | null,
+    ressource?: import('./underlay').RessourceFond,
+  ) => { ok: boolean; motif?: string };
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET

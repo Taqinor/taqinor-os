@@ -527,6 +527,43 @@ export default function ToitureDesign({ mode = 'lead' }) {
         .catch(() => null)
     }
 
+    // CALX107 câblage — LE CALQUE DE FOND DU DOCUMENT. `mapDraw.setFond` existait et
+    // n'avait AUCUN appelant : un calepinage rouvert perdait sa photo de site calée, alors
+    // que le document la portait (`underlay`). L'atelier ne parle jamais à Django, donc
+    // c'est l'écran qui va chercher le FICHIER (URL pré-signée) et le lui redonne.
+    //
+    // Seul le genre « photo » est servi ici : c'est le seul dont l'API donne l'URL et le
+    // calage (`GET …/photos/`, CAL52/CAL53). Un fond de genre « plan » désigne une pièce
+    // jointe dont AUCUNE porte ne publie ni l'URL ni la taille en pixels — on le DIT, on
+    // ne l'invente pas.
+    // Le MOTIF d'un fond non affiché vient TOUJOURS du constructeur (`poserFond`) : une
+    // seule formulation dans tout l'atelier, jamais une phrase recopiée ici.
+    async function poserFondDuDocument(api) {
+      const fond = api?.fondDuDocument?.()
+      if (!fond) {
+        // Un `underlay` ILLISIBLE ne disparaît pas en silence : son motif nomme le
+        // champ fautif (contrat CALX86).
+        const motif = api?.motifFondRefuse?.()
+        if (motif) setStatus(motif)
+        return
+      }
+      if (!api?.poserFond) return
+      let ressource = {}
+      if (fond.kind === 'photo' && fond.photoSiteId && calepinageId) {
+        try {
+          const res = await calepinageApi.calepinages.photos(calepinageId)
+          const photo = (res?.data?.photos ?? [])
+            .find((p) => String(p?.id) === String(fond.photoSiteId))
+          if (photo?.url) ressource = { url: photo.url, calagePhoto: photo.calage }
+        } catch {
+          /* pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché */
+        }
+      }
+      if (cancelled) return
+      const pose = api.poserFond(fond, ressource)
+      if (!pose?.ok && pose?.motif) setStatus(pose.motif)
+    }
+
     async function boot() {
       // CALX104/CALX403 — lancés EN PARALLÈLE du lead (best-effort, cf. ci-dessus).
       const reglagesPromise = chargerReglagesAtelier()
@@ -826,7 +863,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
           modulesDisponibles,
           // CALX104/CALX403 câblage — voir `boot()` plus haut.
           reglagesAtelier,
-          onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
+          onApiReady: (a) => {
+            builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a)
+            // CALX107 câblage — le document peut demander un CALQUE DE FOND
+            // (`underlay`) : l'atelier sait le peindre mais ne parle jamais à
+            // Django, c'est donc à l'écran d'aller chercher le fichier.
+            poserFondDuDocument(a)
+          },
         })
         // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en
         // mode devis (`bootDevis` ci-dessus, PV23bis) et en mode lead (`boot()`).

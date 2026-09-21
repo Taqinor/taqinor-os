@@ -44,6 +44,7 @@ import {
   ecrireOptimisationDansDocument,
   semerOptimisationDepuisDocument,
 } from './optimisationDocument'; // CALX114 câblage
+import { semerFondDepuisDocument } from './fondDocument'; // CALX107 câblage
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -945,6 +946,11 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
   // l'optimiseur (et un document sans objectif l'y REMET à « aucun objectif saisi »,
   // sinon celui du dossier précédent déborderait sur celui-ci).
   semerOptimisationDepuisDocument(json); // CALX114 câblage
+  // CALX107 câblage — le calque de FOND que le document demande (clé racine `underlay`,
+  // contrat CALX86) : mémorisé ici pour que la page hôte aille chercher son FICHIER et le
+  // redonne au constructeur (l'atelier ne parle jamais à Django). Aucun `underlay` ⇒
+  // « aucun fond », et la mémoire est remise à zéro.
+  semerFondDepuisDocument(json); // CALX107 câblage
   const zones = Array.isArray(json?.zones) ? json.zones : [];
   return zones.map((z) => ({
     id: z.id,

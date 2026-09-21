@@ -141,6 +141,7 @@ import {
 import { etiquette, registreAtelier } from './roofPro11/numerotation'; // CALX403 câblage — le repère d'un module vient du DOCUMENT
 import { poserSourceCellulesSurAllees } from './roofPro11/teinteAllees'; // CALX403 câblage
 import { creerInfoBulleOmbrage } from './roofPro11/infoBulleOmbrage'; // CALX122 câblage
+import { fondDuDocument, motifFondRefuse } from './roofPro11/fondDocument'; // CALX107 câblage
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
@@ -4008,5 +4009,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // CALX111 câblage — le pan ACTIF : sans lui, `Vue2DPlan` ne pouvait pas lire les
     // numéros du document (`registreAtelier.modules(panId)`) et rendait un plan MUET.
     panActifId: () => ctx.activeAreaId ?? '', // CALX111 câblage
+    // CALX107 câblage — le fond que le document rouvert demande, et la pose de ce fond
+    // avec le fichier que la page hôte est allée chercher. `mapDraw.setFond` existait et
+    // n'avait AUCUN appelant : un dossier rouvert perdait son calque de fond.
+    fondDuDocument: () => fondDuDocument(), // CALX107 câblage
+    motifFondRefuse: () => motifFondRefuse(), // CALX107 câblage
+    poserFond: (fond, ressource) => mapDraw.setFond(fond, ressource), // CALX107 câblage
   });
 }
