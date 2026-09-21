@@ -8,12 +8,28 @@ GATED : aucune intégration API n'est testée ici — la tâche ne livre que le
 fichier prêt à importer (les comptes marchands Avito/Google restent une étape
 manuelle du fondateur). Aucun appel réseau, aucune clé.
 
+SOLMVP-sweep (2026-09-21) — apps.ecommerce_connect est sorti du MVP solaire
+(Groupe SOLMVP, coquille) : ``ConnexionEcommerce``/``ProduitSync`` (le
+mécanisme qui marquait un produit « vendable en ligne ») n'existent plus.
+``produits_vendables_en_ligne`` DÉGRADE DÉJÀ en production vers une liste VIDE
+(try/except autour de ``apps.get_model``, jamais un crash — règle dure : un
+flux PUBLIC ne part jamais « tout coché » par accident) ; c'est cette
+dégradation que ``Ntret20DegradationTests`` couvre désormais, à la place des
+anciens tests de sélection qui créaient de vraies lignes ``ProduitSync``
+(impossible depuis que le modèle est sorti de l'état Django). Les tests de
+FORME du flux CSV/XML/endpoint restent : ils simulent la sélection via
+``unittest.mock.patch`` sur ``produits_vendables_en_ligne`` plutôt que de
+dépendre du modèle disparu — ils couvrent donc toujours le vrai critère
+d'acceptation NTRET20 (structure du flux, aucun prix d'achat, exclusion des
+non-vendables).
+
 Run :
     python manage.py test apps.stock.test_ntret20_marketplace -v 2
 """
 import csv
 import io
 from decimal import Decimal
+from unittest import mock
 from xml.etree import ElementTree
 
 from django.contrib.auth import get_user_model
@@ -45,16 +61,19 @@ def auth(user):
     return api
 
 
+def patch_vendables(*produits):
+    """Simule la sélection « vendable en ligne » (ex-ecommerce_connect) sans
+    dépendre du modèle disparu : renvoie exactement ``produits`` au lieu de
+    lire ``ProduitSync``."""
+    ids = [p.pk for p in produits]
+    return mock.patch(
+        'apps.stock.marketplace_feeds.produits_vendables_en_ligne',
+        side_effect=lambda company: Produit.objects.filter(
+            company=company, pk__in=ids).select_related('categorie'))
+
+
 class Ntret20Base(TestCase):
     def setUp(self):
-        # Résolution paresseuse par ``apps.get_model`` — jamais un import
-        # statique des modèles du module ecommerce_connect (frontière
-        # inter-apps, même patron que ``apps.stock.marketplace_feeds``).
-        from django.apps import apps as django_apps
-        ConnexionEcommerce = django_apps.get_model(
-            'ecommerce_connect', 'ConnexionEcommerce')
-        ProduitSync = django_apps.get_model('ecommerce_connect', 'ProduitSync')
-
         self.company = make_company('ntret20-co', 'NTRET20 Co')
         self.autre = make_company('ntret20-autre', 'NTRET20 Autre')
         self.admin = User.objects.create_user(
@@ -77,44 +96,32 @@ class Ntret20Base(TestCase):
             prix_achat=Decimal('100'), prix_vente=Decimal('150'),
             quantite_stock=3)
 
-        self.connexion = ConnexionEcommerce.objects.create(
-            company=self.company,
-            plateforme=ConnexionEcommerce.Plateforme.values[0])
-        ProduitSync.objects.create(
-            company=self.company, connexion=self.connexion,
-            produit_id=self.publie.id, vendable_en_ligne=True)
-        ProduitSync.objects.create(
-            company=self.company, connexion=self.connexion,
-            produit_id=self.non_publie.id, vendable_en_ligne=False)
 
+class Ntret20DegradationTests(Ntret20Base):
+    """ecommerce_connect absent ⇒ dégradation VIDE, jamais un crash ni « tout
+    le catalogue » exporté par accident (règle dure du module)."""
 
-class Ntret20SelectionTests(Ntret20Base):
-    def test_seuls_les_produits_vendables_en_ligne_sortent(self):
-        skus = [p.sku for p in produits_vendables_en_ligne(self.company)]
-        self.assertEqual(skus, ['OND5-NTRET20'])
-
-    def test_sans_aucune_synchro_le_flux_est_vide_jamais_tout_le_catalogue(
+    def test_sans_ecommerce_connect_le_flux_est_vide_jamais_tout_le_catalogue(
             self):
-        from django.apps import apps as django_apps
-        ProduitSync = django_apps.get_model('ecommerce_connect', 'ProduitSync')
+        self.assertEqual(list(produits_vendables_en_ligne(self.company)), [])
 
-        ProduitSync.objects.all().delete()
-        self.assertEqual(
-            list(produits_vendables_en_ligne(self.company)), [])
-
-    def test_un_produit_archive_est_exclu(self):
-        self.publie.is_archived = True
-        self.publie.save(update_fields=['is_archived'])
-        self.assertEqual(
-            list(produits_vendables_en_ligne(self.company)), [])
-
-    def test_aucun_produit_dune_autre_societe(self):
+    def test_aucun_produit_dune_autre_societe_non_plus(self):
         self.assertEqual(list(produits_vendables_en_ligne(self.autre)), [])
+
+    def test_le_csv_par_defaut_ne_contient_que_len_tete(self):
+        contenu = flux_avito_csv(self.company)
+        lignes = list(csv.reader(io.StringIO(contenu)))
+        self.assertEqual(len(lignes), 1)
+
+    def test_le_xml_par_defaut_ne_contient_aucun_article(self):
+        racine = ElementTree.fromstring(flux_google_shopping_xml(self.company))
+        self.assertEqual(racine.find('channel').findall('item'), [])
 
 
 class Ntret20AvitoTests(Ntret20Base):
     def test_le_csv_a_len_tete_et_une_ligne_par_produit_publie(self):
-        contenu = flux_avito_csv(self.company)
+        with patch_vendables(self.publie):
+            contenu = flux_avito_csv(self.company)
         lignes = list(csv.reader(io.StringIO(contenu)))
 
         self.assertEqual(lignes[0], [
@@ -126,15 +133,17 @@ class Ntret20AvitoTests(Ntret20Base):
         self.assertEqual(lignes[1][4], 'MAD')
 
     def test_le_csv_ne_contient_aucun_prix_dachat(self):
-        contenu = flux_avito_csv(self.company)
+        with patch_vendables(self.publie):
+            contenu = flux_avito_csv(self.company)
         self.assertNotIn('7000', contenu)
         self.assertNotIn('Pièce interne', contenu)
 
 
 class Ntret20GoogleTests(Ntret20Base):
     def test_le_xml_est_un_rss_google_shopping_valide(self):
-        contenu = flux_google_shopping_xml(
-            self.company, titre_flux='Catalogue NTRET20')
+        with patch_vendables(self.publie):
+            contenu = flux_google_shopping_xml(
+                self.company, titre_flux='Catalogue NTRET20')
         racine = ElementTree.fromstring(contenu)
 
         self.assertEqual(racine.tag, 'rss')
@@ -153,14 +162,17 @@ class Ntret20GoogleTests(Ntret20Base):
     def test_un_produit_sans_stock_est_marque_out_of_stock(self):
         self.publie.quantite_stock = 0
         self.publie.save(update_fields=['quantite_stock'])
-        racine = ElementTree.fromstring(
-            flux_google_shopping_xml(self.company))
+        with patch_vendables(self.publie):
+            racine = ElementTree.fromstring(
+                flux_google_shopping_xml(self.company))
         article = racine.find('channel').find('item')
         self.assertEqual(
             article.find(f'{NS_G}availability').text, 'out of stock')
 
     def test_le_xml_ne_contient_aucun_prix_dachat(self):
-        self.assertNotIn('7000', flux_google_shopping_xml(self.company))
+        with patch_vendables(self.publie):
+            contenu = flux_google_shopping_xml(self.company)
+        self.assertNotIn('7000', contenu)
 
     def test_un_format_inconnu_est_refuse(self):
         with self.assertRaises(ValueError):

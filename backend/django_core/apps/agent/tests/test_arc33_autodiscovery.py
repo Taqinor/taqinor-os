@@ -1,14 +1,27 @@
 """ARC33 — auto-découverte des actions agent depuis les manifestes plateforme.
 
-Couvre : (1) les 2 apps pilotes (rh, compta) sont découvertes au
-démarrage via leur ``agent_actions_module`` (AUCUN câblage dans leur propre
-``AppConfig.ready()``) et leurs actions sont LECTURE seule ; (2) le gatage
-``ModuleToggle`` (ODX23) — module OFF pour la société ⇒ ses actions
-découvertes ABSENTES du catalogue ``for_user`` (même pour un superuser de
-cette société) ; (3) non-régression — les builtins et les enregistrements
-historiques hors manifeste (crm, ventes…) ne sont JAMAIS gatés par ce
-mécanisme (comportement d'avant ARC33 préservé) ; (4) idempotence de la
-découverte (ré-appel sans doublon ni perte d'attribution).
+Couvre : (1) l'app pilote (adsengine) est découverte au démarrage via son
+``agent_actions_module`` (AUCUN câblage dans sa propre ``AppConfig.ready()``)
+et ses actions sont LECTURE seule ; (2) le gatage ``ModuleToggle`` (ODX23) —
+module OFF pour la société ⇒ ses actions découvertes ABSENTES du catalogue
+``for_user`` (même pour un superuser de cette société) ; (3) non-régression —
+les builtins et les enregistrements historiques hors manifeste (crm, ventes…)
+ne sont JAMAIS gatés par ce mécanisme (comportement d'avant ARC33 préservé) ;
+(4) idempotence de la découverte (ré-appel sans doublon ni perte
+d'attribution).
+
+SOLMVP-sweep (2026-09-21) — les 2 pilotes d'origine (rh, compta) sont sortis
+du MVP solaire (Groupe SOLMVP, en cours de mise en coquille par la lane
+SOLMVP30b) : leurs ``agent_actions.py``/``platform.py`` disparaissent avec le
+reste du module, donc plus rien ne les découvre. Remplacés par ``adsengine``
+(app KEPT, seule app — avec ``crm`` — à déclarer ``agent_actions_module`` dans
+son manifeste ; ``crm`` expose ``register_crm_actions`` et non la convention
+``register_actions``, donc elle reste le cas « legacy non attribué » ci-dessous
+plutôt qu'un second pilote). adsengine porte à elle seule 3 actions LECTURE,
+ce qui suffit à couvrir découverte/attribution/idempotence ; la gating
+« un module OFF ne touche PAS un AUTRE module » est prouvée contre les
+actions crm legacy (non attribuées), qui restent le seul second exemple réel
+disponible après la sortie de rh/compta/contrats/ao du MVP.
 """
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
@@ -22,14 +35,13 @@ from core.models import ModuleToggle
 User = get_user_model()
 
 PILOT_KEYS = {
-    'rh.employes.list',
-    'rh.demandes_conge.list',
-    'compta.effets.list',
+    'adsengine.spend.week',
+    'adsengine.ads.top',
+    'adsengine.campaigns.list',
 }
 
 PILOT_MODULES = {
-    'apps.rh.agent_actions',
-    'apps.compta.agent_actions',
+    'apps.adsengine.agent_actions',
 }
 
 
@@ -55,10 +67,9 @@ class TestAutodiscovery(SimpleTestCase):
         gatage ModuleToggle)."""
         for dotted in PILOT_MODULES:
             self.assertIn(dotted, registry._DISCOVERED, dotted)
-        self.assertIn('rh.employes.list',
-                      registry._DISCOVERED['apps.rh.agent_actions'])
-        self.assertIn('compta.effets.list',
-                      registry._DISCOVERED['apps.compta.agent_actions'])
+        for key in PILOT_KEYS:
+            self.assertIn(key,
+                          registry._DISCOVERED['apps.adsengine.agent_actions'])
 
     def test_autodiscovery_is_idempotent(self):
         """Un ré-appel (ready() ré-exécuté) n'ajoute aucun doublon et ne perd
@@ -105,14 +116,16 @@ class TestModuleToggleGating(TestCase):
         for key in PILOT_KEYS:
             self.assertIn(key, keys, key)
 
-    def test_rh_off_hides_rh_actions_only(self):
+    def test_adsengine_off_hides_adsengine_actions_only(self):
         ModuleToggle.objects.create(
-            company=self.company, module='rh', actif=False)
+            company=self.company, module='adsengine', actif=False)
         keys = {a.key for a in registry.for_user(self.su)}
-        self.assertNotIn('rh.employes.list', keys)
-        self.assertNotIn('rh.demandes_conge.list', keys)
-        # L'autre pilote reste visible.
-        self.assertIn('compta.effets.list', keys)
+        for key in PILOT_KEYS:
+            self.assertNotIn(key, keys, key)
+        # Une action LEGACY non attribuée (crm, hors manifeste) reste
+        # visible : le gatage ne porte QUE sur le module adsengine désactivé,
+        # jamais globalement.
+        self.assertIn('crm.lead.create', keys)
 
     def test_module_off_does_not_hide_legacy_actions(self):
         """Non-régression : crm OFF ne retire PAS les actions crm historiques
@@ -149,11 +162,12 @@ class TestCatalogueEndpointGating(TestCase):
         resp = self.api.get('/api/django/agent/actions/')
         self.assertEqual(resp.status_code, 200)
         keys = {a['key'] for a in resp.data['actions']}
-        # required_permission=None ⇒ visible pour tout authentifié.
-        self.assertIn('compta.effets.list', keys)
+        # required_permission='adsengine_view' ⇒ distribuée à TOUS les rôles
+        # (ENG19, y compris « responsable »), donc visible pour cet utilisateur.
+        self.assertIn('adsengine.campaigns.list', keys)
 
         ModuleToggle.objects.create(
-            company=self.company, module='compta', actif=False)
+            company=self.company, module='adsengine', actif=False)
         resp = self.api.get('/api/django/agent/actions/')
         keys = {a['key'] for a in resp.data['actions']}
-        self.assertNotIn('compta.effets.list', keys)
+        self.assertNotIn('adsengine.campaigns.list', keys)
