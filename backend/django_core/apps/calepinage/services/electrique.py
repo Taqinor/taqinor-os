@@ -728,7 +728,9 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         calepinage, entree=entree, layout=layout, materiel=materiel)
     optimiseur = materiel.get('optimiseur')
     nom_optimiseur = materiel['designations'].get('optimiseur', '')
-    verdicts = verdicts_electriques(conception, optimiseur, nom_optimiseur)
+    verdicts = verdicts_electriques(
+        conception, optimiseur, nom_optimiseur,
+        reglages=_reglages_electrique_societe(calepinage))
     regle = _regle_chaine_publiee(conception, optimiseur, nom_optimiseur)
     try:
         # CAL234 — l'affectation MANUELLE enregistrée (si elle existe) écrase
@@ -1775,7 +1777,7 @@ def _champ_de_fiche(specs, cle):
 
 
 def verdicts_electriques(conception, optimiseur_specs=None,
-                         optimiseur_designation=''):
+                         optimiseur_designation='', *, reglages=None):
     """Les verdicts du contrat CAL244, dérivés des chiffres de FICHE.
 
     Les cinq codes sont ceux du contrat (``voc_cold_under_vmax``,
@@ -1864,7 +1866,9 @@ def verdicts_electriques(conception, optimiseur_specs=None,
         float(isc_publie) if depasse_isc else onduleur.i_max_mppt_a,
         'sous', bloquant=depasse_isc, unite='A'))
 
-    evaluation = evaluer_onduleurs(conception)
+    # CALX213 — les trois paliers du ratio DC/AC viennent des réglages
+    # SOCIÉTÉ quand ils sont saisis : c est eux qui jugent ce verdict.
+    evaluation = evaluer_onduleurs(conception, reglages=reglages)
     ratio = evaluation.ratio_dc_ac if evaluation is not None else None
     verdicts.append({
         'code': 'ratio_dc_ac',
