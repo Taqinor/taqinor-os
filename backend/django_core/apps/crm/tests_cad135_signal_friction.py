@@ -87,10 +87,19 @@ class SignalLectureTests(TestCase):
         self.assertEqual(self.lead.stage, avant)
 
     def test_un_lead_sans_societe_ne_casse_rien(self):
+        """Un lead pas encore enregistré ne fait rien tomber, et n'écrit rien.
+
+        L'assertion ne peut PAS filtrer sur cet objet : Django refuse une
+        instance non sauvegardée dans un filtre de relation (« Model
+        instances passed to related filters must be saved »). On vérifie donc
+        qu'aucune ligne de chatter n'existe DU TOUT — ce test n'en crée
+        aucune par ailleurs, `notifier_signal_lecture` sortant avant toute
+        écriture quand `company_id` est absent.
+        """
         orphelin = Lead(nom='Sans société')
         services.notifier_signal_lecture('DV-135', orphelin,
                                          friction_section='prix')
-        self.assertEqual(LeadActivity.objects.filter(lead=orphelin).count(), 0)
+        self.assertEqual(LeadActivity.objects.count(), 0)
 
     def test_une_notification_en_echec_laisse_la_note_ecrite(self):
         """Best-effort : le fait consigné survit à une cloche en panne."""
