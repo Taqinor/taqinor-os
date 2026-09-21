@@ -536,6 +536,15 @@ export default function Bibliotheque() {
         Presets, kits de pose, calepinages modèles et matériel favori de votre
         société — réutilisés à chaque conception, jamais réinventés.
       </p>
+      {/* CALX69 — les réglages de simulation et d'électrique vivent sur leur
+          propre écran (une ligne par clé, provenance obligatoire) : un lien
+          plutôt qu'un `<Link>` de routeur, cet écran restant testé sans
+          contexte de routeur. */}
+      <p className="mt-2 text-sm">
+        <a href="/calepinage/reglages" className="underline" data-testid="cal-biblio-lien-reglages">
+          Réglages de simulation et d’électrique
+        </a>
+      </p>
 
       <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Section titre="Presets"
