@@ -712,7 +712,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     # CALX206 — les groupes polystring SAISIS. Clé publiée seulement quand
     # une saisie existe : sans elle, le bloc est celui d'aujourd'hui.
     poly = _polystring_du_calepinage(
-        conception, saisie=donnees.get(CLE_POLYSTRING))
+        conception, saisie=donnees.get(CLE_POLYSTRING),
+        reglages=_reglages_electrique_societe(calepinage))
     if poly['bloc'] is not None:
         electrique[CLE_POLYSTRING] = poly['bloc']
     pose = bloc_pose(conception)
@@ -1039,7 +1040,8 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     # son Isc cumulé se verdicte au même titre que celui du chaînage
     # automatique, sans quoi le regroupement contournerait la garde.
     poly = _polystring_du_calepinage(
-        conception, saisie=donnees.get(CLE_POLYSTRING))
+        conception, saisie=donnees.get(CLE_POLYSTRING),
+        reglages=_reglages_electrique_societe(calepinage))
     bloquants.extend(poly['bloquants'])
     regle = _regle_chaine_publiee(
         conception, materiel_resolu.get('optimiseur'),
@@ -1356,20 +1358,30 @@ def _version_moteur():
 CLE_POLYSTRING = 'polystring'
 
 
-def _polystring_du_calepinage(conception, *, saisie=None):
-    """CALX206 — les groupes polystring SAISIS, regroupés et verdictés.
+def _polystring_du_calepinage(conception, *, saisie=None, reglages=None):
+    """CALX206/CALX207 — les groupes polystring SAISIS, avec leur écart.
 
     Rend ``{bloc, bloquants, alertes}``. ``bloc`` vaut ``None`` quand rien
     n'est saisi (la clé n'est alors pas publiée) OU quand la saisie est
     REFUSÉE : le refus devient un message qui NOMME son champ, plutôt qu'une
     erreur 500 sur un résultat qui, lui, reste lisible.
+
+    CALX207 — chaque groupe porte en plus son ``ecart`` de puissance crête et
+    le verdict de tolérance SOCIÉTÉ. Un verdict ``bloquant`` refuse la
+    publication ; ``alerte`` la laisse passer en le disant ; ``omis`` publie
+    l'écart sans rien prononcer (aucun seuil saisi).
     """
-    from .polystring import PolystringRefuse, grouper_polystring
+    from .polystring import (
+        STATUT_ALERTE, STATUT_BLOQUANT, PolystringRefuse, ecart_de_groupe,
+        grouper_polystring,
+    )
 
     if not saisie:
         return {'bloc': None, 'bloquants': [], 'alertes': []}
     try:
         rendu = grouper_polystring(conception, groupes=saisie)
+        for groupe in rendu['groupes']:
+            groupe['ecart'] = ecart_de_groupe(groupe, reglages=reglages)
     except PolystringRefuse as refus:
         return {
             'bloc': None,
@@ -1377,12 +1389,30 @@ def _polystring_du_calepinage(conception, *, saisie=None):
                           % (refus, refus.champ or CLE_POLYSTRING)],
             'alertes': [],
         }
+    bloquants = list(rendu['bloquants'])
+    alertes = list(rendu['alertes'])
+    for groupe in rendu['groupes']:
+        verdict = groupe['ecart']['verdict']
+        message = ("Polystring, entrée MPPT %d (%s) : %s"
+                   % (groupe['mppt'], ', '.join(groupe['pans']),
+                      verdict['detail']))
+        if verdict['statut'] == STATUT_BLOQUANT:
+            bloquants.append(message)
+        elif verdict['statut'] == STATUT_ALERTE:
+            alertes.append(message)
     bloc = {cle: valeur for cle, valeur in rendu.items()
             # ``chaines`` et ``verdicts`` portent des objets du noyau : ils
             # servent au verdict, ils ne se sérialisent pas dans le résultat.
             if cle not in ('chaines', 'verdicts')}
-    return {'bloc': bloc, 'bloquants': list(rendu['bloquants']),
-            'alertes': list(rendu['alertes'])}
+    return {'bloc': bloc, 'bloquants': bloquants, 'alertes': alertes}
+
+
+def _reglages_electrique_societe(calepinage):
+    """La seule section « electrique_societe » des réglages (CALX145)."""
+    from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE
+
+    return parametres_societe(calepinage).get(
+        SECTION_ELECTRIQUE_SOCIETE) or {}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

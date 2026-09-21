@@ -46,6 +46,11 @@ from __future__ import annotations
 __all__ = [
     'COUPLAGE_PARALLELE', 'COUPLAGES_ADMIS', 'MOTIF_SANS_SAISIE',
     'MOTIF_SANS_CHAINES', 'PolystringRefuse', 'grouper_polystring',
+    # CALX207 — l'écart de puissance d'un groupe, et son verdict SOCIÉTÉ.
+    'CODE_VERDICT_TOLERANCE', 'CLE_TOLERANCE_ACCEPTABLE',
+    'CLE_TOLERANCE_BLOQUANTE', 'STATUT_OK', 'STATUT_ALERTE',
+    'STATUT_BLOQUANT', 'STATUT_OMIS', 'MOTIF_SANS_SEUIL',
+    'REFERENCE_TOLERANCE_PVSOL', 'ecart_de_groupe',
 ]
 
 #: Le SEUL couplage ouvert par CALX206 : la mise en parallèle sur une entrée
@@ -325,4 +330,236 @@ def _rendu(*, applique, motif, groupes, chaines, entrees, verdicts,
         'verdicts': tuple(verdicts),
         'bloquants': list(bloquants),
         'alertes': list(alertes),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX207 — L'ÉCART DE PUISSANCE D'UN GROUPE, ET SON VERDICT SOCIÉTÉ
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# CE QUI MANQUAIT. Rien, ni dans ``core/electrique/`` ni dans
+# ``services/chaines.py``, ne compare DEUX sous-champs entre eux : le seul
+# écart mesuré est le courant par entrée. Or mettre un versant est et un
+# versant ouest sur une même entrée MPPT n'a de sens que si les deux pèsent à
+# peu près le même poids — le suiveur de puissance ne poursuit qu'un seul
+# point, et l'écart se paie toute la journée sur la branche la plus faible.
+#
+# CE QUI EST MESURÉ, ET CE QUI NE L'EST PAS. L'écart porte sur la PUISSANCE
+# CRÊTE de chaque branche, chacune à SON orientation — l'orientation est
+# PUBLIÉE à côté du chiffre, jamais convertie en coefficient : appliquer un
+# facteur d'irradiance ici reviendrait à inventer un modèle de production
+# dans un module de câblage (W3 : aucun kWh dans ce lot).
+#
+# LES DEUX SEUILS SONT DES RÉGLAGES SOCIÉTÉ, ET ILS N'ONT AUCUN DÉFAUT.
+# PV*SOL chiffre sa propre tolérance (« up to 4 % » acceptable, « exceeding
+# 10 % » bloquant) ; ces chiffres restent une RÉFÉRENCE D'OUTIL affichée en
+# aide à la saisie — jamais une valeur préremplie (D-CALX 7). Sans seuil
+# saisi, l'écart est publié et le verdict vaut ``omis`` en nommant les deux
+# clés à régler. Un seuil saisi SANS source est refusé en nommant son champ :
+# un seuil dont personne ne dit d'où il sort ne peut pas fonder un refus.
+#
+# LES DEUX CLÉS EXISTENT DÉJÀ au registre des réglages société
+# (``services/parametres_cles.py``, section ``electrique_societe``, posées
+# par CALX145 avec leur référence doctrinale PV*SOL) : cette tâche les LIT,
+# elle n'en déclare pas de nouvelles — deux clés pour une même grandeur
+# seraient exactement ce que le registre existe pour empêcher.
+
+#: Le CODE stable du verdict — c'est par lui qu'un test ou un écran le
+#: désigne, jamais par sa position dans une liste (CALX215).
+CODE_VERDICT_TOLERANCE = 'polystring_tolerance'
+
+#: Les deux clés du registre des réglages société (section
+#: ``electrique_societe``). Aucune valeur ici : le registre dit qu'elles
+#: EXISTENT, jamais ce qu'elles valent.
+CLE_TOLERANCE_ACCEPTABLE = 'tolerance_polystring_acceptable_pct'
+CLE_TOLERANCE_BLOQUANTE = 'tolerance_polystring_bloquante_pct'
+
+#: Les quatre statuts d'un verdict de ce module — même vocabulaire que les
+#: verdicts du contrat de raccordement (``calepinage_raccordement.json``).
+STATUT_OK = 'ok'
+STATUT_ALERTE = 'alerte'
+STATUT_BLOQUANT = 'bloquant'
+STATUT_OMIS = 'omis'
+
+MOTIF_SANS_SEUIL = (
+    "aucun seuil de tolérance saisi : l'écart de puissance du groupe est "
+    "publié, mais aucun verdict n'est prononcé. Réglez « %s » et/ou « %s » "
+    "avec leur source dans les réglages du module."
+    % (CLE_TOLERANCE_ACCEPTABLE, CLE_TOLERANCE_BLOQUANTE))
+
+MOTIF_SANS_MESURE = (
+    "écart non mesurable : il faut au moins DEUX branches dont la puissance "
+    "crête est connue pour comparer un groupe à lui-même.")
+
+LIBELLE_VERDICT_TOLERANCE = (
+    "Écart de puissance entre les branches du groupe polystring")
+
+REFERENCE_TOLERANCE_PVSOL = (
+    "PV*SOL — Polystring connection : le logiciel tient un écart « up to "
+    "4 % » pour acceptable et « exceeding 10 % » pour bloquant "
+    "(https://help.valentin-software.com/pvsol/en/pages/inverters/"
+    "polystring-connection/). Ces chiffres sont AFFICHÉS EN AIDE à la "
+    "saisie des deux réglages société, jamais préremplis.")
+
+
+def ecart_de_groupe(groupe, *, reglages=None):
+    """CALX207 — l'écart de puissance crête d'un groupe, et son verdict.
+
+    Args:
+        groupe: un groupe publié par :func:`grouper_polystring` (il porte
+            ``branches``, une par pan, avec sa ``puissance_kwc`` et son
+            orientation).
+        reglages: la section ``electrique_societe`` des réglages société,
+            ``{clé: {valeur, source, reference}}``. Absente, les deux seuils
+            sont non saisis et le verdict vaut ``omis``.
+
+    Returns:
+        ``{ecart_pct, base, detail, verdict}``. ``ecart_pct`` vaut ``None``
+        quand moins de deux branches publient une puissance : aucun écart
+        n'est alors inventé, et ``base`` dit pourquoi.
+
+    Raises:
+        PolystringRefuse: un seuil saisi SANS ``source`` — champ fautif NOMMÉ.
+    """
+    mesures = _mesures_des_branches(groupe)
+    acceptable = _seuil(reglages, CLE_TOLERANCE_ACCEPTABLE)
+    bloquante = _seuil(reglages, CLE_TOLERANCE_BLOQUANTE)
+
+    if len(mesures) < 2:
+        return {
+            'ecart_pct': None,
+            'base': MOTIF_SANS_MESURE,
+            'detail': mesures,
+            'verdict': _verdict_tolerance(None, acceptable, bloquante),
+        }
+
+    haute = max(mesures, key=lambda m: m['puissance_kwc'])
+    basse = min(mesures, key=lambda m: m['puissance_kwc'])
+    ecart_pct = round(
+        (haute['puissance_kwc'] - basse['puissance_kwc'])
+        * 100.0 / haute['puissance_kwc'], 3)
+    for mesure in mesures:
+        mesure['ecart_a_la_branche_haute_pct'] = round(
+            (haute['puissance_kwc'] - mesure['puissance_kwc'])
+            * 100.0 / haute['puissance_kwc'], 3)
+    base = ("puissance crête la plus élevée du groupe : %s kWc sur le pan "
+            "« %s » ; la plus faible : %s kWc sur le pan « %s ». Chaque "
+            "branche est mesurée À SON ORIENTATION, publiée à côté du "
+            "chiffre — aucun coefficient d'irradiance n'est appliqué ici."
+            % (haute['puissance_kwc'], haute['pan'],
+               basse['puissance_kwc'], basse['pan']))
+    return {
+        'ecart_pct': ecart_pct,
+        'base': base,
+        'detail': mesures,
+        'verdict': _verdict_tolerance(ecart_pct, acceptable, bloquante),
+    }
+
+
+def _mesures_des_branches(groupe):
+    """Les branches dont la puissance crête est CONNUE, et leur orientation."""
+    mesures = []
+    for branche in (groupe or {}).get('branches') or ():
+        if not isinstance(branche, dict):
+            continue
+        puissance = branche.get('puissance_kwc')
+        if puissance is None or isinstance(puissance, bool):
+            continue
+        try:
+            valeur = float(puissance)
+        except (TypeError, ValueError):
+            continue
+        if valeur <= 0:
+            continue
+        mesures.append({
+            'pan': branche.get('pan'),
+            'puissance_kwc': valeur,
+            'modules': branche.get('modules'),
+            'azimut_deg': branche.get('azimut_deg'),
+            'inclinaison_deg': branche.get('inclinaison_deg'),
+            'source_orientation': branche.get('source_orientation'),
+        })
+    return mesures
+
+
+def _seuil(reglages, cle):
+    """``{valeur, source, reference, cle}`` d'un seuil SAISI, ou ``None``.
+
+    Une saisie sans ``source`` n'est pas « non saisie » : elle est FAUTIVE, et
+    l'utilisateur doit l'apprendre SUR le champ concerné plutôt que de voir
+    son seuil ignoré en silence (règle fondateur 08/09/2026).
+    """
+    saisie = (reglages or {}).get(cle)
+    if saisie is None:
+        return None
+    if not isinstance(saisie, dict):
+        raise PolystringRefuse(
+            "Le seuil de tolérance « %s » doit être saisi sous la forme "
+            "« {valeur, source} » (reçu : %s)."
+            % (cle, type(saisie).__name__), champ=cle)
+    valeur = saisie.get('valeur')
+    if valeur is None:
+        return None
+    if not saisie.get('source'):
+        raise PolystringRefuse(
+            "Le seuil de tolérance « %s » est saisi sans source : un seuil "
+            "dont personne ne dit d'où il sort ne peut pas fonder un refus. "
+            "Renseignez sa provenance (société, mesure, saisie ou texte "
+            "cité)." % cle, champ='%s.source' % cle)
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        raise PolystringRefuse(
+            "Le seuil de tolérance « %s » n'est pas un nombre (reçu : %r)."
+            % (cle, valeur), champ=cle) from None
+    return {'valeur': nombre, 'source': str(saisie['source']),
+            'reference': saisie.get('reference') or '', 'cle': cle}
+
+
+def _verdict_tolerance(ecart_pct, acceptable, bloquante):
+    """Le verdict de tolérance — ``omis`` tant qu'aucun seuil n'est saisi."""
+    if acceptable is None and bloquante is None:
+        return _verdict(STATUT_OMIS, MOTIF_SANS_SEUIL, source=None,
+                        borne=None, valeur=ecart_pct)
+    if ecart_pct is None:
+        return _verdict(STATUT_OMIS, MOTIF_SANS_MESURE, source=None,
+                        borne=None, valeur=None)
+    if bloquante is not None and ecart_pct > bloquante['valeur'] + 1e-9:
+        return _verdict(
+            STATUT_BLOQUANT,
+            "écart de %s %% au-dessus du seuil BLOQUANT de %s %% : les deux "
+            "branches sont trop dissemblables pour partager une entrée MPPT."
+            % (ecart_pct, bloquante['valeur']),
+            source=bloquante, borne=bloquante['valeur'], valeur=ecart_pct)
+    if acceptable is not None and ecart_pct > acceptable['valeur'] + 1e-9:
+        plafond = bloquante['valeur'] if bloquante is not None else None
+        return _verdict(
+            STATUT_ALERTE,
+            "écart de %s %% au-dessus du seuil ACCEPTABLE de %s %%%s : le "
+            "montage tient, c'est la branche la plus faible qui sera suivie."
+            % (ecart_pct, acceptable['valeur'],
+               (', sous le seuil bloquant de %s %%' % plafond)
+               if plafond is not None else ''),
+            source=acceptable, borne=acceptable['valeur'], valeur=ecart_pct)
+    retenu = acceptable if acceptable is not None else bloquante
+    return _verdict(
+        STATUT_OK,
+        "écart de %s %% sous le seuil de %s %% saisi par la société."
+        % (ecart_pct, retenu['valeur']),
+        source=retenu, borne=retenu['valeur'], valeur=ecart_pct)
+
+
+def _verdict(statut, detail, *, source, borne, valeur):
+    """La forme publiée d'un verdict — les huit clés TOUJOURS présentes."""
+    return {
+        'code': CODE_VERDICT_TOLERANCE,
+        'libelle': LIBELLE_VERDICT_TOLERANCE,
+        'statut': statut,
+        'detail': detail,
+        'valeur': valeur,
+        'borne': borne,
+        'source': (None if source is None
+                   else '%s — %s' % (source['cle'], source['source'])),
+        'reference': ((source or {}).get('reference')
+                      or REFERENCE_TOLERANCE_PVSOL),
     }
