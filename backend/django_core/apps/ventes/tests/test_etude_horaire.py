@@ -964,23 +964,36 @@ class GlitchSortieMoteurTest(SimpleTestCase):
         impulsions retirent : ``part_glitch_sans_kwh ≥ part_glitch_avec_kwh``,
         toujours. En ARGENT, non : sur la grille sélective, redescendre sous
         une marche re-tarife TOUT le mois. Quand le résiduel de la variante
-        AVEC batterie se tient JUSTE au-dessus d'une marche (à 14 kWc + 15 kWh
-        sur le cas piscine+clim, juillet sort à ~616 kWh contre la marche des
-        500), les impulsions le poussent de l'autre côté et lui coûtent PLUS de
-        dirhams qu'au « sans », pourtant plus gourmand en kWh.
+        AVEC batterie se tient JUSTE au-dessus d'une marche, les impulsions le
+        poussent de l'autre côté et lui coûtent PLUS de dirhams qu'au « sans »,
+        pourtant plus gourmand en kWh.
 
         La leçon commerciale est l'inverse d'un défaut : elle DURCIT l'argument
         de DIM2 — il faut dimensionner le stockage pour atterrir FRANCHEMENT
         sous la marche, pas la frôler, parce que les pointes d'appareil mangent
         la marge qui vous y tenait.
+
+        LE CAS A ÉTÉ RE-CALIBRÉ LE 21/09/2026, ET VOICI POURQUOI. Il tenait sur
+        14 kWc + 15 kWh, où juillet frôlait une marche. Or le phénomène est
+        KNIFE-EDGE par nature (c'est tout son propos), et le passage du Maroc à
+        UTC+0 le 20/09/2026 — décret n° 2.26.530 — décale la courbe de
+        production d'une heure par rapport aux silhouettes de consommation, qui
+        sont en heures LOCALES : le résiduel de juillet a quitté le bord de la
+        marche et plus aucun mois ne s'inversait. Le moteur n'a pas bougé d'une
+        ligne ; c'est le point d'observation qu'il fallait redéplacer sur le
+        bord. Le cas retenu — 16 kWc + 20 kWh — a été choisi parce qu'il
+        montre l'inversion SOUS LES DEUX régimes horaires (mesuré : à UTC+0,
+        juin sort à ~544 kWh contre la marche des 500 et l'écart vaut ~+92 MAD ;
+        à UTC+1, ce sont juillet et août, ~+30 MAD) : le test ne redeviendra
+        donc pas rouge selon la base de fuseaux de la machine qui le joue.
         """
         conso, _s, _d = EH.profil_depuis_factures(
             facture_hiver_mad=2500, facture_ete_mad=4000, ete_differente=True)
         etude = EH.calculer_etude_horaire(
-            kwc=14.0, conso_kwh_mensuelles=conso, ville=self.VILLE,
+            kwc=16.0, conso_kwh_mensuelles=conso, ville=self.VILLE,
             occupation=CJ.OCCUPATION_PRESENCE,
             equipements=CJ.composer_equipements(EQUIP_PISCINE_CLIM),
-            batterie_kwh_utile=15.0)
+            batterie_kwh_utile=20.0)
         mois_inverses = [
             m for m in etude['mois']
             if m['part_glitch_avec_mad'] > m['part_glitch_sans_mad'] + 0.5]
