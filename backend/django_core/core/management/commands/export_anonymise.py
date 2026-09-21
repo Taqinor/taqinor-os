@@ -41,7 +41,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--models', nargs='*', default=None,
             help=(
-                'Sous-ensemble de modèles à exporter (ex. crm.Client rh.DossierEmploye). '
+                'Sous-ensemble de modèles à exporter (ex. crm.Client crm.Lead). '
                 'Par défaut : tous les modèles ayant un masque PII enregistré, '
                 'PLUS toute app fournie explicitement pour préserver l\'intégrité FK.'
             ))

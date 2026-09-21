@@ -1,4 +1,4 @@
-"""AUD422 — DÉNI CROSS-TENANT ASVS 4.2.3 sur les CINQ TABLES ARGENT.
+"""AUD422 — DÉNI CROSS-TENANT ASVS 4.2.3 sur LES TABLES ARGENT.
 
 LE GAP RÉELLEMENT PROUVÉ PAR L'AUDIT. Toute la mécanique RLS existait
 (``core/tenant_context.py`` NTPLT1, ``core/rls.py`` NTPLT2,
@@ -12,9 +12,12 @@ tables où vit l'ARGENT, ni sur des policies posées par le SCHÉMA.
 
 CE QUE CETTE SUITE PROUVE, table par table, sur PostgreSQL réel :
 
-  1. les 5 tables argent portent bien ``ENABLE`` + ``FORCE ROW LEVEL
-     SECURITY`` et leur policy ``rls_company_<table>`` — donc les migrations
-     AUD422 (compta 0126, ventes 0111, facturation 0007) ont réellement mordu ;
+  1. les tables argent de ``core.rls.TABLES_ARGENT`` portent bien ``ENABLE``
+     + ``FORCE ROW LEVEL SECURITY`` et leur policy ``rls_company_<table>`` —
+     donc les migrations AUD422 (ventes 0111, facturation 0007) ont réellement
+     mordu. Le grand livre comptable du lot d'origine a quitté la liste avec la
+     sortie de son module (Phase 2) : ses policies restent posées en base, mais
+     son libellé n'est plus résoluble, donc plus testable ici ;
   2. sous le rôle applicatif NON-superuser, GUC posé sur la société A, un
      SELECT brut sur les lignes de B renvoie 0 ligne ;
   3. un UPDATE et un DELETE bruts visant les lignes de B n'affectent 0 ligne —
@@ -52,7 +55,7 @@ def _is_postgres():
 
 class RlsArgentCrossTenantDenialTests(WideTeardownTimeoutMixin,
                                       TransactionTestCase):
-    """Déni cross-tenant sur les 5 tables argent — opt-in (sauté flag OFF)."""
+    """Déni cross-tenant sur les tables argent — opt-in (sauté flag OFF)."""
 
     reset_sequences = True
 
@@ -64,7 +67,8 @@ class RlsArgentCrossTenantDenialTests(WideTeardownTimeoutMixin,
 
         self.entries = rls.tables_for_labels(rls.TABLES_ARGENT)
         self.tables = [e.table for e in self.entries]
-        self.assertEqual(len(self.entries), 5, self.tables)
+        self.assertEqual(
+            len(self.entries), len(rls.TABLES_ARGENT), self.tables)
 
         self.company_a = Company.objects.create(
             nom='Argent A', slug='rls-argent-a')
@@ -100,13 +104,13 @@ class RlsArgentCrossTenantDenialTests(WideTeardownTimeoutMixin,
 
     # ── Fixture ────────────────────────────────────────────────────────────
     def _peupler(self, company, marque):
-        """Une ligne RÉELLE dans chacune des 5 tables argent, pour ``company``.
+        """Une ligne RÉELLE dans chacune des tables argent, pour ``company``.
 
         Les modèles sont résolus par CHAÎNE via le registre Django, jamais
         importés : ``core`` est une couche FONDATION (contrat import-linter
-        ``core-foundation-is-a-base-layer``) et un ``from apps.compta.models
+        ``core-foundation-is-a-base-layer``) et un ``from apps.<domaine>.models
         import …`` ici ouvrirait, en transitif, une dizaine d'arêtes interdites
-        (compta.models → crm.models → crm.services → notifications/ventes…).
+        (models → crm.models → crm.services → notifications/ventes…).
         Le code de production d'AUD422 suit exactement la même règle : il ne
         cite que des chaînes (``core.rls.TABLES_ARGENT``).
         """
@@ -116,11 +120,6 @@ class RlsArgentCrossTenantDenialTests(WideTeardownTimeoutMixin,
         Devis = registre.get_model('ventes', 'Devis')
         Facture = registre.get_model('facturation', 'Facture')
         Paiement = registre.get_model('facturation', 'Paiement')
-        PlanComptable = registre.get_model('compta', 'PlanComptable')
-        CompteComptable = registre.get_model('compta', 'CompteComptable')
-        Journal = registre.get_model('compta', 'Journal')
-        EcritureComptable = registre.get_model('compta', 'EcritureComptable')
-        LigneEcriture = registre.get_model('compta', 'LigneEcriture')
 
         client = Client.objects.create(
             company=company, nom=f'Client {marque}',
@@ -134,20 +133,6 @@ class RlsArgentCrossTenantDenialTests(WideTeardownTimeoutMixin,
         Paiement.objects.create(
             company=company, facture=facture, montant=Decimal('100.00'),
             date_paiement=date(2026, 1, 15))
-
-        plan = PlanComptable.objects.create(company=company)
-        compte = CompteComptable.objects.create(
-            company=company, plan=plan, numero=f'512{marque}',
-            intitule=f'Banque {marque}', classe=5)
-        journal = Journal.objects.create(
-            company=company, code=f'BNK{marque}', libelle=f'Banque {marque}',
-            type_journal=Journal.Type.BANQUE)
-        ecriture = EcritureComptable.objects.create(
-            company=company, journal=journal, date_ecriture=date(2026, 1, 15),
-            libelle=f'Encaissement {marque}')
-        LigneEcriture.objects.create(
-            company=company, ecriture=ecriture, compte=compte,
-            debit=Decimal('100.00'), credit=Decimal('0'))
 
     # ── Outils ─────────────────────────────────────────────────────────────
     def _sous_role_applicatif(self, cursor, company_id):
@@ -165,7 +150,7 @@ class RlsArgentCrossTenantDenialTests(WideTeardownTimeoutMixin,
             return cursor.fetchone()[0]
 
     # ── 1. Les migrations ont réellement posé les policies ────────────────
-    def test_les_cinq_tables_argent_portent_la_policy(self):
+    def test_les_tables_argent_portent_la_policy(self):
         with connection.cursor() as cursor:
             for entry in self.entries:
                 cursor.execute(
@@ -184,7 +169,7 @@ class RlsArgentCrossTenantDenialTests(WideTeardownTimeoutMixin,
                     f'{entry.table}: policy {entry.policy_name} absente')
 
     # ── 2. La fixture est réelle des deux côtés (non-vacuité) ─────────────
-    def test_les_deux_societes_ont_bien_des_lignes_dans_les_cinq_tables(self):
+    def test_les_deux_societes_ont_bien_des_lignes_dans_les_tables(self):
         for table in self.tables:
             with self.subTest(table=table):
                 self.assertEqual(self._compter_owner(table, self.company_a.pk), 1)
