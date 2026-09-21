@@ -2,21 +2,21 @@
   "_lisez_moi": "Inventaire de reference des gardes de contrat (AUD832). Chaque compteur est un PLANCHER : la garde echoue si le reel chute de plus de 30 % sous la valeur enterinee ici, parce qu'une garde qui n'analyse plus rien rend 0 comme une garde satisfaite. Enteriner une baisse VOULUE : python scripts/<garde>.py --write-inventory (le diff est la revue). Ce fichier ne doit JAMAIS etre supprime : un fichier absent est une erreur, pas un plancher a zero.",
   "check_api_contract": {
     "appels": {
-      "valeur": 2282,
+      "valeur": 2263,
       "chemin": "frontend/src/**/*.{js,jsx,ts,tsx} (appels client HTTP reconnus)"
     },
     "routes": {
-      "valeur": 8628,
+      "valeur": 4648,
       "chemin": "backend/django_core/**/urls.py + views*.py (routes Django/DRF resolues)"
     }
   },
   "check_api_shapes": {
     "endpoints": {
-      "valeur": 329,
+      "valeur": 297,
       "chemin": "backend/django_core/**/views*.py (formes de reponse certaines statiquement)"
     },
     "serialiseurs": {
-      "valeur": 529,
+      "valeur": 423,
       "chemin": "backend/django_core/**/serializers*.py (ressources sous contrat de serialiseur, PACT177)"
     }
   },
@@ -26,7 +26,7 @@
       "chemin": "frontend/src/features/*/module.config.jsx (routes declarees)"
     },
     "ecrans": {
-      "valeur": 522,
+      "valeur": 515,
       "chemin": "frontend/src/{features,pages}/**/*.{jsx,tsx} (ecrans livres)"
     }
   }
