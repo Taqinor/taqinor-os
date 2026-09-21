@@ -96,11 +96,23 @@ class RappelDemandeTests(TestCase):
                 libelle=services.RAPPEL_DEMANDE_LIBELLE).count(), 1)
 
     def test_avec_un_plan_en_cours_la_suite_glisse_du_meme_ecart(self):
-        """« Décaler, jamais redémarrer » : aucun second plan n'est créé."""
+        """« Décaler, jamais redémarrer » : aucun second plan n'est créé.
+
+        Le même écart se mesure en INSTANTS (UTC), pas en heure murale. Ce
+        plan-ci enjambe la bascule du décret 2.26.530 — le Maroc passe de
+        UTC+1 à UTC+0 dans la nuit du 19 au 20/09/2026 (CAD30, tzdata 2026.4
+        épinglée) : la touche « dans 6 jours » tombe le 21/09, de l'autre
+        côté. Or Python soustrait deux datetimes qui partagent le MÊME objet
+        `tzinfo` en heure MURALE ; les objets en mémoire portent tous
+        `horaires.CASABLANCA`, tandis que le moteur relit des instants UTC
+        depuis la base. L'écart comparé différait donc d'une heure des deux
+        côtés. On convertit chaque côté en UTC avant de soustraire et
+        d'ajouter.
+        """
         prochaine = self._touche(ordre=1, dans_jours=3)
         suivante = self._touche(ordre=2, dans_jours=6)
-        avant_prochaine = prochaine.due_at
-        avant_suivante = suivante.due_at
+        avant_prochaine = prochaine.due_at.astimezone(datetime.timezone.utc)
+        avant_suivante = suivante.due_at.astimezone(datetime.timezone.utc)
 
         deplacee = services.poser_touche_rappel_demande(
             self.lead, user=self.acteur)
@@ -110,7 +122,8 @@ class RappelDemandeTests(TestCase):
         self.assertEqual(deplacee.pk, prochaine.pk)
         # La touche est RAMENÉE (le client attend maintenant).
         self.assertLess(prochaine.due_at, avant_prochaine)
-        delta = prochaine.due_at - avant_prochaine
+        delta = (prochaine.due_at.astimezone(datetime.timezone.utc)
+                 - avant_prochaine)
         self.assertEqual(suivante.due_at, avant_suivante + delta)
         # Aucune touche supplémentaire : on n'a pas fabriqué un second plan.
         self.assertEqual(
