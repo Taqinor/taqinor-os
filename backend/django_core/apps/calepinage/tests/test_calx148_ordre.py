@@ -125,12 +125,16 @@ class ExclusiviteTest(unittest.TestCase):
                       'écarté par exclusivité : il attend son module.')
 
     def test_l_inter_rangees_n_est_ecarte_que_si_l_acces_le_declare(self):
+        # Sans la déclaration « rangees », l'EXCLUSIVITÉ ne joue pas :
+        # l'étape suit son propre sort (depuis CALX159, elle omet faute de
+        # géométrie de rangées dans ce contexte d'essai).
         sans = cascade({'ombrage': {'solar_access': {'method': {}}}})
-        self.assertIn('Étape non livrée',
-                      sans['inter_rangees']['motif_omission'])
+        self.assertNotIn('rangées entre elles',
+                         sans['inter_rangees']['motif_omission'])
         avec = cascade(
             {'ombrage': {'solar_access': {'method': {'rangees': True}}}})
-        self.assertIn('rangées', avec['inter_rangees']['motif_omission'])
+        self.assertIn('rangées entre elles',
+                      avec['inter_rangees']['motif_omission'])
 
     def test_l_horizon_est_ecarte_quand_pvgis_l_a_deja_retranche(self):
         etape = cascade(
