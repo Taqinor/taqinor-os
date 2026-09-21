@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: f8c713093ec07ca3d0eaf82b2cc05cd4a74c84d71827fc70ac999001d531b3fa
-Plan fingerprint: aaa68e5989f2529d4218388f3e2b5e8e6c66413f06ed5f9ee61c506cca81a95e
+Plan fingerprint: e1b75eb8e7869c3b45b45876f8def9957d89154c532ada79d8068fdbe12781ab
 
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
@@ -533,7 +533,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (242)**
+**Done (246)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -666,6 +666,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX120` — Animer la course de l'ombre sur une journée et sur l'année
 - `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
 - `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
+- `CALX123` — Tracer et éditer un champ au sol sur la carte de l'atelier
+- `CALX124` — Éditer une ombrière dans l'atelier, poteaux compris
+- `CALX125` — Poser des modules en façade sur un mur du bâtiment
+- `CALX126` — Totaliser le site par bâtiment et par surface de pose dans l'atelier
 - `CALX128` — Rendre les gestes de l'atelier utilisables au clavier et annoncés
 - `CALX129` — Basculer la vue 3D d'édition en plein écran
 - `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
@@ -778,7 +782,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (364)**
+**Open — to build (360)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -971,10 +975,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
 - `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
 - `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
-- `CALX123` — Tracer et éditer un champ au sol sur la carte de l'atelier
-- `CALX124` — Éditer une ombrière dans l'atelier, poteaux compris
-- `CALX125` — Poser des modules en façade sur un mur du bâtiment
-- `CALX126` — Totaliser le site par bâtiment et par surface de pose dans l'atelier
 - `CALX130` — Prouver le parcours de conception enrichi de bout en bout
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX199` — Trancher l'achat d'une source météo bancable
