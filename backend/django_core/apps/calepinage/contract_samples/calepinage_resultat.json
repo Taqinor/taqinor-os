@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/resultat/",
-  "pourquoi": "Le `resultat` d'un calepinage : ce que la pose donne une fois l'électricité chaînée et la production simulée. PACT10 — POURQUOI CE CONTRAT PART SEUL : ce `resultat` est consommé par au moins QUATRE moitiés d'écran (carte des chaînes CAL126, panneau Production CAL236, diagramme de pertes CAL143, comparatif de variantes CAL145) et produit par autant de services ; publier le contrat DANS la tâche productrice ne prévient rien, puisque les lanes consommatrices sont file-disjointes d'elle et auraient déjà inventé leurs clés. Il atterrit donc SEUL sur `main` d'abord, sans une ligne de code. AUCUNE CLÉ INVENTÉE — d'où vient chaque bloc : `electrique.chainage` reprend `core/calepinage/electrique.Chainage` (`modules`, `modules_par_chaine`, `chaines`, `reste`, `puissance_module_wc`) et `electrique.onduleurs` reprend `Onduleurs` (`taille_kw`, `nombre`, `puissance_dc_kwc`, `conforme`, `motif`) ; les `verdicts` reprennent les contrôles réellement évalués par `apps/ventes/compatibilites.py` (`voc_cold_under_vmax`, `vmp_cold_under_mppt_max`, `vmp_hot_over_mppt_min`, courant par entrée MPPT via `i_max_mppt_a`/`n_mppt`, ratio DC/AC) ; `production` reprend `apps/ventes/etude._pr_block` (`performance_ratio`, `total_loss_pct`, `loss_breakdown`, `p50_kwh`, `p75_kwh`, `p90_kwh`, `annual_variability`, `specific_yield_kwh_kwc`) ; les postes de `pertes` sont ceux de `DEFAULT_LOSS_FACTORS` (`temperature`, `soiling`, `wiring`, `inverter`, `mismatch`, `availability`) plus `shading`, mesuré par le tracé d'ombres. L'AFFECTATION EST NOMINATIVE : `electrique.affectation` donne, module par module, sa chaîne ET son entrée MPPT — c'est la table que CAL126 teinte, et sans elle l'écran recalculerait une partition (donc une AUTRE partition que celle qui a été dimensionnée). CHAQUE POSTE DE PERTE PORTE SA SOURCE (`fiche`, `saisie`, `pvgis`, `mesure`, `hypothese`) : décision CAL238 — `loss` est une ENTRÉE d'appel PVGIS, le module passe TOUJOURS la somme explicite de ses postes et affiche la valeur passée ; jamais un 14 % ni un 20 % caché. Un poste non sourcé est rendu tel quel (`source: null`) pour que l'écran le hachure et le nomme, jamais pour qu'il disparaisse. DISCIPLINE DU NULL — `exemple_vide` = calepinage POSÉ mais NON SIMULÉ : la pose est un fait (modules et kWc sont connus et restent chiffrés), l'électrique n'a pas été chaîné et la production n'a pas été lancée — toutes leurs clés sont PRÉSENTES et valent `null`, jamais `0`. Un `0 kWh` se lirait « cette toiture ne produit rien » là où personne n'a lancé de simulation ; un `PR = 0` se lirait « installation catastrophique ». Les listes non produites sont vides (`[]`), ce qui se distingue sans ambiguïté d'une liste de zéros. Valeurs : des PLACEHOLDERS assumés (repères « d'essai », empreinte visiblement factice), aucun chiffre client, aucun prix, aucun prix d'achat. CAL234 — chaque ligne d'affectation porte désormais sa `source` : « automatique » (le dimensionnement) ou « affectation manuelle » (l'installateur a imposé la chaîne/l'entrée MPPT de ce module, et son choix écrase l'automatique).",
+  "pourquoi": "Le `resultat` d'un calepinage : ce que la pose donne une fois l'électricité chaînée et la production simulée. PACT10 — POURQUOI CE CONTRAT PART SEUL : ce `resultat` est consommé par au moins QUATRE moitiés d'écran (carte des chaînes CAL126, panneau Production CAL236, diagramme de pertes CAL143, comparatif de variantes CAL145) et produit par autant de services ; publier le contrat DANS la tâche productrice ne prévient rien, puisque les lanes consommatrices sont file-disjointes d'elle et auraient déjà inventé leurs clés. Il atterrit donc SEUL sur `main` d'abord, sans une ligne de code. AUCUNE CLÉ INVENTÉE — d'où vient chaque bloc : `electrique.chainage` reprend `core/calepinage/electrique.Chainage` (`modules`, `modules_par_chaine`, `chaines`, `reste`, `puissance_module_wc`) et `electrique.onduleurs` reprend `Onduleurs` (`taille_kw`, `nombre`, `puissance_dc_kwc`, `conforme`, `motif`) ; les `verdicts` reprennent les contrôles réellement évalués par `apps/ventes/compatibilites.py` (`voc_cold_under_vmax`, `vmp_cold_under_mppt_max`, `vmp_hot_over_mppt_min`, courant par entrée MPPT via `i_max_mppt_a`/`n_mppt`, ratio DC/AC) ; `production` reprend `apps/ventes/etude._pr_block` (`performance_ratio`, `total_loss_pct`, `loss_breakdown`, `p50_kwh`, `p75_kwh`, `p90_kwh`, `annual_variability`, `specific_yield_kwh_kwc`) ; les postes de `pertes` sont ceux de `DEFAULT_LOSS_FACTORS` (`temperature`, `soiling`, `wiring`, `inverter`, `mismatch`, `availability`) plus `shading`, mesuré par le tracé d'ombres. L'AFFECTATION EST NOMINATIVE : `electrique.affectation` donne, module par module, sa chaîne ET son entrée MPPT — c'est la table que CAL126 teinte, et sans elle l'écran recalculerait une partition (donc une AUTRE partition que celle qui a été dimensionnée). CHAQUE POSTE DE PERTE PORTE SA SOURCE (`fiche`, `saisie`, `pvgis`, `mesure`, `hypothese`) : décision CAL238 — `loss` est une ENTRÉE d'appel PVGIS, le module passe TOUJOURS la somme explicite de ses postes et affiche la valeur passée ; jamais un 14 % ni un 20 % caché. Un poste non sourcé est rendu tel quel (`source: null`) pour que l'écran le hachure et le nomme, jamais pour qu'il disparaisse. DISCIPLINE DU NULL — `exemple_vide` = calepinage POSÉ mais NON SIMULÉ : la pose est un fait (modules et kWc sont connus et restent chiffrés), l'électrique n'a pas été chaîné et la production n'a pas été lancée — toutes leurs clés sont PRÉSENTES et valent `null`, jamais `0`. Un `0 kWh` se lirait « cette toiture ne produit rien » là où personne n'a lancé de simulation ; un `PR = 0` se lirait « installation catastrophique ». Les listes non produites sont vides (`[]`), ce qui se distingue sans ambiguïté d'une liste de zéros. Valeurs : des PLACEHOLDERS assumés (repères « d'essai », empreinte visiblement factice), aucun chiffre client, aucun prix, aucun prix d'achat. CAL234 — chaque ligne d'affectation porte désormais sa `source` : « automatique » (le dimensionnement) ou « affectation manuelle » (l'installateur a imposé la chaîne/l'entrée MPPT de ce module, et son choix écrase l'automatique).\n\nCALX70 — `GET resultat/` SERT LA SIMULATION PERSISTÉE, AVEC SON CONTRÔLE DE FRAÎCHEUR. Les blocs de simulation (`production`, `pertes`, `cascade`, `meteo`, `incertitude`, `performance`, `autoconsommation`, `batterie`, `hors_reseau`, `consommation`, `ombrage`, `validation`) ne sont plus publiés par littéral : `services/electrique.py::resultat_calepinage` les LIT dans `Calepinage.resultat`, où la simulation (CALX5) les dépose par fusion de clés, et les sert TELS QUELS. Leur forme détaillée est donc celle de `contract_samples/calepinage_simulation.json` (CALX4), qui reste la référence : `production` sert ce que la simulation a écrit, y compris les clés que l'exemple ci-dessous n'énumère pas (`annees`, `par_module`, `par_chaine`, `tof`/`tsrf` par pan). `serie_horaire` n'est PAS recopiée ici (D-CALX 14 : volume — elle reste servie par `export-csv` et le panneau Séries).\n\nLA FRAÎCHEUR EST UN VERDICT. Les blocs ne sont servis que si `resultat['simulation']['hash_entree']` — l'empreinte des entrées AU MOMENT DU CALCUL — égale encore `hash_entree`, l'empreinte du document AUJOURD'HUI. Sinon (`exemple_perime`) chaque bloc vaut `null`, `simulation_perimee` vaut `true` et `motif` NOMME la péremption en français avec la date du calcul : une production calculée sur un autre toit ne doit jamais s'afficher comme si elle décrivait celui-ci. EXCEPTION DE TYPE — `pertes` reste une LISTE PLATE (D-CALX 11) : périmée, elle vaut `[]`, jamais `null`, parce que quatre lecteurs l'itèrent déjà comme une liste (`services/note_calcul.py`, `services/comparaison.py`, `services/export_csv.py`, `DiagrammePertes.jsx`) — son TYPE ne change pas avec sa fraîcheur, seul son contenu disparaît. `simulation_perimee` et `motif` sont TOUJOURS présents : `false` et `''` quand il n'y a rien à signaler.\n\n`simule` NE VEUT PAS DIRE « chaîné » (CALX70) : il vaut `true` seulement si `production.total.p50_kwh` est un NOMBRE. Un calepinage chaîné mais jamais simulé — et un calepinage dont la simulation est périmée — publient `simule: false` et portent leur motif dans `avertissements`, en tête. `calcule_le` est la date enregistrée PAR la simulation servie (donc `null` tant qu'aucune n'est servie), jamais l'heure de la requête.",
   "exemple": {
     "calepinage": 1,
     "variante": 11,
@@ -271,7 +271,376 @@
         "source": null
       }
     ],
+    "cascade": {
+      "etapes": [
+        {
+          "rang": 1,
+          "etape": "irradiation_plan",
+          "libelle": "Irradiation sur le plan des modules",
+          "kwh_avant": 16800.0,
+          "kwh_apres": 16800.0,
+          "perte_kwh": 0.0,
+          "perte_pct": 0.0,
+          "gain": false,
+          "source": "pvgis",
+          "entree": "seriescalc",
+          "reference": "PVGIS-SARAH3",
+          "motif_omission": ""
+        },
+        {
+          "rang": 2,
+          "etape": "spectral",
+          "libelle": "Correction spectrale",
+          "kwh_avant": 16800.0,
+          "kwh_apres": null,
+          "perte_kwh": null,
+          "perte_pct": null,
+          "gain": false,
+          "source": null,
+          "entree": null,
+          "reference": null,
+          "motif_omission": "D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
+        }
+      ],
+      "ordre": [
+        "irradiation_plan",
+        "spectral"
+      ],
+      "total_pct": 20.1,
+      "postes_non_sources": [
+        "availability"
+      ],
+      "hash_entree": "abababababababababababababababababababababababababababababababab"
+    },
+    "meteo": {
+      "service": "seriescalc",
+      "base_rayonnement": "PVGIS-SARAH3",
+      "base_meteo": "ERA5",
+      "mode": "pluriannuel",
+      "fenetre_annees": "2020-2021",
+      "annees": [
+        2020,
+        2021
+      ],
+      "point": {
+        "lat": 33.5,
+        "lon": -7.6,
+        "altitude_m": 50.0
+      },
+      "horizon": {
+        "origine": "dem_pvgis",
+        "hauteur_max_deg": 8.5,
+        "base_horizon": "SRTM"
+      },
+      "url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc",
+      "obtenue_le": "2026-09-21T10:14:00Z",
+      "depuis_cache": false,
+      "convention_azimut": "pvgis_sud_0_est_-90",
+      "heure": {
+        "base": "locale_standard",
+        "fuseau_site": "Africa/Casablanca",
+        "decalage_minutes": [
+          60,
+          60
+        ]
+      },
+      "albedo_face_avant": {
+        "valeur": null,
+        "motif": "Aucun albédo saisi par la société : la clé reste nulle."
+      }
+    },
+    "incertitude": {
+      "composantes": [
+        {
+          "nom": "variabilite_interannuelle",
+          "sigma_relatif": 0.048,
+          "source": "pvgis",
+          "reference": "seriescalc 2020-2021",
+          "annees": 2
+        }
+      ],
+      "sigma_total": 0.048,
+      "methode": "quadrature",
+      "quantiles": {
+        "p50_kwh": 13000.0,
+        "p75_kwh": 12400.0,
+        "p90_kwh": 11900.0,
+        "p95_kwh": 11700.0
+      },
+      "portee": "annuelle",
+      "motif_refus": ""
+    },
+    "performance": {
+      "pr": 0.799,
+      "pr_methode": "iec_61724_1",
+      "pr_reference": "IEC 61724-1 — ratio de performance, à renseigner par le texte cité de la norme retenue par la société.",
+      "irradiation_plan_kwh_m2": 1883.0,
+      "periode": "annuelle",
+      "pr_corrige_temperature": 0.812,
+      "t_cell_moyenne_ponderee_c": 41.2
+    },
+    "autoconsommation": {
+      "taux_autoconsommation": 0.62,
+      "taux_couverture": 0.71,
+      "taux_autonomie": 0.58,
+      "heures_sans_import": 3120,
+      "energie": {
+        "consommation_kwh": 9600.0,
+        "production_kwh": 13000.0,
+        "autoconsomme_kwh": 8060.0,
+        "surplus_kwh": 4940.0,
+        "import_reseau_kwh": 1540.0
+      },
+      "plafond": {
+        "applique": true,
+        "plafond_kw": 6.0,
+        "justification": "Plafond d'injection SAISI par la société, avec sa source — jamais une constante.",
+        "energie_ecretee_kwh": 210.0
+      },
+      "motif_absence": ""
+    },
+    "batterie": {
+      "groupes": [
+        {
+          "groupe": "BAT-ESSAI-1",
+          "packs": 2,
+          "capacite_utile_kwh": 10.0,
+          "strategie": "autoconsommation",
+          "cycles_an": 280.0,
+          "energie_restituee_kwh": 2400.0,
+          "profondeur_decharge_pct": 90.0,
+          "source": "fiche"
+        }
+      ],
+      "total": {
+        "capacite_utile_kwh": 10.0,
+        "energie_restituee_kwh": 2400.0,
+        "taux_autonomie": 0.58,
+        "heures_sans_import": 3120
+      },
+      "avertissements": []
+    },
+    "hors_reseau": {
+      "heures": 8760,
+      "consommation_kwh": 9600.0,
+      "production_kwh": 13000.0,
+      "servi_kwh": 9350.0,
+      "defaillance_kwh": 250.0,
+      "heures_defaillantes": 96,
+      "taux_defaillance": 0.026,
+      "surplus_perdu_kwh": 1800.0,
+      "mois_le_plus_defavorable": 12,
+      "par_mois": [
+        {
+          "mois": 1,
+          "defaillance_kwh": 12.0,
+          "heures_defaillantes": 4
+        }
+      ],
+      "mentions": [],
+      "motif_absence": ""
+    },
+    "consommation": {
+      "courbe_origine": "profil_mensuel",
+      "pas_minutes": 60,
+      "total_kwh": 9600.0,
+      "charges": [
+        {
+          "code": "vehicule",
+          "libelle": "Véhicule électrique (essai)",
+          "kwh_an": 1800.0,
+          "source": "saisie"
+        }
+      ],
+      "profil_mensuel": [
+        {
+          "mois": 1,
+          "kwh": 820.0
+        },
+        {
+          "mois": 2,
+          "kwh": 760.0
+        }
+      ]
+    },
+    "ombrage": {
+      "par_pan": [
+        {
+          "pan": "PAN-A",
+          "tof": 0.97,
+          "tsrf": 0.94,
+          "acces_solaire_moyen_pct": 96.5,
+          "motif_omission": ""
+        }
+      ],
+      "methode": "tof_pvcalc_optimalangles_x_acces_solaire"
+    },
+    "validation": {
+      "faite_le": "2026-09-21T10:15:00Z",
+      "total_chaine_locale_kwh": 13000.0,
+      "total_pvcalc_kwh": 13260.0,
+      "ecart_pct": -1.96,
+      "tolerance_pct": 5.0,
+      "verdict": "dans_la_tolerance",
+      "avertissement": "",
+      "motif": "ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une « validation », jamais un ajustement."
+    },
+    "simulation_perimee": false,
+    "motif": "",
     "avertissements": []
+  },
+  "exemple_perime": {
+    "calepinage": 1,
+    "variante": 11,
+    "simule": false,
+    "calcule_le": null,
+    "schema_version": 1,
+    "hash_entree": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    "version_moteur": "non-publie-dans-cet-exemple",
+    "pose": {
+      "total_modules": 12,
+      "kwc": 8.64,
+      "puissance_module_wc": 720,
+      "pans": [
+        {
+          "pan": "PAN-A",
+          "modules": 8,
+          "kwc": 5.76,
+          "azimut_deg": 180.0,
+          "inclinaison_deg": 15.0
+        },
+        {
+          "pan": "PAN-B",
+          "modules": 4,
+          "kwc": 2.88,
+          "azimut_deg": 90.0,
+          "inclinaison_deg": 15.0
+        }
+      ]
+    },
+    "electrique": {
+      "chainage": {
+        "modules": 12,
+        "modules_par_chaine": 6,
+        "chaines": 2,
+        "reste": 0,
+        "puissance_module_wc": 720
+      },
+      "onduleurs": [
+        {
+          "reference": "ONDULEUR-ESSAI-1",
+          "taille_kw": 10.0,
+          "nombre": 1,
+          "puissance_dc_kwc": 8.64,
+          "ratio_dc_ac": 0.864,
+          "n_mppt": 2,
+          "conforme": true,
+          "motif": ""
+        }
+      ],
+      "affectation": [
+        {
+          "module": "PAN-A#1",
+          "pan": "PAN-A",
+          "chaine": 1,
+          "onduleur": 1,
+          "mppt": 1,
+          "source": "automatique"
+        },
+        {
+          "module": "PAN-A#2",
+          "pan": "PAN-A",
+          "chaine": 1,
+          "onduleur": 1,
+          "mppt": 1,
+          "source": "automatique"
+        },
+        {
+          "module": "PAN-B#1",
+          "pan": "PAN-B",
+          "chaine": 2,
+          "onduleur": 1,
+          "mppt": 2,
+          "source": "automatique"
+        },
+        {
+          "module": "PAN-B#2",
+          "pan": "PAN-B",
+          "chaine": 2,
+          "onduleur": 1,
+          "mppt": 2,
+          "source": "automatique"
+        },
+        {
+          "module": "PAN-B#3",
+          "pan": "PAN-B",
+          "chaine": null,
+          "onduleur": null,
+          "mppt": null,
+          "source": "automatique"
+        }
+      ],
+      "verdicts": [
+        {
+          "code": "voc_cold_under_vmax",
+          "libelle": "Voc à froid sous la tension maximale admissible de l'onduleur",
+          "conforme": true,
+          "bloquant": true,
+          "source": "fiche",
+          "detail": ""
+        },
+        {
+          "code": "vmp_cold_under_mppt_max",
+          "libelle": "Vmp à froid dans le haut de la plage MPPT",
+          "conforme": true,
+          "bloquant": true,
+          "source": "fiche",
+          "detail": ""
+        },
+        {
+          "code": "vmp_hot_over_mppt_min",
+          "libelle": "Vmp à chaud au-dessus du bas de la plage MPPT",
+          "conforme": true,
+          "bloquant": true,
+          "source": "fiche",
+          "detail": ""
+        },
+        {
+          "code": "courant_par_entree_mppt",
+          "libelle": "Courant par entrée MPPT sous le courant admissible",
+          "conforme": true,
+          "bloquant": true,
+          "source": "fiche",
+          "detail": ""
+        },
+        {
+          "code": "ratio_dc_ac",
+          "libelle": "Ratio DC/AC dans la fourchette retenue par la société",
+          "conforme": true,
+          "bloquant": false,
+          "source": "saisie",
+          "detail": ""
+        }
+      ]
+    },
+    "production": null,
+    "pertes": [],
+    "cascade": null,
+    "meteo": null,
+    "incertitude": null,
+    "performance": null,
+    "autoconsommation": null,
+    "batterie": null,
+    "hors_reseau": null,
+    "consommation": null,
+    "ombrage": null,
+    "validation": null,
+    "simulation_perimee": true,
+    "motif": "simulation périmée : le document a changé depuis le calcul du 19/09/2026",
+    "avertissements": [
+      "simulation périmée : le document a changé depuis le calcul du 19/09/2026",
+      "Production non simulée dans ce résultat : la pose et l'électricité sont connues, la production ne l'est pas."
+    ]
   },
   "exemple_vide": {
     "calepinage": 2,
@@ -334,6 +703,18 @@
       ]
     },
     "pertes": [],
+    "cascade": null,
+    "meteo": null,
+    "incertitude": null,
+    "performance": null,
+    "autoconsommation": null,
+    "batterie": null,
+    "hors_reseau": null,
+    "consommation": null,
+    "ombrage": null,
+    "validation": null,
+    "simulation_perimee": false,
+    "motif": "",
     "avertissements": [
       "Calepinage non simulé : la pose est connue, la production ne l'est pas."
     ]

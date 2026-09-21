@@ -51,6 +51,7 @@ __all__ = [
     'enregistrer_fournisseur_temperatures', 'fournisseur_temperatures',
     'temperatures_site', 'temperatures_pour_calepinage',
     'CLE_ENTREE', 'CHAMPS_ENTREE', 'EntreeInvalide',
+    'CLE_SIMULATION', 'BLOCS_SIMULATION', 'BLOCS_LISTE', 'simulation_servie',
     'entree_stockee', 'enregistrer_entree', 'resoudre_materiel',
     'conception_du_calepinage', 'resultat_calepinage',
     'verdicts_electriques', 'bornes_ratio', 'bloc_ratio_dc_ac',
@@ -325,6 +326,43 @@ CHAMPS_ENTREE = (
     'affectation_manuelle',  # CAL234 — affectation IMPOSÉE module par module
 )
 
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX70 — LA SIMULATION PERSISTÉE EST SERVIE, AVEC SON CONTRÔLE DE FRAÎCHEUR
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Une simulation écrite en base et jamais servie est l'incident de la première
+# vague : l'écran affiche « non simulé » alors que le calcul a bel et bien
+# tourné. ``resultat_calepinage`` lit donc ``Calepinage.resultat`` et publie
+# les blocs que la simulation y a déposés (CALX4, échantillon de contrat
+# ``contract_samples/calepinage_simulation.json``).
+#
+# LA FRAÎCHEUR EST UN VERDICT, PAS UNE ESPÉRANCE. Les blocs ne sont publiés
+# que si l'empreinte du document AU MOMENT DU CALCUL
+# (``resultat['simulation']['hash_entree']``) est encore celle du document
+# d'aujourd'hui. Sinon ils valent ``null``, ``simulation_perimee`` vaut vrai
+# et le motif NOMME la péremption : une production calculée sur un autre toit
+# ne doit jamais s'afficher comme si elle décrivait celui-ci.
+
+#: La clé de ``Calepinage.resultat`` qui porte l'en-tête de simulation (CALX4)
+#: — l'empreinte des entrées, la version du moteur, la date et la durée.
+CLE_SIMULATION = 'simulation'
+
+#: Les blocs de simulation que ``GET resultat/`` publie. ``serie_horaire`` n'en
+#: fait PAS partie (D-CALX 14 : volume — elle reste servie par ``export-csv``
+#: et le panneau Séries).
+BLOCS_SIMULATION = (
+    'production', 'pertes', 'cascade', 'meteo', 'incertitude', 'performance',
+    'autoconsommation', 'batterie', 'hors_reseau', 'consommation', 'ombrage',
+    'validation',
+)
+
+#: Les blocs dont la forme est une LISTE PLATE (D-CALX 11). Quatre lecteurs
+#: itèrent ``pertes`` telle quelle (``services/note_calcul.py``,
+#: ``services/comparaison.py``, ``services/export_csv.py``,
+#: ``DiagrammePertes.jsx``) : périmée, elle reste donc une liste VIDE — son
+#: TYPE ne change pas avec sa fraîcheur, seul son contenu disparaît.
+BLOCS_LISTE = ('pertes',)
+
 
 class EntreeInvalide(ValueError):
     """Refus métier d'une entrée électrique — champ fautif NOMMÉ."""
@@ -473,12 +511,92 @@ def conception_du_calepinage(calepinage, *, entree=None, layout=None,
     return (conception, materiel, donnees, document)
 
 
+def _date_de_calcul(simulation):
+    """La DATE du calcul telle qu'elle a été enregistrée — jamais inventée.
+
+    Rend ``''`` quand la simulation n'a pas horodaté son calcul : le motif de
+    péremption le dit alors en clair, plutôt que d'afficher une date fabriquée
+    (règle fondateur « zéro chiffre inventé », D-CALX 7).
+    """
+    texte = str((simulation or {}).get('calcule_le') or '').strip()
+    if not texte:
+        return ''
+    jour = texte.split('T', 1)[0]
+    morceaux = jour.split('-')
+    if len(morceaux) == 3 and all(part.isdigit() for part in morceaux):
+        return '%s/%s/%s' % (morceaux[2], morceaux[1], morceaux[0])
+    return texte
+
+
+def _est_un_nombre(valeur):
+    """Un NOMBRE au sens strict : ni booléen, ni chaîne « numérique »."""
+    return isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
+
+
+def simulation_servie(calepinage, empreinte, *, defauts=None):
+    """CALX70 — les blocs de simulation à publier, et leur état de fraîcheur.
+
+    Args:
+        calepinage: le pivot dont ``resultat`` porte la simulation (CALX4).
+        empreinte: l'empreinte du document AUJOURD'HUI (``empreinte_entree``).
+        defauts: ce que vaut chaque bloc quand AUCUNE simulation n'a jamais
+            tourné — le squelette historique de ``production`` et la liste
+            vide de ``pertes``. Un bloc absent de ce dictionnaire vaut
+            ``None`` (présent, jamais ``0`` : un « 0 kWh » se lirait « ce toit
+            ne produit rien »).
+
+    Returns:
+        ``(blocs, perimee, motif, calcule_le)``. ``perimee`` est vrai quand une
+        simulation existe mais que le document a changé depuis : les blocs
+        valent alors ``null`` — sauf ceux de ``BLOCS_LISTE``, qui restent une
+        liste vide (D-CALX 11) — et ``motif`` nomme la péremption.
+
+    Lecture strictement PURE : rien n'est écrit, aucun statut n'est touché.
+    """
+    import copy
+
+    defauts = defauts or {}
+    stocke = getattr(calepinage, 'resultat', None)
+    stocke = stocke if isinstance(stocke, dict) else {}
+    simulation = stocke.get(CLE_SIMULATION)
+    simulation = simulation if isinstance(simulation, dict) else {}
+    hash_calcule = simulation.get('hash_entree') or ''
+
+    if not hash_calcule:
+        # Aucune simulation n'a jamais tourné : comportement d'aujourd'hui,
+        # strictement inchangé, et les blocs neufs sont PRÉSENTS à ``null``.
+        return ({cle: defauts.get(cle) for cle in BLOCS_SIMULATION},
+                False, '', None)
+
+    if hash_calcule != empreinte:
+        date = _date_de_calcul(simulation)
+        motif = ('simulation périmée : le document a changé depuis le calcul '
+                 + ('du %s' % date if date
+                    else "précédent, dont la date n'a pas été enregistrée"))
+        return ({cle: ([] if cle in BLOCS_LISTE else None)
+                 for cle in BLOCS_SIMULATION},
+                True, motif, None)
+
+    # Fraîche : chaque bloc est publié TEL QUEL. Le dictionnaire servi est
+    # détaché du document stocké (``deepcopy``) — sans quoi un appelant qui
+    # remanie la réponse remanierait la base.
+    blocs = {cle: (copy.deepcopy(stocke[cle]) if cle in stocke
+                   else defauts.get(cle))
+             for cle in BLOCS_SIMULATION}
+    return blocs, False, '', simulation.get('calcule_le')
+
+
 def resultat_calepinage(calepinage, *, entree=None, layout=None,
                         materiel=None):
     """Le ``resultat`` publié du calepinage — forme du contrat CAL244.
 
-    Les blocs ``production`` et ``pertes`` appartiennent à la lane production
-    (CAL135-139) : tant qu'aucune simulation n'a été lancée, leurs clés sont
+    Les blocs de simulation (``production``, ``pertes``, ``cascade``,
+    ``meteo``, ``incertitude``, ``performance``, ``autoconsommation``,
+    ``batterie``, ``hors_reseau``, ``consommation``, ``ombrage``,
+    ``validation``) sont LUS sur ``Calepinage.resultat`` et servis tels quels
+    tant que l'empreinte du document n'a pas bougé (CALX70). Périmés, ils
+    valent ``null``, ``simulation_perimee`` vaut vrai et ``motif`` nomme la
+    péremption. Tant qu'aucune simulation n'a jamais tourné, leurs clés sont
     PRÉSENTES et valent ``null`` (jamais ``0`` — un « 0 kWh » se lirait « cette
     toiture ne produit rien »), et l'avertissement le dit.
     """
@@ -564,20 +682,65 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     messages.extend(materiel['absents'])
     if conception.temperatures is not None and conception.temperatures.mention:
         messages.append(conception.temperatures.mention)
-    messages.append("Production non simulée dans ce résultat : la pose et "
-                    "l'électricité sont connues, la production ne l'est pas.")
+
+    # CALX70 — l'empreinte du document AUJOURD'HUI : c'est elle qui dit si la
+    # simulation déposée dans ``Calepinage.resultat`` décrit encore CE toit.
+    empreinte = empreinte_entree(
+        document, module_specs=materiel['module'],
+        onduleur_specs=materiel['onduleur'],
+        temperatures=conception.temperatures,
+        options=_options_entree(donnees))
+    blocs, perimee, motif, calcule_le = simulation_servie(
+        calepinage, empreinte, defauts={
+            # Le squelette servi tant qu'aucune simulation n'a tourné : la
+            # POSE est un fait (modules et kWc restent chiffrés), la
+            # production ne l'est pas (toutes ses grandeurs à ``null``).
+            'production': {
+                'base': {'source': None, 'fenetre_annees': None,
+                         'loss_passee_pct': None,
+                         'commentaire': "Aucune simulation lancée : aucune "
+                                        "perte n'a été passée à PVGIS."},
+                'total': {'kwc': pose['kwc'], 'p50_kwh': None,
+                          'p75_kwh': None, 'p90_kwh': None,
+                          'performance_ratio': None,
+                          'specific_yield_kwh_kwc': None,
+                          'annual_variability': None, 'total_loss_pct': None},
+                'mensuel': [],
+                'par_pan': [{'pan': pan['pan'], 'modules': pan['modules'],
+                             'kwc': pan['kwc'], 'p50_kwh': None,
+                             'p75_kwh': None, 'p90_kwh': None,
+                             'performance_ratio': None,
+                             'specific_yield_kwh_kwc': None,
+                             'shading_annual_loss_pct': None}
+                            for pan in pose['pans']],
+            },
+            'pertes': [],
+        })
+    if motif:
+        # En tête des avertissements : c'est la phrase que l'écran affiche
+        # quand il n'a rien à tracer, et elle doit NOMMER la péremption.
+        messages.insert(0, motif)
+    production_servie = blocs['production']
+    p50 = None
+    if isinstance(production_servie, dict):
+        total_servi = production_servie.get('total')
+        if isinstance(total_servi, dict):
+            p50 = total_servi.get('p50_kwh')
+    simule = _est_un_nombre(p50)
+    if not simule:
+        messages.append("Production non simulée dans ce résultat : la pose et "
+                        "l'électricité sont connues, la production ne l'est "
+                        "pas.")
 
     return {
         'calepinage': getattr(calepinage, 'pk', None),
         'variante': None,
-        'simule': bool(conception.chaines),
-        'calcule_le': None,
+        # CALX70 — « simulé » ne veut PAS dire « chaîné » : le résultat n'est
+        # simulé que s'il publie une énergie annuelle qui est un NOMBRE.
+        'simule': simule,
+        'calcule_le': calcule_le,
         'schema_version': 1,
-        'hash_entree': empreinte_entree(
-            document, module_specs=materiel['module'],
-            onduleur_specs=materiel['onduleur'],
-            temperatures=conception.temperatures,
-            options=_options_entree(donnees)),
+        'hash_entree': empreinte,
         'version_moteur': _version_moteur(),
         'pose': pose,
         'electrique': electrique,
@@ -602,24 +765,24 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         'longueur_chaine': reconciliation,
         'temperatures': (conception.temperatures.en_dict()
                          if conception.temperatures is not None else None),
-        'production': {
-            'base': {'source': None, 'fenetre_annees': None,
-                     'loss_passee_pct': None,
-                     'commentaire': "Aucune simulation lancée : aucune perte "
-                                    "n'a été passée à PVGIS."},
-            'total': {'kwc': pose['kwc'], 'p50_kwh': None, 'p75_kwh': None,
-                      'p90_kwh': None, 'performance_ratio': None,
-                      'specific_yield_kwh_kwc': None,
-                      'annual_variability': None, 'total_loss_pct': None},
-            'mensuel': [],
-            'par_pan': [{'pan': pan['pan'], 'modules': pan['modules'],
-                         'kwc': pan['kwc'], 'p50_kwh': None, 'p75_kwh': None,
-                         'p90_kwh': None, 'performance_ratio': None,
-                         'specific_yield_kwh_kwc': None,
-                         'shading_annual_loss_pct': None}
-                        for pan in pose['pans']],
-        },
-        'pertes': [],
+        # CALX70 — les blocs de la simulation persistée (CALX4), servis tels
+        # quels tant que l'empreinte du document n'a pas bougé. Périmés, ils
+        # valent ``null`` (``pertes`` reste une liste vide, D-CALX 11) et
+        # ``motif`` dit pourquoi. ``serie_horaire`` n'est pas ici (D-CALX 14).
+        'production': blocs['production'],
+        'pertes': blocs['pertes'],
+        'cascade': blocs['cascade'],
+        'meteo': blocs['meteo'],
+        'incertitude': blocs['incertitude'],
+        'performance': blocs['performance'],
+        'autoconsommation': blocs['autoconsommation'],
+        'batterie': blocs['batterie'],
+        'hors_reseau': blocs['hors_reseau'],
+        'consommation': blocs['consommation'],
+        'ombrage': blocs['ombrage'],
+        'validation': blocs['validation'],
+        'simulation_perimee': perimee,
+        'motif': motif,
         'avertissements': messages,
     }
 
