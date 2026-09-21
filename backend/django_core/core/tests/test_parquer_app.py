@@ -18,9 +18,11 @@ Couvert aussi (contrat du TALON) : une app jouet dont la migration référence
 ``apps.jouet.models._jeton_defaut`` garde ce symbole — et les imports/constantes
 dont il dépend — dans son ``models.py`` de coquille ; un symbole introuvable ou
 qui est un MODÈLE fait REFUSER la commande ; et la vérification à froid du
-graphe, quand elle échoue, REMET models.py/apps.py et la migration-coquille en
-l'état. La vérification à froid elle-même est neutralisée dans ces tests (elle
-lancerait un sous-processus Django sur le dépôt RÉEL, pas sur l'app jouet).
+graphe, quand elle échoue, REMET TOUT en l'état — models.py, apps.py, la
+migration-coquille ET les fichiers de l'app, seulement ÉCARTÉS en quarantaine
+tant que la vérification n'est pas passée. La vérification à froid elle-même est
+neutralisée dans ces tests (elle lancerait un sous-processus Django sur le dépôt
+RÉEL, pas sur l'app jouet).
 """
 import ast
 import importlib
@@ -403,7 +405,7 @@ class TalonModelsPyTests(SimpleTestCase):
     # -- tests -------------------------------------------------------------
     def test_symboles_reclames_lus_dans_les_migrations(self):
         self.assertEqual(
-            sorted(cmd.symboles_reclames(self.app_dir, 'talon')),
+            sorted(cmd.symboles_reclames([self.app_dir], 'talon')),
             ['_jeton_defaut'])
 
     def test_talon_garde_le_symbole_et_ses_dependances(self):
@@ -456,6 +458,14 @@ class TalonModelsPyTests(SimpleTestCase):
             self._coquiller('--dry-run')
         self.assertIn('_disparu', str(ctx.exception))
         self.assertIn('introuvables', str(ctx.exception))
+
+
+class ContratCommandeTests(SimpleTestCase):
+    def test_aucun_system_check_avant_de_tourner(self):
+        """La commande NETTOIE urls.py : le check ``urls`` (qui importe
+        ROOT_URLCONF, donc l'include de l'app en cours de sortie) ne doit pas
+        tourner avant elle — sinon il bloque toute la file."""
+        self.assertEqual(cmd.Command().requires_system_checks, [])
 
 
 class ExtraireTalonTests(SimpleTestCase):

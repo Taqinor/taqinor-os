@@ -51,6 +51,7 @@ import ast
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from django.apps import apps as registre_apps
@@ -202,9 +203,13 @@ def _chaine_pointee(noeud):
     return '.'.join(reversed(morceaux))
 
 
-def symboles_reclames(dossier, module_app):
-    """``{symbole: {fichiers}}`` — ce que les migrations de l'app lisent dans son
-    propre ``models.py``.
+def symboles_reclames(dossiers, module_app):
+    """``{symbole: {fichiers}}`` — ce que des migrations GELÉES lisent dans le
+    ``models.py`` de l'app visée.
+
+    ``dossiers`` = tous les dossiers d'app à balayer : celui de l'app suffit
+    presque toujours, mais une migration d'une AUTRE app peut parfaitement
+    référencer ce ``models.py`` — on ne le suppose donc pas.
 
     ``module_app`` est le chemin d'import de l'app (``AppConfig.name``, donc
     ``'apps.pos'`` ici) : jamais reconstruit à partir du label, pour qu'une app
@@ -219,10 +224,12 @@ def symboles_reclames(dossier, module_app):
     """
     cible = '%s.models' % module_app
     reclames = {}
-    dossier_migrations = dossier / 'migrations'
-    if not dossier_migrations.is_dir():
-        return reclames
-    for chemin in sorted(dossier_migrations.glob('*.py')):
+    fichiers = []
+    for dossier in dossiers:
+        dossier_migrations = Path(dossier) / 'migrations'
+        if dossier_migrations.is_dir():
+            fichiers += sorted(dossier_migrations.glob('*.py'))
+    for chemin in fichiers:
         try:
             arbre = ast.parse(chemin.read_text(encoding='utf-8'))
         except (SyntaxError, UnicodeDecodeError):
@@ -745,6 +752,15 @@ class Command(BaseCommand):
     help = ('Coquille une app parquée (SOLMVP2) : migration d\'état seul, '
             'models.py vide, apps.py minimal, reste du dossier supprimé, '
             'urls/beat/e2e nettoyés. --dry-run n\'écrit rien.')
+    # AUCUN system check avant de tourner : cette commande est justement l'outil
+    # qui NETTOIE ``erp_agentique/urls.py``. Le check ``urls.E…`` importe
+    # ROOT_URLCONF, donc l'``include('apps.<x>.urls')`` d'une app dont la
+    # surface vient de partir — il échouerait AVANT que la commande ait pu le
+    # retirer, et bloquerait toutes les apps suivantes (ordre inversé). La
+    # garantie de non-régression est ailleurs, et plus forte : la vérification À
+    # FROID du graphe de migrations (``verifier_graphe``) avant toute
+    # suppression, puis ``manage.py check`` en fin de lane.
+    requires_system_checks = []
 
     def add_arguments(self, analyseur):
         analyseur.add_argument('label', nargs='?',
@@ -817,6 +833,19 @@ class Command(BaseCommand):
         """Chemin d'IMPORT de l'app (``apps.pos``) — jamais déduit du label."""
         return registre_apps.get_app_config(label).name
 
+    def _dossiers_apps(self, dossier):
+        """Tous les dossiers d'app INSTALLÉE (+ celui visé, toujours en tête).
+
+        Sert au balayage des migrations gelées : le ``models.py`` de l'app visée
+        peut être référencé par la migration d'une autre app.
+        """
+        dossiers = [dossier]
+        for config in registre_apps.get_app_configs():
+            chemin = Path(config.path)
+            if chemin != dossier:
+                dossiers.append(chemin)
+        return dossiers
+
     @property
     def _racine_backend(self):
         return Path(settings.BASE_DIR)
@@ -848,7 +877,8 @@ class Command(BaseCommand):
         # Le TALON d'abord : analyse purement TEXTUELLE des migrations, donc
         # elle refuse AVANT tout import de migration (un symbole disparu ferait
         # sinon exploser le chargement du graphe avec une erreur illisible).
-        reclames = symboles_reclames(dossier, self._module_app(label))
+        reclames = symboles_reclames(self._dossiers_apps(dossier),
+                                     self._module_app(label))
         talon, manquants, bloquants = extraire_talon(
             (dossier / 'models.py').read_text(encoding='utf-8'), reclames)
         if manquants or bloquants:
@@ -1041,30 +1071,43 @@ class Command(BaseCommand):
             rendre_models_py(label, plan['talon'], plan['reclames']),
             encoding='utf-8')
         (dossier / 'apps.py').write_text(rendre_apps_py(infos), encoding='utf-8')
+        # La surface de l'app est ÉCARTÉE, pas encore supprimée : la
+        # vérification à froid fait un ``django.setup()`` complet, qui importe
+        # ``admin.py`` (autodiscover) et le ``ready()`` des autres apps — elle
+        # doit donc voir la coquille TERMINÉE, sinon un ``admin.py`` encore
+        # présent échoue sur le models.py réduit au talon. Un échec remet tout
+        # en place depuis cette quarantaine.
+        quarantaine = Path(tempfile.mkdtemp(prefix='parquer_app_%s_' % label))
+        ecartes = []
+        for chemin in plan['a_supprimer']:
+            if not chemin.exists():
+                continue
+            cible = quarantaine / chemin.name
+            shutil.move(str(chemin), str(cible))
+            ecartes.append((cible, chemin))
         # Bytecode périmé : un .pyc d'un module supprimé reste importable.
         for cache in sorted(dossier.rglob('__pycache__')):
             shutil.rmtree(cache, ignore_errors=True)
         erreur = self.verifier_graphe(plan)
         if erreur:
+            for cible, origine in reversed(ecartes):
+                shutil.move(str(cible), str(origine))
             for chemin, contenu in sauvegarde.items():
                 chemin.write_text(contenu, encoding='utf-8')
             if not plan['migration_deja_la'] \
                     and plan['fichier_migration'].is_file():
                 plan['fichier_migration'].unlink()
+            shutil.rmtree(quarantaine, ignore_errors=True)
             raise CommandError(
                 '%s : le graphe de migrations ne charge PLUS dans un processus '
-                'neuf — models.py, apps.py et la migration-coquille ont été '
-                'REMIS en l\'état, rien n\'a été supprimé.\n%s\n'
-                'Cause habituelle : une migration gelée référence un symbole de '
-                'models.py que le talon ne couvre pas (core/parked.py §talon).'
-                % (label, erreur))
-        for chemin in plan['a_supprimer']:
-            if not chemin.exists():
-                continue  # __pycache__ déjà purgé avant la vérif à froid
-            if chemin.is_dir():
-                shutil.rmtree(chemin)
-            else:
-                chemin.unlink()
+                'neuf — le dossier, models.py, apps.py et la migration-coquille '
+                'ont été REMIS en l\'état : RIEN n\'a été supprimé.\n%s\n'
+                'Causes habituelles : une migration gelée référence un symbole '
+                'de models.py que le talon ne couvre pas (core/parked.py '
+                '§talon), ou une AUTRE app encore complète importe les modèles '
+                'de celle-ci (la coquiller d\'abord — ordre de '
+                'core.parked.GROUPES).' % (label, erreur))
+        shutil.rmtree(quarantaine, ignore_errors=True)
         for cache in sorted(dossier.rglob('__pycache__')):
             shutil.rmtree(cache, ignore_errors=True)
         self._ecrire_cablage(plan)
