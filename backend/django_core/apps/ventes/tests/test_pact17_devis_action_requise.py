@@ -154,11 +154,20 @@ class Pact17ActionRequiseSelectorTests(TestCase):
         self.assertEqual(self._ids('expirant_bientot'), [])
         self.assertIn(devis.id, self._ids('envoyes_sans_reponse'))
 
-    def test_engagement_prime_sur_tout_et_porte_son_brouillon(self):
+    def test_engagement_prime_sur_la_cadence_et_porte_son_brouillon(self):
+        """CAD138 — l'engagement passe devant la simple cadence, jamais
+        devant une échéance qui tombe.
+
+        Le décor portait une `date_validite` à J+3 et attendait que
+        l'engagement gagne quand même : c'est exactement l'ordre que CAD138 a
+        INVERSÉ (« une date de validité qui tombe dans trois jours est une
+        urgence DATÉE ; un drapeau de comportement ne l'est plus après trois
+        semaines »). Le devis n'a donc plus d'échéance proche, et le cas
+        « échéance devant engagement » est vérifié juste en dessous.
+        """
         devis = self._devis(
             f'DEV-{MONTH}-P1708', statut=Devis.Statut.ENVOYE,
-            date_envoi=timezone.now() - timedelta(days=6),
-            date_validite=self.today + timedelta(days=3))
+            date_envoi=timezone.now() - timedelta(days=6))
         ShareLink.objects.create(
             company=self.company, devis=devis, view_count=4,
             engagement_triggers_fired=['reopened_3x'])
@@ -172,6 +181,22 @@ class Pact17ActionRequiseSelectorTests(TestCase):
         self.assertIn(devis.reference, brouillon)
         # Un brouillon part TEL QUEL dans WhatsApp : jamais de montant dedans.
         self.assertNotIn('MAD', brouillon)
+
+    def test_une_echeance_proche_passe_DEVANT_l_engagement(self):
+        """CAD138 — le même devis, avec une validité à J+3, quitte la file
+        d'engagement pour « expirant bientôt » : le signal DATÉ gagne."""
+        devis = self._devis(
+            f'DEV-{MONTH}-P1710', statut=Devis.Statut.ENVOYE,
+            date_envoi=timezone.now() - timedelta(days=6),
+            date_validite=self.today + timedelta(days=3))
+        ShareLink.objects.create(
+            company=self.company, devis=devis, view_count=4,
+            engagement_triggers_fired=['reopened_3x'])
+        board = devis_action_requise(self.company, today=self.today)
+        self.assertEqual(board['buckets']['expirant_bientot']['ids'],
+                         [devis.id])
+        self.assertEqual(board['buckets']['engagement_relance']['ids'], [])
+        self.assertNotIn(devis.id, board['wa_drafts'])
 
     def test_lien_sans_declencheur_ne_cree_aucune_file_engagement(self):
         devis = self._devis(
