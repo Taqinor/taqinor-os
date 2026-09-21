@@ -176,6 +176,14 @@ import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
+import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
+import {
+  createCalageFondUi,
+  deltaMetresFond,
+  gesteFond,
+  rotationMolette,
+  surLeFond,
+} from './roofPro11/calageFondUi'; // CALX108 câblage
 import { createScene3d, projectPlanView, panelQuadsLngLat } from './roofPro11/scene3d';
 import {
   createOptimizer,
@@ -1486,6 +1494,31 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     },
   });
 
+  // ═══════ CALX108 câblage — CALER LE FOND : LA VIGNETTE ET SA SÉQUENCE ═══════
+  // `mapDraw` portait déjà le mode « Caler le fond » et son `pointCalageFond`, mais
+  // l'hôte ne pouvait produire AUCUN `pointImage` : l'image du fond n'était affichée
+  // nulle part cliquable. `calageFondUi.ts` crée sa vignette (patron `obstaclesUi`),
+  // ramène chaque clic aux PIXELS NATURELS du fichier (facteur de réduction) et annonce
+  // chaque étape ; le clic carte lui est routé plus bas, comme pour le mode arêtes.
+  //
+  // La RESSOURCE du fond (URL servie + taille naturelle) n'existe que là où la page hôte
+  // l'a passée : on la mémorise au passage, c'est la seule source du fichier à afficher.
+  let ressourceFondCourante: RessourceFond = {};
+  const calageFondUi = createCalageFondUi({
+    hote: () => document.getElementById('rp9-fond-calage'),
+    fond: () => ({
+      url: ressourceFondCourante.url ?? null,
+      tailleImage: ressourceFondCourante.tailleImage ?? null,
+    }),
+    modeOuvert: () => mapDraw.modeCalageFond(),
+    poserPaire: (pointImage, ancre) => mapDraw.pointCalageFond(pointImage, ancre),
+  });
+  // La pastille « Caler le fond » appartient à `mapDraw` (son écouteur est posé AVANT
+  // celui-ci, donc le mode est déjà à jour quand on rafraîchit) : la vignette apparaît
+  // avec le mode et disparaît avec lui, sans qu'aucun des deux modules pilote l'autre.
+  document.getElementById('rp9-fond-chip')
+    ?.addEventListener('click', () => calageFondUi.rafraichir()); // CALX108 câblage
+
   // ═══════════ CALX122 câblage — L'OMBRAGE D'UN MODULE, AU SURVOL ═══════════
   // `shadingUi.moduleShadeTooltip(cellIndex)` rendait un texte prêt à afficher depuis
   // CALX122, et son en-tête disait lui-même que le câblage au survol restait un crochet :
@@ -2496,9 +2529,41 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   // — Mode obstacle / glissé-dessin / glissé-déplacement : voir roofPro11/obstaclesUi.ts —
 
+  // ═══════ CALX108 câblage — AJUSTER LE FOND : Alt + glissé, Alt + molette ═══════
+  // `mapDraw.ajusterFond` existait sans AUCUN appelant : une fois le plan calé, plus
+  // rien ne permettait de le décaler d'un mètre ni de le pincer d'un degré. Le geste est
+  // RÉSERVÉ (Alt, convention de dessin nommée dans l'aide de l'atelier, CALX128) : sans
+  // Alt, le pan, le dessin d'obstacle, la disposition et le zoom gardent la main, à
+  // l'identique. Le fond étant une image raster, MapLibre n'en rend aucune « feature » :
+  // le survol se décide sur ses QUATRE coins, ceux que le calage produit.
+  let glisseFond: LngLat | null = null;
+  function coinsFondCourant(): LngLat[] | null {
+    const fond = mapDraw.fond();
+    if (!fond || fond.kind !== 'plan' || !fond.calage) return null;
+    const derive = coinsDuPlanCale(fond.calage, ressourceFondCourante.tailleImage ?? null);
+    return derive.ok ? [...derive.coins] : null;
+  }
+  function etatGesteFond(lngLat: LngLat, altEnfoncee: boolean) {
+    return {
+      altEnfoncee,
+      surFond: surLeFond(lngLat, coinsFondCourant()),
+      modeObstacle: obstacleMode,
+      modeDisposition: ctx.layoutMode,
+      modeCalage: mapDraw.modeCalageFond(),
+    };
+  }
+
   // — Interactions carte —
   map.on('mousedown', (e) => {
     suppressClick = false;
+    const lngLatAppui: LngLat = [e.lngLat.lng, e.lngLat.lat];
+    // CALX108 câblage — AVANT tout le reste : le geste réservé du fond ne doit jamais
+    // partir en dessin d'obstacle ni en glissé de sommet.
+    if (gesteFond(etatGesteFond(lngLatAppui, Boolean(e.originalEvent?.altKey))) === 'deplacer') {
+      glisseFond = lngLatAppui;
+      map.dragPan?.disable?.();
+      return;
+    }
     if (obstacleMode) {
       beginDraw([e.lngLat.lng, e.lngLat.lat], e.point);
       return;
@@ -2508,14 +2573,41 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     tryBeginMove([e.lngLat.lng, e.lngLat.lat], e.point);
   });
   map.on('mousemove', (e) => {
+    if (glisseFond) {
+      // CALX108 câblage — translation INCRÉMENTALE : l'échelle et la rotation retenues
+      // ne bougent pas (`deplacerCalage` ne touche qu'aux deux ancres).
+      const arrivee: LngLat = [e.lngLat.lng, e.lngLat.lat];
+      const delta = deltaMetresFond(glisseFond, arrivee);
+      glisseFond = arrivee;
+      suppressClick = true; // un glissé n'est pas un clic de tracé
+      mapDraw.ajusterFond({ estM: delta.estM, nordM: delta.nordM }); // CALX108 câblage
+      return;
+    }
     if (drawing) moveDraw([e.lngLat.lng, e.lngLat.lat]);
     else if (moveVertex) doVertexMove([e.lngLat.lng, e.lngLat.lat]);
     else if (moveObs) doMove([e.lngLat.lng, e.lngLat.lat]);
   });
   map.on('mouseup', (e) => {
+    if (glisseFond) {
+      glisseFond = null;
+      map.dragPan?.enable?.();
+      return;
+    }
     if (drawing) endDraw([e.lngLat.lng, e.lngLat.lat], e.point);
     else if (moveVertex) endVertexMove();
     else if (moveObs) endMove();
+  });
+  map.on('wheel', (e) => {
+    // CALX108 câblage — sans Alt (ou hors du fond), `rotationMolette` rend 0 et la
+    // molette reste EXACTEMENT le zoom de la carte.
+    const original = (e.originalEvent ?? null) as WheelEvent | null;
+    const rotationDeg = rotationMolette(
+      original?.deltaY ?? 0,
+      etatGesteFond([e.lngLat.lng, e.lngLat.lat], Boolean(original?.altKey)),
+    );
+    if (!rotationDeg) return;
+    e.preventDefault();
+    mapDraw.ajusterFond({ rotationDeg }); // CALX108 câblage
   });
   map.on('touchstart', (e) => {
     suppressClick = false;
@@ -2663,6 +2755,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       edgesUi.handleMapClick(lngLat); // CALX94 câblage
       return;
     }
+    // CALX108 câblage — mode « Caler le fond » ouvert : le clic DÉSIGNE l'ancre du point
+    // déjà cliqué sur le plan, et n'est jamais un geste de tracé ni une sélection. Sortie
+    // anticipée MÊME quand aucun point de plan n'attend (le module l'a dit dans la zone
+    // d'annonces) : un clic pendant un calage ne doit pas poser un sommet par surprise.
+    if (calageFondUi.clicCarte(lngLat)) return; // CALX108 câblage
     if (closed) {
       // sélection/désélection d'un obstacle existant
       selectObstacle(obstacleAtPoint(e.point));
@@ -4030,6 +4127,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // n'avait AUCUN appelant : un dossier rouvert perdait son calque de fond.
     fondDuDocument: () => fondDuDocument(), // CALX107 câblage
     motifFondRefuse: () => motifFondRefuse(), // CALX107 câblage
-    poserFond: (fond, ressource) => mapDraw.setFond(fond, ressource), // CALX107 câblage
+    // CALX108 câblage — la ressource est MÉMORISÉE au passage : c'est la seule surface
+    // qui porte l'URL servie et la taille naturelle du fichier, dont la vignette de
+    // calage a besoin pour ramener un clic aux pixels du plan.
+    poserFond: (fond, ressource) => {
+      ressourceFondCourante = ressource ?? {}; // CALX108 câblage
+      calageFondUi.rafraichir(); // CALX108 câblage
+      return mapDraw.setFond(fond, ressource); // CALX107 câblage
+    },
   });
 }

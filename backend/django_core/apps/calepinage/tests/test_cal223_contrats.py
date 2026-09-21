@@ -217,6 +217,15 @@ SANS_PRODUCTEUR_PUR = {
         'le résumé de série sont affirmés sans base, depuis un petit fichier '
         'synthétique, par '
         'apps/calepinage/tests/test_calx62_meteo_fichier.py',
+
+    # CALX107
+    'calepinage_plan_importe.json':
+        "l'URL servie et la taille en pixels du plan de fond : son producteur "
+        'résout une records.Attachment rattachée au calepinage et interroge '
+        "le magasin d'objets, donc il exige la base — la lecture PURE des "
+        'dimensions (en-tête PNG/JPEG) et les quatre refus nommés sont '
+        'affirmés sans base par '
+        'apps/calepinage/tests/test_calx107_plan_importe.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur

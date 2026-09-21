@@ -1,0 +1,28 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/plan-importe/",
+  "pourquoi": "CALX107 câblage — L'URL ET LA TAILLE DU PLAN DE FOND, ENFIN PUBLIÉES.\n\nLE TROU. Le document v2 peut porter un calque de fond (`underlay`, contrat CALX86) de genre `plan` : il désigne alors la PIÈCE JOINTE qui porte le fichier (`attachmentId`). L'atelier sait peindre ce fond (`roofPro11/underlay.ts` + `mapDraw.setFond`) mais il ne parle jamais à Django : il attend de la page hôte une `RessourceFond` (`url`, `tailleImage`). Or AUCUNE porte ne publiait ni l'URL ni les dimensions de cette pièce — `POST calepinages/<pk>/importer-plan/` rend un contour et ne conserve même pas le fichier (`contract_samples/calepinage_import_plan.json` : « le fichier n'est pas conservé »), et `GET calepinages/<pk>/photos/` ne sert que les PhotoSite. Un dossier rouvert avec un fond de genre `plan` restait donc muet, alors que le document le portait.\n\nLES CONVENTIONS SONT CELLES DE `photo_en_ligne` (`services/photos.py`, CAL52/CAL53). `url` est PRÉ-SIGNÉE (même magasin d'objets que `roof-image`) et vaut `''` quand le magasin ne répond pas : une URL absente est une URL absente, jamais un chemin disque et jamais un lien mort présenté comme valide.\n\nAUCUNE DIMENSION N'EST DEVINÉE (D-CALX 7). `largeur` et `hauteur` sont les pixels NATURELS du fichier, LUS dans son en-tête (PNG : bloc IHDR ; JPEG : segment SOF). Un fichier illisible, absent du magasin ou d'un format dont l'en-tête ne porte pas ses dimensions rend `largeur: null` et `hauteur: null`, avec `motif` qui DIT ce qui manque — jamais un gabarit supposé. Sans dimensions, `placementDuFond` refuse le plan avec son propre motif (`MOTIF_PLAN_NON_CALE`) au lieu d'étaler l'image au hasard.\n\nCE QUE CETTE PORTE NE FAIT PAS. Elle n'écrit RIEN (lecture pure : ni statut, ni document, ni ligne de journal) et elle ne cale rien : l'échelle d'un plan vient des deux points et de la distance réelle SAISIE (CALX108), jamais du fichier.\n\nLES QUATRE REFUS (404), CHACUN NOMMANT SON CHAMP dans `champ` : `underlay` (le document ne demande aucun fond), `kind` (le fond est une photo de site — sa pièce et son calage à quatre coins sont servis par `GET …/photos/`), `attachmentId` (le fond de genre `plan` ne désigne aucune pièce) et `attachmentId` encore quand la pièce désignée n'est pas rattachée À CE calepinage (la pièce est cherchée sur le calepinage résolu par le serveur et bornée société : une pièce d'une autre société ou d'un autre dossier est INTROUVABLE, jamais « interdite »).",
+  "exemple": {
+    "calepinage": 12,
+    "attachment": 481,
+    "filename": "plan-masse-bouskoura.png",
+    "mime": "image/png",
+    "url": "https://minio.taqinor.ma/erp-uploads/roofs/3/calepinage-12-plan-9f2c.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=3600",
+    "largeur": 2480,
+    "hauteur": 1754,
+    "motif": ""
+  },
+  "exemple_taille_inconnue": {
+    "calepinage": 12,
+    "attachment": 482,
+    "filename": "plan-masse-bouskoura.dxf",
+    "mime": "application/dxf",
+    "url": "https://minio.taqinor.ma/erp-uploads/roofs/3/calepinage-12-plan-4b71.dxf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=3600",
+    "largeur": null,
+    "hauteur": null,
+    "motif": "Les dimensions de « plan-masse-bouskoura.dxf » ne sont pas lisibles dans son en-tête (PNG et JPEG le portent) : le fond ne peut pas être étendu sans les inventer."
+  },
+  "exemple_refus_photo": {
+    "detail": "Ce calepinage n’a pas de plan importé en fond : son calque de fond est une photo de site, servie par GET calepinages/<pk>/photos/ avec son calage à quatre coins.",
+    "champ": "kind"
+  }
+}

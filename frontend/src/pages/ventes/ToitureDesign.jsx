@@ -245,6 +245,32 @@ function bankableFromDevis(devis) {
   }
 }
 
+// CALX104/CALX403 câblage — les réglages d'atelier PORTÉS PAR LE CONTEXTE agrégé
+// (mode DEVIS). Le mode DEVIS tient une garantie testée — « un seul appel : rien
+// n'est complété par une requête annexe » — donc `zones_types` et `degagements`
+// voyagent DANS `devis_design_context` au lieu d'une seconde porte. `null` quand
+// le contexte ne porte AUCUNE des deux (serveur plus ancien) : l'atelier ne
+// propose alors aucun gabarit et ne préremplit aucune cote, exactement comme
+// avant — rien n'est inventé côté écran.
+function reglagesAtelierDuContexte(contexte) {
+  const zonesTypes = contexte?.zones_types
+  const degagements = contexte?.degagements
+  if (zonesTypes == null && degagements == null) return null
+  return { zones_types: zonesTypes ?? null, degagements: degagements ?? null }
+}
+
+// CALX107 câblage — la taille du plan de fond, telle que `GET …/plan-importe/`
+// la PUBLIE (pixels naturels lus dans l'en-tête du fichier), ou `null`. Aucune
+// étendue n'est supposée : sans dimensions, l'atelier refuse de poser le plan
+// avec son propre motif plutôt que de l'étaler au hasard (D-CALX 7).
+function tailleImagePlan(plan) {
+  const largeur = plan?.largeur
+  const hauteur = plan?.hauteur
+  if (!Number.isFinite(largeur) || !Number.isFinite(hauteur)) return null
+  if (largeur <= 0 || hauteur <= 0) return null
+  return { largeur, hauteur }
+}
+
 function httpMessage(status, responseData) {
   // QJ17 — the backend returns a structured French error for 422 (composition
   // pre-flight failures). Surface it directly instead of a generic message.
@@ -532,10 +558,12 @@ export default function ToitureDesign({ mode = 'lead' }) {
     // que le document la portait (`underlay`). L'atelier ne parle jamais à Django, donc
     // c'est l'écran qui va chercher le FICHIER (URL pré-signée) et le lui redonne.
     //
-    // Seul le genre « photo » est servi ici : c'est le seul dont l'API donne l'URL et le
-    // calage (`GET …/photos/`, CAL52/CAL53). Un fond de genre « plan » désigne une pièce
-    // jointe dont AUCUNE porte ne publie ni l'URL ni la taille en pixels — on le DIT, on
-    // ne l'invente pas.
+    // Les DEUX genres sont servis. Une « photo » de site porte son URL et son calage à
+    // quatre coins (`GET …/photos/`, CAL52/CAL53) ; un « plan » importé désigne une pièce
+    // jointe, dont `GET …/plan-importe/` (CALX107) publie l'URL servie et la taille en
+    // PIXELS NATURELS. Une taille inconnue reste inconnue : `tailleImage` vaut alors
+    // `null` et le constructeur refuse le plan avec SA phrase, plutôt que d'étaler
+    // l'image sur une étendue supposée.
     // Le MOTIF d'un fond non affiché vient TOUJOURS du constructeur (`poserFond`) : une
     // seule formulation dans tout l'atelier, jamais une phrase recopiée ici.
     async function poserFondDuDocument(api) {
@@ -555,6 +583,17 @@ export default function ToitureDesign({ mode = 'lead' }) {
           const photo = (res?.data?.photos ?? [])
             .find((p) => String(p?.id) === String(fond.photoSiteId))
           if (photo?.url) ressource = { url: photo.url, calagePhoto: photo.calage }
+        } catch {
+          /* pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché */
+        }
+      } else if (fond.kind === 'plan' && fond.attachmentId && calepinageId) {
+        // CALX107 câblage — la pièce jointe du plan : URL servie + pixels naturels.
+        try {
+          const res = await calepinageApi.calepinages.planImporte(calepinageId)
+          const plan = res?.data
+          if (plan?.url) {
+            ressource = { url: plan.url, tailleImage: tailleImagePlan(plan) }
+          }
         } catch {
           /* pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché */
         }
@@ -751,11 +790,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
         referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
           ? ctx.geometrie.contour_client : null,
         bankable,
-        // CALX104/CALX403 — PAS de lecture des réglages société ici : le mode DEVIS
-        // tient une garantie TESTÉE (« un seul appel : rien n'est complété par une
-        // requête annexe », `ToitureDesign.test.jsx`). Les gabarits d'obstacle et la
-        // largeur d'allée sont branchés dans les modes lead et calepinage ; les câbler
-        // ici demande d'abord que `devis_design_context` porte ces deux sections.
+        // CALX104/CALX403 câblage — les gabarits d'obstacle (`zones_types`) et la
+        // largeur d'allée (`degagements`) de la société, lus DANS le contexte agrégé
+        // (`devis_design_context`, PACT10) : AUCUNE requête annexe n'est ajoutée ici,
+        // la garantie testée du mode DEVIS (« un seul appel ») reste vraie. Transmis
+        // TELS QUELS ; `null` = le contexte ne les porte pas, donc aucun gabarit
+        // proposé et aucune cote de repli.
+        reglagesAtelier: reglagesAtelierDuContexte(ctx),
         onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
       })
       // PV23bis — pré-remplit la barre de recherche d'adresse depuis

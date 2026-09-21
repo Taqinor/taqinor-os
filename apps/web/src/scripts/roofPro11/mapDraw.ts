@@ -33,6 +33,7 @@ import {
 } from './underlay';
 import {
   aideClavier,
+  aideGestesSouris,
   createClavier,
   deplacerCurseur,
   pasCurseurM,
@@ -1397,7 +1398,9 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
   const gestesParMode = new Map<ModeClavier, GestesAtelier>();
 
   function aideRaccourcis(): LigneAide[] {
-    return aideClavier(modeClavierCourant);
+    // CALX108 — les gestes souris à modificateur (Alt + glissé/molette sur le fond) sont
+    // invisibles sans l'aide : ils y entrent par leur propre table (`clavier.ts`).
+    return aideClavier(modeClavierCourant).concat(aideGestesSouris(modeClavierCourant));
   }
 
   const clavier = createClavier({
