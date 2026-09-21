@@ -6,7 +6,7 @@ import {
   ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
-  Route, Layers, Trash2,
+  Layers, Trash2,
   DatabaseBackup, HardDriveDownload, Gauge, Cable, Sun, History,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
@@ -131,14 +131,6 @@ const ClotureAchatsWizardPage = lazy(() => import('../../pages/parametres/Clotur
 // — nav ET route déclarées ensemble (motif PACT150, même précédent que
 // NTLOG35/36 ci-dessous).
 const GammesMarquesPage = lazy(() => import('../../pages/parametres/GammesMarquesPage'))
-// NTLOG35 — Paramètres → Transport (`transport.ParametresTransport`,
-// singleton par société) : seuil d'alerte retard (NTLOG25), preuve de
-// livraison obligatoire (NTLOG9), seuil anomalies d'affrètement (NTLOG28).
-// Écriture réservée à un porteur de rôle (repli légataire `is_responsable` —
-// le backend applique déjà `write_permission='transport_responsable'`) ;
-// lecture ouverte à tout rôle interne — nav ET route déclarées ensemble
-// (motif PACT150 : ne jamais répéter l'oubli de menu d'AchatsParametresPage).
-const TransportParametresPage = lazy(() => import('../../pages/parametres/TransportParametresPage'))
 // NTMFG29 — Paramètres > Atelier MRP : SOL5 — nav + route DÉPLACÉES sous le
 // module propriétaire (`features/mrp/module.config.jsx`). Déclarées ici, elles
 // vivaient dans une section `parametres` SANS clé de module : ni le gating
@@ -214,8 +206,6 @@ const config = {
       { to: '/parametres/achats', label: 'Achats', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // PVMRQ — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
       { to: '/parametres/gammes', label: 'Gammes & marques', icon: <Layers size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
-      // NTLOG35 — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
-      { to: '/parametres/transport', label: 'Transport', icon: <Route size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // PACT140 — Objets métier personnalisés (l'écran des enregistrements
       // `/objets/:code` s'atteint depuis cette page, un lien par objet).
       { to: '/parametres/objets-personnalises', label: 'Objets personnalisés', icon: <Boxes size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
@@ -258,7 +248,6 @@ const config = {
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats/cloture', component: ClotureAchatsWizardPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/gammes', component: GammesMarquesPage, roles: ['responsable', 'admin'] },
-    { path: '/parametres/transport', component: TransportParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/tiers-doublons', component: TiersDoublonsPage, roles: ['admin'] },
     { path: '/parametres/ia', component: IaDiagnostic, roles: ['admin'] },
     { path: '/parametres/objets-personnalises', component: ObjetsPersonnalisesPage, roles: ['admin'] },
