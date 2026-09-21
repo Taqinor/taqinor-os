@@ -54,6 +54,16 @@ const crud = makeResourceFactory(api, '/calepinage')
 // qui rend une seconde forme d'URL mécaniquement impossible.
 const pivot = (id) => `/calepinage/calepinages/${id}/`
 
+// CALX37 — corps du POST de duplication d'une variante : `nom` saisi prime ;
+// sans lui, un nom dérivé de la source évite un POST refusé pour nom vide.
+// Fonction PURE (aucun appel réseau) : la garde CAL33 exige que chaque
+// `api.<verbe>(` soit le corps direct d'une fonction fléchée.
+function corpsDeCopieVariante(source, nom) {
+  const src = source ?? {}
+  const nomFinal = nom || (src.nom ? `${src.nom} (copie)` : 'Copie de variante')
+  return { nom: nomFinal, roof_layout: src.roof_layout, resultat: src.resultat }
+}
+
 const calepinageApi = {
   /* ── Le calepinage lui-même (CAL16 liste + création, CAL17 détail agrégé) ──
      Les filtres de liste sont ceux RÉELLEMENT servis par CAL16 : `lead`,
@@ -113,13 +123,8 @@ const calepinageApi = {
     // neuve avec ce contenu. `nom` (saisi par l'utilisateur) prime ; sans lui,
     // un nom dérivé de la source évite un POST refusé pour nom vide.
     dupliquerVariante: (id, varianteId, nom) =>
-      api.get(`${pivot(id)}variantes/${varianteId}/`).then((res) => {
-        const source = res?.data ?? {}
-        const nomFinal = nom || (source.nom ? `${source.nom} (copie)` : 'Copie de variante')
-        return api.post(`${pivot(id)}variantes/`, {
-          nom: nomFinal, roof_layout: source.roof_layout, resultat: source.resultat,
-        })
-      }),
+      api.get(`${pivot(id)}variantes/${varianteId}/`)
+        .then((res) => api.post(`${pivot(id)}variantes/`, corpsDeCopieVariante(res?.data, nom))),
 
     // CAL21 — comparatif des variantes, conforme à
     // `contract_samples/variantes_comparer.json`. Les ÉCARTS viennent du
