@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: d60522126f7d8125c8ebe2bc4fcc9af0779d8231fd5b619e673904e3fc5908ca
-Plan fingerprint: da2503f508c8cdb44ff1eaab762c0d9914b3d3cc5bfcbce8721434f9106f8519
+Structure fingerprint: 49f6634ec6aa1bccd39eaa58ca3e99e7bfaa3fcc4e8caaf19f7f5c53a5279fd4
+Plan fingerprint: d1979dfea7c541fde906b7fc892e824b777ac41492454c56a7ea07eb549b8749
 
 
 
@@ -316,6 +316,10 @@ Model counts are the real class count across `models*.py`/`models/`.
   `core` reads its models. `core` remains a base layer (import-linter).
 - **authentication** (SOLMVP30b) — `CustomUser.poste_ref` (rh) removed.
 
+### crm / parametres / ventes — Groupe CAD (cadence de suivi client, 21/09/2026)
+
+- **Groupe CAD — cadence de suivi client, vague 1 (21/09/2026, 106/184 tâches ; vague 2 = 68 tâches dépendant des racines CAD22/35/75/83/87/88/93/149, CADM1-9 manuelles)** : modules neufs `apps/crm/cadence_temps.py` (naissance/report des touches, un appel et un message par jour, WhatsApp seul, fixe), `cadence_absence.py` + `PeriodeAbsence` (absences déclarées), `cadence_reveil_saison.py` (réveil saisonnier), `mesure_cadence.py` (KPI touche × heure × jour × canal, `GET crm/leads/mesure-cadence/`), `signaux.py` (comportement/fraîcheur du score), `panneau_appel.py` (`GET crm/leads/<id>/panneau-appel/`, contrat `panneau_appel.json`), `srm_regions.py` (12 SRM), `signup_hooks.py` (crm + notifications : fêtes mobiles, dossiers 82-21/FDA), `dsr_provider.py` (politique d'anonymisation) ; champs du script d'appel vagues 1+2 avec leur question en `help_text` (migrations crm 0104-0109), `RelanceEtape.outcome`, `Lead.date_creation_origine` ; `apps/parametres` : `models_messages.py` (darija 27/27, `{marque}`, porte de sortie, mentions loi 31-08), `models_relance.py` (`samedi_ok`, créneaux par type, cadence « deuxième affaire », Ramadan 09-15), `models_company.py` (lien Google, paliers d'escalade), `models_realisations.py` (lien vidéo) — migrations parametres 0097-0102 ; `apps/ventes` : signature au domicile (migration 0118), `courbes_journalieres.py`/`etude_horaire.py` (correctifs de courbe, recharge nocturne, VE), `quote_engine/pricing.py::_resolve_tranches` (tout distributeur nommé) ; frontend `pages/parametres/CadenceRelanceEditor.jsx` (ajout/suppression de barreau, samedi/dimanche, onglet Générique, erreurs sous le champ, `lib/feriesMaroc.js`), `components/ChatterTimeline.jsx` (6 issues), `relances/RelanceEtapeRow.jsx`, e2e mobile/tablet (`/crm/cockpit`, `/crm/relances`).
+
 ### calepinage — Groupe CALX (lots 1 « rendre visible et opérant », 3 « simulation sourcée » et 4 « électrique pro », 21/09/2026 ; complète la ligne du tableau ci-dessus)  *( `/api/django/calepinage/` )*
 - **Forme d'URL unique (CAL233)** : l'objet métier est servi sous `calepinages/<pk>/…` (sous-ressources en `@action` du routeur DRF, `SimpleRouter`), les réglages société sous `parametres/…`, et le moteur — un calcul SANS état — sous `moteur/calculer|pose|resultat/<job_id>/`. `tests/test_structure_urls.py` refuse toute quatrième famille.
 - **Rattachement des `@action` — `views/rattachements.py` (CALX2)** : les dix sous-modules de `views/` qui posent une `@action` sur le `CalepinageViewSet` par affectation d'attribut de classe (`equipements`, `horizon`, `export_csv`, `bibliotheque`, `verrou`, `archivage`, `io_layout`, `pompage`, `simulation`, `reglementaire` — 13 actions) sont importés DEPUIS CE SEUL FICHIER ; `urls.py` l'importe une fois, AVANT `router.register` (DRF découvre les actions via `get_extra_actions()` au moment de l'enregistrement — un import posé après ne route rien). **Une action neuve s'AJOUTE en fin de `views/rattachements.py` avec son commentaire `# CALX<id>`, jamais au milieu, jamais réordonnée ; `urls.py` n'est plus rouvert par aucune tâche.**
@@ -535,12 +539,28 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (331)**
+**Done (353)**
 
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
 - `CAD14` — L'issue « Visite acceptée » n'a aucun libellé dans l'historique — ni dans le journal…
 - `CAD18` — Le lead qui répond au message d'identité AVANT l'appel J0+3 min ne reçoit jamais…
+- `CAD19` — Un lead du week-end voit trois jours de protocole s'écraser sur le lundi
+- `CAD20` — La règle « jamais plus d'un appel ET un message par jour » est écrite en français et…
+- `CAD21` — L'heure imposée d'une touche est effacée dès qu'elle est repoussée d'un jour
+- `CAD22` — Une touche naît déjà en retard, et le tableau de bord compte une faute
+- `CAD23` — [TRANCHÉ 21/09/2026 — le dimanche le PLUS PROCHE de J+5.]
+- `CAD24` — L'« Heure cible » des touches dominicales est un réglage qui s'enregistre sans effet…
+- `CAD25` — [TRANCHÉ 21/09/2026 — créneaux par type — messages 09:30, appels 17:30-18:30.]
+- `CAD28` — La reprise après visite part de la date PRÉVUE, jamais du retour réellement saisi
+- `CAD29` — Le champ « délai en minutes » annonce une limite 0-1439 que rien n'applique côté…
+- `CAD30` — La justesse du fuseau pendant le Ramadan dépend de la base tzdata de l'image de…
+- `CAD31` — La promesse « 5 minutes » ne surveille AUCUN lead publicitaire, et punit Meryem le…
+- `CAD32` — « WhatsApp uniquement » est saisi par le client et jamais lu par la cadence
+- `CAD33` — [TRANCHÉ 21/09/2026 — lead « WhatsApp uniquement » → dimanche en WhatsApp.]
+- `CAD34` — Un lead arrivé par téléphone, sans WhatsApp, n'a aucune cadence
+- `CAD35` — Aucune suspension globale quand Meryem est absente
+- `CAD36` — La docstring des cadences contredit le gabarit qu'elle décrit
 - `CAD37` — La branche Ramadan est MORTE par défaut : les appels sonnent de 09 h à 20 h en plein…
 - `CAD38` — La fenêtre de Ramadan par défaut (10 h-14 h) est deux heures plus étroite que la…
 - `CAD39` — [TRANCHÉ 21/09/2026 — Ramadan : fenêtre commune 09 h-15 h, pas de soirée.]
@@ -582,6 +602,12 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD95` — Joindre une courte vidéo à la preuve chantier J4
 - `CAD96` — Trois graphies de la marque dans la même conversation WhatsApp
 - `CAD102` — Après l'appel du filet resté sans réponse, l'ERP réclame un devis pour un client jamais…
+- `CAD103` — Un lead créé déjà « Contacté » n'entre dans aucun protocole, et rien ne le dit
+- `CAD104` — Un lead NEUF créé dans Odoo est refusé en silence par la cadence, et servi par l'écran…
+- `CAD105` — [TRANCHÉ 21/09/2026 — la sync Odoo démarre la cadence des leads neufs.]
+- `CAD106` — La fusion de deux fiches ne déplace PAS les relances : le doublon fusionné sort du…
+- `CAD107` — Un lead perdu qui revient : trois chemins, trois résultats, et le plus courant ne…
+- `CAD108` — [TRANCHÉ 21/09/2026 — l'étage 3 exclut le miroir Odoo, comme l'étage 2.]
 - `CAD109` — Le script d'appel ne dit ni que l'appel est commercial, ni d'où viennent les données
 - `CAD110` — Aucun message ne dit au client comment faire cesser les relances
 - `CAD113` — Dans l'éditeur de cadence, une erreur serveur s'affiche en toast générique
@@ -869,7 +895,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (275)**
+**Open — to build (253)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
@@ -886,24 +912,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD15` — Le journal d'appel de la fiche arrête des cadences sans rien annoncer
 - `CAD16` — Sur le DERNIER réveil (J60), « Pas de réponse » promet un réveil suivant qui n'existe…
 - `CAD17` — Cause commune : les phrases « suite » sont écrites PAR CADENCE, le comportement dépend…
-- `CAD19` — Un lead du week-end voit trois jours de protocole s'écraser sur le lundi
-- `CAD20` — La règle « jamais plus d'un appel ET un message par jour » est écrite en français et…
-- `CAD21` — L'heure imposée d'une touche est effacée dès qu'elle est repoussée d'un jour
-- `CAD22` — Une touche naît déjà en retard, et le tableau de bord compte une faute
-- `CAD23` — [TRANCHÉ 21/09/2026 — le dimanche le PLUS PROCHE de J+5.]
-- `CAD24` — L'« Heure cible » des touches dominicales est un réglage qui s'enregistre sans effet…
-- `CAD25` — [TRANCHÉ 21/09/2026 — créneaux par type — messages 09:30, appels 17:30-18:30.]
 - `CAD26` — « Rappelez-moi dans trois semaines » translate tout le plan de trois semaines, clôture…
 - `CAD27` — Une date de report dans le passé est acceptée et tire tout le plan en arrière
-- `CAD28` — La reprise après visite part de la date PRÉVUE, jamais du retour réellement saisi
-- `CAD29` — Le champ « délai en minutes » annonce une limite 0-1439 que rien n'applique côté…
-- `CAD30` — La justesse du fuseau pendant le Ramadan dépend de la base tzdata de l'image de…
-- `CAD31` — La promesse « 5 minutes » ne surveille AUCUN lead publicitaire, et punit Meryem le…
-- `CAD32` — « WhatsApp uniquement » est saisi par le client et jamais lu par la cadence
-- `CAD33` — [TRANCHÉ 21/09/2026 — lead « WhatsApp uniquement » → dimanche en WhatsApp.]
-- `CAD34` — Un lead arrivé par téléphone, sans WhatsApp, n'a aucune cadence
-- `CAD35` — Aucune suspension globale quand Meryem est absente
-- `CAD36` — La docstring des cadences contredit le gabarit qu'elle décrit
 - `CAD44` — [TRANCHÉ 21/09/2026 — agir en avance : Appeler/WhatsApp/Reporter ouverts, « Fait »…
 - `CAD46` — « Reporter au » et « À rappeler le… » déplacent TOUT le plan, et aucun écran ne le dit
 - `CAD47` — « Sauter » n'explique pas ce qu'il fait : Meryem peut croire qu'elle éteint la cadence
@@ -929,12 +939,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD99` — Afficher la liste des cadences échues (moitié écran de CAD75)
 - `CAD100` — Afficher les KPI touche × heure × jour × canal (moitié écran de CAD87)
 - `CAD101` — Le client envoie sa facture ou son adresse sur WhatsApp : aucun geste pour…
-- `CAD103` — Un lead créé déjà « Contacté » n'entre dans aucun protocole, et rien ne le dit
-- `CAD104` — Un lead NEUF créé dans Odoo est refusé en silence par la cadence, et servi par l'écran…
-- `CAD105` — [TRANCHÉ 21/09/2026 — la sync Odoo démarre la cadence des leads neufs.]
-- `CAD106` — La fusion de deux fiches ne déplace PAS les relances : le doublon fusionné sort du…
-- `CAD107` — Un lead perdu qui revient : trois chemins, trois résultats, et le plus courant ne…
-- `CAD108` — [TRANCHÉ 21/09/2026 — l'étage 3 exclut le miroir Odoo, comme l'étage 2.]
 - `CAD111` — Le message qui propose la visite part sans laisser aucune trace, et son lien wa.me…
 - `CAD112` — Deux onglets portent le même nom et montrent deux choses différentes
 - `CAD115` — La file qui lit les signaux est fermée à la personne qui relance
