@@ -27,6 +27,23 @@ export const ORDRE_CALQUES = [
 
 export const CALQUE_IDS = ORDRE_CALQUES.map((c) => c.id)
 
+/**
+ * CALX22x câblage — l'identifiant du calque « Électrique », qui vit dans la couche 3D
+ * du constructeur (`apps/web/src/scripts/roofPro11/electrique3d.ts::ID_CALQUE_ELECTRIQUE`),
+ * PAS sur la carte : il n'entre donc pas dans `ORDRE_CALQUES`/`CALQUE_IDS` (qui gouvernent
+ * l'ordre de superposition de la carte — `PanneauCalques.jsx` rend l'électrique À PART,
+ * au-dessus) ni dans `rangCalque`. Les deux paquets (portail Vite / site Astro) ne
+ * partagent aucun module : cette chaîne est donc dupliquée ici À DESSEIN — le test jumeau
+ * (`__tests__/panneau_calques.test.jsx`) relit le source TypeScript pour garantir qu'elle
+ * ne dérive jamais.
+ */
+export const CALQUE_ELECTRIQUE_ID = 'electrique'
+
+/** Les identifiants dont l'état (visible/opacité) est MÉMORISÉ PAR UTILISATEUR : les dix
+ *  calques de la carte, ET le calque électrique — comme les autres, bien qu'il ne soit pas
+ *  une couche de carte (voir `CALQUE_ELECTRIQUE_ID` ci-dessus). */
+const IDS_MEMORISES = [...CALQUE_IDS, CALQUE_ELECTRIQUE_ID]
+
 /** Index de superposition d'un calque (0 = tout au fond). -1 si inconnu. */
 export function rangCalque(id) {
   return CALQUE_IDS.indexOf(id)
@@ -35,7 +52,7 @@ export function rangCalque(id) {
 /** État par défaut : TOUT visible, opacité pleine — l'atelier d'aujourd'hui. */
 export function etatCalquesParDefaut() {
   const out = {}
-  for (const id of CALQUE_IDS) out[id] = { visible: true, opacite: 1 }
+  for (const id of IDS_MEMORISES) out[id] = { visible: true, opacite: 1 }
   return out
 }
 
@@ -53,7 +70,7 @@ export function lireEtatCalques(utilisateurId, stockage) {
     if (!brut) return base
     const lu = JSON.parse(brut)
     if (!lu || typeof lu !== 'object') return base
-    for (const id of CALQUE_IDS) {
+    for (const id of IDS_MEMORISES) {
       const v = lu[id]
       if (!v || typeof v !== 'object') continue
       if (typeof v.visible === 'boolean') base[id].visible = v.visible
