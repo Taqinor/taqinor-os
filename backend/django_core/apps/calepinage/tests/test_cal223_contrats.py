@@ -110,6 +110,13 @@ SANS_PRODUCTEUR_PUR = {
         'la réponse décrit la COPIE enregistrée (identifiant, référence '
         'dérivée, variantes comptées) : son producteur exige la base — '
         'couvert par apps/calepinage/tests/test_calx35_dupliquer.py',
+
+    # CALX141
+    'calepinage_pertes_cascade.json':
+        "détail du bloc `resultat['cascade']` servi par GET resultat/ "
+        '(CALX70) : son producteur est services/chaine_pertes.py '
+        '(CALX147), pas encore écrit — la forme est affirmée sans base par '
+        'apps/calepinage/tests/test_calx141_contrat_cascade.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur

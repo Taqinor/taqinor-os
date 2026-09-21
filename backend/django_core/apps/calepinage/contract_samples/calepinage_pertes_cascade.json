@@ -1,0 +1,117 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/resultat/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CALX141 — LA CASCADE SÉQUENTIELLE DE PERTES, sous une clé NEUVE `resultat['cascade']`. Ce document ne décrit QU'ELLE : c'est pour cela qu'il se déclare `forme_serveur: partielle`. La clé est publiée par `GET resultat/` (`services/electrique.py::BLOCS_SIMULATION`, CALX70, qui nomme `cascade` parmi les douze blocs servis) et la forme d'ensemble du document reste celle de `contract_samples/calepinage_simulation.json` (CALX4) : ce fichier-ci ne fait que DÉTAILLER le bloc que CALX4 annonce.\n\nPOURQUOI CE CONTRAT PART SEUL (PACT10). La cascade a un producteur (`services/chaine_pertes.py::appliquer_chaine`, CALX147) et une vingtaine d'étapes écrites chacune dans SON module (`services/etapes/<poste>.py`), plus au moins deux consommateurs d'écran (diagramme de pertes / Sankey, panneau Production). Toutes ces lanes sont FILE-DISJOINTES : publier la forme dans la tâche productrice laisserait les autres inventer leurs clés d'ici là. Le contrat atterrit donc seul, sans une ligne de code.\n\n`resultat['pertes']` NE BOUGE PAS (D-CALX 11). La liste PLATE des postes saisis reste ce qu'elle est, octet pour octet : quatre lecteurs l'itèrent DÉJÀ comme une liste (`services/note_calcul.py:298`, `services/comparaison.py:96`, `services/export_csv.py:73`, `DiagrammePertes.jsx:89-94`). `cascade` ne la remplace pas et ne la réécrit pas — elle s'AJOUTE à côté. Les deux répondent d'ailleurs à deux questions différentes : `pertes` dit « quels postes ont été saisis, et par qui », `cascade` dit « dans quel ORDRE ils s'appliquent, et combien de kWh chacun retire à l'énergie qui lui arrive ».\n\nD'OÙ VIENT CHAQUE CLÉ — AUCUNE CLÉ INVENTÉE :\n* `cascade` — `services/chaine_pertes.py::appliquer_chaine` (CALX147).\n* `cascade.etapes[].rang` et `.etape` — le rang et le nom viennent de `services/chaine_pertes.py::ORDRE_ETAPES` (CALX148), SEUL endroit du dépôt qui déclare l'ordre de la chaîne. Le rang est l'index dans cet ordre, pas un compteur de la boucle : une étape omise garde SON rang.\n* `cascade.etapes[].libelle`, `.source`, `.entree`, `.reference`, `.motif_omission`, `.gain` — la fonction PURE de l'étape, `services/etapes/<poste>.py` (`(serie, contexte) → (serie, etape)`), qui est la seule à savoir de quelle entrée elle dépend et d'où cette entrée vient (réglages de simulation CALX145, fiche produit, PVGIS, profil d'horizon).\n* `cascade.etapes[].kwh_avant` / `.kwh_apres` — `appliquer_chaine` (CALX147) : l'énergie de la série AVANT et APRÈS l'étape, la série elle-même venant de `services/pvgis_serie.py::serie_horaire`.\n* `cascade.etapes[].perte_kwh` / `.perte_pct` — dérivés par `appliquer_chaine` des deux bornes ci-dessus, jamais saisis en face.\n* `cascade.ordre` — la projection de `ORDRE_ETAPES` (CALX148) sur les étapes réellement présentes : l'écran lit l'ordre ICI plutôt que de le redéduire des rangs.\n* `cascade.total_pct` — `appliquer_chaine`.\n* `cascade.postes_non_sources` — `services/pertes_politique.py::PolitiquePertes.publication()` (`:94-107`), qui NOMME déjà les postes sans source ; la cascade republie cette liste pour que l'écran de pertes n'ait pas à ouvrir deux blocs.\n* `cascade.hash_entree` — `resultat['simulation']['hash_entree']`, écrit par `services/simulation.py::simuler_calepinage` (CALX5) : la cascade porte l'empreinte du document sur lequel elle a été calculée, sans quoi un diagramme survivrait au toit qu'il décrit.\n\nLES QUATRE RÈGLES QUI FONT CE CONTRAT.\n1. CONTINUITÉ. `etapes[n].kwh_avant` est le `kwh_apres` de l'étape précédente. Une étape OMISE laisse la série INCHANGÉE (préambule du lot 3) : son `kwh_apres` vaut `null`, et l'étape suivante repart du DERNIER `kwh_apres` connu. La continuité se vérifie donc sur toute la liste, en ignorant les `null` — jamais en les remplaçant par un chiffre.\n2. UNE OMISSION SE DIT, ELLE NE SE FORFAITISE PAS. `motif_omission` non vide ⇒ `kwh_apres`, `perte_kwh` et `perte_pct` valent `null`, JAMAIS `0`. Un `0 %` se lirait « cette étape ne coûte rien » là où personne n'a pu la calculer. `kwh_avant` reste renseigné quand l'énergie entrante est connue : c'est ce qui permet de reprendre la chaîne après l'omission.\n3. UN SEUL SIGNE. Une perte est POSITIVE. Une étape qui AJOUTE de l'énergie (le bifacial, qui entre en gain juste après l'auto-ombrage) porte `gain: true`, avec `perte_kwh` et `perte_pct` NÉGATIFS : deux conventions de signe dans le même tableau donneraient deux Sankey pour la même toiture.\n4. `total_pct` EST CELUI DE LA CASCADE, pas celui de la requête PVGIS. Il vaut 100 × (1 − dernier `kwh_apres` connu ÷ premier `kwh_avant`). Il ne recopie PAS `production.base.loss_passee_pct`, qui est la somme des postes de la liste plate réellement PARTIE dans l'appel PVGIS (CAL238) : confondre les deux ferait afficher une perte d'entrée comme si elle avait été mesurée en sortie.\n\nCE QUE L'EXEMPLE MONTRE. Six étapes de `ORDRE_ETAPES` — pas les vingt-trois : c'est la FORME qui fait le contrat. On y lit une étape sans perte (l'irradiation reçue), une étape TOUJOURS omise (le spectral, D-CALX 16), une perte sourcée par une fiche produit, un GAIN, une perte sourcée par un réglage, et une omission faute d'entrée saisie. `exemple_vide` est le calepinage POSÉ mais JAMAIS SIMULÉ : toutes les clés sont présentes, la liste est vide, `total_pct` vaut `null` — jamais `0`.\n\nZÉRO CHIFFRE CLIENT (D-CALX 7). Toutes les valeurs sont des PLACEHOLDERS ASSUMÉS : énergies rondes « d'essai », empreinte visiblement factice (`abab…`), libellés d'essai. Aucune ne décrit une installation réelle, et aucune n'est un coefficient par défaut : ce sont les CLÉS et LEURS NATURES qui font le contrat.",
+  "exemple": {
+    "cascade": {
+      "etapes": [
+        {
+          "rang": 1,
+          "etape": "irradiation_plan",
+          "libelle": "Irradiation sur le plan des modules",
+          "kwh_avant": 16800.0,
+          "kwh_apres": 16800.0,
+          "perte_kwh": 0.0,
+          "perte_pct": 0.0,
+          "gain": false,
+          "source": "pvgis",
+          "entree": "seriescalc",
+          "reference": "PVGIS-SARAH3",
+          "motif_omission": ""
+        },
+        {
+          "rang": 2,
+          "etape": "spectral",
+          "libelle": "Correction spectrale",
+          "kwh_avant": 16800.0,
+          "kwh_apres": null,
+          "perte_kwh": null,
+          "perte_pct": null,
+          "gain": false,
+          "source": null,
+          "entree": null,
+          "reference": null,
+          "motif_omission": "D-CALX 16 — le spectral figure dans la cascade et reste TOUJOURS omis avec son motif, jamais forfaitisé."
+        },
+        {
+          "rang": 3,
+          "etape": "thermique",
+          "libelle": "Échauffement de la cellule au-dessus du STC",
+          "kwh_avant": 16800.0,
+          "kwh_apres": 15456.0,
+          "perte_kwh": 1344.0,
+          "perte_pct": 8.0,
+          "gain": false,
+          "source": "fiche",
+          "entree": "temp_coeff_pmax_pct_c",
+          "reference": "Fiche produit du module désigné (essai)",
+          "motif_omission": ""
+        },
+        {
+          "rang": 4,
+          "etape": "bifacial",
+          "libelle": "Gain bifacial en face arrière",
+          "kwh_avant": 15456.0,
+          "kwh_apres": 15919.7,
+          "perte_kwh": -463.7,
+          "perte_pct": -3.0,
+          "gain": true,
+          "source": "fiche",
+          "entree": "bifacialite_pct",
+          "reference": "Fiche produit du module désigné (essai)",
+          "motif_omission": ""
+        },
+        {
+          "rang": 5,
+          "etape": "ohmique_dc",
+          "libelle": "Chutes ohmiques côté courant continu",
+          "kwh_avant": 15919.7,
+          "kwh_apres": 15792.3,
+          "perte_kwh": 127.4,
+          "perte_pct": 0.8,
+          "gain": false,
+          "source": "societe",
+          "entree": "longueurs_dc_saisies",
+          "reference": "Réglages de simulation de la société (essai)",
+          "motif_omission": ""
+        },
+        {
+          "rang": 6,
+          "etape": "indisponibilite",
+          "libelle": "Indisponibilité réseau et maintenance",
+          "kwh_avant": 15792.3,
+          "kwh_apres": null,
+          "perte_kwh": null,
+          "perte_pct": null,
+          "gain": false,
+          "source": null,
+          "entree": null,
+          "reference": null,
+          "motif_omission": "Aucun taux d'indisponibilité saisi pour cette société : l'étape est OMISE et la série ressort inchangée. Champ manquant : réglages de simulation, « indisponibilite_pct »."
+        }
+      ],
+      "ordre": [
+        "irradiation_plan",
+        "spectral",
+        "thermique",
+        "bifacial",
+        "ohmique_dc",
+        "indisponibilite"
+      ],
+      "total_pct": 6.0,
+      "postes_non_sources": [
+        "availability"
+      ],
+      "hash_entree": "abababababababababababababababababababababababababababababababab"
+    }
+  },
+  "exemple_vide": {
+    "cascade": {
+      "etapes": [],
+      "ordre": [],
+      "total_pct": null,
+      "postes_non_sources": [],
+      "hash_entree": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+    }
+  }
+}

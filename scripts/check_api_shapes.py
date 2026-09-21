@@ -1218,6 +1218,12 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "incertitude, performance, ombrage, consommation, autoconsommation, "
         "batterie, hors_reseau, validation, serie_horaire) — vue et service "
         "livres par CALX5",
+    "calepinage/calepinage_pertes_cascade.json":
+        "detail du bloc `resultat['cascade']` (la cascade SEQUENTIELLE de "
+        "pertes) servi par GET calepinages/<pk>/resultat/ : la route existe "
+        "mais sa forme n'est pas lisible statiquement, et le producteur "
+        "services/chaine_pertes.py::appliquer_chaine arrive avec CALX147 "
+        "(CALX141)",
     "calepinage/calepinage_du_devis.json":
         "cle ADDITIVE `calepinage` du detail d'un devis (GET ventes/devis/"
         "<pk>/) : la route est servie, mais par un ModelViewSet dont la forme "
