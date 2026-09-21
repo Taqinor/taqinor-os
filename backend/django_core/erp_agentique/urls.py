@@ -42,8 +42,6 @@ _APP_URLS = [
     path('records/', include('apps.records.urls')),
     path('imports/', include('apps.dataimport.urls')),
     path('custom-fields/', include('apps.customfields.urls')),
-    # NTEXT13 — catalogue des packages d'extension (marketplace interne).
-    path('extensions/', include('apps.extensions.urls')),
     path('documents/', include('apps.documents.urls')),
     path('audit/', include('apps.audit.urls')),
     path('monitoring/', include('apps.monitoring.urls')),
@@ -117,9 +115,6 @@ _APP_URLS = [
     # hériter des DEUX préfixes comme toutes les autres apps (`api/django/` et
     # `api/v1/`) ; les chemins existants restent identiques.
     path('accessreview/', include('apps.accessreview.urls')),
-    # Groupe NTGRC — GRC & Conformité (risques, contrôles internes, RGPD/
-    # loi 09-08 outillé). Le préfixe correspond à module_manifest['key'].
-    path('grc/', include('apps.grc.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
     # NTCRM1 — Moteur de territoires (règles d'affectation round-robin).
@@ -137,8 +132,6 @@ _APP_URLS = [
     path('credit/', include('apps.credit.urls')),
     # Groupe NTFPA — FP&A (budgets, prévisions glissantes, scénarios).
     path('fpa/', include('apps.fpa.urls')),
-    # Groupe NTMIG — Migration ERP sortante (Odoo/Sage/Excel) + réconciliation.
-    path('migration/', include('apps.migration.urls')),
     # Groupe NTASS — Registre des assurances & sinistres d'entreprise.
     path('assurances/', include('apps.assurances.urls')),
     # Groupe NTADM — Administration enterprise.
@@ -164,13 +157,6 @@ _APP_URLS = [
     path('einvoice/', include('apps.einvoice.urls')),
     # Groupe NTMAR — Calendrier fiscal marocain, attestations, UBO, veille.
     path('fiscal/', include('apps.fiscal.urls')),
-    # Groupe NTAI — copilotes IA (brouillons proposés, jamais d'écriture
-    # implicite ; 503 douce sans clé LLM/STT configurée).
-    path('ai/', include('apps.ai_governance.urls')),
-    # Groupe NTAI — gouvernance IA (journal d'usage & coûts, budgets, état des
-    # capacités). Surfaces d'ADMINISTRATION, réservées au palier
-    # Administrateur/Directeur — distinctes des copilotes ci-dessus.
-    path('ai-governance/', include('apps.ai_governance.urls_gouvernance')),
     # Groupe NTAI — conversations commerciales enregistrées (upload d'un appel
     # + transcription asynchrone key-gated). Le segment est IDENTIQUE à la clé
     # de manifeste (`conversation_ai`, avec underscore) : le gatage 404 des
@@ -192,14 +178,6 @@ _APP_URLS = [
     # Groupe NTSCM — Planification supply chain (prévision/S&OP), au-dessus
     # de l'exécution `apps.stock` existante.
     path('scm/', include('apps.scm.urls')),
-    # Groupe NTDATA — qualité de données : règles de validation, rapport de
-    # conformité, complétude par module et dédoublonnage cross-module.
-    path('dataquality/', include('apps.dataquality.urls')),
-    # Groupe NTAI (P3) — MLOps par tenant (versions de paramètres de scorer +
-    # backtests). Le segment est IDENTIQUE à la clé de manifeste (`mlops`) :
-    # le gatage 404 des modules désactivés vise le bon module sans entrée
-    # PREFIX_TO_MODULE.
-    path('mlops/', include('apps.mlops.urls')),
     # Groupe NTDATA — couche sémantique : historique figé des définitions de
     # métriques (NTDATA9) et lignage « d'où vient ce chiffre » (NTDATA43). Le
     # segment est IDENTIQUE à la clé de manifeste (`semantic`) : le gatage 404

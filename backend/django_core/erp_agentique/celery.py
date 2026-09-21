@@ -348,14 +348,6 @@ app.conf.beat_schedule = {
         'task': 'reporting.evaluate_kpi_alertes',
         'schedule': crontab(hour=6, minute=30),
     },
-    # NTDATA15 — évalue les règles de qualité de données de chaque société
-    # opérationnelle et journalise un ResultatQualite daté. Placé AVANT les
-    # alertes KPI : le rapport de qualité du matin est déjà à jour quand la
-    # direction l'ouvre. Lecture seule côté métier — ne corrige rien.
-    'dataquality-evaluer-qualite-donnees': {
-        'task': 'dataquality.evaluer_qualite_donnees',
-        'schedule': crontab(hour=5, minute=45),
-    },
     # NTDATA42 — signale les points aberrants des séries de métriques nommées
     # (z-score sur `core.anomaly` → `core.AnomalyFlag`). HEBDOMADAIRE : les
     # séries sont MENSUELLES, un balayage quotidien re-scorerait les mêmes
@@ -365,36 +357,11 @@ app.conf.beat_schedule = {
         'task': 'semantic.detecter_anomalies_metriques',
         'schedule': crontab(hour=4, minute=45, day_of_week=1),
     },
-    # NTDATA24 — recalcule les golden records (fiches consolidées) de chaque
-    # société. HEBDOMADAIRE : la passe relit toutes les fiches des trois
-    # entités et rejoue la détection de doublons, et l'identité consolidée d'un
-    # client ne change pas d'un jour à l'autre. Dimanche très tôt (créneau
-    # creux, avant la semaine) ; aucune source n'est mutée — c'est une VUE.
-    'dataquality-consolider-golden-records': {
-        'task': 'dataquality.consolider_golden_records',
-        'schedule': crontab(hour=4, minute=15, day_of_week=0),
-    },
-    # NTAI30 — matérialise le feature store léger (FeatureVector) de chaque
-    # société. Quotidien, tôt (avant les scorers/rapports du matin) ; lecture
-    # seule côté métier — ne fait qu'upserter une VUE dérivée.
-    'mlops-recompute-features': {
-        'task': 'mlops.recompute_features',
-        'schedule': crontab(hour=4, minute=30),
-    },
     # YSERV13 — contrôle d'intégrité inter-documents hebdomadaire (états
     # orphelins entre apps) ; notifie seulement si ≥1 anomalie détectée.
     'reporting-controle-integrite-hebdo': {
         'task': 'reporting.controle_integrite',
         'schedule': crontab(hour=3, minute=0, day_of_week=1),
-    },
-    # NTGRC34 — rappels d'échéances GRC (DSR, violations 72 h, revues de
-    # risque, contrôles à tester, politiques non attestées). Quotidien, tôt :
-    # le DPO doit voir ses échéances AVANT sa journée, pas après. Idempotent
-    # (une notification par échéance et par jour), donc un double tick ne
-    # produit jamais de doublon.
-    'grc-rappels-echeances': {
-        'task': 'grc.rappels_grc',
-        'schedule': crontab(hour=6, minute=30),
     },
     # YSUBS1 — facturation récurrente auto (échéanciers contrats +
     # maintenance SAV dus), quotidien (heure creuse).
@@ -979,18 +946,6 @@ app.conf.beat_schedule = {
         'task': 'credit.recalculer_encours_quotidien',
         'schedule': crontab(hour=2, minute=10),
     },
-    # NTMIG35 — purge quotidienne des fichiers source de migration (PII)
-    # des projets clôturés depuis plus de 30 jours, 02:50.
-    'migration-purger-fichiers': {
-        'task': 'migration.purger_fichiers_migration',
-        'schedule': crontab(hour=2, minute=50),
-    },
-    # NTMIG30 — alerte quotidienne J-60 avant expiration d'une certification
-    # partenaire (crm.Partenaire), 07:35.
-    'migration-alerter-certifications-expirantes': {
-        'task': 'migration.alerter_certifications_expirantes',
-        'schedule': crontab(hour=7, minute=35),
-    },
     # NTADM11 — purge quotidienne des sandbox expirés (soft puis hard après
     # délai de grâce), 03:05.
     'adminops-purger-sandbox-expires': {
@@ -1124,14 +1079,6 @@ app.conf.beat_schedule = {
     'ged-migrer-pieces-jointes-hebdo': {
         'task': 'ged.migrer_pieces_jointes',
         'schedule': crontab(hour=3, minute=25, day_of_week=1),
-    },
-    # NTAI29 — surveillance MENSUELLE de la dérive (PSI) des features d'entrée
-    # des scorers, par société. Pur/offline (stats stdlib, aucun appel LLM) et
-    # no-op propre tant qu'aucun fournisseur de distribution n'est déclaré.
-    # 1er du mois, heure creuse.
-    'ai-governance-surveiller-drift-mensuel': {
-        'task': 'ai_governance.surveiller_drift_mensuel',
-        'schedule': crontab(hour=4, minute=25, day_of_month=1),
     },
     # NTUX29 — purge quotidienne de rétention de la corbeille transverse (30 j,
     # NTUX7) : la commande `purger_corbeille_transverse` était bâtie mais
