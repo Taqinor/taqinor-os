@@ -322,6 +322,7 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'MODES_METEO', 'CLE_REGLAGE_MODE_METEO',
            'CLE_REGLAGE_FENETRE_ANNEES', 'PLAFOND_FENETRE_ANNEES',
            'MOTIF_TMY_HORIZONTAL', 'MeteoIndecise', 'decision_meteo',
+           'CLES_METEO_PUBLIEES', 'SOUS_BLOCS_METEO',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -351,7 +352,7 @@ class MeteoIndecise(ValueError):
         self.motif = message
 
 
-def appliquer_chaine(serie, contexte=None):
+def appliquer_chaine(serie, contexte=None, resultat=None):
     """Parcourt ``ORDRE_ETAPES`` et rend ``(serie, cascade)``.
 
     Args:
@@ -360,6 +361,11 @@ def appliquer_chaine(serie, contexte=None):
         contexte: le dict décrit en tête de ``services/etapes/__init__.py``.
             ``None`` ou vide ⇒ aucune étape n'a d'entrée : toutes sont
             OMISES, motivées, et la série ressort telle quelle.
+        resultat: le ``Calepinage.resultat`` en cours d'écriture. Fourni, la
+            chaîne y PUBLIE les blocs qu'elle est seule à pouvoir sourcer —
+            ``meteo`` (CALX154) — et c'est le SEUL chemin d'écriture de ces
+            clés. ``None`` ⇒ la chaîne se contente de rendre la cascade,
+            exactement comme avant.
 
     Returns:
         ``(serie, cascade)`` — la série en sortie de la dernière étape
@@ -369,6 +375,8 @@ def appliquer_chaine(serie, contexte=None):
         ChaineInvalide: une étape a modifié la série tout en se déclarant
             omise, a gagné de l'énergie sans le déclarer, s'est appliquée
             sans nommer sa source, ou n'a pas rendu ``(serie, etape)``.
+        MeteoIndecise: ``resultat`` est fourni et le mode météo n'est pas
+            saisi (CALX153) — la publication est refusée en nommant la clé.
     """
     contexte = contexte if isinstance(contexte, dict) else {}
     _refuser_irradiance_horizontale(serie)
@@ -406,13 +414,98 @@ def appliquer_chaine(serie, contexte=None):
         if kwh_apres is not None:
             dernier_connu = kwh_apres
 
-    return courante, {
+    cascade = {
         'etapes': publiees,
         'ordre': [etape['etape'] for etape in publiees],
         'total_pct': _total_pct(premiere, dernier_connu, appliquees),
         'postes_non_sources': _postes_non_sources(contexte),
         'hash_entree': contexte.get('hash_entree'),
     }
+    if isinstance(resultat, dict):
+        _publier(resultat, courante, contexte, cascade)
+    return courante, cascade
+
+
+# ── CALX154 — le bloc ``resultat['meteo']`` ─────────────────────────────
+
+#: Les clés du bloc ``meteo`` du contrat CALX143
+#: (``contract_samples/calepinage_meteo.json``), dans son ordre. ``station``
+#: en est ABSENTE : elle est CONDITIONNELLE — ``seriescalc`` ne nomme aucune
+#: station (il sert une maille de modèle, pas un poste de mesure), et la
+#: remplir du nom de la ville la plus proche fabriquerait une mesure qui
+#: n'existe pas.
+CLES_METEO_PUBLIEES = (
+    'service', 'base_rayonnement', 'base_meteo', 'mode', 'fenetre_annees',
+    'annees', 'point', 'horizon', 'url', 'obtenue_le', 'depuis_cache',
+    'convention_azimut', 'heure', 'albedo_face_avant',
+)
+
+#: Les sous-blocs du bloc météo et leurs clés — un sous-bloc partiel se
+#: complète à ``null``, jamais d'une valeur plausible.
+SOUS_BLOCS_METEO = {
+    'point': ('lat', 'lon', 'altitude_m'),
+    'horizon': ('origine', 'hauteur_max_deg', 'base_horizon'),
+    'heure': ('base', 'fuseau_site', 'decalage_minutes'),
+}
+
+
+def _publier(resultat, serie, contexte, cascade):
+    """Écrit dans ``resultat`` les blocs que la chaîne est seule à sourcer."""
+    decision = decision_meteo(contexte)
+    resultat['meteo'] = _bloc_meteo_publie(contexte, decision)
+
+
+def _bloc_meteo_publie(contexte, decision):
+    """``resultat['meteo']`` au format CALX143 — rien d'inventé, rien de plausible.
+
+    La provenance météo EXISTE déjà, mais en morceaux : le client publie ce
+    que la réponse PVGIS porte (``pvgis_serie._bloc_meteo``), l'ordonnanceur
+    y ajoute ce que lui seul connaît — le MODE choisi par la société
+    (CALX153), l'albédo de face avant, et le compteur d'appels réels
+    (CALX155). PVsyst imprime de la même façon les paramètres de la source
+    météo employée
+    (https://www.pvsyst.com/help/project-design/results/index.html).
+
+    Une clé que la réponse ne porte pas vaut ``null`` : c'est la forme du
+    contrat, et ``null`` s'y lit « non publié ». Une altitude absente reste
+    donc nulle — jamais 0, qui se lirait « site au niveau de la mer, mesuré ».
+    """
+    lu = contexte.get('meteo') if isinstance(contexte.get('meteo'), dict) else {}
+    bloc = {}
+    for cle in CLES_METEO_PUBLIEES:
+        if cle in SOUS_BLOCS_METEO:
+            continue
+        bloc[cle] = lu.get(cle)
+    for nom, champs in SOUS_BLOCS_METEO.items():
+        source = lu.get(nom) if isinstance(lu.get(nom), dict) else {}
+        bloc[nom] = {champ: source.get(champ) for champ in champs}
+    bloc['annees'] = list(lu.get('annees') or [])
+    bloc['heure']['decalage_minutes'] = list(
+        bloc['heure'].get('decalage_minutes') or [])
+
+    # Ce que l'ordonnanceur seul connaît.
+    bloc['mode'] = decision['mode']
+    if decision['mode'] == 'tmy':
+        # Une année météo TYPE n'est l'observation d'aucune année réelle
+        # (CALX153) : la liste reste vide et la fenêtre est celle que PVGIS
+        # déclare avoir assemblée, jamais une fenêtre de simulation.
+        bloc['annees'] = []
+    bloc['albedo_face_avant'] = _albedo_face_avant(contexte)
+    bloc['appels_pvgis'] = int(lu.get('appels_pvgis') or 0)
+
+    # La clé CONDITIONNELLE : présente seulement si la réponse la porte.
+    if 'station' in lu:
+        bloc['station'] = lu['station']
+    return bloc
+
+
+def _albedo_face_avant(contexte):
+    """L'albédo saisi et sourcé, sinon ``null`` avec le motif de CALX148."""
+    saisi = _etapes.reglage(contexte, 'albedo_mensuel')
+    if saisi is None:
+        return dict(ALBEDO_FACE_AVANT)
+    return {'valeur': saisi.get('valeur'),
+            'motif': f'saisi par la société (source : {saisi.get("source")})'}
 
 
 # ── la boucle, pièce par pièce ──────────────────────────────────────────
