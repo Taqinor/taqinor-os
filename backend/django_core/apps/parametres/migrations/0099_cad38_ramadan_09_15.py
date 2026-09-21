@@ -14,8 +14,10 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    # Renumérotée 0097 -> 0099 au fold : deux lanes du Groupe CAD ont pris le
+    # même numéro le même jour (0097_cad95, 0098_cad71). Aucun contenu changé.
     dependencies = [
-        ('parametres', '0096_nti18n51_traduction_manquante'),
+        ('parametres', '0098_cad71_lien_avis_google'),
     ]
 
     operations = [

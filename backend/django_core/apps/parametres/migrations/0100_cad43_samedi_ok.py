@@ -11,8 +11,9 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    # Renumérotée 0098 -> 0100 au fold (voir 0099_cad38_ramadan_09_15).
     dependencies = [
-        ('parametres', '0097_cad38_ramadan_09_15'),
+        ('parametres', '0099_cad38_ramadan_09_15'),
     ]
 
     operations = [
