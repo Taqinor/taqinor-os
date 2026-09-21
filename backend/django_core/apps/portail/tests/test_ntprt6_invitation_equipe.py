@@ -29,7 +29,6 @@ from testkit.time import frozen
 
 from apps.crm.models import Client
 from apps.facturation.models import Facture
-from apps.marketing.models import EnqueteNPS
 from apps.portail.models import InvitationPortail
 from apps.portail.services import (
     accepter_invitation_portail,
@@ -217,9 +216,6 @@ class EndpointDevisEtTicketGatingTests(TestCase):
             client=self.client_crm, statut=Facture.Statut.EMISE,
             montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
             montant_ttc=Decimal('1200'), taux_tva=Decimal('20'))
-        self.enquete = EnqueteNPS.objects.create(
-            company=self.company, client_id=self.client_crm.id,
-            chantier_id=1)
         invitation = inviter_membre_portail(
             self.company, self.client_crm.id, 'lecteur2@example.invalid',
             'lecture')
@@ -271,22 +267,6 @@ class EndpointDevisEtTicketGatingTests(TestCase):
         res = self.api.post(
             f'/api/django/portail/mes-factures/{self.facture.id}/payer/',
             {}, format='json')
-        self.assertEqual(res.status_code, 200, res.data)
-
-    def test_lecture_refuse_de_repondre_a_l_enquete(self):
-        self.api.force_authenticate(user=self.lecteur)
-        res = self.api.post(
-            '/api/django/portail/satisfaction/repondre/',
-            {'enquete_id': self.enquete.id, 'score': 9}, format='json')
-        self.assertEqual(res.status_code, 403)
-        self.enquete.refresh_from_db()
-        self.assertEqual(self.enquete.statut, EnqueteNPS.Statut.ENVOYEE)
-
-    def test_admin_repond_toujours_a_l_enquete(self):
-        self.api.force_authenticate(user=self.admin)
-        res = self.api.post(
-            '/api/django/portail/satisfaction/repondre/',
-            {'enquete_id': self.enquete.id, 'score': 9}, format='json')
         self.assertEqual(res.status_code, 200, res.data)
 
 

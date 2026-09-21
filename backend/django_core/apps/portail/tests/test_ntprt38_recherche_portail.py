@@ -2,8 +2,11 @@
 connecté.
 
 Couvre le critère d'acceptation : aucun résultat hors du périmètre du compte
-connecté (jamais un devis/une facture/un ticket/un document d'un autre
-client, même de la même société). Un mot-clé vide renvoie des groupes vides.
+connecté (jamais un devis/une facture/un ticket d'un autre client, même de
+la même société). Un mot-clé vide renvoie des groupes vides.
+
+SOLMVP16 — le groupe « documents » (GED partagée, module sorti du produit) a
+été retiré ; ce test ne couvre plus que devis/factures/tickets.
 
 Run :
     python manage.py test \\
@@ -16,7 +19,6 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client
-from apps.ged.models import AclGed, Cabinet, Document, DocumentVersion, Folder
 from apps.portail.models import DemandeTicketPortail
 from apps.portail.services import provisionner_compte_portail_client
 from apps.ventes.models import Devis
@@ -59,20 +61,6 @@ def make_demande(company, client, sujet):
         statut=DemandeTicketPortail.Statut.SOUMISE)
 
 
-def make_document(company, client, nom):
-    n = next(_seq)
-    cabinet = Cabinet.objects.create(company=company, nom=f'Cabinet-{n}')
-    folder = Folder.objects.create(
-        company=company, cabinet=cabinet, nom=f'Dossier-{n}')
-    document = Document.objects.create(company=company, folder=folder, nom=nom)
-    DocumentVersion.objects.create(
-        company=company, document=document, version=1,
-        file_key=f'ged/{company.id}/{n}.pdf', filename=nom,
-        size=10, mime='application/pdf')
-    AclGed.objects.create(company=company, document=document, client=client)
-    return document
-
-
 class RecherchePortailClientTests(TestCase):
     def setUp(self):
         self.company = make_company('ntprt38-co', 'NTPRT38 Société')
@@ -86,8 +74,6 @@ class RecherchePortailClientTests(TestCase):
             self.company, self.client_crm, 'Onduleur en panne')
         self.demande_autrui = make_demande(
             self.company, self.autre_client, 'Onduleur cassé aussi')
-        self.document = make_document(
-            self.company, self.client_crm, 'Notice onduleur.pdf')
         self.api = APIClient()
         self.api.force_authenticate(user=self.admin)
 
@@ -114,13 +100,6 @@ class RecherchePortailClientTests(TestCase):
         labels = [r['label'] for r in groupe_ticket['results']]
         self.assertIn(self.demande.sujet, labels)
         self.assertNotIn(self.demande_autrui.sujet, labels)
-
-    def test_recherche_document_partage_avec_ce_client(self):
-        res = self.api.get(URL, {'q': 'notice'})
-        groupe_doc = next(
-            g for g in res.data['groups'] if g['type'] == 'document')
-        labels = [r['label'] for r in groupe_doc['results']]
-        self.assertIn(self.document.nom, labels)
 
     def test_un_compte_dune_autre_societe_ne_voit_rien(self):
         autre = make_company('ntprt38-co-b', 'NTPRT38 Société B')

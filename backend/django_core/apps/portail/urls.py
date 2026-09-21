@@ -1,17 +1,22 @@
 """Routes du module Portail client (``apps.portail``) — ODX12.
 
 Préfixe ``/api/django/portail/…``. PACT26 — le double montage historique qui
-re-servait ces mêmes ViewSets sous ``apps.compta.urls``
+re-servait ces mêmes ViewSets sous les routes compta historiques
 (``/api/django/compta/…``) a été retiré : aucun appelant frontend ne
 l'utilisait (vérifié). Les vues publiques tokenisées ``portail/<token>/…``
-(relevé, contestation facture) restent servies par ``apps.compta.urls`` —
+(relevé, contestation facture) restent servies par le module compta —
 elles n'ont JAMAIS été dupliquées ici, donc hors périmètre de ce retrait. Les
 ViewSets gardent le scoping ``request.user.company`` + l'assignation forcée de
-``company`` (hérité de ``_ComptaBaseViewSet`` = ``TenantMixin``).
+``company`` (``_PortailBaseViewSet`` = ``TenantMixin``).
 
 Basenames explicitement préfixés ``portail-…`` (héritage de l'époque où le
 routeur compta enregistrait les mêmes ViewSets) : conservé pour ne pas
 risquer de collision ailleurs.
+
+SOLMVP16 — ``mes-documents`` (NTPRT13), ``ressources`` (NTPRT31) et
+``satisfaction`` (NTPRT35) ont été retirés : ged/marketing sont des modules
+sortis du produit et ces surfaces n'avaient pas d'équivalent sans eux (jamais
+un second GED).
 """
 
 from django.urls import include, path
@@ -30,11 +35,9 @@ from .views_client import (
     MesContratsMaintenancePortailViewSet,
     MesDemandesSavPortailViewSet,
     MesDevisPortailViewSet,
-    MesDocumentsPortailViewSet,
     MesFacturesPortailViewSet,
     MesLivraisonsPortailViewSet,
     MonEquipePortailViewSet,
-    SatisfactionPortailViewSet,
     exporter_mes_donnees,
     ma_consommation_client,
     recherche_portail_client,
@@ -45,7 +48,6 @@ from .views_externes import (
     MesCommissionsPortailPartenaireViewSet,
     MesFacturesPortailFournisseurViewSet,
     MesSoumissionsPortailPartenaireViewSet,
-    RessourcesPartenairePortailViewSet,
     candidature_fournisseur,
     ma_performance_fournisseur,
     preference_portail,
@@ -81,28 +83,18 @@ router.register(r'mes-livraisons', MesLivraisonsPortailViewSet,
                 basename='portail-mes-livraisons')
 # AUD525 — « Mes demandes SAV » : la surface CLIENT de FG233, jamais
 # atteignable jusqu'ici (son seul ViewSet est gardé IsResponsableOrAdmin,
-# refusé à tout rôle portail). Porte aussi la déflection KB (XSAV22), qui
-# n'était donc jamais exercée par un vrai client.
+# refusé à tout rôle portail).
 router.register(r'mes-demandes-sav', MesDemandesSavPortailViewSet,
                 basename='portail-mes-demandes-sav')
 # NTPRT14 — « Mes chantiers » : timeline (jalons portail CHT10/CHT11) +
 # galerie photos avant/pendant/après, jamais de donnée financière.
 router.register(r'mes-chantiers', MesChantiersPortailViewSet,
                 basename='portail-mes-chantiers')
-# NTPRT35 — widget « Satisfaction » : le déclencheur d'INTERFACE qui manquait
-# à FG238/FG239 (l'enquête était créée à la réception d'un chantier, sans
-# aucun écran client pour y répondre).
-router.register(r'satisfaction', SatisfactionPortailViewSet,
-                basename='portail-satisfaction')
 # NTPRT6 — « Mon équipe » : invitation/gestion des utilisateurs du portail
 # client par l'admin client lui-même (lecture ouverte à toute l'équipe,
 # invitation/révocation réservées à l'admin — services.est_admin_portail_client).
 router.register(r'mon-equipe', MonEquipePortailViewSet,
                 basename='portail-mon-equipe')
-# NTPRT13 — « Mes documents » : documents GED partagés EXPLICITEMENT (ged.AclGed
-# .client) + dépôt de justificatifs (réutilise DocumentClientPortail existant).
-router.register(r'mes-documents', MesDocumentsPortailViewSet,
-                basename='portail-mes-documents')
 # NTPRT21 — surface self-service du FOURNISSEUR connecté : ses bons de
 # commande, et la confirmation de date d'arrivée (le même effet que le chemin
 # tokenisé XPUR22, simplement authentifié).
@@ -115,10 +107,6 @@ router.register(r'mes-soumissions', MesSoumissionsPortailPartenaireViewSet,
 # NTPRT30 — « Mes commissions » : relevé (écran) + export PDF, lecture seule.
 router.register(r'mes-commissions', MesCommissionsPortailPartenaireViewSet,
                 basename='portail-mes-commissions')
-# NTPRT31 — « Ressources » : documents GED partagés GLOBALEMENT avec TOUS les
-# partenaires (ACL par rôle système « Portail partenaire »), lecture seule.
-router.register(r'ressources', RessourcesPartenairePortailViewSet,
-                basename='portail-ressources')
 # NTPRT23 — « Mes factures & statut de paiement » du portail FOURNISSEUR
 # connecté, lecture seule.
 router.register(r'mes-factures-fournisseur',
@@ -140,7 +128,7 @@ urlpatterns = [
     path('client/ma-consommation/', ma_consommation_client,
          name='portail-client-ma-consommation'),
     # NTPRT36 — export « mes données » (portabilité, loi 09-08) : zip
-    # devis/factures/tickets/documents du client connecté.
+    # devis/factures/tickets du client connecté.
     path('client/mes-donnees/export/', exporter_mes_donnees,
          name='portail-client-mes-donnees-export'),
     # NTPRT38 — recherche globale, version scopée-portail du client connecté.
