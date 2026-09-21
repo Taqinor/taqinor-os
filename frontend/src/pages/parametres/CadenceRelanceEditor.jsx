@@ -205,6 +205,17 @@ export default function CadenceRelanceEditor() {
       </TabsList>
       {CADENCES.map(c => (
         <TabsContent key={c.value} value={c.value}>
+          {c.value === 'reveil' && (
+            // CAD68 — le moteur (apps.crm.services._adapter_gabarits_reveil)
+            // remplace le gabarit choisi ici selon le dossier du lead : le
+            // texte réglé pour la ligne J60 ne part donc jamais tel quel.
+            <p className="mb-2 text-xs text-muted-foreground"
+               data-testid="reveil-gabarit-note">
+              Gabarit choisi selon que le lead a déjà reçu un devis : à J30, « reveil_a1 »
+              part s'il en a déjà reçu un, « reveil_a2 » sinon ; à J60, tous reçoivent
+              « reveil_a3 » — le gabarit réglé ici pour la ligne J60 ne part jamais tel quel.
+            </p>
+          )}
           <CadenceTable cadence={c.value} gabarits={gabarits} />
         </TabsContent>
       ))}

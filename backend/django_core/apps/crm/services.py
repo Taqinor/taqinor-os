@@ -1963,8 +1963,10 @@ _PLACEHOLDERS_RENDUS = (
     # CAD95 (21/09/2026) — vidéo COURTE (30-60 s) du même chantier, proposée
     # EN PLUS du lien (jamais à la place) ; sa propre phrase est omise SEULE
     # (MRY13) quand `Realisation.lien_video` est vide.
+    # CAD71 (21/09/2026) — `avis_google` : lien de la fiche Google, réglage
+    # société (`CompanyProfile.lien_avis_google`) — PAS le lien du devis.
     'mois_preuve', 'ville_preuve', 'lien_preuve', 'puissance_preuve',
-    'lien_video_preuve')
+    'lien_video_preuve', 'lien_google')
 
 #: Les trois placeholders de la preuve. Regroupés pour n'aller chercher une
 #: réalisation QUE si le texte en porte au moins un (même discipline que
@@ -2256,7 +2258,18 @@ def message_pour_etape(etape, *, request=None, user=None):
         # avec la date était TOUJOURS omise et le message ne confirmait rien.
         'date_visite': _date_visite_francais(
             getattr(lead, 'visite_prevue_le', None)),
+        'lien_google': '',
     }
+    # CAD71 (21/09/2026) — {lien_google} : lien de la fiche Google de la
+    # société, réglage dédié (`CompanyProfile.lien_avis_google`) — AVANT
+    # ce champ, `avis_google` recevait le lien du DEVIS via `{lien}`, jamais
+    # celui de la fiche Google. Résolu seulement si le texte le demande
+    # (même discipline que `{lien_rdv}`/la preuve J4).
+    if '{lien_google}' in (corps or ''):
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=lead.company).first()
+        contexte['lien_google'] = (
+            (profile.lien_avis_google if profile else '') or '').strip()
     if etape.devis_id:
         try:
             from apps.ventes.selectors import get_devis_by_pk
@@ -2313,6 +2326,45 @@ def message_pour_etape(etape, *, request=None, user=None):
         'phone': phone,
         'placeholders_manquants': manquants,
     }
+
+
+# ── CAD-F ── CAD71 (21/09/2026) ──────────────────────────────────────────
+class GabaritNonAssignable(Exception):
+    """Un gabarit de message exige un réglage société qui manque encore."""
+
+
+#: Gabarits dont l'assignation exige un réglage société non vide, avec le
+#: libellé humain du réglage manquant (repris dans le refus). `avis_google`
+#: envoyait le lien du DEVIS du client à la place d'un lien vers la fiche
+#: Google tant que ce garde-fou n'existait pas (`{lien}` n'était alimenté que
+#: par `url_proposition`, jamais un lien Google) : on refuse maintenant
+#: l'ASSIGNATION plutôt que de laisser la phrase partir vide ou fausse.
+_GABARITS_REGLAGE_REQUIS = {
+    'avis_google': ('lien_avis_google', 'lien de la fiche Google'),
+}
+
+
+def verifier_gabarit_assignable(company, template_cle):
+    """CAD71 — lève ``GabaritNonAssignable`` si ``template_cle`` exige un
+    réglage société (``CompanyProfile``) qui est vide ; ne fait rien pour un
+    gabarit sans exigence (comportement historique inchangé). À appeler
+    AVANT d'enregistrer l'assignation d'un gabarit à une touche (gabarit
+    `parametres.CadenceRelanceEtape` ou touche `crm.RelanceEtape`) — crochet
+    attendu côté écran : `apps/parametres/views_referentiels.py`
+    (`CadenceRelanceEtapeViewSet`/son serializer) doit l'appeler avant
+    `save()` pour que le refus atteigne réellement l'éditeur."""
+    exige = _GABARITS_REGLAGE_REQUIS.get(template_cle)
+    if exige is None:
+        return
+    champ, libelle = exige
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.objects.filter(company=company).first()
+    valeur = ((getattr(profile, champ, '') if profile else '') or '').strip()
+    if not valeur:
+        raise GabaritNonAssignable(
+            f'« {libelle} » n\'est pas renseigné dans les réglages de la '
+            f'société : assignez d\'abord ce réglage avant de choisir ce '
+            f'gabarit (Paramètres → Société).')
 
 
 #: MRY6 — codes de garde dont le refus est TRACÉ en chatter. Les autres
@@ -6516,46 +6568,21 @@ def ajouter_note_lead_si_nouvelle(*, company, lead_id, user, body):
     return activity.log_note(lead, user, body)
 
 
-# ── YSERV11 — Gabarit de message « parrainage » (FR + darija, éditable) ─────
-
-# Corps par défaut — ÉDITABLES ensuite par l'admin comme tout MessageTemplate.
-_PARRAINAGE_TEMPLATE_DEFAULTS = {
-    'fr': (
-        'parrainage',
-        "Bonjour {prenom}, merci pour votre confiance ! Si un proche "
-        "souhaite passer au solaire, recommandez-nous : notre programme de "
-        "parrainage vous récompense. Parlez-en à votre conseiller ou "
-        "répondez à ce message.",
-    ),
-    'darija': (
-        'parrainage_darija',
-        "Salam {prenom}, choukran 3la ti9a dyalek ! Ila kan chi wahed 9rib "
-        "lik bagh idir solaire, 3eyet lina — barnamaj l'parrainage dyalna "
-        "kay3tik mokafaa. Hder m3a lmostachar dyalek wla jaweb 3la had "
-        "l'message.",
-    ),
-}
-
-
-def get_or_create_parrainage_template(company, langue='fr'):
-    """YSERV11 — renvoie (crée au premier usage) le ``MessageTemplate``
-    « parrainage » de la société pour ``langue`` ('fr'|'darija').
-
-    Point d'entrée cross-app THIN (appelé par compta au moment de
-    l'enchantement NPS) : la clé template est posée additivement, idempotente
-    par (company, nom), le corps reste éditable par l'admin — jamais écrasé.
-    Langue inconnue → repli FR."""
-    from .models import MessageTemplate
-    cle = 'darija' if (langue or '').strip().lower() == 'darija' else 'fr'
-    nom, corps_defaut = _PARRAINAGE_TEMPLATE_DEFAULTS[cle]
-    template, _ = MessageTemplate.objects.get_or_create(
-        company=company, nom=nom,
-        defaults={
-            'langue': (MessageTemplate.Langue.DARIJA if cle == 'darija'
-                       else MessageTemplate.Langue.FR),
-            'corps': corps_defaut,
-        })
-    return template
+# CAD72 (21/09/2026) — le SECOND catalogue « parrainage » de YSERV11 a
+# disparu d'ici. Un dictionnaire de textes par défaut + un générateur
+# `get_or_create_*` vivaient ici, semant une SECONDE ligne
+# `crm.MessageTemplate` au premier usage — texte FR promettant une
+# récompense FERME, et texte darija TRANSCRIT EN ALPHABET LATIN (chiffres
+# pour des lettres arabes — « 3 »/« 9 »), alors que le catalogue darija
+# validé (`parametres.MESSAGE_TEMPLATE_DEFAULTS_DARIJA`) est écrit en
+# arabe, relu par un natif le 04/09/2026. Leur seul appelant vivait dans
+# `apps/compta/services.py` (flux NPS), retiré quand `compta` a été mis en
+# coquille par le drain SOLMVP (`apps/compta/` n'a plus de `services.py`) —
+# plus aucun appelant (grep sur tout le backend). Le catalogue UNIQUE pour
+# les messages client est désormais `parametres.MessageTemplate` (clé
+# `parrainage`, déjà validée dans `docs/crm/messages_meryem.md`, rendue par
+# `message_pour_etape` comme n'importe quelle autre touche) — voir
+# `tests_cad72_parrainage_catalogue_unique.py`.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
