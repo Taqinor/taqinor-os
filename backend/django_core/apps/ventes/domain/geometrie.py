@@ -587,9 +587,13 @@ def _panneau_pour_calepinage(layout, *, company=None, devis=None):
 def compte_moteur_du_layout(layout, *, company=None, devis=None):
     """Compte de modules rendu par le MOTEUR pour ce layout, ou ``None``.
 
-    Somme les pans : chacun passe par ``apps.ao.selectors.calepinage_villa``
-    (lecture cross-app sanctionnée — jamais ``apps.ao.models``), qui délègue au
-    moteur partagé d'AOF163. Aucune ligne AO n'est créée.
+    Somme les pans : chacun passe par
+    ``apps.calepinage.selectors.calepinage_villa`` (lecture cross-app
+    sanctionnée — jamais les modèles du module), qui délègue au moteur partagé
+    d'AOF163. SOLMVP15b : ce moteur vivait dans ``apps/ao`` ; il a été
+    rapatrié dans ``apps/calepinage/villa_service.py`` à la ligne près (mêmes
+    signatures, même dict de sortie) pour qu'AO puisse sortir du produit sans
+    perdre le recomptage. Aucune ligne n'est créée.
 
     PV42 — ``company``/``devis`` servent à résoudre le PANNEAU réellement vendu
     et à le passer en ``produit_panneau`` (PV12) : le calepinage est alors posé
@@ -605,7 +609,7 @@ def compte_moteur_du_layout(layout, *, company=None, devis=None):
     if not isinstance(pans, list) or not pans:
         return None
 
-    from apps.ao.selectors import calepinage_villa
+    from apps.calepinage.selectors import calepinage_villa
 
     produit_panneau, societe_panneau = _panneau_pour_calepinage(
         layout, company=company, devis=devis)
