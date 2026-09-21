@@ -22,6 +22,14 @@ Ces 11 traductions n'ont PAS encore reçu la relecture native du 04/09/2026
 (CADM1, comme `visite_proposition`/`visite_confirmation`) — ce fichier ne
 prétend pas le contraire, il verrouille seulement la couverture et la
 fidélité à la source.
+
+Complément du 21/09/2026 (fold vague 1) : sept clés sont nées APRÈS CAD62 —
+`dossier_8221`/`dossier_fda` (CAD125), les quatre identités par origine
+(CAD127) et `deuxieme_affaire` (CAD128). La garde de couverture les a
+attrapées : elles ont reçu leur darija au même patron (phrase par phrase du
+FR validé, source `docs/crm/messages_meryem.md`, relecture native CADM1 à
+venir). Le compte n'est donc plus inscrit dans le nom d'un test : il se
+dérive de `CLES_RELANCE`.
 """
 import pathlib
 import re
@@ -116,11 +124,26 @@ class CouvertureDarijaCompleteTests(SimpleTestCase):
             f'clé(s) sans repli darija : {manquantes} — un lead '
             'langue_preferee=darija recevrait du français silencieusement.')
 
-    def test_les_27_cles_de_relance_ont_un_defaut_darija_non_vide(self):
+    def test_chaque_cle_de_relance_a_un_defaut_darija_non_vide(self):
+        """Le compte n'est plus écrit dans le nom du test : il se DÉRIVE.
+
+        CAD62 a été construit sur 27 clés ; CAD125 (`dossier_8221`,
+        `dossier_fda`), CAD127 (les quatre identités par origine) et CAD128
+        (`deuxieme_affaire`) en ont ajouté 7 APRÈS. Figer « 27 » revenait à
+        périmer la garde à chaque clé neuve — alors que la doctrine, elle,
+        ne bouge pas : TOUTE clé de `CLES_RELANCE`, présente comme future,
+        porte son défaut darija non vide.
+        """
         for cle in CLES_RELANCE:
             with self.subTest(cle=cle):
                 self.assertTrue(
                     (MESSAGE_TEMPLATE_DEFAULTS_DARIJA.get(cle) or '').strip())
+        # Anti-faux-vert : la couverture est ENTIÈRE, pas seulement non vide
+        # sur les clés qui existent dans le dictionnaire darija.
+        self.assertEqual(
+            len([c for c in CLES_RELANCE
+                 if (MESSAGE_TEMPLATE_DEFAULTS_DARIJA.get(c) or '').strip()]),
+            len(CLES_RELANCE))
 
     def test_les_11_cles_cad62_sont_bien_les_clés_qui_manquaient(self):
         """Anti-faux-vert : si CAD62 n'avait rien ajouté, ce test échouerait

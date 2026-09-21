@@ -287,6 +287,31 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "السلام عليكم السي {prenom}، كنتمنى تكونو راضيين على التجهيزة. إلا عندكم جوج دقايق، رأي على Google كيعاوننا بزاف، هادشي اللي كيشوفوه الزبناء الجداد: {lien_google}. شكرا بزاف!",
     'parrainage':
         "إلا كان شي واحد حداكم، جار، خو، ولا زميل، كيفكر ف الطاقة الشمسية، تقدرو تصيفطو ليه الرابط ديال الرعاية ديالكم؛ غادي يكون عندو نفس الدراسة بلاش، ونتافقو مع بعضياتنا على مكافأة ليكم.",
+    # CAD-F — CAD62 (21/09/2026, complément) — les 7 clés NÉES APRÈS CAD62
+    # (CAD125 `dossier_8221`/`dossier_fda`, CAD127 les quatre identités par
+    # origine, CAD128 `deuxieme_affaire`). La doctrine CAD62 est « darija
+    # COMPLÈTE » : toute clé de `CLES_RELANCE` porte un défaut darija non
+    # vide, sinon un lead `langue_preferee='darija'` recevrait du français en
+    # silence — et ces 7 clés sont précisément les premiers mots qu'on lui
+    # dit. Même patron que les 11 de CAD62 : traduction phrase par phrase du
+    # FR validé (aucune promesse ajoutée, aucun chiffre ajouté, jamais une
+    # traduction automatique), source dans `docs/crm/messages_meryem.md`, et
+    # PAS ENCORE relues par un locuteur natif (CADM1, à faire avant tout
+    # envoi réel, comme les deux clés visite et les 11 de CAD62).
+    'dossier_8221':
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديالكم: فين وصل الملف ديالكم ديال الإنتاج الذاتي (قانون 82-21)؟ حسب المرحلة اللي وصلتو ليها، كنلائمو الدراسة والروزنامة ديال الربط — وإلا الملف مازال ما تلانسا، كنشرح ليكم المراحل ف خمس دقايق.",
+    'dossier_fda':
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديال الضخ ديالكم: واش دخّلتو ملف الدعم الفلاحي (FDA)، ولا ناويين تدخّلوه؟ هادشي كيبدل الروزنامة والوثائق اللي خاصكم توجدو — قولوا ليا فين وصلتو ونوجد الدراسة على هاد الأساس.",
+    'identite_reference':
+        "السلام عليكم السي {prenom}، أنا {conseiller} من {marque}. السي {prescripteur} هضر لينا عليكم بخصوص الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
+    'identite_telephone':
+        "السلام عليكم السي {prenom}، أنا {conseiller} من {marque}. بعد الهضرة ديالنا على الطاقة الشمسية، غادي نعاود نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
+    'identite_whatsapp_entrant':
+        "السلام عليكم السي {prenom}، أنا {conseiller} من {marque}. شكرا على الرسالة ديالكم بخصوص الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
+    'identite_ancien_dossier':
+        "السلام عليكم السي {prenom}، أنا {conseiller} من {marque}. كنتو سولتونا ف {mois_dossier} على الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير محين. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
+    'deuxieme_affaire':
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. خدمنا مع بعضياتنا ف التجهيزة الأولى ديالكم — شكرا على الثقة ديالكم من جديد. قولوا ليا شنو بغيتو تجهزو هاد المرة ونوجد ليكم الدراسة؛ غادي نعيط ليكم من دابا شي دقايق.",
 }
 
 # Placeholders AUTORISÉS dans un message de relance (MRY12). Aucun chiffre
