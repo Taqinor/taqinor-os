@@ -451,7 +451,76 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
             body=f'auto — réactivation ({source})',
         )
         _emit_stage_changed(lead, ancien_stage, cible, None)
+    # CAD107 — une réouverture pose une CADENCE DE REPRISE, quel que soit le
+    # chemin. Best-effort : une nouvelle touche entrante ne doit jamais
+    # échouer sur une cadence.
+    try:
+        reprendre_cadence_apres_reouverture(lead, None, origine=source)
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            'CAD107: reprise non posée après réactivation (lead #%s)',
+            getattr(lead, 'pk', '?'), exc_info=True)
     return True
+
+
+# ── CAD-B ── CAD107 ─────────────────────────────────────────────────────────
+
+def reprendre_cadence_apres_reouverture(lead, user, *, origine=''):
+    """CAD107 — UN seul comportement pour les trois chemins de réouverture.
+
+    Un client PERDU qui revient est le meilleur signal d'achat qui existe, et
+    il avait trois sorties différentes : le PATCH qui décoche « Perdu » ne
+    déclenchait RIEN (seul le passage inverse était traité), le lot
+    `unset_perdu` appelait le filet, et `reactivate_lead_on_new_touch` ne
+    créait aucune `RelanceEtape`. Dans les trois cas la prise de contact ne
+    pouvait de toute façon pas repartir (garde « déjà contacté ») : au mieux
+    une étape nue.
+
+    Le comportement unique REUTILISE la cadence RÉVEIL — jamais une nouvelle
+    cadence (CADX), et c'est exactement ce à quoi elle sert : reprendre le
+    contact d'un dossier mis de côté, sans rejouer six appels en quatorze
+    jours à quelqu'un qu'on a déjà travaillé.
+
+    Trois no-op délibérés :
+
+    * une touche est DÉJÀ ouverte ⇒ rien. CADX interdit deux cadences en
+      parallèle, et le dossier est déjà suivi ;
+    * lead perdu, archivé, « ne plus contacter », signé ou au froid ⇒ rien :
+      ce n'est pas une réouverture ;
+    * une cadence plus prioritaire est active ⇒ `CadenceActiveConflit` est
+      avalée, l'humain arrête d'abord (recette du 08/09).
+
+    Rend la liste des touches posées (vide sur no-op).
+    """
+    if lead is None or not getattr(lead, 'pk', None):
+        return []
+    lead.refresh_from_db(
+        fields=['stage', 'perdu', 'is_archived', 'ne_plus_contacter'])
+    if (lead.perdu or lead.is_archived
+            or getattr(lead, 'ne_plus_contacter', False)):
+        return []
+    if lead.stage in (stages.SIGNED, stages.COLD):
+        return []
+    if lead.relance_etapes.filter(
+            statut=RelanceEtape.Statut.A_FAIRE).exists():
+        return []
+    try:
+        etapes = initialiser_plan_relance(
+            lead, user, cadence='reveil', depart=timezone.now())
+    except CadenceActiveConflit:
+        etapes = []
+    if not etapes:
+        # REPLI — société sans gabarit de réveil, ou conflit de cadence :
+        # QJ-INVARIANT prime, un lead actif ne reste jamais sans prochaine
+        # étape. Le filet pose alors ce qu'il sait poser.
+        etape = assurer_prochaine_etape_apres_succes(lead, user)
+        return [etape] if etape is not None else []
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=('Dossier rouvert' + (f' ({origine})' if origine else '')
+              + ' — cadence de reprise posée.'))
+    return etapes
 
 
 def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
@@ -6199,10 +6268,14 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 activity.log_bulk_change(lead, user, 'perdu', True, False)
                 if old_motif:
                     activity.log_bulk_change(lead, user, 'motif_perte', old_motif, None)
-                # QJ-INVARIANT — un lead REPRIS (dé-perdu) redevient actif :
-                # ses cadences avaient été arrêtées au marquage, le filet lui
-                # repose une prochaine étape (plan après-devis si devis).
-                assurer_prochaine_etape_apres_succes(lead, user)
+                # CAD107 — un lead REPRIS (dé-perdu) redevient actif : ses
+                # cadences avaient été arrêtées au marquage. Les TROIS
+                # chemins de réouverture passent désormais par la MÊME
+                # fonction (cadence de REPRISE, filet en repli) — avant, ce
+                # lot appelait le filet, le PATCH ne faisait rien et la
+                # nouvelle touche entrante ne créait aucune relance.
+                reprendre_cadence_apres_reouverture(
+                    lead, user, origine='reprise en masse')
                 updated += 1
 
             elif op == 'archive':

@@ -1022,6 +1022,20 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             logger.warning(
                 'MRY9: arrêt de cadence échoué sur le lead #%s',
                 new_lead.pk, exc_info=True)
+        # CAD107 — la bascule INVERSE n'était traitée nulle part : décocher
+        # « Perdu » ne déclenchait rien, alors qu'un client perdu qui revient
+        # est le meilleur signal d'achat qui existe. Les trois chemins de
+        # réouverture (ce PATCH, le lot `unset_perdu`, la nouvelle touche
+        # entrante) posent désormais la MÊME cadence de reprise.
+        from .services import reprendre_cadence_apres_reouverture
+        try:
+            if old.perdu and not new_lead.perdu:
+                reprendre_cadence_apres_reouverture(
+                    new_lead, self.request.user, origine='fiche rouverte')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'CAD107: reprise non posée sur le lead #%s',
+                new_lead.pk, exc_info=True)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['duplicates',
