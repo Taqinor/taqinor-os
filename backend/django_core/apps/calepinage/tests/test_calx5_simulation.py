@@ -621,11 +621,14 @@ class EcritureTest(TestCase):
         from authentication.models import Company
 
         from apps.calepinage.models import Calepinage
+        from apps.crm.models import Client
 
         societe = Company.objects.create(nom='Simulation Co',
                                          slug='simulation-co')
+        client = Client.objects.create(company=societe, nom='Client')
         calepinage = Calepinage.objects.create(
-            company=societe, titre='Simulation', roof_layout=LAYOUT,
+            company=societe, client=client, titre='Simulation',
+            roof_layout=LAYOUT,
             resultat={'entree_electrique': {'phases': 3},
                       'pertes': [{'poste': 'soiling', 'pct': 2.0}]})
 
