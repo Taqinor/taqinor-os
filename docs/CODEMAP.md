@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a09519d8ffec5e537659cedd60a878e56e2e2899b11d2370a5320a001d29cf09
-Plan fingerprint: d4befee82f5e8154540058594960170dacbf51257d3e9e08d55a562fcd4e8ee1
+Plan fingerprint: 44b844969510fda006df5a2d97b162af5a6f450607d1c4f06f1f84cba0b0623b
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (201)**
+**Done (204)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -632,6 +632,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX87` — Porter au contrat la surface de pose « façade » et les poteaux d'ombrière
 - `CALX88` — Porter au contrat les choix d'optimisation et le soleil de scène
 - `CALX93` — Déduire noue et arêtier en comparant les pans voisins
+- `CALX112` — Dupliquer une sélection de panneaux et la coller au pas saisi
+- `CALX113` — Rendre la symétrie d'une sélection de panneaux par rapport à un axe
+- `CALX116` — Sélectionner des panneaux au lasso, en plus du rectangle
 - `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
 - `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
 - `CALX129` — Basculer la vue 3D d'édition en plein écran
@@ -735,7 +738,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (405)**
+**Open — to build (402)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -949,11 +952,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX109` — Choisir le module depuis le stock et calepiner avec ses vraies cotes
 - `CALX110` — Poser plusieurs modèles de module dans un même système
 - `CALX111` — Numéroter les modules de façon stable et l'afficher en 3D comme en plan
-- `CALX112` — Dupliquer une sélection de panneaux et la coller au pas saisi
-- `CALX113` — Rendre la symétrie d'une sélection de panneaux par rapport à un axe
 - `CALX114` — Choisir la cible de l'optimisation au lieu de la figer sur l'énergie
 - `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
-- `CALX116` — Sélectionner des panneaux au lasso, en plus du rectangle
 - `CALX117` — Afficher une grille métrique de repère au pas saisi
 - `CALX118` — Montrer la course du soleil du site dans l'atelier
 - `CALX119` — Choisir une date libre pour le soleil de la scène et la retenir
