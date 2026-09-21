@@ -264,6 +264,23 @@ const calepinageApi = {
     // (`fichier`, et `calque` une fois choisi) : on laisse axios poser sa
     // frontière multipart.
     importerPlan: (id, corps) => api.post(`${pivot(id)}importer-plan/`, corps),
+
+    /* ↓ APPEND-ONLY (décision D-CALX 13) : toute méthode neuve s'ajoute EN FIN
+       de cet objet, avec son commentaire `// CALX<id>` — jamais au milieu,
+       jamais de tri (deux lanes qui trient ce fichier, c'est le conflit de
+       fusion garanti que la règle append-only évite). */
+
+    // CALX40 — ouvre la génération d'un dossier réglementaire. Le corps
+    // désigne `{dossier}` (un dossier déjà commencé) ou `{gabarit}` (le
+    // gabarit déposé par la société). Un refus sort en 400 SOUS le champ
+    // qu'il nomme (`gabarit`, `dossier`, ou le code de la pièce).
+    genererDossier: (id, corps) => api.post(`${pivot(id)}generer-dossier/`, corps),
+
+    // CALX41 — enregistre les champs à compléter d'un dossier réglementaire
+    // (`{dossier|gabarit, champs: {code: valeur}}`). La réponse est l'agrégat
+    // du contrat CAL247 RECOMPOSÉ : le panneau relit sa saisie sans second
+    // appel. Un code hors du gabarit sort en 400 sous ce code-là.
+    enregistrerChampsDossier: (id, corps) => api.post(`${pivot(id)}champs-dossier/`, corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
