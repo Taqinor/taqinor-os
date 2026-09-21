@@ -42,6 +42,7 @@ from apps.calepinage.selectors import (
 )
 from apps.calepinage.services import site
 from apps.calepinage.services.equipements import equipements_du_calepinage
+from apps.calepinage.services.lestage import masse_et_lestage
 from apps.calepinage.services.reglementaire import composer_dossiers
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
@@ -54,7 +55,10 @@ VUES = RACINE / 'views'
 AVEC_PRODUCTEUR_PUR = ('calepinage_equipements.json',
                        'dossiers_reglementaires.json',
                        'parametres_calepinage.json',
-                       'site_imagerie.json')
+                       'site_imagerie.json',
+                       # CALX17 — masse posée + feuille de lestage : producteur
+                       # PUR (aucune base) sur un calepinage nu.
+                       'calepinage_masse_lestage.json')
 
 #: Les autres, avec la RAISON — aucun n'est oublié, chacun est un choix.
 SANS_PRODUCTEUR_PUR = {
@@ -93,6 +97,13 @@ SANS_PRODUCTEUR_PUR = {
         'enveloppe (`releve_en_ligne`) lue sur un `ReleveTerrain` SAUVÉ en '
         'base (photos, auteur) — la géométrie PURE (`resoudre_chaines`) est '
         'affirmée sans base par tests/test_calx25_releve_contrat.py',
+
+    # CALX39
+    'calepinage_import_plan.json':
+        "réponse d'une porte MULTIPART : son producteur exige un plan "
+        'déposé (DXF/PDF réel) et un calepinage résolu — affirmé par '
+        'apps/calepinage/tests/test_calx39_import_plan.py, qui appelle la '
+        "porte sur un DXF fabriqué par ezdxf",
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -222,6 +233,14 @@ class ClesServiesTest(unittest.TestCase):
         self._comparer('parametres_calepinage.json', servi, 'exemple_vide')
         self.assertEqual(sorted(parametres_de_societe(None)),
                          sorted(SECTIONS_PARAMETRES))
+
+    def test_masse_lestage(self):
+        # CALX17 — ``masse_et_lestage`` sur un calepinage NU ne touche
+        # aucune base : ni devis, ni document, ni produit désigné.
+        servi = masse_et_lestage(Faux())
+        self._comparer('calepinage_masse_lestage.json', servi)
+        self._comparer('calepinage_masse_lestage.json', servi,
+                       'exemple_vide')
 
     def test_site_imagerie(self):
         # Cet échantillon décrit la SECTION « imagerie » (CAL46) à l'intérieur

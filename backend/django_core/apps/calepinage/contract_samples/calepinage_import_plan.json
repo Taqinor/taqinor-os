@@ -1,0 +1,84 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/importer-plan/",
+  "pourquoi": "CALX39 — la PORTE HTTP de l'import d'un plan (DXF ou PDF vectoriel). POURQUOI CE CONTRAT EXISTE : ``services/import_plan.py`` (CAL62) analysait déjà un plan déposé et en tirait un contour, mais AUCUNE porte HTTP ne l'appelait — ``PlanImporteCalage.jsx`` le disait lui-même, et le contour devait lui arriver par une propriété que personne ne fournissait. Le contrat fixe ce que la porte rend pour que l'écran de calage et le serveur ne puissent pas diverger : le test backend (``tests/test_calx39_import_plan.py``) affirme l'exemple committé en appelant la porte sur un VRAI DXF fabriqué par ``ezdxf``, et le test frontend lit le même fichier. CORPS : ``multipart/form-data``, champ ``fichier`` (obligatoire) et champ ``calque`` (facultatif). Sans ``calque``, la réponse liste ce que le plan contient ; avec, elle ajoute le ``contour`` de ce calque et ses ``cotes_hors_tout``. AUCUN BOOLÉEN n'est lu du corps : en multipart tout arrive en texte, et une case décochée envoyée « false » serait VRAIE — ``enregistre`` est une constante du serveur. AUCUNE ÉCRITURE : cette porte ne pose AUCUN ``roof_layout``, aucun document, aucun statut ; le contour revient au client, qui l'enregistre par le geste existant (``POST layout/``, CAL18) ou ne l'enregistre pas. Le fichier n'est pas conservé côté serveur : choisir un calque redépose le même fichier. AUCUNE ÉCHELLE DEVINÉE : ``unite`` est celle que le fichier DÉCLARE (``$INSUNITS``) ou ``inconnu`` (un PDF n'a que des points typographiques), et ``echelle`` vaut TOUJOURS ``null`` — c'est la calibration de l'atelier (deux points et la distance réelle saisie) qui la donne ; ``motif_echelle`` dit pourquoi, en français. REFUS (400) : chacun NOMME le champ fautif — ``fichier`` (absent, vide, au-delà de 5 Mo, image ou DWG sans traçé vectoriel, illisible : motif français de ``PlanIllisible``) ou ``calque`` (inexistant : le message liste les calques disponibles). Les trois exemples de refus ci-dessous sont les corps RÉELS de la porte. VALEURS : un plan d'essai fabriqué par ``ezdxf`` (enveloppe de 30 × 18 dans l'unité du fichier, un calque de cotes à côté) — aucune donnée client, aucun prix.",
+  "exemple": {
+    "calepinage": 1,
+    "fichier": "plan-toiture.dxf",
+    "format": "dxf",
+    "unite": "m",
+    "echelle": null,
+    "motif_echelle": "Le fichier déclare son unité, pas son échelle d'impression : la calibration reste le seul chemin qui pose l'échelle du plan.",
+    "calques": [
+      {
+        "nom": "COTES",
+        "entites": 1,
+        "sommets": 2
+      },
+      {
+        "nom": "ENVELOPPE",
+        "entites": 1,
+        "sommets": 4
+      }
+    ],
+    "calque": "ENVELOPPE",
+    "contour": [
+      [
+        0.0,
+        0.0
+      ],
+      [
+        30.0,
+        0.0
+      ],
+      [
+        30.0,
+        18.0
+      ],
+      [
+        0.0,
+        18.0
+      ]
+    ],
+    "cotes_hors_tout": {
+      "largeur": 30.0,
+      "hauteur": 18.0,
+      "sommets": 4
+    },
+    "enregistre": false,
+    "message": "Contour proposé depuis le calque choisi : rien n'a été enregistré. Calez-le (deux points et leur distance réelle) avant de l'appliquer au toit."
+  },
+  "exemple_sans_calque": {
+    "calepinage": 1,
+    "fichier": "plan-toiture.dxf",
+    "format": "dxf",
+    "unite": "m",
+    "echelle": null,
+    "motif_echelle": "Le fichier déclare son unité, pas son échelle d'impression : la calibration reste le seul chemin qui pose l'échelle du plan.",
+    "calques": [
+      {
+        "nom": "COTES",
+        "entites": 1,
+        "sommets": 2
+      },
+      {
+        "nom": "ENVELOPPE",
+        "entites": 1,
+        "sommets": 4
+      }
+    ],
+    "calque": null,
+    "contour": null,
+    "cotes_hors_tout": null,
+    "enregistre": false,
+    "message": "Plan analysé : rien n'a été enregistré. Choisissez le calque qui porte l'enveloppe pour en tirer le contour."
+  },
+  "refus_calque": {
+    "calque": "Le calque « ENVELOPE » n'existe pas dans ce plan (calques disponibles : COTES, ENVELOPPE)."
+  },
+  "refus_fichier_vide": {
+    "fichier": "Aucun plan déposé : ajoutez un fichier DXF ou PDF vectoriel dans le champ « fichier »."
+  },
+  "refus_fichier_image": {
+    "fichier": "Ce fichier est une image PNG : il ne porte aucun tracé vectoriel, donc aucun contour ne peut en être tiré sans l'inventer. Exportez le plan en DXF (ou en PDF vectoriel depuis le logiciel de dessin), ou calez la photo à la main depuis l'onglet « Plan importé »."
+  }
+}

@@ -245,6 +245,25 @@ const calepinageApi = {
     // (auteur + société posés côté serveur).
     chatterHistorique: (id) => api.get(`${pivot(id)}chatter/historique/`),
     chatterNoter: (id, body) => api.post(`${pivot(id)}chatter/noter/`, { body }),
+
+    /* APPEND-ONLY (D-CALX 13) : une méthode neuve s'ajoute ICI, EN FIN,
+       avec son commentaire `// CALX<id>` — jamais au milieu, jamais triée. */
+
+    // CALX17 — la masse posée et la feuille de lestage, telles que
+    // `services/lestage.py` les compose (contrat
+    // `contract_samples/calepinage_masse_lestage.json`). Lecture PURE ;
+    // `module` désigne le produit dont le poids de fiche est lu, à défaut
+    // le panneau du devis lié.
+    masseLestage: (id, params) => api.get(`${pivot(id)}masse-lestage/`, { params }),
+
+    // CALX39 — l'import d'un plan (DXF / PDF vectoriel) : le serveur ANALYSE
+    // le fichier et rend ses calques, puis le contour du calque choisi (contrat
+    // `contract_samples/calepinage_import_plan.json`). Il n'ÉCRIT RIEN : ni
+    // `roof_layout`, ni document — l'enregistrement reste le geste de
+    // l'utilisateur (`enregistrerLayoutCalepinage`). `corps` est un FormData
+    // (`fichier`, et `calque` une fois choisi) : on laisse axios poser sa
+    // frontière multipart.
+    importerPlan: (id, corps) => api.post(`${pivot(id)}importer-plan/`, corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

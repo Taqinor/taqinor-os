@@ -64,6 +64,10 @@ from . import pompage as _pompage_action  # noqa: F401
 from . import simulation as _simulation_actions  # noqa: F401
 # CAL191 — même patron : rattache ``dossiers-reglementaires`` (contrat CAL247).
 from . import reglementaire as _reglementaire_action  # noqa: F401
+# CALX39 — même patron : rattache ``importer-plan`` (analyse d'un plan DXF /
+# PDF vectoriel déposé, service CAL62). Aucune écriture : la porte rend le
+# contour, elle ne pose aucun ``roof_layout``.
+from . import import_plan as _import_plan_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -81,6 +85,7 @@ MODULES_RATTACHES = (
     'pompage',
     'simulation',
     'reglementaire',
+    'import_plan',  # CALX39
 )
 
 __all__ = ['MODULES_RATTACHES']
