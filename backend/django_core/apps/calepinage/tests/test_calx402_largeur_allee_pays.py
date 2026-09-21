@@ -16,7 +16,7 @@ CE QUI EST PROUVÉ ICI :
 * un pays non saisi rend ``(None, motif)`` — le motif NOMME le réglage
   manquant, jamais une largeur forfaitaire ;
 * une entrée valide traverse la normalisation puis se relit par
-  ``largeur_allee_circulation`` ;
+  ``_largeur_allee_circulation`` ;
 * GARDE DE SURFACE : ``services/degagements.py`` ne porte AUCUNE largeur
   littérale nouvelle (aucun coefficient de circulation écrit en dur).
 
@@ -35,7 +35,7 @@ import unittest
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.degagements import (
-    CLE_ALLEES_CIRCULATION, SECTION, largeur_allee_circulation,
+    CLE_ALLEES_CIRCULATION, SECTION, _largeur_allee_circulation,
     normaliser_section_degagements,
 )
 from apps.calepinage.services.parametres import ReglageInvalide
@@ -64,9 +64,9 @@ class UneSocieteViergeGardeLaSectionOctetPourOctet(SimpleTestCase):
     def test_pays_non_saisi_ne_recoit_aucune_largeur_par_defaut(self):
         """Ni 36 pouces, ni une valeur DTU/incendie : le dépôt n'en porte
         aucune — le pays absent rend ``None``, jamais un chiffre."""
-        valeur, _motif = largeur_allee_circulation({}, pays='ma')
+        valeur, _motif = _largeur_allee_circulation({}, pays='ma')
         self.assertIsNone(valeur)
-        valeur, _motif = largeur_allee_circulation(None, pays='fr')
+        valeur, _motif = _largeur_allee_circulation(None, pays='fr')
         self.assertIsNone(valeur)
 
 
@@ -111,14 +111,14 @@ class UnPaysNonSaisiRendNoneEtNommeLeReglage(SimpleTestCase):
         section = normaliser_section_degagements({
             CLE_ALLEES_CIRCULATION: [_entree(pays='ma')],
         })
-        valeur, motif = largeur_allee_circulation(section, pays='fr')
+        valeur, motif = _largeur_allee_circulation(section, pays='fr')
         self.assertIsNone(valeur)
         self.assertIn('fr', motif)
         self.assertIn('allees_circulation', motif)
         self.assertIn(SECTION, motif)
 
     def test_aucun_pays_fourni_rend_none_et_le_dit(self):
-        valeur, motif = largeur_allee_circulation({}, pays='')
+        valeur, motif = _largeur_allee_circulation({}, pays='')
         self.assertIsNone(valeur)
         self.assertIn('aucun pays', motif.lower())
 
@@ -126,7 +126,7 @@ class UnPaysNonSaisiRendNoneEtNommeLeReglage(SimpleTestCase):
         section = normaliser_section_degagements({
             CLE_ALLEES_CIRCULATION: [_entree(pays='ma')],
         })
-        valeur, _motif = largeur_allee_circulation(section, pays='MA')
+        valeur, _motif = _largeur_allee_circulation(section, pays='MA')
         self.assertEqual(valeur, 1.2)
 
 
@@ -154,7 +154,7 @@ class UneEntreeValideTraverseEtSeRelit(SimpleTestCase):
                 pays='ma', largeur_m=1.4, source='société',
                 reference='Consigne interne v2')],
         })
-        valeur, phrase = largeur_allee_circulation(section, pays='ma')
+        valeur, phrase = _largeur_allee_circulation(section, pays='ma')
         self.assertEqual(valeur, 1.4)
         self.assertIn('votre société', phrase)
         self.assertIn('Consigne interne v2', phrase)
@@ -166,9 +166,9 @@ class UneEntreeValideTraverseEtSeRelit(SimpleTestCase):
                 _entree(pays='fr', largeur_m=1.5),
             ],
         })
-        self.assertEqual(largeur_allee_circulation(section, pays='ma')[0],
+        self.assertEqual(_largeur_allee_circulation(section, pays='ma')[0],
                          1.2)
-        self.assertEqual(largeur_allee_circulation(section, pays='fr')[0],
+        self.assertEqual(_largeur_allee_circulation(section, pays='fr')[0],
                          1.5)
 
 

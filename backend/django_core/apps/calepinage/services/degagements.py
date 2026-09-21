@@ -111,7 +111,7 @@ __all__ = [
     'RETRAIT_ATELIER_M', 'CLE_RETRAIT', 'CLE_ALLEE', 'CLE_SOURCE',
     'MENTION_NON_SOURCEE', 'CLE_ALLEES_CIRCULATION', 'types_admis',
     'degagement_du_type', 'retrait_perimetre', 'allee_technique',
-    'largeur_allee_circulation', 'normaliser_section_degagements',
+    '_largeur_allee_circulation', 'normaliser_section_degagements',
 ]
 
 
@@ -388,10 +388,17 @@ def allee_technique(section=None):
     return (float(saisi), phrase)
 
 
-def largeur_allee_circulation(section, *, pays):
+def _largeur_allee_circulation(section, *, pays):
     """``(valeur ou None, phrase)`` — la largeur d'allée de circulation
     SAISIE par la société pour ``pays`` (CALX402), sur le patron de
     ``allee_technique``.
+
+    Privée (fold lot 2, 21/09/2026) : le consommateur RÉEL de cette règle est
+    l'atelier (`roofPro11/obstaclesUi.ts::largeurAlleeDepuisReglages`,
+    CALX403), qui lit la section brute servie par ``GET calepinage/parametres/``.
+    Aucune vue ni aucun service Django ne l'appelle encore : elle ne promet
+    donc rien à personne (garde ``check_services_appeles``) et redeviendra
+    publique le jour où un verdict serveur la consomme.
 
     Args:
         section: la section ``degagements`` de la société (ou ``None``).
