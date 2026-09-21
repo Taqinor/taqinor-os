@@ -2235,6 +2235,11 @@ def equipements_pour_lead(lead):
         # couche déjà active, jamais une paire requise). Mêmes None-par-défaut.
         'clim_creneau': lead.equip_clim_creneau,
         'piscine_creneau': lead.equip_piscine_creneau,
+        # CAD169 — « déjà là » ou « seulement prévu » : une voiture PRÉVUE est
+        # comptée des deux côtés, mais le devis et la proposition portent
+        # alors l'étiquette « avec votre future voiture ». Sans ce champ ici,
+        # le moteur ne pourrait pas la poser — et le chiffre mentirait.
+        've_statut': getattr(lead, 'equip_ve_statut', None),
     }
 
 

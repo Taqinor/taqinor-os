@@ -437,6 +437,30 @@ def _entier_positif(valeur):
     return val if val > 0 else None
 
 
+# ── CAD169 ── L'ÉTIQUETTE DE LA VOITURE SEULEMENT PRÉVUE.
+#
+# Décision fondateur du 21/09/2026 : une voiture pas encore achetée reste
+# COMPTÉE des deux côtés du chiffre, et le devis comme la proposition portent
+# cette étiquette. Un seul texte, ici : tout rendu qui affiche la couche
+# véhicule électrique le lit à cette source, jamais une variante recopiée.
+#: Valeur de ``crm.Lead.equip_ve_statut`` qui déclenche l'étiquette.
+VE_STATUT_PREVU = 'prevu'
+VE_STATUT_POSSEDE = 'possede'
+ETIQUETTE_VE_PREVU = 'avec votre future voiture'
+
+
+def etiquette_ve(couches):
+    """L'étiquette à AFFICHER pour la couche véhicule, ou ``None``.
+
+    ``couches`` = la sortie de :func:`composer_equipements`. Renvoie le texte
+    UNIQUEMENT quand la voiture est déclarée « seulement prévue » ; une
+    voiture possédée, une absence de couche ou un statut jamais renseigné ne
+    produisent AUCUNE étiquette (on n'étiquette pas un chiffre qui ne le
+    demande pas)."""
+    couche = (couches or {}).get('ve') or {}
+    return couche.get('etiquette') or None
+
+
 # ── CAD165 (2) ── LE CRÉNEAU « JOUR » SE CALE SUR LE MILIEU DE LA JOURNÉE.
 #
 # Quand le chargeur est connu, la recharge n'occupe qu'une PARTIE du créneau
@@ -576,6 +600,21 @@ def _equipements(lead_equip):
                 'mode': 'addition',
                 'source': source,
             }
+            # ── CAD169 ── « AVEC VOTRE FUTURE VOITURE ». Le script d'appel
+            # demande « avez-vous OU prévoyez-vous » : une voiture pas encore
+            # achetée gonflait donc l'autoconsommation et l'économie promise
+            # SANS que le client le sache. Décision fondateur du 21/09/2026 :
+            # elle reste comptée des deux côtés — et le devis comme la
+            # proposition portent l'étiquette. L'étiquette est OBLIGATOIRE dès
+            # que le statut vaut « prévu » : sans elle, le chiffre ment.
+            # Les deux clés n'apparaissent QUE si le statut a été renseigné :
+            # une fiche qui n'a jamais répondu garde une couche byte-identique
+            # à celle d'avant.
+            statut = lead_equip.get('ve_statut')
+            if statut:
+                out['ve']['statut'] = statut
+                if statut == VE_STATUT_PREVU:
+                    out['ve']['etiquette'] = ETIQUETTE_VE_PREVU
 
     # chauffe_eau_electrique (booléen informatif) reste sans couche — voir le
     # commentaire d'en-tête. L-BACK ajoute une paire DISTINCTE
