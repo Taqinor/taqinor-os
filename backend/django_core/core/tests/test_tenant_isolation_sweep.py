@@ -73,7 +73,16 @@ User = get_user_model()
 # * ``_PLAFOND_SKIPS_PCT`` — garde-fou secondaire sur la PROPORTION, resserré
 #   de 85 % à 70 % (soit ≤ 630 sur 901, très en deçà des 765 tolérés avant),
 #   avec la marge nécessaire à l'arrivée des ``ReadOnlyModelViewSet``.
-_PLANCHER_CONSTRUITS = 380
+#
+# SOLMVP (21/09/2026) — 380 -> 150. Le plancher est ABSOLU par construction :
+# il ne bouge que quand le PARC bouge, et le parc vient de fondre (47 apps
+# sorties du MVP solaire, ``core.parked`` / ``docs/parked-modules.md`` : ~412
+# modèles construits le 02/09 -> 167 mesurés en CI le 21/09). Le recalibrer
+# n'est donc pas un relâchement du cliquet mais la même marge (~10 %) sous le
+# réel du NOUVEAU parc : une régression de la factory ou de la découverte (le
+# bug historique « exercised == 0 ») le fait toujours tomber immédiatement. À
+# remonter avec le parc au retour de chaque module.
+_PLANCHER_CONSTRUITS = 150
 _PLAFOND_SKIPS_PCT = 70
 
 # Budgets de PREMIÈRE OBSERVATION des deux nouvelles couvertures (CRX17). Le
@@ -286,8 +295,9 @@ class TenantIsolationSweepTests(TestCase):
         self.assertGreaterEqual(
             constructed, _PLANCHER_CONSTRUITS,
             f"CRX17 : la factory ne construit plus que {constructed} modèles "
-            f"(plancher {_PLANCHER_CONSTRUITS}, ~412 mesurés le 02/09) — "
-            "régression de build_minimal_instance ou de la découverte.")
+            f"(plancher {_PLANCHER_CONSTRUITS}, 167 mesurés le 21/09 après le "
+            "parcage SOLMVP — ~412 avant) — régression de "
+            "build_minimal_instance ou de la découverte.")
         # Garde-fou secondaire sur la PROPORTION (resserré 85 % → 70 %).
         self.assertLessEqual(
             len(skipped), len(entries) * _PLAFOND_SKIPS_PCT // 100,
