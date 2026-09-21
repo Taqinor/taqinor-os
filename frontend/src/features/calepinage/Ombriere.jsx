@@ -1,13 +1,18 @@
 /* eslint-disable react-refresh/only-export-components --
-   `documentOmbriere` et `totauxParBatiment` sont des fonctions PURES (une
-   saisie + un plan du moteur → le document persisté et les totaux affichés).
-   Le test jumeau les exerce sans monter l'écran, parce que ce sont ELLES qui
-   garantissent qu'aucune charge n'est calculée et qu'aucun total n'est inventé.
-   Même dérogation que `module.config.jsx` du même module. */
+   `documentOmbriere`, `totauxParBatiment` et `coupeOmbriere` sont des fonctions
+   PURES (une saisie + un plan du moteur → le document persisté, les totaux
+   affichés et la mise en page de la coupe). Le test jumeau les exerce sans
+   monter l'écran, parce que ce sont ELLES qui garantissent qu'aucune charge
+   n'est calculée, qu'aucun total n'est inventé et qu'aucune hauteur n'est
+   supposée. Même dérogation que `module.config.jsx` du même module. */
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
-import { nombre, pasMesure, tauxOccupation, contourTerrain, demandeMoteur } from './ModeTerrain'
+import {
+  nombre, pasMesure, tauxOccupation, contourTerrain, demandeMoteur, planVue2D,
+} from './ModeTerrain'
+import { formatCote, milieu } from './plan2d'
+import { formatNumber } from '../../lib/format'
 
 /* ============================================================================
    CAL91 — L'OMBRIÈRE / CARPORT, SURFACE DE POSE À PART ENTIÈRE.
@@ -99,6 +104,86 @@ export function totauxParBatiment(layout) {
   return Array.from(total.values())
 }
 
+/* ============================================================================
+   CALX51 — L'OMBRIÈRE EST DESSINÉE, ET LEVÉE À LA HAUTEUR SAISIE.
+   ----------------------------------------------------------------------------
+   Constat : cet écran était le jumeau du mode terrain — un formulaire et des
+   totaux, sans vue. Le placement existait pourtant, PUR et testé, dans le
+   builder (`construireOmbriere`, `@roofpro/scene3d`) et n'avait aucun appelant.
+   On le branche : c'est LUI qui lève la couverture, et c'est LUI qui refuse de
+   deviner. Hauteur libre absente ⇒ l'altitude des tables reste 0 et le manque
+   est affiché avec les mots du service ; aucune hauteur de confort n'est
+   écrite nulle part, ni dans le code, ni sur l'écran.
+
+   DEUX DESSINS, AUCUN CALCUL : le PLAN réutilise la mise en page du mode
+   terrain (`planVue2D`) — une seule mise en page pour les deux surfaces de
+   pose, sinon elles divergeraient. La COUPE (ci-dessous) ne fait que lire
+   l'altitude que le service a posée sur chaque table.
+
+   AUCUNE CHARGE, AUCUNE STRUCTURE — la règle de CAL91 ne bouge pas : ces
+   dessins placent des formes, ils ne dimensionnent aucun ouvrage.
+   ========================================================================== */
+
+/** Zone de dessin de la coupe (unités du `viewBox`). */
+export const COUPE_LARGEUR = 900
+export const COUPE_HAUTEUR = 260
+
+/**
+ * CALX51 — la COUPE sur la largeur de l'ombrière : le sol, et la couverture à
+ * l'altitude que `construireOmbriere` a posée sur chaque table.
+ *
+ * Le sol (altitude 0) fait TOUJOURS partie du cadre : c'est par rapport à lui
+ * que la hauteur libre se lit. Altitude nulle ⇒ aucune cote de hauteur n'est
+ * tracée, parce qu'il n'y a rien à coter. Aucune table ⇒ `null` : rien n'est
+ * dessiné plutôt qu'une ombrière supposée.
+ */
+export function coupeOmbriere({
+  tables = [],
+  largeurPx = COUPE_LARGEUR,
+  hauteurPx = COUPE_HAUTEUR,
+  margePx = 28,
+} = {}) {
+  if (!(largeurPx > 0) || !(hauteurPx > 0)) return null
+  const segments = []
+  for (const t of tables ?? []) {
+    const cx = Number(t?.cx)
+    const l = Number(t?.largeurM)
+    const z = Number(t?.z)
+    if (![cx, l, z].every((v) => Number.isFinite(v))) continue
+    segments.push({ x0: cx - l / 2, x1: cx + l / 2, z })
+  }
+  if (!segments.length) return null
+
+  let minX = Infinity
+  let maxX = -Infinity
+  let altitudeM = 0
+  for (const s of segments) {
+    if (s.x0 < minX) minX = s.x0
+    if (s.x1 > maxX) maxX = s.x1
+    if (s.z > altitudeM) altitudeM = s.z
+  }
+  const etendueX = Math.max(1e-6, maxX - minX)
+  const etendueZ = Math.max(1e-6, altitudeM)
+  const marge = Math.max(0, Math.min(Math.min(largeurPx, hauteurPx) / 2 - 1, margePx))
+  const pxParM = Math.min((largeurPx - 2 * marge) / etendueX, (hauteurPx - 2 * marge) / etendueZ)
+  const decX = (largeurPx - etendueX * pxParM) / 2
+  const decZ = (hauteurPx - etendueZ * pxParM) / 2
+  // Une altitude qui monte va vers le HAUT du dessin : y décroît à l'écran.
+  const versPx = (x, z) => [decX + (x - minX) * pxParM, decZ + (altitudeM - z) * pxParM]
+
+  return {
+    largeurPx,
+    hauteurPx,
+    pxParM,
+    altitudeM,
+    sol: { from: versPx(minX, 0), to: versPx(maxX, 0) },
+    tables: segments.map((s) => ({ z: s.z, from: versPx(s.x0, s.z), to: versPx(s.x1, s.z) })),
+    coteHauteur: altitudeM > 0
+      ? { lengthM: altitudeM, from: versPx(minX, 0), to: versPx(minX, altitudeM) }
+      : null,
+  }
+}
+
 const SAISIE_VIDE = {
   repere: 'OMBRIERE',
   label: 'Ombrière',
@@ -141,6 +226,28 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
   const [reponse, setReponse] = useState(null)
   const [enCours, setEnCours] = useState(false)
   const [message, setMessage] = useState(null)
+  // CALX51 — le PLACEUR de l'ombrière (`construireOmbriere`), chargé à
+  // l'ouverture de l'écran seulement : `scene3d` porte aussi la couche WebGL,
+  // qu'un import statique ferait tomber dans le paquet de cette route. Rangé
+  // dans un objet : une fonction nue passée à `setState` serait lue comme une
+  // mise à jour, pas comme une valeur.
+  const [placeur, setPlaceur] = useState(null)
+  const [placeurAbsent, setPlaceurAbsent] = useState(false)
+
+  useEffect(() => {
+    let annule = false
+    import('@roofpro/scene3d')
+      .then((mod) => {
+        if (annule) return
+        if (typeof mod?.construireOmbriere === 'function') {
+          setPlaceur({ construireOmbriere: mod.construireOmbriere })
+        } else {
+          setPlaceurAbsent(true)
+        }
+      })
+      .catch(() => { if (!annule) setPlaceurAbsent(true) })
+    return () => { annule = true }
+  }, [])
 
   // RELECTURE — une ombrière déjà enregistrée revient telle quelle.
   useEffect(() => {
@@ -223,6 +330,39 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
   const plan = (reponse?.plans ?? [])[0] ?? null
   const pas = plan ? (pasMesure(plan.rangees) ?? reponse?._pasRecharge ?? null) : null
   const hauteur = nombre(saisie.clearHeightM)
+  const ecoulement = nombre(saisie.flowAzimuthDeg)
+  const aire = contourTerrain(saisie.largeurM, saisie.profondeurM)
+    ? nombre(saisie.largeurM) * nombre(saisie.profondeurM)
+    : null
+
+  // CALX51 — l'ombrière PLACÉE par le service : c'est lui qui lève (ou non) la
+  // couverture, à partir de la seule hauteur libre SAISIE. La pente du sol
+  // n'est pas une donnée de cet écran : le service le dit dans `nonMesure`,
+  // on ne lui en souffle aucune.
+  const champ = placeur && plan
+    ? placeur.construireOmbriere(plan, {
+      tiltDeg: nombre(saisie.tiltDeg),
+      hauteurLibreM: hauteur,
+      aireTerrainM2: aire,
+    })
+    : null
+  const vue = champ
+    ? planVue2D({
+      contourM: contourTerrain(saisie.largeurM, saisie.profondeurM),
+      tables: champ.tables,
+      rangees: plan?.rangees ?? [],
+      pasM: champ.pasInterRangeeM,
+      compteModules: champ.modules,
+    })
+    : null
+  const coupe = champ ? coupeOmbriere({ tables: champ.tables }) : null
+  // L'ALTITUDE AFFICHÉE est celle que le service a posée sur les tables, pas la
+  // saisie relue : c'est la seule façon de voir qu'une hauteur absente ne lève
+  // rien du tout.
+  const altitudeCouverture = champ && champ.tables.length
+    ? Math.max(...champ.tables.map((t) => Number(t.z)))
+    : null
+
   // Les totaux affichés incluent l'ombrière EN COURS, pas seulement celles déjà
   // enregistrées — sinon le total mentirait jusqu'au prochain enregistrement.
   const layoutAffiche = plan
@@ -329,6 +469,188 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
             </dt>
           </div>
         </dl>
+      )}
+
+      {/* CALX51 — L'OMBRIÈRE DESSINÉE : le plan, puis la coupe où la couverture
+          est levée à la hauteur libre SAISIE (ou pas levée du tout). */}
+      {(plan || placeurAbsent) && (
+        <section
+          className="mt-5 border-t border-white/10 pt-4"
+          data-testid="cal-ombriere-vue"
+          aria-label="Ombrière dessinée"
+        >
+          <p className="tech-label text-lune-faint">
+            Ombrière dessinée — travées posées et couverture levée
+          </p>
+
+          {placeurAbsent && (
+            <p className="mt-2 text-sm text-alert-300" data-testid="cal-ombriere-vue-indisponible">
+              Le tracé de l’ombrière n’a pas pu être chargé : les chiffres du
+              moteur restent affichés ci-dessus, et rien n’est dessiné à leur
+              place.
+            </p>
+          )}
+
+          {vue && (
+            <>
+              <svg
+                data-testid="cal-ombriere-svg"
+                viewBox={`0 0 ${vue.largeurPx} ${vue.hauteurPx}`}
+                width="100%"
+                role="img"
+                aria-label={`Ombrière en plan — ${vue.tables.length} travée(s) posée(s) par le moteur`}
+                className="mt-2 text-brass-200"
+              >
+                <polygon
+                  data-testid="cal-ombriere-emprise-tracee"
+                  points={vue.contour.map((p) => p.join(',')).join(' ')}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+                {vue.rangees.map((r) => (
+                  <line
+                    key={r.y0}
+                    data-testid="cal-ombriere-rangee"
+                    x1={r.from[0]}
+                    y1={r.from[1]}
+                    x2={r.to[0]}
+                    y2={r.to[1]}
+                    stroke="currentColor"
+                    strokeWidth="0.75"
+                    strokeDasharray="6 5"
+                    strokeOpacity="0.55"
+                  />
+                ))}
+                {vue.tables.map((q, i) => (
+                  <polygon
+                    key={i}
+                    data-testid="cal-ombriere-travee"
+                    points={q.map((p) => p.join(',')).join(' ')}
+                    fill="currentColor"
+                    fillOpacity="0.25"
+                    stroke="currentColor"
+                    strokeWidth="0.75"
+                  />
+                ))}
+                {vue.cotes.map((c, i) => {
+                  const [mx, my] = milieu(c.from, c.to)
+                  return (
+                    <text
+                      key={i}
+                      data-testid="cal-ombriere-cote"
+                      x={mx}
+                      y={my}
+                      fontSize="12"
+                      textAnchor="middle"
+                      fill="currentColor"
+                    >
+                      {formatCote(c.lengthM)}
+                    </text>
+                  )
+                })}
+              </svg>
+
+              <p className="mt-2 text-xs text-lune-faint" data-testid="cal-ombriere-emprise">
+                {vue.tables.length} travée(s) dessinée(s) — emprise{' '}
+                {formatNumber(champ.empriseTablesM2, { decimals: 1 })} m² ;{' '}
+                {champ.modules ?? '—'} module(s) posé(s) par le moteur.
+              </p>
+            </>
+          )}
+
+          {coupe && (
+            <svg
+              data-testid="cal-ombriere-coupe"
+              viewBox={`0 0 ${coupe.largeurPx} ${coupe.hauteurPx}`}
+              width="100%"
+              role="img"
+              aria-label="Coupe sur la largeur — couverture et hauteur libre"
+              className="mt-3 text-brass-200"
+            >
+              <line
+                data-testid="cal-ombriere-sol"
+                x1={coupe.sol.from[0]}
+                y1={coupe.sol.from[1]}
+                x2={coupe.sol.to[0]}
+                y2={coupe.sol.to[1]}
+                stroke="currentColor"
+                strokeWidth="1"
+                strokeOpacity="0.55"
+              />
+              {coupe.tables.map((t, i) => (
+                <line
+                  key={i}
+                  data-testid="cal-ombriere-couverture"
+                  x1={t.from[0]}
+                  y1={t.from[1]}
+                  x2={t.to[0]}
+                  y2={t.to[1]}
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+              ))}
+              {coupe.coteHauteur && (
+                <>
+                  <line
+                    data-testid="cal-ombriere-trait-hauteur"
+                    x1={coupe.coteHauteur.from[0]}
+                    y1={coupe.coteHauteur.from[1]}
+                    x2={coupe.coteHauteur.to[0]}
+                    y2={coupe.coteHauteur.to[1]}
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                  <text
+                    data-testid="cal-ombriere-cote-hauteur"
+                    x={milieu(coupe.coteHauteur.from, coupe.coteHauteur.to)[0] + 6}
+                    y={milieu(coupe.coteHauteur.from, coupe.coteHauteur.to)[1]}
+                    fontSize="12"
+                    textAnchor="start"
+                    fill="currentColor"
+                  >
+                    {formatCote(coupe.coteHauteur.lengthM)}
+                  </text>
+                </>
+              )}
+            </svg>
+          )}
+
+          {altitudeCouverture !== null && (
+            <p
+              className="mt-2 text-xs text-lune-faint"
+              data-testid="cal-ombriere-altitude"
+              data-altitude-m={String(altitudeCouverture)}
+            >
+              {altitudeCouverture > 0
+                ? `Couverture levée à ${formatCote(altitudeCouverture)} — l’altitude `
+                  + 'posée sur les travées, celle de la hauteur libre saisie.'
+                : 'Couverture non levée : les travées restent à l’altitude du sol, '
+                  + 'faute de hauteur libre saisie.'}
+            </p>
+          )}
+
+          {champ && (
+            <p className="mt-1 text-xs text-lune-faint" data-testid="cal-ombriere-ecoulement">
+              {ecoulement === null
+                ? 'Sens d’écoulement non renseigné : les rangées sont empilées '
+                  + 'selon l’axe du plan, sans orientation affirmée.'
+                : `Sens d’écoulement saisi : ${ecoulement}° — c’est l’axe `
+                  + 'd’empilement des rangées, du haut vers le bas du plan.'}
+            </p>
+          )}
+
+          {champ && champ.nonMesure.length > 0 && (
+            <ul
+              className="mt-2 list-disc pl-5 text-xs text-lune-faint"
+              data-testid="cal-ombriere-nonmesure"
+            >
+              {champ.nonMesure.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
       {/* LES TOTAUX PAR BÂTIMENT — l'ombrière y figure à côté des pans. */}

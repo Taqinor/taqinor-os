@@ -21,6 +21,16 @@ export default defineConfig({
       'virtual:pwa-register/react': stub('./src/test/stubs/pwaRegister.js'),
       '@roofbuilder': stub('./src/test/stubs/roofbuilder.js'),
       '@roofpro/captureBoot': stub('./src/test/stubs/roofproCaptureBoot.js'),
+      // CALX50 — `ModeTerrain.jsx` / `Ombriere.jsx` chargent `@roofpro/scene3d`
+      // pour ses fonctions PURES de placement (`construireChampPose`,
+      // `construireOmbriere`) : sans cet alias, le spécifieur ne se résout pas
+      // au transform et le fichier de test ne monte même pas (vérifié). Vitest
+      // transpile ce TS avec esbuild, donc le plugin `roofbuilder-ts-transpile`
+      // de `vite.config.js` n'a pas à être rejoué ici — et c'est la VRAIE
+      // fonction du builder qui est exercée, pas une doublure qui dériverait.
+      // L'entrée `@roofpro/captureBoot` ci-dessus est déclarée AVANT : elle
+      // reste prioritaire, son stub couvre toujours le lecteur de cartes.
+      '@roofpro': fileURLToPath(new URL('../apps/web/src/scripts/roofPro11', import.meta.url)),
     },
   },
   test: {
