@@ -634,6 +634,13 @@ export interface AreaRecord {
    *  depuis `vertices`/`roofType`/`facingAzimuthDeg` (voir `edges.ts`) tant qu'aucune n'a été
    *  corrigée à la main. */
   edges?: SerializedEdge[];
+  /** CALX109/CALX110 câblage — le MODÈLE de module posé sur CE pan : l'`id` d'une entrée du
+   *  catalogue de la société (`InitOptions.modulesDisponibles`, contrat CALX82), tel qu'il
+   *  voyage ensuite dans le document sous `zones[].geometry.moduleId`. Optionnel et AJOUTÉ EN
+   *  FIN (append-only) : absent = le module par défaut de l'atelier
+   *  (`moduleSelect.MODULE_PAR_DEFAUT_ATELIER`), NOMMÉ à l'écran — document et pavage
+   *  strictement identiques à ceux d'aujourd'hui, octet pour octet. */
+  moduleId?: string;
 }
 
 // ═══════════ W50 — fenêtre « Production estimée » ═══════════

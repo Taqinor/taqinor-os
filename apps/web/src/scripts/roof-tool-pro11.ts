@@ -138,6 +138,11 @@ import {
   empriseModuleENU, // CALX403 câblage
   type ModulePose, // CALX403 câblage
 } from './roofPro11/zones';
+// CALX109/CALX110 câblage — le catalogue de modules de la société (`opts.modulesDisponibles`)
+// et le module posé sur chaque pan (`AreaRecord.moduleId`) : c'est ce couple qui part dans le
+// document à chaque sérialisation (`SerializeMeta.modules`). Sans cette ligne, `modules[]` et
+// `zones[].geometry.moduleId` n'étaient JAMAIS écrits et le choix se perdait au rechargement.
+import { affectationDesPans, lireModulesDisponibles } from './roofPro11/moduleSelect';
 import { etiquette, registreAtelier } from './roofPro11/numerotation'; // CALX403 câblage — le repère d'un module vient du DOCUMENT
 import { poserSourceCellulesSurAllees } from './roofPro11/teinteAllees'; // CALX403 câblage
 import { creerInfoBulleOmbrage } from './roofPro11/infoBulleOmbrage'; // CALX122 câblage
@@ -1095,6 +1100,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const graphs = createGraphs(ctx);
   const prefill = createPrefill(ctx);
   const prefillLead = prefill.prefillLead;
+  // CALX109/CALX110 câblage — le catalogue CHOISISSABLE de la société, lu UNE fois (les
+  // options sont figées au boot). Sans catalogue (droits, réseau, société sans fiche
+  // « module »), il est VIDE : l'atelier pose son module par défaut, NOMMÉ, et le document
+  // repart identique à celui d'aujourd'hui, octet pour octet.
+  const catalogueModulesAtelier = lireModulesDisponibles(opts.modulesDisponibles).choisissables;
   // CALX97 câblage — crochets d'écran de `createZones` : sans eux, une rotation, un
   // redimensionnement ou une duplication de pan changeait le document sans que la carte
   // bouge (il fallait un autre geste pour la rafraîchir). Wrappers PARESSEUX : les
@@ -3944,12 +3954,18 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
               setbacksM: { ...setbacks },
               // CAL93 — le profil d'horizon lointain RÉGLÉ voyage avec le document.
               ...(ctx.horizonProfile ? { horizonProfile: ctx.horizonProfile } : {}),
+              // CALX109/CALX110 câblage — le catalogue + le module de chaque pan.
+              modules: affectationDesPans(catalogueModulesAtelier, ctx.areas),
               ...(meta ?? {}),
             }
           : {
               ...(activeSolarAccessMeta() ?? {}),
               setbacksM: { ...setbacks },
               ...(ctx.horizonProfile ? { horizonProfile: ctx.horizonProfile } : {}),
+              // CALX109/CALX110 câblage — le catalogue + le module de chaque pan. Aucun pan
+              // n'a choisi ⇒ `ecrireModulesDansDocument` ne touche à RIEN et le document
+              // repart identique, octet pour octet (comportement d'aujourd'hui).
+              modules: affectationDesPans(catalogueModulesAtelier, ctx.areas),
               ...(meta ?? {}),
             },
       ),

@@ -992,6 +992,13 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
     // CAL57 — round-trip verbatim ; un document sans arêtes n'en gagne aucune ici (elles
     // sont recalculées à la sérialisation SUIVANTE, pas devinées à la lecture).
     ...(z.edges && z.edges.length ? { edges: z.edges } : {}),
+    // CALX109/CALX110 câblage — le MODÈLE posé sur ce pan revient tel quel
+    // (`geometry.moduleId`, contrat CALX82) : sans cette ligne, rouvrir un dossier reposait
+    // tout le site sur le module par défaut et le kWc enregistré cessait d'être reproductible.
+    // Absent ⇒ aucun champ ajouté, pan identique à celui d'aujourd'hui.
+    ...(typeof z.geometry?.moduleId === 'string' && z.geometry.moduleId.trim()
+      ? { moduleId: z.geometry.moduleId.trim() }
+      : {}),
   }));
 }
 
