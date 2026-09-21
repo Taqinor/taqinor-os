@@ -1227,6 +1227,36 @@ _CANAL_VERS_KIND = {
     RelanceEtape.Canal.VISITE: LeadActivity.Kind.NOTE,
 }
 
+# ── CAD-K ── CAD131 — la première TENTATIVE n'est pas le premier CONTACT ────
+#
+# Audit L3 du 21/09/2026. ``first_contacted_at`` était posé dès qu'une note,
+# un appel, un e-mail ou un WhatsApp était écrit par un humain — or SAUTER une
+# touche écrit une NOTE signée par le commercial. Sauter la toute première
+# touche satisfaisait donc la promesse client (« rappelé en moins de N
+# minutes ») ET éteignait l'escalade, qui n'agit que sur les leads SANS
+# horodatage : personne ne parlait au client, et plus rien ne le signalait.
+#
+# Le verbe est hissé en CONSTANTE pour que la reconnaissance vive à UN SEUL
+# endroit, celui qui ÉCRIT la note — jamais un texte deviné ailleurs (même
+# discipline que les préfixes du journal RLC2).
+VERBE_TOUCHE_SAUTEE = 'sautée'
+MENTION_TOUCHE_SAUTEE = f'marquée {VERBE_TOUCHE_SAUTEE}.'
+
+
+def est_note_de_touche_sautee(activite):
+    """CAD131 — cette ligne de chatter est-elle la note d'une touche SAUTÉE ?
+
+    Une touche sautée n'est PAS une tentative : rien n'est sorti vers le
+    client. Seule cette note doit être écartée du premier contact — une note
+    ordinaire écrite à la main par la commerciale (« Appelé, pas de réponse »)
+    reste un contact, comme depuis MRY19.
+    """
+    if activite is None:
+        return False
+    if getattr(activite, 'kind', None) != LeadActivity.Kind.NOTE:
+        return False
+    return MENTION_TOUCHE_SAUTEE in (getattr(activite, 'body', '') or '')
+
 
 def marquer_etape_relance(etape, user, statut, note='', outcome='',
                           body=''):
@@ -1262,9 +1292,17 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     etape.note = note or ''
     etape.traite_par = user
     etape.traite_le = timezone.now()
-    etape.save(update_fields=['statut', 'note', 'traite_par', 'traite_le'])
+    # CAD118 — l'issue est écrite SUR la touche, au même instant que la ligne
+    # d'historique ci-dessous. La ligne de chatter reste la source de vérité
+    # du chatter ; cette colonne est ce qui rend mesurable « quelle touche, à
+    # quelle heure, quel jour, sur quel canal joint réellement le client »
+    # (CAD87) sans la fenêtre de rapprochement de deux minutes.
+    etape.outcome = outcome or ''
+    etape.save(update_fields=['statut', 'note', 'outcome', 'traite_par',
+                              'traite_le'])
 
-    verbe = 'faite' if statut == RelanceEtape.Statut.FAIT else 'sautée'
+    verbe = ('faite' if statut == RelanceEtape.Statut.FAIT
+             else VERBE_TOUCHE_SAUTEE)
     # MRY5 — le corps disait « Relance J+{ordre} », faux depuis que `ordre`
     # est un RANG dans la cadence et non plus un délai en jours (la touche 2
     # de la prise de contact tombe à J0 + 3 minutes, pas à J+2).
@@ -3007,10 +3045,14 @@ def _completeness(lead):
 
 def find_duplicate_clusters(company, include_archived=False):
     """Scanne TOUS les leads d'une société et regroupe les doublons probables
-    par téléphone OU email OU nom normalisé (union-find). Renvoie une liste de
-    clusters (chacun une liste de Lead, ≥ 2 membres), triés par taille puis par
-    membre le plus récent. Les leads archivés sont inclus seulement si demandé
-    (ils restent visibles pour comprendre une fusion passée)."""
+    par téléphone OU email OU nom normalisé OU adresse OU point GPS
+    (union-find, CAD93 pour les deux derniers). Renvoie une liste de clusters
+    (chacun une liste de Lead, ≥ 2 membres), triés par taille puis par membre
+    le plus récent. Les leads archivés sont inclus seulement si demandé (ils
+    restent visibles pour comprendre une fusion passée).
+
+    SUGGESTION, jamais décision : rien n'est fusionné ici. La fusion reste un
+    geste humain explicite (``merge_leads``, appelé par l'atelier doublons)."""
     qs = Lead.objects.filter(company=company)
     if not include_archived:
         qs = qs.filter(is_archived=False)
@@ -3034,6 +3076,12 @@ def find_duplicate_clusters(company, include_archived=False):
         lambda lead: ('p', normalize_phone(lead.telephone)),
         lambda lead: ('e', normalize_email(lead.email)),
         lambda lead: ('n', normalize_name(lead.nom, lead.prenom, lead.societe)),
+        # CAD93 — « même foyer » : deux membres d'un même ménage n'ont ni le
+        # même numéro ni le même nom, et recevaient donc chacun onze touches.
+        # SUGGESTION seulement : ce scan alimente l'atelier doublons, qu'un
+        # humain confirme ; aucune fusion n'est faite d'ici.
+        lambda lead: ('a', cles_foyer(lead)['adresse']),
+        lambda lead: ('g', cles_foyer(lead)['gps']),
     ):
         buckets = {}
         for lead in leads:
@@ -3070,6 +3118,11 @@ def cluster_match_keys(group):
         ('telephone', lambda le: normalize_phone(le.telephone)),
         ('email', lambda le: normalize_email(le.email)),
         ('nom', lambda le: normalize_name(le.nom, le.prenom, le.societe)),
+        # CAD93 — dire à l'écran POURQUOI deux fiches sont rapprochées : une
+        # même adresse n'est pas la même preuve qu'un même numéro, et le
+        # commercial doit pouvoir faire la différence avant de fusionner.
+        ('adresse', lambda le: cles_foyer(le)['adresse']),
+        ('gps', lambda le: cles_foyer(le)['gps']),
     )
     for label, keyer in checks:
         seen = {}
@@ -3815,6 +3868,12 @@ def create_draft_lead_from_ocr(*, company, user, fields) -> Lead:
     activity.log_note(
         lead, None,
         "Lead créé depuis un document OCR (brouillon à compléter).")
+    # CAD90 — données lues sur un document, jamais collectées auprès de la
+    # personne par nous : c'est l'art. 5 §3 qui s'applique, et le registre
+    # doit le dire au lieu de rester muet.
+    enregistrer_base_legale_lead(
+        lead, source=CONSENT_SOURCE_DOCUMENT,
+        base_legale=BASE_LEGALE_NON_COLLECTEE)
     recompute_lead_score(lead)
     return lead
 
@@ -3989,6 +4048,35 @@ def _norm_form_text(value):
     return text.replace('_', ' ').lower().strip()
 
 
+# ── CAD-K ── CAD134 — le délai déclaré côté Meta, dans le champ DÉJÀ scoré ──
+#
+# Mots-clés → ``Lead.ProjectTimeline``, sur du texte libre normalisé par
+# ``_norm_form_text``. TOLÉRANT (les libellés varient d'un Instant Form à
+# l'autre) et SANS invention : un libellé non reconnu ne pose RIEN — mieux
+# vaut un champ vide qu'un délai deviné, qui vaudrait des points au score.
+# L'ORDRE compte : « le plus tôt possible » gagne avant « 3 mois ».
+_META_TIMELINE_MOTS = (
+    (('plus tot possible', 'ce mois', 'immediat', 'des que possible',
+      'urgent'), Lead.ProjectTimeline.IMMEDIAT),
+    (('renseigne', 'plus tard', 'pas presse', 'aucune idee'),
+     Lead.ProjectTimeline.PLUS_TARD),
+    (('3 mois', 'trois mois'), Lead.ProjectTimeline.MOINS_3_MOIS),
+    (('6 mois', 'six mois'), Lead.ProjectTimeline.MOINS_6_MOIS),
+)
+
+
+def _meta_project_timeline(valeur_normalisee):
+    """CAD134 — le délai déclaré côté Meta en clé ``ProjectTimeline``, ou ''.
+
+    ``valeur_normalisee`` est déjà passée par ``_norm_form_text``. Renvoie
+    une chaîne VIDE quand rien n'est reconnu : on ne devine pas un délai."""
+    texte = str(valeur_normalisee or '')
+    for mots, cle in _META_TIMELINE_MOTS:
+        if any(mot in texte for mot in mots):
+            return cle
+    return ''
+
+
 def _parse_meta_form_extras(field_data):
     """Réponses NON-contact du formulaire Meta → champs CRM structurés.
 
@@ -4029,6 +4117,25 @@ def _parse_meta_form_extras(field_data):
                 extras['priorite'] = Lead.Priorite.BASSE
             else:
                 extras['priorite'] = Lead.Priorite.NORMALE
+            # CAD134 (audit L3 du 21/09/2026) — LA MÊME PHRASE VAUT LE MÊME
+            # SCORE DES DEUX CÔTÉS. Depuis le site, « je veux démarrer
+            # immédiatement » devenait `project_timeline='immediat'` et valait
+            # +8 au score ; depuis Meta, « le plus tôt possible » ne devenait
+            # qu'une `priorite=haute` — absente de `compute_score`, donc ZÉRO
+            # point, aucune remontée dans la file, aucun changement d'heure ni
+            # de canal. Le webhook Meta écrit donc AUSSI `project_timeline`,
+            # qui est déjà scoré ; la priorité reste le drapeau MANUEL du
+            # commercial.
+            #
+            # Conversion TOLÉRANTE (ce sont des mots-clés sur du texte libre,
+            # de qualité inégale) et TRACÉE : le libellé BRUT part dans
+            # `extras['qa']`, que la note de formulaire recopie telle quelle —
+            # un humain peut donc toujours relire ce que le client a coché.
+            # Un délai non reconnu ne pose RIEN plutôt qu'une valeur inventée.
+            extras['delai_declare'] = raw_value
+            delai = _meta_project_timeline(v)
+            if delai:
+                extras['project_timeline'] = delai
         elif 'install' in q:
             if any(k in v for k in ('villa', 'maison', 'appartement',
                                     'domicile', 'residen')):
@@ -4062,6 +4169,13 @@ def _apply_meta_form_extras(lead, extras):
             and lead.priorite == Lead.Priorite.NORMALE):
         lead.priorite = Lead.Priorite.HAUTE
         changed.append('priorite')
+    # CAD134 — le délai déclaré remplit le champ DÉJÀ scoré, et seulement
+    # s'il est vide : un délai saisi à la main par la commerciale (ou venu du
+    # site) n'est JAMAIS écrasé par un mot-clé lu sur du texte libre.
+    if extras.get('project_timeline') and not getattr(
+            lead, 'project_timeline', None):
+        lead.project_timeline = extras['project_timeline']
+        changed.append('project_timeline')
     if lead.telephone and not lead.whatsapp:
         # Un lead Meta arrive par mobile : le même numéro sert de lien wa.me
         # pour la première prise de contact de Meryem.
@@ -4302,6 +4416,11 @@ def create_lead_from_meta_lead_ads(
     # montée NORMALE→HAUTE est automatique (_apply_meta_form_extras).
     if extras.get('priorite'):
         extra['priorite'] = extras['priorite']
+    # CAD134 — et le MÊME délai déclaré pose `project_timeline`, le champ que
+    # `compute_score` lit déjà : depuis Meta la phrase « le plus tôt possible »
+    # valait zéro point, contre +8 pour la même phrase venue du site.
+    if extras.get('project_timeline'):
+        extra['project_timeline'] = extras['project_timeline']
     lead = Lead.objects.create(
         company=company,
         nom=nom,
@@ -4338,6 +4457,13 @@ def create_lead_from_meta_lead_ads(
         kind=LeadActivity.Kind.NOTE,
         body='Lead créé depuis Meta Lead Ads (formulaire Facebook/Instagram).')
     _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
+    # CAD90 — la cohorte Meta n'avait aucune entrée au registre : ses données
+    # ne sont pas collectées auprès de la personne par nous (art. 5 §3), et
+    # l'horodatage tracé est celui de l'arrivée RÉELLE, jamais celui du beat.
+    enregistrer_base_legale_lead(
+        lead, source=CONSENT_SOURCE_META_LEAD_ADS,
+        base_legale=BASE_LEGALE_NON_COLLECTEE,
+        occurred_at=moment_meta or lead.date_creation)
     # D-CRX1 — signalement du doublon EN VISIBILITÉ (jamais une fusion), avec
     # la mention de l'héritage quand il a eu lieu. Réutilise ``dupes`` déjà
     # calculés (jamais une 2e requête). Best-effort, comme côté site : un
@@ -4453,6 +4579,12 @@ def create_minimal_lead_from_ctwa(*, company, phone, ad_id='') -> Lead:
         body='Lead créé depuis une conversation WhatsApp/CTWA entrante '
              '(aucun lead préalable trouvé pour ce numéro).',
     )
+    # CAD90 — la personne a ÉCRIT la première : relation précontractuelle à
+    # sa demande. Le registre le dit, plutôt que de rester muet sur un lead
+    # dont la touche n°1 partira justement sur WhatsApp.
+    enregistrer_base_legale_lead(
+        lead, source=CONSENT_SOURCE_WHATSAPP_ENTRANT,
+        base_legale=BASE_LEGALE_SOLLICITATION)
     try:
         notify_new_lead(lead)
     except Exception:  # noqa: BLE001 — best-effort
@@ -4657,6 +4789,10 @@ def noter_devis_ouvert(devis_reference: str, lead) -> None:
     # RÈGLE FONDATEUR 07/09/2026 — plus d'avance de funnel AUTOMATIQUE sur
     # l'ouverture (YLEAD10 débranché) : le funnel ne bouge que sur une
     # réponse confirmée de Meryem. La note et la notification restent.
+    # CAD133 — le score, lui, se recalcule À L'INSTANT : sans cela le badge
+    # mentirait jusqu'au passage nocturne, et la file du jour classerait un
+    # client qui vient d'ouvrir sa proposition comme s'il n'avait rien fait.
+    recompute_lead_score(lead)
 
 
 def noter_devis_reouvert(devis_reference: str, lead, vues=None) -> None:
@@ -4672,6 +4808,9 @@ def noter_devis_reouvert(devis_reference: str, lead, vues=None) -> None:
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f"Le client a rouvert le devis {devis_reference}{suffixe}")
+    # CAD133 — revenir sur sa proposition est le signal de comportement le
+    # plus fort : le score monte À L'INSTANT, pas au passage nocturne.
+    recompute_lead_score(lead)
 
 
 def noter_devis_envoye(devis_reference: str, lead) -> None:
@@ -4998,6 +5137,167 @@ def notify_devis_opened(devis_reference: str, lead, *, ip='',
             getattr(lead, 'pk', '?'), devis_reference, exc)
 
 
+# ── CAD-K ── CAD135 — les signaux de lecture remontent au LEAD ──────────────
+#
+# Audit L3 du 21/09/2026. Quand un client revient plusieurs fois sur la même
+# section (le prix, l'étude), le système écrit lui-même « signal de friction,
+# un appel peut débloquer la décision » — dans l'historique du DEVIS, sans
+# aucune notification. Même sort pour « a commencé à lire en détail ».
+# Personne ne les lit, sauf à ouvrir cet onglet par hasard.
+#
+# Ces deux signaux empruntent désormais le MÊME chemin que « devis ouvert » :
+# une ligne dans le chatter du LEAD et une notification au responsable, avec
+# le lien pour appeler. La note côté DEVIS reste écrite — elle appartient à
+# l'historique du document, ce point d'entrée ne la remplace pas.
+#
+# NUANCE ASSUMÉE (round 2) : « le signal le plus prédictif » reste une
+# HYPOTHÈSE tant que CAD87 ne l'a pas mesuré. Rien ici ne classe, ne priorise
+# ni ne réordonne quoi que ce soit : on rend un fait visible, c'est tout.
+
+def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
+                            resume='') -> None:
+    """CAD135 — « il relit le prix » / « il lit en détail » arrivent au lead.
+
+    ``friction_section`` non vide ⇒ signal de FRICTION (relecture répétée
+    d'une section, le libellé FR est fourni par l'appelant) ; sinon ⇒ lecture
+    APPROFONDIE. ``resume`` est le détail déjà composé côté document, repris
+    tel quel — ce module n'invente aucun chiffre de temps passé.
+
+    Écrit une note SYSTÈME (``user=None`` : ne fait jamais avancer le funnel,
+    règle du 07/09/2026) puis notifie par le chemin commun. Best-effort
+    intégral : un signal de lecture ne fait jamais retomber une requête
+    publique.
+    """
+    try:
+        if lead is None or getattr(lead, 'company_id', None) is None:
+            return
+        if friction_section:
+            corps = (f'Le client relit la section « {friction_section} » de '
+                     f'la proposition {devis_reference} — un appel peut '
+                     'débloquer la décision.')
+            titre = f'Devis {devis_reference} — le client relit une section'
+        else:
+            corps = ('Le client a commencé à lire la proposition '
+                     f'{devis_reference} en détail.')
+            titre = f'Devis {devis_reference} — lecture en détail'
+        if resume:
+            corps += f' ({resume})'
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE, body=corps)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD135 : note de signal de lecture non écrite (lead #%s)',
+            getattr(lead, 'pk', None), exc_info=True)
+        return
+    try:
+        company = getattr(lead, 'company', None)
+        recipients = avec_direction(
+            lead_notification_recipients(lead), company)
+        if not recipients:
+            return
+        from apps.notifications.services import notify_many
+        corps_notif = [corps]
+        wa_url = _build_lead_wa_reply_url(lead)
+        if wa_url:
+            corps_notif.append(f'Appeler / répondre maintenant : {wa_url}')
+        notify_many(
+            recipients,
+            # Aucun type d'événement neuf : le signal emprunte le MÊME chemin
+            # que « devis ouvert », dont il est la suite directe.
+            'devis_opened',
+            titre,
+            body='\n'.join(corps_notif),
+            link=f'/crm/visiteurs?lead={lead.pk}',
+            company=company,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD135 : notification de signal de lecture échouée (lead #%s)',
+            getattr(lead, 'pk', None), exc_info=True)
+
+
+# ── CAD-K ── CAD136 — le client vient d'agir, et personne n'était prévenu ───
+#
+# Audit L3 du 21/09/2026. Répondre à une section du questionnaire enrichissait
+# le lead, recalculait le score et écrivait une note — sans AUCUNE
+# notification ; la photo de facture envoyée depuis le site était attachée
+# (avec OCR si la clé est active) sans prévenir personne. Le client vient
+# pourtant de passer cinq minutes sur NOTRE formulaire : c'est la meilleure
+# fenêtre de la semaine.
+#
+# CE QUE CE POINT D'ENTRÉE FAIT, ET NE FAIT PAS. Il NOTIFIE. Il ne pose AUCUNE
+# touche : la « touche questionnaire complété, appeler » demandée par CAD136
+# passe par la mécanique de CAD130, qui n'est pas encore construite — et la
+# règle de composition interdit d'en bricoler un substitut local. La photo de
+# facture, elle, appelle une tâche de PRODUCTION (« préparer le devis »), pas
+# une relance : la nuance du round 2 est portée par le LIBELLÉ de la
+# notification, en attendant que CAD130 pose la tâche.
+
+#: Les deux natures de signal, et le geste qu'elles appellent. Le libellé dit
+#: au responsable ce qu'il a à faire — jamais un « il s'est passé quelque
+#: chose » qu'il faut aller décoder.
+SIGNAL_QUESTIONNAIRE = 'questionnaire'
+SIGNAL_PHOTO_FACTURE = 'photo_facture'
+
+_SIGNAUX_CLIENT = {
+    SIGNAL_QUESTIONNAIRE: (
+        'a répondu au questionnaire',
+        'Le client vient de remplir NOTRE formulaire : c\'est la meilleure '
+        'fenêtre de la semaine pour l\'appeler.'),
+    SIGNAL_PHOTO_FACTURE: (
+        'a envoyé une photo de sa facture',
+        'Tout est là pour PRÉPARER LE DEVIS — ce n\'est pas une relance, '
+        'c\'est de la production.'),
+}
+
+
+def notifier_signal_client(lead, signal, *, detail='') -> None:
+    """CAD136 — prévient le responsable qu'un client vient d'AGIR.
+
+    ``signal`` ∈ ``SIGNAL_QUESTIONNAIRE`` / ``SIGNAL_PHOTO_FACTURE``. Un
+    signal inconnu ne notifie RIEN plutôt qu'un message vide. ``detail``
+    précise (la section répondue, par exemple) sans jamais rien inventer.
+
+    Best-effort intégral : ni une réponse de questionnaire ni une photo ne
+    peuvent retomber parce que la cloche est en panne.
+    """
+    libelle = _SIGNAUX_CLIENT.get(signal)
+    if libelle is None or lead is None or getattr(
+            lead, 'company_id', None) is None:
+        return
+    quoi, conseil = libelle
+    try:
+        company = getattr(lead, 'company', None)
+        recipients = avec_direction(
+            lead_notification_recipients(lead), company)
+        if not recipients:
+            return
+        from apps.notifications.services import notify_many
+        nom = (getattr(lead, 'nom', '') or '').strip() or 'Le client'
+        corps = [f'{nom} {quoi}.']
+        if detail:
+            corps.append(detail)
+        corps.append(conseil)
+        wa_url = _build_lead_wa_reply_url(lead)
+        if wa_url:
+            corps.append(f'Appeler / répondre maintenant : {wa_url}')
+        notify_many(
+            recipients,
+            # Aucun type d'événement neuf : c'est le même canal que les
+            # autres signaux venus du client.
+            'devis_opened',
+            f'{nom} {quoi}',
+            body='\n'.join(corps),
+            link=f'/crm/leads/{lead.pk}',
+            company=company,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD136 : notification de signal client échouée (lead #%s, %s)',
+            getattr(lead, 'pk', None), signal, exc_info=True)
+
+
 #: QW5 — libellés FR par canal de contact proposition (WJ85/WJ54 — le site
 #: envoie 'rappel'/'whatsapp'/'question'/'voice'/'revision', un vocabulaire
 #: plus large que ce que ce module connaissait (whatsapp/rappel seuls).
@@ -5065,6 +5365,10 @@ def notify_client_contact_request(devis_reference: str, lead,
                 'contact_preference', 'contact_preference_set_at'])
         if canal_key == 'rappel':
             notify_lead_callback_requested(lead)
+            # CAD129 — la demande entre dans la FILE, pas seulement dans la
+            # cloche : une notification noyée faisait disparaître la demande
+            # la plus forte qu'un prospect puisse faire.
+            poser_touche_rappel_demande(lead, user=None)
 
         recipients = lead_notification_recipients(lead)
         if not recipients:
@@ -8556,6 +8860,253 @@ def clients_par_ids(company, ids):
     d'un autre tenant en passant un id deviné.
     """
     return list(Client.objects.filter(company=company, pk__in=list(ids or [])))
+
+
+# ── CAD-I ── CAD93 — « même foyer » : l'adresse et le point GPS ─────────────
+#
+# Trou signalé par le critique de l'audit L3 du 21/09/2026 (§3) : la garde
+# `doublon` bloque bien la cadence automatique, mais le rapprochement ne
+# compare que le téléphone, l'e-mail et le nom complet — jamais l'ADRESSE.
+# Deux membres d'un même foyer (ou deux numéros du même client) passent donc
+# au travers et reçoivent chacun onze touches.
+#
+# OÙ cet indice vit, et où il ne vit PAS. Adresse et GPS sont VIDES à la
+# création d'un lead — c'est `valeur_j1` qui les demande à J1 : les mettre
+# dans la garde de démarrage ne bloquerait donc rien au bon moment et ferait
+# dérailler le démarrage plus tard. L'indice « même foyer » vit dans
+# l'ATELIER DOUBLONS, où il est une SUGGESTION qu'un humain confirme —
+# `find_duplicates_by_contact` (garde de démarrage, contrôle pré-création,
+# rattachement Meta/WhatsApp) n'est pas touchée, et aucune fusion n'est
+# jamais faite sans validation.
+def normalize_adresse(adresse, ville=None):
+    """Clé d'adresse pour le rapprochement — même fabrique que ``normalize_name``.
+
+    Accents retirés, minuscules, ponctuation écrasée, mots TRIÉS : « Rés. Al
+    Firdaous, Imm. 4, Bouskoura » et « imm 4 residence al firdaous bouskoura »
+    donnent la même clé dès que les mots coïncident. La ville n'est ajoutée
+    qu'en COMPLÉMENT d'une adresse déjà renseignée : une ville seule
+    rapprocherait tous les leads de Casablanca.
+
+    Vide en dessous de 8 caractères utiles : « lot 4 » n'est pas une adresse,
+    et un rapprochement sur un fragment aussi court signalerait des foyers
+    qui n'en sont pas — un faux signal coûte plus cher que pas de signal.
+    """
+    if not adresse or not str(adresse).strip():
+        return ''
+    parts = [p for p in (adresse, ville) if p]
+    raw = _strip_accents(' '.join(str(p) for p in parts)).lower()
+    raw = _re.sub(r'[^a-z0-9 ]', ' ', raw)
+    tokens = sorted(t for t in raw.split() if t)
+    cle = ' '.join(tokens)
+    return cle if len(cle) >= 8 else ''
+
+
+#: Décimales conservées sur les coordonnées GPS pour la clé « même point ».
+#: 4 décimales de latitude ≈ 11 m (un degré de latitude ≈ 111 km, donc
+#: 0,0001° ≈ 11,1 m) : la taille d'un toit, pas celle d'un quartier. Deux
+#: relevés du même toit tombent dans la même case, deux maisons voisines non.
+GPS_DECIMALES_FOYER = 4
+
+
+def normalize_gps(lat, lng):
+    """Clé « même point de toiture » : les deux coordonnées ARRONDIES.
+
+    Vide dès qu'une des deux manque — un demi-point ne localise rien. Les
+    valeurs arrivent en ``Decimal`` (champs du lead) ou en flottant : les
+    deux sont acceptées, et une valeur illisible rend une clé vide plutôt
+    qu'une exception dans un scan de doublons.
+    """
+    if lat is None or lng is None:
+        return ''
+    try:
+        lat = round(float(lat), GPS_DECIMALES_FOYER)
+        lng = round(float(lng), GPS_DECIMALES_FOYER)
+    except (TypeError, ValueError):
+        return ''
+    return f'{lat:.{GPS_DECIMALES_FOYER}f},{lng:.{GPS_DECIMALES_FOYER}f}'
+
+
+def cles_foyer(lead):
+    """Les clés « même foyer » d'un lead : ``{'adresse': …, 'gps': …}``.
+
+    Les valeurs vides signifient « rien à rapprocher », jamais « identiques ».
+    """
+    return {
+        'adresse': normalize_adresse(
+            getattr(lead, 'adresse', None), getattr(lead, 'ville', None)),
+        'gps': normalize_gps(
+            getattr(lead, 'gps_lat', None), getattr(lead, 'gps_lng', None)),
+    }
+
+
+# ── CAD-I ── CAD90 — le registre couvre TOUTES les créations de lead ────────
+#
+# Audit L3 du 21/09/2026. ``enregistrer_consentement_lead`` n'était appelée
+# que depuis le webhook du formulaire du site : un lead créé à la main par la
+# commerciale (appel entrant, WhatsApp reçu au salon), un lead Meta Lead Ads
+# ou un lead venu d'un document n'écrivaient RIEN au registre
+# ``core.ConsentRecord`` — alors que la cadence démarre quand même et que sa
+# touche n°1 est un WhatsApp, le canal le plus encadré.
+#
+# CE QUE ``granted`` VEUT DIRE ICI, ET CE QU'IL NE VEUT PAS DIRE. Il dit
+# seulement si un CONSENTEMENT A ÉTÉ RECUEILLI — jamais si le traitement est
+# licite. Sur ces chemins, aucune case n'a été cochée par la personne : la
+# licéité vient de la BASE LÉGALE, tracée dans ``source``. Écrire
+# ``granted=True`` pour faire joli fabriquerait une preuve fausse, ce qui est
+# pire qu'une preuve absente (même raison que ``ip_confirmation`` laissée
+# vide par l'intake web).
+#
+# LES DEUX BASES, SUR TEXTE PRIMAIRE (extraction du round 2 de l'audit, PDF
+# adala.justice.gov.ma) :
+#   * données NON collectées auprès de la personne (Meta, import, document) —
+#     loi 09-08 art. 5 §3, avec l'information due « par tous moyens » de
+#     l'art. 34 du décret 2-09-165 ;
+#   * la personne a elle-même SOLLICITÉ le contact (appel entrant, message
+#     WhatsApp, demande au salon) — relation précontractuelle à sa demande,
+#     loi 09-08 art. 5. Le CNDP distingue les deux, le registre aussi.
+
+#: Finalité inscrite au registre pour la prospection commerciale.
+CONSENT_PURPOSE_PROSPECTION = 'marketing'
+
+#: Données NON collectées auprès de la personne (Meta, import, document).
+#: Le libellé est court À DESSEIN : ``ConsentRecord.source`` fait 120
+#: caractères et porte aussi l'origine — une base légale tronquée ne prouve
+#: rien. Le texte complet des deux articles est en tête de cette section.
+BASE_LEGALE_NON_COLLECTEE = 'base légale : loi 09-08 art. 5 §3 + décret ' \
+                            '2-09-165 art. 34'
+#: La personne a elle-même sollicité le contact (appel, message, salon).
+BASE_LEGALE_SOLLICITATION = 'base légale : relation précontractuelle à la ' \
+                            'demande de la personne (loi 09-08 art. 5)'
+
+CONSENT_SOURCE_SAISIE_MANUELLE = 'saisie manuelle CRM'
+CONSENT_SOURCE_META_LEAD_ADS = 'formulaire Meta Lead Ads'
+CONSENT_SOURCE_WHATSAPP_ENTRANT = 'message WhatsApp entrant'
+CONSENT_SOURCE_DOCUMENT = 'document importé'
+
+
+def enregistrer_base_legale_lead(lead, *, source, base_legale,
+                                 occurred_at=None):
+    """Trace au registre la BASE LÉGALE d'un lead créé hors formulaire du site.
+
+    ``granted=False`` : aucune case n'a été cochée par la personne sur ces
+    chemins. L'entrée existe pour que le registre ne soit pas MUET sur une
+    cohorte entière — une demande CNDP y lit la source ET le fondement
+    invoqué. Best-effort intégral : une création de lead ne tombe jamais
+    parce que le registre n'a pas pu être écrit.
+    """
+    try:
+        return enregistrer_consentement_lead(
+            lead, purpose=CONSENT_PURPOSE_PROSPECTION, granted=False,
+            source=f'{source} — {base_legale}'[:120],
+            occurred_at=occurred_at)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD90 : base légale non écrite au registre pour le lead #%s',
+            getattr(lead, 'pk', None), exc_info=True)
+        return None
+
+
+# ── CAD-K ── CAD129 — « rappelez-moi » entre dans la FILE, pas dans la cloche ─
+#
+# Audit L3 du 21/09/2026. Un clic « rappelez-moi » écrivait une note, notifiait
+# le responsable et son supérieur, et posait la préférence « joignable par
+# téléphone » — mais ne créait AUCUNE touche. Si la notification est noyée dans
+# la cloche, la demande la plus forte qu'un prospect puisse faire disparaît.
+#
+# LA RÈGLE : décaler, jamais redémarrer. Quand le lead a déjà un plan en cours,
+# on RAMÈNE sa prochaine touche au prochain créneau d'appel et tout le reste du
+# plan glisse du MÊME delta (``reporter_prochaine_touche`` le fait déjà, ancre
+# comprise) : le lead garde sa position dans le protocole, on ne fabrique pas un
+# second plan concurrent. Quand il n'a plus aucune touche ouverte (cadence
+# terminée ou arrêtée), on pose UNE touche — une seule, jamais un plan.
+
+#: Libellé de la touche « rappel demandé ». Sert aussi de clé d'idempotence :
+#: deux clics du même client ne laissent jamais deux lignes dans la file.
+RAPPEL_DEMANDE_LIBELLE = 'Rappeler le client (il l’a demandé)'
+
+#: Cadence des touches hors protocole déjà utilisée par le dépôt.
+RAPPEL_DEMANDE_CADENCE = 'generique'
+
+
+def _touche_rappel_demande_ouverte(lead):
+    """La touche « rappel demandé » encore À FAIRE sur ce lead, ou ``None``."""
+    return (lead.relance_etapes
+            .filter(libelle=RAPPEL_DEMANDE_LIBELLE,
+                    statut=RelanceEtape.Statut.A_FAIRE)
+            .order_by('due_date', 'pk')
+            .first())
+
+
+def poser_touche_rappel_demande(lead, *, user=None, quand=None):
+    """CAD129 — un rappel demandé devient une TOUCHE datée, pas une notification.
+
+    ``quand`` (instant ou date) par défaut = maintenant ; l'échéance réelle est
+    toujours recalée sur le prochain créneau d'APPEL de la société — un rappel
+    promis à 23 h ne rend service à personne.
+
+    Renvoie la touche (déplacée ou créée), ou ``None`` si le lead n'a pas de
+    société. Best-effort intégral : une demande client n'est JAMAIS perdue
+    parce que la file n'a pas pu être écrite — l'appelant a déjà consigné la
+    note et notifié le responsable.
+    """
+    from . import horaires
+
+    if lead is None or getattr(lead, 'company_id', None) is None:
+        return None
+    try:
+        instant = quand or timezone.now()
+        if not isinstance(instant, datetime.datetime):
+            instant = datetime.datetime.combine(
+                instant, datetime.time(0, 0), tzinfo=horaires.CASABLANCA)
+        elif timezone.is_naive(instant):
+            instant = timezone.make_aware(instant, datetime.timezone.utc)
+        echeance = horaires.prochain_creneau_appel(
+            instant, lead.company, canal=RelanceEtape.Canal.APPEL)
+
+        # 1. Une touche « rappel demandé » déjà ouverte est DÉPLACÉE, jamais
+        #    dupliquée : deux clics ne font pas deux lignes dans la file.
+        deja = _touche_rappel_demande_ouverte(lead)
+        if deja is not None:
+            deja.due_at = echeance
+            deja.due_date = echeance.astimezone(horaires.CASABLANCA).date()
+            deja.save(update_fields=['due_at', 'due_date'])
+            _recaler_file(lead, user)
+            return deja
+
+        # 2. Un plan en cours : on le RAMÈNE, avec tout son reste (l'ancre
+        #    comprise). C'est « décaler, jamais redémarrer ».
+        ouverte = _prochaine_touche_a_faire(lead)
+        if ouverte is not None:
+            deplacee = reporter_prochaine_touche(
+                lead, user, echeance, etape=ouverte, journaliser=False)
+            if deplacee is not None:
+                # Python 3.11 (prod/CI) refuse une expression MULTI-LIGNE dans
+                # une f-string : le libellé est composé AVANT.
+                quand_local = echeance.astimezone(horaires.CASABLANCA)
+                quand_lisible = quand_local.strftime('%d/%m/%Y à %H:%M')
+                activity.log_note(
+                    lead, user,
+                    'Rappel demandé par le client : la prochaine touche est '
+                    f'ramenée au {quand_lisible}, et la suite du plan glisse '
+                    'du même écart.')
+                return deplacee
+
+        # 3. Plus aucune touche ouverte : UNE touche, jamais un second plan.
+        etape = RelanceEtape.objects.create(
+            company=lead.company, lead=lead,
+            cadence=RAPPEL_DEMANDE_CADENCE, ordre=0,
+            canal=RelanceEtape.Canal.APPEL,
+            libelle=RAPPEL_DEMANDE_LIBELLE,
+            due_at=echeance,
+            due_date=echeance.astimezone(horaires.CASABLANCA).date(),
+            note='Posée automatiquement : le client a demandé un rappel.')
+        _recaler_file(lead, user)
+        return etape
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD129 : touche de rappel non posée pour le lead #%s',
+            getattr(lead, 'pk', None), exc_info=True)
+        return None
 
 
 # ── CAD-A ── CAD1 — « intéressé » poursuit le plan, il ne le rejoue pas ──────

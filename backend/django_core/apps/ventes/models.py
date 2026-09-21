@@ -1,3 +1,5 @@
+import datetime
+
 from django.db import models
 from django.conf import settings
 from django.utils.functional import cached_property
@@ -1022,6 +1024,21 @@ class FactureSource(models.Model):
         return f'{self.facture_id} ← {self.devis.reference}'
 
 
+# ── CAD122 (audit L3 cadence, 21/09/2026) — démarchage à domicile ──────────
+#: Délai pendant lequel AUCUN acompte ne peut être encaissé sur une commande
+#: signée au domicile du client. Source : loi 31-08, art. 49 et 50 (texte
+#: ONSSA). Ce n'est pas un réglage société : c'est la loi.
+DELAI_RETRACTATION_DOMICILE_JOURS = 7
+
+
+class AcompteAvantDelaiLegal(Exception):
+    """CAD122 — encaissement d'acompte refusé : le délai légal court encore.
+
+    Levée par ``BonCommande.verifier_encaissement_acompte``. Le message dit la
+    DATE à partir de laquelle l'encaissement redevient possible — jamais un
+    refus générique (règle fondateur du 08/09/2026)."""
+
+
 class BonCommande(models.Model):
     class Statut(models.TextChoices):
         EN_ATTENTE = 'en_attente', 'En attente'
@@ -1080,12 +1097,90 @@ class BonCommande(models.Model):
     # {signataire, note, file_key, filename, signed_at}.
     pv_livraison = models.JSONField(null=True, blank=True)
     date_livraison_reelle = models.DateField(null=True, blank=True)
+    # ── CAD122 (décision fondateur du 21/09/2026) — DÉMARCHAGE À DOMICILE ────
+    # La visite technique se passe AU DOMICILE, après le devis, et le bon de
+    # commande s'y signe PARFOIS. La loi 31-08 (texte ONSSA) définit le
+    # démarchage à l'art. 45 comme la proposition d'achat au domicile « même à
+    # sa demande » ; l'art. 46 liste trois exclusions, dont aucune ne couvre le
+    # solaire. Le dépôt ne connaissait la rétractation qu'à l'art. 32 (vente à
+    # DISTANCE). Ce marqueur — et LUI SEUL — déclenche le formalisme :
+    # formulaire détachable de rétractation annexé au document, mentions de
+    # l'art. 48, aucun encaissement d'acompte avant 7 jours (art. 49 et 50) et
+    # signature manuscrite DATÉE de la main du client (art. 47 al. 2).
+    # Faux par défaut : une signature à distance ou au bureau reste régie par
+    # l'art. 32 et ne change en RIEN.
+    signe_au_domicile = models.BooleanField(
+        default=False,
+        verbose_name='Signé au domicile du client',
+        help_text="Ce bon de commande a-t-il été signé chez le client "
+                  "(démarchage, loi 31-08 art. 45) ?",
+    )
+    date_signature_domicile = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date écrite par le client',
+        help_text="Quelle date le client a-t-il écrite de sa main à côté de "
+                  "sa signature (loi 31-08 art. 47 al. 2) ?",
+    )
 
     @property
     def has_proof_of_delivery(self):
         """FG51 — vrai si une preuve de livraison (PV/signature) est consignée."""
         pv = self.pv_livraison or {}
         return bool(pv.get('signataire') or pv.get('file_key'))
+
+    # ── CAD122 ── le délai de rétractation du démarchage à domicile ─────────
+    @property
+    def date_commande_domicile(self):
+        """La date qui fait courir le délai : celle ÉCRITE PAR LE CLIENT.
+
+        L'art. 47 al. 2 de la loi 31-08 exige une signature manuscrite DATÉE
+        de la main du client — c'est cette date qui fait foi. À défaut (elle
+        n'a pas été saisie), on retombe sur la date de création du bon, qui ne
+        peut qu'être postérieure ou égale : le délai ne se raccourcit jamais
+        au détriment du client."""
+        if self.date_signature_domicile:
+            return self.date_signature_domicile
+        return self.date_creation.date() if self.date_creation else None
+
+    @property
+    def acompte_encaissable_le(self):
+        """Premier jour où l'acompte peut être encaissé, ou ``None``.
+
+        ``None`` pour un bon signé à distance ou au bureau : l'art. 32 s'y
+        applique et RIEN ne change. Pour un bon signé au domicile, c'est la
+        date de commande + le délai des art. 49 et 50."""
+        if not self.signe_au_domicile:
+            return None
+        depart = self.date_commande_domicile
+        if depart is None:
+            return None
+        return depart + datetime.timedelta(
+            days=DELAI_RETRACTATION_DOMICILE_JOURS)
+
+    def verifier_encaissement_acompte(self, a_la_date=None):
+        """Lève ``AcompteAvantDelaiLegal`` si l'acompte est encaissé trop tôt.
+
+        Ne fait RIEN pour un bon signé à distance ou au bureau. Le message
+        nomme la date à partir de laquelle l'encaissement est possible — une
+        erreur qui dit seulement « refusé » n'aide personne à agir."""
+        from django.utils import timezone as _tz
+
+        seuil = self.acompte_encaissable_le
+        if seuil is None:
+            return
+        jour = a_la_date or _tz.now().date()
+        # L'appelant peut passer un instant ou une date : on compare des
+        # JOURS des deux côtés (le délai est en jours, pas en heures).
+        if isinstance(jour, datetime.datetime):
+            jour = jour.date()
+        if jour < seuil:
+            raise AcompteAvantDelaiLegal(
+                "Acompte non encaissable avant le "
+                f"{seuil.strftime('%d/%m/%Y')} : ce bon de commande a été "
+                "signé au domicile du client, et la loi 31-08 (art. 49 et "
+                f"50) interdit tout encaissement pendant "
+                f"{DELAI_RETRACTATION_DOMICILE_JOURS} jours à compter de la "
+                "commande.")
 
     def save(self, *args, **kwargs):
         """U12 — snapshote le lead d'origine depuis le devis source à la création.

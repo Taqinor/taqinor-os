@@ -1516,8 +1516,10 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
 
     * les minutes sont OUVRÉES (``horaires.minutes_ouvrees_entre``) — un lead
       arrivé vendredi 21 h et rappelé lundi 08:32 vaut 2 minutes, pas 60
-      heures. Un KPI en minutes calendaires serait faux à charge et
-      ininterprétable ;
+      heures. Un KPI d'objectif bâti sur les seules minutes calendaires
+      serait faux à charge et ininterprétable — CAD88 les AJOUTE à côté
+      (``mediane_minutes_calendaires``) sans toucher à celle-ci : l'ouvrée
+      dit si la promesse est tenue, la calendaire ce que le client a vécu ;
     * seuls les leads ``OS_NATIVE`` comptent : les 930 leads du miroir Odoo ne
       sont pas des demandes que Meryem doit rappeler ;
     * ``null`` PARTOUT dès que ``nb_leads == 0`` — jamais un 0 %, jamais une
@@ -1542,23 +1544,38 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
              .filter(company=company, is_archived=False,
                      source=Lead.Source.OS_NATIVE,
                      date_creation__gte=depuis)
-             .only('id', 'date_creation', 'first_contacted_at'))
+             # CAD119 — `date_creation_origine` est chargée pour que
+             # `Lead.date_origine` réponde sans une requête par lead : un KPI
+             # de délai se compte depuis la naissance du dossier, jamais
+             # depuis l'heure d'une synchronisation.
+             .only('id', 'date_creation', 'date_creation_origine',
+                   'first_contacted_at'))
 
     minutes = []
+    # CAD88 — la MÊME attente, comptée en calendrier : ce que le client a
+    # vécu. L'objectif reste l'ouvré (colonne inchangée) ; cette seconde
+    # colonne existe pour qu'un lead du vendredi soir traité lundi ne
+    # s'affiche plus « conforme » et rien d'autre.
+    minutes_calendaires = []
     nb_leads = 0
     nb_nuit = 0
     nb_nuit_rappeles = 0
     for lead in leads:
         nb_leads += 1
-        de_nuit = not horaires.est_dans_fenetre(lead.date_creation, company)
+        # CAD119 — `date_origine` = la date du système d'origine si on la
+        # connaît, sinon celle de l'insertion ici.
+        naissance = lead.date_origine
+        de_nuit = not horaires.est_dans_fenetre(naissance, company)
         if de_nuit:
             nb_nuit += 1
         if lead.first_contacted_at is None:
             continue
         minutes.append(horaires.minutes_ouvrees_entre(
-            lead.date_creation, lead.first_contacted_at, company))
+            naissance, lead.first_contacted_at, company))
+        minutes_calendaires.append(horaires.minutes_calendaires_entre(
+            naissance, lead.first_contacted_at))
         if de_nuit and lead.first_contacted_at <= _limite_rappel_du_matin(
-                lead.date_creation, company):
+                naissance, company):
             nb_nuit_rappeles += 1
 
     if not nb_leads:
@@ -1568,6 +1585,8 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
             'nb_sous_objectif': None,
             'pct_sous_objectif': None,
             'mediane_minutes_ouvrees': None,
+            # CAD88 — la colonne « vécue par le client », à côté de l'ouvrée.
+            'mediane_minutes_calendaires': None,
             'nb_nuit_rappeles_avant_930': None,
             'nb_nuit': 0,
         }
@@ -1578,6 +1597,7 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
         'nb_sous_objectif': sous,
         'pct_sous_objectif': round(100.0 * sous / nb_leads, 1),
         'mediane_minutes_ouvrees': _mediane(minutes),
+        'mediane_minutes_calendaires': _mediane(minutes_calendaires),
         'nb_nuit_rappeles_avant_930': nb_nuit_rappeles,
         'nb_nuit': nb_nuit,
     }
@@ -1622,14 +1642,25 @@ def kpi_cadences(company, *, jours=30):
     * les tentatives comptées sont HUMAINES (MRY20) — une moyenne gonflée par
       les lignes système ne dirait rien de l'effort réel.
     """
-    from django.db.models import Count, Q
+    from django.db.models import Count, Min, Q
     from django.utils import timezone
 
     from . import horaires, stages
     from .models import Lead, LeadActivity, RelanceEtape
 
     depuis = timezone.now() - datetime.timedelta(days=int(jours))
-    leads = Lead.objects.filter(company=company, date_creation__gte=depuis)
+    # CAD87 — le miroir Odoo et les archivés sont ÉCARTÉS, comme les deux KPI
+    # voisins le font déjà (`kpi_premier_contact`, `kpi_adherence`). Sans ce
+    # filtre, un import de rattrapage faisait plonger « joints sous 5 jours »
+    # trente jours durant sans qu'aucun comportement n'ait changé : ces leads
+    # ne sont pas une file que la commerciale doit rappeler (`services.py`
+    # les exclut d'ailleurs de toute cadence automatique). L'exclusion porte
+    # sur la SOURCE Odoo seule, et non sur « source = créé dans TAQINOR » :
+    # les leads du site et de Meta, eux, SONT dans la file du jour.
+    leads = (Lead.objects
+             .filter(company=company, is_archived=False,
+                     date_creation__gte=depuis)
+             .exclude(source=Lead.Source.ODOO_IMPORT_TEST))
     nb_leads = leads.count()
 
     # « Joint » = une issue d'appel joint/intéressé dans les 5 jours OUVRÉS
@@ -1639,17 +1670,27 @@ def kpi_cadences(company, *, jours=30):
     # minutes de calendrier) revenait à accorder ~10 jours ouvrés de 11 h 30 —
     # deux fois la promesse. Le seuil est donc lui-même compté en minutes
     # ouvrées, jusqu'à la fermeture du 5ᵉ jour ouvré.
+    # CAD87 — une seule requête GROUPÉE pour les premières issues, là où le
+    # code interrogeait la base UNE FOIS PAR LEAD : sur 900 leads le panneau
+    # du Cockpit tirait 900 requêtes. La fenêtre ouvrée, elle, reste calculée
+    # en Python (elle dépend des horaires de la société).
+    premieres_issues = dict(
+        LeadActivity.objects
+        .filter(company=company, lead_id__in=leads.values('id'),
+                outcome__in=('joint', 'interesse'), user__isnull=False)
+        .values('lead_id').annotate(premiere=Min('created_at'))
+        .values_list('lead_id', 'premiere'))
     joints = 0
-    for lead in leads.only('id', 'date_creation'):
-        premiere = (LeadActivity.objects
-                    .filter(lead=lead, outcome__in=('joint', 'interesse'),
-                            user__isnull=False)
-                    .order_by('created_at').first())
+    # CAD119 — `date_creation_origine` chargée avec le reste : le délai se
+    # compte depuis la naissance du dossier (`Lead.date_origine`), jamais
+    # depuis l'heure d'une synchronisation.
+    for lead in leads.only('id', 'date_creation', 'date_creation_origine'):
+        premiere = premieres_issues.get(lead.id)
         if premiere is None:
             continue
-        minutes = horaires.minutes_ouvrees_entre(
-            lead.date_creation, premiere.created_at, company)
-        if minutes <= _minutes_ouvrees_de_5_jours(lead.date_creation, company):
+        naissance = lead.date_origine
+        minutes = horaires.minutes_ouvrees_entre(naissance, premiere, company)
+        if minutes <= _minutes_ouvrees_de_5_jours(naissance, company):
             joints += 1
 
     touches = RelanceEtape.objects.filter(company=company,
@@ -4899,6 +4940,61 @@ def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
                      if lead.date_creation else ''),
         })
     return lignes
+
+
+# ── CAD-I ── CAD87 ──────────────────────────────────────────────────────────
+# Les trois mesures qui manquaient à côté de CKP3 (« à quelle heure et quel
+# jour joint-on ? », « combien de touches avant une signature ? », « quelle
+# part de WhatsApp-seulement et de darija ? ») vivent dans un module à part,
+# `apps/crm/mesure_cadence.py` : ce fichier passe déjà 4 800 lignes, et un
+# agrégat croisé n'a rien à faire au milieu des lectures de la fiche lead.
+# Ce renvoi existe pour que qui cherche un KPI de cadence le trouve ICI.
+def mesure_cadence(company, *, jours=None):
+    """CAD87 — voir ``apps.crm.mesure_cadence``. Lecture seule."""
+    from .mesure_cadence import JOURS_MESURE_DEFAUT
+    from .mesure_cadence import mesure_cadence as _mesure
+    return _mesure(company,
+                   jours=JOURS_MESURE_DEFAUT if jours is None else jours)
+
+
+# ── CAD-I ── CAD93 ──────────────────────────────────────────────────────────
+def doublons_foyer_probables(company, *, include_archived=False):
+    """Les clusters rapprochés par l'ADRESSE ou le POINT GPS, et rien d'autre.
+
+    Deux fiches qui partagent un téléphone sont probablement la MÊME
+    personne ; deux fiches qui ne partagent que l'adresse sont probablement
+    deux personnes du MÊME FOYER — et c'est une décision différente pour le
+    commercial : on ne fusionne pas un père et son fils, on choisit qui
+    reçoit la cadence. Cette lecture isole donc le second cas.
+
+    Lecture seule, bornée à ``company``. Chaque entrée porte l'indice qui
+    l'explique ; rien n'est fusionné, jamais, sans le geste humain de
+    l'atelier doublons.
+    """
+    from .services import cluster_match_keys, find_duplicate_clusters
+
+    #: Les seules clés qui parlent de LIEU. Un cluster qui partage aussi un
+    #: téléphone, un e-mail ou un nom n'est pas un « même foyer » : c'est un
+    #: doublon ordinaire, déjà rendu par l'atelier.
+    cles_de_lieu = {'adresse', 'gps'}
+
+    sorties = []
+    clusters, _ = find_duplicate_clusters(
+        company, include_archived=include_archived)
+    for groupe in clusters:
+        cles = set(cluster_match_keys(groupe))
+        if not cles or not cles.issubset(cles_de_lieu):
+            continue
+        sorties.append({
+            'indices': sorted(cles),
+            'membres': [
+                {'id': lead.id, 'nom': lead.nom or '',
+                 'prenom': lead.prenom or '', 'ville': lead.ville or '',
+                 'telephone': lead.telephone or ''}
+                for lead in groupe
+            ],
+        })
+    return sorties
 
 
 # ── CAD-H ── CAD83 — départage de la file du jour ────────────────────────────

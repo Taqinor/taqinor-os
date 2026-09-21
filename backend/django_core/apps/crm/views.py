@@ -891,6 +891,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             demarrer_cadence_contact, recompute_lead_score,
             sync_relance_activity,
         )
+        # CAD90 — un lead saisi à la main entre dans la cadence comme ceux du
+        # site : il doit donc, comme eux, exister au registre de consentement.
+        # La personne a elle-même sollicité le contact (appel entrant,
+        # message reçu, demande au salon) : c'est la base légale tracée ici.
+        from .services import (
+            BASE_LEGALE_SOLLICITATION, CONSENT_SOURCE_SAISIE_MANUELLE,
+            enregistrer_base_legale_lead,
+        )
+        enregistrer_base_legale_lead(
+            serializer.instance, source=CONSENT_SOURCE_SAISIE_MANUELLE,
+            base_legale=BASE_LEGALE_SOLLICITATION)
         sync_relance_activity(serializer.instance, user)
         recompute_lead_score(serializer.instance)
         # MRY6 — un lead saisi à la main est une demande réelle : il entre
@@ -1021,6 +1032,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                           # rôle, comme `sla_breach`.
                                           'kpi_premier_contact',
                                           'kpi_cadences',
+                                          # CAD87 — lecture seule, même
+                                          # ouverture que les deux KPI
+                                          # ci-dessus.
+                                          'mesure_cadence',
                                           'client_match', 'points_contact',
                                           'scan_carte',
                                           'salle_vente_analytics_view']:
@@ -1343,8 +1358,12 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             permission_classes=[IsAnyRole])
     def doublons(self, request):
         """Atelier doublons : scanne TOUS les leads de la société et renvoie les
-        clusters de doublons probables (téléphone / email / nom normalisé), avec
-        pour chacun un survivant suggéré (le plus complet, puis le plus récent)."""
+        clusters de doublons probables (téléphone / email / nom normalisé, et
+        depuis CAD93 adresse / point GPS pour le « même foyer »), avec pour
+        chacun un survivant suggéré (le plus complet, puis le plus récent).
+
+        SUGGESTION seulement : aucune fusion n'est faite ici, `match_keys` dit
+        POURQUOI chaque groupe est rapproché et la décision reste humaine."""
         from .services import (
             find_duplicate_clusters, _completeness, cluster_match_keys,
             _MERGE_FILL_FIELDS,
@@ -2029,6 +2048,37 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from .selectors import kpi_cadences as _kpi
         return Response(_kpi(request.user.company, jours=jours))
 
+    # ── CAD-I ── CAD87 — les trois mesures de la cadence ─────────────────────
+    # PACT7 — même raison que `kpi_cadences` : un agrégat déclare sa forme,
+    # sinon le schéma publierait le `LeadSerializer` du ViewSet à sa place.
+    @extend_schema(responses=inline_serializer('CrmMesureCadence', {
+        'jours': serializers.IntegerField(),
+        'source_issue': serializers.CharField(),
+        'taux_joint_par_creneau': serializers.ListField(
+            child=serializers.DictField()),
+        'signatures_par_touches_consommees': serializers.ListField(
+            child=serializers.DictField()),
+        'part_contact_et_langue': serializers.DictField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='mesure-cadence',
+            permission_classes=[IsAnyRole])
+    def mesure_cadence(self, request):
+        """Forme `mesure_cadence` (CAD87). ``?jours=`` (90, borné [1, 365]).
+
+        LECTURE SEULE, bornée à `request.user.company`. Trois mesures et rien
+        d'autre : taux de joint par (touche × heure × jour × canal),
+        signatures par nombre de touches consommées, part de « WhatsApp
+        uniquement » et de darija. Aucun seuil, aucune couleur — le jugement
+        reste humain, et `null` dès qu'un dénominateur est 0."""
+        from .mesure_cadence import JOURS_MESURE_DEFAUT
+        from .mesure_cadence import mesure_cadence as _mesure
+        try:
+            jours = max(1, min(365, int(request.query_params.get(
+                'jours', JOURS_MESURE_DEFAUT))))
+        except (TypeError, ValueError):
+            jours = JOURS_MESURE_DEFAUT
+        return Response(_mesure(request.user.company, jours=jours))
+
     # ── MRY19 — KPI « rappelé en moins de N minutes OUVRÉES » ────────────────
     # PACT7 — même raison que `kpi_cadences` ci-dessous : un agrégat déclare
     # sa forme, sinon le schéma la remplace par celle du ViewSet.
@@ -2038,6 +2088,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         'nb_sous_objectif': serializers.IntegerField(allow_null=True),
         'pct_sous_objectif': serializers.FloatField(allow_null=True),
         'mediane_minutes_ouvrees': serializers.IntegerField(allow_null=True),
+        # CAD88 — le délai CALENDAIRE réel, à côté de l'ouvré (jamais à sa
+        # place) : un lead du vendredi soir traité lundi n'est plus « tenu ».
+        'mediane_minutes_calendaires': serializers.IntegerField(
+            allow_null=True),
         'nb_nuit_rappeles_avant_930': serializers.IntegerField(
             allow_null=True),
         'nb_nuit': serializers.IntegerField(),

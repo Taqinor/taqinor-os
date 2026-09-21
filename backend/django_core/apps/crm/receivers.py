@@ -38,6 +38,7 @@ from .services import (
     avancer_stage_new_vers_contacted,
     avancer_stage_sur_reponse_devis,
     avancer_stage_pour_devis,
+    est_note_de_touche_sautee,
     generer_playbook_progress,
     initialiser_plan_relance,
     marquer_premier_contact,
@@ -510,6 +511,14 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
     # appel sans réponse ou un WhatsApp ENVOYÉ ne déplacent plus l'étape
     # (l'ancien « auto — premier contact » sur toute activité est mort) ;
     # le KPI de premier contact, lui, reste horodaté (MRY19).
+    # CAD131 (audit L3 du 21/09/2026) — SAUTER une touche n'est PAS une
+    # tentative : rien n'est sorti vers le client, et la note que le saut
+    # écrit posait pourtant `first_contacted_at`. Sauter la toute première
+    # touche satisfaisait donc la promesse « rappelé en moins de N minutes »
+    # ET éteignait l'escalade, qui n'agit que sur les leads SANS horodatage.
+    # La reconnaissance vit dans `services` — là où la note est ÉCRITE.
+    if est_note_de_touche_sautee(instance):
+        return
     marquer_premier_contact(lead)
     if (instance.outcome or '').strip() in ('joint', 'interesse'):
         avancer_stage_new_vers_contacted(lead, instance.user)

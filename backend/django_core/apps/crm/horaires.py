@@ -330,6 +330,33 @@ def minutes_ouvrees_entre(a, b, company, *, canal='whatsapp'):
     return total
 
 
+# ── CAD-I ── CAD88 ──────────────────────────────────────────────────────────
+# Le KPI de premier contact NEUTRALISE le week-end : « une nuit ou un week-end
+# complet vaut 0 minute » (docstring ci-dessus). C'est la bonne mesure de
+# l'OBJECTIF — on ne reproche à personne de dormir — mais c'est une très
+# mauvaise mesure de CE QU'A VÉCU LE CLIENT : un lead arrivé vendredi 20:00 et
+# traité lundi 08:30 s'affiche conforme alors qu'il a attendu soixante heures.
+# Tant que la mesure neutralise ce retard, le samedi (CAD43) ne peut pas
+# s'arbitrer sur des faits.
+#
+# La réponse n'est PAS de changer le calcul ouvré — il reste l'objectif, au
+# bit près — c'est d'AJOUTER une colonne à côté de lui. Les deux se lisent
+# ensemble ou ne veulent rien dire.
+def minutes_calendaires_entre(a, b):
+    """Minutes de CALENDRIER écoulées entre ``a`` et ``b`` (0 si ``b <= a``).
+
+    Le temps tel que le CLIENT l'a vécu : la nuit, le week-end et les jours
+    fériés comptent. Aucune notion de société, d'horaires ni de canal — c'est
+    précisément ce qui la distingue de ``minutes_ouvrees_entre``, qu'elle ne
+    remplace jamais.
+    """
+    if a is None or b is None:
+        return 0
+    if b <= a:
+        return 0
+    return int((b - a).total_seconds() // 60)
+
+
 # ── CAD146 (audit L3 cadence, 21/09/2026) — diaspora et fuseau horaire ───────
 #
 # CONSTAT : toutes les fenêtres et tous les recalages de ce module raisonnent
