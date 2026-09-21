@@ -13,6 +13,14 @@ import { type Ctx } from './context';
 import { type AreaRecord } from './types';
 import { type RoofShapePan, type RoofShapePreset } from './scene3d';
 import { type LngLat } from '../../lib/roof';
+import { type Obstacle } from '../../lib/obstacles';
+import {
+  centroideAnneau,
+  dimensionsRectangleM,
+  pivoterAnneau,
+  pivoterPoint,
+  redimensionnerRectangle,
+} from './snap';
 import { computePanStats, hasMultipleBuildings, type PanStat } from './panStats';
 
 /**
@@ -46,6 +54,153 @@ export function buildAreasFromShape(
   }));
 }
 
+// ————————————————————————————————————————————————————————————————————————
+// CALX97 — COTES EXACTES D'UN PAN ET ROTATION D'UN BLOC
+//
+// Un pan ne se modifiait qu'au glissé de ses sommets : aucune saisie de largeur/longueur,
+// aucune rotation d'ensemble. Parité HelioScope (cotes exactes tapables + « Rotate Field
+// Segments/Keepouts »). La géométrie est dans `snap.ts` ; ce bloc l'applique à un PAN —
+// c'est-à-dire à son contour ET à ses obstacles — de façon PURE et testable.
+//
+// CE QUI SUIT LA ROTATION, ET CE QUI NE LA SUIT PAS : le CENTRE de chaque obstacle tourne
+// autour du centroïde du pan, donc un obstacle reste au même endroit du toit. Son rectangle,
+// lui, reste orienté nord-sud/est-ouest, parce que le document ne porte AUCUNE orientation
+// d'obstacle (`lib/obstacles.ts` : `lengthM` = étendue nord-sud, `widthM` = est-ouest). On
+// n'invente pas cette clé ici : ce serait un champ de document créé par une lane d'écran.
+// ————————————————————————————————————————————————————————————————————————
+
+/** La part d'un pan que CALX97 déplace : son contour et ses obstacles. */
+export interface GeometriePan {
+  vertices: LngLat[];
+  obstacles: Obstacle[];
+}
+
+/** Verdict d'une transformation de pan — un refus NOMME le pan ET la raison. */
+export type VerdictPan = { ok: true; geometrie: GeometriePan } | { ok: false; motif: string };
+
+/**
+ * CALX97 — fait pivoter un pan de `angleDeg` (sens horaire) autour du centroïde de son
+ * contour : le contour ET les centres de ses obstacles suivent le même mouvement. Refus
+ * NOMMÉ quand le contour n'a pas de quoi définir un centre, ou que l'angle est illisible.
+ */
+export function pivoterPan(pan: GeometriePan, angleDeg: number, nomDuPan: string): VerdictPan {
+  if (!Array.isArray(pan?.vertices) || pan.vertices.length < 3) {
+    return { ok: false, motif: `${nomDuPan} : rotation refusée — ce pan n’a pas encore de contour fermé.` };
+  }
+  if (!Number.isFinite(angleDeg)) {
+    return { ok: false, motif: `${nomDuPan} : rotation refusée — saisissez un angle en degrés.` };
+  }
+  const centre = centroideAnneau(pan.vertices);
+  if (!centre) {
+    return { ok: false, motif: `${nomDuPan} : rotation refusée — le centre du pan est illisible.` };
+  }
+  const obstacles = (pan.obstacles ?? []).map((o) => {
+    const c = pivoterPoint([o.centerLng, o.centerLat], angleDeg, centre);
+    return { ...o, centerLng: c[0], centerLat: c[1] };
+  });
+  return { ok: true, geometrie: { vertices: pivoterAnneau(pan.vertices, angleDeg, centre), obstacles } };
+}
+
+/**
+ * CALX97 — repose un pan RECTANGULAIRE aux cotes saisies, autour de son centroïde. Les
+ * obstacles ne bougent PAS : ils sont posés à un endroit réel du toit, et les décaler avec
+ * les cotes inventerait une position que personne n'a relevée. Refus NOMMÉ (avec le nom du
+ * pan) quand le contour n'est pas un quadrilatère ou qu'une cote manque.
+ */
+export function redimensionnerPan(
+  pan: GeometriePan,
+  largeurM: number,
+  longueurM: number,
+  nomDuPan: string,
+): VerdictPan {
+  const verdict = redimensionnerRectangle(pan?.vertices ?? [], largeurM, longueurM);
+  if (!verdict.ok) return { ok: false, motif: `${nomDuPan} : ${verdict.motif}` };
+  return { ok: true, geometrie: { vertices: verdict.anneau, obstacles: (pan.obstacles ?? []).map((o) => ({ ...o })) } };
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX98 — DUPLIQUER UN PAN AVEC SES OBSTACLES ET SES RÉGLAGES
+//
+// « + Ajouter une zone » crée toujours une zone VIDE, et la duplication n'existait que pour
+// les obstacles — alors qu'une toiture industrielle répète le même sied dix fois. Parité
+// HelioScope (« Clone designs »). PUR et testable : aucun DOM, aucune carte.
+//
+// ZÉRO CHIFFRE INVENTÉ : le décalage de la copie est SAISI. Tant qu'il ne l'est pas, la
+// duplication est REFUSÉE avec son motif — on ne pose jamais la copie « un peu plus loin »
+// d'une distance que personne n'a demandée.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Verdict d'une duplication de pan — un refus NOMME toujours sa raison. */
+export type VerdictDuplication = { ok: true; zone: AreaRecord } | { ok: false; motif: string };
+
+/**
+ * CALX98 — motif qui EMPÊCHE la duplication au pas saisi, ou `null` quand le pas est
+ * exploitable. L'écran s'en sert pour garder le bouton inactif ET afficher la raison.
+ */
+export function motifPasDuplication(pasM: number): string | null {
+  if (!Number.isFinite(pasM) || pasM <= 0) {
+    return 'Saisissez le décalage de la copie, en mètres : aucun décalage n’est supposé.';
+  }
+  return null;
+}
+
+/**
+ * CALX98 — copie un pan dans une zone NEUVE, décalée du pas SAISI. Sont recopiés : le
+ * contour, les obstacles (avec de nouveaux identifiants, dérivés de l'id de la zone, donc
+ * sans collision), `roofType`, `pitchDeg`, `facingAzimuthDeg`, `facingManual`, `edges` et
+ * `buildingId`. Ne sont PAS recopiés : le résultat et le plan de rendu — la copie n'a rien
+ * de calculé tant que le moteur n'a pas tourné, et publier le compte de l'original serait un
+ * chiffre inventé.
+ *
+ * Le décalage est une TRANSLATION RIGIDE vers l'est (même convention que la duplication
+ * d'obstacle, CAL73) : le même écart de longitude, calculé à la latitude du centroïde, est
+ * appliqué à TOUS les points — contour et obstacles — pour que la copie garde exactement la
+ * forme de l'original.
+ */
+export function dupliquerPan(source: AreaRecord, nouvelId: string, pasM: number): VerdictDuplication {
+  const motif = motifPasDuplication(pasM);
+  if (motif) return { ok: false, motif };
+  if (!source || !Array.isArray(source.vertices) || source.vertices.length < 3) {
+    return { ok: false, motif: 'Duplication refusée : ce pan n’a pas encore de contour fermé.' };
+  }
+  const centre = centroideAnneau(source.vertices);
+  if (!centre) return { ok: false, motif: 'Duplication refusée : le centre du pan est illisible.' };
+  const cosLat = Math.max(1e-6, Math.cos(centre[1] * ZONE_DEG2RAD));
+  const dLng = pasM / (ZONE_DEG2M * cosLat);
+  return {
+    ok: true,
+    zone: {
+      id: nouvelId,
+      label: '',
+      vertices: source.vertices.map(([lng, lat]) => [lng + dLng, lat] as LngLat),
+      obstacles: (source.obstacles ?? []).map((o, i) => ({
+        ...o,
+        id: `${nouvelId}-obs-${i + 1}`,
+        centerLng: o.centerLng + dLng,
+      })),
+      roofType: source.roofType,
+      pitchDeg: source.pitchDeg,
+      facingAzimuthDeg: source.facingAzimuthDeg,
+      facingManual: source.facingManual,
+      neededPanels: 0,
+      neededAuto: true,
+      result: null,
+      renderPlan: null,
+      ...(source.buildingId ? { buildingId: source.buildingId } : {}),
+      ...(source.edges ? { edges: source.edges.map((e) => ({ ...e })) } : {}),
+    },
+  };
+}
+
+/** CALX98 — identifiant de zone NEUF, dans un espace de noms (`area-copie-N`) que le
+ *  compteur `area-<n>` de l'entrée ne produit jamais : aucune collision possible. */
+export function idZoneCopie(existants: readonly { id: string }[]): string {
+  const pris = new Set((existants ?? []).map((a) => a.id));
+  let n = 1;
+  while (pris.has(`area-copie-${n}`)) n++;
+  return `area-copie-${n}`;
+}
+
 export interface Zones {
   liveActiveResult: () => AreaResult | null;
   snapshotActiveAreaResult: () => void;
@@ -55,6 +210,30 @@ export interface Zones {
   /** CAL59 — assigne (ou efface, chaîne vide) le bâtiment d'une zone, puis re-rend le
    *  panneau. N'affecte ni le résultat ni la géométrie de la zone. */
   setAreaBuilding: (id: string, buildingId: string) => void;
+  /** CALX97 — fait pivoter le pan ACTIF (contour + obstacles) de l'angle saisi. Renvoie
+   *  false et n'applique RIEN quand c'est refusé ; le motif nomme le pan. */
+  pivoterPanActif: (angleDeg: number) => boolean;
+  /** CALX97 — repose le pan ACTIF aux cotes saisies (pan rectangulaire seulement). */
+  redimensionnerPanActif: (largeurM: number, longueurM: number) => boolean;
+  /** CALX98 — duplique le pan ACTIF (contour, obstacles et réglages) dans une zone neuve
+   *  décalée du pas SAISI. Renvoie false et ne crée RIEN sans pas saisi. */
+  dupliquerPanActif: (pasM: number) => boolean;
+}
+
+/**
+ * CALX97 — crochets d'écran OPTIONNELS. Absents, `createZones` se comporte EXACTEMENT comme
+ * avant (le seul appelant, `roof-tool-pro11.ts`, n'en passe aucun aujourd'hui) ; fournis,
+ * une transformation de pan redessine et re-pave immédiatement.
+ */
+export interface ZonesDeps {
+  /** Re-dessine la ligne + les pastilles de sommets du pan actif. */
+  redrawTrace?: () => void;
+  /** Re-dessine le calque des obstacles du pan actif. */
+  redrawObstacles?: () => void;
+  /** Re-pavage + production après un changement de géométrie. */
+  recalc?: () => void;
+  /** Bandeau de statut (refus nommés, confirmations). */
+  setStatus?: (msg: string) => void;
 }
 
 /** CAL84 — libellé d'un bâtiment (repli « Bâtiment sans id » pour un groupe sans
@@ -64,7 +243,7 @@ function buildingLabel(buildingId: string | null): string {
   return buildingId ? buildingId : 'Bâtiment sans id';
 }
 
-export function createZones(ctx: Ctx): Zones {
+export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   // CAL84 — table des statistiques par pan, créée UNE fois si l'hôte ne la fournit pas déjà
   // (même pattern que le sélecteur de type d'obstacle, obstaclesUi.ts `ensureTypePicker`) :
   // aucune page n'a à être modifiée pour l'afficher.
@@ -215,6 +394,9 @@ export function createZones(ctx: Ctx): Zones {
     // panneau), pour que la somme des lignes reste visible et vérifiable.
     const statsEl = ensureStatsTable();
     if (statsEl) renderStatsTable(statsEl, stats.pans, multiBuilding);
+
+    // CALX97 — les cotes affichées suivent le pan actif (lues, jamais devinées).
+    syncGeometryPanel();
   }
 
   /** Rend le tableau CAL84 : une ligne par pan, colonnes toutes calculées. */
@@ -252,6 +434,200 @@ export function createZones(ctx: Ctx): Zones {
     </table>`;
   }
 
+  // ————————————————————————————————————————————————————————————————————
+  // CALX97 — panneau « Cotes et rotation du pan », créé ICI si l'hôte ne le fournit pas
+  // (même patron qu'`ensureStatsTable`) : aucune page n'a à être modifiée. Il agit sur le
+  // pan ACTIF — celui qui est à l'écran — et le NOMME dans chaque message.
+  // ————————————————————————————————————————————————————————————————————
+  function ensureGeometryPanel(): HTMLElement | null {
+    const existing = document.getElementById('rp9-pan-geometry');
+    if (existing) return existing;
+    const { areasWindowEl } = ctx.dom;
+    if (!areasWindowEl || typeof document.createElement !== 'function') return null;
+    const el = document.createElement('div');
+    el.id = 'rp9-pan-geometry';
+    el.className = 'rp9-pan-geometry mt-3 flex flex-wrap items-center gap-2 text-xs';
+    el.innerHTML =
+      `<span class="font-semibold" id="rp9-pan-geometry-nom"></span>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-pan-largeur">Largeur (m)` +
+      `<input type="text" id="rp9-pan-largeur" class="rp9-input w-20" inputmode="decimal" /></label>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-pan-longueur">Longueur (m)` +
+      `<input type="text" id="rp9-pan-longueur" class="rp9-input w-20" inputmode="decimal" /></label>` +
+      `<button type="button" id="rp9-pan-coter" class="rp9-btn">Appliquer les cotes</button>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-pan-rotation">Rotation (°)` +
+      `<input type="text" id="rp9-pan-rotation" class="rp9-input w-20" inputmode="decimal" /></label>` +
+      `<button type="button" id="rp9-pan-pivoter" class="rp9-btn">Pivoter le pan</button>` +
+      `<span id="rp9-pan-geometry-erreur" class="text-alert-300" role="alert" hidden></span>`;
+    areasWindowEl.appendChild(el);
+    return el;
+  }
+  const geometryPanelEl = ensureGeometryPanel();
+  const panNomEl = document.getElementById('rp9-pan-geometry-nom');
+  const panLargeurEl = document.getElementById('rp9-pan-largeur') as HTMLInputElement | null;
+  const panLongueurEl = document.getElementById('rp9-pan-longueur') as HTMLInputElement | null;
+  const panRotationEl = document.getElementById('rp9-pan-rotation') as HTMLInputElement | null;
+  const panErreurEl = document.getElementById('rp9-pan-geometry-erreur');
+
+  /** Nombre à la française (virgule décimale tolérée), comme partout dans l'atelier. */
+  const nombreSaisi = (s: string | null | undefined): number =>
+    parseFloat((s ?? '').replace(/\s/g, '').replace(',', '.'));
+
+  /** Nom du pan ACTIF, tel qu'il est écrit dans la liste des zones. */
+  function nomDuPanActif(): string {
+    const i = ctx.areas.findIndex((a) => a.id === ctx.activeAreaId);
+    const a = i >= 0 ? ctx.areas[i] : undefined;
+    return a?.label || areaLabel(i >= 0 ? i : 0);
+  }
+
+  /** Affiche (ou efface) un refus NOMMÉ, dans le panneau ET dans le bandeau de statut. */
+  function direRefusGeometrie(motif: string | null) {
+    if (panErreurEl) {
+      panErreurEl.textContent = motif ?? '';
+      panErreurEl.hidden = !motif;
+    }
+    if (motif) deps.setStatus?.(motif);
+  }
+
+  /** Applique une géométrie transformée au pan ACTIF (contour + obstacles vivants). */
+  function appliquerAuPanActif(geometrie: GeometriePan) {
+    ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
+    ctx.vertices.splice(0, ctx.vertices.length, ...geometrie.vertices);
+    ctx.obstacles.splice(0, ctx.obstacles.length, ...geometrie.obstacles);
+    snapshotActiveAreaGeometry(); // l'enregistrement de la zone suit le pan vivant
+    deps.redrawTrace?.();
+    deps.redrawObstacles?.();
+    deps.recalc?.();
+    renderAreasPanel();
+  }
+
+  function pivoterPanActif(angleDeg: number): boolean {
+    const verdict = pivoterPan(
+      { vertices: ctx.vertices, obstacles: ctx.obstacles },
+      angleDeg,
+      nomDuPanActif(),
+    );
+    if (!verdict.ok) {
+      direRefusGeometrie(verdict.motif);
+      return false;
+    }
+    direRefusGeometrie(null);
+    appliquerAuPanActif(verdict.geometrie);
+    deps.setStatus?.(`${nomDuPanActif()} pivoté de ${angleDeg}° — ses obstacles ont suivi.`);
+    return true;
+  }
+
+  function redimensionnerPanActif(largeurM: number, longueurM: number): boolean {
+    const verdict = redimensionnerPan(
+      { vertices: ctx.vertices, obstacles: ctx.obstacles },
+      largeurM,
+      longueurM,
+      nomDuPanActif(),
+    );
+    if (!verdict.ok) {
+      direRefusGeometrie(verdict.motif);
+      return false;
+    }
+    direRefusGeometrie(null);
+    appliquerAuPanActif(verdict.geometrie);
+    deps.setStatus?.(`${nomDuPanActif()} reposé aux cotes saisies — son centre n’a pas bougé.`);
+    return true;
+  }
+
+  /** Remplit le panneau avec les cotes RÉELLES du pan actif (jamais une cote devinée). */
+  function syncGeometryPanel() {
+    if (!geometryPanelEl) return;
+    geometryPanelEl.hidden = !ctx.closed || ctx.vertices.length < 3;
+    if (geometryPanelEl.hidden) return;
+    if (panNomEl) panNomEl.textContent = nomDuPanActif();
+    const dims = dimensionsRectangleM(ctx.vertices);
+    const fmtDim = (v: number) => v.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+    if (panLargeurEl && document.activeElement !== panLargeurEl) {
+      panLargeurEl.value = dims ? fmtDim(dims.largeurM) : '';
+      // Pan non rectangulaire : les cotes n'existent pas, on ne les invente pas.
+      panLargeurEl.disabled = !dims;
+    }
+    if (panLongueurEl && document.activeElement !== panLongueurEl) {
+      panLongueurEl.value = dims ? fmtDim(dims.longueurM) : '';
+      panLongueurEl.disabled = !dims;
+    }
+    if (!dims) {
+      direRefusGeometrie(
+        `${nomDuPanActif()} : la saisie largeur/longueur ne s’applique qu’à un pan à 4 côtés. La rotation, elle, reste disponible.`,
+      );
+    }
+  }
+
+  geometryPanelEl?.addEventListener('click', (e) => {
+    const cible = (e.target as HTMLElement).closest<HTMLElement>('button');
+    if (cible?.id === 'rp9-pan-coter') {
+      redimensionnerPanActif(nombreSaisi(panLargeurEl?.value), nombreSaisi(panLongueurEl?.value));
+    } else if (cible?.id === 'rp9-pan-pivoter') {
+      pivoterPanActif(nombreSaisi(panRotationEl?.value));
+    }
+  });
+
+  // ————————————————————————————————————————————————————————————————————
+  // CALX98 — bouton « Dupliquer ce pan » + son pas SAISI, créés ICI si l'hôte ne les
+  // fournit pas. Le champ part VIDE et le bouton reste INACTIF tant qu'il l'est, avec le
+  // motif affiché : aucun décalage n'est supposé.
+  // ————————————————————————————————————————————————————————————————————
+  function ensureDuplicatePanel(): HTMLElement | null {
+    const existing = document.getElementById('rp9-pan-duplicate');
+    if (existing) return existing;
+    const { areasWindowEl } = ctx.dom;
+    if (!areasWindowEl || typeof document.createElement !== 'function') return null;
+    const el = document.createElement('div');
+    el.id = 'rp9-pan-duplicate';
+    el.className = 'rp9-pan-duplicate mt-2 flex flex-wrap items-center gap-2 text-xs';
+    el.innerHTML =
+      `<label class="inline-flex items-center gap-1" for="rp9-pan-dup-pas">Décalage de la copie (m)` +
+      `<input type="text" id="rp9-pan-dup-pas" class="rp9-input w-20" inputmode="decimal" value="" /></label>` +
+      `<button type="button" id="rp9-pan-dup" class="rp9-btn" disabled>Dupliquer ce pan</button>` +
+      `<span id="rp9-pan-dup-motif" class="text-alert-300" role="status"></span>`;
+    areasWindowEl.appendChild(el);
+    return el;
+  }
+  const duplicatePanelEl = ensureDuplicatePanel();
+  const dupPasEl = document.getElementById('rp9-pan-dup-pas') as HTMLInputElement | null;
+  const dupBtnEl = document.getElementById('rp9-pan-dup') as HTMLButtonElement | null;
+  const dupMotifEl = document.getElementById('rp9-pan-dup-motif');
+
+  /** CALX98 — le bouton suit le pas saisi : inactif tant qu'il manque, motif affiché. */
+  function syncDuplicateButton() {
+    const motif = motifPasDuplication(nombreSaisi(dupPasEl?.value));
+    if (dupBtnEl) dupBtnEl.disabled = motif != null;
+    if (dupMotifEl) dupMotifEl.textContent = motif ?? '';
+  }
+
+  function dupliquerPanActif(pasM: number): boolean {
+    const source = ctx.activeArea();
+    if (!source) return false;
+    // La zone active vit dans `ctx` : on fige sa géométrie avant de la recopier.
+    snapshotActiveAreaGeometry();
+    const verdict = dupliquerPan(source, idZoneCopie(ctx.areas), pasM);
+    if (!verdict.ok) {
+      if (dupMotifEl) dupMotifEl.textContent = verdict.motif;
+      deps.setStatus?.(verdict.motif);
+      return false;
+    }
+    ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
+    ctx.areas.push(verdict.zone);
+    renderAreasPanel();
+    deps.setStatus?.(
+      `${nomDuPanActif()} dupliqué — la copie porte ses ${verdict.zone.obstacles.length} obstacle(s) et ses réglages. Ouvrez-la avec « Voir ».`,
+    );
+    return true;
+  }
+
+  dupPasEl?.addEventListener('input', syncDuplicateButton);
+  dupPasEl?.addEventListener('change', syncDuplicateButton);
+  duplicatePanelEl?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest<HTMLElement>('#rp9-pan-dup')) {
+      dupliquerPanActif(nombreSaisi(dupPasEl?.value));
+    }
+  });
+  syncDuplicateButton(); // état initial : champ vide ⇒ bouton inactif + motif affiché
+
   /** CAL59 — assigne le bâtiment d'une zone (chaîne vide = retour au bâtiment unique). */
   function setAreaBuilding(id: string, buildingId: string) {
     const a = ctx.areas.find((x) => x.id === id);
@@ -268,6 +644,9 @@ export function createZones(ctx: Ctx): Zones {
     syncAddAreaButton,
     renderAreasPanel,
     setAreaBuilding,
+    pivoterPanActif,
+    redimensionnerPanActif,
+    dupliquerPanActif,
   };
 }
 

@@ -30,12 +30,14 @@ import {
 } from '../../lib/obstacles';
 import { type LngLat } from '../../lib/roof';
 import { OBSTACLE_TAP_PX, VERTEX_GRAB_PX, DEG2RAD, DEG2M } from './constants';
+import { insertionSurContour, supprimerSommet, metresParPixel } from './snap';
 import { $, esc } from './dom';
 import { type Ctx } from './context';
 import { OBSTACLE_TYPES, clearanceForType } from './types';
 import {
   newEnvironmentObject,
   environmentNeedsFootprint,
+  deplacerEnvironment,
   withEnvHeight,
   withCrownDiameter,
   withFootprintDims,
@@ -66,6 +68,111 @@ const OBSTACLE_PROVENANCES: { id: ObstacleProvenance; label: string }[] = [
   { id: 'DEVINE', label: 'Deviné (bloque le compte)' },
   { id: 'ECARTE', label: 'Écarté' },
 ];
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX91 — GESTES SUR LES SOMMETS D'UN CONTOUR FERMÉ
+//
+// Le glissé d'un sommet existant était le SEUL geste possible après fermeture. On ajoute
+// deux gestes (parité Aurora SmartRoof) : double-clic sur une arête = insertion d'un sommet
+// au projeté orthogonal, Alt+clic sur un sommet = suppression. La décision « quel geste »
+// est isolée ici, PURE, pour être prouvée sans carte ni DOM.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Geste déclenché par un appui sur un sommet du tracé. */
+export type GesteSommet = 'deplacer' | 'supprimer' | 'aucun';
+
+/**
+ * CALX91 — quel geste un appui sur un sommet déclenche. Alt maintenue = SUPPRESSION, jamais
+ * un glissé (sinon les deux partent ensemble et le contour part à la dérive). Hors contour
+ * fermé, ou en mode obstacle / disposition, aucun geste sommet n'existe : gardes identiques
+ * à celles du glissé de sommet W92, donc le comportement d'aujourd'hui est inchangé tant
+ * qu'Alt n'est pas maintenue.
+ */
+export function gesteSommet(etat: {
+  sommet: number | null;
+  altEnfoncee: boolean;
+  ferme: boolean;
+  modeObstacle: boolean;
+  modeDisposition: boolean;
+}): GesteSommet {
+  if (!etat.ferme || etat.modeObstacle || etat.modeDisposition) return 'aucun';
+  if (etat.sommet == null) return 'aucun';
+  return etat.altEnfoncee ? 'supprimer' : 'deplacer';
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX105 — POSER UN ARBRE OU UN BÂTIMENT VOISIN AU CLIC, LE DÉPLACER AU GLISSÉ
+//
+// Un objet d'environnement atterrissait TOUJOURS au même endroit — 10 m au sud du centroïde
+// — et ne se repositionnait ensuite que par saisie numérique ; le message le disait mot pour
+// mot (« posé au sud du toit »). Parité PV*SOL : les objets d'ombrage se placent à l'échelle
+// réelle sur la carte. Le clic donne le CENTRE, le glissé du marqueur le déplace.
+//
+// LES DIMENSIONS RESTENT SAISIES : poser ou déplacer un objet ne lui invente ni hauteur ni
+// emprise — un objet sans hauteur saisie ne porte toujours AUCUNE ombre.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Geste déclenché par un appui sur la carte, côté objets d'environnement. */
+export type GesteEnvironnement = 'poser' | 'deplacer' | 'aucun';
+
+/**
+ * CALX105 — quel geste d'environnement un appui déclenche. Un mode de pose ARMÉ l'emporte
+ * (le clic suivant pose l'objet) ; sinon un marqueur sous le doigt se glisse. Les modes
+ * obstacle et disposition gardent la main sur le geste : rien ne change pour eux.
+ */
+export function gesteEnvironnement(etat: {
+  poseArmee: EnvironmentKind | null;
+  marqueur: string | null;
+  modeObstacle: boolean;
+  modeDisposition: boolean;
+}): GesteEnvironnement {
+  if (etat.modeObstacle || etat.modeDisposition) return 'aucun';
+  if (etat.poseArmee) return 'poser';
+  return etat.marqueur != null ? 'deplacer' : 'aucun';
+}
+
+/** Glissé d'un marqueur d'environnement en cours (mêmes champs que `ctx.moveObs`). */
+export interface GlisseEnvironnement {
+  id: string;
+  startLng: number;
+  startLat: number;
+  centerLng: number;
+  centerLat: number;
+  moved: boolean;
+}
+
+/** CALX105 — ouvre un glissé sur l'objet `o`, depuis le point saisi. */
+export function debutGlisseEnvironnement(o: EnvironmentObject, lngLat: LngLat): GlisseEnvironnement {
+  return {
+    id: o.id,
+    startLng: lngLat[0],
+    startLat: lngLat[1],
+    centerLng: o.centerLng,
+    centerLat: o.centerLat,
+    moved: false,
+  };
+}
+
+/**
+ * CALX105 — avance un glissé : rend le nouveau centre (delta lng/lat, qui annule le
+ * parallaxe de la vue inclinée — même règle que le glissé d'obstacle) et dit s'il faut
+ * pousser un pas d'historique. CAL100 : UNE SEULE photo pour tout le glissé, juste avant le
+ * PREMIER mouvement réel — un simple tap de sélection ne laisse donc rien à annuler.
+ */
+export function avancerGlisseEnvironnement(
+  glisse: GlisseEnvironnement,
+  lngLat: LngLat,
+): { centre: LngLat; pousserHistorique: boolean } {
+  const pousserHistorique = !glisse.moved;
+  glisse.moved = true;
+  return {
+    centre: [
+      glisse.centerLng + (lngLat[0] - glisse.startLng),
+      glisse.centerLat + (lngLat[1] - glisse.startLat),
+    ],
+    pousserHistorique,
+  };
+}
 
 /** Dépendances injectées (carte + recalcul complet + bandeau de statut). */
 export interface ObstaclesUiDeps {
@@ -110,6 +217,19 @@ export interface ObstaclesUi {
   tryBeginVertexMove: (lngLat: LngLat, point: maplibregl.Point) => boolean;
   doVertexMove: (lngLat: LngLat) => void;
   endVertexMove: () => void;
+  // CALX105 — pose au clic + glissé d'un marqueur d'objet d'environnement. Le module câble
+  // lui-même la carte ; ces méthodes restent exposées pour l'hôte qui préfère router.
+  /** Marqueur d'environnement touché au point écran, ou null. */
+  envAtPoint: (pt: maplibregl.Point) => string | null;
+  /** Arme la pose d'un arbre/bâtiment (le clic carte suivant donne le centre) ; null désarme. */
+  armerPoseEnvironment: (kind: EnvironmentKind | null) => void;
+  /** Pose l'objet au point donné (aucune dimension n'est déduite). */
+  poserEnvironment: (kind: EnvironmentKind, centre: LngLat) => void;
+  tryBeginEnvMove: (lngLat: LngLat, point: maplibregl.Point) => boolean;
+  doEnvMove: (lngLat: LngLat) => void;
+  endEnvMove: () => void;
+  /** Re-dessine les marqueurs d'environnement. */
+  redrawEnvironment: () => void;
 }
 
 export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi {
@@ -227,10 +347,11 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     const panel = document.createElement('div');
     panel.id = 'rp9-env-panel';
     panel.className = 'rp9-env-panel mt-2';
+    // CALX105 — les boutons ARMENT la pose : c'est le clic sur la carte qui donne le centre.
     panel.innerHTML =
       `<div class="flex gap-2">` +
-      `<button type="button" id="rp9-env-add-tree" class="rp9-btn">🌳 Ajouter un arbre</button>` +
-      `<button type="button" id="rp9-env-add-building" class="rp9-btn">🏢 Ajouter un bâtiment voisin</button>` +
+      `<button type="button" id="rp9-env-add-tree" class="rp9-btn" aria-pressed="false">🌳 Poser un arbre</button>` +
+      `<button type="button" id="rp9-env-add-building" class="rp9-btn" aria-pressed="false">🏢 Poser un bâtiment voisin</button>` +
       `</div><ul id="rp9-env-list" class="mt-2 flex flex-col gap-1 text-xs"></ul>`;
     anchor.appendChild(panel);
     return panel;
@@ -244,22 +365,35 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     return ctx.environment;
   }
 
-  /** Position de pose par défaut : décalée au SUD du centroïde du tracé (hors contour),
-   *  ou de l'origine [0,0] si aucun tracé n'existe encore. */
-  function defaultEnvPosition(): LngLat {
-    const c = ctx.centroid ?? ([0, 0] as LngLat);
-    const dLat = 10 / DEG2M; // 10 m au sud, hors du contour dans la quasi-totalité des cas
-    return [c[0], c[1] - dLat] as LngLat;
+  // CALX105 — mode de pose ARMÉ (le prochain clic carte pose l'objet), et glissé en cours.
+  let poseArmee: EnvironmentKind | null = null;
+  let glisseEnv: GlisseEnvironnement | null = null;
+
+  const envKindLabel = (kind: EnvironmentKind) => (kind === 'arbre' ? 'Arbre' : 'Bâtiment voisin');
+
+  /** Arme/désarme la pose d'un objet : le clic suivant sur la carte donnera son centre. */
+  function armerPose(kind: EnvironmentKind | null) {
+    poseArmee = kind;
+    envAddTreeBtn?.setAttribute('aria-pressed', String(kind === 'arbre'));
+    envAddBuildingBtn?.setAttribute('aria-pressed', String(kind === 'batiment'));
+    if (typeof map.getCanvas === 'function') {
+      const canvas = map.getCanvas();
+      if (canvas) canvas.style.cursor = kind ? 'crosshair' : '';
+    }
   }
 
-  function addEnvironment(kind: EnvironmentKind) {
+  /** CALX105 — pose l'objet AU POINT CLIQUÉ. Aucune dimension n'est déduite : l'objet naît
+   *  sans hauteur ni emprise, et l'écran demande de les saisir. */
+  function poserEnvironment(kind: EnvironmentKind, centre: LngLat) {
     ctx.pushWorkshopHistory?.();
     ctx.envCounter = (ctx.envCounter ?? 0) + 1;
     const id = `env-${ctx.envCounter}`;
-    envList().push(newEnvironmentObject(id, kind, defaultEnvPosition()));
+    envList().push(newEnvironmentObject(id, kind, centre));
+    armerPose(null);
     renderEnvList();
+    redrawEnvironment();
     recalcWithShading();
-    setStatus(`${kind === 'arbre' ? 'Arbre' : 'Bâtiment voisin'} posé au sud du toit — saisissez sa hauteur et ses dimensions.`);
+    setStatus(`${envKindLabel(kind)} posé à l’endroit cliqué — saisissez sa hauteur et ses dimensions (sans elles, il ne porte aucune ombre).`);
   }
 
   function updateEnvironment(id: string, transform: (o: EnvironmentObject) => EnvironmentObject) {
@@ -269,6 +403,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     ctx.pushWorkshopHistory?.();
     list[idx] = transform(list[idx]);
     renderEnvList();
+    redrawEnvironment();
     recalcWithShading();
   }
 
@@ -279,7 +414,106 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     ctx.pushWorkshopHistory?.();
     list.splice(idx, 1);
     renderEnvList();
+    redrawEnvironment();
     recalcWithShading();
+  }
+
+  // ————————————————————————————————————————————————————————————————————
+  // CALX105 — MARQUEURS DES OBJETS D'ENVIRONNEMENT SUR LA CARTE
+  // Ils n'existaient nulle part sur la carte (seulement dans la liste et la 3D) : sans
+  // marqueur, il n'y a rien à cliquer ni à glisser. La source et la couche sont créées ICI,
+  // défensivement (style pas encore chargé, mode capture… = no-op silencieux).
+  // ————————————————————————————————————————————————————————————————————
+  function ensureEnvLayer(): boolean {
+    if (typeof map.getSource !== 'function' || typeof map.addSource !== 'function') return false;
+    try {
+      if (!map.getSource('rp9-env')) map.addSource('rp9-env', { type: 'geojson', data: empty } as never);
+      if (!map.getLayer?.('rp9-env')) {
+        map.addLayer({
+          id: 'rp9-env',
+          type: 'circle',
+          source: 'rp9-env',
+          paint: {
+            'circle-radius': 7,
+            // Vert pour un arbre, gris pour un bâtiment : deux objets qu'on ne doit pas
+            // confondre à l'œil, et deux couleurs distinctes de celles des obstacles/zones.
+            'circle-color': ['case', ['==', ['get', 'kind'], 'arbre'], '#22c55e', '#94a3b8'],
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#0f172a',
+          },
+        } as never);
+      }
+      return true;
+    } catch {
+      return false; // style pas prêt : le prochain appel retrouvera la carte
+    }
+  }
+
+  /** CALX105 — (re)dessine un marqueur par objet d'environnement. */
+  function redrawEnvironment() {
+    if (!ensureEnvLayer()) return;
+    srcOf('rp9-env')?.setData({
+      type: 'FeatureCollection',
+      features: envList().map((o) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [o.centerLng, o.centerLat] },
+        properties: { id: o.id, kind: o.kind },
+      })),
+    } as never);
+  }
+
+  /** Marqueur d'environnement touché au point écran `pt` — MÊME tolérance de saisie que le
+   *  glissé de sommet (`VERTEX_GRAB_PX`, doigt ⊃ pastille). */
+  function envAtPoint(pt: maplibregl.Point): string | null {
+    if (typeof map.queryRenderedFeatures !== 'function' || !map.getLayer?.('rp9-env')) return null;
+    const box: [maplibregl.Point, maplibregl.Point] = [
+      { x: pt.x - VERTEX_GRAB_PX, y: pt.y - VERTEX_GRAB_PX } as maplibregl.Point,
+      { x: pt.x + VERTEX_GRAB_PX, y: pt.y + VERTEX_GRAB_PX } as maplibregl.Point,
+    ];
+    const hits = map.queryRenderedFeatures(box, { layers: ['rp9-env'] });
+    const id = hits[0]?.properties?.id;
+    return typeof id === 'string' ? id : null;
+  }
+
+  /** Tente de saisir un marqueur d'environnement pour le déplacer. */
+  function tryBeginEnvMove(lngLat: LngLat, point: maplibregl.Point): boolean {
+    const marqueur = envAtPoint(point);
+    const geste = gesteEnvironnement({
+      poseArmee,
+      marqueur,
+      modeObstacle: ctx.obstacleMode,
+      modeDisposition: ctx.layoutMode,
+    });
+    if (geste !== 'deplacer' || !marqueur) return false;
+    const o = envList().find((x) => x.id === marqueur);
+    if (!o) return false;
+    glisseEnv = debutGlisseEnvironnement(o, lngLat);
+    map.dragPan?.disable?.();
+    return true;
+  }
+
+  function doEnvMove(lngLat: LngLat) {
+    if (!glisseEnv) return;
+    const list = envList();
+    const idx = list.findIndex((x) => x.id === glisseEnv!.id);
+    if (idx < 0) return;
+    const { centre, pousserHistorique } = avancerGlisseEnvironnement(glisseEnv, lngLat);
+    if (pousserHistorique) ctx.pushWorkshopHistory?.(); // CAL100 — une seule photo par glissé
+    list[idx] = deplacerEnvironment(list[idx], centre);
+    redrawEnvironment();
+  }
+
+  function endEnvMove() {
+    if (!glisseEnv) return;
+    const bouge = glisseEnv.moved;
+    glisseEnv = null;
+    map.dragPan?.enable?.();
+    ctx.suppressClick = true; // pas de pose/désélection parasite au click de synthèse
+    // L'ombrage ne change que si l'objet a RÉELLEMENT bougé.
+    if (bouge) {
+      renderEnvList();
+      recalcWithShading();
+    }
   }
 
   function renderEnvList() {
@@ -314,8 +548,17 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
       .join('');
   }
 
-  envAddTreeBtn?.addEventListener('click', () => addEnvironment('arbre'));
-  envAddBuildingBtn?.addEventListener('click', () => addEnvironment('batiment'));
+  // CALX105 — les boutons ARMENT la pose ; le clic sur la carte donne le centre.
+  envAddTreeBtn?.addEventListener('click', () => {
+    const on = poseArmee === 'arbre';
+    armerPose(on ? null : 'arbre');
+    setStatus(on ? 'Pose annulée.' : 'Cliquez sur la carte à l’endroit de l’arbre.');
+  });
+  envAddBuildingBtn?.addEventListener('click', () => {
+    const on = poseArmee === 'batiment';
+    armerPose(on ? null : 'batiment');
+    setStatus(on ? 'Pose annulée.' : 'Cliquez sur la carte à l’endroit du bâtiment voisin.');
+  });
   envListEl?.addEventListener('change', (e) => {
     const t = e.target as HTMLInputElement;
     const heightId = t.dataset.envHeight;
@@ -334,6 +577,33 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     if (del?.dataset.envDel) deleteEnvironment(del.dataset.envDel);
   });
   renderEnvList(); // état initial (dossier rechargé avec des objets d'environnement)
+  redrawEnvironment(); // CALX105 — marqueurs du dossier rechargé
+
+  // CALX105 — câblage carte : le clic POSE quand un mode est armé, le glissé DÉPLACE un
+  // marqueur. Enregistré ici (le dispatcher de l'entrée n'est pas modifié) ; ces écouteurs
+  // sont posés AVANT les siens, donc `tryBeginEnvMove` prend la main avant le glissé de
+  // sommet/obstacle — ceux-ci refusent d'ailleurs de démarrer pendant un glissé d'objet.
+  map.on?.('click', (e: maplibregl.MapMouseEvent) => {
+    if (!poseArmee) return;
+    poserEnvironment(poseArmee, [e.lngLat.lng, e.lngLat.lat]);
+  });
+  map.on?.('mousedown', (e: maplibregl.MapMouseEvent) => {
+    tryBeginEnvMove([e.lngLat.lng, e.lngLat.lat], e.point);
+  });
+  map.on?.('mousemove', (e: maplibregl.MapMouseEvent) => {
+    doEnvMove([e.lngLat.lng, e.lngLat.lat]);
+  });
+  map.on?.('mouseup', () => endEnvMove());
+  map.on?.('touchstart', (e: maplibregl.MapTouchEvent) => {
+    if (e.points && e.points.length !== 1) return;
+    tryBeginEnvMove([e.lngLat.lng, e.lngLat.lat], e.point);
+  });
+  map.on?.('touchmove', (e: maplibregl.MapTouchEvent) => {
+    if (!glisseEnv) return;
+    e.preventDefault?.();
+    doEnvMove([e.lngLat.lng, e.lngLat.lat]);
+  });
+  map.on?.('touchend', () => endEnvMove());
 
   // ————————————————————————————————————————————————————————————————————
   // CAL69 — TRACÉ DES ZONES INTERDITE / RÉSERVÉE / PRÉFÉRÉE
@@ -658,6 +928,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     // les deux drags démarrent ensemble et relâcher déclenche un recalc qui efface la
     // disposition personnalisée.
     if (!ctx.closed || ctx.obstacleMode || ctx.layoutMode) return false;
+    if (glisseEnv) return false; // CALX105 — un marqueur d'environnement est déjà saisi
     const hit = obstacleAtPoint(point);
     if (!hit) return false;
     const o = ctx.obstacles.find((x) => x.id === hit);
@@ -719,7 +990,13 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
    *  obstacle / disposition (mêmes gardes que le glissé d'obstacle). */
   function tryBeginVertexMove(lngLat: LngLat, point: maplibregl.Point): boolean {
     if (!ctx.closed || ctx.obstacleMode || ctx.layoutMode) return false;
+    if (glisseEnv) return false; // CALX105 — un marqueur d'environnement est déjà saisi
     const idx = vertexAtPoint(point);
+    // CALX91 — Alt maintenue : le geste est une SUPPRESSION (déjà traitée au mousedown),
+    // jamais un glissé — sinon les deux partiraient ensemble.
+    if (gesteSommet({ sommet: idx, altEnfoncee, ferme: ctx.closed, modeObstacle: ctx.obstacleMode, modeDisposition: ctx.layoutMode }) !== 'deplacer') {
+      return false;
+    }
     if (idx == null) return false;
     const v = ctx.vertices[idx];
     if (!v) return false;
@@ -750,6 +1027,88 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     // Re-pavage + recalcul seulement si le sommet a réellement bougé.
     if (moved) recalc();
   }
+
+  // ————————————————————————————————————————————————————————————————————
+  // CALX91 — INSERTION (double-clic sur une arête) ET SUPPRESSION (Alt+clic sur un sommet)
+  //
+  // Les deux gestes sont écoutés ICI, sur la carte : le dispatcher de l'entrée n'a pas à
+  // être modifié. Sur un contour FERMÉ, son `dblclick` appelle `close()`, qui sort
+  // immédiatement puisque le contour est déjà fermé — aucun conflit. Chaque geste pousse UN
+  // pas d'historique (CAL100), donc Ctrl+Z le défait.
+  // ————————————————————————————————————————————————————————————————————
+
+  /** Alt maintenue ? Suivi au clavier ET relu sur chaque événement souris (source sûre). */
+  let altEnfoncee = false;
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Alt') altEnfoncee = true;
+    });
+    document.addEventListener('keyup', (e) => {
+      if ((e as KeyboardEvent).key === 'Alt') altEnfoncee = false;
+    });
+    window.addEventListener?.('blur', () => {
+      altEnfoncee = false; // Alt+Tab : on ne garde jamais l'état
+    });
+  }
+
+  /** Tolérance de SAISIE d'une arête, en mètres : le rayon pixel du sommet (`VERTEX_GRAB_PX`,
+   *  convention de dessin déjà en place) lu au zoom courant. 0 = carte pas prête, aucun geste. */
+  function toleranceSaisieM(lat: number): number {
+    const zoom = typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN;
+    if (!Number.isFinite(zoom)) return 0;
+    return VERTEX_GRAB_PX * metresParPixel(lat, zoom);
+  }
+
+  /** CALX91 — insère un sommet au projeté orthogonal du point sur l'arête la plus proche. */
+  function insererSommetAu(lngLat: LngLat): boolean {
+    if (!ctx.closed || ctx.obstacleMode || ctx.layoutMode) return false;
+    const trouve = insertionSurContour(ctx.vertices, lngLat, toleranceSaisieM(lngLat[1]));
+    if (!trouve) return false;
+    ctx.pushWorkshopHistory?.(); // CAL100 — un pas d'historique par geste
+    ctx.vertices.splice(trouve.index + 1, 0, trouve.point);
+    redrawTrace();
+    recalc();
+    setStatus('Sommet inséré sur le côté — glissez-le pour ajuster le contour.');
+    return true;
+  }
+
+  /** CALX91 — supprime le sommet `idx`, ou explique en clair pourquoi c'est refusé. */
+  function supprimerSommetDuContour(idx: number): boolean {
+    const verdict = supprimerSommet(ctx.vertices, idx);
+    if (!verdict.ok) {
+      setStatus(verdict.motif);
+      return false;
+    }
+    ctx.pushWorkshopHistory?.(); // CAL100 — un pas d'historique par geste
+    ctx.vertices.splice(0, ctx.vertices.length, ...verdict.anneau);
+    redrawTrace();
+    recalc();
+    setStatus(`Sommet supprimé — le contour garde ${ctx.vertices.length} sommets.`);
+    return true;
+  }
+
+  map.on?.('mousedown', (e: maplibregl.MapMouseEvent) => {
+    const alt = (e.originalEvent as MouseEvent | undefined)?.altKey;
+    if (typeof alt === 'boolean') altEnfoncee = alt; // la source la plus sûre
+    if (!altEnfoncee) return;
+    const idx = vertexAtPoint(e.point);
+    const geste = gesteSommet({
+      sommet: idx,
+      altEnfoncee,
+      ferme: ctx.closed,
+      modeObstacle: ctx.obstacleMode,
+      modeDisposition: ctx.layoutMode,
+    });
+    if (geste !== 'supprimer' || idx == null) return;
+    e.preventDefault?.();
+    ctx.suppressClick = true; // pas de sélection/désélection parasite au click de synthèse
+    supprimerSommetDuContour(idx);
+  });
+
+  map.on?.('dblclick', (e: maplibregl.MapMouseEvent) => {
+    if (!ctx.closed) return; // pendant le tracé, le double-clic FERME (comportement inchangé)
+    if (insererSommetAu([e.lngLat.lng, e.lngLat.lat])) e.preventDefault?.();
+  });
 
   // — Câblage : bouton « ajouter », bouton « effacer », et édition de l'obstacle —
   obstacleBtn?.addEventListener('click', () => {
@@ -901,5 +1260,12 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     tryBeginVertexMove,
     doVertexMove,
     endVertexMove,
+    envAtPoint,
+    armerPoseEnvironment: armerPose,
+    poserEnvironment,
+    tryBeginEnvMove,
+    doEnvMove,
+    endEnvMove,
+    redrawEnvironment,
   };
 }

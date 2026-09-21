@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   newEnvironmentObject,
+  deplacerEnvironment,
   withEnvHeight,
   withCrownDiameter,
   withFootprintDims,
@@ -150,5 +151,78 @@ describe('CORRECTIF — sans EMPRISE saisie, aucune ombre (jamais un repli de 1,
   it('sans hauteur, l’objet n’est pas signalé « emprise à saisir » (il est déjà sans ombre)', () => {
     const o = newEnvironmentObject('e5', 'batiment', south);
     expect(environmentNeedsFootprint(o)).toBe(false);
+  });
+});
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX105 — POSE AU CLIC ET DÉPLACEMENT AU GLISSÉ. Un objet ne naît plus 10 m au sud du
+// centroïde : il naît SOUS LE CLIC et se repose où on le glisse. Déplacer n'invente jamais
+// de dimension — un objet sans hauteur saisie reste sans ombre, avant comme après.
+// ————————————————————————————————————————————————————————————————————————
+describe('CALX105 — deplacerEnvironment', () => {
+  const origin: [number, number] = [-7.6, 33.5];
+
+  it('repose l’objet EXACTEMENT sur le point demandé', () => {
+    const o = newEnvironmentObject('e1', 'arbre', [-7.6, 33.49]);
+    const bouge = deplacerEnvironment(o, [-7.5987, 33.4996]);
+    expect(bouge.centerLng).toBe(-7.5987);
+    expect(bouge.centerLat).toBe(33.4996);
+  });
+
+  it('ne touche à AUCUNE dimension saisie', () => {
+    const o = withCrownDiameter(withEnvHeight(newEnvironmentObject('e1', 'arbre', [-7.6, 33.49]), 8), 5);
+    const bouge = deplacerEnvironment(o, [-7.5987, 33.4996]);
+    expect(bouge.heightM).toBe(o.heightM);
+    expect(bouge.crownDiameterM).toBe(o.crownDiameterM);
+    expect(bouge.kind).toBe('arbre');
+    expect(bouge.id).toBe('e1');
+  });
+
+  it('l’EMPRISE explicite suit le déplacement (elle ne reste pas derrière)', () => {
+    const o = {
+      ...newEnvironmentObject('e2', 'batiment', [-7.6, 33.49]),
+      footprint: [
+        [-7.6001, 33.4899],
+        [-7.5999, 33.4899],
+        [-7.5999, 33.4901],
+        [-7.6001, 33.4901],
+      ] as [number, number][],
+    };
+    const bouge = deplacerEnvironment(o, [-7.5, 33.4]);
+    expect(bouge.footprint).toHaveLength(4);
+    bouge.footprint!.forEach((p, i) => {
+      expect(p[0]).toBeCloseTo(o.footprint[i][0] + (-7.5 - -7.6), 10);
+      expect(p[1]).toBeCloseTo(o.footprint[i][1] + (33.4 - 33.49), 10);
+    });
+  });
+
+  it('ne modifie PAS l’objet d’origine (transformation pure)', () => {
+    const o = newEnvironmentObject('e1', 'arbre', [-7.6, 33.49]);
+    deplacerEnvironment(o, [-7.5, 33.4]);
+    expect(o.centerLng).toBe(-7.6);
+    expect(o.centerLat).toBe(33.49);
+  });
+
+  it('un point illisible ne déplace RIEN', () => {
+    const o = newEnvironmentObject('e1', 'arbre', [-7.6, 33.49]);
+    expect(deplacerEnvironment(o, [Number.NaN, 33.4])).toBe(o);
+    expect(deplacerEnvironment(o, [-7.5, Number.NaN])).toBe(o);
+  });
+
+  it('un objet SANS hauteur saisie ne porte toujours AUCUNE ombre après déplacement', () => {
+    const o = withCrownDiameter(newEnvironmentObject('e1', 'arbre', [-7.6, 33.49]), 5);
+    const bouge = deplacerEnvironment(o, [-7.5987, 33.4996]);
+    expect(bouge.heightM).toBeUndefined();
+    expect(environmentShadeEntries([bouge], origin)).toEqual([]);
+  });
+
+  it('une ombre existante repart bien de la NOUVELLE position', () => {
+    const o = withCrownDiameter(withEnvHeight(newEnvironmentObject('e1', 'arbre', [-7.6, 33.49]), 8), 5);
+    const avant = environmentShadeEntries([o], origin);
+    const apres = environmentShadeEntries([deplacerEnvironment(o, [-7.59, 33.495])], origin);
+    expect(avant).toHaveLength(1);
+    expect(apres).toHaveLength(1);
+    expect(apres[0].x).not.toBeCloseTo(avant[0].x, 3);
+    expect(apres[0].effHeightM).toBe(avant[0].effHeightM); // la hauteur saisie n'a pas bougé
   });
 });
