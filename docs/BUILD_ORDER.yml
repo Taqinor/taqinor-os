@@ -464,6 +464,11 @@ unmapped_ok:
   # auto-ordonnee par ses @after (CAL1-3 contrats d'abord) ; aucun prerequis
   # de vague plateforme.
   - CAL
+  # CALX — Calepinage : parité OpenSolar / PV*SOL / PVsyst / Aurora / HelioScope
+  # (Groupe CALX de PLAN2, fondateur 2026-09-21) : cablage de l'existant puis
+  # capacites neuves, auto-ordonne par ses @after (contrats CALX d'abord) ;
+  # aucun prerequis de vague plateforme.
+  - CALX
   # VT/VTG — Visite technique terrain (Groupe VT de PLAN2, fondateur
   # 2026-09-09) : nouveau module apps/crm auto-ordonne par ses @after
   # (VT0 contrat d'abord -> lanes backend/frontend) ; aucun prerequis de
