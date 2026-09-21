@@ -28,6 +28,13 @@ from django.utils import timezone
 
 PROVIDER_NAME = 'crm'
 
+#: Nom porté par un lead anonymisé — écrit par ``anonymiser_lead`` ET lu par
+#: le balayage de rétention (CAD92) pour ne jamais repasser sur une fiche
+#: déjà scrubée. ``Lead`` n'a pas de drapeau ``is_anonymized`` (contrairement
+#: à ``Client``) : c'est ce nom qui fait foi, une seule fois, à un seul
+#: endroit.
+LEAD_NOM_ANONYMISE = 'Anonymisé'
+
 
 def _matcher(company, subject_identifier):
     """Renvoie (leads_qs, clients_qs) correspondant à ``subject_identifier``.
@@ -149,7 +156,7 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     d'une personne) partagent exactement le même scrub : deux chemins qui
     divergeraient, c'est un des deux qui oublierait un champ.
     """
-    le.nom = 'Anonymisé'
+    le.nom = LEAD_NOM_ANONYMISE
     le.prenom = None
     le.email = None
     le.telephone = None
@@ -238,6 +245,106 @@ def erase_crm(company, subject_identifier):
             demande_droit_ref=subject_identifier, now=now)
 
     return count
+
+
+# ── CAD-I ── CAD92 — la durée DÉCLARÉE est enfin celle qui est APPLIQUÉE ───
+#
+# Audit L3 du 21/09/2026. Le traitement seedé ``leads_clients`` déclare au
+# registre CNDP « 3 ans après le dernier contact (prospects), durée légale
+# comptable pour les clients » (`core/management/commands/
+# seed_registre_traitements.py`), alors que `crm` n'enregistrait au registre
+# de rétention partagé que la purge des `WebsiteLeadPayload`, celle des
+# `ChatSessionPublique` et l'archivage du chatter (OFF par défaut) : AUCUNE
+# anonymisation du Lead lui-même. Déclarer une durée qu'on n'applique nulle
+# part est exactement ce qu'un contrôle compare — et c'est un écart de CODE,
+# vérifiable, que `tests_cad92_retention.py` fait échouer s'il réapparaît.
+#
+# TROIS CHOSES QUE CE BALAYAGE NE FAIT PAS.
+#   * Il ne SUPPRIME rien : il anonymise, par la MÊME fonction que le DSR
+#     (`anonymiser_lead`) — deux chemins de scrub qui divergeraient, c'est un
+#     des deux qui oublierait un champ.
+#   * Il ne touche AUCUN lead devenu client (`lead.client` posé ou étape
+#     SIGNED) : la déclaration leur oppose la durée légale COMPTABLE, pas
+#     trois ans, et une facture doit rester rattachable.
+#   * Il n'anonymise rien tant que le fondateur n'a pas armé l'interrupteur
+#     `CRM_LEAD_RETENTION_ACTIF` : un réglage neuf garde le comportement
+#     d'aujourd'hui, et supprimer des données clients par surprise au premier
+#     déploiement serait irréparable. En attendant, chaque balayage COMPTE et
+#     journalise le volume concerné (`core.RetentionRun`) — la déclaration
+#     cesse d'être décorative même avant d'être armée.
+
+#: La durée DÉCLARÉE au registre des traitements, en années, pour les
+#: PROSPECTS : « 3 ans après le dernier contact (prospects) ». Source unique —
+#: `tests_cad92_retention.py` relit la déclaration seedée et échoue si les
+#: deux divergent.
+DUREE_CONSERVATION_PROSPECTS_ANS = 3
+DUREE_CONSERVATION_PROSPECTS_JOURS = DUREE_CONSERVATION_PROSPECTS_ANS * 365
+
+#: Nom de la politique dans le registre de rétention partagé (YOPSB10).
+RETENTION_POLICY_PROSPECTS = 'crm_prospects_anonymisation'
+
+#: Réglage fondateur : tant qu'il est faux, le balayage COMPTE sans rien
+#: écrire, même appelé avec ``apply_=True``.
+RETENTION_ACTIF_SETTING = 'CRM_LEAD_RETENTION_ACTIF'
+
+
+def _retention_armee():
+    """Le fondateur a-t-il armé l'anonymisation des prospects ?"""
+    from django.conf import settings
+    valeur = getattr(settings, RETENTION_ACTIF_SETTING, False)
+    if isinstance(valeur, str):
+        return valeur.strip().lower() in ('1', 'true', 'oui', 'yes')
+    return bool(valeur)
+
+
+def prospects_hors_duree(now=None):
+    """Les PROSPECTS dont le dernier contact dépasse la durée déclarée.
+
+    « Dernier contact » = la plus récente ligne de chatter du lead, à défaut
+    sa date de création — jamais ``date_modification``, qu'un simple passage
+    de script suffirait à rafraîchir sans qu'aucun humain n'ait parlé à
+    personne.
+    """
+    import datetime
+
+    from django.db.models import Max
+    from django.db.models.functions import Coalesce
+
+    from . import stages
+    from .models import Lead
+
+    now = now or timezone.now()
+    limite = now - datetime.timedelta(days=DUREE_CONSERVATION_PROSPECTS_JOURS)
+    return (Lead.objects
+            .filter(client__isnull=True)
+            .exclude(stage=stages.SIGNED)
+            .exclude(nom=LEAD_NOM_ANONYMISE)
+            .annotate(dernier_contact=Coalesce(Max('activites__created_at'),
+                                               'date_creation'))
+            .filter(dernier_contact__lt=limite))
+
+
+def sweep_retention_prospects(now, apply_=False):
+    """Balayage de rétention des PROSPECTS (registre YOPSB10).
+
+    Renvoie le nombre de leads concernés. N'anonymise que si ``apply_`` ET
+    l'interrupteur fondateur sont vrais — sinon le compte est renvoyé tel
+    quel, ce qui rend le volume visible dans ``core.RetentionRun`` sans rien
+    détruire.
+    """
+    leads = list(prospects_hors_duree(now))
+    if not leads:
+        return 0
+    if not apply_ or not _retention_armee():
+        return len(leads)
+    compte = 0
+    for lead in leads:
+        compte += anonymiser_lead(
+            lead.company, lead,
+            motif=('Rétention (loi 09-08) — prospect sans contact depuis '
+                   f'{DUREE_CONSERVATION_PROSPECTS_ANS} ans, durée déclarée '
+                   'au registre des traitements'))
+    return compte
 
 
 def register():
