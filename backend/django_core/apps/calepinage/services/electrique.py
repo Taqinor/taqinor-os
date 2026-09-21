@@ -65,6 +65,7 @@ __all__ = [
     'ORIGINE_LONGUEUR_FICHE', 'ORIGINE_LONGUEUR_DOSSIER',
     'longueur_chaine_retenue', 'plafond_modules',
     'journaliser_ecart_longueur', 'parametres_societe',
+    'CLE_POLYSTRING',  # CALX206
 ]
 
 #: Les deux SOURCES possibles d'une température de dimensionnement. Une
@@ -326,6 +327,7 @@ CHAMPS_ENTREE = (
     'terre',                # CAL134 — check-list de mise à la terre
     'exigence_marche',      # CAL127 — bornes imposées par le CPS du dossier
     'affectation_manuelle',  # CAL234 — affectation IMPOSÉE module par module
+    'polystring',           # CALX206 — pans mis en parallèle sur une entrée
 )
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -707,6 +709,12 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         document, electrique['affectation'])
     if faible is not None:
         electrique[CLE_CHAINE_FAIBLE] = faible
+    # CALX206 — les groupes polystring SAISIS. Clé publiée seulement quand
+    # une saisie existe : sans elle, le bloc est celui d'aujourd'hui.
+    poly = _polystring_du_calepinage(
+        conception, saisie=donnees.get(CLE_POLYSTRING))
+    if poly['bloc'] is not None:
+        electrique[CLE_POLYSTRING] = poly['bloc']
     pose = bloc_pose(conception)
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
@@ -744,6 +752,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         pose.get('puissance_module_wc')))
 
     messages = list(avertissements) + list(messages_ratio)
+    messages.extend(poly['bloquants'])
+    messages.extend(poly['alertes'])
     if motif_faible:
         messages.append(motif_faible)
     messages.extend(regle['bornes_non_verifiables'])
@@ -1025,10 +1035,17 @@ def evaluation_electrique(calepinage, *, entree=None, layout=None,
     bloquants.extend(verdict_affectation(
         conception, imposee,
         specs_onduleur=materiel_resolu.get('onduleur')))
+    # CALX206 — un regroupement polystring met des chaînes en PARALLÈLE :
+    # son Isc cumulé se verdicte au même titre que celui du chaînage
+    # automatique, sans quoi le regroupement contournerait la garde.
+    poly = _polystring_du_calepinage(
+        conception, saisie=donnees.get(CLE_POLYSTRING))
+    bloquants.extend(poly['bloquants'])
     regle = _regle_chaine_publiee(
         conception, materiel_resolu.get('optimiseur'),
         materiel_resolu['designations'].get('optimiseur', ''))
     alertes = list(alertes_nommees(conception))
+    alertes.extend(poly['alertes'])
     alertes.extend(regle['bornes_non_verifiables'])
     return {
         'verdict': 'bloquant' if bloquants else (
@@ -1318,6 +1335,54 @@ def _version_moteur():
     from core.electrique.version import VERSION_MOTEUR
 
     return VERSION_MOTEUR
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX206 — LE POLYSTRING : DEUX PANS EN PARALLÈLE SUR UNE ENTRÉE MPPT
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Le calcul est dans ``services/polystring.py`` (service PUR). Ici, seulement
+# le branchement applicatif : la saisie est lue dans l'entrée électrique
+# (``entree_electrique.polystring``), le bloc n'est PUBLIÉ que si elle
+# existe, et ses bloquants rejoignent ceux de l'évaluation — un Isc cumulé
+# hors spécification créé par un regroupement doit refuser la publication
+# exactement comme celui d'un chaînage automatique (incident DEV-202608-0016).
+#
+# SANS SAISIE, RIEN NE CHANGE : aucune clé de plus dans le résultat, aucun
+# avertissement de plus, la répartition d'aujourd'hui à l'identique.
+
+#: La clé de l'entrée électrique qui porte la saisie de groupes polystring,
+#: et celle du bloc publié dans ``resultat['electrique']``.
+CLE_POLYSTRING = 'polystring'
+
+
+def _polystring_du_calepinage(conception, *, saisie=None):
+    """CALX206 — les groupes polystring SAISIS, regroupés et verdictés.
+
+    Rend ``{bloc, bloquants, alertes}``. ``bloc`` vaut ``None`` quand rien
+    n'est saisi (la clé n'est alors pas publiée) OU quand la saisie est
+    REFUSÉE : le refus devient un message qui NOMME son champ, plutôt qu'une
+    erreur 500 sur un résultat qui, lui, reste lisible.
+    """
+    from .polystring import PolystringRefuse, grouper_polystring
+
+    if not saisie:
+        return {'bloc': None, 'bloquants': [], 'alertes': []}
+    try:
+        rendu = grouper_polystring(conception, groupes=saisie)
+    except PolystringRefuse as refus:
+        return {
+            'bloc': None,
+            'bloquants': ["Polystring : %s (champ « %s »)"
+                          % (refus, refus.champ or CLE_POLYSTRING)],
+            'alertes': [],
+        }
+    bloc = {cle: valeur for cle, valeur in rendu.items()
+            # ``chaines`` et ``verdicts`` portent des objets du noyau : ils
+            # servent au verdict, ils ne se sérialisent pas dans le résultat.
+            if cle not in ('chaines', 'verdicts')}
+    return {'bloc': bloc, 'bloquants': list(rendu['bloquants']),
+            'alertes': list(rendu['alertes'])}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
