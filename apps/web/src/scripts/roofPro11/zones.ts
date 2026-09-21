@@ -118,6 +118,89 @@ export function redimensionnerPan(
   return { ok: true, geometrie: { vertices: verdict.anneau, obstacles: (pan.obstacles ?? []).map((o) => ({ ...o })) } };
 }
 
+// ————————————————————————————————————————————————————————————————————————
+// CALX98 — DUPLIQUER UN PAN AVEC SES OBSTACLES ET SES RÉGLAGES
+//
+// « + Ajouter une zone » crée toujours une zone VIDE, et la duplication n'existait que pour
+// les obstacles — alors qu'une toiture industrielle répète le même sied dix fois. Parité
+// HelioScope (« Clone designs »). PUR et testable : aucun DOM, aucune carte.
+//
+// ZÉRO CHIFFRE INVENTÉ : le décalage de la copie est SAISI. Tant qu'il ne l'est pas, la
+// duplication est REFUSÉE avec son motif — on ne pose jamais la copie « un peu plus loin »
+// d'une distance que personne n'a demandée.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Verdict d'une duplication de pan — un refus NOMME toujours sa raison. */
+export type VerdictDuplication = { ok: true; zone: AreaRecord } | { ok: false; motif: string };
+
+/**
+ * CALX98 — motif qui EMPÊCHE la duplication au pas saisi, ou `null` quand le pas est
+ * exploitable. L'écran s'en sert pour garder le bouton inactif ET afficher la raison.
+ */
+export function motifPasDuplication(pasM: number): string | null {
+  if (!Number.isFinite(pasM) || pasM <= 0) {
+    return 'Saisissez le décalage de la copie, en mètres : aucun décalage n’est supposé.';
+  }
+  return null;
+}
+
+/**
+ * CALX98 — copie un pan dans une zone NEUVE, décalée du pas SAISI. Sont recopiés : le
+ * contour, les obstacles (avec de nouveaux identifiants, dérivés de l'id de la zone, donc
+ * sans collision), `roofType`, `pitchDeg`, `facingAzimuthDeg`, `facingManual`, `edges` et
+ * `buildingId`. Ne sont PAS recopiés : le résultat et le plan de rendu — la copie n'a rien
+ * de calculé tant que le moteur n'a pas tourné, et publier le compte de l'original serait un
+ * chiffre inventé.
+ *
+ * Le décalage est une TRANSLATION RIGIDE vers l'est (même convention que la duplication
+ * d'obstacle, CAL73) : le même écart de longitude, calculé à la latitude du centroïde, est
+ * appliqué à TOUS les points — contour et obstacles — pour que la copie garde exactement la
+ * forme de l'original.
+ */
+export function dupliquerPan(source: AreaRecord, nouvelId: string, pasM: number): VerdictDuplication {
+  const motif = motifPasDuplication(pasM);
+  if (motif) return { ok: false, motif };
+  if (!source || !Array.isArray(source.vertices) || source.vertices.length < 3) {
+    return { ok: false, motif: 'Duplication refusée : ce pan n’a pas encore de contour fermé.' };
+  }
+  const centre = centroideAnneau(source.vertices);
+  if (!centre) return { ok: false, motif: 'Duplication refusée : le centre du pan est illisible.' };
+  const cosLat = Math.max(1e-6, Math.cos(centre[1] * ZONE_DEG2RAD));
+  const dLng = pasM / (ZONE_DEG2M * cosLat);
+  return {
+    ok: true,
+    zone: {
+      id: nouvelId,
+      label: '',
+      vertices: source.vertices.map(([lng, lat]) => [lng + dLng, lat] as LngLat),
+      obstacles: (source.obstacles ?? []).map((o, i) => ({
+        ...o,
+        id: `${nouvelId}-obs-${i + 1}`,
+        centerLng: o.centerLng + dLng,
+      })),
+      roofType: source.roofType,
+      pitchDeg: source.pitchDeg,
+      facingAzimuthDeg: source.facingAzimuthDeg,
+      facingManual: source.facingManual,
+      neededPanels: 0,
+      neededAuto: true,
+      result: null,
+      renderPlan: null,
+      ...(source.buildingId ? { buildingId: source.buildingId } : {}),
+      ...(source.edges ? { edges: source.edges.map((e) => ({ ...e })) } : {}),
+    },
+  };
+}
+
+/** CALX98 — identifiant de zone NEUF, dans un espace de noms (`area-copie-N`) que le
+ *  compteur `area-<n>` de l'entrée ne produit jamais : aucune collision possible. */
+export function idZoneCopie(existants: readonly { id: string }[]): string {
+  const pris = new Set((existants ?? []).map((a) => a.id));
+  let n = 1;
+  while (pris.has(`area-copie-${n}`)) n++;
+  return `area-copie-${n}`;
+}
+
 export interface Zones {
   liveActiveResult: () => AreaResult | null;
   snapshotActiveAreaResult: () => void;
@@ -132,6 +215,9 @@ export interface Zones {
   pivoterPanActif: (angleDeg: number) => boolean;
   /** CALX97 — repose le pan ACTIF aux cotes saisies (pan rectangulaire seulement). */
   redimensionnerPanActif: (largeurM: number, longueurM: number) => boolean;
+  /** CALX98 — duplique le pan ACTIF (contour, obstacles et réglages) dans une zone neuve
+   *  décalée du pas SAISI. Renvoie false et ne crée RIEN sans pas saisi. */
+  dupliquerPanActif: (pasM: number) => boolean;
 }
 
 /**
@@ -480,6 +566,68 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     }
   });
 
+  // ————————————————————————————————————————————————————————————————————
+  // CALX98 — bouton « Dupliquer ce pan » + son pas SAISI, créés ICI si l'hôte ne les
+  // fournit pas. Le champ part VIDE et le bouton reste INACTIF tant qu'il l'est, avec le
+  // motif affiché : aucun décalage n'est supposé.
+  // ————————————————————————————————————————————————————————————————————
+  function ensureDuplicatePanel(): HTMLElement | null {
+    const existing = document.getElementById('rp9-pan-duplicate');
+    if (existing) return existing;
+    const { areasWindowEl } = ctx.dom;
+    if (!areasWindowEl || typeof document.createElement !== 'function') return null;
+    const el = document.createElement('div');
+    el.id = 'rp9-pan-duplicate';
+    el.className = 'rp9-pan-duplicate mt-2 flex flex-wrap items-center gap-2 text-xs';
+    el.innerHTML =
+      `<label class="inline-flex items-center gap-1" for="rp9-pan-dup-pas">Décalage de la copie (m)` +
+      `<input type="text" id="rp9-pan-dup-pas" class="rp9-input w-20" inputmode="decimal" value="" /></label>` +
+      `<button type="button" id="rp9-pan-dup" class="rp9-btn" disabled>Dupliquer ce pan</button>` +
+      `<span id="rp9-pan-dup-motif" class="text-alert-300" role="status"></span>`;
+    areasWindowEl.appendChild(el);
+    return el;
+  }
+  const duplicatePanelEl = ensureDuplicatePanel();
+  const dupPasEl = document.getElementById('rp9-pan-dup-pas') as HTMLInputElement | null;
+  const dupBtnEl = document.getElementById('rp9-pan-dup') as HTMLButtonElement | null;
+  const dupMotifEl = document.getElementById('rp9-pan-dup-motif');
+
+  /** CALX98 — le bouton suit le pas saisi : inactif tant qu'il manque, motif affiché. */
+  function syncDuplicateButton() {
+    const motif = motifPasDuplication(nombreSaisi(dupPasEl?.value));
+    if (dupBtnEl) dupBtnEl.disabled = motif != null;
+    if (dupMotifEl) dupMotifEl.textContent = motif ?? '';
+  }
+
+  function dupliquerPanActif(pasM: number): boolean {
+    const source = ctx.activeArea();
+    if (!source) return false;
+    // La zone active vit dans `ctx` : on fige sa géométrie avant de la recopier.
+    snapshotActiveAreaGeometry();
+    const verdict = dupliquerPan(source, idZoneCopie(ctx.areas), pasM);
+    if (!verdict.ok) {
+      if (dupMotifEl) dupMotifEl.textContent = verdict.motif;
+      deps.setStatus?.(verdict.motif);
+      return false;
+    }
+    ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
+    ctx.areas.push(verdict.zone);
+    renderAreasPanel();
+    deps.setStatus?.(
+      `${nomDuPanActif()} dupliqué — la copie porte ses ${verdict.zone.obstacles.length} obstacle(s) et ses réglages. Ouvrez-la avec « Voir ».`,
+    );
+    return true;
+  }
+
+  dupPasEl?.addEventListener('input', syncDuplicateButton);
+  dupPasEl?.addEventListener('change', syncDuplicateButton);
+  duplicatePanelEl?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest<HTMLElement>('#rp9-pan-dup')) {
+      dupliquerPanActif(nombreSaisi(dupPasEl?.value));
+    }
+  });
+  syncDuplicateButton(); // état initial : champ vide ⇒ bouton inactif + motif affiché
+
   /** CAL59 — assigne le bâtiment d'une zone (chaîne vide = retour au bâtiment unique). */
   function setAreaBuilding(id: string, buildingId: string) {
     const a = ctx.areas.find((x) => x.id === id);
@@ -498,6 +646,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     setAreaBuilding,
     pivoterPanActif,
     redimensionnerPanActif,
+    dupliquerPanActif,
   };
 }
 
