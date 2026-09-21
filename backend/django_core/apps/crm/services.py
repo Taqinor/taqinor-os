@@ -3390,6 +3390,63 @@ def is_strong_identity_match(other, *, phone=None, email=None):
             and normalize_email(other.email) == email)
 
 
+# ── CAD-B ── CAD106 ─────────────────────────────────────────────────────────
+
+#: Le motif porté par une touche que la FUSION retire du plan. Statut
+#: ANNULEE (CKP1 : annulation MOTEUR, jamais un saut humain) — sans quoi la
+#: fusion compterait autant de manquements d'adhérence que de touches.
+FUSION_TOUCHE_NOTE = 'annulée — fusion de fiches'
+
+
+def relances_ouvertes_de(lead):
+    """Les touches encore À FAIRE d'un lead (l'aperçu et la fusion comptent
+    la même chose — jamais deux définitions)."""
+    return lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
+
+
+def reprendre_relances_apres_fusion(absorbed, survivor, user):
+    """CAD106 — les relances SUIVENT le dossier quand deux fiches fusionnent.
+
+    `merge_leads` déplaçait devis, chantiers, activités, pièces jointes et
+    historique — et pas une seule relance. Les touches ouvertes restaient
+    accrochées à une fiche ARCHIVÉE, donc invisibles dans la file (qui exclut
+    les archivés), jamais passées en « annulée », et rien ne reposait de
+    prochaine étape sur la survivante. Le cas est garanti d'arriver : le
+    nouveau lead venait justement d'être privé de cadence par la garde
+    « doublon ».
+
+    Ce qu'on fait, et POURQUOI pas un simple déplacement : la survivante a
+    souvent DÉJÀ une cadence active, et CADX interdit deux cadences en
+    parallèle sur un lead. Les touches ouvertes de l'absorbée sont donc
+    CLOSES en ANNULÉE avec le motif « fusion » — elles ne comptent alors
+    comme un manquement nulle part (CKP1) — puis le FILET garantit à la
+    survivante une prochaine étape, exactement comme à la reprise d'un lead
+    dé-perdu (`unset_perdu`).
+
+    Rend le nombre de touches retirées du plan de l'absorbée.
+    """
+    from django.utils import timezone
+
+    ouvertes = list(relances_ouvertes_de(absorbed))
+    if ouvertes:
+        RelanceEtape.objects.filter(
+            pk__in=[e.pk for e in ouvertes],
+        ).update(statut=RelanceEtape.Statut.ANNULEE,
+                 note=FUSION_TOUCHE_NOTE, traite_par=None,
+                 traite_le=timezone.now())
+        absorbed.relance_date = None
+        absorbed.save(update_fields=['relance_date'])
+    # QJ-INVARIANT — la survivante ne reste jamais sans prochaine étape.
+    # Best-effort : une fusion n'échoue pas sur un filet.
+    try:
+        assurer_prochaine_etape_apres_succes(survivor, user)
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            'CAD106: filet non posé après fusion (lead #%s)',
+            getattr(survivor, 'pk', '?'), exc_info=True)
+    return len(ouvertes)
+
+
 def merge_leads(survivor, others, user):
     """Fusionne `others` dans `survivor` SANS perte de données. Déplace devis,
     activités, pièces jointes, historique et chantiers ; complète les champs
@@ -3406,6 +3463,7 @@ def merge_leads(survivor, others, user):
         return survivor
 
     ct = ContentType.objects.get_for_model(Lead)
+    relances_reprises = 0
     with transaction.atomic():
         for absorbed in others:
             # 1) Devis → survivant (related_name='devis').
@@ -3431,6 +3489,12 @@ def merge_leads(survivor, others, user):
                 pass
             # 4) Historique chatter → survivant.
             LeadActivity.objects.filter(lead=absorbed).update(lead=survivor)
+            # 4 bis) CAD106 — les RELANCES suivent le dossier : les touches
+            # ouvertes de l'absorbée sortent de son plan (annulées « fusion »,
+            # donc jamais comptées comme des manquements) et le filet garantit
+            # une prochaine étape à la survivante.
+            relances_reprises += reprendre_relances_apres_fusion(
+                absorbed, survivor, user)
             # 5) Client : adopter celui de l'absorbé si le survivant n'en a pas.
             if not survivor.client_id and absorbed.client_id:
                 survivor.client = absorbed.client
@@ -3464,6 +3528,15 @@ def merge_leads(survivor, others, user):
                 body=(f"Fusion : lead « {absorbed.nom} {absorbed.prenom or ''} »"
                       f" (#{absorbed.id}) absorbé dans cette fiche."))
         survivor.save()
+    if relances_reprises:
+        # CAD106 — la fusion DIT ce qu'elle a fait des relances : sans cette
+        # ligne, des touches disparaissaient du plan sans un mot.
+        LeadActivity.objects.create(
+            company=survivor.company, lead=survivor, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Fusion : {relances_reprises} relance(s) reprise(s) — '
+                  'les touches des fiches absorbées sont retirées de leur '
+                  'plan et le suivi continue sur cette fiche.'))
     # CRX33 — l'étape 6 complète les champs VIDES du survivant depuis les
     # absorbés (téléphone, e-mail, ville, facture, orientation…) : autant de
     # composantes du score. Sans ce recalcul, le survivant gardait le score

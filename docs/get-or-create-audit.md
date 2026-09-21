@@ -57,13 +57,13 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/calepinage/views/reglementaire.py:136` | get_or_create | DossierReglementaire.objects | calepinage, company, gabarit |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/services.py:205` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py:9477` | get_or_create | Playbook.objects | company, nom |
-| `backend/django_core/apps/crm/services.py:9484` | get_or_create | PlaybookEtape.objects | playbook, stage |
-| `backend/django_core/apps/crm/services.py:9486` | get_or_create | PlaybookTache.objects | etape, libelle |
-| `backend/django_core/apps/crm/views.py:2542` | get_or_create | LeadTag.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2556` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2568` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:2625` | get_or_create | Canal.objects | cle, company |
+| `backend/django_core/apps/crm/services.py:9550` | get_or_create | Playbook.objects | company, nom |
+| `backend/django_core/apps/crm/services.py:9557` | get_or_create | PlaybookEtape.objects | playbook, stage |
+| `backend/django_core/apps/crm/services.py:9559` | get_or_create | PlaybookTache.objects | etape, libelle |
+| `backend/django_core/apps/crm/views.py:2552` | get_or_create | LeadTag.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2566` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2578` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:2635` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/customfields/blueprint.py:201` | update_or_create | modele.objects |  |
 | `backend/django_core/apps/customfields/catalogue.py:99` | get_or_create | CustomObjectDef.objects | code, company |
 | `backend/django_core/apps/customfields/catalogue.py:106` | get_or_create | CustomFieldDef.objects | code, company, module |

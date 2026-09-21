@@ -1384,6 +1384,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             devis_migres = sum(d.devis.count() for d in others)
             activites_migrees = sum(
                 LeadActivity.objects.filter(lead=d).count() for d in others)
+            # CAD106 — l'aperçu annonçait devis, activités et champs comblés,
+            # JAMAIS les relances : on confirmait une fusion sans savoir que
+            # des touches ouvertes allaient quitter leur plan. Le compte vient
+            # de la MÊME définition que la fusion (`relances_ouvertes_de`),
+            # jamais d'un second filtre qui dériverait.
+            from .services import relances_ouvertes_de
+            relances_reprises = sum(
+                relances_ouvertes_de(d).count() for d in others)
             champs_combles = []
             for field in _MERGE_FILL_FIELDS:
                 cur = getattr(suggested, field, None)
@@ -1399,6 +1407,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     'activites': activites_migrees,
                     'fiches_archivees': len(others),
                     'champs_combles': champs_combles,
+                    # CAD106 — combien de touches OUVERTES quittent leur plan.
+                    'relances': relances_reprises,
                 },
                 'members': [
                     {
