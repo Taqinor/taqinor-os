@@ -4,6 +4,16 @@ Aucune base de données, aucun réseau : une série de quatre heures, un
 contexte minimal, et la vraie chaîne (``appliquer_chaine``) — c'est ce que
 la simulation verra en production.
 
+CE QUI EST LU, ET POURQUOI JAMAIS LE TOTAL DE LA CHAÎNE
+---------------------------------------------------------
+Les douze champs que l'ordonnanceur publie AUTOUR de cette étape
+(``kwh_avant``/``kwh_apres``, ``perte_pct``, ``source``, ``motif_omission``)
+se lisent sur la cascade : eux seuls sont attribuables à CETTE étape. La
+chaîne en porte vingt-quatre : dès qu'une lane voisine en livre une, elle
+réduit LÉGITIMEMENT la série, et un total de sortie cesserait de prouver
+quoi que ce soit d'ici. L'énergie RENDUE par l'étape se vérifie donc par un
+appel DIRECT à ``etapes.niveau_irradiance.appliquer``.
+
 Run :
     python manage.py test apps.calepinage.tests.test_calx162_niveau_irradiance
 """
@@ -52,6 +62,15 @@ def cascade(contexte, serie=None):
     return next(e for e in bloc['etapes'] if e['etape'] == ETAPE)
 
 
+def seule(contexte, serie=None):
+    """``(serie, etape)`` de CETTE étape et d'elle seule.
+
+    Le seul endroit où l'énergie rendue lui est attribuable : la chaîne
+    complète porte les autres étapes, qui la réduisent légitimement.
+    """
+    return niveau_irradiance.appliquer(serie or SERIE, contexte)
+
+
 def contexte_avec(courbe, produit='Module PV 550 Wc'):
     return {'fiche_module': {'rendement_par_irradiance': courbe},
             'designations': {'module': produit}}
@@ -83,8 +102,9 @@ class CourbeAbsenteTest(unittest.TestCase):
                       cascade({})['motif_omission'])
 
     def test_la_serie_ressort_inchangee(self):
-        serie, _ = appliquer_chaine(SERIE, contexte_avec(None))
-        self.assertEqual(etapes.energie_kwh(serie),
+        rendue, etape = seule(contexte_avec(None))
+        self.assertNotEqual(etape['motif_omission'], '')
+        self.assertEqual(etapes.energie_kwh(rendue),
                          etapes.energie_kwh(SERIE))
 
 
@@ -114,19 +134,19 @@ class InterpolationTest(unittest.TestCase):
     def test_un_point_entre_deux_points_est_interpole(self):
         serie = {'pas_minutes': 60,
                  'points': [{'gi_w_m2': 400.0, 'p_w': 1000.0}]}
-        suite, _ = appliquer_chaine(serie, contexte_avec(COURBE_REELLE))
+        suite, _ = seule(contexte_avec(COURBE_REELLE), serie)
         # 400 W/m² : à mi-chemin de 200 (96 %) et 600 (99 %) ⇒ 97,5 %.
         self.assertAlmostEqual(etapes.energie_kwh(suite), 0.975, places=6)
 
     def test_un_point_publie_rend_sa_valeur_exacte(self):
         serie = {'pas_minutes': 60,
                  'points': [{'gi_w_m2': 600.0, 'p_w': 1000.0}]}
-        suite, _ = appliquer_chaine(serie, contexte_avec(COURBE_REELLE))
+        suite, _ = seule(contexte_avec(COURBE_REELLE), serie)
         self.assertAlmostEqual(etapes.energie_kwh(suite), 0.99, places=6)
 
     def test_la_serie_d_entree_n_est_jamais_modifiee_sur_place(self):
         avant = etapes.energie_kwh(SERIE)
-        appliquer_chaine(SERIE, contexte_avec(COURBE_REELLE))
+        seule(contexte_avec(COURBE_REELLE))
         self.assertEqual(etapes.energie_kwh(SERIE), avant)
 
 
@@ -136,7 +156,7 @@ class AucuneExtrapolationTest(unittest.TestCase):
     def test_au_dela_du_dernier_point_la_derniere_valeur_est_retenue(self):
         serie = {'pas_minutes': 60,
                  'points': [{'gi_w_m2': 5000.0, 'p_w': 1000.0}]}
-        suite, _ = appliquer_chaine(serie, contexte_avec(COURBE_REELLE))
+        suite, _ = seule(contexte_avec(COURBE_REELLE), serie)
         # 100 % au dernier point publié (1000 W/m²) : la pente n'est PAS
         # prolongée au-delà de 100 %.
         self.assertAlmostEqual(etapes.energie_kwh(suite), 1.0, places=6)
@@ -144,7 +164,7 @@ class AucuneExtrapolationTest(unittest.TestCase):
     def test_en_deca_du_premier_point_la_premiere_valeur_est_retenue(self):
         serie = {'pas_minutes': 60,
                  'points': [{'gi_w_m2': 5.0, 'p_w': 1000.0}]}
-        suite, _ = appliquer_chaine(serie, contexte_avec(COURBE_REELLE))
+        suite, _ = seule(contexte_avec(COURBE_REELLE), serie)
         self.assertAlmostEqual(etapes.energie_kwh(suite), 0.96, places=6)
 
     def test_la_reference_dit_qu_aucune_extrapolation_n_a_eu_lieu(self):
@@ -180,11 +200,13 @@ class IrradianceIllisibleTest(unittest.TestCase):
         serie = {'pas_minutes': 60,
                  'points': [{'gi_w_m2': 1000.0, 'p_w': 1000.0},
                             {'p_w': 1000.0}]}
-        suite, bloc = appliquer_chaine(serie, contexte_avec(COURBE_REELLE))
-        etape = next(e for e in bloc['etapes'] if e['etape'] == ETAPE)
+        suite, etape = seule(contexte_avec(COURBE_REELLE), serie)
         self.assertAlmostEqual(etapes.energie_kwh(suite), 2.0, places=6)
         self.assertIn('1 heure(s) sans irradiance lisible',
                       etape['reference'])
+        self.assertIn('1 heure(s) sans irradiance lisible',
+                      cascade(contexte_avec(COURBE_REELLE),
+                              serie)['reference'])
 
     def test_aucune_colonne_d_energie_omet_l_etape(self):
         serie = {'pas_minutes': 60, 'points': [{'gi_w_m2': 900.0}]}

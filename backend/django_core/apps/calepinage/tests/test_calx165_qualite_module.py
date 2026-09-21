@@ -3,6 +3,16 @@
 Aucune base de données, aucun réseau : une série de quatre heures, un
 contexte minimal, et la vraie chaîne (``appliquer_chaine``).
 
+CE QUI EST LU, ET POURQUOI JAMAIS LE TOTAL DE LA CHAÎNE
+---------------------------------------------------------
+Les douze champs que l'ordonnanceur publie AUTOUR de cette étape
+(``kwh_avant``/``kwh_apres``, ``perte_pct``, ``gain``, ``motif_omission``)
+se lisent sur la cascade : eux seuls sont attribuables à CETTE étape. La
+chaîne en porte vingt-quatre : dès qu'une lane voisine en livre une, elle
+réduit LÉGITIMEMENT la série, et un total de sortie cesserait de prouver
+quoi que ce soit d'ici. L'énergie RENDUE par l'étape se vérifie donc par un
+appel DIRECT à ``etapes.qualite_module.appliquer``.
+
 Run :
     python manage.py test apps.calepinage.tests.test_calx165_qualite_module
 """
@@ -52,6 +62,15 @@ def cascade(contexte, serie=None):
     return next(e for e in bloc['etapes'] if e['etape'] == ETAPE)
 
 
+def seule(contexte, serie=None):
+    """``(serie, etape)`` de CETTE étape et d'elle seule.
+
+    Le seul endroit où l'énergie rendue lui est attribuable : la chaîne
+    complète porte les autres étapes, qui la réduisent légitimement.
+    """
+    return qualite_module.appliquer(serie or SERIE, contexte)
+
+
 class ToleranceAbsenteTest(unittest.TestCase):
     """Sans tolérance publiée, l'étape se TAIT — en nommant le champ."""
 
@@ -76,8 +95,9 @@ class ToleranceAbsenteTest(unittest.TestCase):
             self.assertIsNone(etape[champ], champ)
 
     def test_la_serie_ressort_inchangee(self):
-        serie, _ = appliquer_chaine(SERIE, contexte_avec())
-        self.assertEqual(etapes.energie_kwh(serie), 10.0)
+        rendue, etape = seule(contexte_avec())
+        self.assertNotEqual(etape['motif_omission'], '')
+        self.assertEqual(etapes.energie_kwh(rendue), 10.0)
 
 
 class RegleNonSaisieTest(unittest.TestCase):
@@ -89,9 +109,8 @@ class RegleNonSaisieTest(unittest.TestCase):
                       etape['motif_omission'])
 
     def test_aucune_energie_n_est_touchee(self):
-        serie, _ = appliquer_chaine(SERIE,
-                                    contexte_avec(minimum=0, maximum=3))
-        self.assertEqual(etapes.energie_kwh(serie), 10.0)
+        rendue, _ = seule(contexte_avec(minimum=0, maximum=3))
+        self.assertEqual(etapes.energie_kwh(rendue), 10.0)
         etape = cascade(contexte_avec(minimum=0, maximum=3))
         self.assertIsNone(etape['perte_pct'])
 
@@ -124,10 +143,9 @@ class TriPositifTest(unittest.TestCase):
         self.assertEqual(self.etape['perte_pct'], -0.75)
 
     def test_l_energie_augmente_d_un_quart_de_la_plage(self):
-        serie, _ = appliquer_chaine(
-            SERIE, contexte_avec(minimum=0, maximum=3,
-                                 regle='quart_pvsyst'))
-        self.assertAlmostEqual(etapes.energie_kwh(serie), 10.075, places=6)
+        rendue, _ = seule(contexte_avec(minimum=0, maximum=3,
+                                        regle='quart_pvsyst'))
+        self.assertAlmostEqual(etapes.energie_kwh(rendue), 10.075, places=6)
 
     def test_elle_nomme_sa_source_et_ses_deux_champs(self):
         self.assertEqual(self.etape['source'], 'fiche')
@@ -152,10 +170,9 @@ class PlageSymetriqueTest(unittest.TestCase):
         self.assertEqual(self.etape['perte_pct'], 1.5)
 
     def test_l_energie_diminue(self):
-        serie, _ = appliquer_chaine(
-            SERIE, contexte_avec(minimum=-3, maximum=3,
-                                 regle='quart_pvsyst'))
-        self.assertAlmostEqual(etapes.energie_kwh(serie), 9.85, places=6)
+        rendue, _ = seule(contexte_avec(minimum=-3, maximum=3,
+                                        regle='quart_pvsyst'))
+        self.assertAlmostEqual(etapes.energie_kwh(rendue), 9.85, places=6)
 
 
 class AutresReglesTest(unittest.TestCase):
@@ -211,9 +228,10 @@ class RegleAucuneTest(unittest.TestCase):
         self.assertIsNone(self.etape['kwh_apres'])
 
     def test_la_serie_ressort_inchangee(self):
-        serie, _ = appliquer_chaine(
-            SERIE, contexte_avec(minimum=-3, maximum=3, regle='aucune'))
-        self.assertEqual(etapes.energie_kwh(serie), 10.0)
+        rendue, etape = seule(contexte_avec(minimum=-3, maximum=3,
+                                            regle='aucune'))
+        self.assertNotEqual(etape['motif_omission'], '')
+        self.assertEqual(etapes.energie_kwh(rendue), 10.0)
 
 
 class PlageIncoherenteTest(unittest.TestCase):
