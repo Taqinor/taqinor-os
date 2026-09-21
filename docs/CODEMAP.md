@@ -1,8 +1,10 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 8f1877936b814cfec3211b1d4c28bb8ad9d1626b52d846f14948ff26c6541c31
-Plan fingerprint: 8021962b186c9898f08e598ebf7fbd3aae5a538fd081cf3d3e8e86579cdc2306
+Structure fingerprint: d60522126f7d8125c8ebe2bc4fcc9af0779d8231fd5b619e673904e3fc5908ca
+Plan fingerprint: da2503f508c8cdb44ff1eaab762c0d9914b3d3cc5bfcbce8721434f9106f8519
+
+
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -322,6 +324,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **Lot 3 « Simulation de production sourcée » (CALX141-198 + 5/6/14/16/48/59/60/62/64/65/69/255/264, 21/09/2026)** : la simulation d'un calepinage est une CHAÎNE DE PERTES déclarative — `services/chaine_pertes.py` (`appliquer_chaine`, `ORDRE_ETAPES` = 24 postes dans l'ordre PVsyst, `decision_meteo`/`MeteoIndecise`, ré-indexation de la série sur l'heure LÉGALE du fuseau saisi du site, `PLAFOND_FENETRE_ANNEES = 10`) charge chaque poste PAR NOM depuis `services/etapes/<poste>.py` (`appliquer(serie, contexte) -> (serie, etape)`, fonction pure ; le contrat des six clés et les trois refus de l'ordonnanceur sont dans la docstring de `services/etapes/__init__.py` ; module absent = étape omise « non livrée », JAMAIS un défaut — D-CALX 7 : coefficient/seuil = réglage société sourcé, fiche produit, valeur PVGIS, ou omission nommant le champ). Entrées : série horaire PVGIS `services/pvgis_serie.py::ClientPvgis.serie_irradiance` (composantes + `userhorizon`, fenêtre pluriannuelle ou TMY) ou fichier météo importé (`services/meteo_fichier.py`, action `meteo-fichier/`) ; position solaire `core/calepinage/soleil.py::position_solaire` (UTC) ; ombre inter-rangées `core/calepinage/ombre_rangees.py` ; fiches produit `stock` (migration `0159_calx60_fiche_chaine_pertes`) ; réglages société À REGISTRE `services/parametres_cles.py` (sections `simulation` et `electrique_societe`, chaque valeur `{valeur, source, reference}`, migration `calepinage/0010`) — après TOUT ajout au registre, régénérer le bloc `registre` de `contract_samples/parametres_calepinage.json` (test_calx69 épingle l'égalité). Orchestration : `services/simulation.py::simuler_calepinage(calepinage, *, forcer=False)` + `construire_contexte`, action `calepinages/<pk>/simuler/` (tâche `tasks.simuler_calepinage`, nature `simulation`, `GET resultat/` la sert avec sa fraîcheur) ; résultat module par module `services/simulation_modules.py` ; incertitude P50/P90 `services/incertitude.py::bloc_incertitude` ; PR et rendement `services/performance.py::bloc_performance` ; validation croisée `services/validation.py::ecart_vs_pvcalc` ; courbe de charge `services/courbe_charge.py::construire_courbe_charge`. Dépendance `pvlib==0.15.2` (décision `docs/decisions/calx198-pvlib.md` : contre-calcul, jamais source de vérité). Golden `tests/golden_simulation/cascade_pluriannuelle_casablanca.json`. Frontend : `reglages/ReglagesSimulation.jsx`, `atelier/PanneauSeries.jsx`, `production/TapisHoraire.jsx` + `PanneauProduction.jsx`, `plan/AffectationChaines.jsx`. Règle de test (leçon du lot) : un test d'étape ISOLE son étape (`appliquer` direct ou l'entrée de cascade de son poste), jamais le total de la chaîne.
 - **Lot 4 « Électrique pro » (CALX201-250 + 172/183, 21/09/2026)** : la TOPOLOGIE électrique entre dans le document et le résultat — contrats `roof_layout_v2.schema.json::electrical` (`equipements[]` 8 types fermés, `cheminements[]` avec `origine` plan/saisie/mixte), échantillons `electrique_equipements.json`, `electrique_cheminements.json`, `calepinage_troncons.json` (+ `verdicts[]`), `calepinage_sld.json`, `calepinage_raccordement.json`. Noyau pur `core/electrique/` : `VerdictElectrique {code, nature, statut, libelle, borne, valeur, source, temperature_*}` (CALX215/214, `bloquants`/`alertes` en DÉRIVENT ; `passer_outre` = dérogation écrite dans le fil par `services/electrique.py`), `ChoixLongueur` motivé (216), bornes onduleur `s_max_kva`/`dc_max_kwc` + paliers DC/AC en RÉGLAGES (213, `bornes_dc_ac`), branches AC micro-onduleurs (`calibrer_branches_ac`/`dimensionner_branches_ac`/`dimensionner_cables(branches_ac=)`, 210), `blocs_du_schema(branches_onduleur=)` « typique de N » (238), API publique du schéma `GEOMETRIE`/`places_du_schema`/`bloc_svg`/`rendre_schema(blocs=, bandeau=)`, nomenclature à références catalogue + coffrets réellement posés + métré par section (246/230/227), structure SOURCÉE ou omise (247, `regle_bom_structure`). Services : `polystring.py` (206/207), `micro_onduleurs.py` (209), `troncons.py` (224-226 : longueur réelle avec origine, section/chute par tronçon lues sur la NORME, chute cumulée verdictée une fois par côté, métré), `coffrets.py` (230-232), `raccordement.py` (241-243 + `bloc_raccordement` contrat CALX205), `terre.py` continuité (245), `agregation_electrique.py` (183), `sld.py`/`sld_export.py` (233-237 : édition persistée dans `resultat['sld_edition']`, gabarit par pays — `pays=ma` sans norme = gabarit neutre, DXF `ezdxf` reproductible), `etapes/ecretage.py` (172), `cables.py::course_de_chaine` (218), `electrique.py::verdict_publiable` (248 : publiable ⇔ zéro bloquant ET zéro conclusion sans source, exposé par la clé `publication` de `evaluer-electrique`). Routes : `troncons/` (GET), `raccordement/` (GET|POST), `schema-unifilaire/` (GET|POST), `schema-unifilaire.dxf/` (GET) — toutes greffées par affectation de classe (`rattachements.py`, la garde `check_api_contract` les voit). 3D (`apps/web/src/scripts/roofPro11/electrique3d.ts`, 219-223) : couche d'organes et de cheminements persistée par `serializeLayout` (`electrical`), calque « Électrique » piloté depuis `ToitureDesign.jsx` — réservé au lot 2 : attacher `electrique.groupe` à `sceneRoot` (`scene3d.ts`), Ctrl+Z/Y (`layoutEditor.ts`). Onglets React `features/calepinage/electrique/` : Équipements (222), Cheminement & câbles (229), Raccordement (244), Verdict électrique (249) ; `Rail.jsx` relaie `builderApi` à chaque onglet. Gardes : `scripts/check_seuils_electriques.py` (250 : aucun littéral numérique non trivial sans commentaire de provenance dans `core/electrique/` + services électriques ; base `seuils_electriques_exceptions.txt` ne peut que rétrécir, motifs manuscrits, tests épinglés par NOM de constante) ; `check_services_appeles` : une fonction publique de service sans appelant hors module = rouge (les assembleurs appelés dans leur propre module sont privés).
 
+- **Lot 2 « site, toit & atelier 3D » (21/09/2026, 53/54 tâches — CALX130 e2e ouverte)** : contrat `roof_layout_v2` étendu (retraits par arête, `modules[]`/`moduleId`, `numerotation`, `buildings[]`, obstacles `forme`/`contour`/`rayonM`, allées `usage`/`axe`/`largeurM`, `underlay`, `poseSurfaces` façade + `appuis`, `optimisation`, `scene`) ; backend `views/modules_disponibles.py` (`GET calepinages/<pk>/modules-disponibles/`), `views/plan_importe.py` (`GET …/plan-importe/`), `services/modules_stock.py`, `gabarits.py`/`traduction.py` (CALX405), `degagements.py` (allées par pays), `zones_reglementaires.py` (gabarits d'obstacle sans genre), `apps/crm/roof_detect.py` (bloc `batiment` OSM), `apps/ventes/selectors.py::_reglages_atelier` (mode devis) ; apps/web `roofPro11/` : `snap`, `mapDraw` (grille, fond, calage), `underlay`, `clavier`, `mesureUi`, `edges`/`edgesUi`, `layoutEditor`, `shadingUi` (seuil, info-bulle), `batiment`, `numerotation`, `moduleSelect`, `panStats` (totaux site), `poseSurfaces` (sol/ombrière/façade), `obstaclesUi` (polygone/cercle/allées), `optimizer` (cible, seuil, module, retraits par arête → `solveLive*`), `soleilPlay`, `calageFondUi`, `teinteAllees`, `optimisationDocument`, `fondDocument`, `infoBulleOmbrage` ; frontend `atelier/OngletCoupeRangees.jsx`, `CourseSoleil.jsx`, `ToitureDesign.jsx` (reglagesAtelier, modulesDisponibles, batiment OSM, fond photo/plan, panId).
 ### FastAPI AI service (`backend/fastapi_ia`, root_path `/api/fastapi`)
 
 `ocr.py` (Zhipu/GLM vision invoice + document OCR, key-gated by `ZHIPU_API_KEY`) and
@@ -532,7 +535,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (279)**
+**Done (331)**
 
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
@@ -709,6 +712,54 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX68` — Garder un brouillon local de l'atelier et proposer sa reprise
 - `CALX69` — Donner une saisie aux réglages société de simulation et d'électrique, avec provenance…
 - `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
+- `CALX81` — Porter au contrat le type d'arête corrigé à la main et le retrait PAR arête
+- `CALX82` — Porter au contrat un catalogue de MODULES dans le document et le module retenu par pan
+- `CALX83` — Porter au contrat la numérotation persistante des modules et des rangées
+- `CALX84` — Porter au contrat les bâtiments : hauteur et nombre d'étages SAISIS, avec provenance
+- `CALX85` — Porter au contrat les obstacles non rectangulaires (polygone, cercle)
+- `CALX86` — Porter au contrat le calque de fond calé (plan importé ou photo) et son échelle à deux…
+- `CALX87` — Porter au contrat la surface de pose « façade » et les poteaux d'ombrière
+- `CALX88` — Porter au contrat les choix d'optimisation et le soleil de scène
+- `CALX89` — Magnétiser le tracé à 90° et 45° et offrir un mode orthogonal
+- `CALX90` — Saisir au clavier la longueur et l'angle du segment en cours de tracé
+- `CALX91` — Insérer et supprimer un sommet sur une arête d'un contour fermé
+- `CALX92` — Aimanter le tracé aux sommets et aux arêtes des pans déjà tracés
+- `CALX93` — Déduire noue et arêtier en comparant les pans voisins
+- `CALX94` — Corriger à la main le type d'une arête depuis l'atelier
+- `CALX95` — Appliquer un retrait propre à chaque arête physique du contour
+- `CALX97` — Saisir les cotes exactes d'un pan et le faire pivoter d'un bloc
+- `CALX98` — Dupliquer un pan avec ses obstacles et ses réglages
+- `CALX99` — Prendre l'azimut d'un pan depuis une arête cliquée
+- `CALX100` — Saisir la hauteur et le nombre d'étages du bâtiment, et extruder la 3D à cette hauteur
+- `CALX101` — Rendre les murs et les acrotères comme des volumes 3D distincts
+- `CALX102` — Modéliser une lucarne comme un volume qui perce le pan, pas comme une boîte posée
+- `CALX103` — Tracer un obstacle polygonal au clic
+- `CALX104` — Tracer un obstacle circulaire et réutiliser des gabarits d'obstacle de la société
+- `CALX105` — Poser un arbre ou un bâtiment voisin au clic et le déplacer au glissé
+- `CALX106` — Remonter la hauteur et le nombre de niveaux OSM du bâtiment, avec leur provenance…
+- `CALX107` — Afficher un plan importé ou une photo calée comme calque de fond de l'atelier
+- `CALX108` — Caler le fond de plan à l'échelle par deux points et une distance réelle saisie
+- `CALX109` — Choisir le module depuis le stock et calepiner avec ses vraies cotes
+- `CALX110` — Poser plusieurs modèles de module dans un même système
+- `CALX111` — Numéroter les modules de façon stable et l'afficher en 3D comme en plan
+- `CALX112` — Dupliquer une sélection de panneaux et la coller au pas saisi
+- `CALX113` — Rendre la symétrie d'une sélection de panneaux par rapport à un axe
+- `CALX114` — Choisir la cible de l'optimisation au lieu de la figer sur l'énergie
+- `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
+- `CALX116` — Sélectionner des panneaux au lasso, en plus du rectangle
+- `CALX117` — Afficher une grille métrique de repère au pas saisi
+- `CALX118` — Montrer la course du soleil du site dans l'atelier
+- `CALX119` — Choisir une date libre pour le soleil de la scène et la retenir
+- `CALX120` — Animer la course de l'ombre sur une journée et sur l'année
+- `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
+- `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
+- `CALX123` — Tracer et éditer un champ au sol sur la carte de l'atelier
+- `CALX124` — Éditer une ombrière dans l'atelier, poteaux compris
+- `CALX125` — Poser des modules en façade sur un mur du bâtiment
+- `CALX126` — Totaliser le site par bâtiment et par surface de pose dans l'atelier
+- `CALX128` — Rendre les gestes de l'atelier utilisables au clavier et annoncés
+- `CALX129` — Basculer la vue 3D d'édition en plein écran
+- `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
 - `CALX141` — Déclarer le contrat de la cascade de pertes séquentielle, sous une clé neuve
 - `CALX142` — Déclarer le contrat de la série horaire persistée
 - `CALX143` — Déclarer le contrat de l'énoncé de source météo
@@ -813,8 +864,12 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
+- `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
+- `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
+- `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
+- `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (327)**
+**Open — to build (275)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
@@ -921,57 +976,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
 - `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
-- `CALX81` — Porter au contrat le type d'arête corrigé à la main et le retrait PAR arête
-- `CALX82` — Porter au contrat un catalogue de MODULES dans le document et le module retenu par pan
-- `CALX83` — Porter au contrat la numérotation persistante des modules et des rangées
-- `CALX84` — Porter au contrat les bâtiments : hauteur et nombre d'étages SAISIS, avec provenance
-- `CALX85` — Porter au contrat les obstacles non rectangulaires (polygone, cercle)
-- `CALX86` — Porter au contrat le calque de fond calé (plan importé ou photo) et son échelle à deux…
-- `CALX87` — Porter au contrat la surface de pose « façade » et les poteaux d'ombrière
-- `CALX88` — Porter au contrat les choix d'optimisation et le soleil de scène
-- `CALX89` — Magnétiser le tracé à 90° et 45° et offrir un mode orthogonal
-- `CALX90` — Saisir au clavier la longueur et l'angle du segment en cours de tracé
-- `CALX91` — Insérer et supprimer un sommet sur une arête d'un contour fermé
-- `CALX92` — Aimanter le tracé aux sommets et aux arêtes des pans déjà tracés
-- `CALX93` — Déduire noue et arêtier en comparant les pans voisins
-- `CALX94` — Corriger à la main le type d'une arête depuis l'atelier
-- `CALX95` — Appliquer un retrait propre à chaque arête physique du contour
 - `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
-- `CALX97` — Saisir les cotes exactes d'un pan et le faire pivoter d'un bloc
-- `CALX98` — Dupliquer un pan avec ses obstacles et ses réglages
-- `CALX99` — Prendre l'azimut d'un pan depuis une arête cliquée
-- `CALX100` — Saisir la hauteur et le nombre d'étages du bâtiment, et extruder la 3D à cette hauteur
-- `CALX101` — Rendre les murs et les acrotères comme des volumes 3D distincts
-- `CALX102` — Modéliser une lucarne comme un volume qui perce le pan, pas comme une boîte posée
-- `CALX103` — Tracer un obstacle polygonal au clic
-- `CALX104` — Tracer un obstacle circulaire et réutiliser des gabarits d'obstacle de la société
-- `CALX105` — Poser un arbre ou un bâtiment voisin au clic et le déplacer au glissé
-- `CALX106` — Remonter la hauteur et le nombre de niveaux OSM du bâtiment, avec leur provenance…
-- `CALX107` — Afficher un plan importé ou une photo calée comme calque de fond de l'atelier
-- `CALX108` — Caler le fond de plan à l'échelle par deux points et une distance réelle saisie
-- `CALX109` — Choisir le module depuis le stock et calepiner avec ses vraies cotes
-- `CALX110` — Poser plusieurs modèles de module dans un même système
-- `CALX111` — Numéroter les modules de façon stable et l'afficher en 3D comme en plan
-- `CALX112` — Dupliquer une sélection de panneaux et la coller au pas saisi
-- `CALX113` — Rendre la symétrie d'une sélection de panneaux par rapport à un axe
-- `CALX114` — Choisir la cible de l'optimisation au lieu de la figer sur l'énergie
-- `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
-- `CALX116` — Sélectionner des panneaux au lasso, en plus du rectangle
-- `CALX117` — Afficher une grille métrique de repère au pas saisi
-- `CALX118` — Montrer la course du soleil du site dans l'atelier
-- `CALX119` — Choisir une date libre pour le soleil de la scène et la retenir
-- `CALX120` — Animer la course de l'ombre sur une journée et sur l'année
-- `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
-- `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
-- `CALX123` — Tracer et éditer un champ au sol sur la carte de l'atelier
-- `CALX124` — Éditer une ombrière dans l'atelier, poteaux compris
-- `CALX125` — Poser des modules en façade sur un mur du bâtiment
-- `CALX126` — Totaliser le site par bâtiment et par surface de pose dans l'atelier
-- `CALX128` — Rendre les gestes de l'atelier utilisables au clavier et annoncés
-- `CALX129` — Basculer la vue 3D d'édition en plein écran
 - `CALX130` — Prouver le parcours de conception enrichi de bout en bout
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
-- `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
 - `CALX199` — Trancher l'achat d'une source météo bancable
 - `CALX200` — Trancher le pas infra-horaire
 - `CALX251` — Déclarer `consumption` dans le contrat `roof_layout` v2
@@ -1109,11 +1116,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX398` — Re-mesurer le budget de poids du module après le lot
 - `CALX399` — Figer la forme des agrégats du module dans `docs/api-contracts.md`
 - `CALX400` — Geler les repères DOM `cal-*` en contrat
-- `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
-- `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
-- `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
 - `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
-- `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
 - `CRXB1` — [GATED: mot fondateur « lance CRXB »] Contrat d'abord (PACT10)

@@ -85,7 +85,7 @@ import {
 } from '../lib/estimatorBrainV8';
 import { isSimplePolygon, roofAreaLabel, zoomToFitRing, type LngLat } from '../lib/roof';
 import { inferZoneFacingAmong } from '../lib/roofAdjacency';
-import { obstacleRing, type Obstacle } from '../lib/obstacles';
+import { type Obstacle } from '../lib/obstacles';
 import { areaLabel } from '../lib/roofAreas';
 import { buildSatelliteStyle, imageryAttribution, resolveImageryProvider } from '../lib/roofConfig';
 import { type RoofTypeSelect } from '../lib/roofTypeSelect';
@@ -119,6 +119,7 @@ import {
   type AreaRecord,
   type RenderConfigOpts,
   obstructionClearancesFor,
+  anneauxObstruction, // CALX103/104 câblage — la FORME réelle d'un obstacle fait foi
 } from './roofPro11/types';
 import {
   GOLD,
@@ -129,7 +130,23 @@ import { $, fmt, fmtMad, esc } from './roofPro11/dom';
 import { type Ctx } from './roofPro11/context';
 import { createGraphs } from './roofPro11/graphs';
 import { createPrefill } from './roofPro11/prefill';
-import { createZones, exclusionObstructionRings, exclusionColor, exclusionZoneRing } from './roofPro11/zones';
+import {
+  createZones,
+  exclusionObstructionRings,
+  exclusionColor,
+  exclusionZoneRing,
+  empriseModuleENU, // CALX403 câblage
+  type ModulePose, // CALX403 câblage
+} from './roofPro11/zones';
+// CALX109/CALX110 câblage — le catalogue de modules de la société (`opts.modulesDisponibles`)
+// et le module posé sur chaque pan (`AreaRecord.moduleId`) : c'est ce couple qui part dans le
+// document à chaque sérialisation (`SerializeMeta.modules`). Sans cette ligne, `modules[]` et
+// `zones[].geometry.moduleId` n'étaient JAMAIS écrits et le choix se perdait au rechargement.
+import { affectationDesPans, lireModulesDisponibles } from './roofPro11/moduleSelect';
+import { etiquette, registreAtelier } from './roofPro11/numerotation'; // CALX403 câblage — le repère d'un module vient du DOCUMENT
+import { poserSourceCellulesSurAllees } from './roofPro11/teinteAllees'; // CALX403 câblage
+import { creerInfoBulleOmbrage } from './roofPro11/infoBulleOmbrage'; // CALX122 câblage
+import { fondDuDocument, motifFondRefuse } from './roofPro11/fondDocument'; // CALX107 câblage
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
@@ -147,9 +164,26 @@ import {
   type DocumentMoteur,
 } from './roofPro11/entreeMoteur';
 import { createObstaclesUi } from './roofPro11/obstaclesUi';
-import { createMesureUi, formatMeasure, isMeasureValid, type Measurement, type MeasureKind } from './roofPro11/mesureUi';
+import {
+  createMesureUi,
+  formatMeasure,
+  gestesMesure, // CALX128 câblage
+  isMeasureValid,
+  type Measurement,
+  type MeasureKind,
+} from './roofPro11/mesureUi';
+import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
+import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
+import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
+import {
+  createCalageFondUi,
+  deltaMetresFond,
+  gesteFond,
+  rotationMolette,
+  surLeFond,
+} from './roofPro11/calageFondUi'; // CALX108 câblage
 import { createScene3d, projectPlanView, panelQuadsLngLat } from './roofPro11/scene3d';
 import {
   createOptimizer,
@@ -159,8 +193,10 @@ import {
   type EntreeDepartage,
 } from './roofPro11/optimizer';
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
+import { lireBatiments } from './roofPro11/batiment'; // CALX100 — `buildings[]` du document
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout, deserializeSceneFromLayout } from './roofPro11/prefill';
+import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 
 let booted = false;
 
@@ -227,6 +263,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // ctx.sunHour / ctx.sunDay (la scène 3D positionne un VRAI soleil et son ombre).
   const sunHourEl = $<HTMLInputElement>('rp9-sun-hour');
   const sunHourValueEl = $('rp9-sun-hour-value');
+  // CALX119/CALX120 — bandeau hôte des contrôles soleil (date libre + lecture) : les
+  // deux tâches y créent LEURS-MÊMES leurs contrôles quand la page ne les fournit pas
+  // (même patron que `obstaclesUi.ts ensureTypePicker`/`zones.ts ensureStatsTable`).
+  const sunControlsHost = $('rp9-sun-controls');
   // — Obstacles : le DOM (bouton ajouter/effacer, panneau d'édition, saisies longueur/
   // largeur, +/−, suppr.) est piloté par le module roofPro11/obstaclesUi.ts. —
   // V3 : bouton Optimum, toggle type de toit, et contrôles toit en pente.
@@ -397,8 +437,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // (dilatés de leur retrait SAISI) rejoignent les obstructions du pavage, donc le compte
   // de modules bouge IMMÉDIATEMENT. Une zone PRÉFÉRÉE n'en produit aucun : elle ne change
   // JAMAIS un compte (garantie CAL68).
+  // CALX103/CALX104 câblage — le pavage évite désormais la FORME RÉELLE de l'obstacle
+  // (contour d'un polygone, disque d'un cercle) et plus sa boîte englobante : un obstacle
+  // dessiné rond retirait jusqu'ici son rectangle circonscrit, donc des modules posables.
+  // `anneauxObstruction` retombe sur `obstacleRing` pour un rectangle (et pour un contour
+  // manquant/bancal) : un dossier sans forme saisie repave à l'identique.
   const obstructionRings = (): LngLat[][] => [
-    ...obstacles.map(obstacleRing),
+    ...anneauxObstruction(obstacles), // CALX103/104 câblage
     ...exclusionObstructionRings(ctx.exclusionZones),
   ];
   // PV61 — dégagement (m) de CHAQUE obstacle selon son TYPE (cheminée > antenne), dans le
@@ -1063,7 +1108,22 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const graphs = createGraphs(ctx);
   const prefill = createPrefill(ctx);
   const prefillLead = prefill.prefillLead;
-  const zones = createZones(ctx);
+  // CALX109/CALX110 câblage — le catalogue CHOISISSABLE de la société, lu UNE fois (les
+  // options sont figées au boot). Sans catalogue (droits, réseau, société sans fiche
+  // « module »), il est VIDE : l'atelier pose son module par défaut, NOMMÉ, et le document
+  // repart identique à celui d'aujourd'hui, octet pour octet.
+  const catalogueModulesAtelier = lireModulesDisponibles(opts.modulesDisponibles).choisissables;
+  // CALX97 câblage — crochets d'écran de `createZones` : sans eux, une rotation, un
+  // redimensionnement ou une duplication de pan changeait le document sans que la carte
+  // bouge (il fallait un autre geste pour la rafraîchir). Wrappers PARESSEUX : les
+  // bindings `redrawTrace`/`redrawObstacles`/`recalc` sont déclarés plus bas et ne sont
+  // lus qu'à l'exécution du crochet (même patron que `createConsumption` ci-dessous).
+  const zones = createZones(ctx, {
+    redrawTrace: () => redrawTrace(), // CALX97 câblage
+    redrawObstacles: () => redrawObstacles(), // CALX97 câblage
+    recalc: () => recalc(), // CALX97 câblage
+    setStatus: (msg: string) => setStatus(msg), // CALX97 câblage
+  });
   const liveActiveResult = zones.liveActiveResult;
   const snapshotActiveAreaResult = zones.snapshotActiveAreaResult;
   const snapshotActiveAreaGeometry = zones.snapshotActiveAreaGeometry;
@@ -1263,7 +1323,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // à hauteur saisie ou un objet d'environnement OMBRE réellement, donc toute
     // modification doit recalculer la matrice de dérate + la carte d'accès solaire.
     recomputeShading: () => shadingUi.recomputeShading(),
+    // CALX403 câblage — les modules POSÉS (repère + emprise au sol) : sans eux, le bandeau
+    // d'allée ne parlait QUE du couloir et ne pouvait nommer aucun module en travers.
+    modulesPoses: () => modulesPosesPourAllees(), // CALX403 câblage
   });
+  // CALX403 câblage — et la scène 3D teinte ces mêmes modules (module `teinteAllees.ts`).
+  // Source relue à CHAQUE rendu : une allée tracée entre deux rendus se voit aussitôt.
+  poserSourceCellulesSurAllees(ctx, () => cellulesSurAlleesCourantes()); // CALX403 câblage
   const redrawObstacles = obstaclesUi.redrawObstacles;
   // CAL69 — redessine le calque des zones d'exclusion (même cadence que les obstacles).
   const redrawExclusionZones = obstaclesUi.redrawExclusionZones;
@@ -1379,6 +1445,110 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const addVertex = mapDraw.addVertex;
   const geocode = mapDraw.geocode;
 
+  // ═══════════ CALX128 câblage — L'ATELIER AU CLAVIER SUIT L'OUTIL COURANT ═══════════
+  // `mapDraw` sert les gestes du mode `trace` et attend que l'hôte (a) lui DISE quel outil
+  // est actif et (b) lui DONNE les gestes des autres modes. Sans ces deux lignes, le plan
+  // clavier restait bloqué sur « trace » : les raccourcis de mesure existaient et testés,
+  // mais aucune frappe ne les atteignait jamais.
+  //
+  // Les gestes de MESURE sont fournis par `mesureUi.gestesMesure` ; obstacles et zones
+  // n'ont PAS de jeu de gestes dans le dépôt — non enregistrés, `mapDraw` annonce alors
+  // proprement que le geste n'y est pas disponible (jamais un geste inventé ici).
+  mapDraw.enregistrerGestesClavier('mesure', gestesMesure(mesureUi, mapDraw.curseurClavier)); // CALX128 câblage
+
+  /** Le mode clavier DÉDUIT de l'état de l'atelier — jamais un mode mémorisé à part, qui
+   *  divergerait au premier bouton câblé ailleurs (l'obstacle et la zone sont armés par
+   *  `obstaclesUi`, pas par cette entrée). */
+  function modeClavierCourant(): ModeClavier {
+    if (mesureUi.isActive()) return 'mesure';
+    if (ctx.obstacleMode) return ctx.pendingZoneNature ? 'zone' : 'obstacle';
+    return 'trace';
+  }
+  function syncModeClavier() {
+    mapDraw.setModeClavier(modeClavierCourant()); // CALX128 câblage
+  }
+  // Synchronisé en phase de CAPTURE : ce listener passe avant celui de `mapDraw` (posé en
+  // bulle sur le même document), quel que soit l'ordre de création des modules. Le mode
+  // est donc juste avant que le raccourci ne soit résolu, sans rien écouter d'autre.
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('keydown', syncModeClavier, true);
+  }
+  syncModeClavier();
+
+  // CALX94 câblage — correction MANUELLE du type d'une arête. Le module crée lui-même ses
+  // contrôles ; on ne lui passe PAS la carte, parce que c'est le dispatcher de clic de
+  // cette entrée qui route le geste (`isEdgeMode()` / `handleMapClick`) — lui donner la
+  // carte le ferait s'abonner en plus, et le clic serait traité deux fois. `redraw` est un
+  // wrapper paresseux (`renderActive` est déclaré plus bas) : une correction de type
+  // repeint le contour 2D et la scène, où la couleur d'arête est désormais lue.
+  // CALX99 câblage — le module DIT que `redraw` doit pointer vers la MÊME re-résolution
+  // qu'un clic sur un bouton cardinal : un azimut PRIS sur une arête doit recalculer la
+  // POSE (pavage en pente), pas seulement repeindre son affichage. Même garde que les
+  // boutons `[data-facing]` (pan en pente ET contour fermé) — sinon rien à re-poser.
+  const edgesUi = createEdgesUi(ctx, {
+    setStatus,
+    redraw: () => {
+      redrawTrace();
+      renderActive();
+      if (roofType === 'pitched' && closed) pitchedRecompute(); // CALX99 câblage
+    },
+  });
+
+  // ═══════ CALX108 câblage — CALER LE FOND : LA VIGNETTE ET SA SÉQUENCE ═══════
+  // `mapDraw` portait déjà le mode « Caler le fond » et son `pointCalageFond`, mais
+  // l'hôte ne pouvait produire AUCUN `pointImage` : l'image du fond n'était affichée
+  // nulle part cliquable. `calageFondUi.ts` crée sa vignette (patron `obstaclesUi`),
+  // ramène chaque clic aux PIXELS NATURELS du fichier (facteur de réduction) et annonce
+  // chaque étape ; le clic carte lui est routé plus bas, comme pour le mode arêtes.
+  //
+  // La RESSOURCE du fond (URL servie + taille naturelle) n'existe que là où la page hôte
+  // l'a passée : on la mémorise au passage, c'est la seule source du fichier à afficher.
+  let ressourceFondCourante: RessourceFond = {};
+  const calageFondUi = createCalageFondUi({
+    hote: () => document.getElementById('rp9-fond-calage'),
+    fond: () => ({
+      url: ressourceFondCourante.url ?? null,
+      tailleImage: ressourceFondCourante.tailleImage ?? null,
+    }),
+    modeOuvert: () => mapDraw.modeCalageFond(),
+    poserPaire: (pointImage, ancre) => mapDraw.pointCalageFond(pointImage, ancre),
+  });
+  // La pastille « Caler le fond » appartient à `mapDraw` (son écouteur est posé AVANT
+  // celui-ci, donc le mode est déjà à jour quand on rafraîchit) : la vignette apparaît
+  // avec le mode et disparaît avec lui, sans qu'aucun des deux modules pilote l'autre.
+  document.getElementById('rp9-fond-chip')
+    ?.addEventListener('click', () => calageFondUi.rafraichir()); // CALX108 câblage
+
+  // ═══════════ CALX122 câblage — L'OMBRAGE D'UN MODULE, AU SURVOL ═══════════
+  // `shadingUi.moduleShadeTooltip(cellIndex)` rendait un texte prêt à afficher depuis
+  // CALX122, et son en-tête disait lui-même que le câblage au survol restait un crochet :
+  // il n'existait AUCUNE info-bulle dans l'atelier. Le module `infoBulleOmbrage.ts` crée
+  // son `div` (patron `obstaclesUi`) ; ici on lui donne la cellule survolée — le MÊME
+  // hit-test que le surlignage W88 (`layoutEditor.layoutPanelAt`), pour qu'elle parle
+  // exactement du module doré sous le curseur.
+  //
+  // Sans mesure d'ombrage, `moduleShadeTooltip` DIT que rien n'est renseigné : l'info-bulle
+  // affiche cette phrase, jamais un chiffre à la place d'une mesure absente.
+  const infoBulleOmbrage = creerInfoBulleOmbrage({ hote: map.getContainer?.() ?? null });
+  map.on('mousemove', (e) => {
+    if (!ctx.layoutMode || ctx.obstacleMode || !ctx.layoutState) {
+      infoBulleOmbrage.cacher();
+      return;
+    }
+    const cellule = layoutEditor.layoutPanelAt(e.point);
+    if (cellule == null) {
+      infoBulleOmbrage.cacher();
+      return;
+    }
+    const point = (e.originalEvent ?? null) as MouseEvent | null;
+    infoBulleOmbrage.montrer(
+      shadingUi.moduleShadeTooltip(cellule), // CALX122 câblage
+      point?.clientX ?? 0,
+      point?.clientY ?? 0,
+    );
+  });
+  map.on('mouseout', () => infoBulleOmbrage.cacher());
+
   const updateCompass = () => {
     if (compassArrow) compassArrow.style.transform = `rotate(${-map.getBearing()}deg)`;
   };
@@ -1409,12 +1579,18 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // — Scène 3D Three.js (couche WebGL custom MapLibre) : voir roofPro11/scene3d.ts. Le
   // module possède le renderer/scène/caméra/soleil + la photo de toit (W70) ; l'entrée
   // garde la construction de la carte et le boot map.on('load') (qui ajoute customLayer).
-  const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize });
+  const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize, setbacksOf }); // CALX101 — retrait d'acrotère réglé
   const customLayer = scene3d.customLayer;
   const disposeScene = scene3d.disposeScene;
   const renderScene = scene3d.renderScene;
   const setPanelHighlight = scene3d.setPanelHighlight; // W88 — surlignage/pick des panneaux 3D
   const setPanelSelection = scene3d.setPanelSelection; // PV29 — surlignage d'une SÉLECTION 3D
+  // CALX219 câblage — la couche électrique (CALX219/220/223) existait mais n'était JAMAIS
+  // rendue : son `groupe` three.js n'était attaché à aucune scène. On la construit ici (au
+  // lieu de l'intérieur du littéral `onApiReady`) pour pouvoir la DONNER à la scène, qui la
+  // ré-attache après chaque `renderScene`. `electrique3d.ts` n'est pas modifié.
+  const coucheElectrique = creerCoucheElectrique(ctx);
+  scene3d.setCoucheElectrique(coucheElectrique.groupe);
 
   // — Moteur d'optimisation vivante (W34/V7 plat + W35/V8 pente + matrice V6 PVGIS) :
   // voir roofPro11/optimizer.ts. `syncChips`/`renderMatrixOptimumCard` sont déclarés plus
@@ -1723,6 +1899,27 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // historique). `shadingUi` a déjà été construit (ligne ~1327) : on passe par SON API
     // pour que la matrice/le facteur/la note soient recalculés cohéremment.
     shadingUi.setHorizonProfile(deserializeHorizonProfileFromLayout(layout));
+    // CALX119 — l'instant du soleil de scène (jour + heure) voyage avec le document ;
+    // absent (devis antérieur à CALX88/CALX119), `ctx.sunDay`/`ctx.sunHour` gardent leur
+    // défaut historique (solstice d'hiver, midi) — comportement d'aujourd'hui, jamais un
+    // jour deviné. Les contrôles (curseur/date/raccourcis saison) déjà câblés plus bas
+    // sont resynchronisés ici pour ne pas afficher un instant périmé.
+    const savedScene = deserializeSceneFromLayout(layout);
+    if (savedScene) {
+      ctx.sunDay = savedScene.sunDay;
+      ctx.sunHour = savedScene.sunHour;
+      if (sunHourEl) sunHourEl.value = String(Math.round(savedScene.sunHour));
+      if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(savedScene.sunHour)} h`;
+      if (sunDateEl) sunDateEl.value = dayOfYearToDateValue(savedScene.sunDay);
+      document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) =>
+        o.setAttribute('aria-pressed', String(
+          (o.dataset.sunSeason === 'summer' && savedScene.sunDay === 172) ||
+            (o.dataset.sunSeason !== 'summer' && savedScene.sunDay === WINTER_SOLSTICE_DAY),
+        )),
+      );
+    }
+
+    ctx.batiments = lireBatiments(layout); // CALX100 — hauteurs SAISIES + provenance, relues
     const setIf = (id: string, v?: string) => {
       const el = $<HTMLInputElement>(id);
       if (el && v && !el.value.trim()) el.value = v;
@@ -2332,9 +2529,41 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   // — Mode obstacle / glissé-dessin / glissé-déplacement : voir roofPro11/obstaclesUi.ts —
 
+  // ═══════ CALX108 câblage — AJUSTER LE FOND : Alt + glissé, Alt + molette ═══════
+  // `mapDraw.ajusterFond` existait sans AUCUN appelant : une fois le plan calé, plus
+  // rien ne permettait de le décaler d'un mètre ni de le pincer d'un degré. Le geste est
+  // RÉSERVÉ (Alt, convention de dessin nommée dans l'aide de l'atelier, CALX128) : sans
+  // Alt, le pan, le dessin d'obstacle, la disposition et le zoom gardent la main, à
+  // l'identique. Le fond étant une image raster, MapLibre n'en rend aucune « feature » :
+  // le survol se décide sur ses QUATRE coins, ceux que le calage produit.
+  let glisseFond: LngLat | null = null;
+  function coinsFondCourant(): LngLat[] | null {
+    const fond = mapDraw.fond();
+    if (!fond || fond.kind !== 'plan' || !fond.calage) return null;
+    const derive = coinsDuPlanCale(fond.calage, ressourceFondCourante.tailleImage ?? null);
+    return derive.ok ? [...derive.coins] : null;
+  }
+  function etatGesteFond(lngLat: LngLat, altEnfoncee: boolean) {
+    return {
+      altEnfoncee,
+      surFond: surLeFond(lngLat, coinsFondCourant()),
+      modeObstacle: obstacleMode,
+      modeDisposition: ctx.layoutMode,
+      modeCalage: mapDraw.modeCalageFond(),
+    };
+  }
+
   // — Interactions carte —
   map.on('mousedown', (e) => {
     suppressClick = false;
+    const lngLatAppui: LngLat = [e.lngLat.lng, e.lngLat.lat];
+    // CALX108 câblage — AVANT tout le reste : le geste réservé du fond ne doit jamais
+    // partir en dessin d'obstacle ni en glissé de sommet.
+    if (gesteFond(etatGesteFond(lngLatAppui, Boolean(e.originalEvent?.altKey))) === 'deplacer') {
+      glisseFond = lngLatAppui;
+      map.dragPan?.disable?.();
+      return;
+    }
     if (obstacleMode) {
       beginDraw([e.lngLat.lng, e.lngLat.lat], e.point);
       return;
@@ -2344,14 +2573,41 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     tryBeginMove([e.lngLat.lng, e.lngLat.lat], e.point);
   });
   map.on('mousemove', (e) => {
+    if (glisseFond) {
+      // CALX108 câblage — translation INCRÉMENTALE : l'échelle et la rotation retenues
+      // ne bougent pas (`deplacerCalage` ne touche qu'aux deux ancres).
+      const arrivee: LngLat = [e.lngLat.lng, e.lngLat.lat];
+      const delta = deltaMetresFond(glisseFond, arrivee);
+      glisseFond = arrivee;
+      suppressClick = true; // un glissé n'est pas un clic de tracé
+      mapDraw.ajusterFond({ estM: delta.estM, nordM: delta.nordM }); // CALX108 câblage
+      return;
+    }
     if (drawing) moveDraw([e.lngLat.lng, e.lngLat.lat]);
     else if (moveVertex) doVertexMove([e.lngLat.lng, e.lngLat.lat]);
     else if (moveObs) doMove([e.lngLat.lng, e.lngLat.lat]);
   });
   map.on('mouseup', (e) => {
+    if (glisseFond) {
+      glisseFond = null;
+      map.dragPan?.enable?.();
+      return;
+    }
     if (drawing) endDraw([e.lngLat.lng, e.lngLat.lat], e.point);
     else if (moveVertex) endVertexMove();
     else if (moveObs) endMove();
+  });
+  map.on('wheel', (e) => {
+    // CALX108 câblage — sans Alt (ou hors du fond), `rotationMolette` rend 0 et la
+    // molette reste EXACTEMENT le zoom de la carte.
+    const original = (e.originalEvent ?? null) as WheelEvent | null;
+    const rotationDeg = rotationMolette(
+      original?.deltaY ?? 0,
+      etatGesteFond([e.lngLat.lng, e.lngLat.lat], Boolean(original?.altKey)),
+    );
+    if (!rotationDeg) return;
+    e.preventDefault();
+    mapDraw.ajusterFond({ rotationDeg }); // CALX108 câblage
   });
   map.on('touchstart', (e) => {
     suppressClick = false;
@@ -2491,6 +2747,19 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     }
     // WJ19 — tracé d'ombre actif : le module consomme le clic (pied puis bout).
     if (shadingUi.handleMapClick(lngLat)) return;
+    // CALX94 câblage — mode « corriger une arête » armé : le clic DÉSIGNE un segment du
+    // contour et n'est jamais un geste de tracé ni une sélection d'obstacle. On sort même
+    // quand aucune arête n'a été visée (le module l'a déjà dit dans le bandeau) : un clic
+    // à côté ne doit pas poser un sommet par surprise.
+    if (edgesUi.isEdgeMode()) {
+      edgesUi.handleMapClick(lngLat); // CALX94 câblage
+      return;
+    }
+    // CALX108 câblage — mode « Caler le fond » ouvert : le clic DÉSIGNE l'ancre du point
+    // déjà cliqué sur le plan, et n'est jamais un geste de tracé ni une sélection. Sortie
+    // anticipée MÊME quand aucun point de plan n'attend (le module l'a dit dans la zone
+    // d'annonces) : un clic pendant un calage ne doit pas poser un sommet par surprise.
+    if (calageFondUi.clicCarte(lngLat)) return; // CALX108 câblage
     if (closed) {
       // sélection/désélection d'un obstacle existant
       selectObstacle(obstacleAtPoint(e.point));
@@ -2822,6 +3091,77 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     }
     const n = Math.max(0, Math.min(grid.panels.length, Math.round(ctx.layoutOptimalCount)));
     return grid.panels.slice(0, n).map((p) => ({ cx: p.cx, cy: p.cy, face: p.face }));
+  }
+
+  // ═══════ CALX403 câblage — les modules posés EN TRAVERS d'une allée, nommés et teintés ═══════
+  // `obstaclesUi` sait compter les modules qui chevauchent une allée de circulation, mais
+  // il ne connaît ni le pavage ni les numéros : c'est l'entrée qui les lui donne
+  // (`deps.modulesPoses`). On mémorise au passage la CELLULE de lattice de chaque repère,
+  // seul lien qui permette ensuite à la scène 3D de teinter les bons panneaux.
+  // Rien n'est supprimé nulle part : un module en travers est SIGNALÉ.
+
+  /** Repère → cellule de lattice, reconstruit à chaque appel de `modulesPosesPourAllees`. */
+  let celluleParRepere = new Map<string, number>();
+
+  /** Les modules posés AVEC leur cellule de lattice (l'index que `scene3d` connaît). */
+  function pavagePoseCellules(): { cellule: number; cx: number; cy: number }[] {
+    if (layoutEditor.isFreeMode()) {
+      return layoutEditor.freePanels().map((p, i) => ({ cellule: i, cx: p.cx, cy: p.cy }));
+    }
+    const grid = ctx.layoutPlan?.grid;
+    if (!grid) return [];
+    const st = ctx.layoutState;
+    if (st && st.cells.length === grid.panels.length && st.occupied.size) {
+      return [...st.occupied]
+        .filter((i) => i >= 0 && i < st.cells.length)
+        .sort((a, b) => a - b)
+        .map((i) => ({ cellule: i, cx: st.cells[i].cx, cy: st.cells[i].cy }));
+    }
+    const n = Math.max(0, Math.min(grid.panels.length, Math.round(ctx.layoutOptimalCount)));
+    return grid.panels.slice(0, n).map((p, i) => ({ cellule: i, cx: p.cx, cy: p.cy }));
+  }
+
+  /** Le repère AFFICHÉ d'un module posé : celui du document quand il en porte un (CALX111),
+   *  sinon son rang — jamais un numéro inventé. MÊME expression que `shadingUi`. */
+  function repereModulePose(rang: number): string {
+    const panId = ctx.activeAreaId;
+    return etiquette(registreAtelier.modules(panId)[rang], registreAtelier.convention(panId)) || `nº${rang + 1}`;
+  }
+
+  /** CALX403 — les modules posés vus par `obstaclesUi` : repère + emprise au sol ENU.
+   *  Sans pavage (ou sans largeur de rangée), la liste est VIDE : aucune emprise devinée. */
+  function modulesPosesPourAllees(): { modules: ModulePose[]; origine: LngLat } {
+    const plan = ctx.layoutPlan;
+    const grid = plan?.grid;
+    celluleParRepere = new Map<string, number>();
+    if (!plan || !grid || !(grid.rowWidthM > 0) || !(grid.footprintPerPanelM2 > 0)) {
+      return { modules: [], origine: (plan?.pack.origin ?? [0, 0]) as LngLat };
+    }
+    // Profondeur AU SOL d'un module : l'emprise publiée par le pavage divisée par la
+    // largeur de rangée — aucune cote de module n'est inventée ici.
+    const profondeurAuSolM = grid.footprintPerPanelM2 / grid.rowWidthM;
+    const modules = pavagePoseCellules().map(({ cellule, cx, cy }, rang) => {
+      const repere = repereModulePose(rang);
+      celluleParRepere.set(repere, cellule);
+      return {
+        repere,
+        empriseM: empriseModuleENU({ cx, cy }, plan.pack.azimuthDeg, grid.rowWidthM, profondeurAuSolM),
+      };
+    });
+    return { modules, origine: plan.pack.origin };
+  }
+
+  /** CALX403 — les CELLULES des modules en travers d'une allée, pour la teinte 3D. La
+   *  liste des repères est recalculée par `obstaclesUi`, qui rappelle `modulesPoses` :
+   *  la table repère → cellule est donc fraîche quand on la relit juste après. */
+  function cellulesSurAlleesCourantes(): number[] {
+    const reperes = obstaclesUi.modulesSurAllees();
+    const cellules: number[] = [];
+    for (const r of reperes) {
+      const c = celluleParRepere.get(r);
+      if (typeof c === 'number') cellules.push(c);
+    }
+    return cellules;
   }
 
   /** Translate le pavage lattice ENTIER (cellules + pavage du plan) — le contour ne bouge
@@ -3268,17 +3608,176 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       shadingUi.refreshHeatmap(); // WJ21 — le re-rendu a recréé les panneaux : garde la heatmap
     });
   }
-  // W87 — saison : hiver (solstice = pire cas d'ombrage, défaut) ou été (jour 172).
+  // CALX119 — DATE LIBRE pour le jour de la scène : convention de dessin — année
+  // bissextile FIXE (jour 366 représentable), seuls le mois et le jour comptent pour la
+  // déclinaison solaire (`sunDirection`/`sunPosition` ne prennent qu'un jour 1–366, pas
+  // une année réelle). Créée ICI si la page ne la fournit pas déjà (`ensureTypePicker`,
+  // `obstaclesUi.ts`, même patron) : ancrée dans le bandeau `#rp9-sun-controls` existant.
+  const SCENE_DATE_REF_YEAR = 2028;
+  const dayOfYearToDateValue = (dayOfYear: number): string => {
+    const clamped = Math.max(1, Math.min(366, Math.round(dayOfYear)));
+    const d = new Date(Date.UTC(SCENE_DATE_REF_YEAR, 0, clamped));
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    return `${SCENE_DATE_REF_YEAR}-${mm}-${dd}`;
+  };
+  const dateValueToDayOfYear = (value: string): number | null => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!m) return null;
+    const d = new Date(Date.UTC(SCENE_DATE_REF_YEAR, Number(m[2]) - 1, Number(m[3])));
+    if (Number.isNaN(d.getTime())) return null;
+    const start = Date.UTC(SCENE_DATE_REF_YEAR, 0, 1);
+    return Math.round((d.getTime() - start) / 86400000) + 1;
+  };
+  const ensureSceneDateInput = (): HTMLInputElement | null => {
+    const existing = $<HTMLInputElement>('rp9-sun-date');
+    if (existing) return existing;
+    if (!sunControlsHost || typeof document.createElement !== 'function') return null;
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-3';
+    const label = document.createElement('label');
+    label.setAttribute('for', 'rp9-sun-date');
+    label.className = 'tech-label shrink-0 text-lune-faint';
+    label.textContent = 'Date';
+    const input = document.createElement('input');
+    input.id = 'rp9-sun-date';
+    input.type = 'date';
+    input.className = 'rp9-input';
+    input.setAttribute('aria-label', 'Date libre pour le soleil de la scène');
+    row.appendChild(label);
+    row.appendChild(input);
+    // Insérée AVANT la ligne « Saison » (les deux bascules restent des raccourcis vers
+    // cette même date, lisibilité haut→bas : date d'abord, raccourcis ensuite).
+    const seasonRow = sunControlsHost.querySelector('[data-sun-season]')?.parentElement ?? null;
+    if (seasonRow) sunControlsHost.insertBefore(row, seasonRow);
+    else sunControlsHost.appendChild(row);
+    return input;
+  };
+  const sunDateEl = ensureSceneDateInput();
+  if (sunDateEl) {
+    sunDateEl.value = dayOfYearToDateValue(ctx.sunDay);
+    sunDateEl.addEventListener('change', () => {
+      const day = dateValueToDayOfYear(sunDateEl.value);
+      if (day == null) return; // saisie incomplète/invalide : rien ne bouge (jamais un jour deviné)
+      ctx.sunDay = day;
+      // Une date libre n'est PLUS l'un des deux raccourcis saisonniers — sauf coïncidence.
+      document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) =>
+        o.setAttribute('aria-pressed', String(
+          (o.dataset.sunSeason === 'summer' && day === 172) ||
+            (o.dataset.sunSeason !== 'summer' && day === WINTER_SOLSTICE_DAY),
+        )),
+      );
+      renderActive();
+      shadingUi.refreshHeatmap(); // WJ21 — garde la heatmap après le re-rendu
+    });
+  }
+  // W87 — saison : hiver (solstice = pire cas d'ombrage, défaut) ou été (jour 172). Les
+  // deux bascules restent des RACCOURCIS vers la même date libre (CALX119) : elles la
+  // font juste avancer/reculer, la date affichée suit.
   document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((b) => {
     b.addEventListener('click', () => {
       ctx.sunDay = b.dataset.sunSeason === 'summer' ? 172 : WINTER_SOLSTICE_DAY;
       document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) =>
         o.setAttribute('aria-pressed', String(o === b)),
       );
+      if (sunDateEl) sunDateEl.value = dayOfYearToDateValue(ctx.sunDay); // CALX119 — la date reflète le raccourci
       renderActive();
       shadingUi.refreshHeatmap(); // WJ21 — garde la heatmap après le re-rendu saisonnier
     });
   });
+  // CALX120 — deux boutons de LECTURE (journée / année) qui animent `ctx.sunDay`/
+  // `ctx.sunHour` pas à pas, créés ICI si la page ne les fournit pas déjà (même patron
+  // que le champ date CALX119 ci-dessus), ancrés dans le même bandeau.
+  const ensureSoleilPlayButtons = (): { jourBtn: HTMLButtonElement; anneeBtn: HTMLButtonElement; noteEl: HTMLElement | null } | null => {
+    const existingJour = $<HTMLButtonElement>('rp9-sun-play-day');
+    const existingAnnee = $<HTMLButtonElement>('rp9-sun-play-year');
+    if (existingJour && existingAnnee) {
+      return { jourBtn: existingJour, anneeBtn: existingAnnee, noteEl: $('rp9-sun-play-note') };
+    }
+    if (!sunControlsHost || typeof document.createElement !== 'function') return null;
+    const row = document.createElement('div');
+    row.className = 'flex flex-wrap items-center gap-2';
+    const mkBtn = (id: string, label: string): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.id = id;
+      b.className = 'rp9-chip';
+      b.setAttribute('aria-pressed', 'false');
+      b.textContent = label;
+      return b;
+    };
+    const jourBtn = mkBtn('rp9-sun-play-day', '▶ Lecture jour');
+    const anneeBtn = mkBtn('rp9-sun-play-year', '▶ Lecture année');
+    row.appendChild(jourBtn);
+    row.appendChild(anneeBtn);
+    const note = document.createElement('p');
+    note.id = 'rp9-sun-play-note';
+    note.className = 'text-xs leading-relaxed text-lune-faint';
+    note.setAttribute('role', 'status');
+    sunControlsHost.appendChild(row);
+    sunControlsHost.appendChild(note);
+    return { jourBtn, anneeBtn, noteEl: note };
+  };
+  const soleilBtns = ensureSoleilPlayButtons();
+  let soleilPlayer: SoleilPlayer | null = null;
+  const getSoleilPlayer = (): SoleilPlayer => {
+    if (!soleilPlayer) {
+      soleilPlayer = createSoleilPlayer({
+        schedule: (cb) => window.setTimeout(cb, 700),
+        cancel: (h) => window.clearTimeout(h),
+        reducedMotion: opts.reducedMotion === true,
+      });
+    }
+    return soleilPlayer;
+  };
+  const applySoleilStep = (s: { sunDay: number; sunHour: number }): void => {
+    ctx.sunDay = s.sunDay;
+    ctx.sunHour = s.sunHour;
+    if (sunHourEl) sunHourEl.value = String(Math.round(s.sunHour));
+    if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(s.sunHour)} h`;
+    if (sunDateEl) sunDateEl.value = dayOfYearToDateValue(s.sunDay);
+    document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) => o.setAttribute('aria-pressed', 'false'));
+    renderActive();
+    shadingUi.refreshHeatmap(); // WJ21 — le re-rendu a recréé les panneaux : garde la heatmap
+  };
+  if (soleilBtns) {
+    soleilBtns.jourBtn.addEventListener('click', () => {
+      const player = getSoleilPlayer();
+      if (player.playing) {
+        player.stop();
+        soleilBtns.jourBtn.setAttribute('aria-pressed', 'false');
+        return;
+      }
+      const bounds = sunriseSunsetHours(centroidLat, ctx.sunDay);
+      if (!bounds) {
+        if (soleilBtns.noteEl) soleilBtns.noteEl.textContent = 'Le soleil ne se lève pas à cette latitude et cette date — aucune lecture possible.';
+        return;
+      }
+      if (soleilBtns.noteEl) soleilBtns.noteEl.textContent = '';
+      soleilBtns.jourBtn.setAttribute('aria-pressed', 'true');
+      soleilBtns.anneeBtn.setAttribute('aria-pressed', 'false');
+      const stepHour = Number(sunHourEl?.step) || 1; // le pas SAISI du curseur d'heure existant
+      player.playDay({ sunDay: ctx.sunDay, sunHour: ctx.sunHour }, bounds, stepHour, (s) => {
+        applySoleilStep(s);
+        if (!player.playing) soleilBtns.jourBtn.setAttribute('aria-pressed', 'false');
+      });
+    });
+    soleilBtns.anneeBtn.addEventListener('click', () => {
+      const player = getSoleilPlayer();
+      if (player.playing) {
+        player.stop();
+        soleilBtns.anneeBtn.setAttribute('aria-pressed', 'false');
+        return;
+      }
+      if (soleilBtns.noteEl) soleilBtns.noteEl.textContent = '';
+      soleilBtns.anneeBtn.setAttribute('aria-pressed', 'true');
+      soleilBtns.jourBtn.setAttribute('aria-pressed', 'false');
+      player.playYear({ sunDay: ctx.sunDay, sunHour: ctx.sunHour }, (s) => {
+        applySoleilStep(s);
+        if (!player.playing) soleilBtns.anneeBtn.setAttribute('aria-pressed', 'false');
+      });
+    });
+  }
   // WJ22 — bascule « Fourchette réaliste » : active/désactive la couche de pertes
   // climatiques honnêtes (fourchette de confiance) puis re-rend la carte de résultat.
   // Défaut OFF → chiffre unique inchangé.
@@ -3552,12 +4051,18 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
               setbacksM: { ...setbacks },
               // CAL93 — le profil d'horizon lointain RÉGLÉ voyage avec le document.
               ...(ctx.horizonProfile ? { horizonProfile: ctx.horizonProfile } : {}),
+              // CALX109/CALX110 câblage — le catalogue + le module de chaque pan.
+              modules: affectationDesPans(catalogueModulesAtelier, ctx.areas),
               ...(meta ?? {}),
             }
           : {
               ...(activeSolarAccessMeta() ?? {}),
               setbacksM: { ...setbacks },
               ...(ctx.horizonProfile ? { horizonProfile: ctx.horizonProfile } : {}),
+              // CALX109/CALX110 câblage — le catalogue + le module de chaque pan. Aucun pan
+              // n'a choisi ⇒ `ecrireModulesDansDocument` ne touche à RIEN et le document
+              // repart identique, octet pour octet (comportement d'aujourd'hui).
+              modules: affectationDesPans(catalogueModulesAtelier, ctx.areas),
               ...(meta ?? {}),
             },
       ),
@@ -3609,6 +4114,26 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     raccourcis: raccourcisAtelier,
     // CALX3 — les calques réellement installés sur la carte, dans l'ordre de rendu.
     calquesDisponibles: () => calquesDisponibles(map),
-    electrique: creerCoucheElectrique(ctx), // CALX220 — pose/déplacement/retrait d'organes électriques
+    electrique: coucheElectrique, // CALX220 — pose/déplacement/retrait d'organes électriques
+    // CALX132 câblage — l'empreinte OSM du bâtiment, déposée par la page hôte
+    // (`ToitureDesign.jsx` lisait `fp.data.polygon` et JETAIT `fp.data.batiment`). Le
+    // panneau « Bâtiment » l'affiche en PROPOSITION : rien n'est écrit sans un clic.
+    setBatimentOsmPropose: (batiment) => shadingUi.setBatimentOsmPropose(batiment), // CALX132 câblage
+    // CALX111 câblage — le pan ACTIF : sans lui, `Vue2DPlan` ne pouvait pas lire les
+    // numéros du document (`registreAtelier.modules(panId)`) et rendait un plan MUET.
+    panActifId: () => ctx.activeAreaId ?? '', // CALX111 câblage
+    // CALX107 câblage — le fond que le document rouvert demande, et la pose de ce fond
+    // avec le fichier que la page hôte est allée chercher. `mapDraw.setFond` existait et
+    // n'avait AUCUN appelant : un dossier rouvert perdait son calque de fond.
+    fondDuDocument: () => fondDuDocument(), // CALX107 câblage
+    motifFondRefuse: () => motifFondRefuse(), // CALX107 câblage
+    // CALX108 câblage — la ressource est MÉMORISÉE au passage : c'est la seule surface
+    // qui porte l'URL servie et la taille naturelle du fichier, dont la vignette de
+    // calage a besoin pour ramener un clic aux pixels du plan.
+    poserFond: (fond, ressource) => {
+      ressourceFondCourante = ressource ?? {}; // CALX108 câblage
+      calageFondUi.rafraichir(); // CALX108 câblage
+      return mapDraw.setFond(fond, ressource); // CALX107 câblage
+    },
   });
 }

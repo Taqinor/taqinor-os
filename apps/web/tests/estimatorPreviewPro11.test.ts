@@ -109,7 +109,10 @@ describe('pro-11 — W35 : optimiseur contraint VIVANT en pente (cerveau V8)', (
     // recomputeMatrix passe un yieldFn adossé à ctx.v4YieldCache (cache PVGIS partagé) —
     // plus de balayage table « nu » qui désaccorderait la ligne badgée de la carte reco.
     expect(matrix).toContain('ctx.v4YieldCache.get(v4Key(');
-    expect(matrix).toContain('fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings(), { yieldFn: matrixYieldFn })');
+    // CALX114 — l'appel porte désormais aussi l'objectif saisi (`optimisation`), donc on
+    // épingle l'appel ET le yieldFn plutôt qu'une ligne d'arguments figée.
+    expect(matrix).toContain('fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings(), {');
+    expect(matrix).toContain('yieldFn: matrixYieldFn,');
   });
 
   it('W74 — l\'optimiseur affiche un message honnête « non viable » / « pan nord »', () => {
@@ -708,7 +711,9 @@ describe('pro-11 — W78 : cohérence vue/totaux multi-zones (zone comptée touj
     expect(fn).not.toContain('|| !a.renderPlan) continue');
     // on saute UNIQUEMENT la zone active, puis on branche sur le repli quand pas de plan.
     expect(fn).toContain('if (a.id === ctx.activeAreaId) continue');
-    expect(fn).toContain('buildBareZoneRing(a.vertices, activeOrigin)');
+    // CALX100 a rendu l'appel multi-ligne (hauteur SAISIE en 3e argument) : on épingle la
+    // garantie (vertices + origine active), pas la mise en page.
+    expect(fn.replace(/\s+/g, ' ')).toContain('buildBareZoneRing( a.vertices, activeOrigin,');
   });
 
   it('buildBareZoneRing bâtit le bâtiment + la dalle nus depuis vertices (lng/lat → ENU)', () => {

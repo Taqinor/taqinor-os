@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import SunDiagram, { COURBES_REPERE } from './SunDiagram'
+import { sunPosition, JOUR_SOLSTICE_HIVER } from './horizonMath'
 import { HAUTEUR_TOIT_HYPOTHESE_M, centroideDuContour, obstructionsDuPan } from './obstructionMath'
 import RetourAtelier from './atelier/RetourAtelier'
 
@@ -39,11 +40,27 @@ import RetourAtelier from './atelier/RetourAtelier'
    et sa provenance sous le diagramme, et offre un champ qui la REMPLACE (la
    provenance passe alors à « saisie ») ; sans saisie, la mention exacte
    accompagne chaque marqueur d'obstruction proche.
+
+   CALX118 — LE SOLEIL DE SCÈNE, ENFIN VISIBLE DANS LE DIAGRAMME.
+   ----------------------------------------------------------------------------
+   Constat : le diagramme polaire existait déjà (`SunDiagram.jsx`) mais aucun
+   repère n'y suivait le soleil de scène du builder 3D (contrat CALX88,
+   `scene{sunDay,sunHour}` — le jour/l'heure RÉELLEMENT affichés à l'atelier).
+   Ce panneau lit `layout.scene` (racine du document, à côté de `horizonProfile`
+   et `pin`) et le passe à `SunDiagram`, qui trace le repère avec la MÊME
+   formule que les trois courbes de référence (`sunPosition`, jamais une
+   deuxième). `scene` absent (document antérieur à CALX88/CALX119, ou jamais
+   touché) ⇒ comportement d'aujourd'hui NOMMÉ : solstice d'hiver, midi — jamais
+   un 21 juin supposé silencieusement.
    ========================================================================== */
 
 /** La mention exacte exigée par la tâche — jamais reformulée. */
 const MENTION_HYPOTHESE_TOIT = 'hauteur de toit supposée à 6 m (2 étages × '
   + '3 m), non mesurée'
+
+/** CALX118 — soleil de scène par défaut quand `layout.scene` est absent : le MÊME
+ *  défaut que le builder 3D (`roof-tool-pro11.ts`, W87) — solstice d'hiver, midi. */
+const SCENE_SUN_HOUR_DEFAUT = 12
 
 function libellePan(zone, index) {
   return zone?.label || `Pan ${index + 1}`
@@ -82,6 +99,15 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
   const zone = zones.find((z) => z.id === panId) ?? zones[0] ?? null
   const latitudeDeg = typeof layout?.pin?.lat === 'number' ? layout.pin.lat : null
   const horizonPoints = Array.isArray(layout?.horizonProfile?.points) ? layout.horizonProfile.points : []
+
+  // CALX118 — le soleil de SCÈNE (contrat CALX88) : `scene` absent ⇒ le défaut
+  // NOMMÉ du builder (solstice d'hiver, midi), jamais un instant deviné en silence.
+  const sceneEnregistree = typeof layout?.scene?.sunDay === 'number' && Number.isFinite(layout.scene.sunDay)
+    && typeof layout?.scene?.sunHour === 'number' && Number.isFinite(layout.scene.sunHour)
+  const sceneSunDay = sceneEnregistree ? layout.scene.sunDay : JOUR_SOLSTICE_HIVER
+  const sceneSunHour = sceneEnregistree ? layout.scene.sunHour : SCENE_SUN_HOUR_DEFAUT
+  const soleilCourant = latitudeDeg === null ? null : sunPosition(latitudeDeg, sceneSunDay, sceneSunHour)
+  const soleilSousHorizon = soleilCourant !== null && soleilCourant.elevationDeg <= 0
 
   // CALX52 — la hauteur RETENUE et sa provenance : une saisie numérique
   // valide REMPLACE l'hypothèse (jamais un NaN qui glisserait dans la
@@ -148,6 +174,8 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
             latitudeDeg={latitudeDeg}
             horizonPoints={horizonPoints}
             obstructions={obstructions}
+            sunDay={sceneSunDay}
+            sunHour={sceneSunHour}
             ariaLabel={`Course du soleil du pan ${libellePan(zone, zones.indexOf(zone))}`}
           />
           <div className="mt-1 flex flex-wrap gap-3 text-xs text-lune-faint">
@@ -165,7 +193,22 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
               <span aria-hidden="true" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#d0654f' }} />
               Obstruction proche
             </span>
+            <span className="inline-flex items-center gap-1">
+              <span aria-hidden="true" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#ffd166' }} />
+              Soleil de scène
+            </span>
           </div>
+
+          {/* CALX118 — l'instant du soleil de scène AFFICHÉ, et le défaut NOMMÉ quand le
+              document n'en porte aucun (jamais un 21 juin supposé silencieusement). */}
+          <p className="mt-1 text-xs text-lune-faint" data-testid="cal-course-soleil-scene">
+            {sceneEnregistree
+              ? `Soleil affiché : jour ${sceneSunDay} de l’année, ${sceneSunHour} h — instant enregistré dans l’atelier 3D.`
+              : `Soleil affiché : solstice d’hiver, midi (jour ${JOUR_SOLSTICE_HIVER}, ${SCENE_SUN_HOUR_DEFAUT} h) — aucun instant enregistré, comportement d’aujourd’hui.`}
+            {latitudeDeg !== null && soleilSousHorizon
+              ? ' Le soleil est sous l’horizon à cet instant : aucun repère tracé.'
+              : ''}
+          </p>
 
           {/* CALX52 — la hauteur de toit EMPLOYÉE et sa provenance, TOUJOURS
               lisibles sous le diagramme (jamais une valeur muette). */}

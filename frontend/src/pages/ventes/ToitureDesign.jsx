@@ -70,6 +70,9 @@ import ToitClientOverlay from '../../features/ventes/ToitClientOverlay'
 import { contourExploitable } from '../../features/crm/workspace/traceToit'
 // VT13 — la photo réelle du toit calée en visite terrain (porte VT12).
 import { normaliserTextureToit } from '../../features/crm/workspace/photoToit'
+// CALX129 — bascule plein écran RÉVERSIBLE du conteneur de la scène 3D, MÊME
+// mécanique que celle de `Vue2DPlan.jsx` (CAL104) — voir l'en-tête du module.
+import { basculerPleinEcran, estEnPleinEcranSur } from '../../features/calepinage/pleinEcran'
 import '../../styles/roofbuilder.css'
 
 // Convertit un data URL PNG en Blob (upload multipart de la 3D).
@@ -240,6 +243,32 @@ function bankableFromDevis(devis) {
     performance_ratio: pr.performance_ratio,
     loss_breakdown: pr.loss_breakdown ?? {},
   }
+}
+
+// CALX104/CALX403 câblage — les réglages d'atelier PORTÉS PAR LE CONTEXTE agrégé
+// (mode DEVIS). Le mode DEVIS tient une garantie testée — « un seul appel : rien
+// n'est complété par une requête annexe » — donc `zones_types` et `degagements`
+// voyagent DANS `devis_design_context` au lieu d'une seconde porte. `null` quand
+// le contexte ne porte AUCUNE des deux (serveur plus ancien) : l'atelier ne
+// propose alors aucun gabarit et ne préremplit aucune cote, exactement comme
+// avant — rien n'est inventé côté écran.
+function reglagesAtelierDuContexte(contexte) {
+  const zonesTypes = contexte?.zones_types
+  const degagements = contexte?.degagements
+  if (zonesTypes == null && degagements == null) return null
+  return { zones_types: zonesTypes ?? null, degagements: degagements ?? null }
+}
+
+// CALX107 câblage — la taille du plan de fond, telle que `GET …/plan-importe/`
+// la PUBLIE (pixels naturels lus dans l'en-tête du fichier), ou `null`. Aucune
+// étendue n'est supposée : sans dimensions, l'atelier refuse de poser le plan
+// avec son propre motif plutôt que de l'étaler au hasard (D-CALX 7).
+function tailleImagePlan(plan) {
+  const largeur = plan?.largeur
+  const hauteur = plan?.hauteur
+  if (!Number.isFinite(largeur) || !Number.isFinite(hauteur)) return null
+  if (largeur <= 0 || hauteur <= 0) return null
+  return { largeur, hauteur }
 }
 
 function httpMessage(status, responseData) {
@@ -438,8 +467,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // reconstruit ici — sinon la 2D et la 3D divergeraient silencieusement.
   const [vue2d, setVue2d] = useState(false)
   const [plan2d, setPlan2d] = useState(null)
+  // CALX111 câblage — le pan dont on dessine le plan. `Vue2DPlan` accepte `panId` depuis
+  // CALX111 pour lire les numéros de module du DOCUMENT ; personne ne le lui passait, donc
+  // le plan 2D sortait MUET (`if (!plan || !panId) return []`). Capturé au MÊME instant
+  // que le plan : les deux décrivent le même pan.
+  const [panId2d, setPanId2d] = useState(null)
   const ouvrirVue2d = () => {
     setPlan2d(builderApi.current?.planView?.(900, 560) ?? null)
+    setPanId2d(builderApi.current?.panActifId?.() || null) // CALX111 câblage
     setVue2d(true)
   }
   const [hdBusy, setHdBusy] = useState(false)
@@ -464,6 +499,27 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const [photoToitCharge, setPhotoToitCharge] = useState(null)
   const [photoToitVisible, setPhotoToitVisible] = useState(true)
 
+  // CALX129 — plein écran RÉVERSIBLE du conteneur de la scène 3D. `mapWrapRef`
+  // pointe `.rp9-map-wrap`, l'enveloppe ADDITIVE déjà posée par L-MAP autour de
+  // `#rp9-map` (jamais l'id lui-même : le builder ne cherche que ses propres
+  // id, et cette enveloppe couvre aussi `ToitClientOverlay`). Le composant
+  // n'est ni démonté ni ré-amorcé : seule sa classe change.
+  const mapWrapRef = useRef(null)
+  const [pleinEcran3d, setPleinEcran3d] = useState(false)
+
+  // Sortie par Échap suivie via l'évènement du document — jamais supposé que
+  // le bouton est la seule sortie (même repli que Vue2DPlan.jsx).
+  useEffect(() => {
+    const onChange = () => setPleinEcran3d(estEnPleinEcranSur(document, mapWrapRef.current))
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  const basculerPleinEcran3d = () => {
+    Promise.resolve(basculerPleinEcran(mapWrapRef.current, document, pleinEcran3d))
+      .then((etat) => setPleinEcran3d(etat.enPleinEcran))
+  }
+
   // ── Boot : charge lead + config carte, puis initialise le builder ──────────
   useEffect(() => {
     let cancelled = false
@@ -479,7 +535,80 @@ export default function ToitureDesign({ mode = 'lead' }) {
       return undefined
     }
 
+    // CALX104/CALX403 câblage — les DEUX sections des réglages société que l'atelier
+    // consomme (`zones_types` : les gabarits d'obstacle de la société ; `degagements` :
+    // la largeur d'allée de circulation par pays). L'outil ne parle JAMAIS à Django : la
+    // page les lit et les transmet TELLES QUELLES, comme elle le fait déjà pour le
+    // catalogue de modules (CALX109). Best-effort : un refus de droits ou une panne
+    // réseau ne bloque pas le boot — l'atelier ne propose alors AUCUN gabarit et ne
+    // préremplit AUCUNE largeur (jamais une cote de repli).
+    function chargerReglagesAtelier() {
+      return Promise.resolve()
+        .then(() => calepinageApi.parametres.get())
+        .then((res) => {
+          const p = res?.data
+          if (!p || typeof p !== 'object') return null
+          return { zones_types: p.zones_types ?? null, degagements: p.degagements ?? null }
+        })
+        .catch(() => null)
+    }
+
+    // CALX107 câblage — LE CALQUE DE FOND DU DOCUMENT. `mapDraw.setFond` existait et
+    // n'avait AUCUN appelant : un calepinage rouvert perdait sa photo de site calée, alors
+    // que le document la portait (`underlay`). L'atelier ne parle jamais à Django, donc
+    // c'est l'écran qui va chercher le FICHIER (URL pré-signée) et le lui redonne.
+    //
+    // Les DEUX genres sont servis. Une « photo » de site porte son URL et son calage à
+    // quatre coins (`GET …/photos/`, CAL52/CAL53) ; un « plan » importé désigne une pièce
+    // jointe, dont `GET …/plan-importe/` (CALX107) publie l'URL servie et la taille en
+    // PIXELS NATURELS. Une taille inconnue reste inconnue : `tailleImage` vaut alors
+    // `null` et le constructeur refuse le plan avec SA phrase, plutôt que d'étaler
+    // l'image sur une étendue supposée.
+    // Le MOTIF d'un fond non affiché vient TOUJOURS du constructeur (`poserFond`) : une
+    // seule formulation dans tout l'atelier, jamais une phrase recopiée ici.
+    async function poserFondDuDocument(api) {
+      const fond = api?.fondDuDocument?.()
+      if (!fond) {
+        // Un `underlay` ILLISIBLE ne disparaît pas en silence : son motif nomme le
+        // champ fautif (contrat CALX86).
+        const motif = api?.motifFondRefuse?.()
+        if (motif) setStatus(motif)
+        return
+      }
+      if (!api?.poserFond) return
+      let ressource = {}
+      if (fond.kind === 'photo' && fond.photoSiteId && calepinageId) {
+        try {
+          const res = await calepinageApi.calepinages.photos(calepinageId)
+          const photo = (res?.data?.photos ?? [])
+            .find((p) => String(p?.id) === String(fond.photoSiteId))
+          if (photo?.url) ressource = { url: photo.url, calagePhoto: photo.calage }
+        } catch {
+          /* pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché */
+        }
+      } else if (fond.kind === 'plan' && fond.attachmentId && calepinageId) {
+        // CALX107 câblage — la pièce jointe du plan : URL servie + pixels naturels.
+        try {
+          const res = await calepinageApi.calepinages.planImporte(calepinageId)
+          const plan = res?.data
+          if (plan?.url) {
+            ressource = { url: plan.url, tailleImage: tailleImagePlan(plan) }
+          }
+        } catch {
+          /* pas de fichier : le constructeur dira POURQUOI le fond n'est pas affiché */
+        }
+      }
+      if (cancelled) return
+      const pose = api.poserFond(fond, ressource)
+      if (!pose?.ok && pose?.motif) setStatus(pose.motif)
+    }
+
     async function boot() {
+      // CALX104/CALX403 — lancés EN PARALLÈLE du lead (best-effort, cf. ci-dessus).
+      const reglagesPromise = chargerReglagesAtelier()
+      // CALX132 — l'empreinte OSM du bâtiment, lue plus bas avec le contour et
+      // proposée au panneau « Bâtiment » une fois le builder monté.
+      let batimentOsm = null
       let leadData = null
       try {
         const res = await api.get(`/crm/leads/${encodeURIComponent(leadId)}/`)
@@ -507,6 +636,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
       if (!leadData.roof_outline && pinDepuisLead(leadData)) {
         try {
           const fp = await crmApi.getRoofFootprint(leadId)
+          // CALX132 câblage — la MÊME réponse porte un bloc `batiment`
+          // (hauteur/niveaux OSM + provenance, contrat CALX106) qui était JETÉ :
+          // l'atelier extrudait donc toujours ses 6 m de convention. Il part
+          // vers le panneau « Bâtiment » comme une PROPOSITION (le module
+          // `shadingUi` affiche un bouton « Reprendre la hauteur OSM… ») — rien
+          // n'est écrit dans le document sans un clic. Mémorisé ici parce que le
+          // builder n'est pas encore monté : la pose se fait dans `onApiReady`.
+          batimentOsm = fp?.data?.batiment ?? null
           const polygon = fp?.data?.polygon
           if (Array.isArray(polygon) && polygon.length >= 3) {
             // Fable review — le serveur (roof_detect.py) renvoie des points
@@ -552,6 +689,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
 
       // Le DOM `rp9-*` est déjà rendu (JSX ci-dessous) : on boote le builder.
       const mod = await import('@roofbuilder')
+      const reglagesAtelier = await reglagesPromise
       if (cancelled) return
       window.__taqinorRoofBooted = true
       mod.initRoofToolPro8({
@@ -559,6 +697,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
         mapboxToken,
         reducedMotion: !!reducedMotion,
         hydrate: { lead: leadToBuilderPayload(leadData) },
+        // CALX104/CALX403 câblage — gabarits d'obstacle + largeur d'allée de la société,
+        // transmis TELS QUELS ; `null` = aucun réglage, aucune cote de repli.
+        reglagesAtelier,
         // L-MAP — le contour ORIGINAL du client, géo-référencé sur la carte
         // (calque passif, roofPro11/prefill.ts referenceContourRing). Gardé
         // par le MÊME `contourExploitable` que la légende/bascule (revue
@@ -566,7 +707,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
         // bornes, forme inconnue) ne part JAMAIS vers le builder — pas de
         // polygone orphelin sans bascule pour le masquer.
         referenceContour: contourExploitable(leadData.roof_outline) ? leadData.roof_outline : null,
-        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
+        onApiReady: (a) => {
+          builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a)
+          // CALX132 câblage — la proposition OSM ne part QUE si le serveur en a
+          // renvoyé une : sans bloc `batiment`, AUCUNE hauteur n'est proposée (et
+          // l'atelier garde sa convention d'extrusion, affichée comme telle).
+          if (batimentOsm) a.setBatimentOsmPropose?.(batimentOsm)
+        },
       })
       // Pré-remplit l'adresse depuis la ville du lead (champ de recherche).
       const addrEl = document.getElementById('rp9-address')
@@ -643,6 +790,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
         referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
           ? ctx.geometrie.contour_client : null,
         bankable,
+        // CALX104/CALX403 câblage — les gabarits d'obstacle (`zones_types`) et la
+        // largeur d'allée (`degagements`) de la société, lus DANS le contexte agrégé
+        // (`devis_design_context`, PACT10) : AUCUNE requête annexe n'est ajoutée ici,
+        // la garantie testée du mode DEVIS (« un seul appel ») reste vraie. Transmis
+        // TELS QUELS ; `null` = le contexte ne les porte pas, donc aucun gabarit
+        // proposé et aucune cote de repli.
+        reglagesAtelier: reglagesAtelierDuContexte(ctx),
         onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
       })
       // PV23bis — pré-remplit la barre de recherche d'adresse depuis
@@ -675,6 +829,19 @@ export default function ToitureDesign({ mode = 'lead' }) {
     // bancable ni panneau de livraison client — rien de tout cela n'existe sur
     // un calepinage, et l'inventer produirait des boutons morts.
     async function bootCalepinage() {
+      // CALX109 — le CATALOGUE DE MODULES de la société, lu EN PARALLÈLE du
+      // design-context : best-effort exactement comme l'étude bancable de
+      // `bootDevis` — il ne bloque jamais le boot et n'invente rien. Sans lui
+      // (droits, réseau, société sans fiche « module »), l'atelier pose le
+      // module par défaut, NOMMÉ. Le contexte agrégé ne le porte pas (contrat
+      // `calepinage_design_context.json`, PACT10) : c'est sa propre porte.
+      const modulesPromise = Promise.resolve()
+        .then(() => calepinageApi.calepinages.modulesDisponibles(calepinageId))
+        .then((res) => res.data)
+        .catch(() => null)
+      // CALX104/CALX403 — même porte, même discipline best-effort.
+      const reglagesPromise = chargerReglagesAtelier()
+
       let ctx = null
       try {
         const res = await calepinageApi.calepinages.designContext(calepinageId)
@@ -707,6 +874,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
       // « Ignorer » (voir plus bas) — jamais avant.
       async function poursuivreBootCalepinage(layoutSubstitue) {
         const mod = await import('@roofbuilder')
+        // CALX109 — le catalogue est attendu ICI, après le design-context :
+        // la promesse a couru pendant, et un échec vaut « aucun catalogue »
+        // (le module par défaut de l'atelier reste posé), jamais un boot raté.
+        const modulesDisponibles = await modulesPromise
+        const reglagesAtelier = await reglagesPromise
         if (cancelled) return
         window.__taqinorRoofBooted = true
         const payload = contexteCalepinageVersPayload(ctx)
@@ -727,7 +899,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
           // la légende/bascule : voir les commentaires jumeaux ci-dessus.
           referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
             ? ctx.geometrie.contour_client : null,
-          onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
+          // CALX109 — le catalogue de modules de la société, transmis TEL QUEL
+          // (l'outil ne parle jamais à Django) ; `null` = aucun catalogue.
+          modulesDisponibles,
+          // CALX104/CALX403 câblage — voir `boot()` plus haut.
+          reglagesAtelier,
+          onApiReady: (a) => {
+            builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a)
+            // CALX107 câblage — le document peut demander un CALQUE DE FOND
+            // (`underlay`) : l'atelier sait le peindre mais ne parle jamais à
+            // Django, c'est donc à l'écran d'aller chercher le fichier.
+            poserFondDuDocument(a)
+          },
         })
         // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en
         // mode devis (`bootDevis` ci-dessus, PV23bis) et en mode lead (`boot()`).
@@ -1571,10 +1754,21 @@ export default function ToitureDesign({ mode = 'lead' }) {
           {/* L-MAP — enveloppe ADDITIVE autour de `#rp9-map` (jamais un enfant :
               le builder ne cherche que ses propres id, un parent ne lui change
               rien). `ToitClientOverlay` y flotte en calque de référence
-              passif — voir roofbuilder.css `.rp9-map-wrap`/`.rp9-toit-client`. */}
-          <div className="rp9-map-wrap">
-            <div id="rp9-map" className="h-[56vh] min-h-[360px] w-full bg-nuit-700"
-              role="application" aria-label="Carte 3D pour dessiner le toit">
+              passif — voir roofbuilder.css `.rp9-map-wrap`/`.rp9-toit-client`.
+              CALX129 — c'est cette MÊME enveloppe que la bascule plein écran
+              cible (jamais `#rp9-map` : le builder ne cherche que ses propres
+              id, une classe sur son parent ne le démonte ni ne le ré-amorce). */}
+          <div
+            ref={mapWrapRef}
+            data-plein-ecran={pleinEcran3d ? '1' : '0'}
+            data-testid="rp9-map-wrap"
+            className={pleinEcran3d ? 'rp9-map-wrap fixed inset-0 z-[var(--z-overlay)] bg-nuit-900' : 'rp9-map-wrap'}
+          >
+            <div
+              id="rp9-map"
+              className={pleinEcran3d ? 'h-full w-full bg-nuit-700' : 'h-[56vh] min-h-[360px] w-full bg-nuit-700'}
+              role="application" aria-label="Carte 3D pour dessiner le toit"
+            >
               <div id="rp9-compass" className="rp9-compass" aria-hidden="true">
                 <div id="rp9-compass-arrow" className="rp9-compass-arrow"><span>N</span><span>S</span></div>
               </div>
@@ -1589,6 +1783,18 @@ export default function ToitureDesign({ mode = 'lead' }) {
               photoToit={photoToit}
               photoVisible={photoToitVisible}
             />
+            {/* CALX129 — reste À L'INTÉRIEUR de l'enveloppe (pas dans la barre
+                d'outils plus bas) : en plein écran, tout ce qui est hors de
+                cette enveloppe est recouvert — le bouton de sortie doit donc y
+                vivre pour rester cliquable dans les deux états. */}
+            <button
+              type="button"
+              onClick={basculerPleinEcran3d}
+              data-testid="rp9-plein-ecran-toggle"
+              className={`${chipClass} absolute right-3 top-3 z-10`}
+            >
+              {pleinEcran3d ? 'Quitter le plein écran' : 'Plein écran'}
+            </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
@@ -2132,7 +2338,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
             </div>
             {vue2d && (
               <div className="mt-2">
-                <Vue2DPlan plan={plan2d} compte3d={plan2d?.panelCount ?? null} />
+                <Vue2DPlan plan={plan2d} compte3d={plan2d?.panelCount ?? null} panId={panId2d} />
               </div>
             )}
           </div>

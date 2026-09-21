@@ -24,7 +24,11 @@ from apps.ventes.models import Devis
 User = get_user_model()
 
 CLES_RACINE = {'devis', 'geometrie', 'cible', 'carte', 'modifiable',
-               'raison_lecture_seule', 'avertissements'}
+               'raison_lecture_seule', 'avertissements',
+               # CALX104/CALX403 — les deux sections de réglages société que
+               # l'atelier 3D lit (`reglagesAtelier`). Toujours présentes,
+               # `{}` quand la société n'a rien saisi.
+               'zones_types', 'degagements'}
 CLES_DEVIS = {'id', 'reference', 'statut', 'mode_installation', 'lead',
               'client', 'client_nom', 'client_telephone', 'client_ville',
               'client_adresse'}

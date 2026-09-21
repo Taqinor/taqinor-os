@@ -27,6 +27,7 @@ import { type ShadeObstruction } from '../../lib/shadingEngine';
 import { type Measurement } from './mesureUi';
 import { type EnvironmentObject } from './environment';
 import { type ExclusionZone, type ExclusionNature } from './zones';
+import { type Batiment } from './batiment';
 import {
   type InitOptions,
   type RoofType,
@@ -264,6 +265,13 @@ export interface Ctx {
   /** CAL67 — compteur d'identifiants d'objet d'environnement (env-N). Optionnel : absent
    *  sur un `ctx` antérieur à CAL67 → `obstaclesUi.ts` l'initialise à 0 au premier ajout. */
   envCounter?: number;
+  /** CALX84/CALX100 — les BÂTIMENTS du site tels que le DOCUMENT les décrit (hauteur,
+   *  étages, hauteur d'étage, provenance, relevé d'acrotère). Jusqu'ici la hauteur CAL60
+   *  vivait dans une `Map` locale de `shadingUi.ts` et n'était JAMAIS sérialisée : rouvrir
+   *  le dossier la perdait. Optionnel : absent (ctx antérieur à CALX100, tests unitaires
+   *  isolés) = aucun bâtiment décrit → la 3D reste sur sa hauteur de DESSIN annoncée
+   *  (`batiment.ts` `HAUTEUR_DESSIN_M`), comportement d'aujourd'hui. */
+  batiments?: Batiment[];
   /** Matrice 12×24 des facteurs d'ombrage horaires, ou null = aucun ombrage tracé. */
   shadeFactors: number[][] | null;
   /** Facteur d'ombrage ANNUEL (0–1], 1 = aucun dérate — appliqué aux chiffres annuels. */
@@ -327,4 +335,10 @@ export interface Ctx {
   consSummerFactor: number;
   /** W95 — facteur multiplicatif de la conso l'hiver. */
   consWinterFactor: number;
+  /** CALX123 — les SURFACES DE POSE tracées dans l'atelier (champ au sol, ombrière,
+   *  façade), telles que le contrat `poseSurfaces[]` les décrit. Optionnel : absent
+   *  (ctx antérieur à CALX123, tests unitaires isolés) = aucune surface de pose, et
+   *  le document repart inchangé, octet pour octet. Le PLAN de pose vit sous
+   *  `engine` et vient du moteur serveur : l'atelier ne le recalcule jamais. */
+  surfacesPose?: import('./poseSurfaces').SurfacePose[];
 }

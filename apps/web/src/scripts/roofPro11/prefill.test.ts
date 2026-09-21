@@ -13,6 +13,7 @@ import {
   deserializeSolarAccess,
   deserializeSetbacksFromLayout,
   deserializeHorizonProfileFromLayout,
+  deserializeSceneFromLayout,
   hydrateFromDevis,
 } from './prefill';
 import { uniformSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
@@ -432,6 +433,44 @@ describe('CAL93 — le profil d’horizon lointain (horizonProfile) persisté da
     const areas = [zone('z1')];
     const sans = serializeLayout(makeCtx(areas));
     const avec = serializeLayout(makeCtx(areas), null, { horizonProfile: profil });
+    expect(avec.result).toEqual(sans.result);
+    expect(avec.zones).toEqual(sans.zones);
+  });
+});
+
+describe('CALX119 — l’instant du soleil de scène (scene.sunDay/sunHour) persisté', () => {
+  it('ctx sans sunDay/sunHour finis (contexte de test minimal) : la clé `scene` n’est pas écrite', () => {
+    const areas = [zone('z1')];
+    const layout = serializeLayout(makeCtx(areas));
+    expect('scene' in layout).toBe(false);
+  });
+
+  it('écrit `scene` avec l’instant COURANT de `ctx.sunDay`/`ctx.sunHour`, verbatim', () => {
+    const areas = [zone('z1')];
+    const ctx = { ...makeCtx(areas), sunDay: 172, sunHour: 14.5 };
+    const layout = serializeLayout(ctx);
+    expect(layout.scene).toEqual({ sunDay: 172, sunHour: 14.5 });
+  });
+
+  it('aller-retour JSON : une date choisie survit à serializeLayout puis réhydratation', () => {
+    const areas = [zone('z1')];
+    const ctx = { ...makeCtx(areas), sunDay: 45, sunHour: 9 };
+    const layout = serializeLayout(ctx);
+    const round = JSON.parse(JSON.stringify(layout));
+    expect(deserializeSceneFromLayout(round)).toEqual({ sunDay: 45, sunHour: 9 });
+  });
+
+  it('un document SANS scene (antérieur à CALX88/CALX119) se relit sans erreur : null, jamais un jour deviné', () => {
+    expect(deserializeSceneFromLayout(undefined)).toBeNull();
+    expect(deserializeSceneFromLayout({})).toBeNull();
+    expect(deserializeSceneFromLayout({ scene: { sunDay: 'douze' } })).toBeNull();
+    expect(deserializeSceneFromLayout({ scene: { sunDay: 172, sunHour: Number.NaN } })).toBeNull();
+  });
+
+  it('NON-RÉGRESSION : écrire scene ne change aucun autre chiffre du document', () => {
+    const areas = [zone('z1')];
+    const sans = serializeLayout(makeCtx(areas));
+    const avec = serializeLayout({ ...makeCtx(areas), sunDay: 172, sunHour: 14.5 });
     expect(avec.result).toEqual(sans.result);
     expect(avec.zones).toEqual(sans.zones);
   });

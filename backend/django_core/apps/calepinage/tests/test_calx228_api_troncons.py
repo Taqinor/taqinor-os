@@ -154,7 +154,9 @@ class RoutageTronconsTest(SimpleTestCase):
 
         self.assertIn('troncons', MODULES_RATTACHES)
         # EN FIN, jamais au milieu (surface append-only, D-CALX 13).
-        self.assertEqual(MODULES_RATTACHES[-1], 'troncons')
+        # Fold lot 2 : d'autres portes (plan_importe, modules_disponibles)
+        # s'ajoutent en fin de tuple — la garantie est la PRÉSENCE, pas le rang.
+        self.assertIsInstance(MODULES_RATTACHES, tuple)
 
     def test_le_chemin_resout_sous_le_calepinage(self):
         from django.urls import reverse

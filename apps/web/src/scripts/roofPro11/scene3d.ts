@@ -37,17 +37,39 @@ import {
 import { ringBBox, type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import { roofImageRequest, roofVertexUV, mapboxStaticRoofImageUrl } from '../../lib/roofConfig';
+// CALX100 — `FLOORS`/`FLOOR_HEIGHT_M` ne sont plus lus ici : la hauteur des murs vient du
+// document (`batiment.ts`), qui garde ces deux constantes comme sa hauteur de DESSIN.
 import {
-  FLOOR_HEIGHT_M,
   DECK_THK,
-  FLOORS,
   OBSTACLE_BOX_H_M,
   DEG2RAD,
   DEG2M,
 } from './constants';
-import { type ZoneRenderPlan } from './types';
+import { type AreaRecord, type ZoneRenderPlan } from './types';
 import { makeCanadianPanelTexture } from './panelTexture';
 import { type Ctx } from './context';
+import { poserEtiquettesNumeros } from './numerotation'; // CALX111
+// CALX94 câblage — couleur d'arête RETENUE (correction manuelle prioritaire), PURE.
+import { couleursAretes, type EdgeDeductionZone } from './edges';
+
+/** CALX94 — convention de dessin : le trait de contour est posé 6 cm au-dessus de la
+ *  dalle pour ne pas z-fighter avec elle. Aucune portée d'ingénierie. */
+const EDGE_LINE_LIFT_M = 0.06;
+
+import {
+  HAUTEUR_DESSIN_M,
+  acrotereDuBatiment,
+  batimentDuPan,
+  construireLucarnes,
+  hauteurExtrusion,
+  lucarnesDuPan,
+  percerPanLucarnes,
+  construireAcrotere,
+} from './batiment'; // CALX100/101/102 — hauteur, acrotère et lucarne viennent du DOCUMENT
+import { type PerimeterSetbacks } from '../../lib/roofPro2';
+import { construireMaillagesPose } from './poseSurfaces'; // CALX124
+
+import { teinterAllees } from './teinteAllees'; // CALX403
 
 /** Dépendances injectées (carte + capacités de l'appareil, figées au boot). */
 export interface Scene3dDeps {
@@ -70,6 +92,13 @@ export interface Scene3dDeps {
    *     l'aide au placement) ne sont plus dessinées — les boîtes, elles, restent.
    */
   readOnly?: boolean;
+  /**
+   * CALX101 — les quatre retraits de rive RÉGLÉS dans l'atelier (CAL76), lus à la demande
+   * comme l'optimiseur les lit (`optimizer.ts` `setbacksOf`). Seul `parapetM` sert ici :
+   * c'est l'ÉPAISSEUR du bandeau d'acrotère quand une hauteur de relevé est SAISIE.
+   * Optionnel : absent = aucun bandeau d'acrotère, la scène d'aujourd'hui octet pour octet.
+   */
+  setbacksOf?: () => PerimeterSetbacks;
 }
 
 export interface Scene3d {
@@ -93,6 +122,15 @@ export interface Scene3d {
   ) => void;
   /** Réinitialise la photo de toit + la matrice modèle (appelé par clearEditorState). */
   resetTextures: () => void;
+  /**
+   * CALX219 câblage — ATTACHE la couche électrique (le `groupe` three.js que
+   * `creerCoucheElectrique` construit, lot 4) à la racine de la scène, et la RÉ-ATTACHE
+   * après chaque `renderScene` — sans quoi le groupe existe mais n'est jamais rendu.
+   * La scène ne fait que l'attacher : elle ne construit RIEN dedans et ne le libère
+   * JAMAIS (`disposeScene` le détache d'abord), son créateur en reste propriétaire.
+   * `null` le détache. Appelable avant `onAdd` : l'attache se fait alors au premier rendu.
+   */
+  setCoucheElectrique: (groupe: THREE.Object3D | null) => void;
   /** W88 — surligne le panneau de la zone active correspondant à `cellIndex` (or = sélection),
    *  ou efface tout surlignage (cellIndex null). Pose les couleurs d'instance + repeint. */
   setPanelHighlight: (cellIndex: number | null) => void;
@@ -1041,6 +1079,18 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   // W107 — lift de faîtière commune par zone (id → mètres), recalculé à chaque renderScene
   // dans la frame ENU de la zone active. Vide / 0 → rendu inchangé (pans isolés, toit plat).
   let ridgeLifts = new Map<string, number>();
+  // CALX219 câblage — la couche électrique du lot 4. Elle est CONSTRUITE ailleurs
+  // (`electrique3d.ts`) : ici on ne garde que sa référence pour la rattacher après chaque
+  // reconstruction de scène. Jamais disposée ici (voir `disposeScene`).
+  let groupeElectrique: THREE.Object3D | null = null;
+  // CALX101 — retraits de rive RÉGLÉS (CAL76), lus à la demande. Absent → aucun acrotère.
+  const parapetReglM = (): number => {
+    const s = deps.setbacksOf?.();
+    return typeof s?.parapetM === 'number' && Number.isFinite(s.parapetM) ? s.parapetM : 0;
+  };
+  function attacherCoucheElectrique() {
+    if (groupeElectrique && sceneRoot && groupeElectrique.parent !== sceneRoot) sceneRoot.add(groupeElectrique);
+  }
 
   const AXIS_X = new THREE.Vector3(1, 0, 0);
   const AXIS_Z = new THREE.Vector3(0, 0, 1);
@@ -1238,6 +1288,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       scene = new THREE.Scene();
       sceneRoot = new THREE.Group();
       scene.add(sceneRoot);
+      attacherCoucheElectrique(); // CALX219 — couche donnée AVANT le premier rendu
       scene.add(new THREE.AmbientLight(0xb9c8ee, 0.5));
       scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x20242e, 0.5));
       sun = new THREE.DirectionalLight(0xfff2d6, 2.5);
@@ -1308,6 +1359,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
 
   function disposeScene() {
     if (!sceneRoot) return;
+    // CALX219 câblage — la couche électrique n'appartient PAS à la scène : on la DÉTACHE
+    // avant la purge pour que ses géométries/matériaux survivent au re-rendu (elle est
+    // rattachée en fin de `renderScene`). Sans ce détachement, chaque reconstruction de
+    // scène libérerait des ressources GPU dont `electrique3d.ts` se croit propriétaire.
+    if (groupeElectrique && groupeElectrique.parent === sceneRoot) sceneRoot.remove(groupeElectrique);
     for (const child of [...sceneRoot.children]) {
       child.traverse(disposeObject); // inclut les arêtes/étiquettes enfants
       sceneRoot.remove(child);
@@ -1474,7 +1530,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     isOtherZone: boolean = dim,
   ): { deck: THREE.Mesh; deckMat: THREE.MeshStandardMaterial; ring: [number, number][] } {
     const { pack, grid, tiltDeg, family, flush } = plan;
-    const wallH = FLOORS * FLOOR_HEIGHT_M;
+    const wallH = hauteurExtrusion(plan.batiment).hauteurM; // CALX100 — saisie, sinon dessin
     const ring: [number, number][] = pack.ringENU.map(([x, y]) => [x + offX, y + offY]);
     // W107 — lift de faîtière commune : le pan incliné monte de `ridgeLiftM` (sans changer
     // de pente) pour rejoindre la faîtière partagée d'un pan voisin. CAL61 — un pan PLAT
@@ -1524,7 +1580,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       deckMat.transparent = true;
       deckMat.opacity = 0.7;
     }
-    const deckGeo = new THREE.ShapeGeometry(shape);
+    // CALX102 — la forme du PAN, PERCÉE de l'emprise de chaque lucarne (chien-assis à
+    // hauteur SAISIE). Forme NEUVE : l'anneau `shape` ci-dessus continue d'extruder le
+    // bâtiment intact. Sans lucarne à hauteur saisie, elle est identique à `shape`.
+    const lucarnes = lucarnesDuPan(plan.obstacles, pack.origin, offX, offY); // CALX102
+    const deckGeo = new THREE.ShapeGeometry(percerPanLucarnes(ring, lucarnes).shape);
     if (flush) {
       // FIX 1 (V6) — la SURFACE DE TOIT elle-même devient un plan INCLINÉ : chaque
       // sommet de la dalle est relevé à la hauteur du plan (pente × distance à
@@ -1544,6 +1604,20 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     deck.position.z = wallH + 0.02 + (flush ? 0 : ridgeLiftM);
     deck.receiveShadow = true;
     sceneRoot!.add(deck);
+
+    // CALX101 — bandeau d'ACROTÈRE : un VOLUME (pas seulement un recul), qui porte une
+    // vraie ombre de rive. Il n'existe que si une hauteur de relevé est SAISIE dans le
+    // panneau Bâtiment ET qu'un retrait d'acrotère est réglé (CAL76) — sinon `null`, et la
+    // scène garde EXACTEMENT les maillages d'aujourd'hui. Toit en pente (`flush`) : aucun
+    // bandeau, un acrotère est un ouvrage de toit-terrasse.
+    const acrotere = flush // CALX101
+      ? null
+      : construireAcrotere(ring, acrotereDuBatiment(plan.batiment, plan.parapetM), deck.position.z, dim);
+    if (acrotere) sceneRoot!.add(acrotere);
+
+    // CALX102 — le VOLUME des lucarnes (deux versants), posé sur le plan du pan à l'endroit
+    // exact où il vient d'être percé. Liste vide (aucune hauteur saisie) → rien d'ajouté.
+    for (const m of construireLucarnes(lucarnes, deck.position.z, dim)) sceneRoot!.add(m); // CALX102
 
     // W90 — MASSING DU TOIT EN PENTE (pignons/jupe de rive). En pente (flush) la dalle
     // est un PLAN INCLINÉ posé au-dessus du toit plat du bâtiment (z = wallH) : sans rien
@@ -1588,6 +1662,54 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       skirt.castShadow = true;
       skirt.receiveShadow = true;
       sceneRoot!.add(skirt);
+    }
+
+    // CALX94 câblage — le CONTOUR du pan actif, peint segment par segment à la couleur de
+    // son type d'arête RETENU : une arête corrigée à la main dans l'atelier (`manuel`)
+    // l'emporte sur la déduction, exactement comme dans le document. Sans ce trait, la
+    // correction n'était visible nulle part en 3D. La décision est PURE (`couleursAretes`,
+    // edges.ts) : rien n'est re-déduit ici. Pan non actif, ou anneau ENU et contour
+    // lng/lat désaccordés (aucun appariement à deviner) ⇒ rien n'est ajouté, rendu
+    // inchangé. Le trait est posé à ras de la dalle (convention de dessin).
+    if (!isOtherZone) { // CALX94 câblage
+      const actif = ctx.activeArea();
+      const contour = ctx.vertices.length >= 3 ? ctx.vertices : (actif?.vertices ?? []);
+      if (actif && contour.length === ring.length) {
+        const pourDeduction = (a: AreaRecord, v: LngLat[]): EdgeDeductionZone => ({
+          vertices: v,
+          roofType: a.roofType,
+          facingAzimuthDeg: a.facingAzimuthDeg,
+          ...(Number.isFinite(a.pitchDeg) ? { pitchDeg: a.pitchDeg } : {}),
+        });
+        const couleurs = couleursAretes(
+          pourDeduction(actif, contour),
+          ctx.areas.filter((a) => a.id !== actif.id).map((a) => pourDeduction(a, a.vertices)),
+          actif.edges,
+        );
+        /** z monde du dessus de dalle au point (x, y) — plan incliné en pente, plat sinon. */
+        const zDalle = (x: number, y: number) =>
+          (flush
+            ? wallH + 0.02 + pitchedDeckZ(x, y, pitchEaveCoord, ridgeLiftM, tiltDeg, pack.azimuthDeg)
+            : deck.position.z) + EDGE_LINE_LIFT_M;
+        couleurs.forEach((couleur, i) => {
+          const [ax, ay] = ring[i];
+          const [bx, by] = ring[(i + 1) % ring.length];
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute(
+            'position',
+            new THREE.BufferAttribute(
+              new Float32Array([ax, ay, zDalle(ax, ay), bx, by, zDalle(bx, by)]),
+              3,
+            ),
+          );
+          const ligne = new THREE.Line(
+            geo,
+            new THREE.LineBasicMaterial({ color: couleur, transparent: true, opacity: 0.95 }),
+          );
+          ligne.renderOrder = 4;
+          sceneRoot!.add(ligne);
+        });
+      }
     }
 
     // Axes de visée à partir de l'azimut de la famille.
@@ -1792,6 +1914,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       makeIM(socleGeo, socleMat, socleMats, true, true),
     ];
     for (const me of meshes) if (me) sceneRoot!.add(me);
+    // CALX111 — étiquettes de NUMÉRO sur les modules rendus, lues depuis le document (jamais
+    // depuis l'index du tableau). Bascule « Numéroter » éteinte par défaut ⇒ aucun objet ajouté.
+    poserEtiquettesNumeros({ three: THREE, racine: sceneRoot, panId: ctx.activeAreaId, modules: panels, matrices: panelMatsArr, zoom: deps.map?.getZoom?.() ?? null, autreZone: isOtherZone, hote: ctx.dom.areasWindowEl, repeint: () => deps.map?.triggerRepaint?.() });
 
     // W88 — pick/highlight des panneaux : SEULEMENT pour la zone ACTIVE (non dim). On dote
     // l'InstancedMesh des panneaux d'un buffer instanceColor (tous blancs = teinte d'origine ;
@@ -1805,6 +1930,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       }
       ctx.activePanelMesh = panelIM;
       ctx.activePanelCellIndex = panelCellIndices;
+      teinterAllees(ctx, panelIM, panelCellIndices); // CALX403 câblage
     }
 
     // Zones NON actives : obstacles rendus en boîtes subduées (sans étiquette ni drag),
@@ -1852,14 +1978,20 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
    *  `vertices` (lng/lat → ENU relatif à l'origine active), même teinte subduée que les
    *  autres zones. Renvoie l'anneau ENU translaté (pour l'enveloppe d'ombre), ou null si
    *  le tracé n'a pas au moins 3 sommets. */
-  function buildBareZoneRing(vertices: LngLat[], activeOrigin: LngLat): [number, number][] | null {
+  function buildBareZoneRing(
+    vertices: LngLat[],
+    activeOrigin: LngLat,
+    // CALX100 — hauteur d'extrusion de CE pan (saisie du document, sinon dessin). Absente
+    // (appelant antérieur à CALX100) = hauteur de dessin, le rendu d'aujourd'hui.
+    hauteurMurM: number = HAUTEUR_DESSIN_M,
+  ): [number, number][] | null {
     if (vertices.length < 3) return null;
     const cosLat = Math.cos(activeOrigin[1] * DEG2RAD);
     const ring: [number, number][] = vertices.map(([lng, lat]) => [
       (lng - activeOrigin[0]) * DEG2M * cosLat,
       (lat - activeOrigin[1]) * DEG2M,
     ]);
-    const wallH = FLOORS * FLOOR_HEIGHT_M;
+    const wallH = hauteurMurM; // CALX100
     const shape = new THREE.Shape();
     ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
     shape.closePath();
@@ -1941,7 +2073,14 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const offY = (plan.pack.origin[1] - activeOrigin[1]) * DEG2M;
         // W107 — applique le lift de faîtière commune de cette zone (copie superficielle pour
         // ne pas muter le renderPlan stocké). 0 par défaut → rendu inchangé.
-        const liftedPlan: ZoneRenderPlan = { ...plan, ridgeLiftM: ridgeLifts.get(a.id) ?? 0 };
+        // CALX100/101 — ce pan extrude la hauteur SAISIE de SON bâtiment (CAL59
+        // `buildingId` → `buildings[]`), et porte le retrait d'acrotère réglé.
+        const liftedPlan: ZoneRenderPlan = {
+          ...plan,
+          ridgeLiftM: ridgeLifts.get(a.id) ?? 0,
+          batiment: batimentDuPan(ctx.batiments, a.buildingId), // CALX100
+          parapetM: parapetReglM(), // CALX101
+        };
         // VISIONNEUSE : `dim` false → ce pan est bâti avec les MÊMES matériaux que
         // le pan actif (verre, cadres, rails, châssis) ; `isOtherZone` reste true →
         // il ne touche pas la référence de pick et garde ses propres obstacles.
@@ -1949,7 +2088,12 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         rings.push(built.ring);
       } else {
         // W78 — pas de plan de rendu (zone finie à 0 panneau) : on dessine son volume nu.
-        const bare = buildBareZoneRing(a.vertices, activeOrigin);
+        // CALX100 — à la hauteur SAISIE de son bâtiment, sinon la hauteur de dessin.
+        const bare = buildBareZoneRing(
+          a.vertices,
+          activeOrigin,
+          hauteurExtrusion(batimentDuPan(ctx.batiments, a.buildingId)).hauteurM, // CALX100
+        );
         if (bare) rings.push(bare);
       }
     }
@@ -2039,7 +2183,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     ctx.activePanelCellIndex = [];
     disposeScene();
 
-    const wallH = FLOORS * FLOOR_HEIGHT_M;
+    // CALX100 — la hauteur du pan ACTIF vient du bâtiment que son `buildingId` désigne
+    // dans `buildings[]` (contrat CALX84) ; sans saisie, la hauteur de DESSIN annoncée.
+    const batimentActif = batimentDuPan(ctx.batiments, ctx.activeArea()?.buildingId); // CALX100
+    const wallH = hauteurExtrusion(batimentActif).hauteurM;
 
     // W69 — disposition personnalisée : si un ensemble d'index occupés est fourni, on
     // rend EXACTEMENT ces cellules (potentiellement non contiguës) ; sinon on garde le
@@ -2056,7 +2203,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // autres zones (buildZoneMeshes), à offset NUL et sans atténuation → octet pour octet
     // identique à avant. Les obstacles VIVANTS (tinte sélection + étiquette + drag) et la
     // photo satellite restent gérés ici car ils dépendent de l'état d'édition courant.
-    const activePlan: ZoneRenderPlan = { pack, grid, tiltDeg, family, flush, count: drawnPanels.length, obstacles: ctx.obstacles, ridgeLiftM: ridgeLifts.get(ctx.activeAreaId) ?? 0 };
+    const activePlan: ZoneRenderPlan = { pack, grid, tiltDeg, family, flush, count: drawnPanels.length, obstacles: ctx.obstacles, ridgeLiftM: ridgeLifts.get(ctx.activeAreaId) ?? 0, batiment: batimentActif, parapetM: parapetReglM() };
     const built = buildZoneMeshes(activePlan, 0, 0, false, occupiedSet);
     // Change B : pose la photo satellite (géo-alignée, détourée au tracé) sur la
     // face supérieure. L'origine de la scène sert à reprojeter les sommets en lng/lat.
@@ -2225,6 +2372,8 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     sc.far = dist * 2;
     sc.updateProjectionMatrix();
 
+    attacherCoucheElectrique(); // CALX219 câblage — la couche électrique revient sur la scène
+    for (const m of construireMaillagesPose(ctx.surfacesPose, pack.origin, readOnly)) sceneRoot!.add(m); // CALX124 — surfaces de pose (sol/ombrière) : volumes et ombres portées ; aucune surface ⇒ rien d'ajouté
     map.triggerRepaint();
   }
 
@@ -2414,7 +2563,17 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, snapshot, renderOffscreen };
+  // CALX219 câblage — l'atelier donne sa couche électrique à la scène ; la scène l'attache
+  // tout de suite si elle existe déjà, et la ré-attache après chaque `renderScene`.
+  function setCoucheElectrique(groupe: THREE.Object3D | null) {
+    if (groupeElectrique && groupeElectrique !== groupe && groupeElectrique.parent === sceneRoot) {
+      sceneRoot?.remove(groupeElectrique); // détaché, jamais disposé : il ne nous appartient pas
+    }
+    groupeElectrique = groupe;
+    attacherCoucheElectrique();
+  }
+
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, snapshot, renderOffscreen };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

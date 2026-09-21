@@ -14,6 +14,37 @@ import { isSimplePolygon, type LngLat } from '../../lib/roof';
 import { availableOptionalLayers, getOptionalLayer, optionalLayerSourceSpec } from '../../lib/roofConfig';
 import { $ } from './dom';
 import { type Ctx } from './context';
+import { aimanterAuxZones, contraindreAngle, metresParPixel, pointDepuisCap, PAS_ANGLE_DEG } from './snap';
+import {
+  calagePourDocument,
+  coucheAvantPourFond,
+  deplacerCalage,
+  lireUnderlay,
+  placementDuFond,
+  specCoucheFond,
+  specSourceFond,
+  tournerCalage,
+  UNDERLAY_PHOTO_LAYER_ID,
+  UNDERLAY_PLAN_LAYER_ID,
+  type CalageDeuxPoints,
+  type ChampCalage,
+  type DocumentUnderlay,
+  type RessourceFond,
+} from './underlay';
+import {
+  aideClavier,
+  aideGestesSouris,
+  createClavier,
+  deplacerCurseur,
+  pasCurseurM,
+  type Clavier,
+  type GestesAtelier,
+  type LigneAide,
+  type ModeClavier,
+  type VerdictGeste,
+} from './clavier';
+import { DEG2M, DEG2RAD, VERTEX_GRAB_PX } from './constants';
+import { monterAtelierPose } from './poseSurfaces'; // CALX123
 
 /**
  * WJ41 — libellés/messages de statut de la carte/géocodeur, tous LOCALISABLES.
@@ -139,8 +170,12 @@ export const ORDRE_RENDU_CALQUES: readonly string[] = [
 export const MAPLIBRE_LAYERS_PAR_CALQUE: Readonly<Record<string, readonly string[]>> = {
   imagerie: [],
   cadastre: ['rp9-opt-cadastre'],
-  photo: [],
-  plan: [],
+  // CALX107 — les deux calques de FOND pilotent enfin de vraies couches MapLibre : la
+  // photo de site calée à quatre coins (CAL53) et le plan importé calé à deux points
+  // (CALX86/CALX108). Tant qu'aucun fond n'est posé, la couche n'existe pas sur la carte
+  // et `setLayerState` reste le no-op silencieux d'aujourd'hui.
+  photo: [UNDERLAY_PHOTO_LAYER_ID],
+  plan: [UNDERLAY_PLAN_LAYER_ID],
   trace_client: ['rp9-ref-contour-fill', 'rp9-ref-contour-line'],
   obstacles: ['rp9-obs', 'rp9-obs-outline', 'rp9-obs-label'],
   zones: ['rp9-zones', 'rp9-zones-outline', 'rp9-zones-label'],
@@ -168,6 +203,157 @@ export function opacityPropFor(type: string | undefined): string | null {
   }
 }
 
+// ————————————————————————————————————————————————————————————————————————
+// CALX90 — SAISIE CLAVIER DE LA LONGUEUR ET DE L'ANGLE DU SEGMENT EN COURS
+//
+// Aucune entrée clavier ne posait ni ne cotait un sommet : `addVertex` n'était appelé que
+// depuis le clic/tap de la carte, et la mesure n'existait qu'APRÈS coup (`mesureUi.ts`).
+// Parité HelioScope (dimensions exactes tapées au clavier sur un Field Segment).
+//
+// RÈGLE DURE : les DEUX valeurs sont saisies, jamais l'une supposée à partir de l'autre.
+// Un champ vide REFUSE la pose en NOMMANT le champ fautif (règle fondateur : l'erreur
+// désigne le champ, jamais un « non enregistré » générique).
+// ————————————————————————————————————————————————————————————————————————
+
+/** Champ d'une saisie de segment — celui que l'erreur doit désigner. */
+export type ChampSegment = 'longueur' | 'angle';
+
+export type SaisieSegment =
+  | { ok: true; distanceM: number; capDeg: number }
+  | { ok: false; champ: ChampSegment; motif: string };
+
+/** Nombre à la française (virgule décimale, espaces insécables tolérés). */
+function nombreSaisi(s: string | null | undefined): number {
+  return Number.parseFloat((s ?? '').replace(/\s/g, '').replace(',', '.'));
+}
+
+/**
+ * CALX90 — lit le couple « longueur (m) / angle (° depuis le nord) ». Ne pose RIEN tant que
+ * les deux ne sont pas saisis et valides : jamais un angle supposé, jamais une longueur de
+ * repli. Le refus nomme le champ fautif ET donne le motif en clair.
+ */
+export function lireSaisieSegment(longueurBrute: string, angleBrut: string): SaisieSegment {
+  if (!(longueurBrute ?? '').trim()) {
+    return { ok: false, champ: 'longueur', motif: 'Longueur manquante — saisissez la longueur du côté, en mètres.' };
+  }
+  const distanceM = nombreSaisi(longueurBrute);
+  if (!Number.isFinite(distanceM) || distanceM <= 0) {
+    return { ok: false, champ: 'longueur', motif: 'Longueur invalide — saisissez un nombre de mètres supérieur à 0.' };
+  }
+  if (!(angleBrut ?? '').trim()) {
+    return { ok: false, champ: 'angle', motif: 'Angle manquant — saisissez le cap du côté en degrés (0 = nord, 90 = est).' };
+  }
+  const capDeg = nombreSaisi(angleBrut);
+  if (!Number.isFinite(capDeg)) {
+    return { ok: false, champ: 'angle', motif: 'Angle invalide — saisissez un cap en degrés (0 = nord, 90 = est).' };
+  }
+  return { ok: true, distanceM, capDeg };
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX117 — GRILLE MÉTRIQUE DE REPÈRE AU PAS SAISI
+//
+// La seule « grille » du module était le pas du pavage servant à caler un glissé
+// (`layoutEditor.ts`) : rien n'affichait de trame métrique sur la carte pour aider au tracé.
+// Parité PV*SOL (section de carte à l'échelle vraie, qui restitue les distances réelles).
+//
+// LA GRILLE EST PUREMENT VISUELLE : elle n'entre dans AUCUN calcul. Elle ne touche ni
+// `ctx.vertices`, ni les obstacles, ni le pavage — c'est une couche de lignes de plus sur
+// la carte, et son identifiant `rp9-grille` n'appartient à aucun calque de
+// `ORDRE_RENDU_CALQUES` (donc `setLayerState` ne peut pas la mêler à une entrée de calcul).
+// ————————————————————————————————————————————————————————————————————————
+
+/** Identifiant de la source ET de la couche MapLibre de la grille. */
+export const GRILLE_LAYER_ID = 'rp9-grille';
+
+/**
+ * Nombre MAXIMAL de lignes dessinées. CONVENTION DE RENDU (pas un seuil métier) : au-delà,
+ * une trame est illisible à l'œil et coûteuse à peindre — on n'en dessine alors AUCUNE et on
+ * le dit, plutôt que d'afficher une bouillie.
+ */
+export const MAX_LIGNES_GRILLE = 400;
+
+export interface OptionsGrille {
+  /** Point autour duquel la trame est bâtie (centroïde du tracé, ou centre de la vue). */
+  centre: LngLat;
+  /** Pas SAISI, en mètres. ≤ 0 ⇒ aucune ligne (puce éteinte). */
+  pasM: number;
+  /** Demi-étendue couverte, en mètres — DÉRIVÉE de la vue par l'appelant, jamais inventée. */
+  demiEtendueM: number;
+  /** Orientation de la trame (° depuis le nord vrai). Absente/0 ⇒ nord vrai. */
+  azimutDeg?: number;
+}
+
+/** Une trame, au format GeoJSON que MapLibre consomme directement. */
+export interface TrameGeoJSON {
+  type: 'FeatureCollection';
+  features: Array<{
+    type: 'Feature';
+    geometry: { type: 'LineString'; coordinates: LngLat[] };
+    properties: { axe: 'u' | 'v'; rang: number };
+  }>;
+}
+
+const TRAME_VIDE: TrameGeoJSON = { type: 'FeatureCollection', features: [] };
+
+/**
+ * CALX117 — construit la trame métrique. PURE : elle ne lit ni ne modifie aucun état du
+ * builder, et un pas nul/absent (puce éteinte) rend une trame VIDE — donc aucune source
+ * n'est peuplée et rien n'est ajouté à la carte.
+ *
+ * Les lignes sont espacées du pas SAISI en distance réelle (plan tangent local au centre),
+ * quelle que soit la latitude : 5 m saisis = 5 m mesurés entre deux lignes voisines.
+ */
+export function grilleMetrique(opts: OptionsGrille): TrameGeoJSON {
+  const { centre, pasM, demiEtendueM } = opts ?? ({} as OptionsGrille);
+  if (!Array.isArray(centre) || centre.length !== 2) return TRAME_VIDE;
+  if (!Number.isFinite(centre[0]) || !Number.isFinite(centre[1])) return TRAME_VIDE;
+  if (!Number.isFinite(pasM) || pasM <= 0) return TRAME_VIDE; // puce éteinte : rien à dessiner
+  if (!Number.isFinite(demiEtendueM) || demiEtendueM <= 0) return TRAME_VIDE;
+  const rangs = Math.floor(demiEtendueM / pasM);
+  // 2 axes × (2·rangs + 1) lignes : au-delà du plafond de rendu, on ne dessine rien.
+  if (2 * (2 * rangs + 1) > MAX_LIGNES_GRILLE) return TRAME_VIDE;
+  const azimut = Number.isFinite(opts.azimutDeg) ? (opts.azimutDeg as number) : 0;
+  const a = azimut * DEG2RAD;
+  // u = direction de l'azimut (est, nord) ; v = sa perpendiculaire (azimut + 90°).
+  const u: [number, number] = [Math.sin(a), Math.cos(a)];
+  const v: [number, number] = [Math.cos(a), -Math.sin(a)];
+  const cosLat = Math.max(1e-6, Math.cos(centre[1] * DEG2RAD));
+  const versLngLat = (est: number, nord: number): LngLat => [
+    centre[0] + est / (DEG2M * cosLat),
+    centre[1] + nord / DEG2M,
+  ];
+  const features: TrameGeoJSON['features'] = [];
+  for (let k = -rangs; k <= rangs; k++) {
+    const d = k * pasM;
+    // Ligne parallèle à u, décalée de d le long de v.
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          versLngLat(d * v[0] - demiEtendueM * u[0], d * v[1] - demiEtendueM * u[1]),
+          versLngLat(d * v[0] + demiEtendueM * u[0], d * v[1] + demiEtendueM * u[1]),
+        ],
+      },
+      properties: { axe: 'u', rang: k },
+    });
+    // Ligne parallèle à v, décalée de d le long de u.
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: [
+          versLngLat(d * u[0] - demiEtendueM * v[0], d * u[1] - demiEtendueM * v[1]),
+          versLngLat(d * u[0] + demiEtendueM * v[0], d * u[1] + demiEtendueM * v[1]),
+        ],
+      },
+      properties: { axe: 'v', rang: k },
+    });
+  }
+  return { type: 'FeatureCollection', features };
+}
+
 /** Dépendances injectées (carte + bandeau de statut + re-lecture d'aire + bouton finir). */
 export interface MapDrawDeps {
   /** La carte MapLibre (sources GeoJSON du tracé + flyTo/jumpTo de la recherche). */
@@ -189,9 +375,54 @@ export interface MapDraw {
   /** CAL103 — applique visibilité + opacité d'un calque. Renvoie false si le calque
    *  n'existe pas dans l'ordre de rendu. Un calque sans couche MapLibre est un no-op. */
   setLayerState: (id: string, state: { visible: boolean; opacite?: number }) => boolean;
+  /** CALX107 — pose (ou retire) le CALQUE DE FOND calé : un plan importé, ou une photo de
+   *  site. `fond = null` retire tout fond et ne laisse RIEN sur la carte. Renvoie le motif
+   *  du refus quand rien n'a pu être placé (fichier absent, plan non calé, photo non
+   *  calée…) — jamais un fond posé « au jugé ». */
+  setFond: (fond: DocumentUnderlay | null, ressource?: RessourceFond) => { ok: boolean; motif?: string };
+  /** CALX107 — le fond actuellement porté par l'atelier (celui qui voyage par le document
+   *  via `underlayPourDocument`), ou `null`. */
+  fond: () => DocumentUnderlay | null;
+  /** CALX108 — entre (ou sort) du mode « caler le fond ». Ouvre la saisie de la distance
+   *  réelle et attend les DEUX paires de points. */
+  demarrerCalageFond: () => boolean;
+  /** CALX108 — vrai tant que le mode « caler le fond » est actif. */
+  modeCalageFond: () => boolean;
+  /** CALX108 — enregistre UNE paire (point cliqué sur l'image, point correspondant sur la
+   *  carte). Renvoie le nombre de paires posées ; au-delà de deux, la plus ancienne sort. */
+  pointCalageFond: (pointImage: readonly [number, number], ancre: LngLat) => number;
+  /** CALX108 — lit la distance réelle SAISIE + sa source et écrit `underlay.calage`, puis
+   *  replace le fond. Refuse en NOMMANT le champ fautif, et n'écrit alors RIEN. */
+  validerCalageFond: () => { ok: boolean; champ?: ChampCalage; motif?: string };
+  /** CALX108 — abandonne le calage en cours SANS rien écrire. */
+  annulerCalageFond: () => void;
+  /** CALX108 — glissé (translation, m) et molette (rotation, °) du fond déjà calé. Ne
+   *  touche ni `distanceReelleM` ni le facteur d'échelle : la mesure saisie fait foi. */
+  ajusterFond: (ajust: { estM?: number; nordM?: number; rotationDeg?: number }) => boolean;
+  /** CALX128 — le routeur clavier de l'atelier (plan déclaratif + zone `aria-live`). */
+  clavier: Clavier;
+  /** CALX128 — position courante du curseur de pose au clavier, ou `null` tant que la
+   *  carte n'a pas de centre lisible. Les gestes souris ne le consultent JAMAIS. */
+  curseurClavier: () => LngLat | null;
+  /** CALX128 — les gestes clavier du TRACÉ, pour que l'hôte les compose avec ceux des
+   *  autres modes (mesure, obstacles, zones) sans réécrire le routage. */
+  gestesTrace: () => GestesAtelier;
+  /** CALX128 — l'aide-mémoire affichable des raccourcis du mode courant. */
+  aideRaccourcis: () => LigneAide[];
+  /** CALX128 — mode clavier courant, et son réglage par l'hôte (mesure, obstacles, zones). */
+  modeClavier: () => ModeClavier;
+  setModeClavier: (mode: ModeClavier) => void;
+  /** CALX128 — branche les gestes clavier d'un AUTRE mode (ex. `gestesMesure(...)` de
+   *  `mesureUi.ts`) sans que ce module ait à connaître ce mode. Un mode sans gestes
+   *  enregistrés annonce, touche par touche, que le geste n'y est pas disponible. */
+  enregistrerGestesClavier: (mode: ModeClavier, gestes: GestesAtelier) => void;
   addVertex: (v: LngLat) => void;
   /** W92 — retire le dernier sommet posé (pendant le tracé, avant fermeture). */
   undoLastPoint: () => void;
+  /** CALX90 — pose le sommet coté au clavier (longueur + cap depuis le sommet précédent).
+   *  Retourne false et n'ajoute RIEN quand un champ manque/est invalide, ou quand aucun
+   *  sommet précédent n'existe : l'erreur est affichée sous le champ fautif. */
+  poserSegmentSaisi: () => boolean;
   /** W93 — `autoSelect` (programmatique, ex. initialQuery) vole directement au 1ᵉʳ
    *  résultat ; sinon la liste de suggestions est peuplée et on attend la sélection. */
   geocode: (query: string, autoSelect?: boolean) => Promise<void>;
@@ -277,6 +508,95 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     return true;
   }
 
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX107 — LE CALQUE DE FOND CALÉ (plan importé / photo de site)
+  //
+  // Les calques `photo` et `plan` du panneau pilotaient une liste VIDE : les bascules
+  // existaient sans rien à montrer. Le fond est désormais une vraie source `image`
+  // géo-référencée par ses QUATRE coins, insérée AU RANG prévu par `ORDRE_RENDU_CALQUES`
+  // (sous le tracé, au-dessus de l'imagerie), et son opacité suit le panneau de calques.
+  //
+  // AUCUNE ÉCHELLE N'EST DEVINÉE (contrat CALX86) : la photo lit son calage à quatre coins
+  // (CAL53), le plan attend son calage à deux points + sa distance réelle SAISIE. Rien de
+  // calé ⇒ rien de posé, et le motif est affiché.
+  //
+  // Le fond n'entre dans AUCUN calcul : il ne touche ni `ctx.vertices`, ni les obstacles,
+  // ni le pavage. Il se peint, c'est tout.
+  // ————————————————————————————————————————————————————————————————————————
+
+  /** Le fond porté par l'atelier — lu par `serializeLayout` (`underlayPourDocument`). */
+  const ctxFond = ctx as unknown as { underlay?: DocumentUnderlay | null };
+
+  /** Retire la couche ET la source d'un fond : rien ne reste sur la carte. */
+  function retirerFond(layerId: string) {
+    try {
+      if (map.getLayer?.(layerId)) map.removeLayer(layerId);
+      if (map.getSource?.(layerId)) map.removeSource(layerId);
+    } catch {
+      /* style pas prêt : rien à retirer */
+    }
+  }
+
+  function retirerTousLesFonds() {
+    retirerFond(UNDERLAY_PLAN_LAYER_ID);
+    retirerFond(UNDERLAY_PHOTO_LAYER_ID);
+  }
+
+  /** CALX108 — la ressource d'affichage du fond courant (URL pré-signée, calage photo,
+   *  taille du fichier), mémorisée pour pouvoir REPLACER le fond après un calage ou un
+   *  ajustement sans que l'hôte ait à la redonner. */
+  let ressourceFond: RessourceFond = {};
+
+  function setFond(fond: DocumentUnderlay | null, ressource: RessourceFond = {}): { ok: boolean; motif?: string } {
+    ressourceFond = ressource;
+    if (fond == null) {
+      // Un seul fond à la fois (contrat CALX86) : on efface les DEUX couches possibles.
+      retirerTousLesFonds();
+      ctxFond.underlay = null;
+      return { ok: true };
+    }
+    const lu = lireUnderlay(fond);
+    if (!lu.ok) {
+      setStatus(lu.motif);
+      return { ok: false, motif: lu.motif };
+    }
+    return poserFond(lu.fond);
+  }
+
+  /** Pose (ou repose) un fond DÉJÀ validé, avec la ressource mémorisée. */
+  function poserFond(fond: DocumentUnderlay): { ok: boolean; motif?: string } {
+    const placement = placementDuFond(fond, ressourceFond);
+    if (!placement.ok) {
+      // Le fond RESTE porté par le document (il est valide : c'est son affichage qui
+      // manque d'un calage ou d'un fichier), mais rien n'est peint « au jugé ».
+      ctxFond.underlay = fond;
+      retirerTousLesFonds();
+      setStatus(placement.motif);
+      return { ok: false, motif: placement.motif };
+    }
+    // Un seul fond à la fois : l'autre genre est retiré avant de poser celui-ci.
+    retirerTousLesFonds();
+    try {
+      map.addSource(placement.layerId, specSourceFond(placement) as never);
+      const avant = coucheAvantPourFond(
+        placement.calque,
+        ORDRE_RENDU_CALQUES,
+        MAPLIBRE_LAYERS_PAR_CALQUE,
+        (id) => Boolean(map.getLayer?.(id)),
+      );
+      map.addLayer(specCoucheFond(placement) as never, avant as never);
+    } catch {
+      /* style pas encore chargé : le prochain appel reposera le fond */
+      return { ok: false, motif: 'Fond non affiché : la carte n’est pas encore prête — réessayez dans un instant.' };
+    }
+    ctxFond.underlay = fond;
+    return { ok: true };
+  }
+
+  function fondCourant(): DocumentUnderlay | null {
+    return ctxFond.underlay ?? null;
+  }
+
   function redrawTrace() {
     srcOf('rp9-line')?.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: ctx.vertices }, properties: {} } as never);
     // W92 — chaque sommet porte son index `idx` : le hit-test du glissé-sommet sait quel
@@ -285,23 +605,638 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     if (finishBtn) finishBtn.disabled = ctx.vertices.length < 3 || ctx.closed;
     // W92 — « Annuler le dernier point » : seulement pendant le tracé (au moins un coin posé).
     if (undoPointBtn) undoPointBtn.hidden = ctx.closed || ctx.vertices.length < 1;
+    syncCoteBox(); // CALX90 — la saisie cotée suit les mêmes conditions d'affichage
     updateAreaReadout();
+  }
+
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX89 — AIDES AU TRACÉ : puce « Angles droits » (magnétisme angulaire)
+  //
+  // Le constructeur crée LUI-MÊME ses contrôles quand la page hôte ne les fournit pas
+  // (patron `obstaclesUi.ts` `ensureTypePicker` / `zones.ts` `ensureStatsTable`) : aucune
+  // page n'a à être modifiée. La puce est ÉTEINTE par défaut — tant qu'on ne l'allume pas,
+  // `appliquerAidesTrace` rend le point cliqué tel quel et le tracé est celui d'aujourd'hui,
+  // point pour point. Alt maintenue désactive l'aide LE TEMPS D'UN POINT (échappatoire
+  // standard des outils de dessin).
+  // ————————————————————————————————————————————————————————————————————————
+  const traceChipsEl = ensureTraceChips();
+  function ensureTraceChips(): HTMLElement | null {
+    const existing = $('rp9-trace-chips');
+    if (existing) return existing;
+    const anchor = finishBtn?.parentElement ?? undoPointBtn?.parentElement ?? searchForm?.parentElement ?? null;
+    if (!anchor || typeof document.createElement !== 'function') return null;
+    const box = document.createElement('div');
+    box.id = 'rp9-trace-chips';
+    box.className = 'rp9-trace-chips mt-2 flex flex-wrap items-center gap-2 text-xs';
+    anchor.appendChild(box);
+    return box;
+  }
+
+  /** CALX89 — la puce et son pas, créés dans le bandeau d'aides. */
+  const angleChipEl = ensureAngleChip();
+  const anglePasEl = $<HTMLSelectElement>('rp9-snap-angle-pas');
+  function ensureAngleChip(): HTMLButtonElement | null {
+    const existing = $<HTMLButtonElement>('rp9-snap-angle');
+    if (existing) return existing;
+    if (!traceChipsEl || typeof document.createElement !== 'function') return null;
+    const wrap = document.createElement('span');
+    wrap.className = 'rp9-snap-angle-row inline-flex items-center gap-1';
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.id = 'rp9-snap-angle';
+    chip.className = 'rp9-btn';
+    chip.textContent = 'Angles droits';
+    chip.setAttribute('aria-pressed', 'false'); // ÉTEINTE par défaut
+    chip.title = 'Cale chaque côté sur un multiple d’angle. Alt maintenue : un point libre.';
+    const select = document.createElement('select');
+    select.id = 'rp9-snap-angle-pas';
+    select.className = 'rp9-input';
+    select.setAttribute('aria-label', 'Pas d’angle');
+    for (const pas of PAS_ANGLE_DEG) {
+      const opt = document.createElement('option');
+      opt.value = String(pas);
+      opt.textContent = `${pas}°`;
+      select.appendChild(opt);
+    }
+    wrap.appendChild(chip);
+    wrap.appendChild(select);
+    traceChipsEl.appendChild(wrap);
+    return chip;
+  }
+
+  /** Alt maintenue : suspend l'aide le temps d'un point (jamais mémorisé). */
+  let altEnfoncee = false;
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Alt') altEnfoncee = true;
+    });
+    document.addEventListener('keyup', (e) => {
+      if ((e as KeyboardEvent).key === 'Alt') altEnfoncee = false;
+    });
+    // Le focus peut partir pendant qu'Alt est enfoncée (Alt+Tab) : on ne garde jamais l'état.
+    window.addEventListener?.('blur', () => {
+      altEnfoncee = false;
+    });
+  }
+  angleChipEl?.addEventListener('click', () => {
+    const on = angleChipEl.getAttribute('aria-pressed') === 'true';
+    angleChipEl.setAttribute('aria-pressed', String(!on));
+    setStatus(
+      !on
+        ? `Angles droits : chaque côté se cale au multiple de ${pasAngleDeg() || 90}°. Maintenez Alt pour un point libre.`
+        : 'Angles droits désactivés — les points se posent exactement où vous cliquez.',
+    );
+  });
+
+  /** Pas d'angle ACTIF (°), ou 0 quand la puce est éteinte / Alt maintenue — 0 = aide neutre. */
+  function pasAngleDeg(): number {
+    if (angleChipEl?.getAttribute('aria-pressed') !== 'true') return 0;
+    if (altEnfoncee) return 0;
+    const v = Number.parseFloat(anglePasEl?.value ?? '');
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }
+
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX92 — puce « Aimanter aux pans » : accrochage aux SOMMETS et aux ARÊTES des pans
+  // déjà tracés. Éteinte par défaut. La tolérance est SAISIE dans la puce ; laissée vide,
+  // elle vaut le rayon de saisie de sommet déjà en place (`VERTEX_GRAB_PX`, convention de
+  // dessin) converti en mètres au zoom courant — jamais une distance inventée.
+  // ————————————————————————————————————————————————————————————————————————
+  const aimantChipEl = ensureAimantChip();
+  const aimantTolEl = $<HTMLInputElement>('rp9-snap-zones-tol');
+  function ensureAimantChip(): HTMLButtonElement | null {
+    const existing = $<HTMLButtonElement>('rp9-snap-zones');
+    if (existing) return existing;
+    if (!traceChipsEl || typeof document.createElement !== 'function') return null;
+    const wrap = document.createElement('span');
+    wrap.className = 'rp9-snap-zones-row inline-flex items-center gap-1';
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.id = 'rp9-snap-zones';
+    chip.className = 'rp9-btn';
+    chip.textContent = 'Aimanter aux pans';
+    chip.setAttribute('aria-pressed', 'false'); // ÉTEINTE par défaut
+    chip.title = 'Colle le sommet au sommet ou au côté le plus proche d’un pan déjà tracé.';
+    const tol = document.createElement('input');
+    tol.type = 'text';
+    tol.id = 'rp9-snap-zones-tol';
+    tol.className = 'rp9-input w-20';
+    tol.inputMode = 'decimal';
+    tol.placeholder = 'tolérance m';
+    tol.setAttribute('aria-label', 'Tolérance d’aimantation (m)');
+    wrap.appendChild(chip);
+    wrap.appendChild(tol);
+    traceChipsEl.appendChild(wrap);
+    return chip;
+  }
+  aimantChipEl?.addEventListener('click', () => {
+    const on = aimantChipEl.getAttribute('aria-pressed') === 'true';
+    aimantChipEl.setAttribute('aria-pressed', String(!on));
+    setStatus(
+      !on
+        ? 'Aimantation aux pans active — les sommets se collent aux pans déjà tracés.'
+        : 'Aimantation aux pans désactivée — les points se posent exactement où vous cliquez.',
+    );
+  });
+
+  /** Tolérance d'aimantation ACTIVE (m), ou 0 quand la puce est éteinte / Alt maintenue. */
+  function toleranceAimantM(lat: number): number {
+    if (aimantChipEl?.getAttribute('aria-pressed') !== 'true') return 0;
+    if (altEnfoncee) return 0;
+    const saisie = Number.parseFloat((aimantTolEl?.value ?? '').replace(/\s/g, '').replace(',', '.'));
+    if (Number.isFinite(saisie) && saisie > 0) return saisie;
+    // Repli : le rayon de saisie d'un sommet, lu en mètres au zoom courant.
+    const zoom = typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN;
+    if (!Number.isFinite(zoom)) return 0;
+    return VERTEX_GRAB_PX * metresParPixel(lat, zoom);
+  }
+
+  /** Contours des pans DÉJÀ tracés (hors pan actif, qui est celui qu'on dessine). */
+  function anneauxDesAutresPans(): LngLat[][] {
+    return (ctx.areas ?? [])
+      .filter((a) => a.id !== ctx.activeAreaId && Array.isArray(a.vertices) && a.vertices.length >= 3)
+      .map((a) => a.vertices);
+  }
+
+  /**
+   * CALX89/CALX92 — applique les aides au tracé au point cliqué. Toute aide éteinte ⇒ `v` est
+   * rendu TEL QUEL (même référence), donc le tracé reste celui d'aujourd'hui.
+   *
+   * ORDRE : l'aimantation à un pan voisin l'emporte sur le magnétisme angulaire. Un sommet
+   * accroché est un sommet COMMUN exact (c'est tout l'intérêt : une faîtière partagée) ;
+   * lui réappliquer un angle le décollerait aussitôt.
+   */
+  function appliquerAidesTrace(v: LngLat): LngLat {
+    const aimante = aimanterAuxZones(v, anneauxDesAutresPans(), toleranceAimantM(v[1]));
+    if (aimante !== v) return aimante;
+    const n = ctx.vertices.length;
+    return contraindreAngle(ctx.vertices[n - 1], ctx.vertices[n - 2], v, pasAngleDeg());
   }
 
   function addVertex(v: LngLat) {
     if (ctx.closed) return;
+    // CALX89 — le point cliqué passe d'abord par les AIDES AU TRACÉ (magnétisme angulaire).
+    // Puce éteinte (ou Alt maintenue) ⇒ `v` revient tel quel, donc le tracé est identique à
+    // celui d'aujourd'hui, point pour point.
+    const p = appliquerAidesTrace(v);
     // W76 — refuse un point qui ferait CROISER le contour (nœud papillon). isSimplePolygon
     // traite l'anneau comme FERMÉ (dernier→premier), donc tester [...vertices, v] vérifie à
     // la fois la nouvelle arête et l'arête de fermeture implicite v→1ᵉʳ sommet. Un anneau
     // croisé fausse l'aire géodésique (la shoelace s'annule) et le pavage.
-    if (ctx.vertices.length >= 3 && !isSimplePolygon([...ctx.vertices, v])) {
+    if (ctx.vertices.length >= 3 && !isSimplePolygon([...ctx.vertices, p])) {
       setStatus(t.pointWouldCross);
       return;
     }
-    ctx.vertices.push(v);
+    ctx.vertices.push(p);
     redrawTrace();
     if (ctx.vertices.length >= 3) setStatus(t.doubleClickToClose);
     else setStatus(t.cornerPlaced(ctx.vertices.length));
+  }
+
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX117 — puce « Grille » + son pas SAISI et son orientation (nord vrai, ou l'azimut
+  // d'un pan désigné). Éteinte par défaut : tant qu'elle l'est, AUCUNE source n'est ajoutée
+  // à la carte. La trame est purement visuelle et n'entre dans aucun calcul.
+  // ————————————————————————————————————————————————————————————————————————
+  const grilleChipEl = ensureGrilleChip();
+  const grillePasEl = $<HTMLInputElement>('rp9-grille-pas');
+  const grilleAxeEl = $<HTMLSelectElement>('rp9-grille-axe');
+  function ensureGrilleChip(): HTMLButtonElement | null {
+    const existing = $<HTMLButtonElement>('rp9-grille-chip');
+    if (existing) return existing;
+    if (!traceChipsEl || typeof document.createElement !== 'function') return null;
+    const wrap = document.createElement('span');
+    wrap.className = 'rp9-grille-row inline-flex items-center gap-1';
+    wrap.innerHTML =
+      `<button type="button" id="rp9-grille-chip" class="rp9-btn" aria-pressed="false" ` +
+      `title="Trame métrique de repère. Purement visuelle : elle ne change aucun calcul.">Grille</button>` +
+      `<input type="text" id="rp9-grille-pas" class="rp9-input w-20" inputmode="decimal" ` +
+      `placeholder="pas m" aria-label="Pas de la grille (m)" />` +
+      `<select id="rp9-grille-axe" class="rp9-input" aria-label="Orientation de la grille"></select>`;
+    traceChipsEl.appendChild(wrap);
+    return $<HTMLButtonElement>('rp9-grille-chip');
+  }
+
+  /** Remplit le choix d'orientation : nord vrai, ou l'azimut d'un pan déjà tracé. */
+  function syncGrilleAxe() {
+    if (!grilleAxeEl || typeof document.createElement !== 'function') return;
+    const choisi = grilleAxeEl.value;
+    grilleAxeEl.innerHTML = '';
+    const nord = document.createElement('option');
+    nord.value = '';
+    nord.textContent = 'Nord vrai';
+    grilleAxeEl.appendChild(nord);
+    // Fold lot 2 : un contexte hôte sans `areas` (tests W2, boot minimal) ne doit pas faire lever
+    // la synchronisation de la grille — aucune zone, aucune puce (CALX117).
+    (ctx.areas ?? []).forEach((a, i) => {
+      if (!Array.isArray(a.vertices) || a.vertices.length < 3) return;
+      const opt = document.createElement('option');
+      opt.value = a.id;
+      opt.textContent = `Azimut du pan ${i + 1}`;
+      grilleAxeEl.appendChild(opt);
+    });
+    grilleAxeEl.value = choisi;
+    if (grilleAxeEl.selectedIndex < 0) grilleAxeEl.value = '';
+  }
+
+  /** Azimut de la trame : 0 (nord vrai) ou l'azimut SAISI du pan désigné — jamais déduit. */
+  function azimutGrilleDeg(): number {
+    const id = grilleAxeEl?.value ?? '';
+    if (!id) return 0;
+    const pan = (ctx.areas ?? []).find((a) => a.id === id);
+    const az = pan?.facingAzimuthDeg;
+    return Number.isFinite(az) ? (az as number) : 0;
+  }
+
+  /** Demi-étendue de la trame, DÉRIVÉE de la vue (jamais un nombre inventé). */
+  function demiEtendueGrilleM(lat: number): number {
+    const zoom = typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN;
+    if (!Number.isFinite(zoom)) return 0;
+    const canvas = typeof map.getCanvas === 'function' ? map.getCanvas() : null;
+    const cote = Math.max(canvas?.clientWidth ?? 0, canvas?.clientHeight ?? 0);
+    if (!(cote > 0)) return 0;
+    return (cote / 2) * metresParPixel(lat, zoom);
+  }
+
+  function grilleAllumee(): boolean {
+    return grilleChipEl?.getAttribute('aria-pressed') === 'true';
+  }
+
+  /** Retire la couche ET la source de la grille : éteinte, elle ne laisse RIEN sur la carte. */
+  function retirerGrille() {
+    try {
+      if (map.getLayer?.(GRILLE_LAYER_ID)) map.removeLayer(GRILLE_LAYER_ID);
+      if (map.getSource?.(GRILLE_LAYER_ID)) map.removeSource(GRILLE_LAYER_ID);
+    } catch {
+      /* style pas prêt : rien à retirer */
+    }
+  }
+
+  /** (Re)dessine la trame. Puce éteinte ⇒ la couche est retirée, aucune source n'est ajoutée. */
+  function redrawGrille() {
+    if (!grilleAllumee()) {
+      retirerGrille();
+      return;
+    }
+    const centre = ctx.closed && ctx.vertices.length >= 3 ? ctx.centroid : (map.getCenter?.() ? ([map.getCenter().lng, map.getCenter().lat] as LngLat) : null);
+    if (!centre) return;
+    const pasM = Number.parseFloat((grillePasEl?.value ?? '').replace(/\s/g, '').replace(',', '.'));
+    const trame = grilleMetrique({
+      centre,
+      pasM,
+      demiEtendueM: demiEtendueGrilleM(centre[1]),
+      azimutDeg: azimutGrilleDeg(),
+    });
+    if (trame.features.length === 0) {
+      retirerGrille();
+      setStatus(
+        Number.isFinite(pasM) && pasM > 0
+          ? 'Grille non affichée : le pas saisi est trop fin pour la vue actuelle — zoomez, ou saisissez un pas plus grand.'
+          : 'Saisissez le pas de la grille, en mètres.',
+      );
+      return;
+    }
+    try {
+      if (!map.getSource?.(GRILLE_LAYER_ID)) {
+        map.addSource(GRILLE_LAYER_ID, { type: 'geojson', data: trame } as never);
+      } else {
+        (map.getSource(GRILLE_LAYER_ID) as maplibregl.GeoJSONSource | undefined)?.setData(trame as never);
+      }
+      if (!map.getLayer?.(GRILLE_LAYER_ID)) {
+        map.addLayer({
+          id: GRILLE_LAYER_ID,
+          type: 'line',
+          source: GRILLE_LAYER_ID,
+          paint: { 'line-color': '#ffffff', 'line-opacity': 0.25, 'line-width': 1 },
+        } as never);
+      }
+    } catch {
+      /* style pas encore chargé : le prochain appel retrouvera la carte */
+    }
+  }
+
+  grilleChipEl?.addEventListener('click', () => {
+    const on = grilleAllumee();
+    grilleChipEl.setAttribute('aria-pressed', String(!on));
+    syncGrilleAxe();
+    redrawGrille();
+    if (on) setStatus('Grille masquée.');
+  });
+  grillePasEl?.addEventListener('change', redrawGrille);
+  grilleAxeEl?.addEventListener('change', redrawGrille);
+  map.on?.('moveend', () => {
+    if (grilleAllumee()) redrawGrille();
+  });
+  syncGrilleAxe();
+
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX90 — la saisie « longueur (m) / angle (°) », créée par le module s'il faut.
+  // Visible seulement pendant le TRACÉ et dès qu'un sommet existe (il faut une origine) ;
+  // Échap la ferme sans rien poser. Le refus s'affiche SOUS le champ fautif.
+  // ————————————————————————————————————————————————————————————————————————
+  const coteBoxEl = ensureCoteBox();
+  function ensureCoteBox(): HTMLElement | null {
+    const existing = $('rp9-cote');
+    if (existing) return existing;
+    if (!traceChipsEl || typeof document.createElement !== 'function') return null;
+    const box = document.createElement('span');
+    box.id = 'rp9-cote';
+    box.className = 'rp9-cote inline-flex flex-wrap items-center gap-1';
+    box.hidden = true;
+    box.innerHTML =
+      `<label class="inline-flex items-center gap-1" for="rp9-cote-longueur">Longueur (m)` +
+      `<input type="text" id="rp9-cote-longueur" class="rp9-input w-20" inputmode="decimal" /></label>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-cote-angle">Angle (° / nord)` +
+      `<input type="text" id="rp9-cote-angle" class="rp9-input w-20" inputmode="decimal" /></label>` +
+      `<button type="button" id="rp9-cote-poser" class="rp9-btn">Poser le point</button>` +
+      `<span id="rp9-cote-erreur" class="rp9-cote-erreur text-alert-300" role="alert" hidden></span>`;
+    traceChipsEl.appendChild(box);
+    return box;
+  }
+  const coteLongueurEl = $<HTMLInputElement>('rp9-cote-longueur');
+  const coteAngleEl = $<HTMLInputElement>('rp9-cote-angle');
+  const cotePoserBtn = $<HTMLButtonElement>('rp9-cote-poser');
+  const coteErreurEl = $('rp9-cote-erreur');
+
+  /** Affiche (ou efface) le refus SOUS le champ fautif et met le focus dessus. */
+  function montrerRefusCote(refus: { champ: ChampSegment; motif: string } | null) {
+    const champEl = refus?.champ === 'angle' ? coteAngleEl : coteLongueurEl;
+    for (const el of [coteLongueurEl, coteAngleEl]) el?.removeAttribute('aria-invalid');
+    if (!coteErreurEl) return;
+    if (!refus) {
+      coteErreurEl.textContent = '';
+      coteErreurEl.hidden = true;
+      return;
+    }
+    coteErreurEl.textContent = refus.motif;
+    coteErreurEl.hidden = false;
+    champEl?.setAttribute('aria-invalid', 'true');
+    champEl?.focus?.();
+  }
+
+  /** Montre la saisie seulement quand elle a un sens (tracé ouvert, au moins un sommet). */
+  function syncCoteBox() {
+    if (coteBoxEl) coteBoxEl.hidden = ctx.closed || ctx.vertices.length < 1;
+  }
+
+  function poserSegmentSaisi(): boolean {
+    const origine = ctx.vertices[ctx.vertices.length - 1];
+    if (ctx.closed || !origine) {
+      montrerRefusCote({ champ: 'longueur', motif: 'Posez d’abord un premier coin : la cote part du sommet précédent.' });
+      return false;
+    }
+    const lu = lireSaisieSegment(coteLongueurEl?.value ?? '', coteAngleEl?.value ?? '');
+    if (!lu.ok) {
+      montrerRefusCote(lu);
+      return false;
+    }
+    montrerRefusCote(null);
+    const avant = ctx.vertices.length;
+    // Un sommet coté au clavier est EXACT : il ne repasse pas par le magnétisme angulaire
+    // (qui corrigerait la direction que l'utilisateur vient justement de taper).
+    const p = pointDepuisCap(origine, lu.capDeg, lu.distanceM);
+    if (ctx.vertices.length >= 3 && !isSimplePolygon([...ctx.vertices, p])) {
+      montrerRefusCote({ champ: 'angle', motif: t.pointWouldCross });
+      return false;
+    }
+    ctx.vertices.push(p);
+    redrawTrace();
+    if (ctx.vertices.length >= 3) setStatus(t.doubleClickToClose);
+    else setStatus(t.cornerPlaced(ctx.vertices.length));
+    if (coteLongueurEl) coteLongueurEl.value = '';
+    if (coteAngleEl) coteAngleEl.value = '';
+    coteLongueurEl?.focus?.();
+    return ctx.vertices.length > avant;
+  }
+
+  cotePoserBtn?.addEventListener('click', () => {
+    poserSegmentSaisi();
+  });
+  for (const el of [coteLongueurEl, coteAngleEl]) {
+    el?.addEventListener('keydown', (e) => {
+      const key = (e as KeyboardEvent).key;
+      if (key === 'Enter') {
+        e.preventDefault();
+        poserSegmentSaisi();
+      } else if (key === 'Escape') {
+        // Échap ferme la saisie SANS RIEN POSER.
+        e.preventDefault();
+        if (coteLongueurEl) coteLongueurEl.value = '';
+        if (coteAngleEl) coteAngleEl.value = '';
+        montrerRefusCote(null);
+        if (coteBoxEl) coteBoxEl.hidden = true;
+        el.blur?.();
+      }
+    });
+  }
+
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX108 — MODE « CALER LE FOND » : deux points + une distance réelle SAISIE
+  //
+  // L'échelle venait EXCLUSIVEMENT de la projection géodésique, et `import_plan.py` le
+  // disait : un DXF sans `$INSUNITS` ou un PDF rend `unite='inconnu'` et « c'est la
+  // calibration de l'atelier qui donne l'échelle ». Cette calibration existe désormais.
+  //
+  // Deux paires (point cliqué SUR LE PLAN, point correspondant SUR LA CARTE), la distance
+  // réelle SAISIE entre elles, et sa SOURCE : `caleDeuxPoints` en tire l'échelle, la
+  // rotation et la translation. Sans distance saisie, RIEN n'est écrit dans
+  // `underlay.calage` et le motif s'affiche SOUS le champ fautif. Aucune échelle n'est
+  // jamais lue dans le fichier.
+  //
+  // CROCHET ATTENDU — `roof-tool-pro11.ts` : router le clic carte vers
+  // `mapDraw.pointCalageFond(pointImage, [lng, lat])` tant que `modeCalageFond()` est vrai,
+  // et le glissé/la molette sur le fond vers `mapDraw.ajusterFond(...)`.
+  // ————————————————————————————————————————————————————————————————————————
+
+  /** Les paires (point image, ancre carte) posées pendant le calage — deux au maximum. */
+  let pairesCalage: Array<{ image: [number, number]; ancre: LngLat }> = [];
+  let calageActif = false;
+
+  const calageBoxEl = ensureCalageBox();
+  function ensureCalageBox(): HTMLElement | null {
+    const existing = $('rp9-fond-calage');
+    if (existing) return existing;
+    if (!traceChipsEl || typeof document.createElement !== 'function') return null;
+    const box = document.createElement('span');
+    box.id = 'rp9-fond-calage';
+    box.className = 'rp9-fond-calage inline-flex flex-wrap items-center gap-1';
+    box.hidden = true;
+    box.innerHTML =
+      `<span id="rp9-fond-calage-etat" class="text-xs opacity-70" role="status"></span>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-fond-distance">Distance réelle (m)` +
+      `<input type="text" id="rp9-fond-distance" class="rp9-input w-20" inputmode="decimal" /></label>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-fond-source">Source de la mesure` +
+      `<input type="text" id="rp9-fond-source" class="rp9-input w-40" ` +
+      `placeholder="mesurée au télémètre…" /></label>` +
+      `<button type="button" id="rp9-fond-valider" class="rp9-btn">Caler le fond</button>` +
+      `<span id="rp9-fond-erreur" class="rp9-fond-erreur text-alert-300" role="alert" hidden></span>`;
+    traceChipsEl.appendChild(box);
+    return box;
+  }
+  const calageChipEl = ensureCalageChip();
+  function ensureCalageChip(): HTMLButtonElement | null {
+    const existing = $<HTMLButtonElement>('rp9-fond-chip');
+    if (existing) return existing;
+    if (!traceChipsEl || typeof document.createElement !== 'function') return null;
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.id = 'rp9-fond-chip';
+    chip.className = 'rp9-btn';
+    chip.textContent = 'Caler le fond';
+    chip.setAttribute('aria-pressed', 'false'); // ÉTEINT par défaut
+    chip.title = 'Cliquez deux points du plan, puis saisissez la distance réelle qui les sépare.';
+    traceChipsEl.insertBefore(chip, calageBoxEl);
+    return chip;
+  }
+  const calageDistanceEl = $<HTMLInputElement>('rp9-fond-distance');
+  const calageSourceEl = $<HTMLInputElement>('rp9-fond-source');
+  const calageValiderBtn = $<HTMLButtonElement>('rp9-fond-valider');
+  const calageErreurEl = $('rp9-fond-erreur');
+  const calageEtatEl = $('rp9-fond-calage-etat');
+
+  /** Affiche (ou efface) le refus SOUS le champ fautif et met le focus dessus. */
+  function montrerRefusCalage(refus: { champ: ChampCalage; motif: string } | null) {
+    for (const el of [calageDistanceEl, calageSourceEl]) el?.removeAttribute('aria-invalid');
+    if (!calageErreurEl) return;
+    if (!refus) {
+      calageErreurEl.textContent = '';
+      calageErreurEl.hidden = true;
+      return;
+    }
+    calageErreurEl.textContent = refus.motif;
+    calageErreurEl.hidden = false;
+    const champEl = refus.champ === 'source' ? calageSourceEl : refus.champ === 'distanceReelleM' ? calageDistanceEl : null;
+    champEl?.setAttribute('aria-invalid', 'true');
+    champEl?.focus?.();
+  }
+
+  /** Dit combien de points sont posés — jamais « en attente » sans dire de quoi. */
+  function syncEtatCalage() {
+    if (!calageEtatEl) return;
+    calageEtatEl.textContent =
+      pairesCalage.length === 0
+        ? 'Cliquez le PREMIER point repérable du plan, puis le même point sur la carte.'
+        : pairesCalage.length === 1
+          ? 'Premier point posé. Cliquez maintenant le SECOND point, sur le plan puis sur la carte.'
+          : 'Deux points posés. Saisissez la distance réelle qui les sépare, et d’où elle vient.';
+  }
+
+  function modeCalageFond(): boolean {
+    return calageActif;
+  }
+
+  function demarrerCalageFond(): boolean {
+    const fond = fondCourant();
+    if (!fond || fond.kind !== 'plan') {
+      const motif =
+        'Le calage à deux points ne concerne que les PLANS importés — une photo de site est déjà calée à quatre coins.';
+      setStatus(motif);
+      return false;
+    }
+    calageActif = true;
+    pairesCalage = [];
+    calageChipEl?.setAttribute('aria-pressed', 'true');
+    if (calageBoxEl) calageBoxEl.hidden = false;
+    montrerRefusCalage(null);
+    syncEtatCalage();
+    setStatus('Calage du fond : cliquez deux points repérables du plan, puis saisissez la distance réelle entre eux.');
+    return true;
+  }
+
+  function annulerCalageFond() {
+    calageActif = false;
+    pairesCalage = [];
+    calageChipEl?.setAttribute('aria-pressed', 'false');
+    if (calageBoxEl) calageBoxEl.hidden = true;
+    montrerRefusCalage(null);
+  }
+
+  function pointCalageFond(pointImage: readonly [number, number], ancre: LngLat): number {
+    if (!calageActif) return pairesCalage.length;
+    if (!Array.isArray(pointImage) || pointImage.length !== 2) return pairesCalage.length;
+    if (!Array.isArray(ancre) || ancre.length !== 2) return pairesCalage.length;
+    pairesCalage.push({ image: [pointImage[0], pointImage[1]], ancre: [ancre[0], ancre[1]] });
+    // Au-delà de deux, la plus ancienne sort : le dernier couple cliqué fait foi.
+    if (pairesCalage.length > 2) pairesCalage = pairesCalage.slice(-2);
+    syncEtatCalage();
+    return pairesCalage.length;
+  }
+
+  function validerCalageFond(): { ok: boolean; champ?: ChampCalage; motif?: string } {
+    const fond = fondCourant();
+    if (!fond || fond.kind !== 'plan') {
+      return { ok: false, motif: 'Aucun plan de fond à caler.' };
+    }
+    if (pairesCalage.length < 2) {
+      const refus = {
+        champ: 'pointsImage' as ChampCalage,
+        motif: 'Calage incomplet : posez DEUX points repérables du plan avant de saisir la distance.',
+      };
+      montrerRefusCalage(refus);
+      setStatus(refus.motif);
+      return { ok: false, ...refus };
+    }
+    const distance = Number.parseFloat((calageDistanceEl?.value ?? '').replace(/\s/g, '').replace(',', '.'));
+    const verdict = calagePourDocument(
+      pairesCalage.map((p) => p.image),
+      pairesCalage.map((p) => p.ancre),
+      Number.isFinite(distance) ? distance : undefined,
+      calageSourceEl?.value ?? '',
+    );
+    if (!verdict.ok) {
+      // RIEN n'est écrit : `underlay.calage` reste exactement ce qu'il était.
+      montrerRefusCalage(verdict);
+      setStatus(verdict.motif);
+      return { ok: false, champ: verdict.champ, motif: verdict.motif };
+    }
+    montrerRefusCalage(null);
+    const cale: DocumentUnderlay = { ...fond, calage: verdict.calage };
+    const pose = poserFond(cale);
+    annulerCalageFond();
+    if (pose.ok) {
+      setStatus(
+        `Fond calé : ${verdict.calibration.echelleMParPx.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} m par unité du plan ` +
+          `(distance saisie : ${verdict.calage.distanceReelleM} m — ${verdict.calage.source}).`,
+      );
+    }
+    return { ok: pose.ok, motif: pose.motif };
+  }
+
+  function ajusterFond(ajust: { estM?: number; nordM?: number; rotationDeg?: number }): boolean {
+    const fond = fondCourant();
+    const calage = fond?.calage as CalageDeuxPoints | undefined | null;
+    if (!fond || fond.kind !== 'plan' || !calage) return false;
+    let suivant = calage;
+    const estM = Number.isFinite(ajust?.estM) ? (ajust.estM as number) : 0;
+    const nordM = Number.isFinite(ajust?.nordM) ? (ajust.nordM as number) : 0;
+    if (estM !== 0 || nordM !== 0) suivant = deplacerCalage(suivant, estM, nordM);
+    if (Number.isFinite(ajust?.rotationDeg) && ajust.rotationDeg !== 0) {
+      suivant = tournerCalage(suivant, ajust.rotationDeg as number);
+    }
+    if (suivant === calage) return false; // rien à ajuster : aucun repaint inutile
+    return poserFond({ ...fond, calage: suivant }).ok;
+  }
+
+  calageChipEl?.addEventListener('click', () => {
+    if (calageActif) annulerCalageFond();
+    else demarrerCalageFond();
+  });
+  calageValiderBtn?.addEventListener('click', () => {
+    validerCalageFond();
+  });
+  for (const el of [calageDistanceEl, calageSourceEl]) {
+    el?.addEventListener('keydown', (e) => {
+      const key = (e as KeyboardEvent).key;
+      if (key === 'Enter') {
+        e.preventDefault();
+        validerCalageFond();
+      } else if (key === 'Escape') {
+        // Échap sort du mode SANS rien écrire.
+        e.preventDefault();
+        annulerCalageFond();
+        el.blur?.();
+      }
+    });
   }
 
   // W92 — retire le DERNIER sommet posé pendant le tracé (avant fermeture). N'agit pas une
@@ -317,6 +1252,172 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
   }
   undoPointBtn?.addEventListener('click', undoLastPoint);
 
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX128 — L'ATELIER AU CLAVIER, ET SES ANNONCES
+  //
+  // Les raccourcis n'existaient QUE dans le panneau de disposition (`layoutEditor.ts`,
+  // gardé par `if (!ctx.layoutMode …) return;`) : le tracé n'avait AUCUNE entrée clavier.
+  // Parité Scanifly (la saisie terrain reste utilisable sans souris).
+  //
+  // Le plan est DÉCLARATIF (`clavier.ts::PLAN_CLAVIER`) et affichable ; chaque geste rend
+  // un VERDICT annoncé dans la zone `aria-live` — un refus NOMME sa raison. Les gestes
+  // souris/tactile ne sont pas touchés : ce bloc n'ajoute qu'une seconde porte d'entrée,
+  // et il s'efface dès que le focus est dans un champ de saisie (sans quoi la cote CALX90
+  // et le calage CALX108 deviendraient intapables).
+  //
+  // CROCHET ATTENDU — `roof-tool-pro11.ts` : appeler `setModeClavier('mesure'|'obstacle'|
+  // 'zone')` au changement d'outil et `enregistrerGestesClavier(mode, gestes)` avec
+  // `mesureUi.gestesMesure(mesure, curseurClavier)` / les gestes d'obstacles et de zones.
+  // ————————————————————————————————————————————————————————————————————————
+
+  /** Le curseur de pose au clavier. `null` tant qu'aucune position n'est lisible. */
+  let curseur: LngLat | null = null;
+
+  /** Position de DÉPART du curseur : le dernier sommet posé (on continue le contour), à
+   *  défaut le centre de la vue. Jamais une coordonnée inventée. */
+  function curseurClavier(): LngLat | null {
+    if (curseur) return curseur;
+    const dernier = ctx.vertices[ctx.vertices.length - 1];
+    if (dernier) {
+      curseur = [dernier[0], dernier[1]];
+      return curseur;
+    }
+    const centre = typeof map.getCenter === 'function' ? map.getCenter() : null;
+    if (centre && Number.isFinite(centre.lng) && Number.isFinite(centre.lat)) {
+      curseur = [centre.lng, centre.lat];
+      return curseur;
+    }
+    return null;
+  }
+
+  /** Le pas du curseur, DÉRIVÉ du zoom courant (jamais une distance en mètres inventée). */
+  function pasCourantM(lat: number, rapide: boolean): number {
+    const zoom = typeof map.getZoom === 'function' ? map.getZoom() : Number.NaN;
+    return pasCurseurM(lat, zoom, rapide);
+  }
+
+  /** Les quatre points cardinaux, en français, pour l'annonce du déplacement. */
+  const DIRECTION_ANNONCEE: Readonly<Record<string, string>> = {
+    'curseur-nord': 'nord',
+    'curseur-sud': 'sud',
+    'curseur-est': 'est',
+    'curseur-ouest': 'ouest',
+  };
+
+  function deplacementClavier(action: string, rapide: boolean): VerdictGeste {
+    const depart = curseurClavier();
+    if (!depart) {
+      return { ok: false, motif: 'Déplacement impossible : la carte n’a pas encore de position lisible.' };
+    }
+    const pasM = pasCourantM(depart[1], rapide);
+    if (!(pasM > 0)) {
+      return { ok: false, motif: 'Déplacement impossible : le zoom de la carte n’est pas encore lisible.' };
+    }
+    const arrivee = deplacerCurseur(depart, action as never, pasM);
+    if (arrivee === depart) {
+      return { ok: false, motif: 'Déplacement impossible : cette touche ne déplace pas le curseur.' };
+    }
+    curseur = [arrivee[0], arrivee[1]];
+    const pas = pasM.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+    return { ok: true, texte: `Curseur déplacé de ${pas} m vers le ${DIRECTION_ANNONCEE[action] ?? 'nord'}.` };
+  }
+
+  /** CALX128 — les gestes clavier du TRACÉ. Chacun sait POURQUOI il refuse. */
+  function gestesTrace(): GestesAtelier {
+    const poser = (): VerdictGeste => {
+      if (ctx.closed) {
+        return { ok: false, motif: 'Contour déjà fermé — aucun coin ne peut plus être posé. Échap pour sortir du mode.' };
+      }
+      const p = curseurClavier();
+      if (!p) {
+        return { ok: false, motif: 'Coin non posé : le curseur de pose n’a pas encore de position sur la carte.' };
+      }
+      const avant = ctx.vertices.length;
+      addVertex([p[0], p[1]]);
+      if (ctx.vertices.length === avant) {
+        // Seule cause possible ici (le contour n'est pas fermé) : le garde W76.
+        return { ok: false, motif: t.pointWouldCross };
+      }
+      // Le sommet réellement posé peut avoir été aimanté/contraint : le curseur le suit,
+      // sinon la frappe suivante repartirait d'un point qui n'existe pas sur le tracé.
+      const pose = ctx.vertices[ctx.vertices.length - 1];
+      curseur = [pose[0], pose[1]];
+      return { ok: true, texte: t.cornerPlaced(ctx.vertices.length) };
+    };
+    const annuler = (): VerdictGeste => {
+      if (ctx.closed) {
+        return { ok: false, motif: 'Contour déjà fermé — « Annuler le dernier point » ne s’applique qu’au tracé en cours.' };
+      }
+      if (ctx.vertices.length === 0) {
+        return { ok: false, motif: 'Rien à annuler : aucun coin n’est posé.' };
+      }
+      undoLastPoint();
+      const dernier = ctx.vertices[ctx.vertices.length - 1];
+      curseur = dernier ? [dernier[0], dernier[1]] : curseur;
+      return { ok: true, texte: t.lastPointUndone(ctx.vertices.length) };
+    };
+    return {
+      'curseur-nord': () => deplacementClavier('curseur-nord', false),
+      'curseur-sud': () => deplacementClavier('curseur-sud', false),
+      'curseur-est': () => deplacementClavier('curseur-est', false),
+      'curseur-ouest': () => deplacementClavier('curseur-ouest', false),
+      poser,
+      'annuler-dernier': annuler,
+      supprimer: annuler, // le seul élément « sélectionné » du tracé est le dernier coin
+      terminer: () => {
+        if (ctx.closed) return { ok: false, motif: 'Contour déjà fermé.' };
+        if (ctx.vertices.length < 3) {
+          return {
+            ok: false,
+            motif: `Contour non fermé : il faut au moins 3 coins (${ctx.vertices.length} posé(s)). Continuez à tracer.`,
+          };
+        }
+        if (!finishBtn || finishBtn.disabled) {
+          return { ok: false, motif: 'Fermeture indisponible : le bouton « Terminer » n’est pas actif.' };
+        }
+        finishBtn.click();
+        return { ok: true, texte: `Contour fermé sur ${ctx.vertices.length} coins.` };
+      },
+      sortir: () => {
+        if (calageActif) {
+          annulerCalageFond();
+          return { ok: true, texte: 'Calage du fond abandonné — rien n’a été enregistré.' };
+        }
+        curseur = null;
+        return { ok: true, texte: 'Curseur de pose relâché — le tracé en cours est conservé.' };
+      },
+      aide: () => {
+        const lignes = aideRaccourcis();
+        return { ok: true, texte: `${lignes.length} raccourcis disponibles : ${lignes.map((l) => `${l.touches} ${l.libelle}`).join(' ; ')}.` };
+      },
+    };
+  }
+
+  /** Le mode clavier courant, et les gestes enregistrés par mode. */
+  let modeClavierCourant: ModeClavier = 'trace';
+  const gestesParMode = new Map<ModeClavier, GestesAtelier>();
+
+  function aideRaccourcis(): LigneAide[] {
+    // CALX108 — les gestes souris à modificateur (Alt + glissé/molette sur le fond) sont
+    // invisibles sans l'aide : ils y entrent par leur propre table (`clavier.ts`).
+    return aideClavier(modeClavierCourant).concat(aideGestesSouris(modeClavierCourant));
+  }
+
+  const clavier = createClavier({
+    mode: () => modeClavierCourant,
+    // Le mode `trace` est SERVI PAR CE MODULE ; les autres modes viennent de
+    // `enregistrerGestesClavier` (mesure, obstacles, zones), sinon ils annoncent
+    // proprement que le geste n'y est pas disponible.
+    gestes: () => (modeClavierCourant === 'trace' ? gestesTrace() : gestesParMode.get(modeClavierCourant) ?? {}),
+  });
+
+  // Le plan clavier vit sur le document : il s'efface de lui-même dès que le focus est
+  // dans un champ de saisie (`estChampDeSaisie`), donc aucune saisie existante ne change.
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('keydown', (e) => {
+      clavier.frappe(e as unknown as Parameters<Clavier['frappe']>[0]);
+    });
+  }
   // ═══════════ W93 — AUTOCOMPLÉTION D'ADRESSE (combobox WAI-ARIA) ═══════════
   // Une suggestion MapTiler retenue (libellé affiché + coordonnées de vol).
   interface GeoSuggestion {
@@ -524,5 +1625,36 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     void geocode(q, true);
   });
 
-  return { redrawTrace, setOptionalLayer, optionalLayerIds, setLayerState, addVertex, undoLastPoint, geocode, reverseGeocode };
+  monterAtelierPose(ctx, { setStatus: deps.setStatus, recalc: () => deps.updateAreaReadout() }); // CALX123 — atelier « surfaces de pose » (DOM autonome, aucune page à modifier)
+
+  return {
+    redrawTrace,
+    setOptionalLayer,
+    optionalLayerIds,
+    setLayerState,
+    setFond,
+    fond: fondCourant,
+    demarrerCalageFond,
+    modeCalageFond,
+    pointCalageFond,
+    validerCalageFond,
+    annulerCalageFond,
+    ajusterFond,
+    clavier,
+    curseurClavier,
+    gestesTrace,
+    aideRaccourcis,
+    modeClavier: () => modeClavierCourant,
+    setModeClavier: (mode: ModeClavier) => {
+      modeClavierCourant = mode;
+    },
+    enregistrerGestesClavier: (mode: ModeClavier, gestes: GestesAtelier) => {
+      gestesParMode.set(mode, gestes);
+    },
+    addVertex,
+    undoLastPoint,
+    poserSegmentSaisi,
+    geocode,
+    reverseGeocode,
+  };
 }
