@@ -357,10 +357,10 @@ class TronconsApiTest(TestCase):
         lead_autre = Lead.objects.create(company=self.autre,
                                          nom='Toiture B')
         self.calepinage = Calepinage.objects.create(
-            company=self.company, lead=lead, titre='Toiture A',
+            company=self.company, lead_id=lead.pk, titre='Toiture A',
             roof_layout={'version': 2, 'zones': []})
         self.calepinage_autre = Calepinage.objects.create(
-            company=self.autre, lead=lead_autre, titre='Toiture B',
+            company=self.autre, lead_id=lead_autre.pk, titre='Toiture B',
             roof_layout={'version': 2, 'zones': []})
         self.client = APIClient()
         self.client.credentials(
