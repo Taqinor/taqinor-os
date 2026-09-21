@@ -12,7 +12,7 @@ import { fmt, fmtMad, esc } from './dom';
 import { type Ctx } from './context';
 import { type AreaRecord } from './types';
 import { type RoofShapePan, type RoofShapePreset } from './scene3d';
-import { type LngLat } from '../../lib/roof';
+import { geodesicAreaM2, pointInPolygon, type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import {
   centroideAnneau,
@@ -675,6 +675,12 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
  *  ENVELOPPE est le contour, il ne se dessine pas comme une zone). */
 export type ExclusionNature = 'INTERDITE' | 'RESERVEE' | 'PREFEREE';
 
+/** CALX401 — les usages qu'une zone peut porter EN PLUS de sa nature. Un seul aujourd'hui. */
+export type UsageZone = 'circulation';
+
+/** CALX401 — l'usage « allée de circulation », tel que le contrat le nomme. */
+export const USAGE_CIRCULATION: UsageZone = 'circulation';
+
 export const EXCLUSION_NATURES: readonly { id: ExclusionNature; label: string; note: string }[] = [
   { id: 'INTERDITE', label: 'Interdite', note: 'retirée du posable — le compte baisse' },
   { id: 'RESERVEE', label: 'Réservée', note: 'retirée du posable, chiffrée à part' },
@@ -704,6 +710,15 @@ export interface ExclusionZone {
   setbackM: number;
   /** Hauteur (m). `null`/absente = non renseignée — jamais un repli. */
   heightM?: number | null;
+  /** CALX401/CALX403 — ce à quoi la zone SERT, quand ce n'est pas seulement sa nature.
+   *  `circulation` = ALLÉE tracée sur le toit. Absent = zone d'exclusion ordinaire. */
+  usage?: UsageZone;
+  /** CALX401 — la POLYLIGNE tracée (≥ 2 points). Elle garde le GESTE ; c'est `vertices`
+   *  qui fait foi pour la géométrie, le couloir y ayant été calculé depuis `axe` et
+   *  `largeurM` au moment du tracé. */
+  axe?: LngLat[];
+  /** CALX401 — largeur SAISIE (m) du passage. Aucune largeur n'est livrée par le dépôt. */
+  largeurM?: number;
 }
 
 /** Retrait PLANCHER/PLAFOND (m) — mêmes ordres de grandeur que les obstacles. */
@@ -802,8 +817,8 @@ export function exclusionObstructionRings(list: readonly ExclusionZone[] | null 
  *  et aucune zone invalide (< 3 sommets) n'est écrite. */
 export function serializeExclusionZones(
   list: readonly ExclusionZone[] | null | undefined,
-): Array<{ id: string; label?: string; nature: ExclusionNature; vertices: LngLat[]; setbackM: number; heightM: number | null }> {
-  const out: Array<{ id: string; label?: string; nature: ExclusionNature; vertices: LngLat[]; setbackM: number; heightM: number | null }> = [];
+): Array<ZoneSerialisee> {
+  const out: Array<ZoneSerialisee> = [];
   for (const z of list ?? []) {
     if (!z || !Array.isArray(z.vertices) || z.vertices.length < 3) continue;
     if (z.nature !== 'INTERDITE' && z.nature !== 'RESERVEE' && z.nature !== 'PREFEREE') continue;
@@ -814,9 +829,26 @@ export function serializeExclusionZones(
       vertices: z.vertices.map((v) => [v[0], v[1]] as LngLat),
       setbackM: Number.isFinite(z.setbackM) && z.setbackM > 0 ? z.setbackM : 0,
       heightM: Number.isFinite(z.heightM as number) && (z.heightM as number) > 0 ? (z.heightM as number) : null,
+      // CALX401/CALX403 — l'allée voyage AVEC son geste et sa largeur SAISIE, ou pas du
+      // tout : les trois clés sont indissociables (le contrat exige `axe` + `largeurM`
+      // dès que `usage` vaut `circulation`), donc on n'en émet jamais une partie.
+      ...champsAlleeCirculation(z),
     });
   }
   return out;
+}
+
+/** Forme SÉRIALISÉE d'une zone d'exclusion — les clés du contrat, rien de plus. */
+export interface ZoneSerialisee {
+  id: string;
+  label?: string;
+  nature: ExclusionNature;
+  vertices: LngLat[];
+  setbackM: number;
+  heightM: number | null;
+  usage?: UsageZone;
+  axe?: LngLat[];
+  largeurM?: number;
 }
 
 /** Relecture d'un document : tolérante aux formes bancales, ne fabrique jamais de zone. */
@@ -837,7 +869,307 @@ export function deserializeExclusionZones(json: unknown): ExclusionZone[] {
     zone = withZoneSetback(zone, typeof z.setbackM === 'number' ? z.setbackM : null);
     zone = withZoneHeight(zone, typeof z.heightM === 'number' ? z.heightM : null);
     zone = withZoneLabel(zone, typeof z.label === 'string' ? z.label : null);
+    // CALX401/CALX403 — l'allée se relit telle qu'elle a été écrite (geste + largeur
+    // SAISIE). Une allée amputée de son axe ou de sa largeur n'est plus une allée : elle
+    // se relit alors comme la zone d'exclusion ordinaire qu'elle reste, jamais complétée.
+    zone = { ...zone, ...champsAlleeCirculation(raw) };
     out.push(zone);
   }
   return out;
+}
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX403 — ALLÉE DE CIRCULATION TRACÉE DANS L'ATELIER
+//
+// L'atelier ne savait dessiner qu'un obstacle rectangulaire au glissé et des zones
+// polygonales : aucun outil ne traçait un COULOIR par sa polyligne et sa largeur, et rien
+// ne signalait un module posé en travers d'un passage. Le panneau d'allées existant
+// (CAL70) ne règle que la largeur UNIFORME entre rangées — un retrait entre rangées et un
+// passage de pompier ne sont pas la même pièce. Parité Aurora (« fire pathways » : les
+// modules chevauchants passent en jaune, et un glissé conserve l'orientation et la largeur).
+//
+// ZÉRO LARGEUR INVENTÉE (D-CALX 7, CALX402) : le dépôt ne porte AUCUNE largeur de
+// référence. Sans largeur saisie pour le pays du site, l'allée est OMISE et le motif NOMME
+// le pays ET le réglage manquant — jamais une largeur supposée.
+//
+// GÉOMÉTRIE PURE : aucun Three, aucun DOM, aucune carte.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Les clés d'allée d'une zone, à ÉMETTRE ou à RELIRE — les trois ensemble, ou aucune. */
+function champsAlleeCirculation(
+  brut: unknown,
+): { usage?: UsageZone; axe?: LngLat[]; largeurM?: number } {
+  const z = (brut ?? {}) as Partial<ExclusionZone>;
+  if (z.usage !== USAGE_CIRCULATION) return {};
+  const axe = Array.isArray(z.axe)
+    ? z.axe
+        .filter((p): p is LngLat => Array.isArray(p) && p.length === 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+        .map((p) => [p[0], p[1]] as LngLat)
+    : [];
+  const largeur = z.largeurM;
+  if (axe.length < 2) return {};
+  if (typeof largeur !== 'number' || !Number.isFinite(largeur) || largeur <= 0) return {};
+  return { usage: USAGE_CIRCULATION, axe, largeurM: largeur };
+}
+
+/**
+ * CALX403 — la largeur d'allée de circulation SAISIE par la société pour un pays, lue dans
+ * la section `degagements` des réglages (`allees_circulation`). C'est le JUMEAU côté écran
+ * de `services/degagements.py::largeur_allee_circulation` (CALX402) : mêmes clés, même
+ * règle, et surtout le même refus — pays non saisi ⇒ `largeurM: null` et un motif qui NOMME
+ * le réglage manquant. AUCUN défaut n'est fabriqué ici.
+ */
+export function largeurAlleeDepuisReglages(
+  sectionDegagements: unknown,
+  pays: string | null | undefined,
+): { largeurM: number | null; motif: string } {
+  const code = String(pays ?? '').trim().toLowerCase();
+  const reglage = `degagements.allees_circulation.${code || '?'}`;
+  if (!code) {
+    return {
+      largeurM: null,
+      motif: `Allée de circulation : aucun pays n’est réglé pour ce site — réglage manquant : ${reglage}.`,
+    };
+  }
+  const section = (sectionDegagements ?? {}) as Record<string, unknown>;
+  const entrees = Array.isArray(section.allees_circulation) ? (section.allees_circulation as unknown[]) : [];
+  for (const brut of entrees) {
+    if (!brut || typeof brut !== 'object' || Array.isArray(brut)) continue;
+    const e = brut as Record<string, unknown>;
+    if (String(e.pays ?? '').trim().toLowerCase() !== code) continue;
+    const largeur = e.largeur_m;
+    if (typeof largeur !== 'number' || !Number.isFinite(largeur) || largeur <= 0) break;
+    const source = String(e.source ?? '').trim();
+    const reference = String(e.reference ?? '').trim();
+    const citation = [source || 'source non renseignée', reference].filter(Boolean).join(', ');
+    return {
+      largeurM: largeur,
+      motif: `Allée de circulation (${code}) : ${largeur} m (réglage de votre société — ${citation}).`,
+    };
+  }
+  return {
+    largeurM: null,
+    motif:
+      `Allée de circulation (${code}) : aucune largeur n’est saisie pour ce pays — ` +
+      `réglage manquant : ${reglage}. L’allée n’est pas tracée tant qu’elle n’est pas saisie.`,
+  };
+}
+
+/** Verdict d'un tracé d'allée — un refus NOMME toujours sa raison. */
+export type VerdictAllee = { ok: true; zone: ExclusionZone } | { ok: false; motif: string };
+
+/** CALX403 — la largeur saisie est-elle exploitable ? `null` = oui, sinon le motif. */
+export function motifLargeurAllee(largeurM: number | null | undefined, pays?: string | null): string | null {
+  if (largeurM == null || !Number.isFinite(largeurM) || largeurM <= 0) {
+    const code = String(pays ?? '').trim().toLowerCase();
+    const reglage = `degagements.allees_circulation.${code || '?'}`;
+    return (
+      'Allée non tracée : saisissez sa largeur en mètres. Aucune largeur n’est supposée — ' +
+      `réglage manquant : ${reglage}.`
+    );
+  }
+  return null;
+}
+
+/**
+ * CALX403 — le COULOIR (contour fermé) d'une polyligne ÉLARGIE de sa largeur saisie : on
+ * décale chaque point de la moitié de la largeur de part et d'autre, puis on referme
+ * (côté gauche + côté droit parcouru à l'envers). Les extrémités ne sont PAS prolongées :
+ * un couloir de 1 m de large sur 10 m de long fait 10 m², pas un mètre de plus.
+ *
+ * Aux coudes, le décalage suit la BISSECTRICE (longueur de l'onglet), pour que la largeur
+ * MESURÉE en travers du passage reste celle qui a été saisie. Un virage en épingle verrait
+ * cet onglet partir à l'infini : il est borné (convention de DESSIN, `ONGLET_MIN`), ce qui
+ * ne change ni la largeur saisie ni le geste enregistré.
+ */
+export function couloirDepuisAxe(axe: readonly LngLat[], largeurM: number): LngLat[] | null {
+  const pts = (axe ?? []).filter(
+    (p): p is LngLat => Array.isArray(p) && p.length === 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]),
+  );
+  if (pts.length < 2 || !Number.isFinite(largeurM) || largeurM <= 0) return null;
+  const cosLat = Math.max(1e-6, Math.cos(pts[0][1] * ZONE_DEG2RAD));
+  const versEnu = ([lng, lat]: LngLat): [number, number] => [
+    (lng - pts[0][0]) * ZONE_DEG2M * cosLat,
+    (lat - pts[0][1]) * ZONE_DEG2M,
+  ];
+  const versLngLat = ([x, y]: [number, number]): LngLat => [
+    pts[0][0] + x / (ZONE_DEG2M * cosLat),
+    pts[0][1] + y / ZONE_DEG2M,
+  ];
+  const enu = pts.map(versEnu);
+  // Normale unitaire (à gauche) de chaque segment ; un segment de longueur nulle n'en a pas.
+  const normales: Array<[number, number] | null> = [];
+  for (let i = 0; i < enu.length - 1; i++) {
+    const dx = enu[i + 1][0] - enu[i][0];
+    const dy = enu[i + 1][1] - enu[i][1];
+    const len = Math.hypot(dx, dy);
+    normales.push(len < 1e-9 ? null : [-dy / len, dx / len]);
+  }
+  const valides = normales.filter((n): n is [number, number] => n != null);
+  if (!valides.length) return null;
+  const demi = largeurM / 2;
+  const ONGLET_MIN = 0.4; // convention de dessin : borne de l'onglet en épingle
+  const gauche: Array<[number, number]> = [];
+  const droite: Array<[number, number]> = [];
+  for (let i = 0; i < enu.length; i++) {
+    const avant = i > 0 ? normales[i - 1] : null;
+    const apres = i < normales.length ? normales[i] : null;
+    let dep: [number, number];
+    if (avant && apres) {
+      const mx = avant[0] + apres[0];
+      const my = avant[1] + apres[1];
+      const m = Math.max(ONGLET_MIN, Math.hypot(mx, my));
+      dep = [(mx * largeurM) / (m * m), (my * largeurM) / (m * m)];
+    } else {
+      const n = (apres ?? avant) as [number, number];
+      dep = [n[0] * demi, n[1] * demi];
+    }
+    gauche.push([enu[i][0] + dep[0], enu[i][1] + dep[1]]);
+    droite.push([enu[i][0] - dep[0], enu[i][1] - dep[1]]);
+  }
+  return [...gauche, ...droite.reverse()].map(versLngLat);
+}
+
+/**
+ * CALX403 — construit l'allée de circulation depuis le geste tracé et la largeur SAISIE.
+ * Elle est de nature INTERDITE : sa surface est retirée du posable comme n'importe quelle
+ * zone interdite (`exclusionObstructionRings` la reprend sans rien changer). Refus NOMMÉ
+ * quand l'axe est trop court ou la largeur non saisie — jamais une allée sans largeur.
+ */
+export function alleeCirculation(
+  id: string,
+  axe: readonly LngLat[],
+  largeurM: number | null | undefined,
+  pays?: string | null,
+): VerdictAllee {
+  const pts = (axe ?? []).filter(
+    (p): p is LngLat => Array.isArray(p) && p.length === 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]),
+  );
+  if (pts.length < 2) {
+    return { ok: false, motif: 'Allée non tracée : il faut au moins deux points — un passage à un point ne mène nulle part.' };
+  }
+  const motif = motifLargeurAllee(largeurM, pays);
+  if (motif) return { ok: false, motif };
+  const vertices = couloirDepuisAxe(pts, largeurM as number);
+  if (!vertices || vertices.length < 3) {
+    return { ok: false, motif: 'Allée non tracée : les points saisis sont confondus, aucun couloir n’en sort.' };
+  }
+  return {
+    ok: true,
+    zone: {
+      id,
+      nature: 'INTERDITE',
+      vertices,
+      setbackM: 0,
+      usage: USAGE_CIRCULATION,
+      axe: pts.map((p) => [p[0], p[1]] as LngLat),
+      largeurM: largeurM as number,
+    },
+  };
+}
+
+/** CALX403 — l'allée déplacée d'un delta lng/lat : l'axe ET le couloir suivent le même
+ *  mouvement, et `largeurM` est recopiée TELLE QUELLE (le glissé ne re-dérive aucune cote,
+ *  donc la largeur est conservée au millimètre). Une zone qui n'est pas une allée est
+ *  renvoyée inchangée. */
+export function deplacerAllee(z: ExclusionZone, dLng: number, dLat: number): ExclusionZone {
+  if (z?.usage !== USAGE_CIRCULATION || !Array.isArray(z.axe)) return z;
+  return {
+    ...z,
+    vertices: (z.vertices ?? []).map(([lng, lat]) => [lng + dLng, lat + dLat] as LngLat),
+    axe: z.axe.map(([lng, lat]) => [lng + dLng, lat + dLat] as LngLat),
+    largeurM: z.largeurM,
+  };
+}
+
+/** CALX403 — l'aire (m²) réellement retirée par une allée : celle de son couloir. */
+export function aireAlleeM2(z: ExclusionZone): number {
+  const ring = exclusionZoneRing(z);
+  return ring ? geodesicAreaM2(ring) : 0;
+}
+
+/** CALX403 — un module POSÉ, tel que l'atelier le connaît : son repère et son emprise au
+ *  sol en mètres ENU autour de l'origine de la scène. */
+export interface ModulePose {
+  repere: string;
+  empriseM: Array<[number, number]>;
+}
+
+/**
+ * CALX403 — l'emprise au sol d'un module posé, en ENU, depuis ce que le pavage publie :
+ * son centre (`cx`, `cy`), l'azimut du pavage, la largeur de rangée et la profondeur AU SOL
+ * (`footprintPerPanelM2 / rowWidthM`). Mêmes vecteurs de base que le pavage
+ * (`estimatorBrainV2` : `s = [sin az, cos az]` empile les rangées, `u = [-cos az, sin az]`
+ * porte la rangée) : aucune cote n'est inventée, toutes sont lues sur le plan.
+ */
+export function empriseModuleENU(
+  centre: { cx: number; cy: number },
+  azimutDeg: number,
+  largeurRangeeM: number,
+  profondeurAuSolM: number,
+): Array<[number, number]> {
+  const az = azimutDeg * ZONE_DEG2RAD;
+  const s: [number, number] = [Math.sin(az), Math.cos(az)];
+  const u: [number, number] = [-s[1], s[0]];
+  const du = largeurRangeeM / 2;
+  const dv = profondeurAuSolM / 2;
+  return [
+    [-du, -dv],
+    [du, -dv],
+    [du, dv],
+    [-du, dv],
+  ].map(([a, b]) => [centre.cx + a * u[0] + b * s[0], centre.cy + a * u[1] + b * s[1]] as [number, number]);
+}
+
+/** Deux segments se croisent-ils ? (orientations opposées de part et d'autre). */
+function segmentsSeCroisent(
+  p1: [number, number],
+  p2: [number, number],
+  p3: [number, number],
+  p4: [number, number],
+): boolean {
+  const d = (a: [number, number], b: [number, number], c: [number, number]) =>
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const d1 = d(p3, p4, p1);
+  const d2 = d(p3, p4, p2);
+  const d3 = d(p1, p2, p3);
+  const d4 = d(p1, p2, p4);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+}
+
+/**
+ * CALX403 — les REPÈRES des modules qui chevauchent l'allée. Un module est chevauchant si
+ * un de ses coins est dans le couloir, si un sommet du couloir est dans son emprise, ou si
+ * leurs bords se croisent (cas du passage étroit qui TRAVERSE une rangée : ni coin ni
+ * sommet ne tombe dans l'autre, et pourtant ils se chevauchent).
+ *
+ * CETTE FONCTION NE SUPPRIME RIEN : elle COMPTE. Parité Aurora — un module posé en travers
+ * d'un passage est signalé, jamais effacé dans le dos du dessinateur.
+ */
+export function modulesSurAllee(
+  modules: readonly ModulePose[],
+  allee: ExclusionZone,
+  origine: LngLat,
+): string[] {
+  if (allee?.usage !== USAGE_CIRCULATION) return [];
+  const ring = exclusionZoneRing(allee);
+  if (!ring || ring.length < 3) return [];
+  const cosLat = Math.max(1e-6, Math.cos(origine[1] * ZONE_DEG2RAD));
+  const couloir = ring.map(
+    ([lng, lat]) => [(lng - origine[0]) * ZONE_DEG2M * cosLat, (lat - origine[1]) * ZONE_DEG2M] as [number, number],
+  );
+  const touche = (emprise: Array<[number, number]>): boolean => {
+    if (emprise.length < 3) return false;
+    if (emprise.some((c) => pointInPolygon(c, couloir))) return true;
+    if (couloir.some((c) => pointInPolygon(c, emprise))) return true;
+    for (let i = 0; i < emprise.length; i++) {
+      const a = emprise[i];
+      const b = emprise[(i + 1) % emprise.length];
+      for (let j = 0; j < couloir.length; j++) {
+        if (segmentsSeCroisent(a, b, couloir[j], couloir[(j + 1) % couloir.length])) return true;
+      }
+    }
+    return false;
+  };
+  return (modules ?? []).filter((m) => touche(m.empriseM ?? [])).map((m) => m.repere);
 }

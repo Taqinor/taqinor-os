@@ -28,6 +28,21 @@ import {
   type GabaritObstacle,
   type ObstacleEtendu,
 } from './types';
+import {
+  aireAlleeM2,
+  alleeCirculation,
+  couloirDepuisAxe,
+  deplacerAllee,
+  deserializeExclusionZones,
+  empriseModuleENU,
+  exclusionObstructionRings,
+  exclusionZoneFromDrag,
+  largeurAlleeDepuisReglages,
+  modulesSurAllee,
+  motifLargeurAllee,
+  serializeExclusionZones,
+  type ModulePose,
+} from './zones';
 import { obstacleRing } from '../../lib/obstacles';
 import { type LngLat } from '../../lib/roof';
 
@@ -162,11 +177,12 @@ describe('CALX105 — le glissé déplace le marqueur et consomme UN pas d’his
 
 // ————————————————————————————————————————————————————————————————————————
 // CALX103 — TRACER UN OBSTACLE POLYGONAL · CALX104 — CERCLE ET GABARITS
+// CALX403 — TRACER UNE ALLÉE DE CIRCULATION
 //
 // Repère de travail : un point de référence au Maroc, et deux conversions mètres ⇆ lng/lat
 // à sa latitude — celles de la géométrie testée. Toutes les cotes des tests sont donc des
-// mètres LISIBLES (une souche en L de 4 m × 4 m dont on a retiré un carré de 2 m), et les
-// aires attendues se vérifient à la main.
+// mètres LISIBLES (une souche en L de 4 m × 4 m dont on a retiré un carré de 2 m, une allée
+// de 1 m sur 10 m), et les aires attendues se vérifient à la main.
 // ————————————————————————————————————————————————————————————————————————
 
 const REF: LngLat = [-7.6, 33.5];
@@ -356,5 +372,111 @@ describe('CALX104 — les gabarits d’obstacle viennent des réglages, jamais d
     if (!verdict.ok) throw new Error('gabarit refusé');
     expect(verdict.obstacle.degagementM).toBeUndefined();
     expect(degagementObstacle(verdict.obstacle)).toBe(clearanceForType('ventilation'));
+  });
+});
+
+// Réglages `degagements` d'une société : UNE largeur d'allée, saisie pour le Maroc.
+const DEGAGEMENTS = {
+  allees_circulation: [
+    { pays: 'ma', largeur_m: 1, source: 'Consigne interne', reference: 'note du 12/09' },
+  ],
+};
+
+describe('CALX403 — une allée de circulation se trace, et retire sa surface', () => {
+  it('une allée de 1 m sur 10 m retire 10 m² de posable', () => {
+    const verdict = alleeCirculation('zone-1', [pt(0, 0), pt(10, 0)], 1, 'ma');
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.zone.nature).toBe('INTERDITE'); // sa surface est retirée du posable
+    expect(verdict.zone.usage).toBe('circulation');
+    expect(verdict.zone.axe).toHaveLength(2);
+    expect(verdict.zone.largeurM).toBe(1);
+    expect(aireAlleeM2(verdict.zone)).toBeCloseTo(10, 1);
+    // Elle rejoint bien les obstructions du pavage (comme toute zone INTERDITE).
+    expect(exclusionObstructionRings([verdict.zone])).toHaveLength(1);
+  });
+
+  it('pays sans largeur saisie ⇒ champ vide, allée refusée, réglage manquant NOMMÉ', () => {
+    const lu = largeurAlleeDepuisReglages(DEGAGEMENTS, 'fr');
+    expect(lu.largeurM).toBeNull(); // le champ reste vide : rien n'est supposé
+    expect(lu.motif).toContain('degagements.allees_circulation.fr');
+    const verdict = alleeCirculation('zone-1', [pt(0, 0), pt(10, 0)], lu.largeurM, 'fr');
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.motif).toContain('degagements.allees_circulation.fr');
+    expect(motifLargeurAllee(null, 'fr')).toContain('degagements.allees_circulation.fr');
+  });
+
+  it('un pays réglé prérremplit la largeur SAISIE et CITE sa source', () => {
+    const lu = largeurAlleeDepuisReglages(DEGAGEMENTS, 'ma');
+    expect(lu.largeurM).toBe(1);
+    expect(lu.motif).toContain('Consigne interne');
+    expect(lu.motif).toContain('note du 12/09');
+  });
+
+  it('un axe d’un seul point ne fait pas une allée', () => {
+    const verdict = alleeCirculation('zone-1', [pt(0, 0)], 1, 'ma');
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.motif).toContain('au moins deux points');
+  });
+
+  it('un glissé conserve `largeurM` au millimètre et translate l’axe ET le couloir', () => {
+    const verdict = alleeCirculation('zone-1', [pt(0, 0), pt(10, 0)], 1.234, 'ma');
+    if (!verdict.ok) throw new Error('allée refusée');
+    const avant = verdict.zone;
+    const apres = deplacerAllee(avant, 0.0005, -0.0003);
+    expect(apres.largeurM).toBe(1.234); // strictement la même largeur
+    expect(apres.axe?.[0][0]).toBeCloseTo((avant.axe as LngLat[])[0][0] + 0.0005, 12);
+    expect(apres.axe?.[0][1]).toBeCloseTo((avant.axe as LngLat[])[0][1] - 0.0003, 12);
+    expect(apres.vertices[0][0]).toBeCloseTo(avant.vertices[0][0] + 0.0005, 12);
+    expect(aireAlleeM2(apres)).toBeCloseTo(aireAlleeM2(avant), 3); // même couloir
+  });
+
+  it('deux modules en travers sont COMPTÉS, et AUCUN n’est retiré', () => {
+    const verdict = alleeCirculation('zone-1', [pt(0, 0), pt(10, 0)], 1, 'ma');
+    if (!verdict.ok) throw new Error('allée refusée');
+    // Trois modules de 1,70 m (rangée) × 1,60 m (profondeur au sol) : deux posés EN TRAVERS
+    // de l'allée (ils l'enjambent sans qu'aucun coin n'y tombe), un à 6 m au nord.
+    const module = (repere: string, cx: number, cy: number): ModulePose => ({
+      repere,
+      empriseM: empriseModuleENU({ cx, cy }, 180, 1.7, 1.6),
+    });
+    const modules = [module('M1', 2, 0), module('M2', 5, 0), module('M3', 2, 6)];
+    const touches = modulesSurAllee(modules, verdict.zone, REF);
+    expect(touches.sort()).toEqual(['M1', 'M2']);
+    expect(modules).toHaveLength(3); // rien n'a été supprimé : on COMPTE, on n'efface pas
+  });
+
+  it('l’allée VOYAGE par le document : usage, axe et largeur survivent à l’aller-retour', () => {
+    const verdict = alleeCirculation('zone-1', [pt(0, 0), pt(6, 0), pt(6, 5)], 1.2, 'ma');
+    if (!verdict.ok) throw new Error('allée refusée');
+    const emis = serializeExclusionZones([verdict.zone]);
+    expect(emis[0].usage).toBe('circulation');
+    expect(emis[0].axe).toHaveLength(3);
+    expect(emis[0].largeurM).toBe(1.2);
+    const relu = deserializeExclusionZones(JSON.parse(JSON.stringify(emis)));
+    expect(relu[0].usage).toBe('circulation');
+    expect(relu[0].largeurM).toBe(1.2);
+    expect(relu[0].axe).toHaveLength(3);
+  });
+
+  it('une zone d’exclusion ORDINAIRE ne gagne aucune clé d’allée (comportement inchangé)', () => {
+    const ordinaire = exclusionZoneFromDrag('zone-9', 'INTERDITE', pt(0, 0), pt(3, 3));
+    const emis = serializeExclusionZones([ordinaire]);
+    expect(emis[0].usage).toBeUndefined();
+    expect(emis[0].axe).toBeUndefined();
+    expect(emis[0].largeurM).toBeUndefined();
+    expect(modulesSurAllee([], ordinaire, REF)).toEqual([]);
+    expect(deplacerAllee(ordinaire, 0.001, 0.001)).toBe(ordinaire); // inchangée
+  });
+
+  it('le couloir garde la largeur saisie au coude (décalage sur la bissectrice)', () => {
+    const couloir = couloirDepuisAxe([pt(0, 0), pt(6, 0), pt(6, 6)], 1) as LngLat[];
+    expect(couloir).toHaveLength(6);
+    // Deux branches de 6 m à 1 m de large, coude compris : entre 11 et 12 m².
+    const zone = { id: 'z', nature: 'INTERDITE' as const, vertices: couloir, setbackM: 0 };
+    expect(aireAlleeM2(zone)).toBeGreaterThan(11);
+    expect(aireAlleeM2(zone)).toBeLessThan(12.1);
   });
 });

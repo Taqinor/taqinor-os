@@ -58,15 +58,23 @@ import {
 } from './environment';
 import {
   EXCLUSION_NATURES,
+  USAGE_CIRCULATION,
+  aireAlleeM2,
+  alleeCirculation,
+  couloirDepuisAxe,
+  deplacerAllee,
   exclusionColor,
   exclusionZoneFromDrag,
   exclusionZoneRing,
+  largeurAlleeDepuisReglages,
+  modulesSurAllee,
   withZoneNature,
   withZoneSetback,
   withZoneHeight,
   withZoneLabel,
   type ExclusionZone,
   type ExclusionNature,
+  type ModulePose,
 } from './zones';
 
 /** CAL72 — provenances proposées (vocabulaire `core.calepinage.types.Provenance`), avec
@@ -200,6 +208,11 @@ export interface ObstaclesUiDeps {
    *  d'environnement : ces deux-là ombrent désormais réellement. Optionnel — absent,
    *  seul le re-pavage (`recalc`) a lieu, comportement d'avant CAL66. */
   recomputeShading?: () => void;
+  /** CALX403 — les modules POSÉS du pan actif (repère + emprise au sol en ENU) et
+   *  l'origine de la scène, pour COMPTER ceux qui chevauchent une allée de circulation.
+   *  Optionnel : absent, le bandeau d'allée ne parle QUE du couloir (surface retirée) —
+   *  jamais un compte de modules inventé. Cette fonction ne supprime jamais rien. */
+  modulesPoses?: () => { modules: ModulePose[]; origine: LngLat };
 }
 
 export interface ObstaclesUi {
@@ -241,19 +254,22 @@ export interface ObstaclesUi {
   endEnvMove: () => void;
   /** Re-dessine les marqueurs d'environnement. */
   redrawEnvironment: () => void;
-  // CALX103/CALX104 — modes de tracé « à la volée » (clics successifs).
-  /** Arme (ou désarme, `null`) un tracé : obstacle polygonal, obstacle circulaire, ou
-   *  pose d'un gabarit de la société. */
+  // CALX103/CALX104/CALX403 — modes de tracé « à la volée » (clics successifs).
+  /** Arme (ou désarme, `null`) un tracé : obstacle polygonal, obstacle circulaire, pose
+   *  d'un gabarit société, ou allée de circulation. */
   armerTrace: (mode: ModeTrace | null) => void;
   /** Le mode de tracé armé, ou null. */
   modeTraceArme: () => ModeTrace | null;
   /** CALX104 — les gabarits d'obstacle lus dans les réglages société (liste VIDE tant que
    *  la société n'a rien saisi — le dépôt n'en livre aucun). */
   gabaritsObstacle: () => GabaritObstacle[];
+  /** CALX403 — les repères des modules posés qui chevauchent une allée de circulation.
+   *  AUCUN module n'est supprimé : ils sont comptés. */
+  modulesSurAllees: () => string[];
 }
 
-/** CALX103/CALX104 — les tracés « à la volée » que l'atelier sait armer. */
-export type ModeTrace = 'polygone' | 'cercle' | 'gabarit';
+/** CALX103/CALX104/CALX403 — les tracés « à la volée » que l'atelier sait armer. */
+export type ModeTrace = 'polygone' | 'cercle' | 'gabarit' | 'allee';
 
 export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi {
   const { map, recalc, setStatus, redrawTrace } = deps;
@@ -778,6 +794,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   // ————————————————————————————————————————————————————————————————————
   // CALX103 — TRACER UN OBSTACLE POLYGONAL AU CLIC
   // CALX104 — OBSTACLE CIRCULAIRE (RAYON SAISI) ET GABARITS DE LA SOCIÉTÉ
+  // CALX403 — ALLÉE DE CIRCULATION (POLYLIGNE + LARGEUR SAISIE)
   //
   // Un obstacle était TOUJOURS un rectangle tiré au glissé : une souche en L ou un édicule
   // biscornu ne se saisissait pas, une cheminée ronde passait pour un carré, et aucun
@@ -786,8 +803,10 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   // toit — clics successifs, double-clic pour fermer — donc rien de neuf à apprendre, et la
   // MÊME garde `isSimplePolygon` refuse un tracé croisé.
   //
-  // ZÉRO CHIFFRE INVENTÉ : le rayon d'un cercle est SAISI, et les cotes d'un gabarit
-  // viennent des réglages société (`zones_types`). Le dépôt n'en livre AUCUN.
+  // ZÉRO CHIFFRE INVENTÉ : le rayon d'un cercle est SAISI, les cotes d'un gabarit viennent
+  // des réglages société (`zones_types`), et la largeur d'une allée vient des réglages
+  // (`degagements.allees_circulation`, CALX402) POUR LE PAYS DU SITE — sans elle, l'allée
+  // refuse de se fermer en nommant le pays et le réglage manquant.
   //
   // Le panneau est créé ICI si la page hôte ne le fournit pas (patron `ensureTypePicker`) :
   // aucune page n'a à être modifiée.
@@ -798,7 +817,11 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     parseFloat((s ?? '').replace(/\s/g, '').replace(',', '.'));
 
   const reglages = ctx.opts?.reglagesAtelier ?? null;
+  /** CALX403 — le pays du site vient de la section `imagerie` déjà transmise (CAL47) :
+   *  on ne le redemande pas, et on n'en suppose aucun. */
+  const paysDuSite = ctx.opts?.imagery?.pays ?? null;
   const { gabarits: gabaritsObstacle, refuses: gabaritsRefuses } = lireGabaritsObstacle(reglages?.zones_types);
+  const largeurReglee = largeurAlleeDepuisReglages(reglages?.degagements, paysDuSite);
 
   let modeTrace: ModeTrace | null = null;
   let pointsEnCours: LngLat[] = [];
@@ -824,7 +847,14 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
       `<button type="button" id="rp9-obs-gabarit-poser" class="rp9-btn" aria-pressed="false" disabled>Poser ce gabarit</button>` +
       `<span id="rp9-obs-gabarit-vide" class="text-lune-faint"></span>` +
       `</div>` +
-      `<span id="rp9-forme-motif" class="text-alert-300" role="alert" hidden></span>`;
+      `<div class="flex flex-wrap items-center gap-2">` +
+      `<button type="button" id="rp9-allee-tracer" class="rp9-btn" aria-pressed="false">Tracer une allée de circulation</button>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-allee-largeur">Largeur de l’allée (m)` +
+      `<input type="text" id="rp9-allee-largeur" class="rp9-input w-20" inputmode="decimal" value="" /></label>` +
+      `<span id="rp9-allee-reglage" class="text-lune-faint"></span>` +
+      `</div>` +
+      `<span id="rp9-forme-motif" class="text-alert-300" role="alert" hidden></span>` +
+      `<span id="rp9-allee-bandeau" class="text-alert-300" role="status" hidden></span>`;
     anchorEl.appendChild(panel);
     return panel;
   }
@@ -835,7 +865,11 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   const obsGabaritEl = $<HTMLSelectElement>('rp9-obs-gabarit');
   const obsGabaritPoserBtn = $<HTMLButtonElement>('rp9-obs-gabarit-poser');
   const obsGabaritVideEl = $('rp9-obs-gabarit-vide');
+  const alleeTracerBtn = $<HTMLButtonElement>('rp9-allee-tracer');
+  const alleeLargeurEl = $<HTMLInputElement>('rp9-allee-largeur');
+  const alleeReglageEl = $('rp9-allee-reglage');
   const formeMotifEl = $('rp9-forme-motif');
+  const alleeBandeauEl = $('rp9-allee-bandeau');
 
   /** Affiche (ou efface) un refus NOMMÉ, dans le panneau ET dans le bandeau de statut. */
   function direRefusForme(motif: string | null) {
@@ -858,16 +892,22 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     return out;
   }
 
-  /** Aperçu du contour en cours de tracé. */
+  /** Aperçu du tracé en cours : la polyligne pour un contour, le couloir DÉJÀ élargi de
+   *  sa largeur saisie pour une allée (on voit ce que l'on retire, pas un simple trait). */
   function apercuTrace() {
     const pts = pointsPropres();
     if (pts.length < 2) {
       clearPreview();
       return;
     }
+    const couloir =
+      modeTrace === 'allee' && nombreSaisi(alleeLargeurEl?.value) > 0
+        ? couloirDepuisAxe(pts, nombreSaisi(alleeLargeurEl?.value))
+        : null;
+    const coords = couloir ? [...couloir, couloir[0]] : pts;
     srcOf('rp9-obs-preview')?.setData({
       type: 'Feature',
-      geometry: { type: 'LineString', coordinates: pts },
+      geometry: { type: 'LineString', coordinates: coords },
       properties: {},
     } as never);
   }
@@ -906,10 +946,17 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   }
   remplirGabarits();
 
+  // CALX403 — la largeur d'allée est PRÉREMPLIE depuis les réglages du pays du site, et
+  // reste MODIFIABLE. Pays sans largeur saisie ⇒ le champ reste VIDE et le motif nomme le
+  // pays et le réglage manquant : rien n'est supposé.
+  if (alleeLargeurEl && largeurReglee.largeurM != null) alleeLargeurEl.value = fmt1(largeurReglee.largeurM);
+  if (alleeReglageEl) alleeReglageEl.textContent = largeurReglee.motif;
+
   const LIBELLE_MODE: Record<ModeTrace, string> = {
     polygone: 'Cliquez les sommets de l’obstacle, double-clic pour fermer.',
     cercle: 'Cliquez le centre de l’obstacle circulaire (son rayon est celui que vous avez saisi).',
     gabarit: 'Cliquez l’endroit où poser ce gabarit.',
+    allee: 'Cliquez les points de l’allée, double-clic pour finir.',
   };
 
   /** Arme (ou désarme) un tracé à la volée. Un seul mode à la fois ; réarmer le même le
@@ -923,6 +970,7 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     obsPolygoneBtn?.setAttribute('aria-pressed', String(mode === 'polygone'));
     obsCercleBtn?.setAttribute('aria-pressed', String(mode === 'cercle'));
     obsGabaritPoserBtn?.setAttribute('aria-pressed', String(mode === 'gabarit'));
+    alleeTracerBtn?.setAttribute('aria-pressed', String(mode === 'allee'));
     if (typeof map.getCanvas === 'function') {
       const canvas = map.getCanvas();
       if (canvas) canvas.style.cursor = mode ? 'crosshair' : '';
@@ -983,9 +1031,75 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     return true;
   }
 
+  /** CALX403 — ferme l'allée tracée. Sans largeur saisie pour le pays, elle REFUSE de se
+   *  fermer et le motif NOMME le pays et le réglage manquant. */
+  function fermerAllee(): boolean {
+    const pts = pointsPropres();
+    ctx.zoneCounter = ctx.zoneCounter ?? 0;
+    const verdict = alleeCirculation(
+      `zone-${ctx.zoneCounter + 1}`,
+      pts,
+      nombreSaisi(alleeLargeurEl?.value),
+      paysDuSite,
+    );
+    if (!verdict.ok) {
+      direRefusForme(verdict.motif);
+      return false;
+    }
+    ctx.zoneCounter += 1;
+    armerTrace(null);
+    ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
+    zoneList().push(verdict.zone);
+    renderZoneList();
+    redrawExclusionZones();
+    recalcWithShading();
+    majBandeauAllees();
+    setStatus(
+      `Allée de circulation tracée (${fmt1(verdict.zone.largeurM as number)} m de large, ` +
+        `${fmt1(aireAlleeM2(verdict.zone))} m² retirés du posable).`,
+    );
+    return true;
+  }
+
+  /** CALX403 — les repères des modules posés qui chevauchent UNE allée quelconque. Aucun
+   *  module n'est retiré : ils sont COMPTÉS (parité Aurora). Sans modules fournis par
+   *  l'hôte (`deps.modulesPoses`), la liste est vide — jamais un compte inventé. */
+  function modulesSurAllees(): string[] {
+    const pose = deps.modulesPoses?.();
+    if (!pose || !pose.modules?.length) return [];
+    const reperes = new Set<string>();
+    for (const z of zoneList()) {
+      if (z.usage !== USAGE_CIRCULATION) continue;
+      for (const r of modulesSurAllee(pose.modules, z, pose.origine)) reperes.add(r);
+    }
+    return [...reperes];
+  }
+
+  /** CALX403 — bandeau des allées : surface retirée, et modules posés en travers (comptés,
+   *  jamais supprimés). Masqué quand aucune allée n'est tracée. */
+  function majBandeauAllees() {
+    if (!alleeBandeauEl) return;
+    const allees = zoneList().filter((z) => z.usage === USAGE_CIRCULATION);
+    if (!allees.length) {
+      alleeBandeauEl.textContent = '';
+      alleeBandeauEl.hidden = true;
+      return;
+    }
+    const surface = allees.reduce((s, z) => s + aireAlleeM2(z), 0);
+    const reperes = modulesSurAllees();
+    const phrase = reperes.length
+      ? ` ${reperes.length} module(s) posé(s) en travers : ${reperes.join(', ')} — ils sont signalés, pas supprimés.`
+      : '';
+    alleeBandeauEl.hidden = false;
+    alleeBandeauEl.textContent =
+      `${allees.length} allée(s) de circulation · ${fmt1(surface)} m² retirés du posable.${phrase}`;
+  }
+
   obsPolygoneBtn?.addEventListener('click', () => armerTrace(modeTrace === 'polygone' ? null : 'polygone'));
   obsCercleBtn?.addEventListener('click', () => armerTrace(modeTrace === 'cercle' ? null : 'cercle'));
   obsGabaritPoserBtn?.addEventListener('click', () => armerTrace(modeTrace === 'gabarit' ? null : 'gabarit'));
+  alleeTracerBtn?.addEventListener('click', () => armerTrace(modeTrace === 'allee' ? null : 'allee'));
+  alleeLargeurEl?.addEventListener('input', apercuTrace);
 
   map.on?.('click', (e: maplibregl.MapMouseEvent) => {
     if (!modeTrace) return;
@@ -1003,10 +1117,80 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   });
 
   map.on?.('dblclick', (e: maplibregl.MapMouseEvent) => {
-    if (modeTrace !== 'polygone') return;
+    if (modeTrace !== 'polygone' && modeTrace !== 'allee') return;
     e.preventDefault?.();
-    fermerObstaclePolygone();
+    if (modeTrace === 'polygone') fermerObstaclePolygone();
+    else fermerAllee();
   });
+
+  // ————————————————————————————————————————————————————————————————————
+  // CALX403 — GLISSÉ D'UNE ALLÉE : elle se déplace d'un bloc, largeur CONSERVÉE
+  // Parité Aurora (« Fire pathways can be moved … which will maintain their orientation
+  // and total width »). Le glissé translate l'axe ET le couloir du MÊME delta lng/lat :
+  // aucune cote n'est re-dérivée, donc `largeurM` est identique au millimètre.
+  // ————————————————————————————————————————————————————————————————————
+  let glisseAllee: { id: string; startLng: number; startLat: number; moved: boolean } | null = null;
+
+  /** Allée touchée au point écran, ou null (le calque des zones porte leur `id`). */
+  function alleeAtPoint(pt: maplibregl.Point): string | null {
+    if (typeof map.queryRenderedFeatures !== 'function' || !map.getLayer?.('rp9-zones')) return null;
+    const box: [maplibregl.Point, maplibregl.Point] = [
+      { x: pt.x - OBSTACLE_TAP_PX, y: pt.y - OBSTACLE_TAP_PX } as maplibregl.Point,
+      { x: pt.x + OBSTACLE_TAP_PX, y: pt.y + OBSTACLE_TAP_PX } as maplibregl.Point,
+    ];
+    const hits = map.queryRenderedFeatures(box, { layers: ['rp9-zones'] });
+    for (const h of hits) {
+      const id = h?.properties?.id;
+      if (typeof id !== 'string') continue;
+      if (zoneList().some((z) => z.id === id && z.usage === USAGE_CIRCULATION)) return id;
+    }
+    return null;
+  }
+
+  function tryBeginAlleeMove(lngLat: LngLat, point: maplibregl.Point): boolean {
+    if (modeTrace || ctx.obstacleMode || ctx.layoutMode || glisseEnv) return false;
+    const id = alleeAtPoint(point);
+    if (!id) return false;
+    glisseAllee = { id, startLng: lngLat[0], startLat: lngLat[1], moved: false };
+    map.dragPan?.disable?.();
+    return true;
+  }
+
+  function doAlleeMove(lngLat: LngLat) {
+    if (!glisseAllee) return;
+    const list = zoneList();
+    const idx = list.findIndex((z) => z.id === glisseAllee!.id);
+    if (idx < 0) return;
+    if (!glisseAllee.moved) ctx.pushWorkshopHistory?.(); // CAL100 — une photo par glissé
+    glisseAllee.moved = true;
+    list[idx] = deplacerAllee(list[idx], lngLat[0] - glisseAllee.startLng, lngLat[1] - glisseAllee.startLat);
+    glisseAllee.startLng = lngLat[0];
+    glisseAllee.startLat = lngLat[1];
+    redrawExclusionZones();
+  }
+
+  function endAlleeMove() {
+    if (!glisseAllee) return;
+    const bouge = glisseAllee.moved;
+    glisseAllee = null;
+    map.dragPan?.enable?.();
+    ctx.suppressClick = true;
+    if (bouge) {
+      renderZoneList();
+      recalcWithShading();
+      majBandeauAllees();
+    }
+  }
+
+  map.on?.('mousedown', (e: maplibregl.MapMouseEvent) => {
+    tryBeginAlleeMove([e.lngLat.lng, e.lngLat.lat], e.point);
+  });
+  map.on?.('mousemove', (e: maplibregl.MapMouseEvent) => {
+    doAlleeMove([e.lngLat.lng, e.lngLat.lat]);
+  });
+  map.on?.('mouseup', () => endAlleeMove());
+
+  majBandeauAllees(); // état initial (dossier rechargé avec des allées)
 
 
   function redrawObstacles() {
@@ -1554,5 +1738,6 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     armerTrace,
     modeTraceArme: () => modeTrace,
     gabaritsObstacle: () => gabaritsObstacle.map((g) => ({ ...g })),
+    modulesSurAllees,
   };
 }

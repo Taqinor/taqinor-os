@@ -82,20 +82,24 @@ export interface InitOptions {
   // HÔTE sur `GET /api/django/calepinage/parametres/` et transmise telle quelle.
   // Absente/vide ⇒ imagerie et géocodage strictement inchangés (Maroc, MapTiler/Mapbox).
   imagery?: ImagerySettings | null;
-  // CALX104 — la section `zones_types` des réglages société (les gabarits d'obstacle
-  // saisis par la société), lue par la page HÔTE sur
-  // `GET /api/django/calepinage/parametres/` et transmise TELLE QUELLE — l'outil
-  // n'appelle jamais Django lui-même. Absente/vide ⇒ AUCUN gabarit proposé : le dépôt
-  // n'en livre aucun, ni cote, ni hauteur, ni dégagement.
+  // CALX104/CALX403 — les deux sections des réglages société que l'ATELIER consomme
+  // (`zones_types` pour les gabarits d'obstacle, `degagements` pour la largeur d'allée
+  // de circulation par pays, CALX402), lues par la page HÔTE sur
+  // `GET /api/django/calepinage/parametres/` et transmises TELLES QUELLES — l'outil
+  // n'appelle jamais Django lui-même. Le PAYS, lui, est déjà porté par `imagery.pays`
+  // (CAL47) : on ne le redemande pas. Absente/vide ⇒ AUCUN gabarit proposé et AUCUNE
+  // largeur d'allée préremplie — jamais une cote ni une largeur de repli.
   reglagesAtelier?: ReglagesAtelier | null;
 }
 
-/** CALX104 — le sous-ensemble des réglages société que l'atelier lit. Les sections gardent
- *  la forme BRUTE servie par l'API (clés en `snake_case`) : l'atelier les interprète, il ne
- *  les réécrit pas. */
+/** CALX104/CALX403 — le sous-ensemble des réglages société que l'atelier lit. Les sections
+ *  gardent la forme BRUTE servie par l'API (clés en `snake_case`) : l'atelier les
+ *  interprète, il ne les réécrit pas. */
 export interface ReglagesAtelier {
   /** Section `zones_types` (CAL74) — les gabarits saisis par la société. */
   zones_types?: unknown;
+  /** Section `degagements` (CAL71/CALX402) — dont `allees_circulation` par pays. */
+  degagements?: unknown;
 }
 
 /** PV75 — sous-ensemble bancable de `simulation.pr` (P50/P90/PR/cascade des pertes),
