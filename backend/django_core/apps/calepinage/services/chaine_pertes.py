@@ -66,9 +66,15 @@ la LISTE PLATE des postes saisis (D-CALX 11).
 """
 from __future__ import annotations
 
+import datetime
+
 from apps.calepinage.services import etapes as _etapes
 from apps.calepinage.services.pvgis_serie import (
+    BASE_HEURE_LOCALE_LEGALE, BASE_HEURE_LOCALE_STANDARD, BASE_HEURE_UTC,
     MOTIF_TMY_HORIZONTAL, cle_de_cache,
+)
+from apps.calepinage.services.site import (
+    decalage_utc_minutes, fuseau_du_site,
 )
 
 #: L'ORDRE DE LA CHAÎNE — le seul endroit du dépôt qui le déclare (CALX148).
@@ -311,6 +317,31 @@ CLE_REGLAGE_FENETRE_ANNEES = 'parametres.simulation.fenetre_annees'
 #: troncature est DITE.
 PLAFOND_FENETRE_ANNEES = 10
 
+#: CALX59 — LE MOTIF, mot pour mot, quand le fuseau du site n'est pas saisi
+#: (D-CALX 15). La simulation TOURNE quand même : c'est la production qui est
+#: publiée, pas le croisement horaire.
+MOTIF_FUSEAU_ABSENT = (
+    "fuseau du site non renseigné : aucun croisement horaire n'est possible")
+
+#: Les blocs du résultat qui CROISENT la série météo avec une courbe de
+#: charge saisie en heure locale. Sans fuseau, ils sont OMIS en nommant le
+#: champ — jamais décalés d'une heure en silence, ce qui déplacerait toute
+#: l'autoconsommation d'un créneau.
+BLOCS_HORAIRES_OMIS = ('autoconsommation', 'batterie', 'hors_reseau')
+
+#: La clé sous laquelle l'ordonnanceur pose, DANS LE CONTEXTE, le verdict de
+#: l'alignement horaire. ``services/simulation.py`` (CALX5) la lit pour savoir
+#: s'il peut construire les blocs ci-dessus, et une étape horaire de charge la
+#: lit pour s'omettre avec le même motif — une seule formulation partout.
+CLE_CROISEMENT_HORAIRE = 'croisement_horaire'
+
+#: Le motif publié quand la série ne DIT PAS dans quelle base elle est
+#: indexée : la ré-indexer reviendrait à deviner de quoi on part.
+MOTIF_BASE_HORAIRE_INCONNUE = (
+    "la base horaire de la série météo n'est pas déclarée "
+    '(« meteo.heure.base ») : sans elle, ré-indexer reviendrait à deviner '
+    'de quelle heure on part')
+
 #: Tolérance de COMPARAISON de flottants — un epsilon d'arithmétique, pas un
 #: seuil métier : aucun chiffre publié n'en dépend.
 _EPSILON = 1e-9
@@ -323,6 +354,8 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'CLE_REGLAGE_FENETRE_ANNEES', 'PLAFOND_FENETRE_ANNEES',
            'MOTIF_TMY_HORIZONTAL', 'MeteoIndecise', 'decision_meteo',
            'CLES_METEO_PUBLIEES', 'SOUS_BLOCS_METEO',
+           'MOTIF_FUSEAU_ABSENT', 'MOTIF_BASE_HORAIRE_INCONNUE',
+           'BLOCS_HORAIRES_OMIS', 'CLE_CROISEMENT_HORAIRE',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -381,6 +414,7 @@ def appliquer_chaine(serie, contexte=None, resultat=None):
     contexte = contexte if isinstance(contexte, dict) else {}
     _refuser_irradiance_horizontale(serie)
     _installer_meteo_partagee(contexte)
+    serie = _reindexer_sur_l_heure_du_site(serie, contexte)
     courante = serie
     premiere = _arrondi(_etapes.energie_kwh(courante))
     dernier_connu = premiere
@@ -445,7 +479,9 @@ CLES_METEO_PUBLIEES = (
 SOUS_BLOCS_METEO = {
     'point': ('lat', 'lon', 'altitude_m'),
     'horizon': ('origine', 'hauteur_max_deg', 'base_horizon'),
-    'heure': ('base', 'fuseau_site', 'decalage_minutes'),
+    # ``motif`` (CALX59) est vide quand la ré-indexation a eu lieu, et porte
+    # sinon la raison — un décalage non appliqué se DIT.
+    'heure': ('base', 'fuseau_site', 'decalage_minutes', 'motif'),
 }
 
 
@@ -559,6 +595,164 @@ def _executer(nom, serie, contexte):
         return _appliquer_saisie(nom, serie, saisi)
     return serie, _etapes.etape_omise(
         _libelle(nom), _avec_saisie_non_sourcee(nom, motif, saisi))
+
+
+# ── CALX59 — la série météo alignée sur l'heure LÉGALE du site ──────────
+
+def _reindexer_sur_l_heure_du_site(serie, contexte):
+    """Ré-indexe la série sur l'heure LÉGALE du fuseau SAISI du site.
+
+    LE PROBLÈME, ET IL COÛTE UNE HEURE PLEINE
+    ------------------------------------------
+    ``services/autoconsommation.py`` et ``services/batterie.py`` croisent
+    index à index une courbe de charge SAISIE en heure légale locale avec une
+    série météo qui, elle, n'est pas indexée dans cette heure-là. Un décalage
+    d'un cran déplace toute l'autoconsommation d'un créneau — et personne ne
+    le voit, parce que les deux courbes ont la même forme.
+
+    CE QUI EST APPLIQUÉ, ET D'OÙ IL VIENT
+    --------------------------------------
+    Le décalage n'est JAMAIS une constante : il est lu dans ``zoneinfo`` à la
+    DATE de chaque point (``services/site.py::decalage_utc_minutes``), si bien
+    que l'heure d'été et le retour marocain à UTC+0 pendant le Ramadan sont
+    portés par la base de fuseaux — jamais par un chiffre écrit ici. Le Maroc
+    a vécu à UTC+1 du 2018 au 19/09/2026 puis est repassé à UTC+0 (décret
+    n° 2.26.530) : seule la base suit ces décisions.
+
+    Ce qui est appliqué dépend de la base DÉCLARÉE par la série
+    (``meteo.heure.base``), parce qu'une série déjà décalée ne se décale pas
+    deux fois :
+
+    * ``utc`` — on applique le décalage UTC→site complet ;
+    * ``locale_standard`` — PVGIS a déjà appliqué l'écart STANDARD du fuseau
+      (``localtime=1`` : « not daylight saving time ») ; il ne reste donc que
+      la part SAISONNIÈRE, elle aussi lue dans ``zoneinfo``.
+
+    LE FUSEAU NE SE DEVINE PAS (D-CALX 15)
+    ---------------------------------------
+    Fuseau non saisi ⇒ la simulation TOURNE (la production ne dépend pas du
+    fuseau : la position du soleil se calcule en UTC, CALX146), mais la série
+    reste INCHANGÉE et les blocs qui croisent une charge horaire sont OMIS en
+    nommant le champ. OpenSolar publie de même ses conventions horaires
+    (https://support.opensolar.com/hc/en-us/articles/4410730225177-How-is-Output-Calculated-in-OpenSolar).
+
+    Returns:
+        la série ré-indexée (une COPIE : ni la série reçue ni ses points ne
+        sont modifiés), ou la série telle quelle quand rien n'a pu être
+        appliqué. Le verdict est posé dans ``contexte['croisement_horaire']``
+        et le bloc publiable dans ``contexte['meteo']['heure']``.
+    """
+    meteo = contexte.get('meteo')
+    if not isinstance(meteo, dict):
+        meteo = {}
+        contexte['meteo'] = meteo
+    heure = meteo.get('heure') if isinstance(meteo.get('heure'), dict) else {}
+    base = heure.get('base')
+
+    fuseau = fuseau_du_site(contexte.get('site') or {})['fuseau']
+    if not fuseau:
+        _poser_verdict_horaire(contexte, base, None, [],
+                               MOTIF_FUSEAU_ABSENT, 'site.fuseau')
+        return serie
+    if base not in (BASE_HEURE_UTC, BASE_HEURE_LOCALE_STANDARD):
+        _poser_verdict_horaire(contexte, base, fuseau, [],
+                               MOTIF_BASE_HORAIRE_INCONNUE, 'meteo.heure.base')
+        return serie
+
+    points = serie.get('points') or [] if isinstance(serie, dict) else []
+    decales = []
+    offsets = set()
+    for point in points:
+        moment = _moment_du_point(point)
+        if moment is None:
+            decales.append(point)
+            continue
+        legal = decalage_utc_minutes(fuseau, moment)
+        saisonnier = _part_saisonniere_minutes(fuseau, moment)
+        if legal is None or saisonnier is None:
+            # Base de fuseaux indisponible : on ne décale RIEN plutôt que de
+            # décaler la moitié de l'année (un doute ne produit pas un chiffre).
+            _poser_verdict_horaire(
+                contexte, base, fuseau, [],
+                f'le fuseau « {fuseau} » est inconnu de la base IANA '
+                "installée : aucun décalage n'est appliqué", 'site.fuseau')
+            return serie
+        offsets.add(legal)
+        applique = legal if base == BASE_HEURE_UTC else saisonnier
+        decales.append(_point_decale(point, moment, applique))
+
+    suite = dict(serie)
+    suite['points'] = decales
+    _poser_verdict_horaire(contexte, BASE_HEURE_LOCALE_LEGALE, fuseau,
+                           sorted(offsets), '', '')
+    return suite
+
+
+def _poser_verdict_horaire(contexte, base, fuseau, decalages, motif, champ):
+    """Écrit le bloc ``meteo.heure`` ET le verdict que CALX5 lira."""
+    contexte['meteo']['heure'] = {
+        'base': base,
+        'fuseau_site': fuseau,
+        'decalage_minutes': list(decalages),
+        'motif': motif,
+    }
+    contexte[CLE_CROISEMENT_HORAIRE] = {
+        'possible': not motif,
+        'motif': motif,
+        'champ': champ,
+        'blocs_omis': [] if not motif else list(BLOCS_HORAIRES_OMIS),
+    }
+
+
+def _moment_du_point(point):
+    """L'horodatage d'un point, ou ``None`` s'il n'en porte pas de lisible."""
+    if not isinstance(point, dict):
+        return None
+    try:
+        return datetime.datetime(
+            int(point['annee']), int(point['mois']), int(point['jour']),
+            int(point['heure']), tzinfo=datetime.timezone.utc)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _part_saisonniere_minutes(fuseau, moment):
+    """La part SAISONNIÈRE du décalage, lue dans ``zoneinfo`` à cette date.
+
+    C'est ``utcoffset - standard``, c'est-à-dire exactement ce que la base de
+    fuseaux appelle ``dst()`` : au Maroc, ``0`` hors Ramadan et ``-60`` min
+    pendant (la base modélise le retour à UTC+0 comme un décalage saisonnier
+    NÉGATIF). Aucune valeur n'est écrite ici : tout vient de la base.
+    """
+    if not fuseau or moment is None:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+
+        saison = moment.replace(tzinfo=ZoneInfo(fuseau)).dst()
+    except Exception:       # pragma: no cover - dépend de la base installée
+        return None
+    if saison is None:
+        return None
+    return int(saison.total_seconds() // 60)
+
+
+def _point_decale(point, moment, minutes):
+    """Une COPIE du point ré-étiquetée — aucune valeur mesurée n'est touchée.
+
+    Ré-indexer, c'est CHANGER L'ÉTIQUETTE d'une heure, jamais sa mesure :
+    l'irradiance, la température et le vent du point restent exactement ceux
+    que PVGIS a servis.
+    """
+    if not minutes:
+        return point
+    cible = moment + datetime.timedelta(minutes=minutes)
+    copie = dict(point)
+    copie['annee'] = cible.year
+    copie['mois'] = cible.month
+    copie['jour'] = cible.day
+    copie['heure'] = cible.hour
+    return copie
 
 
 # ── CALX153 — année météo TYPE ou fenêtre PLURIANNUELLE ─────────────────
