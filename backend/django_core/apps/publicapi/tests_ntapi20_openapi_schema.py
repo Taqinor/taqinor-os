@@ -73,26 +73,37 @@ class Ntapi20OpenApiSchemaTests(TestCase):
             self.assertIn(method, schema['paths'][path])
 
     def test_no_undocumented_paths_beyond_mounted_surface(self):
+        # SOLMVP-fix (2026-09-21) — SOLMVP22 avait re-fixé ce pin à 35 via
+        # « 48 - 13 » (retrait des 2 ressources supply chain NTSCM38 + 4
+        # BTP/EPC NTCON31, list+detail, -12, et de la lecture simple NTSCM38
+        # « tableau de bord réappro », -1) : une ERREUR D'ARITHMÉTIQUE, pas une
+        # vraie régression — le total RÉEL juste avant SOLMVP22 était 50 (la
+        # ligne qu'il a remplacée disait littéralement
+        # ``self.assertEqual(nb_operations, 50)``, CAL214 calepinages déjà
+        # inclus), jamais 48 (un sous-total INTERMÉDIAIRE d'un ancien
+        # commentaire, avant son propre « + 2 CAL214 »). 50 - 13 = 37, vérifié
+        # en direct (``build_openapi_schema()`` compte bien 37 aujourd'hui) —
+        # remis d'aplomb ici, calcul complet plutôt que rapiécé :
+        #
         # 10 ressources en lecture seule (`docs.py::endpoints`) × 2
-        # (list+detail) = 20 (5 métier + CAL214 calepinages + 2 UX NTUX33 +
-        # 2 Procure-to-Pay NTP2P39 — `public-job` n'y est PAS : ses chemins
-        # viennent de `endpoints_bulk` ci-dessous) + 5 écritures (leads-write
-        # POST/PATCH, activités POST, devis-write POST, tickets-write POST) +
-        # 6 bulk (NTAPI14/15/16/43/30 : exports, imports, jobs list/detail,
-        # jobs/<id>/relancer, exports/<entite>.csv) + 1 lecture simple
-        # (NTADM42 statut de licence) = 32, + 3 (2026-09-20, NTOBS27 —
+        # (list+detail) = 20 (5 métier [leads/devis/factures/chantiers/
+        # produits] + CAL214 calepinages + 2 UX NTUX33 [favoris/saved-views] +
+        # 2 Procure-to-Pay NTP2P39 [achats-demande/achats-rfq] — `public-job`
+        # n'y est PAS : ses chemins viennent de `endpoints_bulk` ci-dessous)
+        # + 5 écritures (leads-write POST/PATCH, activités POST, devis-write
+        # POST, tickets-write POST) + 6 bulk (NTAPI14/15/16/43/30 : exports,
+        # imports, jobs list/detail, jobs/<id>/relancer, exports/<entite>.csv)
+        # + 1 lecture simple (NTADM42 statut de licence) + 3 (NTOBS27 —
         # surface « Fiabilité » en lecture seule : fiabilite/sauvegardes/,
         # fiabilite/sla/<periode>/, fiabilite/usage/, chacune un objet unique
-        # en GET) = 35 opérations, sur autant de chemins distincts (aucun
-        # chemin ne cumule 2 méthodes ici) — jamais un chemin fantôme ajouté
-        # par erreur. SOLMVP22 (2026-09-21) a retiré les 2 surfaces supply
-        # chain NTSCM38 et les 4 ressources BTP/EPC NTCON31 (list+detail,
-        # -12) ainsi que la lecture simple NTSCM38 « tableau de bord réappro »
-        # (-1) : modules `scm`/`btp_chantier` sortis du produit (Groupe
-        # SOLMVP), soit 48 - 13 = 35.
+        # en GET) + 2 (NTAPI17 flux d'évènements `events/` GET, NTAPI19 OAuth2
+        # client_credentials `oauth/token/` POST — anciens, jamais comptés
+        # explicitement ici, d'où l'écart avec les sous-totaux ci-dessus) =
+        # 37 opérations, sur autant de chemins distincts (aucun chemin ne
+        # cumule 2 méthodes ici) — jamais un chemin fantôme ajouté par erreur.
         schema = build_openapi_schema()
         nb_operations = sum(len(ops) for ops in schema['paths'].values())
-        self.assertEqual(nb_operations, 35)
+        self.assertEqual(nb_operations, 37)
 
     def test_covers_licence_statut_ntadm42(self):
         schema = build_openapi_schema()
