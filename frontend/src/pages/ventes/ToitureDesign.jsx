@@ -360,6 +360,15 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // pendant le boot) et ne JAMAIS rattraper l'état voulu. Cet état, lui,
   // déclenche un re-rendu à l'arrivée de l'API — voir l'effet plus bas.
   const [builderReady, setBuilderReady] = useState(false)
+  // CALX8 — MÊME objet que `builderApi.current`, mais en ÉTAT plutôt qu'en
+  // ref : `react-hooks/refs` (v7) refuse désormais de lire `ref.current`
+  // PENDANT le rendu (seuls les effets/gestionnaires le peuvent), et
+  // `AtelierPanneaux` a besoin de l'OBJET — jamais de la ref nue, qui ne
+  // change jamais d'identité et aurait fait voyager `undefined` pour
+  // toujours (CALX8). Posé par les mêmes `onApiReady` que `builderApi.current`
+  // ci-dessous, jamais lu ailleurs : tout le reste du fichier continue de lire
+  // `builderApi.current` dans des effets/gestionnaires, où c'est autorisé.
+  const [builderApiActuel, setBuilderApiActuel] = useState(null)
   // CAL103 — clé de persistance des calques : l'utilisateur connecté. Lu sur le store
   // (et non par `useSelector`) pour que cet écran reste montable SANS Provider, comme
   // le font déjà ses tests ; store indisponible ⇒ null ⇒ clé « anonyme », jamais une
@@ -501,7 +510,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         // bornes, forme inconnue) ne part JAMAIS vers le builder — pas de
         // polygone orphelin sans bascule pour le masquer.
         referenceContour: contourExploitable(leadData.roof_outline) ? leadData.roof_outline : null,
-        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
       })
       // Pré-remplit l'adresse depuis la ville du lead (champ de recherche).
       const addrEl = document.getElementById('rp9-address')
@@ -578,7 +587,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
           ? ctx.geometrie.contour_client : null,
         bankable,
-        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
       })
       // PV23bis — pré-remplit la barre de recherche d'adresse depuis
       // adresse+ville du devis, comme le mode lead le fait déjà ci-dessus
@@ -652,7 +661,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         // la légende/bascule : voir les commentaires jumeaux ci-dessus.
         referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
           ? ctx.geometrie.contour_client : null,
-        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true) },
+        onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
       })
       // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en
       // mode devis (`bootDevis` ci-dessus, PV23bis) et en mode lead (`boot()`).
@@ -1946,7 +1955,17 @@ export default function ToitureDesign({ mode = 'lead' }) {
           <AtelierPanneaux
             calepinageId={calepinageId}
             contexte={contexte}
-            builderApi={builderApi}
+            // CALX8 — `builderApi` (ci-dessus) est une REF `useRef` (O3) : elle
+            // ne change JAMAIS d'identité, donc la passer telle quelle a envoyé
+            // `undefined` pour toujours à `AtelierPanneaux` (`.entreeMoteur`,
+            // `.appliquerPlan`, `.raccourcis` lus SUR la ref au lieu de
+            // l'objet posé par le builder). Il faut transmettre l'OBJET —
+            // `builderApiActuel`, un ÉTAT posé par les mêmes `onApiReady`
+            // (jamais `builderApi.current` ici : `react-hooks/refs` interdit
+            // de lire une ref PENDANT le rendu, seuls les effets/gestionnaires
+            // le peuvent ; le reste du fichier continue de lire
+            // `builderApi.current` dans ce cadre-là, inchangé).
+            builderApi={builderApiActuel}
             lectureSeule={lectureSeule}
             onRecharger={() => window.location.reload()}
           />
