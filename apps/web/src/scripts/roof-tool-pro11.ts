@@ -161,6 +161,7 @@ import {
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout, deserializeSceneFromLayout } from './roofPro11/prefill';
+import { createSoleilPlayer, sunriseSunsetHours, type SoleilPlayer } from './roofPro11/soleilPlay';
 
 let booted = false;
 
@@ -3368,6 +3369,99 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       shadingUi.refreshHeatmap(); // WJ21 — garde la heatmap après le re-rendu saisonnier
     });
   });
+  // CALX120 — deux boutons de LECTURE (journée / année) qui animent `ctx.sunDay`/
+  // `ctx.sunHour` pas à pas, créés ICI si la page ne les fournit pas déjà (même patron
+  // que le champ date CALX119 ci-dessus), ancrés dans le même bandeau.
+  const ensureSoleilPlayButtons = (): { jourBtn: HTMLButtonElement; anneeBtn: HTMLButtonElement; noteEl: HTMLElement | null } | null => {
+    const existingJour = $<HTMLButtonElement>('rp9-sun-play-day');
+    const existingAnnee = $<HTMLButtonElement>('rp9-sun-play-year');
+    if (existingJour && existingAnnee) {
+      return { jourBtn: existingJour, anneeBtn: existingAnnee, noteEl: $('rp9-sun-play-note') };
+    }
+    if (!sunControlsHost || typeof document.createElement !== 'function') return null;
+    const row = document.createElement('div');
+    row.className = 'flex flex-wrap items-center gap-2';
+    const mkBtn = (id: string, label: string): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.id = id;
+      b.className = 'rp9-chip';
+      b.setAttribute('aria-pressed', 'false');
+      b.textContent = label;
+      return b;
+    };
+    const jourBtn = mkBtn('rp9-sun-play-day', '▶ Lecture jour');
+    const anneeBtn = mkBtn('rp9-sun-play-year', '▶ Lecture année');
+    row.appendChild(jourBtn);
+    row.appendChild(anneeBtn);
+    const note = document.createElement('p');
+    note.id = 'rp9-sun-play-note';
+    note.className = 'text-xs leading-relaxed text-lune-faint';
+    note.setAttribute('role', 'status');
+    sunControlsHost.appendChild(row);
+    sunControlsHost.appendChild(note);
+    return { jourBtn, anneeBtn, noteEl: note };
+  };
+  const soleilBtns = ensureSoleilPlayButtons();
+  let soleilPlayer: SoleilPlayer | null = null;
+  const getSoleilPlayer = (): SoleilPlayer => {
+    if (!soleilPlayer) {
+      soleilPlayer = createSoleilPlayer({
+        schedule: (cb) => window.setTimeout(cb, 700),
+        cancel: (h) => window.clearTimeout(h),
+        reducedMotion: opts.reducedMotion === true,
+      });
+    }
+    return soleilPlayer;
+  };
+  const applySoleilStep = (s: { sunDay: number; sunHour: number }): void => {
+    ctx.sunDay = s.sunDay;
+    ctx.sunHour = s.sunHour;
+    if (sunHourEl) sunHourEl.value = String(Math.round(s.sunHour));
+    if (sunHourValueEl) sunHourValueEl.textContent = `${Math.round(s.sunHour)} h`;
+    if (sunDateEl) sunDateEl.value = dayOfYearToDateValue(s.sunDay);
+    document.querySelectorAll<HTMLButtonElement>('[data-sun-season]').forEach((o) => o.setAttribute('aria-pressed', 'false'));
+    renderActive();
+    shadingUi.refreshHeatmap(); // WJ21 — le re-rendu a recréé les panneaux : garde la heatmap
+  };
+  if (soleilBtns) {
+    soleilBtns.jourBtn.addEventListener('click', () => {
+      const player = getSoleilPlayer();
+      if (player.playing) {
+        player.stop();
+        soleilBtns.jourBtn.setAttribute('aria-pressed', 'false');
+        return;
+      }
+      const bounds = sunriseSunsetHours(centroidLat, ctx.sunDay);
+      if (!bounds) {
+        if (soleilBtns.noteEl) soleilBtns.noteEl.textContent = 'Le soleil ne se lève pas à cette latitude et cette date — aucune lecture possible.';
+        return;
+      }
+      if (soleilBtns.noteEl) soleilBtns.noteEl.textContent = '';
+      soleilBtns.jourBtn.setAttribute('aria-pressed', 'true');
+      soleilBtns.anneeBtn.setAttribute('aria-pressed', 'false');
+      const stepHour = Number(sunHourEl?.step) || 1; // le pas SAISI du curseur d'heure existant
+      player.playDay({ sunDay: ctx.sunDay, sunHour: ctx.sunHour }, bounds, stepHour, (s) => {
+        applySoleilStep(s);
+        if (!player.playing) soleilBtns.jourBtn.setAttribute('aria-pressed', 'false');
+      });
+    });
+    soleilBtns.anneeBtn.addEventListener('click', () => {
+      const player = getSoleilPlayer();
+      if (player.playing) {
+        player.stop();
+        soleilBtns.anneeBtn.setAttribute('aria-pressed', 'false');
+        return;
+      }
+      if (soleilBtns.noteEl) soleilBtns.noteEl.textContent = '';
+      soleilBtns.anneeBtn.setAttribute('aria-pressed', 'true');
+      soleilBtns.jourBtn.setAttribute('aria-pressed', 'false');
+      player.playYear({ sunDay: ctx.sunDay, sunHour: ctx.sunHour }, (s) => {
+        applySoleilStep(s);
+        if (!player.playing) soleilBtns.anneeBtn.setAttribute('aria-pressed', 'false');
+      });
+    });
+  }
   // WJ22 — bascule « Fourchette réaliste » : active/désactive la couche de pertes
   // climatiques honnêtes (fourchette de confiance) puis re-rend la carte de résultat.
   // Défaut OFF → chiffre unique inchangé.
