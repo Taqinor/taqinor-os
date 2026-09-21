@@ -1,4 +1,4 @@
-"""CAL142 / CALX184 / CALX185 — P50/P90 d'un calepinage, MÊME SANS DEVIS.
+"""CAL142 / CALX184-186 — P50/P90/P95 d'un calepinage, MÊME SANS DEVIS.
 
 LE CONSTAT (CAL142)
 -------------------
@@ -35,27 +35,28 @@ météo), comme une étude bancable PVsyst, et c'est ce ``sigma_total`` que ce
 module emploie. Le détail « de quoi σ est fait » se lit dans le bloc
 ``incertitude`` du résultat, pas dans un commentaire de code.
 
-LES DEUX AUTRES RÈGLES DE CAL142, INCHANGÉES
----------------------------------------------
-* **UN SEUL moteur de statistiques.** On appelle celui de ``ventes``, on n'en
-  écrit pas un second : deux lois normales dans le même dépôt finiraient par
-  donner deux P90 pour la même toiture.
-* **AUCUNE PERTE N'EST APPLIQUÉE DEUX FOIS.** La production du module sort
-  déjà de PVGIS avec la somme explicite des postes de CAL139 (``loss``,
-  CAL238). On passe donc au moteur des facteurs de perte TOUS À ZÉRO : il ne
-  fait plus que la statistique. Lui laisser ses postes par défaut retrancherait
-  une seconde fois le thermique et la salissure sur une production qui les
-  porte déjà.
+CE QUE CALX186 CHANGE : LE QUANTILE EST UNE FONCTION, ET P95 EXISTE
+---------------------------------------------------------------------
+Le moteur de ``ventes`` ne déclare que deux quantiles (``Z_P90``, ``Z_P75``),
+une table à deux entrées : aucun autre n'y était calculable. Les quantiles du
+calepinage viennent donc maintenant de ``services/incertitude.py``, qui les
+déduit de ``sigma_total`` par la fonction quantile de la loi normale — ce qui
+publie P95 à côté de P75 et P90 sans ajouter la moindre constante. La
+continuité avec le chemin historique est TESTÉE (``test_calx186_p95.py`` :
+P75 et P90 retombent sur les valeurs du moteur de ventes à 0,1 % près).
+``simulate_bankable_yield`` reste le moteur du parcours DEVIS ; ce module ne
+l'appelle plus.
+
+LA RÈGLE DE CAL142 QUI RESTE, ET SE DURCIT
+--------------------------------------------
+**AUCUNE PERTE N'EST APPLIQUÉE DEUX FOIS.** La production donnée ici sort déjà
+de PVGIS avec la somme explicite des postes de CAL139 (``loss``, CAL238). Ce
+module n'applique donc AUCUN facteur de perte — plus même un jeu de facteurs
+neutralisés : il ne fait que de la statistique sur une production déjà nette.
 
 Module PUR : aucune base, aucun réseau, aucun prix.
 """
 from __future__ import annotations
-
-# Le moteur de statistiques de ``ventes`` est un module PUR (aucun modèle,
-# aucune base) — c'est le même patron que ``services/pompage.py``, qui lit
-# déjà ``apps.ventes.solar_design.pumping_cycle_yield``. On n'en importe PLUS
-# la variabilité de repli : CALX184 la bannit de ce module.
-from apps.ventes.solar_design import simulate_bankable_yield
 
 from .incertitude import (
     CLE_SIGMA_METEO_SAISI, COMPOSANTE_METEO, IncertitudeInvalide,
@@ -66,18 +67,6 @@ from .incertitude import (
 __all__ = ['CLE_SIGMA_METEO_SAISI', 'IncertitudeInvalide', 'ORIGINE_ABSENTE',
            'ORIGINE_MESUREE', 'ORIGINE_SAISIE', 'bankable',
            'variabilite_interannuelle']
-
-
-def _pertes_neutralisees():
-    """Les postes du moteur de ventes, TOUS À ZÉRO.
-
-    La production qu'on lui donne porte DÉJÀ ses postes (CAL139/CAL238). La
-    liste est relue dans le moteur plutôt que recopiée : un poste ajouté
-    là-bas est neutralisé ici aussi, sans quoi il réapparaîtrait en douce
-    dans notre P50.
-    """
-    from apps.ventes.solar_design import DEFAULT_LOSS_FACTORS as _postes
-    return {poste: 0.0 for poste in _postes}
 
 
 def variabilite_interannuelle(totaux_par_annee):
@@ -125,7 +114,7 @@ def _commentaire_compose(bloc):
 
 
 def bankable(p50_kwh, *, totaux_par_annee=None, kwc=None, reglages=None):
-    """P50 / P75 / P90 d'une production déjà nette de ses postes de CAL139.
+    """P50 / P75 / P90 / P95 d'une production déjà nette (CAL139).
 
     Args:
         p50_kwh: la production annuelle du calepinage (déjà amputée des
@@ -137,14 +126,14 @@ def bankable(p50_kwh, *, totaux_par_annee=None, kwc=None, reglages=None):
             d'où viennent les composantes SAISIES de σ.
 
     Returns:
-        dict — ``p50_kwh``, ``p75_kwh``, ``p90_kwh``,
+        dict — ``p50_kwh``, ``p75_kwh``, ``p90_kwh``, ``p95_kwh``,
         ``annual_variability`` (le ``sigma_total`` composé), ``sigma_source``
         (``mesuree``/``saisie``/``absente``), ``sigma_annees``,
         ``sigma_reference``, ``specific_yield_kwh_kwc``, ``commentaire``.
         ``p50_kwh`` absent ou ≤ 0 ⇒ toutes les sorties valent ``None`` (jamais
         des zéros, qui se liraient « la toiture ne produit rien »). Aucune
-        composante sourcée ⇒ P75 et P90 valent ``None`` et le commentaire dit
-        quoi renseigner.
+        composante sourcée ⇒ P75, P90 et P95 valent ``None`` et le
+        commentaire dit quoi renseigner.
 
     Raises:
         IncertitudeInvalide: une composante saisie sans provenance, refusée
@@ -157,12 +146,13 @@ def bankable(p50_kwh, *, totaux_par_annee=None, kwc=None, reglages=None):
     if base is None or base <= 0:
         return {
             'p50_kwh': None, 'p75_kwh': None, 'p90_kwh': None,
+            'p95_kwh': None,
             'annual_variability': None, 'sigma_source': None,
             'sigma_annees': 0, 'sigma_reference': '',
             'specific_yield_kwh_kwc': None,
             'commentaire': (
-                "Aucune production n'a été simulée : P50, P75 et P90 restent "
-                '« non calculés », jamais 0.'),
+                "Aucune production n'a été simulée : P50, P75, P90 et P95 "
+                'restent « non calculés », jamais 0.'),
         }
 
     bloc = bloc_incertitude(base, totaux_par_annee=totaux_par_annee,
@@ -171,7 +161,7 @@ def bankable(p50_kwh, *, totaux_par_annee=None, kwc=None, reglages=None):
     if bloc['sigma_total'] is None:
         return {
             'p50_kwh': bloc['quantiles']['p50_kwh'],
-            'p75_kwh': None, 'p90_kwh': None,
+            'p75_kwh': None, 'p90_kwh': None, 'p95_kwh': None,
             'annual_variability': None, 'sigma_source': ORIGINE_ABSENTE,
             'sigma_annees': None, 'sigma_reference': '',
             'specific_yield_kwh_kwc': _rendement_specifique(base, kwc),
@@ -179,27 +169,23 @@ def bankable(p50_kwh, *, totaux_par_annee=None, kwc=None, reglages=None):
         }
 
     mesuree = meteo is not None and meteo['source'] == SOURCE_PVGIS
-    resultat = simulate_bankable_yield(
-        base,
-        # Les postes de CAL139 sont DÉJÀ dans ``base`` (CAL238) : on neutralise
-        # ceux du moteur de ventes pour ne pas les compter deux fois.
-        loss_factors=_pertes_neutralisees(),
-        annual_variability=bloc['sigma_total'], kwc=kwc, include_p75=True)
+    quantiles = bloc['quantiles']
     return {
-        'p50_kwh': resultat['p50_kwh'],
-        'p75_kwh': resultat['p75_kwh'],
-        'p90_kwh': resultat['p90_kwh'],
-        'annual_variability': resultat['annual_variability'],
+        'p50_kwh': quantiles['p50_kwh'],
+        'p75_kwh': quantiles['p75_kwh'],
+        'p90_kwh': quantiles['p90_kwh'],
+        'p95_kwh': quantiles['p95_kwh'],
+        'annual_variability': round(bloc['sigma_total'], 4),
         'sigma_source': ORIGINE_MESUREE if mesuree else ORIGINE_SAISIE,
         'sigma_annees': meteo['annees'] if meteo is not None else None,
         'sigma_reference': meteo['reference'] if meteo is not None else '',
-        'specific_yield_kwh_kwc': resultat['specific_yield_kwh_kwc'],
+        'specific_yield_kwh_kwc': _rendement_specifique(base, kwc),
         'commentaire': _commentaire_compose(bloc),
     }
 
 
 def _rendement_specifique(base, kwc):
-    """kWh/kWc — le seul chiffre qui reste servi quand σ est refusé."""
+    """kWh/kWc — servi même quand σ est refusé : il ne dépend pas de σ."""
     try:
         puissance = float(kwc) if kwc is not None else None
     except (TypeError, ValueError):

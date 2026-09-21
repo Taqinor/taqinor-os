@@ -78,7 +78,10 @@ PORTEE_ANNUELLE = 'annuelle'
 #: Les quantiles publiés et leur probabilité de DÉPASSEMENT : P90 est « la
 #: valeur atteinte ou dépassée 90 % du temps » (HelioScope,
 #: https://help-center.helioscope.com/hc/en-us/articles/39323166747667-P90-P95-and-P99-Values-Accuracy-Study).
-DEPASSEMENTS = (('p75_kwh', 0.75), ('p90_kwh', 0.90))
+#: CALX186 ajoute P95 et S'ARRÊTE LÀ : P99 n'est pas publié tant que le
+#: fondateur ne le demande pas — une queue à 1 % sur une loi normale ajustée
+#: sur peu d'années prêterait à confusion (question ouverte Q3).
+DEPASSEMENTS = (('p75_kwh', 0.75), ('p90_kwh', 0.90), ('p95_kwh', 0.95))
 
 #: ``{nom de composante: (clé du réglage CALX145, libellé français)}`` — les
 #: deux composantes qui ne peuvent venir QUE d'une saisie sourcée.
@@ -235,6 +238,11 @@ def _quadrature(composantes):
 
 def _quantiles(p50_kwh, sigma_total):
     """Les quantiles gaussiens déduits de σ, centrés sur P50.
+
+    CALX186 — le quantile normal est une FONCTION (``NormalDist.inv_cdf``),
+    pas une table de deux valeurs : c'est ce qui permet de publier P95 à côté
+    de P75 et P90 sans ajouter une troisième constante quelque part. La
+    distribution est gaussienne, centrée sur P50 (HelioScope).
 
     ``p50_kwh`` n'est PAS déduit de σ : c'est la production simulée elle-même.
     Il reste donc servi quand σ est refusé, les autres valant ``None``.
