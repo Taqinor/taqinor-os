@@ -59,7 +59,20 @@ const CODES_GERES = [
   // absentes » que la tâche demande, sans code supplémentaire ici. Aucun
   // montant n'entre dans ce panneau (la note est une pièce technique).
   'note_calcul_pdf',
+  'dxf', // CALX22 — 4 calques, voir DESCRIPTIONS.
+  'tableur_xlsx', // CALX22 — 3 feuilles, voir DESCRIPTIONS.
 ]
+
+// CALX22 — ce que contient chaque export, affiché SOUS le bouton pour que
+// l'utilisateur sache ce qu'il télécharge AVANT de cliquer. Noms recopiés
+// TELS QUELS des services qui les produisent (jamais reformulés) :
+// `services/export_dxf.py::CALQUES` (TOITURE/OBSTACLES/MODULES/COTES) et
+// `services/export_tableur.py::FEUILLES` (Modules/Chaînes/Nomenclature) — la
+// MÊME liste que CALX23 sert au sélecteur de feuille du CSV.
+const DESCRIPTIONS = {
+  dxf: 'Calques : TOITURE, OBSTACLES, MODULES, COTES.',
+  tableur_xlsx: 'Feuilles du classeur : Modules, Chaînes, Nomenclature.',
+}
 
 /** Une erreur serveur -> `[{champ, message}]`, triée pour un affichage
     STABLE. Couvre les DEUX formes vues sur ce module : un objet
@@ -143,7 +156,12 @@ function CarteSortie({
         </Button>
       </div>
       {description && (
-        <p className="mt-2 text-xs text-muted-foreground">{description}</p>
+        <p
+          className="mt-2 text-xs text-muted-foreground"
+          data-testid={`cal-doc-description-${entree.code}`}
+        >
+          {description}
+        </p>
       )}
       {!entree.disponible && (
         <p
@@ -216,6 +234,7 @@ export default function PanneauDocuments({ calepinageId }) {
           enCours={enCours === entree.code}
           onTelecharger={() => telecharger(entree.code)}
           erreurs={erreurs[entree.code]}
+          description={DESCRIPTIONS[entree.code]}
         />
       ))}
     </Card>

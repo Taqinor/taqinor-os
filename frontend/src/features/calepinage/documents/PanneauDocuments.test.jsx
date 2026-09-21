@@ -88,12 +88,12 @@ describe('PanneauDocuments (CALX19)', () => {
     await screen.findByTestId('cal-doc-bouton-planche_pdf')
     expect(screen.getByTestId('cal-doc-bouton-planche_pdf')).toBeEnabled()
     expect(screen.getByTestId('cal-doc-bouton-planche_svg')).toBeEnabled()
-    // Seuls les deux codes gérés par CALX19 ont une carte — les dix autres
-    // sorties de l'inventaire (plans, note de calcul, exports…) n'ont pas
-    // encore d'entrée : un bouton qui ne ferait rien au clic n'est jamais
-    // rendu.
-    expect(screen.queryByTestId('cal-doc-sortie-pack_technique')).toBeNull()
-    expect(screen.queryByTestId('cal-doc-sortie-dxf')).toBeNull()
+    // `planche_png` (conversion NAVIGATEUR du SVG frère) et `image_3d` (pas
+    // un fichier — son URL voyage dans l'agrégat de détail) ne sont JAMAIS
+    // des téléchargements génériques de ce panneau (voir le commentaire de
+    // `CODES_GERES`) : un bouton qui ne ferait rien au clic n'est jamais rendu.
+    expect(screen.queryByTestId('cal-doc-sortie-planche_png')).toBeNull()
+    expect(screen.queryByTestId('cal-doc-sortie-image_3d')).toBeNull()
   })
 
   it('clic sur « Télécharger » (planche PDF) : télécharge via l’endpoint du serveur', async () => {
@@ -235,5 +235,47 @@ describe('PanneauDocuments — la note de calcul (CALX21)', () => {
 
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
     expect(downloadBlob.mock.calls[0][1]).toBe('note-calcul-41.pdf')
+  })
+})
+
+describe('PanneauDocuments — export DXF et export XLSX (CALX22)', () => {
+  it('les deux boutons apparaissent, chacun avec sa description', async () => {
+    servirInventaire('exemple')
+
+    rendre()
+
+    expect(await screen.findByTestId('cal-doc-sortie-dxf')).toBeTruthy()
+    expect(screen.getByTestId('cal-doc-description-dxf'))
+      .toHaveTextContent('TOITURE, OBSTACLES, MODULES, COTES')
+    expect(screen.getByTestId('cal-doc-sortie-tableur_xlsx')).toBeTruthy()
+    expect(screen.getByTestId('cal-doc-description-tableur_xlsx'))
+      .toHaveTextContent('Modules, Chaînes, Nomenclature')
+  })
+
+  it('un refus serveur sur le DXF s’affiche SOUS son bouton, jamais en tête de panneau', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.telechargerSortie.mockRejectedValue({
+      response: {
+        status: 400,
+        data: new Blob([JSON.stringify({
+          roof_layout: 'Aucune conception enregistrée : la géométrie exportée serait vide.',
+        })], { type: 'application/json' }),
+      },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-dxf'))
+
+    const carteDxf = await screen.findByTestId('cal-doc-sortie-dxf')
+    await waitFor(() => {
+      expect(carteDxf.querySelector('[data-testid="cal-doc-erreurs"]'))
+        .toHaveTextContent('géométrie exportée serait vide')
+    })
+    // La carte XLSX voisine, elle, ne porte AUCUNE erreur : le refus reste
+    // localisé à sa propre carte.
+    expect(screen.getByTestId('cal-doc-sortie-tableur_xlsx')
+      .querySelector('[data-testid="cal-doc-erreurs"]')).toBeNull()
+    expect(screen.queryByTestId('cal-doc-erreur')).toBeNull() // pas de bandeau de tête
   })
 })
