@@ -611,9 +611,8 @@ REFUS = {
     "frontend/src/features/gestion_projet/constants.jsx": [
         ("machine à états", "FORME")],
     # SOL11 (02/09/2026) — le « miroir des sku/libellés » cite le REGISTRE des
-    # manifestes backend (module_manifest/editions.py), pas un champ choices=
-    # ni une liste littérale : rien de déclarable ; la cohérence tags↔registre
-    # est machine-vérifiée côté serveur par le test SOL1.
+    # manifestes backend (`module_manifest`), pas un champ choices= ni une
+    # liste littérale : rien de déclarable.
     "frontend/src/lib/apps/useInstalledApps.js": [
         ("miroir des `sku`", "SANS_SOURCE")],
     "frontend/src/features/installations/statuses.js": [

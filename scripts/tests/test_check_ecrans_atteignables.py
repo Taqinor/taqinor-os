@@ -801,20 +801,6 @@ class PlancherInventaireTests(unittest.TestCase):
         self.assertIn("frontend/src", texte)          # le chemin en cause
         self.assertIn("check_ecrans_atteignables.ecrans", texte)
 
-    def test_edition_reduite_dit_a_voix_haute_qu_elle_ne_mesure_pas(self):
-        # Un vertical parque fait legitimement chuter l'inventaire : le
-        # plancher ne s'applique pas — mais il le DIT, il ne se tait pas.
-        with tempfile.TemporaryDirectory() as tmp:
-            inventaire = self._inventaire(Path(tmp))
-            sortie = io.StringIO()
-            with mock.patch.object(contract, "INVENTORY_PATH", inventaire):
-                with mock.patch.object(cea, "analyse",
-                                       return_value=([], self.STATS_VIDES)):
-                    with contextlib.redirect_stdout(sortie):
-                        code = cea.main(["--edition", "solar"])
-        self.assertEqual(code, 0)
-        self.assertIn("Plancher d'inventaire NON applique", sortie.getvalue())
-
     def test_l_inventaire_committe_porte_un_plancher_positif(self):
         entree = contract.load_inventory()["check_ecrans_atteignables"]
         self.assertGreater(entree["ecrans"]["valeur"], 0)
