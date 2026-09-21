@@ -1,10 +1,24 @@
+"""Configuration de l'app « qhse » — PARQUÉE (voir ``core.parked``)."""
 from django.apps import AppConfig
 
 
 class QhseConfig(AppConfig):
+    """QHSE — app PARQUÉE du MVP solaire (20/09/2026).
+
+    Coquille de migrations : plus aucun modèle, aucune url, aucune
+    tâche, aucun écran. Le code complet est dans l'archive
+    ``archive/full-erp-2026-09-20`` ; recette de retour : docs/parked-modules.md §5.
+
+    L'app RESTE dans INSTALLED_APPS : c'est ce qui garde valide le
+    graphe de migrations des apps gardées (jamais de squash).
+    """
+
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.qhse'
+    label = 'qhse'
     verbose_name = 'QHSE'
+    # SOLMVP — marqueur lu par les gardes (core.parked.est_parquee).
+    parked = True
     module_manifest = {
         'key': 'qhse',
         'sku': 'generic',
@@ -13,13 +27,5 @@ class QhseConfig(AppConfig):
         'depends': [],
         'description': 'Qualité, hygiène, sécurité, environnement.',
         'categorie': 'Services',
+        'parked': True,
     }
-
-    def ready(self):
-        # QHSE32 — abonne QHSE à l'événement incident_declared (bus de signaux
-        # Django) pour escalader les incidents critiques, sur le patron de
-        # ventes→crm. Même app émettrice et abonnée : le signal vit dans qhse.
-        # XQHS3 — le même module abonne aussi qhse à l'événement INTER-app
-        # core.events.reception_fournisseur_confirmee (émetteur = stock) pour
-        # ouvrir les contrôles qualité de réception.
-        from . import receivers  # noqa: F401

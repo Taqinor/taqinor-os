@@ -1,10 +1,24 @@
+"""Configuration de l'app « contrats » — PARQUÉE (voir ``core.parked``)."""
 from django.apps import AppConfig
 
 
 class ContratsConfig(AppConfig):
+    """Gestion des contrats — app PARQUÉE du MVP solaire (20/09/2026).
+
+    Coquille de migrations : plus aucun modèle, aucune url, aucune
+    tâche, aucun écran. Le code complet est dans l'archive
+    ``archive/full-erp-2026-09-20`` ; recette de retour : docs/parked-modules.md §5.
+
+    L'app RESTE dans INSTALLED_APPS : c'est ce qui garde valide le
+    graphe de migrations des apps gardées (jamais de squash).
+    """
+
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.contrats'
+    label = 'contrats'
     verbose_name = 'Gestion des contrats'
+    # SOLMVP — marqueur lu par les gardes (core.parked.est_parquee).
+    parked = True
     module_manifest = {
         'key': 'contrats',
         'sku': 'generic',
@@ -13,22 +27,5 @@ class ContratsConfig(AppConfig):
         'depends': [],
         'description': 'Gestion des contrats (CLM).',
         'categorie': 'Services',
+        'parked': True,
     }
-
-    def ready(self):
-        # XCTR12 (M6) — abonne `contrats` à l'événement `devis_accepted`
-        # (core.events) pour marquer le renouvellement proposé accepté sans
-        # couplage direct ventes -> contrats (import local pour éviter les
-        # cycles au chargement des apps, même schéma que crm/installations).
-        # ARC35 — le même module abonne aussi `contrats` à ses propres
-        # `contrat_signe`/`contrat_actif` (chatter ARC8 + dépôt GED du
-        # contrat signé), sur le patron `qhse.receivers` (émetteur ET
-        # abonné = la même app, mais toujours via le bus pour rester
-        # ouvert à de futurs abonnés externes).
-        from . import receivers  # noqa: F401
-        # ARC14 déclarait Contrat comme cible PILOTE des champs personnalisés
-        # ici même (customfields.registry.register('contrat', ...)). ARC31 a
-        # basculé cette déclaration vers apps/contrats/platform.py
-        # (customfield_models=['contrat']) — un chargeur central unique
-        # (apps/customfields/apps.py::CustomfieldsConfig.ready()) la lit
-        # désormais depuis le manifeste, plus depuis ce ready().
