@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 4a1666946ba6be4299ee67b100aa9ce2526f909bc77d6bf61909c08c53cd867e
-Plan fingerprint: a2b7839348eff9cef47592875bf2c3a3804e236b6495a7c4373085a025fe1ac8
+Plan fingerprint: 1e1396000a74c39a12aaddcf6aa6eb179e8ef88a2e53cec7178090b175c7d556
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (148)**
+**Done (155)**
 
 - `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
 - `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
@@ -623,6 +623,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX169` — Étape « ohmique DC » : la chute réelle des câbles, plus jamais saisie en double
 - `CALX170` — Étape « onduleur » : la courbe η(P), sinon le rendement européen, sinon rien
 - `CALX171` — Étape « fenêtre MPPT » : les heures où la tension sort de la plage
+- `CALX172` — Étape « écrêtage » : brancher le calcul horaire qui existe déjà et n'a jamais de série
 - `CALX173` — Étape « ohmique AC » : la liaison onduleur-comptage, sur sa longueur saisie
 - `CALX174` — Étape « transformateur » : seulement si la société en déclare un
 - `CALX175` — Étape « auxiliaires » : une énergie soutirée, jour et nuit, pas un pourcentage
@@ -651,10 +652,16 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX203` — Déclarer le contrat des tronçons de câble calculés
 - `CALX204` — Déclarer le contrat du schéma unifilaire éditable
 - `CALX205` — Déclarer le contrat du raccordement réseau
+- `CALX206` — Autoriser plusieurs orientations sur UNE entrée MPPT (jamais dans une chaîne)
+- `CALX207` — Calculer l'écart de puissance d'un groupe polystring et le verdicter sur un seuil…
+- `CALX209` — Dimensionner une branche AC de micro-onduleurs
 - `CALX210` — Calibrer la protection et le câble d'une branche AC de micro-onduleurs
+- `CALX211` — Fermer la longueur de chaîne à optimiseurs quand la fiche publie enfin la sortie…
+- `CALX212` — Compter et placer les optimiseurs module par module
 - `CALX213` — Contrôler enfin les deux bornes d'onduleur publiées mais jamais lues
 - `CALX215` — Nommer les deux natures de dépassement : plage INTERDITE et plage BLOQUANTE
 - `CALX216` — Dire POURQUOI cette longueur de chaîne a été retenue
+- `CALX217` — Rejouer l'incident DEV-202608-0016 sur les trois régimes de chaînage
 - `CALX219` — Créer `electrique3d.ts` et y poser les marqueurs d'équipement
 - `CALX220` — Poser, déplacer et retirer un équipement au clic, et le persister
 - `CALX221` — Ajouter le calque « Électrique » au panneau de calques
@@ -682,7 +689,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (457)**
+**Open — to build (450)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -955,16 +962,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX130` — Prouver le parcours de conception enrichi de bout en bout
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
-- `CALX172` — Étape « écrêtage » : brancher le calcul horaire qui existe déjà et n'a jamais de série
 - `CALX199` — Trancher l'achat d'une source météo bancable
 - `CALX200` — Trancher le pas infra-horaire
-- `CALX206` — Autoriser plusieurs orientations sur UNE entrée MPPT (jamais dans une chaîne)
-- `CALX207` — Calculer l'écart de puissance d'un groupe polystring et le verdicter sur un seuil…
-- `CALX209` — Dimensionner une branche AC de micro-onduleurs
-- `CALX211` — Fermer la longueur de chaîne à optimiseurs quand la fiche publie enfin la sortie…
-- `CALX212` — Compter et placer les optimiseurs module par module
 - `CALX214` — Publier, contrôle par contrôle, LA température qui a servi
-- `CALX217` — Rejouer l'incident DEV-202608-0016 sur les trois régimes de chaînage
 - `CALX218` — Choisir le motif de parcours d'une chaîne et en tirer sa longueur de câble
 - `CALX227` — Produire le métré de câble par tronçon et par section
 - `CALX228` — Servir les tronçons en HTTP et les joindre au résultat électrique
