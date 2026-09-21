@@ -14,7 +14,7 @@ import { isSimplePolygon, type LngLat } from '../../lib/roof';
 import { availableOptionalLayers, getOptionalLayer, optionalLayerSourceSpec } from '../../lib/roofConfig';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { contraindreAngle, PAS_ANGLE_DEG } from './snap';
+import { contraindreAngle, pointDepuisCap, PAS_ANGLE_DEG } from './snap';
 
 /**
  * WJ41 — libellés/messages de statut de la carte/géocodeur, tous LOCALISABLES.
@@ -169,6 +169,53 @@ export function opacityPropFor(type: string | undefined): string | null {
   }
 }
 
+// ————————————————————————————————————————————————————————————————————————
+// CALX90 — SAISIE CLAVIER DE LA LONGUEUR ET DE L'ANGLE DU SEGMENT EN COURS
+//
+// Aucune entrée clavier ne posait ni ne cotait un sommet : `addVertex` n'était appelé que
+// depuis le clic/tap de la carte, et la mesure n'existait qu'APRÈS coup (`mesureUi.ts`).
+// Parité HelioScope (dimensions exactes tapées au clavier sur un Field Segment).
+//
+// RÈGLE DURE : les DEUX valeurs sont saisies, jamais l'une supposée à partir de l'autre.
+// Un champ vide REFUSE la pose en NOMMANT le champ fautif (règle fondateur : l'erreur
+// désigne le champ, jamais un « non enregistré » générique).
+// ————————————————————————————————————————————————————————————————————————
+
+/** Champ d'une saisie de segment — celui que l'erreur doit désigner. */
+export type ChampSegment = 'longueur' | 'angle';
+
+export type SaisieSegment =
+  | { ok: true; distanceM: number; capDeg: number }
+  | { ok: false; champ: ChampSegment; motif: string };
+
+/** Nombre à la française (virgule décimale, espaces insécables tolérés). */
+function nombreSaisi(s: string | null | undefined): number {
+  return Number.parseFloat((s ?? '').replace(/\s/g, '').replace(',', '.'));
+}
+
+/**
+ * CALX90 — lit le couple « longueur (m) / angle (° depuis le nord) ». Ne pose RIEN tant que
+ * les deux ne sont pas saisis et valides : jamais un angle supposé, jamais une longueur de
+ * repli. Le refus nomme le champ fautif ET donne le motif en clair.
+ */
+export function lireSaisieSegment(longueurBrute: string, angleBrut: string): SaisieSegment {
+  if (!(longueurBrute ?? '').trim()) {
+    return { ok: false, champ: 'longueur', motif: 'Longueur manquante — saisissez la longueur du côté, en mètres.' };
+  }
+  const distanceM = nombreSaisi(longueurBrute);
+  if (!Number.isFinite(distanceM) || distanceM <= 0) {
+    return { ok: false, champ: 'longueur', motif: 'Longueur invalide — saisissez un nombre de mètres supérieur à 0.' };
+  }
+  if (!(angleBrut ?? '').trim()) {
+    return { ok: false, champ: 'angle', motif: 'Angle manquant — saisissez le cap du côté en degrés (0 = nord, 90 = est).' };
+  }
+  const capDeg = nombreSaisi(angleBrut);
+  if (!Number.isFinite(capDeg)) {
+    return { ok: false, champ: 'angle', motif: 'Angle invalide — saisissez un cap en degrés (0 = nord, 90 = est).' };
+  }
+  return { ok: true, distanceM, capDeg };
+}
+
 /** Dépendances injectées (carte + bandeau de statut + re-lecture d'aire + bouton finir). */
 export interface MapDrawDeps {
   /** La carte MapLibre (sources GeoJSON du tracé + flyTo/jumpTo de la recherche). */
@@ -193,6 +240,10 @@ export interface MapDraw {
   addVertex: (v: LngLat) => void;
   /** W92 — retire le dernier sommet posé (pendant le tracé, avant fermeture). */
   undoLastPoint: () => void;
+  /** CALX90 — pose le sommet coté au clavier (longueur + cap depuis le sommet précédent).
+   *  Retourne false et n'ajoute RIEN quand un champ manque/est invalide, ou quand aucun
+   *  sommet précédent n'existe : l'erreur est affichée sous le champ fautif. */
+  poserSegmentSaisi: () => boolean;
   /** W93 — `autoSelect` (programmatique, ex. initialQuery) vole directement au 1ᵉʳ
    *  résultat ; sinon la liste de suggestions est peuplée et on attend la sélection. */
   geocode: (query: string, autoSelect?: boolean) => Promise<void>;
@@ -286,6 +337,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     if (finishBtn) finishBtn.disabled = ctx.vertices.length < 3 || ctx.closed;
     // W92 — « Annuler le dernier point » : seulement pendant le tracé (au moins un coin posé).
     if (undoPointBtn) undoPointBtn.hidden = ctx.closed || ctx.vertices.length < 1;
+    syncCoteBox(); // CALX90 — la saisie cotée suit les mêmes conditions d'affichage
     updateAreaReadout();
   }
 
@@ -403,6 +455,107 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     redrawTrace();
     if (ctx.vertices.length >= 3) setStatus(t.doubleClickToClose);
     else setStatus(t.cornerPlaced(ctx.vertices.length));
+  }
+
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX90 — la saisie « longueur (m) / angle (°) », créée par le module s'il faut.
+  // Visible seulement pendant le TRACÉ et dès qu'un sommet existe (il faut une origine) ;
+  // Échap la ferme sans rien poser. Le refus s'affiche SOUS le champ fautif.
+  // ————————————————————————————————————————————————————————————————————————
+  const coteBoxEl = ensureCoteBox();
+  function ensureCoteBox(): HTMLElement | null {
+    const existing = $('rp9-cote');
+    if (existing) return existing;
+    if (!traceChipsEl || typeof document.createElement !== 'function') return null;
+    const box = document.createElement('span');
+    box.id = 'rp9-cote';
+    box.className = 'rp9-cote inline-flex flex-wrap items-center gap-1';
+    box.hidden = true;
+    box.innerHTML =
+      `<label class="inline-flex items-center gap-1" for="rp9-cote-longueur">Longueur (m)` +
+      `<input type="text" id="rp9-cote-longueur" class="rp9-input w-20" inputmode="decimal" /></label>` +
+      `<label class="inline-flex items-center gap-1" for="rp9-cote-angle">Angle (° / nord)` +
+      `<input type="text" id="rp9-cote-angle" class="rp9-input w-20" inputmode="decimal" /></label>` +
+      `<button type="button" id="rp9-cote-poser" class="rp9-btn">Poser le point</button>` +
+      `<span id="rp9-cote-erreur" class="rp9-cote-erreur text-alert-300" role="alert" hidden></span>`;
+    traceChipsEl.appendChild(box);
+    return box;
+  }
+  const coteLongueurEl = $<HTMLInputElement>('rp9-cote-longueur');
+  const coteAngleEl = $<HTMLInputElement>('rp9-cote-angle');
+  const cotePoserBtn = $<HTMLButtonElement>('rp9-cote-poser');
+  const coteErreurEl = $('rp9-cote-erreur');
+
+  /** Affiche (ou efface) le refus SOUS le champ fautif et met le focus dessus. */
+  function montrerRefusCote(refus: { champ: ChampSegment; motif: string } | null) {
+    const champEl = refus?.champ === 'angle' ? coteAngleEl : coteLongueurEl;
+    for (const el of [coteLongueurEl, coteAngleEl]) el?.removeAttribute('aria-invalid');
+    if (!coteErreurEl) return;
+    if (!refus) {
+      coteErreurEl.textContent = '';
+      coteErreurEl.hidden = true;
+      return;
+    }
+    coteErreurEl.textContent = refus.motif;
+    coteErreurEl.hidden = false;
+    champEl?.setAttribute('aria-invalid', 'true');
+    champEl?.focus?.();
+  }
+
+  /** Montre la saisie seulement quand elle a un sens (tracé ouvert, au moins un sommet). */
+  function syncCoteBox() {
+    if (coteBoxEl) coteBoxEl.hidden = ctx.closed || ctx.vertices.length < 1;
+  }
+
+  function poserSegmentSaisi(): boolean {
+    const origine = ctx.vertices[ctx.vertices.length - 1];
+    if (ctx.closed || !origine) {
+      montrerRefusCote({ champ: 'longueur', motif: 'Posez d’abord un premier coin : la cote part du sommet précédent.' });
+      return false;
+    }
+    const lu = lireSaisieSegment(coteLongueurEl?.value ?? '', coteAngleEl?.value ?? '');
+    if (!lu.ok) {
+      montrerRefusCote(lu);
+      return false;
+    }
+    montrerRefusCote(null);
+    const avant = ctx.vertices.length;
+    // Un sommet coté au clavier est EXACT : il ne repasse pas par le magnétisme angulaire
+    // (qui corrigerait la direction que l'utilisateur vient justement de taper).
+    const p = pointDepuisCap(origine, lu.capDeg, lu.distanceM);
+    if (ctx.vertices.length >= 3 && !isSimplePolygon([...ctx.vertices, p])) {
+      montrerRefusCote({ champ: 'angle', motif: t.pointWouldCross });
+      return false;
+    }
+    ctx.vertices.push(p);
+    redrawTrace();
+    if (ctx.vertices.length >= 3) setStatus(t.doubleClickToClose);
+    else setStatus(t.cornerPlaced(ctx.vertices.length));
+    if (coteLongueurEl) coteLongueurEl.value = '';
+    if (coteAngleEl) coteAngleEl.value = '';
+    coteLongueurEl?.focus?.();
+    return ctx.vertices.length > avant;
+  }
+
+  cotePoserBtn?.addEventListener('click', () => {
+    poserSegmentSaisi();
+  });
+  for (const el of [coteLongueurEl, coteAngleEl]) {
+    el?.addEventListener('keydown', (e) => {
+      const key = (e as KeyboardEvent).key;
+      if (key === 'Enter') {
+        e.preventDefault();
+        poserSegmentSaisi();
+      } else if (key === 'Escape') {
+        // Échap ferme la saisie SANS RIEN POSER.
+        e.preventDefault();
+        if (coteLongueurEl) coteLongueurEl.value = '';
+        if (coteAngleEl) coteAngleEl.value = '';
+        montrerRefusCote(null);
+        if (coteBoxEl) coteBoxEl.hidden = true;
+        el.blur?.();
+      }
+    });
   }
 
   // W92 — retire le DERNIER sommet posé pendant le tracé (avant fermeture). N'agit pas une
@@ -625,5 +778,15 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     void geocode(q, true);
   });
 
-  return { redrawTrace, setOptionalLayer, optionalLayerIds, setLayerState, addVertex, undoLastPoint, geocode, reverseGeocode };
+  return {
+    redrawTrace,
+    setOptionalLayer,
+    optionalLayerIds,
+    setLayerState,
+    addVertex,
+    undoLastPoint,
+    poserSegmentSaisi,
+    geocode,
+    reverseGeocode,
+  };
 }

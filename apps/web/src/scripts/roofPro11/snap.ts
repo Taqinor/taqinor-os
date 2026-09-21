@@ -72,6 +72,22 @@ export function distanceEntreM(a: LngLat, b: LngLat): number {
 }
 
 /**
+ * CALX90 — point situé à `distanceM` mètres de `origine`, dans la direction `capDeg`
+ * (° depuis le nord vrai, sens horaire). Formule du point de destination sur la sphère —
+ * EXACTE, donc le couple (cap, distance) est restitué à la précision flottante par
+ * `capEntreDeg`/`distanceEntreM` : la longueur tapée au clavier est la longueur obtenue.
+ *
+ * Une distance nulle/négative/non finie ou un cap non fini rend l'origine inchangée : rien
+ * n'est supposé à la place d'une saisie manquante (c'est l'appelant qui refuse, en nommant
+ * le champ fautif).
+ */
+export function pointDepuisCap(origine: LngLat, capDeg: number, distanceM: number): LngLat {
+  if (!estPoint(origine)) return origine;
+  if (!Number.isFinite(capDeg) || !Number.isFinite(distanceM) || distanceM <= 0) return origine;
+  return destination(origine, capDeg, distanceM);
+}
+
+/**
  * Point situé à `distanceM` mètres de `origine`, dans la direction `cap` (° depuis le nord
  * vrai). Formule du point de destination sur la sphère — exacte, donc le couple
  * (cap, distance) est restitué à la précision flottante par `capEntreDeg`/`distanceEntreM`.

@@ -9,6 +9,7 @@ import {
   geocodeSearchUrl,
   geocodeReverseUrl,
   geocodeCountryNote,
+  lireSaisieSegment,
 } from './mapDraw';
 
 describe('CAL49 — pays du géocodage', () => {
@@ -78,5 +79,73 @@ describe('CAL49 — mention du pays filtré affichée à côté du champ', () =>
   it('nomme le pays réellement filtré', () => {
     expect(geocodeCountryNote('fr')).toBe('Recherche limitée au pays : FR');
     expect(geocodeCountryNote(null)).toBe('Recherche limitée au pays : MA');
+  });
+});
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX90 — SAISIE CLAVIER « longueur (m) / angle (°) ». La garantie de la tâche :
+// AUCUNE valeur n'est posée quand un des deux champs est vide — jamais un angle supposé,
+// jamais une longueur de repli — et le refus NOMME le champ fautif.
+// ————————————————————————————————————————————————————————————————————————
+describe('CALX90 — un champ vide ne pose RIEN et nomme le champ fautif', () => {
+  it('longueur vide → refus sur « longueur », aucune cote rendue', () => {
+    const r = lireSaisieSegment('', '90');
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('refus attendu');
+    expect(r.champ).toBe('longueur');
+    expect(r.motif).toContain('Longueur manquante');
+    expect(r).not.toHaveProperty('distanceM');
+  });
+
+  it('angle vide → refus sur « angle », aucun cap supposé', () => {
+    const r = lireSaisieSegment('12,5', '   ');
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('refus attendu');
+    expect(r.champ).toBe('angle');
+    expect(r.motif).toContain('Angle manquant');
+    expect(r).not.toHaveProperty('capDeg');
+  });
+
+  it('les deux champs vides → refus (aucun couple inventé)', () => {
+    expect(lireSaisieSegment('', '').ok).toBe(false);
+  });
+
+  it('une longueur nulle ou négative est refusée sur son propre champ', () => {
+    for (const v of ['0', '-3', 'abc']) {
+      const r = lireSaisieSegment(v, '90');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.champ).toBe('longueur');
+    }
+  });
+
+  it('un angle illisible est refusé sur son propre champ', () => {
+    const r = lireSaisieSegment('10', 'nord');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.champ).toBe('angle');
+  });
+});
+
+describe('CALX90 — deux valeurs saisies : le couple est rendu tel quel', () => {
+  it('lit les décimales à la française et un cap nul', () => {
+    const r = lireSaisieSegment('12,5', '0');
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('lecture attendue');
+    expect(r.distanceM).toBeCloseTo(12.5, 10);
+    expect(r.capDeg).toBe(0);
+  });
+
+  it('tolère les espaces de saisie et le point décimal', () => {
+    const r = lireSaisieSegment(' 100.25 ', ' 271,75 ');
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('lecture attendue');
+    expect(r.distanceM).toBeCloseTo(100.25, 10);
+    expect(r.capDeg).toBeCloseTo(271.75, 10);
+  });
+
+  it('un cap négatif reste celui de l’utilisateur (aucune normalisation cachée)', () => {
+    const r = lireSaisieSegment('10', '-45');
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('lecture attendue');
+    expect(r.capDeg).toBe(-45);
   });
 });

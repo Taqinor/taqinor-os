@@ -9,6 +9,7 @@ import {
   capEntreDeg,
   distanceEntreM,
   normaliserDeg,
+  pointDepuisCap,
   PAS_ANGLE_DEG,
   TOLERANCE_ANGLE_DEG,
 } from './snap';
@@ -124,5 +125,46 @@ describe('CALX89 — PUCE ÉTEINTE : tracé identique à celui d’aujourd’hui
       poses.push(contraindreAngle(poses[poses.length - 1], poses[poses.length - 2], c, 0));
     }
     expect(poses).toEqual(clics);
+  });
+});
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX90 — SAISIE CLAVIER DE LA LONGUEUR ET DE L'ANGLE DU SEGMENT EN COURS.
+// `pointDepuisCap` est la géométrie de la tâche : le sommet doit atterrir EXACTEMENT à la
+// distance géodésique et au cap demandés — sinon une cote tapée au clavier est un mensonge.
+// ————————————————————————————————————————————————————————————————————————
+describe('CALX90 — pointDepuisCap : la cote tapée est la cote obtenue', () => {
+  it('restitue la distance géodésique à moins d’un centimètre sur 100 m, aux quatre caps', () => {
+    for (const cap of [0, 90, 180, 270]) {
+      const p = pointDepuisCap(P, cap, 100);
+      expect(Math.abs(distanceEntreM(P, p) - 100)).toBeLessThan(0.01);
+    }
+  });
+
+  it('restitue le cap demandé aux quatre points cardinaux', () => {
+    expect(capEntreDeg(P, pointDepuisCap(P, 0, 100))).toBeCloseTo(0, 6);
+    expect(capEntreDeg(P, pointDepuisCap(P, 90, 100))).toBeCloseTo(90, 6);
+    expect(Math.abs(capEntreDeg(P, pointDepuisCap(P, 180, 100)))).toBeCloseTo(180, 6);
+    expect(capEntreDeg(P, pointDepuisCap(P, 270, 100))).toBeCloseTo(-90, 6);
+  });
+
+  it('cap 0 va vers le NORD, cap 90 vers l’EST (aucune convention inversée)', () => {
+    expect(pointDepuisCap(P, 0, 100)[1]).toBeGreaterThan(P[1]);
+    expect(pointDepuisCap(P, 90, 100)[0]).toBeGreaterThan(P[0]);
+    expect(pointDepuisCap(P, 180, 100)[1]).toBeLessThan(P[1]);
+    expect(pointDepuisCap(P, 270, 100)[0]).toBeLessThan(P[0]);
+  });
+
+  it('tient la précision sur des longueurs très différentes', () => {
+    for (const d of [0.5, 12.34, 100, 987.65]) {
+      expect(Math.abs(distanceEntreM(P, pointDepuisCap(P, 37, d)) - d)).toBeLessThan(0.01);
+    }
+  });
+
+  it('une distance nulle ou non finie ne déplace RIEN (aucune longueur supposée)', () => {
+    expect(pointDepuisCap(P, 90, 0)).toBe(P);
+    expect(pointDepuisCap(P, 90, -10)).toBe(P);
+    expect(pointDepuisCap(P, 90, Number.NaN)).toBe(P);
+    expect(pointDepuisCap(P, Number.NaN, 100)).toBe(P);
   });
 });
