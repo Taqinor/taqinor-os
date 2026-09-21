@@ -210,6 +210,24 @@
           "libelle": "Fenêtres d'arrêt de l'installation (début, fin, motif)",
           "unite": "",
           "reference": "PVsyst — Unavailability loss (des périodes d'arrêt explicites, jamais un forfait annuel)"
+        },
+        {
+          "cle": "auxiliaires_w_constants",
+          "libelle": "Auxiliaires — terme constant en marche",
+          "unite": "W",
+          "reference": "PVsyst — Auxiliaries consumption (terme constant au-dessus d'un seuil)"
+        },
+        {
+          "cle": "auxiliaires_w_par_kw",
+          "libelle": "Auxiliaires — terme proportionnel à la production",
+          "unite": "W/kW",
+          "reference": "PVsyst — Auxiliaries consumption (terme proportionnel en W/kW)"
+        },
+        {
+          "cle": "auxiliaires_w_nuit",
+          "libelle": "Auxiliaires — consommation de nuit",
+          "unite": "W",
+          "reference": "PVsyst — Auxiliaries consumption (consommation de nuit, valeur fixe distincte)"
         }
       ],
       "electrique_societe": [
@@ -410,6 +428,24 @@
           "libelle": "Fenêtres d'arrêt de l'installation (début, fin, motif)",
           "unite": "",
           "reference": "PVsyst — Unavailability loss (des périodes d'arrêt explicites, jamais un forfait annuel)"
+        },
+        {
+          "cle": "auxiliaires_w_constants",
+          "libelle": "Auxiliaires — terme constant en marche",
+          "unite": "W",
+          "reference": "PVsyst — Auxiliaries consumption (terme constant au-dessus d'un seuil)"
+        },
+        {
+          "cle": "auxiliaires_w_par_kw",
+          "libelle": "Auxiliaires — terme proportionnel à la production",
+          "unite": "W/kW",
+          "reference": "PVsyst — Auxiliaries consumption (terme proportionnel en W/kW)"
+        },
+        {
+          "cle": "auxiliaires_w_nuit",
+          "libelle": "Auxiliaires — consommation de nuit",
+          "unite": "W",
+          "reference": "PVsyst — Auxiliaries consumption (consommation de nuit, valeur fixe distincte)"
         }
       ],
       "electrique_societe": [
