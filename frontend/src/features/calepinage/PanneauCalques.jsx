@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ORDRE_CALQUES, lireEtatCalques, ecrireEtatCalques } from './calques'
+import { ORDRE_CALQUES, CALQUE_ELECTRIQUE_ID, lireEtatCalques, ecrireEtatCalques } from './calques'
 
 /* ============================================================================
    CAL103 — LE PANNEAU DE CALQUES de l'atelier.
@@ -35,7 +35,35 @@ import { ORDRE_CALQUES, lireEtatCalques, ecrireEtatCalques } from './calques'
    PERSISTANCE PAR UTILISATEUR : `calques.js` range l'état sous une clé qui porte
    l'identifiant de l'utilisateur ; un navigateur qui refuse le stockage repart de
    l'état par défaut, sans jamais lever.
+
+   CALX221 — LE CALQUE « ÉLECTRIQUE », ONZIÈME ENTRÉE DU PANNEAU. Les dix calques
+   de `calques.js` sont des couches de la CARTE (`mapDraw.setLayerState`) ; les
+   organes et les cheminements électriques, eux, vivent dans la SCÈNE 3D
+   (`apps/web/src/scripts/roofPro11/electrique3d.ts`). `calquesDisponibles()`
+   n'interroge que la carte : elle ne peut donc pas voir ce calque-là. C'est la
+   couche électrique du constructeur qui le déclare, et seulement quand le
+   document porte `electrical` — tant qu'aucun organe n'est posé, aucune bascule
+   n'apparaît, exactement comme pour un calque de carte non installé. Son
+   identifiant est DÉCLARÉ UNE SEULE FOIS côté constructeur
+   (`ID_CALQUE_ELECTRIQUE`) ; le test jumeau de cet écran relit ce source pour
+   l'affirmer, faute de module partagé entre le portail Vite et le site Astro.
    ========================================================================== */
+
+/** CALX221 — l'entrée « Électrique » du panneau. L'identifiant est `CALQUE_ELECTRIQUE_ID`
+ *  (calques.js — CALX22x câblage : la SEULE copie frontend de la chaîne, mémorisée par
+ *  utilisateur comme les dix autres) ; le libellé est celui affiché à l'utilisateur. Cet
+ *  objet n'est PAS exporté (un fichier de composant n'exporte que des composants) : le
+ *  test jumeau le vérifie par le rendu, avec l'identifiant lu dans le source TypeScript
+ *  du constructeur. */
+const CALQUE_ELECTRIQUE = { id: CALQUE_ELECTRIQUE_ID, label: 'Électrique' }
+
+/** Les calques que ce panneau sait proposer : les dix de `calques.js` (couches de
+ *  la carte), puis le calque électrique de la scène 3D, au-dessus d'eux. */
+const CALQUES_DU_PANNEAU = [...ORDRE_CALQUES, CALQUE_ELECTRIQUE]
+
+/** État d'ouverture d'un calque que `calques.js` ne connaît pas : visible, opaque
+ *  — le comportement d'aujourd'hui, jamais un réglage inventé. */
+const ETAT_PAR_DEFAUT = { visible: true, opacite: 1 }
 
 /**
  * @param {{calquesDisponibles?: () => string[]}|null} [builderApi]  l'API du
@@ -52,7 +80,12 @@ export default function PanneauCalques({ builderApi, onChange, utilisateurId, st
   const disponibles = useMemo(() => {
     try {
       const brut = builderApi?.calquesDisponibles?.()
-      return Array.isArray(brut) ? brut : []
+      const liste = Array.isArray(brut) ? [...brut] : []
+      // CALX221 — le calque électrique n'est pas une couche de la carte : il est
+      // servi par la couche 3D du constructeur, et SEULEMENT si le document
+      // porte `electrical` (aucun organe posé ⇒ aucune bascule).
+      if (builderApi?.electrique?.calqueDisponible?.()) liste.push(CALQUE_ELECTRIQUE.id)
+      return liste
     } catch {
       return []
     }
@@ -61,7 +94,7 @@ export default function PanneauCalques({ builderApi, onChange, utilisateurId, st
   }, [builderApi])
 
   const listes = useMemo(
-    () => ORDRE_CALQUES.filter((c) => disponibles.includes(c.id)),
+    () => CALQUES_DU_PANNEAU.filter((c) => disponibles.includes(c.id)),
     [disponibles],
   )
   const [etat, setEtat] = useState(() => lireEtatCalques(utilisateurId, stockage))
@@ -71,14 +104,14 @@ export default function PanneauCalques({ builderApi, onChange, utilisateurId, st
   // carte afficherait l'état par défaut pendant que le panneau montre l'état
   // mémorisé.
   useEffect(() => {
-    for (const c of listes) onChange?.(c.id, etat[c.id])
+    for (const c of listes) onChange?.(c.id, etat[c.id] ?? ETAT_PAR_DEFAUT)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listes])
 
   const appliquer = useCallback(
     (id, patch) => {
       setEtat((prev) => {
-        const suivant = { ...prev, [id]: { ...prev[id], ...patch } }
+        const suivant = { ...prev, [id]: { ...ETAT_PAR_DEFAUT, ...prev[id], ...patch } }
         ecrireEtatCalques(utilisateurId, suivant, stockage)
         onChange?.(id, suivant[id])
         return suivant
@@ -100,7 +133,9 @@ export default function PanneauCalques({ builderApi, onChange, utilisateurId, st
       ) : (
         <ul className="flex flex-col gap-2">
           {listes.map((c, i) => {
-            const e = etat[c.id]
+            // CALX221 — un calque que `calques.js` ne connaît pas (l'électrique)
+            // n'a pas d'état mémorisé : il s'ouvre visible et opaque.
+            const e = etat[c.id] ?? ETAT_PAR_DEFAUT
             return (
               <li key={c.id} data-testid={`pc-calque-${c.id}`} data-rang={i} className="flex items-center gap-2 text-sm">
                 <label className="flex flex-1 items-center gap-2">

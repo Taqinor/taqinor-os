@@ -1,0 +1,172 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/raccordement/",
+  "pourquoi": "CALX205 — LE POINT DE RACCORDEMENT. `GET` / `POST calepinages/<pk>/raccordement/`.\n\nCONSTAT. `grep -n \"raccordement|elevation_tension|puissance_raccordement\"` sur `apps/calepinage/services/*.py` et `core/electrique/*.py` ne rend que des occurrences de `phases` (1 ou 3) dans les formules de câble et de protection (`core/electrique/cables.py`, `core/electrique/protections.py`) : aucune limite de puissance de raccordement, aucune élévation de tension, aucun équilibrage des phases. Un parc de trois onduleurs monophasés peut aujourd'hui être posé en entier sur une seule phase sans qu'un mot soit dit.\n\nLES TROIS BLOCS. `saisie` — ce que l'utilisateur déclare du branchement ; `calcul` — ce que le moteur en tire (`services/raccordement.py`, CALX241-243) ; `verdicts` — la lecture prononcée, un verdict par contrôle, TOUJOURS présents tous les cinq, même quand ils sont omis (leçon PACT10 : un écran qui reçoit parfois cinq verdicts et parfois deux finit par tester l'absence).\n\nLA RÈGLE DURE : UNE LIMITE EST UNE SAISIE, ET ELLE PORTE SA SOURCE. `limite_elevation_pct` n'est PAS un barème du code : c'est une valeur saisie, accompagnée obligatoirement de `source_limite` (texte réglementaire ou contrat de raccordement). SANS ELLE, `elevation_pct` est calculée et PUBLIÉE — le chiffre existe, il est vrai, il se lit — mais le verdict vaut `omis` et son motif dit ce qui manque. Aucune limite n'est supposée pour le Maroc : `pays = ma` sans norme choisie fait OMETTRE le verdict (D1, `services/norme.py::norme_applicable`), jamais retenir un barème étranger par défaut. Une limite saisie SANS `source_limite` est refusée en nommant le champ (`refus_limite_sans_source`) : un seuil sans provenance est un seuil inventé (D-CALX 7).\n\n`cos_phi_impose` + `source_cos_phi` — MÊME RÈGLE, ET UN LECTEUR IDENTIFIÉ. L'étape d'écrêtage (`services/etapes/ecretage.py`, CALX172) borne la puissance à `min(puissance_ac_kw, s_max_kva × cos_phi_impose)` QUAND le cos φ est saisi ici, et retombe sur `puissance_ac_kw` avec la mention « cos φ non saisi » sinon — jamais un 1,0 supposé. C'est pour cela que les deux clés vivent dans ce contrat et pas ailleurs : `cos_phi_impose` sans `source_cos_phi` est refusé (`refus_cos_phi_sans_source`). À NE PAS CONFONDRE avec le réglage société `cos_phi_par_defaut` (« Cos φ retenu à défaut de mesure », registre `services/parametres_cles.py`, CALX145) : celui-ci vaut pour toute la société, celui-là est ce que le contrat de raccordement de CE site impose. Deux grandeurs distinctes, deux noms distincts — les confondre en ferait deux sources de vérité.\n\n`ecart_limite_pct` EST UNE DIFFÉRENCE, PAS UN CONFORT. Elle vaut `null` tant qu'aucune limite n'est saisie : il n'y a alors AUCUNE marge à calculer, et publier `0` ferait lire « limite atteinte ». Même discipline pour `desequilibre_pct`, publié sans verdict tant que le réglage société `seuil_desequilibre_pct` (registre `services/parametres_cles.py`, CALX145) n'est pas posé avec sa source.\n\nORTHOGRAPHE DE `desequilibre_pct`. Le texte de la tâche écrit `deséquilibre_pct` ; la clé est écrite ici SANS accent, comme `seuil_desequilibre_pct` déjà présent dans le registre des réglages (`services/parametres_cles.py`, CALX145) et comme TOUTES les clés de ce dossier — aucune clé accentuée n'existe dans les échantillons du module, et deux graphies pour une même grandeur sont exactement ce que ce dossier existe pour empêcher.\n\nLES VALEURS SONT DES PLACEHOLDERS (README, règle 4). La limite de `exemple_limite_saisie` ne vient d'aucun texte : elle illustre la FORME d'une saisie sourcée. Aucun seuil n'est posé par ce contrat, ni par son test.\n\nAUCUN PRIX, AUCUN kWh — le calepinage ne calcule pas d'argent (D-CALX 5) et ce lot ne produit aucune énergie (W3).",
+  "exemple": {
+    "saisie": {
+      "puissance_souscrite_kva": 12.0,
+      "phases": 3,
+      "tension_nominale_v": 400.0,
+      "limite_elevation_pct": null,
+      "source_limite": null,
+      "cos_phi_impose": 0.9,
+      "source_cos_phi": "saisie — contrat de raccordement du site (valeur d'essai)"
+    },
+    "calcul": {
+      "elevation_pct": 0.82,
+      "ecart_limite_pct": null,
+      "puissance_injectee_kva": 8.0,
+      "desequilibre_pct": 11.4
+    },
+    "verdicts": [
+      {
+        "code": "elevation_tension",
+        "libelle": "Élévation de tension au point de raccordement",
+        "statut": "omis",
+        "detail": "aucune limite d'élévation n'est saisie pour ce site : l'élévation est publiée, mais aucun verdict n'est prononcé. Aucun barème marocain n'est présent dans ce dépôt et aucune limite n'est supposée — saisissez « limite_elevation_pct » avec sa source (texte réglementaire ou contrat de raccordement) dans les réglages du calepinage.",
+        "source": null
+      },
+      {
+        "code": "puissance_souscrite",
+        "libelle": "Puissance injectée face à la puissance souscrite",
+        "statut": "ok",
+        "detail": "8,0 kVA injectés pour 12,0 kVA souscrits : la puissance souscrite saisie couvre l'injection.",
+        "source": "saisie — puissance_souscrite_kva"
+      },
+      {
+        "code": "regime_phases",
+        "libelle": "Régime de l'onduleur face au branchement",
+        "statut": "ok",
+        "detail": "onduleur triphasé sur un branchement saisi à 3 phases : les deux régimes concordent.",
+        "source": "saisie — phases"
+      },
+      {
+        "code": "tension_nominale",
+        "libelle": "Tension nominale employée par le calcul",
+        "statut": "ok",
+        "detail": "400 V saisis, 400 V employés par le calcul de chute et d'élévation : aucune divergence.",
+        "source": "saisie — tension_nominale_v"
+      },
+      {
+        "code": "desequilibre_phases",
+        "libelle": "Déséquilibre entre les phases",
+        "statut": "omis",
+        "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « seuil_desequilibre_pct » avec sa source dans les réglages du module.",
+        "source": null
+      }
+    ]
+  },
+  "exemple_limite_saisie": {
+    "saisie": {
+      "puissance_souscrite_kva": 12.0,
+      "phases": 3,
+      "tension_nominale_v": 400.0,
+      "limite_elevation_pct": 3.0,
+      "source_limite": "contrat de raccordement du site (valeur d'essai)",
+      "cos_phi_impose": 0.9,
+      "source_cos_phi": "saisie — contrat de raccordement du site (valeur d'essai)"
+    },
+    "calcul": {
+      "elevation_pct": 0.82,
+      "ecart_limite_pct": 2.18,
+      "puissance_injectee_kva": 8.0,
+      "desequilibre_pct": 11.4
+    },
+    "verdicts": [
+      {
+        "code": "elevation_tension",
+        "libelle": "Élévation de tension au point de raccordement",
+        "statut": "ok",
+        "detail": "0,82 % d'élévation pour une limite saisie de 3,0 % : il reste 2,18 points de marge.",
+        "source": "saisie — limite_elevation_pct, source : contrat de raccordement du site (valeur d'essai)"
+      },
+      {
+        "code": "puissance_souscrite",
+        "libelle": "Puissance injectée face à la puissance souscrite",
+        "statut": "ok",
+        "detail": "8,0 kVA injectés pour 12,0 kVA souscrits : la puissance souscrite saisie couvre l'injection.",
+        "source": "saisie — puissance_souscrite_kva"
+      },
+      {
+        "code": "regime_phases",
+        "libelle": "Régime de l'onduleur face au branchement",
+        "statut": "ok",
+        "detail": "onduleur triphasé sur un branchement saisi à 3 phases : les deux régimes concordent.",
+        "source": "saisie — phases"
+      },
+      {
+        "code": "tension_nominale",
+        "libelle": "Tension nominale employée par le calcul",
+        "statut": "ok",
+        "detail": "400 V saisis, 400 V employés par le calcul de chute et d'élévation : aucune divergence.",
+        "source": "saisie — tension_nominale_v"
+      },
+      {
+        "code": "desequilibre_phases",
+        "libelle": "Déséquilibre entre les phases",
+        "statut": "omis",
+        "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « seuil_desequilibre_pct » avec sa source dans les réglages du module.",
+        "source": null
+      }
+    ]
+  },
+  "exemple_vide": {
+    "saisie": {
+      "puissance_souscrite_kva": null,
+      "phases": null,
+      "tension_nominale_v": null,
+      "limite_elevation_pct": null,
+      "source_limite": null,
+      "cos_phi_impose": null,
+      "source_cos_phi": null
+    },
+    "calcul": {
+      "elevation_pct": null,
+      "ecart_limite_pct": null,
+      "puissance_injectee_kva": null,
+      "desequilibre_pct": null
+    },
+    "verdicts": [
+      {
+        "code": "elevation_tension",
+        "libelle": "Élévation de tension au point de raccordement",
+        "statut": "omis",
+        "detail": "aucune limite d'élévation n'est saisie pour ce site : l'élévation est publiée, mais aucun verdict n'est prononcé. Aucun barème marocain n'est présent dans ce dépôt et aucune limite n'est supposée — saisissez « limite_elevation_pct » avec sa source (texte réglementaire ou contrat de raccordement) dans les réglages du calepinage.",
+        "source": null
+      },
+      {
+        "code": "puissance_souscrite",
+        "libelle": "Puissance injectée face à la puissance souscrite",
+        "statut": "omis",
+        "detail": "« puissance_souscrite_kva » n'est pas saisie : rien ne peut être comparé à la puissance injectée. Saisissez la puissance souscrite du contrat de raccordement.",
+        "source": null
+      },
+      {
+        "code": "regime_phases",
+        "libelle": "Régime de l'onduleur face au branchement",
+        "statut": "omis",
+        "detail": "« phases » n'est pas saisi : le régime du branchement est inconnu, et il n'est pas supposé. Saisissez 1 ou 3 phases.",
+        "source": null
+      },
+      {
+        "code": "tension_nominale",
+        "libelle": "Tension nominale employée par le calcul",
+        "statut": "omis",
+        "detail": "« tension_nominale_v » n'est pas saisie : ni 230 V ni 400 V ne sont supposés. Saisissez la tension nominale du branchement.",
+        "source": null
+      },
+      {
+        "code": "desequilibre_phases",
+        "libelle": "Déséquilibre entre les phases",
+        "statut": "omis",
+        "detail": "le seuil de déséquilibre acceptable n'est pas réglé pour la société : le déséquilibre est publié, aucun verdict n'est prononcé. Réglez « seuil_desequilibre_pct » avec sa source dans les réglages du module.",
+        "source": null
+      }
+    ]
+  },
+  "refus_limite_sans_source": {
+    "source_limite": "Une limite d'élévation de tension ne peut pas être enregistrée sans sa source : indiquez le texte réglementaire ou le contrat de raccordement qui la fixe — un seuil sans provenance n'est pas opposable."
+  },
+  "refus_cos_phi_sans_source": {
+    "source_cos_phi": "Un cos φ imposé ne peut pas être enregistré sans sa source : indiquez le contrat de raccordement ou la prescription du gestionnaire de réseau qui l'impose."
+  }
+}

@@ -347,6 +347,40 @@ const calepinageApi = {
     // refus 400 NOMME le réglage ou le champ à corriger.
     simuler: (id, { forcer = false } = {}) =>
       api.post(`${pivot(id)}simuler/`, { forcer }),
+
+    // CALX229 — le métré et la chute, TRONÇON PAR TRONÇON (contrat
+    // `contract_samples/calepinage_troncons.json`, CALX203). ÉTAT DU SERVEUR
+    // À L'ÉCRITURE DE CETTE LIGNE : la route n'existe pas encore — son
+    // producteur est `services/troncons.py` (CALX224-226) et sa vue arrive
+    // avec la suite de la vague ÉLECTRIQUE PRO ; l'échantillon est déclaré
+    // `POSES_AVANT_LEUR_ROUTE` dans `tests/test_cal223_contrats.py`
+    // (mécanisme PACT10 déjà posé). `CheminementCables.jsx` traite un 404 de
+    // CETTE porte comme un état « pas encore calculable », jamais une panne.
+    troncons: (id) => api.get(`${pivot(id)}troncons/`),
+
+    // CALX244 — le POINT DE RACCORDEMENT réseau (contrat
+    // `contract_samples/calepinage_raccordement.json`, CALX205), servi par
+    // `views/raccordement.py`. UNE SEULE URL, deux méthodes : `GET` lit,
+    // `POST` enregistre la saisie ET REND le raccordement recalculé —
+    // l'écran n'enchaîne aucun second appel. Les deux réponses portent les
+    // trois blocs `{saisie, calcul, verdicts}` et les CINQ verdicts, même
+    // quand rien n'est saisi. Un refus 400 NOMME le champ fautif
+    // (`source_limite`, `phases`… — les noms du bloc `saisie`, comme
+    // `refus_limite_sans_source` du contrat) : une limite ou un cos φ sans
+    // leur provenance n'entre jamais en base.
+    raccordement: (id) => api.get(`${pivot(id)}raccordement/`),
+    enregistrerRaccordement: (id, corps) =>
+      api.post(`${pivot(id)}raccordement/`, corps),
+
+    // CALX235 — le schéma unifilaire en DXF, pour qu'un bureau d'études le
+    // reprenne (`views/schema.py`, `url_path='schema-unifilaire.dxf'` — le
+    // point fait partie du chemin, comme `export.csv`). Le fichier est
+    // transposé du MÊME dessin que le SVG : les deux ne peuvent pas
+    // diverger. Réponse BLOB ; une conception incomplète ou bloquée ne
+    // produit AUCUN fichier et le serveur refuse en 400 en NOMMANT le champ
+    // en cause — l'écran affiche CE motif-là, il n'en invente aucun.
+    sldDxf: (id) =>
+      api.get(`${pivot(id)}schema-unifilaire.dxf/`, { responseType: 'blob' }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

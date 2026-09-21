@@ -38,7 +38,6 @@ backend/django_core/apps/calepinage/services/degagements.py::types_admis
 backend/django_core/apps/calepinage/services/electrique.py::alertes_nommees
 backend/django_core/apps/calepinage/services/electrique.py::bloc_ratio_dc_ac
 backend/django_core/apps/calepinage/services/electrique.py::bornes_ratio
-backend/django_core/apps/calepinage/services/electrique.py::ecretage_depuis_serie
 backend/django_core/apps/calepinage/services/electrique.py::entree_stockee
 backend/django_core/apps/calepinage/services/electrique.py::fournisseur_temperatures
 backend/django_core/apps/calepinage/services/electrique.py::garde_publication

@@ -1,0 +1,106 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/layout/",
+  "forme_serveur": "partielle",
+  "document": "roof_layout v2 — clé racine OPTIONNELLE `electrical.equipements[]` (schéma : contract_samples/roof_layout_v2.schema.json)",
+  "pourquoi": "CALX201 — LES ORGANES ÉLECTRIQUES POSÉS DANS L'ATELIER, clé racine OPTIONNELLE `electrical.equipements[]` du document `roof_layout` v2 (schéma : `contract_samples/roof_layout_v2.schema.json`).\n\nCE QUE CE FICHIER DÉCRIT — ET CE QU'IL NE DÉCRIT PAS. `exemple` n'est PAS le corps complet de la réponse de `GET layout/` (celle-ci rend `{roof_layout, layout_hash, schema_version}`, `services/io_layout.py::exporter_layout`) : c'est le FRAGMENT de `roof_layout` que cette tâche ajoute, d'où `forme_serveur: partielle`. Le document complet reste décrit par le schéma, et l'`exemple` du schéma n'a PAS été touché : un document v2 déjà enregistré reste valide octet pour octet, et les quatre modules qui relisent cet `exemple` (`tests/test_cal216_import_export.py`, `tests/test_calx28_io_layout_aller_retour.py`, `apps/ventes/tests/test_roof_layout_v2.py`, `services/etapes/ombrage_proche.py`) ne voient AUCUN changement.\n\nPOURQUOI CE CONTRAT PART SEUL (PACT10). Le même tableau est écrit par l'atelier 3D (`apps/web/src/scripts/roofPro11/electrique3d.ts`, CALX219 et CALX220) et relu, sans se parler, par quatre familles de consommateurs : la mesure des tronçons (`services/troncons.py`, CALX224), le schéma unifilaire (`core/electrique/schema.py`, CALX204), la nomenclature (`core/electrique/nomenclature.py`) et le panneau électrique du frontend. Ces lanes sont FILE-DISJOINTES par construction : sans ce fichier, chacune inventerait ses clés. L'exemple ci-dessous est celui que les DEUX moitiés lisent tel quel.\n\nCE QUE L'ENTRÉE NE PORTE PAS. Aucune puissance, aucun calibre, aucune section, aucun seuil, aucun prix : le document dit OÙ est l'organe, jamais ce qu'il vaut. Toute caractéristique se lit sur la fiche `stock.Produit` désignée par `produitId` (champs CALX60) ou sur la norme retenue (`services/norme.py`). `produitId: null` n'est donc pas un défaut à combler : c'est un organe sans fiche, et tout calcul qui aurait eu besoin d'une caractéristique s'OMET en nommant la fiche manquante.\n\nLES HUIT TYPES SONT UNE ÉNUMÉRATION FERMÉE (`onduleur`, `coffret_dc`, `coffret_ac`, `compteur_production`, `compteur_reseau`, `tgbt`, `batterie`, `parafoudre`) et `source` en compte deux (`saisie`, `import`). L'exemple les exerce TOUS LES HUIT : c'est la fixture de `electrique3d.test.ts` (huit types, huit objets distincts).\n\nLES REFUS NOMMENT LE CHAMP FAUTIF. `services/io_layout.py::valider_document` valide déjà STRICTEMENT contre le schéma et lève `ImportLayoutRefuse(champ=<chemin JSON>)`. Deux refus sont figés ici :\n* `refus_type_inconnu` — un `type` hors énumération : l'erreur porte sur `electrical.equipements.<i>.type`, le champ EXACT ;\n* `refus_sans_position` — une entrée sans `lng` ou sans `lat` : `jsonschema` place l'erreur `required` sur l'OBJET (`electrical.equipements.<i>`) et NOMME le champ manquant dans son message ; l'écran concatène les deux et pointe `electrical.equipements.<i>.lat`. Les textes ci-dessous sont ceux que l'écran affiche — en français, sous le champ, jamais un « non enregistré » générique.\n\nABSENCE ≠ ZÉRO. `altitudeM` absente ou `null` ne veut pas dire « au sol » : elle n'est pas renseignée, et une descente verticale se déclare explicitement (`cheminements[].longueurSaisieM`, CALX202) plutôt que d'être devinée. `rotationDeg` est purement visuelle : aucune grandeur électrique n'en dépend.",
+  "exemple": {
+    "electrical": {
+      "equipements": [
+        {
+          "id": "eq1",
+          "type": "onduleur",
+          "label": "Onduleur 1 — pan sud",
+          "lng": -7.6002,
+          "lat": 33.5001,
+          "altitudeM": 3.2,
+          "rotationDeg": 90,
+          "produitId": 1,
+          "source": "saisie"
+        },
+        {
+          "id": "eq2",
+          "type": "coffret_dc",
+          "label": "Coffret DC toiture",
+          "lng": -7.6003,
+          "lat": 33.5002,
+          "altitudeM": 3.2,
+          "rotationDeg": 0,
+          "produitId": null,
+          "source": "saisie"
+        },
+        {
+          "id": "eq3",
+          "type": "parafoudre",
+          "label": "Parafoudre DC — coffret toiture",
+          "lng": -7.6003,
+          "lat": 33.5002,
+          "altitudeM": 3.2,
+          "produitId": null,
+          "source": "saisie"
+        },
+        {
+          "id": "eq4",
+          "type": "coffret_ac",
+          "label": "Coffret AC — local technique",
+          "lng": -7.6008,
+          "lat": 33.4998,
+          "altitudeM": 0.0,
+          "produitId": null,
+          "source": "saisie"
+        },
+        {
+          "id": "eq5",
+          "type": "compteur_production",
+          "label": "Compteur de production",
+          "lng": -7.6009,
+          "lat": 33.4997,
+          "altitudeM": 0.0,
+          "produitId": null,
+          "source": "saisie"
+        },
+        {
+          "id": "eq6",
+          "type": "batterie",
+          "label": "Batterie — local technique",
+          "lng": -7.6007,
+          "lat": 33.4999,
+          "altitudeM": 0.0,
+          "produitId": 2,
+          "source": "saisie"
+        },
+        {
+          "id": "eq7",
+          "type": "tgbt",
+          "label": "TGBT existant",
+          "lng": -7.601,
+          "lat": 33.4996,
+          "altitudeM": null,
+          "produitId": null,
+          "source": "import"
+        },
+        {
+          "id": "eq8",
+          "type": "compteur_reseau",
+          "label": "Compteur réseau — poste de livraison",
+          "lng": -7.6011,
+          "lat": 33.4996,
+          "altitudeM": null,
+          "produitId": null,
+          "source": "import"
+        }
+      ]
+    }
+  },
+  "exemple_vide": {
+    "electrical": {
+      "equipements": []
+    }
+  },
+  "exemple_document_sans_electrical": {},
+  "refus_type_inconnu": {
+    "electrical.equipements.0.type": "Type d'équipement « onduleur_hybride » inconnu : les seuls types posables sont onduleur, coffret_dc, coffret_ac, compteur_production, compteur_reseau, tgbt, batterie, parafoudre."
+  },
+  "refus_sans_position": {
+    "electrical.equipements.0.lat": "L'équipement « Onduleur 1 — pan sud » n'a pas de position : renseignez sa latitude et sa longitude, ou retirez-le du plan — un organe sans point ne porte aucune longueur de câble mesurable."
+  }
+}

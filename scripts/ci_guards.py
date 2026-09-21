@@ -124,6 +124,16 @@ GARDES = {
         ('Test the orphan-service checker itself (CALX57)',
          'python -m unittest scripts.tests.test_check_services_appeles -v',
          '.'),
+        # CALX250 (lot 4, 21/09/2026) — aucun seuil électrique sans source :
+        # un littéral numérique NEUF de core/electrique/*.py ou des services
+        # électriques de calepinage sans commentaire de provenance fait échouer
+        # la CI ; passif gelé dans scripts/seuils_electriques_exceptions.txt.
+        ('Check seuils électriques (aucun seuil sans source, CALX250)',
+         'python scripts/check_seuils_electriques.py',
+         '.'),
+        ('Test the electrical-threshold-source checker itself (CALX250)',
+         'python -m unittest scripts.tests.test_check_seuils_electriques -v',
+         '.'),
         ('Check tâches de plan (aucune ne commande du travail mort)',
          'python scripts/check_taches_cablage.py',
          '.'),

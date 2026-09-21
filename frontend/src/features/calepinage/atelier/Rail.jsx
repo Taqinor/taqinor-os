@@ -31,6 +31,17 @@ import { PARAM_ONGLET, groupesOnglets, resoudreOnglet } from './onglets'
      - un panneau qui échoue au rendu est rattrapé par un `ErrorBoundary` qui
        NOMME l'onglet fautif — jamais un « une erreur est survenue » anonyme
        (règle fondateur : l'erreur désigne ce qui a échoué).
+
+   CALX222 — `builderApi` DESCEND JUSQU'AUX PANNEAUX. L'atelier possède déjà
+   l'API du constructeur 3D (`AtelierPanneaux.jsx`, qui la tient de l'écran de
+   conception, CALX8) ; le rail la relayait à personne, si bien qu'un panneau
+   qui pilote la scène — « Armer la pose » d'`EquipementsElectriques.jsx` —
+   n'avait aucun moyen de l'atteindre et répondait « outil 3D non prêt » même
+   quand il l'était. Elle est donc passée à CHAQUE panneau : ceux qui ne la
+   DÉCLARENT pas dans leurs props l'ignorent, et le rail ne connaît toujours
+   aucun panneau par son nom. Absente (le rail monté hors de la scène 3D),
+   elle vaut `null` : le panneau le DIT au lieu d'échouer en silence — jamais
+   une pose armée dans le vide.
    ========================================================================== */
 
 /** Le bandeau d'erreur d'un panneau : il NOMME l'onglet qui n'a pas pu s'ouvrir. */
@@ -46,7 +57,7 @@ function EchecOnglet({ libelle }) {
   )
 }
 
-export default function Rail({ calepinageId: idPropose = null } = {}) {
+export default function Rail({ calepinageId: idPropose = null, builderApi = null } = {}) {
   const { id: idUrl } = useParams()
   const calepinageId = idPropose ?? idUrl ?? null
 
@@ -108,7 +119,10 @@ export default function Rail({ calepinageId: idPropose = null } = {}) {
                 </p>
               )}
             >
-              <Composant calepinageId={calepinageId} />
+              {/* CALX222 — `builderApi` est relayée à TOUS les panneaux :
+                  ceux qui ne la déclarent pas l'ignorent, et le rail
+                  continue de ne connaître aucun panneau par son nom. */}
+              <Composant calepinageId={calepinageId} builderApi={builderApi} />
             </Suspense>
           </ErrorBoundary>
         </TabsContent>

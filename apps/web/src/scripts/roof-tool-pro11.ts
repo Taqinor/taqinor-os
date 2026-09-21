@@ -158,6 +158,7 @@ import {
   type PrioriteRemplissage,
   type EntreeDepartage,
 } from './roofPro11/optimizer';
+import { creerCoucheElectrique } from './roofPro11/electrique3d';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
 
@@ -3608,5 +3609,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     raccourcis: raccourcisAtelier,
     // CALX3 — les calques réellement installés sur la carte, dans l'ordre de rendu.
     calquesDisponibles: () => calquesDisponibles(map),
+    electrique: creerCoucheElectrique(ctx), // CALX220 — pose/déplacement/retrait d'organes électriques
   });
 }

@@ -220,7 +220,13 @@ const VENDOR_CHUNK_BUDGETS_KB = {
   'react-vendor': 250,
   // Outil toiture pro (canvas/3D lourd, isolé) : budget dédié comme les autres
   // vendors lourds — pré-existant à YHARD7 (nouveau gate), pas une régression.
-  'roof-tool': 500,
+  // 2026-09-21 — 500 -> 560 (mesure réelle 504,2 Ko gzip sur dev-calx-m2b) :
+  // lot 4 CALX219-223 pose la couche ÉLECTRIQUE du constructeur
+  // (`roofPro11/electrique3d.ts`, organes + cheminements 3D) dans ce chunk
+  // isolé ; le lot 2 (site/toit/atelier 3D, ~15 modules roofPro11) va
+  // encore le grossir — un chargement paresseux des modules d'atelier
+  // reste à poser (lot 8 perf), ce palier n'est PAS un blanc-seing.
+  'roof-tool': 560,
   // AOF192 — Atelier de calepinage AO (`features/ao/studio/`, canvas/
   // géométrie/relevé), isolé par `manualChunks` dans vite.config.js sous le
   // même patron que `roof-tool` (voir son commentaire, ligne au-dessus).

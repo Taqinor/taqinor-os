@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4637, operations: 7411, components: 2110}
+counts: {paths: 4643, operations: 7421, components: 2110}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -563,15 +563,20 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/planche.pdf/ -> django_calepinage_calepinages_planche.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/planche.svg/ -> django_calepinage_calepinages_planche.svg_retrieve
 - post /api/django/calepinage/calepinages/{id}/pompage/ -> django_calepinage_calepinages_pompage_create
+- get /api/django/calepinage/calepinages/{id}/raccordement/ -> django_calepinage_calepinages_raccordement_retrieve
+- post /api/django/calepinage/calepinages/{id}/raccordement/ -> django_calepinage_calepinages_raccordement_create
 - get /api/django/calepinage/calepinages/{id}/releve/ -> django_calepinage_calepinages_releve_retrieve
 - post /api/django/calepinage/calepinages/{id}/releve/ -> django_calepinage_calepinages_releve_create
 - post /api/django/calepinage/calepinages/{id}/restaurer-corbeille/ -> django_calepinage_calepinages_restaurer_corbeille_create
 - get /api/django/calepinage/calepinages/{id}/resultat/ -> django_calepinage_calepinages_resultat_retrieve
 - post /api/django/calepinage/calepinages/{id}/roof-image/ -> django_calepinage_calepinages_roof_image_create
+- get /api/django/calepinage/calepinages/{id}/schema-unifilaire.dxf/ -> django_calepinage_calepinages_schema_unifilaire.dxf_retrieve
 - get /api/django/calepinage/calepinages/{id}/schema-unifilaire/ -> django_calepinage_calepinages_schema_unifilaire_retrieve
+- post /api/django/calepinage/calepinages/{id}/schema-unifilaire/ -> django_calepinage_calepinages_schema_unifilaire_create
 - post /api/django/calepinage/calepinages/{id}/simuler/ -> django_calepinage_calepinages_simuler_create
 - get /api/django/calepinage/calepinages/{id}/sorties/ -> django_calepinage_calepinages_sorties_retrieve
 - post /api/django/calepinage/calepinages/{id}/sync-devis/ -> django_calepinage_calepinages_sync_devis_create
+- get /api/django/calepinage/calepinages/{id}/troncons/ -> django_calepinage_calepinages_troncons_retrieve
 - get /api/django/calepinage/calepinages/{id}/variantes/ -> django_calepinage_calepinages_variantes_retrieve
 - post /api/django/calepinage/calepinages/{id}/variantes/ -> django_calepinage_calepinages_variantes_create
 - delete /api/django/calepinage/calepinages/{id}/variantes/{variante_id}/ -> django_calepinage_calepinages_variantes_destroy
@@ -4306,15 +4311,20 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/planche.pdf/ -> v1_calepinage_calepinages_planche.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/planche.svg/ -> v1_calepinage_calepinages_planche.svg_retrieve
 - post /api/v1/calepinage/calepinages/{id}/pompage/ -> v1_calepinage_calepinages_pompage_create
+- get /api/v1/calepinage/calepinages/{id}/raccordement/ -> v1_calepinage_calepinages_raccordement_retrieve
+- post /api/v1/calepinage/calepinages/{id}/raccordement/ -> v1_calepinage_calepinages_raccordement_create
 - get /api/v1/calepinage/calepinages/{id}/releve/ -> v1_calepinage_calepinages_releve_retrieve
 - post /api/v1/calepinage/calepinages/{id}/releve/ -> v1_calepinage_calepinages_releve_create
 - post /api/v1/calepinage/calepinages/{id}/restaurer-corbeille/ -> v1_calepinage_calepinages_restaurer_corbeille_create
 - get /api/v1/calepinage/calepinages/{id}/resultat/ -> v1_calepinage_calepinages_resultat_retrieve
 - post /api/v1/calepinage/calepinages/{id}/roof-image/ -> v1_calepinage_calepinages_roof_image_create
+- get /api/v1/calepinage/calepinages/{id}/schema-unifilaire.dxf/ -> v1_calepinage_calepinages_schema_unifilaire.dxf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/schema-unifilaire/ -> v1_calepinage_calepinages_schema_unifilaire_retrieve
+- post /api/v1/calepinage/calepinages/{id}/schema-unifilaire/ -> v1_calepinage_calepinages_schema_unifilaire_create
 - post /api/v1/calepinage/calepinages/{id}/simuler/ -> v1_calepinage_calepinages_simuler_create
 - get /api/v1/calepinage/calepinages/{id}/sorties/ -> v1_calepinage_calepinages_sorties_retrieve
 - post /api/v1/calepinage/calepinages/{id}/sync-devis/ -> v1_calepinage_calepinages_sync_devis_create
+- get /api/v1/calepinage/calepinages/{id}/troncons/ -> v1_calepinage_calepinages_troncons_retrieve
 - get /api/v1/calepinage/calepinages/{id}/variantes/ -> v1_calepinage_calepinages_variantes_retrieve
 - post /api/v1/calepinage/calepinages/{id}/variantes/ -> v1_calepinage_calepinages_variantes_create
 - delete /api/v1/calepinage/calepinages/{id}/variantes/{variante_id}/ -> v1_calepinage_calepinages_variantes_destroy

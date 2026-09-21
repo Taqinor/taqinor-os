@@ -20,6 +20,7 @@ import os
 import unittest
 
 from core.electrique import SCHEMA_VERSION, VERSION_MOTEUR, concevoir
+from core.electrique.nomenclature import MOTIF_STRUCTURE_NON_SOURCEE
 from core.electrique.types import (
     EntreeElectrique,
     GroupePan,
@@ -254,7 +255,10 @@ class ContratDesTiroirs(unittest.TestCase):
         conformite = self._resultat().tiroirs["electrique"]["conformite"]
         self.assertTrue(conformite["conforme"])
         self.assertFalse(conformite["bloquant"])
-        self.assertEqual(conformite["alerte"], "")
+        # CALX247 — un dossier conforme SANS règle de bordereau sourcée porte
+        # exactement UNE alerte : les quantités de fixation ne sont plus
+        # devinées, le bordereau le dit ; rien d'autre n'est proposé.
+        self.assertEqual(conformite["alerte"], MOTIF_STRUCTURE_NON_SOURCEE)
         self.assertIsNone(conformite["repartition_proposee"])
 
     def test_une_longueur_refusee_propose_la_repartition_conforme(self):

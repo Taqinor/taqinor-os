@@ -285,13 +285,23 @@ def specs_module(specs, designation=''):
 
 
 def specs_onduleur(specs, designation=''):
-    """``(SpecOnduleur | None, manquantes)`` depuis un bloc ``onduleur``."""
+    """``(SpecOnduleur | None, manquantes)`` depuis un bloc ``onduleur``.
+
+    CALX213 (crochet posé par la phase 2 du lot 4) — ``s_max_kva`` et
+    ``dc_max_kwc`` sont publiés par ``apps.stock.selectors.specs_for_produit``
+    (champs de fiche CALX60) et recopiés ICI : sans cette recopie, les deux
+    bornes n'atteignaient JAMAIS ``SpecOnduleur``, donc ni le verdict
+    d'onduleur (``core/electrique/onduleurs.py``) ni la puissance apparente du
+    raccordement (``services/raccordement.py``) ne pouvaient les lire. Elles
+    restent OPTIONNELLES : une fiche muette ne déclenche aucun contrôle.
+    """
     manquantes = _manquantes(specs, CHAMPS_ONDULEUR)
     if manquantes:
         return (None, manquantes)
     specs = dict(specs)
     optionnels = {}
-    for cle in ('rendement_euro_pct', 'v_demarrage_v', 'isc_max_mppt_a'):
+    for cle in ('rendement_euro_pct', 'v_demarrage_v', 'isc_max_mppt_a',
+                's_max_kva', 'dc_max_kwc'):
         valeur = _nombre(specs.get(cle))
         if valeur is not None:
             optionnels[cle] = valeur
@@ -331,6 +341,10 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
     Les températures viennent de CAL123 (``services.electrique``) : elles sont
     passées EXPLICITEMENT au noyau, jamais laissées au défaut — c'est tout
     l'objet de CAL123.
+
+    CALX214 — leur PROVENANCE fait le voyage avec elles (``source`` et
+    ``mention`` du ``TemperaturesSite``) : sans elle, le noyau pouvait écrire
+    « à −5 °C » dans une phrase sans que rien ne dise d'où venait ce −5.
     """
     return EntreeElectrique(
         module=module, onduleur=onduleur,
@@ -338,6 +352,8 @@ def entree_electrique(layout, module, onduleur, temperatures, *,
         dc_m=float(dc_m or 0.0), ac_m=float(ac_m or 0.0),
         phases=int(phases or getattr(onduleur, 'phases', 1) or 1),
         temp_froid_c=temperatures.froid_c, temp_chaud_c=temperatures.chaud_c,
+        temp_source=getattr(temperatures, 'source', None),
+        temp_mention=getattr(temperatures, 'mention', '') or '',
         longueur_chaine_forcee=longueur_forcee,
         zone_keraunique=bool(zone_keraunique),
         inclure_prise_terre=bool(inclure_prise_terre),
@@ -557,8 +573,15 @@ def _numero_chaine(chaine):
     return int(chiffres) if chiffres else None
 
 
-def evaluer_onduleurs(conception):
-    """L'``EvaluationOnduleurs`` du noyau pour cette conception, ou ``None``."""
+def evaluer_onduleurs(conception, *, reglages=None):
+    """L'``EvaluationOnduleurs`` du noyau pour cette conception, ou ``None``.
+
+    CALX213 — ``reglages`` est la section ``electrique_societe`` des réglages
+    société (``services/parametres_cles.py``), ``{clé: {valeur, source}}``.
+    Elle porte les TROIS paliers du ratio DC/AC, dont le seuil BAS qui n'a
+    aucune constante de repli. Absente, les bornes du noyau s'appliquent à
+    l'identique : le comportement d'aujourd'hui est strictement conservé.
+    """
     from core.electrique.onduleurs import dimensionner_onduleurs
 
     entree = conception.entree
@@ -566,7 +589,7 @@ def evaluer_onduleurs(conception):
         return None
     puissance_dc = (conception.resultat.puissance_kwc
                     if conception.chaines else entree.puissance_kwc)
-    return dimensionner_onduleurs(entree, puissance_dc)
+    return dimensionner_onduleurs(entree, puissance_dc, reglages)
 
 
 def empreinte_entree(layout, *, module_specs, onduleur_specs, temperatures,

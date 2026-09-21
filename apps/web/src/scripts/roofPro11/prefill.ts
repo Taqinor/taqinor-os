@@ -26,6 +26,7 @@ import { type EnvironmentObject } from './environment';
 import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone } from './zones';
 import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
+import { type CoucheElectrique, type DocumentElectrique } from './electrique3d';
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -370,6 +371,16 @@ export interface SerializeMeta {
   /** CAL93 — le profil d'horizon lointain RÉELLEMENT en vigueur (`ctx.horizonProfile`,
    *  tenu par `shadingUi.ts`). Fourni par l'appelant, comme `setbacksM` ci-dessus. */
   horizonProfile?: HorizonProfile;
+  /**
+   * CALX22x câblage — la couche électrique de l'atelier (CALX219-221/223,
+   * `electrique3d.ts`), si l'appelant en tient une (`onApiReady`'s `electrique`).
+   * Fournie par l'appelant, comme `setbacksM`/`horizonProfile` ci-dessus :
+   * `prefill.ts` reste pur et ne recalcule ni ne recopie jamais la logique
+   * d'écriture — elle reste ENTIÈREMENT déléguée à `couche.ecrireDansDocument`,
+   * la seule source de vérité pour la forme de `electrical`. Absente ⇒ comportement
+   * historique, aucune clé `electrical` dans le document sérialisé.
+   */
+  coucheElectrique?: Pick<CoucheElectrique, 'ecrireDansDocument'> | null;
 }
 
 // ═══════════ PV71 — MATRICE D'OMBRAGE 12 × 24 (sérialisation) ═══════════
@@ -533,6 +544,15 @@ export interface SerializedLayout {
    *  aucun horizon lointain modélisé — comportement historique, byte pour byte. Forme
    *  figée par `roof_layout_v2.schema.json` (`$defs/horizonProfile`). */
   horizonProfile?: HorizonProfile;
+  /**
+   * CALX22x câblage — la couche électrique (organes + cheminements), écrite par
+   * `couche.ecrireDansDocument` (voir `meta.coucheElectrique` ci-dessous) quand
+   * l'appelant en tient une ET qu'elle porte au moins un organe ou un cheminement.
+   * Omis sinon (aucune couche fournie, ou couche vide) — comportement historique,
+   * byte pour byte. Forme figée par `electrique3d.ts` (`DocumentElectrique`) /
+   * `roof_layout_v2.schema.json` (`electrical.equipements[]` / `electrical.cheminements[]`).
+   */
+  electrical?: DocumentElectrique;
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -680,7 +700,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   for (const a of ctx.areas) if (a.result) annualKwhTotal += a.result.annualKwh;
   const savings = typeof meta?.savingsMad === 'number' && Number.isFinite(meta.savingsMad) ? meta.savingsMad : null;
 
-  return {
+  const layout: SerializedLayout = {
     version: 2,
     pin: centroidOf(activeVerts),
     outline,
@@ -716,6 +736,11 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       ? { horizonProfile: serializeHorizonProfile(meta.horizonProfile) }
       : {}),
   };
+  // CALX22x câblage — la couche électrique s'écrit EN DERNIER, par son PROPRE crochet
+  // d'export (`ecrireDansDocument`) : jamais une deuxième copie de sa logique ici — elle
+  // gère seule la copie profonde et l'absence de la clé quand le document ne porte ni
+  // organe ni cheminement. Sans couche fournie, `layout` repart inchangé (byte pour byte).
+  return meta?.coucheElectrique ? meta.coucheElectrique.ecrireDansDocument(layout) : layout;
 }
 
 /**

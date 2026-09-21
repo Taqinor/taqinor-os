@@ -1,0 +1,115 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/layout/",
+  "forme_serveur": "partielle",
+  "document": "roof_layout v2 — clé racine OPTIONNELLE `electrical.cheminements[]` (schéma : contract_samples/roof_layout_v2.schema.json)",
+  "pourquoi": "CALX202 — LES CHEMINEMENTS DE CÂBLE du document `roof_layout` v2, clé racine OPTIONNELLE `electrical.cheminements[]` (schéma : `contract_samples/roof_layout_v2.schema.json`).\n\nCE QU'IL REMPLACE — ET CE QU'IL NE CASSE PAS. La seule description de trajet aujourd'hui est `entree_electrique['cheminement']`, trois scalaires saisis (`descente_m`, `coffret_vers_onduleur_m`, `onduleur_vers_tgbt_m`) plus un `point_collecte` par pan (`services/cables.py`) : ni polyligne, ni tronçon, ni ordre — un tronçon coudé de 40 m y est compté comme sa corde. Cette clé ajoute la topologie qui manquait. Elle est OPTIONNELLE et additive : absente, les trois scalaires continuent de faire foi, exactement comme aujourd'hui, et un document v2 déjà enregistré reste valide sans qu'une clé change (l'`exemple` du schéma n'a pas été touché).\n\nCE QUE `exemple` DÉCRIT. Comme `electrique_equipements.json` (CALX201), c'est un FRAGMENT du document servi par `GET layout/`, pas le corps complet de la réponse — d'où `forme_serveur: partielle`. Les `de` / `vers` de l'exemple se résolvent contre les équipements de CALX201 (`eq1`, `eq2`, `eq4`, `eq7`) et contre le pan `z1` de l'`exemple` du schéma : les deux échantillons se lisent ENSEMBLE, et le test le vérifie.\n\nCE QUE LE TRONÇON NE PORTE PAS. Aucune longueur, aucune section, aucune chute, aucun calibre : le document dit par où le câble passe, jamais ce qu'il vaut. La longueur est CALCULÉE par `services/troncons.py` (CALX224) depuis `points` et/ou `longueurSaisieM`, et publiée avec son `longueur_origine` — jamais un nombre nu (`contract_samples/calepinage_troncons.json`, CALX203).\n\nLES TROIS ORIGINES, EXERCÉES PAR L'EXEMPLE. `plan` (`ch1`, `ch2`, `ch5`) = longueur lue sur les points seuls ; `saisie` (`ch4`) = traversée que le plan ne porte pas, saisie au clavier, `points` vide ; `mixte` (`ch3`) = un tracé plan PLUS une descente verticale saisie. Ce sont les trois cas de test que CALX224 doit couvrir.\n\nLES DEUX REFUS, ET QUI LES PRONONCE.\n* `refus_sans_points_ni_longueur` — moins de deux `points` ET aucun `longueurSaisieM` : le tronçon n'a aucune longueur mesurable. Le SCHÉMA porte cette règle (`allOf`/`if`/`else` de `cheminementElectrique`) et `services/io_layout.py::valider_document` la prononce déjà, en plaçant l'erreur sur `electrical.cheminements.<i>.points` — le champ EXACT.\n* `refus_reference_morte` — un `de` ou un `vers` qui ne résout ni vers un `electrical.equipements[].id` ni vers un `zones[].id` du MÊME document. AUCUN vocabulaire JSON Schema ne résout une référence croisée : cette règle ne peut pas vivre dans le schéma. Elle est DÉCIDABLE depuis le seul document, et le test de contrat (`tests/test_calx202_contrat_cheminements.py`) la pose et la vérifie sur l'exemple committé ; le CROCHET attendu côté serveur est `services/io_layout.py::valider_document`, qui lève déjà `ImportLayoutRefuse(champ=<chemin JSON>)` après la validation de schéma. Tant qu'il n'est pas posé, une référence morte passe la porte d'import et se voit au premier métré : c'est la raison d'être de ce contrat.\n\nABSENCE ≠ ZÉRO. `longueurSaisieM` absente ou `null` ne veut pas dire « zéro mètre » : rien n'a été saisi, et le tronçon doit alors porter au moins deux points. `altitudeM` absente sur un point ne veut pas dire « au sol » : le segment est compté à plat, et aucun dénivelé n'est deviné.",
+  "exemple": {
+    "electrical": {
+      "cheminements": [
+        {
+          "id": "ch1",
+          "cote": "dc",
+          "de": "z1",
+          "vers": "eq2",
+          "points": [
+            {
+              "lng": -7.6001,
+              "lat": 33.5003,
+              "altitudeM": 3.2
+            },
+            {
+              "lng": -7.6002,
+              "lat": 33.5003,
+              "altitudeM": 3.2
+            },
+            {
+              "lng": -7.6003,
+              "lat": 33.5002,
+              "altitudeM": 3.2
+            }
+          ],
+          "origine": "plan"
+        },
+        {
+          "id": "ch2",
+          "cote": "dc",
+          "de": "eq2",
+          "vers": "eq1",
+          "points": [
+            {
+              "lng": -7.6003,
+              "lat": 33.5002,
+              "altitudeM": 3.2
+            },
+            {
+              "lng": -7.6002,
+              "lat": 33.5001,
+              "altitudeM": 3.2
+            }
+          ],
+          "origine": "plan"
+        },
+        {
+          "id": "ch3",
+          "cote": "ac",
+          "de": "eq1",
+          "vers": "eq4",
+          "points": [
+            {
+              "lng": -7.6002,
+              "lat": 33.5001,
+              "altitudeM": 3.2
+            },
+            {
+              "lng": -7.6008,
+              "lat": 33.4998,
+              "altitudeM": 0.0
+            }
+          ],
+          "longueurSaisieM": 3.2,
+          "origine": "mixte"
+        },
+        {
+          "id": "ch4",
+          "cote": "ac",
+          "de": "eq4",
+          "vers": "eq7",
+          "points": [],
+          "longueurSaisieM": 12.0,
+          "origine": "saisie"
+        },
+        {
+          "id": "ch5",
+          "cote": "terre",
+          "de": "eq2",
+          "vers": "eq7",
+          "points": [
+            {
+              "lng": -7.6003,
+              "lat": 33.5002,
+              "altitudeM": 3.2
+            },
+            {
+              "lng": -7.601,
+              "lat": 33.4996,
+              "altitudeM": null
+            }
+          ],
+          "origine": "plan"
+        }
+      ]
+    }
+  },
+  "exemple_vide": {
+    "electrical": {
+      "cheminements": []
+    }
+  },
+  "exemple_document_sans_electrical": {},
+  "refus_reference_morte": {
+    "electrical.cheminements.0.vers": "Le cheminement « ch1 » part du pan « z1 » vers « eq9 », qui n'existe ni parmi les équipements ni parmi les pans de ce plan : reliez-le à un organe posé, ou retirez-le — un tronçon qui ne relie rien fausse le métré sans jamais se voir."
+  },
+  "refus_sans_points_ni_longueur": {
+    "electrical.cheminements.3.points": "Le cheminement « ch4 » n'a ni tracé (deux points minimum) ni longueur saisie : tracez-le sur le plan, ou saisissez sa longueur en mètres — elle ne peut pas être devinée."
+  }
+}

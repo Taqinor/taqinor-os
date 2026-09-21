@@ -37,13 +37,56 @@ import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from core.electrique.types import Chaine, fr, fr_a, fr_v
+from core.electrique.types import (
+    NATURE_FONCTIONNELLE, NATURE_MATERIELLE, STATUT_ALERTE, STATUT_BLOQUANT,
+    STATUT_NON_VERIFIABLE, STATUTS_ALERTANTS, Chaine, VerdictElectrique, fr,
+    fr_a, fr_v, libelles)
 
 __all__ = [
     "FenetreChaine", "RepartitionPan", "ResultatChaines",
+    "ChoixLongueur", "PartitionEcartee",
     "LONGUEUR_MAX_NON_BORNEE",
+    "SOURCE_FICHE_ONDULEUR", "SOURCE_FICHES", "SOURCE_SAISIE",
+    "SOURCE_REPARTITION",
+    "MOTIF_HORS_FENETRE_HAUTE", "MOTIF_HORS_FENETRE_BASSE",
+    "MOTIF_PARTITION_NON_EGALE", "MOTIF_SURCHARGE_MPPT",
+    "MOTIF_CHAINE_PLUS_COURTE", "MOTIFS_ECARTEMENT",
+    "CRITERE_COURANT_ENTREE", "CRITERE_CHAINE_LA_PLUS_LONGUE",
+    "CRITERE_SEULE_PARTITION", "CRITERE_AUCUNE_PARTITION",
     "fenetre_admissible", "concevoir_chaines",
 ]
+
+#: CALX216 — les SEULS motifs d'écartement d'une partition. La liste est
+#: FERMÉE : elle n'énonce aucune heuristique que ``_choisir_longueur`` ne
+#: pratique pas déjà, elle NOMME celles qu'il pratiquait en silence.
+MOTIF_HORS_FENETRE_HAUTE = "hors fenêtre haute"
+MOTIF_HORS_FENETRE_BASSE = "hors fenêtre basse"
+MOTIF_PARTITION_NON_EGALE = "partition non égale"
+MOTIF_SURCHARGE_MPPT = "surcharge d'entrée MPPT"
+MOTIF_CHAINE_PLUS_COURTE = "chaîne plus courte à critère de courant égal"
+MOTIFS_ECARTEMENT = (MOTIF_HORS_FENETRE_HAUTE, MOTIF_HORS_FENETRE_BASSE,
+                     MOTIF_PARTITION_NON_EGALE, MOTIF_SURCHARGE_MPPT,
+                     MOTIF_CHAINE_PLUS_COURTE)
+
+#: CALX216 — le critère qui a RETENU la partition. Ce sont les deux critères
+#: de ``_choisir_longueur``, dans leur ordre, plus les deux cas dégénérés
+#: (une seule partition admissible, aucune).
+CRITERE_COURANT_ENTREE = ("courant d'entrée MPPT — d'autres partitions "
+                          "surchargent l'entrée, la retenue non")
+CRITERE_CHAINE_LA_PLUS_LONGUE = "chaîne la plus longue à critère de courant égal"
+CRITERE_SEULE_PARTITION = "seule partition égale dans la fenêtre de tension"
+CRITERE_AUCUNE_PARTITION = "aucune partition égale dans la fenêtre de tension"
+
+#: CALX215 — d'OÙ sort la borne que chaque verdict a comparée. Quatre
+#: provenances, et aucune autre : la fiche de l'onduleur, le COUPLE de fiches
+#: (module et onduleur) quand la borne naît de leur comparaison, la saisie de
+#: l'utilisateur (longueur de chaîne imposée), et la répartition elle-même
+#: (nombre d'entrées disponibles, reste de division) qui ne compare aucune
+#: fiche. Aucun verdict ne sort sans l'une d'elles.
+SOURCE_FICHE_ONDULEUR = "fiche constructeur onduleur"
+SOURCE_FICHES = "fiches constructeur module et onduleur"
+SOURCE_SAISIE = "saisie — longueur de chaîne imposée"
+SOURCE_REPARTITION = "répartition du champ (entrées MPPT et modules)"
 
 #: Longueur de chaîne retenue quand AUCUNE borne haute n'est vérifiable —
 #: c'est-à-dire quand ni le couple (Voc module, tension maximale onduleur) ni
@@ -69,6 +112,30 @@ _BORNE_DEMARRAGE = ("borne basse tension de démarrage (Vmp du module non "
 def _borne_texte(borne):
     """Une borne, ou l'aveu qu'elle n'est pas vérifiable — jamais un chiffre."""
     return "non vérifiable" if borne is None else str(borne)
+
+
+def _verdict(verdicts, code, nature, statut, libelle, borne=None, valeur=None,
+             source="", fenetre=None, temperature_c=None):
+    """Enregistre UN verdict et rend son libellé — l'unique porte de sortie.
+
+    Toute phrase que ce module prononce passe par ici : l'objet structuré et la
+    liste historique naissent donc du MÊME appel, et il devient impossible
+    d'ajouter un message qui n'aurait pas de code.
+
+    ``fenetre`` + ``temperature_c`` (CALX214) — quand le contrôle a été évalué
+    À UNE TEMPÉRATURE, elle est publiée DANS UN CHAMP avec sa provenance et,
+    si elle n'est pas sourcée, la mention que l'applicatif a rédigée. Les deux
+    voyagent ensemble : un contrôle sans température garde les trois champs à
+    leur valeur neutre.
+    """
+    verdicts.append(VerdictElectrique(
+        code=code, nature=nature, statut=statut, libelle=libelle,
+        borne=borne, valeur=valeur, source=source,
+        temperature_c=(None if temperature_c is None
+                       else float(temperature_c)),
+        temperature_source=getattr(fenetre, "temp_source", None),
+        temperature_mention=getattr(fenetre, "temp_mention", "") or ""))
+    return libelle
 
 
 def _entier(valeur, defaut=0):
@@ -109,6 +176,12 @@ class FenetreChaine:
     motif: str = ""
     #: Bornes que les fiches ne permettent pas de vérifier (libellés français).
     bornes_non_verifiables: Tuple[str, ...] = ()
+    #: CALX214 — la PROVENANCE des deux températures ci-dessus (relevé de
+    #: site, série météo type, ou ``None`` = aucune source établie) et la
+    #: mention qui accompagne alors chaque verdict. Elles ne changent AUCUN
+    #: calcul : elles accompagnent les verdicts que la fenêtre fait naître.
+    temp_source: Optional[str] = None
+    temp_mention: str = ""
 
     def admet(self, longueur):
         """La longueur tient-elle dans la plage admissible ?"""
@@ -130,6 +203,57 @@ class FenetreChaine:
 
 
 @dataclass(frozen=True)
+class PartitionEcartee:
+    """Une partition NON retenue et le motif — en français — de son écartement.
+
+    ``nb_chaines`` vaut 0 quand la longueur ne divise pas le pan : il n'existe
+    alors aucune partition en chaînes ÉGALES de cette longueur, ce que dit
+    précisément ``MOTIF_PARTITION_NON_EGALE``.
+    """
+
+    longueur: int
+    nb_chaines: int
+    motif: str
+
+
+class ChoixLongueur(tuple):
+    """``(longueur, nb_chaines)`` — ET le motif du choix (CALX216).
+
+    C'est un 2-uplet À PART ENTIÈRE : ``longueur, nb_chaines = choix`` marche
+    comme avant, ``choix == (8, 1)`` reste vrai, et les appelants historiques
+    (``apps.ventes.solar_design._choose_string_layout``, qui RE-EXPORTE cette
+    fonction) ne voient aucun changement. Le motif s'ajoute À CÔTÉ du couple,
+    jamais à sa place : c'est ce qui rend la tâche non régressive par
+    construction.
+    """
+
+    def __new__(cls, longueur, nb_chaines, critere_retenu="",
+                partitions_ecartees=()):
+        choix = super().__new__(cls, (int(longueur), int(nb_chaines)))
+        choix._critere_retenu = str(critere_retenu)
+        choix._partitions_ecartees = tuple(partitions_ecartees)
+        return choix
+
+    @property
+    def longueur(self):
+        return self[0]
+
+    @property
+    def nb_chaines(self):
+        return self[1]
+
+    @property
+    def critere_retenu(self):
+        """Lequel des deux critères a tranché — jamais une phrase inventée."""
+        return self._critere_retenu
+
+    @property
+    def partitions_ecartees(self):
+        """Les partitions écartées, chacune avec SON motif."""
+        return self._partitions_ecartees
+
+
+@dataclass(frozen=True)
 class RepartitionPan:
     """Découpage d'UN pan — le reste est ANNONCÉ, jamais dissimulé."""
 
@@ -140,6 +264,11 @@ class RepartitionPan:
     reste: int
     mppt: Tuple[int, ...] = ()
     homogene: bool = True
+    #: CALX216 — POURQUOI cette longueur, et pourquoi pas les autres. Vides
+    #: quand la longueur a été IMPOSÉE : aucun choix n'a eu lieu, et publier
+    #: un critère là où l'utilisateur a tranché serait un motif fabriqué.
+    critere_longueur: str = ""
+    partitions_ecartees: Tuple[PartitionEcartee, ...] = ()
 
     @property
     def modules_en_chaine(self):
@@ -157,6 +286,11 @@ class ResultatChaines:
     alertes: Tuple[str, ...] = ()
     longueur_forcee: Optional[int] = None
     longueur_forcee_acceptee: Optional[bool] = None
+    #: CALX215 — les MÊMES verdicts, structurés (code, nature, statut, borne,
+    #: valeur, source). ``bloquants`` et ``alertes`` en DÉRIVENT : elles restent
+    #: produites mot pour mot pour ne rien casser en aval, mais elles ne sont
+    #: plus la seule chose que le consommateur reçoit.
+    verdicts: Tuple[VerdictElectrique, ...] = ()
 
     @property
     def nb_chaines(self):
@@ -181,7 +315,8 @@ class ResultatChaines:
 
 
 # ----------------------------------------------------------- fenêtre de tension
-def fenetre_admissible(module, onduleur, temp_froid_c, temp_chaud_c):
+def fenetre_admissible(module, onduleur, temp_froid_c, temp_chaud_c,
+                       temp_source=None, temp_mention=""):
     """Plage [longueur_min, longueur_max] admissible pour le couple module/onduleur.
 
     Port À L'IDENTIQUE des quatre bornes de ``string_design`` :
@@ -190,6 +325,11 @@ def fenetre_admissible(module, onduleur, temp_froid_c, temp_chaud_c):
     * ``max_par_mppt``      = ⌊V_mppt_max / Vmp(froid)⌋ — écrêtage sinon ;
     * ``min_par_mppt``      = ⌈V_mppt_min / Vmp(chaud)⌉ — MPPT hors plage sinon ;
     * ``min_par_demarrage`` = ⌈V_démarrage / Vmp(chaud)⌉ — l'onduleur ne part pas.
+
+    ``temp_source`` / ``temp_mention`` (CALX214) — la PROVENANCE des deux
+    températures, recopiée telle quelle sur la fenêtre puis sur chaque verdict
+    qu'elle fait naître. Aucun calcul n'en dépend : elles rendent seulement
+    opposable le « à −5 °C » que les phrases écrivaient déjà.
 
     Quand la plage est VIDE (max < min), la fenêtre est déclarée « trop étroite »
     AVEC MOTIF : aucun couple module/onduleur ne satisfait à la fois la borne
@@ -271,6 +411,8 @@ def fenetre_admissible(module, onduleur, temp_froid_c, temp_chaud_c):
         trop_etroite=trop_etroite,
         motif=motif,
         bornes_non_verifiables=tuple(non_verifiables),
+        temp_source=temp_source or None,
+        temp_mention=temp_mention or "",
     )
 
 
@@ -321,6 +463,13 @@ def _choisir_longueur(nb_modules, n_mppt, longueur_min, longueur_max,
     entrées » n'est pas une exigence électrique : c'est un confort de câblage
     qui coûtait un départ DC, un jeu de connecteurs et une longueur de câble
     en plus, sur chaque dossier.
+
+    CALX216 — le résultat PORTE désormais son motif : ``critere_retenu`` dit
+    lequel des deux critères a tranché, ``partitions_ecartees`` dit pourquoi
+    chacune des autres longueurs n'a pas été retenue. Le couple numérique,
+    lui, est rigoureusement celui d'avant : la boucle de décision ci-dessous
+    n'a pas bougé d'une ligne, le motif se calcule APRÈS elle et ne peut donc
+    pas l'influencer.
     """
     meilleur = (0, 0)
     meilleur_score = None
@@ -336,7 +485,74 @@ def _choisir_longueur(nb_modules, n_mppt, longueur_min, longueur_max,
         if meilleur_score is None or score < meilleur_score:
             meilleur_score = score
             meilleur = (longueur, nb_chaines)
-    return meilleur
+
+    ecartees = _partitions_ecartees(nb_modules, n_mppt, longueur_min,
+                                    longueur_max, imp_a, i_max_mppt_a,
+                                    meilleur, meilleur_score)
+    return ChoixLongueur(meilleur[0], meilleur[1],
+                         _critere_retenu(meilleur_score, ecartees), ecartees)
+
+
+def _motif_ecartement(longueur, nb_modules, longueur_min, longueur_max,
+                      surcharge, surcharge_retenue):
+    """Le motif — UN seul — pour lequel cette longueur n'a pas été retenue.
+
+    L'ordre d'examen est celui du calcul lui-même : la fenêtre de tension
+    ferme d'abord (elle est physique), l'égalité de la partition ensuite (le
+    moteur ne câble que des chaînes égales), le courant d'entrée enfin, et à
+    critère de courant ÉGAL c'est la longueur qui départage.
+    """
+    if longueur > longueur_max:
+        return MOTIF_HORS_FENETRE_HAUTE
+    if longueur < longueur_min:
+        return MOTIF_HORS_FENETRE_BASSE
+    if nb_modules % longueur:
+        return MOTIF_PARTITION_NON_EGALE
+    if surcharge and not surcharge_retenue:
+        return MOTIF_SURCHARGE_MPPT
+    return MOTIF_CHAINE_PLUS_COURTE
+
+
+def _partitions_ecartees(nb_modules, n_mppt, longueur_min, longueur_max,
+                         imp_a, i_max_mppt_a, meilleur, meilleur_score):
+    """Toutes les longueurs de chaîne NON retenues, chacune avec son motif.
+
+    Le balayage couvre 1 → ``nb_modules`` : le lecteur qui demande « pourquoi
+    pas 7 modules par chaîne ? » trouve la réponse, qu'elle tienne à la
+    fenêtre de tension, à l'égalité de la partition ou au courant d'entrée.
+    """
+    surcharge_retenue = meilleur_score[0] if meilleur_score else 0
+    ecartees = []
+    for longueur in range(1, nb_modules + 1):
+        if longueur == meilleur[0] and meilleur_score is not None:
+            continue
+        nb_chaines = (nb_modules // longueur if nb_modules % longueur == 0
+                      else 0)
+        surcharge = (1 if nb_chaines and _surcharge_mppt(
+            nb_chaines, n_mppt, imp_a, i_max_mppt_a) else 0)
+        ecartees.append(PartitionEcartee(
+            longueur=longueur, nb_chaines=nb_chaines,
+            motif=_motif_ecartement(longueur, nb_modules, longueur_min,
+                                    longueur_max, surcharge,
+                                    surcharge_retenue)))
+    return tuple(ecartees)
+
+
+def _critere_retenu(meilleur_score, ecartees):
+    """Lequel des DEUX critères a discriminé — ou l'aveu qu'aucun n'a pu jouer.
+
+    Chaque phrase rendue est un FAIT sur ce balayage-ci, jamais une règle
+    générale : « d'autres partitions surchargent l'entrée, la retenue non » ne
+    sort que si c'est vrai des deux côtés.
+    """
+    if meilleur_score is None:
+        return CRITERE_AUCUNE_PARTITION
+    motifs = {partition.motif for partition in ecartees}
+    if MOTIF_SURCHARGE_MPPT in motifs and not meilleur_score[0]:
+        return CRITERE_COURANT_ENTREE
+    if MOTIF_CHAINE_PLUS_COURTE in motifs:
+        return CRITERE_CHAINE_LA_PLUS_LONGUE
+    return CRITERE_SEULE_PARTITION
 
 
 def _repartir(nb_chaines, entrees):
@@ -382,23 +598,37 @@ def concevoir_chaines(entree):
     """
     module = entree.module
     onduleur = entree.onduleur
-    fenetre = fenetre_admissible(module, onduleur,
-                                 entree.temp_froid_c, entree.temp_chaud_c)
+    fenetre = fenetre_admissible(
+        module, onduleur, entree.temp_froid_c, entree.temp_chaud_c,
+        # CALX214 — la provenance des températures traverse le moteur pour
+        # atteindre CHAQUE verdict, pas seulement l'en-tête du résultat.
+        temp_source=getattr(entree, "temp_source", None),
+        temp_mention=getattr(entree, "temp_mention", ""))
 
-    bloquants = []
-    alertes = []
+    verdicts = []
     if fenetre.trop_etroite:
-        bloquants.append(fenetre.motif)
+        # La phrase nomme les DEUX températures ; le champ porte celle de la
+        # borne HAUTE (à froid), qui est celle qui ferme la plage — la borne
+        # basse à chaud reste publiée par ``FenetreChaine.temp_chaud_c``.
+        _verdict(verdicts, "CH_FENETRE_VIDE", NATURE_MATERIELLE,
+                 STATUT_BLOQUANT, fenetre.motif,
+                 borne=float(fenetre.longueur_max),
+                 valeur=float(fenetre.longueur_min), source=SOURCE_FICHES,
+                 fenetre=fenetre, temperature_c=fenetre.temp_froid_c)
     if fenetre.bornes_non_verifiables:
         # Le moteur DIT ce qu'il n'a pas pu vérifier plutôt que de le
         # remplacer par un défaut : l'alerte remonte telle quelle dans la
-        # conformité et dans la note de calcul.
-        alertes.append(
+        # conformité et dans la note de calcul. Son STATUT, lui, la distingue
+        # désormais d'une alerte ordinaire : le contrôle n'a pas eu lieu.
+        _verdict(
+            verdicts, "CH_BORNES_NON_VERIFIABLES", NATURE_MATERIELLE,
+            STATUT_NON_VERIFIABLE,
             "borne(s) de tension NON VÉRIFIABLE(S), aucune limite n'est "
             "supposée à leur place — %s ; la chaîne est posée d'un seul "
             "tenant (pratique d'installation) tant qu'aucune borne publiée ne "
             "la ferme : compléter la fiche technique pour un calcul opposable"
-            % " ; ".join(fenetre.bornes_non_verifiables))
+            % " ; ".join(fenetre.bornes_non_verifiables),
+            source=SOURCE_FICHES, fenetre=fenetre)
 
     # ── Longueur imposée : acceptée seulement DANS la plage admissible ────────
     forcee = entree.longueur_chaine_forcee
@@ -407,17 +637,25 @@ def concevoir_chaines(entree):
         forcee = _entier(forcee, 0)
         if forcee <= 0:
             forcee_acceptee = False
-            bloquants.append(
+            _verdict(
+                verdicts, "CH_LONGUEUR_IMPOSEE_INVALIDE", NATURE_FONCTIONNELLE,
+                STATUT_BLOQUANT,
                 "longueur de chaîne imposée invalide (%d) — une chaîne compte "
-                "au moins 1 module" % forcee)
+                "au moins 1 module" % forcee,
+                borne=1.0, valeur=float(forcee), source=SOURCE_SAISIE)
         elif fenetre.trop_etroite:
             forcee_acceptee = False
-            bloquants.append(
+            _verdict(
+                verdicts, "CH_LONGUEUR_IMPOSEE_SUR_FENETRE_VIDE",
+                NATURE_MATERIELLE, STATUT_BLOQUANT,
                 "longueur de chaîne imposée de %d modules non vérifiable : la "
-                "fenêtre de tension est vide (voir le motif ci-dessus)" % forcee)
+                "fenêtre de tension est vide (voir le motif ci-dessus)" % forcee,
+                valeur=float(forcee), source=SOURCE_SAISIE, fenetre=fenetre)
         elif not fenetre.admet(forcee):
             forcee_acceptee = False
-            bloquants.append(
+            _verdict(
+                verdicts, "CH_LONGUEUR_IMPOSEE_HORS_PLAGE", NATURE_MATERIELLE,
+                STATUT_BLOQUANT,
                 "longueur de chaîne imposée de %d modules REFUSÉE : hors de la "
                 "plage admissible (%s). Voc à froid unitaire %s → %s modules "
                 "maximum sous %s ; Vmp à chaud unitaire %s → %s modules minimum "
@@ -426,28 +664,38 @@ def concevoir_chaines(entree):
                    _borne_texte(fenetre.max_par_voc), fr_v(onduleur.v_max_abs),
                    fr_v(fenetre.vmp_chaud_unitaire_v),
                    _borne_texte(fenetre.min_par_mppt),
-                   fr_v(onduleur.mppt_v_min)))
+                   fr_v(onduleur.mppt_v_min)),
+                borne=float(fenetre.longueur_max), valeur=float(forcee),
+                source=SOURCE_SAISIE, fenetre=fenetre)
         else:
             forcee_acceptee = True
 
     groupes = tuple(g for g in entree.groupes if _entier(g.nb_modules) > 0)
     if not groupes:
+        _verdict(verdicts, "CH_AUCUN_MODULE", NATURE_FONCTIONNELLE,
+                 STATUT_ALERTE, "aucun module à répartir", valeur=0.0,
+                 source=SOURCE_REPARTITION)
         return ResultatChaines(
             fenetre=fenetre,
-            bloquants=tuple(bloquants),
-            alertes=tuple(alertes) + ("aucun module à répartir",),
+            bloquants=libelles(verdicts, (STATUT_BLOQUANT,)),
+            alertes=libelles(verdicts, STATUTS_ALERTANTS),
             longueur_forcee=forcee,
             longueur_forcee_acceptee=forcee_acceptee,
+            verdicts=tuple(verdicts),
         )
 
     n_mppt = max(1, _entier(onduleur.n_mppt, 1))
     blocs = _allouer_mppt(len(groupes), n_mppt)
     if len(groupes) > n_mppt:
-        alertes.append(
+        _verdict(
+            verdicts, "CH_PANS_PARTAGENT_UNE_ENTREE", NATURE_FONCTIONNELLE,
+            STATUT_ALERTE,
             "%d pans pour %d entrée(s) MPPT : des pans d'orientations "
             "différentes partagent une entrée — le suiveur de puissance suivra "
             "le pan le plus faible toute la journée (prévoir un onduleur à plus "
-            "d'entrées ou des optimiseurs)" % (len(groupes), n_mppt))
+            "d'entrées ou des optimiseurs)" % (len(groupes), n_mppt),
+            borne=float(n_mppt), valeur=float(len(groupes)),
+            source=SOURCE_FICHE_ONDULEUR)
 
     chaines = []
     repartitions = []
@@ -456,13 +704,15 @@ def concevoir_chaines(entree):
         nb_modules = _entier(groupe.nb_modules)
         entrees = blocs[index] if index < len(blocs) else (1,)
         # L'équilibrage vise les entrées RÉELLEMENT allouées à ce pan.
+        choix = None
         if forcee_acceptee:
             longueur = forcee
             nb_chaines = nb_modules // longueur
         else:
-            longueur, nb_chaines = _choisir_longueur(
+            choix = _choisir_longueur(
                 nb_modules, len(entrees), fenetre.longueur_min,
                 fenetre.longueur_max, module.imp_a, onduleur.i_max_mppt_a)
+            longueur, nb_chaines = choix
 
         homogene = True
         if longueur <= 0 or nb_chaines <= 0:
@@ -473,17 +723,24 @@ def concevoir_chaines(entree):
             if nb_chaines <= 0:
                 nb_chaines = 1
                 longueur = nb_modules
-            alertes.append(
+            _verdict(
+                verdicts, "CH_PARTITION_NON_EGALE", NATURE_FONCTIONNELLE,
+                STATUT_ALERTE,
                 "pan « %s » : aucune découpe en chaînes ÉGALES de %s — retenu "
                 "%d chaîne(s) de %d module(s), %d module(s) en réserve"
                 % (groupe.label, fenetre.texte, nb_chaines, longueur,
-                   nb_modules - nb_chaines * longueur))
+                   nb_modules - nb_chaines * longueur),
+                valeur=float(nb_modules - nb_chaines * longueur),
+                source=SOURCE_REPARTITION)
 
         reste = nb_modules - nb_chaines * longueur
         if reste and homogene:
-            alertes.append(
+            _verdict(
+                verdicts, "CH_MODULES_EN_RESERVE", NATURE_FONCTIONNELLE,
+                STATUT_ALERTE,
                 "pan « %s » : %d module(s) en réserve d'appoint (hors chaîne)"
-                % (groupe.label, reste))
+                % (groupe.label, reste),
+                valeur=float(reste), source=SOURCE_REPARTITION)
 
         par_entree = _repartir(nb_chaines, entrees)
         for rang, entree_mppt in enumerate(entrees):
@@ -506,31 +763,42 @@ def concevoir_chaines(entree):
         repartitions.append(RepartitionPan(
             pan=groupe.label, nb_modules=nb_modules, longueur_chaine=longueur,
             nb_chaines=nb_chaines, reste=reste, mppt=tuple(entrees),
-            homogene=homogene))
+            homogene=homogene,
+            critere_longueur=choix.critere_retenu if choix else "",
+            partitions_ecartees=(choix.partitions_ecartees if choix else ())))
 
-    bloquants.extend(_verdicts_tension(chaines, onduleur, fenetre, alertes))
-    bloquants.extend(_verdicts_courant(chaines, onduleur, alertes))
+    # Les deux familles de verdicts gardent leur signature historique (une
+    # liste d'alertes à remplir, les bloquants en retour) : ``apps.ventes.
+    # solar_design`` les rappelle telles quelles. Elles versent EN PLUS leurs
+    # objets dans ``verdicts`` — c'est de là que les listes ci-dessous sortent.
+    _verdicts_tension(chaines, onduleur, fenetre, [], verdicts)
+    _verdicts_courant(chaines, onduleur, [], verdicts)
 
     return ResultatChaines(
         chaines=tuple(chaines),
         fenetre=fenetre,
         repartitions=tuple(repartitions),
-        bloquants=tuple(bloquants),
-        alertes=tuple(alertes),
+        bloquants=libelles(verdicts, (STATUT_BLOQUANT,)),
+        alertes=libelles(verdicts, STATUTS_ALERTANTS),
         longueur_forcee=forcee,
         longueur_forcee_acceptee=forcee_acceptee,
+        verdicts=tuple(verdicts),
     )
 
 
-def _verdicts_tension(chaines, onduleur, fenetre, alertes):
+def _verdicts_tension(chaines, onduleur, fenetre, alertes, verdicts=None):
     """Les 4 contrôles de ``string_design``, au niveau CHAÎNE.
 
     Seul le dépassement de la tension maximale ABSOLUE est bloquant : il détruit
     l'onduleur. Les trois autres coûtent de la production, ils alertent.
+
+    ``verdicts`` (CALX215) — liste facultative où déposer les objets structurés.
+    Absente, la fonction se comporte EXACTEMENT comme avant : elle remplit
+    ``alertes`` et rend les libellés bloquants.
     """
-    bloquants = []
+    locaux = []
     if not chaines:
-        return bloquants
+        return []
     plus_longue = max(chaines, key=lambda c: c.nb_modules)
     plus_courte = min(chaines, key=lambda c: c.nb_modules)
 
@@ -538,31 +806,69 @@ def _verdicts_tension(chaines, onduleur, fenetre, alertes):
     # tension de chaîne à un « 0 V » de fiche muette rendrait un verdict
     # fabriqué (toute chaîne dépasse 0 V).
     if onduleur.v_max_abs > 0 and plus_longue.voc_froid_v > onduleur.v_max_abs:
-        bloquants.append(
+        _verdict(
+            locaux, "CH_VOC_FROID_AU_DESSUS_V_MAX", NATURE_MATERIELLE,
+            STATUT_BLOQUANT,
             "Voc à froid %s > tension maximale onduleur %s (chaîne %s de %d "
             "modules à %s °C) — RISQUE matériel, réduire la longueur de chaîne"
             % (fr_v(plus_longue.voc_froid_v), fr_v(onduleur.v_max_abs),
                plus_longue.repere, plus_longue.nb_modules,
-               fr(fenetre.temp_froid_c, 0)))
+               fr(fenetre.temp_froid_c, 0)),
+            borne=float(onduleur.v_max_abs),
+            valeur=float(plus_longue.voc_froid_v),
+            source=SOURCE_FICHE_ONDULEUR, fenetre=fenetre,
+            temperature_c=fenetre.temp_froid_c)
     if onduleur.mppt_v_max > 0 and plus_longue.vmp_froid_v > onduleur.mppt_v_max:
-        alertes.append(
+        _verdict(
+            locaux, "CH_VMP_FROID_AU_DESSUS_MPPT", NATURE_FONCTIONNELLE,
+            STATUT_ALERTE,
             "Vmp à froid %s > haut de plage MPPT %s — l'onduleur écrête, perte "
             "de production"
-            % (fr_v(plus_longue.vmp_froid_v), fr_v(onduleur.mppt_v_max)))
+            % (fr_v(plus_longue.vmp_froid_v), fr_v(onduleur.mppt_v_max)),
+            borne=float(onduleur.mppt_v_max),
+            valeur=float(plus_longue.vmp_froid_v),
+            source=SOURCE_FICHE_ONDULEUR, fenetre=fenetre,
+            temperature_c=fenetre.temp_froid_c)
     if plus_courte.vmp_chaud_v < onduleur.mppt_v_min:
-        alertes.append(
+        _verdict(
+            locaux, "CH_VMP_CHAUD_SOUS_MPPT", NATURE_FONCTIONNELLE,
+            STATUT_ALERTE,
             "Vmp à chaud %s < bas de plage MPPT %s — chaîne trop courte, MPPT "
             "hors plage en été"
-            % (fr_v(plus_courte.vmp_chaud_v), fr_v(onduleur.mppt_v_min)))
+            % (fr_v(plus_courte.vmp_chaud_v), fr_v(onduleur.mppt_v_min)),
+            borne=float(onduleur.mppt_v_min),
+            valeur=float(plus_courte.vmp_chaud_v),
+            source=SOURCE_FICHE_ONDULEUR, fenetre=fenetre,
+            temperature_c=fenetre.temp_chaud_c)
     if plus_courte.vmp_chaud_v < onduleur.tension_demarrage_v:
-        alertes.append(
+        _verdict(
+            locaux, "CH_VMP_CHAUD_SOUS_DEMARRAGE", NATURE_FONCTIONNELLE,
+            STATUT_ALERTE,
             "Vmp à chaud %s < tension de démarrage onduleur %s"
             % (fr_v(plus_courte.vmp_chaud_v),
-               fr_v(onduleur.tension_demarrage_v)))
-    return bloquants
+               fr_v(onduleur.tension_demarrage_v)),
+            borne=float(onduleur.tension_demarrage_v),
+            valeur=float(plus_courte.vmp_chaud_v),
+            source=SOURCE_FICHE_ONDULEUR, fenetre=fenetre,
+            temperature_c=fenetre.temp_chaud_c)
+    return _deverser(locaux, alertes, verdicts)
 
 
-def _verdicts_courant(chaines, onduleur, alertes):
+def _deverser(locaux, alertes, verdicts):
+    """Route les verdicts d'une famille vers les deux sorties historiques.
+
+    Les libellés alertants rejoignent ``alertes`` (contrat des appelants
+    d'avant CALX215, dont ``apps.ventes.solar_design``), les libellés bloquants
+    sont RENDUS, et les objets complets sont versés dans ``verdicts`` quand
+    l'appelant en fournit une. L'ordre d'émission est préservé des deux côtés.
+    """
+    if verdicts is not None:
+        verdicts.extend(locaux)
+    alertes.extend(libelles(locaux, STATUTS_ALERTANTS))
+    return list(libelles(locaux, (STATUT_BLOQUANT,)))
+
+
+def _verdicts_courant(chaines, onduleur, alertes, verdicts=None):
     """Courant d'entrée MPPT : les chaînes d'une même entrée s'ADDITIONNENT.
 
     DEUX bornes, deux natures — la fiche constructeur publie les deux et le
@@ -594,10 +900,13 @@ def _verdicts_courant(chaines, onduleur, alertes):
     prudent ``courant_isc_max_a`` (qui recopie ``i_max_mppt_a``) reste ce qu'il
     a toujours été, une ALERTE — refuser un dossier sur une borne substituée
     reviendrait à refuser sur un nombre que le constructeur n'a jamais écrit.
+
+    ``verdicts`` (CALX215) — liste facultative où déposer les objets
+    structurés ; absente, le comportement historique est INCHANGÉ.
     """
-    bloquants = []
+    locaux = []
     if not chaines:
-        return bloquants
+        return []
     par_mppt = {}
     for chaine in chaines:
         par_mppt.setdefault(chaine.mppt, []).append(chaine)
@@ -612,35 +921,53 @@ def _verdicts_courant(chaines, onduleur, alertes):
         # 1. Borne MATÉRIELLE publiée — dépassement = hors spécification.
         if isc_publie is not None and isc_publie > 0 \
                 and courant_isc > isc_publie + 1e-9:
-            bloquants.append(
+            _verdict(
+                locaux, "CH_ISC_CUMULE_HORS_SPECIFICATION", NATURE_MATERIELLE,
+                STATUT_BLOQUANT,
                 "entrée MPPT %d : %d chaîne(s) en parallèle → Isc cumulé %s > "
                 "%s maxi admissible en court-circuit sur l'entrée MPPT %d "
                 "(fiche constructeur) — configuration HORS SPÉCIFICATION, "
                 "réduire le nombre de chaînes sur cette entrée ou prendre un "
                 "onduleur à entrées plus larges"
                 % (entree_mppt, len(lot), fr_a(courant_isc),
-                   fr_a(isc_publie), entree_mppt))
+                   fr_a(isc_publie), entree_mppt),
+                borne=float(isc_publie), valeur=float(courant_isc),
+                source=SOURCE_FICHE_ONDULEUR)
             continue
 
         # 2. Borne de FONCTIONNEMENT — écrêtage, légitime mais jamais tu.
         if onduleur.i_max_mppt_a > 0 \
                 and courant_imp > onduleur.i_max_mppt_a + 1e-9:
-            alertes.append(
+            _verdict(
+                locaux, "CH_IMP_CUMULE_ECRETAGE", NATURE_FONCTIONNELLE,
+                STATUT_ALERTE,
                 "entrée MPPT %d : %d chaînes en parallèle → Imp cumulé %s > "
                 "courant d'entrée admissible %s (Isc cumulé %s) — ÉCRÊTAGE "
                 "permanent, répartir une chaîne par entrée MPPT ou prendre un "
                 "onduleur à entrées plus larges"
                 % (entree_mppt, len(lot), fr_a(courant_imp),
-                   fr_a(onduleur.i_max_mppt_a), fr_a(courant_isc)))
+                   fr_a(onduleur.i_max_mppt_a), fr_a(courant_isc)),
+                borne=float(onduleur.i_max_mppt_a),
+                valeur=float(courant_imp), source=SOURCE_FICHE_ONDULEUR)
             continue
 
         # 3. Fiche muette sur l'Isc : le repli PRUDENT alerte, il ne bloque pas.
+        #    Le statut reste ``alerte`` et non ``non_verifiable`` : un contrôle
+        #    a bien eu lieu — sur une borne SUBSTITUÉE, ce que le libellé et la
+        #    source disent tous les deux.
         if isc_publie is None and onduleur.i_max_mppt_a > 0 \
                 and courant_isc > onduleur.courant_isc_max_a + 1e-9:
-            alertes.append(
+            _verdict(
+                locaux, "CH_ISC_CUMULE_SUR_BORNE_DE_REPLI",
+                NATURE_MATERIELLE, STATUT_ALERTE,
                 "entrée MPPT %d : %d chaînes en parallèle → Isc cumulé %s > "
                 "courant d'entrée admissible %s — répartir les chaînes sur "
                 "d'autres entrées"
                 % (entree_mppt, len(lot), fr_a(courant_isc),
-                   fr_a(onduleur.courant_isc_max_a)))
-    return bloquants
+                   fr_a(onduleur.courant_isc_max_a)),
+                borne=float(onduleur.courant_isc_max_a),
+                valeur=float(courant_isc),
+                source=SOURCE_FICHE_ONDULEUR + " — borne d'Isc non publiée, "
+                                               "repli prudent sur le courant "
+                                               "d'entrée admissible")
+    return _deverser(locaux, alertes, verdicts)

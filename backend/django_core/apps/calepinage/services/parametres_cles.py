@@ -122,6 +122,7 @@ CLES_ELECTRIQUE_SOCIETE = (
     ('correspondances_nomenclature', 'Correspondances de nomenclature du bordereau', '', 'Réglage société — aucun code article n\'est deviné'),  # CALX145
     ('regle_bom_structure', 'Règle de sortie de la structure hors bordereau électrique', '', 'Décision fondateur 21/09/2026 — la structure sort du bordereau électrique'),  # CALX145
     ('cos_phi_par_defaut', 'Cos φ retenu à défaut de mesure', '', 'Réglage société — aucune valeur n\'est supposée'),  # CALX145
+    ('seuil_bas_dc_ac', 'Seuil bas du rapport DC/AC (onduleur sous-utilisé)', '', 'OpenSolar — Inverter sizing and stringing recommendations'),  # CALX213
 )
 
 #: ``{section: tuple de déclarations}`` — le SEUL point d'entrée des lecteurs.

@@ -34,8 +34,10 @@ import des modèles de la GED.
 """
 from __future__ import annotations
 
+import datetime
+
 __all__ = [
-    'TerreInvalide', 'checklist_terre', 'garde_terre',
+    'TerreInvalide', 'checklist_terre', 'garde_terre', 'LIGNES_MESUREES',
 ]
 
 #: Les références citées par chaque ligne (celles que le noyau cite déjà).
@@ -44,6 +46,43 @@ REFERENCE_EQUIPOTENTIELLE = ('UTE C 15-712-1 / NF C 15-100 §542.4 — toutes '
                              'la même barrette de terre')
 REFERENCE_PRISE = ('NF C 15-100 §542 — valeur de prise de terre compatible '
                    'avec le différentiel du régime TT')
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX245 — LA CONTINUITÉ MESURÉE DE L'EXISTANT
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# La check-list de CAL134 se contentait d'UNE résistance en ohms. Or une
+# résistance de prise ne dit rien de la CONTINUITÉ des liaisons : un champ
+# peut afficher 12 Ω à la barrette pendant que la structure n'y est reliée
+# par rien. Et une mesure sans POINT ni DATE n'est pas une mesure — c'est un
+# souvenir : un procès-verbal de mise en service en exige les trois.
+#
+# Trois lignes SAISIES de plus, chacune citant la référence que le noyau
+# cite DÉJÀ (``core/electrique/protections.py`` : NF C 15-100 §542 pour la
+# prise, §542.4 pour l'équipotentialité). AUCUNE valeur cible n'est ajoutée
+# ici : ce module publie ce qui a été mesuré, il ne juge pas le chiffre —
+# les seuils restent ceux que le noyau cite. Et aucune valeur n'est jamais
+# inventée : sans saisie, la ligne dit « non mesurée ».
+#
+# UNE MESURE SANS SA DATE EST REFUSÉE EN NOMMANT LE CHAMP. C'est la règle
+# fondateur « erreur → champ fautif » : l'écran doit pointer la date à
+# saisir, pas afficher un « non enregistré » générique.
+
+#: ``(code, libellé, champ de valeur, champ de date, unité, référence)``.
+#: ``unite`` à ``None`` = la valeur est un TEXTE (le point de mesure).
+LIGNES_MESUREES = (
+    ('point_date_mesure_prise',
+     'Point et date de mesure de la prise de terre',
+     'point_mesure_prise', 'date_mesure_prise', None, REFERENCE_PRISE),
+    ('continuite_structure_barrette',
+     'Continuité mesurée structure ↔ barrette de terre',
+     'continuite_structure_barrette_ohm',
+     'date_continuite_structure_barrette', 'Ω', REFERENCE_EQUIPOTENTIELLE),
+    ('continuite_barrette_coffrets',
+     'Continuité mesurée barrette ↔ masses des coffrets',
+     'continuite_barrette_coffrets_ohm', 'date_continuite_barrette_coffrets',
+     'Ω', REFERENCE_EQUIPOTENTIELLE),
+)
 
 
 class TerreInvalide(ValueError):
@@ -92,6 +131,77 @@ def _piece_jointe(decisions, company):
     return {'document_id': identifiant, 'verifie': True}
 
 
+def _date_saisie(brut, champ):
+    """La date ISO d'une mesure, ou ``None`` — illisible = REFUS nommé.
+
+    Une date de mesure se saisit ``AAAA-MM-JJ`` ; un texte libre en ferait
+    une date qu'aucun procès-verbal ne peut opposer.
+    """
+    if brut in (None, ''):
+        return None
+    if isinstance(brut, datetime.date):
+        return brut.isoformat()
+    try:
+        return datetime.date.fromisoformat(str(brut).strip()).isoformat()
+    except (TypeError, ValueError):
+        raise TerreInvalide(
+            "Date de mesure illisible : saisissez-la au format AAAA-MM-JJ.",
+            champ='terre.%s' % champ)
+
+
+def _valeur_mesuree(brut, unite, champ):
+    """La valeur mesurée d'une ligne — nombre en ohms, ou texte libre."""
+    if brut is None or (isinstance(brut, str) and not brut.strip()):
+        return None
+    if unite is None:
+        return str(brut).strip()
+    nombre = _nombre(brut)
+    if nombre is None:
+        raise TerreInvalide(
+            "Continuité mesurée illisible : saisissez la valeur MESURÉE en "
+            "ohms, ou laissez le champ vide.", champ='terre.%s' % champ)
+    return nombre
+
+
+def _lignes_mesurees(decisions):
+    """CALX245 — ``(lignes, mesures)`` des trois mesures de l'EXISTANT.
+
+    Chaque ligne est TOUJOURS publiée : présente et non faite quand rien
+    n'est saisi (un écran qui reçoit parfois sept lignes et parfois quatre
+    finit par tester l'absence de ligne au lieu de l'absence de mesure).
+
+    Raises:
+        TerreInvalide: valeur illisible, date illisible, ou mesure saisie
+            SANS sa date — le champ fautif est NOMMÉ dans les trois cas.
+    """
+    lignes = []
+    mesures = {}
+    for code, libelle, champ_valeur, champ_date, unite, reference in \
+            LIGNES_MESUREES:
+        valeur = _valeur_mesuree(decisions.get(champ_valeur), unite,
+                                 champ_valeur)
+        date = _date_saisie(decisions.get(champ_date), champ_date)
+        if valeur is not None and date is None:
+            raise TerreInvalide(
+                "« %s » est saisi sans sa date de mesure : une mesure sans "
+                "date n'est opposable à personne. Saisissez « %s » "
+                "(AAAA-MM-JJ)." % (libelle, champ_date),
+                champ='terre.%s' % champ_date)
+        if valeur is None:
+            # AUCUNE valeur inventée : la case reste vide et le DIT.
+            affichee = 'non mesurée — aucune valeur supposée'
+        elif unite is None:
+            affichee = '%s, mesuré le %s' % (valeur, date)
+        else:
+            affichee = '%s %s mesurés le %s' % (
+                ('%.2f' % valeur).replace('.', ','), unite, date)
+        lignes.append({'code': code, 'libelle': libelle,
+                       'fait': valeur is not None, 'valeur': affichee,
+                       'reference': reference})
+        mesures[code] = {'valeur': valeur, 'date': date}
+    return (lignes, mesures)
+
+
 def _section_de_terre(conception):
     """La section du conducteur de terre, LUE sur l'organe du noyau.
 
@@ -116,17 +226,17 @@ def checklist_terre(conception, *, decisions=None, norme=None, company=None):
 
     Returns:
         ``{lignes, justification_requise, justification_fournie, mesure,
-        piece_jointe, omissions}``.
+        mesures_saisies, piece_jointe, omissions}``.
 
     Raises:
         TerreInvalide: pièce jointe illisible ou introuvable, mesure
-            illisible.
+            illisible, ou (CALX245) mesure saisie sans sa date.
     """
     decisions = decisions if isinstance(decisions, dict) else {}
     if norme is not None and not norme.get('applicable', False):
         return {'lignes': [], 'justification_requise': False,
                 'justification_fournie': False, 'mesure': None,
-                'piece_jointe': None,
+                'mesures_saisies': {}, 'piece_jointe': None,
                 'omissions': [norme.get('motif') or
                               "aucune norme électrique sélectionnée : "
                               "check-list de terre OMISE"]}
@@ -134,7 +244,7 @@ def checklist_terre(conception, *, decisions=None, norme=None, company=None):
             or not conception.chaines:
         return {'lignes': [], 'justification_requise': False,
                 'justification_fournie': False, 'mesure': None,
-                'piece_jointe': None,
+                'mesures_saisies': {}, 'piece_jointe': None,
                 'omissions': ["aucune chaîne calculée : la check-list de "
                               "terre n'a pas d'objet"]}
 
@@ -177,6 +287,10 @@ def checklist_terre(conception, *, decisions=None, norme=None, company=None):
                     else 'non mesurée — aucune valeur supposée'),
          'reference': REFERENCE_PRISE},
     ]
+    # CALX245 — la continuité MESURÉE de l'existant, en fin de check-list :
+    # les quatre lignes historiques gardent leur ordre et leur rang.
+    lignes_mesurees, mesures_saisies = _lignes_mesurees(decisions)
+    lignes.extend(lignes_mesurees)
 
     return {
         'lignes': lignes,
@@ -186,6 +300,9 @@ def checklist_terre(conception, *, decisions=None, norme=None, company=None):
         'justification_requise': not prise_vendue,
         'justification_fournie': justification,
         'mesure': mesure,
+        # CALX245 — les trois mesures de l'existant, telles que SAISIES
+        # (valeur + date), jamais une valeur reconstruite.
+        'mesures_saisies': mesures_saisies,
         'piece_jointe': piece,
         'omissions': [],
     }

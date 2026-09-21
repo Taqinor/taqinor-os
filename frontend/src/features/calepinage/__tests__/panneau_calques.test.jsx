@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { fichierContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
    CAL103 / CALX54 — LE PANNEAU DE CALQUES.
@@ -23,6 +26,7 @@ import PanneauCalques from '../PanneauCalques'
 import {
   ORDRE_CALQUES,
   CALQUE_IDS,
+  CALQUE_ELECTRIQUE_ID,
   rangCalque,
   etatCalquesParDefaut,
   lireEtatCalques,
@@ -231,5 +235,206 @@ describe('CALX54 — n’offrir que les calques réellement présents dans la sc
     expect(screen.getByTestId('pc-calque-plan').textContent).toContain(
       ORDRE_CALQUES.find((c) => c.id === 'plan').label,
     )
+  })
+})
+
+/* ============================================================================
+   CALX221 — LE CALQUE « ÉLECTRIQUE ».
+   ----------------------------------------------------------------------------
+   Les dix calques de `calques.js` sont des couches de la CARTE ; les organes et
+   les cheminements électriques vivent dans la SCÈNE 3D
+   (`apps/web/src/scripts/roofPro11/electrique3d.ts`). `calquesDisponibles()`
+   n'interroge que la carte : c'est la couche électrique du constructeur qui
+   déclare ce calque, et seulement quand le document porte `electrical`.
+
+   LE TEST JUMEAU. Le portail Vite et le site Astro ne partagent aucun module :
+   le seul moyen d'empêcher les deux identifiants de diverger est de le
+   VÉRIFIER, en relisant le source TypeScript — le procédé employé pour la
+   palette CAL126 (`plan/AffectationChaines.test.jsx`). Un identifiant qui
+   dériverait ferait afficher une bascule qui ne pilote rien.
+   ========================================================================== */
+
+/** Double de la couche électrique du constructeur (CALX219/220/221). */
+function builderApiElectrique(disponible, ids = []) {
+  return {
+    calquesDisponibles: () => ids,
+    electrique: { idCalque: 'electrique', calqueDisponible: () => disponible },
+  }
+}
+
+/** L'identifiant de calque DÉCLARÉ par le constructeur 3D, lu dans son source. */
+function idCalqueDuConstructeur() {
+  const racine = resolve(
+    dirname(fichierContrat('calepinage', 'calepinage_resultat')),
+    '..', '..', '..', '..', '..',
+  )
+  const source = readFileSync(
+    join(racine, 'apps', 'web', 'src', 'scripts', 'roofPro11', 'electrique3d.ts'),
+    'utf8',
+  )
+  // Déclaré UNE seule fois côté constructeur : deux déclarations divergeraient.
+  expect(source.split("ID_CALQUE_ELECTRIQUE = '").length - 1).toBe(1)
+  const declare = source.match(/ID_CALQUE_ELECTRIQUE = '([^']+)'/)
+  expect(declare).toBeTruthy()
+  return declare[1]
+}
+
+describe('CALX221 — le calque « Électrique » du panneau', () => {
+  it('l’identifiant du panneau est EXACTEMENT celui déclaré par le constructeur 3D', () => {
+    const id = idCalqueDuConstructeur()
+    render(
+      <PanneauCalques
+        utilisateurId="u1"
+        stockage={memStore()}
+        builderApi={builderApiElectrique(true)}
+        onChange={vi.fn()}
+      />,
+    )
+    // La bascule rendue porte l'identifiant du constructeur : si l'un des deux
+    // côtés dérivait, le panneau afficherait une bascule qui ne pilote rien.
+    expect(screen.getByTestId(`pc-calque-${id}`)).toBeTruthy()
+    expect(screen.getByTestId(`pc-visible-${id}`)).toBeTruthy()
+  })
+
+  it('la case à cocher apparaît quand le document porte une couche électrique, et appelle l’API', () => {
+    const onChange = vi.fn()
+    render(
+      <PanneauCalques
+        utilisateurId="u1"
+        stockage={memStore()}
+        builderApi={builderApiElectrique(true, ['zones'])}
+        onChange={onChange}
+      />,
+    )
+    expect(screen.getByTestId('pc-calque-electrique').textContent).toContain('Électrique')
+    onChange.mockClear()
+    fireEvent.click(screen.getByTestId('pc-visible-electrique'))
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(onChange).toHaveBeenCalledWith('electrique', { visible: false, opacite: 1 })
+    // Aucun autre calque ne change d'état.
+    expect(screen.getByTestId('pc-visible-zones').checked).toBe(true)
+  })
+
+  it('l’opacité du calque électrique est pilotable comme celle des autres', () => {
+    const onChange = vi.fn()
+    render(
+      <PanneauCalques
+        utilisateurId="u1"
+        stockage={memStore()}
+        builderApi={builderApiElectrique(true)}
+        onChange={onChange}
+      />,
+    )
+    onChange.mockClear()
+    fireEvent.change(screen.getByTestId('pc-opacite-electrique'), { target: { value: '0.4' } })
+    expect(onChange).toHaveBeenCalledWith('electrique', { visible: true, opacite: 0.4 })
+  })
+
+  it('aucun organe posé (ou pas de couche électrique du tout) ⇒ aucune bascule électrique', () => {
+    const { rerender } = render(
+      <PanneauCalques
+        utilisateurId="u1"
+        stockage={memStore()}
+        builderApi={builderApiElectrique(false, ['zones'])}
+        onChange={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId('pc-calque-electrique')).toBeNull()
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+
+    // Un builder d'avant CALX219 (aucune couche électrique) : rien ne change.
+    rerender(
+      <PanneauCalques
+        utilisateurId="u1"
+        stockage={memStore()}
+        builderApi={builderApiAvec(['zones'])}
+        onChange={vi.fn()}
+      />,
+    )
+    expect(screen.queryByTestId('pc-calque-electrique')).toBeNull()
+
+    // Le premier organe posé le fait apparaître, AU-DESSUS des calques de carte.
+    rerender(
+      <PanneauCalques
+        utilisateurId="u1"
+        stockage={memStore()}
+        builderApi={builderApiElectrique(true, ['zones'])}
+        onChange={vi.fn()}
+      />,
+    )
+    const rendus = screen.getAllByRole('listitem').map((li) => li.dataset.testid)
+    expect(rendus).toEqual(['pc-calque-zones', 'pc-calque-electrique'])
+  })
+
+  it('une couche électrique qui lève ne casse pas le panneau', () => {
+    expect(() =>
+      render(
+        <PanneauCalques
+          utilisateurId="u1"
+          stockage={memStore()}
+          builderApi={{
+            calquesDisponibles: () => ['zones'],
+            electrique: {
+              calqueDisponible: () => {
+                throw new Error('scène pas encore prête')
+              },
+            },
+          }}
+          onChange={vi.fn()}
+        />,
+      ),
+    ).not.toThrow()
+    expect(screen.getByTestId('pc-vide')).toBeTruthy()
+  })
+})
+
+/* ============================================================================
+   CALX22x câblage — `CALQUE_ELECTRIQUE_ID` (calques.js) : la SEULE copie
+   frontend de l'identifiant, MÉMORISÉE PAR UTILISATEUR comme les dix calques
+   de carte (crochet 4/4 de la lane câblage). `PanneauCalques.jsx` l'IMPORTE
+   désormais au lieu de recopier sa propre chaîne — cette section prouve que
+   les deux garanties (identité + mémoire) tiennent.
+   ========================================================================== */
+describe('CALX22x câblage — CALQUE_ELECTRIQUE_ID mémorisé par utilisateur', () => {
+  it('est EXACTEMENT l’identifiant déclaré par le constructeur 3D — même test jumeau que CALX221', () => {
+    expect(CALQUE_ELECTRIQUE_ID).toBe(idCalqueDuConstructeur())
+    // Il ne fait PAS partie de l'ordre de rendu de la carte (ce n'est pas une
+    // couche de carte : PanneauCalques.jsx la rend à part, au-dessus).
+    expect(CALQUE_IDS).not.toContain(CALQUE_ELECTRIQUE_ID)
+    expect(rangCalque(CALQUE_ELECTRIQUE_ID)).toBe(-1)
+  })
+
+  it('etatCalquesParDefaut() porte aussi une entrée par défaut pour le calque électrique', () => {
+    expect(etatCalquesParDefaut()[CALQUE_ELECTRIQUE_ID]).toEqual({ visible: true, opacite: 1 })
+  })
+
+  it('la bascule électrique survit à un DÉMONTAGE/REMONTAGE du panneau (le même utilisateur, le même stockage)', () => {
+    const store = memStore()
+    const { unmount } = render(
+      <PanneauCalques
+        utilisateurId="u9"
+        stockage={store}
+        builderApi={builderApiElectrique(true, ['zones'])}
+        onChange={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('pc-visible-electrique'))
+    expect(screen.getByTestId('pc-visible-electrique').checked).toBe(false)
+    unmount()
+
+    // Avant le crochet 4/4 : `lireEtatCalques` ignorait toute clé hors de
+    // `CALQUE_IDS` (les dix calques de carte) — l'électrique rouvrait donc
+    // TOUJOURS visible, malgré la bascule ci-dessus. `IDS_MEMORISES` corrige
+    // cela sans changer `CALQUE_IDS` (dont `panneau_calques.test.jsx` fixe la
+    // liste EXACTE des dix calques de carte, plus haut dans ce fichier).
+    render(
+      <PanneauCalques
+        utilisateurId="u9"
+        stockage={store}
+        builderApi={builderApiElectrique(true, ['zones'])}
+        onChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId('pc-visible-electrique').checked).toBe(false)
   })
 })

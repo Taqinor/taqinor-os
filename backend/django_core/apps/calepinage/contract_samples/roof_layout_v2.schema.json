@@ -142,6 +142,10 @@
     "horizonProfile": {
       "description": "CAL93 — le profil d'horizon lointain (CAL92, obtenu de PVGIS printhorizon, ou saisi à la main) RÉELLEMENT en vigueur au moment de l'export. Champ RACINE (une seule valeur pour tout le document, pas par zone). OPTIONNEL et additif : absent = aucun horizon lointain modélisé — comportement d'aujourd'hui, byte pour byte. Moins de deux points exploitables n'est jamais écrit.",
       "$ref": "#/$defs/horizonProfile"
+    },
+    "electrical": {
+      "description": "CALX201 — la couche ÉLECTRIQUE du document : les organes posés dans l'atelier (`equipements[]`) et, depuis CALX202, les cheminements de câble qui les relient (`cheminements[]`). Clé RACINE OPTIONNELLE et additive : absente, le comportement est EXACTEMENT celui d'aujourd'hui (aucun organe, aucun marqueur dans la scène, aucun bloc supplémentaire au schéma unifilaire), et un document v2 déjà enregistré reste valide sans qu'une seule de ses clés change. Aucune valeur par défaut n'est inventée : l'absence d'équipement n'est pas « un onduleur au centre du toit », c'est une information qui manque — les calculs qui en dépendent s'OMETTENT en la nommant.",
+      "$ref": "#/$defs/electrical"
     }
   },
   "$defs": {
@@ -864,6 +868,218 @@
           }
         },
         "hauteurMaxDeg": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "electrical": {
+      "description": "CALX201 — la couche électrique du document v2. Elle ne porte que de la TOPOLOGIE et de la POSITION : aucune puissance, aucune section, aucun calibre, aucun seuil, aucun prix. Toute caractéristique électrique se lit sur la fiche produit désignée par `produitId` (CALX60) ou sur la norme retenue (`services/norme.py`) ; le document dit OÙ sont les organes, jamais ce qu'ils valent, et par quel chemin les câbles passent, jamais leur section.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "equipements": {
+          "description": "CALX201 — les organes électriques posés dans l'atelier. Clé absente ou tableau vide = aucun organe posé, comportement d'aujourd'hui.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/equipementElectrique"
+          }
+        },
+        "cheminements": {
+          "description": "CALX202 — les cheminements de câble qui relient les organes entre eux et les pans aux organes. Clé absente ou tableau vide = aucun cheminement tracé, comportement d'aujourd'hui : la longueur reste alors celle des trois scalaires saisis (`entree_electrique['cheminement']`, `services/cables.py`), jamais une polyligne devinée.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cheminementElectrique"
+          }
+        }
+      }
+    },
+    "equipementElectrique": {
+      "description": "CALX201 — un organe électrique POSÉ : un point du plan, un type, un libellé et, quand elle existe, la fiche produit qui porte ses caractéristiques. L'entrée ne contient AUCUNE grandeur électrique : une puissance, un calibre ou une tension écrits ici seraient une deuxième source de vérité en face de la fiche.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "type",
+        "label",
+        "lng",
+        "lat",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "description": "Identifiant STABLE de l'organe dans le document : c'est lui que `cheminements[].de` et `.vers` désignent (CALX202). Le renommer casse les cheminements qui le citent.",
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "description": "Énumération FERMÉE des huit organes que l'atelier sait poser. Un type hors de cette liste est REFUSÉ en nommant le champ : un organe inconnu n'a ni géométrie dans la scène (CALX219) ni bloc dans le schéma unifilaire (CALX204), il n'aurait donc qu'une existence de papier.",
+          "type": "string",
+          "enum": [
+            "onduleur",
+            "coffret_dc",
+            "coffret_ac",
+            "compteur_production",
+            "compteur_reseau",
+            "tgbt",
+            "batterie",
+            "parafoudre"
+          ]
+        },
+        "label": {
+          "description": "Libellé FRANÇAIS affiché (étiquette de la scène, repère du schéma). Saisi par l'utilisateur ; jamais dérivé d'un prix ni d'une marge.",
+          "type": "string"
+        },
+        "lng": {
+          "description": "Longitude du point posé, en degrés décimaux (WGS 84) — l'ordre `[lng, lat]` est celui de `zones[].vertices`.",
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "lat": {
+          "description": "Latitude du point posé, en degrés décimaux (WGS 84). Avec `lng`, c'est la seule position de l'organe : une entrée qui n'en porte pas est refusée, car un cheminement qui y aboutirait n'aurait aucune longueur mesurable (CALX224).",
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "altitudeM": {
+          "description": "Altitude de l'organe au-dessus du niveau de référence du site, en mètres, SAISIE. Absente ou `null` = non renseignée : la longueur d'un cheminement qui passe par l'organe reste alors plane, et la descente verticale se déclare explicitement par `cheminements[].longueurSaisieM` (CALX202) — jamais une hauteur devinée.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rotationDeg": {
+          "description": "Orientation du marqueur dans la scène, en degrés (0 = nord). Purement visuelle : aucune grandeur électrique n'en dépend. Absente = marqueur non tourné.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 360
+        },
+        "produitId": {
+          "description": "Renvoi vers la fiche `stock.Produit` (champs CALX60) qui porte les caractéristiques de l'organe. `null` ou absent = organe posé sans fiche : tout calcul qui a besoin d'une caractéristique s'OMET en nommant la fiche manquante, jamais un barème supposé.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source": {
+          "description": "D'où vient la position, énumération FERMÉE. `saisie` = posée à la main dans l'atelier ; `import` = lue d'un plan importé. Une provenance inconnue rendrait intraçable toute longueur mesurée depuis cet organe (discipline `Longueur`, `services/cables.py`).",
+          "type": "string",
+          "enum": [
+            "saisie",
+            "import"
+          ]
+        }
+      }
+    },
+    "cheminementElectrique": {
+      "description": "CALX202 — UN tronçon de liaison : d'où il part, où il va, par quels points il passe, et d'où sa longueur est tirée. La longueur elle-même n'est PAS écrite ici : elle est calculée depuis `points` et/ou `longueurSaisieM` par `services/troncons.py` (CALX224), qui publie toujours la valeur AVEC son origine — jamais un nombre nu. DEUX REFUS, tous deux nommant le champ fautif : (1) `de` ou `vers` qui ne résout ni vers un `electrical.equipements[].id` ni vers un `zones[].id` du MÊME document — la référence est morte et le tronçon ne relie rien ; (2) moins de deux `points` ET aucun `longueurSaisieM` — le tronçon n'a alors aucune longueur mesurable, et lui en inventer une serait un chiffre sorti de nulle part (D-CALX 7). La deuxième règle est portée par le schéma (`allOf`/`if`/`else` ci-dessous) ; la première ne l'est pas — aucun vocabulaire JSON Schema ne résout une référence croisée — et revient à la porte d'import, `services/io_layout.py::valider_document`.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "cote",
+        "de",
+        "vers",
+        "origine"
+      ],
+      "properties": {
+        "id": {
+          "description": "Identifiant STABLE du tronçon dans le document : c'est lui que le métré, la chute cumulée et la nomenclature reprennent (`contract_samples/calepinage_troncons.json`, CALX203).",
+          "type": "string",
+          "minLength": 1
+        },
+        "cote": {
+          "description": "Le côté électrique du tronçon, énumération FERMÉE. `dc` = entre modules et onduleur ; `ac` = en aval de l'onduleur ; `terre` = liaison équipotentielle. C'est lui qui décide quelle règle de chute et quel barème d'ampacité s'appliquent (`core/electrique/cables.py`) : un côté inconnu ferait appliquer une règle au hasard.",
+          "type": "string",
+          "enum": [
+            "dc",
+            "ac",
+            "terre"
+          ]
+        },
+        "de": {
+          "description": "Extrémité AMONT : un `electrical.equipements[].id` (CALX201) ou un `zones[].id` (un pan de toiture, quand le tronçon part du champ de modules). La référence est résolue dans le MÊME document ; une référence morte est REFUSÉE en la nommant, jamais ignorée en silence — un tronçon qui ne relie rien fausserait le métré sans jamais se voir.",
+          "type": "string",
+          "minLength": 1
+        },
+        "vers": {
+          "description": "Extrémité AVAL, même règle de résolution que `de` : un `electrical.equipements[].id` ou un `zones[].id` du même document.",
+          "type": "string",
+          "minLength": 1
+        },
+        "points": {
+          "description": "Points de passage du tracé, dans l'ordre, en [lng, lat] objet (`{lng, lat, altitudeM?}`). Deux points minimum pour qu'un tracé ait une longueur — sauf si `longueurSaisieM` porte déjà la longueur du tronçon. Le tracé est la SOURCE de la longueur mesurée (CALX224) : le raccourcir change un chiffre publié.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pointCheminement"
+          }
+        },
+        "longueurSaisieM": {
+          "description": "Longueur SAISIE au clavier, en mètres, pour la part du tronçon que le plan ne porte pas : descente verticale, traversée de mur, passage en gaine. N'existe QUE pour cette part — elle ne remplace jamais un tracé mesurable. Absente ou `null` = rien n'a été saisi (et non « zéro mètre ») : le tronçon doit alors porter au moins deux points.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "origine": {
+          "description": "D'où vient la longueur du tronçon, énumération FERMÉE — c'est la discipline `Longueur` de `services/cables.py` étendue au tracé : `plan` = mesurée sur les `points` seuls ; `saisie` = `longueurSaisieM` seule ; `mixte` = les deux additionnées. Le champ est DÉCLARATIF : c'est `services/troncons.py` (CALX224) qui publie la longueur et son origine réelle, et une incohérence entre les deux se voit plutôt que de se taire.",
+          "type": "string",
+          "enum": [
+            "plan",
+            "saisie",
+            "mixte"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "longueurSaisieM"
+            ],
+            "properties": {
+              "longueurSaisieM": {
+                "type": "number"
+              }
+            }
+          },
+          "else": {
+            "required": [
+              "points"
+            ],
+            "properties": {
+              "points": {
+                "minItems": 2
+              }
+            }
+          }
+        }
+      ]
+    },
+    "pointCheminement": {
+      "description": "CALX202 — un point de passage du tracé. `altitudeM` est SAISIE et optionnelle : absente, le segment est compté à plat (CALX224), et aucun dénivelé n'est deviné.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "lng",
+        "lat"
+      ],
+      "properties": {
+        "lng": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "lat": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "altitudeM": {
           "type": [
             "number",
             "null"

@@ -314,6 +314,12 @@
           "libelle": "Cos φ retenu à défaut de mesure",
           "unite": "",
           "reference": "Réglage société — aucune valeur n'est supposée"
+        },
+        {
+          "cle": "seuil_bas_dc_ac",
+          "libelle": "Seuil bas du rapport DC/AC (onduleur sous-utilisé)",
+          "unite": "",
+          "reference": "OpenSolar — Inverter sizing and stringing recommendations"
         }
       ]
     },
@@ -568,6 +574,12 @@
           "libelle": "Cos φ retenu à défaut de mesure",
           "unite": "",
           "reference": "Réglage société — aucune valeur n'est supposée"
+        },
+        {
+          "cle": "seuil_bas_dc_ac",
+          "libelle": "Seuil bas du rapport DC/AC (onduleur sous-utilisé)",
+          "unite": "",
+          "reference": "OpenSolar — Inverter sizing and stringing recommendations"
         }
       ]
     },

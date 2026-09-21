@@ -2090,7 +2090,17 @@ export default function ToitureDesign({ mode = 'lead' }) {
             <PanneauCalques
               utilisateurId={utilisateurCourantId}
               builderApi={builderApiActuel}
-              onChange={(id, etat) => builderApi.current?.setLayerState?.(id, etat)}
+              onChange={(id, etat) => {
+                // CALX22x câblage — le calque « Électrique » vit dans la couche 3D du
+                // constructeur (`electrique3d.ts`), pas sur la carte : le `setLayerState`
+                // général route TOUT vers `mapDraw.setLayerState`, qui ne le connaît pas
+                // (rend `false`, rien ne bascule). On route au plus près du builder, sur
+                // l'identifiant que SA couche déclare elle-même (`idCalque`) — jamais une
+                // chaîne recopiée ici.
+                const electrique = builderApi.current?.electrique
+                if (electrique && id === electrique.idCalque) electrique.setLayerState(id, etat)
+                else builderApi.current?.setLayerState?.(id, etat)
+              }}
             />
           </div>
         )}

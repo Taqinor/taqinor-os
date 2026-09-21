@@ -49,15 +49,20 @@ def _conception(prise_vendue=False):
 
 
 class ChecklistTerreTest(SimpleTestCase):
-    """Quatre lignes, chacune citant sa référence."""
+    """Sept lignes (CALX245), chacune citant sa référence."""
 
-    def test_les_quatre_lignes_citent_leur_reference(self):
+    def test_les_lignes_citent_leur_reference(self):
         checklist = checklist_terre(_conception(), norme=NORME_FR)
         codes = [ligne['code'] for ligne in checklist['lignes']]
 
+        # Les quatre lignes de CAL134 gardent leur ordre et leur rang ; les
+        # trois mesures de l'existant (CALX245) s'ajoutent EN FIN.
         self.assertEqual(codes, ['liaison_equipotentielle',
                                  'section_conducteur', 'piquet_barrette',
-                                 'mesure_continuite'])
+                                 'mesure_continuite',
+                                 'point_date_mesure_prise',
+                                 'continuite_structure_barrette',
+                                 'continuite_barrette_coffrets'])
         for ligne in checklist['lignes']:
             self.assertTrue(ligne['reference'])
 

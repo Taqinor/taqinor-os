@@ -36,9 +36,9 @@ __all__ = [
     "CHUTE_CIBLE_DC_PCT", "CHUTE_MAX_DC_PCT", "CHUTE_CIBLE_AC_PCT",
     "CHUTE_MAX_AC_PCT", "SECTION_MIN_DC_MM2", "CRITERE_ECHAUFFEMENT",
     "CRITERE_CHUTE", "CRITERE_LES_DEUX", "CRITERE_PLANCHER",
-    "SectionProposee", "ResultatCables",
+    "SectionProposee", "ResultatCables", "ResultatBranchesCables",
     "ampacite", "chute_tension_v", "chute_tension_pct", "proposer_section",
-    "verifier_ib_in_iz", "dimensionner_cables",
+    "verifier_ib_in_iz", "dimensionner_cables", "dimensionner_branches_ac",
 ]
 
 #: Sections normalisées retenues par le moteur (mm², cuivre).
@@ -113,6 +113,21 @@ class ResultatCables:
     cables: Tuple[Cable, ...] = ()
     bloquants: Tuple[str, ...] = ()
     alertes: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ResultatBranchesCables:
+    """CALX210 — un conducteur PAR branche AC, et les omissions motivées.
+
+    ``omissions`` NOMME le champ qui manque à une branche (son courant
+    d'emploi, sa longueur, sa tension) : une branche non calculable n'est pas
+    dimensionnée à zéro, elle est dite non dimensionnable et pourquoi.
+    """
+
+    cables: Tuple[Cable, ...] = ()
+    bloquants: Tuple[str, ...] = ()
+    alertes: Tuple[str, ...] = ()
+    omissions: Tuple[str, ...] = ()
 
 
 def ampacite(section_mm2, bareme=AMPACITE_H1Z2Z2K):
@@ -234,9 +249,131 @@ def proposer_section(courant_ib_a, longueur_m, tension_v, cible_pct,
     )
 
 
+def dimensionner_branches_ac(branches, phases=1, tension_reseau_v=0.0,
+                             calibres=None):
+    """CALX210 — ``W2.1 … W2.N`` : un conducteur par branche de micro-onduleurs.
+
+    ``branches`` est la liste publiée par CALX209 —
+    ``{repere, unites, i_branche_a, calibre_a, motif_de_coupure}`` — étendue
+    des trois grandeurs de CHEMINEMENT dont un câble a besoin et que la
+    branche seule ne porte pas toujours :
+
+    * ``longueur_m`` — longueur SIMPLE de la branche (le coefficient porte
+      l'aller-retour, jamais la longueur) ;
+    * ``tension_v`` — tension de service ; à défaut celle de l'installation
+      (``tension_reseau_v``) ;
+    * ``phases`` — 1 ou 3 ; à défaut celles de l'installation.
+
+    ``calibres`` est la correspondance ``{repère de branche → calibre A}`` que
+    ``protections.calibrer_branches_ac`` vient de produire : la section tient
+    compte du calibre exactement comme le W2 d'un onduleur de chaîne
+    (``Ib ≤ In ≤ Iz``). Aucun barème neuf : ``AMPACITE_U1000R2V_MONO`` /
+    ``AMPACITE_U1000R2V_TRI`` et la cible ``CHUTE_CIBLE_AC_PCT`` existantes.
+
+    Une branche dont le courant d'emploi ou la longueur manque n'est PAS
+    dimensionnée : elle sort en ``omissions`` avec le nom du champ absent.
+    """
+    from core.electrique.protections import courant_de_branche_ac
+
+    cables = []
+    bloquants = []
+    alertes = []
+    omissions = []
+    correspondance = calibres or {}
+    for rang, branche in enumerate(branches or (), start=1):
+        repere = "W2.%d" % rang
+        nom = branche.get("repere") or repere
+        ib_ac = courant_de_branche_ac(branche)
+        if ib_ac is None:
+            omissions.append(
+                "branche AC %s : section OMISE — le courant d'emploi "
+                "« i_branche_a » n'est pas publié par la branche" % nom)
+            continue
+        try:
+            longueur = float(branche.get("longueur_m"))
+        except (TypeError, ValueError):
+            longueur = None
+        if longueur is None or longueur < 0:
+            omissions.append(
+                "branche AC %s : section OMISE — la longueur « longueur_m » "
+                "de la branche n'est pas publiée (ni relevée sur le plan, ni "
+                "saisie)" % nom)
+            continue
+        triphase = int(branche.get("phases") or phases or 1) == 3
+        tension = float(branche.get("tension_v") or tension_reseau_v or 0.0)
+        if tension <= 0:
+            omissions.append(
+                "branche AC %s : section OMISE — la tension de service "
+                "« tension_v » n'est publiée ni par la branche ni par "
+                "l'installation" % nom)
+            continue
+        bareme = AMPACITE_U1000R2V_TRI if triphase else AMPACITE_U1000R2V_MONO
+        coefficient = math.sqrt(3.0) if triphase else 2.0
+        calibre = correspondance.get(nom, correspondance.get(repere))
+        if calibre is None:
+            calibre = branche.get("calibre_a")
+        calibre = float(calibre) if calibre else None
+        proposee = proposer_section(
+            courant_ib_a=ib_ac, longueur_m=longueur, tension_v=tension,
+            cible_pct=CHUTE_CIBLE_AC_PCT, bareme=bareme,
+            coefficient=coefficient, calibre_in_a=calibre)
+        conforme, motif = verifier_ib_in_iz(ib_ac, calibre, proposee.iz_a)
+        depasse = proposee.chute_pct > CHUTE_MAX_AC_PCT + 1e-9
+        if motif:
+            bloquants.append("branche AC %s : %s" % (nom, motif))
+        if depasse:
+            bloquants.append(
+                "branche AC %s : chute de tension de %s %% au-dessus du "
+                "maximum admissible de %s %% même en %s mm²"
+                % (nom, fr(proposee.chute_pct, 2), fr(CHUTE_MAX_AC_PCT, 1),
+                   fr(proposee.section_mm2, 1)))
+        elif proposee.hors_bareme:
+            alertes.append(
+                "branche AC %s : cible de %s %% non tenue, %s %% retenus en "
+                "%s mm² (sous le maximum de %s %%)"
+                % (nom, fr(CHUTE_CIBLE_AC_PCT, 1), fr(proposee.chute_pct, 2),
+                   fr(proposee.section_mm2, 1), fr(CHUTE_MAX_AC_PCT, 1)))
+        cables.append(Cable(
+            repere=repere,
+            designation="Câble AC U-1000 R2V cuivre (%s) — branche %s"
+                        % ("3P + N + T, triphasé" if triphase
+                           else "P + N + T, monophasé", nom),
+            section_mm2=proposee.section_mm2,
+            longueur_m=float(longueur),
+            nb_conducteurs=5 if triphase else 3,
+            ib_a=ib_ac,
+            in_a=calibre,
+            iz_a=proposee.iz_a,
+            chute_tension_pct=proposee.chute_pct,
+            chute_cible_pct=CHUTE_CIBLE_AC_PCT,
+            chute_max_pct=CHUTE_MAX_AC_PCT,
+            conforme=conforme and not depasse,
+            critere_dimensionnant=proposee.critere,
+            regle_source=(
+                "IEC 60364-5-52 tableau B.52.4 méthode C (Iz U-1000 R2V, "
+                "barème %s) + NF C 15-100 §433.1 (Ib ≤ In ≤ Iz) ; chute "
+                "u = %s × %s × L × I / S, cible %s %%, maximum %s %% "
+                "(UTE C 15-712-1)"
+                % ("triphasé" if triphase else "monophasé",
+                   "√3" if triphase else "2", fr(RHO_CUIVRE_20C, 5),
+                   fr(CHUTE_CIBLE_AC_PCT, 1), fr(CHUTE_MAX_AC_PCT, 1))),
+        ))
+    return ResultatBranchesCables(
+        cables=tuple(cables), bloquants=tuple(bloquants),
+        alertes=tuple(alertes), omissions=tuple(omissions))
+
+
 def dimensionner_cables(entree, resultat_chaines=None,
-                        resultat_protections=None):
-    """PV36 — le câble de chaîne DC et la liaison AC, dimensionnés et vérifiés."""
+                        resultat_protections=None, branches_ac=None):
+    """PV36 — le câble de chaîne DC et la liaison AC, dimensionnés et vérifiés.
+
+    ``branches_ac`` (CALX210) — les branches AC de micro-onduleurs publiées
+    par CALX209. Quand la liste est vide ou absente — c'est-à-dire pour TOUTE
+    installation à onduleur de chaîne — le calcul est rigoureusement celui
+    d'avant : un ``W1`` et un ``W2``. Quand elle est fournie, la liaison AC
+    unique n'a plus de sens (il n'y a pas un onduleur mais N branches) et les
+    ``W2.1 … W2.N`` la remplacent.
+    """
     cables = []
     alertes = []
     bloquants = []
@@ -305,6 +442,18 @@ def dimensionner_cables(entree, resultat_chaines=None,
                    fr(CHUTE_CIBLE_DC_PCT, 1), fr(CHUTE_MAX_DC_PCT, 1),
                    fr(SECTION_MIN_DC_MM2, 1))),
         ))
+
+    # ── Branches AC de micro-onduleurs (CALX210) ─────────────────────────────
+    # Elles REMPLACENT la liaison AC unique : une installation à branches n'a
+    # pas un onduleur au bout d'un câble, elle a N départs protégés.
+    if branches_ac:
+        branches = dimensionner_branches_ac(
+            branches_ac, phases=entree.phases,
+            tension_reseau_v=entree.tension_reseau_v)
+        return ResultatCables(
+            cables=tuple(cables) + branches.cables,
+            bloquants=tuple(bloquants) + branches.bloquants,
+            alertes=tuple(alertes) + branches.alertes + branches.omissions)
 
     # ── Liaison AC onduleur → tableau ────────────────────────────────────────
     ib_ac = (resultat_protections.courant_ac_ib_a

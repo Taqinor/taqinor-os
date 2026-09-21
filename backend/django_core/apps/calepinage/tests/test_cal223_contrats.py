@@ -43,6 +43,7 @@ from apps.calepinage.selectors import (
 from apps.calepinage.services import site
 from apps.calepinage.services.equipements import equipements_du_calepinage
 from apps.calepinage.services.lestage import masse_et_lestage
+from apps.calepinage.services.raccordement import bloc_raccordement
 from apps.calepinage.services.reglementaire import composer_dossiers
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
@@ -58,7 +59,11 @@ AVEC_PRODUCTEUR_PUR = ('calepinage_equipements.json',
                        'site_imagerie.json',
                        # CALX17 — masse posée + feuille de lestage : producteur
                        # PUR (aucune base) sur un calepinage nu.
-                       'calepinage_masse_lestage.json')
+                       'calepinage_masse_lestage.json',
+                       # CALX244 — le point de raccordement : producteur PUR
+                       # (``services/raccordement.py::bloc_raccordement``),
+                       # servi par ``views/raccordement.py``.
+                       'calepinage_raccordement.json')
 
 #: Les autres, avec la RAISON — aucun n'est oublié, chacun est un choix.
 SANS_PRODUCTEUR_PUR = {
@@ -148,6 +153,45 @@ SANS_PRODUCTEUR_PUR = {
         "sans base, par l'exporteur lui-même, dans "
         'apps/calepinage/tests/test_calx142_contrat_serie.py',
 
+    # CALX201
+    'electrique_equipements.json':
+        "FRAGMENT du document `roof_layout` v2 (clé racine OPTIONNELLE "
+        '`electrical.equipements[]`), pas une réponse serveur : la route '
+        'GET layout/ rend `{roof_layout, layout_hash, schema_version}` et '
+        "l'écrivain du fragment est l'atelier 3D (CALX219/CALX220) — la "
+        'forme est affirmée sans base, contre le schéma et contre la porte '
+        "d'import réelle, par "
+        'apps/calepinage/tests/test_calx201_contrat_equipements.py',
+
+    # CALX202
+    'electrique_cheminements.json':
+        'FRAGMENT du document `roof_layout` v2 (clé racine OPTIONNELLE '
+        '`electrical.cheminements[]`), pas une réponse serveur : le tracé '
+        "est écrit par l'atelier 3D (CALX223) et relu par "
+        'services/troncons.py (CALX224) — la forme, les deux refus et la '
+        'résolution des références sont affirmées sans base par '
+        'apps/calepinage/tests/test_calx202_contrat_cheminements.py',
+
+    # CALX203
+    'calepinage_troncons.json':
+        'métré et chute TRONÇON PAR TRONÇON : la route arrive avec la vague '
+        'ÉLECTRIQUE PRO et son producteur est services/troncons.py '
+        '(CALX224-226), pas encore écrit — la forme, les omissions nommées '
+        'et la cohérence avec electrique_cheminements.json sont affirmées '
+        'sans base par '
+        'apps/calepinage/tests/test_calx203_contrat_troncons.py',
+
+    # CALX204
+    'calepinage_sld.json':
+        "schéma unifilaire ÉDITABLE : GET est servi (views/schema.py) mais "
+        'son producteur traverse la conception électrique et la porte '
+        'cross-app apps.ventes.selectors.schema_unifilaire_svg, donc la '
+        'base ; les deux clés neuves (`blocs`, `edition`) et la règle dure '
+        "« `edition` n'est pas une seconde source de vérité du dessin » "
+        'sont affirmées sans base par '
+        'apps/calepinage/tests/test_calx204_contrat_sld.py',
+
+
     # CALX62
     'calepinage_meteo_fichier.json':
         'réponse de la porte MULTIPART qui dépose une série météo de la '
@@ -163,7 +207,13 @@ SANS_PRODUCTEUR_PUR = {
 #: la porte ; retirer l'entrée dans la même tâche que la route.
 #: CALX5 a livré ``POST simuler/`` : ``calepinage_simulation.json`` en est
 #: SORTI, et le contrôle 2 vérifie désormais sa route comme celle des autres.
-POSES_AVANT_LEUR_ROUTE = {}
+POSES_AVANT_LEUR_ROUTE = {
+    # CALX228 a livré ``GET calepinages/<pk>/troncons/`` (``views/troncons.py``)
+    # et CALX244 ``GET``/``POST calepinages/<pk>/raccordement/``
+    # (``views/raccordement.py``) : ``calepinage_troncons.json`` et
+    # ``calepinage_raccordement.json`` en sont SORTIS, et le contrôle 2
+    # vérifie désormais leurs routes comme celles des autres.
+}
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
 #: chercher) : ils appartiennent à une autre app.
@@ -285,6 +335,14 @@ class ClesServiesTest(unittest.TestCase):
         self._comparer('parametres_calepinage.json', servi, 'exemple_vide')
         self.assertEqual(sorted(parametres_de_societe(None)),
                          sorted(SECTIONS_PARAMETRES))
+
+    def test_raccordement(self):
+        # CALX244 — ``bloc_raccordement`` est PUR : une conception absente,
+        # aucun tronçon, aucun réglage, et les trois blocs sortent quand
+        # même (les cinq verdicts omis en nommant ce qui manque).
+        servi = bloc_raccordement(None, {}, [], {})
+        self._comparer('calepinage_raccordement.json', servi)
+        self._comparer('calepinage_raccordement.json', servi, 'exemple_vide')
 
     def test_masse_lestage(self):
         # CALX17 — ``masse_et_lestage`` sur un calepinage NU ne touche

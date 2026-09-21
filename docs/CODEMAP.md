@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: aaca5955516d8fecca32b2ec07a026d04c38df93d79bf40da58984d127b9dd0a
-Plan fingerprint: 782c4188a9743a2926f0acd37b0e106ecc85d7a9ded08ef92422c1517a35fb42
+Structure fingerprint: 34a320a3eb5731c0045eb467f3648034c1a051823dd8c429a8e9181af5218628
+Plan fingerprint: 6c0faf2be8aa1feff0f1f1a309e7ec531d6f22f9a55109dd02c7fd77130262ea
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -314,12 +314,13 @@ Model counts are the real class count across `models*.py`/`models/`.
   `core` reads its models. `core` remains a base layer (import-linter).
 - **authentication** (SOLMVP30b) — `CustomUser.poste_ref` (rh) removed.
 
-### calepinage — Groupe CALX (lots 1 « rendre visible et opérant » et 3 « simulation sourcée », 21/09/2026 ; complète la ligne du tableau ci-dessus)  *( `/api/django/calepinage/` )*
+### calepinage — Groupe CALX (lots 1 « rendre visible et opérant », 3 « simulation sourcée » et 4 « électrique pro », 21/09/2026 ; complète la ligne du tableau ci-dessus)  *( `/api/django/calepinage/` )*
 - **Forme d'URL unique (CAL233)** : l'objet métier est servi sous `calepinages/<pk>/…` (sous-ressources en `@action` du routeur DRF, `SimpleRouter`), les réglages société sous `parametres/…`, et le moteur — un calcul SANS état — sous `moteur/calculer|pose|resultat/<job_id>/`. `tests/test_structure_urls.py` refuse toute quatrième famille.
 - **Rattachement des `@action` — `views/rattachements.py` (CALX2)** : les dix sous-modules de `views/` qui posent une `@action` sur le `CalepinageViewSet` par affectation d'attribut de classe (`equipements`, `horizon`, `export_csv`, `bibliotheque`, `verrou`, `archivage`, `io_layout`, `pompage`, `simulation`, `reglementaire` — 13 actions) sont importés DEPUIS CE SEUL FICHIER ; `urls.py` l'importe une fois, AVANT `router.register` (DRF découvre les actions via `get_extra_actions()` au moment de l'enregistrement — un import posé après ne route rien). **Une action neuve s'AJOUTE en fin de `views/rattachements.py` avec son commentaire `# CALX<id>`, jamais au milieu, jamais réordonnée ; `urls.py` n'est plus rouvert par aucune tâche.**
 - **Les QUATRE surfaces APPEND-ONLY du module (décision D-CALX 13)** — `frontend/src/api/calepinageApi.js`, `frontend/src/features/calepinage/atelier/onglets.js` (le rail d'onglets déclaratif), `backend/django_core/apps/calepinage/views/rattachements.py`, `backend/django_core/apps/calepinage/services/parametres_cles.py`. Elles sont déclarées dans `_APPEND_ONLY_SUFFIXES` de `scripts/plan_lanes.py` : deux tâches qui les citent ne fondent PAS leurs lanes, parce qu'une méthode, un onglet, une action ou un réglage neuf s'y **AJOUTE en fin avec un commentaire `// CALX<id>` (JS) ou `# CALX<id>` (Python)** — jamais une réécriture, jamais un tri. Mesuré sur `docs/PLAN2.md` avant CALX2 : 13 des 16 fusions de lanes du groupe CALX venaient de ces seuls fichiers (9 sur `rattachements.py`, 4 sur `calepinageApi.js`). Les règles sont purement TEXTUELLES (suffixe du chemin déclaré) : elles valent pour `onglets.js` et `parametres_cles.py` avant même leur création. `scripts/check_taches_cablage.py` admet en conséquence `features/<app>/atelier/onglets.js` comme fichier de MONTAGE d'un écran de la même feature, au même titre qu'un `module.config.jsx`.
 - Corollaires de la même décision : les sorties du lot 6 vivent dans `views/documents.py` (jamais `views/sorties.py`) et le rapport d'étude dans `services/rapport/<section>.py` (jamais un `rapport_etude.py` unique). Aucun import `apps.ao` / `apps.ged` n'entre dans le module (D-CALX 2).
 - **Lot 3 « Simulation de production sourcée » (CALX141-198 + 5/6/14/16/48/59/60/62/64/65/69/255/264, 21/09/2026)** : la simulation d'un calepinage est une CHAÎNE DE PERTES déclarative — `services/chaine_pertes.py` (`appliquer_chaine`, `ORDRE_ETAPES` = 24 postes dans l'ordre PVsyst, `decision_meteo`/`MeteoIndecise`, ré-indexation de la série sur l'heure LÉGALE du fuseau saisi du site, `PLAFOND_FENETRE_ANNEES = 10`) charge chaque poste PAR NOM depuis `services/etapes/<poste>.py` (`appliquer(serie, contexte) -> (serie, etape)`, fonction pure ; le contrat des six clés et les trois refus de l'ordonnanceur sont dans la docstring de `services/etapes/__init__.py` ; module absent = étape omise « non livrée », JAMAIS un défaut — D-CALX 7 : coefficient/seuil = réglage société sourcé, fiche produit, valeur PVGIS, ou omission nommant le champ). Entrées : série horaire PVGIS `services/pvgis_serie.py::ClientPvgis.serie_irradiance` (composantes + `userhorizon`, fenêtre pluriannuelle ou TMY) ou fichier météo importé (`services/meteo_fichier.py`, action `meteo-fichier/`) ; position solaire `core/calepinage/soleil.py::position_solaire` (UTC) ; ombre inter-rangées `core/calepinage/ombre_rangees.py` ; fiches produit `stock` (migration `0159_calx60_fiche_chaine_pertes`) ; réglages société À REGISTRE `services/parametres_cles.py` (sections `simulation` et `electrique_societe`, chaque valeur `{valeur, source, reference}`, migration `calepinage/0010`) — après TOUT ajout au registre, régénérer le bloc `registre` de `contract_samples/parametres_calepinage.json` (test_calx69 épingle l'égalité). Orchestration : `services/simulation.py::simuler_calepinage(calepinage, *, forcer=False)` + `construire_contexte`, action `calepinages/<pk>/simuler/` (tâche `tasks.simuler_calepinage`, nature `simulation`, `GET resultat/` la sert avec sa fraîcheur) ; résultat module par module `services/simulation_modules.py` ; incertitude P50/P90 `services/incertitude.py::bloc_incertitude` ; PR et rendement `services/performance.py::bloc_performance` ; validation croisée `services/validation.py::ecart_vs_pvcalc` ; courbe de charge `services/courbe_charge.py::construire_courbe_charge`. Dépendance `pvlib==0.15.2` (décision `docs/decisions/calx198-pvlib.md` : contre-calcul, jamais source de vérité). Golden `tests/golden_simulation/cascade_pluriannuelle_casablanca.json`. Frontend : `reglages/ReglagesSimulation.jsx`, `atelier/PanneauSeries.jsx`, `production/TapisHoraire.jsx` + `PanneauProduction.jsx`, `plan/AffectationChaines.jsx`. Règle de test (leçon du lot) : un test d'étape ISOLE son étape (`appliquer` direct ou l'entrée de cascade de son poste), jamais le total de la chaîne.
+- **Lot 4 « Électrique pro » (CALX201-250 + 172/183, 21/09/2026)** : la TOPOLOGIE électrique entre dans le document et le résultat — contrats `roof_layout_v2.schema.json::electrical` (`equipements[]` 8 types fermés, `cheminements[]` avec `origine` plan/saisie/mixte), échantillons `electrique_equipements.json`, `electrique_cheminements.json`, `calepinage_troncons.json` (+ `verdicts[]`), `calepinage_sld.json`, `calepinage_raccordement.json`. Noyau pur `core/electrique/` : `VerdictElectrique {code, nature, statut, libelle, borne, valeur, source, temperature_*}` (CALX215/214, `bloquants`/`alertes` en DÉRIVENT ; `passer_outre` = dérogation écrite dans le fil par `services/electrique.py`), `ChoixLongueur` motivé (216), bornes onduleur `s_max_kva`/`dc_max_kwc` + paliers DC/AC en RÉGLAGES (213, `bornes_dc_ac`), branches AC micro-onduleurs (`calibrer_branches_ac`/`dimensionner_branches_ac`/`dimensionner_cables(branches_ac=)`, 210), `blocs_du_schema(branches_onduleur=)` « typique de N » (238), API publique du schéma `GEOMETRIE`/`places_du_schema`/`bloc_svg`/`rendre_schema(blocs=, bandeau=)`, nomenclature à références catalogue + coffrets réellement posés + métré par section (246/230/227), structure SOURCÉE ou omise (247, `regle_bom_structure`). Services : `polystring.py` (206/207), `micro_onduleurs.py` (209), `troncons.py` (224-226 : longueur réelle avec origine, section/chute par tronçon lues sur la NORME, chute cumulée verdictée une fois par côté, métré), `coffrets.py` (230-232), `raccordement.py` (241-243 + `bloc_raccordement` contrat CALX205), `terre.py` continuité (245), `agregation_electrique.py` (183), `sld.py`/`sld_export.py` (233-237 : édition persistée dans `resultat['sld_edition']`, gabarit par pays — `pays=ma` sans norme = gabarit neutre, DXF `ezdxf` reproductible), `etapes/ecretage.py` (172), `cables.py::course_de_chaine` (218), `electrique.py::verdict_publiable` (248 : publiable ⇔ zéro bloquant ET zéro conclusion sans source, exposé par la clé `publication` de `evaluer-electrique`). Routes : `troncons/` (GET), `raccordement/` (GET|POST), `schema-unifilaire/` (GET|POST), `schema-unifilaire.dxf/` (GET) — toutes greffées par affectation de classe (`rattachements.py`, la garde `check_api_contract` les voit). 3D (`apps/web/src/scripts/roofPro11/electrique3d.ts`, 219-223) : couche d'organes et de cheminements persistée par `serializeLayout` (`electrical`), calque « Électrique » piloté depuis `ToitureDesign.jsx` — réservé au lot 2 : attacher `electrique.groupe` à `sceneRoot` (`scene3d.ts`), Ctrl+Z/Y (`layoutEditor.ts`). Onglets React `features/calepinage/electrique/` : Équipements (222), Cheminement & câbles (229), Raccordement (244), Verdict électrique (249) ; `Rail.jsx` relaie `builderApi` à chaque onglet. Gardes : `scripts/check_seuils_electriques.py` (250 : aucun littéral numérique non trivial sans commentaire de provenance dans `core/electrique/` + services électriques ; base `seuils_electriques_exceptions.txt` ne peut que rétrécir, motifs manuscrits, tests épinglés par NOM de constante) ; `check_services_appeles` : une fonction publique de service sans appelant hors module = rouge (les assembleurs appelés dans leur propre module sont privés).
 
 ### FastAPI AI service (`backend/fastapi_ia`, root_path `/api/fastapi`)
 
@@ -531,7 +532,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (146)**
+**Done (195)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -655,6 +656,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX169` — Étape « ohmique DC » : la chute réelle des câbles, plus jamais saisie en double
 - `CALX170` — Étape « onduleur » : la courbe η(P), sinon le rendement européen, sinon rien
 - `CALX171` — Étape « fenêtre MPPT » : les heures où la tension sort de la plage
+- `CALX172` — Étape « écrêtage » : brancher le calcul horaire qui existe déjà et n'a jamais de série
 - `CALX173` — Étape « ohmique AC » : la liaison onduleur-comptage, sur sa longueur saisie
 - `CALX174` — Étape « transformateur » : seulement si la société en déclare un
 - `CALX175` — Étape « auxiliaires » : une énergie soutirée, jour et nuit, pas un pourcentage
@@ -664,6 +666,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX179` — Publier le ratio de performance au sens de la norme IEC 61724-1
 - `CALX181` — Rendre les tableaux mensuels et par pan cohérents avec la cascade
 - `CALX182` — Simuler MODULE PAR MODULE, et agréger
+- `CALX183` — Agréger la production par chaîne, MPPT et onduleur
 - `CALX184` — Mesurer σ, ou refuser — supprimer le repli 6 % non sourcé
 - `CALX185` — Composer l'incertitude en quadrature, comme une étude bancable
 - `CALX186` — Ajouter P95 aux quantiles publiés
@@ -677,10 +680,57 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX196` — Figer un golden pluriannuel de la cascade et des quantiles
 - `CALX197` — Un seul calcul d'ombrage pour un même toit
 - `CALX198` — Adopter `pvlib` (tranché par Reda le 21/09/2026) pour le modèle à une diode, la…
+- `CALX201` — Déclarer le contrat `electrical.equipements[]` du document v2
+- `CALX202` — Déclarer le contrat `electrical.cheminements[]` du document v2
+- `CALX203` — Déclarer le contrat des tronçons de câble calculés
+- `CALX204` — Déclarer le contrat du schéma unifilaire éditable
+- `CALX205` — Déclarer le contrat du raccordement réseau
+- `CALX206` — Autoriser plusieurs orientations sur UNE entrée MPPT (jamais dans une chaîne)
+- `CALX207` — Calculer l'écart de puissance d'un groupe polystring et le verdicter sur un seuil…
+- `CALX209` — Dimensionner une branche AC de micro-onduleurs
+- `CALX210` — Calibrer la protection et le câble d'une branche AC de micro-onduleurs
+- `CALX211` — Fermer la longueur de chaîne à optimiseurs quand la fiche publie enfin la sortie…
+- `CALX212` — Compter et placer les optimiseurs module par module
+- `CALX213` — Contrôler enfin les deux bornes d'onduleur publiées mais jamais lues
+- `CALX214` — Publier, contrôle par contrôle, LA température qui a servi
+- `CALX215` — Nommer les deux natures de dépassement : plage INTERDITE et plage BLOQUANTE
+- `CALX216` — Dire POURQUOI cette longueur de chaîne a été retenue
+- `CALX217` — Rejouer l'incident DEV-202608-0016 sur les trois régimes de chaînage
+- `CALX218` — Choisir le motif de parcours d'une chaîne et en tirer sa longueur de câble
+- `CALX219` — Créer `electrique3d.ts` et y poser les marqueurs d'équipement
+- `CALX220` — Poser, déplacer et retirer un équipement au clic, et le persister
+- `CALX221` — Ajouter le calque « Électrique » au panneau de calques
+- `CALX222` — Donner à l'atelier son onglet « Équipements électriques »
+- `CALX223` — Tracer un cheminement de câble par points de passage dans l'atelier
+- `CALX224` — Mesurer la longueur RÉELLE de chaque tronçon
+- `CALX225` — Dimensionner la section et la chute PAR tronçon
+- `CALX226` — Cumuler la chute de tension bout en bout et la verdicter une seule fois
+- `CALX227` — Produire le métré de câble par tronçon et par section
+- `CALX228` — Servir les tronçons en HTTP et les joindre au résultat électrique
+- `CALX229` — Donner à l'atelier son onglet « Cheminement & câbles »
+- `CALX230` — Dimensionner un coffret de jonction DC par son nombre d'entrées
+- `CALX231` — Dimensionner le coffret de regroupement quand plusieurs coffrets remontent
+- `CALX232` — Dimensionner le coffret AC par ses départs
+- `CALX233` — Persister les libellés et les repères édités du schéma unifilaire
+- `CALX234` — Persister les positions de blocs et les passer jusqu'au dessin
+- `CALX235` — Exporter le schéma unifilaire en DXF
+- `CALX236` — Exporter le schéma unifilaire en PNG depuis le navigateur
+- `CALX237` — Choisir un gabarit de schéma par pays, sans supposer une norme au Maroc
+- `CALX238` — Replier les circuits d'onduleurs identiques en un seul « typique de N »
+- `CALX241` — Calculer l'élévation de tension au point de raccordement contre une limite SAISIE
+- `CALX242` — Vérifier la puissance de raccordement et le régime mono/tri
+- `CALX243` — Équilibrer les phases quand plusieurs onduleurs monophasés se branchent sur un réseau…
+- `CALX244` — Servir le raccordement en HTTP et lui donner son onglet
+- `CALX245` — Étendre la check-list de terre à la continuité mesurée de l'existant
+- `CALX246` — Rattacher chaque ligne de nomenclature électrique à une référence du catalogue
+- `CALX247` — Retirer les quantités de structure non sourcées de la nomenclature électrique
+- `CALX248` — Prononcer un verdict électrique publiable unique, entrée par entrée sourcée
+- `CALX249` — Donner à l'atelier son onglet « Verdict électrique »
+- `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (460)**
+**Open — to build (411)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -922,57 +972,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX130` — Prouver le parcours de conception enrichi de bout en bout
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
-- `CALX172` — Étape « écrêtage » : brancher le calcul horaire qui existe déjà et n'a jamais de série
-- `CALX183` — Agréger la production par chaîne, MPPT et onduleur
 - `CALX199` — Trancher l'achat d'une source météo bancable
 - `CALX200` — Trancher le pas infra-horaire
-- `CALX201` — Déclarer le contrat `electrical.equipements[]` du document v2
-- `CALX202` — Déclarer le contrat `electrical.cheminements[]` du document v2
-- `CALX203` — Déclarer le contrat des tronçons de câble calculés
-- `CALX204` — Déclarer le contrat du schéma unifilaire éditable
-- `CALX205` — Déclarer le contrat du raccordement réseau
-- `CALX206` — Autoriser plusieurs orientations sur UNE entrée MPPT (jamais dans une chaîne)
-- `CALX207` — Calculer l'écart de puissance d'un groupe polystring et le verdicter sur un seuil…
-- `CALX209` — Dimensionner une branche AC de micro-onduleurs
-- `CALX210` — Calibrer la protection et le câble d'une branche AC de micro-onduleurs
-- `CALX211` — Fermer la longueur de chaîne à optimiseurs quand la fiche publie enfin la sortie…
-- `CALX212` — Compter et placer les optimiseurs module par module
-- `CALX213` — Contrôler enfin les deux bornes d'onduleur publiées mais jamais lues
-- `CALX214` — Publier, contrôle par contrôle, LA température qui a servi
-- `CALX215` — Nommer les deux natures de dépassement : plage INTERDITE et plage BLOQUANTE
-- `CALX216` — Dire POURQUOI cette longueur de chaîne a été retenue
-- `CALX217` — Rejouer l'incident DEV-202608-0016 sur les trois régimes de chaînage
-- `CALX218` — Choisir le motif de parcours d'une chaîne et en tirer sa longueur de câble
-- `CALX219` — Créer `electrique3d.ts` et y poser les marqueurs d'équipement
-- `CALX220` — Poser, déplacer et retirer un équipement au clic, et le persister
-- `CALX221` — Ajouter le calque « Électrique » au panneau de calques
-- `CALX222` — Donner à l'atelier son onglet « Équipements électriques »
-- `CALX223` — Tracer un cheminement de câble par points de passage dans l'atelier
-- `CALX224` — Mesurer la longueur RÉELLE de chaque tronçon
-- `CALX225` — Dimensionner la section et la chute PAR tronçon
-- `CALX226` — Cumuler la chute de tension bout en bout et la verdicter une seule fois
-- `CALX227` — Produire le métré de câble par tronçon et par section
-- `CALX228` — Servir les tronçons en HTTP et les joindre au résultat électrique
-- `CALX229` — Donner à l'atelier son onglet « Cheminement & câbles »
-- `CALX230` — Dimensionner un coffret de jonction DC par son nombre d'entrées
-- `CALX231` — Dimensionner le coffret de regroupement quand plusieurs coffrets remontent
-- `CALX232` — Dimensionner le coffret AC par ses départs
-- `CALX233` — Persister les libellés et les repères édités du schéma unifilaire
-- `CALX234` — Persister les positions de blocs et les passer jusqu'au dessin
-- `CALX235` — Exporter le schéma unifilaire en DXF
-- `CALX236` — Exporter le schéma unifilaire en PNG depuis le navigateur
-- `CALX237` — Choisir un gabarit de schéma par pays, sans supposer une norme au Maroc
-- `CALX238` — Replier les circuits d'onduleurs identiques en un seul « typique de N »
-- `CALX241` — Calculer l'élévation de tension au point de raccordement contre une limite SAISIE
-- `CALX242` — Vérifier la puissance de raccordement et le régime mono/tri
-- `CALX243` — Équilibrer les phases quand plusieurs onduleurs monophasés se branchent sur un réseau…
-- `CALX244` — Servir le raccordement en HTTP et lui donner son onglet
-- `CALX245` — Étendre la check-list de terre à la continuité mesurée de l'existant
-- `CALX246` — Rattacher chaque ligne de nomenclature électrique à une référence du catalogue
-- `CALX247` — Retirer les quantités de structure non sourcées de la nomenclature électrique
-- `CALX248` — Prononcer un verdict électrique publiable unique, entrée par entrée sourcée
-- `CALX249` — Donner à l'atelier son onglet « Verdict électrique »
-- `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX251` — Déclarer `consumption` dans le contrat `roof_layout` v2
 - `CALX253` — Sérialiser la consommation de l'atelier dans le document
 - `CALX254` — Ré-hydrater la consommation au rechargement de l'atelier
