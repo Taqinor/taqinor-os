@@ -49,6 +49,18 @@ schema_unifilaire_svg``, qui reste INTACTE (octet pour octet) pour le chemin
 ``devis=``. Une position hors planche est refusée en nommant la clef et la
 borne du format.
 
+CALX237 — UN GABARIT PAR PAYS, SANS SUPPOSER UNE NORME AU MAROC
+----------------------------------------------------------------
+Les seules références que les organes citent sont françaises (NF C 15-100,
+UTE C 15-712-1, IEC 62548) et ``services/norme.py`` OMET déjà tout calcul
+qui en dépend quand aucune norme n'est choisie. ``gabarit_de_schema`` en
+tire la conséquence sur le DESSIN : gabarit ``fr`` (la chaîne d'aujourd'hui,
+inchangée), gabarit ``societe`` (la société a nommé le texte qui la fonde),
+et — à défaut — gabarit ``neutre`` : la planche passe en mode TOPOLOGIE
+(``standard=True``, aucun calibre ni section) et porte un bandeau qui NOMME
+le réglage manquant. Aucun gabarit marocain n'est inventé : il n'existe
+aucun texte normatif marocain dans ce dépôt.
+
 LE DESSIN RESTE UNIQUE
 ----------------------
 Le SVG n'est pas reconstruit ici : il est rendu par ``rendre_schema`` (le
@@ -65,8 +77,10 @@ import re
 
 __all__ = [
     'CLE_EDITION', 'RUBRIQUES', 'LONGUEUR_TEXTE_MAX', 'MOTS_D_ARGENT',
+    'GABARIT_FR', 'GABARIT_SOCIETE', 'GABARIT_NEUTRE',
     'SldRefuse', 'cartouche_du_calepinage', 'edition_sld',
-    'enregistrer_edition_sld', 'rendu_du_schema', 'schema_du_calepinage',
+    'enregistrer_edition_sld', 'gabarit_de_schema', 'rendu_du_schema',
+    'schema_du_calepinage',
 ]
 
 #: La clé du bloc d'édition dans ``Calepinage.resultat`` (JSONField existant).
@@ -95,6 +109,32 @@ _MOT_D_ARGENT_RE = re.compile(
     r'\b(?:%s)\b' % '|'.join(MOTS_D_ARGENT), re.IGNORECASE)
 
 
+#: Les trois gabarits de planche (CALX237). Il n'y a PAS de gabarit
+#: marocain : aucun texte normatif marocain n'est présent dans ce dépôt, et
+#: NF C 15-100 / UTE C 15-712-1 ne s'impriment pas sur un chantier qui ne les
+#: a pas choisies (décision fondateur D1, ``services/norme.py``).
+GABARIT_FR = 'fr'
+GABARIT_SOCIETE = 'societe'
+GABARIT_NEUTRE = 'neutre'
+
+#: Le bandeau du gabarit NEUTRE : il DIT ce qui est omis et NOMME le réglage
+#: à renseigner (règle fondateur « erreur → champ fautif »).
+BANDEAU_NEUTRE = (
+    "Calibres et sections OMIS%s : aucune norme électrique n'est choisie — "
+    "renseignez « Norme électrique » dans les réglages du module. Cette "
+    "planche ne montre que la topologie : désignations, quantités, repères."
+)
+
+#: Taille et teinte du bandeau — convention de dessin, en pixels de planche
+#: (le moteur travaille en pixels CSS à 96 ppp, ``core/electrique/
+#: schema.py``). Sa marge est CELLE du moteur (``_MARGE``), jamais une
+#: seconde valeur : il est posé dans la bande LIBRE du bas-gauche, le
+#: cartouche occupant la colonne de droite et la dernière rangée d'organes
+#: s'arrêtant bien au-dessus.
+_BANDEAU_TAILLE = 10.0
+_BANDEAU_COULEUR = '#9a3412'
+
+
 class SldRefuse(ValueError):
     """Une édition de schéma refusée, avec un message FRANÇAIS.
 
@@ -106,6 +146,107 @@ class SldRefuse(ValueError):
     def __init__(self, message, *, champ=''):
         super().__init__(message)
         self.champ = champ
+
+
+# ──────────────────────────────── CALX237 — le GABARIT de planche, par pays
+def _references_du_gabarit(norme):
+    """Les textes cités, TIRÉS du verdict de norme — jamais recopiés ici.
+
+    La référence de la norme d'abord, puis celles que chaque coefficient
+    publié porte déjà (``services/norme.py::coefficients_publies``). Rien
+    n'est ajouté : un gabarit ne cite que ce que la société ou le noyau a
+    réellement déclaré.
+    """
+    references = []
+    principale = (norme.get('reference') or '').strip()
+    if principale:
+        references.append(principale)
+    for coefficient in (norme.get('coefficients') or {}).values():
+        texte = (coefficient or {}).get('reference')
+        texte = (texte or '').strip()
+        if texte and texte not in references:
+            references.append(texte)
+    return tuple(references)
+
+
+def gabarit_de_schema(norme):
+    """CALX237 — QUEL gabarit de planche, et ce qu'il omet sans norme.
+
+    Args:
+        norme: le verdict de ``services/norme.py::norme_applicable``.
+
+    Returns:
+        ``{code, libelle, norme, reference, references, pays, standard,
+        bandeau, motif}``.
+
+    Trois cas, et AUCUN gabarit marocain :
+
+    * **``fr``** — le jeu français est applicable : la chaîne dessinée est
+      celle d'aujourd'hui, inchangée, et le gabarit cite les textes que le
+      moteur cite déjà (NF C 15-100 / UTE C 15-712-1 / IEC 62548).
+    * **``societe``** — la société a DÉCLARÉ sa norme en nommant le texte qui
+      la fonde (``services/norme.py`` refuse déjà une norme sans référence) :
+      même dessin, gabarit nommé d'après ce texte.
+    * **``neutre``** — aucune norme choisie : la planche bascule en mode
+      TOPOLOGIE (``standard=True`` du moteur : désignations, quantités,
+      repères ; aucun calibre, aucune section) et porte un bandeau qui dit
+      pourquoi. Aucun symbole ni texte marocain n'est inventé — il n'en
+      existe aucun dans ce dépôt.
+    """
+    from .norme import NORME_FRANCAISE
+
+    norme = norme if isinstance(norme, dict) else {}
+    pays = (norme.get('pays') or '').strip()
+    if not norme.get('applicable'):
+        return {
+            'code': GABARIT_NEUTRE,
+            'libelle': 'Gabarit neutre — topologie seule',
+            'norme': None,
+            'reference': '',
+            'references': (),
+            'pays': pays,
+            'standard': True,
+            'bandeau': BANDEAU_NEUTRE % (
+                ' pour le pays « %s »' % pays if pays else ''),
+            'motif': norme.get('motif') or '',
+        }
+    choisie = norme.get('norme') or ''
+    reference = (norme.get('reference') or '').strip()
+    if choisie == NORME_FRANCAISE:
+        code = GABARIT_FR
+        libelle = 'Gabarit français — %s' % reference
+    else:
+        code = GABARIT_SOCIETE
+        libelle = 'Gabarit déclaré par la société — %s' % reference
+    return {
+        'code': code,
+        'libelle': libelle,
+        'norme': choisie,
+        'reference': reference,
+        'references': _references_du_gabarit(norme),
+        'pays': pays,
+        'standard': False,
+        'bandeau': '',
+        'motif': norme.get('motif') or '',
+    }
+
+
+def _bandeau_svg(texte, hauteur):
+    """Le bandeau d'omission, posé sous la planche — une ligne, rien d'autre.
+
+    Crochet attendu hors de ce fichier (cf. rapport de lane) :
+    ``core/electrique/schema.py::rendre_schema(..., bandeau=)``. D'ici là, le
+    module du calepinage APPOSE sa ligne sur la planche rendue ; il ne filtre
+    ni ne réinterprète quoi que ce soit du dessin.
+    """
+    from html import escape
+
+    from core.electrique.schema import _MARGE
+
+    return ('<text x="%.1f" y="%.1f" font-size="%.1f" font-weight="700" '
+            'fill="%s">%s</text>'
+            % (_MARGE, hauteur - _MARGE, _BANDEAU_TAILLE, _BANDEAU_COULEUR,
+               escape(texte, quote=True)))
 
 
 # ─────────────────────────────────────────────── lecture de l'édition posée
@@ -321,7 +462,17 @@ def _dessin_du_calepinage(calepinage):
         return {'svg': None, 'blocs': (), 'liaisons': ()}
     return rendu_du_schema(getattr(conception, 'entree', None),
                            getattr(conception, 'resultat', None),
-                           edition=edition_sld(calepinage))
+                           edition=edition_sld(calepinage),
+                           gabarit=_gabarit_du_calepinage(calepinage))
+
+
+def _gabarit_du_calepinage(calepinage):
+    """Le gabarit applicable à CE calepinage (CALX237), via ses réglages."""
+    from .electrique import parametres_societe
+    from .norme import norme_applicable
+
+    return gabarit_de_schema(norme_applicable(
+        parametres_societe(calepinage)))
 
 
 # ──────────────────────────────────────────────── le dessin, édition comprise
@@ -455,8 +606,14 @@ def _liaisons(places):
     return tuple(liaisons)
 
 
-def rendu_du_schema(entree, resultat, *, edition=None, cartouche=None):
+def rendu_du_schema(entree, resultat, *, edition=None, gabarit=None,
+                    cartouche=None):
     """Le dessin d'une conception, ÉDITION APPLIQUÉE — SVG et blocs d'accord.
+
+    ``gabarit`` (CALX237) : le verdict de ``gabarit_de_schema``. Un gabarit
+    NEUTRE bascule la planche en mode topologie (aucun calibre, aucune
+    section) et lui appose son bandeau ; absent, la planche est celle
+    d'aujourd'hui, inchangée.
 
     Returns:
         ``{svg, blocs, liaisons, largeur, hauteur}``. ``blocs`` porte les
@@ -474,7 +631,8 @@ def rendu_du_schema(entree, resultat, *, edition=None, cartouche=None):
         valeurs = recue.get(rubrique)
         if isinstance(valeurs, dict):
             edition[rubrique] = dict(valeurs)
-    origine = blocs_du_schema(entree, resultat)
+    standard = bool((gabarit or {}).get('standard'))
+    origine = blocs_du_schema(entree, resultat, standard=standard)
     blocs = _blocs_edites(origine, edition)
     positions = edition['positions'] or None
     places, largeur, hauteur = _places(blocs, positions)
@@ -483,9 +641,14 @@ def rendu_du_schema(entree, resultat, *, edition=None, cartouche=None):
     # schema_unifilaire_svg`` n'en porte pas le paramètre et reste intacte,
     # octet pour octet, pour le chemin ``devis=``.
     svg = rendre_schema(entree, resultat, cartouche=cartouche or {},
-                        positions=positions)
+                        positions=positions, standard=standard)
     svg = _svg_avec_blocs_edites(svg, places,
                                  {bloc.clef: bloc for bloc in origine})
+    bandeau = (gabarit or {}).get('bandeau') or ''
+    if bandeau:
+        fermeture = svg.rindex('</svg>')
+        svg = (svg[:fermeture] + _bandeau_svg(bandeau, hauteur)
+               + svg[fermeture:])
     return {'svg': svg, 'blocs': _blocs_publies(places, edition),
             'liaisons': _liaisons(places), 'largeur': largeur,
             'hauteur': hauteur}
@@ -558,6 +721,7 @@ def schema_du_calepinage(calepinage):
     dessin = rendu_du_schema(getattr(conception, 'entree', None),
                              getattr(conception, 'resultat', None),
                              edition=edition,
+                             gabarit=_gabarit_du_calepinage(calepinage),
                              cartouche=cartouche_du_calepinage(calepinage))
     reponse['svg'] = dessin['svg']
     reponse['blocs'] = [dict(bloc) for bloc in dessin['blocs']]

@@ -29,6 +29,14 @@ octet pour octet, pour le chemin ``devis=``. Le ``POST`` porte
 édition appliquée ; un refus NOMME le champ fautif
 (``edition.positions.<clef>``), jamais un « non enregistré » générique.
 
+CALX237 — LE GABARIT DÉPEND DE LA NORME, JAMAIS DU PAYS SEUL
+--------------------------------------------------------------
+Sans norme choisie, la planche servie ici passe en mode TOPOLOGIE
+(désignations, quantités, repères — aucun calibre, aucune section) et porte
+un bandeau qui nomme le réglage manquant. Le gabarit est décidé par
+``services/sld.py::gabarit_de_schema``, sur le verdict de
+``services/norme.py`` : aucun gabarit marocain n'est supposé.
+
 FICHE INCOMPLÈTE ⇒ PAS DE SCHÉMA
 ---------------------------------
 Même discipline que PVFCH-ANNEXE : une conception dont une fiche est muette
