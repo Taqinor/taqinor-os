@@ -1043,6 +1043,12 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
             # cadence réactive, celle-ci est la PREMIÈRE touche, et la
             # proposition aurait expiré le jour même de son envoi.
             derniere = echeances[-1][1].astimezone(horaires.CASABLANCA).date()
+            # CAD57 — un dossier FINANCÉ À CRÉDIT ne peut pas, légalement,
+            # boucler dans cette fenêtre : la loi 31-08 impose 10 jours de
+            # réflexion PUIS 7 jours de rétractation une fois l'offre de
+            # crédit émise. Décision fondateur du 21/09/2026 : validité
+            # distincte et plus longue (le réglage société), J+14 sinon.
+            derniere = _validite_selon_financement(lead, devis, derniere)
             if poser_validite_devis(devis, derniere):
                 LeadActivity.objects.create(
                     company=lead.company, lead=lead, user=None,
@@ -8579,3 +8585,59 @@ def redater_cadence_apres_devis(lead, user, *, devis=None, depart=None,
               f'{decalees} touche(s) restante(s) décalée(s) du même écart. '
               'Aucune touche supprimée ni recréée.'))
     return decalees
+
+
+# ── CAD-E ── CAD57 — validité J+30 pour un dossier financé, J+14 sinon ─────
+#
+# [TRANCHÉ 21/09/2026] La validité était posée sur la DERNIÈRE touche de la
+# cadence, c'est-à-dire J+14 : le devis expirait le jour exact où le suivi
+# s'arrête. Or la loi 31-08 impose, une fois l'offre de crédit émise, 10 jours
+# de réflexion + 7 jours de rétractation avant déblocage : un client qui
+# finance ne peut pas, légalement, boucler dans la fenêtre qu'on lui annonce.
+#
+# Garde-fou : la DURÉE vient d'un réglage société
+# (``CompanyProfile.quote_validity_days``, lu par la façade de ventes), jamais
+# d'un nombre écrit dans le code du message. Le message J9 et le PDF affichent
+# la MÊME date (CAD59).
+
+#: L'intention de financement qui déclenche la validité longue. Valeur de
+#: ``crm.Lead.FinancingIntent.CREDIT`` — lue en littéral ici pour ne pas
+#: importer les modèles depuis une fonction appelée à chaud.
+FINANCEMENT_CREDIT = 'credit'
+
+
+def lead_finance_a_credit(lead):
+    """Le lead a-t-il DÉCLARÉ financer à crédit ?
+
+    « Pas encore décidé » et « comptant » ne déclenchent rien : on n'allonge
+    pas une validité sur une supposition.
+    """
+    return (getattr(lead, 'financing_intent', None) or '') == \
+        FINANCEMENT_CREDIT
+
+
+def _validite_selon_financement(lead, devis, date_fin_de_suivi):
+    """La date de validité à POSER sur ce devis.
+
+    Comptant / indécis : la fin du plan de suivi (comportement VALID1
+    inchangé — une date dérivée des cadences du fondateur, jamais inventée).
+    Crédit : la date du réglage société, si elle est PLUS LOINTAINE — on ne
+    raccourcit jamais une validité déjà plus longue, et une société qui règle
+    sa validité à 10 jours ne se retrouve pas avec un devis financé qui expire
+    AVANT la fin de son propre suivi.
+    """
+    if not lead_finance_a_credit(lead):
+        return date_fin_de_suivi
+    try:
+        from apps.ventes.services import date_validite_credit
+        candidate = date_validite_credit(devis)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD57 : validité crédit illisible (devis #%s)',
+            getattr(devis, 'pk', '?'), exc_info=True)
+        return date_fin_de_suivi
+    if candidate is None:
+        return date_fin_de_suivi
+    if date_fin_de_suivi is None:
+        return candidate
+    return max(candidate, date_fin_de_suivi)

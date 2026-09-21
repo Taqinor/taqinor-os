@@ -1890,3 +1890,52 @@ def poser_validite_devis(devis, date_validite):
     devis.date_validite = date_validite
     devis.save(update_fields=['date_validite'])
     return True
+
+
+# ── CAD57 (21/09/2026) — validité d'un dossier FINANCÉ À CRÉDIT ────────────
+#
+# La validité du devis était posée sur la DERNIÈRE touche de la cadence de
+# suivi, c'est-à-dire J+14 : le devis expirait le jour exact où le suivi
+# s'arrête. Or la loi 31-08 impose, une fois l'offre de crédit émise, 10 jours
+# de réflexion PUIS 7 jours de rétractation avant déblocage des fonds — un
+# client qui finance ne peut pas, légalement, boucler dans la fenêtre qu'on lui
+# annonce.
+#
+# DÉCISION FONDATEUR du 21/09/2026 : validité distincte et plus longue pour un
+# dossier financé à crédit (J+30), J+14 (la fin du suivi) pour les autres.
+# Le NOMBRE de jours n'est pas écrit ici : il vient du réglage société
+# ``CompanyProfile.quote_validity_days`` — le MÊME que celui dont le PDF se
+# sert déjà (``utils/expiry.date_expiration``), pour que les deux voix ne se
+# contredisent jamais (CAD59).
+
+def jours_validite_societe(company):
+    """Le réglage société ``quote_validity_days``, en jours.
+
+    Point d'entrée unique : ni le moteur de devis, ni le message WhatsApp, ni
+    la cadence n'écrivent ce nombre en dur. Retombe sur le défaut DÉCLARÉ du
+    champ (jamais un littéral choisi ici) quand le profil est illisible.
+    """
+    from apps.ventes.utils.expiry import _validity_days
+    return _validity_days(company)
+
+
+def date_validite_credit(devis, depart=None):
+    """La date de validité d'un dossier FINANCÉ : ``depart`` + le réglage.
+
+    ``depart`` est la date d'envoi (un ``date`` ou un ``datetime``) ; à défaut,
+    la date de création du devis. ``None`` quand aucune des deux n'est
+    connue — l'appelant garde alors la règle ordinaire plutôt que d'inventer
+    une date.
+    """
+    import datetime as _dt
+
+    if devis is None:
+        return None
+    base = depart or getattr(devis, 'date_envoi', None) \
+        or getattr(devis, 'date_creation', None)
+    if base is None:
+        return None
+    if isinstance(base, _dt.datetime):
+        base = base.date()
+    jours = jours_validite_societe(getattr(devis, 'company', None))
+    return base + _dt.timedelta(days=jours)
