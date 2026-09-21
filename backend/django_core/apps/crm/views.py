@@ -2937,6 +2937,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         'par_etape': serializers.ListField(child=serializers.DictField()),
         'leads_sans_touche': serializers.ListField(
             child=serializers.DictField()),
+        # CAD35 — les périodes d'absence déclarées de la fenêtre.
+        'absences_declarees': serializers.ListField(
+            child=serializers.DictField()),
         'conversion_par_stage': serializers.ListField(
             child=serializers.DictField()),
     }))

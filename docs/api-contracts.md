@@ -85,7 +85,7 @@
 - frontend/src/api/crmApi.js :: getEquipesStatistiques -> /api/django/crm/equipes/statistiques
     equipes:inconnu
 - frontend/src/api/crmApi.js :: getKpiAdherence -> /api/django/crm/relance-etapes/kpi-adherence
-    a_lheure_pct:inconnu, annulees_moteur:nombre, conversion_par_stage:inconnu, leads_sans_touche:inconnu, par_etape:inconnu, periode_jours:inconnu, sautees_humaines:nombre, tendance_a_lheure:inconnu, touches_en_retard_ouvertes:nombre, touches_faites:nombre, vitesse_premier_contact:inconnu
+    a_lheure_pct:inconnu, absences_declarees:inconnu, annulees_moteur:nombre, conversion_par_stage:inconnu, leads_sans_touche:inconnu, par_etape:inconnu, periode_jours:inconnu, sautees_humaines:nombre, tendance_a_lheure:inconnu, touches_en_retard_ouvertes:nombre, touches_faites:nombre, vitesse_premier_contact:inconnu
 - frontend/src/api/crmApi.js :: getLeadJalonsDevis -> /api/django/crm/leads/<>/jalons-devis
     results:inconnu
 - frontend/src/api/crmApi.js :: getLeadPhotoToit -> /api/django/crm/leads/<>/photo-toit

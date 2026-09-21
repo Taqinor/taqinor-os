@@ -1766,6 +1766,24 @@ def _a_lheure(etape):
     return cadence_temps.nee_en_retard(etape)
 
 
+def _a_lheure_ou_excusee(etape, absences, proprietaire):
+    """CAD22 + CAD35 — à l'heure, ou excusée sans rien inventer.
+
+    Excusée = née en retard (CAD22), ou échue un jour couvert par une
+    ABSENCE déclarée de la personne responsable du lead (CAD35) : personne
+    n'était là, l'accuser reviendrait à lui reprocher son congé.
+
+    Fonction de MODULE, jamais une fermeture définie dans ``kpi_adherence`` :
+    ``scripts/check_api_shapes.py`` lit TOUS les ``return`` d'une vue par
+    ``ast.walk`` — un ``return`` non-dictionnaire imbriqué fait sortir
+    l'endpoint entier du contrat versionné.
+    """
+    if _a_lheure(etape):
+        return True
+    return absences.couvre(
+        proprietaire.get(etape.lead_id), etape.due_date)
+
+
 def kpi_adherence(company, user, jours=30):
     """CKP3 — la vue ADHÉRENCE du cockpit CRM (forme `kpi_adherence`).
 
@@ -1803,13 +1821,34 @@ def kpi_adherence(company, user, jours=30):
         # `.only()` : `_a_lheure` les lit pour la garde « née en retard », et
         # un champ différé les relirait ligne par ligne.
         .only('statut', 'due_date', 'traite_le', 'ordre', 'canal', 'libelle',
-              'due_at', 'created_at', 'cadence_depart'))
+              'lead', 'due_at', 'created_at', 'cadence_depart'))
+
+    # ── CAD35 — les ABSENCES déclarées. Une touche échue pendant un congé
+    # n'impute AUCUN retard d'adhérence : personne n'était là pour la faire,
+    # et l'accuser reviendrait à reprocher ses vacances à quelqu'un. Aucune
+    # touche n'est supprimée, avancée ni décalée — c'est la MESURE qui se
+    # tait. Chargées UNE fois, sur la fenêtre que les chiffres couvrent
+    # réellement (jamais une durée inventée).
+    from . import cadence_absence
+
+    ouvertes_en_retard = list(
+        RelanceEtape.objects.filter(
+            company=company, statut='a_faire', due_date__lt=today,
+            lead__is_archived=False,
+            lead_id__in=leads_visibles.values('id'),
+        ).values_list('lead_id', 'due_date'))
+    borne_absences = min(
+        [depuis.astimezone(horaires.CASABLANCA).date()]
+        + [jour for _lead_id, jour in ouvertes_en_retard])
+    absences = cadence_absence.couverture(company, borne_absences, today)
+    proprietaire = dict(leads_visibles.values_list('id', 'owner_id'))
 
     faites = [e for e in touches if e.statut == 'fait']
     sautees = [e for e in touches if e.statut == 'sautee']
     annulees = [e for e in touches if e.statut == 'annulee']
     closes_humain = faites + sautees
-    a_lheure = [e for e in faites if _a_lheure(e)]
+    a_lheure = [e for e in faites
+                if _a_lheure_ou_excusee(e, absences, proprietaire)]
 
     # ── Drop-off par touche : LE signal de coaching. On groupe sur (ordre,
     # canal, libellé) — le libellé porte le sens pour un humain, l'ordre porte
@@ -1825,7 +1864,7 @@ def kpi_adherence(company, user, jours=30):
         if etape.statut == 'fait':
             ligne['faites'] += 1
             ligne['_closes'] += 1
-            if _a_lheure(etape):
+            if _a_lheure_ou_excusee(etape, absences, proprietaire):
                 ligne['_a_lheure'] += 1
         elif etape.statut == 'sautee':
             ligne['sautees_humaines'] += 1
@@ -1850,7 +1889,7 @@ def kpi_adherence(company, user, jours=30):
         cle = _lundi(etape.traite_le.astimezone(horaires.CASABLANCA).date())
         bloc = semaines.setdefault(cle, [0, 0])
         bloc[1] += 1
-        if _a_lheure(etape):
+        if _a_lheure_ou_excusee(etape, absences, proprietaire):
             bloc[0] += 1
     tendance_a_lheure = [
         {'semaine': cle.isoformat(), 'a_lheure_pct': _pct(bloc[0], bloc[1])}
@@ -1925,16 +1964,21 @@ def kpi_adherence(company, user, jours=30):
         'periode_jours': jours,
         'a_lheure_pct': _pct(len(a_lheure), len(closes_humain)),
         'touches_faites': len(faites),
-        'touches_en_retard_ouvertes': RelanceEtape.objects.filter(
-            company=company, statut='a_faire', due_date__lt=today,
-            lead__is_archived=False,
-            lead_id__in=leads_visibles.values('id')).count(),
+        # CAD35 — les touches échues PENDANT une absence déclarée sortent du
+        # compte : elles restent à faire, elles ne sont pas un manquement.
+        'touches_en_retard_ouvertes': sum(
+            1 for lead_id, jour in ouvertes_en_retard
+            if not absences.couvre(proprietaire.get(lead_id), jour)),
         'sautees_humaines': len(sautees),
         'annulees_moteur': len(annulees),
         'vitesse_premier_contact': vitesse,
         'tendance_a_lheure': tendance_a_lheure,
         'par_etape': lignes_etape,
         'leads_sans_touche': sans_touche,
+        # CAD35 — ce que le cockpit MONTRE de l'absence : la période, son
+        # motif, et qui reprend les dossiers. Aucun prénom en dur : des
+        # identifiants que l'écran résout en noms.
+        'absences_declarees': absences.resume(),
         'conversion_par_stage': _conversion_par_stage(
             company, leads_visibles, depuis),
     }
@@ -2013,9 +2057,9 @@ def mes_stats_relance(company, user):
     mes_touches = RelanceEtape.objects.filter(
         company=company, lead_id__in=mes_leads.values('id'))
 
+    from . import cadence_absence, horaires
+
     a_faire = mes_touches.filter(statut='a_faire', due_date__lte=today).count()
-    en_retard = mes_touches.filter(
-        statut='a_faire', due_date__lt=today).count()
 
     # Mon à-l'heure sur 7 jours — même définition que l'adhérence globale
     # (grain JOUR, annulations moteur exclues du dénominateur).
@@ -2026,8 +2070,27 @@ def mes_stats_relance(company, user):
         # CAD22 — voir `kpi_adherence` : `_a_lheure` lit aussi la naissance.
     ).only('statut', 'due_date', 'traite_le',
            'due_at', 'created_at', 'cadence_depart'))
-    a_lheure_7j = _pct(sum(1 for e in recentes if _a_lheure(e)),
-                       len(recentes))
+
+    # CAD35 — MES absences (plus les fermetures de société) : un jour couvert
+    # ne m'impute aucun retard. La fenêtre chargée est celle des dates
+    # réellement en jeu — jamais une durée inventée.
+    moi = getattr(user, 'pk', None)
+    jours_en_retard = list(mes_touches.filter(
+        statut='a_faire', due_date__lt=today,
+    ).values_list('due_date', flat=True))
+    borne = min(
+        [depuis_7j.astimezone(horaires.CASABLANCA).date(),
+         today - datetime.timedelta(days=SERIE_JOURS_MAX)]
+        + jours_en_retard)
+    absences = cadence_absence.couverture(
+        company, borne, today, utilisateurs=[moi] if moi else [])
+
+    en_retard = sum(1 for jour in jours_en_retard
+                    if not absences.couvre(moi, jour))
+    a_lheure_7j = _pct(
+        sum(1 for e in recentes
+            if _a_lheure(e) or absences.couvre(moi, e.due_date)),
+        len(recentes))
 
     # Cadences menées à leur terme sur 14 jours : des touches TRAITÉES sur la
     # période et plus AUCUNE ouverte sur la même cadence — deux requêtes
@@ -2046,7 +2109,8 @@ def mes_stats_relance(company, user):
         'a_lheure_7j_pct': a_lheure_7j,
         'cadences_completees_14j': cadences_completees,
         'serie_jours_sans_retard': _serie_jours_sans_retard(
-            company, mes_touches, today),
+            company, mes_touches, today,
+            absences=absences, utilisateur=moi),
     }
 
 
@@ -2055,13 +2119,17 @@ def mes_stats_relance(company, user):
 SERIE_JOURS_MAX = 60
 
 
-def _serie_jours_sans_retard(company, mes_touches, today):
+def _serie_jours_sans_retard(company, mes_touches, today, absences=None,
+                             utilisateur=None):
     """Jours OUVRÉS consécutifs TERMINÉS sans laisser une touche en retard.
 
     Un jour est « propre » si chaque touche qui y était due a été close ce
     jour-là au plus tard. On repart du dernier jour ouvré TERMINÉ (jamais
     d'aujourd'hui : la journée n'est pas finie, compter ses touches encore
     ouvertes comme des retards serait faux) et on remonte.
+
+    CAD35 — un jour couvert par une absence déclarée (``absences``) est
+    propre par construction : une série ne se casse pas sur un congé.
     """
     from . import horaires
 
@@ -2074,6 +2142,8 @@ def _serie_jours_sans_retard(company, mes_touches, today):
                   and etape.traite_le is not None
                   and etape.traite_le.astimezone(horaires.CASABLANCA).date()
                   <= etape.due_date)
+        if not propre and absences is not None:
+            propre = absences.couvre(utilisateur, etape.due_date)
         dues.setdefault(etape.due_date, []).append(propre)
 
     serie = 0

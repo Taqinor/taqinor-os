@@ -3655,3 +3655,87 @@ class AppareilEquipe(TenantModel):
 # `apps.crm.models -> apps.visites.models` que le contrat `independence`
 # d'import-linter interdit, c'est-à-dire exactement le couplage que ce move
 # supprime. Le reste du CRM lit la visite par `apps.visites.selectors`.
+
+
+# ── CAD-B ── CAD35 — PÉRIODE D'ABSENCE DÉCLARÉE ──────────────────────────────
+#
+# Rien ne suspendait les cadences quand la personne qui les tient est absente.
+# En régime RÉACTIF les touches naissent quand même, elles échoient pendant le
+# congé, et `selectors._a_lheure` comptait un manquement pour chacune : le
+# cockpit accusait quelqu'un d'être en retard pendant ses vacances.
+#
+# VERSION MINIMALE, SANS NOUVEAU MOTEUR (21/09/2026) : déclarer la période
+# suffit à (a) ne plus imputer de retard d'adhérence sur ses jours et (b) la
+# rendre visible dans le cockpit. AUCUNE touche n'est supprimée, aucune n'est
+# avancée, aucune n'est décalée : le décalage reste un geste humain, au cas par
+# cas (« Mettre en veille »). Le digest du matin continue de partir — une
+# absence neutralise une MESURE, elle n'éteint pas le suivi.
+class PeriodeAbsence(TenantModel):
+    """Une période d'absence déclarée (congé, arrêt, formation) — d'une
+    personne, ou de la société entière quand ``utilisateur`` est vide."""
+
+    class Motif(models.TextChoices):
+        CONGE = 'conge', 'Congé'
+        ARRET = 'arret', 'Arrêt maladie'
+        FORMATION = 'formation', 'Formation'
+        AUTRE = 'autre', 'Autre'
+
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,  # on_delete: absence sans objet sans la personne
+        null=True, blank=True, related_name='crm_absences',
+        verbose_name='Personne absente',
+        help_text='Qui est absent ? Laisser vide pour une fermeture qui '
+                  'concerne toute la société.')
+    date_debut = models.DateField(
+        verbose_name='Premier jour',
+        help_text='À partir de quel jour, ce jour-là compris ?')
+    date_fin = models.DateField(
+        verbose_name='Dernier jour',
+        help_text='Jusqu’à quel jour, ce jour-là compris ?')
+    motif = models.CharField(
+        max_length=10, choices=Motif.choices, default=Motif.CONGE,
+        verbose_name='Motif',
+        help_text='Congé, arrêt maladie, formation, ou autre ?')
+    # Remède (1) du round 2 : la COUVERTURE par défaut — quelqu'un reprend les
+    # dossiers. Le champ NOMME cette personne ; la reprise elle-même reste un
+    # geste humain (aucune réassignation automatique n'est posée ici).
+    remplacant = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,  # on_delete: la période survit au départ du remplaçant
+        null=True, blank=True, related_name='crm_absences_couvertes',
+        verbose_name='Reprise des dossiers',
+        help_text='Qui reprend les dossiers pendant cette absence ?')
+    note = models.TextField(
+        blank=True, default='', verbose_name='Note',
+        help_text='Quelque chose à savoir pour la reprise ?')
+
+    class Meta:
+        verbose_name = 'Période d’absence'
+        verbose_name_plural = 'Périodes d’absence'
+        ordering = ['-date_debut', 'utilisateur_id']
+        indexes = [
+            models.Index(fields=['company', 'date_debut', 'date_fin'],
+                         name='crm_absence_periode_idx'),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if (self.date_debut and self.date_fin
+                and self.date_fin < self.date_debut):
+            # Règle fondateur du 08/09 : l'erreur désigne LE champ fautif et
+            # dit quoi corriger, jamais un refus générique.
+            raise ValidationError({
+                'date_fin': 'Le dernier jour d’absence ne peut pas précéder '
+                            'le premier jour. Corrigez « Dernier jour ».'})
+
+    def couvre(self, jour):
+        """``jour`` (date locale) tombe-t-il dans cette absence, bornes
+        comprises ?"""
+        if jour is None or self.date_debut is None or self.date_fin is None:
+            return False
+        return self.date_debut <= jour <= self.date_fin
+
+    def __str__(self):
+        qui = self.utilisateur_id or 'société'
+        return f'{qui} — {self.date_debut} → {self.date_fin}'
