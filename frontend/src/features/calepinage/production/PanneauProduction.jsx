@@ -5,6 +5,7 @@ import useResource from '../../../hooks/useResource'
 import { formatNumber, formatPercent } from '../../../lib/format'
 import { Card, Spinner, Stat } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
+import TapisHoraire from './TapisHoraire'
 
 /* ============================================================================
    CAL236 — LE PANNEAU « PRODUCTION » DU MODULE.
@@ -213,6 +214,11 @@ export default function PanneauProduction({ calepinageId }) {
         </div>
       </div>
     </Card>
+    {/* CALX64 — le tapis jour × heure de la série persistée (CALX193). La
+        série n'est PAS recopiée par `GET resultat/` (D-CALX 14, volume) :
+        la propriété est passée pour le jour où elle y sera, et le composant
+        retombe sinon sur la porte d'export (CALX6, CAL144). */}
+    <TapisHoraire calepinageId={id} serie={data?.serie_horaire} />
     </>
   )
 }

@@ -10,8 +10,13 @@ import { render, screen, cleanup, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { reponseContrat } from '../../../test/fixtures/contractSamples'
 
+/* CALX64 — le panneau monte désormais `TapisHoraire`, qui relit la série par
+   la porte d'export (CAL144/CALX6) : la doublure doit porter `exportCsv`,
+   sinon le panneau tomberait sur une méthode absente. Elle rend une réponse
+   VIDE : le tapis affiche alors son état « Lancer la simulation », ce que ce
+   fichier n'a pas à juger (il a son propre test). */
 vi.mock('../../../api/calepinageApi', () => ({
-  default: { calepinages: { resultat: vi.fn() } },
+  default: { calepinages: { resultat: vi.fn(), exportCsv: vi.fn() } },
 }))
 
 import calepinageApi from '../../../api/calepinageApi'

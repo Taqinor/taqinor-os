@@ -66,6 +66,8 @@ export const ONGLETS = [
   { cle: 'versions', libelle: 'Versions', groupe: 'Dossiers', ordre: 180, composant: lazy(() => import('./PanneauVersions')) }, // CALX36
 
   { cle: 'masse-lestage', libelle: 'Masse & lestage', groupe: 'Système', ordre: 190, composant: lazy(() => import('./PanneauMasseLestage')) }, // CALX17
+
+  { cle: 'series', libelle: 'Séries', groupe: 'Résultats', ordre: 200, composant: lazy(() => import('./PanneauSeries')) }, // CALX6
 ]
 
 /**
