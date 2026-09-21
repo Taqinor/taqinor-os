@@ -70,6 +70,13 @@ from . import reglementaire as _reglementaire_action  # noqa: F401
 # PDF vectoriel déposé, service CAL62). Aucune écriture : la porte rend le
 # contour, elle ne pose aucun ``roof_layout``.
 from . import import_plan as _import_plan_action  # noqa: F401
+
+# CALX35 — même patron : rattache ``dupliquer`` (la porte HTTP du service de
+# copie CAL14, ``services/variantes.py::dupliquer``).
+from . import cycle as _cycle_action  # noqa: F401
+# CALX47 — même patron : rattache ``depuis-lead`` (la porte CRM du module,
+# idempotente, qui appelle ``services/creation.py::creer_pour_lead``).
+from . import depuis_lead as _depuis_lead_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -88,6 +95,8 @@ MODULES_RATTACHES = (
     'simulation',
     'reglementaire',
     'import_plan',  # CALX39
+    'cycle',  # CALX35
+    'depuis_lead',  # CALX47
 )
 
 __all__ = ['MODULES_RATTACHES']

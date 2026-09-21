@@ -133,3 +133,105 @@ test.describe('CAL222 — les quatre branches de `ouvrirConceptionToiture`', () 
     await expect(page).toHaveURL(/\/ventes\/devis\/nouveau\?lead=/)
   })
 })
+
+/* ============================================================================
+   CALX47 — LA PORTE NEUVE DU MODULE CALEPINAGE, À CÔTÉ DE L'ANCIENNE.
+   ----------------------------------------------------------------------------
+   `module.config.jsx` disait noir sur blanc que « cette porte N'EXISTE PAS
+   aujourd'hui » : aucun lien de `features/crm` ne menait à `/calepinage/…`.
+   CALX47 en ajoute une, dans le MÊME sélecteur d'actions — et la décision D2
+   exige que le geste existant n'en soit pas modifié d'un iota : les quatre
+   branches ci-dessus restent la preuve de celui-là.
+
+   POURQUOI LA RÉPONSE EST INTERCEPTÉE. `POST calepinages/depuis-lead/` est
+   IDEMPOTENT côté serveur et rend `{calepinage, reference, nom, lead, cree}`.
+   Fabriquer l'état de base réel (lead + calepinage) demanderait de muter la
+   base partagée et rendrait la spec dépendante de l'ordre d'exécution —
+   exactement ce que la configuration (`workers: 1`) demande d'éviter. On
+   intercepte donc CETTE route et on vérifie le COMPORTEMENT DE L'ÉCRAN :
+   l'atelier du module s'ouvre sur l'identifiant RENDU, jamais sur un
+   identifiant deviné.
+
+   L'ATELIER S'OUVRE DANS UN NOUVEL ONGLET (comme la fiche client, LW14) : la
+   spec attend donc l'événement `page` du contexte, jamais une navigation de
+   l'onglet courant. */
+const ROUTE_DEPUIS_LEAD = '**/api/django/calepinage/calepinages/depuis-lead/'
+
+/** Le geste NEUF : menu « ⋯ » → « Ouvrir dans le module Calepinage ». */
+async function ouvrirModuleCalepinage(page) {
+  await page.locator('.lw-rail-actions-more').first().click()
+  await page.getByRole('menuitem', { name: /Ouvrir dans le module Calepinage/ })
+    .click()
+}
+
+test.describe('CALX47 — ouvrir le module Calepinage depuis la fiche du lead', () => {
+  test('l’entrée neuve ouvre l’atelier du MODULE, sur l’id rendu', async ({ page, context }) => {
+    await leadOuvert(page, 'CALX47 Module')
+    await page.route(ROUTE_DEPUIS_LEAD, (route) => route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        calepinage: 9101, reference: 'CAL-2609-9101',
+        nom: 'Calepinage CALX47', lead: 1, cree: true,
+      }),
+    }))
+
+    const ongletPromis = context.waitForEvent('page')
+    await ouvrirModuleCalepinage(page)
+    const atelier = await ongletPromis
+    await expect(atelier).toHaveURL(/\/calepinage\/9101/)
+  })
+
+  test('deux ouvertures successives mènent au MÊME calepinage', async ({ page, context }) => {
+    await leadOuvert(page, 'CALX47 Idempotent')
+    // Le serveur rend le MÊME identifiant au second appel (`cree: false`).
+    let appels = 0
+    await page.route(ROUTE_DEPUIS_LEAD, (route) => {
+      appels += 1
+      return route.fulfill({
+        status: appels === 1 ? 201 : 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          calepinage: 9102, reference: 'CAL-2609-9102',
+          nom: 'Calepinage CALX47', lead: 1, cree: appels === 1,
+        }),
+      })
+    })
+
+    const premier = context.waitForEvent('page')
+    await ouvrirModuleCalepinage(page)
+    await expect(await premier).toHaveURL(/\/calepinage\/9102/)
+
+    const second = context.waitForEvent('page')
+    await ouvrirModuleCalepinage(page)
+    await expect(await second).toHaveURL(/\/calepinage\/9102/)
+  })
+
+  test('l’ancienne entrée ouvre TOUJOURS l’ancien atelier (D2)', async ({ page }) => {
+    await leadOuvert(page, 'CALX47 Ancien geste')
+    await servirBrouillons(page, [devis(4246, 'DEV-CALX47-1')])
+
+    await ouvrirConceptionToiture(page)
+
+    // Le geste historique n'a pas bougé d'un champ : même écran, même URL.
+    await expect(page).toHaveURL(/\/ventes\/devis\/4246\/design/)
+    await expect(page).not.toHaveURL(/\/calepinage\//)
+  })
+
+  test('refus serveur : le motif est DIT, et rien n’est ouvert', async ({ page }) => {
+    await leadOuvert(page, 'CALX47 Refus')
+    const messageServeur = 'Lead introuvable (#999).'
+    await page.route(ROUTE_DEPUIS_LEAD, (route) => route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({ lead: messageServeur }),
+    }))
+
+    await ouvrirModuleCalepinage(page)
+
+    // Le message du SERVEUR, précédé du geste qu'il concerne.
+    await expect(page.getByText(/Module Calepinage/)).toBeVisible()
+    await expect(page.getByText(/Lead introuvable/)).toBeVisible()
+    await expect(page).not.toHaveURL(/\/calepinage\//)
+  })
+})

@@ -281,6 +281,37 @@ const calepinageApi = {
     // du contrat CAL247 RECOMPOSÉ : le panneau relit sa saisie sans second
     // appel. Un code hors du gabarit sort en 400 sous ce code-là.
     enregistrerChampsDossier: (id, corps) => api.post(`${pivot(id)}champs-dossier/`, corps),
+
+    // CALX26 — l'archivage RÉVERSIBLE (CAL208, `views/archivage.py`) : la
+    // corbeille plateforme `apps.trash`, jamais une suppression dure ni un
+    // second modèle d'archive. `restaurer-corbeille` (et non `restaurer`,
+    // pris par la restauration de VERSION, CAL20) sort de la corbeille.
+    archiver: (id) => api.post(`${pivot(id)}archiver/`),
+    restaurerCorbeille: (id) => api.post(`${pivot(id)}restaurer-corbeille/`),
+
+    // CALX42 — le drapeau « modèle réutilisable » (`records.Tag`, CAL199 —
+    // jamais un champ propre) et la création d'un calepinage NEUF depuis un
+    // modèle. `creerDepuisModele` est une action de LISTE : elle ne vise
+    // aucun calepinage existant, elle en fabrique un — `{modele, lead,
+    // client, titre}`, le rattachement du modèle n'étant JAMAIS recopié.
+    marquerModele: (id) => api.post(`${pivot(id)}marquer-modele/`),
+    demarquerModele: (id) => api.post(`${pivot(id)}demarquer-modele/`),
+    creerDepuisModele: (corps) =>
+      api.post('/calepinage/calepinages/creer-depuis-modele/', corps),
+
+    // CALX35 — la porte HTTP du service de copie qui existe depuis CAL14
+    // (`services/variantes.py::dupliquer`), forme de réponse figée par
+    // `contract_samples/calepinage_dupliquer.json`. `{avec_variantes}` est
+    // EXPLICITE : absent, le serveur garde le comportement d'aujourd'hui.
+    dupliquer: (id, corps) => api.post(`${pivot(id)}dupliquer/`, corps),
+
+    // CALX47 — LA PORTE CRM du module : le calepinage OUVERT de ce lead, le
+    // MÊME à chaque appel (le serveur est idempotent — un lead qui en a déjà
+    // un reçoit celui-là, jamais un second). Le geste existant « Concevoir la
+    // toiture (3D) » du rail CRM garde exactement sa sémantique : cette porte
+    // vient À CÔTÉ de lui, elle ne le remplace pas.
+    depuisLead: (leadId) =>
+      api.post('/calepinage/calepinages/depuis-lead/', { lead: leadId }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
@@ -313,6 +344,16 @@ const calepinageApi = {
     suggestionPenteDisponible: () => api.get('/calepinage/parametres/suggestion-pente/'),
     suggererPentesIGN: (roofLayout) =>
       api.post('/calepinage/parametres/suggestion-pente/', { roof_layout: roofLayout }),
+
+    // CALX30 — les PROFILS TYPES de consommation de la société (CAL149,
+    // `views/consommation.py`, servi sous le préfixe `parametres` parce
+    // qu'aucun identifiant de calepinage n'y entre). Le GET sert les profils
+    // SAISIS puis les replis ÉTIQUETÉS « hypothèse interne » ; le PUT
+    // REMPLACE les profils saisis — un repli n'en est pas un, il n'est donc
+    // jamais renvoyé comme une saisie.
+    profilsTypes: () => api.get('/calepinage/parametres/profils-types/'),
+    enregistrerProfilsTypes: (profils) =>
+      api.put('/calepinage/parametres/profils-types/', { profils }),
   },
 }
 
