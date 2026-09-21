@@ -3364,3 +3364,43 @@ def devis_utilisant_produit(user, produit_id, limit=20):
             'total_ttc': str(devis.total_ttc),
         })
     return lignes
+
+
+# ── CAD-K ── CAD133 — engagement du client sur SA proposition ───────────────
+def engagement_proposition_du_lead(lead_id, company):
+    """CAD133 — ce que le client a FAIT de sa proposition (lecture seule).
+
+    Point d'entrée cross-app UNIQUE pour que le score du CRM compte un
+    COMPORTEMENT sans importer ``apps.ventes.models``. Multi-tenant : borné à
+    la société fournie. Aucun montant, aucun prix d'achat, aucune marge — ce
+    sont des faits de lecture, jamais du chiffrage.
+
+    Renvoie ``{ouverte, vues, lue_en_detail, derniere_vue}`` :
+      * ``ouverte``       — la proposition a été ouverte au moins une fois ;
+      * ``vues``          — total des consultations (``ShareLink.view_count``) ;
+      * ``lue_en_detail`` — un ``deep_engagement_logged_at`` existe ;
+      * ``derniere_vue``  — le plus récent instant connu, ou ``None``.
+    """
+    from django.db.models import Max, Sum
+
+    from .models import ShareLink
+
+    vide = {'ouverte': False, 'vues': 0, 'lue_en_detail': False,
+            'derniere_vue': None}
+    if not lead_id or company is None:
+        return vide
+    agregat = (ShareLink.objects
+               .filter(devis__lead_id=lead_id, devis__company=company)
+               .aggregate(vues=Sum('view_count'),
+                          premiere=Max('first_viewed_at'),
+                          profond=Max('deep_engagement_logged_at')))
+    vues = int(agregat.get('vues') or 0)
+    premiere = agregat.get('premiere')
+    profond = agregat.get('profond')
+    instants = [i for i in (premiere, profond) if i is not None]
+    return {
+        'ouverte': premiere is not None or vues > 0,
+        'vues': vues,
+        'lue_en_detail': profond is not None,
+        'derniere_vue': max(instants) if instants else None,
+    }

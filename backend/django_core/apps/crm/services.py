@@ -4650,6 +4650,10 @@ def noter_devis_ouvert(devis_reference: str, lead) -> None:
     # RÈGLE FONDATEUR 07/09/2026 — plus d'avance de funnel AUTOMATIQUE sur
     # l'ouverture (YLEAD10 débranché) : le funnel ne bouge que sur une
     # réponse confirmée de Meryem. La note et la notification restent.
+    # CAD133 — le score, lui, se recalcule À L'INSTANT : sans cela le badge
+    # mentirait jusqu'au passage nocturne, et la file du jour classerait un
+    # client qui vient d'ouvrir sa proposition comme s'il n'avait rien fait.
+    recompute_lead_score(lead)
 
 
 def noter_devis_reouvert(devis_reference: str, lead, vues=None) -> None:
@@ -4665,6 +4669,9 @@ def noter_devis_reouvert(devis_reference: str, lead, vues=None) -> None:
         company=lead.company, lead=lead, user=None,
         kind=LeadActivity.Kind.NOTE,
         body=f"Le client a rouvert le devis {devis_reference}{suffixe}")
+    # CAD133 — revenir sur sa proposition est le signal de comportement le
+    # plus fort : le score monte À L'INSTANT, pas au passage nocturne.
+    recompute_lead_score(lead)
 
 
 def noter_devis_envoye(devis_reference: str, lead) -> None:
