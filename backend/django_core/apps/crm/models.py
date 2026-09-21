@@ -494,6 +494,57 @@ class Lead(SoftDeleteModel):
         SOIR = 'soir', 'Soir'
         JOURNEE = 'journee', 'Toute la journée'
 
+    # ── CAD-L ── CAD149 — vocabulaires de la VAGUE 1 du script d'appel guidé
+    # (audit L3 du 21/09/2026). Chaque vocabulaire sert UN champ dont le
+    # ``help_text`` porte la question orale : rien n'est réinventé ailleurs.
+    class TypeBien(models.TextChoices):
+        VILLA = 'villa', 'Villa'
+        APPARTEMENT = 'appartement', 'Appartement'
+        IMMEUBLE = 'immeuble', 'Immeuble'
+        RIAD = 'riad', 'Riad'
+        FERME = 'ferme', 'Ferme'
+        AUTRE = 'autre', 'Autre'
+
+    # ``secours_coupures`` ABSORBE le besoin « je veux tenir pendant les
+    # coupures » : c'est un objectif déclaré, pas un booléen séparé — et il
+    # reste un ARGUMENT commercial, sans aucun dimensionnement de secours.
+    class ObjectifProjet(models.TextChoices):
+        FACTURE = 'facture', 'Baisser la facture'
+        SECOURS_COUPURES = 'secours_coupures', 'Tenir pendant les coupures'
+        AUTONOMIE = 'autonomie', 'Gagner en autonomie'
+        INJECTION_8221 = 'injection_8221', 'Injecter le surplus (loi 82-21)'
+        AUTRE = 'autre', 'Autre'
+
+    # Vocabulaire REPRIS de la qualification de visite
+    # (``apps/visites/qualification.py``) pour ne pas ouvrir un second
+    # vocabulaire du même sujet, + le cas « le propriétaire est un tiers »
+    # que la visite ne connaissait pas (locataire, indivision, syndic).
+    class Decideur(models.TextChoices):
+        SEUL = 'seul', 'Décide seul'
+        CONJOINT_FAMILLE = 'conjoint_famille', 'Avec le conjoint / la famille'
+        ASSOCIE_DIRECTION = 'associe_direction', 'Avec un associé / la direction'
+        PROPRIETAIRE_TIERS = 'proprietaire_tiers', 'Le propriétaire (un tiers) décide'
+
+    # État de la comparaison EN COURS. ``ConcurrentPerte`` reste le
+    # post-mortem d'une affaire PERDUE : les deux ne se remplacent pas.
+    class DevisConcurrents(models.TextChoices):
+        NON = 'non', 'Non, aucun autre devis'
+        EN_ATTENTE = 'en_attente', 'En attente d’un autre devis'
+        RECU = 'recu', 'A déjà reçu un autre devis'
+
+    class EquipVeStatut(models.TextChoices):
+        POSSEDE = 'possede', 'Véhicule déjà là'
+        PREVU = 'prevu', 'Véhicule seulement prévu'
+
+    # Vocabulaire IDENTIQUE à celui du site (``pompeActuelle``,
+    # apps/crm/webhooks.py) — le butane est GARDÉ : c'est un cas réel du parc
+    # marocain qu'un vocabulaire « diesel/réseau/aucune » perdrait.
+    class PompeAlimActuelle(models.TextChoices):
+        AUCUNE = 'aucune', 'Aucune pompe'
+        DIESEL = 'diesel', 'Diesel'
+        BUTANE = 'butane', 'Butane'
+        ELECTRIQUE = 'electrique', 'Électrique (réseau)'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1102,6 +1153,82 @@ class Lead(SoftDeleteModel):
         related_name='crm_leads',
         verbose_name='Entité',
     )
+
+    # ── CAD-L ── CAD149 — VAGUE 1 du script d'appel guidé (audit L3 du
+    # 21/09/2026, liste arrêtée par le fondateur — CAD160 : huit champs, ni
+    # plus ni moins). Tous ``null=True`` : vide = « la question n'a pas encore
+    # été posée », JAMAIS une réponse. Le ``help_text`` de chaque champ EST la
+    # question orale (règle du bloc L4 ci-dessus) — l'UI CRM la lit d'ici, on
+    # ne la recopie nulle part. Les trois derniers PROMEUVENT en colonne des
+    # réponses qui vivaient dans le sac ``web_questionnaire``, en gardant le
+    # vocabulaire déjà émis par le site.
+    type_bien = models.CharField(
+        max_length=12, choices=TypeBien.choices, null=True, blank=True,
+        verbose_name='Type de bien',
+        help_text="Question à l'appel : « De quel type de bien s'agit-il "
+                  '— villa, appartement, immeuble, riad, ferme ? » '
+                  "(vide = pas encore posée). Remplace l'idée de faire "
+                  'saisir le type de toit au téléphone : ce chemin-là est '
+                  'fermé depuis la décision du 18/08/2026.')
+    objectif_projet = models.CharField(
+        max_length=16, choices=ObjectifProjet.choices, null=True, blank=True,
+        verbose_name='Objectif du projet',
+        help_text="Question à l'appel : « Qu'est-ce qui compte le plus pour "
+                  'vous — baisser la facture, tenir pendant les coupures, '
+                  "gagner en autonomie, injecter le surplus ? » (vide = pas "
+                  'encore posée). « Tenir pendant les coupures » est un '
+                  'ARGUMENT : aucun dimensionnement de secours n’en découle.')
+    decideur = models.CharField(
+        max_length=20, choices=Decideur.choices, null=True, blank=True,
+        verbose_name='Qui décide',
+        help_text="Question à l'appel : « Qui décide avec vous de ce "
+                  'projet ? » (vide = pas encore posée). Renseigné à '
+                  '« avec le conjoint / la famille » ou « avec un associé / '
+                  'la direction », il pose l’étiquette « Décision à '
+                  'plusieurs » qui pilote la touche du dimanche en famille. '
+                  'Question ORALE uniquement : jamais dans le questionnaire '
+                  'envoyé au client.')
+    devis_concurrents = models.CharField(
+        max_length=10, choices=DevisConcurrents.choices, null=True,
+        blank=True, verbose_name='Autres devis en cours',
+        help_text="Question à l'appel : « Avez-vous déjà reçu ou demandé "
+                  'un autre devis ? » (vide = pas encore posée). État de la '
+                  'comparaison EN COURS — le post-mortem d’une affaire '
+                  'perdue reste, lui, dans la fiche « concurrent ». '
+                  'Question ORALE uniquement.')
+    equip_ve_statut = models.CharField(
+        max_length=10, choices=EquipVeStatut.choices, null=True, blank=True,
+        verbose_name='Véhicule électrique — déjà là ou prévu ?',
+        help_text="Question à l'appel : « Ce véhicule électrique, vous "
+                  "l'avez déjà, ou c'est un projet ? » (vide = pas encore "
+                  'posée). Précise le « avez-vous OU prévoyez-vous » du '
+                  'champ véhicule électrique : une voiture seulement PRÉVUE '
+                  'reste comptée, et le devis comme la proposition portent '
+                  'alors l’étiquette « avec votre future voiture » — sans '
+                  'elle, le chiffre mentirait.')
+    pompage_heures_jour = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        verbose_name='Pompage — heures par jour',
+        help_text="Question à l'appel : « Combien d'heures par jour la "
+                  'pompe tourne-t-elle ? » (h/jour, vide = pas encore '
+                  'posée). Colonne dédiée de la réponse que le site envoie '
+                  'déjà sous « heures de pompage ».')
+    pompe_alim_actuelle = models.CharField(
+        max_length=12, choices=PompeAlimActuelle.choices, null=True,
+        blank=True, verbose_name='Pompe actuelle — alimentation',
+        help_text="Question à l'appel : « Votre pompe actuelle marche à "
+                  'quoi — diesel, butane, électricité, ou vous n’en avez '
+                  'pas ? » (vide = pas encore posée). Colonne dédiée de la '
+                  'réponse déjà émise par le site, butane compris.')
+    carburant_litres_mois = models.DecimalField(
+        max_digits=9, decimal_places=2, null=True, blank=True,
+        verbose_name='Carburant consommé (litres/mois)',
+        help_text="Question à l'appel : « Combien de litres de carburant "
+                  'la pompe consomme-t-elle par mois ? » (litres/mois, vide '
+                  '= pas encore posée). C’est l’unité qui manquait à côté '
+                  'de la dépense en dirhams : l’économie de carburant se '
+                  'calcule sur ce que le client DÉCLARE, aucun prix de '
+                  'gasoil de référence n’est écrit nulle part.')
 
     def save(self, *args, **kwargs):
         # QW10 — maintient les colonnes de dédup normalisées à chaque save,

@@ -38,9 +38,15 @@ SECTIONS = QuestionnaireLien.SECTIONS_CLES
 CHAMPS_PAR_SECTION = {
     'contact': ('email', 'adresse', 'ville'),
     'gps': ('gps_lat', 'gps_lng'),
+    # CAD149 — `objectif_projet` rejoint la section énergie : « pourquoi le
+    # solaire » se répond aussi bien par écrit qu'au téléphone.
     'energie': ('facture_hiver', 'facture_ete', 'ete_differente',
-                'conso_mensuelle_kwh', 'tranche_onee', 'raccordement'),
-    'toiture': ('type_toiture', 'surface_toiture_m2', 'roof_age', 'ownership'),
+                'conso_mensuelle_kwh', 'tranche_onee', 'raccordement',
+                'objectif_projet'),
+    # CAD149 — `type_bien` rejoint la section du bâtiment (celle qui porte
+    # déjà l'âge du toit et le statut d'occupation).
+    'toiture': ('type_toiture', 'surface_toiture_m2', 'roof_age', 'ownership',
+                'type_bien'),
     'occupation': ('occupation_jour',),
     'equipements': (
         'equip_piscine', 'equip_piscine_pompe_kw',
@@ -51,7 +57,18 @@ CHAMPS_PAR_SECTION = {
         'equip_clim_creneau',
         'equip_chauffe_eau_electrique', 'equip_chauffe_eau_kw',
         'equip_chauffe_eau_creneau',
+        # CAD149 — « déjà là ou seulement prévu » se répond aussi bien par
+        # écrit : c'est la précision qui décide de l'étiquette du devis.
+        'equip_ve_statut',
     ),
+    # CAD149 — les cinq autres champs de la vague 1 restent HORS de cette
+    # table, et c'est délibéré :
+    #   · `decideur` et `devis_concurrents` ne se posent qu'à l'ORAL
+    #     (décision fondateur du 21/09/2026) ;
+    #   · `pompage_heures_jour`, `pompe_alim_actuelle` et
+    #     `carburant_litres_mois` sont des réponses de pompage agricole, et
+    #     aucune section agricole n'existe dans ce questionnaire — en ouvrir
+    #     une est un geste d'écran, pas un geste de colonne.
     # Sections PHOTO : aucune colonne — la réponse est une pièce jointe.
     'photo_facture': (),
     'photo_compteur': (),

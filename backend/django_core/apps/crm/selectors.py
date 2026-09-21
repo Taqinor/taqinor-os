@@ -1178,6 +1178,24 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
     + [(champ, _RAISON_STRUCTURE) for champ in (
         'structure_pref', 'structure_produit',
     )]
+    # ── CAD-L ── CAD149 — vague 1 du script d'appel guidé : deux des huit
+    # champs portent un marqueur de provenance (`equip_`, `pompe_`) et
+    # doivent donc être déclarés ICI, avec leur raison.
+    + [
+        ('equip_ve_statut',
+         "précision du profil d'équipements posée à l'appel (CAD149) : elle "
+         "dit si le véhicule électrique est DÉJÀ là ou seulement prévu, et "
+         "le devis ne la RECOPIE pas dans `etude_params` — elle est relue "
+         "sur le lead au moment où l'étude compose la couche véhicule et "
+         "où le rendu décide de l'étiquette « avec votre future voiture ». "
+         "Une valeur sans copie ne peut pas diverger de sa copie."),
+        ('pompe_alim_actuelle',
+         "questionnaire de pompage agricole (CAD149) : l'alimentation de la "
+         "pompe ACTUELLE sert l'argumentaire et l'économie de carburant, "
+         "pas le bloc énergie/toiture RÉSIDENTIEL que le devis recopie dans "
+         "`etude_params`. À déclarer le jour où l'écran agricole re-saisit "
+         "cette valeur depuis le lead."),
+    ]
     + [
         ('occupation_jour', _RAISON_LU_EN_DIRECT),
         ('roof_point', _RAISON_LU_EN_DIRECT),

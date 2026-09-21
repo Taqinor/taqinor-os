@@ -1136,6 +1136,18 @@ def _map_payload_to_fields(data: dict) -> dict:
             val = questionnaire.pop(equip_key, None)
             if val is not None:
                 fields[equip_key] = val
+        # ── CAD-L ── CAD149 — PROMOTION des deux réponses de pompage qui
+        # n'avaient pas de colonne : elles rejoignent le sort de HMT, débit
+        # et CV juste au-dessus (colonne Lead dédiée, plus de sac). Le
+        # vocabulaire du site est gardé TEL QUEL, butane compris. La note de
+        # chatter, elle, est construite depuis le payload COMPLET : elle
+        # continue de citer ces deux réponses.
+        heures_pompage = questionnaire.pop('heures_pompage', None)
+        if heures_pompage is not None:
+            fields['pompage_heures_jour'] = heures_pompage
+        pompe_alim = questionnaire.pop('pompe_actuelle', None)
+        if pompe_alim is not None:
+            fields['pompe_alim_actuelle'] = pompe_alim
         if questionnaire:
             fields['web_questionnaire'] = questionnaire
     estimate = _clean_estimate_shown(
@@ -1193,12 +1205,58 @@ def _quest_type_toiture(raw):
     return _clean_choice(raw, Lead.TypeToiture.values)
 
 
+# ── CAD-L ── CAD149 — vague 1 du script d'appel guidé. Ces huit colonnes sont
+# hors de portée du mapping du site (il ne collecte pas ces réponses, ou il les
+# nomme autrement) : sans nettoyeur déclaré ici, une réponse portant le nom de
+# la colonne serait SILENCIEUSEMENT jetée. Mêmes primitives que le reste du
+# bloc (`_clean_decimal`/`_clean_choice`), aucun nouveau style de validation.
+def _quest_type_bien(raw):
+    return _clean_choice(raw, Lead.TypeBien.values)
+
+
+def _quest_objectif_projet(raw):
+    return _clean_choice(raw, Lead.ObjectifProjet.values)
+
+
+def _quest_decideur(raw):
+    return _clean_choice(raw, Lead.Decideur.values)
+
+
+def _quest_devis_concurrents(raw):
+    return _clean_choice(raw, Lead.DevisConcurrents.values)
+
+
+def _quest_equip_ve_statut(raw):
+    return _clean_choice(raw, Lead.EquipVeStatut.values)
+
+
+def _quest_pompage_heures_jour(raw):
+    return _clean_decimal(raw, lo=0, hi=24)
+
+
+def _quest_pompe_alim_actuelle(raw):
+    return _clean_choice(raw, Lead.PompeAlimActuelle.values)
+
+
+def _quest_carburant_litres_mois(raw):
+    return _clean_decimal(raw, lo=0, hi=1_000_000)
+
+
 #: (b) colonnes Lead hors de portée du mapping site → nettoyeur dédié.
 _QUEST_NETTOYEURS_HORS_SITE = {
     'conso_mensuelle_kwh': _quest_conso,
     'surface_toiture_m2': _quest_surface,
     'tranche_onee': _quest_tranche,
     'type_toiture': _quest_type_toiture,
+    # CAD149 — vague 1 du script d'appel guidé.
+    'type_bien': _quest_type_bien,
+    'objectif_projet': _quest_objectif_projet,
+    'decideur': _quest_decideur,
+    'devis_concurrents': _quest_devis_concurrents,
+    'equip_ve_statut': _quest_equip_ve_statut,
+    'pompage_heures_jour': _quest_pompage_heures_jour,
+    'pompe_alim_actuelle': _quest_pompe_alim_actuelle,
+    'carburant_litres_mois': _quest_carburant_litres_mois,
 }
 
 
