@@ -57,7 +57,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..permissions import PeutLireOuEcrireCalepinage
+from ..permissions import PeutLireOuEcrireCalepinage, PeutVoirCalepinage
 
 __all__ = ['SchemaUnifilaireMixin']
 
@@ -104,3 +104,33 @@ class SchemaUnifilaireMixin:
         except SldRefuse as refus:
             return Response({refus.champ or 'edition': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
+
+    # ── CALX235 — le MÊME schéma, repris par un bureau d'études ───────────
+    @action(detail=True, methods=['get'],
+            url_path='schema-unifilaire.dxf',
+            url_name='schema-unifilaire-dxf',
+            permission_classes=[PeutVoirCalepinage])
+    def schema_unifilaire_dxf(self, request, pk=None):
+        """CALX235 — le schéma unifilaire en DXF, quatre calques nommés.
+
+        Le fichier est transposé du MÊME dessin que le SVG (blocs, positions
+        éditées, liaisons) : les deux ne peuvent pas diverger. Une
+        conception incomplète ou bloquée ne produit AUCUN fichier — 400 qui
+        NOMME le champ en cause.
+        """
+        from ..services.electrique import TemperaturesInvalides
+        from ..services.planche import nom_de_fichier
+        from ..services.sld import SldRefuse
+        from ..services.sld_export import exporter_sld_dxf
+        from .sorties import MIME_DXF, reponse_de_fichier
+
+        calepinage = self.get_object()  # borné société par get_queryset
+        try:
+            octets = exporter_sld_dxf(calepinage)
+        except (SldRefuse, TemperaturesInvalides) as refus:
+            return Response(
+                {getattr(refus, 'champ', '') or 'schema': str(refus)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return reponse_de_fichier(
+            octets, mime=MIME_DXF,
+            nom_fichier=nom_de_fichier(calepinage, 'schema.dxf'))
