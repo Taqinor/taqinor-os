@@ -211,7 +211,7 @@ def _elevation_de_tension(troncons, injection):
 
     Returns:
         ``{elevation_pct, elevation_v, par_troncon, limite_pct,
-        source_limite, marge_pct, tension_nominale_v, verdict, omissions}``.
+        source_limite, ecart_limite_pct, tension_nominale_v, verdict, omissions}``.
         ``elevation_pct`` est la SOMME des contributions publiées ; elle vaut
         ``None`` dès qu'un tronçon parcouru n'est pas calculable, avec
         l'omission qui NOMME le champ et le tronçon.
@@ -261,9 +261,9 @@ def _elevation_de_tension(troncons, injection):
         'par_troncon': lignes,
         'limite_pct': limite,
         'source_limite': source_limite,
-        # `marge_pct` est une DIFFÉRENCE, pas un confort : `null` tant
+        # `ecart_limite_pct` est une DIFFÉRENCE, pas un confort : `null` tant
         # qu'aucune limite n'est saisie — `0` se lirait « limite atteinte ».
-        'marge_pct': marge,
+        'ecart_limite_pct': marge,
         'tension_nominale_v': tension,
         'verdict': _verdict_elevation(total_pct, limite, source_limite,
                                       omissions),
@@ -1151,7 +1151,7 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None):
         'saisie': saisie,
         'calcul': {
             'elevation_pct': elevation['elevation_pct'],
-            'marge_pct': elevation['marge_pct'],
+            'ecart_limite_pct': elevation['ecart_limite_pct'],
             'puissance_injectee_kva': branchement['puissance_injectee_kva'],
             'desequilibre_pct': equilibrage['desequilibre_pct'],
         },

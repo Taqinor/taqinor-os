@@ -333,7 +333,7 @@ class TronconsApiTest(TestCase):
     def setUp(self):
         from django.contrib.auth import get_user_model
 
-        from apps.authentication.models import Company
+        from authentication.models import Company
         from apps.calepinage.models import Calepinage
 
         self.company = Company.objects.create(name='TAQINOR')

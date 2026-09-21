@@ -78,7 +78,7 @@ class SansLimiteTest(SimpleTestCase):
         # `0` se lirait « limite atteinte » : sans limite, il n'y a AUCUNE
         # marge à calculer.
         self.assertIsNone(_elevation_de_tension(TRONCONS, INJECTION)
-                          ['marge_pct'])
+                          ['ecart_limite_pct'])
 
 
 class LimiteSaisieTest(SimpleTestCase):
@@ -91,7 +91,7 @@ class LimiteSaisieTest(SimpleTestCase):
 
         self.assertEqual(bloc['verdict'].statut, 'ok')
         self.assertEqual(bloc['verdict'].borne, 3.0)
-        self.assertAlmostEqual(bloc['marge_pct'],
+        self.assertAlmostEqual(bloc['ecart_limite_pct'],
                                3.0 - bloc['elevation_pct'], places=3)
         self.assertIn('contrat de raccordement', bloc['verdict'].source)
 
@@ -104,7 +104,7 @@ class LimiteSaisieTest(SimpleTestCase):
 
         self.assertEqual(bloc['verdict'].statut, 'bloquant')
         self.assertEqual(bloc['verdict'].valeur, eleve)
-        self.assertLess(bloc['marge_pct'], 0.0)
+        self.assertLess(bloc['ecart_limite_pct'], 0.0)
 
     def test_limite_sans_source_refusee_en_nommant_le_champ(self):
         with self.assertRaises(RaccordementInvalide) as refus:
