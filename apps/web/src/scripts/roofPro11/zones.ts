@@ -21,7 +21,7 @@ import {
   pivoterPoint,
   redimensionnerRectangle,
 } from './snap';
-import { computePanStats, hasMultipleBuildings, type PanStat } from './panStats';
+import { computePanStats, computeSiteStats, hasMultipleBuildings, htmlTableSite, type PanStat } from './panStats'; // CALX126
 
 /**
  * CAL56 — traduit les pans générés par `generateRoofShapePans` (scene3d.ts, géométrie pure)
@@ -397,6 +397,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
 
     // CALX97 — les cotes affichées suivent le pan actif (lues, jamais devinées).
     syncGeometryPanel();
+    if (statsEl) statsEl.insertAdjacentHTML('beforeend', htmlTableSite(computeSiteStats(stats, ctx.surfacesPose))); // CALX126 — totaux du site : pans de toit ET surfaces de pose, une ligne par surface, un total par bâtiment
   }
 
   /** Rend le tableau CAL84 : une ligne par pan, colonnes toutes calculées. */

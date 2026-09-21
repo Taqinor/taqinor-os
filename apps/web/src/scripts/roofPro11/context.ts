@@ -335,4 +335,10 @@ export interface Ctx {
   consSummerFactor: number;
   /** W95 — facteur multiplicatif de la conso l'hiver. */
   consWinterFactor: number;
+  /** CALX123 — les SURFACES DE POSE tracées dans l'atelier (champ au sol, ombrière,
+   *  façade), telles que le contrat `poseSurfaces[]` les décrit. Optionnel : absent
+   *  (ctx antérieur à CALX123, tests unitaires isolés) = aucune surface de pose, et
+   *  le document repart inchangé, octet pour octet. Le PLAN de pose vit sous
+   *  `engine` et vient du moteur serveur : l'atelier ne le recalcule jamais. */
+  surfacesPose?: import('./poseSurfaces').SurfacePose[];
 }
