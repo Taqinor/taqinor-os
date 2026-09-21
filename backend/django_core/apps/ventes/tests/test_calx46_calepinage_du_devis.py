@@ -105,9 +105,12 @@ class CalepinageDuDevisServiTest(TestCase):
                             layout_hash=empreinte)
 
     def _calepinage(self, devis, empreinte=EMPREINTE, company=None):
+        # CALX46 — la contrainte `calepinage_lead_ou_client` exige un lead OU un
+        # client : la société voisine reçoit SON propre client (jamais `None`).
+        societe = company or self.company
+        client = self.client_a if company is None else ClientFactory(company=societe)
         return Calepinage.objects.create(
-            company=company or self.company,
-            client=self.client_a if company is None else None,
+            company=societe, client=client,
             devis=devis, titre="Toiture d'essai", layout_hash=empreinte)
 
     def _servi(self, devis):
