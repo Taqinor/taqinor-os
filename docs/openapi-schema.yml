@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4645, operations: 7423, components: 2110}
+counts: {paths: 4647, operations: 7425, components: 2111}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -558,6 +558,7 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_retrieve
 - post /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_create
 - patch /api/django/calepinage/calepinages/{id}/photos/{photo_id}/calage/ -> django_calepinage_calepinages_photos_calage_partial_update
+- get /api/django/calepinage/calepinages/{id}/plan-importe/ -> django_calepinage_calepinages_plan_importe_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-masse.pdf/ -> django_calepinage_calepinages_plan_masse.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-pose.pdf/ -> django_calepinage_calepinages_plan_pose.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-toiture.pdf/ -> django_calepinage_calepinages_plan_toiture.pdf_retrieve
@@ -4307,6 +4308,7 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_retrieve
 - post /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_create
 - patch /api/v1/calepinage/calepinages/{id}/photos/{photo_id}/calage/ -> v1_calepinage_calepinages_photos_calage_partial_update
+- get /api/v1/calepinage/calepinages/{id}/plan-importe/ -> v1_calepinage_calepinages_plan_importe_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-masse.pdf/ -> v1_calepinage_calepinages_plan_masse.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-pose.pdf/ -> v1_calepinage_calepinages_plan_pose.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-toiture.pdf/ -> v1_calepinage_calepinages_plan_toiture.pdf_retrieve
@@ -7617,6 +7619,7 @@ components:
 - CalepinageParametresEcrite
 - CalepinageParametresReponse
 - CalepinageParametresRequeteRequest
+- CalepinagePlanImporte
 - CalepinageRegistreReponse
 - CalepinageRequest
 - CalepinageSimulationAccuse
