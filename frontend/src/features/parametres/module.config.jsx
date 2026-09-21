@@ -6,7 +6,7 @@ import {
   ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
-  Route, Layers, Repeat, Trash2,
+  Route, Layers, Trash2,
   DatabaseBackup, HardDriveDownload, Gauge, Cable, Sun, History,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
@@ -164,9 +164,6 @@ const PiecesJointesPage = lazy(() => import('../../pages/parametres/PiecesJointe
 // WIR282/XSAL6 — plans de commission (moitié front de WIR281). Contrat
 // partagé : apps/ventes/contract_samples/plan_commission.json.
 const PlansCommissionPage = lazy(() => import('../../pages/parametres/PlansCommissionPage'))
-// NTSUB24 — réglages « Facturation récurrente » par société (seuils du
-// groupe NTSUB : fin d'essai, expiration de carte, seuil d'usage).
-const AbonnementsParametresPage = lazy(() => import('../../pages/parametres/AbonnementsParametresPage'))
 const CustomObjectRecordsPage = lazy(() => import('./CustomObjectRecordsPage'))
 // NTUX7 — Corbeille transverse 30 jours (`apps/trash`, backend déjà complet) :
 // moitié frontend manquante, écran de gouvernance Directeur/Admin (reflète
@@ -226,8 +223,6 @@ const config = {
       { to: '/parametres/pieces-jointes', label: 'Pièces jointes', icon: <Paperclip size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // WIR282 — plans de commission (XSAL6), gatés responsable/admin.
       { to: '/parametres/plans-commission', label: 'Plans de commission', icon: <BadgePercent size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
-      // NTSUB24 — nav ET route ensemble (un écran non atteignable est un écran mort).
-      { to: '/parametres/abonnements', label: 'Facturation récurrente', icon: <Repeat size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTUX7 — corbeille transverse (nav ET route ensemble, motif PACT150).
       { to: '/parametres/corbeille', label: 'Corbeille', icon: <Trash2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTUX27 — réglages UX par tenant (nav ET route ensemble, motif PACT150).
@@ -269,7 +264,6 @@ const config = {
     { path: '/parametres/objets-personnalises', component: ObjetsPersonnalisesPage, roles: ['admin'] },
     { path: '/parametres/pieces-jointes', component: PiecesJointesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/plans-commission', component: PlansCommissionPage, roles: ['responsable', 'admin'] },
-    { path: '/parametres/abonnements', component: AbonnementsParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/corbeille', component: CorbeillePage, roles: ['responsable', 'admin'] },
     { path: '/parametres/ux', component: UxParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/sauvegardes', component: SauvegardesPage, roles: ['responsable', 'admin'] },
