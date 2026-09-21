@@ -459,7 +459,6 @@ forbidden_modules =
 ignore_imports =
     apps.tiers.tests.test_arc18_bridge -> apps.crm.models
     apps.tiers.tests.test_arc18_bridge -> apps.stock.models
-    apps.tiers.tests.test_arc19_bridge -> apps.compta.models
     apps.tiers.tests.test_arc19_bridge -> apps.rh.models
     apps.tiers.tests.test_arc21_source_ecriture -> apps.crm.models
     apps.tiers.tests.test_arc21_source_ecriture -> apps.crm.services
