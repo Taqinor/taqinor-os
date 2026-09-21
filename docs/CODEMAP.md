@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: bcae767071486a85847d0a7c5c56628c2f667e3026f4d3b3608caeea0e874d37
-Plan fingerprint: 07fa0690e7c38d61d3c44751bab567b884de8c565a913b2d282720ec7ad26054
+Structure fingerprint: 512799b8c4cdbd55306bd7ca2eeaea2cf66adda8e29912e1172900118a39463d
+Plan fingerprint: a42aa9a5877e297220e540ab991acc0bfe15fa843275f4be9787c7da6e4c95f0
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (112)**
+**Done (113)**
 
 - `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
 - `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
@@ -643,10 +643,11 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX196` — Figer un golden pluriannuel de la cascade et des quantiles
 - `CALX197` — Un seul calcul d'ombrage pour un même toit
 - `CALX198` — Adopter `pvlib` (tranché par Reda le 21/09/2026) pour le modèle à une diode, la…
+- `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (493)**
+**Open — to build (492)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -971,7 +972,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX247` — Retirer les quantités de structure non sourcées de la nomenclature électrique
 - `CALX248` — Prononcer un verdict électrique publiable unique, entrée par entrée sourcée
 - `CALX249` — Donner à l'atelier son onglet « Verdict électrique »
-- `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX251` — Déclarer `consumption` dans le contrat `roof_layout` v2
 - `CALX253` — Sérialiser la consommation de l'atelier dans le document
 - `CALX254` — Ré-hydrater la consommation au rechargement de l'atelier
