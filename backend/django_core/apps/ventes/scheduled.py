@@ -612,7 +612,11 @@ def engagement_followup_engine():
         vendeur = getattr(devis, 'created_by', None)
         if vendeur is None:
             continue
-        fired = set(link.engagement_triggers_fired or [])
+        # CAD138 — les déclencheurs sont désormais DATÉS (forme dict), pour
+        # qu'ils puissent se périmer côté panier. L'idempotence ne change
+        # pas : un déclencheur déjà allumé ne re-notifie jamais.
+        from .selectors import dates_declencheurs, marquer_declencheur
+        fired = set(dates_declencheurs(link))
         to_fire = []
 
         sent_at = getattr(devis, 'date_envoi', None)
@@ -641,10 +645,12 @@ def engagement_followup_engine():
 
         for key, label in to_fire:
             _post_engagement_notification(devis, vendeur, key, label)
+            # CAD138 — la date d'allumage est écrite AVEC la clé : c'est elle
+            # qui fait courir la péremption du panier.
+            marquer_declencheur(link, key, quand=now)
             fired.add(key)
             posted += 1
         if to_fire:
-            link.engagement_triggers_fired = sorted(fired)
             link.save(update_fields=['engagement_triggers_fired'])
 
     logger.info('ventes.engagement_followup_engine: %d notification(s)', posted)

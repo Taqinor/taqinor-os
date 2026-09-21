@@ -568,7 +568,10 @@ def _notifier_variante_consultee(link):
     devis = link.devis
     if devis is None or not devis.variante_de_id:
         return
-    fired = set(link.engagement_triggers_fired or [])
+    # CAD138 — lecture par la forme partagée (liste historique OU dict daté) :
+    # l'idempotence ne change pas, mais la date d'allumage est préservée.
+    from .selectors import dates_declencheurs, marquer_declencheur
+    fired = set(dates_declencheurs(link))
     marqueur = 'variante_consultee'
     if marqueur in fired:
         return
@@ -586,8 +589,7 @@ def _notifier_variante_consultee(link):
               f'({devis.reference}) de la proposition {devis_base.reference}.'),
         link=f'/ventes/devis?devis={devis_base.id}',
         company=devis.company)
-    fired.add(marqueur)
-    link.engagement_triggers_fired = sorted(fired)
+    marquer_declencheur(link, marqueur)
     link.save(update_fields=['engagement_triggers_fired'])
 
 
