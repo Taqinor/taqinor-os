@@ -3969,6 +3969,35 @@ def _norm_form_text(value):
     return text.replace('_', ' ').lower().strip()
 
 
+# ── CAD-K ── CAD134 — le délai déclaré côté Meta, dans le champ DÉJÀ scoré ──
+#
+# Mots-clés → ``Lead.ProjectTimeline``, sur du texte libre normalisé par
+# ``_norm_form_text``. TOLÉRANT (les libellés varient d'un Instant Form à
+# l'autre) et SANS invention : un libellé non reconnu ne pose RIEN — mieux
+# vaut un champ vide qu'un délai deviné, qui vaudrait des points au score.
+# L'ORDRE compte : « le plus tôt possible » gagne avant « 3 mois ».
+_META_TIMELINE_MOTS = (
+    (('plus tot possible', 'ce mois', 'immediat', 'des que possible',
+      'urgent'), Lead.ProjectTimeline.IMMEDIAT),
+    (('renseigne', 'plus tard', 'pas presse', 'aucune idee'),
+     Lead.ProjectTimeline.PLUS_TARD),
+    (('3 mois', 'trois mois'), Lead.ProjectTimeline.MOINS_3_MOIS),
+    (('6 mois', 'six mois'), Lead.ProjectTimeline.MOINS_6_MOIS),
+)
+
+
+def _meta_project_timeline(valeur_normalisee):
+    """CAD134 — le délai déclaré côté Meta en clé ``ProjectTimeline``, ou ''.
+
+    ``valeur_normalisee`` est déjà passée par ``_norm_form_text``. Renvoie
+    une chaîne VIDE quand rien n'est reconnu : on ne devine pas un délai."""
+    texte = str(valeur_normalisee or '')
+    for mots, cle in _META_TIMELINE_MOTS:
+        if any(mot in texte for mot in mots):
+            return cle
+    return ''
+
+
 def _parse_meta_form_extras(field_data):
     """Réponses NON-contact du formulaire Meta → champs CRM structurés.
 
@@ -4009,6 +4038,25 @@ def _parse_meta_form_extras(field_data):
                 extras['priorite'] = Lead.Priorite.BASSE
             else:
                 extras['priorite'] = Lead.Priorite.NORMALE
+            # CAD134 (audit L3 du 21/09/2026) — LA MÊME PHRASE VAUT LE MÊME
+            # SCORE DES DEUX CÔTÉS. Depuis le site, « je veux démarrer
+            # immédiatement » devenait `project_timeline='immediat'` et valait
+            # +8 au score ; depuis Meta, « le plus tôt possible » ne devenait
+            # qu'une `priorite=haute` — absente de `compute_score`, donc ZÉRO
+            # point, aucune remontée dans la file, aucun changement d'heure ni
+            # de canal. Le webhook Meta écrit donc AUSSI `project_timeline`,
+            # qui est déjà scoré ; la priorité reste le drapeau MANUEL du
+            # commercial.
+            #
+            # Conversion TOLÉRANTE (ce sont des mots-clés sur du texte libre,
+            # de qualité inégale) et TRACÉE : le libellé BRUT part dans
+            # `extras['qa']`, que la note de formulaire recopie telle quelle —
+            # un humain peut donc toujours relire ce que le client a coché.
+            # Un délai non reconnu ne pose RIEN plutôt qu'une valeur inventée.
+            extras['delai_declare'] = raw_value
+            delai = _meta_project_timeline(v)
+            if delai:
+                extras['project_timeline'] = delai
         elif 'install' in q:
             if any(k in v for k in ('villa', 'maison', 'appartement',
                                     'domicile', 'residen')):
@@ -4042,6 +4090,13 @@ def _apply_meta_form_extras(lead, extras):
             and lead.priorite == Lead.Priorite.NORMALE):
         lead.priorite = Lead.Priorite.HAUTE
         changed.append('priorite')
+    # CAD134 — le délai déclaré remplit le champ DÉJÀ scoré, et seulement
+    # s'il est vide : un délai saisi à la main par la commerciale (ou venu du
+    # site) n'est JAMAIS écrasé par un mot-clé lu sur du texte libre.
+    if extras.get('project_timeline') and not getattr(
+            lead, 'project_timeline', None):
+        lead.project_timeline = extras['project_timeline']
+        changed.append('project_timeline')
     if lead.telephone and not lead.whatsapp:
         # Un lead Meta arrive par mobile : le même numéro sert de lien wa.me
         # pour la première prise de contact de Meryem.
@@ -4282,6 +4337,11 @@ def create_lead_from_meta_lead_ads(
     # montée NORMALE→HAUTE est automatique (_apply_meta_form_extras).
     if extras.get('priorite'):
         extra['priorite'] = extras['priorite']
+    # CAD134 — et le MÊME délai déclaré pose `project_timeline`, le champ que
+    # `compute_score` lit déjà : depuis Meta la phrase « le plus tôt possible »
+    # valait zéro point, contre +8 pour la même phrase venue du site.
+    if extras.get('project_timeline'):
+        extra['project_timeline'] = extras['project_timeline']
     lead = Lead.objects.create(
         company=company,
         nom=nom,
