@@ -73,6 +73,7 @@ from apps.calepinage.services.pvgis_serie import (
     BASE_HEURE_LOCALE_LEGALE, BASE_HEURE_LOCALE_STANDARD, BASE_HEURE_UTC,
     MOTIF_TMY_HORIZONTAL, cle_de_cache,
 )
+from apps.calepinage.services.p50p90 import bankable
 from apps.calepinage.services.site import (
     decalage_utc_minutes, fuseau_du_site,
 )
@@ -356,6 +357,7 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'CLES_METEO_PUBLIEES', 'SOUS_BLOCS_METEO',
            'MOTIF_FUSEAU_ABSENT', 'MOTIF_BASE_HORAIRE_INCONNUE',
            'BLOCS_HORAIRES_OMIS', 'CLE_CROISEMENT_HORAIRE',
+           'CLE_SORTIES_PAR_PAN', 'DECIMALES_KWH', 'MOTIF_PAN_SANS_SERIE',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -396,9 +398,9 @@ def appliquer_chaine(serie, contexte=None, resultat=None):
             OMISES, motivées, et la série ressort telle quelle.
         resultat: le ``Calepinage.resultat`` en cours d'écriture. Fourni, la
             chaîne y PUBLIE les blocs qu'elle est seule à pouvoir sourcer —
-            ``meteo`` (CALX154) — et c'est le SEUL chemin d'écriture de ces
-            clés. ``None`` ⇒ la chaîne se contente de rendre la cascade,
-            exactement comme avant.
+            ``meteo`` (CALX154) et ``production`` (CALX181) — et c'est le SEUL
+            chemin d'écriture de ces clés. ``None`` ⇒ la chaîne se contente de
+            rendre la cascade, exactement comme avant.
 
     Returns:
         ``(serie, cascade)`` — la série en sortie de la dernière étape
@@ -489,6 +491,8 @@ def _publier(resultat, serie, contexte, cascade):
     """Écrit dans ``resultat`` les blocs que la chaîne est seule à sourcer."""
     decision = decision_meteo(contexte)
     resultat['meteo'] = _bloc_meteo_publie(contexte, decision)
+    resultat['production'] = _bloc_production(
+        resultat, serie, contexte, cascade, decision)
 
 
 def _bloc_meteo_publie(contexte, decision):
@@ -542,6 +546,340 @@ def _albedo_face_avant(contexte):
         return dict(ALBEDO_FACE_AVANT)
     return {'valeur': saisi.get('valeur'),
             'motif': f'saisi par la société (source : {saisi.get("source")})'}
+
+
+# ── CALX181 — les agrégats, tirés de la SORTIE DE CHAÎNE ────────────────
+
+#: L'arrondi des énergies publiées, celui que ``services/production.py`` a
+#: toujours appliqué : deux tableaux qui n'arrondissent pas pareil ne somment
+#: plus.
+DECIMALES_KWH = 1
+
+#: La clé sous laquelle l'appelant (CALX5) POSE la série de CHAQUE pan telle
+#: qu'elle ressort de la chaîne — ``{clé du pan: série}``. Absente, et si UN
+#: SEUL pan porte des modules, la série de sortie lui est attribuée ; sinon
+#: aucune énergie n'est attribuée à un pan et les lignes restent à ``null``
+#: (jamais réparties au prorata : une répartition supposée n'est pas mesurée).
+CLE_SORTIES_PAR_PAN = 'sorties_par_pan'
+
+MOTIF_PAN_SANS_SERIE = (
+    'Aucune série de sortie de chaîne par pan : les colonnes par pan restent '
+    'vides. La chaîne ne répartit pas un total entre plusieurs pans — une '
+    'part supposée ne se distingue plus, ensuite, d\'une part mesurée.')
+
+
+def _bloc_production(resultat, serie, contexte, cascade, decision):
+    """``resultat['production']`` — mensuel, par pan, annuel et total.
+
+    UN SEUL CHEMIN ARITHMÉTIQUE. ``services/production.py::_agreger``
+    construisait ses buckets depuis la puissance ``P`` de PVGIS, qui
+    disparaît avec ``pvcalculation=0`` (CALX150). Ici chaque seau — les douze
+    mois, chaque pan, chaque année, le total — est rempli par la MÊME boucle
+    sur les mêmes points, de sorte que la somme des mois ÉGALE le total par
+    construction, et non par vigilance. PVsyst présente de même ses résultats
+    en tableaux mensuels à côté du diagramme de pertes
+    (https://www.pvsyst.com/help/project-design/results/index.html).
+
+    Les clés publiées sont INCHANGÉES : ``services/comparaison.py:32`` et
+    ``services/export_csv.py:127-143`` lisent ``production.mensuel`` et
+    ``production.par_pan``, et continuent de les trouver.
+    """
+    plans = [plan for plan in (contexte.get('plans') or ())
+             if isinstance(plan, dict)]
+    series = _series_par_pan(serie, contexte, plans)
+
+    mensuel = {mois: None for mois in range(1, 13)}
+    annuel = {}
+    total_kwh = None
+    irradiation_ponderee = None
+    total_kwc = 0.0
+    lignes = []
+    bruts_par_pan = []
+    avertissements = []
+
+    for plan in plans:
+        kwc = _flottant(plan.get('kwc')) or 0.0
+        total_kwc += kwc
+        ligne = _ligne_de_pan(plan, kwc)
+        serie_du_pan = series.get(_cle_de_pan(plan))
+        if serie_du_pan is None:
+            lignes.append(ligne)
+            bruts_par_pan.append(None)
+            continue
+        kwh, mensuel_pan, annuel_pan, irradiation = _sommes(serie_du_pan)
+        bruts_par_pan.append(kwh)
+        total_kwh = _ajouter(total_kwh, kwh)
+        for mois, valeur in mensuel_pan.items():
+            mensuel[mois] = _ajouter(mensuel[mois], valeur)
+        for annee, valeur in annuel_pan.items():
+            annuel[annee] = _ajouter(annuel.get(annee), valeur)
+        if irradiation is not None and kwc:
+            irradiation_ponderee = _ajouter(irradiation_ponderee,
+                                            irradiation * kwc)
+        _remplir_ligne(ligne, kwh, annuel_pan, kwc, irradiation)
+        lignes.append(ligne)
+
+    if not series:
+        # Aucun pan n'a de série : le TOTAL reste celui de la chaîne, et les
+        # lignes par pan disent qu'elles n'ont pas été alimentées.
+        total_kwh, mensuel, annuel, irradiation = _sommes(serie)
+        if irradiation is not None and total_kwc:
+            irradiation_ponderee = irradiation * total_kwc
+        if plans:
+            avertissements.append(MOTIF_PAN_SANS_SERIE)
+
+    if decision['mode'] == 'tmy':
+        # CALX153 — une année météo TYPE n'est l'observation d'aucune année
+        # réelle : aucun total annuel n'est publié, donc σ météo ne peut pas
+        # se dire « mesuré ».
+        annuel = {}
+
+    quantiles = _quantiles(total_kwh, annuel, total_kwc, contexte)
+    for avertissement in avertissements:
+        _ajouter_avertissement(resultat, avertissement)
+
+    production = resultat.get('production')
+    production = dict(production) if isinstance(production, dict) else {}
+    production['base'] = _base_production(production, resultat)
+    production['total'] = {
+        'kwc': round(total_kwc, 3),
+        'p50_kwh': _arrondi_kwh(total_kwh),
+        'p75_kwh': quantiles['p75_kwh'],
+        'p90_kwh': quantiles['p90_kwh'],
+        'performance_ratio': _ratio(total_kwh, irradiation_ponderee),
+        'specific_yield_kwh_kwc': _rendement(total_kwh, total_kwc),
+        'annual_variability': quantiles['annual_variability'],
+        'annual_variability_source': quantiles['sigma_source'],
+        'annual_variability_annees': quantiles['sigma_annees'],
+        'total_loss_pct': cascade['total_pct'],
+    }
+    mois_publies = _repartir([mensuel[mois] for mois in range(1, 13)],
+                             production['total']['p50_kwh'])
+    production['mensuel'] = [
+        {'mois': mois, 'p50_kwh': mois_publies[mois - 1]}
+        for mois in range(1, 13)
+    ]
+    for ligne, publie in zip(lignes, _repartir(
+            bruts_par_pan, production['total']['p50_kwh'])):
+        ligne['p50_kwh'] = publie
+    production['par_pan'] = lignes
+    annees = sorted(annuel)
+    valeurs_annees = _repartir([annuel[annee] for annee in annees],
+                               production['total']['p50_kwh'])
+    production['annees'] = [
+        {'annee': annee, 'kwh': valeurs_annees[rang],
+         'source': 'chaine_pertes'}
+        for rang, annee in enumerate(annees)
+    ]
+    return production
+
+
+def _repartir(valeurs, total):
+    """Arrondit ``valeurs`` au dixième de kWh SANS créer d'écart au total.
+
+    Douze arrondis indépendants et un total arrondi à part ne s'additionnent
+    pas : le tableau mensuel afficherait une colonne qui ne fait pas la somme
+    annoncée, et c'est exactement ce qu'un bureau d'études vérifie en premier.
+    Le reste d'arrondi est donc REPORTÉ sur les seaux qui en ont le plus (la
+    « répartition du plus fort reste ») : chaque valeur reste à un dixième de
+    kWh de la sienne, et la colonne ADDITIONNE ce que le total annonce.
+
+    ``None`` entre, ``None`` sort — un seau sans énergie lisible n'est pas un
+    seau à zéro.
+    """
+    if total is None:
+        return [None for _ in valeurs]
+    dixiemes_cible = int(round(total * 10))
+    plancher = []
+    restes = []
+    for rang, valeur in enumerate(valeurs):
+        if valeur is None:
+            plancher.append(None)
+            continue
+        exact = valeur * 10.0
+        entier = int(exact // 1)
+        plancher.append(entier)
+        restes.append((exact - entier, rang))
+    connus = [rang for rang, valeur in enumerate(plancher)
+              if valeur is not None]
+    if not connus:
+        return [None for _ in valeurs]
+    manquant = dixiemes_cible - sum(plancher[rang] for rang in connus)
+    restes.sort(reverse=True)
+    pas = 1 if manquant >= 0 else -1
+    for _ in range(abs(manquant)):
+        if not restes:
+            break
+        _reste, rang = restes.pop(0) if pas > 0 else restes.pop()
+        plancher[rang] += pas
+    return [None if plancher[rang] is None else round(plancher[rang] / 10.0, 1)
+            for rang in range(len(valeurs))]
+
+
+def _series_par_pan(serie, contexte, plans):
+    """``{clé du pan: série de sortie}`` — POSÉES, ou l'unique pan équipé."""
+    posees = contexte.get(CLE_SORTIES_PAR_PAN)
+    if isinstance(posees, dict) and posees:
+        return {cle: valeur for cle, valeur in posees.items()
+                if isinstance(valeur, dict)}
+    equipes = [plan for plan in plans if _est_equipe(plan)]
+    if len(equipes) == 1:
+        return {_cle_de_pan(equipes[0]): serie}
+    return {}
+
+
+def _est_equipe(plan):
+    """Le pan porte-t-il des modules ET une puissance ?"""
+    modules = plan.get('modules')
+    kwc = _flottant(plan.get('kwc'))
+    return bool(modules) and bool(kwc) and kwc > 0
+
+
+def _cle_de_pan(plan):
+    return plan.get('cle') or plan.get('pan')
+
+
+def _ligne_de_pan(plan, kwc):
+    """Une ligne ``par_pan`` aux clés INCHANGÉES, toutes nulles au départ."""
+    return {
+        'pan': str(plan.get('pan') or plan.get('cle') or ''),
+        'modules': int(plan.get('modules') or 0),
+        'kwc': round(kwc, 3) if kwc else 0.0,
+        'azimut_deg': plan.get('azimut_deg'),
+        'inclinaison_deg': plan.get('inclinaison_deg'),
+        'p50_kwh': None,
+        'p75_kwh': None,
+        'p90_kwh': None,
+        'performance_ratio': None,
+        'specific_yield_kwh_kwc': None,
+        # Un chiffre d'ombrage PAR PAN exigerait une cascade par pan
+        # (CALX182) : tant qu'il n'y en a qu'une, la clé reste nulle plutôt
+        # que de recopier la valeur globale sur chaque ligne.
+        'shading_annual_loss_pct': None,
+    }
+
+
+def _remplir_ligne(ligne, kwh, annuel_pan, kwc, irradiation):
+    """Les colonnes d'un pan, depuis SA propre série — jamais un prorata."""
+    ligne['p50_kwh'] = _arrondi_kwh(kwh)
+    ligne['specific_yield_kwh_kwc'] = _rendement(kwh, kwc)
+    ligne['performance_ratio'] = _ratio(
+        kwh, irradiation * kwc if irradiation is not None and kwc else None)
+    quantiles = bankable(kwh, totaux_par_annee=annuel_pan, kwc=kwc or None)
+    ligne['p75_kwh'] = quantiles['p75_kwh']
+    ligne['p90_kwh'] = quantiles['p90_kwh']
+
+
+def _sommes(serie):
+    """``(total_kwh, {mois: kwh}, {annee: kwh}, irradiation_kwh_m2)``.
+
+    Une seule boucle remplit tous les seaux : c'est ce qui rend la somme des
+    mois égale au total. ``None`` quand aucune colonne d'énergie n'est
+    lisible — la cascade publie alors des ``null``, jamais des 0.
+    """
+    colonne = _etapes.colonne_energie(serie)
+    pas = float((serie or {}).get('pas_minutes') or _etapes.PAS_MINUTES_PVGIS)
+    heures = pas / 60.0
+    facteur = (_etapes.FACTEURS_KW[colonne] * heures
+               if colonne is not None else None)
+    mensuel = {mois: None for mois in range(1, 13)}
+    annuel = {}
+    total = None
+    irradiation = None
+    for point in (serie or {}).get('points') or []:
+        if not isinstance(point, dict):
+            continue
+        if colonne is not None:
+            valeur = _flottant(point.get(colonne))
+            if valeur is not None:
+                kwh = valeur * facteur
+                total = _ajouter(total, kwh)
+                mois = point.get('mois')
+                if mois in mensuel:
+                    mensuel[mois] = _ajouter(mensuel[mois], kwh)
+                annee = point.get('annee')
+                if annee is not None:
+                    annuel[annee] = _ajouter(annuel.get(annee), kwh)
+        globale = _flottant(point.get('gi_w_m2'))
+        if globale is not None:
+            irradiation = _ajouter(irradiation, globale / 1000.0 * heures)
+    return total, mensuel, annuel, irradiation
+
+
+def _quantiles(total_kwh, annuel, kwc, contexte):
+    """P75/P90 et σ du TOTAL, avec les composantes saisies de la société."""
+    return bankable(total_kwh, totaux_par_annee=dict(annuel),
+                    kwc=kwc or None,
+                    reglages=contexte.get('reglages_simulation'))
+
+
+def _base_production(production, resultat):
+    """``production.base`` — celle qui est DÉJÀ publiée, sinon la nôtre.
+
+    Les lecteurs d'aujourd'hui (``services/export_csv.py::
+    _lignes_de_provenance``) lisent cette sous-clé : elle est reconduite
+    telle quelle quand elle existe.
+    """
+    existante = production.get('base')
+    if isinstance(existante, dict) and existante:
+        return existante
+    meteo = resultat.get('meteo') or {}
+    return {
+        'source': 'pvgis' if meteo.get('service') else None,
+        'base_rayonnement': meteo.get('base_rayonnement'),
+        'fenetre_annees': meteo.get('fenetre_annees'),
+        # D-CALX 4 : avec ``pvcalculation=0``, AUCUNE perte n'est passée à
+        # PVGIS — la chaîne est entièrement la nôtre. ``null`` dit « aucune »,
+        # là où un 0 se lirait « zéro perte annoncée ».
+        'loss_passee_pct': None,
+        'commentaire': (
+            "Aucune perte n'est passée à PVGIS : l'irradiance est demandée "
+            'NUE (pvcalculation=0) et toute la cascade est celle du module '
+            '(bloc « cascade »).'),
+    }
+
+
+def _ajouter_avertissement(resultat, texte):
+    """Ajoute un avertissement FRANÇAIS sans doublon."""
+    avertissements = resultat.get('avertissements')
+    if not isinstance(avertissements, list):
+        avertissements = []
+        resultat['avertissements'] = avertissements
+    if texte not in avertissements:
+        avertissements.append(texte)
+
+
+def _ajouter(cumul, valeur):
+    """Somme qui garde ``None`` tant qu'aucune valeur n'a été lue."""
+    if valeur is None:
+        return cumul
+    return valeur if cumul is None else cumul + valeur
+
+
+def _flottant(valeur):
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return None if nombre != nombre else nombre
+
+
+def _arrondi_kwh(valeur):
+    return None if valeur is None else round(valeur, DECIMALES_KWH)
+
+
+def _rendement(kwh, kwc):
+    if kwh is None or not kwc or kwc <= 0:
+        return None
+    return round(kwh / kwc, DECIMALES_KWH)
+
+
+def _ratio(kwh, denominateur):
+    if kwh is None or not denominateur or denominateur <= 0:
+        return None
+    return round(kwh / denominateur, 3)
 
 
 # ── la boucle, pièce par pièce ──────────────────────────────────────────
