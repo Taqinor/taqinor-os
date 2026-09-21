@@ -50,6 +50,7 @@ from core.electrique.types import (
 __all__ = [
     'RaccordementInvalide', 'CODE_ELEVATION', 'LIBELLES',
     'elevation_de_tension', 'verdicts_raccordement',
+    'repartition_des_phases',
 ]
 
 # ── les cinq contrôles du contrat CALX205, et leur intitulé d'écran ────────
@@ -660,3 +661,245 @@ def _verdict_tension_nominale(saisie, tension_employee):
                 % (fr(saisie_v, 0), fr(tension_employee, 0)),
         borne=saisie_v, valeur=tension_employee,
         source='saisie — tension_nominale_v')
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX243 — L'ÉQUILIBRAGE DES PHASES
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``dimensionner_onduleurs`` (``core/electrique/onduleurs.py``) COMPTE les
+# onduleurs et calcule deux ratios, mais n'attribue aucune phase ;
+# ``courant_emploi_ac`` (``core/electrique/protections.py``) traite l'ensemble
+# comme UNE charge. Un parc de trois onduleurs monophasés sur un abonnement
+# triphasé pouvait donc être posé en ENTIER sur une seule phase sans qu'un mot
+# soit dit — le neutre chauffe, le compteur déséquilibre, personne ne l'a lu.
+#
+# CE QUI EST ATTRIBUÉ, ET COMMENT. Rien d'imposé ⇒ TOURNIQUET : les onduleurs
+# monophasés prennent L1, L2, L3, L1… dans l'ordre du parc (déterministe : à
+# parc identique, répartition identique). Une attribution SAISIE par onduleur
+# l'emporte et se VOIT (``source``). Un onduleur TRIPHASÉ ne prend pas de
+# phase : il charge les trois, et sa puissance se répartit sur les trois.
+#
+# LE SEUIL N'EST PAS DANS LE CODE. Le déséquilibre est publié TOUJOURS ; le
+# verdict n'est prononcé que si le réglage société ``seuil_desequilibre_pct``
+# (registre ``services/parametres_cles.py``, section « electrique_societe »,
+# CALX145) est posé AVEC sa source. Absent ⇒ chiffre publié, verdict omis, et
+# le motif nomme la clé à régler.
+
+#: La clé du registre des réglages société (section « electrique_societe »)
+#: qui porte le seuil de déséquilibre acceptable. Aucune valeur ici : le
+#: registre dit quelles clés EXISTENT, jamais ce qu'elles valent.
+CLE_SEUIL_DESEQUILIBRE = 'seuil_desequilibre_pct'
+
+#: Les trois phases d'un branchement triphasé, dans l'ordre du tourniquet.
+PHASES_TRIPHASE = (1, 2, 3)
+
+#: Le motif publié quand le seuil de déséquilibre n'est pas réglé — texte du
+#: contrat CALX205.
+MOTIF_SANS_SEUIL_DESEQUILIBRE = (
+    "le seuil de déséquilibre acceptable n'est pas réglé pour la société : "
+    "le déséquilibre est publié, aucun verdict n'est prononcé. Réglez "
+    "« seuil_desequilibre_pct » avec sa source dans les réglages du module.")
+
+#: Le motif publié sur un branchement MONOPHASÉ : il n'y a rien à équilibrer.
+MOTIF_RESEAU_MONOPHASE = (
+    "branchement monophasé : il n'y a qu'une seule phase, donc aucune "
+    "répartition à calculer et aucun déséquilibre à mesurer.")
+
+
+def _puissance_onduleur(onduleur):
+    """``(valeur, cle)`` — la puissance d'un onduleur ET la clé qui la porte.
+
+    Deux clés admises, jamais mélangées dans un même parc : ``puissance_kva``
+    (apparente) ou ``ac_kw`` (active). Le déséquilibre est un RAPPORT, donc
+    l'unité se simplifie — à condition qu'elle soit la MÊME pour tous, ce que
+    :func:`repartition_des_phases` vérifie au lieu de le supposer.
+    """
+    for cle in ('puissance_kva', 'ac_kw'):
+        valeur = _positif(onduleur.get(cle))
+        if valeur is not None:
+            return (valeur, cle)
+    return (None, '')
+
+
+def _phase_imposee(onduleur):
+    """La phase SAISIE d'un onduleur (1/2/3), ou ``None``.
+
+    « L1 »/« L2 »/« L3 » sont admis : c'est ainsi qu'un schéma unifilaire les
+    nomme, et refuser cette écriture ferait ressaisir l'évidence.
+    """
+    brut = onduleur.get('phase_imposee')
+    if brut is None:
+        return None
+    if isinstance(brut, str):
+        chiffres = ''.join(c for c in brut if c.isdigit())
+        brut = chiffres or None
+    numero = _entier(brut)
+    return numero if numero in PHASES_TRIPHASE else None
+
+
+def _reglage(reglages, cle):
+    """``(valeur, source)`` d'un réglage ``{valeur, source}``, sinon vide.
+
+    Une valeur SANS source est traitée comme NON saisie : c'est la règle du
+    registre CALX145, et un seuil dont personne ne dit d'où il sort ne peut
+    pas fonder un verdict.
+    """
+    saisie = (reglages or {}).get(cle)
+    if not isinstance(saisie, dict):
+        return (None, '')
+    valeur = _nombre(saisie.get('valeur'))
+    source = saisie.get('source') or ''
+    if valeur is None or not source:
+        return (None, '')
+    return (valeur, source)
+
+
+def repartition_des_phases(onduleurs, phases_reseau, *, reglages=None):
+    """CALX243 — qui est sur quelle phase, et de combien ça déséquilibre.
+
+    Args:
+        onduleurs: la liste des onduleurs POSÉS, chacun un dict
+            ``{repere, puissance_kva | ac_kw}`` ; clés facultatives
+            ``phases`` (1 ou 3 — un triphasé charge les trois) et
+            ``phase_imposee`` (1/2/3 ou « L1 »/« L2 »/« L3 »).
+        phases_reseau: le régime SAISI du branchement (1 ou 3). ``None`` ⇒
+            aucun calcul, et le motif nomme « phases ».
+        reglages: la section société « electrique_societe »
+            ``{clé: {valeur, source}}`` — seul ``seuil_desequilibre_pct`` y
+            est lu, et seulement s'il porte sa source.
+
+    Returns:
+        ``{affectation, par_phase, desequilibre_pct, seuil_pct,
+        source_seuil, verdict, omissions}``. ``desequilibre_pct`` est l'écart
+        entre la phase la plus chargée et la moins chargée, EN POURCENTAGE DE
+        LA PLUS CHARGÉE.
+
+    Fonction PURE : aucune base, aucun réseau, aucune horloge.
+    """
+    seuil, source_seuil = _reglage(reglages, CLE_SEUIL_DESEQUILIBRE)
+    vide = {'affectation': [], 'par_phase': {}, 'desequilibre_pct': None,
+            'seuil_pct': seuil, 'source_seuil': source_seuil or None}
+
+    regime = _entier(phases_reseau)
+    if regime not in (1, 3):
+        return dict(vide, omissions=[MOTIF_SANS_PHASES],
+                    verdict=_verdict_desequilibre(None, seuil, source_seuil,
+                                                  MOTIF_SANS_PHASES))
+    if regime == 1:
+        return dict(vide, omissions=[MOTIF_RESEAU_MONOPHASE],
+                    verdict=_verdict_desequilibre(None, seuil, source_seuil,
+                                                  MOTIF_RESEAU_MONOPHASE))
+
+    affectation, charges, omissions = _attribuer(onduleurs)
+    if omissions:
+        return dict(vide, affectation=affectation, omissions=omissions,
+                    verdict=_verdict_desequilibre(None, seuil, source_seuil,
+                                                  omissions[0]))
+
+    plus_chargee = max(charges.values())
+    if plus_chargee <= 0:
+        motif = ("aucune puissance n'est posée sur les phases : il n'y a pas "
+                 "de déséquilibre à mesurer.")
+        return dict(vide, affectation=affectation, par_phase=charges,
+                    omissions=[motif],
+                    verdict=_verdict_desequilibre(None, seuil, source_seuil,
+                                                  motif))
+    desequilibre = round(
+        (plus_chargee - min(charges.values())) / plus_chargee * 100.0, 4)
+    return {
+        'affectation': affectation,
+        'par_phase': charges,
+        'desequilibre_pct': desequilibre,
+        'seuil_pct': seuil,
+        'source_seuil': source_seuil or None,
+        'verdict': _verdict_desequilibre(desequilibre, seuil, source_seuil,
+                                         ''),
+        'omissions': [],
+    }
+
+
+def _attribuer(onduleurs):
+    """``(affectation, charges, omissions)`` — tourniquet, saisie honorée."""
+    affectation = []
+    charges = {phase: 0.0 for phase in PHASES_TRIPHASE}
+    omissions = []
+    unites = set()
+    rang_tourniquet = 0
+    for rang, onduleur in enumerate(onduleurs or (), start=1):
+        if not isinstance(onduleur, dict):
+            continue
+        repere = str(onduleur.get('repere') or 'onduleur n°%d' % rang)
+        puissance, cle = _puissance_onduleur(onduleur)
+        if puissance is None:
+            omissions.append(
+                "%s : aucune puissance n'est publiée (« puissance_kva » ou "
+                "« ac_kw ») — la répartition des phases ne se calcule pas sur "
+                "une puissance supposée." % repere)
+            continue
+        unites.add(cle)
+        if _entier(onduleur.get('phases')) == 3:
+            # Un onduleur triphasé ne « prend » pas une phase : il charge les
+            # trois. Sa puissance se répartit également entre elles.
+            for phase in PHASES_TRIPHASE:
+                charges[phase] += puissance / len(PHASES_TRIPHASE)
+            affectation.append({
+                'repere': repere, 'phase': None, 'phases': 3,
+                'puissance': puissance, 'unite': cle,
+                'source': 'onduleur triphasé — charge les trois phases'})
+            continue
+        imposee = _phase_imposee(onduleur)
+        if imposee is None:
+            phase = PHASES_TRIPHASE[rang_tourniquet % len(PHASES_TRIPHASE)]
+            rang_tourniquet += 1
+            source = 'tourniquet — aucune phase imposée'
+        else:
+            phase = imposee
+            source = 'saisie — phase_imposee'
+        charges[phase] += puissance
+        affectation.append({
+            'repere': repere, 'phase': phase, 'phases': 1,
+            'puissance': puissance, 'unite': cle, 'source': source})
+
+    if len(unites) > 1:
+        omissions.append(
+            "le parc mélange « puissance_kva » et « ac_kw » : un déséquilibre "
+            "se mesure entre grandeurs de MÊME nature. Publiez la même clé "
+            "pour tous les onduleurs.")
+    charges = {phase: round(valeur, 4) for phase, valeur in charges.items()}
+    return (affectation, charges, omissions)
+
+
+def _verdict_desequilibre(desequilibre, seuil, source_seuil, motif):
+    """Le verdict CALX215 du déséquilibre — omis tant que le seuil manque."""
+    if seuil is None:
+        return VerdictElectrique(
+            code=CODE_DESEQUILIBRE, nature=NATURE_FONCTIONNELLE,
+            statut=STATUT_NON_VERIFIABLE,
+            libelle=MOTIF_SANS_SEUIL_DESEQUILIBRE,
+            borne=None, valeur=desequilibre, source='')
+    source = 'réglage société — %s, source : %s' % (CLE_SEUIL_DESEQUILIBRE,
+                                                    source_seuil)
+    if desequilibre is None:
+        return VerdictElectrique(
+            code=CODE_DESEQUILIBRE, nature=NATURE_FONCTIONNELLE,
+            statut=STATUT_NON_VERIFIABLE,
+            libelle="le seuil de %s %% est réglé, mais le déséquilibre n'est "
+                    "pas calculable : %s" % (fr(seuil, 1), motif),
+            borne=seuil, valeur=None, source=source)
+    if desequilibre <= seuil:
+        return VerdictElectrique(
+            code=CODE_DESEQUILIBRE, nature=NATURE_FONCTIONNELLE,
+            statut=STATUT_OK,
+            libelle="%s %% de déséquilibre entre les phases pour un seuil "
+                    "réglé à %s %% : la répartition tient."
+                    % (fr(desequilibre), fr(seuil, 1)),
+            borne=seuil, valeur=desequilibre, source=source)
+    return VerdictElectrique(
+        code=CODE_DESEQUILIBRE, nature=NATURE_FONCTIONNELLE,
+        statut=STATUT_ALERTE,
+        libelle="%s %% de déséquilibre entre les phases pour un seuil réglé "
+                "à %s %% : répartissez les onduleurs monophasés autrement "
+                "(« phase_imposee ») ou corrigez le seuil."
+                % (fr(desequilibre), fr(seuil, 1)),
+        borne=seuil, valeur=desequilibre, source=source)
