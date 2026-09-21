@@ -27,7 +27,7 @@
  *  la table committée (« estimé ») si PVGIS est injoignable. JAMAIS un devis.
  */
 import { type LngLat } from './roof';
-import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from './roofPro2';
+import { PERIMETER_SETBACK_M, cotesDePavage, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import {
   PANEL2_WATT,
   type TariffGrid,
@@ -44,6 +44,7 @@ import {
   type FlushPack,
 } from './estimatorBrainV3';
 import { type YieldSource } from './estimatorBrainV6';
+import { anneauPosableParArete } from './estimatorBrainV7'; // CALX95 câblage
 
 export { PANEL2_WATT };
 export type { YieldSource };
@@ -145,6 +146,8 @@ interface PitchedCtx {
   obstructionClearancesM?: number[];
   /** PV63 — retraits de rive séparés quand la marge est gardée. */
   setbacksM?: Partial<PerimeterSetbacks>;
+  /** CALX109 câblage — module POSÉ (cotes + puissance). Absent ⇒ module par défaut. */
+  module?: Panel2Module;
   tariff: TariffGrid;
   yieldFn: PitchedYieldFn | undefined;
   packCache: Map<string, FlushPack>;
@@ -163,7 +166,10 @@ function evalPitched(ctx: PitchedCtx, layout: PitchedLayoutAxis, margin: Pitched
   if (!pack) {
     pack = packFlushPlane(
       { ring: ctx.ring, pitchDeg: ctx.pitchDeg, facingAzimuthDeg: ctx.facingAzimuthDeg, obstructions: ctx.obstructions },
-      { setbackM, overhangM: ctx.overhangM, obstructionClearancesM: ctx.obstructionClearancesM, setbacksM }, // PV61 + PV63
+      // CALX109 câblage — les VRAIES cotes du module posé entrent dans le pavage AFFLEURANT :
+      // un module plus grand loge moins de rangées, et son `kwc` suit SA puissance. Absent ⇒
+      // module par défaut ⇒ pavage en pente inchangé, octet pour octet.
+      { setbackM, overhangM: ctx.overhangM, obstructionClearancesM: ctx.obstructionClearancesM, setbacksM, module: ctx.module }, // PV61 + PV63 + CALX109
     );
     ctx.packCache.set(key, pack);
   }
@@ -181,7 +187,7 @@ function evalPitched(ctx: PitchedCtx, layout: PitchedLayoutAxis, margin: Pitched
       : ctx.needImposedZero
         ? 0
         : fitCount;
-  const perKwcPanel = fitCount > 0 && Number.isFinite(grid.kwc) ? grid.kwc / fitCount : PANEL2_WATT / 1000;
+  const perKwcPanel = fitCount > 0 && Number.isFinite(grid.kwc) ? grid.kwc / fitCount : cotesDePavage(ctx.module).watt / 1000;
   const kwc = placedCount * perKwcPanel;
   const y = resolvePitchedYield(ctx.yieldFn, ctx.latitudeDeg, ctx.pitchDeg, ctx.facingAzimuthDeg);
   // W48 — y.value est déjà borné fini ≥ 0 (safeYield) ; on reborne le produit par sûreté.
@@ -237,6 +243,22 @@ export interface PitchedSolveOptions {
   obstructionClearancesM?: number[];
   /** PV63 — retraits de rive séparés (latéral / extrémité / acrotère) quand la marge est gardée. */
   setbacksM?: Partial<PerimeterSetbacks>;
+  /**
+   * CALX95 câblage — retrait PROPRE à certaines arêtes du contour (table `rang du segment
+   * → mètres`, telle que `roofSetbackEdge.supplementsParArete` la produit depuis
+   * `zones[].edges[].retraitM`, CALX81), EN SUPPLÉMENT des retraits de CATÉGORIE. Absente
+   * ou sans entrée exploitable → anneau posable = contour tracé, balayage IDENTIQUE à
+   * aujourd'hui. Le découpage est celui de `anneauPosableParArete` (V7), importé ici.
+   */
+  retraitsParAreteM?: Readonly<Record<number, number>>;
+  /**
+   * CALX109 câblage — LE MODULE POSÉ sur ce pan, tel que `roofPro11/moduleSelect.cotesPourPan`
+   * le tire du catalogue de la société (`{longM, courtM, epaisM, watt}`). Ses cotes remplacent
+   * celles du module par défaut DANS le pavage affleurant, et sa puissance celle qui sert au
+   * kWc. Absent ⇒ balayage en pente et chiffres IDENTIQUES à ceux d'aujourd'hui, octet pour
+   * octet (`JSON.stringify`). Jumeau exact de `LiveSolveOptions.module` (V7, toit plat).
+   */
+  module?: Panel2Module;
 }
 
 export interface PitchedLiveResult {
@@ -303,7 +325,10 @@ export function solveLivePitched(
   const effectiveNeed = lockedNeed ?? neededPanels;
 
   const ctx: PitchedCtx = {
-    ring,
+    // CALX95 câblage — l'anneau POSABLE (retraits d'arête déjà rognés) part au pavage
+    // affleurant. Aucun retrait d'arête exploitable ⇒ c'est le contour tracé lui-même
+    // (même référence) ⇒ balayage en pente inchangé.
+    ring: anneauPosableParArete(ring, options.retraitsParAreteM),
     latitudeDeg,
     pitchDeg,
     facingAzimuthDeg,
@@ -314,6 +339,7 @@ export function solveLivePitched(
     overhangM: Math.max(0, options.overhangM ?? 0),
     obstructionClearancesM: options.obstructionClearancesM, // PV61
     setbacksM: options.setbacksM, // PV63
+    module: options.module, // CALX109 câblage — cotes RÉELLES du module posé
     tariff,
     yieldFn: options.yieldFn,
     packCache: new Map<string, FlushPack>(),

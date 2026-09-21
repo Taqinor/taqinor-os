@@ -144,6 +144,13 @@ class Traduction:
     #: CAL71 — la phrase de règle du RETRAIT de rive appliqué. Celle de chaque
     #: obstacle voyage sur l'obstacle lui-même (``regle_appliquee``).
     regle_retrait: str = ''
+    #: CALX405 — la proposition de CHÂSSIS INCLINÉ par pan, PUBLIÉE mais
+    #: jamais appliquée d'office : ``((repère du pan, {'inclinaison_deg':
+    #: …, 'raison': "…"}), …)``. Un pan sans proposition n'apparaît pas.
+    #: Gabarit muet sur les deux clés, pente absente, ou pente au-dessus du
+    #: seuil ⇒ tuple vide — la traduction reste octet pour octet identique
+    #: à celle d'avant CALX405 (D12).
+    propositions_chassis: Tuple[Tuple[str, dict], ...] = ()
     avertissements: Tuple[str, ...] = field(default=())
 
 
@@ -475,12 +482,41 @@ def _politique(plat, pente, latitude_deg):
     return Affleurant()
 
 
+def _proposition_chassis(pente_deg, regles_gabarit):
+    """La proposition de CHÂSSIS INCLINÉ pour un pan, ou ``None``.
+
+    CALX405 : ``services/gabarits.py`` porte le seuil et l'inclinaison
+    SAISIS par la société (``chassis_sous_pente_deg`` /
+    ``chassis_inclinaison_deg`` du gabarit appliqué à la zone), tous deux
+    optionnels — aucune valeur n'est livrée. Un pan relevé STRICTEMENT sous
+    le seuil reçoit la proposition d'un châssis incliné (l'inclinaison
+    saisie) plutôt que la pose au fil du toit d'aujourd'hui : elle n'est
+    jamais appliquée d'office, seulement publiée avec sa raison, qui nomme
+    les deux angles.
+
+    Seuil absent, pente absente, pente au-dessus (ou égale) au seuil, ou
+    inclinaison non saisie (rien de chiffrable à proposer — D7, aucun
+    nombre inventé) ⇒ ``None`` : le pan reste sur sa pose actuelle.
+    """
+    regles = regles_gabarit or {}
+    seuil = regles.get('chassis_sous_pente_deg')
+    inclinaison = regles.get('chassis_inclinaison_deg')
+    if seuil is None or inclinaison is None or pente_deg is None:
+        return None
+    if pente_deg >= seuil:
+        return None
+    raison = ("pente relevée %.1f° inférieure au seuil société %.1f°"
+              % (pente_deg, seuil))
+    return {'inclinaison_deg': inclinaison, 'raison': raison}
+
+
 # ------------------------------------------------------------------- entrée
 def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
                          parametres=None, repere='', inclinaison_deg=10.0,
                          orientation='PORTRAIT', modules_par_table=1,
                          faitage_m=0.0, code_kit='PANNEAU',
-                         allee_m=None, retrait_m=None, pas_recherche_m=0.01):
+                         allee_m=None, retrait_m=None, pas_recherche_m=0.01,
+                         regles_gabarit=None):
     """Traduit un document ``roof_layout`` v2 en entrée du moteur pur.
 
     Args:
@@ -497,6 +533,11 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         repere: le repère du chantier dans le document rendu.
         allee_m / retrait_m: forcent l'allée et le retrait de rive. Par
             défaut : ceux de la société, sinon ceux de l'atelier.
+        regles_gabarit: CALX405 — les réglages du gabarit appliqué à la
+            zone (rendu par ``services.gabarits.appliquer_gabarit``), pour
+            ``chassis_sous_pente_deg`` / ``chassis_inclinaison_deg``. Absent
+            ⇒ aucune proposition de châssis incliné, comportement
+            d'aujourd'hui strictement inchangé (D12).
 
     Returns:
         Une ``Traduction`` (document + politique + projection + régime de
@@ -543,6 +584,7 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
 
     surfaces = []
     politiques = []
+    propositions_chassis = []
     latitude = origine[1]
     for rang, pan, sommets in pans:
         pente, azimut, plat = _pente_et_azimut(pan)
@@ -553,6 +595,9 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
             rives=rives, axe_rangee=axe, pente_deg=pente,
             azimut_deg=azimut))
         politiques.append((repere_pan, _politique(plat, pente, latitude)))
+        proposition = _proposition_chassis(pente, regles_gabarit)
+        if proposition is not None:
+            propositions_chassis.append((repere_pan, proposition))
 
     try:
         zones = tuple(_zone_depuis(z) for z in zones_moteur_depuis_layout(
@@ -584,4 +629,5 @@ def entree_depuis_layout(roof_layout, *, produit=None, cotes_module=None,
         motifs_non_engageable=tuple(motifs),
         kit=kit,
         axe_rangee=axe.value,
-        regle_retrait=regle_retrait)
+        regle_retrait=regle_retrait,
+        propositions_chassis=tuple(propositions_chassis))

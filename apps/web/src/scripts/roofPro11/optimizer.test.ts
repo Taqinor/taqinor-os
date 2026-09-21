@@ -7,7 +7,11 @@ import { describe, expect, it } from 'vitest';
 import { packConfig, defaultEastWestGeometry, type PackOptions } from '../../lib/estimatorBrainV2';
 import { PANEL2_SHORT_M, PERIMETER_SETBACK_M } from '../../lib/roofPro2';
 import {
+  cibleOptimisationSaisie,
+  choixOptimisationCourant,
   departagerRemplissage,
+  poserCibleOptimisation,
+  poserChoixOptimisation,
   PRIORITES_REMPLISSAGE,
   type EntreeDepartage,
 } from './optimizer';
@@ -338,5 +342,41 @@ describe('CALX49 — priorité de pose : la commande du départage', () => {
         expect(p.cy - dy, `priorité ${id}`).toBeCloseTo(avant[i].cy, 9);
       });
     }
+  });
+});
+
+// ── CALX114 — le point UNIQUE où l'objectif saisi du document est déposé ───────────
+// Le balayage est appelé à deux endroits (tableau matrice, affinage PVGIS) : si chacun
+// gardait son propre objectif, la ligne badgée et la carte reco classeraient sur deux
+// critères différents. Ces tests gardent le dépôt : il n'invente aucun objectif, il
+// n'écrase pas les autres clés saisies, et il refuse une valeur hors contrat.
+describe('CALX114 — dépôt de `optimisation` (CALX88) pour le balayage', () => {
+  it('sans dépôt, aucun objectif n’est saisi et la phrase le NOMME', () => {
+    const r = poserChoixOptimisation(null);
+    expect(choixOptimisationCourant()).toBeNull();
+    expect(cibleOptimisationSaisie()).toBeNull();
+    expect(r.appliquee).toBe('energie');
+    expect(r.motif).toContain('Aucun objectif saisi');
+  });
+
+  it('poser une cible ne touche PAS les autres clés du document', () => {
+    poserChoixOptimisation({ priorite: 'faitage', seuilAccesSolaire: 0.7 });
+    poserCibleOptimisation('compte');
+    expect(choixOptimisationCourant()).toEqual({
+      priorite: 'faitage',
+      seuilAccesSolaire: 0.7,
+      cible: 'compte',
+    });
+    poserCibleOptimisation(null);
+    expect(choixOptimisationCourant()).toEqual({ priorite: 'faitage', seuilAccesSolaire: 0.7 });
+    expect(cibleOptimisationSaisie()).toBeNull();
+  });
+
+  it('une valeur hors contrat ne presse aucune puce et nomme le champ', () => {
+    const r = poserChoixOptimisation({ cible: 'rentabilite' });
+    expect(cibleOptimisationSaisie()).toBeNull();
+    expect(r.refusee).toBe(true);
+    expect(r.champ).toBe('optimisation.cible');
+    poserChoixOptimisation(null);
   });
 });

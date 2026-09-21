@@ -15,12 +15,79 @@
  * Voir apps/web/SOLAR_3D_PRO2_NOTES.md. JAMAIS un devis : une fourchette.
  */
 import { geodesicAreaM2, pointInPolygon, type LngLat } from './roof';
+// CALX95 — retrait propre à une arête physique du contour (géométrie pure, en mètres).
+import { rognerParArete } from './roofSetbackEdge';
 
 // — Vrai panneau Canadian Solar TOPBiHiKu7 CS7N-690-720TB-AG —
 export const PANEL2_LONG_M = 2.384; // grand côté (horizontal en paysage, le long de la rangée)
 export const PANEL2_SHORT_M = 1.303; // petit côté (dans le sens de la pente)
 export const PANEL2_THICK_M = 0.033;
 export const PANEL2_WATT = 720; // 0,72 kWc par panneau
+
+/**
+ * CALX109 — LES COTES D'UN MODULE, telles que le pavage les consomme.
+ * Quatre grandeurs et rien d'autre : le grand côté (le long de la rangée), le petit côté
+ * (dans le sens de la pente), l'épaisseur (rendu 3D uniquement) et la puissance unitaire.
+ * Toutes en MÈTRES / Wc — c'est l'unité du moteur ; le document, lui, parle en millimètres
+ * (`modules[].longueurMm`…) et c'est `roofPro11/moduleSelect.ts` qui convertit, une fois.
+ */
+export interface Panel2Module {
+  /** Grand côté (m) — horizontal en paysage, le long de la rangée. */
+  longM: number;
+  /** Petit côté (m) — dans le sens de la pente, celui qui pilote le pas de rangée. */
+  courtM: number;
+  /** Épaisseur (m). `null` = non renseignée : la scène ne l'invente pas. */
+  epaisM: number | null;
+  /** Puissance crête unitaire (Wc). */
+  watt: number;
+}
+
+/**
+ * CALX109 — LE MODULE PAR DÉFAUT DE L'ATELIER, nommé une bonne fois.
+ *
+ * Les quatre constantes ci-dessus décrivent le SEUL module que l'atelier savait poser
+ * avant CALX109. Elles restent le repli — mais un repli EXPLICITE et NOMMÉ : tant qu'aucun
+ * module n'est choisi dans le catalogue de la société (`zones[].geometry.moduleId`, CALX82),
+ * c'est CE module-là qui est pavé, et l'atelier le dit. Ce n'est jamais un repli muet sur
+ * lequel un pan qui désigne un autre modèle retomberait en silence.
+ */
+export const MODULE_ATELIER_PAR_DEFAUT: Panel2Module = {
+  longM: PANEL2_LONG_M,
+  courtM: PANEL2_SHORT_M,
+  epaisM: PANEL2_THICK_M,
+  watt: PANEL2_WATT,
+};
+
+/**
+ * CALX109 câblage — LES COTES QUE LE PAVAGE APPLIQUE RÉELLEMENT.
+ *
+ * Les deux moteurs de pavage (`estimatorBrainV2.packConfig` toit plat,
+ * `estimatorBrainV3.packFlushPlane` toit en pente) lisent leurs dimensions ICI, et nulle
+ * part ailleurs : une seule règle, donc jamais deux interprétations du même module.
+ *
+ * OPTION ABSENTE ⇒ `MODULE_ATELIER_PAR_DEFAUT` lui-même, donc pavage IDENTIQUE octet pour
+ * octet à celui d'aujourd'hui. Une cote non finie ou ≤ 0 n'est jamais « corrigée » en
+ * silence par une dimension standard : elle fait retomber sur le module par défaut, NOMMÉ
+ * (le refus détaillé, lui, est prononcé en amont par `moduleSelect.cotesDeModule`, qui
+ * nomme le champ manquant avant même qu'un module sans cote atteigne le pavage).
+ *
+ * Le grand côté est TOUJOURS `longM` : un pavage se raisonne « le long de la rangée » /
+ * « dans le sens de la pente », pas en longueur/largeur de fiche produit.
+ */
+export function cotesDePavage(module?: Panel2Module | null): Panel2Module {
+  if (!module) return MODULE_ATELIER_PAR_DEFAUT;
+  const exploitable = (v: unknown): v is number =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0;
+  if (!exploitable(module.longM) || !exploitable(module.courtM) || !exploitable(module.watt)) {
+    return MODULE_ATELIER_PAR_DEFAUT;
+  }
+  return {
+    longM: Math.max(module.longM, module.courtM),
+    courtM: Math.min(module.longM, module.courtM),
+    epaisM: exploitable(module.epaisM) ? module.epaisM : null,
+    watt: module.watt,
+  };
+}
 
 // — Décisions géométriques (ajustables ici) —
 export const PANEL2_TILT_DEG = 13; // inclinaison toit plat (plage densité 12–15°)
@@ -314,6 +381,24 @@ export interface ProLayout2Options {
   tiltDeg?: number;
   /** Pose affleurante (toit en pente) : rangées jointives, pas d'espacement solaire. */
   flush?: boolean;
+  /**
+   * CALX95 — retrait PROPRE à certaines arêtes du contour, en SUPPLÉMENT du retrait de
+   * catégorie appliqué au pourtour entier. Table `rang du segment → mètres`, dans la forme
+   * que produit `roofSetbackEdge.supplementsParArete` depuis `zones[].edges[].retraitM`
+   * (CALX81) : le segment `i` va de `ring[i]` à `ring[i + 1]`. OPTIONNEL et additif —
+   * absent ou vide, le calepinage est IDENTIQUE à celui d'aujourd'hui (aucune arête n'est
+   * rognée, aucune valeur n'est supposée). Un segment absent de la table n'ajoute rien :
+   * seul le réglage de catégorie s'applique.
+   */
+  retraitsParAreteM?: Readonly<Record<number, number>>;
+   /**
+   * CALX109 — le module RÉELLEMENT posé sur ce pan, avec ses cotes de fiche. Optionnel et
+   * additif : absent ⇒ `MODULE_ATELIER_PAR_DEFAUT`, donc un pavage IDENTIQUE à celui
+   * d'avant CALX109, au panneau près. Présent, ses cotes remplacent les constantes dans la
+   * maille ET dans le pas de rangée (un module plus court ombrage moins loin), et sa
+   * puissance remplace `PANEL2_WATT` dans le kWc.
+   */
+  module?: Panel2Module;
 }
 
 /**
@@ -321,6 +406,11 @@ export interface ProLayout2Options {
  * calculé par la géométrie solaire (anti-ombrage) à la latitude du toit. Un panneau
  * n'est retenu que si ses 4 coins (empreinte) sont DANS le tracé ET à au moins
  * `PERIMETER_SETBACK_M` de la rive.
+ *
+ * CALX95 — `opts.retraitsParAreteM` rogne EN PLUS le contour le long des seules arêtes qui
+ * portent un retrait SAISI (`zones[].edges[].retraitM`, CALX81) : les panneaux sont alors
+ * jugés contre cet anneau posable. Option absente ou vide ⇒ anneau posable = tracé, et le
+ * pavage est celui d'aujourd'hui, à l'identique.
  */
 export function layoutProRows2(
   ring: LngLat[],
@@ -334,8 +424,11 @@ export function layoutProRows2(
   const azimuthDeg = orientationToAzimuthDeg(orientation);
   const designElevDeg = designSunElevationDeg(latitudeDeg);
 
-  const alongRow = PANEL2_LONG_M; // 2,384 m le long de la rangée (paysage)
-  const slope = PANEL2_SHORT_M; // 1,303 m dans le sens de la pente
+  // CALX109 — les cotes viennent du module CHOISI ; sans choix, du module par défaut de
+  // l'atelier (constantes historiques), donc le pavage est inchangé au panneau près.
+  const moduleP = opts.module ?? MODULE_ATELIER_PAR_DEFAUT;
+  const alongRow = moduleP.longM; // grand côté, le long de la rangée (paysage)
+  const slope = moduleP.courtM; // petit côté, dans le sens de la pente
   const depthFootprint = slope * Math.cos(tiltRad);
   const rise = slope * Math.sin(tiltRad);
   // Ombre projetée par une rangée au soleil de design + empreinte = pas mini.
@@ -405,8 +498,15 @@ export function layoutProRows2(
     uu * u[0] + vv * s[0],
     uu * u[1] + vv * s[1],
   ];
+  // CALX95 — anneau POSABLE : le contour rogné des retraits propres à certaines arêtes,
+  // EN PLUS du retrait de catégorie que `ok()` mesure ci-dessous. Sans aucune arête saisie,
+  // `rognerParArete` renvoie le contour tel quel et le pavage est inchangé.
+  const ringPosable = rognerParArete(ringENU, opts.retraitsParAreteM ?? {});
+  // Les retraits d'arête ont mangé tout le pan : aucune surface posable — on le dit avec un
+  // pavage vide plutôt qu'en repliant sur le contour entier (ce serait poser hors retrait).
+  if (ringPosable.length < 3) return { ...empty, origin: [olng, olat], ringENU };
   const ok = (corners: [number, number][]): boolean =>
-    corners.every((c) => pointInPolygon(c, ringENU) && distToBoundary(c, ringENU) >= PERIMETER_SETBACK_M);
+    corners.every((c) => pointInPolygon(c, ringPosable) && distToBoundary(c, ringPosable) >= PERIMETER_SETBACK_M);
 
   const panels: ProPanel[] = [];
   for (let r = 0; r < rows; r++) {
@@ -433,7 +533,9 @@ export function layoutProRows2(
     ringENU,
     panels,
     count: panels.length,
-    kwc: (panels.length * PANEL2_WATT) / 1000,
+    // CALX109 — la puissance est celle du module POSÉ, jamais la constante de l'atelier
+    // quand un autre modèle est choisi (sinon deux modèles rendraient le même kWc).
+    kwc: (panels.length * moduleP.watt) / 1000,
     areaM2,
     rowAngleRad,
     tiltRad,

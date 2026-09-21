@@ -88,11 +88,19 @@ from . import meteo_fichier as _meteo_fichier_action  # noqa: F401
 # CALX244 — même patron : rattache ``raccordement`` (GET + POST du point de
 # raccordement réseau, services/raccordement.py, contrat CALX205).
 from . import raccordement as _raccordement_action  # noqa: F401
+# CALX109 — même patron : rattache ``modules-disponibles`` (les fiches
+# « module » du catalogue de la société avec leurs cotes réelles, lues par
+# ``services/modules_stock.py``, contrat CALX109).
+from . import modules_disponibles as _modules_disponibles_action  # noqa: F401
 
 # CALX228 — même patron : rattache ``troncons`` (le métré et la chute tronçon
 # par tronçon, contrat CALX203, servi par ``services/troncons.py``). Lecture
 # PURE : la porte n'écrit rien.
 from . import troncons as _troncons_action  # noqa: F401
+# CALX107 — même patron : rattache ``plan-importe`` (l'URL servie et la taille
+# en pixels de la pièce jointe que le document désigne comme plan de fond).
+# LECTURE PURE : la porte n'écrit rien.
+from . import plan_importe as _plan_importe_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -115,8 +123,11 @@ MODULES_RATTACHES = (
     'depuis_lead',  # CALX47
     'meteo_fichier',  # CALX62
     'raccordement',  # CALX244
+    'modules_disponibles',  # CALX109
 
     'troncons',  # CALX228
+
+    'plan_importe',  # CALX107
 )
 
 __all__ = ['MODULES_RATTACHES']

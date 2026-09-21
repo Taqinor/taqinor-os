@@ -4,7 +4,7 @@
    dans un troisième fichier serait une indirection sans bénéfice pour deux consommateurs
    du même repère. */
 import { useMemo } from 'react'
-import { sortedHorizonPoints, horizonHeightAtAzimuth, sunPathForDay, JOUR_EQUINOXE, JOUR_SOLSTICE_ETE, JOUR_SOLSTICE_HIVER } from './horizonMath'
+import { sortedHorizonPoints, horizonHeightAtAzimuth, sunPathForDay, sunPosition, JOUR_EQUINOXE, JOUR_SOLSTICE_ETE, JOUR_SOLSTICE_HIVER } from './horizonMath'
 
 /* ============================================================================
    CAL93/CAL96 — LE DIAGRAMME AZIMUT/HAUTEUR PARTAGÉ.
@@ -47,8 +47,14 @@ export const COURBES_REPERE = [
  * → aucune course tracée (jamais une latitude devinée). `horizonPoints` < 2 points
  * exploitables → aucun horizon dessiné. `obstructions` vide → aucun marqueur — jamais
  * une donnée météo ou géométrique inventée.
+ *
+ * CALX118 — `sunDay`/`sunHour` (le soleil de SCÈNE, contrat CALX88 `scene{sunDay,
+ * sunHour}`) positionnent un repère DISTINCT des trois courbes de référence : le MÊME
+ * `sunPosition` (`horizonMath.js`, jamais une seconde formule) est appelé avec CES deux
+ * valeurs. Absentes → aucun repère (comportement historique, byte pour byte) ; sous
+ * l'horizon (élévation ≤ 0) → aucun repère non plus, jamais un point inventé sous terre.
  */
-export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructions = [], ariaLabel, testId }) {
+export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructions = [], sunDay, sunHour, ariaLabel, testId }) {
   const sorted = sortedHorizonPoints(horizonPoints)
   const horizonPath = useMemo(() => {
     if (sorted.length < 2) return null
@@ -61,6 +67,15 @@ export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructio
     d += ` L ${xDe(360)} ${yDe(0)} Z`
     return d
   }, [sorted])
+
+  // CALX118 — le repère du soleil de SCÈNE (`scene.sunDay`/`scene.sunHour`), MÊME
+  // formule que les trois courbes de référence ci-dessous (`sunPosition`). Sous
+  // l'horizon (nuit à cette heure/ce jour) → aucun repère, jamais un point inventé.
+  const soleilCourant = useMemo(() => {
+    if (typeof latitudeDeg !== 'number' || typeof sunDay !== 'number' || typeof sunHour !== 'number') return null
+    const pos = sunPosition(latitudeDeg, sunDay, sunHour)
+    return pos.elevationDeg > 0 ? pos : null
+  }, [latitudeDeg, sunDay, sunHour])
 
   return (
     <svg
@@ -98,6 +113,21 @@ export default function SunDiagram({ latitudeDeg, horizonPoints = [], obstructio
           )}
         </g>
       ))}
+
+      {/* CALX118 — le soleil de SCÈNE courant, distinct des trois courbes de repère : un
+          disque plein (jamais confondu avec une obstruction, marquée en rouge). */}
+      {soleilCourant && (
+        <g data-testid="cal-sundiagram-soleil-courant">
+          <circle
+            cx={xDe(soleilCourant.azimuthDeg)}
+            cy={yDe(soleilCourant.elevationDeg)}
+            r="6"
+            fill="#ffd166"
+            stroke="#070b1d"
+            strokeWidth="1.5"
+          />
+        </g>
+      )}
     </svg>
   )
 }

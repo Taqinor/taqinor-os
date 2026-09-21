@@ -39,7 +39,10 @@ CLES_PV16 = {'panneaux', 'kwc', 'panel_watt', 'scenario', 'batterie',
              'avertissements'}
 #: Les clés de la racine du contexte PV17, hors clé optionnelle.
 CLES_RACINE = {'devis', 'geometrie', 'cible', 'carte', 'modifiable',
-               'raison_lecture_seule', 'avertissements'}
+               'raison_lecture_seule', 'avertissements',
+               # CALX104/CALX403 — sections de réglages société lues par l'atelier 3D
+               # (`reglagesAtelier`, mode devis), toujours présentes.
+               'zones_types', 'degagements'}
 
 
 class _Base(TestCase):

@@ -1,0 +1,49 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/modules-disponibles/",
+  "pourquoi": "CALX109 — LES MODULES QUE LA SOCIÉTÉ PEUT RÉELLEMENT POSER, AVEC LEURS COTES.\n\nCONSTAT. L'atelier 3D ne connaît qu'UN module, écrit en dur avec ses cotes (`apps/web/src/lib/roofPro2.ts` : 2,384 × 1,303 × 0,033 m, 720 Wc) et propagé dans tout le pavage (`apps/web/src/lib/estimatorBrainV2.ts`). Côté serveur les vraies cotes dorment pourtant déjà sur les fiches techniques : `longueur_mm`, `largeur_mm`, `epaisseur_mm`, `poids_kg`, `pmax_wc` pour une fiche `module` (PV5/CAL111-114), lues par le sélecteur cross-app `apps.stock.selectors.dimensions_de_pose` (CAL119). Parité : PV*SOL publie une base de modules avec leurs dimensions mécaniques ; un calepinage qui suppose les cotes d'un module ne calepine rien de vérifiable.\n\nLA FORME EST CELLE DU DOCUMENT. Chaque entrée `modules[].module` est EXACTEMENT une entrée du catalogue `modules[]` du schéma v2 (`roof_layout_v2.schema.json`, `$defs/moduleDocument`, CALX82) : `id`, `produitId`, `libelle`, `longueurMm`, `largeurMm`, `epaisseurMm`, `poidsKg`, `pmaxWc`, `source`. L'atelier écrit l'entrée choisie TELLE QUELLE dans le document et le pan la désigne par `zones[].geometry.moduleId` — aucune traduction de clés en chemin, donc aucune chance que deux graphies d'une même cote apparaissent.\n\n`id` EST STABLE, ET C'EST LE CONTRAT. Il vaut `produit-<pk>` pour toute fiche du catalogue : rouvrir un calepinage retrouve le même identifiant, donc les pans qui le citent restent valides. Un `moduleId` absent de `modules[]` est REFUSÉ par la porte d'import en nommant le champ (`services/io_layout.py`, CALX82) — c'est pour cela que l'identifiant ne doit jamais être recalculé autrement.\n\nLA COMPLÉTUDE VOYAGE À CÔTÉ, PAS DEDANS. `selectionnable`, `champs_manquants` et `motif` décrivent la FICHE, pas le module : ils n'entrent pas dans le document. Une fiche à laquelle il manque une cote de pavage est LISTÉE — le commercial doit voir qu'elle existe et pourquoi elle est grisée — mais elle n'est PAS sélectionnable, et le motif NOMME en français ce qui manque sur SA fiche produit. `champs_requis` dit lesquels comptent : longueur, largeur et puissance crête (la maille et le kWc). L'épaisseur et le poids servent au rendu 3D et au lestage, jamais au nombre de modules : leur absence ne grise donc rien.\n\nZÉRO CHIFFRE INVENTÉ (D-CALX 7). Une cote non renseignée vaut `null`, jamais une dimension standard supposée, jamais une puissance déduite d'une surface, jamais un repli silencieux sur le module d'hier : « non renseigné » n'est pas « zéro ». `source` est obligatoire au schéma et vaut « fiche produit » pour tout ce que cette porte sert.\n\n`motif_liste_vide` — UNE LISTE VIDE DIT POURQUOI. `null` dès qu'un module est sélectionnable ; sinon il distingue les deux cas (aucune fiche « module » au catalogue / des fiches existent mais aucune n'est complète) et l'atelier affiche CE motif-là. Le module par défaut de l'atelier (`roofPro2.ts`) reste le repli EXPLICITE et NOMMÉ tant qu'aucun module n'est choisi — jamais un repli muet.\n\nAUCUN PRIX, AUCUNE MARGE. `dimensions_de_pose` ne lit que la fiche technique, jamais `Produit.prix_achat` : cette porte ne peut structurellement pas publier un prix. Le calepinage ne calcule d'ailleurs jamais d'argent (D-CALX 5).\n\nLES VALEURS SONT DES PLACEHOLDERS (README, règle 4) : les deux modèles ci-dessous n'existent dans aucun catalogue — ce sont les CLÉS et leurs natures qui font le contrat.",
+  "exemple": {
+    "calepinage": 1,
+    "modules": [
+      {
+        "module": {
+          "id": "produit-4112",
+          "produitId": 4112,
+          "libelle": "Module monocristallin 580 Wc (exemple)",
+          "longueurMm": 2278.0,
+          "largeurMm": 1134.0,
+          "epaisseurMm": 35.0,
+          "poidsKg": 27.5,
+          "pmaxWc": 580.0,
+          "source": "fiche produit"
+        },
+        "selectionnable": true,
+        "champs_manquants": [],
+        "motif": null
+      },
+      {
+        "module": {
+          "id": "produit-4130",
+          "produitId": 4130,
+          "libelle": "Module 550 Wc — fiche à compléter (exemple)",
+          "longueurMm": 2279.0,
+          "largeurMm": 1134.0,
+          "epaisseurMm": null,
+          "poidsKg": null,
+          "pmaxWc": null,
+          "source": "fiche produit"
+        },
+        "selectionnable": false,
+        "champs_manquants": ["pmaxWc"],
+        "motif": "Fiche incomplète : la puissance crête (Wc) n'est pas renseignée sur la fiche technique de ce produit. Complétez-la pour pouvoir le calepiner."
+      }
+    ],
+    "champs_requis": ["longueurMm", "largeurMm", "pmaxWc"],
+    "motif_liste_vide": null
+  },
+  "exemple_vide": {
+    "calepinage": 1,
+    "modules": [],
+    "champs_requis": ["longueurMm", "largeurMm", "pmaxWc"],
+    "motif_liste_vide": "Aucune fiche technique « module » n'existe dans le catalogue de cette société : ajoutez le panneau au stock et renseignez sa fiche (longueur, largeur, puissance crête) pour pouvoir le calepiner."
+  }
+}

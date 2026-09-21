@@ -381,6 +381,26 @@ const calepinageApi = {
     // en cause — l'écran affiche CE motif-là, il n'en invente aucun.
     sldDxf: (id) =>
       api.get(`${pivot(id)}schema-unifilaire.dxf/`, { responseType: 'blob' }),
+
+    // CALX109 — les modules que la société peut RÉELLEMENT poser, avec les
+    // cotes de leur fiche technique (`views/modules_disponibles.py`, contrat
+    // `calepinage_modules_disponibles.json`). L'atelier 3D ne connaissait
+    // qu'un module écrit en dur : cette lecture lui sert le catalogue, dans
+    // la forme EXACTE du catalogue `modules[]` du document v2 (CALX82), donc
+    // sans traduction de clés. Une fiche incomplète est LISTÉE avec son motif
+    // et n'est pas sélectionnable ; une liste vide porte son propre motif —
+    // l'écran affiche CEUX-LÀ, il n'en invente aucun.
+    modulesDisponibles: (id) => api.get(`${pivot(id)}modules-disponibles/`),
+
+    // CALX107 — le FICHIER du plan de fond : son URL servie (pré-signée, même
+    // magasin que les photos de site) et sa taille en PIXELS NATURELS
+    // (`views/plan_importe.py`, contrat `calepinage_plan_importe.json`).
+    // L'atelier sait peindre le calque de fond mais ne parle jamais à Django :
+    // c'est l'écran qui va chercher la pièce jointe que le document désigne
+    // (`underlay.attachmentId`) et la lui redonne. Une taille illisible vaut
+    // `null` avec son motif — l'écran affiche CELUI-LÀ, il n'invente aucune
+    // étendue.
+    planImporte: (id) => api.get(`${pivot(id)}plan-importe/`),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
