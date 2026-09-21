@@ -257,6 +257,17 @@ class SpecOnduleur:
     #: purement descriptive, elle ne participe à AUCUN calcul : elle sert à ce
     #: qu'un schéma unifilaire NOMME le matériel au lieu d'écrire « Onduleur ».
     designation: str = ""
+    #: CALX213 — puissance APPARENTE maximale de sortie (kVA), telle que la
+    #: fiche la publie (champ ``s_max_kva`` de CALX60). Un appareil dont la
+    #: puissance apparente est inférieure à sa puissance active nominale est
+    #: BRIDÉ : ça ne casse rien, ça plafonne l'injection. ``None`` = la fiche
+    #: ne la publie pas ⇒ AUCUN contrôle, jamais un repli sur ``ac_kw``.
+    s_max_kva: Optional[float] = None
+    #: CALX213 — puissance CRÊTE d'entrée maximale (kWc) admise par le
+    #: constructeur (champ ``dc_max_kwc`` de CALX60). La dépasser sort de la
+    #: SPÉCIFICATION de l'appareil, au même titre qu'un Isc cumulé au-dessus
+    #: de ``isc_max_mppt_a``. ``None`` = non publiée ⇒ aucun contrôle.
+    dc_max_kwc: Optional[float] = None
 
     @property
     def tension_demarrage_v(self):
