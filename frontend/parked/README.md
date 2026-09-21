@@ -54,7 +54,7 @@ client API dédié) sont devenus respectivement `frontend/parked/features/<x>`,
 | logistique | oui | — | — |
 | magasin | oui | — | — |
 | marketing | oui | — | oui (marketingApi.js) |
-| messaging | oui | oui | — (messagesApi.js reste : partagé avec offlinesync/parametres/stock) |
+| messaging | oui | oui | oui (messagesApi.js + messagesApi.test.mjs) |
 | migration | oui | — | oui (migrationApi.js) |
 | mrp | oui | oui | oui (mrpApi.js) |
 | paie | oui | — | oui (paieApi.js + paieApi.fe1.test.mjs) |
@@ -76,10 +76,12 @@ module bien que le nom du dossier ne corresponde pas à la clé du module.
 uniquement par `pages/agriculture`) a suivi vers
 `frontend/parked/components/agriculture/`.
 
-Certains clients API (`btpChantierApi.js`, `gestionProjetApi.js`,
-`messagesApi.js`) sont restés dans `frontend/src/api/` : ils sont aussi
-utilisés par des écrans CONSERVÉS (installations, ventes, offlinesync,
-paramètres, stock) — les déplacer aurait cassé ces écrans.
+`btpChantierApi.js`, `gestionProjetApi.js` et `messagesApi.js` (+ son test
+co-localisé) sont restés dans `frontend/src/api/` un temps (SOLMVP40) car
+utilisés par des écrans CONSERVÉS (installations, ventes, CRM, SAV, stock) ;
+SOLMVP41c a retiré ces derniers usages (CTA « Créer le projet de
+facturation », dictée vocale terrain, sélecteur d'acheteur BCF recablé sur
+`coreApi.utilisateurs.list()`) et déplacé les trois clients ici.
 
 ## Faire revenir un module
 
