@@ -56,12 +56,10 @@ import TraductionsSection from './TraductionsSection'
 import I18nCoverageSection from './I18nCoverageSection'
 import ConfidentialiteSection from './ConfidentialiteSection'
 import ApplicationsSection from './ApplicationsSection'
-import MarketplaceSection from './MarketplaceSection'
 import ReferentielsSection from './ReferentielsSection'
 import RealisationsSection from './RealisationsSection'
 import ModelesBrandesSection from './ModelesBrandesSection'
 import ExportsPlanifiesSection from './ExportsPlanifiesSection'
-import AssistantConfigWidget from './AssistantConfigWidget'
 import ApprobationsPolitiquesSection from './ApprobationsPolitiquesSection'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
@@ -81,9 +79,6 @@ const CONFIDENTIALITE_TAB = { key: 'confidentialite', label: 'Confidentialité',
 // ODX5 — onglet « Applications » (catalogue de modules ODX3, admin-gated).
 // Ajouté localement, même logique que N96/N94/XPLT23.
 const APPLICATIONS_TAB = { key: 'applications', label: 'Applications', group: 'avance' }
-// WIR159 — onglet « Marketplace » (catalogue d'extensions NTEXT13, lecture seule).
-// Ajouté localement, même logique que N96/N94/XPLT23/ODX5.
-const MARKETPLACE_TAB = { key: 'marketplace', label: 'Marketplace', group: 'avance' }
 // WIR66 — onglet « Référentiels » (taux de TVA / conditions de paiement /
 // unités de mesure). Ajouté localement, même logique que N96/N94/XPLT23/ODX5.
 const REFERENTIELS_TAB = { key: 'referentiels', label: 'Référentiels', group: 'avance' }
@@ -134,7 +129,7 @@ export default function ParametresEntreprise() {
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité) + ODX5 (applications).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, I18N_COUVERTURE_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, REALISATIONS_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, APPROBATIONS_POLITIQUES_TAB, DEMO_ONBOARDING_TAB]
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, I18N_COUVERTURE_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, REFERENTIELS_TAB, REALISATIONS_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, APPROBATIONS_POLITIQUES_TAB, DEMO_ONBOARDING_TAB]
   // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
   // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
   const tabGroups = groupTabs(allTabs)
@@ -929,13 +924,6 @@ export default function ParametresEntreprise() {
           </p>
         </div>
 
-        {/* ── PACT145 — assistant de paramétrage « Où régler… ? » : répond en
-              français et donne le lien direct vers le bon écran. GUIDAGE SEUL,
-              il ne modifie jamais un réglage ; sans clé LLM il dégrade sur une
-              FAQ statique et renvoie quand même le lien. Hors du <form> de la
-              page : aucune interaction avec l'enregistrement du profil. ── */}
-        <AssistantConfigWidget />
-
         {/* ── VX35 — sidebar verticale groupée + colonne de contenu ── */}
         <div className="flex flex-col gap-6 md:flex-row md:items-start">
 
@@ -1031,8 +1019,6 @@ export default function ParametresEntreprise() {
           {tab === 'confidentialite' && <ConfidentialiteSection />}
           {/* ODX5 — catalogue de modules (admin-gated, autonome). */}
           {tab === 'applications' && <ApplicationsSection />}
-          {/* WIR159 — catalogue d'extensions (marketplace, lecture seule). */}
-          {tab === 'marketplace' && <MarketplaceSection />}
           {/* WIR66 — référentiels société : TVA / conditions / unités. */}
           {tab === 'referentiels' && <ReferentielsSection />}
           {/* Catalogue des installations réelles (preuve de la touche J4). */}

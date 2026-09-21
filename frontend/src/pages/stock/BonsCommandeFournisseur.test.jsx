@@ -48,8 +48,8 @@ vi.mock('../../api/stockApi', () => ({
   },
 }))
 
-vi.mock('../../api/messagesApi', () => ({
-  default: { listCompanyMembers: vi.fn().mockResolvedValue({ data: [] }) },
+vi.mock('../../api/coreApi', () => ({
+  default: { utilisateurs: { list: vi.fn().mockResolvedValue({ data: [] }) } },
 }))
 
 import stockApi from '../../api/stockApi'

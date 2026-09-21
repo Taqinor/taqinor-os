@@ -31,20 +31,22 @@ client API dédié) sont devenus respectivement `frontend/parked/features/<x>`,
 | Module | features/ | pages/ | api/ |
 |---|---|---|---|
 | agriculture | oui | oui | oui (agricultureApi.js) |
+| ai_governance | — (voir note) | — (voir note) | oui (aiGovernanceApi.js) |
 | ao | oui | — | oui (aoApi.js + aoApi.test.mjs) |
 | assurances | oui | — | — |
-| btp_chantier | oui | oui (`pages/btp`) | — (btpChantierApi.js reste : partagé avec installations/ventes) |
+| btp_chantier | oui | oui (`pages/btp`) | oui (btpChantierApi.js) |
 | compta | oui | — | oui (comptaApi.js + comptaApi.pact18.test.mjs) |
 | contrats | oui | — | oui (contratsApi.js) |
 | cpq | oui | — | oui (cpqApi.js) |
 | credit | oui | — | oui (creditApi.js) |
 | customobjects | oui | — | — |
 | education | oui | oui | oui (educationApi.js) |
+| einvoice | — (voir note) | — | oui (einvoiceApi.js) |
 | esg | oui | oui | oui (esgApi.js) |
 | fiscal | oui | oui | oui (fiscalApi.js) |
 | flotte | oui | — | oui (flotteApi.js) |
 | fpa | oui | oui | oui (fpaApi.js) |
-| gestion_projet | oui | — (`pages/dossiers`, voir note) | — (gestionProjetApi.js reste : partagé) |
+| gestion_projet | oui | — (`pages/dossiers`, voir note) | oui (gestionProjetApi.js) |
 | hospitality | oui | — | oui (hospitalityApi.js) |
 | immobilier | oui | oui | oui (immobilierApi.js) |
 | innovation | oui | — | oui (innovationApi.js) |
@@ -54,7 +56,7 @@ client API dédié) sont devenus respectivement `frontend/parked/features/<x>`,
 | logistique | oui | — | — |
 | magasin | oui | — | — |
 | marketing | oui | — | oui (marketingApi.js) |
-| messaging | oui | oui | — (messagesApi.js reste : partagé avec offlinesync/parametres/stock) |
+| messaging | oui | oui | oui (messagesApi.js + messagesApi.test.mjs) |
 | migration | oui | — | oui (migrationApi.js) |
 | mrp | oui | oui | oui (mrpApi.js) |
 | paie | oui | — | oui (paieApi.js + paieApi.fe1.test.mjs) |
@@ -76,10 +78,30 @@ module bien que le nom du dossier ne corresponde pas à la clé du module.
 uniquement par `pages/agriculture`) a suivi vers
 `frontend/parked/components/agriculture/`.
 
-Certains clients API (`btpChantierApi.js`, `gestionProjetApi.js`,
-`messagesApi.js`) sont restés dans `frontend/src/api/` : ils sont aussi
-utilisés par des écrans CONSERVÉS (installations, ventes, offlinesync,
-paramètres, stock) — les déplacer aurait cassé ces écrans.
+`btpChantierApi.js`, `gestionProjetApi.js` et `messagesApi.js` (+ son test
+co-localisé) sont restés dans `frontend/src/api/` un temps (SOLMVP40) car
+utilisés par des écrans CONSERVÉS (installations, ventes, CRM, SAV, stock) ;
+SOLMVP41c a retiré ces derniers usages (CTA « Créer le projet de
+facturation », dictée vocale terrain, sélecteur d'acheteur BCF recablé sur
+`coreApi.utilisateurs.list()`) et déplacé les trois clients ici.
+
+Note « einvoice » : pas de dossier `features/einvoice` dédié — son seul
+usage frontend était le composant `components/EinvoiceActions.jsx` (actions
+de facturation électronique DGI sur `pages/ventes/FactureForm.jsx`),
+supprimé avec `einvoiceApi.js` (SOLMVP41c).
+
+Note « ai_governance » : ce module n'a jamais eu de dossier
+`features/ai_governance` ni `pages/ai_governance` dédié — son usage frontend
+était dispersé en petits bouts dans des écrans CONSERVÉS d'autres modules
+(copilote contextuel de fiche dans `features/ia/CopilotContext.jsx`, carte
+« IA (capacités) » dans `features/parametres/IaCapacites.jsx`, page
+`features/reporting/RapportPeriodePage.jsx`, widget
+`pages/parametres/AssistantConfigWidget.jsx`, mémo vocal `CrVocalMemo` dans
+`pages/sav/TicketsPage.jsx`, brouillon IA dans `pages/stock/ProduitForm.jsx`,
+brouillon de relance dans `pages/crm/leads/LeadDetailPage.jsx`). SOLMVP41c a
+retiré tous ces bouts (composants/routes/menus supprimés, jamais parqués —
+ils ne survivraient pas sans le backend) et ne parque que `aiGovernanceApi.js`
+lui-même, seul fichier qui EST le module côté frontend.
 
 ## Faire revenir un module
 

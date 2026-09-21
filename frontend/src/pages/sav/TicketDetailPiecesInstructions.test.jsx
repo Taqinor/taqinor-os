@@ -9,20 +9,16 @@ import { MemoryRouter } from 'react-router-dom'
    ticket (getTicketPiecesUnifiees enfin consommé) + formulaire « Retirer une
    pièce » traçable (destination/opération/n° série), distinct du bouton
    « Retirer » existant (qui supprime la consommation sans laisser de trace).
-   WIR233/ZMFG5 — section Instructions éditable + Suggestions KB (insertion
-   locale, jamais une écriture serveur avant l'enregistrement du ticket).
+   WIR233 — section Instructions éditable.
    Patron TicketDetailFacturation.test.jsx (savApi + api + installationsApi
    mockés, Provider redux minimal). */
 
-const { getTicketPiecesUnifiees, retirerTicketPiece, getInstructionsSuggestions, updateTicketSpy } = vi.hoisted(() => ({
+const { getTicketPiecesUnifiees, retirerTicketPiece, updateTicketSpy } = vi.hoisted(() => ({
   getTicketPiecesUnifiees: vi.fn(() => Promise.resolve({
     data: { lignes: [], sous_totaux: { ajout: 0, retrait: 0, recyclage: 0 } },
   })),
   retirerTicketPiece: vi.fn(() => Promise.resolve({
     data: { id: 55, produit: 3, quantite: '1', destination: 'stock_occasion', restockee: true },
-  })),
-  getInstructionsSuggestions: vi.fn(() => Promise.resolve({
-    data: { results: [{ id: 1, titre: 'Procédure fusible grillé', corps: 'Remplacer le fusible après coupure.' }] },
   })),
   updateTicketSpy: vi.fn(({ id, data }) => {
     const action = { type: 'sav/updateTicket/noop' }
@@ -43,7 +39,6 @@ vi.mock('../../api/savApi', () => ({
     getEquipements: vi.fn(() => Promise.resolve({ data: [] })),
     getTicketPiecesUnifiees: (...a) => getTicketPiecesUnifiees(...a),
     retirerTicketPiece: (...a) => retirerTicketPiece(...a),
-    getInstructionsSuggestions: (...a) => getInstructionsSuggestions(...a),
     getTicketsSimilaires: vi.fn(() => Promise.resolve({ data: { results: [] } })),
     getTriageIa: vi.fn(() => Promise.resolve({ data: { disponible: false } })),
     getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
@@ -169,20 +164,4 @@ describe('TicketDetail — Instructions (WIR233)', () => {
     await user.type(zone, 'Couper le disjoncteur.', { delay: null })
     expect(zone).toHaveValue('Couper le disjoncteur.')
   }, 40000)
-
-  it('Suggestions KB : insère le corps SANS écriture serveur avant l’enregistrement', async () => {
-    const user = userEvent.setup()
-    renderDetail(baseTicket)
-    await screen.findByText('Ticket SAV — SAV-1', { exact: false })
-
-    await user.click(screen.getByRole('button', { name: /Suggestions KB/ }))
-    await waitFor(() => expect(getInstructionsSuggestions).toHaveBeenCalledWith(1))
-    await user.click(await screen.findByRole('button', { name: 'Insérer' }))
-
-    const zone = screen.getByLabelText("Instructions d'intervention")
-    expect(zone).toHaveValue('Remplacer le fusible après coupure.')
-    // Aucune écriture serveur déclenchée par l'insertion elle-même — le
-    // texte n'est qu'un état local tant que « Enregistrer » n'est pas cliqué.
-    expect(updateTicketSpy).not.toHaveBeenCalled()
-  })
 })

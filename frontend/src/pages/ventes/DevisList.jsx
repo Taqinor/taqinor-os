@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
   Copy, Send, X, Eye, Search, AlertTriangle, Box, ExternalLink,
-  Link2, FolderKanban, MoreHorizontal, Printer, Bell, Share2,
+  Link2, MoreHorizontal, Printer, Bell, Share2,
   LayoutList, LayoutGrid,
 } from 'lucide-react'
 import {
@@ -14,7 +14,6 @@ import {
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
-import gestionProjetApi from '../../api/gestionProjetApi'
 import crmApi from '../../api/crmApi'
 import importApi from '../../api/importApi'
 import DevisForm from './DevisForm'
@@ -436,13 +435,13 @@ function DevisRow({ d, ctx }) {
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
-    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
+    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId,
     openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
     handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleProformaPdf, handleBonCommandePdf,
-    handleChantier, handleCreerProjet, handleGenererFacture,
+    handleChantier, handleGenererFacture,
   } = ctx
   // NTI18N12 — calendrier hégirien EN PLUS de la date grégorienne (jamais en
   // remplacement, jamais stocké) : uniquement quand locale=ar ET la
@@ -1043,16 +1042,6 @@ function DevisRow({ d, ctx }) {
                 >
                   <HardHat className="size-3.5" aria-hidden="true" />
                   {d.chantier ? `Voir le chantier ${d.chantier.reference}` : 'Créer le chantier'}
-                </DropdownMenuItem>
-              )}
-              {/* XPRJ21 — Créer un projet (gestion de projet) depuis ce devis accepté. */}
-              {d.statut === 'accepte' && (
-                <DropdownMenuItem
-                  disabled={projetBusy === d.id}
-                  onSelect={() => handleCreerProjet(d)}
-                >
-                  <FolderKanban className="size-3.5" aria-hidden="true" />
-                  Créer projet
                 </DropdownMenuItem>
               )}
               {/* VX97 — journal des changements (qui/quand/ancien→nouveau),
@@ -2283,24 +2272,6 @@ export default function DevisList() {
     }
   }
 
-  // XPRJ21 — « Créer un projet » depuis un devis accepté : action utilisateur
-  // explicite (jamais automatique sur devis_accepted — le chantier auto
-  // existe déjà côté installations). Crée le Projet + son lien + un budget v1
-  // pré-ventilé depuis les lignes du devis, puis navigue vers le module Projets.
-  const [projetBusy, setProjetBusy] = useState(null)
-  const handleCreerProjet = async (d) => {
-    setProjetBusy(d.id)
-    try {
-      const res = await gestionProjetApi.creerProjetDepuisDevis(d.id)
-      toast.success(`Projet ${res.data.code} créé.`)
-      navigate(`/projets/${res.data.id}`)
-    } catch (err) {
-      toast.error(frenchError(err, 'Création du projet impossible.'))
-    } finally {
-      setProjetBusy(null)
-    }
-  }
-
   const handleConvertBC = async (d) => {
     const ok = await confirm({
       title: `Convertir « ${d.reference} » en bon de commande ?`,
@@ -2644,13 +2615,13 @@ export default function DevisList() {
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
-    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
+    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId,
     openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
     handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleProformaPdf, handleBonCommandePdf,
-    handleChantier, handleCreerProjet, handleGenererFacture,
+    handleChantier, handleGenererFacture,
   }
 
   // ── ARC49 — Rangée d'en-tête du tableau (8 colonnes), partagée par le cas

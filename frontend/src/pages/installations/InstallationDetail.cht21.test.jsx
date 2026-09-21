@@ -22,13 +22,6 @@ beforeAll(() => {
   }
 })
 
-vi.mock('../../api/gestionProjetApi', () => ({
-  default: {
-    getChantiers: () => Promise.resolve({ data: { results: [] } }),
-    creerProjetDepuisDevis: () => Promise.resolve({ data: { id: 1, code: 'PRJ-0001' } }),
-  },
-}))
-
 vi.mock('../../api/installationsApi', () => ({
   default: {
     getHistorique: () => Promise.resolve({ data: [] }),

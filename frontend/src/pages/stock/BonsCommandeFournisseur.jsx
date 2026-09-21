@@ -5,7 +5,7 @@ import {
   Pencil, BadgeCheck, History, AlertTriangle, BarChart3,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import messagesApi from '../../api/messagesApi'
+import coreApi from '../../api/coreApi'
 import { formatMAD } from '../../lib/format'
 import BcfProduitPicker from './BcfProduitPicker'
 import ProduitQuickCreateModal from '../../components/ProduitQuickCreateModal'
@@ -273,7 +273,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
   // ZPUR8 — liste des membres de la société pour le sélecteur « acheteur ».
   useEffect(() => {
-    messagesApi.listCompanyMembers()
+    coreApi.utilisateurs.list()
       .then((r) => setMembres(r.data?.results ?? r.data ?? []))
       .catch(() => {})
   }, [])

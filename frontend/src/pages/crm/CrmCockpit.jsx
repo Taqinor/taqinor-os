@@ -16,7 +16,6 @@ import RelancesDuJourWidget from './RelancesDuJourWidget'
 import MesStatsRelanceTiles from './MesStatsRelanceTiles'
 import AdherenceRelancesPanel from './AdherenceRelancesPanel'
 import KpiRelancesPanel from './KpiRelancesPanel'
-import TerritoryCoverageWidget from './TerritoryCoverageWidget'
 import PlacementAnciensLeadsCard from './PlacementAnciensLeadsCard'
 
 /* ============================================================================
@@ -136,7 +135,6 @@ export default function CrmCockpit() {
         <PlacementAnciensLeadsCard />
         <DormantAccountsWidget />
         <PortfolioWidget />
-        <TerritoryCoverageWidget />
         {!isResponsableOuAdmin && <AdherenceRelancesPanel />}
       </div>
     </div>

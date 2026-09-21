@@ -13,7 +13,6 @@ import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { Table } from '../reporting/Table'
 import ClientRgpdActions from './ClientRgpdActions'
 import OwnerChain from '../../components/OwnerChain'
-import OrgChartTab from './clients/OrgChartTab'
 // WIR16/NTCRM11 — Plan de compte (SWOT + objectifs + potentiel + timeline des
 // revues), conçu pour `clientId`/`planId` en props — `plans-compte/`/
 // `revues-compte/` déjà complets côté API.
@@ -161,13 +160,9 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
               )}
             </div>
           )}
-          {/* WIR12 — onglet Organigramme (ContactClient) à côté des documents,
-              chacun gardant son propre chargement (l'onglet Organigramme ne
-              fetch qu'à l'activation, via son propre effect interne). */}
           <Tabs defaultValue="documents">
             <TabsList>
               <TabsTrigger value="documents">Documents</TabsTrigger>
-              <TabsTrigger value="organigramme">Organigramme</TabsTrigger>
               <TabsTrigger value="plan-compte">Plan de compte</TabsTrigger>
             </TabsList>
             <TabsContent value="documents">
@@ -245,9 +240,6 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
                   />
                 </>
               )}
-            </TabsContent>
-            <TabsContent value="organigramme">
-              <OrgChartTab clientId={client.id} />
             </TabsContent>
             <TabsContent value="plan-compte">
               <PlanComptePage clientId={client.id} />
