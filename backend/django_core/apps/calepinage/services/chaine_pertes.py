@@ -31,6 +31,18 @@ Aucune étape n'a de valeur par défaut, et l'ordonnanceur n'en fabrique
 aucune : une entrée absente donne une étape omise, motivée, à ``null`` —
 jamais un 0 %, qui se lirait « cette étape ne coûte rien ».
 
+L'ARBITRAGE CALCULÉ / SAISI (CALX149)
+---------------------------------------
+Le catalogue accepte une saisie pour quinze postes, et plusieurs d'entre eux
+savent désormais se CALCULER (le thermique depuis la fiche, l'ohmique DC
+depuis les longueurs du plan). Rien n'arbitrait : les deux coexistaient. La
+règle est ici, une seule fois — l'étape calculée PRIME, et la saisie du même
+nom est publiée ÉCARTÉE sous ``cascade[].entree.saisie_ecartee`` avec le nom
+de l'étape qui l'a calculée (c'est de là que le panneau de saisie tire sa
+LECTURE SEULE). L'étape non calculable laisse la place au poste saisi
+SOURCÉ ; une saisie sans source ne s'applique jamais et son nom part dans
+``postes_non_sources``.
+
 CE QU'IL REND
 --------------
 ``appliquer_chaine(serie, contexte)`` rend ``(serie, cascade)`` : la série
@@ -315,8 +327,7 @@ def appliquer_chaine(serie, contexte=None):
 
     for rang, nom in enumerate(ORDRE_ETAPES, start=1):
         kwh_avant = dernier_connu
-        rendue, brute = _executer(nom, courante, contexte)
-        etape = _normaliser(nom, brute)
+        rendue, etape = _executer(nom, courante, contexte)
 
         if etape['motif_omission']:
             apres = _arrondi(_etapes.energie_kwh(rendue))
@@ -345,7 +356,7 @@ def appliquer_chaine(serie, contexte=None):
         'etapes': publiees,
         'ordre': [etape['etape'] for etape in publiees],
         'total_pct': _total_pct(premiere, dernier_connu, appliquees),
-        'postes_non_sources': list(contexte.get('postes_non_sources') or ()),
+        'postes_non_sources': _postes_non_sources(contexte),
         'hash_entree': contexte.get('hash_entree'),
     }
 
@@ -353,39 +364,167 @@ def appliquer_chaine(serie, contexte=None):
 # ── la boucle, pièce par pièce ──────────────────────────────────────────
 
 def _executer(nom, serie, contexte):
-    """Appelle le module de l'étape, ou l'omet en DISANT pourquoi.
+    """Calcule l'étape, ou ARBITRE avec le poste saisi (CALX149).
 
-    Trois raisons d'omettre sans même charger le module : une exclusivité a
-    déjà pris la lecture (D-CALX 16), l'étape est de celles que la v1 assume
-    ne pas modéliser, ou le module n'est pas livré.
+    L'ordre d'arbitrage est celui de la tâche, et il n'a qu'une lecture :
+    1. une EXCLUSIVITÉ l'emporte sur tout — la lecture est déjà comptée
+       ailleurs, y appliquer une saisie la compterait deux fois ;
+    2. l'étape CALCULÉE prime sur la saisie, et la saisie du même nom est
+       publiée ÉCARTÉE dans ``entree.saisie_ecartee`` (PVsyst : une perte
+       issue d'un modèle physique n'est pas cumulée avec sa saisie
+       forfaitaire) ;
+    3. l'étape non calculable laisse la place au poste saisi SOURCÉ, avec sa
+       ``source`` inchangée ;
+    4. une saisie SANS SOURCE ne s'applique jamais : l'étape reste omise et
+       le nom du poste part dans ``postes_non_sources``.
     """
-    motif = _motif_avant_module(nom, contexte)
-    if motif:
-        return serie, _etapes.etape_omise(_libelle(nom), motif)
+    saisi = _poste_saisi(contexte, nom)
 
-    module = _etapes.charger(nom)
-    appliquer = getattr(module, 'appliquer', None) if module else None
-    if appliquer is None:
-        motif = _etapes.MOTIF_NON_LIVREE.format(
-            module=_etapes.chemin_module(nom))
-        return serie, _etapes.etape_omise(_libelle(nom), motif)
-
-    rendu = appliquer(serie, contexte)
-    if not isinstance(rendu, tuple) or len(rendu) != 2:
-        raise ChaineInvalide(
-            f'L\'étape « {nom} » doit rendre le couple (serie, etape) ; elle '
-            f'a rendu {type(rendu).__name__}.', etape=nom)
-    return rendu
-
-
-def _motif_avant_module(nom, contexte):
-    """Le motif d'omission décidé par l'ORDRE lui-même, ou ``''`` (CALX148)."""
     exclusivite = EXCLUSIVITES.get(nom)
-    if exclusivite is not None:
-        predicat, motif = exclusivite
-        if predicat(contexte):
-            return motif
-    return TOUJOURS_OMISES.get(nom, '')
+    if exclusivite is not None and exclusivite[0](contexte):
+        return serie, _etapes.etape_omise(_libelle(nom), exclusivite[1])
+
+    motif = TOUJOURS_OMISES.get(nom, '')
+    if not motif:
+        module = _etapes.charger(nom)
+        appliquer = getattr(module, 'appliquer', None) if module else None
+        if appliquer is None:
+            motif = _etapes.MOTIF_NON_LIVREE.format(
+                module=_etapes.chemin_module(nom))
+        else:
+            rendu = appliquer(serie, contexte)
+            if not isinstance(rendu, tuple) or len(rendu) != 2:
+                raise ChaineInvalide(
+                    f'L\'étape « {nom} » doit rendre le couple (serie, '
+                    f'etape) ; elle a rendu {type(rendu).__name__}.',
+                    etape=nom)
+            rendue, etape = rendu[0], _normaliser(nom, rendu[1])
+            if not etape['motif_omission']:
+                etape['entree'] = _avec_saisie_ecartee(
+                    nom, etape['entree'], saisi)
+                return rendue, etape
+            # Le module s'est omis : la série qu'il rend doit être INTACTE,
+            # que la saisie prenne ensuite le relais ou non.
+            _refuser_si_modifiee(nom, serie, rendue)
+            motif = etape['motif_omission']
+
+    if _est_sourcee(saisi):
+        return _appliquer_saisie(nom, serie, saisi)
+    return serie, _etapes.etape_omise(
+        _libelle(nom), _avec_saisie_non_sourcee(nom, motif, saisi))
+
+
+def _refuser_si_modifiee(nom, avant, apres):
+    """Une étape OMISE laisse la série inchangée — sinon elle est nommée."""
+    energie_avant = _arrondi(_etapes.energie_kwh(avant))
+    energie_apres = _arrondi(_etapes.energie_kwh(apres))
+    if not _memes_energies(energie_apres, energie_avant):
+        raise ChaineInvalide(
+            f'L\'étape « {nom} » se déclare OMISE mais a modifié la série '
+            f'({energie_avant} kWh → {energie_apres} kWh). Une étape omise '
+            'laisse la série INCHANGÉE.', etape=nom)
+
+
+# ── l'arbitrage calculé / saisi (CALX149) ───────────────────────────────
+
+#: Ce qui est dit à l'écran quand une étape calculée écarte une saisie.
+MOTIF_SAISIE_ECARTEE = (
+    'Le poste saisi « {poste} » est ÉCARTÉ : l\'étape « {etape} » l\'a '
+    'CALCULÉ à partir de ses propres entrées, et cumuler les deux '
+    'compterait la même perte deux fois. Le poste reste servi en LECTURE '
+    'SEULE au panneau de saisie, avec le nom de l\'étape qui l\'a calculé.')
+
+#: Ce qui est ajouté au motif d'omission quand la saisie n'a pas de source.
+MOTIF_SAISIE_SANS_SOURCE = (
+    ' Le poste saisi « {poste} » porte bien un pourcentage, mais SANS '
+    'SOURCE : il n\'entre pas dans la cascade, et son nom figure dans '
+    '« postes_non_sources ».')
+
+
+def _poste_saisi(contexte, nom):
+    """Le poste saisi que l'étape ``nom`` recouvre, ou ``None``."""
+    poste = POSTE_PAR_ETAPE.get(nom)
+    if not poste:
+        return None
+    for saisi in contexte.get('postes_saisis') or ():
+        if isinstance(saisi, dict) and saisi.get('poste') == poste:
+            return saisi
+    return None
+
+
+def _pourcentage(saisi):
+    """Le pourcentage du poste saisi, ou ``None`` s'il est illisible."""
+    valeur = (saisi or {}).get('pct')
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    if nombre != nombre or nombre < 0.0 or nombre >= 100.0:
+        return None
+    return nombre
+
+
+def _est_sourcee(saisi):
+    """Une saisie n'entre dans la chaîne que SOURCÉE et lisible (D-CALX 7)."""
+    if saisi is None:
+        return False
+    source = str(saisi.get('source') or '').strip()
+    return bool(source) and _pourcentage(saisi) is not None
+
+
+def _appliquer_saisie(nom, serie, saisi):
+    """Le poste saisi s'applique lui-même, avec sa ``source`` INCHANGÉE."""
+    pct = _pourcentage(saisi)
+    suite = _etapes.mettre_a_l_echelle(serie, 1.0 - pct / 100.0)
+    return suite, _normaliser(nom, _etapes.etape_appliquee(
+        saisi.get('libelle') or _libelle(nom),
+        source=saisi.get('source'),
+        entree=f'poste_saisi:{POSTE_PAR_ETAPE[nom]}',
+        reference=saisi.get('reference') or ''))
+
+
+def _avec_saisie_ecartee(nom, entree, saisi):
+    """``entree`` enrichie de la saisie mise de côté par le calcul."""
+    if saisi is None:
+        return entree
+    poste = POSTE_PAR_ETAPE[nom]
+    return {
+        'champ': entree,
+        'saisie_ecartee': {
+            'poste': poste,
+            'etape': nom,
+            'pct': saisi.get('pct'),
+            'source': saisi.get('source'),
+            'motif': MOTIF_SAISIE_ECARTEE.format(poste=poste, etape=nom),
+        },
+    }
+
+
+def _avec_saisie_non_sourcee(nom, motif, saisi):
+    """Le motif d'omission, augmenté du refus NOMMANT le poste saisi."""
+    if saisi is None or _est_sourcee(saisi):
+        return motif
+    return motif + MOTIF_SAISIE_SANS_SOURCE.format(
+        poste=POSTE_PAR_ETAPE[nom])
+
+
+def _postes_non_sources(contexte):
+    """Les postes saisis sans source — nommés, jamais masqués.
+
+    ``services/pertes_politique.py::PolitiquePertes.postes_non_sources`` les
+    nomme déjà ; la cascade REPUBLIE la liste pour que l'écran de pertes
+    n'ait pas à ouvrir deux blocs, et y ajoute ce qu'elle a vu elle-même.
+    """
+    noms = [nom for nom in (contexte.get('postes_non_sources') or ())]
+    for saisi in contexte.get('postes_saisis') or ():
+        if not isinstance(saisi, dict):
+            continue
+        poste = saisi.get('poste')
+        if poste and not _est_sourcee(saisi) and poste not in noms:
+            noms.append(poste)
+    return noms
 
 
 def _normaliser(nom, brute):
