@@ -1,5 +1,5 @@
 /**
- * CALX100 — LE BÂTIMENT VIENT DU DOCUMENT, PAS D'UNE CONSTANTE.
+ * CALX100 / CALX101 — LE BÂTIMENT VIENT DU DOCUMENT, PAS D'UNE CONSTANTE.
  *
  * Constat que ces trois tâches corrigent :
  *  - la 3D extrudait TOUJOURS `FLOORS × FLOOR_HEIGHT_M` (6 m), quelle que soit la
@@ -30,6 +30,7 @@
  *  - la pente d'une lucarne est DÉRIVÉE de deux valeurs saisies (sa hauteur et son
  *    emprise) et la dérivation est NOMMÉE ; aucune pente forfaitaire n'existe ici.
  */
+import * as THREE from 'three';
 import { FLOORS, FLOOR_HEIGHT_M } from './constants';
 
 // ═══════════════ CALX84 — LE BÂTIMENT TEL QUE LE DOCUMENT LE DÉCRIT ═══════════════
@@ -326,4 +327,145 @@ export function emettreBatiments(list: readonly Batiment[] | null | undefined): 
 export function lireBatiments(json: unknown): Batiment[] {
   const raw = (json as { buildings?: unknown } | null | undefined)?.buildings ?? json;
   return serialiserBatiments(raw as readonly Batiment[] | null | undefined);
+}
+
+// ═══════════════ GÉOMÉTRIE D'ANNEAU ═══════════════
+
+/** Aire SIGNÉE (m²) d'un anneau ENU — positif = sens trigonométrique. */
+export function aireSigneeM2(ring: readonly [number, number][]): number {
+  let s = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [x1, y1] = ring[i];
+    const [x2, y2] = ring[(i + 1) % ring.length];
+    s += x1 * y2 - x2 * y1;
+  }
+  return s / 2;
+}
+
+/**
+ * CALX101 — anneau RENTRÉ de `epaisseurM` (offset par bissectrices). Sert de TROU au
+ * bandeau d'acrotère : entre l'anneau du tracé et celui-ci, il reste exactement la bande
+ * que le retrait d'acrotère (`parapetM`, CAL76) réserve déjà — aucune épaisseur inventée.
+ *
+ * Rend `null` quand le rentrant n'est pas géométriquement tenable (moins de 3 sommets,
+ * épaisseur nulle, ou tracé trop étroit : l'anneau s'auto-recouvrirait). Dans ce cas
+ * AUCUN bandeau n'est dessiné — on ne devine pas une forme qui ne tient pas.
+ */
+export function anneauInterieur(
+  ring: readonly [number, number][],
+  epaisseurM: number,
+): [number, number][] | null {
+  if (ring.length < 3 || !estMesure(epaisseurM)) return null;
+  const aire = aireSigneeM2(ring);
+  if (!Number.isFinite(aire) || aire === 0) return null;
+  const sens = aire > 0 ? 1 : -1; // normale rentrante = rotation -90° × sens
+  const out: [number, number][] = [];
+  const n = ring.length;
+  for (let i = 0; i < n; i++) {
+    const p = ring[i];
+    const a = ring[(i - 1 + n) % n];
+    const b = ring[(i + 1) % n];
+    const d1x = p[0] - a[0];
+    const d1y = p[1] - a[1];
+    const d2x = b[0] - p[0];
+    const d2y = b[1] - p[1];
+    const l1 = Math.hypot(d1x, d1y);
+    const l2 = Math.hypot(d2x, d2y);
+    if (l1 === 0 || l2 === 0) return null;
+    // Normales RENTRANTES unitaires des deux arêtes : l'intérieur d'un anneau parcouru
+    // dans le sens trigonométrique (`sens` = +1) est À GAUCHE de la marche, soit (−dy, dx).
+    const n1x = (-sens * d1y) / l1;
+    const n1y = (sens * d1x) / l1;
+    const n2x = (-sens * d2y) / l2;
+    const n2y = (sens * d2x) / l2;
+    let bx = n1x + n2x;
+    let by = n1y + n2y;
+    const lb = Math.hypot(bx, by);
+    if (lb < 1e-9) return null; // arêtes opposées : pointe dégénérée
+    bx /= lb;
+    by /= lb;
+    const cos = bx * n1x + by * n1y;
+    if (cos < 0.2) return null; // angle trop aigu : le rentrant explose
+    out.push([p[0] + (bx * epaisseurM) / cos, p[1] + (by * epaisseurM) / cos]);
+  }
+  const aireInt = aireSigneeM2(out);
+  // Même sens ET strictement plus petit : sinon le tracé est plus étroit que l'épaisseur.
+  if (!Number.isFinite(aireInt) || Math.sign(aireInt) !== Math.sign(aire) || Math.abs(aireInt) >= Math.abs(aire)) {
+    return null;
+  }
+  return out;
+}
+
+// ═══════════════ CALX101 — LE BANDEAU D'ACROTÈRE, COMME UN VOLUME ═══════════════
+
+/** Le bandeau d'acrotère à dessiner, avec sa provenance — ou l'absence, nommée. */
+export interface VolumeAcrotere {
+  /** Hauteur SAISIE (m) du relevé, au-dessus de la dalle. */
+  hauteurM: number;
+  /** Épaisseur (m) = le retrait d'acrotère RÉGLÉ (`parapetM`, CAL76). Jamais inventée. */
+  epaisseurM: number;
+  /** Phrase française prête à afficher. */
+  mention: string;
+}
+
+/**
+ * CALX101 — le bandeau d'acrotère du bâtiment, ou `null`.
+ *
+ * DEUX conditions, toutes deux issues du document : le retrait d'acrotère est réglé
+ * (`parapetM > 0`, CAL76) ET une hauteur d'acrotère est SAISIE dans le panneau Bâtiment.
+ * L'une manque ⇒ `null` ⇒ la scène garde exactement les maillages d'aujourd'hui.
+ */
+export function acrotereDuBatiment(
+  batiment: Batiment | null | undefined,
+  parapetM: number | null | undefined,
+): VolumeAcrotere | null {
+  const h = batiment?.hauteurAcrotereM;
+  if (!estMesure(h) || !estMesure(parapetM)) return null;
+  return {
+    hauteurM: h,
+    epaisseurM: parapetM,
+    mention: `Acrotère saisi : ${fmt1(h)} m de relevé sur ${fmt1(parapetM)} m de retrait réglé.`,
+  };
+}
+
+/**
+ * CALX101 — le MAILLAGE du bandeau d'acrotère : un volume périphérique (anneau extrudé)
+ * qui monte de `volume.hauteurM` au-dessus de la dalle et PROJETTE une vraie ombre
+ * (`castShadow`), ce qu'une simple contrainte de recul ne pouvait pas faire.
+ *
+ * `null` quand il n'y a rien à dessiner (aucun volume saisi, tracé trop étroit pour le
+ * rentrant) : l'appelant n'ajoute alors rien et la scène reste celle d'aujourd'hui.
+ */
+export function construireAcrotere(
+  ring: readonly [number, number][],
+  volume: VolumeAcrotere | null,
+  baseZ: number,
+  dim: boolean,
+): THREE.Mesh | null {
+  if (!volume || ring.length < 3 || !Number.isFinite(baseZ)) return null;
+  const interieur = anneauInterieur(ring, volume.epaisseurM);
+  if (!interieur) return null;
+  const shape = new THREE.Shape();
+  ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
+  shape.closePath();
+  const trou = new THREE.Path();
+  interieur.forEach(([x, y], i) => (i === 0 ? trou.moveTo(x, y) : trou.lineTo(x, y)));
+  trou.closePath();
+  shape.holes.push(trou);
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: volume.hauteurM, bevelEnabled: false });
+  // Même teinte que le bâtiment (continuité du volume) ; subduée pour un pan non actif,
+  // exactement comme les murs (`buildZoneMeshes`).
+  const mat = new THREE.MeshStandardMaterial({
+    color: dim ? 0x9aa3b4 : 0xe2e7f2,
+    roughness: 0.85,
+    metalness: 0,
+    transparent: dim,
+    opacity: dim ? 0.55 : 1,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = 'rp11-acrotere';
+  mesh.position.z = baseZ;
+  mesh.castShadow = true; // l'ombre de rive : la raison d'être du relevé
+  mesh.receiveShadow = true;
+  return mesh;
 }

@@ -273,6 +273,10 @@ export interface ZoneRenderPlan {
    *  (ou sans hauteur saisie) = la 3D extrude la hauteur de DESSIN annoncée
    *  (`batiment.ts` `HAUTEUR_DESSIN_M`) — le rendu d'aujourd'hui, octet pour octet. */
   batiment?: import('./batiment').Batiment | null;
+  /** CALX101 — retrait d'acrotère RÉGLÉ (`setbacksM.parapetM`, CAL76), en mètres : c'est
+   *  l'ÉPAISSEUR du bandeau d'acrotère quand une hauteur de relevé est saisie. Optionnel :
+   *  absent ou nul = aucun bandeau, la scène d'aujourd'hui. */
+  parapetM?: number;
 }
 
 /** W69 — pavage gagnant courant (pack + grid + tilt + family + flush) pour

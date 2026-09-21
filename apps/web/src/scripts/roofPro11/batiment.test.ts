@@ -1,11 +1,15 @@
-// CALX100 — le bâtiment vient du DOCUMENT (`buildings[]`, contrat CALX84), pas d'une
-// constante : hauteur SAISIE + provenance. Testé HORS DOM et hors carte (pur).
+// CALX100/101 — le bâtiment vient du DOCUMENT (`buildings[]`, contrat CALX84), pas d'une
+// constante : hauteur SAISIE + provenance, bandeau d'acrotère SAISI. Testé HORS DOM.
 import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
 import {
   HAUTEUR_DESSIN_M,
   ID_BATIMENT_SANS_ID,
+  acrotereDuBatiment,
+  anneauInterieur,
   appliquerSaisie,
   batimentDuPan,
+  construireAcrotere,
   emettreBatiments,
   hauteurExtrusion,
   idBatimentDuPan,
@@ -85,6 +89,18 @@ function makeCtx(areas: AreaRecord[], batiments?: Batiment[]): Ctx {
     layoutOptimalCount: 0,
     batiments,
   } as unknown as Ctx;
+}
+
+/** Anneau ENU rectangulaire centré en (0, 0), largeur (E-O) × profondeur (N-S), en mètres. */
+function ringENU(largeurM: number, profondeurM: number): [number, number][] {
+  const hw = largeurM / 2;
+  const hl = profondeurM / 2;
+  return [
+    [-hw, -hl],
+    [hw, -hl],
+    [hw, hl],
+    [-hw, hl],
+  ];
 }
 
 // ═══════════════ CALX100 — la hauteur et sa provenance ═══════════════
@@ -228,5 +244,51 @@ describe('CALX100 — le document : écriture, omission, réhydratation', () => 
   it('sans bâtiment saisi, serializeLayout n’émet pas la clé (comportement d’aujourd’hui)', () => {
     const layout = serializeLayout(makeCtx([zone('z1')]));
     expect('buildings' in layout).toBe(false);
+  });
+});
+
+// ═══════════════ CALX101 — le bandeau d'acrotère ═══════════════
+
+describe('CALX101 — acrotère : un VOLUME quand il est SAISI, rien sinon', () => {
+  it('aucune hauteur d’acrotère saisie ⇒ aucun volume (scène identique à aujourd’hui)', () => {
+    expect(acrotereDuBatiment({ id: 'b' }, 0.5)).toBeNull();
+    expect(acrotereDuBatiment({ id: 'b', hauteurAcrotereM: null }, 0.5)).toBeNull();
+    expect(construireAcrotere(ringENU(10, 8), acrotereDuBatiment({ id: 'b' }, 0.5), 6, false)).toBeNull();
+  });
+
+  it('retrait d’acrotère non réglé (parapetM = 0) ⇒ aucun volume, même avec une hauteur saisie', () => {
+    expect(acrotereDuBatiment({ id: 'b', hauteurAcrotereM: 1.1 }, 0)).toBeNull();
+    expect(acrotereDuBatiment({ id: 'b', hauteurAcrotereM: 1.1 }, undefined)).toBeNull();
+  });
+
+  it('hauteur saisie + retrait réglé ⇒ un bandeau à cette hauteur, d’épaisseur = le retrait', () => {
+    const v = acrotereDuBatiment({ id: 'b', hauteurAcrotereM: 1.1 }, 0.5)!;
+    expect(v.hauteurM).toBe(1.1);
+    expect(v.epaisseurM).toBe(0.5); // jamais une épaisseur inventée : le retrait CAL76
+    expect(v.mention).toContain('1,1 m');
+  });
+
+  it('le maillage existe, est posé sur la dalle et PROJETTE une ombre', () => {
+    const mesh = construireAcrotere(ringENU(10, 8), acrotereDuBatiment({ id: 'b', hauteurAcrotereM: 1.2 }, 0.5), 6.02, false)!;
+    expect(mesh).toBeInstanceOf(THREE.Mesh);
+    expect(mesh.castShadow).toBe(true);
+    expect(mesh.position.z).toBeCloseTo(6.02, 6);
+    const bbox = new THREE.Box3().setFromObject(mesh);
+    expect(bbox.max.z - bbox.min.z).toBeCloseTo(1.2, 5); // le relevé SAISI, rien d'autre
+  });
+
+  it('anneauInterieur : un rentrant plus épais que le tracé ne tient pas ⇒ aucun bandeau', () => {
+    expect(anneauInterieur(ringENU(10, 8), 0.5)).toHaveLength(4);
+    expect(anneauInterieur(ringENU(1, 1), 3)).toBeNull(); // le tracé est plus étroit que l'acrotère
+    expect(anneauInterieur([[0, 0], [1, 0]], 0.5)).toBeNull(); // moins de trois sommets
+    expect(construireAcrotere(ringENU(1, 1), { hauteurM: 1, epaisseurM: 3, mention: '' }, 0, false)).toBeNull();
+  });
+
+  it('le rentrant est bien À L’INTÉRIEUR : l’anneau interne est plus petit du retrait, de chaque côté', () => {
+    const interieur = anneauInterieur(ringENU(10, 8), 0.5)!;
+    const xs = interieur.map(([x]) => x);
+    const ys = interieur.map(([, y]) => y);
+    expect(Math.max(...xs)).toBeCloseTo(4.5, 6); // 5 − 0,5
+    expect(Math.max(...ys)).toBeCloseTo(3.5, 6); // 4 − 0,5
   });
 });

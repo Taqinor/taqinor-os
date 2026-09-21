@@ -50,9 +50,12 @@ import { makeCanadianPanelTexture } from './panelTexture';
 import { type Ctx } from './context';
 import {
   HAUTEUR_DESSIN_M,
+  acrotereDuBatiment,
   batimentDuPan,
+  construireAcrotere,
   hauteurExtrusion,
-} from './batiment'; // CALX100 — la hauteur des murs vient du DOCUMENT
+} from './batiment'; // CALX100/101 — hauteur et acrotère viennent du DOCUMENT
+import { type PerimeterSetbacks } from '../../lib/roofPro2';
 
 /** Dépendances injectées (carte + capacités de l'appareil, figées au boot). */
 export interface Scene3dDeps {
@@ -75,6 +78,13 @@ export interface Scene3dDeps {
    *     l'aide au placement) ne sont plus dessinées — les boîtes, elles, restent.
    */
   readOnly?: boolean;
+  /**
+   * CALX101 — les quatre retraits de rive RÉGLÉS dans l'atelier (CAL76), lus à la demande
+   * comme l'optimiseur les lit (`optimizer.ts` `setbacksOf`). Seul `parapetM` sert ici :
+   * c'est l'ÉPAISSEUR du bandeau d'acrotère quand une hauteur de relevé est SAISIE.
+   * Optionnel : absent = aucun bandeau d'acrotère, la scène d'aujourd'hui octet pour octet.
+   */
+  setbacksOf?: () => PerimeterSetbacks;
 }
 
 export interface Scene3d {
@@ -1046,6 +1056,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   // W107 — lift de faîtière commune par zone (id → mètres), recalculé à chaque renderScene
   // dans la frame ENU de la zone active. Vide / 0 → rendu inchangé (pans isolés, toit plat).
   let ridgeLifts = new Map<string, number>();
+  // CALX101 — retraits de rive RÉGLÉS (CAL76), lus à la demande. Absent → aucun acrotère.
+  const parapetReglM = (): number => {
+    const s = deps.setbacksOf?.();
+    return typeof s?.parapetM === 'number' && Number.isFinite(s.parapetM) ? s.parapetM : 0;
+  };
 
   const AXIS_X = new THREE.Vector3(1, 0, 0);
   const AXIS_Z = new THREE.Vector3(0, 0, 1);
@@ -1550,6 +1565,16 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     deck.receiveShadow = true;
     sceneRoot!.add(deck);
 
+    // CALX101 — bandeau d'ACROTÈRE : un VOLUME (pas seulement un recul), qui porte une
+    // vraie ombre de rive. Il n'existe que si une hauteur de relevé est SAISIE dans le
+    // panneau Bâtiment ET qu'un retrait d'acrotère est réglé (CAL76) — sinon `null`, et la
+    // scène garde EXACTEMENT les maillages d'aujourd'hui. Toit en pente (`flush`) : aucun
+    // bandeau, un acrotère est un ouvrage de toit-terrasse.
+    const acrotere = flush // CALX101
+      ? null
+      : construireAcrotere(ring, acrotereDuBatiment(plan.batiment, plan.parapetM), deck.position.z, dim);
+    if (acrotere) sceneRoot!.add(acrotere);
+
     // W90 — MASSING DU TOIT EN PENTE (pignons/jupe de rive). En pente (flush) la dalle
     // est un PLAN INCLINÉ posé au-dessus du toit plat du bâtiment (z = wallH) : sans rien
     // d'autre, le coin amont « flotte » au-dessus d'une boîte à toit plat. On ferme le
@@ -1952,12 +1977,13 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const offY = (plan.pack.origin[1] - activeOrigin[1]) * DEG2M;
         // W107 — applique le lift de faîtière commune de cette zone (copie superficielle pour
         // ne pas muter le renderPlan stocké). 0 par défaut → rendu inchangé.
-        // CALX100 — ce pan extrude la hauteur SAISIE de SON bâtiment (CAL59 `buildingId`
-        // → `buildings[]`), sinon la hauteur de dessin annoncée.
+        // CALX100/101 — ce pan extrude la hauteur SAISIE de SON bâtiment (CAL59
+        // `buildingId` → `buildings[]`), et porte le retrait d'acrotère réglé.
         const liftedPlan: ZoneRenderPlan = {
           ...plan,
           ridgeLiftM: ridgeLifts.get(a.id) ?? 0,
           batiment: batimentDuPan(ctx.batiments, a.buildingId), // CALX100
+          parapetM: parapetReglM(), // CALX101
         };
         // VISIONNEUSE : `dim` false → ce pan est bâti avec les MÊMES matériaux que
         // le pan actif (verre, cadres, rails, châssis) ; `isOtherZone` reste true →
@@ -2081,7 +2107,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // autres zones (buildZoneMeshes), à offset NUL et sans atténuation → octet pour octet
     // identique à avant. Les obstacles VIVANTS (tinte sélection + étiquette + drag) et la
     // photo satellite restent gérés ici car ils dépendent de l'état d'édition courant.
-    const activePlan: ZoneRenderPlan = { pack, grid, tiltDeg, family, flush, count: drawnPanels.length, obstacles: ctx.obstacles, ridgeLiftM: ridgeLifts.get(ctx.activeAreaId) ?? 0, batiment: batimentActif };
+    const activePlan: ZoneRenderPlan = { pack, grid, tiltDeg, family, flush, count: drawnPanels.length, obstacles: ctx.obstacles, ridgeLiftM: ridgeLifts.get(ctx.activeAreaId) ?? 0, batiment: batimentActif, parapetM: parapetReglM() };
     const built = buildZoneMeshes(activePlan, 0, 0, false, occupiedSet);
     // Change B : pose la photo satellite (géo-alignée, détourée au tracé) sur la
     // face supérieure. L'origine de la scène sert à reprojeter les sommets en lng/lat.

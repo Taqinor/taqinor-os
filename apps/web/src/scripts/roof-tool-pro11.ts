@@ -1410,7 +1410,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // — Scène 3D Three.js (couche WebGL custom MapLibre) : voir roofPro11/scene3d.ts. Le
   // module possède le renderer/scène/caméra/soleil + la photo de toit (W70) ; l'entrée
   // garde la construction de la carte et le boot map.on('load') (qui ajoute customLayer).
-  const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize });
+  const scene3d = createScene3d(ctx, { map, lowEnd, shadowSize, setbacksOf }); // CALX101 — retrait d'acrotère réglé
   const customLayer = scene3d.customLayer;
   const disposeScene = scene3d.disposeScene;
   const renderScene = scene3d.renderScene;
