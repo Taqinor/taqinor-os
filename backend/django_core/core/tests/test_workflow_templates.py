@@ -34,12 +34,13 @@ class CatalogueShapeTests(TestCase):
 
     def test_catalogue_has_the_prebuilt_models(self):
         codes = {t['code'] for t in workflow_templates.WORKFLOW_TEMPLATES}
-        # ARC10 a ajouté le pilote domaine « cloture_ncr » (clôture NCR qhse) ;
-        # NTWFL31 les trois modèles verticaux solaire.
+        # NTWFL31 a ajouté les trois modèles verticaux solaire. (SOLMVP23 : le
+        # pilote « cloture_ncr » est parti avec son unique consommateur, le
+        # module QHSE — Phase 2, docs/parked-modules.md.)
         self.assertEqual(
             codes,
             {'relance_devis', 'onboarding_chantier', 'rappel_garantie',
-             'cloture_ncr', 'validation_devis_forte_remise',
+             'validation_devis_forte_remise',
              'onboarding_chantier_grand_compte', 'reclamation_sav_complexe'},
         )
 
@@ -192,7 +193,7 @@ class WorkflowTemplateEndpointTests(TestCase):
         resp = self._list(self.limited)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         # Dérivé du catalogue (4 depuis ARC10 : relance_devis, relance_facture,
-        # approbation_bc, cloture_ncr) — ne plus casser à chaque ajout.
+        # approbation_bc) — ne plus casser à chaque ajout.
         from core.workflow_templates import WORKFLOW_TEMPLATES
         self.assertEqual(len(resp.data), len(WORKFLOW_TEMPLATES))
         self.assertEqual(

@@ -96,7 +96,7 @@ DEGRADED_MODE_MATRIX = {
 
 # Correspondance clé de la matrice -> nom de sonde ``core.health.check_services()``
 # (``llm_ia`` n'a pas de sonde infra dédiée — même limite que le composant
-# public « IA » de ``apps.statuspage.tasks``, dérivé de ``core.ai.registry``
+# public « IA » de la page d'état, dérivé de ``core.ai.registry``
 # plutôt que d'un probe direct).
 _PROBE_NAME_FOR_KEY = {
     'db': 'database',
@@ -107,7 +107,7 @@ _PROBE_NAME_FOR_KEY = {
 
 
 def _statut_llm_ia():
-    """Best-effort, même logique que ``apps.statuspage.tasks._statut_ia_public``
+    """Best-effort, même logique que le composant « IA » de la page d'état
     (pas de sonde infra dédiée pour l'IA — dérivé du registre de fournisseurs)."""
     try:
         from core.ai.registry import is_capability_configured

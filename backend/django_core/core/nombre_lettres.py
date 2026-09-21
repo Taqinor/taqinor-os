@@ -5,9 +5,9 @@ longtemps logée dans `apps/ventes/utils/nombre_lettres.py` (XFAC9, pour la
 quittance de paiement) est relogée ICI, dans la couche fondation — exactement le
 patron `apps/ventes/utils/references.py` → `core.numbering` (ARC6).
 
-Motif : `apps.ao` (fabrique documentaire des appels d'offres) a besoin du montant
-en lettres pour l'arrêté du bordereau des prix et pour les prix unitaires ligne à
-ligne, et le contrat import-linter `ao-models-decoupled` lui interdit d'importer
+Motif : une fabrique documentaire a besoin du montant
+en lettres pour l'arrêté d'un bordereau des prix et pour les prix unitaires ligne à
+ligne, et les contrats import-linter de découplage lui interdisent d'importer
 un module d'app domaine. Une fonction purement arithmétique consommée par trois
 domaines (ventes, compta, ao) est une primitive de fondation, pas un utilitaire
 de `ventes`.

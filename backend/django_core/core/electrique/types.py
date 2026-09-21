@@ -225,7 +225,7 @@ class EntreeElectrique:
     """ENTRÉE COMPLÈTE du moteur — tout ce dont le calcul a besoin, rien de plus.
 
     Aucun modèle Django, aucun devis, aucun prix : l'adaptateur applicatif
-    (``apps.ventes`` / ``apps.ao``) construit cette structure et lit le
+    (``apps.ventes`` / ``apps.calepinage``) construit cette structure et lit le
     ``ResultatElectrique``. C'est ce qui rend le moteur testable sans base.
     """
 

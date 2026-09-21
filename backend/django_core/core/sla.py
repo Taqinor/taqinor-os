@@ -1,13 +1,13 @@
 """NTOBS3 — rapport SLA mensuel par tenant (uptime mesuré + P95 + export PDF).
 
 Fondation : ``SlaSnapshot`` persiste, pour une société et un mois, une
-disponibilité dérivée de l'historique RÉEL ``apps.statuspage.IncidentPublic``
-(pondérée par la durée effective de chaque incident sur le mois) et un P95 de
+disponibilité dérivée de l'historique RÉEL des incidents publics de la page
+d'état (pondérée par la durée effective de chaque incident sur le mois) et un P95 de
 latence best-effort dérivé de ``core.metrics`` (``None`` — jamais un chiffre
 inventé — quand aucune mesure n'est disponible pour la période).
 
 ``core`` reste une couche de FONDATION (contrat import-linter
-``core-foundation-is-a-base-layer``) : ``apps.statuspage`` est résolu par
+``core-foundation-is-a-base-layer``) : le modèle d'incident est résolu par
 ``django.apps.apps.get_model`` (jamais un import statique). Modèle défini ICI
 (pas directement dans ``core/models.py``) et réexporté en bas de
 ``core/models.py`` — même éclatement que ``core/sharing.py``/
@@ -250,7 +250,8 @@ def uptime_pct_periode(company, periode):
     """Disponibilité (%) pondérée par la durée RÉELLE des incidents publics
     touchant ``company`` (systèmes ``company=None`` OU propres à la société)
     sur le mois de ``periode``. Best-effort : renvoie 100.0 si
-    ``apps.statuspage`` n'est pas disponible (jamais une exception)."""
+    le modèle d'incident public n'est pas disponible (jamais une
+    exception)."""
     try:
         incident_model = django_apps.get_model('statuspage', 'IncidentPublic')
     except LookupError:

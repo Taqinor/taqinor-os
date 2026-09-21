@@ -4,8 +4,8 @@
 Frère de ``core.calepinage`` : là où le calepinage répond « combien de modules
 tiennent sur cette toiture et où », celui-ci répond « comment on les câble » —
 chaînes, onduleurs, protections, sections de câble, nomenclature, schéma
-unifilaire. Les deux consommateurs (``apps.ao`` pour la réponse à appel
-d'offres, ``apps.ventes`` pour le devis/villa) ne peuvent pas s'importer l'un
+unifilaire. Les deux consommateurs (``apps.calepinage`` pour l'étude de
+toiture, ``apps.ventes`` pour le devis/villa) ne peuvent pas s'importer l'un
 l'autre : le moteur vit donc dans la couche fondation ``core``, et sa PURETÉ est
 la contrepartie :
 

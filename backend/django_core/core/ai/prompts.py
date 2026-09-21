@@ -7,7 +7,8 @@ paire :
   * le **défaut code** — enregistré à l'import par la feature qui l'utilise
     (:func:`register_default_prompt`), versionné dans git, toujours présent ;
   * la **surcharge société** — résolue par un résolveur enregistré par
-    ``apps.ai_governance`` (:func:`register_prompt_resolver`).
+    l'app de gouvernance IA, quand elle est installée
+    (:func:`register_prompt_resolver`).
 
 Sans surcharge (et sans app de gouvernance installée), :func:`render_prompt`
 rend EXACTEMENT le défaut code : le comportement est byte-identique à l'avant
