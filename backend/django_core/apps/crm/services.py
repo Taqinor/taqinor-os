@@ -2558,9 +2558,26 @@ def verifier_gabarit_assignable(company, template_cle):
 
 
 #: MRY6 — codes de garde dont le refus est TRACÉ en chatter. Les autres
-#: (miroir Odoo, lead déjà contacté, cadence déjà en place…) restent muets :
-#: les journaliser inonderait l'historique de chaque import.
-_GARDES_CADENCE_TRACEES = frozenset({'sans_numero', 'doublon'})
+#: (cadence déjà en place, lead qu'on ne relance plus…) restent muets : les
+#: journaliser inonderait l'historique de chaque import.
+#:
+#: CAD103 (21/09/2026) — `deja_contacte` REJOINT les refus tracés. Le cas est
+#: le plus courant de tous : la commerciale reçoit un appel, crée la fiche,
+#: la passe en « Contacté » parce que c'est la vérité — et le dossier n'entre
+#: dans AUCUN plan, sans une ligne pour le dire. Même silence pour l'API
+#: publique partenaire, qui accepte une étape dans sa requête puis appelle la
+#: cadence. Un refus muet est le pire des deux mondes.
+_GARDES_CADENCE_TRACEES = frozenset({'sans_numero', 'doublon',
+                                     'deja_contacte'})
+
+#: CAD103 — ce que le refus PROPOSE, en toutes lettres. Le protocole ne
+#: change pas : c'est la touche 3 (le rappel du jour même) qui reprend un
+#: dossier après un premier échange, et le placement à barreau intermédiaire
+#: existe déjà (MRY30, « Placer les anciens leads » : il pose le plan depuis
+#: une ancre rétrodatée et annule les touches déjà passées).
+SUITE_DEJA_CONTACTE = (
+    'démarrez le protocole à la touche 3 (le rappel du jour même) depuis '
+    '« Placer les anciens leads »')
 
 
 def _garde_cadence_contact(lead):
@@ -2579,7 +2596,11 @@ def _garde_cadence_contact(lead):
     if lead.source == Lead.Source.ODOO_IMPORT_TEST:
         return ('miroir', 'lead du miroir Odoo')
     if lead.stage != stages.NEW or lead.first_contacted_at is not None:
-        return ('deja_contacte', 'lead déjà contacté ou hors étape NEW')
+        # CAD103 — le motif DIT la suite : ce refus est désormais tracé, et
+        # une ligne qui constate sans proposer ne sert à rien.
+        return ('deja_contacte',
+                'lead déjà contacté ou hors étape « Nouveau » — '
+                f'{SUITE_DEJA_CONTACTE}')
     if lead.perdu or lead.is_archived or lead.ne_plus_contacter:
         return ('inactif', 'lead perdu, archivé ou « ne plus contacter »')
     # CAD34 — on cherche le premier numéro EXPLOITABLE de la fiche :
