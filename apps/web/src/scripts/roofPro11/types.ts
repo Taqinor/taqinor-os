@@ -268,6 +268,11 @@ export interface ZoneRenderPlan {
    *  rejoignent sur une faîtière COMMUNE (le plan monte de `ridgeLiftM` sans changer sa
    *  pente). Défaut 0 (pan isolé / toit plat) → rendu inchangé, octet pour octet. */
   ridgeLiftM?: number;
+  /** CALX100/CALX101 — le BÂTIMENT du document (`buildings[]`, contrat CALX84) auquel ce
+   *  pan appartient, tel que `zones[].buildingId` (CAL59) le désigne. Optionnel : absent
+   *  (ou sans hauteur saisie) = la 3D extrude la hauteur de DESSIN annoncée
+   *  (`batiment.ts` `HAUTEUR_DESSIN_M`) — le rendu d'aujourd'hui, octet pour octet. */
+  batiment?: import('./batiment').Batiment | null;
 }
 
 /** W69 — pavage gagnant courant (pack + grid + tilt + family + flush) pour

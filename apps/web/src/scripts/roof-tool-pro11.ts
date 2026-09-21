@@ -159,6 +159,7 @@ import {
   type EntreeDepartage,
 } from './roofPro11/optimizer';
 import { creerCoucheElectrique } from './roofPro11/electrique3d';
+import { lireBatiments } from './roofPro11/batiment'; // CALX100 — `buildings[]` du document
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
 import { hydrateFromLead, hydrateFromDevis, serializeLayout, referenceContourRing, deserializeMeasurements, deserializeExclusionZonesFromLayout, deserializeSetbacksFromLayout, deserializeHorizonProfileFromLayout } from './roofPro11/prefill';
 
@@ -1723,6 +1724,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // historique). `shadingUi` a déjà été construit (ligne ~1327) : on passe par SON API
     // pour que la matrice/le facteur/la note soient recalculés cohéremment.
     shadingUi.setHorizonProfile(deserializeHorizonProfileFromLayout(layout));
+    ctx.batiments = lireBatiments(layout); // CALX100 — hauteurs SAISIES + provenance, relues
     const setIf = (id: string, v?: string) => {
       const el = $<HTMLInputElement>(id);
       if (el && v && !el.value.trim()) el.value = v;

@@ -27,6 +27,7 @@ import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone 
 import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
 import { type CoucheElectrique, type DocumentElectrique } from './electrique3d';
+import { emettreBatiments, type Batiment } from './batiment'; // CALX100
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -553,6 +554,14 @@ export interface SerializedLayout {
    * `roof_layout_v2.schema.json` (`electrical.equipements[]` / `electrical.cheminements[]`).
    */
   electrical?: DocumentElectrique;
+  /**
+   * CALX84/CALX100 — les BÂTIMENTS du site (hauteur SAISIE + sa provenance, étages,
+   * hauteur d'étage, relevé d'acrotère), ceux que `zones[].buildingId` (CAL59) désigne.
+   * Clé RACINE, écrite par `batiment.ts` (`emettreBatiments`). Omise tant qu'aucun
+   * bâtiment n'apprend rien au document — comportement historique, byte pour byte.
+   * Forme figée par `roof_layout_v2.schema.json` (`$defs/building`).
+   */
+  buildings?: Batiment[];
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -735,6 +744,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     ...(meta?.horizonProfile && meta.horizonProfile.points.length >= 2
       ? { horizonProfile: serializeHorizonProfile(meta.horizonProfile) }
       : {}),
+    ...emettreBatiments(ctx.batiments), // CALX100 — hauteurs SAISIES + provenance (batiment.ts)
   };
   // CALX22x câblage — la couche électrique s'écrit EN DERNIER, par son PROPRE crochet
   // d'export (`ecrireDansDocument`) : jamais une deuxième copie de sa logique ici — elle

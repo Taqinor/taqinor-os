@@ -37,10 +37,10 @@ import {
 import { ringBBox, type LngLat } from '../../lib/roof';
 import { type Obstacle } from '../../lib/obstacles';
 import { roofImageRequest, roofVertexUV, mapboxStaticRoofImageUrl } from '../../lib/roofConfig';
+// CALX100 — `FLOORS`/`FLOOR_HEIGHT_M` ne sont plus lus ici : la hauteur des murs vient du
+// document (`batiment.ts`), qui garde ces deux constantes comme sa hauteur de DESSIN.
 import {
-  FLOOR_HEIGHT_M,
   DECK_THK,
-  FLOORS,
   OBSTACLE_BOX_H_M,
   DEG2RAD,
   DEG2M,
@@ -48,6 +48,11 @@ import {
 import { type ZoneRenderPlan } from './types';
 import { makeCanadianPanelTexture } from './panelTexture';
 import { type Ctx } from './context';
+import {
+  HAUTEUR_DESSIN_M,
+  batimentDuPan,
+  hauteurExtrusion,
+} from './batiment'; // CALX100 — la hauteur des murs vient du DOCUMENT
 
 /** Dépendances injectées (carte + capacités de l'appareil, figées au boot). */
 export interface Scene3dDeps {
@@ -1474,7 +1479,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     isOtherZone: boolean = dim,
   ): { deck: THREE.Mesh; deckMat: THREE.MeshStandardMaterial; ring: [number, number][] } {
     const { pack, grid, tiltDeg, family, flush } = plan;
-    const wallH = FLOORS * FLOOR_HEIGHT_M;
+    const wallH = hauteurExtrusion(plan.batiment).hauteurM; // CALX100 — saisie, sinon dessin
     const ring: [number, number][] = pack.ringENU.map(([x, y]) => [x + offX, y + offY]);
     // W107 — lift de faîtière commune : le pan incliné monte de `ridgeLiftM` (sans changer
     // de pente) pour rejoindre la faîtière partagée d'un pan voisin. CAL61 — un pan PLAT
@@ -1852,14 +1857,20 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
    *  `vertices` (lng/lat → ENU relatif à l'origine active), même teinte subduée que les
    *  autres zones. Renvoie l'anneau ENU translaté (pour l'enveloppe d'ombre), ou null si
    *  le tracé n'a pas au moins 3 sommets. */
-  function buildBareZoneRing(vertices: LngLat[], activeOrigin: LngLat): [number, number][] | null {
+  function buildBareZoneRing(
+    vertices: LngLat[],
+    activeOrigin: LngLat,
+    // CALX100 — hauteur d'extrusion de CE pan (saisie du document, sinon dessin). Absente
+    // (appelant antérieur à CALX100) = hauteur de dessin, le rendu d'aujourd'hui.
+    hauteurMurM: number = HAUTEUR_DESSIN_M,
+  ): [number, number][] | null {
     if (vertices.length < 3) return null;
     const cosLat = Math.cos(activeOrigin[1] * DEG2RAD);
     const ring: [number, number][] = vertices.map(([lng, lat]) => [
       (lng - activeOrigin[0]) * DEG2M * cosLat,
       (lat - activeOrigin[1]) * DEG2M,
     ]);
-    const wallH = FLOORS * FLOOR_HEIGHT_M;
+    const wallH = hauteurMurM; // CALX100
     const shape = new THREE.Shape();
     ring.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)));
     shape.closePath();
@@ -1941,7 +1952,13 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         const offY = (plan.pack.origin[1] - activeOrigin[1]) * DEG2M;
         // W107 — applique le lift de faîtière commune de cette zone (copie superficielle pour
         // ne pas muter le renderPlan stocké). 0 par défaut → rendu inchangé.
-        const liftedPlan: ZoneRenderPlan = { ...plan, ridgeLiftM: ridgeLifts.get(a.id) ?? 0 };
+        // CALX100 — ce pan extrude la hauteur SAISIE de SON bâtiment (CAL59 `buildingId`
+        // → `buildings[]`), sinon la hauteur de dessin annoncée.
+        const liftedPlan: ZoneRenderPlan = {
+          ...plan,
+          ridgeLiftM: ridgeLifts.get(a.id) ?? 0,
+          batiment: batimentDuPan(ctx.batiments, a.buildingId), // CALX100
+        };
         // VISIONNEUSE : `dim` false → ce pan est bâti avec les MÊMES matériaux que
         // le pan actif (verre, cadres, rails, châssis) ; `isOtherZone` reste true →
         // il ne touche pas la référence de pick et garde ses propres obstacles.
@@ -1949,7 +1966,12 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
         rings.push(built.ring);
       } else {
         // W78 — pas de plan de rendu (zone finie à 0 panneau) : on dessine son volume nu.
-        const bare = buildBareZoneRing(a.vertices, activeOrigin);
+        // CALX100 — à la hauteur SAISIE de son bâtiment, sinon la hauteur de dessin.
+        const bare = buildBareZoneRing(
+          a.vertices,
+          activeOrigin,
+          hauteurExtrusion(batimentDuPan(ctx.batiments, a.buildingId)).hauteurM, // CALX100
+        );
         if (bare) rings.push(bare);
       }
     }
@@ -2039,7 +2061,10 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     ctx.activePanelCellIndex = [];
     disposeScene();
 
-    const wallH = FLOORS * FLOOR_HEIGHT_M;
+    // CALX100 — la hauteur du pan ACTIF vient du bâtiment que son `buildingId` désigne
+    // dans `buildings[]` (contrat CALX84) ; sans saisie, la hauteur de DESSIN annoncée.
+    const batimentActif = batimentDuPan(ctx.batiments, ctx.activeArea()?.buildingId); // CALX100
+    const wallH = hauteurExtrusion(batimentActif).hauteurM;
 
     // W69 — disposition personnalisée : si un ensemble d'index occupés est fourni, on
     // rend EXACTEMENT ces cellules (potentiellement non contiguës) ; sinon on garde le
@@ -2056,7 +2081,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     // autres zones (buildZoneMeshes), à offset NUL et sans atténuation → octet pour octet
     // identique à avant. Les obstacles VIVANTS (tinte sélection + étiquette + drag) et la
     // photo satellite restent gérés ici car ils dépendent de l'état d'édition courant.
-    const activePlan: ZoneRenderPlan = { pack, grid, tiltDeg, family, flush, count: drawnPanels.length, obstacles: ctx.obstacles, ridgeLiftM: ridgeLifts.get(ctx.activeAreaId) ?? 0 };
+    const activePlan: ZoneRenderPlan = { pack, grid, tiltDeg, family, flush, count: drawnPanels.length, obstacles: ctx.obstacles, ridgeLiftM: ridgeLifts.get(ctx.activeAreaId) ?? 0, batiment: batimentActif };
     const built = buildZoneMeshes(activePlan, 0, 0, false, occupiedSet);
     // Change B : pose la photo satellite (géo-alignée, détourée au tracé) sur la
     // face supérieure. L'origine de la scène sert à reprojeter les sommets en lng/lat.
