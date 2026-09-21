@@ -178,6 +178,12 @@ const calepinageApi = {
     // gabarit déposé par la société). Un refus sort en 400 SOUS le champ
     // qu'il nomme (`gabarit`, `dossier`, ou le code de la pièce).
     genererDossier: (id, corps) => api.post(`${pivot(id)}generer-dossier/`, corps),
+
+    // CALX41 — enregistre les champs à compléter d'un dossier réglementaire
+    // (`{dossier|gabarit, champs: {code: valeur}}`). La réponse est l'agrégat
+    // du contrat CAL247 RECOMPOSÉ : le panneau relit sa saisie sans second
+    // appel. Un code hors du gabarit sort en 400 sous ce code-là.
+    enregistrerChampsDossier: (id, corps) => api.post(`${pivot(id)}champs-dossier/`, corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

@@ -23,6 +23,7 @@ vi.mock('../../api/calepinageApi', () => ({
     calepinages: {
       dossiersReglementaires: vi.fn(),
       genererDossier: vi.fn(),
+      enregistrerChampsDossier: vi.fn(),
     },
   },
 }))
@@ -219,5 +220,103 @@ describe('DossiersReglementaires — génération (CALX40)', () => {
       .toHaveTextContent(motif)
     // Aucun message générique n'est fabriqué à côté du message serveur.
     expect(screen.queryByTestId(`calx40-genere-${premier.id}`)).toBeNull()
+  })
+})
+
+/* ── CALX41 — les champs sont CONTRÔLÉS, ENREGISTRÉS, et relus ─────────────
+   `apresSaisie` dérive MÉCANIQUEMENT l'état d'après-enregistrement de
+   l'échantillon committé : le champ enregistré quitte `champs_a_completer` et
+   rejoint `champs_saisis` avec sa valeur — ce que `composer_dossier` fait
+   côté serveur. Aucune charge utile écrite à la main. */
+const apresSaisie = (code, valeur) => {
+  const reponse = reponseContrat('calepinage', 'dossiers_reglementaires', 'exemple')
+  const dossiers = reponse.data.dossiers.map((dossier, rang) => {
+    if (rang !== 0) return dossier
+    const champ = dossier.champs_a_completer.find((c) => c.code === code)
+    return {
+      ...dossier,
+      champs_a_completer: dossier.champs_a_completer.filter((c) => c.code !== code),
+      champs_saisis: [...dossier.champs_saisis, { ...champ, valeur, message: '' }],
+    }
+  })
+  return { ...reponse, data: { ...reponse.data, dossiers } }
+}
+
+describe('DossiersReglementaires — champs du dossier (CALX41)', () => {
+  it('restitue les champs DÉJÀ enregistrés, avec la valeur du serveur', async () => {
+    servir('exemple')
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+
+    expect(premier.champs_saisis.length).toBeGreaterThan(0)
+    premier.champs_saisis.forEach((champ) => {
+      expect(screen.getByTestId(`cal196-champ-${champ.code}`))
+        .toHaveValue(String(champ.valeur))
+    })
+  })
+
+  it('n’enregistre rien tant que rien n’est saisi', async () => {
+    servir('exemple')
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+
+    expect(screen.getByTestId(`calx41-enregistrer-${premier.id}`)).toBeDisabled()
+    expect(calepinageApi.calepinages.enregistrerChampsDossier)
+      .not.toHaveBeenCalled()
+  })
+
+  it('quitter puis rouvrir restitue la saisie enregistrée', async () => {
+    servir('exemple')
+    const apres = apresSaisie('reference_dossier', 'DP-2026-01')
+    calepinageApi.calepinages.enregistrerChampsDossier.mockResolvedValue(apres)
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+
+    await userEvent.type(screen.getByTestId('cal196-champ-reference_dossier'), 'DP-2026-01')
+    await userEvent.click(screen.getByTestId(`calx41-enregistrer-${premier.id}`))
+
+    await waitFor(() => {
+      expect(calepinageApi.calepinages.enregistrerChampsDossier)
+        .toHaveBeenCalledWith(1, {
+          dossier: premier.id, champs: { reference_dossier: 'DP-2026-01' },
+        })
+    })
+    expect(await screen.findByTestId(`calx41-enregistre-${premier.id}`))
+      .toHaveTextContent('Champs enregistrés.')
+
+    // QUITTER puis ROUVRIR : le serveur sert désormais la saisie, et l'écran
+    // la RESTITUE (elle n'est plus « à compléter », elle est enregistrée).
+    cleanup()
+    calepinageApi.calepinages.dossiersReglementaires.mockResolvedValue(apres)
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    expect(screen.getByTestId('cal196-champ-reference_dossier'))
+      .toHaveValue('DP-2026-01')
+  })
+
+  it('un champ refusé par le serveur est rendu SOUS ce champ', async () => {
+    servir('exemple')
+    const motif = 'Le champ « Référence du dossier » attend une valeur simple.'
+    calepinageApi.calepinages.enregistrerChampsDossier.mockRejectedValue({
+      response: { data: { reference_dossier: [motif] } },
+    })
+    rendre()
+
+    await screen.findByTestId('cal196-ecran')
+    const premier = echantillon('exemple').dossiers[0]
+
+    await userEvent.type(screen.getByTestId('cal196-champ-reference_dossier'), 'X')
+    await userEvent.click(screen.getByTestId(`calx41-enregistrer-${premier.id}`))
+
+    expect(await screen.findByTestId('calx41-erreur-reference_dossier'))
+      .toHaveTextContent(motif)
+    expect(screen.queryByTestId(`calx41-enregistre-${premier.id}`)).toBeNull()
   })
 })

@@ -59,6 +59,11 @@ const STATUT_DOSSIER = {
   gabarit_manquant: 'gabarit non déposé',
 }
 
+/** Le message du serveur, qu'il arrive en liste (DRF) ou en texte. */
+function messageErreur(message) {
+  return Array.isArray(message) ? message.join(' ') : String(message)
+}
+
 function Etiquette({ texte, alerte }) {
   return (
     <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] ${
@@ -129,13 +134,69 @@ function Pieces({ pieces }) {
   )
 }
 
-function ChampsACompleter({ champs, dossierId }) {
-  if (!champs?.length) return null
+/* CALX41 — LES CHAMPS DU DOSSIER, CONTRÔLÉS ET ENREGISTRÉS.
+   Avant : `defaultValue` sans `onChange` ni envoi — ce que l'utilisateur
+   tapait était perdu à la fermeture, alors que le dossier est un modèle
+   PERSISTANT. Maintenant : la saisie est contrôlée, l'enregistrement est
+   EXPLICITE (`POST champs-dossier/`), et le serveur renvoie l'agrégat
+   recomposé — un champ enregistré quitte « à compléter » et réapparaît dans
+   « déjà saisis », donc il reste relisible et corrigeable. */
+function ChampsDossier({ dossier, calepinageId, onEnregistre }) {
+  const [saisies, setSaisies] = useState(() => new Map())
+  const [erreurs, setErreurs] = useState({})
+  const [enVol, setEnVol] = useState(false)
+  const [enregistre, setEnregistre] = useState(null)
+
+  const aCompleter = dossier.champs_a_completer || []
+  const dejaSaisis = dossier.champs_saisis || []
+  const champs = [...aCompleter, ...dejaSaisis]
+  const codes = champs.map((champ) => champ.code)
+
+  const valeurDe = (champ) => (saisies.has(champ.code)
+    ? saisies.get(champ.code)
+    : (champ.valeur == null ? '' : String(champ.valeur)))
+
+  const poser = (code, valeur) => {
+    setEnregistre(null)
+    setSaisies((precedente) => {
+      const suivante = new Map(precedente)
+      suivante.set(code, valeur)
+      return suivante
+    })
+  }
+
+  const enregistrer = () => {
+    setErreurs({})
+    setEnregistre(null)
+    setEnVol(true)
+    const corps = {}
+    saisies.forEach((valeur, code) => { corps[code] = valeur })
+    calepinageApi.calepinages.enregistrerChampsDossier(calepinageId, {
+      ...corpsDeGeneration(dossier), champs: corps,
+    })
+      .then((r) => {
+        // La réponse EST l'agrégat recomposé : la saisie locale n'a plus de
+        // raison d'exister, c'est le serveur qui la sert désormais.
+        setSaisies(new Map())
+        setEnregistre('Champs enregistrés.')
+        if (onEnregistre) onEnregistre(r.data)
+      })
+      .catch((err) => {
+        // Un 400 NOMME le champ fautif : on le rend SOUS ce champ-là.
+        const corpsErreur = err?.response?.data
+        setErreurs(corpsErreur && typeof corpsErreur === 'object'
+          ? corpsErreur
+          : { champs: 'Enregistrement refusé par le serveur.' })
+      })
+      .finally(() => setEnVol(false))
+  }
+
+  if (!champs.length) return null
   return (
     <div className="flex flex-col gap-2" data-testid="cal196-champs">
-      <p className="text-xs font-medium text-muted-foreground">Champs à compléter</p>
+      <p className="text-xs font-medium text-muted-foreground">Champs du dossier</p>
       {champs.map((champ) => {
-        const idChamp = `cal196-${dossierId}-${champ.code}`
+        const idChamp = `cal196-${dossier.id}-${champ.code}`
         return (
           <div key={champ.code} className="flex flex-col gap-1">
             <label className="text-sm" htmlFor={idChamp}>
@@ -143,13 +204,14 @@ function ChampsACompleter({ champs, dossierId }) {
               {champ.obligatoire ? ' *' : ''}
             </label>
             {/* AUCUN PRÉREMPLISSAGE INVENTÉ : `valeur === null` ⇒ champ VIDE.
-                `defaultValue` et non `value` : l'utilisateur saisit, et cet
-                écran n'enregistre rien tant qu'aucune route ne le sert. */}
+                La valeur affichée est la saisie en cours, sinon celle que le
+                serveur sert — l'écran n'en devine aucune. */}
             <input
               id={idChamp}
               data-testid={`cal196-champ-${champ.code}`}
               type={champ.type === 'date' ? 'date' : 'text'}
-              defaultValue={champ.valeur == null ? '' : String(champ.valeur)}
+              value={valeurDe(champ)}
+              onChange={(e) => poser(champ.code, e.target.value)}
               className="rounded border border-border px-2 py-1 text-sm"
             />
             {champ.message
@@ -159,9 +221,44 @@ function ChampsACompleter({ champs, dossierId }) {
                 </p>
               )
               : null}
+            {/* L'ERREUR SOUS LE CHAMP QU'ELLE CONCERNE. */}
+            {erreurs[champ.code]
+              ? (
+                <p className="text-xs text-destructive" data-testid={`calx41-erreur-${champ.code}`}>
+                  {messageErreur(erreurs[champ.code])}
+                </p>
+              )
+              : null}
           </div>
         )
       })}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          onClick={enregistrer}
+          disabled={enVol || saisies.size === 0}
+          data-testid={`calx41-enregistrer-${dossier.id}`}
+        >
+          {enVol ? 'Enregistrement…' : 'Enregistrer les champs'}
+        </Button>
+        {enregistre
+          ? (
+            <p className="text-xs text-muted-foreground" data-testid={`calx41-enregistre-${dossier.id}`}>
+              {enregistre}
+            </p>
+          )
+          : null}
+      </div>
+      {/* Un refus sous une clé que cet écran ne rend pas champ par champ
+          (`dossier`, `gabarit`, `champs`…) reste AFFICHÉ, et il NOMME sa clé :
+          un 400 silencieux serait le « non enregistré » générique interdit. */}
+      {Object.entries(erreurs)
+        .filter(([code]) => !codes.includes(code))
+        .map(([code, message]) => (
+          <p key={code} className="text-xs text-destructive" data-testid={`calx41-erreur-${code}`}>
+            {messageErreur(message)}
+          </p>
+        ))}
     </div>
   )
 }
@@ -174,7 +271,7 @@ function corpsDeGeneration(dossier) {
     : { dossier: dossier.id }
 }
 
-function Dossier({ dossier, calepinageId, onGenere }) {
+function Dossier({ dossier, calepinageId, onGenere, onEnregistre }) {
   const gabarit = dossier.gabarit || {}
   const [enVol, setEnVol] = useState(false)
   const [erreurs, setErreurs] = useState({})
@@ -221,7 +318,11 @@ function Dossier({ dossier, calepinageId, onGenere }) {
       </p>
 
       <Pieces pieces={dossier.pieces} />
-      <ChampsACompleter champs={dossier.champs_a_completer} dossierId={dossier.id} />
+      <ChampsDossier
+        dossier={dossier}
+        calepinageId={calepinageId}
+        onEnregistre={onEnregistre}
+      />
 
       <div className="flex flex-col gap-1">
         <Button
@@ -244,7 +345,7 @@ function Dossier({ dossier, calepinageId, onGenere }) {
             className="text-xs text-destructive"
             data-testid={`calx40-erreur-${code}`}
           >
-            {Array.isArray(message) ? message.join(' ') : String(message)}
+            {messageErreur(message)}
           </p>
         ))}
         {genere
@@ -282,29 +383,36 @@ export default function DossiersReglementaires({ calepinageId }) {
     () => calepinageApi.calepinages.dossiersReglementaires(id), id,
     { select: (r) => r.data, errorMessage: 'Dossiers réglementaires indisponibles.' },
   )
+  /* CALX41 — `champs-dossier/` répond avec l'agrégat RECOMPOSÉ : on l'affiche
+     directement, sans enchaîner un second appel pour relire ce que le serveur
+     vient déjà de servir. */
+  const [surcharge, setSurcharge] = useState(null)
+  const donnees = surcharge ?? data
+
+  const regenere = () => { setSurcharge(null); refetch() }
 
   if (loading) return <Spinner />
   if (error) {
     return <p className="text-sm text-destructive" data-testid="cal196-erreur">{error}</p>
   }
 
-  const dossiers = data?.dossiers || []
+  const dossiers = donnees?.dossiers || []
 
   return (
     <div className="flex flex-col gap-4" data-testid="cal196-ecran">
       <header className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">Dossiers réglementaires</h2>
         <p className="text-sm text-muted-foreground" data-testid="cal196-entete">
-          Pays de la société : {data?.pays || '—'} · gabarits déposés :
+          Pays de la société : {donnees?.pays || '—'} · gabarits déposés :
           {' '}
-          {data?.gabarits_deposes == null ? '—' : data.gabarits_deposes}
+          {donnees?.gabarits_deposes == null ? '—' : donnees.gabarits_deposes}
         </p>
       </header>
 
-      {data?.message_aucun_gabarit
+      {donnees?.message_aucun_gabarit
         ? (
           <p className="text-sm text-muted-foreground" data-testid="cal196-aucun-gabarit">
-            {data.message_aucun_gabarit}
+            {donnees.message_aucun_gabarit}
           </p>
         )
         : null}
@@ -314,7 +422,8 @@ export default function DossiersReglementaires({ calepinageId }) {
           key={dossier.id ?? `gabarit-${dossier.gabarit_id}`}
           dossier={dossier}
           calepinageId={id}
-          onGenere={refetch}
+          onGenere={regenere}
+          onEnregistre={setSurcharge}
         />
       ))}
     </div>

@@ -43,11 +43,12 @@ from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..services.reglementaire import (
-    DossierRefuse, construire_pack_dossier, dossiers_du_calepinage,
+    ChampsDossierInvalides, DossierRefuse, construire_pack_dossier,
+    dossiers_du_calepinage, enregistrer_champs,
 )
 from .calepinages import CalepinageViewSet
 
-__all__ = ['dossiers_reglementaires', 'generer_dossier']
+__all__ = ['dossiers_reglementaires', 'generer_dossier', 'champs_dossier']
 
 
 def _forme():
@@ -186,6 +187,46 @@ def generer_dossier(self, request, pk=None):
     })
 
 
+# ── CALX41 — ENREGISTRER LES CHAMPS À COMPLÉTER ───────────────────────────
+
+@extend_schema(responses={200: _forme()})
+@action(detail=True, methods=['post'], url_path='champs-dossier',
+        permission_classes=[PeutGererCalepinage])
+def champs_dossier(self, request, pk=None):
+    """CALX41 — ``POST /calepinages/<pk>/champs-dossier/``.
+
+    Le corps porte ``{dossier: <id>}`` (ou ``{gabarit: <id>}``) et
+    ``{champs: {code: valeur}}``. La réponse est l'agrégat du contrat CAL247,
+    RECOMPOSÉ : le panneau relit donc sa saisie sans second appel, et un champ
+    enregistré quitte « à compléter » pour rejoindre « déjà saisis ».
+
+    Un refus sort en 400 SOUS LE CODE du champ fautif — jamais un « non
+    enregistré » générique (règle fondateur du 08/09/2026).
+    """
+    calepinage = self.get_object()
+    corps = request.data if isinstance(request.data, dict) else {}
+    agregat = dossiers_du_calepinage(calepinage)
+
+    if agregat.get('message_aucun_gabarit'):
+        return Response({'gabarit': [agregat['message_aucun_gabarit']]},
+                        status=status.HTTP_400_BAD_REQUEST)
+    compose = _compose_designe(agregat, corps)
+    if compose is None:
+        return Response({'dossier': [MESSAGE_SANS_DESIGNATION]},
+                        status=status.HTTP_400_BAD_REQUEST)
+    dossier = _dossier_en_base(calepinage, compose)
+    if dossier is None:
+        return Response({'dossier': [MESSAGE_SANS_DESIGNATION]},
+                        status=status.HTTP_400_BAD_REQUEST)
+    try:
+        enregistrer_champs(dossier, corps.get('champs'))
+    except ChampsDossierInvalides as refus:
+        return Response({refus.champ or 'champs': [str(refus)]},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return Response(dossiers_du_calepinage(calepinage))
+
+
 # Rattachement au viewset PIVOT — voir la docstring du module.
 CalepinageViewSet.dossiers_reglementaires = dossiers_reglementaires
 CalepinageViewSet.generer_dossier = generer_dossier
+CalepinageViewSet.champs_dossier = champs_dossier
