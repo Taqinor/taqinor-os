@@ -753,7 +753,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
 
   /** Contours des pans DÉJÀ tracés (hors pan actif, qui est celui qu'on dessine). */
   function anneauxDesAutresPans(): LngLat[][] {
-    return ctx.areas
+    return (ctx.areas ?? [])
       .filter((a) => a.id !== ctx.activeAreaId && Array.isArray(a.vertices) && a.vertices.length >= 3)
       .map((a) => a.vertices);
   }
@@ -843,7 +843,7 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
   function azimutGrilleDeg(): number {
     const id = grilleAxeEl?.value ?? '';
     if (!id) return 0;
-    const pan = ctx.areas.find((a) => a.id === id);
+    const pan = (ctx.areas ?? []).find((a) => a.id === id);
     const az = pan?.facingAzimuthDeg;
     return Number.isFinite(az) ? (az as number) : 0;
   }

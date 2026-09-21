@@ -97,6 +97,12 @@ function roofBuilderTsPlugin() {
   }
 }
 
+// Exporté pour `vitest.config.js` : les tests de l'ERP qui montent un module TS du
+// builder (`@roofpro/numerotation` via Vue2DPlan) passent par la MÊME transpilation
+// sans découverte de tsconfig — en CI, le job vitest n'installe pas `apps/web`, donc
+// `astro/tsconfigs/strict` n'existe pas et oxc refuserait le fichier.
+export { roofBuilderTsPlugin }
+
 // https://vite.dev/config/
 // ── E2E (Playwright) ───────────────────────────────────────────────────────
 // Two env-gated hooks let the Playwright suite drive the REAL built app on a

@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import { roofBuilderTsPlugin } from './vite.config.js'
 
 // La config Vitest n'embarque ni `vite-plugin-pwa` (fournit
 // `virtual:pwa-register/react`) ni le plugin `roofbuilder-ts-transpile`
@@ -15,7 +16,9 @@ const stub = (rel) => fileURLToPath(new URL(rel, import.meta.url))
    pure exécutés par `node --test` (fichiers *.test.mjs). On limite donc Vitest aux
    fichiers *.test.jsx pour éviter tout double-passage avec node:test. */
 export default defineConfig({
-  plugins: [react()],
+  // `roofBuilderTsPlugin` : transpile les `.ts` du builder sans découverte de tsconfig
+  // (le job CI vitest n'a pas `apps/web/node_modules`, donc pas `astro/tsconfigs/strict`).
+  plugins: [roofBuilderTsPlugin(), react()],
   resolve: {
     alias: {
       'virtual:pwa-register/react': stub('./src/test/stubs/pwaRegister.js'),

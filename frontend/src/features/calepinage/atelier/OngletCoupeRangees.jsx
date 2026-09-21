@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import { construireCoupe, MONTANT_AVANT_M } from '../coupeRangees'
+import { formatNumber } from '../../../lib/format'
 
 /* ============================================================================
    CALX121 — LE PANNEAU « COUPE » : LA COUPE TRANSVERSALE D'UNE RANGÉE SUR
@@ -205,27 +206,27 @@ export default function OngletCoupeRangees({ calepinageId: idPropose } = {}) {
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-lune-faint sm:grid-cols-3">
             <div data-testid="cal-coupe-inclinaison">
               <dt className="tech-label">Inclinaison</dt>
-              <dd className="fig text-white">{`${coupe.tiltDeg.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}°`}</dd>
+              <dd className="fig text-white">{`${formatNumber(coupe.tiltDeg, { decimals: 1 })}°`}</dd>
             </div>
             <div data-testid="cal-coupe-pas">
               <dt className="tech-label">Pas mesuré</dt>
-              <dd className="fig text-white">{`${coupe.rowPitchM.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} m`}</dd>
+              <dd className="fig text-white">{`${formatNumber(coupe.rowPitchM, { decimals: 2 })} m`}</dd>
             </div>
             <div data-testid="cal-coupe-hauteur">
               <dt className="tech-label">Hauteur hors-tout</dt>
               <dd className="fig text-white">
                 {coupe.hauteurHorsToutM === null
                   ? 'non applicable (pose affleurante)'
-                  : `${coupe.hauteurHorsToutM.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} m`}
+                  : `${formatNumber(coupe.hauteurHorsToutM, { decimals: 2 })} m`}
               </dd>
             </div>
             <div data-testid="cal-coupe-rayon-solaire-valeur">
               <dt className="tech-label">Rayon solaire (midi, solstice d’hiver)</dt>
-              <dd className="fig text-white">{`${coupe.rayonSolaireDeg.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}°`}</dd>
+              <dd className="fig text-white">{`${formatNumber(coupe.rayonSolaireDeg, { decimals: 1 })}°`}</dd>
             </div>
             <div data-testid="cal-coupe-longueur-ombre">
               <dt className="tech-label">Longueur d’ombre</dt>
-              <dd className="fig text-white">{`${coupe.longueurOmbreM.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} m`}</dd>
+              <dd className="fig text-white">{`${formatNumber(coupe.longueurOmbreM, { decimals: 2 })} m`}</dd>
             </div>
           </dl>
         </div>
