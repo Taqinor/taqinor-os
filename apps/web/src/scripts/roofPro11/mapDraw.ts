@@ -43,6 +43,7 @@ import {
   type VerdictGeste,
 } from './clavier';
 import { DEG2M, DEG2RAD, VERTEX_GRAB_PX } from './constants';
+import { monterAtelierPose } from './poseSurfaces'; // CALX123
 
 /**
  * WJ41 — libellés/messages de statut de la carte/géocodeur, tous LOCALISABLES.
@@ -1618,6 +1619,8 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     if (!q) return;
     void geocode(q, true);
   });
+
+  monterAtelierPose(ctx, { setStatus: deps.setStatus, recalc: () => deps.updateAreaReadout() }); // CALX123 — atelier « surfaces de pose » (DOM autonome, aucune page à modifier)
 
   return {
     redrawTrace,

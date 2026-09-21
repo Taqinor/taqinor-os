@@ -40,6 +40,7 @@ import {
 } from './moduleSelect';
 
 import { underlayPourDocument } from './underlay'; // CALX107
+import { emettreSurfacesPose } from './poseSurfaces'; // CALX123
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -809,6 +810,8 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     ...emettreBatiments(ctx.batiments), // CALX100 — hauteurs SAISIES + provenance (batiment.ts)
 
     ...underlayPourDocument(ctx), // CALX107 — le calque de fond calé voyage par le document (contrat CALX86) ; aucun fond ⇒ aucune clé
+
+    ...emettreSurfacesPose(ctx.surfacesPose), // CALX123 — les surfaces de pose tracées (contrat `poseSurfaces[]`) ; aucune surface ⇒ aucune clé
   };
   // CALX111 — numéros STABLES des modules : sème la mémoire depuis ce que le document porte
   // déjà, puis écrit `n`/`rangee`/`numerotation` (bascule « Numéroter » éteinte par défaut ⇒
