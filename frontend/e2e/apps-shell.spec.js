@@ -104,11 +104,16 @@ test('ODY31: le paradigme ERP-Apps, de la grille à la sortie', async ({ page })
   // désactiver un module pour la société du seed (mutation d'un réglage
   // partagé par toute la suite) ; le garde lui-même — UNE implémentation, deux
   // points d'appel — est verrouillé par les tests du routeur.
-  await page.goto('/app-non-activee?app=flotte')
+  // `flotte` (exemple d'origine) est sorti du MVP solaire (Groupe SOLMVP,
+  // SOLMVP42, 2026-09-21) : son `module.config.jsx` a disparu, donc le
+  // registre ne le nomme plus (l'écran retomberait sur « Cette application »).
+  // `adsengine` reste dans le registre ET porte `installable: True` (SOLMVP17)
+  // — même scénario « app au catalogue, pas activée pour cette société ».
+  await page.goto('/app-non-activee?app=adsengine')
   const ecran = page.getByTestId('app-non-activee')
   await expect(ecran).toBeVisible()
   // L'app est NOMMÉE (son nom de catalogue) et la marche à suivre est donnée.
-  await expect(ecran).toContainText('FLOTTE')
+  await expect(ecran).toContainText('PUBLICITÉ')
   await expect(ecran).toContainText(/activée/)
   await ecran.getByRole('link', { name: /Menu d’accueil|Menu d'accueil/ }).click()
   await expect(page).toHaveURL(/\/apps/)
