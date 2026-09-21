@@ -1224,6 +1224,11 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "mais sa forme n'est pas lisible statiquement, et le producteur "
         "services/chaine_pertes.py::appliquer_chaine arrive avec CALX147 "
         "(CALX141)",
+    "calepinage/calepinage_meteo.json":
+        "detail du bloc `resultat['meteo']` (provenance de la source meteo) "
+        "servi par GET calepinages/<pk>/resultat/ : la route existe mais sa "
+        "forme n'est pas lisible statiquement, et l'assembleur du bloc "
+        "arrive avec CALX150 (CALX143)",
     "calepinage/calepinage_du_devis.json":
         "cle ADDITIVE `calepinage` du detail d'un devis (GET ventes/devis/"
         "<pk>/) : la route est servie, mais par un ModelViewSet dont la forme "

@@ -117,6 +117,14 @@ SANS_PRODUCTEUR_PUR = {
         '(CALX70) : son producteur est services/chaine_pertes.py '
         '(CALX147), pas encore écrit — la forme est affirmée sans base par '
         'apps/calepinage/tests/test_calx141_contrat_cascade.py',
+
+    # CALX143
+    'calepinage_meteo.json':
+        "détail du bloc `resultat['meteo']` servi par GET resultat/ "
+        '(CALX70) : la provenance est aujourd’hui éparse (pvgis_serie, '
+        'horizon, production) et son assembleur arrive avec CALX150 — la '
+        'forme est affirmée sans base, depuis une réponse PVGIS rejouée, par '
+        'apps/calepinage/tests/test_calx143_contrat_meteo.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
