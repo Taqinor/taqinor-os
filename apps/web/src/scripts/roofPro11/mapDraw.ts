@@ -14,6 +14,7 @@ import { isSimplePolygon, type LngLat } from '../../lib/roof';
 import { availableOptionalLayers, getOptionalLayer, optionalLayerSourceSpec } from '../../lib/roofConfig';
 import { $ } from './dom';
 import { type Ctx } from './context';
+import { contraindreAngle, PAS_ANGLE_DEG } from './snap';
 
 /**
  * WJ41 — libellés/messages de statut de la carte/géocodeur, tous LOCALISABLES.
@@ -288,17 +289,117 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     updateAreaReadout();
   }
 
+  // ————————————————————————————————————————————————————————————————————————
+  // CALX89 — AIDES AU TRACÉ : puce « Angles droits » (magnétisme angulaire)
+  //
+  // Le constructeur crée LUI-MÊME ses contrôles quand la page hôte ne les fournit pas
+  // (patron `obstaclesUi.ts` `ensureTypePicker` / `zones.ts` `ensureStatsTable`) : aucune
+  // page n'a à être modifiée. La puce est ÉTEINTE par défaut — tant qu'on ne l'allume pas,
+  // `appliquerAidesTrace` rend le point cliqué tel quel et le tracé est celui d'aujourd'hui,
+  // point pour point. Alt maintenue désactive l'aide LE TEMPS D'UN POINT (échappatoire
+  // standard des outils de dessin).
+  // ————————————————————————————————————————————————————————————————————————
+  const traceChipsEl = ensureTraceChips();
+  function ensureTraceChips(): HTMLElement | null {
+    const existing = $('rp9-trace-chips');
+    if (existing) return existing;
+    const anchor = finishBtn?.parentElement ?? undoPointBtn?.parentElement ?? searchForm?.parentElement ?? null;
+    if (!anchor || typeof document.createElement !== 'function') return null;
+    const box = document.createElement('div');
+    box.id = 'rp9-trace-chips';
+    box.className = 'rp9-trace-chips mt-2 flex flex-wrap items-center gap-2 text-xs';
+    anchor.appendChild(box);
+    return box;
+  }
+
+  /** CALX89 — la puce et son pas, créés dans le bandeau d'aides. */
+  const angleChipEl = ensureAngleChip();
+  const anglePasEl = $<HTMLSelectElement>('rp9-snap-angle-pas');
+  function ensureAngleChip(): HTMLButtonElement | null {
+    const existing = $<HTMLButtonElement>('rp9-snap-angle');
+    if (existing) return existing;
+    if (!traceChipsEl || typeof document.createElement !== 'function') return null;
+    const wrap = document.createElement('span');
+    wrap.className = 'rp9-snap-angle-row inline-flex items-center gap-1';
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.id = 'rp9-snap-angle';
+    chip.className = 'rp9-btn';
+    chip.textContent = 'Angles droits';
+    chip.setAttribute('aria-pressed', 'false'); // ÉTEINTE par défaut
+    chip.title = 'Cale chaque côté sur un multiple d’angle. Alt maintenue : un point libre.';
+    const select = document.createElement('select');
+    select.id = 'rp9-snap-angle-pas';
+    select.className = 'rp9-input';
+    select.setAttribute('aria-label', 'Pas d’angle');
+    for (const pas of PAS_ANGLE_DEG) {
+      const opt = document.createElement('option');
+      opt.value = String(pas);
+      opt.textContent = `${pas}°`;
+      select.appendChild(opt);
+    }
+    wrap.appendChild(chip);
+    wrap.appendChild(select);
+    traceChipsEl.appendChild(wrap);
+    return chip;
+  }
+
+  /** Alt maintenue : suspend l'aide le temps d'un point (jamais mémorisé). */
+  let altEnfoncee = false;
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('keydown', (e) => {
+      if ((e as KeyboardEvent).key === 'Alt') altEnfoncee = true;
+    });
+    document.addEventListener('keyup', (e) => {
+      if ((e as KeyboardEvent).key === 'Alt') altEnfoncee = false;
+    });
+    // Le focus peut partir pendant qu'Alt est enfoncée (Alt+Tab) : on ne garde jamais l'état.
+    window.addEventListener?.('blur', () => {
+      altEnfoncee = false;
+    });
+  }
+  angleChipEl?.addEventListener('click', () => {
+    const on = angleChipEl.getAttribute('aria-pressed') === 'true';
+    angleChipEl.setAttribute('aria-pressed', String(!on));
+    setStatus(
+      !on
+        ? `Angles droits : chaque côté se cale au multiple de ${pasAngleDeg() || 90}°. Maintenez Alt pour un point libre.`
+        : 'Angles droits désactivés — les points se posent exactement où vous cliquez.',
+    );
+  });
+
+  /** Pas d'angle ACTIF (°), ou 0 quand la puce est éteinte / Alt maintenue — 0 = aide neutre. */
+  function pasAngleDeg(): number {
+    if (angleChipEl?.getAttribute('aria-pressed') !== 'true') return 0;
+    if (altEnfoncee) return 0;
+    const v = Number.parseFloat(anglePasEl?.value ?? '');
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }
+
+  /**
+   * CALX89 — applique les aides au tracé au point cliqué. Toute aide éteinte ⇒ `v` est
+   * rendu TEL QUEL (même référence), donc le tracé reste celui d'aujourd'hui.
+   */
+  function appliquerAidesTrace(v: LngLat): LngLat {
+    const n = ctx.vertices.length;
+    return contraindreAngle(ctx.vertices[n - 1], ctx.vertices[n - 2], v, pasAngleDeg());
+  }
+
   function addVertex(v: LngLat) {
     if (ctx.closed) return;
+    // CALX89 — le point cliqué passe d'abord par les AIDES AU TRACÉ (magnétisme angulaire).
+    // Puce éteinte (ou Alt maintenue) ⇒ `v` revient tel quel, donc le tracé est identique à
+    // celui d'aujourd'hui, point pour point.
+    const p = appliquerAidesTrace(v);
     // W76 — refuse un point qui ferait CROISER le contour (nœud papillon). isSimplePolygon
     // traite l'anneau comme FERMÉ (dernier→premier), donc tester [...vertices, v] vérifie à
     // la fois la nouvelle arête et l'arête de fermeture implicite v→1ᵉʳ sommet. Un anneau
     // croisé fausse l'aire géodésique (la shoelace s'annule) et le pavage.
-    if (ctx.vertices.length >= 3 && !isSimplePolygon([...ctx.vertices, v])) {
+    if (ctx.vertices.length >= 3 && !isSimplePolygon([...ctx.vertices, p])) {
       setStatus(t.pointWouldCross);
       return;
     }
-    ctx.vertices.push(v);
+    ctx.vertices.push(p);
     redrawTrace();
     if (ctx.vertices.length >= 3) setStatus(t.doubleClickToClose);
     else setStatus(t.cornerPlaced(ctx.vertices.length));
