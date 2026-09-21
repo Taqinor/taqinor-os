@@ -171,12 +171,18 @@ def fenetre_du_jour(d, company, *, dimanche=False, canal='appel'):
     if not _jour_ouvre(d, company):
         return None
     if est_en_ramadan(d, company, profil=profil):
-        # Pendant le Ramadan, la fenêtre entière se resserre — et la pause du
-        # vendredi n'a plus lieu d'être (elle tombe hors de 10 h-14 h). Elle
-        # est COMMUNE aux deux canaux : c'est la journée entière qui se
-        # déplace, pas seulement l'heure des appels.
-        return (_heure(profil, 'ramadan_appel_debut', datetime.time(10, 0)),
-                _heure(profil, 'ramadan_appel_fin', datetime.time(14, 0)),
+        # CAD39 — DÉCISION FONDATEUR du 21/09/2026, pas un effet de bord du
+        # `return` anticipé : pendant le Ramadan la fenêtre est COMMUNE aux
+        # appels et aux messages (c'est la journée entière qui se déplace,
+        # pas seulement l'heure des appels), et AUCUNE fenêtre du soir n'est
+        # ouverte après le ftour — les WhatsApp se tapent à la main, on ne
+        # demande à personne de travailler le soir. La pause du vendredi n'a
+        # plus lieu d'être : elle tombe au bord de la fenêtre du mois.
+        # Le repli 09:00-15:00 est la référence nationale (CAD38, annonce du
+        # Ministère de la Transition numérique du 10/02/2026) ; il ne sert
+        # qu'aux profils sans valeur enregistrée.
+        return (_heure(profil, 'ramadan_appel_debut', datetime.time(9, 0)),
+                _heure(profil, 'ramadan_appel_fin', datetime.time(15, 0)),
                 None)
     debut = _ouverture(profil, canal)
     fin = _heure(profil, 'appel_heure_fin', datetime.time(20, 0))
