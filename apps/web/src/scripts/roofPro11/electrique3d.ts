@@ -528,13 +528,25 @@ export interface CheminementReussi {
   cheminement: CheminementElectrique;
 }
 
+export interface EtatCalque {
+  visible: boolean;
+  opacite: number;
+}
+
 export interface CoucheElectrique {
+  /** CALX221 — l'identifiant de calque de cette couche. */
+  readonly idCalque: string;
   /** Le SEUL groupe 3D de la couche (à ajouter à la scène de l'atelier). */
   readonly groupe: THREE.Group;
   /** Reconstruit le groupe depuis le document courant. */
   rafraichir: () => void;
   /** Ce qui a été ignoré au dernier rafraîchissement, nommé en français. */
   avertissements: () => string[];
+  /** CALX221 — le calque n'existe QUE si le document porte `electrical`. */
+  calqueDisponible: () => boolean;
+  /** CALX221 — visibilité + opacité, comme les autres calques de l'atelier. */
+  setLayerState: (id: string, etat: { visible: boolean; opacite?: number }) => boolean;
+  etatCalque: () => EtatCalque;
   // — CALX220 : poser, déplacer, retirer —
   armerPose: (type: TypeEquipement | null) => boolean;
   typeArme: () => TypeEquipement | null;
@@ -636,7 +648,22 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
       if (trace) groupe.add(trace);
     }
     for (const e of lu.equipements) groupe.add(creerMarqueur(e, o));
+    appliquerEtat();
   }
+
+  function appliquerEtat(): void {
+    groupe.visible = etat.visible;
+    groupe.traverse((o) => {
+      const mat = (o as { material?: THREE.Material | THREE.Material[] }).material;
+      const liste = Array.isArray(mat) ? mat : mat ? [mat] : [];
+      for (const m of liste) {
+        m.transparent = true;
+        (m as THREE.Material & { opacity: number }).opacity = etat.opacite;
+        m.needsUpdate = true;
+      }
+    });
+  }
+
   /** Les identifiants qu'une extrémité de cheminement peut désigner : les
    *  organes posés ET les pans de l'atelier. */
   const idsResolvables = (): Set<string> => {
@@ -888,12 +915,30 @@ export function creerCoucheElectrique(ctx: ContexteCoucheElectrique): CoucheElec
     return true;
   }
 
+  // ── CALX221 — le calque ─────────────────────────────────────────────────
+
+  function setLayerState(id: string, patch: { visible: boolean; opacite?: number }): boolean {
+    if (id !== ID_CALQUE_ELECTRIQUE) return false;
+    etat = {
+      visible: patch?.visible !== false,
+      opacite: nombreFini(patch?.opacite) ? Math.max(0, Math.min(1, patch.opacite as number)) : etat.opacite,
+    };
+    appliquerEtat();
+    return true;
+  }
+
   rafraichir();
 
   return {
+    idCalque: ID_CALQUE_ELECTRIQUE,
     groupe,
     rafraichir,
     avertissements: () => [...ignores],
+    // CALX221 — un calque n'est PROPOSÉ que s'il existe : sans couche électrique
+    // au document, il n'y a rien à allumer ni à éteindre.
+    calqueDisponible: () => document() != null,
+    setLayerState,
+    etatCalque: () => ({ ...etat }),
     armerPose: (type) => {
       if (type === null) {
         arme = null;

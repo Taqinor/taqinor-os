@@ -568,6 +568,71 @@ describe('CALX223 — le tronçon que le plan ne porte pas se SAISIT', () => {
   });
 });
 
+/* ============================================================================
+   CALX221 — LE CALQUE « ÉLECTRIQUE », UN CALQUE COMME LES AUTRES.
+   ----------------------------------------------------------------------------
+   Même porte que les dix calques de la carte (`setLayerState(id, état)`), même
+   règle : il n'est PROPOSÉ que s'il existe — un plan sans couche électrique n'a
+   rien à allumer.
+   ========================================================================== */
+
+describe('CALX221 — le calque électrique', () => {
+  it('l’identifiant est déclaré UNE seule fois, et la couche le porte', () => {
+    expect(ID_CALQUE_ELECTRIQUE).toBe('electrique');
+    const couche = creerCoucheElectrique({ electrical: DOC_HUIT, sceneOrigin: ORIGINE });
+    expect(couche.idCalque).toBe(ID_CALQUE_ELECTRIQUE);
+    expect(couche.groupe.name).toBe(ID_CALQUE_ELECTRIQUE);
+    // Le source ne déclare l'identifiant qu'une fois : le panneau de calques de
+    // l'ERP relit CE littéral (test jumeau côté frontend).
+    const source = readFileSync(fileURLToPath(new URL('./electrique3d.ts', import.meta.url)), 'utf8');
+    expect(source.split("ID_CALQUE_ELECTRIQUE = '").length - 1).toBe(1);
+  });
+
+  it('`setLayerState` masque le groupe et rend `true`', () => {
+    const couche = creerCoucheElectrique({ electrical: DOC_HUIT, sceneOrigin: ORIGINE });
+    expect(couche.groupe.visible).toBe(true);
+    expect(couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: false })).toBe(true);
+    expect(couche.groupe.visible).toBe(false);
+    expect(couche.etatCalque().visible).toBe(false);
+    expect(couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: true })).toBe(true);
+    expect(couche.groupe.visible).toBe(true);
+  });
+
+  it('l’opacité descend sur les matériaux du SEUL groupe électrique', () => {
+    const couche = creerCoucheElectrique({ electrical: DOC_HUIT, sceneOrigin: ORIGINE });
+    couche.setLayerState(ID_CALQUE_ELECTRIQUE, { visible: true, opacite: 0.4 });
+    expect(couche.etatCalque().opacite).toBe(0.4);
+    const maillage = couche.groupe.children[0] as THREE.Mesh;
+    expect((maillage.material as THREE.Material & { opacity: number }).opacity).toBe(0.4);
+    // L'état survit à un rafraîchissement (un geste reconstruit le groupe).
+    couche.rafraichir();
+    expect(couche.groupe.visible).toBe(true);
+    const apres = couche.groupe.children[0] as THREE.Mesh;
+    expect((apres.material as THREE.Material & { opacity: number }).opacity).toBe(0.4);
+  });
+
+  it('un AUTRE identifiant de calque n’est pas le sien : refus net, rien ne bouge', () => {
+    const couche = creerCoucheElectrique({ electrical: DOC_HUIT, sceneOrigin: ORIGINE });
+    expect(couche.setLayerState('zones', { visible: false })).toBe(false);
+    expect(couche.setLayerState('panneaux', { visible: false })).toBe(false);
+    expect(couche.groupe.visible).toBe(true);
+  });
+
+  it('le calque n’est disponible QUE si le document porte une couche électrique', () => {
+    const ctx: { electrical?: DocumentElectrique | null; sceneOrigin: [number, number] } = {
+      sceneOrigin: ORIGINE,
+    };
+    const couche = creerCoucheElectrique(ctx);
+    expect(couche.calqueDisponible()).toBe(false);
+    couche.armerPose('onduleur');
+    couche.poser([-7.6002, 33.5001]);
+    expect(couche.calqueDisponible()).toBe(true);
+    // Annuler la première pose retire la couche : le calque disparaît avec elle.
+    couche.annuler();
+    expect(couche.calqueDisponible()).toBe(false);
+  });
+});
+
 describe('CALX220 — l’attache dans le constructeur', () => {
   const source = readFileSync(
     fileURLToPath(new URL('../roof-tool-pro11.ts', import.meta.url)),
