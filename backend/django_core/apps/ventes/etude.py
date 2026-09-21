@@ -40,6 +40,18 @@ l'écran/le PDF. ``run_bankable_study`` se contente de RENVOYER un dict prêt à
 être posé, par l'appelant, dans ``etude_params['simulation']`` (PV74, hors de
 ce fichier) — jamais un ``devis.save()`` ici.
 
+CALX197 met fin aux DEUX ombrages du même toit. La chaîne du calepinage
+mesure désormais l'ombrage heure par heure (``cascade``, CALX147/148/157) :
+quand le devis porte un calepinage SIMULÉ, l'étude ne recalcule plus rien —
+elle LIT les quatre étapes d'ombrage de cette cascade
+(:data:`ETAPES_OMBRAGE_CASCADE`) et publie leur perte composée. La lecture
+passe par ``apps.calepinage.selectors`` (jamais ``.models``, jamais
+``.services`` : la frontière inter-apps d'import-linter), et la provenance
+retenue est PUBLIÉE sous ``origine_ombrage`` (:data:`ORIGINE_OMBRAGE_ETUDE` /
+:data:`ORIGINE_OMBRAGE_CALEPINAGE`) — aucun écran n'a plus à deviner qui a
+parlé. Sans calepinage simulé, le chemin PV70 ci-dessus reste intact, mot pour
+mot.
+
 Le dict renvoyé suit EXACTEMENT le contrat
 ``apps/ventes/contract_samples/simulation.json`` (PACT10) : chaque sous-bloc
 n'expose QUE les clés du contrat, jamais les clés internes des fonctions
@@ -53,6 +65,7 @@ AUCUN statut de devis, n'expose AUCUN prix d'achat/marge.
 from __future__ import annotations
 
 import datetime as _dt
+import logging
 import math
 
 from apps.ventes.quote_engine.pricing import (
@@ -73,9 +86,30 @@ from apps.ventes.solar_design import (
     tariff_escalation_projection,
 )
 
+logger = logging.getLogger(__name__)
+
 # Version du schéma `etude_params['simulation']` — incrémentée à tout
 # changement de forme (jamais de mutation silencieuse d'un schéma déjà posé).
 SIMULATION_VERSION = 1
+
+#: CALX197 — les deux SEULES provenances possibles de la perte d'ombrage
+#: publiée par l'étude. ``'etude'`` = le chemin PV70 de ce module (matrice
+#: 12×24 pondérée production, ou repli horizon/obstacles) ; ``'calepinage'`` =
+#: la cascade de pertes du calepinage simulé, qui a mesuré le même toit heure
+#: par heure. Une troisième valeur n'existe pas : un écran qui lit
+#: ``origine_ombrage`` sait toujours qui a parlé.
+ORIGINE_OMBRAGE_ETUDE = 'etude'
+ORIGINE_OMBRAGE_CALEPINAGE = 'calepinage'
+
+#: CALX197 — les étapes de la cascade (``chaine_pertes.ORDRE_ETAPES``,
+#: CALX148) qui DISENT l'ombrage d'un toit, dans leur ordre d'application :
+#: masque lointain, ombrage proche, accès solaire module par module, puis
+#: auto-ombrage entre rangées. Les autres postes de la cascade (thermique,
+#: ohmique, onduleur…) ne sont PAS de l'ombrage et ne rentrent jamais ici :
+#: l'étude applique déjà son propre arbre de pertes pour eux.
+ETAPES_OMBRAGE_CASCADE = (
+    'horizon', 'ombrage_proche', 'acces_module', 'inter_rangees',
+)
 
 
 def _num(value, default=0.0):
@@ -329,15 +363,133 @@ def _weighted_shading_loss_pct(matrix, weights):
     return round(total_loss_w / total_w * 100.0, 2)
 
 
-def _zone_shading(devis, zone, index, monthly_share):
+def _perte_ombrage_cascade(cascade):
+    """CALX197 — la perte d'ombrage (%) que dit une cascade, ou ``None``.
+
+    Les quatre étapes d'ombrage (:data:`ETAPES_OMBRAGE_CASCADE`) s'appliquent
+    l'une APRÈS l'autre sur la même série horaire : leur perte d'ensemble est
+    donc la composition ``1 − Π (1 − perte_pct)``, pas une addition — chaque
+    ``perte_pct`` est un pourcentage de l'énergie qui ENTRE dans son étape, et
+    les additionner compterait deux fois ce que l'étape précédente a déjà
+    retiré. Cette composition vaut exactement, par construction, le rapport
+    des kWh publiés par la cascade (``kwh_apres`` de la dernière étape
+    d'ombrage ÷ ``kwh_avant`` de la première), sans rien recalculer.
+
+    Une étape OMISE (``motif_omission`` non vide, donc ``perte_pct`` à
+    ``null``) est IGNORÉE : elle ne coûte pas « 0 % », elle ne dit rien
+    (contrat ``calepinage_pertes_cascade.json``, règle 2). Quand AUCUNE des
+    quatre n'a de perte mesurée, la fonction rend ``None`` — l'étude reprend
+    alors son propre chemin, jamais un ombrage nul fabriqué.
+    """
+    etapes = (cascade or {}).get('etapes')
+    if not isinstance(etapes, list):
+        return None
+    reste = 1.0
+    mesuree = False
+    for etape in etapes:
+        if not isinstance(etape, dict):
+            continue
+        if etape.get('etape') not in ETAPES_OMBRAGE_CASCADE:
+            continue
+        if etape.get('motif_omission'):
+            continue
+        pct = _maybe_num(etape.get('perte_pct'))
+        if pct is None:
+            continue
+        reste *= 1.0 - pct / 100.0
+        mesuree = True
+    if not mesuree:
+        return None
+    # Bornage [0 %, 100 %] : aucune des quatre étapes n'est un gain (le
+    # bifacial, seul gain de la chaîne, vient APRÈS elles et n'est pas de
+    # l'ombrage), donc une valeur hors bornes signalerait une cascade
+    # illisible — l'étude la borne plutôt que de publier une production
+    # gonflée par un ombrage négatif.
+    return round(min(1.0, max(0.0, 1.0 - reste)) * 100.0, 2)
+
+
+def _ombrage_du_calepinage(devis):
+    """CALX197 — la perte d'ombrage (%) déjà mesurée par le calepinage, ou
+    ``None`` quand ce devis n'en porte pas.
+
+    FRONTIÈRE inter-apps : la lecture passe par ``apps.calepinage.selectors``
+    — le sélecteur EXISTANT ``calepinage_retenu_pour_devis`` (qui ne rend
+    quelque chose que si une variante est RETENUE) puis
+    ``calepinage_du_devis`` (l'instance, d'où se lit le ``resultat``
+    publié). Imports FONCTION-LOCAUX : ``apps.ventes`` ne charge aucune app
+    tierce au démarrage, et n'atteint JAMAIS ``apps.calepinage.models`` ni le
+    paquet de services.
+
+    TROIS CONDITIONS, sinon ``None`` (l'étude garde alors son chemin actuel) :
+
+    1. une variante est RETENUE sur le calepinage du devis ;
+    2. une simulation a réellement tourné — ``resultat['simulation']
+       ['hash_entree']`` est renseignée (c'est le test que le module
+       calepinage fait lui-même avant de servir ses blocs, CALX70) ;
+    3. la cascade décrit CE document — son ``hash_entree`` est celui de
+       l'en-tête de simulation ; une cascade calculée sur une autre entrée
+       décrit un autre toit et n'a rien à dire sur celui-ci.
+
+    Ne lève JAMAIS (discipline du module) : une lecture impossible retombe sur
+    le chemin d'aujourd'hui, en le journalisant.
+    """
+    try:
+        from apps.calepinage.selectors import (
+            calepinage_du_devis as _lire_calepinage,
+            calepinage_retenu_pour_devis as _lire_retenu,
+        )
+
+        devis_id = getattr(devis, 'pk', None)
+        company = getattr(devis, 'company', None)
+        if not devis_id or company is None:
+            return None
+        if _lire_retenu(devis_id, company) is None:
+            return None
+
+        calepinage = _lire_calepinage(devis_id, company)
+        resultat = getattr(calepinage, 'resultat', None)
+        if not isinstance(resultat, dict):
+            return None
+
+        entete = resultat.get('simulation')
+        empreinte = (entete.get('hash_entree') or ''
+                     if isinstance(entete, dict) else '')
+        if not empreinte:
+            return None
+
+        cascade = resultat.get('cascade')
+        if not isinstance(cascade, dict):
+            return None
+        if (cascade.get('hash_entree') or '') != empreinte:
+            return None
+
+        return _perte_ombrage_cascade(cascade)
+    except Exception:  # noqa: BLE001 — une étude ne tombe jamais sur une lecture
+        logger.warning("CALX197 : ombrage du calepinage illisible pour le "
+                       "devis %s", getattr(devis, 'pk', None), exc_info=True)
+        return None
+
+
+def _zone_shading(devis, zone, index, monthly_share, ombrage_calepinage=None):
     """Perte d'ombrage annuelle (%) d'une zone + matrice résolue (ou ``None``).
 
-    Ordre : matrice 12×24 réelle (moyenne pondérée production) → repli
+    CALX197 — ``ombrage_calepinage`` (un pourcentage, jamais ``0`` par
+    défaut) court-circuite TOUT le calcul ci-dessous : la cascade du
+    calepinage a déjà mesuré ce toit, l'étude n'en produit pas un second
+    chiffre. Aucune matrice n'est alors résolue — la résoudre serait
+    exactement le deuxième calcul que la tâche supprime — et l'ombrage est
+    appliqué UNE fois, par l'arbre de pertes agrégé, comme il l'est déjà pour
+    le repli horizon/obstacles.
+
+    Ordre sinon : matrice 12×24 réelle (moyenne pondérée production) → repli
     ``shading_analysis`` (horizon/obstacles qualitatifs, zone['horizon_profile']
     / zone['obstacles']) → aucun ombrage (0 %) si rien n'est fourni. La matrice
     PVGIS-horizon (« printhorizon ») est EXPLICITEMENT hors v1 (forme non
     vérifiée par le founder) — jamais appelée ici.
     """
+    if ombrage_calepinage is not None:
+        return _num(ombrage_calepinage), None
+
     matrix = _zone_shading_matrix(devis, zone, index)
     if matrix is not None:
         weights = _zone_production_weights(monthly_share)
@@ -419,7 +571,7 @@ def production_horaire_zone(zone, matrix=None, monthly_share=None):
 
 
 def _zone_base_production(settings, zone, *, devis=None, index=0,
-                          force_refresh=False):
+                          force_refresh=False, ombrage_calepinage=None):
     """Contexte productible d'une zone (pan) : PVGIS + TMY, jamais d'exception.
 
     Renvoie ``{base_production_kwh, source, monthly_share,
@@ -427,6 +579,10 @@ def _zone_base_production(settings, zone, *, devis=None, index=0,
     ``'manual'`` dès qu'AU MOINS un des deux fetchers est retombé en repli
     hors-ligne (reporting conservateur : ``'pvgis'`` garantit que TOUT le
     calcul de la zone est ancré sur des données réseau réelles).
+
+    ``ombrage_calepinage`` (CALX197) est le pourcentage LU dans la cascade du
+    calepinage simulé, résolu UNE fois pour le devis : toutes les zones du
+    même toit portent donc le même chiffre, celui du moteur qui l'a mesuré.
     """
     zone = zone or {}
     lat = zone.get('lat')
@@ -454,7 +610,9 @@ def _zone_base_production(settings, zone, *, devis=None, index=0,
         source = 'pvgis'
 
     monthly_share = _zone_monthly_share(tmy_res)
-    shading_pct, shading_matrix = _zone_shading(devis, zone, index, monthly_share)
+    shading_pct, shading_matrix = _zone_shading(
+        devis, zone, index, monthly_share,
+        ombrage_calepinage=ombrage_calepinage)
 
     return {
         'base_production_kwh': base_kwh,
@@ -774,9 +932,10 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
         rester du code applicatif, pas le module PUR ``solar_design``).
 
     Retourne un dict JSON-sérialisable conforme au contrat PACT10 COMPLET :
-    ``{version, computed_at, source, zones, pr, self_consumption,
-    net_metering, subscribed_power, degradation, projection_25y, warnings}``.
-    Ne lève JAMAIS.
+    ``{version, computed_at, source, origine_ombrage, zones, pr,
+    self_consumption, net_metering, subscribed_power, degradation,
+    projection_25y, warnings}``. ``origine_ombrage`` (CALX197) nomme le moteur
+    qui a mesuré l'ombrage des zones. Ne lève JAMAIS.
     """
     if computed_at is None:
         from django.utils import timezone
@@ -784,6 +943,13 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
 
     warnings = []
     settings = _company_settings(devis)
+
+    # CALX197 — UN toit, UN ombrage : la cascade du calepinage simulé est
+    # interrogée UNE seule fois, avant la boucle des pans. Absente, tout ce
+    # qui suit est le chemin d'hier, inchangé.
+    ombrage_calepinage = _ombrage_du_calepinage(devis)
+    origine_ombrage = (ORIGINE_OMBRAGE_CALEPINAGE if ombrage_calepinage is not None
+                       else ORIGINE_OMBRAGE_ETUDE)
 
     zones_out = []
     zone_curves = []
@@ -794,7 +960,9 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
     for index, zone in enumerate(zones or []):
         zone = zone or {}
         ctx = _zone_base_production(
-            settings, zone, devis=devis, index=index, force_refresh=force_refresh)
+            settings, zone, devis=devis, index=index,
+            force_refresh=force_refresh,
+            ombrage_calepinage=ombrage_calepinage)
         kwc = _num(zone.get('kwc'))
         zones_out.append({
             'label': zone.get('label') or '',
@@ -812,10 +980,17 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
         # mensuelle RÉELLE (TMY) — la même que celle qui pondère déjà la perte
         # d'ombrage. Elle somme donc EXACTEMENT à la ``p50_kwh`` publiée, au
         # lieu de la dépasser d'environ 20 %.
+        # CALX197 — quand c'est la CASCADE qui a mesuré l'ombrage, il n'y a
+        # plus de matrice pour le retirer cellule par cellule : la perte est
+        # alors retirée UNE fois, globalement, pour que la courbe continue de
+        # sommer à la ``p50_kwh`` publiée (QJR138) au lieu de la dépasser.
+        ombrage_de_la_courbe = (
+            ctx['shading_annual_loss_pct'] / 100.0
+            if ombrage_calepinage is not None else 0.0)
         zone_curves.append(production_horaire_zone(
             {**zones_out[-1],
              'production_nette_kwh': production_nette_canonique_kwh(
-                 ctx['base_production_kwh'])},
+                 ctx['base_production_kwh'], ombrage_de_la_courbe)},
             ctx['shading_matrix'],
             monthly_share=ctx['monthly_share']))
         base_total += ctx['base_production_kwh']
@@ -933,6 +1108,9 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
         'version': SIMULATION_VERSION,
         'computed_at': _iso_z(computed_at),
         'source': source,
+        # CALX197 — qui a mesuré l'ombrage publié ci-dessous : le calepinage
+        # (cascade) ou l'étude elle-même. Toujours présent, jamais deviné.
+        'origine_ombrage': origine_ombrage,
         'zones': zones_out,
         'pr': pr,
         'self_consumption': self_consumption,

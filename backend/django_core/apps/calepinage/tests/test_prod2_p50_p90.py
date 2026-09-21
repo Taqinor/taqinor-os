@@ -18,7 +18,7 @@ import pathlib
 import unittest
 
 from apps.calepinage.services.p50p90 import (
-    ORIGINE_HYPOTHESE, ORIGINE_MESUREE, bankable, variabilite_interannuelle,
+    ORIGINE_ABSENTE, ORIGINE_MESUREE, bankable, variabilite_interannuelle,
 )
 from apps.calepinage.services.pertes_politique import politique_de_pertes
 from apps.calepinage.services.production import production_du_layout
@@ -34,14 +34,14 @@ class SigmaTest(unittest.TestCase):
     def test_une_seule_annee_ne_mesure_aucun_ecart_type(self):
         sigma, origine, annees = variabilite_interannuelle({2020: 13000.0})
         self.assertIsNone(sigma)
-        self.assertEqual(origine, ORIGINE_HYPOTHESE)
+        self.assertEqual(origine, ORIGINE_ABSENTE)
         self.assertEqual(annees, 1)
 
     def test_aucune_annee_du_tout(self):
         self.assertEqual(variabilite_interannuelle({}),
-                         (None, ORIGINE_HYPOTHESE, 0))
+                         (None, ORIGINE_ABSENTE, 0))
         self.assertEqual(variabilite_interannuelle(None),
-                         (None, ORIGINE_HYPOTHESE, 0))
+                         (None, ORIGINE_ABSENTE, 0))
 
     def test_sigma_est_l_ecart_type_relatif_des_annees_observees(self):
         sigma, origine, annees = variabilite_interannuelle(
@@ -70,7 +70,10 @@ class BankableTest(unittest.TestCase):
         self.assertEqual(resultat['p50_kwh'], 10000.0)
 
     def test_les_quantiles_descendent_dans_le_bon_ordre(self):
-        resultat = bankable(10000.0)
+        # CALX184 — il faut un σ MESURÉ pour qu'un quantile existe : sans
+        # années observées, il n'y a plus rien à ordonner.
+        resultat = bankable(10000.0, totaux_par_annee={
+            2019: 9800.0, 2020: 10200.0})
         self.assertLess(resultat['p90_kwh'], resultat['p75_kwh'])
         self.assertLess(resultat['p75_kwh'], resultat['p50_kwh'])
 
@@ -81,11 +84,14 @@ class BankableTest(unittest.TestCase):
         self.assertEqual(resultat['sigma_annees'], 3)
         self.assertIn('MESURÉ', resultat['commentaire'])
 
-    def test_une_seule_annee_annonce_le_sigma_d_hypothese(self):
+    def test_une_seule_annee_refuse_les_quantiles_et_le_dit(self):
+        # CALX184 — le repli non sourcé a été supprimé : une seule année sans
+        # réglage société ne donne plus AUCUN quantile, et le dit.
         resultat = bankable(10000.0, totaux_par_annee={2020: 10000.0})
-        self.assertEqual(resultat['sigma_source'], ORIGINE_HYPOTHESE)
-        self.assertIn('HYPOTHÈSE', resultat['commentaire'])
-        self.assertGreater(resultat['annual_variability'], 0.0)
+        self.assertEqual(resultat['sigma_source'], ORIGINE_ABSENTE)
+        self.assertIsNone(resultat['annual_variability'])
+        self.assertIsNone(resultat['p90_kwh'])
+        self.assertIn('une seule année', resultat['commentaire'])
 
     def test_un_sigma_mesure_plus_faible_resserre_le_p90(self):
         stable = bankable(10000.0, totaux_par_annee={
@@ -125,19 +131,23 @@ class SansDevisTest(unittest.TestCase):
             politique=politique_de_pertes(POSTES_ESSAI), client=client,
             annee_debut=2020, annee_fin=2020)
 
-    def test_le_total_porte_p50_p75_p90_et_l_origine_de_sigma(self):
+    def test_le_total_porte_p50_et_refuse_les_quantiles_sans_sigma(self):
+        # La fenêtre de cette fixture ne porte qu'UNE année : depuis CALX184,
+        # P50 reste servi et les quantiles sont refusés, jamais forfaitisés.
         resultat = self.calculer()
         total = resultat['production']['total']
         self.assertIsNotNone(total['p50_kwh'])
-        self.assertLess(total['p90_kwh'], total['p75_kwh'])
-        self.assertLess(total['p75_kwh'], total['p50_kwh'])
+        self.assertIsNone(total['p75_kwh'])
+        self.assertIsNone(total['p90_kwh'])
+        self.assertIsNone(total['annual_variability'])
         self.assertEqual(total['annual_variability_source'],
-                         ORIGINE_HYPOTHESE)
+                         ORIGINE_ABSENTE)
 
-    def test_chaque_pan_porte_aussi_ses_quantiles(self):
+    def test_aucun_pan_ne_recoit_de_quantile_sans_sigma(self):
         ligne = self.calculer()['production']['par_pan'][0]
-        self.assertIsNotNone(ligne['p75_kwh'])
-        self.assertLess(ligne['p90_kwh'], ligne['p50_kwh'])
+        self.assertIsNotNone(ligne['p50_kwh'])
+        self.assertIsNone(ligne['p75_kwh'])
+        self.assertIsNone(ligne['p90_kwh'])
 
     def test_l_origine_de_sigma_est_dite_dans_les_avertissements(self):
         avis = self.calculer()['avertissements']

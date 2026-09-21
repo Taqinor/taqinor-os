@@ -3,7 +3,9 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `features/ao`). */
 import { lazy } from 'react'
-import { BadgeCheck, Grid3x3, Library, LayoutGrid, PlusCircle } from 'lucide-react'
+import {
+  BadgeCheck, Grid3x3, Library, LayoutGrid, PlusCircle, SlidersHorizontal,
+} from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -134,6 +136,13 @@ const SourcesNormatives = lazy(() => import('./commun/Provenance'))
    (agrégat CAL247), donc un deep-link — un menu permanent n'aurait aucun
    calepinage à désigner. */
 const DossiersReglementaires = lazy(() => import('./DossiersReglementaires'))
+/* CALX69 — les RÉGLAGES de simulation et d'électrique de la société
+   (`services/parametres_cles.py`, sections `simulation`/`electrique_societe`
+   ouvertes par CALX145) : chaque clé se saisit avec sa provenance, sans quoi
+   elle n'est pas enregistrée. Réglages SOCIÉTÉ comme CAL165 ci-dessus, donc
+   un item de nav permanent et non un deep-link : il n'y a aucun calepinage à
+   désigner. */
+const ReglagesSimulation = lazy(() => import('./reglages/ReglagesSimulation'))
 /* CAL234 — l'AFFECTATION MANUELLE des chaînes : on glisse sur les modules,
    le serveur verdicte la proposition (`evaluer-electrique/`, qui ne persiste
    rien) et la validation part sur `entree-electrique/`. Contextuelle à UN
@@ -176,6 +185,13 @@ const config = {
         icon: <BadgeCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      {
+        // CALX69 — les réglages de simulation et d'électrique de la société.
+        to: '/calepinage/reglages',
+        label: 'Réglages simulation',
+        icon: <SlidersHorizontal size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
   // `titles` — correspondance par PRÉFIXE, du plus spécifique au plus général.
@@ -183,6 +199,7 @@ const config = {
     ['/calepinage/nouveau', 'Calepinage — Nouveau calepinage'],
     ['/calepinage/bibliotheque', 'Calepinage — Bibliothèque'],
     ['/calepinage/sources', 'Calepinage — Sources des paramètres'],
+    ['/calepinage/reglages', 'Calepinage — Réglages simulation'],
     ['/calepinage/', 'Calepinage — Atelier'],
     ['/calepinage', 'Calepinage — Calepinages'],
   ],
@@ -195,9 +212,20 @@ const config = {
     { path: '/calepinage/bibliotheque', component: Bibliotheque, roles: ROLES },
     // CAL165 — AVANT `/calepinage/:id` : « sources » n'est pas un identifiant.
     { path: '/calepinage/sources', component: SourcesNormatives, roles: ROLES },
-    // Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
-    // contextuel à un objet, comme `/ao/affaires/:id/design`. C'est la cible de
-    // la redirection après création (CAL36).
+    // CALX69 — AVANT `/calepinage/:id` : « reglages » n'est pas un identifiant.
+    { path: '/calepinage/reglages', component: ReglagesSimulation, roles: ROLES },
+    /* Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
+       contextuel à un objet, comme `/ao/affaires/:id/design`. C'est la cible de
+       la redirection après création (CAL36).
+
+       CALX1 — C'EST AUSSI L'ADRESSE DE TOUS LES ONGLETS : `/calepinage/:id
+       ?onglet=<cle>`, où `<cle>` est une clé de `atelier/onglets.js` et vaut
+       EXACTEMENT le dernier segment de la route profonde correspondante
+       ci-dessous. Le rail est monté par `AtelierPanneaux.jsx`. Les routes
+       profondes ne disparaissent pas pour autant : elles restent SERVIES comme
+       liens profonds (un lien envoyé hier doit encore s'ouvrir demain), et
+       aucune n'est à ajouter ici pour un onglet neuf — un panneau de plus,
+       c'est une ligne de plus dans `atelier/onglets.js`, rien d'autre. */
     { path: '/calepinage/:id', component: AtelierCalepinage, roles: ROLES },
     // contextuelle: comparatif d'UN calepinage, ouvert depuis son atelier (CAL37) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/variantes', component: VariantesCompare, roles: ROLES },

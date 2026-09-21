@@ -185,6 +185,9 @@ SURFACE_PUBLIQUE = (
     "layout_hash",
     "lead_from_source_devis",
     "lignes_de_variante",
+    # CALX193 — lecture du fichier toiture (série horaire persistée) par
+    # apps/calepinage/services/simulation.py : frontière inter-apps.
+    "lire_fichier_toiture",
     "log_supplier_email",
     "logger",
     "mandat_actif_pour_client",

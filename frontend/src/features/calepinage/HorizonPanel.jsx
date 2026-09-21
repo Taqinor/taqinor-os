@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import { sortedHorizonPoints, horizonMaxHeightDeg, heuresMasqueesEstimation } from './horizonMath'
 import SunDiagram, { COURBES_REPERE } from './SunDiagram'
+import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
    CAL93 — L'HORIZON LOINTAIN, tracé en fond de la course du soleil, et appliqué
@@ -137,11 +138,18 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
   }
 
   if (chargement) {
-    return <div className="cine-card mt-6 p-6" data-testid="cal-horizon-loading">Chargement…</div>
+    return (
+      <>
+        <RetourAtelier calepinageId={calepinageId} />
+        <div className="cine-card mt-6 p-6" data-testid="cal-horizon-loading">Chargement…</div>
+      </>
+    )
   }
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-horizon">
+    <>
+      <RetourAtelier calepinageId={calepinageId} />
+      <div className="cine-card mt-6 p-6" data-testid="cal-horizon">
       <p className="tech-label rule-brass text-brass-300">Horizon lointain</p>
       <p className="mt-1 text-sm text-lune-faint">
         Le relief à distance (montagne, crête, immeuble éloigné) qui masque le soleil aux
@@ -264,5 +272,6 @@ export default function HorizonPanel({ calepinageId: idPropose } = {}) {
         {message && <p className="text-sm text-lune-faint" role="status">{message}</p>}
       </div>
     </div>
+    </>
   )
 }

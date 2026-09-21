@@ -43,7 +43,8 @@ from typing import Optional, Tuple
 
 from core.electrique.chaines import concevoir_chaines
 from core.electrique.types import (
-    EntreeElectrique, GroupePan, SpecModule, SpecOnduleur,
+    COEFFICIENTS_TEMPERATURE, EntreeElectrique, GroupePan, SpecModule,
+    SpecOnduleur, fr,
 )
 
 __all__ = [
@@ -54,6 +55,8 @@ __all__ = [
     # CAL234 — affectation IMPOSÉE (manuelle) et son verdict.
     'SOURCE_AUTO', 'SOURCE_MANUELLE', 'AffectationInvalide',
     'normaliser_affectation_imposee', 'verdict_affectation',
+    # CALX53 — coefficients de température non sourcés, NOMMÉS jusqu'au verdict.
+    'LIBELLES_COEFFICIENTS',
 ]
 
 #: La règle de physique, citée telle quelle dans les verdicts publiés.
@@ -71,6 +74,14 @@ CHAMPS_MODULE = (
     ('imp_a', 'courant au point de puissance maximale (Imp)'),
     ('pmax_wc', 'puissance crête (Pmax)'),
 )
+
+#: CALX53 — le LIBELLÉ français de chaque coefficient de température, pour
+#: que l'avertissement dise de quoi il parle en plus de nommer la clé de
+#: fiche que l'utilisateur doit renseigner.
+LIBELLES_COEFFICIENTS = {
+    'temp_coeff_voc_pct_c': 'coefficient de la tension à vide (β Voc)',
+    'temp_coeff_pmax_pct_c': 'coefficient de la puissance crête (γ Pmax)',
+}
 
 #: Idem côté ONDULEUR (CAL115 — bloc ``onduleur`` de ``specs_for_produit``).
 CHAMPS_ONDULEUR = (
@@ -116,6 +127,9 @@ class Conception:
     #: Le verdict de partage d'entrée MPPT : quelle règle s'applique ici.
     regle_mppt: str = ''
     partage_mppt: bool = False
+    #: CALX53 — les coefficients de température qui ont pris le DÉFAUT du
+    #: noyau (noms de champ de la fiche). Vides quand la fiche les publie.
+    coefficients_non_sources: Tuple[str, ...] = ()
     temperatures: object = None
     entree: object = None
     _drapeaux: Tuple[str, ...] = field(default=(), repr=False)
@@ -244,21 +258,30 @@ def specs_module(specs, designation=''):
     coefficients de température gardent les défauts documentés du noyau quand
     la fiche ne les publie pas : ce sont des valeurs du NOYAU, pas un troisième
     jeu de constantes inventé ici.
+
+    CALX53 — et l'ORIGINE de chacun voyage avec la fiche
+    (``SpecModule.coefficients_sources``) : un coefficient tombé sur le défaut
+    n'est SOURCÉ par rien, et il sera NOMMÉ jusque dans le verdict au lieu de
+    passer pour une donnée constructeur. Ils ne deviennent pas obligatoires
+    pour autant : les rendre bloquants ferait disparaître tout verdict de
+    chaînage sur une fiche par ailleurs complète.
     """
     manquantes = _manquantes(specs, CHAMPS_MODULE)
     if manquantes:
         return (None, manquantes)
     specs = dict(specs)
     optionnels = {}
-    for cle in ('temp_coeff_voc_pct_c', 'temp_coeff_pmax_pct_c'):
+    sources = []
+    for cle in COEFFICIENTS_TEMPERATURE:
         valeur = _nombre(specs.get(cle))
         if valeur is not None:
             optionnels[cle] = valeur
+            sources.append(cle)
     return (SpecModule(
         vmp_v=float(specs['vmp_v']), voc_v=float(specs['voc_v']),
         isc_a=float(specs['isc_a']), imp_a=float(specs['imp_a']),
         pmax_wc=float(specs['pmax_wc']), designation=designation or '',
-        **optionnels), ())
+        coefficients_sources=tuple(sources), **optionnels), ())
 
 
 def specs_onduleur(specs, designation=''):
@@ -363,6 +386,32 @@ def _verdict_mppt(pans, onduleur, specs_onduleur_brut):
          % (nom, n_mppt, len(pans), ', '.join(en_trop)),))
 
 
+def _avertissement_coefficients_non_sources(module):
+    """CALX53 — le message qui NOMME les coefficients tombés sur le défaut.
+
+    ``''`` quand la fiche publie les deux. Rien n'est remplacé ni omis : les
+    bornes de tension de chaîne restent calculées avec le défaut documenté du
+    noyau — mais elles sont MARQUÉES, parce qu'un défaut qui se tait finit par
+    passer pour une donnée constructeur. C'était le seul endroit du module où
+    un littéral se glissait dans un calcul sans que personne ne le sache.
+    """
+    non_sources = tuple(getattr(module, 'coefficients_non_sources', ()) or ())
+    if not non_sources:
+        return ''
+    nom_module = getattr(module, 'designation', '') or 'le module retenu'
+    details = ', '.join(
+        '« %s » — %s : %s %%/°C'
+        % (nom, LIBELLES_COEFFICIENTS.get(nom, nom),
+           fr(getattr(module, nom, 0.0), 3))
+        for nom in non_sources)
+    return (
+        "Coefficients de température NON SOURCÉS sur la fiche de %s (%s). Ces "
+        "valeurs sont les défauts du noyau, pas des données constructeur : "
+        "les bornes de tension de chaîne restent calculées, mais elles sont "
+        "marquées tant que la fiche produit ne publie pas ces coefficients."
+        % (nom_module, details))
+
+
 def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
                       module_designation='', onduleur_designation='',
                       **options):
@@ -398,11 +447,17 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
                                **options)
     resultat = concevoir_chaines(entree)
     regle, partage, messages = _verdict_mppt(pans, onduleur, onduleur_specs)
+    # CALX53 — l'origine des coefficients de température voyage AVEC le
+    # verdict : une alerte de plus, jamais un bloquant (la conception tient,
+    # c'est sa SOURCE qui manque).
+    coeffs = _avertissement_coefficients_non_sources(module)
     return Conception(
         pans=pans, resultat=resultat, entree=entree,
         bloquants=tuple(resultat.bloquants),
-        alertes=tuple(resultat.alertes) + messages,
-        regle_mppt=regle, partage_mppt=partage, temperatures=temperatures)
+        alertes=(tuple(resultat.alertes) + messages
+                 + ((coeffs,) if coeffs else ())),
+        regle_mppt=regle, partage_mppt=partage, temperatures=temperatures,
+        coefficients_non_sources=tuple(module.coefficients_non_sources))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -623,6 +678,13 @@ def bloc_electrique(conception, *, verdicts=(), imposee=None):
                 "l'entrée MPPT, jamais l'exemplaire d'onduleur (le noyau "
                 "dimensionne un MODÈLE) — clé « onduleur » laissée vide"
                 % evaluation.nombre)
+    # CALX53 — le même avertissement remonte dans le résultat publié
+    # (``resultat['avertissements']``) : l'atelier le lit à côté des bornes
+    # de chaîne, sans avoir à relancer une évaluation pour l'apprendre.
+    coeffs = _avertissement_coefficients_non_sources(
+        getattr(conception.entree, 'module', None))
+    if coeffs:
+        avertissements.append(coeffs)
     return ({
         'chainage': _chainage(conception),
         'onduleurs': onduleurs,

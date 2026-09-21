@@ -27,6 +27,12 @@ from apps.ventes.tests.test_quote_engine import (
 _CONTRACT_PATH = os.path.join(
     os.path.dirname(__file__), '..', 'contract_samples', 'simulation.json')
 
+# CALX197 — `origine_ombrage` est une clé NEUVE du bloc d'étude (qui a mesuré
+# l'ombrage : la cascade du calepinage simulé, ou l'étude). Le contrat PACT10
+# est complété centralement par l'orchestrateur du lot ; d'ici là l'ajout est
+# NOMMÉ ici, et la comparaison reste une ÉGALITÉ stricte.
+_CLES_AJOUTEES_CALX197 = {'origine_ombrage'}
+
 
 def _load_contract():
     with open(_CONTRACT_PATH, encoding='utf-8') as fh:
@@ -86,7 +92,8 @@ class TestPV72FullChain(TestCase):
         result = run_bankable_study(devis, zones=[self._zone()])
         contract = _load_contract()
 
-        self.assertEqual(set(result.keys()), set(contract.keys()))
+        self.assertEqual(set(result.keys()),
+                         set(contract.keys()) | _CLES_AJOUTEES_CALX197)
         for block_name in ('self_consumption', 'net_metering',
                            'subscribed_power', 'degradation', 'projection_25y'):
             self.assertEqual(

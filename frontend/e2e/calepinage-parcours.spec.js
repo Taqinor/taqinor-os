@@ -127,3 +127,65 @@ test('CAL221: /calepinage → créer depuis un lead → variante → retenir →
     await expect(resynchroniser).toBeEnabled()
   }
 })
+
+// CALX1 — LE RAIL D'ONGLETS : trois onglets ouverts À LA SUITE, sur le même
+// écran, sans jamais taper une URL.
+//
+// POURQUOI. Treize écrans du module étaient déclarés dans `module.config.jsx`
+// et servis par le routeur sans qu'aucun `Link` ni `navigate` du dépôt n'y
+// mène : livrés, et introuvables. Le test unitaire prouve que le registre
+// monte le bon composant ; cette spec prouve l'autre moitié — qu'un
+// utilisateur les ATTEINT depuis l'atelier, en un clic chacun, et que l'URL
+// garde la trace de l'onglet ouvert (`?onglet=<cle>`, lien partageable).
+//
+// HOOKS DOM, PAS DE TEXTE : les onglets portent `data-testid="cal-onglet-<cle>"`
+// (`features/calepinage/atelier/Rail.jsx`) et le panneau
+// `data-testid="cal-onglet-panneau"`. Les clés citées ici sont celles du
+// registre `atelier/onglets.js` ; ce sont AUSSI les derniers segments des
+// routes profondes historiques, qui restent servies.
+//
+// TROIS ONGLETS SANS DONNÉE DE CALCUL : « Pente », « Horizon lointain » et
+// « Dossiers réglementaires » s'ouvrent sur un calepinage tout juste créé.
+// On n'attend AUCUN chiffre — un calepinage neuf n'a rien calculé, et exiger
+// un résultat ici ferait de cette spec un test du moteur.
+test('CALX1: l’atelier ouvre trois onglets de suite, sans quitter l’écran', async ({ page }) => {
+  await gotoLeads(page)
+  const nomLead = await createLead(page, {
+    nom: uniq('CALX1 Lead'), facture: 900, ville: 'Casablanca',
+  })
+
+  await page.goto('/calepinage/nouveau')
+  await expect(page.getByRole('heading', { name: 'Nouveau calepinage' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Lead' }).click()
+  await page.locator('#cal-nouveau-lead').getByRole('combobox').click()
+  await page.getByRole('searchbox').fill(nomLead)
+  await page.getByRole('option', { name: new RegExp(nomLead) }).first().click()
+  await page.locator('#cal-nouveau-nom').fill(uniq('CALX1 Toiture'))
+  await page.getByRole('button', { name: 'Créer le calepinage' }).click()
+
+  await expect(page).toHaveURL(/\/calepinage\/\d+/)
+  const rail = page.getByTestId('cal-rail-onglets')
+  await expect(rail).toBeVisible()
+  // Sans `?onglet=`, l'atelier est exactement ce qu'il était : rien d'ouvert.
+  await expect(page.getByTestId('cal-onglet-panneau')).toHaveCount(0)
+
+  const calepinageId = idDansUrl(page.url())
+  expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
+
+  for (const cle of ['pente', 'horizon', 'dossiers']) {
+    await page.getByTestId(`cal-onglet-${cle}`).click()
+    // 1. l'onglet devient l'onglet actif ; 2. son panneau s'affiche ;
+    // 3. l'URL porte la clé — un lien copié ici rouvre le même onglet.
+    await expect(page.getByTestId(`cal-onglet-${cle}`)).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
+    await expect(page).toHaveURL(new RegExp(`onglet=${cle}`))
+    // Jamais un écran blanc : soit le panneau a du contenu, soit il NOMME son
+    // échec (`cal-onglet-erreur`) — les deux sont visibles, aucun ne l'est pas.
+    await expect(page.getByTestId('cal-onglet-erreur')).toHaveCount(0)
+  }
+
+  // La route profonde historique reste servie : le lien envoyé hier s'ouvre
+  // encore aujourd'hui, sur le même écran que l'onglet.
+  await page.goto(`/calepinage/${calepinageId}/pente`)
+  await expect(page.getByTestId('cal-pente')).toBeVisible()
+})

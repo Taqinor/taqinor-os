@@ -148,3 +148,21 @@ opencv-python-headless==4.10.0.84
 # est configuré : sans DSN, ce paquet n'est jamais chargé (aucun coût, aucun appel
 # réseau). Décommenter + poser SENTRY_DSN pour activer (service payant à volume).
 # sentry-sdk==2.20.0
+# CALX198 — NOUVELLE DÉPENDANCE, TRANCHÉE PAR LE FONDATEUR LE 21/09/2026
+# (décision n° 1 de l'en-tête du groupe CALX : « pvlib ADOPTÉ »). Libre,
+# BSD-3-Clause, gratuite, sans clé d'API, sans donnée payante et sans appel
+# réseau dans les chemins que nous utilisons (le sous-module `iotools`, qui
+# lui en fait, n'est PAS importé). Ce qu'elle apporte et que le dépôt n'a
+# pas : le modèle de cellule à une diode (De Soto / CEC), la transposition
+# d'irradiance GHI→plan (Perez, Hay-Davies), l'IAM (Fresnel, ASHRAE,
+# Martin-Ruiz) et une position solaire de référence (NREL SPA).
+# Transitif : numpy (déjà épinglé ci-dessus, 1.26.4 satisfait `numpy>=1.21.2`),
+# pandas et scipy (déjà tirés par statsmodels), requests (déjà tiré), plus
+# DEUX paquets réellement neufs dans l'image : `pytz` et `h5py` (roue binaire
+# manylinux à HDF5 embarqué — aucun paquet système à ajouter au Dockerfile).
+# FRONTIÈRE (contrat import-linter `calepinage-est-un-noyau-pur` +
+# `core/tests/test_calepinage_purete.py`) : `core/calepinage/` et
+# `core/electrique/` restent stdlib + numpy — pvlib s'importe dans
+# `apps/calepinage/services/` et sert d'ORACLE de validation aux tests du
+# noyau. Voir docs/decisions/calx198-pvlib.md.
+pvlib==0.15.2

@@ -523,6 +523,9 @@ SIGNATURES_IMAGE_TOITURE = _stockage_toiture.SIGNATURES_IMAGE_TOITURE
 type_image_toiture = _stockage_toiture.type_image_toiture
 stocker_image_toiture = _stockage_toiture.stocker_image_toiture
 url_image_toiture = _stockage_toiture.url_image_toiture
+# CALX5 — la lecture des OCTETS, pour le serveur qui relit un dépôt (série
+# météo de CALX62) : une URL présignée sert un navigateur, pas une tâche.
+lire_fichier_toiture = _stockage_toiture.lire_fichier_toiture
 
 
 # ═════════════════════════════════════════════════════════════════════════

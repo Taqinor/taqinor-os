@@ -32,6 +32,7 @@ __all__ = [
     "Chaine", "Protection", "Cable", "LigneNomenclature", "Ratio",
     "Conformite", "ResultatElectrique",
     "TEMPERATURE_STC_C", "TEMP_FROID_DEFAUT_C", "TEMP_CHAUD_DEFAUT_C",
+    "ORIGINE_FICHE", "ORIGINE_DEFAUT_NON_SOURCE", "COEFFICIENTS_TEMPERATURE",
     "REGIME_TT", "REGIME_TN", "REGIME_IT", "REGIMES_CONNUS",
     "COTE_DC", "COTE_AC", "COTE_COMMUN", "COTES_CONNUS",
 ]
@@ -73,6 +74,18 @@ COTE_AC = "ac"
 #: disparaître le coffret d'un dossier qui n'a qu'une ligne « protection DC ».
 COTE_COMMUN = "commun"
 COTES_CONNUS = frozenset({COTE_DC, COTE_AC, COTE_COMMUN})
+
+#: CALX53 — l'ORIGINE d'un coefficient de température porté par une fiche
+#: module. Deux valeurs, et deux seulement : la fiche produit l'a publié, ou
+#: le calcul est tombé sur le DÉFAUT du noyau — auquel cas l'aval doit le
+#: NOMMER au lieu de le faire passer pour une donnée constructeur.
+ORIGINE_FICHE = "fiche"
+ORIGINE_DEFAUT_NON_SOURCE = "defaut_non_source"
+
+#: Les deux coefficients de température concernés, dans l'ordre où un verdict
+#: les nomme. Ce sont les NOMS DE CHAMP de ``SpecModule`` : l'aval affiche
+#: exactement la clé que l'utilisateur doit renseigner sur sa fiche produit.
+COEFFICIENTS_TEMPERATURE = ("temp_coeff_voc_pct_c", "temp_coeff_pmax_pct_c")
 
 
 # ------------------------------------------------------------------ formatage
@@ -121,11 +134,34 @@ class SpecModule:
     #: descriptive, elle ne participe à AUCUN calcul : elle sert à ce qu'un
     #: schéma unifilaire NOMME le matériel au lieu d'écrire « Champ PV ».
     designation: str = ""
+    #: CALX53 — les coefficients de température dont l'origine est DÉCLARÉE
+    #: comme venant de la fiche produit (noms de champ, cf.
+    #: ``COEFFICIENTS_TEMPERATURE``). Tout coefficient absent de ce tuple a
+    #: pris le DÉFAUT ci-dessus : il n'est SOURCÉ par rien, et l'aval doit le
+    #: nommer plutôt que de le présenter comme une donnée constructeur.
+    #: Tuple (et non dict) pour que ``EntreeElectrique`` reste hachable.
+    coefficients_sources: Tuple[str, ...] = ()
 
     @property
     def temp_coeff_vmp_pct_c(self):
         """Coefficient de dérive du Vmp — cf. docstring de la classe."""
         return self.temp_coeff_pmax_pct_c
+
+    def origine_coefficient(self, nom):
+        """``ORIGINE_FICHE`` ou ``ORIGINE_DEFAUT_NON_SOURCE`` pour ce champ."""
+        return (ORIGINE_FICHE if nom in self.coefficients_sources
+                else ORIGINE_DEFAUT_NON_SOURCE)
+
+    @property
+    def coefficients_non_sources(self):
+        """Les coefficients de température qui ont pris le défaut du noyau.
+
+        Vide = les deux viennent de la fiche. Aucune valeur n'est remplacée
+        ni omise pour autant : le calcul continue avec le défaut documenté,
+        mais il ne peut plus passer pour une donnée constructeur.
+        """
+        return tuple(nom for nom in COEFFICIENTS_TEMPERATURE
+                     if nom not in self.coefficients_sources)
 
     def tension_voc_a(self, temperature_c):
         """Voc à une température de cellule donnée (dérive linéaire)."""

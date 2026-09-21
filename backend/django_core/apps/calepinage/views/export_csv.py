@@ -19,6 +19,28 @@ motif en français et le champ nommé, jamais remplacé par un fichier de zéros
 
 La société est bornée par ``get_queryset`` du viewset (404 pour un calepinage
 d'une autre société), comme toute autre sous-ressource.
+
+CALX7 — POURQUOI L'ACTION S'APPELLE ``export_csv_simulation``
+--------------------------------------------------------------
+``SortiesMixin`` (``views/sorties.py``) porte DÉJÀ une action ``export_csv``
+(``url_path='export.csv'``, CAL179 — modules, chaînes et nomenclature). Tant
+que ce fichier posait ``CalepinageViewSet.export_csv``, l'attribut de classe
+ÉCRASAIT celle du mixin : ``get_extra_actions()`` n'en voyait qu'UNE, et
+l'export tableur — pourtant construit et testé — n'était jamais enregistré.
+Les deux actions portent donc des noms distincts :
+
+* ``export_csv``            → ``export.csv``  (CAL179, tableur, le mixin) ;
+* ``export_csv_simulation`` → ``export-csv``  (CAL144, ce fichier).
+
+Le nom de la fonction, celui de l'attribut de classe et la clé du mapping DRF
+doivent rester IDENTIQUES (``get_extra_actions()`` lit ``__name__``) : aucun
+alias, aucun décorateur qui ne recopierait pas ``__name__``. ``url_path``
+reste ``export-csv`` — aucune URL publique ne change de forme. Le ``url_name``
+n'est pas épinglé ici : DRF le dérive du nom de la méthode
+(``export-csv-simulation``), ce qui laisse à l'export tableur du mixin son
+propre ``url_name='export-csv'``. Épingler les deux sur le même ``url_name``
+rendrait l'un des deux irréversible — ``reverse()`` ne rend que le DERNIER
+motif enregistré sous un nom donné.
 """
 from __future__ import annotations
 
@@ -33,13 +55,25 @@ from ..permissions import PeutVoirCalepinage
 from ..services.export_csv import (
     EXPORTS, ExportImpossible, encoder_pour_tableur, nom_de_fichier,
 )
-# Renommé à l'import : l'ACTION doit s'appeler ``export_csv`` (le routeur DRF
-# mappe la méthode par son ``__name__``, et l'attribut de classe doit porter
-# le même nom), donc le service ne peut pas garder ce nom ici.
+# Renommé à l'import : le service ``export_csv`` et l'action HTTP vivent dans
+# le même espace de noms, ils ne peuvent pas porter le même nom ici.
 from ..services.export_csv import export_csv as construire_csv
 from .calepinages import CalepinageViewSet
 
-__all__ = ['document_exportable', 'export_csv']
+__all__ = ['document_exportable', 'export_csv_simulation']
+
+
+def _points_de_la_serie(serie_horaire):
+    """Les points du bloc ``serie_horaire``, ou une liste VIDE.
+
+    Une ancienne simulation avait pu écrire une LISTE sous cette clé : elle
+    est acceptée telle quelle, pour qu'un résultat déjà en base continue de
+    s'exporter au lieu d'être refusé après un simple déploiement.
+    """
+    if isinstance(serie_horaire, dict):
+        points = serie_horaire.get('points')
+        return points if isinstance(points, list) else []
+    return serie_horaire if isinstance(serie_horaire, list) else []
 
 
 def document_exportable(calepinage):
@@ -56,10 +90,13 @@ def document_exportable(calepinage):
     return {
         'production': production if isinstance(production, dict) else {},
         'pertes': resultat.get('pertes') or [],
-        # La série horaire est écrite par la simulation sous ``serie_horaire``
-        # (liste de points {annee, mois, jour, heure, p_w, gi_w_m2, t2m_c},
-        # la forme rendue par ``services.pvgis_serie``).
-        'points': resultat.get('serie_horaire') or [],
+        # CALX193 — ``serie_horaire`` est un BLOC (contrat CALX142 :
+        # ``pas_minutes``, ``tronquee``, ``colonnes``, ``points``), écrit par
+        # ``services/chaine_pertes.py`` et par lui seul. L'exporteur, lui,
+        # ITÈRE une liste de points : c'est donc ``points`` qu'on lui passe.
+        # Jamais simulé ⇒ liste vide ⇒ refus FRANÇAIS de l'exporteur, jamais
+        # un fichier de zéros.
+        'points': _points_de_la_serie(resultat.get('serie_horaire')),
         'shading12x24': layout.get('shading12x24'),
         'version_moteur': calepinage.version_moteur or None,
     }
@@ -73,7 +110,7 @@ def document_exportable(calepinage):
 )
 @action(detail=True, methods=['get'], url_path='export-csv',
         permission_classes=[PeutVoirCalepinage])
-def export_csv(self, request, pk=None):
+def export_csv_simulation(self, request, pk=None):
     """CAL144 — ``GET /calepinages/<pk>/export-csv/?quoi=horaire``.
 
     * **200** — le fichier CSV (``;`` + décimale ``,`` + BOM, ouvrable tel
@@ -98,5 +135,8 @@ def export_csv(self, request, pk=None):
     return reponse
 
 
-# Rattachement au viewset PIVOT — voir la docstring du module.
-CalepinageViewSet.export_csv = export_csv
+# Rattachement au viewset PIVOT — voir la docstring du module. CALX7 :
+# l'attribut porte EXACTEMENT le nom de la fonction, sinon
+# ``get_extra_actions()`` ignore l'action ; et il ne masque plus
+# ``SortiesMixin.export_csv`` (``export.csv``, CAL179).
+CalepinageViewSet.export_csv_simulation = export_csv_simulation

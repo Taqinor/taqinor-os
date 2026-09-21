@@ -491,12 +491,10 @@ def oee_tendance_hebdomadaire(company, poste_id, debut, fin):
         # AUD836 — `terminee_le` revient de l'ORM en UTC ; le filtre
         # `__date` du sélecteur ci-dessus raisonne déjà en TIME_ZONE locale
         # (Africa/Casablanca). Grouper par semaine ISO sur le brut UTC
-        # désynchronise les deux dès que l'heure locale est décalée : une
-        # opération de lundi 00h locale (dimanche 23h UTC, au temps où le pays
-        # vivait à UTC+1 — jusqu'au 19/09/2026, décret n° 2.26.530 depuis)
-        # tombait alors dans la semaine ISO PRÉCÉDENTE. `localtime()` aligne le
-        # regroupement sur le même calendrier métier que le filtre, quel que
-        # soit le décalage en vigueur.
+        # désynchronise les deux : une opération de lundi 00h locale (dimanche
+        # 23h UTC, TIME_ZONE = UTC+1) tombait alors dans la semaine ISO
+        # PRÉCÉDENTE. `localtime()` aligne le regroupement sur le même
+        # calendrier métier que le filtre.
         annee, semaine, _ = dj_timezone.localtime(op.terminee_le).isocalendar()
         par_semaine.setdefault((annee, semaine), []).append(op)
 

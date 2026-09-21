@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/dossiers-reglementaires/",
-  "pourquoi": "Les dossiers réglementaires attachés à un calepinage : ce qui est disponible pour le PAYS de la société, l'état pièce par pièce, les champs « à compléter » et la génération. PACT10 — POURQUOI CE CONTRAT EXISTE : l'écran des dossiers (CAL196) s'appuyait sur `calepinage_sorties.json` (CAL175), qui décrit les SORTIES d'un calepinage (planche, note de calcul, DXF, CSV, image, pack) et ne dit RIEN des dossiers ; l'écran n'avait donc aucun contrat et aurait inventé ses clés. Celui-ci part SEUL sur `main`, sans une ligne de code. LA RÈGLE QUI GOUVERNE CET ÉCHANTILLON — AUCUNE PIÈCE RÉGLEMENTAIRE INVENTÉE : l'ERP ne fabrique aucun formulaire officiel qu'il n'a pas reçu (CAL190), et une société sans gabarit déposé ne voit AUCUN dossier proposé — pas de gabarit fictif en base, et rien de fictif ici non plus. Par construction, CHAQUE pièce de cet exemple porte sa `source`, et cette source est TOUJOURS un objet déposé ou saisi PAR LA SOCIÉTÉ (`gabarit_societe` : le fichier de gabarit qu'elle a téléversé, avec son nom, sa date et son auteur ; `saisie_societe` : une pièce qu'elle a déclarée elle-même). Aucun intitulé de cet exemple ne prétend nommer une pièce officielle marocaine ou française : les intitulés sont explicitement « portés par le gabarit déposé ». C'est la seule façon de publier un contrat complet sans affirmer un fait réglementaire que personne n'a vérifié — et c'est cohérent avec la décision de structure #8 du groupe (pour `pays=ma`, AUCUNE norme n'est supposée ; le calcul concerné est OMIS tant que la société n'a pas choisi la sienne). `pays` est le `Company.pays` (ISO 3166-1 alpha-2, défaut `MA`). GABARIT MANQUANT SIGNALÉ COMME TEL : un dossier dont la société a créé l'entrée mais dont le fichier de gabarit n'a pas (ou plus) été déposé reste VISIBLE avec `gabarit.present = false`, `peut_generer = false` et le motif en clair — le masquer donnerait l'illusion que le dossier n'existe pas, alors que c'est le fichier qui manque. CHAMPS « À COMPLÉTER » : ils viennent du SERVEUR et d'eux seuls ; `valeur` vaut `null` quand le serveur n'a rien à préremplir, et l'écran n'affiche alors AUCUNE valeur — il n'en devine pas. `exemple_vide` = société sans AUCUN gabarit déposé : toutes les clés sont présentes, `dossiers` est une liste VIDE (pas un dossier fantôme), et `message_aucun_gabarit` dit pourquoi et quoi faire. Valeurs : des PLACEHOLDERS assumés, aucun chiffre client, aucun prix.",
+  "pourquoi": "Les dossiers réglementaires attachés à un calepinage : ce qui est disponible pour le PAYS de la société, l'état pièce par pièce, les champs « à compléter » et la génération. PACT10 — POURQUOI CE CONTRAT EXISTE : l'écran des dossiers (CAL196) s'appuyait sur `calepinage_sorties.json` (CAL175), qui décrit les SORTIES d'un calepinage (planche, note de calcul, DXF, CSV, image, pack) et ne dit RIEN des dossiers ; l'écran n'avait donc aucun contrat et aurait inventé ses clés. Celui-ci part SEUL sur `main`, sans une ligne de code. LA RÈGLE QUI GOUVERNE CET ÉCHANTILLON — AUCUNE PIÈCE RÉGLEMENTAIRE INVENTÉE : l'ERP ne fabrique aucun formulaire officiel qu'il n'a pas reçu (CAL190), et une société sans gabarit déposé ne voit AUCUN dossier proposé — pas de gabarit fictif en base, et rien de fictif ici non plus. Par construction, CHAQUE pièce de cet exemple porte sa `source`, et cette source est TOUJOURS un objet déposé ou saisi PAR LA SOCIÉTÉ (`gabarit_societe` : le fichier de gabarit qu'elle a téléversé, avec son nom, sa date et son auteur ; `saisie_societe` : une pièce qu'elle a déclarée elle-même). Aucun intitulé de cet exemple ne prétend nommer une pièce officielle marocaine ou française : les intitulés sont explicitement « portés par le gabarit déposé ». C'est la seule façon de publier un contrat complet sans affirmer un fait réglementaire que personne n'a vérifié — et c'est cohérent avec la décision de structure #8 du groupe (pour `pays=ma`, AUCUNE norme n'est supposée ; le calcul concerné est OMIS tant que la société n'a pas choisi la sienne). `pays` est le `Company.pays` (ISO 3166-1 alpha-2, défaut `MA`). GABARIT MANQUANT SIGNALÉ COMME TEL : un dossier dont la société a créé l'entrée mais dont le fichier de gabarit n'a pas (ou plus) été déposé reste VISIBLE avec `gabarit.present = false`, `peut_generer = false` et le motif en clair — le masquer donnerait l'illusion que le dossier n'existe pas, alors que c'est le fichier qui manque. CHAMPS « À COMPLÉTER » : ils viennent du SERVEUR et d'eux seuls ; `valeur` vaut `null` quand le serveur n'a rien à préremplir, et l'écran n'affiche alors AUCUNE valeur — il n'en devine pas. CHAMPS SAISIS (CALX41) : ce que l'utilisateur a ENREGISTRÉ sort dans sa propre liste `champs_saisis`, chaque entrée portant les mêmes clés qu'une entrée de `champs_a_completer` — un champ enregistré quitte « à compléter » (qui ne liste QUE ce qui reste à faire, et que l'avancement compte) sans disparaître de l'écran : un champ qui s'évanouirait une fois rempli serait un champ que personne ne peut plus relire ni corriger. Rien n'y est deviné : `valeur` est la saisie de l'utilisateur, telle quelle. `exemple_vide` = société sans AUCUN gabarit déposé : toutes les clés sont présentes, `dossiers` est une liste VIDE (pas un dossier fantôme), et `message_aucun_gabarit` dit pourquoi et quoi faire. Valeurs : des PLACEHOLDERS assumés, aucun chiffre client, aucun prix.",
   "exemple": {
     "calepinage": 1,
     "pays": "MA",
@@ -84,6 +84,16 @@
             "message": "Aucune valeur n'est préremplie : le serveur n'a rien à proposer pour ce champ."
           }
         ],
+        "champs_saisis": [
+          {
+            "code": "nom_deposant",
+            "libelle": "Nom du déposant",
+            "type": "texte",
+            "valeur": "Saisie d'essai",
+            "obligatoire": false,
+            "message": ""
+          }
+        ],
         "peut_generer": false,
         "motif_non_generable": "Deux champs obligatoires restent à compléter et une pièce obligatoire n'est pas fournie.",
         "genere_le": null
@@ -102,6 +112,7 @@
         },
         "pieces": [],
         "champs_a_completer": [],
+        "champs_saisis": [],
         "peut_generer": false,
         "motif_non_generable": "Le fichier de gabarit de la société n'a pas été déposé : l'ERP ne fabrique aucun formulaire officiel qu'il n'a pas reçu.",
         "genere_le": null

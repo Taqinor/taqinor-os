@@ -2060,6 +2060,106 @@ class RevisionKit(models.Model):
         return f'Rev.{self.numero} — kit {self.kit_id}'
 
 
+# ── CALX60 — CONTRÔLE DES COURBES DE FICHE TECHNIQUE ────────────────────────
+#
+# Deux champs de ``FicheTechnique`` portent une COURBE (une liste de points),
+# pas une valeur : le rendement du module à éclairement partiel et le
+# rendement de l'onduleur en fonction de sa charge. Les deux se lisent par
+# INTERPOLATION — et une abscisse qui recule (ou se répète) rend
+# l'interpolation ambiguë : deux ordonnées pour une même entrée, donc un
+# chiffre de production indéfendable. La courbe est donc REFUSÉE À LA SAISIE
+# en nommant l'INDEX du point fautif, et jamais re-triée en silence : un tri
+# changerait la courbe saisie par le fournisseur sans que personne le voie.
+#
+# Une liste VIDE est refusée elle aussi — ce n'est pas « non publié » (le
+# champ vide le dit déjà), et ce serait une courbe sans aucun point à
+# interpoler, donc une perte de 0 % inventée (D-CALX 7).
+#
+# Les deux fonctions vivent au niveau MODULE parce qu'un validateur de champ
+# doit être importable par son chemin pour entrer dans une migration.
+# ``ValidationError`` s'importe DANS les fonctions, comme le bloc d'imports de
+# fin de fichier : une ligne ajoutée en tête de ce fichier décalerait les
+# gardes qui le référencent par ``path:lineno``.
+
+def _est_nombre(valeur):
+    """Un nombre saisissable dans une courbe — le booléen n'en est pas un."""
+    return (isinstance(valeur, (int, float, Decimal))
+            and not isinstance(valeur, bool))
+
+
+def _valider_courbe(valeur, libelle, cle_abscisse, cles_requises,
+                    cle_serie=None):
+    """Contrôle commun des courbes de fiche : liste non vide de points, clés
+    requises numériques, abscisse STRICTEMENT croissante.
+
+    ``cle_serie`` nomme la clé qui sépare plusieurs courbes dans une même
+    liste (la tension d'entrée d'un onduleur, par exemple) : la croissance
+    est alors exigée À L'INTÉRIEUR de chaque courbe, pas entre elles.
+    Chaque refus nomme l'index du point fautif."""
+    from django.core.exceptions import ValidationError
+
+    if valeur is None or valeur == '':
+        return
+    if not isinstance(valeur, list):
+        raise ValidationError(
+            f'« {libelle} » attend une LISTE de points, pas un(e) '
+            f'{type(valeur).__name__}.')
+    if not valeur:
+        raise ValidationError(
+            f'« {libelle} » : une liste vide n\'est pas une courbe. Laisser '
+            'le champ VIDE si la donnée n\'est pas publiée.')
+
+    vues = {}
+    for index, point in enumerate(valeur):
+        if not isinstance(point, dict):
+            raise ValidationError(
+                f'« {libelle} » : le point d\'index {index} n\'est pas un '
+                f'objet mais un(e) {type(point).__name__}.')
+        for cle in cles_requises:
+            if cle not in point:
+                raise ValidationError(
+                    f'« {libelle} » : le point d\'index {index} n\'a pas de '
+                    f'« {cle} ».')
+            if not _est_nombre(point[cle]):
+                raise ValidationError(
+                    f'« {libelle} » : « {cle} » du point d\'index {index} '
+                    f'n\'est pas un nombre ({point[cle]!r}).')
+        serie = point.get(cle_serie) if cle_serie else None
+        if serie is not None and not _est_nombre(serie):
+            raise ValidationError(
+                f'« {libelle} » : « {cle_serie} » du point d\'index {index} '
+                f'n\'est pas un nombre ({serie!r}).')
+        precedent = vues.get(str(serie))
+        courante = float(point[cle_abscisse])
+        if precedent is not None and courante <= precedent[0]:
+            raise ValidationError(
+                f'« {libelle} » : « {cle_abscisse} » du point d\'index '
+                f'{index} ({point[cle_abscisse]}) ne dépasse pas celui du '
+                f'point d\'index {precedent[1]} ({precedent[2]}) — une '
+                'courbe s\'interpole, son abscisse ne peut ni reculer ni se '
+                'répéter.')
+        vues[str(serie)] = (courante, index, point[cle_abscisse])
+
+
+def valider_courbe_irradiance(valeur):
+    """CALX60 — ``FicheTechnique.rendement_par_irradiance`` : des paires
+    (W/m², % du rendement STC), abscisse strictement croissante."""
+    _valider_courbe(
+        valeur, 'rendement_par_irradiance',
+        cle_abscisse='w_m2',
+        cles_requises=('w_m2', 'rendement_relatif_pct'))
+
+
+def valider_courbe_rendement_onduleur(valeur):
+    """CALX60 — ``FicheTechnique.ond_courbe_rendement`` : des paires
+    (% de PNom, η %), éventuellement une courbe par tension d'entrée."""
+    _valider_courbe(
+        valeur, 'ond_courbe_rendement',
+        cle_abscisse='charge_pct',
+        cles_requises=('charge_pct', 'rendement_pct'),
+        cle_serie='tension_v')
+
+
 class FicheTechnique(models.Model):
     """DC35 / FG254 — Fiche technique (datasheet) d'un produit.
 
@@ -2217,6 +2317,43 @@ class FicheTechnique(models.Model):
         help_text='Palier de garantie de production à 25 ans publié (% de '
                   'Pmax nominal). Vide = non publié.')
 
+    # ── CALX60 — ce que la CHAÎNE DE PERTES lit sur un MODULE et qui
+    # n'existait nulle part en base. ──
+    #
+    # Deux étapes de la chaîne séquentielle étaient condamnées à sortir
+    # OMISES à vie faute de champ pour les alimenter :
+    #   * « niveau d'irradiance » (CALX162) veut la courbe de rendement à
+    #     éclairement partiel — la fiche ne portait QUE le rendement STC
+    #     (``rendement_pct``), c'est-à-dire un seul point de cette courbe ;
+    #   * « qualité module » (CALX165) veut les DEUX bornes de tolérance de
+    #     puissance de la datasheet (« 0/+3 % ») — aucun champ ne les
+    #     portait (``tolerance_prix_pct``/``tolerance_quantite_pct`` sont des
+    #     tolérances d'ACHAT, sans rapport).
+    #
+    # PV*SOL fait de chaque grandeur de datasheet un champ saisissable
+    # (https://help.valentin-software.com/pvsol/en/databases/components/pv-modules/).
+    # TOUS OPTIONNELS — vide = « non publié » : l'étape s'omet en nommant le
+    # champ et le produit, JAMAIS un forfait ni un 0 (D-CALX 7). Aucune
+    # valeur par défaut n'est posée ici : une courbe absente n'est pas une
+    # courbe plate, et une tolérance absente n'est pas une tolérance nulle.
+    rendement_par_irradiance = models.JSONField(
+        null=True, blank=True,
+        validators=[valider_courbe_irradiance],
+        help_text='Courbe de rendement à éclairement partiel publiée : '
+                  '[{"w_m2": 200, "rendement_relatif_pct": 97.5}, …] — le '
+                  'rendement RELATIF (% du rendement STC) à chaque niveau '
+                  "d'irradiance. Vide = non publiée : l'étape « niveau "
+                  "d'irradiance » est omise en le disant.")
+    tolerance_pmax_min_pct = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        help_text='Tolérance de puissance Pmax publiée — borne BASSE (%, '
+                  'ex. 0 pour un tri « 0/+3 % », −3 pour « ±3 % »). Vide = '
+                  'non publiée.')
+    tolerance_pmax_max_pct = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        help_text='Tolérance de puissance Pmax publiée — borne HAUTE (%, '
+                  'ex. 3 pour un tri « 0/+3 % »). Vide = non publiée.')
+
     # ── PV5 — Onduleur ──
     ond_n_mppt = models.PositiveSmallIntegerField(
         null=True, blank=True, help_text="Nombre d'entrées MPPT.")
@@ -2331,6 +2468,53 @@ class FicheTechnique(models.Model):
         help_text='Puissance DC maximale recommandée (kWc). Vide = non '
                   'publié.')
 
+    # ── CALX60 — le RENDEMENT de l'onduleur n'est pas UN nombre, et sa
+    # consommation de veille n'est pas une perte en pourcentage. ──
+    #
+    # La fiche ne portait qu'un rendement européen unique
+    # (``ond_rendement_euro_pct``) : une moyenne pondérée, pas le rendement
+    # de l'heure qu'on calcule. PV*SOL écrit la conversion
+    # ``P_AC = P_DC · η_nominal · η_relatif``, où η_relatif est une COURBE de
+    # la puissance d'entrée, publiée par tension d'entrée
+    # (https://help.valentin-software.com/pvsol/en/calculation/inverters/) —
+    # c'est ce que l'étape « onduleur » (CALX170) veut lire, avec le
+    # rendement européen en second recours et l'omission en troisième.
+    # La consommation de VEILLE/nuit (CALX175) est une énergie réellement
+    # soutirée en watts, jamais un pourcentage : elle a son propre champ.
+    #
+    # ``ond_s_max_kva`` demandé par l'énoncé « si absent » EXISTE DÉJÀ
+    # (CAL115, juste au-dessus) : rien n'est ajouté pour lui.
+    #
+    # TOUS OPTIONNELS — vide = non publié, l'étape s'omet en nommant le
+    # champ et le produit (D-CALX 7).
+    ond_courbe_rendement = models.JSONField(
+        null=True, blank=True,
+        validators=[valider_courbe_rendement_onduleur],
+        help_text='Courbe de rendement publiée : [{"charge_pct": 30, '
+                  '"rendement_pct": 97.2, "tension_v": 360}, …] — le '
+                  'rendement à chaque taux de charge, et la tension '
+                  "d'entrée de la courbe (facultative : plusieurs courbes "
+                  'peuvent coexister, une par tension). Vide = non '
+                  'publiée.')
+    ond_rendement_max_pct = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('1')),
+                    MaxValueValidator(Decimal('100'))],
+        help_text='Rendement MAXIMAL publié (%, « peak efficiency »). '
+                  'Vide = non publié.')
+    ond_rendement_cec_pct = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('1')),
+                    MaxValueValidator(Decimal('100'))],
+        help_text='Rendement pondéré CEC publié (%, pondération '
+                  'californienne). Vide = non publié.')
+    ond_conso_nuit_w = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('0'))],
+        help_text='Consommation de NUIT / veille publiée (W). Énergie '
+                  'réellement soutirée, jamais un pourcentage. Vide = non '
+                  'publiée.')
+
     # ── PV5 — Batterie ──
     bat_kwh_nominal = models.DecimalField(
         max_digits=6, decimal_places=2, null=True, blank=True,
@@ -2430,6 +2614,58 @@ class FicheTechnique(models.Model):
         null=True, blank=True,
         help_text='Durée de garantie publiée (années). Vide = non publié.')
 
+    # ── CALX60 — le C-RATE, la CHIMIE et la PLAGE DE TEMPÉRATURE. ──
+    #
+    # Le bloc batterie portait des PUISSANCES en kW
+    # (``bat_max_charge_kw``/``bat_max_decharge_kw``) mais aucun C-rate, et
+    # les deux ne se déduisent pas l'un de l'autre : un C-rate se rapporte à
+    # la capacité NOMINALE, une puissance publiée peut être bornée par
+    # l'électronique du pack. Le déduire des kW déjà saisis fabriquerait un
+    # chiffre que le constructeur ne publie pas (D-CALX 7) — ce champ se
+    # SAISIT, il ne se calcule jamais.
+    #
+    # ``bat_eol_pct`` demandé par l'énoncé n'est PAS créé :
+    # ``bat_retention_fin_de_vie_pct`` (CAL118, juste au-dessus) porte
+    # exactement cette grandeur — la rétention de capacité publiée en fin de
+    # vie garantie. Une seconde colonne aurait donné deux vérités pour une
+    # seule donnée ; le sélecteur publie la clé ``eol_pct`` depuis ce champ
+    # unique.
+    #
+    # TOUS OPTIONNELS — vide = non publié.
+    class ChimieBatterie(models.TextChoices):
+        LFP = 'lfp', 'LFP (lithium fer phosphate)'
+        NMC = 'nmc', 'NMC (lithium nickel manganèse cobalt)'
+        NCA = 'nca', 'NCA (lithium nickel cobalt aluminium)'
+        LMO = 'lmo', 'LMO (lithium manganèse)'
+        LTO = 'lto', 'LTO (titanate de lithium)'
+        PLOMB_OUVERT = 'plomb_ouvert', 'Plomb ouvert (à entretien)'
+        PLOMB_AGM = 'plomb_agm', 'Plomb AGM (étanche)'
+        PLOMB_GEL = 'plomb_gel', 'Plomb gel (étanche)'
+        AUTRE = 'autre', 'Autre (préciser sur la fiche produit)'
+
+    bat_c_rate_charge = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text='C-rate de CHARGE publié (ex. 0,50 C). Vide = non '
+                  "publié : il n'est jamais déduit des kW saisis.")
+    bat_c_rate_decharge = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('0.01'))],
+        help_text='C-rate de DÉCHARGE publié (ex. 1,00 C). Vide = non '
+                  "publié : il n'est jamais déduit des kW saisis.")
+    bat_chimie = models.CharField(
+        max_length=16, choices=ChimieBatterie.choices, blank=True,
+        default='',
+        help_text='Chimie de cellule publiée. Vide = non publiée.')
+    bat_temp_min_c = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text='Température de fonctionnement MINIMALE publiée (°C). '
+                  'Vide = non publiée.')
+    bat_temp_max_c = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text='Température de fonctionnement MAXIMALE publiée (°C). '
+                  'Vide = non publiée.')
+
     # ── CAL116 — Optimiseur de puissance / micro-onduleur
     # (``type_fiche='optimiseur'``). ──
     #
@@ -2457,6 +2693,64 @@ class FicheTechnique(models.Model):
         null=True, blank=True,
         help_text='Nombre de modules gérés par optimiseur (1 ou 2, '
                   'typiquement). Vide = non publié.')
+
+    # ── CALX60 — LA SORTIE de l'optimiseur / du micro-onduleur. ──
+    #
+    # Les six champs CAL116 ci-dessus décrivent tous l'ENTRÉE continue du
+    # composant : ce qu'il accepte des modules. Rien ne décrit ce qu'il REND,
+    # alors que c'est la sortie qui décide du câblage — combien d'unités
+    # tiennent sur une branche, quelle tension de chaîne un optimiseur
+    # construit, quel courant alternatif une branche de micro-onduleurs
+    # transporte. OpenSolar traite d'ailleurs le micro-onduleur comme un
+    # chemin de conception à part entière
+    # (https://support.opensolar.com/hc/en-us/articles/4406931180313-Stringing-Micro-Inverters-and-Power-Optimizers).
+    #
+    # UN SEUL bloc pour les deux composants, comme ``type_fiche='optimiseur'``
+    # les réunit déjà : les champs ``opt_ac_*`` ne se remplissent que sur un
+    # micro-onduleur (sortie alternative), les ``opt_v_out_*``/``opt_i_out_*``
+    # que sur un optimiseur (sortie continue). Vide = non publié ; aucune
+    # conversion n'est déduite de l'autre famille.
+    opt_ac_kw = models.DecimalField(
+        max_digits=7, decimal_places=3, null=True, blank=True,
+        help_text='Micro-onduleur — puissance AC nominale (kW ; trois '
+                  'décimales parce que ces fiches se publient en watts, '
+                  'ex. 0,365 kW). Vide = non publiée.')
+    opt_ac_tension_v = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Micro-onduleur — tension AC nominale de sortie (V). '
+                  'Vide = non publiée.')
+    opt_ac_i_max_a = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Micro-onduleur — courant AC maximal de sortie (A). '
+                  'Vide = non publié.')
+    opt_ac_unites_max_par_branche = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(1)],
+        help_text="Micro-onduleur — nombre maximal d'unités admises sur une "
+                  'même branche AC. Vide = non publié.')
+    opt_v_out_nominal_v = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Optimiseur — tension de sortie NOMINALE (V). Vide = non '
+                  'publiée.')
+    opt_v_out_min = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Optimiseur — tension de sortie minimale (V). Vide = non '
+                  'publiée.')
+    opt_v_out_max = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Optimiseur — tension de sortie maximale (V). Vide = non '
+                  'publiée.')
+    opt_i_out_max_a = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        help_text='Optimiseur — courant de sortie maximal (A). Vide = non '
+                  'publié.')
+    opt_pmax_out_w = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        help_text='Optimiseur — puissance de sortie maximale (W). Vide = '
+                  'non publiée.')
+    opt_modules_max_par_chaine = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(1)],
+        help_text='Nombre maximal de modules équipés admis sur une même '
+                  'chaîne. Vide = non publié.')
 
     # ── PDF constructeur d'origine (optionnel) ──
     #

@@ -292,3 +292,107 @@ describe('AffectationChaines (CAL234) — la teinte est celle de CAL126', () => 
     expect(legende.at(-1)).toMatchObject({ libelle: 'Non affecté', nombre: 1 })
   })
 })
+
+/* ── CALX53 — l'avertissement « coefficients non sourcés », À CÔTÉ DES BORNES
+   L'échantillon committé sert `avertissements: []` (rien à signaler). On part
+   de LUI et on y pose le message que le serveur publie quand la fiche module
+   ne donne pas ses coefficients de température : seule cette clé bouge. */
+const AVERTISSEMENT_COEFFS = (
+  'Coefficients de température NON SOURCÉS sur la fiche de Module d essai '
+  + '710 Wc (« temp_coeff_voc_pct_c » — coefficient de la tension à vide '
+  + '(β Voc) : -0,270 %/°C, « temp_coeff_pmax_pct_c » — coefficient de la '
+  + 'puissance crête (γ Pmax) : -0,350 %/°C). Ces valeurs sont les défauts du '
+  + 'noyau, pas des données constructeur : les bornes de tension de chaîne '
+  + 'restent calculées, mais elles sont marquées tant que la fiche produit ne '
+  + 'publie pas ces coefficients.'
+)
+
+const resultatAvecAvertissement = () => {
+  const reponse = contratResultat()
+  return {
+    ...reponse,
+    data: { ...reponse.data, avertissements: [AVERTISSEMENT_COEFFS] },
+  }
+}
+
+describe('AffectationChaines (CALX53) — coefficients non sourcés', () => {
+  it('aucun avertissement servi : le panneau n’en invente aucun', async () => {
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    expect(contratResultat().data.avertissements).toEqual([])
+    expect(screen.queryByTestId('calx53-avertissements')).toBeNull()
+  })
+
+  it('l’avertissement du serveur est visible, et NOMME les deux coefficients', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue(resultatAvecAvertissement())
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    const avertissement = screen.getByTestId('calx53-avertissement')
+    expect(avertissement).toHaveTextContent('temp_coeff_voc_pct_c')
+    expect(avertissement).toHaveTextContent('temp_coeff_pmax_pct_c')
+    // Il est rendu AVANT la grille des modules (donc au-dessus des bornes).
+    const grille = screen.getByTestId('cal234-pan-PAN-A')
+    // `compareDocumentPosition` rend un MASQUE de bits : on teste le bit.
+    const apres = avertissement.compareDocumentPosition(grille)
+      & Node.DOCUMENT_POSITION_FOLLOWING
+    expect(apres).toBeTruthy()
+    // Les bornes restent servies : rien n'est omis à cause du défaut.
+    expect(screen.getByTestId('cal234-module-PAN-A#1')).toBeInTheDocument()
+  })
+})
+
+/* ── CALX16 — LA CHAÎNE LA PLUS FAIBLE EN OMBRAGE ──────────────────────────
+   Ce qui est prouvé : la chaîne DÉSIGNÉE par le serveur est teintée, sa
+   méthode est recopiée, la légende dit que c'est un signal de CÂBLAGE et
+   non une perte d'énergie, et — la garantie qui compte autant — un résultat
+   SANS la clé (document sans accès solaire par module) ne teinte rien et
+   n'affiche rien : l'écran n'invente aucun 100 %. */
+
+const sansChaineFaible = () => {
+  const reponse = contratResultat()
+  const donnees = JSON.parse(JSON.stringify(reponse.data))
+  delete donnees.electrique.chaine_la_plus_faible
+  return { data: donnees }
+}
+
+describe('AffectationChaines (CALX16) — la chaîne la plus faible', () => {
+  it('teinte la chaîne désignée et recopie la méthode du serveur', async () => {
+    const designee = contratResultat().data.electrique.chaine_la_plus_faible
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    expect(screen.getByTestId('calx16-chaine'))
+      .toHaveTextContent(`chaîne ${designee.chaine}`)
+    expect(screen.getByTestId('calx16-chaine')).toHaveTextContent(designee.pan)
+    expect(screen.getByTestId('calx16-module')).toHaveTextContent(designee.module)
+    expect(screen.getByTestId('calx16-methode')).toHaveTextContent(designee.methode)
+    // Le module de la chaîne désignée porte le repère ; un module d'un autre
+    // pan ne le porte pas.
+    expect(screen.getByTestId(`cal234-module-${designee.module}`))
+      .toHaveAttribute('data-chaine-faible', 'oui')
+    expect(screen.getByTestId('cal234-module-PAN-A#1'))
+      .toHaveAttribute('data-chaine-faible', 'non')
+  })
+
+  it('la légende dit que c’est un signal de câblage, pas une perte', async () => {
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    const legende = screen.getByTestId('calx16-legende')
+    expect(legende).toHaveTextContent('Signal de câblage')
+    expect(legende).toHaveTextContent('pas une perte')
+    expect(legende).toHaveTextContent('aucun kWh')
+  })
+
+  it('sans la clé servie, rien n’est teinté et rien n’est affiché', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue(sansChaineFaible())
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    expect(screen.queryByTestId('calx16-chaine-faible')).toBeNull()
+    expect(screen.getByTestId('cal234-module-PAN-B#1'))
+      .toHaveAttribute('data-chaine-faible', 'non')
+  })
+})

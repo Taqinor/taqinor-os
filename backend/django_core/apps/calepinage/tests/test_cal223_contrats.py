@@ -42,6 +42,7 @@ from apps.calepinage.selectors import (
 )
 from apps.calepinage.services import site
 from apps.calepinage.services.equipements import equipements_du_calepinage
+from apps.calepinage.services.lestage import masse_et_lestage
 from apps.calepinage.services.reglementaire import composer_dossiers
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
@@ -54,7 +55,10 @@ VUES = RACINE / 'views'
 AVEC_PRODUCTEUR_PUR = ('calepinage_equipements.json',
                        'dossiers_reglementaires.json',
                        'parametres_calepinage.json',
-                       'site_imagerie.json')
+                       'site_imagerie.json',
+                       # CALX17 — masse posée + feuille de lestage : producteur
+                       # PUR (aucune base) sur un calepinage nu.
+                       'calepinage_masse_lestage.json')
 
 #: Les autres, avec la RAISON — aucun n'est oublié, chacun est un choix.
 SANS_PRODUCTEUR_PUR = {
@@ -80,11 +84,90 @@ SANS_PRODUCTEUR_PUR = {
         'comparatif qui lit les variantes en base (CAL21)',
     'zones.json':
         'entrée du moteur (pas une réponse serveur) — couvert par CAL22',
+    # CALX4 / CALX5 — le document écrit par la simulation dans
+    # ``Calepinage.resultat``. Son producteur EXISTE désormais
+    # (``services/simulation.py``), mais il lit le devis, le stock et les
+    # réglages en base : la forme est affirmée sans base par
+    # apps/calepinage/tests/test_calx5_simulation.py.
+    'calepinage_simulation.json':
+        'document écrit par services/simulation.py (CALX5) : son producteur '
+        'lit le document, les fiches produit et les réglages société en base',
+    # CALX45
+    'calepinage_du_devis.json':
+        "endpoint d'une AUTRE app (apps.ventes, DevisSerializer) — couvert "
+        'par apps/ventes/tests/test_calx46_calepinage_du_devis.py',
+    # CALX25
+    'calepinage_releve.json':
+        'enveloppe (`releve_en_ligne`) lue sur un `ReleveTerrain` SAUVÉ en '
+        'base (photos, auteur) — la géométrie PURE (`resoudre_chaines`) est '
+        'affirmée sans base par tests/test_calx25_releve_contrat.py',
+
+    # CALX39
+    'calepinage_import_plan.json':
+        "réponse d'une porte MULTIPART : son producteur exige un plan "
+        'déposé (DXF/PDF réel) et un calepinage résolu — affirmé par '
+        'apps/calepinage/tests/test_calx39_import_plan.py, qui appelle la '
+        "porte sur un DXF fabriqué par ezdxf",
+
+    # CALX35
+    'calepinage_dupliquer.json':
+        'la réponse décrit la COPIE enregistrée (identifiant, référence '
+        'dérivée, variantes comptées) : son producteur exige la base — '
+        'couvert par apps/calepinage/tests/test_calx35_dupliquer.py',
+
+    # CALX141
+    'calepinage_pertes_cascade.json':
+        "détail du bloc `resultat['cascade']` servi par GET resultat/ "
+        '(CALX70) : son producteur est services/chaine_pertes.py '
+        '(CALX147), pas encore écrit — la forme est affirmée sans base par '
+        'apps/calepinage/tests/test_calx141_contrat_cascade.py',
+
+    # CALX143
+    'calepinage_meteo.json':
+        "détail du bloc `resultat['meteo']` servi par GET resultat/ "
+        '(CALX70) : la provenance est aujourd’hui éparse (pvgis_serie, '
+        'horizon, production) et son assembleur arrive avec CALX150 — la '
+        'forme est affirmée sans base, depuis une réponse PVGIS rejouée, par '
+        'apps/calepinage/tests/test_calx143_contrat_meteo.py',
+
+    # CALX144
+    'calepinage_incertitude.json':
+        "détail du bloc `resultat['incertitude']` servi par GET resultat/ "
+        '(CALX70) : son producteur est services/incertitude.py (CALX185, '
+        'CALX186), pas encore écrit — la forme et les deux règles dures '
+        '(aucun σ sans source, aucun P50 recopié en P90) sont affirmées sans '
+        'base par '
+        'apps/calepinage/tests/test_calx144_contrat_incertitude.py',
+
+    # CALX142
+    'calepinage_serie_horaire.json':
+        "détail du bloc `resultat['serie_horaire']` PERSISTÉ : il n'est pas "
+        'recopié par GET resultat/ (D-CALX 14, volume) et son seul lecteur '
+        "est l'export CSV, qui rend un FICHIER — aucune forme JSON servie à "
+        'comparer ; la série est écrite par CALX150 et la forme est affirmée '
+        "sans base, par l'exporteur lui-même, dans "
+        'apps/calepinage/tests/test_calx142_contrat_serie.py',
+
+    # CALX62
+    'calepinage_meteo_fichier.json':
+        'réponse de la porte MULTIPART qui dépose une série météo de la '
+        'société : son producteur crée une ligne records.Attachment et écrit '
+        "dans le magasin d'objets, donc il exige la base — le bloc `meteo` et "
+        'le résumé de série sont affirmés sans base, depuis un petit fichier '
+        'synthétique, par '
+        'apps/calepinage/tests/test_calx62_meteo_fichier.py',
 }
+
+#: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
+#: `main`) — le contrôle 2 les ignore tant que la tâche nommée n'a pas livré
+#: la porte ; retirer l'entrée dans la même tâche que la route.
+#: CALX5 a livré ``POST simuler/`` : ``calepinage_simulation.json`` en est
+#: SORTI, et le contrôle 2 vérifie désormais sa route comme celle des autres.
+POSES_AVANT_LEUR_ROUTE = {}
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
 #: chercher) : ils appartiennent à une autre app.
-HORS_MODULE = ('/api/django/crm/',)
+HORS_MODULE = ('/api/django/crm/', '/api/django/ventes/')
 
 
 def _echantillons():
@@ -151,6 +234,8 @@ class CheminDeclareTest(unittest.TestCase):
             _verbe, _, route = donnees['endpoint'].partition(' ')
             if route.startswith(HORS_MODULE):
                 continue
+            if chemin.name in POSES_AVANT_LEUR_ROUTE:
+                continue
             segment = route.rstrip('/').rsplit('/', 1)[-1]
             if segment.startswith('<'):        # ``calepinages/<int:pk>/``
                 continue
@@ -200,6 +285,14 @@ class ClesServiesTest(unittest.TestCase):
         self._comparer('parametres_calepinage.json', servi, 'exemple_vide')
         self.assertEqual(sorted(parametres_de_societe(None)),
                          sorted(SECTIONS_PARAMETRES))
+
+    def test_masse_lestage(self):
+        # CALX17 — ``masse_et_lestage`` sur un calepinage NU ne touche
+        # aucune base : ni devis, ni document, ni produit désigné.
+        servi = masse_et_lestage(Faux())
+        self._comparer('calepinage_masse_lestage.json', servi)
+        self._comparer('calepinage_masse_lestage.json', servi,
+                       'exemple_vide')
 
     def test_site_imagerie(self):
         # Cet échantillon décrit la SECTION « imagerie » (CAL46) à l'intérieur

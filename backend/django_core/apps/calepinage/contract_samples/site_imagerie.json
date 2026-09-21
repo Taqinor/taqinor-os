@@ -31,7 +31,9 @@
     "favoris_materiel": {},
     "gabarits_dossier": {},
     "norme_electrique": {},
-    "lestage": {}
+    "lestage": {},
+    "simulation": {},
+    "electrique_societe": {}
   },
   "exemple_vide": {
     "imagerie": {},
@@ -42,7 +44,9 @@
     "favoris_materiel": {},
     "gabarits_dossier": {},
     "norme_electrique": {},
-    "lestage": {}
+    "lestage": {},
+    "simulation": {},
+    "electrique_societe": {}
   },
   "exemple_section_declaree_sans_valeur": {
     "imagerie": {
@@ -62,6 +66,8 @@
     "favoris_materiel": {},
     "gabarits_dossier": {},
     "norme_electrique": {},
-    "lestage": {}
+    "lestage": {},
+    "simulation": {},
+    "electrique_societe": {}
   }
 }

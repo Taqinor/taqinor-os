@@ -53,6 +53,25 @@ def stocker_image_toiture(donnees, cle, *, content_type='image/png'):
     return cle
 
 
+def lire_fichier_toiture(cle):
+    """Les OCTETS de l'objet stocké sous ``cle``, ou ``None`` (CALX5).
+
+    Le pendant en lecture de :func:`stocker_image_toiture`, pour les dépôts
+    qu'un SERVEUR doit relire lui-même (la série météo déposée par la société,
+    CALX62) : une URL présignée sert un navigateur, pas une tâche de fond.
+    Objet absent ou magasin injoignable ⇒ ``None`` : l'appelant DIT alors ce
+    qu'il n'a pas pu lire, il ne le remplace pas.
+    """
+    if not cle:
+        return None
+    from ..utils.pdf import download_roof_image
+
+    try:
+        return download_roof_image(cle)
+    except Exception:  # noqa: BLE001 — cf. docstring : absence, pas erreur
+        return None
+
+
 def url_image_toiture(cle, *, expires=3600):
     """L'URL PRÉSIGNÉE (lecture seule, 1 h) d'un rendu stocké, ou ``None``.
 

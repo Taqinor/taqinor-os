@@ -15,7 +15,8 @@ parallelisent sans changer leur verdict. Ce runner lance N gardes a la fois
 
 CE QUI NE CHANGE PAS. La LISTE des gardes (nom, commande, repertoire) vit ici,
 dans `GARDES`, une seule fois — c'est la meme liste que ci.yml portait etape par
-etape, transposee telle quelle le 21/09/2026 (41 + 44 commandes). Les deux
+etape, transposee telle quelle le 21/09/2026 (41 + 44 commandes, puis 44 + 44
+avec les gardes CALX56/57 arrivees sur main le meme jour). Les deux
 `pip install` de preparation restent des etapes ci.yml (elles doivent PRECEDER
 les gardes et `scripts/ci_fast_gate_steps.py` les connait). `scripts/preflight.ps1`
 continue de voir chaque garde individuellement : `ci_fast_gate_steps.py` DEVELOPPE
@@ -107,6 +108,21 @@ GARDES = {
          '.'),
         ('Test the reachable-screens checker itself',
          'python -m unittest scripts.tests.test_check_ecrans_atteignables -v',
+         '.'),
+        # CALX56/57 (lots CALX merges le 21/09/2026 pendant la construction de ce
+        # runner — PR #706/#708) : chemins parametres atteignables, et services
+        # backend livres sans appelant (passif fige dans
+        # scripts/services_appeles_allow.txt). Ici pour la meme raison que
+        # check_ecrans_atteignables : un consommateur peut disparaitre depuis
+        # n'importe ou, seul le job non gate les voit.
+        ('Test the parameterized-path reachability rule (CALX56)',
+         'python -m unittest scripts.tests.test_check_ecrans_parametres -v',
+         '.'),
+        ('Check services appelés (aucun service livré sans appelant)',
+         'python scripts/check_services_appeles.py',
+         '.'),
+        ('Test the orphan-service checker itself (CALX57)',
+         'python -m unittest scripts.tests.test_check_services_appeles -v',
          '.'),
         ('Check tâches de plan (aucune ne commande du travail mort)',
          'python scripts/check_taches_cablage.py',

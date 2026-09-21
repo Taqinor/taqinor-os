@@ -1210,7 +1210,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
-      # SOLMVP54 (21/09/2026) — LES 41 GARDES DE CE JOB TOURNENT EN PARALLELE.
+      # SOLMVP54 (21/09/2026) — LES 44 GARDES DE CE JOB TOURNENT EN PARALLELE.
       # Mesure sur le run 35601218482 (main) : 3 min 07 s pour 42 etapes `run:`
       # executees en serie (une garde = un processus Python de 0,5 a 23 s) sur
       # un runner a 4 vCPU dont trois dormaient. La LISTE des gardes vit

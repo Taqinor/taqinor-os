@@ -11,6 +11,7 @@ import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { Button, Card, Spinner } from '../../../ui'
+import RetourAtelier from '../atelier/RetourAtelier'
 
 /* ============================================================================
    CAL234 — AFFECTER LES CHAÎNES À LA MAIN, AVEC LE VERDICT EN DIRECT.
@@ -52,6 +53,15 @@ import { Button, Card, Spinner } from '../../../ui'
    RELANCER L'AUTOMATIQUE NE PEUT PAS ÊTRE ACCIDENTEL. Effacer une affectation
    faite à la main demande une CONFIRMATION explicite : le premier clic arme,
    le second exécute. C'est la garantie exigée par le Done de la tâche.
+
+   CALX53 — LES AVERTISSEMENTS DU SERVEUR SONT AFFICHÉS, PAS AVALÉS.
+   `resultat.avertissements` (contrat `calepinage_resultat.json`) est rendu EN
+   HAUT du panneau, avant la grille et les bornes de chaîne : c'est là que le
+   serveur NOMME, par exemple, un coefficient de température non sourcé —
+   `temp_coeff_voc_pct_c` / `temp_coeff_pmax_pct_c` tombés sur le défaut du
+   noyau. Les bornes restent calculées ; l'utilisateur sait seulement qu'elles
+   reposent sur une valeur que sa fiche produit ne publie pas. Les messages
+   sont RECOPIÉS tels quels — cet écran n'en reformule ni n'en filtre aucun.
    ========================================================================== */
 
 /* ── LA TEINTE DES CHAÎNES — MIROIR EXACT DE CAL126 ────────────────────────
@@ -205,6 +215,21 @@ export default function AffectationChaines({ calepinageId }) {
     () => couleurParModule(lignes, mode), [lignes, mode],
   )
 
+  /* CALX16 — LA CHAÎNE LA PLUS FAIBLE EN OMBRAGE, telle que le serveur la
+     DÉSIGNE (`electrique.chaine_la_plus_faible`, contrat
+     `calepinage_resultat.json`). Rien n'est calculé ici : ni l'accès solaire,
+     ni l'écart, ni la chaîne retenue. La clé est CONDITIONNELLE — absente
+     quand le document ne porte aucun accès solaire par module, auquel cas le
+     motif est déjà dans `avertissements` et rien n'est teinté (un module sans
+     accès calculé n'est pas un module non ombré). */
+  const chaineFaible = resultat?.electrique?.chaine_la_plus_faible || null
+  const estFaible = useCallback(
+    (ligne) => Boolean(chaineFaible)
+      && ligne.chaine === chaineFaible.chaine
+      && ligne.pan === chaineFaible.pan,
+    [chaineFaible],
+  )
+
   const appliquerResultat = useCallback((donnees) => {
     setSurcharge(donnees)
     setEditions(new Map())
@@ -334,9 +359,21 @@ export default function AffectationChaines({ calepinageId }) {
       })
   }
 
-  if (chargement) return <Spinner />
+  if (chargement) {
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <Spinner />
+      </>
+    )
+  }
   if (erreur) {
-    return <p className="text-sm text-destructive" data-testid="cal234-erreur">{erreur}</p>
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <p className="text-sm text-destructive" data-testid="cal234-erreur">{erreur}</p>
+      </>
+    )
   }
 
   const parPan = new Map()
@@ -349,9 +386,14 @@ export default function AffectationChaines({ calepinageId }) {
   const bloquants = verdict?.bloquants || []
   const alertes = verdict?.alertes || []
   const aProposition = editions.size > 0
+  // CALX53 — les avertissements publiés AVEC le résultat (coefficients de
+  // température non sourcés, exemplaire d'onduleur non nommé…).
+  const avertissements = resultat?.avertissements || []
 
   return (
-    <Card className="flex flex-col gap-4 p-4" data-testid="cal234-ecran">
+    <>
+      <RetourAtelier calepinageId={id} />
+      <Card className="flex flex-col gap-4 p-4" data-testid="cal234-ecran">
       <header className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">Affectation des chaînes</h2>
         <p className="text-sm text-muted-foreground">
@@ -360,6 +402,24 @@ export default function AffectationChaines({ calepinageId }) {
           n’est enregistré tant que vous ne validez pas.
         </p>
       </header>
+
+      {/* CALX53 — AVANT la grille et les bornes : ce que le serveur avertit
+          sur les données qui ont servi à les calculer. RECOPIÉ mot pour mot. */}
+      {avertissements.length
+        ? (
+          <section className="flex flex-col gap-1" data-testid="calx53-avertissements">
+            {avertissements.map((message) => (
+              <p
+                key={message}
+                className="rounded border border-border bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
+                data-testid="calx53-avertissement"
+              >
+                {message}
+              </p>
+            ))}
+          </section>
+        )
+        : null}
 
       <div className="flex items-center gap-2">
         <Button
@@ -392,12 +452,15 @@ export default function AffectationChaines({ calepinageId }) {
                 data-testid={`cal234-module-${ligne.module}`}
                 data-selectionne={selection.has(ligne.module) ? 'oui' : 'non'}
                 data-source={ligne.source}
+                data-chaine-faible={estFaible(ligne) ? 'oui' : 'non'}
                 aria-pressed={selection.has(ligne.module)}
-                title={`${ligne.module} — ${libelleGroupe(ligne, mode)} (${ligne.source})`}
+                title={`${ligne.module} — ${libelleGroupe(ligne, mode)} (${ligne.source})${
+                  estFaible(ligne) ? ' — chaîne la plus faible en ombrage' : ''
+                }`}
                 style={{ backgroundColor: couleurs.get(ligne.module) || AFFECTATION_UNASSIGNED }}
                 className={`h-7 w-12 rounded text-[10px] text-white ${
                   selection.has(ligne.module) ? 'ring-2 ring-foreground' : ''
-                }`}
+                } ${estFaible(ligne) ? 'outline outline-2 outline-dashed outline-amber-500' : ''}`}
                 onPointerDown={(e) => {
                   glisse.current = true
                   basculer(ligne.module, e.shiftKey || e.ctrlKey || e.metaKey)
@@ -551,6 +614,45 @@ export default function AffectationChaines({ calepinageId }) {
           </li>
         ))}
       </ul>
+
+      {/* CALX16 — LA CHAÎNE À REGARDER, ET CE QUE CE SIGNAL N'EST PAS.
+          La légende le dit en toutes lettres : c'est un signal de CÂBLAGE
+          (le courant d'une série est celui de son module le plus faible),
+          pas une perte d'énergie — l'énergie de l'ombrage est publiée dans
+          le diagramme de pertes, jamais ici. La méthode est RECOPIÉE du
+          serveur : l'écran n'en reformule rien. */}
+      {chaineFaible
+        ? (
+          <section
+            className="flex flex-col gap-1 rounded border border-amber-500/60 p-3 text-xs"
+            data-testid="calx16-chaine-faible"
+          >
+            <p className="font-medium">
+              Chaîne la plus faible en ombrage :
+              {' '}
+              <span data-testid="calx16-chaine">
+                {`chaîne ${chaineFaible.chaine} (${chaineFaible.pan})`}
+              </span>
+            </p>
+            <p className="text-muted-foreground" data-testid="calx16-module">
+              {`Module le plus mal exposé : ${chaineFaible.module}`}
+              {chaineFaible.acces_solaire === null
+                || chaineFaible.acces_solaire === undefined
+                ? ''
+                : ` — accès solaire ${Math.round(chaineFaible.acces_solaire * 1000) / 10} %`}
+            </p>
+            <p className="text-muted-foreground" data-testid="calx16-methode">
+              {chaineFaible.methode}
+            </p>
+            <p className="text-muted-foreground" data-testid="calx16-legende">
+              Signal de câblage, pas une perte d’énergie : aucun kWh n’est
+              retiré de la production à cause de ce repère. L’énergie de
+              l’ombrage est publiée par le diagramme de pertes.
+            </p>
+          </section>
+        )
+        : null}
     </Card>
+    </>
   )
 }

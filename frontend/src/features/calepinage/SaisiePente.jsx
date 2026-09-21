@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
    CAL58 — LA PENTE : en degrés, en pourcentage, OU PAR COTES.
@@ -138,6 +139,16 @@ export default function SaisiePente({
   const [layout, setLayout] = useState(null)
   const [message, setMessage] = useState(null)
 
+  /* CALX29 — Suggestion de pente LiDAR IGN, FRANCE SEULEMENT.
+     `disponible` vient d'une LECTURE LOCALE (`GET .../suggestion-pente/`,
+     aucune requête sortante même quand le service est offert) : c'est elle,
+     et elle seule, qui commande l'affichage du bouton. */
+  const [ignDisponible, setIgnDisponible] = useState(false)
+  const [suggestions, setSuggestions] = useState([])
+  const [chargementSuggestions, setChargementSuggestions] = useState(false)
+  const [messageSuggestions, setMessageSuggestions] = useState(null)
+  const [decalage, setDecalage] = useState({ x: '', y: '', z: '' })
+
   // RELECTURE : la pente déjà enregistrée dans le document de conception.
   useEffect(() => {
     if (!calepinageId || !persister) return undefined
@@ -154,6 +165,65 @@ export default function SaisiePente({
       .catch(() => { if (!annule) setLayout(null) })
     return () => { annule = true }
   }, [calepinageId, persister])
+
+  // CALX29 — la lecture locale qui décide si le bouton existe. Société hors
+  // France ⇒ `disponible: false` ⇒ pas de bouton, pas d'appel de suggestion.
+  useEffect(() => {
+    let annule = false
+    Promise.resolve(calepinageApi.parametres?.suggestionPenteDisponible?.())
+      .then((res) => { if (!annule) setIgnDisponible(res?.data?.disponible === true) })
+      .catch(() => { if (!annule) setIgnDisponible(false) })
+    return () => { annule = true }
+  }, [])
+
+  const suggererDepuisIGN = () => {
+    setChargementSuggestions(true)
+    setMessageSuggestions(null)
+    Promise.resolve(calepinageApi.parametres?.suggererPentesIGN?.(layout ?? {}))
+      .then((res) => {
+        const recues = res?.data?.suggestions ?? []
+        setSuggestions(recues)
+        if (!recues.length) {
+          setMessageSuggestions(res?.data?.detail
+            || 'Aucun pan ne porte assez de points d’altitude exploitables : '
+              + 'aucune pente n’est suggérée.')
+        }
+      })
+      .catch(() => setMessageSuggestions('La suggestion IGN n’a pas pu être obtenue.'))
+      .finally(() => setChargementSuggestions(false))
+  }
+
+  const jeterSuggestion = (suggestion) => {
+    // Le relevé paraît faux, ou le dessinateur préfère sa saisie : la
+    // suggestion disparaît, la pente saisie reste la SEULE vérité — jamais
+    // corrigée d'office par le décalage (x, y, z).
+    setSuggestions((s) => s.filter((x) => x.zoneId !== suggestion.zoneId))
+  }
+
+  const accepterSuggestion = (suggestion) => {
+    const horodatage = new Date().toISOString()
+    const zones = (layout?.zones ?? []).map((zone) => {
+      if (String(zone?.id ?? '') !== suggestion.zoneId) return zone
+      return {
+        ...zone,
+        pitchDeg: suggestion.pitchDeg,
+        ...(suggestion.facingAzimuthDeg != null
+          ? { facingAzimuthDeg: suggestion.facingAzimuthDeg, facingManual: false }
+          : {}),
+        pitchSuggestion: { ...suggestion, status: 'validee', decidedAt: horodatage },
+      }
+    })
+    const document = { ...(layout ?? {}), zones }
+    Promise.resolve(calepinageApi.calepinages.enregistrerLayoutCalepinage(calepinageId, document))
+      .then(() => {
+        setLayout(document)
+        setSuggestions((s) => s.filter((x) => x.zoneId !== suggestion.zoneId))
+        setMessageSuggestions(`Pente du pan acceptée (${suggestion.source}).`)
+      })
+      .catch(() => setMessageSuggestions('La suggestion n’a pas pu être enregistrée.'))
+  }
+
+  const majDecalage = (axe, brut) => setDecalage((d) => ({ ...d, [axe]: brut }))
 
   const majChamp = (cle, brut) => {
     const suivante = { ...saisie, [cle]: brut }
@@ -189,7 +259,9 @@ export default function SaisiePente({
   }
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-pente">
+    <>
+      <RetourAtelier calepinageId={calepinageId} />
+      <div className="cine-card mt-6 p-6" data-testid="cal-pente">
       <p className="tech-label rule-brass text-brass-300">Pente de la toiture</p>
 
       <div className="mt-3 flex flex-wrap gap-2" role="radiogroup"
@@ -262,6 +334,74 @@ export default function SaisiePente({
         <p className="mt-3 text-sm text-lune-soft" role="status"
           data-testid="cal-pente-message">{message}</p>
       )}
+
+      {/* CALX29 — suggestion LiDAR IGN, visible SEULEMENT si la lecture
+          locale dit `disponible: true` (France). */}
+      {ignDisponible && (
+        <div className="mt-6 border-t border-white/10 pt-4" data-testid="cal-pente-lidar">
+          <p className="tech-label text-lune-faint">Pente par pan, depuis l’IGN</p>
+          <button type="button" onClick={suggererDepuisIGN} disabled={chargementSuggestions}
+            data-testid="cal-pente-lidar-suggerer"
+            className="mt-2 rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200">
+            {chargementSuggestions ? 'Interrogation de l’IGN…' : 'Suggérer depuis l’IGN'}
+          </button>
+
+          <div className="mt-3 grid grid-cols-3 gap-2" data-testid="cal-pente-lidar-decalage">
+            <span className="col-span-3 text-xs text-lune-faint">
+              Décalage de recalage (m), si le relevé ne tombe pas sur le bâtiment
+            </span>
+            {['x', 'y', 'z'].map((axe) => (
+              <label key={axe} className="block">
+                <span className="tech-label text-lune-faint">Décalage {axe.toUpperCase()}</span>
+                <input type="number" step="any" value={decalage[axe]}
+                  data-testid={`cal-pente-lidar-decalage-${axe}`}
+                  onChange={(e) => majDecalage(axe, e.target.value)}
+                  className="mt-1 w-full rounded border border-white/15 bg-black/30 px-2 py-1 text-sm text-white" />
+              </label>
+            ))}
+          </div>
+
+          {suggestions.length > 0 && (
+            <>
+              <p className="mt-3 text-xs text-lune-soft" data-testid="cal-pente-lidar-mention">
+                Les obstacles posés sur la toiture ne sont pas dans cette donnée
+                d’élévation : ils restent à saisir à la main.
+              </p>
+              <ul className="mt-2 space-y-2">
+                {suggestions.map((suggestion) => (
+                  <li key={suggestion.zoneId}
+                    data-testid={`cal-pente-lidar-suggestion-${suggestion.zoneId}`}
+                    className="rounded border border-white/10 p-3 text-sm text-white">
+                    <p>
+                      Pan {suggestion.zoneId} — {auDixieme(suggestion.pitchDeg)} °
+                    </p>
+                    <p className="text-xs text-lune-faint" data-testid={`cal-pente-lidar-source-${suggestion.zoneId}`}>
+                      {suggestion.source} · {suggestion.suggestedAt}
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <button type="button" onClick={() => accepterSuggestion(suggestion)}
+                        data-testid={`cal-pente-lidar-accepter-${suggestion.zoneId}`}
+                        className="rounded bg-brass-500/20 px-3 py-1 text-xs font-semibold text-brass-200">
+                        Accepter
+                      </button>
+                      <button type="button" onClick={() => jeterSuggestion(suggestion)}
+                        data-testid={`cal-pente-lidar-jeter-${suggestion.zoneId}`}
+                        className="rounded px-3 py-1 text-xs text-lune-soft">
+                        Jeter
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {messageSuggestions && (
+            <p className="mt-3 text-sm text-lune-soft" role="status"
+              data-testid="cal-pente-lidar-message">{messageSuggestions}</p>
+          )}
+        </div>
+      )}
     </div>
+    </>
   )
 }

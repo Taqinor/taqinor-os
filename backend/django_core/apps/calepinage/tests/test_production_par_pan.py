@@ -144,23 +144,26 @@ class ProductionParPanTest(unittest.TestCase):
         self.assertEqual([poste['poste'] for poste in resultat['pertes']],
                          [poste['poste'] for poste in POSTES_ESSAI])
 
-    def test_p75_p90_sont_publies_avec_l_origine_de_sigma(self):
-        """CAL142 a REMPLACÉ le « non calculé » de CAL138.
+    def test_sans_sigma_mesurable_les_quantiles_sont_refuses_et_motives(self):
+        """CAL142 a REMPLACÉ le « non calculé » de CAL138 ; CALX184 a
+        SUPPRIMÉ le σ d'hypothèse (D-CALX 7 : aucun chiffre sans origine).
 
-        Sur une fenêtre d'UNE année, aucun écart-type n'est mesurable : les
-        quantiles sont publiés avec un σ d'HYPOTHÈSE, annoncé comme tel dans
-        les avertissements — jamais un σ mesuré qui n'aurait rien mesuré.
+        Sur une fenêtre d'UNE année, aucun écart-type n'est mesurable et
+        aucune incertitude n'est saisie pour la société : P50 reste servi,
+        P75/P90 sont ``None`` avec l'origine ``absente`` et un avertissement
+        en français qui dit QUOI renseigner — jamais un quantile bâti sur une
+        constante sans citation.
         """
         resultat, _ = calculer([
             zone('PAN-SUD', modules=12, kwc=8.64, azimut=SUD)])
         total = resultat['production']['total']
-        self.assertIsNotNone(total['p75_kwh'])
-        self.assertIsNotNone(total['p90_kwh'])
-        self.assertLess(total['p90_kwh'], total['p75_kwh'])
-        self.assertLess(total['p75_kwh'], total['p50_kwh'])
-        self.assertEqual(total['annual_variability_source'], 'hypothese')
-        self.assertEqual(total['annual_variability_annees'], 1)
-        self.assertTrue(any('HYPOTHÈSE' in avis
+        self.assertIsNotNone(total['p50_kwh'])
+        self.assertIsNone(total['p75_kwh'])
+        self.assertIsNone(total['p90_kwh'])
+        self.assertIsNone(total['annual_variability'])
+        self.assertEqual(total['annual_variability_source'], 'absente')
+        self.assertIsNone(total['annual_variability_annees'])
+        self.assertTrue(any('σ' in avis and 'une seule année' in avis
                             for avis in resultat['avertissements']))
 
 

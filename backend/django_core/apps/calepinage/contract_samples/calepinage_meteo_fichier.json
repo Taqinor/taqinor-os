@@ -1,0 +1,81 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/meteo-fichier/",
+  "pourquoi": "CALX62 — LE DÉPÔT D'UNE SÉRIE MÉTÉO HORAIRE PAR LA SOCIÉTÉ, à la place de PVGIS. La réponse décrite ici est celle de la porte `views/meteo_fichier.py`, en `multipart/form-data` (`fichier` + `fournisseur`).\n\nCE QU'IL RÉPARE. `services/pvgis_serie.py` est la SEULE source météo du module et `services/chaine_pertes.py` ne reçoit que sa forme : une société qui possède ses propres mesures (station au sol, fichier d'un fournisseur, export d'un logiciel tiers) n'a aucun moyen de les faire entrer. PVsyst importe des fichiers météo CSV/TXT avec une règle dure — « only POA or GHI can be imported at the same time » (https://www.pvsyst.com/help/meteo-database/custom-meteo-files/index.html) ; HelioScope charge un fichier météo par Condition Set (https://help-center.helioscope.com/hc/en-us/articles/19218896242323-Weather-Data-Sources).\n\nD'OÙ VIENT CHAQUE CLÉ — AUCUNE CLÉ INVENTÉE :\n* `calepinage` — la clé primaire du pivot, bornée société par `get_queryset` (un calepinage d'une autre société est INTROUVABLE, jamais « interdit »).\n* `piece_jointe` — l'identifiant de la ligne `records.Attachment` créée (primitive plateforme ARC26 : aucun champ fichier dans les modèles du module ; c'est déjà le chemin des photos de site, CAL52).\n* `meteo` — le bloc de `contract_samples/calepinage_meteo.json` (CALX143), rendu par `services/meteo_fichier.py::lire_serie_meteo`. Il porte `service: 'fichier'` — la valeur que CALX143 annonce pour cette tâche — plus les DEUX clés que ce contrat ajoute : `fournisseur` (SAISI, jamais déduit du contenu) et `fichier` (`nom`, `octets`, `lignes`, `empreinte_sha256` — mesurés sur le dépôt lui-même).\n* `meteo.base_rayonnement`, `base_demandee`, `base_meteo`, `url`, `point.*`, `horizon.*` — TOUJOURS `null` pour un fichier : ces clés décrivent une réponse PVGIS, et un fichier ne les déclare pas. `null` s'y lit « non publié » ; les remplir d'une valeur plausible fabriquerait une provenance (D-CALX 7).\n* `meteo.heure.decalage_minutes` — les décalages UTC RÉELLEMENT LUS sur les horodatages du fichier, dans l'ordre croissant. `meteo.heure.base` vaut `utc` quand ils valent tous zéro, et reste `null` sinon : choisir entre heure standard et heure légale à la place de la société serait une supposition, et CALX59 sait ré-indexer sur le fuseau SAISI du site.\n* `meteo.mode` — `null` : le mode (`tmy` / `pluriannuel`) est un réglage société lu par la chaîne (CALX153), pas une propriété du fichier.\n* `serie` — le RÉSUMÉ de la série lue : `points` (leur NOMBRE), `annees`, `pas_minutes`, `tronquee` et `colonnes` du bloc CALX142, plus `composantes_disponibles` / `motif_composantes` de CALX152. Les 8 760 points eux-mêmes ne sont PAS renvoyés : ils pèseraient plusieurs mégaoctets dans une réponse HTTP, et l'écran n'en a rien à faire ici.\n* `message` — la phrase française affichée telle quelle. Elle dit ce qui N'A PAS eu lieu (aucun calcul relancé) autant que ce qui a eu lieu.\n\nLES DEUX COLONNES OBLIGATOIRES, ET LEURS REFUS.\n1. `horodatage` — un instant ISO 8601 avec son FUSEAU EXPLICITE. Sans fuseau, le dépôt est REFUSÉ en nommant la LIGNE : une heure sans fuseau se décale d'une heure en silence, et une production décalée d'une heure est une production fausse. Voir `exemple_refus_sans_fuseau`.\n2. `gi_w_m2` — l'irradiance globale SUR LE PLAN des modules. Un fichier qui ne porte que l'irradiance globale HORIZONTALE (`ghi_w_m2` / `gh_w_m2`) est REFUSÉ **en nommant cette colonne-là** : la transposition horizontal → plan demande le modèle à une diode (CALX198) que ce module n'a pas, et la supposer fabriquerait une irradiance de plan qui n'a été ni mesurée ni calculée. Voir `exemple_refus_horizontal`.\nCinq colonnes sont FACULTATIVES et entrent telles quelles : `gb_i_w_m2`, `gd_i_w_m2`, `gr_i_w_m2` (sans elles, les étapes IAM/ombrage s'omettent avec le motif unique de CALX152), `t2m_c` et `ws10m`.\n\nLE CALENDRIER EST VÉRIFIÉ, PAS SUPPOSÉ. Les écarts sont mesurés sur les INSTANTS ABSOLUS (horodatage + fuseau) : un changement d'heure devient inoffensif, tandis qu'un doublon, un désordre ou un trou est REFUSÉ en nommant la ligne. Une série trouée produirait une année de production incomplète qui aurait l'air entière.\n\nCE QUE CETTE PORTE NE FAIT PAS. Elle ne lance AUCUNE simulation et ne touche AUCUN `resultat` : elle rend la série lisible et sa provenance publiée. Le branchement « la simulation prend ce fichier plutôt que PVGIS » appartient à l'orchestrateur `services/simulation.py` (CALX5), qui n'existe pas encore.\n\nZÉRO CHIFFRE CLIENT (D-CALX 7). Irradiances, températures, empreinte et identifiants ci-dessous sont des PLACEHOLDERS ASSUMÉS : ils ne décrivent aucune installation ni aucune station réelle. Ce sont les CLÉS, leurs natures et les refus nommés qui font le contrat.",
+  "exemple": {
+    "calepinage": 7,
+    "piece_jointe": 481,
+    "meteo": {
+      "service": "fichier",
+      "base_rayonnement": null,
+      "base_demandee": null,
+      "base_meteo": null,
+      "mode": null,
+      "fenetre_annees": "2021-2021",
+      "annees": [2021],
+      "point": {
+        "lat": null,
+        "lon": null,
+        "altitude_m": null
+      },
+      "horizon": {
+        "origine": "aucun",
+        "hauteur_max_deg": null,
+        "base_horizon": null
+      },
+      "url": null,
+      "obtenue_le": "2026-09-21T09:00:00+00:00",
+      "depuis_cache": false,
+      "convention_azimut": "pvgis_sud_0_est_-90",
+      "heure": {
+        "base": null,
+        "fuseau_site": null,
+        "decalage_minutes": [60]
+      },
+      "fournisseur": "Station d essai — service meteorologique",
+      "fichier": {
+        "nom": "meteo-2021-plan.csv",
+        "octets": 614400,
+        "lignes": 8760,
+        "empreinte_sha256": "abababababababababababababababababababababababababababababababab"
+      }
+    },
+    "serie": {
+      "points": 8760,
+      "annees": [2021],
+      "pas_minutes": 60,
+      "tronquee": false,
+      "colonnes": [
+        "annee",
+        "mois",
+        "jour",
+        "heure",
+        "gi_w_m2",
+        "t2m_c",
+        "gb_i_w_m2",
+        "gd_i_w_m2",
+        "gr_i_w_m2",
+        "ws10m",
+        "h_sun_deg"
+      ],
+      "composantes_disponibles": true,
+      "motif_composantes": null
+    },
+    "message": "Série météo enregistrée et rattachée au calepinage. Elle ne relance aucun calcul : la simulation la reprendra à son prochain lancement."
+  },
+  "exemple_refus_horizontal": {
+    "ghi_w_m2": [
+      "Ce fichier ne porte que l'irradiance globale HORIZONTALE (colonne « ghi_w_m2 ») : la chaîne de pertes a besoin de l'irradiance sur le PLAN des modules (colonne « gi_w_m2 »). La transposition horizontal → plan n'est pas disponible dans ce module (elle demande le modèle à une diode, tâche CALX198) : aucune irradiance de plan n'est supposée à partir de l'horizontale. Exportez la série en irradiance de plan (POA), ou laissez PVGIS la calculer."
+    ]
+  },
+  "exemple_refus_sans_fuseau": {
+    "horodatage": [
+      "L'horodatage de la ligne 2 (« 2021-01-15T13:00:00 ») ne déclare aucun fuseau horaire : ajoutez le décalage explicite (par exemple « +01:00 » ou « Z »). Une heure sans fuseau se décale d'une heure en silence, et une production décalée d'une heure est une production fausse."
+    ],
+    "ligne": 2
+  },
+  "exemple_refus_sans_fournisseur": {
+    "fournisseur": [
+      "Indiquez le fournisseur de cette série météo (station, bureau d'études, éditeur du fichier) : une série dont la provenance n'est pas écrite devient un chiffre sans origine dès le lendemain."
+    ]
+  }
+}

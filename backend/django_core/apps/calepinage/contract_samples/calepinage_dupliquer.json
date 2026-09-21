@@ -1,0 +1,24 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/dupliquer/",
+  "pourquoi": "CALX35 — la duplication EXISTE depuis CAL14 (services/variantes.py::dupliquer : layout + variantes recopiés vers un NOUVEAU calepinage, sans devis ni appel d'offres) et AUCUNE vue ne l'appelait. Les deux moitiés de cette porte se construisent en parallèle : ce fichier est leur seul point d'accord. La réponse dit ce que la copie EST (son identifiant, sa référence, son nom) et ce qu'elle N'A PAS repris (devis à null, variantes comptées) — pour qu'un écran n'ait jamais à le déduire.",
+  "exemple": {
+    "calepinage": 2,
+    "reference": "CAL-2609-0002",
+    "nom": "Villa type (copie)",
+    "source": 1,
+    "avec_variantes": true,
+    "variantes_copiees": 3,
+    "devis": null,
+    "layout_hash": "abababababababababababababababababababababababababababababababab"
+  },
+  "exemple_sans_variantes": {
+    "calepinage": 3,
+    "reference": "CAL-2609-0003",
+    "nom": "Villa type (copie)",
+    "source": 1,
+    "avec_variantes": false,
+    "variantes_copiees": 0,
+    "devis": null,
+    "layout_hash": "abababababababababababababababababababababababababababababababab"
+  }
+}

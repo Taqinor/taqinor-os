@@ -147,6 +147,71 @@ class RefusMotiveTest(unittest.TestCase):
                          'calepinage-7-horaire.csv')
 
 
+class CalepinageFactice:
+    """Le strict nécessaire que lit ``document_exportable`` — aucune base."""
+
+    def __init__(self, resultat, roof_layout=None, version_moteur='essai-1'):
+        self.resultat = resultat
+        self.roof_layout = roof_layout or {}
+        self.version_moteur = version_moteur
+
+
+class DocumentExportableTest(unittest.TestCase):
+    """CALX193 — la vue passe la LISTE de points, pas le bloc entier.
+
+    `views/export_csv.py:83` écrivait `resultat.get('serie_horaire') or []`,
+    donc le BLOC là où `_export_horaire` itère une liste : dès que la chaîne
+    écrit la clé (contrat CALX142 : `pas_minutes`, `tronquee`, `colonnes`,
+    `points`), l'export doit lire `points`.
+    """
+
+    def vue(self):
+        try:
+            from apps.calepinage.views.export_csv import document_exportable
+        except Exception as erreur:  # pragma: no cover - hors harnais Django
+            self.skipTest(f'Réglages Django indisponibles : {erreur}')
+        return document_exportable
+
+    def test_le_bloc_calx142_est_lu_par_sa_cle_points(self):
+        document_exportable = self.vue()
+        bloc = {'pas_minutes': 60, 'tronquee': False,
+                'colonnes': ['annee', 'mois', 'jour', 'heure', 'p_w',
+                             'gi_w_m2', 't2m_c'],
+                'points': DOCUMENT['points']}
+        document = document_exportable(CalepinageFactice(
+            {'production': DOCUMENT['production'],
+             'pertes': DOCUMENT['pertes'], 'serie_horaire': bloc}))
+        self.assertEqual(document['points'], DOCUMENT['points'])
+        table = lignes(export_csv(document, quoi='horaire'))
+        entete = [ligne for ligne in table
+                  if ligne and ligne[0] == 'annee'][0]
+        self.assertEqual(entete, ['annee', 'mois', 'jour', 'heure',
+                                  'production_kw', 'irradiance_plan_w_m2',
+                                  'temperature_air_c'])
+        self.assertEqual(table[table.index(entete) + 1][4], '0,563')
+
+    def test_un_calepinage_non_simule_garde_le_refus_francais(self):
+        document_exportable = self.vue()
+        document = document_exportable(CalepinageFactice({}))
+        self.assertEqual(document['points'], [])
+        with self.assertRaises(ExportImpossible) as capture:
+            export_csv(document, quoi='horaire')
+        self.assertEqual(capture.exception.champ, 'points')
+        self.assertIn('simulation', capture.exception.motif)
+
+    def test_une_serie_deja_en_base_sous_forme_de_liste_reste_lisible(self):
+        document_exportable = self.vue()
+        document = document_exportable(CalepinageFactice(
+            {'serie_horaire': DOCUMENT['points']}))
+        self.assertEqual(document['points'], DOCUMENT['points'])
+
+    def test_un_bloc_sans_points_refuse_plutot_que_de_casser(self):
+        document_exportable = self.vue()
+        document = document_exportable(CalepinageFactice(
+            {'serie_horaire': {'pas_minutes': 60, 'points': []}}))
+        self.assertEqual(document['points'], [])
+
+
 class ActionRattacheeTest(unittest.TestCase):
     """L'action est bien montée sur le viewset, en lecture seule."""
 
@@ -156,9 +221,12 @@ class ActionRattacheeTest(unittest.TestCase):
             from apps.calepinage.views import export_csv  # noqa: F401
         except Exception as erreur:  # pragma: no cover - hors harnais Django
             self.skipTest(f'Réglages Django indisponibles : {erreur}')
-        action = CalepinageViewSet.export_csv
+        # CALX7 — l'action de CE fichier s'appelle ``export_csv_simulation``
+        # depuis qu'elle a cessé de masquer ``SortiesMixin.export_csv``
+        # (``export.csv``, CAL179). Son ``url_path`` public, lui, est INCHANGÉ.
+        action = CalepinageViewSet.export_csv_simulation
         self.assertEqual(action.url_path, 'export-csv')
-        self.assertEqual(action.mapping, {'get': 'export_csv'})
+        self.assertEqual(action.mapping, {'get': 'export_csv_simulation'})
         self.assertEqual(
             [garde.__name__
              for garde in action.kwargs['permission_classes']],

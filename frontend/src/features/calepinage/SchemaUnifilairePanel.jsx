@@ -4,6 +4,7 @@ import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
 import { renderTrustedSvg } from '../../lib/trustedSvg'
 import { Card, Spinner } from '../../ui'
+import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
    CAL195 — LE SCHÉMA UNIFILAIRE, DANS LE MODULE.
@@ -66,15 +67,27 @@ export default function SchemaUnifilairePanel({ calepinageId }) {
 
   const balisage = renderTrustedSvg(data?.svg)
 
-  if (loading) return <Spinner />
+  if (loading) {
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <Spinner />
+      </>
+    )
+  }
   if (error) {
     return (
-      <p className="text-sm text-destructive" data-testid="cal195-erreur">{error}</p>
+      <>
+        <RetourAtelier calepinageId={id} />
+        <p className="text-sm text-destructive" data-testid="cal195-erreur">{error}</p>
+      </>
     )
   }
 
   return (
-    <Card className="flex flex-col gap-3 p-4" data-testid="cal195-panneau">
+    <>
+      <RetourAtelier calepinageId={id} />
+      <Card className="flex flex-col gap-3 p-4" data-testid="cal195-panneau">
       <h2 className="text-base font-semibold">Schéma unifilaire</h2>
       {balisage
         ? (
@@ -89,5 +102,6 @@ export default function SchemaUnifilairePanel({ calepinageId }) {
         )
         : <Motifs donnees={data} />}
     </Card>
+    </>
   )
 }

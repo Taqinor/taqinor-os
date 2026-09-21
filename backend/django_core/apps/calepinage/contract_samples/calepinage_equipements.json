@@ -28,7 +28,8 @@
         "techno_cellule", "bifacial", "noct_c", "uc_w_m2k", "uv_w_m3sk",
         "bifacialite_pct", "degradation_annuelle_pct",
         "degradation_annee1_pct", "garantie_pct_a_10_ans",
-        "garantie_pct_a_25_ans"
+        "garantie_pct_a_25_ans", "rendement_par_irradiance",
+        "tolerance_pmax_min_pct", "tolerance_pmax_max_pct"
       ],
       "sources": {
         "quantite": "saisie",
@@ -64,7 +65,8 @@
       "champs_manquants": [
         "v_demarrage_v", "isc_max_mppt_a", "bat_max_charge_kw",
         "bat_max_decharge_kw", "entrees_par_mppt", "chaines_max_par_mppt",
-        "s_max_kva", "dc_max_kwc"
+        "s_max_kva", "dc_max_kwc", "rendement_par_charge",
+        "rendement_max_pct", "rendement_cec_pct", "conso_nuit_w"
       ],
       "sources": {
         "quantite": "saisie",

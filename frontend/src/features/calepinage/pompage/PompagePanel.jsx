@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
+import RetourAtelier from '../atelier/RetourAtelier'
 
 /* ============================================================================
    CAL159 — L'ÉCRAN POMPAGE DU MODULE : puits, besoin, réservoir, volumes.
@@ -225,7 +226,9 @@ export default function PompagePanel({ calepinageId: idPropose }) {
   const variateur = resultat?.variateur ?? null
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-pompage-panel">
+    <>
+      <RetourAtelier calepinageId={calepinageId} />
+      <div className="cine-card mt-6 p-6" data-testid="cal-pompage-panel">
       <p className="tech-label rule-brass text-brass-300">Pompage solaire</p>
 
       {/* LE BANDEAU NOMME LES CHAMPS FAUTIFS — jamais un refus générique. */}
@@ -340,5 +343,6 @@ export default function PompagePanel({ calepinageId: idPropose }) {
         </div>
       )}
     </div>
+    </>
   )
 }

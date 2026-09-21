@@ -11,6 +11,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import {
   CHAMPS_REQUIS_PAR_TYPE,
 } from '../../../pages/stock/ficheCompletude'
+import RetourAtelier from '../atelier/RetourAtelier'
 
 /* ============================================================================
    CAL121 — LE PANNEAU « FICHES INCOMPLÈTES » DU CALEPINAGE.
@@ -71,6 +72,10 @@ const IMPACT = {
     degradation_annee1_pct: 'sans dégradation de première année : aucun productible d’année 1',
     garantie_pct_a_10_ans: 'sans garantie à 10 ans : aucun plancher de production contractuel à 10 ans',
     garantie_pct_a_25_ans: 'sans garantie à 25 ans : aucun plancher de production contractuel à 25 ans',
+    // CALX60 — champs lus par la chaîne de pertes (lot 3)
+    rendement_par_irradiance: 'sans courbe de rendement par irradiance : l’étape « niveau d’irradiance » s’omet, aucune perte à faible éclairement',
+    tolerance_pmax_min_pct: 'sans tolérance Pmax minimale : aucune perte de mismatch fabricant chiffrée',
+    tolerance_pmax_max_pct: 'sans tolérance Pmax maximale : aucune perte de mismatch fabricant chiffrée',
   },
   onduleur: {
     n_mppt: 'sans nombre de MPPT : aucune répartition des chaînes',
@@ -89,6 +94,11 @@ const IMPACT = {
     rendement_euro_pct: 'sans rendement européen : aucune perte de conversion au productible',
     bat_max_charge_kw: 'sans puissance de charge batterie : aucun profil de charge',
     bat_max_decharge_kw: 'sans puissance de décharge batterie : aucun profil de décharge',
+    // CALX60 — champs lus par la chaîne de pertes (lot 3)
+    rendement_par_charge: 'sans courbe de rendement par charge : l’étape « onduleur » s’omet, aucune perte de conversion heure par heure',
+    rendement_max_pct: 'sans rendement maximal : aucune perte de conversion à pleine charge',
+    rendement_cec_pct: 'sans rendement CEC : aucune perte de conversion pondérée au profil réel',
+    conso_nuit_w: 'sans consommation de nuit : aucune perte d’auxiliaires nocturne',
   },
   batterie: {
     kwh_nominal: 'sans capacité nominale : aucune autonomie calculable',
@@ -253,12 +263,15 @@ export default function FichesIncompletes({ calepinageId: idPropose }) {
 
   if (erreur) {
     return (
-      <div className="cine-card mt-6 p-6" data-testid="cal-fiches-incompletes">
-        <p className="tech-label rule-brass text-brass-300">Fiches incomplètes</p>
-        <p className="mt-2 text-sm text-red-300" role="alert" data-testid="cal-fiches-erreur">
-          {erreur}
-        </p>
-      </div>
+      <>
+        <RetourAtelier calepinageId={calepinageId} />
+        <div className="cine-card mt-6 p-6" data-testid="cal-fiches-incompletes">
+          <p className="tech-label rule-brass text-brass-300">Fiches incomplètes</p>
+          <p className="mt-2 text-sm text-red-300" role="alert" data-testid="cal-fiches-erreur">
+            {erreur}
+          </p>
+        </div>
+      </>
     )
   }
 
@@ -267,7 +280,9 @@ export default function FichesIncompletes({ calepinageId: idPropose }) {
   if (!agregat) return null
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-fiches-incompletes">
+    <>
+      <RetourAtelier calepinageId={calepinageId} />
+      <div className="cine-card mt-6 p-6" data-testid="cal-fiches-incompletes">
       <p className="tech-label rule-brass text-brass-300">Fiches incomplètes</p>
 
       {agregat.devis == null ? (
@@ -292,5 +307,6 @@ export default function FichesIncompletes({ calepinageId: idPropose }) {
         />
       ))}
     </div>
+    </>
   )
 }

@@ -701,6 +701,8 @@ class ParametresCalepinage(TenantModel):
         'gabarits_dossier',    # CAL190 — gabarits de dossier réglementaire
         'norme_electrique',    # CAL130 — norme applicable + coefficients
         'lestage',             # CAL163 — paramètres de lestage SAISIS
+        'simulation',          # CALX145 — réglages de simulation SAISIS
+        'electrique_societe',  # CALX145 — seuils électriques de la société
     )
 
     imagerie = models.JSONField('Imagerie et pays', default=dict, blank=True)
@@ -771,6 +773,40 @@ class ParametresCalepinage(TenantModel):
     #: (AJOUTÉ EN FIN DE CLASSE, migration ``0007``).
     lestage = models.JSONField('Paramètres de lestage', default=dict,
                                blank=True)
+
+    #: CALX145 — LES RÉGLAGES DE SIMULATION, tous SAISIS avec leur provenance.
+    #:
+    #: Les neuf sections d'avant ne pouvaient accueillir ni un modèle
+    #: d'incidence, ni une fenêtre d'années, ni une table de coefficients
+    #: thermiques par type de pose : chaque étape de la chaîne de pertes
+    #: aurait donc porté son propre coefficient en dur, ce qu'interdit la
+    #: règle « zéro chiffre inventé ».
+    #:
+    #: Les clés ADMISES sont déclarées une par une dans
+    #: ``services/parametres_cles.py`` (``CLES_SIMULATION``, surface
+    #: APPEND-ONLY) ; chaque valeur se saisit ``{valeur, source, reference}``
+    #: et une valeur sans source est refusée EN NOMMANT la clé. Une clé hors
+    #: registre est refusée en la nommant elle aussi.
+    #:
+    #: Section VIDE = rien de saisi, donc chaque étape qui en dépend est
+    #: OMISE avec son motif — jamais un forfait. C'est exactement le
+    #: comportement d'aujourd'hui (aucune de ces valeurs n'existait), donc
+    #: aucune société existante ne change de comportement en recevant ce
+    #: champ (AJOUTÉ EN FIN DE CLASSE, migration ``0010``).
+    simulation = models.JSONField('Réglages de simulation', default=dict,
+                                  blank=True)
+
+    #: CALX145 — LES SEUILS ÉLECTRIQUES DE LA SOCIÉTÉ, même discipline.
+    #:
+    #: Tolérances de polystring, seuil de déséquilibre, bornes du rapport
+    #: DC/AC, correspondances de nomenclature, cos φ : les valeurs publiées
+    #: par les logiciels du marché sont proposées en AIDE à la saisie, jamais
+    #: préremplies ici — un seuil non saisi ne rend aucun verdict.
+    #:
+    #: Section VIDE = aucun seuil saisi, donc aucun contrôle rendu :
+    #: comportement d'aujourd'hui, strictement inchangé (migration ``0010``).
+    electrique_societe = models.JSONField('Seuils électriques de la société',
+                                          default=dict, blank=True)
 
     def clean(self):
         """Chaque section est un OBJET — jamais une liste ni un scalaire."""

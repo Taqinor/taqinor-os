@@ -72,6 +72,9 @@ vi.mock('../../api/crmApi', async (importOriginal) => {
   }
 })
 vi.mock('../../lib/toast', () => ({ toastInfo: vi.fn() }))
+// CALX27 — le bandeau « lecture seule » de l'atelier lit `useHasPermission`
+// (store Redux) : ce test rend la page sans Provider, on fige le droit à faux.
+vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }))
 
 const LAYOUT = { version: 2, zones: [{ id: 'z1' }] }
 const serializeLayout = vi.fn(() => LAYOUT)
