@@ -17,7 +17,7 @@ No-op propre quand le fournisseur est le NoOp (``sync_system``/
 actuel inchangé, juste appelé automatiquement).
 
 Autodécouvert par ``erp_agentique.celery`` (``autodiscover_tasks()``), comme
-``apps.sav.tasks``/``apps.rh.tasks``.
+``apps.sav.tasks``.
 
 Multi-tenant : boucle par société, puis par ``MonitoringConfig`` de cette
 société ; une société ou un système qui échoue n'empêche jamais les suivants

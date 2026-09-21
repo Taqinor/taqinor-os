@@ -5,7 +5,7 @@
 supervision est résilié. Effet aval DÉCOUPLÉ ici : couper la supervision
 automatique du système lié (``MonitoringConfig.enabled=False`` pour
 ``abonnement.installation_id``) — le client ne paie plus, on arrête la
-synchro fournisseur. ``monitoring`` n'importe JAMAIS ``apps.compta`` :
+synchro fournisseur. ``monitoring`` n'importe JAMAIS ``compta`` :
 l'abonnement transite par les arguments du signal, et on s'abonne par NOM de
 signal (l'émetteur bougera avec ODX16/17-20 sans nous casser). Idempotent :
 une config déjà coupée (ou absente) → no-op strict. Additif : aucun statut
