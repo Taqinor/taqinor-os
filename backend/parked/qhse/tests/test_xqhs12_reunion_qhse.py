@@ -1,0 +1,288 @@
+"""Tests XQHS12 — Revue de direction (ISO 9.3) + comité de sécurité et
+d'hygiène (Code du travail).
+
+Couvre :
+
+* la création d'une CAPA liée depuis une décision (idempotente) ;
+* la clôture d'une revue de direction exige la checklist ISO 9.3 complète ;
+* les autres types de réunion clôturent sans condition ;
+* la relance trimestrielle CSH (due / non due) ;
+* le câblage réel de la relance CSH (PACT184 — balayage + notification +
+  dédup au jour + planification Celery Beat) ;
+* le scoping société.
+"""
+from datetime import date, timedelta
+
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
+
+from authentication.models import Company
+
+from apps.notifications.models import EventType, Notification
+
+from apps.qhse.models import (
+    ActionCorrectivePreventive, DecisionReunion, ReunionQhse,
+)
+from apps.qhse.services import (
+    cloturer_reunion_qhse, creer_capa_depuis_decision, csh_relance_due,
+    relancer_csh_du_jour,
+)
+
+User = get_user_model()
+
+REUNIONS = '/api/django/qhse/reunions/'
+DECISIONS = '/api/django/qhse/decisions-reunion/'
+
+
+def make_company(slug, nom):
+    company, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': nom})
+    return company
+
+
+def make_user(company, username, role='responsable'):
+    return User.objects.create_user(
+        username=username, password='x', company=company, role_legacy=role)
+
+
+def auth_client(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
+
+
+class CreerCapaDepuisDecisionTests(TestCase):
+    def setUp(self):
+        self.company = make_company('co-xqhs12-capa', 'CoXqhs12Capa')
+        self.reunion = ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.REUNION_HSE)
+
+    def test_cree_capa_liee(self):
+        decision = DecisionReunion.objects.create(
+            company=self.company, reunion=self.reunion,
+            texte='Renforcer la formation LOTO')
+        capa = creer_capa_depuis_decision(decision)
+        self.assertIsInstance(capa, ActionCorrectivePreventive)
+        decision.refresh_from_db()
+        self.assertEqual(decision.capa_id, capa.id)
+
+    def test_idempotent(self):
+        decision = DecisionReunion.objects.create(
+            company=self.company, reunion=self.reunion, texte='Décision X')
+        capa1 = creer_capa_depuis_decision(decision)
+        decision.refresh_from_db()
+        capa2 = creer_capa_depuis_decision(decision)
+        self.assertEqual(capa1.id, capa2.id)
+        self.assertEqual(
+            ActionCorrectivePreventive.objects.filter(
+                company=self.company).count(), 1)
+
+
+class CloturerReunionQhseTests(TestCase):
+    def setUp(self):
+        self.company = make_company('co-xqhs12-clot', 'CoXqhs12Clot')
+
+    def test_revue_direction_checklist_incomplete_refuse_cloture(self):
+        reunion = ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.REVUE_DIRECTION,
+            checklist_revue_direction={'resultats_audits': True})
+        with self.assertRaises(ValueError):
+            cloturer_reunion_qhse(reunion)
+
+    def test_revue_direction_checklist_complete_cloture(self):
+        checklist = {cle: True for cle in
+                     ReunionQhse.CHECKLIST_REVUE_DIRECTION_CLES}
+        reunion = ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.REVUE_DIRECTION,
+            checklist_revue_direction=checklist)
+        cloturer_reunion_qhse(reunion)
+        reunion.refresh_from_db()
+        self.assertEqual(reunion.statut, ReunionQhse.Statut.CLOTUREE)
+
+    def test_csh_cloture_sans_checklist(self):
+        reunion = ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.COMITE_HYGIENE_SECURITE)
+        cloturer_reunion_qhse(reunion)
+        reunion.refresh_from_db()
+        self.assertEqual(reunion.statut, ReunionQhse.Statut.CLOTUREE)
+
+
+class CshRelanceDueTests(TestCase):
+    def setUp(self):
+        self.company = make_company('co-xqhs12-csh', 'CoXqhs12Csh')
+
+    def test_due_sans_reunion_anterieure(self):
+        self.assertTrue(csh_relance_due(self.company))
+
+    def test_pas_due_apres_reunion_recente(self):
+        ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.COMITE_HYGIENE_SECURITE,
+            statut=ReunionQhse.Statut.TENUE,
+            date_reunion=date.today() - timedelta(days=10))
+        self.assertFalse(csh_relance_due(self.company))
+
+    def test_due_apres_cadence_depassee(self):
+        ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.COMITE_HYGIENE_SECURITE,
+            statut=ReunionQhse.Statut.TENUE,
+            date_reunion=date.today() - timedelta(days=100))
+        self.assertTrue(csh_relance_due(self.company, cadence_jours=90))
+
+    def test_isolation_societe(self):
+        autre = make_company('co-xqhs12-csh-autre', 'CoXqhs12CshAutre')
+        ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.COMITE_HYGIENE_SECURITE,
+            statut=ReunionQhse.Statut.TENUE,
+            date_reunion=date.today())
+        self.assertTrue(csh_relance_due(autre))
+
+
+class RelancerCshDuJourTests(TestCase):
+    """PACT184 — ``csh_relance_due`` n'avait aucun appelant : cette classe
+    couvre le premier câblage réel (balayage + notification + dédup)."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs12-relance', 'CoXqhs12Relance')
+        self.admin = make_user(
+            self.company, 'admin-xqhs12-relance', role='admin')
+
+    def test_notifie_quand_du(self):
+        relancees = relancer_csh_du_jour(self.company)
+        self.assertEqual(relancees, [self.company])
+        self.assertTrue(
+            Notification.objects.filter(
+                company=self.company, recipient=self.admin,
+                event_type=EventType.MAINTENANCE_DUE,
+                link='/qhse/reunions').exists())
+
+    def test_ne_notifie_pas_quand_pas_du(self):
+        ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.COMITE_HYGIENE_SECURITE,
+            statut=ReunionQhse.Statut.TENUE,
+            date_reunion=date.today() - timedelta(days=10))
+        relancees = relancer_csh_du_jour(self.company)
+        self.assertEqual(relancees, [])
+        self.assertFalse(
+            Notification.objects.filter(
+                company=self.company, event_type=EventType.MAINTENANCE_DUE,
+                link='/qhse/reunions').exists())
+
+    def test_dedup_au_jour_deuxieme_appel_ne_double_pas(self):
+        relancer_csh_du_jour(self.company)
+        relancer_csh_du_jour(self.company)
+        self.assertEqual(
+            Notification.objects.filter(
+                company=self.company, recipient=self.admin,
+                event_type=EventType.MAINTENANCE_DUE,
+                link='/qhse/reunions').count(), 1)
+
+    def test_isolation_societe(self):
+        autre = make_company('co-xqhs12-relance-autre', 'CoXqhs12RelanceAutre')
+        make_user(autre, 'admin-xqhs12-relance-autre', role='administrateur')
+        relancer_csh_du_jour(self.company)
+        self.assertFalse(
+            Notification.objects.filter(company=autre).exists())
+
+
+class RelancerCshDuJourBeatTests(TestCase):
+    """PACT184 — la tâche est réellement planifiée (le mode de défaillance
+    dominant : une tâche testée mais absente du beat ne tourne jamais)."""
+
+    def test_task_registered_in_beat_schedule_and_routes(self):
+        from django.conf import settings
+
+        from erp_agentique.celery import app
+
+        task_names = {
+            entry['task'] for entry in app.conf.beat_schedule.values()}
+        self.assertIn('qhse.relancer_csh_du_jour', task_names)
+        self.assertEqual(
+            settings.CELERY_TASK_ROUTES['qhse.relancer_csh_du_jour']['queue'],
+            'scheduled')
+
+
+class ReunionQhseApiTests(TestCase):
+    """WIR275 — CRUD + action ``cloturer`` (checklist ISO 9.3 exigée pour
+    une revue de direction — jamais un endpoint auparavant)."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs12-api', 'CoXqhs12Api')
+        self.user = make_user(self.company, 'resp-xqhs12-api')
+        self.api = auth_client(self.user)
+
+    def test_create_pose_company(self):
+        resp = self.api.post(REUNIONS, {
+            'type_reunion': ReunionQhse.TypeReunion.REUNION_HSE,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        reunion = ReunionQhse.objects.get(id=resp.data['id'])
+        self.assertEqual(reunion.company_id, self.company.id)
+
+    def test_cloturer_revue_direction_checklist_incomplete_400(self):
+        reunion = ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.REVUE_DIRECTION)
+        resp = self.api.post(f'{REUNIONS}{reunion.id}/cloturer/')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        reunion.refresh_from_db()
+        self.assertEqual(reunion.statut, ReunionQhse.Statut.PLANIFIEE)
+
+    def test_cloturer_reunion_hse_ok(self):
+        reunion = ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.REUNION_HSE)
+        resp = self.api.post(f'{REUNIONS}{reunion.id}/cloturer/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['statut'], ReunionQhse.Statut.CLOTUREE)
+
+    def test_isolation_inter_societes(self):
+        autre = make_company('co-xqhs12-api-x', 'Autre')
+        ReunionQhse.objects.create(
+            company=autre, type_reunion=ReunionQhse.TypeReunion.REUNION_HSE)
+        data = self.api.get(REUNIONS).data
+        rows = data['results'] if isinstance(data, dict) else data
+        self.assertEqual(len(rows), 0)
+
+
+class DecisionReunionApiTests(TestCase):
+    """WIR275 — CRUD + action ``creer-capa`` (``creer_capa_depuis_decision``
+    n'avait aucun appelant, idempotent)."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs12-dec-api', 'CoXqhs12DecApi')
+        self.user = make_user(self.company, 'resp-xqhs12-dec-api')
+        self.api = auth_client(self.user)
+        self.reunion = ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.REUNION_HSE)
+
+    def test_creer_capa_action_idempotente(self):
+        decision = DecisionReunion.objects.create(
+            company=self.company, reunion=self.reunion,
+            texte='Renforcer la formation LOTO')
+        r1 = self.api.post(f'{DECISIONS}{decision.id}/creer-capa/')
+        self.assertEqual(r1.status_code, 200, r1.data)
+        capa_id_1 = r1.data['id']
+        r2 = self.api.post(f'{DECISIONS}{decision.id}/creer-capa/')
+        self.assertEqual(r2.data['id'], capa_id_1)
+        self.assertEqual(
+            ActionCorrectivePreventive.objects.filter(
+                company=self.company).count(), 1)
+
+    def test_reunion_hors_societe_refusee(self):
+        autre = make_company('co-xqhs12-dec-api-x', 'Autre')
+        reunion_autre = ReunionQhse.objects.create(
+            company=autre, type_reunion=ReunionQhse.TypeReunion.REUNION_HSE)
+        resp = self.api.post(DECISIONS, {
+            'reunion': reunion_autre.id, 'texte': 'X',
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)

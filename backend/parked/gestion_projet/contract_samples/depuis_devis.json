@@ -1,0 +1,28 @@
+{
+  "endpoint": "POST /api/django/gestion-projet/projets/depuis-devis/",
+  "pourquoi": "CHT18 (PACT10) — la fiche chantier (InstallationDetail, onglet Aperçu) gagne une CTA « Créer le projet de facturation » qui appelle cette action existante (XPRJ21). `plan_lanes.py` force les lanes backend (gestion_projet/services.py) et frontend (InstallationDetail.jsx) à être file-disjointes : sans échantillon partagé, chacune invente sa propre forme de réponse. La vue renvoie `ProjetSerializer(resultat['projet']).data` — un `.data` d'attribut sur un objet DRF, illisible statiquement par `check_api_shapes.py` (qui ne suit que les dictionnaires littéraux et les appels de fonction résolus) : cet échantillon EST le contrat vérifiable pour ce corps de réponse, importé tel quel par le test frontend au lieu d'un PAYLOAD inventé à la main.",
+  "exemple": {
+    "id": 42,
+    "code": "PRJ-2026-0042",
+    "nom": "Projet — devis DEV-202609-0007",
+    "description": "",
+    "statut": "brouillon",
+    "statut_display": "Brouillon",
+    "client_id": 10,
+    "date_debut": null,
+    "date_fin_prevue": null,
+    "responsable": null,
+    "budget_total": "150000.00",
+    "numero_marche": "",
+    "maitre_ouvrage": "",
+    "delai_execution_jours": null,
+    "taux_penalite_retard": null,
+    "plafond_penalite_pct": null,
+    "montant_marche": null,
+    "contrat_id": null,
+    "politique_facturation": "forfait",
+    "politique_facturation_display": "Forfait",
+    "alias_email": null,
+    "date_creation": "2026-09-12T10:00:00Z"
+  }
+}

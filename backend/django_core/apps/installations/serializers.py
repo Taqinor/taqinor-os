@@ -903,9 +903,11 @@ class ProjetSerializer(serializers.ModelSerializer):
             'reference', 'date_creation', 'date_modification',
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_responsable_nom(self, obj):
         return getattr(obj.responsable, 'username', None)
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_chantiers(self, obj):
         return obj.chantiers.count()
 
@@ -1009,6 +1011,7 @@ class BudgetProjetSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['date_creation', 'date_modification']
 
+    @extend_schema_field(serializers.FloatField())
     def get_budget_total(self, obj):
         return float(obj.budget_total)
 
@@ -1046,12 +1049,15 @@ class EquipeSerializer(serializers.ModelSerializer):
         nom = (getter() or '').strip() if callable(getter) else ''
         return nom or getattr(user, 'username', None)
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField(allow_null=True)))
     def get_membres_noms(self, obj):
         return [self._nom(u) for u in obj.membres.all()]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_chef_nom(self, obj):
         return self._nom(getattr(obj, 'chef', None))
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_membres(self, obj):
         return obj.membres.count()
 
@@ -1108,6 +1114,7 @@ class SousTraitantSerializer(serializers.Serializer):
         'transport': 'Transport', 'autre': 'Autre',
     }
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_metier_display(self, obj):
         profil = getattr(obj, 'profil_sous_traitant', None)
         code = getattr(profil, 'metier', None)

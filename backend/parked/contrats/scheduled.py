@@ -1,0 +1,420 @@
+"""YSUBS1/YSUBS2 — Beats quotidiens de l'app `contrats` : facturation
+récurrente automatique (échéanciers contrats + maintenance SAV) et
+reconduction tacite + diffusion des alertes contrat.
+
+Autodécouvert par ``erp_agentique.celery`` (``autodiscover_tasks()``), comme
+``apps.ventes.scheduled``/``apps.ged.tasks``. Toute la logique métier vit dans
+``services``/``selectors`` (testable sans Celery) ; cette tâche n'est qu'une
+fine enveloppe planifiable.
+
+Avant ce module, TOUTE la facturation récurrente était MANUELLE
+(``ContratMaintenanceViewSet.facturer`` / l'action ``facturer`` de
+``EcheancierContratViewSet`` appelant ``services.facturer_ligne_echeance``) —
+``erp_agentique/celery.py`` ``beat_schedule`` ne contenait aucun job de
+facturation récurrente.
+
+Multi-tenant : boucle par société (``authentication.Company``, jamais une
+lecture de company depuis un corps de requête) ; chaque société — et chaque
+échéance/contrat — est isolée : une exception sur l'un n'empêche jamais les
+suivants (best-effort, journalisée).
+"""
+import logging
+
+from celery import shared_task
+from django.utils import timezone
+
+logger = logging.getLogger(__name__)
+
+
+@shared_task(name='contrats.generer_factures_recurrentes_dues')
+def generer_factures_recurrentes_dues():
+    """YSUBS1 — Facture automatiquement les échéances/contrats dus du jour.
+
+    Par société :
+
+    (a) sélectionne les ``LigneEcheance`` des ``EcheancierContrat``
+        ``facturation_active=True`` + ``statut=actif`` dont
+        ``date_echeance <= today`` et ``facture_id`` NULL, et appelle
+        ``services.facturer_ligne_echeance_journalisee`` (garde
+        d'idempotence déjà en place : une ligne facturée porte un
+        ``facture_id`` non NULL et n'est plus sélectionnée) ;
+    (b) sélectionne les ``sav.ContratMaintenance`` dus
+        (``sav.services.contrats_maintenance_dus_facturation``) et appelle
+        ``sav.services.facturer_contrat_maintenance_beat`` ;
+    (c) SCA44 — sélectionne les ``monitoring.AbonnementMonitoring`` dus
+        (``compta.selectors.abonnements_monitoring_dus_facturation``) et
+        appelle ``compta.services.facturer_abonnement_monitoring_beat``
+        (3e flux de facturation récurrente automatique — jusqu'ici l'unique
+        flux encore manuel, un clic humain par période via l'action
+        ``facturer`` du ViewSet, qui reste disponible).
+
+    Chaque exception est isolée : une ligne/contrat/abonnement en échec
+    n'empêche JAMAIS les suivants (capturée, journalisée, comptée). Renvoie
+    un dict de synthèse ``{'echeances_facturees', 'echeances_echecs',
+    'maintenances_facturees', 'maintenances_echecs',
+    'abonnements_factures', 'abonnements_echecs'}``.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+    from .models import Contrat, EcheancierContrat, LigneEcheance
+
+    today = timezone.localdate()
+    total = {
+        'echeances_facturees': 0, 'echeances_echecs': 0,
+        'maintenances_facturees': 0, 'maintenances_echecs': 0,
+        'abonnements_factures': 0, 'abonnements_echecs': 0,
+    }
+
+    # SCA19 — source UNIQUE des sociétés balayables : un tenant suspendu/en
+    # fermeture (actif=False via le pont SCA18) n'est plus jamais facturé.
+    for company in active_companies():
+        # (a) Échéancier de contrats — CONTRAT31.
+        lignes_dues = (
+            LigneEcheance.objects
+            .filter(
+                company=company,
+                facture_id__isnull=True,
+                date_echeance__lte=today,
+                echeancier__facturation_active=True,
+                echeancier__statut=EcheancierContrat.Statut.ACTIF,
+                # AUD182 — CEINTURE ET BRETELLES : la suspension pour impayé
+                # gèle déjà `facturation_active`, mais ce filtre garantit
+                # qu'AUCUN contrat non-actif (suspendu, résilié, expiré) ne
+                # produit de facture, même si un échéancier était réactivé à la
+                # main sans repasser le contrat en actif.
+                echeancier__contrat__statut=Contrat.Statut.ACTIF,
+            )
+            .exclude(statut=LigneEcheance.Statut.ANNULEE)
+            .select_related('echeancier', 'echeancier__contrat')
+        )
+        for ligne in lignes_dues:
+            try:
+                services.facturer_ligne_echeance_journalisee(ligne)
+                total['echeances_facturees'] += 1
+            except Exception:  # pragma: no cover - défensif, isolation
+                total['echeances_echecs'] += 1
+                logger.warning(
+                    'contrats.generer_factures_recurrentes_dues: échec '
+                    'échéance #%s (société %s)',
+                    ligne.pk, company.pk, exc_info=True)
+
+        # (b) Contrats de maintenance SAV — FG40. Frontière cross-app :
+        # sélecteur + service dédiés de ``sav`` (jamais un import de ses
+        # modèles ici).
+        try:
+            from apps.sav.services import (
+                contrats_maintenance_dus_facturation,
+                facturer_contrat_maintenance_beat,
+            )
+        except Exception:  # pragma: no cover - app sav absente
+            contrats_maintenance_dus_facturation = None
+
+        if contrats_maintenance_dus_facturation is not None:
+            for contrat_maintenance in contrats_maintenance_dus_facturation(
+                    company, today=today):
+                try:
+                    facturer_contrat_maintenance_beat(contrat_maintenance)
+                    total['maintenances_facturees'] += 1
+                except Exception:  # pragma: no cover - défensif, isolation
+                    total['maintenances_echecs'] += 1
+                    logger.warning(
+                        'contrats.generer_factures_recurrentes_dues: échec '
+                        'maintenance #%s (société %s)',
+                        contrat_maintenance.pk, company.pk, exc_info=True)
+
+        # (c) SCA44 — Abonnements de monitoring (revenu récurrent). Frontière
+        # cross-app : sélecteur + service dédiés de ``compta`` (jamais un
+        # import de ``apps.monitoring.models`` ici).
+        try:
+            from apps.compta.selectors import (
+                abonnements_monitoring_dus_facturation,
+            )
+            from apps.compta.services import (
+                facturer_abonnement_monitoring_beat,
+            )
+        except Exception:  # pragma: no cover - app compta absente
+            abonnements_monitoring_dus_facturation = None
+
+        if abonnements_monitoring_dus_facturation is not None:
+            for abonnement in abonnements_monitoring_dus_facturation(
+                    company, today=today):
+                try:
+                    facturer_abonnement_monitoring_beat(abonnement)
+                    total['abonnements_factures'] += 1
+                except Exception:  # pragma: no cover - défensif, isolation
+                    total['abonnements_echecs'] += 1
+                    logger.warning(
+                        'contrats.generer_factures_recurrentes_dues: échec '
+                        'abonnement monitoring #%s (société %s)',
+                        abonnement.pk, company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.generer_factures_recurrentes_dues: %s échéance(s) '
+        'facturée(s) (%s échec(s)), %s maintenance(s) facturée(s) '
+        '(%s échec(s)), %s abonnement(s) monitoring facturé(s) '
+        '(%s échec(s))',
+        total['echeances_facturees'], total['echeances_echecs'],
+        total['maintenances_facturees'], total['maintenances_echecs'],
+        total['abonnements_factures'], total['abonnements_echecs'])
+    return total
+
+
+@shared_task(name='contrats.reconductions_et_alertes_daily')
+def reconductions_et_alertes_daily():
+    """YSUBS2 — Reconduction tacite + diffusion des alertes contrat, par
+    société, quotidien.
+
+    ``contrats.services.traiter_reconductions_tacites`` (CONTRAT23, idempotent,
+    rattrapage borné) et ``declencher_alertes_contrat`` /
+    ``semer_alertes_echeances`` (alertes ÉCHÉANCE/préavis) existent et sont
+    TESTÉS depuis longtemps mais n'étaient appelés QUE par des actions
+    manuelles de ``contrats/views.py`` — SANS ce beat, un contrat tacite
+    échu ne se reconduit JAMAIS tout seul et les alertes de préavis/échéance
+    ne partent JAMAIS : le contrat expire silencieusement ou se reconduit
+    sans que personne ne soit prévenu.
+
+    Par société, appelle DANS L'ORDRE :
+
+    1. ``semer_alertes_echeances`` — sème les nouvelles alertes dues
+       (idempotent : pas de doublon pour un même contrat/type/date) ;
+    2. ``declencher_alertes_contrat`` — diffuse les alertes ``planifiee`` dues
+       (idempotent : une alerte n'est dispatchée qu'une fois) ;
+    3. ``traiter_reconductions_tacites`` — reconduit les contrats en tacite
+       reconduction échus (idempotent : avance ``date_fin`` au-delà
+       d'aujourd'hui, un second passage le même jour ne re-sélectionne plus
+       le contrat).
+
+    Chaque société est isolée (une exception n'empêche jamais les
+    suivantes). Renvoie un dict de synthèse agrégé ``{'alertes_semees',
+    'alertes_envoyees', 'contrats_reconduits'}``.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    total = {
+        'alertes_semees': 0, 'alertes_envoyees': 0, 'contrats_reconduits': 0,
+    }
+
+    # SCA19 — un tenant non actif n'est plus relancé/reconduit automatiquement.
+    for company in active_companies():
+        try:
+            semis = services.semer_alertes_echeances(company)
+            total['alertes_semees'] += semis['nb_creees']
+
+            declenchement = services.declencher_alertes_contrat(company)
+            total['alertes_envoyees'] += declenchement['nb_envoyees']
+
+            reconduction = services.traiter_reconductions_tacites(company)
+            total['contrats_reconduits'] += reconduction['nb_traites']
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'contrats.reconductions_et_alertes_daily: échec société %s',
+                company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.reconductions_et_alertes_daily: %s alerte(s) semée(s), '
+        '%s alerte(s) envoyée(s), %s contrat(s) reconduit(s)',
+        total['alertes_semees'], total['alertes_envoyees'],
+        total['contrats_reconduits'])
+    return total
+
+
+@shared_task(name='contrats.convertir_essais_expires_daily')
+def convertir_essais_expires_daily():
+    """NTSUB5 — Conversion des essais échus + alerte J-3, par société, quotidien.
+
+    Fine enveloppe planifiable de ``services.convertir_essais_expires`` (toute
+    la logique métier — activation de la facturation à la fin d'essai, sauf
+    contrat résilié ; notification J-3 idempotente — y vit, testable sans
+    Celery). Chaque société est isolée (une exception n'empêche jamais les
+    suivantes). Renvoie ``{'convertis', 'alertes_j3'}`` agrégé.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    total = {'convertis': 0, 'alertes_j3': 0}
+    for company in active_companies():
+        try:
+            res = services.convertir_essais_expires(company)
+            total['convertis'] += res['convertis']
+            total['alertes_j3'] += res['alertes_j3']
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'contrats.convertir_essais_expires_daily: échec société %s',
+                company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.convertir_essais_expires_daily: %s essai(s) converti(s), '
+        '%s alerte(s) J-3',
+        total['convertis'], total['alertes_j3'])
+    return total
+
+
+@shared_task(name='contrats.executer_dunning_daily')
+def executer_dunning_daily():
+    """NTSUB8 — Exécute les séquences de dunning des contrats impayés, par
+    société, quotidien.
+
+    Fine enveloppe planifiable de ``services.executer_dunning_company`` (toute
+    la logique — étapes dues par jour d'impayé, idempotence par
+    ``EtapeDunningLog``, dernière étape → suspension ZCTR2 — y vit). Un contrat
+    sans séquence de dunning garde le comportement ZCTR2 (traité par le beat
+    ``cloturer_contrats_impayes`` séparé). Chaque société est isolée. Renvoie
+    ``{'etapes_jouees', 'contrats_suspendus'}`` agrégé.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    total = {'etapes_jouees': 0, 'contrats_suspendus': 0}
+    for company in active_companies():
+        try:
+            res = services.executer_dunning_company(company)
+            total['etapes_jouees'] += res['etapes_jouees']
+            total['contrats_suspendus'] += res['contrats_suspendus']
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'contrats.executer_dunning_daily: échec société %s',
+                company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.executer_dunning_daily: %s étape(s) jouée(s), '
+        '%s contrat(s) suspendu(s)',
+        total['etapes_jouees'], total['contrats_suspendus'])
+    return total
+
+
+@shared_task(name='contrats.cloturer_contrats_impayes_daily')
+def cloturer_contrats_impayes_daily():
+    """AUD524 (ZCTR2) -- LE BEAT QUE CE MODULE AFFIRMAIT DEJA EXISTANT.
+
+    ``cloturer_contrats_impayes`` etait une pure management command, jamais
+    enveloppee en ``@shared_task`` ni inscrite au ``beat_schedule`` -- alors
+    que la docstring d'``executer_dunning_daily`` ci-dessus renvoie noir sur
+    blanc au « beat ``cloturer_contrats_impayes`` separe ». Le contrat sans
+    sequence de dunning n'etait donc JAMAIS suspendu automatiquement : seul un
+    lancement manuel de la commande le faisait.
+
+    Fine enveloppe planifiable : toute la logique reste dans
+    ``services.cloturer_contrats_impayes`` (testable sans Celery), la commande
+    reste utilisable telle quelle. Societes ACTIVES uniquement (AUD415/SCA19),
+    chacune isolee.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    suspendus = 0
+    for company in active_companies():
+        try:
+            suspendus += len(
+                services.cloturer_contrats_impayes(company) or [])
+        except Exception:  # pragma: no cover - defensif, isolation societe
+            logger.warning(
+                'contrats.cloturer_contrats_impayes_daily: echec societe %s',
+                company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.cloturer_contrats_impayes_daily: %s contrat(s) suspendu(s)',
+        suspendus)
+    return {'contrats_suspendus': suspendus}
+
+
+@shared_task(name='contrats.purger_contreparties_archivees')
+def purger_contreparties_archivees():
+    """NTDOC32 — Purge quotidienne des dépôts contrepartie ARCHIVÉS échus.
+
+    Fine enveloppe planifiable de ``services.purger_contreparties_archivees``
+    (toute la logique — résolution de la politique de rétention GED, jamais
+    une durée codée en dur — y vit, testable sans Celery).
+
+    Sociétés ACTIVES uniquement (AUD415/SCA19), chacune ISOLÉE : une exception
+    sur une société n'empêche JAMAIS les suivantes. Renvoie
+    ``{'purges', 'societes_en_echec'}`` agrégé.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    total = {'purges': 0, 'societes_en_echec': 0}
+    for company in active_companies():
+        try:
+            res = services.purger_contreparties_archivees(company)
+            total['purges'] += res['purges']
+        except Exception:  # pragma: no cover - défensif, isolation société
+            total['societes_en_echec'] += 1
+            logger.warning(
+                'contrats.purger_contreparties_archivees: échec société %s',
+                company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.purger_contreparties_archivees: %s dépôt(s) purgé(s) '
+        '(%s société(s) en échec)',
+        total['purges'], total['societes_en_echec'])
+    return total
+
+
+@shared_task(name='contrats.recalculer_metriques_saas_cache_daily')
+def recalculer_metriques_saas_cache_daily():
+    """NTSUB27 — Précalcul nocturne des métriques SaaS du cockpit.
+
+    Fine enveloppe planifiable de
+    ``services.recalculer_metriques_saas_cache`` (toute la logique y vit et se
+    teste sans Celery). Chaque société est isolée : une exception n'empêche
+    jamais les suivantes, et un échec ne casse RIEN côté cockpit — l'endpoint
+    retombe simplement sur le calcul à la volée. Renvoie ``{'societes'}``.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    calculees = 0
+    for company in active_companies():
+        try:
+            services.recalculer_metriques_saas_cache(company)
+            calculees += 1
+        except Exception:  # pragma: no cover - defensif, isolation societe
+            logger.warning(
+                'contrats.recalculer_metriques_saas_cache_daily: echec '
+                'societe %s', company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.recalculer_metriques_saas_cache_daily: %s societe(s) '
+        'mise(s) en cache', calculees)
+    return {'societes': calculees}
+
+
+@shared_task(name='contrats.purger_compteurs_usage_factures_monthly')
+def purger_compteurs_usage_factures_monthly():
+    """NTSUB26 — Purge mensuelle des relevés d'usage anciens ET facturés.
+
+    Fine enveloppe planifiable de
+    ``services.purger_compteurs_usage_factures`` (toute la logique — agrégat
+    par (code compteur, période), garde « période déjà facturée », garde
+    « plus de 24 mois » — y vit et se teste sans Celery, horloge injectable).
+    Chaque société est isolée : une exception n'empêche jamais les suivantes.
+    Renvoie ``{'archives', 'lignes_purgees'}`` agrégé.
+    """
+    from authentication.selectors import active_companies
+
+    from . import services
+
+    total = {'archives': 0, 'lignes_purgees': 0}
+    for company in active_companies():
+        try:
+            res = services.purger_compteurs_usage_factures(company)
+            total['archives'] += res['archives']
+            total['lignes_purgees'] += res['lignes_purgees']
+        except Exception:  # pragma: no cover - defensif, isolation societe
+            logger.warning(
+                'contrats.purger_compteurs_usage_factures_monthly: echec '
+                'societe %s', company.pk, exc_info=True)
+
+    logger.info(
+        'contrats.purger_compteurs_usage_factures_monthly: %s archive(s), '
+        '%s releve(s) purge(s)',
+        total['archives'], total['lignes_purgees'])
+    return total

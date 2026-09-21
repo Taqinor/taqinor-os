@@ -1,0 +1,24 @@
+{
+  "endpoint": "POST /api/django/compta/cycles-consolidation/{id}/convertir-entite/",
+  "pourquoi": "AUDV05 / NTFIN5 (DRAFT165-50) — `services.convertir_entite` n'avait aucun appelant : un groupe avec une filiale en devise étrangère ne pouvait tout simplement PAS consolider depuis l'écran, la balance de cette entité restant dans sa devise locale — l'agrégat était donc faux. Méthode du COURS DE CLÔTURE : les postes de bilan (classes 1-5) sont convertis au `taux_cloture`, les comptes de résultat (classes 6-7) au `taux_moyen`. L'écart qui en résulte est l'ÉCART DE CONVERSION (CTA) : il est renvoyé explicitement dans `ecart_conversion` et rééquilibre la balance (`debit_equilibre`/`credit_equilibre`, `equilibre` vrai au centime) — jamais absorbé en silence dans un compte. LECTURE SEULE sur la liasse : la conversion est un CALCUL, elle ne réécrit pas le snapshot collecté, qui reste la preuve de ce que la filiale a déclaré. L'appel scelle une étape `conversion` dans la chaîne d'audit du cycle (NTFIN55). Corps : `{\"liasse\": <id>, \"taux_cloture\": ..., \"taux_moyen\": ...}` ; un cours nul ou négatif est refusé en 400 français.",
+  "exemple": {
+    "liasse": 21,
+    "lignes": [
+      {"numero": "2321", "intitule": "Matériel et outillage", "classe": 2, "debit": 550000.0, "credit": 0.0},
+      {"numero": "4411", "intitule": "Fournisseurs", "classe": 4, "debit": 0.0, "credit": 132000.0},
+      {"numero": "7121", "intitule": "Ventes de biens produits", "classe": 7, "debit": 0.0, "credit": 431200.0},
+      {"numero": "6111", "intitule": "Achats de marchandises", "classe": 6, "debit": 13200.0, "credit": 0.0}
+    ],
+    "ecart_conversion": 0.0,
+    "total_debit": 563200.0,
+    "total_credit": 563200.0,
+    "debit_equilibre": 563200.0,
+    "credit_equilibre": 563200.0,
+    "equilibre": true,
+    "detail": null
+  },
+  "exemple_erreur": {
+    "pourquoi": "liasse hors cycle, ou cours non numérique / non strictement positif — 400, seule `detail` est renvoyée.",
+    "detail": "Un cours de change doit être strictement positif."
+  }
+}

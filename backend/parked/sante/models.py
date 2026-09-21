@@ -1,0 +1,801 @@
+"""Modèles de l'app santé (``apps.sante``) — cabinets/cliniques.
+
+Vertical NTSAN : gestion administrative d'un cabinet/clinique (agenda
+multi-praticiens, admission, nomenclature d'actes, facturation patient/tiers
+payant). Multi-société : chaque modèle hérite de ``core.models.TenantModel``
+(FK ``company`` posée côté serveur, jamais lue du corps de requête).
+
+DONNÉES SENSIBLES (CNDP/(DECISION), note founder du groupe NTSAN) : ce module
+ne stocke QUE des données ADMINISTRATIVES (identité, RDV, facturation) —
+explicitement AUCUNE donnée médicale clinique. Toute donnée personnelle de
+santé future devra suivre le pattern YHARD (chiffrement au repos) + une
+(DECISION) explicite du founder avant d'être ajoutée.
+"""
+from django.conf import settings
+from django.db import models
+
+from core.models import TenantModel
+
+
+class Praticien(TenantModel):
+    """NTSAN1 — praticien exerçant dans le cabinet/clinique."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='sante_praticiens',
+        verbose_name='Utilisateur lié',
+    )
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    specialite = models.CharField(
+        max_length=150, blank=True, default='', verbose_name='Spécialité')
+    numero_ordre = models.CharField(
+        max_length=50, blank=True, default='', verbose_name="Numéro d'ordre")
+    couleur_agenda = models.CharField(
+        max_length=20, blank=True, default='#2563eb',
+        verbose_name='Couleur agenda')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    # NTSAN35 — paramétrage clinique : durée par défaut de consultation pour
+    # ce praticien (pré-remplit RendezVous.duree_min à la création côté
+    # serveur si le client n'en envoie pas — voir RendezVousViewSet.
+    # perform_create), modifiable manuellement par l'utilisateur.
+    duree_consultation_defaut_min = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Durée par défaut de consultation (min)')
+    # WIR92 — string-FK optionnel vers rh.DossierEmploye, JAMAIS un import
+    # direct du modèle rh (pattern agriculture.PointageAgricole.employe_id) :
+    # relie un praticien salarié à son dossier RH/paie sans dupliquer
+    # l'identité. Résolu paresseusement via `apps.rh.selectors` (voir
+    # `selectors.libelle_rh_praticien`). Additif — un praticien sans lien
+    # garde un comportement strictement inchangé.
+    employe_id = models.IntegerField(
+        null=True, blank=True, verbose_name='Employé RH (id)',
+        help_text=(
+            'Lien optionnel vers le dossier employé RH '
+            '(rh.DossierEmploye) — jamais dupliqué.'))
+
+    class Meta:
+        verbose_name = 'Praticien'
+        verbose_name_plural = 'Praticiens'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class Salle(TenantModel):
+    """NTSAN2 — salle/ressource (consultation, bloc, imagerie, labo).
+
+    Réservation croisée praticien+salle dans l'agenda : une salle ne peut pas
+    être double-réservée sur le même créneau. La contrainte applicative vit
+    dans ``services.py`` (``verifier_disponibilite_salle``) et n'est
+    exerçable qu'une fois le modèle ``RendezVous`` posé (NTSAN4) — c'est
+    l'unique consommateur d'un créneau de salle ; elle est implémentée et
+    testée dans la même passe que NTSAN4.
+    """
+
+    class Type(models.TextChoices):
+        CONSULTATION = 'consultation', 'Consultation'
+        BLOC = 'bloc', 'Bloc opératoire'
+        IMAGERIE = 'imagerie', 'Imagerie'
+        LABO = 'labo', 'Laboratoire'
+
+    nom = models.CharField(max_length=150, verbose_name='Nom')
+    type = models.CharField(
+        max_length=15, choices=Type.choices, default=Type.CONSULTATION,
+        verbose_name='Type')
+    capacite = models.PositiveIntegerField(default=1, verbose_name='Capacité')
+    equipements = models.TextField(
+        blank=True, default='', verbose_name='Équipements')
+
+    class Meta:
+        verbose_name = 'Salle'
+        verbose_name_plural = 'Salles'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class Patient(TenantModel):
+    """NTSAN3 — dossier ADMINISTRATIF patient (aucune donnée médicale
+    clinique). ``client`` référence ``crm.Client`` par FK À CHAÎNE (jamais
+    d'import direct de ``apps.crm.models``) ; la résolution/rattachement se
+    fait via ``services.resoudre_client_pour_patient`` (import local par
+    l'appelant). ``convention``/``numero_affiliation`` (NTSAN9) permettent un
+    tarif par mutuelle/CNOPS/CNSS via ``GrilleTarifaire`` (NTSAN8)."""
+
+    class Sexe(models.TextChoices):
+        M = 'M', 'Masculin'
+        F = 'F', 'Féminin'
+
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    prenom = models.CharField(max_length=255, blank=True, default='', verbose_name='Prénom')
+    cin = models.CharField(max_length=30, blank=True, default='', verbose_name='CIN')
+    date_naissance = models.DateField(
+        null=True, blank=True, verbose_name='Date de naissance')
+    sexe = models.CharField(
+        max_length=1, choices=Sexe.choices, blank=True, default='',
+        verbose_name='Sexe')
+    telephone = models.CharField(max_length=20, blank=True, default='', verbose_name='Téléphone')
+    whatsapp = models.CharField(max_length=20, blank=True, default='', verbose_name='WhatsApp')
+    email = models.EmailField(blank=True, default='', verbose_name='Email')
+    adresse = models.TextField(blank=True, default='', verbose_name='Adresse')
+    numero_dossier = models.CharField(
+        max_length=30, blank=True, default='', db_index=True,
+        verbose_name='Numéro de dossier')
+    contact_urgence = models.CharField(
+        max_length=255, blank=True, default='', verbose_name="Contact d'urgence")
+    # NTSAN3 — jamais d'import direct de crm.models : FK par chaîne.
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='patients_sante', verbose_name='Client CRM lié')
+    # NTSAN9 — mutuelle/CNOPS/CNSS/cash par défaut du patient.
+    convention = models.ForeignKey(
+        'Convention', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='patients', verbose_name='Convention')
+    numero_affiliation = models.CharField(
+        max_length=50, blank=True, default='', verbose_name="Numéro d'affiliation")
+
+    class Meta:
+        verbose_name = 'Patient'
+        verbose_name_plural = 'Patients'
+        ordering = ['nom', 'prenom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'numero_dossier'],
+                condition=~models.Q(numero_dossier=''),
+                name='sante_patient_unique_dossier_par_societe'),
+        ]
+
+    def __str__(self):
+        return f"{self.nom} {self.prenom}".strip()
+
+
+class RendezVous(TenantModel):
+    """NTSAN4 — agenda multi-praticiens. La détection de chevauchement
+    (praticien OU salle) est appliquée côté serveur dans
+    ``services.verifier_chevauchement_rdv`` (appelée par le viewset), pas ici
+    (garde de service, pas de contrainte DB — les créneaux se chevauchent sur
+    des intervalles calculés, pas une simple égalité de colonnes)."""
+
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        CONFIRME = 'confirme', 'Confirmé'
+        ARRIVE = 'arrive', 'Arrivé'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+        ANNULE = 'annule', 'Annulé'
+        ABSENT = 'absent', 'Absent'
+
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name='rendez_vous',  # on_delete: composition (parent-enfant)
+        verbose_name='Patient')
+    praticien = models.ForeignKey(
+        Praticien, on_delete=models.CASCADE, related_name='rendez_vous',  # on_delete: composition (rattache)
+        verbose_name='Praticien')
+    salle = models.ForeignKey(
+        Salle, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rendez_vous', verbose_name='Salle')
+    date_heure_debut = models.DateTimeField(verbose_name='Date et heure de début')
+    duree_min = models.PositiveIntegerField(default=30, verbose_name='Durée (min)')
+    type_acte = models.CharField(
+        max_length=255, blank=True, default='', verbose_name="Type d'acte")
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.PLANIFIE,
+        verbose_name='Statut')
+    motif_court = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='sante_rdv_crees',
+        verbose_name='Créé par')
+
+    # NTSAN37 — annulation & no-show : qui a annulé + horodatage (pour
+    # calculer le délai d'annulation, services.annuler_rendez_vous).
+    class AnnuleParChoix(models.TextChoices):
+        PATIENT = 'patient', 'Patient'
+        CLINIQUE = 'clinique', 'Clinique'
+
+    annule_par = models.CharField(
+        max_length=10, choices=AnnuleParChoix.choices, blank=True, default='',
+        verbose_name='Annulé par')
+    date_annulation = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date et heure d'annulation")
+
+    class Meta:
+        verbose_name = 'Rendez-vous'
+        verbose_name_plural = 'Rendez-vous'
+        ordering = ['date_heure_debut']
+        indexes = [
+            models.Index(
+                fields=['praticien', 'date_heure_debut'],
+                name='sante_rdv_praticien_debut_idx'),
+            models.Index(
+                fields=['salle', 'date_heure_debut'],
+                name='sante_rdv_salle_debut_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.patient_id} @ {self.date_heure_debut}'
+
+    @property
+    def delai_annulation_h(self):
+        """NTSAN37 — délai (heures, arrondi 2 décimales) entre l'annulation
+        et le début du RDV. ``None`` si le RDV n'a pas (encore) été annulé."""
+        if not self.date_annulation:
+            return None
+        delta = self.date_heure_debut - self.date_annulation
+        return round(delta.total_seconds() / 3600, 2)
+
+
+class Admission(TenantModel):
+    """NTSAN6 — parcours administratif patient (admission → actes → sortie).
+
+    La clôture n'est autorisée que si tous les ``ActeRealise`` rattachés sont
+    facturés ou explicitement marqués non-facturables — la garde vit dans
+    ``services.cloturer_admission`` et n'est COMPLÈTE qu'une fois
+    ``ActeRealise`` posé (NTSAN10) ; avant cela, une admission sans acte se
+    clôture toujours (garde vacuously vraie)."""
+
+    class Type(models.TextChoices):
+        CONSULTATION = 'consultation', 'Consultation'
+        HOSPITALISATION = 'hospitalisation', 'Hospitalisation'
+        ACTE_TECHNIQUE = 'acte_technique', 'Acte technique'
+
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        CLOTUREE = 'cloturee', 'Clôturée'
+
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name='admissions',  # on_delete: composition (parent-enfant)
+        verbose_name='Patient')
+    rdv = models.ForeignKey(
+        RendezVous, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='admissions', verbose_name='Rendez-vous')
+    praticien = models.ForeignKey(
+        Praticien, on_delete=models.CASCADE, related_name='admissions',  # on_delete: composition (rattache)
+        verbose_name='Praticien')
+    date_admission = models.DateTimeField(verbose_name="Date d'admission")
+    date_sortie = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de sortie')
+    type = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.CONSULTATION,
+        verbose_name='Type')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EN_COURS,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Admission'
+        verbose_name_plural = 'Admissions'
+        ordering = ['-date_admission']
+
+    def __str__(self):
+        return f'Admission {self.patient_id} ({self.date_admission:%Y-%m-%d})'
+
+
+class ActeMedical(TenantModel):
+    """NTSAN7 — nomenclature des actes (paramétrage clinique).
+
+    Pas de table NGAP officielle importée en v1 : ``code_ngap``/
+    ``cotation_lettre_cle`` sont du texte libre paramétrable par la clinique.
+    Soft-disable uniquement (``actif``) : un acte déjà référencé par
+    ``GrilleTarifaire``/``ActeRealise`` ne doit JAMAIS être supprimé
+    physiquement — la garde de suppression est complétée dans la même passe
+    que NTSAN10 (une fois ``ActeRealise`` posé, seul vrai « acte déjà
+    facturé »)."""
+
+    code_ngap = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Code NGAP')
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    categorie = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Catégorie')
+    tarif_base_ttc = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Tarif de base TTC')
+    cotation_lettre_cle = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Cotation (lettre clé)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Acte médical'
+        verbose_name_plural = 'Actes médicaux'
+        ordering = ['libelle']
+
+    def __str__(self):
+        return self.libelle
+
+
+class Convention(TenantModel):
+    """NTSAN9 — mutuelle/CNOPS/CNSS/cash, paramétrable par clinique (jamais
+    codée en dur)."""
+
+    class Type(models.TextChoices):
+        CNOPS = 'cnops', 'CNOPS'
+        CNSS = 'cnss', 'CNSS'
+        MUTUELLE_PRIVEE = 'mutuelle_privee', 'Mutuelle privée'
+        CASH = 'cash', 'Cash'
+        AUTRE = 'autre', 'Autre'
+
+    nom = models.CharField(max_length=150, verbose_name='Nom')
+    type = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.AUTRE,
+        verbose_name='Type')
+    taux_tiers_payant_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Taux tiers payant par défaut (%)')
+    contact = models.CharField(max_length=255, blank=True, default='', verbose_name='Contact')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Convention'
+        verbose_name_plural = 'Conventions'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class GrilleTarifaire(TenantModel):
+    """NTSAN8 — tarif par convention (mutuelle/CNOPS/CNSS), différent du
+    ``tarif_base_ttc`` de l'acte. La facturation (NTSAN13) lit cette grille
+    pour la convention du patient si une ligne existe, sinon retombe sur
+    ``ActeMedical.tarif_base_ttc`` (voir ``selectors.tarif_applicable``)."""
+
+    convention = models.ForeignKey(
+        Convention, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='grilles_tarifaires', verbose_name='Convention')
+    acte = models.ForeignKey(
+        ActeMedical, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='grilles_tarifaires', verbose_name='Acte')
+    tarif_convention_ttc = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Tarif convention TTC')
+    taux_prise_charge_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Taux de prise en charge (%)')
+
+    class Meta:
+        verbose_name = 'Grille tarifaire'
+        verbose_name_plural = 'Grilles tarifaires'
+        ordering = ['convention', 'acte']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'convention', 'acte'],
+                name='sante_grille_unique_convention_acte'),
+        ]
+
+    def __str__(self):
+        return f'{self.convention_id} / {self.acte_id}'
+
+
+class ActeRealise(TenantModel):
+    """NTSAN10 — acte réalisé. ``tarif_applique_ttc`` est SNAPSHOTTÉ à la
+    réalisation (jamais recalculé rétroactivement si ``GrilleTarifaire``
+    change ensuite — test de non-régression dédié).
+
+    ``facturable=False`` (NTSAN6) marque explicitement un acte comme non
+    facturable, permettant la clôture de l'admission sans facturation.
+    ``facture_sante`` (posé par NTSAN13, pas encore ici) référencera la
+    facture qui a réglé cet acte."""
+
+    admission = models.ForeignKey(
+        Admission, on_delete=models.CASCADE, related_name='actes_realises',  # on_delete: composition (parent-enfant)
+        verbose_name='Admission')
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name='actes_realises',  # on_delete: composition (parent-enfant)
+        verbose_name='Patient')
+    praticien = models.ForeignKey(
+        Praticien, on_delete=models.CASCADE, related_name='actes_realises',  # on_delete: composition (rattache)
+        verbose_name='Praticien')
+    acte = models.ForeignKey(
+        ActeMedical, on_delete=models.PROTECT, related_name='realisations',
+        verbose_name='Acte')
+    date_realisation = models.DateTimeField(verbose_name='Date de réalisation')
+    quantite = models.PositiveIntegerField(default=1, verbose_name='Quantité')
+    tarif_applique_ttc = models.DecimalField(
+        max_digits=10, decimal_places=2, verbose_name='Tarif appliqué TTC')
+    facturable = models.BooleanField(
+        default=True, verbose_name='Facturable',
+        help_text="Décoché : l'acte est explicitement marqué non-facturable "
+                  "(n'empêche pas la clôture de l'admission).")
+    # NTSAN12 — si posée, une prise en charge refusée/expirée fait basculer
+    # cet acte en reste-à-charge patient total (services.verifier_prise_en_charge).
+    prise_en_charge = models.ForeignKey(
+        'PriseEnCharge', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='actes_realises', verbose_name='Prise en charge')
+    # NTSAN13 — facture qui a réglé cet acte (lignes = actes réalisés). Une
+    # fois posée, l'admission considère cet acte comme facturé (garde de
+    # clôture NTSAN6).
+    facture_sante = models.ForeignKey(
+        'FactureSante', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_actes', verbose_name='Facture santé')
+    # NTSAN24 — traçabilité instrument → patient : M2M LÉGER (jamais un
+    # champ obligatoire — un acte peut ne mentionner aucun instrument
+    # stérilisé) vers les instruments/kits RÉELLEMENT utilisés pour cet
+    # acte. Permet, en cas de rappel sanitaire, de retrouver en une seule
+    # requête indexée tous les patients ayant reçu un instrument d'un cycle
+    # donné (``selectors.patients_par_cycle_sterilisation``).
+    instruments_utilises = models.ManyToManyField(
+        'InstrumentSterilise', blank=True, related_name='actes_realises',
+        verbose_name='Instruments stérilisés utilisés')
+
+    class Meta:
+        verbose_name = 'Acte réalisé'
+        verbose_name_plural = 'Actes réalisés'
+        ordering = ['-date_realisation']
+
+    def __str__(self):
+        return f'{self.acte_id} @ {self.date_realisation}'
+
+
+class PriseEnCharge(TenantModel):
+    """NTSAN12 — prise en charge / entente préalable auprès d'une convention.
+
+    Une ``ActeRealise`` liée à une prise en charge refusée ou expirée
+    bascule automatiquement en reste-à-charge patient total — appliqué par
+    ``services.verifier_prise_en_charge`` (appelé à la transition de statut),
+    tracé dans l'historique via ``records.Activity``."""
+
+    class Statut(models.TextChoices):
+        DEMANDEE = 'demandee', 'Demandée'
+        ACCORDEE = 'accordee', 'Accordée'
+        REFUSEE = 'refusee', 'Refusée'
+        EXPIREE = 'expiree', 'Expirée'
+
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name='prises_en_charge',  # on_delete: composition (parent-enfant)
+        verbose_name='Patient')
+    convention = models.ForeignKey(
+        Convention, on_delete=models.CASCADE, related_name='prises_en_charge',  # on_delete: composition (parent-enfant)
+        verbose_name='Convention')
+    admission = models.ForeignKey(
+        Admission, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='prises_en_charge', verbose_name='Admission')
+    numero_dossier_convention = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name='Numéro de dossier (convention)')
+    date_demande = models.DateField(verbose_name='Date de demande')
+    date_reponse = models.DateField(
+        null=True, blank=True, verbose_name='Date de réponse')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.DEMANDEE,
+        verbose_name='Statut')
+    montant_accorde = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant accordé')
+    motif_refus = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de refus')
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+
+    class Meta:
+        verbose_name = 'Prise en charge'
+        verbose_name_plural = 'Prises en charge'
+        ordering = ['-date_demande']
+
+    def __str__(self):
+        return f'PEC {self.patient_id} / {self.convention_id}'
+
+
+class FactureSante(TenantModel):
+    """NTSAN13 — facturation patient/tiers payant.
+
+    Lignes = ``ActeRealise`` rattachés (via ``ActeRealise.facture_sante``).
+    Split tiers payant/patient calculé par
+    ``services.calculer_split_facture_sante`` depuis
+    ``GrilleTarifaire.taux_prise_charge_pct`` ou
+    ``PriseEnCharge.montant_accorde``. Même chaîne Sous-total → Remise →
+    Total HT → TVA → Total TTC que les factures ventes existantes — la TVA
+    reste à 0 par défaut (actes médicaux généralement exonérés), le champ
+    existe pour permettre une TVA le cas échéant, jamais un moteur de calcul
+    différent. PDF via le moteur légataire ventes (règle #4 — factures
+    gardent leur PDF séparé, jamais ``/proposal``), pas construit dans ce lot
+    (NTSAN14)."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EMISE = 'emise', 'Émise'
+        PAYEE_PARTIEL = 'payee_partiel', 'Payée partiellement'
+        PAYEE = 'payee', 'Payée'
+        IMPAYEE = 'impayee', 'Impayée'
+
+    patient = models.ForeignKey(
+        Patient, on_delete=models.CASCADE, related_name='factures_sante',  # on_delete: composition (parent-enfant)
+        verbose_name='Patient')
+    admission = models.ForeignKey(
+        Admission, on_delete=models.CASCADE, related_name='factures_sante',  # on_delete: composition (parent-enfant)
+        verbose_name='Admission')
+    convention = models.ForeignKey(
+        Convention, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='factures_sante', verbose_name='Convention')
+    sous_total_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='Sous-total TTC')
+    remise_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='Remise TTC')
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0, verbose_name='Taux TVA (%)')
+    montant_tva = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='Montant TVA')
+    total_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='Total TTC')
+    part_tiers_payant_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Part tiers payant TTC')
+    part_patient_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Part patient TTC (reste à charge)')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    date_emission = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'émission")
+
+    class Meta:
+        verbose_name = 'Facture santé'
+        verbose_name_plural = 'Factures santé'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'Facture santé {self.patient_id} ({self.total_ttc})'
+
+
+class PaiementSante(TenantModel):
+    """NTSAN15 — encaissement. Une ``FactureSante`` peut avoir plusieurs
+    paiements partiels (le patient règle en plusieurs fois) : ``montant_du``
+    (``services.montant_du``) = ``total_ttc - somme(paiements)``, jamais
+    négatif sans un flag d'avoir explicite (voir ``FactureSante.statut``)."""
+
+    class Mode(models.TextChoices):
+        ESPECES = 'especes', 'Espèces'
+        CARTE = 'carte', 'Carte'
+        CHEQUE = 'cheque', 'Chèque'
+        VIREMENT = 'virement', 'Virement'
+        TIERS_PAYANT = 'tiers_payant', 'Tiers payant'
+
+    facture_sante = models.ForeignKey(
+        FactureSante, on_delete=models.CASCADE, related_name='paiements',  # on_delete: composition (parent-enfant)
+        verbose_name='Facture santé')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, verbose_name='Montant')
+    mode = models.CharField(
+        max_length=15, choices=Mode.choices, default=Mode.ESPECES,
+        verbose_name='Mode de paiement')
+    date_paiement = models.DateTimeField(verbose_name='Date de paiement')
+    encaisse_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='sante_paiements_encaisses',
+        verbose_name='Encaissé par')
+
+    class Meta:
+        verbose_name = 'Paiement santé'
+        verbose_name_plural = 'Paiements santé'
+        ordering = ['-date_paiement']
+
+    def __str__(self):
+        return f'{self.facture_sante_id} — {self.montant}'
+
+
+class HoraireOuverturePraticien(TenantModel):
+    """NTSAN30 — horaire d'ouverture hebdomadaire d'un praticien (nourrit le
+    calcul de disponibilités NTSAN29 et la garde de création de
+    ``RendezVous``). Un praticien SANS ligne d'horaire configurée n'est PAS
+    restreint (défaut 08:00-18:00 côté ``selectors.creneaux_disponibles`` /
+    aucune garde côté ``services.verifier_horaires_praticien``) — additif,
+    jamais de régression pour un praticien déjà en service avant
+    paramétrage."""
+
+    class JourSemaine(models.IntegerChoices):
+        LUNDI = 0, 'Lundi'
+        MARDI = 1, 'Mardi'
+        MERCREDI = 2, 'Mercredi'
+        JEUDI = 3, 'Jeudi'
+        VENDREDI = 4, 'Vendredi'
+        SAMEDI = 5, 'Samedi'
+        DIMANCHE = 6, 'Dimanche'
+
+    praticien = models.ForeignKey(
+        # on_delete: un horaire n'existe que pour son praticien (composition)
+        Praticien, on_delete=models.CASCADE,
+        related_name='horaires_ouverture', verbose_name='Praticien')
+    jour_semaine = models.PositiveSmallIntegerField(
+        choices=JourSemaine.choices, verbose_name='Jour de la semaine')
+    heure_debut = models.TimeField(verbose_name='Heure de début')
+    heure_fin = models.TimeField(verbose_name='Heure de fin')
+
+    class Meta:
+        verbose_name = "Horaire d'ouverture praticien"
+        verbose_name_plural = "Horaires d'ouverture praticien"
+        ordering = ['praticien', 'jour_semaine', 'heure_debut']
+
+    def __str__(self):
+        return (
+            f'{self.praticien_id} / {self.get_jour_semaine_display()} '
+            f'{self.heure_debut}-{self.heure_fin}')
+
+
+class IndisponibilitePraticien(TenantModel):
+    """NTSAN30 — indisponibilité ponctuelle d'un praticien (congé, formation,
+    absence) bloquant la prise de RDV sur la période, quels que soient les
+    horaires d'ouverture configurés."""
+
+    praticien = models.ForeignKey(
+        # on_delete: une indisponibilité n'existe que pour son praticien (composition)
+        Praticien, on_delete=models.CASCADE,
+        related_name='indisponibilites', verbose_name='Praticien')
+    date_debut = models.DateTimeField(verbose_name='Date et heure de début')
+    date_fin = models.DateTimeField(verbose_name='Date et heure de fin')
+    motif = models.CharField(max_length=255, blank=True, default='', verbose_name='Motif')
+
+    class Meta:
+        verbose_name = 'Indisponibilité praticien'
+        verbose_name_plural = 'Indisponibilités praticien'
+        ordering = ['-date_debut']
+
+    def __str__(self):
+        return f'{self.praticien_id} indisponible {self.date_debut} → {self.date_fin}'
+
+
+class PraticienSite(TenantModel):
+    """NTSAN32 — rattachement M2M léger d'un praticien à un site/salle,
+    utile pour les praticiens itinérants qui consultent dans plusieurs
+    cliniques du MÊME groupe (multi-tenant déjà scopé par ``company`` ;
+    ceci gère le multi-site DANS une même société). L'agenda d'un praticien
+    consolidé tous sites confondus est le comportement PAR DÉFAUT de
+    ``RendezVousViewSet`` (filtre ``praticien`` seul, sans ``salle``) — ce
+    modèle n'ajoute que la liste des sites d'un praticien et le filtre par
+    site (``?salle=``, déjà supporté)."""
+
+    praticien = models.ForeignKey(
+        # on_delete: le rattachement disparaît avec le praticien (composition)
+        Praticien, on_delete=models.CASCADE,
+        related_name='sites', verbose_name='Praticien')
+    salle = models.ForeignKey(
+        # on_delete: le rattachement disparaît avec le site/salle (composition)
+        Salle, on_delete=models.CASCADE,
+        related_name='praticiens_associes', verbose_name='Site (salle)')
+
+    class Meta:
+        verbose_name = 'Site du praticien'
+        verbose_name_plural = 'Sites du praticien'
+        ordering = ['praticien', 'salle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'praticien', 'salle'],
+                name='sante_praticien_site_unique'),
+        ]
+
+    def __str__(self):
+        return f'{self.praticien_id} @ {self.salle_id}'
+
+
+class MotifConsultation(TenantModel):
+    """NTSAN35 — motif de consultation prédéfini, paramétrable PAR SOCIÉTÉ
+    (jamais codé en dur), pour pré-remplir ``RendezVous.motif_court`` côté
+    écran de prise de RDV."""
+
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Motif de consultation'
+        verbose_name_plural = 'Motifs de consultation'
+        ordering = ['libelle']
+
+    def __str__(self):
+        return self.libelle
+
+
+class ParametragePenaliteAnnulation(TenantModel):
+    """NTSAN37 — paramétrage (par société) des frais d'annulation tardive.
+    ``actif`` est FAUX PAR DÉFAUT — (DECISION founder) : le calcul du délai
+    d'annulation (``RendezVous.delai_annulation_h``) est TOUJOURS correct,
+    mais AUCUNE facturation de pénalité n'est câblée automatiquement dans ce
+    lot (créer une ``FactureSante`` de pénalité reste une décision distincte
+    du founder, hors périmètre) — ``actif`` ne conditionne ici que le
+    calcul du DROIT à pénalité renvoyé par
+    ``services.annuler_rendez_vous``, jamais un encaissement automatique."""
+
+    actif = models.BooleanField(
+        default=False, verbose_name='Pénalité activée')
+    delai_min_h = models.PositiveIntegerField(
+        default=24,
+        verbose_name="Délai minimum avant RDV (heures) pour éviter la pénalité")
+    montant_penalite_ttc = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Montant de la pénalité TTC')
+
+    class Meta:
+        verbose_name = "Paramétrage pénalité d'annulation"
+        verbose_name_plural = "Paramétrages pénalité d'annulation"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'],
+                name='sante_parametrage_penalite_unique_par_societe'),
+        ]
+
+    def __str__(self):
+        return f'Pénalité annulation ({self.company_id})'
+
+    @classmethod
+    def get(cls, company):
+        """Renvoie (en la créant si besoin) le paramétrage unique de cette
+        société — toujours ``actif=False`` à la création (jamais activé par
+        défaut, DECISION founder)."""
+        obj, _ = cls.objects.get_or_create(company=company)
+        return obj
+
+
+# =============================================================================
+# NTSAN23 — Stérilisation et traçabilité des instruments.
+# =============================================================================
+
+class CycleSterilisation(TenantModel):
+    """NTSAN23 — cycle d'autoclave. Un cycle NON CONFORME émet
+    ``core.events.cycle_sterilisation_non_conforme`` ; ``qhse`` s'y abonne
+    (``apps/qhse/receivers.py``) pour ouvrir une ``NonConformite`` liée —
+    ``sante`` n'importe JAMAIS ``qhse.models``."""
+
+    class Statut(models.TextChoices):
+        CONFORME = 'conforme', 'Conforme'
+        NON_CONFORME = 'non_conforme', 'Non conforme'
+
+    numero_cycle = models.CharField(
+        max_length=50, verbose_name='Numéro de cycle')
+    date_cycle = models.DateTimeField(verbose_name='Date du cycle')
+    autoclave_ref = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name="Référence de l'autoclave")
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.CONFORME,
+        verbose_name='Statut')
+    operateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='cycles_sterilisation',
+        verbose_name='Opérateur')
+
+    class Meta:
+        verbose_name = 'Cycle de stérilisation'
+        verbose_name_plural = 'Cycles de stérilisation'
+        ordering = ['-date_cycle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'numero_cycle'],
+                name='sante_cycle_sterilisation_unique_par_societe'),
+        ]
+
+    def __str__(self):
+        return f'Cycle {self.numero_cycle}'
+
+
+class InstrumentSterilise(TenantModel):
+    """NTSAN23 — instrument (ou kit) passé dans un cycle. ``instrument_ref`` /
+    ``kit_ref`` restent des RÉFÉRENCES TEXTE : le parc d'instruments d'un
+    cabinet n'a pas de référentiel dédié en v1, et un rappel sanitaire se fait
+    par référence gravée. C'est aussi ce que NTSAN24 (traçabilité
+    instrument → patient) rattachera aux actes réalisés."""
+
+    cycle = models.ForeignKey(
+        CycleSterilisation, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='instruments', verbose_name='Cycle')
+    instrument_ref = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name="Référence de l'instrument")
+    kit_ref = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Référence du kit')
+
+    class Meta:
+        verbose_name = 'Instrument stérilisé'
+        verbose_name_plural = 'Instruments stérilisés'
+        ordering = ['cycle', 'id']
+        indexes = [
+            models.Index(fields=['company', 'instrument_ref'],
+                         name='sante_instr_ster_ref_idx'),
+        ]
+
+    def __str__(self):
+        return self.instrument_ref or self.kit_ref or f'Instrument {self.pk}'

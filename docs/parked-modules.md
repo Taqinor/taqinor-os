@@ -4,6 +4,10 @@
 > (`APPS_PARQUEES`, `GROUPES`, `PHASE2`, `ARCHIVE_REF`). Ce fichier-ci est la version
 > humaine : **la liste des labels n'existe qu'une fois, dans `core/parked.py`** — ne
 > jamais en recopier une seconde ailleurs.
+>
+> Source visible dans le dépôt (SOLMVP37) : [`backend/parked/README.md`](../backend/parked/README.md)
+> — le miroir, rafraîchissable, du code d'AVANT coquillage des 47 apps (hors `migrations/`),
+> le pendant backend de `frontend/parked/`.
 
 ## 1. Pourquoi
 

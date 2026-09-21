@@ -84,9 +84,14 @@ _TASK_HEADER_RE = re.compile(
 )
 
 # Directory names that never contribute (vendored / generated / state).
+# SOLMVP37 — "parked" added: backend/parked/<label>/{models,urls}.py would
+# otherwise feed the structure fingerprint via `backend.rglob("models.py")` /
+# `backend.rglob("urls.py")` in `_content_files()` below (backend/parked is a
+# sibling of backend/django_core, inside `backend/` but never imported) —
+# parked source must stay out of every CI guard, this one included.
 VENDORED = {
     ".git", "node_modules", "__pycache__", "migrations",
-    ".venv", ".venv_test", "dist", "build",
+    ".venv", ".venv_test", "dist", "build", "parked",
 }
 
 

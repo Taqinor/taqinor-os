@@ -1,0 +1,15 @@
+{
+  "endpoint": "POST /api/django/chat/reminders/<int:pk>/annuler/",
+  "pourquoi": "AUDV28 (DRAFT165-7, XKB27) — `cancel_reminder` existait déjà (contrôle créateur-only, testé au niveau service) mais aucun endpoint ne l'appelait : un rappel programmé par erreur (« me rappeler dans 1h ») ne pouvait jamais être annulé. `MessageReminderViewSet.get_queryset` filtre déjà par `user=request.user` — un rappel d'un AUTRE utilisateur est INTROUVABLE (404), jamais un 403 qui confirmerait son existence (le contrôle créateur-only du service reste une 2e ligne de défense, jamais atteinte via cet endpoint). La création reste `messages/<id>/remind-me/` (inchangée).",
+  "exemple": {
+    "id": 12,
+    "message": 55,
+    "user": 3,
+    "remind_at": "2026-09-06T15:00:00Z",
+    "status": "cancelled",
+    "created_at": "2026-09-06T14:00:00Z"
+  },
+  "exemple_erreur_deja_traite": {
+    "detail": "Ce rappel a déjà été envoyé ou annulé."
+  }
+}

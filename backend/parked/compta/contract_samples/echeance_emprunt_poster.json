@@ -1,0 +1,12 @@
+{
+  "endpoint": "POST /api/django/compta/echeances-emprunt/{id}/poster/",
+  "pourquoi": "XACC14/WIR279 — poste UNE échéance d'emprunt au grand livre : débit du capital restant dû (1481 emprunt / 1671 leasing) + débit des charges financières (6311) / crédit banque (5141), écriture équilibrée en journal OD, référence EMPR-<emprunt>-<numero>. Source de vérité : apps/compta/services.py::poster_echeance_emprunt. La vue REFUSE explicitement un re-post (400 « déjà postée ») au lieu de renvoyer silencieusement l'écriture existante : une échéance ne s'écrit qu'UNE fois, et un double clic doit le DIRE. Le verrou de période (FG115) est respecté : une échéance tombant dans une période clôturée est refusée en 400.",
+  "exemple": {
+    "echeance": 101,
+    "posted": true,
+    "ecriture_id": 4471,
+    "reference": "EMPR-12-1",
+    "date_ecriture": "2026-02-01",
+    "montant": "33362.58"
+  }
+}

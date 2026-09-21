@@ -1,0 +1,343 @@
+"""Sérialiseurs du module ``apps.sante``.
+
+``company`` n'est JAMAIS exposée en écriture : elle est posée côté serveur par
+``core.viewsets.CompanyScopedModelViewSet`` (``TenantMixin.perform_create``).
+"""
+from drf_spectacular.utils import extend_schema_field
+from rest_framework import serializers
+
+from .models import (
+    ActeMedical, ActeRealise, Admission, Convention, CycleSterilisation,
+    FactureSante, GrilleTarifaire, HoraireOuverturePraticien,
+    IndisponibilitePraticien, InstrumentSterilise, MotifConsultation,
+    PaiementSante, Patient, Praticien, PraticienSite, PriseEnCharge,
+    RendezVous, Salle)
+
+
+def _meme_societe(serializer, value, label):
+    """Garde-fou tenant : refuse une FK qui appartient à une AUTRE société —
+    jamais un ``patient``/``praticien``/``convention``/etc. d'une société
+    tierce accepté en écriture depuis le corps de requête. Miroir du helper
+    répété (mêmes nom/signature) dans ``apps/rh``, ``apps/qhse``,
+    ``apps/compta``, ``apps/paie``, ``apps/gestion_projet`` — convention
+    déjà établie plutôt qu'un mécanisme neuf."""
+    request = serializer.context.get('request')
+    if value is not None and request is not None:
+        if value.company_id != request.user.company_id:
+            raise serializers.ValidationError(f'{label} inconnu.')
+    return value
+
+
+class PraticienSerializer(serializers.ModelSerializer):
+    # WIR92 — libellé RH résolu paresseusement (None si `employe_id` vide ou
+    # dossier introuvable — jamais de régression pour un praticien non lié).
+    libelle_rh = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Praticien
+        fields = [
+            'id', 'user', 'nom', 'specialite', 'numero_ordre',
+            'couleur_agenda', 'actif', 'duree_consultation_defaut_min',
+            'employe_id', 'libelle_rh',
+        ]
+
+    # YAPIC6 — annotation de SCHÉMA uniquement : `libelle_rh_praticien` renvoie
+    # `"Nom Prénom — Poste"` ou `None`. Sans cet indice drf-spectacular
+    # retombait sur `string` en émettant un avertissement, et le champ était
+    # documenté non-nullable. Aucun effet sur la valeur renvoyée à l'exécution.
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_libelle_rh(self, obj):
+        from .selectors import libelle_rh_praticien
+        return libelle_rh_praticien(obj.company, obj.employe_id)
+
+
+class SalleSerializer(serializers.ModelSerializer):
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
+
+    class Meta:
+        model = Salle
+        fields = [
+            'id', 'nom', 'type', 'type_display', 'capacite', 'equipements',
+        ]
+
+
+class PatientSerializer(serializers.ModelSerializer):
+    sexe_display = serializers.CharField(source='get_sexe_display', read_only=True)
+
+    class Meta:
+        model = Patient
+        fields = [
+            'id', 'nom', 'prenom', 'cin', 'date_naissance', 'sexe',
+            'sexe_display', 'telephone', 'whatsapp', 'email', 'adresse',
+            'numero_dossier', 'contact_urgence', 'client', 'convention',
+            'numero_affiliation',
+        ]
+        read_only_fields = ['numero_dossier']
+
+    def validate_client(self, value):
+        return _meme_societe(self, value, 'Client')
+
+    def validate_convention(self, value):
+        return _meme_societe(self, value, 'Convention')
+
+
+class RendezVousSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+    patient_nom = serializers.SerializerMethodField()
+    praticien_nom = serializers.SerializerMethodField()
+    annule_par_display = serializers.CharField(
+        source='get_annule_par_display', read_only=True)
+    delai_annulation_h = serializers.ReadOnlyField()
+
+    class Meta:
+        model = RendezVous
+        fields = [
+            'id', 'patient', 'patient_nom', 'praticien', 'praticien_nom',
+            'salle', 'date_heure_debut', 'duree_min', 'type_acte', 'statut',
+            'statut_display', 'motif_court', 'cree_par', 'annule_par',
+            'annule_par_display', 'date_annulation', 'delai_annulation_h',
+        ]
+        read_only_fields = [
+            'cree_par', 'annule_par', 'date_annulation',
+        ]
+
+    def get_patient_nom(self, obj):
+        return str(obj.patient) if obj.patient_id else None
+
+    def get_praticien_nom(self, obj):
+        return obj.praticien.nom if obj.praticien_id else None
+
+    def validate_patient(self, value):
+        return _meme_societe(self, value, 'Patient')
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+    def validate_salle(self, value):
+        return _meme_societe(self, value, 'Salle')
+
+
+class AdmissionSerializer(serializers.ModelSerializer):
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Admission
+        fields = [
+            'id', 'patient', 'rdv', 'praticien', 'date_admission',
+            'date_sortie', 'type', 'type_display', 'statut', 'statut_display',
+        ]
+        read_only_fields = ['statut', 'date_sortie']
+
+    def validate_patient(self, value):
+        return _meme_societe(self, value, 'Patient')
+
+    def validate_rdv(self, value):
+        return _meme_societe(self, value, 'Rendez-vous')
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+
+class ConventionSerializer(serializers.ModelSerializer):
+    type_display = serializers.CharField(source='get_type_display', read_only=True)
+
+    class Meta:
+        model = Convention
+        fields = [
+            'id', 'nom', 'type', 'type_display', 'taux_tiers_payant_pct',
+            'contact', 'actif',
+        ]
+
+
+class ActeRealiseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ActeRealise
+        fields = [
+            'id', 'admission', 'patient', 'praticien', 'acte',
+            'date_realisation', 'quantite', 'tarif_applique_ttc',
+            'facturable', 'prise_en_charge', 'facture_sante',
+            'instruments_utilises',
+        ]
+        read_only_fields = ['tarif_applique_ttc', 'facture_sante']
+
+    def validate_admission(self, value):
+        return _meme_societe(self, value, 'Admission')
+
+    def validate_instruments_utilises(self, value):
+        # NTSAN24 — M2M léger, jamais un instrument d'une autre société
+        # (même garde-fou tenant que les FK simples, appliqué élément par
+        # élément).
+        request = self.context.get('request')
+        if request is not None:
+            for instrument in value:
+                if instrument.company_id != request.user.company_id:
+                    raise serializers.ValidationError(
+                        'Instrument stérilisé inconnu.')
+        return value
+
+    def validate_patient(self, value):
+        return _meme_societe(self, value, 'Patient')
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+    def validate_acte(self, value):
+        return _meme_societe(self, value, 'Acte médical')
+
+    def validate_prise_en_charge(self, value):
+        return _meme_societe(self, value, 'Prise en charge')
+
+
+class FactureSanteSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+    montant_du = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FactureSante
+        fields = [
+            'id', 'patient', 'admission', 'convention', 'sous_total_ttc',
+            'remise_ttc', 'taux_tva', 'montant_tva', 'total_ttc',
+            'part_tiers_payant_ttc', 'part_patient_ttc', 'statut',
+            'statut_display', 'date_emission', 'montant_du',
+        ]
+        read_only_fields = [
+            'sous_total_ttc', 'total_ttc', 'part_tiers_payant_ttc',
+            'part_patient_ttc',
+        ]
+
+    def get_montant_du(self, obj):
+        from .services import montant_du
+        return montant_du(obj)
+
+
+class PaiementSanteSerializer(serializers.ModelSerializer):
+    mode_display = serializers.CharField(source='get_mode_display', read_only=True)
+
+    class Meta:
+        model = PaiementSante
+        fields = [
+            'id', 'facture_sante', 'montant', 'mode', 'mode_display',
+            'date_paiement', 'encaisse_par',
+        ]
+        read_only_fields = ['encaisse_par']
+
+    def validate_facture_sante(self, value):
+        return _meme_societe(self, value, 'Facture santé')
+
+
+class PriseEnChargeSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PriseEnCharge
+        fields = [
+            'id', 'patient', 'convention', 'admission',
+            'numero_dossier_convention', 'date_demande', 'date_reponse',
+            'statut', 'statut_display', 'montant_accorde', 'motif_refus',
+            'date_expiration',
+        ]
+
+    def validate_patient(self, value):
+        return _meme_societe(self, value, 'Patient')
+
+    def validate_convention(self, value):
+        return _meme_societe(self, value, 'Convention')
+
+    def validate_admission(self, value):
+        return _meme_societe(self, value, 'Admission')
+
+
+class GrilleTarifaireSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GrilleTarifaire
+        fields = [
+            'id', 'convention', 'acte', 'tarif_convention_ttc',
+            'taux_prise_charge_pct',
+        ]
+
+    def validate_convention(self, value):
+        return _meme_societe(self, value, 'Convention')
+
+    def validate_acte(self, value):
+        return _meme_societe(self, value, 'Acte médical')
+
+
+class HoraireOuverturePraticienSerializer(serializers.ModelSerializer):
+    jour_semaine_display = serializers.CharField(
+        source='get_jour_semaine_display', read_only=True)
+
+    class Meta:
+        model = HoraireOuverturePraticien
+        fields = [
+            'id', 'praticien', 'jour_semaine', 'jour_semaine_display',
+            'heure_debut', 'heure_fin',
+        ]
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+
+class IndisponibilitePraticienSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IndisponibilitePraticien
+        fields = ['id', 'praticien', 'date_debut', 'date_fin', 'motif']
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+
+class PraticienSiteSerializer(serializers.ModelSerializer):
+    salle_nom = serializers.CharField(source='salle.nom', read_only=True)
+
+    class Meta:
+        model = PraticienSite
+        fields = ['id', 'praticien', 'salle', 'salle_nom']
+
+    def validate_praticien(self, value):
+        return _meme_societe(self, value, 'Praticien')
+
+    def validate_salle(self, value):
+        return _meme_societe(self, value, 'Salle')
+
+
+class MotifConsultationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MotifConsultation
+        fields = ['id', 'libelle', 'actif']
+
+
+class ActeMedicalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ActeMedical
+        fields = [
+            'id', 'code_ngap', 'libelle', 'categorie', 'tarif_base_ttc',
+            'cotation_lettre_cle', 'actif',
+        ]
+        read_only_fields = ['actif']
+
+
+# =============================================================================
+# NTSAN23 — Stérilisation et traçabilité des instruments.
+# =============================================================================
+
+class CycleSterilisationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CycleSterilisation
+        fields = [
+            'id', 'numero_cycle', 'date_cycle', 'autoclave_ref', 'statut',
+            'operateur',
+        ]
+        # ``operateur`` est posé côté serveur (utilisateur authentifié) —
+        # jamais lu du corps de requête.
+        read_only_fields = ['id', 'operateur']
+
+
+class InstrumentSteriliseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InstrumentSterilise
+        fields = ['id', 'cycle', 'instrument_ref', 'kit_ref']
+        read_only_fields = ['id']
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle de stérilisation')
