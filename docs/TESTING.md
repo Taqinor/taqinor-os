@@ -110,8 +110,8 @@ complète (`release-verify`). C'est le garde-fou n°1 contre les régressions
 fonctionnelles silencieuses.
 
 ## Couverture (un % visible, pas une promesse)
-- Front (logique pure) : `node --test --experimental-test-coverage`.
-- Front (composants/UX) : `npm run test:coverage` (Vitest + v8).
+- Front (logique pure) : `node --test "src/**/*.test.mjs"` (ajouter `--experimental-test-coverage` en local si l'on veut le % couvert — la CI ne l'instrumente plus depuis SOLMVP54, personne ne lisait le rapport).
+- Front (composants/UX) : `npm run test:unit` (Vitest) ; `npm run test:coverage` (v8) reste disponible en local, hors CI.
 - Back : `coverage run manage.py test … && coverage report` (config `.coveragerc`).
 Les % s'impriment en CI (informatif, **non bloquant** — on ne fixe pas de seuil
 artificiel). But : rendre l'écart visible, jamais prétendre « 100 % testé ».

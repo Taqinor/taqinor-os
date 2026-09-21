@@ -54,6 +54,18 @@ concurrency:
 #   + backend-tests-shard 6 + frontend-vitest-shard 4 + e2e-shard 2      = 12
 #                                                              TOTAL     = 18
 #
+# SOLMVP54 (21/09/2026) — LA VAGUE RESTE A 18, RECOMPOSEE : `rls-tests` est
+# replie dans la lane 0 de `backend-tests-shard` (-1), `backend-tests-shard`
+# passe de 6 a 8 lanes (+2), et CodeQL ne tourne plus sur ce depot depuis le
+# 19/08/2026 (ses 3 creneaux sont libres). Detail par job dans les commentaires
+# de chaque job ; chiffres avant/apres dans le DONE LOG de docs/PLAN.md.
+#
+#   stage-names 1 + backend-lint-fast 1 + backend-openapi 1 + frontend-static 1
+#   + web-build-test 1                                                  =  5
+#   + backend-tests-shard 8 + frontend-vitest-shard 4 + e2e-shard 2     = 14
+#                                                              TOTAL     = 19
+#   (web-build-test ne tourne que sur un diff apps/web — 18 le reste du temps)
+#
 # VOLET F (20/08) — 18 -> 17 : `backend-tests-shard` etait passe de 6 a 5 lanes
 # SANS rien ralentir. Le palier backend etait borne par UNE classe de test
 # indivisible (~195 s) ; a 5 comme a 6 lanes la pire lane valait 196 s, la 6e
@@ -411,202 +423,18 @@ jobs:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
           cache: 'pip'
           cache-dependency-path: backend/django_core/requirements-dev.txt
-      - name: Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)
-        run: python -m compileall -q backend/django_core/apps backend/django_core/erp_agentique backend/fastapi_ia
       - run: pip install flake8 import-linter==2.11
-      - name: Lint backend (flake8)
-        run: flake8 backend --max-line-length=120 --extend-ignore=E501 --exclude=migrations,parked
-      - name: Lint imports (import-linter contracts — M3)
-        working-directory: backend/django_core
-        run: lint-imports
-      # ARC52 — garde-fous du socle en UN script DB-free (ARC8 *Activity, ARC26
-      # FileField, ARC11 imports WeasyPrint hors allowlist, ARC6 numérotation
-      # count()+1 hors socle). Étape ajoutée au job backend-lint EXISTANT — pas
-      # un nouveau check requis (protection de branche inchangée).
-      - name: Platform-kernel guards (check_platform — ARC8/26/11/6)
-        run: python scripts/check_platform.py
-      # YDATA1/3 — every FK/O2O declares on_delete=, every CASCADE is either
-      # inline-justified ('# on_delete: <reason>') or reviewed+allowlisted;
-      # every SET_NULL has null=True and never targets a tenant/owner field.
-      - name: Check on_delete completeness/justification (YDATA1/3)
-        run: python scripts/check_on_delete.py
-      # YDATA2 — financial-target FK (Devis/Facture/BonCommande/Paiement/
-      # Avoir/Company/Produit) sweep: fails only on a NEW un-reviewed
-      # CASCADE/SET_NULL (docs/on-delete-financial-audit.md is the baseline).
-      - name: Check financial-target on_delete sweep (YDATA2)
-        run: python scripts/check_on_delete.py --financial
-      # YDATA4 — every business-app model carries a company scope (direct
-      # FK, TenantModel base, or transitively via a FK to a scoped model).
-      - name: Check multi-tenant company-FK completeness (YDATA4)
-        run: python scripts/check_company_fk.py
-      # YDATA6/7 — money-semantic fields are DecimalField (never FloatField,
-      # GPS/rate names excepted) with explicit max_digits/decimal_places=2
-      # (4 tolerated for taux_*/*_pct/pourcentage rate fields).
-      - name: Check money fields are DecimalField (YDATA6)
-        run: python scripts/check_money_fields.py
-      - name: Check money DecimalField max_digits/decimal_places (YDATA7)
-        run: python scripts/check_money_fields.py --decimal-places
-      # YDATA8/QJR4 — advisory: round() on a money-looking value in a pricing/
-      # tax module should use core.money.quantize_mad() instead (see
-      # docs/money-convention.md). Baseline lives in
-      # scripts/money_rounding_allow.txt, keyed by CONTENT identity
-      # (path::qualname::sha1(expr)) — inserting lines upstream no longer
-      # invalidates it; fails only on a NEW, never-reviewed site.
-      - name: Check money rounding convention (YDATA8/QJR4, advisory)
-        run: python scripts/check_money_rounding.py
-      - name: Test the money-rounding checker itself (QJR4)
-        run: python -m unittest scripts.tests.test_check_money_rounding -v
-      # AUD515 - un modele a MACHINE D'ETATS (machine_etats.py / changer_statut*)
-      # ne laisse jamais son `statut` writable au serialiseur : un point de
-      # transition dedie ne vaut rien si un PATCH brut du corps pose le meme
-      # champ sans traverser aucune garde metier (« signe » sans signature,
-      # « cloture » sans CAPA, « livre » sans stock). Decouverte AST, aucune
-      # liste statique ; l'existant est fige dans
-      # scripts/machine_etats_statut_allow.txt (base qui ne peut que decroitre).
-      - name: Check statut read_only on state-machine models (AUD515)
-        run: python scripts/check_machine_etats_statut_readonly.py
-      - name: Test the state-machine statut checker itself (AUD515)
-        run: python -m unittest scripts.tests.test_check_machine_etats_statut_readonly -v
-      # QJR6 — advisory: a path of the override registry (whitelist read from
-      # the PACT10 contract apps/ventes/contract_samples/devis_overrides.json,
-      # never copied into the script) may only be written in the sanctioned
-      # modules apps/ventes/domain/{overrides,lignes}.py. Baseline lives in
-      # scripts/override_registry_allow.txt, keyed by CONTENT identity
-      # (path::qualname::family::target); fails only on a NEW site.
-      - name: Check override-registry write sites (QJR6, advisory)
-        run: python scripts/check_override_registry.py
-      - name: Test the override-registry checker itself (QJR6)
-        run: python -m unittest scripts.tests.test_check_override_registry -v
-      # QJR231 — the 6 market-mode enumeration sites (backend Devis
-      # TextChoices, backend Lead TextChoices, quote_engine tuple module,
-      # panneaux mode-options JS array reducer, classifieurs tuple module)
-      # must stay in parity; a mode added/removed at only one site rouges.
-      - name: Check market-mode enumeration parity (QJR231)
-        run: python scripts/check_modes_marche.py
-      - name: Test the market-mode parity checker itself (QJR231)
-        run: python -m unittest scripts.tests.test_check_modes_marche -v
-      # QJR239 — freezes the existing DevisGenerator*/solar*/autoQuote* tests
-      # that assert by regex on readFileSync'd source; forbids any NEW test
-      # of that family adopting the same anti-pattern (nominative allowlist).
-      - name: Check for new source-regex tests (QJR239)
-        run: python scripts/check_tests_source_regex.py
-      - name: Test the source-regex checker itself (QJR239)
-        run: python -m unittest scripts.tests.test_check_tests_source_regex -v
-      # YDATA10/11 — timezone.now() everywhere (no naive datetime.now()/
-      # utcnow()/datetime(...) ctor); timestamp columns are aware
-      # DateTimeField, never DateField(auto_now[_add]=True).
-      - name: Check for naive datetime / DateField timestamps (YDATA10/11)
-        run: python scripts/check_naive_datetime.py
-      # YDATA14 — advisory: a Celery task with external effects should take
-      # a pk, never a hydrated model instance, as a parameter.
-      - name: Check Celery task signatures (YDATA14, advisory)
-        run: python scripts/check_celery_tasks.py
-      # AUD231 — une commande de gestion qui se dit « cron / Celery beat » doit
-      # être RÉELLEMENT planifiée (généralise WIR25 à toutes les apps ; QX11 ne
-      # voit que les @shared_task, jamais une commande sans tâche). Fails on a
-      # NEW unscheduled command not in scripts/commandes_planifiees_allow.txt.
-      - name: Check scheduled management commands (AUD231)
-        run: python scripts/check_commandes_planifiees.py
-      - name: Test the scheduled-commands checker itself (AUD231)
-        run: python -m unittest scripts.tests.test_check_commandes_planifiees -v
-      # YDATA15 — advisory: get_or_create/update_or_create lookup keys
-      # should be backed by a UniqueConstraint; audit doc IS the baseline.
-      - name: Check get_or_create/update_or_create audit (YDATA15, advisory)
-        run: python scripts/check_get_or_create.py
-      # YDATA22 — mono-devise MAD invariant sweep. Advisory only (per the plan
-      # task: "v1 ... pas de blocage") — prints the currency audit for
-      # visibility, never fails the build.
-      - name: Currency mono-devise sweep (check_money_monodevise — YDATA22, advisory)
-        run: python scripts/check_money_monodevise.py
-      # YDATA16 — read-modify-write on a shared numeric field (counters/stock/
-      # balances) must hold a lock (select_for_update) or use F(); fails on a
-      # NEW unlocked site not in scripts/read_modify_write_allow.txt.
-      - name: Check read-modify-write locking on shared counters (YDATA16)
-        run: python scripts/check_read_modify_write.py
-      - name: Test the read-modify-write checker itself (YDATA16)
-        run: python -m unittest scripts.tests.test_check_read_modify_write -v
-      # AUD223 — un MouvementStock ne se crée QUE par
-      # apps.stock.services.record_stock_movement (seul émetteur du miroir
-      # comptable d'inventaire permanent et de l'alerte seuil-bas). Fails on a
-      # NEW direct create not in scripts/mouvement_stock_service_allow.txt.
-      - name: Check MouvementStock passe par son service unique (AUD223)
-        run: python scripts/check_mouvement_stock_service.py
-      - name: Test the MouvementStock-service checker itself (AUD223)
-        run: python -m unittest scripts.tests.test_check_mouvement_stock_service -v
-      # AUD415 — un fan-out beat (apps/*/tasks.py, scheduled.py, beat_tasks.py)
-      # itère authentication.selectors.active_companies() (SCA19), jamais
-      # Company.objects.all() ni un filter(actif=True) recopié : un tenant
-      # suspendu ne doit plus être facturé, relancé, ni voir sa corbeille GED
-      # purgée. Fails on a NEW site not in
-      # scripts/beat_active_companies_allow.txt.
-      - name: Check fan-outs beat scopés aux sociétés actives (AUD415)
-        run: python scripts/check_beat_active_companies.py
-      - name: Test the beat-active-companies checker itself (AUD415)
-        run: python -m unittest scripts.tests.test_check_beat_active_companies -v
-      # YDATA18 — business unique=True must be company-scoped; a unique on a
-      # soft-delete model must be a partial index. Fails on a NEW unscoped
-      # business unique not in scripts/unique_scoping_allow.txt.
-      - name: Check unique constraints are tenant-scoped (YDATA18)
-        run: python scripts/check_unique_scoping.py
-      - name: Test the unique-scoping checker itself (YDATA18)
-        run: python -m unittest scripts.tests.test_check_unique_scoping -v
-      # YDATA20 — constraint-on-populated-table (AddField unique/not-null in one
-      # step) + index/constraint name drift vs models.py. Fails on a NEW
-      # migration not in scripts/migration_safety_allow.txt.
-      - name: Check migration safety — 3-step constraints + name drift (YDATA20)
-        run: python scripts/check_migration_safety.py
-      - name: Test the migration-safety checker itself (YDATA20)
-        run: python -m unittest scripts.tests.test_check_migration_safety -v
-      # YDATA21 — tenant isolation: every business ModelViewSet/GenericAPIView
-      # must scope by request.user.company and never accept company from the
-      # body. Fails on a NEW view not in scripts/tenant_view_allowlist.txt.
-      - name: Check multi-tenant view isolation (YDATA21)
-        run: python scripts/check_tenant_isolation.py
-      - name: Test the tenant-isolation checker itself (YDATA21)
-        run: python -m unittest scripts.tests.test_check_tenant_isolation -v
-      # AUD834 — YDATA21 ci-dessus se satisfait de la BASE tenant : elle prouve
-      # l'INTENTION de scoper, jamais sa faisabilite. Poser
-      # CompanyScopedModelViewSet sur un modele SANS champ `company` donne un
-      # FieldError (500 sur list/retrieve/patch/delete) et une creation non
-      # scopee — defaut mesure sur TerritoireRegle/TerritoireMembre (AUD814).
-      # Le balayage YRBAC12 (core/tenant_isolation_scan.py) saute
-      # STRUCTURELLEMENT ces modeles : `build_minimal_instance` leve
-      # `SkipModel` sur toute FK obligatoire, or un enfant sans `company` en a
-      # une par definition. Cette garde est le seul appariement base<->modele.
-      - name: Check viewset tenant base vs model scope (AUD834)
-        run: python scripts/check_viewset_model_scope.py
-      - name: Test the viewset-model-scope checker itself (AUD834)
-        run: python -m unittest scripts.tests.test_check_viewset_model_scope -v
-      # AUD421 — a local get_permissions() must never SILENTLY OVERRIDE an
-      # @action(permission_classes=...): DRF calls get_permissions() for every
-      # request, so a raw branch that returns a default list makes the inline
-      # declaration decorative (the AUD403 defect on ventes/views/devis.py).
-      # Freezes the AUD403 sweep's verified-benign baseline; fails on a NEW
-      # class (or a NEW uncovered action) not in
-      # scripts/action_permission_override_allow.txt.
-      - name: Check @action permissions are never silently overridden (AUD421)
-        run: python scripts/check_action_permission_override.py
-      - name: Test the action-permission checker itself (AUD421)
-        run: python -m unittest scripts.tests.test_check_action_permission_override -v
-      # AUD601 — l'autre moitié d'YDATA21 : la vue scope ce qu'on LIT, ce guard
-      # scope ce qu'on ÉCRIT. Une FK cross-app écrivable d'un ModelSerializer
-      # accepte par défaut la ligne d'une société voisine (sur les surfaces AO
-      # elle finit dans un document remis à l'ACHETEUR). Échoue sur un NOUVEAU
-      # sérialiseur absent de scripts/fk_scoping_allow.txt.
-      - name: Check cross-app FK serializer scoping (AUD601)
-        run: python scripts/check_fk_scoping.py
-      - name: Test the FK-scoping checker itself (AUD601)
-        run: python -m unittest scripts.tests.test_check_fk_scoping -v
-      # Incident du 03/08/2026 (production) : les lanes frontend/ao et
-      # backend/ao ont ete construites en parallele avec des contrats
-      # DIFFERENTS — l'ecran Bibliotheque appelait /ao/bibliotheque/, route
-      # jamais enregistree : 404 en production. Les tests vitest n'ont rien vu
-      # (ils mockent l'API avec la forme SUPPOSEE par le front). Cette etape
-      # compare statiquement les chemins appeles par frontend/src/api/aoApi.js
-      # aux routes reellement enregistrees par apps/ao/urls.py. NE PAS
-      # DESACTIVER : corriger le client (ou creer la route), pas la garde.
-      - name: Check ao API contract — frontend calls vs registered routes
-        run: python scripts/check_ao_api_contract.py
+      # SOLMVP54 (21/09/2026) — les 44 gardes de ce job (compileall 3.11, flake8,
+      # lint-imports et les check_*.py gates sur `backend == true`) tournent en
+      # PARALLELE via `scripts/ci_guards.py` (`GARDES['backend-lint-fast']`) :
+      # 2 min 04 s en serie sur le run 35601218482. Meme regle que `stage-names`
+      # (voir son commentaire) : la liste vit dans ci_guards.py, jamais ici, et
+      # le POURQUOI de chaque garde est l'en-tete de son script. Rappel de la
+      # frontiere : ICI = gardes gatees sur `backend == true` (elles lisent leur
+      # baseline dans scripts/*_allow.txt) ; `stage-names` = gardes qui doivent
+      # tourner sur TOUTE PR (docs, plan, frontend seul).
+      - name: Gardes hôte en parallèle (scripts/ci_guards.py backend-lint-fast)
+        run: python scripts/ci_guards.py backend-lint-fast
   # Lane dédiée : génération + validation du schéma OpenAPI. Mesurée à 5 min 53 s
   # sur le run 32182877239 (une seule invocation de `manage.py spectacular
   # --validate`, aucune sortie intermédiaire), puis raccourcie par WOW-CI3
@@ -673,6 +501,23 @@ jobs:
       # `container:` plus haut les contient déjà, figées. Le cache apt partagé
       # `apt-e2e-v2-…` reste alimenté et consommé par `e2e-shard`, qui n'est pas
       # conteneurisé — cette suppression ne le prive de rien.
+      # YOPSB5 — anti-dérive modèle<->migration : échoue si un changement de
+      # modèle n'a pas sa migration (index nommé à la main divergent,
+      # contrainte sans migration…). SOLMVP54 (21/09/2026) : DÉPLACÉ ICI depuis
+      # `backend-tests-shard`, où CHAQUE lane le payait (8 s x 6 lanes, sur le
+      # chemin critique du run). L'autodétecteur ne lit que les fichiers de
+      # migration et les modèles ; sans serveur Postgres il émet un
+      # RuntimeWarning (« Got an error checking a consistent migration
+      # history ») et rend quand même son verdict — comportement documenté de
+      # Django. Même env minimal que le job de tests, sans base.
+      - name: Check for missing migrations (makemigrations --check)
+        working-directory: backend/django_core
+        env:
+          DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+          DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+          DJANGO_DEBUG: 'True'
+          DB_HOST: localhost
+        run: python manage.py makemigrations --check --dry-run
       - name: Test the OpenAPI-schema checker itself (YAPIC6)
         run: python -m unittest scripts.tests.test_check_openapi_schema -v
       - name: OpenAPI schema — generate, validate, no NEW warning (YAPIC6)
@@ -935,7 +780,17 @@ jobs:
         # rapporte UNE seconde. Ce n'est plus « le gain ne se voit pas sur le
         # gate », c'est « il n'y a plus de gain du tout tant que cette classe
         # n'est pas scindee ».
-        shard: [0, 1, 2, 3, 4, 5]
+        #
+        # SOLMVP54 (21/09/2026) — 6 -> 8 lanes, ET les poids RECALES sur le run
+        # 35601218482 (le premier apres la sortie des 47 apps parquees : -43 %
+        # de modules, table de 3 393 modules chronometres). Avant recalage la
+        # table datait d'avant SOLMVP et le plan « equilibre » rendait des lanes
+        # de 111 s a 317 s (shard 3 = chemin critique de tout le run, 7,3 min).
+        # Plans mesures (`ci_shard.py --plan N`) : 6 lanes 231 s | 7 = 198 s |
+        # 8 = 173 s | 10 = 139 s. Les deux creneaux viennent de `rls-tests`
+        # (replie dans la lane 0, voir plus bas) et de la marge liberee par
+        # l'arret de CodeQL (dernier run le 19/08/2026) : vague = 18 jobs.
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     runs-on: ubuntu-latest
     # 02/09/2026 — 15 → 45 : couvre le replay froid des migrations quand le
     # dump WOW8 est évicté du cache (LRU, journée à forte activité CI — run
@@ -1027,13 +882,9 @@ jobs:
         with:
           testdb-cache-into: test_erp_db
           prebuilt-image: 'true'
-      # YOPSB5 — anti-dérive modèle<->migration : échoue si un changement de
-      # modèle n'a pas sa migration (index nommé à la main divergent,
-      # contrainte sans migration…). Tourne AVANT la suite de tests, même
-      # service Postgres/env que celle-ci.
-      - name: Check for missing migrations (makemigrations --check)
-        working-directory: backend/django_core
-        run: python manage.py makemigrations --check --dry-run
+      # YOPSB5 (makemigrations --check) tourne dans `backend-openapi` depuis
+      # SOLMVP54 (21/09/2026) : une seule fois par run au lieu d'une fois par
+      # lane (8 s x 6 lanes, sur le chemin critique).
       # Palier « par-merge » : tout SAUF les tests lourds étiquetés `pdf`/`slow`
       # (rendu WeasyPrint, golden PDF…). Ceux-ci tournent dans release-verify
       # (manuel + nightly), pour un retour rapide sur chaque merge.
@@ -1144,6 +995,26 @@ jobs:
           fi
 
           python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel "$PARALLEL" --keepdb
+      # NTPLT5 — suite d'étanchéité RLS (`core.tests.test_rls*`, sautée sans
+      # POSTGRES_RLS_ENABLED). SOLMVP54 (21/09/2026) : c'était un job séparé
+      # `rls-tests` (2 min 18 s dont 1 min 30 s de mise en place pour 33 s de
+      # tests, un créneau de la vague, et NON requis — il n'entrait pas dans
+      # ci-gate). Repliée ICI, sur la lane 0, APRÈS sa tranche normale : même
+      # base `test_erp_db` déjà restaurée, +33 s sur une seule lane, un créneau
+      # rendu à une 7e/8e lane backend — et la suite devient de fait REQUISE
+      # (elle rougit l'agrégateur `backend-tests`), ce qui est plus strict
+      # qu'avant, pas moins. `--parallel 1` comme avant (la suite manipule les
+      # politiques RLS de la base partagée).
+      - name: Run RLS seal suite (opt-in — flag ON, lane 0 only)
+        if: ${{ matrix.shard == 0 }}
+        working-directory: backend/django_core
+        env:
+          POSTGRES_RLS_ENABLED: '1'
+        run: >-
+          python manage.py test
+          core.tests.test_rls
+          core.tests.test_rls_cross_tenant_denial
+          -v 2 --keepdb --parallel 1
 
   # WOW6 — thin aggregator that PRESERVES the required `backend-tests` status
   # check name. Branch protection requires the literal `backend-tests` context
@@ -1210,9 +1081,26 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Lint frontend (eslint)
+      # SOLMVP54 (21/09/2026) — eslint (69 s) et node:test (69 s) tournaient l'un
+      # APRÈS l'autre sur un runner à 4 vCPU : ils partent ensemble, chacun
+      # dans son processus, sortie capturée puis rejouée par bloc, verdict = les
+      # deux. `--experimental-test-coverage` est retiré : personne ne lisait ce
+      # rapport (aucun consommateur dans scripts/, frontend/scripts/, docs/) et
+      # l'instrumentation V8 ralentissait chaque fichier pour rien. Les tests
+      # exécutés sont exactement les mêmes (logique pure, AUTO-DÉCOUVERTE via
+      # glob — tout nouveau *.test.mjs tourne sans liste à tenir).
+      - name: Lint frontend (eslint + no-danger) + unit tests (node:test) — en parallèle
         working-directory: frontend
-        run: npm run lint
+        run: |
+          set -uo pipefail
+          npm run lint > /tmp/eslint.log 2>&1 & PID_LINT=$!
+          node --test "src/**/*.test.mjs" > /tmp/node-test.log 2>&1 & PID_UNIT=$!
+          rc=0
+          wait "$PID_LINT" || { echo "::error title=eslint::eslint / check_no_danger en échec — voir le bloc eslint ci-dessous"; rc=1; }
+          wait "$PID_UNIT" || { echo "::error title=node:test::tests de logique pure en échec — voir le bloc node:test ci-dessous"; rc=1; }
+          echo "::group::eslint + check_no_danger"; cat /tmp/eslint.log; echo "::endgroup::"
+          echo "::group::node:test (src/**/*.test.mjs)"; cat /tmp/node-test.log; echo "::endgroup::"
+          exit "$rc"
       # VX121 — garde « zéro couleur hors token » : les blocs de composants déjà
       # tokenisés d'index.css (form-control/modal/table/lead-nav/page-loading…)
       # ne doivent plus jamais réintroduire un hex codé en dur (script maison,
@@ -1220,13 +1108,6 @@ jobs:
       - name: Check hex colors outside design tokens (index.css)
         working-directory: frontend
         run: npm run check-hex
-      # Logique pure (sizing solaire, parité catalogue, utils…) : node:test, AUTO-
-      # DÉCOUVERTE via glob — tout nouveau *.test.mjs tourne sans liste à tenir.
-      - name: Frontend unit tests (node:test — pure logic, auto-discovered)
-        working-directory: frontend
-        # --experimental-test-coverage : % visible de la logique pure couverte
-        # (informatif — n'échoue que sur un test rouge, pas sur un seuil).
-        run: node --test --experimental-test-coverage "src/**/*.test.mjs"
       # YHARD7 — budget de performance du bundle SPA ERP : échoue si un chunk
       # (ou le total gzippé) dépasse son budget. Dev-only
       # (frontend/scripts/check_bundle_budget.mjs, Node stdlib pur).
@@ -1250,8 +1131,8 @@ jobs:
   # decoupe la liste de fichiers, jamais le contenu d'un fichier : l'union des
   # 4 lanes est EXACTEMENT la suite complète d'aujourd'hui (completude prouvee
   # par scripts/tests/test_ci_frontend_shard.py).
-  # `--coverage` reste sur chaque lane : le rapport devient un résumé par tranche
-  # (il est purement informatif — aucun seuil ne gate, cf. vitest.config.js).
+  # SOLMVP54 (21/09/2026) : plus de `--coverage` sur les lanes — le résumé
+  # n'avait aucun consommateur et l'instrumentation coûtait sur chaque fichier.
   frontend-vitest-shard:
     needs: changes
     if: ${{ needs.changes.outputs.frontend == 'true' }}
@@ -1290,8 +1171,13 @@ jobs:
           set -euo pipefail
           VITEST_INCLUDE="$(python3 ../scripts/ci_frontend_shard.py $(( ${{ matrix.shard }} - 1 )) ${{ strategy.job-total }})"
           export VITEST_INCLUDE
-          echo "Lane ${{ matrix.shard }}/4 -> $(echo "$VITEST_INCLUDE" | tr ',' '\n' | wc -l) fichiers"
-          npm run test:coverage
+          echo "Lane ${{ matrix.shard }}/${{ strategy.job-total }} -> $(echo "$VITEST_INCLUDE" | tr ',' '\n' | wc -l) fichiers"
+          # SOLMVP54 (21/09/2026) — `test:unit` (vitest run) et non plus
+          # `test:coverage` : le rapport de couverture V8 n'avait AUCUN
+          # consommateur (ni scripts/, ni frontend/scripts/, ni docs/) et
+          # l'instrumentation coûte sur chacun des 612 fichiers. Les tests
+          # exécutés sont exactement les mêmes.
+          npm run test:unit
 
   # Agrégateur mince qui PRÉSERVE le nom de check requis `frontend-lint` (patron
   # WOW6, identique à `backend-tests`). Vert ssi aucune lane n'a échoué ; vert
@@ -1324,263 +1210,29 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
-      - name: Check pipeline stage names against STAGES.py
-        run: python scripts/check_stages.py
-      - name: Check module registry <-> frontend consistency (ODX21)
-        run: python scripts/check_modules.py
-      # SOLMVP53 — les 47 apps sorties du MVP solaire (décision fondateur du
-      # 20/09/2026) sont des COQUILLES de migrations : plus de code, plus
-      # d'urls, plus de tâche beat, plus d'écran. Le moindre import / FK par
-      # chaîne / include d'urls / entrée beat qui les vise casse le boot ou,
-      # pire, passe en silence en livrant un écran mort. Cette garde est le
-      # cliquet permanent. ICI et pas dans `backend-lint` : `stage-names` est
-      # le seul job NON GATÉ, donc une PR purement frontend (règle d :
-      # `frontend/src` qui importe `frontend/parked`) le déclenche aussi.
-      # Stdlib pure, ni base ni Django ni dépendance (~10 s).
-      - name: Check apps parquées (SOLMVP53 — aucun import/FK/url/beat vers une app sortie)
-        run: python scripts/check_parked_apps.py
-      - name: Tests de la garde apps parquées (SOLMVP53)
-        run: python -m unittest scripts.tests.test_check_parked_apps -v
-      # CONTRAT FRONT<->BACK (incident du 03/08/2026 : l'écran AO Bibliothèque
-      # appelait /ao/bibliotheque/, une route jamais enregistrée -> 404 en
-      # production ; 8 autres ressources du même module étaient dans le même
-      # cas). Résolution statique de l'URLconf Django + des routers FastAPI,
-      # confrontée aux chemins réellement appelés par frontend/src : tout appel
-      # sans route correspondante échoue. Dette historique gelée dans
-      # scripts/api_contract_allow.txt (elle ne peut que RÉTRÉCIR).
-      #
-      # ICI et pas dans `backend-lint` À DESSEIN : `backend-lint` est gaté sur
-      # `backend == true`, donc une PR qui ne touche QUE le frontend (le cas
-      # exact de aoApi.js) ne le déclenche pas. `stage-names` est le seul job
-      # non gaté — et ce contrôle est en stdlib pure, sans base de données ni
-      # dépendance, comme les autres check_*.py de ce job (~25 s).
-      - name: Check front<->back API contract (aucun appel vers une route inexistante)
-        run: python scripts/check_api_contract.py
-      - name: Test the API-contract checker itself
-        run: python -m unittest scripts.tests.test_check_api_contract -v
-      # FORME DES RÉPONSES (même incident du 03/08/2026 : l'écran AO Tableau de
-      # bord a planté alors que sa route existait, parce que son test mockait
-      # l'INVERSE EXACT de ce que le serveur renvoie — `echeances_dues` est un
-      # entier côté serveur, un tableau dans le mock ; 6 lectures sur 6 étaient
-      # fausses, les deux suites vertes). Le contrat est dérivé du CODE serveur
-      # et versionné dans docs/api-contracts.md ; un mock qui le contredit
-      # échoue. Le schéma OpenAPI ne peut PAS jouer ce rôle (l'endpoint qui a
-      # planté y est documenté `type: object` sans aucune propriété) — voir
-      # l'en-tête du script.
-      - name: Check API response shapes (aucun mock ne contredit le serveur)
-        run: python scripts/check_api_shapes.py
-      - name: Test the API-shapes checker itself
-        run: python -m unittest scripts.tests.test_check_api_shapes -v
-      # PARITÉ TUNNEL <-> WEBHOOK CRM (QJR230). La correspondance « site ->
-      # CRM » a deux moitiés qui ne partagent aucun fichier : le registre
-      # `apps/web/src/lib/tunnel/champs.ts` (69 clés) décide des noms émis, et
-      # `apps/crm/webhooks.py::_map_payload_to_fields` les lit en 350 lignes
-      # écrites à la main. Une clé pouvait survivre à toute la chaîne web et se
-      # perdre SANS TRACE à l'arrivée, sans qu'aucun test rougisse. La garde
-      # compare le contrat committé (apps/crm/contract_samples/
-      # tunnel_webhook_keys.json, QJR229) à la lecture AST du webhook, et
-      # nomme en français la clé non traitée. Stdlib pure, sans base ni node
-      # — donc ICI, dans le seul job non gaté, comme les autres check_*.py.
-      - name: Check parité tunnel <-> webhook CRM (aucune clé perdue à l'arrivée)
-        run: python scripts/check_lead_webhook_parite.py
-      - name: Test the lead-webhook parity checker itself (QJR230)
-        run: python -m unittest scripts.tests.test_check_lead_webhook_parite -v
-      # PACT7 — pour que le schéma OpenAPI PUISSE un jour jouer ce rôle, il
-      # faut d'abord qu'il cesse de se taire et de mentir : `response=dict`
-      # documente « type: object » SANS AUCUNE PROPRIÉTÉ (c'était la
-      # déclaration exacte de /ao/tableau-marches/ le jour du plantage), et un
-      # agrégat sans `@extend_schema` est publié avec le `serializer_class` du
-      # ViewSet — `/flotte/vehicules/tableau-bord/` était documenté
-      # VehiculeSerializer alors qu'il renvoie {vehicules, engins, echeances,
-      # couts, entretien, pool}. Analyse statique pure (~35 s), sans base de
-      # données ni dépendance, comme les autres check_*.py de ce job.
-      - name: Check OpenAPI response shapes (aucun agrégat ne se déclare « un objet »)
-        run: python scripts/check_openapi_shapes.py
-      - name: Test the OpenAPI-shapes checker itself (PACT7)
-        run: python -m unittest scripts.tests.test_check_openapi_shapes -v
-      # VOCABULAIRE À SOURCE DÉCLARÉE (PACT159). Une liste de choix frontend
-      # qui porte `// source-choix: app.Modele.champ` PROMET que son
-      # vocabulaire vient du serveur ; la garde échoue si elle invente une
-      # valeur. Volontairement OPT-IN : la détection par ressemblance a été
-      # MESURÉE à 72 % de faux positifs (13 sur 18) et ratait le cas fondateur
-      # (ExigencesPage ne partageait AUCUNE valeur avec son champ). Une liste
-      # sans marqueur n'est jamais un rouge. Stdlib pure, ~5 s.
-      - name: Check listes de choix à source déclarée (PACT159)
-        run: python scripts/check_choices_declares.py
-      - name: Test the declared-choices checker itself (PACT159)
-        run: python -m unittest scripts.tests.test_check_choices_declares -v
-      # VOCABULAIRE DE RÔLES DE COMPOSITION (STKCAT2, audit L3 du 16/09/2026).
-      # Le même vocabulaire (`panneau`, `onduleur_hybride`, `structure`…) est
-      # recopié À LA MAIN dans QUATRE listes — ROLES_AUTO_COMPOSITION
-      # (ventes/models.py, le tuple qui AUTORISE un rôle), LIBELLES_ROLES
-      # (ventes/domain/catalogue.py), _FAMILLES (ventes/offres_tailles.py) et
-      # PRODUCT_CATEGORIES (frontend solar.js) — et les quatre PROMETTENT en
-      # prose d'être « le miroir exact » l'une de l'autre sans que rien ne le
-      # vérifie. Défaut mesuré : `onduleur_offgrid` ne vivait QUE côté écran,
-      # donc épingler une marque sur l'onduleur hors réseau partait en 400
-      # « rôle inconnu ». Analyse statique pure (ast + texte), stdlib seule,
-      # sans base ni node — comme les autres check_*.py de ce job (~1 s).
-      - name: Check miroirs du vocabulaire de rôles (STKCAT2)
-        run: python scripts/check_roles_mirror.py
-      # ÉCRANS ATTEIGNABLES (incident du 03/08/2026, troisième défaut du même
-      # jour) : le module « Appels d'offres » a été livré et déclaré TERMINÉ —
-      # 194 tâches cochées, CI verte, déployé — alors que 68 écrans existaient
-      # sur le disque dans frontend/src/features/ao/, 7 seulement atteignables
-      # depuis le menu, 61 non. Cause racine identique au défaut front<->back :
-      # les écrans sont construits par des lanes PARALLÈLES, mais le SEUL
-      # fichier qui les relie au menu (`features/<app>/module.config.jsx`) a un
-      # propriétaire UNIQUE — chaque lane livre son écran, personne ne revient
-      # le brancher. Un écran orphelin compile, passe eslint et ses propres
-      # tests : aucune autre étape de CI ne peut le voir.
-      #
-      # ICI et pas dans `frontend-lint` À DESSEIN : `frontend-lint` est gaté sur
-      # `frontend == true`, donc une PR qui ne touche QUE le backend (ou que les
-      # docs) ne le déclenche pas, alors qu'un module.config peut se périmer
-      # depuis n'importe où. `stage-names` est le seul job non gaté — et ce
-      # contrôle est en stdlib pure, sans node, sans build (~11 s).
-      # Passif du 03/08/2026 gelé dans scripts/ecrans_atteignables_allow.txt
-      # (80 entrées : il ne peut que RÉTRÉCIR).
-      - name: Check écrans atteignables (aucun écran livré hors du menu)
-        run: python scripts/check_ecrans_atteignables.py
-      - name: Test the reachable-screens checker itself
-        run: python -m unittest scripts.tests.test_check_ecrans_atteignables -v
-      - name: Test the parameterized-path reachability rule (CALX56)
-        run: python -m unittest scripts.tests.test_check_ecrans_parametres -v
-      # SERVICES SANS APPELANT (CALX57) — le MÊME incident, côté backend. La
-      # garde ci-dessus attrape l'écran livré-et-introuvable ; celle-ci attrape
-      # la fonction de service écrite, testée, fusionnée et JAMAIS appelée :
-      # ~2 900 lignes de apps/calepinage/services/ ont vécu ainsi pendant tout
-      # un groupe de tâches, parce qu'aucun script ne mesurait cela. Un service
-      # orphelin passe flake8, passe ses propres tests, et n'est vu par aucune
-      # autre étape.
-      #
-      # ICI et pas dans `backend-lint` À DESSEIN, pour la même raison que les
-      # deux gardes voisines : `backend-lint` est gaté sur `backend == true`,
-      # alors qu'un consommateur peut disparaître depuis n'importe où.
-      # `stage-names` est le seul job non gaté — et ce contrôle est en stdlib
-      # pure (ast + texte), sans base de données ni node.
-      # Passif gelé dans scripts/services_appeles_allow.txt : il ne peut que
-      # RÉTRÉCIR.
-      - name: Check services appelés (aucun service livré sans appelant)
-        run: python scripts/check_services_appeles.py
-      - name: Test the orphan-service checker itself (CALX57)
-        run: python -m unittest scripts.tests.test_check_services_appeles -v
-      # TÂCHES DE PLAN QUI COMMANDENT DU TRAVAIL MORT (même incident du
-      # 03/08/2026, pris UN CRAN PLUS HAUT). check_ecrans_atteignables /
-      # check_api_contract attrapent l'écran orphelin et la route inexistante
-      # APRÈS leur livraison ; cette garde-ci lit le TEXTE DES TÂCHES, là où le
-      # défaut naît. Une tâche qui dit « crée features/<app>/MonEcran.jsx » sans
-      # nommer son fichier de montage INTERDIT à l'agent de le brancher (règle
-      # « touche uniquement les fichiers nommés ») : l'agent qui obéit livre
-      # mécaniquement un écran mort. Deux formes bloquent — écran sans câblage,
-      # et deux moitiés backend+frontend sans contrat partagé ; deux autres sont
-      # mesurées mais NON bloquantes (backend sans consommateur, composant
-      # redéfini) parce que leur taux de faux positifs a été MESURÉ trop élevé
-      # (64 % sur les doublons, vérifié à la lecture du code) — voir l'en-tête
-      # du script. Passif gelé dans scripts/taches_cablage_allow.txt (175
-      # entrées : il ne peut que RÉTRÉCIR).
-      #
-      # ICI et pas dans `backend-lint` À DESSEIN : `backend-lint` est gaté sur
-      # `backend == true`, donc une PR qui ne touche QUE des fichiers de plan
-      # (le cas exact de cette garde) ne le déclencherait jamais.
-      # `stage-names` est le seul job non gaté — et ce contrôle est en stdlib
-      # pure, sans base de données ni dépendance, comme les autres check_*.py.
-      - name: Check tâches de plan (aucune ne commande du travail mort)
-        run: python scripts/check_taches_cablage.py
-      # PACT12 — une tâche dont `Files:` nomme un fichier backend ET un fichier
-      # frontend ANNONCE deux moitiés. En juillet 2026,
-      # docs/FRONTEND_GAP_PLAN.md a constaté que « the paired frontend half of
-      # each task was never built, EVEN THOUGH most tasks named a `frontend/`
-      # file in their own Files: line » : la ligne annonçait les deux moitiés
-      # et RIEN ne vérifiait qu'elles avaient été touchées toutes les deux.
-      # 147 tâches de rattrapage écrites, 145 encore ouvertes un mois plus tard.
-      - name: Check tâches mixtes (une moitié livrée ne peut pas être cochée)
-        run: python scripts/check_plan_taches_mixtes.py
-      - name: Test the mixed-task checker itself (PACT12)
-        run: python -m unittest scripts.tests.test_check_plan_taches_mixtes -v
-      - name: Test the plan-task wiring checker itself
-        run: python -m unittest scripts.tests.test_check_taches_cablage -v
-      - name: Check no raw JSON / bare error object is shown to the user (EZ16)
-        run: python scripts/check_frontend_errors.py
-      - name: Test the anti-jargon checker itself (EZ16)
-        run: python -m unittest scripts.tests.test_check_frontend_errors -v
-      - name: Check test determinism (no sleeps / unfrozen live-clock assertions)
-        run: python scripts/check_test_determinism.py
-      - name: Check tenant distinctness (a "second tenant" in a test must be a real second row)
-        run: python scripts/check_test_tenant_distinctness.py
-      - name: Test the tenant-distinctness checker itself
-        run: python -m unittest scripts.tests.test_check_test_tenant_distinctness -v
-      - name: Check heavy tests carry a @tag (WOW5 — keep the fast tier fast)
-        run: python scripts/check_test_tags.py
-      - name: Check invariant registry (docs/invariants.md still points at real tests)
-        run: python scripts/check_invariants.py
-      - name: Check CODEMAP structural fingerprint
-        run: python scripts/codemap_fingerprint.py --check
-      - name: Check for unsafe migration DDL patterns (YOPSB4)
-        run: python scripts/check_safe_migrations.py
-      - name: Test the safe-migrations checker itself (YOPSB4)
-        run: python -m unittest scripts.tests.test_check_safe_migrations -v
-      - name: Validate docs/BUILD_ORDER.yml (SCA5 — acyclic DAG, parseable thresholds, no orphaned plan prefix)
-        run: python scripts/check_build_order.py
-      - name: Test the BUILD_ORDER.yml checker itself (SCA5)
-        run: python -m unittest scripts.tests.test_check_build_order -v
-      # REGLE #1 MACHINE-VERIFIEE (CRX11). « Toute ecriture Odoo passe par
-      # l'API JSON-2, jamais de SQL » n'etait tenue que par la discipline,
-      # alors que le depot porte TROIS transports Odoo dont deux savent
-      # ecrire — et que `apps/crm/odoo_sync.odoo_call` est ENTIEREMENT
-      # generique (`model` et `method` sont des parametres : rien n'empechait
-      # un appelant futur d'ecrire n'importe quoi dans la base du fondateur).
-      # La garde exige que chaque appel Odoo soit une LECTURE ou une exception
-      # ECRITE avec sa raison, refuse tout nouveau transport non declare, et
-      # verifie que l'allowlist d'execution `_WRITE_ALLOWED` dit exactement la
-      # meme chose. Stdlib pure, sans base ni dependance, comme les autres
-      # check_*.py de ce job.
-      - name: Check écritures Odoo (règle #1 — lecture, ou exception déclarée)
-        run: python scripts/check_odoo_writes.py
-      - name: Test the Odoo-writes checker itself (CRX11)
-        run: python -m unittest scripts.tests.test_check_odoo_writes -v
-      - name: Test the testdb-cache safety guard itself (WOW8 — a wrong DELTA verdict false-greens a stale schema)
-        run: python -m unittest scripts.tests.test_ci_testdb_manifest_diff -v
-      # WOW-CI2 — le decoupage des tests backend decide QUELS tests tournent.
-      # Si un module tombait du split, ses tests cesseraient de tourner pendant
-      # que tous les checks requis resteraient VERTS : un gate qui a
-      # silencieusement cesse de garder. Ce test prouve que l'union des lanes
-      # est exactement l'ensemble des modules `test*.py`, sans doublon, pour
-      # plusieurs totaux de shards. Stdlib pure, ~6 s.
-      # AUD830 (06/09/2026) : test_ci_shard derive desormais le total de shards
-      # de strategy.job-total via PyYAML — l'install doit PRECEDER ce test (elle
-      # servait deja check_query_budgets plus bas).
-      - name: Install PyYAML (shard-split + query-budgets)
+      # SOLMVP54 (21/09/2026) — LES 44 GARDES DE CE JOB TOURNENT EN PARALLELE.
+      # Mesure sur le run 35601218482 (main) : 3 min 07 s pour 42 etapes `run:`
+      # executees en serie (une garde = un processus Python de 0,5 a 23 s) sur
+      # un runner a 4 vCPU dont trois dormaient. La LISTE des gardes vit
+      # desormais dans `scripts/ci_guards.py` (`GARDES['stage-names']`), UNE
+      # seule fois ; le POURQUOI de chaque garde est l'en-tete de son script.
+      # Pourquoi elles sont ICI et pas dans `backend-lint` : `stage-names` est
+      # le seul job NON GATE, donc une PR purement frontend, docs ou plan les
+      # declenche aussi (incidents du 03/08/2026 : route inexistante, mock
+      # inverse du serveur, ecrans orphelins — tous invisibles a un job gate).
+      # Le runner lance les gardes sur N processus, rejoue la sortie de chacune
+      # dans un bloc `::group::`, nomme les echecs et rend 1 des qu'une garde
+      # rougit. `scripts/preflight.ps1` continue de les voir une par une :
+      # `ci_fast_gate_steps.py` developpe cette etape en ses gardes.
+      # AJOUTER UNE GARDE = une ligne dans `ci_guards.GARDES`, JAMAIS une etape
+      # `run: python scripts/check_*.py` ici — `scripts/tests/test_ci_guards.py`
+      # (execute par le runner lui-meme) refuse toute garde restee en serie.
+      # PyYAML PRECEDE le runner : lu par test_ci_shard, test_ci_frontend_shard,
+      # check_query_budgets et ci_fast_gate_steps (AUD830).
+      - name: Install PyYAML (shard-split + query-budgets — lu par 4 gardes)
         run: pip install PyYAML
-      - name: Test the backend-test shard split itself (WOW-CI2 — completude du decoupage)
-        run: python -m unittest scripts.tests.test_ci_shard -v
-      # WOW-CI4 — meme garde pour les lanes Vitest : un fichier qui tomberait du
-      # decoupage cesserait d'etre teste pendant que `frontend-lint` resterait
-      # vert. Stdlib pure, ~2 s.
-      - name: Test the frontend-test lane split itself (WOW-CI4 — completude du decoupage)
-        run: python -m unittest scripts.tests.test_ci_frontend_shard -v
-      # AUD826 — le filtre de chemins `changes` decide QUELS jobs lourds
-      # tournent. Une regression qui retirerait `^scripts/` rendrait a nouveau
-      # invisible tout commit d'hygiene sur les allowlists : la garde modifiee
-      # ne se validerait pas elle-meme. ICI et pas dans `backend-lint-fast` a
-      # DESSEIN : une PR qui ne touche que ci.yml ne met AUCUNE surface a true
-      # (`.github/**` tombe dans « le reste »), donc seul `stage-names`, non
-      # gate, peut garder le filtre. Stdlib pure, ~0,1 s.
-      - name: Test the ci.yml changes filter itself (AUD826 — scripts/ est une surface backend)
-        run: python -m unittest scripts.tests.test_ci_changes_filter -v
-      # AUD831 — docs/query-budgets.yml (le CONTRAT de perf par endpoint,
-      # NTPLT21) affirmait depuis l'origine « job CI stage-names / lint »
-      # alors que `grep -rn query_budgets .github/` rendait 0 occurrence :
-      # un endpoint `enforced: true` sans test de budget ne faisait rougir
-      # AUCUN job CI, le contrat de perf n'etait qu'une declaration
-      # d'intention. check_query_budgets.py est un VRAI gate (peut rendre
-      # 1), pas un advisory comme check_db_invariants.py — ICI, dans le
-      # seul job non gate, comme les autres check_*.py (DB-free ; seule
-      # dependance non-stdlib de ce job, d'ou l'install dediee).
-      - name: Check query-budget test coverage (endpoints "enforced" doivent avoir un test de budget)
-        run: python scripts/check_query_budgets.py
-      - name: Test the query-budgets checker itself (AUD831)
-        run: python -m unittest scripts.tests.test_check_query_budgets -v
+      - name: Gardes hôte en parallèle (scripts/ci_guards.py stage-names)
+        run: python scripts/ci_guards.py stage-names
 
   web-build-test:
     needs: changes
@@ -1772,7 +1424,11 @@ jobs:
       - name: Migrate + seed throwaway demo data
         working-directory: backend/django_core
         run: |
-          python manage.py migrate --noinput
+          # SOLMVP54 (21/09/2026) — plus de `migrate` ici : `backend-env` vient
+          # de restaurer `erp_db` depuis le dump WOW8 et l'a migré si (et
+          # seulement si) l'ensemble de migrations a bougé ; sur un hit exact
+          # cette ligne ne faisait qu'imprimer « No migrations to apply »
+          # après ~9 s de démarrage Django, sur chacune des deux lanes.
           python manage.py seed_demo
           # The simulator catalogue (defaults to the seeded `taqinor-demo`
           # company) is what the auto-devis sizing matches against.
@@ -1814,8 +1470,10 @@ jobs:
       - name: Start Django + run E2E specs
         working-directory: backend/django_core
         run: |
+          # SOLMVP54 — 4 workers sync (était 3) : trois pages Playwright en
+          # parallèle ouvrent chacune plusieurs requêtes API à la fois.
           gunicorn erp_agentique.wsgi:application \
-            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync &
+            --bind 127.0.0.1:8000 --workers 4 --timeout 120 --worker-class sync &
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w "%{http_code}" \
               http://127.0.0.1:8000/api/django/admin/login/ || true)
@@ -1880,20 +1538,41 @@ jobs:
           # (bloc CRENEAUX en tete de fichier — un job qui fait la queue est la
           # pire lane possible). Le vrai levier reste la mise en place : voir
           # l'en-tete de ce job.
+          #
+          # SOLMVP54 (21/09/2026) — LE MODELE N'EST PLUS ADDITIF POUR LA FUMEE.
+          # `workers: 1` du playwright.config.js protege les specs de PARCOURS
+          # (elles mutent des donnees partagees : devis.spec cree un lead) ;
+          # les trois fichiers de fumee, eux, ne font que VISITER des ecrans
+          # (lecture seule, un test par module — fumee-ecrans.partition.js).
+          # On les confie a UNE lane sur `--workers 3` : Playwright distribue
+          # les FICHIERS entre workers (fullyParallel reste false, l'ordre
+          # interne d'un fichier est inchange), donc les trois groupes tournent
+          # de front. Mesure avant (run 35601218482) : lane 1 = fumee 1+2+devis
+          # 102 s, lane 2 = fumee 3 + health + mobile-safari 122 s.
           if [ "${{ matrix.shard }}" = "1" ]; then
-            npx playwright test --project=chromium \
-              fumee-ecrans-1.spec.js fumee-ecrans-2.spec.js devis.spec.js
+            npx playwright test --project=chromium --workers 3 \
+              fumee-ecrans-1.spec.js fumee-ecrans-2.spec.js fumee-ecrans-3.spec.js
           else
-            npx playwright test --project=chromium \
-              fumee-ecrans-3.spec.js health.spec.js
-          fi
-          # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
-          # régressions qui n'apparaissent que sur Safari (VX48 window.open
-          # post-await, sticky, backdrop-blur). PR-only, hors matrice complète.
-          # Sur la lane 2 seulement : 1,3 min mesurées, c'est le contrepoids de
-          # la moitié chromium. Il n'est PAS shardé (16 tests, un seul worker).
-          if [ "${{ matrix.shard }}" = "2" ]; then
-            npx playwright test --project=mobile-safari
+            # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
+            # régressions qui n'apparaissent que sur Safari (VX48 window.open
+            # post-await, sticky, backdrop-blur). PR-only, hors matrice complète.
+            # SOLMVP54 — `devis.spec` tourne SEUL d'abord : son parcours génère
+            # un PDF (WeasyPrint côté serveur) et attend le téléchargement sous
+            # l'actionTimeout de 15 s ; lancé en même temps que les tests WebKit
+            # (run 35609730995, tout dans une invocation à 2 workers) il a pris
+            # 56 s et le téléchargement a dépassé 15 s — un délai produit qu'on
+            # ne desserre pas pour la CI. Puis health (chromium, lecture seule)
+            # et mobile-safari partagent 2 workers dans UNE invocation :
+            # Playwright répartit les FICHIERS (mobile.spec.js reste sériel à
+            # l'intérieur). Le filtre `mobile.spec.js` couvre aussi
+            # adsengine-mobile.spec.js ; chromium ignore ces deux fichiers par
+            # `testIgnore`, mobile-safari n'exécute qu'eux par `testMatch` —
+            # chaque test tourne exactement une fois, comme avant. Mesuré avant
+            # (run 35607493246) : 51 s + 66 s en série ; attendu ~47 s + ~66 s
+            # avec health absorbé par le worker libre.
+            npx playwright test --project=chromium devis.spec.js
+            npx playwright test --project=chromium --project=mobile-safari --workers 2 \
+              health.spec.js mobile.spec.js
           fi
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
@@ -1932,119 +1611,13 @@ jobs:
         run: echo "e2e-shard result=${{ needs.e2e-shard.result }} — gate OK."
 
   # ---------------------------------------------------------------------------
-  # NTPLT5 — suite d'étanchéité RLS, job FACULTATIF (non-required). N'entre
-  # PAS dans ci-gate → la protection de branche reste intacte. Lance la seule
-  # suite core.tests.test_rls avec POSTGRES_RLS_ENABLED=1 (elle est sautée
-  # partout ailleurs, donc n'alourdit jamais le gate backend-tests requis).
-  # ---------------------------------------------------------------------------
-  rls-tests:
-    needs: [changes, ci-image-check]
-    if: ${{ needs.changes.outputs.backend == 'true' }}
-    runs-on: ubuntu-latest
-    # 02/09/2026 — 12 → 30 : aligné sur les shards backend. Un lot riche en
-    # migrations + éviction du dump WOW8 (LRU, journée à forte activité CI)
-    # force un replay froid qui dépasse largement 12 min (run 33666097975 :
-    # replay complet depuis admin.0001, tué au plafond, shards annulés en
-    # cascade). Le chemin cache-HIT reste ~6-8 min ; le plafond ne borne que
-    # le pire cas froid.
-    timeout-minutes: 240
-    permissions:
-      contents: read
-      packages: read
-    # WOW-CI RONDE 5 — même image CI figée que les shards (cf. leur en-tête).
-    defaults:
-      run:
-        # WOW-CI RONDE 5 — dans un job `container:`, GitHub lance les scripts
-        # avec `sh` (dash) par défaut : le premier `set -o pipefail` (bashisme)
-        # tuait les six shards en ~90 s (run 32316154505). bash est présent
-        # dans l'image — déclaré une fois pour toutes au niveau du job.
-        shell: bash
-    container:
-      image: ${{ needs.ci-image-check.outputs.image }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    services:
-      # WOW-CI RONDE 5 (20/08/2026) — LE SERVICE `postgres` A DISPARU D'ICI.
-      # Il est remplacé par un serveur local que `backend-env` démarre DANS le
-      # conteneur du job (voir son étape « Demarrer Postgres »). Raison unique
-      # et non négociable : un `services:` d'Actions n'accepte pas de
-      # `command:`, donc `max_locks_per_transaction` y était inatteignable — et
-      # les shards mouraient en `out of shared memory` dès qu'un test purgeait
-      # une société entière (DELETE en cascade sur ~900 tables dans UNE
-      # transaction, contre 6 400 verrous disponibles). Le serveur local tourne
-      # avec 2048 verrous par transaction, ce qui règle la classe entière.
-      # `redis` reste un service : rien à y configurer.
-      redis:
-        image: redis:7.4-alpine
-        ports:
-          - 6379:6379
-    env:
-      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
-      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
-      DJANGO_DEBUG: 'True'
-      DB_NAME: erp_db
-      DB_USER: erp_user
-      DB_PASSWORD: ci_password
-      # WOW-CI RONDE 5 — Postgres tourne DANS le conteneur du job, démarré par
-      # `backend-env` (voir le même commentaire sur `backend-tests-shard`).
-      DB_HOST: localhost
-      DB_PORT: '5432'
-      REDIS_HOST: redis
-      REDIS_PORT: '6379'
-      MINIO_ENDPOINT: localhost:9000
-      MINIO_ROOT_USER: erp_admin
-      MINIO_ROOT_PASSWORD: erp_minio_password
-      MINIO_BUCKET_PDF: erp-pdf
-      MINIO_BUCKET_UPLOADS: erp-uploads
-      # WOW-CI RONDE 5 — même élargissement que sur les shards : cette suite EST
-      # un `TransactionTestCase`, donc chacun de ses tests se termine par la
-      # purge large de 16-31 s que le garde-fou de 30 s annulerait tôt ou tard.
-      DB_STATEMENT_TIMEOUT_MS: '600000'
-      # Active la suite RLS (sautée partout ailleurs).
-      POSTGRES_RLS_ENABLED: '1'
-    steps:
-      - uses: actions/checkout@v4
-      # WOW-CI (2026-07-16): reuse the WOW8 pre-migrated dump + --keepdb exactly
-      # like the shards. Before this, rls-tests cold-replayed the full ~1,150-
-      # migration history on every run (measured 36-52 min, 94-97% of the job;
-      # the RLS assertions themselves run <1 min) — it was the job that made the
-      # whole workflow read as ~45 min. Safe because the suite applies its own
-      # policies in setUp and reverts them in tearDown (no env-gated migration:
-      # POSTGRES_RLS_ENABLED changes nothing about migrate output), so the
-      # restored dump exercises the RLS seal identically to a cold build.
-      - uses: ./.github/actions/backend-env
-        with:
-          testdb-cache-into: test_erp_db
-          prebuilt-image: 'true'
-      # WOW-CI RONDE 5 — CE JOB RESTE DÉLIBÉRÉMENT EN `--parallel 1` (B3).
-      # Deux raisons, pas une :
-      #  1. Il n'exécute qu'UN module, qui ne contient qu'UNE classe
-      #     (`RlsSealTests`). Django affecte une classe entière à un seul
-      #     worker : `--parallel` n'aurait donc STRICTEMENT rien à répartir, il
-      #     ne ferait qu'ajouter le coût de N clones de base.
-      #  2. Cette classe est justement celle qui a fait sauter `max_locks` en
-      #     juillet (commit 0d66f6e1) : c'est un `TransactionTestCase` dont
-      #     chaque test purge tout le schéma. La paralléliser serait reprendre
-      #     le risque en échange de zéro gain.
-      # Ce job n'est de toute façon pas sur le chemin critique du gate : ses
-      # assertions tournent en moins d'une minute, le reste est la restauration
-      # WOW8 que le volet A raccourcit déjà.
-      # AUD422 — la suite de déni cross-tenant sur les CINQ TABLES ARGENT
-      # (compta.EcritureComptable/LigneEcriture, ventes.Devis,
-      # facturation.Facture/Paiement) rejoint le sceau NTPLT5 dans ce même job :
-      # elle est opt-in par le MÊME flag, elle a les mêmes besoins (PostgreSQL
-      # réel + rôle NOBYPASSRLS), et la lancer ailleurs coûterait une seconde
-      # restauration WOW8 pour ~1 min d'assertions. Elle vérifie en plus que les
-      # policies posées par les migrations AUD422 sont bien là.
-      - name: Run RLS seal suite (opt-in — flag ON)
-        working-directory: backend/django_core
-        run: >-
-          python manage.py test
-          core.tests.test_rls
-          core.tests.test_rls_cross_tenant_denial
-          -v 2 --keepdb --parallel 1
-
+  # NTPLT5 / AUD422 — la suite d'étanchéité RLS (`core.tests.test_rls` +
+  # `test_rls_cross_tenant_denial`, opt-in par POSTGRES_RLS_ENABLED) était ici
+  # un job `rls-tests` séparé, non requis. SOLMVP54 (21/09/2026) : repliée sur
+  # la lane 0 de `backend-tests-shard` (voir son étape « Run RLS seal suite »),
+  # même dump WOW8 restauré, `--parallel 1` conservé (la suite applique ses
+  # propres policies en setUp et les retire en tearDown — le dump restauré
+  # exerce le sceau exactement comme un build froid, WOW-CI 16/07/2026).
   # ---------------------------------------------------------------------------
   # Always-running aggregate gate. Pin THIS one job as the single required
   # status check on `main`: because it always runs (if: always()) it can never
@@ -2052,6 +1625,17 @@ jobs:
   # or was cancelled. A SKIPPED job (path-filtered out) counts as acceptable —
   # `contains(needs.*.result, 'failure')` is false for 'skipped'/'success'.
   # ---------------------------------------------------------------------------
+  # SOLMVP54 (21/09/2026) — ci-gate dépend des LANES, plus des agrégateurs
+  # (backend-lint, backend-tests, frontend-lint, e2e). Un agrégateur n'est
+  # qu'une fonction de ses lanes (il rougit ssi une lane a échoué/été annulée,
+  # ou si ci-image-check a échoué — les deux sont déjà dans `needs` ici) : le
+  # faire attendre par ci-gate ajoutait un SAUT de plus sur le chemin critique,
+  # et chaque saut coûte une attribution de runner (3 s à vide, MESURÉ 43 à
+  # 124 s quand l'organisation frôle le plafond de 20 jobs — run 35601218482 :
+  # les deux sauts successifs backend-tests puis ci-gate ont coûté 4 min à un
+  # run dont la dernière lane avait fini à 7,4 min). ci-gate part maintenant
+  # en même temps que les agrégateurs, un seul saut après la dernière lane,
+  # et son verdict est identique.
   ci-gate:
     if: ${{ always() }}
     needs:
@@ -2059,16 +1643,12 @@ jobs:
       - ci-image-check
       - backend-lint-fast
       - backend-openapi
-      - backend-lint
       - backend-tests-shard
-      - backend-tests
       - frontend-static
       - frontend-vitest-shard
-      - frontend-lint
       - stage-names
       - web-build-test
       - e2e-shard
-      - e2e
     runs-on: ubuntu-latest
     steps:
       - name: Report job results
@@ -2077,16 +1657,12 @@ jobs:
           echo "ci-image-check=${{ needs.ci-image-check.result }}"
           echo "backend-lint-fast=${{ needs.backend-lint-fast.result }}"
           echo "backend-openapi=${{ needs.backend-openapi.result }}"
-          echo "backend-lint=${{ needs.backend-lint.result }}"
           echo "backend-tests-shard=${{ needs.backend-tests-shard.result }}"
-          echo "backend-tests=${{ needs.backend-tests.result }}"
           echo "frontend-static=${{ needs.frontend-static.result }}"
           echo "frontend-vitest-shard=${{ needs.frontend-vitest-shard.result }}"
-          echo "frontend-lint=${{ needs.frontend-lint.result }}"
           echo "e2e-shard=${{ needs.e2e-shard.result }}"
           echo "stage-names=${{ needs.stage-names.result }}"
           echo "web-build-test=${{ needs.web-build-test.result }}"
-          echo "e2e=${{ needs.e2e.result }}"
       - name: Fail if any required job failed or was cancelled
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
         run: |
