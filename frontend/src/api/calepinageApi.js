@@ -317,6 +317,16 @@ const calepinageApi = {
     // vient À CÔTÉ de lui, elle ne le remplace pas.
     depuisLead: (leadId) =>
       api.post('/calepinage/calepinages/depuis-lead/', { lead: leadId }),
+
+    // CALX6 — le TÉLÉCHARGEMENT d'une série de la simulation. La porte
+    // existe depuis CAL144 (`views/export_csv.py`, `url_path='export-csv'`)
+    // et n'avait AUCUN consommateur : `quoi` vaut `horaire`, `mensuel` ou
+    // `ombrage` (`services/export_csv.py::EXPORTS`). La réponse est un
+    // FICHIER (blob) ; quand la donnée manque, le serveur refuse en 400 et
+    // NOMME le champ absent (`points`, `mensuel`, `shading12x24`) — l'écran
+    // affiche ce motif-là sous le bouton, il n'en invente aucun.
+    exportCsv: (id, quoi) =>
+      api.get(`${pivot(id)}export-csv/`, { responseType: 'blob', params: { quoi } }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
